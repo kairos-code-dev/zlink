@@ -27,10 +27,9 @@ public sealed class test_pubsub
         subscriber.SetOption(SocketOptions.Subscribe, string.Empty);
         Thread.Sleep(100);
 
-        CoreTestSupport.SendBytesWithRetry(publisher, "test"u8, SendFlags.None,
-            2000);
-        Assert.Equal("test",
-            CoreTestSupport.ReceiveStringWithTimeout(subscriber, 64, 2000));
+        CoreTestSupport.SendWithRetry(publisher, "test"u8, SendFlags.None, 2000);
+        Assert.Equal("test", CoreTestSupport.ReceiveUtf8WithTimeout(subscriber,
+            2000));
     }
 
     [Theory]
@@ -54,17 +53,17 @@ public sealed class test_pubsub
         subscriber.SetOption(SocketOptions.Subscribe, "topicA");
         Thread.Sleep(100);
 
-        CoreTestSupport.SendBytesWithRetry(publisher, "topicA hello"u8,
-            SendFlags.None, 2000);
-        CoreTestSupport.SendBytesWithRetry(publisher, "topicB world"u8,
-            SendFlags.None, 2000);
-        CoreTestSupport.SendBytesWithRetry(publisher, "topicA test"u8,
-            SendFlags.None, 2000);
+        CoreTestSupport.SendWithRetry(publisher, "topicA hello"u8, SendFlags.None,
+            2000);
+        CoreTestSupport.SendWithRetry(publisher, "topicB world"u8, SendFlags.None,
+            2000);
+        CoreTestSupport.SendWithRetry(publisher, "topicA test"u8, SendFlags.None,
+            2000);
 
         Assert.Equal("topicA hello",
-            CoreTestSupport.ReceiveStringWithTimeout(subscriber, 128, 2000));
+            CoreTestSupport.ReceiveUtf8WithTimeout(subscriber, 2000));
         Assert.Equal("topicA test",
-            CoreTestSupport.ReceiveStringWithTimeout(subscriber, 128, 2000));
+            CoreTestSupport.ReceiveUtf8WithTimeout(subscriber, 2000));
         Assert.True(CoreTestSupport.ExpectNoMessage(subscriber, 150));
     }
 
@@ -87,14 +86,14 @@ public sealed class test_pubsub
         xpub.Bind(endpoint);
         xsub.Connect(endpoint);
 
-        CoreTestSupport.SendBytesWithRetry(xsub, new byte[] { 0x01 },
-            SendFlags.None, 2000);
+        CoreTestSupport.SendWithRetry(xsub, new byte[] { 0x01 }, SendFlags.None,
+            2000);
         _ = CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000);
         Thread.Sleep(50);
 
-        CoreTestSupport.SendBytesWithRetry(xpub, "xpub_xsub_test"u8,
-            SendFlags.None, 2000);
+        CoreTestSupport.SendWithRetry(xpub, "xpub_xsub_test"u8, SendFlags.None,
+            2000);
         Assert.Equal("xpub_xsub_test",
-            CoreTestSupport.ReceiveStringWithTimeout(xsub, 128, 2000));
+            CoreTestSupport.ReceiveUtf8WithTimeout(xsub, 2000));
     }
 }

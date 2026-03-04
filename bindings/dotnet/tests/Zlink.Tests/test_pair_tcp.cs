@@ -1,4 +1,3 @@
-using System.Text;
 using System.Threading;
 using Xunit;
 
@@ -26,11 +25,11 @@ public sealed class test_pair_tcp
         sc.Connect(endpoint);
         Thread.Sleep(50);
 
-        CoreTestSupport.SendBytesWithRetry(sc, "ping"u8, SendFlags.None, 2000);
-        Assert.Equal("ping", CoreTestSupport.ReceiveStringWithTimeout(sb, 64, 2000));
+        CoreTestSupport.SendWithRetry(sc, "ping"u8, SendFlags.None, 2000);
+        Assert.Equal("ping", CoreTestSupport.ReceiveUtf8WithTimeout(sb, 2000));
 
-        CoreTestSupport.SendBytesWithRetry(sb, "pong"u8, SendFlags.None, 2000);
-        Assert.Equal("pong", CoreTestSupport.ReceiveStringWithTimeout(sc, 64, 2000));
+        CoreTestSupport.SendWithRetry(sb, "pong"u8, SendFlags.None, 2000);
+        Assert.Equal("pong", CoreTestSupport.ReceiveUtf8WithTimeout(sc, 2000));
     }
 
     [Fact]
@@ -52,9 +51,8 @@ public sealed class test_pair_tcp
         sc.Connect(connectEndpoint);
         Thread.Sleep(50);
 
-        CoreTestSupport.SendBytesWithRetry(sc, Encoding.UTF8.GetBytes("hello"),
-            SendFlags.None, 2000);
-        Assert.Equal("hello", CoreTestSupport.ReceiveStringWithTimeout(sb, 64, 2000));
+        CoreTestSupport.SendWithRetry(sc, "hello"u8, SendFlags.None, 2000);
+        Assert.Equal("hello", CoreTestSupport.ReceiveUtf8WithTimeout(sb, 2000));
     }
 
     [Fact]
@@ -74,7 +72,7 @@ public sealed class test_pair_tcp
         var poller = new Poller();
         poller.Add(receiver, PollEvents.PollIn);
 
-        CoreTestSupport.SendBytesWithRetry(sender, "x"u8, SendFlags.None, 2000);
+        CoreTestSupport.SendWithRetry(sender, "x"u8, SendFlags.None, 2000);
 
         PollEvent[] events = new PollEvent[4];
         int written = poller.Wait(events, 2000, out int totalReady);

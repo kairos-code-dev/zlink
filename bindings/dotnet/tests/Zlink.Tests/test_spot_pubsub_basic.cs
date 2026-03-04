@@ -1,5 +1,4 @@
 using System;
-using System.Text;
 using System.Threading;
 using Xunit;
 
@@ -18,13 +17,12 @@ public sealed class test_spot_pubsub_basic
         using var spot = new Spot(node);
 
         spot.Subscribe("chat:room1:msg");
-        spot.Publish("chat:room1:msg",
-            new[] { Message.FromBytes(Encoding.UTF8.GetBytes("hello")) });
+        spot.Publish("chat:room1:msg", "hello"u8, SendFlags.None);
 
         SpotMessage recv = CoreTestSupport.ReceiveSpotWithTimeout(spot, 2000);
         Assert.Equal("chat:room1:msg", recv.TopicId);
         Assert.Single(recv.Parts);
-        Assert.Equal("hello", Encoding.UTF8.GetString(recv.Parts[0].ToArray()));
+        Assert.Equal("hello", CoreTestSupport.Utf8(recv.Parts[0]));
     }
 
     [Fact]
@@ -38,13 +36,12 @@ public sealed class test_spot_pubsub_basic
         using var spot = new Spot(node);
 
         spot.SubscribePattern("zone:12:*");
-        spot.Publish("zone:12:state",
-            new[] { Message.FromBytes(Encoding.UTF8.GetBytes("ping")) });
+        spot.Publish("zone:12:state", "ping"u8, SendFlags.None);
 
         SpotMessage recv = CoreTestSupport.ReceiveSpotWithTimeout(spot, 2000);
         Assert.Equal("zone:12:state", recv.TopicId);
         Assert.Single(recv.Parts);
-        Assert.Equal("ping", Encoding.UTF8.GetString(recv.Parts[0].ToArray()));
+        Assert.Equal("ping", CoreTestSupport.Utf8(recv.Parts[0]));
     }
 
     [Fact]
@@ -60,15 +57,15 @@ public sealed class test_spot_pubsub_basic
         spot.Subscribe("mp:topic");
         spot.Publish("mp:topic", new[]
         {
-            Message.FromBytes(Encoding.UTF8.GetBytes("one")),
-            Message.FromBytes(Encoding.UTF8.GetBytes("two"))
+            Message.FromBytes("one"u8),
+            Message.FromBytes("two"u8)
         });
 
         SpotMessage recv = CoreTestSupport.ReceiveSpotWithTimeout(spot, 2000);
         Assert.Equal("mp:topic", recv.TopicId);
         Assert.Equal(2, recv.Parts.Length);
-        Assert.Equal("one", Encoding.UTF8.GetString(recv.Parts[0].ToArray()));
-        Assert.Equal("two", Encoding.UTF8.GetString(recv.Parts[1].ToArray()));
+        Assert.Equal("one", CoreTestSupport.Utf8(recv.Parts[0]));
+        Assert.Equal("two", CoreTestSupport.Utf8(recv.Parts[1]));
     }
 
     [Fact]
@@ -81,8 +78,7 @@ public sealed class test_spot_pubsub_basic
         using var node = new SpotNode(ctx);
         using var spot = new Spot(node);
 
-        spot.Publish("metrics:cpu",
-            new[] { Message.FromBytes(Encoding.UTF8.GetBytes("nop")) });
+        spot.Publish("metrics:cpu", "nop"u8, SendFlags.None);
     }
 
     [Fact]
@@ -116,16 +112,16 @@ public sealed class test_spot_pubsub_basic
         using var spot = new Spot(node);
 
         using var signal = new ManualResetEventSlim(false);
-        byte[]? topicSeen = null;
-        byte[]? payloadSeen = null;
+        string? topicSeen = null;
+        string? payloadSeen = null;
         int partCount = 0;
 
         spot.SetPacketHandler((topicUtf8, parts) =>
         {
-            topicSeen = topicUtf8.ToArray();
+            topicSeen = CoreTestSupport.Utf8(topicUtf8);
             partCount = parts.Length;
             if (parts.Length > 0)
-                payloadSeen = parts[0].AsReadOnlySpan().ToArray();
+                payloadSeen = CoreTestSupport.Utf8(parts[0].AsReadOnlySpan());
             signal.Set();
         });
 
@@ -136,9 +132,9 @@ public sealed class test_spot_pubsub_basic
         Assert.True(signal.Wait(2000));
         Assert.NotNull(topicSeen);
         Assert.NotNull(payloadSeen);
-        Assert.Equal("raw:topic", Encoding.UTF8.GetString(topicSeen!));
+        Assert.Equal("raw:topic", topicSeen);
         Assert.Equal(1, partCount);
-        Assert.Equal("raw-payload", Encoding.UTF8.GetString(payloadSeen!));
+        Assert.Equal("raw-payload", payloadSeen);
     }
 
     [Fact]
@@ -153,13 +149,13 @@ public sealed class test_spot_pubsub_basic
 
         using var signal = new ManualResetEventSlim(false);
         string? topicSeen = null;
-        byte[]? payloadSeen = null;
+        string? payloadSeen = null;
 
         spot.SetHandler((topic, parts) =>
         {
             topicSeen = topic;
             if (parts.Length > 0)
-                payloadSeen = parts[0].ToArray();
+                payloadSeen = CoreTestSupport.Utf8(parts[0]);
             foreach (Message part in parts)
                 part.Dispose();
             signal.Set();
@@ -170,7 +166,7 @@ public sealed class test_spot_pubsub_basic
 
         Assert.True(signal.Wait(2000));
         Assert.Equal("copy:topic", topicSeen);
-        Assert.Equal("copy-payload", Encoding.UTF8.GetString(payloadSeen!));
+        Assert.Equal("copy-payload", payloadSeen);
     }
 
     [Fact]
@@ -224,12 +220,11 @@ public sealed class test_spot_pubsub_basic
         Thread.Sleep(100);
 
         using var spotA = new Spot(nodeA);
-        spotA.Publish("peer:topic",
-            new[] { Message.FromBytes(Encoding.UTF8.GetBytes("pong")) });
+        spotA.Publish("peer:topic", "pong"u8, SendFlags.None);
 
         SpotMessage recv = CoreTestSupport.ReceiveSpotWithTimeout(spotB, 2000);
         Assert.Equal("peer:topic", recv.TopicId);
         Assert.Single(recv.Parts);
-        Assert.Equal("pong", Encoding.UTF8.GetString(recv.Parts[0].ToArray()));
+        Assert.Equal("pong", CoreTestSupport.Utf8(recv.Parts[0]));
     }
 }

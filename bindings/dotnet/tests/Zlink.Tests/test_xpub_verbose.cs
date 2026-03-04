@@ -41,11 +41,11 @@ public sealed class test_xpub_verbose
         Assert.Equal(SubscribeA,
             CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
 
-        CoreTestSupport.SendBytesWithRetry(xpub, "A"u8, SendFlags.None, 2000);
-        CoreTestSupport.SendBytesWithRetry(xpub, "B"u8, SendFlags.None, 2000);
+        CoreTestSupport.SendWithRetry(xpub, "A"u8, SendFlags.None, 2000);
+        CoreTestSupport.SendWithRetry(xpub, "B"u8, SendFlags.None, 2000);
 
-        Assert.Equal("A", CoreTestSupport.ReceiveStringWithTimeout(sub, 64, 2000));
-        Assert.Equal("B", CoreTestSupport.ReceiveStringWithTimeout(sub, 64, 2000));
+        Assert.Equal("A", CoreTestSupport.ReceiveUtf8WithTimeout(sub, 2000));
+        Assert.Equal("B", CoreTestSupport.ReceiveUtf8WithTimeout(sub, 2000));
     }
 
     [Fact]
@@ -80,12 +80,12 @@ public sealed class test_xpub_verbose
         Assert.Equal(SubscribeA,
             CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
 
-        CoreTestSupport.SendBytesWithRetry(xpub, "A"u8, SendFlags.None, 2000);
-        CoreTestSupport.SendBytesWithRetry(xpub, "B"u8, SendFlags.None, 2000);
+        CoreTestSupport.SendWithRetry(xpub, "A"u8, SendFlags.None, 2000);
+        CoreTestSupport.SendWithRetry(xpub, "B"u8, SendFlags.None, 2000);
 
-        Assert.Equal("A", CoreTestSupport.ReceiveStringWithTimeout(sub0, 64, 2000));
-        Assert.Equal("A", CoreTestSupport.ReceiveStringWithTimeout(sub1, 64, 2000));
-        Assert.Equal("B", CoreTestSupport.ReceiveStringWithTimeout(sub0, 64, 2000));
+        Assert.Equal("A", CoreTestSupport.ReceiveUtf8WithTimeout(sub0, 2000));
+        Assert.Equal("A", CoreTestSupport.ReceiveUtf8WithTimeout(sub1, 2000));
+        Assert.Equal("B", CoreTestSupport.ReceiveUtf8WithTimeout(sub0, 2000));
     }
 
     [Fact]

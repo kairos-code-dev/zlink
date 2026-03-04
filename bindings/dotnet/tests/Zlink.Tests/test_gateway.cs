@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -137,14 +136,14 @@ public sealed class test_gateway
         string targetRoutingId = providers[0].RoutingId;
         Assert.False(string.IsNullOrEmpty(targetRoutingId));
 
-        gateway.SendToRoutingId("svc", targetRoutingId,
-            Encoding.UTF8.GetBytes("rid-msg"), SendFlags.None);
+        gateway.SendToRoutingId("svc", targetRoutingId, "rid-msg"u8,
+            SendFlags.None);
 
-        byte[] rid = CoreTestSupport.ReceiveBytesWithTimeout(receiverRouter, 256,
+        using Message rid = CoreTestSupport.ReceiveMessageWithTimeout(receiverRouter,
             2000);
-        Assert.NotEmpty(rid);
+        Assert.True(rid.Size > 0);
         Assert.Equal("rid-msg",
-            CoreTestSupport.ReceiveStringWithTimeout(receiverRouter, 256, 2000));
+            CoreTestSupport.ReceiveUtf8WithTimeout(receiverRouter, 2000));
     }
 
     [Fact]
@@ -220,7 +219,7 @@ public sealed class test_gateway
         Assert.True(CoreTestSupport.WaitUntil(() =>
             gateway.ConnectionCount("svc") > 0, 4000));
 
-        gateway.Send("svc", Encoding.UTF8.GetBytes("hello"), SendFlags.None);
+        gateway.Send("svc", "hello"u8, SendFlags.None);
         string payload = CoreTestSupport.ReceiveRouterPayloadWithTimeout(
             receiverRouter, "hello", 3000);
         Assert.Equal("hello", payload);
@@ -331,8 +330,8 @@ public sealed class test_gateway
         Assert.True(CoreTestSupport.WaitUntil(() =>
             gateway.ConnectionCount("svc-B") > 0, 4000));
 
-        gateway.Send("svc-A", Encoding.UTF8.GetBytes("msg-to-A"), SendFlags.None);
-        gateway.Send("svc-B", Encoding.UTF8.GetBytes("msg-to-B"), SendFlags.None);
+        gateway.Send("svc-A", "msg-to-A"u8, SendFlags.None);
+        gateway.Send("svc-B", "msg-to-B"u8, SendFlags.None);
 
         Assert.Equal("msg-to-A", CoreTestSupport.ReceiveRouterPayloadWithTimeout(
             routerA, "msg-to-A", 3000));

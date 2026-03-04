@@ -112,7 +112,7 @@ internal static class CoreTestSupport
         return false;
     }
 
-    internal static void SendBytesWithRetry(Zlink.Socket socket,
+    internal static void SendWithRetry(Zlink.Socket socket,
         ReadOnlySpan<byte> payload, SendFlags flags, int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
@@ -150,20 +150,15 @@ internal static class CoreTestSupport
         throw new TimeoutException("gateway send timeout");
     }
 
-    internal static byte[] ReceiveBytesWithTimeout(Zlink.Socket socket,
-        int maxSize, int timeoutMs)
+    internal static Message ReceiveMessageWithTimeout(Zlink.Socket socket,
+        int timeoutMs)
     {
-        byte[] buffer = new byte[maxSize];
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
             try
             {
-                int bytes = socket.Receive(buffer, ReceiveFlags.DontWait);
-                byte[] result = new byte[bytes];
-                if (bytes > 0)
-                    Buffer.BlockCopy(buffer, 0, result, 0, bytes);
-                return result;
+                return socket.ReceiveMessage(ReceiveFlags.DontWait);
             }
             catch (ZlinkException ex) when (IsRetryable(ex))
             {
@@ -173,11 +168,30 @@ internal static class CoreTestSupport
         throw new TimeoutException("receive timeout");
     }
 
-    internal static string ReceiveStringWithTimeout(Zlink.Socket socket,
+    internal static byte[] ReceiveBytesWithTimeout(Zlink.Socket socket,
         int maxSize, int timeoutMs)
     {
-        byte[] bytes = ReceiveBytesWithTimeout(socket, maxSize, timeoutMs);
-        return Encoding.UTF8.GetString(bytes).Trim('\0');
+        _ = maxSize;
+        using Message message = ReceiveMessageWithTimeout(socket, timeoutMs);
+        return message.AsReadOnlySpan().ToArray();
+    }
+
+    internal static string ReceiveUtf8WithTimeout(Zlink.Socket socket, int timeoutMs)
+    {
+        using Message message = ReceiveMessageWithTimeout(socket, timeoutMs);
+        return Encoding.UTF8.GetString(message.AsReadOnlySpan()).Trim('\0');
+    }
+
+    internal static string Utf8(Message message)
+    {
+        if (message == null)
+            throw new ArgumentNullException(nameof(message));
+        return Encoding.UTF8.GetString(message.AsReadOnlySpan()).Trim('\0');
+    }
+
+    internal static string Utf8(ReadOnlySpan<byte> payload)
+    {
+        return Encoding.UTF8.GetString(payload).Trim('\0');
     }
 
     internal static string ReceiveRouterPayloadWithTimeout(Zlink.Socket router,
@@ -186,14 +200,14 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            string first = ReceiveStringWithTimeout(router, 256, 500);
+            string first = ReceiveUtf8WithTimeout(router, 500);
             if (first == expectedPayload)
                 return first;
 
             int more = router.GetOption(SocketOptions.RcvMore);
             if (more != 0)
             {
-                string second = ReceiveStringWithTimeout(router, 256, 500);
+                string second = ReceiveUtf8WithTimeout(router, 500);
                 if (second == expectedPayload)
                     return second;
             }
@@ -204,11 +218,11 @@ internal static class CoreTestSupport
     internal static bool TryReceiveMultipartLastPart(Zlink.Socket socket,
         int maxSize, out byte[] lastPart)
     {
-        byte[] buffer = new byte[maxSize];
-        int bytes;
+        _ = maxSize;
+        Message? first = null;
         try
         {
-            bytes = socket.Receive(buffer, ReceiveFlags.DontWait);
+            first = socket.ReceiveMessage(ReceiveFlags.DontWait);
         }
         catch (ZlinkException ex) when (IsRetryable(ex))
         {
@@ -216,24 +230,30 @@ internal static class CoreTestSupport
             return false;
         }
 
-        lastPart = new byte[bytes];
-        if (bytes > 0)
-            Buffer.BlockCopy(buffer, 0, lastPart, 0, bytes);
-
-        while (socket.GetOption(SocketOptions.RcvMore) != 0)
-            lastPart = ReceiveBytesWithTimeout(socket, maxSize, 500);
-        return true;
+        try
+        {
+            lastPart = first.AsReadOnlySpan().ToArray();
+            while (socket.GetOption(SocketOptions.RcvMore) != 0)
+            {
+                using Message next = ReceiveMessageWithTimeout(socket, 500);
+                lastPart = next.AsReadOnlySpan().ToArray();
+            }
+            return true;
+        }
+        finally
+        {
+            first.Dispose();
+        }
     }
 
     internal static bool ExpectNoMessage(Zlink.Socket socket, int probeMs)
     {
-        byte[] buffer = new byte[64];
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
         while (DateTime.UtcNow < deadline)
         {
             try
             {
-                _ = socket.Receive(buffer, ReceiveFlags.DontWait);
+                using Message _ = socket.ReceiveMessage(ReceiveFlags.DontWait);
                 return false;
             }
             catch (ZlinkException ex) when (IsRetryable(ex))

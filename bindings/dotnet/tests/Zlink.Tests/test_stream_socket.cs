@@ -5,7 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -61,7 +60,7 @@ public sealed class test_stream_socket
     }
 
     private static bool WaitMonitorEvent(MonitorSocket monitor,
-        SocketEvent expectedEvent, int timeoutMs, out byte[] routingId)
+        SocketEvent expectedEvent, int timeoutMs, out uint routingId)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
@@ -71,8 +70,11 @@ public sealed class test_stream_socket
                 MonitorEvent evt = monitor.Receive(ReceiveFlags.DontWait);
                 if (evt.Event == expectedEvent)
                 {
-                    routingId = evt.RoutingId;
-                    return true;
+                    if (evt.StreamRoutingId.HasValue)
+                    {
+                        routingId = evt.StreamRoutingId.Value;
+                        return true;
+                    }
                 }
             }
             catch (ZlinkException)
@@ -81,7 +83,7 @@ public sealed class test_stream_socket
             }
         }
 
-        routingId = Array.Empty<byte>();
+        routingId = 0;
         return false;
     }
 
@@ -278,7 +280,7 @@ public sealed class test_stream_socket
         using var dealer = new Socket(ctx, SocketType.Dealer);
         using var msg = Message.FromBytes("x"u8);
 
-        byte[] rid = { 0x00, 0x00, 0x00, 0x01 };
+        const uint rid = 1;
         Assert.Throws<ZlinkException>(() =>
             dealer.StreamSend(rid, msg, SendFlags.DontWait));
         Assert.Throws<ObjectDisposedException>(() =>
@@ -301,7 +303,7 @@ public sealed class test_stream_socket
         stream.Bind(endpoint);
 
         int matched = 0;
-        byte[] expected = Encoding.UTF8.GetBytes("stream-callback-raw");
+        byte[] expected = "stream-callback-raw"u8.ToArray();
         stream.AttachStreamRaw((rid, payload) =>
         {
             if (payload.AsReadOnlySpan().SequenceEqual(expected))
@@ -381,7 +383,7 @@ public sealed class test_stream_socket
         stream.Bind(endpoint);
 
         int matched = 0;
-        byte[] payload = Encoding.UTF8.GetBytes("stream-callback-len32be");
+        byte[] payload = "stream-callback-len32be"u8.ToArray();
         stream.AttachStreamLen32Be((rid, messages) =>
         {
             foreach (Message message in messages)
@@ -661,24 +663,25 @@ public sealed class test_stream_socket
         Assert.True(CoreTestSupport.WaitUntil(() => stream.PeerCount() > 0,
             3000));
 
-        byte[]? peerRoutingId = stream.GetPeerRoutingId();
+        uint? peerRoutingId = stream.GetPeerRoutingId();
         Assert.NotNull(peerRoutingId);
-        Assert.NotEmpty(peerRoutingId!);
-        Assert.True(stream.TryGetPeerRoutingIdU32(out uint peerRoutingIdU32));
-        Assert.Equal(BinaryPrimitives.ReadUInt32BigEndian(peerRoutingId),
-            peerRoutingIdU32);
+        Assert.True(stream.TryGetPeerRoutingId(out uint peerRoutingIdValue));
+        Assert.Equal(peerRoutingId!.Value, peerRoutingIdValue);
 
-        byte[] incoming = Encoding.UTF8.GetBytes("hello");
+        byte[] incoming = "hello"u8.ToArray();
         client.GetStream().Write(incoming, 0, incoming.Length);
 
-        byte[] rid = CoreTestSupport.ReceiveBytesWithTimeout(stream, 256, 3000);
-        byte[] payload = CoreTestSupport.ReceiveBytesWithTimeout(stream, 256, 3000);
+        using Message ridMessage = CoreTestSupport.ReceiveMessageWithTimeout(stream,
+            3000);
+        using Message payloadMessage = CoreTestSupport.ReceiveMessageWithTimeout(
+            stream, 3000);
 
-        Assert.Equal(peerRoutingId, rid);
-        Assert.Equal("hello", Encoding.UTF8.GetString(payload));
+        Assert.Equal(peerRoutingIdValue,
+            BinaryPrimitives.ReadUInt32BigEndian(ridMessage.AsReadOnlySpan()));
+        Assert.Equal("hello", CoreTestSupport.Utf8(payloadMessage));
 
         using var reply = Message.FromBytes("world"u8);
-        stream.StreamSend(peerRoutingIdU32, reply, SendFlags.None);
+        stream.StreamSend(peerRoutingIdValue, reply, SendFlags.None);
         Assert.Throws<ObjectDisposedException>(() =>
         {
             _ = reply.Size;
@@ -688,7 +691,7 @@ public sealed class test_stream_socket
         byte[] recv = new byte[64];
         int n = client.GetStream().Read(recv, 0, recv.Length);
         Assert.True(n > 0);
-        Assert.Equal("world", Encoding.UTF8.GetString(recv, 0, n));
+        Assert.Equal("world", CoreTestSupport.Utf8(recv.AsSpan(0, n)));
     }
 
     [Fact]
@@ -711,16 +714,16 @@ public sealed class test_stream_socket
         Assert.True(CoreTestSupport.WaitUntil(() => stream.PeerCount() > 0,
             3000));
 
-        byte[]? rid = stream.GetPeerRoutingId();
+        uint? rid = stream.GetPeerRoutingId();
         Assert.NotNull(rid);
-        Assert.NotEmpty(rid!);
+        Assert.True(rid > 0);
 
-        PeerRecord info = stream.GetPeerInfo(rid!);
-        Assert.NotEmpty(info.RoutingId);
+        PeerRecord info = stream.GetPeerInfo(rid!.Value);
+        Assert.Equal(rid, info.StreamRoutingId);
 
         PeerRecord[] peers = stream.GetPeers();
         Assert.NotEmpty(peers);
-        Assert.Contains(peers, p => p.RoutingId.SequenceEqual(rid!));
+        Assert.Contains(peers, p => p.StreamRoutingId == rid);
     }
 
     [Fact]
@@ -744,8 +747,10 @@ public sealed class test_stream_socket
             using var client = ConnectRawClient(port);
             NetworkStream ns = client.GetStream();
             SendAll(ns, "probe"u8);
-            _ = CoreTestSupport.ReceiveBytesWithTimeout(stream, 256, 3000);
-            _ = CoreTestSupport.ReceiveBytesWithTimeout(stream, 256, 3000);
+            using Message _ = CoreTestSupport.ReceiveMessageWithTimeout(stream,
+                3000);
+            using Message __ = CoreTestSupport.ReceiveMessageWithTimeout(stream,
+                3000);
         }
 
         int ready = 0;
@@ -883,22 +888,27 @@ public sealed class test_stream_socket
         NetworkStream ns = client.GetStream();
         SendAll(ns, "ok"u8);
 
-        byte[] serverRid = CoreTestSupport.ReceiveBytesWithTimeout(stream, 256, 3000);
-        _ = CoreTestSupport.ReceiveBytesWithTimeout(stream, 16, 3000);
-        Assert.NotEmpty(serverRid);
+        using Message serverRidMessage = CoreTestSupport.ReceiveMessageWithTimeout(
+            stream, 3000);
+        using Message _ = CoreTestSupport.ReceiveMessageWithTimeout(stream, 3000);
+        ReadOnlySpan<byte> serverRid = serverRidMessage.AsReadOnlySpan();
+        Assert.True(serverRid.Length > 0);
 
         Assert.True(WaitMonitorEvent(monitor, SocketEvent.ConnectionReady, 3000,
-            out byte[] connectRid));
-        Assert.Equal(serverRid, connectRid);
+            out uint connectRid));
+        Assert.Equal(BinaryPrimitives.ReadUInt32BigEndian(serverRid), connectRid);
 
         byte[] oversized = new byte[1024];
         Array.Fill(oversized, (byte)'A');
         SendAll(ns, oversized);
 
         bool monitorDisconnected = WaitMonitorEvent(monitor, SocketEvent.Disconnected,
-            4000, out byte[] disconnectRid);
+            4000, out uint disconnectRid);
         if (monitorDisconnected)
-            Assert.Equal(serverRid, disconnectRid);
+        {
+            Assert.Equal(BinaryPrimitives.ReadUInt32BigEndian(serverRid),
+                disconnectRid);
+        }
     }
 
     [Fact]

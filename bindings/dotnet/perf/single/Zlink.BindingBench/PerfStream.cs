@@ -73,20 +73,21 @@ internal static partial class PerfRunner
 
             Len32StopTokenParser stopParser = new Len32StopTokenParser();
             bool len32beMode = serverMode == StreamServerMode.CallbackLen32Be;
-            StreamPacketHandler handler = (rid, payload) =>
+            StreamPacketHandler rawHandler = (rid, payload) =>
             {
-                if (payload.Length == 1
-                    && (payload[0] == 0x00 || payload[0] == 0x01))
+                ReadOnlySpan<byte> payloadBytes = payload.AsReadOnlySpan();
+                if (payloadBytes.Length == 1
+                    && (payloadBytes[0] == 0x00 || payloadBytes[0] == 0x01))
                 {
+                    payload.Dispose();
                     return 0;
                 }
 
-                bool isStop = len32beMode
-                    ? payload.SequenceEqual(StreamStopToken)
-                    : stopParser.Consume(payload);
+                bool isStop = stopParser.Consume(payloadBytes);
                 if (isStop)
                 {
                     Interlocked.Exchange(ref stopRequested, 1);
+                    payload.Dispose();
                     return 0;
                 }
 
@@ -102,10 +103,43 @@ internal static partial class PerfRunner
                 return 0;
             };
 
+            StreamBatchHandler len32BeHandler = (rid, messages) =>
+            {
+                for (int i = 0; i < messages.Length; i++)
+                {
+                    Message message = messages[i];
+                    ReadOnlySpan<byte> payload = message.AsReadOnlySpan();
+                    if (payload.Length == 1
+                        && (payload[0] == 0x00 || payload[0] == 0x01))
+                    {
+                        message.Dispose();
+                        continue;
+                    }
+
+                    if (payload.SequenceEqual(StreamStopToken))
+                    {
+                        Interlocked.Exchange(ref stopRequested, 1);
+                        message.Dispose();
+                        continue;
+                    }
+
+                    try
+                    {
+                        server.StreamSend(rid, message, SendFlags.None);
+                    }
+                    catch
+                    {
+                        Interlocked.Exchange(ref serverFailed, 1);
+                        Interlocked.Exchange(ref stopRequested, 1);
+                    }
+                }
+                return 0;
+            };
+
             if (len32beMode)
-                server.AttachStreamLen32Be(handler);
+                server.AttachStreamLen32Be(len32BeHandler);
             else
-                server.AttachStreamRaw(handler);
+                server.AttachStreamRaw(rawHandler);
 
             server.Bind(endpoint);
 

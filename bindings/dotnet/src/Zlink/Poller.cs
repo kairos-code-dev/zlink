@@ -89,8 +89,10 @@ public sealed class Poller
 
         int rc = NativeMethods.zlink_poll_unix(pollItems, _items.Count,
             timeoutMs);
-        if (rc <= 0)
-            return rc;
+        if (rc < 0)
+            ZlinkException.ThrowIfError(rc);
+        if (rc == 0)
+            return 0;
 
         for (int i = 0; i < _items.Count; i++)
         {
@@ -121,8 +123,10 @@ public sealed class Poller
 
         int rc = NativeMethods.zlink_poll_windows(pollItems, _items.Count,
             timeoutMs);
-        if (rc <= 0)
-            return rc;
+        if (rc < 0)
+            ZlinkException.ThrowIfError(rc);
+        if (rc == 0)
+            return 0;
 
         for (int i = 0; i < _items.Count; i++)
         {
@@ -154,10 +158,15 @@ public sealed class Poller
 
         int rc = NativeMethods.zlink_poll_unix(pollItems, _items.Count,
             timeoutMs);
-        if (rc <= 0)
+        if (rc < 0)
         {
             totalReady = 0;
-            return rc;
+            ZlinkException.ThrowIfError(rc);
+        }
+        if (rc == 0)
+        {
+            totalReady = 0;
+            return 0;
         }
 
         int written = 0;
@@ -198,10 +207,15 @@ public sealed class Poller
 
         int rc = NativeMethods.zlink_poll_windows(pollItems, _items.Count,
             timeoutMs);
-        if (rc <= 0)
+        if (rc < 0)
         {
             totalReady = 0;
-            return rc;
+            ZlinkException.ThrowIfError(rc);
+        }
+        if (rc == 0)
+        {
+            totalReady = 0;
+            return 0;
         }
 
         int written = 0;

@@ -2,6 +2,7 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Text;
 using Zlink.Native;
 
@@ -9,43 +10,19 @@ namespace Zlink;
 
 /// <summary>
 /// STREAM callback for per-packet dispatch.
+/// Message ownership is transferred to the callback.
+/// The callback must dispose each message exactly once
+/// (or consume it via <see cref="Socket.StreamSend(uint, Message, SendFlags)"/>).
 /// </summary>
-public delegate int StreamPacketHandler(ReadOnlySpan<byte> routingId,
-    ReadOnlySpan<byte> payload);
+public delegate int StreamPacketHandler(uint routingId, Message payload);
 
 /// <summary>
 /// STREAM callback for batch dispatch.
+/// Message ownership is transferred to the callback.
+/// The callback must dispose each message exactly once
+/// (or consume it via <see cref="Socket.StreamSend(uint, Message, SendFlags)"/>).
 /// </summary>
-public delegate int StreamBatchHandler(ReadOnlySpan<byte> routingId,
-    ReadOnlySpan<StreamPacketView> packets);
-
-/// <summary>
-/// Zero-copy STREAM packet view for batch callbacks.
-/// This view is only valid during the callback invocation.
-/// </summary>
-public readonly struct StreamPacketView
-{
-    private readonly IntPtr _payload;
-
-    internal StreamPacketView(IntPtr payload, int length)
-    {
-        _payload = payload;
-        Length = length;
-    }
-
-    public int Length { get; }
-
-    /// <summary>
-    /// Returns a read-only view for the packet payload.
-    /// The returned span is only valid during the callback invocation.
-    /// </summary>
-    public unsafe ReadOnlySpan<byte> AsReadOnlySpan()
-    {
-        if (Length <= 0 || _payload == IntPtr.Zero)
-            return ReadOnlySpan<byte>.Empty;
-        return new ReadOnlySpan<byte>((void*)_payload, Length);
-    }
-}
+public delegate int StreamBatchHandler(uint routingId, Message[] parts);
 
 public sealed class Socket : IDisposable
 {
@@ -59,6 +36,8 @@ public sealed class Socket : IDisposable
 
     public Socket(Context context, SocketType type)
     {
+        if (context == null)
+            throw new ArgumentNullException(nameof(context));
         _handle = NativeMethods.zlink_socket(context.Handle, (int)type);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
@@ -82,6 +61,8 @@ public sealed class Socket : IDisposable
 
     public void Bind(string address)
     {
+        if (address == null)
+            throw new ArgumentNullException(nameof(address));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_bind(_handle, address);
         ZlinkException.ThrowIfError(rc);
@@ -89,6 +70,8 @@ public sealed class Socket : IDisposable
 
     public void Connect(string address)
     {
+        if (address == null)
+            throw new ArgumentNullException(nameof(address));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_connect(_handle, address);
         ZlinkException.ThrowIfError(rc);
@@ -96,6 +79,8 @@ public sealed class Socket : IDisposable
 
     public void Unbind(string address)
     {
+        if (address == null)
+            throw new ArgumentNullException(nameof(address));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_unbind(_handle, address);
         ZlinkException.ThrowIfError(rc);
@@ -103,6 +88,8 @@ public sealed class Socket : IDisposable
 
     public void Disconnect(string address)
     {
+        if (address == null)
+            throw new ArgumentNullException(nameof(address));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_disconnect(_handle, address);
         ZlinkException.ThrowIfError(rc);
@@ -153,36 +140,12 @@ public sealed class Socket : IDisposable
     }
 
     /// <summary>
-    /// Attaches LEN32BE stream callback and dispatches one callback per packet.
-    /// </summary>
-    public void AttachStreamLen32Be(StreamPacketHandler handler)
-    {
-        EnsureNotDisposed();
-        if (handler == null)
-            throw new ArgumentNullException(nameof(handler));
-        if (_streamAttached)
-            throw new InvalidOperationException(
-                "STREAM callback is already attached.");
-
-        _streamPacketHandler = handler;
-        _streamBatchHandler = null;
-        _streamCallback = OnStreamPackets;
-        int rc = NativeMethods.zlink_stream_attach_len32be(_handle, _streamCallback);
-        if (rc != 0)
-        {
-            _streamPacketHandler = null;
-            _streamBatchHandler = null;
-            _streamCallback = null;
-            throw ZlinkException.FromLastError();
-        }
-        _streamAttached = true;
-    }
-
-    /// <summary>
     /// Attaches LEN32BE stream callback and dispatches one callback per batch.
-    /// Packet views are valid only during the callback invocation.
+    /// Message ownership is transferred to the callback.
+    /// The callback is responsible for disposing every message exactly once
+    /// (or consuming it via <see cref="StreamSend(uint, Message, SendFlags)"/>).
     /// </summary>
-    public void AttachStreamLen32BeBatch(StreamBatchHandler handler)
+    public void AttachStreamLen32Be(StreamBatchHandler handler)
     {
         EnsureNotDisposed();
         if (handler == null)
@@ -238,6 +201,50 @@ public sealed class Socket : IDisposable
         return TryGetPeerRoutingId(out var routingId, index)
             ? routingId
             : null;
+    }
+
+    public unsafe bool TryGetPeerRoutingIdU32(out uint routingId, int index = 0)
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_socket_peer_routing_id(_handle, index,
+            out var rid);
+        if (rc != 0 || !TryDecodeRoutingIdU32(ref rid, out routingId))
+        {
+            routingId = 0;
+            return false;
+        }
+        return true;
+    }
+
+    public uint? GetPeerRoutingIdU32(int index = 0)
+    {
+        return TryGetPeerRoutingIdU32(out uint routingId, index)
+            ? routingId
+            : null;
+    }
+
+    public int StreamSend(uint routingId, byte[] payload,
+        SendFlags flags = SendFlags.None)
+    {
+        if (payload == null)
+            throw new ArgumentNullException(nameof(payload));
+        return StreamSend(routingId, payload.AsSpan(), flags);
+    }
+
+    public int StreamSend(uint routingId, ReadOnlySpan<byte> payload,
+        SendFlags flags = SendFlags.None)
+    {
+        Span<byte> rid = stackalloc byte[sizeof(uint)];
+        BinaryPrimitives.WriteUInt32BigEndian(rid, routingId);
+        return StreamSend(rid, payload, flags);
+    }
+
+    public int StreamSend(uint routingId, Message message,
+        SendFlags flags = SendFlags.None)
+    {
+        Span<byte> rid = stackalloc byte[sizeof(uint)];
+        BinaryPrimitives.WriteUInt32BigEndian(rid, routingId);
+        return StreamSend(rid, message, flags);
     }
 
     public int StreamSend(byte[] routingId, byte[] payload,
@@ -552,6 +559,8 @@ public sealed class Socket : IDisposable
 
     public void Monitor(string address, SocketEvent events)
     {
+        if (address == null)
+            throw new ArgumentNullException(nameof(address));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_socket_monitor(_handle, address,
             (int)events);
@@ -592,91 +601,64 @@ public sealed class Socket : IDisposable
         nuint messageCount)
     {
         StreamBatchHandler? batchHandler = _streamBatchHandler;
-        StreamPacketHandler? packetHandler = _streamPacketHandler;
-        if ((batchHandler == null && packetHandler == null)
+        if (batchHandler == null
             || routingId == IntPtr.Zero
             || messages == IntPtr.Zero
             || messageCount == 0
             || messageCount > int.MaxValue)
+        {
+            if (messages != IntPtr.Zero && messageCount > 0
+                && messageCount <= int.MaxValue)
+            {
+                int cleanupSize = sizeof(ZlinkMsg);
+                CloseStreamPacketRange(messages, 0, (int)messageCount,
+                    cleanupSize);
+            }
             return 0;
+        }
 
         ZlinkRoutingId* rid = (ZlinkRoutingId*)routingId;
-        int ridSize = rid->Size;
-        if (ridSize < 0 || ridSize > 255)
-            ridSize = 0;
-        ReadOnlySpan<byte> ridSpan = ridSize > 0
-            ? new ReadOnlySpan<byte>(rid->Data, ridSize)
-            : ReadOnlySpan<byte>.Empty;
-
         int zlinkMsgSize = sizeof(ZlinkMsg);
         int count = (int)messageCount;
-        if (batchHandler != null)
+        if (!TryDecodeRoutingIdU32(ref *rid, out uint ridU32))
         {
-            StreamPacketView[]? rented = null;
-            Span<StreamPacketView> views = count <= 32
-                ? stackalloc StreamPacketView[count]
-                : (rented = ArrayPool<StreamPacketView>.Shared.Rent(count));
-
-            int rc;
-            try
-            {
-                for (int i = 0; i < count; i++)
-                {
-                    IntPtr msg = IntPtr.Add(messages, i * zlinkMsgSize);
-                    IntPtr payloadPtr = NativeMethods.zlink_msg_data(msg);
-                    int payloadSize = checked((int)NativeMethods.zlink_msg_size(msg));
-                    views[i] = new StreamPacketView(payloadPtr, payloadSize);
-                }
-
-                rc = batchHandler(ridSpan, views.Slice(0, count));
-            }
-            catch
-            {
-                rc = 1;
-            }
-            finally
-            {
-                CloseStreamPacketRange(messages, 0, count, zlinkMsgSize);
-                if (rented != null)
-                    ArrayPool<StreamPacketView>.Shared.Return(rented);
-            }
-
-            return rc;
-        }
-
-        if (packetHandler == null)
+            CloseStreamPacketRange(messages, 0, count, zlinkMsgSize);
             return 0;
-
-        for (int i = 0; i < count; i++)
-        {
-            IntPtr msg = IntPtr.Add(messages, i * zlinkMsgSize);
-            int rc;
-            try
-            {
-                IntPtr payloadPtr = NativeMethods.zlink_msg_data(msg);
-                int payloadSize = checked((int)NativeMethods.zlink_msg_size(msg));
-                ReadOnlySpan<byte> payload = payloadSize > 0
-                    && payloadPtr != IntPtr.Zero
-                    ? new ReadOnlySpan<byte>((void*)payloadPtr, payloadSize)
-                    : ReadOnlySpan<byte>.Empty;
-                rc = packetHandler(ridSpan, payload);
-            }
-            catch
-            {
-                CloseStreamPacket(msg);
-                CloseStreamPacketRange(messages, i + 1, count, zlinkMsgSize);
-                return 1;
-            }
-
-            CloseStreamPacket(msg);
-            if (rc != 0)
-            {
-                CloseStreamPacketRange(messages, i + 1, count, zlinkMsgSize);
-                return rc;
-            }
         }
 
-        return 0;
+        Message[] parts = new Message[count];
+        int movedCount = 0;
+
+        int rc;
+        bool callbackCompleted = false;
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                IntPtr msg = IntPtr.Add(messages, i * zlinkMsgSize);
+                parts[i] = Message.MoveFromNativeSingle(msg);
+                movedCount++;
+            }
+
+            rc = batchHandler(ridU32, parts);
+            callbackCompleted = true;
+        }
+        catch (Exception ex)
+        {
+            Runtime.ReportUnhandledCallbackException(ex);
+            rc = 1;
+        }
+        finally
+        {
+            if (!callbackCompleted)
+            {
+                for (int i = 0; i < movedCount; i++)
+                    parts[i]?.Dispose();
+            }
+            CloseStreamPacketRange(messages, 0, count, zlinkMsgSize);
+        }
+
+        return rc;
     }
 
     private unsafe int OnStreamRaw(IntPtr routingId, IntPtr message)
@@ -686,32 +668,55 @@ public sealed class Socket : IDisposable
             return 0;
 
         ZlinkRoutingId* rid = (ZlinkRoutingId*)routingId;
-        int ridSize = rid->Size;
-        if (ridSize < 0 || ridSize > 255)
-            ridSize = 0;
-        ReadOnlySpan<byte> ridSpan = ridSize > 0
-            ? new ReadOnlySpan<byte>(rid->Data, ridSize)
-            : ReadOnlySpan<byte>.Empty;
+        if (!TryDecodeRoutingIdU32(ref *rid, out uint ridU32))
+        {
+            CloseStreamPacket(message);
+            return 0;
+        }
 
+        Message? payloadMsg = null;
         int rc;
         try
         {
-            IntPtr payloadPtr = NativeMethods.zlink_msg_data(message);
-            int payloadSize = checked((int)NativeMethods.zlink_msg_size(message));
-            ReadOnlySpan<byte> payload = payloadSize > 0
-                && payloadPtr != IntPtr.Zero
-                ? new ReadOnlySpan<byte>((void*)payloadPtr, payloadSize)
-                : ReadOnlySpan<byte>.Empty;
-            rc = handler(ridSpan, payload);
+            payloadMsg = Message.MoveFromNativeSingle(message);
+            rc = handler(ridU32, payloadMsg);
         }
-        catch
+        catch (Exception ex)
+        {
+            Runtime.ReportUnhandledCallbackException(ex);
+            if (payloadMsg != null)
+            {
+                try
+                {
+                    payloadMsg.Dispose();
+                }
+                catch
+                {
+                }
+            }
+            rc = 1;
+        }
+        finally
         {
             CloseStreamPacket(message);
-            return 1;
+        }
+        return rc;
+    }
+
+    private static unsafe bool TryDecodeRoutingIdU32(ref ZlinkRoutingId rid,
+        out uint routingId)
+    {
+        if (rid.Size != sizeof(uint))
+        {
+            routingId = 0;
+            return false;
         }
 
-        CloseStreamPacket(message);
-        return rc;
+        routingId = ((uint)rid.Data[0] << 24)
+            | ((uint)rid.Data[1] << 16)
+            | ((uint)rid.Data[2] << 8)
+            | rid.Data[3];
+        return true;
     }
 
     public void Dispose()

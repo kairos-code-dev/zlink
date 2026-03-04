@@ -12,6 +12,8 @@ public sealed class Registry : IDisposable
 
     public Registry(Context context)
     {
+        if (context == null)
+            throw new ArgumentNullException(nameof(context));
         _handle = NativeMethods.zlink_registry_new(context.Handle);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
@@ -21,6 +23,8 @@ public sealed class Registry : IDisposable
 
     public void SetEndpoints(string pubEndpoint, string routerEndpoint)
     {
+        ValidateNotEmpty(pubEndpoint, nameof(pubEndpoint));
+        ValidateNotEmpty(routerEndpoint, nameof(routerEndpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_set_endpoints(_handle,
             pubEndpoint, routerEndpoint);
@@ -36,6 +40,7 @@ public sealed class Registry : IDisposable
 
     public void AddPeer(string peerPubEndpoint)
     {
+        ValidateNotEmpty(peerPubEndpoint, nameof(peerPubEndpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_add_peer(_handle,
             peerPubEndpoint);
@@ -111,5 +116,13 @@ public sealed class Registry : IDisposable
     {
         if (_handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Registry));
+    }
+
+    private static void ValidateNotEmpty(string value, string paramName)
+    {
+        if (value == null)
+            throw new ArgumentNullException(paramName);
+        if (value.Length == 0)
+            throw new ArgumentException("Value must not be empty.", paramName);
     }
 }

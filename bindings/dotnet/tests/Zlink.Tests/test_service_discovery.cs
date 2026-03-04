@@ -17,6 +17,55 @@ public sealed class test_service_discovery
     }
 
     [Fact]
+    public void service_argument_validation_managed()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+
+        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+        Assert.Throws<ArgumentException>(() => discovery.ConnectRegistry(""));
+        Assert.Throws<ArgumentException>(() => discovery.Subscribe(""));
+        Assert.Throws<ArgumentException>(() => discovery.Unsubscribe(""));
+        Assert.Throws<ArgumentException>(() => discovery.ReceiverCount(""));
+        Assert.Throws<ArgumentException>(() => discovery.ServiceAvailable(""));
+        Assert.Throws<ArgumentException>(() => discovery.GetReceivers(""));
+
+        using var receiver = new Receiver(ctx);
+        Assert.Throws<ArgumentException>(() => receiver.Bind(""));
+        Assert.Throws<ArgumentException>(() => receiver.ConnectRegistry(""));
+        Assert.Throws<ArgumentException>(() => receiver.Register("", "tcp://x", 1));
+        Assert.Throws<ArgumentException>(() => receiver.Register("svc", "", 1));
+        Assert.Throws<ArgumentException>(() => receiver.UpdateWeight("", 1));
+        Assert.Throws<ArgumentException>(() => receiver.Unregister(""));
+        Assert.Throws<ArgumentException>(() => receiver.GetRegisterResult(""));
+        Assert.Throws<ArgumentException>(() => receiver.SetTlsServer("", "key"));
+        Assert.Throws<ArgumentException>(() => receiver.SetTlsServer("cert", ""));
+        Assert.Throws<ArgumentException>(() => _ = new Receiver(ctx, ""));
+
+        using var registry = new Registry(ctx);
+        Assert.Throws<ArgumentException>(() => registry.SetEndpoints("", "inproc://r"));
+        Assert.Throws<ArgumentException>(() => registry.SetEndpoints("inproc://p", ""));
+        Assert.Throws<ArgumentException>(() => registry.AddPeer(""));
+
+        using var spotNode = new SpotNode(ctx);
+        Assert.Throws<ArgumentException>(() => spotNode.Bind(""));
+        Assert.Throws<ArgumentException>(() => spotNode.ConnectRegistry(""));
+        Assert.Throws<ArgumentException>(() => spotNode.ConnectPeerPub(""));
+        Assert.Throws<ArgumentException>(() => spotNode.DisconnectPeerPub(""));
+        Assert.Throws<ArgumentException>(() => spotNode.Register("", "tcp://x"));
+        Assert.Throws<ArgumentException>(() => spotNode.Register("svc", ""));
+        Assert.Throws<ArgumentException>(() => spotNode.Unregister(""));
+        Assert.Throws<ArgumentException>(() => spotNode.SetTlsServer("", "key"));
+        Assert.Throws<ArgumentException>(() => spotNode.SetTlsServer("cert", ""));
+        Assert.Throws<ArgumentException>(() =>
+            spotNode.SetTlsClient("", "host", trustSystem: false));
+        Assert.Throws<ArgumentException>(() =>
+            spotNode.SetTlsClient("ca", "", trustSystem: false));
+    }
+
+    [Fact]
     public void discovery_provider_registration_and_filtering()
     {
         if (!CoreTestSupport.IsNativeAvailable())

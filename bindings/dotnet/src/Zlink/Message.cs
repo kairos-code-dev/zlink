@@ -178,10 +178,24 @@ public sealed class Message : IDisposable
         int rc = NativeMethods.zlink_msg_init(ref dest);
         if (rc != 0)
             throw ZlinkException.FromLastError();
-        rc = NativeMethods.zlink_msg_move(ref dest, ref _msg);
-        if (rc != 0)
-            throw ZlinkException.FromLastError();
-        _valid = false;
+        try
+        {
+            rc = NativeMethods.zlink_msg_move(ref dest, ref _msg);
+            if (rc != 0)
+                throw ZlinkException.FromLastError();
+            _valid = false;
+        }
+        catch
+        {
+            try
+            {
+                NativeMethods.zlink_msg_close(ref dest);
+            }
+            catch
+            {
+            }
+            throw;
+        }
     }
 
     internal void CopyTo(ref ZlinkMsg dest)
@@ -190,9 +204,23 @@ public sealed class Message : IDisposable
         int rc = NativeMethods.zlink_msg_init(ref dest);
         if (rc != 0)
             throw ZlinkException.FromLastError();
-        rc = NativeMethods.zlink_msg_copy(ref dest, ref _msg);
-        if (rc != 0)
-            throw ZlinkException.FromLastError();
+        try
+        {
+            rc = NativeMethods.zlink_msg_copy(ref dest, ref _msg);
+            if (rc != 0)
+                throw ZlinkException.FromLastError();
+        }
+        catch
+        {
+            try
+            {
+                NativeMethods.zlink_msg_close(ref dest);
+            }
+            catch
+            {
+            }
+            throw;
+        }
     }
 
     internal static unsafe void InitFromSpan(ReadOnlySpan<byte> data,
@@ -332,6 +360,28 @@ public sealed class Message : IDisposable
             NativeMethods.zlink_multipart_close(parts, count);
         }
         return result;
+    }
+
+    internal static unsafe Message MoveFromNativeSingle(IntPtr message)
+    {
+        if (message == IntPtr.Zero)
+            throw new ArgumentNullException(nameof(message));
+
+        var result = new Message(false);
+        result.Init();
+        try
+        {
+            ZlinkMsg* src = (ZlinkMsg*)message;
+            int rc = NativeMethods.zlink_msg_move(ref result._msg, ref *src);
+            if (rc != 0)
+                throw ZlinkException.FromLastError();
+            return result;
+        }
+        catch
+        {
+            result.Dispose();
+            throw;
+        }
     }
 
     private void Close()

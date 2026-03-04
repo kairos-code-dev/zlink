@@ -68,6 +68,33 @@ public sealed class test_gateway
     }
 
     [Fact]
+    public void gateway_argument_validation_managed()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+        using var gateway = new Gateway(ctx, discovery);
+
+        Assert.Throws<ArgumentException>(() =>
+            gateway.Send("", "x"u8, SendFlags.None));
+        Assert.Throws<ArgumentException>(() =>
+            gateway.ConnectionCount(""));
+        Assert.Throws<ArgumentException>(() =>
+            gateway.SetLoadBalancing("", GatewayLoadBalancing.RoundRobin));
+        Assert.Throws<ArgumentException>(() =>
+            gateway.SendToRoutingId("", "RID", "x"u8, SendFlags.None));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            gateway.SendToRoutingId("svc", "", "x"u8, SendFlags.None));
+
+        Assert.Throws<ArgumentException>(() =>
+            _ = new Gateway(ctx, discovery, ""));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            _ = new Gateway(ctx, discovery, new string('r', 256)));
+    }
+
+    [Fact]
     public void gateway_send_to_routing_id_delivers_payload()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -118,6 +145,51 @@ public sealed class test_gateway
         Assert.NotEmpty(rid);
         Assert.Equal("rid-msg",
             CoreTestSupport.ReceiveStringWithTimeout(receiverRouter, 256, 2000));
+    }
+
+    [Fact]
+    public void gateway_send_to_routing_id_string_delivers_payload()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var registry = new Registry(ctx);
+        string regPub = CoreTestSupport.NewEndpoint("inproc", "gw2s-reg-pub");
+        string regRouter = CoreTestSupport.NewEndpoint("inproc",
+            "gw2s-reg-router");
+        registry.SetEndpoints(regPub, regRouter);
+        registry.Start();
+
+        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+        discovery.ConnectRegistry(regPub);
+        discovery.Subscribe("svc-string");
+
+        using var receiver = new Receiver(ctx);
+        using var receiverRouter = receiver.CreateRouterSocket();
+        const string targetRoutingId = "RID-STR-1";
+        RegisterProvider(receiver, receiverRouter, regRouter, "svc-string", 1,
+            targetRoutingId);
+
+        Assert.True(CoreTestSupport.WaitUntil(() =>
+        {
+            ReceiverRegisterResult r = receiver.GetRegisterResult("svc-string");
+            return r.Status == 0;
+        }, 4000));
+
+        Assert.True(CoreTestSupport.WaitUntil(() =>
+            discovery.ReceiverCount("svc-string") == 1, 4000));
+
+        using var gateway = new Gateway(ctx, discovery);
+        Assert.True(CoreTestSupport.WaitUntil(() =>
+            gateway.ConnectionCount("svc-string") > 0, 4000));
+
+        gateway.SendToRoutingId("svc-string", targetRoutingId, "rid-str"u8,
+            SendFlags.None);
+
+        string payload = CoreTestSupport.ReceiveRouterPayloadWithTimeout(
+            receiverRouter, "rid-str", 3000);
+        Assert.Equal("rid-str", payload);
     }
 
     [Fact]

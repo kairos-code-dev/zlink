@@ -40,7 +40,7 @@ internal sealed class PerfStreamCallbackEcho : IDisposable
         throw new TimeoutException("STREAM peer routing id unavailable");
     }
 
-    internal static void Send(Zlink.Socket socket, ReadOnlySpan<byte> rid,
+    internal static void Send(Zlink.Socket socket, uint rid,
         ReadOnlySpan<byte> payload)
     {
         if (socket == null)
@@ -51,9 +51,9 @@ internal sealed class PerfStreamCallbackEcho : IDisposable
     internal void Attach()
     {
         if (_len32be)
-            _socket.AttachStreamLen32Be(OnPacket);
+            _socket.AttachStreamLen32Be(OnPacketBatch);
         else
-            _socket.AttachStreamRaw(OnPacket);
+            _socket.AttachStreamRaw(OnPacketRaw);
     }
 
     internal void Detach()
@@ -61,42 +61,74 @@ internal sealed class PerfStreamCallbackEcho : IDisposable
         _socket.DetachStream();
     }
 
-    private int OnPacket(ReadOnlySpan<byte> rid, ReadOnlySpan<byte> payload)
+    private int OnPacketRaw(uint rid, Message message)
     {
+        ReadOnlySpan<byte> payload = message.AsReadOnlySpan();
         int payloadSize = payload.Length;
         if (payloadSize <= 0)
-            return 0;
-        if (payloadSize == 1 && (payload[0] == 0x00 || payload[0] == 0x01))
-            return 0;
-
-        if (_len32be)
         {
+            message.Dispose();
+            return 0;
+        }
+        if (payloadSize == 1 && (payload[0] == 0x00 || payload[0] == 0x01))
+        {
+            message.Dispose();
+            return 0;
+        }
+
+        if (_echo)
+        {
+            _socket.StreamSend(rid, message);
+            return 0;
+        }
+
+        try
+        {
+            List<byte[]> frames = ExtractRawFrames(payload);
+            for (int f = 0; f < frames.Count; f++)
+            {
+                byte[] frame = frames[f];
+                if (frame.Length == 0)
+                    continue;
+                Interlocked.Increment(ref _received);
+            }
+            return 0;
+        }
+        finally
+        {
+            message.Dispose();
+        }
+    }
+
+    private int OnPacketBatch(uint rid, Message[] messages)
+    {
+        for (int i = 0; i < messages.Length; i++)
+        {
+            Message message = messages[i];
+            ReadOnlySpan<byte> payload = message.AsReadOnlySpan();
+            int payloadSize = payload.Length;
+            if (payloadSize <= 0)
+            {
+                message.Dispose();
+                continue;
+            }
+            if (payloadSize == 1 && (payload[0] == 0x00 || payload[0] == 0x01))
+            {
+                message.Dispose();
+                continue;
+            }
+
             if (_echo)
             {
-                int sent = _socket.StreamSend(rid, payload);
+                int sent = _socket.StreamSend(rid, message);
                 if (sent == payloadSize)
                     Interlocked.Increment(ref _received);
             }
             else
             {
                 Interlocked.Increment(ref _received);
+                message.Dispose();
             }
-            return 0;
-        }
-
-        if (_echo)
-        {
-            _socket.StreamSend(rid, payload);
-            return 0;
-        }
-
-        List<byte[]> frames = ExtractRawFrames(payload);
-        for (int f = 0; f < frames.Count; f++)
-        {
-            byte[] frame = frames[f];
-            if (frame.Length == 0)
-                continue;
-            Interlocked.Increment(ref _received);
         }
         return 0;
     }

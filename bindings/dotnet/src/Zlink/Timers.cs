@@ -189,8 +189,9 @@ public sealed class Timers : IDisposable
             if (gcHandle.Target is TimerRegistration registration)
                 registration.Handler(timerId);
         }
-        catch
+        catch (Exception ex)
         {
+            Runtime.ReportUnhandledCallbackException(ex);
         }
     }
 

@@ -13,6 +13,8 @@ public sealed class Receiver : IDisposable
 
     public Receiver(Context context)
     {
+        if (context == null)
+            throw new ArgumentNullException(nameof(context));
         _handle = NativeMethods.zlink_receiver_new(context.Handle, null);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
@@ -20,6 +22,9 @@ public sealed class Receiver : IDisposable
 
     public Receiver(Context context, string routingId)
     {
+        if (context == null)
+            throw new ArgumentNullException(nameof(context));
+        ValidateNotEmpty(routingId, nameof(routingId));
         _handle = NativeMethods.zlink_receiver_new(context.Handle, routingId);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
@@ -27,6 +32,7 @@ public sealed class Receiver : IDisposable
 
     public void Bind(string bindEndpoint)
     {
+        ValidateNotEmpty(bindEndpoint, nameof(bindEndpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_receiver_bind(_handle, bindEndpoint);
         ZlinkException.ThrowIfError(rc);
@@ -34,6 +40,7 @@ public sealed class Receiver : IDisposable
 
     public void ConnectRegistry(string registryEndpoint)
     {
+        ValidateNotEmpty(registryEndpoint, nameof(registryEndpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_receiver_connect_registry(_handle,
             registryEndpoint);
@@ -43,6 +50,8 @@ public sealed class Receiver : IDisposable
     public void Register(string serviceName, string advertiseEndpoint,
         uint weight)
     {
+        ValidateNotEmpty(serviceName, nameof(serviceName));
+        ValidateNotEmpty(advertiseEndpoint, nameof(advertiseEndpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_receiver_register(_handle, serviceName,
             advertiseEndpoint, weight);
@@ -51,6 +60,7 @@ public sealed class Receiver : IDisposable
 
     public void UpdateWeight(string serviceName, uint weight)
     {
+        ValidateNotEmpty(serviceName, nameof(serviceName));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_receiver_update_weight(_handle,
             serviceName, weight);
@@ -59,6 +69,7 @@ public sealed class Receiver : IDisposable
 
     public void Unregister(string serviceName)
     {
+        ValidateNotEmpty(serviceName, nameof(serviceName));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_receiver_unregister(_handle, serviceName);
         ZlinkException.ThrowIfError(rc);
@@ -66,6 +77,7 @@ public sealed class Receiver : IDisposable
 
     public ReceiverRegisterResult GetRegisterResult(string serviceName)
     {
+        ValidateNotEmpty(serviceName, nameof(serviceName));
         EnsureNotDisposed();
         unsafe
         {
@@ -83,6 +95,8 @@ public sealed class Receiver : IDisposable
 
     public void SetTlsServer(string cert, string key)
     {
+        ValidateNotEmpty(cert, nameof(cert));
+        ValidateNotEmpty(key, nameof(key));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_receiver_set_tls_server(_handle, cert, key);
         ZlinkException.ThrowIfError(rc);
@@ -172,6 +186,14 @@ public sealed class Receiver : IDisposable
     {
         if (_handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Receiver));
+    }
+
+    private static void ValidateNotEmpty(string value, string paramName)
+    {
+        if (value == null)
+            throw new ArgumentNullException(paramName);
+        if (value.Length == 0)
+            throw new ArgumentException("Value must not be empty.", paramName);
     }
 }
 

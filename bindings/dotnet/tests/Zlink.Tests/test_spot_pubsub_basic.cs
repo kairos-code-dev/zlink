@@ -142,6 +142,68 @@ public sealed class test_spot_pubsub_basic
     }
 
     [Fact]
+    public void spot_managed_handler_copies_payload()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        using var spot = new Spot(node);
+
+        using var signal = new ManualResetEventSlim(false);
+        string? topicSeen = null;
+        byte[]? payloadSeen = null;
+
+        spot.SetHandler((topic, parts) =>
+        {
+            topicSeen = topic;
+            if (parts.Length > 0)
+                payloadSeen = parts[0].ToArray();
+            foreach (Message part in parts)
+                part.Dispose();
+            signal.Set();
+        });
+
+        spot.Subscribe("copy:topic");
+        spot.Publish("copy:topic", "copy-payload"u8, SendFlags.None);
+
+        Assert.True(signal.Wait(2000));
+        Assert.Equal("copy:topic", topicSeen);
+        Assert.Equal("copy-payload", Encoding.UTF8.GetString(payloadSeen!));
+    }
+
+    [Fact]
+    public void spot_topic_input_validation()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        using var spot = new Spot(node);
+
+        string tooLongTopic = new string('a', 256);
+
+        Assert.Throws<ArgumentException>(() =>
+            spot.Publish("", "x"u8, SendFlags.None));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            spot.Publish(tooLongTopic, "x"u8, SendFlags.None));
+
+        Assert.Throws<ArgumentException>(() => spot.Subscribe(""));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            spot.Subscribe(tooLongTopic));
+
+        Assert.Throws<ArgumentException>(() => spot.SubscribePattern(""));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            spot.SubscribePattern(tooLongTopic));
+
+        Assert.Throws<ArgumentException>(() => spot.Unsubscribe(""));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            spot.Unsubscribe(tooLongTopic));
+    }
+
+    [Fact]
     public void spot_peer_pubsub()
     {
         if (!CoreTestSupport.IsNativeAvailable())

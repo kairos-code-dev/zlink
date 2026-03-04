@@ -4,6 +4,7 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Text;
+using System.Threading;
 using Zlink;
 using Zlink.Native;
 
@@ -15,6 +16,8 @@ public sealed class SpotNode : IDisposable
 
     public SpotNode(Context context)
     {
+        if (context == null)
+            throw new ArgumentNullException(nameof(context));
         _handle = NativeMethods.zlink_spot_node_new(context.Handle);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
@@ -24,6 +27,7 @@ public sealed class SpotNode : IDisposable
 
     public void Bind(string endpoint)
     {
+        ValidateNotEmpty(endpoint, nameof(endpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_node_bind(_handle, endpoint);
         ZlinkException.ThrowIfError(rc);
@@ -31,6 +35,7 @@ public sealed class SpotNode : IDisposable
 
     public void ConnectRegistry(string registryEndpoint)
     {
+        ValidateNotEmpty(registryEndpoint, nameof(registryEndpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_node_connect_registry(_handle,
             registryEndpoint);
@@ -39,6 +44,7 @@ public sealed class SpotNode : IDisposable
 
     public void ConnectPeerPub(string peerPubEndpoint)
     {
+        ValidateNotEmpty(peerPubEndpoint, nameof(peerPubEndpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_node_connect_peer_pub(_handle,
             peerPubEndpoint);
@@ -47,6 +53,7 @@ public sealed class SpotNode : IDisposable
 
     public void DisconnectPeerPub(string peerPubEndpoint)
     {
+        ValidateNotEmpty(peerPubEndpoint, nameof(peerPubEndpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_node_disconnect_peer_pub(_handle,
             peerPubEndpoint);
@@ -55,6 +62,8 @@ public sealed class SpotNode : IDisposable
 
     public void Register(string serviceName, string advertiseEndpoint)
     {
+        ValidateNotEmpty(serviceName, nameof(serviceName));
+        ValidateNotEmpty(advertiseEndpoint, nameof(advertiseEndpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_node_register(_handle, serviceName,
             advertiseEndpoint);
@@ -63,6 +72,7 @@ public sealed class SpotNode : IDisposable
 
     public void Unregister(string serviceName)
     {
+        ValidateNotEmpty(serviceName, nameof(serviceName));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_node_unregister(_handle, serviceName);
         ZlinkException.ThrowIfError(rc);
@@ -70,6 +80,7 @@ public sealed class SpotNode : IDisposable
 
     public void SetDiscovery(Discovery discovery, string serviceName)
     {
+        ValidateNotEmpty(serviceName, nameof(serviceName));
         EnsureNotDisposed();
         if (discovery == null)
             throw new ArgumentNullException(nameof(discovery));
@@ -80,6 +91,8 @@ public sealed class SpotNode : IDisposable
 
     public void SetTlsServer(string cert, string key)
     {
+        ValidateNotEmpty(cert, nameof(cert));
+        ValidateNotEmpty(key, nameof(key));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_node_set_tls_server(_handle, cert,
             key);
@@ -88,6 +101,8 @@ public sealed class SpotNode : IDisposable
 
     public void SetTlsClient(string caCert, string hostname, bool trustSystem)
     {
+        ValidateNotEmpty(caCert, nameof(caCert));
+        ValidateNotEmpty(hostname, nameof(hostname));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_node_set_tls_client(_handle, caCert,
             hostname, trustSystem ? 1 : 0);
@@ -229,17 +244,27 @@ public sealed class SpotNode : IDisposable
         if (_handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(SpotNode));
     }
+
+    private static void ValidateNotEmpty(string value, string paramName)
+    {
+        if (value == null)
+            throw new ArgumentNullException(paramName);
+        if (value.Length == 0)
+            throw new ArgumentException("Value must not be empty.", paramName);
+    }
 }
 
 public sealed class Spot : IDisposable
 {
     private const int StackPublishPartLimit = 8;
     private const int TopicCacheLimit = 1024;
+    private const int TopicBufferSize = 256;
     private IntPtr _pubHandle;
     private IntPtr _subHandle;
     private SpotSubHandler? _subHandler;
     private SpotSubPacketHandler? _subPacketHandler;
     private NativeMethods.ZlinkSpotSubHandlerDelegate? _subHandlerNative;
+    private int _topicUtf8CacheCount;
     private readonly ConcurrentDictionary<string, byte[]> _topicUtf8Cache =
         new(StringComparer.Ordinal);
 
@@ -274,8 +299,7 @@ public sealed class Spot : IDisposable
         SendFlags flags = SendFlags.None)
     {
         EnsureNotDisposed();
-        if (topicId == null)
-            throw new ArgumentNullException(nameof(topicId));
+        ValidateTopicId(topicId, nameof(topicId));
         if (parts.Length == 0)
             throw new ArgumentException("Parts must not be empty.", nameof(parts));
         byte[] topicUtf8 = GetTopicUtf8(topicId);
@@ -334,8 +358,7 @@ public sealed class Spot : IDisposable
         SendFlags flags = SendFlags.None)
     {
         EnsureNotDisposed();
-        if (topicId == null)
-            throw new ArgumentNullException(nameof(topicId));
+        ValidateTopicId(topicId, nameof(topicId));
         byte[] topicUtf8 = GetTopicUtf8(topicId);
 
         int rc;
@@ -350,6 +373,7 @@ public sealed class Spot : IDisposable
 
     public void Subscribe(string topicId)
     {
+        ValidateTopicId(topicId, nameof(topicId));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_sub_subscribe(_subHandle, topicId);
         ZlinkException.ThrowIfError(rc);
@@ -357,6 +381,7 @@ public sealed class Spot : IDisposable
 
     public void SubscribePattern(string pattern)
     {
+        ValidateTopicId(pattern, nameof(pattern));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_sub_subscribe_pattern(_subHandle, pattern);
         ZlinkException.ThrowIfError(rc);
@@ -364,6 +389,7 @@ public sealed class Spot : IDisposable
 
     public void Unsubscribe(string topicIdOrPattern)
     {
+        ValidateTopicId(topicIdOrPattern, nameof(topicIdOrPattern));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_sub_unsubscribe(_subHandle,
             topicIdOrPattern);
@@ -438,18 +464,28 @@ public sealed class Spot : IDisposable
         }
     }
 
+    /// <summary>
+    /// Receives a topic message.
+    /// Message ownership is transferred to the caller.
+    /// Caller must dispose each part exactly once.
+    /// </summary>
     public SpotMessage Receive(ReceiveFlags flags = ReceiveFlags.None)
     {
         EnsureNotDisposed();
         unsafe
         {
-            byte* topicBuf = stackalloc byte[256];
-            nuint topicLen = 256;
+            byte* topicBuf = stackalloc byte[TopicBufferSize];
+            nuint topicLen = TopicBufferSize;
             int rc = NativeMethods.zlink_spot_sub_recv(_subHandle, out var parts,
                 out var count, (int)flags, topicBuf, ref topicLen);
             if (rc != 0)
                 throw ZlinkException.FromLastError();
-            string topic = NativeHelpers.ReadString(topicBuf, (int)topicLen);
+            // C API may return actual topic length even when output buffer is
+            // fixed-size and truncated.
+            int topicReadLen = topicLen > TopicBufferSize
+                ? TopicBufferSize
+                : (int)topicLen;
+            string topic = NativeHelpers.ReadString(topicBuf, topicReadLen);
             Message[] messages = Message.FromNativeVector(parts, count);
             return new SpotMessage(topic, messages);
         }
@@ -459,8 +495,8 @@ public sealed class Spot : IDisposable
         ReceiveFlags flags = ReceiveFlags.None)
     {
         EnsureNotDisposed();
-        byte* topicBuf = stackalloc byte[256];
-        nuint topicLen = 256;
+        byte* topicBuf = stackalloc byte[TopicBufferSize];
+        nuint topicLen = TopicBufferSize;
         int rc = NativeMethods.zlink_spot_sub_recv(_subHandle, out var parts,
             out var count, (int)flags, topicBuf, ref topicLen);
         if (rc != 0)
@@ -545,8 +581,9 @@ public sealed class Spot : IDisposable
                 }
                 packetHandler(topicUtf8, partViews.Slice(0, count));
             }
-            catch
+            catch (Exception ex)
             {
+                Runtime.ReportUnhandledCallbackException(ex);
             }
             finally
             {
@@ -570,8 +607,9 @@ public sealed class Spot : IDisposable
             managedParts = Message.CopyFromNativeReadOnlyVector(parts, partCount);
             handler(topicId, managedParts);
         }
-        catch
+        catch (Exception ex)
         {
+            Runtime.ReportUnhandledCallbackException(ex);
             if (managedParts == null)
                 return;
             foreach (Message? part in managedParts)
@@ -585,9 +623,27 @@ public sealed class Spot : IDisposable
             return cached;
 
         byte[] encoded = EncodeTopicUtf8(topicId);
-        if (_topicUtf8Cache.Count < TopicCacheLimit)
-            _topicUtf8Cache.TryAdd(topicId, encoded);
+        if (Volatile.Read(ref _topicUtf8CacheCount) < TopicCacheLimit
+            && _topicUtf8Cache.TryAdd(topicId, encoded))
+        {
+            Interlocked.Increment(ref _topicUtf8CacheCount);
+        }
         return encoded;
+    }
+
+    private static void ValidateTopicId(string value, string paramName)
+    {
+        if (value == null)
+            throw new ArgumentNullException(paramName);
+        if (value.Length == 0)
+            throw new ArgumentException("Value must not be empty.", paramName);
+
+        int byteCount = Encoding.UTF8.GetByteCount(value);
+        if (byteCount == 0 || byteCount > 255)
+        {
+            throw new ArgumentOutOfRangeException(paramName,
+                "UTF-8 length must be between 1 and 255 bytes.");
+        }
     }
 
     private static byte[] EncodeTopicUtf8(string topicId)
@@ -600,6 +656,11 @@ public sealed class Spot : IDisposable
     }
 }
 
+/// <summary>
+/// Managed subscribe callback.
+/// Message payload is copied to managed <see cref="Message"/> instances.
+/// The callback owns those managed messages and must dispose each part exactly once.
+/// </summary>
 public delegate void SpotSubHandler(string topicId, Message[] parts);
 
 /// <summary>
@@ -631,6 +692,11 @@ public readonly struct SpotPacketView
 
 public readonly struct SpotMessage
 {
+    /// <summary>
+    /// Spot receive result.
+    /// Message ownership is transferred to the caller.
+    /// Caller must dispose each part exactly once.
+    /// </summary>
     public SpotMessage(string topicId, Message[] parts)
     {
         TopicId = topicId;

@@ -19,6 +19,8 @@ public sealed class Discovery : IDisposable
 
     public Discovery(Context context, DiscoveryServiceType serviceType)
     {
+        if (context == null)
+            throw new ArgumentNullException(nameof(context));
         _handle = NativeMethods.zlink_discovery_new_typed(context.Handle,
             (ushort)serviceType);
         if (_handle == IntPtr.Zero)
@@ -29,6 +31,7 @@ public sealed class Discovery : IDisposable
 
     public void ConnectRegistry(string registryPubEndpoint)
     {
+        ValidateNotEmpty(registryPubEndpoint, nameof(registryPubEndpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_discovery_connect_registry(_handle,
             registryPubEndpoint);
@@ -37,6 +40,7 @@ public sealed class Discovery : IDisposable
 
     public void Subscribe(string serviceName)
     {
+        ValidateNotEmpty(serviceName, nameof(serviceName));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_discovery_subscribe(_handle, serviceName);
         ZlinkException.ThrowIfError(rc);
@@ -44,6 +48,7 @@ public sealed class Discovery : IDisposable
 
     public void Unsubscribe(string serviceName)
     {
+        ValidateNotEmpty(serviceName, nameof(serviceName));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_discovery_unsubscribe(_handle, serviceName);
         ZlinkException.ThrowIfError(rc);
@@ -79,6 +84,7 @@ public sealed class Discovery : IDisposable
 
     public int ReceiverCount(string serviceName)
     {
+        ValidateNotEmpty(serviceName, nameof(serviceName));
         EnsureNotDisposed();
         int count = NativeMethods.zlink_discovery_receiver_count(_handle,
             serviceName);
@@ -89,6 +95,7 @@ public sealed class Discovery : IDisposable
 
     public bool ServiceAvailable(string serviceName)
     {
+        ValidateNotEmpty(serviceName, nameof(serviceName));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_discovery_service_available(_handle,
             serviceName);
@@ -99,6 +106,7 @@ public sealed class Discovery : IDisposable
 
     public ReceiverInfoRecord[] GetReceivers(string serviceName)
     {
+        ValidateNotEmpty(serviceName, nameof(serviceName));
         EnsureNotDisposed();
         int count = ReceiverCount(serviceName);
         if (count == 0)
@@ -144,6 +152,14 @@ public sealed class Discovery : IDisposable
     {
         if (_handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Discovery));
+    }
+
+    private static void ValidateNotEmpty(string value, string paramName)
+    {
+        if (value == null)
+            throw new ArgumentNullException(paramName);
+        if (value.Length == 0)
+            throw new ArgumentException("Value must not be empty.", paramName);
     }
 }
 

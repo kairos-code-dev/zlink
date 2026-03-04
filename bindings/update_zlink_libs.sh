@@ -206,6 +206,9 @@ errors = []
 updated = []
 
 def replace_regex(path: Path, pattern: str, repl: str, count: int = 1) -> None:
+    if not path.exists():
+        errors.append(f"{path}: file not found")
+        return
     text = path.read_text(encoding="utf-8")
     new_text, n = re.subn(pattern, repl, text, count=count, flags=re.MULTILINE)
     if n == 0:
@@ -217,6 +220,8 @@ def replace_regex(path: Path, pattern: str, repl: str, count: int = 1) -> None:
 
 def replace_regex_optional(path: Path, pattern: str, repl: str,
                            count: int = 1) -> bool:
+    if not path.exists():
+        return False
     text = path.read_text(encoding="utf-8")
     new_text, n = re.subn(pattern, repl, text, count=count, flags=re.MULTILINE)
     if n == 0:
@@ -227,6 +232,9 @@ def replace_regex_optional(path: Path, pattern: str, repl: str,
     return True
 
 def update_json_version(path: Path) -> dict:
+    if not path.exists():
+        errors.append(f"{path}: file not found")
+        return {}
     data = json.loads(path.read_text(encoding="utf-8"))
     old = data.get("version")
     data["version"] = expect
@@ -237,9 +245,15 @@ def update_json_version(path: Path) -> dict:
     return data
 
 dotnet_csproj = repo_root / "bindings/dotnet/src/Zlink/Zlink.csproj"
-dotnet_version_test = repo_root / "bindings/dotnet/tests/Zlink.Tests/VersionTests.cs"
+dotnet_version_test_candidates = [
+    repo_root / "bindings/dotnet/tests/Zlink.Tests/VersionTests.cs",
+    repo_root / "bindings/dotnet/tests/Zlink.Tests/test_system.cs",
+]
 java_gradle = repo_root / "bindings/java/build.gradle"
-java_version_test = repo_root / "bindings/java/src/test/java/dev/kairoscode/zlink/VersionTest.java"
+java_version_test_candidates = [
+    repo_root / "bindings/java/src/test/java/dev/kairoscode/zlink/VersionTest.java",
+    repo_root / "bindings/java/src/test/java/dev/kairoscode/zlink/CoreVersionPortedTest.java",
+]
 node_pkg = repo_root / "bindings/node/package.json"
 node_lock = repo_root / "bindings/node/package-lock.json"
 node_version_test = repo_root / "bindings/node/tests/version.test.js"
@@ -247,25 +261,51 @@ python_pyproject = repo_root / "bindings/python/pyproject.toml"
 python_pkg_info = repo_root / "bindings/python/src/zlink.egg-info/PKG-INFO"
 python_version_test = repo_root / "bindings/python/tests/test_version.py"
 
+def pick_existing(paths):
+    for p in paths:
+        if p.exists():
+            return p
+    return None
+
+dotnet_version_test = pick_existing(dotnet_version_test_candidates)
+java_version_test = pick_existing(java_version_test_candidates)
+
 replace_regex(dotnet_csproj, r"<Version>[^<]+</Version>",
               f"<Version>{expect}</Version>")
-replace_regex(dotnet_version_test, r"Assert\.Equal\(\d+,\s*minor\);",
-              f"Assert.Equal({minor}, minor);")
-replace_regex(dotnet_version_test, r"Assert\.Equal\(\d+,\s*patch\);",
-              f"Assert.Equal({patch}, patch);")
+dotnet_minor_updated = False
+dotnet_patch_updated = False
+if dotnet_version_test is not None:
+    dotnet_minor_updated = replace_regex_optional(
+        dotnet_version_test,
+        r"Assert\.Equal\(\d+,\s*minor\);",
+        f"Assert.Equal({minor}, minor);",
+    )
+    dotnet_patch_updated = replace_regex_optional(
+        dotnet_version_test,
+        r"Assert\.Equal\(\d+,\s*patch\);",
+        f"Assert.Equal({patch}, patch);",
+    )
+if dotnet_minor_updated != dotnet_patch_updated:
+    errors.append(
+        f"{dotnet_version_test}: partial dotnet version marker update "
+        "(minor/patch pattern mismatch)"
+    )
 
 replace_regex(java_gradle, r"^version\s*=\s*'[^']+'$",
               f"version = '{expect}'")
-java_minor_updated = replace_regex_optional(
-    java_version_test,
-    r"assertEquals\(\d+,\s*v\[1\]\);",
-    f"assertEquals({minor}, v[1]);",
-)
-java_patch_updated = replace_regex_optional(
-    java_version_test,
-    r"assertEquals\(\d+,\s*v\[2\]\);",
-    f"assertEquals({patch}, v[2]);",
-)
+java_minor_updated = False
+java_patch_updated = False
+if java_version_test is not None:
+    java_minor_updated = replace_regex_optional(
+        java_version_test,
+        r"assertEquals\(\d+,\s*v\[1\]\);",
+        f"assertEquals({minor}, v[1]);",
+    )
+    java_patch_updated = replace_regex_optional(
+        java_version_test,
+        r"assertEquals\(\d+,\s*v\[2\]\);",
+        f"assertEquals({patch}, v[2]);",
+    )
 if java_minor_updated != java_patch_updated:
     errors.append(
         f"{java_version_test}: partial java version marker update "

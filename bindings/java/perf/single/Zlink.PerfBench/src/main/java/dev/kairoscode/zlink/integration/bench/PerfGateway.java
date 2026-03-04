@@ -19,8 +19,6 @@ final class PerfGateway {
         Receiver receiver = null;
         Socket router = null;
         Gateway gateway = null;
-        Gateway.PreparedService preparedService = null;
-        Gateway.SendContext sendContext = null;
         Arena payloadArena = null;
         try {
             String suffix = System.currentTimeMillis() + "-" + System.nanoTime();
@@ -48,15 +46,12 @@ final class PerfGateway {
             router = receiver.routerSocket();
 
             gateway = new Gateway(ctx, discovery);
-            preparedService = gateway.prepareService(service);
-            sendContext = gateway.createSendContext();
             final Discovery fDiscovery = discovery;
             final Gateway fGateway = gateway;
             if (!PerfUtil.waitUntil(() -> fDiscovery.receiverCount(service) > 0, 10000)) {
                 return 2;
             }
-            final Gateway.PreparedService fPreparedService = preparedService;
-            if (!PerfUtil.waitUntil(() -> fGateway.connectionCount(fPreparedService) > 0,
+            if (!PerfUtil.waitUntil(() -> fGateway.connectionCount(service) > 0,
               10000)) {
                 return 2;
             }
@@ -73,16 +68,14 @@ final class PerfGateway {
             MemorySegment ridSegment = payloadArena.allocate(256);
             MemorySegment payloadRecvSegment = payloadArena.allocate(dataCap);
             for (int i = 0; i < warmup; i++) {
-                gatewaySendMove(gateway, preparedService, payloadSegment,
-                  sendContext);
+                gatewaySend(gateway, service, payloadSegment);
                 recvGatewayPayloadBlocking(router, ridSegment,
                   payloadRecvSegment, dataCap);
             }
 
             long t0 = System.nanoTime();
             for (int i = 0; i < latCount; i++) {
-                gatewaySendMove(gateway, preparedService, payloadSegment,
-                  sendContext);
+                gatewaySend(gateway, service, payloadSegment);
                 recvGatewayPayloadBlocking(router, ridSegment,
                   payloadRecvSegment, dataCap);
             }
@@ -107,8 +100,7 @@ final class PerfGateway {
             t0 = System.nanoTime();
             for (int i = 0; i < msgCount; i++) {
                 try {
-                    gatewaySendMove(gateway, preparedService, payloadSegment,
-                      sendContext);
+                    gatewaySend(gateway, service, payloadSegment);
                     sent++;
                 } catch (Exception e) {
                     break;
@@ -125,18 +117,6 @@ final class PerfGateway {
               ", size=" + size + ", error=" + e.getMessage());
             return 2;
         } finally {
-            try {
-                if (sendContext != null) {
-                    sendContext.close();
-                }
-            } catch (Exception ignored) {
-            }
-            try {
-                if (preparedService != null) {
-                    preparedService.close();
-                }
-            } catch (Exception ignored) {
-            }
             try {
                 if (gateway != null) {
                     gateway.close();
@@ -198,12 +178,11 @@ final class PerfGateway {
         return status == 0;
     }
 
-    private static void gatewaySendMove(Gateway gateway,
-                                        Gateway.PreparedService service,
-                                        MemorySegment payload,
-                                        Gateway.SendContext sendContext) {
+    private static void gatewaySend(Gateway gateway,
+                                    String service,
+                                    MemorySegment payload) {
         try (Message msg = Message.fromNativeData(payload)) {
-            gateway.sendMove(service, msg, SendFlag.NONE, sendContext);
+            gateway.send(service, msg, SendFlag.NONE);
         }
     }
 

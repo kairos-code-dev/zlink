@@ -4,5 +4,5 @@ package dev.kairoscode.zlink;
 
 @FunctionalInterface
 public interface StreamPacketHandler {
-    int onPacket(ByteSpan routingId, ByteSpan payload);
+    int onPacket(int routingIdU32, Message payload);
 }

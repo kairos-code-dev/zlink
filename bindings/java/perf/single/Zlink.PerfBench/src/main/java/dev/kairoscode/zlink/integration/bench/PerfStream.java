@@ -3,13 +3,15 @@ package dev.kairoscode.zlink.integration.bench;
 import dev.kairoscode.zlink.ByteSpan;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.ContextOption;
+import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.SocketOption;
 import dev.kairoscode.zlink.SocketType;
-import dev.kairoscode.zlink.StreamDispatchMode;
 import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 final class PerfStream {
@@ -221,13 +223,16 @@ final class PerfStream {
         private int start = 0;
         private int end = 0;
 
-        int appendAndCountFrames(ByteSpan chunk) {
-            int chunkLen = chunk.length();
+        int appendAndCountFrames(Message chunk) {
+            int chunkLen = chunk.size();
             if (chunkLen <= 0)
+                return 0;
+            MemorySegment chunkData = chunk.dataSegment();
+            if (chunkData.address() == 0)
                 return 0;
             compactForWrite(chunkLen);
             ensure(end + chunkLen);
-            MemorySegment.copy(chunk.segment(), 0, MemorySegment.ofArray(data), end,
+            MemorySegment.copy(chunkData, 0, MemorySegment.ofArray(data), end,
               chunkLen);
             end += chunkLen;
 
@@ -303,37 +308,53 @@ final class PerfStream {
         }
 
         void attach() {
-            StreamDispatchMode mode = len32be
-              ? StreamDispatchMode.LEN32BE
-              : StreamDispatchMode.NONE;
-            socket.attachStream(this::onPacket, mode);
+            if (len32be)
+                socket.attachStreamLen32be(this::onPackets);
+            else
+                socket.attachStreamRaw(this::onPacket);
         }
 
-        private int onPacket(ByteSpan rid, ByteSpan payload) {
-            int payloadSize = payload.length();
-            if (payloadSize <= 0)
-                return 0;
+        private int onPackets(int rid, List<Message> packets) {
+            for (Message payload : packets) {
+                if (payload == null)
+                    continue;
+                try (payload) {
+                    if (payload.size() <= 0)
+                        continue;
+                    if (echo) {
+                        try {
+                            socket.streamSend(rid, payload, SendFlag.NONE);
+                            received.incrementAndGet();
+                        } catch (RuntimeException ex) {
+                            return 0;
+                        }
+                    } else {
+                        received.incrementAndGet();
+                    }
+                }
+            }
+            return 0;
+        }
 
-            if (echo) {
-                int sent;
-                try {
-                    sent = socket.streamSend(rid, payload);
-                } catch (RuntimeException ex) {
+        private int onPacket(int rid, Message payload) {
+            try (payload) {
+                int payloadSize = payload.size();
+                if (payloadSize <= 0)
+                    return 0;
+
+                if (echo) {
+                    try {
+                        socket.streamSend(rid, payload, SendFlag.NONE);
+                    } catch (RuntimeException ex) {
+                        return 0;
+                    }
                     return 0;
                 }
-                if (len32be && sent >= 0)
-                    received.incrementAndGet();
-                return 0;
-            }
 
-            if (len32be) {
-                received.incrementAndGet();
-                return 0;
+                int frames = stash.appendAndCountFrames(payload);
+                if (frames > 0)
+                    received.addAndGet(frames);
             }
-
-            int frames = stash.appendAndCountFrames(payload);
-            if (frames > 0)
-                received.addAndGet(frames);
             return 0;
         }
 

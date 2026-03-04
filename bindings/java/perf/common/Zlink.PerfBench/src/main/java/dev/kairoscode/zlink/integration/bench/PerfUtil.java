@@ -180,10 +180,9 @@ final class PerfUtil {
     static void gatewaySendWithRetry(Gateway gateway, String service, byte[] payload, int timeoutMs) {
         long deadline = System.currentTimeMillis() + timeoutMs;
         try (Message msg = Message.fromBytes(payload)) {
-            Message[] parts = new Message[]{msg};
             while (System.currentTimeMillis() < deadline) {
                 try {
-                    gateway.send(service, parts, SendFlag.NONE);
+                    gateway.send(service, msg, SendFlag.NONE);
                     return;
                 } catch (Exception ignored) {
                     sleep(10);

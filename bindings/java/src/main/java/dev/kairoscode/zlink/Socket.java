@@ -3,7 +3,6 @@
 package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
-import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -15,12 +14,15 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 
 public final class Socket implements AutoCloseable {
     private static final int DEFAULT_IO_BUFFER_SIZE = 8192;
-    private static final int STREAM_ROUTING_ID_MAX = 255;
+    private static final int STREAM_ROUTING_ID_SIZE = 4;
     private static final int STREAM_ROUTING_ID_LAYOUT_SIZE = 256;
+    private static final long U32_MAX = 0xFFFF_FFFFL;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_STREAM_CALLBACK =
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -28,7 +30,6 @@ public final class Socket implements AutoCloseable {
     private static final FunctionDescriptor FD_STREAM_CALLBACK_RAW =
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS);
-    private static final long MSG_SIZE = NativeLayouts.MSG_LAYOUT.byteSize();
 
     private MemorySegment handle;
     private final boolean own;
@@ -38,12 +39,11 @@ public final class Socket implements AutoCloseable {
     private int sendScratchCapacity = DEFAULT_IO_BUFFER_SIZE;
     private MemorySegment recvScratch = MemorySegment.NULL;
     private int recvScratchCapacity = DEFAULT_IO_BUFFER_SIZE;
-    private StreamPacketHandler streamHandler;
+    private StreamPacketHandler streamRawHandler;
+    private StreamPacketBatchHandler streamBatchHandler;
     private Arena streamCallbackArena;
     private MemorySegment streamCallbackStub = MemorySegment.NULL;
     private boolean streamAttached;
-    private final ThreadLocal<StreamSpanScratch> streamSpanScratch =
-      ThreadLocal.withInitial(StreamSpanScratch::new);
     private final ThreadLocal<MemorySegment> streamRoutingIdScratch =
       ThreadLocal.withInitial(
         () -> Arena.ofAuto().allocate(STREAM_ROUTING_ID_LAYOUT_SIZE));
@@ -280,54 +280,22 @@ public final class Socket implements AutoCloseable {
                              StreamDispatchMode mode) {
         Objects.requireNonNull(handler, "handler");
         Objects.requireNonNull(mode, "mode");
-        if (streamAttached)
-            throw new IllegalStateException("STREAM callback already attached");
-
-        final MethodHandle cb;
-        final FunctionDescriptor fd;
-        final String attachName;
-        try {
-            if (mode == StreamDispatchMode.NONE) {
-                cb = MethodHandles.lookup().findVirtual(
-                  Socket.class,
-                  "onStreamRaw",
-                  MethodType.methodType(int.class, MemorySegment.class,
-                    MemorySegment.class)).bindTo(this);
-                fd = FD_STREAM_CALLBACK_RAW;
-                attachName = "zlink_stream_attach_raw";
-            } else if (mode == StreamDispatchMode.LEN32BE) {
-                cb = MethodHandles.lookup().findVirtual(
-                  Socket.class,
-                  "onStreamPackets",
-                  MethodType.methodType(int.class, MemorySegment.class,
-                    MemorySegment.class, long.class)).bindTo(this);
-                fd = FD_STREAM_CALLBACK;
-                attachName = "zlink_stream_attach_len32be";
-            } else {
-                throw new IllegalArgumentException(
-                  "unsupported StreamDispatchMode: " + mode);
-            }
-        } catch (NoSuchMethodException | IllegalAccessException ex) {
-            throw new RuntimeException("stream callback binding failed", ex);
+        if (mode != StreamDispatchMode.NONE) {
+            throw new IllegalArgumentException(
+              "LEN32BE requires attachStreamLen32be(StreamPacketBatchHandler)");
         }
+        attachStreamRaw(handler);
+    }
 
-        streamCallbackArena = Arena.ofShared();
-        streamCallbackStub =
-          LINKER.upcallStub(cb, fd, streamCallbackArena);
-
-        int rc;
-        if (mode == StreamDispatchMode.NONE)
-            rc = Native.streamAttachRaw(handle, streamCallbackStub);
-        else
-            rc = Native.streamAttachLen32be(handle, streamCallbackStub);
-        if (rc != 0) {
-            closeArena(streamCallbackArena);
-            streamCallbackArena = null;
-            streamCallbackStub = MemorySegment.NULL;
-            throw new RuntimeException(attachName + " failed");
+    public void attachStream(StreamPacketBatchHandler handler,
+                             StreamDispatchMode mode) {
+        Objects.requireNonNull(handler, "handler");
+        Objects.requireNonNull(mode, "mode");
+        if (mode != StreamDispatchMode.LEN32BE) {
+            throw new IllegalArgumentException(
+              "raw STREAM requires attachStreamRaw(StreamPacketHandler)");
         }
-        streamHandler = handler;
-        streamAttached = true;
+        attachStreamLen32be(handler);
     }
 
     public void attachStream(StreamPacketHandler handler) {
@@ -359,11 +327,12 @@ public final class Socket implements AutoCloseable {
             streamCallbackStub = MemorySegment.NULL;
             throw new RuntimeException("zlink_stream_attach_raw failed");
         }
-        streamHandler = handler;
+        streamRawHandler = handler;
+        streamBatchHandler = null;
         streamAttached = true;
     }
 
-    public void attachStreamLen32be(StreamPacketHandler handler) {
+    public void attachStreamLen32be(StreamPacketBatchHandler handler) {
         Objects.requireNonNull(handler, "handler");
         if (streamAttached)
             throw new IllegalStateException("STREAM callback already attached");
@@ -388,7 +357,8 @@ public final class Socket implements AutoCloseable {
             streamCallbackStub = MemorySegment.NULL;
             throw new RuntimeException("zlink_stream_attach_len32be failed");
         }
-        streamHandler = handler;
+        streamRawHandler = null;
+        streamBatchHandler = handler;
         streamAttached = true;
     }
 
@@ -397,7 +367,8 @@ public final class Socket implements AutoCloseable {
             return;
         int rc = Native.streamDetach(handle);
         streamAttached = false;
-        streamHandler = null;
+        streamRawHandler = null;
+        streamBatchHandler = null;
         closeArena(streamCallbackArena);
         streamCallbackArena = null;
         streamCallbackStub = MemorySegment.NULL;
@@ -424,6 +395,63 @@ public final class Socket implements AutoCloseable {
 
     public byte[] streamPeerRoutingId() {
         return streamPeerRoutingId(0);
+    }
+
+    public Long streamPeerRoutingIdU32(int index) {
+        byte[] rid = streamPeerRoutingId(index);
+        if (rid == null)
+            return null;
+        return decodeStreamRoutingIdU32(rid);
+    }
+
+    public Long streamPeerRoutingIdU32() {
+        return streamPeerRoutingIdU32(0);
+    }
+
+    public int streamSend(long routingIdU32, byte[] payload, SendFlag flags) {
+        Objects.requireNonNull(payload, "payload");
+        Objects.requireNonNull(flags, "flags");
+        validateStreamRoutingIdU32(routingIdU32);
+
+        MemorySegment payloadSlice;
+        if (payload.length == 0) {
+            payloadSlice = MemorySegment.NULL;
+        } else {
+            payloadSlice = ensureSendScratch(payload.length);
+            MemorySegment.copy(MemorySegment.ofArray(payload), 0, payloadSlice, 0,
+              payload.length);
+        }
+
+        MemorySegment ridLayout = streamRoutingIdScratch.get();
+        writeStreamRoutingIdU32(ridLayout, routingIdU32);
+        int rc = Native.streamSend(handle, ridLayout, payloadSlice,
+          payload.length, flags.getValue());
+        if (rc < 0)
+            throw new RuntimeException("zlink_stream_send failed");
+        return rc;
+    }
+
+    public int streamSend(long routingIdU32, byte[] payload) {
+        return streamSend(routingIdU32, payload, SendFlag.NONE);
+    }
+
+    public int streamSend(long routingIdU32, Message payload, SendFlag flags) {
+        Objects.requireNonNull(payload, "payload");
+        Objects.requireNonNull(flags, "flags");
+        validateStreamRoutingIdU32(routingIdU32);
+
+        MemorySegment ridLayout = streamRoutingIdScratch.get();
+        writeStreamRoutingIdU32(ridLayout, routingIdU32);
+        int rc = Native.streamSendMsg(handle, ridLayout, payload.handle(),
+          flags.getValue());
+        if (rc < 0)
+            throw new RuntimeException("zlink_stream_send_msg failed");
+        payload.markStreamSent();
+        return rc;
+    }
+
+    public int streamSend(long routingIdU32, Message payload) {
+        return streamSend(routingIdU32, payload, SendFlag.NONE);
     }
 
     public int streamSend(byte[] routingId, byte[] payload, SendFlag flags) {
@@ -485,9 +513,9 @@ public final class Socket implements AutoCloseable {
         Objects.requireNonNull(routingId, "routingId");
         Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(flags, "flags");
-        if (routingId.length <= 0 || routingId.length > STREAM_ROUTING_ID_MAX) {
+        if (routingId.length != STREAM_ROUTING_ID_SIZE) {
             throw new IllegalArgumentException(
-              "routingId length must be between 1 and 255");
+              "STREAM routingId must be exactly 4 bytes");
         }
         MemorySegment ridLayout = streamRoutingIdScratch.get();
         ridLayout.set(ValueLayout.JAVA_BYTE, 0, (byte) routingId.length);
@@ -616,101 +644,87 @@ public final class Socket implements AutoCloseable {
         }
     }
 
-    private static void closeStreamPacketRange(MemorySegment msgArray,
-                                               int fromIndex, int count) {
-        for (int i = fromIndex; i < count; i++) {
-            MemorySegment msg = msgArray.asSlice((long) i * MSG_SIZE, MSG_SIZE);
-            closeStreamPacket(msg);
-        }
-    }
-
     private int onStreamPackets(MemorySegment rid, MemorySegment msgs,
                                 long msgCount) {
-        StreamPacketHandler handler = streamHandler;
-        if (handler == null || rid == null || msgs == null || msgCount <= 0)
+        if (msgs == null || msgs.address() == 0 || msgCount <= 0)
             return 0;
-        if (msgCount > Integer.MAX_VALUE)
-            return 1;
-
-        StreamSpanScratch scratch = streamSpanScratch.get();
-        MemorySegment ridSeg = rid.reinterpret(STREAM_ROUTING_ID_LAYOUT_SIZE);
-        int ridLen = ridSeg.get(ValueLayout.JAVA_BYTE, 0) & 0xFF;
-        if (ridLen > STREAM_ROUTING_ID_MAX)
-            ridLen = STREAM_ROUTING_ID_MAX;
-        MemorySegment ridData = ridLen == 0
-          ? MemorySegment.NULL
-          : ridSeg.asSlice(1, ridLen);
-        scratch.routingId.set(ridData, ridLen);
-
-        int msgCountInt = (int) msgCount;
-        MemorySegment msgArray =
-          msgs.reinterpret((long) MSG_SIZE * msgCountInt);
-        for (int i = 0; i < msgCountInt; i++) {
-            MemorySegment msg = msgArray.asSlice((long) i * MSG_SIZE, MSG_SIZE);
-            int rc;
+        StreamPacketBatchHandler handler = streamBatchHandler;
+        if (handler == null || rid == null) {
             try {
-                long payloadSize = NativeMsg.msgSize(msg);
-                if (payloadSize < 0)
-                    payloadSize = 0;
-                if (payloadSize > Integer.MAX_VALUE) {
-                    closeStreamPacketRange(msgArray, i + 1, msgCountInt);
-                    return 1;
-                }
-                int payloadLen = (int) payloadSize;
-                MemorySegment payloadData = payloadLen == 0
-                  ? MemorySegment.NULL
-                  : NativeMsg.msgData(msg).reinterpret(payloadLen);
-                scratch.payload.set(payloadData, payloadLen);
-                rc = handler.onPacket(scratch.routingId, scratch.payload);
-            } catch (Throwable t) {
-                closeStreamPacketRange(msgArray, i + 1, msgCountInt);
-                return 1;
-            } finally {
-                closeStreamPacket(msg);
+                NativeMsg.msgvClose(msgs, msgCount);
+            } catch (RuntimeException ignored) {
             }
-            if (rc != 0) {
-                closeStreamPacketRange(msgArray, i + 1, msgCountInt);
-                return rc;
+            return 0;
+        }
+        if (msgCount > Integer.MAX_VALUE) {
+            try {
+                NativeMsg.msgvClose(msgs, msgCount);
+            } catch (RuntimeException ignored) {
             }
+            return 1;
         }
 
-        return 0;
+        final int routingIdU32;
+        try {
+            routingIdU32 = (int) decodeStreamRoutingIdU32(rid);
+        } catch (RuntimeException ex) {
+            try {
+                NativeMsg.msgvClose(msgs, msgCount);
+            } catch (RuntimeException ignored) {
+            }
+            return 1;
+        }
+
+        Message[] packets;
+        try {
+            packets = Message.fromMsgVector(msgs, msgCount);
+        } catch (RuntimeException ex) {
+            return 1;
+        }
+
+        try {
+            List<Message> packetList = Arrays.asList(packets);
+            return handler.onPackets(routingIdU32, packetList);
+        } catch (Throwable t) {
+            Message.closeAll(packets);
+            return 1;
+        }
     }
 
     private int onStreamRaw(MemorySegment rid, MemorySegment msg) {
-        StreamPacketHandler handler = streamHandler;
-        if (handler == null || rid == null || msg == null)
+        if (msg == null || msg.address() == 0)
             return 0;
+        StreamPacketHandler handler = streamRawHandler;
+        if (handler == null || rid == null) {
+            closeStreamPacket(msg);
+            return 0;
+        }
 
-        StreamSpanScratch scratch = streamSpanScratch.get();
-        MemorySegment ridSeg = rid.reinterpret(STREAM_ROUTING_ID_LAYOUT_SIZE);
-        int ridLen = ridSeg.get(ValueLayout.JAVA_BYTE, 0) & 0xFF;
-        if (ridLen > STREAM_ROUTING_ID_MAX)
-            ridLen = STREAM_ROUTING_ID_MAX;
-        MemorySegment ridData = ridLen == 0
-          ? MemorySegment.NULL
-          : ridSeg.asSlice(1, ridLen);
-        scratch.routingId.set(ridData, ridLen);
-
-        int rc;
+        final int routingIdU32;
         try {
-            long payloadSize = NativeMsg.msgSize(msg);
-            if (payloadSize < 0)
-                payloadSize = 0;
-            if (payloadSize > Integer.MAX_VALUE)
-                return 1;
-            int payloadLen = (int) payloadSize;
-            MemorySegment payloadData = payloadLen == 0
-              ? MemorySegment.NULL
-              : NativeMsg.msgData(msg).reinterpret(payloadLen);
-            scratch.payload.set(payloadData, payloadLen);
-            rc = handler.onPacket(scratch.routingId, scratch.payload);
+            routingIdU32 = (int) decodeStreamRoutingIdU32(rid);
+        } catch (RuntimeException ex) {
+            closeStreamPacket(msg);
+            return 1;
+        }
+
+        final Message payload;
+        try {
+            payload = Message.fromOwnedNative(msg);
         } catch (Throwable t) {
             closeStreamPacket(msg);
             return 1;
         }
-        closeStreamPacket(msg);
-        return rc;
+
+        try {
+            return handler.onPacket(routingIdU32, payload);
+        } catch (Throwable t) {
+            try {
+                payload.close();
+            } catch (RuntimeException ignored) {
+            }
+            return 1;
+        }
     }
 
     private int streamSend(MemorySegment routingId, long ridOffset, long ridLength,
@@ -721,9 +735,9 @@ public final class Socket implements AutoCloseable {
         Objects.requireNonNull(flags, "flags");
         validateRange(routingId.byteSize(), ridOffset, ridLength, "routingId");
         validateRange(payload.byteSize(), payloadOffset, payloadLength, "payload");
-        if (ridLength <= 0 || ridLength > STREAM_ROUTING_ID_MAX) {
+        if (ridLength != STREAM_ROUTING_ID_SIZE) {
             throw new IllegalArgumentException(
-              "routingId length must be between 1 and 255");
+              "STREAM routingId must be exactly 4 bytes");
         }
 
         MemorySegment payloadSlice;
@@ -756,9 +770,9 @@ public final class Socket implements AutoCloseable {
         Objects.requireNonNull(flags, "flags");
         validateRange(routingId.length, ridOffset, ridLength, "routingId");
         validateRange(payload.length, payloadOffset, payloadLength, "payload");
-        if (ridLength <= 0 || ridLength > STREAM_ROUTING_ID_MAX) {
+        if (ridLength != STREAM_ROUTING_ID_SIZE) {
             throw new IllegalArgumentException(
-              "routingId length must be between 1 and 255");
+              "STREAM routingId must be exactly 4 bytes");
         }
 
         MemorySegment payloadSlice;
@@ -792,7 +806,8 @@ public final class Socket implements AutoCloseable {
             } catch (RuntimeException ignored) {
             }
             streamAttached = false;
-            streamHandler = null;
+            streamRawHandler = null;
+            streamBatchHandler = null;
             closeArena(streamCallbackArena);
             streamCallbackArena = null;
             streamCallbackStub = MemorySegment.NULL;
@@ -808,7 +823,6 @@ public final class Socket implements AutoCloseable {
         recvScratchArena = null;
         sendScratch = MemorySegment.NULL;
         recvScratch = MemorySegment.NULL;
-        streamSpanScratch.remove();
         streamRoutingIdScratch.remove();
     }
 
@@ -858,28 +872,48 @@ public final class Socket implements AutoCloseable {
         return (int) length;
     }
 
-    private static final class MutableByteSpan implements ByteSpan {
-        private MemorySegment segment = MemorySegment.NULL;
-        private int length;
-
-        @Override
-        public MemorySegment segment() {
-            return segment;
-        }
-
-        @Override
-        public int length() {
-            return length;
-        }
-
-        void set(MemorySegment segment, int length) {
-            this.segment = segment == null ? MemorySegment.NULL : segment;
-            this.length = Math.max(length, 0);
+    private static void validateStreamRoutingIdU32(long routingIdU32) {
+        if ((routingIdU32 & ~U32_MAX) != 0L) {
+            throw new IllegalArgumentException(
+              "STREAM routingId must be an unsigned 32-bit value");
         }
     }
 
-    private static final class StreamSpanScratch {
-        final MutableByteSpan routingId = new MutableByteSpan();
-        final MutableByteSpan payload = new MutableByteSpan();
+    private static void writeStreamRoutingIdU32(MemorySegment ridLayout,
+                                                long routingIdU32) {
+        ridLayout.set(ValueLayout.JAVA_BYTE, 0, (byte) STREAM_ROUTING_ID_SIZE);
+        ridLayout.set(ValueLayout.JAVA_BYTE, 1,
+          (byte) ((routingIdU32 >>> 24) & 0xFF));
+        ridLayout.set(ValueLayout.JAVA_BYTE, 2,
+          (byte) ((routingIdU32 >>> 16) & 0xFF));
+        ridLayout.set(ValueLayout.JAVA_BYTE, 3,
+          (byte) ((routingIdU32 >>> 8) & 0xFF));
+        ridLayout.set(ValueLayout.JAVA_BYTE, 4, (byte) (routingIdU32 & 0xFF));
+    }
+
+    private static long decodeStreamRoutingIdU32(byte[] routingId) {
+        Objects.requireNonNull(routingId, "routingId");
+        if (routingId.length != STREAM_ROUTING_ID_SIZE) {
+            throw new IllegalStateException(
+              "expected 4-byte STREAM routingId but got " + routingId.length);
+        }
+        return ((routingId[0] & 0xFFL) << 24)
+          | ((routingId[1] & 0xFFL) << 16)
+          | ((routingId[2] & 0xFFL) << 8)
+          | (routingId[3] & 0xFFL);
+    }
+
+    private static long decodeStreamRoutingIdU32(MemorySegment routingIdLayout) {
+        Objects.requireNonNull(routingIdLayout, "routingIdLayout");
+        MemorySegment rid = routingIdLayout.reinterpret(STREAM_ROUTING_ID_LAYOUT_SIZE);
+        int ridLen = rid.get(ValueLayout.JAVA_BYTE, 0) & 0xFF;
+        if (ridLen != STREAM_ROUTING_ID_SIZE) {
+            throw new IllegalStateException(
+              "expected 4-byte STREAM routingId but got " + ridLen);
+        }
+        return ((rid.get(ValueLayout.JAVA_BYTE, 1) & 0xFFL) << 24)
+          | ((rid.get(ValueLayout.JAVA_BYTE, 2) & 0xFFL) << 16)
+          | ((rid.get(ValueLayout.JAVA_BYTE, 3) & 0xFFL) << 8)
+          | (rid.get(ValueLayout.JAVA_BYTE, 4) & 0xFFL);
     }
 }

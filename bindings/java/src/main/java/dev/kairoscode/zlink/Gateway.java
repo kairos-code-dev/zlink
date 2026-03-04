@@ -10,6 +10,9 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -19,6 +22,7 @@ public final class Gateway implements AutoCloseable {
     private static final int SERVICE_NAME_CAPACITY = 256;
     private static final int ROUTING_ID_LAYOUT_SIZE = 256;
     private static final int SERVICE_NAME_CACHE_LIMIT = 1024;
+    private static final int ROUTING_ID_CACHE_LIMIT = 1024;
     private static final int SERVICE_NAME_SCRATCH_INITIAL_CAPACITY = 64;
     private static final int SOCKOPT_SCRATCH_INITIAL_CAPACITY = 16;
     private final ThreadLocal<MemorySegment> routingIdScratch =
@@ -28,9 +32,14 @@ public final class Gateway implements AutoCloseable {
         SERVICE_NAME_SCRATCH_INITIAL_CAPACITY));
     private final ThreadLocal<Integer> serviceNameScratchCapacity =
       ThreadLocal.withInitial(() -> SERVICE_NAME_SCRATCH_INITIAL_CAPACITY);
+    private final ThreadLocal<SendScratch> sendScratch =
+      ThreadLocal.withInitial(SendScratch::new);
     private final ConcurrentHashMap<String, MemorySegment> serviceNameCache =
       new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, MemorySegment> routingIdCache =
+      new ConcurrentHashMap<>();
     private final Arena serviceNameCacheArena = Arena.ofShared();
+    private final Arena routingIdCacheArena = Arena.ofShared();
     private Arena sockOptArena = Arena.ofShared();
     private MemorySegment sockOptScratch = MemorySegment.NULL;
     private int sockOptScratchCapacity = SOCKOPT_SCRATCH_INITIAL_CAPACITY;
@@ -49,7 +58,71 @@ public final class Gateway implements AutoCloseable {
             throw new RuntimeException("zlink_gateway_new failed");
     }
 
-    public void send(String serviceName, Message[] parts, SendFlag flags) {
+    public void send(String serviceName, Message message, SendFlag flags) {
+        Objects.requireNonNull(message, "message");
+        Objects.requireNonNull(flags, "flags");
+        Objects.requireNonNull(serviceName, "serviceName");
+        MemorySegment service = serviceNameCString(serviceName);
+        MemorySegment vec = sendScratch.get().ensureVector(1);
+        sendSingleInternal(vec, service, message, flags, false);
+    }
+
+    public void send(String serviceName, Message message) {
+        send(serviceName, message, SendFlag.NONE);
+    }
+
+    public void send(String serviceName, List<Message> messages,
+                     SendFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        Objects.requireNonNull(serviceName, "serviceName");
+        Objects.requireNonNull(messages, "messages");
+        MemorySegment service = serviceNameCString(serviceName);
+        int partCount = validateMessagesList(messages, "messages");
+        MemorySegment vec = sendScratch.get().ensureVector(partCount);
+        sendInternal(vec, service, messages, partCount, flags, false);
+    }
+
+    public void send(String serviceName, List<Message> messages) {
+        send(serviceName, messages, SendFlag.NONE);
+    }
+
+    public void sendToRoutingId(String serviceName, String routingId,
+                                Message message, SendFlag flags) {
+        Objects.requireNonNull(message, "message");
+        Objects.requireNonNull(flags, "flags");
+        Objects.requireNonNull(serviceName, "serviceName");
+        Objects.requireNonNull(routingId, "routingId");
+        MemorySegment service = serviceNameCString(serviceName);
+        MemorySegment rid = buildRoutingId(routingId);
+        MemorySegment vec = sendScratch.get().ensureVector(1);
+        sendToRoutingIdSingleInternal(vec, service, rid, message, flags, false);
+    }
+
+    public void sendToRoutingId(String serviceName, String routingId,
+                                Message message) {
+        sendToRoutingId(serviceName, routingId, message, SendFlag.NONE);
+    }
+
+    public void sendToRoutingId(String serviceName, String routingId,
+                                List<Message> messages, SendFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        Objects.requireNonNull(serviceName, "serviceName");
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(messages, "messages");
+        MemorySegment service = serviceNameCString(serviceName);
+        MemorySegment rid = buildRoutingId(routingId);
+        int partCount = validateMessagesList(messages, "messages");
+        MemorySegment vec = sendScratch.get().ensureVector(partCount);
+        sendToRoutingIdInternal(vec, service, rid, messages, partCount, flags,
+            false);
+    }
+
+    public void sendToRoutingId(String serviceName, String routingId,
+                                List<Message> messages) {
+        sendToRoutingId(serviceName, routingId, messages, SendFlag.NONE);
+    }
+
+    private void send(String serviceName, Message[] parts, SendFlag flags) {
         Objects.requireNonNull(serviceName, "serviceName");
         MemorySegment service = serviceNameCString(serviceName);
         try (Arena arena = Arena.ofConfined()) {
@@ -57,21 +130,21 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    public void send(PreparedService service, Message[] parts, SendFlag flags) {
+    private void send(PreparedService service, Message[] parts, SendFlag flags) {
         Objects.requireNonNull(service, "service");
         try (Arena arena = Arena.ofConfined()) {
             sendInternal(arena, service.cString(), parts, flags, false);
         }
     }
 
-    public void send(PreparedService service, Message[] parts, SendFlag flags,
+    private void send(PreparedService service, Message[] parts, SendFlag flags,
                      SendContext context) {
         Objects.requireNonNull(service, "service");
         Objects.requireNonNull(context, "context");
         sendInternal(context, service.cString(), parts, flags, false);
     }
 
-    public void send(PreparedService service, Message part, SendFlag flags,
+    private void send(PreparedService service, Message part, SendFlag flags,
                      SendContext context) {
         Objects.requireNonNull(service, "service");
         Objects.requireNonNull(part, "part");
@@ -79,7 +152,7 @@ public final class Gateway implements AutoCloseable {
         sendSingleInternal(context, service.cString(), part, flags, false);
     }
 
-    public void sendMove(String serviceName, Message[] parts, SendFlag flags) {
+    private void sendMove(String serviceName, Message[] parts, SendFlag flags) {
         Objects.requireNonNull(serviceName, "serviceName");
         MemorySegment service = serviceNameCString(serviceName);
         try (Arena arena = Arena.ofConfined()) {
@@ -87,13 +160,13 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    public void sendToRoutingId(String serviceName, byte[] routingId,
+    private void sendToRoutingId(String serviceName, String routingId,
                                 MemorySegment payload, SendFlag flags) {
         sendToRoutingId(serviceName, routingId, payload, 0, payload.byteSize(),
           flags);
     }
 
-    public void sendToRoutingId(String serviceName, byte[] routingId,
+    private void sendToRoutingId(String serviceName, String routingId,
                                 MemorySegment payload, long offset,
                                 long length, SendFlag flags) {
         Objects.requireNonNull(serviceName, "serviceName");
@@ -106,13 +179,32 @@ public final class Gateway implements AutoCloseable {
             flags);
     }
 
-    public void sendToRoutingId(String serviceName, ByteSpan routingId,
+    private void sendToRoutingId(String serviceName, byte[] routingId,
+                                MemorySegment payload, SendFlag flags) {
+        sendToRoutingId(serviceName, routingId, payload, 0, payload.byteSize(),
+          flags);
+    }
+
+    private void sendToRoutingId(String serviceName, byte[] routingId,
+                                MemorySegment payload, long offset,
+                                long length, SendFlag flags) {
+        Objects.requireNonNull(serviceName, "serviceName");
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(payload, "payload");
+        validatePayloadRange(payload, offset, length);
+        MemorySegment service = serviceNameCString(serviceName);
+        MemorySegment rid = buildRoutingId(routingId);
+        sendToRoutingIdBytesInternal(service, rid, payload, offset, length,
+            flags);
+    }
+
+    private void sendToRoutingId(String serviceName, ByteSpan routingId,
                                 MemorySegment payload, SendFlag flags) {
         sendToRoutingId(serviceName, routingId, payload, 0, payload.byteSize(),
             flags);
     }
 
-    public void sendToRoutingId(String serviceName, ByteSpan routingId,
+    private void sendToRoutingId(String serviceName, ByteSpan routingId,
                                 MemorySegment payload, long offset,
                                 long length, SendFlag flags) {
         Objects.requireNonNull(serviceName, "serviceName");
@@ -125,13 +217,19 @@ public final class Gateway implements AutoCloseable {
             flags);
     }
 
-    public void sendToRoutingId(PreparedService service, byte[] routingId,
+    private void sendToRoutingId(PreparedService service, byte[] routingId,
                                 MemorySegment payload, SendFlag flags) {
         sendToRoutingId(service, routingId, payload, 0, payload.byteSize(),
             flags);
     }
 
-    public void sendToRoutingId(PreparedService service, byte[] routingId,
+    private void sendToRoutingId(PreparedService service, String routingId,
+                                MemorySegment payload, SendFlag flags) {
+        sendToRoutingId(service, routingId, payload, 0, payload.byteSize(),
+            flags);
+    }
+
+    private void sendToRoutingId(PreparedService service, String routingId,
                                 MemorySegment payload, long offset,
                                 long length, SendFlag flags) {
         Objects.requireNonNull(service, "service");
@@ -143,13 +241,7 @@ public final class Gateway implements AutoCloseable {
             length, flags);
     }
 
-    public void sendToRoutingId(PreparedService service, ByteSpan routingId,
-                                MemorySegment payload, SendFlag flags) {
-        sendToRoutingId(service, routingId, payload, 0, payload.byteSize(),
-            flags);
-    }
-
-    public void sendToRoutingId(PreparedService service, ByteSpan routingId,
+    private void sendToRoutingId(PreparedService service, byte[] routingId,
                                 MemorySegment payload, long offset,
                                 long length, SendFlag flags) {
         Objects.requireNonNull(service, "service");
@@ -161,7 +253,25 @@ public final class Gateway implements AutoCloseable {
             length, flags);
     }
 
-    public void sendMoveToRoutingId(String serviceName, ByteSpan routingId,
+    private void sendToRoutingId(PreparedService service, ByteSpan routingId,
+                                MemorySegment payload, SendFlag flags) {
+        sendToRoutingId(service, routingId, payload, 0, payload.byteSize(),
+            flags);
+    }
+
+    private void sendToRoutingId(PreparedService service, ByteSpan routingId,
+                                MemorySegment payload, long offset,
+                                long length, SendFlag flags) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(payload, "payload");
+        validatePayloadRange(payload, offset, length);
+        MemorySegment rid = buildRoutingId(routingId);
+        sendToRoutingIdBytesInternal(service.cString(), rid, payload, offset,
+            length, flags);
+    }
+
+    private void sendMoveToRoutingId(String serviceName, ByteSpan routingId,
                                     Message[] parts, SendFlag flags) {
         Objects.requireNonNull(serviceName, "serviceName");
         Objects.requireNonNull(routingId, "routingId");
@@ -172,73 +282,7 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    public void sendToRoutingId(String serviceName, byte[] routingId,
-                                Message[] parts, SendFlag flags) {
-        Objects.requireNonNull(serviceName, "serviceName");
-        Objects.requireNonNull(routingId, "routingId");
-        MemorySegment service = serviceNameCString(serviceName);
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment rid = buildRoutingId(routingId);
-            sendToRoutingIdInternal(arena, service, rid, parts, flags, false);
-        }
-    }
-
-    public void sendToRoutingId(String serviceName, ByteSpan routingId,
-                                Message[] parts, SendFlag flags) {
-        Objects.requireNonNull(serviceName, "serviceName");
-        Objects.requireNonNull(routingId, "routingId");
-        MemorySegment service = serviceNameCString(serviceName);
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment rid = buildRoutingId(routingId);
-            sendToRoutingIdInternal(arena, service, rid, parts, flags, false);
-        }
-    }
-
-    public void sendToRoutingId(PreparedService service, byte[] routingId,
-                                Message[] parts, SendFlag flags) {
-        Objects.requireNonNull(service, "service");
-        Objects.requireNonNull(routingId, "routingId");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment rid = buildRoutingId(routingId);
-            sendToRoutingIdInternal(arena, service.cString(), rid, parts, flags,
-                false);
-        }
-    }
-
-    public void sendToRoutingId(PreparedService service, ByteSpan routingId,
-                                Message[] parts, SendFlag flags) {
-        Objects.requireNonNull(service, "service");
-        Objects.requireNonNull(routingId, "routingId");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment rid = buildRoutingId(routingId);
-            sendToRoutingIdInternal(arena, service.cString(), rid, parts, flags,
-                false);
-        }
-    }
-
-    public void sendToRoutingId(PreparedService service, byte[] routingId,
-                                Message[] parts, SendFlag flags,
-                                SendContext context) {
-        Objects.requireNonNull(service, "service");
-        Objects.requireNonNull(routingId, "routingId");
-        Objects.requireNonNull(context, "context");
-        MemorySegment rid = buildRoutingId(routingId);
-        sendToRoutingIdInternal(context, service.cString(), rid, parts, flags,
-            false);
-    }
-
-    public void sendToRoutingId(PreparedService service, ByteSpan routingId,
-                                Message[] parts, SendFlag flags,
-                                SendContext context) {
-        Objects.requireNonNull(service, "service");
-        Objects.requireNonNull(routingId, "routingId");
-        Objects.requireNonNull(context, "context");
-        MemorySegment rid = buildRoutingId(routingId);
-        sendToRoutingIdInternal(context, service.cString(), rid, parts, flags,
-            false);
-    }
-
-    public void sendMoveToRoutingId(String serviceName, byte[] routingId,
+    private void sendMoveToRoutingId(String serviceName, String routingId,
                                     Message[] parts, SendFlag flags) {
         Objects.requireNonNull(serviceName, "serviceName");
         Objects.requireNonNull(routingId, "routingId");
@@ -249,7 +293,117 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    public void sendMoveToRoutingId(PreparedService service, ByteSpan routingId,
+    private void sendToRoutingId(String serviceName, byte[] routingId,
+                                Message[] parts, SendFlag flags) {
+        Objects.requireNonNull(serviceName, "serviceName");
+        Objects.requireNonNull(routingId, "routingId");
+        MemorySegment service = serviceNameCString(serviceName);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = buildRoutingId(routingId);
+            sendToRoutingIdInternal(arena, service, rid, parts, flags, false);
+        }
+    }
+
+    private void sendToRoutingId(String serviceName, String routingId,
+                                 Message[] parts, SendFlag flags) {
+        Objects.requireNonNull(serviceName, "serviceName");
+        Objects.requireNonNull(routingId, "routingId");
+        MemorySegment service = serviceNameCString(serviceName);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = buildRoutingId(routingId);
+            sendToRoutingIdInternal(arena, service, rid, parts, flags, false);
+        }
+    }
+
+    private void sendToRoutingId(String serviceName, ByteSpan routingId,
+                                Message[] parts, SendFlag flags) {
+        Objects.requireNonNull(serviceName, "serviceName");
+        Objects.requireNonNull(routingId, "routingId");
+        MemorySegment service = serviceNameCString(serviceName);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = buildRoutingId(routingId);
+            sendToRoutingIdInternal(arena, service, rid, parts, flags, false);
+        }
+    }
+
+    private void sendToRoutingId(PreparedService service, byte[] routingId,
+                                Message[] parts, SendFlag flags) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(routingId, "routingId");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = buildRoutingId(routingId);
+            sendToRoutingIdInternal(arena, service.cString(), rid, parts, flags,
+                false);
+        }
+    }
+
+    private void sendToRoutingId(PreparedService service, String routingId,
+                                Message[] parts, SendFlag flags) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(routingId, "routingId");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = buildRoutingId(routingId);
+            sendToRoutingIdInternal(arena, service.cString(), rid, parts, flags,
+                false);
+        }
+    }
+
+    private void sendToRoutingId(PreparedService service, ByteSpan routingId,
+                                Message[] parts, SendFlag flags) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(routingId, "routingId");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = buildRoutingId(routingId);
+            sendToRoutingIdInternal(arena, service.cString(), rid, parts, flags,
+                false);
+        }
+    }
+
+    private void sendToRoutingId(PreparedService service, byte[] routingId,
+                                Message[] parts, SendFlag flags,
+                                SendContext context) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(context, "context");
+        MemorySegment rid = buildRoutingId(routingId);
+        sendToRoutingIdInternal(context, service.cString(), rid, parts, flags,
+            false);
+    }
+
+    private void sendToRoutingId(PreparedService service, String routingId,
+                                Message[] parts, SendFlag flags,
+                                SendContext context) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(context, "context");
+        MemorySegment rid = buildRoutingId(routingId);
+        sendToRoutingIdInternal(context, service.cString(), rid, parts, flags,
+            false);
+    }
+
+    private void sendToRoutingId(PreparedService service, ByteSpan routingId,
+                                Message[] parts, SendFlag flags,
+                                SendContext context) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(context, "context");
+        MemorySegment rid = buildRoutingId(routingId);
+        sendToRoutingIdInternal(context, service.cString(), rid, parts, flags,
+            false);
+    }
+
+    private void sendMoveToRoutingId(String serviceName, byte[] routingId,
+                                    Message[] parts, SendFlag flags) {
+        Objects.requireNonNull(serviceName, "serviceName");
+        Objects.requireNonNull(routingId, "routingId");
+        MemorySegment service = serviceNameCString(serviceName);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = buildRoutingId(routingId);
+            sendToRoutingIdInternal(arena, service, rid, parts, flags, true);
+        }
+    }
+
+    private void sendMoveToRoutingId(PreparedService service, ByteSpan routingId,
                                     Message[] parts, SendFlag flags) {
         Objects.requireNonNull(service, "service");
         Objects.requireNonNull(routingId, "routingId");
@@ -260,7 +414,7 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    public void sendMoveToRoutingId(PreparedService service, byte[] routingId,
+    private void sendMoveToRoutingId(PreparedService service, byte[] routingId,
                                     Message[] parts, SendFlag flags) {
         Objects.requireNonNull(service, "service");
         Objects.requireNonNull(routingId, "routingId");
@@ -271,7 +425,18 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    public void sendMoveToRoutingId(PreparedService service, byte[] routingId,
+    private void sendMoveToRoutingId(PreparedService service, String routingId,
+                                    Message[] parts, SendFlag flags) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(routingId, "routingId");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = buildRoutingId(routingId);
+            sendToRoutingIdInternal(arena, service.cString(), rid, parts, flags,
+                true);
+        }
+    }
+
+    private void sendMoveToRoutingId(PreparedService service, byte[] routingId,
                                     Message[] parts, SendFlag flags,
                                     SendContext context) {
         Objects.requireNonNull(service, "service");
@@ -282,7 +447,7 @@ public final class Gateway implements AutoCloseable {
             true);
     }
 
-    public void sendMoveToRoutingId(PreparedService service, ByteSpan routingId,
+    private void sendMoveToRoutingId(PreparedService service, String routingId,
                                     Message[] parts, SendFlag flags,
                                     SendContext context) {
         Objects.requireNonNull(service, "service");
@@ -293,21 +458,32 @@ public final class Gateway implements AutoCloseable {
             true);
     }
 
-    public void sendMove(PreparedService service, Message[] parts, SendFlag flags) {
+    private void sendMoveToRoutingId(PreparedService service, ByteSpan routingId,
+                                    Message[] parts, SendFlag flags,
+                                    SendContext context) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(context, "context");
+        MemorySegment rid = buildRoutingId(routingId);
+        sendToRoutingIdInternal(context, service.cString(), rid, parts, flags,
+            true);
+    }
+
+    private void sendMove(PreparedService service, Message[] parts, SendFlag flags) {
         Objects.requireNonNull(service, "service");
         try (Arena arena = Arena.ofConfined()) {
             sendInternal(arena, service.cString(), parts, flags, true);
         }
     }
 
-    public void sendMove(PreparedService service, Message[] parts,
+    private void sendMove(PreparedService service, Message[] parts,
                          SendFlag flags, SendContext context) {
         Objects.requireNonNull(service, "service");
         Objects.requireNonNull(context, "context");
         sendInternal(context, service.cString(), parts, flags, true);
     }
 
-    public void sendMove(PreparedService service, Message part,
+    private void sendMove(PreparedService service, Message part,
                          SendFlag flags, SendContext context) {
         Objects.requireNonNull(service, "service");
         Objects.requireNonNull(part, "part");
@@ -325,10 +501,19 @@ public final class Gateway implements AutoCloseable {
                 throw new RuntimeException("zlink_gateway_recv failed");
             long partCount = count.get(ValueLayout.JAVA_LONG, 0);
             MemorySegment partsAddr = partsPtr.get(ValueLayout.ADDRESS, 0);
-            byte[][] data = NativeMsg.readMsgVector(partsAddr, partCount);
+            Message[] parts = Message.fromMsgVector(partsAddr, partCount);
+            if (parts.length != 1) {
+                Message.closeAll(parts);
+                throw new IllegalStateException(
+                    "recv expects exactly one message part; use recvMany");
+            }
             String serviceName = NativeHelpers.fromCString(service, SERVICE_NAME_CAPACITY);
-            return new GatewayMessage(serviceName, data);
+            return new GatewayMessage(serviceName, parts[0]);
         }
+    }
+
+    public GatewayMessages recvMany(ReceiveFlag flags) {
+        return recvMessages(flags);
     }
 
     public GatewayMessages recvMessages(ReceiveFlag flags) {
@@ -347,11 +532,11 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    public RecvContext createRecvContext() {
+    private RecvContext createRecvContext() {
         return new RecvContext();
     }
 
-    public GatewayRawMessage recvRaw(ReceiveFlag flags, RecvContext context) {
+    private GatewayRawMessage recvRaw(ReceiveFlag flags, RecvContext context) {
         Objects.requireNonNull(context, "context");
         context.ensureOpen();
         int serviceLen = recvRawIntoContext(flags, context);
@@ -359,7 +544,7 @@ public final class Gateway implements AutoCloseable {
         return new GatewayRawMessage(serviceRaw, context.reusableParts());
     }
 
-    public GatewayRawBorrowed recvRawBorrowed(ReceiveFlag flags,
+    private GatewayRawBorrowed recvRawBorrowed(ReceiveFlag flags,
                                               RecvContext context) {
         Objects.requireNonNull(context, "context");
         context.ensureOpen();
@@ -377,7 +562,7 @@ public final class Gateway implements AutoCloseable {
             throw new RuntimeException("zlink_gateway_set_lb_strategy failed");
     }
 
-    public void setLoadBalancing(PreparedService service, GatewayLbStrategy strategy) {
+    private void setLoadBalancing(PreparedService service, GatewayLbStrategy strategy) {
         Objects.requireNonNull(service, "service");
         int rc = Native.gatewaySetLbStrategy(handle, service.cString(), strategy.getValue());
         if (rc != 0)
@@ -400,7 +585,7 @@ public final class Gateway implements AutoCloseable {
         return rc;
     }
 
-    public int connectionCount(PreparedService service) {
+    private int connectionCount(PreparedService service) {
         Objects.requireNonNull(service, "service");
         int rc = Native.gatewayConnectionCount(handle, service.cString());
         if (rc < 0)
@@ -449,11 +634,11 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    public PreparedService prepareService(String serviceName) {
+    private PreparedService prepareService(String serviceName) {
         return new PreparedService(serviceName);
     }
 
-    public SendContext createSendContext() {
+    private SendContext createSendContext() {
         return new SendContext();
     }
 
@@ -489,19 +674,43 @@ public final class Gateway implements AutoCloseable {
         routingIdScratch.remove();
         serviceNameScratch.remove();
         serviceNameScratchCapacity.remove();
+        sendScratch.remove();
         closeArena(serviceNameCacheArena);
+        closeArena(routingIdCacheArena);
         closeArena(sockOptArena);
         sockOptArena = null;
         sockOptScratch = MemorySegment.NULL;
         sockOptScratchCapacity = 0;
         serviceNameCache.clear();
+        routingIdCache.clear();
     }
 
-    public record GatewayMessage(String serviceName, byte[][] parts) {}
+    public static final class GatewayMessage implements AutoCloseable {
+        private final String serviceName;
+        private final Message message;
 
-    public record GatewayRawMessage(MemorySegment serviceName, Message[] parts) {}
+        GatewayMessage(String serviceName, Message message) {
+            this.serviceName = serviceName == null ? "" : serviceName;
+            this.message = Objects.requireNonNull(message, "message");
+        }
 
-    public static final class GatewayRawBorrowed {
+        public String serviceName() {
+            return serviceName;
+        }
+
+        public Message message() {
+            return message;
+        }
+
+        @Override
+        public void close() {
+            message.close();
+        }
+    }
+
+    private record GatewayRawMessage(MemorySegment serviceName, Message[] parts) {}
+
+    private static final class GatewayRawBorrowed {
         private MemorySegment serviceNameBuffer = MemorySegment.NULL;
         private int serviceNameLength = 0;
         private Message[] parts = new Message[0];
@@ -537,7 +746,7 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    public static final class PreparedService implements AutoCloseable {
+    private static final class PreparedService implements AutoCloseable {
         private final String serviceName;
         private Arena arena;
         private MemorySegment cString;
@@ -567,7 +776,7 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    public static final class SendContext implements AutoCloseable {
+    private static final class SendContext implements AutoCloseable {
         private Arena arena;
         private MemorySegment vec;
         private int vecCapacity;
@@ -604,30 +813,56 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
+    private static final class SendScratch {
+        private final Arena arena;
+        private MemorySegment vec;
+        private int vecCapacity;
+
+        SendScratch() {
+            this.arena = Arena.ofAuto();
+            this.vec = MemorySegment.NULL;
+            this.vecCapacity = 0;
+        }
+
+        MemorySegment ensureVector(int requiredParts) {
+            if (requiredParts <= 0)
+                throw new IllegalArgumentException("parts required");
+            if (vecCapacity < requiredParts) {
+                vec = arena.allocate(NativeLayouts.MSG_LAYOUT, requiredParts);
+                vecCapacity = requiredParts;
+            }
+            return vec;
+        }
+    }
+
     public static final class GatewayMessages implements AutoCloseable {
         private final String serviceName;
-        private final Message[] parts;
+        private final List<Message> parts;
 
         GatewayMessages(String serviceName, Message[] parts) {
             this.serviceName = serviceName == null ? "" : serviceName;
-            this.parts = parts == null ? new Message[0] : parts;
+            Message[] safeParts = parts == null ? new Message[0] : parts;
+            this.parts = Collections.unmodifiableList(Arrays.asList(safeParts));
         }
 
         public String serviceName() {
             return serviceName;
         }
 
-        public Message[] parts() {
+        public List<Message> parts() {
             return parts;
         }
 
         @Override
         public void close() {
-            Message.closeAll(parts);
+            for (Message part : parts) {
+                if (part != null)
+                    part.close();
+            }
         }
     }
 
-    public static final class RecvContext implements AutoCloseable {
+    private static final class RecvContext implements AutoCloseable {
         private Arena arena;
         private final MemorySegment partsPtr;
         private final MemorySegment partCount;
@@ -714,6 +949,16 @@ public final class Gateway implements AutoCloseable {
         sendInternal(vec, serviceName, parts, flags, move);
     }
 
+    private void sendInternal(Arena arena,
+                              MemorySegment serviceName,
+                              List<Message> parts,
+                              SendFlag flags,
+                              boolean move) {
+        int partCount = validateMessagesList(parts, "messages");
+        MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, partCount);
+        sendInternal(vec, serviceName, parts, partCount, flags, move);
+    }
+
     private void sendInternal(SendContext context,
                               MemorySegment serviceName,
                               Message[] parts,
@@ -754,6 +999,48 @@ public final class Gateway implements AutoCloseable {
             }
             int rc = Native.gatewaySend(handle, serviceName, vec, parts.length,
               flags.getValue());
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_gateway_send");
+        } catch (RuntimeException ex) {
+            closeMsgVector(vec, initialized);
+            throw ex;
+        }
+    }
+
+    private void sendInternal(MemorySegment vec,
+                              MemorySegment serviceName,
+                              List<Message> parts,
+                              int partCount,
+                              SendFlag flags,
+                              boolean move) {
+        if (partCount <= 0)
+            throw new IllegalArgumentException("messages required");
+        if (partCount == 1) {
+            Message part = parts.get(0);
+            sendSingleInternal(vec, serviceName, part, flags, move);
+            return;
+        }
+        int initialized = 0;
+        int index = 0;
+        try {
+            for (Message part : parts) {
+                if (part == null)
+                    throw new IllegalArgumentException(
+                        "messages[" + index + "] is null");
+                MemorySegment dest = vec.asSlice((long) index * MSG_SIZE,
+                    MSG_SIZE);
+                int rc = NativeMsg.msgInit(dest);
+                if (rc != 0)
+                    throw new RuntimeException("zlink_msg_init failed");
+                initialized++;
+                if (move)
+                    part.moveTo(dest);
+                else
+                    part.copyTo(dest);
+                index++;
+            }
+            int rc = Native.gatewaySend(handle, serviceName, vec, partCount,
+                flags.getValue());
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_gateway_send");
         } catch (RuntimeException ex) {
@@ -824,6 +1111,18 @@ public final class Gateway implements AutoCloseable {
         sendToRoutingIdInternal(vec, serviceName, routingId, parts, flags, move);
     }
 
+    private void sendToRoutingIdInternal(Arena arena,
+                                         MemorySegment serviceName,
+                                         MemorySegment routingId,
+                                         List<Message> parts,
+                                         SendFlag flags,
+                                         boolean move) {
+        int partCount = validateMessagesList(parts, "messages");
+        MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, partCount);
+        sendToRoutingIdInternal(vec, serviceName, routingId, parts, partCount,
+            flags, move);
+    }
+
     private void sendToRoutingIdInternal(SendContext context,
                                          MemorySegment serviceName,
                                          MemorySegment routingId,
@@ -862,6 +1161,78 @@ public final class Gateway implements AutoCloseable {
             }
             int rc = Native.gatewaySendRid(handle, serviceName, routingId, vec,
               parts.length, flags.getValue());
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_gateway_send_rid");
+        } catch (RuntimeException ex) {
+            closeMsgVector(vec, initialized);
+            throw ex;
+        }
+    }
+
+    private void sendToRoutingIdSingleInternal(MemorySegment vec,
+                                               MemorySegment serviceName,
+                                               MemorySegment routingId,
+                                               Message part,
+                                               SendFlag flags,
+                                               boolean move) {
+        if (part == null)
+            throw new IllegalArgumentException("message is null");
+        int initialized = 0;
+        try {
+            int rc = NativeMsg.msgInit(vec);
+            if (rc != 0)
+                throw new RuntimeException("zlink_msg_init failed");
+            initialized = 1;
+            if (move)
+                part.moveTo(vec);
+            else
+                part.copyTo(vec);
+            rc = Native.gatewaySendRid(handle, serviceName, routingId, vec, 1,
+                flags.getValue());
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_gateway_send_rid");
+        } catch (RuntimeException ex) {
+            closeMsgVector(vec, initialized);
+            throw ex;
+        }
+    }
+
+    private void sendToRoutingIdInternal(MemorySegment vec,
+                                         MemorySegment serviceName,
+                                         MemorySegment routingId,
+                                         List<Message> parts,
+                                         int partCount,
+                                         SendFlag flags,
+                                         boolean move) {
+        if (partCount <= 0)
+            throw new IllegalArgumentException("messages required");
+        if (partCount == 1) {
+            Message part = parts.get(0);
+            sendToRoutingIdSingleInternal(vec, serviceName, routingId, part,
+                flags, move);
+            return;
+        }
+        int initialized = 0;
+        int index = 0;
+        try {
+            for (Message part : parts) {
+                if (part == null)
+                    throw new IllegalArgumentException(
+                        "messages[" + index + "] is null");
+                MemorySegment dest = vec.asSlice((long) index * MSG_SIZE,
+                    MSG_SIZE);
+                int rc = NativeMsg.msgInit(dest);
+                if (rc != 0)
+                    throw new RuntimeException("zlink_msg_init failed");
+                initialized++;
+                if (move)
+                    part.moveTo(dest);
+                else
+                    part.copyTo(dest);
+                index++;
+            }
+            int rc = Native.gatewaySendRid(handle, serviceName, routingId, vec,
+                partCount, flags.getValue());
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_gateway_send_rid");
         } catch (RuntimeException ex) {
@@ -962,6 +1333,29 @@ public final class Gateway implements AutoCloseable {
           routingId.length);
     }
 
+    private MemorySegment buildRoutingId(String routingId) {
+        Objects.requireNonNull(routingId, "routingId");
+        MemorySegment cached = routingIdCache.get(routingId);
+        if (cached != null)
+            return cached;
+        if (routingIdCache.size() >= ROUTING_ID_CACHE_LIMIT) {
+            byte[] utf8 = routingId.getBytes(StandardCharsets.UTF_8);
+            return buildRoutingId(MemorySegment.ofArray(utf8), 0, utf8.length);
+        }
+
+        byte[] utf8 = routingId.getBytes(StandardCharsets.UTF_8);
+        if (utf8.length <= 0 || utf8.length > 255) {
+            throw new IllegalArgumentException(
+              "routingId length must be between 1 and 255");
+        }
+
+        MemorySegment rid = routingIdCacheArena.allocate(ROUTING_ID_LAYOUT_SIZE);
+        rid.set(ValueLayout.JAVA_BYTE, 0, (byte) utf8.length);
+        MemorySegment.copy(MemorySegment.ofArray(utf8), 0, rid, 1, utf8.length);
+        MemorySegment previous = routingIdCache.putIfAbsent(routingId, rid);
+        return previous == null ? rid : previous;
+    }
+
     private MemorySegment buildRoutingId(ByteSpan routingId) {
         Objects.requireNonNull(routingId, "routingId");
         return buildRoutingId(routingId.segment(), 0, routingId.length());
@@ -985,6 +1379,15 @@ public final class Gateway implements AutoCloseable {
                                       String name) {
         if (offset < 0 || length < 0 || offset > total - length)
             throw new IndexOutOfBoundsException(name + " range out of bounds");
+    }
+
+    private static int validateMessagesList(List<Message> messages,
+                                            String name) {
+        Objects.requireNonNull(messages, name);
+        int size = messages.size();
+        if (size <= 0)
+            throw new IllegalArgumentException(name + " required");
+        return size;
     }
 
 }

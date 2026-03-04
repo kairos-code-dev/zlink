@@ -15,6 +15,6 @@ public class VersionTest {
         }
         org.junit.jupiter.api.Assertions.assertEquals(1, v[0]);
         org.junit.jupiter.api.Assertions.assertEquals(7, v[1]);
-        org.junit.jupiter.api.Assertions.assertEquals(0, v[2]);
+        org.junit.jupiter.api.Assertions.assertEquals(1, v[2]);
     }
 }

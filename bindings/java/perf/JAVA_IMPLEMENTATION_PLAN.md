@@ -8,7 +8,7 @@
 
 ## 1. 디렉토리 구조
 
-core/perf 의 `common/` + `current/` 분리 구조를 Java 패키지 컨벤션으로 그대로 반영한다.
+core/perf 의 `common/` + `src/` 분리 구조를 Java 패키지 컨벤션으로 그대로 반영한다.
 
 ```
 bindings/java/
@@ -19,9 +19,9 @@ bindings/java/
 │       └── ca.crt
 │
 └── perf/
-    ├── IMPLEMENTATION_PLAN.md              ← 본 문서
+    ├── JAVA_IMPLEMENTATION_PLAN.md         ← 본 문서
     ├── README.md                           ← 사용법 안내
-    ├── .gitignore                          ← build/, tmp/ 제외
+    ├── .gitignore                          ← build/ 제외
     │
     ├── single/
     │   ├── Zlink.PerfBench/
@@ -32,7 +32,7 @@ bindings/java/
     │   │       │   ├── PerfCommon.java     ← 공통 유틸 (retry, PrintResult, 엔드포인트 등)
     │   │       │   ├── PerfSingleMetricHeader.java ← SPF1 페이로드 헤더 stamp/decode
     │   │       │   └── PerfTls.java        ← TLS 인증서 경로 리졸버 (single)
-    │   │       └── current/                ← ★ core/perf/single/current/ 대응
+    │   │       └── src/                    ← ★ core/perf/single/src/ 대응
     │   │           ├── PerfPair.java
     │   │           ├── PerfPubSub.java
     │   │           ├── PerfDealerDealer.java
@@ -55,12 +55,10 @@ bindings/java/
     │   │       │   ├── PerfMultiCommon.java    ← Multi 설정 리졸버
     │   │       │   ├── PerfMultiServerEntry.java  ← 서버 디스패처 + CPU/MEM
     │   │       │   ├── PerfMultiClientEntry.java  ← 클라이언트 디스패처 + CPU/MEM
-    │   │       │   ├── PerfMultiClientHelpers.java ← 공통 client 루프 헬퍼
+    │   │       │   ├── PerfMultiClientHelpers.java ← client 유틸 (transport 판별, 연결 대기)
     │   │       │   ├── PerfMultiMetricHeader.java ← MPF1 페이로드 헤더 stamp/decode
-    │   │       │   ├── PerfMultiTls.java          ← TLS 인증서 경로 리졸버
-    │   │       │   ├── PerfMultiStreamClient.java ← Raw transport stream client
-    │   │       │   └── PerfMultiStreamStopParser.java ← len32be stop-token 파서
-    │   │       └── current/                ← ★ core/perf/multi/current/ 대응
+    │   │       │   └── PerfMultiTls.java          ← TLS 인증서 경로 리졸버
+    │   │       └── src/                    ← ★ core/perf/multi/src/ 대응
     │   │           ├── PerfMultiDealerDealerServer.java  ← ★ server/client 분리
     │   │           ├── PerfMultiDealerDealerClient.java
     │   │           ├── PerfMultiDealerRouterServer.java
@@ -82,11 +80,9 @@ bindings/java/
     │
     ├── results/
     │   ├── single/
-    │   │   ├── report/.gitkeep
-    │   │   └── tmp/.gitkeep
+    │   │   └── report/.gitkeep
     │   └── multi/
-    │       ├── report/.gitkeep
-    │       └── tmp/.gitkeep
+    │       └── report/.gitkeep
     │
     ├── run_benchmarks.sh                   ← 루트 single 래퍼
     ├── run_benchmarks.ps1
@@ -101,16 +97,18 @@ bindings/java/
 |-----------|-----------|------|
 | `single/common/bench_common.hpp` | `single/.../common/PerfCommon.java` | 패키지 분리 |
 | `single/common/perf_single_metric_header.hpp` | `single/.../common/PerfSingleMetricHeader.java` | SPF1 (0x53504631) 페이로드 헤더 stamp/decode |
-| `single/current/perf_pair.cpp` | `single/.../current/PerfPair.java` | 1:1 매핑 |
-| `single/current/perf_dealer_dealer.cpp` | `single/.../current/PerfDealerDealer.java` | 1:1 매핑 |
+| `single/src/perf_pair.cpp` | `single/.../src/PerfPair.java` | 1:1 매핑 |
+| `single/src/perf_dealer_dealer.cpp` | `single/.../src/PerfDealerDealer.java` | 1:1 매핑 |
 | `multi/common/perf_common.hpp` | `multi/.../common/PerfCommon.java` | 패키지 분리 |
 | `multi/common/perf_common_multi.hpp` | `multi/.../common/PerfMultiCommon.java` | |
-| `multi/common/perf_multi_metric_header.hpp` | `multi/.../common/PerfMultiMetricHeader.java` | MPF1 (0x4D504631) 페이로드 헤더 stamp/decode |
-| `multi/common/perf_multi_client_helpers.hpp` | `multi/.../common/PerfMultiClientHelpers.java` | |
-| `multi/common/perf_multi_entry.hpp` | `multi/.../common/PerfMultiServerEntry.java` + `PerfMultiClientEntry.java` | |
-| `multi/current/perf_multi_dealer_dealer_server.cpp` | `multi/.../current/PerfMultiDealerDealerServer.java` | ★ server/client 분리 유지 |
-| `multi/current/perf_multi_dealer_dealer_client.cpp` | `multi/.../current/PerfMultiDealerDealerClient.java` | |
-| `multi/current/perf_multi_stream_server.cpp` | `multi/.../current/PerfMultiStreamServer.java` | 서버 only |
+| `multi/common/perf_metric_header.hpp` | `multi/.../common/PerfMultiMetricHeader.java` | MPF1 (0x4D504631) 페이로드 헤더 stamp/decode |
+| `multi/common/perf_client_helpers.hpp` | `multi/.../common/PerfMultiClientHelpers.java` | |
+| `multi/common/perf_entry.hpp` | (해당 없음 — env setter 1개, Java 에서는 PerfMultiMain 내부에서 직접 처리) | env 설정 helper 만 포함 |
+| (core 각 server/client main() 의 디스패치+메트릭 로직) | `multi/.../common/PerfMultiServerEntry.java` + `PerfMultiClientEntry.java` | Java 전용 디스패치+CPU/MEM 집약 |
+| `multi/src/perf_dealer_dealer_server.cpp` | `multi/.../src/PerfMultiDealerDealerServer.java` | ★ server/client 분리 유지 |
+| `multi/src/perf_dealer_dealer_client.cpp` | `multi/.../src/PerfMultiDealerDealerClient.java` | |
+| `multi/src/perf_stream_server.cpp` | `multi/.../src/PerfMultiStreamServer.java` | 서버 only |
+| `common/streamclient/` (C++ 독립 바이너리) | (Java 대응 없음 — C++ 공용 바이너리 그대로 사용) | `run_policy_bench.py` 가 자동 호출 |
 
 ---
 
@@ -181,10 +179,16 @@ java --enable-native-access=ALL-UNNAMED \
   <PATTERN> <TRANSPORT> <SIZE>
 ```
 
-- **PATTERN**: `PAIR | PUBSUB | DEALER_DEALER | DEALER_ROUTER | ROUTER_ROUTER | ROUTER_ROUTER_POLL | GATEWAY | SPOT`
+- **PATTERN** (Java 바이너리 직접 실행 8종): `PAIR | PUBSUB | DEALER_DEALER | DEALER_ROUTER | ROUTER_ROUTER | ROUTER_ROUTER_POLL | GATEWAY | SPOT`
 - **TRANSPORT**: `tcp | tls | ws | wss | inproc | ipc`
 - **SIZE**: 양의 정수 (바이트)
 - 종료코드: 0=성공, 1=인자 오류, 2=런타임 오류
+
+> **core/perf 기준 single suite 패턴은 8종**이다 (`STANDARD_PATTERNS` = PAIR~SPOT).
+> STREAM 3종은 single suite 에 포함되지 않으며, multi suite 에서만 실행된다.
+> `run_policy_bench.py` 는 `supports_split_multi()=true` 인 바인딩에서 single STREAM 을
+> multi 서버 + `core/perf/common/streamclient` C++ 클라이언트로 위임 실행하지만,
+> 이는 런너의 편의 기능이며 core/perf single suite 자체에는 STREAM 이 없다.
 
 ### 3.2 Multi 실행
 
@@ -211,15 +215,15 @@ STREAM, STREAM_CALLBACK, STREAM_LEN32BE 패턴은:
 - **클라이언트**: `core/perf/common/streamclient/build/perf_stream_client` (C++ 공통 바이너리) 사용
 - `run_policy_bench.py` 가 자동으로 공통 stream client 를 호출한다.
 
-### 3.4 run_policy_bench.py 필수 수정 사항
+### 3.4 run_policy_bench.py 수정 사항
 
-현재 `run_policy_bench.py` 에 Java 관련 수정이 필요한 항목:
+`run_policy_bench.py` 에 Java 바인딩 코드가 존재하나 perf 구조 개편 전 상태이다. 아래 항목을 반영해야 한다:
 
-| 위치 | 현재 | 수정 필요 |
-|------|------|----------|
-| `binding_cmd_prefix()` (L873) | `[java, "-cp", cp, ...]` cp=`java/build/classes/java/main:test:resources` | `[java, "--enable-native-access=ALL-UNNAMED", "-cp", cp, ...]` cp=`java/perf/single/Zlink.PerfBench/build/classes/java/main:java/build/classes/java/main:java/build/resources/main` |
-| `binding_multi_role_command()` (L1049,1061) | 동일 cp 경로 + `--enable-native-access` 미포함 | `--enable-native-access=ALL-UNNAMED` 추가 + cp=`java/perf/multi/Zlink.PerfBench/build/classes/java/main:java/build/classes/java/main:java/build/resources/main` |
-| `build_binding_if_needed()` (L673-687) | `"java" / "build" / "classes" / "java" / "test" / ...` | `"java" / "perf" / suite_dir / "Zlink.PerfBench" / "build" / "classes" / "java" / "main" / ...` |
+| 함수 | 위치 | 현재 상태 | 필수 수정 |
+|------|------|----------|----------|
+| `build_binding_if_needed()` | L590 | artifact 경로가 `java/build/classes/java/test/` | `java/perf/<suite>/Zlink.PerfBench/build/classes/java/main/` |
+| `binding_cmd_prefix()` | L854 | `--enable-native-access` 미포함, cp 에 test 경로 | `--enable-native-access=ALL-UNNAMED` 추가, cp=`java/perf/single/Zlink.PerfBench/build/classes/java/main:java/build/classes/java/main:java/build/resources/main` |
+| `binding_multi_role_command()` | L1035 | 동일 (test 경로, native-access 미포함) | `--enable-native-access=ALL-UNNAMED` 추가, cp=`java/perf/multi/Zlink.PerfBench/build/classes/java/main:java/build/classes/java/main:java/build/resources/main` |
 
 ---
 
@@ -229,12 +233,14 @@ STREAM, STREAM_CALLBACK, STREAM_LEN32BE 패턴은:
 RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,throughput,<value>
 RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,bandwidth,<value>
 RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,latency,<value>
+RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,latency_p95,<value>
+RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,latency_p99,<value>
 ```
 
-> **참고**: `run_policy_bench.py` 파서는 `throughput`, `bandwidth`, `latency` 3개 메트릭만 수집하며,
-> 완료 판정도 조합당 3개 메트릭 기준이다 (`expected = (total - unsupported - skipped) * 3`).
-> `latency_p95`, `latency_p99` 는 벤치마크가 stdout 에 출력하되, 런너가 수집·검증하지 않는 참고 메트릭이다.
-> 런너 파서 수정 없이 p95/p99 를 수집하려면 파서의 허용 메트릭 목록과 완료 기준을 함께 변경해야 한다.
+벤치마크는 core/perf 와 동일하게 조합당 **5개 RESULT 라인** (throughput, bandwidth, latency, latency_p95, latency_p99) 을 stdout 에 출력해야 한다.
+
+> **완료 판정**: `run_policy_bench.py` 는 조합당 `required_metric_count` 기준으로 판정한다.
+> Java 는 **3** (throughput, bandwidth, latency) 기준이다 (`expected = (total - unsupported - skipped) × required_metric_count`).
 
 Multi 추가 메트릭 (PerfMultiServerEntry / PerfMultiClientEntry 에서):
 ```
@@ -253,8 +259,8 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 구분 | 승수 | 비고 |
 |------|------|------|
 | **Single 전체** | **1.0** | run_policy_bench.py 기준 모든 single 은 one-way 방향 |
-| Multi echo (DEALER_ROUTER, ROUTER_ROUTER, STREAM*) | 2.0 | 요청+응답 양방향 |
-| Multi one-way (DEALER_DEALER, PUBSUB, GATEWAY, SPOT) | 1.0 | 단방향 |
+| Multi echo (DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, STREAM*) | 2.0 | 요청+응답 양방향 |
+| Multi one-way (DEALER_DEALER, PUBSUB, SPOT) | 1.0 | 단방향 |
 
 ---
 
@@ -265,7 +271,7 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 변수 | 기본값 | 용도 |
 |------|--------|------|
 | `PERF_IO_THREADS` | 0 (기본) | Context IO 스레드 |
-| `PERF_WARMUP_COUNT` | 1000 | 웜업 메시지 횟수 (count 기반, 시간 기반 아님) |
+| `PERF_WARMUP_COUNT` | 일반 **1000**, GATEWAY/SPOT **200** | 웜업 메시지 횟수 (count 기반). SPOT 은 `msg_size ≥ 65536` 시 최대 20 으로 clamp |
 | `PERF_SINGLE_DURATION_SECONDS` | 5 | 활성 측정 기간 |
 | `PERF_SINGLE_LATENCY_SAMPLE_CAP` | 200000 | 레이턴시 reservoir sampling 캡 |
 | `PERF_SINGLE_HWM` | **1000** | 소켓 HWM (send+recv 기본) |
@@ -279,24 +285,21 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 
 | 변수 | 기본값 | 용도 |
 |------|--------|------|
-| `PERF_MULTI_CLIENTS` | **100** (STREAM: 10000) | 동시 클라이언트 수 |
-| `PERF_MULTI_WARMUP_SECONDS` | **2** | 웜업 기간 |
-| `PERF_MULTI_SETTLE_MS` | 500 | 측정 전 안정화 |
-| `PERF_MULTI_DURATION_SECONDS` | 5 | 활성 측정 기간 |
-| `PERF_MULTI_DRAIN_MS` | 패턴별 (echo: 300, one-way: 0) | 드레인 |
-| `PERF_MULTI_ACTIVE_WARMUP` | 0 | 0=sleep, 1=active |
-| `PERF_MULTI_HWM` | **100** (STREAM: 10) | 소켓 HWM |
-| `PERF_MULTI_SNDHWM` | 0 (HWM fallback) | 송신 HWM |
-| `PERF_MULTI_RCVHWM` | 0 (HWM fallback) | 수신 HWM |
-| `PERF_MULTI_SNDTIMEO_MS` | **200** | 송신 타임아웃 |
-| `PERF_MULTI_RCVTIMEO_MS` | **200** | 수신 타임아웃 |
-| `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` | 5000 | 연결 대기 |
-| `PERF_MULTI_MONITOR_HWM` | **1000** | 모니터 소켓 HWM |
-| `PERF_MULTI_SERVER_BIND_PORT` | 0 (자동) | 서버 포트 고정 |
+| `PERF_CLIENTS` | **100** (STREAM: 10000) | 동시 클라이언트 수 |
+| `PERF_WARMUP_SECONDS` | **2** | 웜업 기간 |
+| `PERF_SETTLE_MS` | 500 | Warmup→Active 사이 안정화 (인플라이트 소진 포함) |
+| `PERF_DURATION_SECONDS` | 5 | 활성 측정 기간 |
+| `PERF_ACTIVE_WARMUP` | 0 | 0=sleep, 1=active |
+| `PERF_HWM` | **100** (STREAM: 10) | 소켓 HWM |
+| `PERF_SNDHWM` | `PERF_HWM` 값 (미설정 시 HWM 과 동일) | 송신 HWM 오버라이드 |
+| `PERF_RCVHWM` | `PERF_HWM` 값 (미설정 시 HWM 과 동일) | 수신 HWM 오버라이드 |
+| `PERF_SNDTIMEO_MS` | **200** | 송신 타임아웃 |
+| `PERF_RCVTIMEO_MS` | **200** | 수신 타임아웃 |
+| `PERF_CONNECT_READY_TIMEOUT_MS` | 5000 | 연결 대기 |
+| `PERF_MONITOR_HWM` | **1000** | 모니터 소켓 HWM |
+| `PERF_SERVER_BIND_PORT` | 0 (자동) | 서버 포트 고정 |
 | `PERF_IO_THREADS` | 0 | IO 스레드 |
-| `PERF_MULTI_SERVER_IO_THREADS` | 0 | 서버 전용 IO 스레드 |
-| `PERF_MULTI_CLIENT_IO_THREADS` | 0 | 클라이언트 전용 IO 스레드 |
-| `PERF_MULTI_CLIENT_POLL_TIMEOUT_MS` | 0 | 클라이언트 poll 타임아웃 |
+| `PERF_CLIENT_POLL_TIMEOUT_MS` | 0 | 클라이언트 poll 타임아웃 |
 | `PERF_CTX_BLOCKY` | 미설정 | Context blocky 모드 (설정 시 적용) |
 | `PERF_CTX_TERM` | 미설정 | Context termination 모드 (1=full term) |
 
@@ -307,27 +310,31 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 ### 6.1 Single 페이즈
 
 ```
-[Warmup(count)] → [Active(duration) — throughput + latency 동시 측정]
+[Setup+Settle] → [Warmup(count)] → [Active(duration) — throughput + latency 동시 측정 + implicit drain]
 ```
 
-1. **Warmup** (`PERF_WARMUP_COUNT`, 기본 1000): 고정 횟수 send/recv 반복으로 워밍업 (시간 기반이 아님)
-2. **Active** (`PERF_SINGLE_DURATION_SECONDS`, 5초): duration 기반 throughput 측정 + reservoir sampling 으로 latency/p95/p99 동시 수집
+1. **Setup + Settle**: `setup_connected_pair()` 내부에서 소켓 연결 후 `settle()` 호출 (`SETTLE_TIME_MS` = 100ms sleep)
+2. **Warmup** (`PERF_WARMUP_COUNT`): 고정 횟수 send/recv 반복 (시간 기반이 아님). 기본값: 일반 1000, GATEWAY/SPOT 200. SPOT 은 `msg_size ≥ 65536` 시 최대 20 으로 clamp
+3. **Active** (`PERF_SINGLE_DURATION_SECONDS`, 5초): duration 기반 throughput 측정 + reservoir sampling 으로 latency/p95/p99 동시 수집
 
-> **core 구현 참고**: single 은 별도 Settle/Drain/Latency 페이즈가 없다.
-> Active 페이즈에서 메시지 헤더의 `sent_ts_us` 를 기반으로 throughput 과 latency 를 동시에 측정한다.
-> 수신 측에서 reservoir sampling (`latency_stats_builder_t`) 으로 p95/p99 를 수집한다.
+> **core 구현 참고**: single 은 settle 과 drain 이 별도 named 페이즈로 노출되지 않는다.
+> - **Settle**: `setup_connected_pair()` 내부에서 100ms sleep (네트워크 안정화)
+> - **Drain**: Active 페이즈 종료 시 sender 완료 후 receiver 가 `drain_idle_limit` (기본 200ms) 동안 잔여 메시지 수신 대기
+> - Active 페이즈에서 메시지 헤더의 `sent_ts_us` 를 기반으로 throughput 과 latency 를 동시에 측정한다.
+> - 수신 측에서 reservoir sampling (`latency_stats_builder_t`) 으로 p95/p99 를 수집한다.
 
 ### 6.2 Multi 페이즈
 
 ```
-[Connect] → [Warmup(duration)] → [Settle] → [Active(duration)] → [Drain]
+[Connect] → [Warmup(duration)] → [Settle(settle_ms)] → [Active(duration)]
 ```
 
-1. **Connect**: N 클라이언트 생성, MonitorSocket 로 연결 확인 (`PERF_MULTI_CONNECT_READY_TIMEOUT_MS`)
-2. **Warmup** (`PERF_MULTI_WARMUP_SECONDS`, 2초): duration 기반 send/recv 반복 (phase_warmup)
-3. **Settle** (`PERF_MULTI_SETTLE_MS`, 500ms): 안정화 sleep (one-way: phase_drain 라벨, echo: phase_warmup 라벨)
-4. **Active** (`PERF_MULTI_DURATION_SECONDS`, 5초): 라운드로빈 분산 send/recv, 메트릭 수집 (phase_active)
-5. **Drain** (`PERF_MULTI_DRAIN_MS`, echo: 300ms, one-way: 0ms): 인플라이트 메시지 대기
+1. **Connect**: N 클라이언트 생성, MonitorSocket 로 연결 확인 (`PERF_CONNECT_READY_TIMEOUT_MS`)
+2. **Warmup** (`PERF_WARMUP_SECONDS`, 2초): duration 기반 send/recv 반복 (phase_warmup)
+3. **Settle** (`PERF_SETTLE_MS`, 500ms): 인플라이트 메시지 소진 + 안정화 (one-way: phase_drain 라벨로 recv-only, echo: phase_warmup+allow_send=false)
+4. **Active** (`PERF_DURATION_SECONDS`, 5초): 라운드로빈 분산 send/recv, 메트릭 수집 (phase_active)
+
+> **참고**: Active 이후 별도 Drain 페이즈는 없다. Drain 성격의 처리는 Settle 구간에서 수행된다.
 
 ---
 
@@ -337,6 +344,11 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 
 > **참고**: run_policy_bench.py 기준 모든 single 패턴은 one-way 방향(`bandwidth 승수 = 1.0`).
 > "소켓 동작" 열은 실제 send/recv 패턴(echo=양방향, one-way=단방향)을 나타낸다.
+
+> core/perf 기준 single suite 는 **8개** 패턴이다 (`STANDARD_PATTERNS`).
+> `run_policy_bench.py` 는 STREAM 3종을 추가로 포함하여 11개를 `SINGLE_PATTERNS` 로 정의하지만,
+> 이는 런너가 multi 서버로 위임 실행하는 편의 기능이다.
+> Java 바이너리가 직접 실행하는 single 패턴은 #1~#8 의 8개이다.
 
 | # | 파일 | 패턴 | 소켓 타입 | 소켓 동작 | 트랜스포트 |
 |---|------|------|-----------|----------|-----------|
@@ -348,11 +360,12 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 6 | PerfRouterRouterPoll.java | ROUTER_ROUTER_POLL | ROUTER×2+Poller | echo | tcp,tls,ws,wss,inproc,ipc |
 | 7 | PerfGateway.java | GATEWAY | Gateway+Receiver | echo | tcp,tls,ws,wss |
 | 8 | PerfSpot.java | SPOT | Spot (pub/sub) | one-way | tcp,tls,ws,wss |
+| 9 | *(multi 위임)* | STREAM | STREAM socket | echo | tcp,tls,ws,wss |
+| 10 | *(multi 위임)* | STREAM_CALLBACK | STREAM+callback | echo | tcp,tls,ws,wss |
+| 11 | *(multi 위임)* | STREAM_LEN32BE | STREAM+len32be | echo | tcp,tls,ws,wss |
 
-> **참고**: STREAM 3종(STREAM, STREAM_CALLBACK, STREAM_LEN32BE)은 Java 에서 multi suite 서버만 구현한다.
-> 단, `run_policy_bench.py` 의 `SINGLE_PATTERNS` 에 STREAM 3종이 포함되어 있으며,
-> Java 는 `supports_split_multi()=true` 이므로 런너가 single STREAM 을 multi server 경로로 위임 실행한다.
-> 따라서 single 기본 패턴은 11개(PAIR~SPOT + STREAM 3종)이며, STREAM 서버 구현 완료 시 모두 성공해야 한다.
+> **STREAM 3종 구현**: Java single 파일은 없으며, multi suite 의 PerfMultiStream*Server.java 를 런너가
+> `SINGLE_TO_MULTI_STREAM_PATTERN` 매핑으로 위임 실행한다. 클라이언트는 `core/perf/common/streamclient` C++ 바이너리.
 
 ### 7.2 Multi 패턴
 
@@ -405,8 +418,9 @@ public final class PerfCommon {
     static String endpointFor(String transport, String name);
 
     // RESULT 출력 (bandwidth 승수 = 1.0 for all single)
-    // throughput, bandwidth, latency — 3개 필수 메트릭 출력 (런너 파서 수집 대상)
-    // latency_p95, latency_p99 — 참고용 stdout 출력 (런너 파서 미수집)
+    // core/perf 와 동일하게 5개 RESULT 라인 출력:
+    //   throughput, bandwidth, latency, latency_p95, latency_p99
+    // 런너 파서는 5종 모두 수집, 완료 판정은 3종 (throughput/bandwidth/latency) 기준
     static void printResult(String pattern, String transport, int size,
                            double throughput, double latencyUs,
                            double latencyP95Us, double latencyP99Us);
@@ -438,30 +452,32 @@ single 의 PerfCommon 유틸 중 필요한 것을 포함하고 multi 전용 기�
 
 ```java
 public final class PerfMultiCommon {
-    static int resolveMultiClients(String pattern);   // 비-STREAM: 100, STREAM: 10000
-    static int resolveMultiHwm(String pattern);       // 비-STREAM: 100, STREAM: 10
-    static int resolveMultiWarmupSeconds();
-    static int resolveMultiDurationSeconds();
-    static int resolveMultiSettleMs();
-    static int resolveMultiDrainMs(String pattern);   // echo: 300, one-way: 0
-    static int resolveMultiWarmupDrainMs(String pattern);
-    // ... 기타 환경변수 리졸버
+    static int resolveClients(String pattern);          // PERF_CLIENTS — 비-STREAM: 100, STREAM: 10000
+    static int resolveHwm(String pattern);              // PERF_HWM — 비-STREAM: 100, STREAM: 10
+    static int resolveWarmupSeconds();                   // PERF_WARMUP_SECONDS — 기본 2
+    static int resolveDurationSeconds();                 // PERF_DURATION_SECONDS — 기본 5
+    static int resolveSettleMs();                        // PERF_SETTLE_MS — 기본 500
+    // ... 기타 환경변수 리졸버 (SNDTIMEO, RCVTIMEO, CONNECT_READY_TIMEOUT 등)
 }
 ```
 
-**`PerfMultiClientHelpers.java`** — (core/perf multi/common/perf_multi_client_helpers.hpp 대응)
+**`PerfMultiClientHelpers.java`** — (core/perf multi/common/perf_client_helpers.hpp 대응)
 
 ```java
 public final class PerfMultiClientHelpers {
     static boolean isSupportedTransport(String transport);
     static String parseEndpointArg(String[] args);
     static void waitAllClientConnectReady(List<MonitorSocket> monitors, int timeoutMs);
-    static void runMultiEchoClientBenchmark(...);    // 공통 echo 클라이언트 루프
-    static void runMultiOnewayClientBenchmark(...);  // 공통 one-way 클라이언트 루프
+    // NOTE: send/recv 루프는 여기에 두지 않는다.
+    // 각 패턴 클라이언트 파일이 자체적으로 인라인한다 (§15.3).
 }
 ```
 
-**`PerfMultiServerEntry.java`** — (core/perf multi/common/perf_multi_entry.hpp 서버 부분 대응)
+**`PerfMultiServerEntry.java`** — (core 각 server main() 의 디스패치+메트릭 로직을 집약한 Java 전용 클래스)
+
+> **참고**: core 의 `perf_entry.hpp` 는 `set_perf_pattern_env()` env setter 1개만 포함하는 헬퍼이다.
+> Java 에서는 이 env 설정을 `PerfMultiMain` 에서 직접 처리하며, 아래 Entry 클래스는
+> core 의 각 server/client `main()` 에 분산된 디스패치+CPU/MEM 메트릭 수집 로직을 공통 클래스로 집약한 것이다.
 
 ```java
 // 1. 패턴 디스패치 → runServer(transport, size)
@@ -469,7 +485,7 @@ public final class PerfMultiClientHelpers {
 // 3. RESULT 출력: server_cpu_pct, server_mem_mb
 ```
 
-**`PerfMultiClientEntry.java`** — (core/perf multi/common/perf_multi_entry.hpp 클라이언트 부분 대응)
+**`PerfMultiClientEntry.java`** — (core 각 client main() 의 디스패치+메트릭 로직을 집약한 Java 전용 클래스)
 
 ```java
 // 1. 패턴 디스패치 → runClient(transport, size, endpoint)
@@ -488,7 +504,7 @@ public final class PerfMultiClientHelpers {
 
 sender 가 페이로드 첫 32바이트에 헤더를 stamp 하고, receiver 가 decode 하여 phase 필터링 및 latency 측정에 사용한다.
 
-**헤더 구조** (core `perf_single_metric_header.hpp` / `perf_multi_metric_header.hpp` 동일):
+**헤더 구조** (core `perf_single_metric_header.hpp` / `perf_metric_header.hpp` 동일):
 
 | 오프셋 | 크기 | 필드 | 설명 |
 |--------|------|------|------|
@@ -565,13 +581,18 @@ bindings/java/tests/certs/
 
 ### 9.2 인증서 생성
 
-core/tests/certs/gen/ 의 인증서를 복사하거나, 동일 OpenSSL 명령으로 재생성:
+> **참고**: core/perf 벤치마크는 인증서를 **소스 코드에 임베디드** (`bench_common.hpp` 의 `test_certs` namespace)
+> 하고, 런타임에 `/tmp/bench_*.pem` 임시 파일로 기록하여 사용한다.
+> Java 는 파일 기반으로 관리하므로, dotnet 선례와 동일하게 `bindings/java/tests/certs/` 에
+> 인증서 파일을 독립 배치한다.
+
+인증서 파일은 기존 바인딩(dotnet)에서 복사하거나, OpenSSL 로 재생성:
 
 ```bash
-# core/tests/certs/gen/ 에서 복사
-cp core/tests/certs/gen/server.crt bindings/java/tests/certs/
-cp core/tests/certs/gen/server.key bindings/java/tests/certs/
-cp core/tests/certs/gen/ca.crt     bindings/java/tests/certs/
+# dotnet 인증서에서 복사 (동일 인증서)
+cp bindings/dotnet/tests/certs/server.crt bindings/java/tests/certs/
+cp bindings/dotnet/tests/certs/server.key bindings/java/tests/certs/
+cp bindings/dotnet/tests/certs/ca.crt     bindings/java/tests/certs/
 ```
 
 ### 9.3 인증서 경로 탐색 로직
@@ -599,7 +620,7 @@ socket.setSockOpt(SocketOption.TLS_CA, caPath);
 
 ## 10. Java API 매핑
 
-| Core C++ API | Java API |
+| Core C API (perf 벤치마크 사용) | Java API |
 |-------------|----------|
 | `zlink_ctx_new()` | `new Context()` |
 | `zlink_socket(ctx, type)` | `new Socket(ctx, SocketType.XXX)` |
@@ -733,9 +754,6 @@ bindings/java/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 | 64   | 523401.23 | 33.50     | 12.35   |
 ```
 
-> **주의**: report 파일에는 RESULT 라인이나 Completion 섹션이 포함되지 않는다.
-> 완료 상태 확인 및 메트릭 추출은 tmp 파일을 사용해야 한다.
-
 ### 13.2 결과 보존 정책
 
 - 최대 100개 파일 per report/ 디렉토리
@@ -762,7 +780,7 @@ bindings/java/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 10. `multi/.../common/PerfCommon.java` — multi 공통 유틸
 11. `multi/.../common/PerfMultiMetricHeader.java` — MPF1 페이로드 헤더 stamp/decode
 12. `multi/.../common/PerfMultiCommon.java` — multi 설정 리졸버
-13. `multi/.../common/PerfMultiClientHelpers.java` — 공통 client 루프 헬퍼
+13. `multi/.../common/PerfMultiClientHelpers.java` — client 유틸 (transport 판별, endpoint 파싱, 연결 대기)
 14. `multi/.../common/PerfMultiServerEntry.java` — 서버 디스패치 + 메트릭
 15. `multi/.../common/PerfMultiClientEntry.java` — 클라이언트 디스패치 + 메트릭
 16. `multi/.../common/PerfMultiTls.java` — TLS 인증서 리졸버
@@ -770,56 +788,54 @@ bindings/java/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 
 ### Phase 2: Single 소켓 패턴 (6개)
 
-18. `single/.../current/PerfPair.java`
-19. `single/.../current/PerfPubSub.java`
-20. `single/.../current/PerfDealerDealer.java`
-21. `single/.../current/PerfDealerRouter.java`
-22. `single/.../current/PerfRouterRouter.java`
-23. `single/.../current/PerfRouterRouterPoll.java`
+18. `single/.../src/PerfPair.java`
+19. `single/.../src/PerfPubSub.java`
+20. `single/.../src/PerfDealerDealer.java`
+21. `single/.../src/PerfDealerRouter.java`
+22. `single/.../src/PerfRouterRouter.java`
+23. `single/.../src/PerfRouterRouterPoll.java`
 
 ### Phase 3: Single 서비스 패턴 (2개)
 
-24. `single/.../current/PerfGateway.java`
-25. `single/.../current/PerfSpot.java`
+24. `single/.../src/PerfGateway.java`
+25. `single/.../src/PerfSpot.java`
 
 ### Phase 4: Multi 패턴 — server/client 분리 (6×2 + 3 서버 only)
 
-26. `multi/.../current/PerfMultiDealerDealerServer.java` + `PerfMultiDealerDealerClient.java`
-27. `multi/.../current/PerfMultiDealerRouterServer.java` + `PerfMultiDealerRouterClient.java`
-28. `multi/.../current/PerfMultiRouterRouterServer.java` + `PerfMultiRouterRouterClient.java`
-29. `multi/.../current/PerfMultiPubSubServer.java` + `PerfMultiPubSubClient.java`
-30. `multi/.../current/PerfMultiGatewayServer.java` + `PerfMultiGatewayClient.java`
-31. `multi/.../current/PerfMultiSpotServer.java` + `PerfMultiSpotClient.java`
-32. `multi/.../current/PerfMultiStreamServer.java` (서버 only)
-33. `multi/.../current/PerfMultiStreamCallbackServer.java` (서버 only)
-34. `multi/.../current/PerfMultiStreamLen32BeServer.java` (서버 only)
-35. `multi/.../common/PerfMultiStreamClient.java` (Raw transport)
-36. `multi/.../common/PerfMultiStreamStopParser.java`
+26. `multi/.../src/PerfMultiDealerDealerServer.java` + `PerfMultiDealerDealerClient.java`
+27. `multi/.../src/PerfMultiDealerRouterServer.java` + `PerfMultiDealerRouterClient.java`
+28. `multi/.../src/PerfMultiRouterRouterServer.java` + `PerfMultiRouterRouterClient.java`
+29. `multi/.../src/PerfMultiPubSubServer.java` + `PerfMultiPubSubClient.java`
+30. `multi/.../src/PerfMultiGatewayServer.java` + `PerfMultiGatewayClient.java`
+31. `multi/.../src/PerfMultiSpotServer.java` + `PerfMultiSpotClient.java`
+32. `multi/.../src/PerfMultiStreamServer.java` (서버 only)
+33. `multi/.../src/PerfMultiStreamCallbackServer.java` (서버 only)
+34. `multi/.../src/PerfMultiStreamLen32BeServer.java` (서버 only)
 
 ### Phase 5: 스크립트 및 마무리
 
-37. `run_benchmarks.sh` / `.ps1` (루트 + single/ + multi/)
-38. `run_benchmarks_multi.sh` / `.ps1`
-39. `run_comparison.py`
-40. `README.md`
-41. 빌드 검증 (`./gradlew :perf-single:classes :perf-multi:classes`)
-42. `run_policy_bench.py` 통합 검증
+35. `run_benchmarks.sh` / `.ps1` (루트 + single/ + multi/)
+36. `run_benchmarks_multi.sh` / `.ps1`
+37. `run_comparison.py`
+38. `README.md`
+39. 빌드 검증 (`./gradlew :perf-single:classes :perf-multi:classes`)
+40. `run_policy_bench.py` 통합 검증
 
 ### Phase 6: 코드 품질 리뷰 및 리팩토링
 
 > 모든 패턴 구현과 스크립트 완성 후, 코드 전체에 대한 품질 리뷰와 개선을 수행한다.
 > 성능 벤치마크 코드이므로 불필요한 오버헤드에 특히 엄격히 대응한다.
 
-43. **Dead Code / 미사용 파일 정리**
+41. **Dead Code / 미사용 파일 정리**
     - 사용되지 않는 import, 변수, 메서드, 클래스 전부 삭제
     - 의미 없는 주석 (TODO 잔재, 복사 흔적, 주석 처리된 코드) 전부 삭제
     - 빈 파일, 미사용 설정 파일 삭제
-44. **가독성 리팩토링**
+42. **가독성 리팩토링**
     - 메서드/변수 네이밍 일관성 검토 (core/perf 와 대응 관계 명확화)
     - 과도한 중첩 / 긴 메서드 분리 (단, 벤치마크 인라인 정책 범위 내)
     - 매직 넘버 → 상수 추출 (타임아웃, 버퍼 크기, 재시도 한도 등)
     - 패턴 파일 간 구조 일관성 확보 (동일 페이즈 순서, 동일 변수명 컨벤션)
-45. **성능 리뷰 (벤치마크 오버헤드 제거)**
+43. **성능 리뷰 (벤치마크 오버헤드 제거)**
     - **불필요한 할당**: 측정 루프 내 `new byte[]`, `new String()`, 박싱 (`Integer`, `Long`) 등
     - **불필요한 복사**: `Arrays.copyOf`, `System.arraycopy` 가 회피 가능한 경우
     - **불필요한 대기**: 측정 루프 내 `Thread.sleep`, busy-wait 이 과도한 경우
@@ -835,7 +851,7 @@ bindings/java/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
       [ ] send/recv 버퍼 루프 밖 할당 + 재사용
       [ ] 박싱/언박싱 없음 (primitive 직접 사용)
       ```
-46. **개선 사항 적용 후 주석 추가**
+44. **개선 사항 적용 후 주석 추가**
     - 리팩토링/성능 개선 완료 후, 코드 이해를 돕는 적절한 수준의 주석 추가
     - 주석 대상:
       - 각 패턴 파일 상단: 패턴 설명, 소켓 구성, 측정 방식 요약 (1-3줄)
@@ -866,12 +882,88 @@ bindings/java/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 - Multi 서버는 `READY,<endpoint>` stdout 출력 후 클라이언트 대기
 - TLS 인증서는 `bindings/java/tests/certs/` 경로 사용
 
-### 15.3 코드 인라이닝 정책
+### 15.3 코드 인라이닝 정책 — core/perf 와의 차이점
 
-- 각 패턴 파일에 메인 루프 로직 인라인 (core/perf 동일)
-- `common/PerfCommon` 으로 추출 허용: 환경변수 파싱, retry, printResult, 엔드포인트 생성
-- Multi 클라이언트는 `common/PerfMultiClientHelpers` 의 공통 루프 위임 허용
-- STREAM 서버 인프라는 모듈화 허용 (`common/PerfMultiStreamClient`, `common/PerfMultiStreamStopParser`)
+> **core/perf (C++)** 는 `perf_client_helpers.hpp` 에 `run_echo_window_round_robin()`,
+> `run_one_way_window_loop()` 등 공통 send/recv 루프를 두고, 각 패턴 파일이 이를 호출한다.
+>
+> **Java 포팅은 이 구조를 따르지 않는다.** 각 패턴 파일이 send/recv 핵심 루프를
+> 자체적으로 포함하여, 파일 하나만 열면 해당 패턴의 전체 벤치마크 흐름을
+> 샘플 코드처럼 읽을 수 있도록 한다.
+>
+> **명시 정책:** send/recv 코드는 **패턴 파일 내부에서만 공통화**한다.
+> `core/perf` 처럼 패턴 간 공용 helper(`common/`)로 send/recv 루프를 공유하지 않는다.
+> 즉, 공통화가 필요하면 해당 패턴 파일의 `private` 메서드로만 추출한다.
+
+**패턴 파일 내 인라인 (각 파일에 직접 작성):**
+- 소켓 생성, bind/connect
+- 페이로드 헤더 stamp (SPF1/MPF1)
+- warmup / settle / active 페이즈 루프
+- send/recv 호출 및 에러 처리 (EAGAIN/EINTR 루프)
+- 메트릭 수집 (throughput, latency reservoir sampling)
+- RESULT 출력 호출
+
+**Single 패턴 예시 (PerfPair.java 핵심 구조):**
+```java
+// --- Warmup ---
+for (int i = 0; i < warmupCount; i++) {
+    stampHeader(payload, SPF1_MAGIC, runId, PHASE_WARMUP, msgSize, seq++);
+    sender.send(payload, 0, msgSize, Socket.DONTWAIT);
+    receiver.receive(recvBuf, 0, msgSize, 0);
+}
+
+// --- Active (duration-based, throughput + latency 동시 측정) ---
+long activeStart = System.nanoTime();
+long deadline = activeStart + durationNs;
+long received = 0;
+while (System.nanoTime() < deadline) {
+    stampHeader(payload, SPF1_MAGIC, runId, PHASE_ACTIVE, msgSize, seq++);
+    sender.send(payload, 0, msgSize, Socket.DONTWAIT);
+    int rc = receiver.receive(recvBuf, 0, msgSize, 0);
+    if (rc > 0 && decodePhase(recvBuf) == PHASE_ACTIVE) {
+        received++;
+        double latencyUs = (System.nanoTime() - decodeSentTsUs(recvBuf)) / 1000.0;
+        latencyStats.add(latencyUs);
+    }
+}
+double elapsedSec = (System.nanoTime() - activeStart) / 1e9;
+double throughput = received / elapsedSec;
+
+PerfCommon.printResult("current", pattern, transport, msgSize,
+    throughput, latencyStats.mean(), latencyStats.p95(), latencyStats.p99());
+```
+
+**Multi 패턴 예시 (PerfMultiDealerDealerClient.java 핵심 구조):**
+```java
+// --- Warmup (duration-based) ---
+long warmupDeadline = System.nanoTime() + warmupSeconds * 1_000_000_000L;
+while (System.nanoTime() < warmupDeadline) {
+    stampHeader(payload, MPF1_MAGIC, runId, PHASE_WARMUP, msgSize, seq++);
+    sockets.get((int)(seq % N)).send(payload, 0, msgSize, Socket.DONTWAIT);
+}
+
+// --- Settle (인플라이트 소진) ---
+Thread.sleep(settleMs);
+
+// --- Active (duration-based, 라운드로빈) ---
+long activeDeadline = System.nanoTime() + durationSeconds * 1_000_000_000L;
+long sent = 0;
+while (System.nanoTime() < activeDeadline) {
+    stampHeader(payload, MPF1_MAGIC, runId, PHASE_ACTIVE, msgSize, seq++);
+    sockets.get((int)(sent++ % N)).send(payload, 0, msgSize, Socket.DONTWAIT);
+}
+```
+
+**`common/` 으로 추출 허용 (유틸리티만):**
+- 환경변수 파싱, 소켓 옵션 적용, TLS 설정
+- `printResult()` — RESULT 라인 포맷팅
+- `endpointFor()` — 트랜스포트별 엔드포인트 생성
+- `stampHeader()` / `decodeHeader()` — 메트릭 헤더 encode/decode
+- `isSupportedTransport()`, `parseEndpointArg()`, `waitAllClientConnectReady()`
+
+**`common/` 에 두지 않는 것:**
+- send/recv 루프, 페이즈 전환 로직, 메트릭 수집 루프 — 반드시 각 패턴 파일 내에 인라인
+- STREAM 클라이언트는 Java 에서 구현하지 않음 (`core/perf/common/streamclient` C++ 공용 바이너리 사용)
 
 ---
 
@@ -887,10 +979,10 @@ bindings/java/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
   rg -n "\\bdev\\.kairoscode\\.zlink\\.internal\\b" bindings/java/perf --glob '*.java'
   # 기대 결과: 각각 0건
   ```
-- stream client 공유 경로 확인:
+- Java 측 stream client 구현 없음 확인:
   ```bash
-  rg -n "core/perf/common/streamclient" bindings/java/perf/run_comparison.py
-  # 기대 결과: 공용 경로만 참조
+  rg -n "StreamClient" bindings/java/perf --glob '*.java'
+  # 기대 결과: 0건 (STREAM client = core/perf/common/streamclient C++ 공용 바이너리)
   ```
 - TLS 인증서 경로 확인:
   ```bash
@@ -941,18 +1033,18 @@ bindings/java/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 
 각 RESULT 라인의 메트릭 값이 논리적으로 정확한지 검증한다.
 
-**필수 메트릭 존재 검증 (조합별):**
-- single: `throughput`, `bandwidth`, `latency` — 3개 메트릭이 모든 pattern/transport/size 조합에 존재 (런너 파서 수집 대상)
-- multi: `throughput`, `bandwidth`, `latency` + `server_cpu_pct`, `server_mem_mb`, `client_cpu_pct`, `client_mem_mb`
-- 참고 메트릭: `latency_p95`, `latency_p99` 는 벤치마크 stdout 에 출력되지만 런너 파서가 수집하지 않으므로 완료 판정에 영향 없음
+**메트릭 존재 검증 (조합별):**
+- single: `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99` — 5개 메트릭이 모든 pattern/transport/size 조합에 존재
+- multi: 위 5개 + `server_cpu_pct`, `server_mem_mb`, `client_cpu_pct`, `client_mem_mb`
+- 런너 파서는 11종 메트릭을 모두 수집하지만, **완료 판정**은 Java 기준 조합당 3개 (throughput/bandwidth/latency) 이므로 p95/p99 누락이 완료 판정에 영향 없음
 
 **대역폭 계산식 검증:**
 ```
 bandwidth_mbps = throughput × size × multiplier / 1,000,000
 ```
 - single 전체 (one-way 방향): `bandwidth ≈ throughput × size / 1,000,000`
-- multi echo 패턴 (DEALER_ROUTER, ROUTER_ROUTER, STREAM*): `bandwidth ≈ throughput × size × 2 / 1,000,000`
-- multi one-way 패턴 (DEALER_DEALER, PUBSUB, GATEWAY, SPOT): `bandwidth ≈ throughput × size / 1,000,000`
+- multi echo 패턴 (DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, STREAM*): `bandwidth ≈ throughput × size × 2 / 1,000,000`
+- multi one-way 패턴 (DEALER_DEALER, PUBSUB, SPOT): `bandwidth ≈ throughput × size / 1,000,000`
 - 허용 오차: ±1%
 
 **Percentile 일관성 검증:**
@@ -997,11 +1089,11 @@ python3 bindings/perf/run_policy_bench.py \
 - `run_policy_bench.py` 는 자식 프로세스(벤치마크)의 stdout 을 `subprocess.PIPE` 로 캡처한다.
 - 벤치마크가 출력하는 `RESULT,...` 라인은 자식 프로세스 종료 후 파싱되며, 실시간 중계되지 않는다.
 - 런너가 콘솔에 출력하는 것은 진행 상황 (`Testing tcp | 64B: 1 `) 과 최종 테이블이다.
-- RESULT 라인은 tmp 파일에 저장되며, report 파일에는 포함되지 않는다.
+- RESULT 라인은 report 파일에 포함되지 않는다 (report 는 테이블만 저장).
 
 **검증 대상: 벤치마크 자체의 RESULT 출력 정확성**
 - 벤치마크 프로세스가 stdout 에 `RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,<metric>,<value>` 형식의 라인을 올바르게 출력하는지 확인한다.
-- 각 조합의 3개 필수 메트릭 (throughput, bandwidth, latency) 이 모두 출력되는지 확인한다.
+- 각 조합의 5개 메트릭 (throughput, bandwidth, latency, latency_p95, latency_p99) 이 모두 출력되는지 확인한다.
 
 **검증 방법:**
 ```bash
@@ -1011,20 +1103,20 @@ python3 bindings/perf/run_policy_bench.py \
   --binding java --suite single \
   --pattern PAIR --transports tcp --msg-sizes 64,1024,65536 \
   --runs 1 --reuse-build \
-  --output bindings/java/perf/results/single/tmp/size_progress.log
+  --output bindings/java/perf/results/single/report/size_progress.log
 ```
 
 **로그 검증 기준:**
 1. 콘솔에 `Testing tcp | 64B:`, `Testing tcp | 1024B:`, `Testing tcp | 65536B:` 가 순서대로 출력됨
 2. 최종 테이블에 3개 사이즈 행이 모두 포함됨
-3. tmp 파일에 각 사이즈의 3개 RESULT 라인이 존재함
+3. report 파일에 각 사이즈의 테이블 행이 존재함
 
 **자동 검증 스크립트 (선택):**
 ```python
-# tmp 파일에서 RESULT 라인의 size 값 순서 및 메트릭 완전성 검증
+# report 파일에서 RESULT 라인의 size 값 순서 및 메트릭 완전성 검증
 import glob, re
 results = {}
-for path in sorted(glob.glob("bindings/java/perf/results/single/tmp/perf_*.txt")):
+for path in sorted(glob.glob("bindings/java/perf/results/single/report/perf_*.txt")):
     with open(path) as f:
         for line in f:
             m = re.match(r"RESULT,current,PAIR,tcp,(\d+),(\w+),", line)
@@ -1033,7 +1125,7 @@ for path in sorted(glob.glob("bindings/java/perf/results/single/tmp/perf_*.txt")
                 results.setdefault(size, set()).add(metric)
 for size in [64, 1024, 65536]:
     assert size in results, f"missing size: {size}"
-    assert results[size] >= {"throughput", "bandwidth", "latency"}, f"missing metrics for {size}"
+    assert results[size] >= {"throughput", "bandwidth", "latency", "latency_p95", "latency_p99"}, f"missing metrics for {size}"
 ```
 
 ### 16.6 기본 설정 전체 실행 무실패 검증
@@ -1054,19 +1146,19 @@ python3 bindings/perf/run_policy_bench.py \
 
 **합격 기준:**
 - [ ] 두 실행 모두 프로세스 종료코드 `0`
-- [ ] tmp 파일의 `META,status,complete` 라인 확인 (런너는 `compute_completion_status()` 결과를 tmp 파일 메타에 저장)
-- [ ] tmp 파일의 `META,expected,N` 과 `META,actual,N` 이 동일 (조합당 3개 메트릭 × success 조합 수)
+- [ ] 콘솔에 `status: complete` 출력 확인
 - [ ] 콘솔에 `warning: status=partial` 경고가 없어야 함
 - [ ] 요청된 기본 조합 중 `fail` 조합 0건
 - [ ] `UNSUPPORTED` 조합은 정책 정의 범위 내에서만 허용 (예: inproc/ipc 에서 GATEWAY/SPOT)
-- [ ] `--result` 사용 시 report 파일 생성 확인 (테이블만 포함, META/RESULT 없음)
+- [ ] `--result` 사용 시 report 파일 생성 확인 (테이블만 포함)
 
 **기본 조합 수 예상 (single):**
 
-> `run_policy_bench.py` 의 `SINGLE_PATTERNS` 에는 STREAM 3종이 포함되어 있다 (11종).
-> Java 는 `supports_split_multi()` 가 `true` 를 반환하므로, 런너가 single STREAM 패턴을
+> core/perf 기준 single suite 는 8종이지만, `run_policy_bench.py` 의 `SINGLE_PATTERNS` 에는
+> STREAM 3종이 추가 포함되어 있다 (런너 기준 11종).
+> Java 는 `supports_split_multi()=true` 이므로, 런너가 single STREAM 패턴을
 > multi server 경로로 위임 실행한다 (`SINGLE_TO_MULTI_STREAM_PATTERN` 매핑 사용).
-> 즉, multi stream 서버 구현이 완료되면 single STREAM 48 조합도 성공 대상이 된다.
+> 즉, multi stream 서버 구현이 완료되면 런너 실행 시 STREAM 48 조합도 성공 대상이 된다.
 
 - socket 패턴 (6종: PAIR~ROUTER_ROUTER_POLL) × 6 transport (Linux) × 6 size = 216 조합
 - STREAM 패턴 (3종) × 4 transport × 4 size = 48 조합 → multi server 위임 실행
@@ -1080,35 +1172,430 @@ python3 bindings/perf/run_policy_bench.py \
 
 **결과 파일 확인:**
 ```bash
-# tmp 파일 확인 (META + RESULT + TABLE 포함, 항상 저장됨)
-ls -la bindings/java/perf/results/single/tmp/perf_*.txt
-ls -la bindings/java/perf/results/multi/tmp/perf_*.txt
-
-# report 파일 확인 (--result + status=complete 시에만 저장, 테이블만 포함)
+# report 파일 확인 (--result 사용 시 생성, 테이블만 포함)
 ls -la bindings/java/perf/results/single/report/perf_*.txt
 ls -la bindings/java/perf/results/multi/report/perf_*.txt
-
-# tmp 파일에서 META 및 RESULT 라인 확인
-grep "^META," bindings/java/perf/results/single/tmp/perf_*.txt
-grep "^RESULT," bindings/java/perf/results/single/tmp/perf_*.txt | head -10
 ```
 
 ---
 
 ## 17. 완료 기준 (Definition of Done)
 
-- 디렉토리/파일 구조가 core/perf 의 `common/` + `current/` 분리 구조와 동일.
+- 디렉토리/파일 구조가 core/perf 의 `common/` + `src/` 분리 구조와 동일.
 - multi server/client 가 core/perf 와 동일하게 별도 파일로 분리.
-- runner 옵션/기본값/결과 형식이 `run_policy_bench.py` 정책 기준으로 동등하게 동작 (3개 필수 메트릭 수집, report 는 table-only, tmp 는 META CSV + RESULT CSV + TABLE).
+- runner 옵션/기본값/결과 형식이 `run_policy_bench.py` 정책 기준으로 동등하게 동작 (5개 메트릭 출력, 완료 판정은 3개 기준, report=table-only).
 - single/multi 모든 패턴 클래스가 `bindings/java/perf` 에서 빌드됨.
 - STREAM client 는 `core/perf/common/streamclient` 공용 바이너리만 사용.
 - perf 소스 내 C API / internal 패키지 직접 호출 0건.
 - TLS 인증서는 `bindings/java/tests/certs/` 에서 독립 관리.
 - retry 로직/우회 wrapper/비정책 실행 경로가 없음.
+- send/recv 공통화는 패턴 파일 내부(private helper)로만 제한되고, 패턴 간 공용 helper(`common/`)에 루프가 없다.
 - **메트릭 헤더**: single 은 SPF1 (0x53504631), multi 는 MPF1 (0x4D504631) 페이로드 헤더를 stamp/decode 하여 phase 필터링 및 latency 측정에 사용.
-- **메트릭 정확성**(필수 3개 메트릭 존재/bandwidth 계산식/값 범위)이 검증됨.
-- **벤치마크 RESULT 출력 정확성**: 각 조합의 3개 필수 메트릭이 stdout 에 올바르게 출력되고 tmp 파일에 저장됨이 검증됨.
+- **메트릭 정확성**(조합당 5개 메트릭 출력: throughput, bandwidth, latency, latency_p95, latency_p99 / bandwidth 계산식 / 값 범위)이 검증됨. 완료 판정은 필수 3개(throughput, bandwidth, latency) 기준.
+- **벤치마크 RESULT 출력 정확성**: 각 조합의 5개 메트릭이 stdout 에 올바르게 출력되고 report 파일에 테이블로 저장됨이 검증됨.
 - **기본 설정 전체 실행**(single/multi)이 실패 없이 `status: complete` 로 종료됨.
 - `run_policy_bench.py` 수정 반영: `--enable-native-access=ALL-UNNAMED`, artifact 경로 갱신.
 - **코드 품질 리뷰 완료**: dead code/미사용 주석 0건, 측정 루프 내 불필요한 할당/복사/대기 0건.
 - **주석 정리 완료**: 패턴 설명, 페이즈 전환, 비자명 로직에 적절한 수준의 주석 추가.
+
+---
+
+## 18. 구현 진행 체크리스트
+
+> 각 항목을 순서대로 확인하며 진행한다. `[x]` 로 완료를 표시한다.
+> 괄호 안 `§N` 은 본 문서의 해당 섹션 참조이다.
+
+---
+
+### Phase 0: 인증서 및 스크립트 준비
+
+**0-1. TLS 인증서 (§9)**
+- [ ] `bindings/java/tests/certs/` 디렉토리 존재
+- [ ] `server.crt` 파일 존재 (localhost SAN 포함)
+- [ ] `server.key` 파일 존재
+- [ ] `ca.crt` 파일 존재
+- [ ] 3개 파일이 `bindings/dotnet/tests/certs/` 와 동일 내용이거나 동등한 OpenSSL 인증서
+
+**0-2. run_policy_bench.py 수정 (§3.4)**
+- [ ] `binding_cmd_prefix()` — `--enable-native-access=ALL-UNNAMED` 추가됨
+- [ ] `binding_cmd_prefix()` — cp 경로가 `java/perf/single/Zlink.PerfBench/build/classes/java/main:java/build/classes/java/main:java/build/resources/main`
+- [ ] `binding_multi_role_command()` — `--enable-native-access=ALL-UNNAMED` 추가됨
+- [ ] `binding_multi_role_command()` — cp 경로가 `java/perf/multi/Zlink.PerfBench/build/classes/java/main:java/build/classes/java/main:java/build/resources/main`
+- [ ] `build_binding_if_needed()` — artifact 경로가 `java/perf/<suite_dir>/Zlink.PerfBench/build/classes/java/main/`
+
+**0-3. 프로젝트 메타 파일 (§1)**
+- [ ] `bindings/java/perf/.gitignore` 생성 (build/ 제외)
+- [ ] `bindings/java/perf/results/single/report/.gitkeep` 존재
+- [ ] `bindings/java/perf/results/multi/report/.gitkeep` 존재
+
+---
+
+### Phase 1: 인프라 (빌드, 공통, 진입점)
+
+**1-1. 빌드 시스템 (§2)**
+- [ ] `settings.gradle` 에 `:perf-single`, `:perf-multi` 프로젝트 등록 확인
+- [ ] `perf/single/Zlink.PerfBench/build.gradle` 생성됨
+  - [ ] `java.toolchain.languageVersion = 22`
+  - [ ] `implementation project(':')` 의존성
+  - [ ] `jar { enabled = false }`
+- [ ] `perf/multi/Zlink.PerfBench/build.gradle` 생성됨
+  - [ ] `java.toolchain.languageVersion = 22`
+  - [ ] `implementation project(':')` 의존성
+  - [ ] `jar { enabled = false }`
+- [ ] `./gradlew -q :perf-single:classes` 빌드 성공 (종료코드 0)
+- [ ] `./gradlew -q :perf-multi:classes` 빌드 성공 (종료코드 0)
+- [ ] single 산출물 경로 존재: `perf/single/Zlink.PerfBench/build/classes/java/main/`
+- [ ] multi 산출물 경로 존재: `perf/multi/Zlink.PerfBench/build/classes/java/main/`
+
+**1-2. Single common/ 패키지 (§8.1)**
+- [ ] `PerfCommon.java` 생성됨
+  - [ ] `parseEnv()` / `parseEnvNonNegative()` — 환경변수 파싱
+  - [ ] `applySingleContextOptions()` — IO_THREADS, MAX_SOCKETS (§5.1)
+  - [ ] `applySingleSocketOptions()` — HWM, SNDHWM, RCVHWM, SNDTIMEO, RCVTIMEO (§5.1)
+  - [ ] `receiveRetry()` / `sendRetry()` — EAGAIN/EINTR only 재시도
+  - [ ] `waitForInput()` / `waitUntil()` — 폴링 헬퍼
+  - [ ] `endpointFor()` — 트랜스포트별 엔드포인트 생성
+  - [ ] `printResult()` — `RESULT,current,...` 형식, bandwidth 승수=1.0, 5개 RESULT 라인 (throughput/bandwidth/latency/p95/p99)
+  - [ ] `gatewayReceiveProviderMessage()` — Gateway 수신 헬퍼
+  - [ ] `spotReceivePayloadWithTimeout()` — Spot 수신 헬퍼
+- [ ] `PerfSingleMetricHeader.java` 생성됨 (§8.3)
+  - [ ] `HEADER_SIZE = 32`
+  - [ ] `MAGIC = 0x53504631` (SPF1)
+  - [ ] `PHASE_UNKNOWN=0, PHASE_WARMUP=1, PHASE_ACTIVE=2`
+  - [ ] `stampPayload()` — little-endian 32바이트 stamp
+  - [ ] `decodePayloadHeader()` — 32바이트 decode
+  - [ ] `nowUs()` — μs 타임스탬프
+- [ ] `PerfTls.java` 생성됨 (§9.3, §9.4)
+  - [ ] `configureTlsServerIfNeeded()` — tls/wss 일 때 서버 인증서 설정
+  - [ ] `configureTlsClientIfNeeded()` — tls/wss 일 때 CA 설정
+  - [ ] `tryResolvePerfTlsPaths()` — `bindings/java/tests/certs/` 상위 순회 탐색
+
+**1-3. Single 진입점 (§3.1)**
+- [ ] `PerfMain.java` 생성됨
+  - [ ] CLI: `<PATTERN> <TRANSPORT> <SIZE>` 3개 위치 인자
+  - [ ] 종료코드: 0=성공, 1=인자 오류, 2=런타임 오류
+  - [ ] 8개 패턴 디스패치: PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT
+
+**1-4. Multi common/ 패키지 (§8.2)**
+- [ ] `PerfCommon.java` (multi) 생성됨
+  - [ ] single PerfCommon 유틸 + multi 전용 기능
+- [ ] `PerfMultiMetricHeader.java` 생성됨 (§8.3)
+  - [ ] `MAGIC = 0x4D504631` (MPF1)
+  - [ ] `PHASE_DRAIN=3` 추가
+  - [ ] `stampPayload()` / `decodePayloadHeader()` / `nowUs()`
+- [ ] `PerfMultiCommon.java` 생성됨 (§5.2)
+  - [ ] `resolveClients()` — PERF_CLIENTS, 비-STREAM:100, STREAM:10000
+  - [ ] `resolveHwm()` — PERF_HWM, 비-STREAM:100, STREAM:10
+  - [ ] `resolveWarmupSeconds()` — PERF_WARMUP_SECONDS, 기본 2
+  - [ ] `resolveDurationSeconds()` — PERF_DURATION_SECONDS, 기본 5
+  - [ ] `resolveSettleMs()` — PERF_SETTLE_MS, 기본 500
+  - [ ] Settle 구간이 인플라이트 소진(drain 역할) 겸용 (별도 drain 페이즈/환경변수 없음)
+  - [ ] 기타 §5.2 환경변수 리졸버 (SNDTIMEO, RCVTIMEO, CONNECT_READY_TIMEOUT 등)
+- [ ] `PerfMultiClientHelpers.java` 생성됨
+  - [ ] `isSupportedTransport()` — 트랜스포트 지원 판별
+  - [ ] `parseEndpointArg()` — `--endpoint` 인자 파싱
+  - [ ] `waitAllClientConnectReady()` — MonitorSocket N개 연결 대기
+  - [ ] send/recv 루프는 포함하지 않음 — 각 패턴 파일에서 인라인 (§15.3)
+- [ ] `PerfMultiServerEntry.java` 생성됨
+  - [ ] 패턴 디스패치 → `runServer()`
+  - [ ] CPU/MEM 메트릭 수집 (§11)
+  - [ ] `RESULT` 출력: `server_cpu_pct`, `server_mem_mb`
+- [ ] `PerfMultiClientEntry.java` 생성됨
+  - [ ] 패턴 디스패치 → `runClient()`
+  - [ ] CPU/MEM 메트릭 수집 (§11)
+  - [ ] `RESULT` 출력: `client_cpu_pct`, `client_mem_mb`
+- [ ] `PerfMultiTls.java` 생성됨 (§9.3)
+  - [ ] `bindings/java/tests/certs/` 상위 순회 탐색
+
+**1-5. Multi 진입점 (§3.2)**
+- [ ] `PerfMultiMain.java` 생성됨
+  - [ ] `--multi-server <PATTERN> <TRANSPORT> <SIZE>` 모드
+  - [ ] `--multi-client <PATTERN> <TRANSPORT> <SIZE> --endpoint <endpoint>` 모드
+  - [ ] STREAM 패턴은 서버 모드만 디스패치 (클라이언트 = C++ 공용 바이너리)
+
+---
+
+### Phase 2: Single 소켓 패턴 (6개)
+
+> 각 파일: 소켓 생성 → bind/connect → Warmup(count) → Active(duration) → RESULT 출력 (§6.1, §7.1)
+
+- [ ] `PerfPair.java` — PAIR×2, echo, tcp/tls/ws/wss/inproc/ipc
+  - [ ] SPF1 헤더 stamp/decode 사용
+  - [ ] Warmup: `PERF_WARMUP_COUNT` 횟수 기반
+  - [ ] Active: `PERF_SINGLE_DURATION_SECONDS` duration 기반, throughput+latency 동시 측정
+  - [ ] Reservoir sampling 으로 p95/p99 수집
+  - [ ] `RESULT,current,PAIR,...` 5개 RESULT 라인 출력 (throughput/bandwidth/latency/p95/p99)
+- [ ] `PerfPubSub.java` — PUB+SUB, one-way, tcp/tls/ws/wss/inproc/ipc
+  - [ ] 동일 페이즈/메트릭 구조
+- [ ] `PerfDealerDealer.java` — DEALER×2, echo, tcp/tls/ws/wss/inproc/ipc
+  - [ ] 동일 페이즈/메트릭 구조
+- [ ] `PerfDealerRouter.java` — DEALER+ROUTER, echo, tcp/tls/ws/wss/inproc/ipc
+  - [ ] 동일 페이즈/메트릭 구조
+- [ ] `PerfRouterRouter.java` — ROUTER×2, echo, tcp/tls/ws/wss/inproc/ipc
+  - [ ] 동일 페이즈/메트릭 구조
+- [ ] `PerfRouterRouterPoll.java` — ROUTER×2+Poller, echo, tcp/tls/ws/wss/inproc/ipc
+  - [ ] `Poller.poll()` / `Poller.pollCount()` 사용
+  - [ ] 동일 페이즈/메트릭 구조
+
+---
+
+### Phase 3: Single 서비스 패턴 (2개)
+
+- [ ] `PerfGateway.java` — Gateway+Receiver, echo, tcp/tls/ws/wss (inproc/ipc 미지원)
+  - [ ] `new Gateway(...)` / `new Receiver(...)` API 사용
+  - [ ] `gatewayReceiveProviderMessage()` 헬퍼 사용
+  - [ ] warmup 기본값 200 (`PERF_WARMUP_COUNT`)
+  - [ ] 동일 페이즈/메트릭 구조
+- [ ] `PerfSpot.java` — Spot (pub/sub), one-way, tcp/tls/ws/wss (inproc/ipc 미지원)
+  - [ ] `new Spot(...)` API 사용
+  - [ ] `spotReceivePayloadWithTimeout()` 헬퍼 사용
+  - [ ] warmup 기본값 200, `msg_size ≥ 65536` 시 최대 20 clamp
+  - [ ] 동일 페이즈/메트릭 구조
+
+---
+
+### Phase 4: Multi 패턴 — server/client 분리 (6×2 + 3 서버 only)
+
+> 각 서버: `READY,<endpoint>` stdout → 4-phase (§6.2: Connect → Warmup → Settle → Active) → RESULT 출력
+> 각 클라이언트: `--endpoint` 수신 → Connect → 4-phase → stop-token 전송
+> STREAM 서버: stop-token `__zlink_perf_stop__` 수신 시 정상 종료 (§15.2)
+
+**4-1. DEALER_DEALER (one-way, bandwidth 승수=1.0)**
+- [ ] `PerfMultiDealerDealerServer.java` — DEALER bind, relay
+  - [ ] MPF1 헤더 stamp/decode
+  - [ ] 4-phase: Connect → Warmup → Settle → Active
+  - [ ] `READY,<endpoint>` stdout 출력
+  - [ ] `RESULT,current,DEALER_DEALER,...` throughput/bandwidth/latency 출력
+- [ ] `PerfMultiDealerDealerClient.java` — DEALER connect, send one-way
+  - [ ] send/recv 루프 자체 인라인 (§15.3)
+  - [ ] MonitorSocket 연결 확인
+
+**4-2. DEALER_ROUTER (echo, bandwidth 승수=2.0)**
+- [ ] `PerfMultiDealerRouterServer.java` — ROUTER bind, echo
+- [ ] `PerfMultiDealerRouterClient.java` — DEALER connect, send+recv
+
+**4-3. ROUTER_ROUTER (echo, bandwidth 승수=2.0)**
+- [ ] `PerfMultiRouterRouterServer.java` — ROUTER bind, echo
+- [ ] `PerfMultiRouterRouterClient.java` — ROUTER connect, send+recv
+
+**4-4. PUBSUB (one-way, bandwidth 승수=1.0)**
+- [ ] `PerfMultiPubSubServer.java` — PUB bind, publish
+- [ ] `PerfMultiPubSubClient.java` — SUB connect, recv
+
+**4-5. GATEWAY (echo, bandwidth 승수=2.0)**
+- [ ] `PerfMultiGatewayServer.java` — Receiver bind, echo
+- [ ] `PerfMultiGatewayClient.java` — Gateway connect, send+recv
+
+**4-6. SPOT (one-way, bandwidth 승수=1.0)**
+- [ ] `PerfMultiSpotServer.java` — Spot publish
+- [ ] `PerfMultiSpotClient.java` — Spot subscribe
+
+**4-7. STREAM 3종 (서버 only, echo, bandwidth 승수=2.0)**
+- [ ] `PerfMultiStreamServer.java` — STREAM bind, raw echo
+  - [ ] stop-token `__zlink_perf_stop__` 처리
+  - [ ] 클라이언트 = `core/perf/common/streamclient` C++ 공용 바이너리
+- [ ] `PerfMultiStreamCallbackServer.java` — `attachStream` callback 모드
+  - [ ] stop-token 처리
+- [ ] `PerfMultiStreamLen32BeServer.java` — `attachStreamLen32be` 모드
+  - [ ] stop-token 처리
+
+---
+
+### Phase 5: 스크립트 및 마무리
+
+**5-1. 셸 스크립트 (§12)**
+- [ ] `perf/run_benchmarks.sh` (루트 single 래퍼)
+  - [ ] `bindings/perf/run_policy_bench.py --binding java --suite single` 호출
+  - [ ] §12.1 옵션 인터페이스 준수
+- [ ] `perf/run_benchmarks.ps1` (루트 single 래퍼, PowerShell)
+- [ ] `perf/run_benchmarks_multi.sh` (루트 multi 래퍼)
+  - [ ] `bindings/perf/run_policy_bench.py --binding java --suite multi` 호출
+  - [ ] nofile preflight: `clients × 3 + 4096` 계산, `PERF_SKIP_NOFILE_CHECK` 지원
+  - [ ] §12.2 추가 옵션 인터페이스 준수
+- [ ] `perf/run_benchmarks_multi.ps1` (루트 multi 래퍼, PowerShell)
+- [ ] `perf/single/run_benchmarks.sh` + `.ps1` (single 내부)
+- [ ] `perf/multi/run_benchmarks.sh` + `.ps1` (multi 내부)
+
+**5-2. 비교 스크립트 (§12)**
+- [ ] `perf/run_comparison.py` (루트 오케스트레이터)
+- [ ] `perf/single/run_comparison.py`
+- [ ] `perf/multi/run_comparison.py`
+
+**5-3. 문서**
+- [ ] `perf/README.md` — 사용법, 빌드, 실행 예시
+
+**5-4. 빌드 통합 검증 (§2.4)**
+- [ ] `./gradlew :perf-single:classes :perf-multi:classes` 전체 빌드 성공
+- [ ] `run_policy_bench.py` 에서 Java 바인딩 빌드 자동 호출 동작 확인
+
+---
+
+### Phase 6: 코드 품질 리뷰 및 리팩토링
+
+**6-1. Dead Code / 미사용 파일 정리**
+- [ ] 미사용 import 0건
+- [ ] 미사용 변수/메서드/클래스 0건
+- [ ] 주석 처리된 코드 / TODO 잔재 0건
+- [ ] 빈 파일, 미사용 설정 파일 0건
+
+**6-2. 가독성 리팩토링**
+- [ ] 메서드/변수 네이밍 — core/perf 대응 관계 명확
+- [ ] 매직 넘버 → 상수 추출 완료
+- [ ] 패턴 파일 간 구조 일관성 (페이즈 순서, 변수명 컨벤션)
+
+**6-3. 성능 리뷰 — 파일별 체크**
+
+> 모든 패턴 파일 (single 8개 + multi server 9개 + multi client 6개 = 23개):
+
+- [ ] 측정 루프 내 힙 할당 0건 (`new byte[]`, `new String()`, 박싱 등)
+- [ ] 측정 루프 내 불필요한 복사 0건 (`Arrays.copyOf`, `System.arraycopy`)
+- [ ] 측정 루프 내 `Thread.sleep` / 과도한 busy-wait 없음
+- [ ] 측정 루프 밖에서 I/O 출력 (`System.out.println`)
+- [ ] send/recv 버퍼 루프 밖 1회 할당 + 재사용
+- [ ] 박싱/언박싱 없음 (primitive 직접 사용)
+
+**6-4. 주석 정리**
+- [ ] 각 패턴 파일 상단: 패턴 설명, 소켓 구성, 측정 방식 (1-3줄)
+- [ ] 페이즈 전환 지점에 구분 주석
+- [ ] 비자명 로직 (stop-token, routing-id, echo 루프)에 설명 주석
+- [ ] 자명한 코드에 불필요한 주석 없음
+
+**6-5. 진행 현황 (2026-03-05, multi 우선)**
+- [x] `multi/src` 패턴 파일(서버 9 + 클라이언트 6)에서 retry/phase/상수 구조를 정리하고 `try/catch` 복잡도를 축소
+- [x] `core/perf`와 다르게 send/recv 공통화는 각 패턴 파일 `private` 메서드 내부로만 유지 (`common/` 공유 루프 미사용)
+- [x] 매직 넘버 상수화 적용 (`32`, `256`, `1024`, retry backoff, ns 단위 상수 등)
+- [x] 비자명 로직 주석 보강 (routing-id echo, STREAM control frame, stop-token, Spot publish retry budget)
+- [x] `MULTI_PUBSUB` ws `server_shutdown_timeout` 수정 (`LINGER=0`, bounded send-retry)
+- [x] `MULTI_GATEWAY` tcp `server_shutdown_timeout` 수정 (receiver linger + inactivity-based shutdown)
+- [x] 멀티 스모크 검증 통과 (tcp/64B): `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`, `MULTI_GATEWAY`, `MULTI_SPOT`, `MULTI_STREAM`, `MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`
+- [x] 기본설정 `runs=3` 부분 검증 통과: `MULTI_PUBSUB`(all transport/size), `MULTI_GATEWAY`(all), `MULTI_SPOT`(all)
+- [x] `MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE` all transport/size `runs=1` 분할 검증 통과
+- [x] 기본설정 `runs=3` 전체 완주 검증(`MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`) 완료
+  - `MULTI_STREAM_CALLBACK`: tcp/tls/ws/wss 각각 `--runs 3 --result` 완주
+    (`perf_linux_20260305_203722.txt`, `204229.txt`, `204414.txt`, `204603.txt`)
+  - `MULTI_STREAM_LEN32BE`: tcp/tls/ws/wss 각각 `--runs 3 --result` 완주
+    (`perf_linux_20260305_204756.txt`, `204941.txt`, `205127.txt`, `205314.txt`)
+- [x] `MULTI_SPOT` ws `runs=3`에서 64B 0-throughput 재현 이슈 수정
+  - Spot peer-ready 대기 추가(`SpotNode.pubPeers()/subPeers()`)
+  - 재검증 결과(`perf_linux_20260305_210534.txt`)에서 ws 전 사이즈 throughput>0 확인
+- [x] `MULTI_DEALER_DEALER` 서버 종료 경로 리팩토링
+  - stop-token 의존 제거, 서버 active-window 기반 자체 종료로 `no_data/hang` 해소
+  - `runs=3`, all transport/size 완주 확인(`perf_linux_20260305_230432.txt`)
+- [x] 기본설정 `--suite multi` 전체 패턴(`runs=3`) 완주
+  - 결과: `perf_linux_20260306_003438.txt` (`META,status,complete`, `expected=576`, `actual=576`)
+- [ ] single 패턴 8개를 동일 기준으로 점검/리팩토링하고 6-1~6-4 전체 체크 완료
+
+---
+
+### 정책 준수 검증 (§15, §16.1)
+
+> Phase 2~4 완료 후 수행.
+
+**정적 검증**
+- [x] C API / internal 패키지 직접 호출 0건
+  ```bash
+  rg -n "\\bNative\\." bindings/java/perf --glob '*.java'           # 0건
+  rg -n "\\bNativeMsg\\." bindings/java/perf --glob '*.java'        # 0건
+  rg -n "\\bdev\\.kairoscode\\.zlink\\.internal\\b" bindings/java/perf --glob '*.java'  # 0건
+  ```
+- [x] Java 측 STREAM client 구현 없음
+  ```bash
+  rg -n "StreamClient" bindings/java/perf --glob '*.java'           # 0건
+  ```
+- [x] TLS 인증서 경로 — `bindings/java/tests/certs/` 만 참조
+  ```bash
+  rg -n "tests/certs" bindings/java/perf --glob '*.java'            # java/tests/certs 만
+  ```
+- [x] Retry 로직 — EAGAIN/EINTR 외 재시도 없음
+- [x] Inflight/Outstanding 옵션 사용 없음 — HWM 만 사용
+
+---
+
+### Smoke 테스트 (§16.3)
+
+> Phase 4 완료 후 수행.
+
+- [x] **single tcp smoke** 통과
+  ```bash
+  PERF_SINGLE_DURATION_SECONDS=1 python3 bindings/perf/run_policy_bench.py \
+    --binding java --suite single --pattern PAIR --transports tcp --msg-sizes 64 --runs 1 --reuse-build
+  ```
+- [x] **multi tcp smoke** 통과
+  ```bash
+  python3 bindings/perf/run_policy_bench.py \
+    --binding java --suite multi --pattern MULTI_DEALER_DEALER --transports tcp --msg-sizes 64 \
+    --runs 1 --multi-duration-seconds 1 --multi-clients 10 --reuse-build
+  ```
+- [x] **stream tcp smoke** 통과
+  ```bash
+  python3 bindings/perf/run_policy_bench.py \
+    --binding java --suite multi --pattern MULTI_STREAM --transports tcp --msg-sizes 64 \
+    --runs 1 --multi-duration-seconds 1 --multi-clients 100 --reuse-build
+  ```
+- [x] **single tls smoke** 통과
+  ```bash
+  PERF_SINGLE_DURATION_SECONDS=1 python3 bindings/perf/run_policy_bench.py \
+    --binding java --suite single --pattern PAIR --transports tls --msg-sizes 64 --runs 1 --reuse-build
+  ```
+
+---
+
+### 메트릭 정확성 검증 (§16.4)
+
+- [x] 모든 RESULT 라인에 5개 메트릭 존재: `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99`
+  - 확인: `perf_linux_20260306_003438.txt` 기준 192 조합, 누락 0건
+- [x] Multi RESULT 라인에 추가 메트릭 존재: `server_cpu_pct`, `server_mem_mb`, `client_cpu_pct`, `client_mem_mb`
+- [ ] Bandwidth 계산식 정합 (허용 오차 ±1%)
+  - [ ] single: `bandwidth ≈ throughput × size / 1,000,000`
+  - [ ] multi echo: `bandwidth ≈ throughput × size × 2 / 1,000,000`
+  - [ ] multi one-way: `bandwidth ≈ throughput × size / 1,000,000`
+- [x] Percentile 일관성: `latency_p95 >= latency`, `latency_p99 >= latency_p95`
+- [ ] 값 범위: `throughput > 0`, `bandwidth > 0`, `latency > 0`, `cpu_pct >= 0`, `mem_mb > 0`
+  - 현황: `MULTI_PUBSUB` 일부 조합(주로 64KiB+)에서 0값 관측 (`perf_linux_20260306_003438.txt`)
+
+---
+
+### 사이즈별 순차 실행 검증 (§16.5)
+
+- [ ] 3개 사이즈 (64, 1024, 65536) 순차 실행 시 각 사이즈의 5개 RESULT 라인 존재
+- [ ] 콘솔에 `Testing tcp | 64B:`, `1024B:`, `65536B:` 순서대로 출력
+- [ ] report 파일에 모든 사이즈 테이블 행 저장됨
+
+---
+
+### 기본 설정 전체 실행 무실패 검증 (§16.6)
+
+**Single 전체 실행**
+- [x] `python3 bindings/perf/run_policy_bench.py --binding java --suite single --result` 종료코드 0
+- [x] 콘솔: `status: complete`
+- [x] 콘솔: `warning: status=partial` 없음
+- [x] `fail` 조합 0건
+- [ ] `UNSUPPORTED` 조합 — inproc/ipc 에서 GATEWAY/SPOT 만 허용
+- [x] report 파일 생성됨 (테이블만)
+
+**Multi 전체 실행**
+- [x] `python3 bindings/perf/run_policy_bench.py --binding java --suite multi --result` 종료코드 0
+- [x] 콘솔: `status: complete`
+- [x] 콘솔: `warning: status=partial` 없음
+- [x] `fail` 조합 0건
+- [x] report 파일 생성됨
+
+---
+
+### 최종 완료 기준 (§17)
+
+- [x] 디렉토리/파일 구조가 core/perf `common/` + `src/` 분리와 동일
+- [x] Multi server/client 가 별도 파일로 분리
+- [x] runner 옵션/기본값/결과 형식이 `run_policy_bench.py` 정책과 동등
+- [x] single/multi 모든 패턴 클래스가 빌드됨
+- [x] STREAM client 는 `core/perf/common/streamclient` 공용 바이너리만 사용
+- [x] perf 소스 내 C API / internal 패키지 직접 호출 0건
+- [x] TLS 인증서 `bindings/java/tests/certs/` 독립 관리
+- [x] retry 로직 / 우회 wrapper / 비정책 실행 경로 없음
+- [x] send/recv 공통화는 패턴 파일 내부(private helper)만 사용, `common/` 공유 루프 없음
+- [x] 메트릭 헤더: single=SPF1, multi=MPF1
+- [ ] 메트릭 정확성 검증 통과
+- [x] 기본 설정 전체 실행 `status: complete`
+- [x] `run_policy_bench.py` 수정 반영 완료
+- [ ] 코드 품질 리뷰 완료
+- [ ] 주석 정리 완료

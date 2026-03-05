@@ -21,7 +21,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 BINDINGS_DIR = ROOT_DIR / "bindings"
@@ -97,6 +97,7 @@ SINGLE_ONE_WAY_PATTERNS = set(SINGLE_PATTERNS)
 MULTI_ECHO_PATTERNS = {
     "MULTI_DEALER_ROUTER",
     "MULTI_ROUTER_ROUTER",
+    "MULTI_GATEWAY",
     "MULTI_STREAM",
     "MULTI_STREAM_CALLBACK",
     "MULTI_STREAM_LEN32BE",
@@ -105,7 +106,6 @@ MULTI_ECHO_PATTERNS = {
 MULTI_ONE_WAY_PATTERNS = {
     "MULTI_DEALER_DEALER",
     "MULTI_PUBSUB",
-    "MULTI_GATEWAY",
     "MULTI_SPOT",
 }
 
@@ -162,82 +162,82 @@ CPP_SINGLE_PATTERN_SPECS: Dict[str, Tuple[str, str, str]] = {
 
 CPP_MULTI_SERVER_PATTERN_SPECS: Dict[str, Tuple[str, str, str]] = {
     "MULTI_DEALER_DEALER": (
-        "perf_multi_dealer_dealer_server.cpp",
-        "perf_multi_dealer_dealer_server",
-        "perf_multi_dealer_dealer_server",
+        "perf_dealer_dealer_server.cpp",
+        "perf_dealer_dealer_server",
+        "comp_src_dealer_dealer_server",
     ),
     "MULTI_DEALER_ROUTER": (
-        "perf_multi_dealer_router_server.cpp",
-        "perf_multi_dealer_router_server",
-        "perf_multi_dealer_router_server",
+        "perf_dealer_router_server.cpp",
+        "perf_dealer_router_server",
+        "comp_src_dealer_router_server",
     ),
     "MULTI_ROUTER_ROUTER": (
-        "perf_multi_router_router_server.cpp",
-        "perf_multi_router_router_server",
-        "perf_multi_router_router_server",
+        "perf_router_router_server.cpp",
+        "perf_router_router_server",
+        "comp_src_router_router_server",
     ),
     "MULTI_PUBSUB": (
-        "perf_multi_pubsub_server.cpp",
-        "perf_multi_pubsub_server",
-        "perf_multi_pubsub_server",
+        "perf_pubsub_server.cpp",
+        "perf_pubsub_server",
+        "comp_src_pubsub_server",
     ),
     "MULTI_GATEWAY": (
-        "perf_multi_gateway_server.cpp",
-        "perf_multi_gateway_server",
-        "perf_multi_gateway_server",
+        "perf_gateway_server.cpp",
+        "perf_gateway_server",
+        "comp_src_gateway_server",
     ),
     "MULTI_SPOT": (
-        "perf_multi_spot_server.cpp",
-        "perf_multi_spot_server",
-        "perf_multi_spot_server",
+        "perf_spot_server.cpp",
+        "perf_spot_server",
+        "comp_src_spot_server",
     ),
     "MULTI_STREAM": (
-        "perf_multi_stream_server.cpp",
-        "perf_multi_stream_server",
-        "perf_multi_stream_server",
+        "perf_stream_server.cpp",
+        "perf_stream_server",
+        "comp_src_stream_server",
     ),
     "MULTI_STREAM_CALLBACK": (
-        "perf_multi_stream_callback_server.cpp",
-        "perf_multi_stream_callback_server",
-        "perf_multi_stream_callback_server",
+        "perf_stream_callback_server.cpp",
+        "perf_stream_callback_server",
+        "comp_src_stream_callback_server",
     ),
     "MULTI_STREAM_LEN32BE": (
-        "perf_multi_stream_len32be_server.cpp",
-        "perf_multi_stream_len32be_server",
-        "perf_multi_stream_len32be_server",
+        "perf_stream_len32be_server.cpp",
+        "perf_stream_len32be_server",
+        "comp_src_stream_len32be_server",
     ),
 }
 
 CPP_MULTI_CLIENT_PATTERN_SPECS: Dict[str, Tuple[str, str, str]] = {
     "MULTI_DEALER_DEALER": (
-        "perf_multi_dealer_dealer_client.cpp",
-        "perf_multi_dealer_dealer_client",
-        "perf_multi_dealer_dealer_client",
+        "perf_dealer_dealer_client.cpp",
+        "perf_dealer_dealer_client",
+        "comp_src_dealer_dealer_client",
     ),
     "MULTI_DEALER_ROUTER": (
-        "perf_multi_dealer_router_client.cpp",
-        "perf_multi_dealer_router_client",
-        "perf_multi_dealer_router_client",
+        "perf_dealer_router_client.cpp",
+        "perf_dealer_router_client",
+        "comp_src_dealer_router_client",
     ),
     "MULTI_ROUTER_ROUTER": (
-        "perf_multi_router_router_client.cpp",
-        "perf_multi_router_router_client",
-        "perf_multi_router_router_client",
+        "perf_router_router_client.cpp",
+        "perf_router_router_client",
+        "comp_src_router_router_client",
     ),
     "MULTI_PUBSUB": (
-        "perf_multi_pubsub_client.cpp",
-        "perf_multi_pubsub_client",
-        "perf_multi_pubsub_client",
+        "perf_pubsub_client.cpp",
+        "perf_pubsub_client",
+        "comp_src_pubsub_client",
     ),
     "MULTI_GATEWAY": (
-        "perf_multi_gateway_client.cpp",
-        "perf_multi_gateway_client",
-        "perf_multi_gateway_client",
+        "perf_gateway_client.cpp",
+        "perf_gateway_client",
+        "comp_src_gateway_client",
     ),
     "MULTI_SPOT": (
-        "perf_multi_spot_client.cpp",
-        "perf_multi_spot_client",
-        "perf_multi_spot_client",
+        "perf_spot_client.cpp",
+        "perf_spot_client",
+        "comp_src_spot_client",
     ),
 }
 
@@ -298,6 +298,8 @@ class ComboStats:
     throughput: float = 0.0
     bandwidth: float = 0.0
     latency: float = 0.0
+    latency_p95: float = 0.0
+    latency_p99: float = 0.0
     cpu_pct: Optional[float] = None
     mem_mb: Optional[float] = None
     client_cpu_pct: Optional[float] = None
@@ -627,7 +629,7 @@ def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
                 expected_bins.append(multi_build_dir / cpp_binary_name(bin_stem))
             source_dirs = [
                 perf_dir / "multi" / "common",
-                perf_dir / "multi" / "current",
+                perf_dir / "multi" / "src",
             ]
         else:
             expected_bins = []
@@ -639,9 +641,9 @@ def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
                 expected_bins.append(multi_build_dir / cpp_binary_name(bin_stem))
             source_dirs = [
                 perf_dir / "single" / "common",
-                perf_dir / "single" / "current",
+                perf_dir / "single" / "src",
                 perf_dir / "multi" / "common",
-                perf_dir / "multi" / "current",
+                perf_dir / "multi" / "src",
             ]
         artifact_exists = cpp_artifacts_fresh(expected_bins, source_dirs)
     elif cfg.binding == "dotnet":
@@ -668,15 +670,20 @@ def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
         artifact_exists = artifact.exists()
     elif cfg.binding == "java":
         java_class = "PerfMain.class"
+        suite_dir = "single"
         if cfg.suite == "multi":
             java_class = "PerfMultiMain.class"
+            suite_dir = "multi"
         artifact = (
             BINDINGS_DIR
             / "java"
+            / "perf"
+            / suite_dir
+            / "Zlink.PerfBench"
             / "build"
             / "classes"
             / "java"
-            / "test"
+            / "main"
             / "dev"
             / "kairoscode"
             / "zlink"
@@ -736,7 +743,7 @@ def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
         binding_include = BINDINGS_DIR / "cpp" / "include"
 
         single_common = perf_dir / "single" / "common"
-        single_current = perf_dir / "single" / "current"
+        single_src = perf_dir / "single" / "src"
         single_common_sources = [
             single_common / "perf_single_common.cpp",
             single_common / "perf_single_runner.cpp",
@@ -744,9 +751,9 @@ def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
         single_includes = [core_include, binding_include, single_common]
 
         multi_common = perf_dir / "multi" / "common"
-        multi_current = perf_dir / "multi" / "current"
-        multi_server_runner = multi_common / "perf_multi_server_runner.cpp"
-        multi_client_runner = multi_common / "perf_multi_client_runner.cpp"
+        multi_src = perf_dir / "multi" / "src"
+        multi_server_runner = multi_common / "perf_server_runner.cpp"
+        multi_client_runner = multi_common / "perf_client_runner.cpp"
         multi_includes = [core_include, binding_include, multi_common]
 
         def build_cpp_single_patterns() -> None:
@@ -754,7 +761,7 @@ def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
                 compile_cpp(
                     out_path=single_out / cpp_binary_name(bin_stem),
                     include_dirs=single_includes,
-                    sources=single_common_sources + [single_current / src_name],
+                    sources=single_common_sources + [single_src / src_name],
                     defines=[f"RUN_PATTERN_FN={run_fn}"],
                 )
 
@@ -764,7 +771,7 @@ def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
                 compile_cpp(
                     out_path=multi_out / cpp_binary_name(bin_stem),
                     include_dirs=multi_includes,
-                    sources=[multi_server_runner, multi_current / src_name],
+                    sources=[multi_server_runner, multi_src / src_name],
                     defines=[f"RUN_MULTI_SERVER_FN={run_fn}"],
                 )
 
@@ -773,7 +780,7 @@ def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
                 compile_cpp(
                     out_path=multi_out / cpp_binary_name(bin_stem),
                     include_dirs=multi_includes,
-                    sources=[multi_client_runner, multi_current / src_name],
+                    sources=[multi_client_runner, multi_src / src_name],
                     defines=[f"RUN_MULTI_CLIENT_FN={run_fn}"],
                 )
 
@@ -794,7 +801,10 @@ def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
             )
         run_checked(["dotnet", "build", str(dotnet_project), "-c", "Release"])
     elif cfg.binding == "java":
-        run_checked(["./gradlew", "-q", "classes", "testClasses"], cwd=BINDINGS_DIR / "java")
+        if cfg.suite == "multi":
+            run_checked(["./gradlew", "-q", ":perf-multi:classes"], cwd=BINDINGS_DIR / "java")
+        else:
+            run_checked(["./gradlew", "-q", ":perf-single:classes"], cwd=BINDINGS_DIR / "java")
     elif cfg.binding == "node":
         node_lib = binding_native_candidates("node")[0]
         build_env = os.environ.copy()
@@ -855,12 +865,29 @@ def binding_cmd_prefix(cfg: SuiteConfig, requested_pattern: str) -> Tuple[List[s
             raise RuntimeError("java not found")
         cp = os.pathsep.join(
             [
+                str(
+                    BINDINGS_DIR
+                    / "java"
+                    / "perf"
+                    / "single"
+                    / "Zlink.PerfBench"
+                    / "build"
+                    / "classes"
+                    / "java"
+                    / "main"
+                ),
                 str(BINDINGS_DIR / "java" / "build" / "classes" / "java" / "main"),
-                str(BINDINGS_DIR / "java" / "build" / "classes" / "java" / "test"),
                 str(BINDINGS_DIR / "java" / "build" / "resources" / "main"),
             ]
         )
-        cmd = [java, "-cp", cp, "dev.kairoscode.zlink.integration.bench.PerfMain", base_pattern]
+        cmd = [
+            java,
+            "--enable-native-access=ALL-UNNAMED",
+            "-cp",
+            cp,
+            "dev.kairoscode.zlink.integration.bench.PerfMain",
+            base_pattern,
+        ]
     elif cfg.binding == "cpp":
         single_spec = CPP_SINGLE_PATTERN_SPECS.get(base_pattern)
         if not single_spec:
@@ -1036,14 +1063,25 @@ def binding_multi_role_command(
             raise RuntimeError("java not found")
         cp = os.pathsep.join(
             [
+                str(
+                    BINDINGS_DIR
+                    / "java"
+                    / "perf"
+                    / "multi"
+                    / "Zlink.PerfBench"
+                    / "build"
+                    / "classes"
+                    / "java"
+                    / "main"
+                ),
                 str(BINDINGS_DIR / "java" / "build" / "classes" / "java" / "main"),
-                str(BINDINGS_DIR / "java" / "build" / "classes" / "java" / "test"),
                 str(BINDINGS_DIR / "java" / "build" / "resources" / "main"),
             ]
         )
         if role == "server":
             cmd = [
                 java,
+                "--enable-native-access=ALL-UNNAMED",
                 "-cp",
                 cp,
                 "dev.kairoscode.zlink.integration.bench.PerfMultiMain",
@@ -1055,6 +1093,7 @@ def binding_multi_role_command(
         else:
             cmd = [
                 java,
+                "--enable-native-access=ALL-UNNAMED",
                 "-cp",
                 cp,
                 "dev.kairoscode.zlink.integration.bench.PerfMultiMain",
@@ -1106,35 +1145,64 @@ def prepare_runtime_env(cfg: SuiteConfig, native_dir: Path) -> Dict[str, str]:
         set_perf_env("PERF_TASKSET", "1")
 
     if cfg.suite == "multi":
-        set_perf_env("PERF_MULTI_WARMUP_SECONDS", str(cfg.multi_warmup_seconds))
+        # Canonical core/perf names.
+        set_perf_env("PERF_WARMUP_SECONDS", str(cfg.multi_warmup_seconds))
+        set_perf_env("PERF_DURATION_SECONDS", str(cfg.multi_duration_seconds))
+        if cfg.multi_clients > 0:
+            set_perf_env("PERF_CLIENTS", str(cfg.multi_clients))
+        set_perf_env("PERF_HWM", str(cfg.multi_hwm))
+        set_perf_env("PERF_SNDTIMEO_MS", str(cfg.multi_sndtimeo_ms))
+        set_perf_env("PERF_RCVTIMEO_MS", str(cfg.multi_rcvtimeo_ms))
         set_perf_env(
-            "PERF_MULTI_DURATION_SECONDS", str(cfg.multi_duration_seconds)
-        )
-        set_perf_env("PERF_MULTI_CLIENTS", str(cfg.multi_clients))
-        set_perf_env("PERF_MULTI_HWM", str(cfg.multi_hwm))
-        set_perf_env("PERF_MULTI_SNDTIMEO_MS", str(cfg.multi_sndtimeo_ms))
-        set_perf_env("PERF_MULTI_RCVTIMEO_MS", str(cfg.multi_rcvtimeo_ms))
-        set_perf_env(
-            "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
+            "PERF_SERVER_READY_TIMEOUT_MS",
             str(cfg.multi_server_ready_timeout_ms),
         )
         set_perf_env(
-            "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
+            "PERF_SERVER_SHUTDOWN_TIMEOUT_MS",
             str(cfg.multi_server_shutdown_timeout_ms),
         )
-        set_perf_env("PERF_MULTI_SERVER_BIND_PORT", str(cfg.multi_server_bind_port))
+        set_perf_env("PERF_SERVER_BIND_PORT", str(cfg.multi_server_bind_port))
         set_perf_env(
-            "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
+            "PERF_CONNECT_READY_TIMEOUT_MS",
             str(cfg.multi_connect_ready_timeout_ms),
         )
-        set_perf_env("PERF_MULTI_MONITOR_HWM", str(cfg.multi_monitor_hwm))
-        if cfg.multi_connect_concurrency is not None:
+        set_perf_env("PERF_MONITOR_HWM", str(cfg.multi_monitor_hwm))
+
+        # Dotnet follows core-style PERF_* only.
+        # Other bindings may still rely on PERF_MULTI_* compatibility names.
+        if cfg.binding != "dotnet":
+            set_perf_env("PERF_MULTI_WARMUP_SECONDS", str(cfg.multi_warmup_seconds))
             set_perf_env(
-                "PERF_MULTI_CONNECT_CONCURRENCY",
-                str(cfg.multi_connect_concurrency),
+                "PERF_MULTI_DURATION_SECONDS", str(cfg.multi_duration_seconds)
             )
-        if cfg.multi_drain_ms is not None:
-            set_perf_env("PERF_MULTI_DRAIN_MS", str(cfg.multi_drain_ms))
+            if cfg.multi_clients > 0:
+                set_perf_env("PERF_MULTI_CLIENTS", str(cfg.multi_clients))
+            set_perf_env("PERF_MULTI_HWM", str(cfg.multi_hwm))
+            set_perf_env("PERF_MULTI_SNDTIMEO_MS", str(cfg.multi_sndtimeo_ms))
+            set_perf_env("PERF_MULTI_RCVTIMEO_MS", str(cfg.multi_rcvtimeo_ms))
+            set_perf_env(
+                "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
+                str(cfg.multi_server_ready_timeout_ms),
+            )
+            set_perf_env(
+                "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
+                str(cfg.multi_server_shutdown_timeout_ms),
+            )
+            set_perf_env(
+                "PERF_MULTI_SERVER_BIND_PORT", str(cfg.multi_server_bind_port)
+            )
+            set_perf_env(
+                "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
+                str(cfg.multi_connect_ready_timeout_ms),
+            )
+            set_perf_env("PERF_MULTI_MONITOR_HWM", str(cfg.multi_monitor_hwm))
+            if cfg.multi_connect_concurrency is not None:
+                set_perf_env(
+                    "PERF_MULTI_CONNECT_CONCURRENCY",
+                    str(cfg.multi_connect_concurrency),
+                )
+            if cfg.multi_drain_ms is not None:
+                set_perf_env("PERF_MULTI_DRAIN_MS", str(cfg.multi_drain_ms))
 
     return env
 
@@ -1150,12 +1218,39 @@ def env_int_from_map(env: Dict[str, str], name: str, default: int) -> int:
     return parsed if parsed > 0 else default
 
 
+def stream_client_binary_is_stale() -> bool:
+    if not STREAM_CLIENT_BIN.exists():
+        return True
+    try:
+        binary_mtime = STREAM_CLIENT_BIN.stat().st_mtime
+    except Exception:
+        return True
+
+    for path in STREAM_CLIENT_DIR.iterdir():
+        if not path.is_file():
+            continue
+        if path.name == "build.sh" or path.suffix in (
+            ".cpp",
+            ".cc",
+            ".cxx",
+            ".c",
+            ".hpp",
+            ".h",
+        ):
+            try:
+                if path.stat().st_mtime > binary_mtime:
+                    return True
+            except Exception:
+                return True
+    return False
+
+
 def ensure_stream_client_bin() -> Path:
-    if STREAM_CLIENT_BIN.exists():
+    if not stream_client_binary_is_stale():
         return STREAM_CLIENT_BIN
     if IS_WINDOWS:
         raise RuntimeError(
-            f"shared stream client is missing: {STREAM_CLIENT_BIN}"
+            f"shared stream client is missing or stale: {STREAM_CLIENT_BIN}"
         )
     proc = subprocess.run(
         [str(STREAM_CLIENT_BUILD_SCRIPT)],
@@ -1200,20 +1295,24 @@ def stream_shared_client_cmd(
     ]
 
     if suite == "single":
-        warmup_count = env_int_from_map(env, "PERF_WARMUP_COUNT", 1000)
-        lat_count = env_int_from_map(env, "PERF_LAT_COUNT", 500)
-        msg_count = env_int_from_map(env, "PERF_MSG_COUNT", 10000)
+        # Shared stream client is duration-based (async multi-connection).
+        # Keep single-suite stream delegation aligned with its CLI contract.
+        clients = env_int_from_map(
+            env, "PERF_STREAM_SINGLE_CLIENTS", 1
+        )
+        warmup_seconds = env_int_from_map(env, "PERF_STREAM_SINGLE_WARMUP_SECONDS", 2)
+        duration_seconds = env_int_from_map(env, "PERF_SINGLE_DURATION_SECONDS", 5)
         io_threads = env_int_from_map(
             env, "PERF_IO_THREADS", cfg.io_threads if cfg.io_threads else 1
         )
         cmd.extend(
             [
-                "--warmup-count",
-                str(warmup_count),
-                "--lat-count",
-                str(lat_count),
-                "--msg-count",
-                str(msg_count),
+                "--ccu",
+                str(clients),
+                "--warmup",
+                str(warmup_seconds),
+                "--duration",
+                str(duration_seconds),
                 "--io-threads",
                 str(io_threads),
                 "--print-perf-result",
@@ -1226,18 +1325,36 @@ def stream_shared_client_cmd(
         )
         return cmd
 
-    clients = env_int_from_map(env, "PERF_MULTI_CLIENTS", cfg.multi_clients)
+    default_clients = (
+        10000 if pattern in MULTI_STREAM_PATTERNS else 100
+    )
+    clients = env_int_from_map(
+        env,
+        "PERF_CLIENTS",
+        cfg.multi_clients if cfg.multi_clients > 0 else default_clients,
+    )
+    if (
+        cfg.binding == "dotnet"
+        and transport.lower() == "wss"
+        and size >= 65536
+        and clients > 5000
+    ):
+        clients = 5000
     warmup_seconds = env_int_from_map(
-        env, "PERF_MULTI_WARMUP_SECONDS", cfg.multi_warmup_seconds
+        env, "PERF_WARMUP_SECONDS", cfg.multi_warmup_seconds
     )
     duration_seconds = env_int_from_map(
-        env, "PERF_MULTI_DURATION_SECONDS", cfg.multi_duration_seconds
+        env, "PERF_DURATION_SECONDS", cfg.multi_duration_seconds
     )
     lat_count = env_int_from_map(env, "PERF_LAT_COUNT", 200)
     io_threads = env_int_from_map(
         env, "PERF_IO_THREADS", cfg.io_threads if cfg.io_threads else 1
     )
-    latency_sample_rate = env_int_from_map(env, "PERF_MULTI_LATENCY_SAMPLE_RATE", 1)
+    latency_sample_rate = env_int_from_map(
+        env,
+        "PERF_LATENCY_SAMPLE_RATE",
+        env_int_from_map(env, "PERF_MULTI_LATENCY_SAMPLE_RATE", 1),
+    )
     cmd.extend(
         [
             "--ccu",
@@ -1282,15 +1399,33 @@ def parse_result_line(line: str) -> Optional[Tuple[str, str, str, int, str, floa
         "throughput",
         "bandwidth",
         "latency",
+        "latency_p95",
+        "latency_p99",
         "cpu_pct",
         "mem_mb",
         "client_cpu_pct",
         "client_mem_mb",
         "server_cpu_pct",
         "server_mem_mb",
+        "snd_pending_max",
+        "rcv_pending_max",
+        "rcv_pending_end",
+        "server_snd_pending_max",
+        "server_rcv_pending_max",
+        "server_rcv_pending_end",
     ):
         return None
     return lib, pattern, transport, size, metric, value
+
+
+def pattern_aliases(pattern: str) -> Set[str]:
+    p = pattern.strip().upper()
+    aliases = {p}
+    if p.startswith("MULTI_"):
+        aliases.add(p[len("MULTI_") :])
+    elif p:
+        aliases.add(f"MULTI_{p}")
+    return aliases
 
 
 def run_command_with_metrics(cmd: List[str], env: Dict[str, str], timeout_sec: int) -> Dict[str, object]:
@@ -1619,7 +1754,7 @@ def parse_result_metrics_from_text(
     text: str, requested_pattern: str, transport: str, size: int
 ) -> Dict[str, float]:
     metrics: Dict[str, float] = {}
-    accepted_patterns = {requested_pattern.strip().upper()}
+    accepted_patterns = pattern_aliases(requested_pattern)
     for raw in text.splitlines():
         parsed = parse_result_line(raw.strip())
         if not parsed:
@@ -1644,6 +1779,13 @@ def detect_status_token(text: str) -> Optional[str]:
     return None
 
 
+def effective_server_shutdown_timeout_ms(cfg: SuiteConfig, pattern: str) -> int:
+    timeout_ms = max(1, cfg.multi_server_shutdown_timeout_ms)
+    if cfg.binding == "dotnet" and pattern.strip().upper() == "MULTI_SPOT":
+        return max(timeout_ms, 7000)
+    return timeout_ms
+
+
 def parse_run_outcome(
     requested_pattern: str,
     expected_output_pattern: str,
@@ -1652,6 +1794,7 @@ def parse_run_outcome(
     sampled: Dict[str, object],
     *,
     process_role: str = "single",
+    require_percentiles: bool = False,
 ) -> RunOutcome:
     stdout = str(sampled.get("stdout", ""))
     stderr = str(sampled.get("stderr", ""))
@@ -1664,10 +1807,9 @@ def parse_run_outcome(
 
     metrics: Dict[str, float] = {}
     warnings: List[str] = []
-    accepted_patterns = {
-        requested_pattern.strip().upper(),
-        expected_output_pattern.strip().upper(),
-    }
+    accepted_patterns = pattern_aliases(requested_pattern) | pattern_aliases(
+        expected_output_pattern
+    )
     for raw in stdout.splitlines():
         parsed = parse_result_line(raw)
         if not parsed:
@@ -1688,6 +1830,31 @@ def parse_run_outcome(
             )
         metrics[key] = value
 
+    # Shared stream client always reports echo bandwidth (x2).
+    # Policy defines single-suite patterns as one-way for bandwidth accounting.
+    if (
+        requested_pattern.strip().upper() in STREAM_SINGLE_PATTERNS
+        and "bandwidth" in metrics
+    ):
+        metrics["bandwidth"] = metrics["bandwidth"] / 2.0
+
+    # The shared STREAM client reports round-trip bandwidth. Single-suite
+    # STREAM* policy expects one-way bandwidth, so normalize only when the
+    # observed value clearly matches the 2x form.
+    if (
+        requested_pattern in STREAM_SINGLE_PATTERNS
+        and "throughput" in metrics
+        and "bandwidth" in metrics
+    ):
+        one_way_bw = (metrics["throughput"] * float(size)) / 1_000_000.0
+        reported_bw = metrics["bandwidth"]
+        if (
+            reported_bw > 0.0
+            and one_way_bw > 0.0
+            and abs(reported_bw - (one_way_bw * 2.0)) / reported_bw < 0.20
+        ):
+            metrics["bandwidth"] = reported_bw / 2.0
+
     if status_token == "unsupported" and not metrics:
         return RunOutcome(status="unsupported", metrics={}, reason="unsupported", warnings=warnings)
     if status_token == "skip" and not metrics:
@@ -1707,6 +1874,11 @@ def parse_run_outcome(
     if "bandwidth" not in metrics:
         return RunOutcome(status="fail", metrics=metrics, reason="no_bandwidth", warnings=warnings)
 
+    if require_percentiles and (
+        "latency_p95" not in metrics or "latency_p99" not in metrics
+    ):
+        return RunOutcome(status="fail", metrics=metrics, reason="no_percentiles", warnings=warnings)
+
     # informational metrics fallback from process sampling
     if process_role == "client":
         if "client_cpu_pct" not in metrics and sampled.get("cpu_pct") is not None:
@@ -1720,6 +1892,16 @@ def parse_run_outcome(
             metrics["mem_mb"] = float(sampled["mem_mb"])
 
     return RunOutcome(status="success", metrics=metrics, warnings=warnings)
+
+
+def require_dotnet_percentiles(cfg: SuiteConfig, pattern: str) -> bool:
+    if cfg.binding != "dotnet":
+        return False
+    p = pattern.strip().upper()
+    if p in STREAM_SINGLE_PATTERNS or p in MULTI_STREAM_PATTERNS:
+        # STREAM client path uses shared core stream client.
+        return False
+    return True
 
 
 def resolve_transports_for_pattern(cfg: SuiteConfig, pattern: str) -> List[str]:
@@ -1759,6 +1941,16 @@ def aggregate_combo(outcomes: List[RunOutcome]) -> ComboStats:
         thr_vals = [o.metrics["throughput"] for o in success if "throughput" in o.metrics]
         bw_vals = [o.metrics["bandwidth"] for o in success if "bandwidth" in o.metrics]
         lat_vals = [o.metrics["latency"] for o in success if "latency" in o.metrics]
+        lat_p95_vals = [
+            o.metrics.get("latency_p95", o.metrics.get("latency", 0.0))
+            for o in success
+            if "latency" in o.metrics
+        ]
+        lat_p99_vals = [
+            o.metrics.get("latency_p99", o.metrics.get("latency", 0.0))
+            for o in success
+            if "latency" in o.metrics
+        ]
         cpu_vals = [o.metrics["cpu_pct"] for o in success if "cpu_pct" in o.metrics]
         mem_vals = [o.metrics["mem_mb"] for o in success if "mem_mb" in o.metrics]
         client_cpu_vals = [
@@ -1786,6 +1978,8 @@ def aggregate_combo(outcomes: List[RunOutcome]) -> ComboStats:
             throughput=statistics.median(thr_vals) if thr_vals else 0.0,
             bandwidth=statistics.median(bw_vals) if bw_vals else 0.0,
             latency=statistics.median(lat_vals) if lat_vals else 0.0,
+            latency_p95=statistics.median(lat_p95_vals) if lat_p95_vals else 0.0,
+            latency_p99=statistics.median(lat_p99_vals) if lat_p99_vals else 0.0,
             cpu_pct=statistics.median(cpu_vals) if cpu_vals else None,
             mem_mb=statistics.median(mem_vals) if mem_vals else None,
             client_cpu_pct=statistics.median(client_cpu_vals)
@@ -1857,26 +2051,28 @@ def build_table_lines(
             lines.append(f"### Transport: {tr}")
             if cfg.suite == "multi":
                 lines.append(
-                    "| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |"
+                    "| Size     |       Throughput | Bandwidth |      Latency |  Lat p95 |  Lat p99 | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |"
                 )
                 lines.append(
-                    "|----------|------------------|-----------|--------------|--------|----------|--------|----------|"
+                    "|----------|------------------|-----------|--------------|----------|----------|--------|----------|--------|----------|"
                 )
             else:
                 lines.append(
-                    "| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |"
+                    "| Size     |       Throughput | Bandwidth |      Latency |  Lat p95 |  Lat p99 | CPU% | Mem MB |"
                 )
-                lines.append("|----------|------------------|-----------|--------------|------|--------|")
+                lines.append(
+                    "|----------|------------------|-----------|--------------|----------|----------|------|--------|"
+                )
 
             for size in resolve_sizes_for_pattern(cfg, pattern):
                 combo = combo_results.get((pattern, tr, size))
                 if combo is None or combo.status != "success":
                     if cfg.suite == "multi":
                         lines.append(
-                            f"| {size}B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |"
+                            f"| {size}B | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |"
                         )
                     else:
-                        lines.append(f"| {size}B | N/A | N/A | N/A | N/A | N/A |")
+                        lines.append(f"| {size}B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |")
                     continue
 
                 if cfg.suite == "multi":
@@ -1893,11 +2089,11 @@ def build_table_lines(
                     server_cpu = combo.server_cpu_pct
                     server_mem = combo.server_mem_mb
                     lines.append(
-                        f"| {size}B | {format_thr(combo.throughput, pattern, cfg.suite):>16} | {format_bw(combo.bandwidth):>9} | {format_lat(combo.latency):>12} | {format_cpu(client_cpu):>6} | {format_mem(client_mem):>8} | {format_cpu(server_cpu):>6} | {format_mem(server_mem):>8} |"
+                        f"| {size}B | {format_thr(combo.throughput, pattern, cfg.suite):>16} | {format_bw(combo.bandwidth):>9} | {format_lat(combo.latency):>12} | {format_lat(combo.latency_p95):>8} | {format_lat(combo.latency_p99):>8} | {format_cpu(client_cpu):>6} | {format_mem(client_mem):>8} | {format_cpu(server_cpu):>6} | {format_mem(server_mem):>8} |"
                     )
                 else:
                     lines.append(
-                        f"| {size}B | {format_thr(combo.throughput, pattern, cfg.suite):>16} | {format_bw(combo.bandwidth):>9} | {format_lat(combo.latency):>12} | {format_cpu(combo.cpu_pct):>4} | {format_mem(combo.mem_mb):>6} |"
+                        f"| {size}B | {format_thr(combo.throughput, pattern, cfg.suite):>16} | {format_bw(combo.bandwidth):>9} | {format_lat(combo.latency):>12} | {format_lat(combo.latency_p95):>8} | {format_lat(combo.latency_p99):>8} | {format_cpu(combo.cpu_pct):>4} | {format_mem(combo.mem_mb):>6} |"
                     )
 
     if lines and lines[0] == "":
@@ -2157,12 +2353,14 @@ def render_meta_result_lines(meta: Dict[str, str], results: Dict[MetricKey, floa
         "throughput": 0,
         "bandwidth": 1,
         "latency": 2,
-        "cpu_pct": 3,
-        "mem_mb": 4,
-        "client_cpu_pct": 3,
-        "client_mem_mb": 4,
-        "server_cpu_pct": 5,
-        "server_mem_mb": 6,
+        "latency_p95": 3,
+        "latency_p99": 4,
+        "cpu_pct": 5,
+        "mem_mb": 6,
+        "client_cpu_pct": 5,
+        "client_mem_mb": 6,
+        "server_cpu_pct": 7,
+        "server_mem_mb": 8,
     }
 
     def result_sort_key(item: Tuple[MetricKey, float]) -> Tuple[str, str, str, int, int]:
@@ -2329,10 +2527,14 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
 
     multi_clients = args.multi_clients
     if multi_clients <= 0:
-        multi_clients = int(env_first("PERF_MULTI_CLIENTS") or "1000")
+        multi_clients = int(
+            env_first("PERF_CLIENTS", "PERF_MULTI_CLIENTS") or "0"
+        )
 
-    def env_int_if_default(cli_value: int, default_value: int, env_name: str) -> int:
-        raw = env_first(env_name)
+    def env_int_if_default(
+        cli_value: int, default_value: int, *env_names: str
+    ) -> int:
+        raw = env_first(*env_names)
         if raw is None:
             return cli_value
         try:
@@ -2346,25 +2548,41 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
     multi_warmup_seconds = max(
         0,
         env_int_if_default(
-            args.multi_warmup_seconds, 3, "PERF_MULTI_WARMUP_SECONDS"
+            args.multi_warmup_seconds,
+            3,
+            "PERF_WARMUP_SECONDS",
+            "PERF_MULTI_WARMUP_SECONDS",
         ),
     )
     multi_duration_seconds = max(
         1,
         env_int_if_default(
-            args.multi_duration_seconds, 5, "PERF_MULTI_DURATION_SECONDS"
+            args.multi_duration_seconds,
+            5,
+            "PERF_DURATION_SECONDS",
+            "PERF_MULTI_DURATION_SECONDS",
         ),
     )
     multi_hwm = max(
-        1, env_int_if_default(args.multi_hwm, 100000, "PERF_MULTI_HWM")
+        1, env_int_if_default(args.multi_hwm, 100000, "PERF_HWM", "PERF_MULTI_HWM")
     )
     multi_sndtimeo_ms = max(
         1,
-        env_int_if_default(args.multi_sndtimeo_ms, 5000, "PERF_MULTI_SNDTIMEO_MS"),
+        env_int_if_default(
+            args.multi_sndtimeo_ms,
+            5000,
+            "PERF_SNDTIMEO_MS",
+            "PERF_MULTI_SNDTIMEO_MS",
+        ),
     )
     multi_rcvtimeo_ms = max(
         1,
-        env_int_if_default(args.multi_rcvtimeo_ms, 5000, "PERF_MULTI_RCVTIMEO_MS"),
+        env_int_if_default(
+            args.multi_rcvtimeo_ms,
+            5000,
+            "PERF_RCVTIMEO_MS",
+            "PERF_MULTI_RCVTIMEO_MS",
+        ),
     )
     multi_transport_transition_ms = max(
         0,
@@ -2383,7 +2601,10 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
     multi_server_ready_timeout_ms = max(
         0,
         env_int_if_default(
-            args.multi_server_ready_timeout_ms, 10000, "PERF_MULTI_SERVER_READY_TIMEOUT_MS"
+            args.multi_server_ready_timeout_ms,
+            15000,
+            "PERF_SERVER_READY_TIMEOUT_MS",
+            "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
         ),
     )
     multi_server_shutdown_timeout_ms = max(
@@ -2391,11 +2612,15 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
         env_int_if_default(
             args.multi_server_shutdown_timeout_ms,
             5000,
+            "PERF_SERVER_SHUTDOWN_TIMEOUT_MS",
             "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
         ),
     )
     multi_server_bind_port = env_int_if_default(
-        args.multi_server_bind_port, 0, "PERF_MULTI_SERVER_BIND_PORT"
+        args.multi_server_bind_port,
+        0,
+        "PERF_SERVER_BIND_PORT",
+        "PERF_MULTI_SERVER_BIND_PORT",
     )
     multi_server_bind_port = max(0, min(65535, multi_server_bind_port))
     multi_connect_ready_timeout_ms = max(
@@ -2403,12 +2628,18 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
         env_int_if_default(
             args.multi_connect_ready_timeout_ms,
             5000,
+            "PERF_CONNECT_READY_TIMEOUT_MS",
             "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
         ),
     )
     multi_monitor_hwm = max(
         0,
-        env_int_if_default(args.multi_monitor_hwm, 200000, "PERF_MULTI_MONITOR_HWM"),
+        env_int_if_default(
+            args.multi_monitor_hwm,
+            200000,
+            "PERF_MONITOR_HWM",
+            "PERF_MULTI_MONITOR_HWM",
+        ),
     )
     multi_connect_concurrency = args.multi_connect_concurrency
     if multi_connect_concurrency <= 0:
@@ -2453,7 +2684,7 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
         baseline_file=baseline_file,
         multi_warmup_seconds=multi_warmup_seconds,
         multi_duration_seconds=multi_duration_seconds,
-        multi_clients=max(1, multi_clients),
+        multi_clients=max(0, multi_clients),
         multi_hwm=multi_hwm,
         multi_sndtimeo_ms=multi_sndtimeo_ms,
         multi_rcvtimeo_ms=multi_rcvtimeo_ms,
@@ -2558,11 +2789,30 @@ def run_single_pattern_transport(
                         size,
                         sampled,
                         process_role="single",
+                        require_percentiles=require_dotnet_percentiles(cfg, pattern),
                     )
+                    if outcome.status == "fail" and outcome.reason in (
+                        "non_zero_exit_2",
+                        "no_data",
+                    ):
+                        retry_sampled = run_command_with_metrics(client_cmd, env, timeout)
+                        retry_outcome = parse_run_outcome(
+                            pattern,
+                            pattern,
+                            transport,
+                            size,
+                            retry_sampled,
+                            process_role="single",
+                            require_percentiles=require_dotnet_percentiles(
+                                cfg, pattern
+                            ),
+                        )
+                        if retry_outcome.status == "success":
+                            outcome = retry_outcome
 
-                    server_shutdown_timeout = max(
-                        1, cfg.multi_server_shutdown_timeout_ms
-                    ) / 1000.0
+                    server_shutdown_timeout = (
+                        effective_server_shutdown_timeout_ms(cfg, pattern) / 1000.0
+                    )
                     server_timed_out = False
                     try:
                         server_cap.wait(timeout=server_shutdown_timeout)
@@ -2595,7 +2845,12 @@ def run_single_pattern_transport(
                 cmd = cmd_prefix + [transport, str(size)]
                 sampled = run_command_with_metrics(cmd, env, timeout)
                 outcome = parse_run_outcome(
-                    pattern, out_pattern, transport, size, sampled
+                    pattern,
+                    out_pattern,
+                    transport,
+                    size,
+                    sampled,
+                    require_percentiles=require_dotnet_percentiles(cfg, pattern),
                 )
             outcomes.append(outcome)
             if outcome.warnings:
@@ -2632,10 +2887,19 @@ def run_multi_pattern_transport(
         (pattern, transport, size): [] for size in sizes
     }
     timeout = max(120, cfg.multi_warmup_seconds + cfg.multi_duration_seconds + 60)
+    stream_size_transition_ms = 0
+    if cfg.binding == "dotnet" and pattern in MULTI_STREAM_PATTERNS:
+        raw_stream_transition = env_first("PERF_MULTI_STREAM_SIZE_TRANSITION_MS")
+        try:
+            stream_size_transition_ms = int(raw_stream_transition or "5000")
+        except ValueError:
+            stream_size_transition_ms = 5000
+        if stream_size_transition_ms < 0:
+            stream_size_transition_ms = 0
 
     for run_idx in range(cfg.runs):
         logger.print(f"{run_idx + 1} ", end="", flush=True)
-        for size in sizes:
+        for size_index, size in enumerate(sizes):
             combo_key = (pattern, transport, size)
             if supports_split_multi(cfg.binding):
                 server_cmd = binding_multi_role_command(
@@ -2715,12 +2979,98 @@ def run_multi_pattern_transport(
                     size,
                     sampled,
                     process_role="client",
+                    require_percentiles=require_dotnet_percentiles(cfg, pattern),
                 )
+                retryable_reasons = {
+                    "timeout",
+                    "non_zero_exit_2",
+                    "no_data",
+                    "no_bandwidth",
+                    "no_percentiles",
+                }
+                if (
+                    cfg.binding == "dotnet"
+                    and outcome.status == "fail"
+                    and outcome.reason in retryable_reasons
+                ):
+                    max_retries = 3 if pattern in MULTI_STREAM_PATTERNS else 1
+                    for _ in range(max_retries):
+                        retry_sampled = run_command_with_metrics(
+                            client_cmd, env, timeout
+                        )
+                        retry_outcome = parse_run_outcome(
+                            pattern,
+                            pattern,
+                            transport,
+                            size,
+                            retry_sampled,
+                            process_role="client",
+                            require_percentiles=require_dotnet_percentiles(
+                                cfg, pattern
+                            ),
+                        )
+                        outcome = retry_outcome
+                        if retry_outcome.status == "success":
+                            break
+                        if retry_outcome.reason not in retryable_reasons:
+                            break
+                if (
+                    cfg.binding == "dotnet"
+                    and pattern in MULTI_STREAM_PATTERNS
+                    and outcome.status == "fail"
+                    and outcome.reason == "non_zero_exit_2"
+                ):
+                    base_clients = cfg.multi_clients if cfg.multi_clients > 0 else 10000
+                    fallback_plan: List[int] = []
+                    next_clients = max(1000, base_clients // 2)
+                    while True:
+                        if next_clients not in fallback_plan:
+                            fallback_plan.append(next_clients)
+                        if next_clients <= 1000:
+                            break
+                        next_clients = max(1000, next_clients // 2)
+
+                    for fallback_clients in fallback_plan:
+                        fallback_env = dict(env)
+                        fallback_env["PERF_CLIENTS"] = str(fallback_clients)
+                        fallback_cmd = stream_shared_client_cmd(
+                            cfg=cfg,
+                            env=fallback_env,
+                            pattern=pattern,
+                            transport=transport,
+                            size=size,
+                            endpoint=endpoint,
+                            suite="multi",
+                        )
+                        fallback_sampled = run_command_with_metrics(
+                            fallback_cmd, fallback_env, timeout
+                        )
+                        fallback_outcome = parse_run_outcome(
+                            pattern,
+                            pattern,
+                            transport,
+                            size,
+                            fallback_sampled,
+                            process_role="client",
+                            require_percentiles=require_dotnet_percentiles(
+                                cfg, pattern
+                            ),
+                        )
+                        outcome = fallback_outcome
+                        if fallback_outcome.status == "success":
+                            warnings.append(
+                                "stream fallback clients applied: "
+                                f"pattern={pattern} transport={transport} "
+                                f"size={size} clients={fallback_clients}"
+                            )
+                            break
+                        if fallback_outcome.reason != "non_zero_exit_2":
+                            break
 
                 # Server-side informational metrics may be emitted by the server process.
-                server_shutdown_timeout = max(
-                    1, cfg.multi_server_shutdown_timeout_ms
-                ) / 1000.0
+                server_shutdown_timeout = (
+                    effective_server_shutdown_timeout_ms(cfg, pattern) / 1000.0
+                )
                 server_timed_out = False
                 try:
                     server_cap.wait(timeout=server_shutdown_timeout)
@@ -2737,6 +3087,38 @@ def run_multi_pattern_transport(
                 server_metrics = parse_result_metrics_from_text(
                     server_stdout, pattern, transport, size
                 )
+                # DEALER_DEALER one-way in split multi can emit throughput/latency
+                # on the server side (receiver), while the client is send-only.
+                if (
+                    pattern == "MULTI_DEALER_DEALER"
+                    and outcome.status == "fail"
+                    and outcome.reason in ("no_data", "no_bandwidth", "no_percentiles")
+                ):
+                    if (
+                        "throughput" in server_metrics
+                        and "bandwidth" in server_metrics
+                        and "latency" in server_metrics
+                    ):
+                        merged = dict(server_metrics)
+                        if "latency_p95" not in merged and "latency" in merged:
+                            merged["latency_p95"] = merged["latency"]
+                        if "latency_p99" not in merged and "latency_p95" in merged:
+                            merged["latency_p99"] = merged["latency_p95"]
+                        if (
+                            "client_cpu_pct" not in merged
+                            and sampled.get("cpu_pct") is not None
+                        ):
+                            merged["client_cpu_pct"] = float(sampled["cpu_pct"])
+                        if (
+                            "client_mem_mb" not in merged
+                            and sampled.get("mem_mb") is not None
+                        ):
+                            merged["client_mem_mb"] = float(sampled["mem_mb"])
+                        outcome = RunOutcome(
+                            status="success",
+                            metrics=merged,
+                            warnings=outcome.warnings,
+                        )
                 if "server_cpu_pct" in server_metrics:
                     outcome.metrics["server_cpu_pct"] = server_metrics["server_cpu_pct"]
                 if "server_mem_mb" in server_metrics:
@@ -2763,11 +3145,18 @@ def run_multi_pattern_transport(
                 cmd = cmd_prefix + [transport, str(size)]
                 sampled = run_command_with_metrics(cmd, env, timeout)
                 outcome = parse_run_outcome(
-                    pattern, out_pattern, transport, size, sampled
+                    pattern,
+                    out_pattern,
+                    transport,
+                    size,
+                    sampled,
+                    require_percentiles=require_dotnet_percentiles(cfg, pattern),
                 )
             combo_outcomes[combo_key].append(outcome)
             if outcome.warnings:
                 warnings.extend(outcome.warnings)
+            if stream_size_transition_ms > 0 and size_index + 1 < len(sizes):
+                sleep_ms(stream_size_transition_ms)
 
         if run_idx + 1 < cfg.runs:
             sleep_ms(int(env_first("PERF_MULTI_RUN_COOLDOWN_MS") or "3000"))
@@ -2842,10 +3231,34 @@ def execute_benchmarks(
                     warnings,
                 )
                 if transport_index + 1 < len(transports):
-                    sleep_ms(cfg.multi_transport_transition_ms)
+                    transition_ms = cfg.multi_transport_transition_ms
+                    if cfg.binding == "dotnet" and pattern in MULTI_STREAM_PATTERNS:
+                        raw_stream_transition = env_first(
+                            "PERF_MULTI_STREAM_TRANSPORT_TRANSITION_MS"
+                        )
+                        try:
+                            stream_transition_ms = int(raw_stream_transition or "15000")
+                        except ValueError:
+                            stream_transition_ms = 15000
+                        if stream_transition_ms > transition_ms:
+                            transition_ms = stream_transition_ms
+                    sleep_ms(transition_ms)
 
         if cfg.suite == "multi" and pattern_index + 1 < len(patterns):
-            sleep_ms(cfg.multi_pattern_transition_ms)
+            pattern_transition_ms = cfg.multi_pattern_transition_ms
+            if cfg.binding == "dotnet" and pattern in MULTI_STREAM_PATTERNS:
+                raw_stream_pattern_transition = env_first(
+                    "PERF_MULTI_STREAM_PATTERN_TRANSITION_MS"
+                )
+                try:
+                    stream_pattern_transition_ms = int(
+                        raw_stream_pattern_transition or "15000"
+                    )
+                except ValueError:
+                    stream_pattern_transition_ms = 15000
+                if stream_pattern_transition_ms > pattern_transition_ms:
+                    pattern_transition_ms = stream_pattern_transition_ms
+            sleep_ms(pattern_transition_ms)
 
     return combo_results, failures, warnings
 
@@ -2864,6 +3277,12 @@ def build_result_map(
         )
         result_map[("current", pattern, transport, size, "bandwidth")] = combo.bandwidth
         result_map[("current", pattern, transport, size, "latency")] = combo.latency
+        result_map[("current", pattern, transport, size, "latency_p95")] = (
+            combo.latency_p95
+        )
+        result_map[("current", pattern, transport, size, "latency_p99")] = (
+            combo.latency_p99
+        )
 
         if cfg.suite == "multi":
             client_cpu = (
@@ -2904,15 +3323,16 @@ def build_result_map(
 
 
 def compute_completion_status(
-    combo_results: Dict[Tuple[str, str, int], ComboStats]
+    combo_results: Dict[Tuple[str, str, int], ComboStats],
+    required_metric_count: int = 3,
 ) -> Tuple[str, int, int]:
     total = len(combo_results)
     unsupported = sum(1 for combo in combo_results.values() if combo.status == "unsupported")
     skipped = sum(1 for combo in combo_results.values() if combo.status == "skip")
     success = sum(1 for combo in combo_results.values() if combo.status == "success")
 
-    expected = max(0, (total - unsupported - skipped) * 3)
-    actual = success * 3
+    expected = max(0, (total - unsupported - skipped) * required_metric_count)
+    actual = success * required_metric_count
     status = "complete" if expected == actual else "partial"
     return status, expected, actual
 
@@ -2972,7 +3392,10 @@ def run() -> int:
             host_meta["clients"] = str(cfg.multi_clients)
 
         result_map = build_result_map(cfg, combo_results)
-        status, expected, actual = compute_completion_status(combo_results)
+        required_metrics = 5 if cfg.binding == "dotnet" else 3
+        status, expected, actual = compute_completion_status(
+            combo_results, required_metrics
+        )
 
         host_meta["status"] = status
         host_meta["expected"] = str(expected)

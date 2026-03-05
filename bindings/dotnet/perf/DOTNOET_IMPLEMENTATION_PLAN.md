@@ -1,14 +1,17 @@
 # DotNet Perf Benchmark Implementation Plan
 
-> core/perf (C++) 벤치마크를 bindings/dotnet/perf 로 1:1 포팅한다.
+> core/perf 벤치마크를 bindings/dotnet/perf 로 1:1 포팅한다.
+> (core/perf 는 C++ 소스이나 내부적으로 C API — `zlink_ctx_new()`, `ZLINK_PAIR` 등 — 를 사용한다.)
 > **C# binding API (`Zlink.*`, `Zlink.Service.*`) 만 사용하며, Native P/Invoke 직접 호출은 절대 금지.**
 > STREAM 클라이언트는 공통 바이너리 `core/perf/common/streamclient` 를 재사용한다.
+> **실행 엔진**: 모든 바인딩(C++/Java/dotnet)은 `bindings/perf/run_policy_bench.py` 를 단일 실행 엔진으로 사용한다.
+> 바인딩별 `run_comparison.py` 는 호환 어댑터(CLI 변환 후 policy runner 위임)이며, 독립 실행 엔진이 아니다.
 
 ---
 
 ## 1. 디렉토리 구조
 
-core/perf 의 `common/` + `current/` 분리 구조를 C# 프로젝트 컨벤션으로 그대로 반영한다.
+core/perf 의 `common/` + `src/` 분리 구조를 C# 프로젝트 컨벤션으로 그대로 반영한다.
 
 ```
 bindings/dotnet/
@@ -21,7 +24,7 @@ bindings/dotnet/
 └── perf/
     ├── DOTNOET_IMPLEMENTATION_PLAN.md      ← 본 문서
     ├── README.md                           ← 사용법 안내
-    ├── .gitignore                          ← bin/, obj/, tmp/ 제외
+    ├── .gitignore                          ← bin/, obj/ 제외
     │
     ├── single/
     │   ├── Zlink.BindingBench/
@@ -31,7 +34,7 @@ bindings/dotnet/
     │   │   ├── common/                     ← ★ core/perf/single/common/ 대응
     │   │   │   ├── PerfCommon.cs           ← 공통 유틸 (retry, PrintResult, 엔드포인트 등)
     │   │   │   └── PerfTls.cs             ← TLS 인증서 경로 리졸버 (single)
-    │   │   └── current/                    ← ★ core/perf/single/current/ 대응
+    │   │   └── src/                    ← ★ core/perf/single/src/ 대응
     │   │       ├── PerfPair.cs
     │   │       ├── PerfPubSub.cs
     │   │       ├── PerfDealerDealer.cs
@@ -40,6 +43,10 @@ bindings/dotnet/
     │   │       ├── PerfRouterRouterPoll.cs
     │   │       ├── PerfGateway.cs
     │   │       └── PerfSpot.cs
+    │   │
+    │   │   ※ 위는 목표 구조 (common/ + src/ 분리)
+    │   │     현재 상태: 프로젝트 루트에 모든 .cs 파일이 flat 배치됨
+    │   │     §14 Phase 1 에서 마이그레이션 실행
     │   ├── run_benchmarks.sh
     │   ├── run_benchmarks.ps1
     │   └── run_comparison.py
@@ -51,45 +58,49 @@ bindings/dotnet/
     │   │   ├── PerfMain.cs                 ← 진입점 (--multi-server / --multi-client)
     │   │   ├── common/                     ← ★ core/perf/multi/common/ 대응
     │   │   │   ├── PerfCommon.cs           ← 공통 유틸 (multi 전용)
-    │   │   │   ├── PerfMultiCommon.cs      ← Multi 설정 리졸버
-    │   │   │   ├── PerfMultiServerEntry.cs ← 서버 디스패처 + CPU/MEM
-    │   │   │   ├── PerfMultiClientEntry.cs ← 클라이언트 디스패처 + CPU/MEM
-    │   │   │   ├── PerfMultiClientHelpers.cs ← 공통 client 루프 헬퍼 (was PerfMultiClientHelpers)
-    │   │   │   ├── PerfMultiTls.cs         ← TLS 인증서 경로 리졸버
-    │   │   │   ├── PerfMultiStreamClient.cs  ← Raw transport stream client
-    │   │   │   └── PerfMultiStreamStopParser.cs ← len32be stop-token 파서
-    │   │   └── current/                    ← ★ core/perf/multi/current/ 대응
-    │   │       ├── PerfMultiDealerDealer.cs     ← ★ server/client 동일 파일 내 분리
-    │   │       ├── PerfMultiDealerRouter.cs
-    │   │       ├── PerfMultiRouterRouter.cs
-    │   │       ├── PerfMultiPubSub.cs
-    │   │       ├── PerfMultiGateway.cs
-    │   │       ├── PerfMultiSpot.cs
-    │   │       ├── PerfMultiStream.cs           ← 서버 only (클라이언트=공통 stream client)
-    │   │       ├── PerfMultiStreamCallback.cs
-    │   │       └── PerfMultiStreamLen32Be.cs
+    │   │   │   ├── PerfCommonMulti.cs      ← Multi 설정 리졸버
+    │   │   │   ├── PerfServerEntry.cs ← 서버 디스패처 + CPU/MEM
+    │   │   │   ├── PerfClientEntry.cs ← 클라이언트 디스패처 + CPU/MEM
+    │   │   │   ├── PerfClientHelpers.cs ← 연결 준비/정리 보조 유틸 (send/recv 루프 공유 금지)
+    │   │   │   ├── PerfTls.cs         ← TLS 인증서 경로 리졸버
+    │   │   │   └── PerfStreamStopParser.cs ← len32be stop-token 파서
+    │   │   └── src/                    ← ★ core/perf/multi/src/ 대응 (server/client 별도 파일)
+    │   │       ├── PerfDealerDealerServer.cs
+    │   │       ├── PerfDealerDealerClient.cs
+    │   │       ├── PerfDealerRouterServer.cs
+    │   │       ├── PerfDealerRouterClient.cs
+    │   │       ├── PerfRouterRouterServer.cs
+    │   │       ├── PerfRouterRouterClient.cs
+    │   │       ├── PerfPubSubServer.cs
+    │   │       ├── PerfPubSubClient.cs
+    │   │       ├── PerfGatewayServer.cs
+    │   │       ├── PerfGatewayClient.cs
+    │   │       ├── PerfSpotServer.cs
+    │   │       ├── PerfSpotClient.cs
+    │   │       ├── PerfStreamServer.cs           ← 서버 only (클라이언트=공통 stream client)
+    │   │       ├── PerfStreamCallbackServer.cs
+    │   │       └── PerfStreamLen32BeServer.cs
     │   ├── run_benchmarks.sh
     │   ├── run_benchmarks.ps1
     │   └── run_comparison.py
     │
     ├── common/
     │   └── PerfComparisonBase.py           ← single/multi 공통 Python 유틸 (선택)
+    │                                         ※ core/perf/common/ 은 streamclient 인프라 중심이나,
+    │                                           dotnet 은 C++ 공용 streamclient 를 재사용하므로
+    │                                           이 디렉토리는 Python 스크립트 유틸 공간으로만 활용
     │
     ├── results/
     │   ├── single/
-    │   │   ├── baseline/.gitkeep
-    │   │   ├── report/.gitkeep
-    │   │   └── tmp/.gitkeep
+    │   │   └── report/
     │   └── multi/
-    │       ├── baseline/.gitkeep
-    │       ├── report/.gitkeep
-    │       └── tmp/.gitkeep
+    │       └── report/
     │
     ├── run_benchmarks.sh                   ← 루트 single 래퍼
     ├── run_benchmarks.ps1
     ├── run_benchmarks_multi.sh             ← 루트 multi 래퍼
     ├── run_benchmarks_multi.ps1
-    └── run_comparison.py                   ← 루트 오케스트레이터
+    └── run_comparison.py                   ← 루트 호환 어댑터 (→ run_policy_bench.py 위임)
 ```
 
 ### core/perf 대비 구조 매핑
@@ -98,15 +109,16 @@ bindings/dotnet/
 |-----------|-------------|------|
 | `single/common/bench_common.hpp` | `single/.../common/PerfCommon.cs` | static 유틸 클래스 |
 | `single/common/perf_single_metric_header.hpp` | (해당없음 — C# 은 BinaryPrimitives 로 인라인 처리) | |
-| `single/current/perf_pair.cpp` | `single/.../current/PerfPair.cs` | 1:1 매핑 |
-| `single/current/perf_dealer_dealer.cpp` | `single/.../current/PerfDealerDealer.cs` | 1:1 매핑 |
+| `single/src/perf_pair.cpp` | `single/.../src/PerfPair.cs` | 1:1 매핑 |
+| `single/src/perf_dealer_dealer.cpp` | `single/.../src/PerfDealerDealer.cs` | 1:1 매핑 |
 | `multi/common/perf_common.hpp` | `multi/.../common/PerfCommon.cs` | 패키지 분리 |
-| `multi/common/perf_common_multi.hpp` | `multi/.../common/PerfMultiCommon.cs` | |
-| `multi/common/perf_multi_client_helpers.hpp` | `multi/.../common/PerfMultiClientHelpers.cs` | |
-| `multi/common/perf_multi_entry.hpp` | `multi/.../common/PerfMultiServerEntry.cs` + `PerfMultiClientEntry.cs` | |
-| `multi/current/perf_multi_dealer_dealer_server.cpp` | `multi/.../current/PerfMultiDealerDealer.cs` (RunServer) | ★ server/client 동일 파일 |
-| `multi/current/perf_multi_dealer_dealer_client.cpp` | `multi/.../current/PerfMultiDealerDealer.cs` (RunClient) | |
-| `multi/current/perf_multi_stream_server.cpp` | `multi/.../current/PerfMultiStream.cs` | 서버 only |
+| `multi/common/perf_common_multi.hpp` | `multi/.../common/PerfCommonMulti.cs` | |
+| `multi/common/perf_metric_header.hpp` | (해당없음 — C# 은 BinaryPrimitives 로 인라인 처리) | magic=MPF1, phase_drain 포함 |
+| `multi/common/perf_client_helpers.hpp` | `multi/.../common/PerfClientHelpers.cs` | 연결 준비/정리 보조 유틸 (패턴 간 send/recv 루프 공유 금지) |
+| `multi/common/perf_entry.hpp` | `multi/.../common/PerfServerEntry.cs` + `PerfClientEntry.cs` | |
+| `multi/src/perf_dealer_dealer_server.cpp` | `multi/.../src/PerfDealerDealerServer.cs` | ★ server/client 별도 파일 (1:1 매핑) |
+| `multi/src/perf_dealer_dealer_client.cpp` | `multi/.../src/PerfDealerDealerClient.cs` | |
+| `multi/src/perf_stream_server.cpp` | `multi/.../src/PerfStreamServer.cs` | 서버 only |
 
 ---
 
@@ -163,7 +175,7 @@ dotnet build perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj -c Release
 dotnet build perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release
 ```
 
-- `run_comparison.py` 가 동일한 명령으로 빌드를 호출한다.
+- `run_policy_bench.py` 의 `build_binding_if_needed()` 가 동일한 명령으로 빌드를 호출한다.
 - 산출물: `perf/single/Zlink.BindingBench/bin/Release/net8.0/` 및 `perf/multi/Zlink.BindingBench.Multi/bin/Release/net8.0/`
 
 ---
@@ -184,10 +196,13 @@ dotnet run --project perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj \
   <PATTERN> <TRANSPORT> <SIZE>
 ```
 
-- **PATTERN**: `PAIR | PUBSUB | DEALER_DEALER | DEALER_ROUTER | ROUTER_ROUTER | ROUTER_ROUTER_POLL | GATEWAY | SPOT`
+- **PATTERN** (C# 바이너리 직접 실행 8종): `PAIR | PUBSUB | DEALER_DEALER | DEALER_ROUTER | ROUTER_ROUTER | ROUTER_ROUTER_POLL | GATEWAY | SPOT`
 - **TRANSPORT**: `tcp | tls | ws | wss | inproc | ipc`
 - **SIZE**: 양의 정수 (바이트)
 - 종료코드: 0=성공, 1=인자 오류, 2=런타임 오류
+
+> **single suite 는 위 8종**이다. STREAM 3종(STREAM, STREAM_CALLBACK, STREAM_LEN32BE)은
+> core/perf 기준 **multi 전용** 패턴이며, single suite 에는 포함되지 않는다 (`core/perf/run_comparison.py:84` 참조).
 
 ### 3.2 Multi 실행
 
@@ -203,38 +218,51 @@ dotnet run --project perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj \
 
 ### 3.2.1 Multi 패턴 네이밍 규약
 
-`run_comparison.py` 의 `--pattern` 인자와 C# 바이너리의 `<PATTERN>` 인자는 네이밍이 다르다.
+> **핵심 원칙**: `MULTI_*` 는 `run_policy_bench.py` 내부의 **입력 토큰**일 뿐이다. 실제 런타임(바이너리 실행, RESULT 출력, 환경 변수)에서는 접두어 없는 패턴 이름을 사용한다.
 
-| run_comparison.py `--pattern` | C# 바이너리 `<PATTERN>` | 비고 |
-|-------------------------------|------------------------|------|
-| `MULTI_DEALER_DEALER` | `DEALER_DEALER` | `MULTI_` 접두사 strip |
-| `MULTI_DEALER_ROUTER` | `DEALER_ROUTER` | |
-| `MULTI_ROUTER_ROUTER` | `ROUTER_ROUTER` | |
-| `MULTI_PUBSUB` | `PUBSUB` | |
-| `MULTI_GATEWAY` | `GATEWAY` | |
-| `MULTI_SPOT` | `SPOT` | |
-| `MULTI_STREAM` | `STREAM` | |
-| `MULTI_STREAM_CALLBACK` | `STREAM_CALLBACK` | |
-| `MULTI_STREAM_LEN32BE` | `STREAM_LEN32BE` | |
+| 계층 | 패턴 이름 | 예시 |
+|------|----------|------|
+| `run_policy_bench.py --pattern` (입력 토큰) | `MULTI_DEALER_DEALER` | single/multi 구분용 |
+| C# 바이너리 `<PATTERN>` (런타임) | `DEALER_DEALER` | `MULTI_` strip 후 전달 |
+| `RESULT,current,...` (출력) | `DEALER_DEALER` | 접두어 없는 패턴 |
+| `PERF_PATTERN` 환경 변수 (런타임) | `DEALER_DEALER` | `set_perf_pattern_env()` 로 설정 |
 
-**규칙**: `run_comparison.py` 는 `--suite multi` 일 때 `MULTI_` 접두사를 사용하여 single 패턴과 구분한다. 내부적으로 C# 바이너리 호출 시 `MULTI_` 접두사를 strip 하고 나머지를 `<PATTERN>` 인자로 전달한다.
+**core 기준 바이너리 식별 (run_comparison.py)**:
+- multi 바이너리 이름: `comp_src_{pattern}_{role}` (예: `comp_src_dealer_dealer_server`, `comp_src_pubsub_client`)
+- single 바이너리 이름: `perf_{pattern}` (예: `perf_pair`, `perf_pubsub`)
+- STREAM 클라이언트: `perf_stream_client` (공용 바이너리, 패턴 무관)
+
+**`set_perf_pattern_env()`** (core/perf multi/common/perf_entry.hpp):
+- 서버/클라이언트 진입 시 `PERF_PATTERN` 환경 변수에 패턴 이름(무접두어)을 설정
+- dotnet 구현: `PerfServerEntry.cs` / `PerfClientEntry.cs` 에서 동일하게 `Environment.SetEnvironmentVariable("PERF_PATTERN", pattern)` 호출
 
 ### 3.3 STREAM 패턴 클라이언트
 
 STREAM, STREAM_CALLBACK, STREAM_LEN32BE 패턴은:
 - **서버**: C# 벤치마크가 직접 구현 (Socket.AttachStreamRaw / AttachStreamLen32Be API)
 - **클라이언트**: `core/perf/common/streamclient/build/perf_stream_client` (C++ 공통 바이너리) 사용
-- `run_comparison.py` 가 자동으로 공통 stream client 를 호출한다.
+- `run_policy_bench.py` 가 자동으로 공통 stream client 를 호출한다.
 
-### 3.4 run_comparison.py 필수 수정 사항
+### 3.4 실행 엔진 아키텍처
 
-현재 `run_comparison.py` 에 dotnet 관련 수정이 필요한 항목:
+모든 바인딩은 `bindings/perf/run_policy_bench.py` 를 단일 실행 엔진으로 사용한다.
 
-| 위치 | 현재 | 수정 필요 |
-|------|------|----------|
-| `binding_cmd_prefix()` | C++ 바이너리 직접 실행 | `dotnet run --project ... -c Release --` 또는 빌드 후 바이너리 경로 |
-| `binding_multi_role_command()` | 동일 | server/client 바이너리 경로 분리 |
-| `build_binding_if_needed()` | C++ CMake 빌드 | `dotnet build -c Release` 호출 |
+```
+bindings/dotnet/perf/run_benchmarks.sh          ← 사용자 진입점 (인자 파싱, 환경 설정)
+  └─ bindings/dotnet/perf/run_comparison.py     ← 호환 어댑터 (CLI 변환 후 위임)
+       └─ bindings/perf/run_policy_bench.py     ← 단일 실행 엔진 (빌드/실행/메트릭/결과)
+```
+
+`run_policy_bench.py` 에 dotnet 지원이 **이미 구현**되어 있다:
+
+| 함수 | 위치 | dotnet 처리 내용 |
+|------|------|-----------------|
+| `build_binding_if_needed()` | run_policy_bench.py:590 | `dotnet build -c Release` 호출 |
+| `binding_cmd_prefix()` | run_policy_bench.py:820 | `dotnet <DLL> <PATTERN>` 형식 (빌드된 DLL 경로) |
+| `binding_multi_role_command()` | run_policy_bench.py:928 | `dotnet <Multi.DLL> --multi-server/--multi-client` 형식 |
+
+바인딩별 `run_comparison.py` 는 core/perf CLI 형태를 policy runner CLI 로 변환하는 **호환 어댑터**이다.
+빌드/실행/메트릭 수집 로직은 `run_policy_bench.py` 에만 존재하며, 바인딩별로 분산되지 않는다.
 
 ---
 
@@ -257,7 +285,7 @@ RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,rcv_pending_max,<value>
 RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,rcv_pending_end,<value>
 ```
 
-Multi 정보성 메트릭 (없어도 complete 판정에 영향 없음, PerfMultiServerEntry / PerfMultiClientEntry 에서):
+Multi 정보성 메트릭 (없어도 complete 판정에 영향 없음, PerfServerEntry / PerfClientEntry 에서):
 ```
 RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,server_cpu_pct,<value>
 RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,server_mem_mb,<value>
@@ -276,7 +304,7 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 
 | 구분 | 승수 | 비고 |
 |------|------|------|
-| **Single 전체** | **1.0** | run_comparison.py 기준 모든 single 은 one-way 방향 |
+| **Single 전체** | **1.0** | run_policy_bench.py 기준 모든 single 은 one-way 방향 |
 | Multi echo (DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, STREAM*) | 2.0 | 요청+응답 양방향 |
 | Multi one-way (DEALER_DEALER, PUBSUB, SPOT) | 1.0 | 단방향 |
 
@@ -289,36 +317,38 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 변수 | 기본값 | 용도 |
 |------|--------|------|
 | `PERF_IO_THREADS` | 0 (기본) | Context IO 스레드 |
-| `PERF_WARMUP_COUNT` | 패턴별 (표준: 1000, GATEWAY/SPOT: 200) | 웜업 메시지 횟수 (count 기반, 시간 기반 아님) |
+| `PERF_WARMUP_COUNT` | 패턴별 (표준: 1000, GATEWAY/SPOT: 200) | 웜업 메시지 횟수 (count 기반, 시간 기반 아님). **SPOT clamp**: `msg_size ≥ 65536` 이면 최대 20 |
 | `PERF_SINGLE_DURATION_SECONDS` | 5 | 활성 측정 기간 |
-| `PERF_LAT_COUNT` | 500 (GATEWAY,SPOT: 200) | 레이턴시 reservoir sampling 캡 |
+| `PERF_SINGLE_LATENCY_SAMPLE_CAP` | 200000 | 레이턴시 reservoir sampling 캡 |
 | `PERF_SINGLE_HWM` | **1000** | 소켓 HWM (send+recv 기본) |
-| `PERF_SINGLE_SNDHWM` | **1000** | 송신 HWM (HWM 오버라이드) |
-| `PERF_SINGLE_RCVHWM` | **1000** | 수신 HWM (HWM 오버라이드) |
+| `PERF_SINGLE_SNDHWM` | PERF_SINGLE_HWM 값 상속 | 송신 HWM (미설정 시 PERF_SINGLE_HWM 사용) |
+| `PERF_SINGLE_RCVHWM` | PERF_SINGLE_HWM 값 상속 | 수신 HWM (미설정 시 PERF_SINGLE_HWM 사용) |
 | `PERF_SINGLE_SNDTIMEO_MS` | **200** | 송신 타임아웃 |
 | `PERF_SINGLE_RCVTIMEO_MS` | **200** | 수신 타임아웃 |
 | `PERF_MAX_SOCKETS` | 자동 | 최대 소켓 수 |
+| `PERF_DEBUG` | (없으면 off) | 디버그 출력 활성화 |
+| `PERF_SINGLE_PUBSUB_RCVTIMEO_MS` | RCVTIMEO_MS 상속 | PubSub 전용 수신 타임아웃 |
+| `PERF_SINGLE_QUEUE_SAMPLE_MS` | 100 | 큐 샘플링 주기 (ms) |
+| `PERF_SINGLE_QUEUE_SAMPLE_EVERY_MSGS` | 64 | 큐 샘플링 메시지 간격 |
 
 ### 5.2 Multi
 
 | 변수 | 기본값 | 용도 |
 |------|--------|------|
-| `PERF_MULTI_CLIENTS` | **100** (STREAM: 10000) | 동시 클라이언트 수 |
-| `PERF_MULTI_WARMUP_SECONDS` | **2** | 웜업 기간 |
-| `PERF_MULTI_SETTLE_MS` | 500 | 측정 전 안정화 |
-| `PERF_MULTI_DURATION_SECONDS` | 5 | 활성 측정 기간 |
-| `PERF_MULTI_ACTIVE_WARMUP` | 0 | 0=sleep, 1=active |
-| `PERF_MULTI_HWM` | **100** (STREAM: 10) | 소켓 HWM |
-| `PERF_MULTI_SNDHWM` | 0 (HWM fallback) | 송신 HWM |
-| `PERF_MULTI_RCVHWM` | 0 (HWM fallback) | 수신 HWM |
-| `PERF_MULTI_SNDTIMEO_MS` | **200** | 송신 타임아웃 |
-| `PERF_MULTI_RCVTIMEO_MS` | **200** | 수신 타임아웃 |
-| `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` | 5000 | 연결 대기 |
-| `PERF_MULTI_MONITOR_HWM` | **1000** | 모니터 소켓 HWM |
-| `PERF_MULTI_SERVER_BIND_PORT` | 0 (자동) | 서버 포트 고정 |
-| `PERF_IO_THREADS` | 0 | IO 스레드 |
-| `PERF_MULTI_SERVER_IO_THREADS` | 0 | 서버 전용 IO 스레드 |
-| `PERF_MULTI_CLIENT_IO_THREADS` | 0 | 클라이언트 전용 IO 스레드 |
+| `PERF_CLIENTS` | **100** (STREAM: 10000) | 동시 클라이언트 수 |
+| `PERF_WARMUP_SECONDS` | **2** | 웜업 기간 |
+| `PERF_SETTLE_MS` | 500 | 측정 전 안정화 |
+| `PERF_DURATION_SECONDS` | 5 | 활성 측정 기간 |
+| `PERF_ACTIVE_WARMUP` | 0 | 0=sleep, 1=active |
+| `PERF_HWM` | **100** (STREAM: 10) | 소켓 HWM |
+| `PERF_SNDHWM` | PERF_HWM 값 상속 | 송신 HWM (미설정 시 PERF_HWM 사용) |
+| `PERF_RCVHWM` | PERF_HWM 값 상속 | 수신 HWM (미설정 시 PERF_HWM 사용) |
+| `PERF_SNDTIMEO_MS` | **200** | 송신 타임아웃 |
+| `PERF_RCVTIMEO_MS` | **200** | 수신 타임아웃 |
+| `PERF_CONNECT_READY_TIMEOUT_MS` | 5000 | 연결 대기 |
+| `PERF_MONITOR_HWM` | **1000** | 모니터 소켓 HWM |
+| `PERF_SERVER_BIND_PORT` | 0 (자동) | 서버 포트 고정 |
+| `PERF_IO_THREADS` | 0 | IO 스레드 (서버/클라이언트 공통) |
 
 ---
 
@@ -327,16 +357,16 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 ### 6.1 Single 페이즈
 
 ```
-[Warmup(count)] → [Settle(100ms)] → [Active(duration)] → [Drain idle]
+[Setup(bind/connect + settle)] → [Warmup(count)] → [Active(duration)]
 ```
 
-1. **Warmup** (`PERF_WARMUP_COUNT`, 표준: 1000, GATEWAY/SPOT: 200): 고정 횟수 send/recv 반복으로 워밍업 (시간 기반이 아님)
-2. **Settle** (100ms, 코드 상수 `SETTLE_TIME_MS`): 소켓 설정 완료 후 안정화 대기
-3. **Active** (`PERF_SINGLE_DURATION_SECONDS`, 5초): duration 기반 throughput 측정 + reservoir sampling 으로 latency/p95/p99 동시 수집
-4. **Drain idle**: active 종료 후 recv timeout (기본 200ms) 동안 무수신 시 종료
+1. **Setup**: 소켓 생성, bind/connect 후 `settle()` (100ms, 코드 상수 `SETTLE_TIME_MS`) — 별도 측정 페이즈가 아니라 연결 설정의 일부
+2. **Warmup** (`PERF_WARMUP_COUNT`, 표준: 1000, GATEWAY/SPOT: 200): 고정 횟수 send/recv 반복, `phase_warmup` 라벨 (시간 기반이 아님). **SPOT clamp**: `msg_size ≥ 65536` 이면 warmup 최대 20 (`perf_spot.cpp:806`)
+3. **Active** (`PERF_SINGLE_DURATION_SECONDS`, 5초): duration 기반 throughput 측정 + reservoir sampling 으로 latency/p95/p99 동시 수집, `phase_active` 라벨. recv timeout (기본 200ms) 동안 무수신 시 루프 종료
 
 > **core 구현 참고**: Active 페이즈에서 메시지 헤더의 `sent_ts_us` 를 기반으로 throughput 과 latency 를 동시에 측정한다.
 > 수신 측에서 reservoir sampling 으로 p95/p99 를 수집한다.
+> Single 에는 `phase_drain` 이 없다 (`perf_single_metric_header.hpp`: phase_unknown=0, phase_warmup=1, phase_active=2 만 존재).
 
 ### 6.2 Multi 페이즈
 
@@ -344,10 +374,10 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 [Connect] → [Warmup(duration)] → [Settle] → [Active(duration)]
 ```
 
-1. **Connect**: N 클라이언트 생성, MonitorSocket 로 연결 확인 (`PERF_MULTI_CONNECT_READY_TIMEOUT_MS`)
-2. **Warmup** (`PERF_MULTI_WARMUP_SECONDS`, 2초): duration 기반 send/recv 반복 (phase_warmup)
-3. **Settle** (`PERF_MULTI_SETTLE_MS`, 500ms): 안정화 sleep (one-way: phase_drain 라벨, echo: phase_warmup 라벨)
-4. **Active** (`PERF_MULTI_DURATION_SECONDS`, 5초): 라운드로빈 분산 send/recv, 메트릭 수집 (phase_active)
+1. **Connect**: N 클라이언트 생성, MonitorSocket 로 연결 확인 (`PERF_CONNECT_READY_TIMEOUT_MS`)
+2. **Warmup** (`PERF_WARMUP_SECONDS`, 2초): duration 기반 send/recv 반복 (phase_warmup)
+3. **Settle** (`PERF_SETTLE_MS`, 500ms): 안정화 sleep (one-way: phase_drain 라벨, echo: phase_warmup 라벨)
+4. **Active** (`PERF_DURATION_SECONDS`, 5초): 라운드로빈 분산 send/recv, 메트릭 수집 (phase_active)
 
 ---
 
@@ -355,7 +385,7 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 
 ### 7.1 Single 패턴
 
-> **참고**: run_comparison.py 기준 모든 single 패턴은 one-way 방향(`bandwidth 승수 = 1.0`).
+> **참고**: run_policy_bench.py 기준 모든 single 패턴은 one-way 방향(`bandwidth 승수 = 1.0`).
 > "소켓 동작" 열은 실제 send/recv 패턴(echo=양방향, one-way=단방향)을 나타낸다.
 
 | # | 파일 | 패턴 | 소켓 타입 | 소켓 동작 | 트랜스포트 |
@@ -367,25 +397,26 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 5 | PerfRouterRouter.cs | ROUTER_ROUTER | Router×2 | echo | tcp,tls,ws,wss,inproc,ipc |
 | 6 | PerfRouterRouterPoll.cs | ROUTER_ROUTER_POLL | Router×2+Poller | echo | tcp,tls,ws,wss,inproc,ipc |
 | 7 | PerfGateway.cs | GATEWAY | Gateway+Receiver | echo | tcp,tls,ws,wss |
-| 8 | PerfSpot.cs | SPOT | Spot (pub/sub) | one-way | tcp,tls,ws,wss |
+| 8 | PerfSpot.cs | SPOT | Spot (pub/sub) | one-way | tcp,tls,ws,wss | ★ warmup clamp: size≥65536 → max 20 |
 
-> **참고**: STREAM 3종(STREAM, STREAM_CALLBACK, STREAM_LEN32BE)은 core/perf 와 동일하게 multi suite 에만 포함된다. single 기본 패턴은 8개(PAIR~SPOT)이다.
+> core/perf 기준 single suite 는 **8개 패턴**이다 (`core/perf/run_comparison.py:84`).
+> STREAM 3종(STREAM, STREAM_CALLBACK, STREAM_LEN32BE)은 **multi 전용** 패턴이며, single suite 에 포함되지 않는다.
 
 ### 7.2 Multi 패턴
 
-> ★ core/perf 와 동일하게 **server/client 로직 분리**한다. C# 에서는 동일 파일 내 `RunServer()` / `RunClient()` 정적 메서드로 분리한다.
+> ★ core/perf 와 동일하게 **server/client 를 별도 파일로 분리**한다. 각 패턴의 서버 로직과 클라이언트 로직이 독립된 소스 파일에 구현된다.
 
-| # | 파일 | 패턴 | 서버 역할 | 클라이언트 역할 |
-|---|------|------|-----------|----------------|
-| 1 | PerfMultiDealerDealer.cs | DEALER_DEALER | DEALER bind, relay | DEALER connect, send one-way |
-| 2 | PerfMultiDealerRouter.cs | DEALER_ROUTER | ROUTER bind, echo | DEALER connect, send+recv |
-| 3 | PerfMultiRouterRouter.cs | ROUTER_ROUTER | ROUTER bind, echo | ROUTER connect, send+recv |
-| 4 | PerfMultiPubSub.cs | PUBSUB | PUB bind, publish | SUB connect, recv |
-| 5 | PerfMultiGateway.cs | GATEWAY | Receiver bind, echo | Gateway connect, send+recv |
-| 6 | PerfMultiSpot.cs | SPOT | Spot publish | Spot subscribe |
-| 7 | PerfMultiStream.cs | STREAM | STREAM bind, raw echo | C++ stream client |
-| 8 | PerfMultiStreamCallback.cs | STREAM_CALLBACK | AttachStreamRaw callback | C++ stream client |
-| 9 | PerfMultiStreamLen32Be.cs | STREAM_LEN32BE | AttachStreamLen32Be | C++ stream client |
+| # | 서버 파일 | 클라이언트 파일 | 패턴 | 서버 역할 | 클라이언트 역할 |
+|---|-----------|----------------|------|-----------|----------------|
+| 1 | PerfDealerDealerServer.cs | PerfDealerDealerClient.cs | DEALER_DEALER | DEALER bind, relay | DEALER connect, send one-way |
+| 2 | PerfDealerRouterServer.cs | PerfDealerRouterClient.cs | DEALER_ROUTER | ROUTER bind, echo | DEALER connect, send+recv |
+| 3 | PerfRouterRouterServer.cs | PerfRouterRouterClient.cs | ROUTER_ROUTER | ROUTER bind, echo | ROUTER connect, send+recv |
+| 4 | PerfPubSubServer.cs | PerfPubSubClient.cs | PUBSUB | PUB bind, publish | SUB connect, recv |
+| 5 | PerfGatewayServer.cs | PerfGatewayClient.cs | GATEWAY | Receiver bind, echo | Gateway connect, send+recv |
+| 6 | PerfSpotServer.cs | PerfSpotClient.cs | SPOT | Spot publish | Spot subscribe |
+| 7 | PerfStreamServer.cs | (C++ stream client) | STREAM | STREAM bind, raw echo | C++ stream client |
+| 8 | PerfStreamCallbackServer.cs | (C++ stream client) | STREAM_CALLBACK | AttachStreamRaw callback | C++ stream client |
+| 9 | PerfStreamLen32BeServer.cs | (C++ stream client) | STREAM_LEN32BE | AttachStreamLen32Be | C++ stream client |
 
 **Multi 서버 통신 프로토콜:**
 - 서버 stdout 에 `READY,<endpoint>` 출력 → 스크립트가 클라이언트 시작
@@ -447,12 +478,14 @@ internal static class PerfCommon
     // Stopwatch 유틸
     static long TimestampUs();  // Stopwatch.GetTimestamp() → microseconds
 
-    // STREAM 헬퍼 — single suite 에는 STREAM 패턴이 없지만,
-    // core/perf 구조와 동일하게 low-level STREAM 소켓 유틸을 single/common 에 배치한다.
-    // multi STREAM 서버(PerfMultiStream 등)가 이 헬퍼를 참조한다.
-    static int StreamExpectConnectEvent(Socket socket, byte[] idBuffer);
-    static void StreamSend(Socket socket, byte[] id, byte[] payload);
-    static int StreamRecvPayload(Socket socket, byte[] idBuffer, byte[] payloadBuffer);
+    // ※ STREAM 헬퍼는 single/common 에 배치하지 않는다.
+    //   single suite 에는 STREAM 패턴이 없으며,
+    //   multi STREAM 서버가 필요로 하는 STREAM 소켓 유틸(StreamSend/Recv/ConnectEvent)은
+    //   각 multi/.../src/PerfStream*Server.cs 에 인라인한다.
+    //   → single/multi 경계를 유지하여 core 의 suite 분리 철학을 준수한다.
+    //
+    // ※ STREAM 벤치마크 클라이언트는 C# 로 구현하지 않는다.
+    //   core/perf/common/streamclient 공용 C++ 바이너리를 사용한다.
 
     // Gateway / Spot 헬퍼
     static void GatewayReceiveProviderMessage(Socket router, byte[] routingIdBuf, byte[] payloadBuf);
@@ -478,51 +511,58 @@ internal static class PerfTls
 
 single 의 PerfCommon 유틸 중 필요한 것을 포함하고 multi 전용 기능 추가.
 
-**`PerfMultiCommon.cs`** — (core/perf multi/common/perf_common_multi.hpp 대응)
+**`PerfCommonMulti.cs`** — (core/perf multi/common/perf_common_multi.hpp 대응)
 
 ```csharp
-internal static class PerfMultiCommon
+internal static class PerfCommonMulti
 {
-    static int ResolveMultiClients(string pattern);   // 비-STREAM: 100, STREAM: 10000
-    static int ResolveMultiHwm(string pattern);       // 비-STREAM: 100, STREAM: 10
-    static int ResolveMultiWarmupSeconds();
-    static int ResolveMultiDurationSeconds();
-    static int ResolveMultiSettleMs();
-    static int ResolveMultiWarmupDrainMs(string pattern);
+    static int ResolveClients(string pattern);   // 비-STREAM: 100, STREAM: 10000
+    static int ResolveHwm(string pattern);       // 비-STREAM: 100, STREAM: 10
+    static int ResolveWarmupSeconds();
+    static int ResolveDurationSeconds();
+    static int ResolveSettleMs();
+    static int ResolveWarmupDrainMs(string pattern);
     // ... 기타 환경변수 리졸버
 }
 ```
 
-**`PerfMultiClientHelpers.cs`** — (core/perf multi/common/perf_multi_client_helpers.hpp 대응)
+**`PerfClientHelpers.cs`** — (core/perf multi/common/perf_client_helpers.hpp 대응)
 
 ```csharp
-internal static class PerfMultiClientHelpers
+internal static class PerfClientHelpers
 {
     static bool IsSupportedTransport(string transport);
     static string ParseEndpointArg(string[] args);
     static void WaitAllClientConnectReady(List<MonitorSocket> monitors, int timeoutMs);
-    static void RunMultiEchoClientBenchmark(...);    // 공통 echo 클라이언트 루프
-    static void RunMultiOnewayClientBenchmark(...);  // 공통 one-way 클라이언트 루프
+    static void TrySendStopToken(...);          // stop-token 전송 보조
+    static void DisposeAllQuietly(...);         // 자원 정리 보조
 }
 ```
 
-**`PerfMultiServerEntry.cs`** — (core/perf multi/common/perf_multi_entry.hpp 서버 부분 대응)
+> **중요 (dotnet 인라이닝 정책)**: `PerfClientHelpers` 는 연결/정리 보조 유틸만 포함한다.
+> 패턴 간 `send/recv` 측정 루프는 공유하지 않으며, 각 `src/Perf*Client.cs` 파일 내부에서만 공통화한다.
+> **명시 규칙**: core/perf 의 file-local helper 방식과 동일하게, `multi/src/Perf*Server.cs` / `Perf*Client.cs` 각각에서
+> send/recv 핵심 로직을 파일 내부 `private static` 헬퍼로만 공통화한다. `common/` 으로 이동하지 않는다.
+
+**`PerfServerEntry.cs`** — (core/perf multi/common/perf_entry.hpp 서버 부분 대응)
 
 ```csharp
-// 1. 패턴 디스패치 → RunServer(transport, size)
-// 2. CPU/MEM 메트릭 수집
-// 3. RESULT 출력: server_cpu_pct, server_mem_mb
+// 1. Environment.SetEnvironmentVariable("PERF_PATTERN", pattern)  ← set_perf_pattern_env() 대응
+// 2. 패턴 디스패치 → RunServer(transport, size)
+// 3. CPU/MEM 메트릭 수집
+// 4. RESULT 출력: server_cpu_pct, server_mem_mb
 ```
 
-**`PerfMultiClientEntry.cs`** — (core/perf multi/common/perf_multi_entry.hpp 클라이언트 부분 대응)
+**`PerfClientEntry.cs`** — (core/perf multi/common/perf_entry.hpp 클라이언트 부분 대응)
 
 ```csharp
-// 1. 패턴 디스패치 → RunClient(transport, size, endpoint)
-// 2. CPU/MEM 메트릭 수집
-// 3. RESULT 출력: client_cpu_pct, client_mem_mb
+// 1. Environment.SetEnvironmentVariable("PERF_PATTERN", pattern)  ← set_perf_pattern_env() 대응
+// 2. 패턴 디스패치 → RunClient(transport, size, endpoint)
+// 3. CPU/MEM 메트릭 수집
+// 4. RESULT 출력: client_cpu_pct, client_mem_mb
 ```
 
-**`PerfMultiTls.cs`** — TLS 인증서 리졸버
+**`PerfTls.cs`** — TLS 인증서 리졸버
 
 ```csharp
 // bindings/dotnet/tests/certs/ 에서 탐색
@@ -581,7 +621,7 @@ receiver.SetTlsServer(cert: certPath, key: keyPath);
 
 ## 10. C# API 매핑
 
-| Core C++ API | C# API |
+| Core C API | C# API |
 |-------------|--------|
 | `zlink_ctx_new()` | `new Context()` |
 | `zlink_socket(ctx, type)` | `new Socket(ctx, SocketType.Pair)` 등 |
@@ -666,7 +706,7 @@ Options:
   --rcvtimeo N                수신 타임아웃 (ms)
 ```
 
-내부적으로 `run_comparison.py --binding dotnet --suite single` 을 호출한다.
+내부적으로 `run_comparison.py` → `run_policy_bench.py --binding dotnet --suite single` 체인으로 실행한다.
 
 ### 12.2 run_benchmarks_multi.sh (루트)
 
@@ -680,7 +720,7 @@ Options:
   --pattern-transition-ms N   패턴 전환 대기 (기본: 3000)
 ```
 
-내부: `run_comparison.py --binding dotnet --suite multi`
+내부: `run_comparison.py` → `run_policy_bench.py --binding dotnet --suite multi` 체인으로 실행한다.
 
 ### 12.3 run_benchmarks.ps1 / run_benchmarks_multi.ps1
 
@@ -697,43 +737,26 @@ bindings/dotnet/perf/results/single/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 ```
 
-파일 형식 (core/perf 동일):
+`run_policy_bench.py` 는 `results/{suite}/report/` 에 결과 파일을 생성한다:
+
+**결과 파일 형식:**
 ```
-## META
-platform: linux
-timestamp: 2026-03-05T12:00:00+09:00
-binding: dotnet
-
-## Effective Options
-...
-
 ## PATTERN: PAIR
 ### tcp
 | Size | Throughput | Bandwidth | Latency | Latency_p95 | Latency_p99 |
 |------|-----------|-----------|---------|-------------|-------------|
 | 64   | 523401.23 | 33.50     | 12.35   | 18.22       | 25.10       |
-
-RESULT,current,PAIR,tcp,64,throughput,523401.23
-RESULT,current,PAIR,tcp,64,bandwidth,33.50
-RESULT,current,PAIR,tcp,64,latency,12.35
-RESULT,current,PAIR,tcp,64,latency_p95,18.22
-RESULT,current,PAIR,tcp,64,latency_p99,25.10
 ...
 
 ## Completion
 - status: complete
-- expected_result_lines: 330
-- actual_result_lines: 330
+- expected_result_lines: N
+- actual_result_lines: N
 ```
 
 > **single vs multi 완료 형식 차이:**
 > - **single**: 섹션 `## Completion`, 키 `expected_result_lines` / `actual_result_lines` (밑줄)
 > - **multi**: 섹션 `## Status Summary`, 키 `expected result lines` / `actual result lines` (공백) + `success/unsupported/skip/fail` 카운트 포함
-
-### 13.2 결과 보존 정책
-
-- 최대 100개 파일 per report/ 디렉토리
-- 초과 시 파일명 정렬 기준 oldest 삭제 (FIFO)
 
 ---
 
@@ -742,77 +765,86 @@ RESULT,current,PAIR,tcp,64,latency_p99,25.10
 ### Phase 0: 인증서 및 스크립트 준비
 
 1. `bindings/dotnet/tests/certs/` 인증서 확인 (server.crt, server.key, ca.crt — 이미 존재)
-2. `run_comparison.py` 수정: dotnet 빌드/실행 경로 지원 추가
-3. `.gitignore`, `.gitkeep` 파일
+2. `run_policy_bench.py` dotnet 지원 확인 (이미 구현됨: build/cmd_prefix/multi_role_command)
+3. `.gitignore` 파일
 
 ### Phase 1: 인프라 (빌드, 공통, 진입점)
 
-4. `perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj` 생성
-5. `perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj` 생성
-6. `Zlink.sln` 에 perf 프로젝트 참조 추가
-7. `single/.../common/PerfCommon.cs` — 환경변수 파싱, retry 헬퍼, RESULT 출력, 헤더 stamp/decode, reservoir sampling
-8. `single/.../common/PerfTls.cs` — single TLS 인증서 리졸버
-9. `single/.../PerfMain.cs` — 패턴 디스패치 진입점
-10. `multi/.../common/PerfCommon.cs` — multi 공통 유틸
-11. `multi/.../common/PerfMultiCommon.cs` — multi 설정 리졸버
-12. `multi/.../common/PerfMultiClientHelpers.cs` — 공통 client 루프 헬퍼
-13. `multi/.../common/PerfMultiServerEntry.cs` — 서버 디스패치 + 메트릭
-14. `multi/.../common/PerfMultiClientEntry.cs` — 클라이언트 디스패치 + 메트릭
-15. `multi/.../common/PerfMultiTls.cs` — TLS 인증서 리졸버
-16. `multi/.../PerfMain.cs` — --multi-server / --multi-client 디스패치
+4. **[마이그레이션] single flat → common/src 분리**: 현재 프로젝트 루트에 flat 배치된 파일들을 common/, src/ 로 이동
+   - `PerfCommon.cs`, `PerfTls.cs` → `common/`
+   - `PerfPair.cs`, `PerfPubSub.cs`, `PerfDealerRouter.cs`, `PerfRouterRouter.cs`, `PerfGateway.cs`, `PerfSpot.cs` 등 패턴 파일 → `src/`
+   - `PerfStream.cs`, `PerfStreamCallbackEcho.cs` → 삭제 (STREAM 은 multi suite only, 클라이언트는 C++ 바이너리)
+   - `PerfMain.cs`, `GlobalUsings.cs` → 프로젝트 루트 유지
+5. `perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj` 생성
+6. `perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj` 생성
+7. `Zlink.sln` 에 perf 프로젝트 참조 추가
+8. `single/.../common/PerfCommon.cs` — 환경변수 파싱, retry 헬퍼, RESULT 출력, 헤더 stamp/decode, reservoir sampling
+9. `single/.../common/PerfTls.cs` — single TLS 인증서 리졸버
+10. `single/.../PerfMain.cs` — 패턴 디스패치 진입점
+11. `multi/.../common/PerfCommon.cs` — multi 공통 유틸
+12. `multi/.../common/PerfCommonMulti.cs` — multi 설정 리졸버
+13. `multi/.../common/PerfClientHelpers.cs` — 연결/정리 보조 유틸 (패턴 간 send/recv 루프 공유 금지)
+14. `multi/.../common/PerfServerEntry.cs` — 서버 디스패치 + 메트릭
+15. `multi/.../common/PerfClientEntry.cs` — 클라이언트 디스패치 + 메트릭
+16. `multi/.../common/PerfTls.cs` — TLS 인증서 리졸버
+17. `multi/.../PerfMain.cs` — --multi-server / --multi-client 디스패치
 
 ### Phase 2: Single 소켓 패턴 (6개)
 
-17. `single/.../current/PerfPair.cs`
-18. `single/.../current/PerfPubSub.cs`
-19. `single/.../current/PerfDealerDealer.cs`
-20. `single/.../current/PerfDealerRouter.cs`
-21. `single/.../current/PerfRouterRouter.cs`
-22. `single/.../current/PerfRouterRouterPoll.cs`
+18. `single/.../src/PerfPair.cs`
+19. `single/.../src/PerfPubSub.cs`
+20. `single/.../src/PerfDealerDealer.cs`
+21. `single/.../src/PerfDealerRouter.cs`
+22. `single/.../src/PerfRouterRouter.cs`
+23. `single/.../src/PerfRouterRouterPoll.cs`
 
 ### Phase 3: Single 서비스 패턴 (2개)
 
-23. `single/.../current/PerfGateway.cs`
-24. `single/.../current/PerfSpot.cs`
+24. `single/.../src/PerfGateway.cs`
+25. `single/.../src/PerfSpot.cs`
 
-### Phase 4: Multi 패턴 — server/client 분리 (6×RunServer/RunClient + 3 서버 only)
+### Phase 4: Multi 패턴 — server/client 별도 파일 (6×Server + 6×Client + 3 서버 only)
 
-25. `multi/.../current/PerfMultiDealerDealer.cs` (RunServer + RunClient)
-26. `multi/.../current/PerfMultiDealerRouter.cs` (RunServer + RunClient)
-27. `multi/.../current/PerfMultiRouterRouter.cs` (RunServer + RunClient)
-28. `multi/.../current/PerfMultiPubSub.cs` (RunServer + RunClient)
-29. `multi/.../current/PerfMultiGateway.cs` (RunServer + RunClient)
-30. `multi/.../current/PerfMultiSpot.cs` (RunServer + RunClient)
-31. `multi/.../current/PerfMultiStream.cs` (서버 only)
-32. `multi/.../current/PerfMultiStreamCallback.cs` (서버 only)
-33. `multi/.../current/PerfMultiStreamLen32Be.cs` (서버 only)
-34. `multi/.../common/PerfMultiStreamClient.cs` (Raw transport)
-35. `multi/.../common/PerfMultiStreamStopParser.cs`
+27. `multi/.../src/PerfDealerDealerClient.cs`
+28. `multi/.../src/PerfDealerRouterServer.cs`
+29. `multi/.../src/PerfDealerRouterClient.cs`
+30. `multi/.../src/PerfRouterRouterServer.cs`
+31. `multi/.../src/PerfRouterRouterClient.cs`
+32. `multi/.../src/PerfPubSubServer.cs`
+33. `multi/.../src/PerfPubSubClient.cs`
+34. `multi/.../src/PerfGatewayServer.cs`
+35. `multi/.../src/PerfGatewayClient.cs`
+36. `multi/.../src/PerfSpotServer.cs`
+37. `multi/.../src/PerfSpotClient.cs`
+38. `multi/.../src/PerfStreamServer.cs` (서버 only; 클라이언트=core/perf/common/streamclient C++ 바이너리)
+39. `multi/.../src/PerfStreamCallbackServer.cs` (서버 only; 클라이언트=C++ 바이너리)
+40. `multi/.../src/PerfStreamLen32BeServer.cs` (서버 only; 클라이언트=C++ 바이너리)
+41. `multi/.../common/PerfStreamStopParser.cs`
 
 ### Phase 5: 스크립트 및 마무리
 
-36. `run_benchmarks.sh` / `.ps1` (루트 + single/ + multi/)
-37. `run_benchmarks_multi.sh` / `.ps1`
-38. `run_comparison.py`
-39. `README.md`
-40. 빌드 검증 (`dotnet build -c Release`)
-41. `run_comparison.py` 통합 검증
+42. `run_benchmarks.sh` / `.ps1` (루트 + single/ + multi/)
+43. `run_benchmarks_multi.sh` / `.ps1`
+44. `run_comparison.py` (호환 어댑터 — run_policy_bench.py 위임)
+45. `README.md`
+46. 빌드 검증 (`dotnet build -c Release`)
+47. `run_policy_bench.py` → `run_comparison.py` 체인 통합 검증
 
 ### Phase 6: 코드 품질 리뷰 및 리팩토링
 
 > 모든 패턴 구현과 스크립트 완성 후, 코드 전체에 대한 품질 리뷰와 개선을 수행한다.
 > 성능 벤치마크 코드이므로 불필요한 오버헤드에 특히 엄격히 대응한다.
 
-42. **Dead Code / 미사용 파일 정리**
+48. **[x] Dead Code / 미사용 파일 정리**
     - 사용되지 않는 using, 변수, 메서드, 클래스 전부 삭제
     - 의미 없는 주석 (TODO 잔재, 복사 흔적, 주석 처리된 코드) 전부 삭제
     - 빈 파일, 미사용 설정 파일 삭제
-43. **가독성 리팩토링**
+49. **[x] 가독성 리팩토링**
     - 메서드/변수 네이밍 일관성 검토 (core/perf 와 대응 관계 명확화)
     - 과도한 중첩 / 긴 메서드 분리 (단, 벤치마크 인라인 정책 범위 내)
     - 매직 넘버 → 상수 추출 (타임아웃, 버퍼 크기, 재시도 한도 등)
     - 패턴 파일 간 구조 일관성 확보 (동일 페이즈 순서, 동일 변수명 컨벤션)
-44. **성능 리뷰 (벤치마크 오버헤드 제거)**
+50. **[x] 성능 리뷰 (벤치마크 오버헤드 제거)**
     - **불필요한 할당**: 측정 루프 내 `new byte[]`, `new string()`, 박싱 (`object`) 등
     - **불필요한 복사**: `ToArray()`, `Array.Copy` 가 회피 가능한 경우
     - **불필요한 대기**: 측정 루프 내 `Thread.Sleep`, busy-wait 이 과도한 경우
@@ -822,15 +854,15 @@ RESULT,current,PAIR,tcp,64,latency_p99,25.10
     - **Span 활용**: `Span<byte>` / `stackalloc` 로 힙 할당 회피 가능한 곳 확인
     - 리뷰 체크리스트 (파일별):
       ```
-      [ ] 측정 루프 내 힙 할당 0건
-      [ ] 측정 루프 내 불필요한 복사 0건
-      [ ] 측정 루프 내 Thread.Sleep / 과도한 busy-wait 없음
-      [ ] 측정 루프 밖에서 I/O 출력
-      [ ] send/recv 버퍼 루프 밖 할당 + 재사용
-      [ ] 박싱/언박싱 없음 (value type 직접 사용)
-      [ ] Span<byte> / stackalloc 활용 최적화
+      [x] 측정 루프 내 힙 할당 0건
+      [x] 측정 루프 내 불필요한 복사 0건
+      [x] 측정 루프 내 Thread.Sleep / 과도한 busy-wait 없음
+      [x] 측정 루프 밖에서 I/O 출력
+      [x] send/recv 버퍼 루프 밖 할당 + 재사용
+      [x] 박싱/언박싱 없음 (value type 직접 사용)
+      [x] Span<byte> / stackalloc 활용 최적화
       ```
-45. **개선 사항 적용 후 주석 추가**
+51. **개선 사항 적용 후 주석 추가**
     - 리팩토링/성능 개선 완료 후, 코드 이해를 돕는 적절한 수준의 주석 추가
     - 주석 대상:
       - 각 패턴 파일 상단: 패턴 설명, 소켓 구성, 측정 방식 요약 (1-3줄)
@@ -863,10 +895,125 @@ RESULT,current,PAIR,tcp,64,latency_p99,25.10
 
 ### 15.3 코드 인라이닝 정책
 
-- 각 패턴 파일에 메인 루프 로직 인라인 (core/perf 동일)
-- `common/PerfCommon` 으로 추출 허용: 환경변수 파싱, retry, PrintResult, 엔드포인트 생성, 헤더 stamp/decode
-- Multi 클라이언트는 `common/PerfMultiClientHelpers` 의 공통 루프 위임 허용
-- STREAM 서버 인프라는 모듈화 허용 (`common/PerfMultiStreamClient`, `common/PerfMultiStreamStopParser`)
+> **핵심 원칙 (core/perf 차이점)**: core/perf 는 C++ 파일 내 anonymous namespace 로 send/recv 헬퍼를
+> 파일 로컬 함수로 정의한다. dotnet 에서도 동일하게 **각 패턴 파일 내에서만 send/recv 로직을 공통화**한다.
+> 다른 패턴 파일과 공유하지 않는다. 이렇게 하면 각 패턴 파일이 **벤치마크 샘플 코드처럼 독립적으로 읽히며**,
+> 핵심 측정 루프가 한 파일 안에서 완전히 파악된다.
+> 특히 multi 는 core/perf 와 동일하게 `PerfDealerDealerServer.cs`, `PerfDealerDealerClient.cs` 같은 패턴별 파일 안에서만
+> send/recv 루프를 정리한다(패턴 간 공용 send/recv 유틸 금지).
+> 구현 상태: `single/src/*.cs`, `multi/src/*.cs` 는 패턴별 독립 클래스(`PerfPair`, `PerfDealerDealerClient` 등)로 구성하고,
+> `common/` 의 `PerfRunner` 는 패턴 무관 공통 유틸만 제공한다.
+
+**common/ 으로 추출 허용 (패턴 무관 유틸리티만)**:
+- 환경변수 파싱 (`ParseEnv`, `ResolveWarmupCount`)
+- `PrintResult` (RESULT 라인 stdout 출력)
+- 엔드포인트 생성 (`EndpointFor`)
+- 헤더 stamp/decode (`StampHeader`, `DecodeHeader`)
+- `TimestampUs` (Stopwatch 기반 마이크로초)
+- reservoir sampling (`ReservoirSample`, `ComputeLatencyStats`)
+- TLS 인증서 경로 리졸버
+- Multi 클라이언트 연결 준비/정리 보조 유틸 (`PerfClientHelpers`)
+
+**패턴 파일 내부에만 정의 (다른 파일과 공유 금지)**:
+- send 루프 (warmup / active phase)
+- recv 루프 (blocking recv + non-blocking drain burst)
+- 메시지 파싱/매칭 (header decode + phase/run_id 검증)
+- latency 수집 (sent_ts_us 기반 계산)
+
+**Single 패턴 예시 (`PerfPair.cs` 구조)**:
+
+```csharp
+// PerfPair.cs — 파일 내 모든 send/recv 로직 자체 완결
+internal static class PerfPair
+{
+    // ── 파일 로컬 헬퍼 (다른 패턴과 공유하지 않음) ──────────
+
+    static int ReceiveOneMessage(
+        Socket receiver, Span<byte> buffer, int flags,
+        int expectedSize, out PerfHeader header, out bool headerOk)
+    {
+        // zlink_msg_recv → size 검증 → DecodeHeader
+        // return: 1=수신, 0=EAGAIN, -1=오류
+    }
+
+    static bool RunOnewayPhase(
+        Socket sender, Socket receiver,
+        byte[] payload, int payloadSize, int msgSize,
+        uint runId, ref ulong seq,
+        PerfPhase phase, int warmupCount, int durationS,
+        int recvTimeoutMs, QueueProbe? probe,
+        out ulong received, out LatencyStats? latency)
+    {
+        // ── sender 스레드 ──
+        //   active: while (now < deadline) { StampHeader → Send }
+        //   warmup: for (i < warmupCount) { StampHeader → Send }
+
+        // ── receiver 스레드 ──
+        //   while (true) {
+        //       rc = ReceiveOneMessage(blocking)
+        //       if (rc > 0) { account latency; burst drain(DONTWAIT) }
+        //       if (senderDone && idle > timeout) break
+        //   }
+    }
+
+    // ── 진입점 ──────────────────────────────────────────────
+
+    public static void Run(string transport, int msgSize, string libName)
+    {
+        // 1. Setup: ctx, socket(PAIR×2), bind/connect, settle
+        // 2. Warmup: RunOnewayPhase(phase_warmup, warmupCount)
+        // 3. Active: RunOnewayPhase(phase_active, durationS)
+        // 4. PrintResult(throughput, bandwidth, latency, p95, p99)
+    }
+}
+```
+
+**Multi 서버 예시 (`PerfDealerDealerServer.cs` 구조)**:
+
+```csharp
+// PerfDealerDealerServer.cs — 파일 내 recv/relay 로직 자체 완결
+internal static class PerfDealerDealerServer
+{
+    // ── 파일 로컬 헬퍼 ──────────────────────────────────────
+
+    static RecvResult ReceiveOneMessage(
+        Socket server, int flags, int expectedSize,
+        uint expectedRunId, PerfPhase expectedPhase,
+        bool countMessage, bool collectLatency,
+        ref long msgCount, ref double latSum, ref long latCount,
+        LatencySampler? sampler)
+    {
+        // zlink_msg_recv → decode_and_match_header → latency 계산
+    }
+
+    static bool DrainNonBlocking(
+        Socket server, int expectedSize,
+        uint expectedRunId, PerfPhase expectedPhase,
+        bool countMessage, bool collectLatency,
+        ref long msgCount, ref double latSum, ref long latCount,
+        LatencySampler? sampler)
+    {
+        // while: ReceiveOneMessage(DONTWAIT) → recv_none 까지 반복
+    }
+
+    // ── 진입점 ──────────────────────────────────────────────
+
+    public static void RunServer(string transport, int msgSize)
+    {
+        // 1. set_perf_pattern_env("DEALER_DEALER")
+        // 2. bind, READY 출력, 연결 대기
+        // 3. Warmup(duration) → Settle → Active(duration)
+        //    각 페이즈에서 ReceiveOneMessage + DrainNonBlocking 직접 호출
+        // 4. PrintResult
+    }
+}
+```
+
+**금지**: 패턴 간 `SendLoop()` / `RecvLoop()` 공유 메서드를 `common/` 에 만드는 것
+**허용**: 패턴 내부에서 `ReceiveOneMessage` → `DrainNonBlocking` 등 파일 내 분할은 자유
+
+- STREAM 서버 인프라: stop-token 파서 모듈화 허용 (`common/PerfStreamStopParser`), STREAM 소켓 헬퍼는 각 서버 파일에 인라인
+- STREAM 벤치마크 클라이언트: C# 구현 금지, `core/perf/common/streamclient` C++ 공용 바이너리만 사용
 
 ---
 
@@ -896,9 +1043,9 @@ RESULT,current,PAIR,tcp,64,latency_p99,25.10
 
 ### 16.2 빌드 검증
 
-- [ ] `dotnet build perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj -c Release` 빌드 성공 (종료코드 0)
-- [ ] `dotnet build perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release` 빌드 성공 (종료코드 0)
-- [ ] `bindings/dotnet/tests/certs/` 인증서 파일 3개 존재 (server.crt, server.key, ca.crt)
+- [x] `dotnet build perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj -c Release` 빌드 성공 (종료코드 0)
+- [x] `dotnet build perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release` 빌드 성공 (종료코드 0)
+- [x] `bindings/dotnet/tests/certs/` 인증서 파일 3개 존재 (server.crt, server.key, ca.crt)
 
 ### 16.3 기능 smoke 테스트
 
@@ -936,8 +1083,17 @@ RESULT,current,PAIR,tcp,64,latency_p99,25.10
 각 RESULT 라인의 메트릭 값이 논리적으로 정확한지 검증한다.
 
 **필수 메트릭 존재 검증 (complete 판정 기준, 조합별):**
-- single: `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99` — 5개 메트릭이 모든 pattern/transport/size 조합에 존재
-- multi: `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99` — 5개 메트릭이 모든 pattern/transport/size 조합에 존재
+
+> **core 기준** (`core/perf/run_comparison.py:28`): 모든 바이너리는 **5개** 필수 메트릭을 출력한다:
+> `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99`
+
+- **dotnet 정책**: core 기준과 동일하게 5개 메트릭 필수. 모든 pattern/transport/size 조합에 5개 메트릭이 존재해야 `complete` 판정
+- single: `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99`
+- multi: `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99`
+
+> **`run_policy_bench.py` 참고**: 현재 `run_policy_bench.py` 는 `required_metrics = 5 if cfg.binding == "dotnet" else 3` 으로 바인딩별 분기가 있다.
+> 이는 C++/Java 바인딩이 `latency_p95`/`latency_p99` 출력을 아직 구현하지 않은 **과도기적 예외**이며,
+> core 기준(5개)이 정규 사양이다. dotnet 은 처음부터 core 기준에 맞춰 5개를 구현한다.
 
 **정보성 메트릭 존재 검증 (품질 기준, 없어도 complete 판정에 영향 없음):**
 - single: `cpu_pct`, `mem_mb`, `snd_pending_max`, `rcv_pending_max`, `rcv_pending_end`
@@ -991,10 +1147,11 @@ python3 bindings/dotnet/perf/run_comparison.py \
 
 ### 16.5 사이즈별 테이블 즉시 출력 검증
 
-**요구 동작:**
-- `pattern/transport` 실행 중 각 `size` 테스트 완료 시 해당 RESULT 행이 즉시 stdout 에 출력되어야 한다.
+**동작 원리:**
+- C# 벤치마크 바이너리가 측정 완료 시 `RESULT,current,...` 라인을 stdout 으로 출력한다.
+- `run_policy_bench.py` 가 바이너리 stdout 을 실시간 파싱하여 RESULT 라인을 수집한다.
+- 사용자에게는 pattern/transport/size 조합별로 순차적으로 결과가 표시된다.
 - 모든 size 출력이 완료된 후에야 다음 transport 또는 pattern 으로 전환된다.
-- 사용자가 실시간으로 진행 상황을 확인할 수 있어야 한다.
 
 **검증 방법:**
 ```bash
@@ -1003,7 +1160,7 @@ python3 bindings/dotnet/perf/run_comparison.py \
   --binding dotnet --suite single \
   --pattern PAIR --transports tcp --msg-sizes 64,1024,65536 \
   --runs 1 --duration 1 --reuse-build \
-  --output bindings/dotnet/perf/results/single/tmp/size_progress.log
+  --output bindings/dotnet/perf/results/single/report/size_progress.txt
 ```
 
 **로그 검증 기준:**
@@ -1031,15 +1188,15 @@ python3 bindings/dotnet/perf/run_comparison.py \
 
 **합격 기준:**
 - [ ] 두 실행 모두 프로세스 종료코드 `0`
-- [ ] **single** 결과 파일: `## Completion` 섹션에서 `status: complete`, `expected_result_lines == actual_result_lines` (밑줄 키)
-- [ ] **multi** 결과 파일: `## Status Summary` 섹션에서 `status: complete`, `expected result lines == actual result lines` (공백 키) + `fail` 카운트 0
+- [ ] **single** tmp 결과 파일(`results/single/tmp/perf_*.txt`): `META,status,complete` 이고 `META,expected == META,actual`
+- [ ] **multi** tmp 결과 파일(`results/multi/tmp/perf_*.txt`): `META,status,complete` 이고 `META,expected == META,actual`
 - [ ] 결과 파일/콘솔 로그에 `## Failures` 섹션이 없어야 함
 - [ ] 요청된 기본 조합 중 `fail` 조합 0건
 - [ ] `UNSUPPORTED` 조합은 정책 정의 범위 내에서만 허용 (예: inproc/ipc 에서 GATEWAY/SPOT)
 
-**기본 조합 수 예상 (single):**
-- socket 패턴 (6종) × 6 transport × 6 size = 216 조합
-- gateway/spot (2종) × 4 transport × 6 size = 48 조합
+**기본 조합 수 예상 (single, Linux 기준):**
+- socket 패턴 (6종: PAIR~ROUTER_ROUTER_POLL) × 6 transport (tcp,tls,ws,wss,inproc,ipc) × 6 size = 216 조합
+- GATEWAY/SPOT (2종) × 4 transport (tcp,tls,ws,wss) × 6 size = 48 조합
 - 총: **264** 조합 → UNSUPPORTED 제외한 나머지 전부 success
 
 **기본 조합 수 예상 (multi):**
@@ -1053,29 +1210,27 @@ python3 bindings/dotnet/perf/run_comparison.py \
 ls -la bindings/dotnet/perf/results/single/report/perf_*.txt
 ls -la bindings/dotnet/perf/results/multi/report/perf_*.txt
 
-# single 결과 파일 completion 확인
-tail -20 bindings/dotnet/perf/results/single/report/perf_*.txt
+# single tmp 결과 파일 completion 확인
+head -20 bindings/dotnet/perf/results/single/tmp/perf_*.txt
 # 기대 출력:
-# ## Completion
-# status: complete
-# expected_result_lines: N
-# actual_result_lines: N
+# META,status,complete
+# META,expected,N
+# META,actual,N
 
-# multi 결과 파일 completion 확인
-tail -20 bindings/dotnet/perf/results/multi/report/perf_*.txt
+# multi tmp 결과 파일 completion 확인
+head -20 bindings/dotnet/perf/results/multi/tmp/perf_*.txt
 # 기대 출력:
-# ## Status Summary
-# status: complete
-# expected result lines: N
-# actual result lines: N
+# META,status,complete
+# META,expected,N
+# META,actual,N
 ```
 
 ---
 
 ## 17. 완료 기준 (Definition of Done)
 
-- 디렉토리/파일 구조가 core/perf 의 `common/` + `current/` 분리 구조와 동일.
-- multi server/client 가 core/perf 와 동일하게 로직 분리 (동일 파일 내 RunServer/RunClient).
+- 디렉토리/파일 구조가 core/perf 의 `common/` + `src/` 분리 구조와 동일.
+- multi server/client 가 core/perf 와 동일하게 별도 파일로 분리 (`*Server.cs` / `*Client.cs`).
 - runner 옵션/기본값/결과 형식이 core 와 동등하게 동작.
 - single/multi 모든 패턴 클래스가 `bindings/dotnet/perf` 에서 빌드됨.
 - STREAM client 는 `core/perf/common/streamclient` 공용 바이너리만 사용.
@@ -1085,6 +1240,546 @@ tail -20 bindings/dotnet/perf/results/multi/report/perf_*.txt
 - **메트릭 정확성**(필수 메트릭 존재/bandwidth 계산식/값 범위)이 검증됨.
 - **사이즈별 테스트 완료 시점마다** RESULT 행이 즉시 출력됨이 검증됨.
 - **기본 설정 전체 실행**(single/multi)이 실패 없이 `status: complete` 로 종료됨.
-- `run_comparison.py` 수정 반영: dotnet 빌드/실행 경로 지원.
+- `run_policy_bench.py` dotnet 지원 확인: 빌드/실행 경로/메트릭 수집 정상 동작.
 - **코드 품질 리뷰 완료**: dead code/미사용 주석 0건, 측정 루프 내 불필요한 할당/복사/대기 0건.
 - **주석 정리 완료**: 패턴 설명, 페이즈 전환, 비자명 로직에 적절한 수준의 주석 추가.
+
+---
+
+## 18. 구현 체크리스트
+
+> 각 항목을 순서대로 확인하며 진행한다. `[x]` 로 완료를 표시한다.
+> 참조 섹션 번호를 함께 표기하여 상세 내용을 바로 찾을 수 있도록 한다.
+
+---
+
+### CL-0. 구조 철학 준수 확인 (착수 전 필수 확인)
+
+- [x] **CL-0.1** single/multi 경계 분리: single/common 에 STREAM 헬퍼 없음 (§8.1)
+- [x] **CL-0.2** STREAM 벤치마크 클라이언트: C# 구현 없음, `core/perf/common/streamclient` C++ 바이너리만 사용 (§3.3, §15.3)
+- [x] **CL-0.3** 루트 `perf/common/` 역할: Python 스크립트 유틸 공간, streamclient 인프라 아님 (§1)
+- [x] **CL-0.4** core/perf 구조 매핑 표에 `perf_metric_header.hpp` 포함 확인 (§1 매핑 표)
+- [x] **CL-0.5** single 프로젝트 `common/` + `src/` 폴더 분리 (flat 배치 아님) (§1, §14 Phase 1)
+- [x] **CL-0.6** multi 프로젝트 `common/` + `src/` 폴더 분리 확인 (§1)
+- [x] **CL-0.7** `PerfStreamClient.cs` (C# raw transport client) 삭제 확인 — 파일 존재하면 안 됨 (§15.3)
+
+---
+
+### CL-1. 디렉토리 구조 (§1)
+
+**single 파일 존재 확인:**
+
+- [x] **CL-1.1** `single/Zlink.BindingBench/Zlink.BindingBench.csproj` 존재
+- [x] **CL-1.2** `single/Zlink.BindingBench/GlobalUsings.cs` 존재
+- [x] **CL-1.3** `single/Zlink.BindingBench/PerfMain.cs` 존재
+- [x] **CL-1.4** `single/Zlink.BindingBench/common/PerfCommon.cs` 존재
+- [x] **CL-1.5** `single/Zlink.BindingBench/common/PerfTls.cs` 존재
+- [x] **CL-1.6** `single/Zlink.BindingBench/src/PerfPair.cs` 존재
+- [x] **CL-1.7** `single/Zlink.BindingBench/src/PerfPubSub.cs` 존재
+- [x] **CL-1.8** `single/Zlink.BindingBench/src/PerfDealerDealer.cs` 존재
+- [x] **CL-1.9** `single/Zlink.BindingBench/src/PerfDealerRouter.cs` 존재
+- [x] **CL-1.10** `single/Zlink.BindingBench/src/PerfRouterRouter.cs` 존재
+- [x] **CL-1.11** `single/Zlink.BindingBench/src/PerfRouterRouterPoll.cs` 존재
+- [x] **CL-1.12** `single/Zlink.BindingBench/src/PerfGateway.cs` 존재
+- [x] **CL-1.13** `single/Zlink.BindingBench/src/PerfSpot.cs` 존재
+- [x] **CL-1.14** single 프로젝트 루트에 패턴 파일 flat 배치 없음 (PerfPair.cs 등이 루트에 없어야 함)
+- [x] **CL-1.15** `PerfStream.cs`, `PerfStreamCallbackEcho.cs` single 프로젝트에서 삭제됨 (STREAM 은 multi 전용 패턴이므로 single 에 불필요)
+
+**multi 파일 존재 확인:**
+
+- [x] **CL-1.16** `multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj` 존재
+- [x] **CL-1.17** `multi/Zlink.BindingBench.Multi/GlobalUsings.cs` 존재
+- [x] **CL-1.18** `multi/Zlink.BindingBench.Multi/PerfMain.cs` 존재
+- [x] **CL-1.19** `multi/Zlink.BindingBench.Multi/common/PerfCommon.cs` 존재
+- [x] **CL-1.20** `multi/Zlink.BindingBench.Multi/common/PerfCommonMulti.cs` 존재
+- [x] **CL-1.21** `multi/Zlink.BindingBench.Multi/common/PerfServerEntry.cs` 존재
+- [x] **CL-1.22** `multi/Zlink.BindingBench.Multi/common/PerfClientEntry.cs` 존재
+- [x] **CL-1.23** `multi/Zlink.BindingBench.Multi/common/PerfClientHelpers.cs` 존재
+- [x] **CL-1.24** `multi/Zlink.BindingBench.Multi/common/PerfTls.cs` 존재
+- [x] **CL-1.25** `multi/Zlink.BindingBench.Multi/common/PerfStreamStopParser.cs` 존재
+- [x] **CL-1.26** `multi/Zlink.BindingBench.Multi/common/PerfStreamClient.cs` 존재하지 않음 (삭제됨)
+- [x] **CL-1.27** `multi/.../src/PerfDealerDealerServer.cs` 존재
+- [x] **CL-1.28** `multi/.../src/PerfDealerDealerClient.cs` 존재
+- [x] **CL-1.29** `multi/.../src/PerfDealerRouterServer.cs` 존재
+- [x] **CL-1.30** `multi/.../src/PerfDealerRouterClient.cs` 존재
+- [x] **CL-1.31** `multi/.../src/PerfRouterRouterServer.cs` 존재
+- [x] **CL-1.32** `multi/.../src/PerfRouterRouterClient.cs` 존재
+- [x] **CL-1.33** `multi/.../src/PerfPubSubServer.cs` 존재
+- [x] **CL-1.34** `multi/.../src/PerfPubSubClient.cs` 존재
+- [x] **CL-1.35** `multi/.../src/PerfGatewayServer.cs` 존재
+- [x] **CL-1.36** `multi/.../src/PerfGatewayClient.cs` 존재
+- [x] **CL-1.37** `multi/.../src/PerfSpotServer.cs` 존재
+- [x] **CL-1.38** `multi/.../src/PerfSpotClient.cs` 존재
+- [x] **CL-1.39** `multi/.../src/PerfStreamServer.cs` 존재
+- [x] **CL-1.40** `multi/.../src/PerfStreamCallbackServer.cs` 존재
+- [x] **CL-1.41** `multi/.../src/PerfStreamLen32BeServer.cs` 존재
+
+**공통/스크립트/결과 디렉토리:**
+
+- [x] **CL-1.42** `perf/.gitignore` 존재 (bin/, obj/ 제외)
+- [x] **CL-1.43** `perf/results/single/report/` 디렉토리 존재
+- [x] **CL-1.44** `perf/results/multi/report/` 디렉토리 존재
+
+---
+
+### CL-2. 빌드 시스템 (§2)
+
+- [x] **CL-2.1** `Zlink.sln` 에 `Zlink.BindingBench` 프로젝트 참조 포함
+- [x] **CL-2.2** `Zlink.sln` 에 `Zlink.BindingBench.Multi` 프로젝트 참조 포함
+- [x] **CL-2.3** single csproj: `net8.0`, `Exe`, `AllowUnsafeBlocks=true`, Zlink.csproj 참조
+- [x] **CL-2.4** multi csproj: `net8.0`, `Exe`, `AllowUnsafeBlocks=true`, Zlink.csproj 참조
+- [x] **CL-2.5** single csproj 에 multi 프로젝트 참조 없음 (독립 빌드)
+- [x] **CL-2.6** multi csproj 에 single 프로젝트 참조 없음 (독립 빌드)
+- [x] **CL-2.7** `dotnet build perf/single/.../Zlink.BindingBench.csproj -c Release` 빌드 성공
+- [x] **CL-2.8** `dotnet build perf/multi/.../Zlink.BindingBench.Multi.csproj -c Release` 빌드 성공
+
+---
+
+### CL-3. CLI 인터페이스 (§3)
+
+**single CLI:**
+
+- [ ] **CL-3.1** `Zlink.BindingBench <PATTERN> <TRANSPORT> <SIZE>` 형식 동작
+- [ ] **CL-3.2** 지원 PATTERN 8종: PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT
+- [ ] **CL-3.3** 지원 TRANSPORT 6종: tcp, tls, ws, wss, inproc, ipc
+- [ ] **CL-3.4** 종료코드: 0=성공, 1=인자 오류, 2=런타임 오류
+
+**multi CLI:**
+
+- [ ] **CL-3.5** `--multi-server <PATTERN> <TRANSPORT> <SIZE>` 형식 동작
+- [ ] **CL-3.6** `--multi-client <PATTERN> <TRANSPORT> <SIZE> --endpoint <ep>` 형식 동작
+- [x] **CL-3.7** MULTI_ 접두사 strip 규약: run_policy_bench.py MULTI_DEALER_DEALER → 바이너리 DEALER_DEALER (§3.2.1)
+
+**STREAM 클라이언트:**
+
+- [x] **CL-3.8** STREAM 3종 서버: C# 구현 (AttachStreamRaw / AttachStreamLen32Be)
+- [x] **CL-3.9** STREAM 3종 클라이언트: `core/perf/common/streamclient` C++ 바이너리 사용
+- [x] **CL-3.10** C# 자체 STREAM 클라이언트 구현 없음 확인
+
+**run_policy_bench.py dotnet 지원 확인:**
+
+- [x] **CL-3.11** `binding_cmd_prefix()`: dotnet DLL 경로 지원 (이미 구현 — 경로 정합성 확인)
+- [x] **CL-3.12** `binding_multi_role_command()`: server/client DLL 경로 분리 (이미 구현 — 경로 정합성 확인)
+- [x] **CL-3.13** `build_binding_if_needed()`: `dotnet build -c Release` 호출 (이미 구현 — 빌드 동작 확인)
+
+---
+
+### CL-4. RESULT 출력 형식 (§4)
+
+**필수 메트릭 (5개):**
+
+- [x] **CL-4.1** `RESULT,current,<PAT>,<TR>,<SZ>,throughput,<v>` 출력
+- [x] **CL-4.2** `RESULT,current,<PAT>,<TR>,<SZ>,bandwidth,<v>` 출력
+- [x] **CL-4.3** `RESULT,current,<PAT>,<TR>,<SZ>,latency,<v>` 출력
+- [x] **CL-4.4** `RESULT,current,<PAT>,<TR>,<SZ>,latency_p95,<v>` 출력
+- [x] **CL-4.5** `RESULT,current,<PAT>,<TR>,<SZ>,latency_p99,<v>` 출력
+
+**정보성 메트릭 (single):**
+
+- [x] **CL-4.6** `cpu_pct`, `mem_mb` 출력
+- [ ] **CL-4.7** `snd_pending_max`, `rcv_pending_max`, `rcv_pending_end` 출력
+
+**정보성 메트릭 (multi):**
+
+- [x] **CL-4.8** `server_cpu_pct`, `server_mem_mb` 출력
+- [x] **CL-4.9** `client_cpu_pct`, `client_mem_mb` 출력
+- [ ] **CL-4.10** `server_snd_pending_max`, `server_rcv_pending_max`, `server_rcv_pending_end` 출력
+
+**Bandwidth 계산:**
+
+- [x] **CL-4.11** single 전체: 승수 = 1.0
+- [x] **CL-4.12** multi echo (DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, STREAM*): 승수 = 2.0
+- [x] **CL-4.13** multi one-way (DEALER_DEALER, PUBSUB, SPOT): 승수 = 1.0
+
+---
+
+### CL-5. 환경 변수 (§5)
+
+**single 환경 변수:**
+
+- [x] **CL-5.1** `PERF_IO_THREADS` 파싱 (기본 0)
+- [x] **CL-5.2** `PERF_WARMUP_COUNT` 파싱 (표준 1000, GATEWAY/SPOT 200)
+- [x] **CL-5.3** `PERF_SINGLE_DURATION_SECONDS` 파싱 (기본 5)
+- [ ] **CL-5.4** `PERF_SINGLE_LATENCY_SAMPLE_CAP` 파싱 (기본 200000) — reservoir sampling 최대 샘플 수
+- [x] **CL-5.5** `PERF_SINGLE_HWM` / `PERF_SINGLE_SNDHWM` / `PERF_SINGLE_RCVHWM` 파싱
+- [x] **CL-5.6** `PERF_SINGLE_SNDTIMEO_MS` / `PERF_SINGLE_RCVTIMEO_MS` 파싱 (기본 200)
+- [x] **CL-5.7** `PERF_MAX_SOCKETS` 파싱
+
+**multi 환경 변수:**
+
+- [x] **CL-5.8** `PERF_CLIENTS` 파싱 (비-STREAM 100, STREAM 10000)
+- [x] **CL-5.9** `PERF_WARMUP_SECONDS` 파싱 (기본 2)
+- [x] **CL-5.10** `PERF_SETTLE_MS` 파싱 (기본 500)
+- [x] **CL-5.11** `PERF_DURATION_SECONDS` 파싱 (기본 5)
+- [x] **CL-5.12** `PERF_ACTIVE_WARMUP` 파싱 (기본 0)
+- [x] **CL-5.13** `PERF_HWM` / `PERF_SNDHWM` / `PERF_RCVHWM` 파싱
+- [x] **CL-5.14** `PERF_SNDTIMEO_MS` / `PERF_RCVTIMEO_MS` 파싱 (기본 200)
+- [x] **CL-5.15** `PERF_CONNECT_READY_TIMEOUT_MS` 파싱 (기본 5000)
+- [ ] **CL-5.16** `PERF_MONITOR_HWM` 파싱 (기본 1000)
+- [x] **CL-5.17** `PERF_SERVER_BIND_PORT` 파싱 (기본 0)
+- [x] **CL-5.18** `PERF_IO_THREADS` 파싱 (서버/클라이언트 공통, 기본 0)
+
+---
+
+### CL-6. 벤치마크 페이즈 (§6)
+
+**single 페이즈:**
+
+- [ ] **CL-6.1** Setup: bind/connect 후 `settle()` (100ms, `SETTLE_TIME_MS` 상수) — 별도 측정 페이즈가 아닌 연결 설정의 일부
+- [ ] **CL-6.2** Warmup: count 기반 (시간 기반 아님), `PERF_WARMUP_COUNT` 적용, `phase_warmup` 라벨
+- [ ] **CL-6.3** Active: duration 기반 throughput + reservoir sampling latency 동시 측정, `phase_active` 라벨
+- [ ] **CL-6.4** Active 종료: sender 완료 후 receiver 가 recv timeout (기본 200ms) 동안 무수신 시 루프 종료 — 별도 drain 페이즈 없음
+- [ ] **CL-6.5** Active 에서 `sent_ts_us` 기반 latency 측정 (single 에 `phase_drain` 없음)
+
+**multi 페이즈:**
+
+- [ ] **CL-6.6** Connect: N 클라이언트 + MonitorSocket 연결 확인
+- [ ] **CL-6.7** Warmup: duration 기반, phase_warmup 라벨
+- [ ] **CL-6.8** Settle: sleep, one-way=phase_drain / echo=phase_warmup 라벨
+- [ ] **CL-6.9** Active: 라운드로빈 분산, phase_active 라벨, 메트릭 수집
+
+---
+
+### CL-7. 패턴별 구현 (§7)
+
+**single 패턴 (8종: 6 소켓 + 2 서비스):**
+
+- [ ] **CL-7.1** PerfPair: PAIR×2, echo, tcp/tls/ws/wss/inproc/ipc
+- [ ] **CL-7.2** PerfPubSub: Pub+Sub, one-way, tcp/tls/ws/wss/inproc/ipc
+- [ ] **CL-7.3** PerfDealerDealer: Dealer×2, echo, tcp/tls/ws/wss/inproc/ipc
+- [ ] **CL-7.4** PerfDealerRouter: Dealer+Router, echo, tcp/tls/ws/wss/inproc/ipc
+- [ ] **CL-7.5** PerfRouterRouter: Router×2, echo, tcp/tls/ws/wss/inproc/ipc
+- [ ] **CL-7.6** PerfRouterRouterPoll: Router×2+Poller, echo, tcp/tls/ws/wss/inproc/ipc
+- [ ] **CL-7.7** PerfGateway: Gateway+Receiver, echo, tcp/tls/ws/wss (inproc/ipc 미지원)
+- [ ] **CL-7.8** PerfSpot: Spot pub/sub, one-way, tcp/tls/ws/wss (inproc/ipc 미지원), warmup clamp: `msg_size ≥ 65536` → max 20
+**multi 패턴 (9종: 6 소켓/서비스 + 3 STREAM):**
+
+- [ ] **CL-7.10** PerfDealerDealer: Server(DEALER bind, relay) + Client(DEALER connect, one-way)
+- [ ] **CL-7.11** PerfDealerRouter: Server(ROUTER bind, echo) + Client(DEALER connect, send+recv)
+- [ ] **CL-7.12** PerfRouterRouter: Server(ROUTER bind, echo) + Client(ROUTER connect, send+recv)
+- [ ] **CL-7.13** PerfPubSub: Server(PUB bind, publish) + Client(SUB connect, recv)
+- [ ] **CL-7.14** PerfGateway: Server(Receiver bind, echo) + Client(Gateway connect, send+recv)
+- [ ] **CL-7.15** PerfSpot: Server(Spot publish) + Client(Spot subscribe)
+- [ ] **CL-7.16** PerfStream: Server(STREAM bind, raw echo) + Client(C++ 바이너리)
+- [ ] **CL-7.17** PerfStreamCallback: Server(AttachStreamRaw callback) + Client(C++ 바이너리)
+- [ ] **CL-7.18** PerfStreamLen32Be: Server(AttachStreamLen32Be) + Client(C++ 바이너리)
+- [ ] **CL-7.19** server/client 별도 파일 분리 확인 (각 패턴 *Server.cs / *Client.cs)
+
+**multi 서버 프로토콜:**
+
+- [ ] **CL-7.20** 서버 stdout `READY,<endpoint>` 출력
+- [ ] **CL-7.21** 클라이언트 종료 시 stop-token 전송
+- [ ] **CL-7.22** STREAM 서버 stop-token: `__zlink_perf_stop__`
+- [ ] **CL-7.23** 서버 graceful shutdown 후 RESULT 출력
+
+---
+
+### CL-8. 공통 유틸리티 (§8)
+
+**single common/ (PerfCommon.cs):**
+
+- [ ] **CL-8.1** `ParseEnv` / `ParseEnvNonNegative` 환경변수 파싱
+- [ ] **CL-8.2** `ApplySingleContextOptions` / `ApplySingleSocketOptions` 소켓 옵션
+- [ ] **CL-8.3** `ReceiveRetry` / `SendRetry` (EAGAIN/EINTR only)
+- [ ] **CL-8.4** `WaitForInput` / `WaitUntil` 폴링
+- [ ] **CL-8.5** `EndpointFor` 엔드포인트 생성
+- [ ] **CL-8.6** `PrintResult` RESULT 출력 (bandwidth 승수 = 1.0)
+- [ ] **CL-8.7** `StampHeader` / `DecodeHeader` BinaryPrimitives 기반 헤더
+- [ ] **CL-8.8** `ReservoirSample` / `ComputeLatencyStats` latency 통계 (cap: `PERF_SINGLE_LATENCY_SAMPLE_CAP`, 기본 200000)
+- [ ] **CL-8.9** `TimestampUs` Stopwatch 기반 마이크로초
+- [ ] **CL-8.10** STREAM 헬퍼(StreamSend/Recv/ConnectEvent) 가 single/common 에 없음 확인
+- [ ] **CL-8.11** `GatewayReceiveProviderMessage` / `SpotReceivePayloadWithTimeout` 헬퍼
+
+**single common/ (PerfTls.cs):**
+
+- [ ] **CL-8.12** `ConfigureTlsServerIfNeeded` / `ConfigureTlsClientIfNeeded`
+- [ ] **CL-8.13** `TryResolvePerfTlsPaths` — `bindings/dotnet/tests/certs/` 기준 탐색
+
+**multi common/ (PerfCommon.cs):**
+
+- [ ] **CL-8.14** single PerfCommon 유틸 중 필요 항목 포함 + multi 전용 기능
+
+**multi common/ (PerfCommonMulti.cs):**
+
+- [ ] **CL-8.15** `ResolveClients` (비-STREAM 100, STREAM 10000)
+- [ ] **CL-8.16** `ResolveHwm` (비-STREAM 100, STREAM 10)
+- [ ] **CL-8.17** `ResolveWarmupSeconds` / `ResolveDurationSeconds` / `ResolveSettleMs`
+
+**multi common/ (PerfClientHelpers.cs):**
+
+- [ ] **CL-8.18** `IsSupportedTransport` / `ParseEndpointArg`
+- [ ] **CL-8.19** `WaitAllClientConnectReady` MonitorSocket 기반
+- [ ] **CL-8.20** `PerfClientHelpers` 는 연결 준비/정리 보조만 포함 (공통 send/recv 측정 루프 없음)
+
+**multi common/ (PerfServerEntry.cs / PerfClientEntry.cs):**
+
+- [ ] **CL-8.21** 서버: `SetEnvironmentVariable("PERF_PATTERN", pattern)` + 패턴 디스패치 → RunServer + CPU/MEM 메트릭 + RESULT 출력
+- [ ] **CL-8.22** 클라이언트: `SetEnvironmentVariable("PERF_PATTERN", pattern)` + 패턴 디스패치 → RunClient + CPU/MEM 메트릭 + RESULT 출력
+
+**multi common/ (PerfTls.cs):**
+
+- [ ] **CL-8.23** `bindings/dotnet/tests/certs/` 기준 상위 디렉토리 순회 탐색
+
+**multi common/ (PerfStreamStopParser.cs):**
+
+- [ ] **CL-8.24** len32be stop-token 파서 동작
+
+---
+
+### CL-9. TLS 인증서 관리 (§9)
+
+- [ ] **CL-9.1** `bindings/dotnet/tests/certs/server.crt` 존재
+- [ ] **CL-9.2** `bindings/dotnet/tests/certs/server.key` 존재
+- [ ] **CL-9.3** `bindings/dotnet/tests/certs/ca.crt` 존재
+- [ ] **CL-9.4** 상위 디렉토리 순회 탐색 로직 구현 (§9.2)
+- [ ] **CL-9.5** Socket option API 로 TlsCert/TlsKey/TlsCa 설정 (§9.3)
+- [ ] **CL-9.6** Gateway SetTlsClient / Receiver SetTlsServer API 사용 (§9.3)
+- [ ] **CL-9.7** `core/tests/certs/` 참조 없음 확인 (바인딩 독립 관리)
+
+---
+
+### CL-10. C# API 매핑 (§10)
+
+- [ ] **CL-10.1** Context, Socket, Bind, Connect, Send, Receive API 사용
+- [ ] **CL-10.2** SetOption / GetOption API 사용
+- [ ] **CL-10.3** Poller.Poll API 사용 (ROUTER_ROUTER_POLL)
+- [ ] **CL-10.4** STREAM: AttachStreamRaw / AttachStreamLen32Be / DetachStream / StreamSend API 사용
+- [ ] **CL-10.5** Gateway / Receiver / Spot 서비스 API 사용
+- [ ] **CL-10.6** MonitorSocket 사용 (multi connect ready)
+- [ ] **CL-10.7** Message 생성/읽기 API 사용
+- [ ] **CL-10.8** Span/ReadOnlySpan zero-copy 활용
+- [ ] **CL-10.9** BinaryPrimitives 헤더 인코딩
+- [ ] **CL-10.10** Stopwatch.GetTimestamp() 고정밀 타이밍
+
+---
+
+### CL-11. 리소스 메트릭 수집 (§11)
+
+- [ ] **CL-11.1** CPU 사용률: Process.TotalProcessorTime 기반 계산 구현
+- [ ] **CL-11.2** 메모리 사용량: Process.WorkingSet64 기반 계산 구현
+
+---
+
+### CL-12. 스크립트 (§12)
+
+**루트 스크립트:**
+
+- [ ] **CL-12.1** `perf/run_benchmarks.sh` 존재, `run_comparison.py` → `run_policy_bench.py --binding dotnet --suite single` 체인 호출
+- [ ] **CL-12.2** `perf/run_benchmarks.ps1` 존재
+- [ ] **CL-12.3** `perf/run_benchmarks_multi.sh` 존재, `run_comparison.py` → `run_policy_bench.py --binding dotnet --suite multi` 체인 호출
+- [ ] **CL-12.4** `perf/run_benchmarks_multi.ps1` 존재
+
+**single 스크립트:**
+
+- [ ] **CL-12.5** `perf/single/run_benchmarks.sh` 존재
+- [ ] **CL-12.6** `perf/single/run_benchmarks.ps1` 존재
+- [ ] **CL-12.7** `perf/single/run_comparison.py` 존재
+
+**multi 스크립트:**
+
+- [ ] **CL-12.8** `perf/multi/run_benchmarks.sh` 존재
+- [ ] **CL-12.9** `perf/multi/run_benchmarks.ps1` 존재
+- [ ] **CL-12.10** `perf/multi/run_comparison.py` 존재
+
+**CLI 옵션:**
+
+- [ ] **CL-12.11** --pattern, --runs, --duration, --reuse-build, --clean-build 지원
+- [ ] **CL-12.12** --output, --results-dir, --results-tag 지원
+- [ ] **CL-12.13** --msg-sizes, --transports, --hwm, --sndtimeo, --rcvtimeo 지원
+- [ ] **CL-12.14** multi 전용: --clients, --warmup, --transport-transition-ms, --pattern-transition-ms 지원
+
+---
+
+### CL-13. 산출물 (§13)
+
+- [ ] **CL-13.1** single 결과 파일 경로: `results/single/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt`
+- [ ] **CL-13.2** multi 결과 파일 경로: `results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt`
+- [ ] **CL-13.3** 결과 파일 형식: 테이블 + 완료 상태 요약
+- [ ] **CL-13.4** single 완료 형식: `## Completion`, `expected_result_lines` / `actual_result_lines` (밑줄)
+- [ ] **CL-13.5** multi 완료 형식: `## Status Summary`, `expected result lines` / `actual result lines` (공백)
+
+---
+
+### CL-14. 구현 순서 — Phase 실행 (§14)
+
+**Phase 0: 인증서 및 스크립트 준비**
+
+- [ ] **CL-14.1** `bindings/dotnet/tests/certs/` 인증서 3개 확인
+- [ ] **CL-14.2** `run_policy_bench.py` dotnet 지원 확인 (이미 구현됨 — 경로/빌드 정합성 검증)
+- [ ] **CL-14.3** `.gitignore` 파일 생성
+
+**Phase 1: 인프라**
+
+- [ ] **CL-14.4** [마이그레이션] single flat → common/src 분리 완료
+  - [ ] PerfCommon.cs, PerfTls.cs → common/
+  - [ ] 패턴 파일 → src/
+  - [ ] PerfStream.cs, PerfStreamCallbackEcho.cs 삭제 (STREAM 은 multi 전용 패턴)
+  - [ ] PerfMain.cs, GlobalUsings.cs → 프로젝트 루트 유지
+- [ ] **CL-14.5** single csproj 생성 (또는 업데이트)
+- [ ] **CL-14.6** multi csproj 생성 (또는 업데이트)
+- [ ] **CL-14.7** Zlink.sln 에 perf 프로젝트 추가
+- [ ] **CL-14.8** single/common/PerfCommon.cs 구현
+- [ ] **CL-14.9** single/common/PerfTls.cs 구현
+- [ ] **CL-14.10** single PerfMain.cs 패턴 디스패치 구현
+- [ ] **CL-14.11** multi/common/PerfCommon.cs 구현
+- [ ] **CL-14.12** multi/common/PerfCommonMulti.cs 구현
+- [ ] **CL-14.13** multi/common/PerfClientHelpers.cs 구현
+- [ ] **CL-14.14** multi/common/PerfServerEntry.cs 구현
+- [ ] **CL-14.15** multi/common/PerfClientEntry.cs 구현
+- [ ] **CL-14.16** multi/common/PerfTls.cs 구현
+- [ ] **CL-14.17** multi PerfMain.cs --multi-server/--multi-client 디스패치 구현
+
+**Phase 2: Single 소켓 패턴 (6개)**
+
+- [ ] **CL-14.18** PerfPair.cs 구현
+- [ ] **CL-14.19** PerfPubSub.cs 구현
+- [ ] **CL-14.20** PerfDealerDealer.cs 구현
+- [ ] **CL-14.21** PerfDealerRouter.cs 구현
+- [ ] **CL-14.22** PerfRouterRouter.cs 구현
+- [ ] **CL-14.23** PerfRouterRouterPoll.cs 구현
+
+**Phase 3: Single 서비스 패턴 (2개)**
+
+- [ ] **CL-14.24** PerfGateway.cs 구현
+- [ ] **CL-14.25** PerfSpot.cs 구현
+
+**Phase 4: Multi 패턴 (6×Server + 6×Client + 3 서버 only + 1 파서)**
+
+- [ ] **CL-14.26** PerfDealerDealerServer.cs + Client.cs 구현
+- [ ] **CL-14.27** PerfDealerRouterServer.cs + Client.cs 구현
+- [ ] **CL-14.28** PerfRouterRouterServer.cs + Client.cs 구현
+- [ ] **CL-14.29** PerfPubSubServer.cs + Client.cs 구현
+- [ ] **CL-14.30** PerfGatewayServer.cs + Client.cs 구현
+- [ ] **CL-14.31** PerfSpotServer.cs + Client.cs 구현
+- [ ] **CL-14.32** PerfStreamServer.cs 구현 (서버 only)
+- [ ] **CL-14.33** PerfStreamCallbackServer.cs 구현 (서버 only)
+- [ ] **CL-14.34** PerfStreamLen32BeServer.cs 구현 (서버 only)
+- [ ] **CL-14.35** PerfStreamStopParser.cs 구현
+
+**Phase 5: 스크립트 및 마무리**
+
+- [ ] **CL-14.36** run_benchmarks.sh / .ps1 (루트 + single/ + multi/) 구현
+- [ ] **CL-14.37** run_benchmarks_multi.sh / .ps1 구현
+- [ ] **CL-14.38** run_comparison.py 호환 어댑터 구현 (run_policy_bench.py 위임)
+- [ ] **CL-14.39** README.md 작성
+- [x] **CL-14.40** 빌드 검증 통과 (single + multi)
+- [ ] **CL-14.41** run_policy_bench.py → run_comparison.py 체인 통합 검증 통과
+
+**Phase 6: 코드 품질 리뷰 및 리팩토링**
+
+- [x] **CL-14.42** Dead code / 미사용 파일 정리
+  - [x] 미사용 using 0건
+  - [x] 미사용 변수/메서드/클래스 0건
+  - [x] 의미 없는 주석 0건
+  - [x] 빈 파일/미사용 설정 파일 0건
+- [x] **CL-14.43** 가독성 리팩토링
+  - [x] 네이밍 일관성 (core/perf 대응 관계)
+  - [x] 매직 넘버 → 상수 추출
+  - [x] 패턴 파일 간 구조 일관성
+- [x] **CL-14.44** 성능 리뷰 (파일별)
+  - [x] 측정 루프 내 힙 할당 0건
+  - [x] 측정 루프 내 불필요한 복사 0건
+  - [x] 측정 루프 내 Thread.Sleep / 과도한 busy-wait 없음
+  - [x] 측정 루프 밖에서 I/O 출력
+  - [x] send/recv 버퍼 루프 밖 할당 + 재사용
+  - [x] 박싱/언박싱 없음
+  - [x] Span / stackalloc 활용
+- [ ] **CL-14.45** 주석 추가
+  - [ ] 패턴 파일 상단 설명 (1-3줄)
+  - [ ] 페이즈 전환 지점 주석
+  - [ ] 비자명 로직 주석
+  - [ ] 자명한 코드에 불필요한 주석 없음
+
+---
+
+### CL-15. 정책 준수 (§15)
+
+**금지 사항:**
+
+- [x] **CL-15.1** NativeMethods / NativeTypes / NativeHelpers 직접 호출 0건
+- [x] **CL-15.2** Zlink.Native 네임스페이스 참조 0건
+- [x] **CL-15.3** send/recv 실패 시 재시도 없음 (EAGAIN/EINTR 은 허용)
+- [x] **CL-15.4** Inflight/Outstanding 옵션 사용 0건
+
+**필수 사항:**
+
+- [x] **CL-15.5** 소켓 생성, bind/connect, send/recv 루프, 페이즈 컨트롤 인라인
+- [x] **CL-15.6** `RESULT,current,...` 형식 stdout 출력
+- [x] **CL-15.7** STREAM 서버 stop-token `__zlink_perf_stop__` 처리
+- [x] **CL-15.8** Multi 서버 `READY,<endpoint>` stdout 출력
+- [x] **CL-15.9** TLS 인증서 `bindings/dotnet/tests/certs/` 경로 사용
+
+**코드 인라이닝 정책:**
+
+- [x] **CL-15.10** 메인 루프 로직 각 패턴 파일에 인라인
+- [x] **CL-15.11** common/ 추출 범위: 환경변수, PrintResult, 엔드포인트, 헤더, TimestampUs, ReservoirSample/ComputeLatencyStats, TLS 경로 리졸버, PerfClientHelpers(연결/정리 보조만)
+- [x] **CL-15.12** 패턴 간 SendLoop()/RecvLoop() 공유 메서드 common/ 에 없음 (금지)
+- [x] **CL-15.13** Multi 클라이언트 → PerfClientHelpers 는 연결/정리만 위임, send/recv 루프는 각 패턴 파일 내부 유지
+- [x] **CL-15.14** STREAM stop-token 파서 → PerfStreamStopParser 모듈화
+- [x] **CL-15.15** STREAM 소켓 헬퍼 → 각 서버 파일에 인라인
+- [x] **CL-15.16** STREAM 벤치마크 클라이언트 C# 구현 없음
+
+---
+
+### CL-16. 검증 (§16)
+
+**정적 검증:**
+
+- [x] **CL-16.1** `rg NativeMethods` / `NativeTypes` / `NativeHelpers` / `Zlink.Native` → 각 0건
+- [ ] **CL-16.2** `rg core/perf/common/streamclient` run_comparison.py → 공용 경로 참조 확인
+- [x] **CL-16.3** `rg tests/certs` *.cs → `bindings/dotnet/tests/certs` 만 사용
+
+**빌드 검증:**
+
+- [x] **CL-16.4** single `dotnet build -c Release` 종료코드 0
+- [x] **CL-16.5** multi `dotnet build -c Release` 종료코드 0
+- [x] **CL-16.6** 인증서 파일 3개 존재 (server.crt, server.key, ca.crt)
+
+**기능 smoke 테스트:**
+
+- [x] **CL-16.7** single smoke: PAIR / tcp / 64 → 성공
+- [x] **CL-16.8** multi smoke: MULTI_DEALER_DEALER / tcp / 64 / 10 clients → 성공
+- [ ] **CL-16.9** stream smoke: MULTI_STREAM / tcp / 64 / 100 clients → 성공
+- [ ] **CL-16.10** TLS smoke: PAIR / tls / 64 → 성공
+
+**메트릭 정확성:**
+
+- [ ] **CL-16.11** 필수 메트릭 5개 모든 조합 존재 (single)
+- [ ] **CL-16.12** 필수 메트릭 5개 모든 조합 존재 (multi)
+- [ ] **CL-16.13** bandwidth 계산식 오차 ±1% 이내
+- [ ] **CL-16.14** latency_p95 >= latency, latency_p99 >= latency_p95
+- [ ] **CL-16.15** throughput > 0, bandwidth > 0, latency > 0
+- [ ] **CL-16.16** 정보성 메트릭 누락 시 warning 로그
+
+**사이즈별 즉시 출력:**
+
+- [ ] **CL-16.17** size 완료마다 RESULT 행 즉시 stdout 출력
+- [ ] **CL-16.18** 사이즈별 5개 메트릭 연속 출력
+- [ ] **CL-16.19** 모든 RESULT 라인이 Completion 섹션보다 앞에 위치
+
+**기본 설정 전체 실행:**
+
+- [ ] **CL-16.20** single 전체 실행 종료코드 0, status: complete
+- [ ] **CL-16.21** multi 전체 실행 종료코드 0, status: complete
+- [ ] **CL-16.22** `## Failures` 섹션 없음
+- [ ] **CL-16.23** fail 조합 0건
+- [ ] **CL-16.24** UNSUPPORTED 조합은 정책 범위 내에서만 허용
+
+---
+
+### CL-17. 완료 기준 최종 확인 (§17)
+
+- [ ] **CL-17.1** 디렉토리/파일 구조가 core/perf common/src 분리 구조와 동일
+- [x] **CL-17.2** multi server/client 별도 파일 분리
+- [ ] **CL-17.3** runner 옵션/기본값/결과 형식이 core 와 동등
+- [x] **CL-17.4** single/multi 모든 패턴 빌드 성공
+- [ ] **CL-17.5** STREAM client = core/perf/common/streamclient 공용 바이너리만 사용
+- [x] **CL-17.6** Native P/Invoke / internal 네임스페이스 직접 호출 0건
+- [x] **CL-17.7** TLS 인증서 bindings/dotnet/tests/certs/ 독립 관리
+- [ ] **CL-17.8** retry 로직/우회 wrapper/비정책 실행 경로 없음
+- [ ] **CL-17.9** 메트릭 정확성 검증 완료
+- [ ] **CL-17.10** 사이즈별 RESULT 즉시 출력 검증 완료
+- [ ] **CL-17.11** 기본 설정 전체 실행 status: complete
+- [x] **CL-17.12** run_policy_bench.py dotnet 빌드/실행 경로 지원 확인
+- [ ] **CL-17.13** 코드 품질 리뷰 완료 (dead code 0건, 측정 루프 오버헤드 0건)
+- [ ] **CL-17.14** 주석 정리 완료

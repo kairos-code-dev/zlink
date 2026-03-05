@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: zlink
-Version: 1.7.4
+Version: 1.7.5
 Summary: zlink Python bindings — high-performance async messaging library
 Author: ulalax
 License: MPL-2.0

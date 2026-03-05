@@ -927,14 +927,34 @@ build_core_targets()
         return 0
     fi
 
+    local needs_zlink_core=0
+    local stack=""
+    for stack in "${RUN_STACKS[@]}"; do
+        case "${stack}" in
+            netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be)
+                needs_zlink_core=1
+                break
+                ;;
+            *)
+                ;;
+        esac
+    done
+
     log "configure core build"
     cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
         -DZLINK_BUILD_TESTS=ON \
         -DBUILD_BENCHMARKS=ON \
         -DZLINK_BUILD_BENCH_STREAMCOMPARE=ON >/dev/null
 
-    log "build bench_streamcompare_client"
-    cmake --build "${BUILD_DIR}" --target bench_streamcompare_client -j"$(nproc)" >/dev/null
+    if [[ "${needs_zlink_core}" -eq 1 ]]; then
+        log "build bench_streamcompare_client + libzlink"
+        cmake --build "${BUILD_DIR}" --target bench_streamcompare_client libzlink \
+            -j"$(nproc)" >/dev/null
+    else
+        log "build bench_streamcompare_client"
+        cmake --build "${BUILD_DIR}" --target bench_streamcompare_client \
+            -j"$(nproc)" >/dev/null
+    fi
 }
 
 prepare_build_directory_policy()

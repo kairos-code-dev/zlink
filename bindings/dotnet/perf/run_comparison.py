@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""Compatibility runner for dotnet perf.
+
+Accepts the core/perf run_comparison.py invocation shape used by
+run_benchmarks.sh/run_benchmarks_multi.sh and delegates execution to the
+policy runner at bindings/perf/run_policy_bench.py.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+from typing import Iterable, List, Set
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = SCRIPT_DIR.parents[2]
+POLICY_RUNNER = ROOT_DIR / "bindings" / "perf" / "run_policy_bench.py"
+DEFAULT_RESULTS_DIR = SCRIPT_DIR / "results"
+
+
+def _split_patterns(raw: str) -> List[str]:
+    return [p.strip().upper() for p in raw.split(",") if p.strip()]
+
+
+def _detect_suite(patterns: Iterable[str]) -> str:
+    pats = list(patterns)
+    if not pats:
+        return "single"
+    is_multi = [p.startswith("MULTI_") for p in pats]
+    if all(is_multi):
+        return "multi"
+    if any(is_multi):
+        raise ValueError("cannot mix single and MULTI_* patterns")
+    return "single"
+
+
+def _snapshot_files(path: Path) -> Set[str]:
+    if not path.exists():
+        return set()
+    return {p.name for p in path.iterdir() if p.is_file()}
+
+
+def _pick_latest_new(path: Path, before: Set[str]) -> Path | None:
+    if not path.exists():
+        return None
+    candidates = [p for p in path.iterdir() if p.is_file() and p.name not in before]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
+
+
+def main(argv: List[str]) -> int:
+    ap = argparse.ArgumentParser(description="dotnet perf compatibility runner")
+    ap.add_argument("pattern")
+    ap.add_argument("--build-dir", default="")
+    ap.add_argument("--runs", type=int, default=1)
+    ap.add_argument("--pin-cpu", action="store_true")
+    ap.add_argument("--duration", type=int, default=0)
+    ap.add_argument("--results-dir", default="")
+    ap.add_argument("--results-tag", default="")
+    ap.add_argument("--result-file", default="")
+    args, unknown = ap.parse_known_args(argv)
+
+    patterns = _split_patterns(args.pattern)
+    if not patterns:
+        print("Error: pattern is required", file=sys.stderr)
+        return 1
+
+    try:
+        suite = _detect_suite(patterns)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    results_dir = Path(args.results_dir) if args.results_dir else DEFAULT_RESULTS_DIR
+    report_dir = results_dir / suite / "report"
+    tmp_dir = results_dir / suite / "tmp"
+    before_report = _snapshot_files(report_dir)
+    before_tmp = _snapshot_files(tmp_dir)
+
+    cmd: List[str] = [
+        sys.executable,
+        str(POLICY_RUNNER),
+        "--binding",
+        "dotnet",
+        "--suite",
+        suite,
+        "--pattern",
+        ",".join(patterns),
+        "--runs",
+        str(max(1, args.runs)),
+        "--results-dir",
+        str(results_dir),
+        "--result",
+    ]
+
+    if args.results_tag:
+        cmd.extend(["--results-tag", args.results_tag])
+    if args.pin_cpu:
+        cmd.append("--pin-cpu")
+    if args.build_dir:
+        cmd.extend(["--build-dir", args.build_dir])
+
+    if args.duration > 0:
+        if suite == "multi":
+            cmd.extend(["--multi-duration-seconds", str(args.duration)])
+
+    cmd.extend(unknown)
+
+    env = os.environ.copy()
+    if args.duration > 0 and suite == "single":
+        env["PERF_SINGLE_DURATION_SECONDS"] = str(args.duration)
+
+    rc = subprocess.call(cmd, env=env)
+
+    if args.result_file:
+        out_path = Path(args.result_file)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        chosen = _pick_latest_new(report_dir, before_report)
+        if chosen is None:
+            chosen = _pick_latest_new(tmp_dir, before_tmp)
+        if chosen is not None and chosen.exists():
+            shutil.copy2(chosen, out_path)
+        elif not out_path.exists():
+            out_path.write_text("", encoding="utf-8")
+
+    return rc
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

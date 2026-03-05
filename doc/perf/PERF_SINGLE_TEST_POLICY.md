@@ -26,30 +26,35 @@
 
 - single은 **한 번의 active 구간에서 throughput + latency를 동시에** 측정한다.
 - size 변경 시마다 별도 프로세스로 실행하여 케이스 간 메트릭 오염을 방지한다.
-- 드레인 단계/드레인 옵션/재시도 로직은 두지 않는다.
+- 명시적 드레인 phase는 없으나, receiver는 active 종료 후 `drain_idle_limit` (기본: `PERF_SINGLE_RCVTIMEO_MS`, 200ms) 동안 수신 대기하는 idle drain 로직이 있다.
+- 재시도 로직은 두지 않는다.
 
 ---
 
 ## 2. 바이너리 Phase 규칙
 
 ```text
-[single phase]: [warmup] -> [active(duration)]
+[single phase]: [warmup] -> [settle(100ms, 일부 패턴)] -> [active(duration)] -> [drain idle]
 ```
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
-| warmup | count-based | 패턴별 기본값 | `PERF_WARMUP_COUNT` |
+| warmup | count-based | 패턴별 기본값 (표준: 1000, GATEWAY/SPOT: 200, SPOT msg_size≥65536: 20) | `PERF_WARMUP_COUNT` |
+| settle | time-based | 100ms | — (코드 상수 `SETTLE_TIME_MS`) |
 | active | time-based | 5s | `PERF_SINGLE_DURATION_SECONDS` |
+| drain idle | idle-based | recv timeout (기본 200ms) 동안 무수신 시 종료 | — |
 
 - warmup 데이터는 최종 집계에서 제외한다.
+- settle은 소켓 설정 완료 후 안정화 대기이며, 환경 변수로 변경할 수 없다. **GATEWAY, SPOT 등 서비스 패턴에만 적용된다.** 소켓 패턴(PAIR, PUBSUB, DEALER_*, ROUTER_*)은 `setup_connected_pair()` 내부에서 연결 안정화를 처리하므로 별도 settle을 호출하지 않는다.
 - active에서만 throughput/latency를 계산한다.
+- drain idle은 active 종료 후 잔여 메시지를 수신하기 위한 유휴 대기이다.
 
 ### 2.1 Header 기반 집계 (필수)
 
 active 구간 집계는 payload에 기록된 metric header를 기준으로만 수행한다.
 
 - decode 실패 메시지: 집계 제외
-- `run_id`, `phase(active)`, `msg_size` 검증 실패 메시지: 집계 제외
+- `magic`, `phase` 검증 실패 메시지: 집계 제외 (구현은 `magic` + `phase` 두 필드만 검증한다. `is_expected()` 유틸리티에 `run_id`/`msg_size` 검증이 정의되어 있으나, 실제 벤치마크 코드에서는 사용하지 않는다)
 - 유효 header 메시지만 throughput 카운트와 latency 샘플에 포함
 
 즉, throughput과 latency는 동일한 유효 메시지 집합을 사용한다.
@@ -88,7 +93,7 @@ status   = (expected == actual) ? "complete" : "partial"
 - 실패 조합 자동 재시도 금지
 - `UNSUPPORTED` 오용 금지
   - 정책에 정의된 조합 실행 실패는 `fail`로 보고해야 한다.
-  - 단, 바이너리 stderr에 `protocol not supported`가 포함되면 실행 엔진이 해당 조합을 `unsupported`로 자동 분류한다.
+  - single 실행 엔진은 stdout `UNSUPPORTED` 토큰만 인식한다. stderr `protocol not supported` 기반 자동 분류는 지원하지 않는다 (multi 엔진에서만 지원).
 
 ---
 
@@ -109,13 +114,18 @@ RESULT,current,PAIR,tcp,1024,rcv_pending_max,0
 RESULT,current,PAIR,tcp,1024,rcv_pending_end,0
 ```
 
-필수 metric:
+필수 metric (success 판정 기준):
 
 - `throughput`
 - `bandwidth`
 - `latency`
+
+출력 필수 metric (success 시 항상 출력, 누락 시 mean latency로 fallback 보정):
+
 - `latency_p95`
 - `latency_p99`
+
+> **구현 참고**: `run_comparison.py`의 success 판정은 `throughput`, `bandwidth`, `latency` 3개만 검사한다. `latency_p95`/`latency_p99`는 누락 시 mean latency 값으로 자동 보정(`resolve_latency_triplet`)하여 출력하므로, 이들의 부재가 success 판정을 방해하지 않는다.
 
 정보성 metric(없어도 complete 판정에 영향 없음):
 
@@ -150,9 +160,9 @@ perf/results/
 
 결과 파일에는 아래가 순서대로 기록된다.
 
-1. Effective Options (start)
+1. `## Effective Options (start)` — 불릿 목록 형식
 2. 패턴/트랜스포트별 실행 로그 및 테이블
-3. Effective Options (result)
+3. `## Effective Options (result)` — 불릿 목록 형식
 4. Completion (`status`, `expected_result_lines`, `actual_result_lines`)
 
 ### 5.3 보존 정책
@@ -217,6 +227,15 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 
 > STREAM 계열(STREAM, STREAM_CALLBACK, STREAM_LEN32BE)은 single suite에서 테스트하지 않는다.
 
+#### 패턴 방향 분류
+
+| 방향 | 패턴 | throughput 단위 |
+|------|------|----------------|
+| one-way (단방향) | PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER | `msg/s` |
+| echo (왕복) | ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT | `msg/s` |
+
+> **구현 참고**: `run_comparison.py`는 소켓 동작(echo/one-way)과 무관하게 모든 single 패턴을 **one-way 방향**, **Kmsg/s** 단위로 출력한다. bandwidth도 방향과 무관하게 `throughput × size / 1,000,000`으로 계산한다 (direction_factor를 적용하지 않는다).
+
 ### 7.2 표준 메시지 크기
 
 `[64, 256, 1024, 65536, 131072, 262144]`
@@ -238,7 +257,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 |------|------|--------|
 | `PERF_DEBUG` | 디버그 로그 | unset |
 | `PERF_IO_THREADS` | context I/O threads | 0 |
-| `PERF_MSG_SIZES` | size 목록 override | 정책 기본값 |
+| `PERF_MSG_SIZES` | size 목록 override (러너가 size별 케이스로 분할 실행) | 정책 기본값 |
 | `PERF_TRANSPORTS` | transport 목록 override | 패턴 기본값 |
 | `PERF_TASKSET` | CPU pinning 활성화 (`1`) | 0 |
 | `PERF_FAIL_FAST` | 실패 시 즉시 중단 (`1`) | 0 |
@@ -248,7 +267,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `PERF_WARMUP_COUNT` | warmup 메시지 개수 | 패턴별 기본값 |
+| `PERF_WARMUP_COUNT` | warmup 메시지 개수 | 패턴별 기본값 (표준: 1000, GATEWAY/SPOT: 200) |
 | `PERF_SINGLE_DURATION_SECONDS` | active 구간 시간(초) | 5 |
 | `PERF_SINGLE_TIMEOUT_SECONDS` | 프로세스 timeout(초) | `max(30, duration*6+15)` |
 

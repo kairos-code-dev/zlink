@@ -250,8 +250,6 @@ class bench_client_t : public bench_client_iface_t
                 std::fflush (stdout);
                 if (!m.pass)
                     all_pass = false;
-                if ((i + 1) < opt.sizes.size ())
-                    run_size_transition_drain ();
             }
         }
 
@@ -532,23 +530,6 @@ class bench_client_t : public bench_client_iface_t
         }
 
         return true;
-    }
-
-    // Brief drain between size transitions to let in-flight ops complete.
-    void run_size_transition_drain ()
-    {
-        const int drain_ms = std::max (0, opt.size_transition_drain_ms);
-        if (drain_ms <= 0)
-            return;
-
-        const auto drain_deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::milliseconds (drain_ms);
-        while (std::chrono::steady_clock::now () < drain_deadline) {
-            if (outstanding_total.load (std::memory_order_relaxed) <= 0)
-                break;
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
-        }
     }
 
     void reset_measurement_counters ()

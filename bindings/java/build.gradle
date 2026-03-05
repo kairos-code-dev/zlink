@@ -13,16 +13,6 @@ java {
     }
 }
 
-sourceSets {
-    test {
-        java {
-            srcDir 'perf/common/Zlink.PerfBench/src/main/java'
-            srcDir 'perf/single/Zlink.PerfBench/src/main/java'
-            srcDir 'perf/multi/Zlink.PerfBench/src/main/java'
-        }
-    }
-}
-
 repositories {
     mavenCentral()
 }

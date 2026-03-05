@@ -27,11 +27,10 @@
 
 ### 2.0 core (C++ 레퍼런스 구현)
 
+> 아래 경로는 `core/perf/` 기준이다. 정책 문서 자체는 `doc/perf/`에 위치한다.
+
 ```text
-perf/
-├── PERF_POLICY.md                          # 통합 정책 (본 문서)
-├── PERF_SINGLE_TEST_POLICY.md              # single 정책
-├── PERF_MULTI_TEST_POLICY.md               # multi 정책
+core/perf/
 ├── run_benchmarks.sh / .ps1                # single 전용 실행 스크립트 (Linux/Windows)
 ├── run_benchmarks_multi.sh / .ps1          # multi 전용 실행 스크립트 (Linux/Windows)
 ├── run_comparison.py                       # 통합 비교/실행 스크립트
@@ -139,15 +138,29 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 
 ### 2.2 보존 정책
 
+#### 파일 수 기반 정리
+
 | 디렉터리 | 최대 파일 수 | 초과 시 처리 |
 |-----------|-------------|-------------|
-| `report/` | `PERF_RESULTS_MAX_FILES` (기본 100) | 파일명 사전순 기준 오래된 파일 삭제 |
+| `report/` | 기본 100 | 파일명 사전순 기준 오래된 파일 삭제 |
 
 - `single/`과 `multi/` 각각 독립적으로 적용한다.
+- single 엔진은 최대 파일 수를 100으로 하드코딩한다 (`PERF_RESULTS_MAX_FILES` 미참조).
+- multi 엔진은 `PERF_RESULTS_MAX_FILES` 환경 변수를 읽는다 (기본 100).
+
+#### 시간 기반 정리 (core 전용)
+
+| 환경 변수 | 기본값 | 동작 |
+|-----------|--------|------|
+| `PERF_RESULTS_RETENTION_DAYS` | 90 | 결과 디렉터리 중 `YYYYMMDD` 형식 이름이 기준일보다 오래된 디렉터리를 삭제 |
+
+- `core/perf/run_benchmarks.sh` 실행 시 자동 적용된다.
+- bindings 스크립트에는 적용되지 않는다.
 
 ### 2.3 저장 단위
 
 - 스크립트 1회 실행 = 1개 결과 파일. 실행에서 측정된 모든 패턴/transport/size 조합의 결과가 하나의 파일에 기록된다.
+  - **예외**: multi에서 preflight(nofile/memory) 검사로 모든 패턴이 skip되면 결과 파일 없이 `exit 0`한다.
 
 ---
 
@@ -157,19 +170,19 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 
 | suite | core 스크립트 | bindings 스크립트 | 정책 문서 |
 |-------|--------------|-------------------|-----------|
-| single | `perf/run_benchmarks.sh` / `.ps1` | `perf/single/run_benchmarks.sh` / `.ps1` | [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) |
-| multi | `perf/run_benchmarks_multi.sh` / `.ps1` | `perf/multi/run_benchmarks.sh` / `.ps1` | [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) |
+| single | `core/perf/run_benchmarks.sh` / `.ps1` | `perf/single/run_benchmarks.sh` / `.ps1` | [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) |
+| multi | `core/perf/run_benchmarks_multi.sh` / `.ps1` | `perf/multi/run_benchmarks.sh` / `.ps1` | [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) |
 
 ```bash
 # core single만 실행
-perf/run_benchmarks.sh --pattern PAIR
+core/perf/run_benchmarks.sh --pattern PAIR
 
 # core multi만 실행
-perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
+core/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
 
 # bindings 실행 (예: node)
-perf/single/run_benchmarks.sh --pattern PAIR
-perf/multi/run_benchmarks.sh --pattern MULTI_STREAM
+bindings/node/perf/single/run_benchmarks.sh --pattern PAIR
+bindings/node/perf/multi/run_benchmarks.sh --pattern MULTI_STREAM
 ```
 
 각 스크립트의 상세 옵션은 개별 정책 문서의 섹션 5를 참조한다.
@@ -178,8 +191,8 @@ perf/multi/run_benchmarks.sh --pattern MULTI_STREAM
 >
 > | suite | core | bindings |
 > |-------|------|----------|
-> | single | `perf/run_benchmarks.sh` | `perf/single/run_benchmarks.sh` |
-> | multi | `perf/run_benchmarks_multi.sh` | `perf/multi/run_benchmarks.sh` |
+> | single | `core/perf/run_benchmarks.sh` | `perf/single/run_benchmarks.sh` |
+> | multi | `core/perf/run_benchmarks_multi.sh` | `perf/multi/run_benchmarks.sh` |
 >
 > core는 single/multi 스크립트가 같은 디렉터리에 있으므로 `_multi` 접미어로 구분한다. bindings는 `single/`·`multi/` 디렉터리로 분리되므로 스크립트명은 `run_benchmarks.sh`로 동일하다.
 
@@ -193,20 +206,20 @@ perf/multi/run_benchmarks.sh --pattern MULTI_STREAM
 
 ```bash
 # core: single만 실행
-perf/run_benchmarks.sh --pattern ALL
+core/perf/run_benchmarks.sh --pattern ALL
 
 # core: multi만 실행
-perf/run_benchmarks_multi.sh --pattern ALL
+core/perf/run_benchmarks_multi.sh --pattern ALL
 
 # core: 특정 패턴만
-perf/run_benchmarks.sh --pattern PAIR,PUBSUB
+core/perf/run_benchmarks.sh --pattern PAIR,PUBSUB
 
 # core: 태그 추가
-perf/run_benchmarks.sh --results-tag v1.5.0
+core/perf/run_benchmarks.sh --results-tag v1.5.0
 
 # bindings: 동일한 옵션 체계 적용 (예: python)
-perf/single/run_benchmarks.sh --pattern ALL
-perf/multi/run_benchmarks.sh --pattern ALL
+bindings/python/perf/single/run_benchmarks.sh --pattern ALL
+bindings/python/perf/multi/run_benchmarks.sh --pattern ALL
 ```
 
 ### 3.3 통합 실행 옵션
@@ -214,7 +227,7 @@ perf/multi/run_benchmarks.sh --pattern ALL
 | 옵션 | 설명 | 기본값 |
 |------|------|--------|
 | `--pattern NAME` | 측정할 패턴 (쉼표 구분) | 전체 |
-| `--runs N` | 반복 횟수 | 1 |
+| `--runs N` | 반복 횟수 | 1 (Windows multi `.ps1`: 3) |
 | `--build-dir PATH` | 빌드 디렉터리 경로 | 자동 탐색 |
 | `--reuse-build` | 기존 빌드 재사용 (configure/build 생략) | off |
 | `--clean-build` | 빌드 디렉터리 삭제 후 클린 빌드 | off (기본은 증분 빌드) |
@@ -238,14 +251,12 @@ perf/multi/run_benchmarks.sh --pattern ALL
 #### report/ (결과 레포트)
 
 ```text
-## Execution Options
-| Option     | Value                              |
-|------------|------------------------------------|
-| runs       | 1                                  |
-| patterns   | PAIR, GATEWAY                      |
-| transports | tcp, tls, ws, wss                  |
-| msg_sizes  | 64, 256, 1024, 65536, 131072, 262144 |
-| pin_cpu    | off                                |
+## Effective Options (start)
+- runs: 1
+- patterns: PAIR, GATEWAY
+- transports: tcp, tls, ws, wss
+- msg_sizes: 64, 256, 1024, 65536, 131072, 262144
+- pin_cpu: off
 
 ===============================================================================
 
@@ -259,7 +270,7 @@ perf/multi/run_benchmarks.sh --pattern ALL
 ```
 
 - **실행 옵션 헤더 + TABLE**을 저장한다.
-- `## Execution Options` 섹션은 실행 시 사용된 옵션을 테이블로 출력한다. report/ 파일과 stdout 모두에 포함해야 한다.
+- `## Effective Options (start)` / `## Effective Options (result)` 섹션은 실행 시 사용된 옵션을 불릿 목록으로 출력한다. report/ 파일과 stdout 모두에 포함해야 한다.
 
 ### 4.2 RESULT line 형식
 
@@ -270,14 +281,14 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | metric | 설명 | 필수 |
 |--------|------|------|
 | `throughput` | echo 패턴: 왕복 완료 수 (`ops/s`), one-way 패턴: 단방향 수신 수 (`msg/s`) | MUST |
-| `bandwidth` | 네트워크 전송량 (MB/s) — echo: `throughput × size × 2 / 1,000,000`, one-way: `throughput × size / 1,000,000` | MUST |
+| `bandwidth` | 네트워크 전송량 (MB/s) — multi echo: `throughput × size × 2 / 1,000,000`, 그 외(single 전체 + multi one-way): `throughput × size / 1,000,000` | MUST |
 | `latency` | 레이턴시 (us) | MUST |
 | `latency_p95` | 레이턴시 95th percentile (us) | MUST |
 | `latency_p99` | 레이턴시 99th percentile (us) | MUST |
 | `cpu_pct` | 프로세스 CPU 사용률 (%) — single용 | Linux/Windows |
 | `mem_mb` | 프로세스 메모리 (MB, RSS/WorkingSet 기준) — single용 | Linux/Windows |
-| `client_cpu_pct` | client 프로세스 CPU (%) — multi용 | Linux/Windows |
-| `client_mem_mb` | client 프로세스 메모리 (MB) — multi용 | Linux/Windows |
+| `client_cpu_pct` | client 프로세스 CPU (%) — multi용 (바이너리 출력만, 최종 집계 테이블에는 미반영) | Linux/Windows |
+| `client_mem_mb` | client 프로세스 메모리 (MB) — multi용 (바이너리 출력만, 최종 집계 테이블에는 미반영) | Linux/Windows |
 | `server_cpu_pct` | server 프로세스 CPU (%) — multi용 | Linux/Windows |
 | `server_mem_mb` | server 프로세스 메모리 (MB) — multi용 | Linux/Windows |
 | `snd_pending_max` | 송신 큐 최대 대기 수 — single용 | informational |
@@ -308,14 +319,12 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 > **구현 필수**: 모든 실행 스크립트는 RESULT line 외에 아래 형식의 사람이 읽을 수 있는 테이블을 **반드시 stdout에 출력하고, 결과 파일에도 TABLE 영역으로 기록**해야 한다. RESULT line만 출력하고 테이블을 생략하면 안 된다.
 
 ```text
-## Execution Options
-| Option     | Value                              |
-|------------|------------------------------------|
-| runs       | 1                                  |
-| patterns   | PAIR, GATEWAY                      |
-| transports | tcp, tls, ws, wss                  |
-| msg_sizes  | 64, 256, 1024, 65536, 131072, 262144 |
-| pin_cpu    | off                                |
+## Effective Options (start)
+- runs: 1
+- patterns: PAIR, GATEWAY
+- transports: tcp, tls, ws, wss
+- msg_sizes: 64, 256, 1024, 65536, 131072, 262144
+- pin_cpu: off
 
 ===============================================================================
 
@@ -333,10 +342,10 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 ## PATTERN: MULTI_DEALER_DEALER (one-way)
 
 ### Transport: tcp
-| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
-|----------|------------------|-----------|--------------|--------------|--------------|--------|----------|
-| 64B      |   150.00 Kmsg/s  |  9.6 MB/s |   45.23 us   |   61.40 us   |   79.85 us   | 35.1   |   64.2   |
-| 1024B    |   120.30 Kmsg/s  |123.2 MB/s |   52.10 us   |   70.55 us   |   92.10 us   | 38.5   |   66.8   |
+| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
+|----------|------------------|------------|---------------|---------------|---------------|--------|----------|
+| 64B      |   150.00 Kmsg/s  |   9.6 MB/s |      0.05 ms  |      0.06 ms  |      0.08 ms  | 35.1   |   64.2   |
+| 1024B    |   120.30 Kmsg/s  | 123.2 MB/s |      0.05 ms  |      0.07 ms  |      0.09 ms  | 38.5   |   66.8   |
 ```
 
 - **패턴 간 구분선**: 패턴이 바뀔 때 `===============================================================================` 구분선을 출력한다 (첫 번째 패턴 앞에는 출력하지 않음).
@@ -345,7 +354,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 |------|------|------|
 | Throughput | echo: `Kops/s`, one-way: `Kmsg/s` | 패턴 방향별 단위 — 개별 정책 문서 섹션 8.1 참조 |
 | Bandwidth | `MB/s` | 네트워크 전송량 — 개별 정책 문서 섹션 8.3 참조 |
-| Lat.Mean / Lat.P95 / Lat.P99 | `us` | 마이크로초 (평균/95th/99th) |
+| Lat.Mean / Lat.P95 / Lat.P99 | single: `us` (마이크로초), multi: `ms` (밀리초) | 평균/95th/99th |
 | CPU% | `%` | single 리소스 메트릭, 수집 실패 시 `N/A` |
 | Mem MB | `MB` | single 리소스 메트릭, 수집 실패 시 `N/A` |
 | S.CPU% / S.Mem MB | `%` / `MB` | multi server 리소스 메트릭 |
@@ -370,7 +379,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | 조건 | 항상 출력 (`PERF_DEBUG`와 무관) |
 
 - 컬럼 순서 및 형식은 § 5.1 결과 테이블과 동일하다.
-- 바이너리 stderr를 캡처하여 통합하는 방식은 사용하지 않는다.
+- 바이너리 stderr는 stdout 결과에 통합하지 않지만, multi 엔진(`run_comparison.py`)은 stderr에서 `protocol not supported` 문자열을 감지하여 `unsupported` 자동 분류에 활용한다 (§ 8.4 참조).
 
 상세 형식은 suite별 정책 문서를 참조한다:
 - Single: [PERF_SINGLE_TEST_POLICY.md § 6.3](PERF_SINGLE_TEST_POLICY.md)
@@ -392,9 +401,9 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
   > Benchmarking current for MULTI_DEALER_DEALER...
     Testing tcp | 64B,256B:
       run 1/3:
-        | Size     |       Throughput |    Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
-        |----------|------------------|--------------|--------------|--------------|--------------|--------|----------|
-        | 64B      |    121.98 Kmsg/s |    15.61 MB/s |    812.10 us |   1012.22 us |   1258.44 us |    N/A |      N/A |
+        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
+        |----------|------------------|--------------|---------------|---------------|---------------|--------|----------|
+        | 64B      |    121.98 Kmsg/s |    15.61 MB/s |      0.81 ms  |      1.01 ms  |      1.26 ms  |    N/A |      N/A |
         | 256B     |    ...
       [cooldown 3000ms]
       run 2/3:
@@ -403,8 +412,8 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
       run 3/3:
         ...
       median:
-        | Size     |       Throughput |    Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
-        |----------|------------------|--------------|--------------|--------------|--------------|--------|----------|
+        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
+        |----------|------------------|--------------|---------------|---------------|---------------|--------|----------|
         | 64B      |    ...
         | 256B     |    ...
     Testing tcp: Done
@@ -446,7 +455,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | 항목 | 규칙 |
 |------|------|
 | 스크립트 레벨 재시도 | 금지 — 실패한 pattern/transport/size 조합을 자동으로 다시 실행하지 않는다 |
-| 바이너리 내부 재시도 | 금지 — send/recv 실패 시 자동 재시도하지 않는다. **예외**: STREAM 서버의 `send_stream_once`는 `PERF_MULTI_STREAM_SEND_RETRIES` (기본: 128) 횟수만큼 send를 재시도한다. STREAM 소켓의 비동기 라우팅 특성상 일시적 send 실패가 정상 발생할 수 있으므로 허용한다 |
+| 바이너리 내부 재시도 | 금지 — send/recv 실패 시 자동 재시도하지 않는다. **예외**: MULTI_STREAM 서버(`perf_multi_stream_server`)의 `send_stream_once`만 `PERF_MULTI_STREAM_SEND_RETRIES` (기본: 128) 횟수만큼 send를 재시도한다. MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE 서버는 재시도 루프 없이 특정 에러(ECONNRESET, EAGAIN 등)를 허용 처리한다 |
 | 환경 변수 | `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 **삭제 대상**이다. 구현에 존재하면 제거해야 한다 |
 
 - **이유**: 재시도는 실패 원인을 숨긴다. 벤치마크 실패는 라이브러리 또는 환경의 실제 문제를 반영하며, 재시도로 통과시키면 회귀가 감지되지 않는다.
@@ -486,11 +495,11 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | 정의된 transport가 정상 동작 | `success` | RESULT line 출력 |
 | 정의된 transport가 실패 (timeout, crash, no_data 등) | `fail` | 원인 파악 후 수정 필요 |
 | 정책에 정의되지 않은 transport 조합 | `unsupported` | 결과 제외 |
-| stderr에 `protocol not supported` 포함 | `unsupported` | 런타임에서 지원되지 않는 transport 자동 감지 |
+| stderr에 `protocol not supported` 포함 | `unsupported` | 런타임에서 지원되지 않는 transport 자동 감지 (multi 엔진만 지원, single 엔진은 stdout 토큰만 사용) |
 | 플랫폼 제약으로 실행 불가 (예: Windows에서 ipc) | `skip` | reason 명시 필수 |
 
 - `UNSUPPORTED`는 **정책에 정의되지 않은** pattern-transport 조합에만 사용한다.
-- **stderr 기반 자동 분류**: 바이너리 stderr에 `protocol not supported` 문자열이 포함되면 실행 엔진(`run_comparison.py`)이 해당 조합을 `unsupported`로 자동 분류한다. 이는 런타임에서 지원되지 않는 transport를 감지하는 메커니즘이다.
+- **stderr 기반 자동 분류**: 바이너리 stderr에 `protocol not supported` 문자열이 포함되면 multi 실행 엔진(`run_comparison.py`)이 해당 조합을 `unsupported`로 자동 분류한다. single 엔진(`single/run_comparison.py`)은 stderr 문자열 기반 분류를 수행하지 않으며 stdout `UNSUPPORTED` 토큰만 인식한다.
 - 실패를 `UNSUPPORTED`로 위장하면 회귀(regression)가 감지되지 않으므로 엄격히 금지한다.
 
 ### 8.5 코어 로직 인라인 원칙
@@ -598,15 +607,15 @@ int main (int argc, char **argv)
 |------|------|--------|
 | `PERF_DEBUG` | 디버그 로그 | unset |
 | `PERF_IO_THREADS` | context I/O threads | 0 |
-| `PERF_MSG_SIZES` | 테스트 size 목록 | `64,256,1024,65536,131072,262144` |
+| `PERF_MSG_SIZES` | 테스트 size 목록 (러너가 size별 케이스로 분할 실행) | `64,256,1024,65536,131072,262144` |
 | `PERF_TRANSPORTS` | 테스트 transport 목록 | suite/패턴별 기본값 |
 | `PERF_TASKSET` | CPU pinning (`1`로 활성화, Linux: taskset, Windows: processor affinity) | 0 |
 | `PERF_FAIL_FAST` | 실패 시 즉시 중단 | 0 |
 | `PERF_MAX_SOCKETS` | context max sockets | auto |
 | `PERF_DISABLE_RESOURCE_METRICS` | 리소스 메트릭(CPU/메모리) 수집 비활성화 (`1`로 활성화) | 0 |
-| `PERF_RESULTS_MAX_FILES` | report/ 디렉터리 최대 파일 수 | 100 |
+| `PERF_RESULTS_MAX_FILES` | report/ 디렉터리 최대 파일 수 (multi 전용) | 100 |
 
-- 위 환경 변수는 core와 모든 바인딩에서 동일하게 적용된다.
+- 위 환경 변수는 core와 모든 바인딩에서 동일하게 적용된다 (단, `PERF_RESULTS_MAX_FILES`는 multi 엔진만 참조하며, single 엔진은 100 하드코딩).
 - suite별 고유 환경 변수는 개별 정책 문서를 참조한다:
   - Single: [PERF_SINGLE_TEST_POLICY.md § 11](PERF_SINGLE_TEST_POLICY.md)
   - Multi: [PERF_MULTI_TEST_POLICY.md § 12](PERF_MULTI_TEST_POLICY.md)

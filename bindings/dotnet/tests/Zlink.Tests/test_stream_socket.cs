@@ -949,8 +949,8 @@ public sealed class test_stream_socket
         string key;
         try
         {
-            cert = ResolveRepoPath("core/tests/certs/gen/server.crt");
-            key = ResolveRepoPath("core/tests/certs/gen/server.key");
+            cert = ResolveRepoPath("bindings/dotnet/tests/certs/server.crt");
+            key = ResolveRepoPath("bindings/dotnet/tests/certs/server.key");
         }
         catch (FileNotFoundException)
         {

@@ -123,21 +123,5 @@ if(ZLINK_CPP_BUILD_BENCHMARKS)
   if(NOT TARGET libzlink)
     message(FATAL_ERROR "libzlink target not found. Build core first or add_subdirectory(core)")
   endif()
-
-  find_package(Threads REQUIRED)
-  add_executable(cpp_pair_bench
-    perf/single/perf_main.cpp
-    perf/single/perf_pair.cpp
-    perf/single/perf_pubsub.cpp
-    perf/single/perf_dealer_dealer.cpp
-    perf/single/perf_dealer_router.cpp
-    perf/single/perf_router_router.cpp
-    perf/single/perf_router_router_poll.cpp
-    perf/single/perf_stream.cpp
-    perf/single/perf_stream_callback.cpp
-    perf/single/perf_gateway.cpp
-    perf/single/perf_spot.cpp
-  )
-  target_link_libraries(cpp_pair_bench PRIVATE libzlink zlink-cpp Threads::Threads)
-  target_compile_features(cpp_pair_bench PRIVATE cxx_std_17)
+  add_subdirectory(perf)
 endif()

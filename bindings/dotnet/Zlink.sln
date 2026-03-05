@@ -15,6 +15,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "perf", "perf", "{137D8739-3
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.BindingBench", "perf\single\Zlink.BindingBench\Zlink.BindingBench.csproj", "{25780C41-42D3-4DD5-8291-4D4B867DE126}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.BindingBench.Multi", "perf\multi\Zlink.BindingBench.Multi\Zlink.BindingBench.Multi.csproj", "{E5A547AF-0A36-4F2A-8DBE-4A5040643729}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -36,10 +38,15 @@ Global
 		{25780C41-42D3-4DD5-8291-4D4B867DE126}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{25780C41-42D3-4DD5-8291-4D4B867DE126}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{25780C41-42D3-4DD5-8291-4D4B867DE126}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E5A547AF-0A36-4F2A-8DBE-4A5040643729}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E5A547AF-0A36-4F2A-8DBE-4A5040643729}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E5A547AF-0A36-4F2A-8DBE-4A5040643729}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E5A547AF-0A36-4F2A-8DBE-4A5040643729}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{98BF91C5-F7B9-4C3A-BC79-F09E4FD8665B} = {CE49EB56-FEAB-470B-A0F7-5999F00443B2}
 		{07984CD3-7F20-4142-9CE4-26EF32C64DDE} = {4C4C058E-10F9-4D70-9FA2-34271DDD4FF1}
 		{25780C41-42D3-4DD5-8291-4D4B867DE126} = {137D8739-34B2-4F97-A553-288F6E9E0937}
+		{E5A547AF-0A36-4F2A-8DBE-4A5040643729} = {137D8739-34B2-4F97-A553-288F6E9E0937}
 	EndGlobalSection
 EndGlobal

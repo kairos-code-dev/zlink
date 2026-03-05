@@ -37,7 +37,7 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 │  bind(endpoint)                      │    │  connect(endpoint) × N clients        │
 │  relay/echo received messages        │◄──►│  phase별 throughput/latency 측정         │
 │  RESULT: server_cpu_pct, server_mem_mb│    │  RESULT: throughput, latency, p95/p99, │
-│  READY/DONE protocol on stdout       │    │         client_cpu_pct, client_mem_mb  │
+│  READY stdout / stdin STOP 제어       │    │         client_cpu_pct, client_mem_mb  │
 └──────────────────────────────────────┘    └───────────────────────────────────────┘
                         ▲                                      ▲
                         └────── 스크립트가 양쪽 프로세스를 관리 ──┘
@@ -52,7 +52,9 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 | 3. client 시작 | 스크립트가 READY를 읽은 후 client 바이너리를 spawn (`--endpoint <endpoint>`) |
 | 4. 측정 수행 | client가 active phase에서 throughput/latency를 동시 측정 |
 | 5. client 종료 | client가 phase 완료 후 종료 (exit code 0) |
-| 6. server 종료 | 스크립트가 server에 SIGTERM (Linux) / TerminateProcess (Windows) 전송, server/client가 출력한 RESULT line을 합산 |
+| 6. server 종료 | 스크립트가 server stdin에 `STOP` 메시지 송신 → graceful shutdown 대기 → timeout 시 SIGTERM (Linux) / TerminateProcess (Windows) → 재 timeout 시 SIGKILL (Linux). server/client가 출력한 RESULT line을 합산 |
+
+> **server 종료 순서**: ① stdin `STOP\n` 송신 + stdin close ② shutdown timeout 대기 ③ `terminate()` (SIGTERM) ④ 2차 timeout 대기 ⑤ `kill()` (SIGKILL). server는 stdin에서 `STOP` 또는 `QUIT` 수신 시 graceful shutdown을 수행한다.
 
 - server는 client 종료까지 상시 대기하며 relay/echo를 수행한다.
 - phase 전환은 패턴별로 제어한다: echo는 client가 phase를 제어하고 server는 relay/echo 대기, one-way는 sender/receiver가 동일 순서의 phase를 수행한다. throughput/latency는 모두 active phase 한 구간에서 계산한다.
@@ -85,9 +87,10 @@ perf/multi/
 | runs | `--runs N` | — | 1 |
 | msg sizes | `--msg-sizes` | `PERF_MSG_SIZES` | 표준 6종 |
 | transports | `--transports` | `PERF_TRANSPORTS` | 패턴별 기본값 (§11.3 참조) |
-| clients | `--clients` | `PERF_MULTI_CLIENTS` | 100 (stream=10000) |
+| clients | `--clients` | `PERF_MULTI_CLIENTS` | 100 (stream=10000), 메모리 가드에 의해 자동 하향 가능 |
 
 - **CLI 인자 > 환경 변수 > 기본값** 순으로 적용한다.
+- CLI/환경 변수로 clients를 명시하지 않은 경우, shell wrapper의 메모리 가드(`PERF_MULTI_MEMORY_BUDGET_PCT` 기반)가 가용 메모리에 따라 기본값을 자동 하향(capping)할 수 있다. `PERF_SKIP_MEMORY_CHECK=1`로 비활성화 가능.
 - `--runs`를 생략하면 기본값 1을 사용한다.
 
 ---
@@ -138,11 +141,12 @@ perf/multi/
 for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
     for transport in pattern_transports:   # non-service: tcp,tls,ws,wss,ipc / service+stream: tcp,tls,ws,wss
         for run in 1..N:
-            spawn server(pattern, transport)         # server 프로세스 시작
-            wait READY                               # server stdout에서 READY,<endpoint> 대기
-            spawn client(pattern, transport, all_sizes, endpoint)  # client 프로세스 시작 (전체 size 순회)
-            wait client exit                         # client 종료 대기, RESULT line 수집
-            stop server                              # server 종료, server RESULT line 수집
+            for size in msg_sizes:
+                spawn server(pattern, transport)     # server 프로세스 시작
+                wait READY                           # server stdout에서 READY,<endpoint> 대기
+                spawn client(pattern, transport, size, endpoint)  # client 프로세스 시작 (size 1개)
+                wait client exit                     # client 종료 대기, RESULT line 수집
+                stop server                          # server 종료, server RESULT line 수집
             run_cooldown                             # 3s (PERF_MULTI_RUN_COOLDOWN_MS)
         transport_transition_cooldown                # 3s (PERF_MULTI_TRANSPORT_TRANSITION_MS)
     pattern_transition_cooldown                      # 3s (PERF_MULTI_PATTERN_TRANSITION_MS)
@@ -171,7 +175,7 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 
 실패한 조합을 자동으로 재시도하지 않는다. 상세 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md)을 참조한다.
 
-> **STREAM 서버 send 재시도 예외**: STREAM 서버 바이너리의 `send_stream_once` 함수는 `PERF_MULTI_STREAM_SEND_RETRIES` (기본: 128) 횟수만큼 send를 재시도한다. 이는 STREAM 소켓의 비동기 라우팅 특성상 일시적 send 실패가 정상적으로 발생할 수 있기 때문이며, 스크립트/조합 레벨의 재시도(retry)와는 다르다.
+> **STREAM 서버 send 재시도 예외**: MULTI_STREAM 서버(`perf_multi_stream_server`)의 `send_stream_once` 함수만 `PERF_MULTI_STREAM_SEND_RETRIES` (기본: 128) 횟수만큼 send를 재시도한다. MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE 서버는 재시도 루프 없이 특정 에러(ECONNRESET, EAGAIN 등)를 허용 처리한다. 스크립트/조합 레벨의 재시도(retry)와는 다르다.
 
 ### 3.6 코어 로직 인라인 원칙
 
@@ -194,31 +198,29 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 결과는 `report/`에 사람이 읽을 수 있는 형식으로 저장한다.
 
 ```text
-## Execution Options
-| Option           | Value                              |
-|------------------|------------------------------------|
-| runs             | 1                                  |
-| patterns         | MULTI_DEALER_DEALER                |
-| transports       | tcp                                |
-| msg_sizes        | 64, 256                            |
-| clients          | 100                                |
-| pin_cpu          | off                                |
-| warmup_seconds   | 2                                  |
-| duration_seconds | 5                                  |
+## Effective Options (start)
+- runs: 1
+- patterns: MULTI_DEALER_DEALER
+- transports: tcp
+- msg_sizes: 64, 256
+- clients: 100
+- pin_cpu: off
+- warmup_seconds: 2
+- duration_seconds: 5
 
 ===============================================================================
 
 ## PATTERN: MULTI_DEALER_DEALER (one-way)
 
 ### Transport: tcp
-| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
-|----------|------------------|-----------|--------------|--------------|--------------|--------|----------|
-| 64B      |   150.00 Kmsg/s  |  9.6 MB/s |    45.23 us  |    61.40 us  |    79.85 us  |  35.1  |   64.2   |
-| 256B     |   135.00 Kmsg/s  | 34.6 MB/s |    52.10 us  |    70.55 us  |    92.10 us  |  38.5  |   66.8   |
+| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
+|----------|------------------|------------|---------------|---------------|---------------|--------|----------|
+| 64B      |   150.00 Kmsg/s  |   9.6 MB/s |      0.05 ms  |      0.06 ms  |      0.08 ms  |  35.1  |   64.2   |
+| 256B     |   135.00 Kmsg/s  |  34.6 MB/s |      0.05 ms  |      0.07 ms  |      0.09 ms  |  38.5  |   66.8   |
 ```
 
 - **실행 옵션 헤더 + TABLE**을 저장한다.
-- `## Execution Options` 섹션은 실행 시 사용된 옵션을 테이블로 출력한다. report/ 파일과 stdout 모두에 포함해야 한다.
+- `## Effective Options (start)` / `## Effective Options (result)` 섹션은 실행 시 사용된 옵션을 불릿 목록으로 출력한다. report/ 파일과 stdout 모두에 포함해야 한다.
 
 ### 4.2 RESULT line 형식
 
@@ -261,6 +263,7 @@ perf/results/
 
 - 결과는 항상 `report/`에 저장된다.
 - `status=partial`인 경우에도 저장한다. 실패한 조합의 결과가 누락된 채로 저장되며, 실패 요약(§ 6.4)이 포함된다.
+- **예외**: preflight 검사(nofile/memory)로 **모든 패턴**이 skip된 경우, 결과 파일을 생성하지 않고 `exit 0`으로 종료한다. skip 사유는 콘솔 `## Skips` 섹션에 출력된다.
 
 ### 4.5 보존 정책
 
@@ -276,10 +279,10 @@ perf/results/
 
 ```bash
 # core (Linux)
-perf/run_benchmarks_multi.sh [options]
+core/perf/run_benchmarks_multi.sh [options]
 
 # core (Windows PowerShell)
-perf/run_benchmarks_multi.ps1 [options]
+core/perf/run_benchmarks_multi.ps1 [options]
 
 # bindings (Linux, 예: python)
 perf/multi/run_benchmarks.sh [options]
@@ -309,13 +312,13 @@ run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 �
 |------|------|--------|
 | `--pattern NAME` | 측정할 패턴 (쉼표 구분 가능). `MULTI_` 접두어 생략 가능 | 전체 MULTI_* 패턴 |
 | `--build-dir PATH` | 빌드 디렉터리 경로 | 자동 탐색 |
-| `--runs N` | 패턴/transport/size 조합당 반복 횟수 | 1 |
+| `--runs N` | 패턴/transport/size 조합당 반복 횟수 | Linux: 1, Windows PS1: 3 |
 | `--reuse-build` | 기존 빌드 디렉터리 재사용 (configure/build 생략) | off |
 | `--clean-build` | 빌드 디렉터리 삭제 후 클린 configure/build 수행 | off (기본은 증분 빌드) |
 | `--pin-cpu` | CPU 고정 (Linux: taskset, Windows: processor affinity) | off |
 | `--io-threads N` | 서버/클라이언트 io threads 동시 설정 (레거시 별칭) | — |
-| `--server-io-threads N` | 서버 io threads | non-stream=2, stream=4 |
-| `--client-io-threads N` | 클라이언트 io threads | non-stream=2, stream=4 |
+| `--server-io-threads N` | 서버 io threads (Linux sh만 지원, Windows PS1은 `--io-threads`로 통합) | non-stream=2, stream=4 |
+| `--client-io-threads N` | 클라이언트 io threads (Linux sh만 지원, Windows PS1은 `--io-threads`로 통합) | non-stream=2, stream=4 |
 | `--msg-sizes LIST` | 메시지 크기 목록 (쉼표 구분). STREAM 계열은 § 11.2 참조 | `64,256,1024,65536,131072,262144` (STREAM: `64,256,1024,65536`) |
 | `--transports LIST` | transport 목록 (쉼표 구분) | `tcp,tls,ws,wss` |
 | `--output PATH` | 결과를 파일에 동시 출력 (tee) | stdout만 |
@@ -360,25 +363,25 @@ run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 �
 
 ```bash
 # 전체 멀티 패턴 실행 (stdout만)
-perf/run_benchmarks_multi.sh
+core/perf/run_benchmarks_multi.sh
 
 # 특정 패턴만 실행
-perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
+core/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
 
 # 여러 패턴
-perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_DEALER,MULTI_PUBSUB
+core/perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_DEALER,MULTI_PUBSUB
 
 # 클라이언트 수/메시지 크기 제한
-perf/run_benchmarks_multi.sh --clients 1000 --msg-sizes 64,1024
+core/perf/run_benchmarks_multi.sh --clients 1000 --msg-sizes 64,1024
 
 # 태그 추가
-perf/run_benchmarks_multi.sh --results-tag debug1
+core/perf/run_benchmarks_multi.sh --results-tag debug1
 
 # 5회 반복, CPU 고정
-perf/run_benchmarks_multi.sh --runs 5 --pin-cpu
+core/perf/run_benchmarks_multi.sh --runs 5 --pin-cpu
 
 # 측정 시간 조정
-perf/run_benchmarks_multi.sh --warmup 5 --duration 10
+core/perf/run_benchmarks_multi.sh --warmup 5 --duration 10
 ```
 
 ### 5.4 바이너리 직접 실행
@@ -482,11 +485,11 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 ## PATTERN: MULTI_DEALER_DEALER (one-way)
 
 ### Transport: tcp
-| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
-|----------|------------------|-----------|--------------|--------------|--------------|--------|----------|
-| 64B      |   150.00 Kmsg/s  |  9.6 MB/s |    45.23 us  |    61.40 us  |    79.85 us  |  35.1  |   64.2   |
-| 1024B    |   120.30 Kmsg/s  |123.2 MB/s |    52.10 us  |    70.55 us  |    92.10 us  |  38.5  |   66.8   |
-| 65536B   |    35.50 Kmsg/s  |2326.5 MB/s|   180.44 us  |  61.3  |  256.8   |  42.0  |   72.1   |
+| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
+|----------|------------------|------------|---------------|---------------|---------------|--------|----------|
+| 64B      |   150.00 Kmsg/s  |   9.6 MB/s |      0.05 ms  |      0.06 ms  |      0.08 ms  |  35.1  |   64.2   |
+| 1024B    |   120.30 Kmsg/s  | 123.2 MB/s |      0.05 ms  |      0.07 ms  |      0.09 ms  |  38.5  |   66.8   |
+| 65536B   |    35.50 Kmsg/s  |2326.5 MB/s |      0.18 ms  |      0.25 ms  |      0.31 ms  |  42.0  |   72.1   |
 
 
 ===============================================================================
@@ -494,16 +497,16 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 ## PATTERN: MULTI_STREAM (echo)
 
 ### Transport: tcp
-| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
-|----------|------------------|-----------|--------------|--------------|--------------|--------|----------|
-| 64B      |   320.00 Kops/s  | 41.0 MB/s |    32.10 us  |    45.20 us  |    61.40 us  |  30.8  |   58.4   |
-| 1024B    |   280.50 Kops/s  |574.5 MB/s |    38.40 us  |    52.00 us  |    70.20 us  |  33.2  |   60.1   |
+| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
+|----------|------------------|------------|---------------|---------------|---------------|--------|----------|
+| 64B      |   320.00 Kops/s  |  41.0 MB/s |      0.03 ms  |      0.05 ms  |      0.06 ms  |  30.8  |   58.4   |
+| 1024B    |   280.50 Kops/s  | 574.5 MB/s |      0.04 ms  |      0.05 ms  |      0.07 ms  |  33.2  |   60.1   |
 ```
 
 - **패턴 간 구분선**: 패턴이 바뀔 때 `===============================================================================` 구분선을 출력한다 (첫 번째 패턴 앞에는 출력하지 않음).
 - throughput 단위: echo 패턴 `Kops/s` (ops/sec / 1000), one-way 패턴 `Kmsg/s` (msg/sec / 1000) — 섹션 8.1 참조
 - bandwidth 단위: `MB/s` (메가바이트/초) — 섹션 8.3 참조
-- latency 단위: `us` (마이크로초, mean/p95/p99)
+- latency 단위: `ms` (밀리초, mean/p95/p99) — RESULT line 값(us)을 1000으로 나누어 변환
 - S.CPU% / S.Mem MB: server 프로세스 CPU 사용률 / 메모리
 - transport 미지원 시: `N/A`
 - 수집 실패 시: 리소스 컬럼은 `N/A`
@@ -519,10 +522,10 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 ```text
   > Benchmarking current for MULTI_DEALER_DEALER...
     Testing tcp | 64B,256B,1024B,65536B,131072B,262144B:
-      | Size     |       Throughput |    Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
-      |----------|------------------|--------------|--------------|--------------|--------------|--------|----------|
-      | 64B      |    121.98 Kops/s |    15.61 MB/s |    812.10 us |   1012.22 us |   1258.44 us |    N/A |      N/A |
-      | 256B     |    234.56 Kops/s |    60.05 MB/s |    745.01 us |    923.80 us |   1188.60 us |    N/A |      N/A |
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
+      |----------|------------------|--------------|---------------|---------------|---------------|--------|----------|
+      | 64B      |    121.98 Kops/s |    15.61 MB/s |      0.81 ms  |      1.01 ms  |      1.26 ms  |    N/A |      N/A |
+      | 256B     |    234.56 Kops/s |    60.05 MB/s |      0.75 ms  |      0.92 ms  |      1.19 ms  |    N/A |      N/A |
       | 1024B    |    ...
       | 65536B   |    ...
       | 131072B  |    ...
@@ -543,28 +546,28 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
   > Benchmarking current for MULTI_DEALER_DEALER...
     Testing tcp | 64B,256B,1024B:
       run 1/3:
-        | Size     |       Throughput |    Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
-        |----------|------------------|--------------|--------------|--------------|--------------|--------|----------|
-        | 64B      |    121.98 Kops/s |    15.61 MB/s |    812.10 us |   1012.22 us |   1258.44 us |    N/A |      N/A |
+        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
+        |----------|------------------|--------------|---------------|---------------|---------------|--------|----------|
+        | 64B      |    121.98 Kops/s |    15.61 MB/s |      0.81 ms  |      1.01 ms  |      1.26 ms  |    N/A |      N/A |
         | 256B     |    ...
         | 1024B    |    ...
       [cooldown 3000ms]
       run 2/3:
-        | Size     |       Throughput |    Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
-        |----------|------------------|--------------|--------------|--------------|--------------|--------|----------|
+        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
+        |----------|------------------|--------------|---------------|---------------|---------------|--------|----------|
         | 64B      |    ...
         | 256B     |    ...
         | 1024B    |    ...
       [cooldown 3000ms]
       run 3/3:
-        | Size     |       Throughput |    Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
-        |----------|------------------|--------------|--------------|--------------|--------------|--------|----------|
+        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
+        |----------|------------------|--------------|---------------|---------------|---------------|--------|----------|
         | 64B      |    ...
         | 256B     |    ...
         | 1024B    |    ...
       median:
-        | Size     |       Throughput |    Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
-        |----------|------------------|--------------|--------------|--------------|--------------|--------|----------|
+        | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
+        |----------|------------------|--------------|---------------|---------------|---------------|--------|----------|
         | 64B      |    ...
         | 256B     |    ...
         | 1024B    |    ...
@@ -606,33 +609,32 @@ Multi 벤치마크는 server/client 별도 프로세스로 동작하므로, 각 
 
 ```text
 client 프로세스 내부:
-[warmup] -> [settle] -> [active(throughput+latency)] -> [drain] -> [size_transition_drain]
+[warmup] -> [settle] -> [active(throughput+latency)] -> [drain]
                           ^                         ^
                       샘플₁ 수집                  샘플₂ 수집 → client_cpu_pct, client_mem_mb
 
 server 프로세스:
 [bind] -> [READY] -> [relay 대기] -> ... -> [종료 신호] -> server_cpu_pct, server_mem_mb 출력
-                                                           (전체 실행 구간 기준)
+                                                           (size 1개 실행 구간 기준)
 ```
 
 - **client**: active phase 시작/종료 시점에 자체 PID를 대상으로 2회 샘플링하여 `client_cpu_pct`, `client_mem_mb`를 출력한다.
-- **server**: 종료 신호 수신 시 bind~종료 전체 구간의 CPU/메모리를 측정하여 `server_cpu_pct`, `server_mem_mb`를 출력한다(전체 실행 구간 기준 1회).
+- **server**: 종료 신호 수신 시 bind~종료 구간의 CPU/메모리를 측정하여 `server_cpu_pct`, `server_mem_mb`를 출력한다(size 1개 실행 기준).
 - 리소스 메트릭은 정보성(informational)이므로 누락 시 완료 판정에 영향을 주지 않는다.
 
 #### size별 귀속 규칙
 
-client 프로세스는 1회 실행에서 모든 size를 순회한다. client 리소스 메트릭(`client_cpu_pct`, `client_mem_mb`)은 **size별로 독립 측정**한다.
+스크립트는 size마다 server/client를 별도 실행한다. 리소스 메트릭(`client_cpu_pct`, `client_mem_mb`, `server_cpu_pct`, `server_mem_mb`)은 **size별로 독립 측정**한다.
 
 | 항목 | 규칙 |
 |------|------|
 | `client_cpu_pct` | 각 size의 active phase 시작/종료 시점에 개별 샘플링 |
 | `client_mem_mb` | 각 size의 active phase 종료 시점에 개별 읽기 |
-| `server_cpu_pct` | 전체 실행 구간 1회 측정 (size별 분리 불가) |
-| `server_mem_mb` | 종료 시점 1회 읽기 (size별 분리 불가) |
+| `server_cpu_pct` | 각 size 케이스의 server 프로세스 생애주기에서 개별 측정 |
+| `server_mem_mb` | 각 size 케이스의 server 종료 시점에 개별 읽기 |
 
-- client의 size 전환 시 `size_transition_drain`이 수행되므로 이전 size의 잔여 영향이 최소화된다.
-- client의 size별 측정값이 아닌 바이너리 1회 실행 전체의 단일 측정값을 복제하는 것은 허용하지 않는다.
-- server 리소스는 전체 실행 구간에 대한 값이므로 스크립트가 모든 size의 RESULT line에 동일한 server 값을 귀속시킨다.
+- size별 측정값이 아닌 바이너리 1회 실행 전체의 단일 측정값을 복제하는 것은 허용하지 않는다.
+- server/client 리소스는 size별 RESULT line에 해당 size 케이스 값으로 귀속되어야 한다.
 
 ---
 
@@ -644,15 +646,12 @@ client 프로세스는 1회 실행에서 모든 size를 순회한다. client 리
 ┌─ pattern loop ──────────────────────────────────────────────────────────────┐
 │  ┌─ transport loop ──────────────────────────────────────────────────────┐  │
 │  │  ┌─ run loop ──────────────────────────────────────────────────────┐  │  │
-│  │  │  [1] spawn server(pattern, transport)                           │  │  │
-│  │  │  [2] wait READY,<endpoint>                                      │  │  │
-│  │  │  [3] spawn client(pattern, transport, sizes, endpoint)          │  │  │
-│  │  │      client 내부 (전체 size 순회):                               │  │  │
-│  │  │        [warmup]-[settle]-[active]                               │  │  │
-│  │  │        [warmup]-[settle]-[active]                               │  │  │
-│  │  │        ...                                                      │  │  │
-│  │  │  [4] client 종료, RESULT line 수집                              │  │  │
-│  │  │  [5] server 종료, server RESULT line 수집                       │  │  │
+│  │  │  [size loop]                                                    │  │  │
+│  │  │    [1] spawn server(pattern, transport)                         │  │  │
+│  │  │    [2] wait READY,<endpoint>                                    │  │  │
+│  │  │    [3] spawn client(pattern, transport, size, endpoint)         │  │  │
+│  │  │    [4] client 종료, RESULT line 수집                            │  │  │
+│  │  │    [5] server 종료, server RESULT line 수집                     │  │  │
 │  │  │  → run_cooldown (3s)                                            │  │  │
 │  │  └────────────────────────────────────────────────────────────────┘  │  │
 │  │  → transport_transition_cooldown (3s)                                │  │
@@ -675,6 +674,8 @@ client 프로세스는 1회 실행에서 모든 size를 순회한다. client 리
 | settle | time-based | 500ms | `PERF_MULTI_SETTLE_MS` |
 | active | time-based | 5s | `PERF_MULTI_DURATION_SECONDS` |
 
+> 참고: phase 레벨 settle(500ms) 외에, 소켓 설정 완료 후 코드 레벨 settle(`SETTLE_TIME_MS = 300ms`, `perf_common.hpp`)이 별도로 존재한다. 이 값은 환경 변수로 변경할 수 없다.
+
 ### 7.2 스크립트 레벨 전환 cooldown
 
 | 전환 구간 | 기본값 | 환경 변수 | 설명 |
@@ -689,7 +690,7 @@ client 프로세스는 1회 실행에서 모든 size를 순회한다. client 리
 
 ### 7.3 Size 전환 정책
 
-- Multi는 client 1회 실행에서 모든 size를 순회한다 (size별 server/client 재시작 없음).
+- Multi는 run 내부에서 size loop를 수행하며, size마다 server/client를 별도 실행한다.
 - size 사이의 drain sleep은 사용하지 않는다.
 
 ### 7.4 warmup 모드
@@ -747,8 +748,8 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 
 각 size는 아래 순서로 측정한다.
 
-1. echo 패턴: warmup → settle(optional) → active phase → drain/size transition drain
-2. one-way 패턴: warmup → settle(optional) → active phase → drain/size transition drain
+1. echo 패턴: warmup → settle(optional) → active phase → drain
+2. one-way 패턴: warmup → settle(optional) → active phase → drain
 
 - echo/one-way 모두 active phase 단일 실행에서 throughput/latency를 동시에 산출한다.
 
@@ -822,7 +823,8 @@ one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 | server 메모리 | `server_mem_mb` | server | MB | 동일 (server 자체 PID) | Linux/Windows |
 
 - server/client 별도 프로세스이므로 각 프로세스가 자체 PID를 대상으로 리소스를 측정한다.
-- client 리소스는 size별 독립 측정, server 리소스는 전체 실행 구간 1회 측정 (섹션 6.6 참조).
+- server/client 리소스는 모두 size별 독립 측정 (섹션 6.6 참조).
+- **client 리소스 메트릭(`client_cpu_pct`, `client_mem_mb`)은 바이너리가 RESULT line으로 출력하지만, 최종 집계/결과 테이블에는 반영되지 않는다.** 결과 테이블에는 server 리소스(`S.CPU%`, `S.Mem MB`)만 표시된다.
 - 누락 시 완료 판정에 영향 없음.
 - 수집 실패 시 테이블에 `N/A`로 표시.
 
@@ -904,7 +906,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 패턴군 | transport |
 |--------|-----------|
-| MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB | tcp, tls, ws, wss, ipc (Windows: ipc 제외) |
+| MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB | tcp, tls, ws, wss (Python 엔진 기본값에 ipc 포함, 단 shell wrapper 기본값은 tcp,tls,ws,wss; Windows: ipc 제외) |
 | MULTI_GATEWAY, MULTI_SPOT | tcp, tls, ws, wss |
 | MULTI_STREAM, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE | tcp, tls, ws, wss |
 
@@ -918,7 +920,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 |------|------|--------|
 | `PERF_DEBUG` | 디버그 로그 | unset |
 | `PERF_IO_THREADS` | context I/O threads | 0 |
-| `PERF_MSG_SIZES` | 테스트 size 목록 | `64,256,1024,65536,131072,262144` |
+| `PERF_MSG_SIZES` | 테스트 size 목록 (러너가 size별 케이스로 분할 실행) | `64,256,1024,65536,131072,262144` |
 | `PERF_TRANSPORTS` | 테스트 transport 목록 | 패턴별 기본값 (§11.3 참조) |
 | `PERF_TASKSET` | CPU pinning (`1`로 활성화, Linux: taskset, Windows: processor affinity) | 0 |
 | `PERF_FAIL_FAST` | 실패 시 즉시 중단 (`1`로 활성화) | 0 |
@@ -941,7 +943,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `PERF_MULTI_CLIENTS` | 클라이언트 소켓 수 | 100 (stream=10000) |
-| `PERF_MULTI_STREAM_MSG_SIZES` | STREAM 계열 전용 size 목록 | `64,256,1024,65536` |
+| `PERF_MULTI_STREAM_MSG_SIZES` | STREAM 계열 전용 size 목록 (러너가 size별 케이스로 분할 실행). 미설정 시 `PERF_MSG_SIZES`가 설정되어 있으면 그 값을 사용하고, 둘 다 미설정이면 기본값 사용 | `64,256,1024,65536` |
 | `PERF_MULTI_HWM` | 소켓 HWM | 100 (stream=10) |
 | `PERF_MULTI_SNDHWM` | 소켓 송신 HWM | `PERF_MULTI_HWM` |
 | `PERF_MULTI_RCVHWM` | 소켓 수신 HWM | `PERF_MULTI_HWM` |
@@ -974,7 +976,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | `PERF_MULTI_SERVER_BIND_PORT` | server bind 포트 (0=자동 할당) | 0 |
 
 - server READY 타임아웃 초과 시 해당 run을 실패 처리하고 server 프로세스를 강제 종료한다.
-- server 종료 대기 타임아웃 초과 시 SIGKILL (Linux) / TerminateProcess (Windows)로 강제 종료한다.
+- server 종료 시퀀스: stdin `STOP\n` 송신 → shutdown timeout 대기 → `terminate()` (SIGTERM) → 2차 timeout 대기 → `kill()` (SIGKILL). 각 단계에서 프로세스가 종료되면 이후 단계를 건너뛴다.
 - `PERF_MULTI_SERVER_BIND_PORT=0`이면 OS가 사용 가능한 포트를 자동 할당한다. server는 실제 bind된 포트를 `READY,<endpoint>`에 포함하여 출력한다.
 
 ### 12.6 기타
@@ -993,7 +995,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | `PERF_MULTI_MEMORY_BUDGET_PCT` | MemAvailable 대비 예산 비율(%) | 70 |
 | `PERF_MULTI_MEMORY_BASE_MB` | 기본 메모리 예약(MB) | 512 |
 | `PERF_MULTI_MEMORY_PER_CLIENT_KB` | 클라이언트당 예상 메모리(KB) | 1024 |
-| `PERF_MULTI_STREAM_SEND_RETRIES` | STREAM 서버 send 재시도 횟수 | 128 |
+| `PERF_MULTI_STREAM_SEND_RETRIES` | MULTI_STREAM 서버 send 재시도 횟수 (CALLBACK/LEN32BE 서버는 미적용) | 128 |
 | `PERF_RESULTS_MAX_FILES` | report/ 디렉터리 최대 파일 수 | 100 |
 
 > **삭제된 환경 변수**: `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 삭제 대상이다. 구현에 존재하면 제거해야 한다. Retry 금지 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md)을 참조한다.

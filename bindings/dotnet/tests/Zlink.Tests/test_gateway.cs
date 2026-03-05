@@ -434,9 +434,9 @@ public sealed class test_gateway
         if (!CoreTestSupport.IsTransportSupported("tls"))
             return;
 
-        string caCert = ResolveRepoPath("core/tests/certs/gen/ca.crt");
-        string serverCert = ResolveRepoPath("core/tests/certs/gen/server.crt");
-        string serverKey = ResolveRepoPath("core/tests/certs/gen/server.key");
+        string caCert = ResolveRepoPath("bindings/dotnet/tests/certs/ca.crt");
+        string serverCert = ResolveRepoPath("bindings/dotnet/tests/certs/server.crt");
+        string serverKey = ResolveRepoPath("bindings/dotnet/tests/certs/server.key");
 
         using var ctx = new Context();
         using var registry = new Registry(ctx);
@@ -476,9 +476,9 @@ public sealed class test_gateway
         if (!CoreTestSupport.IsTransportSupported("wss"))
             return;
 
-        string caCert = ResolveRepoPath("core/tests/certs/gen/ca.crt");
-        string serverCert = ResolveRepoPath("core/tests/certs/gen/server.crt");
-        string serverKey = ResolveRepoPath("core/tests/certs/gen/server.key");
+        string caCert = ResolveRepoPath("bindings/dotnet/tests/certs/ca.crt");
+        string serverCert = ResolveRepoPath("bindings/dotnet/tests/certs/server.crt");
+        string serverKey = ResolveRepoPath("bindings/dotnet/tests/certs/server.key");
 
         using var ctx = new Context();
         using var registry = new Registry(ctx);

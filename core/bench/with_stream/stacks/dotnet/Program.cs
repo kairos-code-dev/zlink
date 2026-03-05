@@ -223,12 +223,7 @@ internal sealed class EchoServer
 
     private async Task RunConnectionAsync(Socket socket, CancellationToken token)
     {
-        // Stream-compare server is framed-only: 4-byte big-endian length + payload.
-        // App-like path: read chunks, stash partial data, parse complete packets, echo.
         byte[] readChunk = ArrayPool<byte>.Shared.Rent(16 * 1024);
-        byte[] stash = ArrayPool<byte>.Shared.Rent(4096);
-        int stashOffset = 0;
-        int stashLength = 0;
 
         try
         {
@@ -239,51 +234,22 @@ internal sealed class EchoServer
                 if (nread <= 0)
                     break;
 
-                EnsureStashCapacity(ref stash, ref stashOffset, ref stashLength, nread);
-                Buffer.BlockCopy(readChunk, 0, stash, stashLength, nread);
-                stashLength += nread;
+                _metrics.AddRecvMsg();
 
-                while (stashLength - stashOffset >= 4)
+                int sent = 0;
+                while (sent < nread)
                 {
-                    int bodySize = ReadU32Be(stash, stashOffset);
-                    if (bodySize < ServerOptions.MinPayloadSize
-                        || bodySize > ServerOptions.MaxPayloadSize)
+                    int nsend = await socket.SendAsync(
+                        new ArraySegment<byte>(readChunk, sent, nread - sent),
+                        SocketFlags.None,
+                        token).ConfigureAwait(false);
+                    if (nsend <= 0)
                     {
-                        _metrics.AddParseError();
-                        _metrics.AddProtocolError();
+                        _metrics.AddSendError();
                         return;
                     }
-                    if (bodySize > _options.Size)
-                    {
-                        _metrics.AddProtocolError();
-                        return;
-                    }
-
-                    int frameSize = 4 + bodySize;
-                    if (stashLength - stashOffset < frameSize)
-                        break;
-
-                    _metrics.AddRecvMsg();
-
-                    int sent = 0;
-                    while (sent < frameSize)
-                    {
-                        int nsend = await socket.SendAsync(
-                            new ArraySegment<byte>(stash, stashOffset + sent, frameSize - sent),
-                            SocketFlags.None,
-                            token).ConfigureAwait(false);
-                        if (nsend <= 0)
-                        {
-                            _metrics.AddSendError();
-                            return;
-                        }
-                        sent += nsend;
-                    }
-
-                    stashOffset += frameSize;
+                    sent += nsend;
                 }
-
-                CompactStash(stash, ref stashOffset, ref stashLength);
             }
         }
         catch (OperationCanceledException)
@@ -307,57 +273,8 @@ internal sealed class EchoServer
 
             socket.Dispose();
             ArrayPool<byte>.Shared.Return(readChunk);
-            ArrayPool<byte>.Shared.Return(stash);
             _metrics.RemoveConnection();
         }
-    }
-
-    private static void EnsureStashCapacity(
-        ref byte[] stash,
-        ref int offset,
-        ref int length,
-        int appendSize)
-    {
-        CompactStash(stash, ref offset, ref length);
-        if (length + appendSize <= stash.Length)
-            return;
-
-        int next = stash.Length;
-        while (next < length + appendSize)
-            next *= 2;
-
-        byte[] bigger = ArrayPool<byte>.Shared.Rent(next);
-        if (length > 0)
-            Buffer.BlockCopy(stash, 0, bigger, 0, length);
-        ArrayPool<byte>.Shared.Return(stash);
-        stash = bigger;
-    }
-
-    private static void CompactStash(byte[] stash, ref int offset, ref int length)
-    {
-        if (offset <= 0)
-            return;
-        if (offset >= length)
-        {
-            offset = 0;
-            length = 0;
-            return;
-        }
-        if (offset > 4096 || offset * 2 >= length)
-        {
-            int remain = length - offset;
-            Buffer.BlockCopy(stash, offset, stash, 0, remain);
-            offset = 0;
-            length = remain;
-        }
-    }
-
-    private static int ReadU32Be(byte[] data, int offset)
-    {
-        return (data[offset] << 24)
-               | (data[offset + 1] << 16)
-               | (data[offset + 2] << 8)
-               | data[offset + 3];
     }
 
 }

@@ -10,7 +10,7 @@ Primary goals:
 - Compare library behavior with one common client implementation.
 - Keep the benchmark close to pure stream socket echo.
 - Avoid cross-run interference by running one benchmark process at a time.
-- Keep load model simple and stable: configurable `inflight` (default `10`).
+- Measure throughput and latency in one pass per case.
 
 ## What Is Included
 
@@ -45,12 +45,8 @@ Supported payload sizes:
 - The same client binary is used for all stacks.
 - The client always uses one wire format for every stack:
   `4-byte big-endian payload length + payload`.
-- Client `inflight` is configurable via runner option `--inflight`.
 - Runner uses one server process per stack and executes stacks sequentially.
-- Runner sets server `--size` to the maximum size in the requested size list.
-  This prevents stack-specific buffer bias when testing mixed sizes.
-- Latency sampling is disabled by default in runner (`--latency-sample-rate 0`)
-  to reduce client-side overhead during throughput comparison.
+- For multi-size runs, runner reconnects per size (server restart + client reconnect).
 
 ## Requirements
 
@@ -94,7 +90,7 @@ Run selected stacks and size:
   --duration 5
 ```
 
-Run one stack with multi-size sequence on the same connected clients:
+Run one stack with multi-size sequence (reconnect per size):
 
 ```bash
 ./core/bench/benchwithstreamcompare/run_benchmarks.sh \
@@ -107,8 +103,10 @@ Run one stack with multi-size sequence on the same connected clients:
 ```text
 --stack <asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty|all|csv>
 --size <64|1024|65536|all|csv>
+--build-dir PATH            default: core/build
+--reuse-build               reuse existing build directory (skip configure/build)
+--clean-build               remove build directory and do a clean build
 --ccu <N>                    default: 1000
---inflight <N>               default: 10
 --runs <N>                   default: 1
 --warmup <sec>               default: 3
 --duration <sec>             default: 5
@@ -130,6 +128,9 @@ Supported environment variables:
 Notes:
 
 - A lock file (`/tmp/bench_streamcompare.lock`) blocks concurrent benchmark runs.
+- Build mode default is incremental. `--reuse-build` and `--clean-build` are mutually exclusive.
+- `--reuse-build` requires an existing build directory and existing binaries for selected stacks.
+- `--clean-build` removes core build directory and stack-local build outputs before rebuilding.
 - Stacks are built before execution. Build failure for one stack is recorded as
   skipped, not a hard stop for all stacks.
 - `netty` requires Java 22+ and resolves Java in this order:
@@ -174,8 +175,9 @@ Generated files:
 
 Important interpretation note:
 
-- With runner default (`--latency-sample-rate 0`), latency percentile columns
-  can be `0` by design. Use throughput/error fields as the primary signal.
+- Throughput and latency are measured from the same single client run per
+  `(stack, size, run)`. The report still keeps throughput/latency sections for
+  compatibility, but both sections come from the same measurement rows.
 
 ## Pass/Fail Meaning
 
@@ -196,5 +198,5 @@ Recommended check flow:
 
 ## Known Limits
 
-- `inflight` controls per-session outstanding request depth.
-- Latency percentiles are `0` when latency sampling is disabled (runner default).
+- Benchmark runner keeps compatibility `phase` labels in outputs, while actual
+  collection is single-pass.

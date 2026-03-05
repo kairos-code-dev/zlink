@@ -306,7 +306,7 @@ def main():
     for phase in selected_phases:
         lines.append(f"## Metrics (phase={phase})")
         lines.append("")
-        lines.append("| stack | size | pass/total | peak bps | peak tps | median bps | median tps | p95(us) | mismatch | srv cpu% | srv rss(MiB) | cli cpu% | cli rss(MiB) | sys cpu% | sys mem%(peak) |")
+        lines.append("| stack | size | pass/total | peak bps | peak tps | median bps | median tps | p95(ms) | mismatch | srv cpu% | srv rss(MiB) | cli cpu% | cli rss(MiB) | sys cpu% | sys mem%(peak) |")
         lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
         for size in selected_sizes:
             for stack in selected_stacks:
@@ -330,7 +330,11 @@ def main():
                         peak_tps=(f"{item['peak_tps']:.2f}" if item.get("peak_tps") is not None else "n/a"),
                         median=(f"{item['median_bps']:.2f}" if item.get("median_bps") is not None else "n/a"),
                         median_tps=(f"{item['median_tps']:.2f}" if item.get("median_tps") is not None else "n/a"),
-                        p95=(f"{item['median_p95_us']:.2f}" if item.get("median_p95_us") is not None else "n/a"),
+                        p95=(
+                            f"{(item['median_p95_us'] / 1000.0):.2f}"
+                            if item.get("median_p95_us") is not None
+                            else "n/a"
+                        ),
                         mismatch=item.get("mismatch_total_all", 0),
                         srv_cpu=(f"{srv_cpu:.2f}" if srv_cpu is not None else "n/a"),
                         srv_rss=(f"{(srv_rss_kb / 1024.0):.2f}" if srv_rss_kb is not None else "n/a"),
@@ -345,7 +349,7 @@ def main():
             lines.append("")
             lines.append(f"## Ranking (phase={phase}, size={size})")
             lines.append("")
-            lines.append("| rank | stack | median bps | median tps | p95(us) | mismatch |")
+            lines.append("| rank | stack | median bps | median tps | p95(ms) | mismatch |")
             lines.append("|---:|---|---:|---:|---:|---:|")
             ranking = summary["ranking"].get(f"{phase}:{size}", [])
             if not ranking:
@@ -357,7 +361,7 @@ def main():
                         f"{median_tps:.2f}" if median_tps is not None else "n/a"
                     )
                     p95 = entry.get("median_p95_us")
-                    p95_text = f"{p95:.2f}" if p95 is not None else "n/a"
+                    p95_text = f"{(p95 / 1000.0):.2f}" if p95 is not None else "n/a"
                     mismatch = entry.get("mismatch_total_all", 0)
                     median_bps = entry.get("median_bps")
                     median_bps_text = (

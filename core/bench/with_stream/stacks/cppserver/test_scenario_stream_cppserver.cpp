@@ -8,11 +8,8 @@
 #include <chrono>
 #include <csignal>
 #include <cstdio>
-#include <cstring>
-#include <mutex>
 #include <string>
 #include <thread>
-#include <vector>
 
 using namespace CppServer::Asio;
 
@@ -77,13 +74,8 @@ class stream_echo_session_t : public TCPSession
     stream_echo_session_t (const std::shared_ptr<TCPServer> &server,
                            const server_options_t &opt_,
                            metrics_t &metrics_)
-        : TCPSession (server),
-          opt (opt_),
-          metrics (metrics_),
-          rx_stash (),
-          rx_offset (0)
+        : TCPSession (server), opt (opt_), metrics (metrics_)
     {
-        rx_stash.reserve (4096);
     }
 
   protected:
@@ -107,8 +99,13 @@ class stream_echo_session_t : public TCPSession
         if (!buffer || size == 0)
             return;
 
-        append_to_stash (static_cast<const unsigned char *> (buffer), size);
-        process_complete_frames ();
+        if (!SendAsync (buffer, size)) {
+            metrics.send_error.fetch_add (1, std::memory_order_relaxed);
+            Disconnect ();
+            return;
+        }
+
+        metrics.recv_msgs.fetch_add (1, std::memory_order_relaxed);
     }
 
     void onError (int,
@@ -119,81 +116,8 @@ class stream_echo_session_t : public TCPSession
     }
 
   private:
-    bool invalid_body_size (size_t body_size) const
-    {
-        return body_size < k_min_payload_size || body_size > k_max_payload_size
-               || body_size > opt.size;
-    }
-
-    void fail_parse_and_disconnect ()
-    {
-        metrics.parse_error.fetch_add (1, std::memory_order_relaxed);
-        metrics.protocol_error.fetch_add (1, std::memory_order_relaxed);
-        Disconnect ();
-    }
-
-    bool echo_complete_frame (const unsigned char *data, size_t frame_size)
-    {
-        if (!SendAsync (data, frame_size)) {
-            metrics.send_error.fetch_add (1, std::memory_order_relaxed);
-            Disconnect ();
-            return false;
-        }
-        metrics.recv_msgs.fetch_add (1, std::memory_order_relaxed);
-        return true;
-    }
-
-    void append_to_stash (const unsigned char *data, size_t size)
-    {
-        const size_t old_size = rx_stash.size ();
-        rx_stash.resize (old_size + size);
-        std::memcpy (&rx_stash[old_size], data, size);
-    }
-
-    void compact_stash ()
-    {
-        if (rx_offset == 0)
-            return;
-        if (rx_offset >= rx_stash.size ()) {
-            rx_stash.clear ();
-            rx_offset = 0;
-            return;
-        }
-        if (rx_offset > 4096 || rx_offset * 2 >= rx_stash.size ()) {
-            const size_t remain = rx_stash.size () - rx_offset;
-            std::memmove (&rx_stash[0], &rx_stash[rx_offset], remain);
-            rx_stash.resize (remain);
-            rx_offset = 0;
-        }
-    }
-
-    void process_complete_frames ()
-    {
-        while (rx_stash.size () - rx_offset >= 4) {
-            const unsigned char *frame = &rx_stash[rx_offset];
-            const size_t body_size = static_cast<size_t> (
-              stream_echo::load_u32_be (frame));
-            if (invalid_body_size (body_size)) {
-                fail_parse_and_disconnect ();
-                return;
-            }
-
-            const size_t frame_size = 4 + body_size;
-            if (rx_stash.size () - rx_offset < frame_size)
-                break;
-
-            if (!echo_complete_frame (frame, frame_size))
-                return;
-
-            rx_offset += frame_size;
-            compact_stash ();
-        }
-    }
-
     const server_options_t &opt;
     metrics_t &metrics;
-    std::vector<unsigned char> rx_stash;
-    size_t rx_offset;
 };
 
 class stream_echo_server_t : public TCPServer

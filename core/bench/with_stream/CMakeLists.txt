@@ -9,5 +9,9 @@ add_executable(
     client/bench_stream_client.cpp)
 
 target_link_libraries(bench_streamcompare_client PRIVATE Threads::Threads)
+target_link_libraries(
+    bench_streamcompare_client PRIVATE
+    OpenSSL::SSL
+    OpenSSL::Crypto)
 target_compile_options(bench_streamcompare_client PRIVATE ${STREAMCOMPARE_CXX_FLAGS})
 target_compile_features(bench_streamcompare_client PRIVATE cxx_std_17)

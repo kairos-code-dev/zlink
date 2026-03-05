@@ -6,11 +6,18 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/core/build"
 
 LOCK_FILE="/tmp/bench_streamcompare.lock"
-LOCK_FD=9
-exec {LOCK_FD}>"${LOCK_FILE}"
-if ! flock -n "${LOCK_FD}"; then
-    echo "[$(date +'%F %T')] another stream benchmark is running" >&2
-    exit 1
+if [[ "${BENCH_STREAMCOMPARE_LOCKED:-0}" != "1" ]]; then
+    export BENCH_STREAMCOMPARE_LOCKED=1
+    # Hold lock in the flock parent process and close lock fd before exec.
+    flock -n -E 200 -o "${LOCK_FILE}" "$0" "$@"
+    rc="$?"
+    if [[ "${rc}" != "0" ]]; then
+        if [[ "${rc}" == "200" ]]; then
+            echo "[$(date +'%F %T')] another stream benchmark is running" >&2
+        fi
+        exit "${rc}"
+    fi
+    exit 0
 fi
 
 usage()
@@ -22,15 +29,13 @@ Usage:
 Options:
   --stack <asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty|all|csv>
   --size <64|1024|65536|all|csv>
-  --phases <both|throughput|latency|csv>  default: both
+  --build-dir PATH            Build directory (default: core/build).
+  --reuse-build               Reuse existing build directory as-is (skip configure/build).
+  --clean-build               Remove build directory and do a clean build.
   --ccu <N>                    default: 1000
-  --inflight <N>               default: 10
   --runs <N>                   default: 1
   --warmup <sec>               default: 3
   --duration <sec>             default: 5
-  --drain-ms <N>               default: 300
-  --size-transition-drain-ms <N> default: drain-ms value
-  --latency-sample-rate <N>    default: 100
   --client-io-threads <N>      default: 4
   --server-io-threads <N>      default: 4
   --resource-sample-ms <N>     default: 500
@@ -41,29 +46,42 @@ Options:
 Examples:
   ./run_benchmarks.sh
   ./run_benchmarks.sh --stack zlink,zmq --size 1024 --runs 3
+  ./run_benchmarks.sh --reuse-build
+  ./run_benchmarks.sh --clean-build --build-dir ./core/build/linux-x64
 USAGE
 }
 
 STACKS_ALL=(zlink zlink-len32be netzlink netzlink-len32be jvmzlink jvmzlink-len32be asio cppserver dotnet zmq netty)
 SIZES_ALL=(64 1024 65536)
-PHASES_ALL=(throughput latency)
 
 TARGET_STACK="all"
 TARGET_SIZE="all"
-TARGET_PHASES="both"
+BUILD_MODE="incremental"
+BUILD_MODE_EXPLICIT=0
 CCU="${BENCH_MULTI_CLIENTS:-1000}"
-INFLIGHT="${BENCH_MULTI_INFLIGHT:-10}"
 RUNS=1
 WARMUP="${BENCH_MULTI_WARMUP_SECONDS:-3}"
 DURATION="${BENCH_MULTI_DURATION_SECONDS:-5}"
-DRAIN_MS="${BENCH_MULTI_DRAIN_MS:-300}"
-SIZE_TRANSITION_DRAIN_MS="${BENCH_MULTI_SIZE_TRANSITION_DRAIN_MS:-${DRAIN_MS}}"
-LATENCY_SAMPLE_RATE=100
 CLIENT_IO_THREADS=4
 SERVER_IO_THREADS=4
 RESOURCE_SAMPLE_MS=500
 SERVER_START_TIMEOUT=40
 STACK_GAP_SEC=5
+
+set_build_mode()
+{
+    local next_mode="${1:-}"
+    if [[ "${next_mode}" != "incremental" && "${next_mode}" != "reuse" && "${next_mode}" != "clean" ]]; then
+        echo "Error: invalid build mode: ${next_mode}" >&2
+        exit 1
+    fi
+    if [[ "${BUILD_MODE_EXPLICIT}" -eq 1 && "${BUILD_MODE}" != "${next_mode}" ]]; then
+        echo "Error: --reuse-build and --clean-build are mutually exclusive." >&2
+        exit 1
+    fi
+    BUILD_MODE="${next_mode}"
+    BUILD_MODE_EXPLICIT=1
+}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -75,16 +93,20 @@ while [[ $# -gt 0 ]]; do
             TARGET_SIZE="${2:-}"
             shift 2
             ;;
-        --phases)
-            TARGET_PHASES="${2:-}"
+        --reuse-build)
+            set_build_mode "reuse"
+            shift
+            ;;
+        --clean-build)
+            set_build_mode "clean"
+            shift
+            ;;
+        --build-dir)
+            BUILD_DIR="${2:-}"
             shift 2
             ;;
         --ccu)
             CCU="${2:-}"
-            shift 2
-            ;;
-        --inflight)
-            INFLIGHT="${2:-}"
             shift 2
             ;;
         --runs)
@@ -97,18 +119,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --duration)
             DURATION="${2:-}"
-            shift 2
-            ;;
-        --drain-ms)
-            DRAIN_MS="${2:-}"
-            shift 2
-            ;;
-        --size-transition-drain-ms)
-            SIZE_TRANSITION_DRAIN_MS="${2:-}"
-            shift 2
-            ;;
-        --latency-sample-rate)
-            LATENCY_SAMPLE_RATE="${2:-}"
             shift 2
             ;;
         --client-io-threads)
@@ -154,18 +164,21 @@ validate_int()
 }
 
 validate_int "--ccu" "${CCU}"
-validate_int "--inflight" "${INFLIGHT}"
 validate_int "--runs" "${RUNS}"
 validate_int "--warmup" "${WARMUP}"
 validate_int "--duration" "${DURATION}"
-validate_int "--drain-ms" "${DRAIN_MS}"
-validate_int "--size-transition-drain-ms" "${SIZE_TRANSITION_DRAIN_MS}"
-validate_int "--latency-sample-rate" "${LATENCY_SAMPLE_RATE}"
 validate_int "--client-io-threads" "${CLIENT_IO_THREADS}"
 validate_int "--server-io-threads" "${SERVER_IO_THREADS}"
 validate_int "--resource-sample-ms" "${RESOURCE_SAMPLE_MS}"
 validate_int "--server-start-timeout" "${SERVER_START_TIMEOUT}"
 validate_int "--stack-gap" "${STACK_GAP_SEC}"
+
+BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
+ROOT_DIR="$(realpath -m "${ROOT_DIR}")"
+if [[ "${BUILD_DIR}" != "${ROOT_DIR}/"* ]]; then
+    echo "Build directory must be inside repo root: ${ROOT_DIR}" >&2
+    exit 1
+fi
 
 RUN_STACKS=()
 if [[ "${TARGET_STACK}" == "all" ]]; then
@@ -190,18 +203,6 @@ if [[ ${#RUN_SIZES[@]} -eq 0 ]]; then
     exit 2
 fi
 
-RUN_PHASES=()
-if [[ "${TARGET_PHASES}" == "both" ]]; then
-    RUN_PHASES=("${PHASES_ALL[@]}")
-else
-    IFS=',' read -r -a RUN_PHASES <<<"${TARGET_PHASES}"
-fi
-
-if [[ ${#RUN_PHASES[@]} -eq 0 ]]; then
-    echo "empty phase set" >&2
-    exit 2
-fi
-
 for s in "${RUN_STACKS[@]}"; do
     case "${s}" in
         asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty)
@@ -222,24 +223,6 @@ for sz in "${RUN_SIZES[@]}"; do
             exit 2
             ;;
     esac
-done
-
-for phase in "${RUN_PHASES[@]}"; do
-    case "${phase}" in
-        throughput|latency)
-            ;;
-        *)
-            echo "invalid phase: ${phase}" >&2
-            exit 2
-            ;;
-    esac
-done
-
-MAX_RUN_SIZE=0
-for sz in "${RUN_SIZES[@]}"; do
-    if (( sz > MAX_RUN_SIZE )); then
-        MAX_RUN_SIZE="${sz}"
-    fi
 done
 
 RESULT_DIR="${RESULT_DIR:-${SCRIPT_DIR}/results/$(date +%Y%m%d_%H%M%S)}"
@@ -344,6 +327,8 @@ resolve_stack_tuning()
             STACK_RCVBUF=32768
             STACK_BACKLOG=32768
             STACK_TCP_NODELAY=0
+            STACK_ENV_VARS+=("DOTNET_gcServer=1")
+            STACK_ENV_VARS+=("COMPlus_gcServer=1")
             ;;
         netzlink|netzlink-len32be)
             STACK_IO_THREADS="${SERVER_IO_THREADS}"
@@ -352,6 +337,8 @@ resolve_stack_tuning()
             STACK_BACKLOG=65535
             STACK_ENV_VARS+=("ZLINK_LIBRARY_PATH=${ZLINK_CORE_LIBRARY}")
             STACK_ENV_VARS+=("LD_LIBRARY_PATH=$(dirname "${ZLINK_CORE_LIBRARY}"):${LD_LIBRARY_PATH:-}")
+            STACK_ENV_VARS+=("DOTNET_gcServer=1")
+            STACK_ENV_VARS+=("COMPlus_gcServer=1")
             ;;
         jvmzlink|jvmzlink-len32be)
             STACK_IO_THREADS="${SERVER_IO_THREADS}"
@@ -360,7 +347,9 @@ resolve_stack_tuning()
             STACK_BACKLOG=65535
             STACK_ENV_VARS+=("ZLINK_LIBRARY_PATH=${ZLINK_CORE_LIBRARY}")
             STACK_ENV_VARS+=("LD_LIBRARY_PATH=$(dirname "${ZLINK_CORE_LIBRARY}"):${LD_LIBRARY_PATH:-}")
-            STACK_ENV_VARS+=("JAVA_OPTS=${JAVA_OPTS:-} --enable-native-access=ALL-UNNAMED")
+            STACK_ENV_VARS+=(
+              "JAVA_OPTS=${JAVA_OPTS:-} --enable-native-access=ALL-UNNAMED -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Xms4g -Xmx4g -XX:MaxDirectMemorySize=4g"
+            )
             ;;
         netty)
             STACK_IO_THREADS="${SERVER_IO_THREADS}"
@@ -929,13 +918,125 @@ record_skip()
 
 build_core_targets()
 {
+    if [[ "${BUILD_MODE}" == "reuse" ]]; then
+        log "reusing core build directory: ${BUILD_DIR} (skip configure/build)"
+        if [[ ! -f "${CLIENT_BIN}" ]]; then
+            echo "Error: --reuse-build requires an existing client binary: ${CLIENT_BIN}" >&2
+            return 1
+        fi
+        return 0
+    fi
+
     log "configure core build"
     cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
         -DZLINK_BUILD_TESTS=ON \
-        -DBUILD_BENCHMARKS=ON >/dev/null
+        -DBUILD_BENCHMARKS=ON \
+        -DZLINK_BUILD_BENCH_STREAMCOMPARE=ON >/dev/null
 
     log "build bench_streamcompare_client"
     cmake --build "${BUILD_DIR}" --target bench_streamcompare_client -j"$(nproc)" >/dev/null
+}
+
+prepare_build_directory_policy()
+{
+    case "${BUILD_MODE}" in
+        reuse)
+            if [[ ! -d "${BUILD_DIR}" ]]; then
+                echo "Error: --reuse-build requires an existing build directory: ${BUILD_DIR}" >&2
+                return 1
+            fi
+            log "build_mode=reuse build_dir=${BUILD_DIR}"
+            ;;
+        clean)
+            log "build_mode=clean build_dir=${BUILD_DIR}"
+            log "cleaning build directory: ${BUILD_DIR}"
+            rm -rf "${BUILD_DIR}"
+            rm -rf "${CPPSERVER_BUILD_DIR}"
+            rm -rf "${DOTNET_OUT_DIR}" "${NETZLINK_OUT_DIR}" "${NETZLINK_LEN32BE_OUT_DIR}"
+            rm -rf "${JVMZLINK_BUILD_DIR}" "${JVMZLINK_LEN32BE_BUILD_DIR}" "${NETTY_BUILD_DIR}"
+            ;;
+        incremental)
+            if [[ -d "${BUILD_DIR}" ]]; then
+                log "build_mode=incremental build_dir=${BUILD_DIR} (reuse existing directory)"
+            else
+                log "build_mode=incremental build_dir=${BUILD_DIR} (create directory)"
+            fi
+            ;;
+        *)
+            echo "Error: invalid build mode: ${BUILD_MODE}" >&2
+            return 1
+            ;;
+    esac
+
+    if [[ "${BUILD_MODE}" != "reuse" && -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
+        local cache_cmake_source=""
+        cache_cmake_source="$(
+            sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_DIR}/CMakeCache.txt" \
+                | tail -n 1
+        )"
+        if [[ -n "${cache_cmake_source}" && "${cache_cmake_source}" != "${ROOT_DIR}" ]]; then
+            log "build cache source mismatch detected: cache=${cache_cmake_source} required=${ROOT_DIR}"
+            log "resetting build directory: ${BUILD_DIR}"
+            rm -rf "${BUILD_DIR}"
+        fi
+    fi
+}
+
+ensure_cppserver_build_dir()
+{
+    local cache_file="${CPPSERVER_BUILD_DIR}/CMakeCache.txt"
+    if [[ ! -f "${cache_file}" ]]; then
+        return 0
+    fi
+
+    local cache_home=""
+    cache_home="$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${cache_file}" | head -n1)"
+    if [[ -z "${cache_home}" ]]; then
+        return 0
+    fi
+
+    local expected_home=""
+    expected_home="$(cd "${CPPSERVER_SRC_DIR}" && pwd)"
+    if [[ "${cache_home}" != "${expected_home}" ]]; then
+        log "cppserver cache mismatch: cache_source=${cache_home} expected_source=${expected_home}; cleanup=${CPPSERVER_BUILD_DIR}"
+        rm -rf "${CPPSERVER_BUILD_DIR}"
+    fi
+}
+
+repair_cppserver_legacy_symlinks()
+{
+    local link_path=""
+    local old_target=""
+    local rel_path=""
+    local new_target=""
+    local fixed_count=0
+
+    while IFS= read -r link_path; do
+        old_target="$(readlink "${link_path}" || true)"
+        if [[ -z "${old_target}" ]]; then
+            continue
+        fi
+
+        case "${old_target}" in
+            */core/tests/scenario/stream/cppserver/upstream/*|*/core/bench/benchwithstreamcompare/stacks/cppserver/upstream/*)
+                rel_path="${old_target##*/upstream/}"
+                if [[ -z "${rel_path}" || "${rel_path}" == "${old_target}" ]]; then
+                    continue
+                fi
+                new_target="${CPPSERVER_SRC_DIR}/${rel_path}"
+                if [[ -e "${new_target}" || -L "${new_target}" ]]; then
+                    ln -sfn "${new_target}" "${link_path}"
+                    fixed_count="$((fixed_count + 1))"
+                fi
+                ;;
+            *)
+                ;;
+        esac
+    done < <(find "${CPPSERVER_SRC_DIR}" -type l -print)
+
+    if (( fixed_count > 0 )); then
+        log "cppserver relinked legacy symlinks count=${fixed_count}"
+    fi
 }
 
 try_build_stack()
@@ -944,36 +1045,74 @@ try_build_stack()
 
     case "${stack}" in
         asio)
-            cmake --build "${BUILD_DIR}" --target test_scenario_stream_asio -j"$(nproc)" >/dev/null
+            if [[ "${BUILD_MODE}" == "reuse" ]]; then
+                [[ -f "${ASIO_BIN}" ]]
+            else
+                cmake --build "${BUILD_DIR}" --target test_scenario_stream_asio -j"$(nproc)" >/dev/null
+            fi
             ;;
         zlink)
-            cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink -j"$(nproc)" >/dev/null
+            if [[ "${BUILD_MODE}" == "reuse" ]]; then
+                [[ -f "${ZLINK_BIN}" ]]
+            else
+                cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink -j"$(nproc)" >/dev/null
+            fi
             ;;
         zlink-len32be)
-            cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink_len32be -j"$(nproc)" >/dev/null
+            if [[ "${BUILD_MODE}" == "reuse" ]]; then
+                [[ -f "${ZLINK_LEN32BE_BIN}" ]]
+            else
+                cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink_len32be -j"$(nproc)" >/dev/null
+            fi
             ;;
         zmq)
-            cmake --build "${BUILD_DIR}" --target test_scenario_stream_zmq -j"$(nproc)" >/dev/null
+            if [[ "${BUILD_MODE}" == "reuse" ]]; then
+                [[ -f "${ZMQ_BIN}" ]]
+            else
+                cmake --build "${BUILD_DIR}" --target test_scenario_stream_zmq -j"$(nproc)" >/dev/null
+            fi
             ;;
         cppserver)
+            if [[ "${BUILD_MODE}" == "reuse" ]]; then
+                [[ -f "${CPPSERVER_BIN}" ]]
+                return 0
+            fi
             cat >"${CPPSERVER_UPSTREAM_ENTRY}" <<'CPP'
 #include "../../test_scenario_stream_cppserver.cpp"
 CPP
+            repair_cppserver_legacy_symlinks
+            ensure_cppserver_build_dir
             cmake -S "${CPPSERVER_SRC_DIR}" -B "${CPPSERVER_BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release >/dev/null
             cmake --build "${CPPSERVER_BUILD_DIR}" --target cppserver-performance-stream_fixed_server -j"$(nproc)" >/dev/null
             ;;
         dotnet)
-            dotnet build "${DOTNET_PROJECT}" -c Release -o "${DOTNET_OUT_DIR}" >/dev/null
+            if [[ "${BUILD_MODE}" == "reuse" ]]; then
+                [[ -f "${DOTNET_DLL}" ]]
+            else
+                dotnet build "${DOTNET_PROJECT}" -c Release -o "${DOTNET_OUT_DIR}" >/dev/null
+            fi
             ;;
         netzlink)
-            dotnet build "${NETZLINK_PROJECT}" -c Release -o "${NETZLINK_OUT_DIR}" >/dev/null
-            [[ -f "${NETZLINK_DLL}" ]]
+            if [[ "${BUILD_MODE}" == "reuse" ]]; then
+                [[ -f "${NETZLINK_DLL}" ]]
+            else
+                dotnet build "${NETZLINK_PROJECT}" -c Release -o "${NETZLINK_OUT_DIR}" >/dev/null
+                [[ -f "${NETZLINK_DLL}" ]]
+            fi
             ;;
         netzlink-len32be)
-            dotnet build "${NETZLINK_LEN32BE_PROJECT}" -c Release -o "${NETZLINK_LEN32BE_OUT_DIR}" >/dev/null
-            [[ -f "${NETZLINK_LEN32BE_DLL}" ]]
+            if [[ "${BUILD_MODE}" == "reuse" ]]; then
+                [[ -f "${NETZLINK_LEN32BE_DLL}" ]]
+            else
+                dotnet build "${NETZLINK_LEN32BE_PROJECT}" -c Release -o "${NETZLINK_LEN32BE_OUT_DIR}" >/dev/null
+                [[ -f "${NETZLINK_LEN32BE_DLL}" ]]
+            fi
             ;;
         jvmzlink)
+            if [[ "${BUILD_MODE}" == "reuse" ]]; then
+                [[ -x "${JVMZLINK_BIN}" ]]
+                return 0
+            fi
             resolve_netty_java || return 1
             resolve_netty_gradle || return 1
             log "jvmzlink using java major=${NETTY_JAVA_VERSION} home=${NETTY_JAVA_HOME} gradle=${NETTY_GRADLE_VERSION}"
@@ -987,6 +1126,10 @@ CPP
             [[ -x "${JVMZLINK_BIN}" ]]
             ;;
         jvmzlink-len32be)
+            if [[ "${BUILD_MODE}" == "reuse" ]]; then
+                [[ -x "${JVMZLINK_LEN32BE_BIN}" ]]
+                return 0
+            fi
             resolve_netty_java || return 1
             resolve_netty_gradle || return 1
             log "jvmzlink-len32be using java major=${NETTY_JAVA_VERSION} home=${NETTY_JAVA_HOME} gradle=${NETTY_GRADLE_VERSION}"
@@ -1000,6 +1143,10 @@ CPP
             [[ -x "${JVMZLINK_LEN32BE_BIN}" ]]
             ;;
         netty)
+            if [[ "${BUILD_MODE}" == "reuse" ]]; then
+                [[ -x "${NETTY_BIN}" ]]
+                return 0
+            fi
             resolve_netty_java || return 1
             resolve_netty_gradle || return 1
             log "netty using java major=${NETTY_JAVA_VERSION} home=${NETTY_JAVA_HOME} gradle=${NETTY_GRADLE_VERSION}"
@@ -1154,7 +1301,7 @@ append_rows_from_client_log()
     local run_override="${11}"
     local phase_override="${12}"
 
-    python3 - "${METRICS_CSV}" "${stack}" "${CCU}" "${INFLIGHT}" "${client_rc}" \
+    python3 - "${METRICS_CSV}" "${stack}" "${CCU}" "${client_rc}" \
         "${client_log}" "${server_log}" \
         "${client_resource_summary}" "${server_resource_summary}" \
         "${client_resource_log}" "${server_resource_log}" \
@@ -1167,7 +1314,6 @@ import sys
     metrics_csv,
     stack,
     ccu,
-    inflight,
     client_rc,
     client_log,
     server_log,
@@ -1179,7 +1325,7 @@ import sys
     system_resource_log,
     run_override,
     phase_override,
-) = sys.argv[1:16]
+) = sys.argv[1:15]
 ccu = int(ccu)
 
 rows = []
@@ -1251,7 +1397,6 @@ with open(client_log, encoding="utf-8", errors="replace") as f:
             "size": size_text,
             "run": run_override if run_override and run_override != "0" else fields.get("run", "0"),
             "ccu": str(ccu),
-            "inflight": str(inflight),
             "client_rc": str(client_rc),
             "throughput_bps": fields.get("throughput_bps", "0"),
             "throughput_mib_s": fields.get("throughput_mib_s", "0"),
@@ -1294,7 +1439,7 @@ with open(metrics_csv, "a", newline="", encoding="utf-8") as f:
     writer = csv.DictWriter(
         f,
         fieldnames=[
-            "stack", "phase", "size", "run", "ccu", "inflight", "client_rc",
+            "stack", "phase", "size", "run", "ccu", "client_rc",
             "throughput_bps", "throughput_mib_s", "throughput_tps",
             "p50_us", "p95_us",
             "p99_us", "connect_ok", "connect_fail", "send_err",
@@ -1317,18 +1462,12 @@ print(len(rows))
 PY
 }
 
-run_stack_phase()
+run_stack_size_once()
 {
     local stack="$1"
-    local phase="$2"
-    local port="$3"
-    local client_log="$4"
-    local sizes_csv="$5"
-    local latency_sample_rate="0"
-
-    if [[ "${phase}" == "latency" ]]; then
-        latency_sample_rate="${LATENCY_SAMPLE_RATE}"
-    fi
+    local port="$2"
+    local client_log="$3"
+    local size_value="$4"
 
     local client_resource_log="${client_log%.log}_resource.csv"
     local client_resource_summary="${client_log%.log}_resource.summary"
@@ -1339,14 +1478,10 @@ run_stack_phase()
         --host "${HOST}" \
         --port "${port}" \
         --ccu "${CCU}" \
-        --sizes "${sizes_csv}" \
+        --sizes "${size_value}" \
         --runs "1" \
         --warmup "${WARMUP}" \
         --duration "${DURATION}" \
-        --drain-ms "${DRAIN_MS}" \
-        --size-transition-drain-ms "${SIZE_TRANSITION_DRAIN_MS}" \
-        --inflight "${INFLIGHT}" \
-        --latency-sample-rate "${latency_sample_rate}" \
         --io-threads "${CLIENT_IO_THREADS}" \
         >"${client_log}" 2>&1 &
     client_pid="$!"
@@ -1375,7 +1510,7 @@ main()
     : >"${SCENARIO_LOG}"
 
     cat >"${METRICS_CSV}" <<'CSV'
-stack,phase,size,run,ccu,inflight,client_rc,throughput_bps,throughput_mib_s,throughput_tps,p50_us,p95_us,p99_us,connect_ok,connect_fail,send_err,recv_err,timeout,size_mismatch,pass_fail,client_avg_cpu_pct,client_peak_cpu_pct,client_avg_rss_kb,client_peak_rss_kb,client_peak_hwm_kb,server_avg_cpu_pct,server_peak_cpu_pct,server_avg_rss_kb,server_peak_rss_kb,server_peak_hwm_kb,system_avg_cpu_pct,system_peak_cpu_pct,system_avg_mem_used_kb,system_peak_mem_used_kb,system_avg_mem_used_pct,system_peak_mem_used_pct,client_resource_log,server_resource_log,system_resource_log,client_log,server_log
+stack,phase,size,run,ccu,client_rc,throughput_bps,throughput_mib_s,throughput_tps,p50_us,p95_us,p99_us,connect_ok,connect_fail,send_err,recv_err,timeout,size_mismatch,pass_fail,client_avg_cpu_pct,client_peak_cpu_pct,client_avg_rss_kb,client_peak_rss_kb,client_peak_hwm_kb,server_avg_cpu_pct,server_peak_cpu_pct,server_avg_rss_kb,server_peak_rss_kb,server_peak_hwm_kb,system_avg_cpu_pct,system_peak_cpu_pct,system_avg_mem_used_kb,system_peak_mem_used_kb,system_avg_mem_used_pct,system_peak_mem_used_pct,client_resource_log,server_resource_log,system_resource_log,client_log,server_log
 CSV
 
     cat >"${SKIP_CSV}" <<'CSV'
@@ -1383,7 +1518,10 @@ stack,reason
 CSV
 
     log "scope stacks=$(IFS=,; echo "${RUN_STACKS[*]}") sizes=$(IFS=,; echo "${RUN_SIZES[*]}")"
-    log "settings phases=$(IFS=,; echo "${RUN_PHASES[*]}") ccu=${CCU} runs=${RUNS} warmup=${WARMUP}s duration=${DURATION}s drain_ms=${DRAIN_MS} size_transition_drain_ms=${SIZE_TRANSITION_DRAIN_MS} inflight=${INFLIGHT} latency_sample_rate=${LATENCY_SAMPLE_RATE} server_size=${MAX_RUN_SIZE} resource_sample_ms=${RESOURCE_SAMPLE_MS}"
+    log "settings mode=single-pass ccu=${CCU} runs=${RUNS} warmup=${WARMUP}s duration=${DURATION}s client_io_threads=${CLIENT_IO_THREADS} server_io_threads=${SERVER_IO_THREADS} resource_sample_ms=${RESOURCE_SAMPLE_MS}"
+    log "build_settings build_dir=${BUILD_DIR} build_mode=${BUILD_MODE} reuse_build=$( [[ "${BUILD_MODE}" == "reuse" ]] && echo 1 || echo 0 ) clean_build=$( [[ "${BUILD_MODE}" == "clean" ]] && echo 1 || echo 0 )"
+
+    prepare_build_directory_policy
 
     build_selected
 
@@ -1392,24 +1530,27 @@ CSV
         return 1
     fi
 
-    local sizes_csv
-    sizes_csv="$(IFS=,; echo "${RUN_SIZES[*]}")"
+    local -A STACK_FAILED=()
+    local run_idx
+    for ((run_idx = 1; run_idx <= RUNS; ++run_idx)); do
+        local size
+        for size in "${RUN_SIZES[@]}"; do
+            local stack
+            for stack in "${ACTIVE_STACKS[@]}"; do
+                if [[ -n "${STACK_FAILED[${stack}]:-}" ]]; then
+                    continue
+                fi
 
-    local stack
-    for stack in "${ACTIVE_STACKS[@]}"; do
-        if ! allocate_free_port "${HOST}"; then
-            record_skip "${stack}" "port_allocation_failed"
-            FAILED_CASES="$((FAILED_CASES + 1))"
-            continue
-        fi
+                if ! allocate_free_port "${HOST}"; then
+                    record_skip "${stack}" "port_allocation_failed"
+                    STACK_FAILED["${stack}"]="port_allocation_failed"
+                    FAILED_CASES="$((FAILED_CASES + 1))"
+                    continue
+                fi
 
-        local port="${ALLOCATED_PORT}"
-        local stack_failed=0
-        local run_idx
-        for ((run_idx = 1; run_idx <= RUNS; ++run_idx)); do
-            local phase
-            for phase in "${RUN_PHASES[@]}"; do
-                local log_tag="${stack}_run${run_idx}_${phase}"
+                local port="${ALLOCATED_PORT}"
+                local stack_failed=0
+                local log_tag="${stack}_run${run_idx}_size${size}"
                 local server_log="${LOG_DIR}/${log_tag}_server.log"
                 local client_log="${LOG_DIR}/${log_tag}_client.log"
                 local client_resource_log="${LOG_DIR}/${log_tag}_client_resource.csv"
@@ -1421,93 +1562,161 @@ CSV
                 local server_monitor_pid=""
                 local system_monitor_pid=""
 
-                log "start stack=${stack} phase=${phase} sizes=${sizes_csv} run=${run_idx}/${RUNS} port=${port}"
-                if ! start_server "${stack}" "${HOST}" "${port}" "${server_log}" "${MAX_RUN_SIZE}"; then
-                    log "server start failed stack=${stack} phase=${phase} run=${run_idx}"
+                log "start stack=${stack} size=${size} run=${run_idx}/${RUNS} port=${port}"
+                if ! start_server "${stack}" "${HOST}" "${port}" "${server_log}" "${size}"; then
+                    log "server start failed stack=${stack} size=${size} run=${run_idx}"
                     stop_active_server
                     FAILED_CASES="$((FAILED_CASES + 1))"
                     stack_failed=1
-                    break
+                else
+                    set +e
+                    MONITOR_PID=""
+                    start_process_resource_monitor "${ACTIVE_SERVER_PID}" "${RESOURCE_SAMPLE_MS}" "${server_resource_log}" "${server_resource_summary}"
+                    local server_monitor_rc="$?"
+                    server_monitor_pid="${MONITOR_PID:-}"
+                    set -e
+                    if [[ "${server_monitor_rc}" != "0" || -z "${server_monitor_pid}" ]]; then
+                        server_monitor_pid=""
+                        log "warning: failed to start server resource monitor stack=${stack} size=${size} run=${run_idx}"
+                    fi
+
+                    set +e
+                    MONITOR_PID=""
+                    start_system_resource_monitor "${RESOURCE_SAMPLE_MS}" "${system_resource_log}" "${system_resource_summary}"
+                    local system_monitor_rc="$?"
+                    system_monitor_pid="${MONITOR_PID:-}"
+                    set -e
+                    if [[ "${system_monitor_rc}" != "0" || -z "${system_monitor_pid}" ]]; then
+                        system_monitor_pid=""
+                        log "warning: failed to start system resource monitor stack=${stack} size=${size} run=${run_idx}"
+                    fi
+
+                    set +e
+                    run_stack_size_once "${stack}" "${port}" "${client_log}" "${size}"
+                    local client_rc="$?"
+                    set -e
+
+                    stop_active_server
+                    if [[ -n "${server_monitor_pid}" ]]; then
+                        wait "${server_monitor_pid}" >/dev/null 2>&1 || true
+                    fi
+                    if [[ -n "${system_monitor_pid}" ]]; then
+                        kill -TERM "${system_monitor_pid}" >/dev/null 2>&1 || true
+                        wait "${system_monitor_pid}" >/dev/null 2>&1 || true
+                    fi
+
+                    local row_count_throughput
+                    row_count_throughput="$(append_rows_from_client_log \
+                        "${stack}" \
+                        "${client_rc}" \
+                        "${client_log}" \
+                        "${server_log}" \
+                        "${client_resource_summary}" \
+                        "${server_resource_summary}" \
+                        "${client_resource_log}" \
+                        "${server_resource_log}" \
+                        "${system_resource_summary}" \
+                        "${system_resource_log}" \
+                        "${run_idx}" \
+                        "throughput")"
+                    local row_count_latency
+                    row_count_latency="$(append_rows_from_client_log \
+                        "${stack}" \
+                        "${client_rc}" \
+                        "${client_log}" \
+                        "${server_log}" \
+                        "${client_resource_summary}" \
+                        "${server_resource_summary}" \
+                        "${client_resource_log}" \
+                        "${server_resource_log}" \
+                        "${system_resource_summary}" \
+                        "${system_resource_log}" \
+                        "${run_idx}" \
+                        "latency")"
+                    local row_count="$((row_count_throughput + row_count_latency))"
+
+                    if [[ "${client_rc}" != "0" ]]; then
+                        log "client failed stack=${stack} size=${size} run=${run_idx} rc=${client_rc}"
+                        FAILED_CASES="$((FAILED_CASES + 1))"
+                        stack_failed=1
+                    elif [[ "${row_count}" == "0" ]]; then
+                        log "no RESULT rows parsed stack=${stack} size=${size} run=${run_idx}"
+                        FAILED_CASES="$((FAILED_CASES + 1))"
+                        stack_failed=1
+                    fi
                 fi
 
-                set +e
-                MONITOR_PID=""
-                start_process_resource_monitor "${ACTIVE_SERVER_PID}" "${RESOURCE_SAMPLE_MS}" "${server_resource_log}" "${server_resource_summary}"
-                local server_monitor_rc="$?"
-                server_monitor_pid="${MONITOR_PID:-}"
-                set -e
-                if [[ "${server_monitor_rc}" != "0" || -z "${server_monitor_pid}" ]]; then
-                    server_monitor_pid=""
-                    log "warning: failed to start server resource monitor stack=${stack} phase=${phase} run=${run_idx}"
+                if (( stack_failed != 0 )); then
+                    record_skip "${stack}" "run_failed"
+                    STACK_FAILED["${stack}"]="run_failed"
                 fi
 
-                set +e
-                MONITOR_PID=""
-                start_system_resource_monitor "${RESOURCE_SAMPLE_MS}" "${system_resource_log}" "${system_resource_summary}"
-                local system_monitor_rc="$?"
-                system_monitor_pid="${MONITOR_PID:-}"
-                set -e
-                if [[ "${system_monitor_rc}" != "0" || -z "${system_monitor_pid}" ]]; then
-                    system_monitor_pid=""
-                    log "warning: failed to start system resource monitor stack=${stack} phase=${phase} run=${run_idx}"
-                fi
-
-                set +e
-                run_stack_phase "${stack}" "${phase}" "${port}" "${client_log}" "${sizes_csv}"
-                local client_rc="$?"
-                set -e
-
-                stop_active_server
-                if [[ -n "${server_monitor_pid}" ]]; then
-                    wait "${server_monitor_pid}" >/dev/null 2>&1 || true
-                fi
-                if [[ -n "${system_monitor_pid}" ]]; then
-                    kill -TERM "${system_monitor_pid}" >/dev/null 2>&1 || true
-                    wait "${system_monitor_pid}" >/dev/null 2>&1 || true
-                fi
-
-                local row_count
-                row_count="$(append_rows_from_client_log \
-                    "${stack}" \
-                    "${client_rc}" \
-                    "${client_log}" \
-                    "${server_log}" \
-                    "${client_resource_summary}" \
-                    "${server_resource_summary}" \
-                    "${client_resource_log}" \
-                    "${server_resource_log}" \
-                    "${system_resource_summary}" \
-                    "${system_resource_log}" \
-                    "${run_idx}" \
-                    "${phase}")"
-
-                if [[ "${client_rc}" != "0" ]]; then
-                    log "client failed stack=${stack} phase=${phase} run=${run_idx} rc=${client_rc}"
-                    FAILED_CASES="$((FAILED_CASES + 1))"
-                    stack_failed=1
-                    break
-                fi
-
-                if [[ "${row_count}" == "0" ]]; then
-                    log "no RESULT rows parsed stack=${stack} phase=${phase} run=${run_idx}"
-                    FAILED_CASES="$((FAILED_CASES + 1))"
-                    stack_failed=1
-                    break
+                if (( STACK_GAP_SEC > 0 )); then
+                    sleep "${STACK_GAP_SEC}"
                 fi
             done
 
-            if (( stack_failed != 0 )); then
-                break
+            local size_summary_json="${RESULT_DIR}/summary_size${size}.json"
+            local size_report_md="${RESULT_DIR}/comparison_size${size}.md"
+            python3 "${SCRIPT_DIR}/run_comparison.py" \
+                --metrics "${METRICS_CSV}" \
+                --summary "${size_summary_json}" \
+                --report "${size_report_md}" \
+                --runs "${RUNS}" \
+                --stacks "$(IFS=,; echo "${ACTIVE_STACKS[*]}")" \
+                --sizes "${size}" \
+                --phases "throughput,latency" \
+                --skip-file "${SKIP_CSV}"
+            log "size_comparison size=${size} summary_json=${size_summary_json} comparison_md=${size_report_md}"
+            if [[ -s "${size_summary_json}" ]]; then
+                local size_console_summary
+                size_console_summary="$(python3 - "${size_summary_json}" "${size_report_md}" <<'PY'
+import json
+import sys
+
+summary_path = sys.argv[1]
+report_path = sys.argv[2]
+
+with open(summary_path, encoding="utf-8") as f:
+    summary = json.load(f)
+
+sizes = summary.get("config", {}).get("sizes", [])
+size = str(sizes[0]) if sizes else "n/a"
+
+def f2(v):
+    if v is None:
+        return "n/a"
+    return f"{float(v):.2f}"
+
+def us_to_ms(v):
+    if v is None:
+        return None
+    return float(v) / 1000.0
+
+print(f"===== SIZE {size} SUMMARY =====")
+for phase in ("throughput", "latency"):
+    key = f"{phase}:{size}"
+    ranking = summary.get("ranking", {}).get(key, [])
+    print(f"[{phase}] ranking(all)")
+    print(" rank stack             tps        p95_ms   mismatch")
+    if not ranking:
+        print("  -   (no data)")
+        continue
+    for idx, entry in enumerate(ranking, 1):
+        stack = str(entry.get("stack", "n/a"))[:16]
+        tps = f2(entry.get("median_tps"))
+        p95 = f2(us_to_ms(entry.get("median_p95_us")))
+        mismatch = int(entry.get("mismatch_total_all", 0))
+        print(f" {idx:>2}   {stack:<16} {tps:>10} {p95:>10} {mismatch:>9}")
+print(f"full_report={report_path}")
+print(f"summary_json={summary_path}")
+print(f"===== SIZE {size} SUMMARY END =====")
+PY
+)"
+                echo "${size_console_summary}"
+                echo "${size_console_summary}" >>"${SCENARIO_LOG}"
             fi
         done
-
-        if (( stack_failed != 0 )); then
-            record_skip "${stack}" "run_failed"
-        fi
-
-        if (( STACK_GAP_SEC > 0 )); then
-            sleep "${STACK_GAP_SEC}"
-        fi
     done
 
     python3 "${SCRIPT_DIR}/run_comparison.py" \
@@ -1517,7 +1726,7 @@ CSV
         --runs "${RUNS}" \
         --stacks "$(IFS=,; echo "${ACTIVE_STACKS[*]}")" \
         --sizes "$(IFS=,; echo "${RUN_SIZES[*]}")" \
-        --phases "$(IFS=,; echo "${RUN_PHASES[*]}")" \
+        --phases "throughput,latency" \
         --skip-file "${SKIP_CSV}"
 
     log "result_dir=${RESULT_DIR}"

@@ -2,6 +2,7 @@ package dev.kairoscode.stream;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.ContextOption;
+import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.SocketOption;
 import dev.kairoscode.zlink.SocketType;
@@ -24,6 +25,9 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class JvmZlinkStreamLen32BeServer {
     private static final int ZLINK_TCP_NODELAY = 118;
     private static final int ZLINK_STREAM_DISPATCH_LEN32BE = 0x0001;
+    private static final int ROUTING_ID_STRUCT_SIZE = 256;
+    private static final int ROUTING_ID_SIZE_OFFSET = 0;
+    private static final int ROUTING_ID_DATA_OFFSET = 1;
     private static final int MIN_PAYLOAD_SIZE = 16;
     private static final int MAX_PAYLOAD_SIZE = 4 * 1024 * 1024;
     private static final long MSG_SIZE = NativeLayouts.MSG_LAYOUT.byteSize();
@@ -41,10 +45,6 @@ public final class JvmZlinkStreamLen32BeServer {
         ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_STREAM_DETACH = downcall("zlink_stream_detach",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_STREAM_SEND = downcall("zlink_stream_send",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-        ValueLayout.JAVA_INT));
 
     private JvmZlinkStreamLen32BeServer() {
     }
@@ -171,41 +171,50 @@ public final class JvmZlinkStreamLen32BeServer {
                 if (msgCount <= 0 || msgs == null || msgs.address() == 0
                     || rid == null || rid.address() == 0)
                     return 0;
+                long routingId = routingId(rid);
+                if (routingId < 0) {
+                    metrics.addParseError();
+                    metrics.addProtocolError();
+                    return 0;
+                }
 
                 MemorySegment msgArray = msgs.reinterpret(MSG_SIZE * msgCount);
                 for (int i = 0; i < msgCount; i++) {
-                    MemorySegment msg = msgArray.asSlice((long) i * MSG_SIZE, MSG_SIZE);
-                    long payloadSize = NativeMsg.msgSize(msg);
-                    MemorySegment payload = NativeMsg.msgData(msg);
-                    if (payloadSize <= 0)
-                        continue;
-
-                    if (payloadSize > Integer.MAX_VALUE
-                        || payloadSize > MAX_PAYLOAD_SIZE
-                        || ((payload == null || payload.address() == 0)
-                            && payloadSize > 0)) {
-                        metrics.addParseError();
-                        metrics.addProtocolError();
-                        continue;
-                    }
-
-                    if (payloadSize < MIN_PAYLOAD_SIZE)
-                        continue;
-
-                    metrics.addRecvMsg();
+                    MemorySegment msg = msgArray.asSlice((long) i * MSG_SIZE,
+                      MSG_SIZE);
+                    boolean consumed = false;
                     try {
-                        int payloadLen = (int) payloadSize;
-                        try (Arena arena = Arena.ofConfined()) {
-                            MemorySegment payloadCopy = arena.allocate(payloadLen);
-                            MemorySegment.copy(payload.reinterpret(payloadLen), 0,
-                              payloadCopy, 0, payloadLen);
-                            int sent = streamSend(socket.handle(), rid, payloadCopy,
-                              payloadLen, 0);
-                            if (sent != (int) payloadSize)
-                                metrics.addSendError();
+                        long payloadSize = NativeMsg.msgSize(msg);
+                        if (payloadSize <= 0)
+                            continue;
+
+                        if (payloadSize > Integer.MAX_VALUE
+                            || payloadSize > MAX_PAYLOAD_SIZE) {
+                            metrics.addParseError();
+                            metrics.addProtocolError();
+                            continue;
                         }
+
+                        if (payloadSize < MIN_PAYLOAD_SIZE)
+                            continue;
+
+                        int payloadLen = (int) payloadSize;
+                        metrics.addRecvMsg();
+                        int sent = Native.streamSendMsg(
+                          socket.handle(), rid, msg, SendFlag.NONE.getValue());
+                        consumed = true;
+                        if (sent != payloadLen)
+                            metrics.addSendError();
                     } catch (Throwable sendError) {
                         metrics.addSendError();
+                    } finally {
+                        if (!consumed) {
+                            try {
+                                NativeMsg.msgClose(msg);
+                            } catch (Throwable ignored) {
+                                metrics.addSendError();
+                            }
+                        }
                     }
                 }
             } catch (Throwable t) {
@@ -256,17 +265,22 @@ public final class JvmZlinkStreamLen32BeServer {
         }
     }
 
-    private static int streamSend(MemorySegment socket, MemorySegment rid,
-                                  MemorySegment data, long size, int flags) {
-        try {
-            return (int) MH_STREAM_SEND.invokeExact(socket, rid, data, size, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_stream_send failed", t);
-        }
-    }
-
     private static String endpoint(String host, int port) {
         return "tcp://" + host + ":" + port;
+    }
+
+    private static long routingId(MemorySegment rid) {
+        if (rid == null || rid.address() == 0)
+            return -1;
+        MemorySegment view = rid.reinterpret(ROUTING_ID_STRUCT_SIZE);
+        int size = view.get(ValueLayout.JAVA_BYTE, ROUTING_ID_SIZE_OFFSET) & 0xFF;
+        if (size != 4)
+            return -1;
+        int b0 = view.get(ValueLayout.JAVA_BYTE, ROUTING_ID_DATA_OFFSET) & 0xFF;
+        int b1 = view.get(ValueLayout.JAVA_BYTE, ROUTING_ID_DATA_OFFSET + 1) & 0xFF;
+        int b2 = view.get(ValueLayout.JAVA_BYTE, ROUTING_ID_DATA_OFFSET + 2) & 0xFF;
+        int b3 = view.get(ValueLayout.JAVA_BYTE, ROUTING_ID_DATA_OFFSET + 3) & 0xFF;
+        return Integer.toUnsignedLong((b0 << 24) | (b1 << 16) | (b2 << 8) | b3);
     }
 
     private static MemorySegment contextHandle(Context ctx) {

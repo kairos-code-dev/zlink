@@ -2,12 +2,12 @@ package dev.kairoscode.stream;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.ContextOption;
+import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.SocketOption;
 import dev.kairoscode.zlink.SocketType;
 import dev.kairoscode.zlink.internal.LibraryLoader;
 import dev.kairoscode.zlink.internal.Native;
-import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -19,39 +19,30 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class JvmZlinkStreamServer {
-    private static final int FRAME_PREFIX_SIZE = 4;
     private static final int ZLINK_TCP_NODELAY = 118;
     private static final int ROUTING_ID_STRUCT_SIZE = 256;
     private static final int ROUTING_ID_SIZE_OFFSET = 0;
     private static final int ROUTING_ID_DATA_OFFSET = 1;
     private static final int MIN_PAYLOAD_SIZE = 16;
     private static final int MAX_PAYLOAD_SIZE = 4 * 1024 * 1024;
-    private static final long MSG_SIZE = NativeLayouts.MSG_LAYOUT.byteSize();
 
     private static final Linker LINKER = Linker.nativeLinker();
     private static final SymbolLookup LOOKUP = LibraryLoader.lookup();
-    private static final FunctionDescriptor FD_STREAM_CALLBACK =
+    private static final FunctionDescriptor FD_STREAM_CALLBACK_RAW =
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
-    private static final MethodHandle MH_STREAM_ATTACH = downcall("zlink_stream_attach",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+        ValueLayout.ADDRESS);
+    private static final MethodHandle MH_STREAM_ATTACH_RAW =
+      downcall("zlink_stream_attach_raw",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+          ValueLayout.ADDRESS));
     private static final MethodHandle MH_CTX_SET = downcall("zlink_ctx_set",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_STREAM_DETACH = downcall("zlink_stream_detach",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_STREAM_SEND = downcall("zlink_stream_send",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-        ValueLayout.JAVA_INT));
 
     private JvmZlinkStreamServer() {
     }
@@ -141,95 +132,11 @@ public final class JvmZlinkStreamServer {
         }
     }
 
-    private static final class ByteStash {
-        private byte[] data = new byte[4096];
-        private int offset = 0;
-        private int length = 0;
-
-        synchronized List<byte[]> extractFrames(MemorySegment chunk,
-                                                int chunkLen,
-                                                Metrics metrics) {
-            append(chunk, chunkLen);
-            List<byte[]> frames = new ArrayList<>();
-            int consumed = 0;
-            int available = length - offset;
-            while (consumed + FRAME_PREFIX_SIZE <= available) {
-                int frameOffset = offset + consumed;
-                int bodySize = readU32Be(data, frameOffset);
-                if (bodySize < MIN_PAYLOAD_SIZE || bodySize > MAX_PAYLOAD_SIZE) {
-                    if (consumed != 0) {
-                        metrics.addParseError();
-                        metrics.addProtocolError();
-                    }
-                    reset();
-                    return frames;
-                }
-
-                int frameSize = FRAME_PREFIX_SIZE + bodySize;
-                if (consumed + frameSize > available)
-                    break;
-
-                byte[] frame =
-                  Arrays.copyOfRange(data, frameOffset, frameOffset + frameSize);
-                frames.add(frame);
-                metrics.addRecvMsg();
-                consumed += frameSize;
-            }
-
-            if (consumed > 0) {
-                offset += consumed;
-                compact();
-            }
-            return frames;
-        }
-
-        synchronized boolean isEmpty() {
-            return (length - offset) <= 0;
-        }
-
-        private void append(MemorySegment chunk, int chunkLen) {
-            if (chunkLen <= 0 || chunk == null || chunk.address() == 0)
-                return;
-            compact();
-            ensure(length + chunkLen);
-            MemorySegment.copy(chunk.reinterpret(chunkLen), 0,
-              MemorySegment.ofArray(data), length, chunkLen);
-            length += chunkLen;
-        }
-
-        private void compact() {
-            if (offset <= 0)
-                return;
-            if (offset >= length) {
-                reset();
-                return;
-            }
-            if (offset > 4096 || offset * 2 >= length) {
-                int remain = length - offset;
-                System.arraycopy(data, offset, data, 0, remain);
-                offset = 0;
-                length = remain;
-            }
-        }
-
-        private void reset() {
-            offset = 0;
-            length = 0;
-        }
-
-        private void ensure(int cap) {
-            if (data.length >= cap)
-                return;
-            int next = Math.max(cap, data.length * 2 + 16);
-            data = Arrays.copyOf(data, next);
-        }
-    }
-
     private static final class StreamCallbackEcho implements AutoCloseable {
+        private static final byte STREAM_EVENT_CONNECT = 0x01;
+        private static final byte STREAM_EVENT_DISCONNECT = 0x00;
         private final Socket socket;
         private final Metrics metrics;
-        private final ConcurrentHashMap<Integer, ByteStash> stashes =
-          new ConcurrentHashMap<>();
         private final Arena callbackArena;
         private final MemorySegment callbackStub;
         private boolean attached;
@@ -241,28 +148,24 @@ public final class JvmZlinkStreamServer {
             try {
                 MethodHandle cb = MethodHandles.lookup().findVirtual(
                   StreamCallbackEcho.class,
-                  "onPackets",
+                  "onPacket",
                   MethodType.methodType(int.class, MemorySegment.class,
-                    MemorySegment.class, long.class)).bindTo(this);
+                    MemorySegment.class)).bindTo(this);
                 this.callbackStub =
-                  LINKER.upcallStub(cb, FD_STREAM_CALLBACK, callbackArena);
+                  LINKER.upcallStub(cb, FD_STREAM_CALLBACK_RAW, callbackArena);
             } catch (NoSuchMethodException | IllegalAccessException ex) {
                 throw new RuntimeException(ex);
             }
         }
 
         void attach() {
-            int rc = streamAttach(socket.handle(), callbackStub, 0);
+            int rc = streamAttachRaw(socket.handle(), callbackStub);
             if (rc != 0)
-                throw new RuntimeException("zlink_stream_attach failed");
+                throw new RuntimeException("zlink_stream_attach_raw failed");
             attached = true;
         }
 
-        private int onPackets(MemorySegment rid, MemorySegment msgs, long msgCount) {
-            return onPacketsRaw(rid, msgs, msgCount);
-        }
-
-        private int onPacketsRaw(MemorySegment rid, MemorySegment msgs, long msgCount) {
+        private int onPacket(MemorySegment rid, MemorySegment msg) {
             try {
                 int ridKey = routingKey(rid);
                 if (ridKey < 0) {
@@ -271,44 +174,50 @@ public final class JvmZlinkStreamServer {
                     return 0;
                 }
 
-                if (msgCount <= 0 || msgs == null || msgs.address() == 0)
+                if (msg == null || msg.address() == 0)
                     return 0;
 
-                MemorySegment msgArray = msgs.reinterpret(MSG_SIZE * msgCount);
-                for (int i = 0; i < msgCount; i++) {
-                    MemorySegment msg = msgArray.asSlice((long) i * MSG_SIZE, MSG_SIZE);
-                    long payloadSize = NativeMsg.msgSize(msg);
-                    MemorySegment payload = NativeMsg.msgData(msg);
-                    if (payloadSize <= 0)
-                        continue;
+                long payloadSize = NativeMsg.msgSize(msg);
+                if (payloadSize <= 0)
+                    return 0;
 
-                    if (payloadSize > Integer.MAX_VALUE
-                        || payload == null || payload.address() == 0) {
+                if (payloadSize > Integer.MAX_VALUE) {
+                    metrics.addParseError();
+                    metrics.addProtocolError();
+                    return 0;
+                }
+
+                boolean consumed = false;
+                try {
+                    MemorySegment payload = NativeMsg.msgData(msg);
+                    if (payload == null || payload.address() == 0) {
                         metrics.addParseError();
                         metrics.addProtocolError();
-                        continue;
+                        return 0;
                     }
 
-                    ByteStash stash = stashes.computeIfAbsent(ridKey,
-                      ignored -> new ByteStash());
                     int chunkLen = (int) payloadSize;
-                    List<byte[]> frames = stash.extractFrames(payload, chunkLen,
-                                                              metrics);
-                    if (stash.isEmpty())
-                        stashes.remove(ridKey, stash);
+                    if (chunkLen == 1) {
+                        int ev =
+                          payload.reinterpret(1).get(ValueLayout.JAVA_BYTE, 0)
+                          & 0xFF;
+                        if (ev == (STREAM_EVENT_CONNECT & 0xFF)
+                            || ev == (STREAM_EVENT_DISCONNECT & 0xFF)) {
+                            return 0;
+                        }
+                    }
 
-                    for (byte[] frame : frames) {
+                    metrics.addRecvMsg();
+                    int sent = Native.streamSendMsg(
+                      socket.handle(), rid, msg, SendFlag.NONE.getValue());
+                    consumed = true;
+                    if (sent != chunkLen)
+                        metrics.addSendError();
+                } finally {
+                    if (!consumed) {
                         try {
-                            try (Arena arena = Arena.ofConfined()) {
-                                MemorySegment frameSeg = arena.allocate(frame.length);
-                                MemorySegment.copy(MemorySegment.ofArray(frame), 0,
-                                  frameSeg, 0, frame.length);
-                                int sent = streamSend(socket.handle(), rid,
-                                  frameSeg, frame.length, 0);
-                                if (sent != frame.length)
-                                    metrics.addSendError();
-                            }
-                        } catch (Throwable sendError) {
+                            NativeMsg.msgClose(msg);
+                        } catch (Throwable ignored) {
                             metrics.addSendError();
                         }
                     }
@@ -336,12 +245,12 @@ public final class JvmZlinkStreamServer {
         return LINKER.downcallHandle(LOOKUP.find(name).orElseThrow(), fd);
     }
 
-    private static int streamAttach(MemorySegment socket, MemorySegment callback,
-                                    int flags) {
+    private static int streamAttachRaw(MemorySegment socket,
+                                       MemorySegment callback) {
         try {
-            return (int) MH_STREAM_ATTACH.invokeExact(socket, callback, flags);
+            return (int) MH_STREAM_ATTACH_RAW.invokeExact(socket, callback);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_stream_attach failed", t);
+            throw new RuntimeException("zlink_stream_attach_raw failed", t);
         }
     }
 
@@ -361,15 +270,6 @@ public final class JvmZlinkStreamServer {
         }
     }
 
-    private static int streamSend(MemorySegment socket, MemorySegment rid,
-                                  MemorySegment data, long size, int flags) {
-        try {
-            return (int) MH_STREAM_SEND.invokeExact(socket, rid, data, size, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_stream_send failed", t);
-        }
-    }
-
     private static int routingKey(MemorySegment rid) {
         if (rid == null || rid.address() == 0)
             return -1;
@@ -382,13 +282,6 @@ public final class JvmZlinkStreamServer {
         int b2 = view.get(ValueLayout.JAVA_BYTE, ROUTING_ID_DATA_OFFSET + 2) & 0xFF;
         int b3 = view.get(ValueLayout.JAVA_BYTE, ROUTING_ID_DATA_OFFSET + 3) & 0xFF;
         return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
-    }
-
-    private static int readU32Be(byte[] src, int offset) {
-        return ((src[offset] & 0xFF) << 24)
-          | ((src[offset + 1] & 0xFF) << 16)
-          | ((src[offset + 2] & 0xFF) << 8)
-          | (src[offset + 3] & 0xFF);
     }
 
     private static String endpoint(String host, int port) {

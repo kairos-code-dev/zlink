@@ -6,10 +6,8 @@
 #include <chrono>
 #include <csignal>
 #include <cstdio>
-#include <cstring>
 #include <string>
 #include <thread>
-#include <vector>
 
 namespace {
 
@@ -197,14 +195,7 @@ class zlink_stream_echo_server_t
 
         record_payload_size (payload_size);
 
-        std::vector<unsigned char> payload_copy;
-        payload_copy.resize (payload_size);
-        if (payload_size > 0 && payload)
-            memcpy (&payload_copy[0], payload, payload_size);
-
-        if (zlink_stream_send (
-              server, rid_, payload_size > 0 ? &payload_copy[0] : NULL,
-              payload_size, 0)
+        if (zlink_stream_send_msg (server, rid_, msg_, 0)
             != static_cast<int> (payload_size)) {
             send_error.fetch_add (1, std::memory_order_relaxed);
         }

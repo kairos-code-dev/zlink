@@ -100,108 +100,84 @@ internal sealed class Metrics
 
 internal sealed class StreamEchoServer : IDisposable
 {
-    private const int ZlinkMsgSize = 64;
-    private const int ZlinkStreamDispatchLen32Be = 0x0001;
     private readonly Zlink.Socket _socket;
     private readonly Metrics _metrics;
-    private readonly StreamOnPacketsDelegate _callback;
     private bool _attached;
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate int StreamOnPacketsDelegate(
-        IntPtr routingId,
-        IntPtr messages,
-        nuint messageCount);
-
-    [DllImport("zlink", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int zlink_stream_attach(
-        IntPtr socket,
-        StreamOnPacketsDelegate onPackets,
-        int flags);
-
-    [DllImport("zlink", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int zlink_stream_detach(IntPtr socket);
-
-    [DllImport("zlink", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int zlink_stream_send(
-        IntPtr socket,
-        IntPtr routingId,
-        IntPtr data,
-        nuint size,
-        int flags);
-
-    [DllImport("zlink", CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr zlink_msg_data(IntPtr msg);
-
-    [DllImport("zlink", CallingConvention = CallingConvention.Cdecl)]
-    private static extern nuint zlink_msg_size(IntPtr msg);
 
     internal StreamEchoServer(Zlink.Socket socket, Metrics metrics)
     {
         _socket = socket ?? throw new ArgumentNullException(nameof(socket));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
-        _callback = OnPackets;
     }
 
     internal void Attach()
     {
         if (_attached)
             return;
-        int rc = zlink_stream_attach(
-          _socket.Handle, _callback, ZlinkStreamDispatchLen32Be);
-        if (rc != 0)
-            throw ZlinkException.FromLastError();
+        _socket.AttachStreamLen32Be(OnPackets);
         _attached = true;
     }
 
-    private int OnPackets(IntPtr rid, IntPtr msgs, nuint msgCount)
+    private int OnPackets(uint routingId, Message[] messages)
     {
-        if (rid == IntPtr.Zero || msgs == IntPtr.Zero || msgCount == 0)
+        if (messages == null || messages.Length == 0)
             return 0;
 
-        int count = checked((int) msgCount);
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < messages.Length; i++)
         {
-            IntPtr msg = IntPtr.Add(msgs, i * ZlinkMsgSize);
-            IntPtr payloadPtr = zlink_msg_data(msg);
-            nuint payloadSizeNu = zlink_msg_size(msg);
-            if (payloadSizeNu > int.MaxValue)
+            Message message = messages[i];
+            bool consumed = false;
+            int payloadSize;
+            try
+            {
+                payloadSize = message.Size;
+            }
+            catch
             {
                 _metrics.AddParseError();
                 _metrics.AddProtocolError();
+                message.Dispose();
                 continue;
             }
 
-            int payloadSize = (int) payloadSizeNu;
-            if (payloadSize <= 0)
-                continue;
-
             if (payloadSize > ServerOptions.MaxPayloadSize
-                || payloadPtr == IntPtr.Zero)
+                || payloadSize <= 0)
             {
                 _metrics.AddParseError();
                 _metrics.AddProtocolError();
+                message.Dispose();
                 continue;
             }
 
             if (payloadSize < ServerOptions.MinPayloadSize)
-                continue;
-
-            _metrics.AddRecvMsg();
-            byte[] payloadCopy = new byte[payloadSize];
-            if (payloadSize > 0)
-                Marshal.Copy(payloadPtr, payloadCopy, 0, payloadSize);
-
-            unsafe
             {
-                fixed (byte *payloadPtrCopy = payloadCopy)
+                message.Dispose();
+                continue;
+            }
+
+            try
+            {
+                if (message.AsReadOnlySpan().Length != payloadSize)
                 {
-                    int sent = zlink_stream_send(_socket.Handle, rid,
-                                                 (IntPtr) payloadPtrCopy,
-                                                 (nuint) payloadSize, 0);
-                    if (sent != payloadSize)
-                        _metrics.AddSendError();
+                    _metrics.AddParseError();
+                    _metrics.AddProtocolError();
+                    continue;
                 }
+
+                _metrics.AddRecvMsg();
+                int sent = _socket.StreamSend(routingId, message, SendFlags.None);
+                consumed = true;
+                if (sent != payloadSize)
+                    _metrics.AddSendError();
+            }
+            catch
+            {
+                _metrics.AddSendError();
+            }
+            finally
+            {
+                if (!consumed)
+                    message.Dispose();
             }
         }
 
@@ -214,9 +190,7 @@ internal sealed class StreamEchoServer : IDisposable
             return;
         try
         {
-            int rc = zlink_stream_detach(_socket.Handle);
-            if (rc != 0)
-                throw ZlinkException.FromLastError();
+            _socket.DetachStream();
         }
         finally
         {
@@ -239,11 +213,11 @@ internal static class Program
     private static unsafe void ApplySocketTuning(Zlink.Socket socket,
                                                  ServerOptions options)
     {
-        socket.SetOption(SocketOption.SndBuf, options.SndBuf);
-        socket.SetOption(SocketOption.RcvBuf, options.RcvBuf);
-        socket.SetOption(SocketOption.Backlog, options.Backlog);
-        socket.SetOption(SocketOption.SndHwm, 0);
-        socket.SetOption(SocketOption.RcvHwm, 0);
+        socket.SetOption(SocketOptions.SndBuf, options.SndBuf);
+        socket.SetOption(SocketOptions.RcvBuf, options.RcvBuf);
+        socket.SetOption(SocketOptions.Backlog, options.Backlog);
+        socket.SetOption(SocketOptions.SndHwm, 0);
+        socket.SetOption(SocketOptions.RcvHwm, 0);
 
         int tcpNoDelay = options.TcpNoDelay;
         int rc = zlink_setsockopt(

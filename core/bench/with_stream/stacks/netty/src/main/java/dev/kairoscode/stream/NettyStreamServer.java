@@ -2,7 +2,6 @@ package dev.kairoscode.stream;
 
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
@@ -13,6 +12,8 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
+import io.netty.handler.codec.TooLongFrameException;
 import io.netty.util.ReferenceCountUtil;
 
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -120,13 +121,11 @@ public final class NettyStreamServer
     {
         private final ServerOptions opt;
         private final Metrics metrics;
-        private ByteBuf stash;
 
         EchoHandler(ServerOptions opt_, Metrics metrics_)
         {
             opt = opt_;
             metrics = metrics_;
-            stash = Unpooled.buffer(4096);
         }
 
         @Override
@@ -149,74 +148,47 @@ public final class NettyStreamServer
                 ReferenceCountUtil.release(msg);
                 return;
             }
-            handleFramed(ctx, (ByteBuf) msg);
+            ByteBuf frame = (ByteBuf) msg;
+            final int bodySize = frame.readableBytes() - 4;
+            if (bodySize < MIN_PAYLOAD_SIZE || bodySize > MAX_PAYLOAD_SIZE) {
+                metrics.parseError.incrementAndGet();
+                metrics.protocolError.incrementAndGet();
+                frame.release();
+                ctx.close();
+                return;
+            }
+            if (bodySize > opt.size) {
+                metrics.protocolError.incrementAndGet();
+                frame.release();
+                ctx.close();
+                return;
+            }
+
+            metrics.recvMsgs.incrementAndGet();
+            ctx.write(frame).addListener((ChannelFutureListener) future -> {
+                if (!future.isSuccess()) {
+                    metrics.sendError.incrementAndGet();
+                    future.channel().close();
+                }
+            });
         }
 
-        private void handleFramed(ChannelHandlerContext ctx, ByteBuf incoming)
+        @Override
+        public void channelReadComplete(ChannelHandlerContext ctx)
         {
-            try {
-                stash.writeBytes(incoming);
-            } finally {
-                incoming.release();
-            }
-
-            boolean wrote = false;
-            while (stash.readableBytes() >= 4) {
-                final int base = stash.readerIndex();
-                final int bodySize = stash.getInt(base);
-                if (bodySize < MIN_PAYLOAD_SIZE || bodySize > MAX_PAYLOAD_SIZE) {
-                    metrics.parseError.incrementAndGet();
-                    metrics.protocolError.incrementAndGet();
-                    ctx.close();
-                    return;
-                }
-
-                final int frameSize = 4 + bodySize;
-                if (stash.readableBytes() < frameSize)
-                    break;
-
-                // App-like path: build a complete packet buffer per frame,
-                // then echo that packet.
-                ByteBuf frame = ctx.alloc().buffer(frameSize);
-                frame.writeBytes(stash, frameSize);
-                if (bodySize > opt.size) {
-                    frame.release();
-                    metrics.protocolError.incrementAndGet();
-                    ctx.close();
-                    return;
-                }
-                metrics.recvMsgs.incrementAndGet();
-
-                ctx.write(frame).addListener((ChannelFutureListener) future -> {
-                    if (!future.isSuccess()) {
-                        metrics.sendError.incrementAndGet();
-                        future.channel().close();
-                    }
-                });
-                wrote = true;
-            }
-
-            if (wrote)
-                ctx.flush();
-
-            if (stash.readerIndex() > 0)
-                stash.discardReadBytes();
+            ctx.flush();
         }
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause)
         {
-            metrics.sendError.incrementAndGet();
-            ctx.close();
-        }
-
-        @Override
-        public void handlerRemoved(ChannelHandlerContext ctx)
-        {
-            if (stash != null) {
-                stash.release();
-                stash = null;
+            if (cause instanceof TooLongFrameException) {
+                metrics.parseError.incrementAndGet();
+                metrics.protocolError.incrementAndGet();
+            } else {
+                metrics.sendError.incrementAndGet();
             }
+            ctx.close();
         }
     }
 
@@ -281,6 +253,9 @@ public final class NettyStreamServer
                   @Override
                   protected void initChannel(SocketChannel ch)
                   {
+                      ch.pipeline().addLast(
+                        new LengthFieldBasedFrameDecoder(
+                          MAX_PAYLOAD_SIZE + 4, 0, 4, 0, 0));
                       ch.pipeline().addLast(new EchoHandler(opt, metrics));
                   }
               });

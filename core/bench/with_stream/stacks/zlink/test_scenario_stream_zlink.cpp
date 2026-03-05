@@ -3,83 +3,19 @@
 #include "../../../../include/zlink.h"
 
 #include <atomic>
-#include <array>
 #include <chrono>
 #include <csignal>
 #include <cstdio>
-#include <cstring>
-#include <mutex>
 #include <stdint.h>
 #include <string>
 #include <thread>
-#include <unordered_map>
-#include <vector>
 
 namespace {
 
 static const size_t k_min_payload_size = 16;
 static const size_t k_max_payload_size = 4 * 1024 * 1024;
-static const size_t k_frame_prefix_size = 4;
-static const size_t k_stash_trim_capacity = 64 * 1024;
-static const size_t k_stash_shard_count = 64;
-
-struct stream_buffer_t
-{
-    std::vector<unsigned char> data;
-    size_t offset;
-
-    stream_buffer_t () : data (), offset (0) {}
-
-    size_t available () const { return data.size () - offset; }
-
-    void append (const unsigned char *src_, size_t size_)
-    {
-        if (!src_ || size_ == 0)
-            return;
-        if (offset >= data.size ()) {
-            data.clear ();
-            offset = 0;
-        }
-        const size_t old_size = data.size ();
-        data.resize (old_size + size_);
-        memcpy (&data[old_size], src_, size_);
-    }
-
-    void compact ()
-    {
-        if (offset == 0)
-            return;
-        if (offset >= data.size ()) {
-            data.clear ();
-            offset = 0;
-            if (data.capacity () > k_stash_trim_capacity)
-                std::vector<unsigned char> ().swap (data);
-            return;
-        }
-        if (offset > 4096 || offset * 2 >= data.size ()) {
-            const size_t remain = data.size () - offset;
-            memmove (&data[0], &data[offset], remain);
-            data.resize (remain);
-            offset = 0;
-            if (data.empty () && data.capacity () > k_stash_trim_capacity)
-                std::vector<unsigned char> ().swap (data);
-        }
-    }
-
-    void reset ()
-    {
-        data.clear ();
-        offset = 0;
-        if (data.capacity () > k_stash_trim_capacity)
-            std::vector<unsigned char> ().swap (data);
-    }
-};
-
-struct stash_shard_t
-{
-    std::unordered_map<uint32_t, stream_buffer_t> stashes;
-    std::mutex mu;
-};
+static const unsigned char k_stream_event_connect = 0x01;
+static const unsigned char k_stream_event_disconnect = 0x00;
 
 bool try_load_routing_id_u32 (const zlink_routing_id_t *rid_, uint32_t *value_out_)
 {
@@ -160,8 +96,7 @@ class zlink_stream_echo_server_t
         parse_error (0),
         protocol_error (0),
         send_error (0),
-        stop (false),
-        _stash_shards ()
+        stop (false)
     {
     }
 
@@ -231,35 +166,9 @@ class zlink_stream_echo_server_t
         zlink_stream_echo_server_t *self = g_server_instance;
         if (!self || !rid_ || !msg_)
             return 0;
-        return self->on_packet (rid_, msg_);
-    }
-
-    static int on_packet_static (const zlink_routing_id_t *rid_,
-                                 zlink_msg_t *msgs_,
-                                 size_t msg_count_)
-    {
-        zlink_stream_echo_server_t *self = g_server_instance;
-        if (!self || !rid_ || !msgs_ || msg_count_ == 0)
-            return 0;
-        return self->on_packets (rid_, msgs_, msg_count_);
-    }
-
-    int on_packets (const zlink_routing_id_t *rid_,
-                    zlink_msg_t *msgs_,
-                    size_t msg_count_)
-    {
-        int rc = 0;
-        for (size_t i = 0; i < msg_count_; ++i) {
-            rc = on_packet (rid_, &msgs_[i]);
-            (void) zlink_msg_close (&msgs_[i]);
-        }
+        const int rc = self->on_packet (rid_, msg_);
+        (void) zlink_msg_close (msg_);
         return rc;
-    }
-
-    void record_payload_size (size_t payload_size)
-    {
-        (void) payload_size;
-        recv_msgs.fetch_add (1, std::memory_order_relaxed);
     }
 
     void mark_parse_error ()
@@ -270,91 +179,35 @@ class zlink_stream_echo_server_t
 
     int on_packet (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
     {
-        const unsigned char *payload =
-          static_cast<const unsigned char *> (zlink_msg_data (msg_));
-        const size_t payload_size = zlink_msg_size (msg_);
-
         uint32_t routing_id_value = 0;
         if (!try_load_routing_id_u32 (rid_, &routing_id_value)) {
             mark_parse_error ();
             return 0;
         }
+        (void) routing_id_value;
 
-        std::vector<std::vector<unsigned char> > complete_frames;
-        bool invalid_frame = false;
-        bool dropped_non_data = false;
-        {
-            stash_shard_t &shard =
-              _stash_shards[routing_id_value % k_stash_shard_count];
-            std::lock_guard<std::mutex> lk (shard.mu);
-            stream_buffer_t &stash = shard.stashes[routing_id_value];
-            stash.append (payload, payload_size);
-
-            size_t consumed = 0;
-            const size_t available = stash.available ();
-            while (consumed + k_frame_prefix_size <= available) {
-                const unsigned char *frame = &stash.data[stash.offset + consumed];
-                const size_t body_size = static_cast<size_t> (
-                  stream_echo::load_u32_be (frame));
-                if (body_size < k_min_payload_size || body_size > k_max_payload_size) {
-                    // STREAM transport may deliver non-data notifications on
-                    // the same channel. If the stash is at frame boundary and
-                    // header is invalid, drop the segment without counting it
-                    // as protocol failure.
-                    if (consumed == 0) {
-                        dropped_non_data = true;
-                    } else {
-                        invalid_frame = true;
-                    }
-                    break;
-                }
-
-                const size_t frame_size = k_frame_prefix_size + body_size;
-                if (consumed + frame_size > available)
-                    break;
-
-                record_payload_size (body_size);
-                complete_frames.push_back (std::vector<unsigned char> (frame_size));
-                memcpy (&complete_frames.back ()[0], frame, frame_size);
-                consumed += frame_size;
-            }
-
-            if (invalid_frame || dropped_non_data) {
-                stash.reset ();
-                if (stash.available () == 0)
-                    shard.stashes.erase (routing_id_value);
-            } else if (consumed > 0) {
-                stash.offset += consumed;
-                stash.compact ();
-                if (stash.available () == 0)
-                    shard.stashes.erase (routing_id_value);
-            }
-        }
-
-        if (invalid_frame) {
-            mark_parse_error ();
-            return 0;
-        }
-        if (dropped_non_data)
+        const unsigned char *payload =
+          static_cast<const unsigned char *> (zlink_msg_data (msg_));
+        const size_t payload_size = zlink_msg_size (msg_);
+        if (payload_size == 0)
             return 0;
 
-        for (size_t i = 0; i < complete_frames.size (); ++i) {
-            const std::vector<unsigned char> &frame = complete_frames[i];
-            if (zlink_stream_send (server, rid_, &frame[0], frame.size (), 0)
-                != static_cast<int> (frame.size ())) {
-                send_error.fetch_add (1, std::memory_order_relaxed);
-            }
+        if (payload_size == 1 && payload
+            && (payload[0] == k_stream_event_connect
+                || payload[0] == k_stream_event_disconnect)) {
+            return 0;
+        }
+
+        recv_msgs.fetch_add (1, std::memory_order_relaxed);
+        if (zlink_stream_send_msg (server, rid_, msg_, 0)
+            != static_cast<int> (payload_size)) {
+            send_error.fetch_add (1, std::memory_order_relaxed);
         }
         return 0;
     }
 
     void cleanup ()
     {
-        for (size_t i = 0; i < k_stash_shard_count; ++i) {
-            std::lock_guard<std::mutex> lk (_stash_shards[i].mu);
-            _stash_shards[i].stashes.clear ();
-        }
-
         if (server) {
             zlink_close (server);
             server = NULL;
@@ -376,7 +229,6 @@ class zlink_stream_echo_server_t
     std::atomic<long> protocol_error;
     std::atomic<long> send_error;
 
-    std::array<stash_shard_t, k_stash_shard_count> _stash_shards;
     std::atomic<bool> stop;
 };
 

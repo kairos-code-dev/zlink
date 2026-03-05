@@ -7,8 +7,6 @@
 #include <atomic>
 #include <csignal>
 #include <cstdio>
-#include <cstring>
-#include <deque>
 #include <memory>
 #include <string>
 #include <thread>
@@ -59,10 +57,7 @@ class asio_session_t : public std::enable_shared_from_this<asio_session_t>
   private:
     void start_read_chunk ();
     void on_read_chunk (const boost::system::error_code &ec, size_t bytes);
-    void append_to_stash (const unsigned char *data, size_t size);
-    void compact_stash ();
-    void process_complete_frames ();
-    void start_write_next ();
+    void start_write_chunk ();
     void on_write (const boost::system::error_code &ec, size_t bytes);
     void close_internal ();
 
@@ -71,12 +66,8 @@ class asio_session_t : public std::enable_shared_from_this<asio_session_t>
     boost::asio::strand<boost::asio::io_context::executor_type> strand;
 
     bool closed;
-    bool writing;
-
+    size_t pending_echo_size;
     std::array<unsigned char, 16384> read_chunk;
-    std::vector<unsigned char> rx_stash;
-    size_t rx_offset;
-    std::deque<std::vector<unsigned char> > tx_queue;
 };
 
 class asio_echo_server_t
@@ -185,16 +176,6 @@ class asio_echo_server_t
             recv_msgs.fetch_add (1, std::memory_order_relaxed);
     }
 
-    void on_parse_error ()
-    {
-        parse_error.fetch_add (1, std::memory_order_relaxed);
-    }
-
-    void on_protocol_error ()
-    {
-        protocol_error.fetch_add (1, std::memory_order_relaxed);
-    }
-
     void on_send_error ()
     {
         send_error.fetch_add (1, std::memory_order_relaxed);
@@ -210,8 +191,6 @@ class asio_echo_server_t
         boost::asio::socket_base::receive_buffer_size rcv (opt.rcvbuf);
         socket.set_option (rcv, ec);
     }
-
-    size_t payload_size () const { return opt.size; }
 
   private:
     void start_accept ()
@@ -254,20 +233,14 @@ asio_session_t::asio_session_t (asio_echo_server_t &owner_, boost::asio::io_cont
       socket (io_),
       strand (boost::asio::make_strand (io_)),
       closed (false),
-      writing (false),
-      read_chunk (),
-      rx_stash (),
-      rx_offset (0),
-      tx_queue ()
+      pending_echo_size (0),
+      read_chunk ()
 {
-    rx_stash.reserve (4096);
 }
 
 void asio_session_t::start ()
 {
     owner.on_session_open ();
-    // Stream-compare server is framed-only: 4-byte big-endian length + payload.
-    // App-like path: read chunks, reassemble complete packets in stash, then echo.
     start_read_chunk ();
 }
 
@@ -297,84 +270,19 @@ void asio_session_t::on_read_chunk (const boost::system::error_code &ec,
         return;
     }
 
-    append_to_stash (&read_chunk[0], bytes);
-    process_complete_frames ();
-    start_read_chunk ();
+    pending_echo_size = bytes;
+    owner.on_recv_frame (bytes);
+    start_write_chunk ();
 }
 
-void asio_session_t::append_to_stash (const unsigned char *data, size_t size)
+void asio_session_t::start_write_chunk ()
 {
-    if (!data || size == 0)
+    if (closed || pending_echo_size == 0)
         return;
 
-    const size_t old_size = rx_stash.size ();
-    rx_stash.resize (old_size + size);
-    std::memcpy (&rx_stash[old_size], data, size);
-}
-
-void asio_session_t::compact_stash ()
-{
-    if (rx_offset == 0)
-        return;
-    if (rx_offset >= rx_stash.size ()) {
-        rx_stash.clear ();
-        rx_offset = 0;
-        return;
-    }
-    if (rx_offset > 4096 || rx_offset * 2 >= rx_stash.size ()) {
-        const size_t remain = rx_stash.size () - rx_offset;
-        std::memmove (&rx_stash[0], &rx_stash[rx_offset], remain);
-        rx_stash.resize (remain);
-        rx_offset = 0;
-    }
-}
-
-void asio_session_t::process_complete_frames ()
-{
-    while (!closed && rx_stash.size () - rx_offset >= 4) {
-        const unsigned char *frame = &rx_stash[rx_offset];
-        const size_t body_size = static_cast<size_t> (
-          stream_echo::load_u32_be (frame));
-
-        if (body_size < k_min_payload_size || body_size > k_max_payload_size) {
-            owner.on_parse_error ();
-            owner.on_protocol_error ();
-            close_internal ();
-            return;
-        }
-        if (body_size > owner.payload_size ()) {
-            owner.on_protocol_error ();
-            close_internal ();
-            return;
-        }
-
-        const size_t frame_size = 4 + body_size;
-        if (rx_stash.size () - rx_offset < frame_size)
-            break;
-
-        owner.on_recv_frame (body_size);
-
-        std::vector<unsigned char> frame_copy (frame_size);
-        std::memcpy (&frame_copy[0], frame, frame_size);
-        tx_queue.push_back (std::move (frame_copy));
-
-        rx_offset += frame_size;
-        compact_stash ();
-    }
-
-    start_write_next ();
-}
-
-void asio_session_t::start_write_next ()
-{
-    if (closed || writing || tx_queue.empty ())
-        return;
-
-    writing = true;
     const std::shared_ptr<asio_session_t> self = shared_from_this ();
-    std::vector<unsigned char> &frame = tx_queue.front ();
     boost::asio::async_write (
-      socket, boost::asio::buffer (&frame[0], frame.size ()),
+      socket, boost::asio::buffer (&read_chunk[0], pending_echo_size),
       boost::asio::bind_executor (
         strand,
         [self] (const boost::system::error_code &ec, size_t bytes) {
@@ -387,21 +295,14 @@ void asio_session_t::on_write (const boost::system::error_code &ec, size_t bytes
     if (closed)
         return;
 
-    if (tx_queue.empty ()) {
-        writing = false;
-        return;
-    }
-
-    const size_t frame_size = tx_queue.front ().size ();
-    if (ec || bytes != frame_size) {
+    if (ec || bytes != pending_echo_size) {
         owner.on_send_error ();
         close_internal ();
         return;
     }
 
-    tx_queue.pop_front ();
-    writing = false;
-    start_write_next ();
+    pending_echo_size = 0;
+    start_read_chunk ();
 }
 
 void asio_session_t::close ()
@@ -415,9 +316,7 @@ void asio_session_t::close_internal ()
     if (closed)
         return;
     closed = true;
-    tx_queue.clear ();
-    rx_stash.clear ();
-    rx_offset = 0;
+    pending_echo_size = 0;
 
     boost::system::error_code ec;
     socket.cancel (ec);

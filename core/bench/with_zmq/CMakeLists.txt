@@ -83,6 +83,9 @@ endfunction()
 function(add_zlink_bench_single name source)
     add_executable(${name} ${source})
     target_link_libraries(${name} PRIVATE libzlink Threads::Threads)
+    if(NOT WIN32)
+        target_link_libraries(${name} PRIVATE dl)
+    endif()
     target_include_directories(${name} PRIVATE ${ZLINK_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/single/common)
     target_compile_options(${name} PRIVATE ${BENCH_CXX_FLAGS})
     target_compile_features(${name} PRIVATE cxx_std_17)
@@ -100,6 +103,9 @@ endfunction()
 function(add_zlink_bench_multi name source)
     add_executable(${name} ${source})
     target_link_libraries(${name} PRIVATE libzlink Threads::Threads)
+    if(NOT WIN32)
+        target_link_libraries(${name} PRIVATE dl)
+    endif()
     target_include_directories(${name} PRIVATE ${ZLINK_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/multi/common)
     target_compile_options(${name} PRIVATE ${BENCH_CXX_FLAGS})
     target_compile_features(${name} PRIVATE cxx_std_17)
@@ -130,16 +136,26 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
                     multi/zlink/bench_zlink_multi_router_router.cpp)
     add_zlink_bench_multi(comp_zlink_multi_pubsub
                     multi/zlink/bench_zlink_multi_pubsub.cpp)
+    add_zlink_bench_multi(comp_zlink_multi_dealer_dealer_client
+                    multi/zlink/bench_zlink_multi_dealer_dealer_client.cpp)
+    add_zlink_bench_multi(comp_zlink_multi_dealer_dealer_server
+                    multi/zlink/bench_zlink_multi_dealer_dealer_server.cpp)
+    add_zlink_bench_multi(comp_zlink_multi_dealer_router_client
+                    multi/zlink/bench_zlink_multi_dealer_router_client.cpp)
+    add_zlink_bench_multi(comp_zlink_multi_dealer_router_server
+                    multi/zlink/bench_zlink_multi_dealer_router_server.cpp)
+    add_zlink_bench_multi(comp_zlink_multi_router_router_client
+                    multi/zlink/bench_zlink_multi_router_router_client.cpp)
+    add_zlink_bench_multi(comp_zlink_multi_router_router_server
+                    multi/zlink/bench_zlink_multi_router_router_server.cpp)
+    add_zlink_bench_multi(comp_zlink_multi_pubsub_client
+                    multi/zlink/bench_zlink_multi_pubsub_client.cpp)
+    add_zlink_bench_multi(comp_zlink_multi_pubsub_server
+                    multi/zlink/bench_zlink_multi_pubsub_server.cpp)
     add_zlink_bench_multi(comp_zlink_multi_stream_server
-                    ${CMAKE_SOURCE_DIR}/core/perf/multi/current/perf_multi_stream_server.cpp)
-    add_executable(comp_zlink_multi_stream
-                   ${CMAKE_SOURCE_DIR}/core/perf/common/streamclient/perf_stream_client.cpp)
-    target_link_libraries(comp_zlink_multi_stream PRIVATE
-                          Threads::Threads
-                          OpenSSL::SSL
-                          OpenSSL::Crypto)
-    target_compile_options(comp_zlink_multi_stream PRIVATE ${BENCH_CXX_FLAGS})
-    target_compile_features(comp_zlink_multi_stream PRIVATE cxx_std_17)
+                    multi/zlink/bench_zlink_multi_stream_server.cpp)
+    add_zlink_bench_multi(comp_zlink_multi_stream
+                    multi/zlink/bench_zlink_multi_stream.cpp)
 else()
     message(WARNING "zlink headers not found at ${ZLINK_INCLUDE_DIR}")
 endif()

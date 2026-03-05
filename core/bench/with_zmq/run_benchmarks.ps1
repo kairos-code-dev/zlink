@@ -41,7 +41,7 @@ Options:
   -ResultsDir PATH             Override result root directory.
   -ResultsTag NAME             Optional tag in saved result filename.
   -Runs N                      Iterations per pattern/transport/size (default: 1).
-  -Duration N                  Override single duration seconds (default: 2).
+  -Duration N                  Override single duration seconds (default: 5).
   -Hwm N                       Override PERF_SINGLE_HWM (default: 1000 in binary).
   -SendHwm N                   Override PERF_SINGLE_SNDHWM (fallback: -Hwm).
   -RecvHwm N                   Override PERF_SINGLE_RCVHWM (fallback: -Hwm).
@@ -282,7 +282,7 @@ if ($Transports -and $Transports -notmatch '^[a-z]+(,[a-z]+)*$') {
 if (-not $IoThreads) { $IoThreads = if ($env:PERF_IO_THREADS) { $env:PERF_IO_THREADS } else { $env:BENCH_IO_THREADS } }
 if (-not $MsgSizes) { $MsgSizes = if ($env:PERF_MSG_SIZES) { $env:PERF_MSG_SIZES } else { $env:BENCH_MSG_SIZES } }
 if (-not $Transports) { $Transports = if ($env:PERF_TRANSPORTS) { $env:PERF_TRANSPORTS } else { $env:BENCH_TRANSPORTS } }
-if (-not $Duration) { $Duration = if ($env:PERF_SINGLE_DURATION_SECONDS) { $env:PERF_SINGLE_DURATION_SECONDS } else { "2" } }
+if (-not $Duration) { $Duration = if ($env:PERF_SINGLE_DURATION_SECONDS) { $env:PERF_SINGLE_DURATION_SECONDS } else { "5" } }
 if (-not $Hwm) { $Hwm = $env:PERF_SINGLE_HWM }
 if (-not $SendHwm) { $SendHwm = $env:PERF_SINGLE_SNDHWM }
 if (-not $RecvHwm) { $RecvHwm = $env:PERF_SINGLE_RCVHWM }

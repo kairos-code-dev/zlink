@@ -2,9 +2,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MULTI_PATTERNS="MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_STREAM"
-MULTI_TRANSPORTS="tcp,tls,ws,wss"
-IFS=',' read -r -a MULTI_PATTERN_LIST <<< "${MULTI_PATTERNS}"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+
+PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE"
+TRANSPORTS_DEFAULT="tcp,tls,ws,wss"
+IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
 
 SECONDS=0
 SHOW_TOTAL_TIME=0
@@ -25,7 +27,7 @@ print_total_time() {
   if [[ "${SHOW_TOTAL_TIME}" -ne 1 ]]; then
     return
   fi
-  if [[ "${BENCH_SUPPRESS_TOTAL_TIME:-0}" == "1" ]]; then
+  if [[ "${BENCH_SUPPRESS_TOTAL_TIME:-0}" == "1" || "${PERF_SUPPRESS_TOTAL_TIME:-0}" == "1" ]]; then
     return
   fi
   local status="${1:-0}"
@@ -34,92 +36,606 @@ print_total_time() {
 }
 trap 'print_total_time $?' EXIT
 
+is_uint() {
+  local value="${1:-}"
+  [[ "${value}" =~ ^[0-9]+$ ]]
+}
+
+detect_platform_tag() {
+  local platform="linux"
+  case "$(uname -s)" in
+    Darwin*)
+      platform="macos"
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      platform="windows"
+      ;;
+  esac
+  printf '%s' "${platform}"
+}
+
+detect_arch_tag() {
+  local arch="$(uname -m)"
+  case "${arch}" in
+    x86_64|amd64)
+      echo "x64"
+      ;;
+    aarch64|arm64)
+      echo "arm64"
+      ;;
+    *)
+      echo "${arch}"
+      ;;
+  esac
+}
+
+sleep_ms() {
+  local delay_ms="${1:-0}"
+  if [[ -z "${delay_ms}" || ! "${delay_ms}" =~ ^[0-9]+$ || "${delay_ms}" -le 0 ]]; then
+    return
+  fi
+  local sec=$(( delay_ms / 1000 ))
+  local ms=$(( delay_ms % 1000 ))
+  sleep "${sec}.$(printf '%03d' "${ms}")"
+}
+
+default_build_dir() {
+  local platform
+  local arch
+  platform="$(detect_platform_tag)"
+  arch="$(detect_arch_tag)"
+  if [[ "${platform}" == "windows" ]]; then
+    echo "${ROOT_DIR}/core/build/windows-x64"
+    return
+  fi
+  if [[ -d "${ROOT_DIR}/core/build/bin" ]]; then
+    echo "${ROOT_DIR}/core/build"
+  else
+    echo "${ROOT_DIR}/core/build/${platform}-${arch}"
+  fi
+}
+
 usage() {
   cat <<'USAGE'
 Usage: core/bench/with_zmq/run_benchmarks_multi.sh [options]
 
-Run multi-socket benchmark patterns in sequence.
-Default patterns:
-  MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_STREAM
-Default transports:
-  tcp,tls,ws,wss
-  (with_zmq direct comparison is tcp-only; non-tcp is skipped with warning)
+Run multi-socket benchmark patterns with libzmq vs zlink comparison.
+Default PATTERN is:
+  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE
+Legacy MULTI_ prefix is accepted and stripped automatically.
+By default, multi-bench keeps warmup at 2s and duration window at 5s.
+By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
 
 Options:
-  --pattern NAME[,NAME...]     Pattern list (MULTI_* only)
-  --multi-clients N            Force clients for all patterns
-  --multi-inflight N           Alias for --inflight
-  --results-dir PATH           Forwarded to multi runner (results root override)
-  --results-tag NAME           Forwarded to multi runner (result filename tag)
-  --output PATH                Forwarded to multi runner (tee console log file)
-  --help                       Show help
+  --pattern NAME         Benchmark pattern (default: all patterns above). Legacy MULTI_ prefix is optional.
+                         Alias: stream/streams => STREAM,STREAM_CALLBACK,STREAM_LEN32BE
+  --help                 Show this help.
+  --reuse-build          Reuse existing build directory as-is (skip auto-build).
+  --clean-build          Remove build directory and do a clean build.
+  --results-dir PATH     Override results root directory.
+  --results-tag NAME     Optional tag appended to the results filename.
+  --build-dir PATH       Override build directory.
+  --output PATH          Tee results to a file.
+  --runs N               Iterations per configuration (default: 1).
+  --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
+  --io-threads N         Legacy alias that sets both server/client io-threads.
+  --server-io-threads N  Set server io-threads (mapped to common io-threads).
+  --client-io-threads N  Set client io-threads (mapped to common io-threads).
+  --msg-sizes LIST       Comma-separated message sizes.
+  --transports LIST      Comma-separated transports.
+  --warmup N             Optional override for multi warmup seconds (default 2).
+  --duration N           Optional override for multi duration seconds (default 5).
+  --clients N            Override number of client sockets per pattern (default: 100, stream=10000).
+  --hwm N                Override HWM (default: 100, stream=10).
+  --send-hwm N           Accepted for compatibility (mapped to --hwm when --hwm absent).
+  --recv-hwm N           Accepted for compatibility (mapped to --hwm when --hwm absent).
+  --sndtimeo N           Override send timeout ms (default: 200).
+  --rcvtimeo N           Override recv timeout ms (default: 200).
+  --send-timeout-ms N    Alias of --sndtimeo.
+  --recv-timeout-ms N    Alias of --rcvtimeo.
+  --connect-concurrency N
+                         Override concurrent connect count.
+  --transport-transition-ms N
+                         Override BENCH_TRANSPORT_TRANSITION_MS (default: 3000).
+  --pattern-transition-ms N
+                         Override BENCH_MULTI_PATTERN_TRANSITION_MS (default: 3000).
+  --server-ready-timeout-ms N
+                         Override BENCH_SERVER_READY_TIMEOUT_MS (default: 10000).
+  --connect-ready-timeout-ms N
+                         Override connect-ready timeout ms (default: 5000).
+  --monitor-hwm N        Override monitor hwm (default: 1000).
+  --server-shutdown-timeout-ms N
+                         Override BENCH_SERVER_SHUTDOWN_TIMEOUT_MS (default: 5000).
+  --server-bind-port N
+                         Override BENCH_MULTI_SERVER_BIND_PORT (default: 0=auto).
 
-Other options are forwarded to:
-  core/bench/with_zmq/multi/run_benchmarks.sh
+Notes:
+  - result is saved under results/multi/report/.
+  - unsupported patterns in with_zmq (GATEWAY, SPOT) are skipped.
+  - STREAM_CALLBACK and STREAM_LEN32BE are mapped to STREAM.
 USAGE
 }
 
-HAS_EXPLICIT_TRANSPORT=0
-HAS_EXPLICIT_CLIENTS=0
-MULTI_CLIENTS="${BENCH_MULTI_CLIENTS:-}"
-MULTI_INFLIGHT="${BENCH_MULTI_INFLIGHT:-}"
-TRANSPORTS="${BENCH_TRANSPORTS:-${MULTI_TRANSPORTS}}"
+add_explicit_pattern_unique() {
+  local pattern="${1:-}"
+  if [[ -z "${pattern}" ]]; then
+    return
+  fi
+  local existing
+  for existing in "${EXPLICIT_PATTERNS[@]}"; do
+    if [[ "${existing}" == "${pattern}" ]]; then
+      return
+    fi
+  done
+  EXPLICIT_PATTERNS+=("${pattern}")
+}
+
+expand_and_add_explicit_pattern() {
+  local raw="${1:-}"
+  raw="${raw#"${raw%%[![:space:]]*}"}"
+  raw="${raw%"${raw##*[![:space:]]}"}"
+  raw="$(printf '%s' "${raw}" | tr '[:lower:]' '[:upper:]')"
+  if [[ -z "${raw}" ]]; then
+    return
+  fi
+
+  local base="${raw}"
+  if [[ "${base}" == MULTI_* ]]; then
+    base="${base#MULTI_}"
+  fi
+
+  case "${base}" in
+    STREAM|STREAMS)
+      add_explicit_pattern_unique "STREAM"
+      add_explicit_pattern_unique "STREAM_CALLBACK"
+      add_explicit_pattern_unique "STREAM_LEN32BE"
+      ;;
+    *)
+      add_explicit_pattern_unique "${base}"
+      ;;
+  esac
+}
+
+normalize_with_zmq_pattern() {
+  local raw="${1:-}"
+  local up
+  up="$(printf '%s' "${raw}" | tr '[:lower:]' '[:upper:]')"
+  if [[ "${up}" == MULTI_* ]]; then
+    up="${up#MULTI_}"
+  fi
+
+  case "${up}" in
+    DEALER_DEALER)
+      echo "dealer_dealer"
+      ;;
+    DEALER_ROUTER)
+      echo "dealer_router"
+      ;;
+    ROUTER_ROUTER)
+      echo "router_router"
+      ;;
+    PUBSUB)
+      echo "pubsub"
+      ;;
+    STREAM|STREAM_CALLBACK|STREAM_LEN32BE)
+      echo "stream"
+      ;;
+    GATEWAY|SPOT)
+      echo ""
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+resolve_hwm_value() {
+  local pattern="${1:-}"
+  local explicit_hwm="${2:-}"
+  local explicit_send_hwm="${3:-}"
+  local explicit_recv_hwm="${4:-}"
+  local default_hwm="${5:-100}"
+  local default_stream_hwm="${6:-10}"
+
+  if [[ -n "${explicit_hwm}" ]]; then
+    echo "${explicit_hwm}"
+    return
+  fi
+
+  if [[ -n "${explicit_send_hwm}" && -n "${explicit_recv_hwm}" && "${explicit_send_hwm}" != "${explicit_recv_hwm}" ]]; then
+    echo "Error: with_zmq multi runner has a single HWM knob; --send-hwm and --recv-hwm must match." >&2
+    exit 1
+  fi
+
+  if [[ -n "${explicit_send_hwm}" ]]; then
+    echo "${explicit_send_hwm}"
+    return
+  fi
+  if [[ -n "${explicit_recv_hwm}" ]]; then
+    echo "${explicit_recv_hwm}"
+    return
+  fi
+
+  if [[ "${pattern}" == "stream" ]]; then
+    echo "${default_stream_hwm}"
+  else
+    echo "${default_hwm}"
+  fi
+}
+
+resolve_clients_value() {
+  local pattern="${1:-}"
+  local explicit_clients="${2:-}"
+  local default_clients="${3:-100}"
+  local default_stream_clients="${4:-10000}"
+
+  if [[ -n "${explicit_clients}" ]]; then
+    echo "${explicit_clients}"
+    return
+  fi
+
+  if [[ "${pattern}" == "stream" ]]; then
+    echo "${default_stream_clients}"
+  else
+    echo "${default_clients}"
+  fi
+}
+
+resolve_io_threads_value() {
+  local pattern="${1:-}"
+  local server_io="${2:-}"
+  local client_io="${3:-}"
+  local default_io="${4:-2}"
+  local default_stream_io="${5:-4}"
+
+  if [[ -n "${server_io}" && -n "${client_io}" ]]; then
+    if [[ "${server_io}" == "${client_io}" ]]; then
+      echo "${server_io}"
+      return
+    fi
+    if (( server_io > client_io )); then
+      echo "${server_io}"
+    else
+      echo "${client_io}"
+    fi
+    return
+  fi
+
+  if [[ -n "${server_io}" ]]; then
+    echo "${server_io}"
+    return
+  fi
+  if [[ -n "${client_io}" ]]; then
+    echo "${client_io}"
+    return
+  fi
+
+  if [[ "${pattern}" == "stream" ]]; then
+    echo "${default_stream_io}"
+  else
+    echo "${default_io}"
+  fi
+}
+
+resolve_connect_concurrency() {
+  local explicit_value="${1:-}"
+  local clients="${2:-}"
+  if [[ -n "${explicit_value}" ]]; then
+    echo "${explicit_value}"
+    return
+  fi
+  if [[ "${clients}" =~ ^[0-9]+$ ]] && (( clients >= 10000 )); then
+    echo "1024"
+  else
+    echo "128"
+  fi
+}
+
+set_build_mode() {
+  local next_mode="${1:-}"
+  if [[ "${next_mode}" != "incremental" && "${next_mode}" != "reuse" && "${next_mode}" != "clean" ]]; then
+    echo "Error: invalid build mode: ${next_mode}" >&2
+    exit 1
+  fi
+  if [[ "${BUILD_MODE_EXPLICIT}" -eq 1 && "${BUILD_MODE}" != "${next_mode}" ]]; then
+    echo "Error: --reuse-build and --clean-build are mutually exclusive." >&2
+    exit 1
+  fi
+  BUILD_MODE="${next_mode}"
+  BUILD_MODE_EXPLICIT=1
+}
+
+BUILD_MODE="incremental"
+BUILD_MODE_EXPLICIT=0
+
+WARMUP_SECONDS="${PERF_WARMUP_SECONDS:-2}"
+DURATION_SECONDS="${PERF_DURATION_SECONDS:-5}"
+RUNS="1"
+TRANSPORTS="${PERF_TRANSPORTS:-${TRANSPORTS_DEFAULT}}"
+MSG_SIZES="${PERF_MSG_SIZES:-}"
+RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
+RESULTS_TAG=""
+BUILD_DIR=""
+OUTPUT_FILE=""
+PIN_CPU=0
+
+CLIENTS="${PERF_CLIENTS:-}"
+HWM="${PERF_HWM:-}"
+SNDHWM="${PERF_SNDHWM:-}"
+RCVHWM="${PERF_RCVHWM:-}"
+SNDTIMEO_MS="${PERF_SNDTIMEO_MS:-200}"
+RCVTIMEO_MS="${PERF_RCVTIMEO_MS:-200}"
+CONNECT_CONCURRENCY="${PERF_CONNECT_CONCURRENCY:-}"
+TRANSPORT_TRANSITION_MS="${PERF_TRANSPORT_TRANSITION_MS:-3000}"
+PATTERN_TRANSITION_MS="${PERF_PATTERN_TRANSITION_MS:-3000}"
+SERVER_READY_TIMEOUT_MS="${PERF_SERVER_READY_TIMEOUT_MS:-10000}"
+CONNECT_READY_TIMEOUT_MS="${PERF_CONNECT_READY_TIMEOUT_MS:-5000}"
+MONITOR_HWM="${PERF_MONITOR_HWM:-1000}"
+SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}"
+SERVER_BIND_PORT="${PERF_SERVER_BIND_PORT:-0}"
+
+EFFECTIVE_DEFAULT_CLIENTS="${PERF_DEFAULT_CLIENTS:-100}"
+EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_DEFAULT_STREAM_CLIENTS:-10000}"
+EFFECTIVE_DEFAULT_HWM="${PERF_DEFAULT_HWM:-100}"
+EFFECTIVE_DEFAULT_STREAM_HWM="${PERF_DEFAULT_STREAM_HWM:-10}"
+EFFECTIVE_DEFAULT_IO_THREADS="${PERF_DEFAULT_IO_THREADS:-2}"
+EFFECTIVE_DEFAULT_STREAM_IO_THREADS="${PERF_DEFAULT_STREAM_IO_THREADS:-4}"
+SERVER_IO_THREADS="${PERF_SERVER_IO_THREADS:-}"
+CLIENT_IO_THREADS="${PERF_CLIENT_IO_THREADS:-}"
+
 EXPLICIT_PATTERNS=()
-SCRIPT_ARGS=()
 
 while [[ $# -gt 0 ]]; do
-  case "$1" in
+  arg="$1"
+  case "${arg}" in
     -h|--help)
       usage
       exit 0
+      ;;
+    --transports)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: ${arg} requires a value." >&2
+        exit 1
+      fi
+      TRANSPORTS="${2}"
+      shift 2
+      ;;
+    --msg-sizes)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: ${arg} requires a value." >&2
+        exit 1
+      fi
+      MSG_SIZES="${2}"
+      shift 2
       ;;
     --pattern)
       if [[ $# -lt 2 ]]; then
         echo "Error: --pattern requires a value." >&2
         exit 1
       fi
-      IFS=',' read -r -a pattern_list <<< "$2"
-      for p in "${pattern_list[@]}"; do
-        if [[ -n "${p}" ]]; then
-          EXPLICIT_PATTERNS+=( "${p}" )
-        fi
-      done
+      if [[ "$(printf '%s' "$2" | tr '[:lower:]' '[:upper:]')" == "ALL" ]]; then
+        EXPLICIT_PATTERNS=("${PATTERN_LIST[@]}")
+      else
+        IFS=',' read -r -a pattern_list <<< "$2"
+        for p in "${pattern_list[@]}"; do
+          expand_and_add_explicit_pattern "${p}"
+        done
+      fi
       shift 2
       ;;
-    --transports|--transport)
-      HAS_EXPLICIT_TRANSPORT=1
+    --results-tag)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      TRANSPORTS="$2"
+      RESULTS_TAG="${2}"
       shift 2
       ;;
-    --multi-clients|--clients)
-      HAS_EXPLICIT_CLIENTS=1
+    --reuse-build)
+      set_build_mode "reuse"
+      shift
+      ;;
+    --clean-build)
+      set_build_mode "clean"
+      shift
+      ;;
+    --runs)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      MULTI_CLIENTS="${2}"
+      RUNS="${2}"
       shift 2
       ;;
-    --multi-inflight)
+    --runs=*)
+      RUNS="${1#*=}"
+      shift
+      ;;
+    --warmup)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      MULTI_INFLIGHT="${2}"
+      WARMUP_SECONDS="${2}"
+      shift 2
+      ;;
+    --duration)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      DURATION_SECONDS="${2}"
+      shift 2
+      ;;
+    --pin-cpu)
+      PIN_CPU=1
+      shift
+      ;;
+    --results-dir)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      RESULTS_DIR_OVERRIDE="${2}"
+      shift 2
+      ;;
+    --build-dir)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      BUILD_DIR="${2}"
+      shift 2
+      ;;
+    --output)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      OUTPUT_FILE="${2}"
+      shift 2
+      ;;
+    --io-threads)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      SERVER_IO_THREADS="${2}"
+      CLIENT_IO_THREADS="${2}"
+      shift 2
+      ;;
+    --server-io-threads)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      SERVER_IO_THREADS="${2}"
+      shift 2
+      ;;
+    --client-io-threads)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      CLIENT_IO_THREADS="${2}"
+      shift 2
+      ;;
+    --clients)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      CLIENTS="${2}"
+      shift 2
+      ;;
+    --hwm)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      HWM="${2}"
+      shift 2
+      ;;
+    --send-hwm)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      SNDHWM="${2}"
+      shift 2
+      ;;
+    --recv-hwm)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      RCVHWM="${2}"
+      shift 2
+      ;;
+    --sndtimeo|--send-timeout-ms)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      SNDTIMEO_MS="${2}"
+      shift 2
+      ;;
+    --rcvtimeo|--recv-timeout-ms)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      RCVTIMEO_MS="${2}"
+      shift 2
+      ;;
+    --connect-concurrency)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      CONNECT_CONCURRENCY="${2}"
+      shift 2
+      ;;
+    --transport-transition-ms)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      TRANSPORT_TRANSITION_MS="${2}"
+      shift 2
+      ;;
+    --pattern-transition-ms)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      PATTERN_TRANSITION_MS="${2}"
+      shift 2
+      ;;
+    --server-ready-timeout-ms)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      SERVER_READY_TIMEOUT_MS="${2}"
+      shift 2
+      ;;
+    --connect-ready-timeout-ms)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      CONNECT_READY_TIMEOUT_MS="${2}"
+      shift 2
+      ;;
+    --monitor-hwm)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      MONITOR_HWM="${2}"
+      shift 2
+      ;;
+    --server-shutdown-timeout-ms)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      SERVER_SHUTDOWN_TIMEOUT_MS="${2}"
+      shift 2
+      ;;
+    --server-bind-port)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      SERVER_BIND_PORT="${2}"
       shift 2
       ;;
     --*)
-      if [[ $# -ge 2 && "${2}" != --* ]]; then
-        SCRIPT_ARGS+=( "$1" "$2" )
-        shift 2
-      else
-        SCRIPT_ARGS+=( "$1" )
-        shift
-      fi
+      echo "Error: unknown option: $1" >&2
+      usage >&2
+      exit 1
       ;;
     *)
       echo "Error: unknown positional argument: $1" >&2
@@ -129,51 +645,257 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-PATTERNS=("${MULTI_PATTERN_LIST[@]}")
+if ! is_uint "${RUNS}" || (( RUNS < 1 )); then
+  echo "Error: --runs must be a positive integer." >&2
+  exit 1
+fi
+if ! is_uint "${WARMUP_SECONDS}"; then
+  echo "Error: --warmup must be a non-negative integer." >&2
+  exit 1
+fi
+if ! is_uint "${DURATION_SECONDS}" || (( DURATION_SECONDS < 1 )); then
+  echo "Error: --duration must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${CLIENTS}" ]] && ( ! is_uint "${CLIENTS}" || (( CLIENTS < 1 )) ); then
+  echo "Error: --clients must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${HWM}" ]] && ( ! is_uint "${HWM}" || (( HWM < 1 )) ); then
+  echo "Error: --hwm must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${SNDHWM}" ]] && ( ! is_uint "${SNDHWM}" || (( SNDHWM < 1 )) ); then
+  echo "Error: --send-hwm must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${RCVHWM}" ]] && ( ! is_uint "${RCVHWM}" || (( RCVHWM < 1 )) ); then
+  echo "Error: --recv-hwm must be a positive integer." >&2
+  exit 1
+fi
+if ! is_uint "${SNDTIMEO_MS}" || (( SNDTIMEO_MS < 1 )); then
+  echo "Error: --sndtimeo must be a positive integer." >&2
+  exit 1
+fi
+if ! is_uint "${RCVTIMEO_MS}" || (( RCVTIMEO_MS < 1 )); then
+  echo "Error: --rcvtimeo must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${CONNECT_CONCURRENCY}" ]] && ( ! is_uint "${CONNECT_CONCURRENCY}" || (( CONNECT_CONCURRENCY < 1 )) ); then
+  echo "Error: --connect-concurrency must be a positive integer." >&2
+  exit 1
+fi
+if ! is_uint "${TRANSPORT_TRANSITION_MS}"; then
+  echo "Error: --transport-transition-ms must be a non-negative integer." >&2
+  exit 1
+fi
+if ! is_uint "${PATTERN_TRANSITION_MS}"; then
+  echo "Error: --pattern-transition-ms must be a non-negative integer." >&2
+  exit 1
+fi
+if ! is_uint "${SERVER_READY_TIMEOUT_MS}"; then
+  echo "Error: --server-ready-timeout-ms must be a non-negative integer." >&2
+  exit 1
+fi
+if ! is_uint "${CONNECT_READY_TIMEOUT_MS}"; then
+  echo "Error: --connect-ready-timeout-ms must be a non-negative integer." >&2
+  exit 1
+fi
+if ! is_uint "${MONITOR_HWM}"; then
+  echo "Error: --monitor-hwm must be a non-negative integer." >&2
+  exit 1
+fi
+if ! is_uint "${SERVER_SHUTDOWN_TIMEOUT_MS}"; then
+  echo "Error: --server-shutdown-timeout-ms must be a non-negative integer." >&2
+  exit 1
+fi
+if ! is_uint "${SERVER_BIND_PORT}" || (( SERVER_BIND_PORT > 65535 )); then
+  echo "Error: --server-bind-port must be an integer in range 0..65535." >&2
+  exit 1
+fi
+if [[ -n "${SERVER_IO_THREADS}" ]] && ( ! is_uint "${SERVER_IO_THREADS}" || (( SERVER_IO_THREADS < 1 )) ); then
+  echo "Error: --server-io-threads must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${CLIENT_IO_THREADS}" ]] && ( ! is_uint "${CLIENT_IO_THREADS}" || (( CLIENT_IO_THREADS < 1 )) ); then
+  echo "Error: --client-io-threads must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${TRANSPORTS}" && ! "${TRANSPORTS}" =~ ^[a-z]+(,[a-z]+)*$ ]]; then
+  echo "Error: --transports must be a comma-separated list of names." >&2
+  exit 1
+fi
+if [[ -n "${MSG_SIZES}" && ! "${MSG_SIZES}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
+  echo "Error: --msg-sizes must be a comma-separated list of integers." >&2
+  exit 1
+fi
+
+SELECTED_PATTERNS=("${PATTERN_LIST[@]}")
 if [[ "${#EXPLICIT_PATTERNS[@]}" -gt 0 ]]; then
-  PATTERNS=("${EXPLICIT_PATTERNS[@]}")
+  SELECTED_PATTERNS=("${EXPLICIT_PATTERNS[@]}")
 fi
 
-RUN_BASE_ARGS=()
+RUN_PATTERNS=()
+SKIPPED_PATTERNS=()
+SKIP_REASONS=()
 
-if [[ -n "${MULTI_INFLIGHT}" ]]; then
-  RUN_BASE_ARGS+=(--inflight "${MULTI_INFLIGHT}")
-fi
-if [[ "${HAS_EXPLICIT_CLIENTS}" -eq 1 && -n "${MULTI_CLIENTS}" ]]; then
-  RUN_BASE_ARGS+=(--clients "${MULTI_CLIENTS}")
-fi
-
-SHOW_TOTAL_TIME=1
-IFS=',' read -r -a TRANSPORT_LIST <<< "${TRANSPORTS}"
-for pattern in "${PATTERNS[@]}"; do
-  if [[ "${pattern}" != MULTI_* ]]; then
-    echo "Error: run_benchmarks_multi.sh accepts only MULTI_* patterns." >&2
-    exit 1
+for raw_pattern in "${SELECTED_PATTERNS[@]}"; do
+  mapped="$(normalize_with_zmq_pattern "${raw_pattern}" || true)"
+  if [[ -z "${mapped}" ]]; then
+    up="$(printf '%s' "${raw_pattern}" | tr '[:lower:]' '[:upper:]')"
+    if [[ "${up}" == MULTI_* ]]; then
+      up="${up#MULTI_}"
+    fi
+    case "${up}" in
+      GATEWAY|SPOT)
+        SKIPPED_PATTERNS+=("${up}")
+        SKIP_REASONS+=("unsupported in with_zmq")
+        continue
+        ;;
+      *)
+        echo "Error: unsupported pattern '${raw_pattern}'." >&2
+        echo "Supported in with_zmq: DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,STREAM" >&2
+        exit 1
+        ;;
+    esac
   fi
 
-  pattern_clients="${MULTI_CLIENTS:-}"
-  if [[ -z "${pattern_clients}" && "${HAS_EXPLICIT_CLIENTS}" -eq 0 ]]; then
-    if [[ "${pattern^^}" == "MULTI_STREAM" ]]; then
-      pattern_clients="${BENCH_MULTI_DEFAULT_STREAM_CLIENTS:-1000}"
-    else
-      pattern_clients="${BENCH_MULTI_DEFAULT_CLIENTS:-1000}"
-    fi
-  fi
-
-  for transport in "${TRANSPORT_LIST[@]}"; do
-    if [[ -z "${transport}" ]]; then
-      continue
-    fi
-    echo "=== Running multi benchmark: ${pattern} (${transport}) ==="
-    if ! BENCH_SUPPRESS_TOTAL_TIME=1 \
-      BENCH_MULTI_CLIENTS="${pattern_clients:-${BENCH_MULTI_CLIENTS:-}}" \
-      "${SCRIPT_DIR}/multi/run_benchmarks.sh" \
-      "${RUN_BASE_ARGS[@]}" \
-      "${SCRIPT_ARGS[@]}" \
-      --transport "${transport}" \
-      --pattern "${pattern}"; then
-      echo "Multi benchmark failed for ${pattern} (${transport})" >&2
-      exit 1
+  exists=0
+  for item in "${RUN_PATTERNS[@]}"; do
+    if [[ "${item}" == "${mapped}" ]]; then
+      exists=1
+      break
     fi
   done
+  if [[ "${exists}" -eq 0 ]]; then
+    RUN_PATTERNS+=("${mapped}")
+  fi
 done
+
+if [[ "${#RUN_PATTERNS[@]}" -eq 0 ]]; then
+  if [[ "${#SKIPPED_PATTERNS[@]}" -gt 0 ]]; then
+    echo
+    echo "## Skips"
+    for i in "${!SKIPPED_PATTERNS[@]}"; do
+      echo "- ${SKIPPED_PATTERNS[i]}: ${SKIP_REASONS[i]}"
+    done
+  fi
+  exit 0
+fi
+
+if [[ -z "${RESULTS_DIR_OVERRIDE}" ]]; then
+  RESULTS_DIR_OVERRIDE="${SCRIPT_DIR}/results"
+fi
+RESULTS_DIR_OVERRIDE="$(realpath -m "${RESULTS_DIR_OVERRIDE}")"
+
+if [[ -n "${OUTPUT_FILE}" ]]; then
+  OUTPUT_FILE="$(realpath -m "${OUTPUT_FILE}")"
+  mkdir -p "$(dirname "${OUTPUT_FILE}")"
+fi
+
+if [[ -z "${BUILD_DIR}" ]]; then
+  BUILD_DIR="$(default_build_dir)"
+fi
+BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
+
+if [[ "${BUILD_MODE}" == "reuse" ]]; then
+  if [[ ! -d "${BUILD_DIR}" ]]; then
+    echo "Error: --reuse-build requires an existing build directory: ${BUILD_DIR}" >&2
+    exit 1
+  fi
+fi
+if [[ "${BUILD_MODE}" == "clean" ]]; then
+  echo "Cleaning build directory: ${BUILD_DIR}"
+  rm -rf "${BUILD_DIR}"
+fi
+
+run_all_patterns() {
+  local failed=0
+
+  echo "=== Running multi benchmark: $(IFS=,; echo "${RUN_PATTERNS[*]}") ==="
+  echo "    warmup=${WARMUP_SECONDS}s duration=${DURATION_SECONDS}s runs=${RUNS} transports=${TRANSPORTS}"
+
+  for idx in "${!RUN_PATTERNS[@]}"; do
+    local pattern="${RUN_PATTERNS[idx]}"
+    local pattern_clients
+    local pattern_hwm
+    local pattern_io_threads
+    local pattern_connect_concurrency
+
+    pattern_clients="$(resolve_clients_value "${pattern}" "${CLIENTS}" "${EFFECTIVE_DEFAULT_CLIENTS}" "${EFFECTIVE_DEFAULT_STREAM_CLIENTS}")"
+    pattern_hwm="$(resolve_hwm_value "${pattern}" "${HWM}" "${SNDHWM}" "${RCVHWM}" "${EFFECTIVE_DEFAULT_HWM}" "${EFFECTIVE_DEFAULT_STREAM_HWM}")"
+    pattern_io_threads="$(resolve_io_threads_value "${pattern}" "${SERVER_IO_THREADS}" "${CLIENT_IO_THREADS}" "${EFFECTIVE_DEFAULT_IO_THREADS}" "${EFFECTIVE_DEFAULT_STREAM_IO_THREADS}")"
+    pattern_connect_concurrency="$(resolve_connect_concurrency "${CONNECT_CONCURRENCY}" "${pattern_clients}")"
+
+    cmd=("${SCRIPT_DIR}/multi/run_benchmarks.sh")
+    cmd+=(--pattern "${pattern}")
+    cmd+=(--runs "${RUNS}")
+    cmd+=(--transports "${TRANSPORTS}")
+    cmd+=(--warmup "${WARMUP_SECONDS}")
+    cmd+=(--duration "${DURATION_SECONDS}")
+    cmd+=(--clients "${pattern_clients}")
+    cmd+=(--hwm "${pattern_hwm}")
+    cmd+=(--sndtimeo-ms "${SNDTIMEO_MS}")
+    cmd+=(--rcvtimeo-ms "${RCVTIMEO_MS}")
+    cmd+=(--connect-ready-timeout-ms "${CONNECT_READY_TIMEOUT_MS}")
+    cmd+=(--monitor-hwm "${MONITOR_HWM}")
+    cmd+=(--connect-concurrency "${pattern_connect_concurrency}")
+    cmd+=(--io-threads "${pattern_io_threads}")
+    cmd+=(--build-dir "${BUILD_DIR}")
+    cmd+=(--results-dir "${RESULTS_DIR_OVERRIDE}")
+
+    if [[ -n "${RESULTS_TAG}" ]]; then
+      cmd+=(--results-tag "${RESULTS_TAG}")
+    fi
+    if [[ -n "${MSG_SIZES}" ]]; then
+      cmd+=(--msg-sizes "${MSG_SIZES}")
+    fi
+    if [[ "${PIN_CPU}" -eq 1 ]]; then
+      cmd+=(--pin-cpu)
+    fi
+
+    echo
+    echo "--- Pattern: ${pattern} ---"
+
+    env_args=()
+    if [[ "${BUILD_MODE}" == "reuse" ]]; then
+      env_args+=(BENCH_NO_AUTOBUILD=1)
+      env_args+=(PERF_NO_AUTOBUILD=1)
+    fi
+    env_args+=(BENCH_TRANSPORT_TRANSITION_MS="${TRANSPORT_TRANSITION_MS}")
+    env_args+=(BENCH_MULTI_PATTERN_TRANSITION_MS="${PATTERN_TRANSITION_MS}")
+    env_args+=(BENCH_SERVER_READY_TIMEOUT_MS="${SERVER_READY_TIMEOUT_MS}")
+    env_args+=(BENCH_SERVER_SHUTDOWN_TIMEOUT_MS="${SERVER_SHUTDOWN_TIMEOUT_MS}")
+    env_args+=(BENCH_MULTI_SERVER_BIND_PORT="${SERVER_BIND_PORT}")
+    env_args+=(BENCH_SUPPRESS_TOTAL_TIME=1)
+
+    if ! env "${env_args[@]}" "${cmd[@]}"; then
+      failed=1
+    fi
+
+    if (( idx + 1 < ${#RUN_PATTERNS[@]} )); then
+      sleep_ms "${PATTERN_TRANSITION_MS}"
+    fi
+  done
+
+  if [[ "${#SKIPPED_PATTERNS[@]}" -gt 0 ]]; then
+    echo
+    echo "## Skips"
+    for i in "${!SKIPPED_PATTERNS[@]}"; do
+      echo "- ${SKIPPED_PATTERNS[i]}: ${SKIP_REASONS[i]}"
+    done
+  fi
+
+  return "${failed}"
+}
+
+SHOW_TOTAL_TIME=1
+if [[ -n "${OUTPUT_FILE}" ]]; then
+  set +e
+  run_all_patterns 2>&1 | tee "${OUTPUT_FILE}"
+  status=${PIPESTATUS[0]}
+  set -e
+  exit "${status}"
+else
+  run_all_patterns
+fi

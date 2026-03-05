@@ -11,7 +11,7 @@ import statistics
 import subprocess
 import sys
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Sequence, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 IS_WINDOWS = os.name == "nt"
 EXE_SUFFIX = ".exe" if IS_WINDOWS else ""
@@ -468,59 +468,83 @@ def metric_or_none(metric_map: Dict[str, float], key: str):
         return None
 
 
-def build_pattern_report_lines(
+def build_transport_report_header_lines(transport: str) -> List[str]:
+    size_w = 6
+    metric_w = 10
+    val_w = 16
+    diff_w = 9
+    return [
+        f"### Transport: {transport}",
+        (
+            f"| {'Size':<{size_w}} | {'Metric':<{metric_w}} | {'Standard libzmq':>{val_w}} | "
+            f"{'zlink':>{val_w}} | {'Diff (%)':>{diff_w}} |"
+        ),
+        (
+            f"|{'-' * (size_w + 2)}|{'-' * (metric_w + 2)}|{'-' * (val_w + 2)}|"
+            f"{'-' * (val_w + 2)}|{'-' * (diff_w + 2)}|"
+        ),
+    ]
+
+
+def build_size_report_lines(
     std_data: Dict[str, float],
     zlk_data: Dict[str, float],
-    transports: Sequence[str],
-    msg_sizes: Sequence[int],
+    transport: str,
+    size: int,
 ) -> List[str]:
     size_w = 6
     metric_w = 10
     val_w = 16
     diff_w = 9
 
+    k_t = f"{transport}|{size}|throughput"
+    k_l = f"{transport}|{size}|latency"
+
+    std_t = metric_or_none(std_data, k_t)
+    std_l = metric_or_none(std_data, k_l)
+    zlk_t = metric_or_none(zlk_data, k_t)
+    zlk_l = metric_or_none(zlk_data, k_l)
+
+    std_t_s = format_throughput(std_t) if std_t is not None else "N/A"
+    std_l_s = f"{std_l/1e3:8.2f} ms" if std_l is not None else "N/A"
+    zlk_t_s = format_throughput(zlk_t) if zlk_t is not None else "N/A"
+    zlk_l_s = f"{zlk_l/1e3:8.2f} ms" if zlk_l is not None else "N/A"
+
+    if std_t is not None and zlk_t is not None and std_t > 0:
+        t_diff = (zlk_t - std_t) / std_t * 100.0
+        t_diff_s = f"{t_diff:>+7.2f}%"
+    else:
+        t_diff_s = "N/A"
+
+    if std_l is not None and zlk_l is not None and std_l > 0:
+        l_diff = (std_l - zlk_l) / std_l * 100.0
+        l_diff_s = f"{l_diff:>+7.2f}%"
+    else:
+        l_diff_s = "N/A"
+
+    return [
+        (
+            f"| {f'{size}B':<{size_w}} | {'Throughput':<{metric_w}} | {std_t_s:>{val_w}} | "
+            f"{zlk_t_s:>{val_w}} | {t_diff_s:>{diff_w}} |"
+        ),
+        (
+            f"| {f'{size}B':<{size_w}} | {'Latency':<{metric_w}} | {std_l_s:>{val_w}} | "
+            f"{zlk_l_s:>{val_w}} | {l_diff_s:>{diff_w}} |"
+        ),
+    ]
+
+
+def build_pattern_report_lines(
+    std_data: Dict[str, float],
+    zlk_data: Dict[str, float],
+    transports: Sequence[str],
+    msg_sizes: Sequence[int],
+) -> List[str]:
     lines: List[str] = []
     for tr in transports:
-        lines.append(f"### Transport: {tr}")
-        lines.append(
-            f"| {'Size':<{size_w}} | {'Metric':<{metric_w}} | {'Standard libzmq':>{val_w}} | {'zlink':>{val_w}} | {'Diff (%)':>{diff_w}} |"
-        )
-        lines.append(
-            f"|{'-' * (size_w + 2)}|{'-' * (metric_w + 2)}|{'-' * (val_w + 2)}|{'-' * (val_w + 2)}|{'-' * (diff_w + 2)}|"
-        )
-
+        lines.extend(build_transport_report_header_lines(tr))
         for sz in msg_sizes:
-            k_t = f"{tr}|{sz}|throughput"
-            k_l = f"{tr}|{sz}|latency"
-
-            std_t = metric_or_none(std_data, k_t)
-            std_l = metric_or_none(std_data, k_l)
-            zlk_t = metric_or_none(zlk_data, k_t)
-            zlk_l = metric_or_none(zlk_data, k_l)
-
-            std_t_s = format_throughput(std_t) if std_t is not None else "N/A"
-            std_l_s = f"{std_l:8.2f} us" if std_l is not None else "N/A"
-            zlk_t_s = format_throughput(zlk_t) if zlk_t is not None else "N/A"
-            zlk_l_s = f"{zlk_l:8.2f} us" if zlk_l is not None else "N/A"
-
-            if std_t is not None and zlk_t is not None and std_t > 0:
-                t_diff = (zlk_t - std_t) / std_t * 100.0
-                t_diff_s = f"{t_diff:>+7.2f}%"
-            else:
-                t_diff_s = "N/A"
-
-            if std_l is not None and zlk_l is not None and std_l > 0:
-                l_diff = (std_l - zlk_l) / std_l * 100.0
-                l_diff_s = f"{l_diff:>+7.2f}%"
-            else:
-                l_diff_s = "N/A"
-
-            lines.append(
-                f"| {f'{sz}B':<{size_w}} | {'Throughput':<{metric_w}} | {std_t_s:>{val_w}} | {zlk_t_s:>{val_w}} | {t_diff_s:>{diff_w}} |"
-            )
-            lines.append(
-                f"| {f'{sz}B':<{size_w}} | {'Latency':<{metric_w}} | {std_l_s:>{val_w}} | {zlk_l_s:>{val_w}} | {l_diff_s:>{diff_w}} |"
-            )
+            lines.extend(build_size_report_lines(std_data, zlk_data, tr, sz))
 
         lines.append("")
 
@@ -631,6 +655,8 @@ def collect_data(
     libzmq_lib_dir: str,
     zlink_lib_dir: str,
     announce: bool = True,
+    on_size_complete: Optional[Callable[[str, int, Dict[str, float]], None]] = None,
+    show_progress: bool = True,
 ) -> Tuple[Dict[str, float], List[Tuple[str, str, str, int, str]]]:
     if announce:
         print(f"  > Benchmarking {lib_name} for {pattern_name}...")
@@ -640,14 +666,16 @@ def collect_data(
 
     for tr in transports:
         for sz in msg_sizes:
-            print(f"    Testing {tr} | {sz}B: ", end="", flush=True)
+            if show_progress:
+                print(f"    Testing {tr} | {sz}B: ", end="", flush=True)
             metric_buckets: Dict[str, List[float]] = {"throughput": [], "latency": []}
             failed_runs = 0
             expected_throughput = f"{tr}|{sz}|throughput"
             expected_latency = f"{tr}|{sz}|latency"
 
             for i in range(num_runs):
-                print(f"{i+1} ", end="", flush=True)
+                if show_progress:
+                    print(f"{i+1} ", end="", flush=True)
                 run_outcome = run_single_test(
                     build_dir,
                     binary_name,
@@ -716,9 +744,13 @@ def collect_data(
                     metric_buckets["latency"]
                 )
 
-            if failed_runs:
-                print(f"(failures={failed_runs}) ", end="", flush=True)
-            print("Done")
+            if show_progress:
+                if failed_runs:
+                    print(f"(failures={failed_runs}) ", end="", flush=True)
+                print("Done")
+
+            if on_size_complete is not None:
+                on_size_complete(tr, sz, final_stats)
 
     return final_stats, failures
 
@@ -792,7 +824,7 @@ def build_effective_option_items(
     msg_sizes: Sequence[int],
     build_dir: str,
 ) -> List[Tuple[str, str]]:
-    duration = parse_env_int_any(["PERF_SINGLE_DURATION_SECONDS"], 2)
+    duration = parse_env_int_any(["PERF_SINGLE_DURATION_SECONDS"], 5)
     latency_duration = parse_env_int_any(["PERF_SINGLE_LATENCY_SECONDS"], duration)
     timeout_sec = max(60, parse_env_int_any(["BENCH_SINGLE_TIMEOUT_SECONDS"], 120))
     sndtimeo = parse_env_int_any(["PERF_SINGLE_SNDTIMEO_MS"], 200)
@@ -956,6 +988,9 @@ def main() -> int:
 
     all_failures: List[Tuple[str, str, str, int, str]] = []
     any_failure = False
+    print_final_report = (
+        os.environ.get("BENCH_SINGLE_PRINT_FINAL_REPORT", "0") == "1"
+    )
 
     try:
         option_items = build_effective_option_items(
@@ -969,39 +1004,66 @@ def main() -> int:
             print(f"\n## PATTERN: {pattern_name}")
 
             for tr in transports:
-                std_data, std_fail = collect_data(
-                    build_dir,
-                    std_bin,
-                    "libzmq",
-                    pattern_name,
-                    args.runs,
-                    [tr],
-                    msg_sizes,
-                    base_env,
-                    libzmq_lib_dir,
-                    zlink_lib_dir,
-                    announce=True,
-                )
-                zlk_data, zlk_fail = collect_data(
-                    build_dir,
-                    zlk_bin,
-                    "zlink",
-                    pattern_name,
-                    args.runs,
-                    [tr],
-                    msg_sizes,
-                    base_env,
-                    libzmq_lib_dir,
-                    zlink_lib_dir,
-                    announce=True,
-                )
+                std_data: Dict[str, float] = {}
+                zlk_data: Dict[str, float] = {}
+                std_fail: List[Tuple[str, str, str, int, str]] = []
+                zlk_fail: List[Tuple[str, str, str, int, str]] = []
+                printed_live_header = False
+                live_rows = 0
+                announced_std = False
+                announced_zlk = False
 
-                # Emit per-transport table immediately for result file/console visibility.
-                transport_block = build_pattern_report_lines(
-                    std_data, zlk_data, [tr], msg_sizes
-                )
-                for line in transport_block:
-                    print(line)
+                for sz in msg_sizes:
+                    std_partial, std_partial_fail = collect_data(
+                        build_dir,
+                        std_bin,
+                        "libzmq",
+                        pattern_name,
+                        args.runs,
+                        [tr],
+                        [sz],
+                        base_env,
+                        libzmq_lib_dir,
+                        zlink_lib_dir,
+                        announce=not announced_std,
+                        show_progress=False,
+                    )
+                    announced_std = True
+                    std_data.update(std_partial)
+                    std_fail.extend(std_partial_fail)
+
+                    zlk_partial, zlk_partial_fail = collect_data(
+                        build_dir,
+                        zlk_bin,
+                        "zlink",
+                        pattern_name,
+                        args.runs,
+                        [tr],
+                        [sz],
+                        base_env,
+                        libzmq_lib_dir,
+                        zlink_lib_dir,
+                        announce=not announced_zlk,
+                        show_progress=False,
+                    )
+                    announced_zlk = True
+                    zlk_data.update(zlk_partial)
+                    zlk_fail.extend(zlk_partial_fail)
+
+                    if not printed_live_header:
+                        for line in build_transport_report_header_lines(tr):
+                            print(line)
+                        printed_live_header = True
+                    for line in build_size_report_lines(std_data, zlk_data, tr, sz):
+                        print(line)
+                    live_rows += 1
+
+                if print_final_report or live_rows == 0:
+                    transport_block = build_pattern_report_lines(
+                        std_data, zlk_data, [tr], msg_sizes
+                    )
+                    for line in transport_block:
+                        print(line)
 
                 all_failures.extend(std_fail)
                 all_failures.extend(zlk_fail)

@@ -137,12 +137,6 @@ normalize_pattern() {
   esac
 }
 
-display_pattern() {
-  local internal="${1:-}"
-  internal="${internal#MULTI_}"
-  echo "$(echo "${internal}" | tr '[:upper:]' '[:lower:]')"
-}
-
 is_uint() {
   local value="${1:-}"
   [[ "${value}" =~ ^[0-9]+$ ]]
@@ -241,26 +235,15 @@ Options:
   --result-file PATH            Override result file path.
   --refresh-std-cache           Refresh libzmq cache during this run
   --std-cache-file PATH         libzmq cache file path
-  --warmup N                    Override BENCH_MULTI_WARMUP_SECONDS (default: 3)
+  --warmup N                    Override BENCH_MULTI_WARMUP_SECONDS (default: 2)
   --duration N                  Override BENCH_MULTI_DURATION_SECONDS (default: 5)
-  --settle-ms N                 Override BENCH_MULTI_SETTLE_MS (default: 500)
   --clients N                   Override BENCH_MULTI_CLIENTS
-  --inflight N                  Per-client inflight window (global=clients*N, default: 30)
-  --inflight-per-client N       Alias for --inflight
-  --hwm N                       Override BENCH_MULTI_HWM (default: 100000)
+  --hwm N                       Override BENCH_MULTI_HWM (default: 100, stream=10)
   --monitor-hwm N               Override BENCH_MULTI_MONITOR_HWM (monitor queue HWM)
-  --sndtimeo-ms N               Override BENCH_MULTI_SNDTIMEO_MS (default: 5000)
-  --rcvtimeo-ms N               Override BENCH_MULTI_RCVTIMEO_MS (default: 5000)
+  --sndtimeo-ms N               Override BENCH_MULTI_SNDTIMEO_MS (default: 200)
+  --rcvtimeo-ms N               Override BENCH_MULTI_RCVTIMEO_MS (default: 200)
   --connect-ready-timeout-ms N Override BENCH_MULTI_CONNECT_READY_TIMEOUT_MS (default: 5000)
-  --drain-ms N                  Override BENCH_MULTI_DRAIN_MS
   --connect-concurrency N       Override BENCH_MULTI_CONNECT_CONCURRENCY
-  --recv-batch N                Override BENCH_MULTI_RECV_BATCH
-  --send-workers N              Override BENCH_MULTI_SEND_WORKERS (default: auto)
-  --stream-send-workers N       Override BENCH_MULTI_STREAM_SEND_WORKERS (default: auto)
-  --stream-send-batch N         Override BENCH_MULTI_STREAM_SEND_BATCH (default: 64)
-  --run-cooldown-ms N           Sleep between --runs iterations (default: 3000)
-  --cooldown-ms N               Alias for --run-cooldown-ms
-  --send-backoff-us N           Override BENCH_MULTI_SEND_BACKOFF_US
   --io-threads N                Override BENCH_IO_THREADS (auto: 4 when clients>=512)
   --msg-sizes LIST              Override BENCH_MSG_SIZES (e.g. 1024,65536)
   --build-dir PATH              Forwarded to run_comparison.py
@@ -273,31 +256,6 @@ Environment:
 Notes:
   - result is saved under results/multi/report/.
 USAGE
-}
-
-pattern_uses_default_drain() {
-  local pattern="${1:-}"
-  case "${pattern^^}" in
-    MULTI_DEALER_DEALER|MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER|MULTI_PUBSUB|MULTI_STREAM)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-resolve_effective_drain_ms() {
-  local pattern="${1:-}"
-  if [[ -n "${MULTI_DRAIN_MS}" ]]; then
-    echo "${MULTI_DRAIN_MS}"
-    return
-  fi
-  if pattern_uses_default_drain "${pattern}"; then
-    echo "${BENCH_MULTI_EXCEPTION_DRAIN_MS:-300}"
-  else
-    echo "0"
-  fi
 }
 
 resolve_effective_connect_concurrency() {
@@ -329,23 +287,18 @@ RESULTS_TAG=""
 RESULT_FILE=""
 OUTPUT_FILE=""
 
-MULTI_WARMUP_SECONDS="${BENCH_MULTI_WARMUP_SECONDS:-3}"
+MULTI_WARMUP_SECONDS="${BENCH_MULTI_WARMUP_SECONDS:-2}"
 MULTI_DURATION_SECONDS="${BENCH_MULTI_DURATION_SECONDS:-5}"
-MULTI_SETTLE_MS="${BENCH_MULTI_SETTLE_MS:-500}"
 MULTI_CLIENTS="${BENCH_MULTI_CLIENTS:-}"
-MULTI_INFLIGHT="${BENCH_MULTI_INFLIGHT:-}"
-MULTI_HWM="${BENCH_MULTI_HWM:-100000}"
+MULTI_HWM="${BENCH_MULTI_HWM:-}"
 MULTI_MONITOR_HWM="${BENCH_MULTI_MONITOR_HWM:-}"
-MULTI_SNDTIMEO_MS="${BENCH_MULTI_SNDTIMEO_MS:-5000}"
-MULTI_RCVTIMEO_MS="${BENCH_MULTI_RCVTIMEO_MS:-5000}"
+MULTI_SNDTIMEO_MS="${BENCH_MULTI_SNDTIMEO_MS:-200}"
+MULTI_RCVTIMEO_MS="${BENCH_MULTI_RCVTIMEO_MS:-200}"
 MULTI_CONNECT_READY_TIMEOUT_MS="${BENCH_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
-MULTI_DRAIN_MS="${BENCH_MULTI_DRAIN_MS:-}"
-MULTI_RECV_BATCH="${BENCH_MULTI_RECV_BATCH:-64}"
-MULTI_SEND_WORKERS="${BENCH_MULTI_SEND_WORKERS:-}"
-MULTI_STREAM_SEND_WORKERS="${BENCH_MULTI_STREAM_SEND_WORKERS:-}"
-MULTI_STREAM_SEND_BATCH="${BENCH_MULTI_STREAM_SEND_BATCH:-64}"
-MULTI_RUN_COOLDOWN_MS="${BENCH_MULTI_RUN_COOLDOWN_MS:-3000}"
-MULTI_SEND_BACKOFF_US="${BENCH_MULTI_SEND_BACKOFF_US:-}"
+MULTI_TRANSPORT_TRANSITION_MS="${BENCH_TRANSPORT_TRANSITION_MS:-${PERF_TRANSPORT_TRANSITION_MS:-3000}}"
+MULTI_SERVER_READY_TIMEOUT_MS="${BENCH_MULTI_SERVER_READY_TIMEOUT_MS:-${BENCH_SERVER_READY_TIMEOUT_MS:-${PERF_SERVER_READY_TIMEOUT_MS:-10000}}}"
+MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${BENCH_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-${BENCH_SERVER_SHUTDOWN_TIMEOUT_MS:-${PERF_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}}}"
+MULTI_SERVER_BIND_PORT="${BENCH_MULTI_SERVER_BIND_PORT:-${PERF_SERVER_BIND_PORT:-0}}"
 MULTI_CONNECT_CONCURRENCY="${BENCH_MULTI_CONNECT_CONCURRENCY:-}"
 MULTI_IO_THREADS="${BENCH_IO_THREADS:-}"
 
@@ -424,16 +377,8 @@ while [[ $# -gt 0 ]]; do
       MULTI_DURATION_SECONDS="${2:-}"
       shift 2
       ;;
-    --settle-ms|--multi-settle-ms)
-      MULTI_SETTLE_MS="${2:-}"
-      shift 2
-      ;;
     --clients|--multi-clients)
       MULTI_CLIENTS="${2:-}"
-      shift 2
-      ;;
-    --inflight|--inflight-per-client|--multi-inflight)
-      MULTI_INFLIGHT="${2:-}"
       shift 2
       ;;
     --hwm|--multi-hwm)
@@ -456,36 +401,8 @@ while [[ $# -gt 0 ]]; do
       MULTI_CONNECT_READY_TIMEOUT_MS="${2:-}"
       shift 2
       ;;
-    --drain-ms|--multi-drain-ms)
-      MULTI_DRAIN_MS="${2:-}"
-      shift 2
-      ;;
     --connect-concurrency|--multi-connect-concurrency)
       MULTI_CONNECT_CONCURRENCY="${2:-}"
-      shift 2
-      ;;
-    --recv-batch|--multi-recv-batch)
-      MULTI_RECV_BATCH="${2:-}"
-      shift 2
-      ;;
-    --send-workers|--multi-send-workers)
-      MULTI_SEND_WORKERS="${2:-}"
-      shift 2
-      ;;
-    --stream-send-workers|--multi-stream-send-workers)
-      MULTI_STREAM_SEND_WORKERS="${2:-}"
-      shift 2
-      ;;
-    --stream-send-batch|--multi-stream-send-batch)
-      MULTI_STREAM_SEND_BATCH="${2:-}"
-      shift 2
-      ;;
-    --run-cooldown-ms|--cooldown-ms)
-      MULTI_RUN_COOLDOWN_MS="${2:-}"
-      shift 2
-      ;;
-    --send-backoff-us|--multi-send-backoff-us)
-      MULTI_SEND_BACKOFF_US="${2:-}"
       shift 2
       ;;
     --io-threads)
@@ -509,6 +426,22 @@ if [[ -z "${RUNS}" || ! "${RUNS}" =~ ^[0-9]+$ || "${RUNS}" -lt 1 ]]; then
   echo "Error: --runs must be a positive integer." >&2
   exit 1
 fi
+if ! is_uint "${MULTI_TRANSPORT_TRANSITION_MS}"; then
+  echo "Error: BENCH_TRANSPORT_TRANSITION_MS must be a non-negative integer." >&2
+  exit 1
+fi
+if ! is_uint "${MULTI_SERVER_READY_TIMEOUT_MS}"; then
+  echo "Error: BENCH_SERVER_READY_TIMEOUT_MS must be a non-negative integer." >&2
+  exit 1
+fi
+if ! is_uint "${MULTI_SERVER_SHUTDOWN_TIMEOUT_MS}"; then
+  echo "Error: BENCH_SERVER_SHUTDOWN_TIMEOUT_MS must be a non-negative integer." >&2
+  exit 1
+fi
+if ! is_uint "${MULTI_SERVER_BIND_PORT}" || (( MULTI_SERVER_BIND_PORT > 65535 )); then
+  echo "Error: BENCH_MULTI_SERVER_BIND_PORT must be an integer in range 0..65535." >&2
+  exit 1
+fi
 
 if [[ "${PATTERN_RAW}" == *","* ]]; then
   echo "Error: only one pattern is supported. Use a single value (e.g. router_router)." >&2
@@ -519,7 +452,6 @@ PATTERN_INTERNAL="$(normalize_pattern "${PATTERN_RAW}")" || {
   echo "Supported: dealer_dealer, dealer_router, router_router, pubsub, stream" >&2
   exit 1
 }
-PATTERN_TAG="$(display_pattern "${PATTERN_INTERNAL}")"
 
 if [[ -z "${RESULTS_DIR}" ]]; then
   RESULTS_DIR="${DEFAULT_RESULTS_ROOT}"
@@ -556,14 +488,13 @@ fi
 export BENCH_TRANSPORTS="${TRANSPORT}"
 export BENCH_MULTI_WARMUP_SECONDS="${MULTI_WARMUP_SECONDS}"
 export BENCH_MULTI_DURATION_SECONDS="${MULTI_DURATION_SECONDS}"
-export BENCH_MULTI_SETTLE_MS="${MULTI_SETTLE_MS}"
-export BENCH_MULTI_RECV_BATCH="${MULTI_RECV_BATCH}"
-export BENCH_MULTI_HWM="${MULTI_HWM}"
 export BENCH_MULTI_SNDTIMEO_MS="${MULTI_SNDTIMEO_MS}"
 export BENCH_MULTI_RCVTIMEO_MS="${MULTI_RCVTIMEO_MS}"
-export BENCH_MULTI_STREAM_SEND_BATCH="${MULTI_STREAM_SEND_BATCH}"
-export BENCH_MULTI_RUN_COOLDOWN_MS="${MULTI_RUN_COOLDOWN_MS}"
 export BENCH_MULTI_CONNECT_READY_TIMEOUT_MS="${MULTI_CONNECT_READY_TIMEOUT_MS}"
+export BENCH_TRANSPORT_TRANSITION_MS="${MULTI_TRANSPORT_TRANSITION_MS}"
+export BENCH_MULTI_SERVER_READY_TIMEOUT_MS="${MULTI_SERVER_READY_TIMEOUT_MS}"
+export BENCH_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${MULTI_SERVER_SHUTDOWN_TIMEOUT_MS}"
+export BENCH_MULTI_SERVER_BIND_PORT="${MULTI_SERVER_BIND_PORT}"
 if [[ -n "${MULTI_MONITOR_HWM}" ]]; then
   export BENCH_MULTI_MONITOR_HWM="${MULTI_MONITOR_HWM}"
 fi
@@ -571,24 +502,23 @@ fi
 effective_clients="${MULTI_CLIENTS:-${BENCH_MULTI_CLIENTS:-}}"
 if [[ -z "${effective_clients}" ]]; then
   if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" ]]; then
-    effective_clients="${BENCH_MULTI_DEFAULT_STREAM_CLIENTS:-1000}"
+    effective_clients="${BENCH_MULTI_DEFAULT_STREAM_CLIENTS:-10000}"
   else
-    effective_clients="${BENCH_MULTI_DEFAULT_CLIENTS:-1000}"
+    effective_clients="${BENCH_MULTI_DEFAULT_CLIENTS:-100}"
   fi
 fi
-effective_inflight="${MULTI_INFLIGHT:-${BENCH_MULTI_INFLIGHT:-30}}"
+effective_hwm="${MULTI_HWM:-}"
+if [[ -z "${effective_hwm}" ]]; then
+  if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" ]]; then
+    effective_hwm="${BENCH_MULTI_DEFAULT_STREAM_HWM:-10}"
+  else
+    effective_hwm="${BENCH_MULTI_DEFAULT_HWM:-100}"
+  fi
+fi
+export BENCH_MULTI_HWM="${effective_hwm}"
+
 effective_connect_concurrency="$(resolve_effective_connect_concurrency "${effective_clients}")"
-effective_drain_ms="$(resolve_effective_drain_ms "${PATTERN_INTERNAL}")"
 ensure_nofile_limit "${effective_clients}"
-if [[ "${effective_clients}" =~ ^[0-9]+$ && "${effective_inflight}" =~ ^[0-9]+$ ]]; then
-  echo "Config: clients=${effective_clients}, inflight_per_client=${effective_inflight}, global_inflight=$(( effective_clients * effective_inflight ))"
-fi
-echo "Config: warmup=${MULTI_WARMUP_SECONDS}, duration=${MULTI_DURATION_SECONDS}, settle_ms=${MULTI_SETTLE_MS}, drain_ms=${effective_drain_ms}, run_cooldown_ms=${MULTI_RUN_COOLDOWN_MS}"
-echo "Config: connect_concurrency=${effective_connect_concurrency}"
-echo "Config: hwm=${MULTI_HWM}, sndtimeo_ms=${MULTI_SNDTIMEO_MS}, rcvtimeo_ms=${MULTI_RCVTIMEO_MS}"
-if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" ]]; then
-  echo "Config: stream_send_workers=${MULTI_STREAM_SEND_WORKERS:-auto}, stream_send_batch=${MULTI_STREAM_SEND_BATCH}"
-fi
 
 if [[ -n "${MULTI_IO_THREADS}" ]]; then
   export BENCH_IO_THREADS="${MULTI_IO_THREADS}"
@@ -598,7 +528,6 @@ elif [[ -z "${BENCH_IO_THREADS:-}" && "${effective_clients}" =~ ^[0-9]+$ && "${e
   export BENCH_IO_THREADS="4"
 fi
 if [[ -n "${BENCH_IO_THREADS:-}" ]]; then
-  echo "Config: io_threads=${BENCH_IO_THREADS}"
   export PERF_IO_THREADS="${BENCH_IO_THREADS}"
 fi
 
@@ -606,19 +535,6 @@ export BENCH_MULTI_CLIENTS="${effective_clients}"
 export PERF_MULTI_CLIENTS="${effective_clients}"
 export BENCH_MULTI_PATTERN="${PATTERN_INTERNAL}"
 export BENCH_MULTI_CONNECT_CONCURRENCY="${effective_connect_concurrency}"
-export BENCH_MULTI_DRAIN_MS="${effective_drain_ms}"
-if [[ -n "${MULTI_INFLIGHT}" ]]; then
-  export BENCH_MULTI_INFLIGHT="${MULTI_INFLIGHT}"
-fi
-if [[ -n "${MULTI_SEND_WORKERS}" ]]; then
-  export BENCH_MULTI_SEND_WORKERS="${MULTI_SEND_WORKERS}"
-fi
-if [[ -n "${MULTI_SEND_BACKOFF_US}" ]]; then
-  export BENCH_MULTI_SEND_BACKOFF_US="${MULTI_SEND_BACKOFF_US}"
-fi
-if [[ -n "${MULTI_STREAM_SEND_WORKERS}" ]]; then
-  export BENCH_MULTI_STREAM_SEND_WORKERS="${MULTI_STREAM_SEND_WORKERS}"
-fi
 if [[ -n "${MSG_SIZES}" ]]; then
   export BENCH_MSG_SIZES="${MSG_SIZES}"
 fi
@@ -630,9 +546,7 @@ if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" ]]; then
       export BENCH_STREAM_CLIENT_THREADS="1"
     fi
   fi
-  if [[ -z "${BENCH_STREAM_HWM:-}" ]]; then
-    export BENCH_STREAM_HWM="100000"
-  fi
+  export BENCH_STREAM_HWM="${effective_hwm}"
 fi
 
 EXTRA_ARGS=(--runs "${RUNS}")
@@ -652,14 +566,13 @@ if [[ -n "${STD_CACHE_FILE}" ]]; then
   EXTRA_ARGS+=(--std-cache-file "${STD_CACHE_FILE}")
 fi
 
-echo "=== Running multi benchmark: ${PATTERN_TAG} ==="
 SHOW_TOTAL_TIME=1
 
 set +e
 if [[ -n "${OUTPUT_FILE}" ]]; then
-  python3 "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_INTERNAL}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}" "${OUTPUT_FILE}"
+  PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_INTERNAL}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}" "${OUTPUT_FILE}"
 else
-  python3 "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_INTERNAL}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}"
+  PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_INTERNAL}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}"
 fi
 run_status=${PIPESTATUS[0]}
 set -e

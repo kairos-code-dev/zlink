@@ -1,311 +1,463 @@
 #include "../common/bench_common_zlink.hpp"
+#include "../common/perf_single_metric_header.hpp"
 #include <zlink.h>
+#include <algorithm>
 #include <atomic>
 #include <thread>
 #include <vector>
-#include <cstring>
 
 namespace {
 
-bool perform_router_router_handshake(void *router1, void *router2)
+inline bool perform_router_router_handshake (void *router1, void *router2)
 {
     bool connected = false;
     char buf[16];
 
     const int handshake_timeout_ms =
-      resolve_bench_count("PERF_ROUTER_HANDSHAKE_TIMEOUT_MS", 3000);
-    const auto handshake_deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(
+      resolve_bench_count ("PERF_ROUTER_HANDSHAKE_TIMEOUT_MS", 3000);
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (
         handshake_timeout_ms > 0 ? handshake_timeout_ms : 3000);
 
-    while (!connected && std::chrono::steady_clock::now() < handshake_deadline) {
+    while (!connected && std::chrono::steady_clock::now () < deadline) {
         const bool id_sent =
-          send_exact(router2, "ROUTER1", 7, ZLINK_SNDMORE | ZLINK_DONTWAIT);
+          send_exact (router2, "ROUTER1", 7, ZLINK_SNDMORE | ZLINK_DONTWAIT);
         if (!id_sent) {
-            const int err = zlink_errno();
+            const int err = zlink_errno ();
             if (err != EAGAIN && err != EINTR)
                 return false;
         } else {
-            const int rc = zlink_send(router2, "PING", 4, ZLINK_DONTWAIT);
+            const int rc = zlink_send (router2, "PING", 4, ZLINK_DONTWAIT);
             if (rc == 4) {
                 const int id_len =
-                  zlink_recv(router1, buf, sizeof(buf), ZLINK_DONTWAIT);
+                  zlink_recv (router1, buf, sizeof (buf), ZLINK_DONTWAIT);
                 if (id_len > 0) {
-                    if (!recv_exact(router1, buf, 4, 0))
+                    if (!recv_exact (router1, buf, 4, 0))
                         return false;
                     connected = true;
                 } else if (id_len < 0) {
-                    const int err = zlink_errno();
+                    const int err = zlink_errno ();
                     if (err != EAGAIN && err != EINTR)
                         return false;
                 }
             } else if (rc < 0) {
-                const int err = zlink_errno();
+                const int err = zlink_errno ();
                 if (err != EAGAIN && err != EINTR)
                     return false;
             }
         }
 
         if (!connected)
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
+
     if (!connected)
         return false;
 
-    if (!send_exact(router1, "ROUTER2", 7, ZLINK_SNDMORE)
-        || !send_exact(router1, "PONG", 4, 0)) {
+    if (!send_exact (router1, "ROUTER2", 7, ZLINK_SNDMORE)
+        || !send_exact (router1, "PONG", 4, 0)) {
         return false;
     }
 
-    const int pong_id_len = zlink_recv(router2, buf, sizeof(buf), 0);
-    if (pong_id_len <= 0 || !recv_exact(router2, buf, 4, 0))
+    const int pong_id_len = zlink_recv (router2, buf, sizeof (buf), 0);
+    if (pong_id_len <= 0 || !recv_exact (router2, buf, 4, 0))
         return false;
 
-    return drain_socket_nonblocking(router1)
-           && drain_socket_nonblocking(router2);
-}
-
-bool run_router_router_latency(void *router1,
-                               void *router2,
-                               const std::vector<char> &buffer,
-                               size_t msg_size,
-                               latency_stats_t *out_stats)
-{
-    if (!out_stats)
-        return false;
-
-    const int latency_duration_s = resolve_single_latency_duration_seconds();
-    latency_stats_builder_t latency_builder;
-    const auto latency_deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::seconds(latency_duration_s > 0 ? latency_duration_s : 1);
-    while (std::chrono::steady_clock::now() < latency_deadline) {
-        stopwatch_t sw;
-        sw.start();
-        if (!send_exact(router2, "ROUTER1", 7, ZLINK_SNDMORE)
-            || !send_exact(router2, buffer.data(), msg_size, 0)) {
-            return false;
-        }
-
-        std::vector<char> routing_id;
-        const int recv_rc =
-          recv_two_part_msg_flags(router1, msg_size, &routing_id, 0);
-        if (recv_rc <= 0
-            || !send_exact(router1, routing_id.data(), routing_id.size(),
-                           ZLINK_SNDMORE)
-            || !send_exact(router1, buffer.data(), msg_size, 0)) {
-            return false;
-        }
-
-        if (recv_two_part_msg_flags(router2, msg_size, NULL, 0) <= 0) {
-            return false;
-        }
-
-        latency_builder.add((sw.elapsed_ms() * 1000.0) * 0.5);
-    }
-
-    if (latency_builder.count() == 0)
-        return false;
-
-    *out_stats = latency_builder.snapshot();
     return true;
 }
 
-bool run_router_router_throughput(void *router1,
-                                  void *router2,
-                                  const std::vector<char> &buffer,
-                                  size_t msg_size,
-                                  queue_probe_t &queue_probe,
-                                  double *out_throughput)
+inline int recv_router_header_flags (void *socket,
+                                     size_t payload_size,
+                                     int flags,
+                                     perf_single_metric::header_t *header_out,
+                                     bool *header_ok_out)
 {
-    if (!out_throughput)
-        return false;
+    if (!socket)
+        return -1;
 
-    const int throughput_duration_s = resolve_single_duration_seconds();
-    const auto throughput_deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::seconds(throughput_duration_s > 0 ? throughput_duration_s
-                                                       : 1);
-    const int recv_timeout_ms = resolve_single_recv_timeout_ms();
-    const auto drain_idle_limit =
-      std::chrono::milliseconds(recv_timeout_ms > 0 ? recv_timeout_ms : 200);
-    std::atomic<bool> sender_done(false);
-    std::atomic<bool> recv_failed(false);
-    std::atomic<int> recv_in_window(0);
+    if (header_ok_out)
+        *header_ok_out = false;
 
-    std::thread receiver_thread([&]() {
-        auto last_recv_at = std::chrono::steady_clock::now();
-        queue_probe.force_sample_recv();
-        while (true) {
-            const bool done = sender_done.load(std::memory_order_acquire);
-            const int flags = done ? ZLINK_DONTWAIT : 0;
-            const int recv_rc =
-              recv_two_part_msg_flags(router1, msg_size, NULL, flags);
-            if (recv_rc > 0) {
-                last_recv_at = std::chrono::steady_clock::now();
-                if (std::chrono::steady_clock::now() < throughput_deadline)
-                    recv_in_window.fetch_add(1, std::memory_order_release);
-                queue_probe.sample_recv_if_due();
+    zlink_msg_t rid;
+    if (zlink_msg_init (&rid) != 0)
+        return -1;
 
-                // Drain immediately available messages in a non-blocking burst.
-                for (;;) {
-                    const int burst_rc = recv_two_part_msg_flags(
-                      router1, msg_size, NULL, ZLINK_DONTWAIT);
-                    if (burst_rc > 0) {
-                        last_recv_at = std::chrono::steady_clock::now();
-                        if (std::chrono::steady_clock::now()
-                            < throughput_deadline) {
-                            recv_in_window.fetch_add(
-                              1, std::memory_order_release);
-                        }
-                        queue_probe.sample_recv_if_due();
-                        continue;
-                    }
-                    if (burst_rc == 0)
-                        break;
-                    recv_failed.store(true, std::memory_order_release);
-                    break;
-                }
-                if (recv_failed.load(std::memory_order_acquire))
-                    break;
-                continue;
-            }
-            if (recv_rc == 0) {
-                if (done
-                    && std::chrono::steady_clock::now() - last_recv_at
-                         >= drain_idle_limit) {
-                    break;
-                }
-                std::this_thread::yield();
-                continue;
-            }
-            recv_failed.store(true, std::memory_order_release);
-            break;
-        }
-        queue_probe.force_sample_recv();
-    });
-
-    bool send_failed = false;
-    queue_probe.force_sample_send();
-    while (std::chrono::steady_clock::now() < throughput_deadline) {
-        if (!send_exact(router2, "ROUTER1", 7, ZLINK_SNDMORE)
-            || !send_exact(router2, buffer.data(), msg_size, 0)) {
-            send_failed = true;
-            break;
-        }
-        queue_probe.sample_send_if_due();
+    const int id_rc = zlink_msg_recv (&rid, socket, flags);
+    if (id_rc < 0) {
+        const int err = zlink_errno ();
+        zlink_msg_close (&rid);
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
     }
-    queue_probe.force_sample_send();
-    sender_done.store(true, std::memory_order_release);
-    receiver_thread.join();
 
-    if (send_failed || recv_failed.load(std::memory_order_acquire))
-        return false;
+    if (zlink_msg_more (&rid) == 0) {
+        zlink_msg_close (&rid);
+        return -1;
+    }
+    zlink_msg_close (&rid);
 
-    const int received = recv_in_window.load(std::memory_order_acquire);
-    if (received <= 0)
-        return false;
+    zlink_msg_t payload;
+    if (zlink_msg_init (&payload) != 0)
+        return -1;
+    if (zlink_msg_recv (&payload, socket, 0) < 0) {
+        zlink_msg_close (&payload);
+        return -1;
+    }
 
-    *out_throughput =
-      static_cast<double>(received) / static_cast<double>(throughput_duration_s);
-    return true;
+    const size_t actual_size = zlink_msg_size (&payload);
+    const bool size_ok = actual_size == payload_size;
+    const bool has_more = zlink_msg_more (&payload) != 0;
+    bool header_ok = false;
+
+    if (size_ok && !has_more) {
+        if (header_out) {
+            header_ok = perf_single_metric::decode_payload_header (
+              zlink_msg_data (&payload), actual_size, header_out);
+        } else {
+            header_ok = true;
+        }
+    }
+
+    zlink_msg_close (&payload);
+
+    if (has_more)
+        return -1;
+
+    if (header_ok_out)
+        *header_ok_out = header_ok;
+
+    return 1;
 }
 
-bool setup_router_router_session(void *router1,
-                                 void *router2,
-                                 const std::string &transport,
-                                 const std::string &pair_id,
-                                 int recv_timeout_ms)
+inline bool setup_router_router_session (void *router1,
+                                         void *router2,
+                                         const std::string &transport,
+                                         const std::string &pair_id)
 {
     if (!router1 || !router2)
         return false;
 
-    zlink_setsockopt(router1, ZLINK_ROUTING_ID, "ROUTER1", 7);
-    zlink_setsockopt(router2, ZLINK_ROUTING_ID, "ROUTER2", 7);
+    zlink_setsockopt (router1, ZLINK_ROUTING_ID, "ROUTER1", 7);
+    zlink_setsockopt (router2, ZLINK_ROUTING_ID, "ROUTER2", 7);
 
     int mandatory = 1;
-    zlink_setsockopt(router1, ZLINK_ROUTER_MANDATORY, &mandatory,
-                     sizeof(mandatory));
-    zlink_setsockopt(router2, ZLINK_ROUTER_MANDATORY, &mandatory,
-                     sizeof(mandatory));
+    zlink_setsockopt (router1, ZLINK_ROUTER_MANDATORY, &mandatory,
+                      sizeof (mandatory));
+    zlink_setsockopt (router2, ZLINK_ROUTER_MANDATORY, &mandatory,
+                      sizeof (mandatory));
 
-    if (!setup_connected_pair(router1, router2, transport, pair_id)
-        || !perform_router_router_handshake(router1, router2)) {
+    if (!setup_connected_pair (router1, router2, transport, pair_id)
+        || !perform_router_router_handshake (router1, router2)) {
         return false;
     }
 
-    set_sockopt_int(router1, ZLINK_RCVTIMEO, recv_timeout_ms,
-                    "ZLINK_RCVTIMEO");
-    set_sockopt_int(router2, ZLINK_RCVTIMEO, recv_timeout_ms,
-                    "ZLINK_RCVTIMEO");
+    const int timeout_ms = resolve_single_recv_timeout_ms ();
+    set_sockopt_int (router1, ZLINK_RCVTIMEO, timeout_ms, "ZLINK_RCVTIMEO");
+    set_sockopt_int (router2, ZLINK_RCVTIMEO, timeout_ms, "ZLINK_RCVTIMEO");
+    return true;
+}
+
+inline bool run_oneway_phase (void *router1,
+                              void *router2,
+                              std::vector<char> *payload,
+                              size_t payload_size,
+                              size_t msg_size,
+                              uint32_t run_id,
+                              uint64_t *seq,
+                              perf_single_metric::phase_t phase,
+                              int warmup_count,
+                              int duration_s,
+                              int recv_timeout_ms,
+                              queue_probe_t *queue_probe,
+                              unsigned long long *out_received,
+                              latency_stats_t *out_latency)
+{
+    if (!router1 || !router2 || !payload || !seq || !out_received)
+        return false;
+
+    const bool active_phase = phase == perf_single_metric::phase_active;
+    const auto deadline =
+      active_phase
+        ? std::chrono::steady_clock::now ()
+            + std::chrono::seconds (duration_s > 0 ? duration_s : 1)
+        : std::chrono::steady_clock::time_point ();
+    const auto drain_idle_limit = std::chrono::milliseconds (
+      recv_timeout_ms > 0 ? recv_timeout_ms : 200);
+
+    std::atomic<bool> sender_done (false);
+    std::atomic<bool> recv_failed (false);
+
+    std::atomic<unsigned long long> received (0);
+    latency_stats_builder_t latency_builder;
+
+    std::thread receiver_thread ([&] () {
+        auto last_recv_at = std::chrono::steady_clock::now ();
+
+        auto account_header =
+          [&] (const perf_single_metric::header_t &header,
+               bool header_ok) {
+              if (active_phase && queue_probe)
+                  queue_probe->sample_recv_if_due ();
+
+              if (!header_ok || header.magic != perf_single_metric::k_magic
+                  || header.phase != static_cast<uint32_t> (phase)) {
+                  return;
+              }
+
+              if (active_phase) {
+                  if (std::chrono::steady_clock::now () < deadline) {
+                      received.fetch_add (1, std::memory_order_relaxed);
+                      const uint64_t now = perf_single_metric::now_us ();
+                      const double latency_us =
+                        now >= header.sent_ts_us
+                          ? static_cast<double> (now - header.sent_ts_us)
+                          : 0.0;
+                      latency_builder.add (latency_us);
+                  }
+              } else {
+                  received.fetch_add (1, std::memory_order_relaxed);
+              }
+          };
+
+        if (active_phase && queue_probe)
+            queue_probe->force_sample_recv ();
+
+        while (true) {
+            const bool done = sender_done.load (std::memory_order_acquire);
+            const int flags = 0;
+
+            perf_single_metric::header_t header;
+            bool header_ok = false;
+            const int recv_rc = recv_router_header_flags (
+              router1, payload_size, flags, &header, &header_ok);
+            if (recv_rc > 0) {
+                last_recv_at = std::chrono::steady_clock::now ();
+                account_header (header, header_ok);
+
+                for (;;) {
+                    perf_single_metric::header_t burst_header;
+                    bool burst_header_ok = false;
+                    const int burst_rc = recv_router_header_flags (
+                      router1,
+                      payload_size,
+                      ZLINK_DONTWAIT,
+                      &burst_header,
+                      &burst_header_ok);
+                    if (burst_rc > 0) {
+                        last_recv_at = std::chrono::steady_clock::now ();
+                        account_header (burst_header, burst_header_ok);
+                        continue;
+                    }
+                    if (burst_rc == 0)
+                        break;
+
+                    recv_failed.store (true, std::memory_order_release);
+                    break;
+                }
+
+                if (recv_failed.load (std::memory_order_acquire))
+                    break;
+                continue;
+            }
+
+            if (recv_rc == 0) {
+                if (done
+                    && std::chrono::steady_clock::now () - last_recv_at
+                         >= drain_idle_limit) {
+                    break;
+                }
+                continue;
+            }
+
+            recv_failed.store (true, std::memory_order_release);
+            break;
+        }
+
+        if (active_phase && queue_probe)
+            queue_probe->force_sample_recv ();
+    });
+
+    bool send_failed = false;
+    if (active_phase && queue_probe)
+        queue_probe->force_sample_send ();
+
+    if (active_phase) {
+        const int max_inflight =
+          resolve_bench_count ("PERF_SINGLE_MAX_INFLIGHT", 256);
+        unsigned long long sent_active = 0;
+        while (std::chrono::steady_clock::now () < deadline) {
+            while (max_inflight > 0
+                   && sent_active
+                        >= received.load (std::memory_order_relaxed)
+                             + static_cast<unsigned long long> (max_inflight)
+                   && std::chrono::steady_clock::now () < deadline) {
+                std::this_thread::yield ();
+            }
+            const uint64_t sent_ts = perf_single_metric::now_us ();
+            if (!perf_single_metric::stamp_payload (payload->data (),
+                                                    payload_size,
+                                                    run_id,
+                                                    phase,
+                                                    msg_size,
+                                                    (*seq)++,
+                                                    sent_ts)
+                || !send_exact (router2, "ROUTER1", 7, ZLINK_SNDMORE)
+                || !send_exact (router2, payload->data (), payload_size, 0)) {
+                send_failed = true;
+                break;
+            }
+            ++sent_active;
+            if (queue_probe)
+                queue_probe->sample_send_if_due ();
+        }
+    } else {
+        for (int i = 0; i < warmup_count; ++i) {
+            if (!perf_single_metric::stamp_payload (
+                  payload->data (),
+                  payload_size,
+                  run_id,
+                  phase,
+                  msg_size,
+                  (*seq)++,
+                  perf_single_metric::now_us ())
+                || !send_exact (router2, "ROUTER1", 7, ZLINK_SNDMORE)
+                || !send_exact (router2, payload->data (), payload_size, 0)) {
+                send_failed = true;
+                break;
+            }
+        }
+    }
+
+    if (active_phase && queue_probe)
+        queue_probe->force_sample_send ();
+
+    sender_done.store (true, std::memory_order_release);
+    receiver_thread.join ();
+
+    if (send_failed || recv_failed.load (std::memory_order_acquire))
+        return false;
+
+    *out_received = received.load (std::memory_order_relaxed);
+
+    if (active_phase) {
+        if (received.load (std::memory_order_relaxed) == 0
+            || latency_builder.count () == 0 || !out_latency)
+            return false;
+        *out_latency = latency_builder.snapshot ();
+    } else if (received.load (std::memory_order_relaxed)
+               < static_cast<unsigned long long> (warmup_count)) {
+        return false;
+    }
+
     return true;
 }
 
 } // namespace
 
-void run_router_router(const std::string &transport,
-                       size_t msg_size,
-                       const std::string &lib_name)
+void run_router_router (const std::string &transport,
+                        size_t msg_size,
+                        const std::string &lib_name)
 {
-    if (!transport_available(transport))
+    if (!transport_available (transport))
         return;
 
-    auto print_fail_no_queue = [&]() {
-        print_fail_result(lib_name, "ROUTER_ROUTER", transport, msg_size);
+    auto print_fail_no_queue = [&] () {
+        print_fail_result (lib_name, "ROUTER_ROUTER", transport, msg_size);
     };
 
     ctx_guard_t ctx;
-    if (!ctx.valid()) {
-        print_fail_no_queue();
+    if (!ctx.valid ()) {
+        print_fail_no_queue ();
         return;
     }
 
-    socket_guard_t router1(ctx.get(), ZLINK_ROUTER);
-    socket_guard_t router2(ctx.get(), ZLINK_ROUTER);
-    if (!router1.valid() || !router2.valid()) {
-        print_fail_no_queue();
+    socket_guard_t router1 (ctx.get (), ZLINK_ROUTER);
+    socket_guard_t router2 (ctx.get (), ZLINK_ROUTER);
+    if (!router1.valid () || !router2.valid ()) {
+        print_fail_no_queue ();
         return;
     }
 
-    const int recv_timeout_ms = resolve_single_recv_timeout_ms();
-    if (!setup_router_router_session(router1.get(), router2.get(), transport,
-                                     lib_name + "_router_router",
-                                     recv_timeout_ms)) {
-        print_fail_no_queue();
+    if (!setup_router_router_session (
+          router1.get (), router2.get (), transport,
+          lib_name + "_router_router")) {
+        print_fail_no_queue ();
         return;
     }
 
-    std::vector<char> buffer(msg_size, 'a');
-    queue_probe_t queue_probe(router2.get(), router1.get());
+    const int recv_timeout_ms = resolve_single_recv_timeout_ms ();
+    const size_t payload_size =
+      std::max<size_t> (msg_size, perf_single_metric::header_size ());
+    std::vector<char> payload (payload_size, 'a');
+    queue_probe_t queue_probe (router2.get (), router1.get ());
 
-    auto print_fail_with_queue = [&]() {
-        print_fail_result(
+    auto print_fail_with_queue = [&] () {
+        print_fail_result (
           lib_name, "ROUTER_ROUTER", transport, msg_size, &queue_probe);
     };
 
+    const uint32_t run_id = static_cast<uint32_t> (perf_single_metric::now_us ());
+    uint64_t seq = 1;
+
+    unsigned long long warmup_received = 0;
+    const int warmup_count = resolve_bench_count ("PERF_WARMUP_COUNT", 1000);
+    if (!run_oneway_phase (router1.get (),
+                           router2.get (),
+                           &payload,
+                           payload_size,
+                           msg_size,
+                           run_id,
+                           &seq,
+                           perf_single_metric::phase_warmup,
+                           warmup_count,
+                           0,
+                           recv_timeout_ms,
+                           NULL,
+                           &warmup_received,
+                           NULL)) {
+        print_fail_with_queue ();
+        return;
+    }
+
+    const int duration_s = std::max (1, resolve_single_duration_seconds ());
+    unsigned long long received = 0;
     latency_stats_t latency_stats;
-    if (!run_router_router_latency(router1.get(), router2.get(), buffer,
-                                   msg_size, &latency_stats)) {
-        print_fail_with_queue();
+    if (!run_oneway_phase (router1.get (),
+                           router2.get (),
+                           &payload,
+                           payload_size,
+                           msg_size,
+                           run_id,
+                           &seq,
+                           perf_single_metric::phase_active,
+                           0,
+                           duration_s,
+                           recv_timeout_ms,
+                           &queue_probe,
+                           &received,
+                           &latency_stats)) {
+        print_fail_with_queue ();
         return;
     }
 
-    double throughput = 0.0;
-    if (!run_router_router_throughput(router1.get(), router2.get(), buffer,
-                                      msg_size, queue_probe,
-                                      &throughput)) {
-        print_fail_with_queue();
-        return;
-    }
+    const double throughput =
+      static_cast<double> (received) / static_cast<double> (duration_s);
+    const queue_stats_t queue_stats = queue_probe.snapshot ();
 
-    const queue_stats_t queue_stats = queue_probe.snapshot();
-    print_result(lib_name, "ROUTER_ROUTER", transport, msg_size, throughput,
-                 latency_stats.mean_us, latency_stats.p95_us,
-                 latency_stats.p99_us, queue_stats);
+    print_result (lib_name,
+                  "ROUTER_ROUTER",
+                  transport,
+                  msg_size,
+                  throughput,
+                  latency_stats.mean_us,
+                  latency_stats.p95_us,
+                  latency_stats.p99_us,
+                  queue_stats);
 }
 
-int main(int argc, char **argv)
+int main (int argc, char **argv)
 {
-    return run_standard_bench_main(argc, argv, run_router_router);
+    return run_standard_bench_main (argc, argv, run_router_router);
 }

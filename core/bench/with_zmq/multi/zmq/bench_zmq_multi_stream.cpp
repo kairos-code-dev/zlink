@@ -815,60 +815,6 @@ int recv_batch_stream (void *server,
     return received;
 }
 
-void drain_pending_stream_frames (void *server,
-                                  std::vector<tcp_sender_state_t> &senders,
-                                  stream_client_poller_t &poller,
-                                  stream_reply_queue_t &pending_replies,
-                                  int max_wait_ms)
-{
-    const int idle_ms_target = resolve_multi_int_env (
-      "BENCH_MULTI_STREAM_DRAIN_IDLE_MS", 10, 1);
-    const int default_wait_ms = resolve_multi_int_env (
-      "BENCH_MULTI_STREAM_DRAIN_MAX_MS", 2000, 0);
-    const int drain_wait_ms = max_wait_ms >= 0 ? max_wait_ms : default_wait_ms;
-    const int drain_relay_budget = resolve_multi_int_env (
-      "BENCH_MULTI_STREAM_DRAIN_RELAY_BUDGET", 512, 1);
-    const int max_pending = resolve_multi_int_env (
-      "BENCH_MULTI_STREAM_MAX_PENDING_REPLIES", 65536, 1);
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (std::max (0, drain_wait_ms));
-
-    int idle_ms = 0;
-    while (std::chrono::steady_clock::now () < deadline) {
-        const int flushed =
-          flush_stream_reply_queue (server, pending_replies, drain_relay_budget);
-        if (flushed < 0)
-            break;
-        int enqueued = 0;
-        if (pending_replies.empty () || !pending_replies.front ().id_sent) {
-            enqueued = enqueue_stream_payload_chunks (
-              server, pending_replies, drain_relay_budget, 0,
-              static_cast<size_t> (max_pending));
-        }
-        if (enqueued < 0)
-            break;
-        const int flushed_tail =
-          flush_stream_reply_queue (server, pending_replies, drain_relay_budget);
-        if (flushed_tail < 0)
-            break;
-        const int echoed = recv_batch_client_echoes (senders, poller, 4096, 0);
-        if (echoed < 0)
-            break;
-
-        if (flushed > 0 || enqueued > 0 || flushed_tail > 0 || echoed > 0
-            || !pending_replies.empty ()) {
-            idle_ms = 0;
-            continue;
-        }
-
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
-        ++idle_ms;
-        if (idle_ms >= idle_ms_target)
-            break;
-    }
-}
-
 bool recv_one_stream_frame (void *server,
                             stream_stash_map_t &stashes,
                             int timeout_ms,
@@ -1265,14 +1211,6 @@ void run_multi_stream (const std::string &transport,
                 / static_cast<double> (std::max (1, round_settings.duration_seconds))
             : 0.0;
         completed_sizes = s + 1;
-        if ((s + 1) < msg_sizes.size ()) {
-            drain_pending_stream_frames (
-              server,
-              senders,
-              stream_poller,
-              pending_replies,
-              settings.size_transition_drain_ms);
-        }
     }
 
     for (size_t i = 0; i < senders.size (); ++i)

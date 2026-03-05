@@ -1150,10 +1150,6 @@ inline int run_multi_client_main (int argc,
           throughput,
           latency,
           metrics);
-
-        run_size_transition_drain_stage (
-          settings,
-          (si + 1) < msg_sizes.size ());
     }
 
     bench_multi_client_detail::close_client_sockets (&sockets);

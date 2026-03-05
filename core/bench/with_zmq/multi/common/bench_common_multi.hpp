@@ -31,7 +31,6 @@ struct multi_bench_settings_t
     int drain_ms;
     int send_workers;
     int send_backoff_us;
-    int size_transition_drain_ms;
 };
 
 enum multi_send_result_t
@@ -130,10 +129,6 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
     settings.send_workers = resolve_multi_int_env ("BENCH_MULTI_SEND_WORKERS", 1, 1);
     settings.send_backoff_us =
       resolve_multi_int_env ("BENCH_MULTI_SEND_BACKOFF_US", 0, 0);
-    settings.size_transition_drain_ms = resolve_multi_int_env (
-      "BENCH_MULTI_SIZE_TRANSITION_DRAIN_MS",
-      resolve_multi_int_env ("BENCH_MULTI_PATTERN_TRANSITION_MS", 300, 0),
-      0);
     return settings;
 }
 
@@ -169,16 +164,6 @@ inline void print_prep_result (const std::string &lib_type,
               << size << ",connect_ms," << std::fixed << std::setprecision (2)
               << connect_ms << ",ready_wait_ms," << std::fixed
               << std::setprecision (2) << ready_wait_ms << std::endl;
-}
-
-inline void run_size_transition_drain_stage (const multi_bench_settings_t &settings,
-                                             bool has_next)
-{
-    if (!has_next)
-        return;
-    const int sleep_ms = std::max (0, settings.size_transition_drain_ms);
-    if (sleep_ms > 0)
-        std::this_thread::sleep_for (std::chrono::milliseconds (sleep_ms));
 }
 
 template <typename ConnectFn>

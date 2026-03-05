@@ -87,12 +87,12 @@ PIN_CPU=0
 IO_THREADS="${PERF_IO_THREADS:-${BENCH_IO_THREADS:-}}"
 MSG_SIZES="${PERF_MSG_SIZES:-${BENCH_MSG_SIZES:-}}"
 TRANSPORTS="${PERF_TRANSPORTS:-${BENCH_TRANSPORTS:-}}"
-SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-2}"
+SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
 SINGLE_HWM="${PERF_SINGLE_HWM:-}"
 SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
 SINGLE_RCVHWM="${PERF_SINGLE_RCVHWM:-}"
-SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-}"
-SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-${PERF_SINGLE_PUBSUB_RCVTIMEO_MS:-}}"
+SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
+SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
 BENCH_COMPARISON_SCRIPT="${SCRIPT_DIR}/single/run_comparison.py"
 SINGLE_BUILD_TARGETS=(
   comp_std_zmq_pair
@@ -125,12 +125,14 @@ Options:
   --results-dir PATH          Override result root directory.
   --results-tag NAME          Optional tag in saved result filename.
   --runs N                    Iterations per pattern/transport/size (default: 1).
-  --duration N                Override single duration seconds (default: 2).
+  --duration N                Override single duration seconds (default: 5).
   --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
   --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
   --recv-hwm N                Override PERF_SINGLE_RCVHWM (fallback: --hwm).
   --sndtimeo N                Override PERF_SINGLE_SNDTIMEO_MS (default: 200).
   --rcvtimeo N                Override PERF_SINGLE_RCVTIMEO_MS (default: 200).
+  --send-timeout-ms N         Alias of --sndtimeo.
+  --recv-timeout-ms N         Alias of --rcvtimeo.
   --pin-cpu                   Pin CPU core during benchmark runs (Linux taskset).
   --io-threads N              Set PERF_IO_THREADS for benchmark binaries.
   --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
@@ -209,11 +211,11 @@ while [[ $# -gt 0 ]]; do
       SINGLE_RCVHWM="${2:-}"
       shift
       ;;
-    --sndtimeo|--sndtimeo-ms)
+    --sndtimeo|--sndtimeo-ms|--send-timeout-ms)
       SINGLE_SNDTIMEO_MS="${2:-}"
       shift
       ;;
-    --rcvtimeo|--rcvtimeo-ms)
+    --rcvtimeo|--rcvtimeo-ms|--recv-timeout-ms)
       SINGLE_RCVTIMEO_MS="${2:-}"
       shift
       ;;
@@ -231,7 +233,8 @@ while [[ $# -gt 0 ]]; do
     --transports|--transport)
       TRANSPORTS="${2:-}"
       shift
-      ;;    -h|--help)
+      ;;
+    -h|--help)
       usage
       exit 0
       ;;

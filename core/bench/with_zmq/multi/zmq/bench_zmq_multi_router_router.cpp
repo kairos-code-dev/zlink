@@ -548,8 +548,6 @@ void run_multi_router_router (const std::string &transport,
                   std::max (1, round_settings.duration_seconds))
             : 0.0;
         completed_sizes = s + 1;
-        run_size_transition_drain_stage (
-          settings, (s + 1) < msg_sizes.size ());
     }
 
     for (size_t i = 0; i < clients.size (); ++i) {

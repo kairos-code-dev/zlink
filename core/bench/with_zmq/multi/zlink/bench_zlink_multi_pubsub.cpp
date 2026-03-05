@@ -4,8 +4,18 @@
 #include <vector>
 #include <cerrno>
 #include <algorithm>
+#include <chrono>
+#include <cstring>
 
 namespace {
+
+inline unsigned long long wallclock_now_us ()
+{
+    const auto now =
+      std::chrono::time_point_cast<std::chrono::microseconds> (
+        std::chrono::system_clock::now ());
+    return static_cast<unsigned long long> (now.time_since_epoch ().count ());
+}
 
 multi_send_result_t send_pub_blocking (void *pub,
                                        const std::vector<char> &buffer)
@@ -317,27 +327,65 @@ double measure_pubsub_latency_us (void *ctx,
 
     const int lat_count = resolve_bench_count ("BENCH_LAT_COUNT", 500);
     int received = 0;
-    auto start = std::chrono::steady_clock::now ();
+    double lat_sum_us = 0.0;
     for (int i = 0; i < lat_count; ++i) {
+        while (zlink_recv (
+                 sub, recv_buf.data (), recv_buf.size (), ZLINK_DONTWAIT)
+               >= 0) {
+        }
+        if (zlink_errno () != EAGAIN && zlink_errno () != EINTR)
+            continue;
+
+        const unsigned long long send_ts_us = wallclock_now_us ();
+        if (buffer.size () >= sizeof (send_ts_us))
+            std::memcpy (buffer.data (), &send_ts_us, sizeof (send_ts_us));
+
         if (zlink_send (pub, buffer.data (), buffer.size (), 0) < 0)
             continue;
 
-        zlink_pollitem_t item[] = {{sub, 0, ZLINK_POLLIN, 0}};
-        if (zlink_poll (item, 1, poll_timeout_ms) <= 0
-            || (item[0].revents & ZLINK_POLLIN) == 0)
-            continue;
+        const auto deadline = std::chrono::steady_clock::now ()
+                              + std::chrono::milliseconds (
+                                std::max (1, poll_timeout_ms));
+        while (std::chrono::steady_clock::now () < deadline) {
+            const auto remain_ms = static_cast<long> (
+              std::chrono::duration_cast<std::chrono::milliseconds> (
+                deadline - std::chrono::steady_clock::now ())
+                .count ());
+            if (remain_ms <= 0)
+                break;
 
-        if (zlink_recv (sub, recv_buf.data (), recv_buf.size (), 0) >= 0)
-            ++received;
+            zlink_pollitem_t item[] = {{sub, 0, ZLINK_POLLIN, 0}};
+            if (zlink_poll (item, 1, remain_ms) <= 0
+                || (item[0].revents & ZLINK_POLLIN) == 0)
+                continue;
+
+            const int rc = zlink_recv (sub, recv_buf.data (), recv_buf.size (), 0);
+            if (rc < 0)
+                continue;
+
+            unsigned long long observed_send_ts_us = send_ts_us;
+            if (static_cast<size_t> (rc) >= sizeof (observed_send_ts_us)) {
+                std::memcpy (
+                  &observed_send_ts_us,
+                  recv_buf.data (),
+                  sizeof (observed_send_ts_us));
+            }
+            if (observed_send_ts_us != send_ts_us)
+                continue;
+
+            const unsigned long long now_us = wallclock_now_us ();
+            if (now_us >= observed_send_ts_us) {
+                lat_sum_us +=
+                  static_cast<double> (now_us - observed_send_ts_us);
+                ++received;
+            }
+            break;
+        }
     }
 
     double latency = 0.0;
-    if (received > 0) {
-        const auto elapsed = std::chrono::steady_clock::now () - start;
-        latency =
-          (std::chrono::duration<double, std::milli> (elapsed).count () * 1000.0)
-          / static_cast<double> (received);
-    }
+    if (received > 0)
+        latency = lat_sum_us / static_cast<double> (received);
 
     zlink_close (sub);
     zlink_close (pub);
@@ -509,8 +557,6 @@ void run_multi_pubsub (const std::string &transport,
                            prep_connect_ms, prep_ready_ms);
         print_result (lib_name, "MULTI_PUBSUB", transport, current_size,
                       throughput, latency);
-        run_size_transition_drain_stage (
-          settings, (s + 1) < msg_sizes.size ());
     }
     cleanup ();
 }

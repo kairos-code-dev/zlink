@@ -195,11 +195,20 @@ SPLIT_SERVER_CLIENT_PATTERNS = {
     "MULTI_DEALER_DEALER",
     "MULTI_DEALER_ROUTER",
     "MULTI_ROUTER_ROUTER",
-    "MULTI_STREAM",
 }
-STREAM_SHARED_CLIENT_BINARY = "comp_zlink_multi_stream"
-STREAM_SERVER_BINARY_BY_PATTERN = {
-    "MULTI_STREAM": "comp_zlink_multi_stream_server",
+ZLINK_SPLIT_BINARIES = {
+    "MULTI_DEALER_DEALER": (
+        "comp_zlink_multi_dealer_dealer_server",
+        "comp_zlink_multi_dealer_dealer_client",
+    ),
+    "MULTI_DEALER_ROUTER": (
+        "comp_zlink_multi_dealer_router_server",
+        "comp_zlink_multi_dealer_router_client",
+    ),
+    "MULTI_ROUTER_ROUTER": (
+        "comp_zlink_multi_router_router_server",
+        "comp_zlink_multi_router_router_client",
+    ),
 }
 _platform_tag, _arch_tag = platform_arch_tag()
 DEFAULT_STD_CACHE_FILE = os.path.join(
@@ -251,6 +260,28 @@ def parse_nonnegative_int_env(name, default_value):
 DEFAULT_RUN_COOLDOWN_MS = parse_nonnegative_int_env(
     "BENCH_MULTI_RUN_COOLDOWN_MS", 3000
 )
+TRANSPORT_TRANSITION_MS = parse_nonnegative_int_env(
+    "BENCH_TRANSPORT_TRANSITION_MS",
+    parse_nonnegative_int_env("PERF_TRANSPORT_TRANSITION_MS", 3000),
+)
+PATTERN_TRANSITION_MS = parse_nonnegative_int_env(
+    "BENCH_MULTI_PATTERN_TRANSITION_MS",
+    parse_nonnegative_int_env("PERF_PATTERN_TRANSITION_MS", 3000),
+)
+SERVER_READY_TIMEOUT_MS = parse_nonnegative_int_env(
+    "BENCH_MULTI_SERVER_READY_TIMEOUT_MS",
+    parse_nonnegative_int_env(
+        "BENCH_SERVER_READY_TIMEOUT_MS",
+        parse_nonnegative_int_env("PERF_SERVER_READY_TIMEOUT_MS", 10000),
+    ),
+)
+SERVER_SHUTDOWN_TIMEOUT_MS = parse_nonnegative_int_env(
+    "BENCH_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
+    parse_nonnegative_int_env(
+        "BENCH_SERVER_SHUTDOWN_TIMEOUT_MS",
+        parse_nonnegative_int_env("PERF_SERVER_SHUTDOWN_TIMEOUT_MS", 5000),
+    ),
+)
 
 
 def select_comparisons(comparisons, pattern_req):
@@ -263,10 +294,11 @@ def select_comparisons(comparisons, pattern_req):
 
 
 def required_zlink_split_binaries(pattern_name):
-    server_bin = STREAM_SERVER_BINARY_BY_PATTERN.get(pattern_name)
-    if not server_bin:
+    pair = ZLINK_SPLIT_BINARIES.get(pattern_name)
+    if not pair:
         return []
-    return [server_bin]
+    server_bin, client_bin = pair
+    return [server_bin, client_bin]
 
 
 def expected_runtime_binaries(selected_comparisons, include_std):
@@ -437,9 +469,13 @@ def parse_ready_endpoint_line(line):
     return parts[1].strip()
 
 
-def _stop_server_process(proc):
+def _stop_server_process(proc, shutdown_timeout_ms):
     if proc is None:
         return
+    shutdown_timeout_sec = max(0.0, float(shutdown_timeout_ms) / 1000.0)
+    if shutdown_timeout_sec <= 0.0:
+        shutdown_timeout_sec = 5.0
+
     try:
         if proc.stdin is not None:
             proc.stdin.write("STOP\n")
@@ -449,11 +485,11 @@ def _stop_server_process(proc):
         pass
 
     try:
-        proc.wait(timeout=3.0)
+        proc.wait(timeout=shutdown_timeout_sec)
     except subprocess.TimeoutExpired:
         try:
             proc.terminate()
-            proc.wait(timeout=2.0)
+            proc.wait(timeout=min(2.0, shutdown_timeout_sec))
         except Exception:
             proc.kill()
             try:
@@ -471,12 +507,15 @@ def run_split_server_client_test(
     fallback_size,
     expected_sizes,
     timeout_sec,
+    server_ready_timeout_ms,
+    server_shutdown_timeout_ms,
     warmup_seconds,
     duration_seconds,
     progress_cb=None,
     metric_cb=None,
+    env_override=None,
 ):
-    env = get_env_for_lib(lib_name)
+    env = dict(env_override) if env_override is not None else get_env_for_lib(lib_name)
     parsed = {}
     expected_metric_count = len(expected_sizes) * 2
     outcome = {
@@ -487,50 +526,7 @@ def run_split_server_client_test(
     }
 
     server_cmd = [server_binary_path, lib_name, transport, str(fallback_size), "--server-only"]
-    if pattern_name == "MULTI_STREAM":
-        ordered_sizes = [size for size in MSG_SIZES if size in expected_sizes]
-        if not ordered_sizes:
-            ordered_sizes = sorted(expected_sizes)
-        size_csv = ",".join(str(size) for size in ordered_sizes)
-        raw_clients = (
-            env.get("PERF_MULTI_CLIENTS")
-            or env.get("BENCH_MULTI_CLIENTS")
-            or "1000"
-        )
-        try:
-            clients = max(1, int(raw_clients))
-        except ValueError:
-            clients = 1000
-        raw_io_threads = env.get("PERF_IO_THREADS") or env.get("BENCH_IO_THREADS") or "4"
-        try:
-            io_threads = max(1, int(raw_io_threads))
-        except ValueError:
-            io_threads = 4
-        client_cmd = [
-            client_binary_path,
-            "--transport",
-            transport,
-            "--pattern",
-            pattern_name,
-            "--sizes",
-            size_csv,
-            "--runs",
-            "1",
-            "--warmup",
-            str(max(0, warmup_seconds)),
-            "--duration",
-            str(max(1, duration_seconds)),
-            "--ccu",
-            str(clients),
-            "--io-threads",
-            str(io_threads),
-            "--print-perf-result",
-            "1",
-            "--send-stop-token",
-            "0",
-        ]
-    else:
-        client_cmd = [client_binary_path, lib_name, transport, str(fallback_size)]
+    client_cmd = [client_binary_path, lib_name, transport, str(fallback_size)]
     server_proc = None
     selector = None
 
@@ -546,7 +542,8 @@ def run_split_server_client_test(
         )
 
         endpoint = ""
-        ready_deadline = time.monotonic() + timeout_sec
+        ready_timeout_sec = max(0.001, float(server_ready_timeout_ms) / 1000.0)
+        ready_deadline = time.monotonic() + ready_timeout_sec
         selector = selectors.DefaultSelector()
         if server_proc.stdout is not None:
             selector.register(server_proc.stdout, selectors.EVENT_READ)
@@ -684,16 +681,50 @@ def run_split_server_client_test(
     finally:
         if selector is not None:
             selector.close()
-        _stop_server_process(server_proc)
+        _stop_server_process(server_proc, server_shutdown_timeout_ms)
+        if server_proc is not None and server_proc.stdout is not None:
+            try:
+                tail = server_proc.stdout.read()
+            except Exception:
+                tail = ""
+            if tail:
+                for line in tail.splitlines():
+                    prep_line = parse_prep_line(line, transport, expected_sizes)
+                    if prep_line and progress_cb is not None:
+                        line_size, connect_ms, ready_ms = prep_line
+                        progress_cb(line_size, connect_ms, ready_ms)
+                    parsed_line = parse_result_line(line, transport, expected_sizes)
+                    if not parsed_line:
+                        continue
+                    line_transport, line_size, metric, value = parsed_line
+                    parsed[f"{line_transport}|{line_size}|{metric}"] = value
+                    if metric_cb is not None:
+                        metric_cb(line_size, metric, value)
+                    if progress_cb is not None and metric == "throughput":
+                        progress_cb(line_size)
 
 
 def run_single_test(
-    binary_name, lib_name, transport, pattern_name, progress_cb=None, metric_cb=None
+    binary_name,
+    lib_name,
+    transport,
+    pattern_name,
+    sizes=None,
+    progress_cb=None,
+    metric_cb=None,
 ):
     binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
     env = get_env_for_lib(lib_name)
     env["BENCH_MULTI_PATTERN"] = pattern_name
-    fallback_size = MSG_SIZES[0] if MSG_SIZES else 64
+    size_list = list(sizes) if sizes else list(MSG_SIZES)
+    if not size_list:
+        size_list = [64]
+    size_csv = ",".join(str(sz) for sz in size_list)
+    env["BENCH_MSG_SIZES"] = size_csv
+    # Keep PERF_* in sync for binaries that read PERF_MSG_SIZES directly.
+    env["PERF_MSG_SIZES"] = size_csv
+
+    fallback_size = size_list[0]
     timeout_override = parse_nonnegative_int_env("BENCH_MULTI_TIMEOUT_SECONDS", 0)
     duration_seconds = 5
     warmup_seconds = 3
@@ -708,28 +739,37 @@ def run_single_test(
     if timeout_override > 0:
         timeout_sec = timeout_override
     else:
+        # Size-isolated execution should fail fast per size instead of waiting
+        # for a large whole-pattern timeout window.
+        size_timeout_floor = 180 if len(size_list) <= 1 else 300
         timeout_sec = max(
-            600,
-            (warmup_seconds + duration_seconds) * max(1, len(MSG_SIZES)) * 8 + 120,
+            size_timeout_floor,
+            (warmup_seconds + duration_seconds) * max(1, len(size_list)) * 8 + 120,
         )
 
-    expected_sizes = set(MSG_SIZES)
+    expected_sizes = set(size_list)
 
     try:
         if (
             lib_name == "zlink"
             and pattern_name in SPLIT_SERVER_CLIENT_PATTERNS
         ):
-            split_server_path = binary_path
-            split_client_path = binary_path
-            split_server_bin = STREAM_SERVER_BINARY_BY_PATTERN.get(pattern_name)
-            if split_server_bin:
-                split_server_path = os.path.join(
-                    BUILD_DIR, split_server_bin + EXE_SUFFIX
-                )
-                split_client_path = os.path.join(
-                    BUILD_DIR, STREAM_SHARED_CLIENT_BINARY + EXE_SUFFIX
-                )
+            split_server_bin, split_client_bin = ZLINK_SPLIT_BINARIES.get(
+                pattern_name, (None, None)
+            )
+            if not split_server_bin or not split_client_bin:
+                return {
+                    "parsed": {},
+                    "timed_out": False,
+                    "returncode": -1,
+                    "error": f"missing_split_mapping_{pattern_name}",
+                }
+            split_server_path = os.path.join(
+                BUILD_DIR, split_server_bin + EXE_SUFFIX
+            )
+            split_client_path = os.path.join(
+                BUILD_DIR, split_client_bin + EXE_SUFFIX
+            )
             return run_split_server_client_test(
                 split_server_path,
                 split_client_path,
@@ -739,10 +779,13 @@ def run_single_test(
                 fallback_size,
                 expected_sizes,
                 timeout_sec,
+                SERVER_READY_TIMEOUT_MS,
+                SERVER_SHUTDOWN_TIMEOUT_MS,
                 warmup_seconds,
                 duration_seconds,
                 progress_cb=progress_cb,
                 metric_cb=metric_cb,
+                env_override=env,
             )
 
         if IS_WINDOWS:
@@ -911,129 +954,167 @@ def run_single_test(
 
 
 def collect_data(
-    binary_name, lib_name, pattern_name, num_runs, transports, run_cooldown_ms
+    binary_name,
+    lib_name,
+    pattern_name,
+    num_runs,
+    transports,
+    run_cooldown_ms,
+    on_size_complete=None,
+    msg_sizes=None,
+    announce=True,
+    show_progress=True,
+    allow_no_data=False,
 ):
-    print(f"  > Benchmarking {lib_name} for {pattern_name}...")
+    if announce:
+        print(f"  > Benchmarking {lib_name} for {pattern_name}...")
     final_stats = {}
     failures = []
+    sizes = list(msg_sizes) if msg_sizes is not None else list(MSG_SIZES)
 
     for tr in transports:
-        size_tag = ",".join(f"{sz}B" for sz in MSG_SIZES)
-        print(f"    Testing {tr} | {size_tag}: ", end="", flush=True)
         if tr != "tcp":
-            print("Skipped (unsupported_transport(libzmq_tcp_only))")
+            if show_progress:
+                print(
+                    f"    Testing {tr}: Skipped (unsupported_transport(libzmq_tcp_only))"
+                )
             continue
-        metrics_raw = {}
-        failed_runs = 0
-        expected_keys = []
-        for sz in MSG_SIZES:
-            expected_keys.append(f"{tr}|{sz}|throughput")
-            expected_keys.append(f"{tr}|{sz}|latency")
 
-        for i in range(num_runs):
-            print(f"{i+1} ", end="", flush=True)
-            seen_sizes = set()
-            live_metrics = {}
-            reported_sizes = set()
-            has_next_run = (i + 1) < num_runs
+        for sz in sizes:
+            if show_progress:
+                print(f"    Testing {tr} | {sz}B: ", end="", flush=True)
+            metrics_raw = {}
+            failed_runs = 0
+            expected_keys = [
+                f"{tr}|{sz}|throughput",
+                f"{tr}|{sz}|latency",
+            ]
 
-            def maybe_cooldown():
-                if run_cooldown_ms <= 0 or not has_next_run:
-                    return
-                print(f"[cooldown={run_cooldown_ms}ms] ", end="", flush=True)
-                time.sleep(run_cooldown_ms / 1000.0)
+            for i in range(num_runs):
+                if show_progress:
+                    print(f"{i+1} ", end="", flush=True)
+                has_next_run = (i + 1) < num_runs
 
-            def on_size_done(size, connect_ms=None, ready_ms=None):
-                if size in seen_sizes:
-                    return
-                seen_sizes.add(size)
-                if (
-                    SHOW_PREP
-                    and connect_ms is not None
-                    and ready_ms is not None
-                ):
-                    print(
-                        f"{size}B(c={connect_ms:.0f}ms,r={ready_ms:.0f}ms) ",
-                        end="",
-                        flush=True,
-                    )
-                else:
-                    print(f"{size}B ", end="", flush=True)
+                def maybe_cooldown():
+                    if run_cooldown_ms <= 0 or not has_next_run:
+                        return
+                    if show_progress:
+                        print(f"[cooldown={run_cooldown_ms}ms] ", end="", flush=True)
+                    time.sleep(run_cooldown_ms / 1000.0)
 
-            def on_metric(size, metric, value):
-                bucket = live_metrics.setdefault(size, {})
-                bucket[metric] = value
-                if size in reported_sizes:
-                    return
-                if "throughput" in bucket and "latency" in bucket:
-                    print(
-                        f"{size}B[t={bucket['throughput']/1e3:.2f}K,l={bucket['latency']:.2f}us] ",
-                        end="",
-                        flush=True,
-                    )
-                    reported_sizes.add(size)
+                live_metrics = {}
 
-            run_outcome = run_single_test(
-                binary_name, lib_name, tr, pattern_name, on_size_done, on_metric
-            )
-            results = run_outcome.get("parsed", {})
-            rc = run_outcome.get("returncode", 0)
-            timed_out = bool(run_outcome.get("timed_out", False))
-            run_error = run_outcome.get("error", "")
-            missing = [key for key in expected_keys if key not in results]
+                def on_size_done(size, connect_ms=None, ready_ms=None):
+                    if (
+                        SHOW_PREP
+                        and connect_ms is not None
+                        and ready_ms is not None
+                    ):
+                        print(
+                            f"{size}B(c={connect_ms:.0f}ms,r={ready_ms:.0f}ms) ",
+                            end="",
+                            flush=True,
+                        )
 
-            if timed_out:
-                failed_runs += 1
-                failures.append((pattern_name, lib_name, tr, 0, "timeout"))
-                if FAIL_FAST:
-                    print("aborting")
-                    return final_stats, failures
+                def on_metric(size, metric, value):
+                    if not show_progress:
+                        return
+                    bucket = live_metrics.setdefault(size, {})
+                    bucket[metric] = value
+                    if "throughput" in bucket and "latency" in bucket:
+                        print(
+                            f"{size}B[t={bucket['throughput']/1e3:.2f}K,l={bucket['latency']/1e3:.2f}ms] ",
+                            end="",
+                            flush=True,
+                        )
+                        live_metrics.pop(size, None)
+
+                run_outcome = run_single_test(
+                    binary_name,
+                    lib_name,
+                    tr,
+                    pattern_name,
+                    sizes=[sz],
+                    progress_cb=on_size_done,
+                    metric_cb=on_metric,
+                )
+                results = run_outcome.get("parsed", {})
+                rc = run_outcome.get("returncode", 0)
+                timed_out = bool(run_outcome.get("timed_out", False))
+                run_error = run_outcome.get("error", "")
+                missing = [key for key in expected_keys if key not in results]
+
+                if timed_out:
+                    if allow_no_data:
+                        maybe_cooldown()
+                        continue
+                    failed_runs += 1
+                    failures.append((pattern_name, lib_name, tr, sz, "timeout"))
+                    if FAIL_FAST:
+                        if show_progress:
+                            print("aborting")
+                        return final_stats, failures
+                    maybe_cooldown()
+                    continue
+
+                if run_error:
+                    if allow_no_data:
+                        maybe_cooldown()
+                        continue
+                    failed_runs += 1
+                    failures.append((pattern_name, lib_name, tr, sz, run_error))
+                    if FAIL_FAST:
+                        if show_progress:
+                            print("aborting")
+                        return final_stats, failures
+                    maybe_cooldown()
+                    continue
+
+                if not results:
+                    if allow_no_data:
+                        maybe_cooldown()
+                        continue
+                    failed_runs += 1
+                    reason = f"no_data_rc_{rc}" if rc not in (0, None) else "no_data"
+                    failures.append((pattern_name, lib_name, tr, sz, reason))
+                    if FAIL_FAST:
+                        if show_progress:
+                            print("aborting")
+                        return final_stats, failures
+                    maybe_cooldown()
+                    continue
+
+                if missing:
+                    if allow_no_data:
+                        maybe_cooldown()
+                        continue
+                    failed_runs += 1
+                    for key in missing:
+                        metric = key.split("|")[2]
+                        suffix = f"_rc_{rc}" if rc not in (0, None) else ""
+                        failures.append(
+                            (pattern_name, lib_name, tr, sz, f"missing_{metric}{suffix}")
+                        )
+                    if FAIL_FAST:
+                        if show_progress:
+                            print("aborting")
+                        return final_stats, failures
+
+                for key, value in results.items():
+                    metrics_raw.setdefault(key, []).append(value)
                 maybe_cooldown()
-                continue
 
-            if run_error:
-                failed_runs += 1
-                failures.append((pattern_name, lib_name, tr, 0, run_error))
-                if FAIL_FAST:
-                    print("aborting")
-                    return final_stats, failures
-                maybe_cooldown()
-                continue
+            for key, vals in metrics_raw.items():
+                final_stats[key] = statistics.median(vals) if vals else 0
 
-            if not results:
-                failed_runs += 1
-                reason = f"no_data_rc_{rc}" if rc not in (0, None) else "no_data"
-                failures.append((pattern_name, lib_name, tr, 0, reason))
-                if FAIL_FAST:
-                    print("aborting")
-                    return final_stats, failures
-                maybe_cooldown()
-                continue
+            if show_progress:
+                if failed_runs:
+                    print(f"(failures={failed_runs}) ", end="", flush=True)
+                print("Done")
 
-            if missing:
-                failed_runs += 1
-                for key in missing:
-                    parts = key.split("|")
-                    sz = int(parts[1])
-                    metric = parts[2]
-                    suffix = f"_rc_{rc}" if rc not in (0, None) else ""
-                    failures.append(
-                        (pattern_name, lib_name, tr, sz, f"missing_{metric}{suffix}")
-                    )
-                if FAIL_FAST:
-                    print("aborting")
-                    return final_stats, failures
+            if on_size_complete is not None:
+                on_size_complete(tr, sz, final_stats)
 
-            for key, value in results.items():
-                metrics_raw.setdefault(key, []).append(value)
-            maybe_cooldown()
-
-        for key, vals in metrics_raw.items():
-            final_stats[key] = statistics.median(vals) if vals else 0
-
-        if failed_runs:
-            print(f"(failures={failed_runs}) ", end="", flush=True)
-        print("Done")
     return final_stats, failures
 
 
@@ -1133,56 +1214,67 @@ def metric_or_none(metric_map, key):
         return None
 
 
-def print_pattern_report(std_data, zlk_data, std_available=True):
+def print_transport_report_header(transport):
+    size_w = 6
+    metric_w = 10
+    val_w = 16
+    diff_w = 9
+    print(f"\n### Transport: {transport}")
+    print(
+        f"| {'Size':<{size_w}} | {'Metric':<{metric_w}} | {'Standard libzmq':>{val_w}} | {'zlink':>{val_w}} | {'Diff (%)':>{diff_w}} |"
+    )
+    print(
+        f"|{'-' * (size_w + 2)}|{'-' * (metric_w + 2)}|{'-' * (val_w + 2)}|{'-' * (val_w + 2)}|{'-' * (diff_w + 2)}|"
+    )
+
+
+def print_size_comparison_rows(transport, size, std_data, zlk_data, std_available=True):
     size_w = 6
     metric_w = 10
     val_w = 16
     diff_w = 9
 
+    k_t = f"{transport}|{size}|throughput"
+    k_l = f"{transport}|{size}|latency"
+    zlk_t = metric_or_none(zlk_data, k_t)
+    zlk_l = metric_or_none(zlk_data, k_l)
+
+    zlk_t_s = format_throughput(zlk_t) if zlk_t is not None else "N/A"
+    zlk_l_s = f"{zlk_l/1e3:8.2f} ms" if zlk_l is not None else "N/A"
+    if std_available:
+        std_t = metric_or_none(std_data, k_t)
+        std_l = metric_or_none(std_data, k_l)
+        std_t_s = format_throughput(std_t) if std_t is not None else "N/A"
+        std_l_s = f"{std_l/1e3:8.2f} ms" if std_l is not None else "N/A"
+        if std_t is not None and zlk_t is not None and std_t > 0:
+            t_diff = (zlk_t - std_t) / std_t * 100.0
+            t_diff_s = f"{t_diff:>+7.2f}%"
+        else:
+            t_diff_s = "N/A"
+        if std_l is not None and zlk_l is not None and std_l > 0:
+            l_diff = (std_l - zlk_l) / std_l * 100.0
+            l_diff_s = f"{l_diff:>+7.2f}%"
+        else:
+            l_diff_s = "N/A"
+    else:
+        std_t_s = "N/A"
+        std_l_s = "N/A"
+        t_diff_s = "N/A"
+        l_diff_s = "N/A"
+
+    print(
+        f"| {f'{size}B':<{size_w}} | {'Throughput':<{metric_w}} | {std_t_s:>{val_w}} | {zlk_t_s:>{val_w}} | {t_diff_s:>{diff_w}} |"
+    )
+    print(
+        f"| {f'{size}B':<{size_w}} | {'Latency':<{metric_w}} | {std_l_s:>{val_w}} | {zlk_l_s:>{val_w}} | {l_diff_s:>{diff_w}} |"
+    )
+
+
+def print_pattern_report(std_data, zlk_data, std_available=True):
     for tr in TRANSPORTS:
-        print(f"\n### Transport: {tr}")
-        print(
-            f"| {'Size':<{size_w}} | {'Metric':<{metric_w}} | {'Standard libzmq':>{val_w}} | {'zlink':>{val_w}} | {'Diff (%)':>{diff_w}} |"
-        )
-        print(
-            f"|{'-' * (size_w + 2)}|{'-' * (metric_w + 2)}|{'-' * (val_w + 2)}|{'-' * (val_w + 2)}|{'-' * (diff_w + 2)}|"
-        )
-
+        print_transport_report_header(tr)
         for sz in MSG_SIZES:
-            k_t = f"{tr}|{sz}|throughput"
-            k_l = f"{tr}|{sz}|latency"
-            zlk_t = metric_or_none(zlk_data, k_t)
-            zlk_l = metric_or_none(zlk_data, k_l)
-
-            zlk_t_s = format_throughput(zlk_t) if zlk_t is not None else "N/A"
-            zlk_l_s = f"{zlk_l:8.2f} us" if zlk_l is not None else "N/A"
-            if std_available:
-                std_t = metric_or_none(std_data, k_t)
-                std_l = metric_or_none(std_data, k_l)
-                std_t_s = format_throughput(std_t) if std_t is not None else "N/A"
-                std_l_s = f"{std_l:8.2f} us" if std_l is not None else "N/A"
-                if std_t is not None and zlk_t is not None and std_t > 0:
-                    t_diff = (zlk_t - std_t) / std_t * 100.0
-                    t_diff_s = f"{t_diff:>+7.2f}%"
-                else:
-                    t_diff_s = "N/A"
-                if std_l is not None and zlk_l is not None and std_l > 0:
-                    l_diff = (std_l - zlk_l) / std_l * 100.0
-                    l_diff_s = f"{l_diff:>+7.2f}%"
-                else:
-                    l_diff_s = "N/A"
-            else:
-                std_t_s = "N/A"
-                std_l_s = "N/A"
-                t_diff_s = "N/A"
-                l_diff_s = "N/A"
-
-            print(
-                f"| {f'{sz}B':<{size_w}} | {'Throughput':<{metric_w}} | {std_t_s:>{val_w}} | {zlk_t_s:>{val_w}} | {t_diff_s:>{diff_w}} |"
-            )
-            print(
-                f"| {f'{sz}B':<{size_w}} | {'Latency':<{metric_w}} | {std_l_s:>{val_w}} | {zlk_l_s:>{val_w}} | {l_diff_s:>{diff_w}} |"
-            )
+            print_size_comparison_rows(tr, sz, std_data, zlk_data, std_available)
 
 
 def normalize_pattern_name(raw):
@@ -1229,24 +1321,19 @@ def parse_args():
         "Env:\n"
         "  BENCH_TRANSPORTS=tcp\n"
         "  BENCH_MSG_SIZES=1024\n"
-        "  BENCH_MULTI_CLIENTS=1000\n"
-        "  BENCH_MULTI_INFLIGHT=30  (per-client, global=clients*inflight)\n"
-        "  BENCH_MULTI_HWM=100000\n"
-        "  BENCH_MULTI_SNDTIMEO_MS=5000\n"
-        "  BENCH_MULTI_RCVTIMEO_MS=5000\n"
-        "  BENCH_MULTI_MONITOR_HWM=100000\n"
+        "  BENCH_MULTI_CLIENTS=100 (stream=10000)\n"
+        "  BENCH_MULTI_HWM=100 (stream=10)\n"
+        "  BENCH_MULTI_SNDTIMEO_MS=200\n"
+        "  BENCH_MULTI_RCVTIMEO_MS=200\n"
+        "  BENCH_MULTI_MONITOR_HWM=1000\n"
         "  BENCH_MULTI_CONNECT_READY_TIMEOUT_MS=5000\n"
-        "  BENCH_MULTI_WARMUP_SECONDS=3\n"
+        "  BENCH_MULTI_WARMUP_SECONDS=2\n"
         "  BENCH_MULTI_DURATION_SECONDS=5\n"
-        "  BENCH_MULTI_SETTLE_MS=500\n"
-        "  BENCH_MULTI_DRAIN_MS=300  (pattern exceptions) / 0 (default)\n"
-        "  BENCH_MULTI_SIZE_TRANSITION_DRAIN_MS=300\n"
-        "  BENCH_MULTI_RECV_BATCH=64\n"
-        "  BENCH_MULTI_SEND_WORKERS=auto\n"
-        "  BENCH_MULTI_SEND_BACKOFF_US=20\n"
+        "  BENCH_MULTI_CONNECT_CONCURRENCY=128\n"
         "  BENCH_MULTI_RUN_COOLDOWN_MS=3000\n"
+        "  BENCH_MULTI_PRINT_FINAL_REPORT=1\n"
         "  BENCH_IO_THREADS=4\n"
-        "  BENCH_MULTI_TIMEOUT_SECONDS=600\n"
+        "  BENCH_MULTI_TIMEOUT_SECONDS=300\n"
     )
 
     pattern = "ALL"
@@ -1354,9 +1441,9 @@ def main():
         )
 
     comparisons = [
-        ("comp_std_zmq_multi_dealer_dealer", "comp_zlink_multi_dealer_dealer", "MULTI_DEALER_DEALER"),
-        ("comp_std_zmq_multi_dealer_router", "comp_zlink_multi_dealer_router", "MULTI_DEALER_ROUTER"),
-        ("comp_std_zmq_multi_router_router", "comp_zlink_multi_router_router", "MULTI_ROUTER_ROUTER"),
+        ("comp_std_zmq_multi_dealer_dealer", "comp_zlink_multi_dealer_dealer_client", "MULTI_DEALER_DEALER"),
+        ("comp_std_zmq_multi_dealer_router", "comp_zlink_multi_dealer_router_client", "MULTI_DEALER_ROUTER"),
+        ("comp_std_zmq_multi_router_router", "comp_zlink_multi_router_router_client", "MULTI_ROUTER_ROUTER"),
         ("comp_std_zmq_multi_pubsub", "comp_zlink_multi_pubsub", "MULTI_PUBSUB"),
         ("comp_std_zmq_multi_stream", "comp_zlink_multi_stream", "MULTI_STREAM"),
     ]
@@ -1381,8 +1468,21 @@ def main():
 
     expected_bins = expected_runtime_binaries(selected_comparisons, need_std_baseline)
     missing = collect_missing_binaries(BUILD_DIR, expected_bins)
+    no_autobuild = (
+        os.environ.get("BENCH_NO_AUTOBUILD") == "1"
+        or os.environ.get("PERF_NO_AUTOBUILD") == "1"
+    )
 
     if missing:
+        if no_autobuild:
+            print(
+                f"Error: missing benchmark binaries in {BUILD_DIR} and auto-build is disabled.",
+                file=sys.stderr,
+            )
+            for name in missing:
+                print(f"  - {name}{EXE_SUFFIX}", file=sys.stderr)
+            return 2
+
         cmake_build_dir = derive_cmake_build_dir(BUILD_DIR)
         if not cmake_build_dir:
             print(
@@ -1429,11 +1529,10 @@ def main():
     any_failure = False
     all_failures = []
     cache_updated = False
+    print_final_report = os.environ.get("BENCH_MULTI_PRINT_FINAL_REPORT", "0") == "1"
 
     printed_pattern = False
-    for std_bin, zlk_bin, p_name in comparisons:
-        if pattern_req != "ALL" and p_name != pattern_req:
-            continue
+    for pattern_index, (std_bin, zlk_bin, p_name) in enumerate(selected_comparisons):
 
         if printed_pattern:
             print("")
@@ -1448,8 +1547,11 @@ def main():
         std_fail = []
         zlk_data = {}
         zlk_fail = []
+        live_rows = 0
+
         cached = get_cached_std_entry(std_cache, p_name)
         cached_valid = cached is not None and has_valid_cached_metrics(cached[0])
+        std_from_cache = False
         if zlink_only:
             if refresh_std_cache or not cached_valid:
                 reason = (
@@ -1461,54 +1563,94 @@ def main():
                     f"  > Cached libzmq {reason} for {p_name}; "
                     "measuring and caching libzmq baseline now."
                 )
-                std_data, std_fail = collect_data(
-                    std_bin,
-                    "libzmq",
-                    p_name,
-                    num_runs,
-                    TRANSPORTS,
-                    run_cooldown_ms,
-                )
-                update_cached_std_entry(std_cache, p_name, std_data, std_fail)
-                cache_updated = True
             else:
                 std_data, std_fail = cached
                 print(f"  > Using cached libzmq for {p_name} from {cache_file}")
-            zlk_data, zlk_fail = collect_data(
-                zlk_bin,
-                "zlink",
-                p_name,
-                num_runs,
-                TRANSPORTS,
-                run_cooldown_ms,
-            )
+                std_from_cache = True
         else:
-            std_data, std_fail = collect_data(
-                std_bin,
-                "libzmq",
-                p_name,
-                num_runs,
-                TRANSPORTS,
-                run_cooldown_ms,
-            )
-            if refresh_std_cache or cached is None:
-                update_cached_std_entry(std_cache, p_name, std_data, std_fail)
-                cache_updated = True
-            zlk_data, zlk_fail = collect_data(
-                zlk_bin,
-                "zlink",
-                p_name,
-                num_runs,
-                TRANSPORTS,
-                run_cooldown_ms,
-            )
+            std_from_cache = False
 
-        print_pattern_report(std_data, zlk_data, std_available=True)
+        if not std_from_cache:
+            print(f"  > Benchmarking libzmq for {p_name}...")
+        print(f"  > Benchmarking zlink for {p_name}...")
+
+        for transport_index, tr in enumerate(TRANSPORTS):
+            if tr != "tcp":
+                print(f"  > Skipping transport {tr} (unsupported_transport(libzmq_tcp_only))")
+                if (
+                    TRANSPORT_TRANSITION_MS > 0
+                    and transport_index + 1 < len(TRANSPORTS)
+                ):
+                    time.sleep(float(TRANSPORT_TRANSITION_MS) / 1000.0)
+                continue
+
+            print_transport_report_header(tr)
+            for sz in MSG_SIZES:
+                if not std_from_cache:
+                    std_partial, std_partial_fail = collect_data(
+                        std_bin,
+                        "libzmq",
+                        p_name,
+                        num_runs,
+                        [tr],
+                        run_cooldown_ms,
+                        msg_sizes=[sz],
+                        announce=False,
+                        show_progress=False,
+                    )
+                    std_data.update(std_partial)
+                    std_fail.extend(std_partial_fail)
+
+                zlk_partial, zlk_partial_fail = collect_data(
+                    zlk_bin,
+                    "zlink",
+                    p_name,
+                    num_runs,
+                    [tr],
+                    run_cooldown_ms,
+                    msg_sizes=[sz],
+                    announce=False,
+                    show_progress=False,
+                    allow_no_data=(p_name == "MULTI_STREAM"),
+                )
+                zlk_data.update(zlk_partial)
+                zlk_fail.extend(zlk_partial_fail)
+
+                print_size_comparison_rows(
+                    tr,
+                    sz,
+                    std_data,
+                    zlk_data,
+                    std_available=True,
+                )
+                live_rows += 1
+
+            if (
+                TRANSPORT_TRANSITION_MS > 0
+                and transport_index + 1 < len(TRANSPORTS)
+            ):
+                time.sleep(float(TRANSPORT_TRANSITION_MS) / 1000.0)
+
+        if zlink_only and not std_from_cache:
+            update_cached_std_entry(std_cache, p_name, std_data, std_fail)
+            cache_updated = True
+        if (not zlink_only) and (refresh_std_cache or cached is None):
+            update_cached_std_entry(std_cache, p_name, std_data, std_fail)
+            cache_updated = True
+
+        if print_final_report or live_rows == 0:
+            print_pattern_report(std_data, zlk_data, std_available=True)
         all_failures.extend(std_fail)
         all_failures.extend(zlk_fail)
 
         if std_fail or zlk_fail:
             any_failure = True
+
+        if (
+            PATTERN_TRANSITION_MS > 0
+            and pattern_index + 1 < len(selected_comparisons)
+        ):
+            time.sleep(float(PATTERN_TRANSITION_MS) / 1000.0)
 
     if cache_updated:
         std_cache["meta"] = {

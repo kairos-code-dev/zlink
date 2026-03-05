@@ -126,7 +126,6 @@ internal sealed class StreamEchoServer : IDisposable
         for (int i = 0; i < messages.Length; i++)
         {
             Message message = messages[i];
-            bool consumed = false;
             int payloadSize;
             try
             {
@@ -157,7 +156,8 @@ internal sealed class StreamEchoServer : IDisposable
 
             try
             {
-                if (message.AsReadOnlySpan().Length != payloadSize)
+                ReadOnlySpan<byte> payload = message.AsReadOnlySpan();
+                if (payload.Length != payloadSize)
                 {
                     _metrics.AddParseError();
                     _metrics.AddProtocolError();
@@ -165,8 +165,8 @@ internal sealed class StreamEchoServer : IDisposable
                 }
 
                 _metrics.AddRecvMsg();
-                int sent = _socket.StreamSend(routingId, message, SendFlags.None);
-                consumed = true;
+                Message outbound = new Message(payload);
+                int sent = _socket.StreamSend(routingId, outbound, SendFlags.None);
                 if (sent != payloadSize)
                     _metrics.AddSendError();
             }
@@ -176,8 +176,7 @@ internal sealed class StreamEchoServer : IDisposable
             }
             finally
             {
-                if (!consumed)
-                    message.Dispose();
+                message.Dispose();
             }
         }
 

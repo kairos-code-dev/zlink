@@ -54,6 +54,10 @@ int apply_headroom (int base_, int headroom_)
 
 const size_t stream_len32be_max_payload = 4 * 1024 * 1024;
 const size_t stream_len32be_inline_batch_capacity = 16;
+// For large payloads, packing [len32be header + payload] into one frame can
+// reduce queue/encoder per-frame overhead. Set to 0 to disable.
+const int stream_len32be_send_pack_threshold = parse_non_negative_int_env (
+  "ZLINK_STREAM_LEN32BE_SEND_PACK_THRESHOLD", 32768);
 std::atomic<unsigned long long> g_len32be_dispatch_frames (0);
 std::atomic<unsigned long long> g_len32be_dispatch_callbacks (0);
 std::atomic<unsigned long long> g_len32be_dispatch_controls (0);
@@ -788,6 +792,36 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
         }
         const int init_rc = msg_->init ();
         errno_assert (init_rc == 0);
+        queue_stream_dispatch_flush (out);
+        return 1;
+    }
+
+    const bool pack_len32be =
+      stream_len32be_send_pack_threshold > 0
+      && payload_size
+           >= static_cast<size_t> (stream_len32be_send_pack_threshold);
+    if (pack_len32be) {
+        msg_t packed;
+        if (packed.init_size (payload_size + 4) != 0)
+            return -1;
+
+        unsigned char *wire = static_cast<unsigned char *> (packed.data ());
+        put_uint32 (wire, static_cast<uint32_t> (payload_size));
+        if (payload_size > 0) {
+            const unsigned char *payload =
+              static_cast<const unsigned char *> (msg_->data ());
+            memcpy (wire + 4, payload, payload_size);
+        }
+
+        if (!out->write_no_hwm_check (&packed)) {
+            close_and_reinit_msg (&packed);
+            errno = EAGAIN;
+            return -1;
+        }
+
+        const int packed_init_rc = packed.init ();
+        errno_assert (packed_init_rc == 0);
+        close_and_reinit_msg (msg_);
         queue_stream_dispatch_flush (out);
         return 1;
     }

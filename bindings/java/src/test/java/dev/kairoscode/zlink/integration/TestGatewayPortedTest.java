@@ -28,9 +28,7 @@ public class TestGatewayPortedTest {
              Discovery discovery = new Discovery(ctx, ServiceType.GATEWAY);
              Registry registry = new Registry(ctx);
              Gateway gateway = new Gateway(ctx, discovery);
-             Receiver receiver = new Receiver(ctx);
-             Socket gatewayRouter = gateway.routerSocket();
-             Socket receiverRouter = receiver.routerSocket()) {
+             Receiver receiver = new Receiver(ctx)) {
             discovery.setSockOpt(DiscoverySocketRole.SUB, SocketOption.LINGER,
                 linger);
             registry.setSockOpt(RegistrySocketRole.PUB, SocketOption.LINGER,
@@ -45,10 +43,13 @@ public class TestGatewayPortedTest {
             receiver.setSockOpt(ReceiverSocketRole.ROUTER, SocketOption.RCVHWM,
                 hwm);
 
-            assertEquals(hwm, gatewayRouter.getSockOptInt(SocketOption.SNDHWM));
-            assertEquals(hwm, gatewayRouter.getSockOptInt(SocketOption.RCVHWM));
-            assertEquals(hwm, receiverRouter.getSockOptInt(SocketOption.SNDHWM));
-            assertEquals(hwm, receiverRouter.getSockOptInt(SocketOption.RCVHWM));
+            try (Socket gatewayRouter = gateway.routerSocket();
+                 Socket receiverRouter = receiver.routerSocket()) {
+                assertEquals(hwm, gatewayRouter.getSockOptInt(SocketOption.SNDHWM));
+                assertEquals(hwm, gatewayRouter.getSockOptInt(SocketOption.RCVHWM));
+                assertEquals(hwm, receiverRouter.getSockOptInt(SocketOption.SNDHWM));
+                assertEquals(hwm, receiverRouter.getSockOptInt(SocketOption.RCVHWM));
+            }
         }
     }
 }

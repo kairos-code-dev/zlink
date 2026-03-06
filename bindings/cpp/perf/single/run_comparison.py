@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+import subprocess
+import sys
+from pathlib import Path
+
+
+def main() -> int:
+    root = Path(__file__).resolve().parents[3]
+    runner = root / "bindings" / "perf" / "run_policy_bench.py"
+    cmd = [sys.executable, str(runner), "--binding", "cpp", "--suite", "single"]
+    cmd.extend(sys.argv[1:])
+    return subprocess.call(cmd)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -423,7 +423,7 @@ class gateway_t
      */
     void *router_handle () const
     {
-        return zlink_gateway_router_socket_unsafe (_gw);
+        return zlink_gateway_router_socket (_gw);
     }
 
     /**

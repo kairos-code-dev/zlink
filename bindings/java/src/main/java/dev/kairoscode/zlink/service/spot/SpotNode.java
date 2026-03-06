@@ -185,14 +185,14 @@ public final class SpotNode implements AutoCloseable {
     public Socket pubSocket() {
         MemorySegment sock = Native.spotNodePubSocket(handle);
         if (sock == null || sock.address() == 0)
-            throw ZlinkException.fromLastError("zlink_spot_node_pub_socket_unsafe");
+            throw ZlinkException.fromLastError("zlink_spot_node_pub_socket");
         return Socket.adopt(sock, false);
     }
 
     public Socket subSocket() {
         MemorySegment sock = Native.spotNodeSubSocket(handle);
         if (sock == null || sock.address() == 0)
-            throw ZlinkException.fromLastError("zlink_spot_node_sub_socket_unsafe");
+            throw ZlinkException.fromLastError("zlink_spot_node_sub_socket");
         return Socket.adopt(sock, false);
     }
 

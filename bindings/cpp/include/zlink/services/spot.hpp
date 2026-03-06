@@ -262,7 +262,7 @@ class spot_node_t
      */
     void *pub_socket_handle () const
     {
-        return zlink_spot_node_pub_socket_unsafe (_node);
+        return zlink_spot_node_pub_socket (_node);
     }
 
     /**
@@ -271,7 +271,7 @@ class spot_node_t
      */
     void *sub_socket_handle () const
     {
-        return zlink_spot_node_sub_socket_unsafe (_node);
+        return zlink_spot_node_sub_socket (_node);
     }
 
     /**

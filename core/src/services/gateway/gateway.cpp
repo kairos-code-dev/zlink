@@ -138,6 +138,7 @@ gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_,
     _monitor_socket (NULL),
     _router_socket (NULL),
     _use_lock (true),
+    _pollable_mode (false),
     _stop (0),
     _refresh_task_id (0),
     _refresh_interval_ms (
@@ -616,6 +617,8 @@ int gateway_t::send (const char *service_name_,
     }
 
     scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_facade_mode () != 0)
+        return -1;
     service_pool_t *pool = get_or_create_pool_cached (service_name_);
     if (!pool) {
         errno = ENOMEM;
@@ -653,6 +656,8 @@ int gateway_t::recv (zlink_msg_t **parts_,
     }
 
     scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_facade_mode () != 0)
+        return -1;
     if (ensure_router_socket () != 0 || !_router_socket) {
         errno = ENOTSUP;
         return -1;
@@ -766,6 +771,8 @@ int gateway_t::send_rid (const char *service_name_,
     }
 
     scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_facade_mode () != 0)
+        return -1;
     service_pool_t *pool = get_or_create_pool_cached (service_name_);
     if (!pool) {
         errno = ENOMEM;
@@ -795,6 +802,8 @@ int gateway_t::set_lb_strategy (const char *service_name_, int strategy_)
     }
 
     scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_facade_mode () != 0)
+        return -1;
     service_pool_t *pool = get_or_create_pool (service_name_);
     if (!pool)
         return -1;
@@ -812,6 +821,8 @@ int gateway_t::set_socket_option (int option_,
     }
 
     scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_facade_mode () != 0)
+        return -1;
     if (!_router_socket) {
         errno = ENOTSUP;
         return -1;
@@ -821,9 +832,27 @@ int gateway_t::set_socket_option (int option_,
 
 void *gateway_t::router ()
 {
+    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (!enter_pollable_mode ())
+        return NULL;
     if (ensure_router_socket () != 0)
         return NULL;
     return static_cast<void *> (_router_socket);
+}
+
+bool gateway_t::enter_pollable_mode ()
+{
+    _pollable_mode = true;
+    return true;
+}
+
+int gateway_t::ensure_facade_mode () const
+{
+    if (_pollable_mode) {
+        errno = EFSM;
+        return -1;
+    }
+    return 0;
 }
 
 void gateway_t::on_service_update (const std::string &service_name_)
@@ -851,6 +880,8 @@ int gateway_t::connection_count (const char *service_name_)
     }
 
     scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_facade_mode () != 0)
+        return -1;
     process_monitor_events ();
     service_pool_t *pool = get_or_create_pool (service_name_);
     if (!pool)
@@ -868,6 +899,8 @@ int gateway_t::set_tls_client (const char *ca_cert_,
     }
 
     scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_facade_mode () != 0)
+        return -1;
     _tls_ca.assign (ca_cert_);
     _tls_hostname.assign (hostname_);
     _tls_trust_system = trust_system_;

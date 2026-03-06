@@ -45,6 +45,8 @@ class spot_node_t
                            int option_,
                            const void *optval_,
                            size_t optvallen_);
+    int ensure_pub_facade_mode () const;
+    int ensure_sub_facade_mode () const;
     void *pub_socket_unsafe ();
     void *sub_socket_unsafe ();
 
@@ -158,6 +160,8 @@ class spot_node_t
     bool _sub_queue_nodrop;
     atomic_counter_t _pub_mode;
     atomic_counter_t _pub_queue_full_policy;
+    atomic_counter_t _pub_pollable_mode;
+    atomic_counter_t _sub_pollable_mode;
 
     std::string _tls_cert;
     std::string _tls_key;

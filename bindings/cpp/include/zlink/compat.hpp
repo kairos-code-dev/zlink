@@ -268,6 +268,10 @@ inline void *gateway_router_socket_unsafe (void *gateway_)
 {
     return zlink_gateway_router_socket_unsafe (gateway_);
 }
+inline void *gateway_router_socket (void *gateway_)
+{
+    return zlink_gateway_router_socket (gateway_);
+}
 
 inline void *spot_node_new (void *ctx_) { return zlink_spot_node_new (ctx_); }
 inline int spot_node_destroy (void **node_) { return zlink_spot_node_destroy (node_); }
@@ -307,9 +311,17 @@ inline void *spot_node_pub_socket_unsafe (void *node_)
 {
     return zlink_spot_node_pub_socket_unsafe (node_);
 }
+inline void *spot_node_pub_socket (void *node_)
+{
+    return zlink_spot_node_pub_socket (node_);
+}
 inline void *spot_node_sub_socket_unsafe (void *node_)
 {
     return zlink_spot_node_sub_socket_unsafe (node_);
+}
+inline void *spot_node_sub_socket (void *node_)
+{
+    return zlink_spot_node_sub_socket (node_);
 }
 inline int spot_node_pub_peers (void *node_,
                                 zlink_peer_info_t *peers_,

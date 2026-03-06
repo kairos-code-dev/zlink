@@ -233,7 +233,7 @@ public sealed class SpotNode : IDisposable
     public Socket GetPubSocket()
     {
         EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_spot_node_pub_socket_unsafe(_handle);
+        IntPtr handle = NativeMethods.zlink_spot_node_pub_socket(_handle);
         if (handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         return Socket.Adopt(handle, false);
@@ -242,7 +242,7 @@ public sealed class SpotNode : IDisposable
     public Socket GetSubSocket()
     {
         EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_spot_node_sub_socket_unsafe(_handle);
+        IntPtr handle = NativeMethods.zlink_spot_node_sub_socket(_handle);
         if (handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         return Socket.Adopt(handle, false);

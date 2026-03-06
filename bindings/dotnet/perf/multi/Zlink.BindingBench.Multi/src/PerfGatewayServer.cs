@@ -24,7 +24,6 @@ internal static class PerfGatewayServer
         Discovery? discovery = null;
         Gateway? gateway = null;
         Zlink.Socket? receiverRouter = null;
-        Zlink.Socket? gatewayRouter = null;
         try
         {
             registry = new Registry(ctx);
@@ -61,8 +60,6 @@ internal static class PerfGatewayServer
             gateway.SetOption(SocketOptions.Linger, 0);
             gateway.SetOption(SocketOptions.SndTimeo, config.SndTimeoutMs);
             gateway.SetOption(SocketOptions.RcvTimeo, config.RcvTimeoutMs);
-            gatewayRouter = gateway.CreateRouterSocket();
-            ApplyMultiSocketOptions(gatewayRouter, Pattern);
 
             Console.WriteLine(
                 $"READY,{config.Endpoint}|{config.RegistryPub}|{config.RegistryRouter}");
@@ -87,7 +84,6 @@ internal static class PerfGatewayServer
         }
         finally
         {
-            TryDisposeQuietly(gatewayRouter);
             TryDisposeQuietly(gateway);
             TryDisposeQuietly(discovery);
             TryDisposeQuietly(receiverRouter);

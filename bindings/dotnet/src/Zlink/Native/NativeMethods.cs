@@ -424,7 +424,7 @@ internal static class NativeMethods
         int option, IntPtr value, nuint length);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_gateway_router_socket_unsafe(
+    internal static extern IntPtr zlink_gateway_router_socket(
         IntPtr gateway);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -552,10 +552,10 @@ internal static class NativeMethods
         int option, IntPtr value, nuint length);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_node_pub_socket_unsafe(IntPtr node);
+    internal static extern IntPtr zlink_spot_node_pub_socket(IntPtr node);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_node_sub_socket_unsafe(IntPtr node);
+    internal static extern IntPtr zlink_spot_node_sub_socket(IntPtr node);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_pub_peers(IntPtr node,

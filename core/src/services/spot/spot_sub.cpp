@@ -120,6 +120,8 @@ int spot_sub_t::set_handler (zlink_spot_sub_handler_fn handler_,
         errno = EFAULT;
         return -1;
     }
+    if (_node->ensure_sub_facade_mode () != 0)
+        return -1;
 
     bool wait_quiesce = false;
     {
@@ -336,6 +338,8 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
         errno = EFAULT;
         return -1;
     }
+    if (_node->ensure_sub_facade_mode () != 0)
+        return -1;
     if (flags_ != 0 && flags_ != ZLINK_DONTWAIT) {
         errno = ENOTSUP;
         return -1;
@@ -443,8 +447,12 @@ int spot_sub_t::destroy ()
 {
     spot_node_t *node = _node;
     if (node) {
-        if (set_handler (NULL, NULL) != 0)
+        if (node->ensure_sub_facade_mode () == 0) {
+            if (set_handler (NULL, NULL) != 0)
+                return -1;
+        } else if (errno != EFSM) {
             return -1;
+        }
 
         {
             scoped_lock_t lock (node->_sync);

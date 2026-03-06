@@ -927,7 +927,15 @@ ZLINK_EXPORT int zlink_gateway_set_tls_client (void *gateway,
                                            const char *hostname,
                                            int trust_system);
 
-/** @brief Return the internal ROUTER socket handle (unsafe borrowed handle). */
+/**
+ * @brief Return the internal ROUTER socket handle as a pollable transport.
+ *
+ * Borrowed handle. Once this handle is acquired, facade send/recv APIs on the
+ * same Gateway become invalid and return EFSM.
+ */
+ZLINK_EXPORT void *zlink_gateway_router_socket (void *gateway);
+
+/** @brief Deprecated alias of zlink_gateway_router_socket(). */
 ZLINK_EXPORT void *zlink_gateway_router_socket_unsafe (void *gateway);
 
 /** @brief Enumerate peer queue info from the Gateway ROUTER socket. */
@@ -1082,10 +1090,27 @@ ZLINK_EXPORT int zlink_spot_node_set_tls_client (void *node,
                                              const char *hostname,
                                              int trust_system);
 
-/** @brief Return SPOT node internal PUB socket (unsafe borrowed handle). */
+/**
+ * @brief Return SPOT node internal PUB socket as a pollable transport.
+ *
+ * Borrowed handle. Once this handle is acquired, thread-safe facade publish
+ * APIs on SpotPub attached to the same node become invalid and return EFSM.
+ */
+ZLINK_EXPORT void *zlink_spot_node_pub_socket (void *node);
+
+/** @brief Deprecated alias of zlink_spot_node_pub_socket(). */
 ZLINK_EXPORT void *zlink_spot_node_pub_socket_unsafe (void *node);
 
-/** @brief Return SPOT node internal SUB socket (unsafe borrowed handle). */
+/**
+ * @brief Return SPOT node internal SUB socket as a pollable transport.
+ *
+ * Borrowed handle. Once this handle is acquired, zlink_spot_sub_recv() and
+ * zlink_spot_sub_set_handler() on subscribers attached to the same node become
+ * invalid and return EFSM.
+ */
+ZLINK_EXPORT void *zlink_spot_node_sub_socket (void *node);
+
+/** @brief Deprecated alias of zlink_spot_node_sub_socket(). */
 ZLINK_EXPORT void *zlink_spot_node_sub_socket_unsafe (void *node);
 
 /** @brief Enumerate peer queue info from SPOT node PUB socket. */

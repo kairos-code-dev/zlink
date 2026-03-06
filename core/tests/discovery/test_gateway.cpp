@@ -201,6 +201,34 @@ static void test_gateway_provider_setsockopt ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
+static void test_gateway_router_mode_rejects_facade_send ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *discovery =
+      zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+
+    void *gateway = zlink_gateway_new (ctx, discovery, NULL);
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    void *router = zlink_gateway_router_socket (gateway);
+    TEST_ASSERT_NOT_NULL (router);
+
+    zlink_msg_t part;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
+    memcpy (zlink_msg_data (&part), "test", 4);
+
+    TEST_ASSERT_EQUAL_INT (-1,
+                           zlink_gateway_send (gateway, "svc", &part, 1, 0));
+    TEST_ASSERT_EQUAL_INT (EFSM, errno);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&part));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+}
+
 static void send_gateway_with_timeout (void *gateway,
                                        const char *service_name,
                                        zlink_msg_t *parts,
@@ -1747,6 +1775,7 @@ int main (void)
     RUN_TEST (test_gateway_protocol_tls);
     RUN_TEST (test_gateway_protocol_wss);
     RUN_TEST (test_gateway_provider_setsockopt);
+    RUN_TEST (test_gateway_router_mode_rejects_facade_send);
     RUN_TEST (test_gateway_load_balancing);
     RUN_TEST (test_gateway_weighted_load_balancing);
     return UNITY_END ();

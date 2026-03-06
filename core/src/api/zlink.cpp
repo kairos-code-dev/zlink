@@ -975,7 +975,7 @@ int zlink_gateway_set_tls_client (void *gateway_,
     return gateway->set_tls_client (ca_cert_, hostname_, trust_system_);
 }
 
-void *zlink_gateway_router_socket_unsafe (void *gateway_)
+void *zlink_gateway_router_socket (void *gateway_)
 {
     if (!gateway_)
         return NULL;
@@ -985,6 +985,11 @@ void *zlink_gateway_router_socket_unsafe (void *gateway_)
         return NULL;
     }
     return gateway->router ();
+}
+
+void *zlink_gateway_router_socket_unsafe (void *gateway_)
+{
+    return zlink_gateway_router_socket (gateway_);
 }
 
 int zlink_gateway_router_peers (void *gateway_,
@@ -1379,7 +1384,7 @@ int zlink_spot_node_set_tls_client (void *node_,
     return node->set_tls_client (ca_cert_, hostname_, trust_system_);
 }
 
-void *zlink_spot_node_pub_socket_unsafe (void *node_)
+void *zlink_spot_node_pub_socket (void *node_)
 {
     if (!node_)
         return NULL;
@@ -1391,7 +1396,12 @@ void *zlink_spot_node_pub_socket_unsafe (void *node_)
     return node->pub_socket_unsafe ();
 }
 
-void *zlink_spot_node_sub_socket_unsafe (void *node_)
+void *zlink_spot_node_pub_socket_unsafe (void *node_)
+{
+    return zlink_spot_node_pub_socket (node_);
+}
+
+void *zlink_spot_node_sub_socket (void *node_)
 {
     if (!node_)
         return NULL;
@@ -1401,6 +1411,11 @@ void *zlink_spot_node_sub_socket_unsafe (void *node_)
         return NULL;
     }
     return node->sub_socket_unsafe ();
+}
+
+void *zlink_spot_node_sub_socket_unsafe (void *node_)
+{
+    return zlink_spot_node_sub_socket (node_);
 }
 
 int zlink_spot_node_pub_peers (void *node_,

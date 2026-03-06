@@ -568,7 +568,7 @@ public final class Gateway implements AutoCloseable {
     public Socket routerSocket() {
         MemorySegment sock = Native.gatewayRouter(handle);
         if (sock == null || sock.address() == 0)
-            throw ZlinkException.fromLastError("zlink_gateway_router_socket_unsafe");
+            throw ZlinkException.fromLastError("zlink_gateway_router_socket");
         return Socket.adopt(sock, false);
     }
 

@@ -198,6 +198,8 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _sub_queue_nodrop (false),
     _pub_mode (ZLINK_SPOT_NODE_PUB_MODE_SYNC),
     _pub_queue_full_policy (ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN),
+    _pub_pollable_mode (0),
+    _sub_pollable_mode (0),
     _tls_trust_system (0),
     _stop (0),
     _task_id (0),
@@ -230,6 +232,24 @@ spot_node_t::~spot_node_t ()
 bool spot_node_t::check_tag () const
 {
     return _tag == spot_node_tag_value;
+}
+
+int spot_node_t::ensure_pub_facade_mode () const
+{
+    if (_pub_pollable_mode.get () != 0) {
+        errno = EFSM;
+        return -1;
+    }
+    return 0;
+}
+
+int spot_node_t::ensure_sub_facade_mode () const
+{
+    if (_sub_pollable_mode.get () != 0) {
+        errno = EFSM;
+        return -1;
+    }
+    return 0;
 }
 
 bool spot_node_t::validate_topic (const char *topic_, std::string *out_)
@@ -867,17 +887,58 @@ int spot_node_t::set_socket_option (int socket_role_,
 
 void *spot_node_t::pub_socket_unsafe ()
 {
-    scoped_lock_t lock (_sync);
+    std::vector<std::string> bind_endpoints;
+    {
+        scoped_lock_t lock (_sync);
+        bind_endpoints.assign (_bind_endpoints.begin (), _bind_endpoints.end ());
+    }
+    if (!_pub && !bind_endpoints.empty ()) {
+        scoped_lock_t pub_lock (_pub_sync);
+        if (!_pub) {
+            _pub = _ctx->create_socket (ZLINK_PUB);
+            if (_pub) {
+                for (size_t i = 0; i < _pub_opts.size (); ++i) {
+                    if (!_pub_opts[i].value.empty ())
+                        _pub->setsockopt (_pub_opts[i].option,
+                                          &_pub_opts[i].value[0],
+                                          _pub_opts[i].value.size ());
+                }
+                if (!_tls_cert.empty ()) {
+                    if (_pub->setsockopt (ZLINK_TLS_CERT, _tls_cert.data (),
+                                          _tls_cert.size ())
+                          != 0
+                        || _pub->setsockopt (ZLINK_TLS_KEY, _tls_key.data (),
+                                             _tls_key.size ())
+                             != 0) {
+                        _pub->close ();
+                        _pub = NULL;
+                    }
+                }
+                if (_pub) {
+                    for (size_t i = 0; i < bind_endpoints.size (); ++i) {
+                        if (_pub->bind (bind_endpoints[i].c_str ()) != 0) {
+                            _pub->close ();
+                            _pub = NULL;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
     if (!_pub)
         return NULL;
+    _pub_pollable_mode.set (1);
     return static_cast<void *> (_pub);
 }
 
 void *spot_node_t::sub_socket_unsafe ()
 {
-    scoped_lock_t lock (_sync);
+    ensure_control_sockets ();
+    flush_pending ();
     if (!_sub)
         return NULL;
+    _sub_pollable_mode.set (1);
     return static_cast<void *> (_sub);
 }
 
@@ -1081,6 +1142,9 @@ int spot_node_t::publish (const char *topic_,
                           size_t part_count_,
                           int flags_)
 {
+    if (ensure_pub_facade_mode () != 0)
+        return -1;
+
     std::string topic;
     if (!validate_topic (topic_, &topic)) {
         errno = EINVAL;

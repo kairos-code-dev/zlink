@@ -866,6 +866,9 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 - client cap/retry budget/fallback 으로 실패를 성공처럼 보이게 만드는 동작을 금지한다.
 - send 정책은 고정한다: single=`blocking send 1회`, multi=`DontWait 1회 + pending 시 PollOut`.
 - recv 정책은 고정한다: single=`blocking recv + non-blocking drain`, multi=`poller + non-blocking drain(무제한, cap 없음)`.
+- `Gateway`/`Spot` service API는 `Facade mode`와 `Pollable transport mode`를 혼용하지 않는다.
+- `Gateway.CreateRouterSocket()` 또는 `SpotNode.GetPubSocket()/GetSubSocket()`를 사용한 객체는 pollable mode로 전환된 것으로 본다.
+- pollable mode에서 facade I/O(`Gateway.Send/Receive`, `Spot.Publish/Receive/SetHandler`)를 호출하면 `EFSM`이 정상이다.
 
 **실행 단계(이번 리팩토링):**
 1. Config/Result/Phase 개념을 파일 로컬 타입으로 명확화한다.

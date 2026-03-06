@@ -50,6 +50,8 @@ class gateway_t : public discovery_observer_t
                            const void *optval_,
                            size_t optvallen_);
     void *router ();
+    bool enter_pollable_mode ();
+    int ensure_facade_mode () const;
     int connection_count (const char *service_name_);
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
@@ -112,6 +114,7 @@ class gateway_t : public discovery_observer_t
     void *_monitor_socket;
     socket_base_t *_router_socket;
     bool _use_lock;
+    bool _pollable_mode;
     atomic_counter_t _stop;
     uint64_t _refresh_task_id;
     uint32_t _refresh_interval_ms;

@@ -67,6 +67,22 @@ public sealed class test_gateway
     }
 
     [Fact]
+    public void gateway_router_mode_rejects_facade_send()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+        using var gateway = new Gateway(ctx, discovery);
+        using var router = gateway.CreateRouterSocket();
+
+        ZlinkException ex = Assert.Throws<ZlinkException>(() =>
+            gateway.Send("svc", "x"u8, SendFlags.None));
+        Assert.Equal(ErrorCode.Efsm, ZlinkException.MapErrorCode(ex.Errno));
+    }
+
+    [Fact]
     public void gateway_argument_validation_managed()
     {
         if (!CoreTestSupport.IsNativeAvailable())

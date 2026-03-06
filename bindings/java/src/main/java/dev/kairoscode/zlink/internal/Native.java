@@ -172,7 +172,7 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_GATEWAY_COUNT = downcall("zlink_gateway_connection_count",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_GATEWAY_ROUTER = downcall("zlink_gateway_router_socket_unsafe",
+    private static final MethodHandle MH_GATEWAY_ROUTER = downcall("zlink_gateway_router_socket",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_GATEWAY_ROUTER_PEERS = downcall("zlink_gateway_router_peers",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -239,9 +239,9 @@ public final class Native {
     private static final MethodHandle MH_SPOT_NODE_SETSOCKOPT = downcall("zlink_spot_node_setsockopt",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
                     ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_SPOT_NODE_PUB_SOCKET = downcall("zlink_spot_node_pub_socket_unsafe",
+    private static final MethodHandle MH_SPOT_NODE_PUB_SOCKET = downcall("zlink_spot_node_pub_socket",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_SUB_SOCKET = downcall("zlink_spot_node_sub_socket_unsafe",
+    private static final MethodHandle MH_SPOT_NODE_SUB_SOCKET = downcall("zlink_spot_node_sub_socket",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_PUB_PEERS = downcall("zlink_spot_node_pub_peers",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -856,7 +856,7 @@ public final class Native {
         try {
             return (MemorySegment) MH_GATEWAY_ROUTER.invokeExact(gw);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_gateway_router_socket_unsafe failed",
+            throw new RuntimeException("zlink_gateway_router_socket failed",
               t);
         }
     }
@@ -1105,7 +1105,7 @@ public final class Native {
         try {
             return (MemorySegment) MH_SPOT_NODE_PUB_SOCKET.invokeExact(node);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_pub_socket_unsafe failed",
+            throw new RuntimeException("zlink_spot_node_pub_socket failed",
               t);
         }
     }
@@ -1114,7 +1114,7 @@ public final class Native {
         try {
             return (MemorySegment) MH_SPOT_NODE_SUB_SOCKET.invokeExact(node);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_sub_socket_unsafe failed",
+            throw new RuntimeException("zlink_spot_node_sub_socket failed",
               t);
         }
     }

@@ -285,7 +285,7 @@ public sealed class Gateway : IDisposable
     public Socket CreateRouterSocket()
     {
         EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_gateway_router_socket_unsafe(_handle);
+        IntPtr handle = NativeMethods.zlink_gateway_router_socket(_handle);
         if (handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         return Socket.Adopt(handle, false);

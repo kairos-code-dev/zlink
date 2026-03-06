@@ -227,4 +227,44 @@ public sealed class test_spot_pubsub_basic
         Assert.Single(recv.Parts);
         Assert.Equal("pong", CoreTestSupport.Utf8(recv.Parts[0]));
     }
+
+    [Fact]
+    public void spot_pub_socket_mode_rejects_facade_publish()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        node.Bind(CoreTestSupport.NewEndpoint("inproc", "spot-mode-pub"));
+        using var socket = node.GetPubSocket();
+        using var spot = new Spot(node);
+
+        ZlinkException ex = Assert.Throws<ZlinkException>(() =>
+            spot.Publish("mode:pub", "x"u8, SendFlags.None));
+        Assert.Equal(ErrorCode.Efsm, ZlinkException.MapErrorCode(ex.Errno));
+    }
+
+    [Fact]
+    public void spot_sub_socket_mode_rejects_facade_receive()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var nodeA = new SpotNode(ctx);
+        using var nodeB = new SpotNode(ctx);
+        string endpoint = CoreTestSupport.NewEndpoint("inproc", "spot-mode-sub");
+        nodeA.Bind(endpoint);
+        nodeB.ConnectPeerPub(endpoint);
+
+        using var spot = new Spot(nodeB);
+        spot.Subscribe("mode:sub");
+        Thread.Sleep(100);
+        using var socket = nodeB.GetSubSocket();
+
+        ZlinkException ex = Assert.Throws<ZlinkException>(() =>
+            spot.Receive(ReceiveFlags.DontWait));
+        Assert.Equal(ErrorCode.Efsm, ZlinkException.MapErrorCode(ex.Errno));
+    }
 }

@@ -139,6 +139,92 @@ int zlink_proxy_steerable(void *frontend_,
 
 ---
 
+## 서비스 폴링
+
+raw 소켓 및 파일 디스크립터 외에도, poller는 서비스 인스턴스를 직접 감시할 수
+있습니다. 내부 소켓 핸들은 poller 내부에서만 참조되며 호출자에게 노출되지
+않습니다. poller가 readiness를 시그널한 후에는 기존 서비스 API를 사용하여
+메시지를 송수신합니다.
+
+지원 서비스: `spot_sub`, `spot_pub`, `gateway`, `receiver`.
+
+### zlink_poller_add_spot_sub / zlink_poller_add_spot_pub
+
+SPOT 서비스 인스턴스를 poller에 등록합니다.
+
+```c
+int zlink_poller_add_spot_sub(void *poller, void *sub,
+                              void *userdata, short events);
+int zlink_poller_add_spot_pub(void *poller, void *pub,
+                              void *userdata, short events);
+```
+
+서비스 인스턴스를 poller 감시 집합에 추가합니다. `events`는 `ZLINK_POLLIN` /
+`ZLINK_POLLOUT`의 비트마스크입니다. `userdata`는 이 항목이 발생했을 때 이벤트
+구조체에 반환됩니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**참고:** `zlink_poller_modify_spot_sub`, `zlink_poller_remove_spot_sub`
+
+---
+
+### zlink_poller_add_gateway / zlink_poller_add_receiver
+
+Gateway 또는 Receiver 서비스 인스턴스를 poller에 등록합니다.
+
+```c
+int zlink_poller_add_gateway(void *poller, void *gateway,
+                             void *userdata, short events);
+int zlink_poller_add_receiver(void *poller, void *receiver,
+                              void *userdata, short events);
+```
+
+spot 서비스 등록 API와 동일한 의미이지만, gateway 및 receiver 서비스 대상입니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**참고:** `zlink_poller_modify_gateway`, `zlink_poller_remove_gateway`
+
+---
+
+### zlink_poller_modify_* / zlink_poller_remove_*
+
+등록된 서비스 인스턴스를 수정하거나 제거합니다.
+
+```c
+int zlink_poller_modify_spot_sub(void *poller, void *sub, short events);
+int zlink_poller_modify_spot_pub(void *poller, void *pub, short events);
+int zlink_poller_modify_gateway(void *poller, void *gateway, short events);
+int zlink_poller_modify_receiver(void *poller, void *receiver, short events);
+
+int zlink_poller_remove_spot_sub(void *poller, void *sub);
+int zlink_poller_remove_spot_pub(void *poller, void *pub);
+int zlink_poller_remove_gateway(void *poller, void *gateway);
+int zlink_poller_remove_receiver(void *poller, void *receiver);
+```
+
+`modify`는 감시 이벤트 마스크를 변경합니다. `remove`는 서비스를 poller에서
+등록 해제합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+---
+
+### 서비스 폴링 사용 패턴
+
+```text
+1. 서비스 인스턴스 생성 (spot_sub, spot_pub, gateway, receiver)
+2. poller에 서비스 인스턴스 등록
+3. zlink_poller_wait로 readiness 대기
+4. 기존 서비스 API로 send/recv
+```
+
+**중요:** 동일 서비스 인스턴스를 여러 스레드에서 동시에 사용하는 것은
+지원하지 않습니다.
+
+---
+
 ### zlink_has
 
 라이브러리가 지정된 기능을 지원하는지 확인합니다.

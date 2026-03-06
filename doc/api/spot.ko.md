@@ -293,46 +293,6 @@ CA 인증서 파일 경로를 지정합니다. `hostname` 매개변수는 인증
 
 ---
 
-### zlink_spot_node_pub_socket_unsafe
-
-SPOT 노드 내부 PUB 소켓 핸들을 반환합니다.
-
-```c
-void *zlink_spot_node_pub_socket_unsafe(void *node);
-```
-
-SPOT 노드가 내부적으로 사용하는 원시 PUB 소켓 핸들을 반환합니다. 이는 진단
-및 커스텀 폴링과 같은 고급 사용 사례를 위한 것입니다. 호출자는 소켓을 닫거나
-수정해서는 안 됩니다.
-
-**반환값:** PUB 소켓 핸들, 실패 시 `NULL`.
-
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
-
-**참고:** `zlink_spot_node_sub_socket_unsafe`
-
----
-
-### zlink_spot_node_sub_socket_unsafe
-
-SPOT 노드 내부 SUB 소켓 핸들을 반환합니다.
-
-```c
-void *zlink_spot_node_sub_socket_unsafe(void *node);
-```
-
-SPOT 노드가 내부적으로 사용하는 원시 SUB 소켓 핸들을 반환합니다. 이는 진단
-및 커스텀 폴링과 같은 고급 사용 사례를 위한 것입니다. 호출자는 소켓을 닫거나
-수정해서는 안 됩니다.
-
-**반환값:** SUB 소켓 핸들, 실패 시 `NULL`.
-
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
-
-**참고:** `zlink_spot_node_pub_socket_unsafe`
-
----
-
 ### zlink_spot_node_pub_peers
 
 SPOT 노드 내부 PUB 소켓의 peer queue 정보를 조회합니다.
@@ -351,7 +311,7 @@ SPOT 노드 PUB 소켓에서 peer 단위 queue 통계(송신/수신 pending 메�
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
-**참고:** `zlink_socket_peers`, `zlink_spot_node_pub_socket_unsafe`
+**참고:** `zlink_socket_peers`
 
 ---
 
@@ -373,7 +333,7 @@ SPOT 노드 SUB 소켓에서 peer 단위 queue 통계(송신/수신 pending 메�
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
-**참고:** `zlink_socket_peers`, `zlink_spot_node_sub_socket_unsafe`
+**참고:** `zlink_socket_peers`
 
 ---
 
@@ -689,12 +649,102 @@ int zlink_spot_sub_recv(void *sub,
 
 ---
 
-### Raw 소켓 노출
+## 폴링 통합
 
-SPOT 내부 소켓은 unsafe API를 통해서만 제한적으로 노출됩니다. 다음 API를 사용하세요.
-- 저수준 PUB/SUB/DEALER 소켓 옵션 설정: `zlink_spot_node_setsockopt`
-- 고급 폴링/통합: `zlink_spot_node_pub_socket_unsafe` / `zlink_spot_node_sub_socket_unsafe`
-- peer queue 통계: `zlink_spot_node_pub_peers` / `zlink_spot_node_sub_peers`
-- 발행: `zlink_spot_pub_publish`
-- 콜백 기반 수신: `zlink_spot_sub_set_handler`
-- 폴링 기반 수신: `zlink_spot_sub_recv` (SPOT subscriber 내부 큐에서 소비)
+SPOT 서비스는 poller에 직접 등록할 수 있습니다. poller는 서비스 인스턴스
+자체를 감시하며, 내부 소켓 핸들은 호출자에게 노출되지 않습니다. poller가
+readiness를 시그널한 후에도 호출자는 기존 서비스 API(`zlink_spot_sub_recv`,
+`zlink_spot_pub_publish` 등)를 사용하여 메시지를 송수신합니다.
+
+**SpotNode는 poller 대상이 아닙니다.** SpotNode는 runtime/config owner
+역할만 합니다. poller에는 `spot_sub` 또는 `spot_pub` 인스턴스를 등록하세요.
+
+### Poller 등록 API
+
+```c
+int zlink_poller_add_spot_sub(void *poller, void *sub,
+                              void *userdata, short events);
+int zlink_poller_add_spot_pub(void *poller, void *pub,
+                              void *userdata, short events);
+
+int zlink_poller_modify_spot_sub(void *poller, void *sub, short events);
+int zlink_poller_modify_spot_pub(void *poller, void *pub, short events);
+
+int zlink_poller_remove_spot_sub(void *poller, void *sub);
+int zlink_poller_remove_spot_pub(void *poller, void *pub);
+```
+
+### 사용 패턴
+
+```text
+1. 서비스 인스턴스 생성 (spot_sub, spot_pub)
+2. poller에 서비스 인스턴스 등록
+3. poller로 readiness 대기
+4. 기존 서비스 API로 send/recv
+```
+
+### 예제 -- SPOT subscriber + poller
+
+```c
+void *ctx = zlink_ctx_new();
+void *node = zlink_spot_node_new(ctx);
+zlink_spot_node_bind(node, "tcp://*:9500");
+
+void *sub = zlink_spot_sub_new(node);
+zlink_spot_node_connect_peer_pub(node, "tcp://peer:9500");
+zlink_spot_sub_subscribe(sub, "bench");
+
+void *poller = zlink_poller_new();
+zlink_poller_add_spot_sub(poller, sub, NULL, ZLINK_POLLIN);
+
+zlink_poller_event_t ev;
+while (zlink_poller_wait(poller, &ev, 1000) == 1) {
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic[256];
+    size_t topic_len = sizeof(topic);
+    // readiness 시그널 후 기존 서비스 API로 수신
+    zlink_spot_sub_recv(sub, &parts, &part_count, ZLINK_DONTWAIT,
+                        topic, &topic_len);
+}
+```
+
+### 예제 -- SPOT publisher + poller
+
+```c
+void *pub = zlink_spot_pub_new(node);
+
+void *poller = zlink_poller_new();
+zlink_poller_add_spot_pub(poller, pub, NULL, ZLINK_POLLOUT);
+
+zlink_poller_event_t ev;
+if (zlink_poller_wait(poller, &ev, 1000) == 1) {
+    // readiness 시그널 후 기존 서비스 API로 발행
+    zlink_spot_pub_publish_bytes(pub, "bench", data, size, 0);
+}
+```
+
+### 내부 동작
+
+- **spot_sub**: poller는 raw SUB 소켓이 아닌 내부 큐 signaler fd를 감시합니다.
+  subscriber 큐가 비어있지 않으면 fd가 readable이 됩니다. readiness 이후
+  `zlink_spot_sub_recv(...)`를 평소처럼 호출합니다.
+- **spot_pub**: poller는 node가 소유한 기존 PUB 소켓을 감시합니다. readiness
+  이후 `zlink_spot_pub_publish(...)`를 평소처럼 호출합니다.
+
+### 스레드 안전성
+
+동일 서비스 인스턴스를 여러 스레드에서 동시에 사용하는 것은 **지원하지
+않습니다**. 하나의 `spot_sub` 또는 `spot_pub`은 한 번에 하나의 실행 흐름에서만
+사용해야 합니다.
+
+### 요약
+
+| API | 용도 |
+|-----|------|
+| `zlink_spot_node_setsockopt` | 저수준 PUB/SUB/DEALER 소켓 옵션 |
+| `zlink_spot_node_pub_peers` / `zlink_spot_node_sub_peers` | peer queue 통계 |
+| `zlink_spot_pub_publish` | 메시지 발행 |
+| `zlink_spot_sub_set_handler` | 콜백 기반 수신 |
+| `zlink_spot_sub_recv` | subscriber 큐에서 폴링 기반 수신 |
+| `zlink_poller_add_spot_sub` / `zlink_poller_add_spot_pub` | poller에 서비스 등록 |

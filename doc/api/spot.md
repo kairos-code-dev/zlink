@@ -301,46 +301,6 @@ parameter sets the expected server name for certificate verification. If
 
 ---
 
-### zlink_spot_node_pub_socket_unsafe
-
-Return the internal SPOT PUB socket handle.
-
-```c
-void *zlink_spot_node_pub_socket_unsafe(void *node);
-```
-
-Returns the raw PUB socket handle used internally by the SPOT node. This
-is intended for diagnostics and advanced use cases such as custom polling.
-The caller must not close or modify the socket.
-
-**Returns:** The PUB socket handle, or `NULL` on failure.
-
-**Thread safety:** Safe to call from any thread.
-
-**See also:** `zlink_spot_node_sub_socket_unsafe`
-
----
-
-### zlink_spot_node_sub_socket_unsafe
-
-Return the internal SPOT SUB socket handle.
-
-```c
-void *zlink_spot_node_sub_socket_unsafe(void *node);
-```
-
-Returns the raw SUB socket handle used internally by the SPOT node. This
-is intended for diagnostics and advanced use cases such as custom polling.
-The caller must not close or modify the socket.
-
-**Returns:** The SUB socket handle, or `NULL` on failure.
-
-**Thread safety:** Safe to call from any thread.
-
-**See also:** `zlink_spot_node_pub_socket_unsafe`
-
----
-
 ### zlink_spot_node_pub_peers
 
 Enumerate peer queue info from the internal SPOT PUB socket.
@@ -359,7 +319,7 @@ count first, then call again with an allocated array.
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_socket_peers`, `zlink_spot_node_pub_socket_unsafe`
+**See also:** `zlink_socket_peers`
 
 ---
 
@@ -381,7 +341,7 @@ count first, then call again with an allocated array.
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_socket_peers`, `zlink_spot_node_sub_socket_unsafe`
+**See also:** `zlink_socket_peers`
 
 ---
 
@@ -703,13 +663,103 @@ the actual topic length. Must not be called when a handler is active.
 
 ---
 
-### Raw Socket Exposure
+## Polling Integration
 
-SPOT internal sockets are exposed only via explicit unsafe APIs. Use:
-- `zlink_spot_node_setsockopt` for low-level PUB/SUB/DEALER socket options
-- `zlink_spot_node_pub_socket_unsafe` / `zlink_spot_node_sub_socket_unsafe`
-  for advanced polling/integration
-- `zlink_spot_node_pub_peers` / `zlink_spot_node_sub_peers` for peer queue stats
-- `zlink_spot_pub_publish` for publishing
-- `zlink_spot_sub_set_handler` for callback-driven consumption
-- `zlink_spot_sub_recv` for polling-style consumption from the SPOT subscriber queue
+SPOT services can be registered directly with a poller. The poller monitors
+the service instance itself -- internal socket handles are never exposed to
+the caller. After the poller signals readiness, the caller continues to use
+the regular service API (`zlink_spot_sub_recv`, `zlink_spot_pub_publish`, etc.)
+to send or receive messages.
+
+**SpotNode is not a poller target.** SpotNode is a runtime/config owner only.
+Register `spot_sub` or `spot_pub` instances with the poller instead.
+
+### Poller registration APIs
+
+```c
+int zlink_poller_add_spot_sub(void *poller, void *sub,
+                              void *userdata, short events);
+int zlink_poller_add_spot_pub(void *poller, void *pub,
+                              void *userdata, short events);
+
+int zlink_poller_modify_spot_sub(void *poller, void *sub, short events);
+int zlink_poller_modify_spot_pub(void *poller, void *pub, short events);
+
+int zlink_poller_remove_spot_sub(void *poller, void *sub);
+int zlink_poller_remove_spot_pub(void *poller, void *pub);
+```
+
+### Usage pattern
+
+```text
+1. Create service instance (spot_sub, spot_pub)
+2. Register service instance with poller
+3. Wait for readiness via poller
+4. Use existing service API to send/recv
+```
+
+### Example -- SPOT subscriber with poller
+
+```c
+void *ctx = zlink_ctx_new();
+void *node = zlink_spot_node_new(ctx);
+zlink_spot_node_bind(node, "tcp://*:9500");
+
+void *sub = zlink_spot_sub_new(node);
+zlink_spot_node_connect_peer_pub(node, "tcp://peer:9500");
+zlink_spot_sub_subscribe(sub, "bench");
+
+void *poller = zlink_poller_new();
+zlink_poller_add_spot_sub(poller, sub, NULL, ZLINK_POLLIN);
+
+zlink_poller_event_t ev;
+while (zlink_poller_wait(poller, &ev, 1000) == 1) {
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic[256];
+    size_t topic_len = sizeof(topic);
+    // readiness signaled -- use the regular service API
+    zlink_spot_sub_recv(sub, &parts, &part_count, ZLINK_DONTWAIT,
+                        topic, &topic_len);
+}
+```
+
+### Example -- SPOT publisher with poller
+
+```c
+void *pub = zlink_spot_pub_new(node);
+
+void *poller = zlink_poller_new();
+zlink_poller_add_spot_pub(poller, pub, NULL, ZLINK_POLLOUT);
+
+zlink_poller_event_t ev;
+if (zlink_poller_wait(poller, &ev, 1000) == 1) {
+    // readiness signaled -- use the regular service API
+    zlink_spot_pub_publish_bytes(pub, "bench", data, size, 0);
+}
+```
+
+### Internal behavior
+
+- **spot_sub**: The poller monitors an internal queue signaler fd, not the
+  raw SUB socket. When the subscriber queue is non-empty the fd becomes
+  readable. After readiness, call `zlink_spot_sub_recv(...)` as usual.
+- **spot_pub**: The poller monitors the existing PUB socket owned by the
+  node. After readiness, call `zlink_spot_pub_publish(...)` as usual.
+
+### Thread safety
+
+Using the same service instance from multiple threads concurrently is
+**unsupported**. A single `spot_sub` or `spot_pub` must be used from one
+execution context at a time.
+
+### Summary
+
+| API | Purpose |
+|-----|---------|
+| `zlink_spot_node_setsockopt` | Low-level PUB/SUB/DEALER socket options |
+| `zlink_spot_node_pub_peers` / `zlink_spot_node_sub_peers` | Peer queue stats |
+| `zlink_spot_pub_publish` | Publishing messages |
+| `zlink_spot_sub_set_handler` | Callback-driven consumption |
+| `zlink_spot_sub_recv` | Polling-style consumption from the subscriber queue |
+| `zlink_poller_add_spot_sub` / `zlink_poller_add_spot_pub` | Register service with poller |

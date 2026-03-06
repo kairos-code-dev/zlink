@@ -128,11 +128,33 @@ zlink_spot_sub_unsubscribe(sub, "chat:room1:message");
 zlink_spot_sub_unsubscribe(sub, "chat:room1:*");
 ```
 
-### 4.4 Raw Socket Exposure Policy
+### 4.4 Polling Integration
 
-- `spot_pub` does not expose the raw socket.
-- `spot_sub` does not expose the raw socket.
-- Use `recv()` or callback handler APIs instead of raw socket polling.
+`spot_sub` and `spot_pub` can be registered with the poller directly.
+Internal socket handles are resolved internally and never exposed to the
+caller. After the poller signals readiness, use the regular service API
+(`zlink_spot_sub_recv`, `zlink_spot_pub_publish_bytes`, etc.) to send or
+receive messages.
+
+```c
+/* Register spot_sub with poller */
+zlink_poller_add_spot_sub(poller, sub, NULL, ZLINK_POLLIN);
+
+/* Wait for readiness */
+zlink_poller_wait(poller, -1);
+
+/* Use existing service API */
+zlink_spot_sub_recv(sub, &parts, &part_count, 0, topic, &topic_len);
+```
+
+```c
+/* Register spot_pub with poller (for back-pressure awareness) */
+zlink_poller_add_spot_pub(poller, pub, NULL, ZLINK_POLLOUT);
+```
+
+**Important:** Using the same service instance from multiple threads
+concurrently is unsupported. Each `spot_sub` or `spot_pub` must be used
+from a single execution context at a time.
 
 ### 4.5 Callback Handler
 

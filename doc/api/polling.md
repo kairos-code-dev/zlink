@@ -141,6 +141,93 @@ thread.
 
 ---
 
+## Service Polling
+
+In addition to raw sockets and file descriptors, the poller can monitor
+service instances directly. Internal socket handles are resolved internally
+and are never exposed to the caller. After the poller signals readiness,
+continue using the regular service API to send or receive messages.
+
+Supported services: `spot_sub`, `spot_pub`, `gateway`, `receiver`.
+
+### zlink_poller_add_spot_sub / zlink_poller_add_spot_pub
+
+Register a SPOT service instance with the poller.
+
+```c
+int zlink_poller_add_spot_sub(void *poller, void *sub,
+                              void *userdata, short events);
+int zlink_poller_add_spot_pub(void *poller, void *pub,
+                              void *userdata, short events);
+```
+
+Adds the service instance to the poller's watch set. `events` is a bitmask
+of `ZLINK_POLLIN` / `ZLINK_POLLOUT`. `userdata` is returned in the event
+structure when this item fires.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**See also:** `zlink_poller_modify_spot_sub`, `zlink_poller_remove_spot_sub`
+
+---
+
+### zlink_poller_add_gateway / zlink_poller_add_receiver
+
+Register a Gateway or Receiver service instance with the poller.
+
+```c
+int zlink_poller_add_gateway(void *poller, void *gateway,
+                             void *userdata, short events);
+int zlink_poller_add_receiver(void *poller, void *receiver,
+                              void *userdata, short events);
+```
+
+Same semantics as the spot service registration APIs but for gateway and
+receiver services.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**See also:** `zlink_poller_modify_gateway`, `zlink_poller_remove_gateway`
+
+---
+
+### zlink_poller_modify_* / zlink_poller_remove_*
+
+Modify or remove a registered service instance.
+
+```c
+int zlink_poller_modify_spot_sub(void *poller, void *sub, short events);
+int zlink_poller_modify_spot_pub(void *poller, void *pub, short events);
+int zlink_poller_modify_gateway(void *poller, void *gateway, short events);
+int zlink_poller_modify_receiver(void *poller, void *receiver, short events);
+
+int zlink_poller_remove_spot_sub(void *poller, void *sub);
+int zlink_poller_remove_spot_pub(void *poller, void *pub);
+int zlink_poller_remove_gateway(void *poller, void *gateway);
+int zlink_poller_remove_receiver(void *poller, void *receiver);
+```
+
+`modify` updates the watched event mask. `remove` unregisters the service
+from the poller.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+---
+
+### Service polling usage pattern
+
+```text
+1. Create service instance (spot_sub, spot_pub, gateway, receiver)
+2. Register service instance with poller
+3. Wait for readiness via zlink_poller_wait
+4. Use existing service API to send/recv
+```
+
+**Important:** Using the same service instance from multiple threads
+concurrently is unsupported.
+
+---
+
 ### zlink_has
 
 Check whether the library supports a given capability.

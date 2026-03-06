@@ -128,11 +128,33 @@ zlink_spot_sub_unsubscribe(sub, "chat:room1:message");
 zlink_spot_sub_unsubscribe(sub, "chat:room1:*");
 ```
 
-### 4.4 Raw 소켓 노출 정책
+### 4.4 폴링 통합
 
-- `spot_pub`은 raw socket을 노출하지 않는다.
-- `spot_sub`도 raw socket을 노출하지 않는다.
-- raw socket poll 대신 `recv()` 또는 callback handler API를 사용한다.
+`spot_sub`과 `spot_pub`은 poller에 직접 등록할 수 있다.
+내부 소켓 핸들은 poller 내부에서만 참조되며 호출자에게 노출되지 않는다.
+poller가 readiness를 시그널한 후에는 기존 서비스 API
+(`zlink_spot_sub_recv`, `zlink_spot_pub_publish_bytes` 등)를 사용하여
+메시지를 송수신한다.
+
+```c
+/* spot_sub을 poller에 등록 */
+zlink_poller_add_spot_sub(poller, sub, NULL, ZLINK_POLLIN);
+
+/* readiness 대기 */
+zlink_poller_wait(poller, -1);
+
+/* 기존 서비스 API 사용 */
+zlink_spot_sub_recv(sub, &parts, &part_count, 0, topic, &topic_len);
+```
+
+```c
+/* spot_pub을 poller에 등록 (back-pressure 감지용) */
+zlink_poller_add_spot_pub(poller, pub, NULL, ZLINK_POLLOUT);
+```
+
+**중요:** 동일 서비스 인스턴스를 여러 스레드에서 동시에 사용하는 것은
+지원하지 않는다. 각 `spot_sub` 또는 `spot_pub`은 한 번에 하나의 실행
+컨텍스트에서만 사용해야 한다.
 
 ### 4.5 콜백 핸들러 (Handler)
 

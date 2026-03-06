@@ -10,25 +10,36 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-public final class Poller {
-    private static final long POLL_ITEM_SIZE = 24;
-    private static final long POLL_SOCKET_OFFSET = 0;
-    private static final long POLL_FD_OFFSET = 8;
-    private static final long POLL_EVENTS_OFFSET = 12;
-    private static final long POLL_REVENTS_OFFSET = 14;
+public final class Poller implements AutoCloseable {
+    private static final long POLLER_EVENT_SIZE = 32;
+    private static final long EVENT_SOCKET_OFFSET = 0;
+    private static final long EVENT_FD_OFFSET = 8;
+    private static final long EVENT_EVENTS_OFFSET = 24;
 
     private final List<PollItem> items = new ArrayList<>();
-    private final Arena pollArena = Arena.ofAuto();
-    private MemorySegment nativeItems = MemorySegment.NULL;
-    private int nativeItemsCapacity = 0;
+    private final Arena eventArena = Arena.ofAuto();
+    private MemorySegment nativeEvents = MemorySegment.NULL;
+    private int nativeEventsCapacity = 0;
+    private MemorySegment handle;
+
+    public Poller() {
+        handle = Native.pollerNew();
+        if (handle == null || handle.address() == 0)
+            throw ZlinkException.fromLastError("zlink_poller_new");
+    }
 
     public void add(Socket socket, int events) {
         add(socket, events, null);
     }
 
     public void add(Socket socket, int events, Object tag) {
+        ensureOpen();
         Objects.requireNonNull(socket, "socket");
-        items.add(new PollItem(socket, 0, events, tag));
+        int rc = Native.pollerAdd(handle, socket.handle(), MemorySegment.NULL,
+            events);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_poller_add");
+        items.add(new PollItem(socket, socket.handle(), 0, events, tag, true));
     }
 
     public void add(Socket socket, PollEventType... events) {
@@ -44,7 +55,12 @@ public final class Poller {
     }
 
     public void addFd(int fd, int events, Object tag) {
-        items.add(new PollItem(null, fd, events, tag));
+        ensureOpen();
+        int rc = Native.pollerAddFd(handle, fd, MemorySegment.NULL, events);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_poller_add_fd");
+        items.add(new PollItem(null, MemorySegment.NULL, fd, events, tag,
+            false));
     }
 
     public void addFd(int fd, PollEventType... events) {
@@ -55,43 +71,91 @@ public final class Poller {
         addFd(fd, PollEventType.combine(events), tag);
     }
 
-    public boolean remove(Socket socket) {
+    public void modify(Socket socket, int events) {
+        ensureOpen();
         Objects.requireNonNull(socket, "socket");
-        for (int i = 0; i < items.size(); i++) {
-            if (items.get(i).socket == socket) {
-                items.remove(i);
-                return true;
-            }
-        }
-        return false;
+        int index = findSocket(socket.handle());
+        if (index < 0)
+            throw new IllegalArgumentException("socket is not registered");
+        int rc = Native.pollerModify(handle, socket.handle(), events);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_poller_modify");
+        items.get(index).events = events;
+    }
+
+    public void modify(Socket socket, PollEventType... events) {
+        modify(socket, PollEventType.combine(events));
+    }
+
+    public void modifyFd(int fd, int events) {
+        ensureOpen();
+        int index = findFd(fd);
+        if (index < 0)
+            throw new IllegalArgumentException("fd is not registered");
+        int rc = Native.pollerModifyFd(handle, fd, events);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_poller_modify_fd");
+        items.get(index).events = events;
+    }
+
+    public void modifyFd(int fd, PollEventType... events) {
+        modifyFd(fd, PollEventType.combine(events));
+    }
+
+    public boolean remove(Socket socket) {
+        ensureOpen();
+        Objects.requireNonNull(socket, "socket");
+        int index = findSocket(socket.handle());
+        if (index < 0)
+            return false;
+        int rc = Native.pollerRemove(handle, socket.handle());
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_poller_remove");
+        items.remove(index);
+        return true;
     }
 
     public boolean removeFd(int fd) {
-        for (int i = 0; i < items.size(); i++) {
-            PollItem item = items.get(i);
-            if (item.socket == null && item.fd == fd) {
-                items.remove(i);
-                return true;
-            }
-        }
-        return false;
+        ensureOpen();
+        int index = findFd(fd);
+        if (index < 0)
+            return false;
+        int rc = Native.pollerRemoveFd(handle, fd);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_poller_remove_fd");
+        items.remove(index);
+        return true;
     }
 
     public void clear() {
+        ensureOpen();
+        int rc = Native.pollerDestroy(handle);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_poller_destroy");
+        handle = Native.pollerNew();
+        if (handle == null || handle.address() == 0)
+            throw ZlinkException.fromLastError("zlink_poller_new");
         items.clear();
+        nativeEvents = MemorySegment.NULL;
+        nativeEventsCapacity = 0;
     }
 
     public int size() {
-        return items.size();
+        ensureOpen();
+        int rc = Native.pollerSize(handle);
+        if (rc < 0)
+            throw ZlinkException.fromLastError("zlink_poller_size");
+        return rc;
     }
 
     public int pollCount(int timeoutMs) {
+        ensureOpen();
         if (items.isEmpty())
             return 0;
-        MemorySegment arr = prepareNativeItems();
-        int rc = Native.pollRaw(arr, items.size(), timeoutMs);
+        MemorySegment arr = ensureNativeEvents(items.size());
+        int rc = Native.pollerWaitAll(handle, arr, items.size(), timeoutMs);
         if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_poll");
+            throw ZlinkException.fromLastError("zlink_poller_wait_all");
         return rc;
     }
 
@@ -100,66 +164,107 @@ public final class Poller {
     }
 
     public List<PollEvent> poll(int timeoutMs) {
+        ensureOpen();
         if (items.isEmpty())
             return List.of();
 
-        MemorySegment arr = prepareNativeItems();
-        int readyCount = Native.pollRaw(arr, items.size(), timeoutMs);
+        MemorySegment arr = ensureNativeEvents(items.size());
+        int readyCount = Native.pollerWaitAll(handle, arr, items.size(),
+            timeoutMs);
         if (readyCount < 0)
-            throw ZlinkException.fromLastError("zlink_poll");
+            throw ZlinkException.fromLastError("zlink_poller_wait_all");
         if (readyCount == 0)
             return List.of();
 
-        List<PollEvent> out = new ArrayList<>(Math.min(readyCount, items.size()));
-        for (int i = 0; i < items.size(); i++) {
-            long base = (long) i * POLL_ITEM_SIZE;
-            short revents = arr.get(ValueLayout.JAVA_SHORT, base + POLL_REVENTS_OFFSET);
-            if (revents != 0) {
-                PollItem item = items.get(i);
-                out.add(new PollEvent(item.socket, revents, item.fd, item.tag,
-                    item.events));
-            }
+        List<PollEvent> out = new ArrayList<>(readyCount);
+        for (int i = 0; i < readyCount; i++) {
+            long base = (long) i * POLLER_EVENT_SIZE;
+            MemorySegment socketHandle = arr.get(ValueLayout.ADDRESS,
+                base + EVENT_SOCKET_OFFSET);
+            int fd = arr.get(ValueLayout.JAVA_INT, base + EVENT_FD_OFFSET);
+            short revents = arr.get(ValueLayout.JAVA_SHORT,
+                base + EVENT_EVENTS_OFFSET);
+
+            PollItem item = socketHandle.address() != 0
+                ? findSocketItem(socketHandle) : findFdItem(fd);
+            out.add(new PollEvent(item == null ? null : item.socket, revents,
+                fd, item == null ? null : item.tag,
+                item == null ? revents : item.events));
         }
         return out;
     }
 
-    private MemorySegment prepareNativeItems() {
-        int count = items.size();
-        MemorySegment arr = ensureNativeItems(count);
-        for (int i = 0; i < count; i++) {
-            PollItem item = items.get(i);
-            long base = (long) i * POLL_ITEM_SIZE;
-            MemorySegment socket = item.socket == null
-                ? MemorySegment.NULL : item.socket.handle();
-            arr.set(ValueLayout.ADDRESS, base + POLL_SOCKET_OFFSET, socket);
-            arr.set(ValueLayout.JAVA_INT, base + POLL_FD_OFFSET, item.fd);
-            arr.set(ValueLayout.JAVA_SHORT, base + POLL_EVENTS_OFFSET,
-                (short) item.events);
-            arr.set(ValueLayout.JAVA_SHORT, base + POLL_REVENTS_OFFSET,
-                (short) 0);
-        }
-        return arr;
+    @Override
+    public void close() {
+        if (handle == null || handle.address() == 0)
+            return;
+        Native.pollerDestroy(handle);
+        handle = MemorySegment.NULL;
+        items.clear();
+        nativeEvents = MemorySegment.NULL;
+        nativeEventsCapacity = 0;
     }
 
-    private MemorySegment ensureNativeItems(int requiredCount) {
-        if (nativeItemsCapacity < requiredCount) {
-            nativeItems = pollArena.allocate(POLL_ITEM_SIZE * requiredCount);
-            nativeItemsCapacity = requiredCount;
+    private void ensureOpen() {
+        if (handle == null || handle.address() == 0)
+            throw new IllegalStateException("poller is closed");
+    }
+
+    private MemorySegment ensureNativeEvents(int requiredCount) {
+        if (nativeEventsCapacity < requiredCount) {
+            nativeEvents = eventArena.allocate(POLLER_EVENT_SIZE
+                * requiredCount, ValueLayout.ADDRESS.byteAlignment());
+            nativeEventsCapacity = requiredCount;
         }
-        return nativeItems;
+        return nativeEvents;
+    }
+
+    private int findSocket(MemorySegment socketHandle) {
+        for (int i = 0; i < items.size(); i++) {
+            PollItem item = items.get(i);
+            if (item.isSocket && item.socketHandle.address()
+                == socketHandle.address()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int findFd(int fd) {
+        for (int i = 0; i < items.size(); i++) {
+            PollItem item = items.get(i);
+            if (!item.isSocket && item.fd == fd)
+                return i;
+        }
+        return -1;
+    }
+
+    private PollItem findSocketItem(MemorySegment socketHandle) {
+        int index = findSocket(socketHandle);
+        return index >= 0 ? items.get(index) : null;
+    }
+
+    private PollItem findFdItem(int fd) {
+        int index = findFd(fd);
+        return index >= 0 ? items.get(index) : null;
     }
 
     public static final class PollItem {
         public final Socket socket;
+        public final MemorySegment socketHandle;
         public final int fd;
-        public final int events;
+        public int events;
         public final Object tag;
+        public final boolean isSocket;
 
-        PollItem(Socket socket, int fd, int events, Object tag) {
+        PollItem(Socket socket, MemorySegment socketHandle, int fd, int events,
+                 Object tag, boolean isSocket) {
             this.socket = socket;
+            this.socketHandle = socketHandle;
             this.fd = fd;
             this.events = events;
             this.tag = tag;
+            this.isSocket = isSocket;
         }
     }
 

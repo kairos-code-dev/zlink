@@ -73,10 +73,9 @@ struct iovec
 typedef char
   check_msg_t_size[sizeof (zlink::msg_t) == sizeof (zlink_msg_t) ? 1 : -1];
 
-//  Forward declarations for internal draft API functions
+//  Forward declarations for internal API functions
 int zlink_msg_init_buffer (zlink_msg_t *msg_, const void *buf_, size_t size_);
 int zlink_ctx_set_ext (void *ctx_, int option_, const void *optval_, size_t optvallen_);
-int zlink_poller_wait_all (void *poller_, zlink_poller_event_t *events_, int n_events_, long timeout_);
 
 void zlink_version (int *major_, int *minor_, int *patch_)
 {
@@ -174,6 +173,11 @@ struct socket_handle_t
     zlink::socket_base_t *socket;
 };
 
+struct poller_handle_t
+{
+    zlink::socket_poller_t *poller;
+};
+
 static inline socket_handle_t as_socket_handle (void *s_)
 {
     socket_handle_t handle;
@@ -191,6 +195,27 @@ static inline socket_handle_t as_socket_handle (void *s_)
     }
 
     handle.socket = s;
+    return handle;
+}
+
+static inline poller_handle_t as_poller_handle (void *poller_)
+{
+    poller_handle_t handle;
+    handle.poller = NULL;
+
+    if (!poller_) {
+        errno = EFAULT;
+        return handle;
+    }
+
+    zlink::socket_poller_t *poller =
+      static_cast<zlink::socket_poller_t *> (poller_);
+    if (!poller->check_tag ()) {
+        errno = EFAULT;
+        return handle;
+    }
+
+    handle.poller = poller;
     return handle;
 }
 
@@ -2316,6 +2341,149 @@ int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_)
     }
 
     return nevents;
+}
+
+void *zlink_poller_new (void)
+{
+    zlink::socket_poller_t *poller = new (std::nothrow) zlink::socket_poller_t;
+    if (!poller) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    return static_cast<void *> (poller);
+}
+
+int zlink_poller_destroy (void **poller_p)
+{
+    if (!poller_p) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    poller_handle_t handle = as_poller_handle (*poller_p);
+    if (!handle.poller)
+        return -1;
+
+    delete handle.poller;
+    *poller_p = NULL;
+    return 0;
+}
+
+int zlink_poller_size (void *poller_)
+{
+    poller_handle_t handle = as_poller_handle (poller_);
+    if (!handle.poller)
+        return -1;
+    return handle.poller->size ();
+}
+
+int zlink_poller_add (void *poller_,
+                      void *socket_,
+                      void *user_data_,
+                      short events_)
+{
+    poller_handle_t poller = as_poller_handle (poller_);
+    if (!poller.poller)
+        return -1;
+
+    socket_handle_t socket = as_socket_handle (socket_);
+    if (!socket.socket)
+        return -1;
+
+    return poller.poller->add (socket.socket, user_data_, events_);
+}
+
+int zlink_poller_add_fd (void *poller_,
+                         zlink_fd_t fd_,
+                         void *user_data_,
+                         short events_)
+{
+    poller_handle_t poller = as_poller_handle (poller_);
+    if (!poller.poller)
+        return -1;
+
+    return poller.poller->add_fd (static_cast<zlink::fd_t> (fd_),
+                                  user_data_, events_);
+}
+
+int zlink_poller_modify (void *poller_, void *socket_, short events_)
+{
+    poller_handle_t poller = as_poller_handle (poller_);
+    if (!poller.poller)
+        return -1;
+
+    socket_handle_t socket = as_socket_handle (socket_);
+    if (!socket.socket)
+        return -1;
+
+    return poller.poller->modify (socket.socket, events_);
+}
+
+int zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, short events_)
+{
+    poller_handle_t poller = as_poller_handle (poller_);
+    if (!poller.poller)
+        return -1;
+
+    return poller.poller->modify_fd (static_cast<zlink::fd_t> (fd_), events_);
+}
+
+int zlink_poller_remove (void *poller_, void *socket_)
+{
+    poller_handle_t poller = as_poller_handle (poller_);
+    if (!poller.poller)
+        return -1;
+
+    socket_handle_t socket = as_socket_handle (socket_);
+    if (!socket.socket)
+        return -1;
+
+    return poller.poller->remove (socket.socket);
+}
+
+int zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_)
+{
+    poller_handle_t poller = as_poller_handle (poller_);
+    if (!poller.poller)
+        return -1;
+
+    return poller.poller->remove_fd (static_cast<zlink::fd_t> (fd_));
+}
+
+int zlink_poller_wait_all (void *poller_,
+                           zlink_poller_event_t *events_,
+                           int n_events_,
+                           long timeout_)
+{
+    poller_handle_t handle = as_poller_handle (poller_);
+    if (!handle.poller)
+        return -1;
+    if (!events_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (n_events_ <= 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    for (int i = 0; i < n_events_; ++i) {
+        events_[i].socket = NULL;
+        events_[i].fd = zlink::retired_fd;
+        events_[i].user_data = NULL;
+        events_[i].events = 0;
+    }
+    const int rc = handle.poller->wait (events_, n_events_, timeout_);
+    if (rc == -1 && errno == EAGAIN)
+        return 0;
+    return rc;
+}
+
+int zlink_poller_wait (void *poller_,
+                       zlink_poller_event_t *event_,
+                       long timeout_)
+{
+    return zlink_poller_wait_all (poller_, event_, 1, timeout_);
 }
 
 int zlink_proxy (void *frontend_, void *backend_, void *capture_)

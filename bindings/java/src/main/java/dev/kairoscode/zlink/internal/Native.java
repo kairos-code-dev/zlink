@@ -78,6 +78,33 @@ public final class Native {
 
     private static final MethodHandle MH_POLL = downcall("zlink_poll",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_POLLER_NEW = downcall("zlink_poller_new",
+            FunctionDescriptor.of(ValueLayout.ADDRESS));
+    private static final MethodHandle MH_POLLER_DESTROY = downcall("zlink_poller_destroy",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_POLLER_SIZE = downcall("zlink_poller_size",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_POLLER_ADD = downcall("zlink_poller_add",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_ADD_FD = downcall("zlink_poller_add_fd",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_MODIFY = downcall("zlink_poller_modify",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_MODIFY_FD = downcall("zlink_poller_modify_fd",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_REMOVE = downcall("zlink_poller_remove",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
+    private static final MethodHandle MH_POLLER_REMOVE_FD = downcall("zlink_poller_remove_fd",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_POLLER_WAIT_ALL = downcall("zlink_poller_wait_all",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG));
 
     private static final MethodHandle MH_MONITOR_OPEN = downcall("zlink_socket_monitor_open",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
@@ -525,6 +552,99 @@ public final class Native {
             return (int) MH_POLL.invokeExact(items, count, (long) timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException("poll failed", t);
+        }
+    }
+
+    public static MemorySegment pollerNew() {
+        try {
+            return (MemorySegment) MH_POLLER_NEW.invokeExact();
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_new failed", t);
+        }
+    }
+
+    public static int pollerDestroy(MemorySegment pollerPtr) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment p = arena.allocate(ValueLayout.ADDRESS);
+            p.set(ValueLayout.ADDRESS, 0, pollerPtr);
+            return (int) MH_POLLER_DESTROY.invokeExact(p);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_destroy failed", t);
+        }
+    }
+
+    public static int pollerSize(MemorySegment poller) {
+        try {
+            return (int) MH_POLLER_SIZE.invokeExact(poller);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_size failed", t);
+        }
+    }
+
+    public static int pollerAdd(MemorySegment poller, MemorySegment socket,
+                                MemorySegment userData, int events) {
+        try {
+            return (int) MH_POLLER_ADD.invokeExact(poller, socket, userData,
+                (short) events);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_add failed", t);
+        }
+    }
+
+    public static int pollerAddFd(MemorySegment poller, int fd,
+                                  MemorySegment userData, int events) {
+        try {
+            return (int) MH_POLLER_ADD_FD.invokeExact(poller, fd, userData,
+                (short) events);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_add_fd failed", t);
+        }
+    }
+
+    public static int pollerModify(MemorySegment poller, MemorySegment socket,
+                                   int events) {
+        try {
+            return (int) MH_POLLER_MODIFY.invokeExact(poller, socket,
+                (short) events);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_modify failed", t);
+        }
+    }
+
+    public static int pollerModifyFd(MemorySegment poller, int fd, int events) {
+        try {
+            return (int) MH_POLLER_MODIFY_FD.invokeExact(poller, fd,
+                (short) events);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_modify_fd failed", t);
+        }
+    }
+
+    public static int pollerRemove(MemorySegment poller, MemorySegment socket) {
+        try {
+            return (int) MH_POLLER_REMOVE.invokeExact(poller, socket);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_remove failed", t);
+        }
+    }
+
+    public static int pollerRemoveFd(MemorySegment poller, int fd) {
+        try {
+            return (int) MH_POLLER_REMOVE_FD.invokeExact(poller, fd);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_remove_fd failed", t);
+        }
+    }
+
+    public static int pollerWaitAll(MemorySegment poller, MemorySegment events,
+                                    int count, int timeoutMs) {
+        if (events == null || events.address() == 0 || count <= 0)
+            return 0;
+        try {
+            return (int) MH_POLLER_WAIT_ALL.invokeExact(poller, events, count,
+                (long) timeoutMs);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_wait_all failed", t);
         }
     }
 

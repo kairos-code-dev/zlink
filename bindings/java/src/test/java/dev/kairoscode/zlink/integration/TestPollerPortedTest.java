@@ -23,13 +23,12 @@ public class TestPollerPortedTest {
 
         try (Context ctx = new Context();
              Socket a = new Socket(ctx, SocketType.PAIR);
-             Socket b = new Socket(ctx, SocketType.PAIR)) {
+             Socket b = new Socket(ctx, SocketType.PAIR);
+             Poller poller = new Poller()) {
             String endpoint = TestSupport.inprocEndpoint("poller");
             a.bind(endpoint);
             b.connect(endpoint);
             TestSupport.sleepMs(50);
-
-            Poller poller = new Poller();
             poller.add(a, PollEventType.POLLIN);
 
             b.send("hello".getBytes(StandardCharsets.UTF_8), SendFlag.NONE);
@@ -51,17 +50,55 @@ public class TestPollerPortedTest {
 
         try (Context ctx = new Context();
              Socket a = new Socket(ctx, SocketType.PAIR);
-             Socket b = new Socket(ctx, SocketType.PAIR)) {
+             Socket b = new Socket(ctx, SocketType.PAIR);
+             Poller poller = new Poller()) {
             String endpoint = TestSupport.inprocEndpoint("poller-idle");
             a.bind(endpoint);
             b.connect(endpoint);
             TestSupport.sleepMs(50);
-
-            Poller poller = new Poller();
             poller.add(a, PollEventType.POLLIN);
 
             int ready = poller.pollCount(50);
             assertEquals(0, ready);
+        }
+    }
+
+    @Test
+    public void testPollerModifySwitchesEventMask() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             Socket a = new Socket(ctx, SocketType.PAIR);
+             Socket b = new Socket(ctx, SocketType.PAIR);
+             Poller poller = new Poller()) {
+            String endpoint = TestSupport.inprocEndpoint("poller-modify");
+            a.bind(endpoint);
+            b.connect(endpoint);
+            TestSupport.sleepMs(50);
+
+            poller.add(a, PollEventType.POLLIN);
+            assertEquals(1, poller.size());
+
+            b.send("ping".getBytes(StandardCharsets.UTF_8), SendFlag.NONE);
+
+            poller.modify(a, PollEventType.POLLOUT);
+            List<Poller.PollEvent> events = poller.poll(1000);
+            assertFalse(events.isEmpty());
+            assertTrue((events.get(0).revents() & PollEventType.POLLOUT.getValue())
+                != 0);
+            assertTrue((events.get(0).revents() & PollEventType.POLLIN.getValue())
+                == 0);
+
+            poller.modify(a, PollEventType.POLLIN);
+            events = poller.poll(1000);
+            assertFalse(events.isEmpty());
+            assertTrue((events.get(0).revents() & PollEventType.POLLIN.getValue())
+                != 0);
+            assertTrue((events.get(0).revents() & PollEventType.POLLOUT.getValue())
+                == 0);
+
+            byte[] payload = a.recv(32, dev.kairoscode.zlink.ReceiveFlag.NONE);
+            assertEquals("ping", new String(payload, StandardCharsets.UTF_8));
         }
     }
 }

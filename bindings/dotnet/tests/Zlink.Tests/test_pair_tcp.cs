@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading;
 using Xunit;
 
@@ -80,6 +81,45 @@ public sealed class test_pair_tcp
         Assert.True(written >= 1);
         Assert.NotNull(events[0].Socket);
         Assert.NotEqual(PollEvents.None, events[0].Revents & PollEvents.PollIn);
+    }
+
+    [Fact]
+    public void poller_modify_switches_event_mask()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var sender = new Socket(ctx, SocketType.Pair);
+        using var receiver = new Socket(ctx, SocketType.Pair);
+        using var poller = new Poller();
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "pair-poller-modify");
+        sender.Bind(endpoint);
+        receiver.Connect(endpoint);
+        Thread.Sleep(50);
+
+        poller.Add(receiver, PollEvents.PollIn);
+        Assert.Equal(1, poller.Count);
+
+        CoreTestSupport.SendWithRetry(sender, "ping"u8, SendFlags.None, 2000);
+
+        poller.Modify(receiver, PollEvents.PollOut);
+        var events = new List<PollEvent>();
+        Assert.Equal(1, poller.Wait(events, 1000));
+        Assert.NotEmpty(events);
+        Assert.NotEqual(PollEvents.None, events[0].Revents & PollEvents.PollOut);
+        Assert.Equal(PollEvents.None, events[0].Revents & PollEvents.PollIn);
+
+        poller.Modify(receiver, PollEvents.PollIn);
+        events.Clear();
+        Assert.Equal(1, poller.Wait(events, 1000));
+        Assert.NotEmpty(events);
+        Assert.NotEqual(PollEvents.None, events[0].Revents & PollEvents.PollIn);
+        Assert.Equal(PollEvents.None, events[0].Revents & PollEvents.PollOut);
+
+        Assert.Equal("ping", CoreTestSupport.ReceiveUtf8WithTimeout(receiver,
+            2000));
     }
 
     [Fact]

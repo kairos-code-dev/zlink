@@ -265,7 +265,7 @@ jobs:
         run: |
           cd bindings/java
           chmod +x gradlew
-          ./gradlew test jar
+          ./gradlew test integrationTest jar
 
       - name: Publish to Maven repository
         if: needs.resolve.outputs.publish_registry == 'true'
@@ -309,9 +309,10 @@ jobs:
             exit 1
           fi
 
-      - name: Build and pack
+      - name: Build, test, and pack
         run: |
           dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release
+          dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release
           mkdir -p dist/dotnet
           dotnet pack bindings/dotnet/src/Zlink/Zlink.csproj -c Release -p:PackageOutputPath="${{ github.workspace }}/dist/dotnet"
 

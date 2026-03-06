@@ -49,6 +49,7 @@ if(ZLINK_CPP_BUILD_TESTS)
 
   add_cpp_binding_test(test_cpp_core_connect_resolve tests/test_cpp_core_connect_resolve.cpp)
   add_cpp_binding_test(test_cpp_core_ctx_destroy tests/test_cpp_core_ctx_destroy.cpp)
+  add_cpp_binding_test(test_cpp_core_poller tests/test_cpp_core_poller.cpp)
   add_cpp_binding_test(test_cpp_core_ctx_options tests/test_cpp_core_ctx_options.cpp)
   add_cpp_binding_test(test_cpp_core_socket_null tests/test_cpp_core_socket_null.cpp)
   add_cpp_binding_test(test_cpp_core_ancillaries tests/test_cpp_core_ancillaries.cpp)

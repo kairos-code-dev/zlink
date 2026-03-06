@@ -24,15 +24,6 @@
 #include "sockets/socket_base.hpp"
 #include "utils/polling_util.hpp"
 
-//  Draft API types (kept for internal use)
-typedef struct zlink_poller_event_t
-{
-    void *socket;
-    zlink_fd_t fd;
-    void *user_data;
-    short events;
-} zlink_poller_event_t;
-
 namespace zlink
 {
 class socket_poller_t

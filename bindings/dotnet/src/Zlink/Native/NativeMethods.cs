@@ -216,6 +216,41 @@ internal static class NativeMethods
     internal static extern int zlink_monitor_recv(IntPtr monitorSocket,
         out ZlinkMonitorEvent evt, int flags);
 
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_poller_new();
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_destroy(ref IntPtr poller);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_size(IntPtr poller);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_add(IntPtr poller, IntPtr socket,
+        IntPtr userData, short events);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_add_fd(IntPtr poller, int fd,
+        IntPtr userData, short events);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_modify(IntPtr poller, IntPtr socket,
+        short events);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_modify_fd(IntPtr poller, int fd,
+        short events);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_remove(IntPtr poller, IntPtr socket);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_remove_fd(IntPtr poller, int fd);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_wait_all(IntPtr poller,
+        [Out] ZlinkPollerEvent[] events, int nEvents, long timeout);
+
     [DllImport(LibraryName, EntryPoint = "zlink_poll",
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poll_unix(

@@ -4,9 +4,9 @@
 #define __ZLINK_H_INCLUDED__
 
 /*  Version macros for compile-time API version detection                     */
-#define ZLINK_VERSION_MAJOR 1
-#define ZLINK_VERSION_MINOR 7
-#define ZLINK_VERSION_PATCH 1
+#define ZLINK_VERSION_MAJOR 2
+#define ZLINK_VERSION_MINOR 0
+#define ZLINK_VERSION_PATCH 0
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -1255,6 +1255,7 @@ typedef int zlink_fd_t;
 #define ZLINK_POLLOUT 2
 #define ZLINK_POLLERR 4
 #define ZLINK_POLLPRI 8
+#define ZLINK_HAVE_POLLER 1
 
 typedef struct zlink_pollitem_t
 {
@@ -1263,6 +1264,14 @@ typedef struct zlink_pollitem_t
     short events;
     short revents;
 } zlink_pollitem_t;
+
+typedef struct zlink_poller_event_t
+{
+    void *socket;
+    zlink_fd_t fd;
+    void *user_data;
+    short events;
+} zlink_poller_event_t;
 
 #define ZLINK_POLLITEMS_DFLT 16
 
@@ -1274,6 +1283,28 @@ typedef struct zlink_pollitem_t
  * @return Number of items with events, or -1 on failure.
  */
 ZLINK_EXPORT int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_);
+
+ZLINK_EXPORT void *zlink_poller_new (void);
+ZLINK_EXPORT int zlink_poller_destroy (void **poller_p);
+ZLINK_EXPORT int zlink_poller_size (void *poller_);
+ZLINK_EXPORT int
+zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_);
+ZLINK_EXPORT int zlink_poller_add_fd (void *poller_,
+                                      zlink_fd_t fd_,
+                                      void *user_data_,
+                                      short events_);
+ZLINK_EXPORT int
+zlink_poller_modify (void *poller_, void *socket_, short events_);
+ZLINK_EXPORT int
+zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, short events_);
+ZLINK_EXPORT int zlink_poller_remove (void *poller_, void *socket_);
+ZLINK_EXPORT int zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
+ZLINK_EXPORT int
+zlink_poller_wait (void *poller_, zlink_poller_event_t *event_, long timeout_);
+ZLINK_EXPORT int zlink_poller_wait_all (void *poller_,
+                                        zlink_poller_event_t *events_,
+                                        int n_events_,
+                                        long timeout_);
 
 /** @brief Start a built-in proxy between frontend and backend sockets. */
 ZLINK_EXPORT int zlink_proxy (void *frontend_, void *backend_, void *capture_);

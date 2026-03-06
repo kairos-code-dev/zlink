@@ -67,6 +67,15 @@ internal struct ZlinkPollItemWindows
     public short Revents;
 }
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkPollerEvent
+{
+    public IntPtr Socket;
+    public int Fd;
+    public IntPtr UserData;
+    public short Events;
+}
+
 internal static class NativeHelpers
 {
     public static unsafe string ReadString(byte* buffer, int maxLen)

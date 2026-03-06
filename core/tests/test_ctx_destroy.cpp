@@ -197,6 +197,62 @@ void test_poller_exists_with_socket_on_zlink_ctx_term_non_thread_safe_socket ()
     test_poller_exists_with_socket_on_zlink_ctx_term (ZLINK_DEALER);
 }
 
+void test_poller_modify_updates_event_mask ()
+{
+#ifdef ZLINK_HAVE_POLLER
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *receiver = zlink_socket (ctx, ZLINK_PAIR);
+    TEST_ASSERT_NOT_NULL (receiver);
+    void *sender = zlink_socket (ctx, ZLINK_PAIR);
+    TEST_ASSERT_NOT_NULL (sender);
+
+    const char *endpoint = "inproc://poller-modify";
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (receiver, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sender, endpoint));
+    msleep (SETTLE_TIME);
+
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, receiver, NULL, ZLINK_POLLIN));
+
+    static const char payload[] = "ping";
+    TEST_ASSERT_EQUAL_INT (
+      (int) (sizeof (payload) - 1),
+      zlink_send (sender, payload, sizeof (payload) - 1, 0));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_modify (poller, receiver, ZLINK_POLLOUT));
+
+    zlink_poller_event_t event;
+    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, 1000));
+    TEST_ASSERT_EQUAL_PTR (receiver, event.socket);
+    TEST_ASSERT_TRUE ((event.events & ZLINK_POLLOUT) != 0);
+    TEST_ASSERT_TRUE ((event.events & ZLINK_POLLIN) == 0);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_modify (poller, receiver, ZLINK_POLLIN));
+
+    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, 1000));
+    TEST_ASSERT_EQUAL_PTR (receiver, event.socket);
+    TEST_ASSERT_TRUE ((event.events & ZLINK_POLLIN) != 0);
+    TEST_ASSERT_TRUE ((event.events & ZLINK_POLLOUT) == 0);
+
+    char buffer[16];
+    TEST_ASSERT_EQUAL_INT ((int) (sizeof (payload) - 1),
+                           zlink_recv (receiver, buffer, sizeof (buffer), 0));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (sender));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (receiver));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+#else
+    TEST_IGNORE_MESSAGE ("libzlink without zlink_poller_* support, ignoring test");
+#endif
+}
+
 int main (void)
 {
     setup_test_environment ();
@@ -212,6 +268,7 @@ int main (void)
 
     RUN_TEST (
       test_poller_exists_with_socket_on_zlink_ctx_term_non_thread_safe_socket);
+    RUN_TEST (test_poller_modify_updates_event_mask);
 
     return UNITY_END ();
 }

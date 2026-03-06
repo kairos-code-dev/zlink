@@ -40,6 +40,34 @@ struct poll_event_t
 class poller_t
 {
   public:
+    poller_t () : _poller (zlink_poller_new ()) {}
+
+    ~poller_t () { release (); }
+
+    poller_t (poller_t &&other) noexcept
+        : _poller (other._poller),
+          _items (std::move (other._items)),
+          _native_events (std::move (other._native_events))
+    {
+        other._poller = NULL;
+    }
+
+    poller_t &operator= (poller_t &&other) noexcept
+    {
+        if (this == &other)
+            return *this;
+
+        release ();
+        _poller = other._poller;
+        _items = std::move (other._items);
+        _native_events = std::move (other._native_events);
+        other._poller = NULL;
+        return *this;
+    }
+
+    poller_t (const poller_t &) = delete;
+    poller_t &operator= (const poller_t &) = delete;
+
     /**
      * @brief Register a socket for polling.
      * @param socket_ Socket to monitor.
@@ -49,12 +77,26 @@ class poller_t
      */
     int add (socket_t &socket_, poll_event events_, void *user_ = NULL)
     {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (find_socket (socket_.handle ()) >= 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_add (
+          _poller, socket_.handle (), user_, static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+
         item_t item;
         item.socket = &socket_;
         item.socket_handle = socket_.handle ();
         item.fd = 0;
         item.events = static_cast<short> (events_);
         item.user = user_;
+        item.is_socket = true;
         _items.push_back (item);
         return 0;
     }
@@ -68,13 +110,77 @@ class poller_t
      */
     int add (zlink_fd_t fd_, poll_event events_, void *user_ = NULL)
     {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (find_fd (fd_) >= 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc =
+          zlink_poller_add_fd (_poller, fd_, user_, static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+
         item_t item;
         item.socket = NULL;
         item.socket_handle = NULL;
         item.fd = fd_;
         item.events = static_cast<short> (events_);
         item.user = user_;
+        item.is_socket = false;
         _items.push_back (item);
+        return 0;
+    }
+
+    /**
+     * @brief Update a registered socket's event mask.
+     * @param socket_ Registered socket.
+     * @param events_ New event mask.
+     * @return 0 on success, -1 on failure.
+     */
+    int modify (socket_t &socket_, poll_event events_)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        const int index = find_socket (socket_.handle ());
+        if (index < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc =
+          zlink_poller_modify (_poller, socket_.handle (), static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+        _items[static_cast<size_t> (index)].events = static_cast<short> (events_);
+        return 0;
+    }
+
+    /**
+     * @brief Update a registered file descriptor's event mask.
+     * @param fd_ Registered file descriptor.
+     * @param events_ New event mask.
+     * @return 0 on success, -1 on failure.
+     */
+    int modify (zlink_fd_t fd_, poll_event events_)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        const int index = find_fd (fd_);
+        if (index < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc =
+          zlink_poller_modify_fd (_poller, fd_, static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+        _items[static_cast<size_t> (index)].events = static_cast<short> (events_);
         return 0;
     }
 
@@ -85,15 +191,20 @@ class poller_t
      */
     int remove (socket_t &socket_)
     {
-        for (std::vector<item_t>::iterator it = _items.begin ();
-             it != _items.end ();
-             ++it) {
-            if (it->socket != NULL && it->socket_handle == socket_.handle ()) {
-                _items.erase (it);
-                return 0;
-            }
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
         }
-        return -1;
+        const int index = find_socket (socket_.handle ());
+        if (index < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_remove (_poller, socket_.handle ());
+        if (rc != 0)
+            return rc;
+        _items.erase (_items.begin () + index);
+        return 0;
     }
 
     /**
@@ -103,15 +214,33 @@ class poller_t
      */
     int remove (zlink_fd_t fd_)
     {
-        for (std::vector<item_t>::iterator it = _items.begin ();
-             it != _items.end ();
-             ++it) {
-            if (it->socket == NULL && it->fd == fd_) {
-                _items.erase (it);
-                return 0;
-            }
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
         }
-        return -1;
+        const int index = find_fd (fd_);
+        if (index < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_remove_fd (_poller, fd_);
+        if (rc != 0)
+            return rc;
+        _items.erase (_items.begin () + index);
+        return 0;
+    }
+
+    /**
+     * @brief Return the number of registered poll items.
+     * @return Item count, or -1 on failure.
+     */
+    int size () const
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        return zlink_poller_size (_poller);
     }
 
     /**
@@ -122,36 +251,51 @@ class poller_t
      */
     int wait (std::vector<poll_event_t> &events_, long timeout_ms_)
     {
-        if (_pollitems.size () < _items.size ())
-            _pollitems.resize (_items.size ());
-
-        for (size_t i = 0; i < _items.size (); ++i) {
-            _pollitems[i].socket = _items[i].socket_handle;
-            _pollitems[i].fd = _items[i].fd;
-            _pollitems[i].events = _items[i].events;
-            _pollitems[i].revents = 0;
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
         }
+        if (_items.empty ()) {
+            events_.clear ();
+            if (timeout_ms_ < 0) {
+                errno = EFAULT;
+                return -1;
+            }
+            return 0;
+        }
+        if (_native_events.size () < _items.size ())
+            _native_events.resize (_items.size ());
 
-        const int rc = zlink_poll (
-          _pollitems.data (), static_cast<int> (_items.size ()), timeout_ms_);
-        if (rc <= 0)
+        const int rc = zlink_poller_wait_all (_poller, _native_events.data (),
+                                              static_cast<int> (_items.size ()),
+                                              timeout_ms_);
+        if (rc <= 0) {
+            events_.clear ();
             return rc;
+        }
 
         events_.clear ();
-        events_.reserve (_items.size ());
-        for (size_t i = 0; i < _items.size (); ++i) {
-            if (_pollitems[i].revents == 0)
-                continue;
-
+        events_.reserve (static_cast<size_t> (rc));
+        for (int i = 0; i < rc; ++i) {
+            const zlink_poller_event_t &native = _native_events[static_cast<size_t> (i)];
             poll_event_t ev;
-            ev.socket_handle = _items[i].socket_handle;
-            ev.socket = _items[i].socket;
-            ev.user = _items[i].user;
-            ev.events = _pollitems[i].events;
-            ev.revents = _pollitems[i].revents;
+            ev.socket_handle = native.socket;
+            ev.socket = NULL;
+            ev.user = native.user_data;
+            ev.events = native.events;
+            ev.revents = native.events;
+
+            const int index = native.socket ? find_socket (native.socket)
+                                            : find_fd (native.fd);
+            if (index >= 0) {
+                const item_t &item = _items[static_cast<size_t> (index)];
+                ev.socket = item.socket;
+                ev.user = item.user;
+                ev.events = item.events;
+            }
             events_.push_back (ev);
         }
-        return static_cast<int> (events_.size ());
+        return rc;
     }
 
     /**
@@ -174,10 +318,41 @@ class poller_t
         zlink_fd_t fd;
         short events;
         void *user;
+        bool is_socket;
     };
 
+    int find_socket (const void *socket_handle_) const
+    {
+        for (size_t i = 0; i < _items.size (); ++i) {
+            if (_items[i].is_socket
+                && _items[i].socket_handle == socket_handle_) {
+                return static_cast<int> (i);
+            }
+        }
+        return -1;
+    }
+
+    int find_fd (zlink_fd_t fd_) const
+    {
+        for (size_t i = 0; i < _items.size (); ++i) {
+            if (!_items[i].is_socket && _items[i].fd == fd_)
+                return static_cast<int> (i);
+        }
+        return -1;
+    }
+
+    void release () noexcept
+    {
+        if (!_poller)
+            return;
+        void *poller = _poller;
+        (void) zlink_poller_destroy (&poller);
+        _poller = NULL;
+    }
+
+    void *_poller;
     std::vector<item_t> _items;
-    std::vector<zlink_pollitem_t> _pollitems;
+    std::vector<zlink_poller_event_t> _native_events;
 };
 
 } // namespace zlink

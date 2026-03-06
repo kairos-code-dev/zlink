@@ -26,7 +26,6 @@ public final class PerfMultiDealerDealerClient {
     private static final String PATTERN = "MULTI_DEALER_DEALER";
     private static final SocketType CLIENT_SOCKET_TYPE = SocketType.DEALER;
     private static final int MIN_PAYLOAD_BYTES = 32;
-    private static final int RETRY_BACKOFF_MS = 1;
     private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
     private static final long DATA_SEND_RETRY_BUDGET_NS = 5_000_000L;
 
@@ -114,14 +113,20 @@ public final class PerfMultiDealerDealerClient {
                 long benchDeadline = System.nanoTime()
                     + (long) Math.max(1, durationSeconds)
                     * NANOSECONDS_PER_SECOND;
+                boolean anyActiveSent = false;
                 while (System.nanoTime() < benchDeadline) {
                     Socket socket = activeSockets.get(index);
                     PerfMultiMetricHeader.stampPayload(payload, runId,
                         PerfMultiMetricHeader.PHASE_ACTIVE, msgSize, seq++,
                         PerfMultiMetricHeader.nowUs());
-                    sendRetry(socket, payload, SendFlag.NONE,
-                        DATA_SEND_RETRY_BUDGET_NS);
+                    if (sendRetry(socket, payload, SendFlag.NONE,
+                        DATA_SEND_RETRY_BUDGET_NS)) {
+                        anyActiveSent = true;
+                    }
                     index = (index + 1) % activeSockets.size();
+                }
+                if (!anyActiveSent) {
+                    return 2;
                 }
                 return 0;
             } finally {
@@ -145,22 +150,23 @@ public final class PerfMultiDealerDealerClient {
         socket.setOption(SocketOptions.LINGER, 0);
     }
 
-    private static int sendRetry(Socket socket, byte[] payload,
-                                 SendFlag flags,
-                                 long retryBudgetNs) {
+    private static boolean sendRetry(Socket socket, byte[] payload,
+                                     SendFlag flags,
+                                     long retryBudgetNs) {
         if (retryBudgetNs <= 0L) {
-            return 0;
+            return false;
         }
         SendFlag op = toDontWaitSendFlag(flags);
         long retryDeadline = System.nanoTime() + retryBudgetNs;
         while (true) {
             try {
-                return socket.send(payload, 0, payload.length, op);
+                return socket.send(payload, 0, payload.length, op) > 0;
             } catch (ZlinkException ex) {
                 if (shouldRetry(ex)) {
                     if (System.nanoTime() >= retryDeadline) {
-                        return 0;
+                        return false;
                     }
+                    Thread.onSpinWait();
                     continue;
                 }
                 throw ex;
@@ -188,18 +194,9 @@ public final class PerfMultiDealerDealerClient {
             return true;
         }
         if (isWouldBlock(errno)) {
-            sleepMillis(RETRY_BACKOFF_MS);
             return true;
         }
         return false;
-    }
-
-    private static void sleepMillis(long millis) {
-        try {
-            Thread.sleep(Math.max(1L, millis));
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-        }
     }
 
     private static void closeAll(List<? extends AutoCloseable> resources) {

@@ -21,13 +21,9 @@ import dev.kairoscode.zlink.options.SocketOptions;
 public final class PerfMultiPubSubServer {
     private static final String PATTERN = "MULTI_PUBSUB";
     private static final int MIN_PAYLOAD_BYTES = 32;
-    private static final int RETRY_BACKOFF_MS = 1;
     private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
-    private static final long SEND_RETRY_BUDGET_NS = 5_000_000L;
 
     private static final int ERRNO_EINTR = 4;
-    private static final int ERRNO_EAGAIN = 11;
-    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
 
     private PerfMultiPubSubServer() {
     }
@@ -43,6 +39,8 @@ public final class PerfMultiPubSubServer {
         int warmupSeconds = PerfMultiCommon.resolveWarmupSeconds();
         int durationSeconds = PerfMultiCommon.resolveDurationSeconds();
         int settleMs = PerfMultiCommon.resolveSettleMs();
+        int connectSettleMs = PerfCommon.parseNonNegativeEnv(
+            "PERF_PUBSUB_CONNECT_SETTLE_MS", 2000);
         String endpoint = resolveServerEndpoint(transport, "multi-pubsub");
 
         try (Context context = new Context();
@@ -52,6 +50,9 @@ public final class PerfMultiPubSubServer {
             PerfMultiTls.configureTlsServerIfNeeded(server, transport);
             server.bind(endpoint);
             System.out.println("READY," + endpoint);
+            if (connectSettleMs > 0) {
+                PerfCommon.sleepMillis(connectSettleMs);
+            }
 
             byte[] payload = new byte[payloadSize];
             int runId = (int) (PerfMultiMetricHeader.nowUs() & 0x7FFF_FFFFL);
@@ -64,7 +65,7 @@ public final class PerfMultiPubSubServer {
                 PerfMultiMetricHeader.stampPayload(payload, runId,
                     PerfMultiMetricHeader.PHASE_WARMUP, msgSize, seq++,
                     PerfMultiMetricHeader.nowUs());
-                sendRetry(server, payload, SendFlag.NONE);
+                sendOrThrow(server, payload);
             }
 
             // --- Settle ---
@@ -79,11 +80,14 @@ public final class PerfMultiPubSubServer {
                 PerfMultiMetricHeader.stampPayload(payload, runId,
                     PerfMultiMetricHeader.PHASE_ACTIVE, msgSize, seq++,
                     PerfMultiMetricHeader.nowUs());
-                sendRetry(server, payload, SendFlag.NONE);
+                sendOrThrow(server, payload);
             }
 
             return 0;
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException ex) {
+            System.err.println("ERROR,MULTI_PUBSUB,server,"
+                + ex.getClass().getSimpleName() + ","
+                + String.valueOf(ex.getMessage()));
             return 2;
         }
     }
@@ -108,19 +112,13 @@ public final class PerfMultiPubSubServer {
         return PerfCommon.endpointFor(transport, name);
     }
 
-    private static int sendRetry(Socket socket, byte[] payload,
-                                 SendFlag flags) {
-        SendFlag op = toDontWaitSendFlag(flags);
-        // Avoid indefinite send-retry loops at shutdown when peer side drains first.
-        long retryDeadline = System.nanoTime() + SEND_RETRY_BUDGET_NS;
+    private static void sendOrThrow(Socket socket, byte[] payload) {
         while (true) {
             try {
-                return socket.send(payload, 0, payload.length, op);
+                socket.send(payload, 0, payload.length, SendFlag.NONE);
+                return;
             } catch (ZlinkException ex) {
-                if (shouldRetry(ex)) {
-                    if (System.nanoTime() >= retryDeadline) {
-                        return 0;
-                    }
+                if (isInterrupted(ex.errno())) {
                     continue;
                 }
                 throw ex;
@@ -128,37 +126,7 @@ public final class PerfMultiPubSubServer {
         }
     }
 
-    private static SendFlag toDontWaitSendFlag(SendFlag flag) {
-        return flag == null || flag == SendFlag.NONE
-            ? SendFlag.DONTWAIT
-            : flag;
-    }
-
     private static boolean isInterrupted(int errno) {
         return errno == ERRNO_EINTR;
-    }
-
-    private static boolean isWouldBlock(int errno) {
-        return errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN;
-    }
-
-    private static boolean shouldRetry(ZlinkException ex) {
-        int errno = ex.errno();
-        if (isInterrupted(errno)) {
-            return true;
-        }
-        if (isWouldBlock(errno)) {
-            sleepMillis(RETRY_BACKOFF_MS);
-            return true;
-        }
-        return false;
-    }
-
-    private static void sleepMillis(long millis) {
-        try {
-            Thread.sleep(Math.max(1L, millis));
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-        }
     }
 }

@@ -306,6 +306,7 @@ JAVA_BINDINGS_JAR_BUILT=0
 resolve_stack_tuning()
 {
     local stack="$1"
+    local size_hint="${2:-0}"
 
     STACK_SNDBUF=1048576
     STACK_RCVBUF=1048576
@@ -367,6 +368,9 @@ resolve_stack_tuning()
             ;;
         zlink|zlink-len32be)
             STACK_IO_THREADS="${SERVER_IO_THREADS}"
+            if (( size_hint >= 65536 && STACK_IO_THREADS < 8 )); then
+                STACK_IO_THREADS=8
+            fi
             STACK_SNDBUF=8388608
             STACK_RCVBUF=8388608
             STACK_BACKLOG=65535
@@ -1248,7 +1252,7 @@ start_server()
             ;;
     esac
 
-    resolve_stack_tuning "${stack}"
+    resolve_stack_tuning "${stack}" "${size_hint}"
 
     cmd+=(
         --host "${host}"

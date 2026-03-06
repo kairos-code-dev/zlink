@@ -1,0 +1,6 @@
+## PATTERN: MULTI_GATEWAY (echo)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |  Latency(ms) | Lat p95(ms) | Lat p99(ms) | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|----------|----------|--------|----------|--------|----------|
+| 64B |     71.44 Kops/s |      9.1 MB/s |    0.1178 ms |   0.2540 ms |   0.3390 ms |    7.6 |     99.3 |    5.1 |    109.2 |

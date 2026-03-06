@@ -86,6 +86,60 @@ static void test_spot_sub_socket_mode_rejects_facade_recv ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+static void test_spot_sub_socket_mode_allows_raw_socket_recv ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *pub_node = zlink_spot_node_new (ctx);
+    void *sub_node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (pub_node);
+    TEST_ASSERT_NOT_NULL (sub_node);
+
+    char endpoint[MAX_SOCKET_STRING];
+    snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
+              test_port (22102));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (pub_node, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer_pub (sub_node, endpoint));
+
+    void *sub = zlink_spot_sub_new (sub_node);
+    TEST_ASSERT_NOT_NULL (sub);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (sub, "mode:raw"));
+    msleep (100);
+
+    void *pollable_sub = zlink_spot_node_sub_socket (sub_node);
+    TEST_ASSERT_NOT_NULL (pollable_sub);
+
+    void *pub = zlink_spot_pub_new (pub_node);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_pub_publish_bytes (pub, "mode:raw", "pong", 4, 0));
+
+    zlink_msg_t topic;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&topic));
+    const int topic_rc = zlink_msg_recv (&topic, pollable_sub, 0);
+    TEST_ASSERT_EQUAL_INT (8, topic_rc);
+    TEST_ASSERT_EQUAL_UINT (8, zlink_msg_size (&topic));
+    TEST_ASSERT_EQUAL_MEMORY ("mode:raw", zlink_msg_data (&topic), 8);
+    TEST_ASSERT_TRUE (zlink_msg_more (&topic) != 0);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&topic));
+
+    zlink_msg_t payload;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&payload));
+    const int payload_rc = zlink_msg_recv (&payload, pollable_sub, 0);
+    TEST_ASSERT_EQUAL_INT (4, payload_rc);
+    TEST_ASSERT_EQUAL_UINT (4, zlink_msg_size (&payload));
+    TEST_ASSERT_EQUAL_MEMORY ("pong", zlink_msg_data (&payload), 4);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_destroy (&pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 int main (int, char **)
 {
     setup_test_environment (300);
@@ -93,5 +147,6 @@ int main (int, char **)
     UNITY_BEGIN ();
     RUN_TEST (test_spot_pub_socket_mode_rejects_facade_publish);
     RUN_TEST (test_spot_sub_socket_mode_rejects_facade_recv);
+    RUN_TEST (test_spot_sub_socket_mode_allows_raw_socket_recv);
     return UNITY_END ();
 }

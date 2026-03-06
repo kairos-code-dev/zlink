@@ -18,7 +18,7 @@ internal static class PerfSpotClient
         using var ctx = new Context();
         ApplyMultiClientContextOptions(ctx);
         var nodes = new List<SpotNode>(config.ClientCount);
-        var clients = new List<Spot>(config.ClientCount);
+        var subscribers = new List<Spot>(config.ClientCount);
         var subSockets = new List<Zlink.Socket>(config.ClientCount);
         var topic = new byte[256];
         try
@@ -28,11 +28,12 @@ internal static class PerfSpotClient
                 var node = new SpotNode(ctx);
                 ConfigureSpotTlsSubscriberIfNeeded(node, config.Transport);
                 node.ConnectPeerPub(endpoint);
-                var client = new Spot(node);
-                client.Subscribe("bench");
+                var subscriber = new Spot(node);
+                subscriber.Subscribe("bench");
+                var subSocket = node.GetSubSocket();
                 nodes.Add(node);
-                clients.Add(client);
-                subSockets.Add(node.GetSubSocket());
+                subscribers.Add(subscriber);
+                subSockets.Add(subSocket);
             }
 
             Thread.Sleep(SubscribeSettleMs);
@@ -60,9 +61,9 @@ internal static class PerfSpotClient
         }
         finally
         {
-            DisposeAllQuietly(subSockets);
-            DisposeAllQuietly(clients);
             DisposeAllQuietly(nodes);
+            DisposeAllQuietly(subscribers);
+            DisposeAllQuietly(subSockets);
         }
     }
 

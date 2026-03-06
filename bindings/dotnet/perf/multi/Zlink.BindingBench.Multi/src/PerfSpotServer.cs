@@ -7,6 +7,7 @@ using static PerfRunner;
 internal static class PerfSpotServer
 {
     private const string Pattern = "SPOT";
+    private static ReadOnlySpan<byte> Topic => "bench"u8;
     private const int SubscribeSettleMs = 300;
     private const uint RunId = 1;
 
@@ -20,16 +21,16 @@ internal static class PerfSpotServer
         ConfigureSpotTlsPublisherIfNeeded(nodePub, config.Transport);
         TryConfigureSpotPublisherSocket(nodePub, Pattern, config.SndTimeoutMs);
         nodePub.Bind(config.Endpoint);
-        using var spotPub = new Spot(nodePub);
+        using var pubSocket = nodePub.GetPubSocket();
 
         Console.WriteLine($"READY,{config.Endpoint}");
         _ = WaitUntil(() => nodePub.GetSubPeers().Length > 0, config.ReadyTimeoutMs);
         Thread.Sleep(SubscribeSettleMs);
 
         var phaseState = new SpotServerPhaseState(config.Size);
-        RunWarmupPhase(spotPub, config, ref phaseState);
+        RunWarmupPhase(pubSocket, config, ref phaseState);
         RunSettlePhase(config);
-        SpotServerActiveStats activeStats = RunActivePhase(spotPub, config,
+        SpotServerActiveStats activeStats = RunActivePhase(pubSocket, config,
             ref phaseState);
         SpotServerResult result = ComputeResult(activeStats);
 
@@ -56,7 +57,8 @@ internal static class PerfSpotServer
             MultiEndpointFor(transport, "multi-spot"));
     }
 
-    private static void RunWarmupPhase(Spot spotPub, SpotServerConfig config,
+    private static void RunWarmupPhase(Zlink.Socket pubSocket,
+        SpotServerConfig config,
         ref SpotServerPhaseState state)
     {
         if (config.WarmupSeconds <= 0)
@@ -68,7 +70,7 @@ internal static class PerfSpotServer
         {
             StampMetricHeader(state.Payload.AsSpan(), RunId, PerfPhase.Warmup,
                 config.Size, state.Seq++, EpochUs());
-            TryPublishSpot(spotPub, state.Payload.AsSpan());
+            TryPublishSpot(pubSocket, state.Payload.AsSpan());
         }
     }
 
@@ -78,7 +80,7 @@ internal static class PerfSpotServer
             Thread.Sleep(config.SettleMs);
     }
 
-    private static SpotServerActiveStats RunActivePhase(Spot spotPub,
+    private static SpotServerActiveStats RunActivePhase(Zlink.Socket pubSocket,
         SpotServerConfig config, ref SpotServerPhaseState state)
     {
         long sendCount = 0;
@@ -89,7 +91,7 @@ internal static class PerfSpotServer
         {
             StampMetricHeader(state.Payload.AsSpan(), RunId, PerfPhase.Active,
                 config.Size, state.Seq++, EpochUs());
-            if (TryPublishSpot(spotPub, state.Payload.AsSpan()))
+            if (TryPublishSpot(pubSocket, state.Payload.AsSpan()))
                 sendCount++;
         }
 
@@ -110,9 +112,11 @@ internal static class PerfSpotServer
         return new SpotServerResult(throughput, latencyUs, latencyUs, latencyUs);
     }
 
-    private static bool TryPublishSpot(Spot spotPub, ReadOnlySpan<byte> payload)
+    private static bool TryPublishSpot(Zlink.Socket pubSocket,
+        ReadOnlySpan<byte> payload)
     {
-        spotPub.Publish("bench", payload, SendFlags.None);
+        _ = SendBlocking(pubSocket, Topic, SendFlags.SendMore);
+        _ = SendBlocking(pubSocket, payload, SendFlags.None);
         return true;
     }
 

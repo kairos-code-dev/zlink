@@ -1613,6 +1613,8 @@ void spot_node_t::process_sub ()
 {
     if (!_sub)
         return;
+    if (_sub_pollable_mode.get () != 0)
+        return;
 
     while (true) {
         if (_sub_queue_nodrop) {

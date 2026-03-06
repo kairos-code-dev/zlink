@@ -381,10 +381,13 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 3 | PerfMultiRouterRouterServer | PerfMultiRouterRouterClient | ROUTER_ROUTER | ROUTER bind, echo | ROUTER connect, send+recv |
 | 4 | PerfMultiPubSubServer | PerfMultiPubSubClient | PUBSUB | PUB bind, publish | SUB connect, recv |
 | 5 | PerfMultiGatewayServer | PerfMultiGatewayClient | GATEWAY | Receiver bind, echo | Gateway connect, send+recv |
-| 6 | PerfMultiSpotServer | PerfMultiSpotClient | SPOT | Spot publish | Spot subscribe |
+| 6 | PerfMultiSpotServer | PerfMultiSpotClient | SPOT | SpotNode pubSocket(pollable) send(topic+payload) | SpotNode subSocket(pollable) PollIn+drain recv |
 | 7 | PerfMultiStreamServer | (공통 stream client) | STREAM | STREAM bind, raw echo | C++ stream client |
 | 8 | PerfMultiStreamCallbackServer | (공통 stream client) | STREAM_CALLBACK | attachStream callback | C++ stream client |
 | 9 | PerfMultiStreamLen32BeServer | (공통 stream client) | STREAM_LEN32BE | attachStreamLen32be | C++ stream client |
+
+> Spot mode split (core v3.0.1): `SpotNode.pubSocket()/subSocket()` 호출 시 pollable transport mode 로 진입하며,
+> 같은 node에서 `Spot.publish()/Spot.recv()` facade I/O 와 혼용하면 EFSM 이다.
 
 **Multi 서버 통신 프로토콜:**
 - 서버 stdout 에 `READY,<endpoint>` 출력 → 스크립트가 클라이언트 시작
@@ -637,7 +640,9 @@ socket.setSockOpt(SocketOption.TLS_CA, caPath);
 | STREAM attach | `socket.attachStream(handler, mode)` |
 | STREAM send | `socket.streamSend(routingId, payload, flags)` |
 | `zlink_ctx_set(ctx, IO_THREADS)` | `ctx.setOption(ContextOption.IO_THREADS, n)` |
-| Gateway / Receiver / Spot | `new Gateway(...)` / `new Receiver(...)` / `new Spot(...)` |
+| Gateway / Receiver | `new Gateway(...)` / `new Receiver(...)` |
+| Spot facade mode | `new Spot(node)` + `spot.publish()/spot.recv()` |
+| Spot pollable mode | `node.pubSocket()/node.subSocket()` + `Socket.send()/recv()/Poller` (동일 node에서 facade I/O 혼용 금지, 위반 시 EFSM) |
 | MonitorSocket | `socket.monitorOpen(events)` |
 
 **주의: `Socket.send(MemorySegment, ...)` 등 Panama 네이티브 메모리 API 도 사용 가능하나, 벤치마크에서는 `byte[]` 기반이 간결.**
@@ -1526,14 +1531,17 @@ ls -la bindings/java/perf/results/multi/report/perf_*.txt
 - [ ] 실패를 성공처럼 보이게 만드는 우회 로직 금지
 - [ ] 문서/DoD와 충돌하는 동작 변경 금지
 
-**I/O 실행 정책 (2026-03-06 합의 반영)**
-- [ ] `send`: blocking 단발 호출만 허용 (`SendFlag.NONE`/`SNDMORE` 그대로 사용), retry/backoff/budget/cap 금지
-- [ ] `send` 실패 시 즉시 실패 처리하고 원인(errno/message)을 그대로 노출한다
+**I/O 실행 정책 (2026-03-06, Spot mode split(v3.0.1) 반영)**
+- [ ] `single send`: blocking 단발 호출만 허용 (`SendFlag.NONE`/`SNDMORE`)
+- [ ] `multi send`: `DONTWAIT` 1회 시도 + `EAGAIN` 시 pending 상태만 유지하고 `PollOut` readiness 에서만 재개
+- [ ] `multi send`: `PollOut` 상시 ON 금지 (pending send가 있을 때만 ON, 완료 즉시 OFF)
+- [ ] `send` 실패(`EAGAIN` 제외) 시 즉시 실패 처리하고 원인(errno/message)을 그대로 노출한다
 - [ ] `single recv`: blocking recv 1회 후 `DONTWAIT` nonblocking drain
 - [ ] `multi recv`: poller readiness 기반으로 소켓별 `DONTWAIT` nonblocking drain (무제한, batch cap 없음)
 - [ ] `PERF_MULTI_RECV_BATCH`류 제어 변수/우회 옵션을 도입하지 않는다
 - [ ] `core/perf`와 달리 send/recv 공통화는 패턴 간 공유 유틸로 추출하지 않고, 각 패턴 파일 내부 `private helper`까지만 허용한다
 - [ ] 핵심 send/recv 루프는 각 패턴 파일에서 샘플 코드처럼 명시적으로 읽히도록 유지한다
+- [ ] Spot(multi)은 pollable transport mode 고정: `SpotNode.pubSocket()/subSocket()` 사용, 동일 node에서 `Spot.publish()/Spot.recv()` facade I/O 혼용 금지(EFSM)
 
 **6-6 진행 현황 (1차, 2026-03-06)**
 - [x] 대상 패턴 1차 적용: `MULTI_PUBSUB`, `MULTI_DEALER_DEALER`
@@ -1548,6 +1556,10 @@ ls -la bindings/java/perf/results/multi/report/perf_*.txt
 - [x] 멀티 핵심 패턴 `tcp/64` 스모크 통과:
   `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`,
   `MULTI_PUBSUB`, `MULTI_GATEWAY`, `MULTI_SPOT`
+- [x] `MULTI_SPOT` pollable mode 정렬:
+  - Spot facade I/O 제거 (`Spot.publish/recv` 미사용)
+  - `SpotNode.pubSocket()/subSocket()` + `Poller` + `DONTWAIT` send/recv drain
+  - 동일 node facade/pollable 혼용 금지 계약(EFSM) 문서화
 - [ ] 나머지 패턴(멀티 전체/싱글 전체)에 동일 규칙 확장 적용
 
 ---

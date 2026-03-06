@@ -1143,6 +1143,9 @@ rg -n "std::vector|std::string|new |malloc|make_unique|make_shared" \
 - `one-way send`: recv 없음. `PollOut` 가능 시에만 계속 보내고, `EAGAIN` 에서 멈춘다.
 - `one-way recv`: send 없음. `PollIn + nonblocking drain` 만 수행한다.
 - `pub/sub`, `spot`: 발행/송신 쪽은 one-way send, 구독/수신 쪽은 one-way recv 정책을 따른다.
+- `SPOT` 는 perf 에서 **pollable transport mode 전용** 으로 사용한다.
+  - `spot_node_t::pub_socket_handle()` / `sub_socket_handle()` 를 `zlink::socket_t::wrap(...)` 으로 감싼 raw PUB/SUB 소켓만 사용한다.
+  - 같은 node 기반 `spot_t::publish()`, `spot_t::recv()`, `spot_t::subscribe()` 와 혼용하지 않는다.
 
 ### 15.5 코드 인라이닝 정책
 

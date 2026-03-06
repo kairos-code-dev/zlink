@@ -22,6 +22,7 @@ static const char *k_pattern_env = "SPOT";
 static const char *k_pattern_result = "MULTI_SPOT";
 static const uint32_t k_run_id = 1;
 static const int k_active_search_extension_seconds = 2;
+static const char *k_topic = "bench";
 
 bool configure_spot_client_tls (zlink::service::spot_node_t &node,
                                 const std::string &transport)
@@ -87,8 +88,6 @@ class spot_client_bench_t
           _spot_client_count (settings.clients),
           _ctx (),
           _nodes (),
-          _spots (),
-          _spot_views (),
           _sub_wrappers (),
           _poller (),
           _poll_events (),
@@ -97,8 +96,6 @@ class spot_client_bench_t
           _result ()
     {
         _nodes.reserve (_spot_client_count);
-        _spots.reserve (_spot_client_count);
-        _spot_views.reserve (_spot_client_count);
         _sub_wrappers.reserve (_spot_client_count);
         _poll_events.reserve (_spot_client_count);
 
@@ -156,23 +153,66 @@ class spot_client_bench_t
                 return false;
             }
 
-            _spots.emplace_back (new zlink::service::spot_t (node));
-            if (!_spots.back () || !_spots.back ()->valid ()
-                || _spots.back ()->subscribe ("bench") != 0) {
-                return false;
-            }
-
             if (!_ready_node)
                 _ready_node = &node;
-            zlink::service::spot_t *spot_view = _spots.back ().get ();
-            _spot_views.push_back (spot_view);
 
             _sub_wrappers.emplace_back (zlink::socket_t::wrap (node.sub_socket_handle ()));
+            if (!_sub_wrappers.back ().handle ())
+                return false;
+            if (_sub_wrappers.back ().set (zlink::socket_options::subscribe,
+                                           std::string (k_topic))
+                != 0) {
+                return false;
+            }
             (void) _poller.add (
-              _sub_wrappers.back (), zlink::poll_event::pollin, spot_view);
+              _sub_wrappers.back (), zlink::poll_event::pollin, &_sub_wrappers.back ());
         }
 
-        return !_spot_views.empty ();
+        return !_sub_wrappers.empty ();
+    }
+
+    int recv_payload_header (zlink::socket_t &subscriber,
+                             zlink::recv_flag flags,
+                             perf_metric::header_t *header_out,
+                             bool *header_ok_out)
+    {
+        if (header_ok_out)
+            *header_ok_out = false;
+
+        zlink::message_t topic;
+        const int topic_rc = subscriber.recv (topic, flags);
+        if (topic_rc < 0) {
+            const int err = errno;
+            if (err == EAGAIN || err == EINTR)
+                return 0;
+            return -1;
+        }
+        if (!topic.more ())
+            return -1;
+
+        zlink::message_t payload;
+        const int payload_rc = subscriber.recv (payload, flags);
+        if (payload_rc < 0) {
+            const int err = errno;
+            if (err == EAGAIN || err == EINTR)
+                return 0;
+            return -1;
+        }
+        if (payload.more ())
+            return -1;
+        if (topic.size () != std::strlen (k_topic)
+            || std::memcmp (topic.data (), k_topic, topic.size ()) != 0) {
+            return 1;
+        }
+
+        bool header_ok = false;
+        if (header_out) {
+            header_ok = perf_metric::decode_payload_header (
+              payload.data (), payload.size (), header_out);
+        }
+        if (header_ok_out)
+            *header_ok_out = header_ok;
+        return 1;
     }
 
     bool run_recv_phase (perf_metric::phase_t phase,
@@ -188,12 +228,10 @@ class spot_client_bench_t
             return true;
         }
 
-        if (_spot_views.empty ())
+        if (_sub_wrappers.empty ())
             return false;
 
         unsigned long long count = 0;
-        std::vector<zlink::message_t> parts;
-        std::string topic;
 
         const bool active_phase = phase == perf_metric::phase_active;
         auto deadline = std::chrono::steady_clock::now () + duration;
@@ -225,30 +263,25 @@ class spot_client_bench_t
                 continue;
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
-                zlink::service::spot_t *spot =
-                  static_cast<zlink::service::spot_t *> (_poll_events[i].user);
-                if (!spot)
+                zlink::socket_t *subscriber =
+                  static_cast<zlink::socket_t *> (_poll_events[i].user);
+                if (!subscriber)
                     continue;
 
                 for (;;) {
-                    parts.clear ();
-                    topic.clear ();
-                    if (spot->recv (parts, topic, zlink::recv_flag::dontwait) != 0) {
-                        const int err = errno;
-                        if (err == EAGAIN)
-                            break;
-                        if (err == EINTR)
-                            continue;
-                        return false;
-                    }
-                    if (topic != "bench" || parts.size () != 1)
-                        continue;
-
                     perf_metric::header_t header;
-                    if (!perf_metric::decode_payload_header (
-                          parts[0].data (), parts[0].size (), &header)) {
+                    bool header_ok = false;
+                    const int recv_rc = recv_payload_header (
+                      *subscriber,
+                      zlink::recv_flag::dontwait,
+                      &header,
+                      &header_ok);
+                    if (recv_rc == 0)
+                        break;
+                    if (recv_rc < 0)
+                        return false;
+                    if (!header_ok)
                         continue;
-                    }
                     if (header.magic != perf_metric::k_magic
                         || header.run_id != k_run_id
                         || header.msg_size != static_cast<uint32_t> (_msg_size)) {
@@ -340,8 +373,6 @@ class spot_client_bench_t
 
     perf::multi::ctx_guard_t _ctx;
     std::vector<std::unique_ptr<zlink::service::spot_node_t> > _nodes;
-    std::vector<std::unique_ptr<zlink::service::spot_t> > _spots;
-    std::vector<zlink::service::spot_t *> _spot_views;
     std::vector<zlink::socket_t> _sub_wrappers;
     zlink::poller_t _poller;
     std::vector<zlink::poll_event_t> _poll_events;

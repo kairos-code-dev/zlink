@@ -19,7 +19,7 @@ test('version matches core', { skip: !nativeOk }, () => {
   const v = zlink.version();
   assert.equal(v[0], 3);
   assert.equal(v[1], 0);
-  assert.equal(v[2], 1);
+  assert.equal(v[2], 2);
 });
 
 test('pair send/recv', { skip: !nativeOk }, () => {

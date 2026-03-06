@@ -92,6 +92,9 @@ class spot_node_t
     void send_heartbeat (uint64_t now_ms_);
     void ensure_control_sockets ();
     void flush_pending ();
+    bool suspend_control_task ();
+    void resume_control_task ();
+    int ensure_sub_socket_mutation_allowed () const;
 
     static bool validate_topic (const char *topic_, std::string *out_);
     static bool validate_pattern (const char *pattern_, std::string *prefix_);

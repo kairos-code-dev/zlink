@@ -252,6 +252,15 @@ int spot_node_t::ensure_sub_facade_mode () const
     return 0;
 }
 
+int spot_node_t::ensure_sub_socket_mutation_allowed () const
+{
+    if (_sub_pollable_mode.get () != 0) {
+        errno = EFSM;
+        return -1;
+    }
+    return 0;
+}
+
 bool spot_node_t::validate_topic (const char *topic_, std::string *out_)
 {
     if (!topic_ || topic_[0] == '\0')
@@ -400,6 +409,8 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
         errno = EINVAL;
         return -1;
     }
+    if (ensure_sub_socket_mutation_allowed () != 0)
+        return -1;
 
     scoped_lock_t lock (_sync);
     if (_peer_endpoints.count (peer_pub_endpoint_))
@@ -416,6 +427,8 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
         errno = EINVAL;
         return -1;
     }
+    if (ensure_sub_socket_mutation_allowed () != 0)
+        return -1;
 
     scoped_lock_t lock (_sync);
     _peer_endpoints.erase (peer_pub_endpoint_);
@@ -691,6 +704,8 @@ int spot_node_t::set_tls_client (const char *ca_cert_,
         errno = EINVAL;
         return -1;
     }
+    if (ensure_sub_socket_mutation_allowed () != 0)
+        return -1;
 
     scoped_lock_t lock (_sync);
     if (ca_cert_[0] == '\0' || hostname_[0] == '\0') {
@@ -789,6 +804,8 @@ int spot_node_t::set_socket_option (int socket_role_,
             existing = _pub;
             break;
         case ZLINK_SPOT_NODE_SOCKET_SUB:
+            if (ensure_sub_socket_mutation_allowed () != 0)
+                return -1;
             opts = &_sub_opts;
             existing = _sub;
             break;
@@ -934,11 +951,18 @@ void *spot_node_t::pub_socket_unsafe ()
 
 void *spot_node_t::sub_socket_unsafe ()
 {
+    const bool control_task_suspended = suspend_control_task ();
     ensure_control_sockets ();
     flush_pending ();
     if (!_sub)
+    {
+        if (control_task_suspended)
+            resume_control_task ();
         return NULL;
+    }
     _sub_pollable_mode.set (1);
+    if (control_task_suspended)
+        resume_control_task ();
     return static_cast<void *> (_sub);
 }
 
@@ -1579,7 +1603,7 @@ void spot_node_t::flush_pending ()
             registry_connect.swap (_pending_registry_connect);
     }
 
-    if (_sub) {
+    if (_sub && _sub_pollable_mode.get () == 0) {
         for (std::deque<std::string>::const_iterator it =
                subscribe.begin ();
              it != subscribe.end (); ++it)
@@ -1696,7 +1720,7 @@ void spot_node_t::refresh_peers ()
         service = _discovery_service;
         self_advertise = _advertise_endpoint;
     }
-    if (!disc || !_sub)
+    if (!disc || !_sub || _sub_pollable_mode.get () != 0)
         return;
 
     std::vector<provider_info_t> providers;
@@ -1738,6 +1762,28 @@ void spot_node_t::refresh_peers ()
     }
     for (size_t i = 0; i < to_disconnect.size (); ++i)
         _sub->term_endpoint (to_disconnect[i].c_str ());
+}
+
+bool spot_node_t::suspend_control_task ()
+{
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (!runtime || _task_id == 0 || runtime->is_current_thread ())
+        return false;
+
+    const uint64_t task_id = _task_id;
+    _task_id = 0;
+    runtime->remove_task (task_id);
+    return true;
+}
+
+void spot_node_t::resume_control_task ()
+{
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (!runtime || _task_id != 0)
+        return;
+
+    _task_id = runtime->add_periodic_task (control_task, this, _control_tick_ms,
+                                           true);
 }
 
 void spot_node_t::send_heartbeat (uint64_t now_ms_)

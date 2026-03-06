@@ -27,8 +27,8 @@ Usage:
   run_benchmarks.sh [options]
 
 Options:
-  --stack <asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty|all|csv>
-  --size <64|1024|65536|all|csv>
+  --stack <asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty|all|comma-list>
+  --size <64|1024|65536|all|comma-list>
   --build-dir PATH            Build directory (default: core/build).
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
   --clean-build               Remove build directory and do a clean build.
@@ -1551,10 +1551,10 @@ CSV
     fi
 
     local -A STACK_FAILED=()
-    local run_idx
-    for ((run_idx = 1; run_idx <= RUNS; ++run_idx)); do
-        local size
-        for size in "${RUN_SIZES[@]}"; do
+    local size
+    for size in "${RUN_SIZES[@]}"; do
+        local run_idx
+        for ((run_idx = 1; run_idx <= RUNS; ++run_idx)); do
             local stack
             for stack in "${ACTIVE_STACKS[@]}"; do
                 if [[ -n "${STACK_FAILED[${stack}]:-}" ]]; then
@@ -1675,22 +1675,23 @@ CSV
                     sleep "${STACK_GAP_SEC}"
                 fi
             done
+        done
 
-            local size_summary_json="${RESULT_DIR}/summary_size${size}.json"
-            local size_report_md="${RESULT_DIR}/comparison_size${size}.md"
-            python3 "${SCRIPT_DIR}/run_comparison.py" \
-                --metrics "${METRICS_CSV}" \
-                --summary "${size_summary_json}" \
-                --report "${size_report_md}" \
-                --runs "${RUNS}" \
-                --stacks "$(IFS=,; echo "${ACTIVE_STACKS[*]}")" \
-                --sizes "${size}" \
-                --phases "throughput,latency" \
-                --skip-file "${SKIP_CSV}"
-            log "size_comparison size=${size} summary_json=${size_summary_json} comparison_md=${size_report_md}"
-            if [[ -s "${size_summary_json}" ]]; then
-                local size_console_summary
-                size_console_summary="$(python3 - "${size_summary_json}" "${size_report_md}" <<'PY'
+        local size_summary_json="${RESULT_DIR}/summary_size${size}.json"
+        local size_report_md="${RESULT_DIR}/comparison_size${size}.md"
+        python3 "${SCRIPT_DIR}/run_comparison.py" \
+            --metrics "${METRICS_CSV}" \
+            --summary "${size_summary_json}" \
+            --report "${size_report_md}" \
+            --runs "${RUNS}" \
+            --stacks "$(IFS=,; echo "${ACTIVE_STACKS[*]}")" \
+            --sizes "${size}" \
+            --phases "throughput,latency" \
+            --skip-file "${SKIP_CSV}"
+        log "size_comparison size=${size} summary_json=${size_summary_json} comparison_md=${size_report_md}"
+        if [[ -s "${size_summary_json}" ]]; then
+            local size_console_summary
+            size_console_summary="$(python3 - "${size_summary_json}" "${size_report_md}" <<'PY'
 import json
 import sys
 
@@ -1718,25 +1719,28 @@ for phase in ("throughput", "latency"):
     key = f"{phase}:{size}"
     ranking = summary.get("ranking", {}).get(key, [])
     print(f"[{phase}] ranking(all)")
-    print(" rank stack             tps        p95_ms   mismatch")
+    print(" rank stack             kops       mean_ms  mismatch")
     if not ranking:
         print("  -   (no data)")
         continue
     for idx, entry in enumerate(ranking, 1):
         stack = str(entry.get("stack", "n/a"))[:16]
-        tps = f2(entry.get("median_tps"))
-        p95 = f2(us_to_ms(entry.get("median_p95_us")))
+        kops = f2(entry.get("median_kops"))
+        mean = us_to_ms(entry.get("median_mean_us"))
+        if mean is None:
+            # Backward compatibility for previously generated summaries.
+            mean = us_to_ms(entry.get("median_p95_us"))
+        mean_text = f2(mean)
         mismatch = int(entry.get("mismatch_total_all", 0))
-        print(f" {idx:>2}   {stack:<16} {tps:>10} {p95:>10} {mismatch:>9}")
+        print(f" {idx:>2}   {stack:<16} {kops:>10} {mean_text:>10} {mismatch:>9}")
 print(f"full_report={report_path}")
 print(f"summary_json={summary_path}")
 print(f"===== SIZE {size} SUMMARY END =====")
 PY
 )"
-                echo "${size_console_summary}"
-                echo "${size_console_summary}" >>"${SCENARIO_LOG}"
-            fi
-        done
+            echo "${size_console_summary}"
+            echo "${size_console_summary}" >>"${SCENARIO_LOG}"
+        fi
     done
 
     python3 "${SCRIPT_DIR}/run_comparison.py" \

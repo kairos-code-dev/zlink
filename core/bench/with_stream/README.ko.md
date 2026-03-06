@@ -48,6 +48,9 @@ echo 성능을 비교하기 위한 벤치마크입니다.
 - 스택은 순차 실행(동시 벤치 금지)
 - 멀티 사이즈 실행 시 사이즈마다 재연결
   : 서버 재시작 + 클라이언트 재연결
+- 실행 순서는 size 기준 우선이며, 각 size에서 지정한 run 수만큼 반복
+  (`size -> run -> stack`)
+- 사이즈 요약 출력은 해당 size의 모든 run 완료 후 1회 생성
 
 ## 요구 사항
 
@@ -108,7 +111,7 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 --reuse-build               기존 빌드 디렉토리 재사용(configure/build 생략)
 --clean-build               빌드 디렉토리 삭제 후 클린 빌드
 --ccu <N>                    기본값: 1000
---runs <N>                   기본값: 1
+--runs <N>                   기본값: 1 (size별 반복)
 --warmup <sec>               기본값: 3
 --duration <sec>             기본값: 5
 --client-io-threads <N>      기본값: 4

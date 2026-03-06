@@ -47,6 +47,9 @@ Supported payload sizes:
   `4-byte big-endian payload length + payload`.
 - Runner uses one server process per stack and executes stacks sequentially.
 - For multi-size runs, runner reconnects per size (server restart + client reconnect).
+- Run order is size-first: for each selected size, runner executes all runs
+  (`size -> run -> stack`).
+- Size summary output is generated once after all runs for that size complete.
 
 ## Requirements
 
@@ -107,7 +110,7 @@ Run one stack with multi-size sequence (reconnect per size):
 --reuse-build               reuse existing build directory (skip configure/build)
 --clean-build               remove build directory and do a clean build
 --ccu <N>                    default: 1000
---runs <N>                   default: 1
+--runs <N>                   default: 1 (repeated per size)
 --warmup <sec>               default: 3
 --duration <sec>             default: 5
 --client-io-threads <N>      default: 4

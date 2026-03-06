@@ -47,7 +47,9 @@ class spot_node_t
                            size_t optvallen_);
     int ensure_pub_facade_mode () const;
     int ensure_sub_facade_mode () const;
+    void *pub_socket_for_poller ();
     void *pub_socket_unsafe ();
+    void *sub_socket_for_poller ();
     void *sub_socket_unsafe ();
 
     spot_pub_t *create_spot_pub ();

@@ -840,6 +840,14 @@ void *gateway_t::router ()
     return static_cast<void *> (_router_socket);
 }
 
+void *gateway_t::poller_socket ()
+{
+    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_router_socket () != 0)
+        return NULL;
+    return static_cast<void *> (_router_socket);
+}
+
 bool gateway_t::enter_pollable_mode ()
 {
     _pollable_mode = true;

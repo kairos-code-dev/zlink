@@ -37,6 +37,15 @@ int spot_pub_t::publish (const char *topic_,
     return _node->publish (topic_, parts_, part_count_, flags_);
 }
 
+void *spot_pub_t::poller_socket ()
+{
+    if (!_node) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return _node->pub_socket_for_poller ();
+}
+
 int spot_pub_t::destroy ()
 {
     if (_node)

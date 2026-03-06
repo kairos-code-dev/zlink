@@ -4,9 +4,9 @@
 #define __ZLINK_H_INCLUDED__
 
 /*  Version macros for compile-time API version detection                     */
-#define ZLINK_VERSION_MAJOR 3
+#define ZLINK_VERSION_MAJOR 4
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 2
+#define ZLINK_VERSION_PATCH 0
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -1014,10 +1014,10 @@ ZLINK_EXPORT int zlink_receiver_set_tls_server (void *receiver,
 
 /** @brief Set a socket option on an internal Receiver socket. */
 ZLINK_EXPORT int zlink_receiver_setsockopt (void *receiver,
-                                        int socket_role,
-                                        int option,
-                                        const void *optval,
-                                        size_t optvallen);
+                                            int socket_role,
+                                            int option,
+                                            const void *optval,
+                                            size_t optvallen);
 
 /** @brief Return the internal ROUTER socket handle (unsafe borrowed handle). */
 ZLINK_EXPORT void *zlink_receiver_router_socket_unsafe (void *receiver);
@@ -1322,6 +1322,23 @@ ZLINK_EXPORT int zlink_poller_size (void *poller_);
 ZLINK_EXPORT int
 zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_);
 
+ZLINK_EXPORT int zlink_poller_add_spot_sub (void *poller_,
+                                            void *spot_sub_,
+                                            void *user_data_,
+                                            short events_);
+ZLINK_EXPORT int zlink_poller_add_spot_pub (void *poller_,
+                                            void *spot_pub_,
+                                            void *user_data_,
+                                            short events_);
+ZLINK_EXPORT int zlink_poller_add_gateway (void *poller_,
+                                           void *gateway_,
+                                           void *user_data_,
+                                           short events_);
+ZLINK_EXPORT int zlink_poller_add_receiver (void *poller_,
+                                            void *receiver_,
+                                            void *user_data_,
+                                            short events_);
+
 /** @brief Register a raw file descriptor with the poller. */
 ZLINK_EXPORT int zlink_poller_add_fd (void *poller_,
                                       zlink_fd_t fd_,
@@ -1332,12 +1349,26 @@ ZLINK_EXPORT int zlink_poller_add_fd (void *poller_,
 ZLINK_EXPORT int
 zlink_poller_modify (void *poller_, void *socket_, short events_);
 
+ZLINK_EXPORT int
+zlink_poller_modify_spot_sub (void *poller_, void *spot_sub_, short events_);
+ZLINK_EXPORT int
+zlink_poller_modify_spot_pub (void *poller_, void *spot_pub_, short events_);
+ZLINK_EXPORT int
+zlink_poller_modify_gateway (void *poller_, void *gateway_, short events_);
+ZLINK_EXPORT int
+zlink_poller_modify_receiver (void *poller_, void *receiver_, short events_);
+
 /** @brief Update the event mask for a registered file descriptor. */
 ZLINK_EXPORT int
 zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, short events_);
 
 /** @brief Remove a registered socket. */
 ZLINK_EXPORT int zlink_poller_remove (void *poller_, void *socket_);
+
+ZLINK_EXPORT int zlink_poller_remove_spot_sub (void *poller_, void *spot_sub_);
+ZLINK_EXPORT int zlink_poller_remove_spot_pub (void *poller_, void *spot_pub_);
+ZLINK_EXPORT int zlink_poller_remove_gateway (void *poller_, void *gateway_);
+ZLINK_EXPORT int zlink_poller_remove_receiver (void *poller_, void *receiver_);
 
 /** @brief Remove a registered file descriptor. */
 ZLINK_EXPORT int zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);

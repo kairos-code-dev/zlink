@@ -516,6 +516,11 @@ void *receiver_t::router ()
     return static_cast<void *> (_router);
 }
 
+void *receiver_t::poller_socket ()
+{
+    return router ();
+}
+
 void receiver_t::heartbeat_task (void *arg_)
 {
     receiver_t *self = static_cast<receiver_t *> (arg_);

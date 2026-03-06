@@ -71,7 +71,8 @@ spot_sub_t::spot_sub_t (spot_node_t *node_) :
     _handler_userdata (NULL),
     _handler_state (handler_none),
     _callback_inflight (0),
-    _recv_in_progress (0)
+    _recv_in_progress (0),
+    _queue_signaled (false)
 {
 }
 
@@ -209,10 +210,15 @@ bool spot_sub_t::enqueue_shared_message (spot_shared_message_t *shared_)
         return false;
     }
 
+    const bool was_empty = _queue.empty ();
     _queue.push_back (queue_entry_t ());
     queue_entry_t &entry = _queue.back ();
     retain_shared_message (shared_);
     entry.shared = shared_;
+    if (was_empty && !_queue_signaled && _queue_signaler.valid ()) {
+        _queue_signaler.send ();
+        _queue_signaled = true;
+    }
     _queue_cv.broadcast ();
     return true;
 }
@@ -238,7 +244,17 @@ void spot_sub_t::clear_queue ()
         release_shared_message (entry.shared);
         _queue.pop_front ();
     }
+    if (_queue_signaled && _queue_signaler.valid ()) {
+        const int rc = _queue_signaler.recv_failable ();
+        if (rc == 0 || errno == EAGAIN)
+            _queue_signaled = false;
+    }
     _queue_cv.broadcast ();
+}
+
+fd_t spot_sub_t::poller_fd () const
+{
+    return _queue_signaler.valid () ? _queue_signaler.get_fd () : retired_fd;
 }
 
 bool spot_sub_t::callback_enabled () const
@@ -407,6 +423,11 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
             const int timeout_ms = _recv_timeout_ms >= 0 ? _recv_timeout_ms : -1;
             if (_queue_cv.wait (&_queue_sync, timeout_ms) != 0)
                 return -1;
+        }
+        if (_queue.empty () && _queue_signaled && _queue_signaler.valid ()) {
+            const int rc = _queue_signaler.recv_failable ();
+            if (rc == 0 || errno == EAGAIN)
+                _queue_signaled = false;
         }
     }
 

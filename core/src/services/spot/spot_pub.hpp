@@ -22,6 +22,7 @@ class spot_pub_t
                  zlink_msg_t *parts_,
                  size_t part_count_,
                  int flags_);
+    void *poller_socket ();
 
     int destroy ();
 

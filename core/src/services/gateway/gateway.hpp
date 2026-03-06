@@ -49,6 +49,7 @@ class gateway_t : public discovery_observer_t
     int set_socket_option (int option_,
                            const void *optval_,
                            size_t optvallen_);
+    void *poller_socket ();
     void *router ();
     bool enter_pollable_mode ();
     int ensure_facade_mode () const;

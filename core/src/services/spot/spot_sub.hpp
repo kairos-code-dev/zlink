@@ -4,6 +4,7 @@
 #define __ZLINK_SPOT_SUB_HPP_INCLUDED__
 
 #include "core/msg.hpp"
+#include "core/signaler.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/condition_variable.hpp"
 #include "utils/macros.hpp"
@@ -44,6 +45,7 @@ class spot_sub_t
               int flags_,
               char *topic_out_,
               size_t *topic_len_);
+    fd_t poller_fd () const;
 
     int destroy ();
 
@@ -87,6 +89,8 @@ class spot_sub_t
     int _recv_timeout_ms;
     bool _queue_nodrop;
     condition_variable_t _queue_cv;
+    signaler_t _queue_signaler;
+    bool _queue_signaled;
 
     zlink_spot_sub_handler_fn _handler;
     void *_handler_userdata;

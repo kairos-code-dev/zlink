@@ -904,6 +904,15 @@ int spot_node_t::set_socket_option (int socket_role_,
 
 void *spot_node_t::pub_socket_unsafe ()
 {
+    void *socket = pub_socket_for_poller ();
+    if (!socket)
+        return NULL;
+    _pub_pollable_mode.set (1);
+    return socket;
+}
+
+void *spot_node_t::pub_socket_for_poller ()
+{
     std::vector<std::string> bind_endpoints;
     {
         scoped_lock_t lock (_sync);
@@ -945,11 +954,19 @@ void *spot_node_t::pub_socket_unsafe ()
     }
     if (!_pub)
         return NULL;
-    _pub_pollable_mode.set (1);
     return static_cast<void *> (_pub);
 }
 
 void *spot_node_t::sub_socket_unsafe ()
+{
+    void *socket = sub_socket_for_poller ();
+    if (!socket)
+        return NULL;
+    _sub_pollable_mode.set (1);
+    return socket;
+}
+
+void *spot_node_t::sub_socket_for_poller ()
 {
     const bool control_task_suspended = suspend_control_task ();
     ensure_control_sockets ();
@@ -960,7 +977,6 @@ void *spot_node_t::sub_socket_unsafe ()
             resume_control_task ();
         return NULL;
     }
-    _sub_pollable_mode.set (1);
     if (control_task_suspended)
         resume_control_task ();
     return static_cast<void *> (_sub);

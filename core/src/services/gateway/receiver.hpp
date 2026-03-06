@@ -36,6 +36,7 @@ class receiver_t
                            int option_,
                            const void *optval_,
                            size_t optvallen_);
+    void *poller_socket ();
     void *router ();
     int destroy ();
 

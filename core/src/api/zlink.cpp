@@ -219,6 +219,137 @@ static inline poller_handle_t as_poller_handle (void *poller_)
     return handle;
 }
 
+static int poller_add_service_socket (void *poller_,
+                                      zlink::socket_base_t *socket_,
+                                      void *user_data_,
+                                      short events_)
+{
+    poller_handle_t poller = as_poller_handle (poller_);
+    if (!poller.poller)
+        return -1;
+    if (!socket_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return poller.poller->add (socket_, user_data_, events_);
+}
+
+static int poller_modify_service_socket (void *poller_,
+                                         zlink::socket_base_t *socket_,
+                                         short events_)
+{
+    poller_handle_t poller = as_poller_handle (poller_);
+    if (!poller.poller)
+        return -1;
+    if (!socket_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return poller.poller->modify (socket_, events_);
+}
+
+static int poller_remove_service_socket (void *poller_,
+                                         zlink::socket_base_t *socket_)
+{
+    poller_handle_t poller = as_poller_handle (poller_);
+    if (!poller.poller)
+        return -1;
+    if (!socket_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return poller.poller->remove (socket_);
+}
+
+static int poller_add_service_fd (void *poller_,
+                                  zlink::fd_t fd_,
+                                  void *user_data_,
+                                  short events_)
+{
+    poller_handle_t poller = as_poller_handle (poller_);
+    if (!poller.poller)
+        return -1;
+    if (fd_ == zlink::retired_fd) {
+        errno = EFAULT;
+        return -1;
+    }
+    return poller.poller->add_fd (fd_, user_data_, events_);
+}
+
+static int poller_modify_service_fd (void *poller_,
+                                     zlink::fd_t fd_,
+                                     short events_)
+{
+    poller_handle_t poller = as_poller_handle (poller_);
+    if (!poller.poller)
+        return -1;
+    if (fd_ == zlink::retired_fd) {
+        errno = EFAULT;
+        return -1;
+    }
+    return poller.poller->modify_fd (fd_, events_);
+}
+
+static int poller_remove_service_fd (void *poller_, zlink::fd_t fd_)
+{
+    poller_handle_t poller = as_poller_handle (poller_);
+    if (!poller.poller)
+        return -1;
+    if (fd_ == zlink::retired_fd) {
+        errno = EFAULT;
+        return -1;
+    }
+    return poller.poller->remove_fd (fd_);
+}
+
+static zlink::spot_sub_t *as_spot_sub_service (void *sub_)
+{
+    if (!sub_)
+        return NULL;
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
+    if (!sub->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return sub;
+}
+
+static zlink::spot_pub_t *as_spot_pub_service (void *pub_)
+{
+    if (!pub_)
+        return NULL;
+    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (pub_);
+    if (!pub->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return pub;
+}
+
+static zlink::gateway_t *as_gateway_service (void *gateway_)
+{
+    if (!gateway_)
+        return NULL;
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return gateway;
+}
+
+static zlink::receiver_t *as_receiver_service (void *receiver_)
+{
+    if (!receiver_)
+        return NULL;
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return receiver;
+}
+
 namespace
 {
 static void store_u32_be (unsigned char *dst_, uint32_t value_)
@@ -2421,6 +2552,59 @@ int zlink_poller_add_fd (void *poller_,
                                   user_data_, events_);
 }
 
+int zlink_poller_add_spot_sub (void *poller_,
+                               void *sub_,
+                               void *user_data_,
+                               short events_)
+{
+    zlink::spot_sub_t *sub = as_spot_sub_service (sub_);
+    if (!sub)
+        return -1;
+    return poller_add_service_fd (poller_, sub->poller_fd (), user_data_,
+                                  events_);
+}
+
+int zlink_poller_add_spot_pub (void *poller_,
+                               void *pub_,
+                               void *user_data_,
+                               short events_)
+{
+    zlink::spot_pub_t *pub = as_spot_pub_service (pub_);
+    if (!pub)
+        return -1;
+    return poller_add_service_socket (
+      poller_, static_cast<zlink::socket_base_t *> (pub->poller_socket ()),
+      user_data_, events_);
+}
+
+int zlink_poller_add_gateway (void *poller_,
+                              void *gateway_,
+                              void *user_data_,
+                              short events_)
+{
+    zlink::gateway_t *gateway = as_gateway_service (gateway_);
+    if (!gateway)
+        return -1;
+    return poller_add_service_socket (
+      poller_,
+      static_cast<zlink::socket_base_t *> (gateway->poller_socket ()),
+      user_data_, events_);
+}
+
+int zlink_poller_add_receiver (void *poller_,
+                               void *receiver_,
+                               void *user_data_,
+                               short events_)
+{
+    zlink::receiver_t *receiver = as_receiver_service (receiver_);
+    if (!receiver)
+        return -1;
+    return poller_add_service_socket (
+      poller_,
+      static_cast<zlink::socket_base_t *> (receiver->poller_socket ()),
+      user_data_, events_);
+}
+
 int zlink_poller_modify (void *poller_, void *socket_, short events_)
 {
     poller_handle_t poller = as_poller_handle (poller_);
@@ -2443,6 +2627,50 @@ int zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, short events_)
     return poller.poller->modify_fd (static_cast<zlink::fd_t> (fd_), events_);
 }
 
+int zlink_poller_modify_spot_sub (void *poller_, void *sub_, short events_)
+{
+    zlink::spot_sub_t *sub = as_spot_sub_service (sub_);
+    if (!sub)
+        return -1;
+    return poller_modify_service_fd (poller_, sub->poller_fd (), events_);
+}
+
+int zlink_poller_modify_spot_pub (void *poller_, void *pub_, short events_)
+{
+    zlink::spot_pub_t *pub = as_spot_pub_service (pub_);
+    if (!pub)
+        return -1;
+    return poller_modify_service_socket (
+      poller_, static_cast<zlink::socket_base_t *> (pub->poller_socket ()),
+      events_);
+}
+
+int zlink_poller_modify_gateway (void *poller_,
+                                 void *gateway_,
+                                 short events_)
+{
+    zlink::gateway_t *gateway = as_gateway_service (gateway_);
+    if (!gateway)
+        return -1;
+    return poller_modify_service_socket (
+      poller_,
+      static_cast<zlink::socket_base_t *> (gateway->poller_socket ()),
+      events_);
+}
+
+int zlink_poller_modify_receiver (void *poller_,
+                                  void *receiver_,
+                                  short events_)
+{
+    zlink::receiver_t *receiver = as_receiver_service (receiver_);
+    if (!receiver)
+        return -1;
+    return poller_modify_service_socket (
+      poller_,
+      static_cast<zlink::socket_base_t *> (receiver->poller_socket ()),
+      events_);
+}
+
 int zlink_poller_remove (void *poller_, void *socket_)
 {
     poller_handle_t poller = as_poller_handle (poller_);
@@ -2463,6 +2691,43 @@ int zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_)
         return -1;
 
     return poller.poller->remove_fd (static_cast<zlink::fd_t> (fd_));
+}
+
+int zlink_poller_remove_spot_sub (void *poller_, void *sub_)
+{
+    zlink::spot_sub_t *sub = as_spot_sub_service (sub_);
+    if (!sub)
+        return -1;
+    return poller_remove_service_fd (poller_, sub->poller_fd ());
+}
+
+int zlink_poller_remove_spot_pub (void *poller_, void *pub_)
+{
+    zlink::spot_pub_t *pub = as_spot_pub_service (pub_);
+    if (!pub)
+        return -1;
+    return poller_remove_service_socket (
+      poller_, static_cast<zlink::socket_base_t *> (pub->poller_socket ()));
+}
+
+int zlink_poller_remove_gateway (void *poller_, void *gateway_)
+{
+    zlink::gateway_t *gateway = as_gateway_service (gateway_);
+    if (!gateway)
+        return -1;
+    return poller_remove_service_socket (
+      poller_,
+      static_cast<zlink::socket_base_t *> (gateway->poller_socket ()));
+}
+
+int zlink_poller_remove_receiver (void *poller_, void *receiver_)
+{
+    zlink::receiver_t *receiver = as_receiver_service (receiver_);
+    if (!receiver)
+        return -1;
+    return poller_remove_service_socket (
+      poller_,
+      static_cast<zlink::socket_base_t *> (receiver->poller_socket ()));
 }
 
 int zlink_poller_wait_all (void *poller_,

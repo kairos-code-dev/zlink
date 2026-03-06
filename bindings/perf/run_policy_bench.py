@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import json
 import os
 import platform
 import queue
@@ -21,7 +20,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 BINDINGS_DIR = ROOT_DIR / "bindings"
@@ -247,12 +246,6 @@ CPP_STREAM_SERVER_PATTERNS = (
     "MULTI_STREAM_LEN32BE",
 )
 
-DEFAULT_THRESHOLDS = {
-    "throughput": {"warning": -10.0, "fail": -15.0},
-    "bandwidth": {"warning": -10.0, "fail": -15.0},
-    "latency": {"warning": 10.0, "fail": 15.0},
-}
-
 ARCH_MACHINE = platform.machine().lower()
 if ARCH_MACHINE in ("x86_64", "amd64"):
     ARCH_FAMILY = "x64"
@@ -286,7 +279,7 @@ class Tee:
 
 @dataclass
 class RunOutcome:
-    status: str  # success | unsupported | skip | fail
+    status: str  # success | fail
     metrics: Dict[str, float]
     reason: str = ""
     warnings: Optional[List[str]] = None
@@ -294,7 +287,7 @@ class RunOutcome:
 
 @dataclass
 class ComboStats:
-    status: str  # success | unsupported | skip | fail
+    status: str  # success | fail
     throughput: float = 0.0
     bandwidth: float = 0.0
     latency: float = 0.0
@@ -322,20 +315,15 @@ class SuiteConfig:
     msg_sizes_overridden: bool
     transports_override: Optional[List[str]]
     result: bool  # report save flag (--result)
-    save_baseline: Optional[str]  # --save [VER], None=off, ""=timestamp auto
     results_root: Path
     results_tag: str
     output: Optional[Path]
-    rolling_n: int
-    baseline_version: str
-    baseline_file: Optional[Path]
     multi_warmup_seconds: int
     multi_duration_seconds: int
     multi_clients: int
     multi_hwm: int
     multi_sndtimeo_ms: int
     multi_rcvtimeo_ms: int
-    multi_connect_concurrency: Optional[int]
     multi_drain_ms: Optional[int]
     multi_transport_transition_ms: int
     multi_pattern_transition_ms: int
@@ -449,9 +437,9 @@ def binding_perf_dir(binding: str) -> Path:
     return BINDINGS_DIR / binding / "perf"
 
 
-def suite_dirs(cfg: SuiteConfig) -> Tuple[Path, Path, Path]:
+def suite_dirs(cfg: SuiteConfig) -> Tuple[Path, Path]:
     suite_root = cfg.results_root / cfg.suite
-    return suite_root / "tmp", suite_root / "report", suite_root / "baseline"
+    return suite_root / "tmp", suite_root / "report"
 
 
 def enforce_retention(path: Path, max_files: int = 100, *, exclude: Optional[Sequence[str]] = None) -> None:
@@ -1196,11 +1184,6 @@ def prepare_runtime_env(cfg: SuiteConfig, native_dir: Path) -> Dict[str, str]:
                 str(cfg.multi_connect_ready_timeout_ms),
             )
             set_perf_env("PERF_MULTI_MONITOR_HWM", str(cfg.multi_monitor_hwm))
-            if cfg.multi_connect_concurrency is not None:
-                set_perf_env(
-                    "PERF_MULTI_CONNECT_CONCURRENCY",
-                    str(cfg.multi_connect_concurrency),
-                )
             if cfg.multi_drain_ms is not None:
                 set_perf_env("PERF_MULTI_DRAIN_MS", str(cfg.multi_drain_ms))
 
@@ -1855,18 +1838,26 @@ def parse_run_outcome(
         ):
             metrics["bandwidth"] = reported_bw / 2.0
 
-    if status_token == "unsupported" and not metrics:
-        return RunOutcome(status="unsupported", metrics={}, reason="unsupported", warnings=warnings)
-    if status_token == "skip" and not metrics:
-        return RunOutcome(status="skip", metrics={}, reason="skip", warnings=warnings)
+    if status_token in ("unsupported", "skip"):
+        return RunOutcome(
+            status="fail",
+            metrics=metrics,
+            reason=status_token,
+            warnings=warnings,
+        )
 
-    if rc != 0 and not metrics:
+    if rc != 0:
         if stderr.strip():
             first = stderr.strip().splitlines()[0]
             warnings.append(
                 f"{requested_pattern} {transport} {size} non-zero exit({rc}) stderr: {first}"
             )
-        return RunOutcome(status="fail", metrics={}, reason=f"non_zero_exit_{rc}", warnings=warnings)
+        return RunOutcome(
+            status="fail",
+            metrics=metrics,
+            reason=f"non_zero_exit_{rc}",
+            warnings=warnings,
+        )
 
     if "throughput" not in metrics or "latency" not in metrics:
         return RunOutcome(status="fail", metrics=metrics, reason="no_data", warnings=warnings)
@@ -1936,73 +1927,63 @@ def sleep_ms(ms: int) -> None:
 
 
 def aggregate_combo(outcomes: List[RunOutcome]) -> ComboStats:
-    success = [o for o in outcomes if o.status == "success"]
-    if success:
-        thr_vals = [o.metrics["throughput"] for o in success if "throughput" in o.metrics]
-        bw_vals = [o.metrics["bandwidth"] for o in success if "bandwidth" in o.metrics]
-        lat_vals = [o.metrics["latency"] for o in success if "latency" in o.metrics]
-        lat_p95_vals = [
-            o.metrics.get("latency_p95", o.metrics.get("latency", 0.0))
-            for o in success
-            if "latency" in o.metrics
-        ]
-        lat_p99_vals = [
-            o.metrics.get("latency_p99", o.metrics.get("latency", 0.0))
-            for o in success
-            if "latency" in o.metrics
-        ]
-        cpu_vals = [o.metrics["cpu_pct"] for o in success if "cpu_pct" in o.metrics]
-        mem_vals = [o.metrics["mem_mb"] for o in success if "mem_mb" in o.metrics]
-        client_cpu_vals = [
-            o.metrics["client_cpu_pct"]
-            for o in success
-            if "client_cpu_pct" in o.metrics
-        ]
-        client_mem_vals = [
-            o.metrics["client_mem_mb"]
-            for o in success
-            if "client_mem_mb" in o.metrics
-        ]
-        server_cpu_vals = [
-            o.metrics["server_cpu_pct"]
-            for o in success
-            if "server_cpu_pct" in o.metrics
-        ]
-        server_mem_vals = [
-            o.metrics["server_mem_mb"]
-            for o in success
-            if "server_mem_mb" in o.metrics
-        ]
-        return ComboStats(
-            status="success",
-            throughput=statistics.median(thr_vals) if thr_vals else 0.0,
-            bandwidth=statistics.median(bw_vals) if bw_vals else 0.0,
-            latency=statistics.median(lat_vals) if lat_vals else 0.0,
-            latency_p95=statistics.median(lat_p95_vals) if lat_p95_vals else 0.0,
-            latency_p99=statistics.median(lat_p99_vals) if lat_p99_vals else 0.0,
-            cpu_pct=statistics.median(cpu_vals) if cpu_vals else None,
-            mem_mb=statistics.median(mem_vals) if mem_vals else None,
-            client_cpu_pct=statistics.median(client_cpu_vals)
-            if client_cpu_vals
-            else None,
-            client_mem_mb=statistics.median(client_mem_vals)
-            if client_mem_vals
-            else None,
-            server_cpu_pct=statistics.median(server_cpu_vals)
-            if server_cpu_vals
-            else None,
-            server_mem_mb=statistics.median(server_mem_vals)
-            if server_mem_vals
-            else None,
-        )
+    if not outcomes:
+        return ComboStats(status="fail", reason="failed")
 
-    if any(o.status == "unsupported" for o in outcomes):
+    if any(o.status == "fail" for o in outcomes):
+        reason = next((o.reason for o in outcomes if o.status == "fail" and o.reason), "failed")
+        return ComboStats(status="fail", reason=reason)
+
+    if all(o.status == "unsupported" for o in outcomes):
         return ComboStats(status="unsupported", reason="unsupported")
-    if any(o.status == "skip" for o in outcomes):
+    if all(o.status == "skip" for o in outcomes):
         return ComboStats(status="skip", reason="skip")
+    if not all(o.status == "success" for o in outcomes):
+        reason = next((o.reason for o in outcomes if o.reason), "mixed_status")
+        return ComboStats(status="fail", reason=reason)
 
-    reason = next((o.reason for o in outcomes if o.reason), "failed")
-    return ComboStats(status="fail", reason=reason)
+    success = outcomes
+    thr_vals = [o.metrics["throughput"] for o in success if "throughput" in o.metrics]
+    bw_vals = [o.metrics["bandwidth"] for o in success if "bandwidth" in o.metrics]
+    lat_vals = [o.metrics["latency"] for o in success if "latency" in o.metrics]
+    lat_p95_vals = [
+        o.metrics.get("latency_p95", o.metrics.get("latency", 0.0))
+        for o in success
+        if "latency" in o.metrics
+    ]
+    lat_p99_vals = [
+        o.metrics.get("latency_p99", o.metrics.get("latency", 0.0))
+        for o in success
+        if "latency" in o.metrics
+    ]
+    cpu_vals = [o.metrics["cpu_pct"] for o in success if "cpu_pct" in o.metrics]
+    mem_vals = [o.metrics["mem_mb"] for o in success if "mem_mb" in o.metrics]
+    client_cpu_vals = [
+        o.metrics["client_cpu_pct"] for o in success if "client_cpu_pct" in o.metrics
+    ]
+    client_mem_vals = [
+        o.metrics["client_mem_mb"] for o in success if "client_mem_mb" in o.metrics
+    ]
+    server_cpu_vals = [
+        o.metrics["server_cpu_pct"] for o in success if "server_cpu_pct" in o.metrics
+    ]
+    server_mem_vals = [
+        o.metrics["server_mem_mb"] for o in success if "server_mem_mb" in o.metrics
+    ]
+    return ComboStats(
+        status="success",
+        throughput=statistics.median(thr_vals) if thr_vals else 0.0,
+        bandwidth=statistics.median(bw_vals) if bw_vals else 0.0,
+        latency=statistics.median(lat_vals) if lat_vals else 0.0,
+        latency_p95=statistics.median(lat_p95_vals) if lat_p95_vals else 0.0,
+        latency_p99=statistics.median(lat_p99_vals) if lat_p99_vals else 0.0,
+        cpu_pct=statistics.median(cpu_vals) if cpu_vals else None,
+        mem_mb=statistics.median(mem_vals) if mem_vals else None,
+        client_cpu_pct=statistics.median(client_cpu_vals) if client_cpu_vals else None,
+        client_mem_mb=statistics.median(client_mem_vals) if client_mem_vals else None,
+        server_cpu_pct=statistics.median(server_cpu_vals) if server_cpu_vals else None,
+        server_mem_mb=statistics.median(server_mem_vals) if server_mem_vals else None,
+    )
 
 
 def format_thr(v: float, pattern: str, suite: str) -> str:
@@ -2129,206 +2110,6 @@ def collect_host_meta() -> Dict[str, str]:
     return meta
 
 
-def parse_result_file(path: Path) -> Tuple[Dict[str, str], Dict[MetricKey, float]]:
-    meta: Dict[str, str] = {}
-    results: Dict[MetricKey, float] = {}
-    with path.open("r", encoding="utf-8") as fh:
-        for raw in fh:
-            line = raw.strip()
-            if not line:
-                continue
-            if line.startswith("META,"):
-                parts = line.split(",", 2)
-                if len(parts) == 3:
-                    meta[parts[1]] = parts[2]
-                continue
-            parsed = parse_result_line(line)
-            if not parsed:
-                continue
-            lib, pattern, transport, size, metric, value = parsed
-            results[(lib, pattern, transport, size, metric)] = value
-    return meta, results
-
-
-def load_rolling_baseline(source_dir: Path, n: int, keys: Iterable[MetricKey]) -> Tuple[Dict[MetricKey, float], Dict[MetricKey, int]]:
-    baseline: Dict[MetricKey, float] = {}
-    counts: Dict[MetricKey, int] = {}
-    wanted = list(keys)
-    buckets: Dict[MetricKey, List[float]] = {k: [] for k in wanted}
-
-    files = sorted(
-        [p for p in source_dir.glob("perf_*.txt") if p.is_file()],
-        key=lambda p: p.name,
-        reverse=True,
-    )
-
-    for file in files:
-        try:
-            meta, results = parse_result_file(file)
-        except Exception:
-            continue
-        if meta.get("status") and meta.get("status") != "complete":
-            continue
-        for key in wanted:
-            if len(buckets[key]) >= n:
-                continue
-            if key in results:
-                buckets[key].append(results[key])
-        if all(len(buckets[k]) >= n for k in wanted):
-            break
-
-    for key, values in buckets.items():
-        if values:
-            counts[key] = len(values)
-        if values and len(values) >= 1:
-            baseline[key] = statistics.median(values)
-
-    return baseline, counts
-
-
-def load_fixed_baseline_file(path: Path) -> Dict[MetricKey, float]:
-    _, results = parse_result_file(path)
-    return results
-
-
-def threshold_file_path() -> Path:
-    override = env_first("PERF_THRESHOLDS_FILE")
-    if override:
-        return Path(override)
-    return CORE_PERF_DIR / "thresholds.json"
-
-
-def load_threshold_overrides(logger: Tee) -> Dict[str, Dict[str, float]]:
-    path = threshold_file_path()
-    if not path.exists():
-        return {}
-
-    try:
-        obj = json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        logger.print(f"warning: failed to parse thresholds file {path}: {exc}")
-        return {}
-
-    if not isinstance(obj, dict):
-        logger.print(f"warning: thresholds file must be an object: {path}")
-        return {}
-
-    out: Dict[str, Dict[str, float]] = {}
-    key_re = re.compile(r"^[^/]+/[^/]+/[^/]+$")
-
-    for key, value in obj.items():
-        if not isinstance(key, str) or not key_re.match(key):
-            logger.print(f"warning: invalid threshold key ignored: {key}")
-            continue
-        if not isinstance(value, dict):
-            logger.print(f"warning: invalid threshold entry ignored: {key}")
-            continue
-
-        metric = key.split("/")[-1].lower()
-        parsed: Dict[str, float] = {}
-        for field in ("warning", "fail"):
-            if field not in value:
-                continue
-            raw = value[field]
-            if not isinstance(raw, (int, float)):
-                logger.print(f"warning: {key}.{field} is not numeric")
-                continue
-            num = float(raw)
-            if metric in ("throughput", "bandwidth") and num > 0:
-                logger.print(f"warning: {key}.{field} should be <=0, applying sign flip")
-                num = -num
-            if metric == "latency" and num < 0:
-                logger.print(f"warning: {key}.{field} should be >=0, applying sign flip")
-                num = -num
-            parsed[field] = num
-        if parsed:
-            out[key] = parsed
-
-    return out
-
-
-def resolve_threshold(
-    overrides: Dict[str, Dict[str, float]],
-    pattern: str,
-    transport: str,
-    metric: str,
-) -> Dict[str, float]:
-    candidates = [
-        f"{pattern}/{transport}/{metric}",
-        f"{pattern}/*/{metric}",
-        f"*/{transport}/{metric}",
-        f"*/*/{metric}",
-    ]
-
-    base = dict(DEFAULT_THRESHOLDS[metric])
-    for key in candidates:
-        hit = overrides.get(key)
-        if not hit:
-            continue
-        if "warning" in hit:
-            base["warning"] = hit["warning"]
-        if "fail" in hit:
-            base["fail"] = hit["fail"]
-        break
-
-    return base
-
-
-def compare_to_baseline(
-    cfg: SuiteConfig,
-    logger: Tee,
-    current: Dict[MetricKey, float],
-    baseline: Dict[MetricKey, float],
-    overrides: Dict[str, Dict[str, float]],
-) -> Tuple[List[str], List[str], int]:
-    warnings: List[str] = []
-    fails: List[str] = []
-    skipped = 0
-
-    for key in sorted(current.keys()):
-        _, pattern, transport, size, metric = key
-        if metric not in ("throughput", "bandwidth", "latency"):
-            continue
-        baseline_val = baseline.get(key)
-        if baseline_val is None or abs(baseline_val) < 1e-12:
-            skipped += 1
-            warnings.append(
-                f"{pattern} {transport} {size} {metric}: baseline missing/zero -> skipped"
-            )
-            continue
-
-        cur = current[key]
-        delta_pct = ((cur - baseline_val) / baseline_val) * 100.0
-        th = resolve_threshold(overrides, pattern, transport, metric)
-        warn = th["warning"]
-        fail = th["fail"]
-
-        if metric in ("throughput", "bandwidth"):
-            if delta_pct <= fail:
-                msg = f"{pattern} {transport} {size} {metric}: {delta_pct:+.2f}% (fail {fail:+.2f}%)"
-                if cfg.mode == "gate":
-                    fails.append(msg)
-                else:
-                    warnings.append(msg)
-            elif delta_pct <= warn:
-                warnings.append(
-                    f"{pattern} {transport} {size} {metric}: {delta_pct:+.2f}% (warn {warn:+.2f}%)"
-                )
-        else:
-            if delta_pct >= fail:
-                msg = f"{pattern} {transport} {size} {metric}: {delta_pct:+.2f}% (fail +{fail:.2f}%)"
-                if cfg.mode == "gate":
-                    fails.append(msg)
-                else:
-                    warnings.append(msg)
-            elif delta_pct >= warn:
-                warnings.append(
-                    f"{pattern} {transport} {size} {metric}: {delta_pct:+.2f}% (warn +{warn:.2f}%)"
-                )
-
-    return warnings, fails, skipped
-
-
 def render_meta_result_lines(meta: Dict[str, str], results: Dict[MetricKey, float]) -> List[str]:
     lines: List[str] = []
     for key in (
@@ -2383,7 +2164,7 @@ def render_meta_result_lines(meta: Dict[str, str], results: Dict[MetricKey, floa
     return lines
 
 
-def write_tmp_or_baseline_file(
+def write_result_file(
     path: Path,
     meta: Dict[str, str],
     results: Dict[MetricKey, float],
@@ -2402,20 +2183,6 @@ def write_report_file(path: Path, table_lines: Sequence[str]) -> None:
     if payload:
         payload += "\n"
     path.write_text(payload, encoding="utf-8")
-
-
-def update_latest_symlink(baseline_dir: Path, target_file: Path) -> None:
-    latest = baseline_dir / "latest.txt"
-    try:
-        if latest.exists() or latest.is_symlink():
-            latest.unlink()
-        latest.symlink_to(target_file.name)
-    except Exception:
-        # Windows fallback: copy file.
-        try:
-            shutil.copy2(target_file, latest)
-        except Exception:
-            pass
 
 
 def single_default_runs(mode: str) -> int:
@@ -2446,20 +2213,10 @@ def make_parser() -> argparse.ArgumentParser:
     ap.add_argument("--transports", default="")
     ap.add_argument("--output", default="")
     ap.add_argument("--result", action="store_true")
-    ap.add_argument(
-        "--save",
-        nargs="?",
-        const="",
-        default=None,
-        help="save baseline to baseline/ (optional version)",
-    )
     ap.add_argument("--results-dir", default="")
     ap.add_argument("--results-tag", default="")
 
     ap.add_argument("--mode", choices=("observe", "trend", "gate"), default="observe")
-    ap.add_argument("--rolling-n", type=int, default=0)
-    ap.add_argument("--baseline", default="latest")
-    ap.add_argument("--baseline-file", default="")
 
     ap.add_argument("--multi-warmup-seconds", type=int, default=3)
     ap.add_argument("--multi-duration-seconds", type=int, default=5)
@@ -2467,7 +2224,7 @@ def make_parser() -> argparse.ArgumentParser:
     ap.add_argument("--multi-hwm", type=int, default=100000)
     ap.add_argument("--multi-sndtimeo-ms", type=int, default=5000)
     ap.add_argument("--multi-rcvtimeo-ms", type=int, default=5000)
-    ap.add_argument("--multi-connect-concurrency", type=int, default=0)
+    ap.add_argument("--multi-connect-concurrency", type=int, default=1024)
     ap.add_argument("--multi-drain-ms", type=int, default=-1)
     ap.add_argument("--multi-transport-transition-ms", type=int, default=3000)
     ap.add_argument("--multi-pattern-transition-ms", type=int, default=3000)
@@ -2518,12 +2275,6 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
 
     results_root = Path(args.results_dir) if args.results_dir else binding_perf_dir(binding) / "results"
     output = Path(args.output) if args.output else None
-    baseline_file = Path(args.baseline_file) if args.baseline_file else None
-
-    rolling_n_raw = env_first("PERF_ROLLING_N")
-    rolling_n = args.rolling_n if args.rolling_n > 0 else int(rolling_n_raw or "10")
-    if rolling_n <= 0:
-        rolling_n = 10
 
     multi_clients = args.multi_clients
     if multi_clients <= 0:
@@ -2641,17 +2392,6 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
             "PERF_MULTI_MONITOR_HWM",
         ),
     )
-    multi_connect_concurrency = args.multi_connect_concurrency
-    if multi_connect_concurrency <= 0:
-        raw_cc = env_first("PERF_MULTI_CONNECT_CONCURRENCY")
-        if raw_cc:
-            try:
-                multi_connect_concurrency = int(raw_cc)
-            except ValueError:
-                multi_connect_concurrency = 0
-    if multi_connect_concurrency <= 0:
-        multi_connect_concurrency = None
-
     multi_drain_ms = args.multi_drain_ms
     if multi_drain_ms < 0:
         raw_drain = env_first("PERF_MULTI_DRAIN_MS")
@@ -2675,20 +2415,15 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
         msg_sizes_overridden=msg_sizes_overridden,
         transports_override=transports_override,
         result=args.result,
-        save_baseline=args.save if args.save is not None else None,
         results_root=results_root,
         results_tag=args.results_tag,
         output=output,
-        rolling_n=rolling_n,
-        baseline_version=args.baseline,
-        baseline_file=baseline_file,
         multi_warmup_seconds=multi_warmup_seconds,
         multi_duration_seconds=multi_duration_seconds,
         multi_clients=max(0, multi_clients),
         multi_hwm=multi_hwm,
         multi_sndtimeo_ms=multi_sndtimeo_ms,
         multi_rcvtimeo_ms=multi_rcvtimeo_ms,
-        multi_connect_concurrency=multi_connect_concurrency,
         multi_drain_ms=multi_drain_ms,
         multi_transport_transition_ms=multi_transport_transition_ms,
         multi_pattern_transition_ms=multi_pattern_transition_ms,
@@ -2747,12 +2482,16 @@ def run_single_pattern_transport(
                     status_token = detect_status_token(server_stdout)
                     if status_token == "unsupported":
                         outcome = RunOutcome(
-                            status="unsupported",
+                            status="fail",
                             metrics={},
-                            reason="unsupported",
+                            reason="server_unsupported_before_ready",
                         )
                     elif status_token == "skip":
-                        outcome = RunOutcome(status="skip", metrics={}, reason="skip")
+                        outcome = RunOutcome(
+                            status="fail",
+                            metrics={},
+                            reason="server_skip_before_ready",
+                        )
                     else:
                         outcome = RunOutcome(
                             status="fail",
@@ -2791,24 +2530,6 @@ def run_single_pattern_transport(
                         process_role="single",
                         require_percentiles=require_dotnet_percentiles(cfg, pattern),
                     )
-                    if outcome.status == "fail" and outcome.reason in (
-                        "non_zero_exit_2",
-                        "no_data",
-                    ):
-                        retry_sampled = run_command_with_metrics(client_cmd, env, timeout)
-                        retry_outcome = parse_run_outcome(
-                            pattern,
-                            pattern,
-                            transport,
-                            size,
-                            retry_sampled,
-                            process_role="single",
-                            require_percentiles=require_dotnet_percentiles(
-                                cfg, pattern
-                            ),
-                        )
-                        if retry_outcome.status == "success":
-                            outcome = retry_outcome
 
                     server_shutdown_timeout = (
                         effective_server_shutdown_timeout_ms(cfg, pattern) / 1000.0
@@ -2861,10 +2582,6 @@ def run_single_pattern_transport(
         if combo.status == "fail":
             failures.append((pattern, transport, size, combo.reason))
             logger.print("(failures=1) Done")
-        elif combo.status == "unsupported":
-            logger.print("unsupported Done")
-        elif combo.status == "skip":
-            logger.print("skip Done")
         else:
             logger.print("Done")
 
@@ -2925,12 +2642,16 @@ def run_multi_pattern_transport(
                     status_token = detect_status_token(server_stdout)
                     if status_token == "unsupported":
                         outcome = RunOutcome(
-                            status="unsupported",
+                            status="fail",
                             metrics={},
-                            reason="unsupported",
+                            reason="server_unsupported_before_ready",
                         )
                     elif status_token == "skip":
-                        outcome = RunOutcome(status="skip", metrics={}, reason="skip")
+                        outcome = RunOutcome(
+                            status="fail",
+                            metrics={},
+                            reason="server_skip_before_ready",
+                        )
                     else:
                         outcome = RunOutcome(
                             status="fail",
@@ -2981,91 +2702,6 @@ def run_multi_pattern_transport(
                     process_role="client",
                     require_percentiles=require_dotnet_percentiles(cfg, pattern),
                 )
-                retryable_reasons = {
-                    "timeout",
-                    "non_zero_exit_2",
-                    "no_data",
-                    "no_bandwidth",
-                    "no_percentiles",
-                }
-                if (
-                    cfg.binding == "dotnet"
-                    and outcome.status == "fail"
-                    and outcome.reason in retryable_reasons
-                ):
-                    max_retries = 3 if pattern in MULTI_STREAM_PATTERNS else 1
-                    for _ in range(max_retries):
-                        retry_sampled = run_command_with_metrics(
-                            client_cmd, env, timeout
-                        )
-                        retry_outcome = parse_run_outcome(
-                            pattern,
-                            pattern,
-                            transport,
-                            size,
-                            retry_sampled,
-                            process_role="client",
-                            require_percentiles=require_dotnet_percentiles(
-                                cfg, pattern
-                            ),
-                        )
-                        outcome = retry_outcome
-                        if retry_outcome.status == "success":
-                            break
-                        if retry_outcome.reason not in retryable_reasons:
-                            break
-                if (
-                    cfg.binding == "dotnet"
-                    and pattern in MULTI_STREAM_PATTERNS
-                    and outcome.status == "fail"
-                    and outcome.reason == "non_zero_exit_2"
-                ):
-                    base_clients = cfg.multi_clients if cfg.multi_clients > 0 else 10000
-                    fallback_plan: List[int] = []
-                    next_clients = max(1000, base_clients // 2)
-                    while True:
-                        if next_clients not in fallback_plan:
-                            fallback_plan.append(next_clients)
-                        if next_clients <= 1000:
-                            break
-                        next_clients = max(1000, next_clients // 2)
-
-                    for fallback_clients in fallback_plan:
-                        fallback_env = dict(env)
-                        fallback_env["PERF_CLIENTS"] = str(fallback_clients)
-                        fallback_cmd = stream_shared_client_cmd(
-                            cfg=cfg,
-                            env=fallback_env,
-                            pattern=pattern,
-                            transport=transport,
-                            size=size,
-                            endpoint=endpoint,
-                            suite="multi",
-                        )
-                        fallback_sampled = run_command_with_metrics(
-                            fallback_cmd, fallback_env, timeout
-                        )
-                        fallback_outcome = parse_run_outcome(
-                            pattern,
-                            pattern,
-                            transport,
-                            size,
-                            fallback_sampled,
-                            process_role="client",
-                            require_percentiles=require_dotnet_percentiles(
-                                cfg, pattern
-                            ),
-                        )
-                        outcome = fallback_outcome
-                        if fallback_outcome.status == "success":
-                            warnings.append(
-                                "stream fallback clients applied: "
-                                f"pattern={pattern} transport={transport} "
-                                f"size={size} clients={fallback_clients}"
-                            )
-                            break
-                        if fallback_outcome.reason != "non_zero_exit_2":
-                            break
 
                 # Server-side informational metrics may be emitted by the server process.
                 server_shutdown_timeout = (
@@ -3170,13 +2806,6 @@ def run_multi_pattern_transport(
 
     if any(combo_results[(pattern, transport, size)].status == "fail" for size in sizes):
         logger.print("(failures=1) Done")
-    elif all(
-        combo_results[(pattern, transport, size)].status == "unsupported"
-        for size in sizes
-    ):
-        logger.print("unsupported Done")
-    elif all(combo_results[(pattern, transport, size)].status == "skip" for size in sizes):
-        logger.print("skip Done")
     else:
         logger.print("Done")
 
@@ -3327,11 +2956,9 @@ def compute_completion_status(
     required_metric_count: int = 3,
 ) -> Tuple[str, int, int]:
     total = len(combo_results)
-    unsupported = sum(1 for combo in combo_results.values() if combo.status == "unsupported")
-    skipped = sum(1 for combo in combo_results.values() if combo.status == "skip")
     success = sum(1 for combo in combo_results.values() if combo.status == "success")
 
-    expected = max(0, (total - unsupported - skipped) * required_metric_count)
+    expected = max(0, total * required_metric_count)
     actual = success * required_metric_count
     status = "complete" if expected == actual else "partial"
     return status, expected, actual
@@ -3401,14 +3028,13 @@ def run() -> int:
         host_meta["expected"] = str(expected)
         host_meta["actual"] = str(actual)
 
-        tmp_dir, report_dir, baseline_dir = suite_dirs(cfg)
+        tmp_dir, report_dir = suite_dirs(cfg)
         tmp_dir.mkdir(parents=True, exist_ok=True)
         report_dir.mkdir(parents=True, exist_ok=True)
-        baseline_dir.mkdir(parents=True, exist_ok=True)
 
         # tmp is always saved (policy v1.3).
         tmp_file = tmp_dir / result_file_name(cfg.results_tag)
-        write_tmp_or_baseline_file(tmp_file, host_meta, result_map, table_lines)
+        write_result_file(tmp_file, host_meta, result_map, table_lines)
         enforce_retention(tmp_dir)
         logger.print(f"Saved result file: {tmp_file}")
 
@@ -3421,76 +3047,6 @@ def run() -> int:
                 logger.print(f"Saved report file: {report_file}")
             else:
                 logger.print("warning: status=partial, --result(report) skipped")
-
-        # --save [VER] => baseline save (complete-only).
-        if cfg.save_baseline is not None:
-            if status != "complete":
-                logger.print("error: cannot save baseline for partial run")
-                exit_code = max(exit_code, 1)
-            else:
-                baseline_name = (
-                    f"{cfg.save_baseline}.txt"
-                    if cfg.save_baseline
-                    else result_file_name(cfg.results_tag)
-                )
-                baseline_file = baseline_dir / baseline_name
-                write_tmp_or_baseline_file(
-                    baseline_file, host_meta, result_map, table_lines
-                )
-                update_latest_symlink(baseline_dir, baseline_file)
-                enforce_retention(baseline_dir, exclude=["latest.txt"])
-                logger.print(f"Saved baseline file: {baseline_file}")
-
-        # Mode comparisons
-        baseline_data: Dict[MetricKey, float] = {}
-        if cfg.mode == "trend":
-            keys_of_interest = [
-                key
-                for key in result_map.keys()
-                if key[4] in ("throughput", "bandwidth", "latency")
-            ]
-
-            baseline_data, _ = load_rolling_baseline(
-                tmp_dir, cfg.rolling_n, keys_of_interest
-            )
-
-            if not baseline_data:
-                logger.print(
-                    "warning: no rolling baseline available, skipping trend comparison"
-                )
-            else:
-                logger.print(
-                    f"Trend baseline loaded from tmp (rolling_n={cfg.rolling_n})"
-                )
-        elif cfg.mode == "gate":
-            if cfg.baseline_file is not None:
-                baseline_file = cfg.baseline_file
-            else:
-                baseline_name = cfg.baseline_version
-                baseline_file = baseline_dir / ("latest.txt" if baseline_name == "latest" else f"{baseline_name}.txt")
-
-            if not baseline_file.exists():
-                logger.print(f"error: baseline file not found: {baseline_file}")
-                exit_code = max(exit_code, 1)
-            else:
-                baseline_data = load_fixed_baseline_file(baseline_file)
-                logger.print(f"Gate baseline loaded: {baseline_file}")
-
-        if cfg.mode in ("trend", "gate") and baseline_data:
-            overrides = load_threshold_overrides(logger)
-            warn_msgs, fail_msgs, _ = compare_to_baseline(cfg, logger, result_map, baseline_data, overrides)
-            if warn_msgs:
-                logger.print("")
-                logger.print("## Regression Warnings")
-                for msg in warn_msgs:
-                    logger.print(f"- {msg}")
-            if fail_msgs:
-                logger.print("")
-                logger.print("## Regression Failures")
-                for msg in fail_msgs:
-                    logger.print(f"- {msg}")
-                if cfg.mode == "gate":
-                    exit_code = max(exit_code, 2)
 
         if failures:
             exit_code = max(exit_code, 1)

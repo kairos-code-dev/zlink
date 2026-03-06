@@ -10,10 +10,19 @@ sys.path.insert(0, str(PY_SRC))
 sys.path.insert(0, str(BENCH_DIR))
 
 import zlink
-import perf_bench_common as bench_common
+
+try:
+    import perf_bench_common as bench_common
+except ModuleNotFoundError:
+    bench_common = None
 
 
 class BenchFastpathTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if bench_common is None:
+            raise unittest.SkipTest("perf_bench_common is not available")
+
     def test_cext_wrappers_return_none_when_fastpath_unavailable(self):
         try:
             ctx = zlink.Context()

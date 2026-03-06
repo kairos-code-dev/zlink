@@ -274,7 +274,13 @@ replace_regex(dotnet_csproj, r"<Version>[^<]+</Version>",
               f"<Version>{expect}</Version>")
 dotnet_minor_updated = False
 dotnet_patch_updated = False
+dotnet_major_updated = False
 if dotnet_version_test is not None:
+    dotnet_major_updated = replace_regex_optional(
+        dotnet_version_test,
+        r"Assert\.Equal\(\d+,\s*major\);",
+        f"Assert.Equal({major}, major);",
+    )
     dotnet_minor_updated = replace_regex_optional(
         dotnet_version_test,
         r"Assert\.Equal\(\d+,\s*minor\);",
@@ -285,17 +291,23 @@ if dotnet_version_test is not None:
         r"Assert\.Equal\(\d+,\s*patch\);",
         f"Assert.Equal({patch}, patch);",
     )
-if dotnet_minor_updated != dotnet_patch_updated:
+if len({dotnet_major_updated, dotnet_minor_updated, dotnet_patch_updated}) > 1:
     errors.append(
         f"{dotnet_version_test}: partial dotnet version marker update "
-        "(minor/patch pattern mismatch)"
+        "(major/minor/patch pattern mismatch)"
     )
 
 replace_regex(java_gradle, r"^version\s*=\s*'[^']+'$",
               f"version = '{expect}'")
+java_major_updated = False
 java_minor_updated = False
 java_patch_updated = False
 if java_version_test is not None:
+    java_major_updated = replace_regex_optional(
+        java_version_test,
+        r"assertEquals\(\d+,\s*v\[0\]\);",
+        f"assertEquals({major}, v[0]);",
+    )
     java_minor_updated = replace_regex_optional(
         java_version_test,
         r"assertEquals\(\d+,\s*v\[1\]\);",
@@ -306,12 +318,12 @@ if java_version_test is not None:
         r"assertEquals\(\d+,\s*v\[2\]\);",
         f"assertEquals({patch}, v[2]);",
     )
-if java_minor_updated != java_patch_updated:
+if len({java_major_updated, java_minor_updated, java_patch_updated}) > 1:
     errors.append(
         f"{java_version_test}: partial java version marker update "
-        "(minor/patch pattern mismatch)"
+        "(major/minor/patch pattern mismatch)"
     )
-elif not java_minor_updated and not java_patch_updated:
+elif not java_major_updated and not java_minor_updated and not java_patch_updated:
     # Newer java tests may read expected version directly from core/include/zlink.h.
     pass
 
@@ -330,6 +342,8 @@ node_lock.write_text(
 )
 if old_lock_ver != expect:
     updated.append(str(node_lock.relative_to(repo_root)))
+replace_regex(node_version_test, r"assert\.equal\(v\[0\],\s*\d+\);",
+              f"assert.equal(v[0], {major});")
 replace_regex(node_version_test, r"assert\.equal\(v\[1\],\s*\d+\);",
               f"assert.equal(v[1], {minor});")
 replace_regex(node_version_test, r"assert\.equal\(v\[2\],\s*\d+\);",
@@ -339,6 +353,9 @@ replace_regex(python_pyproject, r'^version\s*=\s*"[^"]+"$',
               f'version = "{expect}"')
 replace_regex(python_pkg_info, r"^Version:\s*.*$",
               f"Version: {expect}")
+replace_regex(python_version_test,
+              r"self\.assertEqual\(major,\s*\d+\)",
+              f"self.assertEqual(major, {major})")
 replace_regex(python_version_test,
               r"self\.assertEqual\(minor,\s*\d+\)",
               f"self.assertEqual(minor, {minor})")

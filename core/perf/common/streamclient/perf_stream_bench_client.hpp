@@ -302,14 +302,14 @@ class bench_client_t : public bench_client_iface_t
         return 1U;
     }
 
-    perf_multi_metric::phase_t metric_phase () const override
+    perf_metric::phase_t metric_phase () const override
     {
         const int current_mode = mode.load (std::memory_order_acquire);
         if (current_mode == phase_warmup)
-            return perf_multi_metric::phase_warmup;
+            return perf_metric::phase_warmup;
         if (current_mode == phase_measure)
-            return perf_multi_metric::phase_active;
-        return perf_multi_metric::phase_unknown;
+            return perf_metric::phase_active;
+        return perf_metric::phase_unknown;
     }
 
     uint64_t next_seq () override
@@ -333,7 +333,7 @@ class bench_client_t : public bench_client_iface_t
           static_cast<long long> (bytes), std::memory_order_relaxed);
 
         if (sent_ts_us > 0) {
-            const uint64_t now_us = perf_multi_metric::now_us ();
+            const uint64_t now_us = perf_metric::now_us ();
             if (now_us >= sent_ts_us)
                 add_rtt_sample (
                   static_cast<double> (now_us - sent_ts_us));
@@ -370,7 +370,7 @@ class bench_client_t : public bench_client_iface_t
   private:
     int resolve_connect_batch_limit () const
     {
-        const char *raw = std::getenv ("PERF_MULTI_STREAM_CONNECT_BATCH");
+        const char *raw = std::getenv ("PERF_STREAM_CONNECT_BATCH");
         if (raw && *raw) {
             char *end = NULL;
             errno = 0;

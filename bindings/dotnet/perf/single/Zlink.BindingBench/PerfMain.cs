@@ -10,16 +10,14 @@ if (!int.TryParse(args[2], out var size))
 
 return pattern switch
 {
-    "PAIR" => PerfRunner.RunPair(transport, size),
-    "PUBSUB" => PerfRunner.RunPubSub(transport, size),
-    "DEALER_DEALER" => PerfRunner.RunDealerDealer(transport, size),
-    "DEALER_ROUTER" => PerfRunner.RunDealerRouter(transport, size),
-    "ROUTER_ROUTER" => PerfRunner.RunRouterRouter(transport, size),
-    "ROUTER_ROUTER_POLL" => PerfRunner.RunRouterRouterPoll(transport, size),
-    "STREAM" => PerfRunner.RunStream(transport, size),
-    "STREAM_CALLBACK" => PerfRunner.RunStreamCallback(transport, size),
-    "STREAM_LEN32BE" => PerfRunner.RunStreamLen32Be(transport, size),
-    "GATEWAY" => PerfRunner.RunGateway(transport, size),
-    "SPOT" => PerfRunner.RunSpot(transport, size),
-    _ => 2,
+    "PAIR" => PerfPair.RunPair(transport, size),
+    "PUBSUB" => PerfPubSub.RunPubSub(transport, size),
+    "DEALER_DEALER" => PerfDealerDealer.RunDealerDealer(transport, size),
+    "DEALER_ROUTER" => PerfDealerRouter.RunDealerRouter(transport, size),
+    "ROUTER_ROUTER" => PerfRouterRouter.RunRouterRouter(transport, size),
+    "ROUTER_ROUTER_POLL" => PerfRouterRouterPoll.RunRouterRouterPoll(transport,
+        size),
+    "GATEWAY" => PerfGateway.RunGateway(transport, size),
+    "SPOT" => PerfSpot.RunSpot(transport, size),
+    _ => 1,
 };

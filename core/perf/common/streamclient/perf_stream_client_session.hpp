@@ -14,7 +14,7 @@
 
 #include "perf_stream_bench_client_iface.hpp"
 #include "perf_stream_common.hpp"
-#include "../../multi/common/perf_multi_metric_header.hpp"
+#include "../../multi/common/perf_metric_header.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
@@ -68,14 +68,14 @@ inline int resolve_stream_sockbuf_env (const char *name, int default_bytes)
 inline int resolve_stream_sndbuf_bytes ()
 {
     static const int value = resolve_stream_sockbuf_env (
-      "PERF_MULTI_STREAM_SOCKET_SNDBUF", k_socket_sndbuf_default);
+      "PERF_STREAM_SOCKET_SNDBUF", k_socket_sndbuf_default);
     return value;
 }
 
 inline int resolve_stream_rcvbuf_bytes ()
 {
     static const int value = resolve_stream_sockbuf_env (
-      "PERF_MULTI_STREAM_SOCKET_RCVBUF", k_socket_rcvbuf_default);
+      "PERF_STREAM_SOCKET_RCVBUF", k_socket_rcvbuf_default);
     return value;
 }
 
@@ -476,10 +476,10 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         unsigned char *payload_write = write_buf.size () > 4 ? &write_buf[4] : NULL;
 
         if (payload_write
-            && size >= perf_multi_metric::header_size ()) {
+            && size >= perf_metric::header_size ()) {
             const uint64_t seq = owner.next_seq ();
-            const uint64_t sent_ts_us = perf_multi_metric::now_us ();
-            (void) perf_multi_metric::stamp_payload (
+            const uint64_t sent_ts_us = perf_metric::now_us ();
+            (void) perf_metric::stamp_payload (
               payload_write,
               size,
               owner.metric_run_id (),
@@ -810,9 +810,9 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
         uint64_t sent_ts_us = 0;
         if (payload_ptr
-            && payload_bytes >= perf_multi_metric::header_size ()) {
-            perf_multi_metric::header_t header;
-            if (perf_multi_metric::decode_payload_header (
+            && payload_bytes >= perf_metric::header_size ()) {
+            perf_metric::header_t header;
+            if (perf_metric::decode_payload_header (
                   payload_ptr, payload_bytes, &header)) {
                 if (header.msg_size == static_cast<uint32_t> (chunk_size))
                     sent_ts_us = header.sent_ts_us;

@@ -247,7 +247,7 @@ cmake --build core/build --target perf_stream_client -j$(nproc)
 
 ```bash
 core/build/bin/perf_stream_client \
-  --pattern MULTI_STREAM \
+  --pattern STREAM \
   --transport tcp \
   --endpoint tcp://127.0.0.1:15557 \
   --sizes 64 \

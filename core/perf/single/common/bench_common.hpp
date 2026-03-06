@@ -216,7 +216,7 @@ inline int bench_max_sockets()
     if (explicit_max > 0)
         return explicit_max;
 
-    const int clients = parse_positive_env("PERF_MULTI_CLIENTS", 0);
+    const int clients = parse_positive_env("PERF_CLIENTS", 0);
     if (clients <= 0)
         return 0;
 

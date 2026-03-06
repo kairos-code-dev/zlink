@@ -14,7 +14,7 @@
 
 namespace {
 
-zlink::socket_t *g_stream_socket = NULL;
+std::atomic<zlink::socket_t *> g_stream_socket (NULL);
 std::atomic<bool> g_stop_requested (false);
 std::atomic<bool> g_callback_failed (false);
 
@@ -27,11 +27,12 @@ bool send_stream_once (const zlink_routing_id_t &rid,
                        const void *payload,
                        size_t payload_size)
 {
-    if (!g_stream_socket || rid.size == 0 || !payload)
+    zlink::socket_t *stream_socket = g_stream_socket.load (std::memory_order_acquire);
+    if (!stream_socket || rid.size == 0 || !payload)
         return false;
 
     const int rc =
-      g_stream_socket->stream_send (
+      stream_socket->stream_send (
         rid, payload, payload_size, zlink::send_flag::none);
     return rc == static_cast<int> (payload_size);
 }
@@ -40,7 +41,9 @@ int on_stream_len32be_packets (const zlink_routing_id_t *rid,
                                zlink_msg_t *msgs,
                                size_t msg_count)
 {
-    if (!rid || !g_stream_socket || !msgs)
+    if (!rid
+        || !g_stream_socket.load (std::memory_order_acquire)
+        || !msgs)
         return 0;
 
     for (size_t i = 0; i < msg_count; ++i) {
@@ -105,11 +108,11 @@ void perf_stream_len32be_server (const std::string &transport, size_t msg_size)
     if (endpoint.empty ())
         return;
 
-    g_stream_socket = &server.sock ();
+    g_stream_socket.store (&server.sock (), std::memory_order_release);
     g_stop_requested.store (false);
     g_callback_failed.store (false);
     if (server.sock ().stream_attach_len32be (&on_stream_len32be_packets) != 0) {
-        g_stream_socket = NULL;
+        g_stream_socket.store (NULL, std::memory_order_release);
         return;
     }
 
@@ -120,7 +123,7 @@ void perf_stream_len32be_server (const std::string &transport, size_t msg_size)
     }
 
     (void) server.sock ().stream_detach ();
-    g_stream_socket = NULL;
+    g_stream_socket.store (NULL, std::memory_order_release);
 
     perf::multi::print_server_queue_metrics (
       "current",
@@ -128,4 +131,20 @@ void perf_stream_len32be_server (const std::string &transport, size_t msg_size)
       transport,
       msg_size,
       perf::multi::server_queue_stats_t ());
+}
+
+int main (int argc, char **argv)
+{
+    if (argc < 3) {
+        std::cerr << "usage: <transport> <size>" << std::endl;
+        return 1;
+    }
+
+    const std::string transport = argv[1];
+    const size_t size = static_cast<size_t> (std::strtoull (argv[2], NULL, 10));
+    if (size == 0)
+        return 1;
+
+    perf_stream_len32be_server (transport, size);
+    return 0;
 }

@@ -99,6 +99,12 @@ if (-not $ResultsTag) {
 $AllowMulti = ($env:PERF_ALLOW_MULTI -eq "1")
 $MultiPatternCount = 0
 $SinglePatternCount = 0
+$SinglePatterns = @("PAIR", "PUBSUB", "DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER", "ROUTER_ROUTER_POLL", "GATEWAY", "SPOT")
+$MultiPatterns = @("DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER", "PUBSUB", "GATEWAY", "SPOT", "STREAM", "STREAM_CALLBACK", "STREAM_LEN32BE")
+$SinglePatternSet = @{}
+foreach ($name in $SinglePatterns) { $SinglePatternSet[$name] = $true }
+$MultiPatternSet = @{}
+foreach ($name in $MultiPatterns) { $MultiPatternSet[$name] = $true }
 
 if ($Runs -lt 1) {
     throw "Runs must be >= 1."
@@ -145,20 +151,29 @@ if (-not $Pattern) {
 
 $PatternList = @()
 if ($Pattern.Trim().ToUpperInvariant() -eq "ALL") {
-    $PatternList = @("ALL")
-    $SinglePatternCount = 1
+    if ($AllowMulti) {
+        $PatternList = @($MultiPatterns)
+        $MultiPatternCount = $PatternList.Count
+    } else {
+        $PatternList = @($SinglePatterns)
+        $SinglePatternCount = $PatternList.Count
+    }
+    $Pattern = ($PatternList -join ",")
 } else {
     $PatternList = $Pattern.Split(",") | ForEach-Object { $_.Trim().ToUpperInvariant() } | Where-Object { $_ -ne "" }
     if ($PatternList.Count -eq 0) {
         throw "Error: no valid pattern specified."
     }
     foreach ($p in $PatternList) {
-        if ($p.StartsWith("MULTI_")) {
-            $MultiPatternCount += 1
-            if (-not $AllowMulti) {
-                throw "run_benchmarks.ps1 is single-pattern mode only. Use run_benchmarks_multi.ps1 for MULTI_* patterns."
+        if ($AllowMulti) {
+            if (-not $MultiPatternSet.ContainsKey($p)) {
+                throw "Unsupported multi pattern: $p"
             }
+            $MultiPatternCount += 1
         } else {
+            if (-not $SinglePatternSet.ContainsKey($p)) {
+                throw "Unsupported single pattern: $p"
+            }
             $SinglePatternCount += 1
         }
     }
@@ -257,7 +272,7 @@ $NeedConfigureBuild = -not $UseReuseBuild
 if ($UseReuseBuild) {
     $BenchBinDir = Resolve-BenchmarkBinDir -BuildRoot $BuildDir
     $HasSingle = Test-Path (Join-Path $BenchBinDir "perf_pair.exe")
-    $HasMulti = Test-Path (Join-Path $BenchBinDir "comp_current_multi_dealer_dealer.exe")
+    $HasMulti = Test-Path (Join-Path $BenchBinDir "comp_src_dealer_dealer_client.exe")
     if ((Test-Path $BuildDir) -and ($HasSingle -or $HasMulti)) {
         Write-Host "Reusing build directory: $BuildDir"
     } else {

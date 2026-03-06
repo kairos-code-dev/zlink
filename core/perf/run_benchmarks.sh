@@ -72,6 +72,7 @@ else
 fi
 
 STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL,GATEWAY,SPOT"
+MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE"
 PATTERN="ALL"
 OUTPUT_FILE=""
 RESULTS_DIR=""
@@ -131,7 +132,7 @@ Notes:
   - result is saved under results/<single|multi>/report/.
   - default build mode is incremental (configure/build without deleting build dir).
   - --output and result save can be used together.
-  - MULTI_* patterns are rejected by this script.
+  - single mode rejects multi patterns; run_benchmarks_multi.sh enables multi mode.
 USAGE
 }
 
@@ -251,7 +252,11 @@ fi
 if [[ "${PATTERN}" != "ALL" ]]; then
   PATTERN="$(printf '%s' "${PATTERN}" | tr '[:lower:]' '[:upper:]')"
 else
-  PATTERN="${STANDARD_PATTERNS}"
+  if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
+    PATTERN="${MULTI_PATTERNS}"
+  else
+    PATTERN="${STANDARD_PATTERNS}"
+  fi
 fi
 
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERN}"
@@ -268,25 +273,33 @@ for i in "${!PATTERN_LIST[@]}"; do
   fi
 done
 
-MULTI_PATTERN_COUNT=0
+PATTERN_COUNT=0
 SINGLE_PATTERN_COUNT=0
 for p in "${PATTERN_LIST[@]}"; do
-  if [[ "${p}" == MULTI_* ]]; then
-    MULTI_PATTERN_COUNT=$((MULTI_PATTERN_COUNT + 1))
-    if [[ "${PERF_ALLOW_MULTI}" != "1" ]]; then
-      echo "Error: run_benchmarks.sh is single-pattern mode only." >&2
-      echo "Use run_benchmarks_multi.sh for MULTI_* patterns." >&2
-      exit 1
-    fi
+  if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
+    case ",${MULTI_PATTERNS}," in
+      *,"${p}",*)
+        PATTERN_COUNT=$((PATTERN_COUNT + 1))
+        ;;
+      *)
+        echo "Error: unsupported multi pattern: ${p}" >&2
+        echo "Supported multi patterns: ${MULTI_PATTERNS}" >&2
+        exit 1
+        ;;
+    esac
   else
-    SINGLE_PATTERN_COUNT=$((SINGLE_PATTERN_COUNT + 1))
+    case ",${STANDARD_PATTERNS}," in
+      *,"${p}",*)
+        SINGLE_PATTERN_COUNT=$((SINGLE_PATTERN_COUNT + 1))
+        ;;
+      *)
+        echo "Error: unsupported single pattern: ${p}" >&2
+        echo "Supported single patterns: ${STANDARD_PATTERNS}" >&2
+        exit 1
+        ;;
+    esac
   fi
 done
-
-if (( MULTI_PATTERN_COUNT > 0 && SINGLE_PATTERN_COUNT > 0 )); then
-  echo "Error: cannot mix single and multi patterns in one run." >&2
-  exit 1
-fi
 
 if [[ ! -f "${PERF_COMPARISON_SCRIPT}" ]]; then
   echo "Error: comparison script not found: ${PERF_COMPARISON_SCRIPT}" >&2
@@ -363,7 +376,7 @@ if [[ -n "${RESULTS_TAG}" ]]; then
   NAME="${NAME}_${RESULTS_TAG}"
 fi
 RESULT_SUITE="single"
-if (( MULTI_PATTERN_COUNT > 0 )); then
+if (( PATTERN_COUNT > 0 )); then
   RESULT_SUITE="multi"
 fi
 RESULT_FILE="${RESULTS_DIR}/${RESULT_SUITE}/report/${NAME}.txt"

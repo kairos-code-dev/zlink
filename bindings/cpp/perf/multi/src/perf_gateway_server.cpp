@@ -10,6 +10,8 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
+#include <iostream>
 
 #if defined(_WIN32)
 #include <process.h>
@@ -86,6 +88,8 @@ void perf_gateway_server (const std::string &transport, size_t)
                             ? settings.server_bind_port
                             : 39000 + (bench_pid () % 1000) * 8;
     const int max_bind_tries = settings.server_bind_port > 0 ? 1 : 64;
+    int last_errno = 0;
+    const char *last_stage = "none";
 
     for (int i = 0; i < max_bind_tries; ++i) {
         const int base_port = settings.server_bind_port > 0
@@ -97,18 +101,27 @@ void perf_gateway_server (const std::string &transport, size_t)
 
         std::unique_ptr<zlink::service::registry_t> reg (
           new zlink::service::registry_t (ctx.ctx ()));
-        if (!reg->valid ())
+        if (!reg->valid ()) {
+            last_errno = reg->last_error ();
+            last_stage = "registry_new";
             return;
+        }
 
         if (reg->set_endpoints (reg_pub_endpoint, reg_router_endpoint) != 0
             || reg->start () != 0) {
+            last_errno = errno;
+            last_stage = "registry_start";
             continue;
         }
+        perf::multi::settle ();
 
         std::unique_ptr<zlink::service::receiver_t> recv (
           new zlink::service::receiver_t (ctx.ctx ()));
-        if (!recv->valid ())
+        if (!recv->valid ()) {
+            last_errno = recv->last_error ();
+            last_stage = "receiver_new";
             continue;
+        }
 
         (void) recv->set_sockopt (zlink::receiver_socket_role::router,
                                   zlink::socket_options::sndhwm,
@@ -123,12 +136,17 @@ void perf_gateway_server (const std::string &transport, size_t)
                                   zlink::socket_options::rcvtimeo,
                                   settings.rcvtimeo_ms);
 
-        if (!configure_receiver_tls (*recv, transport))
+        if (!configure_receiver_tls (*recv, transport)) {
+            last_errno = errno;
+            last_stage = "receiver_tls";
             return;
+        }
 
         if (recv->bind (provider_endpoint) != 0
             || recv->connect_registry (reg_router_endpoint) != 0
             || recv->register_service ("svc", provider_endpoint, 1) != 0) {
+            last_errno = errno;
+            last_stage = "receiver_bind_connect_register";
             continue;
         }
 
@@ -137,8 +155,14 @@ void perf_gateway_server (const std::string &transport, size_t)
         break;
     }
 
-    if (!registry || !receiver)
+    if (!registry || !receiver) {
+        std::cerr << "GATEWAY_SETUP_FAIL,stage=" << last_stage
+                  << ",errno=" << last_errno
+                  << ",pub=" << reg_pub_endpoint
+                  << ",router=" << reg_router_endpoint
+                  << ",provider=" << provider_endpoint << std::endl;
         return;
+    }
 
     zlink::socket_t provider_router =
       zlink::socket_t::wrap (receiver->router_handle ());
@@ -155,44 +179,88 @@ void perf_gateway_server (const std::string &transport, size_t)
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::seconds (deadline_seconds);
 
-    while (std::chrono::steady_clock::now () < deadline) {
-        zlink::message_t client_id;
-        const int id_rc = provider_router.recv (client_id, zlink::recv_flag::none);
-        if (id_rc < 0) {
-            const int err = errno;
-            if (err == EAGAIN || err == EINTR)
+    zlink::poller_t poller;
+    (void) poller.add (provider_router, zlink::poll_event::pollin);
+    std::vector<zlink::poll_event_t> events;
+    events.reserve (1);
+
+    bool stop_requested = false;
+    while (!stop_requested && std::chrono::steady_clock::now () < deadline) {
+        const auto now = std::chrono::steady_clock::now ();
+        long wait_ms = 100;
+        const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
+                                 deadline - now)
+                                 .count ();
+        if (remain_ms < wait_ms)
+            wait_ms = remain_ms;
+        if (wait_ms < 1)
+            wait_ms = 1;
+
+        const int poll_rc = poller.wait (events, wait_ms);
+        if (poll_rc < 0) {
+            if (errno == EINTR)
                 continue;
             break;
         }
-
-        if (!client_id.more ())
+        if (poll_rc == 0)
             continue;
 
-        zlink::message_t payload;
-        if (provider_router.recv (payload, zlink::recv_flag::none) < 0) {
-            const int err = errno;
-            if (err == EAGAIN || err == EINTR)
+        for (size_t i = 0; i < events.size () && !stop_requested; ++i) {
+            zlink::socket_t *sock = events[i].socket;
+            if (!sock)
                 continue;
-            break;
-        }
 
-        if (payload.more ())
-            continue;
+            for (;;) {
+                zlink::message_t client_id;
+                const int id_rc = sock->recv (client_id, zlink::recv_flag::dontwait);
+                if (id_rc < 0) {
+                    const int err = errno;
+                    if (err == EAGAIN)
+                        break;
+                    if (err == EINTR)
+                        continue;
+                    stop_requested = true;
+                    break;
+                }
 
-        if (perf::multi::is_stop_token (payload.data (), payload.size ()))
-            break;
+                if (!client_id.more ())
+                    continue;
 
-        if (provider_router.send (client_id.data (),
-                                  client_id.size (),
-                                  zlink::send_flag::sndmore)
-            != static_cast<int> (client_id.size ())) {
-            break;
-        }
+                zlink::message_t payload;
+                const int payload_rc = sock->recv (payload, zlink::recv_flag::dontwait);
+                if (payload_rc < 0) {
+                    const int err = errno;
+                    if (err == EAGAIN)
+                        break;
+                    if (err == EINTR)
+                        continue;
+                    stop_requested = true;
+                    break;
+                }
 
-        if (provider_router.send (
-              payload.data (), payload.size (), zlink::send_flag::none)
-            != static_cast<int> (payload.size ())) {
-            break;
+                if (payload.more ())
+                    continue;
+
+                if (perf::multi::is_stop_token (payload.data (), payload.size ())) {
+                    stop_requested = true;
+                    break;
+                }
+
+                if (sock->send (client_id.data (),
+                                client_id.size (),
+                                zlink::send_flag::sndmore)
+                    != static_cast<int> (client_id.size ())) {
+                    stop_requested = true;
+                    break;
+                }
+
+                if (sock->send (
+                      payload.data (), payload.size (), zlink::send_flag::none)
+                    != static_cast<int> (payload.size ())) {
+                    stop_requested = true;
+                    break;
+                }
+            }
         }
     }
 
@@ -202,4 +270,20 @@ void perf_gateway_server (const std::string &transport, size_t)
       transport,
       0,
       perf::multi::server_queue_stats_t ());
+}
+
+int main (int argc, char **argv)
+{
+    if (argc < 3) {
+        std::cerr << "usage: <transport> <size>" << std::endl;
+        return 1;
+    }
+
+    const std::string transport = argv[1];
+    const size_t size = static_cast<size_t> (std::strtoull (argv[2], NULL, 10));
+    if (size == 0)
+        return 1;
+
+    perf_gateway_server (transport, size);
+    return 0;
 }

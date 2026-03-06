@@ -8,7 +8,6 @@ import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.SocketType;
-import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.integration.bench.common.PerfCommon;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiClientHelpers;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiCommon;
@@ -27,11 +26,36 @@ public final class PerfMultiDealerDealerClient {
     private static final SocketType CLIENT_SOCKET_TYPE = SocketType.DEALER;
     private static final int MIN_PAYLOAD_BYTES = 32;
     private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
-    private static final long DATA_SEND_RETRY_BUDGET_NS = 5_000_000L;
 
-    private static final int ERRNO_EINTR = 4;
-    private static final int ERRNO_EAGAIN = 11;
-    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+    private enum Phase {
+        WARMUP(PerfMultiMetricHeader.PHASE_WARMUP),
+        ACTIVE(PerfMultiMetricHeader.PHASE_ACTIVE);
+
+        final int metricCode;
+
+        Phase(int metricCode) {
+            this.metricCode = metricCode;
+        }
+    }
+
+    private static final class ClientConfig {
+        final int clients;
+        final int warmupSeconds;
+        final int durationSeconds;
+        final int settleMs;
+        final int connectTimeoutMs;
+        final int payloadSize;
+
+        ClientConfig(int clients, int warmupSeconds, int durationSeconds,
+                     int settleMs, int connectTimeoutMs, int payloadSize) {
+            this.clients = clients;
+            this.warmupSeconds = warmupSeconds;
+            this.durationSeconds = durationSeconds;
+            this.settleMs = settleMs;
+            this.connectTimeoutMs = connectTimeoutMs;
+            this.payloadSize = payloadSize;
+        }
+    }
 
     private PerfMultiDealerDealerClient() {
     }
@@ -46,22 +70,17 @@ public final class PerfMultiDealerDealerClient {
             return 1;
         }
 
-        int clients = PerfMultiCommon.resolveClients(PATTERN);
-        int warmupSeconds = PerfMultiCommon.resolveWarmupSeconds();
-        int durationSeconds = PerfMultiCommon.resolveDurationSeconds();
-        int settleMs = PerfMultiCommon.resolveSettleMs();
-        int connectTimeoutMs = PerfMultiCommon.resolveConnectReadyTimeoutMs();
-        int payloadSize = Math.max(msgSize, MIN_PAYLOAD_BYTES);
+        ClientConfig config = resolveConfig(msgSize);
 
         try (Context context = new Context()) {
             PerfCommon.applyClientContextOptions(context);
 
-            List<Socket> sockets = new ArrayList<>(clients);
-            List<MonitorSocket> monitors = new ArrayList<>(clients);
-            List<Socket> activeSockets = new ArrayList<>(clients);
+            List<Socket> sockets = new ArrayList<>(config.clients);
+            List<MonitorSocket> monitors = new ArrayList<>(config.clients);
+            List<Socket> activeSockets = new ArrayList<>(config.clients);
 
             try {
-                for (int i = 0; i < clients; i++) {
+                for (int i = 0; i < config.clients; i++) {
                     Socket socket = new Socket(context, CLIENT_SOCKET_TYPE);
                     applySocketOptions(socket);
                     PerfMultiTls.configureTlsClientIfNeeded(socket, transport);
@@ -76,56 +95,31 @@ public final class PerfMultiDealerDealerClient {
 
                 for (int i = 0; i < monitors.size(); i++) {
                     if (PerfCommon.waitMonitorReady(monitors.get(i),
-                        connectTimeoutMs,
+                        config.connectTimeoutMs,
                         true)) {
                         activeSockets.add(sockets.get(i));
                     }
                 }
                 if (activeSockets.isEmpty()) {
+                    System.err.println("ERROR,MULTI_DEALER_DEALER,client,no_active_sockets");
                     return 2;
                 }
 
-                byte[] payload = new byte[payloadSize];
+                byte[] payload = new byte[config.payloadSize];
                 int runId = (int) (PerfMultiMetricHeader.nowUs() & 0x7FFF_FFFFL);
-                long seq = 1;
-                int index = 0;
 
-                // --- Warmup ---
-                long warmupDeadline = System.nanoTime()
-                    + (long) Math.max(0, warmupSeconds)
-                    * NANOSECONDS_PER_SECOND;
-                while (System.nanoTime() < warmupDeadline) {
-                    Socket socket = activeSockets.get(index);
-                    PerfMultiMetricHeader.stampPayload(payload, runId,
-                        PerfMultiMetricHeader.PHASE_WARMUP, msgSize, seq++,
-                        PerfMultiMetricHeader.nowUs());
-                    sendRetry(socket, payload, SendFlag.NONE,
-                        DATA_SEND_RETRY_BUDGET_NS);
-                    index = (index + 1) % activeSockets.size();
+                SendPhaseResult warmup = runSendPhase(activeSockets, payload,
+                    runId, msgSize, 1L, config.warmupSeconds, Phase.WARMUP, 0);
+                if (config.settleMs > 0) {
+                    PerfCommon.sleepMillis(config.settleMs);
                 }
 
-                // --- Settle ---
-                if (settleMs > 0) {
-                    PerfCommon.sleepMillis(settleMs);
-                }
-
-                // --- Active measurement ---
-                long benchDeadline = System.nanoTime()
-                    + (long) Math.max(1, durationSeconds)
-                    * NANOSECONDS_PER_SECOND;
-                boolean anyActiveSent = false;
-                while (System.nanoTime() < benchDeadline) {
-                    Socket socket = activeSockets.get(index);
-                    PerfMultiMetricHeader.stampPayload(payload, runId,
-                        PerfMultiMetricHeader.PHASE_ACTIVE, msgSize, seq++,
-                        PerfMultiMetricHeader.nowUs());
-                    if (sendRetry(socket, payload, SendFlag.NONE,
-                        DATA_SEND_RETRY_BUDGET_NS)) {
-                        anyActiveSent = true;
-                    }
-                    index = (index + 1) % activeSockets.size();
-                }
-                if (!anyActiveSent) {
+                SendPhaseResult active = runSendPhase(activeSockets, payload,
+                    runId, msgSize, warmup.nextSeq,
+                    Math.max(1, config.durationSeconds), Phase.ACTIVE,
+                    warmup.nextIndex);
+                if (!active.anySent) {
+                    System.err.println("ERROR,MULTI_DEALER_DEALER,client,no_active_send");
                     return 2;
                 }
                 return 0;
@@ -133,9 +127,61 @@ public final class PerfMultiDealerDealerClient {
                 closeAll(monitors);
                 closeAll(sockets);
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException ex) {
+            System.err.println("ERROR,MULTI_DEALER_DEALER,client,"
+                + ex.getClass().getSimpleName() + ","
+                + String.valueOf(ex.getMessage()));
             return 2;
         }
+    }
+
+    private static ClientConfig resolveConfig(int msgSize) {
+        return new ClientConfig(
+            PerfMultiCommon.resolveClients(PATTERN),
+            PerfMultiCommon.resolveWarmupSeconds(),
+            PerfMultiCommon.resolveDurationSeconds(),
+            PerfMultiCommon.resolveSettleMs(),
+            PerfMultiCommon.resolveConnectReadyTimeoutMs(),
+            Math.max(msgSize, MIN_PAYLOAD_BYTES)
+        );
+    }
+
+    private static final class SendPhaseResult {
+        final long nextSeq;
+        final int nextIndex;
+        final boolean anySent;
+
+        SendPhaseResult(long nextSeq, int nextIndex, boolean anySent) {
+            this.nextSeq = nextSeq;
+            this.nextIndex = nextIndex;
+            this.anySent = anySent;
+        }
+    }
+
+    private static SendPhaseResult runSendPhase(List<Socket> sockets,
+                                                byte[] payload,
+                                                int runId, int msgSize,
+                                                long seqStart,
+                                                int durationSeconds,
+                                                Phase phase,
+                                                int indexStart) {
+        long seq = seqStart;
+        int index = indexStart;
+        boolean anySent = false;
+        long deadline = System.nanoTime()
+            + (long) Math.max(0, durationSeconds) * NANOSECONDS_PER_SECOND;
+        int socketCount = sockets.size();
+
+        while (System.nanoTime() < deadline) {
+            Socket socket = sockets.get(index);
+            PerfMultiMetricHeader.stampPayload(payload, runId, phase.metricCode,
+                msgSize, seq++, PerfMultiMetricHeader.nowUs());
+            sendBlocking(socket, payload, SendFlag.NONE);
+            anySent = true;
+            index = (index + 1) % socketCount;
+        }
+
+        return new SendPhaseResult(seq, index, anySent);
     }
 
     private static void applySocketOptions(Socket socket) {
@@ -150,53 +196,13 @@ public final class PerfMultiDealerDealerClient {
         socket.setOption(SocketOptions.LINGER, 0);
     }
 
-    private static boolean sendRetry(Socket socket, byte[] payload,
-                                     SendFlag flags,
-                                     long retryBudgetNs) {
-        if (retryBudgetNs <= 0L) {
-            return false;
+    private static void sendBlocking(Socket socket, byte[] payload,
+                                     SendFlag flags) {
+        SendFlag op = flags == null ? SendFlag.NONE : flags;
+        int written = socket.send(payload, 0, payload.length, op);
+        if (written <= 0) {
+            throw new IllegalStateException("send_failed");
         }
-        SendFlag op = toDontWaitSendFlag(flags);
-        long retryDeadline = System.nanoTime() + retryBudgetNs;
-        while (true) {
-            try {
-                return socket.send(payload, 0, payload.length, op) > 0;
-            } catch (ZlinkException ex) {
-                if (shouldRetry(ex)) {
-                    if (System.nanoTime() >= retryDeadline) {
-                        return false;
-                    }
-                    Thread.onSpinWait();
-                    continue;
-                }
-                throw ex;
-            }
-        }
-    }
-
-    private static SendFlag toDontWaitSendFlag(SendFlag flag) {
-        return flag == null || flag == SendFlag.NONE
-            ? SendFlag.DONTWAIT
-            : flag;
-    }
-
-    private static boolean isInterrupted(int errno) {
-        return errno == ERRNO_EINTR;
-    }
-
-    private static boolean isWouldBlock(int errno) {
-        return errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN;
-    }
-
-    private static boolean shouldRetry(ZlinkException ex) {
-        int errno = ex.errno();
-        if (isInterrupted(errno)) {
-            return true;
-        }
-        if (isWouldBlock(errno)) {
-            return true;
-        }
-        return false;
     }
 
     private static void closeAll(List<? extends AutoCloseable> resources) {

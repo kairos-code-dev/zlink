@@ -55,16 +55,14 @@ internal static class PerfStreamLen32BeServer
 
                 try
                 {
-                    server.StreamSend(rid, message, SendFlags.DontWait);
+                    server.StreamSend(rid, message, SendFlags.None);
                 }
                 catch (ZlinkException ex)
                 {
                     message.Dispose();
-                    if (!IsWouldBlock(ex.Errno) && !IsInterrupted(ex.Errno))
-                    {
-                        Interlocked.Exchange(ref callbackFailed, 1);
-                        Interlocked.Exchange(ref stopRequested, 1);
-                    }
+                    Console.Error.WriteLine($"multi_server_error:stream_len32be_send:{ex.Errno}");
+                    Interlocked.Exchange(ref callbackFailed, 1);
+                    Interlocked.Exchange(ref stopRequested, 1);
                 }
             }
             return 0;

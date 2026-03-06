@@ -2,6 +2,7 @@
 // Topology: gateway(service client) -> receiver(service provider router)
 
 #include "../common/perf_single_common.hpp"
+#include "../common/perf_single_runner.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -404,4 +405,9 @@ void run_pattern_gateway (const std::string &transport,
                                 latency.p95_us,
                                 latency.p99_us,
                                 queue_probe.snapshot ());
+}
+
+int main (int argc, char **argv)
+{
+    return perf::single::run_standard_bench_main (argc, argv, run_pattern_gateway);
 }

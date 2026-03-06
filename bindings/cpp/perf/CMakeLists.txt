@@ -16,14 +16,6 @@ set(PERF_SINGLE_COMMON_SRCS
   "${PERF_ROOT_DIR}/single/common/perf_single_runner.cpp"
 )
 
-set(PERF_MULTI_SERVER_COMMON_SRCS
-  "${PERF_ROOT_DIR}/multi/common/perf_server_runner.cpp"
-)
-
-set(PERF_MULTI_CLIENT_COMMON_SRCS
-  "${PERF_ROOT_DIR}/multi/common/perf_client_runner.cpp"
-)
-
 function(configure_perf_target target_name out_subdir)
   target_compile_features(${target_name} PRIVATE cxx_std_17)
   target_link_libraries(${target_name} PRIVATE libzlink zlink-cpp Threads::Threads)
@@ -45,104 +37,76 @@ function(configure_perf_target target_name out_subdir)
   )
 endfunction()
 
-function(add_cpp_single_bench target_name src_path run_fn)
+function(add_cpp_single_bench target_name src_path)
   add_executable(${target_name}
     ${PERF_SINGLE_COMMON_SRCS}
     "${src_path}"
   )
-  target_compile_definitions(${target_name} PRIVATE RUN_PATTERN_FN=${run_fn})
   configure_perf_target(${target_name} "single")
 endfunction()
 
-function(add_cpp_multi_server_bench target_name src_path run_fn)
+function(add_cpp_multi_server_bench target_name src_path)
   add_executable(${target_name}
-    ${PERF_MULTI_SERVER_COMMON_SRCS}
     "${src_path}"
   )
-  target_compile_definitions(${target_name} PRIVATE RUN_MULTI_SERVER_FN=${run_fn})
   configure_perf_target(${target_name} "multi")
 endfunction()
 
-function(add_cpp_multi_client_bench target_name src_path run_fn)
+function(add_cpp_multi_client_bench target_name src_path)
   add_executable(${target_name}
-    ${PERF_MULTI_CLIENT_COMMON_SRCS}
     "${src_path}"
   )
-  target_compile_definitions(${target_name} PRIVATE RUN_MULTI_CLIENT_FN=${run_fn})
   configure_perf_target(${target_name} "multi")
 endfunction()
 
 # Single suite (8 binaries)
-add_cpp_single_bench(perf_pair
-  "${PERF_ROOT_DIR}/single/src/perf_pair.cpp"
-  run_pattern_pair)
-add_cpp_single_bench(perf_pubsub
-  "${PERF_ROOT_DIR}/single/src/perf_pubsub.cpp"
-  run_pattern_pubsub)
-add_cpp_single_bench(perf_dealer_dealer
-  "${PERF_ROOT_DIR}/single/src/perf_dealer_dealer.cpp"
-  run_pattern_dealer_dealer)
-add_cpp_single_bench(perf_dealer_router
-  "${PERF_ROOT_DIR}/single/src/perf_dealer_router.cpp"
-  run_pattern_dealer_router)
-add_cpp_single_bench(perf_router_router
-  "${PERF_ROOT_DIR}/single/src/perf_router_router.cpp"
-  run_pattern_router_router)
-add_cpp_single_bench(perf_router_router_poll
-  "${PERF_ROOT_DIR}/single/src/perf_router_router_poll.cpp"
-  run_pattern_router_router_poll)
-add_cpp_single_bench(perf_gateway
-  "${PERF_ROOT_DIR}/single/src/perf_gateway.cpp"
-  run_pattern_gateway)
-add_cpp_single_bench(perf_spot
-  "${PERF_ROOT_DIR}/single/src/perf_spot.cpp"
-  run_pattern_spot)
+add_cpp_single_bench(cpp_perf_pair
+  "${PERF_ROOT_DIR}/single/src/perf_pair.cpp")
+add_cpp_single_bench(cpp_perf_pubsub
+  "${PERF_ROOT_DIR}/single/src/perf_pubsub.cpp")
+add_cpp_single_bench(cpp_perf_dealer_dealer
+  "${PERF_ROOT_DIR}/single/src/perf_dealer_dealer.cpp")
+add_cpp_single_bench(cpp_perf_dealer_router
+  "${PERF_ROOT_DIR}/single/src/perf_dealer_router.cpp")
+add_cpp_single_bench(cpp_perf_router_router
+  "${PERF_ROOT_DIR}/single/src/perf_router_router.cpp")
+add_cpp_single_bench(cpp_perf_router_router_poll
+  "${PERF_ROOT_DIR}/single/src/perf_router_router_poll.cpp")
+add_cpp_single_bench(cpp_perf_gateway
+  "${PERF_ROOT_DIR}/single/src/perf_gateway.cpp")
+add_cpp_single_bench(cpp_perf_spot
+  "${PERF_ROOT_DIR}/single/src/perf_spot.cpp")
 
 # Multi server suite (9 binaries)
-add_cpp_multi_server_bench(comp_src_dealer_dealer_server
-  "${PERF_ROOT_DIR}/multi/src/perf_dealer_dealer_server.cpp"
-  perf_dealer_dealer_server)
-add_cpp_multi_server_bench(comp_src_dealer_router_server
-  "${PERF_ROOT_DIR}/multi/src/perf_dealer_router_server.cpp"
-  perf_dealer_router_server)
-add_cpp_multi_server_bench(comp_src_router_router_server
-  "${PERF_ROOT_DIR}/multi/src/perf_router_router_server.cpp"
-  perf_router_router_server)
-add_cpp_multi_server_bench(comp_src_pubsub_server
-  "${PERF_ROOT_DIR}/multi/src/perf_pubsub_server.cpp"
-  perf_pubsub_server)
-add_cpp_multi_server_bench(comp_src_gateway_server
-  "${PERF_ROOT_DIR}/multi/src/perf_gateway_server.cpp"
-  perf_gateway_server)
-add_cpp_multi_server_bench(comp_src_spot_server
-  "${PERF_ROOT_DIR}/multi/src/perf_spot_server.cpp"
-  perf_spot_server)
-add_cpp_multi_server_bench(comp_src_stream_server
-  "${PERF_ROOT_DIR}/multi/src/perf_stream_server.cpp"
-  perf_stream_server)
-add_cpp_multi_server_bench(comp_src_stream_callback_server
-  "${PERF_ROOT_DIR}/multi/src/perf_stream_callback_server.cpp"
-  perf_stream_callback_server)
-add_cpp_multi_server_bench(comp_src_stream_len32be_server
-  "${PERF_ROOT_DIR}/multi/src/perf_stream_len32be_server.cpp"
-  perf_stream_len32be_server)
+add_cpp_multi_server_bench(cpp_comp_src_dealer_dealer_server
+  "${PERF_ROOT_DIR}/multi/src/perf_dealer_dealer_server.cpp")
+add_cpp_multi_server_bench(cpp_comp_src_dealer_router_server
+  "${PERF_ROOT_DIR}/multi/src/perf_dealer_router_server.cpp")
+add_cpp_multi_server_bench(cpp_comp_src_router_router_server
+  "${PERF_ROOT_DIR}/multi/src/perf_router_router_server.cpp")
+add_cpp_multi_server_bench(cpp_comp_src_pubsub_server
+  "${PERF_ROOT_DIR}/multi/src/perf_pubsub_server.cpp")
+add_cpp_multi_server_bench(cpp_comp_src_gateway_server
+  "${PERF_ROOT_DIR}/multi/src/perf_gateway_server.cpp")
+add_cpp_multi_server_bench(cpp_comp_src_spot_server
+  "${PERF_ROOT_DIR}/multi/src/perf_spot_server.cpp")
+add_cpp_multi_server_bench(cpp_comp_src_stream_server
+  "${PERF_ROOT_DIR}/multi/src/perf_stream_server.cpp")
+add_cpp_multi_server_bench(cpp_comp_src_stream_callback_server
+  "${PERF_ROOT_DIR}/multi/src/perf_stream_callback_server.cpp")
+add_cpp_multi_server_bench(cpp_comp_src_stream_len32be_server
+  "${PERF_ROOT_DIR}/multi/src/perf_stream_len32be_server.cpp")
 
 # Multi client suite (6 binaries)
-add_cpp_multi_client_bench(comp_src_dealer_dealer_client
-  "${PERF_ROOT_DIR}/multi/src/perf_dealer_dealer_client.cpp"
-  perf_dealer_dealer_client)
-add_cpp_multi_client_bench(comp_src_dealer_router_client
-  "${PERF_ROOT_DIR}/multi/src/perf_dealer_router_client.cpp"
-  perf_dealer_router_client)
-add_cpp_multi_client_bench(comp_src_router_router_client
-  "${PERF_ROOT_DIR}/multi/src/perf_router_router_client.cpp"
-  perf_router_router_client)
-add_cpp_multi_client_bench(comp_src_pubsub_client
-  "${PERF_ROOT_DIR}/multi/src/perf_pubsub_client.cpp"
-  perf_pubsub_client)
-add_cpp_multi_client_bench(comp_src_gateway_client
-  "${PERF_ROOT_DIR}/multi/src/perf_gateway_client.cpp"
-  perf_gateway_client)
-add_cpp_multi_client_bench(comp_src_spot_client
-  "${PERF_ROOT_DIR}/multi/src/perf_spot_client.cpp"
-  perf_spot_client)
+add_cpp_multi_client_bench(cpp_comp_src_dealer_dealer_client
+  "${PERF_ROOT_DIR}/multi/src/perf_dealer_dealer_client.cpp")
+add_cpp_multi_client_bench(cpp_comp_src_dealer_router_client
+  "${PERF_ROOT_DIR}/multi/src/perf_dealer_router_client.cpp")
+add_cpp_multi_client_bench(cpp_comp_src_router_router_client
+  "${PERF_ROOT_DIR}/multi/src/perf_router_router_client.cpp")
+add_cpp_multi_client_bench(cpp_comp_src_pubsub_client
+  "${PERF_ROOT_DIR}/multi/src/perf_pubsub_client.cpp")
+add_cpp_multi_client_bench(cpp_comp_src_gateway_client
+  "${PERF_ROOT_DIR}/multi/src/perf_gateway_client.cpp")
+add_cpp_multi_client_bench(cpp_comp_src_spot_client
+  "${PERF_ROOT_DIR}/multi/src/perf_spot_client.cpp")

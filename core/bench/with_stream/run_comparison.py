@@ -41,6 +41,12 @@ def tps_or_none(row, size):
     return bps / float(size)
 
 
+def kops_or_none(tps_value):
+    if tps_value is None:
+        return None
+    return tps_value / 1000.0
+
+
 def median_or_none(values):
     if not values:
         return None
@@ -69,10 +75,11 @@ def ranking_sort_key(phase, entry):
     peak_tps = entry.get("peak_tps")
     peak_tps_value = peak_tps if peak_tps is not None else 0.0
     peak = entry.get("peak_bps") or 0.0
+    mean = entry.get("median_mean_us")
     p95 = entry.get("median_p95_us")
     if phase == "latency":
         return (
-            p95 if p95 is not None else 1e30,
+            mean if mean is not None else 1e30,
             -median_tps_value,
             -median_bps,
             -peak_tps_value,
@@ -163,6 +170,7 @@ def main():
 
                 throughputs = []
                 tps_values = []
+                mean_values = []
                 p95s = []
                 server_avg_cpu = []
                 server_peak_rss_kb = []
@@ -174,11 +182,18 @@ def main():
 
                 for row in pass_rows:
                     tp = fnum(row, "throughput_bps")
+                    mean = fnum(row, "mean_us")
                     p95 = fnum(row, "p95_us")
-                    if tp is None or p95 is None:
+                    if tp is None:
                         continue
                     throughputs.append(tp)
-                    p95s.append(p95)
+                    if mean is not None:
+                        mean_values.append(mean)
+                    elif p95 is not None:
+                        # Backward compatibility for old csv without mean_us.
+                        mean_values.append(p95)
+                    if p95 is not None:
+                        p95s.append(p95)
                     tps = tps_or_none(row, size)
                     if tps is not None:
                         tps_values.append(tps)
@@ -211,6 +226,7 @@ def main():
                 median = statistics.median(throughputs) if throughputs else None
                 peak_tps = max(tps_values) if tps_values else None
                 median_tps = statistics.median(tps_values) if tps_values else None
+                median_mean = statistics.median(mean_values) if mean_values else None
                 median_p95 = statistics.median(p95s) if p95s else None
 
                 pass_rate = (len(pass_rows) / total) if total > 0 else 0.0
@@ -225,6 +241,9 @@ def main():
                     "median_bps": median,
                     "peak_tps": peak_tps,
                     "median_tps": median_tps,
+                    "peak_kops": kops_or_none(peak_tps),
+                    "median_kops": kops_or_none(median_tps),
+                    "median_mean_us": median_mean,
                     "median_p95_us": median_p95,
                     "mismatch_total": mismatch_total,
                     "mismatch_total_all": mismatch_total_all,
@@ -257,14 +276,17 @@ def main():
                     continue
                 if phase == "throughput" and item.get("median_bps") is None:
                     continue
-                if phase == "latency" and item.get("median_p95_us") is None:
+                if phase == "latency" and item.get("median_mean_us") is None:
                     continue
                 entry = {
                     "stack": stack,
                     "median_bps": item.get("median_bps"),
                     "median_tps": item.get("median_tps"),
+                    "median_kops": item.get("median_kops"),
                     "peak_bps": item.get("peak_bps"),
                     "peak_tps": item.get("peak_tps"),
+                    "peak_kops": item.get("peak_kops"),
+                    "median_mean_us": item.get("median_mean_us"),
                     "median_p95_us": item.get("median_p95_us"),
                     "mismatch_total_all": item.get("mismatch_total_all", 0),
                 }
@@ -306,7 +328,7 @@ def main():
     for phase in selected_phases:
         lines.append(f"## Metrics (phase={phase})")
         lines.append("")
-        lines.append("| stack | size | pass/total | peak bps | peak tps | median bps | median tps | p95(ms) | mismatch | srv cpu% | srv rss(MiB) | cli cpu% | cli rss(MiB) | sys cpu% | sys mem%(peak) |")
+        lines.append("| stack | size | pass/total | peak bps | peak kops | median bps | median kops | mean(ms) | mismatch | srv cpu% | srv rss(MiB) | cli cpu% | cli rss(MiB) | sys cpu% | sys mem%(peak) |")
         lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
         for size in selected_sizes:
             for stack in selected_stacks:
@@ -321,18 +343,18 @@ def main():
                 sys_cpu = item.get("median_system_avg_cpu_pct")
                 sys_mem_peak = item.get("median_system_peak_mem_used_pct")
                 lines.append(
-                    "| {stack} | {size} | {pass_runs}/{total_runs} | {peak} | {peak_tps} | {median} | {median_tps} | {p95} | {mismatch} | {srv_cpu} | {srv_rss} | {cli_cpu} | {cli_rss} | {sys_cpu} | {sys_mem_peak} |".format(
+                    "| {stack} | {size} | {pass_runs}/{total_runs} | {peak} | {peak_kops} | {median} | {median_kops} | {mean_ms} | {mismatch} | {srv_cpu} | {srv_rss} | {cli_cpu} | {cli_rss} | {sys_cpu} | {sys_mem_peak} |".format(
                         stack=stack,
                         size=size,
                         pass_runs=item.get("pass_runs", 0),
                         total_runs=item.get("total_runs", 0),
                         peak=(f"{item['peak_bps']:.2f}" if item.get("peak_bps") is not None else "n/a"),
-                        peak_tps=(f"{item['peak_tps']:.2f}" if item.get("peak_tps") is not None else "n/a"),
+                        peak_kops=(f"{item['peak_kops']:.2f}" if item.get("peak_kops") is not None else "n/a"),
                         median=(f"{item['median_bps']:.2f}" if item.get("median_bps") is not None else "n/a"),
-                        median_tps=(f"{item['median_tps']:.2f}" if item.get("median_tps") is not None else "n/a"),
-                        p95=(
-                            f"{(item['median_p95_us'] / 1000.0):.2f}"
-                            if item.get("median_p95_us") is not None
+                        median_kops=(f"{item['median_kops']:.2f}" if item.get("median_kops") is not None else "n/a"),
+                        mean_ms=(
+                            f"{(item['median_mean_us'] / 1000.0):.2f}"
+                            if item.get("median_mean_us") is not None
                             else "n/a"
                         ),
                         mismatch=item.get("mismatch_total_all", 0),
@@ -349,19 +371,19 @@ def main():
             lines.append("")
             lines.append(f"## Ranking (phase={phase}, size={size})")
             lines.append("")
-            lines.append("| rank | stack | median bps | median tps | p95(ms) | mismatch |")
+            lines.append("| rank | stack | median bps | median kops | mean(ms) | mismatch |")
             lines.append("|---:|---|---:|---:|---:|---:|")
             ranking = summary["ranking"].get(f"{phase}:{size}", [])
             if not ranking:
                 lines.append("| 1 | n/a | n/a | n/a | n/a | n/a |")
             else:
                 for idx, entry in enumerate(ranking, 1):
-                    median_tps = entry.get("median_tps")
-                    median_tps_text = (
-                        f"{median_tps:.2f}" if median_tps is not None else "n/a"
+                    median_kops = entry.get("median_kops")
+                    median_kops_text = (
+                        f"{median_kops:.2f}" if median_kops is not None else "n/a"
                     )
-                    p95 = entry.get("median_p95_us")
-                    p95_text = f"{(p95 / 1000.0):.2f}" if p95 is not None else "n/a"
+                    mean = entry.get("median_mean_us")
+                    mean_text = f"{(mean / 1000.0):.2f}" if mean is not None else "n/a"
                     mismatch = entry.get("mismatch_total_all", 0)
                     median_bps = entry.get("median_bps")
                     median_bps_text = (
@@ -369,7 +391,7 @@ def main():
                     )
                     lines.append(
                         f"| {idx} | {entry['stack']} | {median_bps_text} | "
-                        f"{median_tps_text} | {p95_text} | {mismatch} |"
+                        f"{median_kops_text} | {mean_text} | {mismatch} |"
                     )
         lines.append("")
 

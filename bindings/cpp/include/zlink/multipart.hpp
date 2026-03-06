@@ -4,6 +4,8 @@
 
 #include "common.hpp"
 
+#include <cstdlib>
+
 namespace zlink
 {
 
@@ -39,7 +41,9 @@ class multipart_t
     void reset ()
     {
         if (_parts) {
-            zlink_multipart_close (_parts, _count);
+            for (size_t i = 0; i < _count; ++i)
+                zlink_msg_close (&_parts[i]);
+            std::free (_parts);
             _parts = NULL;
             _count = 0;
         }

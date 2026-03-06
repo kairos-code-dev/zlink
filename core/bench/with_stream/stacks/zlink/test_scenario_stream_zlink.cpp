@@ -80,9 +80,9 @@ void apply_socket_tuning (void *socket, const server_options_t &opt)
                              sizeof (opt.backlog));
     (void) zlink_setsockopt (socket, ZLINK_TCP_NODELAY, &opt.tcp_nodelay,
                              sizeof (opt.tcp_nodelay));
-    const int zero = 0;
-    (void) zlink_setsockopt (socket, ZLINK_RCVHWM, &zero, sizeof (zero));
-    (void) zlink_setsockopt (socket, ZLINK_SNDHWM, &zero, sizeof (zero));
+    const int hwm = 100;
+    (void) zlink_setsockopt (socket, ZLINK_RCVHWM, &hwm, sizeof (hwm));
+    (void) zlink_setsockopt (socket, ZLINK_SNDHWM, &hwm, sizeof (hwm));
 }
 
 class zlink_stream_echo_server_t

@@ -6,7 +6,7 @@ endif()
 
 add_executable(
     bench_streamcompare_client
-    client/bench_stream_client.cpp)
+    ../../perf/common/streamclient/perf_stream_client.cpp)
 
 target_link_libraries(bench_streamcompare_client PRIVATE Threads::Threads)
 target_link_libraries(

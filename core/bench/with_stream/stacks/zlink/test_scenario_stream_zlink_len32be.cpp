@@ -65,9 +65,9 @@ void apply_socket_tuning (void *socket, const server_options_t &opt)
                              sizeof (opt.backlog));
     (void) zlink_setsockopt (socket, ZLINK_TCP_NODELAY, &opt.tcp_nodelay,
                              sizeof (opt.tcp_nodelay));
-    const int zero = 0;
-    (void) zlink_setsockopt (socket, ZLINK_RCVHWM, &zero, sizeof (zero));
-    (void) zlink_setsockopt (socket, ZLINK_SNDHWM, &zero, sizeof (zero));
+    const int hwm = 100;
+    (void) zlink_setsockopt (socket, ZLINK_RCVHWM, &hwm, sizeof (hwm));
+    (void) zlink_setsockopt (socket, ZLINK_SNDHWM, &hwm, sizeof (hwm));
 }
 
 class zlink_stream_echo_server_t
@@ -162,8 +162,11 @@ class zlink_stream_echo_server_t
     {
         int rc = 0;
         for (size_t i = 0; i < msg_count_; ++i) {
-            rc = on_packet (rid_, &msgs_[i]);
-            (void) zlink_msg_close (&msgs_[i]);
+            bool consumed = false;
+            rc = on_packet (rid_, &msgs_[i], &consumed);
+            // stream_send_msg consumes ownership on call.
+            if (!consumed)
+                (void) zlink_msg_close (&msgs_[i]);
         }
         return rc;
     }
@@ -180,8 +183,13 @@ class zlink_stream_echo_server_t
         protocol_error.fetch_add (1, std::memory_order_relaxed);
     }
 
-    int on_packet (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
+    int on_packet (const zlink_routing_id_t *rid_,
+                   zlink_msg_t *msg_,
+                   bool *consumed_)
     {
+        if (consumed_)
+            *consumed_ = false;
+
         const unsigned char *payload =
           static_cast<const unsigned char *> (zlink_msg_data (msg_));
         const size_t payload_size = zlink_msg_size (msg_);
@@ -195,6 +203,8 @@ class zlink_stream_echo_server_t
 
         record_payload_size (payload_size);
 
+        if (consumed_)
+            *consumed_ = true;
         if (zlink_stream_send_msg (server, rid_, msg_, 0)
             != static_cast<int> (payload_size)) {
             send_error.fetch_add (1, std::memory_order_relaxed);

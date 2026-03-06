@@ -1,0 +1,6 @@
+## PATTERN: MULTI_DEALER_ROUTER (echo)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |  Latency(us) | Lat p95(us) | Lat p99(us) | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|----------|----------|--------|----------|--------|----------|
+| 64B |     57.04 Kops/s |      7.3 MB/s |      0.11 us |     0.17 us |     0.27 us |    6.9 |    366.9 |    4.9 |    287.3 |

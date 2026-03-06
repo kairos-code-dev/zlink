@@ -2,12 +2,21 @@
 // Topology: dealer(connect) -> router(bind)
 
 #include "../common/perf_single_common.hpp"
+#include "../common/perf_single_runner.hpp"
 
 #include <algorithm>
 #include <cerrno>
 #include <vector>
 
 namespace {
+
+bool send_single_payload_once (zlink::socket_t &socket,
+                               const void *payload,
+                               size_t payload_size)
+{
+    return socket.send (payload, payload_size, zlink::send_flag::none)
+           == static_cast<int> (payload_size);
+}
 
 int recv_header_router (zlink::socket_t &router,
                         size_t payload_size,
@@ -48,6 +57,41 @@ int recv_header_router (zlink::socket_t &router,
     return 1;
 }
 
+bool drain_router_queue (zlink::socket_t &router,
+                         size_t payload_size,
+                         uint32_t run_id,
+                         perf_single_metric::phase_t phase,
+                         size_t msg_size,
+                         bool active,
+                         unsigned long long *received,
+                         perf::single::latency_stats_builder_t *latency_builder)
+{
+    for (;;) {
+        perf_single_metric::header_t header;
+        bool header_ok = false;
+        const int recv_rc = recv_header_router (
+          router, payload_size, zlink::recv_flag::dontwait, &header, &header_ok);
+        if (recv_rc == 0)
+            return true;
+        if (recv_rc < 0)
+            return false;
+        if (!header_ok || !perf_single_metric::is_expected (
+                            header, run_id, phase, msg_size)) {
+            continue;
+        }
+
+        ++(*received);
+        if (active && latency_builder) {
+            const uint64_t now = perf_single_metric::now_us ();
+            const double latency_us =
+              now >= header.sent_ts_us
+                ? static_cast<double> (now - header.sent_ts_us)
+                : 0.0;
+            latency_builder->add (latency_us);
+        }
+    }
+}
+
 bool run_phase (zlink::socket_t &dealer,
                 zlink::socket_t &router,
                 std::vector<char> &payload,
@@ -80,8 +124,7 @@ bool run_phase (zlink::socket_t &dealer,
                                                 msg_size,
                                                 seq++,
                                                 sent_ts)
-            || dealer.send (payload.data (), payload_size, zlink::send_flag::none)
-                 != static_cast<int> (payload_size)) {
+            || !send_single_payload_once (dealer, payload.data (), payload_size)) {
             return false;
         }
         if (queue_probe)
@@ -108,7 +151,15 @@ bool run_phase (zlink::socket_t &dealer,
                 latency_builder.add (latency_us);
             }
         }
-        return true;
+
+        return drain_router_queue (router,
+                                   payload_size,
+                                   run_id,
+                                   phase,
+                                   msg_size,
+                                   active,
+                                   &received,
+                                   active ? &latency_builder : NULL);
     };
 
     if (active) {
@@ -243,4 +294,9 @@ void run_pattern_dealer_router (const std::string &transport,
                                 latency.p95_us,
                                 latency.p99_us,
                                 queue_probe.snapshot ());
+}
+
+int main (int argc, char **argv)
+{
+    return perf::single::run_standard_bench_main (argc, argv, run_pattern_dealer_router);
 }

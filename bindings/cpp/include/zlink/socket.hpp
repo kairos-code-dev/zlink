@@ -336,6 +336,29 @@ class socket_t
     }
 
     /**
+     * @brief Send bytes to a stream peer by native routing id.
+     * @param routing_id_ Target peer routing id.
+     * @param buf_ Payload buffer.
+     * @param len_ Payload length.
+     * @param flags_ Send flags.
+     * @return Sent byte count or -1 on failure.
+     */
+    ZLINK_CPP_NODISCARD int
+    stream_send (const zlink_routing_id_t &routing_id_,
+                 const void *buf_,
+                 size_t len_,
+                 send_flag flags_ = send_flag::none)
+    {
+        if (routing_id_.size == 0) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        return zlink_stream_send (_socket, &routing_id_, buf_, len_,
+                                  static_cast<int> (flags_));
+    }
+
+    /**
      * @brief Send bytes to a stream peer by routing id value.
      * @param routing_id_ Peer routing id as a 32-bit value.
      * @param buf_ Payload buffer.
@@ -356,6 +379,22 @@ class socket_t
     }
 
     /**
+     * @brief Send string to a stream peer by native routing id.
+     * @param routing_id_ Target peer routing id.
+     * @param payload_ Payload string.
+     * @param flags_ Send flags.
+     * @return Sent byte count or -1 on failure.
+     */
+    ZLINK_CPP_NODISCARD int
+    stream_send (const zlink_routing_id_t &routing_id_,
+                 const std::string &payload_,
+                 send_flag flags_ = send_flag::none)
+    {
+        return stream_send (routing_id_, payload_.data (), payload_.size (),
+                            flags_);
+    }
+
+    /**
      * @brief Send string to a stream peer by routing id value.
      * @param routing_id_ Peer routing id as a 32-bit value.
      * @param payload_ Payload string.
@@ -369,6 +408,36 @@ class socket_t
     {
         return stream_send (routing_id_, payload_.data (), payload_.size (),
                             flags_);
+    }
+
+    /**
+     * @brief Send a message frame to a stream peer by native routing id.
+     * @param routing_id_ Target peer routing id.
+     * @param msg_ Message frame.
+     * @param flags_ Send flags.
+     * @return Sent byte count or -1 on failure.
+     * @note `msg_` ownership is transferred and it is closed regardless of
+     * result.
+     */
+    ZLINK_CPP_NODISCARD int
+    stream_send (const zlink_routing_id_t &routing_id_,
+                 message_t &msg_,
+                 send_flag flags_ = send_flag::none)
+    {
+        if (!msg_.valid ()) {
+            errno = EINVAL;
+            return -1;
+        }
+        if (routing_id_.size == 0) {
+            msg_.close ();
+            errno = EINVAL;
+            return -1;
+        }
+
+        const int rc = zlink_stream_send_msg (
+          _socket, &routing_id_, msg_.handle (), static_cast<int> (flags_));
+        msg_.close ();
+        return rc;
     }
 
     /**

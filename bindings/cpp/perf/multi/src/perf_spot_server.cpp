@@ -87,12 +87,90 @@ bool wait_pub_peer_ready (zlink::service::spot_node_t &node,
 bool send_spot_payload (zlink::service::spot_t &publisher,
                         const char *topic,
                         const void *payload,
-                        size_t payload_size)
+                        size_t payload_size,
+                        zlink::send_flag flags)
 {
     return topic
            && publisher.publish (
-                topic, payload, payload_size, zlink::send_flag::none)
+                topic, payload, payload_size, flags)
                 == 0;
+}
+
+long compute_wait_ms (const perf::multi::multi_bench_settings_t &settings,
+                      const std::chrono::steady_clock::time_point &deadline)
+{
+    long wait_ms = settings.client_poll_timeout_ms > 0 ? settings.client_poll_timeout_ms : 100;
+    const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
+                             deadline - std::chrono::steady_clock::now ())
+                             .count ();
+    if (remain_ms < wait_ms)
+        wait_ms = remain_ms;
+    if (wait_ms < 1)
+        wait_ms = 1;
+    return wait_ms;
+}
+
+bool run_phase (zlink::service::spot_t &publisher,
+                zlink::socket_t &pub_socket,
+                zlink::poller_t &poller,
+                std::vector<zlink::poll_event_t> &events,
+                std::vector<char> &payload,
+                size_t msg_size,
+                uint32_t run_id,
+                uint64_t &seq,
+                perf_metric::phase_t phase,
+                std::chrono::steady_clock::duration duration,
+                const perf::multi::multi_bench_settings_t &settings)
+{
+    if (duration <= std::chrono::steady_clock::duration::zero ())
+        return true;
+
+    bool pending = false;
+    const auto deadline = std::chrono::steady_clock::now () + duration;
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (!pending) {
+            if (!perf_metric::stamp_payload (payload.data (),
+                                             payload.size (),
+                                             run_id,
+                                             phase,
+                                             msg_size,
+                                             seq++,
+                                             perf_metric::now_us ())) {
+                return false;
+            }
+        }
+
+        if (send_spot_payload (
+              publisher,
+              "bench",
+              payload.data (),
+              payload.size (),
+              zlink::send_flag::dontwait)) {
+            pending = false;
+            if (poller.modify (pub_socket, static_cast<zlink::poll_event> (0)) != 0)
+                return false;
+            continue;
+        }
+
+        if (errno == EAGAIN) {
+            pending = true;
+            if (poller.modify (pub_socket, zlink::poll_event::pollout) != 0)
+                return false;
+        } else {
+            return false;
+        }
+
+        const int poll_rc = poller.wait (events, compute_wait_ms (settings, deadline));
+        if (poll_rc < 0) {
+            if (errno == EINTR)
+                continue;
+            return false;
+        }
+        if (poll_rc == 0)
+            continue;
+    }
+
+    return true;
 }
 
 } // namespace
@@ -143,6 +221,7 @@ void perf_spot_server (const std::string &transport, size_t msg_size)
     zlink::service::spot_t publisher (node);
     if (!publisher.valid ())
         return;
+    zlink::socket_t pub_socket = zlink::socket_t::wrap (node.pub_socket_handle ());
 
     perf::multi::print_ready (endpoint);
 
@@ -155,40 +234,47 @@ void perf_spot_server (const std::string &transport, size_t msg_size)
     const uint32_t run_id = 1;
     uint64_t seq = 1;
 
-    auto run_phase = [&] (perf_metric::phase_t phase,
-                          std::chrono::milliseconds duration) -> bool {
-        if (duration.count () <= 0)
-            return true;
+    zlink::poller_t poller;
+    std::vector<zlink::poll_event_t> events;
+    events.reserve (1);
+    (void) poller.add (pub_socket, zlink::poll_event::pollout);
+    (void) poller.modify (pub_socket, static_cast<zlink::poll_event> (0));
 
-        const auto deadline = std::chrono::steady_clock::now () + duration;
-        while (std::chrono::steady_clock::now () < deadline) {
-            (void) perf_metric::stamp_payload (payload.data (),
-                                               payload.size (),
-                                               run_id,
-                                               phase,
-                                               msg_size,
-                                               seq++,
-                                               perf_metric::now_us ());
-            if (!send_spot_payload (
-                  publisher, "bench", payload.data (), payload.size ())) {
-                const int err = errno;
-                if (err == EAGAIN || err == EINTR)
-                    continue;
-                return false;
-            }
-        }
-        return true;
-    };
-
-    if (!run_phase (perf_metric::phase_warmup,
-                    std::chrono::seconds (std::max (0, settings.warmup_seconds))))
+    if (!run_phase (publisher,
+                    pub_socket,
+                    poller,
+                    events,
+                    payload,
+                    msg_size,
+                    run_id,
+                    seq,
+                    perf_metric::phase_warmup,
+                    std::chrono::seconds (std::max (0, settings.warmup_seconds)),
+                    settings))
         return;
-    if (!run_phase (
-          perf_metric::phase_drain,
-          std::chrono::milliseconds (std::max (0, settings.settle_ms))))
+    if (!run_phase (publisher,
+                    pub_socket,
+                    poller,
+                    events,
+                    payload,
+                    msg_size,
+                    run_id,
+                    seq,
+                    perf_metric::phase_drain,
+                    std::chrono::milliseconds (std::max (0, settings.settle_ms)),
+                    settings))
         return;
-    if (!run_phase (perf_metric::phase_active,
-                    std::chrono::seconds (std::max (1, settings.duration_seconds))))
+    if (!run_phase (publisher,
+                    pub_socket,
+                    poller,
+                    events,
+                    payload,
+                    msg_size,
+                    run_id,
+                    seq,
+                    perf_metric::phase_active,
+                    std::chrono::seconds (std::max (1, settings.duration_seconds)),
+                    settings))
         return;
 
     perf::multi::print_server_queue_metrics (
@@ -197,6 +283,20 @@ void perf_spot_server (const std::string &transport, size_t msg_size)
       transport,
       msg_size,
       perf::multi::server_queue_stats_t ());
+}
 
-    std::exit (0);
+int main (int argc, char **argv)
+{
+    if (argc < 3) {
+        std::cerr << "usage: <transport> <size>" << std::endl;
+        return 1;
+    }
+
+    const std::string transport = argv[1];
+    const size_t size = static_cast<size_t> (std::strtoull (argv[2], NULL, 10));
+    if (size == 0)
+        return 1;
+
+    perf_spot_server (transport, size);
+    return 0;
 }

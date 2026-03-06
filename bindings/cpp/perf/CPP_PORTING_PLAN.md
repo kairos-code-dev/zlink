@@ -56,8 +56,7 @@ bindings/cpp/
     │   │   ├── perf_entry.hpp               ← set_perf_pattern_env 헬퍼
     │   │   ├── perf_tls.hpp                 ← TLS 인증서 경로 리졸버 (multi)
     │   │   ├── perf_metric_header.hpp       ← 페이로드 헤더 (core 1:1 유지)
-    │   │   ├── perf_server_runner.cpp       ← 서버 진입점 (binding 전용, core에 없음)
-    │   │   └── perf_client_runner.cpp       ← 클라이언트 진입점 (binding 전용, core에 없음)
+    │   │   └── (runner 소스 없음: 각 패턴 파일이 main() 직접 소유)
     │   ├── src/                             ← ★ core/perf/multi/src/ 대응
     │   │   ├── perf_dealer_dealer_server.cpp       ← ★ server/client 분리
     │   │   ├── perf_dealer_dealer_client.cpp
@@ -139,7 +138,6 @@ $CXX -O3 -std=c++17 -pthread \
   -I${BINDING_INCLUDE} \
   -I${SINGLE_COMMON} \
   ${SINGLE_COMMON}/*.cpp ${SINGLE_CURRENT}/perf_pair.cpp \
-  -DRUN_PATTERN_FN=run_pattern_pair \
   -L${CPP_NATIVE} -lzlink -Wl,-rpath,${CPP_NATIVE} \
   -o ${PERF_DIR}/single/build/perf_pair
 ```
@@ -162,8 +160,7 @@ bindings/cpp/native/<os>-<arch>/libzlink.so
 `bindings/cpp/CMakeLists.txt` 의 `ZLINK_CPP_BUILD_BENCHMARKS=ON` 옵션으로도 빌드 가능하다.
 `add_subdirectory(perf)` 로 활성화되며, 타겟 구조는 core/perf 의 패턴별 바이너리 분리 원칙을 따른다.
 > 단, core 는 `src/*.cpp` 단일 소스 빌드인 반면, cpp binding 은
-> `common/*.cpp` (runner + common) 과 `src/*.cpp` 를 결합하는 빌드이므로
-> CMake 함수 시그니처와 타겟 구성은 동일하지 않다.
+> single 은 `common/*.cpp + src/*.cpp`, multi 는 `src/*.cpp` 단독(main 포함)으로 빌드한다.
 
 **Single 타겟:**
 
@@ -182,8 +179,8 @@ bindings/cpp/native/<os>-<arch>/libzlink.so
 
 | 타겟 | 소스 |
 |------|------|
-| `comp_src_dealer_dealer_server` | `multi/common/perf_server_runner.cpp` (binding 전용) + `multi/src/perf_dealer_dealer_server.cpp` |
-| `comp_src_dealer_dealer_client` | `multi/common/perf_client_runner.cpp` (binding 전용) + `multi/src/perf_dealer_dealer_client.cpp` |
+| `comp_src_dealer_dealer_server` | `multi/src/perf_dealer_dealer_server.cpp` |
+| `comp_src_dealer_dealer_client` | `multi/src/perf_dealer_dealer_client.cpp` |
 | `comp_src_dealer_router_server` | 동일 패턴 |
 | `comp_src_dealer_router_client` | 동일 패턴 |
 | `comp_src_router_router_server` | 동일 패턴 |
@@ -294,6 +291,10 @@ CPP_MULTI_CLIENT_PATTERN_SPECS = {
 ---
 
 ## 4. RESULT 출력 형식 (core/perf 동일)
+
+**Latency 단위 규칙:**
+- `RESULT ... latency`, `latency_p95`, `latency_p99` 값은 **ms 단위**로 출력한다.
+- 내부 헤더 타임스탬프(`sent_ts_us`)와 샘플러 누적은 `us` 기반으로 유지하되, RESULT 출력 시 `us / 1000.0`으로 변환한다.
 
 **러너 파서 인식 메트릭 (completion 계산 대상: throughput, bandwidth, latency):**
 ```
@@ -524,6 +525,7 @@ bool transport_available(const std::string& transport);
 // ── RESULT 출력 (bandwidth 승수 = 1.0 for all single) ──
 void print_result(const std::string& lib, const std::string& pattern, const std::string& transport,
                   size_t size, double throughput, double latency_us, double p95_us, double p99_us);
+// RESULT 출력값: latency/p95/p99 는 ms 단위 (내부 us -> 출력 시 변환)
 
 // ── 큐 프로빙 ──
 class queue_probe_t { /* ... */ };
@@ -558,7 +560,7 @@ void setup_tls_client(zlink::socket_t& socket, const std::string& transport);
 ```cpp
 // run_standard_bench_main 구현
 // argv[1]=transport argv[2]=size 파싱 후 RunFn 호출
-// -DRUN_PATTERN_FN=run_pattern_pair 로 패턴 함수 주입
+// 각 single 패턴 파일의 main() 에서 직접 호출
 ```
 
 **`perf_single_metric_header.hpp`** — 페이로드 헤더 (core `perf_single_metric_header.hpp` 1:1 유지)
@@ -650,6 +652,7 @@ void settle();  // 300ms sleep (multi 기본)
 void print_result(const std::string& lib, const std::string& pattern, const std::string& transport,
                   size_t size, double throughput, double bandwidth, double latency_us,
                   double p95_us, double p99_us);
+// RESULT 출력값: latency/p95/p99 는 ms 단위 (내부 us -> 출력 시 변환)
 void print_server_queue_metrics(const std::string& lib, const std::string& pattern,
                                  const std::string& transport, size_t size,
                                  /* queue stats */);
@@ -976,8 +979,7 @@ bindings/cpp/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 11. `multi/common/perf_entry.hpp` — set_perf_pattern_env
 12. `multi/common/perf_tls.hpp` — TLS 인증서 리졸버
 13. `multi/common/perf_metric_header.hpp` — 멀티 페이로드 헤더 (core 1:1)
-14. `multi/common/perf_server_runner.cpp` — 서버 진입점 디스패치 (binding 전용, core에 없음)
-15. `multi/common/perf_client_runner.cpp` — 클라이언트 진입점 디스패치 (binding 전용, core에 없음)
+14. `multi/src/*.cpp` 각 파일에 `main()` 직접 구현 (server/client 개별 파싱)
 
 ### Phase 2: Single 소켓 패턴 (6개)
 
@@ -1105,7 +1107,44 @@ rg -n "std::vector|std::string|new |malloc|make_unique|make_shared" \
 - Multi 서버는 `READY,<endpoint>` stdout 출력 후 클라이언트 대기
 - TLS 인증서는 `bindings/cpp/tests/certs/gen/` 경로 사용
 
-### 15.3 코드 인라이닝 정책
+### 15.3 recv 루프 정책 (강제)
+
+- **Single 패턴**: `blocking recv` 로 최초 수신 후, 같은 루프에서 `recv_flag::dontwait` 기반으로 큐를 **비어 있을 때까지 drain** 해야 한다.
+- **Multi 패턴**: `zlink::poller_t` 로 readiness 대기 후, ready 소켓에서 `recv_flag::dontwait` 로 **무제한 drain** 해야 한다.
+- **Drain cap 금지**: `N개까지만 drain` 같은 상한값(`cap`, `budget`)을 두지 않는다.
+- **Settle 전용 예외 금지**: drain 로직은 settle 단계 전용이 아니라, recv 핫루프(active 포함)에서 동일 정책으로 유지한다.
+
+### 15.4 I/O 정책 (강제)
+
+- **적용 기준은 역할(role)** 이다. `server/client` 구분이 아니라, 해당 소켓이 `send 역할` 인지 `recv 역할` 인지에 따라 정책을 적용한다.
+- **실제 오류는 즉시 fail** 한다. 실패를 성공처럼 보이게 만드는 fallback, retry budget, sleep/yield 기반 우회는 금지한다.
+- **`EAGAIN`은 flow-control 상태** 로만 취급한다. 오류 은닉 수단으로 사용하지 않는다.
+- **핫 루프 내 금지**:
+  - heap 할당
+  - 문자열 생성/로그 출력
+  - retry budget / batch cap / drain cap
+  - `sleep`, `yield`, busy-wait fallback
+
+**Single 공통 정책**
+- `send`: `blocking send` 1회만 호출한다. 실패 시 즉시 fail 한다.
+- `recv`: 필요한 첫 메시지/프레임은 `blocking recv` 로 받고, 같은 iteration 안에서 `recv_flag::dontwait` 로 `EAGAIN` 까지 drain 한다.
+- single 패턴의 기본 메커니즘은 poller 가 아니다. `ROUTER_ROUTER_POLL` 도 이름만 유지하고 동일 정책을 따른다.
+
+**Multi 공통 정책**
+- `recv`: recv 역할 소켓은 기본적으로 `PollIn ON` 으로 등록하고, readiness 발생 시 `recv_flag::dontwait` 로 `EAGAIN` 까지 무제한 drain 한다.
+- `send`: 공유 이벤트 루프에서 `blocking send` 를 사용하지 않는다.
+- `PollOut` 은 기본적으로 `OFF` 이다.
+- 전송 시 `send(..., dontwait)` 를 1회 시도하고, `EAGAIN` 이면 pending 상태만 저장한 뒤 `PollOut ON` 으로 전환한다.
+- pending send 는 **다음 `PollOut` readiness 에서만** 재개한다. `while(send 실패)` 같은 즉시 재시도는 금지한다.
+- pending 이 모두 해소되면 즉시 `PollOut OFF` 로 되돌린다.
+
+**패턴 해석**
+- `echo`: 소켓당 inflight 1개만 유지한다. 응답을 받기 전 같은 소켓에 다음 요청을 보내지 않는다.
+- `one-way send`: recv 없음. `PollOut` 가능 시에만 계속 보내고, `EAGAIN` 에서 멈춘다.
+- `one-way recv`: send 없음. `PollIn + nonblocking drain` 만 수행한다.
+- `pub/sub`, `spot`: 발행/송신 쪽은 one-way send, 구독/수신 쪽은 one-way recv 정책을 따른다.
+
+### 15.5 코드 인라이닝 정책
 
 > **core/perf 와의 핵심 차이**: core/perf 는 `perf_client_helpers.hpp` 에 `run_one_way_duration()`,
 > `run_echo_duration()` 등 공통 send/recv 루프를 두고 각 패턴이 호출하는 구조이다.
@@ -1128,6 +1167,12 @@ rg -n "std::vector|std::string|new |malloc|make_unique|make_shared" \
 - send/recv 호출 코드 자체 (공통 함수로 위임 금지)
 - warmup/active 루프 본문
 - 메트릭 stamp/decode 호출부
+
+### 15.6 엔트리포인트 정책
+
+- `single/src/*.cpp`, `multi/src/*.cpp` **각 패턴 파일에 `main()`을 직접 둔다.**
+- 공용 runner 파일에서 `#define RUN_*` 방식으로 패턴을 주입하는 구조는 사용하지 않는다.
+- 단일 패턴 파일만 열어도 `main` → 패턴 함수 → 핵심 루프 흐름이 보이도록 유지한다.
 
 ```cpp
 // 예시: perf_dealer_router_client.cpp — send/recv 루프가 파일 내에 직접 존재
@@ -1225,12 +1270,12 @@ while (active) {
 각 RESULT 라인의 메트릭 값이 논리적으로 정확한지 검증한다.
 
 **러너 집계 대상 메트릭 (조합별):**
-- single: `throughput`, `bandwidth`, `latency` — 3개 메트릭이 모든 pattern/transport/size 조합에 존재 (completion 기준)
+- single: `throughput`, `bandwidth`, `latency` — 3개 메트릭이 모든 pattern/transport/size 조합에 존재 (completion 기준, `latency` 단위는 ms)
 - single 리소스: `cpu_pct`, `mem_mb` (러너가 프로세스 모니터링으로 수집)
-- multi: `throughput`, `bandwidth`, `latency` + `server_cpu_pct`, `server_mem_mb`, `client_cpu_pct`, `client_mem_mb`
+- multi: `throughput`, `bandwidth`, `latency` + `server_cpu_pct`, `server_mem_mb`, `client_cpu_pct`, `client_mem_mb` (`latency` 단위는 ms)
 
 **러너 파서 인식 (결과 테이블 포함, completion 판정 대상 아님):**
-- `latency_p95`, `latency_p99` — 바이너리가 stdout 출력, 러너 파서가 인식하여 테이블에 포함
+- `latency_p95`, `latency_p99` — 바이너리가 stdout 출력, 러너 파서가 인식하여 테이블에 포함 (단위 ms)
 
 **대역폭 계산식 검증:**
 ```
@@ -1439,7 +1484,7 @@ CXX=${CXX:-c++}; $CXX -Wall -Wextra -Wpedantic -Wunused -std=c++17 -fsyntax-only
 - [x] `single/common/perf_single_common.cpp` 작성 (위 선언의 구현체)
 - [x] `single/common/perf_single_tls.hpp` 작성 (TLS 인증서 경로 리졸버, `bindings/cpp/tests/certs/gen/` 탐색)
 - [x] `single/common/perf_single_runner.hpp` 작성 (run_standard_bench_main 선언)
-- [x] `single/common/perf_single_runner.cpp` 작성 (argv 파싱, RUN_PATTERN_FN 디스패치)
+- [x] `single/common/perf_single_runner.cpp` 작성 (argv 파싱 helper)
 - [x] C API 직접 호출 없음 확인: `rg "\\bzlink_[a-zA-Z0-9_]+\\(" single/common/`
 
 ### Phase 1: 인프라 — Multi common/
@@ -1450,8 +1495,7 @@ CXX=${CXX:-c++}; $CXX -Wall -Wextra -Wpedantic -Wunused -std=c++17 -fsyntax-only
 - [x] `multi/common/perf_client_helpers.hpp` 작성 (공통 client 루프 헬퍼)
 - [x] `multi/common/perf_entry.hpp` 작성 (set_perf_pattern_env)
 - [x] `multi/common/perf_tls.hpp` 작성 (TLS 인증서 경로 리졸버)
-- [x] `multi/common/perf_server_runner.cpp` 작성 (RUN_MULTI_SERVER_FN 디스패치, binding 전용)
-- [x] `multi/common/perf_client_runner.cpp` 작성 (RUN_MULTI_CLIENT_FN 디스패치, binding 전용)
+- [x] `multi/src/*.cpp` 각 파일에 `main()` 직접 구현 (server/client 분리)
 - [x] C API 직접 호출 없음 확인: `rg "\\bzlink_[a-zA-Z0-9_]+\\(" multi/common/`
 
 ### Phase 2: Single 소켓 패턴 (6개)
@@ -1605,6 +1649,27 @@ CXX=${CXX:-c++}; $CXX -Wall -Wextra -Wpedantic -Wunused -std=c++17 -fsyntax-only
 
 - [x] 소켓 옵션 중복 설정 0건
 - [x] dontwait vs blocking 모드 core 대비 일관성 확인
+
+#### 6.4.1 C++ 객체지향 리팩토링 규칙 (2026-03-06)
+
+- 대상 경로: `bindings/cpp/perf/multi/src/*.cpp` (client 패턴 우선)
+- 대상 패턴: `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`, `MULTI_GATEWAY`, `MULTI_SPOT`
+- 각 패턴 파일 내부에 `phase_config_t`, `bench_result_t` 타입을 둔다.
+- 긴 함수는 phase 단위 메서드로 분리한다:
+  - `run_warmup()`
+  - `run_settle()` 또는 `run_settle_drain()`
+  - `run_active()`
+- 소켓/컨텍스트/버퍼 생명주기는 패턴 파일 내 class 멤버로 명시한다.
+- send/recv 핵심 루프는 패턴 파일 내에서 직접 보이도록 유지한다.
+- 패턴 간 공통화는 금지하고, 파일 내부 private helper까지만 허용한다.
+- fallback/retry budget/cap 으로 실패를 성공처럼 보이게 만드는 동작은 금지한다.
+- 적용 상태:
+  - [x] `perf_dealer_dealer_client.cpp`
+  - [x] `perf_dealer_router_client.cpp`
+  - [x] `perf_router_router_client.cpp`
+  - [x] `perf_pubsub_client.cpp`
+  - [x] `perf_gateway_client.cpp`
+  - [x] `perf_spot_client.cpp`
 
 #### 6.5 주석 정리
 

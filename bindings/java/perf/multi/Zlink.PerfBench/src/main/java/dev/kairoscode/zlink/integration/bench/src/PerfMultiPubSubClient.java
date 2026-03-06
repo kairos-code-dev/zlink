@@ -3,6 +3,8 @@
 package dev.kairoscode.zlink.integration.bench.src;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.PollEventType;
+import dev.kairoscode.zlink.Poller;
 import dev.kairoscode.zlink.ReceiveFlag;
 import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.SocketType;
@@ -25,11 +27,54 @@ public final class PerfMultiPubSubClient {
     private static final SocketType CLIENT_SOCKET_TYPE = SocketType.SUB;
     private static final int MIN_PAYLOAD_BYTES = 32;
     private static final int HEADER_BYTES = 32;
+    private static final long NANOS_PER_MILLISECOND = 1_000_000L;
     private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
 
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+
+    private enum Phase {
+        ACTIVE(PerfMultiMetricHeader.PHASE_ACTIVE);
+
+        final int metricCode;
+
+        Phase(int metricCode) {
+            this.metricCode = metricCode;
+        }
+    }
+
+    private static final class ClientConfig {
+        final int clients;
+        final int warmupSeconds;
+        final int durationSeconds;
+        final int settleMs;
+        final int payloadSize;
+        final int connectSettleMs;
+        final int pollTimeoutMs;
+
+        ClientConfig(int clients, int warmupSeconds, int durationSeconds,
+                     int settleMs, int payloadSize, int connectSettleMs,
+                     int pollTimeoutMs) {
+            this.clients = clients;
+            this.warmupSeconds = warmupSeconds;
+            this.durationSeconds = durationSeconds;
+            this.settleMs = settleMs;
+            this.payloadSize = payloadSize;
+            this.connectSettleMs = connectSettleMs;
+            this.pollTimeoutMs = pollTimeoutMs;
+        }
+    }
+
+    private static final class ActiveResult {
+        final long count;
+        final PerfCommon.Stats stats;
+
+        ActiveResult(long count, PerfCommon.Stats stats) {
+            this.count = count;
+            this.stats = stats;
+        }
+    }
 
     private PerfMultiPubSubClient() {
     }
@@ -44,21 +89,15 @@ public final class PerfMultiPubSubClient {
             return 1;
         }
 
-        int clients = PerfMultiCommon.resolveClients(PATTERN);
-        int warmupSeconds = PerfMultiCommon.resolveWarmupSeconds();
-        int durationSeconds = PerfMultiCommon.resolveDurationSeconds();
-        int settleMs = PerfMultiCommon.resolveSettleMs();
-        int payloadSize = Math.max(msgSize, MIN_PAYLOAD_BYTES);
-        int connectSettleMs = PerfCommon.parseNonNegativeEnv(
-            "PERF_PUBSUB_CONNECT_SETTLE_MS", 2000);
+        ClientConfig config = resolveConfig(msgSize);
 
         try (Context context = new Context()) {
             PerfCommon.applyClientContextOptions(context);
 
-            List<Socket> sockets = new ArrayList<>(clients);
+            List<Socket> sockets = new ArrayList<>(config.clients);
 
             try {
-                for (int i = 0; i < clients; i++) {
+                for (int i = 0; i < config.clients; i++) {
                     Socket socket = new Socket(context, CLIENT_SOCKET_TYPE);
                     applySocketOptions(socket);
                     socket.setOption(SocketOptions.SUBSCRIBE, "");
@@ -67,92 +106,35 @@ public final class PerfMultiPubSubClient {
                     sockets.add(socket);
                 }
 
-                if (connectSettleMs > 0) {
-                    PerfCommon.sleepMillis(connectSettleMs);
+                if (config.connectSettleMs > 0) {
+                    PerfCommon.sleepMillis(config.connectSettleMs);
                 }
                 if (sockets.isEmpty()) {
                     System.err.println("ERROR,MULTI_PUBSUB,client,no_sockets");
                     return 2;
                 }
+                Poller poller = new Poller();
+                for (Socket socket : sockets) {
+                    poller.add(socket, PollEventType.POLLIN);
+                }
 
-                byte[] recv = new byte[payloadSize];
+                byte[] recv = new byte[config.payloadSize];
                 PerfMultiMetricHeader.Header header = new PerfMultiMetricHeader.Header();
 
-                // --- Warmup ---
-                long warmupDeadline = System.nanoTime()
-                    + (long) Math.max(0, warmupSeconds)
-                    * NANOSECONDS_PER_SECOND;
-                while (System.nanoTime() < warmupDeadline) {
-                    long drained = drainWindow(sockets, recv);
-                    if (drained <= 0) {
-                        Thread.onSpinWait();
-                    }
-                }
+                runWarmup(poller, recv, config);
+                runSettle(poller, recv, config);
+                ActiveResult active = runActive(poller, recv, header, msgSize,
+                    config);
 
-                // --- Settle ---
-                if (settleMs > 0) {
-                    long settleDeadline = System.nanoTime()
-                        + (long) settleMs * 1_000_000L;
-                    while (System.nanoTime() < settleDeadline) {
-                        long drained = drainWindow(sockets, recv);
-                        if (drained <= 0) {
-                            Thread.onSpinWait();
-                        }
-                    }
-                }
-
-                PerfCommon.LatencyReservoir reservoir =
-                    new PerfCommon.LatencyReservoir(
-                        PerfMultiCommon.resolveLatencySampleCap());
-
-                long count = 0;
-                long benchDeadline = System.nanoTime()
-                    + (long) Math.max(1, durationSeconds)
-                    * NANOSECONDS_PER_SECOND;
-                int activeRunId = -1;
-
-                // --- Active measurement ---
-                while (System.nanoTime() < benchDeadline) {
-                    boolean progressed = false;
-                    for (Socket socket : sockets) {
-                        while (true) {
-                            int n = tryReceive(socket, recv);
-                            if (n <= 0) {
-                                break;
-                            }
-                            progressed = true;
-                            if (n < HEADER_BYTES
-                                || !PerfMultiMetricHeader.decodePayloadHeader(recv,
-                                header)
-                                || header.phase
-                                != PerfMultiMetricHeader.PHASE_ACTIVE
-                                || header.msgSize != msgSize) {
-                                continue;
-                            }
-                            if (activeRunId < 0) {
-                                activeRunId = header.runId;
-                            }
-                            if (header.runId != activeRunId) {
-                                continue;
-                            }
-                            long nowUs = PerfMultiMetricHeader.nowUs();
-                            reservoir.add(Math.max(0L, nowUs - header.sentTsUs));
-                            count++;
-                        }
-                    }
-                    if (!progressed) {
-                        Thread.onSpinWait();
-                    }
-                }
-
-                if (count <= 0) {
+                if (active.count <= 0) {
                     System.err.println("ERROR,MULTI_PUBSUB,client,no_active_frames");
                     return 2;
                 }
-                double throughput = count / (double) Math.max(1, durationSeconds);
-                PerfCommon.Stats stats = reservoir.snapshot();
+                double throughput = active.count
+                    / (double) Math.max(1, config.durationSeconds);
                 PerfCommon.printResult(PATTERN, transport, msgSize, throughput,
-                    stats.meanUs(), stats.p95Us(), stats.p99Us());
+                    active.stats.meanUs(), active.stats.p95Us(),
+                    active.stats.p99Us());
                 return 0;
             } finally {
                 closeAll(sockets);
@@ -163,6 +145,18 @@ public final class PerfMultiPubSubClient {
                 + String.valueOf(ex.getMessage()));
             return 2;
         }
+    }
+
+    private static ClientConfig resolveConfig(int msgSize) {
+        return new ClientConfig(
+            PerfMultiCommon.resolveClients(PATTERN),
+            PerfMultiCommon.resolveWarmupSeconds(),
+            PerfMultiCommon.resolveDurationSeconds(),
+            PerfMultiCommon.resolveSettleMs(),
+            Math.max(msgSize, MIN_PAYLOAD_BYTES),
+            PerfCommon.parseNonNegativeEnv("PERF_PUBSUB_CONNECT_SETTLE_MS", 2000),
+            PerfMultiCommon.resolveClientPollTimeoutMs()
+        );
     }
 
     private static void applySocketOptions(Socket socket) {
@@ -193,9 +187,101 @@ public final class PerfMultiPubSubClient {
         }
     }
 
-    private static long drainWindow(List<Socket> sockets, byte[] buffer) {
+    private static void runWarmup(Poller poller, byte[] recv,
+                                  ClientConfig config) {
+        long durationNs = (long) Math.max(0, config.warmupSeconds)
+            * NANOSECONDS_PER_SECOND;
+        runDrainPhase(poller, recv, durationNs, config.pollTimeoutMs);
+    }
+
+    private static void runSettle(Poller poller, byte[] recv,
+                                  ClientConfig config) {
+        long durationNs = (long) Math.max(0, config.settleMs)
+            * NANOS_PER_MILLISECOND;
+        runDrainPhase(poller, recv, durationNs, config.pollTimeoutMs);
+    }
+
+    private static void runDrainPhase(Poller poller, byte[] recv,
+                                      long durationNs, int pollTimeoutMs) {
+        if (durationNs <= 0L) {
+            return;
+        }
+        long deadline = System.nanoTime() + durationNs;
+        while (System.nanoTime() < deadline) {
+            long drained = drainReadySockets(poller, recv, pollTimeoutMs);
+            if (drained <= 0) {
+                Thread.onSpinWait();
+            }
+        }
+    }
+
+    private static ActiveResult runActive(Poller poller, byte[] recv,
+                                          PerfMultiMetricHeader.Header header,
+                                          int msgSize, ClientConfig config) {
+        PerfCommon.LatencyReservoir reservoir = new PerfCommon.LatencyReservoir(
+            PerfMultiCommon.resolveLatencySampleCap());
+        long deadline = System.nanoTime()
+            + (long) Math.max(1, config.durationSeconds)
+            * NANOSECONDS_PER_SECOND;
+        long count = 0;
+        int activeRunId = -1;
+
+        while (System.nanoTime() < deadline) {
+            boolean progressed = false;
+            List<Poller.PollEvent> events = poller.poll(config.pollTimeoutMs);
+            int eventCount = events.size();
+            for (int i = 0; i < eventCount; i++) {
+                Socket socket = events.get(i).socket();
+                if (socket == null) {
+                    continue;
+                }
+                while (true) {
+                    int n = tryReceive(socket, recv);
+                    if (n <= 0) {
+                        break;
+                    }
+                    progressed = true;
+                    if (!isActiveSample(n, recv, header, msgSize)) {
+                        continue;
+                    }
+                    if (activeRunId < 0) {
+                        activeRunId = header.runId;
+                    }
+                    if (header.runId != activeRunId) {
+                        continue;
+                    }
+                    long nowUs = PerfMultiMetricHeader.nowUs();
+                    reservoir.add(Math.max(0L, nowUs - header.sentTsUs));
+                    count++;
+                }
+            }
+            if (!progressed) {
+                Thread.onSpinWait();
+            }
+        }
+
+        return new ActiveResult(count, reservoir.snapshot());
+    }
+
+    private static boolean isActiveSample(int recvBytes, byte[] recv,
+                                          PerfMultiMetricHeader.Header header,
+                                          int msgSize) {
+        return recvBytes >= HEADER_BYTES
+            && PerfMultiMetricHeader.decodePayloadHeader(recv, header)
+            && header.phase == Phase.ACTIVE.metricCode
+            && header.msgSize == msgSize;
+    }
+
+    private static long drainReadySockets(Poller poller, byte[] buffer,
+                                          int pollTimeoutMs) {
         long drainedCount = 0;
-        for (Socket socket : sockets) {
+        List<Poller.PollEvent> events = poller.poll(pollTimeoutMs);
+        int eventCount = events.size();
+        for (int i = 0; i < eventCount; i++) {
+            Socket socket = events.get(i).socket();
+            if (socket == null) {
+                continue;
+            }
             while (true) {
                 int n = tryReceive(socket, buffer);
                 if (n <= 0) {

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text;
 using System.Threading;
 using Zlink;
 using Zlink.Service;
@@ -9,23 +8,14 @@ using static PerfRunner;
 
 internal static class PerfGatewayServer
 {
+    private const string Pattern = "GATEWAY";
+    private const string ServiceName = "perf-gateway";
+    private const string ServerGatewayRoutingId = "sg";
+    private const uint ExpectedRunId = 1;
+
     internal static int Run(string transport, int size)
     {
-        const string pattern = "GATEWAY";
-        const string serviceName = "perf-gateway";
-        const string serverGatewayRoutingId = "sg";
-        size = Math.Max(1, size);
-        int warmupSeconds = ResolveMultiWarmupSeconds();
-        int durationSeconds = ResolveMultiDurationSeconds();
-        int settleMs = ResolveMultiSettleMs();
-        int sndTimeoutMs = ResolveMultiSndTimeoutMs();
-        int rcvTimeoutMs = ResolveMultiRcvTimeoutMs();
-        int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs();
-        int clientCount = ResolveMultiClients(pattern);
-        int latencySampleCap = ResolveMultiLatencySampleCap();
-        string endpoint = MultiEndpointFor(transport, "multi-gateway");
-        string registryPub = EndpointFor("tcp", "multi-gateway-reg-pub");
-        string registryRouter = EndpointFor("tcp", "multi-gateway-reg-router");
+        GatewayServerConfig config = BuildConfig(transport, size);
 
         using var ctx = new Context();
         ApplyMultiServerContextOptions(ctx);
@@ -39,151 +29,58 @@ internal static class PerfGatewayServer
         {
             registry = new Registry(ctx);
             registry.SetHeartbeat(5000, 60000);
-            registry.SetEndpoints(registryPub, registryRouter);
-            ApplyRegistrySocketOptions(registry, pattern, sndTimeoutMs,
-                rcvTimeoutMs);
+            registry.SetEndpoints(config.RegistryPub, config.RegistryRouter);
+            ApplyRegistrySocketOptions(registry, Pattern, config.SndTimeoutMs,
+                config.RcvTimeoutMs);
             registry.Start();
 
             receiver = new Receiver(ctx);
-            ConfigureReceiverTlsServerIfNeeded(receiver, transport);
-            receiver.Bind(endpoint);
-            receiver.ConnectRegistry(registryRouter);
-            receiver.Register(serviceName, endpoint, 1);
-            ApplyReceiverSocketOptions(receiver, pattern, sndTimeoutMs,
-                rcvTimeoutMs);
+            ConfigureReceiverTlsServerIfNeeded(receiver, config.Transport);
+            receiver.Bind(config.Endpoint);
+            receiver.ConnectRegistry(config.RegistryRouter);
+            receiver.Register(ServiceName, config.Endpoint, 1);
+            ApplyReceiverSocketOptions(receiver, Pattern, config.SndTimeoutMs,
+                config.RcvTimeoutMs);
             receiverRouter = receiver.CreateRouterSocket();
-            ApplyMultiSocketOptions(receiverRouter, pattern);
-            receiverRouter.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
+            ApplyMultiSocketOptions(receiverRouter, Pattern);
+            receiverRouter.SetOption(SocketOptions.RcvTimeo, config.RcvTimeoutMs);
 
             discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-            discovery.ConnectRegistry(registryPub);
-            ApplyDiscoverySocketOptions(discovery, pattern, sndTimeoutMs,
-                rcvTimeoutMs);
-            for (int i = 0; i < clientCount; i++)
+            discovery.ConnectRegistry(config.RegistryPub);
+            ApplyDiscoverySocketOptions(discovery, Pattern, config.SndTimeoutMs,
+                config.RcvTimeoutMs);
+            for (int i = 0; i < config.ClientCount; i++)
                 discovery.Subscribe($"c{i}");
-            gateway = new Gateway(ctx, discovery, serverGatewayRoutingId);
-            ConfigureGatewayTlsClientIfNeeded(gateway, transport);
-            gateway.SetOption(SocketOptions.SndHwm,
-                ResolveMultiHwmValue("PERF_SNDHWM", pattern));
-            gateway.SetOption(SocketOptions.RcvHwm,
-                ResolveMultiHwmValue("PERF_RCVHWM", pattern));
-            gateway.SetOption(SocketOptions.Linger, 0);
-            gateway.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
-            gateway.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
-            gatewayRouter = gateway.CreateRouterSocket();
-            ApplyMultiSocketOptions(gatewayRouter, pattern);
 
-            Console.WriteLine($"READY,{endpoint}|{registryPub}|{registryRouter}");
+            gateway = new Gateway(ctx, discovery, ServerGatewayRoutingId);
+            ConfigureGatewayTlsClientIfNeeded(gateway, config.Transport);
+            gateway.SetOption(SocketOptions.SndHwm,
+                ResolveMultiHwmValue("PERF_SNDHWM", Pattern));
+            gateway.SetOption(SocketOptions.RcvHwm,
+                ResolveMultiHwmValue("PERF_RCVHWM", Pattern));
+            gateway.SetOption(SocketOptions.Linger, 0);
+            gateway.SetOption(SocketOptions.SndTimeo, config.SndTimeoutMs);
+            gateway.SetOption(SocketOptions.RcvTimeo, config.RcvTimeoutMs);
+            gatewayRouter = gateway.CreateRouterSocket();
+            ApplyMultiSocketOptions(gatewayRouter, Pattern);
+
+            Console.WriteLine(
+                $"READY,{config.Endpoint}|{config.RegistryPub}|{config.RegistryRouter}");
             _ = WaitUntil(() => receiver.GetRouterPeers().Length > 0,
-                readyTimeoutMs);
+                config.ReadyTimeoutMs);
 
             var routingId = new byte[256];
-            var payload = new byte[Math.Max(256, Math.Max(Math.Max(size,
+            var payload = new byte[Math.Max(256, Math.Max(Math.Max(config.Size,
                 PerfMetricHeaderSize), MultiStopToken.Length))];
-            long recvCount = 0;
-            long benchStartTicks = 0;
-            long benchEndTicks = 0;
-            long activeHardStopTicks = 0;
-            int settleSeconds = (settleMs + 999) / 1000;
-            long firstPacketDeadlineTicks = Stopwatch.GetTimestamp()
-                + (long)Math.Max(6, warmupSeconds + settleSeconds + 3)
-                * Stopwatch.Frequency;
-            long lastActiveMessageTicks = 0;
-            long idleBreakTicks = (long)(Stopwatch.Frequency
-                * (Math.Max(rcvTimeoutMs * 2, 1000) / 1000.0));
-            var latSamples = new List<double>(latencySampleCap);
-            long sampleSeen = 0;
-            uint rng = 0xA341316Cu;
-            const uint expectedRunId = 1;
-
-            while (true)
+            string[] clientServiceNames = BuildClientServiceNames(
+                config.ClientCount);
+            GatewayServerResult result = RunActivePhase(receiverRouter, gateway,
+                routingId, payload, clientServiceNames, config);
+            if (result.HasValue)
             {
-                if (activeHardStopTicks > 0
-                    && Stopwatch.GetTimestamp() >= activeHardStopTicks)
-                    break;
-
-                int ridLen = ReceiveRetry(receiverRouter, routingId.AsSpan(),
-                    ReceiveFlags.DontWait);
-                if (ridLen <= 0)
-                {
-                    long nowTicks = Stopwatch.GetTimestamp();
-                    if (activeHardStopTicks > 0 && nowTicks >= activeHardStopTicks)
-                        break;
-                    if (lastActiveMessageTicks > 0)
-                    {
-                        if (nowTicks - lastActiveMessageTicks >= idleBreakTicks)
-                            break;
-                    }
-                    else if (nowTicks >= firstPacketDeadlineTicks)
-                    {
-                        break;
-                    }
-                    Thread.Yield();
-                    continue;
-                }
-
-                int n = ReceiveRetry(receiverRouter, payload.AsSpan(),
-                    ReceiveFlags.DontWait);
-                if (n <= 0)
-                {
-                    long nowTicks = Stopwatch.GetTimestamp();
-                    if (activeHardStopTicks > 0 && nowTicks >= activeHardStopTicks)
-                        break;
-                    if (lastActiveMessageTicks > 0
-                        && nowTicks - lastActiveMessageTicks >= idleBreakTicks)
-                        break;
-                    Thread.Yield();
-                    continue;
-                }
-
-                ReadOnlySpan<byte> body = payload.AsSpan(0, n);
-                if (IsStopTokenPayload(body))
-                    break;
-
-                string clientService = Encoding.UTF8.GetString(routingId, 0, ridLen);
-                _ = TrySendGatewayEcho(gateway, clientService, body);
-                if (!TryDecodeMetricHeader(body, out PerfMetricHeader header))
-                    continue;
-                if (header.RunId != expectedRunId
-                    || header.MsgSize != (uint)size
-                    || header.Phase != (uint)PerfPhase.Active)
-                    continue;
-
-                if (benchStartTicks == 0)
-                {
-                    benchStartTicks = Stopwatch.GetTimestamp();
-                    activeHardStopTicks = benchStartTicks
-                        + (long)Math.Max(2, durationSeconds + 1)
-                        * Stopwatch.Frequency;
-                }
-                benchEndTicks = Stopwatch.GetTimestamp();
-                lastActiveMessageTicks = benchEndTicks;
-                recvCount++;
-                ulong nowUs = EpochUs();
-                if (header.SentTsUs > 0 && nowUs >= header.SentTsUs)
-                {
-                    double sampleUs = nowUs - header.SentTsUs;
-                    ReservoirSample(latSamples, sampleUs, ref sampleSeen,
-                        latencySampleCap, ref rng);
-                }
-            }
-
-            if (benchStartTicks > 0 && recvCount > 0)
-            {
-                double elapsedSeconds = (benchEndTicks - benchStartTicks)
-                    / (double)Stopwatch.Frequency;
-                double throughput = elapsedSeconds > 0.0
-                    ? recvCount / elapsedSeconds
-                    : 0.0;
-                var latency = ComputeLatencyStats(latSamples);
-                double fallbackLatencyUs = (elapsedSeconds * 1_000_000.0)
-                    / Math.Max(1.0, recvCount);
-                double latencyUs = latency.mean > 0.0 ? latency.mean
-                    : fallbackLatencyUs;
-                double latencyP95Us = latency.p95 > 0.0 ? latency.p95 : latencyUs;
-                double latencyP99Us = latency.p99 > 0.0 ? latency.p99 : latencyP95Us;
-                PrintResult(pattern, transport, size, throughput, latencyUs,
-                    latencyP95Us, latencyP99Us);
+                PrintResult(Pattern, config.Transport, config.Size,
+                    result.Throughput, result.LatencyUs, result.LatencyP95Us,
+                    result.LatencyP99Us);
             }
 
             return 0;
@@ -197,6 +94,171 @@ internal static class PerfGatewayServer
             TryDisposeQuietly(receiver);
             TryDisposeQuietly(registry);
         }
+    }
+
+    private static GatewayServerConfig BuildConfig(string transport, int size)
+    {
+        int resolvedSize = Math.Max(1, size);
+        return new GatewayServerConfig(
+            transport,
+            resolvedSize,
+            ResolveMultiWarmupSeconds(),
+            ResolveMultiDurationSeconds(),
+            ResolveMultiSettleMs(),
+            ResolveMultiSndTimeoutMs(),
+            ResolveMultiRcvTimeoutMs(),
+            ResolveMultiConnectReadyTimeoutMs(),
+            ResolveMultiClients(Pattern),
+            ResolveMultiLatencySampleCap(),
+            MultiEndpointFor(transport, "multi-gateway"),
+            EndpointFor("tcp", "multi-gateway-reg-pub"),
+            EndpointFor("tcp", "multi-gateway-reg-router"));
+    }
+
+    private static GatewayServerResult RunActivePhase(Zlink.Socket receiverRouter,
+        Gateway gateway, byte[] routingId, byte[] payload,
+        string[] clientServiceNames,
+        GatewayServerConfig config)
+    {
+        long recvCount = 0;
+        long benchStartTicks = 0;
+        long benchEndTicks = 0;
+        long activeHardStopTicks = 0;
+        int settleSeconds = (config.SettleMs + 999) / 1000;
+        long firstPacketDeadlineTicks = Stopwatch.GetTimestamp()
+            + (long)Math.Max(6, config.WarmupSeconds + settleSeconds + 3)
+            * Stopwatch.Frequency;
+        long lastActiveMessageTicks = 0;
+        long idleBreakTicks = (long)(Stopwatch.Frequency
+            * (Math.Max(config.RcvTimeoutMs * 2, 1000) / 1000.0));
+        var latencySamples = new List<double>(config.LatencySampleCap);
+        long sampleSeen = 0;
+        uint rng = 0xA341316Cu;
+
+        while (true)
+        {
+            if (activeHardStopTicks > 0
+                && Stopwatch.GetTimestamp() >= activeHardStopTicks)
+                break;
+
+            int ridLen = ReceiveRetry(receiverRouter, routingId.AsSpan(),
+                ReceiveFlags.DontWait);
+            if (ridLen <= 0)
+            {
+                long nowTicks = Stopwatch.GetTimestamp();
+                if (activeHardStopTicks > 0 && nowTicks >= activeHardStopTicks)
+                    break;
+                if (lastActiveMessageTicks > 0)
+                {
+                    if (nowTicks - lastActiveMessageTicks >= idleBreakTicks)
+                        break;
+                }
+                else if (nowTicks >= firstPacketDeadlineTicks)
+                {
+                    break;
+                }
+                Thread.Yield();
+                continue;
+            }
+
+            int n = ReceiveRetry(receiverRouter, payload.AsSpan(),
+                ReceiveFlags.DontWait);
+            if (n <= 0)
+            {
+                long nowTicks = Stopwatch.GetTimestamp();
+                if (activeHardStopTicks > 0 && nowTicks >= activeHardStopTicks)
+                    break;
+                if (lastActiveMessageTicks > 0
+                    && nowTicks - lastActiveMessageTicks >= idleBreakTicks)
+                    break;
+                Thread.Yield();
+                continue;
+            }
+
+            ReadOnlySpan<byte> body = payload.AsSpan(0, n);
+            if (IsStopTokenPayload(body))
+                break;
+
+            if (!TryParseClientIndex(routingId.AsSpan(0, ridLen),
+                    clientServiceNames.Length, out int clientIndex))
+                continue;
+            _ = TrySendGatewayEcho(gateway, clientServiceNames[clientIndex], body);
+            if (!TryDecodeMetricHeader(body, out PerfMetricHeader header))
+                continue;
+            if (header.RunId != ExpectedRunId
+                || header.MsgSize != (uint)config.Size
+                || header.Phase != (uint)PerfPhase.Active)
+                continue;
+
+            if (benchStartTicks == 0)
+            {
+                benchStartTicks = Stopwatch.GetTimestamp();
+                activeHardStopTicks = benchStartTicks
+                    + (long)Math.Max(2, config.DurationSeconds + 1)
+                    * Stopwatch.Frequency;
+            }
+
+            benchEndTicks = Stopwatch.GetTimestamp();
+            lastActiveMessageTicks = benchEndTicks;
+            recvCount++;
+            ulong nowUs = EpochUs();
+            if (header.SentTsUs > 0 && nowUs >= header.SentTsUs)
+            {
+                double sampleUs = nowUs - header.SentTsUs;
+                ReservoirSample(latencySamples, sampleUs, ref sampleSeen,
+                    config.LatencySampleCap, ref rng);
+            }
+        }
+
+        if (benchStartTicks <= 0 || recvCount <= 0)
+            return GatewayServerResult.Empty;
+
+        double elapsedSeconds = (benchEndTicks - benchStartTicks)
+            / (double)Stopwatch.Frequency;
+        double throughput = elapsedSeconds > 0.0
+            ? recvCount / elapsedSeconds
+            : 0.0;
+        var latency = ComputeLatencyStats(latencySamples);
+        double fallbackLatencyUs = (elapsedSeconds * 1_000_000.0)
+            / Math.Max(1.0, recvCount);
+        double latencyUs = latency.mean > 0.0 ? latency.mean : fallbackLatencyUs;
+        double latencyP95Us = latency.p95 > 0.0 ? latency.p95 : latencyUs;
+        double latencyP99Us = latency.p99 > 0.0 ? latency.p99 : latencyP95Us;
+        return new GatewayServerResult(true, throughput, latencyUs, latencyP95Us,
+            latencyP99Us);
+    }
+
+    private static string[] BuildClientServiceNames(int clientCount)
+    {
+        var names = new string[Math.Max(0, clientCount)];
+        for (int i = 0; i < names.Length; i++)
+            names[i] = $"c{i}";
+        return names;
+    }
+
+    private static bool TryParseClientIndex(ReadOnlySpan<byte> routingId,
+        int maxExclusive, out int clientIndex)
+    {
+        clientIndex = -1;
+        if (routingId.Length < 2 || routingId[0] != (byte)'c')
+            return false;
+
+        int value = 0;
+        for (int i = 1; i < routingId.Length; i++)
+        {
+            byte b = routingId[i];
+            if (b < (byte)'0' || b > (byte)'9')
+                return false;
+            value = (value * 10) + (b - (byte)'0');
+            if (value < 0)
+                return false;
+        }
+
+        if (value < 0 || value >= maxExclusive)
+            return false;
+
+        clientIndex = value;
+        return true;
     }
 
     private static void ApplyRegistrySocketOptions(Registry registry,
@@ -259,16 +321,66 @@ internal static class PerfGatewayServer
     private static bool TrySendGatewayEcho(Gateway gateway, string serviceName,
         ReadOnlySpan<byte> payload)
     {
-        try
+        gateway.Send(serviceName, payload, SendFlags.None);
+        return true;
+    }
+
+    private readonly struct GatewayServerConfig
+    {
+        internal GatewayServerConfig(string transport, int size, int warmupSeconds,
+            int durationSeconds, int settleMs, int sndTimeoutMs, int rcvTimeoutMs,
+            int readyTimeoutMs, int clientCount, int latencySampleCap,
+            string endpoint, string registryPub, string registryRouter)
         {
-            gateway.Send(serviceName, payload, SendFlags.DontWait);
-            return true;
+            Transport = transport;
+            Size = size;
+            WarmupSeconds = warmupSeconds;
+            DurationSeconds = durationSeconds;
+            SettleMs = settleMs;
+            SndTimeoutMs = sndTimeoutMs;
+            RcvTimeoutMs = rcvTimeoutMs;
+            ReadyTimeoutMs = readyTimeoutMs;
+            ClientCount = clientCount;
+            LatencySampleCap = latencySampleCap;
+            Endpoint = endpoint;
+            RegistryPub = registryPub;
+            RegistryRouter = registryRouter;
         }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                                        || IsInterrupted(ex.Errno)
-                                        || IsTransientNetworkError(ex.Errno))
+
+        internal string Transport { get; }
+        internal int Size { get; }
+        internal int WarmupSeconds { get; }
+        internal int DurationSeconds { get; }
+        internal int SettleMs { get; }
+        internal int SndTimeoutMs { get; }
+        internal int RcvTimeoutMs { get; }
+        internal int ReadyTimeoutMs { get; }
+        internal int ClientCount { get; }
+        internal int LatencySampleCap { get; }
+        internal string Endpoint { get; }
+        internal string RegistryPub { get; }
+        internal string RegistryRouter { get; }
+    }
+
+    private readonly struct GatewayServerResult
+    {
+        internal static readonly GatewayServerResult Empty = new(
+            false, 0.0, 0.0, 0.0, 0.0);
+
+        internal GatewayServerResult(bool hasValue, double throughput,
+            double latencyUs, double latencyP95Us, double latencyP99Us)
         {
-            return false;
+            HasValue = hasValue;
+            Throughput = throughput;
+            LatencyUs = latencyUs;
+            LatencyP95Us = latencyP95Us;
+            LatencyP99Us = latencyP99Us;
         }
+
+        internal bool HasValue { get; }
+        internal double Throughput { get; }
+        internal double LatencyUs { get; }
+        internal double LatencyP95Us { get; }
+        internal double LatencyP99Us { get; }
     }
 }

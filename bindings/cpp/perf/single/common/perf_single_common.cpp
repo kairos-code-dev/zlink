@@ -396,6 +396,9 @@ void print_result (const std::string &lib_type,
                    double latency_p95,
                    double latency_p99)
 {
+    const double latency_ms = latency / 1000.0;
+    const double latency_p95_ms = latency_p95 / 1000.0;
+    const double latency_p99_ms = latency_p99 / 1000.0;
     const double bandwidth_mb_s =
       (throughput * static_cast<double> (size)) / 1000000.0;
 
@@ -407,13 +410,13 @@ void print_result (const std::string &lib_type,
               << std::setprecision (2) << bandwidth_mb_s << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
               << "," << size << ",latency," << std::fixed
-              << std::setprecision (2) << latency << std::endl;
+              << std::setprecision (2) << latency_ms << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
               << "," << size << ",latency_p95," << std::fixed
-              << std::setprecision (2) << latency_p95 << std::endl;
+              << std::setprecision (2) << latency_p95_ms << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
               << "," << size << ",latency_p99," << std::fixed
-              << std::setprecision (2) << latency_p99 << std::endl;
+              << std::setprecision (2) << latency_p99_ms << std::endl;
 }
 
 void print_queue_metrics (const std::string &lib_type,

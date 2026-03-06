@@ -78,9 +78,9 @@ void apply_socket_tuning (void *socket, const server_options_t &opt)
                            sizeof (stream_notify));
 #endif
 
-    const int zero = 0;
-    (void) zmq_setsockopt (socket, ZMQ_RCVHWM, &zero, sizeof (zero));
-    (void) zmq_setsockopt (socket, ZMQ_SNDHWM, &zero, sizeof (zero));
+    const int hwm = 100;
+    (void) zmq_setsockopt (socket, ZMQ_RCVHWM, &hwm, sizeof (hwm));
+    (void) zmq_setsockopt (socket, ZMQ_SNDHWM, &hwm, sizeof (hwm));
 }
 
 bool is_stream_event_payload (const char *data, size_t size)

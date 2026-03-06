@@ -71,7 +71,7 @@ and delegates execution to `run_benchmarks.sh`.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--pattern NAME` | all defaults | Pattern list (comma-separated). `MULTI_` prefix optional |
+| `--pattern NAME` | all defaults | Pattern list (comma-separated). `` prefix optional |
 | `--help` | — | Show help |
 | `--reuse-build` | off | Reuse existing build directory |
 | `--clean-build` | off | Clean build directory first |
@@ -89,11 +89,11 @@ and delegates execution to `run_benchmarks.sh`.
 | `--warmup N` | `2` | Multi warmup seconds |
 | `--duration N` | `5` | Multi active duration seconds |
 | `--clients N` | `100` (`stream=10000`) | Clients per pattern |
-| `--hwm N` | env/binary default | Set `PERF_MULTI_HWM` |
-| `--send-hwm N` | `--hwm` fallback | Set `PERF_MULTI_SNDHWM` |
-| `--recv-hwm N` | `--hwm` fallback | Set `PERF_MULTI_RCVHWM` |
-| `--sndtimeo N` / `--send-timeout-ms N` | `200` | Set `PERF_MULTI_SNDTIMEO_MS` |
-| `--rcvtimeo N` / `--recv-timeout-ms N` | `200` | Set `PERF_MULTI_RCVTIMEO_MS` |
+| `--hwm N` | env/binary default | Set `PERF_HWM` |
+| `--send-hwm N` | `--hwm` fallback | Set `PERF_SNDHWM` |
+| `--recv-hwm N` | `--hwm` fallback | Set `PERF_RCVHWM` |
+| `--sndtimeo N` / `--send-timeout-ms N` | `200` | Set `PERF_SNDTIMEO_MS` |
+| `--rcvtimeo N` / `--recv-timeout-ms N` | `200` | Set `PERF_RCVTIMEO_MS` |
 | `--connect-concurrency N` | auto | Concurrent connect count |
 | `--transport-transition-ms N` | `3000` | Transport cooldown |
 | `--pattern-transition-ms N` | `3000` | Pattern cooldown |
@@ -116,9 +116,9 @@ results/
 
 - nofile guard (`PERF_SKIP_NOFILE_CHECK=1` to disable)
 - memory guard (`PERF_SKIP_MEMORY_CHECK=1` to disable)
-  - `PERF_MULTI_MEMORY_BUDGET_PCT=70` — percent of MemAvailable reserved
-  - `PERF_MULTI_MEMORY_BASE_MB=512` — fixed memory reserve
-  - `PERF_MULTI_MEMORY_PER_CLIENT_KB=1024` — estimated memory per client
+  - `PERF_MEMORY_BUDGET_PCT=70` — percent of MemAvailable reserved
+  - `PERF_MEMORY_BASE_MB=512` — fixed memory reserve
+  - `PERF_MEMORY_PER_CLIENT_KB=1024` — estimated memory per client
 
 ---
 
@@ -139,7 +139,7 @@ Single-specific variables and full constraints are documented in
 `PERF_SINGLE_TEST_POLICY.md`.
 
 Multi-specific variables and full constraints are documented in
-`PERF_MULTI_TEST_POLICY.md`.
+`PERF_TEST_POLICY.md`.
 
 ---
 

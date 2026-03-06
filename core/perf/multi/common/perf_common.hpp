@@ -1,5 +1,5 @@
-#ifndef PERF_COMMON_HPP
-#define PERF_COMMON_HPP
+#ifndef PERF_RUNTIME_COMMON_HPP
+#define PERF_RUNTIME_COMMON_HPP
 
 #include <chrono>
 #include <vector>
@@ -83,10 +83,10 @@ inline int parse_positive_env(const char *name_, int default_value_)
     return static_cast<int>(parsed);
 }
 
-inline size_t resolve_multi_latency_sample_cap()
+inline size_t resolve_latency_sample_cap()
 {
     const int cap =
-      parse_positive_env("PERF_MULTI_LATENCY_SAMPLE_CAP", 200000);
+      parse_positive_env("PERF_LATENCY_SAMPLE_CAP", 200000);
     return cap > 0 ? static_cast<size_t>(cap) : static_cast<size_t>(200000);
 }
 
@@ -112,7 +112,7 @@ struct server_queue_stats_t {
 class bench_latency_sampler_t {
 public:
     explicit bench_latency_sampler_t(
-      size_t sample_cap_ = resolve_multi_latency_sample_cap()) :
+      size_t sample_cap_ = resolve_latency_sample_cap()) :
       _sample_cap(sample_cap_ > 0 ? sample_cap_ : 1),
       _count(0),
       _sum_us(0.0),
@@ -207,7 +207,7 @@ inline int bench_max_sockets()
     if (explicit_max > 0)
         return explicit_max;
 
-    const int clients = parse_positive_env("PERF_MULTI_CLIENTS", 0);
+    const int clients = parse_positive_env("PERF_CLIENTS", 0);
     if (clients <= 0)
         return 0;
 
@@ -333,7 +333,7 @@ inline int bench_monitor_hwm()
     if (monitor_hwm >= 0)
         return monitor_hwm;
 
-    const char *env = std::getenv("PERF_MULTI_MONITOR_HWM");
+    const char *env = std::getenv("PERF_MONITOR_HWM");
     if (!env || !*env) {
         monitor_hwm = 1000;
         return monitor_hwm;
@@ -482,12 +482,12 @@ inline void print_result(const std::string& lib_type,
                          double latency_p95,
                          double latency_p99) {
     const bool is_echo_pattern =
-      pattern == "MULTI_DEALER_ROUTER"
-      || pattern == "MULTI_ROUTER_ROUTER"
-      || pattern == "MULTI_GATEWAY"
-      || pattern == "MULTI_STREAM"
-      || pattern == "MULTI_STREAM_CALLBACK"
-      || pattern == "MULTI_STREAM_LEN32BE";
+      pattern == "DEALER_ROUTER"
+      || pattern == "ROUTER_ROUTER"
+      || pattern == "GATEWAY"
+      || pattern == "STREAM"
+      || pattern == "STREAM_CALLBACK"
+      || pattern == "STREAM_LEN32BE";
     const double direction_factor = is_echo_pattern ? 2.0 : 1.0;
     const double bandwidth_mb_s =
       (throughput * static_cast<double>(size) * direction_factor) / 1000000.0;
@@ -639,9 +639,9 @@ inline void apply_benchmark_hwm(void *socket_, int hwm_value)
         return;
 
     const int sndhwm =
-      bench_hwm_from_env("PERF_MULTI_SNDHWM", hwm_value);
+      bench_hwm_from_env("PERF_SNDHWM", hwm_value);
     const int rcvhwm =
-      bench_hwm_from_env("PERF_MULTI_RCVHWM", hwm_value);
+      bench_hwm_from_env("PERF_RCVHWM", hwm_value);
     set_sockopt_int(socket_, ZLINK_SNDHWM, sndhwm, "ZLINK_SNDHWM");
     set_sockopt_int(socket_, ZLINK_RCVHWM, rcvhwm, "ZLINK_RCVHWM");
 }
@@ -670,9 +670,9 @@ inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
         return;
 
     const int sndtimeo_ms =
-      bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 200);
+      bench_timeout_ms_from_env("PERF_SNDTIMEO_MS", 200);
     const int rcvtimeo_ms =
-      bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 200);
+      bench_timeout_ms_from_env("PERF_RCVTIMEO_MS", 200);
     set_sockopt_int(socket_, ZLINK_SNDTIMEO, sndtimeo_ms, "ZLINK_SNDTIMEO");
     set_sockopt_int(socket_, ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
 }

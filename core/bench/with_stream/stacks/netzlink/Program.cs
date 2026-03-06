@@ -194,8 +194,8 @@ internal static class Program
         socket.SetOption(SocketOptions.SndBuf, options.SndBuf);
         socket.SetOption(SocketOptions.RcvBuf, options.RcvBuf);
         socket.SetOption(SocketOptions.Backlog, options.Backlog);
-        socket.SetOption(SocketOptions.SndHwm, 0);
-        socket.SetOption(SocketOptions.RcvHwm, 0);
+        socket.SetOption(SocketOptions.SndHwm, 100);
+        socket.SetOption(SocketOptions.RcvHwm, 100);
 
         int tcpNoDelay = options.TcpNoDelay;
         int rc = zlink_setsockopt(

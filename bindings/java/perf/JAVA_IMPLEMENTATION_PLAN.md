@@ -239,6 +239,9 @@ RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,latency_p99,<value>
 
 벤치마크는 core/perf 와 동일하게 조합당 **5개 RESULT 라인** (throughput, bandwidth, latency, latency_p95, latency_p99) 을 stdout 에 출력해야 한다.
 
+> 단위 규칙 (Java perf, 2026-03-06): `latency`, `latency_p95`, `latency_p99` 값은 **ms** 단위로 출력한다.
+> 내부 측정/샘플링은 기존처럼 `sent_ts_us` 기반(μs)으로 유지하고, RESULT 출력 시 `us / 1000.0` 변환만 적용한다.
+
 > **완료 판정**: `run_policy_bench.py` 는 조합당 `required_metric_count` 기준으로 판정한다.
 > Java 는 **3** (throughput, bandwidth, latency) 기준이다 (`expected = (total - unsupported - skipped) × required_metric_count`).
 
@@ -1037,6 +1040,7 @@ while (System.nanoTime() < activeDeadline) {
 - single: `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99` — 5개 메트릭이 모든 pattern/transport/size 조합에 존재
 - multi: 위 5개 + `server_cpu_pct`, `server_mem_mb`, `client_cpu_pct`, `client_mem_mb`
 - 런너 파서는 11종 메트릭을 모두 수집하지만, **완료 판정**은 Java 기준 조합당 3개 (throughput/bandwidth/latency) 이므로 p95/p99 누락이 완료 판정에 영향 없음
+- 단위: `latency*` 계열은 RESULT에서 **ms**
 
 **대역폭 계산식 검증:**
 ```
@@ -1054,7 +1058,7 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 **메트릭 값 범위 검증:**
 - `throughput > 0` (유효한 처리량)
 - `bandwidth > 0`
-- `latency > 0` (유효한 레이턴시)
+- `latency > 0` (유효한 레이턴시, ms)
 - `cpu_pct >= 0 && cpu_pct <= 100 × nCores`
 - `mem_mb > 0`
 
@@ -1464,8 +1468,8 @@ ls -la bindings/java/perf/results/multi/report/perf_*.txt
 - [x] `multi/src` 패턴 파일(서버 9 + 클라이언트 6)에서 retry/phase/상수 구조를 정리하고 `try/catch` 복잡도를 축소
 - [x] `core/perf`와 다르게 send/recv 공통화는 각 패턴 파일 `private` 메서드 내부로만 유지 (`common/` 공유 루프 미사용)
 - [x] 매직 넘버 상수화 적용 (`32`, `256`, `1024`, retry backoff, ns 단위 상수 등)
-- [x] 비자명 로직 주석 보강 (routing-id echo, STREAM control frame, stop-token, Spot publish retry budget)
-- [x] `MULTI_PUBSUB` ws `server_shutdown_timeout` 수정 (`LINGER=0`, bounded send-retry)
+- [x] 비자명 로직 주석 보강 (routing-id echo, STREAM control frame, stop-token)
+- [x] `MULTI_PUBSUB` ws `server_shutdown_timeout` 수정 (`LINGER=0`, shutdown 경로 안정화)
 - [x] `MULTI_GATEWAY` tcp `server_shutdown_timeout` 수정 (receiver linger + inactivity-based shutdown)
 - [x] 멀티 스모크 검증 통과 (tcp/64B): `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`, `MULTI_GATEWAY`, `MULTI_SPOT`, `MULTI_STREAM`, `MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`
 - [x] 기본설정 `runs=3` 부분 검증 통과: `MULTI_PUBSUB`(all transport/size), `MULTI_GATEWAY`(all), `MULTI_SPOT`(all)
@@ -1484,6 +1488,67 @@ ls -la bindings/java/perf/results/multi/report/perf_*.txt
 - [x] 기본설정 `--suite multi` 전체 패턴(`runs=3`) 완주
   - 결과: `perf_linux_20260306_003438.txt` (`META,status,complete`, `expected=576`, `actual=576`)
 - [ ] single 패턴 8개를 동일 기준으로 점검/리팩토링하고 6-1~6-4 전체 체크 완료
+
+**6-6. 객체지향 리팩토링 계약 (Java, 2026-03-06 추가)**
+
+> 목적: C-API 포팅 스타일 코드를 Java 스타일로 정리하되, 벤치마크 의미/성능 특성은 불변.
+
+- 대상 경로(1차): `bindings/java/perf/multi/Zlink.PerfBench/src/main/java/dev/kairoscode/zlink/integration/bench/src/`
+- 대상 패턴(1차): `MULTI_PUBSUB`, `MULTI_DEALER_DEALER`
+
+**측정 로직 불변 규칙**
+- [ ] warmup/settle/active phase 의미 유지
+- [ ] throughput/latency/p95/p99 계산식 유지
+- [ ] RESULT 출력 형식 유지
+- [ ] 기존 exit code/실패 판정 유지 (실패 원인 출력은 강화)
+
+**성능 규칙**
+- [ ] 측정 루프 내 힙 할당 0
+- [ ] 측정 루프 내 불필요한 복사 0
+- [ ] 측정 루프 내 로그/문자열 생성 0
+- [ ] 측정 루프 내 sleep/과도 busy-wait 추가 금지
+- [ ] send/recv 버퍼 루프 밖 1회 할당 후 재사용
+
+**구조 규칙**
+- [ ] send/recv 공통화는 각 패턴 파일 내부 private helper까지만 허용
+- [ ] 패턴 간 과도한 공통 유틸 추출 금지
+- [ ] 핵심 send/recv 루프는 패턴 파일에서 명시적으로 보이도록 유지
+
+**객체지향 정리 규칙**
+- [ ] Config/Result/Phase 개념을 타입으로 명확화
+- [ ] 긴 메서드를 phase 단위 메서드로 분리 (`runWarmup`/`runSettle`/`runActive`)
+- [ ] 리소스 생명주기(소켓/컨텍스트) 코드 경계 명확화
+- [ ] 루프 내부 try/catch 난립 금지, 상위 레벨 일관 처리
+- [ ] 매직 넘버 상수화
+
+**금지 사항**
+- [ ] client cap/retry budget/fallback 으로 실패를 숨기지 않는다
+- [ ] 실패를 성공처럼 보이게 만드는 우회 로직 금지
+- [ ] 문서/DoD와 충돌하는 동작 변경 금지
+
+**I/O 실행 정책 (2026-03-06 합의 반영)**
+- [ ] `send`: blocking 단발 호출만 허용 (`SendFlag.NONE`/`SNDMORE` 그대로 사용), retry/backoff/budget/cap 금지
+- [ ] `send` 실패 시 즉시 실패 처리하고 원인(errno/message)을 그대로 노출한다
+- [ ] `single recv`: blocking recv 1회 후 `DONTWAIT` nonblocking drain
+- [ ] `multi recv`: poller readiness 기반으로 소켓별 `DONTWAIT` nonblocking drain (무제한, batch cap 없음)
+- [ ] `PERF_MULTI_RECV_BATCH`류 제어 변수/우회 옵션을 도입하지 않는다
+- [ ] `core/perf`와 달리 send/recv 공통화는 패턴 간 공유 유틸로 추출하지 않고, 각 패턴 파일 내부 `private helper`까지만 허용한다
+- [ ] 핵심 send/recv 루프는 각 패턴 파일에서 샘플 코드처럼 명시적으로 읽히도록 유지한다
+
+**6-6 진행 현황 (1차, 2026-03-06)**
+- [x] 대상 패턴 1차 적용: `MULTI_PUBSUB`, `MULTI_DEALER_DEALER`
+- [x] `Config/Phase/Result` 타입 도입 + phase 메서드 분리
+- [x] `MULTI_PUBSUB` client cap/fallback 제거 (`PERF_PUBSUB_*_CLIENTS` 미사용)
+- [x] 실패 원인 stderr 노출 강화 (`ERROR,<pattern>,<role>,<reason>`)
+- [x] `:perf-multi:classes` 빌드 통과
+- [x] 스모크 통과: `MULTI_DEALER_DEALER tcp/64`, `MULTI_PUBSUB tls/262144`
+- [x] `Poller` 네이티브 레이아웃 보정: `zlink_pollitem_t` struct 크기/offset 하드코딩 제거(동적 layout 계산)로 `Poller.poll` SIGSEGV 제거
+- [x] `MULTI_GATEWAY` 토폴로지 보정: server=`Receiver(bind)+Gateway(sendTo)`, client=`Gateway(send)+Receiver(router recv)`로 정렬
+- [x] `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER` 서버 multipart 수신/드레인 보강(2프레임 경계 확인 + trailing frame drain)
+- [x] 멀티 핵심 패턴 `tcp/64` 스모크 통과:
+  `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`,
+  `MULTI_PUBSUB`, `MULTI_GATEWAY`, `MULTI_SPOT`
+- [ ] 나머지 패턴(멀티 전체/싱글 전체)에 동일 규칙 확장 적용
 
 ---
 

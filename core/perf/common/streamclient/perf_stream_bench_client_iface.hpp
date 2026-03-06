@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <memory>
 
-#include "../../multi/common/perf_multi_metric_header.hpp"
+#include "../../multi/common/perf_metric_header.hpp"
 
 class client_session_t;
 
@@ -27,7 +27,7 @@ class bench_client_iface_t
     virtual bool allow_send () const = 0;       // true if within active phase window
     virtual size_t current_phase_size () const = 0; // payload size for current phase
     virtual uint32_t metric_run_id () const = 0;
-    virtual perf_multi_metric::phase_t metric_phase () const = 0;
+    virtual perf_metric::phase_t metric_phase () const = 0;
     virtual uint64_t next_seq () = 0;           // monotonic sequence for latency embedding
 
     // --- Metrics callbacks (called from I/O threads via strand) ---

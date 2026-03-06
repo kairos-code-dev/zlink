@@ -3,25 +3,6 @@
 #include <cstdlib>
 #include <iostream>
 
-#ifndef RUN_PATTERN_FN
-#error "RUN_PATTERN_FN must be defined"
-#endif
-
-void RUN_PATTERN_FN (const std::string &transport,
-                     size_t size,
-                     const std::string &lib_name);
-
-namespace {
-
-void run_dispatch (const std::string &transport,
-                   size_t size,
-                   const std::string &lib_name)
-{
-    RUN_PATTERN_FN (transport, size, lib_name);
-}
-
-} // namespace
-
 namespace perf {
 namespace single {
 
@@ -57,8 +38,3 @@ int run_standard_bench_main (int argc, char **argv, run_fn_t fn)
 
 } // namespace single
 } // namespace perf
-
-int main (int argc, char **argv)
-{
-    return perf::single::run_standard_bench_main (argc, argv, run_dispatch);
-}

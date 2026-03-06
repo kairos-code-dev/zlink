@@ -1,0 +1,6 @@
+## PATTERN: MULTI_PUBSUB (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency |  Lat p95 |  Lat p99 | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|----------|----------|--------|----------|--------|----------|
+| 64B |     74.27 Kmsg/s |      4.8 MB/s | 5254918.09 us | 7695104.15 us | 7953121.21 us |   11.4 |     28.0 |    8.5 |     22.2 |

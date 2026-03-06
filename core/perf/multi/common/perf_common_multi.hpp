@@ -1,5 +1,5 @@
-#ifndef PERF_COMMON_MULTI_HPP
-#define PERF_COMMON_MULTI_HPP
+#ifndef PERF_SETTINGS_COMMON_HPP
+#define PERF_SETTINGS_COMMON_HPP
 
 #include <algorithm>
 #include <cstdlib>
@@ -7,7 +7,7 @@
 #include <cstring>
 #include <string>
 
-struct multi_bench_settings_t
+struct bench_settings_t
 {
     size_t clients;
     int hwm;
@@ -19,7 +19,7 @@ struct multi_bench_settings_t
     int connect_ready_timeout_ms;
 };
 
-inline int resolve_multi_int_env (const char *env_name,
+inline int resolve_int_env (const char *env_name,
                                   int default_value,
                                   int min_value)
 {
@@ -41,15 +41,15 @@ inline int resolve_multi_int_env (const char *env_name,
     return static_cast<int> (parsed);
 }
 
-inline int resolve_multi_default_hwm (const char *pattern, int clients)
+inline int resolve_default_hwm (const char *pattern, int clients)
 {
     (void) clients;
 
     if (pattern && *pattern) {
         const bool is_stream_variant =
-          std::strcmp (pattern, "MULTI_STREAM") == 0
-          || std::strcmp (pattern, "MULTI_STREAM_CALLBACK") == 0
-          || std::strcmp (pattern, "MULTI_STREAM_LEN32BE") == 0;
+          std::strcmp (pattern, "STREAM") == 0
+          || std::strcmp (pattern, "STREAM_CALLBACK") == 0
+          || std::strcmp (pattern, "STREAM_LEN32BE") == 0;
         if (is_stream_variant)
             return 10;
     }
@@ -57,13 +57,13 @@ inline int resolve_multi_default_hwm (const char *pattern, int clients)
     return 100;
 }
 
-inline int resolve_multi_default_clients (const char *pattern)
+inline int resolve_default_clients (const char *pattern)
 {
     if (pattern && *pattern) {
         const bool is_stream_variant =
-          std::strcmp (pattern, "MULTI_STREAM") == 0
-          || std::strcmp (pattern, "MULTI_STREAM_CALLBACK") == 0
-          || std::strcmp (pattern, "MULTI_STREAM_LEN32BE") == 0;
+          std::strcmp (pattern, "STREAM") == 0
+          || std::strcmp (pattern, "STREAM_CALLBACK") == 0
+          || std::strcmp (pattern, "STREAM_LEN32BE") == 0;
         if (is_stream_variant)
             return 10000;
     }
@@ -71,10 +71,10 @@ inline int resolve_multi_default_clients (const char *pattern)
     return 100;
 }
 
-inline size_t resolve_multi_service_clients (size_t requested_clients)
+inline size_t resolve_service_clients (size_t requested_clients)
 {
-    const int override_clients = resolve_multi_int_env (
-      "PERF_MULTI_SERVICE_CLIENTS",
+    const int override_clients = resolve_int_env (
+      "PERF_SERVICE_CLIENTS",
       0,
       1);
     if (override_clients <= 0)
@@ -85,26 +85,26 @@ inline size_t resolve_multi_service_clients (size_t requested_clients)
       static_cast<size_t> (override_clients));
 }
 
-inline multi_bench_settings_t resolve_multi_bench_settings ()
+inline bench_settings_t resolve_bench_settings ()
 {
-    multi_bench_settings_t settings;
-    const char *pattern = std::getenv ("PERF_MULTI_PATTERN");
-    const int resolved_clients = resolve_multi_int_env (
-      "PERF_MULTI_CLIENTS", resolve_multi_default_clients (pattern), 1);
+    bench_settings_t settings;
+    const char *pattern = std::getenv ("PERF_PATTERN");
+    const int resolved_clients = resolve_int_env (
+      "PERF_CLIENTS", resolve_default_clients (pattern), 1);
     settings.clients = static_cast<size_t> (resolved_clients);
-    settings.hwm = resolve_multi_int_env (
-      "PERF_MULTI_HWM", resolve_multi_default_hwm (pattern, resolved_clients), 1);
+    settings.hwm = resolve_int_env (
+      "PERF_HWM", resolve_default_hwm (pattern, resolved_clients), 1);
     settings.warmup_seconds =
-      resolve_multi_int_env ("PERF_MULTI_WARMUP_SECONDS", 2, 0);
+      resolve_int_env ("PERF_WARMUP_SECONDS", 2, 0);
     settings.active_warmup =
-      resolve_multi_int_env ("PERF_MULTI_ACTIVE_WARMUP", 0, 0);
+      resolve_int_env ("PERF_ACTIVE_WARMUP", 0, 0);
     settings.duration_seconds =
-      resolve_multi_int_env ("PERF_MULTI_DURATION_SECONDS", 5, 1);
-    settings.settle_ms = resolve_multi_int_env ("PERF_MULTI_SETTLE_MS", 500, 0);
-    settings.client_poll_timeout_ms = resolve_multi_int_env (
-      "PERF_MULTI_CLIENT_POLL_TIMEOUT_MS", 0, 0);
+      resolve_int_env ("PERF_DURATION_SECONDS", 5, 1);
+    settings.settle_ms = resolve_int_env ("PERF_SETTLE_MS", 500, 0);
+    settings.client_poll_timeout_ms = resolve_int_env (
+      "PERF_CLIENT_POLL_TIMEOUT_MS", 0, 0);
     settings.connect_ready_timeout_ms =
-      resolve_multi_int_env ("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5000, 0);
+      resolve_int_env ("PERF_CONNECT_READY_TIMEOUT_MS", 5000, 0);
     return settings;
 }
 

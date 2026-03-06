@@ -266,7 +266,7 @@ bindings/dotnet/perf/run_benchmarks.sh          ← 사용자 진입점 (인자 
 
 ---
 
-## 4. RESULT 출력 형식 (core/perf 동일)
+## 4. RESULT 출력 형식 (필드 형식은 core/perf 동일, dotnet latency 값은 ms)
 
 ```
 RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,throughput,<value>
@@ -275,6 +275,9 @@ RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,latency,<value>
 RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,latency_p95,<value>
 RESULT,current,<PATTERN>,<TRANSPORT>,<SIZE>,latency_p99,<value>
 ```
+
+> dotnet 출력 정책: `latency`, `latency_p95`, `latency_p99` 값은 **ms 단위**로 출력한다.
+> 내부 타임스탬프와 샘플 계산은 기존대로 `sent_ts_us` / microsecond 기준을 유지하고, `PrintResult()` 직전만 `us -> ms` 변환한다.
 
 Single 정보성 메트릭 (없어도 complete 판정에 영향 없음):
 ```
@@ -442,9 +445,13 @@ internal static class PerfCommon
     static void ApplySingleContextOptions(Context ctx);
     static void ApplySingleSocketOptions(Socket socket);
 
-    // Send/Receive with retry (EAGAIN/EINTR only)
-    static int ReceiveRetry(Socket socket, byte[] buffer);
-    static int SendRetry(Socket socket, byte[] buffer);
+    // Send/Receive helper
+    // - send: blocking send only (retry 금지)
+    // - recv: blocking recv + non-blocking drain 조합
+    static int ReceiveBlocking(Socket socket, byte[] buffer);
+    static int TryReceiveNonBlocking(Socket socket, byte[] buffer);
+    static int DrainRemainingFramesNonBlocking(Socket socket);
+    static int SendBlocking(Socket socket, byte[] buffer);
 
     // 폴링
     static bool WaitForInput(Socket socket, int timeoutMs);
@@ -454,7 +461,7 @@ internal static class PerfCommon
     static string EndpointFor(string transport, string name);
 
     // RESULT 출력 (bandwidth 승수 = 1.0 for all single)
-    // throughput, bandwidth, latency, latency_p95, latency_p99 — 5개 메트릭 출력
+    // latency 계열 출력 단위는 ms, 내부 계산은 us 유지
     static void PrintResult(string pattern, string transport, int size,
                            double throughput, double latencyUs,
                            double latencyP95Us, double latencyP99Us);
@@ -509,7 +516,13 @@ internal static class PerfTls
 
 **`PerfCommon.cs`** — `multi/.../common/` (core/perf multi/common/perf_common.hpp 대응)
 
-single 의 PerfCommon 유틸 중 필요한 것을 포함하고 multi 전용 기능 추가.
+single 의 PerfCommon 유틸 중 필요한 것을 포함하되, multi 는 다음 정책으로 분리한다.
+
+- recv: `Poller` + `PollIn` + non-blocking drain (`EAGAIN`까지, cap 없음)
+- send: `DontWait` 1회 시도, `EAGAIN`이면 pending 상태만 유지
+- `PollOut` 기본 OFF, pending send 소켓에만 ON
+- `PollOut`에서 pending send가 비면 즉시 OFF
+- `Thread.Sleep` / `Thread.Yield` / retry budget 으로 `would-block` 은폐 금지
 
 **`PerfCommonMulti.cs`** — (core/perf multi/common/perf_common_multi.hpp 대응)
 
@@ -743,7 +756,7 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 ```
 ## PATTERN: PAIR
 ### tcp
-| Size | Throughput | Bandwidth | Latency | Latency_p95 | Latency_p99 |
+| Size | Throughput | Bandwidth | Latency(ms) | Latency_p95(ms) | Latency_p99(ms) |
 |------|-----------|-----------|---------|-------------|-------------|
 | 64   | 523401.23 | 33.50     | 12.35   | 18.22       | 25.10       |
 ...
@@ -778,7 +791,7 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 5. `perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj` 생성
 6. `perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj` 생성
 7. `Zlink.sln` 에 perf 프로젝트 참조 추가
-8. `single/.../common/PerfCommon.cs` — 환경변수 파싱, retry 헬퍼, RESULT 출력, 헤더 stamp/decode, reservoir sampling
+8. `single/.../common/PerfCommon.cs` — 환경변수 파싱, blocking send/recv + drain 헬퍼, RESULT 출력, 헤더 stamp/decode, reservoir sampling
 9. `single/.../common/PerfTls.cs` — single TLS 인증서 리졸버
 10. `single/.../PerfMain.cs` — 패턴 디스패치 진입점
 11. `multi/.../common/PerfCommon.cs` — multi 공통 유틸
@@ -835,6 +848,33 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 > 모든 패턴 구현과 스크립트 완성 후, 코드 전체에 대한 품질 리뷰와 개선을 수행한다.
 > 성능 벤치마크 코드이므로 불필요한 오버헤드에 특히 엄격히 대응한다.
 
+#### Phase 6-A. OOP 리팩토링 실행 스코프 (2026-03-06)
+
+- `LANG`: `.NET`
+- `TARGET_PATHS`:
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/common`
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src`
+- `PATTERNS`:
+  - `MULTI_GATEWAY`
+  - `MULTI_SPOT`
+
+**핵심 제약(고정):**
+- warmup/settle/active 의미, throughput/latency/p95/p99 계산식, `RESULT,current,...` 출력 형식은 변경하지 않는다.
+- 측정 루프 내 힙 할당/불필요 복사/로그 문자열 생성을 추가하지 않는다.
+- send/recv 버퍼는 루프 밖에서 1회 할당 후 재사용한다.
+- core/perf 와 달리 dotnet 은 패턴 간 send/recv 공통화를 금지하고, **각 패턴 파일 내부 private helper** 까지만 허용한다.
+- client cap/retry budget/fallback 으로 실패를 성공처럼 보이게 만드는 동작을 금지한다.
+- send 정책은 고정한다: single=`blocking send 1회`, multi=`DontWait 1회 + pending 시 PollOut`.
+- recv 정책은 고정한다: single=`blocking recv + non-blocking drain`, multi=`poller + non-blocking drain(무제한, cap 없음)`.
+
+**실행 단계(이번 리팩토링):**
+1. Config/Result/Phase 개념을 파일 로컬 타입으로 명확화한다.
+2. 긴 메서드를 `RunWarmup` / `RunSettle` / `RunActive` 단계로 분리한다.
+3. 리소스 생명주기(`Context/Socket/Service`)를 상위 `Run()`에 명시한다.
+4. 루프 내부 `try/catch` 난립을 helper 단으로 수렴하고 상위에서 일관 처리한다.
+5. retry-budget 기반 stop-token 전송 루프를 제거한다.
+6. 빌드/실행 검증 결과와 성능 안전성 체크리스트를 보고한다.
+
 48. **[x] Dead Code / 미사용 파일 정리**
     - 사용되지 않는 using, 변수, 메서드, 클래스 전부 삭제
     - 의미 없는 주석 (TODO 잔재, 복사 흔적, 주석 처리된 코드) 전부 삭제
@@ -882,12 +922,17 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 
 - **Native P/Invoke 직접 호출 금지**: `NativeMethods.*`, `NativeTypes.*`, `NativeHelpers.*` 일체 금지
 - **internal 네임스페이스 접근 금지**: `Zlink.Native` 패키지 직접 참조 금지
-- **Retry 금지** (정책): send/recv 실패 시 재시도 없음 (EAGAIN/EINTR 은 예외적으로 루프)
+- **Send retry 금지** (정책): send 실패 시 즉시 실패 처리, retry budget/fallback 으로 은닉 금지
+- **Drain cap 금지** (정책): non-blocking drain 에 임의 cap/retry budget 을 두어 실패를 은닉하지 않음
 - **Inflight/Outstanding 옵션 금지**: 백프레셔 한도 = 소켓 HWM 만
 
 ### 15.2 필수 사항
 
 - 각 벤치마크 소스에 **소켓 생성, bind/connect, send/recv 루프, 페이즈 컨트롤** 인라인
+- single send 경로는 **blocking send(backpressure 존중)** 로 구현
+- multi send 경로는 **DontWait 1회 + pending 시 PollOut** 으로 구현
+- single recv 경로는 **blocking recv + non-blocking drain** 구조
+- multi recv 경로는 **poller + non-blocking drain(무제한, cap 없음)** 구조
 - `RESULT,current,...` 형식의 stdout 출력
 - STREAM 서버는 stop-token `__zlink_perf_stop__` 수신 시 정상 종료
 - Multi 서버는 `READY,<endpoint>` stdout 출력 후 클라이언트 대기
@@ -915,8 +960,10 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 - Multi 클라이언트 연결 준비/정리 보조 유틸 (`PerfClientHelpers`)
 
 **패턴 파일 내부에만 정의 (다른 파일과 공유 금지)**:
-- send 루프 (warmup / active phase)
-- recv 루프 (blocking recv + non-blocking drain burst)
+- single send 루프 (warmup / active phase, blocking send, send retry 없음)
+- multi send 루프 (`DontWait` 1회, pending send 발생 시에만 `PollOut` 등록)
+- single recv 루프 (blocking recv + non-blocking drain)
+- multi recv 루프 (poller + non-blocking drain, drain cap 없음)
 - 메시지 파싱/매칭 (header decode + phase/run_id 검증)
 - latency 수집 (sent_ts_us 기반 계산)
 
@@ -1088,6 +1135,7 @@ internal static class PerfDealerDealerServer
 > `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99`
 
 - **dotnet 정책**: core 기준과 동일하게 5개 메트릭 필수. 모든 pattern/transport/size 조합에 5개 메트릭이 존재해야 `complete` 판정
+- dotnet 출력 단위: `latency`, `latency_p95`, `latency_p99` 는 **ms**
 - single: `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99`
 - multi: `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99`
 
@@ -1480,7 +1528,7 @@ head -20 bindings/dotnet/perf/results/multi/tmp/perf_*.txt
 
 - [ ] **CL-8.1** `ParseEnv` / `ParseEnvNonNegative` 환경변수 파싱
 - [ ] **CL-8.2** `ApplySingleContextOptions` / `ApplySingleSocketOptions` 소켓 옵션
-- [ ] **CL-8.3** `ReceiveRetry` / `SendRetry` (EAGAIN/EINTR only)
+- [ ] **CL-8.3** `ReceiveBlocking` + `TryReceiveNonBlocking` + `DrainRemainingFramesNonBlocking` + `SendBlocking`
 - [ ] **CL-8.4** `WaitForInput` / `WaitUntil` 폴링
 - [ ] **CL-8.5** `EndpointFor` 엔드포인트 생성
 - [ ] **CL-8.6** `PrintResult` RESULT 출력 (bandwidth 승수 = 1.0)
@@ -1698,7 +1746,7 @@ head -20 bindings/dotnet/perf/results/multi/tmp/perf_*.txt
 
 - [x] **CL-15.1** NativeMethods / NativeTypes / NativeHelpers 직접 호출 0건
 - [x] **CL-15.2** Zlink.Native 네임스페이스 참조 0건
-- [x] **CL-15.3** send/recv 실패 시 재시도 없음 (EAGAIN/EINTR 은 허용)
+- [x] **CL-15.3** send retry 없음 + drain cap/retry budget 없음 (실패 은닉 금지)
 - [x] **CL-15.4** Inflight/Outstanding 옵션 사용 0건
 
 **필수 사항:**
@@ -1718,6 +1766,11 @@ head -20 bindings/dotnet/perf/results/multi/tmp/perf_*.txt
 - [x] **CL-15.14** STREAM stop-token 파서 → PerfStreamStopParser 모듈화
 - [x] **CL-15.15** STREAM 소켓 헬퍼 → 각 서버 파일에 인라인
 - [x] **CL-15.16** STREAM 벤치마크 클라이언트 C# 구현 없음
+- [x] **CL-15.17** single send 경로는 blocking send 1회 호출 기준, send retry 없음
+- [x] **CL-15.18** single recv 구조: blocking recv + non-blocking drain
+- [x] **CL-15.19** multi recv 구조: poller + non-blocking drain(무제한, cap 없음)
+- [x] **CL-15.20** multi send 구조: `DontWait` 1회 시도 + pending send 발생 시에만 `PollOut` ON
+- [x] **CL-15.21** multi `PollOut` 상시 등록 없음, pending drain 완료 시 즉시 OFF
 
 ---
 

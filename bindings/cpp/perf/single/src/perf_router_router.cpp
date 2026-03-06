@@ -2,6 +2,7 @@
 // Topology: sender(ROUTER connect) -> receiver(ROUTER bind)
 
 #include "../common/perf_single_common.hpp"
+#include "../common/perf_single_runner.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -22,6 +23,17 @@ bool send_router_payload (zlink::socket_t &socket,
 
     return socket.send (payload, payload_size, zlink::send_flag::none)
            == static_cast<int> (payload_size);
+}
+
+bool drain_multipart_tail (zlink::socket_t &router)
+{
+    for (;;) {
+        zlink::message_t frame;
+        if (router.recv (frame, zlink::recv_flag::none) < 0)
+            return false;
+        if (!frame.more ())
+            return true;
+    }
 }
 
 int recv_header_router (zlink::socket_t &router,
@@ -52,8 +64,11 @@ int recv_header_router (zlink::socket_t &router,
     zlink::message_t payload;
     if (payload_or_delim.more ()) {
         // ROUTER hops may include an empty delimiter frame before payload.
-        if (payload_or_delim.size () != 0)
+        if (payload_or_delim.size () != 0) {
+            if (!drain_multipart_tail (router))
+                return -1;
             return 0;
+        }
         if (router.recv (payload, zlink::recv_flag::none) < 0)
             return -1;
     } else {
@@ -72,6 +87,41 @@ int recv_header_router (zlink::socket_t &router,
     if (header_ok_out)
         *header_ok_out = header_ok;
     return 1;
+}
+
+bool drain_router_queue (zlink::socket_t &router,
+                         size_t payload_size,
+                         uint32_t run_id,
+                         perf_single_metric::phase_t phase,
+                         size_t msg_size,
+                         bool active,
+                         unsigned long long *received,
+                         perf::single::latency_stats_builder_t *latency_builder)
+{
+    for (;;) {
+        perf_single_metric::header_t header;
+        bool header_ok = false;
+        const int recv_rc = recv_header_router (
+          router, payload_size, zlink::recv_flag::dontwait, &header, &header_ok);
+        if (recv_rc == 0)
+            return true;
+        if (recv_rc < 0)
+            return false;
+        if (!header_ok || !perf_single_metric::is_expected (
+                            header, run_id, phase, msg_size)) {
+            continue;
+        }
+
+        ++(*received);
+        if (active && latency_builder) {
+            const uint64_t now = perf_single_metric::now_us ();
+            const double latency_us =
+              now >= header.sent_ts_us
+                ? static_cast<double> (now - header.sent_ts_us)
+                : 0.0;
+            latency_builder->add (latency_us);
+        }
+    }
 }
 
 bool run_phase (zlink::socket_t &sender,
@@ -107,12 +157,9 @@ bool run_phase (zlink::socket_t &sender,
                                                 msg_size,
                                                 seq++,
                                                 sent_ts)) {
-            return true;
+            return false;
         }
         if (!send_router_payload (sender, receiver_id, payload.data (), payload_size)) {
-            const int err = errno;
-            if (err == EAGAIN || err == EINTR)
-                return true;
             return false;
         }
         if (queue_probe)
@@ -123,7 +170,7 @@ bool run_phase (zlink::socket_t &sender,
         const int recv_rc = recv_header_router (
           receiver, payload_size, zlink::recv_flag::none, &header, &header_ok);
         if (recv_rc == 0)
-            return true;
+            return false;
         if (recv_rc < 0)
             return false;
         if (queue_probe)
@@ -141,7 +188,14 @@ bool run_phase (zlink::socket_t &sender,
                 latency_builder.add (latency_us);
             }
         }
-        return true;
+        return drain_router_queue (receiver,
+                                   payload_size,
+                                   run_id,
+                                   phase,
+                                   msg_size,
+                                   active,
+                                   &received,
+                                   active ? &latency_builder : NULL);
     };
 
     if (active) {
@@ -281,4 +335,9 @@ void run_pattern_router_router (const std::string &transport,
                                 latency.p95_us,
                                 latency.p99_us,
                                 queue_probe.snapshot ());
+}
+
+int main (int argc, char **argv)
+{
+    return perf::single::run_standard_bench_main (argc, argv, run_pattern_router_router);
 }

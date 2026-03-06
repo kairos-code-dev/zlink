@@ -740,36 +740,31 @@ def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
 
         multi_common = perf_dir / "multi" / "common"
         multi_src = perf_dir / "multi" / "src"
-        multi_server_runner = multi_common / "perf_server_runner.cpp"
-        multi_client_runner = multi_common / "perf_client_runner.cpp"
         multi_includes = [core_include, binding_include, multi_common]
 
         def build_cpp_single_patterns() -> None:
-            for src_name, run_fn, bin_stem in CPP_SINGLE_PATTERN_SPECS.values():
+            for src_name, _, bin_stem in CPP_SINGLE_PATTERN_SPECS.values():
                 compile_cpp(
                     out_path=single_out / cpp_binary_name(bin_stem),
                     include_dirs=single_includes,
                     sources=single_common_sources + [single_src / src_name],
-                    defines=[f"RUN_PATTERN_FN={run_fn}"],
                 )
 
         def build_cpp_multi_servers(patterns: Sequence[str]) -> None:
             for pattern in patterns:
-                src_name, run_fn, bin_stem = CPP_MULTI_SERVER_PATTERN_SPECS[pattern]
+                src_name, _, bin_stem = CPP_MULTI_SERVER_PATTERN_SPECS[pattern]
                 compile_cpp(
                     out_path=multi_out / cpp_binary_name(bin_stem),
                     include_dirs=multi_includes,
-                    sources=[multi_server_runner, multi_src / src_name],
-                    defines=[f"RUN_MULTI_SERVER_FN={run_fn}"],
+                    sources=[multi_src / src_name],
                 )
 
         def build_cpp_multi_clients() -> None:
-            for src_name, run_fn, bin_stem in CPP_MULTI_CLIENT_PATTERN_SPECS.values():
+            for src_name, _, bin_stem in CPP_MULTI_CLIENT_PATTERN_SPECS.values():
                 compile_cpp(
                     out_path=multi_out / cpp_binary_name(bin_stem),
                     include_dirs=multi_includes,
-                    sources=[multi_client_runner, multi_src / src_name],
-                    defines=[f"RUN_MULTI_CLIENT_FN={run_fn}"],
+                    sources=[multi_src / src_name],
                 )
 
         if cfg.suite == "multi":
@@ -1045,6 +1040,13 @@ def binding_multi_role_command(
                 transport,
                 str(size if size is not None else 64),
             ]
+        if role != "server":
+            cmd.extend(
+                [
+                    "--endpoint",
+                    endpoint or "",
+                ]
+            )
     elif cfg.binding == "java":
         java = shutil.which("java")
         if not java:
@@ -1995,7 +1997,9 @@ def format_bw(v: float) -> str:
     return f"{v:8.1f} MB/s"
 
 
-def format_lat(v: float) -> str:
+def format_lat(v: float, binding: str) -> str:
+    if binding in {"cpp", "dotnet", "java"}:
+        return f"{v:8.4f} ms"
     return f"{v:8.2f} us"
 
 
@@ -2022,6 +2026,18 @@ def build_table_lines(
     for pattern_index, pattern in enumerate(patterns):
         transports = resolve_transports_for_pattern(cfg, pattern)
         direction = pattern_direction(pattern, cfg.suite)
+        latency_header = (
+            "Latency(ms)" if cfg.binding in {"cpp", "dotnet", "java"}
+            else "Latency(us)"
+        )
+        latency_p95_header = (
+            "Lat p95(ms)" if cfg.binding in {"cpp", "dotnet", "java"}
+            else "Lat p95(us)"
+        )
+        latency_p99_header = (
+            "Lat p99(ms)" if cfg.binding in {"cpp", "dotnet", "java"}
+            else "Lat p99(us)"
+        )
         if pattern_index > 0:
             lines.append("")
             lines.append(divider)
@@ -2032,14 +2048,14 @@ def build_table_lines(
             lines.append(f"### Transport: {tr}")
             if cfg.suite == "multi":
                 lines.append(
-                    "| Size     |       Throughput | Bandwidth |      Latency |  Lat p95 |  Lat p99 | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |"
+                    f"| Size     |       Throughput | Bandwidth | {latency_header:>12} | {latency_p95_header:>10} | {latency_p99_header:>10} | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |"
                 )
                 lines.append(
                     "|----------|------------------|-----------|--------------|----------|----------|--------|----------|--------|----------|"
                 )
             else:
                 lines.append(
-                    "| Size     |       Throughput | Bandwidth |      Latency |  Lat p95 |  Lat p99 | CPU% | Mem MB |"
+                    f"| Size     |       Throughput | Bandwidth | {latency_header:>12} | {latency_p95_header:>10} | {latency_p99_header:>10} | CPU% | Mem MB |"
                 )
                 lines.append(
                     "|----------|------------------|-----------|--------------|----------|----------|------|--------|"
@@ -2070,11 +2086,11 @@ def build_table_lines(
                     server_cpu = combo.server_cpu_pct
                     server_mem = combo.server_mem_mb
                     lines.append(
-                        f"| {size}B | {format_thr(combo.throughput, pattern, cfg.suite):>16} | {format_bw(combo.bandwidth):>9} | {format_lat(combo.latency):>12} | {format_lat(combo.latency_p95):>8} | {format_lat(combo.latency_p99):>8} | {format_cpu(client_cpu):>6} | {format_mem(client_mem):>8} | {format_cpu(server_cpu):>6} | {format_mem(server_mem):>8} |"
+                        f"| {size}B | {format_thr(combo.throughput, pattern, cfg.suite):>16} | {format_bw(combo.bandwidth):>9} | {format_lat(combo.latency, cfg.binding):>12} | {format_lat(combo.latency_p95, cfg.binding):>8} | {format_lat(combo.latency_p99, cfg.binding):>8} | {format_cpu(client_cpu):>6} | {format_mem(client_mem):>8} | {format_cpu(server_cpu):>6} | {format_mem(server_mem):>8} |"
                     )
                 else:
                     lines.append(
-                        f"| {size}B | {format_thr(combo.throughput, pattern, cfg.suite):>16} | {format_bw(combo.bandwidth):>9} | {format_lat(combo.latency):>12} | {format_lat(combo.latency_p95):>8} | {format_lat(combo.latency_p99):>8} | {format_cpu(combo.cpu_pct):>4} | {format_mem(combo.mem_mb):>6} |"
+                        f"| {size}B | {format_thr(combo.throughput, pattern, cfg.suite):>16} | {format_bw(combo.bandwidth):>9} | {format_lat(combo.latency, cfg.binding):>12} | {format_lat(combo.latency_p95, cfg.binding):>8} | {format_lat(combo.latency_p99, cfg.binding):>8} | {format_cpu(combo.cpu_pct):>4} | {format_mem(combo.mem_mb):>6} |"
                     )
 
     if lines and lines[0] == "":

@@ -369,6 +369,10 @@ inline void print_result (const std::string &lib,
                           double p95_us,
                           double p99_us)
 {
+    const double latency_ms = latency_us / 1000.0;
+    const double p95_ms = p95_us / 1000.0;
+    const double p99_ms = p99_us / 1000.0;
+
     std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
               << ",throughput," << std::fixed << std::setprecision (2) << throughput
               << std::endl;
@@ -376,13 +380,13 @@ inline void print_result (const std::string &lib,
               << ",bandwidth," << std::fixed << std::setprecision (2) << bandwidth
               << std::endl;
     std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",latency," << std::fixed << std::setprecision (2) << latency_us
+              << ",latency," << std::fixed << std::setprecision (2) << latency_ms
               << std::endl;
     std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",latency_p95," << std::fixed << std::setprecision (2) << p95_us
+              << ",latency_p95," << std::fixed << std::setprecision (2) << p95_ms
               << std::endl;
     std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",latency_p99," << std::fixed << std::setprecision (2) << p99_us
+              << ",latency_p99," << std::fixed << std::setprecision (2) << p99_ms
               << std::endl;
 }
 

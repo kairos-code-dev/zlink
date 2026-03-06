@@ -54,7 +54,7 @@ Usage: core\perf\run_benchmarks_multi.ps1 [options]
 Run only multi-socket benchmark patterns.
 
 Options:
-  -Pattern NAME                Pattern list (comma-separated) or ALL. MULTI_ prefix is optional.
+  -Pattern NAME                Pattern list (comma-separated) or ALL. Legacy MULTI_ prefix is optional.
                                Alias: stream/streams => STREAM,STREAM_CALLBACK,STREAM_LEN32BE
   -BuildDir PATH               Build directory.
   -OutputFile PATH             Tee console logs to file.
@@ -66,15 +66,15 @@ Options:
   -MsgSizes LIST               Comma-separated sizes.
   -Transports LIST             Comma-separated transports.
   -PinCpu                      Enable PERF_TASKSET=1.
-  -Warmup N                    Override PERF_MULTI_WARMUP_SECONDS (default: 2).
-  -Duration N                  Override PERF_MULTI_DURATION_SECONDS.
-  -Clients N                   Override PERF_MULTI_CLIENTS (default: 100, stream=10000).
-  -Hwm N                       Override PERF_MULTI_HWM (default: 100, stream=10 in binary).
-  -SendHwm N                   Override PERF_MULTI_SNDHWM (fallback: -Hwm).
-  -RecvHwm N                   Override PERF_MULTI_RCVHWM (fallback: -Hwm).
-  -SendTimeoutMs N             Override PERF_MULTI_SNDTIMEO_MS.
-  -RecvTimeoutMs N             Override PERF_MULTI_RCVTIMEO_MS.
-  -ConnectConcurrency N        Override PERF_MULTI_CONNECT_CONCURRENCY.
+  -Warmup N                    Override PERF_WARMUP_SECONDS (default: 2).
+  -Duration N                  Override PERF_DURATION_SECONDS.
+  -Clients N                   Override PERF_CLIENTS (default: 100, stream=10000).
+  -Hwm N                       Override PERF_HWM (default: 100, stream=10 in binary).
+  -SendHwm N                   Override PERF_SNDHWM (fallback: -Hwm).
+  -RecvHwm N                   Override PERF_RCVHWM (fallback: -Hwm).
+  -SendTimeoutMs N             Override PERF_SNDTIMEO_MS.
+  -RecvTimeoutMs N             Override PERF_RCVTIMEO_MS.
+  -ConnectConcurrency N        Override PERF_CONNECT_CONCURRENCY.
   -TransportTransitionMs N     Transport transition cooldown(ms).
   -PatternTransitionMs N       Pattern transition cooldown(ms).
   -ServerReadyTimeoutMs N      Server READY wait timeout(ms).
@@ -175,10 +175,10 @@ if ($Pattern.Trim().ToUpperInvariant() -eq "ALL") {
 $PatternList = @()
 foreach ($p in $ExpandedPatterns) {
     $normalized = $p
-    if (-not $normalized.StartsWith("MULTI_")) {
-        $normalized = "MULTI_$normalized"
+    if ($normalized.StartsWith("MULTI_")) {
+        $normalized = $normalized.Substring(6)
     }
-    if ($normalized -eq "MULTI_ROUTER_ROUTER_POLL") {
+    if ($normalized -eq "ROUTER_ROUTER_POLL") {
         throw "ROUTER_ROUTER_POLL is removed from multi benchmarks."
     }
     $PatternList += $normalized
@@ -212,23 +212,23 @@ if ($Build.IsPresent) { $RunArgs += "-Build" }
 
 $RunEnv = @{}
 $RunEnv["PERF_ALLOW_MULTI"] = "1"
-$RunEnv["PERF_MULTI_POLICY"] = "1"
-$RunEnv["PERF_MULTI_WARMUP_SECONDS"] = $Warmup.ToString()
-$RunEnv["PERF_MULTI_DURATION_SECONDS"] = $Duration.ToString()
-$RunEnv["PERF_MULTI_SNDTIMEO_MS"] = $SendTimeoutMs
-$RunEnv["PERF_MULTI_RCVTIMEO_MS"] = $RecvTimeoutMs
-$RunEnv["PERF_MULTI_TRANSPORT_TRANSITION_MS"] = $TransportTransitionMs.ToString()
-$RunEnv["PERF_MULTI_PATTERN_TRANSITION_MS"] = $PatternTransitionMs.ToString()
-$RunEnv["PERF_MULTI_SERVER_READY_TIMEOUT_MS"] = $ServerReadyTimeoutMs.ToString()
-$RunEnv["PERF_MULTI_CONNECT_READY_TIMEOUT_MS"] = $ConnectReadyTimeoutMs.ToString()
-$RunEnv["PERF_MULTI_MONITOR_HWM"] = $MonitorHwm.ToString()
-$RunEnv["PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS"] = $ServerShutdownTimeoutMs.ToString()
-$RunEnv["PERF_MULTI_SERVER_BIND_PORT"] = $ServerBindPort.ToString()
-if ($Clients) { $RunEnv["PERF_MULTI_CLIENTS"] = $Clients }
-if ($Hwm) { $RunEnv["PERF_MULTI_HWM"] = $Hwm }
-if ($SendHwm) { $RunEnv["PERF_MULTI_SNDHWM"] = $SendHwm }
-if ($RecvHwm) { $RunEnv["PERF_MULTI_RCVHWM"] = $RecvHwm }
-if ($ConnectConcurrency) { $RunEnv["PERF_MULTI_CONNECT_CONCURRENCY"] = $ConnectConcurrency }
+$RunEnv["PERF_POLICY"] = "1"
+$RunEnv["PERF_WARMUP_SECONDS"] = $Warmup.ToString()
+$RunEnv["PERF_DURATION_SECONDS"] = $Duration.ToString()
+$RunEnv["PERF_SNDTIMEO_MS"] = $SendTimeoutMs
+$RunEnv["PERF_RCVTIMEO_MS"] = $RecvTimeoutMs
+$RunEnv["PERF_TRANSPORT_TRANSITION_MS"] = $TransportTransitionMs.ToString()
+$RunEnv["PERF_PATTERN_TRANSITION_MS"] = $PatternTransitionMs.ToString()
+$RunEnv["PERF_SERVER_READY_TIMEOUT_MS"] = $ServerReadyTimeoutMs.ToString()
+$RunEnv["PERF_CONNECT_READY_TIMEOUT_MS"] = $ConnectReadyTimeoutMs.ToString()
+$RunEnv["PERF_MONITOR_HWM"] = $MonitorHwm.ToString()
+$RunEnv["PERF_SERVER_SHUTDOWN_TIMEOUT_MS"] = $ServerShutdownTimeoutMs.ToString()
+$RunEnv["PERF_SERVER_BIND_PORT"] = $ServerBindPort.ToString()
+if ($Clients) { $RunEnv["PERF_CLIENTS"] = $Clients }
+if ($Hwm) { $RunEnv["PERF_HWM"] = $Hwm }
+if ($SendHwm) { $RunEnv["PERF_SNDHWM"] = $SendHwm }
+if ($RecvHwm) { $RunEnv["PERF_RCVHWM"] = $RecvHwm }
+if ($ConnectConcurrency) { $RunEnv["PERF_CONNECT_CONCURRENCY"] = $ConnectConcurrency }
 
 $PreviousEnv = @{}
 foreach ($key in $RunEnv.Keys) {

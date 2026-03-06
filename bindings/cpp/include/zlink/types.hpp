@@ -543,9 +543,7 @@ inline int routing_id_from (const std::string &bytes_,
  */
 inline std::string routing_id_to_string (const zlink_routing_id_t &routing_id_)
 {
-    const size_t size = routing_id_.size <= sizeof (routing_id_.data)
-                          ? routing_id_.size
-                          : sizeof (routing_id_.data);
+    const size_t size = static_cast<size_t> (routing_id_.size);
     if (size == 0)
         return std::string ();
     return std::string (

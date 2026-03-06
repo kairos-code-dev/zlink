@@ -7,6 +7,7 @@
 #include "../types.hpp"
 
 #include <cerrno>
+#include <cstdlib>
 #include <type_traits>
 
 namespace zlink
@@ -688,6 +689,15 @@ class spot_t
     void *handle () const { return pub_handle (); }
 
   private:
+    static void close_received_parts (zlink_msg_t *parts_, size_t count_) noexcept
+    {
+        if (!parts_)
+            return;
+        for (size_t i = 0; i < count_; ++i)
+            zlink_msg_close (&parts_[i]);
+        std::free (parts_);
+    }
+
     static void close_native_parts (std::vector<zlink_msg_t> &parts_,
                                     size_t count_) noexcept
     {
@@ -721,7 +731,7 @@ class spot_t
         out_.clear ();
         if (!parts_ || count_ == 0) {
             if (parts_)
-                zlink_multipart_close (parts_, count_);
+                close_received_parts (parts_, count_);
             return 0;
         }
 
@@ -729,7 +739,7 @@ class spot_t
         for (size_t i = 0; i < count_; ++i) {
             message_t part;
             if (!part.valid () || zlink_msg_move (part.handle (), &parts_[i]) != 0) {
-                zlink_multipart_close (parts_, count_);
+                close_received_parts (parts_, count_);
                 out_.clear ();
                 errno = EFAULT;
                 return -1;
@@ -737,7 +747,7 @@ class spot_t
             out_.push_back (std::move (part));
         }
 
-        zlink_multipart_close (parts_, count_);
+        close_received_parts (parts_, count_);
         return 0;
     }
 

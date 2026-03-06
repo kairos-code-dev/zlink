@@ -29,8 +29,8 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 
 | 역할 | 바이너리 | 책임 |
 |------|----------|------|
-| server | `comp_current_multi_<pattern>_server(.exe)` | bind, relay/echo, server-side 리소스 보고 |
-| client | `comp_current_multi_<pattern>_client(.exe)` | connect, 패턴별 phase 정책에 따라 throughput/latency 측정, client-side 리소스 보고 |
+| server | `comp_src_multi_<pattern>_server(.exe)` | bind, relay/echo, server-side 리소스 보고 |
+| client | `comp_src_multi_<pattern>_client(.exe)` | connect, 패턴별 phase 정책에 따라 throughput/latency 측정, client-side 리소스 보고 |
 
 ```text
 ┌─ server process ─────────────────────┐    ┌─ client process ──────────────────────┐
@@ -296,8 +296,8 @@ perf/multi/run_benchmarks.sh [options]
 run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 파싱, 빌드, multi 환경 설정
     → run_benchmarks.sh (PERF_ALLOW_MULTI=1)               # 공통 빌드/실행 래퍼
         → run_comparison.py                                # Python 비교/실행 엔진
-            → comp_current_multi_*_server(.exe)            # server 프로세스
-            → comp_current_multi_*_client(.exe)            # client 프로세스
+            → comp_src_multi_*_server(.exe)            # server 프로세스
+            → comp_src_multi_*_client(.exe)            # client 프로세스
             → perf_stream_client (STREAM 계열)             # STREAM 공유 client
 ```
 
@@ -399,20 +399,20 @@ core/perf/run_benchmarks_multi.sh --warmup 5 --duration 10
 ```bash
 # 예시: MULTI_DEALER_DEALER
 # 터미널 1 (server)
-./core/build/linux-x64/bin/comp_current_multi_dealer_dealer_server current tcp
+./core/build/linux-x64/bin/comp_src_multi_dealer_dealer_server current tcp
 # stdout: READY,tcp://0.0.0.0:15557
 
 # 터미널 2 (client)
-./core/build/linux-x64/bin/comp_current_multi_dealer_dealer_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
+./core/build/linux-x64/bin/comp_src_multi_dealer_dealer_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 
 # 예시: MULTI_STREAM 계열 (server는 패턴별 바이너리, client는 공유 바이너리)
-./core/build/linux-x64/bin/comp_current_multi_stream_server current tcp
+./core/build/linux-x64/bin/comp_src_multi_stream_server current tcp
 ./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 
-./core/build/linux-x64/bin/comp_current_multi_stream_callback_server current tcp
+./core/build/linux-x64/bin/comp_src_multi_stream_callback_server current tcp
 ./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 
-./core/build/linux-x64/bin/comp_current_multi_stream_len32be_server current tcp
+./core/build/linux-x64/bin/comp_src_multi_stream_len32be_server current tcp
 ./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 ```
 
@@ -860,15 +860,15 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 패턴 | server 소스 | server 바이너리 | client 소스 | client 바이너리 |
 |------|------------|----------------|------------|----------------|
-| MULTI_DEALER_DEALER | `*_dealer_dealer_server.cpp` | `comp_current_multi_dealer_dealer_server` | `*_dealer_dealer_client.cpp` | `comp_current_multi_dealer_dealer_client` |
-| MULTI_DEALER_ROUTER | `*_dealer_router_server.cpp` | `comp_current_multi_dealer_router_server` | `*_dealer_router_client.cpp` | `comp_current_multi_dealer_router_client` |
-| MULTI_ROUTER_ROUTER | `*_router_router_server.cpp` | `comp_current_multi_router_router_server` | `*_router_router_client.cpp` | `comp_current_multi_router_router_client` |
-| MULTI_PUBSUB | `*_pubsub_server.cpp` | `comp_current_multi_pubsub_server` | `*_pubsub_client.cpp` | `comp_current_multi_pubsub_client` |
-| MULTI_GATEWAY | `*_gateway_server.cpp` | `comp_current_multi_gateway_server` | `*_gateway_client.cpp` | `comp_current_multi_gateway_client` |
-| MULTI_SPOT | `*_spot_server.cpp` | `comp_current_multi_spot_server` | `*_spot_client.cpp` | `comp_current_multi_spot_client` |
-| MULTI_STREAM | `*_stream_server.cpp` | `comp_current_multi_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
-| MULTI_STREAM_CALLBACK | `*_stream_callback_server.cpp` | `comp_current_multi_stream_callback_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
-| MULTI_STREAM_LEN32BE | `*_stream_len32be_server.cpp` | `comp_current_multi_stream_len32be_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
+| MULTI_DEALER_DEALER | `*_dealer_dealer_server.cpp` | `comp_src_multi_dealer_dealer_server` | `*_dealer_dealer_client.cpp` | `comp_src_multi_dealer_dealer_client` |
+| MULTI_DEALER_ROUTER | `*_dealer_router_server.cpp` | `comp_src_multi_dealer_router_server` | `*_dealer_router_client.cpp` | `comp_src_multi_dealer_router_client` |
+| MULTI_ROUTER_ROUTER | `*_router_router_server.cpp` | `comp_src_multi_router_router_server` | `*_router_router_client.cpp` | `comp_src_multi_router_router_client` |
+| MULTI_PUBSUB | `*_pubsub_server.cpp` | `comp_src_multi_pubsub_server` | `*_pubsub_client.cpp` | `comp_src_multi_pubsub_client` |
+| MULTI_GATEWAY | `*_gateway_server.cpp` | `comp_src_multi_gateway_server` | `*_gateway_client.cpp` | `comp_src_multi_gateway_client` |
+| MULTI_SPOT | `*_spot_server.cpp` | `comp_src_multi_spot_server` | `*_spot_client.cpp` | `comp_src_multi_spot_client` |
+| MULTI_STREAM | `*_stream_server.cpp` | `comp_src_multi_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
+| MULTI_STREAM_CALLBACK | `*_stream_callback_server.cpp` | `comp_src_multi_stream_callback_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
+| MULTI_STREAM_LEN32BE | `*_stream_len32be_server.cpp` | `comp_src_multi_stream_len32be_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
 > STREAM client 예외(core): `MULTI_STREAM*` client는 [PERF_POLICY.md § 8.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. server는 패턴별 분리를 유지해야 한다.

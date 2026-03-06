@@ -323,8 +323,8 @@ public final class JvmZlinkStreamLen32BeServer {
             server.setSockOpt(SocketOption.SNDBUF, opt.sndbuf);
             server.setSockOpt(SocketOption.RCVBUF, opt.rcvbuf);
             server.setSockOpt(SocketOption.BACKLOG, opt.backlog);
-            server.setSockOpt(SocketOption.SNDHWM, 0);
-            server.setSockOpt(SocketOption.RCVHWM, 0);
+            server.setSockOpt(SocketOption.SNDHWM, 100);
+            server.setSockOpt(SocketOption.RCVHWM, 100);
             setRawIntOption(server, ZLINK_TCP_NODELAY, opt.tcpNoDelay);
 
             server.bind(endpoint(opt.host, opt.port));

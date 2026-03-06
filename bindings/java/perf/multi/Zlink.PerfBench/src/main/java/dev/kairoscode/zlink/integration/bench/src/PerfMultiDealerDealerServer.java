@@ -75,7 +75,7 @@ public final class PerfMultiDealerDealerServer {
                 (long) Math.max(1, durationSeconds) * NANOSECONDS_PER_SECOND;
 
             while (true) {
-                int n = receiveOnce(server, payload, ReceiveFlag.NONE);
+                int n = receiveOnce(server, payload);
                 long nowNs = System.nanoTime();
                 if (n <= 0) {
                     if (activeStartNs == 0) {
@@ -151,12 +151,10 @@ public final class PerfMultiDealerDealerServer {
         return PerfCommon.endpointFor(transport, name);
     }
 
-    private static int receiveOnce(Socket socket, byte[] buffer,
-                                   ReceiveFlag flags) {
-        ReceiveFlag op = toDontWaitReceiveFlag(flags);
+    private static int receiveOnce(Socket socket, byte[] buffer) {
         while (true) {
             try {
-                return socket.recv(buffer, 0, buffer.length, op);
+                return socket.recv(buffer, 0, buffer.length, ReceiveFlag.NONE);
             } catch (ZlinkException ex) {
                 int errno = ex.errno();
                 if (isInterrupted(errno)) {
@@ -168,12 +166,6 @@ public final class PerfMultiDealerDealerServer {
                 throw ex;
             }
         }
-    }
-
-    private static ReceiveFlag toDontWaitReceiveFlag(ReceiveFlag flag) {
-        return flag == null || flag == ReceiveFlag.NONE
-            ? ReceiveFlag.DONTWAIT
-            : flag;
     }
 
     private static boolean isInterrupted(int errno) {

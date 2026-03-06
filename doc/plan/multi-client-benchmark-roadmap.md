@@ -30,13 +30,13 @@ zlink-only 멀티 패턴: `MULTI_GATEWAY`, `MULTI_SPOT`
 
 | Pattern | Current | Baseline | 위치 |
 |---|---|---|---|
-| MULTI_DEALER_DEALER | `comp_current_multi_dealer_dealer` | `comp_baseline_multi_dealer_dealer` | `current/bench_current_multi_dealer_dealer.cpp`, `baseline/bench_baseline_multi_dealer_dealer.cpp` |
-| MULTI_DEALER_ROUTER | `comp_current_multi_dealer_router` | `comp_baseline_multi_dealer_router` | `current/bench_current_multi_dealer_router.cpp`, `baseline/bench_baseline_multi_dealer_router.cpp` |
-| MULTI_ROUTER_ROUTER | `comp_current_multi_router_router` | `comp_baseline_multi_router_router` | `current/bench_current_multi_router_router.cpp`, `baseline/bench_baseline_multi_router_router.cpp` |
-| MULTI_ROUTER_ROUTER_POLL | `comp_current_multi_router_router_poll` | `comp_baseline_multi_router_router_poll` | `current/bench_current_multi_router_router_poll.cpp`, `baseline/bench_baseline_multi_router_router_poll.cpp` |
-| MULTI_PUBSUB | `comp_current_multi_pubsub` | `comp_baseline_multi_pubsub` | `current/bench_current_multi_pubsub.cpp`, `baseline/bench_baseline_multi_pubsub.cpp` |
-| MULTI_GATEWAY | `comp_current_multi_gateway` | `comp_baseline_multi_gateway` | `current/bench_current_multi_gateway.cpp`, `baseline/bench_baseline_multi_gateway.cpp` |
-| MULTI_SPOT | `comp_current_multi_spot` | `comp_baseline_multi_spot` | `current/bench_current_multi_spot.cpp`, `baseline/bench_baseline_multi_spot.cpp` |
+| MULTI_DEALER_DEALER | `comp_src_multi_dealer_dealer` | `comp_baseline_multi_dealer_dealer` | `current/bench_current_multi_dealer_dealer.cpp`, `baseline/bench_baseline_multi_dealer_dealer.cpp` |
+| MULTI_DEALER_ROUTER | `comp_src_multi_dealer_router` | `comp_baseline_multi_dealer_router` | `current/bench_current_multi_dealer_router.cpp`, `baseline/bench_baseline_multi_dealer_router.cpp` |
+| MULTI_ROUTER_ROUTER | `comp_src_multi_router_router` | `comp_baseline_multi_router_router` | `current/bench_current_multi_router_router.cpp`, `baseline/bench_baseline_multi_router_router.cpp` |
+| MULTI_ROUTER_ROUTER_POLL | `comp_src_multi_router_router_poll` | `comp_baseline_multi_router_router_poll` | `current/bench_current_multi_router_router_poll.cpp`, `baseline/bench_baseline_multi_router_router_poll.cpp` |
+| MULTI_PUBSUB | `comp_src_multi_pubsub` | `comp_baseline_multi_pubsub` | `current/bench_current_multi_pubsub.cpp`, `baseline/bench_baseline_multi_pubsub.cpp` |
+| MULTI_GATEWAY | `comp_src_multi_gateway` | `comp_baseline_multi_gateway` | `current/bench_current_multi_gateway.cpp`, `baseline/bench_baseline_multi_gateway.cpp` |
+| MULTI_SPOT | `comp_src_multi_spot` | `comp_baseline_multi_spot` | `current/bench_current_multi_spot.cpp`, `baseline/bench_baseline_multi_spot.cpp` |
 
 - 공통 유틸: `core/bench/benchwithzlink/common/bench_common_multi.hpp`
 
@@ -54,7 +54,7 @@ zlink-only 멀티 패턴: `MULTI_GATEWAY`, `MULTI_SPOT`
 
 - `core/bench/benchwithzlink/run_comparison.py` 추가: `MULTI_*` 패턴 목록 추가, `select_transports`에서 `MULTI_GATEWAY`/`MULTI_SPOT`를 `STREAM_TRANSPORTS`로 강제, `PATTERN=ALL` 동작은 `STREAM` 및 `MULTI_*` 포함
 - `core/bench/benchwithzmq/run_comparison.py` 추가: `MULTI_*` 패턴 목록 추가 및 멀티 전용 타임아웃/환경변수 사용
-- `core/bench/benchwithzlink/CMakeLists.txt` 추가: `comp_current_multi_*`, `comp_baseline_multi_*` 타깃 등록
+- `core/bench/benchwithzlink/CMakeLists.txt` 추가: `comp_src_multi_*`, `comp_baseline_multi_*` 타깃 등록
 - `core/bench/benchwithzmq/CMakeLists.txt` 추가: `comp_zlink_multi_*`, `comp_std_zmq_multi_*` 타깃 등록
 - `core/bench/benchwithzlink/run_benchmarks.sh`, `core/bench/benchwithzmq/run_benchmarks.sh` 추가: 멀티 환경변수 옵션 노출(`--multi-*`), `PATTERN=ALL` 사용 시 멀티 패턴 포함 문서 표기
 

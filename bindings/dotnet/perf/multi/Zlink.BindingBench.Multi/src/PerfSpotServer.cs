@@ -6,89 +6,114 @@ using static PerfRunner;
 
 internal static class PerfSpotServer
 {
+    private const string Pattern = "SPOT";
+    private const int SubscribeSettleMs = 300;
+    private const uint RunId = 1;
+
     internal static int Run(string transport, int size)
     {
-        const string pattern = "SPOT";
-        const int subscribeSettleMs = 300;
-        size = Math.Max(1, size);
-        int warmupSeconds = ResolveMultiWarmupSeconds();
-        if (size >= 65536 && warmupSeconds > 0)
-            warmupSeconds = 0;
-        int durationSeconds = ResolveMultiDurationSeconds();
-        int settleMs = ResolveMultiSettleMs();
-        int sndTimeoutMs = Math.Min(ResolveMultiSndTimeoutMs(), 200);
-        int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs();
-        string endpoint = MultiEndpointFor(transport, "multi-spot");
+        SpotServerConfig config = BuildConfig(transport, size);
 
         using var ctx = new Context();
         ApplyMultiServerContextOptions(ctx);
         using var nodePub = new SpotNode(ctx);
-        ConfigureSpotTlsPublisherIfNeeded(nodePub, transport);
-        TryConfigureSpotPublisherSocket(nodePub, pattern, sndTimeoutMs);
-        nodePub.Bind(endpoint);
+        ConfigureSpotTlsPublisherIfNeeded(nodePub, config.Transport);
+        TryConfigureSpotPublisherSocket(nodePub, Pattern, config.SndTimeoutMs);
+        nodePub.Bind(config.Endpoint);
         using var spotPub = new Spot(nodePub);
-        Console.WriteLine($"READY,{endpoint}");
-        _ = WaitUntil(() => nodePub.GetSubPeers().Length > 0, readyTimeoutMs);
-        Thread.Sleep(subscribeSettleMs);
 
-        const uint runId = 1;
-        ulong seq = 1;
-        var payload = new byte[Math.Max(size, PerfMetricHeaderSize)];
-        Array.Fill(payload, (byte)'a');
+        Console.WriteLine($"READY,{config.Endpoint}");
+        _ = WaitUntil(() => nodePub.GetSubPeers().Length > 0, config.ReadyTimeoutMs);
+        Thread.Sleep(SubscribeSettleMs);
 
-        if (warmupSeconds > 0)
+        var phaseState = new SpotServerPhaseState(config.Size);
+        RunWarmupPhase(spotPub, config, ref phaseState);
+        RunSettlePhase(config);
+        SpotServerActiveStats activeStats = RunActivePhase(spotPub, config,
+            ref phaseState);
+        SpotServerResult result = ComputeResult(activeStats);
+
+        PrintResult(Pattern, config.Transport, config.Size, result.Throughput,
+            result.LatencyUs, result.LatencyP95Us, result.LatencyP99Us);
+        return 0;
+    }
+
+    private static SpotServerConfig BuildConfig(string transport, int size)
+    {
+        int resolvedSize = Math.Max(1, size);
+        int warmupSeconds = ResolveMultiWarmupSeconds();
+        if (resolvedSize >= 65536 && warmupSeconds > 0)
+            warmupSeconds = 0;
+
+        return new SpotServerConfig(
+            transport,
+            resolvedSize,
+            warmupSeconds,
+            ResolveMultiDurationSeconds(),
+            ResolveMultiSettleMs(),
+            Math.Min(ResolveMultiSndTimeoutMs(), 200),
+            ResolveMultiConnectReadyTimeoutMs(),
+            MultiEndpointFor(transport, "multi-spot"));
+    }
+
+    private static void RunWarmupPhase(Spot spotPub, SpotServerConfig config,
+        ref SpotServerPhaseState state)
+    {
+        if (config.WarmupSeconds <= 0)
+            return;
+
+        long warmupDeadline = Stopwatch.GetTimestamp()
+            + (long)config.WarmupSeconds * Stopwatch.Frequency;
+        while (Stopwatch.GetTimestamp() < warmupDeadline)
         {
-            long warmupDeadline = Stopwatch.GetTimestamp()
-                + (long)warmupSeconds * Stopwatch.Frequency;
-            while (Stopwatch.GetTimestamp() < warmupDeadline)
-            {
-                StampMetricHeader(payload.AsSpan(), runId, PerfPhase.Warmup,
-                    size, seq++, EpochUs());
-                TryPublishSpot(spotPub, payload.AsSpan());
-            }
+            StampMetricHeader(state.Payload.AsSpan(), RunId, PerfPhase.Warmup,
+                config.Size, state.Seq++, EpochUs());
+            TryPublishSpot(spotPub, state.Payload.AsSpan());
         }
+    }
 
-        if (settleMs > 0)
-            Thread.Sleep(settleMs);
+    private static void RunSettlePhase(SpotServerConfig config)
+    {
+        if (config.SettleMs > 0)
+            Thread.Sleep(config.SettleMs);
+    }
 
+    private static SpotServerActiveStats RunActivePhase(Spot spotPub,
+        SpotServerConfig config, ref SpotServerPhaseState state)
+    {
         long sendCount = 0;
         long benchStartTicks = Stopwatch.GetTimestamp();
         long benchDeadlineTicks = benchStartTicks
-            + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
+            + (long)Math.Max(1, config.DurationSeconds) * Stopwatch.Frequency;
         while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
         {
-            StampMetricHeader(payload.AsSpan(), runId, PerfPhase.Active, size,
-                seq++, EpochUs());
-            if (TryPublishSpot(spotPub, payload.AsSpan()))
+            StampMetricHeader(state.Payload.AsSpan(), RunId, PerfPhase.Active,
+                config.Size, state.Seq++, EpochUs());
+            if (TryPublishSpot(spotPub, state.Payload.AsSpan()))
                 sendCount++;
         }
-        long benchEndTicks = Stopwatch.GetTimestamp();
 
-        double elapsedSeconds = (benchEndTicks - benchStartTicks)
+        long benchEndTicks = Stopwatch.GetTimestamp();
+        return new SpotServerActiveStats(sendCount, benchStartTicks,
+            benchEndTicks);
+    }
+
+    private static SpotServerResult ComputeResult(SpotServerActiveStats stats)
+    {
+        double elapsedSeconds = (stats.BenchEndTicks - stats.BenchStartTicks)
             / (double)Stopwatch.Frequency;
         double throughput = elapsedSeconds > 0.0
-            ? sendCount / elapsedSeconds
+            ? stats.SendCount / elapsedSeconds
             : 0.0;
         double latencyUs = (elapsedSeconds * 1_000_000.0)
-            / Math.Max(1.0, sendCount);
-        PrintResult(pattern, transport, size, throughput, latencyUs,
-            latencyUs, latencyUs);
-        return 0;
+            / Math.Max(1.0, stats.SendCount);
+        return new SpotServerResult(throughput, latencyUs, latencyUs, latencyUs);
     }
 
     private static bool TryPublishSpot(Spot spotPub, ReadOnlySpan<byte> payload)
     {
-        try
-        {
-            spotPub.Publish("bench", payload, SendFlags.None);
-            return true;
-        }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                                        || IsInterrupted(ex.Errno)
-                                        || IsTransientNetworkError(ex.Errno))
-        {
-            return false;
-        }
+        spotPub.Publish("bench", payload, SendFlags.None);
+        return true;
     }
 
     private static void TryConfigureSpotPublisherSocket(SpotNode node,
@@ -141,5 +166,76 @@ internal static class PerfSpotServer
         return code == ErrorCode.ENotSup
                || code == ErrorCode.EInval
                || code == ErrorCode.EProtoNoSupport;
+    }
+
+    private readonly struct SpotServerConfig
+    {
+        internal SpotServerConfig(string transport, int size, int warmupSeconds,
+            int durationSeconds, int settleMs, int sndTimeoutMs, int readyTimeoutMs,
+            string endpoint)
+        {
+            Transport = transport;
+            Size = size;
+            WarmupSeconds = warmupSeconds;
+            DurationSeconds = durationSeconds;
+            SettleMs = settleMs;
+            SndTimeoutMs = sndTimeoutMs;
+            ReadyTimeoutMs = readyTimeoutMs;
+            Endpoint = endpoint;
+        }
+
+        internal string Transport { get; }
+        internal int Size { get; }
+        internal int WarmupSeconds { get; }
+        internal int DurationSeconds { get; }
+        internal int SettleMs { get; }
+        internal int SndTimeoutMs { get; }
+        internal int ReadyTimeoutMs { get; }
+        internal string Endpoint { get; }
+    }
+
+    private readonly struct SpotServerResult
+    {
+        internal SpotServerResult(double throughput, double latencyUs,
+            double latencyP95Us, double latencyP99Us)
+        {
+            Throughput = throughput;
+            LatencyUs = latencyUs;
+            LatencyP95Us = latencyP95Us;
+            LatencyP99Us = latencyP99Us;
+        }
+
+        internal double Throughput { get; }
+        internal double LatencyUs { get; }
+        internal double LatencyP95Us { get; }
+        internal double LatencyP99Us { get; }
+    }
+
+    private readonly struct SpotServerActiveStats
+    {
+        internal SpotServerActiveStats(long sendCount, long benchStartTicks,
+            long benchEndTicks)
+        {
+            SendCount = sendCount;
+            BenchStartTicks = benchStartTicks;
+            BenchEndTicks = benchEndTicks;
+        }
+
+        internal long SendCount { get; }
+        internal long BenchStartTicks { get; }
+        internal long BenchEndTicks { get; }
+    }
+
+    private struct SpotServerPhaseState
+    {
+        internal SpotServerPhaseState(int msgSize)
+        {
+            Seq = 1;
+            Payload = new byte[Math.Max(msgSize, PerfMetricHeaderSize)];
+            Array.Fill(Payload, (byte)'a');
+        }
+
+        internal ulong Seq;
+        internal byte[] Payload;
     }
 }

@@ -20,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Prevents the `core/v4.0.1` regression where service-instance queue sampling could cause subsequent `gateway.send()` calls to fail.
 - The current Gateway regression suite covers the service-instance router-peers path.
 
+## [4.0.1] - 2026-03-07
+
 ### Removed
 
 **Build System Cleanup**

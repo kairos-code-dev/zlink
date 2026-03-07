@@ -1,5 +1,14 @@
 # 2026-03-07 Perf Policy Audit
 
+## Status Update
+
+- This audit captured the in-progress failures and policy gaps observed earlier on
+  2026-03-07.
+- The work described here has since been completed and revalidated on
+  `core/v4.0.2`.
+- Final root causes, fixes, and passing validation runs are summarized in:
+  [2026-03-07-perf-policy-stabilization-v402.md](/home/hep7/project/kairos/zlink/doc/bug/2026-03-07-perf-policy-stabilization-v402.md)
+
 ## 범위
 
 - `doc/perf`

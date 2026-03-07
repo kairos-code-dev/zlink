@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [4.0.2] - 2026-03-07
+
+### Fixed
+
+**Inproc PUB/SUB Alternating Stability**
+- Fixed a stale mailbox/HWM command-processing path in `PUB` send handling.
+- Prevents intermittent hangs/timeouts in alternating single-threaded `inproc` PUB/SUB workloads.
+- Added a dedicated regression test for repeated alternating send/recv on `inproc`.
+
+**Gateway Router Peer Sampling**
+- Fixed `zlink_gateway_router_peers()` so peer enumeration no longer forces the Gateway into pollable/raw mode.
+- Prevents the `core/v4.0.1` regression where service-instance queue sampling could cause subsequent `gateway.send()` calls to fail.
+- The current Gateway regression suite covers the service-instance router-peers path.
+
 ### Removed
 
 **Build System Cleanup**

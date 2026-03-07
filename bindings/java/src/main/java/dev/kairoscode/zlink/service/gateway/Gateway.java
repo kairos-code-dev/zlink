@@ -78,6 +78,10 @@ public final class Gateway implements AutoCloseable {
             throw ZlinkException.fromLastError("zlink_gateway_new");
     }
 
+    public MemorySegment handle() {
+        return handle;
+    }
+
     public void sendTo(String serviceName, Message message, SendFlag flags) {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(flags, "flags");

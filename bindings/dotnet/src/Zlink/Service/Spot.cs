@@ -346,6 +346,9 @@ public sealed class Spot : IDisposable
     private SpotSubPacketHandler? _subPacketHandler;
     private NativeMethods.ZlinkSpotSubHandlerDelegate? _subHandlerNative;
 
+    internal IntPtr PubHandle => _pubHandle;
+    internal IntPtr SubHandle => _subHandle;
+
     public Spot(SpotNode node)
     {
         if (node == null)

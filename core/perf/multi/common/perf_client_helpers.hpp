@@ -27,6 +27,32 @@ enum send_status_t
     send_error = 2
 };
 
+struct echo_loop_state_t
+{
+    std::vector<uint8_t> awaiting_reply;
+    size_t rr;
+    uint64_t sequence;
+
+    echo_loop_state_t () : rr (0), sequence (1) {}
+
+    void reset (size_t socket_count)
+    {
+        awaiting_reply.assign (socket_count, 0);
+        rr = 0;
+        sequence = 1;
+    }
+};
+
+inline size_t pending_reply_count (const echo_loop_state_t &state)
+{
+    size_t pending = 0;
+    for (size_t i = 0; i < state.awaiting_reply.size (); ++i) {
+        if (state.awaiting_reply[i] != 0)
+            ++pending;
+    }
+    return pending;
+}
+
 inline bool is_supported_transport (const std::string &transport)
 {
     if (transport == "tcp" || transport == "tls" || transport == "ws"
@@ -62,8 +88,7 @@ inline send_status_t classify_send_result (int rc)
     if (rc >= 0)
         return send_ok;
     const int err = zlink_errno ();
-    if (err == EAGAIN || err == EINTR || err == ENOENT
-        || err == ENOTCONN || err == EHOSTUNREACH)
+    if (err == EAGAIN || err == EINTR)
         return send_blocked;
     return send_error;
 }
@@ -74,7 +99,7 @@ inline send_status_t send_echo_message (void *socket,
                                         size_t payload_size,
                                         bool router_send)
 {
-    const int base_flags = 0;
+    const int base_flags = ZLINK_DONTWAIT;
 
     if (router_send) {
         const int id_rc = zlink_send (
@@ -287,12 +312,6 @@ inline bool create_client_sockets (
     return true;
 }
 
-inline void backoff_client_idle (const bench_settings_t &settings)
-{
-    (void) settings;
-    std::this_thread::yield ();
-}
-
 inline uint32_t next_metric_run_id ()
 {
     static std::atomic<uint32_t> next_id (1);
@@ -489,6 +508,7 @@ inline bool run_one_way_window_loop (
         std::chrono::duration<double> (std::max (0.0, duration_seconds)));
 
     const int poll_timeout_ms = std::max (0, settings.client_poll_timeout_ms);
+    const int effective_poll_timeout_ms = std::max (1, poll_timeout_ms);
     const size_t scratch_size =
       std::max<size_t> (scratch_capacity, metric_capture_bytes ());
 
@@ -510,15 +530,13 @@ inline bool run_one_way_window_loop (
     }
 
     while (std::chrono::steady_clock::now () < deadline && !fatal_error) {
-        bool progressed = false;
-
         for (size_t i = 0; i < poll_items.size (); ++i)
             poll_items[i].revents = 0;
 
         const int prc = zlink_poll (
           &poll_items[0],
           static_cast<int> (poll_items.size ()),
-          poll_timeout_ms);
+          effective_poll_timeout_ms);
         if (prc < 0) {
             if (zlink_errno () != EINTR) {
                 fatal_error = true;
@@ -544,18 +562,10 @@ inline bool run_one_way_window_loop (
                     fatal_error = true;
                     break;
                 }
-
-                if (recv_now > 0) {
+                if (recv_now > 0)
                     recv_sum += recv_now;
-                    progressed = true;
-                }
             }
         }
-
-        if (fatal_error)
-            break;
-        if (!progressed)
-            backoff_client_idle (settings);
     }
 
     if (recv_total)
@@ -682,7 +692,8 @@ inline bool run_echo_window_round_robin (
   long *recv_total,
   double *lat_sum,
   long *lat_count,
-  bench_latency_stats_t *latency_stats)
+  bench_latency_stats_t *latency_stats,
+  echo_loop_state_t *state_io = NULL)
 {
     if (sockets.empty ())
         return false;
@@ -703,8 +714,11 @@ inline bool run_echo_window_round_robin (
     double lat_sum_local = 0.0;
     long lat_count_local = 0;
     bench_latency_sampler_t lat_samples;
-    size_t rr = 0;
-    uint64_t sequence = 1;
+
+    echo_loop_state_t local_state;
+    echo_loop_state_t *state = state_io ? state_io : &local_state;
+    if (state->awaiting_reply.size () != sockets.size ())
+        state->reset (sockets.size ());
 
     const auto deadline =
       std::chrono::steady_clock::now ()
@@ -712,11 +726,13 @@ inline bool run_echo_window_round_robin (
         std::chrono::duration<double> (std::max (0.0, duration_seconds)));
 
     const int poll_timeout_ms = std::max (0, settings.client_poll_timeout_ms);
+    const int effective_poll_timeout_ms = std::max (1, poll_timeout_ms);
     const size_t scratch_size =
       std::max<size_t> (scratch_capacity, perf_metric::header_size ());
 
     std::vector<char> scratch (scratch_size, '\0');
-    std::vector<uint8_t> awaiting_reply (sockets.size (), 0);
+    std::vector<std::vector<char> > slot_payloads (sockets.size (), payload);
+    std::vector<uint8_t> send_pending (sockets.size (), 0);
     std::vector<zlink_pollitem_t> poll_items (sockets.size ());
     for (size_t i = 0; i < sockets.size (); ++i) {
         const zlink_pollitem_t item = {
@@ -728,38 +744,78 @@ inline bool run_echo_window_round_robin (
         poll_items[i] = item;
     }
 
-    while (std::chrono::steady_clock::now () < deadline && !fatal_error) {
-        bool progressed = false;
+    struct try_send_outcome_t
+    {
+        bool fatal;
+        bool progressed;
+    };
 
+    const auto set_poll_events =
+      [&] (size_t idx) {
+        poll_items[idx].events =
+          ZLINK_POLLIN | (send_pending[idx] != 0 ? ZLINK_POLLOUT : 0);
+      };
+
+    const auto try_send_slot =
+      [&] (size_t idx) -> try_send_outcome_t {
+        try_send_outcome_t outcome = {false, false};
+        if (idx >= sockets.size () || state->awaiting_reply[idx] != 0)
+            return outcome;
+        if (slot_payloads[idx].size () < payload_size) {
+            outcome.fatal = true;
+            return outcome;
+        }
+
+        if (send_pending[idx] == 0) {
+            if (!stamp_metric_payload (
+                  slot_payloads[idx],
+                  payload_size,
+                  run_id,
+                  phase,
+                  expected_msg_size,
+                  state->sequence++)) {
+                outcome.fatal = true;
+                return outcome;
+            }
+        }
+
+        const send_status_t send_rc = send_echo_message (
+          sockets[idx],
+          server_id,
+          slot_payloads[idx],
+          payload_size,
+          client_router_send);
+        if (send_rc == send_ok) {
+            send_pending[idx] = 0;
+            set_poll_events (idx);
+            state->awaiting_reply[idx] = 1;
+            outcome.progressed = true;
+            return outcome;
+        }
+        if (send_rc == send_blocked) {
+            send_pending[idx] = 1;
+            set_poll_events (idx);
+            return outcome;
+        }
+
+        outcome.fatal = true;
+        return outcome;
+    };
+
+    while (std::chrono::steady_clock::now () < deadline && !fatal_error) {
         if (allow_send) {
-            const size_t start_rr = rr;
+            const size_t start_rr = state->rr;
             for (size_t attempts = 0; attempts < sockets.size (); ++attempts) {
                 const size_t idx = (start_rr + attempts) % sockets.size ();
-                if (awaiting_reply[idx] != 0)
+                if (state->awaiting_reply[idx] != 0 || send_pending[idx] != 0)
                     continue;
-
-                if (!stamp_metric_payload (
-                      payload,
-                      payload_size,
-                      run_id,
-                      phase,
-                      expected_msg_size,
-                      sequence++)) {
-                    fatal_error = true;
-                    break;
-                }
-
-                const send_status_t send_rc = send_echo_message (
-                  sockets[idx], server_id, payload, payload_size, client_router_send);
-                if (send_rc == send_ok) {
-                    awaiting_reply[idx] = 1;
-                    progressed = true;
-                } else if (send_rc == send_error) {
+                const try_send_outcome_t outcome = try_send_slot (idx);
+                if (outcome.fatal) {
                     fatal_error = true;
                     break;
                 }
             }
-            rr = (start_rr + 1) % sockets.size ();
+            state->rr = (start_rr + 1) % sockets.size ();
         }
 
         if (fatal_error)
@@ -769,7 +825,9 @@ inline bool run_echo_window_round_robin (
             poll_items[i].revents = 0;
 
         const int prc = zlink_poll (
-          &poll_items[0], static_cast<int> (poll_items.size ()), poll_timeout_ms);
+          &poll_items[0],
+          static_cast<int> (poll_items.size ()),
+          effective_poll_timeout_ms);
         if (prc < 0) {
             if (zlink_errno () != EINTR) {
                 fatal_error = true;
@@ -777,71 +835,68 @@ inline bool run_echo_window_round_robin (
             }
         } else if (prc > 0) {
             for (size_t i = 0; i < poll_items.size (); ++i) {
-                if ((poll_items[i].revents & ZLINK_POLLIN) == 0)
-                    continue;
-
-                const int recv_rc = recv_one_message (
-                  sockets[i],
-                  scratch,
-                  ZLINK_DONTWAIT,
-                  scratch.size ());
-                if (recv_rc < 0) {
-                    fatal_error = true;
-                    break;
-                }
-                if (recv_rc <= 0)
-                    continue;
-
-                progressed = true;
-                awaiting_reply[i] = 0;
-
-                perf_metric::header_t header;
-                if (decode_metric_header_from_capture (scratch, &header)
-                    && metric_header_matches (
-                      header, run_id, phase, expected_msg_size)) {
-                    ++local_recv;
-                    if (collect_latency) {
-                        const uint64_t now_us = perf_metric::now_us ();
-                        if (header.sent_ts_us > 0 && now_us >= header.sent_ts_us) {
-                            const double sample_us =
-                              static_cast<double> (now_us - header.sent_ts_us) * 0.5;
-                            lat_sum_local += sample_us;
-                            lat_count_local++;
-                            lat_samples.add (sample_us);
+                if ((poll_items[i].revents & ZLINK_POLLIN) != 0) {
+                    while (true) {
+                        const int recv_rc = recv_one_message (
+                          sockets[i],
+                          scratch,
+                          ZLINK_DONTWAIT,
+                          scratch.size ());
+                        if (recv_rc < 0) {
+                            fatal_error = true;
+                            break;
                         }
+                        if (recv_rc <= 0)
+                            break;
+
+                        state->awaiting_reply[i] = 0;
+
+                        perf_metric::header_t header;
+                        if (decode_metric_header_from_capture (scratch, &header)
+                            && metric_header_matches (
+                              header, run_id, phase, expected_msg_size)) {
+                            ++local_recv;
+                            if (collect_latency) {
+                                const uint64_t now_us = perf_metric::now_us ();
+                                if (header.sent_ts_us > 0
+                                    && now_us >= header.sent_ts_us) {
+                                    const double sample_us =
+                                      static_cast<double> (
+                                        now_us - header.sent_ts_us)
+                                      * 0.5;
+                                    lat_sum_local += sample_us;
+                                    lat_count_local++;
+                                    lat_samples.add (sample_us);
+                                }
+                            }
+                        }
+                    }
+                    if (fatal_error)
+                        break;
+                }
+
+                if ((poll_items[i].revents & ZLINK_POLLOUT) != 0
+                    && send_pending[i] != 0
+                    && state->awaiting_reply[i] == 0) {
+                    const try_send_outcome_t outcome = try_send_slot (i);
+                    if (outcome.fatal) {
+                        fatal_error = true;
+                        break;
                     }
                 }
 
-                if (!allow_send)
+                if (!allow_send || fatal_error)
+                    continue;
+                if (state->awaiting_reply[i] != 0 || send_pending[i] != 0)
                     continue;
 
-                if (!stamp_metric_payload (
-                      payload,
-                      payload_size,
-                      run_id,
-                      phase,
-                      expected_msg_size,
-                      sequence++)) {
-                    fatal_error = true;
-                    break;
-                }
-
-                const send_status_t send_rc = send_echo_message (
-                  sockets[i], server_id, payload, payload_size, client_router_send);
-                if (send_rc == send_ok) {
-                    awaiting_reply[i] = 1;
-                    progressed = true;
-                } else if (send_rc == send_error) {
+                const try_send_outcome_t outcome = try_send_slot (i);
+                if (outcome.fatal) {
                     fatal_error = true;
                     break;
                 }
             }
         }
-
-        if (fatal_error)
-            break;
-        if (!progressed)
-            backoff_client_idle (settings);
     }
 
     if (recv_total)
@@ -883,6 +938,9 @@ inline bool run_echo_duration (
     if (sockets.empty ())
         return false;
 
+    echo_loop_state_t phase_state;
+    phase_state.reset (sockets.size ());
+
     if (!run_echo_window_round_robin (
           sockets,
           settings,
@@ -900,7 +958,8 @@ inline bool run_echo_duration (
           NULL,
           NULL,
           NULL,
-          NULL)) {
+          NULL,
+          &phase_state)) {
         return false;
     }
 
@@ -924,8 +983,50 @@ inline bool run_echo_duration (
           NULL,
           NULL,
           NULL,
-          NULL)) {
+          NULL,
+          &phase_state)) {
         return false;
+    }
+
+    if (pending_reply_count (phase_state) > 0) {
+        const auto settle_deadline =
+          std::chrono::steady_clock::now ()
+          + std::chrono::milliseconds (
+            std::max (settings.connect_ready_timeout_ms,
+                      std::max (100, settings.settle_ms)));
+        while (pending_reply_count (phase_state) > 0) {
+            const auto now = std::chrono::steady_clock::now ();
+            if (now >= settle_deadline)
+                return false;
+            const double remain_seconds =
+              std::chrono::duration_cast<std::chrono::duration<double> > (
+                settle_deadline - now)
+                .count ();
+            const double slice_seconds = std::min (0.05, remain_seconds);
+            if (slice_seconds <= 0.0)
+                return false;
+            if (!run_echo_window_round_robin (
+                  sockets,
+                  settings,
+                  payload,
+                  payload_size,
+                  msg_size,
+                  server_id,
+                  client_router_send,
+                  run_id,
+                  perf_metric::phase_warmup,
+                  scratch_capacity,
+                  slice_seconds,
+                  false,
+                  false,
+                  NULL,
+                  NULL,
+                  NULL,
+                  NULL,
+                  &phase_state)) {
+                return false;
+            }
+        }
     }
 
     long recv_count = 0;
@@ -951,7 +1052,8 @@ inline bool run_echo_duration (
           &recv_count,
           &lat_sum,
           &lat_count,
-          &active_latency)) {
+          &active_latency,
+          &phase_state)) {
         return false;
     }
     *metrics_out = bench_finish_resource_probe (sample_start);

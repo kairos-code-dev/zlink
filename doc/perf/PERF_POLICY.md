@@ -21,6 +21,43 @@
 - 본 문서는 **공통 구조**와 **통합 실행 방법**만 기술한다.
 - 각 바인딩의 실행 스크립트 경로는 `perf/single/` 및 `perf/multi/`에 위치한다.
 
+## 1.1 공통 원칙
+
+아래 원칙은 `core/perf`와 모든 bindings perf에 동일하게 적용한다.
+
+- 측정 의미는 유지한다.
+  - `warmup / settle / active`
+  - `RESULT` 포맷
+  - 실패 의미
+- 실제 오류는 즉시 `fail` 처리한다.
+- `EAGAIN`은 오류가 아니라 flow-control 상태로 취급한다.
+- hot loop 안에서는 아래를 금지한다.
+  - retry budget
+  - sleep / yield
+  - fallback
+  - cap
+  - heap alloc
+  - 문자열 생성
+  - 로그 출력
+  - 불필요 복사
+- send/recv 버퍼는 루프 밖에서 1회 할당하고 재사용한다.
+- 핵심 send/recv loop는 각 패턴 파일 안에서 명시적으로 보여야 한다.
+
+## 1.2 패턴 해석 규칙
+
+- echo
+  - request/reply 의미를 유지한다.
+  - send 역할과 recv 역할 정책을 둘 다 적용한다.
+- one-way send
+  - recv 정책은 없다.
+  - send 정책만 적용한다.
+- one-way recv
+  - send 정책은 없다.
+  - recv 정책만 적용한다.
+- `PUBSUB`, `SPOT`
+  - publisher/server는 one-way send다.
+  - subscriber/client는 one-way recv다.
+
 ---
 
 ## 2. 디렉터리 구조

@@ -562,6 +562,65 @@ inline bool read_first_peer_info(void *socket_, zlink_peer_info_t *info_)
     return true;
 }
 
+inline bool read_first_service_peer_info (
+  int (*peers_fn_) (void *, zlink_peer_info_t *, size_t *),
+  void *service_,
+  zlink_peer_info_t *info_)
+{
+    if (!peers_fn_ || !service_ || !info_)
+        return false;
+
+    size_t peer_count = 0;
+    if (peers_fn_ (service_, NULL, &peer_count) != 0 || peer_count == 0)
+        return false;
+
+    std::vector<zlink_peer_info_t> peers (peer_count);
+    size_t to_copy = peer_count;
+    if (peers_fn_ (service_, &peers[0], &to_copy) != 0 || to_copy == 0)
+        return false;
+
+    size_t best = 0;
+    for (size_t i = 1; i < to_copy; ++i) {
+        const zlink_peer_info_t &cand = peers[i];
+        const zlink_peer_info_t &cur = peers[best];
+        if (cand.connected_time > cur.connected_time) {
+            best = i;
+            continue;
+        }
+        if (cand.connected_time == cur.connected_time
+            && peer_activity_score (cand) > peer_activity_score (cur)) {
+            best = i;
+        }
+    }
+
+    *info_ = peers[best];
+    return true;
+}
+
+inline server_queue_stats_t sample_service_queue_stats (
+  int (*send_peers_fn_) (void *, zlink_peer_info_t *, size_t *),
+  void *send_service_,
+  int (*recv_peers_fn_) (void *, zlink_peer_info_t *, size_t *),
+  void *recv_service_)
+{
+    server_queue_stats_t out;
+    zlink_peer_info_t info;
+
+    if (read_first_service_peer_info (send_peers_fn_, send_service_, &info))
+        out.snd_pending_max =
+          static_cast<double> (
+            static_cast<unsigned long long> (info.snd_pending_msgs));
+    if (read_first_service_peer_info (recv_peers_fn_, recv_service_, &info)) {
+        const double pending =
+          static_cast<double> (
+            static_cast<unsigned long long> (info.rcv_pending_msgs));
+        out.rcv_pending_max = pending;
+        out.rcv_pending_end = pending;
+    }
+
+    return out;
+}
+
 inline server_queue_stats_t sample_server_queue_stats(void *send_socket_,
                                                       void *recv_socket_)
 {

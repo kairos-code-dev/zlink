@@ -4,6 +4,7 @@
 #include "../common/perf_client_helpers.hpp"
 #include "../common/perf_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_resource.hpp"
+#include "../../../src/services/spot/spot_node.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -432,6 +433,18 @@ inline bool create_spot_client_slots(
     return true;
 }
 
+inline void *spot_sub_socket_for_debug(void *node)
+{
+    if (!node)
+        return NULL;
+    zlink::spot_node_t *spot_node = static_cast<zlink::spot_node_t *>(node);
+    if (!spot_node->check_tag()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return spot_node->sub_socket_for_poller();
+}
+
 inline bool decode_metric_header_from_parts(const zlink_msg_t *parts,
                                             size_t count,
                                             perf_metric::header_t *header_out)
@@ -514,6 +527,23 @@ inline int recv_spot_message_once(void *sub,
                         latency_samples->add(sample_us);
                 }
             }
+        }
+    } else if (bench_debug_enabled()) {
+        static int mismatch_logs = 0;
+        if (mismatch_logs < 8) {
+            ++mismatch_logs;
+            std::cerr << "[multi-spot-client] metric mismatch part_count="
+                      << part_count;
+            if (decode_metric_header_from_parts(parts, part_count, &header)) {
+                std::cerr << " magic=" << header.magic
+                          << " run=" << header.run_id
+                          << " phase=" << header.phase
+                          << " size=" << header.msg_size
+                          << " expected_size=" << expected_msg_size;
+            } else {
+                std::cerr << " undecodable";
+            }
+            std::cerr << std::endl;
         }
     }
 
@@ -730,6 +760,19 @@ inline bool run_spot_one_way_duration(const std::vector<spot_client_slot_t> &slo
     *latency_out = bench_latency_stats_t();
 
     if (!wait_for_msg_size_start(slots, settings, msg_size)) {
+        if (bench_debug_enabled() && !slots.empty()) {
+            size_t peer_count = 0;
+            (void) zlink_spot_node_sub_peers(slots[0].node, NULL, &peer_count);
+            std::cerr << "[multi-spot-client] size sync peer_count="
+                      << peer_count << std::endl;
+            void *raw_sub = spot_sub_socket_for_debug(slots[0].node);
+            if (raw_sub) {
+                zlink_pollitem_t item = {raw_sub, 0, ZLINK_POLLIN, 0};
+                const int prc = zlink_poll(&item, 1, 0);
+                std::cerr << "[multi-spot-client] size sync raw poll rc="
+                          << prc << " revents=" << item.revents << std::endl;
+            }
+        }
         debug_stage("size sync failed");
         return false;
     }
@@ -783,33 +826,19 @@ inline void run_spot_debug_probe(const std::vector<spot_client_slot_t> &slots,
 {
     if (!bench_debug_enabled() || slots.empty())
         return;
+    (void) msg_size;
 
-    long probe_recv = 0;
-    const auto probe_deadline =
-      std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    while (std::chrono::steady_clock::now() < probe_deadline) {
-        const int rc = recv_spot_message_once(slots[0].sub,
-                                              ZLINK_DONTWAIT,
-                                              msg_size,
-                                              perf_metric::phase_warmup,
-                                              false,
-                                              NULL,
-                                              NULL,
-                                              NULL,
-                                              NULL);
-        if (rc < 0)
-            break;
-        if (rc == 1) {
-            ++probe_recv;
-            continue;
-        }
-        if (rc > 1)
-            continue;
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    size_t peer_count = 0;
+    (void) zlink_spot_node_sub_peers(slots[0].node, NULL, &peer_count);
+    std::cerr << "[multi-spot-client] sub peer count=" << peer_count << std::endl;
+
+    void *raw_sub = spot_sub_socket_for_debug(slots[0].node);
+    if (raw_sub) {
+        zlink_pollitem_t item = {raw_sub, 0, ZLINK_POLLIN, 0};
+        const int prc = zlink_poll(&item, 1, 0);
+        std::cerr << "[multi-spot-client] raw sub poll rc=" << prc
+                  << " revents=" << item.revents << std::endl;
     }
-
-    std::cerr << "[multi-spot-client] pre-run probe recv=" << probe_recv
-              << std::endl;
 }
 
 inline bool setup_spot_runtime(ctx_guard_t &ctx,

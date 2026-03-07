@@ -50,6 +50,14 @@ public final class Spot implements AutoCloseable {
         }
     }
 
+    public MemorySegment pubHandle() {
+        return pubHandle;
+    }
+
+    public MemorySegment subHandle() {
+        return subHandle;
+    }
+
     public void publish(String topicId, Message[] parts, SendFlag flags) {
         Objects.requireNonNull(topicId, "topicId");
         MemorySegment topic = topicCString(topicId);

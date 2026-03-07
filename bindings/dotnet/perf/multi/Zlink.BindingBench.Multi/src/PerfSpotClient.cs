@@ -19,8 +19,6 @@ internal static class PerfSpotClient
         ApplyMultiClientContextOptions(ctx);
         var nodes = new List<SpotNode>(config.ClientCount);
         var subscribers = new List<Spot>(config.ClientCount);
-        var subSockets = new List<Zlink.Socket>(config.ClientCount);
-        var topic = new byte[256];
         try
         {
             for (int i = 0; i < config.ClientCount; i++)
@@ -30,15 +28,13 @@ internal static class PerfSpotClient
                 node.ConnectPeerPub(endpoint);
                 var subscriber = new Spot(node);
                 subscriber.Subscribe("bench");
-                var subSocket = node.GetSubSocket();
                 nodes.Add(node);
                 subscribers.Add(subscriber);
-                subSockets.Add(subSocket);
             }
 
             Thread.Sleep(SubscribeSettleMs);
-            List<Zlink.Socket> activeSubSockets = subSockets;
-            if (activeSubSockets.Count == 0)
+            List<Spot> activeSubscribers = subscribers;
+            if (activeSubscribers.Count == 0)
             {
                 Console.Error.WriteLine("multi_client_error:no_ready_connections");
                 return 2;
@@ -46,11 +42,11 @@ internal static class PerfSpotClient
 
             var recv = new byte[Math.Max(256, config.Size)];
             var phaseState = new SpotClientPhaseState(config.LatencySampleCap);
-            RunWarmupPhase(activeSubSockets, topic, recv, config,
+            RunWarmupPhase(activeSubscribers, recv, config,
                 ref phaseState);
             RunSettlePhase(config);
-            SpotClientActiveStats activeStats = RunActivePhase(activeSubSockets,
-                topic, recv, config, ref phaseState);
+            SpotClientActiveStats activeStats = RunActivePhase(activeSubscribers,
+                recv, config, ref phaseState);
             RunDrainPhase(config);
             SpotClientResult result = ComputeResult(activeStats,
                 phaseState.LatencySamples);
@@ -63,7 +59,6 @@ internal static class PerfSpotClient
         {
             DisposeAllQuietly(nodes);
             DisposeAllQuietly(subscribers);
-            DisposeAllQuietly(subSockets);
         }
     }
 
@@ -89,8 +84,8 @@ internal static class PerfSpotClient
             ResolveMultiClients(Pattern));
     }
 
-    private static void RunWarmupPhase(List<Zlink.Socket> activeSubSockets,
-        byte[] topic, byte[] recv, SpotClientConfig config,
+    private static void RunWarmupPhase(List<Spot> activeSubscribers,
+        byte[] recv, SpotClientConfig config,
         ref SpotClientPhaseState state)
     {
         _ = config.ActiveWarmup;
@@ -98,9 +93,9 @@ internal static class PerfSpotClient
             return;
 
         using var poller = new Poller();
-        var events = new List<PollEvent>(activeSubSockets.Count);
-        for (int i = 0; i < activeSubSockets.Count; i++)
-            poller.Add(activeSubSockets[i], PollEvents.PollIn, i);
+        var events = new List<PollEvent>(activeSubscribers.Count);
+        for (int i = 0; i < activeSubscribers.Count; i++)
+            poller.AddSpotSub(activeSubscribers[i], PollEvents.PollIn, i);
 
         long warmupDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(0, config.WarmupSeconds) * Stopwatch.Frequency;
@@ -116,7 +111,7 @@ internal static class PerfSpotClient
             {
                 if (events[i].Tag is not int socketIndex)
                     continue;
-                DrainSpotSocket(activeSubSockets[socketIndex], topic.AsSpan(),
+                DrainSpotSubscriber(activeSubscribers[socketIndex],
                     recv.AsSpan(), static _ => true);
             }
         }
@@ -132,7 +127,7 @@ internal static class PerfSpotClient
     }
 
     private static SpotClientActiveStats RunActivePhase(
-        List<Zlink.Socket> activeSubSockets, byte[] topic, byte[] recv,
+        List<Spot> activeSubscribers, byte[] recv,
         SpotClientConfig config, ref SpotClientPhaseState state)
     {
         List<double> latencySamples = state.LatencySamples;
@@ -147,9 +142,9 @@ internal static class PerfSpotClient
             + (long)Math.Max(6, config.DurationSeconds + config.WarmupSeconds + 2)
             * Stopwatch.Frequency;
         using var poller = new Poller();
-        var events = new List<PollEvent>(activeSubSockets.Count);
-        for (int i = 0; i < activeSubSockets.Count; i++)
-            poller.Add(activeSubSockets[i], PollEvents.PollIn, i);
+        var events = new List<PollEvent>(activeSubscribers.Count);
+        for (int i = 0; i < activeSubscribers.Count; i++)
+            poller.AddSpotSub(activeSubscribers[i], PollEvents.PollIn, i);
         while (true)
         {
             long nowTicks = Stopwatch.GetTimestamp();
@@ -176,7 +171,7 @@ internal static class PerfSpotClient
                 if (events[i].Tag is not int socketIndex)
                     continue;
 
-                DrainSpotSocket(activeSubSockets[socketIndex], topic.AsSpan(),
+                DrainSpotSubscriber(activeSubscribers[socketIndex],
                     recv.AsSpan(), body =>
                 {
                     long endTicks = Stopwatch.GetTimestamp();
@@ -253,36 +248,27 @@ internal static class PerfSpotClient
             latencyP99Us);
     }
 
-    private static int ReceiveSpotPayload(Zlink.Socket subSocket,
-        Span<byte> topicBuffer, Span<byte> payloadBuffer)
+    private static int ReceiveSpotPayload(Spot subscriber,
+        Span<byte> payloadBuffer)
     {
-        int topicLength = TryReceiveNonBlocking(subSocket, topicBuffer);
-        if (topicLength <= 0)
-            return 0;
-
-        if (subSocket.GetOption(SocketOptions.RcvMore) == 0)
-            return 0;
-
-        int payloadLength = TryReceiveNonBlocking(subSocket, payloadBuffer);
-        if (payloadLength <= 0)
-            return 0;
-
-        while (subSocket.GetOption(SocketOptions.RcvMore) != 0)
+        try
         {
-            if (TryReceiveNonBlocking(subSocket, payloadBuffer) <= 0)
-                break;
+            return subscriber.ReceiveSinglePayload(payloadBuffer,
+                ReceiveFlags.DontWait);
         }
-
-        return payloadLength;
+        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
+        {
+            return 0;
+        }
     }
 
-    private static int DrainSpotSocket(Zlink.Socket subSocket, Span<byte> topicBuffer,
-        Span<byte> payloadBuffer, PayloadHandler onPayload)
+    private static int DrainSpotSubscriber(Spot subscriber, Span<byte> payloadBuffer,
+        PayloadHandler onPayload)
     {
         int count = 0;
         while (true)
         {
-            int n = ReceiveSpotPayload(subSocket, topicBuffer, payloadBuffer);
+            int n = ReceiveSpotPayload(subscriber, payloadBuffer);
             if (n <= 0)
                 break;
 

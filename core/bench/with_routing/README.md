@@ -17,6 +17,16 @@ zlink, libzmq, gRPC 세 라이브러리의 서버간 echo 통신 성능을 비�
 | **libzmq** | ROUTER-ROUTER | libzmq ROUTER 소켓 기반 양방향 echo |
 | **gRPC** | Bidirectional Streaming | gRPC 양방향 스트리밍 echo |
 
+## zlink 서비스 poller 정책과의 관계
+
+이 벤치는 `gateway`/`receiver`/`spot_*` 같은 서비스 인스턴스가 아니라
+직접 소유한 ROUTER 소켓을 비교합니다. 그래서 최근 추가된
+service-instance poller API(`zlink_poller_add_gateway`,
+`zlink_poller_add_receiver`, `zlink_poller_add_spot_sub`,
+`zlink_poller_add_spot_pub`) 적용 대상은 아닙니다.
+
+즉 이 디렉터리의 zlink 벤치는 계속 generic socket benchmark로 보면 됩니다.
+
 ### 메시지 크기
 
 기본: `64, 256, 1024, 65536, 131072, 262144` 바이트

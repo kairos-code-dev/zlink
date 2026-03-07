@@ -24,13 +24,11 @@ import dev.kairoscode.zlink.service.receiver.ReceiverSocketRole;
 import java.lang.foreign.MemorySegment;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * MULTI_GATEWAY client benchmark.
- * Gateway sends requests, per-client receiver router sockets collect echoes.
+ * Gateway sends requests, per-client receiver instances are pollable.
  */
 public final class PerfMultiGatewayClient {
     private static final String PATTERN = "MULTI_GATEWAY";
@@ -104,11 +102,9 @@ public final class PerfMultiGatewayClient {
                 }
 
                 Poller poller = new Poller();
-                Map<Socket, Integer> socketToIndex = new IdentityHashMap<>();
                 for (int i = 0; i < activeSlots.size(); i++) {
-                    Socket receiverRouter = activeSlots.get(i).receiverRouter;
-                    poller.add(receiverRouter, PollEventType.POLLIN);
-                    socketToIndex.put(receiverRouter, i);
+                    poller.addReceiver(activeSlots.get(i).receiver, i,
+                        PollEventType.POLLIN);
                 }
 
                 byte[] payload = new byte[payloadSize];
@@ -151,7 +147,7 @@ public final class PerfMultiGatewayClient {
                         index = (index + 1) % activeSlots.size();
 
                         DrainResult warmupDrain = drainReplies(poller,
-                            socketToIndex, awaitingReply, routingId, recv, runId,
+                            activeSlots, awaitingReply, routingId, recv, runId,
                             msgSize, pollTimeoutMs, false, header, reservoir);
                         progressed = progressed || warmupDrain.progressed();
                         if (!progressed) {
@@ -189,7 +185,7 @@ public final class PerfMultiGatewayClient {
                         index = (index + 1) % activeSlots.size();
 
                         DrainResult activeDrain = drainReplies(poller,
-                            socketToIndex, awaitingReply, routingId, recv, runId,
+                            activeSlots, awaitingReply, routingId, recv, runId,
                             msgSize, pollTimeoutMs, true, header, reservoir);
                         count += activeDrain.matchedCount();
                         progressed = progressed || activeDrain.progressed();
@@ -279,7 +275,7 @@ public final class PerfMultiGatewayClient {
     }
 
     private static DrainResult drainReplies(Poller poller,
-                                            Map<Socket, Integer> socketToIndex,
+                                            List<ClientSlot> activeSlots,
                                             boolean[] awaitingReply,
                                             byte[] routingIdBuffer,
                                             byte[] recvBuffer,
@@ -295,21 +291,23 @@ public final class PerfMultiGatewayClient {
         List<Poller.PollEvent> events = poller.poll(pollTimeoutMs);
         int eventCount = events.size();
         for (int i = 0; i < eventCount; i++) {
-            Socket readySocket = events.get(i).socket();
-            if (readySocket == null) {
+            Object tag = events.get(i).tag();
+            if (!(tag instanceof Integer)) {
                 continue;
             }
-            Integer socketIndex = socketToIndex.get(readySocket);
+            int socketIndex = (Integer) tag;
+            if (socketIndex < 0 || socketIndex >= activeSlots.size()) {
+                continue;
+            }
+            ClientSlot slot = activeSlots.get(socketIndex);
             while (true) {
-                int n = receiveReceiverPayloadNonBlocking(readySocket,
+                int n = receiveReceiverPayloadNonBlocking(slot.receiverRouter,
                     routingIdBuffer, recvBuffer);
                 if (n <= 0) {
                     break;
                 }
                 progressed = true;
-                if (socketIndex != null) {
-                    awaitingReply[socketIndex] = false;
-                }
+                awaitingReply[socketIndex] = false;
                 if (!collectMetric) {
                     continue;
                 }

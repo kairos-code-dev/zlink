@@ -523,6 +523,7 @@ single 의 PerfCommon 유틸 중 필요한 것을 포함하되, multi 는 다음
 - `PollOut` 기본 OFF, pending send 소켓에만 ON
 - `PollOut`에서 pending send가 비면 즉시 OFF
 - `Thread.Sleep` / `Thread.Yield` / retry budget 으로 `would-block` 은폐 금지
+- `Gateway`/`Receiver`/`Spot` poller 등록은 raw socket helper가 아니라 service instance 기준으로 구현한다 (`core/v4.0.0`)
 
 **`PerfCommonMulti.cs`** — (core/perf multi/common/perf_common_multi.hpp 대응)
 
@@ -866,9 +867,10 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 - client cap/retry budget/fallback 으로 실패를 성공처럼 보이게 만드는 동작을 금지한다.
 - send 정책은 고정한다: single=`blocking send 1회`, multi=`DontWait 1회 + pending 시 PollOut`.
 - recv 정책은 고정한다: single=`blocking recv + non-blocking drain`, multi=`poller + non-blocking drain(무제한, cap 없음)`.
-- `Gateway`/`Spot` service API는 `Facade mode`와 `Pollable transport mode`를 혼용하지 않는다.
-- `Gateway.CreateRouterSocket()` 또는 `SpotNode.GetPubSocket()/GetSubSocket()`를 사용한 객체는 pollable mode로 전환된 것으로 본다.
-- pollable mode에서 facade I/O(`Gateway.Send/Receive`, `Spot.Publish/Receive/SetHandler`)를 호출하면 `EFSM`이 정상이다.
+- `core/v4.0.0` 이후 public poller 방향은 raw socket helper가 아니라 **service instance poller** 기준이다.
+- `Gateway`/`Receiver`/`Spot`은 `Poller.AddGateway`, `Poller.AddReceiver`, `Poller.AddSpotPub`, `Poller.AddSpotSub`로 등록한다.
+- `Gateway.CreateRouterSocket()` 또는 `SpotNode.GetPubSocket()/GetSubSocket()`는 internal/debug transport 경로로만 취급하고, perf poller 등록 대상으로 쓰지 않는다.
+- raw socket helper를 직접 획득한 경우에만 pollable transport mode로 간주하며, 그때 facade I/O 호출은 `EFSM`이 정상이다.
 
 **실행 단계(이번 리팩토링):**
 1. Config/Result/Phase 개념을 파일 로컬 타입으로 명확화한다.
@@ -936,6 +938,7 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 - multi send 경로는 **DontWait 1회 + pending 시 PollOut** 으로 구현
 - single recv 경로는 **blocking recv + non-blocking drain** 구조
 - multi recv 경로는 **poller + non-blocking drain(무제한, cap 없음)** 구조
+- `Gateway`/`Receiver`/`Spot` multi poller 대상은 raw socket helper가 아니라 service instance다
 - `RESULT,current,...` 형식의 stdout 출력
 - STREAM 서버는 stop-token `__zlink_perf_stop__` 수신 시 정상 종료
 - Multi 서버는 `READY,<endpoint>` stdout 출력 후 클라이언트 대기

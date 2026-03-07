@@ -23,6 +23,28 @@
 | 기본 runs | 1 |
 | 결과 출력 | RESULT line |
 
+### 1.1 Multi 핵심 정책
+
+- 목적
+  - 여러 소켓을 단일 app thread에서 돌리되, 벤치 코드가 병목이 되지 않게 유지한다.
+- recv
+  - recv 역할 소켓은 기본적으로 `PollIn ON` 상태다.
+  - readiness가 오면 `recv(..., DONTWAIT)`로 drain한다.
+  - drain은 `EAGAIN`까지 무제한 수행한다.
+  - cap은 두지 않는다.
+- send
+  - shared event loop에서 blocking send를 금지한다.
+  - `PollOut`은 기본 `OFF`다.
+  - `send(..., DONTWAIT)`는 readiness cycle 당 1회만 시도한다.
+  - `EAGAIN`이면 오류가 아니라 pending 상태만 기록한다.
+  - pending이 생긴 소켓에 대해서만 `PollOut ON`으로 전환한다.
+  - 다음 `PollOut` readiness에서만 send를 재개한다.
+  - pending이 해소되면 즉시 `PollOut OFF`로 되돌린다.
+  - `while (send 실패)` 식의 즉시 재시도는 금지한다.
+- 한 줄 요약
+  - `multi = PollIn + nonblocking drain`
+  - `send = dontwait 1회 + pending + PollOut on-demand`
+
 ### 1.1 프로세스 모델
 
 Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.

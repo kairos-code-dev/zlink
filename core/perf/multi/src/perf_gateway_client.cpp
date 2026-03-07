@@ -29,6 +29,8 @@ typedef int (*receiver_set_tls_server_fn) (void *, const char *, const char *);
 
 using perf_client::backoff_client_idle;
 using perf_client::decode_metric_header_from_capture;
+using perf_client::echo_loop_state_t;
+using perf_client::pending_reply_count;
 using perf_client::normalize_latency_stats;
 using perf_client::parse_endpoint_arg;
 using perf_client::print_client_result_lines;
@@ -50,6 +52,24 @@ struct gateway_client_slot_t
     void *receiver_router;
 
     gateway_client_slot_t () : gateway (NULL), receiver (NULL), receiver_router (NULL) {}
+};
+
+struct gateway_receiver_poller_t
+{
+    void *handle;
+    std::vector<size_t> slot_indices;
+    std::vector<zlink_poller_event_t> events;
+
+    gateway_receiver_poller_t () : handle (NULL) {}
+};
+
+struct gateway_send_poller_t
+{
+    void *handle;
+    std::vector<size_t> slot_indices;
+    std::vector<zlink_poller_event_t> events;
+
+    gateway_send_poller_t () : handle (NULL) {}
 };
 
 inline bool is_supported_transport (const std::string &transport)
@@ -178,6 +198,86 @@ inline void close_gateway_client_slots (std::vector<gateway_client_slot_t> *slot
             zlink_receiver_destroy (&((*slots)[i].receiver));
         (*slots)[i].receiver_router = NULL;
     }
+}
+
+inline bool init_gateway_receiver_poller (
+  const std::vector<gateway_client_slot_t> &slots,
+  gateway_receiver_poller_t *poller_out)
+{
+    if (!poller_out)
+        return false;
+
+    poller_out->handle = zlink_poller_new ();
+    if (!poller_out->handle)
+        return false;
+
+    poller_out->slot_indices.resize (slots.size ());
+    poller_out->events.resize (slots.size ());
+    for (size_t i = 0; i < slots.size (); ++i) {
+        poller_out->slot_indices[i] = i;
+        if (zlink_poller_add_receiver (poller_out->handle,
+                                       slots[i].receiver,
+                                       &poller_out->slot_indices[i],
+                                       ZLINK_POLLIN)
+            != 0) {
+            zlink_poller_destroy (&poller_out->handle);
+            poller_out->slot_indices.clear ();
+            poller_out->events.clear ();
+            return false;
+        }
+    }
+
+    return true;
+}
+
+inline void close_gateway_receiver_poller (gateway_receiver_poller_t *poller)
+{
+    if (!poller)
+        return;
+    if (poller->handle)
+        zlink_poller_destroy (&poller->handle);
+    poller->slot_indices.clear ();
+    poller->events.clear ();
+}
+
+inline bool init_gateway_send_poller (
+  const std::vector<gateway_client_slot_t> &slots,
+  gateway_send_poller_t *poller_out)
+{
+    if (!poller_out)
+        return false;
+
+    poller_out->handle = zlink_poller_new ();
+    if (!poller_out->handle)
+        return false;
+
+    poller_out->slot_indices.resize (slots.size ());
+    poller_out->events.resize (slots.size ());
+    for (size_t i = 0; i < slots.size (); ++i) {
+        poller_out->slot_indices[i] = i;
+        if (zlink_poller_add_gateway (poller_out->handle,
+                                      slots[i].gateway,
+                                      &poller_out->slot_indices[i],
+                                      0)
+            != 0) {
+            zlink_poller_destroy (&poller_out->handle);
+            poller_out->slot_indices.clear ();
+            poller_out->events.clear ();
+            return false;
+        }
+    }
+
+    return true;
+}
+
+inline void close_gateway_send_poller (gateway_send_poller_t *poller)
+{
+    if (!poller)
+        return;
+    if (poller->handle)
+        zlink_poller_destroy (&poller->handle);
+    poller->slot_indices.clear ();
+    poller->events.clear ();
 }
 
 inline bool wait_all_gateway_connect_ready (
@@ -389,15 +489,6 @@ inline bool create_gateway_client_slots (
             return false;
         }
 
-        void *gateway_router = zlink_gateway_router_socket_unsafe (slot.gateway);
-        if (!gateway_router) {
-            std::cerr << "gateway client: gateway router unavailable"
-                      << std::endl;
-            close_gateway_client_slots (slots_out);
-            zlink_discovery_destroy (&discovery);
-            return false;
-        }
-        apply_benchmark_socket_options (gateway_router, settings.hwm, transport);
     }
 
     *discovery_out = discovery;
@@ -406,10 +497,14 @@ inline bool create_gateway_client_slots (
 
 inline gateway_send_result_t send_gateway_message (void *gateway,
                                                    const std::vector<char> &payload,
-                                                   size_t payload_size)
+                                                   size_t payload_size,
+                                                   int *blocked_errno_out = NULL)
 {
     if (!gateway)
         return gateway_send_fatal;
+
+    if (blocked_errno_out)
+        *blocked_errno_out = 0;
 
     while (true) {
         const void *data =
@@ -423,14 +518,14 @@ inline gateway_send_result_t send_gateway_message (void *gateway,
               &g_server_routing_id,
               data,
               payload_size,
-              0);
+              ZLINK_DONTWAIT);
         } else {
             send_rc = zlink_gateway_send_bytes (
               gateway,
               k_server_service_name,
               data,
               payload_size,
-              0);
+              ZLINK_DONTWAIT);
         }
         if (send_rc == 0)
             return gateway_send_ok;
@@ -438,8 +533,10 @@ inline gateway_send_result_t send_gateway_message (void *gateway,
         const int err = zlink_errno ();
         if (err == EINTR)
             continue;
-        if (err == EAGAIN || err == ENOENT || err == ENOTCONN
+        if (err == EAGAIN || err == EFSM || err == ENOENT || err == ENOTCONN
             || err == EHOSTUNREACH) {
+            if (blocked_errno_out)
+                *blocked_errno_out = err;
             return gateway_send_blocked;
         }
         std::cerr << "gateway client: send failed: "
@@ -463,7 +560,8 @@ inline bool run_echo_window_round_robin (
   double *lat_sum,
   long *lat_count,
   bench_latency_stats_t *latency_out,
-  long *recv_total)
+  long *recv_total,
+  echo_loop_state_t *state_io = NULL)
 {
     if (slots.empty ())
         return false;
@@ -482,12 +580,27 @@ inline bool run_echo_window_round_robin (
     }
 
     bool fatal_error = false;
+    const bool debug = bench_debug_enabled ();
+    long local_send_ok = 0;
+    long local_send_blocked = 0;
+    long local_send_pollout = 0;
+    long local_send_blocked_eagain = 0;
+    long local_send_blocked_efsm = 0;
+    long local_send_blocked_enoent = 0;
+    long local_send_blocked_enotconn = 0;
+    long local_send_blocked_ehostunreach = 0;
+    long local_send_blocked_other = 0;
     long local_recv = 0;
+    long local_recv_any = 0;
+    long local_header_mismatch = 0;
     double lat_sum_local = 0.0;
     long lat_count_local = 0;
     bench_latency_sampler_t latency_samples;
-    size_t rr = 0;
-    uint64_t seq = 1;
+
+    echo_loop_state_t local_state;
+    echo_loop_state_t *state = state_io ? state_io : &local_state;
+    if (state->awaiting_reply.size () != slots.size ())
+        state->reset (slots.size ());
 
     const auto deadline =
       std::chrono::steady_clock::now ()
@@ -501,76 +614,134 @@ inline bool run_echo_window_round_robin (
         perf_metric::header_size () + static_cast<size_t> (64));
 
     std::vector<char> scratch (scratch_size, '\0');
-    std::vector<uint8_t> awaiting_reply (slots.size (), 0);
-    std::vector<zlink_pollitem_t> poll_items (slots.size ());
-    for (size_t i = 0; i < slots.size (); ++i) {
-        const zlink_pollitem_t item = {
-          slots[i].receiver_router,
-          0,
-          ZLINK_POLLIN,
-          0,
-        };
-        poll_items[i] = item;
+    std::vector<uint8_t> send_pending (slots.size (), 0);
+    gateway_receiver_poller_t receiver_poller;
+    if (!init_gateway_receiver_poller (slots, &receiver_poller))
+        return false;
+    gateway_send_poller_t send_poller;
+    if (!init_gateway_send_poller (slots, &send_poller)) {
+        close_gateway_receiver_poller (&receiver_poller);
+        return false;
     }
+
+    struct try_send_outcome_t
+    {
+        bool fatal;
+        bool progressed;
+    };
+    const int effective_poll_timeout_ms = std::max (1, poll_timeout_ms);
+    const size_t gateway_count = slots.size ();
+
+    const auto set_gateway_pollout =
+      [&] (size_t idx, short events) -> bool {
+        return zlink_poller_modify_gateway (
+                 send_poller.handle, slots[idx].gateway, events)
+               == 0;
+    };
+
+    const auto try_send_slot =
+      [&] (size_t idx) -> try_send_outcome_t {
+        try_send_outcome_t outcome = {false, false};
+        if (idx >= slots.size () || state->awaiting_reply[idx] != 0)
+            return outcome;
+        if (slot_payloads[idx].size () < payload_size) {
+            outcome.fatal = true;
+            return outcome;
+        }
+
+        if (send_pending[idx] == 0) {
+            if (!perf_metric::stamp_payload (
+                  slot_payloads[idx].data (),
+                  payload_size,
+                  run_id,
+                  phase,
+                  msg_size,
+                  state->sequence++,
+                  perf_metric::now_us ())) {
+                outcome.fatal = true;
+                return outcome;
+            }
+        }
+
+        int blocked_err = 0;
+        const gateway_send_result_t send_rc = send_gateway_message (
+          slots[idx].gateway,
+          slot_payloads[idx],
+          payload_size,
+          &blocked_err);
+        if (send_rc == gateway_send_ok) {
+            ++local_send_ok;
+            send_pending[idx] = 0;
+            if (!set_gateway_pollout (idx, 0)) {
+                outcome.fatal = true;
+                return outcome;
+            }
+            state->awaiting_reply[idx] = 1;
+            outcome.progressed = true;
+            return outcome;
+        }
+        if (send_rc == gateway_send_blocked) {
+            ++local_send_blocked;
+            if (blocked_err == EAGAIN)
+                ++local_send_blocked_eagain;
+            else if (blocked_err == EFSM)
+                ++local_send_blocked_efsm;
+            else if (blocked_err == ENOENT)
+                ++local_send_blocked_enoent;
+            else if (blocked_err == ENOTCONN)
+                ++local_send_blocked_enotconn;
+            else if (blocked_err == EHOSTUNREACH)
+                ++local_send_blocked_ehostunreach;
+            else
+                ++local_send_blocked_other;
+            send_pending[idx] = 1;
+            if (!set_gateway_pollout (idx, ZLINK_POLLOUT))
+                outcome.fatal = true;
+            return outcome;
+        }
+        outcome.fatal = true;
+        return outcome;
+    };
 
     while (std::chrono::steady_clock::now () < deadline && !fatal_error) {
         bool progressed = false;
 
         if (allow_send) {
-            const size_t start_rr = rr;
+            const size_t start_rr = state->rr;
             for (size_t attempts = 0; attempts < slots.size (); ++attempts) {
                 const size_t idx = (start_rr + attempts) % slots.size ();
-                if (awaiting_reply[idx] != 0)
+                if (state->awaiting_reply[idx] != 0 || send_pending[idx] != 0)
                     continue;
-                if (slot_payloads[idx].size () < payload_size) {
+                const try_send_outcome_t outcome = try_send_slot (idx);
+                if (outcome.fatal) {
                     fatal_error = true;
                     break;
                 }
-
-                if (!perf_metric::stamp_payload (
-                      slot_payloads[idx].data (),
-                      payload_size,
-                      run_id,
-                      phase,
-                      msg_size,
-                      seq++,
-                      perf_metric::now_us ())) {
-                    fatal_error = true;
-                    break;
-                }
-
-                const gateway_send_result_t send_rc = send_gateway_message (
-                  slots[idx].gateway,
-                  slot_payloads[idx],
-                  payload_size);
-                if (send_rc == gateway_send_ok) {
-                    awaiting_reply[idx] = 1;
+                if (outcome.progressed)
                     progressed = true;
-                } else if (send_rc == gateway_send_fatal) {
-                    fatal_error = true;
-                    break;
-                }
             }
-            rr = (start_rr + 1) % slots.size ();
+            state->rr = gateway_count > 0 ? ((start_rr + 1) % gateway_count) : 0;
         }
 
         if (fatal_error)
             break;
 
-        for (size_t i = 0; i < poll_items.size (); ++i)
-            poll_items[i].revents = 0;
-
-        const int prc =
-          zlink_poll (&poll_items[0], static_cast<int> (poll_items.size ()), poll_timeout_ms);
+        const int prc = zlink_poller_wait_all (
+          receiver_poller.handle,
+          receiver_poller.events.empty () ? NULL : &receiver_poller.events[0],
+          static_cast<int> (receiver_poller.events.size ()),
+          effective_poll_timeout_ms);
         if (prc < 0) {
             if (zlink_errno () != EINTR) {
                 fatal_error = true;
                 break;
             }
         } else if (prc > 0) {
-            for (size_t i = 0; i < poll_items.size (); ++i) {
-                if ((poll_items[i].revents & ZLINK_POLLIN) == 0)
+            for (int event_index = 0; event_index < prc; ++event_index) {
+                zlink_poller_event_t &event = receiver_poller.events[event_index];
+                if ((event.events & ZLINK_POLLIN) == 0 || !event.user_data)
                     continue;
+                const size_t i = *static_cast<size_t *> (event.user_data);
 
                 const int recv_rc = recv_one_message (
                   slots[i].receiver_router,
@@ -585,7 +756,8 @@ inline bool run_echo_window_round_robin (
                     continue;
 
                 progressed = true;
-                awaiting_reply[i] = 0;
+                ++local_recv_any;
+                state->awaiting_reply[i] = 0;
 
                 perf_metric::header_t header;
                 if (decode_metric_header_from_capture (scratch, &header)
@@ -604,47 +776,68 @@ inline bool run_echo_window_round_robin (
                             latency_samples.add (sample_us);
                         }
                     }
+                } else if (decode_metric_header_from_capture (scratch, &header)) {
+                    ++local_header_mismatch;
+                    if (debug && local_header_mismatch <= 4) {
+                        std::cerr
+                          << "[multi-gateway-client] header mismatch phase="
+                          << static_cast<unsigned> (header.phase)
+                          << " run_id=" << header.run_id
+                          << " msg_size=" << header.msg_size
+                          << " expected_phase="
+                          << static_cast<unsigned> (phase)
+                          << " expected_run_id=" << run_id
+                          << " expected_msg_size=" << msg_size << std::endl;
+                    }
                 }
 
                 if (!allow_send)
                     continue;
-                if (slot_payloads[i].size () < payload_size) {
+
+                const try_send_outcome_t outcome = try_send_slot (i);
+                if (outcome.fatal) {
                     fatal_error = true;
                     break;
                 }
-
-                if (!perf_metric::stamp_payload (
-                      slot_payloads[i].data (),
-                      payload_size,
-                      run_id,
-                      phase,
-                      msg_size,
-                      seq++,
-                      perf_metric::now_us ())) {
-                    fatal_error = true;
-                    break;
-                }
-
-                const gateway_send_result_t send_rc = send_gateway_message (
-                  slots[i].gateway,
-                  slot_payloads[i],
-                  payload_size);
-                if (send_rc == gateway_send_ok) {
-                    awaiting_reply[i] = 1;
+                if (outcome.progressed)
                     progressed = true;
-                } else if (send_rc == gateway_send_fatal) {
-                    fatal_error = true;
-                    break;
-                }
             }
         }
 
         if (fatal_error)
             break;
 
-        if (!progressed)
-            backoff_client_idle (settings);
+        const int send_prc = zlink_poller_wait_all (
+          send_poller.handle,
+          send_poller.events.empty () ? NULL : &send_poller.events[0],
+          static_cast<int> (send_poller.events.size ()),
+          0);
+        if (send_prc < 0) {
+            if (zlink_errno () != EINTR)
+                fatal_error = true;
+        } else if (send_prc > 0) {
+            for (int event_index = 0; event_index < send_prc; ++event_index) {
+                zlink_poller_event_t &event = send_poller.events[event_index];
+                if ((event.events & ZLINK_POLLOUT) == 0 || !event.user_data)
+                    continue;
+                ++local_send_pollout;
+                const size_t i = *static_cast<size_t *> (event.user_data);
+                if (i >= slots.size () || send_pending[i] == 0
+                    || state->awaiting_reply[i] != 0)
+                    continue;
+                const try_send_outcome_t outcome = try_send_slot (i);
+                if (outcome.fatal) {
+                    fatal_error = true;
+                    break;
+                }
+                if (outcome.progressed)
+                    progressed = true;
+            }
+        }
     }
+
+    close_gateway_receiver_poller (&receiver_poller);
+    close_gateway_send_poller (&send_poller);
 
     if (recv_total)
         *recv_total = local_recv;
@@ -659,6 +852,23 @@ inline bool run_echo_window_round_robin (
             normalize_latency_stats (
               lat_sum_local, lat_count_local, &latency_samples, latency_out);
         }
+    }
+
+    if (debug && collect_latency) {
+        std::cerr << "[multi-gateway-client] phase="
+                  << static_cast<unsigned> (phase) << " recv_any="
+                  << local_recv_any << " recv_match=" << local_recv
+                  << " header_mismatch=" << local_header_mismatch
+                  << " send_ok=" << local_send_ok
+                  << " send_blocked=" << local_send_blocked
+                  << " send_pollout=" << local_send_pollout
+                  << " blocked_eagain=" << local_send_blocked_eagain
+                  << " blocked_efsm=" << local_send_blocked_efsm
+                  << " blocked_enoent=" << local_send_blocked_enoent
+                  << " blocked_enotconn=" << local_send_blocked_enotconn
+                  << " blocked_ehostunreach=" << local_send_blocked_ehostunreach
+                  << " blocked_other=" << local_send_blocked_other
+                  << " pending=" << pending_reply_count (*state) << std::endl;
     }
 
     return !fatal_error;
@@ -689,16 +899,9 @@ inline bool prime_roundtrip_all_slots (
     std::vector<char> scratch (scratch_size, '\0');
     std::vector<uint8_t> awaiting_reply (slots.size (), 0);
     std::vector<uint8_t> roundtrip_count (slots.size (), 0);
-    std::vector<zlink_pollitem_t> poll_items (slots.size ());
-    for (size_t i = 0; i < slots.size (); ++i) {
-        const zlink_pollitem_t item = {
-          slots[i].receiver_router,
-          0,
-          ZLINK_POLLIN,
-          0,
-        };
-        poll_items[i] = item;
-    }
+    gateway_receiver_poller_t receiver_poller;
+    if (!init_gateway_receiver_poller (slots, &receiver_poller))
+        return false;
 
     const uint8_t target_roundtrips_per_slot = 1;
     size_t primed_count = 0;
@@ -729,20 +932,23 @@ inline bool prime_roundtrip_all_slots (
         }
         rr = (start_rr + 1) % slots.size ();
 
-        for (size_t i = 0; i < poll_items.size (); ++i)
-            poll_items[i].revents = 0;
-
-        const int prc = zlink_poll (
-          &poll_items[0], static_cast<int> (poll_items.size ()), poll_timeout_ms);
+        const int prc = zlink_poller_wait_all (
+          receiver_poller.handle,
+          receiver_poller.events.empty () ? NULL : &receiver_poller.events[0],
+          static_cast<int> (receiver_poller.events.size ()),
+          poll_timeout_ms);
         if (prc < 0) {
             if (zlink_errno () == EINTR)
                 continue;
+            close_gateway_receiver_poller (&receiver_poller);
             return false;
         }
         if (prc > 0) {
-            for (size_t i = 0; i < poll_items.size (); ++i) {
-                if ((poll_items[i].revents & ZLINK_POLLIN) == 0)
+            for (int event_index = 0; event_index < prc; ++event_index) {
+                zlink_poller_event_t &event = receiver_poller.events[event_index];
+                if ((event.events & ZLINK_POLLIN) == 0 || !event.user_data)
                     continue;
+                const size_t i = *static_cast<size_t *> (event.user_data);
 
                 const int recv_rc = recv_one_message (
                   slots[i].receiver_router,
@@ -767,6 +973,8 @@ inline bool prime_roundtrip_all_slots (
         if (!progressed)
             backoff_client_idle (settings);
     }
+
+    close_gateway_receiver_poller (&receiver_poller);
 
     if (primed_count != slots.size ()) {
         std::cerr << "gateway client: preflight prime incomplete "
@@ -797,6 +1005,9 @@ inline bool run_echo_duration (
     if (slots.empty ())
         return false;
 
+    echo_loop_state_t phase_state;
+    phase_state.reset (slots.size ());
+
     if (!run_echo_window_round_robin (
           slots,
           settings,
@@ -812,7 +1023,8 @@ inline bool run_echo_duration (
           NULL,
           NULL,
           NULL,
-          NULL)) {
+          NULL,
+          &phase_state)) {
         std::cerr << "gateway client: warmup phase failed" << std::endl;
         return false;
     }
@@ -835,10 +1047,62 @@ inline bool run_echo_duration (
               NULL,
               NULL,
               NULL,
-              NULL)) {
+              NULL,
+              &phase_state)) {
             std::cerr << "gateway client: settle drain failed" << std::endl;
             return false;
         }
+    }
+
+    if (pending_reply_count (phase_state) > 0) {
+        const auto settle_deadline =
+          std::chrono::steady_clock::now ()
+          + std::chrono::milliseconds (
+            std::max (settings.connect_ready_timeout_ms,
+                      std::max (100, settings.settle_ms)));
+        while (pending_reply_count (phase_state) > 0) {
+            const auto now = std::chrono::steady_clock::now ();
+            if (now >= settle_deadline) {
+                std::cerr << "gateway client: settle drain incomplete"
+                          << std::endl;
+                return false;
+            }
+            const double remain_seconds =
+              std::chrono::duration_cast<std::chrono::duration<double> > (
+                settle_deadline - now)
+                .count ();
+            const double slice_seconds = std::min (0.05, remain_seconds);
+            if (slice_seconds <= 0.0) {
+                std::cerr << "gateway client: settle drain incomplete"
+                          << std::endl;
+                return false;
+            }
+            if (!run_echo_window_round_robin (
+                  slots,
+                  settings,
+                  slot_payloads,
+                  payload_size,
+                  msg_size,
+                  run_id,
+                  perf_metric::phase_warmup,
+                  scratch_capacity,
+                  slice_seconds,
+                  false,
+                  false,
+                  NULL,
+                  NULL,
+                  NULL,
+                  NULL,
+                  &phase_state)) {
+                std::cerr << "gateway client: settle drain failed" << std::endl;
+                return false;
+            }
+        }
+    }
+
+    if (bench_debug_enabled ()) {
+        std::cerr << "[multi-gateway-client] active start pending="
+                  << pending_reply_count (phase_state) << std::endl;
     }
 
     long recv_count = 0;
@@ -860,7 +1124,8 @@ inline bool run_echo_duration (
           NULL,
           &lat_count,
           &active_latency,
-          &recv_count)) {
+          &recv_count,
+          &phase_state)) {
         std::cerr << "gateway client: throughput phase failed" << std::endl;
         return false;
     }
@@ -996,15 +1261,19 @@ inline bool setup_gateway_runtime (
 
     (void) resolve_gateway_server_routing_id (*discovery_out);
 
-    if (!wait_all_gateway_connect_ready (
-          *slots_out,
-          settings.connect_ready_timeout_ms)) {
-        std::cerr << "gateway client: server service not ready within timeout"
-                  << std::endl;
-        cleanup_gateway_runtime (slots_out, discovery_out);
-        return false;
+    if (bench_debug_enabled ()) {
+        const int available =
+          zlink_discovery_service_available (*discovery_out, k_server_service_name);
+        const int receivers =
+          zlink_discovery_receiver_count (*discovery_out, k_server_service_name);
+        std::cerr << "[multi-gateway-client] discovery service=" << available
+                  << " receivers=" << receivers << std::endl;
     }
-    std::this_thread::sleep_for (std::chrono::milliseconds (200));
+
+    // Do not require transport-level readiness before the benchmark loop.
+    // Multi policy treats EAGAIN as flow control, and preflight roundtrip will
+    // validate that the data path is live without a separate connect-ready gate.
+    std::this_thread::sleep_for (std::chrono::milliseconds (50));
 
     const size_t payload_capacity =
       std::max<size_t> (max_msg_size, perf_metric::header_size ());
@@ -1025,6 +1294,15 @@ inline bool setup_gateway_runtime (
           prime_payload_size,
           *scratch_capacity_out,
           settings.connect_ready_timeout_ms * 4)) {
+        if (bench_debug_enabled ()) {
+            for (size_t i = 0; i < slots_out->size (); ++i) {
+                const int count =
+                  zlink_gateway_connection_count ((*slots_out)[i].gateway,
+                                                 k_server_service_name);
+                std::cerr << "[multi-gateway-client] slot " << i
+                          << " connection_count=" << count << std::endl;
+            }
+        }
         std::cerr << "gateway client: preflight warmup failed" << std::endl;
         cleanup_gateway_runtime (slots_out, discovery_out);
         return false;

@@ -88,20 +88,16 @@ bool send_spot_payload (zlink::socket_t &publisher,
                         const char *topic,
                         const void *payload,
                         size_t payload_size,
-                        zlink::send_flag flags,
-                        bool *topic_sent)
+                        zlink::send_flag flags)
 {
-    if (!topic || !topic_sent)
+    if (!topic)
         return false;
 
     const size_t topic_size = std::strlen (topic);
-    if (!*topic_sent) {
-        const int topic_rc =
-          publisher.send (topic, topic_size, flags | zlink::send_flag::sndmore);
-        if (topic_rc != static_cast<int> (topic_size))
-            return false;
-        *topic_sent = true;
-    }
+    const int topic_sent =
+      publisher.send (topic, topic_size, flags | zlink::send_flag::sndmore);
+    if (topic_sent != static_cast<int> (topic_size))
+        return false;
 
     return publisher.send (payload, payload_size, flags)
            == static_cast<int> (payload_size);
@@ -136,7 +132,6 @@ bool run_phase (zlink::socket_t &publisher,
         return true;
 
     bool pending = false;
-    bool topic_sent = false;
     const auto deadline = std::chrono::steady_clock::now () + duration;
     while (std::chrono::steady_clock::now () < deadline) {
         if (!pending) {
@@ -155,10 +150,8 @@ bool run_phase (zlink::socket_t &publisher,
                                "bench",
                                payload.data (),
                                payload.size (),
-                               zlink::send_flag::dontwait,
-                               &topic_sent)) {
+                               zlink::send_flag::dontwait)) {
             pending = false;
-            topic_sent = false;
             if (poller.modify (publisher, static_cast<zlink::poll_event> (0)) != 0)
                 return false;
             continue;

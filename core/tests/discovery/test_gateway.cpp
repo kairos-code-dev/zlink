@@ -294,6 +294,130 @@ static void test_gateway_can_be_polled_via_service_instance ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
+static void test_gateway_refreshes_existing_service_on_first_connection_count ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = NULL;
+    const char *service_name = "late-gateway-svc";
+    setup_registry (ctx, &registry, "inproc://reg-pub-gateway-late",
+                    "inproc://reg-router-gateway-late");
+    msleep (100);
+
+    void *provider = zlink_receiver_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (provider);
+
+    char provider_ep[MAX_SOCKET_STRING];
+    snprintf (provider_ep, sizeof (provider_ep), "tcp://127.0.0.1:%d",
+              test_port (22402));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_receiver_bind (provider, provider_ep));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_receiver_connect_registry (provider,
+                                       "inproc://reg-router-gateway-late"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_receiver_register (provider, service_name, provider_ep, 1));
+
+    void *discovery =
+      zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (discovery,
+                                        "inproc://reg-pub-gateway-late"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_subscribe (discovery, service_name));
+
+    const int sleep_ms_step = 5;
+    for (int i = 0; i < 400; ++i) {
+        if (zlink_discovery_service_available (discovery, service_name) > 0)
+            break;
+        msleep (sleep_ms_step);
+    }
+    TEST_ASSERT_TRUE (zlink_discovery_service_available (discovery, service_name) > 0);
+
+    void *gateway = zlink_gateway_new (ctx, discovery, NULL);
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    wait_gateway_ready (gateway, service_name, 2000);
+    TEST_ASSERT_TRUE (zlink_gateway_connection_count (gateway, service_name) > 0);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+}
+
+static void test_gateway_router_peers_do_not_enter_pollable_mode ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = NULL;
+    const char *service_name = "peer-stats-svc";
+    setup_registry (ctx, &registry, "inproc://reg-pub-gateway-peers",
+                    "inproc://reg-router-gateway-peers");
+    msleep (100);
+
+    void *provider = zlink_receiver_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (provider);
+
+    char provider_ep[MAX_SOCKET_STRING];
+    snprintf (provider_ep, sizeof (provider_ep), "tcp://127.0.0.1:%d",
+              test_port (22403));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, provider_ep));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_receiver_connect_registry (provider,
+                                       "inproc://reg-router-gateway-peers"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_receiver_register (provider, service_name, provider_ep, 1));
+
+    void *discovery =
+      zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (discovery,
+                                        "inproc://reg-pub-gateway-peers"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_subscribe (discovery, service_name));
+
+    void *gateway = zlink_gateway_new (ctx, discovery, NULL);
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    wait_gateway_ready (gateway, service_name, 2000);
+
+    size_t peer_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_router_peers (gateway, NULL, &peer_count));
+    TEST_ASSERT_TRUE (peer_count > 0);
+    TEST_ASSERT_TRUE (zlink_gateway_connection_count (gateway, service_name) > 0);
+
+    zlink_msg_t msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&msg, 4));
+    memcpy (zlink_msg_data (&msg), "ping", 4);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_send (gateway, service_name, &msg, 1, 0));
+
+    void *provider_router = zlink_receiver_router_socket_unsafe (provider);
+    TEST_ASSERT_NOT_NULL (provider_router);
+    zlink_msg_t rid;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&rid));
+    recv_one_with_timeout (provider_router, &rid, 2000);
+    TEST_ASSERT_TRUE (zlink_msg_more (&rid) != 0);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&rid));
+    zlink_msg_t payload;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&payload));
+    recv_one_with_timeout (provider_router, &payload, 2000);
+    TEST_ASSERT_EQUAL_UINT (4, zlink_msg_size (&payload));
+    TEST_ASSERT_EQUAL_MEMORY ("ping", zlink_msg_data (&payload), 4);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+}
+
 static void test_receiver_can_be_polled_via_service_instance ()
 {
     void *ctx = get_test_context ();
@@ -1925,6 +2049,8 @@ int main (void)
     RUN_TEST (test_gateway_protocol_wss);
     RUN_TEST (test_gateway_provider_setsockopt);
     RUN_TEST (test_gateway_can_be_polled_via_service_instance);
+    RUN_TEST (test_gateway_refreshes_existing_service_on_first_connection_count);
+    RUN_TEST (test_gateway_router_peers_do_not_enter_pollable_mode);
     RUN_TEST (test_receiver_can_be_polled_via_service_instance);
     RUN_TEST (test_gateway_load_balancing);
     RUN_TEST (test_gateway_weighted_load_balancing);

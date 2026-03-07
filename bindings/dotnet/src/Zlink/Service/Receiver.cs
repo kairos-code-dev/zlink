@@ -12,6 +12,8 @@ public sealed class Receiver : IDisposable
 {
     private IntPtr _handle;
 
+    internal IntPtr Handle => _handle;
+
     public Receiver(Context context)
     {
         if (context == null)

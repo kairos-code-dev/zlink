@@ -41,6 +41,10 @@ public class Receiver implements AutoCloseable {
             throw ZlinkException.fromLastError("zlink_receiver_new");
     }
 
+    public MemorySegment handle() {
+        return handle;
+    }
+
     public void bind(String endpoint) {
         try (Arena arena = Arena.ofConfined()) {
             int rc = Native.providerBind(handle, NativeHelpers.toCString(arena, endpoint));

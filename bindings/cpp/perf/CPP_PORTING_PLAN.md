@@ -1143,9 +1143,13 @@ rg -n "std::vector|std::string|new |malloc|make_unique|make_shared" \
 - `one-way send`: recv 없음. `PollOut` 가능 시에만 계속 보내고, `EAGAIN` 에서 멈춘다.
 - `one-way recv`: send 없음. `PollIn + nonblocking drain` 만 수행한다.
 - `pub/sub`, `spot`: 발행/송신 쪽은 one-way send, 구독/수신 쪽은 one-way recv 정책을 따른다.
+- public binding wrapper/documentation 방향은 `core/v4.0.0` 기준 service-instance poller API (`poller.add_spot_sub/pub`, `add_gateway`, `add_receiver`) 를 우선한다.
+- 단, perf 구현은 정책상 핵심 send/recv/backpressure 루프를 파일 안에 명시적으로 유지해야 하므로, facade/service API 가 이를 숨기거나 `dontwait` 를 지원하지 않는 패턴은 raw transport socket 경로를 유지한다.
 - `SPOT` 는 perf 에서 **pollable transport mode 전용** 으로 사용한다.
   - `spot_node_t::pub_socket_handle()` / `sub_socket_handle()` 를 `zlink::socket_t::wrap(...)` 으로 감싼 raw PUB/SUB 소켓만 사용한다.
   - 같은 node 기반 `spot_t::publish()`, `spot_t::recv()`, `spot_t::subscribe()` 와 혼용하지 않는다.
+  - 이유: perf multi 정책은 publisher 측 `send(..., dontwait)` + `PollOut` backpressure 제어를 요구하고, 현재 `spot_t::publish(..., send_flag::dontwait)` 는 지원되지 않는다 (`ENOTSUP`).
+  - 따라서 perf 는 service facade convenience 가 아니라 explicit transport path 측정을 위해 socket-level pollable mode 를 유지한다.
 
 ### 15.5 코드 인라이닝 정책
 

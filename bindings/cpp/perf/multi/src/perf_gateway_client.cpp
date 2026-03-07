@@ -48,11 +48,11 @@ bool wait_discovery_ready (zlink::service::discovery_t &discovery,
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (timeout_ms);
     while (std::chrono::steady_clock::now () < deadline) {
-        if (discovery.service_available (service) > 0)
+        if (discovery.receiver_count (service) > 0)
             return true;
         std::this_thread::sleep_for (std::chrono::milliseconds (2));
     }
-    return false;
+    return discovery.receiver_count (service) > 0;
 }
 
 bool wait_gateway_ready (zlink::service::gateway_t &gateway,
@@ -87,6 +87,26 @@ struct bench_result_t
     bench_result_t () : warmup_count (0), active_count (0), latency () {}
 };
 
+bool resolve_provider_routing_id (zlink::service::discovery_t &discovery,
+                                  std::string *routing_id_out)
+{
+    if (!routing_id_out)
+        return false;
+
+    zlink_receiver_info_t provider;
+    std::memset (&provider, 0, sizeof (provider));
+    size_t count = 1;
+    if (discovery.get_receivers (k_service_name, &provider, &count) != 0 || count == 0
+        || provider.routing_id.size == 0) {
+        return false;
+    }
+
+    routing_id_out->assign (
+      reinterpret_cast<const char *> (provider.routing_id.data),
+      provider.routing_id.size);
+    return !routing_id_out->empty ();
+}
+
 class gateway_client_bench_t
 {
   public:
@@ -102,14 +122,13 @@ class gateway_client_bench_t
           _discovery (_ctx.ctx (), zlink::service_type::gateway),
           _holders (),
           _gateways (),
-          _gateway_router_wrappers (),
-          _gateway_routers (),
           _poller (),
           _poll_events (),
           _payload (std::max<size_t> (msg_size, perf_metric::header_size ()),
                     k_payload_fill),
           _run_id (static_cast<uint32_t> (perf_metric::now_us ())),
           _seq (1),
+          _provider_routing_id (),
           _phase_cfg (),
           _result ()
     {
@@ -126,20 +145,35 @@ class gateway_client_bench_t
 
     bool run ()
     {
-        if (!setup_discovery ())
+        if (!setup_discovery ()) {
+            std::cerr << "GATEWAY_CLIENT_FAIL,stage=setup_discovery,errno=" << errno
+                      << std::endl;
             return false;
+        }
 
-        if (!setup_gateways ())
+        if (!setup_gateways ()) {
+            std::cerr << "GATEWAY_CLIENT_FAIL,stage=setup_gateways,errno=" << errno
+                      << std::endl;
             return false;
+        }
 
         perf::multi::settle ();
 
-        if (!run_warmup ())
+        if (!run_warmup ()) {
+            std::cerr << "GATEWAY_CLIENT_FAIL,stage=run_warmup,errno=" << errno
+                      << std::endl;
             return false;
-        if (!run_settle ())
+        }
+        if (!run_settle ()) {
+            std::cerr << "GATEWAY_CLIENT_FAIL,stage=run_settle,errno=" << errno
+                      << std::endl;
             return false;
-        if (!run_active ())
+        }
+        if (!run_active ()) {
+            std::cerr << "GATEWAY_CLIENT_FAIL,stage=run_active,errno=" << errno
+                      << std::endl;
             return false;
+        }
 
         send_stop_token_once ();
         print_result ();
@@ -161,6 +195,9 @@ class gateway_client_bench_t
 
     bool setup_gateways ()
     {
+        if (!resolve_provider_routing_id (_discovery, &_provider_routing_id))
+            return false;
+
         for (size_t i = 0; i < _settings.clients; ++i) {
             const std::string routing_id = std::string ("gw_") + std::to_string (i);
             _holders.emplace_back (
@@ -185,14 +222,16 @@ class gateway_client_bench_t
                 return false;
             }
 
+            _gateways.push_back (&gateway);
             _gateway_router_wrappers.emplace_back (
               zlink::socket_t::wrap (gateway.router_handle ()));
             _gateway_routers.push_back (&_gateway_router_wrappers.back ());
-            _gateways.push_back (&gateway);
-            (void) _poller.add (
-              _gateway_router_wrappers.back (),
-              zlink::poll_event::pollin,
-              _gateway_routers.back ());
+            if (_poller.add (
+                  _gateway_router_wrappers.back (),
+                  zlink::poll_event::pollin,
+                  _gateway_routers.back ())
+                != 0)
+                return false;
         }
 
         return !_gateways.empty () && _gateways.size () == _gateway_routers.size ();
@@ -236,17 +275,43 @@ class gateway_client_bench_t
 
         zlink::message_t payload_part;
         if (first.more ()) {
-            if (gateway_router.recv (payload_part, flags) < 0) {
+            zlink::message_t second;
+            if (gateway_router.recv (second, flags) < 0) {
                 const int err = errno;
                 if (err == EAGAIN || err == EINTR)
                     return 0;
+                std::cerr << "GATEWAY_CLIENT_FAIL,stage=gateway_recv_payload,errno="
+                          << err << std::endl;
                 return -1;
             }
-            if (payload_part.more () || payload_part.size () != payload_size)
+            if (second.more () && second.size () == 0) {
+                if (gateway_router.recv (payload_part, flags) < 0) {
+                    const int err = errno;
+                    if (err == EAGAIN || err == EINTR)
+                        return 0;
+                    std::cerr
+                      << "GATEWAY_CLIENT_FAIL,stage=gateway_recv_payload_after_delim,errno="
+                      << err << std::endl;
+                    return -1;
+                }
+            } else {
+                payload_part = std::move (second);
+            }
+            if (payload_part.more () || payload_part.size () != payload_size) {
+                std::cerr << "GATEWAY_CLIENT_FAIL,stage=gateway_recv_shape,first_size="
+                          << first.size ()
+                          << ",payload_size=" << payload_part.size ()
+                          << ",expected=" << payload_size
+                          << ",payload_more=" << payload_part.more () << std::endl;
                 return -1;
+            }
         } else {
-            if (first.size () != payload_size)
+            if (first.size () != payload_size) {
+                std::cerr << "GATEWAY_CLIENT_FAIL,stage=gateway_recv_single_shape,size="
+                          << first.size () << ",expected=" << payload_size
+                          << std::endl;
                 return -1;
+            }
             payload_part = std::move (first);
         }
 
@@ -259,6 +324,30 @@ class gateway_client_bench_t
         if (header_ok_out)
             *header_ok_out = header_ok;
         return 1;
+    }
+
+    bool send_gateway_payload (zlink::socket_t &gateway_router)
+    {
+        const int rid_sent = gateway_router.send (_provider_routing_id.data (),
+                                                  _provider_routing_id.size (),
+                                                  zlink::send_flag::sndmore);
+        if (rid_sent != static_cast<int> (_provider_routing_id.size ())) {
+            const int err = errno;
+            if (err == EAGAIN || err == EINTR)
+                return false;
+            return false;
+        }
+        if (gateway_router.send ("", 0, zlink::send_flag::sndmore) != 0) {
+            errno = (errno == 0) ? EIO : errno;
+            return false;
+        }
+        const int payload_sent =
+          gateway_router.send (_payload.data (), _payload.size (), zlink::send_flag::none);
+        if (payload_sent != static_cast<int> (_payload.size ())) {
+            errno = (errno == 0) ? EIO : errno;
+            return false;
+        }
+        return true;
     }
 
     bool run_phase (perf_metric::phase_t phase,
@@ -284,9 +373,9 @@ class gateway_client_bench_t
 
         while (std::chrono::steady_clock::now () < deadline) {
             const size_t slot = send_index % _gateways.size ();
-            zlink::service::gateway_t *gateway = _gateways[slot];
+            zlink::socket_t *gateway_router = _gateway_routers[slot];
             ++send_index;
-            if (!gateway)
+            if (!gateway_router)
                 continue;
 
             const uint64_t sent_ts = perf_metric::now_us ();
@@ -300,12 +389,10 @@ class gateway_client_bench_t
                 continue;
             }
 
-            if (gateway->send (k_service_name,
-                               _payload.data (),
-                               _payload.size (),
-                               zlink::send_flag::none)
-                != 0) {
+            if (!send_gateway_payload (*gateway_router)) {
                 const int err = errno;
+                std::cerr << "GATEWAY_CLIENT_FAIL,stage=gateway_send,errno=" << err
+                          << std::endl;
                 if (err == EAGAIN || err == EINTR)
                     continue;
                 return false;
@@ -444,12 +531,15 @@ class gateway_client_bench_t
 
     void send_stop_token_once ()
     {
-        if (_gateways.empty () || !_gateways[0])
+        if (_gateway_routers.empty () || !_gateway_routers[0])
             return;
 
         const char *stop = perf::multi::k_stop_token;
         const size_t stop_len = std::strlen (stop);
-        (void) _gateways[0]->send (k_service_name, stop, stop_len, zlink::send_flag::none);
+        (void) _gateway_routers[0]->send (_provider_routing_id.data (),
+                                          _provider_routing_id.size (),
+                                          zlink::send_flag::sndmore);
+        (void) _gateway_routers[0]->send (stop, stop_len, zlink::send_flag::none);
     }
 
     void print_result () const
@@ -488,6 +578,7 @@ class gateway_client_bench_t
     std::vector<char> _payload;
     const uint32_t _run_id;
     uint64_t _seq;
+    std::string _provider_routing_id;
 
     phase_config_t _phase_cfg;
     bench_result_t _result;

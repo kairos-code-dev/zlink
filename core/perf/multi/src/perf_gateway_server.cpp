@@ -74,18 +74,21 @@ inline void request_queue_probe (size_t msg_size)
 
 inline void emit_requested_queue_probe (const std::string &lib_name,
                                         const std::string &transport,
-                                        void *send_socket,
-                                        void *recv_socket)
+                                        void *gateway,
+                                        void *receiver)
 {
     if (!g_queue_probe_pending.exchange (false, std::memory_order_acq_rel))
         return;
 
     const size_t msg_size = g_queue_probe_size.load (std::memory_order_acquire);
-    if (msg_size == 0 || !send_socket || !recv_socket)
+    if (msg_size == 0 || !gateway || !receiver)
         return;
 
     const server_queue_stats_t queue_stats =
-      sample_server_queue_stats (send_socket, recv_socket);
+      sample_service_queue_stats (zlink_gateway_router_peers,
+                                  gateway,
+                                  zlink_receiver_router_peers,
+                                  receiver);
     print_server_queue_metrics (
       lib_name, k_pattern, transport, msg_size, queue_stats);
 }
@@ -523,9 +526,7 @@ inline bool run_server_loop (void *server_receiver,
                              void *server_gateway,
                              const bench_settings_t &settings,
                              const std::string &lib_name,
-                             const std::string &transport,
-                             void *queue_send_socket,
-                             void *queue_recv_socket)
+                             const std::string &transport)
 {
     (void) settings;
     if (!server_receiver || !server_gateway)
@@ -537,14 +538,22 @@ inline bool run_server_loop (void *server_receiver,
 
     gateway_request_t request;
     std::deque<gateway_request_t> pending_responses;
-    zlink_pollitem_t item = {router, 0, ZLINK_POLLIN, 0};
+    void *poller = zlink_poller_new ();
+    if (!poller)
+        return false;
+    if (zlink_poller_add_receiver (poller, server_receiver, NULL, ZLINK_POLLIN)
+        != 0) {
+        zlink_poller_destroy (&poller);
+        return false;
+    }
+    zlink_poller_event_t event;
     const bool debug = std::getenv ("PERF_DEBUG") != NULL;
     size_t deferred_count = 0;
     size_t pending_max = 0;
 
     while (!g_stop_requested.load (std::memory_order_acquire)) {
         emit_requested_queue_probe (
-          lib_name, transport, queue_send_socket, queue_recv_socket);
+          lib_name, transport, server_gateway, server_receiver);
 
         if (!flush_pending_gateway_responses (server_gateway,
                                               &pending_responses)) {
@@ -581,16 +590,16 @@ inline bool run_server_loop (void *server_receiver,
         }
         pending_max = std::max (pending_max, pending_responses.size ());
 
-        item.revents = 0;
         const int poll_timeout_ms = pending_responses.empty () ? 2 : 0;
-        const int prc = zlink_poll (&item, 1, poll_timeout_ms);
+        const int prc = zlink_poller_wait (poller, &event, poll_timeout_ms);
         if (prc < 0) {
             if (zlink_errno () == EINTR)
                 continue;
             close_pending_gateway_responses (&pending_responses);
+            zlink_poller_destroy (&poller);
             return false;
         }
-        if (prc == 0 || !(item.revents & ZLINK_POLLIN)) {
+        if (prc == 0 || (event.events & ZLINK_POLLIN) == 0) {
             if (!pending_responses.empty ())
                 std::this_thread::sleep_for (std::chrono::milliseconds (1));
             continue;
@@ -598,7 +607,7 @@ inline bool run_server_loop (void *server_receiver,
 
         while (!g_stop_requested.load (std::memory_order_acquire)) {
             emit_requested_queue_probe (
-              lib_name, transport, queue_send_socket, queue_recv_socket);
+              lib_name, transport, server_gateway, server_receiver);
             const relay_status_t status = relay_gateway_request (
               router,
               server_gateway,
@@ -638,6 +647,7 @@ inline bool run_server_loop (void *server_receiver,
                             : -1)
                       << std::endl;
             close_pending_gateway_responses (&pending_responses);
+            zlink_poller_destroy (&poller);
             return false;
         }
     }
@@ -649,6 +659,7 @@ inline bool run_server_loop (void *server_receiver,
                   << " pending_max=" << pending_max << std::endl;
     }
     close_pending_gateway_responses (&pending_responses);
+    zlink_poller_destroy (&poller);
     return true;
 }
 
@@ -862,12 +873,6 @@ inline int run_server_benchmark (const std::string &lib_name,
     }
     debug_timing_ms ("gateway tls configured", startup_begin);
 
-    void *gateway_router = zlink_gateway_router_socket_unsafe (server_gateway);
-    if (!gateway_router) {
-        std::cerr << "gateway server: gateway router unavailable" << std::endl;
-        return fail ();
-    }
-    apply_benchmark_socket_options (gateway_router, settings.hwm, transport);
     debug_timing_ms ("gateway/receiver sockets ready", startup_begin);
 
     g_stop_requested.store (false, std::memory_order_release);
@@ -907,14 +912,15 @@ inline int run_server_benchmark (const std::string &lib_name,
       server_gateway,
       settings,
       lib_name,
-      transport,
-      gateway_router,
-      receiver_router);
+      transport);
 
     const bench_resource_metrics_t metrics =
       bench_finish_resource_probe (sample_start);
     const server_queue_stats_t queue_stats =
-      sample_server_queue_stats (gateway_router, receiver_router);
+      sample_service_queue_stats (zlink_gateway_router_peers,
+                                  server_gateway,
+                                  zlink_receiver_router_peers,
+                                  server_receiver);
     print_server_metrics (lib_name, transport, sizes, metrics, queue_stats);
 
     if (!loop_ok) {

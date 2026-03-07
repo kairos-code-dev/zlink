@@ -7,7 +7,6 @@ using static PerfRunner;
 internal static class PerfSpotServer
 {
     private const string Pattern = "SPOT";
-    private static ReadOnlySpan<byte> Topic => "bench"u8;
     private const int SubscribeSettleMs = 300;
     private const uint RunId = 1;
 
@@ -21,16 +20,16 @@ internal static class PerfSpotServer
         ConfigureSpotTlsPublisherIfNeeded(nodePub, config.Transport);
         TryConfigureSpotPublisherSocket(nodePub, Pattern, config.SndTimeoutMs);
         nodePub.Bind(config.Endpoint);
-        using var pubSocket = nodePub.GetPubSocket();
+        using var spotPub = new Spot(nodePub);
 
         Console.WriteLine($"READY,{config.Endpoint}");
         _ = WaitUntil(() => nodePub.GetSubPeers().Length > 0, config.ReadyTimeoutMs);
         Thread.Sleep(SubscribeSettleMs);
 
         var phaseState = new SpotServerPhaseState(config.Size);
-        RunWarmupPhase(pubSocket, config, ref phaseState);
+        RunWarmupPhase(spotPub, config, ref phaseState);
         RunSettlePhase(config);
-        SpotServerActiveStats activeStats = RunActivePhase(pubSocket, config,
+        SpotServerActiveStats activeStats = RunActivePhase(spotPub, config,
             ref phaseState);
         SpotServerResult result = ComputeResult(activeStats);
 
@@ -57,20 +56,22 @@ internal static class PerfSpotServer
             MultiEndpointFor(transport, "multi-spot"));
     }
 
-    private static void RunWarmupPhase(Zlink.Socket pubSocket,
+    private static void RunWarmupPhase(Spot spotPub,
         SpotServerConfig config,
         ref SpotServerPhaseState state)
     {
         if (config.WarmupSeconds <= 0)
             return;
 
+        using var poller = new Poller();
+        poller.AddSpotPub(spotPub, PollEvents.PollOut);
         long warmupDeadline = Stopwatch.GetTimestamp()
             + (long)config.WarmupSeconds * Stopwatch.Frequency;
         while (Stopwatch.GetTimestamp() < warmupDeadline)
         {
             StampMetricHeader(state.Payload.AsSpan(), RunId, PerfPhase.Warmup,
                 config.Size, state.Seq++, EpochUs());
-            TryPublishSpot(pubSocket, state.Payload.AsSpan());
+            PublishUntilReady(spotPub, poller, state.Payload.AsSpan());
         }
     }
 
@@ -80,10 +81,12 @@ internal static class PerfSpotServer
             Thread.Sleep(config.SettleMs);
     }
 
-    private static SpotServerActiveStats RunActivePhase(Zlink.Socket pubSocket,
+    private static SpotServerActiveStats RunActivePhase(Spot spotPub,
         SpotServerConfig config, ref SpotServerPhaseState state)
     {
         long sendCount = 0;
+        using var poller = new Poller();
+        poller.AddSpotPub(spotPub, PollEvents.PollOut);
         long benchStartTicks = Stopwatch.GetTimestamp();
         long benchDeadlineTicks = benchStartTicks
             + (long)Math.Max(1, config.DurationSeconds) * Stopwatch.Frequency;
@@ -91,7 +94,7 @@ internal static class PerfSpotServer
         {
             StampMetricHeader(state.Payload.AsSpan(), RunId, PerfPhase.Active,
                 config.Size, state.Seq++, EpochUs());
-            if (TryPublishSpot(pubSocket, state.Payload.AsSpan()))
+            if (PublishUntilReady(spotPub, poller, state.Payload.AsSpan()))
                 sendCount++;
         }
 
@@ -112,12 +115,26 @@ internal static class PerfSpotServer
         return new SpotServerResult(throughput, latencyUs, latencyUs, latencyUs);
     }
 
-    private static bool TryPublishSpot(Zlink.Socket pubSocket,
+    private static bool PublishUntilReady(Spot spotPub, Poller poller,
         ReadOnlySpan<byte> payload)
     {
-        _ = SendBlocking(pubSocket, Topic, SendFlags.SendMore);
-        _ = SendBlocking(pubSocket, payload, SendFlags.None);
-        return true;
+        var events = new List<PollEvent>(1);
+        while (true)
+        {
+            if (!WaitForEvents(poller, events, 100))
+                continue;
+
+            try
+            {
+                spotPub.Publish("bench", payload, SendFlags.None);
+                return true;
+            }
+            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
+                                            || IsInterrupted(ex.Errno))
+            {
+                continue;
+            }
+        }
     }
 
     private static void TryConfigureSpotPublisherSocket(SpotNode node,
@@ -125,11 +142,7 @@ internal static class PerfSpotServer
     {
         int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", pattern);
         TrySetSpotNodeOption(node, SpotNodeOption.PubMode,
-            (int)SpotNodePubMode.Async);
-        TrySetSpotNodeOption(node, SpotNodeOption.PubQueueHwm,
-            Math.Max(10, sndHwm));
-        TrySetSpotNodeOption(node, SpotNodeOption.PubQueueFullPolicy,
-            (int)SpotNodePubQueueFullPolicy.Drop);
+            (int)SpotNodePubMode.Sync);
         TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,
             SocketOptions.Blocky, 0);
         TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,

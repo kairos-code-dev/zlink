@@ -200,6 +200,7 @@ class spot_client_bench_t
         }
         if (payload.more ())
             return -1;
+
         if (topic.size () != std::strlen (k_topic)
             || std::memcmp (topic.data (), k_topic, topic.size ()) != 0) {
             return 1;
@@ -210,6 +211,7 @@ class spot_client_bench_t
             header_ok = perf_metric::decode_payload_header (
               payload.data (), payload.size (), header_out);
         }
+
         if (header_ok_out)
             *header_ok_out = header_ok;
         return 1;
@@ -269,7 +271,7 @@ class spot_client_bench_t
                     continue;
 
                 for (;;) {
-                    perf_metric::header_t header;
+                    perf_metric::header_t header = perf_metric::header_t ();
                     bool header_ok = false;
                     const int recv_rc = recv_payload_header (
                       *subscriber,

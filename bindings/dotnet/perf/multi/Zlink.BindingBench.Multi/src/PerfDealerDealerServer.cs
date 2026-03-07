@@ -53,14 +53,16 @@ internal static class PerfDealerDealerServer
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
         const uint expectedRunId = 1;
+        using var poller = new Poller();
+        var events = new List<PollEvent>(1);
+        poller.Add(server, PollEvents.PollIn);
 
         while (true)
         {
             if (hardStopTicks > 0 && Stopwatch.GetTimestamp() >= hardStopTicks)
                 break;
 
-            int n = ReceiveRetry(server, payload.AsSpan(), ReceiveFlags.None);
-            if (n <= 0)
+            if (!WaitForEvents(poller, events, 2))
             {
                 long nowTicks = Stopwatch.GetTimestamp();
                 if (lastActiveMessageTicks > 0)
@@ -75,35 +77,48 @@ internal static class PerfDealerDealerServer
                 continue;
             }
 
-            ReadOnlySpan<byte> body = payload.AsSpan(0, n);
-            if (IsStopTokenPayload(body))
-                break;
-            if (!TryDecodeMetricHeader(body, out PerfMetricHeader header))
-                continue;
-            if (header.RunId != expectedRunId
-                || header.MsgSize != (uint)size
-                || header.Phase != (uint)PerfPhase.Active)
-                continue;
+            bool handled = false;
+            while (true)
+            {
+                int n = ReceiveRetry(server, payload.AsSpan(), ReceiveFlags.DontWait);
+                if (n <= 0)
+                    break;
 
-            if (benchStartTicks == 0)
-            {
-                benchStartTicks = Stopwatch.GetTimestamp();
-                hardStopTicks = benchStartTicks
-                    + (long)Math.Max(2, durationSeconds + 2)
-                    * Stopwatch.Frequency;
+                handled = true;
+                ReadOnlySpan<byte> body = payload.AsSpan(0, n);
+                if (IsStopTokenPayload(body))
+                    goto Done;
+                if (!TryDecodeMetricHeader(body, out PerfMetricHeader header))
+                    continue;
+                if (header.RunId != expectedRunId
+                    || header.MsgSize != (uint)size
+                    || header.Phase != (uint)PerfPhase.Active)
+                    continue;
+
+                if (benchStartTicks == 0)
+                {
+                    benchStartTicks = Stopwatch.GetTimestamp();
+                    hardStopTicks = benchStartTicks
+                        + (long)Math.Max(2, durationSeconds + 2)
+                        * Stopwatch.Frequency;
+                }
+                benchEndTicks = Stopwatch.GetTimestamp();
+                lastActiveMessageTicks = benchEndTicks;
+                recvCount++;
+                ulong nowUs = EpochUs();
+                if (header.SentTsUs > 0 && nowUs >= header.SentTsUs)
+                {
+                    double sampleUs = nowUs - header.SentTsUs;
+                    ReservoirSample(latSamples, sampleUs, ref sampleSeen,
+                        latencySampleCap, ref rng);
+                }
             }
-            benchEndTicks = Stopwatch.GetTimestamp();
-            lastActiveMessageTicks = benchEndTicks;
-            recvCount++;
-            ulong nowUs = EpochUs();
-            if (header.SentTsUs > 0 && nowUs >= header.SentTsUs)
-            {
-                double sampleUs = nowUs - header.SentTsUs;
-                ReservoirSample(latSamples, sampleUs, ref sampleSeen,
-                    latencySampleCap, ref rng);
-            }
+
+            if (handled)
+                continue;
         }
 
+Done:
         if (benchStartTicks > 0 && recvCount > 0)
         {
             double elapsedSeconds = (benchEndTicks - benchStartTicks)

@@ -161,6 +161,63 @@ static void test_spot_pub_can_be_polled_via_service_instance ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+static void test_spot_peer_queries_do_not_enter_pollable_mode ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *pub_node = zlink_spot_node_new (ctx);
+    void *sub_node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (pub_node);
+    TEST_ASSERT_NOT_NULL (sub_node);
+
+    char endpoint[MAX_SOCKET_STRING];
+    snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
+              test_port (22102));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (pub_node, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer_pub (sub_node, endpoint));
+
+    void *pub = zlink_spot_pub_new (pub_node);
+    void *sub = zlink_spot_sub_new (sub_node);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (sub, "mode:peer"));
+    msleep (100);
+
+    size_t pub_peer_count = 0;
+    size_t sub_peer_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_pub_peers (pub_node, NULL, &pub_peer_count));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_sub_peers (sub_node, NULL, &sub_peer_count));
+    TEST_ASSERT_TRUE (pub_peer_count > 0);
+    TEST_ASSERT_TRUE (sub_peer_count > 0);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_pub_publish_bytes (pub, "mode:peer", "pong", 4, 0));
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic[256];
+    size_t topic_len = sizeof (topic);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_sub_recv (sub, &parts, &part_count, 0, topic, &topic_len));
+    TEST_ASSERT_EQUAL_UINT (9, topic_len);
+    TEST_ASSERT_EQUAL_MEMORY ("mode:peer", topic, topic_len);
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_EQUAL_UINT (4, zlink_msg_size (&parts[0]));
+    TEST_ASSERT_EQUAL_MEMORY ("pong", zlink_msg_data (&parts[0]), 4);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&parts[0]));
+    free (parts);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_destroy (&pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 int main (int, char **)
 {
     setup_test_environment (300);
@@ -168,5 +225,6 @@ int main (int, char **)
     UNITY_BEGIN ();
     RUN_TEST (test_spot_sub_can_be_polled_via_service_instance);
     RUN_TEST (test_spot_pub_can_be_polled_via_service_instance);
+    RUN_TEST (test_spot_peer_queries_do_not_enter_pollable_mode);
     return UNITY_END ();
 }

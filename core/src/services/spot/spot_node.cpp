@@ -1561,6 +1561,8 @@ void spot_node_t::ensure_control_sockets ()
     if (!_dealer) {
         _dealer = _ctx->create_socket (ZLINK_DEALER);
         if (_dealer) {
+            if (getenv ("PERF_DEBUG"))
+                fprintf (stderr, "[spot-node] dealer created\n");
             if (!_tls_ca.empty ()) {
                 if (_dealer->setsockopt (ZLINK_TLS_CA, _tls_ca.data (),
                                          _tls_ca.size ())
@@ -1645,7 +1647,10 @@ void spot_node_t::flush_pending ()
         for (std::deque<std::string>::const_iterator it =
                registry_connect.begin ();
              it != registry_connect.end (); ++it)
-            _dealer->connect (it->c_str ());
+            if (_dealer->connect (it->c_str ()) != 0 && getenv ("PERF_DEBUG")) {
+                fprintf (stderr, "[spot-node] dealer connect failed %s: %s\n",
+                         it->c_str (), strerror (errno));
+            }
     }
 }
 
@@ -1814,14 +1819,25 @@ void spot_node_t::send_heartbeat (uint64_t now_ms_)
         dealer = _dealer;
         service = _service_name;
         endpoint = _advertise_endpoint;
-        _last_heartbeat_ms = now_ms_;
     }
 
-    send_u16 (dealer, discovery_protocol::msg_heartbeat, ZLINK_SNDMORE);
-    send_u16 (dealer, discovery_protocol::service_type_spot_node,
-              ZLINK_SNDMORE);
-    send_string (dealer, service, ZLINK_SNDMORE);
-    send_string (dealer, endpoint, 0);
+    const int rc =
+      send_u16 (dealer, discovery_protocol::msg_heartbeat, ZLINK_SNDMORE) == 0
+          && send_u16 (dealer, discovery_protocol::service_type_spot_node,
+                       ZLINK_SNDMORE)
+               == 0
+          && send_string (dealer, service, ZLINK_SNDMORE) == 0
+          && send_string (dealer, endpoint, 0) == 0
+        ? 0
+        : -1;
+
+    if (rc == 0) {
+        scoped_lock_t lock (_sync);
+        _last_heartbeat_ms = now_ms_;
+    } else if (getenv ("PERF_DEBUG")) {
+        fprintf (stderr, "[spot-node] heartbeat send failed: %s\n",
+                 strerror (errno));
+    }
 }
 
 bool spot_node_t::is_control_thread () const
@@ -1874,7 +1890,11 @@ void spot_node_t::control_tick ()
     }
 
     if (do_heartbeat)
+    {
+        if (getenv ("PERF_DEBUG"))
+            fprintf (stderr, "[spot-node] heartbeat due\n");
         send_heartbeat (now);
+    }
 
     if (do_refresh)
         refresh_peers ();

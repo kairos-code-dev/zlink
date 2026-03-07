@@ -87,18 +87,66 @@ public final class Native {
     private static final MethodHandle MH_POLLER_ADD = downcall("zlink_poller_add",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_ADD_SPOT_SUB = downcall(
+        "zlink_poller_add_spot_sub",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_ADD_SPOT_PUB = downcall(
+        "zlink_poller_add_spot_pub",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_ADD_GATEWAY = downcall(
+        "zlink_poller_add_gateway",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_ADD_RECEIVER = downcall(
+        "zlink_poller_add_receiver",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
     private static final MethodHandle MH_POLLER_ADD_FD = downcall("zlink_poller_add_fd",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
     private static final MethodHandle MH_POLLER_MODIFY = downcall("zlink_poller_modify",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_MODIFY_SPOT_SUB = downcall(
+        "zlink_poller_modify_spot_sub",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_MODIFY_SPOT_PUB = downcall(
+        "zlink_poller_modify_spot_pub",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_MODIFY_GATEWAY = downcall(
+        "zlink_poller_modify_gateway",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_MODIFY_RECEIVER = downcall(
+        "zlink_poller_modify_receiver",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
     private static final MethodHandle MH_POLLER_MODIFY_FD = downcall("zlink_poller_modify_fd",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.JAVA_SHORT));
     private static final MethodHandle MH_POLLER_REMOVE = downcall("zlink_poller_remove",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
+    private static final MethodHandle MH_POLLER_REMOVE_SPOT_SUB = downcall(
+        "zlink_poller_remove_spot_sub",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS));
+    private static final MethodHandle MH_POLLER_REMOVE_SPOT_PUB = downcall(
+        "zlink_poller_remove_spot_pub",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS));
+    private static final MethodHandle MH_POLLER_REMOVE_GATEWAY = downcall(
+        "zlink_poller_remove_gateway",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS));
+    private static final MethodHandle MH_POLLER_REMOVE_RECEIVER = downcall(
+        "zlink_poller_remove_receiver",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS));
     private static final MethodHandle MH_POLLER_REMOVE_FD = downcall("zlink_poller_remove_fd",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT));
@@ -591,6 +639,54 @@ public final class Native {
         }
     }
 
+    public static int pollerAddSpotSub(MemorySegment poller,
+                                        MemorySegment spotSub,
+                                        MemorySegment userData,
+                                        int events) {
+        try {
+            return (int) MH_POLLER_ADD_SPOT_SUB.invokeExact(poller, spotSub,
+                userData, (short) events);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_add_spot_sub failed", t);
+        }
+    }
+
+    public static int pollerAddSpotPub(MemorySegment poller,
+                                        MemorySegment spotPub,
+                                        MemorySegment userData,
+                                        int events) {
+        try {
+            return (int) MH_POLLER_ADD_SPOT_PUB.invokeExact(poller, spotPub,
+                userData, (short) events);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_add_spot_pub failed", t);
+        }
+    }
+
+    public static int pollerAddGateway(MemorySegment poller,
+                                        MemorySegment gateway,
+                                        MemorySegment userData,
+                                        int events) {
+        try {
+            return (int) MH_POLLER_ADD_GATEWAY.invokeExact(poller, gateway,
+                userData, (short) events);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_add_gateway failed", t);
+        }
+    }
+
+    public static int pollerAddReceiver(MemorySegment poller,
+                                         MemorySegment receiver,
+                                         MemorySegment userData,
+                                         int events) {
+        try {
+            return (int) MH_POLLER_ADD_RECEIVER.invokeExact(poller, receiver,
+                userData, (short) events);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_add_receiver failed", t);
+        }
+    }
+
     public static int pollerAddFd(MemorySegment poller, int fd,
                                   MemorySegment userData, int events) {
         try {
@@ -611,6 +707,53 @@ public final class Native {
         }
     }
 
+    public static int pollerModifySpotSub(MemorySegment poller,
+                                           MemorySegment spotSub,
+                                           int events) {
+        try {
+            return (int) MH_POLLER_MODIFY_SPOT_SUB.invokeExact(poller, spotSub,
+                (short) events);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_modify_spot_sub failed",
+              t);
+        }
+    }
+
+    public static int pollerModifySpotPub(MemorySegment poller,
+                                           MemorySegment spotPub,
+                                           int events) {
+        try {
+            return (int) MH_POLLER_MODIFY_SPOT_PUB.invokeExact(poller, spotPub,
+                (short) events);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_modify_spot_pub failed",
+              t);
+        }
+    }
+
+    public static int pollerModifyGateway(MemorySegment poller,
+                                           MemorySegment gateway,
+                                           int events) {
+        try {
+            return (int) MH_POLLER_MODIFY_GATEWAY.invokeExact(poller, gateway,
+                (short) events);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_modify_gateway failed", t);
+        }
+    }
+
+    public static int pollerModifyReceiver(MemorySegment poller,
+                                            MemorySegment receiver,
+                                            int events) {
+        try {
+            return (int) MH_POLLER_MODIFY_RECEIVER.invokeExact(poller,
+                receiver, (short) events);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_modify_receiver failed",
+              t);
+        }
+    }
+
     public static int pollerModifyFd(MemorySegment poller, int fd, int events) {
         try {
             return (int) MH_POLLER_MODIFY_FD.invokeExact(poller, fd,
@@ -625,6 +768,46 @@ public final class Native {
             return (int) MH_POLLER_REMOVE.invokeExact(poller, socket);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_poller_remove failed", t);
+        }
+    }
+
+    public static int pollerRemoveSpotSub(MemorySegment poller,
+                                           MemorySegment spotSub) {
+        try {
+            return (int) MH_POLLER_REMOVE_SPOT_SUB.invokeExact(poller, spotSub);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_remove_spot_sub failed",
+              t);
+        }
+    }
+
+    public static int pollerRemoveSpotPub(MemorySegment poller,
+                                           MemorySegment spotPub) {
+        try {
+            return (int) MH_POLLER_REMOVE_SPOT_PUB.invokeExact(poller, spotPub);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_remove_spot_pub failed",
+              t);
+        }
+    }
+
+    public static int pollerRemoveGateway(MemorySegment poller,
+                                           MemorySegment gateway) {
+        try {
+            return (int) MH_POLLER_REMOVE_GATEWAY.invokeExact(poller, gateway);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_remove_gateway failed", t);
+        }
+    }
+
+    public static int pollerRemoveReceiver(MemorySegment poller,
+                                            MemorySegment receiver) {
+        try {
+            return (int) MH_POLLER_REMOVE_RECEIVER.invokeExact(poller,
+                receiver);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_remove_receiver failed",
+              t);
         }
     }
 

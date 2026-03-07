@@ -523,9 +523,34 @@ inline int resolve_single_queue_sample_every_msgs()
 
 class queue_probe_t {
 public:
+    typedef int (*peer_list_fn_t)(void *, zlink_peer_info_t *, size_t *);
+
     queue_probe_t(void *send_socket_, void *recv_socket_) :
-        _send_socket(send_socket_),
-        _recv_socket(recv_socket_),
+        _send_target(send_socket_),
+        _recv_target(recv_socket_),
+        _send_peer_list_fn(read_socket_peers),
+        _recv_peer_list_fn(read_socket_peers),
+        _sample_interval_ns(resolve_sample_interval_ns()),
+        _sample_every_msgs(resolve_sample_every_msgs()),
+        _send_last_sample_ns(0),
+        _recv_last_sample_ns(0),
+        _send_msgs_since_sample(0),
+        _recv_msgs_since_sample(0),
+        _snd_pending_max(0),
+        _rcv_pending_max(0),
+        _rcv_pending_end(0),
+        _snd_seen(false),
+        _rcv_seen(false)
+    {}
+
+    queue_probe_t(peer_list_fn_t send_peer_list_fn_,
+                  void *send_target_,
+                  peer_list_fn_t recv_peer_list_fn_,
+                  void *recv_target_) :
+        _send_target(send_target_),
+        _recv_target(recv_target_),
+        _send_peer_list_fn(send_peer_list_fn_),
+        _recv_peer_list_fn(recv_peer_list_fn_),
         _sample_interval_ns(resolve_sample_interval_ns()),
         _sample_every_msgs(resolve_sample_every_msgs()),
         _send_last_sample_ns(0),
@@ -589,18 +614,27 @@ private:
                + static_cast<unsigned long long>(info_.msgs_received);
     }
 
-    static bool read_first_peer_info(void *socket_, zlink_peer_info_t *info_)
+    static int read_socket_peers(void *socket_,
+                                 zlink_peer_info_t *peers_,
+                                 size_t *count_)
     {
-        if (!socket_ || !info_)
+        return zlink_socket_peers(socket_, peers_, count_);
+    }
+
+    static bool read_first_peer_info(peer_list_fn_t peers_fn_,
+                                     void *target_,
+                                     zlink_peer_info_t *info_)
+    {
+        if (!peers_fn_ || !target_ || !info_)
             return false;
 
         size_t peer_count = 0;
-        if (zlink_socket_peers(socket_, NULL, &peer_count) != 0 || peer_count == 0)
+        if (peers_fn_(target_, NULL, &peer_count) != 0 || peer_count == 0)
             return false;
 
         std::vector<zlink_peer_info_t> peers(peer_count);
         size_t to_copy = peer_count;
-        if (zlink_socket_peers(socket_, &peers[0], &to_copy) != 0 || to_copy == 0)
+        if (peers_fn_(target_, &peers[0], &to_copy) != 0 || to_copy == 0)
             return false;
 
         size_t best = 0;
@@ -623,7 +657,7 @@ private:
 
     void maybe_sample_send(bool force_)
     {
-        if (!_send_socket)
+        if (!_send_target || !_send_peer_list_fn)
             return;
 
         if (force_) {
@@ -643,7 +677,7 @@ private:
         _send_last_sample_ns = now;
 
         zlink_peer_info_t info;
-        if (!read_first_peer_info(_send_socket, &info))
+        if (!read_first_peer_info(_send_peer_list_fn, _send_target, &info))
             return;
 
         const unsigned long long pending =
@@ -655,7 +689,7 @@ private:
 
     void maybe_sample_recv(bool force_)
     {
-        if (!_recv_socket)
+        if (!_recv_target || !_recv_peer_list_fn)
             return;
 
         if (force_) {
@@ -675,7 +709,7 @@ private:
         _recv_last_sample_ns = now;
 
         zlink_peer_info_t info;
-        if (!read_first_peer_info(_recv_socket, &info))
+        if (!read_first_peer_info(_recv_peer_list_fn, _recv_target, &info))
             return;
 
         const unsigned long long pending =
@@ -686,8 +720,10 @@ private:
         _rcv_seen = true;
     }
 
-    void *_send_socket;
-    void *_recv_socket;
+    void *_send_target;
+    void *_recv_target;
+    peer_list_fn_t _send_peer_list_fn;
+    peer_list_fn_t _recv_peer_list_fn;
     unsigned long long _sample_interval_ns;
     unsigned int _sample_every_msgs;
     unsigned long long _send_last_sample_ns;

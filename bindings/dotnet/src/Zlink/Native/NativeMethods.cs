@@ -230,6 +230,22 @@ internal static class NativeMethods
         IntPtr userData, short events);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_add_spot_sub(IntPtr poller,
+        IntPtr spotSub, IntPtr userData, short events);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_add_spot_pub(IntPtr poller,
+        IntPtr spotPub, IntPtr userData, short events);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_add_gateway(IntPtr poller,
+        IntPtr gateway, IntPtr userData, short events);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_add_receiver(IntPtr poller,
+        IntPtr receiver, IntPtr userData, short events);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poller_add_fd(IntPtr poller, int fd,
         IntPtr userData, short events);
 
@@ -238,11 +254,43 @@ internal static class NativeMethods
         short events);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_modify_spot_sub(IntPtr poller,
+        IntPtr spotSub, short events);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_modify_spot_pub(IntPtr poller,
+        IntPtr spotPub, short events);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_modify_gateway(IntPtr poller,
+        IntPtr gateway, short events);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_modify_receiver(IntPtr poller,
+        IntPtr receiver, short events);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poller_modify_fd(IntPtr poller, int fd,
         short events);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poller_remove(IntPtr poller, IntPtr socket);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_remove_spot_sub(IntPtr poller,
+        IntPtr spotSub);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_remove_spot_pub(IntPtr poller,
+        IntPtr spotPub);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_remove_gateway(IntPtr poller,
+        IntPtr gateway);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_remove_receiver(IntPtr poller,
+        IntPtr receiver);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poller_remove_fd(IntPtr poller, int fd);

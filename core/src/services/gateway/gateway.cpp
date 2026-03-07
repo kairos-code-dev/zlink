@@ -301,8 +301,12 @@ gateway_t::service_pool_t *
     if (ensure_router_socket () != 0)
         return NULL;
     _pools.insert (std::make_pair (service_name_, pool));
-    if (_discovery)
+    if (_discovery) {
         _pending_updates.insert (service_name_);
+        service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+        if (runtime && _refresh_task_id != 0)
+            runtime->wakeup_task (_refresh_task_id);
+    }
     return &_pools.find (service_name_)->second;
 }
 
@@ -332,6 +336,7 @@ void gateway_t::refresh_pool (service_pool_t *pool_,
         return;
 
     process_monitor_events ();
+    bool keep_dirty = false;
 
     // 2) Build routing_id map by endpoint for this service.
     std::vector<std::string> next_endpoints;
@@ -434,6 +439,8 @@ void gateway_t::refresh_pool (service_pool_t *pool_,
                 next_endpoints.push_back (endpoint);
                 next_routing_ids.push_back (rid);
                 next_weights.push_back (weight);
+            } else {
+                keep_dirty = true;
             }
             // Not ready yet: do not add to pool, but also do not term.
             continue;
@@ -491,7 +498,7 @@ void gateway_t::refresh_pool (service_pool_t *pool_,
     for (size_t i = 0; i < pool_->endpoints.size (); ++i) {
         _endpoint_to_service[pool_->endpoints[i]] = pool_->service_name;
     }
-    pool_->dirty = false;
+    pool_->dirty = keep_dirty;
     pool_->last_seen_seq = seq_;
 }
 
@@ -571,6 +578,14 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
     }
 
     const zlink_routing_id_t &rid = pool_->routing_ids[provider_index_];
+    if ((flags_ & ZLINK_DONTWAIT) != 0) {
+        const int peer_state =
+          _router_socket->get_peer_state (rid.data, rid.size);
+        if (peer_state < 0 || (peer_state & ZLINK_POLLOUT) == 0) {
+            errno = EAGAIN;
+            return -1;
+        }
+    }
     zlink_msg_t rid_msg;
     if (zlink_msg_init_data (
           &rid_msg,

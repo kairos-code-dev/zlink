@@ -1138,7 +1138,7 @@ int zlink_gateway_router_peers (void *gateway_,
         errno = EFAULT;
         return -1;
     }
-    void *router_socket = gateway->router ();
+    void *router_socket = gateway->poller_socket ();
     if (!router_socket) {
         errno = ENOTSUP;
         return -1;
@@ -1333,7 +1333,7 @@ int zlink_receiver_router_peers (void *receiver_,
         errno = EFAULT;
         return -1;
     }
-    void *router_socket = receiver->router ();
+    void *router_socket = receiver->poller_socket ();
     if (!router_socket) {
         errno = ENOTSUP;
         return -1;
@@ -1564,7 +1564,7 @@ int zlink_spot_node_pub_peers (void *node_,
         errno = EFAULT;
         return -1;
     }
-    void *pub_socket = node->pub_socket_unsafe ();
+    void *pub_socket = node->pub_socket_for_poller ();
     if (!pub_socket) {
         errno = ENOTSUP;
         return -1;
@@ -1587,7 +1587,7 @@ int zlink_spot_node_sub_peers (void *node_,
         errno = EFAULT;
         return -1;
     }
-    void *sub_socket = node->sub_socket_unsafe ();
+    void *sub_socket = node->sub_socket_for_poller ();
     if (!sub_socket) {
         errno = ENOTSUP;
         return -1;

@@ -47,6 +47,17 @@ Note: `pgm`/`epgm` are currently disabled in single perf.
 - Active aggregation uses payload header validation (header-based only)
 - No retry/drain phase
 
+### Service poller note
+
+- `GATEWAY`, `RECEIVER`, `SPOT_SUB`, and `SPOT_PUB` perf paths should obtain
+  readiness through the service-instance poller APIs.
+- Prefer `zlink_poller_add_gateway`, `zlink_poller_add_receiver`,
+  `zlink_poller_add_spot_sub`, and `zlink_poller_add_spot_pub`.
+- Do not document or reintroduce `SpotNode` as a poller target in perf samples.
+- After a service instance is registered with a poller, perf code should keep
+  using the service API for send/recv and treat direct internal socket access as
+  internal-only/debug-only.
+
 ### Result storage
 
 ```text

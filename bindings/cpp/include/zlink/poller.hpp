@@ -3,6 +3,8 @@
 #define ZLINK_CPP_POLLER_HPP_INCLUDED
 
 #include "socket.hpp"
+#include "services/gateway.hpp"
+#include "services/spot.hpp"
 
 namespace zlink
 {
@@ -101,6 +103,118 @@ class poller_t
         return 0;
     }
 
+    int add_spot_sub (service::spot_t &spot_,
+                      poll_event events_,
+                      void *user_ = NULL)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (find_socket (spot_.sub_handle ()) >= 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_add_spot_sub (
+          _poller, spot_.sub_handle (), user_, static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+
+        item_t item;
+        item.socket = NULL;
+        item.socket_handle = spot_.sub_handle ();
+        item.fd = 0;
+        item.events = static_cast<short> (events_);
+        item.user = user_;
+        item.is_socket = true;
+        _items.push_back (item);
+        return 0;
+    }
+
+    int add_spot_pub (service::spot_t &spot_,
+                      poll_event events_,
+                      void *user_ = NULL)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (find_socket (spot_.pub_handle ()) >= 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_add_spot_pub (
+          _poller, spot_.pub_handle (), user_, static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+
+        item_t item;
+        item.socket = NULL;
+        item.socket_handle = spot_.pub_handle ();
+        item.fd = 0;
+        item.events = static_cast<short> (events_);
+        item.user = user_;
+        item.is_socket = true;
+        _items.push_back (item);
+        return 0;
+    }
+
+    int add_gateway (service::gateway_t &gateway_,
+                     poll_event events_,
+                     void *user_ = NULL)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (find_socket (gateway_.handle ()) >= 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_add_gateway (
+          _poller, gateway_.handle (), user_, static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+
+        item_t item;
+        item.socket = NULL;
+        item.socket_handle = gateway_.handle ();
+        item.fd = 0;
+        item.events = static_cast<short> (events_);
+        item.user = user_;
+        item.is_socket = true;
+        _items.push_back (item);
+        return 0;
+    }
+
+    int add_receiver (service::receiver_t &receiver_,
+                      poll_event events_,
+                      void *user_ = NULL)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (find_socket (receiver_.handle ()) >= 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_add_receiver (
+          _poller, receiver_.handle (), user_, static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+
+        item_t item;
+        item.socket = NULL;
+        item.socket_handle = receiver_.handle ();
+        item.fd = 0;
+        item.events = static_cast<short> (events_);
+        item.user = user_;
+        item.is_socket = true;
+        _items.push_back (item);
+        return 0;
+    }
+
     /**
      * @brief Register a raw file descriptor for polling.
      * @param fd_ File descriptor.
@@ -159,6 +273,82 @@ class poller_t
         return 0;
     }
 
+    int modify_spot_sub (service::spot_t &spot_, poll_event events_)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        const int index = find_socket (spot_.sub_handle ());
+        if (index < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_modify_spot_sub (
+          _poller, spot_.sub_handle (), static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+        _items[static_cast<size_t> (index)].events = static_cast<short> (events_);
+        return 0;
+    }
+
+    int modify_spot_pub (service::spot_t &spot_, poll_event events_)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        const int index = find_socket (spot_.pub_handle ());
+        if (index < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_modify_spot_pub (
+          _poller, spot_.pub_handle (), static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+        _items[static_cast<size_t> (index)].events = static_cast<short> (events_);
+        return 0;
+    }
+
+    int modify_gateway (service::gateway_t &gateway_, poll_event events_)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        const int index = find_socket (gateway_.handle ());
+        if (index < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_modify_gateway (
+          _poller, gateway_.handle (), static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+        _items[static_cast<size_t> (index)].events = static_cast<short> (events_);
+        return 0;
+    }
+
+    int modify_receiver (service::receiver_t &receiver_, poll_event events_)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        const int index = find_socket (receiver_.handle ());
+        if (index < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_modify_receiver (
+          _poller, receiver_.handle (), static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+        _items[static_cast<size_t> (index)].events = static_cast<short> (events_);
+        return 0;
+    }
+
     /**
      * @brief Update a registered file descriptor's event mask.
      * @param fd_ Registered file descriptor.
@@ -201,6 +391,78 @@ class poller_t
             return -1;
         }
         const int rc = zlink_poller_remove (_poller, socket_.handle ());
+        if (rc != 0)
+            return rc;
+        _items.erase (_items.begin () + index);
+        return 0;
+    }
+
+    int remove_spot_sub (service::spot_t &spot_)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        const int index = find_socket (spot_.sub_handle ());
+        if (index < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_remove_spot_sub (_poller, spot_.sub_handle ());
+        if (rc != 0)
+            return rc;
+        _items.erase (_items.begin () + index);
+        return 0;
+    }
+
+    int remove_spot_pub (service::spot_t &spot_)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        const int index = find_socket (spot_.pub_handle ());
+        if (index < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_remove_spot_pub (_poller, spot_.pub_handle ());
+        if (rc != 0)
+            return rc;
+        _items.erase (_items.begin () + index);
+        return 0;
+    }
+
+    int remove_gateway (service::gateway_t &gateway_)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        const int index = find_socket (gateway_.handle ());
+        if (index < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_remove_gateway (_poller, gateway_.handle ());
+        if (rc != 0)
+            return rc;
+        _items.erase (_items.begin () + index);
+        return 0;
+    }
+
+    int remove_receiver (service::receiver_t &receiver_)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        const int index = find_socket (receiver_.handle ());
+        if (index < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_remove_receiver (_poller, receiver_.handle ());
         if (rc != 0)
             return rc;
         _items.erase (_items.begin () + index);

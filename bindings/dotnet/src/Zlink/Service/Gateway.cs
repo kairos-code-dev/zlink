@@ -13,6 +13,8 @@ public sealed class Gateway : IDisposable
     private const int StackSendPartLimit = 8;
     private IntPtr _handle;
 
+    internal IntPtr Handle => _handle;
+
     public Gateway(Context context, Discovery discovery)
     {
         if (context == null)

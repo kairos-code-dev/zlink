@@ -47,6 +47,16 @@ ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT)의 성능을 측정한다.
 - 집계는 payload header 검증 성공 데이터만 사용(header 기반 집계)
 - 재시도/드레인 단계 없음
 
+### service poller 정책
+
+- `GATEWAY`, `RECEIVER`, `SPOT_SUB`, `SPOT_PUB` perf 경로의 readiness는
+  service instance poller API로 얻어야 한다.
+- `zlink_poller_add_gateway`, `zlink_poller_add_receiver`,
+  `zlink_poller_add_spot_sub`, `zlink_poller_add_spot_pub`를 우선 사용한다.
+- perf 샘플/문서에서 `SpotNode`를 poller 대상으로 다시 노출하면 안 된다.
+- service instance를 poller에 등록한 뒤에도 send/recv는 기존 service API를
+  계속 사용하고, internal socket 직접 접근은 내부용/디버그용으로만 취급한다.
+
 ### 결과 저장
 
 ```text

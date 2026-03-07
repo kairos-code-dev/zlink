@@ -63,13 +63,8 @@ internal static class PerfGatewayClient
                 return 2;
             }
 
-            var payload = new byte[Math.Max(config.Size, PerfMetricHeaderSize)];
-            Array.Fill(payload, (byte)'a');
-            var routingId = new byte[256];
-            var recv = new byte[Math.Max(256, Math.Max(config.Size,
-                MultiStopToken.Length))];
             GatewayClientResult result = RunMultiGatewayClientLoop(activeSlots,
-                payload, routingId, recv, config);
+                config);
 
             TrySendGatewayStopToken(activeSlots, ServerServiceName);
 
@@ -107,21 +102,29 @@ internal static class PerfGatewayClient
 
     private static GatewayClientResult
         RunMultiGatewayClientLoop(List<GatewayClientSlot> activeSlots,
-            byte[] payload, byte[] routingId, byte[] recv,
             GatewayClientConfig config)
     {
         var phaseState = new GatewayClientPhaseState(config.LatencySampleCap);
-        RunWarmupPhase(activeSlots, payload, routingId, recv, config,
-            ref phaseState);
+        using var poller = new Poller();
+        var events = new List<PollEvent>(activeSlots.Count * 2);
+        for (int i = 0; i < activeSlots.Count; i++)
+        {
+            poller.AddReceiver(activeSlots[i].Receiver, PollEvents.PollIn,
+                activeSlots[i]);
+            poller.AddGateway(activeSlots[i].Gateway, PollEvents.None,
+                activeSlots[i]);
+        }
+
+        RunWarmupPhase(activeSlots, poller, events, config, ref phaseState);
         RunSettlePhase(config);
-        GatewayClientActiveStats activeStats = RunActivePhase(activeSlots, payload,
-            routingId, recv, config, ref phaseState);
+        GatewayClientActiveStats activeStats = RunActivePhase(activeSlots, poller,
+            events, config, ref phaseState);
         RunDrainPhase(config);
         return ComputeResult(activeStats, phaseState.LatencySamples);
     }
 
     private static void RunWarmupPhase(List<GatewayClientSlot> activeSlots,
-        byte[] payload, byte[] routingId, byte[] recv, GatewayClientConfig config,
+        Poller poller, List<PollEvent> events, GatewayClientConfig config,
         ref GatewayClientPhaseState state)
     {
         if (config.ActiveWarmup)
@@ -130,17 +133,17 @@ internal static class PerfGatewayClient
                 + (long)Math.Max(0, config.WarmupSeconds) * Stopwatch.Frequency;
             while (Stopwatch.GetTimestamp() < warmupDeadlineTicks)
             {
-                GatewayClientSlot slot = activeSlots[state.Index];
-                StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Warmup,
-                    config.Size, state.Seq++, EpochUs());
-                if (TrySendGatewayPayload(slot.Gateway, ServerServiceName,
-                        payload.AsSpan()))
+                TryScheduleIdleSends(activeSlots, poller, config.Size, RunId,
+                    PerfPhase.Warmup, ref state.Seq);
+                if (!WaitForEvents(poller, events,
+                        RemainingMilliseconds(warmupDeadlineTicks)))
                 {
-                    _ = TryReceiveGatewayEcho(slot.ReceiverRouter, routingId,
-                        recv, out _);
+                    continue;
                 }
 
-                AdvanceRoundRobin(ref state.Index, activeSlots.Count);
+                for (int i = 0; i < events.Count; i++)
+                    HandleClientEvent(events[i], poller, config.Size, RunId,
+                        PerfPhase.Warmup, ref state, collectMetrics: false);
             }
 
             if (config.WarmupDrainMs > 0)
@@ -159,8 +162,9 @@ internal static class PerfGatewayClient
     }
 
     private static GatewayClientActiveStats RunActivePhase(
-        List<GatewayClientSlot> activeSlots, byte[] payload, byte[] routingId,
-        byte[] recv, GatewayClientConfig config, ref GatewayClientPhaseState state)
+        List<GatewayClientSlot> activeSlots, Poller poller,
+        List<PollEvent> events, GatewayClientConfig config,
+        ref GatewayClientPhaseState state)
     {
         long measureCount = 0;
         long benchStartTicks = Stopwatch.GetTimestamp();
@@ -168,41 +172,18 @@ internal static class PerfGatewayClient
             + (long)Math.Max(1, config.DurationSeconds) * Stopwatch.Frequency;
         while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
         {
-            GatewayClientSlot slot = activeSlots[state.Index];
-            long beginTicks = Stopwatch.GetTimestamp();
-            StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Active, config.Size,
-                state.Seq++, EpochUs());
-            if (!TrySendGatewayPayload(slot.Gateway, ServerServiceName,
-                    payload.AsSpan()))
+            TryScheduleIdleSends(activeSlots, poller, config.Size, RunId,
+                PerfPhase.Active, ref state.Seq);
+            if (!WaitForEvents(poller, events,
+                    RemainingMilliseconds(benchDeadlineTicks)))
             {
-                AdvanceRoundRobin(ref state.Index, activeSlots.Count);
                 continue;
             }
 
-            if (!TryReceiveGatewayEcho(slot.ReceiverRouter, routingId, recv,
-                    out int received) || received <= 0)
-            {
-                AdvanceRoundRobin(ref state.Index, activeSlots.Count);
-                continue;
-            }
-
-            ReadOnlySpan<byte> body = recv.AsSpan(0, received);
-            if (!TryDecodeMetricHeader(body, out PerfMetricHeader header)
-                || header.RunId != RunId
-                || header.MsgSize != (uint)config.Size
-                || header.Phase != (uint)PerfPhase.Active)
-            {
-                AdvanceRoundRobin(ref state.Index, activeSlots.Count);
-                continue;
-            }
-
-            long endTicks = Stopwatch.GetTimestamp();
-            measureCount++;
-            double oneWayLatencyUs = ((endTicks - beginTicks) * 1_000_000.0
-                                      / Stopwatch.Frequency) / 2.0;
-            ReservoirSample(state.LatencySamples, oneWayLatencyUs,
-                ref state.SampleSeen, config.LatencySampleCap, ref state.Rng);
-            AdvanceRoundRobin(ref state.Index, activeSlots.Count);
+            for (int i = 0; i < events.Count; i++)
+                measureCount += HandleClientEvent(events[i], poller,
+                    config.Size, RunId, PerfPhase.Active, ref state,
+                    collectMetrics: true);
         }
 
         long benchEndTicks = Stopwatch.GetTimestamp();
@@ -237,13 +218,6 @@ internal static class PerfGatewayClient
             latencyP99Us);
     }
 
-    private static void AdvanceRoundRobin(ref int index, int count)
-    {
-        index++;
-        if (index == count)
-            index = 0;
-    }
-
     private static GatewayClientSlot CreateGatewayClientSlot(Context ctx,
         Discovery discovery, string transport, string pattern,
         string registryRouter, string clientServiceName,
@@ -271,42 +245,42 @@ internal static class PerfGatewayClient
         gateway.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
         gateway.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
 
-        return new GatewayClientSlot(receiver, receiverRouter, gateway);
+        return new GatewayClientSlot(receiver, receiverRouter, gateway,
+            Math.Max(256, Math.Max(pattern.Length, 256)),
+            Math.Max(256, Math.Max(ResolveMultiSizeTransitionDrainMs(),
+                Math.Max(PerfMetricHeaderSize, 256))));
     }
 
-    private static bool TryReceiveGatewayEcho(Zlink.Socket receiverRouter,
-        byte[] routingIdBuffer, byte[] payloadBuffer, out int payloadLength)
+    private static bool TryReceiveGatewayEcho(GatewayClientSlot slot,
+        out int payloadLength)
     {
         payloadLength = 0;
-        int ridLen = ReceiveRetry(receiverRouter, routingIdBuffer.AsSpan(),
+        int ridLen = ReceiveRetry(slot.ReceiverRouter, slot.RoutingId.AsSpan(),
             ReceiveFlags.DontWait);
         if (ridLen <= 0)
             return false;
 
-        long deadlineTicks = Stopwatch.GetTimestamp()
-            + (Stopwatch.Frequency / 1000);
-        while (true)
-        {
-            int n = ReceiveRetry(receiverRouter, payloadBuffer.AsSpan(),
-                ReceiveFlags.DontWait);
-            if (n > 0)
-            {
-                payloadLength = n;
-                return true;
-            }
+        int n = ReceiveRetry(slot.ReceiverRouter, slot.Recv.AsSpan(),
+            ReceiveFlags.DontWait);
+        if (n <= 0)
+            return false;
 
-            if (Stopwatch.GetTimestamp() >= deadlineTicks)
-                return false;
-
-            Thread.Yield();
-        }
+        payloadLength = n;
+        return true;
     }
 
     private static bool TrySendGatewayPayload(Gateway gateway,
         string serviceName, ReadOnlySpan<byte> payload)
     {
-        gateway.Send(serviceName, payload, SendFlags.None);
-        return true;
+        try
+        {
+            gateway.Send(serviceName, payload, SendFlags.DontWait);
+            return true;
+        }
+        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
+        {
+            return false;
+        }
     }
 
     private static bool TryParseGatewayReadyEndpoint(string endpoint,
@@ -387,15 +361,15 @@ internal static class PerfGatewayClient
         if (slots.Count == 0)
             return echoReady;
 
-        var payload = new byte[Math.Max(msgSize, PerfMetricHeaderSize)];
-        Array.Fill(payload, (byte)'p');
-        var routingId = new byte[256];
-        var recv = new byte[Math.Max(256, Math.Max(msgSize, MultiStopToken.Length))];
         ulong seq = 1;
+        using var poller = new Poller();
+        var events = new List<PollEvent>(slots.Count * 2);
 
         for (int i = 0; i < slots.Count; i++)
         {
             GatewayClientSlot slot = slots[i];
+            poller.AddReceiver(slot.Receiver, PollEvents.PollIn, slot);
+            poller.AddGateway(slot.Gateway, PollEvents.None, slot);
             bool ready = false;
             long slotDeadlineTicks = DeadlineTicksFromMilliseconds(readyTimeoutMs);
             while (Stopwatch.GetTimestamp() < slotDeadlineTicks)
@@ -406,17 +380,18 @@ internal static class PerfGatewayClient
                     continue;
                 }
 
-                StampMetricHeader(payload.AsSpan(), 1, PerfPhase.Warmup,
+                StampMetricHeader(slot.Payload.AsSpan(), 1, PerfPhase.Warmup,
                     msgSize, seq++, EpochUs());
                 if (!TrySendGatewayPayload(slot.Gateway, serverServiceName,
-                        payload.AsSpan()))
+                        slot.Payload.AsSpan()))
                 {
-                    Thread.Sleep(1);
+                    poller.ModifyGateway(slot.Gateway, PollEvents.PollOut);
+                    _ = WaitForEvents(poller, events, 1);
                     continue;
                 }
 
-                if (TryReceiveGatewayEcho(slot.ReceiverRouter, routingId, recv,
-                        out int n) && n > 0)
+                if (WaitForEvents(poller, events, 1)
+                    && TryReceiveGatewayEcho(slot, out int n) && n > 0)
                 {
                     ready = true;
                     break;
@@ -454,6 +429,95 @@ internal static class PerfGatewayClient
             _ = TrySendGatewayPayload(activeSlots[i].Gateway, serviceName,
                 MultiStopToken.AsSpan());
         }
+    }
+
+    private static void TryScheduleIdleSends(
+        IReadOnlyList<GatewayClientSlot> activeSlots, Poller poller, int msgSize,
+        uint runId, PerfPhase phase, ref ulong seq)
+    {
+        for (int i = 0; i < activeSlots.Count; i++)
+        {
+            GatewayClientSlot slot = activeSlots[i];
+            if (slot.WaitingForReply || slot.WaitingForWritable)
+                continue;
+
+            StampMetricHeader(slot.Payload.AsSpan(), runId, phase, msgSize,
+                seq++, EpochUs());
+            if (TrySendGatewayPayload(slot.Gateway, ServerServiceName,
+                    slot.Payload.AsSpan()))
+            {
+                slot.WaitingForReply = true;
+                slot.SendStartTicks = Stopwatch.GetTimestamp();
+                continue;
+            }
+
+            slot.WaitingForWritable = true;
+            poller.ModifyGateway(slot.Gateway, PollEvents.PollOut);
+        }
+    }
+
+    private static long HandleClientEvent(PollEvent pollEvent, Poller poller,
+        int msgSize, uint runId, PerfPhase phase,
+        ref GatewayClientPhaseState state, bool collectMetrics)
+    {
+        if (pollEvent.Tag is not GatewayClientSlot slot)
+            return 0;
+
+        if ((pollEvent.Revents & PollEvents.PollOut) != 0
+            && slot.WaitingForWritable
+            && !slot.WaitingForReply)
+        {
+            if (TrySendGatewayPayload(slot.Gateway, ServerServiceName,
+                    slot.Payload.AsSpan()))
+            {
+                slot.WaitingForWritable = false;
+                slot.WaitingForReply = true;
+                slot.SendStartTicks = Stopwatch.GetTimestamp();
+                poller.ModifyGateway(slot.Gateway, PollEvents.None);
+            }
+        }
+
+        if ((pollEvent.Revents & PollEvents.PollIn) == 0 || !slot.WaitingForReply)
+            return 0;
+
+        long count = 0;
+        while (TryReceiveGatewayEcho(slot, out int received) && received > 0)
+        {
+            slot.WaitingForReply = false;
+            if (!collectMetrics || phase != PerfPhase.Active)
+                continue;
+
+            ReadOnlySpan<byte> body = slot.Recv.AsSpan(0, received);
+            if (!TryDecodeMetricHeader(body, out PerfMetricHeader header)
+                || header.RunId != runId
+                || header.MsgSize != (uint)msgSize
+                || header.Phase != (uint)PerfPhase.Active)
+            {
+                continue;
+            }
+
+            count++;
+            long endTicks = Stopwatch.GetTimestamp();
+            double oneWayLatencyUs = ((endTicks - slot.SendStartTicks)
+                                      * 1_000_000.0 / Stopwatch.Frequency) / 2.0;
+            ReservoirSample(state.LatencySamples, oneWayLatencyUs,
+                ref state.SampleSeen, state.LatencySampleCap, ref state.Rng);
+        }
+
+        return count;
+    }
+
+    private static int RemainingMilliseconds(long deadlineTicks)
+    {
+        long nowTicks = Stopwatch.GetTimestamp();
+        if (deadlineTicks <= nowTicks)
+            return 0;
+
+        double remainingMs = (deadlineTicks - nowTicks) * 1000.0
+            / Stopwatch.Frequency;
+        if (remainingMs >= int.MaxValue)
+            return int.MaxValue;
+        return (int)Math.Ceiling(remainingMs);
     }
 
     private static void ApplyReceiverSocketOptions(Receiver receiver,
@@ -577,6 +641,7 @@ internal static class PerfGatewayClient
             Seq = 1;
             SampleSeen = 0;
             Rng = 0xA341316Cu;
+            LatencySampleCap = latencySampleCap;
             LatencySamples = new List<double>(latencySampleCap);
         }
 
@@ -584,22 +649,33 @@ internal static class PerfGatewayClient
         internal ulong Seq;
         internal long SampleSeen;
         internal uint Rng;
+        internal int LatencySampleCap;
         internal List<double> LatencySamples;
     }
 
     private sealed class GatewayClientSlot : IDisposable
     {
         internal GatewayClientSlot(Receiver receiver, Zlink.Socket receiverRouter,
-            Gateway gateway)
+            Gateway gateway, int routingIdCapacity, int recvCapacity)
         {
             Receiver = receiver;
             ReceiverRouter = receiverRouter;
             Gateway = gateway;
+            Payload = new byte[Math.Max(PerfMetricHeaderSize, recvCapacity)];
+            Recv = new byte[Math.Max(256, recvCapacity)];
+            RoutingId = new byte[Math.Max(256, routingIdCapacity)];
+            Array.Fill(Payload, (byte)'a');
         }
 
         internal Receiver Receiver { get; }
         internal Zlink.Socket ReceiverRouter { get; }
         internal Gateway Gateway { get; }
+        internal byte[] Payload { get; }
+        internal byte[] Recv { get; }
+        internal byte[] RoutingId { get; }
+        internal bool WaitingForReply { get; set; }
+        internal bool WaitingForWritable { get; set; }
+        internal long SendStartTicks { get; set; }
 
         public void Dispose()
         {

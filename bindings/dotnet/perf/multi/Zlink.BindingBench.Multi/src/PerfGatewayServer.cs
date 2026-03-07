@@ -71,8 +71,8 @@ internal static class PerfGatewayServer
                 PerfMetricHeaderSize), MultiStopToken.Length))];
             string[] clientServiceNames = BuildClientServiceNames(
                 config.ClientCount);
-            GatewayServerResult result = RunActivePhase(receiverRouter, gateway,
-                routingId, payload, clientServiceNames, config);
+            GatewayServerResult result = RunActivePhase(receiver, receiverRouter,
+                gateway, routingId, payload, clientServiceNames, config);
             if (result.HasValue)
             {
                 PrintResult(Pattern, config.Transport, config.Size,
@@ -111,8 +111,8 @@ internal static class PerfGatewayServer
             EndpointFor("tcp", "multi-gateway-reg-router"));
     }
 
-    private static GatewayServerResult RunActivePhase(Zlink.Socket receiverRouter,
-        Gateway gateway, byte[] routingId, byte[] payload,
+    private static GatewayServerResult RunActivePhase(Receiver receiver,
+        Zlink.Socket receiverRouter, Gateway gateway, byte[] routingId, byte[] payload,
         string[] clientServiceNames,
         GatewayServerConfig config)
     {
@@ -128,18 +128,26 @@ internal static class PerfGatewayServer
         long idleBreakTicks = (long)(Stopwatch.Frequency
             * (Math.Max(config.RcvTimeoutMs * 2, 1000) / 1000.0));
         var latencySamples = new List<double>(config.LatencySampleCap);
+        var pendingReplies = new List<PendingGatewayReply>();
+        using var poller = new Poller();
+        var events = new List<PollEvent>(2);
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
+        poller.AddReceiver(receiver, PollEvents.PollIn, "receiver");
+        poller.AddGateway(gateway, PollEvents.None, "gateway");
 
         while (true)
         {
+            FlushPendingReplies(gateway, pendingReplies);
+            poller.ModifyGateway(gateway,
+                pendingReplies.Count > 0 ? PollEvents.PollOut : PollEvents.None);
+
             if (activeHardStopTicks > 0
                 && Stopwatch.GetTimestamp() >= activeHardStopTicks)
                 break;
 
-            int ridLen = ReceiveRetry(receiverRouter, routingId.AsSpan(),
-                ReceiveFlags.DontWait);
-            if (ridLen <= 0)
+            int pollTimeoutMs = pendingReplies.Count > 0 ? 0 : 2;
+            if (!WaitForEvents(poller, events, pollTimeoutMs))
             {
                 long nowTicks = Stopwatch.GetTimestamp();
                 if (activeHardStopTicks > 0 && nowTicks >= activeHardStopTicks)
@@ -153,59 +161,62 @@ internal static class PerfGatewayServer
                 {
                     break;
                 }
-                Thread.Yield();
                 continue;
             }
 
-            int n = ReceiveRetry(receiverRouter, payload.AsSpan(),
-                ReceiveFlags.DontWait);
-            if (n <= 0)
+            bool drainedAny = false;
+            while (TryReceiveGatewayRequest(receiverRouter, routingId, payload,
+                       out int ridLen, out int n))
             {
-                long nowTicks = Stopwatch.GetTimestamp();
-                if (activeHardStopTicks > 0 && nowTicks >= activeHardStopTicks)
-                    break;
-                if (lastActiveMessageTicks > 0
-                    && nowTicks - lastActiveMessageTicks >= idleBreakTicks)
-                    break;
-                Thread.Yield();
-                continue;
+                drainedAny = true;
+                ReadOnlySpan<byte> body = payload.AsSpan(0, n);
+                if (IsStopTokenPayload(body))
+                    goto Done;
+
+                if (!TryParseClientIndex(routingId.AsSpan(0, ridLen),
+                        clientServiceNames.Length, out int clientIndex))
+                    continue;
+                EnqueueOrSendGatewayReply(gateway, pendingReplies,
+                    clientServiceNames[clientIndex], body);
+                if (!TryDecodeMetricHeader(body, out PerfMetricHeader header))
+                    continue;
+                if (header.RunId != ExpectedRunId
+                    || header.MsgSize != (uint)config.Size
+                    || header.Phase != (uint)PerfPhase.Active)
+                    continue;
+
+                if (benchStartTicks == 0)
+                {
+                    benchStartTicks = Stopwatch.GetTimestamp();
+                    activeHardStopTicks = benchStartTicks
+                        + (long)Math.Max(2, config.DurationSeconds + 1)
+                        * Stopwatch.Frequency;
+                }
+
+                benchEndTicks = Stopwatch.GetTimestamp();
+                lastActiveMessageTicks = benchEndTicks;
+                recvCount++;
+                ulong nowUs = EpochUs();
+                if (header.SentTsUs > 0 && nowUs >= header.SentTsUs)
+                {
+                    double sampleUs = nowUs - header.SentTsUs;
+                    ReservoirSample(latencySamples, sampleUs, ref sampleSeen,
+                        config.LatencySampleCap, ref rng);
+                }
             }
 
-            ReadOnlySpan<byte> body = payload.AsSpan(0, n);
-            if (IsStopTokenPayload(body))
+            if (drainedAny)
+                continue;
+
+            long idleNowTicks = Stopwatch.GetTimestamp();
+            if (activeHardStopTicks > 0 && idleNowTicks >= activeHardStopTicks)
                 break;
-
-            if (!TryParseClientIndex(routingId.AsSpan(0, ridLen),
-                    clientServiceNames.Length, out int clientIndex))
-                continue;
-            _ = TrySendGatewayEcho(gateway, clientServiceNames[clientIndex], body);
-            if (!TryDecodeMetricHeader(body, out PerfMetricHeader header))
-                continue;
-            if (header.RunId != ExpectedRunId
-                || header.MsgSize != (uint)config.Size
-                || header.Phase != (uint)PerfPhase.Active)
-                continue;
-
-            if (benchStartTicks == 0)
-            {
-                benchStartTicks = Stopwatch.GetTimestamp();
-                activeHardStopTicks = benchStartTicks
-                    + (long)Math.Max(2, config.DurationSeconds + 1)
-                    * Stopwatch.Frequency;
-            }
-
-            benchEndTicks = Stopwatch.GetTimestamp();
-            lastActiveMessageTicks = benchEndTicks;
-            recvCount++;
-            ulong nowUs = EpochUs();
-            if (header.SentTsUs > 0 && nowUs >= header.SentTsUs)
-            {
-                double sampleUs = nowUs - header.SentTsUs;
-                ReservoirSample(latencySamples, sampleUs, ref sampleSeen,
-                    config.LatencySampleCap, ref rng);
-            }
+            if (lastActiveMessageTicks > 0
+                && idleNowTicks - lastActiveMessageTicks >= idleBreakTicks)
+                break;
         }
 
+Done:
         if (benchStartTicks <= 0 || recvCount <= 0)
             return GatewayServerResult.Empty;
 
@@ -314,11 +325,77 @@ internal static class PerfGatewayServer
             rcvTimeoutMs);
     }
 
+    private static bool TryReceiveGatewayRequest(Zlink.Socket receiverRouter,
+        byte[] routingId, byte[] payload, out int routingIdLength,
+        out int payloadLength)
+    {
+        routingIdLength = ReceiveRetry(receiverRouter, routingId.AsSpan(),
+            ReceiveFlags.DontWait);
+        if (routingIdLength <= 0)
+        {
+            payloadLength = 0;
+            return false;
+        }
+
+        payloadLength = ReceiveRetry(receiverRouter, payload.AsSpan(),
+            ReceiveFlags.DontWait);
+        return payloadLength > 0;
+    }
+
+    private static void EnqueueOrSendGatewayReply(Gateway gateway,
+        List<PendingGatewayReply> pendingReplies, string serviceName,
+        ReadOnlySpan<byte> payload)
+    {
+        if (!TrySendGatewayEcho(gateway, serviceName, payload))
+            pendingReplies.Add(new PendingGatewayReply(serviceName,
+                payload.ToArray()));
+    }
+
+    private static void FlushPendingReplies(Gateway gateway,
+        List<PendingGatewayReply> pendingReplies)
+    {
+        for (int i = 0; i < pendingReplies.Count;)
+        {
+            PendingGatewayReply reply = pendingReplies[i];
+            if (!TryGatewayReady(gateway, reply.ServiceName)
+                || !TrySendGatewayEcho(gateway, reply.ServiceName, reply.Payload))
+            {
+                i++;
+                continue;
+            }
+
+            pendingReplies.RemoveAt(i);
+        }
+    }
+
+    private static bool TryGatewayReady(Gateway gateway, string serviceName)
+    {
+        try
+        {
+            return gateway.ConnectionCount(serviceName) > 0;
+        }
+        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
+                                        || IsInterrupted(ex.Errno)
+                                        || IsTransientNetworkError(ex.Errno))
+        {
+            return false;
+        }
+    }
+
     private static bool TrySendGatewayEcho(Gateway gateway, string serviceName,
         ReadOnlySpan<byte> payload)
     {
-        gateway.Send(serviceName, payload, SendFlags.None);
-        return true;
+        try
+        {
+            gateway.Send(serviceName, payload, SendFlags.DontWait);
+            return true;
+        }
+        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
+                                        || IsInterrupted(ex.Errno)
+                                        || IsTransientNetworkError(ex.Errno))
+        {
+            return false;
+        }
     }
 
     private readonly struct GatewayServerConfig
@@ -378,5 +455,17 @@ internal static class PerfGatewayServer
         internal double LatencyUs { get; }
         internal double LatencyP95Us { get; }
         internal double LatencyP99Us { get; }
+    }
+
+    private readonly struct PendingGatewayReply
+    {
+        internal PendingGatewayReply(string serviceName, byte[] payload)
+        {
+            ServiceName = serviceName;
+            Payload = payload;
+        }
+
+        internal string ServiceName { get; }
+        internal byte[] Payload { get; }
     }
 }

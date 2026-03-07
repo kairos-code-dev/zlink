@@ -3,10 +3,10 @@
 package dev.kairoscode.zlink.integration.bench.src;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.Poller;
 import dev.kairoscode.zlink.SendFlag;
-import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.integration.bench.common.PerfCommon;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiClientHelpers;
@@ -14,19 +14,18 @@ import dev.kairoscode.zlink.integration.bench.common.PerfMultiCommon;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiMetricHeader;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiTls;
 import dev.kairoscode.zlink.options.SocketOptions;
+import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import dev.kairoscode.zlink.service.spot.SpotNodeSocketRole;
-import java.nio.charset.StandardCharsets;
+import java.lang.foreign.MemorySegment;
 
 /**
  * MULTI_SPOT server benchmark.
- * SpotNode(bind) + pollable pub socket sends topic+payload multipart frames.
+ * Spot service instance publishes payload, poller registers SpotPub directly.
  */
 public final class PerfMultiSpotServer {
     private static final String PATTERN = "MULTI_SPOT";
     private static final String TOPIC = "bench";
-    private static final byte[] TOPIC_BYTES = TOPIC.getBytes(
-        StandardCharsets.UTF_8);
     private static final int MIN_PAYLOAD_BYTES = 32;
     private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
     private static final long NANOSECONDS_PER_MILLISECOND = 1_000_000L;
@@ -35,23 +34,20 @@ public final class PerfMultiSpotServer {
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
 
     private static final class PendingPublish {
-        boolean sendTopic;
-        boolean sendPayload;
+        boolean pending;
         long seq;
 
         PendingPublish(long seq) {
             this.seq = seq;
-            this.sendTopic = false;
-            this.sendPayload = false;
-        }
-
-        boolean hasPending() {
-            return sendTopic || sendPayload;
+            this.pending = false;
         }
 
         void begin() {
-            sendTopic = true;
-            sendPayload = true;
+            pending = true;
+        }
+
+        void complete() {
+            pending = false;
         }
     }
 
@@ -76,26 +72,32 @@ public final class PerfMultiSpotServer {
             PerfMultiCommon.resolveClientPollTimeoutMs());
 
         try (Context context = new Context();
-             SpotNode pubNode = new SpotNode(context)) {
+             SpotNode node = new SpotNode(context)) {
             PerfCommon.applyServerContextOptions(context);
-            applySpotNodeOptions(pubNode);
-            PerfMultiTls.configureSpotPublisherTlsIfNeeded(pubNode, transport);
-            pubNode.bind(endpoint);
+            applySpotNodeOptions(node);
+            PerfMultiTls.configureSpotPublisherTlsIfNeeded(node, transport);
+            node.bind(endpoint);
             System.out.println("READY," + endpoint);
-            if (!waitPubPeers(pubNode, clients, connectTimeoutMs)) {
+            if (!waitPubPeers(node, clients, connectTimeoutMs)) {
                 System.err.println("ERROR,MULTI_SPOT,server,no_pub_peers");
                 return 2;
             }
 
-            try (Socket publisher = pubNode.pubSocket();
+            try (Spot publisher = new Spot(node);
+                 Spot.PreparedTopic topic = publisher.prepareTopic(TOPIC);
+                 Spot.PublishContext publishContext =
+                     publisher.createPublishContext();
+                 Message payloadMessage = new Message(payloadSize);
                  Poller poller = new Poller()) {
                 byte[] payload = new byte[payloadSize];
+                MemorySegment payloadSegment = MemorySegment.ofArray(payload);
                 int runId = (int) (PerfMultiMetricHeader.nowUs()
                     & 0x7FFF_FFFFL);
                 PendingPublish pending = new PendingPublish(1L);
 
                 // --- Warmup ---
-                runPublishPhase(publisher, poller, payload, msgSize, runId,
+                runPublishPhase(publisher, topic, publishContext, payloadMessage,
+                    poller, payload, payloadSegment, msgSize, runId,
                     PerfMultiMetricHeader.PHASE_WARMUP, Math.max(0,
                         warmupSeconds) * NANOSECONDS_PER_SECOND, pollTimeoutMs,
                     connectTimeoutMs, pending);
@@ -106,7 +108,8 @@ public final class PerfMultiSpotServer {
                 }
 
                 // --- Active measurement ---
-                runPublishPhase(publisher, poller, payload, msgSize, runId,
+                runPublishPhase(publisher, topic, publishContext, payloadMessage,
+                    poller, payload, payloadSegment, msgSize, runId,
                     PerfMultiMetricHeader.PHASE_ACTIVE, Math.max(1,
                         durationSeconds) * NANOSECONDS_PER_SECOND, pollTimeoutMs,
                     connectTimeoutMs, pending);
@@ -129,10 +132,19 @@ public final class PerfMultiSpotServer {
         return PerfCommon.endpointFor(transport, name);
     }
 
-    private static void runPublishPhase(Socket socket, Poller poller,
-                                        byte[] payload, int msgSize, int runId,
-                                        int phase, long durationNs,
-                                        int pollTimeoutMs, int flushTimeoutMs,
+    private static void runPublishPhase(Spot publisher,
+                                        Spot.PreparedTopic topic,
+                                        Spot.PublishContext publishContext,
+                                        Message payloadMessage,
+                                        Poller poller,
+                                        byte[] payload,
+                                        MemorySegment payloadSegment,
+                                        int msgSize,
+                                        int runId,
+                                        int phase,
+                                        long durationNs,
+                                        int pollTimeoutMs,
+                                        int flushTimeoutMs,
                                         PendingPublish pending) {
         if (durationNs <= 0L) {
             return;
@@ -141,22 +153,25 @@ public final class PerfMultiSpotServer {
         boolean pollOutRegistered = false;
 
         while (System.nanoTime() < deadline) {
-            if (!pending.hasPending()) {
+            if (!pending.pending) {
                 PerfMultiMetricHeader.stampPayload(payload, runId, phase,
                     msgSize, pending.seq++, PerfMultiMetricHeader.nowUs());
+                MemorySegment.copy(payloadSegment, 0, payloadMessage.dataSegment(),
+                    0, payload.length);
                 pending.begin();
             }
 
-            if (tryFlushPending(socket, payload, pending)) {
+            if (tryFlushPending(publisher, topic, publishContext,
+                payloadMessage, pending)) {
                 if (pollOutRegistered) {
-                    poller.remove(socket);
+                    poller.removeSpotPub(publisher);
                     pollOutRegistered = false;
                 }
                 continue;
             }
 
             if (!pollOutRegistered) {
-                poller.add(socket, PollEventType.POLLOUT);
+                poller.addSpotPub(publisher, PollEventType.POLLOUT);
                 pollOutRegistered = true;
             }
             poller.pollCount(pollTimeoutMs);
@@ -164,12 +179,13 @@ public final class PerfMultiSpotServer {
 
         long flushDeadline = System.nanoTime()
             + (long) Math.max(1000, flushTimeoutMs) * NANOSECONDS_PER_MILLISECOND;
-        while (pending.hasPending()) {
-            if (tryFlushPending(socket, payload, pending)) {
+        while (pending.pending) {
+            if (tryFlushPending(publisher, topic, publishContext,
+                payloadMessage, pending)) {
                 break;
             }
             if (!pollOutRegistered) {
-                poller.add(socket, PollEventType.POLLOUT);
+                poller.addSpotPub(publisher, PollEventType.POLLOUT);
                 pollOutRegistered = true;
             }
             if (System.nanoTime() >= flushDeadline) {
@@ -179,37 +195,34 @@ public final class PerfMultiSpotServer {
         }
 
         if (pollOutRegistered) {
-            poller.remove(socket);
+            poller.removeSpotPub(publisher);
         }
     }
 
-    private static boolean tryFlushPending(Socket socket, byte[] payload,
+    private static boolean tryFlushPending(Spot publisher,
+                                           Spot.PreparedTopic topic,
+                                           Spot.PublishContext publishContext,
+                                           Message payloadMessage,
                                            PendingPublish pending) {
-        if (pending.sendTopic) {
-            if (!trySendNonBlocking(socket, TOPIC_BYTES,
-                SendFlag.DONTWAIT_SNDMORE)) {
-                return false;
-            }
-            pending.sendTopic = false;
+        if (!pending.pending) {
+            return true;
         }
-        if (pending.sendPayload) {
-            if (!trySendNonBlocking(socket, payload, SendFlag.DONTWAIT)) {
-                return false;
-            }
-            pending.sendPayload = false;
+        if (!tryPublishNonBlocking(publisher, topic, publishContext,
+            payloadMessage)) {
+            return false;
         }
+        pending.complete();
         return true;
     }
 
-    private static boolean trySendNonBlocking(Socket socket, byte[] payload,
-                                              SendFlag flags) {
+    private static boolean tryPublishNonBlocking(Spot publisher,
+                                                 Spot.PreparedTopic topic,
+                                                 Spot.PublishContext context,
+                                                 Message payloadMessage) {
         while (true) {
             try {
-                int sent = socket.send(payload, 0, payload.length, flags);
-                if (sent != payload.length) {
-                    throw new IllegalStateException(
-                        "partial send: " + sent + "/" + payload.length);
-                }
+                publisher.publish(topic, payloadMessage, SendFlag.DONTWAIT,
+                    context);
                 return true;
             } catch (ZlinkException ex) {
                 if (isInterrupted(ex.errno())) {
@@ -226,8 +239,7 @@ public final class PerfMultiSpotServer {
     private static void applySpotNodeOptions(SpotNode node) {
         int sndHwm = PerfMultiCommon.resolveSndHwm(PATTERN);
         node.setOption(SpotNodeSocketRole.PUB, SocketOptions.SNDHWM, sndHwm);
-        node.setOption(SpotNodeSocketRole.PUB, SocketOptions.SNDTIMEO,
-            0);
+        node.setOption(SpotNodeSocketRole.PUB, SocketOptions.SNDTIMEO, 0);
         node.setOption(SpotNodeSocketRole.PUB, SocketOptions.LINGER, 0);
         node.setOption(SpotNodeSocketRole.SUB, SocketOptions.LINGER, 0);
         node.setOption(SpotNodeSocketRole.DEALER, SocketOptions.LINGER, 0);

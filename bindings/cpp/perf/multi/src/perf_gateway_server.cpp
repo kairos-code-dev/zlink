@@ -21,6 +21,8 @@
 
 namespace {
 
+static const char *k_provider_routing_id = "PROV1";
+
 int bench_pid ()
 {
 #if defined(_WIN32)
@@ -135,6 +137,12 @@ void perf_gateway_server (const std::string &transport, size_t)
         (void) recv->set_sockopt (zlink::receiver_socket_role::router,
                                   zlink::socket_options::rcvtimeo,
                                   settings.rcvtimeo_ms);
+        (void) recv->set_sockopt (zlink::receiver_socket_role::router,
+                                  zlink::socket_options::probe_router,
+                                  1);
+        (void) recv->set_sockopt (zlink::receiver_socket_role::router,
+                                  zlink::socket_options::routing_id,
+                                  std::string (k_provider_routing_id));
 
         if (!configure_receiver_tls (*recv, transport)) {
             last_errno = errno;
@@ -226,9 +234,9 @@ void perf_gateway_server (const std::string &transport, size_t)
                 if (!client_id.more ())
                     continue;
 
-                zlink::message_t payload;
-                const int payload_rc = sock->recv (payload, zlink::recv_flag::dontwait);
-                if (payload_rc < 0) {
+                zlink::message_t second;
+                const int second_rc = sock->recv (second, zlink::recv_flag::dontwait);
+                if (second_rc < 0) {
                     const int err = errno;
                     if (err == EAGAIN)
                         break;
@@ -236,6 +244,23 @@ void perf_gateway_server (const std::string &transport, size_t)
                         continue;
                     stop_requested = true;
                     break;
+                }
+
+                zlink::message_t payload;
+                if (second.more () && second.size () == 0) {
+                    const int payload_rc =
+                      sock->recv (payload, zlink::recv_flag::dontwait);
+                    if (payload_rc < 0) {
+                        const int err = errno;
+                        if (err == EAGAIN)
+                            break;
+                        if (err == EINTR)
+                            continue;
+                        stop_requested = true;
+                        break;
+                    }
+                } else {
+                    payload = std::move (second);
                 }
 
                 if (payload.more ())
@@ -250,6 +275,11 @@ void perf_gateway_server (const std::string &transport, size_t)
                                 client_id.size (),
                                 zlink::send_flag::sndmore)
                     != static_cast<int> (client_id.size ())) {
+                    stop_requested = true;
+                    break;
+                }
+
+                if (sock->send ("", 0, zlink::send_flag::sndmore) != 0) {
                     stop_requested = true;
                     break;
                 }

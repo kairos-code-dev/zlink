@@ -47,7 +47,7 @@ internal static class PerfSpot
             for (int i = 0; i < warmupCount; i++)
             {
                 spotPub.Publish("bench", payload.AsSpan(), SendFlags.None);
-                SpotReceivePayloadWithTimeout(spotSub, recvPayload.AsSpan(), 5000);
+                ReceiveSpotPayloadBlockingAndDrain(spotSub, recvPayload.AsSpan());
             }
 
             Thread.Sleep(settleMs);
@@ -59,7 +59,7 @@ internal static class PerfSpot
             while (Stopwatch.GetTimestamp() < throughputDeadlineTicks)
             {
                 spotPub.Publish("bench", payload.AsSpan(), SendFlags.None);
-                SpotReceivePayloadWithTimeout(spotSub, recvPayload.AsSpan(), 5000);
+                ReceiveSpotPayloadBlockingAndDrain(spotSub, recvPayload.AsSpan());
                 recvCount++;
             }
 
@@ -79,7 +79,7 @@ internal static class PerfSpot
             {
                 long begin = Stopwatch.GetTimestamp();
                 spotPub.Publish("bench", payload.AsSpan(), SendFlags.None);
-                SpotReceivePayloadWithTimeout(spotSub, recvPayload.AsSpan(), 5000);
+                ReceiveSpotPayloadBlockingAndDrain(spotSub, recvPayload.AsSpan());
                 long end = Stopwatch.GetTimestamp();
                 double latUs = (end - begin) * 1_000_000.0 / Stopwatch.Frequency;
                 ReservoirSample(latSamples, latUs, ref sampleSeen, latCount,
@@ -99,6 +99,26 @@ internal static class PerfSpot
         finally
         {
             TryDisposeAllQuietly(spotSub, spotPub, nodeSub, nodePub);
+        }
+    }
+
+    private static void ReceiveSpotPayloadBlockingAndDrain(Spot spotSub,
+        Span<byte> recvPayload)
+    {
+        _ = spotSub.ReceiveSinglePayload(recvPayload, ReceiveFlags.None);
+        while (true)
+        {
+            try
+            {
+                if (spotSub.ReceiveSinglePayload(recvPayload,
+                        ReceiveFlags.DontWait) <= 0)
+                    break;
+            }
+            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
+                                            || IsInterrupted(ex.Errno))
+            {
+                break;
+            }
         }
     }
 }

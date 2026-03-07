@@ -789,15 +789,13 @@ void run_spot(const std::string &transport,
         return;
     }
 
-    void *pub_socket_unsafe = zlink_spot_node_pub_socket_unsafe(node_pub);
-    void *sub_socket_unsafe = zlink_spot_node_sub_socket_unsafe(node_sub);
-    if (pub_socket_unsafe && sub_socket_unsafe) {
-        queue_probe = new (std::nothrow) queue_probe_t(pub_socket_unsafe,
-                                                       sub_socket_unsafe);
-        if (!queue_probe) {
-            fail();
-            return;
-        }
+    queue_probe = new (std::nothrow) queue_probe_t(zlink_spot_node_pub_peers,
+                                                   node_pub,
+                                                   zlink_spot_node_sub_peers,
+                                                   node_sub);
+    if (!queue_probe) {
+        fail();
+        return;
     }
 
     const uint32_t run_id = static_cast<uint32_t>(perf_single_metric::now_us());

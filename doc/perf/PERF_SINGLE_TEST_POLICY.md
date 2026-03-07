@@ -29,6 +29,24 @@
 - 명시적 드레인 phase는 없으나, receiver는 active 종료 후 `drain_idle_limit` (기본: `PERF_SINGLE_RCVTIMEO_MS`, 200ms) 동안 수신 대기하는 idle drain 로직이 있다.
 - 재시도 로직은 두지 않는다.
 
+### 1.1 Single 핵심 정책
+
+- 목적
+  - 단일 소켓 경로의 RTT / backpressure 측정
+- send
+  - blocking send 1회만 호출한다.
+  - 실패 시 즉시 `fail` 처리한다.
+  - retry는 없다.
+- recv
+  - iteration의 첫 메시지/프레임은 blocking recv를 사용한다.
+  - 그 직후 같은 iteration 안에서 `recv(..., DONTWAIT)`로 추가 프레임을 drain한다.
+  - drain은 `EAGAIN`까지 수행한다.
+- poller
+  - single의 기본 메커니즘이 아니다.
+  - `ROUTER_ROUTER_POLL`도 이름만 유지하고 동일 정책을 적용한다.
+- 한 줄 요약
+  - `single = blocking send + blocking recv + nonblocking drain`
+
 ---
 
 ## 2. 바이너리 Phase 규칙

@@ -3,6 +3,7 @@
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_resource.hpp"
+#include "../../../src/services/spot/spot_node.hpp"
 
 #include <atomic>
 #include <cerrno>
@@ -100,19 +101,33 @@ inline void request_queue_probe(size_t msg_size)
 
 inline void emit_requested_queue_probe(const std::string &lib_name,
                                        const std::string &transport,
-                                       void *send_socket,
-                                       void *recv_socket)
+                                       void *node)
 {
     if (!g_queue_probe_pending.exchange(false, std::memory_order_acq_rel))
         return;
 
     const size_t msg_size = g_queue_probe_size.load(std::memory_order_acquire);
-    if (msg_size == 0 || !send_socket || !recv_socket)
+    if (msg_size == 0 || !node)
         return;
 
     const server_queue_stats_t queue_stats =
-      sample_server_queue_stats(send_socket, recv_socket);
+      sample_service_queue_stats(zlink_spot_node_pub_peers,
+                                 node,
+                                 zlink_spot_node_sub_peers,
+                                 node);
     print_server_queue_metrics(lib_name, k_pattern, transport, msg_size, queue_stats);
+}
+
+inline void *spot_pub_socket_for_stats(void *node)
+{
+    if (!node)
+        return NULL;
+    zlink::spot_node_t *spot_node = static_cast<zlink::spot_node_t *>(node);
+    if (!spot_node->check_tag()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return spot_node->pub_socket_for_poller();
 }
 
 inline bool is_supported_transport(const std::string &transport)
@@ -331,7 +346,7 @@ inline std::string bind_spot_endpoint(void *node,
         return std::string();
     }
 
-    void *pub_socket = zlink_spot_node_pub_socket_unsafe(node);
+    void *pub_socket = spot_pub_socket_for_stats(node);
     if (!pub_socket)
         return std::string();
 
@@ -527,15 +542,14 @@ inline void print_server_metrics(const std::string &lib_name,
 }
 
 inline bool run_server_loop(void *spot_pub,
+                            void *node,
                             const bench_settings_t &settings,
                             const std::vector<size_t> &msg_sizes,
                             std::vector<char> *payload,
                             const std::string &lib_name,
-                            const std::string &transport,
-                            void *queue_send_socket,
-                            void *queue_recv_socket)
+                            const std::string &transport)
 {
-    if (!spot_pub || !payload)
+    if (!spot_pub || !node || !payload)
         return false;
 
     const std::vector<one_way_phase_t> phases =
@@ -551,8 +565,7 @@ inline bool run_server_loop(void *spot_pub,
     while (!g_stop_requested.load(std::memory_order_acquire)) {
         emit_requested_queue_probe(lib_name,
                                    transport,
-                                   queue_send_socket,
-                                   queue_recv_socket);
+                                   node);
 
         if (!phases.empty()) {
             const auto now = std::chrono::steady_clock::now();
@@ -697,12 +710,6 @@ inline int run_server_benchmark(const std::string &lib_name,
         return 1;
     }
 
-    void *pub_socket = zlink_spot_node_pub_socket_unsafe(node);
-    void *sub_socket = zlink_spot_node_sub_socket_unsafe(node);
-    if (!pub_socket || !sub_socket) {
-        cleanup();
-        return 1;
-    }
     debug_timing_ms("pub/sub sockets ready", startup_begin);
 
     g_stop_requested.store(false, std::memory_order_release);
@@ -759,18 +766,20 @@ inline int run_server_benchmark(const std::string &lib_name,
     }
 
     const bool loop_ok = run_server_loop(spot_pub,
+                                         node,
                                          settings,
                                          sizes,
                                          &payload,
                                          lib_name,
-                                         transport,
-                                         pub_socket,
-                                         sub_socket);
+                                         transport);
 
     const bench_resource_metrics_t metrics =
       bench_finish_resource_probe(sample_start);
     const server_queue_stats_t queue_stats =
-      sample_server_queue_stats(pub_socket, sub_socket);
+      sample_service_queue_stats(zlink_spot_node_pub_peers,
+                                 node,
+                                 zlink_spot_node_sub_peers,
+                                 node);
     print_server_metrics(lib_name, transport, sizes, metrics, queue_stats);
 
     cleanup();

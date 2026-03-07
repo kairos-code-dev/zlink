@@ -545,7 +545,6 @@ void run_gateway(const std::string &transport,
     void *gateway = NULL;
     void *provider = NULL;
     void *provider_router = NULL;
-    void *gateway_router = NULL;
     recv_pending_probe_t *recv_probe = NULL;
 
     auto cleanup = [&]() {
@@ -605,12 +604,6 @@ void run_gateway(const std::string &transport,
         fail_no_queue();
         return;
     }
-    gateway_router = zlink_gateway_router_socket_unsafe(gateway);
-    if (!gateway_router) {
-        fail_no_queue();
-        return;
-    }
-
     const int gateway_sndhwm = resolve_single_socket_hwm(true);
     const int receiver_rcvhwm = resolve_single_socket_hwm(false);
     const int gateway_rcvhwm = resolve_single_socket_hwm(false);
@@ -655,17 +648,6 @@ void run_gateway(const std::string &transport,
                                      &send_timeout_ms,
                                      sizeof(send_timeout_ms));
 
-    // Enforce benchmark options on actual transport sockets.
-    set_sockopt_int(gateway_router, ZLINK_SNDHWM, gateway_sndhwm,
-                    "ZLINK_SNDHWM");
-    set_sockopt_int(gateway_router, ZLINK_RCVHWM, gateway_rcvhwm,
-                    "ZLINK_RCVHWM");
-    set_sockopt_int(gateway_router, ZLINK_LINGER, linger_ms,
-                    "ZLINK_LINGER");
-    set_sockopt_int(gateway_router, ZLINK_SNDTIMEO, send_timeout_ms,
-                    "ZLINK_SNDTIMEO");
-    set_sockopt_int(gateway_router, ZLINK_RCVTIMEO, recv_timeout_ms,
-                    "ZLINK_RCVTIMEO");
     set_sockopt_int(provider_router, ZLINK_SNDHWM, receiver_sndhwm,
                     "ZLINK_SNDHWM");
     set_sockopt_int(provider_router, ZLINK_RCVHWM, receiver_rcvhwm,
@@ -703,7 +685,10 @@ void run_gateway(const std::string &transport,
         return;
     }
 
-    queue_probe_t queue_probe(gateway_router, NULL);
+    queue_probe_t queue_probe(zlink_gateway_router_peers,
+                              gateway,
+                              NULL,
+                              NULL);
     zlink_routing_id_t initial_rid;
     initial_rid.size = 0;
     recv_probe =

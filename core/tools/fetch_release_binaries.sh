@@ -123,12 +123,15 @@ copy zlink-node-win32-arm64/zlink.node "$repo_root/bindings/node/prebuilds/win32
 
 # C++ bindings
 copy libzlink-linux-x64/libzlink.so "$repo_root/bindings/cpp/native/linux-x86_64/libzlink.so"
+copy libzlink-linux-x64/libzlink.so.5 "$repo_root/bindings/cpp/native/linux-x86_64/libzlink.so.5"
 copy libzlink-linux-arm64/libzlink.so "$repo_root/bindings/cpp/native/linux-aarch64/libzlink.so"
 copy libzlink-linux-arm64/libzlink.so.5 "$repo_root/bindings/cpp/native/linux-aarch64/libzlink.so.5"
 copy libzlink-macos-x64/libzlink.dylib "$repo_root/bindings/cpp/native/darwin-x86_64/libzlink.dylib"
 copy libzlink-macos-arm64/libzlink.dylib "$repo_root/bindings/cpp/native/darwin-aarch64/libzlink.dylib"
 copy_windows_dll libzlink-windows-x64 "$repo_root/bindings/cpp/native/windows-x86_64/zlink.dll"
 copy_windows_dll libzlink-windows-arm64 "$repo_root/bindings/cpp/native/windows-aarch64/zlink.dll"
+copy libzlink-linux-x64/include/zlink.h "$repo_root/bindings/cpp/include/zlink.h"
+copy libzlink-linux-x64/include/zlink_utils.h "$repo_root/bindings/cpp/include/zlink_utils.h"
 
 popd >/dev/null
 

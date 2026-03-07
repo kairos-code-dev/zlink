@@ -192,6 +192,9 @@ void perf_spot_server (const std::string &transport, size_t msg_size)
     const perf::multi::multi_bench_settings_t settings =
       perf::multi::resolve_multi_bench_settings ();
     const int send_timeout_ms = settings.sndtimeo_ms;
+    const int xpub_nodrop =
+      perf::multi::parse_positive_env ("PERF_MULTI_SPOT_XPUB_NODROP", 1) > 0 ? 1
+                                                                              : 0;
 
     perf::multi::ctx_guard_t ctx;
     zlink::service::spot_node_t node (ctx.ctx ());
@@ -212,6 +215,14 @@ void perf_spot_server (const std::string &transport, size_t msg_size)
       zlink::spot_node_socket_role::pub,
       zlink::socket_options::rcvtimeo,
       settings.rcvtimeo_ms);
+    (void) node.set_sockopt (
+      zlink::spot_node_socket_role::pub,
+      zlink::socket_options::xpub_nodrop,
+      xpub_nodrop);
+    (void) node.set_sockopt (
+      zlink::spot_node_socket_role::sub,
+      zlink::socket_options::xpub_nodrop,
+      xpub_nodrop);
 
     if (!configure_spot_server_tls (node, transport))
         return;

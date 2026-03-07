@@ -167,42 +167,134 @@ inline void print_server_metrics (
     }
 }
 
-inline bool send_stream_once (const zlink_routing_id_t *rid,
-                              const unsigned char *payload,
-                              size_t payload_size)
+enum relay_status_t
 {
-    if (!g_server_socket || !rid || rid->size == 0)
-        return false;
+    relay_idle = 0,
+    relay_progress = 1,
+    relay_error = 2
+};
 
-    const int retry_limit = std::max (
-      1, resolve_int_env ("PERF_STREAM_SEND_RETRIES", 128, 1));
-    for (int attempt = 0;
-         attempt < retry_limit
-         && !g_stop_requested.load (std::memory_order_acquire);
-         ++attempt) {
-        const int rc =
-          zlink_stream_send (g_server_socket, rid, payload, payload_size, 0);
-        if (rc == static_cast<int> (payload_size))
-            return true;
+enum send_status_t
+{
+    send_done = 0,
+    send_blocked = 1,
+    send_fatal = 2
+};
 
-        if (rc >= 0)
-            return false;
+struct pending_stream_message_t
+{
+    zlink_routing_id_t rid;
+    zlink_msg_t payload;
+    bool has_payload;
 
-        const int err = zlink_errno ();
-        if (err == EINTR)
-            continue;
-        if (err == EAGAIN || err == ETIMEDOUT) {
-            std::this_thread::yield ();
-            continue;
-        }
-        if (err == ECONNRESET || err == EHOSTUNREACH || err == ENOTCONN
-            || err == EPIPE)
-            return true;
-        return false;
+    pending_stream_message_t () : has_payload (false)
+    {
+        rid.size = 0;
+        zlink_msg_init (&payload);
     }
 
-    // Backpressure can be transient on large ws/wss payloads.
-    // Keep the relay loop alive even if this payload could not be echoed in time.
+    ~pending_stream_message_t ()
+    {
+        reset ();
+        zlink_msg_close (&payload);
+    }
+
+    void reset ()
+    {
+        if (has_payload) {
+            zlink_msg_close (&payload);
+            zlink_msg_init (&payload);
+            has_payload = false;
+        }
+        rid.size = 0;
+    }
+
+    bool move_from (pending_stream_message_t *other)
+    {
+        if (!other)
+            return false;
+        reset ();
+        rid = other->rid;
+        if (other->has_payload) {
+            if (zlink_msg_move (&payload, &other->payload) != 0) {
+                rid.size = 0;
+                return false;
+            }
+            has_payload = true;
+        }
+        other->rid.size = 0;
+        other->has_payload = false;
+        return true;
+    }
+};
+
+inline send_status_t try_send_stream_message (pending_stream_message_t *message)
+{
+    if (!g_server_socket || !message || !message->has_payload || message->rid.size == 0)
+        return send_fatal;
+
+    const unsigned char *payload =
+      static_cast<const unsigned char *> (zlink_msg_data (&message->payload));
+    const size_t payload_size = zlink_msg_size (&message->payload);
+    const int rc =
+      zlink_stream_send (
+        g_server_socket, &message->rid, payload, payload_size, ZLINK_DONTWAIT);
+    if (rc == static_cast<int> (payload_size)) {
+        message->reset ();
+        return send_done;
+    }
+    if (rc >= 0)
+        return send_fatal;
+
+    const int err = zlink_errno ();
+    if (err == EINTR || err == EAGAIN)
+        return send_blocked;
+    return send_fatal;
+}
+
+inline bool enqueue_pending_stream_message (pending_stream_message_t *pending,
+                                           size_t capacity,
+                                           size_t *count_io,
+                                           pending_stream_message_t *message)
+{
+    if (!pending || !count_io || !message || *count_io >= capacity)
+        return false;
+    if (!pending[*count_io].move_from (message))
+        return false;
+    ++(*count_io);
+    return true;
+}
+
+inline void erase_pending_stream_message (pending_stream_message_t *pending,
+                                          size_t *count_io,
+                                          size_t idx)
+{
+    if (!pending || !count_io || idx >= *count_io)
+        return;
+    const size_t last = *count_io - 1;
+    pending[idx].reset ();
+    if (idx != last)
+        (void) pending[idx].move_from (&pending[last]);
+    pending[last].reset ();
+    --(*count_io);
+}
+
+inline bool flush_pending_stream_messages (pending_stream_message_t *pending,
+                                           size_t *count_io)
+{
+    if (!pending || !count_io)
+        return false;
+    size_t idx = 0;
+    while (idx < *count_io) {
+        const send_status_t send_rc = try_send_stream_message (&pending[idx]);
+        if (send_rc == send_done) {
+            erase_pending_stream_message (pending, count_io, idx);
+            continue;
+        }
+        if (send_rc == send_fatal)
+            return false;
+        ++idx;
+    }
     return true;
 }
 
@@ -226,14 +318,11 @@ inline bool extract_stream_routing_id (const zlink_msg_t *id_frame,
     return true;
 }
 
-enum relay_status_t
-{
-    relay_idle = 0,
-    relay_progress = 1,
-    relay_error = 2
-};
-
-inline relay_status_t relay_stream_message_non_blocking (void *server)
+inline relay_status_t relay_stream_message_non_blocking (
+  void *server,
+  pending_stream_message_t *pending,
+  size_t pending_capacity,
+  size_t *pending_count)
 {
     if (!server)
         return relay_error;
@@ -283,7 +372,20 @@ inline relay_status_t relay_stream_message_non_blocking (void *server)
           zlink_msg_data (&payload_frame));
         const size_t payload_size = zlink_msg_size (&payload_frame);
         if (!is_stream_event_payload (payload, payload_size)) {
-            ok = send_stream_once (&rid, payload, payload_size);
+            pending_stream_message_t request;
+            request.rid = rid;
+            if (zlink_msg_move (&request.payload, &payload_frame) != 0) {
+                ok = false;
+            } else {
+                request.has_payload = true;
+                const send_status_t send_rc = try_send_stream_message (&request);
+                if (send_rc == send_blocked) {
+                    ok = enqueue_pending_stream_message (
+                      pending, pending_capacity, pending_count, &request);
+                } else if (send_rc == send_fatal) {
+                    ok = false;
+                }
+            }
         }
 
         (void) zlink_msg_close (&payload_frame);
@@ -300,22 +402,38 @@ inline relay_status_t relay_stream_message_non_blocking (void *server)
     return ok ? relay_progress : relay_error;
 }
 
-inline bool relay_stream_once (void *server, int poll_timeout_ms)
+inline bool relay_stream_once (void *server,
+                               pending_stream_message_t *pending,
+                               size_t pending_capacity,
+                               size_t *pending_count,
+                               int poll_timeout_ms)
 {
     if (!server)
         return false;
 
-    zlink_pollitem_t item[] = {{server, 0, ZLINK_POLLIN, 0}};
+    zlink_pollitem_t item[] = {{
+      server,
+      0,
+      static_cast<short> (ZLINK_POLLIN
+                          | ((pending_count && *pending_count > 0) ? ZLINK_POLLOUT
+                                                                  : 0)),
+      0}};
     int prc = zlink_poll (item, 1, poll_timeout_ms);
     if (prc < 0)
         return zlink_errno () == EINTR;
+    if ((item[0].revents & ZLINK_POLLOUT) != 0
+        && pending_count && *pending_count > 0
+        && !flush_pending_stream_messages (pending, pending_count)) {
+        return false;
+    }
     if (prc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
         return true;
 
     // Process at least one message, then drain all currently queued messages
     // without going back to a long poll wait.
     while (!g_stop_requested.load (std::memory_order_acquire)) {
-        const relay_status_t status = relay_stream_message_non_blocking (server);
+        const relay_status_t status = relay_stream_message_non_blocking (
+          server, pending, pending_capacity, pending_count);
         if (status == relay_error)
             return false;
         if (status == relay_idle)
@@ -406,9 +524,20 @@ int main (int argc, char **argv)
     std::cout << "READY," << endpoint << std::endl;
 
     int rc = 0;
+    const size_t pending_capacity =
+      std::max<size_t> (
+        64,
+        std::max<size_t> (
+          settings.clients,
+          static_cast<size_t> (settings.hwm > 0 ? settings.hwm : 1))
+          * 2);
+    pending_stream_message_t *pending =
+      new pending_stream_message_t[pending_capacity];
+    size_t pending_count = 0;
     while (!g_stop_requested.load (std::memory_order_acquire)) {
         emit_requested_queue_probe (lib_name, transport, server, server);
-        if (!relay_stream_once (server, 50)) {
+        if (!relay_stream_once (
+              server, pending, pending_capacity, &pending_count, 50)) {
             rc = 1;
             break;
         }
@@ -421,6 +550,7 @@ int main (int argc, char **argv)
     const server_queue_stats_t queue_stats =
       sample_server_queue_stats (server, server);
     print_server_metrics (lib_name, transport, sizes, metrics, queue_stats);
+    delete[] pending;
     zlink_close (server);
     return rc;
 }

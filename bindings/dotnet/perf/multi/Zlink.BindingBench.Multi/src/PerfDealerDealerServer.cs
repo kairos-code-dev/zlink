@@ -112,6 +112,12 @@ internal static class PerfDealerDealerServer
                     ReservoirSample(latSamples, sampleUs, ref sampleSeen,
                         latencySampleCap, ref rng);
                 }
+
+                if (hardStopTicks > 0
+                    && Stopwatch.GetTimestamp() >= hardStopTicks)
+                {
+                    goto Done;
+                }
             }
 
             if (handled)

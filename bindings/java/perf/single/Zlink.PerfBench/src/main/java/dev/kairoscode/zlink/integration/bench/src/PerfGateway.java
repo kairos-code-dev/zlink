@@ -16,6 +16,7 @@ import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.gateway.Gateway;
 import dev.kairoscode.zlink.service.receiver.Receiver;
 import dev.kairoscode.zlink.service.registry.Registry;
+import java.lang.foreign.MemorySegment;
 
 /**
  * GATEWAY benchmark using high-level Gateway/Receiver APIs.
@@ -98,58 +99,59 @@ public final class PerfGateway {
 
                 int runId = PerfCommon.randomRunId();
                 long seq = 1;
+                try (Message payloadMessage = new Message(payloadSize)) {
 
-                int warmupCount = PerfCommon.resolveWarmupCount(PATTERN, msgSize);
-                for (int i = 0; i < warmupCount; i++) {
-                    PerfSingleMetricHeader.stampPayload(payload, runId,
-                        PerfSingleMetricHeader.PHASE_WARMUP, msgSize, seq++,
-                        PerfSingleMetricHeader.nowUs());
-                    try (Message message = Message.fromBytes(payload, 0,
-                        payloadSize)) {
-                        gateway.sendTo(serviceName, message);
+                    MemorySegment payloadSegment = MemorySegment.ofArray(payload);
+                    int warmupCount = PerfCommon.resolveWarmupCount(PATTERN, msgSize);
+                    for (int i = 0; i < warmupCount; i++) {
+                        PerfSingleMetricHeader.stampPayload(payload, runId,
+                            PerfSingleMetricHeader.PHASE_WARMUP, msgSize, seq++,
+                            PerfSingleMetricHeader.nowUs());
+                        MemorySegment.copy(payloadSegment, 0,
+                            payloadMessage.dataSegment(), 0, payloadSize);
+                        gateway.sendTo(serviceName, payloadMessage);
+                        gatewayReceiveProviderMessage(providerRouter, routingId, recv);
                     }
-                    gatewayReceiveProviderMessage(providerRouter, routingId, recv);
+
+                    Thread.sleep(PerfCommon.resolveSettleMs());
+
+                    PerfSingleMetricHeader.Header header =
+                        new PerfSingleMetricHeader.Header();
+                    PerfCommon.LatencyReservoir latency =
+                        new PerfCommon.LatencyReservoir(
+                            PerfCommon.resolveLatencySampleCap());
+
+                    long received = 0;
+                    long endNs = System.nanoTime()
+                        + (long) PerfCommon.resolveDurationSeconds() * 1_000_000_000L;
+                    long beginNs = System.nanoTime();
+
+                    while (System.nanoTime() < endNs) {
+                        PerfSingleMetricHeader.stampPayload(payload, runId,
+                            PerfSingleMetricHeader.PHASE_ACTIVE, msgSize, seq++,
+                            PerfSingleMetricHeader.nowUs());
+                        MemorySegment.copy(payloadSegment, 0,
+                            payloadMessage.dataSegment(), 0, payloadSize);
+                        gateway.sendTo(serviceName, payloadMessage);
+
+                        gatewayReceiveProviderMessage(providerRouter, routingId, recv);
+                        if (PerfSingleMetricHeader.decodePayloadHeader(recv, header)
+                            && header.runId == runId
+                            && header.phase == PerfSingleMetricHeader.PHASE_ACTIVE) {
+                            long nowUs = PerfSingleMetricHeader.nowUs();
+                            latency.add(Math.max(0L, nowUs - header.sentTsUs));
+                            received++;
+                        }
+                    }
+
+                    double elapsedSec = Math.max(1e-9,
+                        (System.nanoTime() - beginNs) / 1_000_000_000.0);
+                    double throughput = received / elapsedSec;
+                    PerfCommon.Stats stats = latency.snapshot();
+                    PerfCommon.printResult(PATTERN, tr, msgSize, throughput,
+                        stats.meanUs(), stats.p95Us(), stats.p99Us());
+                    return 0;
                 }
-
-                Thread.sleep(PerfCommon.resolveSettleMs());
-
-                PerfSingleMetricHeader.Header header =
-                    new PerfSingleMetricHeader.Header();
-                PerfCommon.LatencyReservoir latency =
-                    new PerfCommon.LatencyReservoir(
-                        PerfCommon.resolveLatencySampleCap());
-
-                long received = 0;
-                long endNs = System.nanoTime()
-                    + (long) PerfCommon.resolveDurationSeconds() * 1_000_000_000L;
-                long beginNs = System.nanoTime();
-
-                while (System.nanoTime() < endNs) {
-                    PerfSingleMetricHeader.stampPayload(payload, runId,
-                        PerfSingleMetricHeader.PHASE_ACTIVE, msgSize, seq++,
-                        PerfSingleMetricHeader.nowUs());
-                    try (Message message = Message.fromBytes(payload, 0,
-                        payloadSize)) {
-                        gateway.sendTo(serviceName, message);
-                    }
-
-                    gatewayReceiveProviderMessage(providerRouter, routingId, recv);
-                    if (PerfSingleMetricHeader.decodePayloadHeader(recv, header)
-                        && header.runId == runId
-                        && header.phase == PerfSingleMetricHeader.PHASE_ACTIVE) {
-                        long nowUs = PerfSingleMetricHeader.nowUs();
-                        latency.add(Math.max(0L, nowUs - header.sentTsUs));
-                        received++;
-                    }
-                }
-
-                double elapsedSec = Math.max(1e-9,
-                    (System.nanoTime() - beginNs) / 1_000_000_000.0);
-                double throughput = received / elapsedSec;
-                PerfCommon.Stats stats = latency.snapshot();
-                PerfCommon.printResult(PATTERN, tr, msgSize, throughput,
-                    stats.meanUs(), stats.p95Us(), stats.p99Us());
-                return 0;
             }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();

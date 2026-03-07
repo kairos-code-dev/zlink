@@ -15,7 +15,6 @@ internal static class PerfRouterRouter
     {
         const int connectRetryCount = 100;
         const int connectRetrySleepMs = 10;
-        const int pollTimeoutMs = 2000;
         string pattern = usePoll ? "ROUTER_ROUTER_POLL" : "ROUTER_ROUTER";
         int warmupCount = ResolveSingleWarmupCount(pattern);
         int settleMs = SingleSettleTimeMs;
@@ -54,18 +53,6 @@ internal static class PerfRouterRouter
 
             var id = new byte[256];
             var data = new byte[Math.Max(256, size)];
-            Poller? router1Poller = null;
-            Poller? router2Poller = null;
-            var router1Events = new PollEvent[1];
-            var router2Events = new PollEvent[1];
-            if (usePoll)
-            {
-                router1Poller = new Poller();
-                router2Poller = new Poller();
-                router1Poller.Add(router1, PollEvents.PollIn);
-                router2Poller.Add(router2, PollEvents.PollIn);
-            }
-
             bool connected = false;
             for (int i = 0; i < connectRetryCount; i++)
             {
@@ -80,16 +67,11 @@ internal static class PerfRouterRouter
                     continue;
                 }
 
-                if (usePoll && !WaitForInput(router1Poller!, router1Events, 0))
-                {
-                    Thread.Sleep(connectRetrySleepMs);
-                    continue;
-                }
-
                 try
                 {
                     router1.Receive(id.AsSpan(), ReceiveFlags.DontWait);
                     router1.Receive(data.AsSpan(), ReceiveFlags.DontWait);
+                    DrainRemainingFramesNonBlocking(router1);
                     connected = true;
                     break;
                 }
@@ -104,12 +86,9 @@ internal static class PerfRouterRouter
 
             router1.Send(router2Id, SendFlags.SendMore);
             router1.Send(pong, SendFlags.None);
-
-            if (usePoll && !WaitForInput(router2Poller!, router2Events,
-                    pollTimeoutMs))
-                return 2;
             router2.Receive(id.AsSpan(), ReceiveFlags.None);
             router2.Receive(data.AsSpan(), ReceiveFlags.None);
+            DrainRemainingFramesNonBlocking(router2);
 
             var buf = new byte[size];
             Array.Fill(buf, (byte)'a');
@@ -118,11 +97,9 @@ internal static class PerfRouterRouter
             {
                 SendBlocking(router2, router1Id, SendFlags.SendMore);
                 SendBlocking(router2, buf.AsSpan(), SendFlags.None);
-                if (usePoll && !WaitForInput(router1Poller!, router1Events,
-                        pollTimeoutMs))
-                    return 2;
                 ReceiveBlocking(router1, id.AsSpan(), ReceiveFlags.None);
                 ReceiveBlocking(router1, data.AsSpan(0, size), ReceiveFlags.None);
+                DrainRemainingFramesNonBlocking(router1);
             }
 
             Thread.Sleep(settleMs);
@@ -135,11 +112,9 @@ internal static class PerfRouterRouter
             {
                 SendBlocking(router2, router1Id, SendFlags.SendMore);
                 SendBlocking(router2, buf.AsSpan(), SendFlags.None);
-                if (usePoll && !WaitForInput(router1Poller!, router1Events,
-                        pollTimeoutMs))
-                    return 2;
                 ReceiveBlocking(router1, id.AsSpan(), ReceiveFlags.None);
                 int n = ReceiveBlocking(router1, data.AsSpan(0, size), ReceiveFlags.None);
+                DrainRemainingFramesNonBlocking(router1);
                 if (n == size)
                     recvCount++;
             }
@@ -161,21 +136,15 @@ internal static class PerfRouterRouter
                 long begin = Stopwatch.GetTimestamp();
                 SendBlocking(router2, router1Id, SendFlags.SendMore);
                 SendBlocking(router2, buf.AsSpan(), SendFlags.None);
-
-                if (usePoll && !WaitForInput(router1Poller!, router1Events,
-                        pollTimeoutMs))
-                    return 2;
                 int idLen = ReceiveBlocking(router1, id.AsSpan(), ReceiveFlags.None);
                 ReceiveBlocking(router1, data.AsSpan(0, size), ReceiveFlags.None);
+                DrainRemainingFramesNonBlocking(router1);
 
                 SendBlocking(router1, id.AsSpan(0, idLen), SendFlags.SendMore);
                 SendBlocking(router1, buf.AsSpan(), SendFlags.None);
-
-                if (usePoll && !WaitForInput(router2Poller!, router2Events,
-                        pollTimeoutMs))
-                    return 2;
                 ReceiveBlocking(router2, id.AsSpan(), ReceiveFlags.None);
                 ReceiveBlocking(router2, data.AsSpan(0, size), ReceiveFlags.None);
+                DrainRemainingFramesNonBlocking(router2);
                 long end = Stopwatch.GetTimestamp();
                 double oneWayUs = ((end - begin) * 1_000_000.0
                                    / Stopwatch.Frequency) / 2.0;

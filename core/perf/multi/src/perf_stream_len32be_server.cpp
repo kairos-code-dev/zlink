@@ -9,6 +9,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -30,6 +31,7 @@ static std::atomic<bool> g_callback_failed (false);
 static void *g_server_socket = NULL;
 static std::atomic<bool> g_queue_probe_pending (false);
 static std::atomic<size_t> g_queue_probe_size (0);
+static std::mutex g_pending_mutex;
 
 inline void on_signal (int)
 {
@@ -167,24 +169,126 @@ inline void print_server_metrics (
     }
 }
 
-inline bool send_stream_once (const zlink_routing_id_t *rid,
-                              const unsigned char *payload,
-                              size_t payload_size)
+enum send_status_t
 {
-    if (!g_server_socket || !rid || rid->size == 0)
-        return false;
+    send_done = 0,
+    send_blocked = 1,
+    send_fatal = 2
+};
 
-    const int rc = zlink_stream_send (g_server_socket, rid, payload, payload_size, 0);
-    if (rc == static_cast<int> (payload_size))
-        return true;
+struct pending_stream_message_t
+{
+    zlink_routing_id_t rid;
+    zlink_msg_t payload;
+    bool has_payload;
 
-    if (rc < 0) {
-        const int err = zlink_errno ();
-        if (err == ECONNRESET || err == EHOSTUNREACH || err == ENOTCONN
-            || err == EPIPE || err == EAGAIN || err == EINTR)
-            return true;
+    pending_stream_message_t () : has_payload (false)
+    {
+        rid.size = 0;
+        zlink_msg_init (&payload);
     }
-    return false;
+
+    ~pending_stream_message_t ()
+    {
+        reset ();
+        zlink_msg_close (&payload);
+    }
+
+    void reset ()
+    {
+        if (has_payload) {
+            zlink_msg_close (&payload);
+            zlink_msg_init (&payload);
+            has_payload = false;
+        }
+        rid.size = 0;
+    }
+
+    bool move_from (pending_stream_message_t *other)
+    {
+        if (!other)
+            return false;
+        reset ();
+        rid = other->rid;
+        if (other->has_payload) {
+            if (zlink_msg_move (&payload, &other->payload) != 0) {
+                rid.size = 0;
+                return false;
+            }
+            has_payload = true;
+        }
+        other->rid.size = 0;
+        other->has_payload = false;
+        return true;
+    }
+};
+
+static pending_stream_message_t *g_pending_messages = NULL;
+static size_t g_pending_capacity = 0;
+static size_t g_pending_count = 0;
+
+inline send_status_t try_send_stream_message (pending_stream_message_t *message)
+{
+    if (!g_server_socket || !message || !message->has_payload || message->rid.size == 0)
+        return send_fatal;
+
+    const unsigned char *payload =
+      static_cast<const unsigned char *> (zlink_msg_data (&message->payload));
+    const size_t payload_size = zlink_msg_size (&message->payload);
+    const int rc =
+      zlink_stream_send (
+        g_server_socket, &message->rid, payload, payload_size, ZLINK_DONTWAIT);
+    if (rc == static_cast<int> (payload_size)) {
+        message->reset ();
+        return send_done;
+    }
+    if (rc >= 0)
+        return send_fatal;
+
+    const int err = zlink_errno ();
+    if (err == EAGAIN || err == EINTR)
+        return send_blocked;
+    return send_fatal;
+}
+
+inline bool enqueue_pending_stream_message_locked (
+  pending_stream_message_t *message)
+{
+    if (!message || !g_pending_messages || g_pending_count >= g_pending_capacity)
+        return false;
+    if (!g_pending_messages[g_pending_count].move_from (message))
+        return false;
+    ++g_pending_count;
+    return true;
+}
+
+inline void erase_pending_stream_message_locked (size_t idx)
+{
+    if (!g_pending_messages || idx >= g_pending_count)
+        return;
+    const size_t last = g_pending_count - 1;
+    g_pending_messages[idx].reset ();
+    if (idx != last)
+        (void) g_pending_messages[idx].move_from (&g_pending_messages[last]);
+    g_pending_messages[last].reset ();
+    --g_pending_count;
+}
+
+inline bool flush_pending_stream_messages_locked ()
+{
+    size_t idx = 0;
+    while (idx < g_pending_count) {
+        const send_status_t send_rc =
+          try_send_stream_message (&g_pending_messages[idx]);
+        if (send_rc == send_done) {
+            erase_pending_stream_message_locked (idx);
+            continue;
+        }
+        if (send_rc == send_fatal)
+            return false;
+        ++idx;
+    }
+    return true;
 }
 
 int on_stream_packets (const zlink_routing_id_t *rid,
@@ -203,14 +307,39 @@ int on_stream_packets (const zlink_routing_id_t *rid,
             (void) zlink_msg_close (msg);
             continue;
         }
-        if (!send_stream_once (rid, payload, payload_size)) {
+        pending_stream_message_t request;
+        request.rid = *rid;
+        if (zlink_msg_move (&request.payload, msg) != 0) {
             g_callback_failed.store (true, std::memory_order_release);
             (void) zlink_msg_close (msg);
             for (size_t j = i + 1; j < msg_count; ++j)
                 (void) zlink_msg_close (&msgs[j]);
             return 1;
         }
+        request.has_payload = true;
+        const send_status_t send_rc = try_send_stream_message (&request);
+        if (send_rc == send_done) {
+            (void) zlink_msg_close (msg);
+            continue;
+        }
+        if (send_rc == send_blocked) {
+            std::lock_guard<std::mutex> guard (g_pending_mutex);
+            if (!enqueue_pending_stream_message_locked (&request)) {
+                g_callback_failed.store (true, std::memory_order_release);
+                (void) zlink_msg_close (msg);
+                for (size_t j = i + 1; j < msg_count; ++j)
+                    (void) zlink_msg_close (&msgs[j]);
+                return 1;
+            }
+            (void) zlink_msg_close (msg);
+            continue;
+        }
+
+        g_callback_failed.store (true, std::memory_order_release);
         (void) zlink_msg_close (msg);
+        for (size_t j = i + 1; j < msg_count; ++j)
+            (void) zlink_msg_close (&msgs[j]);
+        return 1;
     }
 
     return 0;
@@ -278,6 +407,15 @@ int main (int argc, char **argv)
     g_queue_probe_pending.store (false, std::memory_order_release);
     g_queue_probe_size.store (0, std::memory_order_release);
     g_server_socket = server;
+    g_pending_capacity =
+      std::max<size_t> (
+        64,
+        std::max<size_t> (
+          settings.clients,
+          static_cast<size_t> (settings.hwm > 0 ? settings.hwm : 1))
+          * 2);
+    g_pending_messages = new pending_stream_message_t[g_pending_capacity];
+    g_pending_count = 0;
     install_signal_handlers ();
 
     if (zlink_stream_attach_len32be (server, on_stream_packets) != 0) {
@@ -312,10 +450,42 @@ int main (int argc, char **argv)
             rc = 1;
             break;
         }
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+
+        bool have_pending = false;
+        {
+            std::lock_guard<std::mutex> guard (g_pending_mutex);
+            have_pending = g_pending_count > 0;
+        }
+        if (!have_pending) {
+            if (zlink_poll (NULL, 0, 50) < 0 && zlink_errno () != EINTR) {
+                rc = 1;
+                break;
+            }
+            continue;
+        }
+
+        zlink_pollitem_t item = {server, 0, ZLINK_POLLOUT, 0};
+        const int prc = zlink_poll (&item, 1, 50);
+        if (prc < 0) {
+            if (zlink_errno () == EINTR)
+                continue;
+            rc = 1;
+            break;
+        }
+        if (prc > 0 && (item.revents & ZLINK_POLLOUT) != 0) {
+            std::lock_guard<std::mutex> guard (g_pending_mutex);
+            if (!flush_pending_stream_messages_locked ()) {
+                rc = 1;
+                break;
+            }
+        }
     }
 
     (void) zlink_stream_detach (server);
+    delete[] g_pending_messages;
+    g_pending_messages = NULL;
+    g_pending_capacity = 0;
+    g_pending_count = 0;
     g_server_socket = NULL;
 
     const bench_resource_metrics_t metrics =

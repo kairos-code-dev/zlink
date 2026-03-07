@@ -457,7 +457,9 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 9 | perf_stream_len32be_server | (core 공통 stream client) | STREAM_LEN32BE | stream_attach_len32be | core/perf/common/streamclient |
 
 **Multi 서버 통신 프로토콜:**
-- 서버 stdout 에 `READY,<endpoint>` 출력 → 스크립트가 클라이언트 시작
+- 서버 stdout 에 `READY,<payload>` 출력 → 스크립트가 클라이언트 시작
+  - 기본 소켓 패턴: `READY,<endpoint>`
+  - `GATEWAY`: `READY,<server_endpoint>|<registry_pub_endpoint>|<registry_router_endpoint>`
 - 클라이언트 종료 시 서버에 stop-token 전송
 - 서버 graceful shutdown 후 RESULT 메트릭 출력
 
@@ -1104,7 +1106,8 @@ rg -n "std::vector|std::string|new |malloc|make_unique|make_shared" \
 - 각 벤치마크 소스에 **소켓 생성, bind/connect, send/recv 루프, 페이즈 컨트롤** 인라인
 - `RESULT,current,...` 형식의 stdout 출력
 - STREAM 서버는 stop-token `__zlink_perf_stop__` 수신 시 정상 종료
-- Multi 서버는 `READY,<endpoint>` stdout 출력 후 클라이언트 대기
+- Multi 서버는 `READY,<payload>` stdout 출력 후 클라이언트 대기
+  - `GATEWAY` 는 registry pub/router endpoint 까지 함께 전달한다.
 - TLS 인증서는 `bindings/cpp/tests/certs/gen/` 경로 사용
 
 ### 15.3 recv 루프 정책 (강제)
@@ -1333,7 +1336,8 @@ python3 bindings/perf/run_policy_bench.py \
 **요구 동작:**
 - `pattern/transport` 실행 중 각 `size` 테스트가 순차적으로 완료된다.
 - **Single**: 러너는 각 size 바이너리 실행 완료 후 `proc.communicate()` 로 stdout 을 일괄 캡처하여 RESULT 라인을 파싱한다.
-- **Multi**: 서버 프로세스는 `READY,<endpoint>` 감지를 위해 **스레딩 기반 실시간 stdout 펌핑** (`Thread` + `stdout_queue`) 으로 캡처한다. 클라이언트는 single 과 동일하게 `proc.communicate()` 로 종료 후 일괄 수집한다.
+- **Multi**: 서버 프로세스는 `READY,<payload>` 감지를 위해 **스레딩 기반 실시간 stdout 펌핑** (`Thread` + `stdout_queue`) 으로 캡처한다. 클라이언트는 single 과 동일하게 `proc.communicate()` 로 종료 후 일괄 수집한다.
+- `GATEWAY` payload 는 `server|registry_pub|registry_router` 3필드 문자열을 사용한다.
 - 모든 size 실행이 완료된 후 러너가 파싱된 결과를 테이블로 출력하고, 다음 transport 또는 pattern 으로 전환된다.
 
 > **참고**: 바이너리의 RESULT 출력은 사용자 콘솔에 실시간으로 보이지 않는다. 진행 상황은 러너 레벨의 로그를 통해 확인한다.

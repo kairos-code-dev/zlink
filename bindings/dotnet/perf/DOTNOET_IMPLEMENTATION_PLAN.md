@@ -867,6 +867,7 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 - client cap/retry budget/fallback 으로 실패를 성공처럼 보이게 만드는 동작을 금지한다.
 - send 정책은 고정한다: single=`blocking send 1회`, multi=`DontWait 1회 + pending 시 PollOut`.
 - recv 정책은 고정한다: single=`blocking recv + non-blocking drain`, multi=`poller + non-blocking drain(무제한, cap 없음)`.
+- hot loop 에서는 `Thread.Sleep` / `Thread.Yield` 를 금지하고, settle/drain 같은 phase 경계 sleep 만 허용한다.
 - `core/v4.0.0` 이후 public poller 방향은 raw socket helper가 아니라 **service instance poller** 기준이다.
 - `Gateway`/`Receiver`/`Spot`은 `Poller.AddGateway`, `Poller.AddReceiver`, `Poller.AddSpotPub`, `Poller.AddSpotSub`로 등록한다.
 - `Gateway.CreateRouterSocket()` 또는 `SpotNode.GetPubSocket()/GetSubSocket()`는 internal/debug transport 경로로만 취급하고, perf poller 등록 대상으로 쓰지 않는다.
@@ -938,6 +939,7 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 - multi send 경로는 **DontWait 1회 + pending 시 PollOut** 으로 구현
 - single recv 경로는 **blocking recv + non-blocking drain** 구조
 - multi recv 경로는 **poller + non-blocking drain(무제한, cap 없음)** 구조
+- `SPOT` multi send 는 현재 service API 제약상 `Publish(DontWait)` 대신 `PollOut` readiness 확인 후 `Publish(None)`를 호출하는 예외 구현을 사용한다.
 - `Gateway`/`Receiver`/`Spot` multi poller 대상은 raw socket helper가 아니라 service instance다
 - `RESULT,current,...` 형식의 stdout 출력
 - STREAM 서버는 stop-token `__zlink_perf_stop__` 수신 시 정상 종료
@@ -1542,7 +1544,7 @@ head -20 bindings/dotnet/perf/results/multi/tmp/perf_*.txt
 - [ ] **CL-8.8** `ReservoirSample` / `ComputeLatencyStats` latency 통계 (cap: `PERF_SINGLE_LATENCY_SAMPLE_CAP`, 기본 200000)
 - [ ] **CL-8.9** `TimestampUs` Stopwatch 기반 마이크로초
 - [ ] **CL-8.10** STREAM 헬퍼(StreamSend/Recv/ConnectEvent) 가 single/common 에 없음 확인
-- [ ] **CL-8.11** `GatewayReceiveProviderMessage` / `SpotReceivePayloadWithTimeout` 헬퍼
+- [ ] **CL-8.11** `GatewayReceiveProviderMessage` 헬퍼
 
 **single common/ (PerfTls.cs):**
 

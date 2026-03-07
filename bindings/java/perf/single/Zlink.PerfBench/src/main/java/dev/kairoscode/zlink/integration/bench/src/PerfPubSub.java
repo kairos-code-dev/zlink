@@ -3,6 +3,8 @@
 package dev.kairoscode.zlink.integration.bench.src;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.ReceiveFlag;
 import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.Socket;
@@ -23,6 +25,10 @@ public final class PerfPubSub {
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+    private static final int CONNECT_MONITOR_EVENTS =
+        MonitorEventType.CONNECTION_READY.getValue()
+            | MonitorEventType.CONNECTED.getValue()
+            | MonitorEventType.ACCEPTED.getValue();
 
     private PerfPubSub() {
     }
@@ -30,7 +36,9 @@ public final class PerfPubSub {
     public static int run(String transport, int msgSize) {
         try (Context context = new Context();
              Socket publisher = new Socket(context, SocketType.PUB);
-             Socket subscriber = new Socket(context, SocketType.SUB)) {
+             Socket subscriber = new Socket(context, SocketType.SUB);
+             MonitorSocket subscriberMonitor =
+                 subscriber.monitorOpen(CONNECT_MONITOR_EVENTS)) {
             PerfCommon.applySingleContextOptions(context);
             PerfCommon.applySingleSocketOptions(publisher);
             PerfCommon.applySingleSocketOptions(subscriber);
@@ -42,7 +50,9 @@ public final class PerfPubSub {
             String endpoint = PerfCommon.endpointFor(transport, "pubsub");
             publisher.bind(endpoint);
             subscriber.connect(endpoint);
-            Thread.sleep(300);
+            if (!PerfCommon.waitMonitorReady(subscriberMonitor, 5000, true)) {
+                return 2;
+            }
 
             int payloadSize = Math.max(msgSize, PerfSingleMetricHeader.HEADER_SIZE);
             byte[] payload = new byte[payloadSize];
@@ -57,14 +67,12 @@ public final class PerfPubSub {
                     PerfSingleMetricHeader.PHASE_WARMUP, msgSize, seq++,
                     PerfSingleMetricHeader.nowUs());
                 sendBlocking(publisher, payload, SendFlag.NONE);
-                if (PerfCommon.waitForInput(subscriber, 1)) {
-                    int n = receiveBlocking(subscriber, recv);
-                    if (n >= PerfSingleMetricHeader.HEADER_SIZE) {
-                        ready = true;
-                        while (receiveNonBlocking(subscriber, recv) > 0) {
-                        }
-                        break;
+                int n = receiveBlocking(subscriber, recv);
+                if (n >= PerfSingleMetricHeader.HEADER_SIZE) {
+                    ready = true;
+                    while (receiveNonBlocking(subscriber, recv) > 0) {
                     }
+                    break;
                 }
             }
             if (!ready) {
@@ -83,9 +91,6 @@ public final class PerfPubSub {
                     PerfSingleMetricHeader.PHASE_WARMUP, msgSize, seq++,
                     PerfSingleMetricHeader.nowUs());
                 sendBlocking(publisher, payload, SendFlag.NONE);
-                if (!PerfCommon.waitForInput(subscriber, 10)) {
-                    continue;
-                }
                 int n = receiveBlocking(subscriber, recv);
                 if (n >= PerfSingleMetricHeader.HEADER_SIZE) {
                     warmed++;
@@ -111,9 +116,6 @@ public final class PerfPubSub {
                     PerfSingleMetricHeader.PHASE_ACTIVE, msgSize, seq++,
                     PerfSingleMetricHeader.nowUs());
                 sendBlocking(publisher, payload, SendFlag.NONE);
-                if (!PerfCommon.waitForInput(subscriber, 10)) {
-                    continue;
-                }
                 int n = receiveBlocking(subscriber, recv);
                 if (n > 0) {
                     received += collectActiveSample(recv, n, runId, header, latency);

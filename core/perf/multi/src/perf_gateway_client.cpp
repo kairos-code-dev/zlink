@@ -27,7 +27,6 @@ static bool g_server_routing_id_valid = false;
 typedef int (*gateway_set_tls_client_fn) (void *, const char *, const char *, int);
 typedef int (*receiver_set_tls_server_fn) (void *, const char *, const char *);
 
-using perf_client::backoff_client_idle;
 using perf_client::decode_metric_header_from_capture;
 using perf_client::echo_loop_state_t;
 using perf_client::pending_reply_count;
@@ -313,7 +312,8 @@ inline bool wait_all_gateway_connect_ready (
         if (ready_count >= slots.size ())
             break;
 
-        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+        if (zlink_poll (NULL, 0, 10) < 0 && zlink_errno () != EINTR)
+            return false;
     }
 
     if (ready_count != slots.size ()) {
@@ -336,7 +336,8 @@ inline bool wait_discovery_service_available (void *discovery,
     while (std::chrono::steady_clock::now () < deadline) {
         if (zlink_discovery_service_available (discovery, service_name) > 0)
             return true;
-        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+        if (zlink_poll (NULL, 0, 10) < 0 && zlink_errno () != EINTR)
+            return false;
     }
 
     return zlink_discovery_service_available (discovery, service_name) > 0;
@@ -778,17 +779,6 @@ inline bool run_echo_window_round_robin (
                     }
                 } else if (decode_metric_header_from_capture (scratch, &header)) {
                     ++local_header_mismatch;
-                    if (debug && local_header_mismatch <= 4) {
-                        std::cerr
-                          << "[multi-gateway-client] header mismatch phase="
-                          << static_cast<unsigned> (header.phase)
-                          << " run_id=" << header.run_id
-                          << " msg_size=" << header.msg_size
-                          << " expected_phase="
-                          << static_cast<unsigned> (phase)
-                          << " expected_run_id=" << run_id
-                          << " expected_msg_size=" << msg_size << std::endl;
-                    }
                 }
 
                 if (!allow_send)
@@ -899,34 +889,67 @@ inline bool prime_roundtrip_all_slots (
     std::vector<char> scratch (scratch_size, '\0');
     std::vector<uint8_t> awaiting_reply (slots.size (), 0);
     std::vector<uint8_t> roundtrip_count (slots.size (), 0);
+    std::vector<uint8_t> send_pending (slots.size (), 0);
     gateway_receiver_poller_t receiver_poller;
     if (!init_gateway_receiver_poller (slots, &receiver_poller))
         return false;
+    gateway_send_poller_t send_poller;
+    if (!init_gateway_send_poller (slots, &send_poller)) {
+        close_gateway_receiver_poller (&receiver_poller);
+        return false;
+    }
 
     const uint8_t target_roundtrips_per_slot = 1;
     size_t primed_count = 0;
     size_t rr = 0;
 
-    while (primed_count < slots.size () && std::chrono::steady_clock::now () < deadline) {
-        bool progressed = false;
+    const auto set_gateway_pollout =
+      [&] (size_t idx, short events) -> bool {
+        return zlink_poller_modify_gateway (
+                 send_poller.handle, slots[idx].gateway, events)
+               == 0;
+    };
 
+    const auto try_send_slot =
+      [&] (size_t idx) -> int {
+        if (idx >= slots.size ())
+            return -1;
+        if (roundtrip_count[idx] >= target_roundtrips_per_slot
+            || awaiting_reply[idx] != 0)
+            return 0;
+        if (slot_payloads[idx].size () < payload_size)
+            return -1;
+
+        const gateway_send_result_t send_rc =
+          send_gateway_message (slots[idx].gateway, slot_payloads[idx],
+                                payload_size);
+        if (send_rc == gateway_send_ok) {
+            send_pending[idx] = 0;
+            if (!set_gateway_pollout (idx, 0))
+                return -1;
+            awaiting_reply[idx] = 1;
+            return 1;
+        }
+        if (send_rc == gateway_send_blocked) {
+            send_pending[idx] = 1;
+            if (!set_gateway_pollout (idx, ZLINK_POLLOUT))
+                return -1;
+            return 0;
+        }
+        return -1;
+    };
+
+    while (primed_count < slots.size () && std::chrono::steady_clock::now () < deadline) {
         const size_t start_rr = rr;
         for (size_t attempts = 0; attempts < slots.size (); ++attempts) {
             const size_t idx = (start_rr + attempts) % slots.size ();
             if (roundtrip_count[idx] >= target_roundtrips_per_slot
-                || awaiting_reply[idx] != 0)
+                || awaiting_reply[idx] != 0 || send_pending[idx] != 0)
                 continue;
-            if (slot_payloads[idx].size () < payload_size)
-                return false;
-
-            const gateway_send_result_t send_rc = send_gateway_message (
-              slots[idx].gateway,
-              slot_payloads[idx],
-              payload_size);
-            if (send_rc == gateway_send_ok) {
-                awaiting_reply[idx] = 1;
-                progressed = true;
-            } else if (send_rc == gateway_send_fatal) {
+            const int send_rc = try_send_slot (idx);
+            if (send_rc < 0) {
+                close_gateway_receiver_poller (&receiver_poller);
+                close_gateway_send_poller (&send_poller);
                 return false;
             }
         }
@@ -941,6 +964,7 @@ inline bool prime_roundtrip_all_slots (
             if (zlink_errno () == EINTR)
                 continue;
             close_gateway_receiver_poller (&receiver_poller);
+            close_gateway_send_poller (&send_poller);
             return false;
         }
         if (prc > 0) {
@@ -956,11 +980,14 @@ inline bool prime_roundtrip_all_slots (
                   ZLINK_DONTWAIT,
                   0);
                 if (recv_rc < 0)
+                {
+                    close_gateway_receiver_poller (&receiver_poller);
+                    close_gateway_send_poller (&send_poller);
                     return false;
+                }
                 if (recv_rc <= 0)
                     continue;
 
-                progressed = true;
                 awaiting_reply[i] = 0;
                 if (roundtrip_count[i] < target_roundtrips_per_slot) {
                     ++roundtrip_count[i];
@@ -970,11 +997,39 @@ inline bool prime_roundtrip_all_slots (
             }
         }
 
-        if (!progressed)
-            backoff_client_idle (settings);
+        const int send_prc = zlink_poller_wait_all (
+          send_poller.handle,
+          send_poller.events.empty () ? NULL : &send_poller.events[0],
+          static_cast<int> (send_poller.events.size ()),
+          0);
+        if (send_prc < 0) {
+            if (zlink_errno () != EINTR) {
+                close_gateway_receiver_poller (&receiver_poller);
+                close_gateway_send_poller (&send_poller);
+                return false;
+            }
+        } else if (send_prc > 0) {
+            for (int event_index = 0; event_index < send_prc; ++event_index) {
+                zlink_poller_event_t &event = send_poller.events[event_index];
+                if ((event.events & ZLINK_POLLOUT) == 0 || !event.user_data)
+                    continue;
+                const size_t i = *static_cast<size_t *> (event.user_data);
+                if (i >= slots.size () || send_pending[i] == 0
+                    || awaiting_reply[i] != 0
+                    || roundtrip_count[i] >= target_roundtrips_per_slot)
+                    continue;
+                const int send_rc = try_send_slot (i);
+                if (send_rc < 0) {
+                    close_gateway_receiver_poller (&receiver_poller);
+                    close_gateway_send_poller (&send_poller);
+                    return false;
+                }
+            }
+        }
     }
 
     close_gateway_receiver_poller (&receiver_poller);
+    close_gateway_send_poller (&send_poller);
 
     if (primed_count != slots.size ()) {
         std::cerr << "gateway client: preflight prime incomplete "
@@ -1273,7 +1328,11 @@ inline bool setup_gateway_runtime (
     // Do not require transport-level readiness before the benchmark loop.
     // Multi policy treats EAGAIN as flow control, and preflight roundtrip will
     // validate that the data path is live without a separate connect-ready gate.
-    std::this_thread::sleep_for (std::chrono::milliseconds (50));
+    if (zlink_poll (NULL, 0, 50) < 0 && zlink_errno () != EINTR) {
+        std::cerr << "gateway client: initial settle wait failed" << std::endl;
+        cleanup_gateway_runtime (slots_out, discovery_out);
+        return false;
+    }
 
     const size_t payload_capacity =
       std::max<size_t> (max_msg_size, perf_metric::header_size ());

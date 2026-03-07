@@ -17,6 +17,7 @@ set(tests
   test_pair_send_blocking_wakeup
   test_pair_tcp
   test_hwm_pubsub
+  test_pubsub_inproc_alternating
   test_sub_forward
   test_msg_flags
   test_msg_ffn

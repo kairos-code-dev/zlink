@@ -3,6 +3,8 @@
 package dev.kairoscode.zlink.integration.bench.src;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.ReceiveFlag;
 import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.Socket;
@@ -24,6 +26,16 @@ public final class PerfRouterRouterPoll {
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+    private static final int CONNECT_MONITOR_EVENTS =
+        MonitorEventType.CONNECTION_READY.getValue()
+            | MonitorEventType.CONNECTED.getValue()
+            | MonitorEventType.ACCEPTED.getValue();
+    private static final byte[] ROUTE_TO_RECEIVER =
+        "ROUTER1".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] ROUTE_TO_SENDER =
+        "ROUTER2".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] PING = "PING".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] PONG = "PONG".getBytes(StandardCharsets.UTF_8);
 
     private PerfRouterRouterPoll() {
     }
@@ -31,7 +43,8 @@ public final class PerfRouterRouterPoll {
     public static int run(String transport, int msgSize) {
         try (Context context = new Context();
              Socket receiver = new Socket(context, SocketType.ROUTER);
-             Socket sender = new Socket(context, SocketType.ROUTER)) {
+             Socket sender = new Socket(context, SocketType.ROUTER);
+             MonitorSocket senderMonitor = sender.monitorOpen(CONNECT_MONITOR_EVENTS)) {
             PerfCommon.applySingleContextOptions(context);
             PerfCommon.applySingleSocketOptions(receiver);
             PerfCommon.applySingleSocketOptions(sender);
@@ -48,7 +61,9 @@ public final class PerfRouterRouterPoll {
                 "router-router-poll");
             receiver.bind(endpoint);
             sender.connect(endpoint);
-            Thread.sleep(300);
+            if (!PerfCommon.waitMonitorReady(senderMonitor, 5000, true)) {
+                return 2;
+            }
 
             if (!performHandshake(receiver, sender)) {
                 return 2;
@@ -58,8 +73,6 @@ public final class PerfRouterRouterPoll {
             byte[] payload = new byte[payloadSize];
             byte[] recv = new byte[payloadSize];
             byte[] routingId = new byte[256];
-            byte[] targetRid = "ROUTER1".getBytes(StandardCharsets.UTF_8);
-
             int runId = PerfCommon.randomRunId();
             long seq = 1;
 
@@ -68,12 +81,8 @@ public final class PerfRouterRouterPoll {
                 PerfSingleMetricHeader.stampPayload(payload, runId,
                     PerfSingleMetricHeader.PHASE_WARMUP, msgSize, seq++,
                     PerfSingleMetricHeader.nowUs());
-                sendBlocking(sender, targetRid, SendFlag.SNDMORE);
+                sendBlocking(sender, ROUTE_TO_RECEIVER, SendFlag.SNDMORE);
                 sendBlocking(sender, payload, SendFlag.NONE);
-
-                if (!PerfCommon.waitForInput(receiver, 2000)) {
-                    return 2;
-                }
                 receiveBlocking(receiver, routingId);
                 receiveBlocking(receiver, recv);
                 while (drainRouterMessageNonBlocking(receiver, routingId, recv) > 0) {
@@ -95,12 +104,8 @@ public final class PerfRouterRouterPoll {
                 PerfSingleMetricHeader.stampPayload(payload, runId,
                     PerfSingleMetricHeader.PHASE_ACTIVE, msgSize, seq++,
                     PerfSingleMetricHeader.nowUs());
-                sendBlocking(sender, targetRid, SendFlag.SNDMORE);
+                sendBlocking(sender, ROUTE_TO_RECEIVER, SendFlag.SNDMORE);
                 sendBlocking(sender, payload, SendFlag.NONE);
-
-                if (!PerfCommon.waitForInput(receiver, 2000)) {
-                    return 2;
-                }
                 receiveBlocking(receiver, routingId);
                 int n = receiveBlocking(receiver, recv);
                 if (n > 0) {
@@ -132,42 +137,38 @@ public final class PerfRouterRouterPoll {
         }
     }
 
-    private static boolean performHandshake(Socket receiver,
-                                            Socket sender) throws InterruptedException {
-        byte[] routeToReceiver = "ROUTER1".getBytes(StandardCharsets.UTF_8);
-        byte[] routeToSender = "ROUTER2".getBytes(StandardCharsets.UTF_8);
-        byte[] ping = "PING".getBytes(StandardCharsets.UTF_8);
-        byte[] pong = "PONG".getBytes(StandardCharsets.UTF_8);
+    private static boolean performHandshake(Socket receiver, Socket sender) {
         byte[] rid = new byte[256];
         byte[] data = new byte[256];
 
-        for (int i = 0; i < 100; i++) {
-            try {
-                sendBlocking(sender, routeToReceiver, SendFlag.SNDMORE);
-                sendBlocking(sender, ping, SendFlag.NONE);
-            } catch (RuntimeException ex) {
-                Thread.sleep(10);
-                continue;
+        try {
+            sendBlocking(sender, ROUTE_TO_RECEIVER, SendFlag.SNDMORE);
+            sendBlocking(sender, PING, SendFlag.NONE);
+            receiveBlocking(receiver, rid);
+            int pingLen = receiveBlocking(receiver, data);
+            if (!matches(data, pingLen, PING)) {
+                return false;
             }
+            sendBlocking(receiver, ROUTE_TO_SENDER, SendFlag.SNDMORE);
+            sendBlocking(receiver, PONG, SendFlag.NONE);
+            receiveBlocking(sender, rid);
+            int pongLen = receiveBlocking(sender, data);
+            return matches(data, pongLen, PONG);
+        } catch (RuntimeException ex) {
+            return false;
+        }
+    }
 
-            if (!PerfCommon.waitForInput(receiver, 5)) {
-                Thread.sleep(10);
-                continue;
-            }
-
-            try {
-                receiveBlocking(receiver, rid);
-                receiveBlocking(receiver, data);
-                sendBlocking(receiver, routeToSender, SendFlag.SNDMORE);
-                sendBlocking(receiver, pong, SendFlag.NONE);
-                receiveBlocking(sender, rid);
-                receiveBlocking(sender, data);
-                return true;
-            } catch (RuntimeException ex) {
-                Thread.sleep(10);
+    private static boolean matches(byte[] buffer, int length, byte[] expected) {
+        if (length != expected.length) {
+            return false;
+        }
+        for (int i = 0; i < expected.length; i++) {
+            if (buffer[i] != expected[i]) {
+                return false;
             }
         }
-        return false;
+        return true;
     }
 
     private static long collectActiveSample(byte[] recv, int recvBytes, int runId,

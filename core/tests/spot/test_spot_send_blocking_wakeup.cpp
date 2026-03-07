@@ -286,6 +286,27 @@ void test_spot_blocking_send_times_out_without_receiver_reads ()
     cleanup_fixture (&fixture);
 }
 
+void test_spot_dontwait_send_succeeds_when_peer_is_ready ()
+{
+    spot_fixture_t fixture;
+    setup_fixture (&fixture, "inproc://spot_send_dontwait_ready");
+
+    const char payload[] = "ready";
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_publish_bytes (
+      fixture.spot_pub, kTopic, payload, sizeof (payload), ZLINK_DONTWAIT));
+
+    zlink_msg_t *parts = NULL;
+    size_t count = 0;
+    const int recv_rc =
+      zlink_spot_sub_recv (fixture.spot_sub, &parts, &count, 0, NULL, NULL);
+
+    TEST_ASSERT_EQUAL_INT (0, recv_rc);
+    if (parts)
+        zlink_multipart_close (parts, count);
+
+    cleanup_fixture (&fixture);
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -293,5 +314,6 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_spot_blocking_send_wakes_after_receiver_drains);
     RUN_TEST (test_spot_blocking_send_times_out_without_receiver_reads);
+    RUN_TEST (test_spot_dontwait_send_succeeds_when_peer_is_ready);
     return UNITY_END ();
 }

@@ -1848,6 +1848,12 @@ def run_sizes_test_stream_shared(
                 **progress_meta,
             }
         if server_rc not in (0, None):
+            detail = summarize_server_startup_detail(
+                server_stdout_buffer.text(), server_stderr_buffer.text()
+            )
+            reason = f"server_non_zero_exit_{server_rc}"
+            if detail:
+                reason = f"{reason}::{detail}"
             return {
                 "status": "fail",
                 "parsed": parsed,
@@ -1855,7 +1861,7 @@ def run_sizes_test_stream_shared(
                 "returncode": server_rc,
                 "cpu_pct": sampled.get("cpu_pct"),
                 "mem_mb": sampled.get("mem_mb"),
-                "reason": f"server_non_zero_exit_{server_rc}",
+                "reason": reason,
                 "warnings": warnings,
                 **progress_meta,
             }
@@ -2354,6 +2360,12 @@ def run_sizes_test_split(
                 **progress_meta,
             }
         if server_rc not in (0, None):
+            detail = summarize_server_startup_detail(
+                server_stdout_buffer.text(), server_stderr_buffer.text()
+            )
+            reason = f"server_non_zero_exit_{server_rc}"
+            if detail:
+                reason = f"{reason}::{detail}"
             return {
                 "status": "fail",
                 "parsed": parsed,
@@ -2361,7 +2373,7 @@ def run_sizes_test_split(
                 "returncode": server_rc,
                 "cpu_pct": sampled.get("cpu_pct"),
                 "mem_mb": sampled.get("mem_mb"),
-                "reason": f"server_non_zero_exit_{server_rc}",
+                "reason": reason,
                 "warnings": warnings,
                 **progress_meta,
             }

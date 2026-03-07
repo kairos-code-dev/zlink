@@ -1054,34 +1054,6 @@ inline bool setup_connected_pair(void *bind_socket_,
     return true;
 }
 
-template <typename StepFn>
-inline void repeat_n(int count_, StepFn step_) {
-    for (int i = 0; i < count_; ++i)
-        step_();
-}
-
-template <typename RoundTripFn>
-inline double measure_roundtrip_latency_us(int roundtrip_count_,
-                                           RoundTripFn roundtrip_) {
-    stopwatch_t sw;
-    sw.start();
-    repeat_n(roundtrip_count_, roundtrip_);
-    return (sw.elapsed_ms() * 1000.0) / (roundtrip_count_ * 2);
-}
-
-template <typename SendOneFn, typename RecvOneFn>
-inline double measure_throughput_msgs_per_sec(int msg_count_,
-                                              SendOneFn send_one_,
-                                              RecvOneFn recv_one_) {
-    std::thread receiver([&]() { repeat_n(msg_count_, recv_one_); });
-    stopwatch_t sw;
-    sw.start();
-    repeat_n(msg_count_, send_one_);
-    receiver.join();
-    const double elapsed_ms = sw.elapsed_ms();
-    return elapsed_ms > 0 ? (double)msg_count_ / (elapsed_ms / 1000.0) : 0.0;
-}
-
 inline int resolve_msg_count(size_t size) {
     int count = (size <= 1024) ? 200000 : 20000;
     if (const char *env = std::getenv("PERF_MSG_COUNT")) {

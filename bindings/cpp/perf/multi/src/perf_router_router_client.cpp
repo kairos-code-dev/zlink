@@ -23,6 +23,54 @@ static const char *k_pattern_env = "ROUTER_ROUTER";
 static const char *k_pattern_result = "MULTI_ROUTER_ROUTER";
 static const char k_payload_fill = 'r';
 
+bool recv_router_payload_header (zlink::socket_t &sock,
+                                 size_t payload_size,
+                                 zlink::recv_flag flags,
+                                 perf_metric::header_t *header_out,
+                                 bool *header_ok_out)
+{
+    if (header_ok_out)
+        *header_ok_out = false;
+
+    zlink::message_t routing_id;
+    if (sock.recv (routing_id, flags) < 0)
+        return false;
+    if (!routing_id.more ()) {
+        errno = EPROTO;
+        return false;
+    }
+
+    zlink::message_t payload_or_delim;
+    if (sock.recv (payload_or_delim, zlink::recv_flag::none) < 0)
+        return false;
+
+    zlink::message_t payload;
+    if (payload_or_delim.more ()) {
+        if (payload_or_delim.size () != 0) {
+            errno = EPROTO;
+            return false;
+        }
+        if (sock.recv (payload, zlink::recv_flag::none) < 0)
+            return false;
+    } else {
+        payload = std::move (payload_or_delim);
+    }
+
+    if (payload.more () || payload.size () != payload_size) {
+        errno = EPROTO;
+        return false;
+    }
+
+    bool header_ok = false;
+    if (header_out) {
+        header_ok = perf_metric::decode_payload_header (
+          payload.data (), payload.size (), header_out);
+    }
+    if (header_ok_out)
+        *header_ok_out = header_ok;
+    return true;
+}
+
 struct phase_config_t
 {
     int warmup_seconds;
@@ -39,6 +87,26 @@ struct bench_result_t
     bench_result_t () : warmup_count (0), active_count (0), latency () {}
 };
 
+struct socket_state_t
+{
+    zlink::socket_t *sock;
+    std::vector<char> payload;
+    bool awaiting_reply;
+    bool send_pending;
+    bool pollout_enabled;
+    bool id_sent;
+
+    socket_state_t ()
+        : sock (NULL),
+          payload (),
+          awaiting_reply (false),
+          send_pending (false),
+          pollout_enabled (false),
+          id_sent (false)
+    {
+    }
+};
+
 class router_router_client_bench_t
 {
   public:
@@ -52,11 +120,9 @@ class router_router_client_bench_t
           _settings (settings),
           _ctx (),
           _holders (),
-          _sockets (),
+          _socket_states (),
           _poller (),
           _poll_events (),
-          _payload (std::max<size_t> (msg_size, perf_metric::header_size ()),
-                    k_payload_fill),
           _run_id (static_cast<uint32_t> (perf_metric::now_us ())),
           _seq (1),
           _server_id ("SERVER"),
@@ -64,7 +130,7 @@ class router_router_client_bench_t
           _result ()
     {
         _holders.reserve (_settings.clients);
-        _sockets.reserve (_settings.clients);
+        _socket_states.reserve (_settings.clients);
         _poll_events.reserve (_settings.clients);
 
         _phase_cfg.warmup_seconds = std::max (0, _settings.warmup_seconds);
@@ -81,11 +147,11 @@ class router_router_client_bench_t
 
         if (!run_warmup ())
             return false;
-
         if (!run_settle ())
             return false;
-
         if (!run_active ())
+            return false;
+        if (_result.active_count == 0)
             return false;
 
         send_stop_token_once ();
@@ -103,6 +169,7 @@ class router_router_client_bench_t
 
             const std::string routing_id = std::string ("rr_") + std::to_string (i);
             (void) sock.set (zlink::socket_options::routing_id, routing_id);
+            (void) sock.set (zlink::socket_options::probe_router, 1);
 
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
             if (!perf::multi::setup_tls_client (sock, _transport))
@@ -110,11 +177,16 @@ class router_router_client_bench_t
             if (sock.connect (_endpoint) != 0)
                 return false;
 
-            _sockets.push_back (&sock);
-            (void) _poller.add (sock, zlink::poll_event::pollin, &sock);
+            socket_state_t state;
+            state.sock = &sock;
+            state.payload.resize (
+              std::max<size_t> (_msg_size, perf_metric::header_size ()),
+              k_payload_fill);
+            _socket_states.push_back (state);
+            (void) _poller.add (sock, zlink::poll_event::pollin, &_socket_states.back ());
         }
 
-        return !_sockets.empty ();
+        return !_socket_states.empty ();
     }
 
     long compute_wait_ms (const std::chrono::steady_clock::time_point &deadline) const
@@ -135,6 +207,71 @@ class router_router_client_bench_t
         return wait_ms;
     }
 
+    bool set_pollout (socket_state_t &state, bool enabled)
+    {
+        if (!state.sock)
+            return false;
+        if (state.pollout_enabled == enabled)
+            return true;
+
+        const zlink::poll_event events =
+          enabled ? (zlink::poll_event::pollin | zlink::poll_event::pollout)
+                  : zlink::poll_event::pollin;
+        if (_poller.modify (*state.sock, events) != 0)
+            return false;
+        state.pollout_enabled = enabled;
+        return true;
+    }
+
+    bool try_send_request (socket_state_t &state, perf_metric::phase_t phase)
+    {
+        if (!state.sock)
+            return false;
+
+        if (!state.send_pending) {
+            const uint64_t sent_ts = perf_metric::now_us ();
+            if (!perf_metric::stamp_payload (state.payload.data (),
+                                             state.payload.size (),
+                                             _run_id,
+                                             phase,
+                                             _msg_size,
+                                             _seq++,
+                                             sent_ts)) {
+                return false;
+            }
+            state.id_sent = false;
+        }
+
+        if (!state.id_sent) {
+            const int id_sent = state.sock->send (
+              _server_id.data (),
+              _server_id.size (),
+              zlink::send_flag::sndmore | zlink::send_flag::dontwait);
+            if (id_sent != static_cast<int> (_server_id.size ())) {
+                if (id_sent < 0 && errno == EAGAIN) {
+                    state.send_pending = true;
+                    return set_pollout (state, true);
+                }
+                return false;
+            }
+            state.id_sent = true;
+        }
+
+        const int payload_sent = state.sock->send (
+          state.payload.data (), state.payload.size (), zlink::send_flag::dontwait);
+        if (payload_sent == static_cast<int> (state.payload.size ())) {
+            state.awaiting_reply = true;
+            state.send_pending = false;
+            state.id_sent = false;
+            return set_pollout (state, false);
+        }
+        if (payload_sent < 0 && errno == EAGAIN) {
+            state.send_pending = true;
+            return set_pollout (state, true);
+        }
+        return false;
+    }
+
     bool run_phase (perf_metric::phase_t phase,
                     int seconds,
                     unsigned long long *count_out,
@@ -148,115 +285,82 @@ class router_router_client_bench_t
             return true;
         }
 
-        if (_sockets.empty ())
+        if (_socket_states.empty ())
             return false;
 
         unsigned long long count = 0;
         size_t send_index = 0;
-
         const auto deadline = std::chrono::steady_clock::now ()
                               + std::chrono::seconds (seconds);
         while (std::chrono::steady_clock::now () < deadline) {
-            zlink::socket_t *sock = _sockets[send_index % _sockets.size ()];
-            ++send_index;
-            if (!sock)
-                continue;
-
-            const uint64_t sent_ts = perf_metric::now_us ();
-            if (!perf_metric::stamp_payload (_payload.data (),
-                                             _payload.size (),
-                                             _run_id,
-                                             phase,
-                                             _msg_size,
-                                             _seq++,
-                                             sent_ts)) {
-                continue;
+            for (size_t i = 0; i < _socket_states.size (); ++i) {
+                socket_state_t &state =
+                  _socket_states[(send_index + i) % _socket_states.size ()];
+                if (!state.sock || state.awaiting_reply || state.send_pending)
+                    continue;
+                if (!try_send_request (state, phase))
+                    return false;
             }
+            ++send_index;
 
-            const int id_sent = sock->send (
-              _server_id.data (), _server_id.size (), zlink::send_flag::sndmore);
-            if (id_sent != static_cast<int> (_server_id.size ())) {
-                const int err = errno;
-                if (err == EAGAIN || err == EINTR)
+            const int poll_rc = _poller.wait (_poll_events, compute_wait_ms (deadline));
+            if (poll_rc < 0) {
+                if (errno == EINTR)
                     continue;
                 return false;
             }
+            if (poll_rc == 0)
+                continue;
 
-            const int data_sent =
-              sock->send (_payload.data (), _payload.size (), zlink::send_flag::none);
-            if (data_sent != static_cast<int> (_payload.size ())) {
-                const int err = errno;
-                // After SNDMORE routing id send succeeded, never continue with a
-                // new envelope on payload send timeout/interruption.
-                if (err == EAGAIN || err == EINTR)
-                    return false;
-                return false;
-            }
+            for (size_t i = 0; i < _poll_events.size (); ++i) {
+                socket_state_t *state =
+                  static_cast<socket_state_t *> (_poll_events[i].user);
+                zlink::socket_t *ready_sock = _poll_events[i].socket;
+                if (!state || !ready_sock)
+                    continue;
 
-            bool got_reply = false;
-            while (!got_reply && std::chrono::steady_clock::now () < deadline) {
-                const int poll_rc = _poller.wait (_poll_events, compute_wait_ms (deadline));
-                if (poll_rc < 0) {
-                    if (errno == EINTR)
-                        continue;
-                    return false;
+                if ((_poll_events[i].revents
+                     & static_cast<short> (zlink::poll_event::pollout))
+                    && state->send_pending) {
+                    if (!try_send_request (*state, phase))
+                        return false;
                 }
-                if (poll_rc == 0)
-                    break;
 
-                for (size_t i = 0; i < _poll_events.size (); ++i) {
-                    zlink::socket_t *ready_sock = _poll_events[i].socket;
-                    if (!ready_sock)
+                if (!(_poll_events[i].revents
+                      & static_cast<short> (zlink::poll_event::pollin))) {
+                    continue;
+                }
+
+                for (;;) {
+                    perf_metric::header_t header;
+                    bool header_ok = false;
+                    if (!recv_router_payload_header (*ready_sock,
+                                                     _socket_states[0].payload.size (),
+                                                     zlink::recv_flag::dontwait,
+                                                     &header,
+                                                     &header_ok)) {
+                        const int err = errno;
+                        if (err == EAGAIN)
+                            break;
+                        if (err == EINTR)
+                            continue;
+                        return false;
+                    }
+                    state->awaiting_reply = false;
+                    if (!header_ok)
+                        continue;
+                    if (!perf_metric::is_expected (header, _run_id, phase, _msg_size))
                         continue;
 
-                    for (;;) {
-                        zlink::message_t reply_routing_id;
-                        if (ready_sock->recv (reply_routing_id,
-                                              zlink::recv_flag::dontwait)
-                            < 0) {
-                            const int err = errno;
-                            if (err == EAGAIN)
-                                break;
-                            if (err == EINTR)
-                                continue;
-                            return false;
-                        }
-                        if (!reply_routing_id.more ())
-                            continue;
-
-                        zlink::message_t reply_payload;
-                        if (ready_sock->recv (reply_payload, zlink::recv_flag::dontwait)
-                            < 0) {
-                            const int err = errno;
-                            if (err == EAGAIN)
-                                break;
-                            if (err == EINTR)
-                                continue;
-                            return false;
-                        }
-                        if (reply_payload.more ())
-                            continue;
-
-                        perf_metric::header_t header;
-                        if (!perf_metric::decode_payload_header (
-                              reply_payload.data (), reply_payload.size (), &header)) {
-                            continue;
-                        }
-                        if (!perf_metric::is_expected (
-                              header, _run_id, phase, _msg_size)) {
-                            continue;
-                        }
-
-                        ++count;
-                        got_reply = true;
-                        if (lat_out && phase == perf_metric::phase_active) {
-                            const uint64_t now_us = perf_metric::now_us ();
-                            const double latency_us =
-                              now_us >= header.sent_ts_us
-                                ? static_cast<double> (now_us - header.sent_ts_us)
-                                : 0.0;
-                            lat_out->add (latency_us);
-                        }
+                    ++count;
+                    state->awaiting_reply = false;
+                    if (lat_out && phase == perf_metric::phase_active) {
+                        const uint64_t now_us = perf_metric::now_us ();
+                        const double latency_us =
+                          now_us >= header.sent_ts_us
+                            ? static_cast<double> (now_us - header.sent_ts_us)
+                            : 0.0;
+                        lat_out->add (latency_us);
                     }
                 }
             }
@@ -268,7 +372,7 @@ class router_router_client_bench_t
 
     bool run_settle ()
     {
-        if (_phase_cfg.settle_ms <= 0 || _sockets.empty ())
+        if (_phase_cfg.settle_ms <= 0 || _socket_states.empty ())
             return true;
 
         const auto deadline = std::chrono::steady_clock::now ()
@@ -284,42 +388,42 @@ class router_router_client_bench_t
                 continue;
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
+                socket_state_t *state =
+                  static_cast<socket_state_t *> (_poll_events[i].user);
                 zlink::socket_t *sock = _poll_events[i].socket;
-                if (!sock)
+                if (!state || !sock)
                     continue;
 
+                if ((_poll_events[i].revents
+                     & static_cast<short> (zlink::poll_event::pollout))
+                    && state->send_pending) {
+                    if (!try_send_request (*state, perf_metric::phase_drain))
+                        return false;
+                }
+
+                if (!(_poll_events[i].revents
+                      & static_cast<short> (zlink::poll_event::pollin))) {
+                    continue;
+                }
+
                 for (;;) {
-                    zlink::message_t reply_routing_id;
-                    if (sock->recv (reply_routing_id, zlink::recv_flag::dontwait)
-                        < 0) {
-                        const int err = errno;
-                        if (err == EAGAIN)
-                            break;
-                        if (err == EINTR)
-                            continue;
-                        return false;
-                    }
-                    if (!reply_routing_id.more ())
-                        continue;
-
-                    zlink::message_t reply_payload;
-                    if (sock->recv (reply_payload, zlink::recv_flag::dontwait)
-                        < 0) {
-                        const int err = errno;
-                        if (err == EAGAIN)
-                            break;
-                        if (err == EINTR)
-                            continue;
-                        return false;
-                    }
-                    if (reply_payload.more ())
-                        continue;
-
                     perf_metric::header_t header;
-                    if (!perf_metric::decode_payload_header (
-                          reply_payload.data (), reply_payload.size (), &header)) {
-                        continue;
+                    bool header_ok = false;
+                    if (!recv_router_payload_header (*sock,
+                                                     _socket_states[0].payload.size (),
+                                                     zlink::recv_flag::dontwait,
+                                                     &header,
+                                                     &header_ok)) {
+                        const int err = errno;
+                        if (err == EAGAIN)
+                            break;
+                        if (err == EINTR)
+                            continue;
+                        return false;
                     }
+                    state->awaiting_reply = false;
+                    if (!header_ok)
+                        continue;
                     if (header.magic != perf_metric::k_magic
                         || header.phase
                              != static_cast<uint32_t> (perf_metric::phase_warmup)
@@ -358,18 +462,20 @@ class router_router_client_bench_t
 
     void send_stop_token_once ()
     {
-        if (_sockets.empty () || !_sockets[0])
+        if (_socket_states.empty () || !_socket_states[0].sock)
             return;
 
-        zlink::socket_t *sock = _sockets[0];
-        const int stop_id_sent = sock->send (
-          _server_id.data (), _server_id.size (), zlink::send_flag::sndmore);
+        zlink::socket_t *sock = _socket_states[0].sock;
+        const int stop_id_sent = sock->send (_server_id.data (),
+                                             _server_id.size (),
+                                             zlink::send_flag::sndmore
+                                               | zlink::send_flag::dontwait);
         if (stop_id_sent != static_cast<int> (_server_id.size ()))
             return;
 
         const char *stop = perf::multi::k_stop_token;
         const size_t stop_len = std::strlen (stop);
-        (void) sock->send (stop, stop_len, zlink::send_flag::none);
+        (void) sock->send (stop, stop_len, zlink::send_flag::dontwait);
     }
 
     void print_result () const
@@ -398,11 +504,10 @@ class router_router_client_bench_t
 
     perf::multi::ctx_guard_t _ctx;
     std::vector<std::unique_ptr<perf::multi::socket_guard_t> > _holders;
-    std::vector<zlink::socket_t *> _sockets;
+    std::vector<socket_state_t> _socket_states;
     zlink::poller_t _poller;
     std::vector<zlink::poll_event_t> _poll_events;
 
-    std::vector<char> _payload;
     const uint32_t _run_id;
     uint64_t _seq;
     const std::string _server_id;
@@ -413,7 +518,7 @@ class router_router_client_bench_t
 
 } // namespace
 
-void perf_router_router_client (const std::string &transport,
+bool perf_router_router_client (const std::string &transport,
                                 size_t msg_size,
                                 const std::string &endpoint)
 {
@@ -421,14 +526,14 @@ void perf_router_router_client (const std::string &transport,
 
     if (!perf::multi::is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED," << k_pattern_result << "," << transport << std::endl;
-        return;
+        return true;
     }
 
     const perf::multi::multi_bench_settings_t settings =
       perf::multi::resolve_multi_bench_settings ();
 
     router_router_client_bench_t bench (transport, msg_size, endpoint, settings);
-    (void) bench.run ();
+    return bench.run ();
 }
 
 int main (int argc, char **argv)
@@ -449,6 +554,5 @@ int main (int argc, char **argv)
         return 1;
     }
 
-    perf_router_router_client (transport, size, endpoint);
-    return 0;
+    return perf_router_router_client (transport, size, endpoint) ? 0 : 1;
 }

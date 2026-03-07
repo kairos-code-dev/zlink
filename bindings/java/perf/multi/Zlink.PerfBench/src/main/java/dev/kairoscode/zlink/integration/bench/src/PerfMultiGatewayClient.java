@@ -45,6 +45,17 @@ public final class PerfMultiGatewayClient {
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
 
+    private static final class PendingSend {
+        boolean pending;
+        final byte[] payload;
+        final Message message;
+
+        PendingSend(int payloadSize) {
+            this.payload = new byte[payloadSize];
+            this.message = new Message(payloadSize);
+        }
+    }
+
     private PerfMultiGatewayClient() {
     }
 
@@ -103,21 +114,22 @@ public final class PerfMultiGatewayClient {
 
                 Poller poller = new Poller();
                 for (int i = 0; i < activeSlots.size(); i++) {
-                    poller.addReceiver(activeSlots.get(i).receiver, i,
-                        PollEventType.POLLIN);
+                    poller.addReceiver(activeSlots.get(i).receiver,
+                        PollEventType.POLLIN.getValue(), Integer.valueOf(i));
                 }
 
-                byte[] payload = new byte[payloadSize];
                 byte[] recv = new byte[payloadSize];
                 byte[] routingId = new byte[ROUTING_ID_BUFFER_BYTES];
-                MemorySegment payloadSegment = MemorySegment.ofArray(payload);
+                PendingSend[] pendingSends = new PendingSend[activeSlots.size()];
+                for (int i = 0; i < pendingSends.length; i++) {
+                    pendingSends[i] = new PendingSend(payloadSize);
+                }
                 int runId = (int) (PerfMultiMetricHeader.nowUs() & 0x7FFF_FFFFL);
                 long seq = 1;
                 int index = 0;
                 boolean[] awaitingReply = new boolean[activeSlots.size()];
 
-                try (Message payloadMessage = new Message(payloadSize);
-                     Message stopMessage = Message.fromBytes(STOP_TOKEN, 0,
+                try (Message stopMessage = Message.fromBytes(STOP_TOKEN, 0,
                          STOP_TOKEN.length)) {
                     PerfCommon.LatencyReservoir reservoir =
                         new PerfCommon.LatencyReservoir(
@@ -133,26 +145,21 @@ public final class PerfMultiGatewayClient {
                         boolean progressed = false;
 
                         ClientSlot slot = activeSlots.get(index);
-                        if (!awaitingReply[index]) {
-                            PerfMultiMetricHeader.stampPayload(payload, runId,
+                        PendingSend pending = pendingSends[index];
+                        if (!awaitingReply[index] && !pending.pending) {
+                            PerfMultiMetricHeader.stampPayload(pending.payload, runId,
                                 PerfMultiMetricHeader.PHASE_WARMUP, msgSize, seq++,
                                 PerfMultiMetricHeader.nowUs());
-                            MemorySegment.copy(payloadSegment, 0,
-                                payloadMessage.dataSegment(), 0, payloadSize);
-                            slot.gateway.sendTo(SERVICE_NAME, payloadMessage,
-                                SendFlag.NONE);
-                            awaitingReply[index] = true;
-                            progressed = true;
+                            progressed = tryStartSend(poller, slot, index,
+                                pending, awaitingReply);
                         }
                         index = (index + 1) % activeSlots.size();
 
                         DrainResult warmupDrain = drainReplies(poller,
-                            activeSlots, awaitingReply, routingId, recv, runId,
-                            msgSize, pollTimeoutMs, false, header, reservoir);
+                            activeSlots, pendingSends, awaitingReply, routingId,
+                            recv, runId, msgSize, pollTimeoutMs, false, header,
+                            reservoir);
                         progressed = progressed || warmupDrain.progressed();
-                        if (!progressed) {
-                            Thread.onSpinWait();
-                        }
                     }
 
                     // --- Settle ---
@@ -171,27 +178,22 @@ public final class PerfMultiGatewayClient {
                         boolean progressed = false;
 
                         ClientSlot slot = activeSlots.get(index);
-                        if (!awaitingReply[index]) {
-                            PerfMultiMetricHeader.stampPayload(payload, runId,
+                        PendingSend pending = pendingSends[index];
+                        if (!awaitingReply[index] && !pending.pending) {
+                            PerfMultiMetricHeader.stampPayload(pending.payload, runId,
                                 PerfMultiMetricHeader.PHASE_ACTIVE, msgSize, seq++,
                                 PerfMultiMetricHeader.nowUs());
-                            MemorySegment.copy(payloadSegment, 0,
-                                payloadMessage.dataSegment(), 0, payloadSize);
-                            slot.gateway.sendTo(SERVICE_NAME, payloadMessage,
-                                SendFlag.NONE);
-                            awaitingReply[index] = true;
-                            progressed = true;
+                            progressed = tryStartSend(poller, slot, index,
+                                pending, awaitingReply);
                         }
                         index = (index + 1) % activeSlots.size();
 
                         DrainResult activeDrain = drainReplies(poller,
-                            activeSlots, awaitingReply, routingId, recv, runId,
-                            msgSize, pollTimeoutMs, true, header, reservoir);
+                            activeSlots, pendingSends, awaitingReply, routingId,
+                            recv, runId, msgSize, pollTimeoutMs, true, header,
+                            reservoir);
                         count += activeDrain.matchedCount();
                         progressed = progressed || activeDrain.progressed();
-                        if (!progressed) {
-                            Thread.onSpinWait();
-                        }
                     }
 
                     activeSlots.get(0).gateway.sendTo(SERVICE_NAME, stopMessage,
@@ -204,6 +206,8 @@ public final class PerfMultiGatewayClient {
                     PerfCommon.printResult(PATTERN, transport, msgSize, throughput,
                         stats.meanUs(), stats.p95Us(), stats.p99Us());
                     return 0;
+                } finally {
+                    closePendingSends(pendingSends);
                 }
             } finally {
                 closeSlots(slots);
@@ -276,6 +280,7 @@ public final class PerfMultiGatewayClient {
 
     private static DrainResult drainReplies(Poller poller,
                                             List<ClientSlot> activeSlots,
+                                            PendingSend[] pendingSends,
                                             boolean[] awaitingReply,
                                             byte[] routingIdBuffer,
                                             byte[] recvBuffer,
@@ -288,17 +293,26 @@ public final class PerfMultiGatewayClient {
         boolean progressed = false;
         long matchedCount = 0;
 
-        List<Poller.PollEvent> events = poller.poll(pollTimeoutMs);
-        int eventCount = events.size();
+        int eventCount = poller.pollCount(pollTimeoutMs);
         for (int i = 0; i < eventCount; i++) {
-            Object tag = events.get(i).tag();
+            Object tag = poller.readyTag(i);
             if (!(tag instanceof Integer)) {
                 continue;
             }
-            int socketIndex = (Integer) tag;
-            if (socketIndex < 0 || socketIndex >= activeSlots.size()) {
+            int rawIndex = (Integer) tag;
+            if (rawIndex >= activeSlots.size()) {
+                int socketIndex = rawIndex - activeSlots.size();
+                if (socketIndex < 0 || socketIndex >= activeSlots.size()) {
+                    continue;
+                }
+                if (pendingSends[socketIndex].pending) {
+                    progressed |= tryFlushPending(poller,
+                        activeSlots.get(socketIndex), socketIndex,
+                        pendingSends[socketIndex], awaitingReply);
+                }
                 continue;
             }
+            int socketIndex = rawIndex;
             ClientSlot slot = activeSlots.get(socketIndex);
             while (true) {
                 int n = receiveReceiverPayloadNonBlocking(slot.receiverRouter,
@@ -324,6 +338,62 @@ public final class PerfMultiGatewayClient {
         }
 
         return new DrainResult(progressed, matchedCount);
+    }
+
+    private static boolean tryStartSend(Poller poller, ClientSlot slot,
+                                        int index, PendingSend pending,
+                                        boolean[] awaitingReply) {
+        if (trySendNonBlocking(slot, pending)) {
+            awaitingReply[index] = true;
+            return true;
+        }
+        if (!pending.pending) {
+            pending.pending = true;
+            poller.addGateway(slot.gateway, PollEventType.POLLOUT.getValue(),
+                Integer.valueOf(activeTag(index)));
+        }
+        return false;
+    }
+
+    private static boolean tryFlushPending(Poller poller, ClientSlot slot,
+                                           int index, PendingSend pending,
+                                           boolean[] awaitingReply) {
+        if (!pending.pending) {
+            return false;
+        }
+        if (!trySendNonBlocking(slot, pending)) {
+            return false;
+        }
+        pending.pending = false;
+        awaitingReply[index] = true;
+        poller.removeGateway(slot.gateway);
+        return true;
+    }
+
+    private static boolean trySendNonBlocking(ClientSlot slot,
+                                              PendingSend pending) {
+        MemorySegment.copy(MemorySegment.ofArray(pending.payload), 0,
+            pending.message.dataSegment(), 0, pending.payload.length);
+        while (true) {
+            try {
+                slot.gateway.sendTo(SERVICE_NAME, pending.message,
+                    SendFlag.DONTWAIT);
+                return true;
+            } catch (ZlinkException ex) {
+                int errno = ex.errno();
+                if (isInterrupted(errno)) {
+                    continue;
+                }
+                if (isWouldBlock(errno)) {
+                    return false;
+                }
+                throw ex;
+            }
+        }
+    }
+
+    private static int activeTag(int index) {
+        return index + 1_000_000;
     }
 
     private static int receiveReceiverPayloadNonBlocking(Socket receiverRouter,
@@ -460,6 +530,18 @@ public final class PerfMultiGatewayClient {
                 resource.close();
             } catch (Exception ignored) {
             }
+        }
+    }
+
+    private static void closePendingSends(PendingSend[] pendingSends) {
+        if (pendingSends == null) {
+            return;
+        }
+        for (PendingSend pending : pendingSends) {
+            if (pending == null) {
+                continue;
+            }
+            pending.message.close();
         }
     }
 

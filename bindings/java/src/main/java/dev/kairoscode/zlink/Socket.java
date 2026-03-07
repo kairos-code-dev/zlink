@@ -484,6 +484,25 @@ public final class Socket implements AutoCloseable {
         return streamSend(routingId, payload, SendFlag.NONE);
     }
 
+    public int streamSend(long routingId, MemorySegment payload,
+                          SendFlag flags) {
+        Objects.requireNonNull(payload, "payload");
+        Objects.requireNonNull(flags, "flags");
+        validateStreamRoutingId(routingId);
+
+        MemorySegment ridLayout = streamRoutingIdScratch.get();
+        writeStreamRoutingId(ridLayout, routingId);
+        int rc = streamSend(ridLayout, 1, STREAM_ROUTING_ID_SIZE, payload, 0,
+          payload.byteSize(), flags);
+        if (rc < 0)
+            throw ZlinkException.fromLastError("zlink_stream_send");
+        return rc;
+    }
+
+    public int streamSend(long routingId, MemorySegment payload) {
+        return streamSend(routingId, payload, SendFlag.NONE);
+    }
+
     public int streamSend(long routingId, Message payload, SendFlag flags) {
         Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(flags, "flags");
@@ -491,12 +510,15 @@ public final class Socket implements AutoCloseable {
 
         MemorySegment ridLayout = streamRoutingIdScratch.get();
         writeStreamRoutingId(ridLayout, routingId);
-        int rc = Native.streamSendMsg(handle, ridLayout, payload.handle(),
-          flags.getValue());
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_stream_send_msg");
-        payload.markStreamSent();
-        return rc;
+        try {
+            int rc = Native.streamSendMsg(handle, ridLayout, payload.handle(),
+              flags.getValue());
+            if (rc < 0)
+                throw ZlinkException.fromLastError("zlink_stream_send_msg");
+            return rc;
+        } finally {
+            payload.close();
+        }
     }
 
     public int streamSend(long routingId, Message payload) {
@@ -570,12 +592,15 @@ public final class Socket implements AutoCloseable {
         ridLayout.set(ValueLayout.JAVA_BYTE, 0, (byte) routingId.length);
         MemorySegment.copy(MemorySegment.ofArray(routingId), 0,
           ridLayout.asSlice(1, routingId.length), 0, routingId.length);
-        int rc = Native.streamSendMsg(handle, ridLayout, payload.handle(),
-          flags.getValue());
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_stream_send_msg");
-        payload.markStreamSent();
-        return rc;
+        try {
+            int rc = Native.streamSendMsg(handle, ridLayout, payload.handle(),
+              flags.getValue());
+            if (rc < 0)
+                throw ZlinkException.fromLastError("zlink_stream_send_msg");
+            return rc;
+        } finally {
+            payload.close();
+        }
     }
 
     public int streamSend(byte[] routingId, Message payload) {

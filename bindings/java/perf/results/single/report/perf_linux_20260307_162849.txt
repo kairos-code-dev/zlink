@@ -1,0 +1,6 @@
+## PATTERN: ROUTER_ROUTER_POLL (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |  Latency(ms) | Lat p95(ms) | Lat p99(ms) | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|----------|----------|------|--------|
+| 64B |     13.63 Kmsg/s |      0.9 MB/s |    0.0645 ms |   0.0890 ms |   0.1240 ms |  3.7 |  131.4 |

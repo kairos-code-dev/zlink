@@ -45,6 +45,7 @@ internal static class PerfDealerRouter
                 SendBlocking(dealer, buf.AsSpan(), SendFlags.None);
                 ReceiveBlocking(router, rid.AsSpan(), ReceiveFlags.None);
                 ReceiveBlocking(router, recv.AsSpan(0, size), ReceiveFlags.None);
+                DrainRemainingFramesNonBlocking(router);
             }
 
             Thread.Sleep(settleMs);
@@ -58,6 +59,7 @@ internal static class PerfDealerRouter
                 SendBlocking(dealer, buf.AsSpan(), SendFlags.None);
                 ReceiveBlocking(router, rid.AsSpan(), ReceiveFlags.None);
                 int n = ReceiveBlocking(router, recv.AsSpan(0, size), ReceiveFlags.None);
+                DrainRemainingFramesNonBlocking(router);
                 if (n == size)
                     recvCount++;
             }
@@ -80,6 +82,7 @@ internal static class PerfDealerRouter
                 SendBlocking(dealer, buf.AsSpan(), SendFlags.None);
                 int ridLen = ReceiveBlocking(router, rid.AsSpan(), ReceiveFlags.None);
                 ReceiveBlocking(router, recv.AsSpan(0, size), ReceiveFlags.None);
+                DrainRemainingFramesNonBlocking(router);
                 SendBlocking(router, rid.AsSpan(0, ridLen), SendFlags.SendMore);
                 SendBlocking(router, buf.AsSpan(), SendFlags.None);
                 ReceiveBlocking(dealer, recv.AsSpan(0, size), ReceiveFlags.None);

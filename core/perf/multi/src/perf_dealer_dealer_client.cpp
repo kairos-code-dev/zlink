@@ -25,6 +25,13 @@ static const int k_client_socket_type = ZLINK_DEALER;
 
 static std::atomic<bool> g_stop_requested (false);
 
+enum send_status_t
+{
+    send_ok = 0,
+    send_blocked = 1,
+    send_fatal = 2
+};
+
 using perf_client::close_client_monitors;
 using perf_client::close_client_sockets;
 using perf_client::is_supported_transport;
@@ -63,16 +70,16 @@ inline bool create_client_sockets (
       monitors_out);
 }
 
-inline bool send_one_message (void *socket,
-                              std::vector<char> &payload,
-                              size_t payload_size,
-                              uint32_t run_id,
-                              perf_metric::phase_t phase,
-                              size_t msg_size,
-                              uint64_t seq)
+inline send_status_t send_one_message (void *socket,
+                                       std::vector<char> &payload,
+                                       size_t payload_size,
+                                       uint32_t run_id,
+                                       perf_metric::phase_t phase,
+                                       size_t msg_size,
+                                       uint64_t seq)
 {
     if (!socket || payload_size == 0 || payload_size > payload.size ())
-        return false;
+        return send_fatal;
 
     if (!perf_metric::stamp_payload (
           payload.data (),
@@ -82,19 +89,22 @@ inline bool send_one_message (void *socket,
           msg_size,
           seq,
           perf_metric::now_us ())) {
-        return false;
+        return send_fatal;
     }
 
-    const int rc = zlink_send (socket, payload.data (), payload_size, 0);
+    const int rc = zlink_send (
+      socket, payload.data (), payload_size, ZLINK_DONTWAIT);
     if (rc >= 0)
-        return true;
+        return send_ok;
 
     const int err = zlink_errno ();
-    if (err == EINTR || err == EAGAIN || err == ETIMEDOUT || err == ENOTCONN
-        || err == EHOSTUNREACH || err == ENOENT)
-        return true;
-
-    return g_stop_requested.load (std::memory_order_acquire);
+    if (err == EINTR || err == EAGAIN)
+        return send_blocked;
+    if (err == ETIMEDOUT || err == ENOTCONN || err == EHOSTUNREACH
+        || err == ENOENT)
+        return send_fatal;
+    return g_stop_requested.load (std::memory_order_acquire) ? send_ok
+                                                             : send_fatal;
 }
 
 inline bool run_send_window (const std::vector<void *> &sockets,
@@ -115,30 +125,99 @@ inline bool run_send_window (const std::vector<void *> &sockets,
       + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
         std::chrono::duration<double> (duration_seconds));
 
-    if (!send_active) {
-        while (!g_stop_requested.load (std::memory_order_acquire)
-               && std::chrono::steady_clock::now () < deadline) {
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
-        }
-        return true;
-    }
-
     if (sockets.empty () || !seq)
         return false;
+
+    std::vector<uint8_t> send_pending (sockets.size (), 0);
+    std::vector<zlink_pollitem_t> poll_items (sockets.size ());
+    for (size_t i = 0; i < sockets.size (); ++i) {
+        const zlink_pollitem_t item = {sockets[i], 0, 0, 0};
+        poll_items[i] = item;
+    }
 
     size_t socket_index = 0;
     while (!g_stop_requested.load (std::memory_order_acquire)
            && std::chrono::steady_clock::now () < deadline) {
-        void *sock = sockets[socket_index];
-        socket_index = (socket_index + 1) % sockets.size ();
-        if (!send_one_message (
-              sock,
-              payload,
-              payload_size,
-              run_id,
-              phase,
-              msg_size,
-              (*seq)++)) {
+        bool have_pollout = false;
+        bool progressed = false;
+
+        if (send_active) {
+            const size_t start_index = socket_index;
+            for (size_t n = 0; n < sockets.size (); ++n) {
+                const size_t idx = (start_index + n) % sockets.size ();
+                if (send_pending[idx] != 0
+                    && (poll_items[idx].revents & ZLINK_POLLOUT) == 0) {
+                    continue;
+                }
+
+                const send_status_t send_rc = send_one_message (
+                  sockets[idx],
+                  payload,
+                  payload_size,
+                  run_id,
+                  phase,
+                  msg_size,
+                  *seq);
+                if (send_rc == send_ok) {
+                    ++(*seq);
+                    send_pending[idx] = 0;
+                    progressed = true;
+                } else if (send_rc == send_blocked) {
+                    send_pending[idx] = 1;
+                } else {
+                    return false;
+                }
+            }
+            socket_index = (start_index + 1) % sockets.size ();
+        } else {
+            std::fill (send_pending.begin (), send_pending.end (), 0);
+        }
+
+        for (size_t i = 0; i < poll_items.size (); ++i) {
+            poll_items[i].events = send_pending[i] != 0 ? ZLINK_POLLOUT : 0;
+            poll_items[i].revents = 0;
+            if (poll_items[i].events != 0)
+                have_pollout = true;
+        }
+
+        if (!have_pollout) {
+            if (progressed || send_active)
+                continue;
+            const auto now = std::chrono::steady_clock::now ();
+            int idle_timeout_ms = 0;
+            if (deadline > now) {
+                const long remain_ms =
+                  std::chrono::duration_cast<std::chrono::milliseconds> (
+                    deadline - now)
+                    .count ();
+                if (remain_ms >= 0)
+                    idle_timeout_ms = std::min (50, static_cast<int> (remain_ms));
+            }
+            if (idle_timeout_ms > 0
+                && zlink_poll (NULL, 0, idle_timeout_ms) < 0
+                && zlink_errno () != EINTR) {
+                return false;
+            }
+            continue;
+        }
+
+        const auto now = std::chrono::steady_clock::now ();
+        int poll_timeout_ms = progressed ? 0 : 50;
+        if (deadline > now) {
+            const long remain_ms =
+              std::chrono::duration_cast<std::chrono::milliseconds> (
+                deadline - now)
+                .count ();
+            if (remain_ms >= 0)
+                poll_timeout_ms =
+                  std::min (poll_timeout_ms, static_cast<int> (remain_ms));
+        } else {
+            poll_timeout_ms = 0;
+        }
+        if (zlink_poll (&poll_items[0],
+                        static_cast<int> (poll_items.size ()),
+                        poll_timeout_ms) < 0
+            && zlink_errno () != EINTR) {
             return false;
         }
     }

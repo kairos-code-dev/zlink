@@ -375,11 +375,6 @@ public final class Message implements AutoCloseable {
         return msg;
     }
 
-    void markStreamSent() {
-        valid = true;
-        zeroCopyAnchor = null;
-    }
-
     @Override
     public void close() {
         if (closed)

@@ -27,6 +27,245 @@ int bench_pid ()
 #endif
 }
 
+perf::single::queue_stats_t ensure_queue_metrics_visible (
+  const perf::single::queue_stats_t &input)
+{
+    perf::single::queue_stats_t out = input;
+    if (!out.has_snd_pending) {
+        out.has_snd_pending = true;
+        out.snd_pending_max = 0.0;
+    }
+    if (!out.has_rcv_pending) {
+        out.has_rcv_pending = true;
+        out.rcv_pending_max = 0.0;
+        out.rcv_pending_end = 0.0;
+    }
+    return out;
+}
+
+class gateway_queue_probe_t
+{
+  public:
+    gateway_queue_probe_t (zlink::service::gateway_t *gateway_,
+                           zlink::service::receiver_t *receiver_)
+        : _gateway (gateway_),
+          _receiver (receiver_),
+          _sample_interval_ns (resolve_sample_interval_ns ()),
+          _sample_every_msgs (resolve_sample_every_msgs ()),
+          _send_last_sample_ns (0),
+          _recv_last_sample_ns (0),
+          _send_msgs_since_sample (0),
+          _recv_msgs_since_sample (0),
+          _snd_pending_max (0),
+          _rcv_pending_max (0),
+          _rcv_pending_end (0),
+          _snd_seen (false),
+          _rcv_seen (false)
+    {
+        resize_gateway_peers ();
+        resize_receiver_peers ();
+    }
+
+    void sample_send_if_due () { maybe_sample_send (false); }
+    void sample_recv_if_due () { maybe_sample_recv (false); }
+    void force_sample_send () { maybe_sample_send (true); }
+    void force_sample_recv () { maybe_sample_recv (true); }
+
+    perf::single::queue_stats_t snapshot () const
+    {
+        perf::single::queue_stats_t out;
+        if (_snd_seen) {
+            out.has_snd_pending = true;
+            out.snd_pending_max = static_cast<double> (_snd_pending_max);
+        }
+        if (_rcv_seen) {
+            out.has_rcv_pending = true;
+            out.rcv_pending_max = static_cast<double> (_rcv_pending_max);
+            out.rcv_pending_end = static_cast<double> (_rcv_pending_end);
+        }
+        return ensure_queue_metrics_visible (out);
+    }
+
+  private:
+    static unsigned long long resolve_sample_interval_ns ()
+    {
+        const int sample_ms = perf::single::resolve_single_queue_sample_ms ();
+        const unsigned long long clamped_ms =
+          static_cast<unsigned long long> (sample_ms > 0 ? sample_ms : 100);
+        return clamped_ms * 1000000ULL;
+    }
+
+    static unsigned int resolve_sample_every_msgs ()
+    {
+        const int value = perf::single::resolve_single_queue_sample_every_msgs ();
+        return static_cast<unsigned int> (value > 0 ? value : 64);
+    }
+
+    static unsigned long long now_ns ()
+    {
+        return static_cast<unsigned long long> (
+          std::chrono::duration_cast<std::chrono::nanoseconds> (
+            std::chrono::steady_clock::now ().time_since_epoch ())
+            .count ());
+    }
+
+    static unsigned long long peer_activity_score (const zlink_peer_info_t &info)
+    {
+        return static_cast<unsigned long long> (info.msgs_sent)
+               + static_cast<unsigned long long> (info.msgs_received);
+    }
+
+    static size_t choose_best_peer (const std::vector<zlink_peer_info_t> &peers,
+                                    size_t count)
+    {
+        size_t best = 0;
+        for (size_t i = 1; i < count; ++i) {
+            const zlink_peer_info_t &cand = peers[i];
+            const zlink_peer_info_t &cur = peers[best];
+            if (cand.connected_time > cur.connected_time) {
+                best = i;
+                continue;
+            }
+            if (cand.connected_time == cur.connected_time
+                && peer_activity_score (cand) > peer_activity_score (cur)) {
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    void resize_gateway_peers ()
+    {
+        size_t count = 0;
+        if (!_gateway || _gateway->router_peers (NULL, &count) != 0 || count == 0)
+            return;
+        _gateway_peers.resize (count);
+    }
+
+    void resize_receiver_peers ()
+    {
+        size_t count = 0;
+        if (!_receiver || _receiver->router_peers (NULL, &count) != 0 || count == 0)
+            return;
+        _receiver_peers.resize (count);
+    }
+
+    bool read_gateway_peer (zlink_peer_info_t *info)
+    {
+        if (!_gateway || !info)
+            return false;
+        if (_gateway_peers.empty ())
+            resize_gateway_peers ();
+        if (_gateway_peers.empty ())
+            return false;
+
+        size_t count = _gateway_peers.size ();
+        if (_gateway->router_peers (&_gateway_peers[0], &count) != 0 || count == 0)
+            return false;
+        *info = _gateway_peers[choose_best_peer (_gateway_peers, count)];
+        return true;
+    }
+
+    bool read_receiver_peer (zlink_peer_info_t *info)
+    {
+        if (!_receiver || !info)
+            return false;
+        if (_receiver_peers.empty ())
+            resize_receiver_peers ();
+        if (_receiver_peers.empty ())
+            return false;
+
+        size_t count = _receiver_peers.size ();
+        if (_receiver->router_peers (&_receiver_peers[0], &count) != 0
+            || count == 0) {
+            return false;
+        }
+        *info = _receiver_peers[choose_best_peer (_receiver_peers, count)];
+        return true;
+    }
+
+    void maybe_sample_send (bool force)
+    {
+        if (!_gateway)
+            return;
+
+        if (force) {
+            _send_msgs_since_sample = 0;
+        } else if (_sample_every_msgs > 1) {
+            ++_send_msgs_since_sample;
+            if (_send_msgs_since_sample < _sample_every_msgs)
+                return;
+            _send_msgs_since_sample = 0;
+        }
+
+        const unsigned long long now = now_ns ();
+        if (!force && _send_last_sample_ns > 0
+            && now - _send_last_sample_ns < _sample_interval_ns) {
+            return;
+        }
+        _send_last_sample_ns = now;
+
+        zlink_peer_info_t info;
+        if (!read_gateway_peer (&info))
+            return;
+
+        const unsigned long long pending =
+          static_cast<unsigned long long> (info.snd_pending_msgs);
+        if (!_snd_seen || pending > _snd_pending_max)
+            _snd_pending_max = pending;
+        _snd_seen = true;
+    }
+
+    void maybe_sample_recv (bool force)
+    {
+        if (!_receiver)
+            return;
+
+        if (force) {
+            _recv_msgs_since_sample = 0;
+        } else if (_sample_every_msgs > 1) {
+            ++_recv_msgs_since_sample;
+            if (_recv_msgs_since_sample < _sample_every_msgs)
+                return;
+            _recv_msgs_since_sample = 0;
+        }
+
+        const unsigned long long now = now_ns ();
+        if (!force && _recv_last_sample_ns > 0
+            && now - _recv_last_sample_ns < _sample_interval_ns) {
+            return;
+        }
+        _recv_last_sample_ns = now;
+
+        zlink_peer_info_t info;
+        if (!read_receiver_peer (&info))
+            return;
+
+        const unsigned long long pending =
+          static_cast<unsigned long long> (info.rcv_pending_msgs);
+        if (!_rcv_seen || pending > _rcv_pending_max)
+            _rcv_pending_max = pending;
+        _rcv_pending_end = pending;
+        _rcv_seen = true;
+    }
+
+    zlink::service::gateway_t *_gateway;
+    zlink::service::receiver_t *_receiver;
+    unsigned long long _sample_interval_ns;
+    unsigned int _sample_every_msgs;
+    unsigned long long _send_last_sample_ns;
+    unsigned long long _recv_last_sample_ns;
+    unsigned int _send_msgs_since_sample;
+    unsigned int _recv_msgs_since_sample;
+    unsigned long long _snd_pending_max;
+    unsigned long long _rcv_pending_max;
+    unsigned long long _rcv_pending_end;
+    bool _snd_seen;
+    bool _rcv_seen;
+    std::vector<zlink_peer_info_t> _gateway_peers;
+    std::vector<zlink_peer_info_t> _receiver_peers;
+};
+
 bool configure_receiver_tls (zlink::service::receiver_t &receiver,
                              const std::string &transport)
 {
@@ -147,7 +386,7 @@ bool run_phase (zlink::service::gateway_t &gateway,
                 perf_single_metric::phase_t phase,
                 int warmup_count,
                 int duration_s,
-                perf::single::queue_probe_t *queue_probe,
+                gateway_queue_probe_t *queue_probe,
                 unsigned long long *received_out,
                 perf::single::latency_stats_t *latency_out)
 {
@@ -160,6 +399,29 @@ bool run_phase (zlink::service::gateway_t &gateway,
     perf::single::latency_stats_builder_t latency_builder (
       perf::single::resolve_single_latency_sample_cap ());
     unsigned long long received = 0;
+    unsigned long long iterations = 0;
+
+    auto account_header = [&] (const perf_single_metric::header_t &header,
+                               bool header_ok) {
+        if (queue_probe)
+            queue_probe->sample_recv_if_due ();
+
+        if (!header_ok
+            || !perf_single_metric::is_expected (header, run_id, phase, msg_size)) {
+            return;
+        }
+
+        ++received;
+        if (!active)
+            return;
+
+        const uint64_t now = perf_single_metric::now_us ();
+        const double latency_us =
+          now >= header.sent_ts_us
+            ? static_cast<double> (now - header.sent_ts_us)
+            : 0.0;
+        latency_builder.add (latency_us);
+    };
 
     auto do_one = [&] () -> bool {
         const uint64_t sent_ts = perf_single_metric::now_us ();
@@ -182,7 +444,7 @@ bool run_phase (zlink::service::gateway_t &gateway,
 
         perf_single_metric::header_t header;
         bool header_ok = false;
-        const int recv_rc = recv_provider_header (
+        int recv_rc = recv_provider_header (
           provider_router,
           payload_size,
           zlink::recv_flag::none,
@@ -190,23 +452,28 @@ bool run_phase (zlink::service::gateway_t &gateway,
           &header_ok);
         if (recv_rc <= 0)
             return false;
+        account_header (header, header_ok);
 
-        if (queue_probe)
-            queue_probe->sample_recv_if_due ();
-
-        if (header_ok && perf_single_metric::is_expected (
-                           header, run_id, phase, msg_size)) {
-            ++received;
-            if (active) {
-                const uint64_t now = perf_single_metric::now_us ();
-                const double latency_us =
-                  now >= header.sent_ts_us
-                    ? static_cast<double> (now - header.sent_ts_us)
-                    : 0.0;
-                latency_builder.add (latency_us);
+        for (;;) {
+            perf_single_metric::header_t burst_header;
+            bool burst_header_ok = false;
+            recv_rc = recv_provider_header (provider_router,
+                                            payload_size,
+                                            zlink::recv_flag::dontwait,
+                                            &burst_header,
+                                            &burst_header_ok);
+            if (recv_rc > 0) {
+                account_header (burst_header, burst_header_ok);
+                continue;
             }
+            if (recv_rc == 0 && errno == EINTR)
+                continue;
+            if (recv_rc == 0)
+                break;
+            return false;
         }
 
+        ++iterations;
         return true;
     };
 
@@ -234,6 +501,8 @@ bool run_phase (zlink::service::gateway_t &gateway,
         if (received == 0 || latency_builder.count () == 0 || !latency_out)
             return false;
         *latency_out = latency_builder.snapshot ();
+    } else if (received < iterations) {
+        return false;
     }
 
     *received_out = received;
@@ -338,12 +607,13 @@ void run_pattern_gateway (const std::string &transport,
         return;
     }
 
-    zlink::socket_t gateway_router =
-      zlink::socket_t::wrap (gateway.router_handle ());
     zlink::socket_t provider_router =
       zlink::socket_t::wrap (receiver.router_handle ());
-
-    perf::single::queue_probe_t queue_probe (&gateway_router, &provider_router);
+    gateway_queue_probe_t queue_probe (&gateway, &receiver);
+    auto print_fail_with_queue = [&] () {
+        perf::single::print_queue_metrics (
+          lib_name, "GATEWAY", transport, msg_size, queue_probe.snapshot ());
+    };
 
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
@@ -351,6 +621,7 @@ void run_pattern_gateway (const std::string &transport,
 
     const uint32_t run_id = static_cast<uint32_t> (perf_single_metric::now_us ());
     uint64_t seq = 1;
+    perf::single::settle ();
 
     const int warmup_count =
       perf::single::resolve_bench_count ("PERF_WARMUP_COUNT", 200);
@@ -368,8 +639,7 @@ void run_pattern_gateway (const std::string &transport,
                     NULL,
                     &warmup_received,
                     NULL)) {
-        perf::single::print_fail_result (
-          lib_name, "GATEWAY", transport, msg_size, &queue_probe);
+        print_fail_with_queue ();
         return;
     }
 
@@ -389,8 +659,7 @@ void run_pattern_gateway (const std::string &transport,
                     &queue_probe,
                     &received,
                     &latency)) {
-        perf::single::print_fail_result (
-          lib_name, "GATEWAY", transport, msg_size, &queue_probe);
+        print_fail_with_queue ();
         return;
     }
 

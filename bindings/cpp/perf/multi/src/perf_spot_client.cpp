@@ -134,6 +134,10 @@ class spot_client_bench_t
         for (size_t i = 0; i < _spot_client_count; ++i) {
             _nodes.emplace_back (new zlink::service::spot_node_t (_ctx.ctx ()));
             zlink::service::spot_node_t &node = *_nodes.back ();
+            const int xpub_nodrop =
+              perf::multi::parse_positive_env ("PERF_MULTI_SPOT_XPUB_NODROP", 1) > 0
+                ? 1
+                : 0;
 
             (void) node.set_sockopt (zlink::spot_node_socket_role::sub,
                                      zlink::socket_options::sndhwm,
@@ -147,6 +151,12 @@ class spot_client_bench_t
             (void) node.set_sockopt (zlink::spot_node_socket_role::sub,
                                      zlink::socket_options::rcvtimeo,
                                      _settings.rcvtimeo_ms);
+            (void) node.set_sockopt (zlink::spot_node_socket_role::pub,
+                                     zlink::socket_options::xpub_nodrop,
+                                     xpub_nodrop);
+            (void) node.set_sockopt (zlink::spot_node_socket_role::sub,
+                                     zlink::socket_options::xpub_nodrop,
+                                     xpub_nodrop);
 
             if (!configure_spot_client_tls (node, _transport)
                 || node.connect_peer_pub (_endpoint) != 0) {
@@ -191,7 +201,7 @@ class spot_client_bench_t
             return -1;
 
         zlink::message_t payload;
-        const int payload_rc = subscriber.recv (payload, flags);
+        const int payload_rc = subscriber.recv (payload, zlink::recv_flag::none);
         if (payload_rc < 0) {
             const int err = errno;
             if (err == EAGAIN || err == EINTR)
@@ -386,7 +396,7 @@ class spot_client_bench_t
 
 } // namespace
 
-void perf_spot_client (const std::string &transport,
+bool perf_spot_client (const std::string &transport,
                        size_t msg_size,
                        const std::string &endpoint)
 {
@@ -394,14 +404,14 @@ void perf_spot_client (const std::string &transport,
 
     if (!perf::multi::is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED," << k_pattern_result << "," << transport << std::endl;
-        return;
+        return true;
     }
 
     const perf::multi::multi_bench_settings_t settings =
       perf::multi::resolve_multi_bench_settings ();
 
     spot_client_bench_t bench (transport, msg_size, endpoint, settings);
-    (void) bench.run ();
+    return bench.run ();
 }
 
 int main (int argc, char **argv)
@@ -422,6 +432,5 @@ int main (int argc, char **argv)
         return 1;
     }
 
-    perf_spot_client (transport, size, endpoint);
-    return 0;
+    return perf_spot_client (transport, size, endpoint) ? 0 : 1;
 }

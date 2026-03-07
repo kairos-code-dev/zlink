@@ -4,6 +4,9 @@ package dev.kairoscode.zlink.integration.bench.common;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.ContextOption;
+import dev.kairoscode.zlink.MonitorEvent;
+import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.Poller;
 import dev.kairoscode.zlink.ReceiveFlag;
@@ -103,6 +106,33 @@ public final class PerfCommon {
         poller.clear();
         poller.add(socket, PollEventType.POLLIN);
         return poller.pollCount(timeoutMs) > 0;
+    }
+
+    public static boolean waitMonitorReady(MonitorSocket monitor, int timeoutMs,
+                                           boolean acceptFallback) {
+        long deadline = System.nanoTime() + Duration.ofMillis(
+            Math.max(timeoutMs, 1)).toNanos();
+        while (System.nanoTime() < deadline) {
+            try {
+                MonitorEvent event = monitor.recv(ReceiveFlag.DONTWAIT);
+                long mask = event.event();
+                if ((mask & MonitorEventType.CONNECTION_READY.getValue()) != 0) {
+                    return true;
+                }
+                if (acceptFallback
+                    && (((mask & MonitorEventType.ACCEPTED.getValue()) != 0)
+                    || ((mask & MonitorEventType.CONNECTED.getValue()) != 0))) {
+                    return true;
+                }
+            } catch (ZlinkException ex) {
+                if (isInterrupted(ex.errno()) || isWouldBlock(ex.errno())) {
+                    sleepMillis(1);
+                    continue;
+                }
+                return false;
+            }
+        }
+        return false;
     }
 
     public static boolean waitUntil(BooleanSupplier check, int timeoutMs,

@@ -43,6 +43,17 @@ struct spot_client_slot_t
     }
 };
 
+struct spot_sub_poller_t
+{
+    void *handle;
+    std::vector<zlink_poller_event_t> events;
+    std::vector<size_t> indices;
+
+    spot_sub_poller_t() : handle(NULL)
+    {
+    }
+};
+
 inline bool wait_all_sub_peers(const std::vector<spot_client_slot_t> &slots,
                                int timeout_ms);
 inline void close_spot_client_slots(std::vector<spot_client_slot_t> *slots);
@@ -253,7 +264,8 @@ inline bool wait_for_service_receivers(void *discovery,
         }
         if (available > 0 || count >= target)
             return true;
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        if (zlink_poll(NULL, 0, 5) < 0 && zlink_errno() != EINTR)
+            return false;
     }
 
     const int count = zlink_discovery_receiver_count(discovery, service_name);
@@ -358,7 +370,8 @@ inline bool wait_all_sub_peers(const std::vector<spot_client_slot_t> &slots,
         if (ready_count >= slots.size())
             break;
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        if (zlink_poll(NULL, 0, 5) < 0 && zlink_errno() != EINTR)
+            return false;
     }
 
     if (bench_debug_enabled() && ready_count != slots.size()) {
@@ -528,23 +541,6 @@ inline int recv_spot_message_once(void *sub,
                 }
             }
         }
-    } else if (bench_debug_enabled()) {
-        static int mismatch_logs = 0;
-        if (mismatch_logs < 8) {
-            ++mismatch_logs;
-            std::cerr << "[multi-spot-client] metric mismatch part_count="
-                      << part_count;
-            if (decode_metric_header_from_parts(parts, part_count, &header)) {
-                std::cerr << " magic=" << header.magic
-                          << " run=" << header.run_id
-                          << " phase=" << header.phase
-                          << " size=" << header.msg_size
-                          << " expected_size=" << expected_msg_size;
-            } else {
-                std::cerr << " undecodable";
-            }
-            std::cerr << std::endl;
-        }
     }
 
     if (parts)
@@ -562,8 +558,7 @@ inline bool drain_spot_sub_non_blocking(void *sub,
                                         long *lat_count,
                                         bench_latency_sampler_t *latency_samples,
                                         uint64_t *last_sampled_seq,
-                                        const std::chrono::steady_clock::time_point *deadline,
-                                        int recv_batch_limit)
+                                        const std::chrono::steady_clock::time_point *deadline)
 {
     if (!sub)
         return false;
@@ -572,8 +567,6 @@ inline bool drain_spot_sub_non_blocking(void *sub,
     long local_consumed = 0;
     while (true) {
         if (deadline && std::chrono::steady_clock::now() >= *deadline)
-            break;
-        if (recv_batch_limit > 0 && local_consumed >= recv_batch_limit)
             break;
 
         const int rc = recv_spot_message_once(sub,
@@ -633,8 +626,6 @@ inline bool run_spot_one_way_window_loop(
       std::chrono::steady_clock::now()
       + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
         std::chrono::duration<double>(duration_seconds));
-    const int recv_batch_limit =
-      resolve_int_env("PERF_SPOT_RECV_BATCH", 256, 1);
 
     bool fatal_error = false;
     long recv_sum = 0;
@@ -643,9 +634,53 @@ inline bool run_spot_one_way_window_loop(
     bench_latency_sampler_t latency_samples;
     uint64_t last_sampled_seq = 0;
 
+    spot_sub_poller_t poller;
+    poller.handle = zlink_poller_new();
+    if (!poller.handle)
+        return false;
+    poller.events.resize(slots.size());
+    poller.indices.resize(slots.size());
+    for (size_t i = 0; i < slots.size(); ++i) {
+        poller.indices[i] = i;
+        if (zlink_poller_add_spot_sub(
+              poller.handle,
+              slots[i].sub,
+              &poller.indices[i],
+              ZLINK_POLLIN)
+            != 0) {
+            zlink_poller_destroy(&poller.handle);
+            return false;
+        }
+    }
+
     while (std::chrono::steady_clock::now() < deadline && !fatal_error) {
-        bool progressed = false;
-        for (size_t i = 0; i < slots.size(); ++i) {
+        const auto now = std::chrono::steady_clock::now();
+        int poll_timeout_ms = 1;
+        if (deadline > now) {
+            const long remain_ms =
+              std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now)
+                .count();
+            if (remain_ms >= 0)
+                poll_timeout_ms =
+                  std::max(0, std::min(settings.client_poll_timeout_ms, static_cast<int>(remain_ms)));
+        }
+        const int prc = zlink_poller_wait_all(
+          poller.handle,
+          poller.events.empty() ? NULL : &poller.events[0],
+          static_cast<int>(poller.events.size()),
+          poll_timeout_ms);
+        if (prc < 0) {
+            if (zlink_errno() == EINTR)
+                continue;
+            fatal_error = true;
+            break;
+        }
+
+        for (int event_index = 0; event_index < prc; ++event_index) {
+            zlink_poller_event_t &event = poller.events[event_index];
+            if ((event.events & ZLINK_POLLIN) == 0 || !event.user_data)
+                continue;
+            const size_t i = *static_cast<size_t *>(event.user_data);
             long recv_now = 0;
             long consumed_now = 0;
             if (!drain_spot_sub_non_blocking(slots[i].sub,
@@ -658,23 +693,17 @@ inline bool run_spot_one_way_window_loop(
                                              collect_latency ? &lat_count_local : NULL,
                                              collect_latency ? &latency_samples : NULL,
                                              collect_latency ? &last_sampled_seq : NULL,
-                                             &deadline,
-                                             recv_batch_limit)) {
+                                             &deadline)) {
                 fatal_error = true;
                 break;
             }
 
             if (recv_now > 0)
                 recv_sum += recv_now;
-            if (consumed_now > 0)
-                progressed = true;
         }
-
-        if (fatal_error)
-            break;
-        if (!progressed)
-            std::this_thread::yield();
     }
+
+    zlink_poller_destroy(&poller.handle);
 
     if (recv_total)
         *recv_total = recv_sum;
@@ -702,8 +731,6 @@ inline bool wait_for_msg_size_start(const std::vector<spot_client_slot_t> &slots
     if (slots.empty() || msg_size == 0)
         return false;
 
-    const int recv_batch_limit =
-      resolve_int_env("PERF_SPOT_RECV_BATCH", 256, 1);
     const int sync_timeout_ms =
       std::max(5000,
                std::max(settings.connect_ready_timeout_ms,
@@ -714,9 +741,52 @@ inline bool wait_for_msg_size_start(const std::vector<spot_client_slot_t> &slots
       std::chrono::steady_clock::now()
       + std::chrono::milliseconds(sync_timeout_ms);
 
+    spot_sub_poller_t poller;
+    poller.handle = zlink_poller_new();
+    if (!poller.handle)
+        return false;
+    poller.events.resize(slots.size());
+    poller.indices.resize(slots.size());
+    for (size_t i = 0; i < slots.size(); ++i) {
+        poller.indices[i] = i;
+        if (zlink_poller_add_spot_sub(
+              poller.handle,
+              slots[i].sub,
+              &poller.indices[i],
+              ZLINK_POLLIN)
+            != 0) {
+            zlink_poller_destroy(&poller.handle);
+            return false;
+        }
+    }
+
     while (std::chrono::steady_clock::now() < deadline) {
-        bool progressed = false;
-        for (size_t i = 0; i < slots.size(); ++i) {
+        const auto now = std::chrono::steady_clock::now();
+        int poll_timeout_ms = 1;
+        if (deadline > now) {
+            const long remain_ms =
+              std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now)
+                .count();
+            if (remain_ms >= 0)
+                poll_timeout_ms =
+                  std::max(0, std::min(settings.client_poll_timeout_ms, static_cast<int>(remain_ms)));
+        }
+        const int prc = zlink_poller_wait_all(
+          poller.handle,
+          poller.events.empty() ? NULL : &poller.events[0],
+          static_cast<int>(poller.events.size()),
+          poll_timeout_ms);
+        if (prc < 0) {
+            if (zlink_errno() == EINTR)
+                continue;
+            zlink_poller_destroy(&poller.handle);
+            return false;
+        }
+        for (int event_index = 0; event_index < prc; ++event_index) {
+            zlink_poller_event_t &event = poller.events[event_index];
+            if ((event.events & ZLINK_POLLIN) == 0 || !event.user_data)
+                continue;
+            const size_t i = *static_cast<size_t *>(event.user_data);
             long matched_now = 0;
             long consumed_now = 0;
             if (!drain_spot_sub_non_blocking(slots[i].sub,
@@ -729,20 +799,18 @@ inline bool wait_for_msg_size_start(const std::vector<spot_client_slot_t> &slots
                                              NULL,
                                              NULL,
                                              NULL,
-                                             &deadline,
-                                             recv_batch_limit)) {
+                                             &deadline)) {
+                zlink_poller_destroy(&poller.handle);
                 return false;
             }
-            if (matched_now > 0)
+            if (matched_now > 0) {
+                zlink_poller_destroy(&poller.handle);
                 return true;
-            if (consumed_now > 0)
-                progressed = true;
+            }
         }
-
-        if (!progressed)
-            std::this_thread::yield();
     }
 
+    zlink_poller_destroy(&poller.handle);
     return false;
 }
 
@@ -877,8 +945,11 @@ inline bool setup_spot_runtime(ctx_guard_t &ctx,
                   << provider_endpoint << std::endl;
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(
-      std::max(100, settings.settle_ms)));
+    if (zlink_poll(NULL, 0, std::max(100, settings.settle_ms)) < 0
+        && zlink_errno() != EINTR) {
+        cleanup_spot_runtime(slots_out, discovery_out);
+        return false;
+    }
     run_spot_debug_probe(*slots_out, msg_sizes.empty() ? 64 : msg_sizes[0]);
 
     return true;

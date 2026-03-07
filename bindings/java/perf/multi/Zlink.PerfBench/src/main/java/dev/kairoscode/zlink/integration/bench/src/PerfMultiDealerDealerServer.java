@@ -3,6 +3,8 @@
 package dev.kairoscode.zlink.integration.bench.src;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.PollEventType;
+import dev.kairoscode.zlink.Poller;
 import dev.kairoscode.zlink.ReceiveFlag;
 import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.SocketType;
@@ -16,7 +18,7 @@ import dev.kairoscode.zlink.options.SocketOptions;
 
 /**
  * MULTI_DEALER_DEALER server benchmark.
- * DEALER(bind) receives one-way payloads and reports server-side metrics.
+ * DEALER(bind) receives one-way payloads with PollIn + nonblocking drain.
  */
 public final class PerfMultiDealerDealerServer {
     private static final String PATTERN = "MULTI_DEALER_DEALER";
@@ -44,13 +46,17 @@ public final class PerfMultiDealerDealerServer {
         int warmupSeconds = PerfMultiCommon.resolveWarmupSeconds();
         int settleMs = PerfMultiCommon.resolveSettleMs();
         int durationSeconds = PerfMultiCommon.resolveDurationSeconds();
+        int pollTimeoutMs = Math.max(1,
+            PerfMultiCommon.resolveClientPollTimeoutMs());
 
         try (Context context = new Context();
-             Socket server = new Socket(context, SocketType.DEALER)) {
+             Socket server = new Socket(context, SocketType.DEALER);
+             Poller poller = new Poller()) {
             PerfCommon.applyServerContextOptions(context);
             applySocketOptions(server);
             PerfMultiTls.configureTlsServerIfNeeded(server, transport);
             server.bind(endpoint);
+            poller.add(server, PollEventType.POLLIN);
             System.out.println("READY," + endpoint);
 
             byte[] payload = new byte[resolvePayloadSize(msgSize)];
@@ -73,49 +79,54 @@ public final class PerfMultiDealerDealerServer {
             long lastReceiveNs = serverStartNs;
             long activeDurationNs =
                 (long) Math.max(1, durationSeconds) * NANOSECONDS_PER_SECOND;
+            boolean sawTraffic = false;
 
             while (true) {
-                int n = receiveOnce(server, payload);
                 long nowNs = System.nanoTime();
-                if (n <= 0) {
-                    if (activeStartNs == 0) {
+                if (poller.pollCount(pollTimeoutMs) <= 0) {
+                    if (!sawTraffic) {
                         if (nowNs >= startupDeadlineNs) {
                             break;
                         }
-                    } else if (nowNs >= activeEndNs
+                    } else if ((activeStartNs == 0
+                        || nowNs >= activeEndNs)
                         && nowNs - lastReceiveNs >= ACTIVE_IDLE_GRACE_NS) {
                         break;
                     }
                     continue;
                 }
-                lastReceiveNs = nowNs;
-                if (n < HEADER_BYTES
-                    || !PerfMultiMetricHeader.decodePayloadHeader(payload,
-                    header)) {
-                    continue;
+                while (true) {
+                    int n = receiveNonBlocking(server, payload);
+                    if (n <= 0) {
+                        break;
+                    }
+                    nowNs = System.nanoTime();
+                    sawTraffic = true;
+                    lastReceiveNs = nowNs;
+                    if (n < HEADER_BYTES
+                        || !PerfMultiMetricHeader.decodePayloadHeader(payload,
+                        header)
+                        || header.msgSize != msgSize) {
+                        continue;
+                    }
+                    if (activeRunId < 0) {
+                        activeRunId = header.runId;
+                    }
+                    if (header.runId != activeRunId
+                        || header.phase != PerfMultiMetricHeader.PHASE_ACTIVE) {
+                        continue;
+                    }
+                    if (activeStartNs == 0) {
+                        activeStartNs = nowNs;
+                        activeEndNs = activeStartNs + activeDurationNs;
+                    }
+                    if (nowNs > activeEndNs) {
+                        continue;
+                    }
+                    long nowUs = PerfMultiMetricHeader.nowUs();
+                    reservoir.add(Math.max(0L, nowUs - header.sentTsUs));
+                    activeCount++;
                 }
-                if (header.msgSize != msgSize) {
-                    continue;
-                }
-                if (activeRunId < 0) {
-                    activeRunId = header.runId;
-                }
-                if (header.runId != activeRunId) {
-                    continue;
-                }
-                if (header.phase != PerfMultiMetricHeader.PHASE_ACTIVE) {
-                    continue;
-                }
-                if (activeStartNs == 0) {
-                    activeStartNs = nowNs;
-                    activeEndNs = activeStartNs + activeDurationNs;
-                }
-                if (nowNs > activeEndNs) {
-                    continue;
-                }
-                long nowUs = PerfMultiMetricHeader.nowUs();
-                reservoir.add(Math.max(0L, nowUs - header.sentTsUs));
-                activeCount++;
             }
 
             if (activeCount <= 0) {
@@ -151,10 +162,11 @@ public final class PerfMultiDealerDealerServer {
         return PerfCommon.endpointFor(transport, name);
     }
 
-    private static int receiveOnce(Socket socket, byte[] buffer) {
+    private static int receiveNonBlocking(Socket socket, byte[] buffer) {
         while (true) {
             try {
-                return socket.recv(buffer, 0, buffer.length, ReceiveFlag.NONE);
+                return socket.recv(buffer, 0, buffer.length,
+                    ReceiveFlag.DONTWAIT);
             } catch (ZlinkException ex) {
                 int errno = ex.errno();
                 if (isInterrupted(errno)) {

@@ -208,10 +208,7 @@ public final class PerfMultiPubSubClient {
         }
         long deadline = System.nanoTime() + durationNs;
         while (System.nanoTime() < deadline) {
-            long drained = drainReadySockets(poller, recv, pollTimeoutMs);
-            if (drained <= 0) {
-                Thread.onSpinWait();
-            }
+            drainReadySockets(poller, recv, pollTimeoutMs);
         }
     }
 
@@ -227,11 +224,9 @@ public final class PerfMultiPubSubClient {
         int activeRunId = -1;
 
         while (System.nanoTime() < deadline) {
-            boolean progressed = false;
-            List<Poller.PollEvent> events = poller.poll(config.pollTimeoutMs);
-            int eventCount = events.size();
+            int eventCount = poller.pollCount(config.pollTimeoutMs);
             for (int i = 0; i < eventCount; i++) {
-                Socket socket = events.get(i).socket();
+                Socket socket = poller.readySocket(i);
                 if (socket == null) {
                     continue;
                 }
@@ -240,7 +235,6 @@ public final class PerfMultiPubSubClient {
                     if (n <= 0) {
                         break;
                     }
-                    progressed = true;
                     if (!isActiveSample(n, recv, header, msgSize)) {
                         continue;
                     }
@@ -254,9 +248,6 @@ public final class PerfMultiPubSubClient {
                     reservoir.add(Math.max(0L, nowUs - header.sentTsUs));
                     count++;
                 }
-            }
-            if (!progressed) {
-                Thread.onSpinWait();
             }
         }
 
@@ -275,10 +266,9 @@ public final class PerfMultiPubSubClient {
     private static long drainReadySockets(Poller poller, byte[] buffer,
                                           int pollTimeoutMs) {
         long drainedCount = 0;
-        List<Poller.PollEvent> events = poller.poll(pollTimeoutMs);
-        int eventCount = events.size();
+        int eventCount = poller.pollCount(pollTimeoutMs);
         for (int i = 0; i < eventCount; i++) {
-            Socket socket = events.get(i).socket();
+            Socket socket = poller.readySocket(i);
             if (socket == null) {
                 continue;
             }

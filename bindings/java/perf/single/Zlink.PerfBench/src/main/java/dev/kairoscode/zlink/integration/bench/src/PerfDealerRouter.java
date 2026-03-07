@@ -3,6 +3,8 @@
 package dev.kairoscode.zlink.integration.bench.src;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.ReceiveFlag;
 import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.Socket;
@@ -23,6 +25,10 @@ public final class PerfDealerRouter {
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+    private static final int CONNECT_MONITOR_EVENTS =
+        MonitorEventType.CONNECTION_READY.getValue()
+            | MonitorEventType.CONNECTED.getValue()
+            | MonitorEventType.ACCEPTED.getValue();
 
     private PerfDealerRouter() {
     }
@@ -30,7 +36,8 @@ public final class PerfDealerRouter {
     public static int run(String transport, int msgSize) {
         try (Context context = new Context();
              Socket router = new Socket(context, SocketType.ROUTER);
-             Socket dealer = new Socket(context, SocketType.DEALER)) {
+             Socket dealer = new Socket(context, SocketType.DEALER);
+             MonitorSocket dealerMonitor = dealer.monitorOpen(CONNECT_MONITOR_EVENTS)) {
             PerfCommon.applySingleContextOptions(context);
             PerfCommon.applySingleSocketOptions(router);
             PerfCommon.applySingleSocketOptions(dealer);
@@ -42,7 +49,9 @@ public final class PerfDealerRouter {
             String endpoint = PerfCommon.endpointFor(transport, "dealer-router");
             router.bind(endpoint);
             dealer.connect(endpoint);
-            Thread.sleep(300);
+            if (!PerfCommon.waitMonitorReady(dealerMonitor, 5000, true)) {
+                return 2;
+            }
 
             int payloadSize = Math.max(msgSize, PerfSingleMetricHeader.HEADER_SIZE);
             byte[] payload = new byte[payloadSize];

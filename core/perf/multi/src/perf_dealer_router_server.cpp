@@ -139,87 +139,238 @@ enum relay_status_t
     relay_progress = 1
 };
 
-inline relay_status_t relay_router_message_non_blocking (void *server)
+enum send_status_t
 {
-    // Identity frame
-    zlink_msg_t identity;
-    if (zlink_msg_init (&identity) != 0)
-        return relay_error;
+    send_done = 0,
+    send_blocked = 1,
+    send_fatal = 2
+};
 
-    int recv_rc = zlink_msg_recv (&identity, server, ZLINK_DONTWAIT);
+struct pending_router_message_t
+{
+    zlink_msg_t identity;
+    zlink_msg_t payload;
+    int send_stage;
+    bool has_identity;
+    bool has_payload;
+
+    pending_router_message_t () :
+        send_stage (0),
+        has_identity (false),
+        has_payload (false)
+    {
+        zlink_msg_init (&identity);
+        zlink_msg_init (&payload);
+    }
+
+    ~pending_router_message_t ()
+    {
+        reset ();
+        zlink_msg_close (&identity);
+        zlink_msg_close (&payload);
+    }
+
+    void reset ()
+    {
+        if (has_identity) {
+            zlink_msg_close (&identity);
+            zlink_msg_init (&identity);
+            has_identity = false;
+        }
+        if (has_payload) {
+            zlink_msg_close (&payload);
+            zlink_msg_init (&payload);
+            has_payload = false;
+        }
+        send_stage = 0;
+    }
+
+    bool move_from (pending_router_message_t *other)
+    {
+        if (!other)
+            return false;
+        reset ();
+        if (other->has_identity) {
+            if (zlink_msg_move (&identity, &other->identity) != 0)
+                return false;
+            has_identity = true;
+        }
+        if (other->has_payload) {
+            if (zlink_msg_move (&payload, &other->payload) != 0) {
+                reset ();
+                return false;
+            }
+            has_payload = true;
+        }
+        send_stage = other->send_stage;
+        other->has_identity = false;
+        other->has_payload = false;
+        other->send_stage = 0;
+        return true;
+    }
+};
+
+inline send_status_t try_send_router_message (void *server,
+                                              pending_router_message_t *message)
+{
+    if (!server || !message || !message->has_identity || !message->has_payload)
+        return send_fatal;
+
+    if (message->send_stage == 0) {
+        const int id_rc =
+          zlink_msg_send (&message->identity, server, ZLINK_SNDMORE | ZLINK_DONTWAIT);
+        if (id_rc < 0) {
+            const int err = zlink_errno ();
+            if (err == EINTR || err == EAGAIN)
+                return send_blocked;
+            return send_fatal;
+        }
+        message->send_stage = 1;
+    }
+
+    const int payload_rc =
+      zlink_msg_send (&message->payload, server, ZLINK_DONTWAIT);
+    if (payload_rc < 0) {
+        const int err = zlink_errno ();
+        if (err == EINTR || err == EAGAIN)
+            return send_blocked;
+        return send_fatal;
+    }
+
+    message->reset ();
+    return send_done;
+}
+
+inline bool enqueue_pending_router_message (
+  pending_router_message_t *pending,
+  size_t capacity,
+  size_t *count_io,
+  pending_router_message_t *message)
+{
+    if (!pending || !count_io || !message || *count_io >= capacity)
+        return false;
+    if (!pending[*count_io].move_from (message))
+        return false;
+    ++(*count_io);
+    return true;
+}
+
+inline void erase_pending_router_message (pending_router_message_t *pending,
+                                          size_t *count_io,
+                                          size_t idx)
+{
+    if (!pending || !count_io || idx >= *count_io)
+        return;
+    const size_t last = *count_io - 1;
+    pending[idx].reset ();
+    if (idx != last)
+        (void) pending[idx].move_from (&pending[last]);
+    pending[last].reset ();
+    --(*count_io);
+}
+
+inline bool flush_pending_router_messages (void *server,
+                                           pending_router_message_t *pending,
+                                           size_t *count_io)
+{
+    if (!server || !pending || !count_io)
+        return false;
+
+    size_t idx = 0;
+    while (idx < *count_io) {
+        const send_status_t send_rc =
+          try_send_router_message (server, &pending[idx]);
+        if (send_rc == send_done) {
+            erase_pending_router_message (pending, count_io, idx);
+            continue;
+        }
+        if (send_rc == send_fatal)
+            return false;
+        ++idx;
+    }
+
+    return true;
+}
+
+inline relay_status_t recv_router_message_non_blocking (
+  void *server,
+  pending_router_message_t *message)
+{
+    if (!message)
+        return relay_error;
+    message->reset ();
+
+    int recv_rc = zlink_msg_recv (&message->identity, server, ZLINK_DONTWAIT);
     while (recv_rc < 0 && zlink_errno () == EINTR)
-        recv_rc = zlink_msg_recv (&identity, server, ZLINK_DONTWAIT);
+        recv_rc = zlink_msg_recv (&message->identity, server, ZLINK_DONTWAIT);
     if (recv_rc < 0) {
         const int err = zlink_errno ();
-        zlink_msg_close (&identity);
         if (err == EAGAIN)
             return relay_idle;
         return relay_error;
     }
+    message->has_identity = true;
 
-    while (!g_stop_requested.load (std::memory_order_acquire)) {
-        const int send_rc = zlink_msg_send (&identity, server, ZLINK_SNDMORE);
-        if (send_rc >= 0)
-            break;
-        const int err = zlink_errno ();
-        if (err == EINTR)
-            continue;
-        if (err == EAGAIN) {
-            std::this_thread::yield ();
-            continue;
-        }
-        zlink_msg_close (&identity);
-        return relay_error;
-    }
-    zlink_msg_close (&identity);
-
-    // Payload frame
-    zlink_msg_t payload;
-    if (zlink_msg_init (&payload) != 0)
+    if (zlink_msg_more (&message->identity) == 0)
         return relay_error;
 
-    recv_rc = zlink_msg_recv (&payload, server, 0);
+    recv_rc = zlink_msg_recv (&message->payload, server, ZLINK_DONTWAIT);
     while (recv_rc < 0 && zlink_errno () == EINTR)
-        recv_rc = zlink_msg_recv (&payload, server, 0);
+        recv_rc = zlink_msg_recv (&message->payload, server, ZLINK_DONTWAIT);
     if (recv_rc < 0) {
-        zlink_msg_close (&payload);
+        message->reset ();
         return relay_error;
     }
-
-    while (!g_stop_requested.load (std::memory_order_acquire)) {
-        const int send_rc = zlink_msg_send (&payload, server, 0);
-        if (send_rc >= 0)
-            break;
-        const int err = zlink_errno ();
-        if (err == EINTR)
-            continue;
-        if (err == EAGAIN) {
-            std::this_thread::yield ();
-            continue;
-        }
-        zlink_msg_close (&payload);
+    message->has_payload = true;
+    if (zlink_msg_more (&message->payload) != 0) {
+        message->reset ();
         return relay_error;
     }
-    zlink_msg_close (&payload);
 
     return relay_progress;
 }
 
-inline bool relay_router_once (void *server, int poll_timeout_ms)
+inline bool relay_router_once (void *server,
+                               pending_router_message_t *pending,
+                               size_t pending_capacity,
+                               size_t *pending_count,
+                               int poll_timeout_ms)
 {
     zlink_pollitem_t item[] = {{server, 0, ZLINK_POLLIN, 0}};
+    if (pending_count && *pending_count > 0)
+        item[0].events |= ZLINK_POLLOUT;
     const int prc = zlink_poll (item, 1, poll_timeout_ms);
     if (prc < 0)
         return zlink_errno () == EINTR;
+
+    if ((item[0].revents & ZLINK_POLLOUT) != 0
+        && pending_count && *pending_count > 0
+        && !flush_pending_router_messages (server, pending, pending_count)) {
+        return false;
+    }
+
     if (prc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
         return true;
 
+    pending_router_message_t request;
     while (!g_stop_requested.load (std::memory_order_acquire)) {
-        const relay_status_t status = relay_router_message_non_blocking (server);
-        if (status == relay_error)
+        const relay_status_t recv_rc =
+          recv_router_message_non_blocking (server, &request);
+        if (recv_rc == relay_error)
             return false;
-        if (status == relay_idle)
+        if (recv_rc == relay_idle)
             break;
+
+        const send_status_t send_rc =
+          try_send_router_message (server, &request);
+        if (send_rc == send_done)
+            continue;
+        if (send_rc == send_fatal)
+            return false;
+        if (!enqueue_pending_router_message (
+              pending, pending_capacity, pending_count, &request)) {
+            return false;
+        }
     }
 
     return true;
@@ -259,17 +410,30 @@ inline bool run_server_loop (void *server,
                              const std::string &lib_name,
                              const std::string &transport)
 {
-    (void) settings;
     if (!server)
         return false;
 
+    const size_t pending_capacity =
+      std::max<size_t> (
+        64,
+        std::max<size_t> (
+          settings.clients,
+          static_cast<size_t> (settings.hwm > 0 ? settings.hwm : 1))
+          * 2);
+    pending_router_message_t *pending =
+      new pending_router_message_t[pending_capacity];
+    size_t pending_count = 0;
+
     while (!g_stop_requested.load (std::memory_order_acquire)) {
         emit_requested_queue_probe (lib_name, transport, server, server);
-        if (!relay_router_once (server, 50)) {
+        if (!relay_router_once (
+              server, pending, pending_capacity, &pending_count, 50)) {
+            delete[] pending;
             return false;
         }
     }
 
+    delete[] pending;
     return true;
 }
 

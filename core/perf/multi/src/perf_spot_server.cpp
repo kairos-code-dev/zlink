@@ -30,6 +30,13 @@ static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
 static const uint32_t k_metric_run_id = 1U;
 
+enum publish_status_t
+{
+    publish_ok = 0,
+    publish_blocked = 1,
+    publish_error = 2
+};
+
 static std::atomic<bool> g_stop_requested(false);
 static std::atomic<bool> g_queue_probe_pending(false);
 static std::atomic<size_t> g_queue_probe_size(0);
@@ -382,7 +389,8 @@ inline bool wait_for_pub_peers(void *node, size_t target_count, int timeout_ms)
             next_debug_log = std::chrono::steady_clock::now()
                              + std::chrono::milliseconds(500);
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        if (zlink_poll(NULL, 0, 5) < 0 && zlink_errno() != EINTR)
+            return false;
     }
 
     size_t count = 0;
@@ -394,52 +402,44 @@ inline bool wait_for_pub_peers(void *node, size_t target_count, int timeout_ms)
     return ok;
 }
 
-inline bool publish_once(void *spot_pub,
-                         const std::string &topic,
-                         std::vector<char> &payload,
-                         size_t current_msg_size,
-                         perf_metric::phase_t phase,
-                         uint64_t *seq)
+inline publish_status_t publish_once(void *spot_pub,
+                                     const std::string &topic,
+                                     std::vector<char> &payload,
+                                     size_t current_msg_size,
+                                     perf_metric::phase_t phase,
+                                     uint64_t seq)
 {
     if (!spot_pub || current_msg_size == 0 || payload.empty())
-        return true;
-    if (!seq)
-        return false;
+        return publish_ok;
 
     const size_t metric_header_size = perf_metric::header_size();
     const size_t send_size =
       std::min(payload.size(), std::max<size_t>(static_cast<size_t>(1), current_msg_size));
     if (send_size < metric_header_size)
-        return false;
+        return publish_error;
     if (!perf_metric::stamp_payload(payload.data(),
-                                          send_size,
-                                          k_metric_run_id,
-                                          phase,
-                                          current_msg_size,
-                                          (*seq)++,
-                                          perf_metric::now_us())) {
-        return false;
+                                    send_size,
+                                    k_metric_run_id,
+                                    phase,
+                                    current_msg_size,
+                                    seq,
+                                    perf_metric::now_us())) {
+        return publish_error;
     }
 
-    while (true) {
-        if (zlink_spot_pub_publish_bytes(spot_pub,
-                                         topic.c_str(),
-                                         payload.data(),
-                                         send_size,
-                                         0)
-            == 0) {
-            return true;
-        }
-
-        const int err = zlink_errno();
-        if (err == EINTR)
-            continue;
-        if (err == EAGAIN || err == ETIMEDOUT) {
-            std::this_thread::yield();
-            return true;
-        }
-        return g_stop_requested.load(std::memory_order_acquire);
+    if (zlink_spot_pub_publish_bytes(spot_pub,
+                                     topic.c_str(),
+                                     payload.data(),
+                                     send_size,
+                                     ZLINK_DONTWAIT)
+        == 0) {
+        return publish_ok;
     }
+
+    const int err = zlink_errno();
+    if (err == EINTR || err == EAGAIN)
+        return publish_blocked;
+    return publish_error;
 }
 
 inline size_t resolve_max_size(const std::vector<size_t> &sizes)
@@ -559,8 +559,18 @@ inline bool run_server_loop(void *spot_pub,
     size_t current_phase_msg_size = 0;
     perf_metric::phase_t current_phase = perf_metric::phase_warmup;
     uint64_t phase_seq = 1;
+    bool send_pending = false;
     if (!phases.empty())
         phase_deadline += phases[0].duration;
+
+    void *poller = zlink_poller_new();
+    if (!poller)
+        return false;
+    if (zlink_poller_add_spot_pub(poller, spot_pub, NULL, 0) != 0) {
+        zlink_poller_destroy(&poller);
+        return false;
+    }
+    zlink_poller_event_t event;
 
     while (!g_stop_requested.load(std::memory_order_acquire)) {
         emit_requested_queue_probe(lib_name,
@@ -568,15 +578,20 @@ inline bool run_server_loop(void *spot_pub,
                                    node);
 
         if (!phases.empty()) {
-            const auto now = std::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
             while (phase_index < phases.size() && now >= phase_deadline) {
                 ++phase_index;
                 if (phase_index < phases.size())
                     phase_deadline += phases[phase_index].duration;
+                send_pending = false;
+                now = std::chrono::steady_clock::now();
             }
 
             if (phase_index >= phases.size()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                if (zlink_poll(NULL, 0, 50) < 0 && zlink_errno() != EINTR) {
+                    zlink_poller_destroy(&poller);
+                    return false;
+                }
                 continue;
             }
 
@@ -587,34 +602,109 @@ inline bool run_server_loop(void *spot_pub,
                 phase_seq = 1;
             }
 
-            if (!phases[phase_index].send_active) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                continue;
+            const bool send_active = phases[phase_index].send_active;
+            if (send_active) {
+                const bool try_send = !send_pending
+                                      || (event.events & ZLINK_POLLOUT) != 0;
+                if (try_send) {
+                    const publish_status_t send_rc = publish_once(
+                      spot_pub,
+                      k_topic,
+                      *payload,
+                      phases[phase_index].msg_size,
+                      phases[phase_index].phase,
+                      phase_seq);
+                    if (send_rc == publish_ok) {
+                        ++phase_seq;
+                        send_pending = false;
+                        event.events = 0;
+                        continue;
+                    }
+                    if (send_rc == publish_error) {
+                        zlink_poller_destroy(&poller);
+                        return false;
+                    }
+                    send_pending = true;
+                }
+            } else {
+                send_pending = false;
             }
 
-            if (!publish_once(spot_pub,
-                              k_topic,
-                              *payload,
-                              phases[phase_index].msg_size,
-                              phases[phase_index].phase,
-                              &phase_seq)) {
+            if (zlink_poller_modify_spot_pub(
+                  poller, spot_pub, send_pending ? ZLINK_POLLOUT : 0)
+                != 0) {
+                zlink_poller_destroy(&poller);
                 return false;
             }
+
+            int timeout_ms = 50;
+            const auto now_for_timeout = std::chrono::steady_clock::now();
+            if (phase_index < phases.size() && phase_deadline > now_for_timeout) {
+                const long remain_ms =
+                  std::chrono::duration_cast<std::chrono::milliseconds>(
+                    phase_deadline - now_for_timeout)
+                    .count();
+                if (remain_ms >= 0)
+                    timeout_ms = std::min(timeout_ms, static_cast<int>(remain_ms));
+            } else if (phase_index < phases.size()) {
+                timeout_ms = 0;
+            }
+
+            const int prc = zlink_poller_wait(
+              poller,
+              &event,
+              send_pending ? timeout_ms : 0);
+            if (prc < 0 && zlink_errno() != EINTR) {
+                zlink_poller_destroy(&poller);
+                return false;
+            }
+            if (prc <= 0)
+                event.events = 0;
             continue;
         }
 
         current_phase = perf_metric::phase_active;
         current_phase_msg_size = payload->size();
-        if (!publish_once(spot_pub,
-                          k_topic,
-                          *payload,
-                          payload->size(),
-                          perf_metric::phase_active,
-                          &phase_seq)) {
+        const bool try_send = !send_pending || (event.events & ZLINK_POLLOUT) != 0;
+        if (try_send) {
+            const publish_status_t send_rc = publish_once(spot_pub,
+                                                          k_topic,
+                                                          *payload,
+                                                          payload->size(),
+                                                          perf_metric::phase_active,
+                                                          phase_seq);
+            if (send_rc == publish_ok) {
+                ++phase_seq;
+                send_pending = false;
+                event.events = 0;
+                continue;
+            }
+            if (send_rc == publish_error) {
+                zlink_poller_destroy(&poller);
+                return false;
+            }
+            send_pending = true;
+        }
+
+        if (zlink_poller_modify_spot_pub(
+              poller, spot_pub, send_pending ? ZLINK_POLLOUT : 0)
+            != 0) {
+            zlink_poller_destroy(&poller);
             return false;
         }
+        const int prc = zlink_poller_wait(
+          poller,
+          &event,
+          send_pending ? 50 : 0);
+        if (prc < 0 && zlink_errno() != EINTR) {
+            zlink_poller_destroy(&poller);
+            return false;
+        }
+        if (prc <= 0)
+            event.events = 0;
     }
 
+    zlink_poller_destroy(&poller);
     return true;
 }
 

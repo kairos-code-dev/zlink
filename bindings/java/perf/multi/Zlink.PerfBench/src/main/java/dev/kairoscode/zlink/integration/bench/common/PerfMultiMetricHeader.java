@@ -2,6 +2,9 @@
 
 package dev.kairoscode.zlink.integration.bench.common;
 
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+
 public final class PerfMultiMetricHeader {
     public static final int HEADER_SIZE = 32;
     public static final int MAGIC = 0x4D504631; // MPF1
@@ -50,6 +53,44 @@ public final class PerfMultiMetricHeader {
         return true;
     }
 
+    public static boolean stampPayload(MemorySegment payload, long payloadLength,
+                                       int runId, int phase, int msgSize,
+                                       long seq, long sentTsUs) {
+        if (payload == null
+            || payload.address() == 0
+            || payloadLength < HEADER_SIZE) {
+            return false;
+        }
+        putIntLe(payload, 0L, MAGIC);
+        putIntLe(payload, 4L, runId);
+        putIntLe(payload, 8L, phase);
+        putIntLe(payload, 12L, msgSize);
+        putLongLe(payload, 16L, seq);
+        putLongLe(payload, 24L, sentTsUs);
+        return true;
+    }
+
+    public static boolean decodePayloadHeader(MemorySegment payload,
+                                              long payloadLength,
+                                              Header out) {
+        if (payload == null
+            || payload.address() == 0
+            || out == null
+            || payloadLength < HEADER_SIZE) {
+            return false;
+        }
+        out.magic = getIntLe(payload, 0L);
+        if (out.magic != MAGIC) {
+            return false;
+        }
+        out.runId = getIntLe(payload, 4L);
+        out.phase = getIntLe(payload, 8L);
+        out.msgSize = getIntLe(payload, 12L);
+        out.seq = getLongLe(payload, 16L);
+        out.sentTsUs = getLongLe(payload, 24L);
+        return true;
+    }
+
     private static void putIntLe(byte[] buf, int offset, int value) {
         buf[offset] = (byte) (value & 0xFF);
         buf[offset + 1] = (byte) ((value >>> 8) & 0xFF);
@@ -84,6 +125,59 @@ public final class PerfMultiMetricHeader {
             | (((long) buf[offset + 5] & 0xFFL) << 40)
             | (((long) buf[offset + 6] & 0xFFL) << 48)
             | (((long) buf[offset + 7] & 0xFFL) << 56);
+    }
+
+    private static void putIntLe(MemorySegment buf, long offset, int value) {
+        buf.set(ValueLayout.JAVA_BYTE, offset, (byte) (value & 0xFF));
+        buf.set(ValueLayout.JAVA_BYTE, offset + 1L,
+            (byte) ((value >>> 8) & 0xFF));
+        buf.set(ValueLayout.JAVA_BYTE, offset + 2L,
+            (byte) ((value >>> 16) & 0xFF));
+        buf.set(ValueLayout.JAVA_BYTE, offset + 3L,
+            (byte) ((value >>> 24) & 0xFF));
+    }
+
+    private static int getIntLe(MemorySegment buf, long offset) {
+        return (buf.get(ValueLayout.JAVA_BYTE, offset) & 0xFF)
+            | ((buf.get(ValueLayout.JAVA_BYTE, offset + 1L) & 0xFF) << 8)
+            | ((buf.get(ValueLayout.JAVA_BYTE, offset + 2L) & 0xFF) << 16)
+            | ((buf.get(ValueLayout.JAVA_BYTE, offset + 3L) & 0xFF) << 24);
+    }
+
+    private static void putLongLe(MemorySegment buf, long offset, long value) {
+        buf.set(ValueLayout.JAVA_BYTE, offset, (byte) (value & 0xFFL));
+        buf.set(ValueLayout.JAVA_BYTE, offset + 1L,
+            (byte) ((value >>> 8) & 0xFFL));
+        buf.set(ValueLayout.JAVA_BYTE, offset + 2L,
+            (byte) ((value >>> 16) & 0xFFL));
+        buf.set(ValueLayout.JAVA_BYTE, offset + 3L,
+            (byte) ((value >>> 24) & 0xFFL));
+        buf.set(ValueLayout.JAVA_BYTE, offset + 4L,
+            (byte) ((value >>> 32) & 0xFFL));
+        buf.set(ValueLayout.JAVA_BYTE, offset + 5L,
+            (byte) ((value >>> 40) & 0xFFL));
+        buf.set(ValueLayout.JAVA_BYTE, offset + 6L,
+            (byte) ((value >>> 48) & 0xFFL));
+        buf.set(ValueLayout.JAVA_BYTE, offset + 7L,
+            (byte) ((value >>> 56) & 0xFFL));
+    }
+
+    private static long getLongLe(MemorySegment buf, long offset) {
+        return ((long) buf.get(ValueLayout.JAVA_BYTE, offset) & 0xFFL)
+            | (((long) buf.get(ValueLayout.JAVA_BYTE, offset + 1L) & 0xFFL)
+            << 8)
+            | (((long) buf.get(ValueLayout.JAVA_BYTE, offset + 2L) & 0xFFL)
+            << 16)
+            | (((long) buf.get(ValueLayout.JAVA_BYTE, offset + 3L) & 0xFFL)
+            << 24)
+            | (((long) buf.get(ValueLayout.JAVA_BYTE, offset + 4L) & 0xFFL)
+            << 32)
+            | (((long) buf.get(ValueLayout.JAVA_BYTE, offset + 5L) & 0xFFL)
+            << 40)
+            | (((long) buf.get(ValueLayout.JAVA_BYTE, offset + 6L) & 0xFFL)
+            << 48)
+            | (((long) buf.get(ValueLayout.JAVA_BYTE, offset + 7L) & 0xFFL)
+            << 56);
     }
 
     public static final class Header {

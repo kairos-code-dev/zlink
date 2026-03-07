@@ -1194,10 +1194,12 @@ int spot_node_t::publish (const char *topic_,
         errno = EINVAL;
         return -1;
     }
-    if (flags_ != 0) {
+    if (flags_ != 0 && flags_ != ZLINK_DONTWAIT) {
         errno = ENOTSUP;
         return -1;
     }
+
+    const int send_flags_base = flags_ & ZLINK_DONTWAIT;
 
     if (_pub_mode.get () == ZLINK_SPOT_NODE_PUB_MODE_ASYNC) {
         async_publish_t pending;
@@ -1272,6 +1274,20 @@ int spot_node_t::publish (const char *topic_,
             return 0;
         }
 
+        if (send_flags_base != 0) {
+            int events = 0;
+            size_t events_size = sizeof (events);
+            if (_pub->getsockopt (ZLINK_EVENTS, &events, &events_size) != 0) {
+                close_parts (&payload);
+                return -1;
+            }
+            if ((events & ZLINK_POLLOUT) == 0) {
+                close_parts (&payload);
+                errno = EAGAIN;
+                return -1;
+            }
+        }
+
         msg_t topic_frame;
         if (topic_frame.init_size (topic.size ()) != 0) {
             close_parts (&payload);
@@ -1280,7 +1296,7 @@ int spot_node_t::publish (const char *topic_,
         if (!topic.empty ())
             memcpy (topic_frame.data (), topic.data (), topic.size ());
 
-        int flags = part_count_ > 0 ? ZLINK_SNDMORE : 0;
+        int flags = (part_count_ > 0 ? ZLINK_SNDMORE : 0) | send_flags_base;
         if (_pub->send (&topic_frame, flags) != 0) {
             topic_frame.close ();
             close_parts (&payload);
@@ -1291,6 +1307,7 @@ int spot_node_t::publish (const char *topic_,
         for (size_t i = 0; i < part_count_; ++i) {
             msg_t &part = *reinterpret_cast<msg_t *> (&parts_[i]);
             flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
+            flags |= send_flags_base;
             if (_pub->send (&part, flags) != 0) {
                 close_parts (&payload);
                 return -1;

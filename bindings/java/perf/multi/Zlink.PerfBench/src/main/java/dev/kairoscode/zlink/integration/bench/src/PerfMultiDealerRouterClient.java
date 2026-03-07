@@ -20,9 +20,7 @@ import dev.kairoscode.zlink.integration.bench.common.PerfMultiTls;
 import dev.kairoscode.zlink.options.SocketOptions;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * MULTI_DEALER_ROUTER client benchmark.
@@ -40,6 +38,15 @@ public final class PerfMultiDealerRouterClient {
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+
+    private static final class PendingSend {
+        boolean pending;
+        final byte[] payload;
+
+        PendingSend(int payloadSize) {
+            this.payload = new byte[payloadSize];
+        }
+    }
 
     private PerfMultiDealerRouterClient() {
     }
@@ -95,15 +102,16 @@ public final class PerfMultiDealerRouterClient {
                 }
 
                 Poller poller = new Poller();
-                Map<Socket, Integer> socketToIndex = new IdentityHashMap<>();
                 for (int i = 0; i < activeSockets.size(); i++) {
-                    Socket socket = activeSockets.get(i);
-                    poller.add(socket, PollEventType.POLLIN);
-                    socketToIndex.put(socket, i);
+                    poller.add(activeSockets.get(i), PollEventType.POLLIN.getValue(),
+                        Integer.valueOf(i));
                 }
 
-                byte[] payload = new byte[payloadSize];
                 byte[] recv = new byte[payloadSize];
+                PendingSend[] pendingSends = new PendingSend[activeSockets.size()];
+                for (int i = 0; i < pendingSends.length; i++) {
+                    pendingSends[i] = new PendingSend(payloadSize);
+                }
                 int runId = (int) (PerfMultiMetricHeader.nowUs() & 0x7FFF_FFFFL);
                 long seq = 1;
                 int index = 0;
@@ -115,38 +123,37 @@ public final class PerfMultiDealerRouterClient {
                 while (System.nanoTime() < warmupDeadline) {
                     boolean progressed = false;
                     Socket socket = activeSockets.get(index);
-                    if (!awaitingReply[index]) {
-                        PerfMultiMetricHeader.stampPayload(payload, runId,
+                    PendingSend pending = pendingSends[index];
+                    if (!awaitingReply[index] && !pending.pending) {
+                        PerfMultiMetricHeader.stampPayload(pending.payload, runId,
                             PerfMultiMetricHeader.PHASE_WARMUP, msgSize, seq++,
                             PerfMultiMetricHeader.nowUs());
-                        sendBlocking(socket, payload, SendFlag.NONE);
-                        awaitingReply[index] = true;
-                        progressed = true;
+                        progressed = tryStartSend(poller, socket, index, pending,
+                            awaitingReply);
                     }
                     index = (index + 1) % activeSockets.size();
 
-                    List<Poller.PollEvent> events = poller.poll(pollTimeoutMs);
-                    int eventCount = events.size();
+                    int eventCount = poller.pollCount(pollTimeoutMs);
                     for (int i = 0; i < eventCount; i++) {
-                        Socket readySocket = events.get(i).socket();
+                        Socket readySocket = poller.readySocket(i);
                         if (readySocket == null) {
                             continue;
                         }
-                        Integer socketIndex = socketToIndex.get(readySocket);
+                        int socketIndex = (Integer) poller.readyTag(i);
+                        if ((poller.readyRevents(i) & PollEventType.POLLOUT.getValue()) != 0
+                            && pendingSends[socketIndex].pending) {
+                            progressed |= tryFlushPending(poller, readySocket,
+                                socketIndex, pendingSends[socketIndex],
+                                awaitingReply);
+                        }
                         while (true) {
                             int n = receiveNonBlocking(readySocket, recv);
                             if (n <= 0) {
                                 break;
                             }
                             progressed = true;
-                            if (socketIndex != null) {
-                                awaitingReply[socketIndex] = false;
-                            }
+                            awaitingReply[socketIndex] = false;
                         }
-                    }
-
-                    if (!progressed) {
-                        Thread.onSpinWait();
                     }
                 }
 
@@ -169,33 +176,36 @@ public final class PerfMultiDealerRouterClient {
                 while (System.nanoTime() < benchDeadline) {
                     boolean progressed = false;
                     Socket socket = activeSockets.get(index);
-                    if (!awaitingReply[index]) {
-                        PerfMultiMetricHeader.stampPayload(payload, runId,
+                    PendingSend pending = pendingSends[index];
+                    if (!awaitingReply[index] && !pending.pending) {
+                        PerfMultiMetricHeader.stampPayload(pending.payload, runId,
                             PerfMultiMetricHeader.PHASE_ACTIVE, msgSize, seq++,
                             PerfMultiMetricHeader.nowUs());
-                        sendBlocking(socket, payload, SendFlag.NONE);
-                        awaitingReply[index] = true;
-                        progressed = true;
+                        progressed = tryStartSend(poller, socket, index, pending,
+                            awaitingReply);
                     }
                     index = (index + 1) % activeSockets.size();
 
-                    List<Poller.PollEvent> events = poller.poll(pollTimeoutMs);
-                    int eventCount = events.size();
+                    int eventCount = poller.pollCount(pollTimeoutMs);
                     for (int i = 0; i < eventCount; i++) {
-                        Socket readySocket = events.get(i).socket();
+                        Socket readySocket = poller.readySocket(i);
                         if (readySocket == null) {
                             continue;
                         }
-                        Integer socketIndex = socketToIndex.get(readySocket);
+                        int socketIndex = (Integer) poller.readyTag(i);
+                        if ((poller.readyRevents(i) & PollEventType.POLLOUT.getValue()) != 0
+                            && pendingSends[socketIndex].pending) {
+                            progressed |= tryFlushPending(poller, readySocket,
+                                socketIndex, pendingSends[socketIndex],
+                                awaitingReply);
+                        }
                         while (true) {
                             int n = receiveNonBlocking(readySocket, recv);
                             if (n <= 0) {
                                 break;
                             }
                             progressed = true;
-                            if (socketIndex != null) {
-                                awaitingReply[socketIndex] = false;
-                            }
+                            awaitingReply[socketIndex] = false;
                             if (n >= HEADER_BYTES
                                 && PerfMultiMetricHeader.decodePayloadHeader(recv, header)
                                 && header.runId == runId
@@ -206,14 +216,10 @@ public final class PerfMultiDealerRouterClient {
                             }
                         }
                     }
-
-                    if (!progressed) {
-                        Thread.onSpinWait();
-                    }
                 }
 
                 try {
-                    sendBlocking(activeSockets.get(0), STOP_TOKEN, SendFlag.NONE);
+                    sendImmediate(activeSockets.get(0), STOP_TOKEN);
                 } catch (RuntimeException ignored) {
                 }
 
@@ -247,11 +253,59 @@ public final class PerfMultiDealerRouterClient {
             PerfMultiCommon.resolveRcvTimeoutMs());
     }
 
-    private static void sendBlocking(Socket socket, byte[] payload,
-                                     SendFlag flags) {
-        SendFlag op = flags == null ? SendFlag.NONE : flags;
-        int written = socket.send(payload, 0, payload.length, op);
-        if (written <= 0) {
+    private static boolean tryStartSend(Poller poller, Socket socket, int index,
+                                        PendingSend pending,
+                                        boolean[] awaitingReply) {
+        if (trySendNonBlocking(socket, pending.payload)) {
+            awaitingReply[index] = true;
+            return true;
+        }
+        if (!pending.pending) {
+            pending.pending = true;
+            poller.modify(socket, PollEventType.POLLIN, PollEventType.POLLOUT);
+        }
+        return false;
+    }
+
+    private static boolean tryFlushPending(Poller poller, Socket socket,
+                                           int index, PendingSend pending,
+                                           boolean[] awaitingReply) {
+        if (!pending.pending) {
+            return false;
+        }
+        if (!trySendNonBlocking(socket, pending.payload)) {
+            return false;
+        }
+        pending.pending = false;
+        awaitingReply[index] = true;
+        poller.modify(socket, PollEventType.POLLIN);
+        return true;
+    }
+
+    private static boolean trySendNonBlocking(Socket socket, byte[] payload) {
+        while (true) {
+            try {
+                int written = socket.send(payload, 0, payload.length,
+                    SendFlag.DONTWAIT);
+                if (written != payload.length) {
+                    throw new IllegalStateException("send_failed");
+                }
+                return true;
+            } catch (ZlinkException ex) {
+                if (isInterrupted(ex.errno())) {
+                    continue;
+                }
+                if (isWouldBlock(ex.errno())) {
+                    return false;
+                }
+                throw ex;
+            }
+        }
+    }
+
+    private static void sendImmediate(Socket socket, byte[] payload) {
+        int written = socket.send(payload, 0, payload.length, SendFlag.NONE);
+        if (written != payload.length) {
             throw new IllegalStateException("send_failed");
         }
     }

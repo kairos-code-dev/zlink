@@ -128,7 +128,9 @@ internal static class PerfGatewayServer
         long idleBreakTicks = (long)(Stopwatch.Frequency
             * (Math.Max(config.RcvTimeoutMs * 2, 1000) / 1000.0));
         var latencySamples = new List<double>(config.LatencySampleCap);
-        var pendingReplies = new List<PendingGatewayReply>();
+        PendingGatewayReply[] pendingReplies =
+            CreatePendingReplies(config.ClientCount, payload.Length);
+        int pendingReplyCount = 0;
         using var poller = new Poller();
         var events = new List<PollEvent>(2);
         long sampleSeen = 0;
@@ -138,15 +140,15 @@ internal static class PerfGatewayServer
 
         while (true)
         {
-            FlushPendingReplies(gateway, pendingReplies);
+            FlushPendingReplies(gateway, pendingReplies, ref pendingReplyCount);
             poller.ModifyGateway(gateway,
-                pendingReplies.Count > 0 ? PollEvents.PollOut : PollEvents.None);
+                pendingReplyCount > 0 ? PollEvents.PollOut : PollEvents.None);
 
             if (activeHardStopTicks > 0
                 && Stopwatch.GetTimestamp() >= activeHardStopTicks)
                 break;
 
-            int pollTimeoutMs = pendingReplies.Count > 0 ? 0 : 2;
+            int pollTimeoutMs = pendingReplyCount > 0 ? 0 : 2;
             if (!WaitForEvents(poller, events, pollTimeoutMs))
             {
                 long nowTicks = Stopwatch.GetTimestamp();
@@ -177,7 +179,7 @@ internal static class PerfGatewayServer
                         clientServiceNames.Length, out int clientIndex))
                     continue;
                 EnqueueOrSendGatewayReply(gateway, pendingReplies,
-                    clientServiceNames[clientIndex], body);
+                    ref pendingReplyCount, clientServiceNames[clientIndex], body);
                 if (!TryDecodeMetricHeader(body, out PerfMetricHeader header))
                     continue;
                 if (header.RunId != ExpectedRunId
@@ -343,33 +345,61 @@ Done:
     }
 
     private static void EnqueueOrSendGatewayReply(Gateway gateway,
-        List<PendingGatewayReply> pendingReplies, string serviceName,
+        PendingGatewayReply[] pendingReplies, ref int pendingReplyCount,
+        string serviceName,
         ReadOnlySpan<byte> payload)
     {
         if (!TrySendGatewayEcho(gateway, serviceName, payload))
-            pendingReplies.Add(new PendingGatewayReply(serviceName,
-                payload.ToArray()));
+            EnqueuePendingReply(pendingReplies, ref pendingReplyCount,
+                serviceName, payload);
     }
 
     private static void FlushPendingReplies(Gateway gateway,
-        List<PendingGatewayReply> pendingReplies)
+        PendingGatewayReply[] pendingReplies, ref int pendingReplyCount)
     {
-        for (int i = 0; i < pendingReplies.Count;)
+        for (int i = 0; i < pendingReplyCount;)
         {
             PendingGatewayReply reply = pendingReplies[i];
             if (!TryGatewayReady(gateway, reply.ServiceName)
-                || !TrySendGatewayEcho(gateway, reply.ServiceName, reply.Payload))
+                || !TrySendGatewayEcho(gateway, reply.ServiceName,
+                    reply.Payload.AsSpan(0, reply.PayloadLength)))
             {
                 i++;
                 continue;
             }
 
-            pendingReplies.RemoveAt(i);
+            pendingReplyCount--;
+            if (i != pendingReplyCount)
+                pendingReplies[i].CopyFrom(pendingReplies[pendingReplyCount]);
+            pendingReplies[pendingReplyCount].Clear();
         }
+    }
+
+    private static PendingGatewayReply[] CreatePendingReplies(int count,
+        int payloadCapacity)
+    {
+        int capacity = Math.Max(1, count);
+        var replies = new PendingGatewayReply[capacity];
+        for (int i = 0; i < replies.Length; i++)
+            replies[i] = new PendingGatewayReply(payloadCapacity);
+        return replies;
+    }
+
+    private static void EnqueuePendingReply(PendingGatewayReply[] pendingReplies,
+        ref int pendingReplyCount, string serviceName, ReadOnlySpan<byte> payload)
+    {
+        if (pendingReplyCount >= pendingReplies.Length)
+            throw new InvalidOperationException("gateway_pending_reply_overflow");
+
+        pendingReplies[pendingReplyCount].Set(serviceName, payload);
+        pendingReplyCount++;
     }
 
     private static bool TryGatewayReady(Gateway gateway, string serviceName)
     {
+        if (string.IsNullOrEmpty(serviceName))
+            throw new InvalidOperationException("gateway_empty_service_name:ready");
+
         try
         {
             return gateway.ConnectionCount(serviceName) > 0;
@@ -385,6 +415,9 @@ Done:
     private static bool TrySendGatewayEcho(Gateway gateway, string serviceName,
         ReadOnlySpan<byte> payload)
     {
+        if (string.IsNullOrEmpty(serviceName))
+            throw new InvalidOperationException("gateway_empty_service_name:send");
+
         try
         {
             gateway.Send(serviceName, payload, SendFlags.DontWait);
@@ -457,15 +490,35 @@ Done:
         internal double LatencyP99Us { get; }
     }
 
-    private readonly struct PendingGatewayReply
+    private sealed class PendingGatewayReply
     {
-        internal PendingGatewayReply(string serviceName, byte[] payload)
+        internal PendingGatewayReply(int payloadCapacity)
         {
-            ServiceName = serviceName;
-            Payload = payload;
+            Payload = new byte[Math.Max(1, payloadCapacity)];
         }
 
-        internal string ServiceName { get; }
+        internal string ServiceName { get; private set; } = string.Empty;
         internal byte[] Payload { get; }
+        internal int PayloadLength { get; private set; }
+
+        internal void Set(string serviceName, ReadOnlySpan<byte> payload)
+        {
+            ServiceName = serviceName;
+            payload.CopyTo(Payload);
+            PayloadLength = payload.Length;
+        }
+
+        internal void Clear()
+        {
+            ServiceName = string.Empty;
+            PayloadLength = 0;
+        }
+
+        internal void CopyFrom(PendingGatewayReply other)
+        {
+            ServiceName = other.ServiceName;
+            other.Payload.AsSpan(0, other.PayloadLength).CopyTo(Payload);
+            PayloadLength = other.PayloadLength;
+        }
     }
 }

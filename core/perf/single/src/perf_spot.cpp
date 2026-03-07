@@ -146,14 +146,12 @@ static bool wait_for_service_receivers(void *discovery,
     const auto deadline =
       std::chrono::steady_clock::now()
       + std::chrono::milliseconds(std::max(1000, timeout_ms));
-    int sleep_ms = 1;
     while (std::chrono::steady_clock::now() < deadline) {
         const int count = zlink_discovery_receiver_count(discovery, service_name);
         if (count >= target)
             return true;
-        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
-        if (sleep_ms < 20)
-            sleep_ms = std::min(20, sleep_ms * 2);
+        if (zlink_poll(NULL, 0, 1) < 0 && zlink_errno() != EINTR)
+            return false;
     }
 
     return zlink_discovery_receiver_count(discovery, service_name) >= target;
@@ -167,16 +165,14 @@ static bool wait_for_sub_peer_ready(void *node, int timeout_ms)
     const auto deadline =
       std::chrono::steady_clock::now()
       + std::chrono::milliseconds(std::max(1000, timeout_ms));
-    int sleep_ms = 1;
     while (std::chrono::steady_clock::now() < deadline) {
         size_t peer_count = 0;
         if (zlink_spot_node_sub_peers(node, NULL, &peer_count) == 0
             && peer_count > 0) {
             return true;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
-        if (sleep_ms < 20)
-            sleep_ms = std::min(20, sleep_ms * 2);
+        if (zlink_poll(NULL, 0, 1) < 0 && zlink_errno() != EINTR)
+            return false;
     }
 
     size_t peer_count = 0;
@@ -252,53 +248,6 @@ static bool send_spot(void *spot_pub,
            == 0;
 }
 
-// Return codes: 1=sent, 0=transient backpressure/interruption, -1=fatal.
-static int send_spot_try(void *spot_pub,
-                         const std::string &topic,
-                         const std::vector<char> &payload,
-                         size_t msg_size)
-{
-    if (send_spot(spot_pub, topic, payload, msg_size))
-        return 1;
-    const int err = zlink_errno();
-    if (err == EAGAIN || err == EINTR)
-        return 0;
-    return -1;
-}
-
-static bool recv_spot_with_timeout_polling(void *spot_sub, int timeout_ms)
-{
-    const int poll_sleep_us =
-      resolve_bench_count("PERF_SPOT_POLL_SLEEP_US", 0);
-    const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-
-    while (true) {
-        zlink_msg_t *parts = NULL;
-        size_t count = 0;
-        const int rc = zlink_spot_sub_recv(spot_sub, &parts, &count,
-                                           ZLINK_DONTWAIT,
-                                           NULL, NULL);
-        if (rc == 0) {
-            if (parts)
-                zlink_multipart_close(parts, count);
-            return true;
-        }
-
-        if (zlink_errno() != EAGAIN)
-            return false;
-        if (std::chrono::steady_clock::now() >= deadline)
-            return false;
-
-        if (poll_sleep_us > 0) {
-            std::this_thread::sleep_for(
-              std::chrono::microseconds(poll_sleep_us));
-        } else {
-            std::this_thread::sleep_for(std::chrono::microseconds(50));
-        }
-    }
-}
-
 static int recv_spot_header_flags (void *spot_sub,
                                    size_t payload_size,
                                    int flags,
@@ -360,27 +309,34 @@ static bool ensure_spot_subscription_ready(void *spot_pub,
                                            const std::vector<char> &payload,
                                            int recv_timeout_ms)
 {
+    (void) recv_timeout_ms;
     const int ready_timeout_ms =
       resolve_bench_count("PERF_SPOT_READY_TIMEOUT_MS", 2000);
-    const int per_try_timeout_ms =
-      recv_timeout_ms > 0 ? std::min(recv_timeout_ms, 50) : 50;
     const auto deadline =
       std::chrono::steady_clock::now()
       + std::chrono::milliseconds(ready_timeout_ms > 0 ? ready_timeout_ms
                                                        : 2000);
-    int sleep_ms = 1;
 
     while (std::chrono::steady_clock::now() < deadline) {
-        const int send_rc = send_spot_try(spot_pub, topic, payload, 1);
-        if (send_rc > 0
-            && recv_spot_with_timeout_polling(spot_sub, per_try_timeout_ms)) {
-            return true;
-        }
-        if (send_rc < 0)
+        if (send_spot(spot_pub, topic, payload, 1)) {
+            zlink_msg_t *parts = NULL;
+            size_t count = 0;
+            const int recv_rc =
+              zlink_spot_sub_recv(spot_sub, &parts, &count, 0, NULL, NULL);
+            if (recv_rc == 0) {
+                if (parts)
+                    zlink_multipart_close(parts, count);
+                return true;
+            }
+            if (parts)
+                zlink_multipart_close(parts, count);
+            if (zlink_errno() == EINTR || zlink_errno() == EAGAIN)
+                continue;
             return false;
-        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
-        if (sleep_ms < 10)
-            sleep_ms = std::min(10, sleep_ms * 2);
+        }
+        if (zlink_errno() == EINTR || zlink_errno() == EAGAIN)
+            continue;
+        return false;
     }
 
     return false;
@@ -404,6 +360,7 @@ static bool run_spot_oneway_phase (void *spot_pub,
 {
     if (!spot_pub || !spot_sub || !payload || !seq || !out_received)
         return false;
+    (void) recv_timeout_ms;
 
     const bool active_phase = phase == perf_single_metric::phase_active;
     const auto deadline =
@@ -411,167 +368,103 @@ static bool run_spot_oneway_phase (void *spot_pub,
         ? std::chrono::steady_clock::now ()
             + std::chrono::seconds (duration_s > 0 ? duration_s : 1)
         : std::chrono::steady_clock::time_point ();
-    const auto drain_idle_limit = std::chrono::milliseconds (
-      recv_timeout_ms > 0 ? recv_timeout_ms : 200);
-
-    std::atomic<bool> sender_done (false);
-    std::atomic<bool> recv_failed (false);
     unsigned long long received = 0;
     latency_stats_builder_t latency_builder;
+    if (active_phase && queue_probe)
+        queue_probe->force_sample_send ();
+    if (active_phase && queue_probe)
+        queue_probe->force_sample_recv ();
 
-    std::thread receiver ([&] () {
-        auto last_recv_at = std::chrono::steady_clock::now ();
+    auto account_header =
+      [&] (const perf_single_metric::header_t &header, bool header_ok) {
+          if (active_phase && queue_probe)
+              queue_probe->sample_recv_if_due ();
 
-        auto account_header =
-          [&] (const perf_single_metric::header_t &header, bool header_ok) {
-              if (active_phase && queue_probe)
-                  queue_probe->sample_recv_if_due ();
+          if (!header_ok || header.magic != perf_single_metric::k_magic
+              || header.phase != static_cast<uint32_t> (phase)) {
+              return;
+          }
 
-              if (!header_ok || header.magic != perf_single_metric::k_magic
-                  || header.phase != static_cast<uint32_t> (phase)) {
-                  return;
-              }
+          ++received;
+          if (!active_phase)
+              return;
 
-              if (active_phase) {
-                  if (std::chrono::steady_clock::now () < deadline) {
-                      ++received;
-                      const uint64_t now = perf_single_metric::now_us ();
-                      const double latency_us =
-                        now >= header.sent_ts_us
-                          ? static_cast<double> (now - header.sent_ts_us)
-                          : 0.0;
-                      latency_builder.add (latency_us);
-                  }
-              } else {
-                  ++received;
-              }
-          };
+          const uint64_t now = perf_single_metric::now_us ();
+          const double latency_us =
+            now >= header.sent_ts_us
+              ? static_cast<double> (now - header.sent_ts_us)
+              : 0.0;
+          latency_builder.add (latency_us);
+      };
 
-        if (active_phase && queue_probe)
-            queue_probe->force_sample_recv ();
-
-        while (true) {
-            const bool done = sender_done.load (std::memory_order_acquire);
-            const int flags = 0;
-
-            perf_single_metric::header_t header;
-            bool header_ok = false;
-            const int recv_rc = recv_spot_header_flags (
-              spot_sub, payload_size, flags, &header, &header_ok);
-            if (recv_rc > 0) {
-                last_recv_at = std::chrono::steady_clock::now ();
-                account_header (header, header_ok);
-
-                for (;;) {
-                    perf_single_metric::header_t burst_header;
-                    bool burst_header_ok = false;
-                    const int burst_rc = recv_spot_header_flags (
-                      spot_sub,
-                      payload_size,
-                      ZLINK_DONTWAIT,
-                      &burst_header,
-                      &burst_header_ok);
-                    if (burst_rc > 0) {
-                        last_recv_at = std::chrono::steady_clock::now ();
-                        account_header (burst_header, burst_header_ok);
-                        continue;
-                    }
-                    if (burst_rc == 0)
-                        break;
-
-                    recv_failed.store (true, std::memory_order_release);
-                    break;
-                }
-
-                if (recv_failed.load (std::memory_order_acquire))
-                    break;
-                continue;
-            }
-
-            if (recv_rc == 0) {
-                if (done
-                    && std::chrono::steady_clock::now () - last_recv_at
-                         >= drain_idle_limit) {
-                    break;
-                }
-                continue;
-            }
-
-            recv_failed.store (true, std::memory_order_release);
+    unsigned long long iterations = 0;
+    while (true) {
+        if (active_phase) {
+            if (std::chrono::steady_clock::now () >= deadline)
+                break;
+        } else if (iterations >= static_cast<unsigned long long> (warmup_count)) {
             break;
         }
 
+        const uint64_t sent_ts = perf_single_metric::now_us ();
+        if (!perf_single_metric::stamp_payload (payload->data (),
+                                                payload_size,
+                                                run_id,
+                                                phase,
+                                                msg_size,
+                                                (*seq)++,
+                                                sent_ts)
+            || !send_spot (spot_pub, topic, *payload, payload_size)) {
+            return false;
+        }
+
         if (active_phase && queue_probe)
-            queue_probe->force_sample_recv ();
-    });
+            queue_probe->sample_send_if_due ();
 
-    bool send_failed = false;
-    if (active_phase && queue_probe)
-        queue_probe->force_sample_send ();
+        perf_single_metric::header_t header;
+        bool header_ok = false;
+        int recv_rc =
+          recv_spot_header_flags (spot_sub, payload_size, 0, &header, &header_ok);
+        while (recv_rc == 0 && zlink_errno () == EINTR)
+            recv_rc = recv_spot_header_flags (
+              spot_sub, payload_size, 0, &header, &header_ok);
+        if (recv_rc <= 0)
+            return false;
+        account_header (header, header_ok);
 
-    if (active_phase) {
-        while (std::chrono::steady_clock::now () < deadline) {
-            const uint64_t sent_ts = perf_single_metric::now_us ();
-            if (!perf_single_metric::stamp_payload (payload->data (),
-                                                    payload_size,
-                                                    run_id,
-                                                    phase,
-                                                    msg_size,
-                                                    (*seq)++,
-                                                    sent_ts)) {
-                send_failed = true;
-                break;
+        for (;;) {
+            perf_single_metric::header_t burst_header;
+            bool burst_header_ok = false;
+            recv_rc = recv_spot_header_flags (spot_sub,
+                                              payload_size,
+                                              ZLINK_DONTWAIT,
+                                              &burst_header,
+                                              &burst_header_ok);
+            if (recv_rc > 0) {
+                account_header (burst_header, burst_header_ok);
+                continue;
             }
-
-            const int send_rc =
-              send_spot_try (spot_pub, topic, *payload, payload_size);
-            if (send_rc <= 0) {
-                send_failed = true;
+            if (recv_rc == 0 && zlink_errno () == EINTR)
+                continue;
+            if (recv_rc == 0)
                 break;
-            }
-
-            if (queue_probe)
-                queue_probe->sample_send_if_due ();
+            return false;
         }
-    } else {
-        for (int i = 0; i < warmup_count; ++i) {
-            if (!perf_single_metric::stamp_payload (
-                  payload->data (),
-                  payload_size,
-                  run_id,
-                  phase,
-                  msg_size,
-                  (*seq)++,
-                  perf_single_metric::now_us ())) {
-                send_failed = true;
-                break;
-            }
 
-            const int send_rc =
-              send_spot_try (spot_pub, topic, *payload, payload_size);
-            if (send_rc <= 0) {
-                send_failed = true;
-                break;
-            }
-        }
+        ++iterations;
     }
 
-    if (active_phase && queue_probe)
+    if (active_phase && queue_probe) {
         queue_probe->force_sample_send ();
-
-    sender_done.store (true, std::memory_order_release);
-    receiver.join ();
-
-    if (send_failed || recv_failed.load (std::memory_order_acquire))
-        return false;
+        queue_probe->force_sample_recv ();
+    }
 
     *out_received = received;
-
     if (active_phase) {
         if (received == 0 || latency_builder.count () == 0 || !out_stats)
             return false;
         *out_stats = latency_builder.snapshot ();
-    } else if (received < static_cast<unsigned long long> (warmup_count)) {
+    } else if (received < iterations) {
         return false;
     }
 

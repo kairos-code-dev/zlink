@@ -142,27 +142,6 @@ internal static partial class PerfRunner
         DrainRemainingFramesNonBlocking(router);
     }
 
-    internal static int SpotReceivePayloadWithTimeout(Spot spot,
-        Span<byte> payloadBuffer, int timeoutMs)
-    {
-        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
-        {
-            try
-            {
-                return spot.ReceiveSinglePayload(payloadBuffer,
-                    ReceiveFlags.DontWait);
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                || IsInterrupted(ex.Errno))
-            {
-                Thread.Yield();
-            }
-        }
-
-        throw new TimeoutException();
-    }
-
     internal static void PrintResult(string pattern, string transport, int size,
         double thr, double latUs)
     {

@@ -44,46 +44,50 @@ internal static class PerfRouterRouterServer
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
         const uint expectedRunId = 1;
+        using var poller = new Poller();
+        var events = new List<PollEvent>(1);
+        poller.Add(server, PollEvents.PollIn);
 
         while (true)
         {
-            int ridLen = ReceiveRetry(server, routingId.AsSpan(), ReceiveFlags.None);
-            if (ridLen <= 0)
-                continue;
-            int n = ReceiveRetry(server, payload.AsSpan(), ReceiveFlags.None);
-            if (n <= 0)
+            if (!WaitForEvents(poller, events, 2))
                 continue;
 
-            ReadOnlySpan<byte> body = payload.AsSpan(0, n);
-            if (IsStopTokenPayload(body))
-                break;
-
-            if (TryDecodeMetricHeader(body, out PerfMetricHeader header)
-                && header.RunId == expectedRunId
-                && header.MsgSize == (uint)size
-                && header.Phase == (uint)PerfPhase.Active)
+            while (TryReceiveRouterMessage(server, routingId, payload,
+                       out int ridLen, out int n))
             {
-                if (benchStartTicks == 0)
-                    benchStartTicks = Stopwatch.GetTimestamp();
-                benchEndTicks = Stopwatch.GetTimestamp();
-                echoCount++;
-                ulong nowUs = EpochUs();
-                if (header.SentTsUs > 0 && nowUs >= header.SentTsUs)
+                ReadOnlySpan<byte> body = payload.AsSpan(0, n);
+                if (IsStopTokenPayload(body))
+                    goto Done;
+
+                if (TryDecodeMetricHeader(body, out PerfMetricHeader header)
+                    && header.RunId == expectedRunId
+                    && header.MsgSize == (uint)size
+                    && header.Phase == (uint)PerfPhase.Active)
                 {
-                    double sampleUs = nowUs - header.SentTsUs;
-                    ReservoirSample(latSamples, sampleUs, ref sampleSeen,
-                        latencySampleCap, ref rng);
+                    if (benchStartTicks == 0)
+                        benchStartTicks = Stopwatch.GetTimestamp();
+                    benchEndTicks = Stopwatch.GetTimestamp();
+                    echoCount++;
+                    ulong nowUs = EpochUs();
+                    if (header.SentTsUs > 0 && nowUs >= header.SentTsUs)
+                    {
+                        double sampleUs = nowUs - header.SentTsUs;
+                        ReservoirSample(latSamples, sampleUs, ref sampleSeen,
+                            latencySampleCap, ref rng);
+                    }
                 }
+
+                int sentRid = SendBlocking(server, routingId.AsSpan(0, ridLen),
+                    SendFlags.SendMore);
+                if (sentRid <= 0)
+                    continue;
+
+                _ = SendBlocking(server, body, SendFlags.None);
             }
-
-            int sentRid = SendBlocking(server, routingId.AsSpan(0, ridLen),
-                SendFlags.SendMore);
-            if (sentRid <= 0)
-                continue;
-
-            _ = SendBlocking(server, body, SendFlags.None);
         }
 
+Done:
         if (benchStartTicks > 0 && echoCount > 0)
         {
             double elapsedSeconds = (benchEndTicks - benchStartTicks)
@@ -103,5 +107,22 @@ internal static class PerfRouterRouterServer
         }
 
         return 0;
+    }
+
+    private static bool TryReceiveRouterMessage(Zlink.Socket server,
+        byte[] routingId, byte[] payload, out int routingIdLength,
+        out int payloadLength)
+    {
+        routingIdLength = ReceiveRetry(server, routingId.AsSpan(),
+            ReceiveFlags.DontWait);
+        if (routingIdLength <= 0)
+        {
+            payloadLength = 0;
+            return false;
+        }
+
+        payloadLength = ReceiveRetry(server, payload.AsSpan(),
+            ReceiveFlags.DontWait);
+        return payloadLength > 0;
     }
 }

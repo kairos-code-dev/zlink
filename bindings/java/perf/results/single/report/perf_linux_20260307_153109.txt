@@ -1,0 +1,6 @@
+## PATTERN: SPOT (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |  Latency(ms) | Lat p95(ms) | Lat p99(ms) | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|----------|----------|------|--------|
+| 64B |      0.90 Kmsg/s |      0.1 MB/s |    1.0847 ms |   1.1500 ms |   1.2592 ms |  2.1 |   81.9 |

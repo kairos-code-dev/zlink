@@ -121,4 +121,14 @@ internal static class PerfSpot
             }
         }
     }
+
+    private static bool IsWouldBlock(int errno)
+    {
+        return ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain;
+    }
+
+    private static bool IsInterrupted(int errno)
+    {
+        return ZlinkException.MapErrorCode(errno) == ErrorCode.EIntr;
+    }
 }

@@ -38,22 +38,24 @@ internal static class PerfPubSub
             var buf = new byte[size];
             Array.Fill(buf, (byte)'a');
             var recv = new byte[Math.Max(256, size)];
-            var subPoller = new Poller();
-            subPoller.Add(sub, PollEvents.PollIn);
+            using var subPoller = new Poller();
             var subEvents = new PollEvent[1];
-
+            subPoller.Add(sub, PollEvents.PollIn);
             bool ready = false;
             for (int i = 0; i < 2000; i++)
             {
                 SendBlocking(pub, buf.AsSpan(), SendFlags.None);
-                if (!WaitForInput(subPoller, subEvents, 1))
+                if (!WaitForInput(subPoller, subEvents, 10))
                     continue;
-                int n = ReceiveBlocking(sub, recv.AsSpan(0, size), ReceiveFlags.None);
-                if (n == size)
-                {
-                    ready = true;
-                    break;
-                }
+
+                int n = ReceiveBlocking(sub, recv.AsSpan(0, size),
+                    ReceiveFlags.None);
+                if (n != size)
+                    continue;
+
+                DrainRemainingFramesNonBlocking(sub);
+                ready = true;
+                break;
             }
             if (!ready)
                 return 2;
@@ -62,9 +64,8 @@ internal static class PerfPubSub
             while (warmed < warmupCount)
             {
                 SendBlocking(pub, buf.AsSpan(), SendFlags.None);
-                if (!WaitForInput(subPoller, subEvents, 10))
-                    continue;
                 int n = ReceiveBlocking(sub, recv.AsSpan(0, size), ReceiveFlags.None);
+                DrainRemainingFramesNonBlocking(sub);
                 if (n == size)
                     warmed++;
             }
@@ -78,9 +79,8 @@ internal static class PerfPubSub
             while (Stopwatch.GetTimestamp() < throughputDeadlineTicks)
             {
                 SendBlocking(pub, buf.AsSpan(), SendFlags.None);
-                if (!WaitForInput(subPoller, subEvents, 10))
-                    continue;
                 int n = ReceiveBlocking(sub, recv.AsSpan(0, size), ReceiveFlags.None);
+                DrainRemainingFramesNonBlocking(sub);
                 if (n == size)
                     recvCount++;
             }
@@ -99,29 +99,19 @@ internal static class PerfPubSub
             uint rng = 0xA341316Cu;
             for (int i = 0; i < latCount; i++)
             {
-                bool measured = false;
-                for (int attempt = 0; attempt < 1024; attempt++)
-                {
-                    long begin = Stopwatch.GetTimestamp();
-                    SendBlocking(pub, buf.AsSpan(), SendFlags.None);
-                    if (!WaitForInput(subPoller, subEvents, 10))
-                        continue;
-
-                    int n = ReceiveBlocking(sub, recv.AsSpan(0, size),
-                        ReceiveFlags.None);
-                    if (n != size)
-                        continue;
-
-                    long end = Stopwatch.GetTimestamp();
-                    double latUs = (end - begin) * 1_000_000.0
-                        / Stopwatch.Frequency;
-                    ReservoirSample(latSamples, latUs, ref sampleSeen, latCount,
-                        ref rng);
-                    measured = true;
-                    break;
-                }
-                if (!measured)
+                long begin = Stopwatch.GetTimestamp();
+                SendBlocking(pub, buf.AsSpan(), SendFlags.None);
+                int n = ReceiveBlocking(sub, recv.AsSpan(0, size),
+                    ReceiveFlags.None);
+                DrainRemainingFramesNonBlocking(sub);
+                if (n != size)
                     return 2;
+
+                long end = Stopwatch.GetTimestamp();
+                double latUs = (end - begin) * 1_000_000.0
+                    / Stopwatch.Frequency;
+                ReservoirSample(latSamples, latUs, ref sampleSeen, latCount,
+                    ref rng);
             }
             var latency = ComputeLatencyStats(latSamples);
 
@@ -131,8 +121,9 @@ internal static class PerfPubSub
             PrintSingleProcessMetrics("PUBSUB", transport, size, cpuStart, wall);
             return 0;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"single_pubsub_error:{ex.Message}");
             return 2;
         }
     }

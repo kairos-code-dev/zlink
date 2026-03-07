@@ -1138,8 +1138,10 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
         return -1;
     }
 
-    //  Process pending commands, if any.
-    int rc = process_commands (0, true);
+    //  PUB can silently drop on stale HWM state, so always drain mailbox
+    //  commands before send instead of using the normal fast-path throttle.
+    const bool throttle_commands = options.type != ZLINK_PUB;
+    int rc = process_commands (0, throttle_commands);
     if (unlikely (rc != 0)) {
         return -1;
     }

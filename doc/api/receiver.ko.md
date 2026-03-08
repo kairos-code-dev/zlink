@@ -6,17 +6,17 @@ Receiver는 Gateway의 서버 측 대응입니다. Gateway로부터 요청을 �
 응답을 보내며, Registry에 서비스를 등록하여 Gateway가 자동으로 검색하고
 연결할 수 있도록 합니다.
 
-## 상수
+## 현재 권장 API 방향
 
-```c
-#define ZLINK_RECEIVER_SOCKET_ROUTER 1
-#define ZLINK_RECEIVER_SOCKET_DEALER 2
-```
-
-| 상수 | 값 | 설명 |
-|------|-----|------|
-| `ZLINK_RECEIVER_SOCKET_ROUTER` | 1 | 요청 수신 및 응답 전송에 사용되는 ROUTER 소켓 |
-| `ZLINK_RECEIVER_SOCKET_DEALER` | 2 | Registry와의 통신에 사용되는 DEALER 소켓 |
+- 공개 서비스 옵션 설정은 `zlink_receiver_set_option()`을 사용합니다.
+- 대표 identity는 `zlink_receiver_set_routing_id()` /
+  `zlink_receiver_routing_id()`로 다룹니다.
+- `ZLINK_RECEIVER_REGISTER_OK` 같은 상태 전이는
+  `zlink_receiver_monitor_open()`으로 관찰합니다.
+- 데이터 readiness는 `zlink_poller_add_receiver()`, monitor readiness는
+  `zlink_poller_add_monitor()`으로 처리합니다.
+- `zlink_receiver_register_result()`는 저수준 호환/디버그 경로로 보고,
+  새 코드의 기본 setup/readiness 경로로는 사용하지 않는 것이 좋습니다.
 
 ## 함수
 
@@ -200,55 +200,52 @@ Receiver의 ROUTER 소켓이 지정된 서버 인증서 및 개인 키를 사용
 
 ---
 
-### zlink_receiver_setsockopt
+### zlink_receiver_recv
 
-내부 Receiver 소켓의 소켓 옵션을 설정합니다.
+Receiver 서비스 surface에서 multipart 요청 하나를 수신합니다.
 
 ```c
-int zlink_receiver_setsockopt(void *receiver,
-                              int socket_role,
-                              int option,
-                              const void *optval,
-                              size_t optvallen);
+int zlink_receiver_recv(void *receiver,
+                        zlink_msg_t **parts,
+                        size_t *part_count,
+                        int flags,
+                        zlink_routing_id_t *routing_id_out);
 ```
 
-`socket_role`로 식별되는 Receiver 내부 소켓 중 하나에 저수준 소켓 옵션을
-적용합니다. 요청/응답 소켓에는 `ZLINK_RECEIVER_SOCKET_ROUTER`를, Registry
-통신 소켓에는 `ZLINK_RECEIVER_SOCKET_DEALER`를 사용합니다.
-기본값:
-- `ZLINK_SNDHWM = 300000`
-- `ZLINK_RCVHWM = 300000`
-- `ZLINK_SNDTIMEO = -1`
-- `ZLINK_RCVTIMEO = -1`
+현재 Receiver에 도착한 요청 하나를 multipart 배열로 반환합니다. 필요하면
+보낸 쪽 routing id도 함께 돌려줍니다. 사용 후에는 `zlink_multipart_close()`로
+`parts`를 정리해야 합니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
 **에러:**
-- `EINVAL` -- 잘못된 소켓 역할 또는 알 수 없는 옵션.
+- `EAGAIN` -- `ZLINK_DONTWAIT`가 설정되었고 준비된 요청이 없음.
 
 **스레드 안전성:** 스레드 안전하지 않음.
 
-**참고:** `zlink_receiver_bind`
+**참고:** `zlink_poller_add_receiver`, `zlink_multipart_close`
 
 ---
 
-### zlink_receiver_router_socket_unsafe
+### zlink_receiver_last_endpoint
 
-내부 ROUTER 소켓 핸들을 반환합니다.
+Receiver의 실제 bind endpoint를 조회합니다.
 
 ```c
-void *zlink_receiver_router_socket_unsafe(void *receiver);
+int zlink_receiver_last_endpoint(void *receiver,
+                                 char *endpoint,
+                                 size_t *size);
 ```
 
-Receiver가 내부적으로 사용하는 원시 ROUTER 소켓 핸들을 반환합니다. 이는
-진단 및 커스텀 폴링과 같은 고급 사용 사례를 위한 것입니다. 호출자는 소켓을
-닫거나 수정해서는 안 됩니다.
+Receiver 서비스 소켓의 마지막 유효 bind endpoint를 반환합니다. raw 내부
+ROUTER 소켓에서 `ZLINK_LAST_ENDPOINT`를 직접 읽는 대신 사용하는 service-level
+API입니다.
 
-**반환값:** ROUTER 소켓 핸들, Receiver가 유효하지 않으면 `NULL`.
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+**스레드 안전성:** 스레드 안전하지 않음.
 
-**참고:** `zlink_receiver_new`
+**참고:** `zlink_receiver_bind`, `zlink_receiver_register`
 
 ---
 
@@ -270,7 +267,103 @@ int zlink_receiver_router_peers(void *receiver,
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
-**참고:** `zlink_socket_peers`, `zlink_receiver_router_socket_unsafe`
+**참고:** `zlink_socket_peers`, `zlink_receiver_peer_info`
+
+---
+
+### zlink_receiver_peer_info
+
+Receiver ROUTER 소켓에서 라우팅 아이덴티티로 피어 정보를 가져옵니다.
+
+```c
+int zlink_receiver_peer_info(void *receiver,
+                              const zlink_routing_id_t *routing_id,
+                              zlink_peer_info_t *info);
+```
+
+Receiver 내부 ROUTER 소켓에서 `routing_id`로 식별되는 피어를 조회하고
+`info` 구조체에 주소, 연결 시간, 메시지 카운터를 채웁니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**에러:**
+- `EINVAL` -- 라우팅 아이덴티티를 찾을 수 없음.
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_receiver_router_peers`, `zlink_socket_peer_info`
+
+---
+
+### zlink_receiver_set_option
+
+Receiver 서비스 옵션을 설정합니다.
+
+```c
+int zlink_receiver_set_option(void *receiver,
+                               int option,
+                               const void *optval,
+                               size_t optvallen);
+```
+
+Receiver에 서비스 레벨 옵션을 적용합니다. 사용 가능한 옵션 상수:
+
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `ZLINK_RECEIVER_OPT_SNDHWM` | 1 | 송신 고수위 마크 |
+| `ZLINK_RECEIVER_OPT_RCVHWM` | 2 | 수신 고수위 마크 |
+| `ZLINK_RECEIVER_OPT_SNDTIMEO` | 3 | 송신 타임아웃 (ms) |
+| `ZLINK_RECEIVER_OPT_RCVTIMEO` | 4 | 수신 타임아웃 (ms) |
+| `ZLINK_RECEIVER_OPT_LINGER` | 5 | Linger 기간 (ms) |
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**에러:**
+- `EINVAL` -- 알 수 없는 옵션.
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_receiver_new`
+
+---
+
+### zlink_receiver_set_routing_id
+
+첫 사용 전에 대표 routing id를 재정의합니다.
+
+```c
+int zlink_receiver_set_routing_id(void *receiver,
+                                   const void *data,
+                                   size_t size);
+```
+
+이 Receiver의 커스텀 라우팅 아이덴티티를 설정합니다.
+`zlink_receiver_bind` 호출 전에 설정해야 합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_receiver_routing_id`
+
+---
+
+### zlink_receiver_routing_id
+
+이 Receiver의 대표 routing id를 반환합니다.
+
+```c
+int zlink_receiver_routing_id(void *receiver,
+                               zlink_routing_id_t *out);
+```
+
+현재 Receiver의 라우팅 아이덴티티를 가져옵니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_receiver_set_routing_id`
 
 ---
 

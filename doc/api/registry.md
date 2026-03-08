@@ -2,6 +2,15 @@
 
 # Registry
 
+## Current API Direction
+
+- Registry remains the global service directory and topology summary source.
+- Use `zlink_registry_topology_snapshot()` for local in-process summary access.
+- Use `zlink_registry_query_client_*()` and `zlink_registry_query_snapshot()`
+  for remote summary queries.
+- Registry topology is intended for global summary only. For detailed local
+  state transitions, use per-service monitor APIs.
+
 The Registry is the central service directory for the zlink service layer. It
 accepts service registration, deregistration, and heartbeat requests from
 Receivers and SPOT Nodes, and periodically broadcasts the aggregated service
@@ -218,3 +227,210 @@ was started, this function blocks until the internal thread exits.
 Registry operations.
 
 **See also:** `zlink_registry_new`
+
+---
+
+## Topology & Query API
+
+These APIs provide introspection into the global service topology managed
+by the Registry.
+
+### Topology Constants
+
+```c
+#define ZLINK_TOPOLOGY_SOURCE_MANUAL    1
+#define ZLINK_TOPOLOGY_SOURCE_DISCOVERY 2
+#define ZLINK_TOPOLOGY_SOURCE_REGISTRY  3
+
+#define ZLINK_TOPOLOGY_STATE_DISCOVERED 1
+#define ZLINK_TOPOLOGY_STATE_CONNECTING 2
+#define ZLINK_TOPOLOGY_STATE_READY      3
+#define ZLINK_TOPOLOGY_STATE_LOST       4
+#define ZLINK_TOPOLOGY_STATE_ERROR      5
+#define ZLINK_TOPOLOGY_STATE_STOPPED    6
+```
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_TOPOLOGY_SOURCE_MANUAL` | 1 | Entry added via manual connect |
+| `ZLINK_TOPOLOGY_SOURCE_DISCOVERY` | 2 | Entry discovered via Discovery |
+| `ZLINK_TOPOLOGY_SOURCE_REGISTRY` | 3 | Entry registered via Registry |
+| `ZLINK_TOPOLOGY_STATE_DISCOVERED` | 1 | Discovered but not yet connected |
+| `ZLINK_TOPOLOGY_STATE_CONNECTING` | 2 | Connection in progress |
+| `ZLINK_TOPOLOGY_STATE_READY` | 3 | Connected and ready |
+| `ZLINK_TOPOLOGY_STATE_LOST` | 4 | Connection lost |
+| `ZLINK_TOPOLOGY_STATE_ERROR` | 5 | Error state |
+| `ZLINK_TOPOLOGY_STATE_STOPPED` | 6 | Stopped |
+
+### Topology Types
+
+#### zlink_registry_topology_entry_t
+
+```c
+typedef struct zlink_registry_topology_entry_t
+{
+    zlink_routing_id_t routing_id;
+    uint16_t service_kind;
+    char service_name[256];
+    char endpoint[256];
+    uint16_t source;
+    uint16_t state;
+    uint32_t desired_count;
+    uint32_t ready_count;
+    uint32_t error_code;
+    uint64_t last_reported_ms;
+} zlink_registry_topology_entry_t;
+```
+
+| Field | Description |
+|-------|-------------|
+| `routing_id` | Routing identity of the service instance. |
+| `service_kind` | One of the `ZLINK_SERVICE_KIND_*` constants. |
+| `service_name` | Null-terminated service name. |
+| `endpoint` | Null-terminated advertised endpoint. |
+| `source` | How the entry was added (`ZLINK_TOPOLOGY_SOURCE_*`). |
+| `state` | Current state (`ZLINK_TOPOLOGY_STATE_*`). |
+| `desired_count` | Expected number of instances. |
+| `ready_count` | Number of instances currently ready. |
+| `error_code` | Error code if state is `ERROR`. |
+| `last_reported_ms` | Timestamp (epoch ms) of the last heartbeat or update. |
+
+#### zlink_registry_topology_filter_t
+
+```c
+typedef struct zlink_registry_topology_filter_t
+{
+    uint16_t service_kind;
+    char service_name[256];
+    zlink_routing_id_t routing_id;
+    uint16_t state;
+    uint16_t source;
+} zlink_registry_topology_filter_t;
+```
+
+Set fields to non-zero values to filter by that criterion. Zero-valued
+fields are treated as wildcards (match all).
+
+---
+
+### zlink_registry_topology_snapshot
+
+Get a snapshot of the full topology from a local Registry instance.
+
+```c
+int zlink_registry_topology_snapshot(void *registry,
+                                      zlink_registry_topology_entry_t *entries,
+                                      size_t *count);
+```
+
+Fills `entries` with all registered services in the topology. On input
+`*count` is the array capacity; on output it is the actual count. Pass
+`entries = NULL` to query the required count first.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_registry_topology_query`
+
+---
+
+### zlink_registry_topology_query
+
+Query the local topology with a filter.
+
+```c
+int zlink_registry_topology_query(void *registry,
+                                   const zlink_registry_topology_filter_t *filter,
+                                   zlink_registry_topology_entry_t *entries,
+                                   size_t *count);
+```
+
+Like `zlink_registry_topology_snapshot` but only returns entries matching
+the `filter` criteria.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_registry_topology_snapshot`
+
+---
+
+### zlink_registry_query_client_new
+
+Create a remote topology query client.
+
+```c
+void *zlink_registry_query_client_new(void *ctx);
+```
+
+Creates a client that can connect to a remote Registry and query its
+topology. Use this when the Registry is running in a different process.
+
+**Returns:** Query client handle on success, or `NULL` on failure.
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_registry_query_client_connect`, `zlink_registry_query_destroy`
+
+---
+
+### zlink_registry_query_client_connect
+
+Connect the query client to a remote Registry.
+
+```c
+int zlink_registry_query_client_connect(void *client,
+                                         const char *endpoint);
+```
+
+Connects to the Registry's ROUTER endpoint for topology queries.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_registry_query_snapshot`
+
+---
+
+### zlink_registry_query_snapshot
+
+Query the remote Registry topology.
+
+```c
+int zlink_registry_query_snapshot(void *client,
+                                   const zlink_registry_topology_filter_t *filter,
+                                   zlink_registry_topology_entry_t *entries,
+                                   size_t *count);
+```
+
+Sends a topology query to the connected remote Registry and fills
+`entries` with matching results. On input `*count` is the array capacity;
+on output it is the actual count. Pass `filter = NULL` for an unfiltered
+snapshot.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_registry_query_client_connect`
+
+---
+
+### zlink_registry_query_destroy
+
+Destroy the query client and release resources.
+
+```c
+int zlink_registry_query_destroy(void **client_p);
+```
+
+Closes the client connection and sets `*client_p` to `NULL`.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_registry_query_client_new`

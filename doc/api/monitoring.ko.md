@@ -2,6 +2,20 @@
 
 # 모니터링 & 피어 정보 API 레퍼런스
 
+## 현재 권장 API 방향
+
+이제 모니터링 계층은 두 가지로 분리됩니다.
+
+- raw socket monitor:
+  `zlink_socket_monitor_open()`, `zlink_monitor_recv()`
+- service monitor:
+  `zlink_*_monitor_open()`, `zlink_service_monitor_recv()`,
+  `zlink_poller_add_monitor()`
+
+transport/socket 진단은 raw socket monitor를 사용하고, readiness,
+route 변화, registration 결과, SPOT filter 적용 같은 service 상태 전이는
+service monitor를 사용합니다.
+
 모니터링 API를 사용하면 연결, 연결 해제, 핸드셰이크 실패 등의 소켓 생명주기 이벤트를 관찰할 수 있습니다. 피어 정보 API는 ROUTER 소켓에 현재 연결된 피어 집합에 대한 피어별 메시지 카운터 및 연결 타임스탬프를 포함한 인트로스펙션을 제공합니다.
 
 ## 타입
@@ -254,3 +268,261 @@ ROUTER 소켓에 연결된 모든 피어의 정보를 `peers_` 배열에 채웁�
 **스레드 안전성:** 소켓을 소유한 스레드에서 호출해야 합니다.
 
 **참고:** `zlink_socket_peer_count`, `zlink_socket_peer_info`
+
+---
+
+## 서비스 모니터 API
+
+서비스 모니터는 서비스 계층 컴포넌트(Discovery, Gateway, Receiver, SPOT Pub,
+SPOT Sub)의 상태 전이 이벤트를 제공합니다. transport 레벨 이벤트를 보고하는
+raw socket monitor와 달리, 서비스 모니터는 readiness, route 변화, 등록 결과,
+SPOT 필터 적용 등의 상위 수준 이벤트를 보고합니다.
+
+### zlink_service_event_t
+
+단일 서비스 모니터 이벤트를 설명합니다.
+
+```c
+typedef struct zlink_service_event_t
+{
+    uint16_t service_kind;
+    uint32_t event_type;
+    int32_t status;
+    int32_t error_code;
+    uint32_t value;
+    uint32_t detail_flags;
+    char service_name[256];
+    char endpoint[256];
+    zlink_routing_id_t routing_id;
+} zlink_service_event_t;
+```
+
+| 필드 | 설명 |
+|------|------|
+| `service_kind` | 컴포넌트 타입을 식별하는 `ZLINK_SERVICE_KIND_*` 상수 중 하나. |
+| `event_type` | 이벤트를 나타내는 비트마스크 (아래 서비스 이벤트 상수 중 하나). |
+| `status` | 이벤트별 상태 코드. |
+| `error_code` | `event_type`이 실패를 나타낼 때의 에러 코드. |
+| `value` | 이벤트별 숫자 값. |
+| `detail_flags` | 선택적 필드가 채워졌는지를 나타내는 `ZLINK_EVENT_DETAIL_*` 플래그 비트마스크. |
+| `service_name` | null 종료 서비스 이름. `ZLINK_EVENT_DETAIL_SERVICE_NAME`이 설정될 때 유효. |
+| `endpoint` | null 종료 엔드포인트. `ZLINK_EVENT_DETAIL_ENDPOINT`가 설정될 때 유효. |
+| `routing_id` | 주체 또는 피어의 라우팅 아이덴티티. 해당 detail 플래그가 설정될 때 유효. |
+
+### 서비스 종류 상수
+
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `ZLINK_SERVICE_KIND_DISCOVERY` | 1 | Discovery 컴포넌트 |
+| `ZLINK_SERVICE_KIND_GATEWAY` | 2 | Gateway 컴포넌트 |
+| `ZLINK_SERVICE_KIND_RECEIVER` | 3 | Receiver 컴포넌트 |
+| `ZLINK_SERVICE_KIND_SPOT_SUB` | 4 | SPOT Subscriber 컴포넌트 |
+| `ZLINK_SERVICE_KIND_SPOT_PUB` | 5 | SPOT Publisher 컴포넌트 |
+
+### 서비스 이벤트 상수
+
+#### 공통 이벤트
+
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `ZLINK_MONITOR_EVENT_READY` | `1 << 0` | 서비스 준비 완료 |
+| `ZLINK_MONITOR_EVENT_LOST` | `1 << 1` | 서비스 연결 손실 |
+| `ZLINK_MONITOR_EVENT_PEER_UP` | `1 << 2` | 피어 연결됨 |
+| `ZLINK_MONITOR_EVENT_PEER_DOWN` | `1 << 3` | 피어 연결 해제됨 |
+| `ZLINK_MONITOR_EVENT_ERROR` | `1 << 4` | 에러 발생 |
+| `ZLINK_MONITOR_EVENT_CLOSED` | `1 << 21` | 모니터 닫힘 |
+
+#### Discovery 이벤트
+
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `ZLINK_DISCOVERY_SERVICE_UP` | `1 << 5` | 검색된 서비스가 활성화됨 |
+| `ZLINK_DISCOVERY_SERVICE_DOWN` | `1 << 6` | 검색된 서비스가 비활성화됨 |
+| `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | `1 << 7` | 서비스 provider 집합이 변경됨 |
+
+#### Gateway 이벤트
+
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `ZLINK_GATEWAY_SERVICE_READY` | `1 << 8` | Gateway 서비스 준비 완료 (하나 이상의 Receiver 연결됨) |
+| `ZLINK_GATEWAY_SERVICE_LOST` | `1 << 9` | Gateway 서비스 손실 (모든 Receiver 연결 해제됨) |
+| `ZLINK_GATEWAY_CONNECTION_COUNT_CHANGED` | `1 << 10` | 연결된 Receiver 수 변경됨 |
+| `ZLINK_GATEWAY_ROUTE_UP` | `1 << 11` | Receiver로의 경로 활성화됨 |
+| `ZLINK_GATEWAY_ROUTE_DOWN` | `1 << 12` | Receiver로의 경로 비활성화됨 |
+
+#### Receiver 이벤트
+
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `ZLINK_RECEIVER_REGISTER_OK` | `1 << 13` | 등록 성공 |
+| `ZLINK_RECEIVER_REGISTER_FAILED` | `1 << 14` | 등록 실패 |
+| `ZLINK_RECEIVER_UNREGISTER_OK` | `1 << 15` | 등록 해제 성공 |
+| `ZLINK_RECEIVER_UNREGISTER_FAILED` | `1 << 16` | 등록 해제 실패 |
+
+#### SPOT 이벤트
+
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `ZLINK_SPOT_SUB_FILTER_APPLIED` | `1 << 17` | 구독 필터 적용됨 |
+| `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | `1 << 18` | 구독 수신 준비 완료 |
+| `ZLINK_SPOT_PUB_QUEUE_FULL` | `1 << 19` | 비동기 발행 큐 가득 참 |
+| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | `1 << 20` | 비동기 발행 큐 비워짐 |
+
+### Detail 플래그 상수
+
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `ZLINK_EVENT_DETAIL_SERVICE_NAME` | `0x0001` | `service_name` 필드가 채워짐 |
+| `ZLINK_EVENT_DETAIL_ENDPOINT` | `0x0002` | `endpoint` 필드가 채워짐 |
+| `ZLINK_EVENT_DETAIL_SUBJECT_RID` | `0x0004` | `routing_id`에 주체 아이덴티티 포함 |
+| `ZLINK_EVENT_DETAIL_PEER_RID` | `0x0008` | `routing_id`에 피어 아이덴티티 포함 |
+
+---
+
+### zlink_discovery_monitor_open
+
+Discovery 인스턴스의 서비스 모니터를 엽니다.
+
+```c
+void *zlink_discovery_monitor_open(void *discovery, int events);
+```
+
+`events` 비트마스크와 일치하는 이벤트를 전달하는 서비스 모니터를 생성합니다.
+`ZLINK_DISCOVERY_SERVICE_UP`, `ZLINK_DISCOVERY_SERVICE_DOWN`,
+`ZLINK_DISCOVERY_PROVIDERS_CHANGED` 및 공통 이벤트 상수를 사용합니다.
+
+**반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
+
+---
+
+### zlink_gateway_monitor_open
+
+Gateway 인스턴스의 서비스 모니터를 엽니다.
+
+```c
+void *zlink_gateway_monitor_open(void *gateway, int events);
+```
+
+`events` 비트마스크와 일치하는 Gateway 이벤트를 전달하는 서비스 모니터를
+생성합니다. `ZLINK_GATEWAY_SERVICE_READY`, `ZLINK_GATEWAY_SERVICE_LOST`,
+`ZLINK_GATEWAY_ROUTE_UP`, `ZLINK_GATEWAY_ROUTE_DOWN`,
+`ZLINK_GATEWAY_CONNECTION_COUNT_CHANGED` 및 공통 이벤트 상수를 사용합니다.
+
+**반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
+
+---
+
+### zlink_receiver_monitor_open
+
+Receiver 인스턴스의 서비스 모니터를 엽니다.
+
+```c
+void *zlink_receiver_monitor_open(void *receiver, int events);
+```
+
+`events` 비트마스크와 일치하는 Receiver 이벤트를 전달하는 서비스 모니터를
+생성합니다. `ZLINK_RECEIVER_REGISTER_OK`, `ZLINK_RECEIVER_REGISTER_FAILED`,
+`ZLINK_RECEIVER_UNREGISTER_OK`, `ZLINK_RECEIVER_UNREGISTER_FAILED` 및 공통
+이벤트 상수를 사용합니다.
+
+**반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
+
+---
+
+### zlink_spot_sub_monitor_open
+
+SPOT Subscriber의 서비스 모니터를 엽니다.
+
+```c
+void *zlink_spot_sub_monitor_open(void *sub, int events);
+```
+
+`events` 비트마스크와 일치하는 SPOT Subscriber 이벤트를 전달하는 서비스
+모니터를 생성합니다. `ZLINK_SPOT_SUB_FILTER_APPLIED`,
+`ZLINK_SPOT_SUB_SUBSCRIPTION_READY` 및 공통 이벤트 상수를 사용합니다.
+
+**반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
+
+---
+
+### zlink_spot_pub_monitor_open
+
+SPOT Publisher의 서비스 모니터를 엽니다.
+
+```c
+void *zlink_spot_pub_monitor_open(void *pub, int events);
+```
+
+`events` 비트마스크와 일치하는 SPOT Publisher 이벤트를 전달하는 서비스
+모니터를 생성합니다. `ZLINK_SPOT_PUB_QUEUE_FULL`,
+`ZLINK_SPOT_PUB_QUEUE_DRAINED` 및 공통 이벤트 상수를 사용합니다.
+
+**반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
+
+---
+
+### zlink_service_monitor_recv
+
+서비스 모니터 핸들에서 이벤트를 수신합니다.
+
+```c
+int zlink_service_monitor_recv(void *monitor,
+                                zlink_service_event_t *event,
+                                int flags);
+```
+
+`monitor`에서 서비스 이벤트를 사용할 수 있을 때까지 블록한 후 `event`
+구조체를 채웁니다. 대기 중인 이벤트가 없는 경우 즉시 `EAGAIN`과 함께
+반환하려면 `flags`에 `ZLINK_DONTWAIT`를 전달합니다. 모니터 핸들은
+`zlink_*_monitor_open()` 함수 중 하나에서 얻습니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**에러:**
+- `EAGAIN` -- 사용 가능한 이벤트가 없고 `ZLINK_DONTWAIT`가 지정됨.
+- `ETERM` -- Context가 종료되었습니다.
+
+**스레드 안전성:** 모니터 핸들을 소유한 스레드에서 호출해야 합니다.
+
+**참고:** `zlink_discovery_monitor_open`, `zlink_gateway_monitor_open`,
+`zlink_receiver_monitor_open`, `zlink_spot_sub_monitor_open`,
+`zlink_spot_pub_monitor_open`
+
+---
+
+### zlink_service_monitor_close
+
+서비스 모니터 핸들을 닫고 리소스를 해제합니다.
+
+```c
+int zlink_service_monitor_close(void **monitor_p);
+```
+
+모니터를 닫고 `*monitor_p`를 `NULL`로 설정합니다. 닫은 후에는 이 모니터를
+통해 더 이상 이벤트가 전달되지 않습니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_service_monitor_recv`

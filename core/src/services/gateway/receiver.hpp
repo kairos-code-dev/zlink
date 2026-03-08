@@ -4,6 +4,7 @@
 #define __ZLINK_DISCOVERY_RECEIVER_HPP_INCLUDED__
 
 #include "core/ctx.hpp"
+#include "services/common/service_monitor.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 
@@ -12,6 +13,12 @@
 
 namespace zlink
 {
+enum receiver_socket_role_t
+{
+    receiver_socket_router = 1,
+    receiver_socket_dealer = 2
+};
+
 class receiver_t
 {
   public:
@@ -32,12 +39,24 @@ class receiver_t
                          char *resolved_endpoint_,
                          char *error_message_);
     int set_tls_server (const char *cert_, const char *key_);
+    int recv (zlink_msg_t **parts_,
+              size_t *part_count_,
+              int flags_,
+              zlink_routing_id_t *routing_id_out_);
+    int last_endpoint (char *endpoint_out_, size_t *size_out_) const;
+    int peer_info (const zlink_routing_id_t *routing_id_,
+                   zlink_peer_info_t *info_out_) const;
+    int set_routing_id (const void *data_, size_t size_);
+    int routing_id (zlink_routing_id_t *out_) const;
+    int set_option (int option_, const void *optval_, size_t optvallen_);
+    void *monitor_open (int events_);
     int set_socket_option (int socket_role_,
                            int option_,
                            const void *optval_,
                            size_t optvallen_);
     void *poller_socket ();
     void *router ();
+    void lock_routing_id ();
     int destroy ();
 
   private:
@@ -61,6 +80,7 @@ class receiver_t
     std::string _advertise_endpoint;
     uint32_t _weight;
     std::string _routing_id_override;
+    bool _routing_id_locked;
 
     int _last_status;
     std::string _last_resolved;
@@ -77,6 +97,7 @@ class receiver_t
 
     std::string _tls_cert;
     std::string _tls_key;
+    service_monitor_hub_t _monitor;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (receiver_t)
 };

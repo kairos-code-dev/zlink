@@ -356,7 +356,7 @@ class dealer_dealer_client_bench_t
 
 } // namespace
 
-void perf_dealer_dealer_client (const std::string &transport,
+bool perf_dealer_dealer_client (const std::string &transport,
                                 size_t msg_size,
                                 const std::string &endpoint)
 {
@@ -364,14 +364,20 @@ void perf_dealer_dealer_client (const std::string &transport,
 
     if (!perf::multi::is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED," << k_pattern_result << "," << transport << std::endl;
-        return;
+        return true;
     }
 
     const perf::multi::multi_bench_settings_t settings =
       perf::multi::resolve_multi_bench_settings ();
 
     dealer_dealer_client_bench_t bench (transport, msg_size, endpoint, settings);
-    (void) bench.run ();
+    if (!bench.run ()) {
+        std::cerr << "DEALER_DEALER_CLIENT_FAIL,transport=" << transport
+                  << ",size=" << msg_size << std::endl;
+        return false;
+    }
+
+    return true;
 }
 
 int main (int argc, char **argv)
@@ -392,6 +398,5 @@ int main (int argc, char **argv)
         return 1;
     }
 
-    perf_dealer_dealer_client (transport, size, endpoint);
-    return 0;
+    return perf_dealer_dealer_client (transport, size, endpoint) ? 0 : 1;
 }

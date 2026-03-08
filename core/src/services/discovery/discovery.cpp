@@ -5,6 +5,7 @@
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/control/service_control_runtime.hpp"
+#include "services/gateway/routing_id_utils.hpp"
 
 #include "utils/err.hpp"
 
@@ -29,17 +30,46 @@ static void close_frames (std::vector<zlink_msg_t> *frames_)
     frames_->clear ();
 }
 
+static bool send_topology_report_frames (socket_base_t *dealer_,
+                                         const zlink_routing_id_t &rid_,
+                                         const zlink_registry_topology_entry_t &entry_)
+{
+    if (!dealer_)
+        return false;
+
+    return zlink::discovery_protocol::send_u16 (
+             dealer_, discovery_protocol::msg_topology_report, ZLINK_SNDMORE)
+             == 0
+           && zlink::discovery_protocol::send_frame (
+                dealer_, &entry_, sizeof (entry_), 0)
+                == 0;
+}
+
+static bool wait_socket_event (void *socket_, short events_, long timeout_ms_)
+{
+    zlink_pollitem_t item;
+    item.socket = socket_;
+    item.fd = 0;
+    item.events = events_;
+    item.revents = 0;
+    const int rc = zlink_poll (&item, 1, timeout_ms_);
+    return rc > 0 && (item.revents & events_) == events_;
+}
+
 discovery_t::discovery_t (ctx_t *ctx_, uint16_t service_type_) :
     _ctx (ctx_),
     _tag (discovery_tag_value),
     _stop (0),
     _task_id (0),
     _sub_socket (NULL),
+    _report_dealer (NULL),
     _update_seq (0),
-    _service_type (service_type_)
+    _service_type (service_type_),
+    _monitor (ctx_)
 {
     zlink_assert (_ctx);
     zlink_assert (is_valid_service_type (_service_type));
+    _routing_id.size = 0;
 }
 
 discovery_t::~discovery_t ()
@@ -82,6 +112,20 @@ int discovery_t::connect_registry (const char *registry_pub_endpoint_)
     return 0;
 }
 
+int discovery_t::connect_registry_router (const char *registry_router_endpoint_)
+{
+    if (!registry_router_endpoint_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    {
+        scoped_lock_t lock (_sync);
+        _registry_router_endpoints.insert (registry_router_endpoint_);
+    }
+    return ensure_topology_reporter ();
+}
+
 int discovery_t::subscribe (const char *service_name_)
 {
     if (!service_name_ || service_name_[0] == '\0') {
@@ -104,6 +148,36 @@ int discovery_t::unsubscribe (const char *service_name_)
     return 0;
 }
 
+int discovery_t::set_routing_id (const void *data_, size_t size_)
+{
+    if (!data_ || size_ == 0 || size_ > sizeof (_routing_id.data)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    if (_sub_socket || !_connected_endpoints.empty ()) {
+        errno = EFSM;
+        return -1;
+    }
+    _routing_id_override.assign (static_cast<const char *> (data_), size_);
+    _routing_id.size = static_cast<uint8_t> (size_);
+    memcpy (_routing_id.data, data_, size_);
+    return 0;
+}
+
+int discovery_t::routing_id (zlink_routing_id_t *out_) const
+{
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    *out_ = _routing_id;
+    return out_->size > 0 ? 0 : -1;
+}
+
 int discovery_t::set_socket_option (int socket_role_,
                                     int option_,
                                     const void *optval_,
@@ -114,7 +188,7 @@ int discovery_t::set_socket_option (int socket_role_,
         return -1;
     }
 
-    if (socket_role_ != ZLINK_DISCOVERY_SOCKET_SUB) {
+    if (socket_role_ != discovery_socket_sub) {
         errno = EINVAL;
         return -1;
     }
@@ -143,6 +217,22 @@ int discovery_t::set_socket_option (int socket_role_,
     return 0;
 }
 
+void *discovery_t::monitor_open (int events_)
+{
+    return _monitor.open (events_);
+}
+
+bool discovery_t::ensure_routing_id ()
+{
+    if (!_sub_socket)
+        return false;
+    if (_routing_id.size > 0)
+        return true;
+    return zlink::discovery::set_socket_routing_id (
+      static_cast<socket_base_t *> (_sub_socket), &_routing_id_override,
+      &_routing_id);
+}
+
 void discovery_t::snapshot_providers (const std::string &service_name_,
                                       std::vector<provider_info_t> *out_)
 {
@@ -158,6 +248,16 @@ void discovery_t::snapshot_providers (const std::string &service_name_,
     if (it == _services.end ())
         return;
     *out_ = it->second.providers;
+}
+
+void discovery_t::snapshot_registry_router_endpoints (
+  std::vector<std::string> *out_)
+{
+    if (!out_)
+        return;
+    scoped_lock_t lock (_sync);
+    out_->assign (_registry_router_endpoints.begin (),
+                  _registry_router_endpoints.end ());
 }
 
 uint64_t discovery_t::update_seq ()
@@ -264,11 +364,25 @@ int discovery_t::service_available (const char *service_name_)
 int discovery_t::destroy ()
 {
     _stop.set (1);
+    zlink_service_event_t terminal;
+    memset (&terminal, 0, sizeof (terminal));
+    terminal.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
+    terminal.event_type = ZLINK_MONITOR_EVENT_CLOSED;
+    terminal.detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
+    terminal.routing_id = _routing_id;
+    _monitor.close_all (&terminal);
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
     if (runtime && _task_id != 0)
         runtime->remove_task (_task_id);
     _task_id = 0;
     close_sub_socket ();
+    scoped_lock_t lock (_sync);
+    if (_report_dealer) {
+        _report_dealer->close ();
+        _report_dealer = NULL;
+    }
+    _registry_router_endpoints.clear ();
+    _connected_router_endpoints.clear ();
     return 0;
 }
 
@@ -293,10 +407,45 @@ int discovery_t::ensure_sub_socket ()
             zlink_setsockopt (sub, _sub_opts[i].option, &_sub_opts[i].value[0],
                               _sub_opts[i].value.size ());
     }
+    if (!zlink::discovery::set_socket_routing_id (
+          static_cast<socket_base_t *> (sub), &_routing_id_override,
+          &_routing_id)) {
+        zlink_close (sub);
+        return -1;
+    }
     zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0);
     _sub_socket = sub;
     _connected_endpoints.clear ();
     return 0;
+}
+
+int discovery_t::ensure_topology_reporter ()
+{
+    scoped_lock_t lock (_sync);
+    if (!_report_dealer) {
+        _report_dealer = _ctx->create_socket (ZLINK_DEALER);
+        if (!_report_dealer)
+            return -1;
+        const int linger = 200;
+        const int sndtimeo_ms = 100;
+        _report_dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
+        _report_dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms,
+                                    sizeof (sndtimeo_ms));
+        if (_routing_id.size > 0) {
+            _report_dealer->setsockopt (ZLINK_ROUTING_ID, _routing_id.data,
+                                        _routing_id.size);
+        }
+    }
+
+    for (std::set<std::string>::const_iterator it =
+           _registry_router_endpoints.begin ();
+         it != _registry_router_endpoints.end (); ++it) {
+        if (_connected_router_endpoints.count (*it) != 0)
+            continue;
+        if (_report_dealer->connect (it->c_str ()) == 0)
+            _connected_router_endpoints.insert (*it);
+    }
+    return _connected_router_endpoints.empty () ? -1 : 0;
 }
 
 void discovery_t::close_sub_socket ()
@@ -385,7 +534,7 @@ void discovery_t::notify_observers (const std::set<std::string> &services_)
     }
 }
 
-void discovery_t::  handle_service_list (const std::vector<zlink_msg_t> &frames_)
+void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
 {
     if (frames_.size () < 4)
         return;
@@ -440,16 +589,16 @@ void discovery_t::  handle_service_list (const std::vector<zlink_msg_t> &frames_
 
         std::map<std::string, service_state_t>::iterator it =
           updated.find (service_name);
-        if (it == updated.end ()) {
+        if (it == updated.end ())
             updated[service_name] = state;
-        } else {
+        else
             it->second.providers.insert (it->second.providers.end (),
                                          state.providers.begin (),
                                          state.providers.end ());
-        }
     }
 
     std::set<std::string> changed;
+    std::vector<zlink_service_event_t> events;
     {
         scoped_lock_t lock (_sync);
         std::map<uint32_t, uint64_t>::iterator sit =
@@ -491,6 +640,23 @@ void discovery_t::  handle_service_list (const std::vector<zlink_msg_t> &frames_
                 || !providers_equal (oit->second, uit->second)) {
                 _service_seq[uit->first] = _update_seq + 1;
                 changed.insert (uit->first);
+
+                zlink_service_event_t ev;
+                memset (&ev, 0, sizeof (ev));
+                ev.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
+                ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
+                                  | ZLINK_EVENT_DETAIL_SUBJECT_RID;
+                ev.routing_id = _routing_id;
+                strncpy (ev.service_name, uit->first.c_str (),
+                         sizeof (ev.service_name) - 1);
+                ev.value = static_cast<uint32_t> (uit->second.providers.size ());
+                if (oit == _services.end () || oit->second.providers.empty ())
+                    ev.event_type = ZLINK_DISCOVERY_SERVICE_UP;
+                else if (uit->second.providers.empty ())
+                    ev.event_type = ZLINK_DISCOVERY_SERVICE_DOWN;
+                else
+                    ev.event_type = ZLINK_DISCOVERY_PROVIDERS_CHANGED;
+                events.push_back (ev);
             }
         }
         for (std::map<std::string, service_state_t>::iterator oit =
@@ -499,6 +665,17 @@ void discovery_t::  handle_service_list (const std::vector<zlink_msg_t> &frames_
             if (updated.find (oit->first) == updated.end ()) {
                 _service_seq[oit->first] = _update_seq + 1;
                 changed.insert (oit->first);
+
+                zlink_service_event_t ev;
+                memset (&ev, 0, sizeof (ev));
+                ev.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
+                ev.event_type = ZLINK_DISCOVERY_SERVICE_DOWN;
+                ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
+                                  | ZLINK_EVENT_DETAIL_SUBJECT_RID;
+                ev.routing_id = _routing_id;
+                strncpy (ev.service_name, oit->first.c_str (),
+                         sizeof (ev.service_name) - 1);
+                events.push_back (ev);
             }
         }
         _services.swap (updated);
@@ -507,5 +684,50 @@ void discovery_t::  handle_service_list (const std::vector<zlink_msg_t> &frames_
 
     if (!changed.empty ())
         notify_observers (changed);
+    for (size_t i = 0; i < events.size (); ++i) {
+        _monitor.emit (events[i]);
+        uint16_t state = ZLINK_TOPOLOGY_STATE_DISCOVERED;
+        if (events[i].event_type == ZLINK_DISCOVERY_SERVICE_UP
+            || events[i].event_type == ZLINK_DISCOVERY_PROVIDERS_CHANGED)
+            state = events[i].value > 0 ? ZLINK_TOPOLOGY_STATE_READY
+                                        : ZLINK_TOPOLOGY_STATE_DISCOVERED;
+        else if (events[i].event_type == ZLINK_DISCOVERY_SERVICE_DOWN)
+            state = ZLINK_TOPOLOGY_STATE_LOST;
+        report_topology (events[i].service_name, state, events[i].value, 0);
+    }
+}
+
+void discovery_t::report_topology (const std::string &service_name_,
+                                   uint16_t state_,
+                                   uint32_t ready_count_,
+                                   int32_t error_code_)
+{
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    {
+        scoped_lock_t lock (_sync);
+        rid = _routing_id;
+    }
+    if (rid.size == 0 || service_name_.empty ())
+        return;
+    if (ensure_topology_reporter () != 0)
+        return;
+
+    zlink_registry_topology_entry_t entry;
+    memset (&entry, 0, sizeof (entry));
+    entry.routing_id = rid;
+    entry.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
+    strncpy (entry.service_name, service_name_.c_str (),
+             sizeof (entry.service_name) - 1);
+    entry.source = ZLINK_TOPOLOGY_SOURCE_REGISTRY;
+    entry.state = state_;
+    entry.desired_count = 1;
+    entry.ready_count = ready_count_;
+    entry.error_code = static_cast<uint32_t> (error_code_);
+    entry.last_reported_ms = zlink::clock_t ().now_ms ();
+
+    scoped_lock_t lock (_sync);
+    if (_report_dealer)
+        (void) send_topology_report_frames (_report_dealer, rid, entry);
 }
 }

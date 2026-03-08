@@ -746,16 +746,16 @@ def build_bench_cmd(binary_path: str, args: List[str], pin_cpu: bool) -> List[st
 
 def single_table_header_line() -> str:
     return (
-        "| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |"
-        "   Lat.P95(ms) |   Lat.P99(ms) | CPU% | Mem MB |"
+        "| Size     |         Throughput |      Bandwidth |   Lat.Mean(ms) |"
+        "    Lat.P95(ms) |    Lat.P99(ms) |   CPU% |   Mem MB |"
         " Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |"
     )
 
 
 def single_table_separator_line() -> str:
     return (
-        "|----------|------------------|--------------|--------------|--------------|"
-        "--------------|------|--------|-----------|-----------|-----------|"
+        "|----------|--------------------|----------------|---------------|---------------|"
+        "---------------|--------|----------|-----------|-----------|-----------|"
     )
 
 
@@ -777,8 +777,8 @@ def single_table_row_line(size: int, status: str, record: Optional[ComboRecord] 
         lat_s = format_latency_ms(record.latency)
         lat95_s = format_latency_ms(lat_p95 if lat_p95 is not None else 0.0)
         lat99_s = format_latency_ms(lat_p99 if lat_p99 is not None else 0.0)
-        cpu_s = f"{record.cpu_pct:4.1f}" if record.cpu_pct is not None else "N/A"
-        mem_s = f"{record.mem_mb:6.1f}" if record.mem_mb is not None else "N/A"
+        cpu_s = f"{record.cpu_pct:6.3f}" if record.cpu_pct is not None else "N/A"
+        mem_s = f"{record.mem_mb:8.3f}" if record.mem_mb is not None else "N/A"
         q_snd_s = format_queue_pending(record.snd_pending_max)
         q_rcv_max_s = format_queue_pending(record.rcv_pending_max)
         q_rcv_end_s = format_queue_pending(record.rcv_pending_end)
@@ -800,8 +800,8 @@ def single_table_row_line(size: int, status: str, record: Optional[ComboRecord] 
         lat95_s = "FAIL"
         lat99_s = "FAIL"
         if record is not None:
-            cpu_s = f"{record.cpu_pct:4.1f}" if record.cpu_pct is not None else "N/A"
-            mem_s = f"{record.mem_mb:6.1f}" if record.mem_mb is not None else "N/A"
+            cpu_s = f"{record.cpu_pct:6.3f}" if record.cpu_pct is not None else "N/A"
+            mem_s = f"{record.mem_mb:8.3f}" if record.mem_mb is not None else "N/A"
             q_snd_s = format_queue_pending(record.snd_pending_max)
             q_rcv_max_s = format_queue_pending(record.rcv_pending_max)
             q_rcv_end_s = format_queue_pending(record.rcv_pending_end)
@@ -812,9 +812,9 @@ def single_table_row_line(size: int, status: str, record: Optional[ComboRecord] 
             q_rcv_max_s = "N/A"
             q_rcv_end_s = "N/A"
     return (
-        f"| {f'{size}B':<8} | {tp_s:>16} | {bw_s:>12} | {lat_s:>12} | "
-        f"{lat95_s:>12} | {lat99_s:>12} | "
-        f"{cpu_s:>4} | {mem_s:>6} | {q_snd_s:>9} | {q_rcv_max_s:>9} | "
+        f"| {f'{size}B':<8} | {tp_s:>18} | {bw_s:>14} | {lat_s:>13} | "
+        f"{lat95_s:>13} | {lat99_s:>13} | "
+        f"{cpu_s:>6} | {mem_s:>8} | {q_snd_s:>9} | {q_rcv_max_s:>9} | "
         f"{q_rcv_end_s:>9} |"
     )
 
@@ -1010,15 +1010,15 @@ def pattern_direction_label(_pattern: str) -> str:
 
 
 def format_throughput(_pattern: str, throughput_per_sec: float) -> str:
-    return f"{throughput_per_sec/1e3:6.2f} Kmsg/s"
+    return f"{throughput_per_sec/1e3:8.3f} Kmsg/s"
 
 
 def format_bandwidth(bandwidth_mb_s: float) -> str:
-    return f"{bandwidth_mb_s:8.2f} MB/s"
+    return f"{bandwidth_mb_s:10.3f} MB/s"
 
 
 def format_latency_ms(latency_us: float) -> str:
-    return f"{latency_us / 1000.0:8.2f} ms"
+    return f"{latency_us / 1000.0:9.3f} ms"
 
 
 def build_pattern_table_lines(
@@ -1031,13 +1031,13 @@ def build_pattern_table_lines(
     for transport in transports:
         lines.append(f"### Transport: {transport}")
         lines.append(
-            "| Size   |       Throughput |    Bandwidth | Lat.Mean(ms) |"
-            "  Lat.P95(ms) |  Lat.P99(ms) | CPU% |  Mem MB |"
+            "| Size   |         Throughput |      Bandwidth | Lat.Mean(ms) |"
+            "   Lat.P95(ms) |   Lat.P99(ms) |   CPU% |   Mem MB |"
             " Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |"
         )
         lines.append(
-            "|--------|------------------|--------------|-------------|-------------|-------------|"
-            "------|---------|-----------|-----------|-----------|"
+            "|--------|--------------------|----------------|---------------|---------------|---------------|"
+            "--------|----------|-----------|-----------|-----------|"
         )
         for size in sizes:
             record = combo_results.get((pattern, transport, size))
@@ -1060,9 +1060,9 @@ def build_pattern_table_lines(
             cpu_s = "N/A"
             mem_s = "N/A"
             if record.cpu_pct is not None:
-                cpu_s = f"{record.cpu_pct:.1f}"
+                cpu_s = f"{record.cpu_pct:.3f}"
             if record.mem_mb is not None:
-                mem_s = f"{record.mem_mb:.1f}"
+                mem_s = f"{record.mem_mb:.3f}"
             q_snd_s = format_queue_pending(record.snd_pending_max)
             q_rcv_max_s = format_queue_pending(record.rcv_pending_max)
             q_rcv_end_s = format_queue_pending(record.rcv_pending_end)

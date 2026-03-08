@@ -5,6 +5,7 @@
 
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
+#include "services/common/service_monitor.hpp"
 #include "services/discovery/discovery.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
@@ -17,6 +18,21 @@
 
 namespace zlink
 {
+enum spot_node_socket_role_t
+{
+    spot_node_socket_node = 0,
+    spot_node_socket_pub = 1,
+    spot_node_socket_sub = 2,
+    spot_node_socket_dealer = 3
+};
+
+enum spot_node_option_t
+{
+    spot_node_opt_pub_mode = 1,
+    spot_node_opt_pub_queue_hwm = 2,
+    spot_node_opt_pub_queue_full_policy = 3
+};
+
 class spot_pub_t;
 class spot_sub_t;
 
@@ -41,12 +57,20 @@ class spot_node_t
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
                         int trust_system_);
+    int set_pub_routing_id (const void *data_, size_t size_);
+    int set_sub_routing_id (const void *data_, size_t size_);
+    int pub_routing_id (zlink_routing_id_t *out_) const;
+    int sub_routing_id (zlink_routing_id_t *out_) const;
+    int set_pub_option (int option_, const void *optval_, size_t optvallen_);
+    int set_sub_option (int option_, const void *optval_, size_t optvallen_);
     int set_socket_option (int socket_role_,
                            int option_,
                            const void *optval_,
                            size_t optvallen_);
     int ensure_pub_facade_mode () const;
     int ensure_sub_facade_mode () const;
+    void *pub_monitor_open (int events_);
+    void *sub_monitor_open (int events_);
     void *pub_socket_for_poller ();
     void *pub_socket_unsafe ();
     void *sub_socket_for_poller ();
@@ -94,6 +118,22 @@ class spot_node_t
     void send_heartbeat (uint64_t now_ms_);
     void ensure_control_sockets ();
     void flush_pending ();
+    void emit_pub_event (uint32_t event_type_,
+                         const char *endpoint_,
+                         uint32_t value_,
+                         int32_t error_code_);
+    void emit_sub_event (uint32_t event_type_,
+                         const char *endpoint_,
+                         uint32_t value_,
+                         int32_t error_code_);
+    void report_pub_topology (uint16_t state_,
+                              const char *endpoint_,
+                              uint32_t ready_count_,
+                              int32_t error_code_);
+    void report_sub_topology (uint16_t state_,
+                              const char *endpoint_,
+                              uint32_t ready_count_,
+                              int32_t error_code_);
     bool suspend_control_task ();
     void resume_control_task ();
     int ensure_sub_socket_mutation_allowed () const;
@@ -126,6 +166,10 @@ class spot_node_t
 
     uint32_t _node_id;
     zlink_routing_id_t _routing_id;
+    zlink_routing_id_t _pub_routing_id;
+    zlink_routing_id_t _sub_routing_id;
+    std::string _pub_routing_id_override;
+    std::string _sub_routing_id_override;
 
     bool _registered;
     std::string _service_name;
@@ -186,6 +230,8 @@ class spot_node_t
     atomic_counter_t _stop;
     uint64_t _task_id;
     uint32_t _control_tick_ms;
+    service_monitor_hub_t _pub_monitor;
+    service_monitor_hub_t _sub_monitor;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_node_t)
 };

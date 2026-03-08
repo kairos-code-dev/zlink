@@ -43,21 +43,30 @@ bool try_send_reply (zlink::socket_t &sock,
 
     if (!reply.id_sent) {
         const int id_sent = sock.send (
-          reply.client_id.data (), reply.client_id.size (), zlink::send_flag::sndmore);
+          reply.client_id.data (),
+          reply.client_id.size (),
+          zlink::send_flag::sndmore | zlink::send_flag::dontwait);
         if (id_sent != static_cast<int> (reply.client_id.size ())) {
             if (id_sent < 0 && errno == EAGAIN) {
-                return poller.modify (sock, zlink::poll_event::pollout) == 0;
+                return poller.modify (
+                         sock,
+                         zlink::poll_event::pollin | zlink::poll_event::pollout)
+                       == 0;
             }
             return false;
         }
         reply.id_sent = true;
     }
 
-    const int payload_sent =
-      sock.send (reply.payload.data (), reply.payload.size (), zlink::send_flag::none);
+    const int payload_sent = sock.send (reply.payload.data (),
+                                        reply.payload.size (),
+                                        zlink::send_flag::dontwait);
     if (payload_sent != static_cast<int> (reply.payload.size ())) {
         if (payload_sent < 0 && errno == EAGAIN) {
-            return poller.modify (sock, zlink::poll_event::pollout) == 0;
+            return poller.modify (
+                     sock,
+                     zlink::poll_event::pollin | zlink::poll_event::pollout)
+                   == 0;
         }
         return false;
     }
@@ -71,13 +80,13 @@ bool try_send_reply (zlink::socket_t &sock,
 
 } // namespace
 
-void perf_dealer_router_server (const std::string &transport, size_t)
+bool perf_dealer_router_server (const std::string &transport, size_t)
 {
     perf::multi::set_perf_pattern_env ("DEALER_ROUTER");
 
     if (!perf::multi::is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED,MULTI_DEALER_ROUTER," << transport << std::endl;
-        return;
+        return true;
     }
 
     const perf::multi::multi_bench_settings_t settings =
@@ -86,17 +95,17 @@ void perf_dealer_router_server (const std::string &transport, size_t)
     perf::multi::ctx_guard_t ctx;
     perf::multi::socket_guard_t server (ctx, zlink::socket_type::router);
     if (!server.valid ())
-        return;
+        return false;
 
     perf::multi::apply_benchmark_socket_options (
       server.sock (), settings, transport);
     if (!perf::multi::setup_tls_server (server.sock (), transport))
-        return;
+        return false;
 
     const std::string endpoint = perf::multi::bind_and_resolve_endpoint (
       server.sock (), transport, "cpp_multi_dealer_router", settings.server_bind_port);
     if (endpoint.empty ())
-        return;
+        return false;
 
     perf::multi::print_ready (endpoint);
 
@@ -117,11 +126,13 @@ void perf_dealer_router_server (const std::string &transport, size_t)
     reply_state_t reply;
 
     bool stop_requested = false;
+    bool failed = false;
     while (!stop_requested && std::chrono::steady_clock::now () < deadline) {
         const int poll_rc = poller.wait (events, compute_wait_ms (deadline));
         if (poll_rc < 0) {
             if (errno == EINTR)
                 continue;
+            failed = true;
             break;
         }
         if (poll_rc == 0)
@@ -137,6 +148,7 @@ void perf_dealer_router_server (const std::string &transport, size_t)
                 && reply.pending) {
                 if (!try_send_reply (*sock, poller, reply)) {
                     stop_requested = true;
+                    failed = true;
                     break;
                 }
                 if (reply.pending)
@@ -161,6 +173,7 @@ void perf_dealer_router_server (const std::string &transport, size_t)
                     if (err == EINTR)
                         continue;
                     stop_requested = true;
+                    failed = true;
                     break;
                 }
 
@@ -176,6 +189,7 @@ void perf_dealer_router_server (const std::string &transport, size_t)
                     if (err == EINTR)
                         continue;
                     stop_requested = true;
+                    failed = true;
                     break;
                 }
 
@@ -193,6 +207,7 @@ void perf_dealer_router_server (const std::string &transport, size_t)
                 reply.payload = std::move (payload);
                 if (!try_send_reply (*sock, poller, reply)) {
                     stop_requested = true;
+                    failed = true;
                     break;
                 }
                 if (reply.pending) {
@@ -208,6 +223,7 @@ void perf_dealer_router_server (const std::string &transport, size_t)
       transport,
       0,
       perf::multi::server_queue_stats_t ());
+    return !failed;
 }
 
 int main (int argc, char **argv)
@@ -222,6 +238,5 @@ int main (int argc, char **argv)
     if (size == 0)
         return 1;
 
-    perf_dealer_router_server (transport, size);
-    return 0;
+    return perf_dealer_router_server (transport, size) ? 0 : 1;
 }

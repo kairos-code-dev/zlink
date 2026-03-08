@@ -7,6 +7,18 @@ Discovery는 Registry 브로드캐스트를 구독하고 로컬 서비스 디렉
 연락하지 않고도 서비스 이름으로 사용 가능한 Receiver 또는 SPOT 노드를
 조회합니다.
 
+## 현재 권장 API 방향
+
+- Discovery identity는 `zlink_discovery_set_routing_id()` /
+  `zlink_discovery_routing_id()`로 다룹니다.
+- Registry topology summary를 Discovery가 다시 보고해야 하면
+  `zlink_discovery_connect_registry_router()`를 사용합니다.
+- `ZLINK_DISCOVERY_SERVICE_UP`,
+  `ZLINK_DISCOVERY_PROVIDERS_CHANGED` 같은 상태 전이는
+  `zlink_discovery_monitor_open()`으로 관찰합니다.
+- 전역 요약 상태는 registry topology snapshot/query API로 조회합니다.
+- Discovery는 1차 service-level option surface 대상이 아닙니다.
+
 ## 타입
 
 ```c
@@ -80,6 +92,27 @@ int zlink_discovery_connect_registry(void *discovery,
 **스레드 안전성:** 스레드 안전하지 않음. 동시 접근이 시작되기 전에 호출해야 합니다.
 
 **참고:** `zlink_discovery_subscribe`
+
+---
+
+### zlink_discovery_connect_registry_router
+
+Registry topology report용 ROUTER 엔드포인트를 연결합니다.
+
+```c
+int zlink_discovery_connect_registry_router(void *discovery,
+                                            const char *registry_router_endpoint);
+```
+
+Discovery의 로컬 topology summary를 Registry에 다시 보고해야 할 때만
+사용합니다. 이는 Registry PUB 브로드캐스트를 구독하는
+`zlink_discovery_connect_registry()`와 별도의 경로입니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음. setup 단계에서 호출해야 합니다.
+
+**참고:** `zlink_registry_topology_snapshot`, `zlink_registry_query_snapshot`
 
 ---
 
@@ -190,29 +223,15 @@ int zlink_discovery_service_available(void *discovery,
 
 ---
 
-### zlink_discovery_setsockopt
+### Discovery 옵션
 
-내부 Discovery 소켓의 소켓 옵션을 설정합니다.
+Discovery는 1차 service-level option surface 대상에서 의도적으로
+제외합니다. 대신 공개 setup surface는 다음으로 제한합니다.
 
-```c
-int zlink_discovery_setsockopt(void *discovery,
-                               int socket_role,
-                               int option,
-                               const void *optval,
-                               size_t optvallen);
-```
-
-`socket_role`로 식별되는 Discovery의 내부 SUB 소켓에 저수준 소켓 옵션을
-적용합니다. 소켓 역할로 `ZLINK_DISCOVERY_SOCKET_SUB`을 사용합니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**에러:**
-- `EINVAL` -- 잘못된 소켓 역할 또는 알 수 없는 옵션.
-
-**스레드 안전성:** 스레드 안전하지 않음.
-
-**참고:** `zlink_discovery_connect_registry`
+- `zlink_discovery_set_routing_id()`
+- `zlink_discovery_connect_registry()`
+- `zlink_discovery_connect_registry_router()`
+- `zlink_discovery_subscribe()` / `zlink_discovery_unsubscribe()`
 
 ---
 

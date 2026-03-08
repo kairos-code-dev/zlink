@@ -188,9 +188,9 @@ static void test_spot_peer_queries_do_not_enter_pollable_mode ()
     size_t pub_peer_count = 0;
     size_t sub_peer_count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_pub_peers (pub_node, NULL, &pub_peer_count));
+      zlink_spot_pub_peers (pub, NULL, &pub_peer_count));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_sub_peers (sub_node, NULL, &sub_peer_count));
+      zlink_spot_sub_peers (sub, NULL, &sub_peer_count));
     TEST_ASSERT_TRUE (pub_peer_count > 0);
     TEST_ASSERT_TRUE (sub_peer_count > 0);
 

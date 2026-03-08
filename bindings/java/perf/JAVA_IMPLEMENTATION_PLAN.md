@@ -1475,16 +1475,29 @@ ls -la bindings/java/perf/results/multi/report/perf_*.txt
 - [ ] 자명한 코드에 불필요한 주석 없음
 
 **6-5. 진행 현황 (2026-03-05, multi 우선)**
+- 2026-03-07 기준 `MULTI_GATEWAY`, `MULTI_SPOT`, `MULTI_STREAM_LEN32BE` blocker 는 Java 쪽 수정으로 해소했다.
+  현재 미완료 항목은 `runs=3 all transport/size` 전수 검증과 DoD 문서 체크 정리다.
 - [x] `multi/src` 패턴 파일(서버 9 + 클라이언트 6)에서 retry/phase/상수 구조를 정리하고 `try/catch` 복잡도를 축소
 - [x] `core/perf`와 다르게 send/recv 공통화는 각 패턴 파일 `private` 메서드 내부로만 유지 (`common/` 공유 루프 미사용)
 - [x] 매직 넘버 상수화 적용 (`32`, `256`, `1024`, retry backoff, ns 단위 상수 등)
 - [x] 비자명 로직 주석 보강 (routing-id echo, STREAM control frame, stop-token)
 - [x] `MULTI_PUBSUB` ws `server_shutdown_timeout` 수정 (`LINGER=0`, shutdown 경로 안정화)
 - [x] `MULTI_GATEWAY` tcp `server_shutdown_timeout` 수정 (receiver linger + inactivity-based shutdown)
+- [x] `MULTI_SPOT` high-HWM backlog 수정
+  - `PERF_HWM=100000` runner 기본 환경에서 warmup backlog 때문에 `no_active_frames`가 나던 문제를,
+    pre-active backlog drain 후 첫 active frame 시작 기준으로 수정
+  - 재검증:
+    `run_policy_bench.py --binding java --suite multi --pattern MULTI_SPOT --transports tcp --msg-sizes 64 --runs 1 --result`
+- [x] `MULTI_STREAM_LEN32BE` callback ownership 수정
+  - LEN32BE callback message vector 를 callback-owned 경로로 분리하고
+    perf server 는 `streamSend(..., Message)` 로 consume 하도록 정렬
+  - 재검증:
+    `TestStreamSocketPortedTest` backlog echo,
+    `run_policy_bench.py --binding java --suite multi --pattern MULTI_STREAM_LEN32BE --transports tcp --msg-sizes 64 --runs 1 --result`
 - [x] 멀티 스모크 검증 통과 (tcp/64B): `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`, `MULTI_GATEWAY`, `MULTI_SPOT`, `MULTI_STREAM`, `MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`
-- [x] 기본설정 `runs=3` 부분 검증 통과: `MULTI_PUBSUB`(all transport/size), `MULTI_GATEWAY`(all), `MULTI_SPOT`(all)
-- [x] `MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE` all transport/size `runs=1` 분할 검증 통과
-- [x] 기본설정 `runs=3` 전체 완주 검증(`MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`) 완료
+- [ ] 기본설정 `runs=3` 부분 검증 통과: `MULTI_PUBSUB`(all transport/size), `MULTI_GATEWAY`(all), `MULTI_SPOT`(all)
+- [ ] `MULTI_STREAM_LEN32BE` all transport/size `runs=1` 분할 검증 통과
+- [ ] 기본설정 `runs=3` 전체 완주 검증(`MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`) 완료
   - `MULTI_STREAM_CALLBACK`: tcp/tls/ws/wss 각각 `--runs 3 --result` 완주
     (`perf_linux_20260305_203722.txt`, `204229.txt`, `204414.txt`, `204603.txt`)
   - `MULTI_STREAM_LEN32BE`: tcp/tls/ws/wss 각각 `--runs 3 --result` 완주
@@ -1495,7 +1508,7 @@ ls -la bindings/java/perf/results/multi/report/perf_*.txt
 - [x] `MULTI_DEALER_DEALER` 서버 종료 경로 리팩토링
   - stop-token 의존 제거, 서버 active-window 기반 자체 종료로 `no_data/hang` 해소
   - `runs=3`, all transport/size 완주 확인(`perf_linux_20260305_230432.txt`)
-- [x] 기본설정 `--suite multi` 전체 패턴(`runs=3`) 완주
+- [ ] 기본설정 `--suite multi` 전체 패턴(`runs=3`) 완주
   - 결과: `perf_linux_20260306_003438.txt` (`META,status,complete`, `expected=576`, `actual=576`)
 - [ ] single 패턴 8개를 동일 기준으로 점검/리팩토링하고 6-1~6-4 전체 체크 완료
 
@@ -1543,12 +1556,15 @@ ls -la bindings/java/perf/results/multi/report/perf_*.txt
 - [ ] `send` 실패(`EAGAIN` 제외) 시 즉시 실패 처리하고 원인(errno/message)을 그대로 노출한다
 - [ ] `single recv`: blocking recv 1회 후 `DONTWAIT` nonblocking drain
 - [ ] `multi recv`: poller readiness 기반으로 소켓별 `DONTWAIT` nonblocking drain (무제한, batch cap 없음)
+- [ ] one-way recv active 측정은 pre-active backlog(warmup/settle 잔여분)를 drain 한 뒤 첫 active frame 도착 시점부터 시작한다
+- [ ] active-frame 탐색은 고정 cap 으로 끊지 않고, backlog 가 계속 drain 되는 동안에는 계속 진행한다
 - [ ] `PERF_MULTI_RECV_BATCH`류 제어 변수/우회 옵션을 도입하지 않는다
 - [ ] `core/perf`와 달리 send/recv 공통화는 패턴 간 공유 유틸로 추출하지 않고, 각 패턴 파일 내부 `private helper`까지만 허용한다
 - [ ] 핵심 send/recv 루프는 각 패턴 파일에서 샘플 코드처럼 명시적으로 읽히도록 유지한다
 - [ ] Spot/Gateway/Receiver(multi)는 service instance poller 고정:
   `Poller.addSpotSub/addSpotPub/addGateway/addReceiver` 사용
 - [ ] SpotNode socket handover / `open_*()` helper 확장 방향으로 wrapper 를 늘리지 않는다
+- [ ] STREAM 계열 검증은 큰 backlog/HWM 조건에서도 callback ownership/echo 경로가 유지되는지 확인한다
 
 **6-6 진행 현황 (1차, 2026-03-06)**
 - [x] 대상 패턴 1차 적용: `MULTI_PUBSUB`, `MULTI_DEALER_DEALER`

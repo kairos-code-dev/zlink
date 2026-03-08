@@ -8,6 +8,7 @@
 
 #include "services/control/service_control_runtime.hpp"
 #include "services/discovery/discovery_protocol.hpp"
+#include "services/gateway/routing_id_utils.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
 #include "utils/err.hpp"
@@ -97,6 +98,32 @@ static bool copy_parts_from_vec (const std::vector<msg_t> &src_,
     return true;
 }
 
+static bool send_topology_report_frames (socket_base_t *dealer_,
+                                         const zlink_routing_id_t &rid_,
+                                         const zlink_registry_topology_entry_t &entry_)
+{
+    if (!dealer_)
+        return false;
+
+    return discovery_protocol::send_u16 (
+             dealer_, discovery_protocol::msg_topology_report, ZLINK_SNDMORE)
+             == 0
+           && discovery_protocol::send_frame (dealer_, &entry_, sizeof (entry_),
+                                              0)
+                == 0;
+}
+
+static bool wait_socket_event (void *socket_, short events_, long timeout_ms_)
+{
+    zlink_pollitem_t item;
+    item.socket = socket_;
+    item.fd = 0;
+    item.events = events_;
+    item.revents = 0;
+    const int rc = zlink_poll (&item, 1, timeout_ms_);
+    return rc > 0 && (item.revents & events_) == events_;
+}
+
 static void release_shared_message (spot_shared_message_t *shared_)
 {
     if (!shared_)
@@ -138,6 +165,14 @@ static bool copy_parts_to_msgv (const std::vector<msg_t> &src_,
     }
 
     return true;
+}
+
+static bool apply_service_routing_id (socket_base_t *socket_,
+                                      const std::string *override_id_,
+                                      zlink_routing_id_t *out_)
+{
+    return zlink::discovery::set_socket_routing_id (socket_, override_id_,
+                                                    out_);
 }
 
 static int send_frame (socket_base_t *socket_,
@@ -204,11 +239,15 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _stop (0),
     _task_id (0),
     _control_tick_ms (
-      static_cast<uint32_t> (std::max (1, resolve_spot_idle_sleep_ms ())))
+      static_cast<uint32_t> (std::max (1, resolve_spot_idle_sleep_ms ()))),
+    _pub_monitor (ctx_),
+    _sub_monitor (ctx_)
 {
     zlink_assert (_ctx);
 
     _routing_id.size = 0;
+    _pub_routing_id.size = 0;
+    _sub_routing_id.size = 0;
     _node_id = zlink::generate_random ();
     if (_node_id == 0)
         _node_id = 1;
@@ -369,6 +408,12 @@ int spot_node_t::bind (const char *endpoint_)
                                       &_pub_opts[i].value[0],
                                       _pub_opts[i].value.size ());
             }
+            if (!apply_service_routing_id (
+                  _pub, &_pub_routing_id_override, &_pub_routing_id)) {
+                _pub->close ();
+                _pub = NULL;
+                return -1;
+            }
         }
         if (!_tls_cert.empty ()) {
             if (_pub->setsockopt (ZLINK_TLS_CERT, _tls_cert.data (),
@@ -384,6 +429,7 @@ int spot_node_t::bind (const char *endpoint_)
     if (rc == 0) {
         scoped_lock_t lock (_sync);
         _bind_endpoints.push_back (endpoint_);
+        emit_pub_event (ZLINK_SPOT_PUB_QUEUE_DRAINED, endpoint_, 1, 0);
     }
     return rc;
 }
@@ -396,8 +442,7 @@ int spot_node_t::connect_registry (const char *registry_router_endpoint_)
     }
 
     scoped_lock_t lock (_sync);
-    if (_registry_endpoints.insert (registry_router_endpoint_).second
-        && _registered)
+    if (_registry_endpoints.insert (registry_router_endpoint_).second)
         _pending_registry_connect.push_back (registry_router_endpoint_);
     request_control_tick ();
     return 0;
@@ -412,12 +457,19 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
     if (ensure_sub_socket_mutation_allowed () != 0)
         return -1;
 
-    scoped_lock_t lock (_sync);
-    if (_peer_endpoints.count (peer_pub_endpoint_))
-        return 0;
-    _peer_endpoints.insert (peer_pub_endpoint_);
-    _pending_peer_connect.push_back (peer_pub_endpoint_);
-    request_control_tick ();
+    uint32_t count = 0;
+    {
+        scoped_lock_t lock (_sync);
+        if (_peer_endpoints.count (peer_pub_endpoint_))
+            return 0;
+        _peer_endpoints.insert (peer_pub_endpoint_);
+        _pending_peer_connect.push_back (peer_pub_endpoint_);
+        request_control_tick ();
+        count = static_cast<uint32_t> (_peer_endpoints.size ());
+    }
+    emit_sub_event (ZLINK_MONITOR_EVENT_PEER_UP, peer_pub_endpoint_, count, 0);
+    report_sub_topology (ZLINK_TOPOLOGY_STATE_READY, peer_pub_endpoint_, count,
+                         0);
     return 0;
 }
 
@@ -430,10 +482,19 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
     if (ensure_sub_socket_mutation_allowed () != 0)
         return -1;
 
-    scoped_lock_t lock (_sync);
-    _peer_endpoints.erase (peer_pub_endpoint_);
-    _pending_peer_disconnect.push_back (peer_pub_endpoint_);
-    request_control_tick ();
+    uint32_t count = 0;
+    {
+        scoped_lock_t lock (_sync);
+        _peer_endpoints.erase (peer_pub_endpoint_);
+        _pending_peer_disconnect.push_back (peer_pub_endpoint_);
+        request_control_tick ();
+        count = static_cast<uint32_t> (_peer_endpoints.size ());
+    }
+    emit_sub_event (ZLINK_MONITOR_EVENT_PEER_DOWN, peer_pub_endpoint_, count,
+                    0);
+    report_sub_topology (
+      count > 0 ? ZLINK_TOPOLOGY_STATE_CONNECTING : ZLINK_TOPOLOGY_STATE_LOST,
+      peer_pub_endpoint_, count, 0);
     return 0;
 }
 
@@ -564,6 +625,7 @@ int spot_node_t::register_node (const char *service_name_,
         _pending_registry_connect.push_back (*it);
     }
     request_control_tick ();
+    report_pub_topology (ZLINK_TOPOLOGY_STATE_READY, advertise.c_str (), 1, 0);
     return 0;
 }
 
@@ -744,6 +806,272 @@ int spot_node_t::set_tls_client (const char *ca_cert_,
     return 0;
 }
 
+int spot_node_t::set_pub_routing_id (const void *data_, size_t size_)
+{
+    if (!data_ || size_ == 0 || size_ > sizeof (_pub_routing_id.data)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    if (_pub || _pub_pollable_mode.get () != 0) {
+        errno = EFSM;
+        return -1;
+    }
+    _pub_routing_id_override.assign (static_cast<const char *> (data_), size_);
+    memcpy (_pub_routing_id.data, data_, size_);
+    _pub_routing_id.size = static_cast<uint8_t> (size_);
+    return 0;
+}
+
+int spot_node_t::set_sub_routing_id (const void *data_, size_t size_)
+{
+    if (!data_ || size_ == 0 || size_ > sizeof (_sub_routing_id.data)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    if (_sub || _sub_pollable_mode.get () != 0 || !_peer_endpoints.empty ()
+        || !_filter_refcount.empty ()) {
+        errno = EFSM;
+        return -1;
+    }
+    _sub_routing_id_override.assign (static_cast<const char *> (data_), size_);
+    memcpy (_sub_routing_id.data, data_, size_);
+    _sub_routing_id.size = static_cast<uint8_t> (size_);
+    return 0;
+}
+
+int spot_node_t::pub_routing_id (zlink_routing_id_t *out_) const
+{
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    if (_pub_routing_id.size == 0) {
+        if (_pub) {
+            size_t size = sizeof (out_->data);
+            if (zlink_getsockopt (static_cast<void *> (_pub), ZLINK_ROUTING_ID,
+                                  out_->data, &size)
+                != 0)
+                return -1;
+            out_->size = static_cast<uint8_t> (size);
+            return 0;
+        }
+        errno = ENOENT;
+        return -1;
+    }
+    *out_ = _pub_routing_id;
+    return 0;
+}
+
+int spot_node_t::sub_routing_id (zlink_routing_id_t *out_) const
+{
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    if (_sub_routing_id.size == 0) {
+        if (_sub) {
+            size_t size = sizeof (out_->data);
+            if (zlink_getsockopt (static_cast<void *> (_sub), ZLINK_ROUTING_ID,
+                                  out_->data, &size)
+                != 0)
+                return -1;
+            out_->size = static_cast<uint8_t> (size);
+            return 0;
+        }
+        errno = ENOENT;
+        return -1;
+    }
+    *out_ = _sub_routing_id;
+    return 0;
+}
+
+int spot_node_t::set_pub_option (int option_,
+                                 const void *optval_,
+                                 size_t optvallen_)
+{
+    switch (option_) {
+        case ZLINK_SPOT_PUB_OPT_SNDHWM:
+            return set_socket_option (spot_node_socket_pub, ZLINK_SNDHWM,
+                                      optval_, optvallen_);
+        case ZLINK_SPOT_PUB_OPT_SNDTIMEO:
+            return set_socket_option (spot_node_socket_pub,
+                                      ZLINK_SNDTIMEO, optval_, optvallen_);
+        case ZLINK_SPOT_PUB_OPT_LINGER:
+            return set_socket_option (spot_node_socket_pub, ZLINK_LINGER,
+                                      optval_, optvallen_);
+        case ZLINK_SPOT_PUB_OPT_NODROP:
+            return set_socket_option (spot_node_socket_pub,
+                                      ZLINK_XPUB_NODROP, optval_, optvallen_);
+        case ZLINK_SPOT_PUB_OPT_MODE:
+            return set_socket_option (spot_node_socket_node,
+                                      spot_node_opt_pub_mode, optval_,
+                                      optvallen_);
+        case ZLINK_SPOT_PUB_OPT_QUEUE_HWM:
+            return set_socket_option (spot_node_socket_node,
+                                      spot_node_opt_pub_queue_hwm,
+                                      optval_, optvallen_);
+        case ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY:
+            return set_socket_option (
+              spot_node_socket_node, spot_node_opt_pub_queue_full_policy,
+              optval_, optvallen_);
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+}
+
+int spot_node_t::set_sub_option (int option_,
+                                 const void *optval_,
+                                 size_t optvallen_)
+{
+    switch (option_) {
+        case ZLINK_SPOT_SUB_OPT_RCVHWM:
+            return set_socket_option (spot_node_socket_sub, ZLINK_RCVHWM,
+                                      optval_, optvallen_);
+        case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
+            return set_socket_option (spot_node_socket_sub,
+                                      ZLINK_RCVTIMEO, optval_, optvallen_);
+        case ZLINK_SPOT_SUB_OPT_LINGER:
+            return set_socket_option (spot_node_socket_sub, ZLINK_LINGER,
+                                      optval_, optvallen_);
+        case ZLINK_SPOT_SUB_OPT_QUEUE_NODROP:
+            return set_socket_option (spot_node_socket_sub,
+                                      ZLINK_XPUB_NODROP, optval_, optvallen_);
+        case ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY:
+            return set_socket_option (spot_node_socket_sub,
+                                      ZLINK_XPUB_NODROP, optval_, optvallen_);
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+}
+
+void *spot_node_t::pub_monitor_open (int events_)
+{
+    return _pub_monitor.open (events_);
+}
+
+void *spot_node_t::sub_monitor_open (int events_)
+{
+    return _sub_monitor.open (events_);
+}
+
+void spot_node_t::emit_pub_event (uint32_t event_type_,
+                                  const char *endpoint_,
+                                  uint32_t value_,
+                                  int32_t error_code_)
+{
+    zlink_service_event_t ev;
+    memset (&ev, 0, sizeof (ev));
+    ev.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
+    ev.event_type = event_type_;
+    ev.value = value_;
+    ev.error_code = error_code_;
+    ev.detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
+    ev.routing_id = _pub_routing_id;
+    if (endpoint_ && endpoint_[0] != '\0') {
+        ev.detail_flags |= ZLINK_EVENT_DETAIL_ENDPOINT;
+        strncpy (ev.endpoint, endpoint_, sizeof (ev.endpoint) - 1);
+    }
+    _pub_monitor.emit (ev);
+}
+
+void spot_node_t::emit_sub_event (uint32_t event_type_,
+                                  const char *endpoint_,
+                                  uint32_t value_,
+                                  int32_t error_code_)
+{
+    zlink_service_event_t ev;
+    memset (&ev, 0, sizeof (ev));
+    ev.service_kind = ZLINK_SERVICE_KIND_SPOT_SUB;
+    ev.event_type = event_type_;
+    ev.value = value_;
+    ev.error_code = error_code_;
+    ev.detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
+    ev.routing_id = _sub_routing_id;
+    if (endpoint_ && endpoint_[0] != '\0') {
+        ev.detail_flags |= ZLINK_EVENT_DETAIL_ENDPOINT;
+        strncpy (ev.endpoint, endpoint_, sizeof (ev.endpoint) - 1);
+    }
+    _sub_monitor.emit (ev);
+}
+
+void spot_node_t::report_pub_topology (uint16_t state_,
+                                       const char *endpoint_,
+                                       uint32_t ready_count_,
+                                       int32_t error_code_)
+{
+    std::string service;
+    socket_base_t *dealer = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        service = !_service_name.empty () ? _service_name : _discovery_service;
+        dealer = _dealer;
+    }
+    if (service.empty ())
+        service = "spot-pub";
+    if (_pub_routing_id.size == 0 || !dealer)
+        return;
+
+    zlink_registry_topology_entry_t entry;
+    memset (&entry, 0, sizeof (entry));
+    entry.routing_id = _pub_routing_id;
+    entry.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
+    strncpy (entry.service_name, service.c_str (),
+             sizeof (entry.service_name) - 1);
+    if (endpoint_ && endpoint_[0] != '\0')
+        strncpy (entry.endpoint, endpoint_, sizeof (entry.endpoint) - 1);
+    entry.source =
+      _discovery ? ZLINK_TOPOLOGY_SOURCE_DISCOVERY : ZLINK_TOPOLOGY_SOURCE_REGISTRY;
+    entry.state = state_;
+    entry.desired_count = 1;
+    entry.ready_count = ready_count_;
+    entry.error_code = static_cast<uint32_t> (error_code_);
+    entry.last_reported_ms = zlink::clock_t ().now_ms ();
+    (void) send_topology_report_frames (dealer, _routing_id, entry);
+}
+
+void spot_node_t::report_sub_topology (uint16_t state_,
+                                       const char *endpoint_,
+                                       uint32_t ready_count_,
+                                       int32_t error_code_)
+{
+    std::string service;
+    socket_base_t *dealer = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        service = !_discovery_service.empty () ? _discovery_service : _service_name;
+        dealer = _dealer;
+    }
+    if (service.empty ())
+        service = "spot-sub";
+    if (_sub_routing_id.size == 0 || !dealer)
+        return;
+
+    zlink_registry_topology_entry_t entry;
+    memset (&entry, 0, sizeof (entry));
+    entry.routing_id = _sub_routing_id;
+    entry.service_kind = ZLINK_SERVICE_KIND_SPOT_SUB;
+    strncpy (entry.service_name, service.c_str (),
+             sizeof (entry.service_name) - 1);
+    if (endpoint_ && endpoint_[0] != '\0')
+        strncpy (entry.endpoint, endpoint_, sizeof (entry.endpoint) - 1);
+    entry.source =
+      _discovery ? ZLINK_TOPOLOGY_SOURCE_DISCOVERY : ZLINK_TOPOLOGY_SOURCE_MANUAL;
+    entry.state = state_;
+    entry.desired_count = 1;
+    entry.ready_count = ready_count_;
+    entry.error_code = static_cast<uint32_t> (error_code_);
+    entry.last_reported_ms = zlink::clock_t ().now_ms ();
+    (void) send_topology_report_frames (dealer, _routing_id, entry);
+}
+
 int spot_node_t::set_socket_option (int socket_role_,
                                     int option_,
                                     const void *optval_,
@@ -754,7 +1082,7 @@ int spot_node_t::set_socket_option (int socket_role_,
         return -1;
     }
 
-    if (socket_role_ == ZLINK_SPOT_NODE_SOCKET_NODE) {
+    if (socket_role_ == spot_node_socket_node) {
         if (optvallen_ != sizeof (int)) {
             errno = EINVAL;
             return -1;
@@ -763,7 +1091,7 @@ int spot_node_t::set_socket_option (int socket_role_,
         int value = 0;
         memcpy (&value, optval_, sizeof (value));
         switch (option_) {
-            case ZLINK_SPOT_NODE_OPT_PUB_MODE:
+            case spot_node_opt_pub_mode:
                 if (value != ZLINK_SPOT_NODE_PUB_MODE_SYNC
                     && value != ZLINK_SPOT_NODE_PUB_MODE_ASYNC) {
                     errno = EINVAL;
@@ -771,7 +1099,7 @@ int spot_node_t::set_socket_option (int socket_role_,
                 }
                 _pub_mode.set (value);
                 return 0;
-            case ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM:
+            case spot_node_opt_pub_queue_hwm:
                 if (value <= 0) {
                     errno = EINVAL;
                     return -1;
@@ -781,7 +1109,7 @@ int spot_node_t::set_socket_option (int socket_role_,
                     _pub_queue_hwm = static_cast<size_t> (value);
                 }
                 return 0;
-            case ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY:
+            case spot_node_opt_pub_queue_full_policy:
                 if (value != ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN
                     && value != ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP) {
                     errno = EINVAL;
@@ -799,17 +1127,17 @@ int spot_node_t::set_socket_option (int socket_role_,
     std::vector<socket_opt_t> *opts = NULL;
     socket_base_t *existing = NULL;
     switch (socket_role_) {
-        case ZLINK_SPOT_NODE_SOCKET_PUB:
+        case spot_node_socket_pub:
             opts = &_pub_opts;
             existing = _pub;
             break;
-        case ZLINK_SPOT_NODE_SOCKET_SUB:
+        case spot_node_socket_sub:
             if (ensure_sub_socket_mutation_allowed () != 0)
                 return -1;
             opts = &_sub_opts;
             existing = _sub;
             break;
-        case ZLINK_SPOT_NODE_SOCKET_DEALER:
+        case spot_node_socket_dealer:
             opts = &_dealer_opts;
             existing = _dealer;
             break;
@@ -818,7 +1146,7 @@ int spot_node_t::set_socket_option (int socket_role_,
             return -1;
     }
 
-    if (socket_role_ == ZLINK_SPOT_NODE_SOCKET_SUB
+    if (socket_role_ == spot_node_socket_sub
         && option_ == ZLINK_RCVHWM && optvallen_ == sizeof (int)) {
         int value = 0;
         memcpy (&value, optval_, sizeof (value));
@@ -834,7 +1162,7 @@ int spot_node_t::set_socket_option (int socket_role_,
         }
     }
 
-    if (socket_role_ == ZLINK_SPOT_NODE_SOCKET_SUB
+    if (socket_role_ == spot_node_socket_sub
         && option_ == ZLINK_RCVTIMEO && optvallen_ == sizeof (int)) {
         int value = 0;
         memcpy (&value, optval_, sizeof (value));
@@ -852,7 +1180,7 @@ int spot_node_t::set_socket_option (int socket_role_,
         }
     }
 
-    if (socket_role_ == ZLINK_SPOT_NODE_SOCKET_SUB
+    if (socket_role_ == spot_node_socket_sub
         && option_ == ZLINK_XPUB_NODROP && optvallen_ == sizeof (int)) {
         int value = 0;
         memcpy (&value, optval_, sizeof (value));
@@ -873,7 +1201,7 @@ int spot_node_t::set_socket_option (int socket_role_,
               static_cast<const unsigned char *> (optval_),
               static_cast<const unsigned char *> (optval_) + optvallen_);
             if (existing) {
-                if (socket_role_ == ZLINK_SPOT_NODE_SOCKET_PUB) {
+                if (socket_role_ == spot_node_socket_pub) {
                     scoped_lock_t pub_lock (_pub_sync);
                     if (_pub)
                         _pub->setsockopt (option_, optval_, optvallen_);
@@ -891,7 +1219,7 @@ int spot_node_t::set_socket_option (int socket_role_,
                         + optvallen_);
     opts->push_back (opt);
     if (existing) {
-        if (socket_role_ == ZLINK_SPOT_NODE_SOCKET_PUB) {
+        if (socket_role_ == spot_node_socket_pub) {
             scoped_lock_t pub_lock (_pub_sync);
             if (_pub)
                 _pub->setsockopt (option_, optval_, optvallen_);
@@ -928,6 +1256,12 @@ void *spot_node_t::pub_socket_for_poller ()
                         _pub->setsockopt (_pub_opts[i].option,
                                           &_pub_opts[i].value[0],
                                           _pub_opts[i].value.size ());
+                }
+                if (!apply_service_routing_id (
+                      _pub, &_pub_routing_id_override, &_pub_routing_id)) {
+                    _pub->close ();
+                    _pub = NULL;
+                    return NULL;
                 }
                 if (!_tls_cert.empty ()) {
                     if (_pub->setsockopt (ZLINK_TLS_CERT, _tls_cert.data (),
@@ -1086,17 +1420,21 @@ int spot_node_t::subscribe (spot_sub_t *sub_, const char *topic_)
         return -1;
     }
 
-    scoped_lock_t lock (_sync);
-    if (_subs.count (sub_) == 0) {
-        errno = EFAULT;
-        return -1;
-    }
-    if (!sub_->_topics.insert (topic).second)
-        return 0;
-    _topic_index[topic].insert (sub_);
+    {
+        scoped_lock_t lock (_sync);
+        if (_subs.count (sub_) == 0) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (!sub_->_topics.insert (topic).second)
+            return 0;
+        _topic_index[topic].insert (sub_);
 
-    add_filter (topic);
-    request_control_tick ();
+        add_filter (topic);
+        request_control_tick ();
+    }
+    emit_sub_event (ZLINK_SPOT_SUB_FILTER_APPLIED, topic.c_str (), 1, 0);
+    report_sub_topology (ZLINK_TOPOLOGY_STATE_READY, topic.c_str (), 1, 0);
     return 0;
 }
 
@@ -1112,16 +1450,20 @@ int spot_node_t::subscribe_pattern (spot_sub_t *sub_, const char *pattern_)
         return -1;
     }
 
-    scoped_lock_t lock (_sync);
-    if (_subs.count (sub_) == 0) {
-        errno = EFAULT;
-        return -1;
+    {
+        scoped_lock_t lock (_sync);
+        if (_subs.count (sub_) == 0) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (!sub_->_patterns.insert (prefix).second)
+            return 0;
+        _pattern_subs.insert (sub_);
+        add_filter (prefix);
+        request_control_tick ();
     }
-    if (!sub_->_patterns.insert (prefix).second)
-        return 0;
-    _pattern_subs.insert (sub_);
-    add_filter (prefix);
-    request_control_tick ();
+    emit_sub_event (ZLINK_SPOT_SUB_FILTER_APPLIED, prefix.c_str (), 1, 0);
+    report_sub_topology (ZLINK_TOPOLOGY_STATE_READY, prefix.c_str (), 1, 0);
     return 0;
 }
 
@@ -1227,8 +1569,11 @@ int spot_node_t::publish (const char *topic_,
         }
 
         close_parts (&pending.payload);
-        if (!accepted && !dropped)
+        if (!accepted && !dropped) {
+            emit_pub_event (ZLINK_SPOT_PUB_QUEUE_FULL, NULL,
+                            static_cast<uint32_t> (_pub_queue_hwm), EAGAIN);
             return -1;
+        }
 
         for (size_t i = 0; i < part_count_; ++i)
             zlink_msg_close (&parts_[i]);
@@ -1484,6 +1829,7 @@ bool spot_node_t::process_handler_delivery ()
 bool spot_node_t::process_async_publish ()
 {
     async_publish_t pending;
+    bool drained = false;
     {
         scoped_lock_t queue_lock (_pub_queue_sync);
         if (_pending_pub.empty ())
@@ -1491,6 +1837,7 @@ bool spot_node_t::process_async_publish ()
         pending.topic.swap (_pending_pub.front ().topic);
         pending.payload.swap (_pending_pub.front ().payload);
         _pending_pub.pop_front ();
+        drained = _pending_pub.empty ();
     }
 
     {
@@ -1525,6 +1872,8 @@ bool spot_node_t::process_async_publish ()
     }
 
     close_parts (&pending.payload);
+    if (drained)
+        emit_pub_event (ZLINK_SPOT_PUB_QUEUE_DRAINED, NULL, 0, 0);
     return true;
 }
 
@@ -1533,6 +1882,12 @@ void spot_node_t::ensure_control_sockets ()
     if (!_sub) {
         _sub = _ctx->create_socket (ZLINK_SUB);
         if (_sub) {
+            if (!apply_service_routing_id (
+                  _sub, &_sub_routing_id_override, &_sub_routing_id)) {
+                _sub->close ();
+                _sub = NULL;
+                return;
+            }
             if (!_tls_ca.empty ()) {
                 if (_sub->setsockopt (ZLINK_TLS_CA, _tls_ca.data (),
                                       _tls_ca.size ())
@@ -1606,13 +1961,11 @@ void spot_node_t::ensure_control_sockets ()
             _dealer->setsockopt (ZLINK_ROUTING_ID, _routing_id.data,
                                  _routing_id.size);
             scoped_lock_t lock (_sync);
-            if (_registered) {
-                _pending_registry_connect.clear ();
-                for (std::set<std::string>::const_iterator it =
-                       _registry_endpoints.begin ();
-                     it != _registry_endpoints.end (); ++it) {
-                    _pending_registry_connect.push_back (*it);
-                }
+            _pending_registry_connect.clear ();
+            for (std::set<std::string>::const_iterator it =
+                   _registry_endpoints.begin ();
+                 it != _registry_endpoints.end (); ++it) {
+                _pending_registry_connect.push_back (*it);
             }
         }
     }
@@ -1963,6 +2316,22 @@ int spot_node_t::destroy ()
         scoped_lock_t queue_lock (_pub_queue_sync);
         pending_pub.swap (_pending_pub);
     }
+
+    zlink_service_event_t pub_terminal;
+    memset (&pub_terminal, 0, sizeof (pub_terminal));
+    pub_terminal.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
+    pub_terminal.event_type = ZLINK_MONITOR_EVENT_CLOSED;
+    pub_terminal.detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
+    pub_terminal.routing_id = _pub_routing_id;
+    _pub_monitor.close_all (&pub_terminal);
+
+    zlink_service_event_t sub_terminal;
+    memset (&sub_terminal, 0, sizeof (sub_terminal));
+    sub_terminal.service_kind = ZLINK_SERVICE_KIND_SPOT_SUB;
+    sub_terminal.event_type = ZLINK_MONITOR_EVENT_CLOSED;
+    sub_terminal.detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
+    sub_terminal.routing_id = _sub_routing_id;
+    _sub_monitor.close_all (&sub_terminal);
 
     if (dealer)
         dealer->close ();

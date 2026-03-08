@@ -118,7 +118,7 @@ size_t topic_len = 256;
 zlink_spot_sub_recv(sub, &parts, &part_count, 0, topic, &topic_len);
 
 printf("토픽: %.*s\n", (int)topic_len, topic);
-zlink_msgv_close(parts, part_count);
+zlink_multipart_close(parts, part_count);
 ```
 
 ### 4.3 구독 해제
@@ -141,7 +141,8 @@ poller가 readiness를 시그널한 후에는 기존 서비스 API
 zlink_poller_add_spot_sub(poller, sub, NULL, ZLINK_POLLIN);
 
 /* readiness 대기 */
-zlink_poller_wait(poller, -1);
+zlink_poller_event_t ev;
+zlink_poller_wait(poller, &ev, -1);
 
 /* 기존 서비스 API 사용 */
 zlink_spot_sub_recv(sub, &parts, &part_count, 0, topic, &topic_len);

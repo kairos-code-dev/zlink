@@ -4,6 +4,8 @@ package dev.kairoscode.zlink.integration.bench.src;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.PollEventType;
+import dev.kairoscode.zlink.Poller;
 import dev.kairoscode.zlink.ReceiveFlag;
 import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.ServiceType;
@@ -19,6 +21,7 @@ import dev.kairoscode.zlink.service.gateway.Gateway;
 import dev.kairoscode.zlink.service.receiver.Receiver;
 import dev.kairoscode.zlink.service.receiver.ReceiverSocketRole;
 import dev.kairoscode.zlink.service.registry.Registry;
+import java.lang.foreign.MemorySegment;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -28,19 +31,60 @@ import java.nio.charset.StandardCharsets;
 public final class PerfMultiGatewayServer {
     private static final String PATTERN = "MULTI_GATEWAY";
     private static final String SERVICE_NAME = "perf-server";
+    private static final String SERVER_RECEIVER_ROUTING_ID = "perf-server-rx";
     private static final String CLIENT_SERVICE_PREFIX = "c";
     private static final String SERVER_GATEWAY_ROUTING_ID = "sg";
     private static final byte[] STOP_TOKEN =
         "__zlink_perf_stop__".getBytes(StandardCharsets.US_ASCII);
     private static final int MIN_PAYLOAD_BYTES = 32;
     private static final int ROUTING_ID_BUFFER_BYTES = 256;
-    private static final long NANOSECONDS_PER_MILLISECOND = 1_000_000L;
-    private static final long STARTUP_GRACE_NS = 5000L * NANOSECONDS_PER_MILLISECOND;
-    private static final long IDLE_BREAK_NS = 1500L * NANOSECONDS_PER_MILLISECOND;
+    private static final int RECEIVER_TAG = 1;
+    private static final int GATEWAY_TAG = 2;
+    private static final int DEADLINE_GRACE_SECONDS = 5;
 
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+
+    private static final class RelayCounters {
+        long requestCount;
+        long replyImmediateCount;
+        long replyFlushedCount;
+        long replyBlockedCount;
+    }
+
+    private static final class PendingReply {
+        final byte[] payload;
+        final MemorySegment payloadSegment;
+        final Message message;
+        int payloadLen;
+        boolean pending;
+
+        PendingReply(int payloadSize) {
+            this.payload = new byte[payloadSize];
+            this.payloadSegment = MemorySegment.ofArray(this.payload);
+            this.message = new Message(payloadSize);
+            this.payloadLen = 0;
+            this.pending = false;
+        }
+
+        void prepare(byte[] source, int length) {
+            System.arraycopy(source, 0, payload, 0, length);
+            MemorySegment.copy(payloadSegment, 0, message.dataSegment(), 0,
+                length);
+            payloadLen = length;
+            pending = true;
+        }
+
+        void clear() {
+            payloadLen = 0;
+            pending = false;
+        }
+
+        void close() {
+            message.close();
+        }
+    }
 
     private PerfMultiGatewayServer() {
     }
@@ -55,10 +99,17 @@ public final class PerfMultiGatewayServer {
         Endpoints endpoints = resolveEndpoints(transport, "multi-gateway");
         int clients = Math.max(1, PerfMultiCommon.resolveClients(PATTERN));
         int connectTimeoutMs = PerfMultiCommon.resolveConnectReadyTimeoutMs();
+        int warmupSeconds = Math.max(0, PerfMultiCommon.resolveWarmupSeconds());
+        int durationSeconds = Math.max(1, PerfMultiCommon.resolveDurationSeconds());
+        int settleSeconds = (Math.max(0, PerfMultiCommon.resolveSettleMs())
+            + 999) / 1000;
+        int pollTimeoutMs = Math.max(1,
+            PerfMultiCommon.resolveClientPollTimeoutMs());
+        int payloadSize = resolvePayloadSize(msgSize);
 
         try (Context context = new Context();
              Registry registry = new Registry(context);
-             Receiver receiver = new Receiver(context);
+             Receiver receiver = new Receiver(context, SERVER_RECEIVER_ROUTING_ID);
              Discovery discovery = new Discovery(context, ServiceType.GATEWAY);
              Gateway gateway = new Gateway(context, discovery,
                  SERVER_GATEWAY_ROUTING_ID)) {
@@ -73,6 +124,13 @@ public final class PerfMultiGatewayServer {
             receiver.bind(endpoints.serverEndpoint);
             receiver.connectRegistry(endpoints.registryRouter);
             receiver.register(SERVICE_NAME, endpoints.serverEndpoint, 1);
+            if (!PerfCommon.waitUntil(
+                () -> receiver.registerResult(SERVICE_NAME).status() == 0,
+                connectTimeoutMs,
+                10)) {
+                throw new IllegalStateException(
+                    "gateway_server_receiver_register_not_ready");
+            }
 
             discovery.connectRegistry(endpoints.registryPub);
             for (int i = 0; i < clients; i++) {
@@ -82,85 +140,87 @@ public final class PerfMultiGatewayServer {
             applyGatewayOptions(gateway);
             PerfMultiTls.configureGatewayTlsClientIfNeeded(gateway, transport);
 
-            try (Socket router = receiver.routerSocket()) {
+            try (Socket router = receiver.routerSocket();
+                 Poller poller = new Poller()) {
                 applyRouterOptions(router);
                 System.out.println(
                     "READY," + endpoints.serverEndpoint + "|"
                         + endpoints.registryPub + "|" + endpoints.registryRouter);
 
                 byte[] routingId = new byte[ROUTING_ID_BUFFER_BYTES];
-                byte[] payload = new byte[resolvePayloadSize(msgSize)];
+                byte[] payload = new byte[payloadSize];
                 String[] clientServices = buildClientServices(clients);
-                if (!waitForClientServices(gateway, clientServices,
+                PendingReply[] pendingReplies = new PendingReply[clients];
+                for (int i = 0; i < pendingReplies.length; i++) {
+                    pendingReplies[i] = new PendingReply(payloadSize);
+                }
+                if (!waitForClientServices(discovery, gateway, clientServices,
                     connectTimeoutMs)) {
                     throw new IllegalStateException(
                         "gateway_client_services_not_ready");
                 }
-                long startNs = System.nanoTime();
-                long lastActivityNs = startNs;
-                boolean sawTraffic = false;
 
-                while (true) {
-                    int ridLen = receiveBlocking(router, routingId);
-                    if (ridLen <= 0) {
-                        long nowNs = System.nanoTime();
-                        if (!sawTraffic) {
-                            if (nowNs - startNs >= STARTUP_GRACE_NS) {
-                                break;
+                poller.addReceiver(receiver, PollEventType.POLLIN.getValue(),
+                    Integer.valueOf(RECEIVER_TAG));
+                poller.addGateway(gateway, 0,
+                    Integer.valueOf(GATEWAY_TAG));
+
+                long deadlineNs = System.nanoTime()
+                    + (long) (warmupSeconds + settleSeconds + durationSeconds
+                    + DEADLINE_GRACE_SECONDS) * 1_000_000_000L;
+                boolean stopRequested = false;
+                RelayCounters counters = new RelayCounters();
+
+                try {
+                    while (!stopRequested && System.nanoTime() < deadlineNs) {
+                        if (!flushPendingReplies(gateway, clientServices,
+                            pendingReplies, counters)) {
+                            throw new IllegalStateException(
+                                "gateway_pending_flush_failed");
+                        }
+                        setGatewayPollout(poller, gateway,
+                            hasPendingReplies(pendingReplies));
+
+                        int eventCount = poller.pollCount(computeWaitMs(deadlineNs,
+                            pollTimeoutMs));
+                        for (int i = 0; i < eventCount && !stopRequested; i++) {
+                            Object tag = poller.readyTag(i);
+                            if (!(tag instanceof Integer)) {
+                                continue;
                             }
-                        } else if (nowNs - lastActivityNs >= IDLE_BREAK_NS) {
-                            break;
+                            int eventTag = (Integer) tag;
+                            short revents = poller.readyRevents(i);
+                            if (eventTag == GATEWAY_TAG) {
+                                if ((revents
+                                    & PollEventType.POLLOUT.getValue()) != 0
+                                    && !flushPendingReplies(gateway,
+                                    clientServices, pendingReplies,
+                                    counters)) {
+                                    throw new IllegalStateException(
+                                        "gateway_pending_flush_failed");
+                                }
+                                continue;
+                            }
+                            if (eventTag != RECEIVER_TAG
+                                || (revents & PollEventType.POLLIN.getValue())
+                                == 0) {
+                                continue;
+                            }
+                            stopRequested = drainReceiverRequests(router, gateway,
+                                clientServices, pendingReplies, routingId,
+                                payload, counters);
                         }
-                        continue;
                     }
-                    if (getRcvMore(router) == 0) {
-                        continue;
-                    }
+                } finally {
+                    closePendingReplies(pendingReplies);
+                }
 
-                    int n = receiveBlocking(router, payload);
-                    if (n <= 0) {
-                        continue;
-                    }
-                    if (getRcvMore(router) != 0) {
-                        drainRemainingFramesBlocking(router, payload);
-                        continue;
-                    }
-
-                    sawTraffic = true;
-                    lastActivityNs = System.nanoTime();
-                    if (isStopToken(payload, n)) {
-                        break;
-                    }
-
-                    sendGatewayEcho(gateway, resolveClientService(routingId, ridLen,
-                        clientServices), payload, n);
-
-                    while (true) {
-                        int drainedRidLen = receiveNonBlocking(router, routingId);
-                        if (drainedRidLen <= 0) {
-                            break;
-                        }
-                        if (getRcvMore(router) == 0) {
-                            continue;
-                        }
-
-                        int drainedPayloadLen = receiveNonBlocking(router, payload);
-                        if (drainedPayloadLen <= 0) {
-                            throw new IllegalStateException("gateway_partial_message");
-                        }
-                        if (getRcvMore(router) != 0) {
-                            drainRemainingFramesBlocking(router, payload);
-                            continue;
-                        }
-                        if (isStopToken(payload, drainedPayloadLen)) {
-                            return 0;
-                        }
-
-                        sendGatewayEcho(gateway,
-                            resolveClientService(routingId, drainedRidLen,
-                                clientServices),
-                            payload, drainedPayloadLen);
-                    }
+                if (counters.requestCount == 0) {
+                    System.err.println("ERROR,MULTI_GATEWAY,server,no_requests,"
+                        + "client_services=" + discovery.receiverCount(
+                        clientServices[0]) + ",gateway_connections="
+                        + gateway.connectionCount(clientServices[0]));
+                    return 2;
                 }
             }
 
@@ -199,10 +259,10 @@ public final class PerfMultiGatewayServer {
                                                int ridLen,
                                                String[] clientServices) {
         int index = parseClientIndex(routingId, ridLen, clientServices.length);
-        if (index >= 0) {
-            return clientServices[index];
+        if (index < 0) {
+            throw new IllegalStateException("gateway_unexpected_client_service");
         }
-        return new String(routingId, 0, ridLen, StandardCharsets.US_ASCII);
+        return clientServices[index];
     }
 
     private static int parseClientIndex(byte[] routingId,
@@ -225,7 +285,8 @@ public final class PerfMultiGatewayServer {
         return value;
     }
 
-    private static boolean waitForClientServices(Gateway gateway,
+    private static boolean waitForClientServices(Discovery discovery,
+                                                 Gateway gateway,
                                                  String[] clientServices,
                                                  int timeoutMs) {
         if (clientServices.length == 0) {
@@ -242,7 +303,8 @@ public final class PerfMultiGatewayServer {
                 if (ready[i]) {
                     continue;
                 }
-                if (gateway.connectionCount(clientServices[i]) > 0) {
+                if (discovery.receiverCount(clientServices[i]) > 0
+                    && gateway.connectionCount(clientServices[i]) > 0) {
                     ready[i] = true;
                     readyCount++;
                 }
@@ -251,7 +313,7 @@ public final class PerfMultiGatewayServer {
                 PerfCommon.sleepMillis(5);
             }
         }
-        return readyCount > 0;
+        return readyCount == clientServices.length;
     }
 
     private static void applyReceiverOptions(Receiver receiver) {
@@ -299,22 +361,63 @@ public final class PerfMultiGatewayServer {
         socket.setOption(SocketOptions.LINGER, 0);
     }
 
-    private static void sendGatewayEcho(Gateway gateway,
-                                        String clientService,
-                                        byte[] payload,
-                                        int payloadLen) {
-        try (Message echo = Message.fromBytes(payload, 0, payloadLen)) {
-            gateway.sendTo(clientService, echo, SendFlag.NONE);
+    private static boolean drainReceiverRequests(Socket router,
+                                                 Gateway gateway,
+                                                 String[] clientServices,
+                                                 PendingReply[] pendingReplies,
+                                                 byte[] routingId,
+                                                 byte[] payload,
+                                                 RelayCounters counters) {
+        while (true) {
+            int routingIdLen = receiveNonBlocking(router, routingId);
+            if (routingIdLen <= 0) {
+                return false;
+            }
+            if (getRcvMore(router) == 0) {
+                throw new IllegalStateException("gateway_missing_payload");
+            }
+
+            int payloadLen = receiveNonBlocking(router, payload);
+            if (payloadLen <= 0) {
+                throw new IllegalStateException("gateway_partial_message");
+            }
+            while (getRcvMore(router) != 0) {
+                int drained = receiveNonBlocking(router, payload);
+                if (drained <= 0) {
+                    throw new IllegalStateException("gateway_partial_message");
+                }
+                payloadLen = drained;
+            }
+
+            if (isStopToken(payload, payloadLen)) {
+                return true;
+            }
+
+            int clientIndex = parseClientIndex(routingId, routingIdLen,
+                clientServices.length);
+            if (clientIndex < 0) {
+                throw new IllegalStateException("gateway_unexpected_client_service");
+            }
+            counters.requestCount++;
+            tryStartReply(gateway, clientServices[clientIndex],
+                pendingReplies[clientIndex], payload, payloadLen, counters);
         }
     }
 
-    private static void drainRemainingFramesBlocking(Socket socket,
-                                                     byte[] scratch) {
-        while (getRcvMore(socket) != 0) {
-            int drained = receiveBlocking(socket, scratch);
-            if (drained <= 0) {
-                break;
-            }
+    private static void tryStartReply(Gateway gateway,
+                                      String clientService,
+                                      PendingReply pendingReply,
+                                      byte[] payload,
+                                      int payloadLen,
+                                      RelayCounters counters) {
+        if (pendingReply.pending) {
+            throw new IllegalStateException("gateway_pending_overflow");
+        }
+        pendingReply.prepare(payload, payloadLen);
+        if (tryFlushPendingReply(gateway, clientService, pendingReply)) {
+            counters.replyImmediateCount++;
+        } else {
+            counters.replyBlockedCount++;
         }
     }
 
@@ -330,19 +433,68 @@ public final class PerfMultiGatewayServer {
         return true;
     }
 
-    private static int receiveBlocking(Socket socket, byte[] buffer) {
+    private static boolean flushPendingReplies(Gateway gateway,
+                                               String[] clientServices,
+                                               PendingReply[] pendingReplies,
+                                               RelayCounters counters) {
+        for (int i = 0; i < pendingReplies.length; i++) {
+            if (!pendingReplies[i].pending) {
+                continue;
+            }
+            if (!tryFlushPendingReply(gateway, clientServices[i],
+                pendingReplies[i])) {
+                return false;
+            }
+            counters.replyFlushedCount++;
+        }
+        return true;
+    }
+
+    private static boolean tryFlushPendingReply(Gateway gateway,
+                                                String clientService,
+                                                PendingReply pendingReply) {
+        if (!pendingReply.pending) {
+            return true;
+        }
         while (true) {
             try {
-                return socket.recv(buffer, 0, buffer.length, ReceiveFlag.NONE);
+                gateway.sendTo(clientService, pendingReply.message,
+                    SendFlag.DONTWAIT);
+                pendingReply.clear();
+                return true;
             } catch (ZlinkException ex) {
                 int errno = ex.errno();
                 if (isInterrupted(errno)) {
                     continue;
                 }
                 if (isWouldBlock(errno)) {
-                    return 0;
+                    return false;
                 }
                 throw ex;
+            }
+        }
+    }
+
+    private static void setGatewayPollout(Poller poller,
+                                          Gateway gateway,
+                                          boolean enabled) {
+        poller.modifyGateway(gateway,
+            enabled ? PollEventType.POLLOUT.getValue() : 0);
+    }
+
+    private static boolean hasPendingReplies(PendingReply[] pendingReplies) {
+        for (PendingReply pendingReply : pendingReplies) {
+            if (pendingReply.pending) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void closePendingReplies(PendingReply[] pendingReplies) {
+        for (PendingReply pendingReply : pendingReplies) {
+            if (pendingReply != null) {
+                pendingReply.close();
             }
         }
     }
@@ -375,6 +527,15 @@ public final class PerfMultiGatewayServer {
 
     private static boolean isWouldBlock(int errno) {
         return errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN;
+    }
+
+    private static int computeWaitMs(long deadlineNs, int pollTimeoutMs) {
+        int waitMs = pollTimeoutMs > 0 ? pollTimeoutMs : 100;
+        long remainingMs = (deadlineNs - System.nanoTime()) / 1_000_000L;
+        if (remainingMs < waitMs) {
+            waitMs = (int) remainingMs;
+        }
+        return Math.max(1, waitMs);
     }
 
     private static int resolvePayloadSize(int msgSize) {

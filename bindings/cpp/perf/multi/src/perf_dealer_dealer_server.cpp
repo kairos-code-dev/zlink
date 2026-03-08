@@ -7,15 +7,16 @@
 
 #include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <vector>
 
-void perf_dealer_dealer_server (const std::string &transport, size_t)
+bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
 {
     perf::multi::set_perf_pattern_env ("DEALER_DEALER");
 
     if (!perf::multi::is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED,MULTI_DEALER_DEALER," << transport << std::endl;
-        return;
+        return true;
     }
 
     const perf::multi::multi_bench_settings_t settings =
@@ -24,17 +25,17 @@ void perf_dealer_dealer_server (const std::string &transport, size_t)
     perf::multi::ctx_guard_t ctx;
     perf::multi::socket_guard_t server (ctx, zlink::socket_type::dealer);
     if (!server.valid ())
-        return;
+        return false;
 
     perf::multi::apply_benchmark_socket_options (
       server.sock (), settings, transport);
     if (!perf::multi::setup_tls_server (server.sock (), transport))
-        return;
+        return false;
 
     const std::string endpoint = perf::multi::bind_and_resolve_endpoint (
       server.sock (), transport, "cpp_multi_dealer_dealer", settings.server_bind_port);
     if (endpoint.empty ())
-        return;
+        return false;
 
     perf::multi::print_ready (endpoint);
 
@@ -52,8 +53,11 @@ void perf_dealer_dealer_server (const std::string &transport, size_t)
     (void) poller.add (server.sock (), zlink::poll_event::pollin);
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
+    std::vector<char> recv_buffer (
+      std::max<size_t> (msg_size, std::strlen (perf::multi::k_stop_token)));
 
     bool stop_requested = false;
+    bool failed = false;
     while (!stop_requested && std::chrono::steady_clock::now () < deadline) {
         const auto now = std::chrono::steady_clock::now ();
         long wait_ms = 100;
@@ -69,6 +73,7 @@ void perf_dealer_dealer_server (const std::string &transport, size_t)
         if (poll_rc < 0) {
             if (errno == EINTR)
                 continue;
+            failed = true;
             break;
         }
         if (poll_rc == 0)
@@ -80,8 +85,8 @@ void perf_dealer_dealer_server (const std::string &transport, size_t)
                 continue;
 
             for (;;) {
-                zlink::message_t msg;
-                const int rc = sock->recv (msg, zlink::recv_flag::dontwait);
+                const int rc = sock->recv (
+                  recv_buffer.data (), recv_buffer.size (), zlink::recv_flag::dontwait);
                 if (rc < 0) {
                     const int err = errno;
                     if (err == EAGAIN)
@@ -89,10 +94,19 @@ void perf_dealer_dealer_server (const std::string &transport, size_t)
                     if (err == EINTR)
                         continue;
                     stop_requested = true;
+                    failed = true;
                     break;
                 }
 
-                if (perf::multi::is_stop_token_message (msg)) {
+                int more = 0;
+                if (sock->get (zlink::socket_options::rcvmore, more) != 0 || more != 0) {
+                    stop_requested = true;
+                    failed = true;
+                    break;
+                }
+
+                if (perf::multi::is_stop_token (recv_buffer.data (),
+                                                static_cast<size_t> (rc))) {
                     stop_requested = true;
                     break;
                 }
@@ -106,6 +120,7 @@ void perf_dealer_dealer_server (const std::string &transport, size_t)
       transport,
       0,
       perf::multi::server_queue_stats_t ());
+    return !failed;
 }
 
 int main (int argc, char **argv)
@@ -120,6 +135,5 @@ int main (int argc, char **argv)
     if (size == 0)
         return 1;
 
-    perf_dealer_dealer_server (transport, size);
-    return 0;
+    return perf_dealer_dealer_server (transport, size) ? 0 : 1;
 }

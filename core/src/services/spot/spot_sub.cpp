@@ -114,6 +114,62 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
     return _node->unsubscribe (this, topic_or_pattern_);
 }
 
+int spot_sub_t::set_option (int option_,
+                            const void *optval_,
+                            size_t optvallen_)
+{
+    if (!_node) {
+        errno = EFAULT;
+        return -1;
+    }
+    return _node->set_sub_option (option_, optval_, optvallen_);
+}
+
+int spot_sub_t::set_routing_id (const void *data_, size_t size_)
+{
+    if (!_node) {
+        errno = EFAULT;
+        return -1;
+    }
+    return _node->set_sub_routing_id (data_, size_);
+}
+
+int spot_sub_t::routing_id (zlink_routing_id_t *out_) const
+{
+    if (!_node) {
+        errno = EFAULT;
+        return -1;
+    }
+    return _node->sub_routing_id (out_);
+}
+
+int spot_sub_t::peers (zlink_peer_info_t *peers_, size_t *count_) const
+{
+    if (!_node) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (!count_) {
+        errno = EINVAL;
+        return -1;
+    }
+    void *socket = _node->sub_socket_for_poller ();
+    if (!socket) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return zlink_socket_peers (socket, peers_, count_);
+}
+
+void *spot_sub_t::monitor_open (int events_)
+{
+    if (!_node) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return _node->sub_monitor_open (events_);
+}
+
 int spot_sub_t::set_handler (zlink_spot_sub_handler_fn handler_,
                              void *userdata_)
 {

@@ -425,6 +425,7 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 - 서버 stdout 에 `READY,<endpoint>` 출력 → 스크립트가 클라이언트 시작
 - 클라이언트 종료 시 서버에 stop-token 전송
 - 서버 graceful shutdown 후 RESULT 메트릭 출력
+- STREAM 서버는 listen backlog 를 크게 설정한다. 기준은 `max(4096, PERF_CLIENTS)` 이다.
 
 ---
 
@@ -941,6 +942,7 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 - multi recv 경로는 **poller + non-blocking drain(무제한, cap 없음)** 구조
 - `SPOT` multi send 는 현재 service API 제약상 `Publish(DontWait)` 대신 `PollOut` readiness 확인 후 `Publish(None)`를 호출하는 예외 구현을 사용한다.
 - `Gateway`/`Receiver`/`Spot` multi poller 대상은 raw socket helper가 아니라 service instance다
+- STREAM 서버는 accept backlog 병목을 피하기 위해 `SocketOptions.Backlog = max(4096, PERF_CLIENTS)` 로 설정한다
 - `RESULT,current,...` 형식의 stdout 출력
 - STREAM 서버는 stop-token `__zlink_perf_stop__` 수신 시 정상 종료
 - Multi 서버는 `READY,<endpoint>` stdout 출력 후 클라이언트 대기

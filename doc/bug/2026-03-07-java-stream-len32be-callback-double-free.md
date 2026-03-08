@@ -2,7 +2,7 @@
 
 - Date: 2026-03-07
 - Repo: `/home/hep7/project/kairos/zlink`
-- Release tag: `core/v4.0.1`
+- Release tag: `core/v4.0.2`
 - Scope: `bindings/java`
 - Affected area: `Socket.attachStreamLen32be(...)` callback ownership/lifecycle
 
@@ -43,20 +43,55 @@ double free or corruption (out)
 
 ## Why This Looks Binding-Side
 
-같은 native runtime(`core/v4.0.1`)에서:
+같은 native runtime(`core/v4.0.2`)에서:
 
 - .NET binding은 `stream_callback_echo_len32be`,
   `stream_callback_len32be_transfers_message_ownership` 테스트를 갖고 있음
-- 사용자가 전달한 현재 검증 상태에서도 .NET binding test suite는 통과
+- C++ `MULTI_STREAM_LEN32BE tcp/64`도 통과
 
 즉, core STREAM LEN32BE 자체가 전역적으로 깨졌다기보다
 Java callback ownership 처리 쪽이 더 의심됩니다.
 
 ## Current Java Signals
 
-1. `MULTI_STREAM_LEN32BE` perf server도 동일 계열로 실패
-2. basic standalone repro도 동일하게 abort
+1. `MULTI_STREAM_LEN32BE` perf server가 `v4.0.2`에서도 동일하게 abort
+2. basic standalone repro도 동일 계열로 abort
 3. `attachStreamRaw` 경로와 달리 `attachStreamLen32be`만 문제
+
+## v4.0.2 Re-Check
+
+Direct repro with Java server + shared core stream client:
+
+```bash
+java --enable-native-access=ALL-UNNAMED \
+  -cp bindings/java/perf/multi/Zlink.PerfBench/build/classes/java/main:bindings/java/build/classes/java/main:bindings/java/build/resources/main \
+  dev.kairoscode.zlink.integration.bench.PerfMultiMain \
+  --multi-server MULTI_STREAM_LEN32BE tcp 64
+```
+
+Client:
+
+```bash
+core/perf/common/streamclient/build/perf_stream_shared_client \
+  --pattern MULTI_STREAM_LEN32BE --transport tcp --endpoint <READY> \
+  --sizes 64 --runs 1 --ccu 1 --warmup 0 --duration 1 \
+  --lat-count 200 --io-threads 1 --latency-sample-rate 1 \
+  --print-perf-result 2 --send-stop-token 1 \
+  --stop-token __zlink_perf_stop__
+```
+
+Observed server log:
+
+```text
+READY,tcp://127.0.0.1:14431
+double free or corruption (out)
+```
+
+Observed exit:
+
+```text
+SERVER_RC=134
+```
 
 ## Candidate Binding Problem Areas
 

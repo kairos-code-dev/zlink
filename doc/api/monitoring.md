@@ -2,6 +2,20 @@
 
 # Monitoring & Peer Info API Reference
 
+## Current API Direction
+
+There are now two distinct monitoring layers:
+
+- Raw socket monitoring:
+  `zlink_socket_monitor_open()` and `zlink_monitor_recv()`
+- Service monitoring:
+  `zlink_*_monitor_open()`, `zlink_service_monitor_recv()`, and
+  `zlink_poller_add_monitor()`
+
+Use raw socket monitors for transport/socket diagnostics. Use service
+monitors for local service state transitions such as readiness, route
+changes, registration results, and SPOT filter application.
+
 The monitoring API lets you observe socket lifecycle events such as connections, disconnections, and handshake failures. The peer info API provides introspection into the set of peers currently connected to a ROUTER socket, including per-peer message counters and connection timestamps.
 
 ## Types
@@ -254,3 +268,263 @@ Fills the `peers_` array with information about every peer connected to the ROUT
 **Thread safety:** Must be called from the socket's owning thread.
 
 **See also:** `zlink_socket_peer_count`, `zlink_socket_peer_info`
+
+---
+
+## Service Monitor API
+
+Service monitors provide state transition events for service-layer
+components (Discovery, Gateway, Receiver, SPOT Pub, SPOT Sub). Unlike raw
+socket monitors that report transport-level events, service monitors report
+higher-level events such as readiness, route changes, registration results,
+and SPOT filter application.
+
+### zlink_service_event_t
+
+Describes a single service monitor event.
+
+```c
+typedef struct zlink_service_event_t
+{
+    uint16_t service_kind;
+    uint32_t event_type;
+    int32_t status;
+    int32_t error_code;
+    uint32_t value;
+    uint32_t detail_flags;
+    char service_name[256];
+    char endpoint[256];
+    zlink_routing_id_t routing_id;
+} zlink_service_event_t;
+```
+
+| Field | Description |
+|-------|-------------|
+| `service_kind` | One of the `ZLINK_SERVICE_KIND_*` constants identifying the component type. |
+| `event_type` | Bitmask indicating the event (one of the service event constants below). |
+| `status` | Event-specific status code. |
+| `error_code` | Error code when `event_type` indicates a failure. |
+| `value` | Event-specific numeric value. |
+| `detail_flags` | Bitmask of `ZLINK_EVENT_DETAIL_*` flags indicating which optional fields are populated. |
+| `service_name` | Null-terminated service name, valid when `ZLINK_EVENT_DETAIL_SERVICE_NAME` is set. |
+| `endpoint` | Null-terminated endpoint, valid when `ZLINK_EVENT_DETAIL_ENDPOINT` is set. |
+| `routing_id` | Routing identity of the subject or peer, valid when the corresponding detail flag is set. |
+
+### Service Kind Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_SERVICE_KIND_DISCOVERY` | 1 | Discovery component |
+| `ZLINK_SERVICE_KIND_GATEWAY` | 2 | Gateway component |
+| `ZLINK_SERVICE_KIND_RECEIVER` | 3 | Receiver component |
+| `ZLINK_SERVICE_KIND_SPOT_SUB` | 4 | SPOT Subscriber component |
+| `ZLINK_SERVICE_KIND_SPOT_PUB` | 5 | SPOT Publisher component |
+
+### Service Event Constants
+
+#### Common Events
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_MONITOR_EVENT_READY` | `1 << 0` | Service is ready |
+| `ZLINK_MONITOR_EVENT_LOST` | `1 << 1` | Service connectivity lost |
+| `ZLINK_MONITOR_EVENT_PEER_UP` | `1 << 2` | A peer connected |
+| `ZLINK_MONITOR_EVENT_PEER_DOWN` | `1 << 3` | A peer disconnected |
+| `ZLINK_MONITOR_EVENT_ERROR` | `1 << 4` | An error occurred |
+| `ZLINK_MONITOR_EVENT_CLOSED` | `1 << 21` | Monitor closed |
+
+#### Discovery Events
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_DISCOVERY_SERVICE_UP` | `1 << 5` | A discovered service came up |
+| `ZLINK_DISCOVERY_SERVICE_DOWN` | `1 << 6` | A discovered service went down |
+| `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | `1 << 7` | The set of providers for a service changed |
+
+#### Gateway Events
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_GATEWAY_SERVICE_READY` | `1 << 8` | Gateway service is ready (at least one Receiver connected) |
+| `ZLINK_GATEWAY_SERVICE_LOST` | `1 << 9` | Gateway service lost (all Receivers disconnected) |
+| `ZLINK_GATEWAY_CONNECTION_COUNT_CHANGED` | `1 << 10` | Number of connected Receivers changed |
+| `ZLINK_GATEWAY_ROUTE_UP` | `1 << 11` | A route to a Receiver came up |
+| `ZLINK_GATEWAY_ROUTE_DOWN` | `1 << 12` | A route to a Receiver went down |
+
+#### Receiver Events
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_RECEIVER_REGISTER_OK` | `1 << 13` | Registration succeeded |
+| `ZLINK_RECEIVER_REGISTER_FAILED` | `1 << 14` | Registration failed |
+| `ZLINK_RECEIVER_UNREGISTER_OK` | `1 << 15` | Unregistration succeeded |
+| `ZLINK_RECEIVER_UNREGISTER_FAILED` | `1 << 16` | Unregistration failed |
+
+#### SPOT Events
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_SPOT_SUB_FILTER_APPLIED` | `1 << 17` | Subscription filter applied |
+| `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | `1 << 18` | Subscription is ready to receive |
+| `ZLINK_SPOT_PUB_QUEUE_FULL` | `1 << 19` | Async publish queue is full |
+| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | `1 << 20` | Async publish queue drained |
+
+### Detail Flag Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_EVENT_DETAIL_SERVICE_NAME` | `0x0001` | `service_name` field is populated |
+| `ZLINK_EVENT_DETAIL_ENDPOINT` | `0x0002` | `endpoint` field is populated |
+| `ZLINK_EVENT_DETAIL_SUBJECT_RID` | `0x0004` | `routing_id` contains the subject identity |
+| `ZLINK_EVENT_DETAIL_PEER_RID` | `0x0008` | `routing_id` contains a peer identity |
+
+---
+
+### zlink_discovery_monitor_open
+
+Open a service monitor for a Discovery instance.
+
+```c
+void *zlink_discovery_monitor_open(void *discovery, int events);
+```
+
+Creates a service monitor that delivers events matching the `events`
+bitmask. Use `ZLINK_DISCOVERY_SERVICE_UP`, `ZLINK_DISCOVERY_SERVICE_DOWN`,
+`ZLINK_DISCOVERY_PROVIDERS_CHANGED`, and the common event constants.
+
+**Returns:** Monitor handle on success, or `NULL` on failure (errno is set).
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
+
+---
+
+### zlink_gateway_monitor_open
+
+Open a service monitor for a Gateway instance.
+
+```c
+void *zlink_gateway_monitor_open(void *gateway, int events);
+```
+
+Creates a service monitor that delivers Gateway events matching the
+`events` bitmask. Use `ZLINK_GATEWAY_SERVICE_READY`,
+`ZLINK_GATEWAY_SERVICE_LOST`, `ZLINK_GATEWAY_ROUTE_UP`,
+`ZLINK_GATEWAY_ROUTE_DOWN`, `ZLINK_GATEWAY_CONNECTION_COUNT_CHANGED`, and
+the common event constants.
+
+**Returns:** Monitor handle on success, or `NULL` on failure (errno is set).
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
+
+---
+
+### zlink_receiver_monitor_open
+
+Open a service monitor for a Receiver instance.
+
+```c
+void *zlink_receiver_monitor_open(void *receiver, int events);
+```
+
+Creates a service monitor that delivers Receiver events matching the
+`events` bitmask. Use `ZLINK_RECEIVER_REGISTER_OK`,
+`ZLINK_RECEIVER_REGISTER_FAILED`, `ZLINK_RECEIVER_UNREGISTER_OK`,
+`ZLINK_RECEIVER_UNREGISTER_FAILED`, and the common event constants.
+
+**Returns:** Monitor handle on success, or `NULL` on failure (errno is set).
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
+
+---
+
+### zlink_spot_sub_monitor_open
+
+Open a service monitor for a SPOT Subscriber.
+
+```c
+void *zlink_spot_sub_monitor_open(void *sub, int events);
+```
+
+Creates a service monitor that delivers SPOT Subscriber events matching
+the `events` bitmask. Use `ZLINK_SPOT_SUB_FILTER_APPLIED`,
+`ZLINK_SPOT_SUB_SUBSCRIPTION_READY`, and the common event constants.
+
+**Returns:** Monitor handle on success, or `NULL` on failure (errno is set).
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
+
+---
+
+### zlink_spot_pub_monitor_open
+
+Open a service monitor for a SPOT Publisher.
+
+```c
+void *zlink_spot_pub_monitor_open(void *pub, int events);
+```
+
+Creates a service monitor that delivers SPOT Publisher events matching
+the `events` bitmask. Use `ZLINK_SPOT_PUB_QUEUE_FULL`,
+`ZLINK_SPOT_PUB_QUEUE_DRAINED`, and the common event constants.
+
+**Returns:** Monitor handle on success, or `NULL` on failure (errno is set).
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
+
+---
+
+### zlink_service_monitor_recv
+
+Receive an event from a service monitor handle.
+
+```c
+int zlink_service_monitor_recv(void *monitor,
+                                zlink_service_event_t *event,
+                                int flags);
+```
+
+Blocks until a service event is available on `monitor`, then fills the
+`event` structure. Pass `ZLINK_DONTWAIT` in `flags` to return immediately
+with `EAGAIN` if no event is pending. The monitor handle is obtained from
+one of the `zlink_*_monitor_open()` functions.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Errors:**
+- `EAGAIN` -- No event available and `ZLINK_DONTWAIT` was specified.
+- `ETERM` -- The context was terminated.
+
+**Thread safety:** Must be called from the thread that owns the monitor handle.
+
+**See also:** `zlink_discovery_monitor_open`, `zlink_gateway_monitor_open`,
+`zlink_receiver_monitor_open`, `zlink_spot_sub_monitor_open`,
+`zlink_spot_pub_monitor_open`
+
+---
+
+### zlink_service_monitor_close
+
+Close a service monitor handle and release its resources.
+
+```c
+int zlink_service_monitor_close(void **monitor_p);
+```
+
+Closes the monitor and sets `*monitor_p` to `NULL`. After closing, no
+further events will be delivered through this monitor.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_service_monitor_recv`

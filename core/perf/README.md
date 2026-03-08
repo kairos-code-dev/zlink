@@ -53,6 +53,9 @@ Note: `pgm`/`epgm` are currently disabled in single perf.
   readiness through the service-instance poller APIs.
 - Prefer `zlink_poller_add_gateway`, `zlink_poller_add_receiver`,
   `zlink_poller_add_spot_sub`, and `zlink_poller_add_spot_pub`.
+- Service setup should use `*_set_option`, `*_set_routing_id`, service monitor,
+  and registry topology APIs instead of internal socket-role option APIs or
+  `*_peers` polling.
 - Do not document or reintroduce `SpotNode` as a poller target in perf samples.
 - After a service instance is registered with a poller, perf code should keep
   using the service API for send/recv and treat direct internal socket access as

@@ -6,17 +6,17 @@ The Receiver is the server-side counterpart to the Gateway. It receives
 requests from Gateways, sends replies, and registers its services with the
 Registry so that Gateways can discover and connect to it automatically.
 
-## Constants
+## Current API Direction
 
-```c
-#define ZLINK_RECEIVER_SOCKET_ROUTER 1
-#define ZLINK_RECEIVER_SOCKET_DEALER 2
-```
-
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `ZLINK_RECEIVER_SOCKET_ROUTER` | 1 | ROUTER socket used for receiving requests and sending replies |
-| `ZLINK_RECEIVER_SOCKET_DEALER` | 2 | DEALER socket used for communication with the Registry |
+- Use `zlink_receiver_set_option()` for public service-level tuning.
+- Use `zlink_receiver_set_routing_id()` / `zlink_receiver_routing_id()` for
+  the representative Receiver identity.
+- Use `zlink_receiver_monitor_open()` for state transitions such as
+  `ZLINK_RECEIVER_REGISTER_OK`.
+- Prefer `zlink_poller_add_receiver()` for data readiness and
+  `zlink_poller_add_monitor()` for service monitor readiness.
+- Treat `zlink_receiver_register_result()` as a low-level compatibility/debug
+  surface rather than the primary public setup/readiness path.
 
 ## Functions
 
@@ -203,57 +203,52 @@ called before `zlink_receiver_bind`.
 
 ---
 
-### zlink_receiver_setsockopt
+### zlink_receiver_recv
 
-Set a socket option on an internal Receiver socket.
+Receive one multipart request from the Receiver service surface.
 
 ```c
-int zlink_receiver_setsockopt(void *receiver,
-                              int socket_role,
-                              int option,
-                              const void *optval,
-                              size_t optvallen);
+int zlink_receiver_recv(void *receiver,
+                        zlink_msg_t **parts,
+                        size_t *part_count,
+                        int flags,
+                        zlink_routing_id_t *routing_id_out);
 ```
 
-Applies a low-level socket option to one of the Receiver's internal sockets
-identified by `socket_role`. Use `ZLINK_RECEIVER_SOCKET_ROUTER` for the
-request/reply socket or `ZLINK_RECEIVER_SOCKET_DEALER` for the Registry
-communication socket.
-
-Defaults:
-- `ZLINK_SNDHWM = 300000`
-- `ZLINK_RCVHWM = 300000`
-- `ZLINK_SNDTIMEO = -1`
-- `ZLINK_RCVTIMEO = -1`
+Receives a single request currently queued on the Receiver. The API returns
+all frames as a multipart array and optionally reports the sender routing id.
+Use `zlink_multipart_close()` to release `parts` after consumption.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
 **Errors:**
-- `EINVAL` -- invalid socket role or unknown option.
+- `EAGAIN` -- `ZLINK_DONTWAIT` was set and no request was ready.
 
 **Thread safety:** Not thread-safe.
 
-**See also:** `zlink_receiver_bind`
+**See also:** `zlink_poller_add_receiver`, `zlink_multipart_close`
 
 ---
 
-### zlink_receiver_router_socket_unsafe
+### zlink_receiver_last_endpoint
 
-Return the internal ROUTER socket handle.
+Resolve the bound endpoint for this Receiver.
 
 ```c
-void *zlink_receiver_router_socket_unsafe(void *receiver);
+int zlink_receiver_last_endpoint(void *receiver,
+                                 char *endpoint,
+                                 size_t *size);
 ```
 
-Returns the raw ROUTER socket handle used internally by the Receiver. This
-is intended for diagnostics and advanced use cases such as custom polling.
-The caller must not close or modify the socket.
+Returns the last effective bind endpoint of the Receiver's service socket.
+This is the service-level replacement for reading `ZLINK_LAST_ENDPOINT`
+through a raw internal ROUTER socket.
 
-**Returns:** The ROUTER socket handle, or `NULL` if the Receiver is invalid.
+**Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Safe to call from any thread.
+**Thread safety:** Not thread-safe.
 
-**See also:** `zlink_receiver_new`
+**See also:** `zlink_receiver_bind`, `zlink_receiver_register`
 
 ---
 
@@ -275,7 +270,104 @@ required count first, then call again with an allocated array.
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_socket_peers`, `zlink_receiver_router_socket_unsafe`
+**See also:** `zlink_socket_peers`, `zlink_receiver_peer_info`
+
+---
+
+### zlink_receiver_peer_info
+
+Get peer info by routing identity from the Receiver ROUTER socket.
+
+```c
+int zlink_receiver_peer_info(void *receiver,
+                              const zlink_routing_id_t *routing_id,
+                              zlink_peer_info_t *info);
+```
+
+Looks up the peer identified by `routing_id` on the Receiver's internal
+ROUTER socket and fills the `info` structure with its address, connection
+time, and message counters.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Errors:**
+- `EINVAL` -- The routing identity was not found.
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_receiver_router_peers`, `zlink_socket_peer_info`
+
+---
+
+### zlink_receiver_set_option
+
+Set a Receiver service option.
+
+```c
+int zlink_receiver_set_option(void *receiver,
+                               int option,
+                               const void *optval,
+                               size_t optvallen);
+```
+
+Applies a service-level option to the Receiver. Available option constants:
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_RECEIVER_OPT_SNDHWM` | 1 | Send high-water mark |
+| `ZLINK_RECEIVER_OPT_RCVHWM` | 2 | Receive high-water mark |
+| `ZLINK_RECEIVER_OPT_SNDTIMEO` | 3 | Send timeout (ms) |
+| `ZLINK_RECEIVER_OPT_RCVTIMEO` | 4 | Receive timeout (ms) |
+| `ZLINK_RECEIVER_OPT_LINGER` | 5 | Linger period (ms) |
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Errors:**
+- `EINVAL` -- Unknown option.
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_receiver_new`
+
+---
+
+### zlink_receiver_set_routing_id
+
+Override the representative routing id before first use.
+
+```c
+int zlink_receiver_set_routing_id(void *receiver,
+                                   const void *data,
+                                   size_t size);
+```
+
+Sets a custom routing identity for this Receiver. Must be called before
+`zlink_receiver_bind`.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_receiver_routing_id`
+
+---
+
+### zlink_receiver_routing_id
+
+Return the representative routing id for this Receiver.
+
+```c
+int zlink_receiver_routing_id(void *receiver,
+                               zlink_routing_id_t *out);
+```
+
+Retrieves the current routing identity of the Receiver.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_receiver_set_routing_id`
 
 ---
 

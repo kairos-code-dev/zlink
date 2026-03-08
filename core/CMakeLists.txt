@@ -968,6 +968,7 @@ set(protocol-sources
 
 set(discovery-sources
     src/services/control/service_control_runtime.cpp
+    src/services/common/service_monitor.cpp
     src/services/discovery/registry.cpp
     src/services/discovery/discovery.cpp
     src/services/gateway/gateway.cpp

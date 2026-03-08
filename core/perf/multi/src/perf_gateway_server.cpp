@@ -179,17 +179,13 @@ inline std::string bind_receiver_endpoint (void *receiver,
         return std::string ();
     }
 
-    void *router = zlink_receiver_router_socket_unsafe (receiver);
-    if (!router)
-        return std::string ();
-
     char last_endpoint[MAX_SOCKET_STRING] = "";
     size_t size = sizeof (last_endpoint);
-    if (zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, last_endpoint, &size) == 0)
+    if (zlink_receiver_last_endpoint (receiver, last_endpoint, &size) == 0)
         endpoint.assign (last_endpoint);
 
     endpoint = replace_any_host_with_localhost (endpoint);
-    apply_debug_timeouts (router, transport);
+    (void) transport;
     return endpoint;
 }
 
@@ -431,80 +427,67 @@ inline void close_pending_gateway_responses (gateway_request_t *pending,
     *count_io = 0;
 }
 
-inline bool recv_one_frame (void *router, zlink_msg_t *msg, int flags, int *err_out)
-{
-    if (err_out)
-        *err_out = 0;
-
-    int rc = zlink_msg_recv (msg, router, flags);
-    while (rc < 0 && zlink_errno () == EINTR)
-        rc = zlink_msg_recv (msg, router, flags);
-    if (rc >= 0)
-        return true;
-
-    if (err_out)
-        *err_out = zlink_errno ();
-    return false;
-}
-
 inline relay_status_t recv_gateway_request (
-  void *router,
+  void *receiver,
   gateway_request_t *request,
   int recv_flags)
 {
-    if (!router || !request)
+    if (!receiver || !request)
         return relay_error;
 
     close_gateway_request_payload (request);
-
-    zlink_msg_t rid_part;
-    if (zlink_msg_init (&rid_part) != 0)
-        return relay_error;
-
-    int recv_err = 0;
-    if (!recv_one_frame (router, &rid_part, recv_flags, &recv_err)) {
-        zlink_msg_close (&rid_part);
-        if (recv_err == EAGAIN)
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    zlink_routing_id_t rid;
+    rid.size = 0;
+    if (zlink_receiver_recv (receiver, &parts, &part_count, recv_flags, &rid)
+        != 0) {
+        if (zlink_errno () == EAGAIN)
             return relay_idle;
         return relay_error;
     }
 
-    const size_t rid_size = zlink_msg_size (&rid_part);
-    if (rid_size > 0) {
-        const size_t copy_size =
-          std::min (rid_size, sizeof (request->client_service) - 1);
-        std::memcpy (request->client_service, zlink_msg_data (&rid_part), copy_size);
-        request->client_service[copy_size] = '\0';
-    } else {
-        request->client_service[0] = '\0';
-    }
-
-    zlink_msg_close (&rid_part);
+    const size_t copy_size =
+      std::min (static_cast<size_t> (rid.size),
+                sizeof (request->client_service) - 1);
+    if (copy_size > 0)
+        std::memcpy (request->client_service, rid.data, copy_size);
+    request->client_service[copy_size] = '\0';
     if (request->client_service[0] == '\0')
         return relay_error;
 
-    if (zlink_msg_init (&request->payload) != 0)
-        return relay_error;
-
-    if (!recv_one_frame (router, &request->payload, 0, &recv_err)) {
-        zlink_msg_close (&request->payload);
+    if (!parts || part_count != 1) {
+        if (parts)
+            zlink_multipart_close (parts, part_count);
         return relay_error;
     }
+
+    if (zlink_msg_init (&request->payload) != 0) {
+        zlink_multipart_close (parts, part_count);
+        return relay_error;
+    }
+    if (zlink_msg_move (&request->payload, &parts[0]) != 0) {
+        zlink_msg_close (&request->payload);
+        zlink_multipart_close (parts, part_count);
+        return relay_error;
+    }
+    zlink_multipart_close (parts, part_count);
     request->has_payload = true;
 
     return relay_progress;
 }
 
 inline relay_status_t relay_gateway_request (
-  void *router,
+  void *receiver,
   void *server_gateway,
   gateway_request_t *request,
   int recv_flags)
 {
-    if (!router || !server_gateway || !request)
+    if (!receiver || !server_gateway || !request)
         return relay_error;
 
-    const relay_status_t recv_status = recv_gateway_request (router, request, recv_flags);
+    const relay_status_t recv_status =
+      recv_gateway_request (receiver, request, recv_flags);
     if (recv_status != relay_progress)
         return recv_status;
 
@@ -527,12 +510,6 @@ inline bool run_server_loop (void *server_receiver,
     (void) settings;
     if (!server_receiver || !server_gateway) {
         std::cerr << "gateway server: invalid runtime state" << std::endl;
-        return false;
-    }
-
-    void *router = zlink_receiver_router_socket_unsafe (server_receiver);
-    if (!router) {
-        std::cerr << "gateway server: receiver router unavailable" << std::endl;
         return false;
     }
 
@@ -655,7 +632,7 @@ inline bool run_server_loop (void *server_receiver,
             emit_requested_queue_probe (
               lib_name, transport, server_gateway, server_receiver);
             const relay_status_t status = relay_gateway_request (
-              router,
+              server_receiver,
               server_gateway,
               &request,
               ZLINK_DONTWAIT);
@@ -845,11 +822,40 @@ inline int run_server_benchmark (const std::string &lib_name,
     }
     debug_timing_ms ("receiver bind ready", startup_begin);
 
-    void *receiver_router = zlink_receiver_router_socket_unsafe (server_receiver);
-    if (!receiver_router) {
-        return fail ();
-    }
-    apply_benchmark_socket_options (receiver_router, settings.hwm, transport);
+    const int receiver_sndtimeo_ms =
+      bench_timeout_ms_from_env ("PERF_SNDTIMEO_MS", 200);
+    const int receiver_rcvtimeo_ms =
+      bench_timeout_ms_from_env ("PERF_RCVTIMEO_MS", 200);
+    const int receiver_sndhwm =
+      bench_hwm_from_env ("PERF_SNDHWM", settings.hwm);
+    const int receiver_rcvhwm =
+      bench_hwm_from_env ("PERF_RCVHWM", settings.hwm);
+    const int receiver_linger_ms = 0;
+    (void) zlink_receiver_set_option (
+      server_receiver,
+      ZLINK_RECEIVER_OPT_SNDTIMEO,
+      &receiver_sndtimeo_ms,
+      sizeof (receiver_sndtimeo_ms));
+    (void) zlink_receiver_set_option (
+      server_receiver,
+      ZLINK_RECEIVER_OPT_RCVTIMEO,
+      &receiver_rcvtimeo_ms,
+      sizeof (receiver_rcvtimeo_ms));
+    (void) zlink_receiver_set_option (
+      server_receiver,
+      ZLINK_RECEIVER_OPT_SNDHWM,
+      &receiver_sndhwm,
+      sizeof (receiver_sndhwm));
+    (void) zlink_receiver_set_option (
+      server_receiver,
+      ZLINK_RECEIVER_OPT_RCVHWM,
+      &receiver_rcvhwm,
+      sizeof (receiver_rcvhwm));
+    (void) zlink_receiver_set_option (
+      server_receiver,
+      ZLINK_RECEIVER_OPT_LINGER,
+      &receiver_linger_ms,
+      sizeof (receiver_linger_ms));
 
     if (zlink_receiver_connect_registry (
           server_receiver,
@@ -903,24 +909,24 @@ inline int run_server_benchmark (const std::string &lib_name,
       bench_hwm_from_env ("PERF_SNDHWM", settings.hwm);
     const int gateway_rcvhwm =
       bench_hwm_from_env ("PERF_RCVHWM", settings.hwm);
-    (void) zlink_gateway_setsockopt (
+    (void) zlink_gateway_set_option (
       server_gateway,
-      ZLINK_SNDTIMEO,
+      ZLINK_GATEWAY_OPT_SNDTIMEO,
       &gateway_sndtimeo_ms,
       sizeof (gateway_sndtimeo_ms));
-    (void) zlink_gateway_setsockopt (
+    (void) zlink_gateway_set_option (
       server_gateway,
-      ZLINK_RCVTIMEO,
+      ZLINK_GATEWAY_OPT_RCVTIMEO,
       &gateway_rcvtimeo_ms,
       sizeof (gateway_rcvtimeo_ms));
-    (void) zlink_gateway_setsockopt (
+    (void) zlink_gateway_set_option (
       server_gateway,
-      ZLINK_SNDHWM,
+      ZLINK_GATEWAY_OPT_SNDHWM,
       &gateway_sndhwm,
       sizeof (gateway_sndhwm));
-    (void) zlink_gateway_setsockopt (
+    (void) zlink_gateway_set_option (
       server_gateway,
-      ZLINK_RCVHWM,
+      ZLINK_GATEWAY_OPT_RCVHWM,
       &gateway_rcvhwm,
       sizeof (gateway_rcvhwm));
 

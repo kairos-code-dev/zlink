@@ -34,65 +34,80 @@ static void print_errno (const char *label_)
     }
 }
 
-// Helper to receive a message with timeout
-static void recv_one_with_timeout (void *sock, zlink_msg_t *msg, int timeout_ms)
+static bool receiver_matches_expected (zlink_msg_t *parts,
+                                       size_t part_count,
+                                       const char *expected,
+                                       size_t expected_len)
 {
-    step_log ("recv wait");
-    zlink_pollitem_t items[1];
-    items[0].socket = sock;
-    items[0].fd = 0;
-    items[0].events = ZLINK_POLLIN;
-    items[0].revents = 0;
-    int rc = zlink_poll (items, 1, timeout_ms);
-    if (rc <= 0) {
-        if (getenv ("ZLINK_TEST_DEBUG")) {
-            fprintf (stderr, "[gateway] poll rc=%d errno=%d\n", rc, errno);
-            fflush (stderr);
-        }
+    for (size_t i = 0; i < part_count; ++i) {
+        if (zlink_msg_size (&parts[i]) == expected_len
+            && memcmp (zlink_msg_data (&parts[i]), expected, expected_len)
+                 == 0)
+            return true;
     }
-    TEST_ASSERT_TRUE_MESSAGE (rc > 0, "recv timeout");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (msg, sock, 0));
+    return false;
 }
 
-static void recv_one_with_timeout_flags (void *sock,
-                                         zlink_msg_t *msg,
-                                         int timeout_ms,
-                                         int flags)
+static bool recv_receiver_payload (void *receiver,
+                                   const char *expected,
+                                   size_t expected_len,
+                                   int timeout_ms)
 {
-    zlink_pollitem_t items[1];
-    items[0].socket = sock;
-    items[0].fd = 0;
-    items[0].events = ZLINK_POLLIN;
-    items[0].revents = 0;
-
     const int sleep_ms_step = 5;
     const int attempts = timeout_ms / sleep_ms_step;
     for (int i = 0; i < attempts; ++i) {
-        int prc = zlink_poll (items, 1, sleep_ms_step);
-        if (prc <= 0)
-            continue;
-        int rc = zlink_msg_recv (msg, sock, flags);
-        if (rc == 0)
-            return;
-        if (errno != EAGAIN)
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        if (zlink_receiver_recv (receiver, &parts, &part_count, ZLINK_DONTWAIT,
+                                 NULL)
+            == 0) {
+            const bool got =
+              receiver_matches_expected (parts, part_count, expected,
+                                         expected_len);
+            zlink_multipart_close (parts, part_count);
+            if (got)
+                return true;
+        } else if (errno != EAGAIN) {
             break;
+        }
+        msleep (sleep_ms_step);
     }
-    TEST_FAIL_MESSAGE ("recv timeout");
+    return false;
 }
 
-static void assert_no_message (void *sock, int timeout_ms)
+static bool recv_receiver_any (void *receiver, int timeout_ms)
 {
     const int sleep_ms_step = 5;
     const int attempts = timeout_ms / sleep_ms_step;
     for (int i = 0; i < attempts; ++i) {
-        zlink_msg_t msg;
-        zlink_msg_init (&msg);
-        int rc = zlink_msg_recv (&msg, sock, ZLINK_DONTWAIT);
-        if (rc == 0) {
-            zlink_msg_close (&msg);
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        if (zlink_receiver_recv (receiver, &parts, &part_count, ZLINK_DONTWAIT,
+                                 NULL)
+            == 0) {
+            zlink_multipart_close (parts, part_count);
+            return true;
+        }
+        if (errno != EAGAIN)
+            return false;
+        msleep (sleep_ms_step);
+    }
+    return false;
+}
+
+static void assert_no_receiver_message (void *receiver, int timeout_ms)
+{
+    const int sleep_ms_step = 5;
+    const int attempts = timeout_ms / sleep_ms_step;
+    for (int i = 0; i < attempts; ++i) {
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        if (zlink_receiver_recv (receiver, &parts, &part_count, ZLINK_DONTWAIT,
+                                 NULL)
+            == 0) {
+            zlink_multipart_close (parts, part_count);
             TEST_FAIL_MESSAGE ("unexpected message received");
         }
-        zlink_msg_close (&msg);
         if (errno != EAGAIN)
             TEST_FAIL_MESSAGE ("unexpected recv error");
         msleep (sleep_ms_step);
@@ -145,9 +160,6 @@ static void test_gateway_provider_setsockopt ()
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     const int linger = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_setsockopt (discovery, ZLINK_DISCOVERY_SOCKET_SUB,
-                                  ZLINK_LINGER, &linger, sizeof (linger)));
     void *registry = zlink_registry_new (ctx);
     TEST_ASSERT_NOT_NULL (registry);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -163,42 +175,17 @@ static void test_gateway_provider_setsockopt ()
 
     const int hwm = 1000000;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_setsockopt (gateway, ZLINK_SNDHWM, &hwm, sizeof (hwm)));
+      zlink_gateway_set_option (gateway, ZLINK_GATEWAY_OPT_SNDHWM, &hwm,
+                                sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_setsockopt (gateway, ZLINK_RCVHWM, &hwm, sizeof (hwm)));
+      zlink_gateway_set_option (gateway, ZLINK_GATEWAY_OPT_RCVHWM, &hwm,
+                                sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_setsockopt (provider, ZLINK_RECEIVER_SOCKET_ROUTER,
-                                 ZLINK_SNDHWM, &hwm, sizeof (hwm)));
+      zlink_receiver_set_option (provider, ZLINK_RECEIVER_OPT_SNDHWM, &hwm,
+                                 sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_setsockopt (provider, ZLINK_RECEIVER_SOCKET_ROUTER,
-                                 ZLINK_RCVHWM, &hwm, sizeof (hwm)));
-
-    void *gateway_router = zlink_gateway_router_socket_unsafe(gateway);
-    TEST_ASSERT_NOT_NULL (gateway_router);
-    void *provider_router = zlink_receiver_router_socket_unsafe(provider);
-    TEST_ASSERT_NOT_NULL (provider_router);
-
-    int out = 0;
-    size_t out_size = sizeof (out);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (gateway_router, ZLINK_SNDHWM, &out, &out_size));
-    TEST_ASSERT_EQUAL_INT (hwm, out);
-    out = 0;
-    out_size = sizeof (out);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (gateway_router, ZLINK_RCVHWM, &out, &out_size));
-    TEST_ASSERT_EQUAL_INT (hwm, out);
-
-    out = 0;
-    out_size = sizeof (out);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (provider_router, ZLINK_SNDHWM, &out, &out_size));
-    TEST_ASSERT_EQUAL_INT (hwm, out);
-    out = 0;
-    out_size = sizeof (out);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (provider_router, ZLINK_RCVHWM, &out, &out_size));
-    TEST_ASSERT_EQUAL_INT (hwm, out);
+      zlink_receiver_set_option (provider, ZLINK_RECEIVER_OPT_RCVHWM, &hwm,
+                                 sizeof (hwm)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_destroy (&provider));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
@@ -233,8 +220,8 @@ static void test_gateway_can_be_polled_via_service_instance ()
 
     const int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_setsockopt (provider, ZLINK_RECEIVER_SOCKET_ROUTER,
-                                 ZLINK_LINGER, &linger, sizeof (linger)));
+      zlink_receiver_set_option (provider, ZLINK_RECEIVER_OPT_LINGER, &linger,
+                                 sizeof (linger)));
 
     char provider_ep[MAX_SOCKET_STRING];
     snprintf (provider_ep, sizeof (provider_ep), "tcp://127.0.0.1:%d",
@@ -269,19 +256,7 @@ static void test_gateway_can_be_polled_via_service_instance ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_send (gateway, service_name, &msg, 1, 0));
 
-    void *provider_router = zlink_receiver_router_socket_unsafe (provider);
-    TEST_ASSERT_NOT_NULL (provider_router);
-    zlink_msg_t rid;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&rid));
-    recv_one_with_timeout (provider_router, &rid, 2000);
-    TEST_ASSERT_TRUE (zlink_msg_more (&rid) != 0);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&rid));
-    zlink_msg_t payload;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&payload));
-    recv_one_with_timeout (provider_router, &payload, 2000);
-    TEST_ASSERT_EQUAL_UINT (5, zlink_msg_size (&payload));
-    TEST_ASSERT_EQUAL_MEMORY ("hello", zlink_msg_data (&payload), 5);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload));
+    TEST_ASSERT_TRUE (recv_receiver_payload (provider, "hello", 5, 2000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_poller_modify_gateway (poller, gateway, ZLINK_POLLOUT));
@@ -398,19 +373,7 @@ static void test_gateway_router_peers_do_not_enter_pollable_mode ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_send (gateway, service_name, &msg, 1, 0));
 
-    void *provider_router = zlink_receiver_router_socket_unsafe (provider);
-    TEST_ASSERT_NOT_NULL (provider_router);
-    zlink_msg_t rid;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&rid));
-    recv_one_with_timeout (provider_router, &rid, 2000);
-    TEST_ASSERT_TRUE (zlink_msg_more (&rid) != 0);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&rid));
-    zlink_msg_t payload;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&payload));
-    recv_one_with_timeout (provider_router, &payload, 2000);
-    TEST_ASSERT_EQUAL_UINT (4, zlink_msg_size (&payload));
-    TEST_ASSERT_EQUAL_MEMORY ("ping", zlink_msg_data (&payload), 4);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload));
+    TEST_ASSERT_TRUE (recv_receiver_payload (provider, "ping", 4, 2000));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
@@ -476,19 +439,7 @@ static void test_receiver_can_be_polled_via_service_instance ()
     TEST_ASSERT_TRUE ((event.events & ZLINK_POLLIN) != 0);
     TEST_ASSERT_EQUAL_PTR (&provider_tag, event.user_data);
 
-    void *router = zlink_receiver_router_socket_unsafe (provider);
-    TEST_ASSERT_NOT_NULL (router);
-    zlink_msg_t rid;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&rid));
-    recv_one_with_timeout (router, &rid, 2000);
-    TEST_ASSERT_TRUE (zlink_msg_more (&rid) != 0);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&rid));
-    zlink_msg_t body;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&body));
-    recv_one_with_timeout (router, &body, 2000);
-    TEST_ASSERT_EQUAL_UINT (4, zlink_msg_size (&body));
-    TEST_ASSERT_EQUAL_MEMORY ("ping", zlink_msg_data (&body), 4);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&body));
+    TEST_ASSERT_TRUE (recv_receiver_payload (provider, "ping", 4, 2000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_poller_modify_receiver (poller, provider, ZLINK_POLLIN));
@@ -544,38 +495,16 @@ static void send_gateway_rid_with_timeout (void *gateway,
     TEST_FAIL_MESSAGE ("gateway send rid timeout");
 }
 
-static bool recv_provider_message (void *router)
+static bool recv_provider_message (void *receiver)
 {
-    zlink_msg_t rid;
-    zlink_msg_init (&rid);
-    if (zlink_msg_recv (&rid, router, 0) != 0) {
-        zlink_msg_close (&rid);
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    if (zlink_receiver_recv (receiver, &parts, &part_count, ZLINK_DONTWAIT,
+                             NULL)
+        != 0) {
         return false;
     }
-    const bool more = zlink_msg_more (&rid);
-    zlink_msg_close (&rid);
-    if (!more)
-        return true;
-
-    zlink_msg_t payload;
-    zlink_msg_init (&payload);
-    if (zlink_msg_recv (&payload, router, 0) != 0) {
-        zlink_msg_close (&payload);
-        return false;
-    }
-    while (zlink_msg_more (&payload)) {
-        zlink_msg_t part;
-        zlink_msg_init (&part);
-        if (zlink_msg_recv (&part, router, 0) != 0) {
-            zlink_msg_close (&part);
-            break;
-        }
-        const bool more_part = zlink_msg_more (&part);
-        zlink_msg_close (&part);
-        if (!more_part)
-            break;
-    }
-    zlink_msg_close (&payload);
+    zlink_multipart_close (parts, part_count);
     return true;
 }
 
@@ -673,22 +602,14 @@ void test_gateway_single_service_tcp ()
     step_log ("bind provider router");
     const char provider_rid[] = "PROV1";
     char advertise_ep[256] = {0};
+    snprintf (advertise_ep, sizeof (advertise_ep), "tcp://127.0.0.1:%d",
+              test_port (22500));
     void *provider = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, "tcp://127.0.0.1:*"));
-    void *provider_router = zlink_receiver_router_socket_unsafe(provider);
-    TEST_ASSERT_NOT_NULL (provider_router);
-    int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_PROBE_ROUTER, &probe,
-                        sizeof (probe)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_ROUTING_ID, provider_rid,
-                        sizeof (provider_rid) - 1));
-    size_t advertise_len = sizeof (advertise_ep);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (provider_router, ZLINK_LAST_ENDPOINT, advertise_ep,
-                        &advertise_len));
+      zlink_receiver_set_routing_id (provider, provider_rid,
+                                     sizeof (provider_rid) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, advertise_ep));
 
     step_log ("connect provider dealer");
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -719,8 +640,8 @@ void test_gateway_single_service_tcp ()
 
     int timeout_ms = 2000;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_RCVTIMEO, &timeout_ms,
-                        sizeof (timeout_ms)));
+      zlink_receiver_set_option (provider, ZLINK_RECEIVER_OPT_RCVTIMEO,
+                                 &timeout_ms, sizeof (timeout_ms)));
     msleep (200);
 
     // Send message via gateway
@@ -738,43 +659,7 @@ void test_gateway_single_service_tcp ()
     send_gateway_with_timeout (gateway, service_name, parts, 1, 2000);
 
     // Provider receives the message
-    void *router = provider_router;
-    TEST_ASSERT_NOT_NULL (router);
-
-    zlink_msg_t frame;
-    zlink_msg_t payload_msg;
-    zlink_msg_init (&frame);
-    zlink_msg_init (&payload_msg);
-    bool got_payload = false;
-    for (int i = 0; i < 3 && !got_payload; ++i) {
-        recv_one_with_timeout (router, &frame, timeout_ms);
-        if (zlink_msg_size (&frame) == 5
-            && memcmp (zlink_msg_data (&frame), "hello", 5) == 0) {
-            payload_msg = frame;
-            zlink_msg_init (&frame);
-            got_payload = true;
-            break;
-        }
-        if (!zlink_msg_more (&frame)) {
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-            zlink_msg_init (&frame);
-            continue;
-        }
-        recv_one_with_timeout (router, &payload_msg, timeout_ms);
-        if (zlink_msg_size (&payload_msg) == 5
-            && memcmp (zlink_msg_data (&payload_msg), "hello", 5) == 0) {
-            got_payload = true;
-            break;
-        }
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
-        zlink_msg_init (&frame);
-        zlink_msg_init (&payload_msg);
-    }
-    TEST_ASSERT_TRUE (got_payload);
-    TEST_ASSERT_EQUAL_MEMORY ("hello", zlink_msg_data (&payload_msg), 5);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
+    TEST_ASSERT_TRUE (recv_receiver_payload (provider, "hello", 5, timeout_ms));
 
     step_log ("cleanup");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
@@ -805,23 +690,14 @@ void test_gateway_send_rid_tcp ()
 
     const char provider_rid[] = "PROV-RID";
     char advertise_ep[256] = {0};
+    snprintf (advertise_ep, sizeof (advertise_ep), "tcp://127.0.0.1:%d",
+              test_port (22501));
     void *provider = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_bind (provider, "tcp://127.0.0.1:*"));
-    void *provider_router = zlink_receiver_router_socket_unsafe(provider);
-    TEST_ASSERT_NOT_NULL (provider_router);
-    int probe = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_PROBE_ROUTER, &probe,
-                        sizeof (probe)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_ROUTING_ID, provider_rid,
-                        sizeof (provider_rid) - 1));
-    size_t advertise_len = sizeof (advertise_ep);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (provider_router, ZLINK_LAST_ENDPOINT, advertise_ep,
-                        &advertise_len));
+      zlink_receiver_set_routing_id (provider, provider_rid,
+                                     sizeof (provider_rid) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, advertise_ep));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider,
@@ -844,8 +720,8 @@ void test_gateway_send_rid_tcp ()
 
     int timeout_ms = 2000;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_RCVTIMEO, &timeout_ms,
-                        sizeof (timeout_ms)));
+      zlink_receiver_set_option (provider, ZLINK_RECEIVER_OPT_RCVTIMEO,
+                                 &timeout_ms, sizeof (timeout_ms)));
 
     zlink_msg_t payload;
     zlink_msg_init_size (&payload, 7);
@@ -855,40 +731,8 @@ void test_gateway_send_rid_tcp ()
     send_gateway_rid_with_timeout (gateway, service_name,
                                    &provider_info.routing_id, parts, 1, 2000);
 
-    zlink_msg_t frame;
-    zlink_msg_t payload_msg;
-    zlink_msg_init (&frame);
-    zlink_msg_init (&payload_msg);
-    bool got_payload = false;
-    for (int i = 0; i < 3 && !got_payload; ++i) {
-        recv_one_with_timeout (provider_router, &frame, timeout_ms);
-        if (zlink_msg_size (&frame) == 7
-            && memcmp (zlink_msg_data (&frame), "rid-msg", 7) == 0) {
-            payload_msg = frame;
-            zlink_msg_init (&frame);
-            got_payload = true;
-            break;
-        }
-        if (!zlink_msg_more (&frame)) {
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-            zlink_msg_init (&frame);
-            continue;
-        }
-        recv_one_with_timeout (provider_router, &payload_msg, timeout_ms);
-        if (zlink_msg_size (&payload_msg) == 7
-            && memcmp (zlink_msg_data (&payload_msg), "rid-msg", 7) == 0) {
-            got_payload = true;
-            break;
-        }
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
-        zlink_msg_init (&frame);
-        zlink_msg_init (&payload_msg);
-    }
-    TEST_ASSERT_TRUE (got_payload);
-    TEST_ASSERT_EQUAL_MEMORY ("rid-msg", zlink_msg_data (&payload_msg), 7);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
+    TEST_ASSERT_TRUE (
+      recv_receiver_payload (provider, "rid-msg", 7, timeout_ms));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_destroy (&provider));
@@ -921,20 +765,13 @@ void test_gateway_multi_service_tcp ()
     // Setup provider A
     step_log ("setup provider A");
     char ep_a[256] = {0};
+    snprintf (ep_a, sizeof (ep_a), "tcp://127.0.0.1:%d", test_port (22510));
     void *provider_a = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_a);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_a, "tcp://127.0.0.1:*"));
-    void *router_a = zlink_receiver_router_socket_unsafe(provider_a);
-    TEST_ASSERT_NOT_NULL (router_a);
-    int probe = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_a, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
     const char rid_a[] = "PROVA";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_a, ZLINK_ROUTING_ID, rid_a, sizeof (rid_a) - 1));
-    size_t len_a = sizeof (ep_a);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router_a, ZLINK_LAST_ENDPOINT, ep_a, &len_a));
+      zlink_receiver_set_routing_id (provider_a, rid_a, sizeof (rid_a) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_a, ep_a));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider_a, "inproc://reg-router-gateway2"));
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -943,19 +780,13 @@ void test_gateway_multi_service_tcp ()
     // Setup provider B
     step_log ("setup provider B");
     char ep_b[256] = {0};
+    snprintf (ep_b, sizeof (ep_b), "tcp://127.0.0.1:%d", test_port (22511));
     void *provider_b = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_b);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_b, "tcp://127.0.0.1:*"));
-    void *router_b = zlink_receiver_router_socket_unsafe(provider_b);
-    TEST_ASSERT_NOT_NULL (router_b);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_b, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
     const char rid_b[] = "PROVB";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_b, ZLINK_ROUTING_ID, rid_b, sizeof (rid_b) - 1));
-    size_t len_b = sizeof (ep_b);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router_b, ZLINK_LAST_ENDPOINT, ep_b, &len_b));
+      zlink_receiver_set_routing_id (provider_b, rid_b, sizeof (rid_b) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_b, ep_b));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider_b, "inproc://reg-router-gateway2"));
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -972,9 +803,11 @@ void test_gateway_multi_service_tcp ()
 
     int timeout_ms = 2000;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_a, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+      zlink_receiver_set_option (provider_a, ZLINK_RECEIVER_OPT_RCVTIMEO,
+                                 &timeout_ms, sizeof (timeout_ms)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_b, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+      zlink_receiver_set_option (provider_b, ZLINK_RECEIVER_OPT_RCVTIMEO,
+                                 &timeout_ms, sizeof (timeout_ms)));
     msleep (200);
 
     // Send message to service A
@@ -987,39 +820,8 @@ void test_gateway_multi_service_tcp ()
     send_gateway_with_timeout (gateway, "svc-A", parts_a, 1, 2000);
 
     // Provider A receives
-    zlink_msg_t frame_a;
-    zlink_msg_t payload_a;
-    zlink_msg_init (&frame_a);
-    zlink_msg_init (&payload_a);
-    bool got_a = false;
-    for (int i = 0; i < 3 && !got_a; ++i) {
-        recv_one_with_timeout (router_a, &frame_a, timeout_ms);
-        if (zlink_msg_size (&frame_a) == 6
-            && memcmp (zlink_msg_data (&frame_a), "msg-to-A", 6) == 0) {
-            payload_a = frame_a;
-            zlink_msg_init (&frame_a);
-            got_a = true;
-            break;
-        }
-        if (!zlink_msg_more (&frame_a)) {
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame_a));
-            zlink_msg_init (&frame_a);
-            continue;
-        }
-        recv_one_with_timeout (router_a, &payload_a, timeout_ms);
-        if (zlink_msg_size (&payload_a) == 6
-            && memcmp (zlink_msg_data (&payload_a), "msg-to-A", 6) == 0) {
-            got_a = true;
-            break;
-        }
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame_a));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_a));
-        zlink_msg_init (&frame_a);
-        zlink_msg_init (&payload_a);
-    }
-    TEST_ASSERT_TRUE (got_a);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_a));
+    TEST_ASSERT_TRUE (
+      recv_receiver_payload (provider_a, "msg-to-A", 6, timeout_ms));
 
     // Send message to service B
     step_log ("send to svc-B");
@@ -1031,39 +833,8 @@ void test_gateway_multi_service_tcp ()
     send_gateway_with_timeout (gateway, "svc-B", parts_b, 1, 2000);
 
     // Provider B receives
-    zlink_msg_t frame_b;
-    zlink_msg_t payload_b;
-    zlink_msg_init (&frame_b);
-    zlink_msg_init (&payload_b);
-    bool got_b = false;
-    for (int i = 0; i < 3 && !got_b; ++i) {
-        recv_one_with_timeout (router_b, &frame_b, timeout_ms);
-        if (zlink_msg_size (&frame_b) == 8
-            && memcmp (zlink_msg_data (&frame_b), "msg-to-B", 8) == 0) {
-            payload_b = frame_b;
-            zlink_msg_init (&frame_b);
-            got_b = true;
-            break;
-        }
-        if (!zlink_msg_more (&frame_b)) {
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame_b));
-            zlink_msg_init (&frame_b);
-            continue;
-        }
-        recv_one_with_timeout (router_b, &payload_b, timeout_ms);
-        if (zlink_msg_size (&payload_b) == 8
-            && memcmp (zlink_msg_data (&payload_b), "msg-to-B", 8) == 0) {
-            got_b = true;
-            break;
-        }
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame_b));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_b));
-        zlink_msg_init (&frame_b);
-        zlink_msg_init (&payload_b);
-    }
-    TEST_ASSERT_TRUE (got_b);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_b));
+    TEST_ASSERT_TRUE (
+      recv_receiver_payload (provider_b, "msg-to-B", 8, timeout_ms));
 
     step_log ("cleanup");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
@@ -1095,20 +866,13 @@ void test_gateway_refresh_on_update ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, service_name));
 
     char ep_1[256] = {0};
+    snprintf (ep_1, sizeof (ep_1), "tcp://127.0.0.1:%d", test_port (22520));
     void *provider_1 = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_1);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_1, "tcp://127.0.0.1:*"));
-    void *router_1 = zlink_receiver_router_socket_unsafe(provider_1);
-    TEST_ASSERT_NOT_NULL (router_1);
-    int probe = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_1, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
     const char rid_1[] = "UP1";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_1, ZLINK_ROUTING_ID, rid_1, sizeof (rid_1) - 1));
-    size_t len_1 = sizeof (ep_1);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router_1, ZLINK_LAST_ENDPOINT, ep_1, &len_1));
+      zlink_receiver_set_routing_id (provider_1, rid_1, sizeof (rid_1) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_1, ep_1));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider_1,
                                        "inproc://reg-router-gateway-update"));
@@ -1123,7 +887,8 @@ void test_gateway_refresh_on_update ()
 
     int timeout_ms = 2000;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_1, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+      zlink_receiver_set_option (provider_1, ZLINK_RECEIVER_OPT_RCVTIMEO,
+                                 &timeout_ms, sizeof (timeout_ms)));
     msleep (200);
 
     // Send first message -> provider 1
@@ -1134,15 +899,7 @@ void test_gateway_refresh_on_update ()
     parts_1[0] = msg_1;
     send_gateway_with_timeout (gateway, service_name, parts_1, 1, 2000);
 
-    zlink_msg_t frame;
-    zlink_msg_t payload;
-    zlink_msg_init (&frame);
-    zlink_msg_init (&payload);
-    recv_one_with_timeout (router_1, &frame, timeout_ms);
-    if (zlink_msg_more (&frame))
-        recv_one_with_timeout (router_1, &payload, timeout_ms);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload));
+    TEST_ASSERT_TRUE (recv_receiver_any (provider_1, timeout_ms));
 
     // Unregister provider 1 and register provider 2
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1150,26 +907,21 @@ void test_gateway_refresh_on_update ()
     msleep (200);
 
     char ep_2[256] = {0};
+    snprintf (ep_2, sizeof (ep_2), "tcp://127.0.0.1:%d", test_port (22521));
     void *provider_2 = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_2);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_2, "tcp://127.0.0.1:*"));
-    void *router_2 = zlink_receiver_router_socket_unsafe(provider_2);
-    TEST_ASSERT_NOT_NULL (router_2);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_2, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
     const char rid_2[] = "UP2";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_2, ZLINK_ROUTING_ID, rid_2, sizeof (rid_2) - 1));
-    size_t len_2 = sizeof (ep_2);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router_2, ZLINK_LAST_ENDPOINT, ep_2, &len_2));
+      zlink_receiver_set_routing_id (provider_2, rid_2, sizeof (rid_2) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_2, ep_2));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider_2,
                                        "inproc://reg-router-gateway-update"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_register (provider_2, service_name, ep_2, 1));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_2, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+      zlink_receiver_set_option (provider_2, ZLINK_RECEIVER_OPT_RCVTIMEO,
+                                 &timeout_ms, sizeof (timeout_ms)));
     msleep (300);
     wait_gateway_ready (gateway, service_name, 2000);
 
@@ -1181,18 +933,10 @@ void test_gateway_refresh_on_update ()
     parts_2[0] = msg_2;
     send_gateway_with_timeout (gateway, service_name, parts_2, 1, 2000);
 
-    zlink_msg_t frame2;
-    zlink_msg_t payload2;
-    zlink_msg_init (&frame2);
-    zlink_msg_init (&payload2);
-    recv_one_with_timeout (router_2, &frame2, timeout_ms);
-    if (zlink_msg_more (&frame2))
-        recv_one_with_timeout (router_2, &payload2, timeout_ms);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame2));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload2));
+    TEST_ASSERT_TRUE (recv_receiver_any (provider_2, timeout_ms));
 
     step_log ("assert no message on provider 1");
-    assert_no_message (router_1, 200);
+    assert_no_receiver_message (provider_1, 200);
     step_log ("after assert no message");
 
     step_log ("cleanup");
@@ -1238,20 +982,14 @@ void test_gateway_protocol_ws ()
     // Setup provider with WebSocket endpoint
     step_log ("bind provider with ws://");
     char advertise_ep[256] = {0};
+    snprintf (advertise_ep, sizeof (advertise_ep), "ws://127.0.0.1:%d",
+              test_port (22530));
     void *provider = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, "ws://127.0.0.1:*"));
-    void *provider_router = zlink_receiver_router_socket_unsafe(provider);
-    TEST_ASSERT_NOT_NULL (provider_router);
-    int probe = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
     const char rid[] = "PROVWS";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_ROUTING_ID, rid, sizeof (rid) - 1));
-    size_t len = sizeof (advertise_ep);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (provider_router, ZLINK_LAST_ENDPOINT, advertise_ep, &len));
+      zlink_receiver_set_routing_id (provider, rid, sizeof (rid) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, advertise_ep));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider, "inproc://reg-router-gateway-ws"));
@@ -1268,7 +1006,8 @@ void test_gateway_protocol_ws ()
 
     int timeout_ms = 2000;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+      zlink_receiver_set_option (provider, ZLINK_RECEIVER_OPT_RCVTIMEO,
+                                 &timeout_ms, sizeof (timeout_ms)));
     msleep (200);
 
     // Send message via gateway
@@ -1281,39 +1020,7 @@ void test_gateway_protocol_ws ()
     send_gateway_with_timeout (gateway, service_name, parts, 1, 2000);
 
     // Provider receives
-    zlink_msg_t frame;
-    zlink_msg_t payload_msg;
-    zlink_msg_init (&frame);
-    zlink_msg_init (&payload_msg);
-    bool got_payload = false;
-    for (int i = 0; i < 3 && !got_payload; ++i) {
-        recv_one_with_timeout (provider_router, &frame, timeout_ms);
-        if (zlink_msg_size (&frame) == 7
-            && memcmp (zlink_msg_data (&frame), "ws-test", 7) == 0) {
-            payload_msg = frame;
-            zlink_msg_init (&frame);
-            got_payload = true;
-            break;
-        }
-        if (!zlink_msg_more (&frame)) {
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-            zlink_msg_init (&frame);
-            continue;
-        }
-        recv_one_with_timeout (provider_router, &payload_msg, timeout_ms);
-        if (zlink_msg_size (&payload_msg) == 7
-            && memcmp (zlink_msg_data (&payload_msg), "ws-test", 7) == 0) {
-            got_payload = true;
-            break;
-        }
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
-        zlink_msg_init (&frame);
-        zlink_msg_init (&payload_msg);
-    }
-    TEST_ASSERT_TRUE (got_payload);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
+    TEST_ASSERT_TRUE (recv_receiver_payload (provider, "ws-test", 7, timeout_ms));
 
     step_log ("cleanup");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
@@ -1355,28 +1062,20 @@ void test_gateway_protocol_tls ()
     // Setup provider with TLS endpoint
     step_log ("bind provider with tls://");
     char advertise_ep[256] = {0};
+    snprintf (advertise_ep, sizeof (advertise_ep), "tls://127.0.0.1:%d",
+              test_port (22531));
     void *provider = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
+    const char rid[] = "PROVTLS";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_receiver_set_routing_id (provider, rid, sizeof (rid) - 1));
 
     // Configure TLS server certificates on provider
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_set_tls_server (provider, files.server_cert.c_str (),
                                      files.server_key.c_str ()));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, "tls://127.0.0.1:*"));
-
-    void *provider_router = zlink_receiver_router_socket_unsafe(provider);
-    TEST_ASSERT_NOT_NULL (provider_router);
-
-    int probe = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
-    const char rid[] = "PROVTLS";
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_ROUTING_ID, rid, sizeof (rid) - 1));
-    size_t len = sizeof (advertise_ep);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (provider_router, ZLINK_LAST_ENDPOINT, advertise_ep, &len));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, advertise_ep));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider, "inproc://reg-router-gateway-tls"));
@@ -1397,7 +1096,8 @@ void test_gateway_protocol_tls ()
 
     int timeout_ms = 2000;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+      zlink_receiver_set_option (provider, ZLINK_RECEIVER_OPT_RCVTIMEO,
+                                 &timeout_ms, sizeof (timeout_ms)));
     msleep (200);
 
     // Send message via gateway
@@ -1410,39 +1110,8 @@ void test_gateway_protocol_tls ()
     send_gateway_with_timeout (gateway, service_name, parts, 1, 2000);
 
     // Provider receives
-    zlink_msg_t frame;
-    zlink_msg_t payload_msg;
-    zlink_msg_init (&frame);
-    zlink_msg_init (&payload_msg);
-    bool got_payload = false;
-    for (int i = 0; i < 3 && !got_payload; ++i) {
-        recv_one_with_timeout (provider_router, &frame, timeout_ms);
-        if (zlink_msg_size (&frame) == 8
-            && memcmp (zlink_msg_data (&frame), "tls-test", 8) == 0) {
-            payload_msg = frame;
-            zlink_msg_init (&frame);
-            got_payload = true;
-            break;
-        }
-        if (!zlink_msg_more (&frame)) {
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-            zlink_msg_init (&frame);
-            continue;
-        }
-        recv_one_with_timeout (provider_router, &payload_msg, timeout_ms);
-        if (zlink_msg_size (&payload_msg) == 8
-            && memcmp (zlink_msg_data (&payload_msg), "tls-test", 8) == 0) {
-            got_payload = true;
-            break;
-        }
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
-        zlink_msg_init (&frame);
-        zlink_msg_init (&payload_msg);
-    }
-    TEST_ASSERT_TRUE (got_payload);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
+    TEST_ASSERT_TRUE (
+      recv_receiver_payload (provider, "tls-test", 8, timeout_ms));
 
     step_log ("cleanup");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
@@ -1487,28 +1156,20 @@ void test_gateway_protocol_wss ()
     // Setup provider with WSS endpoint
     step_log ("bind provider with wss://");
     char advertise_ep[256] = {0};
+    snprintf (advertise_ep, sizeof (advertise_ep), "wss://127.0.0.1:%d",
+              test_port (22532));
     void *provider = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
+    const char rid[] = "PROVWSS";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_receiver_set_routing_id (provider, rid, sizeof (rid) - 1));
 
     // Configure TLS server certificates on provider
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_set_tls_server (provider, files.server_cert.c_str (),
                                      files.server_key.c_str ()));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, "wss://127.0.0.1:*"));
-
-    void *provider_router = zlink_receiver_router_socket_unsafe(provider);
-    TEST_ASSERT_NOT_NULL (provider_router);
-
-    int probe = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
-    const char rid[] = "PROVWSS";
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_ROUTING_ID, rid, sizeof (rid) - 1));
-    size_t len = sizeof (advertise_ep);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (provider_router, ZLINK_LAST_ENDPOINT, advertise_ep, &len));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, advertise_ep));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider, "inproc://reg-router-gateway-wss"));
@@ -1529,7 +1190,8 @@ void test_gateway_protocol_wss ()
 
     int timeout_ms = 2000;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (provider_router, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+      zlink_receiver_set_option (provider, ZLINK_RECEIVER_OPT_RCVTIMEO,
+                                 &timeout_ms, sizeof (timeout_ms)));
     msleep (200);
 
     // Send message via gateway
@@ -1542,39 +1204,8 @@ void test_gateway_protocol_wss ()
     send_gateway_with_timeout (gateway, service_name, parts, 1, 2000);
 
     // Provider receives
-    zlink_msg_t frame;
-    zlink_msg_t payload_msg;
-    zlink_msg_init (&frame);
-    zlink_msg_init (&payload_msg);
-    bool got_payload = false;
-    for (int i = 0; i < 3 && !got_payload; ++i) {
-        recv_one_with_timeout (provider_router, &frame, timeout_ms);
-        if (zlink_msg_size (&frame) == 8
-            && memcmp (zlink_msg_data (&frame), "wss-test", 8) == 0) {
-            payload_msg = frame;
-            zlink_msg_init (&frame);
-            got_payload = true;
-            break;
-        }
-        if (!zlink_msg_more (&frame)) {
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-            zlink_msg_init (&frame);
-            continue;
-        }
-        recv_one_with_timeout (provider_router, &payload_msg, timeout_ms);
-        if (zlink_msg_size (&payload_msg) == 8
-            && memcmp (zlink_msg_data (&payload_msg), "wss-test", 8) == 0) {
-            got_payload = true;
-            break;
-        }
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
-        zlink_msg_init (&frame);
-        zlink_msg_init (&payload_msg);
-    }
-    TEST_ASSERT_TRUE (got_payload);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
+    TEST_ASSERT_TRUE (
+      recv_receiver_payload (provider, "wss-test", 8, timeout_ms));
 
     step_log ("cleanup");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
@@ -1611,20 +1242,13 @@ void test_gateway_load_balancing ()
     // Setup provider 1
     step_log ("setup provider 1");
     char ep_1[256] = {0};
+    snprintf (ep_1, sizeof (ep_1), "tcp://127.0.0.1:%d", test_port (22540));
     void *provider_1 = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_1);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_1, "tcp://127.0.0.1:*"));
-    void *router_1 = zlink_receiver_router_socket_unsafe(provider_1);
-    TEST_ASSERT_NOT_NULL (router_1);
-    int probe = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_1, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
     const char rid_1[] = "PROV1";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_1, ZLINK_ROUTING_ID, rid_1, sizeof (rid_1) - 1));
-    size_t len_1 = sizeof (ep_1);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router_1, ZLINK_LAST_ENDPOINT, ep_1, &len_1));
+      zlink_receiver_set_routing_id (provider_1, rid_1, sizeof (rid_1) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_1, ep_1));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider_1, "inproc://reg-router-lb"));
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1633,19 +1257,13 @@ void test_gateway_load_balancing ()
     // Setup provider 2
     step_log ("setup provider 2");
     char ep_2[256] = {0};
+    snprintf (ep_2, sizeof (ep_2), "tcp://127.0.0.1:%d", test_port (22541));
     void *provider_2 = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_2);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_2, "tcp://127.0.0.1:*"));
-    void *router_2 = zlink_receiver_router_socket_unsafe(provider_2);
-    TEST_ASSERT_NOT_NULL (router_2);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_2, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
     const char rid_2[] = "PROV2";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_2, ZLINK_ROUTING_ID, rid_2, sizeof (rid_2) - 1));
-    size_t len_2 = sizeof (ep_2);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router_2, ZLINK_LAST_ENDPOINT, ep_2, &len_2));
+      zlink_receiver_set_routing_id (provider_2, rid_2, sizeof (rid_2) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_2, ep_2));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider_2, "inproc://reg-router-lb"));
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1661,9 +1279,11 @@ void test_gateway_load_balancing ()
 
     int timeout_ms = 2000;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_1, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+      zlink_receiver_set_option (provider_1, ZLINK_RECEIVER_OPT_RCVTIMEO,
+                                 &timeout_ms, sizeof (timeout_ms)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_2, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+      zlink_receiver_set_option (provider_2, ZLINK_RECEIVER_OPT_RCVTIMEO,
+                                 &timeout_ms, sizeof (timeout_ms)));
     msleep (200);
 
     // Send multiple messages and track which provider receives them
@@ -1682,50 +1302,16 @@ void test_gateway_load_balancing ()
         parts[0] = msg;
         send_gateway_with_timeout (gateway, service_name, parts, 1, 2000);
 
-        // Try to receive on both providers
-        zlink_pollitem_t items[2];
-        items[0].socket = router_1;
-        items[0].fd = 0;
-        items[0].events = ZLINK_POLLIN;
-        items[0].revents = 0;
-        items[1].socket = router_2;
-        items[1].fd = 0;
-        items[1].events = ZLINK_POLLIN;
-        items[1].revents = 0;
-
-        int rc = zlink_poll (items, 2, timeout_ms);
-        TEST_ASSERT_GREATER_THAN (0, rc);
-
-        // Read from whichever provider received it
-        if (items[0].revents & ZLINK_POLLIN) {
-            zlink_msg_t frame;
-            zlink_msg_init (&frame);
-            // Drain all frames from provider 1
-            while (true) {
-                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&frame, router_1, 0));
-                bool more = zlink_msg_more (&frame);
-                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-                zlink_msg_init (&frame);
-                if (!more)
-                    break;
-            }
+        const bool got_1 = recv_receiver_any (provider_1, timeout_ms);
+        const bool got_2 = recv_receiver_any (provider_2, got_1 ? 50 : timeout_ms);
+        TEST_ASSERT_TRUE (got_1 || got_2);
+        if (got_1) {
             received_1++;
             if (getenv ("ZLINK_TEST_DEBUG")) {
                 fprintf (stderr, "[lb] provider 1 received message %d\n", i);
             }
         }
-        if (items[1].revents & ZLINK_POLLIN) {
-            zlink_msg_t frame;
-            zlink_msg_init (&frame);
-            // Drain all frames from provider 2
-            while (true) {
-                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&frame, router_2, 0));
-                bool more = zlink_msg_more (&frame);
-                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-                zlink_msg_init (&frame);
-                if (!more)
-                    break;
-            }
+        if (got_2) {
             received_2++;
             if (getenv ("ZLINK_TEST_DEBUG")) {
                 fprintf (stderr, "[lb] provider 2 received message %d\n", i);
@@ -1782,20 +1368,13 @@ void test_gateway_weighted_load_balancing ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, service_name));
 
     char ep_1[256] = {0};
+    snprintf (ep_1, sizeof (ep_1), "tcp://127.0.0.1:%d", test_port (22542));
     void *provider_1 = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_1);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_1, "tcp://127.0.0.1:*"));
-    void *router_1 = zlink_receiver_router_socket_unsafe(provider_1);
-    TEST_ASSERT_NOT_NULL (router_1);
-    int probe = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_1, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
     const char rid_1[] = "WPROV1";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_1, ZLINK_ROUTING_ID, rid_1, sizeof (rid_1) - 1));
-    size_t len_1 = sizeof (ep_1);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router_1, ZLINK_LAST_ENDPOINT, ep_1, &len_1));
+      zlink_receiver_set_routing_id (provider_1, rid_1, sizeof (rid_1) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_1, ep_1));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider_1,
                                        "inproc://reg-router-lb-weighted"));
@@ -1803,19 +1382,13 @@ void test_gateway_weighted_load_balancing ()
       zlink_receiver_register (provider_1, service_name, ep_1, 8));
 
     char ep_2[256] = {0};
+    snprintf (ep_2, sizeof (ep_2), "tcp://127.0.0.1:%d", test_port (22543));
     void *provider_2 = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_2);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_2, "tcp://127.0.0.1:*"));
-    void *router_2 = zlink_receiver_router_socket_unsafe(provider_2);
-    TEST_ASSERT_NOT_NULL (router_2);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_2, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
     const char rid_2[] = "WPROV2";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_2, ZLINK_ROUTING_ID, rid_2, sizeof (rid_2) - 1));
-    size_t len_2 = sizeof (ep_2);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router_2, ZLINK_LAST_ENDPOINT, ep_2, &len_2));
+      zlink_receiver_set_routing_id (provider_2, rid_2, sizeof (rid_2) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_2, ep_2));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider_2,
                                        "inproc://reg-router-lb-weighted"));
@@ -1833,9 +1406,11 @@ void test_gateway_weighted_load_balancing ()
 
     int timeout_ms = 2000;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_1, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+      zlink_receiver_set_option (provider_1, ZLINK_RECEIVER_OPT_RCVTIMEO,
+                                 &timeout_ms, sizeof (timeout_ms)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router_2, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+      zlink_receiver_set_option (provider_2, ZLINK_RECEIVER_OPT_RCVTIMEO,
+                                 &timeout_ms, sizeof (timeout_ms)));
 
     int received_1 = 0;
     int received_2 = 0;
@@ -1850,45 +1425,13 @@ void test_gateway_weighted_load_balancing ()
         parts[0] = msg;
         send_gateway_with_timeout (gateway, service_name, parts, 1, 2000);
 
-        zlink_pollitem_t items[2];
-        items[0].socket = router_1;
-        items[0].fd = 0;
-        items[0].events = ZLINK_POLLIN;
-        items[0].revents = 0;
-        items[1].socket = router_2;
-        items[1].fd = 0;
-        items[1].events = ZLINK_POLLIN;
-        items[1].revents = 0;
-
-        int rc = zlink_poll (items, 2, timeout_ms);
-        TEST_ASSERT_GREATER_THAN (0, rc);
-
-        if (items[0].revents & ZLINK_POLLIN) {
-            zlink_msg_t frame;
-            zlink_msg_init (&frame);
-            while (true) {
-                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&frame, router_1, 0));
-                bool more = zlink_msg_more (&frame);
-                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-                zlink_msg_init (&frame);
-                if (!more)
-                    break;
-            }
+        const bool got_1 = recv_receiver_any (provider_1, timeout_ms);
+        const bool got_2 = recv_receiver_any (provider_2, got_1 ? 50 : timeout_ms);
+        TEST_ASSERT_TRUE (got_1 || got_2);
+        if (got_1)
             received_1++;
-        }
-        if (items[1].revents & ZLINK_POLLIN) {
-            zlink_msg_t frame;
-            zlink_msg_init (&frame);
-            while (true) {
-                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&frame, router_2, 0));
-                bool more = zlink_msg_more (&frame);
-                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
-                zlink_msg_init (&frame);
-                if (!more)
-                    break;
-            }
+        if (got_2)
             received_2++;
-        }
     }
 
     TEST_ASSERT_EQUAL_INT (num_messages, received_1 + received_2);
@@ -1925,20 +1468,13 @@ void test_gateway_concurrent_send_and_updates ()
 
     step_log ("sync: setup provider");
     char ep[256] = {0};
+    snprintf (ep, sizeof (ep), "tcp://127.0.0.1:%d", test_port (22544));
     void *provider = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, "tcp://127.0.0.1:*"));
-    void *router = zlink_receiver_router_socket_unsafe(provider);
-    TEST_ASSERT_NOT_NULL (router);
-    int probe = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
     const char rid[] = "SYNC";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router, ZLINK_ROUTING_ID, rid, sizeof (rid) - 1));
-    size_t len = sizeof (ep);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, ep, &len));
+      zlink_receiver_set_routing_id (provider, rid, sizeof (rid) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, ep));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider,
                                        "inproc://reg-router-gateway-sync"));
@@ -1954,8 +1490,8 @@ void test_gateway_concurrent_send_and_updates ()
 
     int timeout_ms = 100;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router, ZLINK_RCVTIMEO, &timeout_ms,
-                        sizeof (timeout_ms)));
+      zlink_receiver_set_option (provider, ZLINK_RECEIVER_OPT_RCVTIMEO,
+                                 &timeout_ms, sizeof (timeout_ms)));
 
     const int send_threads = 4;
     const int send_per_thread = 50;
@@ -1971,7 +1507,7 @@ void test_gateway_concurrent_send_and_updates ()
     std::thread recv_thread ([&] () {
         int idle = 0;
         while (true) {
-            if (recv_provider_message (router)) {
+            if (recv_provider_message (provider)) {
                 ++recv_count;
                 idle = 0;
                 continue;

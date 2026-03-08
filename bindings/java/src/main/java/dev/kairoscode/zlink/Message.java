@@ -261,6 +261,22 @@ public final class Message implements AutoCloseable {
 
     public static Message[] fromMsgVector(MemorySegment partsAddr, long count,
                                           Message[] reusable) {
+        return moveFromMsgVector(partsAddr, count, reusable, true);
+    }
+
+    static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count) {
+        return fromOwnedMsgVector(partsAddr, count, null);
+    }
+
+    static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count,
+                                        Message[] reusable) {
+        return moveFromMsgVector(partsAddr, count, reusable, false);
+    }
+
+    private static Message[] moveFromMsgVector(MemorySegment partsAddr,
+                                               long count,
+                                               Message[] reusable,
+                                               boolean closeSourceVector) {
         if (partsAddr == null || partsAddr.address() == 0 || count <= 0)
             return new Message[0];
         if (count > Integer.MAX_VALUE)
@@ -281,8 +297,9 @@ public final class Message implements AutoCloseable {
         }
         int built = 0;
         boolean success = false;
+        MemorySegment parts = MemorySegment.ofAddress(partsAddr.address())
+            .reinterpret(msgSize * count);
         try {
-            MemorySegment parts = MemorySegment.ofAddress(partsAddr.address()).reinterpret(msgSize * count);
             for (int i = 0; i < count; i++) {
                 MemorySegment src = parts.asSlice((long) i * msgSize, msgSize);
                 Message msg = out[i];
@@ -301,16 +318,27 @@ public final class Message implements AutoCloseable {
             success = true;
             return out;
         } finally {
-            NativeMsg.msgvClose(partsAddr, count);
-            if (!success) {
-                for (int i = 0; i < built; i++) {
-                    if (out[i] != null && out[i].isReusable()) {
-                        try {
-                            out[i].resetForReuse();
-                        } catch (RuntimeException ignored) {
+            if (closeSourceVector) {
+                NativeMsg.msgvClose(partsAddr, count);
+                if (!success) {
+                    for (int i = 0; i < built; i++) {
+                        if (out[i] != null && out[i].isReusable()) {
+                            try {
+                                out[i].resetForReuse();
+                            } catch (RuntimeException ignored) {
+                            }
                         }
                     }
                 }
+            } else if (!success) {
+                for (int i = built; i < count; i++) {
+                    MemorySegment src = parts.asSlice((long) i * msgSize, msgSize);
+                    try {
+                        NativeMsg.msgClose(src);
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+                closeAll(out);
             }
         }
     }

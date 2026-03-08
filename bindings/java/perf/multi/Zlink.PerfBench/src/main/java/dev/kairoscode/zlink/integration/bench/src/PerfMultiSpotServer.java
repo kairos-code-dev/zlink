@@ -15,6 +15,7 @@ import dev.kairoscode.zlink.integration.bench.common.PerfMultiMetricHeader;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiTls;
 import java.lang.foreign.MemorySegment;
 import dev.kairoscode.zlink.options.SocketOptions;
+import dev.kairoscode.zlink.service.registry.Registry;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import dev.kairoscode.zlink.service.spot.SpotNodeSocketRole;
@@ -25,6 +26,7 @@ import dev.kairoscode.zlink.service.spot.SpotNodeSocketRole;
  */
 public final class PerfMultiSpotServer {
     private static final String PATTERN = "MULTI_SPOT";
+    private static final String SERVICE_NAME = "perf-spot";
     private static final String TOPIC = "bench";
     private static final int MIN_PAYLOAD_BYTES = 32;
     private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
@@ -61,7 +63,7 @@ public final class PerfMultiSpotServer {
             return 0;
         }
 
-        String endpoint = resolveServerEndpoint(transport, "multi-spot");
+        Endpoints endpoints = resolveEndpoints(transport, "multi-spot");
         int payloadSize = Math.max(msgSize, MIN_PAYLOAD_BYTES);
         int connectTimeoutMs = Math.max(5000,
             PerfMultiCommon.resolveConnectReadyTimeoutMs() * 3);
@@ -70,17 +72,26 @@ public final class PerfMultiSpotServer {
         int settleMs = PerfMultiCommon.resolveSettleMs();
         int pollTimeoutMs = Math.max(1,
             PerfMultiCommon.resolveClientPollTimeoutMs());
+        int clients = Math.max(1, PerfMultiCommon.resolveClients(PATTERN));
 
         try (Context context = new Context();
+             Registry registry = new Registry(context);
              SpotNode node = new SpotNode(context)) {
             PerfCommon.applyServerContextOptions(context);
+            registry.setEndpoints(endpoints.registryPub(), endpoints.registryRouter());
+            registry.setHeartbeat(5000, 120000);
+            registry.setBroadcastInterval(Math.max(100, settleMs));
+            registry.start();
+
             applySpotNodeOptions(node);
             PerfMultiTls.configureSpotPublisherTlsIfNeeded(node, transport);
-            node.bind(endpoint);
-            System.out.println("READY," + endpoint);
-            if (!waitPubPeers(node, 1, connectTimeoutMs)) {
-                throw new IllegalStateException("spot_pub_peers_not_ready");
-            }
+            PerfMultiTls.configureSpotSubscriberTlsIfNeeded(node, transport);
+            node.bind(endpoints.serverEndpoint());
+            node.connectRegistry(endpoints.registryRouter());
+            node.register(SERVICE_NAME, endpoints.serverEndpoint());
+            System.out.println("READY," + endpoints.serverEndpoint() + "|"
+                + endpoints.registryPub() + "|" + endpoints.registryRouter());
+            waitPubPeers(node, clients, connectTimeoutMs);
 
             try (Spot publisher = new Spot(node);
                  Spot.PreparedTopic topic = publisher.prepareTopic(TOPIC);
@@ -125,12 +136,20 @@ public final class PerfMultiSpotServer {
         }
     }
 
-    private static String resolveServerEndpoint(String transport, String name) {
+    private static Endpoints resolveEndpoints(String transport, String name) {
         int fixedPort = PerfMultiCommon.resolveServerBindPort();
         if (fixedPort > 0) {
-            return transport + "://127.0.0.1:" + fixedPort;
+            return new Endpoints(
+                transport + "://127.0.0.1:" + fixedPort,
+                "tcp://127.0.0.1:" + (fixedPort + 1),
+                "tcp://127.0.0.1:" + (fixedPort + 2)
+            );
         }
-        return PerfCommon.endpointFor(transport, name);
+        return new Endpoints(
+            PerfCommon.endpointFor(transport, name),
+            PerfCommon.endpointFor("tcp", name + "-registry-pub"),
+            PerfCommon.endpointFor("tcp", name + "-registry-router")
+        );
     }
 
     private static long runPublishPhase(Spot publisher,
@@ -240,8 +259,18 @@ public final class PerfMultiSpotServer {
 
     private static void applySpotNodeOptions(SpotNode node) {
         int sndHwm = PerfMultiCommon.resolveSndHwm(PATTERN);
+        int rcvHwm = PerfMultiCommon.resolveRcvHwm(PATTERN);
+        int rcvTimeoutMs = PerfMultiCommon.resolveRcvTimeoutMs();
+        int xpubNoDrop = resolveXpubNoDrop();
         node.setOption(SpotNodeSocketRole.PUB, SocketOptions.SNDHWM, sndHwm);
+        node.setOption(SpotNodeSocketRole.PUB, SocketOptions.RCVHWM, rcvHwm);
         node.setOption(SpotNodeSocketRole.PUB, SocketOptions.SNDTIMEO, 0);
+        node.setOption(SpotNodeSocketRole.PUB, SocketOptions.RCVTIMEO,
+            rcvTimeoutMs);
+        node.setOption(SpotNodeSocketRole.PUB, SocketOptions.XPUB_NODROP,
+            xpubNoDrop);
+        node.setOption(SpotNodeSocketRole.SUB, SocketOptions.XPUB_NODROP,
+            xpubNoDrop);
         node.setOption(SpotNodeSocketRole.PUB, SocketOptions.LINGER, 0);
         node.setOption(SpotNodeSocketRole.SUB, SocketOptions.LINGER, 0);
         node.setOption(SpotNodeSocketRole.DEALER, SocketOptions.LINGER, 0);
@@ -274,5 +303,14 @@ public final class PerfMultiSpotServer {
 
     private static boolean isInterrupted(int errno) {
         return errno == ERRNO_EINTR;
+    }
+
+    private static int resolveXpubNoDrop() {
+        return PerfCommon.parsePositiveEnv("PERF_MULTI_SPOT_XPUB_NODROP", 1) > 0
+            ? 1 : 0;
+    }
+
+    private record Endpoints(String serverEndpoint, String registryPub,
+                             String registryRouter) {
     }
 }

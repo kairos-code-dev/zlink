@@ -302,15 +302,15 @@ inline void print_result(const std::string& lib_type,
     const double bandwidth_mb_s =
       (throughput * static_cast<double>(size)) / 1000000.0;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",throughput," << std::fixed << std::setprecision(2) << throughput << std::endl;
+              << ",throughput," << std::fixed << std::setprecision(3) << throughput << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",bandwidth," << std::fixed << std::setprecision(2) << bandwidth_mb_s << std::endl;
+              << ",bandwidth," << std::fixed << std::setprecision(3) << bandwidth_mb_s << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",latency," << std::fixed << std::setprecision(2) << latency << std::endl;
+              << ",latency," << std::fixed << std::setprecision(3) << latency << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",latency_p95," << std::fixed << std::setprecision(2) << latency_p95 << std::endl;
+              << ",latency_p95," << std::fixed << std::setprecision(3) << latency_p95 << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",latency_p99," << std::fixed << std::setprecision(2) << latency_p99 << std::endl;
+              << ",latency_p99," << std::fixed << std::setprecision(3) << latency_p99 << std::endl;
 }
 
 inline void print_queue_metrics(const std::string &lib_type,
@@ -322,17 +322,17 @@ inline void print_queue_metrics(const std::string &lib_type,
     if (queue_stats.has_snd_pending) {
         std::cout << "RESULT," << lib_type << "," << pattern << ","
                   << transport << "," << size << ",snd_pending_max,"
-                  << std::fixed << std::setprecision(2)
+                  << std::fixed << std::setprecision(3)
                   << queue_stats.snd_pending_max << std::endl;
     }
     if (queue_stats.has_rcv_pending) {
         std::cout << "RESULT," << lib_type << "," << pattern << ","
                   << transport << "," << size << ",rcv_pending_max,"
-                  << std::fixed << std::setprecision(2)
+                  << std::fixed << std::setprecision(3)
                   << queue_stats.rcv_pending_max << std::endl;
         std::cout << "RESULT," << lib_type << "," << pattern << ","
                   << transport << "," << size << ",rcv_pending_end,"
-                  << std::fixed << std::setprecision(2)
+                  << std::fixed << std::setprecision(3)
                   << queue_stats.rcv_pending_end << std::endl;
     }
 }

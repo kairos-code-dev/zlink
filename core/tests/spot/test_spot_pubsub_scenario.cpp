@@ -52,6 +52,46 @@ static int destroy_spot_pub_sub (void **pub_p, void **sub_p)
     return (rc_pub == 0 && rc_sub == 0) ? 0 : -1;
 }
 
+static int set_node_pub_option (void *node_,
+                                int option_,
+                                const void *optval_,
+                                size_t optvallen_)
+{
+    void *pub = NULL;
+    void *sub = NULL;
+    if (create_spot_pub_sub (node_, &pub, &sub) != 0)
+        return -1;
+    const int rc =
+      zlink_spot_pub_set_option (pub, option_, optval_, optvallen_);
+    const int err = errno;
+    int destroy_rc = destroy_spot_pub_sub (&pub, &sub);
+    if (rc != 0) {
+        errno = err;
+        return -1;
+    }
+    return destroy_rc;
+}
+
+static int set_node_sub_option (void *node_,
+                                int option_,
+                                const void *optval_,
+                                size_t optvallen_)
+{
+    void *pub = NULL;
+    void *sub = NULL;
+    if (create_spot_pub_sub (node_, &pub, &sub) != 0)
+        return -1;
+    const int rc =
+      zlink_spot_sub_set_option (sub, option_, optval_, optvallen_);
+    const int err = errno;
+    int destroy_rc = destroy_spot_pub_sub (&pub, &sub);
+    if (rc != 0) {
+        errno = err;
+        return -1;
+    }
+    return destroy_rc;
+}
+
 void setUp ()
 {
 }
@@ -803,15 +843,12 @@ static void test_spot_pub_async_mode_local_delivery ()
     void *node = zlink_spot_node_new (ctx);
     TEST_ASSERT_NOT_NULL (node);
 
-    int pub_mode = ZLINK_SPOT_NODE_PUB_MODE_ASYNC;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
-                                  ZLINK_SPOT_NODE_OPT_PUB_MODE, &pub_mode,
-                                  sizeof (pub_mode)));
-
     void *pub = NULL;
     void *sub = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (create_spot_pub_sub (node, &pub, &sub));
+    int pub_mode = ZLINK_SPOT_NODE_PUB_MODE_ASYNC;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
+      pub, ZLINK_SPOT_PUB_OPT_MODE, &pub_mode, sizeof (pub_mode)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (sub, "pub:async:test"));
 
     zlink_msg_t part;
@@ -856,46 +893,34 @@ static void test_spot_pub_async_setsockopt_validation ()
 
     int value = 7;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
-                                      ZLINK_SPOT_NODE_OPT_PUB_MODE, &value,
-                                      sizeof (value)));
+      -1, set_node_pub_option (node, ZLINK_SPOT_PUB_OPT_MODE, &value,
+                               sizeof (value)));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     value = ZLINK_SPOT_NODE_PUB_MODE_ASYNC;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
-                                  ZLINK_SPOT_NODE_OPT_PUB_MODE, &value,
-                                  sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (set_node_pub_option (
+      node, ZLINK_SPOT_PUB_OPT_MODE, &value, sizeof (value)));
     value = ZLINK_SPOT_NODE_PUB_MODE_SYNC;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
-                                  ZLINK_SPOT_NODE_OPT_PUB_MODE, &value,
-                                  sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (set_node_pub_option (
+      node, ZLINK_SPOT_PUB_OPT_MODE, &value, sizeof (value)));
 
     value = 0;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
-                                      ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM,
-                                      &value, sizeof (value)));
+      -1, set_node_pub_option (node, ZLINK_SPOT_PUB_OPT_QUEUE_HWM, &value,
+                               sizeof (value)));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
     value = 8;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
-                                  ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM, &value,
-                                  sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (set_node_pub_option (
+      node, ZLINK_SPOT_PUB_OPT_QUEUE_HWM, &value, sizeof (value)));
 
     value = 3;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_node_setsockopt (
-            node, ZLINK_SPOT_NODE_SOCKET_NODE,
-            ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY, &value,
-            sizeof (value)));
+      -1, set_node_pub_option (node, ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY,
+                               &value, sizeof (value)));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
     value = ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_setsockopt (
-        node, ZLINK_SPOT_NODE_SOCKET_NODE,
-        ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY, &value, sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (set_node_pub_option (
+      node, ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY, &value, sizeof (value)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
@@ -937,25 +962,18 @@ static void test_spot_pub_async_queue_full_eagain ()
     void *node = zlink_spot_node_new (ctx);
     TEST_ASSERT_NOT_NULL (node);
 
-    int value = ZLINK_SPOT_NODE_PUB_MODE_ASYNC;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
-                                  ZLINK_SPOT_NODE_OPT_PUB_MODE, &value,
-                                  sizeof (value)));
-    value = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
-                                  ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM, &value,
-                                  sizeof (value)));
-    value = ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_setsockopt (
-        node, ZLINK_SPOT_NODE_SOCKET_NODE,
-        ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY, &value, sizeof (value)));
-
     void *pub = NULL;
     void *sub = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (create_spot_pub_sub (node, &pub, &sub));
+    int value = ZLINK_SPOT_NODE_PUB_MODE_ASYNC;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
+      pub, ZLINK_SPOT_PUB_OPT_MODE, &value, sizeof (value)));
+    value = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
+      pub, ZLINK_SPOT_PUB_OPT_QUEUE_HWM, &value, sizeof (value)));
+    value = ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
+      pub, ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY, &value, sizeof (value)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (sub, "pub:async:hwm"));
 
     async_handler_gate_t gate;
@@ -1002,25 +1020,18 @@ static void test_spot_pub_async_queue_full_drop ()
     void *node = zlink_spot_node_new (ctx);
     TEST_ASSERT_NOT_NULL (node);
 
-    int value = ZLINK_SPOT_NODE_PUB_MODE_ASYNC;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
-                                  ZLINK_SPOT_NODE_OPT_PUB_MODE, &value,
-                                  sizeof (value)));
-    value = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
-                                  ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM, &value,
-                                  sizeof (value)));
-    value = ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_setsockopt (
-        node, ZLINK_SPOT_NODE_SOCKET_NODE,
-        ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY, &value, sizeof (value)));
-
     void *pub = NULL;
     void *sub = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (create_spot_pub_sub (node, &pub, &sub));
+    int value = ZLINK_SPOT_NODE_PUB_MODE_ASYNC;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
+      pub, ZLINK_SPOT_PUB_OPT_MODE, &value, sizeof (value)));
+    value = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
+      pub, ZLINK_SPOT_PUB_OPT_QUEUE_HWM, &value, sizeof (value)));
+    value = ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
+      pub, ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY, &value, sizeof (value)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (sub, "pub:async:drop"));
 
     async_handler_gate_t gate;
@@ -1606,21 +1617,17 @@ static void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
         int rcvhwm = 1000000;
         int rcvtimeo = 5000;
         int linger = 0;
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-          nodes[i], ZLINK_SPOT_NODE_SOCKET_PUB, ZLINK_SNDHWM, &sndhwm,
-          sizeof (sndhwm)));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-          nodes[i], ZLINK_SPOT_NODE_SOCKET_SUB, ZLINK_RCVHWM, &rcvhwm,
-          sizeof (rcvhwm)));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-          nodes[i], ZLINK_SPOT_NODE_SOCKET_SUB, ZLINK_RCVTIMEO, &rcvtimeo,
+        TEST_ASSERT_SUCCESS_ERRNO (set_node_pub_option (
+          nodes[i], ZLINK_SPOT_PUB_OPT_SNDHWM, &sndhwm, sizeof (sndhwm)));
+        TEST_ASSERT_SUCCESS_ERRNO (set_node_sub_option (
+          nodes[i], ZLINK_SPOT_SUB_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm)));
+        TEST_ASSERT_SUCCESS_ERRNO (set_node_sub_option (
+          nodes[i], ZLINK_SPOT_SUB_OPT_RCVTIMEO, &rcvtimeo,
           sizeof (rcvtimeo)));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-          nodes[i], ZLINK_SPOT_NODE_SOCKET_PUB, ZLINK_LINGER, &linger,
-          sizeof (linger)));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-          nodes[i], ZLINK_SPOT_NODE_SOCKET_SUB, ZLINK_LINGER, &linger,
-          sizeof (linger)));
+        TEST_ASSERT_SUCCESS_ERRNO (set_node_pub_option (
+          nodes[i], ZLINK_SPOT_PUB_OPT_LINGER, &linger, sizeof (linger)));
+        TEST_ASSERT_SUCCESS_ERRNO (set_node_sub_option (
+          nodes[i], ZLINK_SPOT_SUB_OPT_LINGER, &linger, sizeof (linger)));
         char endpoint[256] = {0};
         TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
           nodes[i], "tcp://127.0.0.1:", &port_seed, endpoint));

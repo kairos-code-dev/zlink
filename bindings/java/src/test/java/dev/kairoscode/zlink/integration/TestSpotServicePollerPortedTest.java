@@ -21,6 +21,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestSpotServicePollerPortedTest {
+    private static final Integer SUB_TAG = Integer.valueOf(11);
+    private static final Integer PUB_TAG = Integer.valueOf(22);
+
     @Test
     public void testSpotSubCanBePolledViaServiceInstance() {
         TestSupport.assumeNative();
@@ -40,15 +43,55 @@ public class TestSpotServicePollerPortedTest {
             subscriber.subscribe("mode:sub");
             TestSupport.sleepMs(100);
 
-            poller.addSpotSub(subscriber, PollEventType.POLLIN);
+            poller.addSpotSub(subscriber, PollEventType.POLLIN.getValue(),
+                SUB_TAG);
             publisher.publish("mode:sub", payload, SendFlag.NONE);
 
             TestSupport.waitUntil(() -> poller.pollCount(50) > 0,
                 TestSupport.DEFAULT_TIMEOUT_MS, "spot sub poller never became ready");
+            assertEquals(SUB_TAG, poller.readyTag(0));
 
             Spot.SpotRawBorrowed raw = subscriber.recvRawBorrowed(
                 ReceiveFlag.DONTWAIT, recvContext);
             assertEquals("mode:sub", toUtf8(raw.topicId()));
+            assertEquals(1, raw.parts().length);
+            assertEquals("pong", new String(raw.parts()[0].data(),
+                StandardCharsets.UTF_8));
+        }
+    }
+
+    @Test
+    public void testSpotSubCanBePolledViaServiceInstanceAcrossContexts() {
+        TestSupport.assumeNative();
+
+        String endpoint = TestSupport.tcpEndpoint();
+        try (Context pubCtx = new Context();
+             Context subCtx = new Context();
+             SpotNode pubNode = new SpotNode(pubCtx);
+             SpotNode subNode = new SpotNode(subCtx);
+             Spot publisher = new Spot(pubNode);
+             Spot subscriber = new Spot(subNode);
+             Poller poller = new Poller();
+             Message payload = Message.fromBytes("pong".getBytes(
+                 StandardCharsets.UTF_8));
+             Spot.RecvContext recvContext = subscriber.createRecvContext()) {
+            pubNode.bind(endpoint);
+            subNode.connectPeerPub(endpoint);
+            subscriber.subscribe("mode:sub-xctx");
+            TestSupport.sleepMs(150);
+
+            poller.addSpotSub(subscriber, PollEventType.POLLIN.getValue(),
+                SUB_TAG);
+            publisher.publish("mode:sub-xctx", payload, SendFlag.NONE);
+
+            TestSupport.waitUntil(() -> poller.pollCount(50) > 0,
+                TestSupport.DEFAULT_TIMEOUT_MS,
+                "cross-context spot sub poller never became ready");
+            assertEquals(SUB_TAG, poller.readyTag(0));
+
+            Spot.SpotRawBorrowed raw = subscriber.recvRawBorrowed(
+                ReceiveFlag.DONTWAIT, recvContext);
+            assertEquals("mode:sub-xctx", toUtf8(raw.topicId()));
             assertEquals(1, raw.parts().length);
             assertEquals("pong", new String(raw.parts()[0].data(),
                 StandardCharsets.UTF_8));
@@ -73,9 +116,11 @@ public class TestSpotServicePollerPortedTest {
             rawSub.connect(endpoint);
             TestSupport.sleepMs(100);
 
-            poller.addSpotPub(publisher, PollEventType.POLLOUT);
+            poller.addSpotPub(publisher, PollEventType.POLLOUT.getValue(),
+                PUB_TAG);
             TestSupport.waitUntil(() -> poller.pollCount(50) > 0,
                 TestSupport.DEFAULT_TIMEOUT_MS, "spot pub poller never became writable");
+            assertEquals(PUB_TAG, poller.readyTag(0));
 
             publisher.publish("mode:pub", payload, SendFlag.NONE);
 

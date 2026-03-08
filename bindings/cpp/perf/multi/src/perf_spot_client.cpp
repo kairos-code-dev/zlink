@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <thread>
@@ -92,6 +93,8 @@ class spot_client_bench_t
           _poller (),
           _poll_events (),
           _ready_node (NULL),
+          _topic_buffer (std::strlen (k_topic)),
+          _payload_buffer (std::max<size_t> (msg_size, perf_metric::header_size ())),
           _phase_cfg (),
           _result ()
     {
@@ -189,37 +192,36 @@ class spot_client_bench_t
         if (header_ok_out)
             *header_ok_out = false;
 
-        zlink::message_t topic;
-        const int topic_rc = subscriber.recv (topic, flags);
+        const int topic_rc =
+          subscriber.recv (_topic_buffer.data (), _topic_buffer.size (), flags);
         if (topic_rc < 0) {
             const int err = errno;
             if (err == EAGAIN || err == EINTR)
                 return 0;
             return -1;
         }
-        if (!topic.more ())
-            return -1;
-
-        zlink::message_t payload;
-        const int payload_rc = subscriber.recv (payload, zlink::recv_flag::none);
-        if (payload_rc < 0) {
-            const int err = errno;
-            if (err == EAGAIN || err == EINTR)
-                return 0;
+        int more = 0;
+        if (subscriber.get (zlink::socket_options::rcvmore, more) != 0 || more == 0
+            || static_cast<size_t> (topic_rc) != _topic_buffer.size ()) {
             return -1;
         }
-        if (payload.more ())
+
+        const int payload_rc =
+          subscriber.recv (_payload_buffer.data (), _payload_buffer.size (), flags);
+        if (payload_rc < 0) {
+            return -1;
+        }
+        if (subscriber.get (zlink::socket_options::rcvmore, more) != 0 || more != 0)
             return -1;
 
-        if (topic.size () != std::strlen (k_topic)
-            || std::memcmp (topic.data (), k_topic, topic.size ()) != 0) {
+        if (std::memcmp (_topic_buffer.data (), k_topic, _topic_buffer.size ()) != 0) {
             return 1;
         }
 
         bool header_ok = false;
         if (header_out) {
             header_ok = perf_metric::decode_payload_header (
-              payload.data (), payload.size (), header_out);
+              _payload_buffer.data (), static_cast<size_t> (payload_rc), header_out);
         }
 
         if (header_ok_out)
@@ -389,6 +391,8 @@ class spot_client_bench_t
     zlink::poller_t _poller;
     std::vector<zlink::poll_event_t> _poll_events;
     zlink::service::spot_node_t *_ready_node;
+    std::vector<char> _topic_buffer;
+    std::vector<char> _payload_buffer;
 
     phase_config_t _phase_cfg;
     bench_result_t _result;

@@ -8,50 +8,16 @@
 
 namespace {
 
-inline bool wait_for_input (zlink_pollitem_t *item, long timeout_ms)
-{
-    const int rc = zlink_poll (item, 1, timeout_ms);
-    if (rc <= 0)
-        return false;
-    return (item[0].revents & ZLINK_POLLIN) != 0;
-}
-
 inline bool perform_handshake_poll (void *router1, void *router2)
 {
-    zlink_pollitem_t poll_r1[] = {{router1, 0, ZLINK_POLLIN, 0}};
-    zlink_pollitem_t poll_r2[] = {{router2, 0, ZLINK_POLLIN, 0}};
-
-    bool connected = false;
     char buf[16];
-    int attempts = 0;
-    while (!connected) {
-        ++attempts;
-        zlink_send (router2, "ROUTER1", 7, ZLINK_SNDMORE | ZLINK_DONTWAIT);
-        const int rc = zlink_send (router2, "PING", 4, ZLINK_DONTWAIT);
-
-        if (rc == 4 && wait_for_input (poll_r1, 0)) {
-            const int id_len =
-              zlink_recv (router1, buf, sizeof (buf), ZLINK_DONTWAIT);
-            if (id_len > 0 && recv_exact (router1, buf, 4, 0))
-                connected = true;
-        }
-
-        if (connected)
-            break;
-        if (attempts > 100)
-            return false;
-        if (zlink_poll (NULL, 0, 10) < 0 && zlink_errno () != EINTR)
-            return false;
-    }
-
-    if (!send_exact (router1, "ROUTER2", 7, ZLINK_SNDMORE)
-        || !send_exact (router1, "PONG", 4, 0)) {
-        return false;
-    }
-
-    if (!wait_for_input (poll_r2, -1))
-        return false;
-    if (zlink_recv (router2, buf, sizeof (buf), 0) <= 0
+    if (!send_exact (router2, "ROUTER1", 7, ZLINK_SNDMORE)
+        || !send_exact (router2, "PING", 4, 0)
+        || !recv_exact (router1, buf, 7, 0)
+        || !recv_exact (router1, buf, 4, 0)
+        || !send_exact (router1, "ROUTER2", 7, ZLINK_SNDMORE)
+        || !send_exact (router1, "PONG", 4, 0)
+        || !recv_exact (router2, buf, 7, 0)
         || !recv_exact (router2, buf, 4, 0)) {
         return false;
     }

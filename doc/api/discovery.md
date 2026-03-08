@@ -7,6 +7,17 @@ maintains a local service directory. Applications use Discovery to look up
 available Receivers or SPOT Nodes by service name without contacting the
 Registry directly.
 
+## Current API Direction
+
+- Use `zlink_discovery_set_routing_id()` / `zlink_discovery_routing_id()` for
+  Discovery identity.
+- Use `zlink_discovery_connect_registry_router()` when Discovery should publish
+  topology summaries back to the Registry.
+- Use `zlink_discovery_monitor_open()` for state transitions such as
+  `ZLINK_DISCOVERY_SERVICE_UP` and `ZLINK_DISCOVERY_PROVIDERS_CHANGED`.
+- Use Registry topology snapshot/query APIs for global summary inspection.
+- Discovery is not part of the new service-level option surface.
+
 ## Types
 
 ```c
@@ -81,6 +92,27 @@ automatically once broadcasts arrive.
 **Thread safety:** Not thread-safe. Call before concurrent access begins.
 
 **See also:** `zlink_discovery_subscribe`
+
+---
+
+### zlink_discovery_connect_registry_router
+
+Connect Discovery to a Registry ROUTER endpoint for topology reporting.
+
+```c
+int zlink_discovery_connect_registry_router(void *discovery,
+                                            const char *registry_router_endpoint);
+```
+
+Use this only when Discovery should publish its local topology summary back to
+the Registry. This is separate from `zlink_discovery_connect_registry()`,
+which subscribes to the Registry PUB broadcast path.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Not thread-safe. Call during setup.
+
+**See also:** `zlink_registry_topology_snapshot`, `zlink_registry_query_snapshot`
 
 ---
 
@@ -193,30 +225,15 @@ returns a value greater than zero, but expressed as a boolean result.
 
 ---
 
-### zlink_discovery_setsockopt
+### Discovery options
 
-Set a socket option on an internal Discovery socket.
+Discovery is intentionally excluded from the first service-level option
+surface. Its public setup surface is limited to:
 
-```c
-int zlink_discovery_setsockopt(void *discovery,
-                               int socket_role,
-                               int option,
-                               const void *optval,
-                               size_t optvallen);
-```
-
-Applies a low-level socket option to the Discovery's internal SUB socket
-identified by `socket_role`. Use `ZLINK_DISCOVERY_SOCKET_SUB` as the socket
-role.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Errors:**
-- `EINVAL` -- invalid socket role or unknown option.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_discovery_connect_registry`
+- `zlink_discovery_set_routing_id()`
+- `zlink_discovery_connect_registry()`
+- `zlink_discovery_connect_registry_router()`
+- `zlink_discovery_subscribe()` / `zlink_discovery_unsubscribe()`
 
 ---
 

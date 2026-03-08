@@ -118,7 +118,7 @@ size_t topic_len = 256;
 zlink_spot_sub_recv(sub, &parts, &part_count, 0, topic, &topic_len);
 
 printf("Topic: %.*s\n", (int)topic_len, topic);
-zlink_msgv_close(parts, part_count);
+zlink_multipart_close(parts, part_count);
 ```
 
 ### 4.3 Unsubscribing
@@ -141,7 +141,8 @@ receive messages.
 zlink_poller_add_spot_sub(poller, sub, NULL, ZLINK_POLLIN);
 
 /* Wait for readiness */
-zlink_poller_wait(poller, -1);
+zlink_poller_event_t ev;
+zlink_poller_wait(poller, &ev, -1);
 
 /* Use existing service API */
 zlink_spot_sub_recv(sub, &parts, &part_count, 0, topic, &topic_len);

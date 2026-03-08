@@ -4,7 +4,6 @@
 #include "../common/perf_client_helpers.hpp"
 #include "../common/perf_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_resource.hpp"
-#include "../../../src/services/spot/spot_node.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -37,8 +36,16 @@ struct spot_client_slot_t
 {
     void *node;
     void *sub;
+    void *sub_monitor;
+    bool saw_peer_up;
+    bool saw_filter_applied;
 
-    spot_client_slot_t() : node(NULL), sub(NULL)
+    spot_client_slot_t() :
+        node(NULL),
+        sub(NULL),
+        sub_monitor(NULL),
+        saw_peer_up(false),
+        saw_filter_applied(false)
     {
     }
 };
@@ -54,7 +61,7 @@ struct spot_sub_poller_t
     }
 };
 
-inline bool wait_all_sub_peers(const std::vector<spot_client_slot_t> &slots,
+inline bool wait_all_sub_peers(std::vector<spot_client_slot_t> &slots,
                                int timeout_ms);
 inline void close_spot_client_slots(std::vector<spot_client_slot_t> *slots);
 inline bool create_spot_client_slots(ctx_guard_t &ctx,
@@ -80,18 +87,6 @@ inline void debug_error(const char *stage)
         return;
     std::cerr << "[multi-spot-client] " << stage << " failed: "
               << zlink_strerror(zlink_errno()) << std::endl;
-}
-
-inline bool set_spot_node_routing_id(void *node, const char *routing_id)
-{
-    if (!node || !routing_id || routing_id[0] == '\0')
-        return false;
-    return zlink_spot_node_setsockopt(node,
-                                      ZLINK_SPOT_NODE_SOCKET_DEALER,
-                                      ZLINK_ROUTING_ID,
-                                      routing_id,
-                                      std::strlen(routing_id))
-           == 0;
 }
 
 inline bool parse_spot_ready_endpoint(const std::string &raw,
@@ -153,59 +148,27 @@ inline bool configure_spot_tls_server(void *node, const std::string &transport)
     return fn(node, cert_path.c_str(), key_path.c_str()) == 0;
 }
 
-inline void apply_spot_node_options(void *node,
-                                    const bench_settings_t &settings,
-                                    const std::string &transport)
+inline void apply_spot_sub_options(void *sub,
+                                   const bench_settings_t &settings)
 {
-    if (!node)
+    if (!sub)
         return;
 
-    const int sndhwm = bench_hwm_from_env("PERF_SNDHWM", settings.hwm);
     const int rcvhwm = bench_hwm_from_env("PERF_RCVHWM", settings.hwm);
-    const int sndtimeo_ms =
-      bench_timeout_ms_from_env("PERF_SNDTIMEO_MS", 200);
     const int rcvtimeo_ms =
       bench_timeout_ms_from_env("PERF_RCVTIMEO_MS", 200);
     const int linger_ms = 0;
     const int xpub_nodrop = resolve_int_env("PERF_SPOT_XPUB_NODROP", 1, 0);
 
-    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_PUB,
-                                      ZLINK_SNDHWM, &sndhwm, sizeof(sndhwm));
-    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_SUB,
-                                      ZLINK_RCVHWM, &rcvhwm, sizeof(rcvhwm));
-    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_DEALER,
-                                      ZLINK_SNDHWM, &sndhwm, sizeof(sndhwm));
-    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_DEALER,
-                                      ZLINK_RCVHWM, &rcvhwm, sizeof(rcvhwm));
-
-    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_PUB,
-                                      ZLINK_LINGER, &linger_ms, sizeof(linger_ms));
-    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_SUB,
-                                      ZLINK_LINGER, &linger_ms, sizeof(linger_ms));
-    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_DEALER,
-                                      ZLINK_LINGER, &linger_ms, sizeof(linger_ms));
-
-    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_PUB,
-                                      ZLINK_SNDTIMEO, &sndtimeo_ms,
-                                      sizeof(sndtimeo_ms));
-    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_SUB,
-                                      ZLINK_RCVTIMEO, &rcvtimeo_ms,
-                                      sizeof(rcvtimeo_ms));
-    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_DEALER,
-                                      ZLINK_SNDTIMEO, &sndtimeo_ms,
-                                      sizeof(sndtimeo_ms));
-    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_DEALER,
-                                      ZLINK_RCVTIMEO, &rcvtimeo_ms,
-                                      sizeof(rcvtimeo_ms));
-
-    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_PUB,
-                                      ZLINK_XPUB_NODROP, &xpub_nodrop,
-                                      sizeof(xpub_nodrop));
-    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_SUB,
-                                      ZLINK_XPUB_NODROP, &xpub_nodrop,
-                                      sizeof(xpub_nodrop));
-
-    (void) transport;
+    (void) zlink_spot_sub_set_option(
+      sub, ZLINK_SPOT_SUB_OPT_RCVHWM, &rcvhwm, sizeof(rcvhwm));
+    (void) zlink_spot_sub_set_option(
+      sub, ZLINK_SPOT_SUB_OPT_RCVTIMEO, &rcvtimeo_ms, sizeof(rcvtimeo_ms));
+    (void) zlink_spot_sub_set_option(
+      sub, ZLINK_SPOT_SUB_OPT_LINGER, &linger_ms, sizeof(linger_ms));
+    (void) zlink_spot_sub_set_option(
+      sub, ZLINK_SPOT_SUB_OPT_QUEUE_NODROP, &xpub_nodrop,
+      sizeof(xpub_nodrop));
 }
 
 inline bool resolve_service_endpoint(void *discovery,
@@ -294,7 +257,8 @@ inline bool attach_discovery_to_slots(std::vector<spot_client_slot_t> *slots,
     return true;
 }
 
-inline bool create_slot_subscribers(std::vector<spot_client_slot_t> *slots)
+inline bool create_slot_subscribers(std::vector<spot_client_slot_t> *slots,
+                                    const bench_settings_t &settings)
 {
     if (!slots || slots->empty())
         return false;
@@ -309,6 +273,14 @@ inline bool create_slot_subscribers(std::vector<spot_client_slot_t> *slots)
             debug_error("spot_sub_new");
             return false;
         }
+        slot.sub_monitor = zlink_spot_sub_monitor_open(
+          slot.sub,
+          ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_SPOT_SUB_FILTER_APPLIED);
+        if (!slot.sub_monitor) {
+            debug_error("spot_sub_monitor_open");
+            return false;
+        }
+        apply_spot_sub_options(slot.sub, settings);
         if (zlink_spot_sub_subscribe(slot.sub, k_topic) != 0) {
             debug_error("spot_sub_subscribe");
             return false;
@@ -332,7 +304,7 @@ inline bool prepare_connected_spot_slots(ctx_guard_t &ctx,
 
     if (!create_spot_client_slots(ctx, transport, settings, slots)
         || !attach_discovery_to_slots(slots, discovery, k_service_name)
-        || !create_slot_subscribers(slots))
+        || !create_slot_subscribers(slots, settings))
         return false;
 
     // Re-arm discovery after SUB creation so every slot refreshes peer endpoints.
@@ -342,7 +314,7 @@ inline bool prepare_connected_spot_slots(ctx_guard_t &ctx,
     return wait_all_sub_peers(*slots, settings.connect_ready_timeout_ms);
 }
 
-inline bool wait_all_sub_peers(const std::vector<spot_client_slot_t> &slots,
+inline bool wait_all_sub_peers(std::vector<spot_client_slot_t> &slots,
                                int timeout_ms)
 {
     if (slots.empty())
@@ -356,12 +328,28 @@ inline bool wait_all_sub_peers(const std::vector<spot_client_slot_t> &slots,
 
     while (std::chrono::steady_clock::now() < deadline && ready_count < slots.size()) {
         for (size_t i = 0; i < slots.size(); ++i) {
-            if (ready[i] || !slots[i].node)
+            if (ready[i] || !slots[i].sub_monitor)
                 continue;
-
-            size_t peer_count = 0;
-            if (zlink_spot_node_sub_peers(slots[i].node, NULL, &peer_count) == 0
-                && peer_count > 0) {
+            zlink_service_event_t event;
+            while (zlink_service_monitor_recv(
+                     slots[i].sub_monitor, &event, ZLINK_DONTWAIT)
+                   == 0) {
+                if (event.event_type == ZLINK_MONITOR_EVENT_PEER_UP)
+                    slots[i].saw_peer_up = true;
+                else if (event.event_type == ZLINK_SPOT_SUB_FILTER_APPLIED)
+                    slots[i].saw_filter_applied = true;
+            }
+            if (!slots[i].saw_peer_up) {
+                size_t peer_count = 0;
+                if (slots[i].saw_filter_applied
+                    && zlink_spot_sub_peers(
+                         slots[i].sub, NULL, &peer_count)
+                         == 0
+                    && peer_count > 0) {
+                    slots[i].saw_peer_up = true;
+                }
+            }
+            if (slots[i].saw_peer_up && slots[i].saw_filter_applied) {
                 ready[i] = 1;
                 ++ready_count;
             }
@@ -388,6 +376,8 @@ inline void close_spot_client_slots(std::vector<spot_client_slot_t> *slots)
 
     for (size_t i = 0; i < slots->size(); ++i) {
         spot_client_slot_t &slot = (*slots)[i];
+        if (slot.sub_monitor)
+            zlink_service_monitor_close(&slot.sub_monitor);
         if (slot.sub)
             zlink_spot_sub_destroy(&slot.sub);
         if (slot.node)
@@ -431,8 +421,6 @@ inline bool create_spot_client_slots(
             return false;
         }
 
-        apply_spot_node_options(slot.node, settings, transport);
-
         const std::string bind_endpoint =
           make_endpoint(transport, std::string("spot_cli_") + std::to_string(i));
         if (bind_endpoint.empty()
@@ -444,18 +432,6 @@ inline bool create_spot_client_slots(
     }
 
     return true;
-}
-
-inline void *spot_sub_socket_for_debug(void *node)
-{
-    if (!node)
-        return NULL;
-    zlink::spot_node_t *spot_node = static_cast<zlink::spot_node_t *>(node);
-    if (!spot_node->check_tag()) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return spot_node->sub_socket_for_poller();
 }
 
 inline bool decode_metric_header_from_parts(const zlink_msg_t *parts,
@@ -830,16 +806,9 @@ inline bool run_spot_one_way_duration(const std::vector<spot_client_slot_t> &slo
     if (!wait_for_msg_size_start(slots, settings, msg_size)) {
         if (bench_debug_enabled() && !slots.empty()) {
             size_t peer_count = 0;
-            (void) zlink_spot_node_sub_peers(slots[0].node, NULL, &peer_count);
+            (void) zlink_spot_sub_peers(slots[0].sub, NULL, &peer_count);
             std::cerr << "[multi-spot-client] size sync peer_count="
                       << peer_count << std::endl;
-            void *raw_sub = spot_sub_socket_for_debug(slots[0].node);
-            if (raw_sub) {
-                zlink_pollitem_t item = {raw_sub, 0, ZLINK_POLLIN, 0};
-                const int prc = zlink_poll(&item, 1, 0);
-                std::cerr << "[multi-spot-client] size sync raw poll rc="
-                          << prc << " revents=" << item.revents << std::endl;
-            }
         }
         debug_stage("size sync failed");
         return false;
@@ -897,16 +866,8 @@ inline void run_spot_debug_probe(const std::vector<spot_client_slot_t> &slots,
     (void) msg_size;
 
     size_t peer_count = 0;
-    (void) zlink_spot_node_sub_peers(slots[0].node, NULL, &peer_count);
+    (void) zlink_spot_sub_peers(slots[0].sub, NULL, &peer_count);
     std::cerr << "[multi-spot-client] sub peer count=" << peer_count << std::endl;
-
-    void *raw_sub = spot_sub_socket_for_debug(slots[0].node);
-    if (raw_sub) {
-        zlink_pollitem_t item = {raw_sub, 0, ZLINK_POLLIN, 0};
-        const int prc = zlink_poll(&item, 1, 0);
-        std::cerr << "[multi-spot-client] raw sub poll rc=" << prc
-                  << " revents=" << item.revents << std::endl;
-    }
 }
 
 inline bool setup_spot_runtime(ctx_guard_t &ctx,

@@ -32,6 +32,11 @@ class registry_t
                            int option_,
                            const void *optval_,
                            size_t optvallen_);
+    int topology_snapshot (zlink_registry_topology_entry_t *entries_,
+                           size_t *count_);
+    int topology_query (const zlink_registry_topology_filter_t *filter_,
+                        zlink_registry_topology_entry_t *entries_,
+                        size_t *count_);
     int start ();
     int destroy ();
 
@@ -68,6 +73,27 @@ class registry_t
 
     typedef std::map<service_key_t, service_entry_t> service_map_t;
 
+    struct topology_key_t
+    {
+        uint16_t service_kind;
+        std::string routing_id_key;
+        std::string service_name;
+
+        bool operator< (const topology_key_t &other_) const
+        {
+            if (service_kind != other_.service_kind)
+                return service_kind < other_.service_kind;
+            if (routing_id_key != other_.routing_id_key)
+                return routing_id_key < other_.routing_id_key;
+            return service_name < other_.service_name;
+        }
+    };
+
+    struct topology_entry_t
+    {
+        zlink_registry_topology_entry_t entry;
+    };
+
     static void control_task (void *arg_);
     void tick ();
     int ensure_sockets ();
@@ -79,6 +105,12 @@ class registry_t
                           const zlink_routing_id_t &sender_id_);
     void handle_unregister (const zlink_msg_t *frames_, size_t frame_count_);
     void handle_heartbeat (const zlink_msg_t *frames_, size_t frame_count_);
+    void handle_topology_report (const zlink_msg_t *frames_,
+                                 size_t frame_count_);
+    void handle_topology_query (void *router_,
+                                const zlink_msg_t *frames_,
+                                size_t frame_count_,
+                                const zlink_routing_id_t &sender_id_);
     void handle_update_weight (void *router_, const zlink_msg_t *frames_,
                                size_t frame_count_,
                                const zlink_routing_id_t &sender_id_);
@@ -87,6 +119,12 @@ class registry_t
                             uint8_t status_,
                             const std::string &endpoint_,
                             const std::string &error_);
+    void send_topology_reply (void *router_,
+                              const zlink_routing_id_t &sender_id_,
+                              const std::vector<zlink_registry_topology_entry_t>
+                                &entries_);
+    void upsert_topology_entry (const zlink_registry_topology_entry_t &entry_,
+                                uint64_t now_ms_);
     void send_service_list (void *pub_);
     void remove_expired (uint64_t now_ms_);
 
@@ -128,6 +166,7 @@ class registry_t
     mutex_t _sync;
 
     service_map_t _services;
+    std::map<topology_key_t, topology_entry_t> _topology;
     std::map<uint32_t, uint64_t> _peer_seq;
     std::map<uint32_t, uint64_t> _peer_last_seen;
 

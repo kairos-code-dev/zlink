@@ -2,6 +2,15 @@
 
 # 레지스트리
 
+## 현재 권장 API 방향
+
+- Registry는 전역 서비스 디렉터리이자 topology summary의 단일 진입점입니다.
+- 같은 프로세스 안에서는 `zlink_registry_topology_snapshot()`을 사용합니다.
+- 원격 조회는 `zlink_registry_query_client_*()`와
+  `zlink_registry_query_snapshot()`을 사용합니다.
+- Registry topology는 global summary 전용입니다. 자세한 로컬 상태 전이는
+  각 service monitor API를 사용합니다.
+
 레지스트리는 zlink 서비스 계층의 중앙 서비스 디렉터리입니다. Receiver 및
 SPOT 노드로부터 서비스 등록, 등록 해제, 하트비트 요청을 수신하고, 집계된
 서비스 목록을 연결된 모든 Discovery 인스턴스에 주기적으로 브로드캐스트합니다.
@@ -213,3 +222,208 @@ int zlink_registry_destroy(void **registry_p);
 **스레드 안전성:** 스레드 안전하지 않음. 다른 Registry 작업과 동시에 호출해서는 안 됩니다.
 
 **참고:** `zlink_registry_new`
+
+---
+
+## Topology & Query API
+
+Registry가 관리하는 전역 서비스 토폴로지를 조회하는 API입니다.
+
+### Topology 상수
+
+```c
+#define ZLINK_TOPOLOGY_SOURCE_MANUAL    1
+#define ZLINK_TOPOLOGY_SOURCE_DISCOVERY 2
+#define ZLINK_TOPOLOGY_SOURCE_REGISTRY  3
+
+#define ZLINK_TOPOLOGY_STATE_DISCOVERED 1
+#define ZLINK_TOPOLOGY_STATE_CONNECTING 2
+#define ZLINK_TOPOLOGY_STATE_READY      3
+#define ZLINK_TOPOLOGY_STATE_LOST       4
+#define ZLINK_TOPOLOGY_STATE_ERROR      5
+#define ZLINK_TOPOLOGY_STATE_STOPPED    6
+```
+
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `ZLINK_TOPOLOGY_SOURCE_MANUAL` | 1 | 수동 연결로 추가된 항목 |
+| `ZLINK_TOPOLOGY_SOURCE_DISCOVERY` | 2 | Discovery를 통해 발견된 항목 |
+| `ZLINK_TOPOLOGY_SOURCE_REGISTRY` | 3 | Registry를 통해 등록된 항목 |
+| `ZLINK_TOPOLOGY_STATE_DISCOVERED` | 1 | 발견되었지만 아직 연결되지 않음 |
+| `ZLINK_TOPOLOGY_STATE_CONNECTING` | 2 | 연결 진행 중 |
+| `ZLINK_TOPOLOGY_STATE_READY` | 3 | 연결 완료 및 준비됨 |
+| `ZLINK_TOPOLOGY_STATE_LOST` | 4 | 연결 손실 |
+| `ZLINK_TOPOLOGY_STATE_ERROR` | 5 | 에러 상태 |
+| `ZLINK_TOPOLOGY_STATE_STOPPED` | 6 | 중지됨 |
+
+### Topology 타입
+
+#### zlink_registry_topology_entry_t
+
+```c
+typedef struct zlink_registry_topology_entry_t
+{
+    zlink_routing_id_t routing_id;
+    uint16_t service_kind;
+    char service_name[256];
+    char endpoint[256];
+    uint16_t source;
+    uint16_t state;
+    uint32_t desired_count;
+    uint32_t ready_count;
+    uint32_t error_code;
+    uint64_t last_reported_ms;
+} zlink_registry_topology_entry_t;
+```
+
+| 필드 | 설명 |
+|------|------|
+| `routing_id` | 서비스 인스턴스의 라우팅 아이덴티티. |
+| `service_kind` | `ZLINK_SERVICE_KIND_*` 상수 중 하나. |
+| `service_name` | null 종료 서비스 이름. |
+| `endpoint` | null 종료 광고 엔드포인트. |
+| `source` | 항목 추가 방식 (`ZLINK_TOPOLOGY_SOURCE_*`). |
+| `state` | 현재 상태 (`ZLINK_TOPOLOGY_STATE_*`). |
+| `desired_count` | 예상 인스턴스 수. |
+| `ready_count` | 현재 준비된 인스턴스 수. |
+| `error_code` | 상태가 `ERROR`인 경우 에러 코드. |
+| `last_reported_ms` | 마지막 하트비트 또는 업데이트 타임스탬프 (에포크 ms). |
+
+#### zlink_registry_topology_filter_t
+
+```c
+typedef struct zlink_registry_topology_filter_t
+{
+    uint16_t service_kind;
+    char service_name[256];
+    zlink_routing_id_t routing_id;
+    uint16_t state;
+    uint16_t source;
+} zlink_registry_topology_filter_t;
+```
+
+0이 아닌 값으로 설정된 필드를 기준으로 필터링합니다. 0인 필드는
+와일드카드(모두 일치)로 처리됩니다.
+
+---
+
+### zlink_registry_topology_snapshot
+
+로컬 Registry 인스턴스에서 전체 토폴로지 스냅샷을 가져옵니다.
+
+```c
+int zlink_registry_topology_snapshot(void *registry,
+                                      zlink_registry_topology_entry_t *entries,
+                                      size_t *count);
+```
+
+`entries`에 토폴로지의 모든 등록된 서비스를 채웁니다. 입력 시 `*count`는
+배열 용량이고, 출력 시 실제 개수입니다. 필요한 개수를 먼저 조회하려면
+`entries = NULL`을 전달합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_registry_topology_query`
+
+---
+
+### zlink_registry_topology_query
+
+필터를 사용하여 로컬 토폴로지를 조회합니다.
+
+```c
+int zlink_registry_topology_query(void *registry,
+                                   const zlink_registry_topology_filter_t *filter,
+                                   zlink_registry_topology_entry_t *entries,
+                                   size_t *count);
+```
+
+`zlink_registry_topology_snapshot`와 동일하지만 `filter` 조건과 일치하는
+항목만 반환합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_registry_topology_snapshot`
+
+---
+
+### zlink_registry_query_client_new
+
+원격 토폴로지 조회 클라이언트를 생성합니다.
+
+```c
+void *zlink_registry_query_client_new(void *ctx);
+```
+
+원격 Registry에 연결하여 토폴로지를 조회할 수 있는 클라이언트를 생성합니다.
+Registry가 다른 프로세스에서 실행 중일 때 사용합니다.
+
+**반환값:** 성공 시 쿼리 클라이언트 핸들, 실패 시 `NULL`.
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_registry_query_client_connect`, `zlink_registry_query_destroy`
+
+---
+
+### zlink_registry_query_client_connect
+
+쿼리 클라이언트를 원격 Registry에 연결합니다.
+
+```c
+int zlink_registry_query_client_connect(void *client,
+                                         const char *endpoint);
+```
+
+토폴로지 조회를 위해 Registry의 ROUTER 엔드포인트에 연결합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_registry_query_snapshot`
+
+---
+
+### zlink_registry_query_snapshot
+
+원격 Registry 토폴로지를 조회합니다.
+
+```c
+int zlink_registry_query_snapshot(void *client,
+                                   const zlink_registry_topology_filter_t *filter,
+                                   zlink_registry_topology_entry_t *entries,
+                                   size_t *count);
+```
+
+연결된 원격 Registry에 토폴로지 조회를 전송하고 일치하는 결과를 `entries`에
+채웁니다. 입력 시 `*count`는 배열 용량이고, 출력 시 실제 개수입니다.
+필터 없이 전체 스냅샷을 가져오려면 `filter = NULL`을 전달합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_registry_query_client_connect`
+
+---
+
+### zlink_registry_query_destroy
+
+쿼리 클라이언트를 파괴하고 리소스를 해제합니다.
+
+```c
+int zlink_registry_query_destroy(void **client_p);
+```
+
+클라이언트 연결을 닫고 `*client_p`를 `NULL`로 설정합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_registry_query_client_new`

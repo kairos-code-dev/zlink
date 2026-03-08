@@ -17,7 +17,7 @@ typedef void (zlink_thread_fn)(void *);
 어떤 타이머가 발동했는지 식별하고 `arg`는 타이머 생성 시 전달된 사용자 제공
 컨텍스트 포인터입니다.
 
-`zlink_thread_fn`은 `zlink_threadstart`로 시작되는 스레드의 진입점
+`zlink_thread_fn`은 `zlink_thread_start`로 시작되는 스레드의 진입점
 시그니처입니다.
 
 ## 원자적 카운터
@@ -379,32 +379,32 @@ void zlink_sleep(int seconds_);
 
 ---
 
-### zlink_threadstart
+### zlink_thread_start
 
 지정된 함수를 실행하는 새 스레드를 시작합니다.
 
 ```c
-void *zlink_threadstart(zlink_thread_fn *func_, void *arg_);
+void *zlink_thread_start(zlink_thread_fn *func_, void *arg_);
 ```
 
 `arg_`를 유일한 인수로 사용하여 `func_`를 실행하는 새 운영 체제 스레드를
 생성하고 시작합니다. 반환된 핸들은 완료를 대기하고 리소스를 해제하기 위해
-`zlink_threadclose`에 전달해야 합니다.
+`zlink_thread_join`에 전달해야 합니다.
 
 **반환값:** 성공 시 불투명 스레드 핸들, 실패 시 `NULL`.
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
-**참고:** `zlink_threadclose`
+**참고:** `zlink_thread_join`
 
 ---
 
-### zlink_threadclose
+### zlink_thread_join
 
 스레드가 완료될 때까지 대기하고 핸들을 해제합니다.
 
 ```c
-void zlink_threadclose(void *thread_);
+void zlink_thread_join(void *thread_);
 ```
 
 `thread_`로 식별되는 스레드가 종료될 때까지 호출 스레드를 블록한 다음 핸들을
@@ -413,4 +413,4 @@ void zlink_threadclose(void *thread_);
 **스레드 안전성:** 핸들당 정확히 한 번만 호출해야 합니다. 조인 대상 스레드에서
 호출하지 마십시오.
 
-**참고:** `zlink_threadstart`
+**참고:** `zlink_thread_start`

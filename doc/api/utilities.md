@@ -19,7 +19,7 @@ The `timer_id` identifies which timer fired and `arg` is the user-provided
 context pointer passed when the timer was created.
 
 `zlink_thread_fn` is the entry-point signature for threads started with
-`zlink_threadstart`.
+`zlink_thread_start`.
 
 ## Atomic Counter
 
@@ -396,32 +396,32 @@ portable convenience wrapper around platform-specific sleep functions.
 
 ---
 
-### zlink_threadstart
+### zlink_thread_start
 
 Start a new thread running the given function.
 
 ```c
-void *zlink_threadstart(zlink_thread_fn *func_, void *arg_);
+void *zlink_thread_start(zlink_thread_fn *func_, void *arg_);
 ```
 
 Creates and starts a new operating-system thread that executes `func_` with
 `arg_` as its sole argument. The returned handle must be passed to
-`zlink_threadclose` to wait for completion and release resources.
+`zlink_thread_join` to wait for completion and release resources.
 
 **Returns:** An opaque thread handle on success, or `NULL` on failure.
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_threadclose`
+**See also:** `zlink_thread_join`
 
 ---
 
-### zlink_threadclose
+### zlink_thread_join
 
 Wait for a thread to finish and release its handle.
 
 ```c
-void zlink_threadclose(void *thread_);
+void zlink_thread_join(void *thread_);
 ```
 
 Blocks the calling thread until the thread identified by `thread_` has
@@ -431,4 +431,4 @@ call.
 **Thread safety:** Must be called exactly once per handle. Do not call from
 the thread being joined.
 
-**See also:** `zlink_threadstart`
+**See also:** `zlink_thread_start`

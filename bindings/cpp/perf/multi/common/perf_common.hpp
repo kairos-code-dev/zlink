@@ -93,7 +93,7 @@ struct connect_monitor_t
     connect_monitor_t () : owner (NULL), monitor () {}
 
     zlink::socket_t *owner;
-    std::unique_ptr<zlink::socket_t> monitor;
+    std::unique_ptr<zlink::monitor_socket_t> monitor;
 };
 
 struct server_queue_stats_t
@@ -240,22 +240,89 @@ inline bool open_connect_monitor (zlink::socket_t &socket, connect_monitor_t &ou
     (void) monitor.set (zlink::socket_options::linger, 0);
 
     out.owner = &socket;
-    out.monitor.reset (new zlink::socket_t (std::move (monitor)));
+    out.monitor.reset (new zlink::monitor_socket_t (std::move (monitor)));
     return true;
 }
 
-inline bool wait_connect_ready (zlink::socket_t &, int)
+inline int poll_connect_ready_count (connect_monitor_t &mon)
 {
-    return true;
+    if (!mon.monitor.get ())
+        return 0;
+
+    int ready = 0;
+    for (;;) {
+        zlink_monitor_event_t ev;
+        if (mon.monitor->recv (ev, zlink::recv_flag::dontwait) != 0)
+            break;
+        if (ev.event
+            == static_cast<uint64_t> (zlink::monitor_event::connection_ready)) {
+            ++ready;
+        }
+    }
+
+    return ready;
 }
 
-inline bool wait_connect_ready_count (zlink::socket_t &, size_t, int)
+inline bool wait_connect_ready_count (connect_monitor_t &mon,
+                                      size_t expected_ready,
+                                      int timeout_ms)
 {
-    return true;
+    if (expected_ready == 0)
+        return true;
+    if (!mon.monitor.get ())
+        return false;
+
+    size_t ready = static_cast<size_t> (poll_connect_ready_count (mon));
+    if (ready >= expected_ready)
+        return true;
+    if (timeout_ms <= 0)
+        return false;
+
+    zlink::poller_t poller;
+    std::vector<zlink::poll_event_t> events;
+    events.reserve (1);
+    if (poller.add (mon.monitor->socket (), zlink::poll_event::pollin, NULL) != 0)
+        return false;
+
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (timeout_ms);
+    while (ready < expected_ready) {
+        const auto now = std::chrono::steady_clock::now ();
+        if (now >= deadline)
+            break;
+
+        long wait_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
+                         deadline - now)
+                         .count ();
+        if (wait_ms < 1)
+            wait_ms = 1;
+
+        const int rc = poller.wait (events, wait_ms);
+        if (rc < 0) {
+            if (errno == EINTR)
+                continue;
+            return false;
+        }
+        if (rc == 0)
+            continue;
+
+        ready += static_cast<size_t> (poll_connect_ready_count (mon));
+    }
+
+    return ready >= expected_ready;
+}
+
+inline bool wait_connect_ready (connect_monitor_t &mon, int timeout_ms)
+{
+    return wait_connect_ready_count (mon, 1, timeout_ms);
 }
 
 inline void close_connect_monitor (connect_monitor_t &mon)
 {
+    if (mon.owner) {
+        (void) mon.owner->monitor (std::string (),
+                                   static_cast<zlink::monitor_event> (0));
+    }
     mon.monitor.reset ();
     mon.owner = NULL;
 }

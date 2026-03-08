@@ -2,6 +2,18 @@
 
 # Gateway 서비스 (위치투명 요청/응답)
 
+> 현재 권장 방향: identity, option, readiness, topology는 service-level
+> API를 사용합니다.
+>
+> - `zlink_gateway_set_option()` / `zlink_receiver_set_option()`
+> - `zlink_gateway_set_routing_id()` / `zlink_receiver_set_routing_id()`
+> - `zlink_gateway_monitor_open()` / `zlink_receiver_monitor_open()`
+> - `zlink_poller_add_gateway()` / `zlink_poller_add_receiver()` /
+>   `zlink_poller_add_monitor()`
+>
+> `zlink_receiver_register_result()`만 등록 디버그용 저수준 경로로
+> 남겨둡니다.
+
 ## 1. 개요
 
 Gateway는 Discovery 기반으로 서비스 Receiver에 위치투명하게 메시지를 전송하고, Receiver로부터 응답을 수신하는 클라이언트 컴포넌트이다. 로드밸런싱과 자동 연결/해제를 처리한다.
@@ -21,8 +33,13 @@ zlink_receiver_bind(receiver, "tcp://*:5555");
 /* Registry 연결 */
 zlink_receiver_connect_registry(receiver, "tcp://registry1:5551");
 
-/* 서비스 등록 (advertise_endpoint 자동 감지) */
-zlink_receiver_register(receiver, "payment-service", NULL, 1);
+/* bind된 service endpoint 조회 */
+char advertise_endpoint[256];
+size_t advertise_len = sizeof(advertise_endpoint);
+zlink_receiver_last_endpoint(receiver, advertise_endpoint, &advertise_len);
+
+/* 서비스 등록 */
+zlink_receiver_register(receiver, "payment-service", advertise_endpoint, 1);
 
 /* 등록 결과 확인 */
 int status;
@@ -35,8 +52,11 @@ if (status != 0) {
 }
 
 /* 비즈니스 메시지 처리 */
-void *router = zlink_receiver_router_socket_unsafe(receiver);
-/* router에서 [routing_id][msgId][payload...] 수신/응답 */
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+zlink_routing_id_t client_rid;
+zlink_receiver_recv(receiver, &parts, &part_count, 0, &client_rid);
+/* multipart 요청을 처리하고 service API로 응답 */
 
 zlink_receiver_destroy(&receiver);
 ```
@@ -86,16 +106,19 @@ char service_name[256];
 int rc = zlink_gateway_recv(gateway, &parts, &part_count, 0, service_name);
 if (rc != -1) {
     /* parts[0..part_count-1] 처리 */
-    zlink_msgv_close(parts, part_count);
+    zlink_multipart_close(parts, part_count);
 }
 ```
 
 ### 4.3 Receiver 측 수신/응답
 
 ```c
-/* Receiver의 ROUTER 소켓에서 수신 및 응답 */
-void *router = zlink_receiver_router_socket_unsafe(receiver);
-/* [routing_id][msgId][payload...] 수신 후 응답 처리 */
+/* Receiver service handle에서 수신 및 응답 */
+zlink_msg_t *req_parts = NULL;
+size_t req_count = 0;
+zlink_routing_id_t client_rid;
+zlink_receiver_recv(receiver, &req_parts, &req_count, 0, &client_rid);
+/* [payload...] 처리 후 응답 */
 ```
 
 ## 5. 로드밸런싱
@@ -131,7 +154,7 @@ Gateway의 모든 공개 API는 내부 mutex로 보호된다. 여러 스레드�
 - `zlink_gateway_send_rid_bytes()`
 - `zlink_gateway_recv()`
 - `zlink_gateway_set_lb_strategy()`
-- `zlink_gateway_setsockopt()`
+- `zlink_gateway_set_option()`
 - `zlink_gateway_set_tls_client()`
 - `zlink_gateway_connection_count()`
 
@@ -152,7 +175,7 @@ void *send_worker(void *arg) {
 
 /* 여러 스레드에서 동시 전송 */
 for (int i = 0; i < 4; i++)
-    zlink_threadstart(&send_worker, gateway);
+    zlink_thread_start(&send_worker, gateway);
 ```
 
 ### 장점
@@ -247,9 +270,8 @@ zlink_ctx_term(ctx);
 | `zlink_gateway_send_rid(...)` | 특정 Receiver로 전송 |
 | `zlink_gateway_send_rid_bytes(...)` | 특정 Receiver로 단일 파트 바이트 메시지 전송 |
 | `zlink_gateway_set_lb_strategy(...)` | LB 전략 설정 |
-| `zlink_gateway_setsockopt(...)` | 소켓 옵션 설정 |
+| `zlink_gateway_set_option(...)` | service 옵션 설정 |
 | `zlink_gateway_set_tls_client(...)` | TLS 클라이언트 설정 |
-| `zlink_gateway_router_socket_unsafe(...)` | ROUTER 소켓 획득 |
 | `zlink_gateway_connection_count(...)` | 연결 Receiver 수 |
 | `zlink_gateway_destroy(...)` | 종료 |
 
@@ -264,8 +286,9 @@ zlink_ctx_term(ctx);
 | `zlink_receiver_update_weight(...)` | 가중치 갱신 |
 | `zlink_receiver_unregister(...)` | 서비스 해제 |
 | `zlink_receiver_set_tls_server(...)` | TLS 서버 설정 |
-| `zlink_receiver_setsockopt(...)` | 소켓 옵션 설정 |
-| `zlink_receiver_router_socket_unsafe(...)` | ROUTER 소켓 획득 |
+| `zlink_receiver_set_option(...)` | service 옵션 설정 |
+| `zlink_receiver_recv(...)` | multipart 요청 1건 수신 |
+| `zlink_receiver_last_endpoint(...)` | bind된 advertise endpoint 조회 |
 | `zlink_receiver_destroy(...)` | 종료 |
 
 ---

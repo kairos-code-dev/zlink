@@ -38,6 +38,11 @@ class spot_sub_t
     int subscribe (const char *topic_);
     int subscribe_pattern (const char *pattern_);
     int unsubscribe (const char *topic_or_pattern_);
+    int set_option (int option_, const void *optval_, size_t optvallen_);
+    int set_routing_id (const void *data_, size_t size_);
+    int routing_id (zlink_routing_id_t *out_) const;
+    int peers (zlink_peer_info_t *peers_, size_t *count_) const;
+    void *monitor_open (int events_);
     int set_handler (zlink_spot_sub_handler_fn handler_, void *userdata_);
 
     int recv (zlink_msg_t **parts_,

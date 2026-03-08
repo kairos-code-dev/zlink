@@ -114,13 +114,13 @@ bool try_send_reply (zlink::socket_t &sock,
 
 } // namespace
 
-void perf_router_router_server (const std::string &transport, size_t)
+bool perf_router_router_server (const std::string &transport, size_t)
 {
     perf::multi::set_perf_pattern_env ("ROUTER_ROUTER");
 
     if (!perf::multi::is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED,MULTI_ROUTER_ROUTER," << transport << std::endl;
-        return;
+        return true;
     }
 
     const perf::multi::multi_bench_settings_t settings =
@@ -129,19 +129,19 @@ void perf_router_router_server (const std::string &transport, size_t)
     perf::multi::ctx_guard_t ctx;
     perf::multi::socket_guard_t server (ctx, zlink::socket_type::router);
     if (!server.valid ())
-        return;
+        return false;
 
     (void) server.sock ().set (zlink::socket_options::routing_id,
                                std::string ("SERVER"));
     perf::multi::apply_benchmark_socket_options (
       server.sock (), settings, transport);
     if (!perf::multi::setup_tls_server (server.sock (), transport))
-        return;
+        return false;
 
     const std::string endpoint = perf::multi::bind_and_resolve_endpoint (
       server.sock (), transport, "cpp_multi_router_router", settings.server_bind_port);
     if (endpoint.empty ())
-        return;
+        return false;
 
     perf::multi::print_ready (endpoint);
 
@@ -162,11 +162,13 @@ void perf_router_router_server (const std::string &transport, size_t)
     reply_state_t reply;
 
     bool stop_requested = false;
+    bool failed = false;
     while (!stop_requested && std::chrono::steady_clock::now () < deadline) {
         const int poll_rc = poller.wait (events, compute_wait_ms (deadline));
         if (poll_rc < 0) {
             if (errno == EINTR)
                 continue;
+            failed = true;
             break;
         }
         if (poll_rc == 0)
@@ -181,6 +183,7 @@ void perf_router_router_server (const std::string &transport, size_t)
                 && reply.pending) {
                 if (!try_send_reply (*sock, poller, reply)) {
                     stop_requested = true;
+                    failed = true;
                     break;
                 }
                 if (reply.pending)
@@ -205,6 +208,7 @@ void perf_router_router_server (const std::string &transport, size_t)
                     if (err == EINTR)
                         continue;
                     stop_requested = true;
+                    failed = true;
                     break;
                 }
 
@@ -221,6 +225,7 @@ void perf_router_router_server (const std::string &transport, size_t)
                 reply.payload = std::move (payload);
                 if (!try_send_reply (*sock, poller, reply)) {
                     stop_requested = true;
+                    failed = true;
                     break;
                 }
                 if (reply.pending)
@@ -235,6 +240,7 @@ void perf_router_router_server (const std::string &transport, size_t)
       transport,
       0,
       perf::multi::server_queue_stats_t ());
+    return !failed;
 }
 
 int main (int argc, char **argv)
@@ -249,6 +255,5 @@ int main (int argc, char **argv)
     if (size == 0)
         return 1;
 
-    perf_router_router_server (transport, size);
-    return 0;
+    return perf_router_router_server (transport, size) ? 0 : 1;
 }

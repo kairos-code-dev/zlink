@@ -132,19 +132,30 @@ static int recv_register_ack (socket_base_t *socket_,
     return 0;
 }
 
+static void close_msg_parts (std::vector<zlink_msg_t> *parts_)
+{
+    if (!parts_)
+        return;
+    for (size_t i = 0; i < parts_->size (); ++i)
+        zlink_msg_close (&(*parts_)[i]);
+    parts_->clear ();
+}
+
 receiver_t::receiver_t (ctx_t *ctx_, const char *routing_id_) :
     _ctx (ctx_),
     _tag (receiver_tag_value),
     _router (NULL),
     _dealer (NULL),
     _routing_id_override (routing_id_ ? routing_id_ : ""),
+    _routing_id_locked (false),
     _weight (1),
     _last_status (-1),
     _heartbeat_interval_ms (5000),
     _next_heartbeat_ms (0),
     _stop (0),
     _heartbeat_task_id (0),
-    _heartbeat_dealer (NULL)
+    _heartbeat_dealer (NULL),
+    _monitor (ctx_)
 {
     zlink_assert (_ctx);
     _routing_id.size = 0;
@@ -334,6 +345,24 @@ int receiver_t::register_service (const char *service_name_,
     _last_resolved.swap (resolved);
     _last_error.swap (error);
 
+    zlink_service_event_t ev;
+    memset (&ev, 0, sizeof (ev));
+    ev.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
+    ev.event_type = _last_status == 0 ? ZLINK_RECEIVER_REGISTER_OK
+                                      : ZLINK_RECEIVER_REGISTER_FAILED;
+    ev.status = _last_status;
+    ev.error_code = _last_status == 0 ? 0 : EINVAL;
+    ev.value = _weight;
+    ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
+                      | ZLINK_EVENT_DETAIL_ENDPOINT
+                      | ZLINK_EVENT_DETAIL_SUBJECT_RID;
+    ev.routing_id = _routing_id;
+    strncpy (ev.service_name, _service_name.c_str (),
+             sizeof (ev.service_name) - 1);
+    strncpy (ev.endpoint, _advertise_endpoint.c_str (),
+             sizeof (ev.endpoint) - 1);
+    _monitor.emit (ev);
+
     if (_last_status != 0) {
         errno = EINVAL;
         return -1;
@@ -423,6 +452,16 @@ int receiver_t::unregister_service (const char *service_name_)
         || send_string (_dealer, service_name_, ZLINK_SNDMORE) != 0
         || send_string (_dealer, _advertise_endpoint, 0) != 0)
         return -1;
+
+    zlink_service_event_t ev;
+    memset (&ev, 0, sizeof (ev));
+    ev.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
+    ev.event_type = ZLINK_RECEIVER_UNREGISTER_OK;
+    ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
+                      | ZLINK_EVENT_DETAIL_SUBJECT_RID;
+    ev.routing_id = _routing_id;
+    strncpy (ev.service_name, service_name_, sizeof (ev.service_name) - 1);
+    _monitor.emit (ev);
     return 0;
 }
 
@@ -479,6 +518,218 @@ int receiver_t::set_tls_server (const char *cert_, const char *key_)
     return 0;
 }
 
+int receiver_t::recv (zlink_msg_t **parts_,
+                      size_t *part_count_,
+                      int flags_,
+                      zlink_routing_id_t *routing_id_out_)
+{
+    if (!parts_ || !part_count_) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (flags_ != 0 && flags_ != ZLINK_DONTWAIT) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    lock_routing_id ();
+    if (!_router) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    if (routing_id_out_)
+        routing_id_out_->size = 0;
+
+    zlink_msg_t rid_frame;
+    if (zlink_msg_init (&rid_frame) != 0) {
+        errno = EFAULT;
+        return -1;
+    }
+    const int rc = zlink_msg_recv (&rid_frame, _router, flags_);
+    if (rc < 0) {
+        zlink_msg_close (&rid_frame);
+        return -1;
+    }
+
+    if (routing_id_out_) {
+        const size_t rid_size = zlink_msg_size (&rid_frame);
+        size_t copy_size = rid_size;
+        if (copy_size > sizeof (routing_id_out_->data))
+            copy_size = sizeof (routing_id_out_->data);
+        if (copy_size > 0) {
+            memcpy (routing_id_out_->data, zlink_msg_data (&rid_frame),
+                    copy_size);
+            routing_id_out_->size = static_cast<uint8_t> (copy_size);
+        }
+    }
+
+    const int more = zlink_msg_more (&rid_frame);
+    zlink_msg_close (&rid_frame);
+
+    if (!more) {
+        *parts_ = NULL;
+        *part_count_ = 0;
+        return 0;
+    }
+
+    std::vector<zlink_msg_t> tmp_parts;
+    while (true) {
+        zlink_msg_t part;
+        if (zlink_msg_init (&part) != 0) {
+            errno = EFAULT;
+            close_msg_parts (&tmp_parts);
+            return -1;
+        }
+        const int prc = zlink_msg_recv (&part, _router, flags_);
+        if (prc < 0) {
+            zlink_msg_close (&part);
+            close_msg_parts (&tmp_parts);
+            return -1;
+        }
+        tmp_parts.push_back (part);
+        if (!zlink_msg_more (&part))
+            break;
+    }
+
+    const size_t out_count = tmp_parts.size ();
+    zlink_msg_t *out =
+      static_cast<zlink_msg_t *> (malloc (sizeof (zlink_msg_t) * out_count));
+    if (!out) {
+        close_msg_parts (&tmp_parts);
+        errno = ENOMEM;
+        return -1;
+    }
+
+    for (size_t i = 0; i < out_count; ++i) {
+        if (zlink_msg_init (&out[i]) != 0
+            || zlink_msg_move (&out[i], &tmp_parts[i]) != 0) {
+            for (size_t j = 0; j <= i && j < out_count; ++j)
+                zlink_msg_close (&out[j]);
+            free (out);
+            close_msg_parts (&tmp_parts);
+            errno = EFAULT;
+            return -1;
+        }
+    }
+
+    *parts_ = out;
+    *part_count_ = out_count;
+    return 0;
+}
+
+int receiver_t::last_endpoint (char *endpoint_out_, size_t *size_out_) const
+{
+    if (!endpoint_out_ || !size_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    if (!_router) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    return zlink_getsockopt (static_cast<void *> (_router), ZLINK_LAST_ENDPOINT,
+                             endpoint_out_, size_out_);
+}
+
+int receiver_t::peer_info (const zlink_routing_id_t *routing_id_,
+                           zlink_peer_info_t *info_out_) const
+{
+    if (!routing_id_ || !info_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    if (!_router) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    return zlink_socket_peer_info (static_cast<void *> (_router), routing_id_,
+                                   info_out_);
+}
+
+int receiver_t::set_routing_id (const void *data_, size_t size_)
+{
+    if (!data_ || size_ == 0 || size_ > sizeof (_routing_id.data)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    if (_routing_id_locked || !_bind_endpoint.empty ()
+        || !_registry_endpoint.empty ()
+        || !_service_name.empty ()) {
+        errno = EFSM;
+        return -1;
+    }
+
+    _routing_id_override.assign (static_cast<const char *> (data_), size_);
+    memcpy (_routing_id.data, data_, size_);
+    _routing_id.size = static_cast<uint8_t> (size_);
+    if (_router)
+        return _router->setsockopt (ZLINK_ROUTING_ID, data_, size_);
+    return 0;
+}
+
+int receiver_t::routing_id (zlink_routing_id_t *out_) const
+{
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    if (_routing_id.size == 0) {
+        size_t size = sizeof (out_->data);
+        if (!_router
+            || zlink_getsockopt (static_cast<void *> (_router), ZLINK_ROUTING_ID,
+                                 out_->data, &size)
+                 != 0)
+            return -1;
+        out_->size = static_cast<uint8_t> (size);
+        return 0;
+    }
+    *out_ = _routing_id;
+    return 0;
+}
+
+int receiver_t::set_option (int option_,
+                            const void *optval_,
+                            size_t optvallen_)
+{
+    switch (option_) {
+        case ZLINK_RECEIVER_OPT_SNDHWM:
+            return set_socket_option (receiver_socket_router, ZLINK_SNDHWM,
+                                      optval_, optvallen_);
+        case ZLINK_RECEIVER_OPT_RCVHWM:
+            return set_socket_option (receiver_socket_router, ZLINK_RCVHWM,
+                                      optval_, optvallen_);
+        case ZLINK_RECEIVER_OPT_SNDTIMEO:
+            return set_socket_option (receiver_socket_router,
+                                      ZLINK_SNDTIMEO, optval_, optvallen_);
+        case ZLINK_RECEIVER_OPT_RCVTIMEO:
+            return set_socket_option (receiver_socket_router,
+                                      ZLINK_RCVTIMEO, optval_, optvallen_);
+        case ZLINK_RECEIVER_OPT_LINGER:
+            return set_socket_option (receiver_socket_router,
+                                      ZLINK_LINGER, optval_, optvallen_);
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+}
+
+void *receiver_t::monitor_open (int events_)
+{
+    return _monitor.open (events_);
+}
+
 int receiver_t::set_socket_option (int socket_role_,
                                    int option_,
                                    const void *optval_,
@@ -491,9 +742,9 @@ int receiver_t::set_socket_option (int socket_role_,
 
     scoped_lock_t lock (_sync);
     socket_base_t *target = NULL;
-    if (socket_role_ == ZLINK_RECEIVER_SOCKET_ROUTER)
+    if (socket_role_ == receiver_socket_router)
         target = _router;
-    else if (socket_role_ == ZLINK_RECEIVER_SOCKET_DEALER)
+    else if (socket_role_ == receiver_socket_dealer)
         target = _dealer;
     else {
         errno = EINVAL;
@@ -511,6 +762,7 @@ int receiver_t::set_socket_option (int socket_role_,
 void *receiver_t::router ()
 {
     scoped_lock_t lock (_sync);
+    lock_routing_id ();
     if (!_router)
         return NULL;
     return static_cast<void *> (_router);
@@ -518,7 +770,16 @@ void *receiver_t::router ()
 
 void *receiver_t::poller_socket ()
 {
-    return router ();
+    scoped_lock_t lock (_sync);
+    lock_routing_id ();
+    if (!_router)
+        return NULL;
+    return static_cast<void *> (_router);
+}
+
+void receiver_t::lock_routing_id ()
+{
+    _routing_id_locked = true;
 }
 
 void receiver_t::heartbeat_task (void *arg_)
@@ -606,6 +867,14 @@ int receiver_t::destroy ()
     if (runtime && _heartbeat_task_id != 0)
         runtime->remove_task (_heartbeat_task_id);
     _heartbeat_task_id = 0;
+
+    zlink_service_event_t terminal;
+    memset (&terminal, 0, sizeof (terminal));
+    terminal.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
+    terminal.event_type = ZLINK_MONITOR_EVENT_CLOSED;
+    terminal.detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
+    terminal.routing_id = _routing_id;
+    _monitor.close_all (&terminal);
 
     scoped_lock_t lock (_sync);
     if (_heartbeat_dealer) {

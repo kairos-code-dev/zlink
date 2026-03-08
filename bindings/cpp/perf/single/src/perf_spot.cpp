@@ -87,6 +87,8 @@ std::string bind_spot_endpoint (zlink::service::spot_node_t &node,
 }
 
 int recv_spot_payload_header (zlink::socket_t &subscriber,
+                              std::vector<char> &topic_buffer,
+                              std::vector<char> &payload_buffer,
                               size_t payload_size,
                               zlink::recv_flag flags,
                               perf_single_metric::header_t *header_out,
@@ -95,30 +97,36 @@ int recv_spot_payload_header (zlink::socket_t &subscriber,
     if (header_ok_out)
         *header_ok_out = false;
 
-    zlink::message_t topic;
-    const int topic_rc = subscriber.recv (topic, flags);
+    const int topic_rc =
+      subscriber.recv (topic_buffer.data (), topic_buffer.size (), flags);
     if (topic_rc < 0) {
         const int err = errno;
         if (err == EAGAIN || err == EINTR)
             return 0;
         return -1;
     }
-    if (!topic.more ())
+    int more = 0;
+    if (subscriber.get (zlink::socket_options::rcvmore, more) != 0 || more == 0
+        || static_cast<size_t> (topic_rc) != topic_buffer.size ()) {
         return -1;
+    }
 
-    zlink::message_t payload;
-    if (subscriber.recv (payload, zlink::recv_flag::none) < 0)
+    const int payload_rc =
+      subscriber.recv (payload_buffer.data (), payload_buffer.size (), flags);
+    if (payload_rc < 0)
         return -1;
-    if (payload.more () || payload.size () != payload_size)
+    if (subscriber.get (zlink::socket_options::rcvmore, more) != 0 || more != 0
+        || static_cast<size_t> (payload_rc) != payload_size) {
         return -1;
+    }
 
-    if (topic.size () != 5 || std::memcmp (topic.data (), "bench", 5) != 0)
+    if (std::memcmp (topic_buffer.data (), "bench", topic_buffer.size ()) != 0)
         return 1;
 
     bool header_ok = false;
     if (header_out) {
         header_ok = perf_single_metric::decode_payload_header (
-          payload.data (), payload.size (), header_out);
+          payload_buffer.data (), static_cast<size_t> (payload_rc), header_out);
     }
 
     if (header_ok_out)
@@ -143,6 +151,8 @@ bool send_spot_payload (zlink::socket_t &publisher,
 }
 
 bool drain_spot_queue (zlink::socket_t &subscriber,
+                       std::vector<char> &topic_buffer,
+                       std::vector<char> &payload_buffer,
                        size_t payload_size,
                        uint32_t run_id,
                        perf_single_metric::phase_t phase,
@@ -155,6 +165,8 @@ bool drain_spot_queue (zlink::socket_t &subscriber,
         perf_single_metric::header_t header;
         bool header_ok = false;
         const int recv_rc = recv_spot_payload_header (subscriber,
+                                                      topic_buffer,
+                                                      payload_buffer,
                                                       payload_size,
                                                       zlink::recv_flag::dontwait,
                                                       &header,
@@ -190,6 +202,8 @@ bool ensure_spot_subscription_ready (zlink::socket_t &publisher,
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (std::max (ready_timeout_ms, 1000));
     std::vector<char> probe (std::max<size_t> (payload_size, 1), 'p');
+    std::vector<char> topic_buffer (std::strlen ("bench"));
+    std::vector<char> recv_buffer (probe.size ());
 
     while (std::chrono::steady_clock::now () < deadline) {
         if (!send_spot_payload (publisher, "bench", probe.data (), probe.size ())) {
@@ -199,6 +213,8 @@ bool ensure_spot_subscription_ready (zlink::socket_t &publisher,
         perf_single_metric::header_t header;
         bool header_ok = false;
         const int recv_rc = recv_spot_payload_header (subscriber,
+                                                      topic_buffer,
+                                                      recv_buffer,
                                                       probe.size (),
                                                       zlink::recv_flag::none,
                                                       &header,
@@ -230,6 +246,8 @@ bool run_phase (zlink::socket_t &publisher,
 
     const size_t payload_size = payload.size ();
     const bool active = phase == perf_single_metric::phase_active;
+    std::vector<char> topic_buffer (std::strlen ("bench"));
+    std::vector<char> recv_buffer (payload_size);
 
     perf::single::latency_stats_builder_t latency_builder (
       perf::single::resolve_single_latency_sample_cap ());
@@ -256,6 +274,8 @@ bool run_phase (zlink::socket_t &publisher,
         bool header_ok = false;
         const int recv_rc = recv_spot_payload_header (
           subscriber,
+          topic_buffer,
+          recv_buffer,
           payload_size,
           zlink::recv_flag::none,
           &header,
@@ -278,6 +298,8 @@ bool run_phase (zlink::socket_t &publisher,
             }
         }
         return drain_spot_queue (subscriber,
+                                 topic_buffer,
+                                 recv_buffer,
                                  payload_size,
                                  run_id,
                                  phase,

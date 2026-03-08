@@ -756,7 +756,7 @@ public final class Socket implements AutoCloseable {
 
         Message[] packets;
         try {
-            packets = Message.fromMsgVector(msgs, msgCount);
+            packets = Message.fromOwnedMsgVector(msgs, msgCount);
         } catch (RuntimeException ex) {
             return 1;
         }

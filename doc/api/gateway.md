@@ -7,19 +7,29 @@ service locations automatically via Discovery. It connects to Receivers on
 demand and distributes messages across them using a configurable load-
 balancing strategy.
 
+## Current API Direction
+
+- Use `zlink_gateway_set_option()` for public service-level tuning.
+- Use `zlink_gateway_set_routing_id()` / `zlink_gateway_routing_id()` for the
+  representative Gateway identity.
+- Use `zlink_gateway_monitor_open()` for state transitions such as
+  `ZLINK_GATEWAY_SERVICE_READY` and `ZLINK_GATEWAY_ROUTE_UP`.
+- Use `zlink_poller_add_gateway()` for data readiness and
+  `zlink_poller_add_monitor()` for service monitor readiness in the same loop.
+- Use `zlink_gateway_connection_count()` only as a debug/inspection helper,
+  not the primary readiness path for new code.
+
 ## Constants
 
 ```c
 #define ZLINK_GATEWAY_LB_ROUND_ROBIN 0
 #define ZLINK_GATEWAY_LB_WEIGHTED    1
-#define ZLINK_GATEWAY_SOCKET_ROUTER  1
 ```
 
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `ZLINK_GATEWAY_LB_ROUND_ROBIN` | 0 | Round-robin load balancing (default) |
 | `ZLINK_GATEWAY_LB_WEIGHTED` | 1 | Weighted load balancing based on receiver weight |
-| `ZLINK_GATEWAY_SOCKET_ROUTER` | 1 | Internal ROUTER socket used for communication |
 
 ## Functions
 
@@ -223,38 +233,6 @@ distribution ratio.
 
 ---
 
-### zlink_gateway_setsockopt
-
-Set a Gateway socket option.
-
-```c
-int zlink_gateway_setsockopt(void *gateway,
-                             int option,
-                             const void *optval,
-                             size_t optvallen);
-```
-
-Applies a low-level socket option to the Gateway's internal ROUTER socket.
-Commonly used to configure send/receive high-water marks, timeouts, or
-keep-alive settings.
-
-Defaults:
-- `ZLINK_SNDHWM = 300000`
-- `ZLINK_RCVHWM = 300000`
-- `ZLINK_SNDTIMEO = -1`
-- `ZLINK_RCVTIMEO = -1`
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Errors:**
-- `EINVAL` -- unknown option.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_gateway_new`
-
----
-
 ### zlink_gateway_set_tls_client
 
 Configure TLS client settings for the Gateway.
@@ -280,26 +258,6 @@ system trust store is used in addition to `ca_cert`.
 
 ---
 
-### zlink_gateway_router_socket_unsafe
-
-Return the internal ROUTER socket handle.
-
-```c
-void *zlink_gateway_router_socket_unsafe(void *gateway);
-```
-
-Returns the raw ROUTER socket handle used internally by the Gateway. This
-is intended for diagnostics and advanced use cases such as custom polling.
-The caller must not close or modify the socket.
-
-**Returns:** The ROUTER socket handle, or `NULL` if the Gateway is invalid.
-
-**Thread safety:** Safe to call from any thread.
-
-**See also:** `zlink_gateway_new`
-
----
-
 ### zlink_gateway_router_peers
 
 Enumerate peer queue info from the Gateway ROUTER socket.
@@ -318,7 +276,7 @@ required count first, then call again with an allocated array.
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_socket_peers`, `zlink_gateway_router_socket_unsafe`
+**See also:** `zlink_socket_peers`, `zlink_gateway_connection_count`
 
 ---
 
@@ -341,6 +299,78 @@ failure (errno is set).
 **Thread safety:** Not thread-safe.
 
 **See also:** `zlink_discovery_receiver_count`
+
+---
+
+### zlink_gateway_set_option
+
+Set a Gateway service option.
+
+```c
+int zlink_gateway_set_option(void *gateway,
+                              int option,
+                              const void *optval,
+                              size_t optvallen);
+```
+
+Applies a service-level option to the Gateway. Available option constants:
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_GATEWAY_OPT_SNDHWM` | 1 | Send high-water mark |
+| `ZLINK_GATEWAY_OPT_RCVHWM` | 2 | Receive high-water mark |
+| `ZLINK_GATEWAY_OPT_SNDTIMEO` | 3 | Send timeout (ms) |
+| `ZLINK_GATEWAY_OPT_RCVTIMEO` | 4 | Receive timeout (ms) |
+| `ZLINK_GATEWAY_OPT_LINGER` | 5 | Linger period (ms) |
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Errors:**
+- `EINVAL` -- Unknown option.
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_gateway_new`
+
+---
+
+### zlink_gateway_set_routing_id
+
+Override the representative routing id before first use.
+
+```c
+int zlink_gateway_set_routing_id(void *gateway,
+                                  const void *data,
+                                  size_t size);
+```
+
+Sets a custom routing identity for this Gateway. Must be called before
+sending messages.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_gateway_routing_id`
+
+---
+
+### zlink_gateway_routing_id
+
+Return the representative routing id for this Gateway.
+
+```c
+int zlink_gateway_routing_id(void *gateway,
+                              zlink_routing_id_t *out);
+```
+
+Retrieves the current routing identity of the Gateway.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_gateway_set_routing_id`
 
 ---
 

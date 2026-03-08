@@ -44,6 +44,7 @@ struct iovec
 #include "sockets/proxy.hpp"
 #include "sockets/socket_base.hpp"
 #include "services/discovery/registry.hpp"
+#include "services/discovery/discovery_protocol.hpp"
 #include "services/discovery/discovery.hpp"
 #include "services/gateway/gateway.hpp"
 #include "services/gateway/receiver.hpp"
@@ -178,6 +179,76 @@ struct poller_handle_t
     zlink::socket_poller_t *poller;
 };
 
+struct registry_query_client_t
+{
+    zlink::ctx_t *ctx;
+    zlink::socket_base_t *dealer;
+    uint32_t tag;
+
+    explicit registry_query_client_t (zlink::ctx_t *ctx_) :
+        ctx (ctx_),
+        dealer (NULL),
+        tag (0x1e6700f1)
+    {
+    }
+
+    ~registry_query_client_t () { destroy (); }
+
+    bool check_tag () const { return tag == 0x1e6700f1; }
+
+    int connect (const char *endpoint_)
+    {
+        if (!endpoint_ || !*endpoint_) {
+            errno = EINVAL;
+            return -1;
+        }
+        if (dealer) {
+            dealer->close ();
+            dealer = NULL;
+        }
+        dealer = ctx->create_socket (ZLINK_DEALER);
+        if (!dealer)
+            return -1;
+        unsigned char rid[5];
+        rid[0] = 0;
+        uint32_t rid_word = zlink::generate_random ();
+        if (rid_word == 0)
+            rid_word = 1;
+        memcpy (rid + 1, &rid_word, sizeof (rid_word));
+        dealer->setsockopt (ZLINK_ROUTING_ID, rid, sizeof (rid));
+        const int linger = 0;
+        const int sndtimeo_ms = 1000;
+        const int rcvtimeo_ms = 1000;
+        dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
+        dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms,
+                            sizeof (sndtimeo_ms));
+        dealer->setsockopt (ZLINK_RCVTIMEO, &rcvtimeo_ms,
+                            sizeof (rcvtimeo_ms));
+        if (dealer->connect (endpoint_) != 0)
+            return -1;
+        zlink_pollitem_t item;
+        item.socket = static_cast<void *> (dealer);
+        item.fd = 0;
+        item.events = ZLINK_POLLOUT;
+        item.revents = 0;
+        if (zlink_poll (&item, 1, 1000) <= 0 || !(item.revents & ZLINK_POLLOUT)) {
+            errno = EAGAIN;
+            return -1;
+        }
+        return 0;
+    }
+
+    int destroy ()
+    {
+        tag = 0xdeadbeef;
+        if (dealer) {
+            dealer->close ();
+            dealer = NULL;
+        }
+        return 0;
+    }
+};
+
 static inline socket_handle_t as_socket_handle (void *s_)
 {
     socket_handle_t handle;
@@ -217,6 +288,95 @@ static inline poller_handle_t as_poller_handle (void *poller_)
 
     handle.poller = poller;
     return handle;
+}
+
+static int recv_topology_reply_frames (
+  void *socket_,
+  zlink_registry_topology_entry_t *entries_,
+  size_t *count_)
+{
+    if (!count_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink_msg_t frame;
+    zlink_msg_init (&frame);
+    zlink_pollitem_t item;
+    item.socket = socket_;
+    item.fd = 0;
+    item.events = ZLINK_POLLIN;
+    item.revents = 0;
+#define RECV_TOPOLOGY_FRAME_OR_RETURN()                                          \
+    do {                                                                         \
+        item.revents = 0;                                                        \
+        if (zlink_poll (&item, 1, 1000) <= 0                                     \
+            || !(item.revents & ZLINK_POLLIN)) {                                 \
+            errno = EAGAIN;                                                      \
+            return -1;                                                           \
+        }                                                                        \
+        if (zlink_msg_recv (&frame, socket_, 0) < 0) {                           \
+            zlink_msg_close (&frame);                                             \
+            return -1;                                                           \
+        }                                                                        \
+    } while (false)
+    RECV_TOPOLOGY_FRAME_OR_RETURN();
+    uint16_t msg_id = 0;
+    const bool ok_msg =
+      zlink::discovery_protocol::read_u16 (frame, &msg_id)
+      && msg_id == zlink::discovery_protocol::msg_topology_reply;
+    zlink_msg_close (&frame);
+    if (!ok_msg) {
+        errno = EPROTO;
+        return -1;
+    }
+
+    zlink_msg_init (&frame);
+    RECV_TOPOLOGY_FRAME_OR_RETURN();
+    uint32_t remote_count = 0;
+    const bool ok_count = zlink::discovery_protocol::read_u32 (frame, &remote_count);
+    zlink_msg_close (&frame);
+    if (!ok_count) {
+        errno = EPROTO;
+        return -1;
+    }
+
+    if (!entries_) {
+        *count_ = remote_count;
+        for (uint32_t i = 0; i < remote_count; ++i) {
+            zlink_msg_init (&frame);
+            RECV_TOPOLOGY_FRAME_OR_RETURN();
+            zlink_msg_close (&frame);
+        }
+        return 0;
+    }
+
+    if (*count_ < remote_count) {
+        for (uint32_t i = 0; i < remote_count; ++i) {
+            zlink_msg_init (&frame);
+            RECV_TOPOLOGY_FRAME_OR_RETURN();
+            zlink_msg_close (&frame);
+        }
+        *count_ = remote_count;
+        errno = ENOBUFS;
+        return -1;
+    }
+
+    for (uint32_t i = 0; i < remote_count; ++i) {
+        zlink_msg_init (&frame);
+        RECV_TOPOLOGY_FRAME_OR_RETURN();
+        if (zlink_msg_size (&frame) != sizeof (zlink_registry_topology_entry_t)) {
+            zlink_msg_close (&frame);
+            errno = EPROTO;
+            return -1;
+        }
+        memcpy (&entries_[i], zlink_msg_data (&frame), sizeof (entries_[i]));
+        zlink_msg_close (&frame);
+    }
+#undef RECV_TOPOLOGY_FRAME_OR_RETURN
+
+    *count_ = remote_count;
+    return 0;
 }
 
 static int poller_add_service_socket (void *poller_,
@@ -611,6 +771,43 @@ int zlink_monitor_recv (void *monitor_socket_,
     return 0;
 }
 
+int zlink_service_monitor_recv (void *monitor_,
+                                zlink_service_event_t *event_,
+                                int flags_)
+{
+    if (!monitor_ || !event_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink_msg_t msg;
+    zlink_msg_init (&msg);
+    const int rc = zlink_msg_recv (&msg, monitor_, flags_);
+    if (rc < 0) {
+        zlink_msg_close (&msg);
+        return -1;
+    }
+    if (zlink_msg_size (&msg) != sizeof (*event_)) {
+        zlink_msg_close (&msg);
+        errno = EPROTO;
+        return -1;
+    }
+    memcpy (event_, zlink_msg_data (&msg), sizeof (*event_));
+    zlink_msg_close (&msg);
+    return 0;
+}
+
+int zlink_service_monitor_close (void **monitor_p_)
+{
+    if (!monitor_p_ || !*monitor_p_) {
+        errno = EFAULT;
+        return -1;
+    }
+    void *monitor = *monitor_p_;
+    *monitor_p_ = NULL;
+    return zlink_close (monitor);
+}
+
 int zlink_socket_peer_info (void *socket_,
                           const zlink_routing_id_t *routing_id_,
                           zlink_peer_info_t *info_)
@@ -784,6 +981,122 @@ int zlink_registry_destroy (void **registry_p_)
     return 0;
 }
 
+int zlink_registry_topology_snapshot (void *registry_,
+                                      zlink_registry_topology_entry_t *entries_,
+                                      size_t *count_)
+{
+    if (!registry_)
+        return -1;
+    zlink::registry_t *registry = static_cast<zlink::registry_t *> (registry_);
+    if (!registry->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return registry->topology_snapshot (entries_, count_);
+}
+
+int zlink_registry_topology_query (
+  void *registry_,
+  const zlink_registry_topology_filter_t *filter_,
+  zlink_registry_topology_entry_t *entries_,
+  size_t *count_)
+{
+    if (!registry_)
+        return -1;
+    zlink::registry_t *registry = static_cast<zlink::registry_t *> (registry_);
+    if (!registry->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return registry->topology_query (filter_, entries_, count_);
+}
+
+void *zlink_registry_query_client_new (void *ctx_)
+{
+    if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    registry_query_client_t *client =
+      new (std::nothrow)
+        registry_query_client_t (static_cast<zlink::ctx_t *> (ctx_));
+    if (!client) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    return client;
+}
+
+int zlink_registry_query_client_connect (void *client_,
+                                         const char *endpoint_)
+{
+    if (!client_) {
+        errno = EFAULT;
+        return -1;
+    }
+    registry_query_client_t *client =
+      static_cast<registry_query_client_t *> (client_);
+    if (!client->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return client->connect (endpoint_);
+}
+
+int zlink_registry_query_snapshot (
+  void *client_,
+  const zlink_registry_topology_filter_t *filter_,
+  zlink_registry_topology_entry_t *entries_,
+  size_t *count_)
+{
+    if (!client_) {
+        errno = EFAULT;
+        return -1;
+    }
+    registry_query_client_t *client =
+      static_cast<registry_query_client_t *> (client_);
+    if (!client->check_tag () || !client->dealer) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (zlink::discovery_protocol::send_u16 (
+          static_cast<void *> (client->dealer),
+          zlink::discovery_protocol::msg_topology_query, ZLINK_SNDMORE)
+        < 0)
+        return -1;
+
+    zlink_registry_topology_filter_t filter;
+    memset (&filter, 0, sizeof (filter));
+    if (filter_)
+        filter = *filter_;
+    if (zlink::discovery_protocol::send_frame (static_cast<void *> (client->dealer),
+                                               &filter, sizeof (filter), 0)
+        < 0)
+        return -1;
+
+    return recv_topology_reply_frames (static_cast<void *> (client->dealer),
+                                       entries_, count_);
+}
+
+int zlink_registry_query_destroy (void **client_p_)
+{
+    if (!client_p_ || !*client_p_) {
+        errno = EFAULT;
+        return -1;
+    }
+    registry_query_client_t *client =
+      static_cast<registry_query_client_t *> (*client_p_);
+    *client_p_ = NULL;
+    if (!client->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    client->destroy ();
+    delete client;
+    return 0;
+}
+
 void *zlink_discovery_new_typed (void *ctx_, uint16_t service_type_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
@@ -806,7 +1119,7 @@ void *zlink_discovery_new_typed (void *ctx_, uint16_t service_type_)
 }
 
 int zlink_discovery_connect_registry (void *discovery_,
-                                    const char *registry_pub_endpoint_)
+                                      const char *registry_pub_endpoint_)
 {
     if (!discovery_)
         return -1;
@@ -816,6 +1129,20 @@ int zlink_discovery_connect_registry (void *discovery_,
         return -1;
     }
     return discovery->connect_registry (registry_pub_endpoint_);
+}
+
+int zlink_discovery_connect_registry_router (void *discovery_,
+                                             const char *registry_router_endpoint_)
+{
+    if (!discovery_)
+        return -1;
+    zlink::discovery_t *discovery =
+      static_cast<zlink::discovery_t *> (discovery_);
+    if (!discovery->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return discovery->connect_registry_router (registry_router_endpoint_);
 }
 
 int zlink_discovery_subscribe (void *discovery_, const char *service_name_)
@@ -840,6 +1167,34 @@ int zlink_discovery_unsubscribe (void *discovery_, const char *service_name_)
         return -1;
     }
     return discovery->unsubscribe (service_name_);
+}
+
+int zlink_discovery_set_routing_id (void *discovery_,
+                                    const void *data_,
+                                    size_t size_)
+{
+    if (!discovery_)
+        return -1;
+    zlink::discovery_t *discovery =
+      static_cast<zlink::discovery_t *> (discovery_);
+    if (!discovery->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return discovery->set_routing_id (data_, size_);
+}
+
+int zlink_discovery_routing_id (void *discovery_, zlink_routing_id_t *out_)
+{
+    if (!discovery_)
+        return -1;
+    zlink::discovery_t *discovery =
+      static_cast<zlink::discovery_t *> (discovery_);
+    if (!discovery->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return discovery->routing_id (out_);
 }
 
 int zlink_discovery_get_receivers (void *discovery_,
@@ -883,21 +1238,17 @@ int zlink_discovery_service_available (void *discovery_,
     return discovery->service_available (service_name_);
 }
 
-int zlink_discovery_setsockopt (void *discovery_,
-                                int socket_role_,
-                                int option_,
-                                const void *optval_,
-                                size_t optvallen_)
+void *zlink_discovery_monitor_open (void *discovery_, int events_)
 {
     if (!discovery_)
-        return -1;
-    zlink::discovery_t *discovery = static_cast<zlink::discovery_t *> (discovery_);
+        return NULL;
+    zlink::discovery_t *discovery =
+      static_cast<zlink::discovery_t *> (discovery_);
     if (!discovery->check_tag ()) {
         errno = EFAULT;
-        return -1;
+        return NULL;
     }
-    return discovery->set_socket_option (socket_role_, option_, optval_,
-                                         optvallen_);
+    return discovery->monitor_open (events_);
 }
 
 int zlink_discovery_destroy (void **discovery_p_)
@@ -1076,7 +1427,7 @@ int zlink_gateway_set_lb_strategy (void *gateway_,
     return gateway->set_lb_strategy (service_name_, strategy_);
 }
 
-int zlink_gateway_setsockopt (void *gateway_,
+int zlink_gateway_set_option (void *gateway_,
                               int option_,
                               const void *optval_,
                               size_t optvallen_)
@@ -1088,7 +1439,33 @@ int zlink_gateway_setsockopt (void *gateway_,
         errno = EFAULT;
         return -1;
     }
-    return gateway->set_socket_option (option_, optval_, optvallen_);
+    return gateway->set_option (option_, optval_, optvallen_);
+}
+
+int zlink_gateway_set_routing_id (void *gateway_,
+                                  const void *data_,
+                                  size_t size_)
+{
+    if (!gateway_)
+        return -1;
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->set_routing_id (data_, size_);
+}
+
+int zlink_gateway_routing_id (void *gateway_, zlink_routing_id_t *out_)
+{
+    if (!gateway_)
+        return -1;
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->routing_id (out_);
 }
 
 int zlink_gateway_set_tls_client (void *gateway_,
@@ -1106,7 +1483,7 @@ int zlink_gateway_set_tls_client (void *gateway_,
     return gateway->set_tls_client (ca_cert_, hostname_, trust_system_);
 }
 
-void *zlink_gateway_router_socket (void *gateway_)
+void *zlink_gateway_monitor_open (void *gateway_, int events_)
 {
     if (!gateway_)
         return NULL;
@@ -1115,12 +1492,7 @@ void *zlink_gateway_router_socket (void *gateway_)
         errno = EFAULT;
         return NULL;
     }
-    return gateway->router ();
-}
-
-void *zlink_gateway_router_socket_unsafe (void *gateway_)
-{
-    return zlink_gateway_router_socket (gateway_);
+    return gateway->monitor_open (events_);
 }
 
 int zlink_gateway_router_peers (void *gateway_,
@@ -1289,8 +1661,51 @@ int zlink_receiver_set_tls_server (void *receiver_,
     return receiver->set_tls_server (cert_, key_);
 }
 
-int zlink_receiver_setsockopt (void *receiver_,
-                               int socket_role_,
+int zlink_receiver_recv (void *receiver_,
+                         zlink_msg_t **parts_,
+                         size_t *part_count_,
+                         int flags_,
+                         zlink_routing_id_t *routing_id_out_)
+{
+    if (!receiver_)
+        return -1;
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return receiver->recv (parts_, part_count_, flags_, routing_id_out_);
+}
+
+int zlink_receiver_last_endpoint (void *receiver_,
+                                  char *endpoint_,
+                                  size_t *size_)
+{
+    if (!receiver_)
+        return -1;
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return receiver->last_endpoint (endpoint_, size_);
+}
+
+int zlink_receiver_peer_info (void *receiver_,
+                              const zlink_routing_id_t *routing_id_,
+                              zlink_peer_info_t *info_)
+{
+    if (!receiver_)
+        return -1;
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return receiver->peer_info (routing_id_, info_);
+}
+
+int zlink_receiver_set_option (void *receiver_,
                                int option_,
                                const void *optval_,
                                size_t optvallen_)
@@ -1302,11 +1717,36 @@ int zlink_receiver_setsockopt (void *receiver_,
         errno = EFAULT;
         return -1;
     }
-    return receiver->set_socket_option (socket_role_, option_, optval_,
-                                        optvallen_);
+    return receiver->set_option (option_, optval_, optvallen_);
 }
 
-void *zlink_receiver_router_socket_unsafe (void *receiver_)
+int zlink_receiver_set_routing_id (void *receiver_,
+                                   const void *data_,
+                                   size_t size_)
+{
+    if (!receiver_)
+        return -1;
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return receiver->set_routing_id (data_, size_);
+}
+
+int zlink_receiver_routing_id (void *receiver_, zlink_routing_id_t *out_)
+{
+    if (!receiver_)
+        return -1;
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return receiver->routing_id (out_);
+}
+
+void *zlink_receiver_monitor_open (void *receiver_, int events_)
 {
     if (!receiver_)
         return NULL;
@@ -1315,7 +1755,7 @@ void *zlink_receiver_router_socket_unsafe (void *receiver_)
         errno = EFAULT;
         return NULL;
     }
-    return receiver->router ();
+    return receiver->monitor_open (events_);
 }
 
 int zlink_receiver_router_peers (void *receiver_,
@@ -1515,86 +1955,6 @@ int zlink_spot_node_set_tls_client (void *node_,
     return node->set_tls_client (ca_cert_, hostname_, trust_system_);
 }
 
-void *zlink_spot_node_pub_socket (void *node_)
-{
-    if (!node_)
-        return NULL;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return node->pub_socket_unsafe ();
-}
-
-void *zlink_spot_node_pub_socket_unsafe (void *node_)
-{
-    return zlink_spot_node_pub_socket (node_);
-}
-
-void *zlink_spot_node_sub_socket (void *node_)
-{
-    if (!node_)
-        return NULL;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return node->sub_socket_unsafe ();
-}
-
-void *zlink_spot_node_sub_socket_unsafe (void *node_)
-{
-    return zlink_spot_node_sub_socket (node_);
-}
-
-int zlink_spot_node_pub_peers (void *node_,
-                               zlink_peer_info_t *peers_,
-                               size_t *count_)
-{
-    if (!node_)
-        return -1;
-    if (!count_) {
-        errno = EINVAL;
-        return -1;
-    }
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    void *pub_socket = node->pub_socket_for_poller ();
-    if (!pub_socket) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return zlink_socket_peers (pub_socket, peers_, count_);
-}
-
-int zlink_spot_node_sub_peers (void *node_,
-                               zlink_peer_info_t *peers_,
-                               size_t *count_)
-{
-    if (!node_)
-        return -1;
-    if (!count_) {
-        errno = EINVAL;
-        return -1;
-    }
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    void *sub_socket = node->sub_socket_for_poller ();
-    if (!sub_socket) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return zlink_socket_peers (sub_socket, peers_, count_);
-}
-
 void *zlink_spot_pub_new (void *node_)
 {
     if (!node_)
@@ -1675,6 +2035,77 @@ int zlink_spot_pub_publish_bytes (void *pub_,
         errno = err;
     }
     return rc;
+}
+
+int zlink_spot_pub_set_option (void *pub_,
+                               int option_,
+                               const void *optval_,
+                               size_t optvallen_)
+{
+    if (!pub_)
+        return -1;
+    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (pub_);
+    if (!pub->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return pub->set_option (option_, optval_, optvallen_);
+}
+
+int zlink_spot_pub_set_routing_id (void *pub_,
+                                   const void *data_,
+                                   size_t size_)
+{
+    if (!pub_)
+        return -1;
+    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (pub_);
+    if (!pub->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return pub->set_routing_id (data_, size_);
+}
+
+int zlink_spot_pub_routing_id (void *pub_, zlink_routing_id_t *out_)
+{
+    if (!pub_)
+        return -1;
+    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (pub_);
+    if (!pub->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return pub->routing_id (out_);
+}
+
+int zlink_spot_pub_peers (void *pub_,
+                          zlink_peer_info_t *peers_,
+                          size_t *count_)
+{
+    if (!pub_)
+        return -1;
+    if (!count_) {
+        errno = EINVAL;
+        return -1;
+    }
+    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (pub_);
+    if (!pub->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return pub->peers (peers_, count_);
+}
+
+void *zlink_spot_pub_monitor_open (void *pub_, int events_)
+{
+    if (!pub_)
+        return NULL;
+    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (pub_);
+    if (!pub->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return pub->monitor_open (events_);
 }
 
 void *zlink_spot_sub_new (void *node_)
@@ -1760,6 +2191,77 @@ int zlink_spot_sub_set_handler (void *sub_,
     return sub->set_handler (handler_, userdata_);
 }
 
+int zlink_spot_sub_set_option (void *sub_,
+                               int option_,
+                               const void *optval_,
+                               size_t optvallen_)
+{
+    if (!sub_)
+        return -1;
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
+    if (!sub->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return sub->set_option (option_, optval_, optvallen_);
+}
+
+int zlink_spot_sub_set_routing_id (void *sub_,
+                                   const void *data_,
+                                   size_t size_)
+{
+    if (!sub_)
+        return -1;
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
+    if (!sub->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return sub->set_routing_id (data_, size_);
+}
+
+int zlink_spot_sub_routing_id (void *sub_, zlink_routing_id_t *out_)
+{
+    if (!sub_)
+        return -1;
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
+    if (!sub->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return sub->routing_id (out_);
+}
+
+int zlink_spot_sub_peers (void *sub_,
+                          zlink_peer_info_t *peers_,
+                          size_t *count_)
+{
+    if (!sub_)
+        return -1;
+    if (!count_) {
+        errno = EINVAL;
+        return -1;
+    }
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
+    if (!sub->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return sub->peers (peers_, count_);
+}
+
+void *zlink_spot_sub_monitor_open (void *sub_, int events_)
+{
+    if (!sub_)
+        return NULL;
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
+    if (!sub->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return sub->monitor_open (events_);
+}
+
 int zlink_spot_sub_recv (void *sub_,
                          zlink_msg_t **parts_,
                          size_t *part_count_,
@@ -1776,22 +2278,6 @@ int zlink_spot_sub_recv (void *sub_,
     }
     return sub->recv (parts_, part_count_, flags_, topic_id_out_,
                       topic_id_len_);
-}
-
-int zlink_spot_node_setsockopt (void *node_,
-                                int socket_role_,
-                                int option_,
-                                const void *optval_,
-                                size_t optvallen_)
-{
-    if (!node_)
-        return -1;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return node->set_socket_option (socket_role_, option_, optval_, optvallen_);
 }
 
 int zlink_bind (void *s_, const char *addr_)
@@ -2605,6 +3091,14 @@ int zlink_poller_add_receiver (void *poller_,
       user_data_, events_);
 }
 
+int zlink_poller_add_monitor (void *poller_,
+                              void *monitor_,
+                              void *user_data_,
+                              short events_)
+{
+    return zlink_poller_add (poller_, monitor_, user_data_, events_);
+}
+
 int zlink_poller_modify (void *poller_, void *socket_, short events_)
 {
     poller_handle_t poller = as_poller_handle (poller_);
@@ -2671,6 +3165,13 @@ int zlink_poller_modify_receiver (void *poller_,
       events_);
 }
 
+int zlink_poller_modify_monitor (void *poller_,
+                                 void *monitor_,
+                                 short events_)
+{
+    return zlink_poller_modify (poller_, monitor_, events_);
+}
+
 int zlink_poller_remove (void *poller_, void *socket_)
 {
     poller_handle_t poller = as_poller_handle (poller_);
@@ -2728,6 +3229,11 @@ int zlink_poller_remove_receiver (void *poller_, void *receiver_)
     return poller_remove_service_socket (
       poller_,
       static_cast<zlink::socket_base_t *> (receiver->poller_socket ()));
+}
+
+int zlink_poller_remove_monitor (void *poller_, void *monitor_)
+{
+    return zlink_poller_remove (poller_, monitor_);
 }
 
 int zlink_poller_wait_all (void *poller_,

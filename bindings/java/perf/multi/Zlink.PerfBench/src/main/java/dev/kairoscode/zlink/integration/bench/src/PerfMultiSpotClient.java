@@ -7,6 +7,7 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.Poller;
 import dev.kairoscode.zlink.ReceiveFlag;
+import dev.kairoscode.zlink.ServiceType;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.integration.bench.common.PerfCommon;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiClientHelpers;
@@ -16,6 +17,7 @@ import dev.kairoscode.zlink.integration.bench.common.PerfMultiTls;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import dev.kairoscode.zlink.options.SocketOptions;
+import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import dev.kairoscode.zlink.service.spot.SpotNodeSocketRole;
@@ -28,11 +30,13 @@ import java.util.List;
  */
 public final class PerfMultiSpotClient {
     private static final String PATTERN = "MULTI_SPOT";
+    private static final String SERVICE_NAME = "perf-spot";
     private static final String TOPIC = "bench";
     private static final int HEADER_BYTES = 32;
+    private static final int INITIAL_SETTLE_MS = 300;
     private static final long NANOSECONDS_PER_MILLISECOND = 1_000_000L;
     private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
-    private static final long ACTIVE_SEARCH_EXTENSION_NS = 2L
+    private static final long ACTIVE_IDLE_TIMEOUT_NS = 1L
         * NANOSECONDS_PER_SECOND;
 
     private static final int ERRNO_EINTR = 4;
@@ -75,13 +79,17 @@ public final class PerfMultiSpotClient {
     private PerfMultiSpotClient() {
     }
 
-    public static int runClient(String transport, int msgSize, String endpoint) {
+    public static int runClient(String transport, int msgSize, String endpointArg) {
         if (!PerfMultiClientHelpers.isSupportedTransport(PATTERN, transport)) {
             PerfCommon.printUnsupported(PATTERN, transport, msgSize,
                 "unsupported transport");
             return 0;
         }
-        if (endpoint == null || endpoint.isBlank()) {
+        if (endpointArg == null || endpointArg.isBlank()) {
+            return 1;
+        }
+        ReadyEndpoint endpoint = parseReadyEndpoint(endpointArg);
+        if (endpoint == null) {
             return 1;
         }
 
@@ -93,8 +101,20 @@ public final class PerfMultiSpotClient {
             Math.max(5000, PerfMultiCommon.resolveConnectReadyTimeoutMs() * 3),
             Math.max(1, PerfMultiCommon.resolveClientPollTimeoutMs()));
 
-        try (Context context = new Context()) {
+        try (Context context = new Context();
+             Discovery discovery = new Discovery(context, ServiceType.SPOT)) {
             PerfCommon.applyClientContextOptions(context);
+            discovery.connectRegistry(endpoint.registryPub());
+            discovery.subscribe(SERVICE_NAME);
+
+            if (!PerfCommon.waitUntil(
+                () -> discovery.serviceAvailable(SERVICE_NAME)
+                    || discovery.receiverCount(SERVICE_NAME) > 0,
+                config.connectTimeoutMs,
+                5)) {
+                System.err.println("ERROR,MULTI_SPOT,client,no_service");
+                return 2;
+            }
 
             List<ClientSlot> slots = new ArrayList<>(config.clients);
             try {
@@ -107,10 +127,11 @@ public final class PerfMultiSpotClient {
                         transport);
                     node.bind(PerfCommon.endpointFor(transport,
                         "multi-spot-client-" + i));
-                    node.connectPeerPub(endpoint);
+                    node.setDiscovery(discovery, SERVICE_NAME);
 
                     Spot subscriber = new Spot(node);
                     subscriber.subscribe(TOPIC);
+                    node.setDiscovery(discovery, SERVICE_NAME);
                     slots.add(new ClientSlot(node, subscriber,
                         subscriber.createRecvContext()));
                 }
@@ -124,6 +145,8 @@ public final class PerfMultiSpotClient {
                     System.err.println("ERROR,MULTI_SPOT,client,no_sub_peers");
                     return 2;
                 }
+                PerfCommon.sleepMillis(Math.max(INITIAL_SETTLE_MS,
+                    config.settleMs));
 
                 try (Poller poller = new Poller()) {
                     for (int i = 0; i < slots.size(); i++) {
@@ -208,17 +231,24 @@ public final class PerfMultiSpotClient {
                                           int pollTimeoutMs) {
         long durationNs = (long) Math.max(1, durationSeconds)
             * NANOSECONDS_PER_SECOND;
-        long deadline = System.nanoTime() + durationNs;
-        long activeSearchDeadline = deadline + ACTIVE_SEARCH_EXTENSION_NS;
+        long activeDeadlineNs = 0L;
         long activeBeginNs = 0L;
         long count = 0L;
         int activeRunId = -1;
+        long lastDrainNs = System.nanoTime();
 
-        while (System.nanoTime() < (activeBeginNs == 0L ? activeSearchDeadline
-            : deadline)) {
+        while (activeBeginNs == 0L || System.nanoTime() < activeDeadlineNs) {
             ActiveDrainResult drained = drainEvents(poller, slots, header,
                 msgSize, reservoir, activeRunId, pollTimeoutMs);
+            long nowNs = System.nanoTime();
+            if (drained.drainedFrames > 0L) {
+                lastDrainNs = nowNs;
+            }
             if (drained.count <= 0 || !drained.startedActive) {
+                if (activeBeginNs == 0L
+                    && nowNs - lastDrainNs >= ACTIVE_IDLE_TIMEOUT_NS) {
+                    break;
+                }
                 continue;
             }
             count += drained.count;
@@ -226,8 +256,8 @@ public final class PerfMultiSpotClient {
                 activeRunId = drained.runId;
             }
             if (activeBeginNs == 0L) {
-                activeBeginNs = System.nanoTime();
-                deadline = activeBeginNs + durationNs;
+                activeBeginNs = nowNs;
+                activeDeadlineNs = activeBeginNs + durationNs;
             }
         }
 
@@ -238,6 +268,7 @@ public final class PerfMultiSpotClient {
 
     private static final class ActiveDrainResult {
         long count;
+        long drainedFrames;
         boolean startedActive;
         int runId = -1;
     }
@@ -266,6 +297,7 @@ public final class PerfMultiSpotClient {
                 if (raw == null) {
                     break;
                 }
+                result.drainedFrames++;
                 if (header == null || reservoir == null) {
                     continue;
                 }
@@ -372,11 +404,21 @@ public final class PerfMultiSpotClient {
     }
 
     private static void applySpotNodeOptions(SpotNode node) {
+        int sndHwm = PerfMultiCommon.resolveSndHwm(PATTERN);
         int rcvHwm = PerfMultiCommon.resolveRcvHwm(PATTERN);
+        int sndTimeoutMs = PerfMultiCommon.resolveSndTimeoutMs();
         int rcvTimeoutMs = PerfMultiCommon.resolveRcvTimeoutMs();
+        int xpubNoDrop = resolveXpubNoDrop();
+        node.setOption(SpotNodeSocketRole.SUB, SocketOptions.SNDHWM, sndHwm);
         node.setOption(SpotNodeSocketRole.SUB, SocketOptions.RCVHWM, rcvHwm);
+        node.setOption(SpotNodeSocketRole.SUB, SocketOptions.SNDTIMEO,
+            sndTimeoutMs);
         node.setOption(SpotNodeSocketRole.SUB, SocketOptions.RCVTIMEO,
             rcvTimeoutMs);
+        node.setOption(SpotNodeSocketRole.PUB, SocketOptions.XPUB_NODROP,
+            xpubNoDrop);
+        node.setOption(SpotNodeSocketRole.SUB, SocketOptions.XPUB_NODROP,
+            xpubNoDrop);
         node.setOption(SpotNodeSocketRole.PUB, SocketOptions.LINGER, 0);
         node.setOption(SpotNodeSocketRole.SUB, SocketOptions.LINGER, 0);
         node.setOption(SpotNodeSocketRole.DEALER, SocketOptions.LINGER, 0);
@@ -389,17 +431,45 @@ public final class PerfMultiSpotClient {
         long deadline = System.nanoTime()
             + (long) Math.max(500, timeoutMs * 3) * 1_000_000L;
         while (System.nanoTime() < deadline) {
+            int readyCount = 0;
             for (int i = 0; i < slots.size(); i++) {
                 try {
                     if (slots.get(i).node.subPeers().size() > 0) {
-                        return true;
+                        readyCount++;
                     }
                 } catch (RuntimeException ex) {
                     return false;
                 }
             }
+            if (readyCount == slots.size()) {
+                return true;
+            }
             PerfCommon.sleepMillis(5);
         }
         return false;
+    }
+
+    private static int resolveXpubNoDrop() {
+        return PerfCommon.parsePositiveEnv("PERF_MULTI_SPOT_XPUB_NODROP", 1) > 0
+            ? 1 : 0;
+    }
+
+    private static ReadyEndpoint parseReadyEndpoint(String endpointArg) {
+        String[] parts = endpointArg.split("\\|", -1);
+        if (parts.length < 3) {
+            return null;
+        }
+        String serverEndpoint = parts[0].trim();
+        String registryPub = parts[1].trim();
+        String registryRouter = parts[2].trim();
+        if (serverEndpoint.isEmpty() || registryPub.isEmpty()
+            || registryRouter.isEmpty()) {
+            return null;
+        }
+        return new ReadyEndpoint(serverEndpoint, registryPub, registryRouter);
+    }
+
+    private record ReadyEndpoint(String serverEndpoint, String registryPub,
+                                 String registryRouter) {
     }
 }

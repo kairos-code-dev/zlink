@@ -4,6 +4,7 @@
 #define __ZLINK_DISCOVERY_DISCOVERY_HPP_INCLUDED__
 
 #include "core/ctx.hpp"
+#include "services/common/service_monitor.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 
@@ -14,6 +15,13 @@
 
 namespace zlink
 {
+class socket_base_t;
+
+enum discovery_socket_role_t
+{
+    discovery_socket_sub = 1
+};
+
 struct provider_info_t
 {
     std::string service_name;
@@ -39,12 +47,16 @@ class discovery_t
     bool check_tag () const;
 
     int connect_registry (const char *registry_pub_endpoint_);
+    int connect_registry_router (const char *registry_router_endpoint_);
     int subscribe (const char *service_name_);
     int unsubscribe (const char *service_name_);
+    int set_routing_id (const void *data_, size_t size_);
+    int routing_id (zlink_routing_id_t *out_) const;
     int set_socket_option (int socket_role_,
                            int option_,
                            const void *optval_,
                            size_t optvallen_);
+    void *monitor_open (int events_);
 
     int get_receivers (const char *service_name_,
                        zlink_receiver_info_t *providers_,
@@ -57,6 +69,7 @@ class discovery_t
 
     void snapshot_providers (const std::string &service_name_,
                              std::vector<provider_info_t> *out_);
+    void snapshot_registry_router_endpoints (std::vector<std::string> *out_);
     uint64_t update_seq ();
     uint64_t service_update_seq (const std::string &service_name_);
     void add_observer (discovery_observer_t *observer_);
@@ -72,8 +85,14 @@ class discovery_t
     void tick ();
     int ensure_sub_socket ();
     void close_sub_socket ();
+    bool ensure_routing_id ();
     void handle_service_list (const std::vector<zlink_msg_t> &frames_);
     void notify_observers (const std::set<std::string> &services_);
+    int ensure_topology_reporter ();
+    void report_topology (const std::string &service_name_,
+                          uint16_t state_,
+                          uint32_t ready_count_,
+                          int32_t error_code_);
 
     ctx_t *_ctx;
     uint32_t _tag;
@@ -81,10 +100,13 @@ class discovery_t
     atomic_counter_t _stop;
     uint64_t _task_id;
     void *_sub_socket;
+    socket_base_t *_report_dealer;
     std::set<std::string> _connected_endpoints;
+    std::set<std::string> _connected_router_endpoints;
 
     mutex_t _sync;
     std::set<std::string> _registry_endpoints;
+    std::set<std::string> _registry_router_endpoints;
     std::map<std::string, service_state_t> _services;
     std::map<uint32_t, uint64_t> _registry_seq;
     std::set<std::string> _subscriptions;
@@ -98,6 +120,9 @@ class discovery_t
     };
     std::vector<socket_opt_t> _sub_opts;
     uint16_t _service_type;
+    zlink_routing_id_t _routing_id;
+    std::string _routing_id_override;
+    service_monitor_hub_t _monitor;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (discovery_t)
 };
 }

@@ -71,10 +71,11 @@ public final class PerfMultiStreamCallbackServer {
             Map<Long, Len32StopTokenParser> stopParsers = new HashMap<>();
             Object parserLock = new Object();
 
-            server.attachStreamRaw((routingId, payloadMessage) -> {
-                try (Message payload = payloadMessage) {
+            server.attachStreamRaw((routingId, payload) -> {
+                try {
                     int size = payload.size();
                     if (isStreamControl(payload, size)) {
+                        payload.close();
                         return 0;
                     }
 
@@ -84,6 +85,7 @@ public final class PerfMultiStreamCallbackServer {
                         if (isStopToken(payload, size)
                             || parser.consume(payload, size)) {
                             stopRequested.set(true);
+                            payload.close();
                             return 0;
                         }
                     }
@@ -100,6 +102,10 @@ public final class PerfMultiStreamCallbackServer {
                 } catch (RuntimeException ex) {
                     callbackFailed.set(true);
                     stopRequested.set(true);
+                    try {
+                        payload.close();
+                    } catch (RuntimeException ignored) {
+                    }
                     return 1;
                 }
             });

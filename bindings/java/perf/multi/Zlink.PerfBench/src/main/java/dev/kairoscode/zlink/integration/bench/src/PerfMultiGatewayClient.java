@@ -39,6 +39,8 @@ public final class PerfMultiGatewayClient {
     private static final int MIN_PAYLOAD_BYTES = 32;
     private static final int HEADER_BYTES = 32;
     private static final int ROUTING_ID_BUFFER_BYTES = 256;
+    private static final int INITIAL_SETTLE_MS = 50;
+    private static final int PENDING_TAG_BASE = 1_000_000;
     private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
 
     private static final int ERRNO_EINTR = 4;
@@ -48,11 +50,25 @@ public final class PerfMultiGatewayClient {
     private static final class PendingSend {
         boolean pending;
         final byte[] payload;
+        final MemorySegment payloadSegment;
         final Message message;
 
         PendingSend(int payloadSize) {
             this.payload = new byte[payloadSize];
+            this.payloadSegment = MemorySegment.ofArray(this.payload);
             this.message = new Message(payloadSize);
+        }
+    }
+
+    private static final class PrimeResult {
+        long nextSeq = -1L;
+        long immediateSendCount = 0L;
+        long flushedSendCount = 0L;
+        long recvCount = 0L;
+        long matchedCount = 0L;
+
+        boolean success() {
+            return nextSeq > 0L;
         }
     }
 
@@ -94,7 +110,7 @@ public final class PerfMultiGatewayClient {
             try {
                 for (int i = 0; i < clients; i++) {
                     slots.add(createClientSlot(context, discovery, transport,
-                        endpoint.registryRouter(), i));
+                        endpoint.registryRouter(), i, connectTimeoutMs));
                 }
                 if (slots.isEmpty()) {
                     return 2;
@@ -107,15 +123,18 @@ public final class PerfMultiGatewayClient {
                     return 2;
                 }
 
-                collectActiveSlots(slots, activeSlots, connectTimeoutMs);
-                if (activeSlots.isEmpty()) {
+                if (!collectActiveSlots(slots, activeSlots, connectTimeoutMs)) {
                     return 2;
                 }
+                PerfCommon.sleepMillis(INITIAL_SETTLE_MS);
 
                 Poller poller = new Poller();
                 for (int i = 0; i < activeSlots.size(); i++) {
                     poller.addReceiver(activeSlots.get(i).receiver,
                         PollEventType.POLLIN.getValue(), Integer.valueOf(i));
+                    poller.addGateway(activeSlots.get(i).gateway,
+                        0,
+                        Integer.valueOf(activeTag(i)));
                 }
 
                 byte[] recv = new byte[payloadSize];
@@ -136,6 +155,29 @@ public final class PerfMultiGatewayClient {
                             PerfMultiCommon.resolveLatencySampleCap());
                     PerfMultiMetricHeader.Header header =
                         new PerfMultiMetricHeader.Header();
+
+                    PrimeResult prime = primeRoundTrips(poller, activeSlots, pendingSends,
+                        awaitingReply, routingId, recv, runId, msgSize,
+                        connectTimeoutMs, pollTimeoutMs, seq, header);
+                    if (!prime.success()) {
+                        StringBuilder connections = new StringBuilder();
+                        for (int i = 0; i < activeSlots.size(); i++) {
+                            if (i > 0) {
+                                connections.append('|');
+                            }
+                            connections.append(activeSlots.get(i)
+                                .gateway.connectionCount(SERVICE_NAME));
+                        }
+                        System.err.println("ERROR,MULTI_GATEWAY,client,prime_failed,"
+                            + "send_immediate=" + prime.immediateSendCount + ","
+                            + "send_flushed=" + prime.flushedSendCount + ","
+                            + "recv=" + prime.recvCount + ","
+                            + "matched=" + prime.matchedCount + ","
+                            + "connections=" + connections);
+                        return 2;
+                    }
+                    seq = prime.nextSeq;
+                    PerfCommon.sleepMillis(INITIAL_SETTLE_MS);
 
                     // --- Warmup ---
                     long warmupDeadline = System.nanoTime()
@@ -199,6 +241,10 @@ public final class PerfMultiGatewayClient {
                     activeSlots.get(0).gateway.sendTo(SERVICE_NAME, stopMessage,
                         SendFlag.NONE);
 
+                    if (count <= 0) {
+                        System.err.println("ERROR,MULTI_GATEWAY,client,no_active_frames");
+                        return 2;
+                    }
                     double elapsedSec = Math.max(1e-9,
                         (System.nanoTime() - benchBegin) / 1_000_000_000.0);
                     double throughput = count / elapsedSec;
@@ -222,7 +268,8 @@ public final class PerfMultiGatewayClient {
                                                Discovery discovery,
                                                String transport,
                                                String registryRouterEndpoint,
-                                               int index) {
+                                               int index,
+                                               int readyTimeoutMs) {
         String serviceName = CLIENT_SERVICE_PREFIX + index;
         Receiver receiver = null;
         Socket receiverRouter = null;
@@ -238,6 +285,10 @@ public final class PerfMultiGatewayClient {
             receiver.bind(receiverEndpoint);
             receiver.connectRegistry(registryRouterEndpoint);
             receiver.register(serviceName, receiverEndpoint, 1);
+            if (!waitReceiverRegistered(receiver, serviceName, readyTimeoutMs)) {
+                throw new IllegalStateException(
+                    "gateway_client_receiver_register_not_ready");
+            }
 
             receiverRouter = receiver.routerSocket();
             applyReceiverRouterOptions(receiverRouter, serviceName);
@@ -253,9 +304,9 @@ public final class PerfMultiGatewayClient {
         }
     }
 
-    private static void collectActiveSlots(List<ClientSlot> slots,
-                                           List<ClientSlot> activeSlots,
-                                           int timeoutMs) {
+    private static boolean collectActiveSlots(List<ClientSlot> slots,
+                                              List<ClientSlot> activeSlots,
+                                              int timeoutMs) {
         long deadlineNs = System.nanoTime()
             + (long) Math.max(1, timeoutMs) * 1_000_000L;
         boolean[] selected = new boolean[slots.size()];
@@ -276,6 +327,115 @@ public final class PerfMultiGatewayClient {
                 PerfCommon.sleepMillis(10);
             }
         }
+        return selectedCount == slots.size() && !activeSlots.isEmpty();
+    }
+
+    private static boolean waitReceiverRegistered(Receiver receiver,
+                                                  String serviceName,
+                                                  int timeoutMs) {
+        long deadlineNs = System.nanoTime()
+            + (long) Math.max(1, timeoutMs) * 1_000_000L;
+        while (System.nanoTime() < deadlineNs) {
+            if (receiver.registerResult(serviceName).status() == 0) {
+                return true;
+            }
+            PerfCommon.sleepMillis(10);
+        }
+        return false;
+    }
+
+    private static PrimeResult primeRoundTrips(Poller poller,
+                                               List<ClientSlot> activeSlots,
+                                               PendingSend[] pendingSends,
+                                               boolean[] awaitingReply,
+                                               byte[] routingIdBuffer,
+                                               byte[] recvBuffer,
+                                               int runId,
+                                               int msgSize,
+                                               int timeoutMs,
+                                               int pollTimeoutMs,
+                                               long startingSeq,
+                                               PerfMultiMetricHeader.Header header) {
+        PrimeResult result = new PrimeResult();
+        if (activeSlots.isEmpty()) {
+            return result;
+        }
+
+        long seq = startingSeq;
+        long deadlineNs = System.nanoTime()
+            + (long) Math.max(timeoutMs, 1000) * 1_000_000L;
+        boolean[] primed = new boolean[activeSlots.size()];
+        int primedCount = 0;
+        int sendIndex = 0;
+
+        while (System.nanoTime() < deadlineNs && primedCount < activeSlots.size()) {
+            for (int i = 0; i < activeSlots.size(); i++) {
+                int slotIndex = (sendIndex + i) % activeSlots.size();
+                if (primed[slotIndex]
+                    || awaitingReply[slotIndex]
+                    || pendingSends[slotIndex].pending) {
+                    continue;
+                }
+                PerfMultiMetricHeader.stampPayload(pendingSends[slotIndex].payload,
+                    runId, PerfMultiMetricHeader.PHASE_DRAIN, msgSize, seq++,
+                    PerfMultiMetricHeader.nowUs());
+                if (tryStartSend(poller, activeSlots.get(slotIndex), slotIndex,
+                    pendingSends[slotIndex], awaitingReply)) {
+                    result.immediateSendCount++;
+                }
+            }
+            sendIndex = (sendIndex + 1) % activeSlots.size();
+
+            int eventCount = poller.pollCount(pollTimeoutMs);
+            for (int i = 0; i < eventCount; i++) {
+                Object tag = poller.readyTag(i);
+                if (!(tag instanceof Integer)) {
+                    continue;
+                }
+                int rawIndex = (Integer) tag;
+                int pendingIndex = pendingIndexFromTag(rawIndex);
+                if (pendingIndex >= 0) {
+                    if (pendingSends[pendingIndex].pending) {
+                        if (tryFlushPending(poller, activeSlots.get(pendingIndex),
+                            pendingIndex, pendingSends[pendingIndex], awaitingReply)) {
+                            result.flushedSendCount++;
+                        }
+                    }
+                    continue;
+                }
+
+                int slotIndex = rawIndex;
+                ClientSlot slot = activeSlots.get(slotIndex);
+                while (true) {
+                    int payloadLen = receiveReceiverPayloadNonBlocking(
+                        slot.receiverRouter, routingIdBuffer, recvBuffer);
+                    if (payloadLen <= 0) {
+                        break;
+                    }
+                    result.recvCount++;
+                    awaitingReply[slotIndex] = false;
+                    if (primed[slotIndex]) {
+                        continue;
+                    }
+                    if (payloadLen < HEADER_BYTES
+                        || !PerfMultiMetricHeader.decodePayloadHeader(recvBuffer,
+                        header)
+                        || header.runId != runId
+                        || header.phase != PerfMultiMetricHeader.PHASE_DRAIN
+                        || header.msgSize != msgSize) {
+                        continue;
+                    }
+                    primed[slotIndex] = true;
+                    primedCount++;
+                    result.matchedCount++;
+                }
+            }
+        }
+
+        if (primedCount == activeSlots.size()) {
+            result.nextSeq = seq;
+        }
+        return result;
     }
 
     private static DrainResult drainReplies(Poller poller,
@@ -300,15 +460,12 @@ public final class PerfMultiGatewayClient {
                 continue;
             }
             int rawIndex = (Integer) tag;
-            if (rawIndex >= activeSlots.size()) {
-                int socketIndex = rawIndex - activeSlots.size();
-                if (socketIndex < 0 || socketIndex >= activeSlots.size()) {
-                    continue;
-                }
-                if (pendingSends[socketIndex].pending) {
+            int pendingIndex = pendingIndexFromTag(rawIndex);
+            if (pendingIndex >= 0) {
+                if (pendingSends[pendingIndex].pending) {
                     progressed |= tryFlushPending(poller,
-                        activeSlots.get(socketIndex), socketIndex,
-                        pendingSends[socketIndex], awaitingReply);
+                        activeSlots.get(pendingIndex), pendingIndex,
+                        pendingSends[pendingIndex], awaitingReply);
                 }
                 continue;
             }
@@ -349,8 +506,8 @@ public final class PerfMultiGatewayClient {
         }
         if (!pending.pending) {
             pending.pending = true;
-            poller.addGateway(slot.gateway, PollEventType.POLLOUT.getValue(),
-                Integer.valueOf(activeTag(index)));
+            poller.modifyGateway(slot.gateway,
+                PollEventType.POLLOUT.getValue());
         }
         return false;
     }
@@ -366,13 +523,13 @@ public final class PerfMultiGatewayClient {
         }
         pending.pending = false;
         awaitingReply[index] = true;
-        poller.removeGateway(slot.gateway);
+        poller.modifyGateway(slot.gateway, 0);
         return true;
     }
 
     private static boolean trySendNonBlocking(ClientSlot slot,
                                               PendingSend pending) {
-        MemorySegment.copy(MemorySegment.ofArray(pending.payload), 0,
+        MemorySegment.copy(pending.payloadSegment, 0,
             pending.message.dataSegment(), 0, pending.payload.length);
         while (true) {
             try {
@@ -393,7 +550,14 @@ public final class PerfMultiGatewayClient {
     }
 
     private static int activeTag(int index) {
-        return index + 1_000_000;
+        return PENDING_TAG_BASE + index;
+    }
+
+    private static int pendingIndexFromTag(int rawTag) {
+        if (rawTag < PENDING_TAG_BASE) {
+            return -1;
+        }
+        return rawTag - PENDING_TAG_BASE;
     }
 
     private static int receiveReceiverPayloadNonBlocking(Socket receiverRouter,
@@ -467,7 +631,6 @@ public final class PerfMultiGatewayClient {
 
     private static void applyReceiverRouterOptions(Socket receiverRouter,
                                                    String serviceName) {
-        receiverRouter.setOption(SocketOptions.ROUTING_ID, serviceName);
         receiverRouter.setOption(SocketOptions.SNDHWM,
             PerfMultiCommon.resolveSndHwm(PATTERN));
         receiverRouter.setOption(SocketOptions.RCVHWM,

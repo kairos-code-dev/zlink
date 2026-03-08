@@ -37,6 +37,39 @@ static void registry_debug_rid (const char *label_,
     std::fprintf (stderr, "\n");
 }
 
+static std::string topology_routing_key (const zlink_routing_id_t &rid_)
+{
+    if (rid_.size == 0)
+        return std::string ();
+    return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
+}
+
+static bool topology_filter_match (
+  const zlink_registry_topology_entry_t &entry_,
+  const zlink_registry_topology_filter_t *filter_)
+{
+    if (!filter_)
+        return true;
+    if (filter_->service_kind != 0 && filter_->service_kind != entry_.service_kind)
+        return false;
+    if (filter_->state != 0 && filter_->state != entry_.state)
+        return false;
+    if (filter_->source != 0 && filter_->source != entry_.source)
+        return false;
+    if (filter_->service_name[0] != '\0'
+        && strcmp (filter_->service_name, entry_.service_name) != 0)
+        return false;
+    if (filter_->routing_id.size > 0) {
+        if (filter_->routing_id.size != entry_.routing_id.size)
+            return false;
+        if (memcmp (filter_->routing_id.data, entry_.routing_id.data,
+                    filter_->routing_id.size)
+            != 0)
+            return false;
+    }
+    return true;
+}
+
 registry_t::registry_t (ctx_t *ctx_) :
     _ctx (ctx_),
     _tag (registry_tag_value),
@@ -172,6 +205,47 @@ int registry_t::set_socket_option (int socket_role_,
     opts->push_back (opt);
     if (existing_socket)
         zlink_setsockopt (existing_socket, option_, optval_, optvallen_);
+    return 0;
+}
+
+int registry_t::topology_snapshot (zlink_registry_topology_entry_t *entries_,
+                                   size_t *count_)
+{
+    return topology_query (NULL, entries_, count_);
+}
+
+int registry_t::topology_query (const zlink_registry_topology_filter_t *filter_,
+                                zlink_registry_topology_entry_t *entries_,
+                                size_t *count_)
+{
+    if (!count_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::vector<zlink_registry_topology_entry_t> matched;
+    {
+        scoped_lock_t lock (_sync);
+        for (std::map<topology_key_t, topology_entry_t>::const_iterator it =
+               _topology.begin ();
+             it != _topology.end (); ++it) {
+            if (topology_filter_match (it->second.entry, filter_))
+                matched.push_back (it->second.entry);
+        }
+    }
+
+    if (!entries_) {
+        *count_ = matched.size ();
+        return 0;
+    }
+    if (*count_ < matched.size ()) {
+        *count_ = matched.size ();
+        errno = ENOBUFS;
+        return -1;
+    }
+    for (size_t i = 0; i < matched.size (); ++i)
+        entries_[i] = matched[i];
+    *count_ = matched.size ();
     return 0;
 }
 
@@ -505,9 +579,6 @@ void registry_t::handle_router (void *router_)
     sender.size = 0;
     discovery_protocol::read_routing_id (msg, &sender);
     zlink_msg_close (&msg);
-    registry_debug ("handle_router recv");
-    registry_debug_rid ("sender", sender);
-
     std::vector<zlink_msg_t> frames;
     while (true) {
         zlink_msg_t frame;
@@ -515,11 +586,6 @@ void registry_t::handle_router (void *router_)
         if (zlink_msg_recv (&frame, router_, ZLINK_DONTWAIT) == -1) {
             zlink_msg_close (&frame);
             break;
-        }
-        if (std::getenv ("ZLINK_REGISTRY_DEBUG")) {
-            std::fprintf (stderr, "[registry] frame size=%zu more=%d\n",
-                          zlink_msg_size (&frame),
-                          zlink_msg_more (&frame));
         }
         frames.push_back (frame);
         if (!zlink_msg_more (&frame))
@@ -553,6 +619,12 @@ void registry_t::handle_router (void *router_)
             break;
         case discovery_protocol::msg_heartbeat:
             handle_heartbeat (&frames[0], frames.size ());
+            break;
+        case discovery_protocol::msg_topology_report:
+            handle_topology_report (&frames[0], frames.size ());
+            break;
+        case discovery_protocol::msg_topology_query:
+            handle_topology_query (router_, &frames[0], frames.size (), sender);
             break;
         case discovery_protocol::msg_update_weight:
             handle_update_weight (router_, &frames[0], frames.size (), sender);
@@ -849,6 +921,23 @@ void registry_t::handle_register (void *router_, const zlink_msg_t *frames_,
     entry.last_heartbeat = now;
     entry.source_registry = _registry_id;
 
+    if (service_type == discovery_protocol::service_type_gateway_receiver) {
+        zlink_registry_topology_entry_t topology;
+        memset (&topology, 0, sizeof (topology));
+        topology.routing_id = sender_id_;
+        topology.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
+        strncpy (topology.service_name, service_name.c_str (),
+                 sizeof (topology.service_name) - 1);
+        strncpy (topology.endpoint, endpoint.c_str (),
+                 sizeof (topology.endpoint) - 1);
+        topology.source = ZLINK_TOPOLOGY_SOURCE_REGISTRY;
+        topology.state = ZLINK_TOPOLOGY_STATE_READY;
+        topology.desired_count = 1;
+        topology.ready_count = 1;
+        topology.last_reported_ms = now;
+        upsert_topology_entry (topology, now);
+    }
+
     _list_seq++;
     send_register_ack (router_, sender_id_, 0x00, endpoint, std::string ());
 }
@@ -881,9 +970,25 @@ void registry_t::handle_unregister (const zlink_msg_t *frames_,
     if (pit->second.source_registry != _registry_id)
         return;
 
+    const zlink_routing_id_t provider_routing_id = pit->second.routing_id;
     sit->second.providers.erase (pit);
     if (sit->second.providers.empty ())
         _services.erase (sit);
+
+    if (service_type == discovery_protocol::service_type_gateway_receiver) {
+        zlink_registry_topology_entry_t topology;
+        memset (&topology, 0, sizeof (topology));
+        topology.routing_id = provider_routing_id;
+        topology.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
+        strncpy (topology.service_name, service_name.c_str (),
+                 sizeof (topology.service_name) - 1);
+        strncpy (topology.endpoint, endpoint.c_str (),
+                 sizeof (topology.endpoint) - 1);
+        topology.source = ZLINK_TOPOLOGY_SOURCE_REGISTRY;
+        topology.state = ZLINK_TOPOLOGY_STATE_STOPPED;
+        topology.last_reported_ms = zlink::clock_t ().now_ms ();
+        upsert_topology_entry (topology, topology.last_reported_ms);
+    }
 
     _list_seq++;
 }
@@ -916,6 +1021,67 @@ void registry_t::handle_heartbeat (const zlink_msg_t *frames_,
 
     zlink::clock_t clock;
     pit->second.last_heartbeat = clock.now_ms ();
+
+    if (service_type == discovery_protocol::service_type_gateway_receiver) {
+        zlink_registry_topology_entry_t topology;
+        memset (&topology, 0, sizeof (topology));
+        topology.routing_id = pit->second.routing_id;
+        topology.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
+        strncpy (topology.service_name, service_name.c_str (),
+                 sizeof (topology.service_name) - 1);
+        strncpy (topology.endpoint, endpoint.c_str (),
+                 sizeof (topology.endpoint) - 1);
+        topology.source = ZLINK_TOPOLOGY_SOURCE_REGISTRY;
+        topology.state = ZLINK_TOPOLOGY_STATE_READY;
+        topology.desired_count = 1;
+        topology.ready_count = 1;
+        topology.last_reported_ms = pit->second.last_heartbeat;
+        upsert_topology_entry (topology, pit->second.last_heartbeat);
+    }
+}
+
+void registry_t::handle_topology_report (const zlink_msg_t *frames_,
+                                         size_t frame_count_)
+{
+    if (frame_count_ < 2)
+        return;
+    if (zlink_msg_size (&frames_[1]) != sizeof (zlink_registry_topology_entry_t))
+        return;
+
+    zlink_registry_topology_entry_t entry;
+    memcpy (&entry,
+            zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[1])),
+            sizeof (entry));
+    upsert_topology_entry (entry, zlink::clock_t ().now_ms ());
+}
+
+void registry_t::handle_topology_query (void *router_,
+                                        const zlink_msg_t *frames_,
+                                        size_t frame_count_,
+                                        const zlink_routing_id_t &sender_id_)
+{
+    zlink_registry_topology_filter_t filter;
+    memset (&filter, 0, sizeof (filter));
+    const zlink_registry_topology_filter_t *filter_ptr = NULL;
+
+    if (frame_count_ >= 2 && zlink_msg_size (&frames_[1]) == sizeof (filter)) {
+        memcpy (&filter,
+                zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[1])),
+                sizeof (filter));
+        filter_ptr = &filter;
+    }
+
+    std::vector<zlink_registry_topology_entry_t> entries;
+    {
+        scoped_lock_t lock (_sync);
+        for (std::map<topology_key_t, topology_entry_t>::const_iterator it =
+               _topology.begin ();
+             it != _topology.end (); ++it) {
+            if (topology_filter_match (it->second.entry, filter_ptr))
+                entries.push_back (it->second.entry);
+        }
+    }
+    send_topology_reply (router_, sender_id_, entries);
 }
 
 void registry_t::handle_update_weight (void *router_, const zlink_msg_t *frames_,
@@ -1011,6 +1177,46 @@ void registry_t::send_register_ack (void *router_,
                                              ZLINK_SNDMORE));
     log_rc ("send ack error",
             discovery_protocol::send_string (router_, error_, 0));
+}
+
+void registry_t::send_topology_reply (
+  void *router_,
+  const zlink_routing_id_t &sender_id_,
+  const std::vector<zlink_registry_topology_entry_t> &entries_)
+{
+    zlink_msg_t id_frame;
+    zlink_msg_init_size (&id_frame, sender_id_.size);
+    if (sender_id_.size > 0)
+        memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
+    if (zlink_msg_send (&id_frame, router_, ZLINK_SNDMORE) == -1) {
+        zlink_msg_close (&id_frame);
+        return;
+    }
+
+    discovery_protocol::send_u16 (router_, discovery_protocol::msg_topology_reply,
+                                  ZLINK_SNDMORE);
+    discovery_protocol::send_u32 (router_,
+                                  static_cast<uint32_t> (entries_.size ()),
+                                  entries_.empty () ? 0 : ZLINK_SNDMORE);
+    for (size_t i = 0; i < entries_.size (); ++i) {
+        discovery_protocol::send_frame (
+          router_, &entries_[i], sizeof (entries_[i]),
+          (i + 1 == entries_.size ()) ? 0 : ZLINK_SNDMORE);
+    }
+}
+
+void registry_t::upsert_topology_entry (
+  const zlink_registry_topology_entry_t &entry_,
+  uint64_t now_ms_)
+{
+    topology_key_t key;
+    key.service_kind = entry_.service_kind;
+    key.routing_id_key = topology_routing_key (entry_.routing_id);
+    key.service_name = entry_.service_name;
+
+    topology_entry_t &stored = _topology[key];
+    stored.entry = entry_;
+    stored.entry.last_reported_ms = now_ms_;
 }
 
 void registry_t::send_service_list (void *pub_)
@@ -1139,6 +1345,30 @@ void registry_t::remove_expired (uint64_t now_ms_)
             continue;
         }
         ++pit;
+    }
+
+    const uint64_t report_timeout_ms = _heartbeat_timeout_ms;
+    const uint64_t stale_gc_timeout_ms = report_timeout_ms * 2;
+    const uint64_t stopped_gc_timeout_ms = 1000;
+
+    for (std::map<topology_key_t, topology_entry_t>::iterator it =
+           _topology.begin ();
+         it != _topology.end ();) {
+        zlink_registry_topology_entry_t &entry = it->second.entry;
+        const uint64_t age =
+          now_ms_ > entry.last_reported_ms ? now_ms_ - entry.last_reported_ms : 0;
+        if (entry.state == ZLINK_TOPOLOGY_STATE_STOPPED) {
+            if (age > stopped_gc_timeout_ms) {
+                it = _topology.erase (it);
+                continue;
+            }
+        } else if (age > stale_gc_timeout_ms) {
+            it = _topology.erase (it);
+            continue;
+        } else if (age > report_timeout_ms && entry.state == ZLINK_TOPOLOGY_STATE_READY) {
+            entry.state = ZLINK_TOPOLOGY_STATE_LOST;
+        }
+        ++it;
     }
 
     if (changed)

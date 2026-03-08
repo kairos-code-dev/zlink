@@ -60,8 +60,8 @@ zlink_send(server, "foo", 3, ZLINK_SNDMORE);
 zlink_send(server, "foobar", 6, 0);
 
 /* Receiver receives normally */
-recv_buf(client, buf, sizeof(buf), 0);  /* "foo" */
-recv_buf(client, buf, sizeof(buf), 0);  /* "foobar" */
+zlink_recv(client, buf, sizeof(buf), 0);  /* "foo" */
+zlink_recv(client, buf, sizeof(buf), 0);  /* "foobar" */
 ```
 
 > Reference: `core/tests/test_pair_inproc.cpp` -- `test_zlink_send_multipart()` test

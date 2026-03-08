@@ -1,0 +1,6 @@
+## PATTERN: MULTI_STREAM_LEN32BE (echo)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |  Latency(ms) | Lat p95(ms) | Lat p99(ms) | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|----------|----------|--------|----------|--------|----------|
+| 64B |    152.84 Kops/s |     19.6 MB/s | 65524.7630 ms | 72575.0000 ms | 87530.2800 ms |    4.7 |    150.5 |    6.2 |    176.3 |

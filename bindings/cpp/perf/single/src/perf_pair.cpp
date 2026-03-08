@@ -19,6 +19,7 @@ bool send_single_payload_once (zlink::socket_t &socket,
 }
 
 int recv_header_single_part (zlink::socket_t &socket,
+                             std::vector<char> &recv_buffer,
                              size_t expected_size,
                              zlink::recv_flag flags,
                              perf_single_metric::header_t *header_out,
@@ -27,8 +28,7 @@ int recv_header_single_part (zlink::socket_t &socket,
     if (header_ok_out)
         *header_ok_out = false;
 
-    zlink::message_t msg;
-    const int rc = socket.recv (msg, flags);
+    const int rc = socket.recv (recv_buffer.data (), recv_buffer.size (), flags);
     if (rc < 0) {
         const int err = errno;
         if (err == EAGAIN || err == EINTR)
@@ -36,13 +36,17 @@ int recv_header_single_part (zlink::socket_t &socket,
         return -1;
     }
 
-    if (msg.more () || msg.size () != expected_size)
+    int more = 0;
+    if (socket.get (zlink::socket_options::rcvmore, more) != 0
+        || more != 0
+        || static_cast<size_t> (rc) != expected_size) {
         return -1;
+    }
 
     bool header_ok = false;
     if (header_out) {
         header_ok = perf_single_metric::decode_payload_header (
-          msg.data (), msg.size (), header_out);
+          recv_buffer.data (), static_cast<size_t> (rc), header_out);
     }
 
     if (header_ok_out)
@@ -51,6 +55,7 @@ int recv_header_single_part (zlink::socket_t &socket,
 }
 
 bool drain_recv_queue (zlink::socket_t &socket,
+                       std::vector<char> &recv_buffer,
                        size_t payload_size,
                        uint32_t run_id,
                        perf_single_metric::phase_t phase,
@@ -63,7 +68,12 @@ bool drain_recv_queue (zlink::socket_t &socket,
         perf_single_metric::header_t header;
         bool header_ok = false;
         const int recv_rc = recv_header_single_part (
-          socket, payload_size, zlink::recv_flag::dontwait, &header, &header_ok);
+          socket,
+          recv_buffer,
+          payload_size,
+          zlink::recv_flag::dontwait,
+          &header,
+          &header_ok);
         if (recv_rc == 0)
             return true;
         if (recv_rc < 0)
@@ -103,6 +113,7 @@ bool run_phase (zlink::socket_t &sender,
 
     const size_t payload_size = payload.size ();
     const bool active = phase == perf_single_metric::phase_active;
+    std::vector<char> recv_buffer (payload_size);
 
     perf::single::latency_stats_builder_t latency_builder (
       perf::single::resolve_single_latency_sample_cap ());
@@ -126,7 +137,12 @@ bool run_phase (zlink::socket_t &sender,
         perf_single_metric::header_t header;
         bool header_ok = false;
         const int recv_rc = recv_header_single_part (
-          receiver, payload_size, zlink::recv_flag::none, &header, &header_ok);
+          receiver,
+          recv_buffer,
+          payload_size,
+          zlink::recv_flag::none,
+          &header,
+          &header_ok);
         if (recv_rc <= 0)
             return false;
         if (queue_probe)
@@ -146,6 +162,7 @@ bool run_phase (zlink::socket_t &sender,
         }
 
         return drain_recv_queue (receiver,
+                                 recv_buffer,
                                  payload_size,
                                  run_id,
                                  phase,

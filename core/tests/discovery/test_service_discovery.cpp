@@ -108,11 +108,8 @@ static void test_discovery_provider_registration ()
 
     char advertise_ep[256] = {0};
     size_t advertise_len = sizeof (advertise_ep);
-    void *router = zlink_receiver_router_socket_unsafe(provider);
-    TEST_ASSERT_NOT_NULL (router);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, advertise_ep,
-                        &advertise_len));
+      zlink_receiver_last_endpoint (provider, advertise_ep, &advertise_len));
 
     step_log ("connect to registry and register");
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -202,10 +199,8 @@ static void test_discovery_service_filtering ()
 
     char advertise_a[256] = {0};
     size_t advertise_len = sizeof (advertise_a);
-    void *router_a = zlink_receiver_router_socket_unsafe(provider_a);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router_a, ZLINK_LAST_ENDPOINT, advertise_a,
-                        &advertise_len));
+      zlink_receiver_last_endpoint (provider_a, advertise_a, &advertise_len));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider_a,
@@ -225,10 +220,8 @@ static void test_discovery_service_filtering ()
 
     char advertise_b[256] = {0};
     advertise_len = sizeof (advertise_b);
-    void *router_b = zlink_receiver_router_socket_unsafe(provider_b);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router_b, ZLINK_LAST_ENDPOINT, advertise_b,
-                        &advertise_len));
+      zlink_receiver_last_endpoint (provider_b, advertise_b, &advertise_len));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider_b,
@@ -341,10 +334,8 @@ static void test_discovery_heartbeat_timeout ()
 
     char advertise_ep[256] = {0};
     size_t advertise_len = sizeof (advertise_ep);
-    void *router = zlink_receiver_router_socket_unsafe(provider);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, advertise_ep,
-                        &advertise_len));
+      zlink_receiver_last_endpoint (provider, advertise_ep, &advertise_len));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider, "inproc://reg-router-hb"));
@@ -434,11 +425,8 @@ static void test_discovery_weight_update ()
 
     char advertise_ep[256] = {0};
     size_t advertise_len = sizeof (advertise_ep);
-    void *router = zlink_receiver_router_socket_unsafe(provider);
-    TEST_ASSERT_NOT_NULL (router);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, advertise_ep,
-                        &advertise_len));
+      zlink_receiver_last_endpoint (provider, advertise_ep, &advertise_len));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider, "inproc://reg-router-weight"));
@@ -530,11 +518,8 @@ static void test_discovery_weight_update_stress ()
 
     char advertise_ep[256] = {0};
     size_t advertise_len = sizeof (advertise_ep);
-    void *router = zlink_receiver_router_socket_unsafe(provider);
-    TEST_ASSERT_NOT_NULL (router);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, advertise_ep,
-                        &advertise_len));
+      zlink_receiver_last_endpoint (provider, advertise_ep, &advertise_len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_connect_registry (
       provider, "inproc://reg-router-weight-stress"));

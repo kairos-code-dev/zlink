@@ -90,18 +90,17 @@ public final class PerfMultiStreamLen32BeServer {
                     payloadSeen.incrementAndGet();
                     lastActivityNs.set(System.nanoTime());
                     try {
-                        int sent = server.streamSend(routingId,
-                            packet.dataSegment(), SendFlag.NONE);
+                        int sent = server.streamSend(routingId, packet,
+                            SendFlag.NONE);
+                        packets[i] = null;
                         if (sent <= 0) {
                             callbackFailed.set(true);
                             stopRequested.set(true);
-                            packet.close();
                             return 1;
                         }
                     } catch (RuntimeException ex) {
                         callbackFailed.set(true);
                         stopRequested.set(true);
-                        packet.close();
                         return 1;
                     }
                 }

@@ -57,50 +57,45 @@ void cleanup_fixture (spot_fixture_t *fixture_)
         TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (fixture_->ctx));
 }
 
-void configure_pub_node (void *node_, int sndtimeo_ms_)
+void configure_pub (void *spot_pub_, int sndtimeo_ms_)
 {
     int pub_mode = ZLINK_SPOT_NODE_PUB_MODE_SYNC;
     int linger = 0;
     int xpub_nodrop = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-      node_, ZLINK_SPOT_NODE_SOCKET_NODE, ZLINK_SPOT_NODE_OPT_PUB_MODE,
-      &pub_mode, sizeof (pub_mode)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-      node_, ZLINK_SPOT_NODE_SOCKET_PUB, ZLINK_SNDHWM, &kSocketHwm,
-      sizeof (kSocketHwm)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-      node_, ZLINK_SPOT_NODE_SOCKET_PUB, ZLINK_LINGER, &linger,
-      sizeof (linger)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-      node_, ZLINK_SPOT_NODE_SOCKET_PUB, ZLINK_XPUB_NODROP, &xpub_nodrop,
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
+      spot_pub_, ZLINK_SPOT_PUB_OPT_MODE, &pub_mode, sizeof (pub_mode)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
+      spot_pub_, ZLINK_SPOT_PUB_OPT_SNDHWM, &kSocketHwm, sizeof (kSocketHwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
+      spot_pub_, ZLINK_SPOT_PUB_OPT_LINGER, &linger, sizeof (linger)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
+      spot_pub_, ZLINK_SPOT_PUB_OPT_NODROP, &xpub_nodrop,
       sizeof (xpub_nodrop)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-      node_, ZLINK_SPOT_NODE_SOCKET_PUB, ZLINK_SNDTIMEO, &sndtimeo_ms_,
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
+      spot_pub_, ZLINK_SPOT_PUB_OPT_SNDTIMEO, &sndtimeo_ms_,
       sizeof (sndtimeo_ms_)));
 }
 
-void configure_sub_node (void *node_)
+void configure_sub (void *spot_sub_)
 {
     int nodrop = 1;
     int linger = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-      node_, ZLINK_SPOT_NODE_SOCKET_SUB, ZLINK_RCVHWM, &kSocketHwm,
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_set_option (
+      spot_sub_, ZLINK_SPOT_SUB_OPT_RCVHWM, &kSocketHwm,
       sizeof (kSocketHwm)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-      node_, ZLINK_SPOT_NODE_SOCKET_SUB, ZLINK_RCVTIMEO, &kRecvTimeoutMs,
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_set_option (
+      spot_sub_, ZLINK_SPOT_SUB_OPT_RCVTIMEO, &kRecvTimeoutMs,
       sizeof (kRecvTimeoutMs)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-      node_, ZLINK_SPOT_NODE_SOCKET_SUB, ZLINK_LINGER, &linger,
-      sizeof (linger)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-      node_, ZLINK_SPOT_NODE_SOCKET_SUB, ZLINK_XPUB_NODROP, &nodrop,
-      sizeof (nodrop)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_set_option (
+      spot_sub_, ZLINK_SPOT_SUB_OPT_LINGER, &linger, sizeof (linger)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_set_option (
+      spot_sub_, ZLINK_SPOT_SUB_OPT_QUEUE_NODROP, &nodrop, sizeof (nodrop)));
 }
 
-void set_pub_send_timeout (void *node_, int sndtimeo_ms_)
+void set_pub_send_timeout (void *spot_pub_, int sndtimeo_ms_)
 {
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
-      node_, ZLINK_SPOT_NODE_SOCKET_PUB, ZLINK_SNDTIMEO, &sndtimeo_ms_,
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
+      spot_pub_, ZLINK_SPOT_PUB_OPT_SNDTIMEO, &sndtimeo_ms_,
       sizeof (sndtimeo_ms_)));
 }
 
@@ -194,18 +189,17 @@ void setup_fixture (spot_fixture_t *fixture_, const char *endpoint_)
     fixture_->sub_node = zlink_spot_node_new (fixture_->ctx);
     TEST_ASSERT_NOT_NULL (fixture_->sub_node);
 
-    configure_pub_node (fixture_->pub_node, 0);
-    configure_sub_node (fixture_->sub_node);
+    fixture_->spot_pub = zlink_spot_pub_new (fixture_->pub_node);
+    TEST_ASSERT_NOT_NULL (fixture_->spot_pub);
+    fixture_->spot_sub = zlink_spot_sub_new (fixture_->sub_node);
+    TEST_ASSERT_NOT_NULL (fixture_->spot_sub);
+    configure_pub (fixture_->spot_pub, 0);
+    configure_sub (fixture_->spot_sub);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_bind (fixture_->pub_node, endpoint_));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer_pub (fixture_->sub_node, endpoint_));
-
-    fixture_->spot_pub = zlink_spot_pub_new (fixture_->pub_node);
-    TEST_ASSERT_NOT_NULL (fixture_->spot_pub);
-    fixture_->spot_sub = zlink_spot_sub_new (fixture_->sub_node);
-    TEST_ASSERT_NOT_NULL (fixture_->spot_sub);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_sub_subscribe (fixture_->spot_sub, kTopic));
 
@@ -224,7 +218,7 @@ void test_spot_blocking_send_wakes_after_receiver_drains ()
     msleep (kProbeWaitMs);
     assert_backpressured_now (fixture.spot_pub);
 
-    set_pub_send_timeout (fixture.pub_node, kSendTimeoutMs);
+    set_pub_send_timeout (fixture.spot_pub, kSendTimeoutMs);
     char payload[kMsgSize];
     memset (payload, 'a', sizeof (payload));
 
@@ -268,7 +262,7 @@ void test_spot_blocking_send_times_out_without_receiver_reads ()
     msleep (kProbeWaitMs);
     assert_backpressured_now (fixture.spot_pub);
 
-    set_pub_send_timeout (fixture.pub_node, kTimeoutSendMs);
+    set_pub_send_timeout (fixture.spot_pub, kTimeoutSendMs);
     char payload[kMsgSize];
     memset (payload, 'b', sizeof (payload));
 

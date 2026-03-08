@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cerrno>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -35,10 +36,17 @@ bool run_phase (zlink::socket_t &publisher,
                 uint64_t &seq,
                 perf_metric::phase_t phase,
                 std::chrono::steady_clock::duration duration,
+                bool send_active,
                 const perf::multi::multi_bench_settings_t &settings)
 {
     if (duration <= std::chrono::steady_clock::duration::zero ())
         return true;
+
+    if (!send_active) {
+        std::this_thread::sleep_for (
+          std::chrono::duration_cast<std::chrono::milliseconds> (duration));
+        return true;
+    }
 
     bool pending = false;
     const auto deadline = std::chrono::steady_clock::now () + duration;
@@ -87,13 +95,13 @@ bool run_phase (zlink::socket_t &publisher,
 
 } // namespace
 
-void perf_pubsub_server (const std::string &transport, size_t msg_size)
+bool perf_pubsub_server (const std::string &transport, size_t msg_size)
 {
     perf::multi::set_perf_pattern_env ("PUBSUB");
 
     if (!perf::multi::is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED,MULTI_PUBSUB," << transport << std::endl;
-        return;
+        return true;
     }
 
     const perf::multi::multi_bench_settings_t settings =
@@ -102,19 +110,33 @@ void perf_pubsub_server (const std::string &transport, size_t msg_size)
     perf::multi::ctx_guard_t ctx;
     perf::multi::socket_guard_t publisher (ctx, zlink::socket_type::pub);
     if (!publisher.valid ())
-        return;
+        return false;
 
     perf::multi::apply_benchmark_socket_options (
       publisher.sock (), settings, transport);
     if (!perf::multi::setup_tls_server (publisher.sock (), transport))
-        return;
+        return false;
 
     const std::string endpoint = perf::multi::bind_and_resolve_endpoint (
       publisher.sock (), transport, "cpp_multi_pubsub", settings.server_bind_port);
     if (endpoint.empty ())
-        return;
+        return false;
+
+    perf::multi::connect_monitor_t connect_monitor;
+    if (!perf::multi::open_connect_monitor (publisher.sock (), connect_monitor))
+        return false;
 
     perf::multi::print_ready (endpoint);
+
+    if (!perf::multi::wait_connect_ready_count (connect_monitor,
+                                                settings.clients,
+                                                settings.connect_ready_timeout_ms)) {
+        perf::multi::close_connect_monitor (connect_monitor);
+        std::cerr << "PUBSUB_SERVER_FAIL,stage=connect_ready,transport="
+                  << transport << ",size=" << msg_size << std::endl;
+        return false;
+    }
+    perf::multi::close_connect_monitor (connect_monitor);
 
     std::vector<char> payload (
       std::max<size_t> (msg_size, perf_metric::header_size ()), 'p');
@@ -135,8 +157,9 @@ void perf_pubsub_server (const std::string &transport, size_t msg_size)
                     seq,
                     perf_metric::phase_warmup,
                     std::chrono::seconds (std::max (0, settings.warmup_seconds)),
+                    true,
                     settings))
-        return;
+        return false;
     if (!run_phase (publisher.sock (),
                     poller,
                     events,
@@ -146,8 +169,9 @@ void perf_pubsub_server (const std::string &transport, size_t msg_size)
                     seq,
                     perf_metric::phase_drain,
                     std::chrono::milliseconds (std::max (0, settings.settle_ms)),
+                    false,
                     settings))
-        return;
+        return false;
     if (!run_phase (publisher.sock (),
                     poller,
                     events,
@@ -157,8 +181,9 @@ void perf_pubsub_server (const std::string &transport, size_t msg_size)
                     seq,
                     perf_metric::phase_active,
                     std::chrono::seconds (std::max (1, settings.duration_seconds)),
+                    true,
                     settings))
-        return;
+        return false;
 
     perf::multi::print_server_queue_metrics (
       "current",
@@ -166,6 +191,8 @@ void perf_pubsub_server (const std::string &transport, size_t msg_size)
       transport,
       msg_size,
       perf::multi::server_queue_stats_t ());
+
+    return true;
 }
 
 int main (int argc, char **argv)
@@ -180,6 +207,5 @@ int main (int argc, char **argv)
     if (size == 0)
         return 1;
 
-    perf_pubsub_server (transport, size);
-    return 0;
+    return perf_pubsub_server (transport, size) ? 0 : 1;
 }

@@ -20,6 +20,9 @@ static const uint16_t msg_heartbeat = 0x0004;
 static const uint16_t msg_service_list = 0x0005;
 static const uint16_t msg_registry_sync = 0x0006;
 static const uint16_t msg_update_weight = 0x0007;
+static const uint16_t msg_topology_report = 0x0008;
+static const uint16_t msg_topology_query = 0x0009;
+static const uint16_t msg_topology_reply = 0x000A;
 
 static const uint16_t service_type_gateway_receiver = 1;
 static const uint16_t service_type_spot_node = 2;

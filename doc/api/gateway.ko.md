@@ -6,19 +6,29 @@ Gateway는 Discovery를 통해 서비스 위치를 자동으로 확인하는 클
 로드 밸런싱 요청/응답 프록시입니다. 필요에 따라 Receiver에 연결하고 구성
 가능한 로드 밸런싱 전략을 사용하여 메시지를 분배합니다.
 
+## 현재 권장 API 방향
+
+- 공개 서비스 옵션 설정은 `zlink_gateway_set_option()`을 사용합니다.
+- 대표 identity는 `zlink_gateway_set_routing_id()` /
+  `zlink_gateway_routing_id()`로 다룹니다.
+- `ZLINK_GATEWAY_SERVICE_READY`, `ZLINK_GATEWAY_ROUTE_UP` 같은 상태 전이는
+  `zlink_gateway_monitor_open()`으로 관찰합니다.
+- 데이터 readiness는 `zlink_poller_add_gateway()`, monitor readiness는
+  `zlink_poller_add_monitor()`으로 같은 루프에 통합합니다.
+- `zlink_gateway_connection_count()`는 디버그/점검 용도로만 보고,
+  새 코드의 기본 readiness 경로로는 사용하지 않는 것이 좋습니다.
+
 ## 상수
 
 ```c
 #define ZLINK_GATEWAY_LB_ROUND_ROBIN 0
 #define ZLINK_GATEWAY_LB_WEIGHTED    1
-#define ZLINK_GATEWAY_SOCKET_ROUTER  1
 ```
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
 | `ZLINK_GATEWAY_LB_ROUND_ROBIN` | 0 | 라운드 로빈 로드 밸런싱 (기본값) |
 | `ZLINK_GATEWAY_LB_WEIGHTED` | 1 | 수신자 가중치 기반 가중 로드 밸런싱 |
-| `ZLINK_GATEWAY_SOCKET_ROUTER` | 1 | 통신에 사용되는 내부 ROUTER 소켓 |
 
 ## 함수
 
@@ -217,36 +227,6 @@ Receiver가 보고한 가중치 값이 분배 비율을 결정합니다.
 
 ---
 
-### zlink_gateway_setsockopt
-
-Gateway 소켓 옵션을 설정합니다.
-
-```c
-int zlink_gateway_setsockopt(void *gateway,
-                             int option,
-                             const void *optval,
-                             size_t optvallen);
-```
-
-Gateway의 내부 ROUTER 소켓에 저수준 소켓 옵션을 적용합니다. 일반적으로
-송수신 하이워터마크, 타임아웃 또는 keep-alive 설정을 구성하는 데 사용됩니다.
-기본값:
-- `ZLINK_SNDHWM = 300000`
-- `ZLINK_RCVHWM = 300000`
-- `ZLINK_SNDTIMEO = -1`
-- `ZLINK_RCVTIMEO = -1`
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**에러:**
-- `EINVAL` -- 알 수 없는 옵션.
-
-**스레드 안전성:** 스레드 안전하지 않음.
-
-**참고:** `zlink_gateway_new`
-
----
-
 ### zlink_gateway_set_tls_client
 
 Gateway의 TLS 클라이언트 설정을 구성합니다.
@@ -272,26 +252,6 @@ Receiver 인증서를 검증하는 데 사용되는 CA 인증서 파일 경로�
 
 ---
 
-### zlink_gateway_router_socket_unsafe
-
-내부 ROUTER 소켓 핸들을 반환합니다.
-
-```c
-void *zlink_gateway_router_socket_unsafe(void *gateway);
-```
-
-Gateway가 내부적으로 사용하는 원시 ROUTER 소켓 핸들을 반환합니다. 이는
-진단 및 커스텀 폴링과 같은 고급 사용 사례를 위한 것입니다. 호출자는 소켓을
-닫거나 수정해서는 안 됩니다.
-
-**반환값:** ROUTER 소켓 핸들, Gateway가 유효하지 않으면 `NULL`.
-
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
-
-**참고:** `zlink_gateway_new`
-
----
-
 ### zlink_gateway_router_peers
 
 Gateway ROUTER 소켓의 peer queue 정보를 조회합니다.
@@ -310,7 +270,7 @@ int zlink_gateway_router_peers(void *gateway,
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
-**참고:** `zlink_socket_peers`, `zlink_gateway_router_socket_unsafe`
+**참고:** `zlink_socket_peers`, `zlink_gateway_connection_count`
 
 ---
 
@@ -331,6 +291,78 @@ Discovery가 보고하는 수가 아닌 활성 전송 수준 연결을 반영합
 **스레드 안전성:** 스레드 안전하지 않음.
 
 **참고:** `zlink_discovery_receiver_count`
+
+---
+
+### zlink_gateway_set_option
+
+Gateway 서비스 옵션을 설정합니다.
+
+```c
+int zlink_gateway_set_option(void *gateway,
+                              int option,
+                              const void *optval,
+                              size_t optvallen);
+```
+
+Gateway에 서비스 레벨 옵션을 적용합니다. 사용 가능한 옵션 상수:
+
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `ZLINK_GATEWAY_OPT_SNDHWM` | 1 | 송신 고수위 마크 |
+| `ZLINK_GATEWAY_OPT_RCVHWM` | 2 | 수신 고수위 마크 |
+| `ZLINK_GATEWAY_OPT_SNDTIMEO` | 3 | 송신 타임아웃 (ms) |
+| `ZLINK_GATEWAY_OPT_RCVTIMEO` | 4 | 수신 타임아웃 (ms) |
+| `ZLINK_GATEWAY_OPT_LINGER` | 5 | Linger 기간 (ms) |
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**에러:**
+- `EINVAL` -- 알 수 없는 옵션.
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_gateway_new`
+
+---
+
+### zlink_gateway_set_routing_id
+
+첫 사용 전에 대표 routing id를 재정의합니다.
+
+```c
+int zlink_gateway_set_routing_id(void *gateway,
+                                  const void *data,
+                                  size_t size);
+```
+
+이 Gateway의 커스텀 라우팅 아이덴티티를 설정합니다. 메시지 전송 전에
+호출해야 합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_gateway_routing_id`
+
+---
+
+### zlink_gateway_routing_id
+
+이 Gateway의 대표 routing id를 반환합니다.
+
+```c
+int zlink_gateway_routing_id(void *gateway,
+                              zlink_routing_id_t *out);
+```
+
+현재 Gateway의 라우팅 아이덴티티를 가져옵니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_gateway_set_routing_id`
 
 ---
 

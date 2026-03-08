@@ -7,6 +7,7 @@
 
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
+#include "services/common/service_monitor.hpp"
 #include "services/discovery/discovery.hpp"
 #include "utils/clock.hpp"
 #include "utils/atomic_counter.hpp"
@@ -46,12 +47,17 @@ class gateway_t : public discovery_observer_t
                   int flags_);
 
     int set_lb_strategy (const char *service_name_, int strategy_);
+    int set_routing_id (const void *data_, size_t size_);
+    int routing_id (zlink_routing_id_t *out_);
+    int set_option (int option_, const void *optval_, size_t optvallen_);
     int set_socket_option (int option_,
                            const void *optval_,
                            size_t optvallen_);
+    void *monitor_open (int events_);
     void *poller_socket ();
     void *router ();
     bool enter_pollable_mode ();
+    void lock_routing_id ();
     int ensure_facade_mode () const;
     int connection_count (const char *service_name_);
     int set_tls_client (const char *ca_cert_,
@@ -92,8 +98,20 @@ class gateway_t : public discovery_observer_t
                              int flags_);
 
     void process_monitor_events ();
+    void emit_event (uint32_t event_type_,
+                     const std::string &service_name_,
+                     const std::string &endpoint_,
+                     const zlink_routing_id_t *routing_id_,
+                     uint32_t value_,
+                     int32_t error_code_);
+    void report_topology (const std::string &service_name_,
+                          const std::string &endpoint_,
+                          uint16_t state_,
+                          uint32_t ready_count_,
+                          int32_t error_code_);
     static void refresh_task (void *arg_);
     void refresh_tick ();
+    int ensure_topology_reporter ();
 
     ctx_t *_ctx;
     discovery_t *_discovery;
@@ -114,8 +132,10 @@ class gateway_t : public discovery_observer_t
     std::set<std::string> _pending_updates;
     void *_monitor_socket;
     socket_base_t *_router_socket;
+    socket_base_t *_report_dealer;
     bool _use_lock;
     bool _pollable_mode;
+    bool _routing_id_locked;
     atomic_counter_t _stop;
     uint64_t _refresh_task_id;
     uint32_t _refresh_interval_ms;
@@ -125,7 +145,10 @@ class gateway_t : public discovery_observer_t
     std::string _tls_ca;
     std::string _tls_hostname;
     int _tls_trust_system;
+    zlink_routing_id_t _routing_id;
     std::string _routing_id_override;
+    service_monitor_hub_t _monitor;
+    std::set<std::string> _connected_report_endpoints;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (gateway_t)
 };

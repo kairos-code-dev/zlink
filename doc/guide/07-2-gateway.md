@@ -2,6 +2,18 @@
 
 # Gateway Service (Location-Transparent Request/Reply)
 
+> Current direction: use service-level APIs for identity, options, readiness,
+> and topology.
+>
+> - `zlink_gateway_set_option()` / `zlink_receiver_set_option()`
+> - `zlink_gateway_set_routing_id()` / `zlink_receiver_set_routing_id()`
+> - `zlink_gateway_monitor_open()` / `zlink_receiver_monitor_open()`
+> - `zlink_poller_add_gateway()` / `zlink_poller_add_receiver()` /
+>   `zlink_poller_add_monitor()`
+>
+> `zlink_receiver_register_result()` remains available only for low-level
+> registration debugging.
+
 ## 1. Overview
 
 Gateway is a client component that sends messages to service Receivers in a location-transparent manner based on Discovery, and receives replies from Receivers. It handles load balancing and automatic connect/disconnect.
@@ -21,8 +33,13 @@ zlink_receiver_bind(receiver, "tcp://*:5555");
 /* Connect to Registry */
 zlink_receiver_connect_registry(receiver, "tcp://registry1:5551");
 
-/* Register service (advertise_endpoint auto-detected) */
-zlink_receiver_register(receiver, "payment-service", NULL, 1);
+/* Resolve advertised endpoint from the bound service */
+char advertise_endpoint[256];
+size_t advertise_len = sizeof(advertise_endpoint);
+zlink_receiver_last_endpoint(receiver, advertise_endpoint, &advertise_len);
+
+/* Register service */
+zlink_receiver_register(receiver, "payment-service", advertise_endpoint, 1);
 
 /* Check registration result */
 int status;
@@ -35,8 +52,11 @@ if (status != 0) {
 }
 
 /* Process business messages */
-void *router = zlink_receiver_router_socket_unsafe(receiver);
-/* Receive/reply [routing_id][msgId][payload...] from router */
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+zlink_routing_id_t client_rid;
+zlink_receiver_recv(receiver, &parts, &part_count, 0, &client_rid);
+/* Process multipart request and reply via Gateway/Receiver service APIs */
 
 zlink_receiver_destroy(&receiver);
 ```
@@ -86,16 +106,19 @@ char service_name[256];
 int rc = zlink_gateway_recv(gateway, &parts, &part_count, 0, service_name);
 if (rc != -1) {
     /* Process parts[0..part_count-1] */
-    zlink_msgv_close(parts, part_count);
+    zlink_multipart_close(parts, part_count);
 }
 ```
 
 ### 4.3 Receiving/Replying on the Receiver Side
 
 ```c
-/* Receive and reply on the Receiver's ROUTER socket */
-void *router = zlink_receiver_router_socket_unsafe(receiver);
-/* Receive [routing_id][msgId][payload...] and process reply */
+/* Receive and reply on the Receiver service handle */
+zlink_msg_t *req_parts = NULL;
+size_t req_count = 0;
+zlink_routing_id_t client_rid;
+zlink_receiver_recv(receiver, &req_parts, &req_count, 0, &client_rid);
+/* Process [payload...] and reply */
 ```
 
 ## 5. Load Balancing
@@ -131,7 +154,7 @@ All public Gateway APIs are protected by internal mutexes. They are safe to call
 - `zlink_gateway_send_rid_bytes()`
 - `zlink_gateway_recv()`
 - `zlink_gateway_set_lb_strategy()`
-- `zlink_gateway_setsockopt()`
+- `zlink_gateway_set_option()`
 - `zlink_gateway_set_tls_client()`
 - `zlink_gateway_connection_count()`
 
@@ -152,7 +175,7 @@ void *send_worker(void *arg) {
 
 /* Concurrent sends from multiple threads */
 for (int i = 0; i < 4; i++)
-    zlink_threadstart(&send_worker, gateway);
+    zlink_thread_start(&send_worker, gateway);
 ```
 
 ### Advantages
@@ -247,9 +270,8 @@ zlink_ctx_term(ctx);
 | `zlink_gateway_send_rid(...)` | Send to specific Receiver |
 | `zlink_gateway_send_rid_bytes(...)` | Send single-part byte message to specific Receiver |
 | `zlink_gateway_set_lb_strategy(...)` | Set LB strategy |
-| `zlink_gateway_setsockopt(...)` | Set socket options |
+| `zlink_gateway_set_option(...)` | Set service options |
 | `zlink_gateway_set_tls_client(...)` | Set TLS client configuration |
-| `zlink_gateway_router_socket_unsafe(...)` | Get ROUTER socket |
 | `zlink_gateway_connection_count(...)` | Get connected Receiver count |
 | `zlink_gateway_destroy(...)` | Destroy |
 
@@ -264,8 +286,9 @@ zlink_ctx_term(ctx);
 | `zlink_receiver_update_weight(...)` | Update weight |
 | `zlink_receiver_unregister(...)` | Unregister service |
 | `zlink_receiver_set_tls_server(...)` | Set TLS server configuration |
-| `zlink_receiver_setsockopt(...)` | Set socket options |
-| `zlink_receiver_router_socket_unsafe(...)` | Get ROUTER socket |
+| `zlink_receiver_set_option(...)` | Set service options |
+| `zlink_receiver_recv(...)` | Receive one multipart request |
+| `zlink_receiver_last_endpoint(...)` | Resolve bound advertise endpoint |
 | `zlink_receiver_destroy(...)` | Destroy |
 
 ---

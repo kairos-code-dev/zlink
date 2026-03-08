@@ -2632,12 +2632,12 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
 
 def _table_header_line(is_multi):
     size_w = 8
-    tp_w = 16
-    bw_w = 12
-    lat_w = 12
-    lat95_w = 12
-    lat99_w = 12
-    cpu_w = 6
+    tp_w = 18
+    bw_w = 14
+    lat_w = 13
+    lat95_w = 13
+    lat99_w = 13
+    cpu_w = 7
     mem_w = 8
     sndq_w = 9
     rcvq_w = 9
@@ -2658,12 +2658,12 @@ def _table_header_line(is_multi):
 
 def _table_separator_line(is_multi):
     size_w = 8
-    tp_w = 16
-    bw_w = 12
-    lat_w = 12
-    lat95_w = 12
-    lat99_w = 12
-    cpu_w = 6
+    tp_w = 18
+    bw_w = 14
+    lat_w = 13
+    lat95_w = 13
+    lat99_w = 13
+    cpu_w = 7
     mem_w = 8
     sndq_w = 9
     rcvq_w = 9
@@ -2726,22 +2726,22 @@ def _emit_table_row(
         bw_s = format_bandwidth(bandwidth if bandwidth is not None else 0.0)
         if is_multi:
             lat_s = (
-                f"{((latency_mean if latency_mean is not None else 0.0) / 1000.0):8.2f} ms"
+                f"{((latency_mean if latency_mean is not None else 0.0) / 1000.0):9.3f} ms"
             )
             lat95_s = (
-                f"{((latency_p95_value if latency_p95_value is not None else 0.0) / 1000.0):8.2f} ms"
+                f"{((latency_p95_value if latency_p95_value is not None else 0.0) / 1000.0):9.3f} ms"
             )
             lat99_s = (
-                f"{((latency_p99_value if latency_p99_value is not None else 0.0) / 1000.0):8.2f} ms"
+                f"{((latency_p99_value if latency_p99_value is not None else 0.0) / 1000.0):9.3f} ms"
             )
         else:
-            lat_s = f"{(latency_mean if latency_mean is not None else 0.0):8.2f} us"
-            lat95_s = f"{(latency_p95_value if latency_p95_value is not None else 0.0):8.2f} us"
-            lat99_s = f"{(latency_p99_value if latency_p99_value is not None else 0.0):8.2f} us"
-        cpu_s = f"{float(client_cpu):4.1f}" if client_cpu is not None else "N/A"
-        mem_s = f"{float(client_mem):6.1f}" if client_mem is not None else "N/A"
-        server_cpu_s = f"{float(server_cpu):4.1f}" if server_cpu is not None else "N/A"
-        server_mem_s = f"{float(server_mem):6.1f}" if server_mem is not None else "N/A"
+            lat_s = f"{(latency_mean if latency_mean is not None else 0.0):9.3f} us"
+            lat95_s = f"{(latency_p95_value if latency_p95_value is not None else 0.0):9.3f} us"
+            lat99_s = f"{(latency_p99_value if latency_p99_value is not None else 0.0):9.3f} us"
+        cpu_s = f"{float(client_cpu):6.3f}" if client_cpu is not None else "N/A"
+        mem_s = f"{float(client_mem):8.3f}" if client_mem is not None else "N/A"
+        server_cpu_s = f"{float(server_cpu):6.3f}" if server_cpu is not None else "N/A"
+        server_mem_s = f"{float(server_mem):8.3f}" if server_mem is not None else "N/A"
         server_sndq_s = (
             f"{int(round(float(server_sndq_max))):d}"
             if server_sndq_max is not None
@@ -3537,11 +3537,11 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
     return final_stats, failures
 def format_throughput(pattern_name, throughput_per_sec):
     unit = "Kops/s" if is_echo_pattern(pattern_name) else "Kmsg/s"
-    return f"{throughput_per_sec/1e3:6.2f} {unit}"
+    return f"{throughput_per_sec/1e3:8.3f} {unit}"
 
 
 def format_bandwidth(bandwidth_mb_s):
-    return f"{bandwidth_mb_s:8.2f} MB/s"
+    return f"{bandwidth_mb_s:10.3f} MB/s"
 
 
 def get_os_label():
@@ -3992,7 +3992,7 @@ def emit_result_lines(result_map):
     for key in sorted(result_map.keys()):
         pattern, transport, size, metric = key
         value = result_map[key]
-        print(f"RESULT,current,{pattern},{transport},{size},{metric},{value:.2f}")
+        print(f"RESULT,current,{pattern},{transport},{size},{metric},{value:.3f}")
 
 
 def parse_args():

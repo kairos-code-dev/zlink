@@ -6,6 +6,19 @@ SPOT은 Discovery를 통한 자동 메시 형성으로 토픽 기반의 위치 �
 발행/구독 메시징을 제공합니다. SPOT 배포는 메시를 형성하는 하나 이상의 노드,
 메시지를 주입하는 Publisher, 메시지를 소비하는 Subscriber로 구성됩니다.
 
+## 현재 권장 API 방향
+
+- `SpotNode`는 bind/connect/discovery/TLS를 담당하는 wiring owner입니다.
+- 실제 public service surface는 `SpotPub`과 `SpotSub`입니다.
+- 서비스 옵션은 `zlink_spot_pub_set_option()` /
+  `zlink_spot_sub_set_option()`으로 설정합니다.
+- 대표 identity는 `zlink_spot_pub_set_routing_id()` /
+  `zlink_spot_sub_set_routing_id()`로 다룹니다.
+- `ZLINK_SPOT_SUB_FILTER_APPLIED`, `ZLINK_SPOT_PUB_QUEUE_DRAINED` 같은
+  상태 전이는 `zlink_spot_pub_monitor_open()` /
+  `zlink_spot_sub_monitor_open()`으로 관찰합니다.
+- `SpotNode`는 bind/connect/discovery/TLS wiring 용도로만 사용합니다.
+
 ## 타입
 
 ```c
@@ -23,15 +36,6 @@ typedef void (*zlink_spot_sub_handler_fn)(const char *topic,
 ## 상수
 
 ```c
-#define ZLINK_SPOT_NODE_SOCKET_NODE   0
-#define ZLINK_SPOT_NODE_SOCKET_PUB    1
-#define ZLINK_SPOT_NODE_SOCKET_SUB    2
-#define ZLINK_SPOT_NODE_SOCKET_DEALER 3
-
-#define ZLINK_SPOT_NODE_OPT_PUB_MODE              1
-#define ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM         2
-#define ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY 3
-
 #define ZLINK_SPOT_NODE_PUB_MODE_SYNC  0
 #define ZLINK_SPOT_NODE_PUB_MODE_ASYNC 1
 
@@ -41,13 +45,6 @@ typedef void (*zlink_spot_sub_handler_fn)(const char *topic,
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_SPOT_NODE_SOCKET_NODE` | 0 | `zlink_spot_node_setsockopt`를 통한 노드 레벨 옵션 |
-| `ZLINK_SPOT_NODE_SOCKET_PUB` | 1 | 구독자 및 피어에 메시지를 게시하는 데 사용되는 PUB 소켓 |
-| `ZLINK_SPOT_NODE_SOCKET_SUB` | 2 | 피어 노드로부터 메시지를 수신하는 데 사용되는 SUB 소켓 |
-| `ZLINK_SPOT_NODE_SOCKET_DEALER` | 3 | Registry와의 통신에 사용되는 DEALER 소켓 |
-| `ZLINK_SPOT_NODE_OPT_PUB_MODE` | 1 | publish 모드 옵션(SYNC/ASYNC) |
-| `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM` | 2 | async publish 큐 high-water mark |
-| `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY` | 3 | async 큐 포화 시 정책(`EAGAIN`/drop) |
 | `ZLINK_SPOT_NODE_PUB_MODE_SYNC` | 0 | 호출자 스레드에서 즉시 publish(기본값) |
 | `ZLINK_SPOT_NODE_PUB_MODE_ASYNC` | 1 | worker 스레드가 처리하도록 enqueue |
 | `ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN` | 0 | async 큐 포화 시 `EAGAIN` 반환(기본값) |
@@ -293,89 +290,6 @@ CA 인증서 파일 경로를 지정합니다. `hostname` 매개변수는 인증
 
 ---
 
-### zlink_spot_node_pub_peers
-
-SPOT 노드 내부 PUB 소켓의 peer queue 정보를 조회합니다.
-
-```c
-int zlink_spot_node_pub_peers(void *node,
-                              zlink_peer_info_t *peers,
-                              size_t *count);
-```
-
-SPOT 노드 PUB 소켓에서 peer 단위 queue 통계(송신/수신 pending 메시지 수
-포함)를 반환합니다. 먼저 `peers = NULL`로 필요한 개수를 조회한 뒤, 버퍼를
-할당하여 다시 호출합니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
-
-**참고:** `zlink_socket_peers`
-
----
-
-### zlink_spot_node_sub_peers
-
-SPOT 노드 내부 SUB 소켓의 peer queue 정보를 조회합니다.
-
-```c
-int zlink_spot_node_sub_peers(void *node,
-                              zlink_peer_info_t *peers,
-                              size_t *count);
-```
-
-SPOT 노드 SUB 소켓에서 peer 단위 queue 통계(송신/수신 pending 메시지 수
-포함)를 반환합니다. 먼저 `peers = NULL`로 필요한 개수를 조회한 뒤, 버퍼를
-할당하여 다시 호출합니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
-
-**참고:** `zlink_socket_peers`
-
----
-
-### zlink_spot_node_setsockopt
-
-SPOT 노드 내부 옵션을 설정합니다.
-
-```c
-int zlink_spot_node_setsockopt(void *node,
-                               int socket_role,
-                               int option,
-                               const void *optval,
-                               size_t optvallen);
-```
-
-다음 두 범주를 설정할 수 있습니다.
-
-- 노드 레벨 옵션:
-  `socket_role = ZLINK_SPOT_NODE_SOCKET_NODE`,
-  `ZLINK_SPOT_NODE_OPT_*` 사용
-- 내부 소켓 저수준 옵션:
-  `ZLINK_SPOT_NODE_SOCKET_PUB/SUB/DEALER` 대상
-
-SPOT의 저수준 소켓 옵션 설정은 이 API만 지원합니다.
-
-async publish 모드 관련 옵션:
-
-- `ZLINK_SPOT_NODE_OPT_PUB_MODE`: `SYNC`(기본) 또는 `ASYNC`
-- `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM`: 큐 깊이 제한(0보다 커야 함)
-- `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY`: `EAGAIN`(기본) 또는 drop
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**에러:**
-- `EINVAL` -- 잘못된 소켓 역할 또는 알 수 없는 옵션.
-
-**스레드 안전성:** 스레드 안전하지 않음.
-
-**참고:** `zlink_spot_node_new`
-
----
-
 ## SPOT Pub
 
 SPOT Publisher는 노드에 연결되어 토픽 식별자로 메시지를 게시합니다. 동일한
@@ -398,6 +312,100 @@ Publisher의 수명 동안 유효해야 합니다.
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
 **참고:** `zlink_spot_pub_publish`, `zlink_spot_pub_destroy`
+
+---
+
+### zlink_spot_pub_set_option
+
+SpotPub 서비스 옵션을 설정합니다.
+
+```c
+int zlink_spot_pub_set_option(void *pub,
+                               int option,
+                               const void *optval,
+                               size_t optvallen);
+```
+
+Publisher에 서비스 레벨 옵션을 적용합니다. 사용 가능한 옵션 상수:
+
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `ZLINK_SPOT_PUB_OPT_SNDHWM` | 1 | 송신 고수위 마크 |
+| `ZLINK_SPOT_PUB_OPT_SNDTIMEO` | 2 | 송신 타임아웃 (ms) |
+| `ZLINK_SPOT_PUB_OPT_LINGER` | 3 | Linger 기간 (ms) |
+| `ZLINK_SPOT_PUB_OPT_NODROP` | 4 | HWM 도달 시 메시지 드롭하지 않음 |
+| `ZLINK_SPOT_PUB_OPT_MODE` | 5 | 발행 모드 (`SYNC` 또는 `ASYNC`) |
+| `ZLINK_SPOT_PUB_OPT_QUEUE_HWM` | 6 | 비동기 큐 고수위 마크 |
+| `ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY` | 7 | 비동기 큐 가득 참 정책 |
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**에러:**
+- `EINVAL` -- 알 수 없는 옵션.
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_spot_pub_new`
+
+---
+
+### zlink_spot_pub_set_routing_id
+
+첫 사용 전에 대표 routing id를 재정의합니다.
+
+```c
+int zlink_spot_pub_set_routing_id(void *pub,
+                                   const void *data,
+                                   size_t size);
+```
+
+이 Publisher의 커스텀 라우팅 아이덴티티를 설정합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_spot_pub_routing_id`
+
+---
+
+### zlink_spot_pub_routing_id
+
+이 SpotPub의 대표 routing id를 반환합니다.
+
+```c
+int zlink_spot_pub_routing_id(void *pub,
+                               zlink_routing_id_t *out);
+```
+
+현재 Publisher의 라우팅 아이덴티티를 가져옵니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_spot_pub_set_routing_id`
+
+---
+
+### zlink_spot_pub_peers
+
+SpotPub 피어 큐 통계를 조회합니다.
+
+```c
+int zlink_spot_pub_peers(void *pub,
+                          zlink_peer_info_t *peers,
+                          size_t *count);
+```
+
+Publisher의 기본 소켓에서 피어 단위 큐 통계를 반환합니다. 먼저
+`peers = NULL`로 필요한 개수를 조회한 뒤, 버퍼를 할당하여 다시 호출합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_socket_peers`
 
 ---
 
@@ -510,6 +518,98 @@ void *zlink_spot_sub_new(void *node);
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
 **참고:** `zlink_spot_sub_subscribe`, `zlink_spot_sub_destroy`
+
+---
+
+### zlink_spot_sub_set_option
+
+SpotSub 서비스 옵션을 설정합니다.
+
+```c
+int zlink_spot_sub_set_option(void *sub,
+                               int option,
+                               const void *optval,
+                               size_t optvallen);
+```
+
+Subscriber에 서비스 레벨 옵션을 적용합니다. 사용 가능한 옵션 상수:
+
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `ZLINK_SPOT_SUB_OPT_RCVHWM` | 1 | 수신 고수위 마크 |
+| `ZLINK_SPOT_SUB_OPT_RCVTIMEO` | 2 | 수신 타임아웃 (ms) |
+| `ZLINK_SPOT_SUB_OPT_LINGER` | 3 | Linger 기간 (ms) |
+| `ZLINK_SPOT_SUB_OPT_QUEUE_NODROP` | 4 | 큐 가득 참 시 메시지 드롭하지 않음 |
+| `ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY` | 5 | 큐 가득 참 정책 |
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**에러:**
+- `EINVAL` -- 알 수 없는 옵션.
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_spot_sub_new`
+
+---
+
+### zlink_spot_sub_set_routing_id
+
+첫 사용 전에 대표 routing id를 재정의합니다.
+
+```c
+int zlink_spot_sub_set_routing_id(void *sub,
+                                   const void *data,
+                                   size_t size);
+```
+
+이 Subscriber의 커스텀 라우팅 아이덴티티를 설정합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_spot_sub_routing_id`
+
+---
+
+### zlink_spot_sub_routing_id
+
+이 SpotSub의 대표 routing id를 반환합니다.
+
+```c
+int zlink_spot_sub_routing_id(void *sub,
+                               zlink_routing_id_t *out);
+```
+
+현재 Subscriber의 라우팅 아이덴티티를 가져옵니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_spot_sub_set_routing_id`
+
+---
+
+### zlink_spot_sub_peers
+
+SpotSub 피어 큐 통계를 조회합니다.
+
+```c
+int zlink_spot_sub_peers(void *sub,
+                          zlink_peer_info_t *peers,
+                          size_t *count);
+```
+
+Subscriber의 기본 소켓에서 피어 단위 큐 통계를 반환합니다. 먼저
+`peers = NULL`로 필요한 개수를 조회한 뒤, 버퍼를 할당하여 다시 호출합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_socket_peers`
 
 ---
 
@@ -742,8 +842,7 @@ if (zlink_poller_wait(poller, &ev, 1000) == 1) {
 
 | API | 용도 |
 |-----|------|
-| `zlink_spot_node_setsockopt` | 저수준 PUB/SUB/DEALER 소켓 옵션 |
-| `zlink_spot_node_pub_peers` / `zlink_spot_node_sub_peers` | peer queue 통계 |
+| `zlink_spot_pub_peers` / `zlink_spot_sub_peers` | peer queue 통계 |
 | `zlink_spot_pub_publish` | 메시지 발행 |
 | `zlink_spot_sub_set_handler` | 콜백 기반 수신 |
 | `zlink_spot_sub_recv` | subscriber 큐에서 폴링 기반 수신 |

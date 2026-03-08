@@ -53,6 +53,9 @@ ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT)의 성능을 측정한다.
   service instance poller API로 얻어야 한다.
 - `zlink_poller_add_gateway`, `zlink_poller_add_receiver`,
   `zlink_poller_add_spot_sub`, `zlink_poller_add_spot_pub`를 우선 사용한다.
+- service setup은 internal socket-role option API나 `*_peers` polling 대신
+  `*_set_option`, `*_set_routing_id`, service monitor, registry topology API를
+  사용해야 한다.
 - perf 샘플/문서에서 `SpotNode`를 poller 대상으로 다시 노출하면 안 된다.
 - service instance를 poller에 등록한 뒤에도 send/recv는 기존 service API를
   계속 사용하고, internal socket 직접 접근은 내부용/디버그용으로만 취급한다.

@@ -33,7 +33,6 @@ using perf_client::pending_reply_count;
 using perf_client::normalize_latency_stats;
 using perf_client::parse_endpoint_arg;
 using perf_client::print_client_result_lines;
-using perf_client::recv_one_message;
 using perf_client::resolve_case_max_msg_size;
 using perf_client::resolve_case_msg_sizes;
 
@@ -47,10 +46,15 @@ enum gateway_send_result_t
 struct gateway_client_slot_t
 {
     void *gateway;
+    void *gateway_monitor;
     void *receiver;
-    void *receiver_router;
 
-    gateway_client_slot_t () : gateway (NULL), receiver (NULL), receiver_router (NULL) {}
+    gateway_client_slot_t () :
+        gateway (NULL),
+        gateway_monitor (NULL),
+        receiver (NULL)
+    {
+    }
 };
 
 struct gateway_receiver_poller_t
@@ -171,17 +175,13 @@ inline std::string bind_receiver_endpoint (void *receiver,
         return std::string ();
     }
 
-    void *router = zlink_receiver_router_socket_unsafe (receiver);
-    if (!router)
-        return std::string ();
-
     char last_endpoint[MAX_SOCKET_STRING] = "";
     size_t size = sizeof (last_endpoint);
-    if (zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, last_endpoint, &size) == 0)
+    if (zlink_receiver_last_endpoint (receiver, last_endpoint, &size) == 0)
         endpoint.assign (last_endpoint);
 
     endpoint = replace_any_host_with_localhost (endpoint);
-    apply_debug_timeouts (router, transport);
+    (void) transport;
     return endpoint;
 }
 
@@ -191,12 +191,44 @@ inline void close_gateway_client_slots (std::vector<gateway_client_slot_t> *slot
         return;
 
     for (size_t i = 0; i < slots->size (); ++i) {
+        if ((*slots)[i].gateway_monitor)
+            zlink_service_monitor_close (&((*slots)[i].gateway_monitor));
         if ((*slots)[i].gateway)
             zlink_gateway_destroy (&((*slots)[i].gateway));
         if ((*slots)[i].receiver)
             zlink_receiver_destroy (&((*slots)[i].receiver));
-        (*slots)[i].receiver_router = NULL;
     }
+}
+
+inline int recv_one_receiver_message (void *receiver,
+                                      std::vector<char> &scratch,
+                                      int flags,
+                                      size_t capture_bytes)
+{
+    if (!receiver)
+        return -1;
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    if (zlink_receiver_recv (receiver, &parts, &part_count, flags, NULL) != 0) {
+        const int err = zlink_errno ();
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
+    }
+
+    if (!parts || part_count == 0)
+        return -1;
+
+    const size_t payload_size = zlink_msg_size (&parts[0]);
+    const size_t copy_size =
+      capture_bytes > 0 ? std::min (payload_size, capture_bytes) : payload_size;
+    if (scratch.size () < copy_size)
+        scratch.resize (copy_size);
+    if (copy_size > 0)
+        std::memcpy (&scratch[0], zlink_msg_data (&parts[0]), copy_size);
+    zlink_multipart_close (parts, part_count);
+    return static_cast<int> (copy_size);
 }
 
 inline bool init_gateway_receiver_poller (
@@ -299,6 +331,25 @@ inline bool wait_all_gateway_connect_ready (
                 continue;
             if (!slots[i].gateway)
                 return false;
+
+            if (slots[i].gateway_monitor) {
+                zlink_service_event_t event;
+                while (
+                  zlink_service_monitor_recv (
+                    slots[i].gateway_monitor, &event, ZLINK_DONTWAIT)
+                  == 0) {
+                    if (event.event_type == ZLINK_GATEWAY_SERVICE_READY
+                        && std::strcmp (event.service_name,
+                                        k_server_service_name)
+                             == 0) {
+                        ready[i] = 1;
+                        ++ready_count;
+                        break;
+                    }
+                }
+                if (ready[i])
+                    continue;
+            }
 
             if (zlink_gateway_connection_count (
                   slots[i].gateway,
@@ -417,29 +468,40 @@ inline bool create_gateway_client_slots (
             return false;
         }
 
-        slot.receiver_router = zlink_receiver_router_socket_unsafe (slot.receiver);
-        if (!slot.receiver_router) {
-            std::cerr << "gateway client: receiver router unavailable"
-                      << std::endl;
-            close_gateway_client_slots (slots_out);
-            zlink_discovery_destroy (&discovery);
-            return false;
-        }
-        if (zlink_setsockopt (
-              slot.receiver_router,
-              ZLINK_ROUTING_ID,
-              receiver_rid,
-              std::strlen (receiver_rid))
-              != 0) {
-            std::cerr << "gateway client: receiver routing id set failed: "
-                      << zlink_strerror (zlink_errno ()) << std::endl;
-            close_gateway_client_slots (slots_out);
-            zlink_discovery_destroy (&discovery);
-            return false;
-        }
-
-        apply_benchmark_socket_options (
-          slot.receiver_router, settings.hwm, transport);
+        const int receiver_sndhwm =
+          bench_hwm_from_env ("PERF_SNDHWM", settings.hwm);
+        const int receiver_rcvhwm =
+          bench_hwm_from_env ("PERF_RCVHWM", settings.hwm);
+        const int receiver_sndtimeo_ms =
+          bench_timeout_ms_from_env ("PERF_SNDTIMEO_MS", 200);
+        const int receiver_rcvtimeo_ms =
+          bench_timeout_ms_from_env ("PERF_RCVTIMEO_MS", 200);
+        const int receiver_linger_ms = 0;
+        (void) zlink_receiver_set_option (
+          slot.receiver,
+          ZLINK_RECEIVER_OPT_SNDHWM,
+          &receiver_sndhwm,
+          sizeof (receiver_sndhwm));
+        (void) zlink_receiver_set_option (
+          slot.receiver,
+          ZLINK_RECEIVER_OPT_RCVHWM,
+          &receiver_rcvhwm,
+          sizeof (receiver_rcvhwm));
+        (void) zlink_receiver_set_option (
+          slot.receiver,
+          ZLINK_RECEIVER_OPT_LINGER,
+          &receiver_linger_ms,
+          sizeof (receiver_linger_ms));
+        (void) zlink_receiver_set_option (
+          slot.receiver,
+          ZLINK_RECEIVER_OPT_SNDTIMEO,
+          &receiver_sndtimeo_ms,
+          sizeof (receiver_sndtimeo_ms));
+        (void) zlink_receiver_set_option (
+          slot.receiver,
+          ZLINK_RECEIVER_OPT_RCVTIMEO,
+          &receiver_rcvtimeo_ms,
+          sizeof (receiver_rcvtimeo_ms));
 
         if (zlink_receiver_connect_registry (
               slot.receiver,
@@ -472,15 +534,30 @@ inline bool create_gateway_client_slots (
             zlink_discovery_destroy (&discovery);
             return false;
         }
+        slot.gateway_monitor = zlink_gateway_monitor_open (
+          slot.gateway, ZLINK_GATEWAY_SERVICE_READY);
+        if (!slot.gateway_monitor) {
+            std::cerr << "gateway client: gateway monitor open failed"
+                      << std::endl;
+            close_gateway_client_slots (slots_out);
+            zlink_discovery_destroy (&discovery);
+            return false;
+        }
 
-        (void) zlink_gateway_setsockopt (
-          slot.gateway, ZLINK_SNDTIMEO, &sndtimeo_ms, sizeof (sndtimeo_ms));
-        (void) zlink_gateway_setsockopt (
-          slot.gateway, ZLINK_RCVTIMEO, &rcvtimeo_ms, sizeof (rcvtimeo_ms));
-        (void) zlink_gateway_setsockopt (
-          slot.gateway, ZLINK_SNDHWM, &sndhwm, sizeof (sndhwm));
-        (void) zlink_gateway_setsockopt (
-          slot.gateway, ZLINK_RCVHWM, &rcvhwm, sizeof (rcvhwm));
+        (void) zlink_gateway_set_option (
+          slot.gateway,
+          ZLINK_GATEWAY_OPT_SNDTIMEO,
+          &sndtimeo_ms,
+          sizeof (sndtimeo_ms));
+        (void) zlink_gateway_set_option (
+          slot.gateway,
+          ZLINK_GATEWAY_OPT_RCVTIMEO,
+          &rcvtimeo_ms,
+          sizeof (rcvtimeo_ms));
+        (void) zlink_gateway_set_option (
+          slot.gateway, ZLINK_GATEWAY_OPT_SNDHWM, &sndhwm, sizeof (sndhwm));
+        (void) zlink_gateway_set_option (
+          slot.gateway, ZLINK_GATEWAY_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
 
         if (!configure_gateway_tls (slot.gateway, transport)) {
             std::cerr << "gateway client: gateway tls configure failed"
@@ -744,8 +821,8 @@ inline bool run_echo_window_round_robin (
                     continue;
                 const size_t i = *static_cast<size_t *> (event.user_data);
 
-                const int recv_rc = recv_one_message (
-                  slots[i].receiver_router,
+                const int recv_rc = recv_one_receiver_message (
+                  slots[i].receiver,
                   scratch,
                   ZLINK_DONTWAIT,
                   scratch.size ());
@@ -974,8 +1051,8 @@ inline bool prime_roundtrip_all_slots (
                     continue;
                 const size_t i = *static_cast<size_t *> (event.user_data);
 
-                const int recv_rc = recv_one_message (
-                  slots[i].receiver_router,
+                const int recv_rc = recv_one_receiver_message (
+                  slots[i].receiver,
                   scratch,
                   ZLINK_DONTWAIT,
                   0);

@@ -7,6 +7,19 @@ with automatic mesh formation via Discovery. A SPOT deployment consists of
 one or more Nodes that form a mesh, Publishers that inject messages, and
 Subscribers that consume them.
 
+## Current API Direction
+
+- `SpotNode` is the wiring owner for bind/connect/discovery/TLS only.
+- Public service surfaces are `SpotPub` and `SpotSub`.
+- Use `zlink_spot_pub_set_option()` / `zlink_spot_sub_set_option()` for
+  service-level options.
+- Use `zlink_spot_pub_set_routing_id()` / `zlink_spot_sub_set_routing_id()`
+  for representative identities.
+- Use `zlink_spot_pub_monitor_open()` / `zlink_spot_sub_monitor_open()` for
+  state transitions such as `ZLINK_SPOT_SUB_FILTER_APPLIED` and
+  `ZLINK_SPOT_PUB_QUEUE_DRAINED`.
+- Keep `SpotNode` for bind/connect/discovery/TLS wiring only.
+
 ## Types
 
 ```c
@@ -24,15 +37,6 @@ automatically through this callback instead of `zlink_spot_sub_recv`.
 ## Constants
 
 ```c
-#define ZLINK_SPOT_NODE_SOCKET_NODE   0
-#define ZLINK_SPOT_NODE_SOCKET_PUB    1
-#define ZLINK_SPOT_NODE_SOCKET_SUB    2
-#define ZLINK_SPOT_NODE_SOCKET_DEALER 3
-
-#define ZLINK_SPOT_NODE_OPT_PUB_MODE              1
-#define ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM         2
-#define ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY 3
-
 #define ZLINK_SPOT_NODE_PUB_MODE_SYNC  0
 #define ZLINK_SPOT_NODE_PUB_MODE_ASYNC 1
 
@@ -42,13 +46,6 @@ automatically through this callback instead of `zlink_spot_sub_recv`.
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `ZLINK_SPOT_NODE_SOCKET_NODE` | 0 | Node-level options via `zlink_spot_node_setsockopt` |
-| `ZLINK_SPOT_NODE_SOCKET_PUB` | 1 | PUB socket used for publishing messages to subscribers and peers |
-| `ZLINK_SPOT_NODE_SOCKET_SUB` | 2 | SUB socket used for receiving messages from peer nodes |
-| `ZLINK_SPOT_NODE_SOCKET_DEALER` | 3 | DEALER socket used for communication with the Registry |
-| `ZLINK_SPOT_NODE_OPT_PUB_MODE` | 1 | Publish mode option (SYNC/ASYNC) |
-| `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM` | 2 | Async publish queue high-water mark |
-| `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY` | 3 | Async queue-full policy (`EAGAIN`/drop) |
 | `ZLINK_SPOT_NODE_PUB_MODE_SYNC` | 0 | Publish in caller thread (default) |
 | `ZLINK_SPOT_NODE_PUB_MODE_ASYNC` | 1 | Enqueue publish for worker-thread dispatch |
 | `ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN` | 0 | Return `EAGAIN` when async queue is full (default) |
@@ -301,88 +298,6 @@ parameter sets the expected server name for certificate verification. If
 
 ---
 
-### zlink_spot_node_pub_peers
-
-Enumerate peer queue info from the internal SPOT PUB socket.
-
-```c
-int zlink_spot_node_pub_peers(void *node,
-                              zlink_peer_info_t *peers,
-                              size_t *count);
-```
-
-Returns peer-level queue stats (including send/receive pending message
-counts) from the SPOT node PUB socket. Use `peers = NULL` to query required
-count first, then call again with an allocated array.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Thread safety:** Safe to call from any thread.
-
-**See also:** `zlink_socket_peers`
-
----
-
-### zlink_spot_node_sub_peers
-
-Enumerate peer queue info from the internal SPOT SUB socket.
-
-```c
-int zlink_spot_node_sub_peers(void *node,
-                              zlink_peer_info_t *peers,
-                              size_t *count);
-```
-
-Returns peer-level queue stats (including send/receive pending message
-counts) from the SPOT node SUB socket. Use `peers = NULL` to query required
-count first, then call again with an allocated array.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Thread safety:** Safe to call from any thread.
-
-**See also:** `zlink_socket_peers`
-
----
-
-### zlink_spot_node_setsockopt
-
-Set a SPOT node internal option.
-
-```c
-int zlink_spot_node_setsockopt(void *node,
-                               int socket_role,
-                               int option,
-                               const void *optval,
-                               size_t optvallen);
-```
-
-Applies either:
-
-- A node-level option (`socket_role = ZLINK_SPOT_NODE_SOCKET_NODE`) using
-  `ZLINK_SPOT_NODE_OPT_*`, or
-- A low-level socket option to one of the internal sockets
-  (`ZLINK_SPOT_NODE_SOCKET_PUB/SUB/DEALER`).
-
-This is the only SPOT API for low-level socket option configuration.
-
-For async publish mode:
-
-- `ZLINK_SPOT_NODE_OPT_PUB_MODE`: `SYNC` (default) or `ASYNC`.
-- `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM`: queue depth limit (> 0).
-- `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY`: `EAGAIN` (default) or drop.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Errors:**
-- `EINVAL` -- invalid socket role or unknown option.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_spot_node_new`
-
----
-
 ## SPOT Pub
 
 A SPOT Publisher attaches to a Node and publishes messages under topic
@@ -405,6 +320,101 @@ Node must remain valid for the lifetime of the Publisher.
 **Thread safety:** Safe to call from any thread.
 
 **See also:** `zlink_spot_pub_publish`, `zlink_spot_pub_destroy`
+
+---
+
+### zlink_spot_pub_set_option
+
+Set a SpotPub service option.
+
+```c
+int zlink_spot_pub_set_option(void *pub,
+                               int option,
+                               const void *optval,
+                               size_t optvallen);
+```
+
+Applies a service-level option to the Publisher. Available option constants:
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_SPOT_PUB_OPT_SNDHWM` | 1 | Send high-water mark |
+| `ZLINK_SPOT_PUB_OPT_SNDTIMEO` | 2 | Send timeout (ms) |
+| `ZLINK_SPOT_PUB_OPT_LINGER` | 3 | Linger period (ms) |
+| `ZLINK_SPOT_PUB_OPT_NODROP` | 4 | Do not drop messages on HWM |
+| `ZLINK_SPOT_PUB_OPT_MODE` | 5 | Publish mode (`SYNC` or `ASYNC`) |
+| `ZLINK_SPOT_PUB_OPT_QUEUE_HWM` | 6 | Async queue high-water mark |
+| `ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY` | 7 | Async queue full policy |
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Errors:**
+- `EINVAL` -- Unknown option.
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_spot_pub_new`
+
+---
+
+### zlink_spot_pub_set_routing_id
+
+Override the representative routing id before first use.
+
+```c
+int zlink_spot_pub_set_routing_id(void *pub,
+                                   const void *data,
+                                   size_t size);
+```
+
+Sets a custom routing identity for this Publisher.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_spot_pub_routing_id`
+
+---
+
+### zlink_spot_pub_routing_id
+
+Return the representative routing id for this SpotPub.
+
+```c
+int zlink_spot_pub_routing_id(void *pub,
+                               zlink_routing_id_t *out);
+```
+
+Retrieves the current routing identity of the Publisher.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_spot_pub_set_routing_id`
+
+---
+
+### zlink_spot_pub_peers
+
+Enumerate SpotPub peer queue stats.
+
+```c
+int zlink_spot_pub_peers(void *pub,
+                          zlink_peer_info_t *peers,
+                          size_t *count);
+```
+
+Returns peer-level queue stats from the Publisher's underlying socket.
+Use `peers = NULL` to query the required count first, then call again
+with an allocated array.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_socket_peers`
 
 ---
 
@@ -521,6 +531,99 @@ Node must remain valid for the lifetime of the Subscriber.
 **Thread safety:** Safe to call from any thread.
 
 **See also:** `zlink_spot_sub_subscribe`, `zlink_spot_sub_destroy`
+
+---
+
+### zlink_spot_sub_set_option
+
+Set a SpotSub service option.
+
+```c
+int zlink_spot_sub_set_option(void *sub,
+                               int option,
+                               const void *optval,
+                               size_t optvallen);
+```
+
+Applies a service-level option to the Subscriber. Available option constants:
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_SPOT_SUB_OPT_RCVHWM` | 1 | Receive high-water mark |
+| `ZLINK_SPOT_SUB_OPT_RCVTIMEO` | 2 | Receive timeout (ms) |
+| `ZLINK_SPOT_SUB_OPT_LINGER` | 3 | Linger period (ms) |
+| `ZLINK_SPOT_SUB_OPT_QUEUE_NODROP` | 4 | Do not drop messages on queue full |
+| `ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY` | 5 | Queue full policy |
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Errors:**
+- `EINVAL` -- Unknown option.
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_spot_sub_new`
+
+---
+
+### zlink_spot_sub_set_routing_id
+
+Override the representative routing id before first use.
+
+```c
+int zlink_spot_sub_set_routing_id(void *sub,
+                                   const void *data,
+                                   size_t size);
+```
+
+Sets a custom routing identity for this Subscriber.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_spot_sub_routing_id`
+
+---
+
+### zlink_spot_sub_routing_id
+
+Return the representative routing id for this SpotSub.
+
+```c
+int zlink_spot_sub_routing_id(void *sub,
+                               zlink_routing_id_t *out);
+```
+
+Retrieves the current routing identity of the Subscriber.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_spot_sub_set_routing_id`
+
+---
+
+### zlink_spot_sub_peers
+
+Enumerate SpotSub peer queue stats.
+
+```c
+int zlink_spot_sub_peers(void *sub,
+                          zlink_peer_info_t *peers,
+                          size_t *count);
+```
+
+Returns peer-level queue stats from the Subscriber's underlying socket.
+Use `peers = NULL` to query the required count first, then call again
+with an allocated array.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_socket_peers`
 
 ---
 
@@ -757,8 +860,7 @@ execution context at a time.
 
 | API | Purpose |
 |-----|---------|
-| `zlink_spot_node_setsockopt` | Low-level PUB/SUB/DEALER socket options |
-| `zlink_spot_node_pub_peers` / `zlink_spot_node_sub_peers` | Peer queue stats |
+| `zlink_spot_pub_peers` / `zlink_spot_sub_peers` | Peer queue stats |
 | `zlink_spot_pub_publish` | Publishing messages |
 | `zlink_spot_sub_set_handler` | Callback-driven consumption |
 | `zlink_spot_sub_recv` | Polling-style consumption from the subscriber queue |

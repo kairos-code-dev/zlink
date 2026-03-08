@@ -42,6 +42,11 @@
   - 불필요 복사
 - send/recv 버퍼는 루프 밖에서 1회 할당하고 재사용한다.
 - 핵심 send/recv loop는 각 패턴 파일 안에서 명시적으로 보여야 한다.
+- registry summary/topology query는 global/coarse 상태 확인용으로만 사용한다.
+- registry summary는 eventually consistent view이므로 benchmark의 final strict
+  start gate로 사용하지 않는다.
+- strict start readiness가 필요하면 local service monitor를 사용한다.
+- registry/bootstrap/query/summary 조회는 measurement phase 밖에서만 수행한다.
 
 ## 1.2 패턴 해석 규칙
 

@@ -15,18 +15,6 @@ static void step_log (const char *msg_)
     }
 }
 
-static void recv_one_with_timeout (void *sock, zlink_msg_t *msg, int timeout_ms)
-{
-    zlink_pollitem_t items[1];
-    items[0].socket = sock;
-    items[0].fd = 0;
-    items[0].events = ZLINK_POLLIN;
-    items[0].revents = 0;
-    int rc = zlink_poll (items, 1, timeout_ms);
-    TEST_ASSERT_TRUE_MESSAGE (rc > 0, "recv timeout");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (msg, sock, 0));
-}
-
 static void wait_gateway_ready (void *gateway,
                                 const char *service_name,
                                 int timeout_ms)
@@ -76,43 +64,38 @@ static void setup_registry (void *ctx,
     *registry_out = registry;
 }
 
-static bool recv_payload (void *router,
+static bool recv_payload (void *receiver,
                           const char *expected,
                           size_t expected_len,
                           int timeout_ms)
 {
-    zlink_msg_t frame;
-    zlink_msg_t payload;
-    zlink_msg_init (&frame);
-    zlink_msg_init (&payload);
-    bool got = false;
-    for (int i = 0; i < 3 && !got; ++i) {
-        recv_one_with_timeout (router, &frame, timeout_ms);
-        if (zlink_msg_size (&frame) == expected_len
-            && memcmp (zlink_msg_data (&frame), expected, expected_len) == 0) {
-            got = true;
+    const int sleep_ms_step = 5;
+    const int attempts = timeout_ms / sleep_ms_step;
+    for (int i = 0; i < attempts; ++i) {
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        if (zlink_receiver_recv (receiver, &parts, &part_count, ZLINK_DONTWAIT,
+                                 NULL)
+            == 0) {
+            bool got = false;
+            for (size_t j = 0; j < part_count; ++j) {
+                if (zlink_msg_size (&parts[j]) == expected_len
+                    && memcmp (zlink_msg_data (&parts[j]), expected,
+                               expected_len)
+                         == 0) {
+                    got = true;
+                    break;
+                }
+            }
+            zlink_multipart_close (parts, part_count);
+            if (got)
+                return true;
+        } else if (errno != EAGAIN) {
             break;
         }
-        if (!zlink_msg_more (&frame)) {
-            zlink_msg_close (&frame);
-            zlink_msg_init (&frame);
-            continue;
-        }
-        recv_one_with_timeout (router, &payload, timeout_ms);
-        if (zlink_msg_size (&payload) == expected_len
-            && memcmp (zlink_msg_data (&payload), expected, expected_len)
-                 == 0) {
-            got = true;
-            break;
-        }
-        zlink_msg_close (&frame);
-        zlink_msg_close (&payload);
-        zlink_msg_init (&frame);
-        zlink_msg_init (&payload);
+        msleep (sleep_ms_step);
     }
-    zlink_msg_close (&frame);
-    zlink_msg_close (&payload);
-    return got;
+    return false;
 }
 
 // Test: Provider restart with same routing id — gateway should deliver to new
@@ -141,28 +124,20 @@ void test_gateway_handover_provider_restart ()
     // 2. Provider1 with routing id "PROV-HO"
     step_log ("setup provider1");
     char ep1[256] = {0};
+    snprintf (ep1, sizeof (ep1), "tcp://127.0.0.1:%d", test_port (22650));
     void *provider1 = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider1);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_bind (provider1, "tcp://127.0.0.1:*"));
-    void *router1 = zlink_receiver_router_socket_unsafe(provider1);
-    TEST_ASSERT_NOT_NULL (router1);
-    int probe = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router1, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
     const char prov_rid[] = "PROV-HO";
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      router1, ZLINK_ROUTING_ID, prov_rid, sizeof (prov_rid) - 1));
-    size_t len1 = sizeof (ep1);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router1, ZLINK_LAST_ENDPOINT, ep1, &len1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_set_routing_id (
+      provider1, prov_rid, sizeof (prov_rid) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider1, ep1));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider1, "inproc://reg-router-ho1"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_register (provider1, service_name, ep1, 1));
     int rcvtimeo = timeout_ms;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      router1, ZLINK_RCVTIMEO, &rcvtimeo, sizeof (rcvtimeo)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_set_option (
+      provider1, ZLINK_RECEIVER_OPT_RCVTIMEO, &rcvtimeo, sizeof (rcvtimeo)));
     msleep (200);
 
     // 3. Gateway
@@ -181,7 +156,7 @@ void test_gateway_handover_provider_restart ()
         send_gateway_with_timeout (gateway, service_name, parts, 1,
                                    timeout_ms);
     }
-    TEST_ASSERT_TRUE (recv_payload (router1, "msg1", 4, timeout_ms));
+    TEST_ASSERT_TRUE (recv_payload (provider1, "msg1", 4, timeout_ms));
 
     // 5. Unregister + destroy provider1 (simulate restart)
     step_log ("unregister + destroy provider1");
@@ -193,25 +168,18 @@ void test_gateway_handover_provider_restart ()
     // 6. Provider2 with same routing id "PROV-HO", new tcp port
     step_log ("setup provider2 (same rid)");
     char ep2[256] = {0};
+    snprintf (ep2, sizeof (ep2), "tcp://127.0.0.1:%d", test_port (22651));
     void *provider2 = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider2);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_bind (provider2, "tcp://127.0.0.1:*"));
-    void *router2 = zlink_receiver_router_socket_unsafe(provider2);
-    TEST_ASSERT_NOT_NULL (router2);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router2, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      router2, ZLINK_ROUTING_ID, prov_rid, sizeof (prov_rid) - 1));
-    size_t len2 = sizeof (ep2);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router2, ZLINK_LAST_ENDPOINT, ep2, &len2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_set_routing_id (
+      provider2, prov_rid, sizeof (prov_rid) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider2, ep2));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider2, "inproc://reg-router-ho1"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_register (provider2, service_name, ep2, 1));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      router2, ZLINK_RCVTIMEO, &rcvtimeo, sizeof (rcvtimeo)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_set_option (
+      provider2, ZLINK_RECEIVER_OPT_RCVTIMEO, &rcvtimeo, sizeof (rcvtimeo)));
     msleep (300);
     wait_gateway_ready (gateway, service_name, timeout_ms);
     msleep (200);
@@ -225,7 +193,7 @@ void test_gateway_handover_provider_restart ()
         send_gateway_with_timeout (gateway, service_name, parts, 1,
                                    timeout_ms);
     }
-    TEST_ASSERT_TRUE (recv_payload (router2, "msg2", 4, timeout_ms));
+    TEST_ASSERT_TRUE (recv_payload (provider2, "msg2", 4, timeout_ms));
 
     step_log ("cleanup");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
@@ -261,28 +229,20 @@ void test_provider_handover_gateway_reconnect ()
     // 2. Provider
     step_log ("setup provider");
     char ep[256] = {0};
+    snprintf (ep, sizeof (ep), "tcp://127.0.0.1:%d", test_port (22652));
     void *provider = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_bind (provider, "tcp://127.0.0.1:*"));
-    void *provider_router = zlink_receiver_router_socket_unsafe(provider);
-    TEST_ASSERT_NOT_NULL (provider_router);
-    int probe = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      provider_router, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
     const char prov_rid[] = "PROV-HO2";
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      provider_router, ZLINK_ROUTING_ID, prov_rid, sizeof (prov_rid) - 1));
-    size_t ep_len = sizeof (ep);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (provider_router, ZLINK_LAST_ENDPOINT, ep, &ep_len));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_set_routing_id (
+      provider, prov_rid, sizeof (prov_rid) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, ep));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_connect_registry (provider, "inproc://reg-router-ho2"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_register (provider, service_name, ep, 1));
     int rcvtimeo = timeout_ms;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      provider_router, ZLINK_RCVTIMEO, &rcvtimeo, sizeof (rcvtimeo)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_set_option (
+      provider, ZLINK_RECEIVER_OPT_RCVTIMEO, &rcvtimeo, sizeof (rcvtimeo)));
     msleep (200);
 
     // 3. Gateway1 with routing id "GW-HO"
@@ -301,7 +261,7 @@ void test_provider_handover_gateway_reconnect ()
         send_gateway_with_timeout (gateway1, service_name, parts, 1,
                                    timeout_ms);
     }
-    TEST_ASSERT_TRUE (recv_payload (provider_router, "gw-1", 4, timeout_ms));
+    TEST_ASSERT_TRUE (recv_payload (provider, "gw-1", 4, timeout_ms));
 
     // 5. Destroy gateway1 + discovery1 (simulate reconnection)
     step_log ("destroy gateway1 + discovery1");
@@ -333,7 +293,7 @@ void test_provider_handover_gateway_reconnect ()
         send_gateway_with_timeout (gateway2, service_name, parts, 1,
                                    timeout_ms);
     }
-    TEST_ASSERT_TRUE (recv_payload (provider_router, "gw-2", 4, timeout_ms));
+    TEST_ASSERT_TRUE (recv_payload (provider, "gw-2", 4, timeout_ms));
 
     step_log ("cleanup");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway2));

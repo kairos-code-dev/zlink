@@ -19,8 +19,6 @@ namespace {
 static const char *k_pattern_env = "PUBSUB";
 static const char *k_pattern_result = "MULTI_PUBSUB";
 static const uint32_t k_run_id = 1;
-static const int k_active_search_extension_seconds = 2;
-
 struct phase_config_t
 {
     int warmup_seconds;
@@ -54,13 +52,17 @@ class pubsub_client_bench_t
           _settings (settings),
           _ctx (),
           _holders (),
+          _monitors (),
           _sockets (),
           _poller (),
           _poll_events (),
+          _recv_buffer (std::max<size_t> (msg_size, perf_metric::header_size ())),
           _phase_cfg (),
-          _result ()
+          _result (),
+          _failure_stage ("init")
     {
         _holders.reserve (_settings.clients);
+        _monitors.reserve (_settings.clients);
         _sockets.reserve (_settings.clients);
         _poll_events.reserve (_settings.clients);
 
@@ -83,31 +85,75 @@ class pubsub_client_bench_t
         if (!run_active ())
             return false;
 
-        if (_result.active_count == 0)
+        if (_result.active_count == 0) {
+            _failure_stage = "no_active_data";
             return false;
+        }
 
         print_result ();
         return true;
     }
 
+    const char *failure_stage () const
+    {
+        return _failure_stage;
+    }
+
+    unsigned long long warmup_count () const
+    {
+        return _result.warmup_count;
+    }
+
+    unsigned long long drain_count () const
+    {
+        return _result.drain_count;
+    }
+
+    unsigned long long active_count () const
+    {
+        return _result.active_count;
+    }
+
   private:
+    void close_monitors ()
+    {
+        for (size_t i = 0; i < _monitors.size (); ++i)
+            perf::multi::close_connect_monitor (_monitors[i]);
+    }
+
     bool setup_sockets ()
     {
         for (size_t i = 0; i < _settings.clients; ++i) {
             _holders.emplace_back (
               new perf::multi::socket_guard_t (_ctx, zlink::socket_type::sub));
             zlink::socket_t &sock = _holders.back ()->sock ();
+            _monitors.push_back (perf::multi::connect_monitor_t ());
 
             (void) sock.set (zlink::socket_options::subscribe, std::string ());
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
             if (!perf::multi::setup_tls_client (sock, _transport))
                 return false;
+            if (!perf::multi::open_connect_monitor (sock, _monitors.back ())) {
+                _failure_stage = "monitor_open";
+                return false;
+            }
             if (sock.connect (_endpoint) != 0)
                 return false;
 
             _sockets.push_back (&sock);
             (void) _poller.add (sock, zlink::poll_event::pollin, &sock);
         }
+
+        for (size_t i = 0; i < _monitors.size (); ++i) {
+            if (!perf::multi::wait_connect_ready (_monitors[i],
+                                                  _settings.connect_ready_timeout_ms)) {
+                _failure_stage = "connect_ready";
+                close_monitors ();
+                return false;
+            }
+        }
+
+        close_monitors ();
 
         return !_sockets.empty ();
     }
@@ -129,12 +175,14 @@ class pubsub_client_bench_t
             return false;
 
         unsigned long long count = 0;
-        zlink::message_t msg;
-
         const bool active_phase = phase == perf_metric::phase_active;
         auto deadline = std::chrono::steady_clock::now () + duration;
+        const int active_search_extension_seconds =
+          std::max (2,
+                    _phase_cfg.warmup_seconds
+                      + std::max (1, (_phase_cfg.settle_ms + 999) / 1000));
         const auto active_search_deadline =
-          deadline + std::chrono::seconds (k_active_search_extension_seconds);
+          deadline + std::chrono::seconds (active_search_extension_seconds);
         bool active_started = !active_phase;
 
         while (std::chrono::steady_clock::now ()
@@ -166,7 +214,11 @@ class pubsub_client_bench_t
                     continue;
 
                 for (;;) {
-                    if (sock->recv (msg, zlink::recv_flag::dontwait) < 0) {
+                    const int recv_size =
+                      sock->recv (_recv_buffer.data (),
+                                  _recv_buffer.size (),
+                                  zlink::recv_flag::dontwait);
+                    if (recv_size < 0) {
                         const int err = errno;
                         if (err == EAGAIN)
                             break;
@@ -174,12 +226,17 @@ class pubsub_client_bench_t
                             continue;
                         return false;
                     }
-                    if (msg.more ())
+
+                    if (!active_phase) {
+                        ++count;
                         continue;
+                    }
 
                     perf_metric::header_t header;
                     if (!perf_metric::decode_payload_header (
-                          msg.data (), msg.size (), &header)) {
+                          _recv_buffer.data (),
+                          static_cast<size_t> (recv_size),
+                          &header)) {
                         continue;
                     }
                     if (header.magic != perf_metric::k_magic
@@ -272,17 +329,20 @@ class pubsub_client_bench_t
 
     perf::multi::ctx_guard_t _ctx;
     std::vector<std::unique_ptr<perf::multi::socket_guard_t> > _holders;
+    std::vector<perf::multi::connect_monitor_t> _monitors;
     std::vector<zlink::socket_t *> _sockets;
     zlink::poller_t _poller;
     std::vector<zlink::poll_event_t> _poll_events;
+    std::vector<char> _recv_buffer;
 
     phase_config_t _phase_cfg;
     bench_result_t _result;
+    const char *_failure_stage;
 };
 
 } // namespace
 
-void perf_pubsub_client (const std::string &transport,
+bool perf_pubsub_client (const std::string &transport,
                          size_t msg_size,
                          const std::string &endpoint)
 {
@@ -290,14 +350,23 @@ void perf_pubsub_client (const std::string &transport,
 
     if (!perf::multi::is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED," << k_pattern_result << "," << transport << std::endl;
-        return;
+        return true;
     }
 
     const perf::multi::multi_bench_settings_t settings =
       perf::multi::resolve_multi_bench_settings ();
 
     pubsub_client_bench_t bench (transport, msg_size, endpoint, settings);
-    (void) bench.run ();
+    if (!bench.run ()) {
+        std::cerr << "PUBSUB_CLIENT_FAIL,stage=" << bench.failure_stage ()
+                  << ",transport=" << transport << ",size=" << msg_size
+                  << ",warmup=" << bench.warmup_count ()
+                  << ",drain=" << bench.drain_count ()
+                  << ",active=" << bench.active_count () << std::endl;
+        return false;
+    }
+
+    return true;
 }
 
 int main (int argc, char **argv)
@@ -318,6 +387,5 @@ int main (int argc, char **argv)
         return 1;
     }
 
-    perf_pubsub_client (transport, size, endpoint);
-    return 0;
+    return perf_pubsub_client (transport, size, endpoint) ? 0 : 1;
 }

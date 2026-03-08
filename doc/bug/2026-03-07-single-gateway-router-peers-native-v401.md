@@ -145,3 +145,14 @@ g++ -std=c++17 \
 The benchmark code remains aligned to the documented policy. No workaround was added to bypass the failure.
 
 If a temporary workaround is needed, it would mean dropping or weakening queue metric sampling for `single/GATEWAY`, which would hide the runtime issue and reduce metric fidelity. That workaround was intentionally not applied.
+
+
+## Fixed status
+
+- Re-tested on `4.0.2` native runtime on 2026-03-07.
+- `CHANGELOG.md` explicitly states:
+  - `Fixed zlink_gateway_router_peers() so peer enumeration no longer forces the Gateway into pollable/raw mode.`
+- Re-test results:
+  - `single/GATEWAY` native direct run now prints throughput/latency again.
+  - split minimal repros with `gateway.router_peers()` only and `receiver.router_peers()` only both pass.
+- Conclusion: the `4.0.1` runtime regression appears fixed in `4.0.2`.

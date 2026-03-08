@@ -29,6 +29,8 @@ public final class PerfMultiPubSubClient {
     private static final int HEADER_BYTES = 32;
     private static final long NANOS_PER_MILLISECOND = 1_000_000L;
     private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
+    private static final long ACTIVE_IDLE_TIMEOUT_NS = 1L
+        * NANOSECONDS_PER_SECOND;
 
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
@@ -217,14 +219,16 @@ public final class PerfMultiPubSubClient {
                                           int msgSize, ClientConfig config) {
         PerfCommon.LatencyReservoir reservoir = new PerfCommon.LatencyReservoir(
             PerfMultiCommon.resolveLatencySampleCap());
-        long deadline = System.nanoTime()
-            + (long) Math.max(1, config.durationSeconds)
+        long durationNs = (long) Math.max(1, config.durationSeconds)
             * NANOSECONDS_PER_SECOND;
+        long deadlineNs = 0L;
+        long lastDrainNs = System.nanoTime();
         long count = 0;
         int activeRunId = -1;
 
-        while (System.nanoTime() < deadline) {
+        while (activeRunId < 0 || System.nanoTime() < deadlineNs) {
             int eventCount = poller.pollCount(config.pollTimeoutMs);
+            long drainedCount = 0L;
             for (int i = 0; i < eventCount; i++) {
                 Socket socket = poller.readySocket(i);
                 if (socket == null) {
@@ -235,11 +239,13 @@ public final class PerfMultiPubSubClient {
                     if (n <= 0) {
                         break;
                     }
+                    drainedCount++;
                     if (!isActiveSample(n, recv, header, msgSize)) {
                         continue;
                     }
                     if (activeRunId < 0) {
                         activeRunId = header.runId;
+                        deadlineNs = System.nanoTime() + durationNs;
                     }
                     if (header.runId != activeRunId) {
                         continue;
@@ -248,6 +254,13 @@ public final class PerfMultiPubSubClient {
                     reservoir.add(Math.max(0L, nowUs - header.sentTsUs));
                     count++;
                 }
+            }
+            long nowNs = System.nanoTime();
+            if (drainedCount > 0L) {
+                lastDrainNs = nowNs;
+            } else if (activeRunId < 0
+                && nowNs - lastDrainNs >= ACTIVE_IDLE_TIMEOUT_NS) {
+                break;
             }
         }
 

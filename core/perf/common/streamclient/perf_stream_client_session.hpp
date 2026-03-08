@@ -45,6 +45,7 @@ inline constexpr int k_socket_rcvbuf_default = 64 * 1024; // SO_RCVBUF default (
 inline constexpr int k_socket_tcp_nodelay = 1;         // TCP_NODELAY on
 inline constexpr size_t k_rtt_sample_capacity = 1024 * 1024; // max RTT samples (1M)
 inline constexpr size_t k_loopback_port_headroom = 64; // ports reserved for OS use
+inline constexpr size_t k_stream_read_chunk_default = 4096;
 
 inline int resolve_stream_sockbuf_env (const char *name, int default_bytes)
 {
@@ -124,8 +125,8 @@ parse_transport_mode (const std::string &transport)
 // Lifecycle:
 //   begin_connect() → do_connect() → on_connect()
 //       → start_traffic() → maybe_send_more() → send_one() [async_write]
-//       → on_write() → start_read_header() → on_read_header()
-//       → start_read_payload() → on_read_payload() → maybe_send_more() [loop]
+//       → on_write() → start_read_header() → start_read_stream_frame()/start_read_ws_frame()
+//       → on_read_payload() → maybe_send_more() [loop]
 //
 // All I/O callbacks run on the session's strand for serialization.
 // The session reports events to the orchestrator via bench_client_iface_t.
@@ -159,10 +160,11 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
           source_bind_ep (source_bind_ep_),
           write_buf (),
           read_declared (0),
-          read_buf ()
+          read_buf (),
+          stream_pending_frame (),
+          stream_read_chunk ()
     {
         tls_ctx.set_verify_mode (boost::asio::ssl::verify_none);
-        std::memset (read_header, 0, sizeof (read_header));
     }
 
     // Initiate async connect (posted to strand for thread-safety).
@@ -565,7 +567,101 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         maybe_send_more ();
     }
 
-    // Read the 4-byte len32be header from the echo server.
+    void on_stream_read_some (const boost::system::error_code &ec, size_t bytes)
+    {
+        if (closed)
+            return;
+
+        if (ec || bytes == 0) {
+            owner.on_recv_error ();
+            if (outstanding > 0) {
+                const long dropped = static_cast<long> (outstanding);
+                outstanding = 0;
+                owner.on_abandon (dropped);
+            }
+            close_internal ();
+            return;
+        }
+
+        const size_t base = stream_pending_frame.size ();
+        stream_pending_frame.resize (base + bytes);
+        std::memcpy (&stream_pending_frame[base], &stream_read_chunk[0], bytes);
+
+        start_read_stream_frame ();
+    }
+
+    void start_read_stream_frame ()
+    {
+        if (closed || !connected ())
+            return;
+
+        if (stream_pending_frame.size () >= 4) {
+            const uint32_t declared =
+              perf_stream_common::perf_stream_load_u32_be (&stream_pending_frame[0]);
+            if (declared > perf_stream_common::k_stream_max_chunk_size) {
+                owner.on_recv_error ();
+                if (outstanding > 0) {
+                    const long dropped = static_cast<long> (outstanding);
+                    outstanding = 0;
+                    owner.on_abandon (dropped);
+                }
+                close_internal ();
+                return;
+            }
+
+            const size_t total = static_cast<size_t> (4 + declared);
+            if (stream_pending_frame.size () >= total) {
+                read_declared = declared;
+                if (read_buf.size () != static_cast<size_t> (read_declared))
+                    read_buf.resize (static_cast<size_t> (read_declared));
+                if (read_declared > 0) {
+                    std::memcpy (&read_buf[0], &stream_pending_frame[4],
+                                 static_cast<size_t> (read_declared));
+                }
+                stream_pending_frame.erase (
+                  stream_pending_frame.begin (),
+                  stream_pending_frame.begin () + static_cast<std::ptrdiff_t> (total));
+
+                on_read_payload (boost::system::error_code (),
+                                 static_cast<size_t> (read_declared));
+                return;
+            }
+        }
+
+        const size_t read_chunk_size =
+          std::max<size_t> (k_stream_read_chunk_default, chunk_size + 4);
+        if (stream_read_chunk.size () != read_chunk_size)
+            stream_read_chunk.resize (read_chunk_size);
+
+        const std::shared_ptr<client_session_t> self = shared_from_this ();
+        if (transport_mode == raw_transport_tcp && tcp_socket) {
+            tcp_socket->async_read_some (
+              boost::asio::buffer (stream_read_chunk),
+              boost::asio::bind_executor (
+                strand,
+                [self] (const boost::system::error_code &err, size_t bytes) {
+                    self->on_stream_read_some (err, bytes);
+                }));
+            return;
+        }
+        if (transport_mode == raw_transport_tls && tls_socket) {
+            tls_socket->async_read_some (
+              boost::asio::buffer (stream_read_chunk),
+              boost::asio::bind_executor (
+                strand,
+                [self] (const boost::system::error_code &err, size_t bytes) {
+                    self->on_stream_read_some (err, bytes);
+                }));
+            return;
+        }
+
+        on_stream_read_some (
+          boost::asio::error::make_error_code (
+            boost::asio::error::not_connected),
+          0);
+    }
+
+    // Read the next len32be frame from the echo server.
     void start_read_header ()
     {
         if (closed || !connected ())
@@ -580,82 +676,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             start_read_ws_frame ();
             return;
         }
-
-        const std::shared_ptr<client_session_t> self = shared_from_this ();
-        if (transport_mode == raw_transport_tcp && tcp_socket) {
-            boost::asio::async_read (
-              *tcp_socket, boost::asio::buffer (read_header),
-              boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &err, size_t bytes) {
-                    self->on_read_header (err, bytes);
-                }));
-            return;
-        }
-        if (transport_mode == raw_transport_tls && tls_socket) {
-            boost::asio::async_read (
-              *tls_socket, boost::asio::buffer (read_header),
-              boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &err, size_t bytes) {
-                    self->on_read_header (err, bytes);
-                }));
-            return;
-        }
-
-        on_read_header (
-          boost::asio::error::make_error_code (
-            boost::asio::error::not_connected),
-          0);
-    }
-
-    // Read the payload body (size declared in the header).
-    void start_read_payload ()
-    {
-        if (closed || !connected ())
-            return;
-
-        if (read_declared
-            > static_cast<uint32_t> (perf_stream_common::k_stream_max_chunk_size)) {
-            owner.on_recv_error ();
-            if (outstanding > 0) {
-                const long dropped = static_cast<long> (outstanding);
-                outstanding = 0;
-                owner.on_abandon (dropped);
-            }
-            close_internal ();
-            return;
-        }
-
-        if (read_buf.size () != static_cast<size_t> (read_declared))
-            read_buf.resize (static_cast<size_t> (read_declared));
-
-        const std::shared_ptr<client_session_t> self = shared_from_this ();
-        if (transport_mode == raw_transport_tcp && tcp_socket) {
-            boost::asio::async_read (
-              *tcp_socket, boost::asio::buffer (read_buf),
-              boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &err, size_t bytes) {
-                    self->on_read_payload (err, bytes);
-                }));
-            return;
-        }
-        if (transport_mode == raw_transport_tls && tls_socket) {
-            boost::asio::async_read (
-              *tls_socket, boost::asio::buffer (read_buf),
-              boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &err, size_t bytes) {
-                    self->on_read_payload (err, bytes);
-                }));
-            return;
-        }
-
-        on_read_payload (
-          boost::asio::error::make_error_code (
-            boost::asio::error::not_connected),
-          0);
+        start_read_stream_frame ();
     }
 
     void on_ws_read (const boost::system::error_code &ec, size_t)
@@ -753,26 +774,6 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
           0);
     }
 
-    void on_read_header (const boost::system::error_code &ec, size_t bytes)
-    {
-        if (closed)
-            return;
-
-        if (ec || bytes != sizeof (read_header)) {
-            owner.on_recv_error ();
-            if (outstanding > 0) {
-                const long dropped = static_cast<long> (outstanding);
-                outstanding = 0;
-                owner.on_abandon (dropped);
-            }
-            close_internal ();
-            return;
-        }
-
-        read_declared = perf_stream_common::perf_stream_load_u32_be (read_header);
-        start_read_payload ();
-    }
-
     // Complete a roundtrip: decode stamped header, report to orchestrator,
     // and re-enter the send loop.
     void on_read_payload (const boost::system::error_code &ec, size_t bytes)
@@ -858,6 +859,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
         boost::system::error_code ec;
         ws_pending_frame.clear ();
+        stream_pending_frame.clear ();
         ws_read_buffer.consume (ws_read_buffer.size ());
 
         if (ws_socket) {
@@ -953,9 +955,10 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
     boost::asio::ip::tcp::endpoint source_bind_ep;   // loopback shard bind address
 
     std::vector<unsigned char> write_buf;   // reusable send buffer [4B header + payload]
-    unsigned char read_header[4];           // len32be header read buffer
     uint32_t read_declared;                 // payload length from header
     std::vector<unsigned char> read_buf;    // reusable receive buffer
+    std::vector<unsigned char> stream_pending_frame;
+    std::vector<unsigned char> stream_read_chunk;
 };
 
 #endif

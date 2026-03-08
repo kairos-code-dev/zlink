@@ -44,6 +44,24 @@
 #define ZLINK_TLS_HOSTNAME 100
 #endif
 
+typedef std::chrono::steady_clock steady_clock_t;
+typedef std::chrono::milliseconds milliseconds_t;
+typedef std::chrono::seconds seconds_t;
+typedef std::chrono::nanoseconds nanoseconds_t;
+typedef std::chrono::duration<double> floating_seconds_t;
+
+inline steady_clock_t::duration to_clock_duration (double seconds)
+{
+    return std::chrono::duration_cast<steady_clock_t::duration> (
+      floating_seconds_t (seconds));
+}
+
+inline long remaining_milliseconds (const steady_clock_t::time_point &deadline,
+                                    const steady_clock_t::time_point &now)
+{
+    return std::chrono::duration_cast<milliseconds_t> (deadline - now).count ();
+}
+
 // --- Configuration ---
 static const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 262144};
 static const std::vector<std::string> TRANSPORTS = {"tcp", "inproc", "ipc"};
@@ -54,13 +72,13 @@ static const int SETTLE_TIME_MS = 300;
 // --- Stopwatch ---
 class stopwatch_t {
 public:
-    void start() { _start = std::chrono::steady_clock::now(); }
+    void start() { _start = steady_clock_t::now(); }
     double elapsed_ms() const {
-        auto end = std::chrono::steady_clock::now();
+        auto end = steady_clock_t::now();
         return std::chrono::duration<double, std::milli>(end - _start).count();
     }
 private:
-    std::chrono::steady_clock::time_point _start;
+    steady_clock_t::time_point _start;
 };
 
 inline int parse_positive_env(const char *name_, int default_value_)
@@ -374,37 +392,6 @@ inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
 
 inline int poll_connect_ready_count(connect_monitor_t &monitor_);
 
-inline bool wait_connect_ready(connect_monitor_t &monitor_, int timeout_ms_)
-{
-    if (!monitor_.monitor)
-        return false;
-
-    const int bounded_timeout = timeout_ms_ > 0 ? timeout_ms_ : 0;
-    const auto deadline = std::chrono::steady_clock::now()
-                          + std::chrono::milliseconds(bounded_timeout);
-    while (true) {
-        const auto now = std::chrono::steady_clock::now();
-        if (now >= deadline)
-            return false;
-
-        const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                 deadline - now)
-                                 .count();
-        zlink_pollitem_t item[] = {{monitor_.monitor, 0, ZLINK_POLLIN, 0}};
-        const int rc = zlink_poll(item, 1, remain_ms > 0 ? remain_ms : 0);
-        if (rc < 0) {
-            if (zlink_errno() == EINTR)
-                continue;
-            return false;
-        }
-        if (rc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
-            continue;
-
-        if (poll_connect_ready_count(monitor_) > 0)
-            return true;
-    }
-}
-
 inline int poll_connect_ready_count(connect_monitor_t &monitor_)
 {
     if (!monitor_.monitor)
@@ -436,16 +423,15 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
         return true;
 
     const int bounded_timeout = timeout_ms_ > 0 ? timeout_ms_ : 0;
-    const auto deadline = std::chrono::steady_clock::now()
-                          + std::chrono::milliseconds(bounded_timeout);
+    const auto deadline = steady_clock_t::now()
+                          + milliseconds_t(bounded_timeout);
     while (ready < expected_ready_) {
-        const auto now = std::chrono::steady_clock::now();
+        const auto now = steady_clock_t::now();
         if (now >= deadline)
             break;
 
-        const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                 deadline - now)
-                                 .count();
+        const long remain_ms = remaining_milliseconds(
+                                 deadline, now);
         zlink_pollitem_t item[] = {{monitor_.monitor, 0, ZLINK_POLLIN, 0}};
         const int rc = zlink_poll(item, 1, remain_ms > 0 ? remain_ms : 0);
         if (rc < 0) {
@@ -1016,7 +1002,7 @@ inline bool transport_available(const std::string& transport) {
 }
 
 inline void settle() {
-    std::this_thread::sleep_for(std::chrono::milliseconds(SETTLE_TIME_MS));
+    std::this_thread::sleep_for(milliseconds_t(SETTLE_TIME_MS));
 }
 
 inline bool connect_checked(void *socket_,

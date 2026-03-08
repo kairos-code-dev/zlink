@@ -126,8 +126,8 @@ int zlink_spot_node_connect_registry(void *node,
                                      const char *registry_endpoint);
 ```
 
-노드의 내부 DEALER 소켓을 Registry의 ROUTER 엔드포인트에 연결합니다. 이
-연결은 등록, 등록 해제, 하트비트 메시지를 전송하는 데 사용됩니다.
+노드의 내부 DEALER 소켓을 Registry control 엔드포인트에 연결합니다. 이
+연결은 등록, 등록 해제, 기존 control-plane 트래픽을 유지하는 데 사용됩니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
@@ -188,12 +188,16 @@ int zlink_spot_node_register(void *node,
                              const char *advertise_endpoint);
 ```
 
-지정된 서비스 이름에 대한 등록 요청을 Registry에 전송합니다.
+지정된 서비스 이름에 대한 등록 요청을 노드의 내부 control plane에 큐잉합니다.
 `advertise_endpoint`는 피어 노드가 연결할 엔드포인트입니다 (일반적으로
 `zlink_spot_node_bind`에 전달된 것과 동일한 엔드포인트). 등록되면
 Discovery를 사용하는 피어 노드가 자동으로 연결하여 메시를 형성합니다.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+반환값 `0`은 로컬 Node runtime이 요청을 수락하고 Registry 처리용으로 큐잉했음을
+의미합니다. 피어 가시성은 eventual이며, `register()` 자체를 강한 readiness
+barrier로 사용하지 말고 Discovery 또는 monitor 이벤트로 확인해야 합니다.
+
+**반환값:** 로컬 수락 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
 **스레드 안전성:** 스레드 안전하지 않음.
 
@@ -210,7 +214,7 @@ int zlink_spot_node_unregister(void *node,
                                const char *service_name);
 ```
 
-지정된 서비스 이름에 대한 등록 해제 요청을 Registry에 전송합니다. 다음
+지정된 서비스 이름에 대한 등록 해제 요청을 Registry 처리용으로 큐잉합니다. 다음
 브로드캐스트 주기 이후 피어 노드는 더 이상 지정된 서비스에 대해 이 노드를
 검색할 수 없습니다.
 

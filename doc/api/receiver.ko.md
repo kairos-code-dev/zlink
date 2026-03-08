@@ -74,8 +74,10 @@ int zlink_receiver_connect_registry(void *receiver,
 ```
 
 Receiver의 내부 DEALER 소켓을 Registry의 ROUTER 엔드포인트에 연결합니다.
-이 연결은 Registry에 등록, 등록 해제, 하트비트 및 가중치 업데이트 메시지를
-전송하는 데 사용됩니다.
+이 연결은 Registry에 등록, 등록 해제, 가중치 업데이트 메시지를 전송하는 데
+사용됩니다. Receiver topology entry는 이 control path에서 직접 파생됩니다.
+discovery-driven summary에 대한 Registry heartbeat/topology uplink ownership은
+Discovery가 담당합니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 

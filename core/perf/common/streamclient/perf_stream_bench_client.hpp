@@ -120,6 +120,12 @@ make_loopback_bind_plan (const boost::asio::ip::tcp::endpoint &endpoint, int ccu
 class bench_client_t : public bench_client_iface_t
 {
   public:
+    using steady_clock_t = perf_stream_common::steady_clock_t;
+    using milliseconds_t = perf_stream_common::milliseconds_t;
+    using seconds_t = perf_stream_common::seconds_t;
+    using nanoseconds_t = perf_stream_common::nanoseconds_t;
+    using floating_seconds_t = perf_stream_common::floating_seconds_t;
+
     explicit bench_client_t (const client_options_t &opt_)
         : opt (opt_),
           io (),
@@ -166,8 +172,8 @@ class bench_client_t : public bench_client_iface_t
 
         schedule_connects ();
 
-        const auto connect_deadline = std::chrono::steady_clock::now ()
-                                      + std::chrono::seconds (
+        const auto connect_deadline = steady_clock_t::now ()
+                                      + seconds_t (
                                         k_connect_timeout_s);
         {
             std::unique_lock<std::mutex> lk (connect_mu);
@@ -461,8 +467,8 @@ class bench_client_t : public bench_client_iface_t
         for (size_t i = 0; i < copy.size (); ++i)
             copy[i]->set_chunk_size (size, latch);
 
-        const auto deadline = std::chrono::steady_clock::now ()
-                              + std::chrono::seconds (k_resize_timeout_s);
+        const auto deadline = steady_clock_t::now ()
+                              + seconds_t (k_resize_timeout_s);
         std::unique_lock<std::mutex> lk (latch->mu);
         while (latch->pending > 0) {
             if (latch->cv.wait_until (lk, deadline) == std::cv_status::timeout)
@@ -506,7 +512,7 @@ class bench_client_t : public bench_client_iface_t
                     std::memory_order_release);
 
         kick_phase_for_connected ();
-        std::this_thread::sleep_for (std::chrono::seconds (duration_s));
+        std::this_thread::sleep_for (seconds_t (duration_s));
 
         mode.store (phase_idle, std::memory_order_release);
         collect_metrics.store (false, std::memory_order_release);
@@ -514,12 +520,12 @@ class bench_client_t : public bench_client_iface_t
         const int drain_ms = std::max (0, opt.drain_ms);
         if (drain_ms > 0) {
             const auto drain_deadline =
-              std::chrono::steady_clock::now ()
-              + std::chrono::milliseconds (drain_ms);
-            while (std::chrono::steady_clock::now () < drain_deadline) {
+              steady_clock_t::now ()
+              + milliseconds_t (drain_ms);
+            while (steady_clock_t::now () < drain_deadline) {
                 if (outstanding_total.load (std::memory_order_relaxed) <= 0)
                     break;
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                std::this_thread::sleep_for (milliseconds_t (1));
             }
 
             const long remaining = outstanding_total.load (std::memory_order_relaxed);

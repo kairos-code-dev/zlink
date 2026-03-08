@@ -8,6 +8,8 @@
 
 namespace {
 
+typedef std::chrono::steady_clock steady_clock_t;
+
 inline int recv_router_header_flags (void *router,
                                      size_t payload_size,
                                      int flags,
@@ -73,10 +75,10 @@ inline int recv_router_header_flags (void *router,
     return 1;
 }
 
-inline bool setup_dealer_router_session (void *router,
-                                         void *dealer,
-                                         const std::string &transport,
-                                         const std::string &pair_id)
+inline bool prepare_dealer_router_session (void *router,
+                                           void *dealer,
+                                           const std::string &transport,
+                                           const std::string &pair_id)
 {
     if (!router || !dealer)
         return false;
@@ -91,20 +93,20 @@ inline bool setup_dealer_router_session (void *router,
     return true;
 }
 
-inline bool run_oneway_phase (void *dealer,
-                              void *router,
-                              std::vector<char> *payload,
-                              size_t payload_size,
-                              size_t msg_size,
-                              uint32_t run_id,
-                              uint64_t *seq,
-                              perf_single_metric::phase_t phase,
-                              int warmup_count,
-                              int duration_s,
-                              int recv_timeout_ms,
-                              queue_probe_t *queue_probe,
-                              unsigned long long *out_received,
-                              latency_stats_t *out_latency)
+inline bool run_one_way_phase (void *dealer,
+                               void *router,
+                               std::vector<char> *payload,
+                               size_t payload_size,
+                               size_t msg_size,
+                               uint32_t run_id,
+                               uint64_t *seq,
+                               perf_single_metric::phase_t phase,
+                               int warmup_count,
+                               int duration_s,
+                               int recv_timeout_ms,
+                               queue_probe_t *queue_probe,
+                               unsigned long long *out_received,
+                               latency_stats_t *out_latency)
 {
     if (!dealer || !router || !payload || !seq || !out_received)
         return false;
@@ -113,9 +115,9 @@ inline bool run_oneway_phase (void *dealer,
     const bool active_phase = phase == perf_single_metric::phase_active;
     const auto deadline =
       active_phase
-        ? std::chrono::steady_clock::now ()
-            + std::chrono::seconds (duration_s > 0 ? duration_s : 1)
-        : std::chrono::steady_clock::time_point ();
+        ? steady_clock_t::now ()
+            + seconds_t (duration_s > 0 ? duration_s : 1)
+        : steady_clock_t::time_point ();
 
     unsigned long long received = 0;
     latency_stats_builder_t latency_builder;
@@ -149,7 +151,7 @@ inline bool run_oneway_phase (void *dealer,
     unsigned long long iterations = 0;
     while (true) {
         if (active_phase) {
-            if (std::chrono::steady_clock::now () >= deadline)
+            if (steady_clock_t::now () >= deadline)
                 break;
         } else if (iterations >= static_cast<unsigned long long> (warmup_count)) {
             break;
@@ -245,7 +247,7 @@ void run_dealer_router (const std::string &transport,
         return;
     }
 
-    if (!setup_dealer_router_session (
+    if (!prepare_dealer_router_session (
           router.get (), dealer.get (), transport, lib_name + "_dealer_router")) {
         print_fail_no_queue ();
         return;
@@ -267,20 +269,20 @@ void run_dealer_router (const std::string &transport,
 
     unsigned long long warmup_received = 0;
     const int warmup_count = resolve_bench_count ("PERF_WARMUP_COUNT", 1000);
-    if (!run_oneway_phase (dealer.get (),
-                           router.get (),
-                           &payload,
-                           payload_size,
-                           msg_size,
-                           run_id,
-                           &seq,
-                           perf_single_metric::phase_warmup,
-                           warmup_count,
-                           0,
-                           recv_timeout_ms,
-                           NULL,
-                           &warmup_received,
-                           NULL)) {
+    if (!run_one_way_phase (dealer.get (),
+                            router.get (),
+                            &payload,
+                            payload_size,
+                            msg_size,
+                            run_id,
+                            &seq,
+                            perf_single_metric::phase_warmup,
+                            warmup_count,
+                            0,
+                            recv_timeout_ms,
+                            NULL,
+                            &warmup_received,
+                            NULL)) {
         print_fail_with_queue ();
         return;
     }
@@ -288,20 +290,20 @@ void run_dealer_router (const std::string &transport,
     const int duration_s = std::max (1, resolve_single_duration_seconds ());
     unsigned long long received = 0;
     latency_stats_t latency_stats;
-    if (!run_oneway_phase (dealer.get (),
-                           router.get (),
-                           &payload,
-                           payload_size,
-                           msg_size,
-                           run_id,
-                           &seq,
-                           perf_single_metric::phase_active,
-                           0,
-                           duration_s,
-                           recv_timeout_ms,
-                           &queue_probe,
-                           &received,
-                           &latency_stats)) {
+    if (!run_one_way_phase (dealer.get (),
+                            router.get (),
+                            &payload,
+                            payload_size,
+                            msg_size,
+                            run_id,
+                            &seq,
+                            perf_single_metric::phase_active,
+                            0,
+                            duration_s,
+                            recv_timeout_ms,
+                            &queue_probe,
+                            &received,
+                            &latency_stats)) {
         print_fail_with_queue ();
         return;
     }

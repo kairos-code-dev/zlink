@@ -147,9 +147,7 @@ static void test_discovery_monitor_and_routing_id ()
       zlink_discovery_monitor_open (discovery, ZLINK_DISCOVERY_SERVICE_UP);
     TEST_ASSERT_NOT_NULL (monitor);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://svcmon-reg-pub"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry_router (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, "inproc://svcmon-reg-router"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svcmon"));
 
@@ -201,9 +199,7 @@ static void test_gateway_receiver_routing_ids_and_options ()
 
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://svcint-opt-pub"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry_router (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, "inproc://svcint-opt-router"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery, "svc-int-opt"));
@@ -282,9 +278,7 @@ static void test_gateway_receiver_monitors_and_monitor_poller ()
 
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://svcint-reg-pub"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry_router (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, "inproc://svcint-reg-router"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery, "svc-int"));
@@ -337,6 +331,45 @@ static void test_gateway_receiver_monitors_and_monitor_poller ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_destroy (&receiver));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+}
+
+static void test_receiver_unregister_failed_monitor_event ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = NULL;
+    setup_registry (ctx, &registry, "inproc://svcint-unregfail-pub",
+                    "inproc://svcint-unregfail-router");
+
+    void *receiver = zlink_receiver_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (receiver);
+
+    void *monitor =
+      zlink_receiver_monitor_open (receiver, ZLINK_RECEIVER_UNREGISTER_FAILED);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_connect_registry (
+      receiver, "inproc://svcint-unregfail-router"));
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_receiver_unregister (receiver, "missing-service"));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+
+    zlink_service_event_t ev;
+    memset (&ev, 0, sizeof (ev));
+    TEST_ASSERT_TRUE (wait_service_event (monitor, &ev, 3000));
+    TEST_ASSERT_EQUAL_UINT16 (ZLINK_SERVICE_KIND_RECEIVER, ev.service_kind);
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_RECEIVER_UNREGISTER_FAILED, ev.event_type);
+    TEST_ASSERT_EQUAL_INT (-1, ev.status);
+    TEST_ASSERT_EQUAL_INT (EINVAL, ev.error_code);
+    TEST_ASSERT_TRUE ((ev.detail_flags & ZLINK_EVENT_DETAIL_SERVICE_NAME) != 0);
+    TEST_ASSERT_EQUAL_STRING ("missing-service", ev.service_name);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_destroy (&receiver));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
@@ -482,9 +515,7 @@ static void test_registry_topology_reports_discovery_and_gateway ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_set_routing_id (discovery, "disc-topology", 13));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://gwdisc-topology-pub"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry_router (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, "inproc://gwdisc-topology-router"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery, "svc-gw-topology"));
@@ -549,6 +580,7 @@ int main (int, char **)
     RUN_TEST (test_discovery_monitor_and_routing_id);
     RUN_TEST (test_gateway_receiver_routing_ids_and_options);
     RUN_TEST (test_gateway_receiver_monitors_and_monitor_poller);
+    RUN_TEST (test_receiver_unregister_failed_monitor_event);
     RUN_TEST (test_registry_topology_snapshot_and_remote_query);
     RUN_TEST (test_monitor_closed_event_on_service_destroy);
     RUN_TEST (test_registry_topology_reports_discovery_and_gateway);

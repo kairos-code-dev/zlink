@@ -127,7 +127,7 @@ perf/                                       # bindings/<lang>/perf/
 
 | 언어 | single 소스 위치 | multi 소스 위치 | 공통 유틸리티 |
 |------|-----------------|----------------|-------------|
-| Core (C++) | `perf/single/current/` | `perf/multi/current/` | `perf/single/common/`, `perf/multi/common/` |
+| Core (C++) | `perf/single/src/` | `perf/multi/src/` | `perf/single/common/`, `perf/multi/common/` |
 | C++ binding | `perf/single/` | `perf/multi/` | `perf_dispatch.hpp` |
 | .NET | `perf/single/Zlink.BindingBench/` | `perf/multi/<project>/` 또는 `perf/single/Zlink.BindingBench/` 내 multi role entrypoint | `PerfCommon.cs` |
 | Java | `perf/single/<project>/` | `perf/multi/<project>/` 또는 `perf/single/<project>/` 내 multi role entrypoint | `PerfUtil.java` |
@@ -497,7 +497,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | 항목 | 규칙 |
 |------|------|
 | 스크립트 레벨 재시도 | 금지 — 실패한 pattern/transport/size 조합을 자동으로 다시 실행하지 않는다 |
-| 바이너리 내부 재시도 | 금지 — send/recv 실패 시 자동 재시도하지 않는다. **예외**: MULTI_STREAM 서버(`perf_multi_stream_server`)의 `send_stream_once`만 `PERF_MULTI_STREAM_SEND_RETRIES` (기본: 128) 횟수만큼 send를 재시도한다. MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE 서버는 재시도 루프 없이 특정 에러(ECONNRESET, EAGAIN 등)를 허용 처리한다 |
+| 바이너리 내부 재시도 | 금지 — send/recv 실패 시 자동 재시도하지 않는다. `EAGAIN`은 pending 상태로 기록하고 이후 `PollOut` readiness에서 재개할 수 있으나, 동일 호출 흐름에서의 즉시 retry loop는 금지한다 |
 | 환경 변수 | `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 **삭제 대상**이다. 구현에 존재하면 제거해야 한다 |
 
 - **이유**: 재시도는 실패 원인을 숨긴다. 벤치마크 실패는 라이브러리 또는 환경의 실제 문제를 반영하며, 재시도로 통과시키면 회귀가 감지되지 않는다.
@@ -570,7 +570,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 **벤치마크 대상 라이브러리 자체가 아니라 검증 인프라**로 간주한다.
 
 - STREAM client 공통 구현은 `common/streamclient/`에 모아둘 수 있다.
-- 각 pattern 소스(`multi/current`)는 해당 client를 호출하는
+- 각 pattern 소스(`multi/src`)는 해당 client를 호출하는
   엔트리/실행 흐름을 유지해야 한다.
 - 이 예외는 STREAM 계열 client 인프라에만 적용한다.
 - STREAM 계열은 multi suite에서만 테스트하므로 single suite에는 해당 없다.
@@ -585,7 +585,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | 소켓 옵션 설정 | `ROUTING_ID`, `SUBSCRIBE` 등 패턴 고유 옵션 |
 | bind / connect | 서버의 bind, 클라이언트의 connect 호출 |
 | send / recv 루프 | 메시지 교환 흐름 (echo, relay, one-way 등) |
-| phase 제어 | warmup → measure → drain 시퀀스 |
+| phase 제어 | warmup → settle(optional) → active 시퀀스 |
 
 #### multi client 헬퍼 위임 허용
 
@@ -629,8 +629,7 @@ int main (int argc, char **argv)
     for (...) { zlink_send (...); zlink_recv (...); count++; }
     double throughput = count / elapsed;
 
-    // drain phase
-    // ...
+    // post-active cleanup / process teardown
 
     // 결과 출력 (공유 유틸 사용 가능)
     print_result (lib, pattern, transport, size, throughput, latency);

@@ -103,8 +103,12 @@ class registry_t
     void handle_register (void *router_, const zlink_msg_t *frames_,
                           size_t frame_count_,
                           const zlink_routing_id_t &sender_id_);
-    void handle_unregister (const zlink_msg_t *frames_, size_t frame_count_);
+    void handle_unregister (void *router_, const zlink_msg_t *frames_,
+                            size_t frame_count_,
+                            const zlink_routing_id_t &sender_id_);
     void handle_heartbeat (const zlink_msg_t *frames_, size_t frame_count_);
+    void handle_bootstrap (void *router_,
+                           const zlink_routing_id_t &sender_id_);
     void handle_topology_report (const zlink_msg_t *frames_,
                                  size_t frame_count_);
     void handle_topology_query (void *router_,
@@ -119,10 +123,16 @@ class registry_t
                             uint8_t status_,
                             const std::string &endpoint_,
                             const std::string &error_);
+    void send_unregister_ack (void *router_,
+                              const zlink_routing_id_t &sender_id_,
+                              uint8_t status_,
+                              const std::string &error_);
     void send_topology_reply (void *router_,
                               const zlink_routing_id_t &sender_id_,
                               const std::vector<zlink_registry_topology_entry_t>
                                 &entries_);
+    void send_bootstrap_reply (void *router_,
+                               const zlink_routing_id_t &sender_id_);
     void upsert_topology_entry (const zlink_registry_topology_entry_t &entry_,
                                 uint64_t now_ms_);
     void send_service_list (void *pub_);

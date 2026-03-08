@@ -59,15 +59,17 @@ void *ctx = zlink_ctx_new();
 void *node = zlink_spot_node_new(ctx);
 void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_SPOT);
 
-/* Connect to Registry */
-zlink_discovery_connect_registry(discovery, "tcp://registry1:5550");
+/* Connect Discovery to the Registry bootstrap/control endpoint */
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_subscribe(discovery, "spot-node");
 
 /* PUB bind */
 zlink_spot_node_bind(node, "tcp://*:9000");
 
-/* Register with Registry */
+/* Connect the node control plane to the Registry control endpoint */
 zlink_spot_node_connect_registry(node, "tcp://registry1:5551");
+
+/* Queue a registration request for the mesh service */
 zlink_spot_node_register(node, "spot-node", NULL);
 
 /* Discovery-based automatic peer connection */

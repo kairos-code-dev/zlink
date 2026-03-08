@@ -91,7 +91,7 @@ static void test_discovery_provider_registration ()
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://reg-pub-basic"));
+      zlink_discovery_connect_registry (discovery, "inproc://reg-router-basic"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery, "test-svc"));
     msleep (50);
@@ -180,7 +180,7 @@ static void test_discovery_service_filtering ()
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://reg-pub-filter"));
+      zlink_discovery_connect_registry (discovery, "inproc://reg-router-filter"));
 
     // Subscribe to svc-A
     step_log ("subscribe to svc-A");
@@ -318,7 +318,7 @@ static void test_discovery_heartbeat_timeout ()
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://reg-pub-hb"));
+      zlink_discovery_connect_registry (discovery, "inproc://reg-router-hb"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "hb-svc"));
     msleep (50);
 
@@ -409,7 +409,7 @@ static void test_discovery_weight_update ()
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://reg-pub-weight"));
+      zlink_discovery_connect_registry (discovery, "inproc://reg-router-weight"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "weight-svc"));
     msleep (50);
 
@@ -502,7 +502,7 @@ static void test_discovery_weight_update_stress ()
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
-      discovery, "inproc://reg-pub-weight-stress"));
+      discovery, "inproc://reg-router-weight-stress"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery, "weight-stress-svc"));
     msleep (50);

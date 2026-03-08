@@ -18,6 +18,8 @@
 
 namespace {
 
+typedef std::chrono::steady_clock steady_clock_t;
+
 static const char *k_pattern = "PUBSUB";
 static const char *k_token = "pubsub";
 static const int k_server_socket_type = ZLINK_PUB;
@@ -189,7 +191,7 @@ struct one_way_phase_t
 {
     one_way_phase_t (size_t msg_size_,
                      perf_metric::phase_t phase_,
-                     std::chrono::steady_clock::duration duration_,
+                     steady_clock_t::duration duration_,
                      bool send_active_) :
         msg_size (msg_size_),
         phase (phase_),
@@ -200,7 +202,7 @@ struct one_way_phase_t
 
     size_t msg_size;
     perf_metric::phase_t phase;
-    std::chrono::steady_clock::duration duration;
+    steady_clock_t::duration duration;
     bool send_active;
 };
 
@@ -215,8 +217,7 @@ inline void append_one_way_phase (std::vector<one_way_phase_t> *phases,
     phases->push_back (one_way_phase_t (
       msg_size,
       phase,
-      std::chrono::duration_cast<std::chrono::steady_clock::duration> (
-        std::chrono::duration<double> (seconds)),
+      to_clock_duration (seconds),
       send_active));
 }
 
@@ -289,7 +290,7 @@ inline bool run_server_loop (void *server,
     const std::vector<one_way_phase_t> phases =
       build_one_way_phases (settings, msg_sizes);
     size_t phase_index = 0;
-    auto phase_deadline = std::chrono::steady_clock::now ();
+    auto phase_deadline = steady_clock_t::now ();
     size_t current_phase_msg_size = 0;
     perf_metric::phase_t current_phase = perf_metric::phase_warmup;
     uint64_t phase_seq = 1;
@@ -303,13 +304,13 @@ inline bool run_server_loop (void *server,
         emit_requested_queue_probe (lib_name, transport, server, server);
 
         if (!phases.empty ()) {
-            auto now = std::chrono::steady_clock::now ();
+            auto now = steady_clock_t::now ();
             while (phase_index < phases.size () && now >= phase_deadline) {
                 ++phase_index;
                 if (phase_index < phases.size ())
                     phase_deadline += phases[phase_index].duration;
                 send_pending = false;
-                now = std::chrono::steady_clock::now ();
+                now = steady_clock_t::now ();
             }
 
             if (phase_index >= phases.size ()) {
@@ -357,12 +358,10 @@ inline bool run_server_loop (void *server,
             poll_item.revents = 0;
 
             int timeout_ms = 50;
-            const auto now_for_timeout = std::chrono::steady_clock::now ();
+            const auto now_for_timeout = steady_clock_t::now ();
             if (phase_index < phases.size () && phase_deadline > now_for_timeout) {
                 const long remain_ms =
-                  std::chrono::duration_cast<std::chrono::milliseconds> (
-                    phase_deadline - now_for_timeout)
-                    .count ();
+                  remaining_milliseconds (phase_deadline, now_for_timeout);
                 if (remain_ms >= 0)
                     timeout_ms = std::min (timeout_ms, static_cast<int> (remain_ms));
             } else if (phase_index < phases.size ()) {

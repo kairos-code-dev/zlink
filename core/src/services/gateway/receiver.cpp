@@ -19,24 +19,6 @@ namespace zlink
 {
 static const uint32_t receiver_tag_value = 0x1e6700d8;
 
-static uint32_t resolve_receiver_heartbeat_chunk_ms ()
-{
-    static int cached = -1;
-    if (cached >= 0)
-        return static_cast<uint32_t> (cached);
-
-    int value = 100;
-    const char *env = getenv ("ZLINK_RECEIVER_HEARTBEAT_CHUNK_MS");
-    if (env && *env) {
-        char *end = NULL;
-        const long parsed = strtol (env, &end, 10);
-        if (end != env && parsed > 0 && parsed <= 5000)
-            value = static_cast<int> (parsed);
-    }
-    cached = value;
-    return static_cast<uint32_t> (cached);
-}
-
 static int send_frame (socket_base_t *socket_,
                        const void *data_,
                        size_t size_,
@@ -77,10 +59,11 @@ static int send_string (socket_base_t *socket_,
                        value_.size (), flags_);
 }
 
-static int recv_register_ack (socket_base_t *socket_,
-                              int *status_out_,
-                              std::string *resolved_out_,
-                              std::string *error_out_)
+static int recv_status_ack (socket_base_t *socket_,
+                            uint16_t expected_msg_id_,
+                            int *status_out_,
+                            std::string *resolved_out_,
+                            std::string *error_out_)
 {
     if (!socket_ || !status_out_) {
         errno = EINVAL;
@@ -115,15 +98,23 @@ static int recv_register_ack (socket_base_t *socket_,
     uint16_t msg_id = 0;
     if (frames.size () >= 2
         && discovery_protocol::read_u16 (frames[0], &msg_id)
-        && msg_id == discovery_protocol::msg_register_ack) {
+        && msg_id == expected_msg_id_) {
         uint8_t status = 0xFF;
         if (zlink_msg_size (&frames[1]) == sizeof (uint8_t))
             memcpy (&status, zlink_msg_data (&frames[1]), sizeof (uint8_t));
         *status_out_ = static_cast<int> (status);
-        if (resolved_out_ && frames.size () >= 3)
+        if (resolved_out_ && frames.size () >= 3
+            && expected_msg_id_ == discovery_protocol::msg_register_ack)
             *resolved_out_ = discovery_protocol::read_string (frames[2]);
-        if (error_out_ && frames.size () >= 4)
-            *error_out_ = discovery_protocol::read_string (frames[3]);
+        if (error_out_) {
+            if (expected_msg_id_ == discovery_protocol::msg_register_ack
+                && frames.size () >= 4) {
+                *error_out_ = discovery_protocol::read_string (frames[3]);
+            } else if (expected_msg_id_ == discovery_protocol::msg_unregister_ack
+                       && frames.size () >= 3) {
+                *error_out_ = discovery_protocol::read_string (frames[2]);
+            }
+        }
     }
 
     for (size_t i = 0; i < frames.size (); ++i)
@@ -150,11 +141,7 @@ receiver_t::receiver_t (ctx_t *ctx_, const char *routing_id_) :
     _routing_id_locked (false),
     _weight (1),
     _last_status (-1),
-    _heartbeat_interval_ms (5000),
-    _next_heartbeat_ms (0),
     _stop (0),
-    _heartbeat_task_id (0),
-    _heartbeat_dealer (NULL),
     _monitor (ctx_)
 {
     zlink_assert (_ctx);
@@ -340,7 +327,9 @@ int receiver_t::register_service (const char *service_name_,
 
     std::string resolved;
     std::string error;
-    if (recv_register_ack (_dealer, &_last_status, &resolved, &error) != 0)
+    if (recv_status_ack (_dealer, discovery_protocol::msg_register_ack,
+                         &_last_status, &resolved, &error)
+        != 0)
         return -1;
     _last_resolved.swap (resolved);
     _last_error.swap (error);
@@ -366,27 +355,6 @@ int receiver_t::register_service (const char *service_name_,
     if (_last_status != 0) {
         errno = EINVAL;
         return -1;
-    }
-
-    if (_heartbeat_task_id == 0) {
-        service_control_runtime_t *runtime = _ctx->service_control_runtime ();
-        if (!runtime) {
-            errno = ENOTSUP;
-            return -1;
-        }
-
-        const uint32_t heartbeat_chunk_ms = resolve_receiver_heartbeat_chunk_ms ();
-        uint32_t tick_ms =
-          heartbeat_chunk_ms < _heartbeat_interval_ms ? heartbeat_chunk_ms
-                                                      : _heartbeat_interval_ms;
-        if (tick_ms == 0)
-            tick_ms = 1;
-        _stop.set (0);
-        _next_heartbeat_ms = 0;
-        _heartbeat_task_id =
-          runtime->add_periodic_task (heartbeat_task, this, tick_ms, true);
-        if (_heartbeat_task_id == 0)
-            return -1;
     }
 
     return 0;
@@ -421,7 +389,9 @@ int receiver_t::update_weight (const char *service_name_, uint32_t weight_)
         return -1;
 
     int status = -1;
-    if (recv_register_ack (_dealer, &status, NULL, NULL) != 0)
+    if (recv_status_ack (_dealer, discovery_protocol::msg_register_ack, &status,
+                         NULL, NULL)
+        != 0)
         return -1;
     if (status != 0) {
         errno = EINVAL;
@@ -451,17 +421,57 @@ int receiver_t::unregister_service (const char *service_name_)
              != 0
         || send_string (_dealer, service_name_, ZLINK_SNDMORE) != 0
         || send_string (_dealer, _advertise_endpoint, 0) != 0)
+        {
+            zlink_service_event_t ev;
+            memset (&ev, 0, sizeof (ev));
+            ev.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
+            ev.event_type = ZLINK_RECEIVER_UNREGISTER_FAILED;
+            ev.status = -1;
+            ev.error_code = errno;
+            ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
+                              | ZLINK_EVENT_DETAIL_SUBJECT_RID;
+            ev.routing_id = _routing_id;
+            strncpy (ev.service_name, service_name_,
+                     sizeof (ev.service_name) - 1);
+            _monitor.emit (ev);
+            return -1;
+        }
+
+    int status = -1;
+    std::string error;
+    if (recv_status_ack (_dealer, discovery_protocol::msg_unregister_ack,
+                         &status, NULL, &error)
+        != 0) {
+        zlink_service_event_t ev;
+        memset (&ev, 0, sizeof (ev));
+        ev.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
+        ev.event_type = ZLINK_RECEIVER_UNREGISTER_FAILED;
+        ev.status = -1;
+        ev.error_code = errno;
+        ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
+                          | ZLINK_EVENT_DETAIL_SUBJECT_RID;
+        ev.routing_id = _routing_id;
+        strncpy (ev.service_name, service_name_, sizeof (ev.service_name) - 1);
+        _monitor.emit (ev);
         return -1;
+    }
 
     zlink_service_event_t ev;
     memset (&ev, 0, sizeof (ev));
     ev.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
-    ev.event_type = ZLINK_RECEIVER_UNREGISTER_OK;
+    ev.event_type = status == 0 ? ZLINK_RECEIVER_UNREGISTER_OK
+                                : ZLINK_RECEIVER_UNREGISTER_FAILED;
+    ev.status = status == 0 ? 0 : -1;
+    ev.error_code = status == 0 ? 0 : EINVAL;
     ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
                       | ZLINK_EVENT_DETAIL_SUBJECT_RID;
     ev.routing_id = _routing_id;
     strncpy (ev.service_name, service_name_, sizeof (ev.service_name) - 1);
     _monitor.emit (ev);
+    if (status != 0) {
+        errno = EINVAL;
+        return -1;
+    }
     return 0;
 }
 
@@ -782,91 +792,9 @@ void receiver_t::lock_routing_id ()
     _routing_id_locked = true;
 }
 
-void receiver_t::heartbeat_task (void *arg_)
-{
-    receiver_t *self = static_cast<receiver_t *> (arg_);
-    self->heartbeat_tick ();
-}
-
-void receiver_t::heartbeat_tick ()
-{
-    if (_stop.get () != 0)
-        return;
-
-    zlink::clock_t clock;
-    const uint64_t now = clock.now_ms ();
-
-    std::string registry;
-    std::string service;
-    std::string advertise;
-    socket_base_t *dealer = NULL;
-
-    // Never block the shared control-runtime thread on receiver lock: if another
-    // API call is in-flight, skip this heartbeat tick and retry next interval.
-    if (!_sync.try_lock ())
-        return;
-
-    do {
-        if (_next_heartbeat_ms != 0 && now < _next_heartbeat_ms)
-            break;
-
-        registry = _registry_endpoint;
-        service = _service_name;
-        advertise = _advertise_endpoint;
-
-        if (registry.empty () || service.empty () || advertise.empty ())
-            break;
-
-        if (_heartbeat_registry_endpoint != registry) {
-            if (_heartbeat_dealer) {
-                _heartbeat_dealer->close ();
-                _heartbeat_dealer = NULL;
-            }
-            _heartbeat_registry_endpoint = registry;
-        }
-
-        if (!_heartbeat_dealer) {
-            _heartbeat_dealer = _ctx->create_socket (ZLINK_DEALER);
-            if (_heartbeat_dealer) {
-                const int linger = 0;
-                const int sndtimeo_ms = 100;
-                _heartbeat_dealer->setsockopt (ZLINK_LINGER, &linger,
-                                               sizeof (linger));
-                _heartbeat_dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms,
-                                               sizeof (sndtimeo_ms));
-                // Heartbeat sender must not reuse register DEALER identity.
-                // Using the same routing-id can cause ROUTER identity takeover/
-                // rejection races under high client counts.
-                if (_heartbeat_dealer->connect (registry.c_str ()) != 0) {
-                    _heartbeat_dealer->close ();
-                    _heartbeat_dealer = NULL;
-                }
-            }
-        }
-
-        dealer = _heartbeat_dealer;
-        _next_heartbeat_ms = now + _heartbeat_interval_ms;
-    } while (false);
-
-    _sync.unlock ();
-
-    if (!dealer)
-        return;
-
-    send_u16 (dealer, discovery_protocol::msg_heartbeat, ZLINK_SNDMORE);
-    send_u16 (dealer, discovery_protocol::service_type_gateway_receiver,
-              ZLINK_SNDMORE);
-    send_string (dealer, service, ZLINK_SNDMORE);
-    send_string (dealer, advertise, 0);
-}
-
 int receiver_t::destroy ()
 {
     _stop.set (1);
-    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
-    if (runtime && _heartbeat_task_id != 0)
-        runtime->remove_task (_heartbeat_task_id);
-    _heartbeat_task_id = 0;
 
     zlink_service_event_t terminal;
     memset (&terminal, 0, sizeof (terminal));
@@ -877,11 +805,6 @@ int receiver_t::destroy ()
     _monitor.close_all (&terminal);
 
     scoped_lock_t lock (_sync);
-    if (_heartbeat_dealer) {
-        _heartbeat_dealer->close ();
-        _heartbeat_dealer = NULL;
-    }
-    _heartbeat_registry_endpoint.clear ();
     if (_dealer) {
         _dealer->close ();
         _dealer = NULL;

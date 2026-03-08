@@ -781,13 +781,14 @@ ZLINK_EXPORT int zlink_registry_destroy (void **registry_p);
  */
 ZLINK_EXPORT void *zlink_discovery_new_typed (void *ctx, uint16_t service_type);
 
-/** @brief Connect to a registry PUB endpoint. */
+/**
+ * @brief Connect Discovery to a Registry bootstrap/control endpoint.
+ *
+ * Discovery learns the Registry broadcast and topology-uplink endpoints from
+ * this bootstrap connection and configures its internal sockets automatically.
+ */
 ZLINK_EXPORT int zlink_discovery_connect_registry (
-  void *discovery, const char *registry_pub_endpoint);
-
-/** @brief Connect Discovery to a Registry ROUTER endpoint for topology reporting. */
-ZLINK_EXPORT int zlink_discovery_connect_registry_router (
-  void *discovery, const char *registry_router_endpoint);
+  void *discovery, const char *registry_endpoint);
 
 /** @brief Override the representative routing id before first use. */
 ZLINK_EXPORT int zlink_discovery_set_routing_id (void *discovery,

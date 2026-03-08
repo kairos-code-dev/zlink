@@ -73,9 +73,9 @@ zlink_ctx_term(ctx);
 /* service_type: ZLINK_SERVICE_TYPE_GATEWAY or ZLINK_SERVICE_TYPE_SPOT */
 void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 
-/* Connect to Registry (multiple allowed) */
-zlink_discovery_connect_registry(discovery, "tcp://registry1:5550");
-zlink_discovery_connect_registry(discovery, "tcp://registry2:5550");
+/* Connect to Registry bootstrap/control endpoint (multiple allowed) */
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
+zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 
 /* Subscribe to a service */
 zlink_discovery_subscribe(discovery, "payment-service");
@@ -102,27 +102,27 @@ int n = zlink_discovery_receiver_count(discovery, "payment-service");
 zlink_discovery_destroy(&discovery);
 ```
 
-## 4. Heartbeat Mechanism
+## 4. Liveness and Summary Updates
 
 ```
-Receiver                    Registry
-   │  REGISTER                 │
-   │──────────────────────────►│
-   │  REGISTER_ACK             │
-   │◄──────────────────────────│
-   │                           │
-   │  HEARTBEAT (every 5s)     │
-   │──────────────────────────►│
-   │  HEARTBEAT (every 5s)     │
-   │──────────────────────────►│
-   │                           │
-   │  (15s without heartbeat)  │
-   │         X                 │ ← Receiver removed + broadcast
+Receiver/SpotNode           Discovery               Registry
+   │  REGISTER / summary        │                      │
+   │──────────────────────────► │                      │
+   │                            │ bootstrap + uplink   │
+   │                            │─────────────────────►│
+   │                            │  heartbeat / summary │
+   │                            │─────────────────────►│
+   │                            │                      │
+   │                            │ (summary timeout)    │
+   │                            │         X            │ ← entry ages out / LOST
 ```
 
-- Interval: 5 seconds (default, configurable)
-- Timeout: 15 seconds (removed after 3 missed heartbeats)
-- On removal, SERVICE_LIST is broadcast to all Discovery instances
+- Registry visibility is maintained through Discovery-owned heartbeat/topology
+  uplink.
+- Receiver and Spot services still submit local registration/summary changes,
+  but Discovery owns the periodic uplink cadence.
+- Registry summary is eventually consistent and should be treated as a
+  coarse/global view, not a strict final readiness gate.
 
 ## 5. Registry Cluster HA
 
@@ -131,12 +131,12 @@ Receiver                    Registry
 - Eventually Consistent: all Registries converge to the same state
 - Duplicate/out-of-order updates ignored via `registry_id` + `list_seq`
 
-### Receiver Failover
+### Discovery Failover
 
-- Receiver sends REGISTER/HEARTBEAT to **only one Registry**
-- On failure detection, switches to the next Registry and re-registers
-- Exponential backoff: 200ms to max 5s (with +/-20% jitter)
-- Discovery subscribes to multiple Registry PUBs simultaneously, so the service list remains available even if one node fails
+- Discovery bootstraps against one or more Registry control endpoints
+- It learns the internal broadcast/uplink paths from bootstrap metadata
+- If one Registry node fails, Discovery can continue using other configured
+  bootstrap control endpoints
 
 ## 6. Next Steps
 

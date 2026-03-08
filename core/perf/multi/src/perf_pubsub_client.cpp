@@ -45,7 +45,7 @@ inline bool create_client_sockets (
       monitors_out);
 }
 
-inline bool run_single_size_case (const std::vector<void *> &sockets,
+inline bool run_client_size_case (const std::vector<void *> &sockets,
                                   const bench_settings_t &base_settings,
                                   size_t scratch_capacity,
                                   const std::string &lib_name,
@@ -55,7 +55,7 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
     double throughput = 0.0;
     bench_latency_stats_t latency;
     bench_resource_metrics_t metrics;
-    if (!perf_client::run_one_way_duration (
+    if (!perf_client::run_one_way_size_case (
           sockets,
           base_settings,
           msg_size,
@@ -131,7 +131,7 @@ inline int run_client_benchmark (const std::string &lib_name,
 
     for (size_t si = 0; si < msg_sizes.size (); ++si) {
         const size_t msg_size = msg_sizes[si];
-        if (!run_single_size_case (
+        if (!run_client_size_case (
               sockets,
               base_settings,
               scratch_capacity,

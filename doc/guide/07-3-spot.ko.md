@@ -59,15 +59,17 @@ void *ctx = zlink_ctx_new();
 void *node = zlink_spot_node_new(ctx);
 void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_SPOT);
 
-/* Registry 연결 */
-zlink_discovery_connect_registry(discovery, "tcp://registry1:5550");
+/* Discovery를 Registry bootstrap/control 엔드포인트에 연결 */
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_subscribe(discovery, "spot-node");
 
 /* PUB bind */
 zlink_spot_node_bind(node, "tcp://*:9000");
 
-/* Registry에 등록 */
+/* Node control plane을 Registry control 엔드포인트에 연결 */
 zlink_spot_node_connect_registry(node, "tcp://registry1:5551");
+
+/* mesh 서비스에 대한 등록 요청 큐잉 */
 zlink_spot_node_register(node, "spot-node", NULL);
 
 /* Discovery 기반 peer 자동 연결 */

@@ -13,6 +13,7 @@
 
 typedef int (*spot_set_tls_server_fn)(void *, const char *, const char *);
 typedef int (*spot_set_tls_client_fn)(void *, const char *, const char *, int);
+typedef std::chrono::steady_clock steady_clock_t;
 
 static bool wait_for_service_receivers(void *discovery,
                                        void *monitor,
@@ -263,11 +264,11 @@ static bool ensure_spot_subscription_ready(void *spot_pub,
     const int ready_timeout_ms =
       resolve_bench_count("PERF_SPOT_READY_TIMEOUT_MS", 2000);
     const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(ready_timeout_ms > 0 ? ready_timeout_ms
+      steady_clock_t::now()
+      + milliseconds_t(ready_timeout_ms > 0 ? ready_timeout_ms
                                                        : 2000);
 
-    while (std::chrono::steady_clock::now() < deadline) {
+    while (steady_clock_t::now() < deadline) {
         if (send_spot(spot_pub, topic, payload, 1)) {
             zlink_msg_t *parts = NULL;
             size_t count = 0;
@@ -292,21 +293,21 @@ static bool ensure_spot_subscription_ready(void *spot_pub,
     return false;
 }
 
-static bool run_spot_oneway_phase (void *spot_pub,
-                                   void *spot_sub,
-                                   const std::string &topic,
-                                   std::vector<char> *payload,
-                                   size_t payload_size,
-                                   size_t msg_size,
-                                   uint32_t run_id,
-                                   uint64_t *seq,
-                                   perf_single_metric::phase_t phase,
-                                   int warmup_count,
-                                   int duration_s,
-                                   int recv_timeout_ms,
-                                   queue_probe_t *queue_probe,
-                                   unsigned long long *out_received,
-                                   latency_stats_t *out_stats)
+static bool run_spot_phase (void *spot_pub,
+                            void *spot_sub,
+                            const std::string &topic,
+                            std::vector<char> *payload,
+                            size_t payload_size,
+                            size_t msg_size,
+                            uint32_t run_id,
+                            uint64_t *seq,
+                            perf_single_metric::phase_t phase,
+                            int warmup_count,
+                            int duration_s,
+                            int recv_timeout_ms,
+                            queue_probe_t *queue_probe,
+                            unsigned long long *out_received,
+                            latency_stats_t *out_stats)
 {
     if (!spot_pub || !spot_sub || !payload || !seq || !out_received)
         return false;
@@ -315,9 +316,9 @@ static bool run_spot_oneway_phase (void *spot_pub,
     const bool active_phase = phase == perf_single_metric::phase_active;
     const auto deadline =
       active_phase
-        ? std::chrono::steady_clock::now ()
-            + std::chrono::seconds (duration_s > 0 ? duration_s : 1)
-        : std::chrono::steady_clock::time_point ();
+        ? steady_clock_t::now ()
+            + seconds_t (duration_s > 0 ? duration_s : 1)
+        : steady_clock_t::time_point ();
     unsigned long long received = 0;
     latency_stats_builder_t latency_builder;
     if (active_phase && queue_probe)
@@ -330,8 +331,9 @@ static bool run_spot_oneway_phase (void *spot_pub,
           if (active_phase && queue_probe)
               queue_probe->sample_recv_if_due ();
 
-          if (!header_ok || header.magic != perf_single_metric::k_magic
-              || header.phase != static_cast<uint32_t> (phase)) {
+          if (!header_ok
+              || !perf_single_metric::is_expected (
+                header, run_id, phase, msg_size)) {
               return;
           }
 
@@ -350,7 +352,7 @@ static bool run_spot_oneway_phase (void *spot_pub,
     unsigned long long iterations = 0;
     while (true) {
         if (active_phase) {
-            if (std::chrono::steady_clock::now () >= deadline)
+            if (steady_clock_t::now () >= deadline)
                 break;
         } else if (iterations >= static_cast<unsigned long long> (warmup_count)) {
             break;
@@ -411,7 +413,7 @@ static bool run_spot_oneway_phase (void *spot_pub,
 
     *out_received = received;
     if (active_phase) {
-        if (received == 0 || latency_builder.count () == 0 || !out_stats)
+        if (!out_stats || received == 0 || latency_builder.count () == 0)
             return false;
         *out_stats = latency_builder.snapshot ();
     } else if (received < iterations) {
@@ -669,21 +671,21 @@ void run_spot(const std::string &transport,
         warmup_count = 20;
 
     unsigned long long warmup_received = 0;
-    if (!run_spot_oneway_phase(spot_pub,
-                               spot_sub,
-                               topic,
-                               &payload,
-                               payload_capacity,
-                               msg_size,
-                               run_id,
-                               &seq,
-                               perf_single_metric::phase_warmup,
-                               warmup_count,
-                               0,
-                               recv_timeout_ms,
-                               NULL,
-                               &warmup_received,
-                               NULL)) {
+    if (!run_spot_phase(spot_pub,
+                        spot_sub,
+                        topic,
+                        &payload,
+                        payload_capacity,
+                        msg_size,
+                        run_id,
+                        &seq,
+                        perf_single_metric::phase_warmup,
+                        warmup_count,
+                        0,
+                        recv_timeout_ms,
+                        NULL,
+                        &warmup_received,
+                        NULL)) {
         fail();
         return;
     }
@@ -691,21 +693,21 @@ void run_spot(const std::string &transport,
     const int duration_s = std::max(1, resolve_single_duration_seconds());
     unsigned long long received = 0;
     latency_stats_t latency_stats;
-    if (!run_spot_oneway_phase(spot_pub,
-                               spot_sub,
-                               topic,
-                               &payload,
-                               payload_capacity,
-                               msg_size,
-                               run_id,
-                               &seq,
-                               perf_single_metric::phase_active,
-                               0,
-                               duration_s,
-                               recv_timeout_ms,
-                               queue_probe,
-                               &received,
-                               &latency_stats)) {
+    if (!run_spot_phase(spot_pub,
+                        spot_sub,
+                        topic,
+                        &payload,
+                        payload_capacity,
+                        msg_size,
+                        run_id,
+                        &seq,
+                        perf_single_metric::phase_active,
+                        0,
+                        duration_s,
+                        recv_timeout_ms,
+                        queue_probe,
+                        &received,
+                        &latency_stats)) {
         fail();
         return;
     }
@@ -735,11 +737,11 @@ static bool wait_for_service_receivers(void *discovery,
 
     const int target = std::max(1, target_count);
     const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(1000, timeout_ms));
+      steady_clock_t::now()
+      + milliseconds_t(std::max(1000, timeout_ms));
     zlink_service_event_t event;
     memset(&event, 0, sizeof(event));
-    while (std::chrono::steady_clock::now() < deadline) {
+    while (steady_clock_t::now() < deadline) {
         if (zlink_discovery_receiver_count(discovery, service_name) >= target)
             return true;
         if (monitor
@@ -764,13 +766,13 @@ static bool wait_for_sub_peer_ready(void *spot_sub,
         return false;
 
     const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(1000, timeout_ms));
+      steady_clock_t::now()
+      + milliseconds_t(std::max(1000, timeout_ms));
     bool saw_peer_up = false;
     bool saw_filter_applied = false;
     zlink_service_event_t event;
     memset(&event, 0, sizeof(event));
-    while (std::chrono::steady_clock::now() < deadline) {
+    while (steady_clock_t::now() < deadline) {
         size_t peer_count = 0;
         if (saw_filter_applied
             && zlink_spot_sub_peers(spot_sub, NULL, &peer_count) == 0

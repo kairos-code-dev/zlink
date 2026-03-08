@@ -44,6 +44,24 @@
 #define ZLINK_TLS_HOSTNAME 100
 #endif
 
+typedef std::chrono::steady_clock steady_clock_t;
+typedef std::chrono::milliseconds milliseconds_t;
+typedef std::chrono::seconds seconds_t;
+typedef std::chrono::nanoseconds nanoseconds_t;
+typedef std::chrono::duration<double> floating_seconds_t;
+
+inline steady_clock_t::duration to_clock_duration (double seconds)
+{
+    return std::chrono::duration_cast<steady_clock_t::duration> (
+      floating_seconds_t (seconds));
+}
+
+inline long remaining_milliseconds (const steady_clock_t::time_point &deadline,
+                                    const steady_clock_t::time_point &now)
+{
+    return std::chrono::duration_cast<milliseconds_t> (deadline - now).count ();
+}
+
 // --- Configuration ---
 static const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 262144};
 static const std::vector<std::string> TRANSPORTS = {"tcp", "inproc", "ipc"};
@@ -54,13 +72,13 @@ static const int SETTLE_TIME_MS = 100;
 // --- Stopwatch ---
 class stopwatch_t {
 public:
-    void start() { _start = std::chrono::steady_clock::now(); }
+    void start() { _start = steady_clock_t::now(); }
     double elapsed_ms() const {
-        auto end = std::chrono::steady_clock::now();
+        auto end = steady_clock_t::now();
         return std::chrono::duration<double, std::milli>(end - _start).count();
     }
 private:
-    std::chrono::steady_clock::time_point _start;
+    steady_clock_t::time_point _start;
 };
 
 inline int parse_positive_env(const char *name_, int default_value_)
@@ -382,89 +400,6 @@ inline bool recv_exact(void *socket_,
     return zlink_recv(socket_, data_, size_, flags_) == static_cast<int>(size_);
 }
 
-inline int recv_single_part_msg_flags(void *socket_,
-                                      size_t expected_size_,
-                                      int flags_)
-{
-    if (!socket_)
-        return -1;
-
-    zlink_msg_t msg;
-    if (zlink_msg_init(&msg) != 0)
-        return -1;
-
-    const int rc = zlink_msg_recv(&msg, socket_, flags_);
-    if (rc < 0) {
-        const int err = zlink_errno();
-        zlink_msg_close(&msg);
-        if (err == EAGAIN || err == EINTR)
-            return 0;
-        return -1;
-    }
-
-    const bool size_ok = zlink_msg_size(&msg) == expected_size_;
-    const bool has_more = zlink_msg_more(&msg) != 0;
-    zlink_msg_close(&msg);
-    if (!size_ok || has_more)
-        return -1;
-    return 1;
-}
-
-inline int recv_two_part_msg_flags(void *socket_,
-                                   size_t payload_size_,
-                                   std::vector<char> *routing_id_out_,
-                                   int flags_)
-{
-    if (!socket_)
-        return -1;
-
-    zlink_msg_t routing_id;
-    if (zlink_msg_init(&routing_id) != 0)
-        return -1;
-
-    const int id_rc = zlink_msg_recv(&routing_id, socket_, flags_);
-    if (id_rc < 0) {
-        const int err = zlink_errno();
-        zlink_msg_close(&routing_id);
-        if (err == EAGAIN || err == EINTR)
-            return 0;
-        return -1;
-    }
-
-    if (zlink_msg_more(&routing_id) == 0) {
-        zlink_msg_close(&routing_id);
-        return -1;
-    }
-
-    if (routing_id_out_) {
-        const size_t id_size = zlink_msg_size(&routing_id);
-        routing_id_out_->clear();
-        if (id_size > 0) {
-            const char *id_data =
-              static_cast<const char *>(zlink_msg_data(&routing_id));
-            routing_id_out_->assign(id_data, id_data + id_size);
-        }
-    }
-
-    zlink_msg_close(&routing_id);
-
-    zlink_msg_t payload;
-    if (zlink_msg_init(&payload) != 0)
-        return -1;
-
-    if (zlink_msg_recv(&payload, socket_, 0) < 0) {
-        zlink_msg_close(&payload);
-        return -1;
-    }
-
-    const bool payload_ok = zlink_msg_size(&payload) == payload_size_;
-    const bool payload_has_more = zlink_msg_more(&payload) != 0;
-    zlink_msg_close(&payload);
-    if (!payload_ok || payload_has_more)
-        return -1;
-    return 1;
-}
-
 inline bool bench_debug_enabled() {
     static const bool enabled = std::getenv("PERF_DEBUG") != nullptr;
     return enabled;
@@ -603,7 +538,7 @@ private:
     {
         return static_cast<unsigned long long>(
           std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now().time_since_epoch())
+            steady_clock_t::now().time_since_epoch())
             .count());
     }
 
@@ -1060,7 +995,7 @@ inline bool transport_available(const std::string& transport) {
 }
 
 inline void settle() {
-    std::this_thread::sleep_for(std::chrono::milliseconds(SETTLE_TIME_MS));
+    std::this_thread::sleep_for(milliseconds_t(SETTLE_TIME_MS));
 }
 
 inline bool connect_checked(void *socket_, const std::string& endpoint) {

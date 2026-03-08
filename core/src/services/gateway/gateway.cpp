@@ -81,32 +81,6 @@ static int monitor_event_mask ()
            | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
 }
 
-static bool send_topology_report_frames (socket_base_t *dealer_,
-                                         const zlink_routing_id_t &rid_,
-                                         const zlink_registry_topology_entry_t &entry_)
-{
-    if (!dealer_)
-        return false;
-
-    return zlink::discovery_protocol::send_u16 (
-             dealer_, discovery_protocol::msg_topology_report, ZLINK_SNDMORE)
-             == 0
-           && zlink::discovery_protocol::send_frame (
-                dealer_, &entry_, sizeof (entry_), 0)
-                == 0;
-}
-
-static bool wait_socket_event (void *socket_, short events_, long timeout_ms_)
-{
-    zlink_pollitem_t item;
-    item.socket = socket_;
-    item.fd = 0;
-    item.events = events_;
-    item.revents = 0;
-    const int rc = zlink_poll (&item, 1, timeout_ms_);
-    return rc > 0 && (item.revents & events_) == events_;
-}
-
 static int resolve_gateway_refresh_sleep_ms ()
 {
     static int cached = -1;
@@ -180,7 +154,6 @@ gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_,
     _force_refresh_all (false),
     _monitor_socket (NULL),
     _router_socket (NULL),
-    _report_dealer (NULL),
     _use_lock (true),
     _pollable_mode (false),
     _routing_id_locked (false),
@@ -196,8 +169,6 @@ gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_,
     _routing_id.size = 0;
     if (_discovery)
         _discovery->add_observer (this);
-    if (_discovery)
-        (void) ensure_topology_reporter ();
     if (init_router_socket () != 0)
         _tag = 0xdeadbeef;
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
@@ -1071,8 +1042,6 @@ void gateway_t::report_topology (const std::string &service_name_,
 {
     if (!_discovery || service_name_.empty () || _routing_id.size == 0)
         return;
-    if (ensure_topology_reporter () != 0)
-        return;
 
     std::vector<provider_info_t> providers;
     _discovery->snapshot_providers (service_name_, &providers);
@@ -1092,44 +1061,7 @@ void gateway_t::report_topology (const std::string &service_name_,
     entry.ready_count = ready_count_;
     entry.error_code = static_cast<uint32_t> (error_code_);
     entry.last_reported_ms = _clock.now_ms ();
-    scoped_lock_t lock (_sync);
-    if (_report_dealer)
-        (void) send_topology_report_frames (_report_dealer, _routing_id, entry);
-}
-
-int gateway_t::ensure_topology_reporter ()
-{
-    if (!_discovery)
-        return -1;
-
-    std::vector<std::string> endpoints;
-    _discovery->snapshot_registry_router_endpoints (&endpoints);
-    if (endpoints.empty ())
-        return -1;
-
-    scoped_lock_t lock (_sync);
-    if (!_report_dealer) {
-        _report_dealer = _ctx->create_socket (ZLINK_DEALER);
-        if (!_report_dealer)
-            return -1;
-        const int linger = 200;
-        const int sndtimeo_ms = 100;
-        _report_dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
-        _report_dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms,
-                                    sizeof (sndtimeo_ms));
-        if (_routing_id.size > 0) {
-            _report_dealer->setsockopt (ZLINK_ROUTING_ID, _routing_id.data,
-                                        _routing_id.size);
-        }
-    }
-
-    for (size_t i = 0; i < endpoints.size (); ++i) {
-        if (_connected_report_endpoints.count (endpoints[i]) != 0)
-            continue;
-        if (_report_dealer->connect (endpoints[i].c_str ()) == 0)
-            _connected_report_endpoints.insert (endpoints[i]);
-    }
-    return _connected_report_endpoints.empty () ? -1 : 0;
+    _discovery->upsert_service_summary (entry);
 }
 
 void gateway_t::on_service_update (const std::string &service_name_)
@@ -1144,7 +1076,6 @@ void gateway_t::on_service_update (const std::string &service_name_)
         if (pit != _pools.end ())
             pit->second.dirty = true;
     }
-    (void) ensure_topology_reporter ();
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
     if (runtime && _refresh_task_id != 0)
         runtime->wakeup_task (_refresh_task_id);
@@ -1227,11 +1158,6 @@ int gateway_t::destroy ()
         zlink_close (_monitor_socket);
         _monitor_socket = NULL;
     }
-    if (_report_dealer) {
-        _report_dealer->close ();
-        _report_dealer = NULL;
-    }
-    _connected_report_endpoints.clear ();
     if (_router_socket) {
         _router_socket->close ();
         _router_socket = NULL;

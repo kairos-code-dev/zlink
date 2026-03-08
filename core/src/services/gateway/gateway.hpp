@@ -111,7 +111,6 @@ class gateway_t : public discovery_observer_t
                           int32_t error_code_);
     static void refresh_task (void *arg_);
     void refresh_tick ();
-    int ensure_topology_reporter ();
 
     ctx_t *_ctx;
     discovery_t *_discovery;
@@ -132,7 +131,6 @@ class gateway_t : public discovery_observer_t
     std::set<std::string> _pending_updates;
     void *_monitor_socket;
     socket_base_t *_router_socket;
-    socket_base_t *_report_dealer;
     bool _use_lock;
     bool _pollable_mode;
     bool _routing_id_locked;
@@ -148,7 +146,6 @@ class gateway_t : public discovery_observer_t
     zlink_routing_id_t _routing_id;
     std::string _routing_id_override;
     service_monitor_hub_t _monitor;
-    std::set<std::string> _connected_report_endpoints;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (gateway_t)
 };

@@ -20,6 +20,8 @@
 
 namespace {
 
+typedef std::chrono::steady_clock steady_clock_t;
+
 static const char *k_pattern = "DEALER_DEALER";
 static const int k_client_socket_type = ZLINK_DEALER;
 
@@ -107,23 +109,22 @@ inline send_status_t send_one_message (void *socket,
                                                              : send_fatal;
 }
 
-inline bool run_send_window (const std::vector<void *> &sockets,
-                             std::vector<char> &payload,
-                             size_t payload_size,
-                             uint32_t run_id,
-                             perf_metric::phase_t phase,
-                             size_t msg_size,
-                             double duration_seconds,
-                             bool send_active,
-                             uint64_t *seq)
+inline bool run_send_phase (const std::vector<void *> &sockets,
+                            std::vector<char> &payload,
+                            size_t payload_size,
+                            uint32_t run_id,
+                            perf_metric::phase_t phase,
+                            size_t msg_size,
+                            double duration_seconds,
+                            bool send_active,
+                            uint64_t *seq)
 {
     if (duration_seconds <= 0.0)
         return true;
 
-    const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
-        std::chrono::duration<double> (duration_seconds));
+    const steady_clock_t::time_point deadline =
+      steady_clock_t::now ()
+      + to_clock_duration (duration_seconds);
 
     if (sockets.empty () || !seq)
         return false;
@@ -137,7 +138,7 @@ inline bool run_send_window (const std::vector<void *> &sockets,
 
     size_t socket_index = 0;
     while (!g_stop_requested.load (std::memory_order_acquire)
-           && std::chrono::steady_clock::now () < deadline) {
+           && steady_clock_t::now () < deadline) {
         bool have_pollout = false;
         bool progressed = false;
 
@@ -183,13 +184,11 @@ inline bool run_send_window (const std::vector<void *> &sockets,
         if (!have_pollout) {
             if (progressed || send_active)
                 continue;
-            const auto now = std::chrono::steady_clock::now ();
+            const auto now = steady_clock_t::now ();
             int idle_timeout_ms = 0;
             if (deadline > now) {
                 const long remain_ms =
-                  std::chrono::duration_cast<std::chrono::milliseconds> (
-                    deadline - now)
-                    .count ();
+                  remaining_milliseconds (deadline, now);
                 if (remain_ms >= 0)
                     idle_timeout_ms = std::min (50, static_cast<int> (remain_ms));
             }
@@ -201,13 +200,11 @@ inline bool run_send_window (const std::vector<void *> &sockets,
             continue;
         }
 
-        const auto now = std::chrono::steady_clock::now ();
+        const auto now = steady_clock_t::now ();
         int poll_timeout_ms = progressed ? 0 : 50;
         if (deadline > now) {
             const long remain_ms =
-              std::chrono::duration_cast<std::chrono::milliseconds> (
-                deadline - now)
-                .count ();
+              remaining_milliseconds (deadline, now);
             if (remain_ms >= 0)
                 poll_timeout_ms =
                   std::min (poll_timeout_ms, static_cast<int> (remain_ms));
@@ -225,7 +222,7 @@ inline bool run_send_window (const std::vector<void *> &sockets,
     return true;
 }
 
-inline bool run_single_size_case (const std::vector<void *> &sockets,
+inline bool run_client_size_case (const std::vector<void *> &sockets,
                                   const bench_settings_t &settings,
                                   std::vector<char> &payload,
                                   size_t msg_size,
@@ -241,7 +238,7 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
       static_cast<double> (std::max (1, settings.duration_seconds));
 
     uint64_t seq = 1;
-    if (!run_send_window (
+    if (!run_send_phase (
           sockets,
           payload,
           payload_size,
@@ -254,7 +251,7 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
         return false;
     }
 
-    if (!run_send_window (
+    if (!run_send_phase (
           sockets,
           payload,
           payload_size,
@@ -267,7 +264,7 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
         return false;
     }
 
-    if (!run_send_window (
+    if (!run_send_phase (
           sockets,
           payload,
           payload_size,
@@ -348,7 +345,7 @@ inline int run_client_benchmark (const std::string &lib_name,
         }
 
         const uint32_t run_id = static_cast<uint32_t> (si + 1);
-        if (!run_single_size_case (
+        if (!run_client_size_case (
               sockets,
               settings,
               payload,

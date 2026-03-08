@@ -23,8 +23,22 @@ namespace zlink
 static const uint32_t spot_node_tag_value = 0x1e6700d9;
 static const uint32_t default_heartbeat_ms = 5000;
 static const uint64_t discovery_refresh_ms = 500;
+static const int default_registry_control_send_timeout_ms = 2000;
+static const int default_registry_control_recv_timeout_ms = 5000;
 static const size_t spot_pub_queue_hwm_default = 1024;
 static const size_t spot_sub_queue_hwm_default = 1000;
+
+static void spot_debugf (const char *fmt_, ...)
+{
+    if (!std::getenv ("ZLINK_SPOT_DEBUG"))
+        return;
+    va_list args;
+    va_start (args, fmt_);
+    std::fprintf (stderr, "[spot-node] ");
+    std::vfprintf (stderr, fmt_, args);
+    std::fprintf (stderr, "\n");
+    va_end (args);
+}
 
 static int resolve_spot_idle_sleep_ms ()
 {
@@ -96,32 +110,6 @@ static bool copy_parts_from_vec (const std::vector<msg_t> &src_,
         }
     }
     return true;
-}
-
-static bool send_topology_report_frames (socket_base_t *dealer_,
-                                         const zlink_routing_id_t &rid_,
-                                         const zlink_registry_topology_entry_t &entry_)
-{
-    if (!dealer_)
-        return false;
-
-    return discovery_protocol::send_u16 (
-             dealer_, discovery_protocol::msg_topology_report, ZLINK_SNDMORE)
-             == 0
-           && discovery_protocol::send_frame (dealer_, &entry_, sizeof (entry_),
-                                              0)
-                == 0;
-}
-
-static bool wait_socket_event (void *socket_, short events_, long timeout_ms_)
-{
-    zlink_pollitem_t item;
-    item.socket = socket_;
-    item.fd = 0;
-    item.events = events_;
-    item.revents = 0;
-    const int rc = zlink_poll (&item, 1, timeout_ms_);
-    return rc > 0 && (item.revents & events_) == events_;
 }
 
 static void release_shared_message (spot_shared_message_t *shared_)
@@ -536,81 +524,72 @@ int spot_node_t::register_node (const char *service_name_,
                                    _registry_endpoints.end ());
     }
 
-    socket_base_t *dealer = _ctx->create_socket (ZLINK_DEALER);
-    if (!dealer)
-        return -1;
-    if (!_tls_ca.empty ()) {
-        if (dealer->setsockopt (ZLINK_TLS_CA, _tls_ca.data (),
-                                _tls_ca.size ())
-              != 0
-            || dealer->setsockopt (ZLINK_TLS_HOSTNAME, _tls_hostname.data (),
-                                   _tls_hostname.size ())
-                 != 0
-            || dealer->setsockopt (ZLINK_TLS_TRUST_SYSTEM, &_tls_trust_system,
-                                   sizeof (_tls_trust_system))
-                 != 0) {
-            dealer->close ();
-            return -1;
+    {
+        scoped_lock_t dealer_lock (_dealer_sync);
+        if (!_dealer) {
+            _dealer = _ctx->create_socket (ZLINK_DEALER);
+            if (!_dealer)
+                return -1;
+            _dealer->setsockopt (ZLINK_SNDTIMEO,
+                                 &default_registry_control_send_timeout_ms,
+                                 sizeof (default_registry_control_send_timeout_ms));
+            _dealer->setsockopt (ZLINK_RCVTIMEO,
+                                 &default_registry_control_recv_timeout_ms,
+                                 sizeof (default_registry_control_recv_timeout_ms));
+            if (!_tls_ca.empty ()) {
+                if (_dealer->setsockopt (ZLINK_TLS_CA, _tls_ca.data (),
+                                         _tls_ca.size ())
+                      != 0
+                    || _dealer->setsockopt (ZLINK_TLS_HOSTNAME,
+                                            _tls_hostname.data (),
+                                            _tls_hostname.size ())
+                         != 0
+                    || _dealer->setsockopt (ZLINK_TLS_TRUST_SYSTEM,
+                                            &_tls_trust_system,
+                                            sizeof (_tls_trust_system))
+                         != 0) {
+                    _dealer->close ();
+                    _dealer = NULL;
+                    return -1;
+                }
+            }
+            for (size_t i = 0; i < _dealer_opts.size (); ++i) {
+                if (!_dealer_opts[i].value.empty ())
+                    _dealer->setsockopt (_dealer_opts[i].option,
+                                         &_dealer_opts[i].value[0],
+                                         _dealer_opts[i].value.size ());
+            }
+            _dealer->setsockopt (ZLINK_ROUTING_ID, _routing_id.data,
+                                 _routing_id.size);
         }
-    }
-    dealer->setsockopt (ZLINK_ROUTING_ID, _routing_id.data, _routing_id.size);
-    for (size_t i = 0; i < registry_endpoints.size (); ++i) {
-        if (dealer->connect (registry_endpoints[i].c_str ()) != 0) {
-            dealer->close ();
-            return -1;
-        }
-    }
 
-    if (send_u16 (dealer, discovery_protocol::msg_register, ZLINK_SNDMORE)
-          != 0
-        || send_u16 (dealer, discovery_protocol::service_type_spot_node,
+        std::deque<std::string> registry_connect;
+        {
+            scoped_lock_t lock (_sync);
+            if (_pending_registry_connect.empty ()) {
+                for (size_t i = 0; i < registry_endpoints.size (); ++i)
+                    registry_connect.push_back (registry_endpoints[i]);
+            } else {
+                registry_connect.swap (_pending_registry_connect);
+            }
+        }
+        for (std::deque<std::string>::const_iterator it =
+               registry_connect.begin ();
+             it != registry_connect.end (); ++it) {
+            if (_dealer->connect (it->c_str ()) != 0)
+                return -1;
+        }
+
+        if (send_u16 (_dealer, discovery_protocol::msg_register, ZLINK_SNDMORE)
+            != 0
+            || send_u16 (_dealer, discovery_protocol::service_type_spot_node,
                      ZLINK_SNDMORE)
              != 0
-        || send_string (dealer, service, ZLINK_SNDMORE) != 0
-        || send_string (dealer, advertise, ZLINK_SNDMORE) != 0
-        || send_u32 (dealer, 1, 0) != 0) {
-        dealer->close ();
-        return -1;
-    }
-
-    zlink_msg_t reply;
-    zlink_msg_init (&reply);
-    if (dealer->recv (reinterpret_cast<msg_t *> (&reply), 0) != 0) {
-        zlink_msg_close (&reply);
-        dealer->close ();
-        return -1;
-    }
-
-    std::vector<zlink_msg_t> frames;
-    frames.push_back (reply);
-    while (zlink_msg_more (&frames.back ())) {
-        zlink_msg_t frame;
-        zlink_msg_init (&frame);
-        if (dealer->recv (reinterpret_cast<msg_t *> (&frame), 0) != 0) {
-            zlink_msg_close (&frame);
-            break;
+            || send_string (_dealer, service, ZLINK_SNDMORE) != 0
+            || send_string (_dealer, advertise, ZLINK_SNDMORE) != 0
+            || send_u32 (_dealer, 1, 0) != 0) {
+            return -1;
         }
-        frames.push_back (frame);
-    }
-
-    uint16_t msg_id = 0;
-    uint8_t status = 0xFF;
-    if (frames.size () >= 2
-        && discovery_protocol::read_u16 (frames[0], &msg_id)
-        && msg_id == discovery_protocol::msg_register_ack) {
-        if (zlink_msg_size (&frames[1]) == sizeof (uint8_t)) {
-            memcpy (&status, zlink_msg_data (&frames[1]), sizeof (uint8_t));
-        }
-    }
-
-    for (size_t i = 0; i < frames.size (); ++i)
-        zlink_msg_close (&frames[i]);
-
-    dealer->close ();
-
-    if (status != 0) {
-        errno = EINVAL;
-        return -1;
     }
 
     scoped_lock_t lock (_sync);
@@ -657,43 +636,30 @@ int spot_node_t::unregister_node (const char *service_name_)
                                    _registry_endpoints.end ());
     }
 
-    socket_base_t *dealer = _ctx->create_socket (ZLINK_DEALER);
-    if (!dealer)
-        return -1;
-    if (!_tls_ca.empty ()) {
-        if (dealer->setsockopt (ZLINK_TLS_CA, _tls_ca.data (),
-                                _tls_ca.size ())
-              != 0
-            || dealer->setsockopt (ZLINK_TLS_HOSTNAME, _tls_hostname.data (),
-                                   _tls_hostname.size ())
-                 != 0
-            || dealer->setsockopt (ZLINK_TLS_TRUST_SYSTEM, &_tls_trust_system,
-                                   sizeof (_tls_trust_system))
-                 != 0) {
-            dealer->close ();
-            return -1;
-        }
-    }
-    dealer->setsockopt (ZLINK_ROUTING_ID, _routing_id.data, _routing_id.size);
-    for (size_t i = 0; i < registry_endpoints.size (); ++i) {
-        if (dealer->connect (registry_endpoints[i].c_str ()) != 0) {
-            dealer->close ();
-            return -1;
+    scoped_lock_t dealer_lock (_dealer_sync);
+    if (!_dealer)
+        return 0;
+
+    {
+        std::deque<std::string> registry_connect;
+        scoped_lock_t lock (_sync);
+        registry_connect.swap (_pending_registry_connect);
+        for (std::deque<std::string>::const_iterator it =
+               registry_connect.begin ();
+             it != registry_connect.end (); ++it) {
+            if (_dealer->connect (it->c_str ()) != 0)
+                return -1;
         }
     }
 
-    if (send_u16 (dealer, discovery_protocol::msg_unregister, ZLINK_SNDMORE)
+    if (send_u16 (_dealer, discovery_protocol::msg_unregister, ZLINK_SNDMORE)
           != 0
-        || send_u16 (dealer, discovery_protocol::service_type_spot_node,
+        || send_u16 (_dealer, discovery_protocol::service_type_spot_node,
                      ZLINK_SNDMORE)
              != 0
-        || send_string (dealer, service, ZLINK_SNDMORE) != 0
-        || send_string (dealer, advertise, 0) != 0) {
-        dealer->close ();
+        || send_string (_dealer, service, ZLINK_SNDMORE) != 0
+        || send_string (_dealer, advertise, 0) != 0)
         return -1;
-    }
-
-    dealer->close ();
 
     return 0;
 }
@@ -814,13 +780,19 @@ int spot_node_t::set_pub_routing_id (const void *data_, size_t size_)
     }
 
     scoped_lock_t lock (_sync);
-    if (_pub || _pub_pollable_mode.get () != 0) {
+    if (_pub_pollable_mode.get () != 0 || !_bind_endpoints.empty ()
+        || !_advertise_endpoint.empty ()) {
         errno = EFSM;
         return -1;
     }
     _pub_routing_id_override.assign (static_cast<const char *> (data_), size_);
     memcpy (_pub_routing_id.data, data_, size_);
     _pub_routing_id.size = static_cast<uint8_t> (size_);
+    if (_pub
+        && _pub->setsockopt (ZLINK_ROUTING_ID, _pub_routing_id.data,
+                             _pub_routing_id.size)
+             != 0)
+        return -1;
     return 0;
 }
 
@@ -832,7 +804,7 @@ int spot_node_t::set_sub_routing_id (const void *data_, size_t size_)
     }
 
     scoped_lock_t lock (_sync);
-    if (_sub || _sub_pollable_mode.get () != 0 || !_peer_endpoints.empty ()
+    if (_sub_pollable_mode.get () != 0 || !_peer_endpoints.empty ()
         || !_filter_refcount.empty ()) {
         errno = EFSM;
         return -1;
@@ -840,6 +812,11 @@ int spot_node_t::set_sub_routing_id (const void *data_, size_t size_)
     _sub_routing_id_override.assign (static_cast<const char *> (data_), size_);
     memcpy (_sub_routing_id.data, data_, size_);
     _sub_routing_id.size = static_cast<uint8_t> (size_);
+    if (_sub
+        && _sub->setsockopt (ZLINK_ROUTING_ID, _sub_routing_id.data,
+                             _sub_routing_id.size)
+             != 0)
+        return -1;
     return 0;
 }
 
@@ -1008,15 +985,15 @@ void spot_node_t::report_pub_topology (uint16_t state_,
                                        int32_t error_code_)
 {
     std::string service;
-    socket_base_t *dealer = NULL;
+    discovery_t *discovery = NULL;
     {
         scoped_lock_t lock (_sync);
         service = !_service_name.empty () ? _service_name : _discovery_service;
-        dealer = _dealer;
+        discovery = _discovery;
     }
     if (service.empty ())
         service = "spot-pub";
-    if (_pub_routing_id.size == 0 || !dealer)
+    if (_pub_routing_id.size == 0 || !discovery)
         return;
 
     zlink_registry_topology_entry_t entry;
@@ -1034,7 +1011,10 @@ void spot_node_t::report_pub_topology (uint16_t state_,
     entry.ready_count = ready_count_;
     entry.error_code = static_cast<uint32_t> (error_code_);
     entry.last_reported_ms = zlink::clock_t ().now_ms ();
-    (void) send_topology_report_frames (dealer, _routing_id, entry);
+    spot_debugf ("report pub topology service=%s state=%u ready=%u",
+                 entry.service_name, static_cast<unsigned int> (state_),
+                 static_cast<unsigned int> (ready_count_));
+    discovery->upsert_service_summary (entry);
 }
 
 void spot_node_t::report_sub_topology (uint16_t state_,
@@ -1043,15 +1023,15 @@ void spot_node_t::report_sub_topology (uint16_t state_,
                                        int32_t error_code_)
 {
     std::string service;
-    socket_base_t *dealer = NULL;
+    discovery_t *discovery = NULL;
     {
         scoped_lock_t lock (_sync);
         service = !_discovery_service.empty () ? _discovery_service : _service_name;
-        dealer = _dealer;
+        discovery = _discovery;
     }
     if (service.empty ())
         service = "spot-sub";
-    if (_sub_routing_id.size == 0 || !dealer)
+    if (_sub_routing_id.size == 0 || !discovery)
         return;
 
     zlink_registry_topology_entry_t entry;
@@ -1069,7 +1049,11 @@ void spot_node_t::report_sub_topology (uint16_t state_,
     entry.ready_count = ready_count_;
     entry.error_code = static_cast<uint32_t> (error_code_);
     entry.last_reported_ms = zlink::clock_t ().now_ms ();
-    (void) send_topology_report_frames (dealer, _routing_id, entry);
+    spot_debugf ("report sub topology service=%s state=%u ready=%u endpoint=%s",
+                 entry.service_name, static_cast<unsigned int> (state_),
+                 static_cast<unsigned int> (ready_count_),
+                 endpoint_ ? endpoint_ : "");
+    discovery->upsert_service_summary (entry);
 }
 
 int spot_node_t::set_socket_option (int socket_role_,
@@ -1930,42 +1914,51 @@ void spot_node_t::ensure_control_sockets ()
         }
     }
 
-    if (!_dealer) {
-        _dealer = _ctx->create_socket (ZLINK_DEALER);
-        if (_dealer) {
-            if (getenv ("PERF_DEBUG"))
-                fprintf (stderr, "[spot-node] dealer created\n");
-            if (!_tls_ca.empty ()) {
-                if (_dealer->setsockopt (ZLINK_TLS_CA, _tls_ca.data (),
-                                         _tls_ca.size ())
-                      != 0
-                    || _dealer->setsockopt (ZLINK_TLS_HOSTNAME,
-                                            _tls_hostname.data (),
-                                            _tls_hostname.size ())
-                         != 0
-                    || _dealer->setsockopt (ZLINK_TLS_TRUST_SYSTEM,
-                                            &_tls_trust_system,
-                                            sizeof (_tls_trust_system))
-                         != 0) {
-                    _dealer->close ();
-                    _dealer = NULL;
-                    return;
+    {
+        scoped_lock_t dealer_lock (_dealer_sync);
+        if (!_dealer) {
+            _dealer = _ctx->create_socket (ZLINK_DEALER);
+            if (_dealer) {
+                if (getenv ("PERF_DEBUG"))
+                    fprintf (stderr, "[spot-node] dealer created\n");
+                _dealer->setsockopt (ZLINK_SNDTIMEO,
+                                     &default_registry_control_send_timeout_ms,
+                                     sizeof (default_registry_control_send_timeout_ms));
+                _dealer->setsockopt (ZLINK_RCVTIMEO,
+                                     &default_registry_control_recv_timeout_ms,
+                                     sizeof (default_registry_control_recv_timeout_ms));
+                if (!_tls_ca.empty ()) {
+                    if (_dealer->setsockopt (ZLINK_TLS_CA, _tls_ca.data (),
+                                             _tls_ca.size ())
+                          != 0
+                        || _dealer->setsockopt (ZLINK_TLS_HOSTNAME,
+                                                _tls_hostname.data (),
+                                                _tls_hostname.size ())
+                             != 0
+                        || _dealer->setsockopt (ZLINK_TLS_TRUST_SYSTEM,
+                                                &_tls_trust_system,
+                                                sizeof (_tls_trust_system))
+                             != 0) {
+                        _dealer->close ();
+                        _dealer = NULL;
+                        return;
+                    }
                 }
-            }
-            for (size_t i = 0; i < _dealer_opts.size (); ++i) {
-                if (!_dealer_opts[i].value.empty ())
-                    _dealer->setsockopt (_dealer_opts[i].option,
-                                         &_dealer_opts[i].value[0],
-                                         _dealer_opts[i].value.size ());
-            }
-            _dealer->setsockopt (ZLINK_ROUTING_ID, _routing_id.data,
-                                 _routing_id.size);
-            scoped_lock_t lock (_sync);
-            _pending_registry_connect.clear ();
-            for (std::set<std::string>::const_iterator it =
-                   _registry_endpoints.begin ();
-                 it != _registry_endpoints.end (); ++it) {
-                _pending_registry_connect.push_back (*it);
+                for (size_t i = 0; i < _dealer_opts.size (); ++i) {
+                    if (!_dealer_opts[i].value.empty ())
+                        _dealer->setsockopt (_dealer_opts[i].option,
+                                             &_dealer_opts[i].value[0],
+                                             _dealer_opts[i].value.size ());
+                }
+                _dealer->setsockopt (ZLINK_ROUTING_ID, _routing_id.data,
+                                     _routing_id.size);
+                scoped_lock_t lock (_sync);
+                _pending_registry_connect.clear ();
+                for (std::set<std::string>::const_iterator it =
+                       _registry_endpoints.begin ();
+                     it != _registry_endpoints.end (); ++it) {
+                    _pending_registry_connect.push_back (*it);
+                }
             }
         }
     }
@@ -2014,6 +2007,7 @@ void spot_node_t::flush_pending ()
     }
 
     if (_dealer) {
+        scoped_lock_t dealer_lock (_dealer_sync);
         for (std::deque<std::string>::const_iterator it =
                registry_connect.begin ();
              it != registry_connect.end (); ++it)
@@ -2191,15 +2185,20 @@ void spot_node_t::send_heartbeat (uint64_t now_ms_)
         endpoint = _advertise_endpoint;
     }
 
-    const int rc =
-      send_u16 (dealer, discovery_protocol::msg_heartbeat, ZLINK_SNDMORE) == 0
-          && send_u16 (dealer, discovery_protocol::service_type_spot_node,
-                       ZLINK_SNDMORE)
-               == 0
-          && send_string (dealer, service, ZLINK_SNDMORE) == 0
-          && send_string (dealer, endpoint, 0) == 0
-        ? 0
-        : -1;
+    int rc = -1;
+    {
+        scoped_lock_t dealer_lock (_dealer_sync);
+        rc =
+          send_u16 (dealer, discovery_protocol::msg_heartbeat, ZLINK_SNDMORE)
+                    == 0
+                && send_u16 (dealer, discovery_protocol::service_type_spot_node,
+                             ZLINK_SNDMORE)
+                     == 0
+                && send_string (dealer, service, ZLINK_SNDMORE) == 0
+                && send_string (dealer, endpoint, 0) == 0
+              ? 0
+              : -1;
+    }
 
     if (rc == 0) {
         scoped_lock_t lock (_sync);

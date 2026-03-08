@@ -26,7 +26,7 @@
 
 - single은 **한 번의 active 구간에서 throughput + latency를 동시에** 측정한다.
 - size 변경 시마다 별도 프로세스로 실행하여 케이스 간 메트릭 오염을 방지한다.
-- 명시적 드레인 phase는 없으나, receiver는 active 종료 후 `drain_idle_limit` (기본: `PERF_SINGLE_RCVTIMEO_MS`, 200ms) 동안 수신 대기하는 idle drain 로직이 있다.
+- active 종료 후 별도 idle drain phase는 두지 않는다. size 변경 시마다 별도 프로세스로 재실행하여 케이스 간 잔여 상태를 격리한다.
 - 재시도 로직은 두지 않는다.
 
 ### 1.1 Single 핵심 정책
@@ -45,14 +45,14 @@
   - single의 기본 메커니즘이 아니다.
   - `ROUTER_ROUTER_POLL`도 이름만 유지하고 동일 정책을 적용한다.
 - 한 줄 요약
-  - `single = blocking send + blocking recv + nonblocking drain`
+  - `single = blocking send + blocking recv + nonblocking drain(in-iteration only)`
 
 ---
 
 ## 2. 바이너리 Phase 규칙
 
 ```text
-[single phase]: [warmup] -> [settle(100ms, 일부 패턴)] -> [active(duration)] -> [drain idle]
+[single phase]: [warmup] -> [settle(100ms, 일부 패턴)] -> [active(duration)]
 ```
 
 | Phase | 방식 | 기본값 | 환경 변수 |
@@ -60,12 +60,11 @@
 | warmup | count-based | 패턴별 기본값 (표준: 1000, GATEWAY/SPOT: 200, SPOT msg_size≥65536: 20) | `PERF_WARMUP_COUNT` |
 | settle | time-based | 100ms | — (코드 상수 `SETTLE_TIME_MS`) |
 | active | time-based | 5s | `PERF_SINGLE_DURATION_SECONDS` |
-| drain idle | idle-based | recv timeout (기본 200ms) 동안 무수신 시 종료 | — |
 
 - warmup 데이터는 최종 집계에서 제외한다.
 - settle은 소켓 설정 완료 후 안정화 대기이며, 환경 변수로 변경할 수 없다. **GATEWAY, SPOT 등 서비스 패턴에만 적용된다.** 소켓 패턴(PAIR, PUBSUB, DEALER_*, ROUTER_*)은 `setup_connected_pair()` 내부에서 연결 안정화를 처리하므로 별도 settle을 호출하지 않는다.
 - active에서만 throughput/latency를 계산한다.
-- drain idle은 active 종료 후 잔여 메시지를 수신하기 위한 유휴 대기이다.
+- active 종료 후 별도 drain 단계는 두지 않는다. 다음 size는 별도 프로세스로 다시 시작한다.
 
 ### 2.1 Header 기반 집계 (필수)
 

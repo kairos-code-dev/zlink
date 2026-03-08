@@ -19,6 +19,8 @@
 
 namespace {
 
+typedef std::chrono::steady_clock steady_clock_t;
+
 static const char *k_pattern = "SPOT";
 static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
@@ -75,20 +77,6 @@ inline bool is_supported_transport(const std::string &transport)
            || transport == "wss";
 }
 
-inline void debug_stage(const char *stage)
-{
-    if (bench_debug_enabled() && stage)
-        std::cerr << "[multi-spot-client] " << stage << std::endl;
-}
-
-inline void debug_error(const char *stage)
-{
-    if (!bench_debug_enabled() || !stage)
-        return;
-    std::cerr << "[multi-spot-client] " << stage << " failed: "
-              << zlink_strerror(zlink_errno()) << std::endl;
-}
-
 inline bool parse_spot_ready_endpoint(const std::string &raw,
                                       std::string *server_endpoint_out,
                                       std::string *registry_pub_out,
@@ -114,6 +102,11 @@ inline bool parse_spot_ready_endpoint(const std::string &raw,
 
     return !server_endpoint_out->empty() && !registry_pub_out->empty()
            && !registry_router_out->empty();
+}
+
+inline bool event_has_flag(const zlink_poller_event_t &event, short flag)
+{
+    return event.user_data != NULL && (event.events & flag) != 0;
 }
 
 inline bool configure_spot_tls_client(void *node, const std::string &transport)
@@ -171,36 +164,6 @@ inline void apply_spot_sub_options(void *sub,
       sizeof(xpub_nodrop));
 }
 
-inline bool resolve_service_endpoint(void *discovery,
-                                     const char *service_name,
-                                     std::string *endpoint_out)
-{
-    if (!discovery || !service_name || service_name[0] == '\0' || !endpoint_out)
-        return false;
-
-    endpoint_out->clear();
-    size_t count = 0;
-    if (zlink_discovery_get_receivers(discovery, service_name, NULL, &count) != 0
-        || count == 0) {
-        return false;
-    }
-
-    std::vector<zlink_receiver_info_t> receivers(count);
-    if (zlink_discovery_get_receivers(
-          discovery, service_name, &receivers[0], &count)
-        != 0) {
-        return false;
-    }
-
-    for (size_t i = 0; i < count; ++i) {
-        if (receivers[i].endpoint[0] != '\0') {
-            *endpoint_out = receivers[i].endpoint;
-            return true;
-        }
-    }
-    return false;
-}
-
 inline bool wait_for_service_receivers(void *discovery,
                                        const char *service_name,
                                        int target_count,
@@ -211,20 +174,11 @@ inline bool wait_for_service_receivers(void *discovery,
 
     const int target = std::max(1, target_count);
     const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(1000, timeout_ms));
-    auto next_debug_log = std::chrono::steady_clock::now();
-
-    while (std::chrono::steady_clock::now() < deadline) {
+      steady_clock_t::now()
+      + milliseconds_t(std::max(1000, timeout_ms));
+    while (steady_clock_t::now() < deadline) {
         const int count = zlink_discovery_receiver_count(discovery, service_name);
         const int available = zlink_discovery_service_available(discovery, service_name);
-        if (bench_debug_enabled()
-            && std::chrono::steady_clock::now() >= next_debug_log) {
-            std::cerr << "[multi-spot-client] discovery count=" << count
-                      << " available=" << available << std::endl;
-            next_debug_log = std::chrono::steady_clock::now()
-                             + std::chrono::milliseconds(500);
-        }
         if (available > 0 || count >= target)
             return true;
         if (zlink_poll(NULL, 0, 5) < 0 && zlink_errno() != EINTR)
@@ -250,7 +204,6 @@ inline bool attach_discovery_to_slots(std::vector<spot_client_slot_t> *slots,
             return false;
         if (zlink_spot_node_set_discovery(slot.node, discovery, service_name)
             != 0) {
-            debug_error("spot_node_set_discovery");
             return false;
         }
     }
@@ -269,22 +222,16 @@ inline bool create_slot_subscribers(std::vector<spot_client_slot_t> *slots,
             return false;
 
         slot.sub = zlink_spot_sub_new(slot.node);
-        if (!slot.sub) {
-            debug_error("spot_sub_new");
+        if (!slot.sub)
             return false;
-        }
         slot.sub_monitor = zlink_spot_sub_monitor_open(
           slot.sub,
           ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_SPOT_SUB_FILTER_APPLIED);
-        if (!slot.sub_monitor) {
-            debug_error("spot_sub_monitor_open");
+        if (!slot.sub_monitor)
             return false;
-        }
         apply_spot_sub_options(slot.sub, settings);
-        if (zlink_spot_sub_subscribe(slot.sub, k_topic) != 0) {
-            debug_error("spot_sub_subscribe");
+        if (zlink_spot_sub_subscribe(slot.sub, k_topic) != 0)
             return false;
-        }
     }
 
     return true;
@@ -323,10 +270,10 @@ inline bool wait_all_sub_peers(std::vector<spot_client_slot_t> &slots,
     std::vector<char> ready(slots.size(), 0);
     size_t ready_count = 0;
     const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(5000, timeout_ms * 3));
+      steady_clock_t::now()
+      + milliseconds_t(std::max(5000, timeout_ms * 3));
 
-    while (std::chrono::steady_clock::now() < deadline && ready_count < slots.size()) {
+    while (steady_clock_t::now() < deadline && ready_count < slots.size()) {
         for (size_t i = 0; i < slots.size(); ++i) {
             if (ready[i] || !slots[i].sub_monitor)
                 continue;
@@ -362,10 +309,6 @@ inline bool wait_all_sub_peers(std::vector<spot_client_slot_t> &slots,
             return false;
     }
 
-    if (bench_debug_enabled() && ready_count != slots.size()) {
-        std::cerr << "[multi-spot-client] sub peer ready timeout " << ready_count
-                  << "/" << slots.size() << std::endl;
-    }
     return ready_count == slots.size();
 }
 
@@ -404,30 +347,19 @@ inline bool create_spot_client_slots(
     for (size_t i = 0; i < slots_out->size(); ++i) {
         spot_client_slot_t &slot = (*slots_out)[i];
 
-        if (bench_debug_enabled() && ((i % 100) == 0)) {
-            std::cerr << "[multi-spot-client] create slot " << i << "/"
-                      << slots_out->size() << std::endl;
-        }
-
         slot.node = zlink_spot_node_new(ctx.get());
-        if (!slot.node) {
-            debug_error("spot_node_new");
+        if (!slot.node)
             return false;
-        }
 
         if (!configure_spot_tls_server(slot.node, transport)
-            || !configure_spot_tls_client(slot.node, transport)) {
-            debug_error("configure_spot_tls_client");
+            || !configure_spot_tls_client(slot.node, transport))
             return false;
-        }
 
         const std::string bind_endpoint =
           make_endpoint(transport, std::string("spot_cli_") + std::to_string(i));
         if (bind_endpoint.empty()
-            || zlink_spot_node_bind(slot.node, bind_endpoint.c_str()) != 0) {
-            debug_error("spot_node_bind");
+            || zlink_spot_node_bind(slot.node, bind_endpoint.c_str()) != 0)
             return false;
-        }
 
     }
 
@@ -534,7 +466,7 @@ inline bool drain_spot_sub_non_blocking(void *sub,
                                         long *lat_count,
                                         bench_latency_sampler_t *latency_samples,
                                         uint64_t *last_sampled_seq,
-                                        const std::chrono::steady_clock::time_point *deadline)
+                                        const steady_clock_t::time_point *deadline)
 {
     if (!sub)
         return false;
@@ -542,7 +474,7 @@ inline bool drain_spot_sub_non_blocking(void *sub,
     long local_recv = 0;
     long local_consumed = 0;
     while (true) {
-        if (deadline && std::chrono::steady_clock::now() >= *deadline)
+        if (deadline && steady_clock_t::now() >= *deadline)
             break;
 
         const int rc = recv_spot_message_once(sub,
@@ -571,7 +503,63 @@ inline bool drain_spot_sub_non_blocking(void *sub,
     return true;
 }
 
-inline bool run_spot_one_way_window_loop(
+inline void reset_spot_phase_outputs(long *recv_total,
+                                     double *lat_sum,
+                                     long *lat_count,
+                                     bench_latency_stats_t *latency_out)
+{
+    if (recv_total)
+        *recv_total = 0;
+    if (lat_sum)
+        *lat_sum = 0.0;
+    if (lat_count)
+        *lat_count = 0;
+    if (latency_out)
+        *latency_out = bench_latency_stats_t();
+}
+
+inline int resolve_deadline_poll_timeout_ms(
+  const steady_clock_t::time_point &deadline,
+  int default_timeout_ms)
+{
+    const auto now = steady_clock_t::now();
+    int poll_timeout_ms = 1;
+    if (deadline > now) {
+        const long remain_ms =
+          remaining_milliseconds(deadline, now);
+        if (remain_ms >= 0)
+            poll_timeout_ms =
+              std::max(0, std::min(default_timeout_ms, static_cast<int>(remain_ms)));
+    }
+    return poll_timeout_ms;
+}
+
+inline bool init_spot_sub_poller(const std::vector<spot_client_slot_t> &slots,
+                                 spot_sub_poller_t *poller)
+{
+    if (!poller)
+        return false;
+
+    poller->handle = zlink_poller_new();
+    if (!poller->handle)
+        return false;
+
+    poller->events.resize(slots.size());
+    poller->indices.resize(slots.size());
+    for (size_t i = 0; i < slots.size(); ++i) {
+        poller->indices[i] = i;
+        if (zlink_poller_add_spot_sub(
+              poller->handle, slots[i].sub, &poller->indices[i], ZLINK_POLLIN)
+            != 0) {
+            zlink_poller_destroy(&poller->handle);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+inline bool run_spot_phase_loop(
   const std::vector<spot_client_slot_t> &slots,
   const bench_settings_t &settings,
   size_t expected_msg_size,
@@ -587,21 +575,13 @@ inline bool run_spot_one_way_window_loop(
         return false;
 
     if (duration_seconds <= 0.0) {
-        if (recv_total)
-            *recv_total = 0;
-        if (lat_sum)
-            *lat_sum = 0.0;
-        if (lat_count)
-            *lat_count = 0;
-        if (latency_out)
-            *latency_out = bench_latency_stats_t();
+        reset_spot_phase_outputs(recv_total, lat_sum, lat_count, latency_out);
         return true;
     }
 
     const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-        std::chrono::duration<double>(duration_seconds));
+      steady_clock_t::now()
+      + to_clock_duration(duration_seconds);
 
     bool fatal_error = false;
     long recv_sum = 0;
@@ -611,35 +591,13 @@ inline bool run_spot_one_way_window_loop(
     uint64_t last_sampled_seq = 0;
 
     spot_sub_poller_t poller;
-    poller.handle = zlink_poller_new();
-    if (!poller.handle)
+    if (!init_spot_sub_poller(slots, &poller))
         return false;
-    poller.events.resize(slots.size());
-    poller.indices.resize(slots.size());
-    for (size_t i = 0; i < slots.size(); ++i) {
-        poller.indices[i] = i;
-        if (zlink_poller_add_spot_sub(
-              poller.handle,
-              slots[i].sub,
-              &poller.indices[i],
-              ZLINK_POLLIN)
-            != 0) {
-            zlink_poller_destroy(&poller.handle);
-            return false;
-        }
-    }
 
-    while (std::chrono::steady_clock::now() < deadline && !fatal_error) {
-        const auto now = std::chrono::steady_clock::now();
-        int poll_timeout_ms = 1;
-        if (deadline > now) {
-            const long remain_ms =
-              std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now)
-                .count();
-            if (remain_ms >= 0)
-                poll_timeout_ms =
-                  std::max(0, std::min(settings.client_poll_timeout_ms, static_cast<int>(remain_ms)));
-        }
+    while (steady_clock_t::now() < deadline && !fatal_error) {
+        const int poll_timeout_ms =
+          resolve_deadline_poll_timeout_ms(deadline,
+                                           settings.client_poll_timeout_ms);
         const int prc = zlink_poller_wait_all(
           poller.handle,
           poller.events.empty() ? NULL : &poller.events[0],
@@ -654,7 +612,7 @@ inline bool run_spot_one_way_window_loop(
 
         for (int event_index = 0; event_index < prc; ++event_index) {
             zlink_poller_event_t &event = poller.events[event_index];
-            if ((event.events & ZLINK_POLLIN) == 0 || !event.user_data)
+            if (!event_has_flag(event, ZLINK_POLLIN))
                 continue;
             const size_t i = *static_cast<size_t *>(event.user_data);
             long recv_now = 0;
@@ -714,39 +672,17 @@ inline bool wait_for_msg_size_start(const std::vector<spot_client_slot_t> &slots
                                  settings.warmup_seconds * 1000
                                    + settings.settle_ms + 5000)));
     const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(sync_timeout_ms);
+      steady_clock_t::now()
+      + milliseconds_t(sync_timeout_ms);
 
     spot_sub_poller_t poller;
-    poller.handle = zlink_poller_new();
-    if (!poller.handle)
+    if (!init_spot_sub_poller(slots, &poller))
         return false;
-    poller.events.resize(slots.size());
-    poller.indices.resize(slots.size());
-    for (size_t i = 0; i < slots.size(); ++i) {
-        poller.indices[i] = i;
-        if (zlink_poller_add_spot_sub(
-              poller.handle,
-              slots[i].sub,
-              &poller.indices[i],
-              ZLINK_POLLIN)
-            != 0) {
-            zlink_poller_destroy(&poller.handle);
-            return false;
-        }
-    }
 
-    while (std::chrono::steady_clock::now() < deadline) {
-        const auto now = std::chrono::steady_clock::now();
-        int poll_timeout_ms = 1;
-        if (deadline > now) {
-            const long remain_ms =
-              std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now)
-                .count();
-            if (remain_ms >= 0)
-                poll_timeout_ms =
-                  std::max(0, std::min(settings.client_poll_timeout_ms, static_cast<int>(remain_ms)));
-        }
+    while (steady_clock_t::now() < deadline) {
+        const int poll_timeout_ms =
+          resolve_deadline_poll_timeout_ms(deadline,
+                                           settings.client_poll_timeout_ms);
         const int prc = zlink_poller_wait_all(
           poller.handle,
           poller.events.empty() ? NULL : &poller.events[0],
@@ -760,7 +696,7 @@ inline bool wait_for_msg_size_start(const std::vector<spot_client_slot_t> &slots
         }
         for (int event_index = 0; event_index < prc; ++event_index) {
             zlink_poller_event_t &event = poller.events[event_index];
-            if ((event.events & ZLINK_POLLIN) == 0 || !event.user_data)
+            if (!event_has_flag(event, ZLINK_POLLIN))
                 continue;
             const size_t i = *static_cast<size_t *>(event.user_data);
             long matched_now = 0;
@@ -790,12 +726,12 @@ inline bool wait_for_msg_size_start(const std::vector<spot_client_slot_t> &slots
     return false;
 }
 
-inline bool run_spot_one_way_duration(const std::vector<spot_client_slot_t> &slots,
-                                      const bench_settings_t &settings,
-                                      size_t msg_size,
-                                      double *throughput_out,
-                                      bench_latency_stats_t *latency_out,
-                                      bench_resource_metrics_t *metrics_out)
+inline bool run_spot_size_case(const std::vector<spot_client_slot_t> &slots,
+                               const bench_settings_t &settings,
+                               size_t msg_size,
+                               double *throughput_out,
+                               bench_latency_stats_t *latency_out,
+                               bench_resource_metrics_t *metrics_out)
 {
     if (!throughput_out || !latency_out || !metrics_out)
         return false;
@@ -804,13 +740,6 @@ inline bool run_spot_one_way_duration(const std::vector<spot_client_slot_t> &slo
     *latency_out = bench_latency_stats_t();
 
     if (!wait_for_msg_size_start(slots, settings, msg_size)) {
-        if (bench_debug_enabled() && !slots.empty()) {
-            size_t peer_count = 0;
-            (void) zlink_spot_sub_peers(slots[0].sub, NULL, &peer_count);
-            std::cerr << "[multi-spot-client] size sync peer_count="
-                      << peer_count << std::endl;
-        }
-        debug_stage("size sync failed");
         return false;
     }
 
@@ -820,17 +749,16 @@ inline bool run_spot_one_way_duration(const std::vector<spot_client_slot_t> &slo
     bench_latency_stats_t latency_stats;
 
     const bench_cpu_sample_t sample_start = bench_capture_cpu_sample();
-    if (!run_spot_one_way_window_loop(slots,
-                                      settings,
-                                      msg_size,
-                                      perf_metric::phase_unknown,
-                                      static_cast<double>(std::max(1, settings.duration_seconds)),
-                                      true,
-                                      &recv_count,
-                                      &lat_sum,
-                                      &lat_count,
-                                      &latency_stats)) {
-        debug_stage("active window failed");
+    if (!run_spot_phase_loop(slots,
+                             settings,
+                             msg_size,
+                             perf_metric::phase_unknown,
+                             static_cast<double>(std::max(1, settings.duration_seconds)),
+                             true,
+                             &recv_count,
+                             &lat_sum,
+                             &lat_count,
+                             &latency_stats)) {
         return false;
     }
     *metrics_out = bench_finish_resource_probe(sample_start);
@@ -858,32 +786,20 @@ inline void cleanup_spot_runtime(std::vector<spot_client_slot_t> *slots,
     }
 }
 
-inline void run_spot_debug_probe(const std::vector<spot_client_slot_t> &slots,
-                                 size_t msg_size)
-{
-    if (!bench_debug_enabled() || slots.empty())
-        return;
-    (void) msg_size;
-
-    size_t peer_count = 0;
-    (void) zlink_spot_sub_peers(slots[0].sub, NULL, &peer_count);
-    std::cerr << "[multi-spot-client] sub peer count=" << peer_count << std::endl;
-}
-
-inline bool setup_spot_runtime(ctx_guard_t &ctx,
-                               const std::string &transport,
-                               const std::string &registry_pub_endpoint,
-                               const bench_settings_t &settings,
-                               const std::vector<size_t> &msg_sizes,
-                               void **discovery_out,
-                               std::vector<spot_client_slot_t> *slots_out)
+inline bool prepare_spot_runtime(ctx_guard_t &ctx,
+                                 const std::string &transport,
+                                 const std::string &registry_router_endpoint,
+                                 const bench_settings_t &settings,
+                                 const std::vector<size_t> &msg_sizes,
+                                 void **discovery_out,
+                                 std::vector<spot_client_slot_t> *slots_out)
 {
     if (!discovery_out || !slots_out)
         return false;
 
     *discovery_out = zlink_discovery_new_typed(ctx.get(), ZLINK_SERVICE_TYPE_SPOT);
     if (!*discovery_out
-        || zlink_discovery_connect_registry(*discovery_out, registry_pub_endpoint.c_str()) != 0
+        || zlink_discovery_connect_registry(*discovery_out, registry_router_endpoint.c_str()) != 0
         || zlink_discovery_subscribe(*discovery_out, k_service_name) != 0) {
         cleanup_spot_runtime(slots_out, discovery_out);
         return false;
@@ -899,19 +815,11 @@ inline bool setup_spot_runtime(ctx_guard_t &ctx,
         return false;
     }
 
-    std::string provider_endpoint;
-    (void) resolve_service_endpoint(*discovery_out, k_service_name, &provider_endpoint);
-    if (bench_debug_enabled()) {
-        std::cerr << "[multi-spot-client] provider endpoint "
-                  << provider_endpoint << std::endl;
-    }
-
     if (zlink_poll(NULL, 0, std::max(100, settings.settle_ms)) < 0
         && zlink_errno() != EINTR) {
         cleanup_spot_runtime(slots_out, discovery_out);
         return false;
     }
-    run_spot_debug_probe(*slots_out, msg_sizes.empty() ? 64 : msg_sizes[0]);
 
     return true;
 }
@@ -927,26 +835,16 @@ inline bool run_spot_size_cases(ctx_guard_t &ctx,
     if (!slots)
         return false;
 
-    debug_stage("run sizes");
     for (size_t si = 0; si < msg_sizes.size(); ++si) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[multi-spot-client] size " << msg_sizes[si] << " start"
-                      << std::endl;
-        }
-
         double throughput = 0.0;
         bench_latency_stats_t latency;
         bench_resource_metrics_t metrics;
-        if (!run_spot_one_way_duration(*slots,
-                                       settings,
-                                       msg_sizes[si],
-                                       &throughput,
-                                       &latency,
-                                       &metrics)) {
-            if (bench_debug_enabled()) {
-                std::cerr << "[multi-spot-client] size " << msg_sizes[si]
-                          << " failed" << std::endl;
-            }
+        if (!run_spot_size_case(*slots,
+                                settings,
+                                msg_sizes[si],
+                                &throughput,
+                                &latency,
+                                &metrics)) {
             return false;
         }
 
@@ -1011,13 +909,13 @@ inline int run_client_benchmark(const std::string &lib_name,
 
     std::vector<spot_client_slot_t> slots;
     void *discovery = NULL;
-    if (!setup_spot_runtime(ctx,
-                            transport,
-                            registry_pub_endpoint,
-                            settings,
-                            msg_sizes,
-                            &discovery,
-                            &slots)) {
+    if (!prepare_spot_runtime(ctx,
+                              transport,
+                              registry_router_endpoint,
+                              settings,
+                              msg_sizes,
+                              &discovery,
+                              &slots)) {
         return 1;
     }
 

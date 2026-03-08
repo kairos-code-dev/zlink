@@ -183,6 +183,7 @@ class spot_node_t
 
     // Serialize access to PUB socket for thread-safe publish.
     mutex_t _pub_sync;
+    mutex_t _dealer_sync;
     mutex_t _sync;
     std::set<spot_pub_t *> _pubs;
     std::set<spot_sub_t *> _subs;

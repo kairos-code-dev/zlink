@@ -11,8 +11,8 @@ Registry directly.
 
 - Use `zlink_discovery_set_routing_id()` / `zlink_discovery_routing_id()` for
   Discovery identity.
-- Use `zlink_discovery_connect_registry_router()` when Discovery should publish
-  topology summaries back to the Registry.
+- Use `zlink_discovery_connect_registry()` as the single Registry bootstrap
+  connect API. Discovery learns the broadcast and uplink paths internally.
 - Use `zlink_discovery_monitor_open()` for state transitions such as
   `ZLINK_DISCOVERY_SERVICE_UP` and `ZLINK_DISCOVERY_PROVIDERS_CHANGED`.
 - Use Registry topology snapshot/query APIs for global summary inspection.
@@ -76,43 +76,23 @@ scope. Use `ZLINK_SERVICE_TYPE_GATEWAY` for Gateway/Receiver services or
 
 ### zlink_discovery_connect_registry
 
-Connect to a Registry PUB endpoint.
+Connect to a Registry bootstrap/control endpoint.
 
 ```c
 int zlink_discovery_connect_registry(void *discovery,
-                                     const char *registry_pub_endpoint);
+                                     const char *registry_endpoint);
 ```
 
-Subscribes this Discovery instance to the Registry's PUB socket so that it
-receives periodic service list broadcasts. The Discovery cache is populated
-automatically once broadcasts arrive.
+Bootstraps this Discovery instance against the Registry control plane. The
+Registry reply tells Discovery which internal broadcast and topology-uplink
+endpoints to use. Discovery then configures those sockets automatically and
+starts receiving periodic service list broadcasts.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
 **Thread safety:** Not thread-safe. Call before concurrent access begins.
 
 **See also:** `zlink_discovery_subscribe`
-
----
-
-### zlink_discovery_connect_registry_router
-
-Connect Discovery to a Registry ROUTER endpoint for topology reporting.
-
-```c
-int zlink_discovery_connect_registry_router(void *discovery,
-                                            const char *registry_router_endpoint);
-```
-
-Use this only when Discovery should publish its local topology summary back to
-the Registry. This is separate from `zlink_discovery_connect_registry()`,
-which subscribes to the Registry PUB broadcast path.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Thread safety:** Not thread-safe. Call during setup.
-
-**See also:** `zlink_registry_topology_snapshot`, `zlink_registry_query_snapshot`
 
 ---
 
@@ -232,7 +212,6 @@ surface. Its public setup surface is limited to:
 
 - `zlink_discovery_set_routing_id()`
 - `zlink_discovery_connect_registry()`
-- `zlink_discovery_connect_registry_router()`
 - `zlink_discovery_subscribe()` / `zlink_discovery_unsubscribe()`
 
 ---

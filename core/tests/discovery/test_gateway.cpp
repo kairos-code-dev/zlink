@@ -209,7 +209,7 @@ static void test_gateway_can_be_polled_via_service_instance ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery,
-                                        "inproc://reg-pub-gateway-poll"));
+                                        "inproc://reg-router-gateway-poll"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery, service_name));
 
@@ -299,7 +299,7 @@ static void test_gateway_refreshes_existing_service_on_first_connection_count ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery,
-                                        "inproc://reg-pub-gateway-late"));
+                                        "inproc://reg-router-gateway-late"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery, service_name));
 
@@ -352,7 +352,7 @@ static void test_gateway_router_peers_do_not_enter_pollable_mode ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery,
-                                        "inproc://reg-pub-gateway-peers"));
+                                        "inproc://reg-router-gateway-peers"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery, service_name));
 
@@ -397,7 +397,7 @@ static void test_receiver_can_be_polled_via_service_instance ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery,
-                                        "inproc://reg-pub-receiver-poll"));
+                                        "inproc://reg-router-receiver-poll"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery, service_name));
 
@@ -595,7 +595,8 @@ void test_gateway_single_service_tcp ()
     TEST_ASSERT_NOT_NULL (discovery);
     step_log ("connect discovery");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://reg-pub-gateway1"));
+      zlink_discovery_connect_registry (discovery,
+                                        "inproc://reg-router-gateway1"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, service_name));
 
     // Setup provider with TCP endpoint
@@ -685,7 +686,7 @@ void test_gateway_send_rid_tcp ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery,
-                                        "inproc://reg-pub-gateway-rid"));
+                                        "inproc://reg-router-gateway-rid"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, service_name));
 
     const char provider_rid[] = "PROV-RID";
@@ -758,7 +759,8 @@ void test_gateway_multi_service_tcp ()
     TEST_ASSERT_NOT_NULL (discovery);
     step_log ("connect discovery");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://reg-pub-gateway2"));
+      zlink_discovery_connect_registry (discovery,
+                                        "inproc://reg-router-gateway2"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svc-A"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svc-B"));
 
@@ -862,7 +864,7 @@ void test_gateway_refresh_on_update ()
     step_log ("connect discovery");
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery,
-                                        "inproc://reg-pub-gateway-update"));
+                                        "inproc://reg-router-gateway-update"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, service_name));
 
     char ep_1[256] = {0};
@@ -976,7 +978,8 @@ void test_gateway_protocol_ws ()
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://reg-pub-gateway-ws"));
+      zlink_discovery_connect_registry (discovery,
+                                        "inproc://reg-router-gateway-ws"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, service_name));
 
     // Setup provider with WebSocket endpoint
@@ -1056,7 +1059,8 @@ void test_gateway_protocol_tls ()
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://reg-pub-gateway-tls"));
+      zlink_discovery_connect_registry (discovery,
+                                        "inproc://reg-router-gateway-tls"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, service_name));
 
     // Setup provider with TLS endpoint
@@ -1150,7 +1154,8 @@ void test_gateway_protocol_wss ()
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://reg-pub-gateway-wss"));
+      zlink_discovery_connect_registry (discovery,
+                                        "inproc://reg-router-gateway-wss"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, service_name));
 
     // Setup provider with WSS endpoint
@@ -1236,7 +1241,7 @@ void test_gateway_load_balancing ()
     TEST_ASSERT_NOT_NULL (discovery);
     step_log ("connect discovery");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://reg-pub-lb"));
+      zlink_discovery_connect_registry (discovery, "inproc://reg-router-lb"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, service_name));
 
     // Setup provider 1
@@ -1364,7 +1369,7 @@ void test_gateway_weighted_load_balancing ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery,
-                                        "inproc://reg-pub-lb-weighted"));
+                                        "inproc://reg-router-lb-weighted"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, service_name));
 
     char ep_1[256] = {0};
@@ -1462,7 +1467,7 @@ void test_gateway_concurrent_send_and_updates ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery,
-                                        "inproc://reg-pub-gateway-sync"));
+                                        "inproc://reg-router-gateway-sync"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery,
                                                           service_name));
 

@@ -48,21 +48,6 @@ inline void install_signal_handlers ()
 #endif
 }
 
-inline void debug_timing_ms (
-  const char *stage,
-  const std::chrono::steady_clock::time_point &startup_begin)
-{
-    if (!bench_debug_enabled () || !stage)
-        return;
-    const long long elapsed_ms =
-      static_cast<long long> (
-        std::chrono::duration_cast<std::chrono::milliseconds> (
-          std::chrono::steady_clock::now () - startup_begin)
-          .count ());
-    std::cerr << "[multi-gateway-server] t+" << elapsed_ms << "ms " << stage
-              << std::endl;
-}
-
 inline void request_queue_probe (size_t msg_size)
 {
     if (msg_size == 0)
@@ -238,6 +223,15 @@ inline bool setup_registry (void *ctx,
     }
 
     return false;
+}
+
+inline void print_gateway_relay_failure (const char *prefix,
+                                         const char *service_name)
+{
+    std::cerr << prefix << ": " << zlink_strerror (zlink_errno ());
+    if (service_name && service_name[0] != '\0')
+        std::cerr << " service='" << service_name << "'";
+    std::cerr << std::endl;
 }
 
 enum relay_status_t
@@ -501,7 +495,6 @@ inline relay_status_t relay_gateway_request (
 }
 
 inline bool run_server_loop (void *server_receiver,
-                             void *server_discovery,
                              void *server_gateway,
                              const bench_settings_t &settings,
                              const std::string &lib_name,
@@ -543,9 +536,6 @@ inline bool run_server_loop (void *server_receiver,
         return false;
     }
     zlink_poller_event_t event;
-    const bool debug = std::getenv ("PERF_DEBUG") != NULL;
-    size_t deferred_count = 0;
-    size_t pending_max = 0;
 
     while (!g_stop_requested.load (std::memory_order_acquire)) {
         emit_requested_queue_probe (
@@ -553,37 +543,13 @@ inline bool run_server_loop (void *server_receiver,
 
         if (!flush_pending_gateway_responses (
               server_gateway, pending_responses, &pending_count)) {
-            std::cerr << "gateway server: relay failed: "
-                      << zlink_strerror (zlink_errno ()) << " service='"
-                      << (pending_count == 0 ? ""
-                                             : pending_responses[0].client_service)
-                      << "' conn_count="
-                      << zlink_gateway_connection_count (
-                           server_gateway,
-                           pending_count == 0 ? ""
-                                              : pending_responses[0].client_service)
-                      << " available="
-                      << (server_discovery
-                            ? zlink_discovery_service_available (
-                                server_discovery,
-                                pending_count == 0 ? ""
-                                                   : pending_responses[0]
-                                                       .client_service)
-                            : -1)
-                      << " receivers="
-                      << (server_discovery
-                            ? zlink_discovery_receiver_count (
-                                server_discovery,
-                                pending_count == 0 ? ""
-                                                   : pending_responses[0]
-                                                       .client_service)
-                            : -1)
-                      << std::endl;
+            print_gateway_relay_failure (
+              "gateway server: relay failed",
+              pending_count == 0 ? "" : pending_responses[0].client_service);
             close_pending_gateway_responses (pending_responses, &pending_count);
             delete[] pending_responses;
             return false;
         }
-        pending_max = std::max (pending_max, pending_count);
 
         const short receiver_events =
           pending_count < pending_backpressure_threshold ? ZLINK_POLLIN : 0;
@@ -639,7 +605,6 @@ inline bool run_server_loop (void *server_receiver,
             if (status == relay_progress)
                 continue;
             if (status == relay_deferred) {
-                ++deferred_count;
                 if (!enqueue_deferred_request (
                       pending_responses,
                       pending_capacity,
@@ -652,7 +617,6 @@ inline bool run_server_loop (void *server_receiver,
                     delete[] pending_responses;
                     return false;
                 }
-                pending_max = std::max (pending_max, pending_count);
                 if (pending_count >= pending_backpressure_threshold)
                     break;
                 continue;
@@ -660,25 +624,8 @@ inline bool run_server_loop (void *server_receiver,
             if (status == relay_idle)
                 break;
 
-            std::cerr << "gateway server: relay failed: "
-                      << zlink_strerror (zlink_errno ()) << " service='"
-                      << request.client_service << "' conn_count="
-                      << zlink_gateway_connection_count (
-                           server_gateway,
-                           request.client_service)
-                      << " available="
-                      << (server_discovery
-                            ? zlink_discovery_service_available (
-                                server_discovery,
-                                request.client_service)
-                            : -1)
-                      << " receivers="
-                      << (server_discovery
-                            ? zlink_discovery_receiver_count (
-                                server_discovery,
-                                request.client_service)
-                            : -1)
-                      << std::endl;
+            print_gateway_relay_failure (
+              "gateway server: relay failed", request.client_service);
             close_pending_gateway_responses (pending_responses, &pending_count);
             delete[] pending_responses;
             zlink_poller_destroy (&poller);
@@ -688,10 +635,6 @@ inline bool run_server_loop (void *server_receiver,
 
     close_gateway_request_payload (&request);
     reset_gateway_request (&request);
-    if (debug) {
-        std::cerr << "gateway server debug: deferred=" << deferred_count
-                  << " pending_max=" << pending_max << std::endl;
-    }
     close_pending_gateway_responses (pending_responses, &pending_count);
     delete[] pending_responses;
     zlink_poller_destroy (&poller);
@@ -731,10 +674,6 @@ inline int run_server_benchmark (const std::string &lib_name,
                                  const std::string &transport)
 {
     set_perf_pattern_env (k_pattern);
-    const std::chrono::steady_clock::time_point startup_begin =
-      std::chrono::steady_clock::now ();
-    debug_timing_ms ("startup begin", startup_begin);
-
     if (!is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
                   << transport << std::endl;
@@ -750,12 +689,9 @@ inline int run_server_benchmark (const std::string &lib_name,
     std::vector<size_t> sizes = resolve_bench_msg_sizes (64);
     if (sizes.empty ())
         sizes.push_back (64);
-    debug_timing_ms ("settings ready", startup_begin);
-
     ctx_guard_t ctx;
     if (!ctx.valid ())
         return 1;
-    debug_timing_ms ("ctx ready", startup_begin);
 
     void *registry = NULL;
     std::string registry_pub_endpoint;
@@ -771,8 +707,6 @@ inline int run_server_benchmark (const std::string &lib_name,
         ctx.force_term ();
         return 1;
     }
-    debug_timing_ms ("registry ready", startup_begin);
-
     void *server_discovery = NULL;
     void *server_gateway = NULL;
     void *server_receiver = NULL;
@@ -803,15 +737,11 @@ inline int run_server_benchmark (const std::string &lib_name,
     if (!server_receiver) {
         return fail ();
     }
-    debug_timing_ms ("receiver created", startup_begin);
-
     if (!configure_receiver_tls (server_receiver, transport)) {
         std::cerr << "gateway server: receiver tls configure failed"
                   << std::endl;
         return fail ();
     }
-    debug_timing_ms ("receiver tls configured", startup_begin);
-
     receiver_endpoint = bind_receiver_endpoint (
       server_receiver,
       transport,
@@ -820,8 +750,6 @@ inline int run_server_benchmark (const std::string &lib_name,
         std::cerr << "gateway server: receiver bind failed" << std::endl;
         return fail ();
     }
-    debug_timing_ms ("receiver bind ready", startup_begin);
-
     const int receiver_sndtimeo_ms =
       bench_timeout_ms_from_env ("PERF_SNDTIMEO_MS", 200);
     const int receiver_rcvtimeo_ms =
@@ -871,8 +799,6 @@ inline int run_server_benchmark (const std::string &lib_name,
                   << zlink_strerror (zlink_errno ()) << std::endl;
         return fail ();
     }
-    debug_timing_ms ("receiver registry connected", startup_begin);
-
     server_discovery =
       zlink_discovery_new_typed (ctx.get (), ZLINK_SERVICE_TYPE_GATEWAY);
     if (!server_discovery) {
@@ -882,13 +808,12 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     if (zlink_discovery_connect_registry (
           server_discovery,
-          registry_pub_endpoint.c_str ())
+          registry_router_endpoint.c_str ())
           != 0) {
         std::cerr << "gateway server: discovery connect/subscribe failed: "
                   << zlink_strerror (zlink_errno ()) << std::endl;
         return fail ();
     }
-    debug_timing_ms ("discovery connected", startup_begin);
     // Keep subscriptions empty to accept all client services.
     // This avoids O(clients) subscribe startup overhead at high client counts
     // and lets the server start the benchmark loop immediately.
@@ -899,8 +824,6 @@ inline int run_server_benchmark (const std::string &lib_name,
         std::cerr << "gateway server: gateway create failed" << std::endl;
         return fail ();
     }
-    debug_timing_ms ("gateway created", startup_begin);
-
     const int gateway_sndtimeo_ms =
       bench_timeout_ms_from_env ("PERF_SNDTIMEO_MS", 200);
     const int gateway_rcvtimeo_ms =
@@ -935,10 +858,6 @@ inline int run_server_benchmark (const std::string &lib_name,
                   << std::endl;
         return fail ();
     }
-    debug_timing_ms ("gateway tls configured", startup_begin);
-
-    debug_timing_ms ("gateway/receiver sockets ready", startup_begin);
-
     g_stop_requested.store (false, std::memory_order_release);
     g_queue_probe_pending.store (false, std::memory_order_release);
     g_queue_probe_size.store (0, std::memory_order_release);
@@ -967,12 +886,10 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     const bench_cpu_sample_t sample_start = bench_capture_cpu_sample ();
 
-    debug_timing_ms ("emit READY", startup_begin);
     std::cout << "READY," << ready_payload << std::endl;
 
     const bool loop_ok = run_server_loop (
       server_receiver,
-      server_discovery,
       server_gateway,
       settings,
       lib_name,

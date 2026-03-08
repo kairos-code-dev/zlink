@@ -358,9 +358,11 @@ registry만으로는 직접 알 수 없는 정보는 local service가 summary �
 
 구체 정책:
 
-- `Receiver`와 `SpotPub/SpotSub`은 기존 register/heartbeat와 함께 summary report를 보낼 수 있다.
+- `Receiver` topology entry는 기존 `REGISTER`/`UNREGISTER` control path에서
+  Registry가 직접 갱신한다.
 - `Gateway`는 discovery로 registry endpoint를 알게 된 뒤
   lightweight reporting client를 registry ROUTER에 붙인다.
+- `SpotPub/SpotSub` summary는 `Discovery` uplink를 통해 report한다.
 - `Discovery`도 topology entry를 유지하려면 같은 lightweight reporting client를 사용한다.
 - registry는 `TOPOLOGY_REPORT`를 기존 control-plane trust boundary 안에서 처리한다.
 

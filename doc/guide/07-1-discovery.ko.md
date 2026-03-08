@@ -73,9 +73,9 @@ zlink_ctx_term(ctx);
 /* service_type: ZLINK_SERVICE_TYPE_GATEWAY 또는 ZLINK_SERVICE_TYPE_SPOT */
 void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 
-/* Registry 연결 (여러 개 가능) */
-zlink_discovery_connect_registry(discovery, "tcp://registry1:5550");
-zlink_discovery_connect_registry(discovery, "tcp://registry2:5550");
+/* Registry bootstrap/control 엔드포인트 연결 (여러 개 가능) */
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
+zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 
 /* 서비스 구독 */
 zlink_discovery_subscribe(discovery, "payment-service");
@@ -102,27 +102,27 @@ int n = zlink_discovery_receiver_count(discovery, "payment-service");
 zlink_discovery_destroy(&discovery);
 ```
 
-## 4. Heartbeat 메커니즘
+## 4. Liveness 및 Summary 업데이트
 
 ```
-Receiver                    Registry
-   │  REGISTER                 │
-   │──────────────────────────►│
-   │  REGISTER_ACK             │
-   │◄──────────────────────────│
-   │                           │
-   │  HEARTBEAT (5초 주기)     │
-   │──────────────────────────►│
-   │  HEARTBEAT (5초 주기)     │
-   │──────────────────────────►│
-   │                           │
-   │  (15초 미수신)            │
-   │         X                 │ ← Receiver 제거 + 브로드캐스트
+Receiver/SpotNode           Discovery               Registry
+   │  REGISTER / summary        │                      │
+   │──────────────────────────► │                      │
+   │                            │ bootstrap + uplink   │
+   │                            │─────────────────────►│
+   │                            │  heartbeat / summary │
+   │                            │─────────────────────►│
+   │                            │                      │
+   │                            │ (summary timeout)    │
+   │                            │         X            │ ← entry 만료 / LOST
 ```
 
-- 주기: 5초 (기본값, 설정 가능)
-- 타임아웃: 15초 (3회 미수신 시 제거)
-- 제거 시 모든 Discovery에 SERVICE_LIST 브로드캐스트
+- Registry visibility는 Discovery가 소유하는 heartbeat/topology uplink로
+  유지됩니다.
+- Receiver와 Spot 서비스는 로컬 registration/summary 변경을 제출하지만,
+  주기적 uplink cadence는 Discovery가 담당합니다.
+- Registry summary는 eventually consistent한 coarse/global view이며,
+  strict final readiness gate로 사용하면 안 됩니다.
 
 ## 5. Registry 클러스터 HA
 
@@ -131,12 +131,12 @@ Receiver                    Registry
 - Eventually Consistent: 모든 Registry가 동일 상태 수렴
 - `registry_id` + `list_seq`로 중복/역전 업데이트 무시
 
-### Receiver Failover
+### Discovery Failover
 
-- Receiver는 **한 Registry에만** REGISTER/HEARTBEAT 전송
-- 장애 감지 시 다음 Registry로 전환 후 재등록
-- 지수 백오프: 200ms → 최대 5s (±20% 지터)
-- Discovery는 여러 Registry PUB를 동시 구독하여 한 노드 장애에도 목록 수신 가능
+- Discovery는 하나 이상의 Registry control endpoint에 bootstrap 연결합니다.
+- bootstrap metadata로 내부 broadcast/uplink 경로를 학습합니다.
+- 한 Registry 노드가 실패해도 다른 bootstrap control endpoint를 통해
+  계속 동작할 수 있습니다.
 
 ## 6. 다음 단계
 

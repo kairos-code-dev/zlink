@@ -295,7 +295,9 @@ int discovery_t::erase_service_summary(
 
 정리하면:
 
-- `Gateway`, `Receiver`는 자기 local summary를 `Discovery`에 제출
+- `Gateway`는 자기 local summary를 `Discovery`에 제출
+- `Receiver`는 provider control plane(`REGISTER`/`UNREGISTER`)을 통해
+  Registry가 topology entry를 직접 갱신하도록 한다
 - `SpotPub`, `SpotSub`는 직접 `Discovery`를 알지 않고
   `SpotNode`가 local summary를 모아 `Discovery`에 제출
 - `Discovery` 자신에 대한 summary도 같은 local store에 넣고 uplink
@@ -818,28 +820,32 @@ gateway local state transition
 ### 10.4 Receiver
 
 - 기존 register/unregister 경로 유지
-- state 변화 시 `Discovery` summary update
+- receiver topology는 `REGISTER`/`UNREGISTER` control path에서 Registry가 직접
+  반영한다
+- receiver-local heartbeat sender/timer는 제거한다
 
 세부 구현:
 
-- provider registration helper와 topology summary helper를 분리
+- provider registration helper와 receiver-local heartbeat helper를 분리
 - receiver-local heartbeat sender/timer는 제거 또는 private legacy 경로로 내림
-- topology helper는 diagnostics summary만 책임
-- registry freshness는 discovery heartbeat가 전담
+- receiver topology는 register/unregister/fatal-error 결과를 Registry가 직접
+  summary entry로 반영한다
+- registry freshness는 Discovery heartbeat가 전담
 
-권장 submit 흐름:
+권장 흐름:
 
 ```text
-receiver register/unregister/router-peer state transition
--> build receiver topology entry
--> discovery->upsert_service_summary(...)
+receiver register/unregister/fatal error
+-> existing control message or ack result
+-> registry updates receiver topology entry directly
 -> return
 ```
 
 즉:
 
 - provider discovery contract는 기존 message type으로 유지
-- topology visibility contract는 discovery summary submit으로 분리
+- receiver topology visibility는 기존 control plane에서 직접 반영한다
+- discovery heartbeat는 receiver topology entry의 freshness/lost 판단에만 관여한다
 
 ### 10.5 Spot
 

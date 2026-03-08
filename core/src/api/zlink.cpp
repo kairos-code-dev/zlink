@@ -1119,7 +1119,7 @@ void *zlink_discovery_new_typed (void *ctx_, uint16_t service_type_)
 }
 
 int zlink_discovery_connect_registry (void *discovery_,
-                                      const char *registry_pub_endpoint_)
+                                      const char *registry_endpoint_)
 {
     if (!discovery_)
         return -1;
@@ -1128,21 +1128,7 @@ int zlink_discovery_connect_registry (void *discovery_,
         errno = EFAULT;
         return -1;
     }
-    return discovery->connect_registry (registry_pub_endpoint_);
-}
-
-int zlink_discovery_connect_registry_router (void *discovery_,
-                                             const char *registry_router_endpoint_)
-{
-    if (!discovery_)
-        return -1;
-    zlink::discovery_t *discovery =
-      static_cast<zlink::discovery_t *> (discovery_);
-    if (!discovery->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return discovery->connect_registry_router (registry_router_endpoint_);
+    return discovery->connect_registry (registry_endpoint_);
 }
 
 int zlink_discovery_subscribe (void *discovery_, const char *service_name_)

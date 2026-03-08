@@ -20,6 +20,8 @@
 
 namespace perf_client {
 
+typedef std::chrono::steady_clock steady_clock_t;
+
 enum send_status_t
 {
     send_ok = 0,
@@ -187,20 +189,18 @@ inline bool wait_all_client_connect_ready (std::vector<connect_monitor_t> &monit
 
     const int bounded_timeout = timeout_ms > 0 ? timeout_ms : 0;
     const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (bounded_timeout);
+      steady_clock_t::now ()
+      + milliseconds_t (bounded_timeout);
 
     while (ready_count < monitors.size ()) {
-        const auto now = std::chrono::steady_clock::now ();
+        const auto now = steady_clock_t::now ();
         if (now >= deadline)
             return false;
 
         for (size_t i = 0; i < items.size (); ++i)
             items[i].revents = 0;
 
-        const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
-                                 deadline - now)
-                                 .count ();
+        const long remain_ms = remaining_milliseconds (deadline, now);
         const int prc = zlink_poll (&items[0],
                                     static_cast<int> (items.size ()),
                                     remain_ms > 0 ? remain_ms : 0);
@@ -363,6 +363,56 @@ inline bool metric_header_matches (const perf_metric::header_t &header,
     return true;
 }
 
+inline void reset_phase_outputs (long *recv_total,
+                                 double *lat_sum,
+                                 long *lat_count,
+                                 bench_latency_stats_t *latency_stats)
+{
+    if (recv_total)
+        *recv_total = 0;
+    if (lat_sum)
+        *lat_sum = 0.0;
+    if (lat_count)
+        *lat_count = 0;
+    if (latency_stats)
+        *latency_stats = bench_latency_stats_t ();
+}
+
+inline bool poll_item_ready (const zlink_pollitem_t &item, short event_mask)
+{
+    return (item.revents & event_mask) != 0;
+}
+
+inline bool echo_slot_has_pending_reply (const echo_loop_state_t &state, size_t idx)
+{
+    return idx < state.awaiting_reply.size () && state.awaiting_reply[idx] != 0;
+}
+
+inline bool echo_slot_has_pending_send (const std::vector<uint8_t> &send_pending,
+                                        size_t idx)
+{
+    return idx < send_pending.size () && send_pending[idx] != 0;
+}
+
+inline bool echo_slot_can_send (const echo_loop_state_t &state,
+                                const std::vector<uint8_t> &send_pending,
+                                size_t idx,
+                                size_t socket_count)
+{
+    return idx < socket_count && !echo_slot_has_pending_reply (state, idx)
+           && !echo_slot_has_pending_send (send_pending, idx);
+}
+
+inline bool echo_slot_can_resume_send (
+  const echo_loop_state_t &state,
+  const std::vector<uint8_t> &send_pending,
+  size_t idx,
+  size_t socket_count)
+{
+    return idx < socket_count && !echo_slot_has_pending_reply (state, idx)
+           && echo_slot_has_pending_send (send_pending, idx);
+}
+
 inline bool stamp_metric_payload (std::vector<char> &payload,
                                   size_t payload_size,
                                   uint32_t run_id,
@@ -474,7 +524,7 @@ inline bool drain_socket_non_blocking (
     return true;
 }
 
-inline bool run_one_way_window_loop (
+inline bool run_one_way_phase_loop (
   const std::vector<void *> &recv_sockets,
   const bench_settings_t &settings,
   size_t expected_msg_size,
@@ -491,21 +541,13 @@ inline bool run_one_way_window_loop (
     if (recv_sockets.empty ())
         return false;
     if (duration_seconds <= 0.0) {
-        if (recv_total)
-            *recv_total = 0;
-        if (lat_sum)
-            *lat_sum = 0.0;
-        if (lat_count)
-            *lat_count = 0;
-        if (latency_stats)
-            *latency_stats = bench_latency_stats_t ();
+        reset_phase_outputs (recv_total, lat_sum, lat_count, latency_stats);
         return true;
     }
 
     const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
-        std::chrono::duration<double> (std::max (0.0, duration_seconds)));
+      steady_clock_t::now ()
+      + to_clock_duration (std::max (0.0, duration_seconds));
 
     const int poll_timeout_ms = std::max (0, settings.client_poll_timeout_ms);
     const int effective_poll_timeout_ms = std::max (1, poll_timeout_ms);
@@ -529,7 +571,7 @@ inline bool run_one_way_window_loop (
         poll_items[i] = item;
     }
 
-    while (std::chrono::steady_clock::now () < deadline && !fatal_error) {
+    while (steady_clock_t::now () < deadline && !fatal_error) {
         for (size_t i = 0; i < poll_items.size (); ++i)
             poll_items[i].revents = 0;
 
@@ -544,7 +586,7 @@ inline bool run_one_way_window_loop (
             }
         } else if (prc > 0) {
             for (size_t i = 0; i < poll_items.size (); ++i) {
-                if ((poll_items[i].revents & ZLINK_POLLIN) == 0)
+                if (!poll_item_ready (poll_items[i], ZLINK_POLLIN))
                     continue;
 
                 long recv_now = 0;
@@ -585,14 +627,14 @@ inline bool run_one_way_window_loop (
     return !fatal_error;
 }
 
-inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
-                                  const bench_settings_t &settings,
-                                  size_t msg_size,
-                                  uint32_t run_id,
-                                  size_t scratch_capacity,
-                                  double *throughput_out,
-                                  bench_latency_stats_t *latency_out,
-                                  bench_resource_metrics_t *metrics_out)
+inline bool run_one_way_size_case (const std::vector<void *> &recv_sockets,
+                                   const bench_settings_t &settings,
+                                   size_t msg_size,
+                                   uint32_t run_id,
+                                   size_t scratch_capacity,
+                                   double *throughput_out,
+                                   bench_latency_stats_t *latency_out,
+                                   bench_resource_metrics_t *metrics_out)
 {
     if (!throughput_out || !latency_out || !metrics_out)
         return false;
@@ -605,7 +647,7 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
     const double warmup_seconds =
       static_cast<double> (std::max (0, settings.warmup_seconds));
     if (warmup_seconds > 0.0
-        && !run_one_way_window_loop (
+        && !run_one_way_phase_loop (
           recv_sockets,
           settings,
           msg_size,
@@ -624,7 +666,7 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
     const double settle_seconds =
       static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
     if (settle_seconds > 0.0
-        && !run_one_way_window_loop (
+        && !run_one_way_phase_loop (
           recv_sockets,
           settings,
           msg_size,
@@ -646,7 +688,7 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
     bench_latency_stats_t active_latency;
 
     const bench_cpu_sample_t sample_start = bench_capture_cpu_sample ();
-    if (!run_one_way_window_loop (
+    if (!run_one_way_phase_loop (
           recv_sockets,
           settings,
           msg_size,
@@ -675,7 +717,7 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
     return true;
 }
 
-inline bool run_echo_window_round_robin (
+inline bool run_echo_phase_loop (
   const std::vector<void *> &sockets,
   const bench_settings_t &settings,
   std::vector<char> &payload,
@@ -698,14 +740,7 @@ inline bool run_echo_window_round_robin (
     if (sockets.empty ())
         return false;
     if (duration_seconds <= 0.0) {
-        if (recv_total)
-            *recv_total = 0;
-        if (lat_sum)
-            *lat_sum = 0.0;
-        if (lat_count)
-            *lat_count = 0;
-        if (latency_stats)
-            *latency_stats = bench_latency_stats_t ();
+        reset_phase_outputs (recv_total, lat_sum, lat_count, latency_stats);
         return true;
     }
 
@@ -721,9 +756,8 @@ inline bool run_echo_window_round_robin (
         state->reset (sockets.size ());
 
     const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
-        std::chrono::duration<double> (std::max (0.0, duration_seconds)));
+      steady_clock_t::now ()
+      + to_clock_duration (std::max (0.0, duration_seconds));
 
     const int poll_timeout_ms = std::max (0, settings.client_poll_timeout_ms);
     const int effective_poll_timeout_ms = std::max (1, poll_timeout_ms);
@@ -759,7 +793,7 @@ inline bool run_echo_window_round_robin (
     const auto try_send_slot =
       [&] (size_t idx) -> try_send_outcome_t {
         try_send_outcome_t outcome = {false, false};
-        if (idx >= sockets.size () || state->awaiting_reply[idx] != 0)
+        if (idx >= sockets.size () || echo_slot_has_pending_reply (*state, idx))
             return outcome;
         if (slot_payloads[idx].size () < payload_size) {
             outcome.fatal = true;
@@ -802,12 +836,13 @@ inline bool run_echo_window_round_robin (
         return outcome;
     };
 
-    while (std::chrono::steady_clock::now () < deadline && !fatal_error) {
+    while (steady_clock_t::now () < deadline && !fatal_error) {
         if (allow_send) {
             const size_t start_rr = state->rr;
             for (size_t attempts = 0; attempts < sockets.size (); ++attempts) {
                 const size_t idx = (start_rr + attempts) % sockets.size ();
-                if (state->awaiting_reply[idx] != 0 || send_pending[idx] != 0)
+                if (!echo_slot_can_send (
+                      *state, send_pending, idx, sockets.size ()))
                     continue;
                 const try_send_outcome_t outcome = try_send_slot (idx);
                 if (outcome.fatal) {
@@ -835,7 +870,7 @@ inline bool run_echo_window_round_robin (
             }
         } else if (prc > 0) {
             for (size_t i = 0; i < poll_items.size (); ++i) {
-                if ((poll_items[i].revents & ZLINK_POLLIN) != 0) {
+                if (poll_item_ready (poll_items[i], ZLINK_POLLIN)) {
                     while (true) {
                         const int recv_rc = recv_one_message (
                           sockets[i],
@@ -875,9 +910,9 @@ inline bool run_echo_window_round_robin (
                         break;
                 }
 
-                if ((poll_items[i].revents & ZLINK_POLLOUT) != 0
-                    && send_pending[i] != 0
-                    && state->awaiting_reply[i] == 0) {
+                if (poll_item_ready (poll_items[i], ZLINK_POLLOUT)
+                    && echo_slot_can_resume_send (
+                      *state, send_pending, i, sockets.size ())) {
                     const try_send_outcome_t outcome = try_send_slot (i);
                     if (outcome.fatal) {
                         fatal_error = true;
@@ -887,7 +922,7 @@ inline bool run_echo_window_round_robin (
 
                 if (!allow_send || fatal_error)
                     continue;
-                if (state->awaiting_reply[i] != 0 || send_pending[i] != 0)
+                if (!echo_slot_can_send (*state, send_pending, i, sockets.size ()))
                     continue;
 
                 const try_send_outcome_t outcome = try_send_slot (i);
@@ -916,7 +951,7 @@ inline bool run_echo_window_round_robin (
     return !fatal_error;
 }
 
-inline bool run_echo_duration (
+inline bool run_echo_size_case (
   const std::vector<void *> &sockets,
   const bench_settings_t &settings,
   std::vector<char> &payload,
@@ -941,7 +976,7 @@ inline bool run_echo_duration (
     echo_loop_state_t phase_state;
     phase_state.reset (sockets.size ());
 
-    if (!run_echo_window_round_robin (
+    if (!run_echo_phase_loop (
           sockets,
           settings,
           payload,
@@ -966,7 +1001,7 @@ inline bool run_echo_duration (
     const double settle_seconds =
       static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
     if (settle_seconds > 0.0
-        && !run_echo_window_round_robin (
+        && !run_echo_phase_loop (
           sockets,
           settings,
           payload,
@@ -990,12 +1025,12 @@ inline bool run_echo_duration (
 
     if (pending_reply_count (phase_state) > 0) {
         const auto settle_deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::milliseconds (
+          steady_clock_t::now ()
+          + milliseconds_t (
             std::max (settings.connect_ready_timeout_ms,
                       std::max (100, settings.settle_ms)));
         while (pending_reply_count (phase_state) > 0) {
-            const auto now = std::chrono::steady_clock::now ();
+            const auto now = steady_clock_t::now ();
             if (now >= settle_deadline)
                 return false;
             const double remain_seconds =
@@ -1005,7 +1040,7 @@ inline bool run_echo_duration (
             const double slice_seconds = std::min (0.05, remain_seconds);
             if (slice_seconds <= 0.0)
                 return false;
-            if (!run_echo_window_round_robin (
+            if (!run_echo_phase_loop (
                   sockets,
                   settings,
                   payload,
@@ -1035,7 +1070,7 @@ inline bool run_echo_duration (
     bench_latency_stats_t active_latency;
 
     const bench_cpu_sample_t sample_start = bench_capture_cpu_sample ();
-    if (!run_echo_window_round_robin (
+    if (!run_echo_phase_loop (
           sockets,
           settings,
           payload,
@@ -1222,7 +1257,7 @@ inline int run_echo_client_benchmark (
         bench_latency_stats_t latency;
         bench_resource_metrics_t metrics;
 
-        if (!run_echo_duration (
+        if (!run_echo_size_case (
               sockets,
               settings,
               payload,

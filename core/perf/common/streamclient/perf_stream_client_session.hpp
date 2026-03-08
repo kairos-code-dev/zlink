@@ -442,8 +442,8 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
     // --- Send/receive echo loop ---
 
-    // Guard: only send when phase is active, no write in-flight, and
-    // outstanding (un-echoed) count is below the limit (1).
+    // Guard: only send when phase is active and no write is in-flight.
+    // `outstanding` is informational only and must not throttle the loop.
     void maybe_send_more ()
     {
         if (closed || !connected ())
@@ -451,8 +451,6 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         if (write_pending)
             return;
         if (!owner.allow_send ())
-            return;
-        if (outstanding >= 1)
             return;
 
         send_one ();
@@ -946,7 +944,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
     bool connect_reported;  // on_connect_result() sent to owner
     bool write_pending;    // async_write in progress
     bool read_pending;     // async_read in progress
-    size_t outstanding;     // un-echoed messages (0 or 1)
+    size_t outstanding;     // informational un-echoed message count
 
     size_t chunk_size;      // current payload size
     boost::asio::ip::tcp::endpoint endpoint;         // server address

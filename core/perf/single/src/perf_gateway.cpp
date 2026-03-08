@@ -13,6 +13,7 @@
 
 typedef int (*gateway_set_tls_client_fn)(void *, const char *, const char *, int);
 typedef int (*provider_set_tls_server_fn)(void *, const char *, const char *);
+typedef std::chrono::steady_clock steady_clock_t;
 
 static bool wait_for_discovery(void *discovery,
                                void *monitor,
@@ -125,7 +126,7 @@ private:
     {
         return static_cast<unsigned long long>(
           std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now().time_since_epoch())
+            steady_clock_t::now().time_since_epoch())
             .count());
     }
 
@@ -251,21 +252,21 @@ static bool send_one_gateway_metric (void *gateway,
            == 0;
 }
 
-static bool run_gateway_oneway_phase (void *gateway,
-                                      const char *service_name,
-                                      void *provider,
-                                      size_t payload_size,
-                                      size_t msg_size,
-                                      uint32_t run_id,
-                                      uint64_t *seq,
-                                      perf_single_metric::phase_t phase,
-                                      int warmup_count,
-                                      int duration_s,
-                                      int recv_timeout_ms,
-                                      queue_probe_t *queue_probe,
-                                      recv_pending_probe_t *recv_probe,
-                                      unsigned long long *out_received,
-                                      latency_stats_t *out_stats)
+static bool run_gateway_phase (void *gateway,
+                               const char *service_name,
+                               void *provider,
+                               size_t payload_size,
+                               size_t msg_size,
+                               uint32_t run_id,
+                               uint64_t *seq,
+                               perf_single_metric::phase_t phase,
+                               int warmup_count,
+                               int duration_s,
+                               int recv_timeout_ms,
+                               queue_probe_t *queue_probe,
+                               recv_pending_probe_t *recv_probe,
+                               unsigned long long *out_received,
+                               latency_stats_t *out_stats)
 {
     if (!gateway || !service_name || !provider || !seq || !out_received) {
         return false;
@@ -275,9 +276,9 @@ static bool run_gateway_oneway_phase (void *gateway,
     const bool active_phase = phase == perf_single_metric::phase_active;
     const auto deadline =
       active_phase
-        ? std::chrono::steady_clock::now ()
-            + std::chrono::seconds (duration_s > 0 ? duration_s : 1)
-        : std::chrono::steady_clock::time_point ();
+        ? steady_clock_t::now ()
+            + seconds_t (duration_s > 0 ? duration_s : 1)
+        : steady_clock_t::time_point ();
     unsigned long long received = 0;
     latency_stats_builder_t latency_builder;
     std::vector<unsigned char> send_payload (payload_size);
@@ -296,8 +297,9 @@ static bool run_gateway_oneway_phase (void *gateway,
               recv_probe->sample_if_due ();
           }
 
-          if (!header_ok || header.magic != perf_single_metric::k_magic
-              || header.phase != static_cast<uint32_t> (phase)) {
+          if (!header_ok
+              || !perf_single_metric::is_expected (
+                header, run_id, phase, msg_size)) {
               return;
           }
 
@@ -316,7 +318,7 @@ static bool run_gateway_oneway_phase (void *gateway,
     unsigned long long iterations = 0;
     while (true) {
         if (active_phase) {
-            if (std::chrono::steady_clock::now () >= deadline)
+            if (steady_clock_t::now () >= deadline)
                 break;
         } else if (iterations >= static_cast<unsigned long long> (warmup_count)) {
             break;
@@ -390,7 +392,7 @@ static bool run_gateway_oneway_phase (void *gateway,
 
     *out_received = received;
     if (active_phase) {
-        if (received == 0 || latency_builder.count () == 0 || !out_stats)
+        if (!out_stats || received == 0 || latency_builder.count () == 0)
             return false;
         *out_stats = latency_builder.snapshot ();
     } else if (received < iterations) {
@@ -627,21 +629,21 @@ void run_gateway(const std::string &transport,
 
     unsigned long long warmup_received = 0;
     const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 200);
-    if (!run_gateway_oneway_phase(gateway,
-                                  service_name,
-                                  provider,
-                                  payload_size,
-                                  msg_size,
-                                  run_id,
-                                  &seq,
-                                  perf_single_metric::phase_warmup,
-                                  warmup_count,
-                                  0,
-                                  recv_timeout_ms,
-                                  NULL,
-                                  NULL,
-                                  &warmup_received,
-                                  NULL)) {
+    if (!run_gateway_phase(gateway,
+                           service_name,
+                           provider,
+                           payload_size,
+                           msg_size,
+                           run_id,
+                           &seq,
+                           perf_single_metric::phase_warmup,
+                           warmup_count,
+                           0,
+                           recv_timeout_ms,
+                           NULL,
+                           NULL,
+                           &warmup_received,
+                           NULL)) {
         fail();
         return;
     }
@@ -649,21 +651,21 @@ void run_gateway(const std::string &transport,
     const int duration_s = std::max(1, resolve_single_duration_seconds());
     unsigned long long received = 0;
     latency_stats_t latency_stats;
-    if (!run_gateway_oneway_phase(gateway,
-                                  service_name,
-                                  provider,
-                                  payload_size,
-                                  msg_size,
-                                  run_id,
-                                  &seq,
-                                  perf_single_metric::phase_active,
-                                  0,
-                                  duration_s,
-                                  recv_timeout_ms,
-                                  &queue_probe,
-                                  recv_probe,
-                                  &received,
-                                  &latency_stats)) {
+    if (!run_gateway_phase(gateway,
+                           service_name,
+                           provider,
+                           payload_size,
+                           msg_size,
+                           run_id,
+                           &seq,
+                           perf_single_metric::phase_active,
+                           0,
+                           duration_s,
+                           recv_timeout_ms,
+                           &queue_probe,
+                           recv_probe,
+                           &received,
+                           &latency_stats)) {
         fail();
         return;
     }
@@ -689,7 +691,7 @@ static bool wait_for_discovery(void *discovery,
                                int timeout_ms)
 {
     const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+      steady_clock_t::now() + milliseconds_t(timeout_ms);
     zlink_service_event_t event;
     memset(&event, 0, sizeof(event));
 
@@ -702,7 +704,7 @@ static bool wait_for_discovery(void *discovery,
             && std::strcmp(event.service_name, service) == 0) {
             return true;
         }
-        if (std::chrono::steady_clock::now() >= deadline)
+        if (steady_clock_t::now() >= deadline)
             return false;
         if (zlink_poll(NULL, 0, 1) < 0 && zlink_errno() != EINTR)
             return false;
@@ -716,7 +718,7 @@ static bool wait_for_gateway(void *gateway,
                              int timeout_ms)
 {
     const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+      steady_clock_t::now() + milliseconds_t(timeout_ms);
     zlink_service_event_t event;
     memset(&event, 0, sizeof(event));
 
@@ -729,7 +731,7 @@ static bool wait_for_gateway(void *gateway,
             && std::strcmp(event.service_name, service) == 0) {
             return true;
         }
-        if (std::chrono::steady_clock::now() >= deadline)
+        if (steady_clock_t::now() >= deadline)
             return false;
         if (zlink_poll(NULL, 0, 1) < 0 && zlink_errno() != EINTR)
             return false;

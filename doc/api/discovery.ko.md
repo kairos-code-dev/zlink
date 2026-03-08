@@ -11,8 +11,8 @@ Discovery는 Registry 브로드캐스트를 구독하고 로컬 서비스 디렉
 
 - Discovery identity는 `zlink_discovery_set_routing_id()` /
   `zlink_discovery_routing_id()`로 다룹니다.
-- Registry topology summary를 Discovery가 다시 보고해야 하면
-  `zlink_discovery_connect_registry_router()`를 사용합니다.
+- `zlink_discovery_connect_registry()` 하나만 Registry bootstrap 연결로
+  사용하고, 브로드캐스트/uplink 경로는 내부에서 자동 구성합니다.
 - `ZLINK_DISCOVERY_SERVICE_UP`,
   `ZLINK_DISCOVERY_PROVIDERS_CHANGED` 같은 상태 전이는
   `zlink_discovery_monitor_open()`으로 관찰합니다.
@@ -76,43 +76,22 @@ Gateway/Receiver 서비스에는 `ZLINK_SERVICE_TYPE_GATEWAY`를, SPOT 노드
 
 ### zlink_discovery_connect_registry
 
-Registry PUB 엔드포인트에 연결합니다.
+Registry bootstrap/control 엔드포인트에 연결합니다.
 
 ```c
 int zlink_discovery_connect_registry(void *discovery,
-                                     const char *registry_pub_endpoint);
+                                     const char *registry_endpoint);
 ```
 
-이 Discovery 인스턴스를 Registry의 PUB 소켓에 구독하여 주기적인 서비스 목록
-브로드캐스트를 수신합니다. 브로드캐스트가 도착하면 Discovery 캐시가 자동으로
-채워집니다.
+이 Discovery 인스턴스를 Registry control plane에 bootstrap 연결합니다.
+Registry 응답에서 내부 broadcast/uplink 엔드포인트를 학습하고, Discovery가
+그 소켓들을 자동으로 구성한 뒤 주기적인 서비스 목록 브로드캐스트를 수신합니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
 **스레드 안전성:** 스레드 안전하지 않음. 동시 접근이 시작되기 전에 호출해야 합니다.
 
 **참고:** `zlink_discovery_subscribe`
-
----
-
-### zlink_discovery_connect_registry_router
-
-Registry topology report용 ROUTER 엔드포인트를 연결합니다.
-
-```c
-int zlink_discovery_connect_registry_router(void *discovery,
-                                            const char *registry_router_endpoint);
-```
-
-Discovery의 로컬 topology summary를 Registry에 다시 보고해야 할 때만
-사용합니다. 이는 Registry PUB 브로드캐스트를 구독하는
-`zlink_discovery_connect_registry()`와 별도의 경로입니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**스레드 안전성:** 스레드 안전하지 않음. setup 단계에서 호출해야 합니다.
-
-**참고:** `zlink_registry_topology_snapshot`, `zlink_registry_query_snapshot`
 
 ---
 
@@ -230,7 +209,6 @@ Discovery는 1차 service-level option surface 대상에서 의도적으로
 
 - `zlink_discovery_set_routing_id()`
 - `zlink_discovery_connect_registry()`
-- `zlink_discovery_connect_registry_router()`
 - `zlink_discovery_subscribe()` / `zlink_discovery_unsubscribe()`
 
 ---

@@ -131,8 +131,8 @@ int zlink_spot_node_connect_registry(void *node,
 ```
 
 Connects the Node's internal DEALER socket to the Registry's ROUTER
-endpoint. This connection is used for sending registration, deregistration,
-and heartbeat messages.
+control endpoint. The Node keeps this internal control connection open for
+registration, deregistration, and legacy control-plane traffic.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
@@ -193,13 +193,19 @@ int zlink_spot_node_register(void *node,
                              const char *advertise_endpoint);
 ```
 
-Sends a registration request to the Registry for the given service name.
+Queues a registration request to the Registry for the given service name on
+the Node's internal control plane.
 The `advertise_endpoint` is the endpoint that peer nodes will connect to
 (typically the same endpoint passed to `zlink_spot_node_bind`). Once
 registered, peer nodes using Discovery will automatically connect to form
 the mesh.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+`0` means the request was accepted by the local Node runtime and queued for
+Registry processing. Peer visibility remains eventual and should be observed
+through Discovery or monitor events rather than treating `register()` as a
+strong readiness barrier.
+
+**Returns:** `0` on local acceptance, or `-1` on failure (errno is set).
 
 **Thread safety:** Not thread-safe.
 
@@ -216,7 +222,7 @@ int zlink_spot_node_unregister(void *node,
                                const char *service_name);
 ```
 
-Sends a deregistration request to the Registry for the given service name.
+Queues a deregistration request to the Registry for the given service name.
 After the next broadcast cycle, peer nodes will no longer discover this
 Node for the specified service.
 

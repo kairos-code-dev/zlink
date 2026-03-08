@@ -74,7 +74,8 @@ zlink_receiver_destroy(&receiver);
 
 ```c
 void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
-zlink_discovery_connect_registry(discovery, "tcp://registry1:5550");
+/* Registry bootstrap/control endpoint */
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_subscribe(discovery, "payment-service");
 
 void *gateway = zlink_gateway_new(ctx, discovery, "gateway-1");
@@ -235,7 +236,7 @@ zlink_receiver_register(receiver, "echo-service", NULL, 1);
 
 /* === Client === */
 void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
-zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5550");
+zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 zlink_discovery_subscribe(discovery, "echo-service");
 
 void *gateway = zlink_gateway_new(ctx, discovery, "client-1");

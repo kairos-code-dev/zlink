@@ -117,7 +117,7 @@ void test_gateway_handover_provider_restart ()
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, "inproc://reg-pub-ho1"));
+      zlink_discovery_connect_registry (discovery, "inproc://reg-router-ho1"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery, service_name));
 
@@ -222,7 +222,7 @@ void test_provider_handover_gateway_reconnect ()
     void *discovery1 = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery1);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery1, "inproc://reg-pub-ho2"));
+      zlink_discovery_connect_registry (discovery1, "inproc://reg-router-ho2"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery1, service_name));
 
@@ -274,7 +274,7 @@ void test_provider_handover_gateway_reconnect ()
     void *discovery2 = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery2);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery2, "inproc://reg-pub-ho2"));
+      zlink_discovery_connect_registry (discovery2, "inproc://reg-router-ho2"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery2, service_name));
     msleep (200);

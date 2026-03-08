@@ -20,12 +20,33 @@ static const uint16_t msg_heartbeat = 0x0004;
 static const uint16_t msg_service_list = 0x0005;
 static const uint16_t msg_registry_sync = 0x0006;
 static const uint16_t msg_update_weight = 0x0007;
-static const uint16_t msg_topology_report = 0x0008;
-static const uint16_t msg_topology_query = 0x0009;
-static const uint16_t msg_topology_reply = 0x000A;
+static const uint16_t msg_bootstrap_req = 0x0008;
+static const uint16_t msg_bootstrap_rep = 0x0009;
+static const uint16_t msg_topology_report = 0x000A;
+static const uint16_t msg_topology_query = 0x000B;
+static const uint16_t msg_topology_reply = 0x000C;
+static const uint16_t msg_unregister_ack = 0x000D;
 
 static const uint16_t service_type_gateway_receiver = 1;
 static const uint16_t service_type_spot_node = 2;
+
+struct bootstrap_req_t
+{
+    uint16_t msg_id;
+    uint16_t service_type;
+    zlink_routing_id_t routing_id;
+};
+
+struct bootstrap_rep_t
+{
+    uint16_t msg_id;
+    uint16_t reserved;
+    uint32_t heartbeat_interval_ms;
+    uint32_t registry_id;
+    uint32_t feature_flags;
+    char pub_endpoint[256];
+    char uplink_endpoint[256];
+};
 
 inline int send_frame (void *socket_, const void *data_, size_t size_, int flags_)
 {

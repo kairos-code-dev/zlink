@@ -3,7 +3,6 @@
 #include "utils/precompiled.hpp"
 #include <string.h>
 #include <limits.h>
-#include <set>
 
 #include "core/options.hpp"
 #include "utils/err.hpp"
@@ -100,35 +99,6 @@ do_setsockopt_string_allow_empty_strict (const void *const optval_,
     }
     if (optval_ != NULL && optvallen_ > 0 && optvallen_ <= max_len_) {
         out_value_->assign (static_cast<const char *> (optval_), optvallen_);
-        return 0;
-    }
-    return sockopt_invalid ();
-}
-
-static int
-do_setsockopt_string_allow_empty_relaxed (const void *const optval_,
-                                          const size_t optvallen_,
-                                          std::string *const out_value_,
-                                          const size_t max_len_)
-{
-    if (optvallen_ > 0 && optvallen_ <= max_len_) {
-        out_value_->assign (static_cast<const char *> (optval_), optvallen_);
-        return 0;
-    }
-    return sockopt_invalid ();
-}
-
-template <typename T>
-static int do_setsockopt_set (const void *const optval_,
-                              const size_t optvallen_,
-                              std::set<T> *const set_)
-{
-    if (optvallen_ == 0 && optval_ == NULL) {
-        set_->clear ();
-        return 0;
-    }
-    if (optvallen_ == sizeof (T) && optval_ != NULL) {
-        set_->insert (*(static_cast<const T *> (optval_)));
         return 0;
     }
     return sockopt_invalid ();

@@ -53,6 +53,7 @@ ctx.close()
 
 ```python
 discovery = zlink.Discovery(ctx)
+# registry bootstrap/control endpoint
 discovery.connect_registry("tcp://registry:5550")
 discovery.subscribe("payment-service")
 

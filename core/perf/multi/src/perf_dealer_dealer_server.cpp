@@ -19,6 +19,8 @@
 
 namespace {
 
+typedef std::chrono::steady_clock steady_clock_t;
+
 static const char *k_pattern = "DEALER_DEALER";
 static const char *k_token = "dealer_dealer";
 static const int k_server_socket_type = ZLINK_DEALER;
@@ -223,7 +225,7 @@ inline bool drain_non_blocking_messages (
     return true;
 }
 
-inline bool run_receive_window (
+inline bool run_receive_phase (
   void *server,
   size_t expected_msg_size,
   uint32_t expected_run_id,
@@ -241,13 +243,12 @@ inline bool run_receive_window (
     if (duration_seconds <= 0.0)
         return true;
 
-    const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
-        std::chrono::duration<double> (duration_seconds));
+    const steady_clock_t::time_point deadline =
+      steady_clock_t::now ()
+      + to_clock_duration (duration_seconds);
 
     while (!g_stop_requested.load (std::memory_order_acquire)
-           && std::chrono::steady_clock::now () < deadline) {
+           && steady_clock_t::now () < deadline) {
         const recv_result_t status = receive_one_message (
           server,
           0,
@@ -309,7 +310,7 @@ inline void normalize_latency_stats (double lat_sum,
     *latency_out = stats;
 }
 
-inline bool run_one_size_benchmark (
+inline bool run_server_size_case (
   void *server,
   const bench_settings_t &settings,
   size_t msg_size,
@@ -324,7 +325,7 @@ inline bool run_one_size_benchmark (
     const double active_s =
       static_cast<double> (std::max (1, settings.duration_seconds));
 
-    if (!run_receive_window (
+    if (!run_receive_phase (
           server,
           msg_size,
           run_id,
@@ -339,7 +340,7 @@ inline bool run_one_size_benchmark (
         return false;
     }
 
-    if (!run_receive_window (
+    if (!run_receive_phase (
           server,
           msg_size,
           run_id,
@@ -359,7 +360,7 @@ inline bool run_one_size_benchmark (
     long lat_count = 0;
     bench_latency_sampler_t lat_samples;
 
-    if (!run_receive_window (
+    if (!run_receive_phase (
           server,
           msg_size,
           run_id,
@@ -516,7 +517,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         }
 
         const uint32_t run_id = static_cast<uint32_t> (si + 1);
-        if (!run_one_size_benchmark (
+        if (!run_server_size_case (
               server,
               settings,
               sizes[si],

@@ -39,6 +39,28 @@ is_uint() {
   [[ "${value}" =~ ^[0-9]+$ ]]
 }
 
+first_env_value() {
+  local name=""
+  for name in "$@"; do
+    if [[ -n "${!name:-}" ]]; then
+      printf '%s' "${!name}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+env_or_default() {
+  local default_value="${1:-}"
+  shift || true
+  local resolved=""
+  if resolved="$(first_env_value "$@" 2>/dev/null)"; then
+    printf '%s' "${resolved}"
+  else
+    printf '%s' "${default_value}"
+  fi
+}
+
 NOFILE_SKIP_REASON=""
 ensure_nofile_limit() {
   local clients="${1:-}"
@@ -120,9 +142,12 @@ resolve_memory_max_clients() {
     return
   fi
 
-  local budget_pct="${PERF_MEMORY_BUDGET_PCT:-70}"
-  local base_mb="${PERF_MEMORY_BASE_MB:-512}"
-  local per_client_kb="${PERF_MEMORY_PER_CLIENT_KB:-1024}"
+  local budget_pct
+  local base_mb
+  local per_client_kb
+  budget_pct="$(env_or_default "70" PERF_MEMORY_BUDGET_PCT PERF_MULTI_MEMORY_BUDGET_PCT)"
+  base_mb="$(env_or_default "512" PERF_MEMORY_BASE_MB PERF_MULTI_MEMORY_BASE_MB)"
+  per_client_kb="$(env_or_default "1024" PERF_MEMORY_PER_CLIENT_KB PERF_MULTI_MEMORY_PER_CLIENT_KB)"
   if ! is_uint "${budget_pct}" || (( budget_pct < 1 || budget_pct > 95 )); then
     echo ""
     return
@@ -172,9 +197,12 @@ ensure_memory_budget() {
 
   local available_kb
   available_kb="$(memory_available_kb)"
-  local budget_pct="${PERF_MEMORY_BUDGET_PCT:-70}"
-  local base_mb="${PERF_MEMORY_BASE_MB:-512}"
-  local per_client_kb="${PERF_MEMORY_PER_CLIENT_KB:-1024}"
+  local budget_pct
+  local base_mb
+  local per_client_kb
+  budget_pct="$(env_or_default "70" PERF_MEMORY_BUDGET_PCT PERF_MULTI_MEMORY_BUDGET_PCT)"
+  base_mb="$(env_or_default "512" PERF_MEMORY_BASE_MB PERF_MULTI_MEMORY_BASE_MB)"
+  per_client_kb="$(env_or_default "1024" PERF_MEMORY_PER_CLIENT_KB PERF_MULTI_MEMORY_PER_CLIENT_KB)"
   MEMORY_SKIP_REASON="clients=${clients},max_clients=${max_clients},mem_available_kb=${available_kb},budget_pct=${budget_pct},base_mb=${base_mb},per_client_kb=${per_client_kb}"
   return 1
 }
@@ -311,22 +339,32 @@ HAS_EXPLICIT_RUNS=0
 HAS_EXPLICIT_RESULTS_DIR=0
 BUILD_MODE="incremental"
 BUILD_MODE_EXPLICIT=0
-WARMUP_SECONDS="${PERF_WARMUP_SECONDS:-2}"
-DURATION_SECONDS="${PERF_DURATION_SECONDS:-5}"
-CLIENTS="${PERF_CLIENTS:-}"
-HWM="${PERF_HWM:-}"
-SNDHWM="${PERF_SNDHWM:-}"
-RCVHWM="${PERF_RCVHWM:-}"
-SNDTIMEO_MS="${PERF_SNDTIMEO_MS:-200}"
-RCVTIMEO_MS="${PERF_RCVTIMEO_MS:-200}"
-CONNECT_CONCURRENCY="${PERF_CONNECT_CONCURRENCY:-}"
-TRANSPORT_TRANSITION_MS="${PERF_TRANSPORT_TRANSITION_MS:-3000}"
-PATTERN_TRANSITION_MS="${PERF_PATTERN_TRANSITION_MS:-3000}"
-SERVER_READY_TIMEOUT_MS="${PERF_SERVER_READY_TIMEOUT_MS:-10000}"
-CONNECT_READY_TIMEOUT_MS="${PERF_CONNECT_READY_TIMEOUT_MS:-5000}"
-MONITOR_HWM="${PERF_MONITOR_HWM:-1000}"
-SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}"
-SERVER_BIND_PORT="${PERF_SERVER_BIND_PORT:-0}"
+WARMUP_SECONDS="$(env_or_default "2" PERF_WARMUP_SECONDS PERF_MULTI_WARMUP_SECONDS)"
+DURATION_SECONDS="$(env_or_default "5" PERF_DURATION_SECONDS PERF_MULTI_DURATION_SECONDS)"
+CLIENTS="$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)"
+HWM="$(env_or_default "" PERF_HWM PERF_MULTI_HWM)"
+SNDHWM="$(env_or_default "" PERF_SNDHWM PERF_MULTI_SNDHWM)"
+RCVHWM="$(env_or_default "" PERF_RCVHWM PERF_MULTI_RCVHWM)"
+SNDTIMEO_MS="$(env_or_default "200" PERF_SNDTIMEO_MS PERF_MULTI_SNDTIMEO_MS)"
+RCVTIMEO_MS="$(env_or_default "200" PERF_RCVTIMEO_MS PERF_MULTI_RCVTIMEO_MS)"
+CONNECT_CONCURRENCY="$(env_or_default "" PERF_CONNECT_CONCURRENCY PERF_MULTI_CONNECT_CONCURRENCY)"
+ACTIVE_WARMUP="$(env_or_default "" PERF_ACTIVE_WARMUP PERF_MULTI_ACTIVE_WARMUP)"
+SETTLE_MS="$(env_or_default "" PERF_SETTLE_MS PERF_MULTI_SETTLE_MS)"
+CLIENT_POLL_TIMEOUT_MS="$(env_or_default "" PERF_CLIENT_POLL_TIMEOUT_MS PERF_MULTI_CLIENT_POLL_TIMEOUT_MS)"
+SERVICE_CLIENTS="$(env_or_default "" PERF_SERVICE_CLIENTS PERF_MULTI_SERVICE_CLIENTS)"
+LATENCY_SAMPLE_CAP="$(env_or_default "" PERF_LATENCY_SAMPLE_CAP PERF_MULTI_LATENCY_SAMPLE_CAP)"
+TIMEOUT_SECONDS="$(env_or_default "" PERF_TIMEOUT_SECONDS PERF_MULTI_TIMEOUT_SECONDS)"
+STREAM_MSG_SIZES="$(env_or_default "" PERF_STREAM_MSG_SIZES PERF_MULTI_STREAM_MSG_SIZES)"
+PUBSUB_XPUB_NODROP="$(env_or_default "" PERF_PUBSUB_XPUB_NODROP PERF_MULTI_PUBSUB_XPUB_NODROP)"
+SPOT_XPUB_NODROP="$(env_or_default "" PERF_SPOT_XPUB_NODROP PERF_MULTI_SPOT_XPUB_NODROP)"
+RUN_COOLDOWN_MS="$(env_or_default "3000" PERF_RUN_COOLDOWN_MS PERF_MULTI_RUN_COOLDOWN_MS)"
+TRANSPORT_TRANSITION_MS="$(env_or_default "3000" PERF_TRANSPORT_TRANSITION_MS PERF_MULTI_TRANSPORT_TRANSITION_MS)"
+PATTERN_TRANSITION_MS="$(env_or_default "3000" PERF_PATTERN_TRANSITION_MS PERF_MULTI_PATTERN_TRANSITION_MS)"
+SERVER_READY_TIMEOUT_MS="$(env_or_default "10000" PERF_SERVER_READY_TIMEOUT_MS PERF_MULTI_SERVER_READY_TIMEOUT_MS)"
+CONNECT_READY_TIMEOUT_MS="$(env_or_default "5000" PERF_CONNECT_READY_TIMEOUT_MS PERF_MULTI_CONNECT_READY_TIMEOUT_MS)"
+MONITOR_HWM="$(env_or_default "1000" PERF_MONITOR_HWM PERF_MULTI_MONITOR_HWM)"
+SERVER_SHUTDOWN_TIMEOUT_MS="$(env_or_default "5000" PERF_SERVER_SHUTDOWN_TIMEOUT_MS PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS)"
+SERVER_BIND_PORT="$(env_or_default "0" PERF_SERVER_BIND_PORT PERF_MULTI_SERVER_BIND_PORT)"
 DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 EXPLICIT_PATTERNS=()
@@ -335,10 +373,12 @@ EFFECTIVE_DEFAULT_CLIENTS="${PERF_DEFAULT_CLIENTS:-100}"
 EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_DEFAULT_STREAM_CLIENTS:-10000}"
 EFFECTIVE_DEFAULT_HWM="${PERF_DEFAULT_HWM:-100}"
 EFFECTIVE_DEFAULT_STREAM_HWM="${PERF_DEFAULT_STREAM_HWM:-10}"
-EFFECTIVE_DEFAULT_IO_THREADS="${PERF_DEFAULT_IO_THREADS:-2}"
-EFFECTIVE_DEFAULT_STREAM_IO_THREADS="${PERF_DEFAULT_STREAM_IO_THREADS:-4}"
-SERVER_IO_THREADS="${PERF_SERVER_IO_THREADS:-}"
-CLIENT_IO_THREADS="${PERF_CLIENT_IO_THREADS:-}"
+EFFECTIVE_DEFAULT_IO_THREADS="$(env_or_default "2" PERF_DEFAULT_IO_THREADS PERF_MULTI_DEFAULT_IO_THREADS)"
+EFFECTIVE_DEFAULT_STREAM_IO_THREADS="$(env_or_default "4" PERF_DEFAULT_STREAM_IO_THREADS PERF_MULTI_STREAM_DEFAULT_IO_THREADS)"
+SERVER_IO_THREADS="$(env_or_default "" PERF_SERVER_IO_THREADS PERF_MULTI_SERVER_IO_THREADS)"
+CLIENT_IO_THREADS="$(env_or_default "" PERF_CLIENT_IO_THREADS PERF_MULTI_CLIENT_IO_THREADS)"
+STREAM_SERVER_IO_THREADS="$(env_or_default "" PERF_STREAM_SERVER_IO_THREADS PERF_MULTI_STREAM_SERVER_IO_THREADS)"
+STREAM_CLIENT_IO_THREADS="$(env_or_default "" PERF_STREAM_CLIENT_IO_THREADS PERF_MULTI_STREAM_CLIENT_IO_THREADS)"
 
 set_build_mode() {
   local next_mode="${1:-}"
@@ -618,6 +658,10 @@ if ! is_uint "${TRANSPORT_TRANSITION_MS}"; then
   echo "Error: --transport-transition-ms must be a non-negative integer." >&2
   exit 1
 fi
+if ! is_uint "${RUN_COOLDOWN_MS}"; then
+  echo "Error: run cooldown must be a non-negative integer." >&2
+  exit 1
+fi
 if ! is_uint "${PATTERN_TRANSITION_MS}"; then
   echo "Error: --pattern-transition-ms must be a non-negative integer." >&2
   exit 1
@@ -671,7 +715,7 @@ if ! is_uint "${SERVER_BIND_PORT}" || (( SERVER_BIND_PORT > 65535 )); then
   exit 1
 fi
 
-if [[ -z "${CLIENTS}" && -z "${PERF_CLIENTS:-}" ]]; then
+if [[ -z "${CLIENTS}" && -z "$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)" ]]; then
   memory_max_clients="$(resolve_memory_max_clients)"
   if is_uint "${memory_max_clients}"; then
     default_clients_before="${EFFECTIVE_DEFAULT_CLIENTS}"
@@ -731,6 +775,7 @@ RUN_ENV+=(PERF_POLICY="1")
 RUN_ENV+=(PERF_RESULTS_DIR="${RESULTS_DIR_OVERRIDE}")
 RUN_ENV+=(PERF_WARMUP_SECONDS="${WARMUP_SECONDS}")
 RUN_ENV+=(PERF_DURATION_SECONDS="${DURATION_SECONDS}")
+RUN_ENV+=(PERF_RUN_COOLDOWN_MS="${RUN_COOLDOWN_MS}")
 RUN_ENV+=(PERF_TRANSPORT_TRANSITION_MS="${TRANSPORT_TRANSITION_MS}")
 RUN_ENV+=(PERF_PATTERN_TRANSITION_MS="${PATTERN_TRANSITION_MS}")
 RUN_ENV+=(PERF_SERVER_READY_TIMEOUT_MS="${SERVER_READY_TIMEOUT_MS}")
@@ -748,11 +793,44 @@ RUN_ENV+=(PERF_DEFAULT_STREAM_IO_THREADS="${EFFECTIVE_DEFAULT_STREAM_IO_THREADS}
 if [[ -n "${CLIENTS}" ]]; then
   RUN_ENV+=(PERF_CLIENTS="${CLIENTS}")
 fi
+if [[ -n "${ACTIVE_WARMUP}" ]]; then
+  RUN_ENV+=(PERF_ACTIVE_WARMUP="${ACTIVE_WARMUP}")
+fi
+if [[ -n "${SETTLE_MS}" ]]; then
+  RUN_ENV+=(PERF_SETTLE_MS="${SETTLE_MS}")
+fi
+if [[ -n "${CLIENT_POLL_TIMEOUT_MS}" ]]; then
+  RUN_ENV+=(PERF_CLIENT_POLL_TIMEOUT_MS="${CLIENT_POLL_TIMEOUT_MS}")
+fi
+if [[ -n "${SERVICE_CLIENTS}" ]]; then
+  RUN_ENV+=(PERF_SERVICE_CLIENTS="${SERVICE_CLIENTS}")
+fi
+if [[ -n "${LATENCY_SAMPLE_CAP}" ]]; then
+  RUN_ENV+=(PERF_LATENCY_SAMPLE_CAP="${LATENCY_SAMPLE_CAP}")
+fi
+if [[ -n "${TIMEOUT_SECONDS}" ]]; then
+  RUN_ENV+=(PERF_TIMEOUT_SECONDS="${TIMEOUT_SECONDS}")
+fi
+if [[ -n "${STREAM_MSG_SIZES}" ]]; then
+  RUN_ENV+=(PERF_STREAM_MSG_SIZES="${STREAM_MSG_SIZES}")
+fi
+if [[ -n "${PUBSUB_XPUB_NODROP}" ]]; then
+  RUN_ENV+=(PERF_PUBSUB_XPUB_NODROP="${PUBSUB_XPUB_NODROP}")
+fi
+if [[ -n "${SPOT_XPUB_NODROP}" ]]; then
+  RUN_ENV+=(PERF_SPOT_XPUB_NODROP="${SPOT_XPUB_NODROP}")
+fi
 if [[ -n "${SERVER_IO_THREADS}" ]]; then
   RUN_ENV+=(PERF_SERVER_IO_THREADS="${SERVER_IO_THREADS}")
 fi
 if [[ -n "${CLIENT_IO_THREADS}" ]]; then
   RUN_ENV+=(PERF_CLIENT_IO_THREADS="${CLIENT_IO_THREADS}")
+fi
+if [[ -n "${STREAM_SERVER_IO_THREADS}" ]]; then
+  RUN_ENV+=(PERF_STREAM_SERVER_IO_THREADS="${STREAM_SERVER_IO_THREADS}")
+fi
+if [[ -n "${STREAM_CLIENT_IO_THREADS}" ]]; then
+  RUN_ENV+=(PERF_STREAM_CLIENT_IO_THREADS="${STREAM_CLIENT_IO_THREADS}")
 fi
 if [[ -n "${HWM}" ]]; then
   RUN_ENV+=(PERF_HWM="${HWM}")
@@ -776,6 +854,26 @@ fi
 SHOW_TOTAL_TIME=1
 FAILED_PATTERNS=()
 RUN_PATTERNS=()
+SKIPPED_PATTERNS=()
+
+record_skip() {
+  local pattern="${1:-}"
+  local reason="${2:-skip}"
+  SKIPPED_PATTERNS+=("${pattern}: ${reason}")
+}
+
+print_skip_summary() {
+  if [[ "${#SKIPPED_PATTERNS[@]}" -eq 0 ]]; then
+    return
+  fi
+  echo
+  echo "## Skips"
+  local item=""
+  for item in "${SKIPPED_PATTERNS[@]}"; do
+    echo "- ${item}"
+  done
+}
+
 for raw_pattern in "${PATTERNS[@]}"; do
   pattern="$(printf '%s' "${raw_pattern}" | tr '[:lower:]' '[:upper:]')"
   if [[ "${pattern}" == MULTI_* ]]; then
@@ -786,7 +884,7 @@ for raw_pattern in "${PATTERNS[@]}"; do
     exit 1
   fi
 
-  pattern_clients="${CLIENTS:-${PERF_CLIENTS:-}}"
+  pattern_clients="${CLIENTS:-$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)}"
   if [[ -z "${pattern_clients}" ]]; then
     if [[ "${pattern}" == "STREAM" || "${pattern}" == "STREAM_CALLBACK" || "${pattern}" == "STREAM_LEN32BE" ]]; then
       pattern_clients="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}"
@@ -796,21 +894,25 @@ for raw_pattern in "${PATTERNS[@]}"; do
   fi
 
   if ! ensure_nofile_limit "${pattern_clients}"; then
-    echo "Error: nofile preflight unmet for ${pattern} (${NOFILE_SKIP_REASON})" >&2
-    exit 1
+    record_skip "${pattern}" "preflight_nofile_${NOFILE_SKIP_REASON}"
+    continue
   fi
 
   if ! ensure_memory_budget "${pattern_clients}"; then
-    echo "Error: memory preflight unmet for ${pattern} (${MEMORY_SKIP_REASON})" >&2
-    exit 1
+    record_skip "${pattern}" "preflight_memory_${MEMORY_SKIP_REASON}"
+    continue
   fi
 
   RUN_PATTERNS+=("${pattern}")
 done
 
 if [[ "${#RUN_PATTERNS[@]}" -eq 0 ]]; then
-  echo "Error: no patterns selected to run." >&2
-  exit 1
+  if [[ "${#SKIPPED_PATTERNS[@]}" -eq 0 ]]; then
+    echo "Error: no patterns selected to run." >&2
+    exit 1
+  fi
+  print_skip_summary
+  exit 0
 fi
 
 if [[ -n "${CONNECT_CONCURRENCY}" ]]; then
@@ -835,6 +937,7 @@ else
 fi
 
 if [[ "${#FAILED_PATTERNS[@]}" -gt 0 ]]; then
+  print_skip_summary
   echo
   echo "## Failures"
   for pattern in "${FAILED_PATTERNS[@]}"; do
@@ -842,3 +945,5 @@ if [[ "${#FAILED_PATTERNS[@]}" -gt 0 ]]; then
   done
   exit 1
 fi
+
+print_skip_summary

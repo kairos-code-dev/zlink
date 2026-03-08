@@ -16,7 +16,7 @@
 
 | 항목 | 기준 |
 |------|------|
-| 측정 모델 | time-based, 패턴별 phase: warmup → settle(optional) → active(throughput+latency 동시) → drain |
+| 측정 모델 | time-based, 패턴별 phase: warmup → settle(optional) → active(throughput+latency 동시) |
 | throughput | `recv_count / duration_seconds` — echo 패턴: `ops/s`, one-way 패턴: `msg/s` |
 | latency | active phase에서 수신된 메시지의 내장 timestamp(header)로 전수 집계 |
 | 대표값 | median (runs > 1) |
@@ -51,8 +51,8 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 
 | 역할 | 바이너리 | 책임 |
 |------|----------|------|
-| server | `comp_src_multi_<pattern>_server(.exe)` | bind, relay/echo, server-side 리소스 보고 |
-| client | `comp_src_multi_<pattern>_client(.exe)` | connect, 패턴별 phase 정책에 따라 throughput/latency 측정, client-side 리소스 보고 |
+| server | `comp_src_<pattern>_server(.exe)` | bind, relay/echo, server-side 리소스 보고 |
+| client | `comp_src_<pattern>_client(.exe)` | connect, 패턴별 phase 정책에 따라 throughput/latency 측정, client-side 리소스 보고 |
 
 ```text
 ┌─ server process ─────────────────────┐    ┌─ client process ──────────────────────┐
@@ -89,7 +89,7 @@ perf/multi/
 ├── common/
 │   ├── perf_common.hpp                # 공통 (settings, result, utilities)
 │   └── perf_common_multi.hpp          # multi 설정
-├── current/
+├── src/
 │   ├── perf_multi_<pattern>_server.cpp    # server (server)
 │   ├── perf_multi_<pattern>_client.cpp    # client (client)
 │   └── ...
@@ -197,7 +197,7 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 
 실패한 조합을 자동으로 재시도하지 않는다. 상세 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md)을 참조한다.
 
-> **STREAM 서버 send 재시도 예외**: MULTI_STREAM 서버(`perf_multi_stream_server`)의 `send_stream_once` 함수만 `PERF_MULTI_STREAM_SEND_RETRIES` (기본: 128) 횟수만큼 send를 재시도한다. MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE 서버는 재시도 루프 없이 특정 에러(ECONNRESET, EAGAIN 등)를 허용 처리한다. 스크립트/조합 레벨의 재시도(retry)와는 다르다.
+> STREAM 서버도 동일 정책을 따른다. `EAGAIN`은 pending 상태로 기록하고 `PollOut` readiness에서 재개할 수 있으나, 동일 호출 흐름에서의 즉시 retry loop는 두지 않는다. 스크립트/조합 레벨의 재시도(retry)와는 다르다.
 
 ### 3.6 코어 로직 인라인 원칙
 
@@ -318,8 +318,8 @@ perf/multi/run_benchmarks.sh [options]
 run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 파싱, 빌드, multi 환경 설정
     → run_benchmarks.sh (PERF_ALLOW_MULTI=1)               # 공통 빌드/실행 래퍼
         → run_comparison.py                                # Python 비교/실행 엔진
-            → comp_src_multi_*_server(.exe)            # server 프로세스
-            → comp_src_multi_*_client(.exe)            # client 프로세스
+            → comp_src_*_server(.exe)                  # server 프로세스
+            → comp_src_*_client(.exe)                  # client 프로세스
             → perf_stream_client (STREAM 계열)             # STREAM 공유 client
 ```
 
@@ -421,20 +421,20 @@ core/perf/run_benchmarks_multi.sh --warmup 5 --duration 10
 ```bash
 # 예시: MULTI_DEALER_DEALER
 # 터미널 1 (server)
-./core/build/linux-x64/bin/comp_src_multi_dealer_dealer_server current tcp
+./core/build/linux-x64/bin/comp_src_dealer_dealer_server current tcp
 # stdout: READY,tcp://0.0.0.0:15557
 
 # 터미널 2 (client)
-./core/build/linux-x64/bin/comp_src_multi_dealer_dealer_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
+./core/build/linux-x64/bin/comp_src_dealer_dealer_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 
 # 예시: MULTI_STREAM 계열 (server는 패턴별 바이너리, client는 공유 바이너리)
-./core/build/linux-x64/bin/comp_src_multi_stream_server current tcp
+./core/build/linux-x64/bin/comp_src_stream_server current tcp
 ./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 
-./core/build/linux-x64/bin/comp_src_multi_stream_callback_server current tcp
+./core/build/linux-x64/bin/comp_src_stream_callback_server current tcp
 ./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 
-./core/build/linux-x64/bin/comp_src_multi_stream_len32be_server current tcp
+./core/build/linux-x64/bin/comp_src_stream_len32be_server current tcp
 ./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 ```
 
@@ -631,7 +631,7 @@ Multi 벤치마크는 server/client 별도 프로세스로 동작하므로, 각 
 
 ```text
 client 프로세스 내부:
-[warmup] -> [settle] -> [active(throughput+latency)] -> [drain]
+[warmup] -> [settle] -> [active(throughput+latency)]
                           ^                         ^
                       샘플₁ 수집                  샘플₂ 수집 → client_cpu_pct, client_mem_mb
 
@@ -770,8 +770,8 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 
 각 size는 아래 순서로 측정한다.
 
-1. echo 패턴: warmup → settle(optional) → active phase → drain
-2. one-way 패턴: warmup → settle(optional) → active phase → drain
+1. echo 패턴: warmup → settle(optional) → active phase
+2. one-way 패턴: warmup → settle(optional) → active phase
 
 - echo/one-way 모두 active phase 단일 실행에서 throughput/latency를 동시에 산출한다.
 
@@ -790,7 +790,7 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 
 - RTT 샘플(echo): `sample_us = (recv_ts_us - sent_ts_us) / 2`
 - 단방향 샘플(one-way): 수신 메시지에 포함된 송신 타임스탬프 기준 `now_us - sent_us`
-- warmup/drain 구간의 데이터는 계산에서 제외한다.
+- warmup/settle 구간의 데이터는 계산에서 제외한다.
 
 ### 9.3 one-way latency 집계 규칙
 
@@ -878,19 +878,19 @@ MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MUL
 
 #### 패턴별 소스 파일 / 바이너리 매핑 (Core)
 
-server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로 작성하는 것을 원칙으로 한다. 기본 소스 경로: `perf/multi/current/`
+server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로 작성하는 것을 원칙으로 한다. 기본 소스 경로: `perf/multi/src/`
 
 | 패턴 | server 소스 | server 바이너리 | client 소스 | client 바이너리 |
 |------|------------|----------------|------------|----------------|
-| MULTI_DEALER_DEALER | `*_dealer_dealer_server.cpp` | `comp_src_multi_dealer_dealer_server` | `*_dealer_dealer_client.cpp` | `comp_src_multi_dealer_dealer_client` |
-| MULTI_DEALER_ROUTER | `*_dealer_router_server.cpp` | `comp_src_multi_dealer_router_server` | `*_dealer_router_client.cpp` | `comp_src_multi_dealer_router_client` |
-| MULTI_ROUTER_ROUTER | `*_router_router_server.cpp` | `comp_src_multi_router_router_server` | `*_router_router_client.cpp` | `comp_src_multi_router_router_client` |
-| MULTI_PUBSUB | `*_pubsub_server.cpp` | `comp_src_multi_pubsub_server` | `*_pubsub_client.cpp` | `comp_src_multi_pubsub_client` |
-| MULTI_GATEWAY | `*_gateway_server.cpp` | `comp_src_multi_gateway_server` | `*_gateway_client.cpp` | `comp_src_multi_gateway_client` |
-| MULTI_SPOT | `*_spot_server.cpp` | `comp_src_multi_spot_server` | `*_spot_client.cpp` | `comp_src_multi_spot_client` |
-| MULTI_STREAM | `*_stream_server.cpp` | `comp_src_multi_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
-| MULTI_STREAM_CALLBACK | `*_stream_callback_server.cpp` | `comp_src_multi_stream_callback_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
-| MULTI_STREAM_LEN32BE | `*_stream_len32be_server.cpp` | `comp_src_multi_stream_len32be_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
+| MULTI_DEALER_DEALER | `*_dealer_dealer_server.cpp` | `comp_src_dealer_dealer_server` | `*_dealer_dealer_client.cpp` | `comp_src_dealer_dealer_client` |
+| MULTI_DEALER_ROUTER | `*_dealer_router_server.cpp` | `comp_src_dealer_router_server` | `*_dealer_router_client.cpp` | `comp_src_dealer_router_client` |
+| MULTI_ROUTER_ROUTER | `*_router_router_server.cpp` | `comp_src_router_router_server` | `*_router_router_client.cpp` | `comp_src_router_router_client` |
+| MULTI_PUBSUB | `*_pubsub_server.cpp` | `comp_src_pubsub_server` | `*_pubsub_client.cpp` | `comp_src_pubsub_client` |
+| MULTI_GATEWAY | `*_gateway_server.cpp` | `comp_src_gateway_server` | `*_gateway_client.cpp` | `comp_src_gateway_client` |
+| MULTI_SPOT | `*_spot_server.cpp` | `comp_src_spot_server` | `*_spot_client.cpp` | `comp_src_spot_client` |
+| MULTI_STREAM | `*_stream_server.cpp` | `comp_src_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
+| MULTI_STREAM_CALLBACK | `*_stream_callback_server.cpp` | `comp_src_stream_callback_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
+| MULTI_STREAM_LEN32BE | `*_stream_len32be_server.cpp` | `comp_src_stream_len32be_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
 > STREAM client 예외(core): `MULTI_STREAM*` client는 [PERF_POLICY.md § 8.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. server는 패턴별 분리를 유지해야 한다.
@@ -1017,7 +1017,6 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | `PERF_MULTI_MEMORY_BUDGET_PCT` | MemAvailable 대비 예산 비율(%) | 70 |
 | `PERF_MULTI_MEMORY_BASE_MB` | 기본 메모리 예약(MB) | 512 |
 | `PERF_MULTI_MEMORY_PER_CLIENT_KB` | 클라이언트당 예상 메모리(KB) | 1024 |
-| `PERF_MULTI_STREAM_SEND_RETRIES` | MULTI_STREAM 서버 send 재시도 횟수 (CALLBACK/LEN32BE 서버는 미적용) | 128 |
 | `PERF_RESULTS_MAX_FILES` | report/ 디렉터리 최대 파일 수 | 100 |
 
 > **삭제된 환경 변수**: `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 삭제 대상이다. 구현에 존재하면 제거해야 한다. Retry 금지 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md)을 참조한다.
@@ -1055,7 +1054,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | 카운터/통계 | `std::atomic<int64_t>` | 구조체를 큐에 push |
 
 - **원칙**: active phase(throughput/latency)에서 벤치마크 인프라 코드의 `malloc`/`new`/`vector::push_back` 호출이 0에 수렴해야 한다. 측정 결과에 라이브러리 외 오버헤드가 포함되면 패턴 간 비교(예: MULTI_STREAM vs MULTI_STREAM_CALLBACK)가 공정하지 않다.
-- warmup phase 이전(setup/connect)과 drain 이후(결과 출력/정리)에서는 할당/복사에 제한이 없다.
+- warmup phase 이전(setup/connect)과 active 이후(결과 출력/정리)에서는 할당/복사에 제한이 없다.
 - `zlink_msg_data()` 반환 포인터를 직접 참조하여 불필요한 복사를 피한다. 내용 검증이 필요 없는 throughput 측정에서는 payload를 읽지 않는다.
 - Multi의 대량 클라이언트(1000~10000) 환경에서는 per-client 버퍼도 setup 시 사전 할당하고, duration 내에서 재사용한다.
 

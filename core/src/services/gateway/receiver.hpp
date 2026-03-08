@@ -60,8 +60,6 @@ class receiver_t
     int destroy ();
 
   private:
-    static void heartbeat_task (void *arg_);
-    void heartbeat_tick ();
     bool ensure_routing_id ();
     std::string resolve_advertise (const char *advertise_endpoint_);
 
@@ -86,12 +84,7 @@ class receiver_t
     std::string _last_resolved;
     std::string _last_error;
 
-    uint32_t _heartbeat_interval_ms;
-    uint64_t _next_heartbeat_ms;
     atomic_counter_t _stop;
-    uint64_t _heartbeat_task_id;
-    socket_base_t *_heartbeat_dealer;
-    std::string _heartbeat_registry_endpoint;
 
     mutex_t _sync;
 

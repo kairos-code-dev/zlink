@@ -236,10 +236,20 @@ static void test_spot_monitor_closed_and_topology_reports ()
       zlink_spot_pub_set_routing_id (pub, "pub-topology", 12));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_sub_set_routing_id (sub, "sub-topology", 12));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_registry (
-      pub_node, "inproc://spot-topology-router"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_registry (
-      sub_node, "inproc://spot-topology-router"));
+
+    void *discovery =
+      zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_SPOT);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_set_routing_id (discovery, "spot-disc", 9));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
+      discovery, "inproc://spot-topology-router"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_subscribe (discovery, "svc-topology"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_set_discovery (pub_node, discovery, "svc-topology"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_set_discovery (sub_node, discovery, "svc-topology"));
 
     void *sub_monitor = zlink_spot_sub_monitor_open (
       sub, ZLINK_MONITOR_EVENT_CLOSED | ZLINK_SPOT_SUB_FILTER_APPLIED);
@@ -256,7 +266,8 @@ static void test_spot_monitor_closed_and_topology_reports ()
     zlink_registry_topology_filter_t filter;
     memset (&filter, 0, sizeof (filter));
     filter.service_kind = ZLINK_SERVICE_KIND_SPOT_SUB;
-    strncpy (filter.service_name, "spot-sub", sizeof (filter.service_name) - 1);
+    strncpy (filter.service_name, "svc-topology",
+             sizeof (filter.service_name) - 1);
     size_t count = 0;
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
@@ -289,6 +300,7 @@ static void test_spot_monitor_closed_and_topology_reports ()
     TEST_ASSERT_TRUE (saw_closed);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&sub_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 

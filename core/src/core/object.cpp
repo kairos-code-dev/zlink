@@ -263,7 +263,10 @@ void zlink::object_t::send_activate_write (pipe_t *destination_,
     cmd.destination = destination_;
     cmd.type = command_t::activate_write;
     cmd.args.activate_write.msgs_read = msgs_read_;
-    send_command (cmd);
+    if (destination_->get_tid () == _tid)
+        destination_->process_command (cmd);
+    else
+        send_command (cmd);
 }
 
 void zlink::object_t::send_hiccup (pipe_t *destination_, void *pipe_)

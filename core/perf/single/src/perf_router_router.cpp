@@ -136,7 +136,6 @@ inline bool run_one_way_phase (void *router1,
 {
     if (!router1 || !router2 || !payload || !seq || !out_received)
         return false;
-    (void) recv_timeout_ms;
 
     const bool active_phase = phase == perf_single_metric::phase_active;
     const auto deadline =
@@ -144,104 +143,152 @@ inline bool run_one_way_phase (void *router1,
         ? steady_clock_t::now ()
             + seconds_t (duration_s > 0 ? duration_s : 1)
         : steady_clock_t::time_point ();
+    const auto drain_idle_limit =
+      milliseconds_t (recv_timeout_ms > 0 ? recv_timeout_ms : 200);
 
+    std::atomic<bool> sender_done (false);
+    std::atomic<bool> recv_failed (false);
     unsigned long long received = 0;
     latency_stats_builder_t latency_builder;
-    if (active_phase && queue_probe)
-        queue_probe->force_sample_send ();
-    if (active_phase && queue_probe)
-        queue_probe->force_sample_recv ();
 
-    auto account_header =
-      [&] (const perf_single_metric::header_t &header, bool header_ok) {
-          if (active_phase && queue_probe)
-              queue_probe->sample_recv_if_due ();
+    std::thread receiver_thread ([&] () {
+        auto last_recv_at = steady_clock_t::now ();
 
-          if (!header_ok || header.magic != perf_single_metric::k_magic
-              || header.phase != static_cast<uint32_t> (phase)) {
-              return;
-          }
+        auto account_header =
+          [&] (const perf_single_metric::header_t &header, bool header_ok) {
+              if (active_phase && queue_probe)
+                  queue_probe->sample_recv_if_due ();
 
-          ++received;
-          if (!active_phase)
-              return;
+              if (!header_ok || header.magic != perf_single_metric::k_magic
+                  || header.phase != static_cast<uint32_t> (phase)) {
+                  return;
+              }
 
-          const uint64_t now = perf_single_metric::now_us ();
-          const double latency_us =
-            now >= header.sent_ts_us
-              ? static_cast<double> (now - header.sent_ts_us)
-              : 0.0;
-          latency_builder.add (latency_us);
-      };
+              if (active_phase) {
+                  if (steady_clock_t::now () < deadline) {
+                      ++received;
+                      const uint64_t now = perf_single_metric::now_us ();
+                      const double latency_us =
+                        now >= header.sent_ts_us
+                          ? static_cast<double> (now - header.sent_ts_us)
+                          : 0.0;
+                      latency_builder.add (latency_us);
+                  }
+              } else {
+                  ++received;
+              }
+          };
 
-    unsigned long long iterations = 0;
-    while (true) {
-        if (active_phase) {
-            if (steady_clock_t::now () >= deadline)
-                break;
-        } else if (iterations >= static_cast<unsigned long long> (warmup_count)) {
+        if (active_phase && queue_probe)
+            queue_probe->force_sample_recv ();
+
+        while (true) {
+            const bool done = sender_done.load (std::memory_order_acquire);
+            const int flags = done ? ZLINK_DONTWAIT : 0;
+
+            perf_single_metric::header_t header;
+            bool header_ok = false;
+            int recv_rc = recv_router_header_flags (
+              router1, payload_size, flags, &header, &header_ok);
+            if (recv_rc > 0) {
+                last_recv_at = steady_clock_t::now ();
+                account_header (header, header_ok);
+
+                for (;;) {
+                    perf_single_metric::header_t burst_header;
+                    bool burst_header_ok = false;
+                    recv_rc = recv_router_header_flags (router1,
+                                                        payload_size,
+                                                        ZLINK_DONTWAIT,
+                                                        &burst_header,
+                                                        &burst_header_ok);
+                    if (recv_rc > 0) {
+                        last_recv_at = steady_clock_t::now ();
+                        account_header (burst_header, burst_header_ok);
+                        continue;
+                    }
+                    if (recv_rc == 0)
+                        break;
+
+                    recv_failed.store (true, std::memory_order_release);
+                    break;
+                }
+
+                if (recv_failed.load (std::memory_order_acquire))
+                    break;
+                continue;
+            }
+
+            if (recv_rc == 0) {
+                if (done && steady_clock_t::now () - last_recv_at >= drain_idle_limit)
+                    break;
+                std::this_thread::yield ();
+                continue;
+            }
+
+            recv_failed.store (true, std::memory_order_release);
             break;
         }
 
-        const uint64_t sent_ts = perf_single_metric::now_us ();
-        if (!perf_single_metric::stamp_payload (payload->data (),
-                                                payload_size,
-                                                run_id,
-                                                phase,
-                                                msg_size,
-                                                (*seq)++,
-                                                sent_ts)
-            || !send_exact (router2, "ROUTER1", 7, ZLINK_SNDMORE)
-            || !send_exact (router2, payload->data (), payload_size, 0)) {
-            return false;
-        }
         if (active_phase && queue_probe)
-            queue_probe->sample_send_if_due ();
+            queue_probe->force_sample_recv ();
+    });
 
-        perf_single_metric::header_t header;
-        bool header_ok = false;
-        int recv_rc =
-          recv_router_header_flags (router1, payload_size, 0, &header, &header_ok);
-        while (recv_rc == 0 && zlink_errno () == EINTR)
-            recv_rc = recv_router_header_flags (
-              router1, payload_size, 0, &header, &header_ok);
-        if (recv_rc <= 0)
-            return false;
-        account_header (header, header_ok);
-
-        for (;;) {
-            perf_single_metric::header_t burst_header;
-            bool burst_header_ok = false;
-            recv_rc = recv_router_header_flags (router1,
-                                                payload_size,
-                                                ZLINK_DONTWAIT,
-                                                &burst_header,
-                                                &burst_header_ok);
-            if (recv_rc > 0) {
-                account_header (burst_header, burst_header_ok);
-                continue;
-            }
-            if (recv_rc == 0 && zlink_errno () == EINTR)
-                continue;
-            if (recv_rc == 0)
-                break;
-            return false;
-        }
-
-        ++iterations;
-    }
-
-    if (active_phase && queue_probe) {
+    bool send_failed = false;
+    if (active_phase && queue_probe)
         queue_probe->force_sample_send ();
-        queue_probe->force_sample_recv ();
+
+    if (active_phase) {
+        while (steady_clock_t::now () < deadline) {
+            const uint64_t sent_ts = perf_single_metric::now_us ();
+            if (!perf_single_metric::stamp_payload (payload->data (),
+                                                    payload_size,
+                                                    run_id,
+                                                    phase,
+                                                    msg_size,
+                                                    (*seq)++,
+                                                    sent_ts)
+                || !send_exact (router2, "ROUTER1", 7, ZLINK_SNDMORE)
+                || !send_exact (router2, payload->data (), payload_size, 0)) {
+                send_failed = true;
+                break;
+            }
+            if (queue_probe)
+                queue_probe->sample_send_if_due ();
+        }
+    } else {
+        for (int i = 0; i < warmup_count; ++i) {
+            if (!perf_single_metric::stamp_payload (
+                  payload->data (),
+                  payload_size,
+                  run_id,
+                  phase,
+                  msg_size,
+                  (*seq)++,
+                  perf_single_metric::now_us ())
+                || !send_exact (router2, "ROUTER1", 7, ZLINK_SNDMORE)
+                || !send_exact (router2, payload->data (), payload_size, 0)) {
+                send_failed = true;
+                break;
+            }
+        }
     }
+
+    if (active_phase && queue_probe)
+        queue_probe->force_sample_send ();
+
+    sender_done.store (true, std::memory_order_release);
+    receiver_thread.join ();
+
+    if (send_failed || recv_failed.load (std::memory_order_acquire))
+        return false;
 
     *out_received = received;
     if (active_phase) {
         if (received == 0 || latency_builder.count () == 0 || !out_latency)
             return false;
         *out_latency = latency_builder.snapshot ();
-    } else if (received < iterations) {
+    } else if (received < static_cast<unsigned long long> (warmup_count)) {
         return false;
     }
 

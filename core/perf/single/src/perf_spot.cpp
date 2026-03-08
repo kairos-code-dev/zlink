@@ -198,6 +198,19 @@ static bool send_spot(void *spot_pub,
            == 0;
 }
 
+static int send_spot_try(void *spot_pub,
+                         const std::string &topic,
+                         const std::vector<char> &payload,
+                         size_t msg_size)
+{
+    if (send_spot(spot_pub, topic, payload, msg_size))
+        return 1;
+    const int err = zlink_errno();
+    if (err == EAGAIN || err == EINTR)
+        return 0;
+    return -1;
+}
+
 static int recv_spot_header_flags (void *spot_sub,
                                    size_t payload_size,
                                    int flags,
@@ -293,25 +306,24 @@ static bool ensure_spot_subscription_ready(void *spot_pub,
     return false;
 }
 
-static bool run_spot_phase (void *spot_pub,
-                            void *spot_sub,
-                            const std::string &topic,
-                            std::vector<char> *payload,
-                            size_t payload_size,
-                            size_t msg_size,
-                            uint32_t run_id,
-                            uint64_t *seq,
-                            perf_single_metric::phase_t phase,
-                            int warmup_count,
-                            int duration_s,
-                            int recv_timeout_ms,
-                            queue_probe_t *queue_probe,
-                            unsigned long long *out_received,
-                            latency_stats_t *out_stats)
+static bool run_spot_oneway_phase (void *spot_pub,
+                                   void *spot_sub,
+                                   const std::string &topic,
+                                   std::vector<char> *payload,
+                                   size_t payload_size,
+                                   size_t msg_size,
+                                   uint32_t run_id,
+                                   uint64_t *seq,
+                                   perf_single_metric::phase_t phase,
+                                   int warmup_count,
+                                   int duration_s,
+                                   int recv_timeout_ms,
+                                   queue_probe_t *queue_probe,
+                                   unsigned long long *out_received,
+                                   latency_stats_t *out_stats)
 {
     if (!spot_pub || !spot_sub || !payload || !seq || !out_received)
         return false;
-    (void) recv_timeout_ms;
 
     const bool active_phase = phase == perf_single_metric::phase_active;
     const auto deadline =
@@ -319,104 +331,184 @@ static bool run_spot_phase (void *spot_pub,
         ? steady_clock_t::now ()
             + seconds_t (duration_s > 0 ? duration_s : 1)
         : steady_clock_t::time_point ();
+    const auto drain_idle_limit =
+      milliseconds_t (recv_timeout_ms > 0 ? recv_timeout_ms : 200);
+
+    std::atomic<bool> sender_done (false);
+    std::atomic<bool> recv_failed (false);
     unsigned long long received = 0;
     latency_stats_builder_t latency_builder;
-    if (active_phase && queue_probe)
-        queue_probe->force_sample_send ();
-    if (active_phase && queue_probe)
-        queue_probe->force_sample_recv ();
 
-    auto account_header =
-      [&] (const perf_single_metric::header_t &header, bool header_ok) {
-          if (active_phase && queue_probe)
-              queue_probe->sample_recv_if_due ();
+    std::thread receiver ([&] () {
+        auto last_recv_at = steady_clock_t::now ();
 
-          if (!header_ok
-              || !perf_single_metric::is_expected (
-                header, run_id, phase, msg_size)) {
-              return;
-          }
+        auto account_header =
+          [&] (const perf_single_metric::header_t &header, bool header_ok) {
+              if (active_phase && queue_probe)
+                  queue_probe->sample_recv_if_due ();
 
-          ++received;
-          if (!active_phase)
-              return;
+              if (!header_ok || header.magic != perf_single_metric::k_magic
+                  || header.phase != static_cast<uint32_t> (phase)) {
+                  return;
+              }
 
-          const uint64_t now = perf_single_metric::now_us ();
-          const double latency_us =
-            now >= header.sent_ts_us
-              ? static_cast<double> (now - header.sent_ts_us)
-              : 0.0;
-          latency_builder.add (latency_us);
-      };
+              if (active_phase) {
+                  if (steady_clock_t::now () < deadline) {
+                      ++received;
+                      const uint64_t now = perf_single_metric::now_us ();
+                      const double latency_us =
+                        now >= header.sent_ts_us
+                          ? static_cast<double> (now - header.sent_ts_us)
+                          : 0.0;
+                      latency_builder.add (latency_us);
+                  }
+              } else {
+                  ++received;
+              }
+          };
 
-    unsigned long long iterations = 0;
-    while (true) {
-        if (active_phase) {
-            if (steady_clock_t::now () >= deadline)
-                break;
-        } else if (iterations >= static_cast<unsigned long long> (warmup_count)) {
+        if (active_phase && queue_probe)
+            queue_probe->force_sample_recv ();
+
+        while (true) {
+            const bool done = sender_done.load (std::memory_order_acquire);
+            const int flags = done ? ZLINK_DONTWAIT : 0;
+
+            perf_single_metric::header_t header;
+            bool header_ok = false;
+            const int recv_rc = recv_spot_header_flags (
+              spot_sub, payload_size, flags, &header, &header_ok);
+            if (recv_rc > 0) {
+                last_recv_at = steady_clock_t::now ();
+                account_header (header, header_ok);
+
+                for (;;) {
+                    perf_single_metric::header_t burst_header;
+                    bool burst_header_ok = false;
+                    const int burst_rc = recv_spot_header_flags (
+                      spot_sub,
+                      payload_size,
+                      ZLINK_DONTWAIT,
+                      &burst_header,
+                      &burst_header_ok);
+                    if (burst_rc > 0) {
+                        last_recv_at = steady_clock_t::now ();
+                        account_header (burst_header, burst_header_ok);
+                        continue;
+                    }
+                    if (burst_rc == 0)
+                        break;
+
+                    recv_failed.store (true, std::memory_order_release);
+                    break;
+                }
+
+                if (recv_failed.load (std::memory_order_acquire))
+                    break;
+                continue;
+            }
+
+            if (recv_rc == 0) {
+                if (done
+                    && steady_clock_t::now () - last_recv_at
+                         >= drain_idle_limit) {
+                    break;
+                }
+                std::this_thread::yield ();
+                continue;
+            }
+
+            recv_failed.store (true, std::memory_order_release);
             break;
         }
 
-        const uint64_t sent_ts = perf_single_metric::now_us ();
-        if (!perf_single_metric::stamp_payload (payload->data (),
-                                                payload_size,
-                                                run_id,
-                                                phase,
-                                                msg_size,
-                                                (*seq)++,
-                                                sent_ts)
-            || !send_spot (spot_pub, topic, *payload, payload_size)) {
-            return false;
-        }
-
         if (active_phase && queue_probe)
-            queue_probe->sample_send_if_due ();
+            queue_probe->force_sample_recv ();
+    });
 
-        perf_single_metric::header_t header;
-        bool header_ok = false;
-        int recv_rc =
-          recv_spot_header_flags (spot_sub, payload_size, 0, &header, &header_ok);
-        while (recv_rc == 0 && zlink_errno () == EINTR)
-            recv_rc = recv_spot_header_flags (
-              spot_sub, payload_size, 0, &header, &header_ok);
-        if (recv_rc <= 0)
-            return false;
-        account_header (header, header_ok);
-
-        for (;;) {
-            perf_single_metric::header_t burst_header;
-            bool burst_header_ok = false;
-            recv_rc = recv_spot_header_flags (spot_sub,
-                                              payload_size,
-                                              ZLINK_DONTWAIT,
-                                              &burst_header,
-                                              &burst_header_ok);
-            if (recv_rc > 0) {
-                account_header (burst_header, burst_header_ok);
-                continue;
-            }
-            if (recv_rc == 0 && zlink_errno () == EINTR)
-                continue;
-            if (recv_rc == 0)
-                break;
-            return false;
-        }
-
-        ++iterations;
-    }
-
-    if (active_phase && queue_probe) {
+    bool send_failed = false;
+    if (active_phase && queue_probe)
         queue_probe->force_sample_send ();
-        queue_probe->force_sample_recv ();
+
+    if (active_phase) {
+        while (steady_clock_t::now () < deadline) {
+            const uint64_t sent_ts = perf_single_metric::now_us ();
+            if (!perf_single_metric::stamp_payload (payload->data (),
+                                                    payload_size,
+                                                    run_id,
+                                                    phase,
+                                                    msg_size,
+                                                    (*seq)++,
+                                                    sent_ts)) {
+                send_failed = true;
+                break;
+            }
+
+            bool sent = false;
+            while (steady_clock_t::now () < deadline) {
+                const int send_rc =
+                  send_spot_try (spot_pub, topic, *payload, payload_size);
+                if (send_rc > 0) {
+                    sent = true;
+                    break;
+                }
+                if (send_rc < 0) {
+                    send_failed = true;
+                    break;
+                }
+                std::this_thread::yield ();
+            }
+            if (send_failed || !sent)
+                break;
+
+            if (queue_probe)
+                queue_probe->sample_send_if_due ();
+        }
+    } else {
+        for (int i = 0; i < warmup_count; ++i) {
+            if (!perf_single_metric::stamp_payload (
+                  payload->data (),
+                  payload_size,
+                  run_id,
+                  phase,
+                  msg_size,
+                  (*seq)++,
+                  perf_single_metric::now_us ())) {
+                send_failed = true;
+                break;
+            }
+
+            for (;;) {
+                const int send_rc =
+                  send_spot_try (spot_pub, topic, *payload, payload_size);
+                if (send_rc > 0)
+                    break;
+                if (send_rc < 0) {
+                    send_failed = true;
+                    break;
+                }
+                std::this_thread::yield ();
+            }
+            if (send_failed)
+                break;
+        }
     }
+
+    if (active_phase && queue_probe)
+        queue_probe->force_sample_send ();
+
+    sender_done.store (true, std::memory_order_release);
+    receiver.join ();
+
+    if (send_failed || recv_failed.load (std::memory_order_acquire))
+        return false;
 
     *out_received = received;
     if (active_phase) {
         if (!out_stats || received == 0 || latency_builder.count () == 0)
             return false;
         *out_stats = latency_builder.snapshot ();
-    } else if (received < iterations) {
+    } else if (received < static_cast<unsigned long long> (warmup_count)) {
         return false;
     }
 
@@ -543,7 +635,7 @@ void run_spot(const std::string &transport,
     discovery = zlink_discovery_new_typed(ctx.get(), ZLINK_SERVICE_TYPE_SPOT);
     if (!discovery
         || zlink_discovery_connect_registry(
-             discovery, registry_pub_endpoint.c_str())
+             discovery, registry_router_endpoint.c_str())
              != 0
         || zlink_discovery_subscribe(discovery, service_name) != 0) {
         fail_no_queue();
@@ -671,21 +763,21 @@ void run_spot(const std::string &transport,
         warmup_count = 20;
 
     unsigned long long warmup_received = 0;
-    if (!run_spot_phase(spot_pub,
-                        spot_sub,
-                        topic,
-                        &payload,
-                        payload_capacity,
-                        msg_size,
-                        run_id,
-                        &seq,
-                        perf_single_metric::phase_warmup,
-                        warmup_count,
-                        0,
-                        recv_timeout_ms,
-                        NULL,
-                        &warmup_received,
-                        NULL)) {
+    if (!run_spot_oneway_phase(spot_pub,
+                               spot_sub,
+                               topic,
+                               &payload,
+                               payload_capacity,
+                               msg_size,
+                               run_id,
+                               &seq,
+                               perf_single_metric::phase_warmup,
+                               warmup_count,
+                               0,
+                               recv_timeout_ms,
+                               NULL,
+                               &warmup_received,
+                               NULL)) {
         fail();
         return;
     }
@@ -693,21 +785,21 @@ void run_spot(const std::string &transport,
     const int duration_s = std::max(1, resolve_single_duration_seconds());
     unsigned long long received = 0;
     latency_stats_t latency_stats;
-    if (!run_spot_phase(spot_pub,
-                        spot_sub,
-                        topic,
-                        &payload,
-                        payload_capacity,
-                        msg_size,
-                        run_id,
-                        &seq,
-                        perf_single_metric::phase_active,
-                        0,
-                        duration_s,
-                        recv_timeout_ms,
-                        queue_probe,
-                        &received,
-                        &latency_stats)) {
+    if (!run_spot_oneway_phase(spot_pub,
+                               spot_sub,
+                               topic,
+                               &payload,
+                               payload_capacity,
+                               msg_size,
+                               run_id,
+                               &seq,
+                               perf_single_metric::phase_active,
+                               0,
+                               duration_s,
+                               recv_timeout_ms,
+                               queue_probe,
+                               &received,
+                               &latency_stats)) {
         fail();
         return;
     }

@@ -252,26 +252,25 @@ static bool send_one_gateway_metric (void *gateway,
            == 0;
 }
 
-static bool run_gateway_phase (void *gateway,
-                               const char *service_name,
-                               void *provider,
-                               size_t payload_size,
-                               size_t msg_size,
-                               uint32_t run_id,
-                               uint64_t *seq,
-                               perf_single_metric::phase_t phase,
-                               int warmup_count,
-                               int duration_s,
-                               int recv_timeout_ms,
-                               queue_probe_t *queue_probe,
-                               recv_pending_probe_t *recv_probe,
-                               unsigned long long *out_received,
-                               latency_stats_t *out_stats)
+static bool run_gateway_oneway_phase (void *gateway,
+                                      const char *service_name,
+                                      void *provider,
+                                      size_t payload_size,
+                                      size_t msg_size,
+                                      uint32_t run_id,
+                                      uint64_t *seq,
+                                      perf_single_metric::phase_t phase,
+                                      int warmup_count,
+                                      int duration_s,
+                                      int recv_timeout_ms,
+                                      queue_probe_t *queue_probe,
+                                      recv_pending_probe_t *recv_probe,
+                                      unsigned long long *out_received,
+                                      latency_stats_t *out_stats)
 {
     if (!gateway || !service_name || !provider || !seq || !out_received) {
         return false;
     }
-    (void) recv_timeout_ms;
 
     const bool active_phase = phase == perf_single_metric::phase_active;
     const auto deadline =
@@ -279,123 +278,171 @@ static bool run_gateway_phase (void *gateway,
         ? steady_clock_t::now ()
             + seconds_t (duration_s > 0 ? duration_s : 1)
         : steady_clock_t::time_point ();
+    const auto drain_idle_limit =
+      milliseconds_t (recv_timeout_ms > 0 ? recv_timeout_ms : 200);
+
+    std::atomic<bool> sender_done (false);
+    std::atomic<bool> recv_failed (false);
     unsigned long long received = 0;
     latency_stats_builder_t latency_builder;
-    std::vector<unsigned char> send_payload (payload_size);
-    if (active_phase && queue_probe)
-        queue_probe->force_sample_send ();
-    if (active_phase && recv_probe)
-        recv_probe->force_sample ();
 
-    auto account_header =
-      [&] (const zlink_routing_id_t &rid,
-           const perf_single_metric::header_t &header,
-           bool header_ok) {
-          if (active_phase && recv_probe) {
-              if (rid.size > 0)
-                  recv_probe->set_routing_id (rid);
-              recv_probe->sample_if_due ();
-          }
+    std::thread receiver ([&] () {
+        auto last_recv_at = steady_clock_t::now ();
 
-          if (!header_ok
-              || !perf_single_metric::is_expected (
-                header, run_id, phase, msg_size)) {
-              return;
-          }
+        auto account_header =
+          [&] (const zlink_routing_id_t &rid,
+               const perf_single_metric::header_t &header,
+               bool header_ok) {
+              if (active_phase && recv_probe) {
+                  if (rid.size > 0)
+                      recv_probe->set_routing_id (rid);
+                  recv_probe->sample_if_due ();
+              }
 
-          ++received;
-          if (!active_phase)
-              return;
+              if (!header_ok || header.magic != perf_single_metric::k_magic
+                  || header.phase != static_cast<uint32_t> (phase)) {
+                  return;
+              }
 
-          const uint64_t now = perf_single_metric::now_us ();
-          const double latency_us =
-            now >= header.sent_ts_us
-              ? static_cast<double> (now - header.sent_ts_us)
-              : 0.0;
-          latency_builder.add (latency_us);
-      };
+              if (active_phase) {
+                  if (steady_clock_t::now () < deadline) {
+                      ++received;
+                      const uint64_t now = perf_single_metric::now_us ();
+                      const double latency_us =
+                        now >= header.sent_ts_us
+                          ? static_cast<double> (now - header.sent_ts_us)
+                          : 0.0;
+                      latency_builder.add (latency_us);
+                  }
+              } else {
+                  ++received;
+              }
+          };
 
-    unsigned long long iterations = 0;
-    while (true) {
-        if (active_phase) {
-            if (steady_clock_t::now () >= deadline)
-                break;
-        } else if (iterations >= static_cast<unsigned long long> (warmup_count)) {
+        if (active_phase && recv_probe)
+            recv_probe->force_sample ();
+
+        while (true) {
+            const bool done = sender_done.load (std::memory_order_acquire);
+            const int flags = done ? ZLINK_DONTWAIT : 0;
+
+            zlink_routing_id_t rid;
+            rid.size = 0;
+            perf_single_metric::header_t header;
+            bool header_ok = false;
+            const int recv_rc = recv_one_provider_message_flags (provider,
+                                                                 payload_size,
+                                                                 flags,
+                                                                 &rid,
+                                                                 &header,
+                                                                 &header_ok);
+            if (recv_rc > 0) {
+                last_recv_at = steady_clock_t::now ();
+                account_header (rid, header, header_ok);
+
+                for (;;) {
+                    zlink_routing_id_t burst_rid;
+                    burst_rid.size = 0;
+                    perf_single_metric::header_t burst_header;
+                    bool burst_header_ok = false;
+                    const int burst_rc = recv_one_provider_message_flags (
+                      provider,
+                      payload_size,
+                      ZLINK_DONTWAIT,
+                      &burst_rid,
+                      &burst_header,
+                      &burst_header_ok);
+                    if (burst_rc > 0) {
+                        last_recv_at = steady_clock_t::now ();
+                        account_header (
+                          burst_rid, burst_header, burst_header_ok);
+                        continue;
+                    }
+                    if (burst_rc == 0)
+                        break;
+
+                    recv_failed.store (true, std::memory_order_release);
+                    break;
+                }
+
+                if (recv_failed.load (std::memory_order_acquire))
+                    break;
+                continue;
+            }
+
+            if (recv_rc == 0) {
+                if (done
+                    && steady_clock_t::now () - last_recv_at
+                         >= drain_idle_limit) {
+                    break;
+                }
+                std::this_thread::yield ();
+                continue;
+            }
+
+            recv_failed.store (true, std::memory_order_release);
             break;
         }
 
-        const uint64_t sent_ts = perf_single_metric::now_us ();
-        if (!send_one_gateway_metric (gateway,
-                                      service_name,
-                                      send_payload,
-                                      payload_size,
-                                      run_id,
-                                      phase,
-                                      msg_size,
-                                      (*seq)++,
-                                      sent_ts)) {
-            return false;
-        }
-        if (active_phase && queue_probe)
-            queue_probe->sample_send_if_due ();
+        if (active_phase && recv_probe)
+            recv_probe->force_sample ();
+    });
 
-        zlink_routing_id_t rid;
-        rid.size = 0;
-        perf_single_metric::header_t header;
-        bool header_ok = false;
-        int recv_rc = recv_one_provider_message_flags (provider,
-                                                       payload_size,
-                                                       0,
-                                                       &rid,
-                                                       &header,
-                                                       &header_ok);
-        while (recv_rc == 0 && zlink_errno () == EINTR)
-            recv_rc = recv_one_provider_message_flags (provider,
-                                                       payload_size,
-                                                       0,
-                                                       &rid,
-                                                       &header,
-                                                       &header_ok);
-        if (recv_rc <= 0)
-            return false;
-        account_header (rid, header, header_ok);
+    bool send_failed = false;
+    std::vector<unsigned char> send_payload (payload_size);
+    if (active_phase && queue_probe)
+        queue_probe->force_sample_send ();
 
-        for (;;) {
-            zlink_routing_id_t burst_rid;
-            burst_rid.size = 0;
-            perf_single_metric::header_t burst_header;
-            bool burst_header_ok = false;
-            recv_rc = recv_one_provider_message_flags (provider,
-                                                       payload_size,
-                                                       ZLINK_DONTWAIT,
-                                                       &burst_rid,
-                                                       &burst_header,
-                                                       &burst_header_ok);
-            if (recv_rc > 0) {
-                account_header (burst_rid, burst_header, burst_header_ok);
-                continue;
-            }
-            if (recv_rc == 0 && zlink_errno () == EINTR)
-                continue;
-            if (recv_rc == 0)
+    if (active_phase) {
+        while (steady_clock_t::now () < deadline) {
+            const uint64_t sent_ts = perf_single_metric::now_us ();
+            if (!send_one_gateway_metric (gateway,
+                                          service_name,
+                                          send_payload,
+                                          payload_size,
+                                          run_id,
+                                          phase,
+                                          msg_size,
+                                          (*seq)++,
+                                          sent_ts)) {
+                send_failed = true;
                 break;
-            return false;
+            }
+            if (queue_probe)
+                queue_probe->sample_send_if_due ();
         }
-
-        ++iterations;
+    } else {
+        for (int i = 0; i < warmup_count; ++i) {
+            if (!send_one_gateway_metric (gateway,
+                                          service_name,
+                                          send_payload,
+                                          payload_size,
+                                          run_id,
+                                          phase,
+                                          msg_size,
+                                          (*seq)++,
+                                          perf_single_metric::now_us ())) {
+                send_failed = true;
+                break;
+            }
+        }
     }
 
     if (active_phase && queue_probe)
         queue_probe->force_sample_send ();
-    if (active_phase && recv_probe)
-        recv_probe->force_sample ();
+
+    sender_done.store (true, std::memory_order_release);
+    receiver.join ();
+
+    if (send_failed || recv_failed.load (std::memory_order_acquire))
+        return false;
 
     *out_received = received;
     if (active_phase) {
         if (!out_stats || received == 0 || latency_builder.count () == 0)
             return false;
         *out_stats = latency_builder.snapshot ();
-    } else if (received < iterations) {
+    } else if (received < static_cast<unsigned long long> (warmup_count)) {
         return false;
     }
 
@@ -500,7 +547,7 @@ void run_gateway(const std::string &transport,
         cleanup();
         return;
     }
-    zlink_discovery_connect_registry(discovery, reg_pub.c_str());
+    zlink_discovery_connect_registry(discovery, reg_router.c_str());
     zlink_discovery_subscribe(discovery, service_name);
 
     gateway = zlink_gateway_new(ctx.get(), discovery, NULL);
@@ -629,21 +676,21 @@ void run_gateway(const std::string &transport,
 
     unsigned long long warmup_received = 0;
     const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 200);
-    if (!run_gateway_phase(gateway,
-                           service_name,
-                           provider,
-                           payload_size,
-                           msg_size,
-                           run_id,
-                           &seq,
-                           perf_single_metric::phase_warmup,
-                           warmup_count,
-                           0,
-                           recv_timeout_ms,
-                           NULL,
-                           NULL,
-                           &warmup_received,
-                           NULL)) {
+    if (!run_gateway_oneway_phase(gateway,
+                                  service_name,
+                                  provider,
+                                  payload_size,
+                                  msg_size,
+                                  run_id,
+                                  &seq,
+                                  perf_single_metric::phase_warmup,
+                                  warmup_count,
+                                  0,
+                                  recv_timeout_ms,
+                                  NULL,
+                                  NULL,
+                                  &warmup_received,
+                                  NULL)) {
         fail();
         return;
     }
@@ -651,21 +698,21 @@ void run_gateway(const std::string &transport,
     const int duration_s = std::max(1, resolve_single_duration_seconds());
     unsigned long long received = 0;
     latency_stats_t latency_stats;
-    if (!run_gateway_phase(gateway,
-                           service_name,
-                           provider,
-                           payload_size,
-                           msg_size,
-                           run_id,
-                           &seq,
-                           perf_single_metric::phase_active,
-                           0,
-                           duration_s,
-                           recv_timeout_ms,
-                           &queue_probe,
-                           recv_probe,
-                           &received,
-                           &latency_stats)) {
+    if (!run_gateway_oneway_phase(gateway,
+                                  service_name,
+                                  provider,
+                                  payload_size,
+                                  msg_size,
+                                  run_id,
+                                  &seq,
+                                  perf_single_metric::phase_active,
+                                  0,
+                                  duration_s,
+                                  recv_timeout_ms,
+                                  &queue_probe,
+                                  recv_probe,
+                                  &received,
+                                  &latency_stats)) {
         fail();
         return;
     }

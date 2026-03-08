@@ -80,6 +80,32 @@ class RunComparisonPolicyTests(unittest.TestCase):
             os.path.join(root, "single", "report"),
         )
 
+    def test_single_option_items_show_binary_default_io_threads_when_unset(self):
+        args = type("Args", (), {"runs": 1})()
+        with EnvPatch(remove=["PERF_IO_THREADS"]):
+            items = RC.build_single_option_items(
+                args=args,
+                timeout_sec=10,
+                patterns=["PAIR"],
+                pattern_transports={"PAIR": ["tcp"]},
+                pattern_sizes={"PAIR": [64]},
+            )
+
+        self.assertIn(("io_threads", "default(binary=2)"), items)
+
+    def test_single_option_items_show_explicit_io_threads_when_set(self):
+        args = type("Args", (), {"runs": 1})()
+        with EnvPatch(updates={"PERF_IO_THREADS": "4"}):
+            items = RC.build_single_option_items(
+                args=args,
+                timeout_sec=10,
+                patterns=["PAIR"],
+                pattern_transports={"PAIR": ["tcp"]},
+                pattern_sizes={"PAIR": [64]},
+            )
+
+        self.assertIn(("io_threads", "4"), items)
+
 
 if __name__ == "__main__":
     unittest.main()

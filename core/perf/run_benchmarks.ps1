@@ -456,7 +456,7 @@ function Show-EffectiveOption {
 $BuildMode = if ($UseReuseBuild) { "reuse" } else { "clean" }
 $EffectiveSendHwm = if ($SendHwm) { $SendHwm } elseif ($Hwm) { $Hwm } else { "" }
 $EffectiveRecvHwm = if ($RecvHwm) { $RecvHwm } elseif ($Hwm) { $Hwm } else { "" }
-$EffectiveIoThreads = if ($IoThreads) { $IoThreads } else { "0" }
+$EffectiveIoThreads = if ($IoThreads) { $IoThreads } else { "default(binary=2)" }
 
 Write-Host ""
 Write-Host "## Effective Options (runner)"

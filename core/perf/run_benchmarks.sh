@@ -595,7 +595,7 @@ print_effective_option() {
 
 EFFECTIVE_SEND_HWM="${SINGLE_SNDHWM:-${SINGLE_HWM:-}}"
 EFFECTIVE_RECV_HWM="${SINGLE_RCVHWM:-${SINGLE_HWM:-}}"
-EFFECTIVE_IO_THREADS="${PERF_IO_THREADS:-0}"
+EFFECTIVE_IO_THREADS="$(value_or_default "${PERF_IO_THREADS}" "default(binary=2)")"
 
 echo
 echo "## Effective Options (runner)"

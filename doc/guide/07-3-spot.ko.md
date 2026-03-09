@@ -13,7 +13,7 @@ SPOT은 위치 투명한 토픽 기반 발행/구독 시스템이다. Discovery 
 | 용어 | 설명 |
 |------|------|
 | **SPOT Node** | PUB/SUB Mesh 참여 에이전트 (노드별 1개) |
-| **SPOT Pub** | 토픽 발행 핸들 (기본 thread-safe) |
+| **SPOT Pub** | 토픽 발행 핸들 (thread-safe) |
 | **SPOT Sub** | 토픽 구독/수신 핸들 |
 | **Topic** | 문자열 키 기반 메시지 채널 |
 | **Pattern** | 접두어 + `*` 와일드카드 구독 |
@@ -155,9 +155,9 @@ zlink_spot_sub_recv(sub, &parts, &part_count, 0, topic, &topic_len);
 zlink_poller_add_spot_pub(poller, pub, NULL, ZLINK_POLLOUT);
 ```
 
-**중요:** 동일 서비스 인스턴스를 여러 스레드에서 동시에 사용하는 것은
-지원하지 않는다. 각 `spot_sub` 또는 `spot_pub`은 한 번에 하나의 실행
-컨텍스트에서만 사용해야 한다.
+**중요:** `spot_pub`은 thread-safe로 사용할 수 있다. 반면 `spot_sub`은 동일
+인스턴스를 여러 스레드에서 동시에 사용하면 안 된다. 특히 `recv()`와 handler,
+subscribe/unsubscribe 조작은 한 번에 하나의 실행 컨텍스트에서만 수행해야 한다.
 
 ### 4.5 콜백 핸들러 (Handler)
 
@@ -183,7 +183,9 @@ zlink_spot_sub_set_handler(sub, NULL, NULL);
 
 - handler가 활성 상태이면 `recv()` 호출 시 `EINVAL` 반환 (상호 배타)
 - `NULL` 전달로 핸들러를 해제하면, 진행 중인 콜백이 모두 완료된 후 반환
-- 콜백은 spot_node 워커 스레드에서 호출된다
+- 콜백은 소켓의 I/O 처리 경로(io thread)에서 직접 호출된다
+- 콜백에서 블로킹 작업을 수행하면 다른 I/O 진행에 영향을 줄 수 있다
+- 느린 처리가 필요하면 콜백 안에서 사용자 queue로 넘기고 별도 thread에서 처리한다
 
 ## 5. 토픽 규칙
 
@@ -207,6 +209,8 @@ zlink_spot_sub_set_handler(sub, NULL, NULL);
 - 로컬 publish (`spot_pub`) → 로컬 SPOT Sub 분배 + PUB 송출 (원격 전파)
 - 원격 수신 (SUB) → 로컬 SPOT Sub 분배만 (재발행 없음)
 - 재발행 없음으로 메시지 루프/중복 방지
+- `subscribe()` / `unsubscribe()` 반환은 local socket filter 적용 의미이며,
+  클러스터 전체 전파 완료를 보장하지 않는다
 
 ## 7. 정리
 

@@ -183,7 +183,9 @@ zlink_spot_sub_set_handler(sub, NULL, NULL);
 
 - When a handler is active, calling `recv()` returns `EINVAL` (mutually exclusive)
 - Passing `NULL` to unregister the handler returns only after all in-flight callbacks complete
-- Callbacks are invoked on the spot_node worker thread
+- Callbacks are invoked on the socket I/O path (io thread)
+- Blocking work in the callback can delay other I/O
+- For slow processing, enqueue from the callback and handle it on your own thread
 
 ## 5. Topic Rules
 

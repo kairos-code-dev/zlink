@@ -5,6 +5,7 @@
 
 #include <deque>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 #include <atomic>
@@ -66,7 +67,8 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     void init_routing_id_frame (msg_t *msg_,
                                 uint32_t routing_id_value_,
                                 metadata_t *metadata_);
-    void emit_connect_event (pipe_t *pipe_);
+    void maybe_emit_connect_event (pipe_t *pipe_,
+                                   uint32_t routing_id_value_ = 0);
     int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_)
       ZLINK_OVERRIDE;
     int dispatch_len32be (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
@@ -98,6 +100,8 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     std::atomic<zlink_stream_on_packets_fn> _dispatch_packets_callback;
     std::atomic<uint32_t> _dispatch_reassembly_epoch;
     mutable std::mutex _dispatch_control_mu;
+    mutable std::mutex _connect_event_mu;
+    std::set<uint32_t> _connect_event_routing_ids;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (stream_t)
 };

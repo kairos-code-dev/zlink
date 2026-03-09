@@ -16,6 +16,7 @@
 #include <array>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "engine/asio/i_asio_transport.hpp"
 
@@ -81,7 +82,7 @@ class wss_transport_t : public i_asio_transport
     bool requires_handshake () const ZLINK_OVERRIDE { return true; }
     void async_handshake (int handshake_type,
                           completion_handler_t handler) ZLINK_OVERRIDE;
-    bool supports_speculative_write () const ZLINK_OVERRIDE { return false; }
+    bool supports_speculative_write () const ZLINK_OVERRIDE { return true; }
     bool supports_gather_write () const ZLINK_OVERRIDE { return true; }
     void async_writev (const unsigned char *header,
                        std::size_t header_size,
@@ -117,6 +118,9 @@ class wss_transport_t : public i_asio_transport
     bool _ws_handshake_complete;
     int _handshake_type;
     std::string _tls_hostname;
+    boost::beast::flat_buffer _read_message_buffer;
+    std::vector<unsigned char> _read_pending_message;
+    std::size_t _read_pending_offset;
 
     //  Internal handshake continuation
     void continue_ws_handshake (const std::shared_ptr<wss_stream_t> &stream,

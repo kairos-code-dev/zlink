@@ -11,6 +11,7 @@
 
 #include <openssl/ssl.h>
 #include <cerrno>
+#include <cstring>
 #include <cstdlib>
 
 //  Debug logging for WSS transport
@@ -67,7 +68,8 @@ wss_transport_t::wss_transport_t (boost::asio::ssl::context &ssl_ctx,
     _host (host),
     _ssl_handshake_complete (false),
     _ws_handshake_complete (false),
-    _handshake_type (client)
+    _handshake_type (client),
+    _read_pending_offset (0)
 {
 }
 
@@ -122,6 +124,9 @@ bool wss_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
 
     _ssl_handshake_complete = false;
     _ws_handshake_complete = false;
+    _read_message_buffer.consume (_read_message_buffer.size ());
+    _read_pending_message.clear ();
+    _read_pending_offset = 0;
 
     ASIO_DBG_WSS ("opened with path=%s, host=%s", _path.c_str (), _host.c_str ());
     return true;
@@ -149,6 +154,9 @@ void wss_transport_t::close ()
 
     _ssl_handshake_complete = false;
     _ws_handshake_complete = false;
+    _read_message_buffer.consume (_read_message_buffer.size ());
+    _read_pending_message.clear ();
+    _read_pending_offset = 0;
 }
 
 void wss_transport_t::async_read_some (unsigned char *buffer,
@@ -173,15 +181,67 @@ void wss_transport_t::async_read_some (unsigned char *buffer,
         return;
     }
 
-    stream->async_read_some (
-      boost::asio::buffer (buffer, buffer_size),
-      [stream, handler] (const boost::system::error_code &ec,
-                         std::size_t bytes_transferred) {
+    const std::size_t pending_size = _read_pending_message.size ();
+    if (_read_pending_offset < pending_size) {
+        const std::size_t remaining = pending_size - _read_pending_offset;
+        const std::size_t deliver =
+          std::min<std::size_t> (buffer_size, remaining);
+        std::memcpy (buffer, &_read_pending_message[_read_pending_offset], deliver);
+        _read_pending_offset += deliver;
+        if (_read_pending_offset >= _read_pending_message.size ()) {
+            _read_pending_message.clear ();
+            _read_pending_offset = 0;
+        }
+        if (handler) {
+            boost::asio::post (
+              stream->get_executor (),
+              [handler, deliver] () {
+                  handler (boost::system::error_code (), deliver);
+              });
+        }
+        return;
+    }
+
+    stream->async_read (
+      _read_message_buffer,
+      [this, stream, buffer, buffer_size, handler] (
+        const boost::system::error_code &ec, std::size_t) {
           if (ec) {
               ASIO_DBG_WSS ("read failed: %s", ec.message ().c_str ());
+              if (handler) {
+                  handler (ec, 0);
+              }
+              return;
           }
+
+          const std::size_t available =
+            boost::asio::buffer_size (_read_message_buffer.data ());
+          if (available == 0) {
+              if (handler) {
+                  handler (boost::system::error_code (), 0);
+              }
+              return;
+          }
+
+          const std::size_t deliver =
+            std::min<std::size_t> (buffer_size, available);
+          if (available > deliver) {
+              _read_pending_message.resize (available);
+              boost::asio::buffer_copy (
+                boost::asio::buffer (&_read_pending_message[0], available),
+                _read_message_buffer.data ());
+              std::memcpy (buffer, &_read_pending_message[0], deliver);
+              _read_pending_offset = deliver;
+          } else {
+              boost::asio::buffer_copy (boost::asio::buffer (buffer, deliver),
+                                        _read_message_buffer.data ());
+              _read_pending_message.clear ();
+              _read_pending_offset = 0;
+          }
+          _read_message_buffer.consume (available);
+
           if (handler) {
-              handler (ec, bytes_transferred);
+              handler (boost::system::error_code (), deliver);
           }
       });
 }

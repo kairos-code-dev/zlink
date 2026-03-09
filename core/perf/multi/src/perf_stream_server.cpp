@@ -233,14 +233,12 @@ inline send_status_t try_send_stream_message (pending_stream_message_t *message)
     if (!g_server_socket || !message || !message->has_payload || message->rid.size == 0)
         return send_fatal;
 
-    const unsigned char *payload =
-      static_cast<const unsigned char *> (zlink_msg_data (&message->payload));
     const size_t payload_size = zlink_msg_size (&message->payload);
-    const int rc =
-      zlink_stream_send (
-        g_server_socket, &message->rid, payload, payload_size, ZLINK_DONTWAIT);
+    const int rc = zlink_stream_send_msg (
+      g_server_socket, &message->rid, &message->payload, ZLINK_DONTWAIT);
     if (rc == static_cast<int> (payload_size)) {
-        message->reset ();
+        message->has_payload = false;
+        message->rid.size = 0;
         return send_done;
     }
     if (rc >= 0)

@@ -140,6 +140,13 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
     //  Falls back to async write if would_block or partial write occurs.
     void speculative_write ();
 
+    bool use_stream_dynamic_read_growth () const;
+    bool use_stream_dynamic_write_growth () const;
+    void prime_stream_decoder_read_target ();
+    void maybe_grow_stream_decoder_read_target (size_t bytes_transferred_);
+    void apply_pending_stream_encoder_resize ();
+    void maybe_schedule_stream_encoder_growth (size_t filled_out_batch_);
+
     //  Prepare output buffer from encoder.
     //  Returns true if data is available in _outpos/_outsize.
     bool prepare_output_buffer ();
@@ -219,6 +226,15 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
     static const size_t read_buffer_size = 8192;
     std::vector<unsigned char> _read_buffer;
     unsigned char *_read_buffer_ptr;
+    size_t _last_read_request_size;
+    bool _last_read_had_partial_prefix;
+    size_t _stream_decoder_read_target_size;
+    size_t _stream_decoder_read_target_max;
+    size_t _stream_decoder_read_target_full_hits;
+    size_t _stream_encoder_write_target_size;
+    size_t _stream_encoder_write_target_max;
+    size_t _stream_encoder_write_target_full_hits;
+    size_t _stream_encoder_pending_resize_size;
 
     //  Outgoing message
     msg_t _tx_msg;

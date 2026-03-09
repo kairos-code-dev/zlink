@@ -554,6 +554,307 @@ struct stream_monitor_callback_probe_t
 
 static stream_monitor_callback_probe_t *g_stream_monitor_callback_probe = NULL;
 
+struct stream_ordering_probe_t
+{
+    stream_ordering_probe_t () :
+        ready_events (0),
+        disconnected_events (0),
+        payload_before_ready (0),
+        disconnect_during_payload (0),
+        strict_drop_count (0),
+        strict_accept_count (0),
+        payloads_seen (0),
+        ready_routing_ids (),
+        disconnected_routing_ids (),
+        active_payload_routing_ids (),
+        seen_payload_routing_ids (),
+        mu ()
+    {
+    }
+
+    std::atomic<int> ready_events;
+    std::atomic<int> disconnected_events;
+    std::atomic<int> payload_before_ready;
+    std::atomic<int> disconnect_during_payload;
+    std::atomic<int> strict_drop_count;
+    std::atomic<int> strict_accept_count;
+    std::atomic<int> payloads_seen;
+    std::set<std::string> ready_routing_ids;
+    std::set<std::string> disconnected_routing_ids;
+    std::set<std::string> active_payload_routing_ids;
+    std::set<std::string> seen_payload_routing_ids;
+    std::mutex mu;
+};
+
+struct stream_ordering_callback_probe_t
+{
+    stream_ordering_callback_probe_t () :
+        socket (NULL),
+        monitor (NULL),
+        ordering (NULL),
+        strict_gate (false),
+        callback_payloads (0),
+        send_fail (0),
+        monitor_mu ()
+    {
+    }
+
+    void *socket;
+    void *monitor;
+    stream_ordering_probe_t *ordering;
+    bool strict_gate;
+    std::atomic<int> callback_payloads;
+    std::atomic<int> send_fail;
+    std::mutex monitor_mu;
+};
+
+static stream_ordering_callback_probe_t *g_stream_raw_ordering_callback_probe =
+  NULL;
+static stream_ordering_callback_probe_t
+  *g_stream_len32be_ordering_callback_probe = NULL;
+
+static void collect_stream_ordering_monitor_events (
+  void *monitor_,
+  stream_ordering_probe_t *probe_,
+  int poll_timeout_ms_)
+{
+    if (!monitor_ || !probe_)
+        return;
+
+    zlink_pollitem_t items[] = {{monitor_, 0, ZLINK_POLLIN, 0}};
+    const int rc = zlink_poll (items, 1, poll_timeout_ms_);
+    if (rc <= 0 || (items[0].revents & ZLINK_POLLIN) == 0)
+        return;
+
+    for (;;) {
+        zlink_monitor_event_t event;
+        if (zlink_monitor_recv (monitor_, &event, ZLINK_DONTWAIT) != 0)
+            break;
+
+        if (event.routing_id.size != stream_routing_id_size)
+            continue;
+
+        const std::string key =
+          make_routing_id_key (event.routing_id.data, event.routing_id.size);
+        std::lock_guard<std::mutex> lk (probe_->mu);
+        if (event.event == ZLINK_EVENT_CONNECTION_READY) {
+            probe_->ready_routing_ids.insert (key);
+            probe_->ready_events.fetch_add (1, std::memory_order_release);
+        } else if (event.event == ZLINK_EVENT_DISCONNECTED) {
+            if (probe_->active_payload_routing_ids.find (key)
+                != probe_->active_payload_routing_ids.end ()) {
+                probe_->disconnect_during_payload.fetch_add (
+                  1, std::memory_order_release);
+            }
+            probe_->disconnected_routing_ids.insert (key);
+            probe_->disconnected_events.fetch_add (
+              1, std::memory_order_release);
+        }
+    }
+}
+
+static bool mark_stream_payload_begin (stream_ordering_probe_t *probe_,
+                                       const zlink_routing_id_t *rid_,
+                                       bool strict_gate_)
+{
+    if (!probe_ || !rid_ || rid_->size != stream_routing_id_size)
+        return false;
+
+    const std::string key = make_routing_id_key (rid_->data, rid_->size);
+    std::lock_guard<std::mutex> lk (probe_->mu);
+    probe_->payloads_seen.fetch_add (1, std::memory_order_release);
+    probe_->active_payload_routing_ids.insert (key);
+    const bool ready =
+      probe_->ready_routing_ids.find (key) != probe_->ready_routing_ids.end ();
+    const bool first_payload =
+      probe_->seen_payload_routing_ids.insert (key).second;
+    if (first_payload && !ready) {
+        probe_->payload_before_ready.fetch_add (1, std::memory_order_release);
+    }
+    if (strict_gate_) {
+        if (ready)
+            probe_->strict_accept_count.fetch_add (1, std::memory_order_release);
+        else
+            probe_->strict_drop_count.fetch_add (1, std::memory_order_release);
+    }
+    return ready;
+}
+
+static void mark_stream_payload_end (stream_ordering_probe_t *probe_,
+                                     const zlink_routing_id_t *rid_)
+{
+    if (!probe_ || !rid_ || rid_->size != stream_routing_id_size)
+        return;
+
+    const std::string key = make_routing_id_key (rid_->data, rid_->size);
+    std::lock_guard<std::mutex> lk (probe_->mu);
+    probe_->active_payload_routing_ids.erase (key);
+}
+
+static bool wait_stream_ordering_counter (std::atomic<int> *counter_,
+                                          int expected_,
+                                          int timeout_ms_)
+{
+    return wait_counter_at_least (counter_, expected_, timeout_ms_);
+}
+
+static bool wait_stream_ordering_sets (stream_ordering_probe_t *probe_,
+                                       size_t expected_ready_,
+                                       size_t expected_disconnected_,
+                                       int timeout_ms_)
+{
+    const int slice_ms = 20;
+    const int loops = timeout_ms_ > 0 ? timeout_ms_ / slice_ms + 1 : 1;
+    for (int i = 0; i < loops; ++i) {
+        {
+            std::lock_guard<std::mutex> lk (probe_->mu);
+            if (probe_->ready_routing_ids.size () >= expected_ready_
+                && probe_->disconnected_routing_ids.size ()
+                     >= expected_disconnected_) {
+                return true;
+            }
+        }
+        test_sleep_ms (slice_ms);
+    }
+
+    std::lock_guard<std::mutex> lk (probe_->mu);
+    return probe_->ready_routing_ids.size () >= expected_ready_
+           && probe_->disconnected_routing_ids.size ()
+                >= expected_disconnected_;
+}
+
+static bool wait_stream_ordering_sets_with_monitor (void *monitor_,
+                                                    stream_ordering_probe_t *probe_,
+                                                    size_t expected_ready_,
+                                                    size_t expected_disconnected_,
+                                                    int timeout_ms_)
+{
+    const int slice_ms = 20;
+    const int loops = timeout_ms_ > 0 ? timeout_ms_ / slice_ms + 1 : 1;
+    for (int i = 0; i < loops; ++i) {
+        collect_stream_ordering_monitor_events (monitor_, probe_, slice_ms);
+        {
+            std::lock_guard<std::mutex> lk (probe_->mu);
+            if (probe_->ready_routing_ids.size () >= expected_ready_
+                && probe_->disconnected_routing_ids.size ()
+                     >= expected_disconnected_) {
+                return true;
+            }
+        }
+    }
+
+    collect_stream_ordering_monitor_events (monitor_, probe_, 0);
+    std::lock_guard<std::mutex> lk (probe_->mu);
+    return probe_->ready_routing_ids.size () >= expected_ready_
+           && probe_->disconnected_routing_ids.size ()
+                >= expected_disconnected_;
+}
+
+static void configure_stream_regression_socket (void *socket_, int backlog_)
+{
+    TEST_ASSERT_NOT_NULL (socket_);
+
+    const int zero = 0;
+    const int hwm = 10;
+    const int timeout_ms = 200;
+    const int nodelay = 1;
+    const int backlog = backlog_ > 0 ? backlog_ : 256;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (socket_, ZLINK_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (socket_, ZLINK_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (socket_, ZLINK_RCVHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (socket_, ZLINK_SNDTIMEO, &timeout_ms,
+                        sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (socket_, ZLINK_RCVTIMEO, &timeout_ms,
+                        sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (socket_, ZLINK_BACKLOG, &backlog, sizeof (backlog)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (socket_, ZLINK_TCP_NODELAY, &nodelay,
+                        sizeof (nodelay)));
+}
+
+static int stream_raw_ordering_echo_callback (const zlink_routing_id_t *rid_,
+                                              zlink_msg_t *msg_)
+{
+    stream_ordering_callback_probe_t *probe =
+      g_stream_raw_ordering_callback_probe;
+    if (!probe || !probe->ordering || !rid_ || !msg_)
+        return 0;
+
+    const unsigned char *payload =
+      static_cast<const unsigned char *> (zlink_msg_data (msg_));
+    const size_t payload_size = zlink_msg_size (msg_);
+    if (is_stream_control_chunk (payload, payload_size)) {
+        release_stream_callback_msg (msg_);
+        return 0;
+    }
+
+    probe->callback_payloads.fetch_add (1, std::memory_order_release);
+    if (probe->monitor) {
+        std::lock_guard<std::mutex> lk (probe->monitor_mu);
+        collect_stream_ordering_monitor_events (probe->monitor, probe->ordering, 0);
+    }
+    const bool ready =
+      mark_stream_payload_begin (probe->ordering, rid_, probe->strict_gate);
+
+    if (!probe->strict_gate || ready) {
+        const int send_rc =
+          zlink_stream_send_msg (probe->socket, rid_, msg_, 0);
+        if (send_rc != static_cast<int> (payload_size))
+            probe->send_fail.fetch_add (1, std::memory_order_release);
+    }
+
+    mark_stream_payload_end (probe->ordering, rid_);
+    release_stream_callback_msg (msg_);
+    return 0;
+}
+
+static int stream_len32be_ordering_echo_callback (const zlink_routing_id_t *rid_,
+                                                  zlink_msg_t *msgs_,
+                                                  size_t msg_count_)
+{
+    stream_ordering_callback_probe_t *probe =
+      g_stream_len32be_ordering_callback_probe;
+    if (!probe || !probe->ordering || !rid_ || !msgs_ || msg_count_ == 0)
+        return 0;
+
+    for (size_t i = 0; i < msg_count_; ++i) {
+        zlink_msg_t *msg = &msgs_[i];
+        const unsigned char *payload =
+          static_cast<const unsigned char *> (zlink_msg_data (msg));
+        const size_t payload_size = zlink_msg_size (msg);
+        if (is_stream_control_chunk (payload, payload_size)) {
+            release_stream_callback_msg (msg);
+            continue;
+        }
+
+        probe->callback_payloads.fetch_add (1, std::memory_order_release);
+        if (probe->monitor) {
+            std::lock_guard<std::mutex> lk (probe->monitor_mu);
+            collect_stream_ordering_monitor_events (probe->monitor,
+                                                    probe->ordering, 0);
+        }
+        const bool ready =
+          mark_stream_payload_begin (probe->ordering, rid_, probe->strict_gate);
+
+        if (!probe->strict_gate || ready) {
+            const int send_rc = zlink_stream_send_msg (probe->socket, rid_, msg, 0);
+            if (send_rc != static_cast<int> (payload_size))
+                probe->send_fail.fetch_add (1, std::memory_order_release);
+        }
+
+        mark_stream_payload_end (probe->ordering, rid_);
+        release_stream_callback_msg (msg);
+    }
+
+    return 0;
+}
+
 static int stream_monitor_len32be_echo_callback (const zlink_routing_id_t *rid_,
                                                  zlink_msg_t *msgs_,
                                                  size_t msg_count_)
@@ -1490,66 +1791,246 @@ void test_stream_len32be_multi_frame_single_read ()
     test_context_socket_close_zero_linger (server);
 }
 
-void test_stream_len32be_callback_lifecycle_contract ()
+void test_stream_recv_ready_precedes_first_payload_contract ()
 {
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 8));
+
     void *server = test_context_socket (ZLINK_STREAM);
     TEST_ASSERT_NOT_NULL (server);
-
-    const int zero = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+    configure_stream_regression_socket (server, 256);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    void *monitor = zlink_socket_monitor_open (
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+    TEST_ASSERT_NOT_NULL (monitor);
+    const int monitor_linger = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &monitor_linger,
+                        sizeof (monitor_linger)));
+
+    stream_ordering_probe_t ordering_probe;
 
     const int client_fd = connect_raw_tcp (endpoint);
     TEST_ASSERT_TRUE (client_fd >= 0);
     TEST_ASSERT_EQUAL_INT (0, set_raw_fd_timeout (client_fd, 3000));
 
-    const unsigned char payload1[] = "len32be-life-a";
-    const unsigned char payload2[] = "len32be-life-b";
-
-    stream_len32be_probe_t probe;
-    probe.socket = server;
-    push_expected_len32be_packet (&probe, payload1, sizeof (payload1) - 1);
-    push_expected_len32be_packet (&probe, payload2, sizeof (payload2) - 1);
-    probe.expected_batch_sizes.push_back (1);
-    probe.expected_batch_sizes.push_back (1);
-    g_stream_len32be_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach (
-      server, stream_len32be_probe_callback, ZLINK_STREAM_DISPATCH_LEN32BE));
-
+    const unsigned char payload[] = "stream-recv-ready-contract";
     TEST_ASSERT_EQUAL_INT (
-      0, send_len32be_frame (client_fd, payload1, sizeof (payload1) - 1));
+      0, send_stream_packet (client_fd, payload, sizeof (payload) - 1));
+
+    bool server_readable = false;
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        zlink_pollitem_t items[] = {
+          {monitor, 0, ZLINK_POLLIN, 0},
+          {server, 0, ZLINK_POLLIN, 0},
+        };
+        const int prc = zlink_poll (items, 2, 20);
+        if (prc < 0 && errno == EINTR)
+            continue;
+        if ((items[0].revents & ZLINK_POLLIN) != 0)
+            collect_stream_ordering_monitor_events (monitor, &ordering_probe, 0);
+        if ((items[1].revents & ZLINK_POLLIN) != 0) {
+            server_readable = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE (
+      server_readable, "STREAM recv test did not observe readable payload");
+
+    unsigned char recv_id[stream_routing_id_size];
+    unsigned char recv_buf[sizeof (payload)];
+    const int rc =
+      recv_stream_msg (server, recv_id, recv_buf, sizeof (recv_buf));
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (sizeof (payload) - 1), rc);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (
+      payload, recv_buf, static_cast<unsigned int> (sizeof (payload) - 1));
+    collect_stream_ordering_monitor_events (monitor, &ordering_probe, 0);
+
+    zlink_routing_id_t rid;
+    rid.size = static_cast<uint8_t> (stream_routing_id_size);
+    memcpy (rid.data, recv_id, stream_routing_id_size);
+    const bool ready = mark_stream_payload_begin (&ordering_probe, &rid, true);
+    TEST_ASSERT_TRUE_MESSAGE (
+      ready, "STREAM recv delivered first payload before CONNECTION_READY");
+
+    send_stream_msg (server, recv_id, payload, sizeof (payload) - 1);
+    mark_stream_payload_end (&ordering_probe, &rid);
+
+    unsigned char echoed[sizeof (payload)];
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (sizeof (payload) - 1),
+      recv_stream_packet (client_fd, echoed, sizeof (echoed)));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (
+      payload, echoed, static_cast<unsigned int> (sizeof (payload) - 1));
+
+    close_raw_fd (client_fd);
+
+    TEST_ASSERT_TRUE (
+      wait_stream_ordering_sets_with_monitor (monitor, &ordering_probe, 1, 1,
+                                              5000));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.payload_before_ready.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.disconnect_during_payload.load (
+           std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      1, ordering_probe.strict_accept_count.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.strict_drop_count.load (std::memory_order_acquire));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    test_context_socket_close_zero_linger (server);
+}
+
+void test_stream_raw_callback_ready_precedes_first_payload_contract ()
+{
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 8));
+
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_regression_socket (server, 256);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    void *monitor = zlink_socket_monitor_open (
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+    TEST_ASSERT_NOT_NULL (monitor);
+    const int monitor_linger = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &monitor_linger,
+                        sizeof (monitor_linger)));
+
+    stream_ordering_probe_t ordering_probe;
+
+    stream_ordering_callback_probe_t callback_probe;
+    callback_probe.socket = server;
+    callback_probe.monitor = monitor;
+    callback_probe.ordering = &ordering_probe;
+    callback_probe.strict_gate = true;
+    g_stream_raw_ordering_callback_probe = &callback_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_raw (server, stream_raw_ordering_echo_callback));
+
+    const int client_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_TRUE (client_fd >= 0);
+    TEST_ASSERT_EQUAL_INT (0, set_raw_fd_timeout (client_fd, 3000));
+
+    const unsigned char payload[] = "stream-raw-ready-contract";
+    TEST_ASSERT_EQUAL_INT (
+      0, send_stream_packet (client_fd, payload, sizeof (payload) - 1));
+
+    unsigned char echoed[sizeof (payload)];
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (sizeof (payload) - 1),
+      recv_stream_packet (client_fd, echoed, sizeof (echoed)));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (
+      payload, echoed, static_cast<unsigned int> (sizeof (payload) - 1));
+
+    close_raw_fd (client_fd);
+
+    TEST_ASSERT_TRUE (wait_stream_ordering_counter (
+      &callback_probe.callback_payloads, 1, 5000));
+    TEST_ASSERT_TRUE (
+      wait_stream_ordering_sets_with_monitor (monitor, &ordering_probe, 1, 1,
+                                              5000));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.payload_before_ready.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.disconnect_during_payload.load (
+           std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      1, ordering_probe.strict_accept_count.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.strict_drop_count.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, callback_probe.send_fail.load (std::memory_order_acquire));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
+    g_stream_raw_ordering_callback_probe = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    test_context_socket_close_zero_linger (server);
+}
+
+void test_stream_len32be_callback_lifecycle_contract ()
+{
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 8));
+
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_regression_socket (server, 256);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    void *monitor = zlink_socket_monitor_open (
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+    TEST_ASSERT_NOT_NULL (monitor);
+    const int monitor_linger = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &monitor_linger,
+                        sizeof (monitor_linger)));
+
+    stream_ordering_probe_t ordering_probe;
+
+    stream_ordering_callback_probe_t callback_probe;
+    callback_probe.socket = server;
+    callback_probe.monitor = monitor;
+    callback_probe.ordering = &ordering_probe;
+    callback_probe.strict_gate = true;
+    g_stream_len32be_ordering_callback_probe = &callback_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_len32be (server,
+                                   stream_len32be_ordering_echo_callback));
+
+    const int client_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_TRUE (client_fd >= 0);
+    TEST_ASSERT_EQUAL_INT (0, set_raw_fd_timeout (client_fd, 3000));
+
+    const unsigned char payload[] = "AuthenticateRequest";
+    std::vector<unsigned char> frame (4 + sizeof (payload) - 1);
+    store_u32_be (&frame[0], sizeof (payload) - 1);
+    memcpy (&frame[4], payload, sizeof (payload) - 1);
+
+    TEST_ASSERT_EQUAL_INT (0, send_stream_packet (client_fd, &frame[0], 3));
+    TEST_ASSERT_EQUAL_INT (
+      0, send_stream_packet (client_fd, &frame[3], frame.size () - 3));
+
     std::vector<unsigned char> echoed;
     TEST_ASSERT_EQUAL_INT (0, recv_len32be_frame (client_fd, &echoed));
     TEST_ASSERT_EQUAL_UINT (
-      static_cast<unsigned int> (sizeof (payload1) - 1),
+      static_cast<unsigned int> (sizeof (payload) - 1),
       static_cast<unsigned int> (echoed.size ()));
     TEST_ASSERT_EQUAL_UINT8_ARRAY (
-      payload1, &echoed[0], static_cast<unsigned int> (sizeof (payload1) - 1));
-    TEST_ASSERT_TRUE (wait_counter_at_least (&probe.callbacks, 1, 3000));
+      payload, &echoed[0], static_cast<unsigned int> (sizeof (payload) - 1));
 
+    close_raw_fd (client_fd);
+
+    TEST_ASSERT_TRUE (wait_stream_ordering_counter (
+      &callback_probe.callback_payloads, 1, 5000));
+    TEST_ASSERT_TRUE (
+      wait_stream_ordering_sets_with_monitor (monitor, &ordering_probe, 1, 1,
+                                              5000));
     TEST_ASSERT_EQUAL_INT (
-      0, send_len32be_frame (client_fd, payload2, sizeof (payload2) - 1));
-    TEST_ASSERT_EQUAL_INT (0, recv_len32be_frame (client_fd, &echoed));
-    TEST_ASSERT_EQUAL_UINT (
-      static_cast<unsigned int> (sizeof (payload2) - 1),
-      static_cast<unsigned int> (echoed.size ()));
-    TEST_ASSERT_EQUAL_UINT8_ARRAY (
-      payload2, &echoed[0], static_cast<unsigned int> (sizeof (payload2) - 1));
-
-    TEST_ASSERT_TRUE (wait_counter_at_least (&probe.packets, 2, 3000));
-    TEST_ASSERT_TRUE (wait_counter_at_least (&probe.callbacks, 2, 3000));
-    TEST_ASSERT_EQUAL_INT (1,
-                           probe.lifecycle_observed.load (std::memory_order_acquire));
-    TEST_ASSERT_EQUAL_INT (0, probe.bad_payload.load (std::memory_order_acquire));
-    TEST_ASSERT_EQUAL_INT (0, probe.bad_batch.load (std::memory_order_acquire));
-    TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
+      0, ordering_probe.payload_before_ready.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.disconnect_during_payload.load (
+           std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      1, ordering_probe.strict_accept_count.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.strict_drop_count.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, callback_probe.send_fail.load (std::memory_order_acquire));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
-    g_stream_len32be_probe = NULL;
-    close_raw_fd (client_fd);
+    g_stream_len32be_ordering_callback_probe = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     test_context_socket_close_zero_linger (server);
 }
 
@@ -1661,6 +2142,100 @@ static void run_stream_raw_client_load (const char *endpoint_,
     }
 }
 
+struct stream_recv_strict_worker_t
+{
+    stream_recv_strict_worker_t () :
+        socket (NULL),
+        monitor (NULL),
+        expected_messages (0),
+        processed_messages (0),
+        send_fail (0),
+        ordering (NULL)
+    {
+    }
+
+    void *socket;
+    void *monitor;
+    int expected_messages;
+    std::atomic<int> processed_messages;
+    std::atomic<int> send_fail;
+    stream_ordering_probe_t *ordering;
+};
+
+static void run_stream_recv_strict_worker (stream_recv_strict_worker_t *worker_)
+{
+    if (!worker_ || !worker_->socket || !worker_->ordering)
+        return;
+
+    unsigned char routing_id[stream_routing_id_size];
+    unsigned char buf[512];
+    const int deadline_ms = 10000;
+    const int slice_ms = 10;
+    const int loops = deadline_ms / slice_ms;
+
+    for (int i = 0; i < loops; ++i) {
+        if (worker_->processed_messages.load (std::memory_order_acquire)
+            >= worker_->expected_messages) {
+            return;
+        }
+
+        zlink_pollitem_t items[] = {
+          {worker_->monitor, 0, ZLINK_POLLIN, 0},
+          {worker_->socket, 0, ZLINK_POLLIN, 0},
+        };
+        const int prc = zlink_poll (items, 2, slice_ms);
+        if (prc < 0) {
+            if (errno == EINTR)
+                continue;
+            return;
+        }
+        if ((items[0].revents & ZLINK_POLLIN) != 0)
+            collect_stream_ordering_monitor_events (worker_->monitor,
+                                                    worker_->ordering, 0);
+        if (prc == 0 || (items[1].revents & ZLINK_POLLIN) == 0)
+            continue;
+
+        const int rc =
+          recv_stream_msg (worker_->socket, routing_id, buf, sizeof (buf));
+        if (rc <= 0)
+            continue;
+        collect_stream_ordering_monitor_events (worker_->monitor,
+                                                worker_->ordering, 0);
+
+        zlink_routing_id_t rid;
+        rid.size = static_cast<uint8_t> (stream_routing_id_size);
+        memcpy (rid.data, routing_id, stream_routing_id_size);
+        const bool ready =
+          mark_stream_payload_begin (worker_->ordering, &rid, true);
+        if (ready) {
+            const int send_rc =
+              zlink_stream_send (worker_->socket, &rid, buf, static_cast<size_t> (rc), 0);
+            if (send_rc != rc)
+                worker_->send_fail.fetch_add (1, std::memory_order_release);
+        }
+        mark_stream_payload_end (worker_->ordering, &rid);
+        worker_->processed_messages.fetch_add (1, std::memory_order_release);
+    }
+}
+
+static void run_stream_len32be_client_once (const char *endpoint_,
+                                            uint32_t client_id_,
+                                            size_t payload_size_,
+                                            std::atomic<int> *client_failures_)
+{
+    run_stream_len32be_client_load (endpoint_, client_id_, 1, 1, payload_size_,
+                                    client_failures_);
+}
+
+static void run_stream_raw_client_once (const char *endpoint_,
+                                        uint32_t client_id_,
+                                        size_t payload_size_,
+                                        std::atomic<int> *client_failures_)
+{
+    run_stream_raw_client_load (endpoint_, client_id_, 1, 1, payload_size_,
+                                client_failures_);
+}
+
 void test_stream_monitor_len32be_multiclient_connect_disconnect ()
 {
     const int client_count = 6;
@@ -1714,7 +2289,8 @@ void test_stream_monitor_len32be_multiclient_connect_disconnect ()
         TEST_ASSERT_EQUAL_UINT8_ARRAY (&payload[0], &echoed[0],
                                        static_cast<unsigned int> (payload.size ()));
 
-        // After first payload dispatch, CONNECTION_READY should be observable.
+        // CONNECTION_READY must already be observable before first payload
+        // dispatch is allowed to complete for that peer.
         TEST_ASSERT_TRUE (wait_stream_monitor_progress (
           monitor, &monitor_probe, expected, expected, i, 5000));
 
@@ -1783,6 +2359,219 @@ void test_stream_monitor_len32be_multiclient_connect_disconnect ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_monitor_callback_probe = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    test_context_socket_close_zero_linger (server);
+}
+
+void test_stream_raw_multiclient_strict_ready_gating_regression ()
+{
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 8));
+
+    const int client_count = 64;
+    const size_t payload_size = 32;
+
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_regression_socket (server, 2048);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    void *monitor = zlink_socket_monitor_open (
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+    TEST_ASSERT_NOT_NULL (monitor);
+    const int monitor_linger = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &monitor_linger,
+                        sizeof (monitor_linger)));
+
+    stream_ordering_probe_t ordering_probe;
+
+    stream_ordering_callback_probe_t callback_probe;
+    callback_probe.socket = server;
+    callback_probe.monitor = monitor;
+    callback_probe.ordering = &ordering_probe;
+    callback_probe.strict_gate = true;
+    g_stream_raw_ordering_callback_probe = &callback_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_raw (server, stream_raw_ordering_echo_callback));
+
+    std::atomic<int> client_failures (0);
+    std::vector<std::thread> clients;
+    clients.reserve (client_count);
+    for (int i = 0; i < client_count; ++i) {
+        clients.push_back (
+          std::thread (run_stream_raw_client_once, endpoint,
+                       static_cast<uint32_t> (i), payload_size,
+                       &client_failures));
+    }
+    for (size_t i = 0; i < clients.size (); ++i)
+        clients[i].join ();
+
+    TEST_ASSERT_TRUE (wait_stream_ordering_counter (
+      &callback_probe.callback_payloads, client_count, 10000));
+    TEST_ASSERT_TRUE (
+      wait_stream_ordering_sets_with_monitor (monitor, &ordering_probe,
+                                              client_count, client_count,
+                                              10000));
+    TEST_ASSERT_EQUAL_INT (0, client_failures.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.payload_before_ready.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.disconnect_during_payload.load (
+           std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.strict_drop_count.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      client_count,
+      ordering_probe.strict_accept_count.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, callback_probe.send_fail.load (std::memory_order_acquire));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
+    g_stream_raw_ordering_callback_probe = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    test_context_socket_close_zero_linger (server);
+}
+
+void test_stream_len32be_multiclient_strict_ready_gating_regression ()
+{
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 8));
+
+    const int client_count = 64;
+    const size_t payload_size = 32;
+
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_regression_socket (server, 2048);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    void *monitor = zlink_socket_monitor_open (
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+    TEST_ASSERT_NOT_NULL (monitor);
+    const int monitor_linger = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &monitor_linger,
+                        sizeof (monitor_linger)));
+
+    stream_ordering_probe_t ordering_probe;
+
+    stream_ordering_callback_probe_t callback_probe;
+    callback_probe.socket = server;
+    callback_probe.monitor = monitor;
+    callback_probe.ordering = &ordering_probe;
+    callback_probe.strict_gate = true;
+    g_stream_len32be_ordering_callback_probe = &callback_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_len32be (server,
+                                   stream_len32be_ordering_echo_callback));
+
+    std::atomic<int> client_failures (0);
+    std::vector<std::thread> clients;
+    clients.reserve (client_count);
+    for (int i = 0; i < client_count; ++i) {
+        clients.push_back (
+          std::thread (run_stream_len32be_client_once, endpoint,
+                       static_cast<uint32_t> (i), payload_size,
+                       &client_failures));
+    }
+    for (size_t i = 0; i < clients.size (); ++i)
+        clients[i].join ();
+
+    TEST_ASSERT_TRUE (wait_stream_ordering_counter (
+      &callback_probe.callback_payloads, client_count, 10000));
+    TEST_ASSERT_TRUE (
+      wait_stream_ordering_sets_with_monitor (monitor, &ordering_probe,
+                                              client_count, client_count,
+                                              10000));
+    TEST_ASSERT_EQUAL_INT (0, client_failures.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.payload_before_ready.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.disconnect_during_payload.load (
+           std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.strict_drop_count.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      client_count,
+      ordering_probe.strict_accept_count.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, callback_probe.send_fail.load (std::memory_order_acquire));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
+    g_stream_len32be_ordering_callback_probe = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    test_context_socket_close_zero_linger (server);
+}
+
+void test_stream_recv_multiclient_strict_ready_gating_regression ()
+{
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 8));
+
+    const int client_count = 64;
+    const size_t payload_size = 32;
+
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_regression_socket (server, 2048);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    void *monitor = zlink_socket_monitor_open (
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+    TEST_ASSERT_NOT_NULL (monitor);
+    const int monitor_linger = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &monitor_linger,
+                        sizeof (monitor_linger)));
+
+    stream_ordering_probe_t ordering_probe;
+
+    stream_recv_strict_worker_t worker;
+    worker.socket = server;
+    worker.monitor = monitor;
+    worker.expected_messages = client_count;
+    worker.ordering = &ordering_probe;
+    std::thread worker_thread (run_stream_recv_strict_worker, &worker);
+
+    std::atomic<int> client_failures (0);
+    std::vector<std::thread> clients;
+    clients.reserve (client_count);
+    for (int i = 0; i < client_count; ++i) {
+        clients.push_back (
+          std::thread (run_stream_raw_client_once, endpoint,
+                       static_cast<uint32_t> (i), payload_size,
+                       &client_failures));
+    }
+    for (size_t i = 0; i < clients.size (); ++i)
+        clients[i].join ();
+    worker_thread.join ();
+
+    TEST_ASSERT_TRUE (wait_stream_ordering_counter (
+      &worker.processed_messages, client_count, 10000));
+    TEST_ASSERT_TRUE (
+      wait_stream_ordering_sets_with_monitor (monitor, &ordering_probe,
+                                              client_count, client_count,
+                                              10000));
+    TEST_ASSERT_EQUAL_INT (0, client_failures.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.payload_before_ready.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.disconnect_during_payload.load (
+           std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.strict_drop_count.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      client_count,
+      ordering_probe.strict_accept_count.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (0, worker.send_fail.load (std::memory_order_acquire));
+
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     test_context_socket_close_zero_linger (server);
 }
@@ -2043,9 +2832,14 @@ int main (void)
     RUN_TEST (test_stream_len32be_header_split);
     RUN_TEST (test_stream_len32be_body_split);
     RUN_TEST (test_stream_len32be_multi_frame_single_read);
+    RUN_TEST (test_stream_recv_ready_precedes_first_payload_contract);
+    RUN_TEST (test_stream_raw_callback_ready_precedes_first_payload_contract);
     RUN_TEST (test_stream_len32be_callback_lifecycle_contract);
 #if !defined(ZLINK_HAVE_WINDOWS)
     RUN_TEST (test_stream_monitor_len32be_multiclient_connect_disconnect);
+    RUN_TEST (test_stream_raw_multiclient_strict_ready_gating_regression);
+    RUN_TEST (test_stream_len32be_multiclient_strict_ready_gating_regression);
+    RUN_TEST (test_stream_recv_multiclient_strict_ready_gating_regression);
     RUN_TEST (test_stream_raw_multiclient_load_integrity);
     RUN_TEST (test_stream_len32be_multiclient_load_integrity);
 #endif

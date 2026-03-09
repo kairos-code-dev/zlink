@@ -326,6 +326,33 @@ trade-off:
     - `ok`
     - `error(errno)`
 
+command frame 포맷은 고정한다.
+
+- request multipart:
+  - frame 0: command verb ascii
+  - frame 1..N: command argument ascii or binary scalar
+- response multipart:
+  - frame 0: `ok` 또는 `error`
+  - frame 1: `errno` decimal ascii (`error`일 때만)
+  - frame 2..N: optional payload
+
+초기 verb 집합:
+
+- `bind_pub`
+  - frame 1: endpoint string
+- `connect_peer_pub`
+  - frame 1: endpoint string
+- `disconnect_peer_pub`
+  - frame 1: endpoint string
+- `terminate`
+  - 추가 frame 없음
+
+규칙:
+
+- control command는 항상 request/reply 1회로 끝난다
+- owner thread 외부에서 data plane socket을 직접 조작하는 우회 경로는 금지한다
+- 추후 명령이 늘어나더라도 verb-first multipart 규칙은 유지한다
+
 ### 5.3 Facade topology
 
 #### SpotPub
@@ -722,6 +749,14 @@ discovery와의 관계:
 - node register/heartbeat는 attached discovery가 알아낸 uplink를 재사용한다
 - 구현 후 discovery 없이 register만 하고 싶은 요구가 생기면, 그때 별도 explicit API를 추가한다
 
+uplink 선택 규칙:
+
+- discovery가 여러 uplink endpoint를 알고 있더라도 node registration은 한 시점에 하나만 사용한다
+- 기본 선택은 discovery가 가장 최근 bootstrap 성공으로 학습한 uplink endpoint다
+- register 성공 후 heartbeat/unregister는 동일 uplink에 고정한다
+- discovery가 이후 다른 uplink를 학습하더라도 자동 migrate하지 않는다
+- 기존 uplink가 끊긴 뒤 재등록이 필요하면 명시적으로 unregister/register 경로를 다시 탄다
+
 사용 예제:
 
 ```c
@@ -942,6 +977,17 @@ node는 생성 시점에 data plane을 완전히 준비한 뒤 반환한다.
 - worker가 `error(errno)` 응답을 보내면 API는 그 `errno`로 실패
 - bounded timeout 내 응답이 없으면 `ETIMEDOUT`로 실패
 
+worker fault 규칙:
+
+- data plane worker가 비정상 종료되면 node는 faulted state로 전이한다
+- faulted state 이후 `zlink_spot_pub_publish*`, `zlink_spot_sub_recv`,
+  `zlink_spot_node_bind`, `zlink_spot_node_connect_peer_pub`,
+  `zlink_spot_node_disconnect_peer_pub`는 `EFSM`으로 실패한다
+- 이미 생성된 facade socket은 자동 복구하지 않는다
+- fault latched errno가 있으면 monitor/debug log에 남기되, public API 오류값은
+  `EFSM`으로 고정한다
+- recovery는 in-place restart가 아니라 node destroy 후 새 node 생성으로만 허용한다
+
 ### 10.5 destroy 순서
 
 `spot_node_destroy()` 순서는 아래로 고정한다.
@@ -1061,11 +1107,30 @@ node는 생성 시점에 data plane을 완전히 준비한 뒤 반환한다.
 - `core/tests/spot/test_spot_service_introspection.cpp`
 - `core/tests/spot/test_spot_pubsub_scenario.cpp`
 
+주의:
+
+- 현재 테스트에는 이전 facade redesign 시도의 가정이 섞여 있을 수 있다
+- 재작성 시작 전 남아 있는 임시 테스트 수정은 먼저 롤백하고 baseline을 정리한다
+- 그 다음 이 문서의 facade/poller/monitor/handler 계약에 맞춰 테스트를 다시 쓴다
+- 특히 `test_spot_pubsub_scenario.cpp`의 MMORPG adjacency 시나리오는
+  "기존 구현에 맞춘 sleep/workaround"가 아니라
+  "이 스펙의 위치 투명성/late-connect/replay 계약"을 검증하는 형태로 재구성한다
+
 ### 12.4 perf 검증
 
 - `core/perf/single/src/perf_spot.cpp`
 - `core/perf/multi/src/perf_spot_client.cpp`
 - `core/perf/multi/src/perf_spot_server.cpp`
+
+perf baseline 절차:
+
+- 재작성에 들어가기 전, 문서 기준의 clean baseline commit에서 SPOT perf를 먼저 측정한다
+- baseline은 최소 다음 조합을 기록한다
+  - single tcp 64B
+  - multi tcp 64B
+  - 필요 시 기존 운영에서 중요하게 보던 추가 조합
+- acceptance는 "느낌상 비슷함"이 아니라 baseline 대비 비율로 판단한다
+- baseline 수치는 구현 착수 시 별도 표로 문서에 추가한다
 
 ## 13. 테스트 스펙
 
@@ -1085,6 +1150,7 @@ node는 생성 시점에 data plane을 완전히 준비한 뒤 반환한다.
 - clear barrier 동작
 - callback 내부 self-clear 동작
 - queue 옵션 `ENOTSUP` 확인
+- data plane worker fault 이후 API가 `EFSM`으로 실패하는지 확인
 
 ### 13.3 MMORPG 시나리오 테스트
 
@@ -1092,6 +1158,9 @@ node는 생성 시점에 data plane을 완전히 준비한 뒤 반환한다.
 - multi-node deterministic adjacency via discovery
 - local/cross-node 위치 투명성 exact set 검증
 - non-adjacent zone non-delivery 검증
+- late-connect peer가 기존 subscription replay를 받아 즉시 동작하는지 검증
+- fixed sleep 의존 없이 readiness/barrier 기반으로 검증
+- 기존 large scenario는 기능 테스트와 분리해 opt-in stress로 유지
 
 ### 13.4 stress / perf
 
@@ -1101,7 +1170,9 @@ node는 생성 시점에 data plane을 완전히 준비한 뒤 반환한다.
 
 성능 acceptance는 다음을 본다.
 
-- single / multi 모두 기존 queue 모델 대비 대폭 열화가 없어야 한다
+- single / multi 모두 baseline 대비 허용 범위 안에 들어야 한다
+- 기본 허용 범위는 single `>= 90%`, multi `>= 85%`로 둔다
+- 운영상 중요한 특정 조합이 있으면 그 조합은 별도 stricter threshold를 둘 수 있다
 - 현재처럼 order-of-magnitude regression이 나오면 구현 실패로 본다
 
 ## 14. 구현 순서

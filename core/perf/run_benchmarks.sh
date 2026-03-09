@@ -90,6 +90,8 @@ SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
 SINGLE_HWM="${PERF_SINGLE_HWM:-}"
 SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
 SINGLE_RCVHWM="${PERF_SINGLE_RCVHWM:-}"
+SINGLE_SNDBUF="${PERF_SINGLE_SNDBUF:-${PERF_SNDBUF:-}}"
+SINGLE_RCVBUF="${PERF_SINGLE_RCVBUF:-${PERF_RCVBUF:-}}"
 SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
 PERF_ALLOW_MULTI="${PERF_ALLOW_MULTI:-0}"
@@ -119,6 +121,8 @@ Options:
   --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
   --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
   --recv-hwm N                Override PERF_SINGLE_RCVHWM (fallback: --hwm).
+  --sndbuf SIZE               Override PERF_SINGLE_SNDBUF (e.g. 64b, 1k, 64k).
+  --rcvbuf SIZE               Override PERF_SINGLE_RCVBUF (e.g. 64b, 1k, 64k).
   --sndtimeo N                Override PERF_SINGLE_SNDTIMEO_MS (default: 200).
   --rcvtimeo N                Override PERF_SINGLE_RCVTIMEO_MS (default: 200).
   --send-timeout-ms N         Alias of --sndtimeo.
@@ -197,6 +201,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --recv-hwm)
       SINGLE_RCVHWM="${2:-}"
+      shift
+      ;;
+    --sndbuf)
+      SINGLE_SNDBUF="${2:-}"
+      shift
+      ;;
+    --rcvbuf)
+      SINGLE_RCVBUF="${2:-}"
       shift
       ;;
     --sndtimeo|--send-timeout-ms)
@@ -564,6 +576,12 @@ fi
 if [[ -n "${SINGLE_RCVHWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVHWM="${SINGLE_RCVHWM}")
 fi
+if [[ -n "${SINGLE_SNDBUF}" ]]; then
+  RUN_ENV+=(PERF_SINGLE_SNDBUF="${SINGLE_SNDBUF}")
+fi
+if [[ -n "${SINGLE_RCVBUF}" ]]; then
+  RUN_ENV+=(PERF_SINGLE_RCVBUF="${SINGLE_RCVBUF}")
+fi
 if [[ -n "${SINGLE_SNDTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_SNDTIMEO_MS="${SINGLE_SNDTIMEO_MS}")
 fi
@@ -609,6 +627,8 @@ print_effective_option "duration_seconds" "${SINGLE_DURATION_SECONDS}"
 print_effective_option "hwm" "$(value_or_default "${SINGLE_HWM}" "default(binary)")"
 print_effective_option "send_hwm" "$(value_or_default "${EFFECTIVE_SEND_HWM}" "default(binary)")"
 print_effective_option "recv_hwm" "$(value_or_default "${EFFECTIVE_RECV_HWM}" "default(binary)")"
+print_effective_option "sndbuf" "$(value_or_default "${SINGLE_SNDBUF}" "default(os)")"
+print_effective_option "rcvbuf" "$(value_or_default "${SINGLE_RCVBUF}" "default(os)")"
 print_effective_option "sndtimeo_ms" "${SINGLE_SNDTIMEO_MS}"
 print_effective_option "rcvtimeo_ms" "${SINGLE_RCVTIMEO_MS}"
 print_effective_option "pin_cpu" "${PIN_CPU}"

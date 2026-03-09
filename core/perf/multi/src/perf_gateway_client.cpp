@@ -269,6 +269,8 @@ inline void apply_receiver_options (void *receiver,
 {
     const int sndhwm = bench_hwm_from_env ("PERF_SNDHWM", settings.hwm);
     const int rcvhwm = bench_hwm_from_env ("PERF_RCVHWM", settings.hwm);
+    const int sndbuf = bench_socket_buffer_bytes_from_env ("PERF_SNDBUF", -1);
+    const int rcvbuf = bench_socket_buffer_bytes_from_env ("PERF_RCVBUF", -1);
     const int sndtimeo_ms =
       bench_timeout_ms_from_env ("PERF_SNDTIMEO_MS", 200);
     const int rcvtimeo_ms =
@@ -291,6 +293,12 @@ inline void apply_receiver_options (void *receiver,
       ZLINK_RECEIVER_OPT_RCVTIMEO,
       &rcvtimeo_ms,
       sizeof (rcvtimeo_ms));
+    if (sndbuf > 0)
+        (void) zlink_receiver_set_option (
+          receiver, ZLINK_RECEIVER_OPT_SNDBUF, &sndbuf, sizeof (sndbuf));
+    if (rcvbuf > 0)
+        (void) zlink_receiver_set_option (
+          receiver, ZLINK_RECEIVER_OPT_RCVBUF, &rcvbuf, sizeof (rcvbuf));
 }
 
 inline void apply_gateway_options (void *gateway,
@@ -302,6 +310,8 @@ inline void apply_gateway_options (void *gateway,
       bench_timeout_ms_from_env ("PERF_RCVTIMEO_MS", 200);
     const int sndhwm = bench_hwm_from_env ("PERF_SNDHWM", settings.hwm);
     const int rcvhwm = bench_hwm_from_env ("PERF_RCVHWM", settings.hwm);
+    const int sndbuf = bench_socket_buffer_bytes_from_env ("PERF_SNDBUF", -1);
+    const int rcvbuf = bench_socket_buffer_bytes_from_env ("PERF_RCVBUF", -1);
 
     (void) zlink_gateway_set_option (
       gateway,
@@ -317,6 +327,12 @@ inline void apply_gateway_options (void *gateway,
       gateway, ZLINK_GATEWAY_OPT_SNDHWM, &sndhwm, sizeof (sndhwm));
     (void) zlink_gateway_set_option (
       gateway, ZLINK_GATEWAY_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
+    if (sndbuf > 0)
+        (void) zlink_gateway_set_option (
+          gateway, ZLINK_GATEWAY_OPT_SNDBUF, &sndbuf, sizeof (sndbuf));
+    if (rcvbuf > 0)
+        (void) zlink_gateway_set_option (
+          gateway, ZLINK_GATEWAY_OPT_RCVBUF, &rcvbuf, sizeof (rcvbuf));
 }
 
 inline int recv_one_receiver_message (void *receiver,

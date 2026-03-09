@@ -317,6 +317,8 @@ Receiver에 서비스 레벨 옵션을 적용합니다. 사용 가능한 옵션 
 | `ZLINK_RECEIVER_OPT_SNDTIMEO` | 3 | 송신 타임아웃 (ms) |
 | `ZLINK_RECEIVER_OPT_RCVTIMEO` | 4 | 수신 타임아웃 (ms) |
 | `ZLINK_RECEIVER_OPT_LINGER` | 5 | Linger 기간 (ms) |
+| `ZLINK_RECEIVER_OPT_SNDBUF` | 6 | 커널 송신 버퍼 크기 (바이트) |
+| `ZLINK_RECEIVER_OPT_RCVBUF` | 7 | 커널 수신 버퍼 크기 (바이트) |
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 

@@ -897,6 +897,12 @@ int spot_node_t::set_pub_option (int option_,
             return set_socket_option (
               spot_node_socket_node, spot_node_opt_pub_queue_full_policy,
               optval_, optvallen_);
+        case ZLINK_SPOT_PUB_OPT_SNDBUF:
+            return set_socket_option (spot_node_socket_pub, ZLINK_SNDBUF,
+                                      optval_, optvallen_);
+        case ZLINK_SPOT_PUB_OPT_RCVBUF:
+            return set_socket_option (spot_node_socket_pub, ZLINK_RCVBUF,
+                                      optval_, optvallen_);
         default:
             errno = EINVAL;
             return -1;
@@ -923,6 +929,12 @@ int spot_node_t::set_sub_option (int option_,
         case ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY:
             return set_socket_option (spot_node_socket_sub,
                                       ZLINK_XPUB_NODROP, optval_, optvallen_);
+        case ZLINK_SPOT_SUB_OPT_SNDBUF:
+            return set_socket_option (spot_node_socket_sub, ZLINK_SNDBUF,
+                                      optval_, optvallen_);
+        case ZLINK_SPOT_SUB_OPT_RCVBUF:
+            return set_socket_option (spot_node_socket_sub, ZLINK_RCVBUF,
+                                      optval_, optvallen_);
         default:
             errno = EINVAL;
             return -1;

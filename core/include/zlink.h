@@ -922,6 +922,8 @@ ZLINK_EXPORT int zlink_gateway_set_lb_strategy (void *gateway,
 #define ZLINK_GATEWAY_OPT_SNDTIMEO 3
 #define ZLINK_GATEWAY_OPT_RCVTIMEO 4
 #define ZLINK_GATEWAY_OPT_LINGER 5
+#define ZLINK_GATEWAY_OPT_SNDBUF 6
+#define ZLINK_GATEWAY_OPT_RCVBUF 7
 
 /** @brief Set a Gateway service option. */
 ZLINK_EXPORT int zlink_gateway_set_option (void *gateway,
@@ -1037,6 +1039,8 @@ ZLINK_EXPORT int zlink_receiver_peer_info (void *receiver,
 #define ZLINK_RECEIVER_OPT_SNDTIMEO 3
 #define ZLINK_RECEIVER_OPT_RCVTIMEO 4
 #define ZLINK_RECEIVER_OPT_LINGER 5
+#define ZLINK_RECEIVER_OPT_SNDBUF 6
+#define ZLINK_RECEIVER_OPT_RCVBUF 7
 
 /** @brief Set a Receiver service option. */
 ZLINK_EXPORT int zlink_receiver_set_option (void *receiver,
@@ -1139,6 +1143,8 @@ ZLINK_EXPORT int zlink_spot_node_set_tls_client (void *node,
 #define ZLINK_SPOT_PUB_OPT_MODE 5
 #define ZLINK_SPOT_PUB_OPT_QUEUE_HWM 6
 #define ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY 7
+#define ZLINK_SPOT_PUB_OPT_SNDBUF 8
+#define ZLINK_SPOT_PUB_OPT_RCVBUF 9
 
 /** @brief Create a thread-safe SPOT publisher attached to the given node. */
 ZLINK_EXPORT void *zlink_spot_pub_new (void *node);
@@ -1207,6 +1213,8 @@ ZLINK_EXPORT int zlink_spot_pub_publish_bytes (void *pub,
 #define ZLINK_SPOT_SUB_OPT_LINGER 3
 #define ZLINK_SPOT_SUB_OPT_QUEUE_NODROP 4
 #define ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY 5
+#define ZLINK_SPOT_SUB_OPT_SNDBUF 6
+#define ZLINK_SPOT_SUB_OPT_RCVBUF 7
 
 /**
  * @brief Callback function type for SPOT subscriber handler dispatch.

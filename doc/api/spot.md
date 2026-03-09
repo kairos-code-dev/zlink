@@ -351,6 +351,8 @@ Applies a service-level option to the Publisher. Available option constants:
 | `ZLINK_SPOT_PUB_OPT_MODE` | 5 | Publish mode (`SYNC` or `ASYNC`) |
 | `ZLINK_SPOT_PUB_OPT_QUEUE_HWM` | 6 | Async queue high-water mark |
 | `ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY` | 7 | Async queue full policy |
+| `ZLINK_SPOT_PUB_OPT_SNDBUF` | 8 | Kernel transmit buffer size in bytes |
+| `ZLINK_SPOT_PUB_OPT_RCVBUF` | 9 | Kernel receive buffer size in bytes |
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
@@ -560,6 +562,8 @@ Applies a service-level option to the Subscriber. Available option constants:
 | `ZLINK_SPOT_SUB_OPT_LINGER` | 3 | Linger period (ms) |
 | `ZLINK_SPOT_SUB_OPT_QUEUE_NODROP` | 4 | Do not drop messages on queue full |
 | `ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY` | 5 | Queue full policy |
+| `ZLINK_SPOT_SUB_OPT_SNDBUF` | 6 | Kernel transmit buffer size in bytes |
+| `ZLINK_SPOT_SUB_OPT_RCVBUF` | 7 | Kernel receive buffer size in bytes |
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 

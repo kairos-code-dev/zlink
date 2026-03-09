@@ -1097,6 +1097,12 @@ def build_single_option_items(
     rcvhwm = parse_env_int("PERF_SINGLE_RCVHWM", base_hwm)
     sndtimeo_ms = parse_env_int("PERF_SINGLE_SNDTIMEO_MS", 200)
     rcvtimeo_ms = parse_env_int("PERF_SINGLE_RCVTIMEO_MS", 200)
+    sndbuf = os.environ.get(
+        "PERF_SINGLE_SNDBUF", os.environ.get("PERF_SNDBUF", "")
+    ).strip()
+    rcvbuf = os.environ.get(
+        "PERF_SINGLE_RCVBUF", os.environ.get("PERF_RCVBUF", "")
+    ).strip()
     io_threads_raw = os.environ.get("PERF_IO_THREADS", "").strip()
     if io_threads_raw:
         io_threads_display = str(max(0, parse_env_int("PERF_IO_THREADS", 0)))
@@ -1110,6 +1116,8 @@ def build_single_option_items(
         ("hwm", str(base_hwm)),
         ("sndhwm", str(sndhwm)),
         ("rcvhwm", str(rcvhwm)),
+        ("sndbuf", sndbuf or "default(os)"),
+        ("rcvbuf", rcvbuf or "default(os)"),
         ("sndtimeo_ms", str(sndtimeo_ms)),
         ("rcvtimeo_ms", str(rcvtimeo_ms)),
         ("patterns", ",".join(patterns)),

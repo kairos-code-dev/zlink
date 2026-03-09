@@ -729,6 +729,12 @@ int receiver_t::set_option (int option_,
         case ZLINK_RECEIVER_OPT_LINGER:
             return set_socket_option (receiver_socket_router,
                                       ZLINK_LINGER, optval_, optvallen_);
+        case ZLINK_RECEIVER_OPT_SNDBUF:
+            return set_socket_option (receiver_socket_router,
+                                      ZLINK_SNDBUF, optval_, optvallen_);
+        case ZLINK_RECEIVER_OPT_RCVBUF:
+            return set_socket_option (receiver_socket_router,
+                                      ZLINK_RCVBUF, optval_, optvallen_);
         default:
             errno = EINVAL;
             return -1;

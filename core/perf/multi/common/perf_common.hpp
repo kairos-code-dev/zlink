@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cerrno>
+#include <cctype>
 #include <cstring>
 #include <iostream>
 #include <iomanip>
@@ -710,6 +711,62 @@ inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)
     return static_cast<int>(parsed);
 }
 
+inline int parse_byte_size_token(const char *value_, int default_value_)
+{
+    if (!value_ || !*value_)
+        return default_value_;
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long long parsed = std::strtoull(value_, &end, 10);
+    if (errno != 0 || end == value_)
+        return default_value_;
+
+    unsigned long long multiplier = 1;
+    if (end && *end) {
+        char suffix[3] = {0, 0, 0};
+        size_t suffix_len = 0;
+        while (end[suffix_len] != '\0' && suffix_len < 2) {
+            suffix[suffix_len] =
+              static_cast<char>(std::tolower(static_cast<unsigned char>(end[suffix_len])));
+            ++suffix_len;
+        }
+        if (end[suffix_len] != '\0')
+            return default_value_;
+
+        if (suffix[0] == 'b' && suffix[1] == '\0')
+            multiplier = 1;
+        else if (suffix[0] == 'k' && (suffix[1] == '\0' || suffix[1] == 'b'))
+            multiplier = 1024ULL;
+        else if (suffix[0] == 'm' && (suffix[1] == '\0' || suffix[1] == 'b'))
+            multiplier = 1024ULL * 1024ULL;
+        else if (suffix[0] == 'g' && (suffix[1] == '\0' || suffix[1] == 'b'))
+            multiplier = 1024ULL * 1024ULL * 1024ULL;
+        else
+            return default_value_;
+    }
+
+    const unsigned long long bytes = parsed * multiplier;
+    if (bytes == 0)
+        return default_value_;
+    if (bytes > static_cast<unsigned long long>(INT_MAX))
+        return INT_MAX;
+    return static_cast<int>(bytes);
+}
+
+inline int bench_socket_buffer_bytes_from_env(const char *name_,
+                                              int default_bytes_)
+{
+    if (!name_ || !*name_)
+        return default_bytes_;
+
+    const char *value = std::getenv(name_);
+    if (!value || !*value)
+        return default_bytes_;
+
+    return parse_byte_size_token(value, default_bytes_);
+}
+
 inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
     if (transport == "inproc")
         return;
@@ -730,7 +787,15 @@ inline void apply_benchmark_socket_options(void *socket_,
         return;
 
     const int linger_ms = 0;
+    const int sndbuf =
+      bench_socket_buffer_bytes_from_env("PERF_SNDBUF", -1);
+    const int rcvbuf =
+      bench_socket_buffer_bytes_from_env("PERF_RCVBUF", -1);
     set_sockopt_int(socket_, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    if (sndbuf > 0)
+        set_sockopt_int(socket_, ZLINK_SNDBUF, sndbuf, "ZLINK_SNDBUF");
+    if (rcvbuf > 0)
+        set_sockopt_int(socket_, ZLINK_RCVBUF, rcvbuf, "ZLINK_RCVBUF");
     apply_benchmark_hwm(socket_, hwm_value);
     apply_debug_timeouts(socket_, transport);
 }

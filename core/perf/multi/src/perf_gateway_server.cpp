@@ -758,6 +758,10 @@ inline int run_server_benchmark (const std::string &lib_name,
       bench_hwm_from_env ("PERF_SNDHWM", settings.hwm);
     const int receiver_rcvhwm =
       bench_hwm_from_env ("PERF_RCVHWM", settings.hwm);
+    const int receiver_sndbuf =
+      bench_socket_buffer_bytes_from_env ("PERF_SNDBUF", -1);
+    const int receiver_rcvbuf =
+      bench_socket_buffer_bytes_from_env ("PERF_RCVBUF", -1);
     const int receiver_linger_ms = 0;
     (void) zlink_receiver_set_option (
       server_receiver,
@@ -784,6 +788,18 @@ inline int run_server_benchmark (const std::string &lib_name,
       ZLINK_RECEIVER_OPT_LINGER,
       &receiver_linger_ms,
       sizeof (receiver_linger_ms));
+    if (receiver_sndbuf > 0)
+        (void) zlink_receiver_set_option (
+          server_receiver,
+          ZLINK_RECEIVER_OPT_SNDBUF,
+          &receiver_sndbuf,
+          sizeof (receiver_sndbuf));
+    if (receiver_rcvbuf > 0)
+        (void) zlink_receiver_set_option (
+          server_receiver,
+          ZLINK_RECEIVER_OPT_RCVBUF,
+          &receiver_rcvbuf,
+          sizeof (receiver_rcvbuf));
 
     if (zlink_receiver_connect_registry (
           server_receiver,
@@ -832,6 +848,10 @@ inline int run_server_benchmark (const std::string &lib_name,
       bench_hwm_from_env ("PERF_SNDHWM", settings.hwm);
     const int gateway_rcvhwm =
       bench_hwm_from_env ("PERF_RCVHWM", settings.hwm);
+    const int gateway_sndbuf =
+      bench_socket_buffer_bytes_from_env ("PERF_SNDBUF", -1);
+    const int gateway_rcvbuf =
+      bench_socket_buffer_bytes_from_env ("PERF_RCVBUF", -1);
     (void) zlink_gateway_set_option (
       server_gateway,
       ZLINK_GATEWAY_OPT_SNDTIMEO,
@@ -852,6 +872,18 @@ inline int run_server_benchmark (const std::string &lib_name,
       ZLINK_GATEWAY_OPT_RCVHWM,
       &gateway_rcvhwm,
       sizeof (gateway_rcvhwm));
+    if (gateway_sndbuf > 0)
+        (void) zlink_gateway_set_option (
+          server_gateway,
+          ZLINK_GATEWAY_OPT_SNDBUF,
+          &gateway_sndbuf,
+          sizeof (gateway_sndbuf));
+    if (gateway_rcvbuf > 0)
+        (void) zlink_gateway_set_option (
+          server_gateway,
+          ZLINK_GATEWAY_OPT_RCVBUF,
+          &gateway_rcvbuf,
+          sizeof (gateway_rcvbuf));
 
     if (!configure_gateway_tls (server_gateway, transport)) {
         std::cerr << "gateway server: gateway tls configure failed"

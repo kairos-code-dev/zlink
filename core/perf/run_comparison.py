@@ -3722,6 +3722,8 @@ def build_effective_option_items(args, selected_patterns):
 
         sndhwm = parse_env_int("PERF_SNDHWM", base_hwm)
         rcvhwm = parse_env_int("PERF_RCVHWM", base_hwm)
+        sndbuf = os.environ.get("PERF_SNDBUF", "").strip()
+        rcvbuf = os.environ.get("PERF_RCVBUF", "").strip()
         sndhwm_display = str(sndhwm)
         rcvhwm_display = str(rcvhwm)
         if not os.environ.get("PERF_SNDHWM", "").strip():
@@ -3835,6 +3837,8 @@ def build_effective_option_items(args, selected_patterns):
                 ("hwm", hwm_display),
                 ("sndhwm", sndhwm_display),
                 ("rcvhwm", rcvhwm_display),
+                ("sndbuf", sndbuf or "default(os)"),
+                ("rcvbuf", rcvbuf or "default(os)"),
                 ("sndtimeo_ms", str(parse_env_int("PERF_SNDTIMEO_MS", 200))),
                 ("rcvtimeo_ms", str(parse_env_int("PERF_RCVTIMEO_MS", 200))),
                 ("connect_concurrency", connect_display),

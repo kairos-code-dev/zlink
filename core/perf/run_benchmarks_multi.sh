@@ -244,6 +244,8 @@ Options:
   --hwm N                Override PERF_HWM (default: 100, stream=10 in binary).
   --send-hwm N           Override PERF_SNDHWM (fallback: --hwm).
   --recv-hwm N           Override PERF_RCVHWM (fallback: --hwm).
+  --sndbuf SIZE          Override PERF_SNDBUF (e.g. 64b, 1k, 64k).
+  --rcvbuf SIZE          Override PERF_RCVBUF (e.g. 64b, 1k, 64k).
   --sndtimeo N           Override PERF_SNDTIMEO_MS (default: 200).
   --rcvtimeo N           Override PERF_RCVTIMEO_MS (default: 200).
   --send-timeout-ms N    Alias of --sndtimeo.
@@ -345,6 +347,8 @@ CLIENTS="$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)"
 HWM="$(env_or_default "" PERF_HWM PERF_MULTI_HWM)"
 SNDHWM="$(env_or_default "" PERF_SNDHWM PERF_MULTI_SNDHWM)"
 RCVHWM="$(env_or_default "" PERF_RCVHWM PERF_MULTI_RCVHWM)"
+SNDBUF="$(env_or_default "" PERF_SNDBUF PERF_MULTI_SNDBUF)"
+RCVBUF="$(env_or_default "" PERF_RCVBUF PERF_MULTI_RCVBUF)"
 SNDTIMEO_MS="$(env_or_default "200" PERF_SNDTIMEO_MS PERF_MULTI_SNDTIMEO_MS)"
 RCVTIMEO_MS="$(env_or_default "200" PERF_RCVTIMEO_MS PERF_MULTI_RCVTIMEO_MS)"
 CONNECT_CONCURRENCY="$(env_or_default "" PERF_CONNECT_CONCURRENCY PERF_MULTI_CONNECT_CONCURRENCY)"
@@ -559,6 +563,22 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       RCVHWM="${2}"
+      shift 2
+      ;;
+    --sndbuf)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      SNDBUF="${2}"
+      shift 2
+      ;;
+    --rcvbuf)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      RCVBUF="${2}"
       shift 2
       ;;
     --sndtimeo|--send-timeout-ms)
@@ -840,6 +860,12 @@ if [[ -n "${SNDHWM}" ]]; then
 fi
 if [[ -n "${RCVHWM}" ]]; then
   RUN_ENV+=(PERF_RCVHWM="${RCVHWM}")
+fi
+if [[ -n "${SNDBUF}" ]]; then
+  RUN_ENV+=(PERF_SNDBUF="${SNDBUF}")
+fi
+if [[ -n "${RCVBUF}" ]]; then
+  RUN_ENV+=(PERF_RCVBUF="${RCVBUF}")
 fi
 if [[ -n "${SNDTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_SNDTIMEO_MS="${SNDTIMEO_MS}")

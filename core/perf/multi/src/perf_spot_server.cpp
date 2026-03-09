@@ -210,6 +210,8 @@ inline void apply_spot_pub_options(void *spot_pub,
       bench_timeout_ms_from_env("PERF_SNDTIMEO_MS", 200);
     const int linger_ms = 0;
     const int xpub_nodrop = resolve_int_env("PERF_SPOT_XPUB_NODROP", 1, 0);
+    const int sndbuf = bench_socket_buffer_bytes_from_env("PERF_SNDBUF", -1);
+    const int rcvbuf = bench_socket_buffer_bytes_from_env("PERF_RCVBUF", -1);
 
     (void) zlink_spot_pub_set_option(
       spot_pub, ZLINK_SPOT_PUB_OPT_SNDHWM, &sndhwm, sizeof(sndhwm));
@@ -220,6 +222,12 @@ inline void apply_spot_pub_options(void *spot_pub,
       spot_pub, ZLINK_SPOT_PUB_OPT_LINGER, &linger_ms, sizeof(linger_ms));
     (void) zlink_spot_pub_set_option(
       spot_pub, ZLINK_SPOT_PUB_OPT_NODROP, &xpub_nodrop, sizeof(xpub_nodrop));
+    if (sndbuf > 0)
+        (void) zlink_spot_pub_set_option(
+          spot_pub, ZLINK_SPOT_PUB_OPT_SNDBUF, &sndbuf, sizeof(sndbuf));
+    if (rcvbuf > 0)
+        (void) zlink_spot_pub_set_option(
+          spot_pub, ZLINK_SPOT_PUB_OPT_RCVBUF, &rcvbuf, sizeof(rcvbuf));
 }
 
 inline std::string bind_spot_endpoint(void *node,

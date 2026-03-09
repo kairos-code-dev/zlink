@@ -322,6 +322,8 @@ Applies a service-level option to the Gateway. Available option constants:
 | `ZLINK_GATEWAY_OPT_SNDTIMEO` | 3 | Send timeout (ms) |
 | `ZLINK_GATEWAY_OPT_RCVTIMEO` | 4 | Receive timeout (ms) |
 | `ZLINK_GATEWAY_OPT_LINGER` | 5 | Linger period (ms) |
+| `ZLINK_GATEWAY_OPT_SNDBUF` | 6 | Kernel transmit buffer size in bytes |
+| `ZLINK_GATEWAY_OPT_RCVBUF` | 7 | Kernel receive buffer size in bytes |
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 

@@ -341,6 +341,8 @@ Publisher에 서비스 레벨 옵션을 적용합니다. 사용 가능한 옵션
 | `ZLINK_SPOT_PUB_OPT_MODE` | 5 | 발행 모드 (`SYNC` 또는 `ASYNC`) |
 | `ZLINK_SPOT_PUB_OPT_QUEUE_HWM` | 6 | 비동기 큐 고수위 마크 |
 | `ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY` | 7 | 비동기 큐 가득 참 정책 |
+| `ZLINK_SPOT_PUB_OPT_SNDBUF` | 8 | 커널 송신 버퍼 크기 (바이트) |
+| `ZLINK_SPOT_PUB_OPT_RCVBUF` | 9 | 커널 수신 버퍼 크기 (바이트) |
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
@@ -545,6 +547,8 @@ Subscriber에 서비스 레벨 옵션을 적용합니다. 사용 가능한 옵�
 | `ZLINK_SPOT_SUB_OPT_LINGER` | 3 | Linger 기간 (ms) |
 | `ZLINK_SPOT_SUB_OPT_QUEUE_NODROP` | 4 | 큐 가득 참 시 메시지 드롭하지 않음 |
 | `ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY` | 5 | 큐 가득 참 정책 |
+| `ZLINK_SPOT_SUB_OPT_SNDBUF` | 6 | 커널 송신 버퍼 크기 (바이트) |
+| `ZLINK_SPOT_SUB_OPT_RCVBUF` | 7 | 커널 수신 버퍼 크기 (바이트) |
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 

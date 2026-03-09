@@ -152,6 +152,8 @@ inline void apply_spot_sub_options(void *sub,
       bench_timeout_ms_from_env("PERF_RCVTIMEO_MS", 200);
     const int linger_ms = 0;
     const int xpub_nodrop = resolve_int_env("PERF_SPOT_XPUB_NODROP", 1, 0);
+    const int sndbuf = bench_socket_buffer_bytes_from_env("PERF_SNDBUF", -1);
+    const int rcvbuf = bench_socket_buffer_bytes_from_env("PERF_RCVBUF", -1);
 
     (void) zlink_spot_sub_set_option(
       sub, ZLINK_SPOT_SUB_OPT_RCVHWM, &rcvhwm, sizeof(rcvhwm));
@@ -162,6 +164,12 @@ inline void apply_spot_sub_options(void *sub,
     (void) zlink_spot_sub_set_option(
       sub, ZLINK_SPOT_SUB_OPT_QUEUE_NODROP, &xpub_nodrop,
       sizeof(xpub_nodrop));
+    if (sndbuf > 0)
+        (void) zlink_spot_sub_set_option(
+          sub, ZLINK_SPOT_SUB_OPT_SNDBUF, &sndbuf, sizeof(sndbuf));
+    if (rcvbuf > 0)
+        (void) zlink_spot_sub_set_option(
+          sub, ZLINK_SPOT_SUB_OPT_RCVBUF, &rcvbuf, sizeof(rcvbuf));
 }
 
 inline bool wait_for_service_receivers(void *discovery,
@@ -589,7 +597,6 @@ inline bool run_spot_phase_loop(
     long lat_count_local = 0;
     bench_latency_sampler_t latency_samples;
     uint64_t last_sampled_seq = 0;
-
     spot_sub_poller_t poller;
     if (!init_spot_sub_poller(slots, &poller))
         return false;

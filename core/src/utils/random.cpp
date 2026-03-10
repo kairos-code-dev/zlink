@@ -19,6 +19,13 @@
 #include "utils/mutex.hpp"
 #include "utils/macros.hpp"
 
+namespace
+{
+zlink::mutex_t random_init_sync;
+unsigned int random_init_refcount = 0;
+bool random_seeded = false;
+}
+
 void zlink::seed_random ()
 {
 #if defined ZLINK_HAVE_WINDOWS
@@ -94,8 +101,17 @@ void zlink::generate_random_bytes (unsigned char *out_, size_t size_)
 
 void zlink::random_open ()
 {
+    scoped_lock_t lock (random_init_sync);
+    if (!random_seeded) {
+        seed_random ();
+        random_seeded = true;
+    }
+    ++random_init_refcount;
 }
 
 void zlink::random_close ()
 {
+    scoped_lock_t lock (random_init_sync);
+    if (random_init_refcount > 0)
+        --random_init_refcount;
 }

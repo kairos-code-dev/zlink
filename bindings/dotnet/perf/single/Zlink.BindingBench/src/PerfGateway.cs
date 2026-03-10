@@ -23,14 +23,13 @@ internal static class PerfGateway
         Registry? registry = null;
         Discovery? discovery = null;
         Receiver? receiver = null;
-        Zlink.Socket? router = null;
         Gateway? gateway = null;
 
         try
         {
             string suffix = $"{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}-{Guid.NewGuid()}";
-            string regPub = $"inproc://gw-pub-{suffix}";
-            string regRouter = $"inproc://gw-router-{suffix}";
+            string regPub = EndpointFor("tcp", $"gw-pub-{suffix}");
+            string regRouter = EndpointFor("tcp", $"gw-router-{suffix}");
 
             registry = new Registry(ctx);
             registry.SetHeartbeat(5000, 60000);
@@ -38,7 +37,7 @@ internal static class PerfGateway
             registry.Start();
 
             discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-            discovery.ConnectRegistry(regPub);
+            ConnectRegistryWithRetry(() => discovery.ConnectRegistry(regRouter));
             string service = "svc";
             discovery.Subscribe(service);
 
@@ -46,11 +45,9 @@ internal static class PerfGateway
             string providerEp = EndpointFor(transport, "gateway-provider");
             ConfigureReceiverTlsServerIfNeeded(receiver, transport);
             receiver.Bind(providerEp);
-            receiver.ConnectRegistry(regRouter);
+            ConnectRegistryWithRetry(() => receiver.ConnectRegistry(regRouter));
             receiver.Register(service, providerEp, 1);
-            router = receiver.CreateRouterSocket();
-            ApplySingleSocketOptions(router);
-            router.SetOption(SocketOptions.RcvTimeo, 5000);
+            receiver.SetOption(SocketOptions.RcvTimeo, 5000);
 
             gateway = new Gateway(ctx, discovery);
             ConfigureGatewayTlsClientIfNeeded(gateway, transport);
@@ -78,14 +75,12 @@ internal static class PerfGateway
 
             var payload = new byte[size];
             Array.Fill(payload, (byte)'a');
-            var rid = new byte[256];
             var data = new byte[Math.Max(256, size)];
 
             for (int i = 0; i < warmupCount; i++)
             {
-                gateway.Send(service, payload.AsSpan(), SendFlags.None);
-                GatewayReceiveProviderMessage(router, rid.AsSpan(),
-                    data.AsSpan());
+                SendGatewayWithRetry(gateway, service, payload.AsSpan(), 5000);
+                _ = ReceiveProviderPayloadWithRetry(receiver, data.AsSpan(), 5000);
             }
 
             Thread.Sleep(settleMs);
@@ -96,8 +91,8 @@ internal static class PerfGateway
                 durationSeconds);
             while (Stopwatch.GetTimestamp() < throughputDeadlineTicks)
             {
-                gateway.Send(service, payload.AsSpan(), SendFlags.None);
-                GatewayReceiveProviderMessage(router, rid.AsSpan(), data.AsSpan());
+                SendGatewayWithRetry(gateway, service, payload.AsSpan(), 5000);
+                _ = ReceiveProviderPayloadWithRetry(receiver, data.AsSpan(), 5000);
                 recvCount++;
             }
 
@@ -116,9 +111,8 @@ internal static class PerfGateway
             for (int i = 0; i < latCount; i++)
             {
                 long begin = Stopwatch.GetTimestamp();
-                gateway.Send(service, payload.AsSpan(), SendFlags.None);
-                GatewayReceiveProviderMessage(router, rid.AsSpan(),
-                    data.AsSpan());
+                SendGatewayWithRetry(gateway, service, payload.AsSpan(), 5000);
+                _ = ReceiveProviderPayloadWithRetry(receiver, data.AsSpan(), 5000);
                 long end = Stopwatch.GetTimestamp();
                 double latUs = (end - begin) * 1_000_000.0 / Stopwatch.Frequency;
                 ReservoirSample(latSamples, latUs, ref sampleSeen, latCount,
@@ -131,13 +125,95 @@ internal static class PerfGateway
             PrintSingleProcessMetrics("GATEWAY", transport, size, cpuStart, wall);
             return 0;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"single_gateway_error:{ex.Message}");
             return 2;
         }
         finally
         {
-            TryDisposeAllQuietly(gateway, router, receiver, discovery, registry);
+            TryDisposeAllQuietly(gateway, receiver, discovery, registry);
         }
+    }
+
+    private static void ConnectRegistryWithRetry(Action connect)
+    {
+        Exception? last = null;
+        if (WaitUntil(() =>
+            {
+                try
+                {
+                    connect();
+                    return true;
+                }
+                catch (ZlinkException ex) when (
+                    ZlinkException.MapErrorCode(ex.Errno) == ErrorCode.EAgain
+                    || ZlinkException.MapErrorCode(ex.Errno) == ErrorCode.EIntr)
+                {
+                    last = ex;
+                    return false;
+                }
+            }, 5000, 20))
+        {
+            return;
+        }
+
+        if (last != null)
+            throw last;
+        throw new TimeoutException("registry connect timeout");
+    }
+
+    private static void SendGatewayWithRetry(Gateway gateway, string serviceName,
+        ReadOnlySpan<byte> payload, int timeoutMs)
+    {
+        Exception? last = null;
+        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            try
+            {
+                gateway.Send(serviceName, payload, SendFlags.DontWait);
+                return;
+            }
+            catch (ZlinkException ex) when (
+                ZlinkException.MapErrorCode(ex.Errno) == ErrorCode.EAgain
+                || ZlinkException.MapErrorCode(ex.Errno) == ErrorCode.EIntr)
+            {
+                last = ex;
+            }
+            Thread.Sleep(1);
+        }
+
+        if (last != null)
+            throw last;
+        throw new TimeoutException("gateway send timeout");
+    }
+
+    private static int ReceiveProviderPayloadWithRetry(Receiver receiver,
+        Span<byte> payloadBuffer, int timeoutMs)
+    {
+        Exception? last = null;
+        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            try
+            {
+                int received = receiver.ReceiveSinglePayload(payloadBuffer,
+                    ReceiveFlags.DontWait);
+                if (received > 0)
+                    return received;
+            }
+            catch (ZlinkException ex) when (
+                ZlinkException.MapErrorCode(ex.Errno) == ErrorCode.EAgain
+                || ZlinkException.MapErrorCode(ex.Errno) == ErrorCode.EIntr)
+            {
+                last = ex;
+            }
+            Thread.Sleep(1);
+        }
+
+        if (last != null)
+            throw last;
+        throw new TimeoutException("gateway receive timeout");
     }
 }

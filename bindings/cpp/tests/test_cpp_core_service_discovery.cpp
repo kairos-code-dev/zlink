@@ -33,13 +33,12 @@ static registry_endpoints_t make_registry_endpoints (const char *suffix_)
     return eps;
 }
 
-static std::string last_endpoint_from_socket (void *socket_)
+static std::string last_endpoint_from_receiver (void *receiver_)
 {
     char endpoint[256];
     std::memset (endpoint, 0, sizeof (endpoint));
     size_t endpoint_len = sizeof (endpoint);
-    assert (zlink_getsockopt (
-              socket_, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len)
+    assert (zlink_receiver_last_endpoint (receiver_, endpoint, &endpoint_len)
             == 0);
 
     const size_t bounded = endpoint_len <= sizeof (endpoint) ? endpoint_len
@@ -94,7 +93,7 @@ static void test_discovery_provider_registration ()
 
     zlink::service::discovery_t discovery (ctx, zlink::service_type::gateway);
     assert (discovery.handle () != NULL);
-    assert (discovery.connect_registry (eps.pub.c_str ()) == 0);
+    assert (discovery.connect_registry (eps.router.c_str ()) == 0);
     assert (discovery.subscribe ("test-svc") == 0);
     sleep_ms (50);
 
@@ -103,7 +102,7 @@ static void test_discovery_provider_registration ()
     assert (provider.bind ("tcp://127.0.0.1:*") == 0);
 
     const std::string advertise_ep =
-      last_endpoint_from_socket (provider.router_handle ());
+      last_endpoint_from_receiver (provider.handle ());
     assert (!advertise_ep.empty ());
 
     assert (provider.connect_registry (eps.router.c_str ()) == 0);
@@ -140,7 +139,7 @@ static void test_discovery_service_filtering ()
 
     zlink::service::discovery_t discovery (ctx, zlink::service_type::gateway);
     assert (discovery.handle () != NULL);
-    assert (discovery.connect_registry (eps.pub.c_str ()) == 0);
+    assert (discovery.connect_registry (eps.router.c_str ()) == 0);
     assert (discovery.subscribe ("svc-A") == 0);
     sleep_ms (50);
 
@@ -148,7 +147,7 @@ static void test_discovery_service_filtering ()
     assert (provider_a.handle () != NULL);
     assert (provider_a.bind ("tcp://127.0.0.1:*") == 0);
     const std::string advertise_a =
-      last_endpoint_from_socket (provider_a.router_handle ());
+      last_endpoint_from_receiver (provider_a.handle ());
     assert (provider_a.connect_registry (eps.router.c_str ()) == 0);
     assert (provider_a.register_service ("svc-A", advertise_a.c_str (), 10) == 0);
 
@@ -156,7 +155,7 @@ static void test_discovery_service_filtering ()
     assert (provider_b.handle () != NULL);
     assert (provider_b.bind ("tcp://127.0.0.1:*") == 0);
     const std::string advertise_b =
-      last_endpoint_from_socket (provider_b.router_handle ());
+      last_endpoint_from_receiver (provider_b.handle ());
     assert (provider_b.connect_registry (eps.router.c_str ()) == 0);
     assert (provider_b.register_service ("svc-B", advertise_b.c_str (), 20) == 0);
 
@@ -207,7 +206,7 @@ static void test_discovery_heartbeat_timeout ()
 
     zlink::service::discovery_t discovery (ctx, zlink::service_type::gateway);
     assert (discovery.handle () != NULL);
-    assert (discovery.connect_registry (eps.pub.c_str ()) == 0);
+    assert (discovery.connect_registry (eps.router.c_str ()) == 0);
     assert (discovery.subscribe ("hb-svc") == 0);
     sleep_ms (50);
 
@@ -215,7 +214,7 @@ static void test_discovery_heartbeat_timeout ()
     assert (provider.handle () != NULL);
     assert (provider.bind ("tcp://127.0.0.1:*") == 0);
     const std::string advertise_ep =
-      last_endpoint_from_socket (provider.router_handle ());
+      last_endpoint_from_receiver (provider.handle ());
     assert (provider.connect_registry (eps.router.c_str ()) == 0);
     assert (provider.register_service ("hb-svc", advertise_ep.c_str (), 1) == 0);
 
@@ -249,7 +248,7 @@ static void test_discovery_weight_update ()
 
     zlink::service::discovery_t discovery (ctx, zlink::service_type::gateway);
     assert (discovery.handle () != NULL);
-    assert (discovery.connect_registry (eps.pub.c_str ()) == 0);
+    assert (discovery.connect_registry (eps.router.c_str ()) == 0);
     assert (discovery.subscribe ("weight-svc") == 0);
     sleep_ms (50);
 
@@ -257,7 +256,7 @@ static void test_discovery_weight_update ()
     assert (provider.handle () != NULL);
     assert (provider.bind ("tcp://127.0.0.1:*") == 0);
     const std::string advertise_ep =
-      last_endpoint_from_socket (provider.router_handle ());
+      last_endpoint_from_receiver (provider.handle ());
     assert (provider.connect_registry (eps.router.c_str ()) == 0);
     assert (provider.register_service (
               "weight-svc", advertise_ep.c_str (), initial_weight)

@@ -15,6 +15,51 @@ namespace zlink
 namespace service
 {
 
+namespace detail
+{
+
+inline int spot_pub_option_from_socket_option (socket_option option_)
+{
+    switch (option_) {
+    case socket_option::sndhwm:
+        return ZLINK_SPOT_PUB_OPT_SNDHWM;
+    case socket_option::sndtimeo:
+        return ZLINK_SPOT_PUB_OPT_SNDTIMEO;
+    case socket_option::linger:
+        return ZLINK_SPOT_PUB_OPT_LINGER;
+    case socket_option::xpub_nodrop:
+        return ZLINK_SPOT_PUB_OPT_NODROP;
+    case socket_option::sndbuf:
+        return ZLINK_SPOT_PUB_OPT_SNDBUF;
+    case socket_option::rcvbuf:
+        return ZLINK_SPOT_PUB_OPT_RCVBUF;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+inline int spot_sub_option_from_socket_option (socket_option option_)
+{
+    switch (option_) {
+    case socket_option::rcvhwm:
+        return ZLINK_SPOT_SUB_OPT_RCVHWM;
+    case socket_option::rcvtimeo:
+        return ZLINK_SPOT_SUB_OPT_RCVTIMEO;
+    case socket_option::linger:
+        return ZLINK_SPOT_SUB_OPT_LINGER;
+    case socket_option::sndbuf:
+        return ZLINK_SPOT_SUB_OPT_SNDBUF;
+    case socket_option::rcvbuf:
+        return ZLINK_SPOT_SUB_OPT_RCVBUF;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+} // namespace detail
+
 /**
  * @brief Spot node wrapper that manages publish/subscribe service sockets.
  */
@@ -181,9 +226,26 @@ class spot_node_t
                  const void *value_,
                  size_t len_)
     {
-        return zlink_spot_node_setsockopt (
-          _node, static_cast<int> (role_), static_cast<int> (option_), value_,
-          len_);
+        int mapped = -1;
+
+        switch (role_) {
+        case spot_node_socket_role::pub:
+            mapped = detail::spot_pub_option_from_socket_option (option_);
+            if (mapped < 0)
+                return -1;
+            return zlink_spot_node_set_pub_option (_node, mapped, value_, len_);
+        case spot_node_socket_role::sub:
+            mapped = detail::spot_sub_option_from_socket_option (option_);
+            if (mapped < 0)
+                return -1;
+            return zlink_spot_node_set_sub_option (_node, mapped, value_, len_);
+        case spot_node_socket_role::node:
+            errno = ENOTSUP;
+            return -1;
+        default:
+            errno = EINVAL;
+            return -1;
+        }
     }
 
     /**
@@ -241,9 +303,8 @@ class spot_node_t
      */
     ZLINK_CPP_NODISCARD int set_sockopt (spot_node_option option_, int value_)
     {
-        return zlink_spot_node_setsockopt (
-          _node, static_cast<int> (spot_node_socket_role::node),
-          static_cast<int> (option_), &value_, sizeof (value_));
+        return zlink_spot_node_set_pub_option (
+          _node, static_cast<int> (option_), &value_, sizeof (value_));
     }
 
     /**
@@ -252,7 +313,7 @@ class spot_node_t
      */
     void *pub_socket_handle () const
     {
-        return zlink_spot_node_pub_socket (_node);
+        return zlink_spot_node_default_pub (_node);
     }
 
     /**
@@ -261,7 +322,7 @@ class spot_node_t
      */
     void *sub_socket_handle () const
     {
-        return zlink_spot_node_sub_socket (_node);
+        return zlink_spot_node_default_sub (_node);
     }
 
     /**
@@ -273,7 +334,11 @@ class spot_node_t
     ZLINK_CPP_NODISCARD int
     pub_peers (zlink_peer_info_t *peers_, size_t *count_)
     {
-        return zlink_spot_node_pub_peers (_node, peers_, count_);
+        void *pub = zlink_spot_node_default_pub (_node);
+        if (!pub)
+            return -1;
+
+        return zlink_spot_pub_peers (pub, peers_, count_);
     }
 
     /**
@@ -285,7 +350,11 @@ class spot_node_t
     ZLINK_CPP_NODISCARD int
     sub_peers (zlink_peer_info_t *peers_, size_t *count_)
     {
-        return zlink_spot_node_sub_peers (_node, peers_, count_);
+        void *sub = zlink_spot_node_default_sub (_node);
+        if (!sub)
+            return -1;
+
+        return zlink_spot_sub_peers (sub, peers_, count_);
     }
 
     /**

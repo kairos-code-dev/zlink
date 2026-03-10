@@ -3,12 +3,104 @@
 #define ZLINK_CPP_COMPAT_HPP_INCLUDED
 
 #include "common.hpp"
+#include <cerrno>
 #include <cstdlib>
 
 namespace zlink
 {
 namespace compat
 {
+
+namespace detail
+{
+
+inline int gateway_option_from_socket_option (int option_)
+{
+    switch (option_) {
+    case ZLINK_SNDHWM:
+        return ZLINK_GATEWAY_OPT_SNDHWM;
+    case ZLINK_RCVHWM:
+        return ZLINK_GATEWAY_OPT_RCVHWM;
+    case ZLINK_SNDTIMEO:
+        return ZLINK_GATEWAY_OPT_SNDTIMEO;
+    case ZLINK_RCVTIMEO:
+        return ZLINK_GATEWAY_OPT_RCVTIMEO;
+    case ZLINK_LINGER:
+        return ZLINK_GATEWAY_OPT_LINGER;
+    case ZLINK_SNDBUF:
+        return ZLINK_GATEWAY_OPT_SNDBUF;
+    case ZLINK_RCVBUF:
+        return ZLINK_GATEWAY_OPT_RCVBUF;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+inline int receiver_option_from_socket_option (int option_)
+{
+    switch (option_) {
+    case ZLINK_SNDHWM:
+        return ZLINK_RECEIVER_OPT_SNDHWM;
+    case ZLINK_RCVHWM:
+        return ZLINK_RECEIVER_OPT_RCVHWM;
+    case ZLINK_SNDTIMEO:
+        return ZLINK_RECEIVER_OPT_SNDTIMEO;
+    case ZLINK_RCVTIMEO:
+        return ZLINK_RECEIVER_OPT_RCVTIMEO;
+    case ZLINK_LINGER:
+        return ZLINK_RECEIVER_OPT_LINGER;
+    case ZLINK_SNDBUF:
+        return ZLINK_RECEIVER_OPT_SNDBUF;
+    case ZLINK_RCVBUF:
+        return ZLINK_RECEIVER_OPT_RCVBUF;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+inline int spot_pub_option_from_socket_option (int option_)
+{
+    switch (option_) {
+    case ZLINK_SNDHWM:
+        return ZLINK_SPOT_PUB_OPT_SNDHWM;
+    case ZLINK_SNDTIMEO:
+        return ZLINK_SPOT_PUB_OPT_SNDTIMEO;
+    case ZLINK_LINGER:
+        return ZLINK_SPOT_PUB_OPT_LINGER;
+    case ZLINK_XPUB_NODROP:
+        return ZLINK_SPOT_PUB_OPT_NODROP;
+    case ZLINK_SNDBUF:
+        return ZLINK_SPOT_PUB_OPT_SNDBUF;
+    case ZLINK_RCVBUF:
+        return ZLINK_SPOT_PUB_OPT_RCVBUF;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+inline int spot_sub_option_from_socket_option (int option_)
+{
+    switch (option_) {
+    case ZLINK_RCVHWM:
+        return ZLINK_SPOT_SUB_OPT_RCVHWM;
+    case ZLINK_RCVTIMEO:
+        return ZLINK_SPOT_SUB_OPT_RCVTIMEO;
+    case ZLINK_LINGER:
+        return ZLINK_SPOT_SUB_OPT_LINGER;
+    case ZLINK_SNDBUF:
+        return ZLINK_SPOT_SUB_OPT_SNDBUF;
+    case ZLINK_RCVBUF:
+        return ZLINK_SPOT_SUB_OPT_RCVBUF;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+} // namespace detail
 
 inline int err_no () { return zlink_errno (); }
 inline const char *strerror (int code_) { return zlink_strerror (code_); }
@@ -209,12 +301,18 @@ inline int receiver_setsockopt (void *receiver_,
                                 const void *value_,
                                 size_t len_)
 {
-    return zlink_receiver_setsockopt (
-      receiver_, role_, option_, value_, len_);
+    (void) role_;
+    const int mapped = detail::receiver_option_from_socket_option (option_);
+    if (mapped < 0)
+        return -1;
+
+    return zlink_receiver_set_option (receiver_, mapped, value_, len_);
 }
 inline void *receiver_router_socket_unsafe (void *receiver_)
 {
-    return zlink_receiver_router_socket_unsafe (receiver_);
+    (void) receiver_;
+    errno = ENOTSUP;
+    return NULL;
 }
 
 inline void *gateway_new (void *ctx_, void *discovery_, const char *routing_id_)
@@ -258,7 +356,11 @@ inline int gateway_setsockopt (void *gateway_,
                                const void *value_,
                                size_t len_)
 {
-    return zlink_gateway_setsockopt (gateway_, option_, value_, len_);
+    const int mapped = detail::gateway_option_from_socket_option (option_);
+    if (mapped < 0)
+        return -1;
+
+    return zlink_gateway_set_option (gateway_, mapped, value_, len_);
 }
 inline int gateway_connection_count (void *gateway_, const char *service_)
 {
@@ -266,11 +368,15 @@ inline int gateway_connection_count (void *gateway_, const char *service_)
 }
 inline void *gateway_router_socket_unsafe (void *gateway_)
 {
-    return zlink_gateway_router_socket_unsafe (gateway_);
+    (void) gateway_;
+    errno = ENOTSUP;
+    return NULL;
 }
 inline void *gateway_router_socket (void *gateway_)
 {
-    return zlink_gateway_router_socket (gateway_);
+    (void) gateway_;
+    errno = ENOTSUP;
+    return NULL;
 }
 
 inline void *spot_node_new (void *ctx_) { return zlink_spot_node_new (ctx_); }
@@ -301,35 +407,69 @@ inline int spot_node_setsockopt (void *node_,
                                  const void *value_,
                                  size_t len_)
 {
-    return zlink_spot_node_setsockopt (node_, role_, option_, value_, len_);
+    switch (role_) {
+    case 0:
+        switch (option_) {
+        case ZLINK_SPOT_PUB_OPT_MODE:
+        case ZLINK_SPOT_PUB_OPT_QUEUE_HWM:
+        case ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY:
+            return zlink_spot_node_set_pub_option (node_, option_, value_, len_);
+        default:
+            errno = EINVAL;
+            return -1;
+        }
+    case 1: {
+        const int mapped = detail::spot_pub_option_from_socket_option (option_);
+        if (mapped < 0)
+            return -1;
+        return zlink_spot_node_set_pub_option (node_, mapped, value_, len_);
+    }
+    case 2: {
+        const int mapped = detail::spot_sub_option_from_socket_option (option_);
+        if (mapped < 0)
+            return -1;
+        return zlink_spot_node_set_sub_option (node_, mapped, value_, len_);
+    }
+    default:
+        errno = EINVAL;
+        return -1;
+    }
 }
 inline void *spot_node_pub_socket_unsafe (void *node_)
 {
-    return zlink_spot_node_pub_socket_unsafe (node_);
+    return zlink_spot_node_default_pub (node_);
 }
 inline void *spot_node_pub_socket (void *node_)
 {
-    return zlink_spot_node_pub_socket (node_);
+    return zlink_spot_node_default_pub (node_);
 }
 inline void *spot_node_sub_socket_unsafe (void *node_)
 {
-    return zlink_spot_node_sub_socket_unsafe (node_);
+    return zlink_spot_node_default_sub (node_);
 }
 inline void *spot_node_sub_socket (void *node_)
 {
-    return zlink_spot_node_sub_socket (node_);
+    return zlink_spot_node_default_sub (node_);
 }
 inline int spot_node_pub_peers (void *node_,
                                 zlink_peer_info_t *peers_,
                                 size_t *count_)
 {
-    return zlink_spot_node_pub_peers (node_, peers_, count_);
+    void *pub = zlink_spot_node_default_pub (node_);
+    if (!pub)
+        return -1;
+
+    return zlink_spot_pub_peers (pub, peers_, count_);
 }
 inline int spot_node_sub_peers (void *node_,
                                 zlink_peer_info_t *peers_,
                                 size_t *count_)
 {
-    return zlink_spot_node_sub_peers (node_, peers_, count_);
+    void *sub = zlink_spot_node_default_sub (node_);
+    if (!sub)
+        return -1;
+
+    return zlink_spot_sub_peers (sub, peers_, count_);
 }
 
 inline void *spot_pub_new (void *node_) { return zlink_spot_pub_new (node_); }

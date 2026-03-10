@@ -86,24 +86,33 @@ void send_gateway_payload (zlink::service::gateway_t &gateway_,
     assert (gateway_.send (service_name_, parts) == 0);
 }
 
-std::string configure_receiver (zlink::service::receiver_t &receiver_,
-                                const std::string &routing_id_,
-                                int rcv_timeout_ms_)
+static std::string last_endpoint_from_receiver (void *receiver_)
 {
-    assert (receiver_.set_sockopt (zlink::receiver_socket_role::router,
-                                   zlink::socket_options::probe_router, 1)
-            == 0);
-    assert (receiver_.set_sockopt (zlink::receiver_socket_role::router,
-                                   zlink::socket_options::routing_id, routing_id_)
-            == 0);
-    assert (receiver_.set_sockopt (zlink::receiver_socket_role::router,
-                                   zlink::socket_options::rcvtimeo,
-                                   rcv_timeout_ms_)
+    char endpoint[256];
+    std::memset (endpoint, 0, sizeof (endpoint));
+    size_t endpoint_len = sizeof (endpoint);
+    assert (zlink_receiver_last_endpoint (receiver_, endpoint, &endpoint_len)
             == 0);
 
-    zlink::socket_t provider_router =
-      zlink::socket_t::wrap (receiver_.router_handle ());
-    const std::string endpoint = bound_endpoint (provider_router);
+    const size_t bounded = endpoint_len <= sizeof (endpoint) ? endpoint_len
+                                                              : sizeof (endpoint);
+    size_t len = bounded;
+    if (len > 0 && endpoint[len - 1] == '\0')
+        --len;
+    return std::string (endpoint, len);
+}
+
+std::string configure_receiver (zlink::service::receiver_t &receiver_,
+                                int rcv_timeout_ms_)
+{
+    assert (zlink_receiver_set_option (
+              receiver_.handle (),
+              ZLINK_RECEIVER_OPT_RCVTIMEO,
+              &rcv_timeout_ms_,
+              sizeof (rcv_timeout_ms_))
+            == 0);
+
+    const std::string endpoint = last_endpoint_from_receiver (receiver_.handle ());
     assert (!endpoint.empty ());
     return endpoint;
 }
@@ -124,7 +133,7 @@ void test_gateway_handover_provider_restart ()
 
     zlink::service::discovery_t discovery (ctx, zlink::service_type::gateway);
     assert (discovery.valid ());
-    assert (discovery.connect_registry (eps.pub) == 0);
+    assert (discovery.connect_registry (eps.router) == 0);
     assert (discovery.subscribe (service_name) == 0);
 
     zlink::service::gateway_t gateway (ctx, discovery);
@@ -134,9 +143,12 @@ void test_gateway_handover_provider_restart ()
         step_log ("setup provider1");
         zlink::service::receiver_t provider1 (ctx);
         assert (provider1.valid ());
+        assert (zlink_receiver_set_routing_id (
+                  provider1.handle (), provider_rid.data (), provider_rid.size ())
+                == 0);
         assert (provider1.bind ("tcp://127.0.0.1:*") == 0);
         const std::string advertise_ep =
-          configure_receiver (provider1, provider_rid, timeout_ms);
+          configure_receiver (provider1, timeout_ms);
         assert (provider1.connect_registry (eps.router) == 0);
         assert (provider1.register_service (service_name, advertise_ep, 1) == 0);
 
@@ -158,9 +170,12 @@ void test_gateway_handover_provider_restart ()
         step_log ("setup provider2 (same rid)");
         zlink::service::receiver_t provider2 (ctx);
         assert (provider2.valid ());
+        assert (zlink_receiver_set_routing_id (
+                  provider2.handle (), provider_rid.data (), provider_rid.size ())
+                == 0);
         assert (provider2.bind ("tcp://127.0.0.1:*") == 0);
         const std::string advertise_ep =
-          configure_receiver (provider2, provider_rid, timeout_ms);
+          configure_receiver (provider2, timeout_ms);
         assert (provider2.connect_registry (eps.router) == 0);
         assert (provider2.register_service (service_name, advertise_ep, 1) == 0);
 
@@ -189,9 +204,12 @@ void test_provider_handover_gateway_reconnect ()
     step_log ("setup provider");
     zlink::service::receiver_t provider (ctx);
     assert (provider.valid ());
+    assert (zlink_receiver_set_routing_id (
+              provider.handle (), provider_rid.data (), provider_rid.size ())
+            == 0);
     assert (provider.bind ("tcp://127.0.0.1:*") == 0);
     const std::string advertise_ep =
-      configure_receiver (provider, provider_rid, timeout_ms);
+      configure_receiver (provider, timeout_ms);
     assert (provider.connect_registry (eps.router) == 0);
     assert (provider.register_service (service_name, advertise_ep, 1) == 0);
 
@@ -199,7 +217,7 @@ void test_provider_handover_gateway_reconnect ()
         step_log ("create discovery1 + gateway1");
         zlink::service::discovery_t discovery1 (ctx, zlink::service_type::gateway);
         assert (discovery1.valid ());
-        assert (discovery1.connect_registry (eps.pub) == 0);
+        assert (discovery1.connect_registry (eps.router) == 0);
         assert (discovery1.subscribe (service_name) == 0);
 
         zlink::service::gateway_t gateway1 (ctx, discovery1, gateway_rid);
@@ -216,7 +234,7 @@ void test_provider_handover_gateway_reconnect ()
         step_log ("create discovery2 + gateway2");
         zlink::service::discovery_t discovery2 (ctx, zlink::service_type::gateway);
         assert (discovery2.valid ());
-        assert (discovery2.connect_registry (eps.pub) == 0);
+        assert (discovery2.connect_registry (eps.router) == 0);
         assert (discovery2.subscribe (service_name) == 0);
 
         zlink::service::gateway_t gateway2 (ctx, discovery2, gateway_rid);

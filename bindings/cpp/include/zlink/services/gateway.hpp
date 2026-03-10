@@ -16,6 +16,57 @@ namespace zlink
 namespace service
 {
 
+namespace detail
+{
+
+inline int gateway_option_from_socket_option (socket_option option_)
+{
+    switch (option_) {
+    case socket_option::sndhwm:
+        return ZLINK_GATEWAY_OPT_SNDHWM;
+    case socket_option::rcvhwm:
+        return ZLINK_GATEWAY_OPT_RCVHWM;
+    case socket_option::sndtimeo:
+        return ZLINK_GATEWAY_OPT_SNDTIMEO;
+    case socket_option::rcvtimeo:
+        return ZLINK_GATEWAY_OPT_RCVTIMEO;
+    case socket_option::linger:
+        return ZLINK_GATEWAY_OPT_LINGER;
+    case socket_option::sndbuf:
+        return ZLINK_GATEWAY_OPT_SNDBUF;
+    case socket_option::rcvbuf:
+        return ZLINK_GATEWAY_OPT_RCVBUF;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+inline int receiver_option_from_socket_option (socket_option option_)
+{
+    switch (option_) {
+    case socket_option::sndhwm:
+        return ZLINK_RECEIVER_OPT_SNDHWM;
+    case socket_option::rcvhwm:
+        return ZLINK_RECEIVER_OPT_RCVHWM;
+    case socket_option::sndtimeo:
+        return ZLINK_RECEIVER_OPT_SNDTIMEO;
+    case socket_option::rcvtimeo:
+        return ZLINK_RECEIVER_OPT_RCVTIMEO;
+    case socket_option::linger:
+        return ZLINK_RECEIVER_OPT_LINGER;
+    case socket_option::sndbuf:
+        return ZLINK_RECEIVER_OPT_SNDBUF;
+    case socket_option::rcvbuf:
+        return ZLINK_RECEIVER_OPT_RCVBUF;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+} // namespace detail
+
 /**
  * @brief Gateway client wrapper for request/reply service traffic.
  */
@@ -329,8 +380,11 @@ class gateway_t
     ZLINK_CPP_NODISCARD int
     set_sockopt (socket_option option_, const void *value_, size_t len_)
     {
-        return zlink_gateway_setsockopt (_gw, static_cast<int> (option_), value_,
-                                         len_);
+        const int mapped = detail::gateway_option_from_socket_option (option_);
+        if (mapped < 0)
+            return -1;
+
+        return zlink_gateway_set_option (_gw, mapped, value_, len_);
     }
 
     /**
@@ -423,7 +477,8 @@ class gateway_t
      */
     void *router_handle () const
     {
-        return zlink_gateway_router_socket (_gw);
+        errno = ENOTSUP;
+        return NULL;
     }
 
     /**
@@ -644,9 +699,12 @@ class receiver_t
                  const void *value_,
                  size_t len_)
     {
-        return zlink_receiver_setsockopt (
-          _receiver, static_cast<int> (role_), static_cast<int> (option_), value_,
-          len_);
+        (void) role_;
+        const int mapped = detail::receiver_option_from_socket_option (option_);
+        if (mapped < 0)
+            return -1;
+
+        return zlink_receiver_set_option (_receiver, mapped, value_, len_);
     }
 
     /**
@@ -777,7 +835,8 @@ class receiver_t
      */
     void *router_handle () const
     {
-        return zlink_receiver_router_socket_unsafe (_receiver);
+        errno = ENOTSUP;
+        return NULL;
     }
 
     /**

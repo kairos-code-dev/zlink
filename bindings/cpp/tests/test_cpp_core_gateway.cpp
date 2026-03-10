@@ -86,6 +86,22 @@ void send_gateway_payload (zlink::service::gateway_t &gateway_,
     assert (gateway_.send (service_name_, parts) == 0);
 }
 
+static std::string last_endpoint_from_receiver (void *receiver_)
+{
+    char endpoint[256];
+    std::memset (endpoint, 0, sizeof (endpoint));
+    size_t endpoint_len = sizeof (endpoint);
+    assert (zlink_receiver_last_endpoint (receiver_, endpoint, &endpoint_len)
+            == 0);
+
+    const size_t bounded = endpoint_len <= sizeof (endpoint) ? endpoint_len
+                                                              : sizeof (endpoint);
+    size_t len = bounded;
+    if (len > 0 && endpoint[len - 1] == '\0')
+        --len;
+    return std::string (endpoint, len);
+}
+
 void test_gateway_single_service_tcp ()
 {
     const std::string service_name = "svc";
@@ -101,23 +117,18 @@ void test_gateway_single_service_tcp ()
     zlink::service::discovery_t discovery (ctx, zlink::service_type::gateway);
     assert (discovery.valid ());
     step_log ("connect discovery");
-    assert (discovery.connect_registry (eps.pub) == 0);
+    assert (discovery.connect_registry (eps.router) == 0);
     assert (discovery.subscribe (service_name) == 0);
 
     step_log ("setup provider");
     zlink::service::receiver_t provider (ctx);
     assert (provider.valid ());
+    assert (zlink_receiver_set_routing_id (
+              provider.handle (), "PROV1", sizeof ("PROV1") - 1)
+            == 0);
     assert (provider.bind ("tcp://127.0.0.1:*") == 0);
-    assert (provider.set_sockopt (zlink::receiver_socket_role::router,
-                                  zlink::socket_options::probe_router, 1)
-            == 0);
-    assert (provider.set_sockopt (zlink::receiver_socket_role::router,
-                                  zlink::socket_options::routing_id, "PROV1")
-            == 0);
-
-    zlink::socket_t provider_router =
-      zlink::socket_t::wrap (provider.router_handle ());
-    const std::string advertise_ep = bound_endpoint (provider_router);
+    const std::string advertise_ep =
+      last_endpoint_from_receiver (provider.handle ());
     assert (!advertise_ep.empty ());
 
     assert (provider.connect_registry (eps.router) == 0);

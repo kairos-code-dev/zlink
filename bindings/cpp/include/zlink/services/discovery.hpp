@@ -136,8 +136,12 @@ class discovery_t
                  const void *value_,
                  size_t len_)
     {
-        return zlink_discovery_setsockopt (
-          _disc, static_cast<int> (role_), static_cast<int> (option_), value_, len_);
+        (void) role_;
+        (void) option_;
+        (void) value_;
+        (void) len_;
+        errno = ENOTSUP;
+        return -1;
     }
 
     /**

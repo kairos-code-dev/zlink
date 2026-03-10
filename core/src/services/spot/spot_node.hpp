@@ -23,6 +23,34 @@ class spot_data_plane_t;
 class spot_node_t : public discovery_observer_t
 {
   public:
+    struct option_setting_t
+    {
+        option_setting_t () : enabled (false), value (0), size (0) {}
+
+        bool enabled;
+        int value;
+        size_t size;
+    };
+
+    struct pub_defaults_t
+    {
+        option_setting_t sndhwm;
+        option_setting_t sndtimeo;
+        option_setting_t linger;
+        option_setting_t nodrop;
+        option_setting_t sndbuf;
+        option_setting_t rcvbuf;
+    };
+
+    struct sub_defaults_t
+    {
+        option_setting_t rcvhwm;
+        option_setting_t rcvtimeo;
+        option_setting_t linger;
+        option_setting_t sndbuf;
+        option_setting_t rcvbuf;
+    };
+
     explicit spot_node_t (ctx_t *ctx_);
     ~spot_node_t ();
 
@@ -40,9 +68,17 @@ class spot_node_t : public discovery_observer_t
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
                         int trust_system_);
+    int set_pub_option (int option_,
+                        const void *optval_,
+                        size_t optvallen_);
+    int set_sub_option (int option_,
+                        const void *optval_,
+                        size_t optvallen_);
 
     spot_pub_t *create_spot_pub ();
     spot_sub_t *create_spot_sub ();
+    spot_pub_t *ensure_default_pub ();
+    spot_sub_t *ensure_default_sub ();
     void remove_spot_pub (spot_pub_t *pub_);
     void remove_spot_sub (spot_sub_t *sub_);
 
@@ -74,6 +110,23 @@ class spot_node_t : public discovery_observer_t
     int send_data_plane_command (const char *verb_,
                                  const char *arg_ = NULL) const;
     int wait_facade_peer (socket_base_t *socket_) const;
+    spot_pub_t *create_spot_pub_with_defaults (const pub_defaults_t &defaults_,
+                                               bool node_owned_default_);
+    spot_sub_t *create_spot_sub_with_defaults (const sub_defaults_t &defaults_,
+                                               bool node_owned_default_);
+    int apply_pub_defaults (spot_pub_t *pub_, const pub_defaults_t &defaults_);
+    int apply_sub_defaults (spot_sub_t *sub_, const sub_defaults_t &defaults_);
+    static int validate_pub_option (int option_,
+                                    const void *optval_,
+                                    size_t optvallen_);
+    static int validate_sub_option (int option_,
+                                    const void *optval_,
+                                    size_t optvallen_);
+    static void copy_option_setting (option_setting_t *dst_,
+                                     const void *optval_,
+                                     size_t optvallen_);
+    void store_pub_option (int option_, const void *optval_, size_t optvallen_);
+    void store_sub_option (int option_, const void *optval_, size_t optvallen_);
     int resolve_advertise_endpoint (const char *advertise_endpoint_,
                                     std::string *out_) const;
     void refresh_local_pub_ingress_hwm ();
@@ -103,6 +156,8 @@ class spot_node_t : public discovery_observer_t
 
     mutable mutex_t _sync;
     mutable mutex_t _ctrl_sync;
+    mutable mutex_t _default_pub_sync;
+    mutable mutex_t _default_sub_sync;
 
     socket_base_t *_data_ctrl_front;
     socket_base_t *_data_ctrl_back;
@@ -151,6 +206,10 @@ class spot_node_t : public discovery_observer_t
     int _local_pub_ingress_rcvhwm_default;
     int _local_fanout_sndhwm_default;
 
+    spot_pub_t *_default_pub;
+    spot_sub_t *_default_sub;
+    pub_defaults_t _pub_defaults;
+    sub_defaults_t _sub_defaults;
     std::set<spot_pub_t *> _pubs;
     std::set<spot_sub_t *> _subs;
 

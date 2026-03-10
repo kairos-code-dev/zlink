@@ -8,8 +8,11 @@ SPOT은 Discovery를 통한 자동 메시 형성으로 토픽 기반의 위치 �
 
 ## 현재 권장 API 방향
 
-- `SpotNode`는 bind/connect/discovery/TLS를 담당하는 wiring owner입니다.
-- 실제 public service surface는 `SpotPub`과 `SpotSub`입니다.
+- `SpotNode`는 bind/connect/discovery/TLS wiring owner이며, direct publish/recv를
+  위한 node-owned 기본 `SpotPub` / `SpotSub` facade도 노출할 수 있습니다.
+- 실제 public service surface는 여전히 `SpotPub`과 `SpotSub`이며,
+  `zlink_spot_node_default_pub()` / `zlink_spot_node_default_sub()`가 반환하는
+  embedded handle도 같은 surface를 재사용합니다.
 - 서비스 옵션은 `zlink_spot_pub_set_option()` /
   `zlink_spot_sub_set_option()`으로 설정합니다.
 - 대표 identity는 `zlink_spot_pub_set_routing_id()` /
@@ -17,7 +20,9 @@ SPOT은 Discovery를 통한 자동 메시 형성으로 토픽 기반의 위치 �
 - 상태 전이는 `zlink_spot_pub_monitor_open()` /
   `zlink_spot_sub_monitor_open()`으로 관찰합니다. 토폴로지 수준의
   상태 보고는 Discovery가 소유하는 topology summary를 통해 이루어집니다.
-- `SpotNode`는 bind/connect/discovery/TLS wiring 용도로만 사용합니다.
+- `SpotNode`는 explicit child handle owner로도, `zlink_spot_node_publish*()`,
+  `zlink_spot_node_recv()`, `zlink_spot_node_subscribe*()`를 통한 direct facade로도
+  사용할 수 있습니다.
 - `zlink_spot_node_register()`는 attached Discovery의 uplink runtime을
   통해 등록을 제출합니다. `set_discovery()` 호출이 선행되어야 합니다.
 
@@ -29,7 +34,7 @@ SPOT은 Discovery를 통한 자동 메시 형성으로 토픽 기반의 위치 �
 |------|----------|-----------|------|
 | `SpotPub` | `zlink_spot_pub_set_option()` | `ZLINK_SPOT_PUB_OPT_SNDHWM`, `ZLINK_SPOT_PUB_OPT_SNDTIMEO`, `ZLINK_SPOT_PUB_OPT_LINGER`, `ZLINK_SPOT_PUB_OPT_NODROP`, `ZLINK_SPOT_PUB_OPT_SNDBUF`, `ZLINK_SPOT_PUB_OPT_RCVBUF` | 현재 canonical publish-side option surface |
 | `SpotSub` | `zlink_spot_sub_set_option()` | `ZLINK_SPOT_SUB_OPT_RCVHWM`, `ZLINK_SPOT_SUB_OPT_RCVTIMEO`, `ZLINK_SPOT_SUB_OPT_LINGER`, `ZLINK_SPOT_SUB_OPT_QUEUE_NODROP`, `ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY`, `ZLINK_SPOT_SUB_OPT_SNDBUF`, `ZLINK_SPOT_SUB_OPT_RCVBUF` | 현재 canonical subscribe-side option surface |
-| `SpotNode` | 없음 | 없음 | 현재 API 기준으로는 node-level pub/sub option API를 제공하지 않음 |
+| `SpotNode` | `zlink_spot_node_set_pub_option()` / `zlink_spot_node_set_sub_option()` | `ZLINK_SPOT_PUB_OPT_SNDHWM`, `ZLINK_SPOT_PUB_OPT_SNDTIMEO`, `ZLINK_SPOT_PUB_OPT_LINGER`, `ZLINK_SPOT_PUB_OPT_NODROP`, `ZLINK_SPOT_PUB_OPT_SNDBUF`, `ZLINK_SPOT_PUB_OPT_RCVBUF`, `ZLINK_SPOT_SUB_OPT_RCVHWM`, `ZLINK_SPOT_SUB_OPT_RCVTIMEO`, `ZLINK_SPOT_SUB_OPT_LINGER`, `ZLINK_SPOT_SUB_OPT_SNDBUF`, `ZLINK_SPOT_SUB_OPT_RCVBUF` | embedded default handle + 이후 생성되는 child handle 기본값 |
 
 제거된 queue/async 계열 옵션:
 
@@ -66,7 +71,8 @@ SPOT 노드는 메시 토폴로지를 형성하는 PUB, SUB 소켓과 proxy 기�
 plane worker를 관리합니다. Publisher와 Subscriber는 노드에 연결하여
 메시지를 송수신합니다. Registry 연동은 attached Discovery의 uplink
 runtime을 통해 이루어지며, SpotNode 자체는 registry raw socket을
-소유하지 않습니다.
+소유하지 않습니다. direct node API를 사용하면 Node는 lazy-init된 embedded
+기본 `SpotPub` / `SpotSub`를 소유하고 direct 호출을 그 handle들로 위임합니다.
 
 ### zlink_spot_node_new
 

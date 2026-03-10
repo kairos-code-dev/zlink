@@ -9,8 +9,11 @@ Subscribers that consume them.
 
 ## Current API Direction
 
-- `SpotNode` is the wiring owner for bind/connect/discovery/TLS only.
-- Public service surfaces are `SpotPub` and `SpotSub`.
+- `SpotNode` owns bind/connect/discovery/TLS wiring and can also expose a
+  node-owned default `SpotPub` / `SpotSub` facade for direct publish/recv use.
+- Public service surfaces remain `SpotPub` and `SpotSub`, including the
+  embedded default handles returned by `zlink_spot_node_default_pub()` /
+  `zlink_spot_node_default_sub()`.
 - Use `zlink_spot_pub_set_option()` / `zlink_spot_sub_set_option()` for
   service-level options.
 - Use `zlink_spot_pub_set_routing_id()` / `zlink_spot_sub_set_routing_id()`
@@ -18,7 +21,9 @@ Subscribers that consume them.
 - Use `zlink_spot_pub_monitor_open()` / `zlink_spot_sub_monitor_open()` for
   state transitions. Topology-level state reporting is handled through the
   topology summary owned by Discovery.
-- Keep `SpotNode` for bind/connect/discovery/TLS wiring only.
+- Use `SpotNode` either as a wiring owner plus explicit child handles, or as a
+  direct facade through `zlink_spot_node_publish*()`, `zlink_spot_node_recv()`,
+  and `zlink_spot_node_subscribe*()`.
 - `zlink_spot_node_register()` submits registration via the attached
   Discovery's uplink runtime. `set_discovery()` must be called first.
 
@@ -48,7 +53,9 @@ A SPOT Node manages the underlying PUB and SUB sockets along with a
 proxy-based data plane worker that forms the mesh topology. Publishers and
 Subscribers attach to a Node to send and receive messages. Registry
 communication is handled through the attached Discovery's uplink runtime;
-SpotNode itself does not own a registry raw socket.
+SpotNode itself does not own a registry raw socket. When direct node APIs are
+used, the Node lazily creates and owns an embedded default `SpotPub` /
+`SpotSub` pair and forwards direct operations through those handles.
 
 ### zlink_spot_node_new
 

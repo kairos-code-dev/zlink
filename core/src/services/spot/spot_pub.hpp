@@ -20,10 +20,13 @@ class spot_node_t;
 class spot_pub_t
 {
   public:
-    spot_pub_t (spot_node_t *node_, socket_base_t *socket_);
+    spot_pub_t (spot_node_t *node_,
+                socket_base_t *socket_,
+                bool node_owned_default_ = false);
     ~spot_pub_t ();
 
     bool check_tag () const;
+    bool is_node_owned_default () const;
 
     int publish (const char *topic_,
                  zlink_msg_t *parts_,
@@ -39,10 +42,13 @@ class spot_pub_t
 
     void emit_ready_event ();
     int destroy ();
+    int destroy_from_node ();
+    int abort_create ();
 
   private:
     static void monitor_thread_main (void *arg_);
     void monitor_loop ();
+    int destroy_internal (bool allow_embedded_default_, bool notify_node_);
     void submit_error_summary (int error_code_);
     int ensure_monitor_bridge_started ();
     void stop_monitor_bridge ();
@@ -52,6 +58,7 @@ class spot_pub_t
     spot_node_t *_node;
     socket_base_t *_socket;
     uint32_t _tag;
+    bool _node_owned_default;
     mutable mutex_t _sync;
     zlink_routing_id_t _routing_id;
     bool _routing_id_locked;

@@ -22,10 +22,13 @@ class spot_node_t;
 class spot_sub_t
 {
   public:
-    spot_sub_t (spot_node_t *node_, socket_base_t *socket_);
+    spot_sub_t (spot_node_t *node_,
+                socket_base_t *socket_,
+                bool node_owned_default_ = false);
     ~spot_sub_t ();
 
     bool check_tag () const;
+    bool is_node_owned_default () const;
 
     int subscribe (const char *topic_);
     int subscribe_pattern (const char *pattern_);
@@ -47,6 +50,8 @@ class spot_sub_t
 
     void emit_ready_event ();
     int destroy ();
+    int destroy_from_node ();
+    int abort_create ();
 
   private:
     enum handler_state_t
@@ -66,6 +71,7 @@ class spot_sub_t
                                   void *userdata_);
     static void monitor_thread_main (void *arg_);
     void monitor_loop ();
+    int destroy_internal (bool allow_embedded_default_, bool notify_node_);
     int ensure_monitor_bridge_started ();
     void stop_monitor_bridge ();
     void lock_routing_id ();
@@ -73,6 +79,7 @@ class spot_sub_t
     spot_node_t *_node;
     socket_base_t *_socket;
     uint32_t _tag;
+    bool _node_owned_default;
 
     mutable mutex_t _sync;
     zlink_routing_id_t _routing_id;

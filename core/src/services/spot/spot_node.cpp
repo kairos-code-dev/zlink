@@ -135,7 +135,9 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _mesh_client_tls_locked (false),
     _registration_tls_locked (false),
     _faulted (false),
-    _fault_errno (0)
+    _fault_errno (0),
+    _default_pub (NULL),
+    _default_sub (NULL)
 {
     if (_node_id == 0)
         _node_id = 1;
@@ -938,7 +940,253 @@ int spot_node_t::set_tls_client (const char *ca_cert_,
     return 0;
 }
 
-spot_pub_t *spot_node_t::create_spot_pub ()
+int spot_node_t::validate_pub_option (int option_,
+                                      const void *optval_,
+                                      size_t optvallen_)
+{
+    if (!optval_ || optvallen_ == 0 || optvallen_ > sizeof (int)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    switch (option_) {
+        case ZLINK_SPOT_PUB_OPT_SNDHWM:
+        case ZLINK_SPOT_PUB_OPT_SNDTIMEO:
+        case ZLINK_SPOT_PUB_OPT_LINGER:
+        case ZLINK_SPOT_PUB_OPT_NODROP:
+        case ZLINK_SPOT_PUB_OPT_SNDBUF:
+        case ZLINK_SPOT_PUB_OPT_RCVBUF:
+            return 0;
+        case ZLINK_SPOT_PUB_OPT_MODE:
+        case ZLINK_SPOT_PUB_OPT_QUEUE_HWM:
+        case ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY:
+            errno = ENOTSUP;
+            return -1;
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+}
+
+int spot_node_t::validate_sub_option (int option_,
+                                      const void *optval_,
+                                      size_t optvallen_)
+{
+    if (!optval_ || optvallen_ == 0 || optvallen_ > sizeof (int)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    switch (option_) {
+        case ZLINK_SPOT_SUB_OPT_RCVHWM:
+        case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
+        case ZLINK_SPOT_SUB_OPT_LINGER:
+        case ZLINK_SPOT_SUB_OPT_SNDBUF:
+        case ZLINK_SPOT_SUB_OPT_RCVBUF:
+            return 0;
+        case ZLINK_SPOT_SUB_OPT_QUEUE_NODROP:
+        case ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY:
+            errno = ENOTSUP;
+            return -1;
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+}
+
+void spot_node_t::copy_option_setting (option_setting_t *dst_,
+                                       const void *optval_,
+                                       size_t optvallen_)
+{
+    if (!dst_)
+        return;
+
+    dst_->enabled = true;
+    dst_->value = 0;
+    dst_->size = optvallen_;
+    memcpy (&dst_->value, optval_, optvallen_);
+}
+
+void spot_node_t::store_pub_option (int option_,
+                                    const void *optval_,
+                                    size_t optvallen_)
+{
+    switch (option_) {
+        case ZLINK_SPOT_PUB_OPT_SNDHWM:
+            copy_option_setting (&_pub_defaults.sndhwm, optval_, optvallen_);
+            return;
+        case ZLINK_SPOT_PUB_OPT_SNDTIMEO:
+            copy_option_setting (&_pub_defaults.sndtimeo, optval_, optvallen_);
+            return;
+        case ZLINK_SPOT_PUB_OPT_LINGER:
+            copy_option_setting (&_pub_defaults.linger, optval_, optvallen_);
+            return;
+        case ZLINK_SPOT_PUB_OPT_NODROP:
+            copy_option_setting (&_pub_defaults.nodrop, optval_, optvallen_);
+            return;
+        case ZLINK_SPOT_PUB_OPT_SNDBUF:
+            copy_option_setting (&_pub_defaults.sndbuf, optval_, optvallen_);
+            return;
+        case ZLINK_SPOT_PUB_OPT_RCVBUF:
+            copy_option_setting (&_pub_defaults.rcvbuf, optval_, optvallen_);
+            return;
+        default:
+            return;
+    }
+}
+
+void spot_node_t::store_sub_option (int option_,
+                                    const void *optval_,
+                                    size_t optvallen_)
+{
+    switch (option_) {
+        case ZLINK_SPOT_SUB_OPT_RCVHWM:
+            copy_option_setting (&_sub_defaults.rcvhwm, optval_, optvallen_);
+            return;
+        case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
+            copy_option_setting (&_sub_defaults.rcvtimeo, optval_, optvallen_);
+            return;
+        case ZLINK_SPOT_SUB_OPT_LINGER:
+            copy_option_setting (&_sub_defaults.linger, optval_, optvallen_);
+            return;
+        case ZLINK_SPOT_SUB_OPT_SNDBUF:
+            copy_option_setting (&_sub_defaults.sndbuf, optval_, optvallen_);
+            return;
+        case ZLINK_SPOT_SUB_OPT_RCVBUF:
+            copy_option_setting (&_sub_defaults.rcvbuf, optval_, optvallen_);
+            return;
+        default:
+            return;
+    }
+}
+
+int spot_node_t::set_pub_option (int option_,
+                                 const void *optval_,
+                                 size_t optvallen_)
+{
+    if (validate_pub_option (option_, optval_, optvallen_) != 0)
+        return -1;
+
+    scoped_lock_t init_lock (_default_pub_sync);
+    spot_pub_t *default_pub = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        default_pub = _default_pub;
+    }
+
+    if (default_pub && default_pub->set_option (option_, optval_, optvallen_) != 0)
+        return -1;
+
+    {
+        scoped_lock_t lock (_sync);
+        store_pub_option (option_, optval_, optvallen_);
+    }
+    return 0;
+}
+
+int spot_node_t::set_sub_option (int option_,
+                                 const void *optval_,
+                                 size_t optvallen_)
+{
+    if (validate_sub_option (option_, optval_, optvallen_) != 0)
+        return -1;
+
+    scoped_lock_t init_lock (_default_sub_sync);
+    spot_sub_t *default_sub = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        default_sub = _default_sub;
+    }
+
+    if (default_sub && default_sub->set_option (option_, optval_, optvallen_) != 0)
+        return -1;
+
+    {
+        scoped_lock_t lock (_sync);
+        store_sub_option (option_, optval_, optvallen_);
+    }
+    return 0;
+}
+
+int spot_node_t::apply_pub_defaults (spot_pub_t *pub_,
+                                     const pub_defaults_t &defaults_)
+{
+    if (!pub_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (defaults_.sndhwm.enabled
+        && pub_->set_option (ZLINK_SPOT_PUB_OPT_SNDHWM, &defaults_.sndhwm.value,
+                             defaults_.sndhwm.size)
+             != 0)
+        return -1;
+    if (defaults_.sndtimeo.enabled
+        && pub_->set_option (ZLINK_SPOT_PUB_OPT_SNDTIMEO,
+                             &defaults_.sndtimeo.value, defaults_.sndtimeo.size)
+             != 0)
+        return -1;
+    if (defaults_.linger.enabled
+        && pub_->set_option (ZLINK_SPOT_PUB_OPT_LINGER, &defaults_.linger.value,
+                             defaults_.linger.size)
+             != 0)
+        return -1;
+    if (defaults_.nodrop.enabled
+        && pub_->set_option (ZLINK_SPOT_PUB_OPT_NODROP, &defaults_.nodrop.value,
+                             defaults_.nodrop.size)
+             != 0)
+        return -1;
+    if (defaults_.sndbuf.enabled
+        && pub_->set_option (ZLINK_SPOT_PUB_OPT_SNDBUF, &defaults_.sndbuf.value,
+                             defaults_.sndbuf.size)
+             != 0)
+        return -1;
+    if (defaults_.rcvbuf.enabled
+        && pub_->set_option (ZLINK_SPOT_PUB_OPT_RCVBUF, &defaults_.rcvbuf.value,
+                             defaults_.rcvbuf.size)
+             != 0)
+        return -1;
+    return 0;
+}
+
+int spot_node_t::apply_sub_defaults (spot_sub_t *sub_,
+                                     const sub_defaults_t &defaults_)
+{
+    if (!sub_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (defaults_.rcvhwm.enabled
+        && sub_->set_option (ZLINK_SPOT_SUB_OPT_RCVHWM, &defaults_.rcvhwm.value,
+                             defaults_.rcvhwm.size)
+             != 0)
+        return -1;
+    if (defaults_.rcvtimeo.enabled
+        && sub_->set_option (ZLINK_SPOT_SUB_OPT_RCVTIMEO,
+                             &defaults_.rcvtimeo.value, defaults_.rcvtimeo.size)
+             != 0)
+        return -1;
+    if (defaults_.linger.enabled
+        && sub_->set_option (ZLINK_SPOT_SUB_OPT_LINGER, &defaults_.linger.value,
+                             defaults_.linger.size)
+             != 0)
+        return -1;
+    if (defaults_.sndbuf.enabled
+        && sub_->set_option (ZLINK_SPOT_SUB_OPT_SNDBUF, &defaults_.sndbuf.value,
+                             defaults_.sndbuf.size)
+             != 0)
+        return -1;
+    if (defaults_.rcvbuf.enabled
+        && sub_->set_option (ZLINK_SPOT_SUB_OPT_RCVBUF, &defaults_.rcvbuf.value,
+                             defaults_.rcvbuf.size)
+             != 0)
+        return -1;
+    return 0;
+}
+
+spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
+  const pub_defaults_t &defaults_, bool node_owned_default_)
 {
     if (ensure_healthy () != 0)
         return NULL;
@@ -946,35 +1194,43 @@ spot_pub_t *spot_node_t::create_spot_pub ()
     socket_base_t *socket = _ctx->create_socket (ZLINK_PUB);
     if (!socket)
         return NULL;
-    if (socket->connect (_pub_ingress_endpoint.c_str ()) != 0
-        || wait_facade_peer (socket) != 0) {
+    if (socket->connect (_pub_ingress_endpoint.c_str ()) != 0) {
         socket->close ();
         return NULL;
     }
 
-    spot_pub_t *pub = new (std::nothrow) spot_pub_t (this, socket);
+    spot_pub_t *pub =
+      new (std::nothrow) spot_pub_t (this, socket, node_owned_default_);
     if (!pub) {
         socket->close ();
         errno = ENOMEM;
         return NULL;
     }
 
-    {
-        scoped_lock_t lock (_sync);
-        _pubs.insert (pub);
+    if (apply_pub_defaults (pub, defaults_) != 0 || wait_facade_peer (socket) != 0) {
+        const int err = errno;
+        pub->abort_create ();
+        delete pub;
+        errno = err;
+        return NULL;
     }
-    pub->emit_ready_event ();
+
     bool bound = false;
     {
         scoped_lock_t lock (_sync);
+        _pubs.insert (pub);
+        if (node_owned_default_)
+            _default_pub = pub;
         bound = !_bound_endpoint.empty ();
     }
+    pub->emit_ready_event ();
     if (bound)
         submit_pub_summary (pub, ZLINK_TOPOLOGY_STATE_READY, 0);
     return pub;
 }
 
-spot_sub_t *spot_node_t::create_spot_sub ()
+spot_sub_t *spot_node_t::create_spot_sub_with_defaults (
+  const sub_defaults_t &defaults_, bool node_owned_default_)
 {
     if (ensure_healthy () != 0)
         return NULL;
@@ -982,37 +1238,111 @@ spot_sub_t *spot_node_t::create_spot_sub ()
     socket_base_t *socket = _ctx->create_socket (ZLINK_SUB);
     if (!socket)
         return NULL;
-    if (socket->connect (_sub_fanout_endpoint.c_str ()) != 0
-        || wait_facade_peer (socket) != 0) {
+    if (socket->connect (_sub_fanout_endpoint.c_str ()) != 0) {
         socket->close ();
         return NULL;
     }
 
-    spot_sub_t *sub = new (std::nothrow) spot_sub_t (this, socket);
+    spot_sub_t *sub =
+      new (std::nothrow) spot_sub_t (this, socket, node_owned_default_);
     if (!sub) {
         socket->close ();
         errno = ENOMEM;
         return NULL;
     }
 
+    if (apply_sub_defaults (sub, defaults_) != 0 || wait_facade_peer (socket) != 0) {
+        const int err = errno;
+        sub->abort_create ();
+        delete sub;
+        errno = err;
+        return NULL;
+    }
+
     {
         scoped_lock_t lock (_sync);
         _subs.insert (sub);
+        if (node_owned_default_)
+            _default_sub = sub;
     }
     sub->emit_ready_event ();
     submit_sub_summary (sub, ZLINK_TOPOLOGY_STATE_CONNECTING, 0);
     return sub;
 }
 
+spot_pub_t *spot_node_t::create_spot_pub ()
+{
+    pub_defaults_t defaults;
+    scoped_lock_t init_lock (_default_pub_sync);
+    {
+        scoped_lock_t lock (_sync);
+        defaults = _pub_defaults;
+    }
+    return create_spot_pub_with_defaults (defaults, false);
+}
+
+spot_sub_t *spot_node_t::create_spot_sub ()
+{
+    sub_defaults_t defaults;
+    scoped_lock_t init_lock (_default_sub_sync);
+    {
+        scoped_lock_t lock (_sync);
+        defaults = _sub_defaults;
+    }
+    return create_spot_sub_with_defaults (defaults, false);
+}
+
+spot_pub_t *spot_node_t::ensure_default_pub ()
+{
+    {
+        scoped_lock_t lock (_sync);
+        if (_default_pub)
+            return _default_pub;
+    }
+
+    pub_defaults_t defaults;
+    scoped_lock_t init_lock (_default_pub_sync);
+    {
+        scoped_lock_t lock (_sync);
+        if (_default_pub)
+            return _default_pub;
+        defaults = _pub_defaults;
+    }
+    return create_spot_pub_with_defaults (defaults, true);
+}
+
+spot_sub_t *spot_node_t::ensure_default_sub ()
+{
+    {
+        scoped_lock_t lock (_sync);
+        if (_default_sub)
+            return _default_sub;
+    }
+
+    sub_defaults_t defaults;
+    scoped_lock_t init_lock (_default_sub_sync);
+    {
+        scoped_lock_t lock (_sync);
+        if (_default_sub)
+            return _default_sub;
+        defaults = _sub_defaults;
+    }
+    return create_spot_sub_with_defaults (defaults, true);
+}
+
 void spot_node_t::remove_spot_pub (spot_pub_t *pub_)
 {
     scoped_lock_t lock (_sync);
+    if (_default_pub == pub_)
+        _default_pub = NULL;
     _pubs.erase (pub_);
 }
 
 void spot_node_t::remove_spot_sub (spot_sub_t *sub_)
 {
     scoped_lock_t lock (_sync);
+    if (_default_sub == sub_)
+        _default_sub = NULL;
     _subs.erase (sub_);
 }
 
@@ -1024,16 +1354,18 @@ void spot_node_t::destroy_handles ()
         scoped_lock_t lock (_sync);
         pubs.assign (_pubs.begin (), _pubs.end ());
         subs.assign (_subs.begin (), _subs.end ());
+        _default_pub = NULL;
+        _default_sub = NULL;
         _pubs.clear ();
         _subs.clear ();
     }
 
     for (size_t i = 0; i < pubs.size (); ++i) {
-        pubs[i]->destroy ();
+        pubs[i]->destroy_from_node ();
         delete pubs[i];
     }
     for (size_t i = 0; i < subs.size (); ++i) {
-        subs[i]->destroy ();
+        subs[i]->destroy_from_node ();
         delete subs[i];
     }
 }

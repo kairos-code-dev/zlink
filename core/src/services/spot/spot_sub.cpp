@@ -71,10 +71,13 @@ static void fill_socket_monitor_event (zlink_service_event_t *event_,
     }
 }
 
-spot_sub_t::spot_sub_t (spot_node_t *node_, socket_base_t *socket_) :
+spot_sub_t::spot_sub_t (spot_node_t *node_,
+                        socket_base_t *socket_,
+                        bool node_owned_default_) :
     _node (node_),
     _socket (socket_),
     _tag (spot_sub_tag_value),
+    _node_owned_default (node_owned_default_),
     _routing_id_locked (false),
     _handler (NULL),
     _handler_userdata (NULL),
@@ -98,6 +101,11 @@ spot_sub_t::~spot_sub_t ()
 bool spot_sub_t::check_tag () const
 {
     return _tag == spot_sub_tag_value;
+}
+
+bool spot_sub_t::is_node_owned_default () const
+{
+    return _node_owned_default;
 }
 
 int spot_sub_t::initialize_routing_id (zlink_routing_id_t *out_)
@@ -425,7 +433,7 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
     {
         scoped_lock_t lock (_sync);
         if (_handler_state == handler_active) {
-            errno = EINVAL;
+            errno = EBUSY;
             return -1;
         }
         if (_recv_in_progress.get () > 0) {
@@ -681,11 +689,17 @@ void spot_sub_t::monitor_loop ()
     }
 }
 
-int spot_sub_t::destroy ()
+int spot_sub_t::destroy_internal (bool allow_embedded_default_,
+                                  bool notify_node_)
 {
-    if (_node)
+    if (_node_owned_default && !allow_embedded_default_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (notify_node_ && _node)
         _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
-    if (_node)
+    if (notify_node_ && _node)
         _node->remove_spot_sub (this);
 
     bool has_handler = false;
@@ -716,6 +730,22 @@ int spot_sub_t::destroy ()
         _socket = NULL;
     }
     _node = NULL;
+    _node_owned_default = false;
     return 0;
+}
+
+int spot_sub_t::destroy ()
+{
+    return destroy_internal (false, true);
+}
+
+int spot_sub_t::destroy_from_node ()
+{
+    return destroy_internal (true, true);
+}
+
+int spot_sub_t::abort_create ()
+{
+    return destroy_internal (true, false);
 }
 }

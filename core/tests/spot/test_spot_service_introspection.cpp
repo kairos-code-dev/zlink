@@ -353,6 +353,83 @@ static void test_spot_monitors_and_monitor_poller ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
 }
 
+static void test_spot_node_default_handles_support_monitor_and_routing_id ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *pub_node = zlink_spot_node_new (ctx);
+    void *sub_node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (pub_node);
+    TEST_ASSERT_NOT_NULL (sub_node);
+
+    void *default_pub = zlink_spot_node_default_pub (pub_node);
+    void *default_sub = zlink_spot_node_default_sub (sub_node);
+    TEST_ASSERT_NOT_NULL (default_pub);
+    TEST_ASSERT_NOT_NULL (default_sub);
+
+    zlink_routing_id_t pub_rid;
+    zlink_routing_id_t sub_rid;
+    memset (&pub_rid, 0, sizeof (pub_rid));
+    memset (&sub_rid, 0, sizeof (sub_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_routing_id (default_pub, &pub_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_routing_id (default_sub, &sub_rid));
+    TEST_ASSERT_TRUE (pub_rid.size > 0);
+    TEST_ASSERT_TRUE (sub_rid.size > 0);
+
+    void *sub_monitor =
+      zlink_spot_sub_monitor_open (default_sub, ZLINK_MONITOR_EVENT_READY
+                                                    | ZLINK_MONITOR_EVENT_PEER_UP);
+    void *pub_monitor =
+      zlink_spot_pub_monitor_open (default_pub, ZLINK_MONITOR_EVENT_READY
+                                                    | ZLINK_MONITOR_EVENT_PEER_UP);
+    TEST_ASSERT_NOT_NULL (sub_monitor);
+    TEST_ASSERT_NOT_NULL (pub_monitor);
+    msleep (50);
+
+    char endpoint[MAX_SOCKET_STRING];
+    snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
+              test_port (22628));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (pub_node, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer_pub (sub_node, endpoint));
+    const int recv_timeo = 1000;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_sub_option (
+      sub_node, ZLINK_SPOT_SUB_OPT_RCVTIMEO, &recv_timeo, sizeof (recv_timeo)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_subscribe (sub_node, "svc-default-monitor"));
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic[256] = {0};
+    size_t topic_len = sizeof (topic);
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (1500);
+    while (std::chrono::steady_clock::now () < deadline) {
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_publish_bytes (
+          pub_node, "svc-default-monitor", "pong", 4, 0));
+        if (zlink_spot_node_recv (sub_node, &parts, &part_count, ZLINK_DONTWAIT,
+                                  topic, &topic_len)
+            == 0)
+            break;
+        TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+        msleep (10);
+        topic_len = sizeof (topic);
+    }
+    TEST_ASSERT_NOT_NULL (parts);
+    TEST_ASSERT_EQUAL_UINT (19, topic_len);
+    TEST_ASSERT_EQUAL_MEMORY ("svc-default-monitor", topic, topic_len);
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_EQUAL_UINT (4, zlink_msg_size (&parts[0]));
+    TEST_ASSERT_EQUAL_MEMORY ("pong", zlink_msg_data (&parts[0]), 4);
+    zlink_multipart_close (parts, part_count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&sub_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&pub_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+}
+
 static void test_spot_monitor_closed_and_topology_reports ()
 {
     void *ctx = get_test_context ();
@@ -775,6 +852,7 @@ int main (int, char **)
     UNITY_BEGIN ();
     RUN_TEST (test_spot_pub_sub_options_and_routing_ids);
     RUN_TEST (test_spot_monitors_and_monitor_poller);
+    RUN_TEST (test_spot_node_default_handles_support_monitor_and_routing_id);
     RUN_TEST (test_spot_monitor_closed_and_topology_reports);
     RUN_TEST (test_spot_topology_summary_lifecycle);
     RUN_TEST (test_spot_register_null_derivation_and_wildcard_rejection);

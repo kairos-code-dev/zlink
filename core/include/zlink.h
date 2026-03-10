@@ -1121,6 +1121,88 @@ ZLINK_EXPORT int zlink_spot_node_set_tls_client (void *node,
                                              const char *hostname,
                                              int trust_system);
 
+/**
+ * @brief Callback function type for SPOT subscriber handler dispatch.
+ *
+ * When set via zlink_spot_sub_set_handler() or zlink_spot_node_set_handler(),
+ * incoming messages are automatically delivered through this callback instead
+ * of recv()-based consumption.
+ *
+ * @param topic       Topic string.
+ * @param topic_len   Topic string length.
+ * @param parts       Multipart message array (read-only).
+ * @param part_count  Number of parts.
+ * @param userdata    User-provided context pointer.
+ */
+typedef void (*zlink_spot_sub_handler_fn) (const char *topic,
+                                           size_t topic_len,
+                                           const zlink_msg_t *parts,
+                                           size_t part_count,
+                                           void *userdata);
+
+/** @brief Publish via the node-owned default SpotPub facade. */
+ZLINK_EXPORT int zlink_spot_node_publish (void *node,
+                                          const char *topic_id,
+                                          zlink_msg_t *parts,
+                                          size_t part_count,
+                                          int flags);
+
+/** @brief Publish a single-part payload via the node-owned default SpotPub. */
+ZLINK_EXPORT int zlink_spot_node_publish_bytes (void *node,
+                                                const char *topic_id,
+                                                const void *data,
+                                                size_t size,
+                                                int flags);
+
+/** @brief Subscribe via the node-owned default SpotSub facade. */
+ZLINK_EXPORT int zlink_spot_node_subscribe (void *node, const char *topic_id);
+
+/** @brief Subscribe to a prefix pattern via the node-owned default SpotSub. */
+ZLINK_EXPORT int zlink_spot_node_subscribe_pattern (void *node,
+                                                    const char *pattern);
+
+/** @brief Unsubscribe a topic or pattern via the node-owned default SpotSub. */
+ZLINK_EXPORT int zlink_spot_node_unsubscribe_filter (
+  void *node, const char *topic_id_or_pattern);
+
+/**
+ * @brief Set or clear a callback handler on the node-owned default SpotSub.
+ *
+ * This follows zlink_spot_sub_set_handler() semantics.
+ */
+ZLINK_EXPORT int zlink_spot_node_set_handler (
+  void *node, zlink_spot_sub_handler_fn handler, void *userdata);
+
+/**
+ * @brief Receive through the node-owned default SpotSub.
+ *
+ * This follows zlink_spot_sub_recv() semantics and is not thread-safe.
+ */
+ZLINK_EXPORT int zlink_spot_node_recv (void *node,
+                                       zlink_msg_t **parts,
+                                       size_t *part_count,
+                                       int flags,
+                                       char *topic_id_out,
+                                       size_t *topic_id_len);
+
+/** @brief Return the node-owned default SpotPub handle, creating it lazily. */
+ZLINK_EXPORT void *zlink_spot_node_default_pub (void *node);
+
+/** @brief Return the node-owned default SpotSub handle, creating it lazily. */
+ZLINK_EXPORT void *zlink_spot_node_default_sub (void *node);
+
+/** @brief Set a default SpotPub option for the node and future child pubs. */
+ZLINK_EXPORT int zlink_spot_node_set_pub_option (void *node,
+                                                 int option,
+                                                 const void *optval,
+                                                 size_t optvallen);
+
+/** @brief Set a default SpotSub option for the node and future child subs. */
+ZLINK_EXPORT int zlink_spot_node_set_sub_option (void *node,
+                                                 int option,
+                                                 const void *optval,
+                                                 size_t optvallen);
+
 /* Spot publish modes */
 #define ZLINK_SPOT_NODE_PUB_MODE_SYNC 0
 #define ZLINK_SPOT_NODE_PUB_MODE_ASYNC 1
@@ -1211,24 +1293,6 @@ ZLINK_EXPORT int zlink_spot_pub_publish_bytes (void *pub,
 #define ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY 5
 #define ZLINK_SPOT_SUB_OPT_SNDBUF 6
 #define ZLINK_SPOT_SUB_OPT_RCVBUF 7
-
-/**
- * @brief Callback function type for SPOT subscriber handler dispatch.
- *
- * When set via zlink_spot_sub_set_handler(), incoming messages are
- * automatically delivered through this callback instead of zlink_spot_sub_recv().
- *
- * @param topic       Topic string.
- * @param topic_len   Topic string length.
- * @param parts       Multipart message array (read-only).
- * @param part_count  Number of parts.
- * @param userdata    User-provided context pointer.
- */
-typedef void (*zlink_spot_sub_handler_fn) (const char *topic,
-                                           size_t topic_len,
-                                           const zlink_msg_t *parts,
-                                           size_t part_count,
-                                           void *userdata);
 
 /** @brief Create a SPOT subscriber attached to the given node. */
 ZLINK_EXPORT void *zlink_spot_sub_new (void *node);

@@ -60,10 +60,13 @@ static void fill_socket_monitor_event (zlink_service_event_t *event_,
     }
 }
 
-spot_pub_t::spot_pub_t (spot_node_t *node_, socket_base_t *socket_) :
+spot_pub_t::spot_pub_t (spot_node_t *node_,
+                        socket_base_t *socket_,
+                        bool node_owned_default_) :
     _node (node_),
     _socket (socket_),
     _tag (spot_pub_tag_value),
+    _node_owned_default (node_owned_default_),
     _routing_id_locked (false),
     _monitor (node_ ? node_->ctx () : NULL),
     _raw_monitor_socket (NULL),
@@ -82,6 +85,11 @@ spot_pub_t::~spot_pub_t ()
 bool spot_pub_t::check_tag () const
 {
     return _tag == spot_pub_tag_value;
+}
+
+bool spot_pub_t::is_node_owned_default () const
+{
+    return _node_owned_default;
 }
 
 int spot_pub_t::initialize_routing_id (zlink_routing_id_t *out_)
@@ -396,11 +404,17 @@ void spot_pub_t::monitor_loop ()
     }
 }
 
-int spot_pub_t::destroy ()
+int spot_pub_t::destroy_internal (bool allow_embedded_default_,
+                                  bool notify_node_)
 {
-    if (_node)
+    if (_node_owned_default && !allow_embedded_default_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (notify_node_ && _node)
         _node->submit_pub_summary (this, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
-    if (_node)
+    if (notify_node_ && _node)
         _node->remove_spot_pub (this);
 
     stop_monitor_bridge ();
@@ -415,6 +429,22 @@ int spot_pub_t::destroy ()
         _socket = NULL;
     }
     _node = NULL;
+    _node_owned_default = false;
     return 0;
+}
+
+int spot_pub_t::destroy ()
+{
+    return destroy_internal (false, true);
+}
+
+int spot_pub_t::destroy_from_node ()
+{
+    return destroy_internal (true, true);
+}
+
+int spot_pub_t::abort_create ()
+{
+    return destroy_internal (true, false);
 }
 }

@@ -97,6 +97,13 @@ static bool wait_for_spot_message (void *spot_sub_,
                                    const char *expected_payload_,
                                    size_t expected_payload_size_,
                                    int timeout_ms_);
+static bool wait_for_node_message (void *node_,
+                                   const char *expected_topic_,
+                                   const char *expected_payload_,
+                                   size_t expected_payload_size_,
+                                   int timeout_ms_);
+static int measure_spot_sub_recv_timeout_ms (void *sub_, int *elapsed_ms_);
+static int measure_spot_node_recv_timeout_ms (void *node_, int *elapsed_ms_);
 
 void setUp ()
 {
@@ -565,10 +572,283 @@ static void test_spot_sub_handler_recv_conflict ()
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_spot_sub_recv (sub, &recv_parts, &recv_count, ZLINK_DONTWAIT,
                                topic, NULL));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_set_handler (sub, NULL, NULL));
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_pub_sub (&pub, &sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_spot_node_direct_local_and_child_interop ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *child_pub = zlink_spot_pub_new (node);
+    void *child_sub = zlink_spot_sub_new (node);
+    TEST_ASSERT_NOT_NULL (child_pub);
+    TEST_ASSERT_NOT_NULL (child_sub);
+
+    void *default_pub = zlink_spot_node_default_pub (node);
+    void *default_sub = zlink_spot_node_default_sub (node);
+    TEST_ASSERT_NOT_NULL (default_pub);
+    TEST_ASSERT_NOT_NULL (default_sub);
+    TEST_ASSERT_EQUAL_PTR (default_pub, zlink_spot_node_default_pub (node));
+    TEST_ASSERT_EQUAL_PTR (default_sub, zlink_spot_node_default_sub (node));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_subscribe (node, "mix:direct"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_subscribe (node, "mix:child"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (child_sub, "mix:direct"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (child_sub, "mix:child"));
+    msleep (50);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_publish_bytes (node, "mix:direct", "node-msg", 8, 0));
+    TEST_ASSERT_TRUE (wait_for_node_message (node, "mix:direct", "node-msg", 8,
+                                             1000));
+    TEST_ASSERT_TRUE (wait_for_spot_message (child_sub, "mix:direct", "node-msg",
+                                             8, 1000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_pub_publish_bytes (child_pub, "mix:child", "child-msg", 9, 0));
+    TEST_ASSERT_TRUE (wait_for_node_message (node, "mix:child", "child-msg", 9,
+                                             1000));
+    TEST_ASSERT_TRUE (
+      wait_for_spot_message (child_sub, "mix:child", "child-msg", 9, 1000));
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_pub_destroy (&default_pub));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    TEST_ASSERT_NOT_NULL (default_pub);
+    TEST_ASSERT_EQUAL_PTR (default_pub, zlink_spot_node_default_pub (node));
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_sub_destroy (&default_sub));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    TEST_ASSERT_NOT_NULL (default_sub);
+    TEST_ASSERT_EQUAL_PTR (default_sub, zlink_spot_node_default_sub (node));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&child_sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_destroy (&child_pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_spot_node_direct_remote_peer_mesh ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node_a = zlink_spot_node_new (ctx);
+    void *node_b = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node_a);
+    TEST_ASSERT_NOT_NULL (node_b);
+
+    char endpoint[MAX_SOCKET_STRING];
+    snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
+              test_port (22103));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer_pub (node_b, endpoint));
+
+    const int recv_timeo = 1200;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_sub_option (
+      node_b, ZLINK_SPOT_SUB_OPT_RCVTIMEO, &recv_timeo, sizeof (recv_timeo)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_subscribe (node_b, "mesh:direct"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_subscribe (node_b, "mesh:child"));
+    msleep (250);
+
+    bool got_direct = false;
+    for (int i = 0; i < 15 && !got_direct; ++i) {
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_publish_bytes (
+          node_a, "mesh:direct", "from-node", 9, 0));
+        got_direct =
+          wait_for_node_message (node_b, "mesh:direct", "from-node", 9, 100);
+    }
+    TEST_ASSERT_TRUE (got_direct);
+
+    void *child_pub = zlink_spot_pub_new (node_a);
+    TEST_ASSERT_NOT_NULL (child_pub);
+    bool got_child = false;
+    for (int i = 0; i < 15 && !got_child; ++i) {
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_publish_bytes (
+          child_pub, "mesh:child", "from-child", 10, 0));
+        got_child =
+          wait_for_node_message (node_b, "mesh:child", "from-child", 10, 100);
+    }
+    TEST_ASSERT_TRUE (got_child);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_destroy (&child_pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_spot_node_direct_sub_option_inheritance_and_handler_conflict ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    const int initial_timeout = 40;
+    const int updated_timeout = 180;
+    const int override_timeout = 15;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_set_sub_option (node, ZLINK_SPOT_SUB_OPT_RCVTIMEO,
+                                      &initial_timeout, sizeof (initial_timeout)));
+
+    void *child_old = zlink_spot_sub_new (node);
+    TEST_ASSERT_NOT_NULL (child_old);
+    TEST_ASSERT_NOT_NULL (zlink_spot_node_default_sub (node));
+
+    int elapsed_old = 0;
+    int elapsed_node = 0;
+    TEST_ASSERT_EQUAL_INT (-1,
+                           measure_spot_sub_recv_timeout_ms (child_old, &elapsed_old));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    TEST_ASSERT_TRUE (elapsed_old < 150);
+    TEST_ASSERT_EQUAL_INT (-1,
+                           measure_spot_node_recv_timeout_ms (node, &elapsed_node));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    TEST_ASSERT_TRUE (elapsed_node < 150);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_set_sub_option (node, ZLINK_SPOT_SUB_OPT_RCVTIMEO,
+                                      &updated_timeout, sizeof (updated_timeout)));
+
+    void *child_inherited = zlink_spot_sub_new (node);
+    TEST_ASSERT_NOT_NULL (child_inherited);
+
+    elapsed_old = 0;
+    elapsed_node = 0;
+    int elapsed_inherited = 0;
+    TEST_ASSERT_EQUAL_INT (-1,
+                           measure_spot_sub_recv_timeout_ms (child_old, &elapsed_old));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    TEST_ASSERT_TRUE (elapsed_old < 150);
+    TEST_ASSERT_EQUAL_INT (
+      -1, measure_spot_sub_recv_timeout_ms (child_inherited, &elapsed_inherited));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    TEST_ASSERT_TRUE (elapsed_inherited >= 120);
+    TEST_ASSERT_EQUAL_INT (-1,
+                           measure_spot_node_recv_timeout_ms (node, &elapsed_node));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    TEST_ASSERT_TRUE (elapsed_node >= 120);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_set_option (
+      child_inherited, ZLINK_SPOT_SUB_OPT_RCVTIMEO, &override_timeout,
+      sizeof (override_timeout)));
+    elapsed_inherited = 0;
+    elapsed_node = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, measure_spot_sub_recv_timeout_ms (child_inherited, &elapsed_inherited));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    TEST_ASSERT_TRUE (elapsed_inherited < 120);
+    TEST_ASSERT_EQUAL_INT (-1,
+                           measure_spot_node_recv_timeout_ms (node, &elapsed_node));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    TEST_ASSERT_TRUE (elapsed_node >= 120);
+
+    callback_probe_t probe;
+    probe.sub = NULL;
+    probe.calls.store (0);
+    probe.payload_ok.store (0);
+    probe.topic_ok.store (0);
+    probe.clear_inside_rc.store (-1);
+    probe.clear_inside_done.store (0);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_set_handler (node, spot_sub_probe_handler, &probe));
+
+    zlink_msg_t *recv_parts = NULL;
+    size_t recv_count = 0;
+    char topic[256] = {0};
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_spot_node_recv (node, &recv_parts, &recv_count, ZLINK_DONTWAIT,
+                                topic, NULL));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_handler (node, NULL, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&child_inherited));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&child_old));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+struct node_publish_probe_t
+{
+    void *node;
+    const char *topic;
+    const char *payload;
+    size_t payload_size;
+    std::atomic<int> rc;
+    std::atomic<int> err;
+};
+
+static void spot_node_publish_worker (node_publish_probe_t *probe_)
+{
+    if (!probe_)
+        return;
+
+    const int rc = zlink_spot_node_publish_bytes (probe_->node, probe_->topic,
+                                                  probe_->payload,
+                                                  probe_->payload_size, 0);
+    probe_->rc.store (rc);
+    probe_->err.store (rc == 0 ? 0 : zlink_errno ());
+}
+
+static void test_spot_node_direct_first_publish_race ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *child_sub = zlink_spot_sub_new (node);
+    TEST_ASSERT_NOT_NULL (child_sub);
+    const int recv_timeo = 1500;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_set_option (
+      child_sub, ZLINK_SPOT_SUB_OPT_RCVTIMEO, &recv_timeo, sizeof (recv_timeo)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (child_sub, "race:topic"));
+    msleep (50);
+
+    node_publish_probe_t probe_a;
+    probe_a.node = node;
+    probe_a.topic = "race:topic";
+    probe_a.payload = "a";
+    probe_a.payload_size = 1;
+    probe_a.rc.store (-999);
+    probe_a.err.store (0);
+
+    node_publish_probe_t probe_b;
+    probe_b.node = node;
+    probe_b.topic = "race:topic";
+    probe_b.payload = "b";
+    probe_b.payload_size = 1;
+    probe_b.rc.store (-999);
+    probe_b.err.store (0);
+
+    std::thread worker_a (spot_node_publish_worker, &probe_a);
+    std::thread worker_b (spot_node_publish_worker, &probe_b);
+    worker_a.join ();
+    worker_b.join ();
+
+    TEST_ASSERT_EQUAL_INT (0, probe_a.rc.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe_a.err.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe_b.rc.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe_b.err.load ());
+
+    void *default_pub = zlink_spot_node_default_pub (node);
+    TEST_ASSERT_NOT_NULL (default_pub);
+    TEST_ASSERT_EQUAL_PTR (default_pub, zlink_spot_node_default_pub (node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&child_sub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
@@ -1339,6 +1619,90 @@ static bool wait_for_spot_message (void *spot_sub_,
     return false;
 }
 
+static bool wait_for_node_message (void *node_,
+                                   const char *expected_topic_,
+                                   const char *expected_payload_,
+                                   size_t expected_payload_size_,
+                                   int timeout_ms_)
+{
+    const int sleep_ms_step = 10;
+    const int max_attempts = timeout_ms_ / sleep_ms_step;
+
+    for (int i = 0; i < max_attempts; ++i) {
+        zlink_msg_t *recv_parts = NULL;
+        size_t recv_count = 0;
+        char topic[256] = {0};
+        size_t topic_len = sizeof (topic);
+        int rc = zlink_spot_node_recv (
+          node_, &recv_parts, &recv_count, ZLINK_DONTWAIT, topic, &topic_len);
+        if (rc == 0) {
+            bool ok = recv_count == 1
+                      && strcmp (topic, expected_topic_) == 0
+                      && zlink_msg_size (&recv_parts[0]) == expected_payload_size_
+                      && memcmp (zlink_msg_data (&recv_parts[0]),
+                                 expected_payload_,
+                                 expected_payload_size_)
+                           == 0;
+            zlink_multipart_close (recv_parts, recv_count);
+            if (ok)
+                return true;
+            continue;
+        }
+        if (errno != EAGAIN)
+            return false;
+        msleep (sleep_ms_step);
+    }
+    return false;
+}
+
+static int measure_spot_sub_recv_timeout_ms (void *sub_, int *elapsed_ms_)
+{
+    if (!sub_ || !elapsed_ms_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink_msg_t *recv_parts = NULL;
+    size_t recv_count = 0;
+    char topic[256] = {0};
+    size_t topic_len = sizeof (topic);
+    const std::chrono::steady_clock::time_point start =
+      std::chrono::steady_clock::now ();
+    const int rc =
+      zlink_spot_sub_recv (sub_, &recv_parts, &recv_count, 0, topic, &topic_len);
+    *elapsed_ms_ = static_cast<int> (
+      std::chrono::duration_cast<std::chrono::milliseconds> (
+        std::chrono::steady_clock::now () - start)
+        .count ());
+    if (rc == 0)
+        zlink_multipart_close (recv_parts, recv_count);
+    return rc;
+}
+
+static int measure_spot_node_recv_timeout_ms (void *node_, int *elapsed_ms_)
+{
+    if (!node_ || !elapsed_ms_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink_msg_t *recv_parts = NULL;
+    size_t recv_count = 0;
+    char topic[256] = {0};
+    size_t topic_len = sizeof (topic);
+    const std::chrono::steady_clock::time_point start =
+      std::chrono::steady_clock::now ();
+    const int rc =
+      zlink_spot_node_recv (node_, &recv_parts, &recv_count, 0, topic, &topic_len);
+    *elapsed_ms_ = static_cast<int> (
+      std::chrono::duration_cast<std::chrono::milliseconds> (
+        std::chrono::steady_clock::now () - start)
+        .count ());
+    if (rc == 0)
+        zlink_multipart_close (recv_parts, recv_count);
+    return rc;
+}
+
 static void test_spot_mmorpg_zone_adjacency_scale ()
 {
     if (env_int_or_default ("ZLINK_SPOT_RUN_MMORPG_SCALE", 0) == 0) {
@@ -1758,6 +2122,10 @@ int main (int, char **)
     RUN_TEST (test_spot_peer_tls);
     RUN_TEST (test_spot_peer_wss);
     RUN_TEST (test_spot_multi_publisher);
+    RUN_TEST (test_spot_node_direct_local_and_child_interop);
+    RUN_TEST (test_spot_node_direct_remote_peer_mesh);
+    RUN_TEST (test_spot_node_direct_sub_option_inheritance_and_handler_conflict);
+    RUN_TEST (test_spot_node_direct_first_publish_race);
     RUN_TEST (test_spot_sub_handler_basic);
     RUN_TEST (test_spot_sub_handler_recv_conflict);
     RUN_TEST (test_spot_sub_handler_clear_barrier);

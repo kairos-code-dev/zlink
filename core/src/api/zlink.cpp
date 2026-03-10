@@ -1928,6 +1928,192 @@ int zlink_spot_node_set_tls_client (void *node_,
     return node->set_tls_client (ca_cert_, hostname_, trust_system_);
 }
 
+int zlink_spot_node_publish (void *node_,
+                             const char *topic_id_,
+                             zlink_msg_t *parts_,
+                             size_t part_count_,
+                             int flags_)
+{
+    if (!node_)
+        return -1;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    zlink::spot_pub_t *pub = node->ensure_default_pub ();
+    if (!pub)
+        return -1;
+    return pub->publish (topic_id_, parts_, part_count_, flags_);
+}
+
+int zlink_spot_node_publish_bytes (void *node_,
+                                   const char *topic_id_,
+                                   const void *data_,
+                                   size_t size_,
+                                   int flags_)
+{
+    if (!node_)
+        return -1;
+    if (size_ > 0 && !data_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, size_) != 0)
+        return -1;
+    if (size_ > 0)
+        memcpy (zlink_msg_data (&part), data_, size_);
+
+    const int rc =
+      zlink_spot_node_publish (node_, topic_id_, &part, 1, flags_);
+    if (unlikely (rc != 0)) {
+        const int err = errno;
+        zlink_msg_close (&part);
+        errno = err;
+    }
+    return rc;
+}
+
+int zlink_spot_node_subscribe (void *node_, const char *topic_id_)
+{
+    if (!node_)
+        return -1;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    zlink::spot_sub_t *sub = node->ensure_default_sub ();
+    if (!sub)
+        return -1;
+    return sub->subscribe (topic_id_);
+}
+
+int zlink_spot_node_subscribe_pattern (void *node_, const char *pattern_)
+{
+    if (!node_)
+        return -1;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    zlink::spot_sub_t *sub = node->ensure_default_sub ();
+    if (!sub)
+        return -1;
+    return sub->subscribe_pattern (pattern_);
+}
+
+int zlink_spot_node_unsubscribe_filter (void *node_,
+                                        const char *topic_id_or_pattern_)
+{
+    if (!node_)
+        return -1;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    zlink::spot_sub_t *sub = node->ensure_default_sub ();
+    if (!sub)
+        return -1;
+    return sub->unsubscribe (topic_id_or_pattern_);
+}
+
+int zlink_spot_node_set_handler (void *node_,
+                                 zlink_spot_sub_handler_fn handler_,
+                                 void *userdata_)
+{
+    if (!node_)
+        return -1;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    zlink::spot_sub_t *sub = node->ensure_default_sub ();
+    if (!sub)
+        return -1;
+    return sub->set_handler (handler_, userdata_);
+}
+
+int zlink_spot_node_recv (void *node_,
+                          zlink_msg_t **parts_,
+                          size_t *part_count_,
+                          int flags_,
+                          char *topic_id_out_,
+                          size_t *topic_id_len_)
+{
+    if (!node_)
+        return -1;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    zlink::spot_sub_t *sub = node->ensure_default_sub ();
+    if (!sub)
+        return -1;
+    return sub->recv (parts_, part_count_, flags_, topic_id_out_,
+                      topic_id_len_);
+}
+
+void *zlink_spot_node_default_pub (void *node_)
+{
+    if (!node_)
+        return NULL;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return static_cast<void *> (node->ensure_default_pub ());
+}
+
+void *zlink_spot_node_default_sub (void *node_)
+{
+    if (!node_)
+        return NULL;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return static_cast<void *> (node->ensure_default_sub ());
+}
+
+int zlink_spot_node_set_pub_option (void *node_,
+                                    int option_,
+                                    const void *optval_,
+                                    size_t optvallen_)
+{
+    if (!node_)
+        return -1;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node->set_pub_option (option_, optval_, optvallen_);
+}
+
+int zlink_spot_node_set_sub_option (void *node_,
+                                    int option_,
+                                    const void *optval_,
+                                    size_t optvallen_)
+{
+    if (!node_)
+        return -1;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node->set_sub_option (option_, optval_, optvallen_);
+}
+
 void *zlink_spot_pub_new (void *node_)
 {
     if (!node_)
@@ -1950,12 +2136,13 @@ int zlink_spot_pub_destroy (void **pub_p_)
         return -1;
     }
     zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (*pub_p_);
-    *pub_p_ = NULL;
     if (!pub->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    pub->destroy ();
+    if (pub->destroy () != 0)
+        return -1;
+    *pub_p_ = NULL;
     delete pub;
     return 0;
 }

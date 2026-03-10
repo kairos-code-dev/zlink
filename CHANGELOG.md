@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.2] - 2026-03-10
+
+### Fixed
+
+**Windows Core Build Portability**
+- Guarded POSIX-only `unistd.h` includes and replaced direct `usleep()` calls with platform-specific 1ms sleep helpers in Discovery and SpotNode so Windows release builds complete.
+
 ## [5.0.1] - 2026-03-10
 
 ### Fixed

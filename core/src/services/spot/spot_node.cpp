@@ -22,7 +22,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if !defined _WIN32
 #include <unistd.h>
+#endif
 #include <vector>
 
 namespace zlink
@@ -30,6 +32,15 @@ namespace zlink
 static const uint32_t spot_node_tag_value = 0x1e6700d9;
 static const size_t spot_sub_queue_hwm_default = 1000;
 static const int ctrl_timeout_ms = 2000;
+
+static void spot_sleep_1ms ()
+{
+#if defined _WIN32
+    Sleep (1);
+#else
+    usleep (1000);
+#endif
+}
 
 static void spot_debugf (const char *fmt_, ...)
 {
@@ -435,7 +446,7 @@ int spot_node_t::wait_facade_peer (socket_base_t *socket_) const
         if (zlink_socket_peers (static_cast<void *> (socket_), NULL, &count) == 0
             && count > 0)
             return 0;
-        usleep (1000);
+        spot_sleep_1ms ();
     }
     errno = ETIMEDOUT;
     return -1;

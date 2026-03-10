@@ -1343,9 +1343,20 @@ transport-local inproc handoff primitive와 protocol decoder partial buffer,
 - slow consumer 시 queue growth 여부
 - CPU 사용률 및 context switch 감소 여부
 
-## 12. 구현 순서
+## 12. 구현 방식 및 순서
 
 이번 작업은 단계적 마이그레이션이 아니라 단일 재작성으로 진행한다.
+
+작업 방식은 다음과 같다.
+
+- 중간 호환 단계를 제품 설계의 일부로 두지 않는다.
+- legacy recv path와 callback path를 장기간 병존시키지 않는다.
+- 다만 구현 자체는 큰 덩어리를 내부 작업 묶음으로 나누고, 각 묶음이 끝날 때마다
+  빌드/테스트를 수행해 즉시 회귀와 버그를 수정한다.
+- 즉 "compatibility layer를 유지한 채 천천히 이전"이 아니라,
+  "단일 재작성 목표를 유지하면서 작업 묶음마다 검증하고 바로 고치는 방식"으로 진행한다.
+- 최종 정리(dead code 제거, legacy path 제거, 테스트/문서/바인딩 정리)는
+  마지막 후속 작업이 아니라 본 작업의 완료 조건에 포함한다.
 
 구현 순서는 다음처럼 한 번에 밀어붙인다.
 
@@ -1371,6 +1382,14 @@ transport-local inproc handoff primitive와 protocol decoder partial buffer,
    - recv facade 제거
    - pollin docs/tests 제거
    - dead code 제거
+
+검증 원칙:
+
+- 각 작업 묶음이 끝날 때마다 해당 범위가 다시 컴파일 가능해야 한다.
+- 관련 `core/tests`, `core/unittests`, `core/perf`를 바로 갱신하고 실행해
+  새 callback-only 경로 기준으로 회귀를 확인한다.
+- 버그 수정은 마지막에 몰아서 하지 않고, 각 작업 묶음 직후 바로 처리한다.
+- "일단 크게 다 바꾼 뒤 나중에 테스트하면서 정리" 방식은 지양한다.
 
 ## 13. 미해결 사항
 

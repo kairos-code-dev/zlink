@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.1] - 2026-03-10
+
+### Fixed
+
+**macOS ARM64 Core Build**
+- Replaced the non-portable `ECOMM` monitor-handshake failure path with a portable protocol error so Apple Silicon release builds complete successfully.
+
 ## [5.0.0] - 2026-03-10
 
 ### Breaking Changes

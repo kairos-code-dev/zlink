@@ -117,7 +117,8 @@ void *service_monitor_hub_t::open (int events_)
     set_monitor_socket_defaults (client);
 
     char endpoint[128];
-    snprintf (endpoint, sizeof endpoint, "inproc://svcmon-%p-%u", this,
+    snprintf (endpoint, sizeof endpoint, "inproc://svcmon-%p-%u",
+              static_cast<void *> (this),
               ++_next_id);
 
     if (server->bind (endpoint) != 0 || client->connect (endpoint) != 0) {
@@ -129,7 +130,7 @@ void *service_monitor_hub_t::open (int events_)
     if (!handshake_monitor_pair (server, client)) {
         client->close ();
         server->close ();
-        errno = ECOMM;
+        errno = EPROTO;
         return NULL;
     }
 

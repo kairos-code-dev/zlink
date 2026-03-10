@@ -72,7 +72,6 @@ static napi_value init(napi_env env, napi_value exports)
         {"spotNodeNew", 0, spot_node_new, 0, 0, 0, napi_default, 0},
         {"spotNodeDestroy", 0, spot_node_destroy, 0, 0, 0, napi_default, 0},
         {"spotNodeBind", 0, spot_node_bind, 0, 0, 0, napi_default, 0},
-        {"spotNodeConnectRegistry", 0, spot_node_connect_registry, 0, 0, 0, napi_default, 0},
         {"spotNodeConnectPeerPub", 0, spot_node_connect_peer, 0, 0, 0, napi_default, 0},
         {"spotNodeDisconnectPeerPub", 0, spot_node_disconnect_peer, 0, 0, 0, napi_default, 0},
         {"spotNodeRegister", 0, spot_node_register, 0, 0, 0, napi_default, 0},

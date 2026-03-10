@@ -192,6 +192,7 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _monitor_events (0),
     _mailbox_refcnt (0),
     _destroy_pending (false),
+    _async_mailbox_active (false),
     _monitor_sync (),
     _disconnected (false)
 {
@@ -1312,6 +1313,26 @@ int zlink::socket_base_t::stream_dispatch_msg_from_io (msg_t *msg_,
     return xstream_dispatch_msg (msg_, pipe_);
 }
 
+int zlink::socket_base_t::sub_dispatch_start (
+  zlink_spot_sub_handler_fn callback_, void *userdata_)
+{
+    LIBZLINK_UNUSED (callback_);
+    LIBZLINK_UNUSED (userdata_);
+    errno = ENOTSUP;
+    return -1;
+}
+
+int zlink::socket_base_t::sub_dispatch_stop ()
+{
+    errno = ENOTSUP;
+    return -1;
+}
+
+bool zlink::socket_base_t::sub_dispatch_active () const
+{
+    return false;
+}
+
 int zlink::socket_base_t::stream_dispatch_start (
   zlink_stream_on_packets_fn callback_, int flags_)
 {
@@ -1412,6 +1433,19 @@ void zlink::socket_base_t::reaper_mailbox_pre_post (void *arg_)
     self->inc_mailbox_ref ();
 }
 
+void zlink::socket_base_t::async_mailbox_handler (void *arg_)
+{
+    socket_base_t *self = static_cast<socket_base_t *> (arg_);
+    self->process_async_mailbox ();
+    self->dec_mailbox_ref ();
+}
+
+void zlink::socket_base_t::async_mailbox_pre_post (void *arg_)
+{
+    socket_base_t *self = static_cast<socket_base_t *> (arg_);
+    self->inc_mailbox_ref ();
+}
+
 void zlink::socket_base_t::start_reaping (poller_t *poller_)
 {
     //  Plug the socket to the reaper thread.
@@ -1477,6 +1511,30 @@ int zlink::socket_base_t::process_commands (int timeout_, bool throttle_)
     }
 
     return 0;
+}
+
+int zlink::socket_base_t::start_async_mailbox_processing (
+  io_thread_t *io_thread_)
+{
+    if (!io_thread_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
+    _async_mailbox_active.store (true, std::memory_order_release);
+    mailbox->set_io_context (&io_thread_->get_io_context (),
+                             &socket_base_t::async_mailbox_handler, this,
+                             &socket_base_t::async_mailbox_pre_post);
+    mailbox->schedule_if_needed ();
+    return 0;
+}
+
+void zlink::socket_base_t::stop_async_mailbox_processing ()
+{
+    _async_mailbox_active.store (false, std::memory_order_release);
+    mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
+    mailbox->schedule_if_needed ();
 }
 
 void zlink::socket_base_t::process_stop ()
@@ -1592,6 +1650,10 @@ int zlink::socket_base_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
     return 0;
 }
 
+void zlink::socket_base_t::xdispatch_io ()
+{
+}
+
 void zlink::socket_base_t::xread_activated (pipe_t *)
 {
     zlink_assert (false);
@@ -1618,6 +1680,25 @@ void zlink::socket_base_t::in_event ()
         }
         if (_destroyed) {
             check_destroy ();
+            return;
+        }
+    } while (static_cast<mailbox_t *> (_mailbox)->reschedule_if_needed ());
+}
+
+void zlink::socket_base_t::process_async_mailbox ()
+{
+    do {
+        process_commands (0, false);
+        if (_destroyed) {
+            check_destroy ();
+            return;
+        }
+        if (_async_mailbox_active.load (std::memory_order_acquire))
+            xdispatch_io ();
+        if (!_async_mailbox_active.load (std::memory_order_acquire)) {
+            mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
+            mailbox->reschedule_if_needed ();
+            mailbox->set_io_context (NULL, NULL, NULL, NULL);
             return;
         }
     } while (static_cast<mailbox_t *> (_mailbox)->reschedule_if_needed ());

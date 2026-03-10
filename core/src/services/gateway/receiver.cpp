@@ -3,12 +3,11 @@
 #include "precompiled.hpp"
 
 #include "services/gateway/receiver.hpp"
+#include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
-#include "services/control/service_control_runtime.hpp"
 
 #include "utils/clock.hpp"
 #include "utils/err.hpp"
-#include "utils/random.hpp"
 #include "services/gateway/routing_id_utils.hpp"
 
 #include <string.h>
@@ -19,110 +18,6 @@ namespace zlink
 {
 static const uint32_t receiver_tag_value = 0x1e6700d8;
 
-static int send_frame (socket_base_t *socket_,
-                       const void *data_,
-                       size_t size_,
-                       int flags_)
-{
-    if (!socket_) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    msg_t msg;
-    if (msg.init_size (size_) != 0)
-        return -1;
-    if (size_ > 0 && data_)
-        memcpy (msg.data (), data_, size_);
-    if (socket_->send (&msg, flags_) != 0) {
-        msg.close ();
-        return -1;
-    }
-    msg.close ();
-    return 0;
-}
-
-static int send_u16 (socket_base_t *socket_, uint16_t value_, int flags_)
-{
-    return send_frame (socket_, &value_, sizeof (value_), flags_);
-}
-
-static int send_u32 (socket_base_t *socket_, uint32_t value_, int flags_)
-{
-    return send_frame (socket_, &value_, sizeof (value_), flags_);
-}
-
-static int send_string (socket_base_t *socket_,
-                        const std::string &value_,
-                        int flags_)
-{
-    return send_frame (socket_, value_.empty () ? NULL : value_.data (),
-                       value_.size (), flags_);
-}
-
-static int recv_status_ack (socket_base_t *socket_,
-                            uint16_t expected_msg_id_,
-                            int *status_out_,
-                            std::string *resolved_out_,
-                            std::string *error_out_)
-{
-    if (!socket_ || !status_out_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    *status_out_ = -1;
-    if (resolved_out_)
-        resolved_out_->clear ();
-    if (error_out_)
-        error_out_->clear ();
-
-    zlink_msg_t reply;
-    zlink_msg_init (&reply);
-    if (socket_->recv (reinterpret_cast<msg_t *> (&reply), 0) != 0) {
-        zlink_msg_close (&reply);
-        return -1;
-    }
-
-    std::vector<zlink_msg_t> frames;
-    frames.push_back (reply);
-    while (zlink_msg_more (&frames.back ())) {
-        zlink_msg_t frame;
-        zlink_msg_init (&frame);
-        if (socket_->recv (reinterpret_cast<msg_t *> (&frame), 0) != 0) {
-            zlink_msg_close (&frame);
-            break;
-        }
-        frames.push_back (frame);
-    }
-
-    uint16_t msg_id = 0;
-    if (frames.size () >= 2
-        && discovery_protocol::read_u16 (frames[0], &msg_id)
-        && msg_id == expected_msg_id_) {
-        uint8_t status = 0xFF;
-        if (zlink_msg_size (&frames[1]) == sizeof (uint8_t))
-            memcpy (&status, zlink_msg_data (&frames[1]), sizeof (uint8_t));
-        *status_out_ = static_cast<int> (status);
-        if (resolved_out_ && frames.size () >= 3
-            && expected_msg_id_ == discovery_protocol::msg_register_ack)
-            *resolved_out_ = discovery_protocol::read_string (frames[2]);
-        if (error_out_) {
-            if (expected_msg_id_ == discovery_protocol::msg_register_ack
-                && frames.size () >= 4) {
-                *error_out_ = discovery_protocol::read_string (frames[3]);
-            } else if (expected_msg_id_ == discovery_protocol::msg_unregister_ack
-                       && frames.size () >= 3) {
-                *error_out_ = discovery_protocol::read_string (frames[2]);
-            }
-        }
-    }
-
-    for (size_t i = 0; i < frames.size (); ++i)
-        zlink_msg_close (&frames[i]);
-
-    return 0;
-}
-
 static void close_msg_parts (std::vector<zlink_msg_t> *parts_)
 {
     if (!parts_)
@@ -132,11 +27,36 @@ static void close_msg_parts (std::vector<zlink_msg_t> *parts_)
     parts_->clear ();
 }
 
+static void build_receiver_topology_entry (
+  zlink_registry_topology_entry_t *entry_,
+  const zlink_routing_id_t &routing_id_,
+  const std::string &service_name_,
+  const std::string &endpoint_,
+  uint16_t state_,
+  int32_t error_code_)
+{
+    memset (entry_, 0, sizeof (*entry_));
+    entry_->routing_id = routing_id_;
+    entry_->service_kind = ZLINK_SERVICE_KIND_RECEIVER;
+    strncpy (entry_->service_name, service_name_.c_str (),
+             sizeof (entry_->service_name) - 1);
+    if (!endpoint_.empty ())
+        strncpy (entry_->endpoint, endpoint_.c_str (),
+                 sizeof (entry_->endpoint) - 1);
+    entry_->source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
+    entry_->state = state_;
+    entry_->desired_count = 1;
+    entry_->ready_count = state_ == ZLINK_TOPOLOGY_STATE_READY ? 1u : 0u;
+    entry_->error_code = static_cast<uint32_t> (error_code_);
+    entry_->last_reported_ms = clock_t ().now_ms ();
+}
+
 receiver_t::receiver_t (ctx_t *ctx_, const char *routing_id_) :
     _ctx (ctx_),
     _tag (receiver_tag_value),
     _router (NULL),
-    _dealer (NULL),
+    _discovery (NULL),
+    _owns_discovery (false),
     _routing_id_override (routing_id_ ? routing_id_ : ""),
     _routing_id_locked (false),
     _weight (1),
@@ -147,15 +67,10 @@ receiver_t::receiver_t (ctx_t *ctx_, const char *routing_id_) :
     zlink_assert (_ctx);
     _routing_id.size = 0;
     _router = _ctx->create_socket (ZLINK_ROUTER);
-    _dealer = _ctx->create_socket (ZLINK_DEALER);
-    if (!_router || !_dealer) {
+    if (!_router) {
         if (_router) {
             _router->close ();
             _router = NULL;
-        }
-        if (_dealer) {
-            _dealer->close ();
-            _dealer = NULL;
         }
         _tag = 0xdeadbeef;
     } else {
@@ -176,14 +91,6 @@ receiver_t::~receiver_t ()
 bool receiver_t::check_tag () const
 {
     return _tag == receiver_tag_value;
-}
-
-static int create_socket (ctx_t *ctx_, int type_, socket_base_t **socket_)
-{
-    *socket_ = ctx_->create_socket (type_);
-    if (!*socket_)
-        return -1;
-    return 0;
 }
 
 int receiver_t::bind (const char *endpoint_)
@@ -235,6 +142,24 @@ bool receiver_t::ensure_routing_id ()
     return true;
 }
 
+discovery_t *receiver_t::ensure_owned_discovery ()
+{
+    if (_discovery)
+        return _discovery;
+
+    discovery_t *discovery =
+      new (std::nothrow) discovery_t (_ctx,
+                                      discovery_protocol::service_type_gateway_receiver);
+    if (!discovery) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    discovery->set_discovery_summary_enabled (false);
+    _discovery = discovery;
+    _owns_discovery = true;
+    return _discovery;
+}
+
 int receiver_t::connect_registry (const char *registry_router_endpoint_)
 {
     if (!registry_router_endpoint_) {
@@ -243,29 +168,10 @@ int receiver_t::connect_registry (const char *registry_router_endpoint_)
     }
 
     scoped_lock_t lock (_sync);
-    if (!_dealer) {
-        if (create_socket (_ctx, ZLINK_DEALER, &_dealer) != 0)
-            return -1;
-    }
-
-    if (!ensure_routing_id ()) {
-        errno = EINVAL;
+    discovery_t *discovery = ensure_owned_discovery ();
+    if (!discovery)
         return -1;
-    }
-
-    zlink_routing_id_t rid;
-    size_t size = sizeof (rid.data);
-    int rc =
-      zlink_getsockopt (static_cast<void *> (_router), ZLINK_ROUTING_ID,
-                        rid.data, &size);
-    if (rc == 0) {
-        rid.size = static_cast<uint8_t> (size);
-        if (rid.size > 0)
-            _dealer->setsockopt (ZLINK_ROUTING_ID, rid.data, rid.size);
-    }
-
-    _registry_endpoint = registry_router_endpoint_;
-    return _dealer->connect (registry_router_endpoint_);
+    return discovery->connect_registry (registry_router_endpoint_);
 }
 
 std::string receiver_t::resolve_advertise (const char *advertise_endpoint_)
@@ -291,6 +197,20 @@ std::string receiver_t::resolve_advertise (const char *advertise_endpoint_)
     return endpoint;
 }
 
+void receiver_t::report_topology (const std::string &service_name_,
+                                  const std::string &endpoint_,
+                                  uint16_t state_,
+                                  int32_t error_code_)
+{
+    if (!_discovery || _routing_id.size == 0 || service_name_.empty ())
+        return;
+
+    zlink_registry_topology_entry_t entry;
+    build_receiver_topology_entry (&entry, _routing_id, service_name_, endpoint_,
+                                   state_, error_code_);
+    _discovery->upsert_service_summary (entry);
+}
+
 int receiver_t::register_service (const char *service_name_,
                                   const char *advertise_endpoint_,
                                   uint32_t weight_)
@@ -301,8 +221,12 @@ int receiver_t::register_service (const char *service_name_,
     }
 
     scoped_lock_t lock (_sync);
-    if (!_dealer) {
+    if (!_discovery) {
         errno = ENOTSUP;
+        return -1;
+    }
+    if (!ensure_routing_id ()) {
+        errno = EINVAL;
         return -1;
     }
 
@@ -314,33 +238,33 @@ int receiver_t::register_service (const char *service_name_,
     }
     _weight = weight_ == 0 ? 1 : weight_;
 
-    if (send_u16 (_dealer, discovery_protocol::msg_register, ZLINK_SNDMORE)
-          != 0
-        || send_u16 (_dealer,
-                     discovery_protocol::service_type_gateway_receiver,
-                     ZLINK_SNDMORE)
-             != 0
-        || send_string (_dealer, _service_name, ZLINK_SNDMORE) != 0
-        || send_string (_dealer, _advertise_endpoint, ZLINK_SNDMORE) != 0
-        || send_u32 (_dealer, _weight, 0) != 0)
-        return -1;
-
     std::string resolved;
-    std::string error;
-    if (recv_status_ack (_dealer, discovery_protocol::msg_register_ack,
-                         &_last_status, &resolved, &error)
-        != 0)
+    if (_discovery->register_service (
+          discovery_protocol::service_type_gateway_receiver,
+          _service_name.c_str (), _advertise_endpoint.c_str (), _weight,
+          &resolved, &_routing_id)
+        != 0) {
+        _last_status = -1;
+        _last_resolved.clear ();
+        _last_error = strerror (errno);
+        report_topology (_service_name, _advertise_endpoint,
+                         ZLINK_TOPOLOGY_STATE_ERROR, errno);
         return -1;
+    }
+    _last_status = 0;
     _last_resolved.swap (resolved);
-    _last_error.swap (error);
+    _last_error.clear ();
+    if (!_last_resolved.empty ())
+        _advertise_endpoint = _last_resolved;
+    report_topology (_service_name, _advertise_endpoint,
+                     ZLINK_TOPOLOGY_STATE_READY, 0);
 
     zlink_service_event_t ev;
     memset (&ev, 0, sizeof (ev));
     ev.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
-    ev.event_type = _last_status == 0 ? ZLINK_RECEIVER_REGISTER_OK
-                                      : ZLINK_RECEIVER_REGISTER_FAILED;
-    ev.status = _last_status;
-    ev.error_code = _last_status == 0 ? 0 : EINVAL;
+    ev.event_type = ZLINK_RECEIVER_REGISTER_OK;
+    ev.status = 0;
+    ev.error_code = 0;
     ev.value = _weight;
     ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
                       | ZLINK_EVENT_DETAIL_ENDPOINT
@@ -351,11 +275,6 @@ int receiver_t::register_service (const char *service_name_,
     strncpy (ev.endpoint, _advertise_endpoint.c_str (),
              sizeof (ev.endpoint) - 1);
     _monitor.emit (ev);
-
-    if (_last_status != 0) {
-        errno = EINVAL;
-        return -1;
-    }
 
     return 0;
 }
@@ -368,35 +287,22 @@ int receiver_t::update_weight (const char *service_name_, uint32_t weight_)
     }
 
     scoped_lock_t lock (_sync);
-    if (!_dealer) {
+    if (!_discovery) {
         errno = ENOTSUP;
         return -1;
     }
 
     const uint32_t value = weight_ == 0 ? 1 : weight_;
-    if (send_u16 (_dealer, discovery_protocol::msg_update_weight, ZLINK_SNDMORE)
-        != 0)
-        return -1;
-    if (send_u16 (_dealer, discovery_protocol::service_type_gateway_receiver,
-                  ZLINK_SNDMORE)
-        != 0)
-        return -1;
-    if (send_string (_dealer, service_name_, ZLINK_SNDMORE) != 0)
-        return -1;
-    if (send_string (_dealer, _advertise_endpoint, ZLINK_SNDMORE) != 0)
-        return -1;
-    if (send_u32 (_dealer, value, 0) != 0)
-        return -1;
-
-    int status = -1;
-    if (recv_status_ack (_dealer, discovery_protocol::msg_register_ack, &status,
-                         NULL, NULL)
-        != 0)
-        return -1;
-    if (status != 0) {
-        errno = EINVAL;
+    if (_advertise_endpoint.empty ()) {
+        errno = EFSM;
         return -1;
     }
+    if (_discovery->update_service_weight (
+          discovery_protocol::service_type_gateway_receiver, service_name_,
+          _advertise_endpoint.c_str (), value)
+        != 0)
+        return -1;
+    _weight = value;
     return 0;
 }
 
@@ -408,70 +314,59 @@ int receiver_t::unregister_service (const char *service_name_)
     }
 
     scoped_lock_t lock (_sync);
-    if (!_dealer) {
+    if (!_discovery) {
         errno = ENOTSUP;
         return -1;
     }
 
-    if (send_u16 (_dealer, discovery_protocol::msg_unregister, ZLINK_SNDMORE)
-          != 0
-        || send_u16 (_dealer,
-                     discovery_protocol::service_type_gateway_receiver,
-                     ZLINK_SNDMORE)
-             != 0
-        || send_string (_dealer, service_name_, ZLINK_SNDMORE) != 0
-        || send_string (_dealer, _advertise_endpoint, 0) != 0)
-        {
-            zlink_service_event_t ev;
-            memset (&ev, 0, sizeof (ev));
-            ev.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
-            ev.event_type = ZLINK_RECEIVER_UNREGISTER_FAILED;
-            ev.status = -1;
-            ev.error_code = errno;
-            ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
-                              | ZLINK_EVENT_DETAIL_SUBJECT_RID;
-            ev.routing_id = _routing_id;
-            strncpy (ev.service_name, service_name_,
-                     sizeof (ev.service_name) - 1);
-            _monitor.emit (ev);
-            return -1;
-        }
+    if (_service_name.empty () || _advertise_endpoint.empty ()
+        || _service_name != service_name_) {
+        errno = EINVAL;
+    }
 
-    int status = -1;
-    std::string error;
-    if (recv_status_ack (_dealer, discovery_protocol::msg_unregister_ack,
-                         &status, NULL, &error)
-        != 0) {
+    if (_service_name.empty () || _advertise_endpoint.empty ()
+        || _service_name != service_name_
+        || _discovery->unregister_service (
+             discovery_protocol::service_type_gateway_receiver, service_name_,
+             _advertise_endpoint.c_str ())
+             != 0) {
+        const int saved_errno = errno;
         zlink_service_event_t ev;
         memset (&ev, 0, sizeof (ev));
         ev.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
         ev.event_type = ZLINK_RECEIVER_UNREGISTER_FAILED;
         ev.status = -1;
-        ev.error_code = errno;
+        ev.error_code = saved_errno;
         ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
                           | ZLINK_EVENT_DETAIL_SUBJECT_RID;
         ev.routing_id = _routing_id;
         strncpy (ev.service_name, service_name_, sizeof (ev.service_name) - 1);
         _monitor.emit (ev);
+        errno = saved_errno;
         return -1;
     }
+
+    const std::string service_name = _service_name;
+    const std::string endpoint = _advertise_endpoint;
+    report_topology (service_name, endpoint, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
+
+    _last_status = 0;
+    _last_error.clear ();
+    _last_resolved.clear ();
+    _service_name.clear ();
+    _advertise_endpoint.clear ();
 
     zlink_service_event_t ev;
     memset (&ev, 0, sizeof (ev));
     ev.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
-    ev.event_type = status == 0 ? ZLINK_RECEIVER_UNREGISTER_OK
-                                : ZLINK_RECEIVER_UNREGISTER_FAILED;
-    ev.status = status == 0 ? 0 : -1;
-    ev.error_code = status == 0 ? 0 : EINVAL;
+    ev.event_type = ZLINK_RECEIVER_UNREGISTER_OK;
+    ev.status = 0;
+    ev.error_code = 0;
     ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
                       | ZLINK_EVENT_DETAIL_SUBJECT_RID;
     ev.routing_id = _routing_id;
     strncpy (ev.service_name, service_name_, sizeof (ev.service_name) - 1);
     _monitor.emit (ev);
-    if (status != 0) {
-        errno = EINVAL;
-        return -1;
-    }
     return 0;
 }
 
@@ -673,7 +568,7 @@ int receiver_t::set_routing_id (const void *data_, size_t size_)
 
     scoped_lock_t lock (_sync);
     if (_routing_id_locked || !_bind_endpoint.empty ()
-        || !_registry_endpoint.empty ()
+        || _discovery != NULL
         || !_service_name.empty ()) {
         errno = EFSM;
         return -1;
@@ -760,8 +655,10 @@ int receiver_t::set_socket_option (int socket_role_,
     socket_base_t *target = NULL;
     if (socket_role_ == receiver_socket_router)
         target = _router;
-    else if (socket_role_ == receiver_socket_dealer)
-        target = _dealer;
+    else if (socket_role_ == receiver_socket_dealer) {
+        errno = ENOTSUP;
+        return -1;
+    }
     else {
         errno = EINVAL;
         return -1;
@@ -801,23 +698,45 @@ void receiver_t::lock_routing_id ()
 int receiver_t::destroy ()
 {
     _stop.set (1);
+    std::string service_name;
+    std::string endpoint;
+    discovery_t *discovery = NULL;
+    bool owns_discovery = false;
+    zlink_routing_id_t routing_id;
+    routing_id.size = 0;
+    {
+        scoped_lock_t lock (_sync);
+        service_name = _service_name;
+        endpoint = _advertise_endpoint;
+        routing_id = _routing_id;
+        discovery = _discovery;
+        owns_discovery = _owns_discovery;
+        _discovery = NULL;
+        _owns_discovery = false;
+        if (_router) {
+            _router->close ();
+            _router = NULL;
+        }
+    }
+
+    if (discovery && routing_id.size != 0 && !service_name.empty ()) {
+        zlink_registry_topology_entry_t entry;
+        build_receiver_topology_entry (&entry, routing_id, service_name, endpoint,
+                                       ZLINK_TOPOLOGY_STATE_STOPPED, 0);
+        discovery->upsert_service_summary (entry);
+    }
 
     zlink_service_event_t terminal;
     memset (&terminal, 0, sizeof (terminal));
     terminal.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
     terminal.event_type = ZLINK_MONITOR_EVENT_CLOSED;
     terminal.detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
-    terminal.routing_id = _routing_id;
+    terminal.routing_id = routing_id;
     _monitor.close_all (&terminal);
 
-    scoped_lock_t lock (_sync);
-    if (_dealer) {
-        _dealer->close ();
-        _dealer = NULL;
-    }
-    if (_router) {
-        _router->close ();
-        _router = NULL;
+    if (owns_discovery && discovery) {
+        discovery->destroy ();
+        delete discovery;
     }
     return 0;
 }

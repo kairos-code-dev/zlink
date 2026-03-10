@@ -16,6 +16,7 @@
 namespace zlink
 {
 class socket_base_t;
+class discovery_t;
 
 enum discovery_socket_role_t
 {
@@ -36,6 +37,10 @@ class discovery_observer_t
   public:
     virtual ~discovery_observer_t () {}
     virtual void on_service_update (const std::string &service_name_) = 0;
+    virtual void on_discovery_destroyed (discovery_t *discovery_)
+    {
+        (void) discovery_;
+    }
 };
 
 class discovery_t
@@ -63,11 +68,26 @@ class discovery_t
     int receiver_count (const char *service_name_);
     int service_available (const char *service_name_);
     int destroy ();
+    void set_discovery_summary_enabled (bool enabled_);
+    int register_service (uint16_t service_type_,
+                          const char *service_name_,
+                          const char *endpoint_,
+                          uint32_t weight_,
+                          std::string *resolved_endpoint_out_,
+                          const zlink_routing_id_t *routing_id_ = NULL);
+    int update_service_weight (uint16_t service_type_,
+                               const char *service_name_,
+                               const char *endpoint_,
+                               uint32_t weight_);
+    int unregister_service (uint16_t service_type_,
+                            const char *service_name_,
+                            const char *endpoint_);
 
     uint16_t service_type () const { return _service_type; }
 
     void snapshot_providers (const std::string &service_name_,
                              std::vector<provider_info_t> *out_);
+    bool latest_registry_uplink (std::string *out_);
     uint64_t update_seq ();
     uint64_t service_update_seq (const std::string &service_name_);
     void add_observer (discovery_observer_t *observer_);
@@ -95,7 +115,12 @@ class discovery_t
     void handle_service_list (const std::vector<zlink_msg_t> &frames_);
     void notify_observers (const std::set<std::string> &services_);
     int ensure_topology_reporters ();
+    int ensure_topology_reporter_locked (const std::string &uplink_endpoint_,
+                                         socket_base_t **dealer_out_);
+    int ensure_control_dealer_locked (const std::string &uplink_endpoint_,
+                                      socket_base_t **dealer_out_);
     void flush_topology_reports ();
+    void refresh_registered_service_heartbeats (uint64_t now_ms_);
 
     struct topology_key_t
     {
@@ -134,6 +159,39 @@ class discovery_t
         }
     };
 
+    struct registered_service_key_t
+    {
+        uint16_t service_type;
+        std::string service_name;
+        std::string endpoint;
+
+        bool operator< (const registered_service_key_t &other_) const
+        {
+            if (service_type != other_.service_type)
+                return service_type < other_.service_type;
+            if (service_name != other_.service_name)
+                return service_name < other_.service_name;
+            return endpoint < other_.endpoint;
+        }
+    };
+
+    struct registered_service_t
+    {
+        uint16_t service_type;
+        std::string service_name;
+        std::string endpoint;
+        std::string uplink_endpoint;
+        uint32_t weight;
+        uint64_t last_heartbeat_ms;
+
+        registered_service_t () :
+            service_type (0),
+            weight (1),
+            last_heartbeat_ms (0)
+        {
+        }
+    };
+
     ctx_t *_ctx;
     uint32_t _tag;
 
@@ -143,12 +201,15 @@ class discovery_t
     std::set<std::string> _connected_endpoints;
 
     mutex_t _sync;
+    mutex_t _uplink_sync;
     std::set<std::string> _registry_bootstrap_endpoints;
     std::set<std::string> _bootstrapped_registry_endpoints;
     std::map<std::string, bootstrap_state_t> _bootstrap_states;
     std::set<std::string> _registry_pub_endpoints;
     std::set<std::string> _registry_uplink_endpoints;
+    std::string _latest_registry_uplink_endpoint;
     std::map<std::string, socket_base_t *> _report_dealers;
+    std::map<std::string, socket_base_t *> _control_dealers;
     std::map<std::string, service_state_t> _services;
     std::map<uint32_t, uint64_t> _registry_seq;
     std::set<std::string> _subscriptions;
@@ -162,9 +223,11 @@ class discovery_t
     };
     std::vector<socket_opt_t> _sub_opts;
     uint16_t _service_type;
+    bool _discovery_summary_enabled;
     zlink_routing_id_t _routing_id;
     std::string _routing_id_override;
     uint32_t _heartbeat_interval_ms;
+    std::map<registered_service_key_t, registered_service_t> _registered_services;
     std::map<topology_key_t, topology_summary_t> _summary_store;
     service_monitor_hub_t _monitor;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (discovery_t)

@@ -209,8 +209,6 @@ class _Lib:
         L.zlink_spot_node_destroy.restype = ctypes.c_int
         L.zlink_spot_node_bind.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         L.zlink_spot_node_bind.restype = ctypes.c_int
-        L.zlink_spot_node_connect_registry.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_spot_node_connect_registry.restype = ctypes.c_int
         L.zlink_spot_node_connect_peer_pub.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         L.zlink_spot_node_connect_peer_pub.restype = ctypes.c_int
         L.zlink_spot_node_disconnect_peer_pub.argtypes = [ctypes.c_void_p, ctypes.c_char_p]

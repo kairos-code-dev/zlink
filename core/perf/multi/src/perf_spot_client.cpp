@@ -234,7 +234,7 @@ inline bool create_slot_subscribers(std::vector<spot_client_slot_t> *slots,
             return false;
         slot.sub_monitor = zlink_spot_sub_monitor_open(
           slot.sub,
-          ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_SPOT_SUB_FILTER_APPLIED);
+          ZLINK_MONITOR_EVENT_PEER_UP);
         if (!slot.sub_monitor)
             return false;
         apply_spot_sub_options(slot.sub, settings);
@@ -291,20 +291,14 @@ inline bool wait_all_sub_peers(std::vector<spot_client_slot_t> &slots,
                    == 0) {
                 if (event.event_type == ZLINK_MONITOR_EVENT_PEER_UP)
                     slots[i].saw_peer_up = true;
-                else if (event.event_type == ZLINK_SPOT_SUB_FILTER_APPLIED)
-                    slots[i].saw_filter_applied = true;
             }
             if (!slots[i].saw_peer_up) {
                 size_t peer_count = 0;
-                if (slots[i].saw_filter_applied
-                    && zlink_spot_sub_peers(
-                         slots[i].sub, NULL, &peer_count)
-                         == 0
-                    && peer_count > 0) {
+                if (zlink_spot_sub_peers(slots[i].sub, NULL, &peer_count) == 0
+                    && peer_count > 0)
                     slots[i].saw_peer_up = true;
-                }
             }
-            if (slots[i].saw_peer_up && slots[i].saw_filter_applied) {
+            if (slots[i].saw_peer_up) {
                 ready[i] = 1;
                 ++ready_count;
             }

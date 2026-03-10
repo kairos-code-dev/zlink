@@ -5,38 +5,22 @@
 
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
-#include "services/common/service_monitor.hpp"
+#include "core/thread.hpp"
 #include "services/discovery/discovery.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 
-#include <deque>
-#include <map>
 #include <set>
 #include <string>
-#include <vector>
 
 namespace zlink
 {
-enum spot_node_socket_role_t
-{
-    spot_node_socket_node = 0,
-    spot_node_socket_pub = 1,
-    spot_node_socket_sub = 2,
-    spot_node_socket_dealer = 3
-};
-
-enum spot_node_option_t
-{
-    spot_node_opt_pub_mode = 1,
-    spot_node_opt_pub_queue_hwm = 2,
-    spot_node_opt_pub_queue_full_policy = 3
-};
-
+class socket_base_t;
 class spot_pub_t;
 class spot_sub_t;
+class spot_data_plane_t;
 
-class spot_node_t
+class spot_node_t : public discovery_observer_t
 {
   public:
     explicit spot_node_t (ctx_t *ctx_);
@@ -45,7 +29,6 @@ class spot_node_t
     bool check_tag () const;
 
     int bind (const char *endpoint_);
-    int connect_registry (const char *registry_router_endpoint_);
     int connect_peer_pub (const char *peer_pub_endpoint_);
     int disconnect_peer_pub (const char *peer_pub_endpoint_);
     int register_node (const char *service_name_,
@@ -57,183 +40,123 @@ class spot_node_t
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
                         int trust_system_);
-    int set_pub_routing_id (const void *data_, size_t size_);
-    int set_sub_routing_id (const void *data_, size_t size_);
-    int pub_routing_id (zlink_routing_id_t *out_) const;
-    int sub_routing_id (zlink_routing_id_t *out_) const;
-    int set_pub_option (int option_, const void *optval_, size_t optvallen_);
-    int set_sub_option (int option_, const void *optval_, size_t optvallen_);
-    int set_socket_option (int socket_role_,
-                           int option_,
-                           const void *optval_,
-                           size_t optvallen_);
-    int ensure_pub_facade_mode () const;
-    int ensure_sub_facade_mode () const;
-    void *pub_monitor_open (int events_);
-    void *sub_monitor_open (int events_);
-    void *pub_socket_for_poller ();
-    void *pub_socket_unsafe ();
-    void *sub_socket_for_poller ();
-    void *sub_socket_unsafe ();
 
     spot_pub_t *create_spot_pub ();
     spot_sub_t *create_spot_sub ();
     void remove_spot_pub (spot_pub_t *pub_);
     void remove_spot_sub (spot_sub_t *sub_);
 
-    int publish (const char *topic_,
-                 zlink_msg_t *parts_,
-                 size_t part_count_,
-                 int flags_);
-    int subscribe (spot_sub_t *sub_, const char *topic_);
-    int subscribe_pattern (spot_sub_t *sub_, const char *pattern_);
-    int unsubscribe (spot_sub_t *sub_, const char *topic_or_pattern_);
-
     int destroy ();
 
+    // discovery_observer_t
+    void on_service_update (const std::string &service_name_) ZLINK_OVERRIDE;
+    void on_discovery_destroyed (discovery_t *discovery_) ZLINK_OVERRIDE;
+
+    ctx_t *ctx () const { return _ctx; }
+    const std::string &pub_ingress_endpoint () const
+    {
+        return _pub_ingress_endpoint;
+    }
+    const std::string &sub_fanout_endpoint () const
+    {
+        return _sub_fanout_endpoint;
+    }
+    int ensure_healthy () const;
+    void debug_mark_fault (int err_);
+
   private:
-    friend class spot_pub_t;
-    friend class spot_sub_t;
-    struct handler_delivery_t;
-    struct async_publish_t;
-
     static void control_task (void *arg_);
+
     void control_tick ();
-    bool is_control_thread () const;
-    void request_control_tick ();
-    void process_sub ();
-    bool process_handler_delivery ();
-    bool process_async_publish ();
-    void dispatch_local (const std::string &topic_,
-                         const std::vector<msg_t> &payload_);
-    void enqueue_handler_delivery (const std::string &topic_,
-                                   const std::vector<msg_t> &payload_,
-                                   const std::vector<spot_sub_t *> &targets_);
-    bool pop_handler_delivery (handler_delivery_t *out_);
-    void invoke_pending_callbacks (
-      const std::string &topic_,
-      const std::vector<msg_t> &payload_,
-      const std::vector<spot_sub_t *> &targets_);
-    void refresh_peers ();
-    void send_heartbeat (uint64_t now_ms_);
-    void ensure_control_sockets ();
-    void flush_pending ();
-    void emit_pub_event (uint32_t event_type_,
-                         const char *endpoint_,
-                         uint32_t value_,
-                         int32_t error_code_);
-    void emit_sub_event (uint32_t event_type_,
-                         const char *endpoint_,
-                         uint32_t value_,
-                         int32_t error_code_);
-    void report_pub_topology (uint16_t state_,
-                              const char *endpoint_,
-                              uint32_t ready_count_,
-                              int32_t error_code_);
-    void report_sub_topology (uint16_t state_,
-                              const char *endpoint_,
-                              uint32_t ready_count_,
-                              int32_t error_code_);
-    bool suspend_control_task ();
-    void resume_control_task ();
-    int ensure_sub_socket_mutation_allowed () const;
+    void destroy_handles ();
+    void close_control_sockets ();
+    int start_data_plane ();
+    int send_data_plane_command (const char *verb_,
+                                 const char *arg_ = NULL) const;
+    int wait_facade_peer (socket_base_t *socket_) const;
+    int resolve_advertise_endpoint (const char *advertise_endpoint_,
+                                    std::string *out_) const;
+    void refresh_local_pub_ingress_hwm ();
+    void refresh_local_fanout_hwm ();
+    void refresh_discovery_peers ();
+    std::string summary_service_name () const;
+    void submit_pub_summary (spot_pub_t *pub_, uint16_t state_, int error_code_);
+    void submit_sub_summary (spot_sub_t *sub_, uint16_t state_, int error_code_);
+    void submit_stopped_summaries ();
+    void refresh_existing_summaries ();
+    void refresh_sub_peer_summaries (bool has_active_peers,
+                                     bool lost_transition);
 
-    static bool validate_topic (const char *topic_, std::string *out_);
-    static bool validate_pattern (const char *pattern_, std::string *prefix_);
     static bool validate_service_name (const std::string &name_);
-    static std::string resolve_advertise (const std::string &bind_endpoint_);
-    void remove_spot_sub_locked (spot_sub_t *sub_);
-
-    void add_filter (const std::string &filter_);
-    void remove_filter (const std::string &filter_);
+    static bool validate_public_endpoint (const std::string &endpoint_);
+    static bool recv_ctrl_reply (socket_base_t *socket_, int *out_errno_);
+    static int apply_tls_server (socket_base_t *socket_,
+                                 const std::string &cert_,
+                                 const std::string &key_);
+    static int apply_tls_client (socket_base_t *socket_,
+                                 const std::string &ca_cert_,
+                                 const std::string &hostname_,
+                                 int trust_system_);
 
     ctx_t *_ctx;
     uint32_t _tag;
 
-    socket_base_t *_pub;
-    socket_base_t *_sub;
-    socket_base_t *_dealer;
+    mutable mutex_t _sync;
+    mutable mutex_t _ctrl_sync;
 
-    std::deque<std::string> _pending_subscribe;
-    std::deque<std::string> _pending_unsubscribe;
-    std::deque<std::string> _pending_peer_connect;
-    std::deque<std::string> _pending_peer_disconnect;
-    std::deque<std::string> _pending_registry_connect;
+    socket_base_t *_data_ctrl_front;
+    socket_base_t *_data_ctrl_back;
+    socket_base_t *_mesh_pub;
+    socket_base_t *_mesh_xsub;
+    socket_base_t *_local_pub_ingress_sub;
+    socket_base_t *_local_fanout_xpub;
+    thread_t _data_plane_thread;
+    atomic_counter_t _stop;
 
-    std::vector<std::string> _bind_endpoints;
-    std::set<std::string> _peer_endpoints;
-    std::set<std::string> _registry_endpoints;
-
+    uint64_t _task_id;
     uint32_t _node_id;
-    zlink_routing_id_t _routing_id;
-    zlink_routing_id_t _pub_routing_id;
-    zlink_routing_id_t _sub_routing_id;
-    std::string _pub_routing_id_override;
-    std::string _sub_routing_id_override;
+
+    std::string _pub_ingress_endpoint;
+    std::string _sub_fanout_endpoint;
+    std::string _data_ctrl_endpoint;
+    std::string _bound_endpoint;
+    std::set<std::string> _manual_peer_endpoints;
+    std::set<std::string> _active_peer_endpoints;
+    std::set<std::string> _discovery_peer_endpoints;
+
+    discovery_t *_discovery;
+    std::string _discovery_service;
+    uint64_t _discovery_seq;
+    std::set<std::string> _pending_service_updates;
 
     bool _registered;
     std::string _service_name;
     std::string _advertise_endpoint;
-    uint32_t _heartbeat_interval_ms;
-    uint64_t _last_heartbeat_ms;
-
-    discovery_t *_discovery;
-    std::string _discovery_service;
-    uint64_t _next_discovery_refresh_ms;
-
-    // Serialize access to PUB socket for thread-safe publish.
-    mutex_t _pub_sync;
-    mutex_t _dealer_sync;
-    mutex_t _sync;
-    std::set<spot_pub_t *> _pubs;
-    std::set<spot_sub_t *> _subs;
-    std::map<std::string, size_t> _filter_refcount;
-    std::map<std::string, std::set<spot_sub_t *> > _topic_index;
-    std::set<spot_sub_t *> _pattern_subs;
-    struct handler_delivery_t
-    {
-        std::string topic;
-        std::vector<msg_t> payload;
-        std::vector<spot_sub_t *> targets;
-    };
-    struct async_publish_t
-    {
-        std::string topic;
-        std::vector<msg_t> payload;
-    };
-    std::deque<handler_delivery_t> _pending_handler_delivery;
-    mutex_t _pub_queue_sync;
-    std::deque<async_publish_t> _pending_pub;
-    size_t _pub_queue_hwm;
-    size_t _sub_queue_hwm;
-    int _sub_recv_timeout_ms;
-    bool _sub_queue_nodrop;
-    atomic_counter_t _pub_mode;
-    atomic_counter_t _pub_queue_full_policy;
-    atomic_counter_t _pub_pollable_mode;
-    atomic_counter_t _sub_pollable_mode;
+    std::string _registration_uplink_endpoint;
 
     std::string _tls_cert;
     std::string _tls_key;
     std::string _tls_ca;
     std::string _tls_hostname;
     int _tls_trust_system;
+    bool _server_tls_locked;
+    bool _mesh_client_tls_locked;
+    bool _registration_tls_locked;
 
-    struct socket_opt_t
-    {
-        int option;
-        std::vector<unsigned char> value;
-    };
-    std::vector<socket_opt_t> _pub_opts;
-    std::vector<socket_opt_t> _sub_opts;
-    std::vector<socket_opt_t> _dealer_opts;
+    bool _faulted;
+    int _fault_errno;
 
-    atomic_counter_t _stop;
-    uint64_t _task_id;
-    uint32_t _control_tick_ms;
-    service_monitor_hub_t _pub_monitor;
-    service_monitor_hub_t _sub_monitor;
+    int _local_pub_ingress_rcvhwm_cfg;
+    int _local_fanout_sndhwm_cfg;
+    int _local_pub_ingress_rcvhwm_default;
+    int _local_fanout_sndhwm_default;
 
+    std::set<spot_pub_t *> _pubs;
+    std::set<spot_sub_t *> _subs;
+
+    friend class spot_data_plane_t;
+    friend class spot_pub_t;
+    friend class spot_sub_t;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_node_t)
 };
 }

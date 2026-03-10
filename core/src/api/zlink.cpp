@@ -1828,19 +1828,6 @@ int zlink_spot_node_bind (void *node_, const char *endpoint_)
     return node->bind (endpoint_);
 }
 
-int zlink_spot_node_connect_registry (void *node_,
-                                    const char *registry_endpoint_)
-{
-    if (!node_)
-        return -1;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return node->connect_registry (registry_endpoint_);
-}
-
 int zlink_spot_node_connect_peer_pub (void *node_,
                                     const char *peer_pub_endpoint_)
 {
@@ -3032,8 +3019,9 @@ int zlink_poller_add_spot_sub (void *poller_,
     zlink::spot_sub_t *sub = as_spot_sub_service (sub_);
     if (!sub)
         return -1;
-    return poller_add_service_fd (poller_, sub->poller_fd (), user_data_,
-                                  events_);
+    return poller_add_service_socket (
+      poller_, static_cast<zlink::socket_base_t *> (sub->poller_socket ()),
+      user_data_, events_);
 }
 
 int zlink_poller_add_spot_pub (void *poller_,
@@ -3112,7 +3100,9 @@ int zlink_poller_modify_spot_sub (void *poller_, void *sub_, short events_)
     zlink::spot_sub_t *sub = as_spot_sub_service (sub_);
     if (!sub)
         return -1;
-    return poller_modify_service_fd (poller_, sub->poller_fd (), events_);
+    return poller_modify_service_socket (
+      poller_, static_cast<zlink::socket_base_t *> (sub->poller_socket ()),
+      events_);
 }
 
 int zlink_poller_modify_spot_pub (void *poller_, void *pub_, short events_)
@@ -3185,7 +3175,8 @@ int zlink_poller_remove_spot_sub (void *poller_, void *sub_)
     zlink::spot_sub_t *sub = as_spot_sub_service (sub_);
     if (!sub)
         return -1;
-    return poller_remove_service_fd (poller_, sub->poller_fd ());
+    return poller_remove_service_socket (
+      poller_, static_cast<zlink::socket_base_t *> (sub->poller_socket ()));
 }
 
 int zlink_poller_remove_spot_pub (void *poller_, void *pub_)

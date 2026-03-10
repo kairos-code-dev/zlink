@@ -94,8 +94,93 @@ static bool recv_dealer_frames (socket_base_t *socket_,
         frames_->push_back (frame);
         if (!zlink_msg_more (&frame))
             break;
+        if (!wait_socket_event (static_cast<void *> (socket_), ZLINK_POLLIN,
+                                500)) {
+            errno = EAGAIN;
+            close_frames (frames_);
+            return false;
+        }
     }
     return !frames_->empty ();
+}
+
+static int recv_status_ack (socket_base_t *socket_,
+                            uint16_t expected_msg_id_,
+                            int *status_out_,
+                            std::string *resolved_out_,
+                            std::string *error_out_)
+{
+    if (!socket_ || !status_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    *status_out_ = -1;
+    if (resolved_out_)
+        resolved_out_->clear ();
+    if (error_out_)
+        error_out_->clear ();
+
+    const uint64_t deadline_ms = zlink::clock_t ().now_ms () + 2000;
+    while (zlink::clock_t ().now_ms () < deadline_ms) {
+        if (!wait_socket_event (static_cast<void *> (socket_), ZLINK_POLLIN, 50))
+            continue;
+
+        std::vector<zlink_msg_t> frames;
+        if (!recv_dealer_frames (socket_, &frames)) {
+            if (errno == EAGAIN)
+                continue;
+            return -1;
+        }
+
+        uint16_t msg_id = 0;
+        if (frames.size () >= 2
+            && discovery_protocol::read_u16 (frames[0], &msg_id)
+            && msg_id == expected_msg_id_) {
+            uint8_t status = 0xFF;
+            if (zlink_msg_size (&frames[1]) == sizeof (uint8_t))
+                memcpy (&status, zlink_msg_data (&frames[1]),
+                        sizeof (uint8_t));
+            *status_out_ = static_cast<int> (status);
+            if (resolved_out_ && frames.size () >= 3
+                && expected_msg_id_ == discovery_protocol::msg_register_ack) {
+                *resolved_out_ = discovery_protocol::read_string (frames[2]);
+            }
+            if (error_out_) {
+                if (expected_msg_id_ == discovery_protocol::msg_register_ack
+                    && frames.size () >= 4) {
+                    *error_out_ = discovery_protocol::read_string (frames[3]);
+                } else if (
+                  expected_msg_id_ == discovery_protocol::msg_unregister_ack
+                  && frames.size () >= 3) {
+                    *error_out_ = discovery_protocol::read_string (frames[2]);
+                }
+            }
+            close_frames (&frames);
+            return 0;
+        }
+
+        close_frames (&frames);
+    }
+
+    errno = EAGAIN;
+    return -1;
+}
+
+static void drain_dealer_messages (socket_base_t *socket_)
+{
+    if (!socket_)
+        return;
+
+    while (wait_socket_event (static_cast<void *> (socket_), ZLINK_POLLIN, 0)) {
+        std::vector<zlink_msg_t> frames;
+        if (!recv_dealer_frames (socket_, &frames)) {
+            if (errno == EAGAIN)
+                break;
+            return;
+        }
+        close_frames (&frames);
+    }
 }
 
 discovery_t::discovery_t (ctx_t *ctx_, uint16_t service_type_) :
@@ -106,6 +191,7 @@ discovery_t::discovery_t (ctx_t *ctx_, uint16_t service_type_) :
     _sub_socket (NULL),
     _update_seq (0),
     _service_type (service_type_),
+    _discovery_summary_enabled (true),
     _heartbeat_interval_ms (5000),
     _monitor (ctx_)
 {
@@ -122,6 +208,12 @@ discovery_t::~discovery_t ()
 bool discovery_t::check_tag () const
 {
     return _tag == discovery_tag_value;
+}
+
+void discovery_t::set_discovery_summary_enabled (bool enabled_)
+{
+    scoped_lock_t lock (_sync);
+    _discovery_summary_enabled = enabled_;
 }
 
 int discovery_t::connect_registry (const char *registry_endpoint_)
@@ -394,6 +486,7 @@ int discovery_t::bootstrap_registry (const char *registry_endpoint_)
         scoped_lock_t lock (_sync);
         _registry_pub_endpoints.insert (pub_endpoint);
         _registry_uplink_endpoints.insert (uplink_endpoint);
+        _latest_registry_uplink_endpoint = uplink_endpoint;
         _bootstrapped_registry_endpoints.insert (registry_endpoint_);
         if (heartbeat_interval_ms > 0)
             _heartbeat_interval_ms = heartbeat_interval_ms;
@@ -477,6 +570,18 @@ void discovery_t::snapshot_providers (const std::string &service_name_,
     if (it == _services.end ())
         return;
     *out_ = it->second.providers;
+}
+
+bool discovery_t::latest_registry_uplink (std::string *out_)
+{
+    if (!out_)
+        return false;
+
+    scoped_lock_t lock (_sync);
+    if (_latest_registry_uplink_endpoint.empty ())
+        return false;
+    *out_ = _latest_registry_uplink_endpoint;
+    return true;
 }
 
 uint64_t discovery_t::update_seq ()
@@ -655,28 +760,131 @@ int discovery_t::destroy ()
         runtime->remove_task (_task_id);
     _task_id = 0;
     close_sub_socket ();
-    scoped_lock_t lock (_sync);
-    for (std::map<std::string, bootstrap_state_t>::iterator it =
-           _bootstrap_states.begin ();
-         it != _bootstrap_states.end (); ++it) {
-        if (it->second.dealer) {
-            it->second.dealer->close ();
-            it->second.dealer = NULL;
+    std::vector<discovery_observer_t *> observers;
+    {
+        scoped_lock_t lock (_sync);
+        observers.assign (_observers.begin (), _observers.end ());
+        _observers.clear ();
+        for (std::map<std::string, bootstrap_state_t>::iterator it =
+               _bootstrap_states.begin ();
+             it != _bootstrap_states.end (); ++it) {
+            if (it->second.dealer) {
+                it->second.dealer->close ();
+                it->second.dealer = NULL;
+            }
         }
+        for (std::map<std::string, socket_base_t *>::iterator it =
+               _report_dealers.begin ();
+             it != _report_dealers.end (); ++it) {
+            if (it->second)
+                it->second->close ();
+        }
+        for (std::map<std::string, socket_base_t *>::iterator it =
+               _control_dealers.begin ();
+             it != _control_dealers.end (); ++it) {
+            if (it->second)
+                it->second->close ();
+        }
+        _report_dealers.clear ();
+        _control_dealers.clear ();
+        _bootstrap_states.clear ();
+        _registry_uplink_endpoints.clear ();
+        _latest_registry_uplink_endpoint.clear ();
+        _registry_bootstrap_endpoints.clear ();
+        _bootstrapped_registry_endpoints.clear ();
+        _registry_pub_endpoints.clear ();
+        _registered_services.clear ();
+        _summary_store.clear ();
     }
-    for (std::map<std::string, socket_base_t *>::iterator it =
-           _report_dealers.begin ();
-         it != _report_dealers.end (); ++it) {
-        if (it->second)
-            it->second->close ();
+
+    for (size_t i = 0; i < observers.size (); ++i) {
+        if (observers[i])
+            observers[i]->on_discovery_destroyed (this);
     }
-    _report_dealers.clear ();
-    _bootstrap_states.clear ();
-    _registry_uplink_endpoints.clear ();
-    _registry_bootstrap_endpoints.clear ();
-    _bootstrapped_registry_endpoints.clear ();
-    _registry_pub_endpoints.clear ();
-    _summary_store.clear ();
+    return 0;
+}
+
+int discovery_t::ensure_topology_reporter_locked (
+  const std::string &uplink_endpoint_,
+  socket_base_t **dealer_out_)
+{
+    if (!dealer_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    *dealer_out_ = NULL;
+
+    scoped_lock_t lock (_sync);
+    std::map<std::string, socket_base_t *>::iterator it =
+      _report_dealers.find (uplink_endpoint_);
+    if (it == _report_dealers.end () || !it->second) {
+        socket_base_t *dealer = _ctx->create_socket (ZLINK_DEALER);
+        if (!dealer)
+            return -1;
+        if (!ensure_socket_routing_id (dealer)) {
+            dealer->close ();
+            return -1;
+        }
+        const int linger = 200;
+        const int sndtimeo_ms = 100;
+        const int rcvtimeo_ms = 1000;
+        dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
+        dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms,
+                            sizeof (sndtimeo_ms));
+        dealer->setsockopt (ZLINK_RCVTIMEO, &rcvtimeo_ms,
+                            sizeof (rcvtimeo_ms));
+        if (dealer->connect (uplink_endpoint_.c_str ()) != 0) {
+            dealer->close ();
+            return -1;
+        }
+        _report_dealers[uplink_endpoint_] = dealer;
+        *dealer_out_ = dealer;
+        return 0;
+    }
+
+    *dealer_out_ = it->second;
+    return 0;
+}
+
+int discovery_t::ensure_control_dealer_locked (
+  const std::string &uplink_endpoint_,
+  socket_base_t **dealer_out_)
+{
+    if (!dealer_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    *dealer_out_ = NULL;
+
+    scoped_lock_t lock (_sync);
+    std::map<std::string, socket_base_t *>::iterator it =
+      _control_dealers.find (uplink_endpoint_);
+    if (it == _control_dealers.end () || !it->second) {
+        socket_base_t *dealer = _ctx->create_socket (ZLINK_DEALER);
+        if (!dealer)
+            return -1;
+        if (!zlink::discovery::set_socket_routing_id (dealer, NULL, NULL)) {
+            dealer->close ();
+            return -1;
+        }
+        const int linger = 200;
+        const int sndtimeo_ms = 500;
+        const int rcvtimeo_ms = 500;
+        dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
+        dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms,
+                            sizeof (sndtimeo_ms));
+        dealer->setsockopt (ZLINK_RCVTIMEO, &rcvtimeo_ms,
+                            sizeof (rcvtimeo_ms));
+        if (dealer->connect (uplink_endpoint_.c_str ()) != 0) {
+            dealer->close ();
+            return -1;
+        }
+        _control_dealers[uplink_endpoint_] = dealer;
+        *dealer_out_ = dealer;
+        return 0;
+    }
+
+    *dealer_out_ = it->second;
     return 0;
 }
 
@@ -713,39 +921,23 @@ int discovery_t::ensure_sub_socket ()
 
 int discovery_t::ensure_topology_reporters ()
 {
-    scoped_lock_t lock (_sync);
+    scoped_lock_t uplink_lock (_uplink_sync);
+    std::vector<std::string> endpoints;
+    {
+        scoped_lock_t lock (_sync);
+        for (std::set<std::string>::const_iterator it =
+               _registry_uplink_endpoints.begin ();
+             it != _registry_uplink_endpoints.end (); ++it)
+            endpoints.push_back (*it);
+    }
     size_t ready_count = 0;
-    for (std::set<std::string>::const_iterator it =
-           _registry_uplink_endpoints.begin ();
-         it != _registry_uplink_endpoints.end (); ++it) {
+    for (size_t i = 0; i < endpoints.size (); ++i) {
         socket_base_t *dealer = NULL;
-        std::map<std::string, socket_base_t *>::iterator dit =
-          _report_dealers.find (*it);
-        if (dit == _report_dealers.end ()) {
-            dealer = _ctx->create_socket (ZLINK_DEALER);
-            if (!dealer)
-                continue;
-            if (!ensure_socket_routing_id (dealer)) {
-                dealer->close ();
-                continue;
-            }
-            const int linger = 200;
-            const int sndtimeo_ms = 100;
-            const int rcvtimeo_ms = 1000;
-            dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
-            dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms,
-                                sizeof (sndtimeo_ms));
-            dealer->setsockopt (ZLINK_RCVTIMEO, &rcvtimeo_ms,
-                                sizeof (rcvtimeo_ms));
-            if (dealer->connect (it->c_str ()) != 0) {
-                discovery_debugf ("uplink connect failed endpoint=%s errno=%d",
-                                  it->c_str (), errno);
-                dealer->close ();
-                continue;
-            }
-            _report_dealers[*it] = dealer;
-        } else
-            dealer = dit->second;
+        if (ensure_topology_reporter_locked (endpoints[i], &dealer) != 0) {
+            discovery_debugf ("uplink connect failed endpoint=%s errno=%d",
+                              endpoints[i].c_str (), errno);
+            continue;
+        }
 
         if (dealer
             && wait_socket_event (static_cast<void *> (dealer), ZLINK_POLLOUT,
@@ -753,6 +945,351 @@ int discovery_t::ensure_topology_reporters ()
             ++ready_count;
     }
     return ready_count == 0 ? -1 : 0;
+}
+
+int discovery_t::register_service (uint16_t service_type_,
+                                   const char *service_name_,
+                                   const char *endpoint_,
+                                   uint32_t weight_,
+                                   std::string *resolved_endpoint_out_,
+                                   const zlink_routing_id_t *routing_id_)
+{
+    if (!service_name_ || service_name_[0] == '\0' || !endpoint_
+        || endpoint_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::string uplink;
+    {
+        scoped_lock_t lock (_sync);
+        uplink = _latest_registry_uplink_endpoint;
+    }
+    if (uplink.empty ()) {
+        errno = EAGAIN;
+        return -1;
+    }
+
+    socket_base_t *dealer = _ctx->create_socket (ZLINK_DEALER);
+    if (!dealer)
+        return -1;
+    if (routing_id_ && routing_id_->size > 0) {
+        if (dealer->setsockopt (ZLINK_ROUTING_ID, routing_id_->data,
+                                routing_id_->size)
+            != 0) {
+            dealer->close ();
+            return -1;
+        }
+    } else if (!zlink::discovery::set_socket_routing_id (dealer, NULL, NULL)) {
+        dealer->close ();
+        return -1;
+    }
+    const int linger = 200;
+    const int sndtimeo_ms = 500;
+    const int rcvtimeo_ms = 500;
+    dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
+    dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms, sizeof (sndtimeo_ms));
+    dealer->setsockopt (ZLINK_RCVTIMEO, &rcvtimeo_ms, sizeof (rcvtimeo_ms));
+    if (dealer->connect (uplink.c_str ()) != 0) {
+        dealer->close ();
+        return -1;
+    }
+    const uint64_t deadline_ms = clock_t ().now_ms () + 500;
+    while (clock_t ().now_ms () < deadline_ms) {
+        if (!wait_socket_event (static_cast<void *> (dealer), ZLINK_POLLOUT, 50))
+            continue;
+        break;
+    }
+    if (!wait_socket_event (static_cast<void *> (dealer), ZLINK_POLLOUT, 0)) {
+        discovery_debugf ("register_service pollout timeout uplink=%s",
+                          uplink.c_str ());
+        dealer->close ();
+        errno = EAGAIN;
+        return -1;
+    }
+
+    if (discovery_protocol::send_u16 (
+          dealer, discovery_protocol::msg_register, ZLINK_SNDMORE)
+          < 0
+        || discovery_protocol::send_u16 (dealer, service_type_, ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_string (dealer, service_name_,
+                                            ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_string (dealer, endpoint_, ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_u32 (
+             dealer, weight_ == 0 ? 1 : weight_, 0)
+             < 0)
+        {
+            dealer->close ();
+        return -1;
+        }
+
+    int status = -1;
+    std::string resolved;
+    std::string error;
+    if (recv_status_ack (dealer, discovery_protocol::msg_register_ack, &status,
+                         &resolved, &error)
+        != 0) {
+        discovery_debugf ("register_service ack recv failed errno=%d", errno);
+        dealer->close ();
+        return -1;
+    }
+    dealer->close ();
+    if (status != 0) {
+        if (status == -1) {
+            discovery_debugf ("register_service ack timeout uplink=%s",
+                              uplink.c_str ());
+            errno = EAGAIN;
+            return -1;
+        }
+        discovery_debugf ("register_service rejected status=%d error=%s", status,
+                          error.c_str ());
+        errno = EINVAL;
+        return -1;
+    }
+
+    registered_service_key_t key;
+    key.service_type = service_type_;
+    key.service_name = service_name_;
+    key.endpoint = resolved.empty () ? endpoint_ : resolved;
+
+    {
+        scoped_lock_t lock (_sync);
+        registered_service_t &service = _registered_services[key];
+        service.service_type = service_type_;
+        service.service_name = service_name_;
+        service.endpoint = key.endpoint;
+        service.uplink_endpoint = uplink;
+        service.weight = weight_ == 0 ? 1 : weight_;
+        service.last_heartbeat_ms = clock_t ().now_ms ();
+    }
+
+    if (resolved_endpoint_out_)
+        *resolved_endpoint_out_ = key.endpoint;
+    return 0;
+}
+
+int discovery_t::update_service_weight (uint16_t service_type_,
+                                        const char *service_name_,
+                                        const char *endpoint_,
+                                        uint32_t weight_)
+{
+    if (!service_name_ || service_name_[0] == '\0' || !endpoint_
+        || endpoint_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::string uplink;
+    {
+        scoped_lock_t lock (_sync);
+        registered_service_key_t key;
+        key.service_type = service_type_;
+        key.service_name = service_name_;
+        key.endpoint = endpoint_;
+        std::map<registered_service_key_t, registered_service_t>::const_iterator
+          it = _registered_services.find (key);
+        if (it != _registered_services.end ())
+            uplink = it->second.uplink_endpoint;
+        else
+            uplink = _latest_registry_uplink_endpoint;
+    }
+    if (uplink.empty ()) {
+        errno = EAGAIN;
+        return -1;
+    }
+
+    socket_base_t *dealer = _ctx->create_socket (ZLINK_DEALER);
+    if (!dealer)
+        return -1;
+    if (!zlink::discovery::set_socket_routing_id (dealer, NULL, NULL)) {
+        dealer->close ();
+        return -1;
+    }
+    const int linger = 200;
+    const int sndtimeo_ms = 500;
+    const int rcvtimeo_ms = 500;
+    dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
+    dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms, sizeof (sndtimeo_ms));
+    dealer->setsockopt (ZLINK_RCVTIMEO, &rcvtimeo_ms, sizeof (rcvtimeo_ms));
+    if (dealer->connect (uplink.c_str ()) != 0) {
+        dealer->close ();
+        return -1;
+    }
+    const uint64_t deadline_ms = clock_t ().now_ms () + 500;
+    while (clock_t ().now_ms () < deadline_ms) {
+        if (!wait_socket_event (static_cast<void *> (dealer), ZLINK_POLLOUT, 50))
+            continue;
+        break;
+    }
+    if (!wait_socket_event (static_cast<void *> (dealer), ZLINK_POLLOUT, 0)) {
+        discovery_debugf ("update_service_weight pollout timeout uplink=%s",
+                          uplink.c_str ());
+        dealer->close ();
+        errno = EAGAIN;
+        return -1;
+    }
+
+    const uint32_t value = weight_ == 0 ? 1 : weight_;
+    if (discovery_protocol::send_u16 (
+          dealer, discovery_protocol::msg_update_weight, ZLINK_SNDMORE)
+          < 0
+        || discovery_protocol::send_u16 (dealer, service_type_, ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_string (dealer, service_name_,
+                                            ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_string (dealer, endpoint_, ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_u32 (dealer, value, 0) < 0) {
+        dealer->close ();
+        return -1;
+    }
+
+    int status = -1;
+    std::string resolved;
+    std::string error;
+    if (recv_status_ack (dealer, discovery_protocol::msg_register_ack, &status,
+                         &resolved, &error)
+        != 0) {
+        discovery_debugf ("update_service_weight ack recv failed errno=%d",
+                          errno);
+        dealer->close ();
+        return -1;
+    }
+    dealer->close ();
+    if (status != 0) {
+        if (status == -1) {
+            discovery_debugf ("update_service_weight ack timeout uplink=%s",
+                              uplink.c_str ());
+            errno = EAGAIN;
+            return -1;
+        }
+        discovery_debugf ("update_service_weight rejected status=%d error=%s",
+                          status, error.c_str ());
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    registered_service_key_t key;
+    key.service_type = service_type_;
+    key.service_name = service_name_;
+    key.endpoint = endpoint_;
+    std::map<registered_service_key_t, registered_service_t>::iterator it =
+      _registered_services.find (key);
+    if (it != _registered_services.end ())
+        it->second.weight = value;
+    return 0;
+}
+
+int discovery_t::unregister_service (uint16_t service_type_,
+                                     const char *service_name_,
+                                     const char *endpoint_)
+{
+    if (!service_name_ || service_name_[0] == '\0' || !endpoint_
+        || endpoint_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::string uplink;
+    {
+        scoped_lock_t lock (_sync);
+        registered_service_key_t key;
+        key.service_type = service_type_;
+        key.service_name = service_name_;
+        key.endpoint = endpoint_;
+        std::map<registered_service_key_t, registered_service_t>::const_iterator
+          it = _registered_services.find (key);
+        if (it != _registered_services.end ())
+            uplink = it->second.uplink_endpoint;
+        else
+            uplink = _latest_registry_uplink_endpoint;
+    }
+    if (uplink.empty ()) {
+        errno = EAGAIN;
+        return -1;
+    }
+
+    socket_base_t *dealer = _ctx->create_socket (ZLINK_DEALER);
+    if (!dealer)
+        return -1;
+    if (!zlink::discovery::set_socket_routing_id (dealer, NULL, NULL)) {
+        dealer->close ();
+        return -1;
+    }
+    const int linger = 200;
+    const int sndtimeo_ms = 500;
+    const int rcvtimeo_ms = 500;
+    dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
+    dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms, sizeof (sndtimeo_ms));
+    dealer->setsockopt (ZLINK_RCVTIMEO, &rcvtimeo_ms, sizeof (rcvtimeo_ms));
+    if (dealer->connect (uplink.c_str ()) != 0) {
+        dealer->close ();
+        return -1;
+    }
+    const uint64_t deadline_ms = clock_t ().now_ms () + 500;
+    while (clock_t ().now_ms () < deadline_ms) {
+        if (!wait_socket_event (static_cast<void *> (dealer), ZLINK_POLLOUT, 50))
+            continue;
+        break;
+    }
+    if (!wait_socket_event (static_cast<void *> (dealer), ZLINK_POLLOUT, 0)) {
+        discovery_debugf ("unregister_service pollout timeout uplink=%s",
+                          uplink.c_str ());
+        dealer->close ();
+        errno = EAGAIN;
+        return -1;
+    }
+
+    if (discovery_protocol::send_u16 (
+          dealer, discovery_protocol::msg_unregister, ZLINK_SNDMORE)
+          < 0
+        || discovery_protocol::send_u16 (dealer, service_type_, ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_string (dealer, service_name_,
+                                            ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_string (dealer, endpoint_, 0) < 0)
+        {
+            dealer->close ();
+        return -1;
+        }
+
+    int status = -1;
+    std::string error;
+    if (recv_status_ack (dealer, discovery_protocol::msg_unregister_ack,
+                         &status, NULL, &error)
+        != 0) {
+        discovery_debugf ("unregister_service ack recv failed errno=%d",
+                          errno);
+        dealer->close ();
+        return -1;
+    }
+    dealer->close ();
+    if (status != 0) {
+        if (status == -1) {
+            discovery_debugf ("unregister_service ack timeout uplink=%s",
+                              uplink.c_str ());
+            errno = EAGAIN;
+            return -1;
+        }
+        discovery_debugf ("unregister_service rejected status=%d error=%s",
+                          status, error.c_str ());
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    registered_service_key_t key;
+    key.service_type = service_type_;
+    key.service_name = service_name_;
+    key.endpoint = endpoint_;
+    _registered_services.erase (key);
+    return 0;
 }
 
 void discovery_t::close_sub_socket ()
@@ -838,6 +1375,7 @@ void discovery_t::tick ()
         close_frames (&frames);
     }
 
+    refresh_registered_service_heartbeats (clock_t ().now_ms ());
     flush_topology_reports ();
 }
 
@@ -1023,18 +1561,20 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
                                         : ZLINK_TOPOLOGY_STATE_DISCOVERED;
         else if (events[i].event_type == ZLINK_DISCOVERY_SERVICE_DOWN)
             state = ZLINK_TOPOLOGY_STATE_LOST;
-        zlink_registry_topology_entry_t entry;
-        memset (&entry, 0, sizeof (entry));
-        entry.routing_id = _routing_id;
-        entry.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
-        strncpy (entry.service_name, events[i].service_name,
-                 sizeof (entry.service_name) - 1);
-        entry.source = ZLINK_TOPOLOGY_SOURCE_REGISTRY;
-        entry.state = state;
-        entry.desired_count = 1;
-        entry.ready_count = events[i].value;
-        entry.last_reported_ms = zlink::clock_t ().now_ms ();
-        upsert_service_summary (entry);
+        if (_discovery_summary_enabled) {
+            zlink_registry_topology_entry_t entry;
+            memset (&entry, 0, sizeof (entry));
+            entry.routing_id = _routing_id;
+            entry.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
+            strncpy (entry.service_name, events[i].service_name,
+                     sizeof (entry.service_name) - 1);
+            entry.source = ZLINK_TOPOLOGY_SOURCE_REGISTRY;
+            entry.state = state;
+            entry.desired_count = 1;
+            entry.ready_count = events[i].value;
+            entry.last_reported_ms = zlink::clock_t ().now_ms ();
+            upsert_service_summary (entry);
+        }
         _monitor.emit (events[i]);
     }
 }
@@ -1075,6 +1615,7 @@ void discovery_t::flush_topology_reports ()
     if (dealers.empty ())
         return;
 
+    scoped_lock_t uplink_lock (_uplink_sync);
     for (size_t i = 0; i < entries.size (); ++i) {
         bool all_sent = true;
         for (size_t d = 0; d < dealers.size (); ++d) {
@@ -1106,6 +1647,60 @@ void discovery_t::flush_topology_reports ()
                 continue;
             it->second.dirty = false;
         }
+    }
+}
+
+void discovery_t::refresh_registered_service_heartbeats (uint64_t now_ms_)
+{
+    std::vector<registered_service_t> services;
+    {
+        scoped_lock_t lock (_sync);
+        for (std::map<registered_service_key_t, registered_service_t>::const_iterator
+               it = _registered_services.begin ();
+             it != _registered_services.end (); ++it) {
+            if (it->second.uplink_endpoint.empty ())
+                continue;
+            if (it->second.last_heartbeat_ms != 0
+                && now_ms_ - it->second.last_heartbeat_ms
+                     < _heartbeat_interval_ms)
+                continue;
+            services.push_back (it->second);
+        }
+    }
+
+    if (services.empty ())
+        return;
+
+    scoped_lock_t uplink_lock (_uplink_sync);
+    for (size_t i = 0; i < services.size (); ++i) {
+        socket_base_t *dealer = NULL;
+        if (ensure_control_dealer_locked (services[i].uplink_endpoint, &dealer)
+            != 0)
+            continue;
+        if (!wait_socket_event (static_cast<void *> (dealer), ZLINK_POLLOUT, 0))
+            continue;
+        if (discovery_protocol::send_u16 (
+              dealer, discovery_protocol::msg_heartbeat, ZLINK_SNDMORE)
+              < 0
+            || discovery_protocol::send_u16 (dealer, services[i].service_type,
+                                             ZLINK_SNDMORE)
+                 < 0
+            || discovery_protocol::send_string (dealer, services[i].service_name,
+                                                ZLINK_SNDMORE)
+                 < 0
+            || discovery_protocol::send_string (dealer, services[i].endpoint, 0)
+                 < 0)
+            continue;
+
+        scoped_lock_t lock (_sync);
+        registered_service_key_t key;
+        key.service_type = services[i].service_type;
+        key.service_name = services[i].service_name;
+        key.endpoint = services[i].endpoint;
+        std::map<registered_service_key_t, registered_service_t>::iterator it =
+          _registered_services.find (key);
+        if (it != _registered_services.end ())
+            it->second.last_heartbeat_ms = now_ms_;
     }
 }
 }

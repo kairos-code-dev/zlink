@@ -6,6 +6,7 @@
 #include <string>
 #include <map>
 #include <stdarg.h>
+#include <atomic>
 
 #include "core/own.hpp"
 #include "utils/array.hpp"
@@ -29,6 +30,7 @@ namespace zlink
 class ctx_t;
 class msg_t;
 class pipe_t;
+class io_thread_t;
 class socket_base_t : public own_t,
                       public array_item_t<>,
                       public i_poll_events,
@@ -62,6 +64,10 @@ class socket_base_t : public own_t,
     int recv (zlink::msg_t *msg_, int flags_);
     int close ();
     int stream_dispatch_msg_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
+    virtual int sub_dispatch_start (zlink_spot_sub_handler_fn callback_,
+                                    void *userdata_);
+    virtual int sub_dispatch_stop ();
+    virtual bool sub_dispatch_active () const;
     virtual int stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_);
     virtual int
     stream_dispatch_start_len32be (zlink_stream_on_packets_fn callback_);
@@ -188,6 +194,7 @@ class socket_base_t : public own_t,
     virtual bool xhas_in ();
     virtual int xrecv (zlink::msg_t *msg_);
     virtual int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
+    virtual void xdispatch_io ();
 
     //  i_pipe_events will be forwarded to these functions.
     virtual void xread_activated (pipe_t *pipe_);
@@ -203,6 +210,8 @@ class socket_base_t : public own_t,
     void process_destroy () ZLINK_FINAL;
 
     int connect_internal (const char *endpoint_uri_);
+    int start_async_mailbox_processing (io_thread_t *io_thread_);
+    void stop_async_mailbox_processing ();
 
   private:
     // test if event should be sent and then dispatch it
@@ -288,8 +297,11 @@ class socket_base_t : public own_t,
     void inc_mailbox_ref ();
     void dec_mailbox_ref ();
     void finalize_destroy ();
+    void process_async_mailbox ();
     static void reaper_mailbox_handler (void *arg_);
     static void reaper_mailbox_pre_post (void *arg_);
+    static void async_mailbox_handler (void *arg_);
+    static void async_mailbox_pre_post (void *arg_);
 
     //  Handlers for incoming commands.
     void process_stop () ZLINK_FINAL;
@@ -336,6 +348,7 @@ class socket_base_t : public own_t,
 
     atomic_counter_t _mailbox_refcnt;
     bool _destroy_pending;
+    std::atomic<bool> _async_mailbox_active;
 
     // Mutex to synchronize access to the monitor Pair socket
     mutex_t _monitor_sync;

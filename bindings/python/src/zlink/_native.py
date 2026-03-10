@@ -448,12 +448,6 @@ def _load_lib():
     _lib.zlink_spot_node_bind.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
     _lib.zlink_spot_node_bind.restype = ctypes.c_int
 
-    _lib.zlink_spot_node_connect_registry.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_char_p,
-    ]
-    _lib.zlink_spot_node_connect_registry.restype = ctypes.c_int
-
     _lib.zlink_spot_node_connect_peer_pub.argtypes = [
         ctypes.c_void_p,
         ctypes.c_char_p,

@@ -1045,10 +1045,6 @@ ZLINK_EXPORT int zlink_spot_node_destroy (void **node_p);
 /** @brief Bind the SPOT node to an endpoint. */
 ZLINK_EXPORT int zlink_spot_node_bind (void *node, const char *endpoint);
 
-/** @brief Connect to a Registry endpoint for service registration. */
-ZLINK_EXPORT int zlink_spot_node_connect_registry (void *node,
-                                               const char *registry_endpoint);
-
 /** @brief Connect to a peer node's PUB endpoint (mesh topology). */
 ZLINK_EXPORT int zlink_spot_node_connect_peer_pub (void *node,
                                                const char *peer_pub_endpoint);

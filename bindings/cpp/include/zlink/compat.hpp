@@ -279,10 +279,6 @@ inline int spot_node_bind (void *node_, const char *endpoint_)
 {
     return zlink_spot_node_bind (node_, endpoint_);
 }
-inline int spot_node_connect_registry (void *node_, const char *endpoint_)
-{
-    return zlink_spot_node_connect_registry (node_, endpoint_);
-}
 inline int spot_node_register (void *node_,
                                const char *service_,
                                const char *advertise_)

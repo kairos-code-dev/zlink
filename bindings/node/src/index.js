@@ -456,7 +456,6 @@ class Receiver {
 class SpotNode {
   constructor(ctx) { this._native = requireNative().spotNodeNew(ctx._native); }
   bind(endpoint) { requireNative().spotNodeBind(this._native, endpoint); }
-  connectRegistry(endpoint) { requireNative().spotNodeConnectRegistry(this._native, endpoint); }
   connectPeerPub(endpoint) { requireNative().spotNodeConnectPeerPub(this._native, endpoint); }
   disconnectPeerPub(endpoint) { requireNative().spotNodeDisconnectPeerPub(this._native, endpoint); }
   register(service, endpoint) { requireNative().spotNodeRegister(this._native, service, endpoint); }

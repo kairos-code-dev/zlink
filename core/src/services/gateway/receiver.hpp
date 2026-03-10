@@ -13,6 +13,8 @@
 
 namespace zlink
 {
+class discovery_t;
+
 enum receiver_socket_role_t
 {
     receiver_socket_router = 1,
@@ -61,18 +63,23 @@ class receiver_t
 
   private:
     bool ensure_routing_id ();
+    discovery_t *ensure_owned_discovery ();
     std::string resolve_advertise (const char *advertise_endpoint_);
+    void report_topology (const std::string &service_name_,
+                          const std::string &endpoint_,
+                          uint16_t state_,
+                          int32_t error_code_);
 
     ctx_t *_ctx;
     uint32_t _tag;
 
     socket_base_t *_router;
-    socket_base_t *_dealer;
+    discovery_t *_discovery;
+    bool _owns_discovery;
 
     zlink_routing_id_t _routing_id;
 
     std::string _bind_endpoint;
-    std::string _registry_endpoint;
 
     std::string _service_name;
     std::string _advertise_endpoint;

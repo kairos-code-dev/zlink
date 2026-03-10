@@ -46,7 +46,6 @@ public class TestSpotDiscoveryPortedTest {
             registry.start();
 
             serverNode.bind(serverEndpoint);
-            serverNode.connectRegistry(regRouter);
             serverNode.register("perf-spot", serverEndpoint);
 
             clientNode.bind(clientEndpoint);

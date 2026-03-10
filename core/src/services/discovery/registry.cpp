@@ -940,23 +940,6 @@ void registry_t::handle_register (void *router_, const zlink_msg_t *frames_,
     entry.last_heartbeat = now;
     entry.source_registry = _registry_id;
 
-    if (service_type == discovery_protocol::service_type_gateway_receiver) {
-        zlink_registry_topology_entry_t topology;
-        memset (&topology, 0, sizeof (topology));
-        topology.routing_id = sender_id_;
-        topology.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
-        strncpy (topology.service_name, service_name.c_str (),
-                 sizeof (topology.service_name) - 1);
-        strncpy (topology.endpoint, endpoint.c_str (),
-                 sizeof (topology.endpoint) - 1);
-        topology.source = ZLINK_TOPOLOGY_SOURCE_REGISTRY;
-        topology.state = ZLINK_TOPOLOGY_STATE_READY;
-        topology.desired_count = 1;
-        topology.ready_count = 1;
-        topology.last_reported_ms = now;
-        upsert_topology_entry (topology, now);
-    }
-
     _list_seq++;
     send_register_ack (router_, sender_id_, 0x00, endpoint, std::string ());
 }
@@ -1001,25 +984,9 @@ void registry_t::handle_unregister (void *router_,
         return;
     }
 
-    const zlink_routing_id_t provider_routing_id = pit->second.routing_id;
     sit->second.providers.erase (pit);
     if (sit->second.providers.empty ())
         _services.erase (sit);
-
-    if (service_type == discovery_protocol::service_type_gateway_receiver) {
-        zlink_registry_topology_entry_t topology;
-        memset (&topology, 0, sizeof (topology));
-        topology.routing_id = provider_routing_id;
-        topology.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
-        strncpy (topology.service_name, service_name.c_str (),
-                 sizeof (topology.service_name) - 1);
-        strncpy (topology.endpoint, endpoint.c_str (),
-                 sizeof (topology.endpoint) - 1);
-        topology.source = ZLINK_TOPOLOGY_SOURCE_REGISTRY;
-        topology.state = ZLINK_TOPOLOGY_STATE_STOPPED;
-        topology.last_reported_ms = zlink::clock_t ().now_ms ();
-        upsert_topology_entry (topology, topology.last_reported_ms);
-    }
 
     _list_seq++;
     send_unregister_ack (router_, sender_id_, 0x00, std::string ());
@@ -1055,22 +1022,6 @@ void registry_t::handle_heartbeat (const zlink_msg_t *frames_,
     zlink::clock_t clock;
     pit->second.last_heartbeat = clock.now_ms ();
 
-    if (service_type == discovery_protocol::service_type_gateway_receiver) {
-        zlink_registry_topology_entry_t topology;
-        memset (&topology, 0, sizeof (topology));
-        topology.routing_id = pit->second.routing_id;
-        topology.service_kind = ZLINK_SERVICE_KIND_RECEIVER;
-        strncpy (topology.service_name, service_name.c_str (),
-                 sizeof (topology.service_name) - 1);
-        strncpy (topology.endpoint, endpoint.c_str (),
-                 sizeof (topology.endpoint) - 1);
-        topology.source = ZLINK_TOPOLOGY_SOURCE_REGISTRY;
-        topology.state = ZLINK_TOPOLOGY_STATE_READY;
-        topology.desired_count = 1;
-        topology.ready_count = 1;
-        topology.last_reported_ms = pit->second.last_heartbeat;
-        upsert_topology_entry (topology, pit->second.last_heartbeat);
-    }
 }
 
 void registry_t::handle_topology_report (const zlink_msg_t *frames_,

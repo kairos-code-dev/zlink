@@ -181,7 +181,9 @@ public API는 가능한 한 기존 surface를 유지한다.
 
 권장:
 
-- `zlink_discovery_connect_registry(...)` 하나만 public registry connect entry로 유지
+- `zlink_discovery_connect_registry(...)`를 canonical registry bootstrap entry로 유지
+- 다른 service-level connect helper가 남더라도 내부적으로는
+  `Discovery` runtime에 위임하는 thin wrapper여야 한다
 - topology/heartbeat uplink용 내부 endpoint 정보는 bootstrap metadata로 자동 획득
 
 핵심은 public API보다 internal runtime/helper와 ownership 계약이다.
@@ -258,14 +260,9 @@ service마다 summary 의미가 다르기 때문이다.
   - watched service name
   - provider count
   - `READY / DISCOVERED / LOST`
-- `SpotSub`
-  - `FILTER_APPLIED`
-  - peer up/down
-  - ready/lost
-- `SpotPub`
-  - queue drained/full
-  - endpoint
-  - ready/error
+- `SpotPub` / `SpotSub`
+  - SPOT 문서 section 12.3의 state mapping 참조
+  - proxy 재작성 후 기존 queue/filter event 기반 trigger는 사용하지 않는다
 
 따라서 각 service는 다음 helper 하나만 구현한다.
 
@@ -296,8 +293,8 @@ int discovery_t::erase_service_summary(
 정리하면:
 
 - `Gateway`는 자기 local summary를 `Discovery`에 제출
-- `Receiver`는 provider control plane(`REGISTER`/`UNREGISTER`)을 통해
-  Registry가 topology entry를 직접 갱신하도록 한다
+- `Receiver`는 provider control request와 topology summary를 모두
+  `Discovery` runtime에 위임한다
 - `SpotPub`, `SpotSub`는 직접 `Discovery`를 알지 않고
   `SpotNode`가 local summary를 모아 `Discovery`에 제출
 - `Discovery` 자신에 대한 summary도 같은 local store에 넣고 uplink
@@ -444,59 +441,40 @@ int gateway_t::update_discovery_summary(...);
 
 ### 6.3 Spot
 
-`SpotNode`는 topology reporting subject가 아니라 wiring owner다.
+SPOT의 topology reporting 세부 계약은
+[`spot-proxy-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-proxy-rewrite-spec.ko.md)
+section 12를 따른다.
 
-따라서:
+원칙만 여기 남긴다:
 
-- `SpotNode`는 `Discovery` reference / wiring owner를 보유
-- `SpotPub` / `SpotSub`는 subject identity와 summary builder를 가짐
-- `SpotNode`가 `SpotPub` / `SpotSub` local summary를 모아
-  `Discovery`에 전달한다
+- `SpotNode`는 wiring owner / discovery bridge다
+- `SpotPub` / `SpotSub`는 topology summary subject다
+- SPOT summary는 discovery-owned uplink runtime을 사용한다
+- `SpotPub` / `SpotSub`는 `Discovery`를 직접 참조하지 않는다
+- `SpotNode`는 registry 전용 소켓을 두지 않는다
+- registry heartbeat는 `Discovery`가 전담한다
 
-즉:
-
-```text
-SpotNode = spot internal owner / discovery bridge
-SpotPub/Sub = summary subject
-```
-
-필수 구현 항목:
-
-- `SpotNode`가 optional `Discovery*`를 보유
-- `SpotPub` / `SpotSub` local state 변화 시
-  `SpotNode`가 entry build 후 `Discovery`에 submit
-- `SpotPub` / `SpotSub`가 직접 registry uplink를 만들지 않음
-- `SpotSub heartbeat` 역할은 별도 public 기능으로 추가하지 않고,
-  `SpotNode -> Discovery summary update`와 discovery uplink로 흡수
-- `SpotNode` destroy 시 `SpotPub` / `SpotSub` summary를 `STOPPED` 또는 erase로 정리
-
-권장 wiring 방식:
-
-- `SpotNode`는 constructor 또는 명시적 attach 단계에서 `Discovery*`를 받는다
-- `SpotPub`, `SpotSub`는 `Discovery`를 직접 참조하지 않는다
-- `SpotPub`, `SpotSub`는 기존처럼 `SpotNode` owner를 통해서만
-  discovery bridge에 도달한다
-- `SpotNode` 생성 후 runtime 중간에 `Discovery`를 갈아끼우는 동적 rebind는
-  1차 범위에 넣지 않는다
+state mapping, ownership, submit API, destroy semantics의 상세 규범은
+SPOT 문서를 참조한다.
 
 ### 6.4 Receiver
 
-`Receiver`는 provider registration/control path와는 별개로
-topology summary를 discovery bridge에 제출하면 된다.
+`Receiver`는 provider registration/control path와 topology summary reporting을
+모두 discovery-owned runtime에 위임한다.
 
 개선 포인트:
 
-- provider register/unregister는 기존 경로 유지
-- topology summary는 `Discovery`에 제출
+- `Receiver`는 registry raw sender를 소유하지 않음
+- register/unregister/update_weight request도 `Discovery` runtime으로 보냄
+- topology summary도 `Discovery` summary store/uplink를 사용함
 - 별도 ad-hoc sender를 만들지 않음
 
 필수 구현 항목:
 
 - `register ok/failed`, `unregister ok`, router peer 변화, fatal error에서
-  summary update
-- `Receiver` heartbeat sender/timer를 제거하거나 internal/private legacy로 내림
-- `register failed`는 topology summary에서 `ERROR` 또는 `DISCOVERED`로
-  명시적으로 매핑
+  receiver-local state를 summary로 갱신
+- `Receiver` heartbeat sender/timer를 제거
+- `register failed`는 topology summary에서 `ERROR`로 명시적으로 매핑
 - registry freshness는 `Discovery` heartbeat만 기준으로 삼는다
 
 `Discovery`가 없는 경우 계약:
@@ -536,24 +514,18 @@ registry summary state는 “local service가 결정한 결과”다.
 | `Receiver` | register failed | `ERROR` |
 | `Receiver` | unregister ok | `STOPPED` |
 | `Receiver` | fatal error | `ERROR` |
-| `SpotSub` | peer up only | `CONNECTING` or `READY` depending on semantics |
-| `SpotSub` | filter applied | `READY` |
-| `SpotSub` | peer down with zero peers | `LOST` |
-| `SpotPub` | queue drained / bind ready | `READY` |
-| `SpotPub` | queue full | `ERROR` |
+| `SpotPub` | SPOT 문서 section 12.3 참조 | SPOT 문서 참조 |
+| `SpotSub` | SPOT 문서 section 12.3 참조 | SPOT 문서 참조 |
 
-### 7.3 Spot strong readiness는 별도 단계
+### 7.3 Spot state mapping은 SPOT 문서가 기준
 
-`SpotSub`의 `SUBSCRIPTION_READY`는 여전히 phase 분리 대상이다.
+SPOT의 topology state mapping은 proxy 재작성에 맞춰 재정의됐다.
 
-즉 1차에서는:
-
-- `FILTER_APPLIED`
-- peer connect/disconnect
-
-정도까지만 summary state에 쓸 수 있다.
-
-강한 subscription delivery 보장은 후속 phase로 남긴다.
+- 기존 queue/filter monitor event 기반 trigger는 더 이상 사용하지 않는다
+- 상세 state mapping은
+  [`spot-proxy-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-proxy-rewrite-spec.ko.md)
+  section 12.3을 따른다
+- strong subscription delivery 보장은 후속 phase로 남긴다
 
 ---
 
@@ -714,19 +686,29 @@ int zlink_discovery_connect_registry(void *discovery,
 
 ## 10. 내부 구현 초안
 
-### 10.1 공용 파일 추가
+### 10.1 공용 runtime 경계
 
 ```text
 core/src/services/discovery/discovery_topology_uplink.hpp
 core/src/services/discovery/discovery_topology_uplink.cpp
 ```
 
+위 파일 분리는 권장 구조다. 다만 1차 구현에서는 같은 역할이
+`discovery.cpp` / `discovery.hpp` 내부 helper와 field로 인라인되어 있어도 된다.
+
+핵심 요구는 파일명 자체가 아니라 아래 runtime 경계다:
+
+- topology report sender owner
+- control request sender owner
+- summary store / dirty flush owner
+- heartbeat sender owner
+
 ### 10.2 Discovery
 
 - `_registry_uplink_endpoints`
 - `_summary_store`
 - `_dirty_entries`
-- `_topology_uplink`
+- `_topology_uplink` 또는 그에 준하는 internal runtime field 집합
 - `connect_registry()`
 - `upsert_service_summary()`
 - `erase_service_summary()`
@@ -819,65 +801,51 @@ gateway local state transition
 
 ### 10.4 Receiver
 
-- 기존 register/unregister 경로 유지
-- receiver topology는 `REGISTER`/`UNREGISTER` control path에서 Registry가 직접
-  반영한다
+- `Receiver`는 registry raw sender를 두지 않는다
+- register/unregister/update_weight는 discovery-owned control runtime으로 위임한다
+- receiver topology summary도 discovery-owned summary runtime으로 위임한다
 - receiver-local heartbeat sender/timer는 제거한다
 
 세부 구현:
 
-- provider registration helper와 receiver-local heartbeat helper를 분리
-- receiver-local heartbeat sender/timer는 제거 또는 private legacy 경로로 내림
-- receiver topology는 register/unregister/fatal-error 결과를 Registry가 직접
-  summary entry로 반영한다
+- provider registration helper와 topology summary helper를 `Discovery` runtime에 통합
+- receiver-local heartbeat sender/timer는 제거한다
+- `Receiver`는 local state를 보고 summary entry를 build해서
+  `Discovery::upsert_service_summary()` / `erase_service_summary()`를 호출한다
+- registry는 receiver control ack / topology report를 저장하고 query만 수행한다
 - registry freshness는 Discovery heartbeat가 전담
 
 권장 흐름:
 
 ```text
-receiver register/unregister/fatal error
--> existing control message or ack result
--> registry updates receiver topology entry directly
--> return
-```
-
-즉:
-
-- provider discovery contract는 기존 message type으로 유지
-- receiver topology visibility는 기존 control plane에서 직접 반영한다
-- discovery heartbeat는 receiver topology entry의 freshness/lost 판단에만 관여한다
-
-### 10.5 Spot
-
-- `SpotNode`가 `Discovery` bridge 소유
-- `SpotPub` summary builder
-- `SpotSub` summary builder
-- summary update trigger는 `bind`, `filter applied`, `peer up/down`,
-  `queue full/drained`
-
-세부 구현:
-
-- `SpotNode`가 `submit_pub_summary()` / `submit_sub_summary()` internal helper 제공
-- `SpotPub` / `SpotSub` local event는 entry build만 하고 actual submit은
-  `SpotNode` safe call site에서 수행
-- lock 안에서 `Discovery` submit 금지
-- `SpotSub`의 heartbeat 누락은 별도 socket heartbeat 추가가 아니라
-  summary update coverage를 넓혀 보완
-
-권장 submit 흐름:
-
-```text
-spot pub/sub local event
--> SpotNode safe call site
--> build pub/sub topology entry
+receiver local state transition
+-> build receiver topology entry
 -> discovery->upsert_service_summary(...)
 -> return
 ```
 
 즉:
 
-- `SpotPub`, `SpotSub`는 `Discovery`를 직접 참조하지 않는다
-- `SpotNode`가 spot 내부 owner + discovery bridge 역할을 함께 맡는다
+- provider discovery contract는 기존 message type을 유지하되 sender owner는
+  `Discovery`다
+- receiver topology visibility도 동일한 discovery uplink runtime으로 반영한다
+- discovery heartbeat는 receiver provider freshness와 summary uplink freshness를
+  함께 담당한다
+
+### 10.5 Spot
+
+SPOT의 topology reporting 내부 구현은
+[`spot-proxy-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-proxy-rewrite-spec.ko.md)
+section 12에 정의되어 있다.
+
+원칙만 여기 남긴다:
+
+- `SpotNode`가 `Discovery` bridge 소유
+- `SpotPub` / `SpotSub`가 summary subject
+- `SpotNode`가 `submit_pub_summary()` / `submit_sub_summary()` internal helper 제공
+- lock 안에서 `Discovery` submit 금지
+- summary update trigger, state mapping, submit API, destroy semantics는
+  SPOT 문서를 따른다
 
 ### 10.6 flush / wakeup 상세
 
@@ -917,12 +885,11 @@ service local state change
   - unregister -> `STOPPED`
   - provider registration path와 topology summary path가 분리돼 있는지
   - receiver-local heartbeat 제거 후도 summary/state가 유지되는지
-- `SpotPub`
-  - bind/queue drained -> `READY`
-  - queue full -> `ERROR`
-- `SpotSub`
-  - filter applied / peer up -> expected state
-  - peer down -> `LOST`
+- `SpotPub` / `SpotSub`
+  - SPOT 문서 section 12 기준의 topology summary lifecycle 테스트를 따른다
+  - 상세 테스트 항목은
+    [`spot-proxy-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-proxy-rewrite-spec.ko.md)
+    section 14.3을 참조한다
 
 ### 11.2 lifetime
 
@@ -988,13 +955,13 @@ perf integration 기본 원칙:
 
 ### Phase 2: Spot
 
-- `SpotPub` / `SpotSub` summary report
-- `SpotNode -> Discovery` bridge 정리
-- closed event + summary trigger 정리
+SPOT topology summary 구현은
+[`spot-proxy-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-proxy-rewrite-spec.ko.md)
+section 15 Phase 5와 연계한다.
 
 완료 기준:
 
-- spot introspection tests green
+- SPOT 문서 section 14.3 topology summary 테스트 통과
 - timeout/deadlock 없음
 
 ### Phase 3: 문서 / perf 정리
@@ -1040,7 +1007,7 @@ perf integration 기본 원칙:
 | sender lifetime 누수 | uplink socket이 discovery destroy 후 남을 수 있음 | discovery uplink close 의무화 |
 | lock-order 문제 | state update와 registry send가 엮이면 deadlock 가능 | submit/send 분리, safe call site 고정 |
 | report storm | count-changed 과다 report 가능 | discovery dirty-store + change-only flush |
-| Spot semantics 애매함 | strong readiness가 아직 없음 | Phase 2는 basic summary까지만 |
+| Spot semantics 애매함 | strong readiness가 아직 없음 | SPOT 문서 section 12.3 state mapping 기준으로 Phase 2 구현 |
 | bootstrap 실패 | discovery/broadcast와 topology uplink 구성이 함께 실패할 수 있음 | bootstrap failure를 connect failure로 명확히 취급 |
 | Discovery 없는 구성 | registry visibility가 없음 | 문서에 intended limitation으로 명시 |
 | multi-Discovery 중복 보고 | 같은 key가 여러 discovery에서 반복 upsert될 수 있음 | registry upsert idempotent 처리, 최신 report 시간 기준 수렴 |

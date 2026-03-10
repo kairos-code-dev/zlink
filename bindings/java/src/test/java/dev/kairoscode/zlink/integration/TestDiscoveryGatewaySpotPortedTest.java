@@ -148,16 +148,14 @@ public class TestDiscoveryGatewaySpotPortedTest {
         try (SpotNode node = new SpotNode(ctx)) {
             String spotEp = TestSupport.tcpEndpoint();
             node.bind(spotEp);
-            node.connectRegistry(regRouter);
             node.register("spot", spotEp);
             TestSupport.sleepMs(100);
 
             try (SpotNode peerNode = new SpotNode(ctx);
-                 Spot spot = new Spot(peerNode);
-                 Spot.PreparedTopic topic = spot.prepareTopic("topic");
-                 Spot.PublishContext publishContext =
-                   spot.createPublishContext()) {
-                peerNode.connectRegistry(regRouter);
+                Spot spot = new Spot(peerNode);
+                Spot.PreparedTopic topic = spot.prepareTopic("topic");
+                Spot.PublishContext publishContext =
+                  spot.createPublishContext()) {
                 peerNode.connectPeerPub(spotEp);
                 TestSupport.sleepMs(120);
 

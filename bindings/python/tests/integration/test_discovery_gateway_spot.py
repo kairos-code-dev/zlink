@@ -64,12 +64,10 @@ class DiscoveryGatewaySpotScenarioTest(unittest.TestCase):
                         node = zlink.SpotNode(ctx)
                         spot_ep = endpoint_for(name, endpoint, "-spot")
                         node.bind(spot_ep)
-                        node.connect_registry(reg_router)
                         node.register("spot", spot_ep)
                         time.sleep(0.1)
 
                         peer = zlink.SpotNode(ctx)
-                        peer.connect_registry(reg_router)
                         peer.connect_peer_pub(spot_ep)
                         spot = zlink.Spot(peer)
                         time.sleep(0.1)

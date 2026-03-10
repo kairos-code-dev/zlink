@@ -561,10 +561,6 @@ internal static class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_connect_registry(IntPtr node,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string registryEndpoint);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_connect_peer_pub(IntPtr node,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string peerPubEndpoint);
 

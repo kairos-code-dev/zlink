@@ -16,9 +16,11 @@ Subscribers that consume them.
 - Use `zlink_spot_pub_set_routing_id()` / `zlink_spot_sub_set_routing_id()`
   for representative identities.
 - Use `zlink_spot_pub_monitor_open()` / `zlink_spot_sub_monitor_open()` for
-  state transitions such as `ZLINK_SPOT_SUB_FILTER_APPLIED` and
-  `ZLINK_SPOT_PUB_QUEUE_DRAINED`.
+  state transitions. Topology-level state reporting is handled through the
+  topology summary owned by Discovery.
 - Keep `SpotNode` for bind/connect/discovery/TLS wiring only.
+- `zlink_spot_node_register()` submits registration via the attached
+  Discovery's uplink runtime. `set_discovery()` must be called first.
 
 ## Types
 
@@ -36,26 +38,17 @@ automatically through this callback instead of `zlink_spot_sub_recv`.
 
 ## Constants
 
-```c
-#define ZLINK_SPOT_NODE_PUB_MODE_SYNC  0
-#define ZLINK_SPOT_NODE_PUB_MODE_ASYNC 1
-
-#define ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN 0
-#define ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP   1
-```
-
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `ZLINK_SPOT_NODE_PUB_MODE_SYNC` | 0 | Publish in caller thread (default) |
-| `ZLINK_SPOT_NODE_PUB_MODE_ASYNC` | 1 | Enqueue publish for worker-thread dispatch |
-| `ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN` | 0 | Return `EAGAIN` when async queue is full (default) |
-| `ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP` | 1 | Drop newest message and still return success |
+After the proxy-based rewrite, `ASYNC` mode constants have been removed.
+Publishing always goes through the internal inproc PUB facade into the data
+plane on the caller's thread. Concurrent calls are serialized internally.
 
 ## SPOT Node
 
-A SPOT Node manages the underlying PUB, SUB, and DEALER sockets that form
-the mesh topology. Publishers and Subscribers attach to a Node to send and
-receive messages.
+A SPOT Node manages the underlying PUB and SUB sockets along with a
+proxy-based data plane worker that forms the mesh topology. Publishers and
+Subscribers attach to a Node to send and receive messages. Registry
+communication is handled through the attached Discovery's uplink runtime;
+SpotNode itself does not own a registry raw socket.
 
 ### zlink_spot_node_new
 
@@ -65,9 +58,10 @@ Create a SPOT node.
 void *zlink_spot_node_new(void *ctx);
 ```
 
-Allocates and initializes a new SPOT Node. The Node manages internal PUB,
-SUB, and DEALER sockets for topic-based messaging. The context handle must
-remain valid for the lifetime of the Node.
+Allocates and initializes a new SPOT Node. The Node manages internal PUB
+and SUB sockets along with a proxy-based data plane worker for topic-based
+messaging. The context handle must remain valid for the lifetime of the
+Node.
 
 **Returns:** A SPOT Node handle on success, or `NULL` on failure.
 
@@ -114,27 +108,6 @@ local subscribers connect to this endpoint to receive published messages.
 
 **Errors:**
 - `EADDRINUSE` -- the endpoint is already in use.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_spot_node_register`
-
----
-
-### zlink_spot_node_connect_registry
-
-Connect to a Registry endpoint for service registration.
-
-```c
-int zlink_spot_node_connect_registry(void *node,
-                                     const char *registry_endpoint);
-```
-
-Connects the Node's internal DEALER socket to the Registry's ROUTER
-control endpoint. The Node keeps this internal control connection open for
-registration, deregistration, and legacy control-plane traffic.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
 
 **Thread safety:** Not thread-safe.
 
@@ -193,19 +166,31 @@ int zlink_spot_node_register(void *node,
                              const char *advertise_endpoint);
 ```
 
-Queues a registration request to the Registry for the given service name on
-the Node's internal control plane.
+Submits a registration request through the attached Discovery's registry
+uplink runtime for the given service name.
 The `advertise_endpoint` is the endpoint that peer nodes will connect to
 (typically the same endpoint passed to `zlink_spot_node_bind`). Once
 registered, peer nodes using Discovery will automatically connect to form
 the mesh.
 
-`0` means the request was accepted by the local Node runtime and queued for
-Registry processing. Peer visibility remains eventual and should be observed
-through Discovery or monitor events rather than treating `register()` as a
-strong readiness barrier.
+If `advertise_endpoint` is `NULL` or empty, the Node derives it from the
+already bound public endpoint. This is allowed only for a single concrete
+bind address. Wildcard binds such as `tcp://*:5555`, `tcp://0.0.0.0:5555`,
+and `tcp://[::]:5555` are rejected because they are not valid peer-advertised
+endpoints.
+
+**Precondition:** `zlink_spot_node_set_discovery()` must be called first.
+Calling this without an attached Discovery fails with `EFSM`.
+
+`0` means the request was accepted by the Discovery uplink runtime. Peer
+visibility remains eventual and should be observed through Discovery or
+monitor events rather than treating `register()` as a strong readiness
+barrier.
 
 **Returns:** `0` on local acceptance, or `-1` on failure (errno is set).
+
+**Errors:**
+- `EFSM` -- called without an attached Discovery.
 
 **Thread safety:** Not thread-safe.
 
@@ -222,11 +207,16 @@ int zlink_spot_node_unregister(void *node,
                                const char *service_name);
 ```
 
-Queues a deregistration request to the Registry for the given service name.
-After the next broadcast cycle, peer nodes will no longer discover this
-Node for the specified service.
+Submits a deregistration request through the attached Discovery's registry
+uplink runtime. After the next broadcast cycle, peer nodes will no longer
+discover this Node for the specified service.
+
+**Precondition:** `zlink_spot_node_set_discovery()` must be called first.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Errors:**
+- `EFSM` -- called without an attached Discovery.
 
 **Thread safety:** Not thread-safe.
 
@@ -348,16 +338,18 @@ Applies a service-level option to the Publisher. Available option constants:
 | `ZLINK_SPOT_PUB_OPT_SNDTIMEO` | 2 | Send timeout (ms) |
 | `ZLINK_SPOT_PUB_OPT_LINGER` | 3 | Linger period (ms) |
 | `ZLINK_SPOT_PUB_OPT_NODROP` | 4 | Do not drop messages on HWM |
-| `ZLINK_SPOT_PUB_OPT_MODE` | 5 | Publish mode (`SYNC` or `ASYNC`) |
-| `ZLINK_SPOT_PUB_OPT_QUEUE_HWM` | 6 | Async queue high-water mark |
-| `ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY` | 7 | Async queue full policy |
 | `ZLINK_SPOT_PUB_OPT_SNDBUF` | 8 | Kernel transmit buffer size in bytes |
 | `ZLINK_SPOT_PUB_OPT_RCVBUF` | 9 | Kernel receive buffer size in bytes |
+
+**Removed options:** `MODE` (5), `QUEUE_HWM` (6), `QUEUE_FULL_POLICY` (7)
+were removed in the proxy-based rewrite. Setting them returns `ENOTSUP`.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
 **Errors:**
 - `EINVAL` -- Unknown option.
+- `ENOTSUP` -- Deprecated queue-mode options are not supported by the
+  proxy-based implementation.
 
 **Thread safety:** Not thread-safe.
 
@@ -464,14 +456,8 @@ message parts is transferred.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Thread-safe.
-
-- `SYNC` mode (default): concurrent calls are serialized internally.
-- `ASYNC` mode: concurrent calls enqueue into an internal queue and return
-  once accepted by the queue.
-
-`ASYNC` mode may return `EAGAIN` when the queue is full and full-policy is
-`ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN`.
+**Thread safety:** Thread-safe. Concurrent calls are serialized internally.
+Publishing goes through the inproc PUB facade into the data plane worker.
 
 **See also:** `zlink_spot_pub_publish_bytes`, `zlink_spot_sub_subscribe`, `zlink_spot_pub_new`
 
@@ -497,9 +483,8 @@ construction for the common single-buffer publish path.
 
 **Errors:**
 - `EINVAL` -- `data == NULL` while `size > 0`.
-- `EAGAIN` -- async publish queue is full with `EAGAIN` full-policy.
 
-**Thread safety:** Thread-safe.
+**Thread safety:** Thread-safe. Concurrent calls are serialized internally.
 
 **See also:** `zlink_spot_pub_publish`, `zlink_spot_pub_new`
 
@@ -569,6 +554,8 @@ Applies a service-level option to the Subscriber. Available option constants:
 
 **Errors:**
 - `EINVAL` -- Unknown option.
+- `ENOTSUP` -- Deprecated queue/filter options are not supported by the
+  proxy-based implementation.
 
 **Thread safety:** Not thread-safe.
 
@@ -854,17 +841,20 @@ if (zlink_poller_wait(poller, &ev, 1000) == 1) {
 
 ### Internal behavior
 
-- **spot_sub**: The poller monitors an internal queue signaler fd, not the
-  raw SUB socket. When the subscriber queue is non-empty the fd becomes
-  readable. After readiness, call `zlink_spot_sub_recv(...)` as usual.
-- **spot_pub**: The poller monitors the existing PUB socket owned by the
-  node. After readiness, call `zlink_spot_pub_publish(...)` as usual.
+- **spot_sub**: The poller monitors the internal SUB facade socket managed
+  by the data plane worker. When a message arrives from the data plane the
+  fd becomes readable. After readiness, call `zlink_spot_sub_recv(...)` as
+  usual.
+- **spot_pub**: The poller monitors the inproc PUB facade socket for
+  writability. After readiness, call `zlink_spot_pub_publish(...)` as
+  usual.
 
 ### Thread safety
 
-Using the same service instance from multiple threads concurrently is
-**unsupported**. A single `spot_sub` or `spot_pub` must be used from one
-execution context at a time.
+`spot_pub` is thread-safe -- multiple threads may call `publish()`
+concurrently on the same instance; calls are serialized internally.
+`spot_sub` is **not** thread-safe -- `recv()`, handler, `subscribe()`,
+and `unsubscribe()` must be serialized by the caller.
 
 ### Summary
 

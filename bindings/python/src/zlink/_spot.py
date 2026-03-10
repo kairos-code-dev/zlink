@@ -27,11 +27,6 @@ class SpotNode:
         if rc != 0:
             _raise_last_error()
 
-    def connect_registry(self, registry_endpoint):
-        rc = lib().zlink_spot_node_connect_registry(self._handle, registry_endpoint.encode())
-        if rc != 0:
-            _raise_last_error()
-
     def connect_peer_pub(self, endpoint):
         rc = lib().zlink_spot_node_connect_peer_pub(self._handle, endpoint.encode())
         if rc != 0:

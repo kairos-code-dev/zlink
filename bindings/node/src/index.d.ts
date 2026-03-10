@@ -271,7 +271,6 @@ export class Receiver {
 export class SpotNode {
   constructor(ctx: Context);
   bind(endpoint: string): void;
-  connectRegistry(endpoint: string): void;
   connectPeerPub(endpoint: string): void;
   disconnectPeerPub(endpoint: string): void;
   register(service: string, endpoint: string): void;

@@ -87,7 +87,6 @@ public final class PerfMultiSpotServer {
             PerfMultiTls.configureSpotPublisherTlsIfNeeded(node, transport);
             PerfMultiTls.configureSpotSubscriberTlsIfNeeded(node, transport);
             node.bind(endpoints.serverEndpoint());
-            node.connectRegistry(endpoints.registryRouter());
             node.register(SERVICE_NAME, endpoints.serverEndpoint());
             System.out.println("READY," + endpoints.serverEndpoint() + "|"
                 + endpoints.registryPub() + "|" + endpoints.registryRouter());

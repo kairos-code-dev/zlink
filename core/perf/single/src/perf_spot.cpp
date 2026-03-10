@@ -662,8 +662,7 @@ void run_spot(const std::string &transport,
         return;
     }
 
-    if (zlink_spot_node_connect_registry(node_pub, registry_router_endpoint.c_str())
-        != 0) {
+    if (zlink_spot_node_set_discovery(node_pub, discovery, service_name) != 0) {
         fail_no_queue();
         return;
     }
@@ -698,7 +697,7 @@ void run_spot(const std::string &transport,
     }
     sub_monitor = zlink_spot_sub_monitor_open(
       spot_sub,
-      ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_SPOT_SUB_FILTER_APPLIED);
+      ZLINK_MONITOR_EVENT_PEER_UP);
     if (!sub_monitor) {
         fail_no_queue();
         return;
@@ -861,26 +860,22 @@ static bool wait_for_sub_peer_ready(void *spot_sub,
       steady_clock_t::now()
       + milliseconds_t(std::max(1000, timeout_ms));
     bool saw_peer_up = false;
-    bool saw_filter_applied = false;
     zlink_service_event_t event;
     memset(&event, 0, sizeof(event));
     while (steady_clock_t::now() < deadline) {
         size_t peer_count = 0;
-        if (saw_filter_applied
-            && zlink_spot_sub_peers(spot_sub, NULL, &peer_count) == 0
+        if (zlink_spot_sub_peers(spot_sub, NULL, &peer_count) == 0
             && peer_count > 0) {
             return true;
         }
         if (zlink_service_monitor_recv(sub_monitor, &event, ZLINK_DONTWAIT) == 0) {
             if (event.event_type == ZLINK_MONITOR_EVENT_PEER_UP)
                 saw_peer_up = true;
-            else if (event.event_type == ZLINK_SPOT_SUB_FILTER_APPLIED)
-                saw_filter_applied = true;
-            if (saw_peer_up && saw_filter_applied)
+            if (saw_peer_up)
                 return true;
         }
         if (zlink_poll(NULL, 0, 1) < 0 && zlink_errno() != EINTR)
             return false;
     }
-    return saw_peer_up && saw_filter_applied;
+    return saw_peer_up;
 }

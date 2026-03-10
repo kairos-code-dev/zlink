@@ -32,15 +32,6 @@ public sealed class SpotNode : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public void ConnectRegistry(string registryEndpoint)
-    {
-        ValidateNotEmpty(registryEndpoint, nameof(registryEndpoint));
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_node_connect_registry(_handle,
-            registryEndpoint);
-        ZlinkException.ThrowIfError(rc);
-    }
-
     public void ConnectPeerPub(string peerPubEndpoint)
     {
         ValidateNotEmpty(peerPubEndpoint, nameof(peerPubEndpoint));

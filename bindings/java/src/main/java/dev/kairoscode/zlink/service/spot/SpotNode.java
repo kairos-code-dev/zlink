@@ -46,14 +46,6 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
-    public void connectRegistry(String registryEndpoint) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeConnectRegistry(handle, NativeHelpers.toCString(arena, registryEndpoint));
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_connect_registry");
-        }
-    }
-
     public void connectPeerPub(String peerPubEndpoint) {
         try (Arena arena = Arena.ofConfined()) {
             int rc = Native.spotNodeConnectPeer(handle, NativeHelpers.toCString(arena, peerPubEndpoint));

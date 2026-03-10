@@ -73,11 +73,11 @@ int zlink_receiver_connect_registry(void *receiver,
                                     const char *registry_endpoint);
 ```
 
-Connects the Receiver's internal DEALER socket to the Registry's ROUTER
-endpoint. This connection is used for sending registration, deregistration,
-and weight-update messages to the Registry. Receiver topology entries are
-derived directly from this control path. Registry heartbeat/topology uplink
-ownership for discovery-driven summaries belongs to Discovery.
+Connects the Receiver's Discovery-owned control runtime to the Registry's
+ROUTER endpoint. Registration, deregistration, and weight-update messages are
+sent through that Discovery runtime. Receiver topology entries are reported as
+Discovery-owned summaries rather than being derived directly from the control
+path.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 

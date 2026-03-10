@@ -65,16 +65,6 @@ class spot_node_t
     }
 
     /**
-     * @brief Connect to registry endpoint.
-     * @param endpoint_ Registry endpoint.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int connect_registry (const std::string &endpoint_)
-    {
-        return zlink_spot_node_connect_registry (_node, endpoint_.c_str ());
-    }
-
-    /**
      * @brief Connect to another spot node's PUB endpoint.
      * @param endpoint_ Peer PUB endpoint.
      * @return 0 on success, -1 on failure.

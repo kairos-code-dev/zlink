@@ -5,15 +5,22 @@
 
 #include "core/msg.hpp"
 #include "utils/macros.hpp"
+#include "core/thread.hpp"
+#include "services/common/service_monitor.hpp"
+#include "utils/atomic_counter.hpp"
+#include "utils/mutex.hpp"
+
+#include <string>
 
 namespace zlink
 {
+class socket_base_t;
 class spot_node_t;
 
 class spot_pub_t
 {
   public:
-    explicit spot_pub_t (spot_node_t *node_);
+    spot_pub_t (spot_node_t *node_, socket_base_t *socket_);
     ~spot_pub_t ();
 
     bool check_tag () const;
@@ -28,14 +35,32 @@ class spot_pub_t
     int peers (zlink_peer_info_t *peers_, size_t *count_) const;
     void *monitor_open (int events_);
     void *poller_socket ();
+    int configured_sndhwm () const;
 
+    void emit_ready_event ();
     int destroy ();
 
   private:
-    friend class spot_node_t;
+    static void monitor_thread_main (void *arg_);
+    void monitor_loop ();
+    void submit_error_summary (int error_code_);
+    int ensure_monitor_bridge_started ();
+    void stop_monitor_bridge ();
+    void lock_routing_id ();
+    static int initialize_routing_id (zlink_routing_id_t *out_);
 
     spot_node_t *_node;
+    socket_base_t *_socket;
     uint32_t _tag;
+    mutable mutex_t _sync;
+    zlink_routing_id_t _routing_id;
+    bool _routing_id_locked;
+    int _configured_sndhwm;
+    service_monitor_hub_t _monitor;
+    void *_raw_monitor_socket;
+    thread_t _monitor_thread;
+    atomic_counter_t _monitor_stop;
+    bool _monitor_thread_started;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_pub_t)
 };

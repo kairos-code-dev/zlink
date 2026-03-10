@@ -84,6 +84,43 @@ static bool wait_gateway_connection_count (void *gateway_,
     return false;
 }
 
+static bool wait_for_topology_state (void *registry_,
+                                     uint16_t service_kind_,
+                                     const char *service_name_,
+                                     const zlink_routing_id_t *routing_id_,
+                                     uint16_t state_,
+                                     int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        zlink_registry_topology_filter_t filter;
+        memset (&filter, 0, sizeof (filter));
+        filter.service_kind = service_kind_;
+        if (service_name_)
+            strncpy (filter.service_name, service_name_,
+                     sizeof (filter.service_name) - 1);
+        if (routing_id_)
+            filter.routing_id = *routing_id_;
+
+        size_t count = 0;
+        if (zlink_registry_topology_query (registry_, &filter, NULL, &count) == 0
+            && count > 0) {
+            std::vector<zlink_registry_topology_entry_t> entries (count);
+            if (zlink_registry_topology_query (registry_, &filter, &entries[0],
+                                               &count)
+                == 0) {
+                for (size_t i = 0; i < count; ++i) {
+                    if (entries[i].state == state_)
+                        return true;
+                }
+            }
+        }
+        msleep (10);
+    }
+    return false;
+}
+
 static bool drain_monitor_event (void *monitor_,
                                  zlink_service_event_t *event_out_)
 {
@@ -399,6 +436,9 @@ static void test_registry_topology_snapshot_and_remote_query ()
       receiver, "inproc://topology-reg-router"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_register (receiver, "svc-topology", endpoint, 1));
+    TEST_ASSERT_TRUE (wait_for_topology_state (
+      registry, ZLINK_SERVICE_KIND_RECEIVER, "svc-topology", &receiver_rid,
+      ZLINK_TOPOLOGY_STATE_READY, 3000));
 
     size_t count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -423,7 +463,7 @@ static void test_registry_topology_snapshot_and_remote_query ()
                               entries[0].service_kind);
     TEST_ASSERT_EQUAL_STRING ("svc-topology", entries[0].service_name);
     TEST_ASSERT_EQUAL_STRING (endpoint, entries[0].endpoint);
-    TEST_ASSERT_EQUAL_UINT16 (ZLINK_TOPOLOGY_SOURCE_REGISTRY, entries[0].source);
+    TEST_ASSERT_EQUAL_UINT16 (ZLINK_TOPOLOGY_SOURCE_DISCOVERY, entries[0].source);
     TEST_ASSERT_EQUAL_UINT16 (ZLINK_TOPOLOGY_STATE_READY, entries[0].state);
     TEST_ASSERT_EQUAL_UINT (1, entries[0].desired_count);
     TEST_ASSERT_EQUAL_UINT (1, entries[0].ready_count);
@@ -456,10 +496,14 @@ static void test_registry_topology_snapshot_and_remote_query ()
     TEST_ASSERT_EQUAL_UINT (1, count);
     TEST_ASSERT_EQUAL_UINT16 (ZLINK_TOPOLOGY_STATE_READY,
                               remote_entries[0].state);
+    TEST_ASSERT_EQUAL_UINT16 (ZLINK_TOPOLOGY_SOURCE_DISCOVERY,
+                              remote_entries[0].source);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_unregister (receiver,
                                                           "svc-topology"));
-    msleep (50);
+    TEST_ASSERT_TRUE (wait_for_topology_state (
+      registry, ZLINK_SERVICE_KIND_RECEIVER, "svc-topology", &receiver_rid,
+      ZLINK_TOPOLOGY_STATE_STOPPED, 3000));
 
     memset (&filter, 0, sizeof (filter));
     filter.service_kind = ZLINK_SERVICE_KIND_RECEIVER;

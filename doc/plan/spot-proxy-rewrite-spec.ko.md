@@ -94,8 +94,10 @@
 
 registry 연동 계약은 다음처럼 단순화한다.
 
-- discovery는 peer 발견용
-- register/unregister/heartbeat는 node registration API가 직접 담당
+- discovery는 peer 발견용이자 registry uplink / heartbeat owner다
+- `zlink_spot_node_register()`는 attached discovery의 uplink runtime을 통해 registration을 제출한다
+- SpotNode는 registry raw socket owner가 아니다
+- registry freshness heartbeat는 discovery가 전담한다
 - `connect_registry()` 후 `register()`를 호출하는 2단계 설정은 제거한다
 - node registration은 attached discovery가 bootstrap 과정에서 학습한 registry uplink를 재사용한다
 
@@ -224,10 +226,9 @@ guide 기준으로 다음 사용자 코드 패턴은 모두 계속 유효해야 
 재작성 후 `spot_node`의 역할은 2개로 제한한다.
 
 - control plane
-  - registry connect
-  - discovery refresh
-  - heartbeat
+  - discovery attach / update
   - peer endpoint connect/disconnect
+  - topology summary submit scheduling
 - data plane owner
   - local ingress bridge owner
   - local fanout bridge owner
@@ -248,9 +249,10 @@ node당 소켓 구성은 아래로 고정한다.
 
 #### control plane
 
-- `_dealer`
-  - type: `DEALER`
-  - 용도: registry/control
+control plane은 전용 소켓을 두지 않는다.
+
+- registry 통신은 attached discovery의 uplink runtime이 소유한다
+- SpotNode는 discovery에 summary를 제출하는 bridge 역할만 한다
 
 #### data plane
 
@@ -625,10 +627,9 @@ Rules:
   - facade `SUB` direct dispatch callback
 
 - `spot control task`
-  - discovery refresh
-  - heartbeat
+  - discovery attach / update
   - peer connect/disconnect
-  - registry interactions
+  - topology summary submit scheduling
 
 - `spot data plane worker`
   - `_local_pub_ingress_sub` / `_mesh_xsub` / `_local_fanout_xpub` / `_mesh_pub` owner
@@ -710,8 +711,10 @@ destroy 규칙:
 대체 방향:
 
 - `zlink_spot_node_register()`는 기존 시그니처를 유지한다
-- node는 attached discovery가 bootstrap 과정에서 학습한 registry uplink endpoint를 재사용한다
-- 성공 시 node는 그 uplink 연결을 heartbeat / unregister에 재사용한다
+- node는 attached discovery가 소유하는 registry uplink runtime을 재사용한다
+- SpotNode는 registration request producer이며, registry control sender owner가 아니다
+- registry freshness heartbeat는 discovery-owned uplink runtime이 전담한다
+- SpotNode는 registry용 전용 소켓(`_dealer` 등)을 두지 않는다
 
 새 계약:
 
@@ -724,29 +727,42 @@ int zlink_spot_node_register(void *node,
 동작:
 
 1. attached discovery 존재 여부 확인
-2. discovery가 registry uplink endpoint를 학습했는지 확인
+2. discovery의 registry uplink runtime이 연결 상태인지 확인
 3. publish bind 상태와 advertise endpoint 확인
-4. discovery가 알고 있는 registry uplink로 내부 dealer 연결
-5. register request 전송
-6. 성공 시
+4. discovery uplink runtime을 통해 register request 제출
+5. 성공 시
    - `_registered=1`
-   - `_registration_uplink_endpoint` 저장
-   - heartbeat 시작
+   - `_registration_service_name` 저장
+   - `_registration_advertise_endpoint` 저장
+   - discovery uplink runtime의 heartbeat가 node liveness를 포함
 
-`zlink_spot_node_unregister()`는 저장된 uplink endpoint를 사용한다.
+`zlink_spot_node_unregister()`는 같은 discovery uplink runtime 경로를 통해
+unregister request를 제출한다.
 
 제약:
 
-- register 전에는 heartbeat 없음
+- register 전에는 node가 registry에 visible하지 않음
 - unregister는 registered state가 아니면 `EINVAL`
 - discovery가 attach되지 않았거나 uplink를 아직 학습하지 못했으면 `EFSM` 또는 `EAGAIN`
 - register 중복 호출은 동일 service/advertise면 idempotent, 다르면 `EBUSY`
+
+`advertise_endpoint` 해석 규칙:
+
+- 인자가 `NULL` 또는 빈 문자열이면 node의 현재 bind endpoint에서 advertise 값을 유도한다
+- 유도는 "이미 성공한 bind endpoint가 정확히 1개"인 경우에만 허용한다
+- bind endpoint가 `tcp://*:9000`, `tcp://0.0.0.0:9000`, `[::]:9000`처럼
+  peer가 그대로 사용할 수 없는 wildcard 주소이면 자동 치환하지 않고 `EINVAL`
+- bind endpoint가 아직 없으면 `EFSM`
+- bind endpoint가 여러 개면 어떤 주소를 광고할지 모호하므로 `EINVAL`
+- 인자가 명시적으로 주어지면 그 값을 그대로 advertise 값으로 사용한다
+- idempotent 비교는 위 규칙으로 해석된 최종 advertise 문자열 기준으로 수행한다
 
 discovery와의 관계:
 
 - `zlink_discovery_connect_registry()`는 계속 유지한다
 - discovery는 peer discovery용인 동시에 registry bootstrap/uplink 정보를 제공한다
-- node register/heartbeat는 attached discovery가 알아낸 uplink를 재사용한다
+- node register/heartbeat는 attached discovery가 소유하는 uplink runtime을 통해 수행한다
+- SpotNode는 registry raw socket owner가 아니다
 - 구현 후 discovery 없이 register만 하고 싶은 요구가 생기면, 그때 별도 explicit API를 추가한다
 
 uplink 선택 규칙:
@@ -774,7 +790,7 @@ zlink_spot_node_bind(node, "tcp://*:9000");
 /* 자동 peer 연결 */
 zlink_spot_node_set_discovery(node, discovery, "spot-node");
 
-/* self registration + heartbeat 시작 */
+/* self registration: discovery uplink runtime을 통해 수행 */
 zlink_spot_node_register(node, "spot-node", "tcp://node-a:9000");
 
 void *pub = zlink_spot_pub_new(node);
@@ -785,7 +801,8 @@ zlink_spot_sub_subscribe(sub, "zone:12:*");
 의미:
 
 - discovery는 bootstrap 과정에서 registry PUB와 uplink/control 정보를 학습한다
-- node register는 attached discovery가 학습한 uplink/control 정보를 재사용한다
+- node register는 attached discovery의 uplink runtime을 통해 registration을 제출한다
+- registry freshness heartbeat는 discovery가 전담한다
 - 사용자는 discovery를 연결한 뒤 register만 호출하면 된다
 
 수동 mesh만 사용하는 경우:
@@ -801,6 +818,85 @@ zlink_spot_node_connect_peer_pub(node, "tcp://node-c:9000");
 void *pub = zlink_spot_pub_new(node);
 void *sub = zlink_spot_sub_new(node);
 ```
+
+수동 mesh에서는 discovery가 없으므로 registry topology visibility도 없다.
+이는 의도된 제한이다.
+
+### 8.1.3 공개 option / monitor 호환성 정리
+
+재작성 후에도 source compatibility 때문에 일부 public constant는 헤더에 남길 수 있다.
+하지만 의미가 사라진 항목은 동작도 함께 고정해야 한다.
+
+`SpotPub` option 규칙:
+
+- `ZLINK_SPOT_PUB_OPT_SNDHWM`
+- `ZLINK_SPOT_PUB_OPT_SNDTIMEO`
+- `ZLINK_SPOT_PUB_OPT_LINGER`
+- `ZLINK_SPOT_PUB_OPT_NODROP`
+- `ZLINK_SPOT_PUB_OPT_SNDBUF`
+- `ZLINK_SPOT_PUB_OPT_RCVBUF`
+  - facade `PUB` socket option으로 직접 매핑한다
+
+- `ZLINK_SPOT_PUB_OPT_MODE`
+- `ZLINK_SPOT_PUB_OPT_QUEUE_HWM`
+- `ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY`
+  - 재작성 후 의미가 없으므로 `zlink_spot_pub_set_option()`은 `ENOTSUP`를 반환한다
+  - 내부 no-op success는 금지한다
+
+`SpotSub` option 규칙:
+
+- `ZLINK_SPOT_SUB_OPT_RCVHWM`
+- `ZLINK_SPOT_SUB_OPT_RCVTIMEO`
+- `ZLINK_SPOT_SUB_OPT_LINGER`
+- `ZLINK_SPOT_SUB_OPT_SNDBUF`
+- `ZLINK_SPOT_SUB_OPT_RCVBUF`
+  - facade `SUB` socket option으로 직접 매핑한다
+
+- `ZLINK_SPOT_SUB_OPT_QUEUE_NODROP`
+- `ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY`
+  - 재작성 후 의미가 없으므로 `zlink_spot_sub_set_option()`은 `ENOTSUP`를 반환한다
+  - 내부 no-op success는 금지한다
+
+monitor event 규칙:
+
+- `ZLINK_MONITOR_EVENT_READY`
+- `ZLINK_MONITOR_EVENT_LOST`
+- `ZLINK_MONITOR_EVENT_PEER_UP`
+- `ZLINK_MONITOR_EVENT_PEER_DOWN`
+- `ZLINK_MONITOR_EVENT_ERROR`
+- `ZLINK_MONITOR_EVENT_CLOSED`
+  - facade socket monitor 의미로 계속 사용한다
+
+- `ZLINK_SPOT_SUB_FILTER_APPLIED`
+- `ZLINK_SPOT_SUB_SUBSCRIPTION_READY`
+- `ZLINK_SPOT_PUB_QUEUE_FULL`
+- `ZLINK_SPOT_PUB_QUEUE_DRAINED`
+  - 재작성 후 SPOT monitor에서는 더 이상 emit 하지 않는다
+  - `monitor_open()`은 이 비트를 포함한 mask를 받아도 실패하지 않지만, 해당 이벤트는 오지 않는다
+
+즉, queue/filter 전용 monitor event는 "호환용 상수는 남아 있을 수 있으나 새 구현에서는
+사실상 deprecated"로 취급한다.
+
+### 8.1.4 TLS 설정 적용 규칙
+
+`zlink_spot_node_set_tls_server()`와 `zlink_spot_node_set_tls_client()`는 유지한다.
+
+의미:
+
+- server TLS 설정은 `_mesh_pub` bind 전에 적용한다
+- client TLS 설정은 `_mesh_xsub`의 manual peer connect / discovery peer connect 전에 적용한다
+
+변경 가능 시점:
+
+- 첫 `zlink_spot_node_bind()` 전에는 자유롭게 변경 가능
+- 첫 `zlink_spot_node_connect_peer_pub()` 또는 discovery 기반 첫 peer connect 전에는
+  client 설정 변경 가능
+- 위 단계 중 하나라도 실제 socket bind/connect에 사용된 뒤에는 해당 방향의 TLS 설정 변경은 `EBUSY`
+
+금지:
+
+- 이미 연결된 peer pipe에 live TLS 재적용
+- data plane worker 바깥에서 mesh socket TLS option을 직접 건드리는 우회 경로
 
 ## 8.2 `zlink_spot_sub_recv`
 
@@ -851,6 +947,13 @@ void *sub = zlink_spot_sub_new(node);
 
 - 위 API는 remote mesh topology를 보여주지 않는다
 - remote peer 상태가 필요하면 별도 node introspection API를 추후 추가한다
+
+가이드/헤더 정리 규칙:
+
+- `doc/guide/07-3-spot.ko.md`와 영문 가이드는 `zlink_spot_node_connect_registry()` 예제를 제거한다
+- discovery 예제는 `register()`만 호출하는 흐름으로 바꾼다
+- wildcard bind 예제는 `register(..., NULL)`를 사용하지 않고 concrete advertise endpoint를 명시한다
+- queue/filter 전용 monitor event를 사용자 계약처럼 설명하던 문구가 있으면 삭제한다
 
 ## 9. Handler 설계
 
@@ -927,8 +1030,7 @@ dispatch callback은 `msg_t *parts, size_t part_count`를 받는다.
 5. worker thread 안에서 `_local_pub_ingress_sub`, `_local_fanout_xpub`,
    `_mesh_pub`, `_mesh_xsub` 생성 및 bind
 6. worker ready ack 수신
-7. `_dealer` 생성
-8. control task 등록
+7. control task 등록
 
 node는 생성 시점에 data plane을 완전히 준비한 뒤 반환한다.
 
@@ -998,12 +1100,21 @@ worker fault 규칙:
 - lifetime 종료와 동시 사용까지 라이브러리가 보장하지는 않는다
 
 1. `_stop=1`
-2. control task 제거
-3. data control에 `terminate`
-4. data plane worker join
-5. 남아 있는 `SpotPub` / `SpotSub` detach 및 close
-6. mesh/local/control socket close
-7. 내부 집합/endpoint 정리
+2. 남아 있는 `SpotPub` / `SpotSub` summary를 `STOPPED` 또는 erase로 정리
+3. discovery가 있으면 best-effort final flush 요청
+4. control task 제거
+5. data control에 `terminate`
+6. data plane worker join
+7. 남아 있는 `SpotPub` / `SpotSub` detach 및 close
+8. mesh/local/data plane socket close
+9. 내부 집합/endpoint 정리
+
+topology 정리 규칙:
+
+- final flush 성공을 destroy 완료의 강한 조건으로 삼지 않는다
+- discovery가 없으면 registry visibility 없음이 정상이다
+- destroy 중 report를 동기적으로 강하게 보장하려고 하지 않는다
+- 대신 steady-state update가 안정적인 것이 우선이다
 
 `remove_task()` 없이 `_task_id=0`만 지우는 방식은 금지한다.
 
@@ -1040,6 +1151,10 @@ worker fault 규칙:
 - `_data_plane_thread`
 - `_pub_ingress_endpoint`
 - `_sub_fanout_endpoint`
+- `_discovery` (optional, weak reference)
+- `_registered`
+- `_registration_service_name`
+- `_registration_advertise_endpoint`
 
 ### 11.3 `spot_pub_t`
 
@@ -1076,9 +1191,155 @@ worker fault 규칙:
 - node helper thread 관련 상태
 - local queue / helper join 관련 상태
 
-## 12. 파일 단위 재작성 범위
+## 12. Topology Summary Reporting
 
-### 12.1 전면 재작성
+이 장은 `service-topology-reporting-runtime-plan.ko.md`의 공통 원칙 중
+SPOT에 적용되는 규칙을 SPOT 구현 기준으로 재정의한다.
+
+공통 원칙 문서는 policy를, 이 장은 SPOT의 executable spec 역할을 한다.
+
+### 12.1 소유권 원칙
+
+- registry uplink socket lifetime은 `Discovery`가 소유한다
+- `SpotNode`는 registry로 직접 send하지 않는다
+- `SpotNode`는 `Discovery`에 local summary를 제출하는 bridge다
+- `SpotPub`와 `SpotSub`는 topology summary subject다
+- `SpotPub` / `SpotSub`는 `Discovery`를 직접 참조하지 않는다
+- registry freshness heartbeat는 `Discovery`만 보낸다
+- SPOT 전용 heartbeat sender는 두지 않는다
+
+즉:
+
+```text
+SpotNode = wiring owner / discovery bridge
+SpotPub / SpotSub = topology summary subject
+Discovery = registry uplink / heartbeat / topology report owner
+```
+
+### 12.2 summary subject 정의
+
+topology summary entry는 `SpotPub` / `SpotSub` 단위로 생성한다.
+
+`SpotNode` 자체는 topology subject가 아니다.
+
+각 entry의 key:
+
+- `service_kind` (`SPOT_PUB` 또는 `SPOT_SUB`)
+- `routing_id`
+- `service_name`
+
+### 12.3 state mapping
+
+proxy 재작성 후 SPOT의 topology summary state는 내부 state transition 기준으로
+정의한다. 기존 queue/filter monitor event에 의존하지 않는다.
+
+#### SpotPub
+
+| Internal state transition | Registry summary state |
+|---|---|
+| node bind 완료 + facade PUB 생성 완료 + local ingress 경로 연결 완료 | `READY` |
+| fatal socket error / worker fault / facade send path irrecoverable failure | `ERROR` |
+| destroy / explicit detach | `STOPPED` |
+
+#### SpotSub
+
+| Internal state transition | Registry summary state |
+|---|---|
+| facade SUB 생성 완료, peer 있으나 delivery path readiness 미확정 | `CONNECTING` |
+| facade SUB가 fanout 경로에 연결 + subscription이 local socket에 반영 | `READY` |
+| active peer 0 / worker fault / fanout path fault | `LOST` |
+| destroy / explicit detach | `STOPPED` |
+
+중요:
+
+- old monitor event 이름(`QUEUE_FULL`, `QUEUE_DRAINED`, `FILTER_APPLIED`,
+  `SUBSCRIPTION_READY`)을 state trigger로 사용하지 않는다
+- topology state는 event-driven이 아니라 state-driven으로 결정한다
+- public monitor event와 topology state는 1:1 direct mapping이 아니다
+- public monitor event가 사라져도 topology state trigger는 internal state machine으로
+  유지 가능해야 한다
+
+### 12.4 monitor와 topology state의 분리
+
+- public monitor event는 facade socket 의미를 따른다 (section 8.1.3)
+- topology summary는 registry global visibility용 상태다
+- monitor emit 함수 안에서 곧바로 registry send를 호출하는 것은 금지한다
+- summary submit은 lock 밖의 safe call site에서만 수행한다
+
+권장 순서:
+
+```text
+local state update
+-> summary state 결정
+-> safe call site에서 Discovery summary store update
+-> monitor emit (별도 경로)
+```
+
+금지:
+
+```text
+emit_event() 안에서 바로 registry network send
+```
+
+### 12.5 SpotNode -> Discovery submit 내부 API
+
+`SpotNode`는 아래 internal helper를 통해 summary를 `Discovery`에 제출한다.
+
+```cpp
+int spot_node_t::submit_pub_summary(const spot_pub_t *pub_,
+                                    uint16_t state_,
+                                    int error_code_);
+int spot_node_t::submit_sub_summary(const spot_sub_t *sub_,
+                                    uint16_t state_,
+                                    int error_code_);
+int spot_node_t::submit_stopped_summaries();
+```
+
+계약:
+
+- lock 안에서 discovery submit 금지
+- safe call site에서만 호출
+- discovery가 없으면 no-op
+- discovery가 이미 destroy됐으면 no-op (weak/guard semantics)
+- 위 함수는 internal-only이며 public C API / bindings에 노출하지 않는다
+
+submit trigger 위치:
+
+- `spot_node.cpp` 안에서 어느 state transition이 summary update를 트리거하는지
+  명시적으로 보여야 한다
+- discovery uplink helper는 transport/lifetime/flush만 맡는다
+
+### 12.6 destroy 시 topology 정리
+
+section 10.5의 destroy 순서에 topology 정리가 포함되어 있다.
+
+규칙:
+
+- destroy 시 남아 있는 `SpotPub` / `SpotSub` summary를 `STOPPED` 또는 erase로 정리
+- discovery가 있으면 best-effort final flush 요청
+- final flush 성공을 destroy 완료의 강한 조건으로 삼지 않는다
+- discovery가 없으면 registry visibility 없음이 정상이다
+
+destroy 안전성 계약:
+
+- `SpotNode`가 보유한 `Discovery*`는 weak reference처럼 취급한다
+- `Discovery` destroy 이후 summary submit은 no-op이 되어야 한다
+- 사용자가 destroy 순서를 완벽히 맞추지 않아도 dangling pointer가 나지 않도록
+  guard를 둔다
+- 엄격한 owner destroy ordering을 public 계약으로 강요하지 않는다
+
+### 12.7 Discovery 부재 시 계약
+
+`Discovery`가 attach되지 않은 수동 mesh 구성에서는:
+
+- summary submit은 no-op이다
+- service local state와 monitor state는 그대로 유지한다
+- topology visibility가 없다는 이유만으로 fatal error를 만들지 않는다
+- perf/setup 코드도 registry summary를 readiness source로 기대하지 않는다
+
+## 13. 파일 단위 재작성 범위
+
+### 13.1 전면 재작성
 
 - `core/src/services/spot/spot_data_plane.cpp`
 - `core/src/services/spot/spot_data_plane.hpp`
@@ -1089,19 +1350,23 @@ worker fault 규칙:
 - `core/src/services/spot/spot_sub.cpp`
 - `core/src/services/spot/spot_sub.hpp`
 
-### 12.2 API 정리
+### 13.2 API 정리
 
 - `core/src/api/zlink.cpp`
 - `core/include/zlink.h`
+- `doc/guide/07-3-spot.ko.md`
+- `doc/guide/07-3-spot.md`
 
 정리 내용:
 
 - `zlink_spot_node_connect_registry()` 제거
 - `zlink_spot_node_register()` 내부 동작을 discovery-uplink 재사용 방식으로 변경
+- `register(NULL)`의 advertise endpoint 해석 규칙을 위 스펙대로 문서/주석에 반영
+- queue/filter 전용 option/event의 deprecated 동작(`ENOTSUP` 또는 no-emit) 명시
 - queue 관련 option 설명 정리
 - handler thread 문구를 `io_context`가 아니라 socket dispatch / io path로 수정
 
-### 12.3 테스트 재작성
+### 13.3 테스트 재작성
 
 - `core/tests/spot/test_spot_mode_split.cpp`
 - `core/tests/spot/test_spot_service_introspection.cpp`
@@ -1116,7 +1381,7 @@ worker fault 규칙:
   "기존 구현에 맞춘 sleep/workaround"가 아니라
   "이 스펙의 위치 투명성/late-connect/replay 계약"을 검증하는 형태로 재구성한다
 
-### 12.4 perf 검증
+### 13.4 perf 검증
 
 - `core/perf/single/src/perf_spot.cpp`
 - `core/perf/multi/src/perf_spot_client.cpp`
@@ -1132,9 +1397,9 @@ perf baseline 절차:
 - acceptance는 "느낌상 비슷함"이 아니라 baseline 대비 비율로 판단한다
 - baseline 수치는 구현 착수 시 별도 표로 문서에 추가한다
 
-## 13. 테스트 스펙
+## 14. 테스트 스펙
 
-### 13.1 구조 테스트
+### 14.1 구조 테스트
 
 - local same-process publish/recv
 - remote mesh publish/recv
@@ -1142,7 +1407,7 @@ perf baseline 절차:
 - multiple local subs fanout
 - peer connect/disconnect 후 recovery
 
-### 13.2 API semantics 테스트
+### 14.2 API semantics 테스트
 
 - facade poller readiness 일치
 - facade peer/monitor 의미 일치
@@ -1150,9 +1415,25 @@ perf baseline 절차:
 - clear barrier 동작
 - callback 내부 self-clear 동작
 - queue 옵션 `ENOTSUP` 확인
+- `register(NULL)`가 single concrete bind에서는 성공하고 wildcard/multi-bind에서는 실패하는지 확인
+- queue/filter 전용 monitor event가 더 이상 emit 되지 않는지 확인
+- TLS 설정이 bind/connect/register 이후 변경 시 `EBUSY`로 막히는지 확인
 - data plane worker fault 이후 API가 `EFSM`으로 실패하는지 확인
+- registration owner가 discovery runtime임을 검증 (node에 `_dealer` 부재 확인)
 
-### 13.3 MMORPG 시나리오 테스트
+### 14.3 topology summary 테스트
+
+- `SpotPub` summary lifecycle: 생성 → `READY` → destroy → `STOPPED`
+- `SpotSub` summary lifecycle: 생성 → `CONNECTING` → `READY` → destroy → `STOPPED`
+- discovery attach 상태에서 summary submit이 discovery store에 반영되는지
+- discovery 없는 수동 mesh에서 summary submit이 no-op인지
+- worker fault → summary `ERROR` / `LOST` 반영
+- `SpotNode` destroy → 남아 있는 summary `STOPPED` 정리
+- node에 registry 전용 `_dealer`가 없는지 검증
+- queue full/drained event 기반 topology trigger가 없는지 검증
+- filter_applied event 기반 topology trigger가 없는지 검증
+
+### 14.4 MMORPG 시나리오 테스트
 
 - single-node deterministic adjacency
 - multi-node deterministic adjacency via discovery
@@ -1162,7 +1443,7 @@ perf baseline 절차:
 - fixed sleep 의존 없이 readiness/barrier 기반으로 검증
 - 기존 large scenario는 기능 테스트와 분리해 opt-in stress로 유지
 
-### 13.4 stress / perf
+### 14.5 stress / perf
 
 - single SPOT perf
 - multi SPOT perf
@@ -1175,7 +1456,7 @@ perf baseline 절차:
 - 운영상 중요한 특정 조합이 있으면 그 조합은 별도 stricter threshold를 둘 수 있다
 - 현재처럼 order-of-magnitude regression이 나오면 구현 실패로 본다
 
-## 14. 구현 순서
+## 15. 구현 순서
 
 ### Phase 1. skeleton
 
@@ -1199,16 +1480,24 @@ perf baseline 절차:
 
 ### Phase 4. control plane
 
-1. bind/connect/discovery/register/heartbeat 복구
-2. multi-node discovery 시나리오 복구
+1. bind/connect/discovery 복구
+2. register/unregister를 discovery uplink runtime 위임 방식으로 구현
+3. multi-node discovery 시나리오 복구
 
-### Phase 5. perf / cleanup
+### Phase 5. topology summary
+
+1. `SpotNode -> Discovery` submit bridge 구현
+2. `SpotPub` / `SpotSub` summary builder 구현
+3. state mapping (section 12.3) 기반 trigger 구현
+4. topology summary lifecycle 테스트 통과
+
+### Phase 6. perf / cleanup
 
 1. perf baseline 측정
 2. 불필요한 copy / lock / wakeup 제거
 3. guide / api 문서 업데이트
 
-## 15. 승인 기준
+## 16. 승인 기준
 
 다음이 모두 만족돼야 재작성 완료로 본다.
 
@@ -1219,8 +1508,12 @@ perf baseline 절차:
 - deterministic adjacency 테스트 통과
 - env-gated large scenario 통과
 - perf가 기존 queue 모델과 동급 또는 근접하다
+- SpotNode에 registry 전용 `_dealer`가 없다
+- registry heartbeat는 discovery-owned uplink runtime이 전담한다
+- topology summary가 section 12.3의 state mapping 기준으로 동작한다
+- topology summary lifecycle 테스트 통과
 
-## 16. 기존 계획 문서와의 관계
+## 17. 기존 계획 문서와의 관계
 
 이 문서는 [`spot-inproc-facade-redesign.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-inproc-facade-redesign.ko.md)를 대체하는 후속 스펙이다.
 
@@ -1228,3 +1521,11 @@ perf baseline 절차:
 실제 구현이 `proxy` 수준 data path를 보장하지 못했다.
 
 이번 재작성은 “facade inproc화”가 아니라 “proxy 기반 data plane 재구축”이 핵심이다.
+
+또한 이 문서는 [`service-topology-reporting-runtime-plan.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/service-topology-reporting-runtime-plan.ko.md)의
+SPOT 관련 규칙을 흡수한다.
+
+- 공통 문서는 Discovery-owned uplink runtime의 전체 policy를 정의한다
+- SPOT의 상세 계약(state mapping, ownership, submit API, destroy semantics)은
+  이 문서의 section 12가 최종 기준이다
+- 공통 문서의 SPOT 장은 원칙만 남기고 세부 규범은 이 문서를 참조한다

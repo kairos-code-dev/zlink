@@ -24,14 +24,21 @@ SPOT은 위치 투명한 토픽 기반 발행/구독 시스템이다. Discovery 
 ### 단일 서버
 
 ```
-┌─────────────────────────────────────┐
-│           SPOT Node                  │
-│  ┌──────────┐  ┌──────────┐         │
-│  │ SPOT A   │  │ SPOT B   │         │
-│  │ pub:chat │  │ sub:chat │         │
-│  └──────────┘  └──────────┘         │
-└─────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│                 SPOT Node                    │
+│  ┌──────────┐         ┌──────────┐          │
+│  │ SpotPub  │         │ SpotSub  │          │
+│  │ pub:chat │         │ sub:chat │          │
+│  └────┬─────┘         └────▲─────┘          │
+│       │    inproc          │    inproc       │
+│       v                    │                 │
+│  [ data plane worker (proxy forwarding) ]    │
+└─────────────────────────────────────────────┘
 ```
+
+- `SpotPub`는 내부 `PUB` facade socket을 통해 data plane으로 publish한다
+- `SpotSub`는 내부 `SUB` facade socket을 통해 data plane에서 메시지를 받는다
+- data plane worker가 local fanout과 remote mesh forwarding을 proxy 방식으로 수행한다
 
 ### 클러스터 (PUB/SUB Mesh)
 
@@ -50,31 +57,36 @@ SPOT은 위치 투명한 토픽 기반 발행/구독 시스템이다. Discovery 
 └──────────┘
 ```
 
+각 Node의 data plane worker가 local publish를 remote mesh로,
+remote mesh 수신을 local subscriber로 proxy-style forwarding한다.
+
 ## 3. SPOT Node 설정
 
 ### 3.1 Discovery 기반 자동 Mesh
 
 ```c
 void *ctx = zlink_ctx_new();
-void *node = zlink_spot_node_new(ctx);
-void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_SPOT);
 
-/* Discovery를 Registry bootstrap/control 엔드포인트에 연결 */
+/* Discovery 설정 (peer 발견 + registry uplink / heartbeat owner) */
+void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_SPOT);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_subscribe(discovery, "spot-node");
 
-/* PUB bind */
+/* SPOT Node 설정 */
+void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
-/* Node control plane을 Registry control 엔드포인트에 연결 */
-zlink_spot_node_connect_registry(node, "tcp://registry1:5551");
-
-/* mesh 서비스에 대한 등록 요청 큐잉 */
-zlink_spot_node_register(node, "spot-node", NULL);
-
-/* Discovery 기반 peer 자동 연결 */
+/* Discovery 연결 (register 전에 필수) */
 zlink_spot_node_set_discovery(node, discovery, "spot-node");
+
+/* Discovery uplink를 통해 등록 */
+zlink_spot_node_register(node, "spot-node", "tcp://node1.example.com:9000");
 ```
+
+**주의:** `register()`는 attached Discovery의 registry uplink runtime을 통해
+registration을 제출한다. 따라서 `set_discovery()` 호출이 `register()`보다
+먼저 와야 한다. Discovery가 attach되지 않은 상태에서 `register()`를 호출하면
+`EFSM`으로 실패한다.
 
 ### 3.2 수동 Mesh
 
@@ -86,6 +98,9 @@ zlink_spot_node_bind(node, "tcp://*:9000");
 zlink_spot_node_connect_peer_pub(node, "tcp://node2:9000");
 zlink_spot_node_connect_peer_pub(node, "tcp://node3:9000");
 ```
+
+**주의:** 수동 Mesh에서는 Discovery가 없으므로 Registry topology visibility도
+없다. `register()` 호출도 불가능하다. 이는 의도된 제한이다.
 
 ## 4. SPOT Pub/Sub 사용
 
@@ -183,7 +198,7 @@ zlink_spot_sub_set_handler(sub, NULL, NULL);
 
 - handler가 활성 상태이면 `recv()` 호출 시 `EINVAL` 반환 (상호 배타)
 - `NULL` 전달로 핸들러를 해제하면, 진행 중인 콜백이 모두 완료된 후 반환
-- 콜백은 소켓의 I/O 처리 경로(io thread)에서 직접 호출된다
+- 콜백은 소켓 dispatch / I/O 경로에서 직접 호출된다
 - 콜백에서 블로킹 작업을 수행하면 다른 I/O 진행에 영향을 줄 수 있다
 - 느린 처리가 필요하면 콜백 안에서 사용자 queue로 넘기고 별도 thread에서 처리한다
 
@@ -211,6 +226,12 @@ zlink_spot_sub_set_handler(sub, NULL, NULL);
 - 재발행 없음으로 메시지 루프/중복 방지
 - `subscribe()` / `unsubscribe()` 반환은 local socket filter 적용 의미이며,
   클러스터 전체 전파 완료를 보장하지 않는다
+- 같은 `SpotPub` 인스턴스에서 연속 publish된 메시지의 순서는 보존된다
+- 서로 다른 `SpotPub` 인스턴스 사이의 전역 순서는 보장하지 않는다
+- 동일 subscriber에 exact topic + pattern이 둘 다 매칭되더라도 메시지는 1회만 전달된다
+
+SPOT은 live pub/sub이며, durable delivery, ack/retry, exactly-once,
+late join에 대한 과거 메시지 재전송은 보장하지 않는다.
 
 ## 7. 정리
 
@@ -220,6 +241,10 @@ zlink_spot_sub_destroy(&sub);
 zlink_spot_node_destroy(&node);
 zlink_discovery_destroy(&discovery);
 ```
+
+**정리 순서:** `SpotPub` / `SpotSub`를 먼저 destroy하고, 그 다음 `SpotNode`,
+마지막으로 `Discovery` 순서로 정리한다. `SpotNode` destroy 전에 관련
+`SpotPub` / `SpotSub`의 외부 사용을 중단해야 한다.
 
 ---
 [← Gateway](07-2-gateway.ko.md) | [Routing ID →](08-routing-id.ko.md)

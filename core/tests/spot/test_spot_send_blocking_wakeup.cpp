@@ -59,11 +59,8 @@ void cleanup_fixture (spot_fixture_t *fixture_)
 
 void configure_pub (void *spot_pub_, int sndtimeo_ms_)
 {
-    int pub_mode = ZLINK_SPOT_NODE_PUB_MODE_SYNC;
     int linger = 0;
     int xpub_nodrop = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
-      spot_pub_, ZLINK_SPOT_PUB_OPT_MODE, &pub_mode, sizeof (pub_mode)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
       spot_pub_, ZLINK_SPOT_PUB_OPT_SNDHWM, &kSocketHwm, sizeof (kSocketHwm)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_set_option (
@@ -78,7 +75,6 @@ void configure_pub (void *spot_pub_, int sndtimeo_ms_)
 
 void configure_sub (void *spot_sub_)
 {
-    int nodrop = 1;
     int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_set_option (
       spot_sub_, ZLINK_SPOT_SUB_OPT_RCVHWM, &kSocketHwm,
@@ -88,8 +84,11 @@ void configure_sub (void *spot_sub_)
       sizeof (kRecvTimeoutMs)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_set_option (
       spot_sub_, ZLINK_SPOT_SUB_OPT_LINGER, &linger, sizeof (linger)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_set_option (
-      spot_sub_, ZLINK_SPOT_SUB_OPT_QUEUE_NODROP, &nodrop, sizeof (nodrop)));
+    int nodrop = 1;
+    TEST_ASSERT_FAILURE_ERRNO (
+      ENOTSUP, zlink_spot_sub_set_option (
+                  spot_sub_, ZLINK_SPOT_SUB_OPT_QUEUE_NODROP, &nodrop,
+                  sizeof (nodrop)));
 }
 
 void set_pub_send_timeout (void *spot_pub_, int sndtimeo_ms_)
@@ -209,6 +208,8 @@ void setup_fixture (spot_fixture_t *fixture_, const char *endpoint_)
 
 void test_spot_blocking_send_wakes_after_receiver_drains ()
 {
+    TEST_IGNORE_MESSAGE (
+      "Legacy queue saturation wakeup semantics removed in proxy rewrite");
     spot_fixture_t fixture;
     setup_fixture (&fixture, kEndpointWake);
 
@@ -253,6 +254,8 @@ void test_spot_blocking_send_wakes_after_receiver_drains ()
 
 void test_spot_blocking_send_times_out_without_receiver_reads ()
 {
+    TEST_IGNORE_MESSAGE (
+      "Legacy queue saturation timeout semantics removed in proxy rewrite");
     spot_fixture_t fixture;
     setup_fixture (&fixture, kEndpointTimeout);
 

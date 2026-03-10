@@ -83,7 +83,6 @@ napi_value provider_destroy(napi_env env, napi_callback_info info);
 napi_value spot_node_new(napi_env env, napi_callback_info info);
 napi_value spot_node_destroy(napi_env env, napi_callback_info info);
 napi_value spot_node_bind(napi_env env, napi_callback_info info);
-napi_value spot_node_connect_registry(napi_env env, napi_callback_info info);
 napi_value spot_node_connect_peer(napi_env env, napi_callback_info info);
 napi_value spot_node_disconnect_peer(napi_env env, napi_callback_info info);
 napi_value spot_node_register(napi_env env, napi_callback_info info);

@@ -2,10 +2,51 @@
 
 #include "utils/precompiled.hpp"
 #include <string.h>
+#include <vector>
 
 #include "utils/macros.hpp"
 #include "sockets/xsub.hpp"
 #include "utils/err.hpp"
+
+namespace
+{
+struct xsub_dispatch_tls_t
+{
+    xsub_dispatch_tls_t () : socket (NULL) {}
+
+    zlink::xsub_t *socket;
+};
+
+thread_local xsub_dispatch_tls_t g_xsub_dispatch_tls;
+
+class xsub_dispatch_scope_t
+{
+  public:
+    explicit xsub_dispatch_scope_t (zlink::xsub_t *socket_) :
+        _prev (g_xsub_dispatch_tls)
+    {
+        g_xsub_dispatch_tls.socket = socket_;
+    }
+
+    ~xsub_dispatch_scope_t () { g_xsub_dispatch_tls = _prev; }
+
+  private:
+    xsub_dispatch_tls_t _prev;
+};
+
+static void close_dispatch_frames (std::vector<zlink_msg_t> *frames_)
+{
+    if (!frames_)
+        return;
+
+    for (size_t i = 0; i < frames_->size (); ++i) {
+        zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (&(*frames_)[i]);
+        const int rc = msg->close ();
+        errno_assert (rc == 0);
+    }
+    frames_->clear ();
+}
+}
 
 zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     socket_base_t (parent_, tid_, sid_),
@@ -14,7 +55,11 @@ zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _more_send (false),
     _more_recv (false),
     _process_subscribe (false),
-    _only_first_subscribe (false)
+    _only_first_subscribe (false),
+    _dispatch_active (false),
+    _dispatch_callback (NULL),
+    _dispatch_userdata (NULL),
+    _dispatch_inflight (0)
 {
     options.type = ZLINK_XSUB;
 
@@ -51,6 +96,8 @@ void zlink::xsub_t::xattach_pipe (pipe_t *pipe_,
 void zlink::xsub_t::xread_activated (pipe_t *pipe_)
 {
     _fq.activated (pipe_);
+    if (_dispatch_active.load (std::memory_order_acquire))
+        dispatch_ready_messages ();
 }
 
 void zlink::xsub_t::xwrite_activated (pipe_t *pipe_)
@@ -166,6 +213,69 @@ bool zlink::xsub_t::xhas_out ()
     return true;
 }
 
+int zlink::xsub_t::sub_dispatch_start (zlink_spot_sub_handler_fn callback_,
+                                       void *userdata_)
+{
+    if (!callback_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    io_thread_t *io_thread = choose_io_thread (options.affinity);
+    if (!io_thread) {
+        errno = EAGAIN;
+        return -1;
+    }
+
+    std::lock_guard<std::mutex> lk (_dispatch_control_mu);
+    if (_dispatch_active.load (std::memory_order_acquire)) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    _dispatch_userdata.store (userdata_, std::memory_order_release);
+    _dispatch_callback.store (callback_, std::memory_order_release);
+    _dispatch_active.store (true, std::memory_order_release);
+    if (start_async_mailbox_processing (io_thread) != 0) {
+        _dispatch_active.store (false, std::memory_order_release);
+        _dispatch_callback.store (NULL, std::memory_order_release);
+        _dispatch_userdata.store (NULL, std::memory_order_release);
+        return -1;
+    }
+    return 0;
+}
+
+int zlink::xsub_t::sub_dispatch_stop ()
+{
+    bool wait_for_callbacks = true;
+    {
+        std::lock_guard<std::mutex> lk (_dispatch_control_mu);
+        if (!_dispatch_active.load (std::memory_order_acquire)) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        _dispatch_active.store (false, std::memory_order_release);
+        _dispatch_callback.store (NULL, std::memory_order_release);
+        _dispatch_userdata.store (NULL, std::memory_order_release);
+        wait_for_callbacks = g_xsub_dispatch_tls.socket != this;
+    }
+    stop_async_mailbox_processing ();
+
+    if (!wait_for_callbacks)
+        return 0;
+
+    std::unique_lock<std::mutex> lk (_dispatch_inflight_mu);
+    while (_dispatch_inflight.load (std::memory_order_acquire) > 0)
+        _dispatch_inflight_cv.wait (lk);
+    return 0;
+}
+
+bool zlink::xsub_t::sub_dispatch_active () const
+{
+    return _dispatch_active.load (std::memory_order_acquire);
+}
+
 int zlink::xsub_t::xrecv (msg_t *msg_)
 {
     //  If there's already a message prepared by a previous call to zlink_poll,
@@ -242,6 +352,110 @@ bool zlink::xsub_t::xhas_in ()
             rc = _fq.recv (&_message);
             errno_assert (rc == 0);
         }
+    }
+}
+
+void zlink::xsub_t::xdispatch_io ()
+{
+    if (_dispatch_active.load (std::memory_order_acquire))
+        dispatch_ready_messages ();
+}
+
+int zlink::xsub_t::dispatch_ready_messages ()
+{
+    while (_dispatch_active.load (std::memory_order_acquire)) {
+        msg_t msg;
+        const int init_rc = msg.init ();
+        errno_assert (init_rc == 0);
+
+        const int rc = xrecv (&msg);
+        if (rc != 0) {
+            const int close_rc = msg.close ();
+            errno_assert (close_rc == 0);
+            if (errno == EAGAIN)
+                return 0;
+            return -1;
+        }
+
+        const int dispatch_rc = dispatch_message (&msg);
+        if (dispatch_rc != 0)
+            return dispatch_rc;
+    }
+
+    return 0;
+}
+
+int zlink::xsub_t::dispatch_message (msg_t *msg_)
+{
+    if (!msg_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::vector<zlink_msg_t> frames;
+    while (true) {
+        zlink_msg_t stored;
+        memset (&stored, 0, sizeof (stored));
+        msg_t *stored_msg = reinterpret_cast<msg_t *> (&stored);
+        const int stored_init_rc = stored_msg->init ();
+        errno_assert (stored_init_rc == 0);
+        const int move_rc = stored_msg->move (*msg_);
+        errno_assert (move_rc == 0);
+        frames.push_back (stored);
+
+        if ((stored_msg->flags () & msg_t::more) == 0)
+            break;
+
+        const int next_init_rc = msg_->init ();
+        errno_assert (next_init_rc == 0);
+        if (xrecv (msg_) != 0) {
+            close_dispatch_frames (&frames);
+            return -1;
+        }
+    }
+
+    zlink_spot_sub_handler_fn callback = NULL;
+    void *userdata = NULL;
+    {
+        std::lock_guard<std::mutex> lk (_dispatch_control_mu);
+        if (!_dispatch_active.load (std::memory_order_acquire)) {
+            close_dispatch_frames (&frames);
+            return 0;
+        }
+        callback = _dispatch_callback.load (std::memory_order_acquire);
+        userdata = _dispatch_userdata.load (std::memory_order_acquire);
+        if (!callback) {
+            close_dispatch_frames (&frames);
+            return 0;
+        }
+        _dispatch_inflight.fetch_add (1, std::memory_order_acq_rel);
+    }
+
+    const zlink_msg_t &topic = frames[0];
+    const char *topic_data =
+      static_cast<const char *> (zlink_msg_data (const_cast<zlink_msg_t *> (&topic)));
+    const size_t topic_size = zlink_msg_size (const_cast<zlink_msg_t *> (&topic));
+    const zlink_msg_t *payload =
+      frames.size () > 1 ? &frames[1] : static_cast<zlink_msg_t *> (NULL);
+    const size_t payload_count = frames.size () - 1;
+
+    {
+        const xsub_dispatch_scope_t dispatch_scope (this);
+        callback (topic_data, topic_size, payload, payload_count, userdata);
+    }
+
+    close_dispatch_frames (&frames);
+    notify_dispatch_stopped ();
+    return 0;
+}
+
+void zlink::xsub_t::notify_dispatch_stopped ()
+{
+    const uint32_t remaining =
+      _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel) - 1;
+    if (remaining == 0) {
+        std::lock_guard<std::mutex> lk (_dispatch_inflight_mu);
+        _dispatch_inflight_cv.notify_all ();
     }
 }
 

@@ -83,18 +83,6 @@ inline void emit_requested_queue_probe(const std::string &lib_name,
     print_server_queue_metrics(lib_name, k_pattern, transport, msg_size, queue_stats);
 }
 
-inline void *spot_pub_socket_for_stats(void *node)
-{
-    if (!node)
-        return NULL;
-    zlink::spot_node_t *spot_node = static_cast<zlink::spot_node_t *>(node);
-    if (!spot_node->check_tag()) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return spot_node->pub_socket_for_poller();
-}
-
 inline bool is_supported_transport(const std::string &transport)
 {
     return transport == "tcp" || transport == "tls" || transport == "ws"
@@ -238,32 +226,33 @@ inline std::string bind_spot_endpoint(void *node,
         return std::string();
 
     const int bind_port = resolve_int_env("PERF_SERVER_BIND_PORT", 0, 0);
-    std::string endpoint =
-      bind_port > 0 ? make_fixed_endpoint(transport, bind_port)
-                    : make_endpoint(transport, token);
-    if (endpoint.empty()) {
-        std::cerr << "No endpoint available for transport " << transport
-                  << std::endl;
-        return std::string();
+    if (bind_port > 0) {
+        std::string endpoint = make_fixed_endpoint(transport, bind_port);
+        if (endpoint.empty()) {
+            std::cerr << "No endpoint available for transport " << transport
+                      << std::endl;
+            return std::string();
+        }
+        if (zlink_spot_node_bind(node, endpoint.c_str()) != 0) {
+            std::cerr << "spot node bind failed for " << endpoint << ": "
+                      << zlink_strerror(zlink_errno()) << std::endl;
+            return std::string();
+        }
+        return replace_any_host_with_localhost(endpoint);
     }
 
-    if (zlink_spot_node_bind(node, endpoint.c_str()) != 0) {
-        std::cerr << "spot node bind failed for " << endpoint << ": "
-                  << zlink_strerror(zlink_errno()) << std::endl;
-        return std::string();
+    const int pid = current_process_id();
+    const int base_port = 20000 + (pid % 10000);
+    for (int i = 0; i < 128; ++i) {
+        std::string endpoint = make_fixed_endpoint(transport, base_port + i);
+        if (endpoint.empty())
+            continue;
+        if (zlink_spot_node_bind(node, endpoint.c_str()) == 0)
+            return replace_any_host_with_localhost(endpoint);
     }
 
-    void *pub_socket = spot_pub_socket_for_stats(node);
-    if (!pub_socket)
-        return std::string();
-
-    char last_endpoint[MAX_SOCKET_STRING] = "";
-    size_t size = sizeof(last_endpoint);
-    if (zlink_getsockopt(pub_socket, ZLINK_LAST_ENDPOINT, last_endpoint, &size) == 0)
-        endpoint.assign(last_endpoint);
-
-    endpoint = replace_any_host_with_localhost(endpoint);
-    return endpoint;
+    std::cerr << "spot node bind failed for token " << token << std::endl;
+    return std::string();
 }
 
 inline bool wait_for_pub_peers(void *spot_pub, size_t target_count, int timeout_ms)
@@ -613,6 +602,7 @@ inline int run_server_benchmark(const std::string &lib_name,
     const bench_settings_t settings = resolve_bench_settings();
 
     void *registry = NULL;
+    void *discovery = NULL;
     void *node = zlink_spot_node_new(ctx.get());
     void *spot_pub = NULL;
 
@@ -621,6 +611,8 @@ inline int run_server_benchmark(const std::string &lib_name,
             zlink_spot_pub_destroy(&spot_pub);
         if (node)
             zlink_spot_node_destroy(&node);
+        if (discovery)
+            zlink_discovery_destroy(&discovery);
         if (registry)
             zlink_registry_destroy(&registry);
     };
@@ -635,6 +627,15 @@ inline int run_server_benchmark(const std::string &lib_name,
                         &registry,
                         &registry_pub_endpoint,
                         &registry_router_endpoint)) {
+        cleanup();
+        return 1;
+    }
+    discovery = zlink_discovery_new_typed(ctx.get(), ZLINK_SERVICE_TYPE_SPOT);
+    if (!discovery
+        || zlink_discovery_connect_registry(
+             discovery, registry_router_endpoint.c_str())
+             != 0
+        || zlink_spot_node_set_discovery(node, discovery, k_service_name) != 0) {
         cleanup();
         return 1;
     }
@@ -653,8 +654,7 @@ inline int run_server_benchmark(const std::string &lib_name,
         return 1;
     }
 
-    if (zlink_spot_node_connect_registry(node, registry_router_endpoint.c_str()) != 0
-        || zlink_spot_node_register(node, k_service_name, endpoint.c_str()) != 0) {
+    if (zlink_spot_node_register(node, k_service_name, endpoint.c_str()) != 0) {
         cleanup();
         return 1;
     }

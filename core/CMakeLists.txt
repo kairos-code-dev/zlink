@@ -975,6 +975,7 @@ set(discovery-sources
     src/services/gateway/receiver.cpp)
 
 set(spot-sources
+    src/services/spot/spot_data_plane.cpp
     src/services/spot/spot_node.cpp
     src/services/spot/spot_pub.cpp
     src/services/spot/spot_sub.cpp)

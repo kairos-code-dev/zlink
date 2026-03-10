@@ -77,8 +77,7 @@ static void test_spot_sub_can_be_polled_via_service_instance ()
     zlink_poller_event_t event;
     memset (&event, 0, sizeof (event));
     TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, 2000));
-    TEST_ASSERT_TRUE (event.socket == NULL);
-    TEST_ASSERT_TRUE (event.fd >= 0);
+    TEST_ASSERT_NOT_NULL (event.socket);
     TEST_ASSERT_TRUE ((event.events & ZLINK_POLLIN) != 0);
     TEST_ASSERT_EQUAL_PTR (&tag_value, event.user_data);
 

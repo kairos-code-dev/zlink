@@ -14,10 +14,31 @@ SPOT은 Discovery를 통한 자동 메시 형성으로 토픽 기반의 위치 �
   `zlink_spot_sub_set_option()`으로 설정합니다.
 - 대표 identity는 `zlink_spot_pub_set_routing_id()` /
   `zlink_spot_sub_set_routing_id()`로 다룹니다.
-- `ZLINK_SPOT_SUB_FILTER_APPLIED`, `ZLINK_SPOT_PUB_QUEUE_DRAINED` 같은
-  상태 전이는 `zlink_spot_pub_monitor_open()` /
-  `zlink_spot_sub_monitor_open()`으로 관찰합니다.
+- 상태 전이는 `zlink_spot_pub_monitor_open()` /
+  `zlink_spot_sub_monitor_open()`으로 관찰합니다. 토폴로지 수준의
+  상태 보고는 Discovery가 소유하는 topology summary를 통해 이루어집니다.
 - `SpotNode`는 bind/connect/discovery/TLS wiring 용도로만 사용합니다.
+- `zlink_spot_node_register()`는 attached Discovery의 uplink runtime을
+  통해 등록을 제출합니다. `set_discovery()` 호출이 선행되어야 합니다.
+
+## 옵션 요약
+
+현재 public option surface는 `SpotPub` / `SpotSub` 기준으로 정리되어 있습니다.
+
+| 대상 | 설정 API | 지원 옵션 | 비고 |
+|------|----------|-----------|------|
+| `SpotPub` | `zlink_spot_pub_set_option()` | `ZLINK_SPOT_PUB_OPT_SNDHWM`, `ZLINK_SPOT_PUB_OPT_SNDTIMEO`, `ZLINK_SPOT_PUB_OPT_LINGER`, `ZLINK_SPOT_PUB_OPT_NODROP`, `ZLINK_SPOT_PUB_OPT_SNDBUF`, `ZLINK_SPOT_PUB_OPT_RCVBUF` | 현재 canonical publish-side option surface |
+| `SpotSub` | `zlink_spot_sub_set_option()` | `ZLINK_SPOT_SUB_OPT_RCVHWM`, `ZLINK_SPOT_SUB_OPT_RCVTIMEO`, `ZLINK_SPOT_SUB_OPT_LINGER`, `ZLINK_SPOT_SUB_OPT_QUEUE_NODROP`, `ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY`, `ZLINK_SPOT_SUB_OPT_SNDBUF`, `ZLINK_SPOT_SUB_OPT_RCVBUF` | 현재 canonical subscribe-side option surface |
+| `SpotNode` | 없음 | 없음 | 현재 API 기준으로는 node-level pub/sub option API를 제공하지 않음 |
+
+제거된 queue/async 계열 옵션:
+
+- `ZLINK_SPOT_PUB_OPT_MODE`
+- `ZLINK_SPOT_PUB_OPT_QUEUE_HWM`
+- `ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY`
+
+위 세 옵션은 proxy 기반 재작성 이후 지원하지 않으며, 설정 시 `ENOTSUP`을
+반환합니다.
 
 ## 타입
 
@@ -35,25 +56,17 @@ typedef void (*zlink_spot_sub_handler_fn)(const char *topic,
 
 ## 상수
 
-```c
-#define ZLINK_SPOT_NODE_PUB_MODE_SYNC  0
-#define ZLINK_SPOT_NODE_PUB_MODE_ASYNC 1
-
-#define ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN 0
-#define ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP   1
-```
-
-| 상수 | 값 | 설명 |
-|------|-----|------|
-| `ZLINK_SPOT_NODE_PUB_MODE_SYNC` | 0 | 호출자 스레드에서 즉시 publish(기본값) |
-| `ZLINK_SPOT_NODE_PUB_MODE_ASYNC` | 1 | worker 스레드가 처리하도록 enqueue |
-| `ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN` | 0 | async 큐 포화 시 `EAGAIN` 반환(기본값) |
-| `ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP` | 1 | async 큐 포화 시 최신 메시지 drop 후 성공 반환 |
+Proxy 기반 재작성 이후 `ASYNC` 모드 상수는 제거되었습니다. publish는
+항상 호출자 스레드에서 내부 inproc PUB facade를 통해 data plane으로
+전달됩니다. 동시 호출은 내부에서 직렬화됩니다.
 
 ## SPOT 노드
 
-SPOT 노드는 메시 토폴로지를 형성하는 기본 PUB, SUB 및 DEALER 소켓을
-관리합니다. Publisher와 Subscriber는 노드에 연결하여 메시지를 송수신합니다.
+SPOT 노드는 메시 토폴로지를 형성하는 PUB, SUB 소켓과 proxy 기반 data
+plane worker를 관리합니다. Publisher와 Subscriber는 노드에 연결하여
+메시지를 송수신합니다. Registry 연동은 attached Discovery의 uplink
+runtime을 통해 이루어지며, SpotNode 자체는 registry raw socket을
+소유하지 않습니다.
 
 ### zlink_spot_node_new
 
@@ -64,8 +77,8 @@ void *zlink_spot_node_new(void *ctx);
 ```
 
 새 SPOT 노드를 할당하고 초기화합니다. 노드는 토픽 기반 메시징을 위한 내부
-PUB, SUB 및 DEALER 소켓을 관리합니다. 컨텍스트 핸들은 노드의 수명 동안
-유효해야 합니다.
+PUB, SUB 소켓과 proxy 기반 data plane worker를 관리합니다. 컨텍스트
+핸들은 노드의 수명 동안 유효해야 합니다.
 
 **반환값:** 성공 시 SPOT 노드 핸들, 실패 시 `NULL`.
 
@@ -110,26 +123,6 @@ int zlink_spot_node_bind(void *node, const char *endpoint);
 
 **에러:**
 - `EADDRINUSE` -- 엔드포인트가 이미 사용 중입니다.
-
-**스레드 안전성:** 스레드 안전하지 않음.
-
-**참고:** `zlink_spot_node_register`
-
----
-
-### zlink_spot_node_connect_registry
-
-서비스 등록을 위해 Registry 엔드포인트에 연결합니다.
-
-```c
-int zlink_spot_node_connect_registry(void *node,
-                                     const char *registry_endpoint);
-```
-
-노드의 내부 DEALER 소켓을 Registry control 엔드포인트에 연결합니다. 이
-연결은 등록, 등록 해제, 기존 control-plane 트래픽을 유지하는 데 사용됩니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
 **스레드 안전성:** 스레드 안전하지 않음.
 
@@ -188,16 +181,27 @@ int zlink_spot_node_register(void *node,
                              const char *advertise_endpoint);
 ```
 
-지정된 서비스 이름에 대한 등록 요청을 노드의 내부 control plane에 큐잉합니다.
+attached Discovery의 registry uplink runtime을 통해 등록 요청을 제출합니다.
 `advertise_endpoint`는 피어 노드가 연결할 엔드포인트입니다 (일반적으로
 `zlink_spot_node_bind`에 전달된 것과 동일한 엔드포인트). 등록되면
 Discovery를 사용하는 피어 노드가 자동으로 연결하여 메시를 형성합니다.
 
-반환값 `0`은 로컬 Node runtime이 요청을 수락하고 Registry 처리용으로 큐잉했음을
-의미합니다. 피어 가시성은 eventual이며, `register()` 자체를 강한 readiness
-barrier로 사용하지 말고 Discovery 또는 monitor 이벤트로 확인해야 합니다.
+`advertise_endpoint`가 `NULL`이거나 빈 문자열이면, Node는 이미 bind된 public
+엔드포인트를 advertise 값으로 유도합니다. 이 동작은 concrete bind가 하나일 때만
+허용됩니다. `tcp://*:5555`, `tcp://0.0.0.0:5555`, `tcp://[::]:5555` 같은
+wildcard bind는 피어에 광고할 수 없으므로 실패합니다.
+
+**사전 조건:** `zlink_spot_node_set_discovery()`가 먼저 호출되어야 합니다.
+Discovery가 attach되지 않은 상태에서 호출하면 `EFSM`으로 실패합니다.
+
+반환값 `0`은 Discovery uplink runtime이 요청을 수락했음을 의미합니다. 피어
+가시성은 eventual이며, `register()` 자체를 강한 readiness barrier로
+사용하지 말고 Discovery 또는 monitor 이벤트로 확인해야 합니다.
 
 **반환값:** 로컬 수락 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**에러:**
+- `EFSM` -- Discovery가 attach되지 않은 상태에서 호출했습니다.
 
 **스레드 안전성:** 스레드 안전하지 않음.
 
@@ -214,11 +218,16 @@ int zlink_spot_node_unregister(void *node,
                                const char *service_name);
 ```
 
-지정된 서비스 이름에 대한 등록 해제 요청을 Registry 처리용으로 큐잉합니다. 다음
-브로드캐스트 주기 이후 피어 노드는 더 이상 지정된 서비스에 대해 이 노드를
-검색할 수 없습니다.
+attached Discovery의 registry uplink runtime을 통해 등록 해제 요청을
+제출합니다. 다음 브로드캐스트 주기 이후 피어 노드는 더 이상 지정된 서비스에
+대해 이 노드를 검색할 수 없습니다.
+
+**사전 조건:** `zlink_spot_node_set_discovery()`가 먼저 호출되어야 합니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**에러:**
+- `EFSM` -- Discovery가 attach되지 않은 상태에서 호출했습니다.
 
 **스레드 안전성:** 스레드 안전하지 않음.
 
@@ -338,16 +347,17 @@ Publisher에 서비스 레벨 옵션을 적용합니다. 사용 가능한 옵션
 | `ZLINK_SPOT_PUB_OPT_SNDTIMEO` | 2 | 송신 타임아웃 (ms) |
 | `ZLINK_SPOT_PUB_OPT_LINGER` | 3 | Linger 기간 (ms) |
 | `ZLINK_SPOT_PUB_OPT_NODROP` | 4 | HWM 도달 시 메시지 드롭하지 않음 |
-| `ZLINK_SPOT_PUB_OPT_MODE` | 5 | 발행 모드 (`SYNC` 또는 `ASYNC`) |
-| `ZLINK_SPOT_PUB_OPT_QUEUE_HWM` | 6 | 비동기 큐 고수위 마크 |
-| `ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY` | 7 | 비동기 큐 가득 참 정책 |
 | `ZLINK_SPOT_PUB_OPT_SNDBUF` | 8 | 커널 송신 버퍼 크기 (바이트) |
 | `ZLINK_SPOT_PUB_OPT_RCVBUF` | 9 | 커널 수신 버퍼 크기 (바이트) |
+
+**제거된 옵션:** `MODE`(5), `QUEUE_HWM`(6), `QUEUE_FULL_POLICY`(7)는
+proxy 기반 재작성에서 제거되었습니다. 설정 시 `ENOTSUP`을 반환합니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
 **에러:**
 - `EINVAL` -- 알 수 없는 옵션.
+- `ENOTSUP` -- proxy 기반 구현에서 제거된 queue/filter 옵션입니다.
 
 **스레드 안전성:** 스레드 안전하지 않음.
 
@@ -452,13 +462,8 @@ int zlink_spot_pub_publish(void *pub,
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전.
-
-- `SYNC` 모드(기본): 동시 호출은 내부에서 직렬화됩니다.
-- `ASYNC` 모드: 동시 호출은 내부 큐에 enqueue 되며, 큐에 수락되면 반환합니다.
-
-`ASYNC` 모드에서 큐 포화 정책이
-`ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN`인 경우 `EAGAIN`이 반환될 수 있습니다.
+**스레드 안전성:** 스레드 안전. 동시 호출은 내부에서 직렬화됩니다. publish는
+inproc PUB facade를 통해 data plane worker로 전달됩니다.
 
 **참고:** `zlink_spot_pub_publish_bytes`, `zlink_spot_sub_subscribe`, `zlink_spot_pub_new`
 
@@ -484,9 +489,8 @@ int zlink_spot_pub_publish_bytes(void *pub,
 
 **에러:**
 - `EINVAL` -- `size > 0`인데 `data == NULL`.
-- `EAGAIN` -- ASYNC 게시 큐가 `EAGAIN` 정책에서 포화됨.
 
-**스레드 안전성:** 스레드 안전.
+**스레드 안전성:** 스레드 안전. 동시 호출은 내부에서 직렬화됩니다.
 
 **참고:** `zlink_spot_pub_publish`, `zlink_spot_pub_new`
 
@@ -834,17 +838,20 @@ if (zlink_poller_wait(poller, &ev, 1000) == 1) {
 
 ### 내부 동작
 
-- **spot_sub**: poller는 raw SUB 소켓이 아닌 내부 큐 signaler fd를 감시합니다.
-  subscriber 큐가 비어있지 않으면 fd가 readable이 됩니다. readiness 이후
-  `zlink_spot_sub_recv(...)`를 평소처럼 호출합니다.
-- **spot_pub**: poller는 node가 소유한 기존 PUB 소켓을 감시합니다. readiness
-  이후 `zlink_spot_pub_publish(...)`를 평소처럼 호출합니다.
+- **spot_sub**: poller는 data plane worker가 관리하는 내부 SUB facade
+  소켓의 readiness를 감시합니다. data plane에서 메시지가 도착하면
+  readable이 됩니다. readiness 이후 `zlink_spot_sub_recv(...)`를
+  평소처럼 호출합니다.
+- **spot_pub**: poller는 inproc PUB facade 소켓의 writability를
+  감시합니다. readiness 이후 `zlink_spot_pub_publish(...)`를 평소처럼
+  호출합니다.
 
 ### 스레드 안전성
 
-동일 서비스 인스턴스를 여러 스레드에서 동시에 사용하는 것은 **지원하지
-않습니다**. 하나의 `spot_sub` 또는 `spot_pub`은 한 번에 하나의 실행 흐름에서만
-사용해야 합니다.
+`spot_pub`은 thread-safe입니다 — 여러 스레드에서 동시에 `publish()`를
+호출할 수 있으며, 내부에서 직렬화됩니다. `spot_sub`은 thread-safe가
+**아닙니다** — `recv()`, handler, `subscribe()`, `unsubscribe()` 호출은
+한 번에 하나의 실행 흐름에서만 수행해야 합니다.
 
 ### 요약
 

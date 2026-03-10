@@ -62,12 +62,10 @@ async function runCase(ctx, tc) {
     node = new zlink.SpotNode(ctx);
     const spotEp = await endpointFor(tc.name, tc.endpoint, '-spot');
     node.bind(spotEp);
-    node.connectRegistry(regRouter);
     node.register('spot', spotEp);
     await new Promise(r => setTimeout(r, 100));
 
     peer = new zlink.SpotNode(ctx);
-    peer.connectRegistry(regRouter);
     peer.connectPeerPub(spotEp);
     spot = new zlink.Spot(peer);
     await new Promise(r => setTimeout(r, 100));

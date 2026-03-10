@@ -46,8 +46,6 @@ internal static class PerfGatewayServer
 
             discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
             discovery.ConnectRegistry(config.RegistryPub);
-            ApplyDiscoverySocketOptions(discovery, Pattern, config.SndTimeoutMs,
-                config.RcvTimeoutMs);
             for (int i = 0; i < config.ClientCount; i++)
                 discovery.Subscribe($"c{i}");
 
@@ -297,34 +295,11 @@ Done:
     {
         int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", pattern);
         int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", pattern);
-        receiver.SetOption(ReceiverSocketRole.Router, SocketOptions.Linger, 0);
-        receiver.SetOption(ReceiverSocketRole.Dealer, SocketOptions.Linger, 0);
-        receiver.SetOption(ReceiverSocketRole.Router, SocketOptions.SndHwm, sndHwm);
-        receiver.SetOption(ReceiverSocketRole.Router, SocketOptions.RcvHwm, rcvHwm);
-        receiver.SetOption(ReceiverSocketRole.Dealer, SocketOptions.SndHwm, sndHwm);
-        receiver.SetOption(ReceiverSocketRole.Dealer, SocketOptions.RcvHwm, rcvHwm);
-        receiver.SetOption(ReceiverSocketRole.Router, SocketOptions.SndTimeo,
-            sndTimeoutMs);
-        receiver.SetOption(ReceiverSocketRole.Router, SocketOptions.RcvTimeo,
-            rcvTimeoutMs);
-        receiver.SetOption(ReceiverSocketRole.Dealer, SocketOptions.SndTimeo,
-            sndTimeoutMs);
-        receiver.SetOption(ReceiverSocketRole.Dealer, SocketOptions.RcvTimeo,
-            rcvTimeoutMs);
-    }
-
-    private static void ApplyDiscoverySocketOptions(Discovery discovery,
-        string pattern, int sndTimeoutMs, int rcvTimeoutMs)
-    {
-        int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", pattern);
-        int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", pattern);
-        discovery.SetOption(DiscoverySocketRole.Sub, SocketOptions.Linger, 0);
-        discovery.SetOption(DiscoverySocketRole.Sub, SocketOptions.SndHwm, sndHwm);
-        discovery.SetOption(DiscoverySocketRole.Sub, SocketOptions.RcvHwm, rcvHwm);
-        discovery.SetOption(DiscoverySocketRole.Sub, SocketOptions.SndTimeo,
-            sndTimeoutMs);
-        discovery.SetOption(DiscoverySocketRole.Sub, SocketOptions.RcvTimeo,
-            rcvTimeoutMs);
+        receiver.SetOption(SocketOptions.Linger, 0);
+        receiver.SetOption(SocketOptions.SndHwm, sndHwm);
+        receiver.SetOption(SocketOptions.RcvHwm, rcvHwm);
+        receiver.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
+        receiver.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
     }
 
     private static bool TryReceiveGatewayRequest(Zlink.Socket receiverRouter,

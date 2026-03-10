@@ -19,7 +19,6 @@ import dev.kairoscode.zlink.options.SocketOptions;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.gateway.Gateway;
 import dev.kairoscode.zlink.service.receiver.Receiver;
-import dev.kairoscode.zlink.service.receiver.ReceiverSocketRole;
 import dev.kairoscode.zlink.service.registry.Registry;
 import java.lang.foreign.MemorySegment;
 import java.nio.charset.StandardCharsets;
@@ -317,24 +316,15 @@ public final class PerfMultiGatewayServer {
     }
 
     private static void applyReceiverOptions(Receiver receiver) {
-        receiver.setOption(ReceiverSocketRole.ROUTER, SocketOptions.SNDHWM,
+        receiver.setOption(SocketOptions.SNDHWM,
             PerfMultiCommon.resolveSndHwm(PATTERN));
-        receiver.setOption(ReceiverSocketRole.ROUTER, SocketOptions.RCVHWM,
+        receiver.setOption(SocketOptions.RCVHWM,
             PerfMultiCommon.resolveRcvHwm(PATTERN));
-        receiver.setOption(ReceiverSocketRole.DEALER, SocketOptions.SNDHWM,
-            PerfMultiCommon.resolveSndHwm(PATTERN));
-        receiver.setOption(ReceiverSocketRole.DEALER, SocketOptions.RCVHWM,
-            PerfMultiCommon.resolveRcvHwm(PATTERN));
-        receiver.setOption(ReceiverSocketRole.ROUTER, SocketOptions.SNDTIMEO,
+        receiver.setOption(SocketOptions.SNDTIMEO,
             PerfMultiCommon.resolveSndTimeoutMs());
-        receiver.setOption(ReceiverSocketRole.ROUTER, SocketOptions.RCVTIMEO,
+        receiver.setOption(SocketOptions.RCVTIMEO,
             PerfMultiCommon.resolveRcvTimeoutMs());
-        receiver.setOption(ReceiverSocketRole.DEALER, SocketOptions.SNDTIMEO,
-            PerfMultiCommon.resolveSndTimeoutMs());
-        receiver.setOption(ReceiverSocketRole.DEALER, SocketOptions.RCVTIMEO,
-            PerfMultiCommon.resolveRcvTimeoutMs());
-        receiver.setOption(ReceiverSocketRole.ROUTER, SocketOptions.LINGER, 0);
-        receiver.setOption(ReceiverSocketRole.DEALER, SocketOptions.LINGER, 0);
+        receiver.setOption(SocketOptions.LINGER, 0);
     }
 
     private static void applyGatewayOptions(Gateway gateway) {

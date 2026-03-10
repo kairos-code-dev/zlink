@@ -562,10 +562,6 @@ internal static class NativeMethods
         int option, IntPtr value, nuint length);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_discovery_setsockopt(IntPtr discovery, int role,
-        int option, IntPtr value, nuint length);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_receiver_destroy(ref IntPtr receiver);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

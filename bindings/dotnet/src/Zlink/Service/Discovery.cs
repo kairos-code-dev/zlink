@@ -2,7 +2,6 @@
 
 using System;
 using System.Buffers;
-using System.Text;
 using Zlink;
 using Zlink.Native;
 
@@ -55,117 +54,85 @@ public sealed class Discovery : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
+    public void SetOption(SocketOptionKey<int> option, int value)
+    {
+        SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
+        ThrowSocketOptionNotSupported(option.Option);
+    }
+
+    public void SetOption(SocketOptionKey<long> option, long value)
+    {
+        SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
+        ThrowSocketOptionNotSupported(option.Option);
+    }
+
+    public void SetOption(SocketOptionKey<ulong> option, ulong value)
+    {
+        SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
+        ThrowSocketOptionNotSupported(option.Option);
+    }
+
+    public void SetOption(SocketOptionKey<byte[]> option, byte[] value)
+    {
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+        SetOption(option, value.AsSpan());
+    }
+
+    public void SetOption(SocketOptionKey<byte[]> option, ReadOnlySpan<byte> value)
+    {
+        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
+        ThrowSocketOptionNotSupported(option.Option);
+    }
+
+    public void SetOption(SocketOptionKey<string> option, string value)
+    {
+        SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+        ThrowSocketOptionNotSupported(option.Option);
+    }
+
     public void SetOption(DiscoverySocketRole role, SocketOptionKey<int> option,
         int value)
     {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
-        SetOptionInt32(role, option.Option, value);
+        ValidateRole(role);
+        SetOption(option, value);
     }
 
     public void SetOption(DiscoverySocketRole role, SocketOptionKey<long> option,
         long value)
     {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
-        SetOptionInt64(role, option.Option, value);
+        ValidateRole(role);
+        SetOption(option, value);
     }
 
     public void SetOption(DiscoverySocketRole role, SocketOptionKey<ulong> option,
         ulong value)
     {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
-        SetOptionUInt64(role, option.Option, value);
+        ValidateRole(role);
+        SetOption(option, value);
     }
 
     public void SetOption(DiscoverySocketRole role, SocketOptionKey<byte[]> option,
         byte[] value)
     {
-        if (value == null)
-            throw new ArgumentNullException(nameof(value));
-        SetOption(role, option, value.AsSpan());
+        ValidateRole(role);
+        SetOption(option, value);
     }
 
     public void SetOption(DiscoverySocketRole role, SocketOptionKey<byte[]> option,
         ReadOnlySpan<byte> value)
     {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
-        SetOptionBytes(role, option.Option, value);
+        ValidateRole(role);
+        SetOption(option, value);
     }
 
     public void SetOption(DiscoverySocketRole role, SocketOptionKey<string> option,
         string value)
     {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
-        SetOptionString(role, option.Option, value);
-    }
-
-    private unsafe void SetOptionInt32(DiscoverySocketRole role,
-        SocketOption option, int value)
-    {
-        int tmp = value;
-        int rc = NativeMethods.zlink_discovery_setsockopt(_handle, (int)role,
-            (int)option, (IntPtr)(&tmp), (nuint)sizeof(int));
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    private unsafe void SetOptionInt64(DiscoverySocketRole role,
-        SocketOption option, long value)
-    {
-        long tmp = value;
-        int rc = NativeMethods.zlink_discovery_setsockopt(_handle, (int)role,
-            (int)option, (IntPtr)(&tmp), (nuint)sizeof(long));
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    private unsafe void SetOptionUInt64(DiscoverySocketRole role,
-        SocketOption option, ulong value)
-    {
-        ulong tmp = value;
-        int rc = NativeMethods.zlink_discovery_setsockopt(_handle, (int)role,
-            (int)option, (IntPtr)(&tmp), (nuint)sizeof(ulong));
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    private unsafe void SetOptionBytes(DiscoverySocketRole role,
-        SocketOption option, ReadOnlySpan<byte> value)
-    {
-        fixed (byte* ptr = value)
-        {
-            int rc = NativeMethods.zlink_discovery_setsockopt(_handle, (int)role,
-                (int)option, (IntPtr)ptr, (nuint)value.Length);
-            ZlinkException.ThrowIfError(rc);
-        }
-    }
-
-    private void SetOptionString(DiscoverySocketRole role, SocketOption option,
-        string value)
-    {
-        if (value == null)
-            throw new ArgumentNullException(nameof(value));
-
-        int maxByteCount = Encoding.UTF8.GetMaxByteCount(value.Length);
-        if (maxByteCount <= 512)
-        {
-            Span<byte> buffer = stackalloc byte[maxByteCount];
-            int byteCount = Encoding.UTF8.GetBytes(value.AsSpan(), buffer);
-            SetOptionBytes(role, option, buffer.Slice(0, byteCount));
-            return;
-        }
-
-        byte[] rented = ArrayPool<byte>.Shared.Rent(maxByteCount);
-        try
-        {
-            int byteCount = Encoding.UTF8.GetBytes(value, rented);
-            SetOptionBytes(role, option, rented.AsSpan(0, byteCount));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(rented);
-        }
+        ValidateRole(role);
+        SetOption(option, value);
     }
 
     public int ReceiverCount(string serviceName)
@@ -209,9 +176,7 @@ public sealed class Discovery : IDisposable
             int actual = (int)size;
             ReceiverInfoRecord[] result = new ReceiverInfoRecord[actual];
             for (int i = 0; i < actual; i++)
-            {
                 result[i] = ReceiverInfoRecord.FromNative(ref providers[i]);
-            }
             return result;
         }
         finally
@@ -246,6 +211,22 @@ public sealed class Discovery : IDisposable
             throw new ArgumentNullException(paramName);
         if (value.Length == 0)
             throw new ArgumentException("Value must not be empty.", paramName);
+    }
+
+    private static void ValidateRole(DiscoverySocketRole role)
+    {
+        if (role != DiscoverySocketRole.Sub)
+        {
+            throw new ArgumentException(
+                $"Unsupported discovery socket role '{role}'.", nameof(role));
+        }
+    }
+
+    private void ThrowSocketOptionNotSupported(SocketOption option)
+    {
+        EnsureNotDisposed();
+        throw new ZlinkException((int)ErrorCode.ENotSup,
+            $"Discovery socket option '{option}' is not supported.");
     }
 }
 

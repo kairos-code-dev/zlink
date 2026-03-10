@@ -468,12 +468,8 @@ internal static class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_gateway_setsockopt(IntPtr gateway,
+    internal static extern int zlink_gateway_set_option(IntPtr gateway,
         int option, IntPtr value, nuint length);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_gateway_router_socket(
-        IntPtr gateway);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_gateway_router_peers(IntPtr gateway,
@@ -524,7 +520,21 @@ internal static class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string key);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_receiver_router_socket_unsafe(IntPtr receiver);
+    internal static extern int zlink_receiver_recv(IntPtr receiver,
+        out IntPtr parts, out nuint partCount, int flags,
+        out ZlinkRoutingId routingId);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_receiver_last_endpoint(IntPtr receiver,
+        byte[] endpoint, ref nuint size);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_receiver_last_endpoint(IntPtr receiver,
+        IntPtr endpoint, ref nuint size);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_receiver_peer_info(IntPtr receiver,
+        [In] ref ZlinkRoutingId routingId, out ZlinkPeerInfo info);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_receiver_router_peers(IntPtr receiver,
@@ -536,8 +546,16 @@ internal static class NativeMethods
         IntPtr peers, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_receiver_setsockopt(IntPtr receiver, int role,
+    internal static extern int zlink_receiver_set_option(IntPtr receiver,
         int option, IntPtr value, nuint length);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_receiver_set_routing_id(IntPtr receiver,
+        IntPtr data, nuint size);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_receiver_routing_id(IntPtr receiver,
+        out ZlinkRoutingId routingId);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_registry_setsockopt(IntPtr registry, int role,
@@ -592,31 +610,35 @@ internal static class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string hostname, int trustSystem);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_setsockopt(IntPtr node, int role,
+    internal static extern int zlink_spot_node_set_pub_option(IntPtr node,
         int option, IntPtr value, nuint length);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_node_pub_socket(IntPtr node);
+    internal static extern int zlink_spot_node_set_sub_option(IntPtr node,
+        int option, IntPtr value, nuint length);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_node_sub_socket(IntPtr node);
+    internal static extern IntPtr zlink_spot_node_default_pub(IntPtr node);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_pub_peers(IntPtr node,
+    internal static extern IntPtr zlink_spot_node_default_sub(IntPtr node);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_pub_peers(IntPtr pub,
         [In, Out] ZlinkPeerInfo[] peers, ref nuint count);
 
-    [DllImport(LibraryName, EntryPoint = "zlink_spot_node_pub_peers",
+    [DllImport(LibraryName, EntryPoint = "zlink_spot_pub_peers",
         CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_pub_peers(IntPtr node,
+    internal static extern int zlink_spot_pub_peers(IntPtr pub,
         IntPtr peers, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_sub_peers(IntPtr node,
+    internal static extern int zlink_spot_sub_peers(IntPtr sub,
         [In, Out] ZlinkPeerInfo[] peers, ref nuint count);
 
-    [DllImport(LibraryName, EntryPoint = "zlink_spot_node_sub_peers",
+    [DllImport(LibraryName, EntryPoint = "zlink_spot_sub_peers",
         CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_sub_peers(IntPtr node,
+    internal static extern int zlink_spot_sub_peers(IntPtr sub,
         IntPtr peers, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

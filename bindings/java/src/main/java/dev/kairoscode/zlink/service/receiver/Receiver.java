@@ -3,7 +3,9 @@
 package dev.kairoscode.zlink.service.receiver;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.PeerInfo;
+import dev.kairoscode.zlink.ReceiveFlag;
 import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.SocketOption;
 import dev.kairoscode.zlink.ZlinkException;
@@ -22,6 +24,7 @@ import java.util.List;
 import java.util.Objects;
 
 public class Receiver implements AutoCloseable {
+    private static final int ENDPOINT_CAPACITY = 256;
     private MemorySegment handle;
     private Arena sockOptArena = Arena.ofShared();
     private MemorySegment sockOptScratch = MemorySegment.NULL;
@@ -91,61 +94,84 @@ public class Receiver implements AutoCloseable {
 
     public void setSockOpt(ReceiverSocketRole role, SocketOption option, byte[] value) {
         Objects.requireNonNull(role, "role");
+        validateRole(role);
+        setSockOpt(option, value);
+    }
+
+    public void setSockOpt(SocketOption option, byte[] value) {
         Objects.requireNonNull(option, "option");
         Objects.requireNonNull(value, "value");
-        setSockOptBytes(role.getValue(), option.getValue(), value, 0,
-            value.length);
+        setSockOptBytes(option.getValue(), value, 0, value.length);
     }
 
     public void setSockOpt(ReceiverSocketRole role, SocketOption option, int value) {
         Objects.requireNonNull(role, "role");
+        validateRole(role);
+        setSockOpt(option, value);
+    }
+
+    public void setSockOpt(SocketOption option, int value) {
         Objects.requireNonNull(option, "option");
-        setSockOptInt(role.getValue(), option.getValue(), value);
+        setSockOptInt(option.getValue(), value);
+    }
+
+    public void setOption(SocketOptionKey<Integer> option, int value) {
+        Objects.requireNonNull(option, "option");
+        validateOptionType(option, SocketOptionValueType.INT32);
+        option.requireWritable();
+        setSockOptInt(option.optionId(), value);
     }
 
     public void setOption(ReceiverSocketRole role,
                           SocketOptionKey<Integer> option,
                           int value) {
-        Objects.requireNonNull(role, "role");
-        Objects.requireNonNull(option, "option");
-        validateOptionType(option, SocketOptionValueType.INT32);
-        option.requireWritable();
-        setSockOptInt(role.getValue(), option.optionId(), value);
+        validateRole(role);
+        setOption(option, value);
     }
 
-    public void setOption(ReceiverSocketRole role,
-                          SocketOptionKey<Long> option,
-                          long value) {
-        Objects.requireNonNull(role, "role");
+    public void setOption(SocketOptionKey<Long> option, long value) {
         Objects.requireNonNull(option, "option");
         validateOptionType(option, SocketOptionValueType.INT64);
         option.requireWritable();
-        setSockOptLong(role.getValue(), option.optionId(), value);
+        setSockOptLong(option.optionId(), value);
     }
 
     public void setOption(ReceiverSocketRole role,
                           SocketOptionKey<String> option,
                           String value) {
-        Objects.requireNonNull(role, "role");
+        validateRole(role);
+        setOption(option, value);
+    }
+
+    public void setOption(ReceiverSocketRole role,
+                          SocketOptionKey<Long> option,
+                          long value) {
+        validateRole(role);
+        setOption(option, value);
+    }
+
+    public void setOption(SocketOptionKey<String> option, String value) {
         Objects.requireNonNull(option, "option");
         validateOptionType(option, SocketOptionValueType.STRING);
         option.requireWritable();
         byte[] utf8 = Objects.requireNonNull(value, "value").getBytes(
           StandardCharsets.UTF_8);
-        setSockOptBytes(role.getValue(), option.optionId(), utf8, 0,
-            utf8.length);
+        setSockOptBytes(option.optionId(), utf8, 0, utf8.length);
+    }
+
+    public void setOption(SocketOptionKey<byte[]> option, byte[] value) {
+        Objects.requireNonNull(option, "option");
+        validateOptionType(option, SocketOptionValueType.BYTES);
+        option.requireWritable();
+        Objects.requireNonNull(value, "value");
+        setSockOptBytes(option.optionId(), value, 0, value.length);
     }
 
     public void setOption(ReceiverSocketRole role,
                           SocketOptionKey<byte[]> option,
                           byte[] value) {
-        Objects.requireNonNull(role, "role");
-        Objects.requireNonNull(option, "option");
-        validateOptionType(option, SocketOptionValueType.BYTES);
-        option.requireWritable();
-        Objects.requireNonNull(value, "value");
-        setSockOptBytes(role.getValue(), option.optionId(), value, 0,
-            value.length);
+        validateRole(role);
+        setOption(option, value);
     }
 
     public ReceiverResult registerResult(String serviceName) {
@@ -173,11 +199,54 @@ public class Receiver implements AutoCloseable {
         }
     }
 
+    public void setRoutingId(String routingId) {
+        Objects.requireNonNull(routingId, "routingId");
+        byte[] utf8 = routingId.getBytes(StandardCharsets.UTF_8);
+        MemorySegment rid = ensureSockOptScratch(1 + utf8.length);
+        rid.set(ValueLayout.JAVA_BYTE, 0, (byte) utf8.length);
+        MemorySegment.copy(MemorySegment.ofArray(utf8), 0, rid, 1, utf8.length);
+        int rc = Native.providerSetRoutingId(handle, rid, utf8.length);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_receiver_set_routing_id");
+    }
+
+    public String lastEndpoint() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment endpoint = arena.allocate(ENDPOINT_CAPACITY);
+            MemorySegment size = arena.allocate(ValueLayout.JAVA_LONG);
+            size.set(ValueLayout.JAVA_LONG, 0, ENDPOINT_CAPACITY);
+            int rc = Native.providerLastEndpoint(handle, endpoint, size);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_receiver_last_endpoint");
+            return NativeHelpers.fromCString(endpoint, ENDPOINT_CAPACITY);
+        }
+    }
+
+    public ReceiverMessages recv(ReceiveFlag flags) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment partsPtr = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment partCount = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment routingId = arena.allocate(256);
+            int rc = Native.providerRecv(handle, partsPtr, partCount,
+              flags.getValue(), routingId);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_receiver_recv");
+            long count = partCount.get(ValueLayout.JAVA_LONG, 0);
+            MemorySegment partsAddr = partsPtr.get(ValueLayout.ADDRESS, 0);
+            Message[] parts = Message.fromMsgVector(partsAddr, count);
+            byte ridLen = routingId.get(ValueLayout.JAVA_BYTE, 0);
+            byte[] rid = new byte[Math.max(0, ridLen)];
+            if (rid.length > 0) {
+                MemorySegment.copy(routingId, 1, MemorySegment.ofArray(rid), 0,
+                  rid.length);
+            }
+            return new ReceiverMessages(rid, parts);
+        }
+    }
+
     public Socket routerSocket() {
-        MemorySegment sock = Native.providerRouter(handle);
-        if (sock == null || sock.address() == 0)
-            throw ZlinkException.fromLastError("zlink_receiver_router_socket_unsafe");
-        return Socket.adopt(sock, false);
+        throw new UnsupportedOperationException(
+          "Receiver router socket handle is not exposed by the current core API.");
     }
 
     public List<PeerInfo> routerPeers() {
@@ -248,34 +317,43 @@ public class Receiver implements AutoCloseable {
         }
     }
 
-    private void setSockOptRaw(int role, int optionId, MemorySegment value,
-                               long len) {
-        int rc = Native.providerSetSockOpt(handle, role, optionId, value, len);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_receiver_setsockopt");
+    private static void validateRole(ReceiverSocketRole role) {
+        Objects.requireNonNull(role, "role");
+        if (role != ReceiverSocketRole.ROUTER
+          && role != ReceiverSocketRole.DEALER) {
+            throw new IllegalArgumentException(
+              "unsupported Receiver socket role: " + role);
+        }
     }
 
-    private void setSockOptBytes(int role, int optionId, byte[] value,
-                                 int offset, int length) {
+    private void setSockOptRaw(int optionId, MemorySegment value, long len) {
+        int rc = Native.providerSetOption(handle, mapReceiverOption(optionId),
+          value, len);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_receiver_set_option");
+    }
+
+    private void setSockOptBytes(int optionId, byte[] value, int offset,
+                                 int length) {
         MemorySegment buf = length == 0 ? MemorySegment.NULL
             : ensureSockOptScratch(length);
         if (length > 0) {
             MemorySegment.copy(MemorySegment.ofArray(value), offset, buf, 0,
                 length);
         }
-        setSockOptRaw(role, optionId, buf, length);
+        setSockOptRaw(optionId, buf, length);
     }
 
-    private void setSockOptInt(int role, int optionId, int value) {
+    private void setSockOptInt(int optionId, int value) {
         MemorySegment buf = ensureSockOptScratch(Integer.BYTES);
         buf.set(ValueLayout.JAVA_INT, 0, value);
-        setSockOptRaw(role, optionId, buf, Integer.BYTES);
+        setSockOptRaw(optionId, buf, Integer.BYTES);
     }
 
-    private void setSockOptLong(int role, int optionId, long value) {
+    private void setSockOptLong(int optionId, long value) {
         MemorySegment buf = ensureSockOptScratch(Long.BYTES);
         buf.set(ValueLayout.JAVA_LONG, 0, value);
-        setSockOptRaw(role, optionId, buf, Long.BYTES);
+        setSockOptRaw(optionId, buf, Long.BYTES);
     }
 
     private static void closeArena(Arena arena) {
@@ -283,5 +361,34 @@ public class Receiver implements AutoCloseable {
             arena.close();
     }
 
+    private static int mapReceiverOption(int optionId) {
+        return switch (optionId) {
+            case 23 -> 1;
+            case 24 -> 2;
+            case 28 -> 3;
+            case 27 -> 4;
+            case 17 -> 5;
+            case 11 -> 6;
+            case 12 -> 7;
+            default -> throw new IllegalArgumentException(
+              "unsupported Receiver socket option: " + optionId);
+        };
+    }
+
     public record ReceiverResult(int status, String resolvedEndpoint, String errorMessage) {}
+
+    public record ReceiverMessages(byte[] routingId, Message[] parts)
+      implements AutoCloseable {
+        public ReceiverMessages {
+            routingId = routingId == null ? new byte[0] : routingId.clone();
+        }
+
+        @Override
+        public void close() {
+            for (Message part : parts) {
+                if (part != null)
+                    part.close();
+            }
+        }
+    }
 }

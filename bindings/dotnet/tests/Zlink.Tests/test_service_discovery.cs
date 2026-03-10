@@ -9,8 +9,7 @@ public sealed class test_service_discovery
         string serviceName, uint weight)
     {
         provider.Bind(CoreTestSupport.NewEndpoint("tcp", serviceName));
-        using var router = provider.CreateRouterSocket();
-        string advertise = router.GetOption(SocketOptions.LastEndpoint);
+        string advertise = provider.GetLastEndpoint();
         provider.ConnectRegistry(regRouter);
         provider.Register(serviceName, advertise, weight);
         return advertise;
@@ -51,7 +50,6 @@ public sealed class test_service_discovery
 
         using var spotNode = new SpotNode(ctx);
         Assert.Throws<ArgumentException>(() => spotNode.Bind(""));
-        Assert.Throws<ArgumentException>(() => spotNode.ConnectRegistry(""));
         Assert.Throws<ArgumentException>(() => spotNode.ConnectPeerPub(""));
         Assert.Throws<ArgumentException>(() => spotNode.DisconnectPeerPub(""));
         Assert.Throws<ArgumentException>(() => spotNode.Register("", "tcp://x"));
@@ -80,14 +78,13 @@ public sealed class test_service_discovery
         registry.Start();
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe("svc-A");
 
         using var providerA = new Receiver(ctx);
-        using var providerARouter = providerA.CreateRouterSocket();
         string bindA = CoreTestSupport.NewEndpoint("tcp", "svc-a");
         providerA.Bind(bindA);
-        string advertiseA = providerARouter.GetOption(SocketOptions.LastEndpoint);
+        string advertiseA = providerA.GetLastEndpoint();
         providerA.ConnectRegistry(regRouter);
         providerA.Register("svc-A", advertiseA, 10);
 
@@ -126,7 +123,7 @@ public sealed class test_service_discovery
         registry.Start();
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe("svc-A");
 
         using var providerA = new Receiver(ctx);
@@ -166,7 +163,7 @@ public sealed class test_service_discovery
         registry.Start();
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe("hb-svc");
 
         using var provider = new Receiver(ctx);
@@ -194,7 +191,7 @@ public sealed class test_service_discovery
         registry.Start();
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe("weight-svc");
 
         using var provider = new Receiver(ctx);

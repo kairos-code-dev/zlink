@@ -570,10 +570,8 @@ public final class Gateway implements AutoCloseable {
     }
 
     public Socket routerSocket() {
-        MemorySegment sock = Native.gatewayRouter(handle);
-        if (sock == null || sock.address() == 0)
-            throw ZlinkException.fromLastError("zlink_gateway_router_socket");
-        return Socket.adopt(sock, false);
+        throw new UnsupportedOperationException(
+          "Gateway router socket handle is not exposed by the current core API.");
     }
 
     public List<PeerInfo> routerPeers() {
@@ -1111,9 +1109,24 @@ public final class Gateway implements AutoCloseable {
     }
 
     private void setSockOptRaw(int optionId, MemorySegment value, long len) {
-        int rc = Native.gatewaySetSockOpt(handle, optionId, value, len);
+        int rc = Native.gatewaySetOption(handle, mapGatewayOption(optionId),
+          value, len);
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_gateway_setsockopt");
+            throw ZlinkException.fromLastError("zlink_gateway_set_option");
+    }
+
+    private static int mapGatewayOption(int optionId) {
+        return switch (optionId) {
+            case 23 -> 1;
+            case 24 -> 2;
+            case 28 -> 3;
+            case 27 -> 4;
+            case 17 -> 5;
+            case 11 -> 6;
+            case 12 -> 7;
+            default -> throw new IllegalArgumentException(
+              "unsupported Gateway socket option: " + optionId);
+        };
     }
 
     private void setSockOptBytes(int optionId, byte[] value, int offset,

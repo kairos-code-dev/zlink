@@ -151,8 +151,8 @@ public sealed class SpotNode : IDisposable
     {
         EnsureNotDisposed();
         int tmp = value;
-        int rc = NativeMethods.zlink_spot_node_setsockopt(_handle,
-            (int)SpotNodeSocketRole.Node, (int)option, (IntPtr)(&tmp),
+        int rc = NativeMethods.zlink_spot_node_set_pub_option(_handle,
+            (int)option, (IntPtr)(&tmp),
             (nuint)sizeof(int));
         ZlinkException.ThrowIfError(rc);
     }
@@ -160,37 +160,37 @@ public sealed class SpotNode : IDisposable
     private unsafe void SetOptionInt32(SpotNodeSocketRole role,
         SocketOption option, int value)
     {
+        var native = MapSpotOption(role, option);
         int tmp = value;
-        int rc = NativeMethods.zlink_spot_node_setsockopt(_handle, (int)role,
-            (int)option, (IntPtr)(&tmp), (nuint)sizeof(int));
+        int rc = SetSpotOption(native, (IntPtr)(&tmp), (nuint)sizeof(int));
         ZlinkException.ThrowIfError(rc);
     }
 
     private unsafe void SetOptionInt64(SpotNodeSocketRole role,
         SocketOption option, long value)
     {
+        var native = MapSpotOption(role, option);
         long tmp = value;
-        int rc = NativeMethods.zlink_spot_node_setsockopt(_handle, (int)role,
-            (int)option, (IntPtr)(&tmp), (nuint)sizeof(long));
+        int rc = SetSpotOption(native, (IntPtr)(&tmp), (nuint)sizeof(long));
         ZlinkException.ThrowIfError(rc);
     }
 
     private unsafe void SetOptionUInt64(SpotNodeSocketRole role,
         SocketOption option, ulong value)
     {
+        var native = MapSpotOption(role, option);
         ulong tmp = value;
-        int rc = NativeMethods.zlink_spot_node_setsockopt(_handle, (int)role,
-            (int)option, (IntPtr)(&tmp), (nuint)sizeof(ulong));
+        int rc = SetSpotOption(native, (IntPtr)(&tmp), (nuint)sizeof(ulong));
         ZlinkException.ThrowIfError(rc);
     }
 
     private unsafe void SetOptionBytes(SpotNodeSocketRole role,
         SocketOption option, ReadOnlySpan<byte> value)
     {
+        var native = MapSpotOption(role, option);
         fixed (byte* ptr = value)
         {
-            int rc = NativeMethods.zlink_spot_node_setsockopt(_handle, (int)role,
-                (int)option, (IntPtr)ptr, (nuint)value.Length);
+            int rc = SetSpotOption(native, (IntPtr)ptr, (nuint)value.Length);
             ZlinkException.ThrowIfError(rc);
         }
     }
@@ -225,7 +225,7 @@ public sealed class SpotNode : IDisposable
     public Socket GetPubSocket()
     {
         EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_spot_node_pub_socket(_handle);
+        IntPtr handle = NativeMethods.zlink_spot_node_default_pub(_handle);
         if (handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         return Socket.Adopt(handle, false);
@@ -234,7 +234,7 @@ public sealed class SpotNode : IDisposable
     public Socket GetSubSocket()
     {
         EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_spot_node_sub_socket(_handle);
+        IntPtr handle = NativeMethods.zlink_spot_node_default_sub(_handle);
         if (handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         return Socket.Adopt(handle, false);
@@ -243,8 +243,11 @@ public sealed class SpotNode : IDisposable
     public PeerRecord[] GetPubPeers()
     {
         EnsureNotDisposed();
+        IntPtr pub = NativeMethods.zlink_spot_node_default_pub(_handle);
+        if (pub == IntPtr.Zero)
+            throw ZlinkException.FromLastError();
         nuint count = 0;
-        int rc = NativeMethods.zlink_spot_node_pub_peers(_handle, IntPtr.Zero,
+        int rc = NativeMethods.zlink_spot_pub_peers(pub, IntPtr.Zero,
             ref count);
         ZlinkException.ThrowIfError(rc);
         if (count == 0)
@@ -254,7 +257,7 @@ public sealed class SpotNode : IDisposable
         try
         {
             nuint actual = count;
-            rc = NativeMethods.zlink_spot_node_pub_peers(_handle, native,
+            rc = NativeMethods.zlink_spot_pub_peers(pub, native,
                 ref actual);
             ZlinkException.ThrowIfError(rc);
 
@@ -272,8 +275,11 @@ public sealed class SpotNode : IDisposable
     public PeerRecord[] GetSubPeers()
     {
         EnsureNotDisposed();
+        IntPtr sub = NativeMethods.zlink_spot_node_default_sub(_handle);
+        if (sub == IntPtr.Zero)
+            throw ZlinkException.FromLastError();
         nuint count = 0;
-        int rc = NativeMethods.zlink_spot_node_sub_peers(_handle, IntPtr.Zero,
+        int rc = NativeMethods.zlink_spot_sub_peers(sub, IntPtr.Zero,
             ref count);
         ZlinkException.ThrowIfError(rc);
         if (count == 0)
@@ -283,7 +289,7 @@ public sealed class SpotNode : IDisposable
         try
         {
             nuint actual = count;
-            rc = NativeMethods.zlink_spot_node_sub_peers(_handle, native,
+            rc = NativeMethods.zlink_spot_sub_peers(sub, native,
                 ref actual);
             ZlinkException.ThrowIfError(rc);
 
@@ -324,6 +330,62 @@ public sealed class SpotNode : IDisposable
             throw new ArgumentNullException(paramName);
         if (value.Length == 0)
             throw new ArgumentException("Value must not be empty.", paramName);
+    }
+
+    private int SetSpotOption((bool IsPub, int Option) native, IntPtr value,
+        nuint length)
+    {
+        return native.IsPub
+            ? NativeMethods.zlink_spot_node_set_pub_option(_handle,
+                native.Option, value, length)
+            : NativeMethods.zlink_spot_node_set_sub_option(_handle,
+                native.Option, value, length);
+    }
+
+    private static (bool IsPub, int Option) MapSpotOption(SpotNodeSocketRole role,
+        SocketOption option)
+    {
+        return role switch
+        {
+            SpotNodeSocketRole.Pub => (true, MapSpotPubOption(option)),
+            SpotNodeSocketRole.Sub => (false, MapSpotSubOption(option)),
+            SpotNodeSocketRole.Node => throw new ZlinkException(
+                (int)ErrorCode.ENotSup,
+                "Node-level generic socket options are not supported."),
+            _ => throw new ArgumentException($"Unsupported spot socket role '{role}'.",
+                nameof(role))
+        };
+    }
+
+    private static int MapSpotPubOption(SocketOption option)
+    {
+        return option switch
+        {
+            SocketOption.SndHwm => 1,
+            SocketOption.SndTimeo => 2,
+            SocketOption.Linger => 3,
+            SocketOption.XPubNoDrop => 4,
+            SocketOption.SndBuf => 8,
+            SocketOption.RcvBuf => 9,
+            _ => throw new ArgumentException(
+                $"Socket option '{option}' is not supported by Spot PUB.",
+                nameof(option))
+        };
+    }
+
+    private static int MapSpotSubOption(SocketOption option)
+    {
+        return option switch
+        {
+            SocketOption.RcvHwm => 1,
+            SocketOption.RcvTimeo => 2,
+            SocketOption.Linger => 3,
+            SocketOption.SndBuf => 6,
+            SocketOption.RcvBuf => 7,
+            _ => throw new ArgumentException(
+                $"Socket option '{option}' is not supported by Spot SUB.",
+                nameof(option))
+        };
     }
 }
 

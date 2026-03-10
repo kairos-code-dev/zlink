@@ -287,10 +287,8 @@ public sealed class Gateway : IDisposable
     public Socket CreateRouterSocket()
     {
         EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_gateway_router_socket(_handle);
-        if (handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-        return Socket.Adopt(handle, false);
+        throw new ZlinkException((int)ErrorCode.ENotSup,
+            "Gateway router socket handle is not exposed by the current core API.");
     }
 
     public PeerRecord[] GetRouterPeers()
@@ -366,34 +364,38 @@ public sealed class Gateway : IDisposable
 
     private unsafe void SetOptionInt32(SocketOption option, int value)
     {
+        int mapped = MapGatewayOption(option);
         int tmp = value;
-        int rc = NativeMethods.zlink_gateway_setsockopt(_handle, (int)option,
+        int rc = NativeMethods.zlink_gateway_set_option(_handle, mapped,
             (IntPtr)(&tmp), (nuint)sizeof(int));
         ZlinkException.ThrowIfError(rc);
     }
 
     private unsafe void SetOptionInt64(SocketOption option, long value)
     {
+        int mapped = MapGatewayOption(option);
         long tmp = value;
-        int rc = NativeMethods.zlink_gateway_setsockopt(_handle, (int)option,
+        int rc = NativeMethods.zlink_gateway_set_option(_handle, mapped,
             (IntPtr)(&tmp), (nuint)sizeof(long));
         ZlinkException.ThrowIfError(rc);
     }
 
     private unsafe void SetOptionUInt64(SocketOption option, ulong value)
     {
+        int mapped = MapGatewayOption(option);
         ulong tmp = value;
-        int rc = NativeMethods.zlink_gateway_setsockopt(_handle, (int)option,
+        int rc = NativeMethods.zlink_gateway_set_option(_handle, mapped,
             (IntPtr)(&tmp), (nuint)sizeof(ulong));
         ZlinkException.ThrowIfError(rc);
     }
 
     private unsafe void SetOptionBytes(SocketOption option, ReadOnlySpan<byte> value)
     {
+        int mapped = MapGatewayOption(option);
         fixed (byte* ptr = value)
         {
-            int rc = NativeMethods.zlink_gateway_setsockopt(_handle,
-                (int)option, (IntPtr)ptr, (nuint)value.Length);
+            int rc = NativeMethods.zlink_gateway_set_option(_handle, mapped,
+                (IntPtr)ptr, (nuint)value.Length);
             ZlinkException.ThrowIfError(rc);
         }
     }
@@ -470,6 +472,23 @@ public sealed class Gateway : IDisposable
         if (serviceName.Length == 0)
             throw new ArgumentException("Service name must not be empty.",
                 paramName);
+    }
+
+    private static int MapGatewayOption(SocketOption option)
+    {
+        return option switch
+        {
+            SocketOption.SndHwm => 1,
+            SocketOption.RcvHwm => 2,
+            SocketOption.SndTimeo => 3,
+            SocketOption.RcvTimeo => 4,
+            SocketOption.Linger => 5,
+            SocketOption.SndBuf => 6,
+            SocketOption.RcvBuf => 7,
+            _ => throw new ArgumentException(
+                $"Socket option '{option}' is not supported by Gateway.",
+                nameof(option))
+        };
     }
 
 }

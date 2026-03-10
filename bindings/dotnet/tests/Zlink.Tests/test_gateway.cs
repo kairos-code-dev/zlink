@@ -8,14 +8,13 @@ namespace Zlink.Tests;
 
 public sealed class test_gateway
 {
-    private static void RegisterProvider(Receiver receiver, Socket router,
-        string regRouter, string serviceName, uint weight, string routingId,
+    private static void RegisterProvider(Receiver receiver, string regRouter,
+        string serviceName, uint weight, string routingId,
         string transport = "tcp")
     {
+        receiver.SetRoutingId(routingId);
         receiver.Bind(CoreTestSupport.NewEndpoint(transport, serviceName));
-        router.SetOption(SocketOptions.ProbeRouter, 1);
-        router.SetOption(SocketOptions.RoutingId, routingId);
-        string advertise = router.GetOption(SocketOptions.LastEndpoint);
+        string advertise = receiver.GetLastEndpoint();
         receiver.ConnectRegistry(regRouter);
         receiver.Register(serviceName, advertise, weight);
     }
@@ -34,7 +33,7 @@ public sealed class test_gateway
     }
 
     [Fact]
-    public void gateway_receiver_setsockopt_roundtrip()
+    public void gateway_receiver_setoption_accepts_supported_values()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -47,27 +46,19 @@ public sealed class test_gateway
         registry.Start();
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         using var gateway = new Gateway(ctx, discovery);
         using var receiver = new Receiver(ctx);
 
         const int hwm = 1000000;
         gateway.SetOption(SocketOptions.SndHwm, hwm);
         gateway.SetOption(SocketOptions.RcvHwm, hwm);
-        receiver.SetOption(ReceiverSocketRole.Router, SocketOptions.SndHwm, hwm);
-        receiver.SetOption(ReceiverSocketRole.Router, SocketOptions.RcvHwm, hwm);
-
-        using var gatewayRouter = gateway.CreateRouterSocket();
-        using var receiverRouter = receiver.CreateRouterSocket();
-
-        Assert.Equal(hwm, gatewayRouter.GetOption(SocketOptions.SndHwm));
-        Assert.Equal(hwm, gatewayRouter.GetOption(SocketOptions.RcvHwm));
-        Assert.Equal(hwm, receiverRouter.GetOption(SocketOptions.SndHwm));
-        Assert.Equal(hwm, receiverRouter.GetOption(SocketOptions.RcvHwm));
+        receiver.SetOption(SocketOptions.SndHwm, hwm);
+        receiver.SetOption(SocketOptions.RcvHwm, hwm);
     }
 
     [Fact]
-    public void gateway_router_mode_rejects_facade_send()
+    public void gateway_and_receiver_router_handles_are_not_exposed()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -75,11 +66,15 @@ public sealed class test_gateway
         using var ctx = new Context();
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         using var gateway = new Gateway(ctx, discovery);
-        using var router = gateway.CreateRouterSocket();
+        using var receiver = new Receiver(ctx);
 
-        ZlinkException ex = Assert.Throws<ZlinkException>(() =>
-            gateway.Send("svc", "x"u8, SendFlags.None));
-        Assert.Equal(ErrorCode.Efsm, ZlinkException.MapErrorCode(ex.Errno));
+        ZlinkException gw = Assert.Throws<ZlinkException>(() =>
+            gateway.CreateRouterSocket());
+        Assert.Equal(ErrorCode.ENotSup, ZlinkException.MapErrorCode(gw.Errno));
+
+        ZlinkException rcv = Assert.Throws<ZlinkException>(() =>
+            receiver.CreateRouterSocket());
+        Assert.Equal(ErrorCode.ENotSup, ZlinkException.MapErrorCode(rcv.Errno));
     }
 
     [Fact]
@@ -123,88 +118,36 @@ public sealed class test_gateway
         registry.Start();
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe("svc");
 
         using var receiver = new Receiver(ctx);
-        string receiverBind = CoreTestSupport.NewEndpoint("tcp", "gw-receiver");
-        receiver.Bind(receiverBind);
-        using var receiverRouter = receiver.CreateRouterSocket();
-        string advertise = receiverRouter.GetOption(SocketOptions.LastEndpoint);
-        receiver.ConnectRegistry(regRouter);
-        receiver.Register("svc", advertise, 1);
+        const string targetRoutingId = "RID-STR-1";
+        RegisterProvider(receiver, regRouter, "svc", 1, targetRoutingId);
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
         {
-            var r = receiver.GetRegisterResult("svc");
+            ReceiverRegisterResult r = receiver.GetRegisterResult("svc");
             return r.Status == 0;
         }, 4000));
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
-            discovery.ReceiverCount("svc") > 0, 4000));
+            discovery.ReceiverCount("svc") == 1, 4000));
 
         using var gateway = new Gateway(ctx, discovery);
         Assert.True(CoreTestSupport.WaitUntil(() =>
             gateway.ConnectionCount("svc") > 0, 4000));
 
         ReceiverInfoRecord[] providers = discovery.GetReceivers("svc");
-        Assert.NotEmpty(providers);
-        string targetRoutingId = providers[0].RoutingId;
-        Assert.False(string.IsNullOrEmpty(targetRoutingId));
+        Assert.Single(providers);
+        Assert.Equal(targetRoutingId, providers[0].RoutingId);
 
         gateway.SendToRoutingId("svc", targetRoutingId, "rid-msg"u8,
             SendFlags.None);
 
-        using Message rid = CoreTestSupport.ReceiveMessageWithTimeout(receiverRouter,
-            2000);
-        Assert.True(rid.Size > 0);
-        Assert.Equal("rid-msg",
-            CoreTestSupport.ReceiveUtf8WithTimeout(receiverRouter, 2000));
-    }
-
-    [Fact]
-    public void gateway_send_to_routing_id_string_delivers_payload()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var registry = new Registry(ctx);
-        string regPub = CoreTestSupport.NewEndpoint("inproc", "gw2s-reg-pub");
-        string regRouter = CoreTestSupport.NewEndpoint("inproc",
-            "gw2s-reg-router");
-        registry.SetEndpoints(regPub, regRouter);
-        registry.Start();
-
-        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
-        discovery.Subscribe("svc-string");
-
-        using var receiver = new Receiver(ctx);
-        using var receiverRouter = receiver.CreateRouterSocket();
-        const string targetRoutingId = "RID-STR-1";
-        RegisterProvider(receiver, receiverRouter, regRouter, "svc-string", 1,
-            targetRoutingId);
-
-        Assert.True(CoreTestSupport.WaitUntil(() =>
-        {
-            ReceiverRegisterResult r = receiver.GetRegisterResult("svc-string");
-            return r.Status == 0;
-        }, 4000));
-
-        Assert.True(CoreTestSupport.WaitUntil(() =>
-            discovery.ReceiverCount("svc-string") == 1, 4000));
-
-        using var gateway = new Gateway(ctx, discovery);
-        Assert.True(CoreTestSupport.WaitUntil(() =>
-            gateway.ConnectionCount("svc-string") > 0, 4000));
-
-        gateway.SendToRoutingId("svc-string", targetRoutingId, "rid-str"u8,
-            SendFlags.None);
-
-        string payload = CoreTestSupport.ReceiveRouterPayloadWithTimeout(
-            receiverRouter, "rid-str", 3000);
-        Assert.Equal("rid-str", payload);
+        string payload = CoreTestSupport.ReceiveReceiverPayloadWithTimeout(
+            receiver, "rid-msg", 3000);
+        Assert.Equal("rid-msg", payload);
     }
 
     [Fact]
@@ -221,12 +164,11 @@ public sealed class test_gateway
         registry.Start();
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe("svc");
 
         using var receiver = new Receiver(ctx);
-        using var receiverRouter = receiver.CreateRouterSocket();
-        RegisterProvider(receiver, receiverRouter, regRouter, "svc", 1, "PROV1");
+        RegisterProvider(receiver, regRouter, "svc", 1, "PROV1");
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
             discovery.ReceiverCount("svc") == 1, 4000));
@@ -236,8 +178,8 @@ public sealed class test_gateway
             gateway.ConnectionCount("svc") > 0, 4000));
 
         gateway.Send("svc", "hello"u8, SendFlags.None);
-        string payload = CoreTestSupport.ReceiveRouterPayloadWithTimeout(
-            receiverRouter, "hello", 3000);
+        string payload = CoreTestSupport.ReceiveReceiverPayloadWithTimeout(
+            receiver, "hello", 3000);
         Assert.Equal("hello", payload);
     }
 
@@ -255,12 +197,11 @@ public sealed class test_gateway
         registry.Start();
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe("svc-own");
 
         using var receiver = new Receiver(ctx);
-        using var receiverRouter = receiver.CreateRouterSocket();
-        RegisterProvider(receiver, receiverRouter, regRouter, "svc-own", 1, "OWN1");
+        RegisterProvider(receiver, regRouter, "svc-own", 1, "OWN1");
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
             discovery.ReceiverCount("svc-own") == 1, 4000));
@@ -276,8 +217,8 @@ public sealed class test_gateway
             _ = message.Size;
         });
 
-        string payload = CoreTestSupport.ReceiveRouterPayloadWithTimeout(
-            receiverRouter, "owned-send", 3000);
+        string payload = CoreTestSupport.ReceiveReceiverPayloadWithTimeout(
+            receiver, "owned-send", 3000);
         Assert.Equal("owned-send", payload);
     }
 
@@ -295,7 +236,7 @@ public sealed class test_gateway
         registry.Start();
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe("svc-missing");
 
         using var gateway = new Gateway(ctx, discovery);
@@ -323,17 +264,15 @@ public sealed class test_gateway
         registry.Start();
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe("svc-A");
         discovery.Subscribe("svc-B");
 
         using var providerA = new Receiver(ctx);
-        using var routerA = providerA.CreateRouterSocket();
-        RegisterProvider(providerA, routerA, regRouter, "svc-A", 1, "PROVA");
+        RegisterProvider(providerA, regRouter, "svc-A", 1, "PROVA");
 
         using var providerB = new Receiver(ctx);
-        using var routerB = providerB.CreateRouterSocket();
-        RegisterProvider(providerB, routerB, regRouter, "svc-B", 1, "PROVB");
+        RegisterProvider(providerB, regRouter, "svc-B", 1, "PROVB");
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
             discovery.ReceiverCount("svc-A") == 1, 4000));
@@ -349,10 +288,10 @@ public sealed class test_gateway
         gateway.Send("svc-A", "msg-to-A"u8, SendFlags.None);
         gateway.Send("svc-B", "msg-to-B"u8, SendFlags.None);
 
-        Assert.Equal("msg-to-A", CoreTestSupport.ReceiveRouterPayloadWithTimeout(
-            routerA, "msg-to-A", 3000));
-        Assert.Equal("msg-to-B", CoreTestSupport.ReceiveRouterPayloadWithTimeout(
-            routerB, "msg-to-B", 3000));
+        Assert.Equal("msg-to-A", CoreTestSupport.ReceiveReceiverPayloadWithTimeout(
+            providerA, "msg-to-A", 3000));
+        Assert.Equal("msg-to-B", CoreTestSupport.ReceiveReceiverPayloadWithTimeout(
+            providerB, "msg-to-B", 3000));
     }
 
     [Fact]
@@ -369,12 +308,11 @@ public sealed class test_gateway
         registry.Start();
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe("svc-update");
 
         using var provider1 = new Receiver(ctx);
-        using var router1 = provider1.CreateRouterSocket();
-        RegisterProvider(provider1, router1, regRouter, "svc-update", 1, "P1");
+        RegisterProvider(provider1, regRouter, "svc-update", 1, "P1");
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
             discovery.ReceiverCount("svc-update") == 1, 4000));
@@ -384,8 +322,8 @@ public sealed class test_gateway
             gateway.ConnectionCount("svc-update") > 0, 4000));
 
         CoreTestSupport.SendGatewayWithRetry(gateway, "svc-update", "old"u8, 2000);
-        Assert.Equal("old", CoreTestSupport.ReceiveRouterPayloadWithTimeout(
-            router1, "old", 3000));
+        Assert.Equal("old", CoreTestSupport.ReceiveReceiverPayloadWithTimeout(
+            provider1, "old", 3000));
 
         provider1.Unregister("svc-update");
         provider1.Dispose();
@@ -393,8 +331,7 @@ public sealed class test_gateway
             discovery.ReceiverCount("svc-update") == 0, 4000));
 
         using var provider2 = new Receiver(ctx);
-        using var router2 = provider2.CreateRouterSocket();
-        RegisterProvider(provider2, router2, regRouter, "svc-update", 1, "P2");
+        RegisterProvider(provider2, regRouter, "svc-update", 1, "P2");
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
             discovery.ReceiverCount("svc-update") == 1, 4000));
@@ -402,16 +339,14 @@ public sealed class test_gateway
             gateway.ConnectionCount("svc-update") > 0, 4000));
 
         CoreTestSupport.SendGatewayWithRetry(gateway, "svc-update", "new"u8, 2000);
-        Assert.Equal("new", CoreTestSupport.ReceiveRouterPayloadWithTimeout(
-            router2, "new", 3000));
+        Assert.Equal("new", CoreTestSupport.ReceiveReceiverPayloadWithTimeout(
+            provider2, "new", 3000));
     }
 
     [Fact]
     public void gateway_protocol_ws()
     {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-        if (!CoreTestSupport.IsTransportSupported("ws"))
+        if (!CoreTestSupport.IsNativeAvailable() || !CoreTestSupport.IsTransportSupported("ws"))
             return;
 
         using var ctx = new Context();
@@ -422,13 +357,11 @@ public sealed class test_gateway
         registry.Start();
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe("svc-ws");
 
         using var provider = new Receiver(ctx);
-        using var providerRouter = provider.CreateRouterSocket();
-        RegisterProvider(provider, providerRouter, regRouter, "svc-ws", 1, "PROVWS",
-            "ws");
+        RegisterProvider(provider, regRouter, "svc-ws", 1, "PROVWS", "ws");
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
             discovery.ReceiverCount("svc-ws") == 1, 4000));
@@ -438,16 +371,14 @@ public sealed class test_gateway
             gateway.ConnectionCount("svc-ws") > 0, 4000));
 
         CoreTestSupport.SendGatewayWithRetry(gateway, "svc-ws", "ws-test"u8, 2000);
-        Assert.Equal("ws-test", CoreTestSupport.ReceiveRouterPayloadWithTimeout(
-            providerRouter, "ws-test", 3000));
+        Assert.Equal("ws-test", CoreTestSupport.ReceiveReceiverPayloadWithTimeout(
+            provider, "ws-test", 3000));
     }
 
     [Fact]
     public void gateway_protocol_tls()
     {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-        if (!CoreTestSupport.IsTransportSupported("tls"))
+        if (!CoreTestSupport.IsNativeAvailable() || !CoreTestSupport.IsTransportSupported("tls"))
             return;
 
         string caCert = ResolveRepoPath("bindings/dotnet/tests/certs/ca.crt");
@@ -462,14 +393,12 @@ public sealed class test_gateway
         registry.Start();
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe("svc-tls");
 
         using var provider = new Receiver(ctx);
         provider.SetTlsServer(serverCert, serverKey);
-        using var providerRouter = provider.CreateRouterSocket();
-        RegisterProvider(provider, providerRouter, regRouter, "svc-tls", 1,
-            "PROVTLS", "tls");
+        RegisterProvider(provider, regRouter, "svc-tls", 1, "PROVTLS", "tls");
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
             discovery.ReceiverCount("svc-tls") == 1, 4000));
@@ -480,16 +409,14 @@ public sealed class test_gateway
             gateway.ConnectionCount("svc-tls") > 0, 5000));
 
         CoreTestSupport.SendGatewayWithRetry(gateway, "svc-tls", "tls-test"u8, 3000);
-        Assert.Equal("tls-test", CoreTestSupport.ReceiveRouterPayloadWithTimeout(
-            providerRouter, "tls-test", 4000));
+        Assert.Equal("tls-test", CoreTestSupport.ReceiveReceiverPayloadWithTimeout(
+            provider, "tls-test", 4000));
     }
 
     [Fact]
     public void gateway_protocol_wss()
     {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-        if (!CoreTestSupport.IsTransportSupported("wss"))
+        if (!CoreTestSupport.IsNativeAvailable() || !CoreTestSupport.IsTransportSupported("wss"))
             return;
 
         string caCert = ResolveRepoPath("bindings/dotnet/tests/certs/ca.crt");
@@ -504,14 +431,12 @@ public sealed class test_gateway
         registry.Start();
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe("svc-wss");
 
         using var provider = new Receiver(ctx);
         provider.SetTlsServer(serverCert, serverKey);
-        using var providerRouter = provider.CreateRouterSocket();
-        RegisterProvider(provider, providerRouter, regRouter, "svc-wss", 1,
-            "PROVWSS", "wss");
+        RegisterProvider(provider, regRouter, "svc-wss", 1, "PROVWSS", "wss");
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
             discovery.ReceiverCount("svc-wss") == 1, 4000));
@@ -522,8 +447,8 @@ public sealed class test_gateway
             gateway.ConnectionCount("svc-wss") > 0, 5000));
 
         CoreTestSupport.SendGatewayWithRetry(gateway, "svc-wss", "wss-test"u8, 3000);
-        Assert.Equal("wss-test", CoreTestSupport.ReceiveRouterPayloadWithTimeout(
-            providerRouter, "wss-test", 4000));
+        Assert.Equal("wss-test", CoreTestSupport.ReceiveReceiverPayloadWithTimeout(
+            provider, "wss-test", 4000));
     }
 
     [Fact]
@@ -541,16 +466,14 @@ public sealed class test_gateway
 
         const string serviceName = "lb-svc";
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe(serviceName);
 
         using var provider1 = new Receiver(ctx);
-        using var router1 = provider1.CreateRouterSocket();
-        RegisterProvider(provider1, router1, regRouter, serviceName, 10, "PROV1");
+        RegisterProvider(provider1, regRouter, serviceName, 10, "PROV1");
 
         using var provider2 = new Receiver(ctx);
-        using var router2 = provider2.CreateRouterSocket();
-        RegisterProvider(provider2, router2, regRouter, serviceName, 10, "PROV2");
+        RegisterProvider(provider2, regRouter, serviceName, 10, "PROV2");
 
         using var gateway = new Gateway(ctx, discovery);
         Assert.True(CoreTestSupport.WaitUntil(() =>
@@ -564,9 +487,11 @@ public sealed class test_gateway
         int recv2 = 0;
         Assert.True(CoreTestSupport.WaitUntil(() =>
         {
-            if (CoreTestSupport.TryReceiveMultipartLastPart(router1, 256, out _))
+            if (CoreTestSupport.TryReceiveReceiverMultipartLastPart(provider1, 256,
+                    out _))
                 recv1++;
-            if (CoreTestSupport.TryReceiveMultipartLastPart(router2, 256, out _))
+            if (CoreTestSupport.TryReceiveReceiverMultipartLastPart(provider2, 256,
+                    out _))
                 recv2++;
             return recv1 + recv2 >= numMessages;
         }, 6000, 2));
@@ -589,16 +514,14 @@ public sealed class test_gateway
 
         const string serviceName = "lb-weighted";
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe(serviceName);
 
         using var provider1 = new Receiver(ctx);
-        using var router1 = provider1.CreateRouterSocket();
-        RegisterProvider(provider1, router1, regRouter, serviceName, 8, "WPROV1");
+        RegisterProvider(provider1, regRouter, serviceName, 8, "WPROV1");
 
         using var provider2 = new Receiver(ctx);
-        using var router2 = provider2.CreateRouterSocket();
-        RegisterProvider(provider2, router2, regRouter, serviceName, 1, "WPROV2");
+        RegisterProvider(provider2, regRouter, serviceName, 1, "WPROV2");
 
         using var gateway = new Gateway(ctx, discovery);
         gateway.SetLoadBalancing(serviceName, GatewayLoadBalancing.Weighted);
@@ -613,9 +536,11 @@ public sealed class test_gateway
         int recv2 = 0;
         Assert.True(CoreTestSupport.WaitUntil(() =>
         {
-            if (CoreTestSupport.TryReceiveMultipartLastPart(router1, 256, out _))
+            if (CoreTestSupport.TryReceiveReceiverMultipartLastPart(provider1, 256,
+                    out _))
                 recv1++;
-            if (CoreTestSupport.TryReceiveMultipartLastPart(router2, 256, out _))
+            if (CoreTestSupport.TryReceiveReceiverMultipartLastPart(provider2, 256,
+                    out _))
                 recv2++;
             return recv1 + recv2 >= numMessages;
         }, 8000, 2));
@@ -641,12 +566,11 @@ public sealed class test_gateway
 
         const string serviceName = "svc-sync";
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-        discovery.ConnectRegistry(regPub);
+        discovery.ConnectRegistry(regRouter);
         discovery.Subscribe(serviceName);
 
         using var provider = new Receiver(ctx);
-        using var router = provider.CreateRouterSocket();
-        RegisterProvider(provider, router, regRouter, serviceName, 1, "SYNC1");
+        RegisterProvider(provider, regRouter, serviceName, 1, "SYNC1");
 
         using var gateway = new Gateway(ctx, discovery);
         Assert.True(CoreTestSupport.WaitUntil(() =>
@@ -684,7 +608,8 @@ public sealed class test_gateway
         int received = 0;
         Assert.True(CoreTestSupport.WaitUntil(() =>
         {
-            if (CoreTestSupport.TryReceiveMultipartLastPart(router, 256, out _))
+            if (CoreTestSupport.TryReceiveReceiverMultipartLastPart(provider, 256,
+                    out _))
                 received++;
             return received >= expected;
         }, 10000, 1));

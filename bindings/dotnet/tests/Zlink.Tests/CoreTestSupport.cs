@@ -194,25 +194,77 @@ internal static class CoreTestSupport
         return Encoding.UTF8.GetString(payload).Trim('\0');
     }
 
-    internal static string ReceiveRouterPayloadWithTimeout(Zlink.Socket router,
+    internal static string ReceiveReceiverPayloadWithTimeout(Receiver receiver,
         string expectedPayload, int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            string first = ReceiveUtf8WithTimeout(router, 500);
-            if (first == expectedPayload)
-                return first;
+            string payload = ReceiveReceiverUtf8WithTimeout(receiver, 500);
+            if (payload == expectedPayload)
+                return payload;
+        }
+        throw new TimeoutException("receiver payload timeout");
+    }
 
-            int more = router.GetOption(SocketOptions.RcvMore);
-            if (more != 0)
+    internal static string ReceiveReceiverUtf8WithTimeout(Receiver receiver,
+        int timeoutMs)
+    {
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
             {
-                string second = ReceiveUtf8WithTimeout(router, 500);
-                if (second == expectedPayload)
-                    return second;
+                ReceiverMessage received = receiver.Receive(ReceiveFlags.DontWait);
+                try
+                {
+                    if (received.Parts.Length == 0)
+                        return string.Empty;
+                    return Encoding.UTF8.GetString(
+                        received.Parts[^1].AsReadOnlySpan()).Trim('\0');
+                }
+                finally
+                {
+                    foreach (Message part in received.Parts)
+                        part.Dispose();
+                }
+            }
+            catch (ZlinkException ex) when (IsRetryable(ex))
+            {
+            }
+            Thread.Sleep(10);
+        }
+        throw new TimeoutException("receiver receive timeout");
+    }
+
+    internal static bool TryReceiveReceiverMultipartLastPart(Receiver receiver,
+        int maxSize, out byte[] lastPart)
+    {
+        _ = maxSize;
+        try
+        {
+            ReceiverMessage received = receiver.Receive(ReceiveFlags.DontWait);
+            try
+            {
+                if (received.Parts.Length == 0)
+                {
+                    lastPart = Array.Empty<byte>();
+                    return true;
+                }
+                lastPart = received.Parts[^1].AsReadOnlySpan().ToArray();
+                return true;
+            }
+            finally
+            {
+                foreach (Message part in received.Parts)
+                    part.Dispose();
             }
         }
-        throw new TimeoutException("router payload timeout");
+        catch (ZlinkException ex) when (IsRetryable(ex))
+        {
+            lastPart = Array.Empty<byte>();
+            return false;
+        }
     }
 
     internal static bool TryReceiveMultipartLastPart(Zlink.Socket socket,

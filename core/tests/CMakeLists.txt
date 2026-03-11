@@ -604,7 +604,7 @@ assert_named_case_coverage(
 assert_named_case_coverage(
   "test_service_discovery"
   "${CMAKE_CURRENT_LIST_DIR}/discovery/test_service_discovery.cpp"
-  "RUN_TEST"
+  "RUN_TEST_CASE"
   SERVICE_DISCOVERY_CASES)
 
 if(TARGET test_service_discovery)

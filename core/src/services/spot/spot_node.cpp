@@ -1715,6 +1715,7 @@ int spot_node_t::destroy ()
     std::string bound_endpoint;
     int first_error = 0;
     int graceful_error = 0;
+    int final_error = 0;
     bool used_abortive = false;
 
     spot_node_debugf ("destroy begin node=%p service=%s registered=%d",
@@ -1778,6 +1779,7 @@ int spot_node_t::destroy ()
                       static_cast<void *> (this));
     preserve_first_error (wait_owned_socket_removals (10000), &first_error);
     graceful_error = first_error;
+    final_error = graceful_error;
 
     if (_runtime
         && (first_error != 0 || _runtime->live_socket_slot_count () != 0
@@ -1785,17 +1787,17 @@ int spot_node_t::destroy ()
         const int abort_reason = first_error != 0 ? first_error : ETIMEDOUT;
         const size_t live_slots = _runtime->live_socket_slot_count ();
         const size_t live_attachments = _runtime->attachment_count ();
+        const size_t tracked_sockets = _lifecycle.owned_socket_count ();
         used_abortive = true;
         spot_shutdown_logf (true,
-                            "service=spot node=%p shutdown=abortive reason=%d live_slots=%zu attachments=%zu",
+                            "service=spot node=%p shutdown=abortive reason=%d live_slots=%zu attachments=%zu tracked=%zu",
                             static_cast<void *> (this), abort_reason,
-                            live_slots, live_attachments);
+                            live_slots, live_attachments, tracked_sockets);
         _runtime->abortive_stop ();
+        final_error = 0;
         preserve_first_error (_lifecycle.force_wait_remaining (5000),
-                              &graceful_error);
-        preserve_first_error (wait_owned_socket_removals (5000),
-                              &graceful_error);
-        first_error = 0;
+                              &final_error);
+        preserve_first_error (wait_owned_socket_removals (5000), &final_error);
     }
 
     if (!used_abortive)
@@ -1803,12 +1805,10 @@ int spot_node_t::destroy ()
                             "service=spot node=%p shutdown=graceful",
                             static_cast<void *> (this));
     spot_node_debugf ("destroy done node=%p", static_cast<void *> (this));
-    if (first_error != 0) {
-        errno = first_error;
+    if (final_error != 0) {
+        errno = final_error;
         return -1;
     }
-    if (used_abortive && graceful_error != 0)
-        errno = graceful_error;
     return 0;
 }
 }

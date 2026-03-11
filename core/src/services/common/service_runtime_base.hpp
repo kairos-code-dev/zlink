@@ -50,10 +50,11 @@ class service_runtime_base_t
         if (!socket_)
             return 0;
         socket_base_t *socket = socket_;
+        const int socket_id = socket->socket_id ();
         {
             scoped_lock_t lock (_sync);
-            _owned_sockets.erase (socket->socket_id ());
-            _closing_sockets[socket->socket_id ()] = socket;
+            _owned_sockets.erase (socket_id);
+            _closing_sockets[socket_id] = socket;
         }
         socket->stop ();
         socket->close ();
@@ -70,13 +71,17 @@ class service_runtime_base_t
             return 0;
 
         socket_base_t *socket = socket_;
+        const int socket_id = socket->socket_id ();
         {
             scoped_lock_t lock (_sync);
-            _owned_sockets.erase (socket->socket_id ());
-            _closing_sockets.erase (socket->socket_id ());
+            _owned_sockets.erase (socket_id);
+            _closing_sockets[socket_id] = socket;
         }
         socket_ = NULL;
-        return _ctx->close_socket_and_wait (socket, timeout_ms_);
+        const int rc = _ctx->close_socket_and_wait (socket, timeout_ms_);
+        if (rc == 0)
+            erase_closing_socket (socket_id);
+        return rc;
     }
 
     int wait_drained (int timeout_ms_)
@@ -93,7 +98,7 @@ class service_runtime_base_t
             {
                 scoped_lock_t lock (_sync);
                 owned_count = _owned_sockets.size ();
-                sockets.swap (_closing_sockets);
+                sockets = _closing_sockets;
             }
 
             if (owned_count == 0 && sockets.empty ())
@@ -125,6 +130,7 @@ class service_runtime_base_t
                 if (_ctx->wait_for_socket_removal (it->second, socket_timeout_ms)
                     != 0)
                     return -1;
+                erase_closing_socket (it->first);
                 if (timeout_ms_ >= 0) {
                     const uint64_t now_ms = zlink::clock_t ().now_ms ();
                     if (now_ms >= deadline_ms) {
@@ -150,8 +156,14 @@ class service_runtime_base_t
             std::map<int, const socket_base_t *> closing;
             {
                 scoped_lock_t lock (_sync);
-                owned.swap (_owned_sockets);
-                closing.swap (_closing_sockets);
+                owned = _owned_sockets;
+                for (std::map<int, const socket_base_t *>::const_iterator it =
+                       owned.begin ();
+                     it != owned.end (); ++it) {
+                    _closing_sockets[it->first] = it->second;
+                }
+                _owned_sockets.clear ();
+                closing = _closing_sockets;
             }
 
             if (owned.empty () && closing.empty ())
@@ -178,6 +190,7 @@ class service_runtime_base_t
                 socket->close ();
                 if (_ctx->wait_for_socket_removal (socket, remaining_ms) != 0)
                     return -1;
+                erase_closing_socket (it->first);
                 if (timeout_ms_ >= 0) {
                     const uint64_t now_ms = zlink::clock_t ().now_ms ();
                     if (now_ms >= deadline_ms) {
@@ -191,9 +204,12 @@ class service_runtime_base_t
             for (std::map<int, const socket_base_t *>::const_iterator it =
                    closing.begin ();
                  it != closing.end (); ++it) {
+                if (owned.find (it->first) != owned.end ())
+                    continue;
                 if (_ctx->wait_for_socket_removal (it->second, remaining_ms)
                     != 0)
                     return -1;
+                erase_closing_socket (it->first);
                 if (timeout_ms_ >= 0) {
                     const uint64_t now_ms = zlink::clock_t ().now_ms ();
                     if (now_ms >= deadline_ms) {
@@ -213,6 +229,12 @@ class service_runtime_base_t
     }
 
   private:
+    void erase_closing_socket (int socket_id_)
+    {
+        scoped_lock_t lock (_sync);
+        _closing_sockets.erase (socket_id_);
+    }
+
     ctx_t *_ctx;
     mutable mutex_t _sync;
     std::map<int, const socket_base_t *> _owned_sockets;

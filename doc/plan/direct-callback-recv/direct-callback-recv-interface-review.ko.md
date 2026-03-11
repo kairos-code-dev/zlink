@@ -164,7 +164,7 @@ typedef struct zlink_socket_handler_t
 추가 규칙:
 
 - `spot_node`는 독립 option family를 갖지 않는다.
-- `spot_node` default pub/sub setter는 각각 `SpotPub` / `SpotSub` enum을 그대로 쓴다.
+- `spot_node` pub/sub option setter는 각각 `SpotPub` / `SpotSub` enum을 그대로 쓴다.
 - typed enum 도입은 support matrix를 바꾸는 작업이 아니라 existing support 결정을
   타입과 값 체계로 옮기는 작업이다.
 
@@ -175,7 +175,7 @@ typedef struct zlink_socket_handler_t
 - `spot_node register/unregister` 추가 금지: public `spot_node`도 `gateway`와 같은 레벨의 data-plane facade로 제한한다.
 - `gateway` monitor의 `SERVICE_READY` / `SERVICE_LOST` / `ROUTE_UP` / `ROUTE_DOWN` event 제거 금지.
 - `SpotPub` mode/queue policy 숫자의 zero-init 기본값 의미 변경 금지.
-- poller/monitor bitmask의 기존 bit 의미 변경 금지.
+- monitor bitmask의 기존 bit 의미 변경 금지.
 
 ### 0.5 이 문서만으로 작업할 때 체크리스트
 
@@ -194,13 +194,13 @@ typedef struct zlink_socket_handler_t
 | `typedef void (*zlink_gateway_handler_fn)(zlink_gateway_msg_kind_t kind, const zlink_routing_id_t *source_rid, zlink_msg_t *parts, size_t part_count)` | 삭제하고 `zlink_socket_msg_handler_fn` 재사용 | 현행 public callback은 `kind`를 포함하지만, canonical 방향에서는 internal demux 정보를 사용자에게 노출하지 않고 raw socket 기본 handler를 재사용한다. |
 | `void *zlink_gateway_new(void *ctx, const char *service_name, const char *routing_id, zlink_gateway_handler_fn handler)` | `void *zlink_gateway_new(void *ctx, const char *service_name, const char *routing_id, zlink_socket_msg_handler_fn handler)` | `gateway`는 service-bound identity만 생성 시점에 고정하고, discovery 연결은 선택적 attach 단계로 분리한다. callback typedef도 raw socket 기본 handler로 정리한다. |
 | `int zlink_gateway_attach_discovery(void *gateway, void *discovery)` | 유지 | 현재 public surface도 attach 모델을 사용하므로, canonical 문서에서는 이 contract를 유지한 채 topology ownership 규칙만 명확히 한다. |
-| `없음` | 삭제 상태 유지 | public `gateway`는 data-plane/LB handle로 제한하고, 별도 public register API는 두지 않는다. |
-| `없음` | 삭제 상태 유지 | 공개 가중치 변경 surface는 peer 단위 `zlink_gateway_update_peer_weight()` 하나로 정리한다. |
-| `없음` | 삭제 상태 유지 | unregister도 별도 public API로 두지 않고 discovery/registry runtime의 topology 수렴으로 처리한다. |
+| `int zlink_gateway_register(void *gateway, const char *advertise_endpoint, uint32_t weight)` | 삭제 상태 유지 | public `gateway`는 data-plane/LB handle로 제한하고, 별도 public register API는 두지 않는다. |
+| `int zlink_gateway_update_weight(void *gateway, uint32_t weight)` | 삭제 상태 유지 | 공개 가중치 변경 surface는 peer 단위 `zlink_gateway_update_peer_weight()` 하나로 정리한다. |
+| `int zlink_gateway_unregister(void *gateway)` | 삭제 상태 유지 | unregister도 별도 public API로 두지 않고 discovery/registry runtime의 topology 수렴으로 처리한다. |
 | `int zlink_gateway_send(void *gateway, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags)` | 유지 | 현재 public shape도 service-bound send surface이므로 per-send `service_name` 없이 유지한다. |
-| `없음` | 삭제 상태 유지 | `gateway` send/recv public surface는 `msg_t` 기반으로만 유지한다. |
+| `int zlink_gateway_send_bytes(void *gateway, const void *data, size_t size, zlink_send_flags_t flags)` | 삭제 상태 유지 | `gateway` send/recv public surface는 `msg_t` 기반으로만 유지한다. |
 | `int zlink_gateway_send_rid(void *gateway, const zlink_routing_id_t *routing_id, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags)` | 유지 | direct send/reply도 target RID만 필요하고 service context는 handle이 제공한다. |
-| `없음` | 삭제 상태 유지 | direct send/reply도 `msg_t` 기반 surface만 남긴다. |
+| `int zlink_gateway_send_rid_bytes(void *gateway, const zlink_routing_id_t *routing_id, const void *data, size_t size, zlink_send_flags_t flags)` | 삭제 상태 유지 | direct send/reply도 `msg_t` 기반 surface만 남긴다. |
 | `#define ZLINK_GATEWAY_LB_ROUND_ROBIN`, `#define ZLINK_GATEWAY_LB_WEIGHTED` | `typedef enum zlink_gateway_lb_strategy_t { ... } zlink_gateway_lb_strategy_t;` | 닫힌 값 집합이므로 macro보다 enum이 명확하다. |
 | `int zlink_gateway_set_lb_strategy(void *gateway, int strategy)` | `int zlink_gateway_set_lb_strategy(void *gateway, zlink_gateway_lb_strategy_t strategy)` | strategy도 handle이 대표하는 단일 service에 적용하므로 `service_name`을 별도 인자로 받지 않는다. |
 | `zlink_gateway_peer_info_t` 신규 | 적용 | `gateway`에서만 의미 있는 service peer weight를 공용 `zlink_peer_info_t`에 섞지 않고, gateway 전용 peer info struct로 분리한다. |
@@ -266,6 +266,9 @@ int zlink_gateway_router_peers (void *gateway,
 int zlink_gateway_update_peer_weight (void *gateway,
                                       const zlink_routing_id_t *routing_id,
                                       uint32_t weight);
+
+int zlink_gateway_set_handler (void *gateway,
+                               zlink_socket_msg_handler_fn handler);
 
 int zlink_gateway_set_lb_strategy (void *gateway,
                                    zlink_gateway_lb_strategy_t strategy);
@@ -358,7 +361,7 @@ canonical 계약으로 읽는다.
 | option 정의 방식 | `#define` 나열 대신 `typedef enum ..._option_t` 사용 | option 집합의 소속과 의미를 타입 수준에서 더 명확히 한다. |
 | option 정수 값 | enum type이 달라도 실제 정수 값은 전역에서 겹치지 않게 배정 | 구현 내부 switch/logging/binding layer에서 family 구분이 섞여도 충돌하지 않도록 한다. |
 | gateway option setter | `zlink_gateway_set_option(void *gateway, zlink_gateway_option_t option, ...)` | family별 enum을 직접 받는다. |
-| spot node pub/sub default option setter | `zlink_spot_node_set_pub_option(void *node, zlink_spot_pub_option_t option, ...)`, `zlink_spot_node_set_sub_option(void *node, zlink_spot_sub_option_t option, ...)` | node-owned default pub/sub option도 standalone pub/sub와 같은 enum namespace를 직접 사용한다. |
+| spot node pub/sub option setter | `zlink_spot_node_set_pub_option(void *node, zlink_spot_pub_option_t option, ...)`, `zlink_spot_node_set_sub_option(void *node, zlink_spot_sub_option_t option, ...)` | node 내부 pub/sub option도 standalone pub/sub와 같은 enum namespace를 직접 사용한다. |
 | unified `zlink_spot_set_option(..., role, option, ...)` | `zlink_spot_set_pub_option()` / `zlink_spot_set_sub_option()`로 분리 | `role + int option` 조합은 enum 타입 이점을 약화시킨다. role별 enum을 제대로 살리려면 setter도 분리하는 편이 낫다. |
 
 확정 값 배정:
@@ -378,8 +381,8 @@ canonical 계약으로 읽는다.
 `spot_node`에 대해서는 별도 `zlink_spot_node_option_t`를 정의하지 않는다.
 
 - `spot_node`는 pub/sub option을 직접 소유하는 별도 family가 아니다.
-- node-owned default pub는 `zlink_spot_pub_option_t`를 사용한다.
-- node-owned default sub는 `zlink_spot_sub_option_t`를 사용한다.
+- node 내부 pub는 `zlink_spot_pub_option_t`를 사용한다.
+- node 내부 sub는 `zlink_spot_sub_option_t`를 사용한다.
 - 따라서 option enum은 `pub` / `sub` 두 개만 공개하고, `node`는 setter surface만 제공한다.
 
 확정 enum:
@@ -444,17 +447,17 @@ data 전달은 `msg_t` 중심으로 단순화"하는 쪽이 더 일관적이다.
 
 | 현재 인터페이스 | 변경안 | 변경 이유 |
 |---|---|---|
-| `없음` | 삭제 상태 유지 | `spot` public send/recv surface도 `msg_t` 기반으로만 유지한다. |
-| `없음` | 삭제 상태 유지 | 위와 동일. |
-| `없음` | 삭제 상태 유지 | 위와 동일. |
+| `int zlink_spot_publish_bytes(void *spot, const char *topic_id, const void *data, size_t size, zlink_send_flags_t flags)` | 삭제 상태 유지 | `spot` public send/recv surface도 `msg_t` 기반으로만 유지한다. |
+| `int zlink_spot_pub_publish_bytes(void *pub, const char *topic_id, const void *data, size_t size, zlink_send_flags_t flags)` | 삭제 상태 유지 | standalone `spot_pub`도 `msg_t` 기반 surface만 유지한다. |
+| `int zlink_spot_node_publish_bytes(void *node, const char *topic_id, const void *data, size_t size, zlink_send_flags_t flags)` | 삭제 상태 유지 | `spot_node` publish 경로도 `msg_t` 기반 surface만 유지한다. |
 | `void *zlink_spot_node_new(void *ctx, const char *service_name, zlink_spot_handler_fn handler)` | 유지 | `spot_node`는 service-bound handle이므로 `service_name`을 생성 시점에 고정하고, recv-capable surface이므로 최초 handler도 생성 시점에 받는다. |
 | `int zlink_spot_set_pub_option(void *spot, zlink_spot_pub_option_t option, const void *optval, size_t optvallen)`, `int zlink_spot_set_sub_option(void *spot, zlink_spot_sub_option_t option, const void *optval, size_t optvallen)` | 유지 | pub/sub option namespace를 함수 시그니처에서 직접 분리하는 현재 public shape를 유지한다. |
 | `int zlink_spot_peers_pub(void *spot, zlink_peer_info_t *peers, size_t *count)`, `int zlink_spot_peers_sub(void *spot, zlink_peer_info_t *peers, size_t *count)` | 유지 | unified facade에서도 split peer API를 제공하는 현재 public shape를 유지한다. |
-| `없음` | 삭제 상태 유지 | public `spot_node`도 `gateway`와 같은 레벨로 맞추고 별도 public register API는 두지 않는다. discovery/runtime이 service-bound node identity를 기준으로 topology를 수렴한다. |
-| `없음` | 삭제 상태 유지 | unregister도 별도 public API로 두지 않는다. |
+| `int zlink_spot_node_register(void *node, const char *advertise_endpoint)` | 삭제 상태 유지 | public `spot_node`도 `gateway`와 같은 레벨로 맞추고 별도 public register API는 두지 않는다. discovery/runtime이 service-bound node identity를 기준으로 topology를 수렴한다. |
+| `int zlink_spot_node_unregister(void *node)` | 삭제 상태 유지 | unregister도 별도 public API로 두지 않는다. |
 | `int zlink_spot_node_attach_discovery(void *node, void *discovery)` | 유지 | discovery watch 대상 service도 `spot_node` 생성 시점 identity를 사용하므로 service 인자를 받지 않는 attach API를 유지한다. |
-| `int zlink_spot_node_set_pub_option(void *node, zlink_spot_pub_option_t option, const void *optval, size_t optvallen)` | 유지 | node default pub option도 standalone `spot_pub`와 동일 enum을 사용한다. |
-| `int zlink_spot_node_set_sub_option(void *node, zlink_spot_sub_option_t option, const void *optval, size_t optvallen)` | 유지 | node default sub option도 standalone `spot_sub`와 동일 enum을 사용한다. |
+| `int zlink_spot_node_set_pub_option(void *node, zlink_spot_pub_option_t option, const void *optval, size_t optvallen)` | 유지 | node pub option도 standalone `spot_pub`와 동일 enum을 사용한다. |
+| `int zlink_spot_node_set_sub_option(void *node, zlink_spot_sub_option_t option, const void *optval, size_t optvallen)` | 유지 | node sub option도 standalone `spot_sub`와 동일 enum을 사용한다. |
 | `void *zlink_spot_node_default_pub(void *node)` | 삭제 | `spot_node` 내부 lazy child handle을 public에 노출하지 않는다. public split child accessor는 unified `spot` / `spot_node_*` contract와 충돌하므로 제거한다. |
 | `void *zlink_spot_node_default_sub(void *node)` | 삭제 | 위와 동일. |
 | `int zlink_spot_pub_set_option(void *pub, zlink_spot_pub_option_t pub_option, const void *optval, size_t optvallen)` | 유지 | standalone pub도 같은 pub option enum을 유지한다. |
@@ -539,6 +542,15 @@ int zlink_spot_sub_set_option (void *sub,
                                zlink_spot_sub_option_t sub_option,
                                const void *optval,
                                size_t optvallen);
+
+int zlink_spot_set_handler (void *spot,
+                            zlink_spot_handler_fn handler);
+
+int zlink_spot_node_set_handler (void *spot_node,
+                                 zlink_spot_handler_fn handler);
+
+int zlink_spot_sub_set_handler (void *sub,
+                                zlink_spot_handler_fn handler);
 ```
 
 추가 원칙:
@@ -549,12 +561,12 @@ int zlink_spot_sub_set_option (void *sub,
 - `spot_node`는 `service_name`을 생성 시점에 받는 service-bound handle이다.
 - `spot` / `spot_pub` / `spot_sub`는 이미 service-bound인 `spot_node`에 attach되는 facade다.
 - unified `spot`은 생성 시 역할을 선택하지 않으며, 항상 pub/sub를 함께 가진 facade로 본다.
-- `spot_node` default facade와 attached `spot` facade가 공존하더라도
+- `spot_node` 내부 pub/sub와 attached `spot` facade가 공존하더라도
   pub/sub option namespace는 동일 enum 체계를 공유하도록 정리한다.
 - standalone `spot_pub` / `spot_sub`를 유지하더라도 unified `spot` facade와
   option/publish 계약이 다르게 보이지 않도록 맞춘다.
 - `spot_node`는 별도 option namespace를 갖지 않는다.
-  node-owned default pub/sub도 각각 `zlink_spot_pub_option_t`,
+  node 내부 pub/sub도 각각 `zlink_spot_pub_option_t`,
   `zlink_spot_sub_option_t`를 그대로 사용한다.
 - 즉 `zlink_spot_node_option_t`는 도입하지 않는다.
 - `spot_node`의 discovery attach lifecycle은 계속 `spot_node_*` API가 담당한다.
@@ -563,9 +575,9 @@ int zlink_spot_sub_set_option (void *sub,
 - SPOT registration에는 gateway-style `weight`를 두지 않는다.
   SPOT는 load-balancing service-peer registry가 아니라 peer discovery/mesh 구성 정보의
   광고이기 때문이다.
-- `zlink_spot_node_set_pub_option()`은 default pub와 future child pub에 적용되는
+- `zlink_spot_node_set_pub_option()`은 attach된 child pub에 적용되는
   baseline option setter로 정의한다.
-- `zlink_spot_node_set_sub_option()`은 default sub와 future child sub에 적용되는
+- `zlink_spot_node_set_sub_option()`은 attach된 child sub에 적용되는
   baseline option setter로 정의한다.
 - public `spot_node`는 별도 `register()` / `unregister()` surface를 두지 않는다.
 - `zlink_spot_node_attach_discovery()`는 service name을 인자로 받지 않는다.
@@ -806,7 +818,7 @@ header 전반의 typed-constant 정리 범위에서는 아래 surface도 같은 
 - `registry` / `ctx` option은 callback-only recv 의미와 직접 연결되지는 않지만,
   public header의 loosely typed 상수 집합을 정리한다는 관점에서는 같은 migration 작업에
   포함해 typed enum과 전역 값 체계 원칙을 동일하게 적용한다.
-- 구현 우선순위는 raw socket / service option / monitor / poller보다 낮을 수 있지만,
+- 구현 우선순위는 raw socket / service option / monitor / send-ready notification보다 낮을 수 있지만,
   인터페이스 shape 자체는 이 문서 기준으로 확정한다.
 
 ## 5. 기타 상수군 enum 확정안
@@ -828,6 +840,7 @@ option 외에도 다음 상수군은 macro보다 enum이 더 자연스럽다.
 | SPOT pub/sub option | `zlink_spot_pub_option_t`, `zlink_spot_sub_option_t` |
 | SPOT pub mode / queue full policy | dedicated enum 추가 |
 | send flags (`ZLINK_DONTWAIT`, `ZLINK_SNDMORE`) | `zlink_send_flags_t` |
+| send-ready callback | `zlink_send_ready_handler_fn` |
 | disconnect reason (`ZLINK_DISCONNECT_*`) | `zlink_disconnect_reason_t` |
 | topology source (`ZLINK_TOPOLOGY_SOURCE_*`) | `zlink_topology_source_t` |
 | topology state (`ZLINK_TOPOLOGY_STATE_*`) | `zlink_topology_state_t` |
@@ -855,18 +868,12 @@ option 외에도 다음 상수군은 macro보다 enum이 더 자연스럽다.
 | registry socket role | `int zlink_registry_setsockopt(void *registry, int socket_role, int option, const void *optval, size_t optvallen)` | `int zlink_registry_setsockopt(void *registry, zlink_registry_socket_role_t socket_role, zlink_socket_option_t option, const void *optval, size_t optvallen)` |
 | context option | `int zlink_ctx_set(void *ctx, int option, int optval)` | `int zlink_ctx_set(void *ctx, zlink_ctx_option_t option, int optval)` |
 | raw socket callback | `int zlink_socket_set_msg_handler(void *s, zlink_socket_msg_handler_fn handler)` 계열 | `int zlink_socket_set_handler(void *s, const zlink_socket_handler_t *handler)` |
-| poller event mask | `int zlink_poller_add(..., short events)` | `int zlink_poller_add(..., zlink_poller_event_mask_t events)` |
-| poller event mask | `int zlink_poller_add_spot_sub(..., short events)` | 삭제 | 현재 public poller mask가 `OUT/ERR/PRI`만 유지되므로 recv-only `spot_sub` helper에는 의미 있는 readable readiness를 표현할 수 없다. |
-| poller event mask | `int zlink_poller_add_spot_pub(..., short events)` | `int zlink_poller_add_spot_pub(..., zlink_poller_event_mask_t events)` |
-| poller event mask | `int zlink_poller_add_gateway(..., short events)` | `int zlink_poller_add_gateway(..., zlink_poller_event_mask_t events)` |
-| poller event mask | `int zlink_poller_add_monitor(..., short events)` | `int zlink_poller_add_monitor(..., zlink_poller_event_mask_t events)` |
-| poller event mask | `int zlink_poller_add_fd(..., short events)` | `int zlink_poller_add_fd(..., zlink_poller_event_mask_t events)` |
-| poller event mask | `int zlink_poller_modify(..., short events)` | `int zlink_poller_modify(..., zlink_poller_event_mask_t events)` |
-| poller event mask | `int zlink_poller_modify_spot_sub(..., short events)` | 삭제 | 위와 동일. |
-| poller event mask | `int zlink_poller_modify_spot_pub(..., short events)` | `int zlink_poller_modify_spot_pub(..., zlink_poller_event_mask_t events)` |
-| poller event mask | `int zlink_poller_modify_gateway(..., short events)` | `int zlink_poller_modify_gateway(..., zlink_poller_event_mask_t events)` |
-| poller event mask | `int zlink_poller_modify_monitor(..., short events)` | `int zlink_poller_modify_monitor(..., zlink_poller_event_mask_t events)` |
-| poller event mask | `int zlink_poller_modify_fd(..., short events)` | `int zlink_poller_modify_fd(..., zlink_poller_event_mask_t events)` |
+| send-ready callback | 없음 | `int zlink_socket_set_send_ready_handler(void *s, zlink_send_ready_handler_fn handler)` |
+| send-ready callback | 없음 | `int zlink_gateway_set_send_ready_handler(void *gateway, zlink_send_ready_handler_fn handler)` |
+| send-ready callback | 없음 | `int zlink_spot_node_set_send_ready_handler(void *node, zlink_send_ready_handler_fn handler)` |
+| send-ready callback | 없음 | `int zlink_spot_set_send_ready_handler(void *spot, zlink_send_ready_handler_fn handler)` |
+| send-ready callback | 없음 | `int zlink_spot_pub_set_send_ready_handler(void *pub, zlink_send_ready_handler_fn handler)` |
+| poller API | `zlink_poll()`, `zlink_poller_*` 전 계열 | 삭제 |
 | monitor event mask | `void *zlink_socket_monitor_open(void *s, int events, zlink_monitor_handler_fn handler)` | `void *zlink_socket_monitor_open(void *s, zlink_socket_monitor_event_mask_t events, zlink_monitor_handler_fn handler)` |
 | discovery monitor event mask | `void *zlink_discovery_monitor_open(void *discovery, int events, zlink_service_monitor_handler_fn handler)` | `void *zlink_discovery_monitor_open(void *discovery, zlink_discovery_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler)` |
 | gateway monitor event mask | `void *zlink_gateway_monitor_open(void *gateway, int events, zlink_service_monitor_handler_fn handler)` | `void *zlink_gateway_monitor_open(void *gateway, zlink_gateway_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler)` |
@@ -898,6 +905,9 @@ option 외에도 다음 상수군은 macro보다 enum이 더 자연스럽다.
 - `zlink_socket_set_handler()`는 raw socket callback 교체 surface다.
   `zlink_socket_handler_t.kind`를 통해 multipart / topic-aware / XPUB control
   callback family를 선택한다.
+- `zlink_spot_node_set_handler()`는 `spot_node` 자체의 subscription set에 매칭된
+  메시지를 수신하는 callback을 설치한다. attach된 `spot` facade의 subscription set과는
+  독립적이며, 같은 `spot_node`를 공유하더라도 두 경로의 subscription scope는 섞이지 않는다.
 - `zlink_spot_pub_set_handler()`는 대상에 포함하지 않는다.
   `SpotPub`은 publish-only facade로서 public 수신 callback 경로를 갖지 않기 때문이다.
 
@@ -958,11 +968,7 @@ typedef enum zlink_spot_role_t
   ZLINK_SPOT_ROLE_SUB = 2
 } zlink_spot_role_t;
 
-typedef uint32_t zlink_poller_event_mask_t;
-
-#define ZLINK_POLLER_EVENT_OUT ((zlink_poller_event_mask_t) 0x0002u)
-#define ZLINK_POLLER_EVENT_ERR ((zlink_poller_event_mask_t) 0x0004u)
-#define ZLINK_POLLER_EVENT_PRI ((zlink_poller_event_mask_t) 0x0008u)
+typedef void (*zlink_send_ready_handler_fn) (void *subject);
 
 typedef uint32_t zlink_socket_monitor_event_mask_t;
 
@@ -1069,7 +1075,7 @@ typedef enum zlink_topology_state_t
   portable baseline으로 가정하지 않는다.
 - `int`, `short`, `uint16_t` 같은 원시 타입으로 상수 집합 의미를 암묵적으로 표현하는 방식을
   줄이는 것이 목표다.
-- 다만 poller event bit, socket monitor bit, zero-init default 의미를 가지는 mode/policy처럼
+- 다만 socket monitor bit, zero-init default 의미를 가지는 mode/policy처럼
   기존 비트/기본값 의미가 중요한 상수군은 enum으로 승격하더라도 기존 수치 값을 유지한다.
 - service monitor 계열은 discovery / gateway / spot의 공개 이벤트 집합이 서로 다르므로
   공통 enum 하나로 뭉뚱그리지 않고 함수 family별 mask enum으로 분리한다.
@@ -1089,21 +1095,94 @@ typedef enum zlink_topology_state_t
 명확히 적어야 한다.
 
 - monitor event mask (`ZLINK_EVENT_*`)
-- poller event mask (`ZLINK_POLLOUT`, `ZLINK_POLLERR`, `ZLINK_POLLPRI`)
 - discovery / gateway / spot monitor event mask
 - service event detail mask
-- 특히 poller event는 현재 공개 header에 `ZLINK_POLLIN`이 없으므로,
-  이 문서의 typed-mask 정의도 현재 공개 집합에 맞춰 `OUT/ERR/PRI`만 유지한다.
-- readable event를 의미하는 `IN` bit는 이번 canonical 인터페이스 범위에 포함하지 않으며
-  새로 도입하지 않는다.
-- 따라서 recv-only helper poller인 `zlink_poller_add_spot_sub()` /
-  `zlink_poller_modify_spot_sub()`는 삭제한다.
-- 같은 이유로 generic raw socket poller는 `XSUB` / `SUB` 같은 recv-capable socket에 대해
-  readable readiness API로 간주하지 않는다.
-  이 문서 기준 generic poller는 `OUT/ERR/PRI`가 의미 있는 subject에 한정해 사용한다.
-- `XPUB`도 recv-capable raw socket이지만, 현재 public poller mask에 `POLLIN`을 두지 않으므로
-  generic raw socket poller를 `XPUB`의 subscribe/unsubscribe readable readiness API로
-  사용하지 않는다.
+
+### 5.2 Send-ready notification 계약
+
+비동기 nonblocking send 경로의 backpressure 신호는 poller가 아니라
+send-ready callback으로 통일한다.
+
+확정 시그니처:
+
+```c
+typedef void (*zlink_send_ready_handler_fn) (void *subject);
+
+int zlink_socket_set_send_ready_handler (void *s,
+                                         zlink_send_ready_handler_fn handler);
+
+int zlink_gateway_set_send_ready_handler (void *gateway,
+                                          zlink_send_ready_handler_fn handler);
+
+int zlink_spot_node_set_send_ready_handler (void *node,
+                                            zlink_send_ready_handler_fn handler);
+
+int zlink_spot_set_send_ready_handler (void *spot,
+                                       zlink_send_ready_handler_fn handler);
+
+int zlink_spot_pub_set_send_ready_handler (void *pub,
+                                           zlink_send_ready_handler_fn handler);
+```
+
+추가 규칙:
+
+- public poller API는 canonical 범위에서 제거한다.
+- 즉 one-shot `zlink_poll()`과 stateful `zlink_poller_*` API를 모두 public surface에서 제거한다.
+- 삭제 대상 poller public type도 함께 제거한다:
+  `zlink_poller_event_mask_t`,
+  `zlink_pollitem_t`,
+  `zlink_poller_event_t`,
+  `ZLINK_POLLOUT`,
+  `ZLINK_POLLERR`,
+  `ZLINK_POLLPRI`,
+  `ZLINK_HAVE_POLLER`,
+  `ZLINK_POLLITEMS_DFLT`.
+- 구체 삭제 대상 함수는 다음과 같다:
+  `zlink_poll()`,
+  `zlink_poller_new()`,
+  `zlink_poller_destroy()`,
+  `zlink_poller_size()`,
+  `zlink_poller_add()`,
+  `zlink_poller_add_spot_pub()`,
+  `zlink_poller_add_gateway()`,
+  `zlink_poller_add_monitor()`,
+  `zlink_poller_add_fd()`,
+  `zlink_poller_modify()`,
+  `zlink_poller_modify_spot_pub()`,
+  `zlink_poller_modify_gateway()`,
+  `zlink_poller_modify_monitor()`,
+  `zlink_poller_modify_fd()`,
+  `zlink_poller_remove()`,
+  `zlink_poller_remove_spot_sub()`,
+  `zlink_poller_remove_spot_pub()`,
+  `zlink_poller_remove_gateway()`,
+  `zlink_poller_remove_monitor()`,
+  `zlink_poller_remove_fd()`,
+  `zlink_poller_wait()`,
+  `zlink_poller_wait_all()`.
+- blocking send가 기본 backpressure 경로다.
+- `set_send_ready_handler()`는 nonblocking send가 `EAGAIN`을 반환한 뒤 재시도 시점을
+  감지하는 보조 메커니즘으로 사용한다.
+- `zlink_socket_set_send_ready_handler()`는 send-capable raw socket에만 허용한다.
+  즉 raw `PAIR`, `DEALER`, `ROUTER`, `STREAM`, `PUB`, `XPUB`에는 허용하고,
+  recv-only raw `SUB`, `XSUB`에는 허용하지 않는다.
+- raw `SUB` / `XSUB`에 `zlink_socket_set_send_ready_handler()`를 호출하면
+  `EINVAL`로 실패해야 한다.
+- `zlink_gateway_set_send_ready_handler()`,
+  `zlink_spot_node_set_send_ready_handler()`,
+  `zlink_spot_set_send_ready_handler()`,
+  `zlink_spot_pub_set_send_ready_handler()`는 허용한다.
+- `spot_sub`에는 별도 send-ready handler surface를 두지 않는다.
+- send-ready callback은 "지금 한 번의 send 성공이 보장된다"는 의미가 아니라,
+  "queue full -> writable transition이 있었으니 drain을 다시 시도하라"는 힌트다.
+- callback은 가능한 한 lightweight signal 용도에만 사용한다.
+  canonical 사용법은 atomic flag set, condition notify, worker wake-up 중 하나다.
+- callback 안에서 직접 drain loop를 수행할 수는 있지만, canonical 사용법으로 권장하지 않는다.
+- nonblocking send 경로는 `EAGAIN` 시 애플리케이션 queue에 적재하고,
+  send-ready callback 후 worker가 drain loop를 다시 수행하는 구조를 기본으로 본다.
+- drain loop는 send가 성공하는 동안 계속 비우고, 다시 `EAGAIN`을 만나면 중단한다.
+- `set_send_ready_handler()`도 callback setter family와 동일하게 replace-only surface로 본다.
+  `NULL` 제거 API는 두지 않는다.
 
 ## 6. 정책 회귀 테스트 추가 항목
 
@@ -1206,13 +1285,28 @@ typedef enum zlink_topology_state_t
   close, move ownership 규약이 깨지지 않아야 한다.
 - same-handle callback 안 `send` / `send_rid` / `publish`가 deadlock 없이 가능해야 한다.
 
-### 6.7 Poller 정책
+### 6.7 Send-ready / backpressure 정책
 
-- public poller mask는 `OUT/ERR/PRI`만 유지해야 하며 `POLLIN`을 다시 노출하지 않아야 한다.
-- recv-only helper poller인 `zlink_poller_add_spot_sub()` /
-  `zlink_poller_modify_spot_sub()`는 존재하지 않아야 한다.
-- generic raw socket poller는 `SUB` / `XSUB` / `XPUB`의 readable readiness API로
-  사용되지 않아야 한다.
+- public poller API(`zlink_poll()`, `zlink_poller_*`)와 poller public type
+  (`zlink_poller_event_mask_t`, `zlink_pollitem_t`, `zlink_poller_event_t`)은
+  존재하지 않아야 한다.
+- `ZLINK_POLLOUT`, `ZLINK_POLLERR`, `ZLINK_POLLPRI`, `ZLINK_HAVE_POLLER`,
+  `ZLINK_POLLITEMS_DFLT`도 public header에 존재하지 않아야 한다.
+- nonblocking send가 `EAGAIN`을 반환한 뒤
+  `zlink_socket_set_send_ready_handler()`,
+  `zlink_gateway_set_send_ready_handler()`,
+  `zlink_spot_node_set_send_ready_handler()`,
+  `zlink_spot_set_send_ready_handler()`,
+  `zlink_spot_pub_set_send_ready_handler()`가 재시도 신호로 동작해야 한다.
+- raw `SUB` / `XSUB`에 대한 `zlink_socket_set_send_ready_handler()` 호출은
+  `EINVAL`로 실패해야 한다.
+- send-ready callback은 writable transition hint이며, callback 직후 단 한 번의 send 성공을
+  보장하지 않아야 한다.
+- send-ready callback이 올라온 뒤 drain loop가 일부 메시지를 전송하고 다시 `EAGAIN`으로
+  중단되는 연속 backpressure 시나리오도 정상 동작해야 한다.
+- canonical 사용법대로 callback이 flag set / worker wake-up 용도로만 쓰여도
+  async nonblocking send queue가 다시 배출될 수 있어야 한다.
+- blocking send 경로는 send-ready callback 유무와 무관하게 기본 backpressure 경로로 유지되어야 한다.
 
 ### 6.8 Option/support 정책
 
@@ -1227,3 +1321,34 @@ typedef enum zlink_topology_state_t
   중심 vocabulary를 유지해야 한다.
 - `spot` monitor는 일반 peer lifecycle vocabulary를 유지해야 한다.
 - socket/service monitor callback도 생성/open 시 non-`NULL`이 강제되어야 한다.
+
+## 7. Change Log
+
+### 2026-03-11
+
+- `1`, `0.2`, `5.1`:
+  `gateway` public recv callback에서 `zlink_gateway_msg_kind_t`를 제거하고
+  raw multipart callback family를 재사용하도록 정리했다.
+- `3`, `0.2`:
+  unified `spot` 생성자에서 role selector를 제거하고,
+  `spot`/`spot_sub` callback family를 공통 `zlink_spot_handler_fn`으로 정리했다.
+- `0.2`, `4`, `5.1`:
+  raw socket callback surface를 `zlink_socket_handler_t` descriptor 기반으로 통합했다.
+- `1`, `3`, `6.6`:
+  public send/recv surface를 `zlink_msg_t` only로 고정하고,
+  bytes helper 삭제가 zero-copy 제거를 의미하지 않는다고 명시했다.
+- `1`, `6.4`, `6.5`:
+  `gateway` public register/update_weight/unregister surface를 제거하고,
+  `zlink_gateway_update_peer_weight()`를 canonical weight update path로 고정했다.
+- `1`, `6.5`:
+  `zlink_gateway_peer_info_t`와 local bound route weight 정책
+  (초기값 `0`, local RID update 허용)을 확정했다.
+- `3`, `6.2`:
+  `spot_node`를 service-bound handle로 고정하고,
+  `zlink_spot_node_default_pub()` / `zlink_spot_node_default_sub()`를 삭제 대상으로 명시했다.
+- `1.1`, `6.3.1`:
+  discovery/registry control-plane transport를 `tcp`, `ws`, `wss`, `tls`로 제한하고,
+  mixed deployment 허용/비권장 정책과 회귀테스트를 추가했다.
+- `5`, `5.2`, `6.7`:
+  public poller API와 poller public type을 canonical 범위에서 제거하고,
+  `set_send_ready_handler()` 기반 backpressure notification 정책으로 대체했다.

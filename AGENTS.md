@@ -30,6 +30,14 @@
 - Tests use the Unity framework; add coverage in `tests/` for behavior changes and `unittests/` for internal logic.
 - Some suites are platform-specific (IPC/TIPC, fuzzers); note skips in PRs.
 
+### Fail-Fast Policy (all test types)
+The following rules apply to **all** test categories: unit tests (`unittests/`), functional tests (`tests/`), perf tests (`perf/`), and bench tests (`bench/`).
+
+- **No retry logic.** Tests must never contain retry loops, backoff-and-retry, poll-until-success, or any form of automatic retry on failure. A failing assertion must surface immediately so the root cause can be identified quickly. If a test needs retry logic to pass, the test or the code under test has a bug — fix the bug, not the test.
+- **Fail on first error.** A single test failure must fail the entire test executable. Do not catch, suppress, or continue past assertion failures. The goal is to stop early and preserve the failure context for diagnosis.
+- **No sleep-based synchronization.** Do not use `sleep()` or fixed delays to wait for asynchronous state. Use deterministic synchronization (semaphore, condition variable, event flag) with a hard timeout that fails the test if exceeded.
+- **Hard timeouts, not soft retries.** If a test must wait for an external condition (connection, message arrival), use a single bounded wait with `TEST_ASSERT` on timeout. Never loop back and retry the same operation.
+
 ## Commit and Pull Request Guidelines
 - Commit messages typically use conventional prefixes like `feat:`, `fix:`, `docs:` with a short summary.
 - Follow the C4 contribution model and keep PRs focused.

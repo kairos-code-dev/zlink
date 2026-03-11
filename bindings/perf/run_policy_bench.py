@@ -114,6 +114,12 @@ MULTI_STREAM_PATTERNS = {
     "MULTI_STREAM_LEN32BE",
 }
 
+STREAM_VARIANT_PATTERNS = MULTI_STREAM_PATTERNS | {
+    "STREAM",
+    "STREAM_CALLBACK",
+    "STREAM_LEN32BE",
+}
+
 STREAM_SINGLE_PATTERNS = {
     "STREAM",
     "STREAM_CALLBACK",
@@ -131,6 +137,8 @@ STREAM_CLIENT_BUILD_SCRIPT = STREAM_CLIENT_DIR / "build.sh"
 STREAM_CLIENT_BIN = STREAM_CLIENT_DIR / "build" / (
     "perf_stream_client.exe" if IS_WINDOWS else "perf_stream_client"
 )
+
+JAVA_RUNTIME_CP_CACHE: Dict[str, str] = {}
 
 CPP_SINGLE_PATTERN_SPECS: Dict[str, Tuple[str, str, str]] = {
     "PAIR": ("perf_pair.cpp", "run_pattern_pair", "perf_pair"),
@@ -846,23 +854,7 @@ def binding_cmd_prefix(cfg: SuiteConfig, requested_pattern: str) -> Tuple[List[s
         java = shutil.which("java")
         if not java:
             raise RuntimeError("java not found")
-        cp = os.pathsep.join(
-            [
-                str(
-                    BINDINGS_DIR
-                    / "java"
-                    / "perf"
-                    / "single"
-                    / "Zlink.PerfBench"
-                    / "build"
-                    / "classes"
-                    / "java"
-                    / "main"
-                ),
-                str(BINDINGS_DIR / "java" / "build" / "classes" / "java" / "main"),
-                str(BINDINGS_DIR / "java" / "build" / "resources" / "main"),
-            ]
-        )
+        cp = java_runtime_classpath(cfg.suite)
         cmd = [
             java,
             "--enable-native-access=ALL-UNNAMED",
@@ -891,6 +883,26 @@ def binding_cmd_prefix(cfg: SuiteConfig, requested_pattern: str) -> Tuple[List[s
         raise RuntimeError(f"unsupported binding: {cfg.binding}")
 
     return cmd, base_pattern
+
+
+def java_runtime_classpath(suite: str) -> str:
+    cached = JAVA_RUNTIME_CP_CACHE.get(suite)
+    if cached:
+        return cached
+
+    task = ":perf-multi:printRuntimeClasspath" if suite == "multi" else ":perf-single:printRuntimeClasspath"
+    result = subprocess.run(
+        ["./gradlew", "-q", task],
+        cwd=BINDINGS_DIR / "java",
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    cp = result.stdout.strip().splitlines()[-1].strip()
+    if not cp:
+        raise RuntimeError(f"empty runtime classpath for java suite={suite}")
+    JAVA_RUNTIME_CP_CACHE[suite] = cp
+    return cp
 
 
 def multi_pattern_token(pattern: str) -> str:
@@ -1051,23 +1063,7 @@ def binding_multi_role_command(
         java = shutil.which("java")
         if not java:
             raise RuntimeError("java not found")
-        cp = os.pathsep.join(
-            [
-                str(
-                    BINDINGS_DIR
-                    / "java"
-                    / "perf"
-                    / "multi"
-                    / "Zlink.PerfBench"
-                    / "build"
-                    / "classes"
-                    / "java"
-                    / "main"
-                ),
-                str(BINDINGS_DIR / "java" / "build" / "classes" / "java" / "main"),
-                str(BINDINGS_DIR / "java" / "build" / "resources" / "main"),
-            ]
-        )
+        cp = java_runtime_classpath("multi")
         if role == "server":
             cmd = [
                 java,
@@ -1140,9 +1136,12 @@ def prepare_runtime_env(cfg: SuiteConfig, native_dir: Path) -> Dict[str, str]:
         set_perf_env("PERF_DURATION_SECONDS", str(cfg.multi_duration_seconds))
         if cfg.multi_clients > 0:
             set_perf_env("PERF_CLIENTS", str(cfg.multi_clients))
-        set_perf_env("PERF_HWM", str(cfg.multi_hwm))
-        set_perf_env("PERF_SNDTIMEO_MS", str(cfg.multi_sndtimeo_ms))
-        set_perf_env("PERF_RCVTIMEO_MS", str(cfg.multi_rcvtimeo_ms))
+        if cfg.multi_hwm > 0:
+            set_perf_env("PERF_HWM", str(cfg.multi_hwm))
+        if cfg.multi_sndtimeo_ms > 0:
+            set_perf_env("PERF_SNDTIMEO_MS", str(cfg.multi_sndtimeo_ms))
+        if cfg.multi_rcvtimeo_ms > 0:
+            set_perf_env("PERF_RCVTIMEO_MS", str(cfg.multi_rcvtimeo_ms))
         set_perf_env(
             "PERF_SERVER_READY_TIMEOUT_MS",
             str(cfg.multi_server_ready_timeout_ms),
@@ -1156,7 +1155,8 @@ def prepare_runtime_env(cfg: SuiteConfig, native_dir: Path) -> Dict[str, str]:
             "PERF_CONNECT_READY_TIMEOUT_MS",
             str(cfg.multi_connect_ready_timeout_ms),
         )
-        set_perf_env("PERF_MONITOR_HWM", str(cfg.multi_monitor_hwm))
+        if cfg.multi_monitor_hwm >= 0:
+            set_perf_env("PERF_MONITOR_HWM", str(cfg.multi_monitor_hwm))
 
         # Dotnet follows core-style PERF_* only.
         # Other bindings may still rely on PERF_MULTI_* compatibility names.
@@ -1167,9 +1167,12 @@ def prepare_runtime_env(cfg: SuiteConfig, native_dir: Path) -> Dict[str, str]:
             )
             if cfg.multi_clients > 0:
                 set_perf_env("PERF_MULTI_CLIENTS", str(cfg.multi_clients))
-            set_perf_env("PERF_MULTI_HWM", str(cfg.multi_hwm))
-            set_perf_env("PERF_MULTI_SNDTIMEO_MS", str(cfg.multi_sndtimeo_ms))
-            set_perf_env("PERF_MULTI_RCVTIMEO_MS", str(cfg.multi_rcvtimeo_ms))
+            if cfg.multi_hwm > 0:
+                set_perf_env("PERF_MULTI_HWM", str(cfg.multi_hwm))
+            if cfg.multi_sndtimeo_ms > 0:
+                set_perf_env("PERF_MULTI_SNDTIMEO_MS", str(cfg.multi_sndtimeo_ms))
+            if cfg.multi_rcvtimeo_ms > 0:
+                set_perf_env("PERF_MULTI_RCVTIMEO_MS", str(cfg.multi_rcvtimeo_ms))
             set_perf_env(
                 "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
                 str(cfg.multi_server_ready_timeout_ms),
@@ -1185,7 +1188,8 @@ def prepare_runtime_env(cfg: SuiteConfig, native_dir: Path) -> Dict[str, str]:
                 "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
                 str(cfg.multi_connect_ready_timeout_ms),
             )
-            set_perf_env("PERF_MULTI_MONITOR_HWM", str(cfg.multi_monitor_hwm))
+            if cfg.multi_monitor_hwm >= 0:
+                set_perf_env("PERF_MULTI_MONITOR_HWM", str(cfg.multi_monitor_hwm))
             if cfg.multi_drain_ms is not None:
                 set_perf_env("PERF_MULTI_DRAIN_MS", str(cfg.multi_drain_ms))
 
@@ -1766,8 +1770,12 @@ def detect_status_token(text: str) -> Optional[str]:
 
 def effective_server_shutdown_timeout_ms(cfg: SuiteConfig, pattern: str) -> int:
     timeout_ms = max(1, cfg.multi_server_shutdown_timeout_ms)
-    if cfg.binding == "dotnet" and pattern.strip().upper() == "MULTI_SPOT":
-        return max(timeout_ms, 7000)
+    if cfg.binding == "dotnet":
+        normalized = pattern.strip().upper()
+        if normalized == "MULTI_SPOT":
+            return max(timeout_ms, 7000)
+        if normalized == "MULTI_DEALER_DEALER":
+            return max(timeout_ms, 15000)
     return timeout_ms
 
 
@@ -2234,12 +2242,12 @@ def make_parser() -> argparse.ArgumentParser:
 
     ap.add_argument("--mode", choices=("observe", "trend", "gate"), default="observe")
 
-    ap.add_argument("--multi-warmup-seconds", type=int, default=3)
+    ap.add_argument("--multi-warmup-seconds", type=int, default=2)
     ap.add_argument("--multi-duration-seconds", type=int, default=5)
     ap.add_argument("--multi-clients", type=int, default=0)
-    ap.add_argument("--multi-hwm", type=int, default=100000)
-    ap.add_argument("--multi-sndtimeo-ms", type=int, default=5000)
-    ap.add_argument("--multi-rcvtimeo-ms", type=int, default=5000)
+    ap.add_argument("--multi-hwm", type=int, default=-1)
+    ap.add_argument("--multi-sndtimeo-ms", type=int, default=-1)
+    ap.add_argument("--multi-rcvtimeo-ms", type=int, default=-1)
     ap.add_argument("--multi-connect-concurrency", type=int, default=1024)
     ap.add_argument("--multi-drain-ms", type=int, default=-1)
     ap.add_argument("--multi-transport-transition-ms", type=int, default=3000)
@@ -2248,7 +2256,7 @@ def make_parser() -> argparse.ArgumentParser:
     ap.add_argument("--multi-server-shutdown-timeout-ms", type=int, default=5000)
     ap.add_argument("--multi-server-bind-port", type=int, default=0)
     ap.add_argument("--multi-connect-ready-timeout-ms", type=int, default=5000)
-    ap.add_argument("--multi-monitor-hwm", type=int, default=200000)
+    ap.add_argument("--multi-monitor-hwm", type=int, default=-1)
 
     return ap
 
@@ -2316,7 +2324,7 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
         0,
         env_int_if_default(
             args.multi_warmup_seconds,
-            3,
+            2,
             "PERF_WARMUP_SECONDS",
             "PERF_MULTI_WARMUP_SECONDS",
         ),
@@ -2330,26 +2338,20 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
             "PERF_MULTI_DURATION_SECONDS",
         ),
     )
-    multi_hwm = max(
-        1, env_int_if_default(args.multi_hwm, 100000, "PERF_HWM", "PERF_MULTI_HWM")
+    multi_hwm = env_int_if_default(
+        args.multi_hwm, -1, "PERF_HWM", "PERF_MULTI_HWM"
     )
-    multi_sndtimeo_ms = max(
-        1,
-        env_int_if_default(
-            args.multi_sndtimeo_ms,
-            5000,
-            "PERF_SNDTIMEO_MS",
-            "PERF_MULTI_SNDTIMEO_MS",
-        ),
+    multi_sndtimeo_ms = env_int_if_default(
+        args.multi_sndtimeo_ms,
+        -1,
+        "PERF_SNDTIMEO_MS",
+        "PERF_MULTI_SNDTIMEO_MS",
     )
-    multi_rcvtimeo_ms = max(
-        1,
-        env_int_if_default(
-            args.multi_rcvtimeo_ms,
-            5000,
-            "PERF_RCVTIMEO_MS",
-            "PERF_MULTI_RCVTIMEO_MS",
-        ),
+    multi_rcvtimeo_ms = env_int_if_default(
+        args.multi_rcvtimeo_ms,
+        -1,
+        "PERF_RCVTIMEO_MS",
+        "PERF_MULTI_RCVTIMEO_MS",
     )
     multi_transport_transition_ms = max(
         0,
@@ -2399,14 +2401,11 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
             "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
         ),
     )
-    multi_monitor_hwm = max(
-        0,
-        env_int_if_default(
-            args.multi_monitor_hwm,
-            200000,
-            "PERF_MONITOR_HWM",
-            "PERF_MULTI_MONITOR_HWM",
-        ),
+    multi_monitor_hwm = env_int_if_default(
+        args.multi_monitor_hwm,
+        -1,
+        "PERF_MONITOR_HWM",
+        "PERF_MULTI_MONITOR_HWM",
     )
     multi_drain_ms = args.multi_drain_ms
     if multi_drain_ms < 0:
@@ -2613,6 +2612,13 @@ def run_multi_pattern_transport(
     failures: List[Tuple[str, str, int, str]],
     warnings: List[str],
 ) -> None:
+    pattern_env = env.copy()
+    if "PERF_IO_THREADS" not in pattern_env or not str(
+        pattern_env.get("PERF_IO_THREADS", "")
+    ).strip():
+        default_io_threads = 4 if pattern in STREAM_VARIANT_PATTERNS else 2
+        pattern_env["PERF_IO_THREADS"] = str(default_io_threads)
+
     size_tag = ",".join(f"{size}B" for size in sizes)
     logger.print(f"    Testing {transport} | {size_tag}: ", end="", flush=True)
 
@@ -2642,7 +2648,7 @@ def run_multi_pattern_transport(
                     transport,
                     size=size,
                 )
-                server_cap = spawn_capture_process(server_cmd, env)
+                server_cap = spawn_capture_process(server_cmd, pattern_env)
                 ready_ok, endpoint = wait_for_server_ready(
                     server_cap, cfg.multi_server_ready_timeout_ms
                 )
@@ -2692,7 +2698,7 @@ def run_multi_pattern_transport(
                 if pattern in MULTI_STREAM_PATTERNS:
                     client_cmd = stream_shared_client_cmd(
                         cfg=cfg,
-                        env=env,
+                        env=pattern_env,
                         pattern=pattern,
                         transport=transport,
                         size=size,
@@ -2708,7 +2714,7 @@ def run_multi_pattern_transport(
                         size=size,
                         endpoint=endpoint,
                     )
-                sampled = run_command_with_metrics(client_cmd, env, timeout)
+                sampled = run_command_with_metrics(client_cmd, pattern_env, timeout)
                 outcome = parse_run_outcome(
                     pattern,
                     pattern,
@@ -2736,9 +2742,17 @@ def run_multi_pattern_transport(
 
                 server_cap.join_readers()
                 server_stdout = server_cap.stdout_text()
+                server_out_pattern = pattern
+                if cfg.binding == "dotnet" and pattern.startswith("MULTI_"):
+                    server_out_pattern = pattern[len("MULTI_") :]
+
                 server_metrics = parse_result_metrics_from_text(
                     server_stdout, pattern, transport, size
                 )
+                if not server_metrics and server_out_pattern != pattern:
+                    server_metrics = parse_result_metrics_from_text(
+                        server_stdout, server_out_pattern, transport, size
+                    )
                 # DEALER_DEALER one-way in split multi can emit throughput/latency
                 # on the server side (receiver), while the client is send-only.
                 if (
@@ -2795,7 +2809,7 @@ def run_multi_pattern_transport(
             else:
                 cmd_prefix, out_pattern = binding_cmd_prefix(cfg, pattern)
                 cmd = cmd_prefix + [transport, str(size)]
-                sampled = run_command_with_metrics(cmd, env, timeout)
+                sampled = run_command_with_metrics(cmd, pattern_env, timeout)
                 outcome = parse_run_outcome(
                     pattern,
                     out_pattern,

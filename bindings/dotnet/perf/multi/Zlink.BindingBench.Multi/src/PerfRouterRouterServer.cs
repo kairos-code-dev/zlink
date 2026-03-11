@@ -6,6 +6,32 @@ using static PerfRunner;
 
 internal static class PerfRouterRouterServer
 {
+    private enum RouterSendStage
+    {
+        None = 0,
+        RoutingId = 1,
+        Payload = 2,
+    }
+
+    private sealed class PendingRouterMessage
+    {
+        internal PendingRouterMessage(byte[] routingId, int routingIdLength,
+            byte[] payload, int payloadLength)
+        {
+            RoutingId = routingId;
+            RoutingIdLength = routingIdLength;
+            Payload = payload;
+            PayloadLength = payloadLength;
+            Stage = RouterSendStage.RoutingId;
+        }
+
+        internal byte[] RoutingId { get; }
+        internal int RoutingIdLength { get; }
+        internal byte[] Payload { get; }
+        internal int PayloadLength { get; }
+        internal RouterSendStage Stage { get; set; }
+    }
+
     internal static int Run(string transport, int size)
     {
         const string pattern = "ROUTER_ROUTER";
@@ -13,6 +39,7 @@ internal static class PerfRouterRouterServer
         int rcvTimeoutMs = ResolveMultiRcvTimeoutMs();
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs();
         int latencySampleCap = ResolveMultiLatencySampleCap();
+        int clientCount = ResolveMultiClients(pattern);
         string endpoint = MultiEndpointFor(transport, "multi-router-router");
 
         using var ctx = new Context();
@@ -22,16 +49,13 @@ internal static class PerfRouterRouterServer
         ConfigureTlsServerIfNeeded(server, transport);
         server.SetOption(SocketOptions.RoutingId, "SERVER");
 
-        using var monitor = server.MonitorOpen(
-            SocketEvent.ConnectionReady
-            | SocketEvent.Accepted
-            | SocketEvent.Connected);
+        using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
         server.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
         server.Bind(endpoint);
         Console.WriteLine($"READY,{endpoint}");
 
-        if (!WaitMonitorReady(monitor, readyTimeoutMs, true))
+        if (!WaitConnectReadyCount(monitor, clientCount, readyTimeoutMs))
             return 2;
 
         var routingId = new byte[256];
@@ -46,11 +70,25 @@ internal static class PerfRouterRouterServer
         const uint expectedRunId = 1;
         using var poller = new Poller();
         var events = new List<PollEvent>(1);
+        var pending = new List<PendingRouterMessage>(Math.Max(64, clientCount * 2));
         poller.Add(server, PollEvents.PollIn);
 
         while (true)
         {
-            if (!WaitForEvents(poller, events, 2))
+            poller.Modify(server, pending.Count > 0
+                ? PollEvents.PollIn | PollEvents.PollOut
+                : PollEvents.PollIn);
+
+            if (!WaitForEvents(poller, events, 50))
+                continue;
+
+            if ((events[0].Revents & PollEvents.PollOut) != 0
+                && !FlushPending(server, pending))
+            {
+                return 2;
+            }
+
+            if ((events[0].Revents & PollEvents.PollIn) == 0)
                 continue;
 
             while (TryReceiveRouterMessage(server, routingId, payload,
@@ -78,12 +116,11 @@ internal static class PerfRouterRouterServer
                     }
                 }
 
-                int sentRid = SendBlocking(server, routingId.AsSpan(0, ridLen),
-                    SendFlags.SendMore);
-                if (sentRid <= 0)
-                    continue;
-
-                _ = SendBlocking(server, body, SendFlags.None);
+                if (!TrySendRouterMessage(server, routingId, ridLen, payload, n,
+                        pending))
+                {
+                    return 2;
+                }
             }
         }
 
@@ -92,11 +129,10 @@ Done:
         {
             double elapsedSeconds = (benchEndTicks - benchStartTicks)
                 / (double)Stopwatch.Frequency;
-            double throughput = elapsedSeconds > 0.0
-                ? echoCount / elapsedSeconds
-                : 0.0;
+            double configuredSeconds = Math.Max(1.0, ResolveMultiDurationSeconds());
+            double throughput = echoCount / configuredSeconds;
             var latency = ComputeLatencyStats(latSamples);
-            double fallbackLatencyUs = (elapsedSeconds * 1_000_000.0)
+            double fallbackLatencyUs = (configuredSeconds * 1_000_000.0)
                 / Math.Max(1.0, echoCount);
             double latencyUs = latency.mean > 0.0 ? latency.mean
                 : fallbackLatencyUs;
@@ -124,5 +160,91 @@ Done:
         payloadLength = ReceiveRetry(server, payload.AsSpan(),
             ReceiveFlags.DontWait);
         return payloadLength > 0;
+    }
+
+    private static bool FlushPending(Zlink.Socket server,
+        List<PendingRouterMessage> pending)
+    {
+        int index = 0;
+        while (index < pending.Count)
+        {
+            if (TryFlushPending(server, pending[index]))
+            {
+                pending.RemoveAt(index);
+                continue;
+            }
+
+            index++;
+        }
+
+        return true;
+    }
+
+    private static bool TrySendRouterMessage(Zlink.Socket server,
+        byte[] routingId, int routingIdLength, byte[] payload, int payloadLength,
+        List<PendingRouterMessage> pending)
+    {
+        if (server.TrySend(routingId.AsSpan(0, routingIdLength),
+                SendFlags.SendMore | SendFlags.DontWait, out int ridWritten)
+            && ridWritten > 0)
+        {
+            if (server.TrySend(payload.AsSpan(0, payloadLength),
+                    SendFlags.DontWait, out int payloadWritten)
+                && payloadWritten > 0)
+            {
+                return true;
+            }
+
+            pending.Add(new PendingRouterMessage(Array.Empty<byte>(), 0,
+                CopyFrame(payload, payloadLength), payloadLength)
+            {
+                Stage = RouterSendStage.Payload,
+            });
+            return true;
+        }
+
+        pending.Add(new PendingRouterMessage(
+            CopyFrame(routingId, routingIdLength),
+            routingIdLength,
+            CopyFrame(payload, payloadLength),
+            payloadLength));
+        return true;
+    }
+
+    private static bool TryFlushPending(Zlink.Socket server,
+        PendingRouterMessage message)
+    {
+        if (message.Stage == RouterSendStage.RoutingId)
+        {
+            if (!server.TrySend(message.RoutingId.AsSpan(0, message.RoutingIdLength),
+                    SendFlags.SendMore | SendFlags.DontWait, out int ridWritten)
+                || ridWritten <= 0)
+            {
+                return false;
+            }
+
+            message.Stage = RouterSendStage.Payload;
+        }
+
+        if (message.Stage == RouterSendStage.Payload)
+        {
+            if (!server.TrySend(message.Payload.AsSpan(0, message.PayloadLength),
+                    SendFlags.DontWait, out int payloadWritten)
+                || payloadWritten <= 0)
+            {
+                return false;
+            }
+
+            message.Stage = RouterSendStage.None;
+        }
+
+        return true;
+    }
+
+    private static byte[] CopyFrame(byte[] source, int length)
+    {
+        var copy = new byte[Math.Max(1, length)];
+        source.AsSpan(0, Math.Max(0, length)).CopyTo(copy);
+        return copy;
     }
 }

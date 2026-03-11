@@ -73,8 +73,8 @@ public final class PerfMultiSpotServer {
         int warmupSeconds = PerfMultiCommon.resolveWarmupSeconds();
         int durationSeconds = PerfMultiCommon.resolveDurationSeconds();
         int settleMs = PerfMultiCommon.resolveSettleMs();
-        int pollTimeoutMs = Math.max(1,
-            PerfMultiCommon.resolveClientPollTimeoutMs());
+        int pollTimeoutMs =
+            PerfMultiCommon.resolveEffectiveClientPollTimeoutMs();
         int clients = Math.max(1, PerfMultiCommon.resolveClients(PATTERN));
 
         try (Context context = new Context();

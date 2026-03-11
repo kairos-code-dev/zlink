@@ -29,6 +29,9 @@ public final class Poller implements AutoCloseable {
     private MemorySegment nativeEvents = MemorySegment.NULL;
     private int nativeEventsCapacity = 0;
     private int lastReadyCount = 0;
+    private PollItem[] readyItemsCache = new PollItem[0];
+    private short[] readyReventsCache = new short[0];
+    private int[] readyFdCache = new int[0];
     private long nextToken = 1L;
     private MemorySegment handle;
 
@@ -399,6 +402,15 @@ public final class Poller implements AutoCloseable {
         if (rc < 0)
             throw ZlinkException.fromLastError("zlink_poller_wait_all");
         lastReadyCount = rc;
+        ensureReadyCacheCapacity(rc);
+        for (int i = 0; i < rc; i++) {
+            long base = (long) i * POLLER_EVENT_SIZE;
+            readyReventsCache[i] = nativeEvents.get(ValueLayout.JAVA_SHORT,
+                base + EVENT_EVENTS_OFFSET);
+            readyFdCache[i] = nativeEvents.get(ValueLayout.JAVA_INT,
+                base + EVENT_FD_OFFSET);
+            readyItemsCache[i] = resolveReadyItem(base);
+        }
         return rc;
     }
 
@@ -413,7 +425,7 @@ public final class Poller implements AutoCloseable {
 
         List<PollEvent> out = new ArrayList<>(readyCount);
         for (int i = 0; i < readyCount; i++) {
-            PollItem item = readyItem(i);
+            PollItem item = cachedReadyItem(i);
             int fd = readyFd(i);
             short revents = readyRevents(i);
             out.add(new PollEvent(item == null ? null : item.socket, revents,
@@ -429,29 +441,28 @@ public final class Poller implements AutoCloseable {
     }
 
     public Socket readySocket(int index) {
-        PollItem item = readyItem(index);
+        PollItem item = cachedReadyItem(index);
         return item == null ? null : item.socket;
     }
 
     public Object readyTag(int index) {
-        PollItem item = readyItem(index);
+        PollItem item = cachedReadyItem(index);
         return item == null ? null : item.tag;
     }
 
     public int readyFd(int index) {
-        long base = eventBase(index);
-        return nativeEvents.get(ValueLayout.JAVA_INT, base + EVENT_FD_OFFSET);
+        checkReadyIndex(index);
+        return readyFdCache[index];
     }
 
     public int readyEvents(int index) {
-        PollItem item = readyItem(index);
+        PollItem item = cachedReadyItem(index);
         return item == null ? readyRevents(index) : item.events;
     }
 
     public short readyRevents(int index) {
-        long base = eventBase(index);
-        return nativeEvents.get(ValueLayout.JAVA_SHORT,
-            base + EVENT_EVENTS_OFFSET);
+        checkReadyIndex(index);
+        return readyReventsCache[index];
     }
 
     @Override
@@ -465,6 +476,9 @@ public final class Poller implements AutoCloseable {
         nativeEvents = MemorySegment.NULL;
         nativeEventsCapacity = 0;
         lastReadyCount = 0;
+        readyItemsCache = new PollItem[0];
+        readyReventsCache = new short[0];
+        readyFdCache = new int[0];
         closeArena(tagArena);
         tagArena = null;
     }
@@ -485,15 +499,18 @@ public final class Poller implements AutoCloseable {
 
     private long eventBase(int index) {
         ensureOpen();
-        if (index < 0 || index >= lastReadyCount)
-            throw new IndexOutOfBoundsException("ready index " + index);
+        checkReadyIndex(index);
         if (nativeEvents == null || nativeEvents.address() == 0)
             throw new IllegalStateException("no ready events");
         return (long) index * POLLER_EVENT_SIZE;
     }
 
-    private PollItem readyItem(int index) {
-        long base = eventBase(index);
+    private PollItem cachedReadyItem(int index) {
+        checkReadyIndex(index);
+        return readyItemsCache[index];
+    }
+
+    private PollItem resolveReadyItem(long base) {
         MemorySegment userData = nativeEvents.get(ValueLayout.ADDRESS,
             base + EVENT_USER_DATA_OFFSET);
         if (userData.address() != 0) {
@@ -508,6 +525,19 @@ public final class Poller implements AutoCloseable {
             base + EVENT_FD_OFFSET);
         return socketHandle.address() != 0
             ? findSocketItem(socketHandle) : findFdItem(fd);
+    }
+
+    private void ensureReadyCacheCapacity(int requiredCount) {
+        if (readyItemsCache.length < requiredCount) {
+            readyItemsCache = new PollItem[requiredCount];
+            readyReventsCache = new short[requiredCount];
+            readyFdCache = new int[requiredCount];
+        }
+    }
+
+    private void checkReadyIndex(int index) {
+        if (index < 0 || index >= lastReadyCount)
+            throw new IndexOutOfBoundsException("ready index " + index);
     }
 
     private int findSocket(MemorySegment socketHandle) {

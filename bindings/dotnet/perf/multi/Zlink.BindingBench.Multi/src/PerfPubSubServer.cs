@@ -9,15 +9,13 @@ internal static class PerfPubSubServer
     internal static int Run(string transport, int size)
     {
         const string pattern = "PUBSUB";
-        const int subscribeSettleMs = 300;
         size = Math.Max(1, size);
         int warmupSeconds = ResolveMultiWarmupSeconds();
-        if (size >= 65536 && warmupSeconds > 0)
-            warmupSeconds = 0;
         int durationSeconds = ResolveMultiDurationSeconds();
         int settleMs = ResolveMultiSettleMs();
         int sndTimeoutMs = ResolveMultiSndTimeoutMs();
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs();
+        int clientCount = ResolveMultiClients(pattern);
         string endpoint = MultiEndpointFor(transport, "multi-pubsub");
 
         using var ctx = new Context();
@@ -26,58 +24,46 @@ internal static class PerfPubSubServer
         ApplyMultiSocketOptions(server, pattern);
         ConfigureTlsServerIfNeeded(server, transport);
         server.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
+        server.SetOption(SocketOptions.XPubNoDrop,
+            ParsePositiveEnv("PERF_PUBSUB_XPUB_NODROP", 1) > 0 ? 1 : 0);
 
-        using var monitor = server.MonitorOpen(
-            SocketEvent.ConnectionReady
-            | SocketEvent.Accepted
-            | SocketEvent.Connected);
+        using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
         server.Bind(endpoint);
         Console.WriteLine($"READY,{endpoint}");
 
-        if (!WaitMonitorReady(monitor, readyTimeoutMs, true))
+        if (!WaitConnectReadyCount(monitor, clientCount, readyTimeoutMs))
             return 2;
 
         const uint runId = 1;
         ulong seq = 1;
         var payload = new byte[Math.Max(size, PerfMetricHeaderSize)];
         Array.Fill(payload, (byte)'a');
-        Thread.Sleep(subscribeSettleMs);
+        var pollSockets = new[] { server };
 
         if (warmupSeconds > 0)
         {
             long warmupDeadline = Stopwatch.GetTimestamp()
                 + (long)warmupSeconds * Stopwatch.Frequency;
-            while (Stopwatch.GetTimestamp() < warmupDeadline)
-            {
-                StampMetricHeader(payload.AsSpan(), runId, PerfPhase.Warmup,
-                    size, seq++, EpochUs());
-                _ = TryPublish(server, payload.AsSpan());
-            }
+            RunPublishPhase(server, pollSockets, payload, runId, size,
+                PerfPhase.Warmup, ref seq, warmupDeadline);
         }
 
         if (settleMs > 0)
             Thread.Sleep(settleMs);
 
-        long sendCount = 0;
         long benchStartTicks = Stopwatch.GetTimestamp();
         long benchDeadlineTicks = benchStartTicks
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
-        while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
-        {
-            StampMetricHeader(payload.AsSpan(), runId, PerfPhase.Active, size,
-                seq++, EpochUs());
-            if (TryPublish(server, payload.AsSpan()))
-                sendCount++;
-        }
+        long sendCount = RunPublishPhase(server, pollSockets, payload, runId,
+            size, PerfPhase.Active, ref seq, benchDeadlineTicks);
         long benchEndTicks = Stopwatch.GetTimestamp();
 
         double elapsedSeconds = (benchEndTicks - benchStartTicks)
             / (double)Stopwatch.Frequency;
-        double throughput = elapsedSeconds > 0.0
-            ? sendCount / elapsedSeconds
-            : 0.0;
-        double latencyUs = (elapsedSeconds * 1_000_000.0)
+        double configuredSeconds = Math.Max(1.0, durationSeconds);
+        double throughput = sendCount / configuredSeconds;
+        double latencyUs = (configuredSeconds * 1_000_000.0)
             / Math.Max(1.0, sendCount);
         PrintResult(pattern, transport, size, throughput, latencyUs,
             latencyUs, latencyUs);
@@ -87,6 +73,71 @@ internal static class PerfPubSubServer
 
     private static bool TryPublish(Zlink.Socket server, ReadOnlySpan<byte> payload)
     {
-        return server.Send(payload, SendFlags.None) > 0;
+        return server.TrySend(payload, SendFlags.DontWait, out int written)
+            && written > 0;
+    }
+
+    private static long RunPublishPhase(Zlink.Socket server,
+        IReadOnlyList<Zlink.Socket> pollSockets, byte[] payload, uint runId,
+        int size, PerfPhase phase, ref ulong seq, long deadlineTicks)
+    {
+        bool sendPending = false;
+        long sent = 0;
+
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            bool trySend = !sendPending;
+            if (!trySend)
+            {
+                int pollTimeoutMs = RemainingMilliseconds(deadlineTicks);
+                if (PollSocketWriteReady(pollSockets, pollTimeoutMs) > 0
+                    && IsSocketWriteReady(0))
+                {
+                    trySend = true;
+                }
+            }
+
+            if (trySend)
+            {
+                StampMetricHeader(payload.AsSpan(), runId, phase, size, seq,
+                    EpochUs());
+                if (TryPublish(server, payload.AsSpan()))
+                {
+                    seq++;
+                    sent++;
+                    sendPending = false;
+                    continue;
+                }
+                sendPending = true;
+            }
+
+            int timeoutMs = Math.Min(50, RemainingMilliseconds(deadlineTicks));
+            if (timeoutMs <= 0)
+                continue;
+
+            if (sendPending)
+            {
+                _ = PollSocketWriteReady(pollSockets, timeoutMs);
+            }
+            else
+            {
+                Thread.Sleep(timeoutMs);
+            }
+        }
+
+        return sent;
+    }
+
+    private static int RemainingMilliseconds(long deadlineTicks)
+    {
+        long nowTicks = Stopwatch.GetTimestamp();
+        if (deadlineTicks <= nowTicks)
+            return 0;
+
+        double remainingMs = (deadlineTicks - nowTicks) * 1000.0
+            / Stopwatch.Frequency;
+        if (remainingMs >= int.MaxValue)
+            return int.MaxValue;
+        return (int)Math.Ceiling(remainingMs);
     }
 }

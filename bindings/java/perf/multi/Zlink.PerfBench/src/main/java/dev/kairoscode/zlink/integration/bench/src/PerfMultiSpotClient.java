@@ -96,7 +96,7 @@ public final class PerfMultiSpotClient {
             PerfMultiCommon.resolveDurationSeconds(),
             PerfMultiCommon.resolveSettleMs(),
             Math.max(5000, PerfMultiCommon.resolveConnectReadyTimeoutMs() * 3),
-            Math.max(1, PerfMultiCommon.resolveClientPollTimeoutMs()));
+            PerfMultiCommon.resolveEffectiveClientPollTimeoutMs());
 
         try (Context context = new Context();
              Discovery discovery = new Discovery(context, ServiceType.SPOT)) {

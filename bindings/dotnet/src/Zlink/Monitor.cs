@@ -23,6 +23,8 @@ public sealed class MonitorSocket : IDisposable
         return MonitorEvent.FromNative(ref evt);
     }
 
+    public IntPtr Handle => _socket.Handle;
+
     public void Dispose()
     {
         _socket.Dispose();

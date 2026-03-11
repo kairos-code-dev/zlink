@@ -54,6 +54,11 @@ internal static partial class PerfRunner
     {
         while (true)
         {
+            if (socket.TryReceive(buffer, flags, out int read))
+                return read;
+
+            if ((flags & ReceiveFlags.DontWait) != 0)
+                return 0;
             try
             {
                 return socket.Receive(buffer, flags);
@@ -80,21 +85,7 @@ internal static partial class PerfRunner
     internal static int ReceiveRetry(Zlink.Socket socket, Span<byte> buffer,
         ReceiveFlags flags = ReceiveFlags.None)
     {
-        while (true)
-        {
-            try
-            {
-                return socket.Receive(buffer, flags);
-            }
-            catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
-            {
-                continue;
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
-            {
-                return 0;
-            }
-        }
+        return socket.TryReceive(buffer, flags, out int read) ? read : 0;
     }
 
     internal static int DrainReadableSocket(Zlink.Socket socket, Span<byte> buffer,

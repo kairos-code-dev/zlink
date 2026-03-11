@@ -165,18 +165,27 @@ internal static partial class PerfRunner
         bool acceptFallback)
     {
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        while (true)
         {
+            long nowTicks = Stopwatch.GetTimestamp();
+            if (nowTicks >= deadlineTicks)
+                return false;
+
+            int rc = PollMonitorHandles(new List<MonitorSocket> { monitor },
+                new[] { 0 }, 1, deadlineTicks, nowTicks);
+            if (rc < 0)
+                return false;
+            if (rc == 0)
+                continue;
+
             try
             {
-                MonitorEvent evt = monitor.Receive(ReceiveFlags.DontWait);
-                if (IsMonitorReady(evt.Event, acceptFallback))
+                if (DrainReadyEvents(monitor, acceptFallback) > 0)
                     return true;
             }
             catch (ZlinkException ex) when (ex.Errno == ErrnoEagain
                                             || ex.Errno == ErrnoEintr)
             {
-                Thread.Sleep(1);
             }
             catch
             {
@@ -184,7 +193,45 @@ internal static partial class PerfRunner
             }
         }
 
-        return false;
+    }
+
+    internal static bool WaitConnectReadyCount(MonitorSocket monitor,
+        int expectedReady, int timeoutMs)
+    {
+        if (expectedReady <= 0)
+            return true;
+
+        int readyCount = 0;
+        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
+        while (true)
+        {
+            long nowTicks = Stopwatch.GetTimestamp();
+            if (nowTicks >= deadlineTicks)
+                return false;
+
+            int rc = PollMonitorHandles(new List<MonitorSocket> { monitor },
+                new[] { 0 }, 1, deadlineTicks, nowTicks);
+            if (rc < 0)
+                return false;
+            if (rc == 0)
+                continue;
+
+            try
+            {
+                readyCount += DrainReadyEvents(monitor, false);
+                if (readyCount >= expectedReady)
+                    return true;
+            }
+            catch (ZlinkException ex) when (ex.Errno == ErrnoEagain
+                                            || ex.Errno == ErrnoEintr)
+            {
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
     }
 
     internal static long DeadlineTicksFromMilliseconds(int timeoutMs)

@@ -2,7 +2,12 @@
 
 package dev.kairoscode.zlink.integration.bench.common;
 
+import dev.kairoscode.zlink.MonitorEvent;
 import dev.kairoscode.zlink.MonitorSocket;
+import dev.kairoscode.zlink.PollEventType;
+import dev.kairoscode.zlink.ReceiveFlag;
+import dev.kairoscode.zlink.SocketPollSet;
+import dev.kairoscode.zlink.ZlinkException;
 import java.util.List;
 
 public final class PerfMultiClientHelpers {
@@ -41,23 +46,131 @@ public final class PerfMultiClientHelpers {
     public static int waitAllClientConnectReady(List<MonitorSocket> monitors,
                                                 int timeoutMs,
                                                 boolean acceptFallback) {
-        long deadlineNs = System.nanoTime()
-            + (long) Math.max(1, timeoutMs) * 1_000_000L;
-        int ready = 0;
-        for (MonitorSocket monitor : monitors) {
-            if (monitor == null) {
+        if (monitors == null || monitors.isEmpty()) {
+            return 0;
+        }
+
+        boolean[] ready = new boolean[monitors.size()];
+        int[] activeIndices = new int[monitors.size()];
+        int activeCount = 0;
+        int readyCount = 0;
+
+        for (int i = 0; i < monitors.size(); i++) {
+            if (monitors.get(i) == null) {
+                ready[i] = true;
+                readyCount++;
                 continue;
             }
-            int remainMs = (int) Math.max(1L,
-                (deadlineNs - System.nanoTime()) / 1_000_000L);
-            if (System.nanoTime() >= deadlineNs) {
-                break;
+            activeIndices[activeCount++] = i;
+        }
+        if (readyCount >= monitors.size()) {
+            return readyCount;
+        }
+
+        long deadlineNs = System.nanoTime()
+            + (long) Math.max(1, timeoutMs) * 1_000_000L;
+        try (SocketPollSet pollSet = new SocketPollSet(activeCount)) {
+            for (int i = 0; i < activeCount; i++) {
+                pollSet.setSocket(i, monitors.get(activeIndices[i]).socket(),
+                    PollEventType.POLLIN.getValue());
             }
-            if (PerfCommon.waitMonitorReady(monitor, remainMs,
-                acceptFallback)) {
-                ready++;
+
+            while (readyCount < monitors.size()) {
+                long remainNs = deadlineNs - System.nanoTime();
+                if (remainNs <= 0L) {
+                    break;
+                }
+                int readyEvents = pollSet.poll((int) Math.max(1L,
+                    remainNs / 1_000_000L));
+                if (readyEvents <= 0) {
+                    continue;
+                }
+
+                for (int i = 0; i < activeCount; i++) {
+                    int monitorIndex = activeIndices[i];
+                    if (ready[monitorIndex]
+                        || !pollSet.isReady(i, PollEventType.POLLIN.getValue())) {
+                        continue;
+                    }
+                    if (drainMonitorReady(monitors.get(monitorIndex),
+                            acceptFallback)) {
+                        ready[monitorIndex] = true;
+                        readyCount++;
+                    }
+                }
             }
         }
-        return ready;
+
+        return readyCount;
+    }
+
+    public static boolean waitConnectReadyCount(MonitorSocket monitor,
+                                                int expectedReady,
+                                                int timeoutMs) {
+        if (expectedReady <= 0) {
+            return true;
+        }
+        if (monitor == null) {
+            return false;
+        }
+
+        int readyCount = 0;
+        long deadlineNs = System.nanoTime()
+            + (long) Math.max(1, timeoutMs) * 1_000_000L;
+        try (SocketPollSet pollSet = new SocketPollSet(1)) {
+            pollSet.setSocket(0, monitor.socket(), PollEventType.POLLIN.getValue());
+
+            while (readyCount < expectedReady) {
+                long remainNs = deadlineNs - System.nanoTime();
+                if (remainNs <= 0L) {
+                    break;
+                }
+                int readyEvents = pollSet.poll((int) Math.max(1L,
+                    remainNs / 1_000_000L));
+                if (readyEvents <= 0
+                    || !pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
+                    continue;
+                }
+                readyCount += drainMonitorReadyCount(monitor, false);
+            }
+        }
+
+        return readyCount >= expectedReady;
+    }
+
+    private static boolean drainMonitorReady(MonitorSocket monitor,
+                                             boolean acceptFallback) {
+        return drainMonitorReadyCount(monitor, acceptFallback) > 0;
+    }
+
+    private static int drainMonitorReadyCount(MonitorSocket monitor,
+                                              boolean acceptFallback) {
+        int readyCount = 0;
+        while (true) {
+            try {
+                MonitorEvent event = monitor.recv(ReceiveFlag.DONTWAIT);
+                long mask = event.event();
+                if ((mask & dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY
+                    .getValue()) != 0) {
+                    readyCount++;
+                    continue;
+                }
+                if (acceptFallback
+                    && (((mask & dev.kairoscode.zlink.MonitorEventType.ACCEPTED
+                        .getValue()) != 0)
+                    || ((mask & dev.kairoscode.zlink.MonitorEventType.CONNECTED
+                        .getValue()) != 0))) {
+                    readyCount++;
+                }
+            } catch (ZlinkException ex) {
+                if (PerfCommon.isInterrupted(ex.errno())) {
+                    continue;
+                }
+                if (PerfCommon.isWouldBlock(ex.errno())) {
+                    return readyCount;
+                }
+                return readyCount;
+            }
+        }
     }
 }

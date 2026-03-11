@@ -220,11 +220,10 @@ Done:
 
         double elapsedSeconds = (benchEndTicks - benchStartTicks)
             / (double)Stopwatch.Frequency;
-        double throughput = elapsedSeconds > 0.0
-            ? recvCount / elapsedSeconds
-            : 0.0;
+        double configuredSeconds = Math.Max(1.0, config.DurationSeconds);
+        double throughput = recvCount / configuredSeconds;
         var latency = ComputeLatencyStats(latencySamples);
-        double fallbackLatencyUs = (elapsedSeconds * 1_000_000.0)
+        double fallbackLatencyUs = (configuredSeconds * 1_000_000.0)
             / Math.Max(1.0, recvCount);
         double latencyUs = latency.mean > 0.0 ? latency.mean : fallbackLatencyUs;
         double latencyP95Us = latency.p95 > 0.0 ? latency.p95 : latencyUs;

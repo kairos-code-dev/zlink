@@ -3,12 +3,14 @@
 package dev.kairoscode.zlink.integration.bench.src;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.PollEventType;
-import dev.kairoscode.zlink.Poller;
 import dev.kairoscode.zlink.ReceiveFlag;
 import dev.kairoscode.zlink.Socket;
+import dev.kairoscode.zlink.SocketPollSet;
 import dev.kairoscode.zlink.SocketType;
-import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.integration.bench.common.PerfCommon;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiClientHelpers;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiCommon;
@@ -25,45 +27,26 @@ import java.util.List;
 public final class PerfMultiPubSubClient {
     private static final String PATTERN = "MULTI_PUBSUB";
     private static final SocketType CLIENT_SOCKET_TYPE = SocketType.SUB;
-    private static final int MIN_PAYLOAD_BYTES = 32;
-    private static final int HEADER_BYTES = 32;
+    private static final int HEADER_BYTES = PerfMultiMetricHeader.HEADER_SIZE;
     private static final long NANOS_PER_MILLISECOND = 1_000_000L;
-    private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
-    private static final long ACTIVE_IDLE_TIMEOUT_NS = 1L
-        * NANOSECONDS_PER_SECOND;
-
-    private static final int ERRNO_EINTR = 4;
-    private static final int ERRNO_EAGAIN = 11;
-    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
-
-    private enum Phase {
-        ACTIVE(PerfMultiMetricHeader.PHASE_ACTIVE);
-
-        final int metricCode;
-
-        Phase(int metricCode) {
-            this.metricCode = metricCode;
-        }
-    }
+    private static final long NANOS_PER_SECOND = 1_000_000_000L;
 
     private static final class ClientConfig {
         final int clients;
         final int warmupSeconds;
         final int durationSeconds;
         final int settleMs;
-        final int payloadSize;
-        final int connectSettleMs;
+        final int connectTimeoutMs;
         final int pollTimeoutMs;
 
         ClientConfig(int clients, int warmupSeconds, int durationSeconds,
-                     int settleMs, int payloadSize, int connectSettleMs,
+                     int settleMs, int connectTimeoutMs,
                      int pollTimeoutMs) {
             this.clients = clients;
             this.warmupSeconds = warmupSeconds;
             this.durationSeconds = durationSeconds;
             this.settleMs = settleMs;
-            this.payloadSize = payloadSize;
-            this.connectSettleMs = connectSettleMs;
+            this.connectTimeoutMs = connectTimeoutMs;
             this.pollTimeoutMs = pollTimeoutMs;
         }
     }
@@ -91,12 +74,19 @@ public final class PerfMultiPubSubClient {
             return 1;
         }
 
-        ClientConfig config = resolveConfig(msgSize);
+        ClientConfig config = new ClientConfig(
+            PerfMultiCommon.resolveClients(PATTERN),
+            PerfMultiCommon.resolveWarmupSeconds(),
+            PerfMultiCommon.resolveDurationSeconds(),
+            PerfMultiCommon.resolveSettleMs(),
+            PerfMultiCommon.resolveConnectReadyTimeoutMs(),
+            Math.max(0, PerfMultiCommon.resolveClientPollTimeoutMs()));
 
         try (Context context = new Context()) {
             PerfCommon.applyClientContextOptions(context);
 
             List<Socket> sockets = new ArrayList<>(config.clients);
+            List<MonitorSocket> monitors = new ArrayList<>(config.clients);
 
             try {
                 for (int i = 0; i < config.clients; i++) {
@@ -104,42 +94,59 @@ public final class PerfMultiPubSubClient {
                     applySocketOptions(socket);
                     socket.setOption(SocketOptions.SUBSCRIBE, "");
                     PerfMultiTls.configureTlsClientIfNeeded(socket, transport);
+                    MonitorSocket monitor = socket.monitorOpen(
+                        PerfMultiCommon.CONNECT_MONITOR_EVENTS);
+                    monitor.setOption(SocketOptions.RCVHWM,
+                        PerfMultiCommon.resolveMonitorHwm());
                     socket.connect(endpoint);
                     sockets.add(socket);
+                    monitors.add(monitor);
                 }
 
-                if (config.connectSettleMs > 0) {
-                    PerfCommon.sleepMillis(config.connectSettleMs);
+                if (!PerfMultiCommon.waitAllConnectReady(monitors,
+                        config.connectTimeoutMs)) {
+                    System.err.println("ERROR,MULTI_PUBSUB,client,no_sockets");
+                    return 2;
                 }
                 if (sockets.isEmpty()) {
                     System.err.println("ERROR,MULTI_PUBSUB,client,no_sockets");
                     return 2;
                 }
-                Poller poller = new Poller();
-                for (Socket socket : sockets) {
-                    poller.add(socket, PollEventType.POLLIN);
+
+                try (SocketPollSet pollSet = SocketPollSet.fromSockets(sockets,
+                         PollEventType.POLLIN.getValue());
+                     Message recv = new Message()) {
+                    PerfMultiMetricHeader.Header header =
+                        new PerfMultiMetricHeader.Header();
+
+                    runDrainPhase(pollSet, recv,
+                        Math.max(0L, config.warmupSeconds) * NANOS_PER_SECOND,
+                        config.pollTimeoutMs);
+                    runDrainPhase(pollSet, recv,
+                        Math.max(0L, config.settleMs) * NANOS_PER_MILLISECOND,
+                        config.pollTimeoutMs);
+
+                    ActiveResult active = runActive(pollSet, recv, header,
+                        msgSize, config);
+                    if (active.count <= 0) {
+                        System.err.println("ERROR,MULTI_PUBSUB,client,no_active_frames");
+                        return 2;
+                    }
+
+                    double throughput = active.count
+                        / (double) Math.max(1, config.durationSeconds);
+                    PerfCommon.printResult(PATTERN, transport, msgSize,
+                        throughput, active.stats.meanUs(),
+                        active.stats.p95Us(), active.stats.p99Us());
+                    return 0;
                 }
-
-                byte[] recv = new byte[config.payloadSize];
-                PerfMultiMetricHeader.Header header = new PerfMultiMetricHeader.Header();
-
-                runWarmup(poller, recv, config);
-                runSettle(poller, recv, config);
-                ActiveResult active = runActive(poller, recv, header, msgSize,
-                    config);
-
-                if (active.count <= 0) {
-                    System.err.println("ERROR,MULTI_PUBSUB,client,no_active_frames");
-                    return 2;
-                }
-                double throughput = active.count
-                    / (double) Math.max(1, config.durationSeconds);
-                PerfCommon.printResult(PATTERN, transport, msgSize, throughput,
-                    active.stats.meanUs(), active.stats.p95Us(),
-                    active.stats.p99Us());
-                return 0;
             } finally {
+                closeAll(monitors);
                 closeAll(sockets);
+                try {
+                    context.shutdown();
+                } catch (RuntimeException ignored) {
+                }
             }
         } catch (RuntimeException ex) {
             System.err.println("ERROR,MULTI_PUBSUB,client,"
@@ -147,18 +154,6 @@ public final class PerfMultiPubSubClient {
                 + String.valueOf(ex.getMessage()));
             return 2;
         }
-    }
-
-    private static ClientConfig resolveConfig(int msgSize) {
-        return new ClientConfig(
-            PerfMultiCommon.resolveClients(PATTERN),
-            PerfMultiCommon.resolveWarmupSeconds(),
-            PerfMultiCommon.resolveDurationSeconds(),
-            PerfMultiCommon.resolveSettleMs(),
-            Math.max(msgSize, MIN_PAYLOAD_BYTES),
-            PerfCommon.parseNonNegativeEnv("PERF_PUBSUB_CONNECT_SETTLE_MS", 2000),
-            PerfMultiCommon.resolveClientPollTimeoutMs()
-        );
     }
 
     private static void applySocketOptions(Socket socket) {
@@ -173,135 +168,91 @@ public final class PerfMultiPubSubClient {
         socket.setOption(SocketOptions.LINGER, 0);
     }
 
-    private static int tryReceive(Socket socket, byte[] buffer) {
-        while (true) {
-            try {
-                return socket.recv(buffer, 0, buffer.length, ReceiveFlag.DONTWAIT);
-            } catch (ZlinkException ex) {
-                if (isInterrupted(ex.errno())) {
-                    continue;
-                }
-                if (isWouldBlock(ex.errno())) {
-                    return 0;
-                }
-                throw ex;
-            }
-        }
-    }
-
-    private static void runWarmup(Poller poller, byte[] recv,
-                                  ClientConfig config) {
-        long durationNs = (long) Math.max(0, config.warmupSeconds)
-            * NANOSECONDS_PER_SECOND;
-        runDrainPhase(poller, recv, durationNs, config.pollTimeoutMs);
-    }
-
-    private static void runSettle(Poller poller, byte[] recv,
-                                  ClientConfig config) {
-        long durationNs = (long) Math.max(0, config.settleMs)
-            * NANOS_PER_MILLISECOND;
-        runDrainPhase(poller, recv, durationNs, config.pollTimeoutMs);
-    }
-
-    private static void runDrainPhase(Poller poller, byte[] recv,
-                                      long durationNs, int pollTimeoutMs) {
+    private static void runDrainPhase(SocketPollSet pollSet,
+                                      Message recv,
+                                      long durationNs,
+                                      int pollTimeoutMs) {
         if (durationNs <= 0L) {
             return;
         }
-        long deadline = System.nanoTime() + durationNs;
-        while (System.nanoTime() < deadline) {
-            drainReadySockets(poller, recv, pollTimeoutMs);
+        long deadlineNs = System.nanoTime() + durationNs;
+        while (System.nanoTime() < deadlineNs) {
+            drainReadySockets(pollSet, recv, pollTimeoutMs);
         }
     }
 
-    private static ActiveResult runActive(Poller poller, byte[] recv,
+    private static ActiveResult runActive(SocketPollSet pollSet,
+                                          Message recv,
                                           PerfMultiMetricHeader.Header header,
-                                          int msgSize, ClientConfig config) {
+                                          int msgSize,
+                                          ClientConfig config) {
         PerfCommon.LatencyReservoir reservoir = new PerfCommon.LatencyReservoir(
             PerfMultiCommon.resolveLatencySampleCap());
-        long durationNs = (long) Math.max(1, config.durationSeconds)
-            * NANOSECONDS_PER_SECOND;
-        long deadlineNs = 0L;
-        long lastDrainNs = System.nanoTime();
-        long count = 0;
-        int activeRunId = -1;
+        long durationNs = Math.max(1L, config.durationSeconds)
+            * NANOS_PER_SECOND;
+        long deadlineNs = System.nanoTime() + durationNs;
+        long count = 0L;
+        int activeRunId = 1;
 
-        while (activeRunId < 0 || System.nanoTime() < deadlineNs) {
-            int eventCount = poller.pollCount(config.pollTimeoutMs);
-            long drainedCount = 0L;
-            for (int i = 0; i < eventCount; i++) {
-                Socket socket = poller.readySocket(i);
-                if (socket == null) {
+        while (System.nanoTime() < deadlineNs) {
+            int readyCount = pollSet.poll(config.pollTimeoutMs);
+            long drained = 0L;
+            for (int i = 0; i < pollSet.size(); i++) {
+                if (!pollSet.isReady(i, PollEventType.POLLIN.getValue())) {
                     continue;
                 }
+                Socket socket = pollSet.socket(i);
                 while (true) {
-                    int n = tryReceive(socket, recv);
+                    int n = recv.tryRecv(socket, ReceiveFlag.DONTWAIT);
                     if (n <= 0) {
                         break;
                     }
-                    drainedCount++;
-                    if (!isActiveSample(n, recv, header, msgSize)) {
+                    drained++;
+                    if (!isActiveSample(recv, n, header, msgSize)) {
                         continue;
-                    }
-                    if (activeRunId < 0) {
-                        activeRunId = header.runId;
-                        deadlineNs = System.nanoTime() + durationNs;
                     }
                     if (header.runId != activeRunId) {
                         continue;
                     }
-                    long nowUs = PerfMultiMetricHeader.nowUs();
-                    reservoir.add(Math.max(0L, nowUs - header.sentTsUs));
+                    reservoir.add(Math.max(0L,
+                        PerfMultiMetricHeader.nowUs() - header.sentTsUs));
                     count++;
                 }
-            }
-            long nowNs = System.nanoTime();
-            if (drainedCount > 0L) {
-                lastDrainNs = nowNs;
-            } else if (activeRunId < 0
-                && nowNs - lastDrainNs >= ACTIVE_IDLE_TIMEOUT_NS) {
-                break;
             }
         }
 
         return new ActiveResult(count, reservoir.snapshot());
     }
 
-    private static boolean isActiveSample(int recvBytes, byte[] recv,
+    private static boolean isActiveSample(Message recv,
+                                          int recvBytes,
                                           PerfMultiMetricHeader.Header header,
                                           int msgSize) {
         return recvBytes >= HEADER_BYTES
-            && PerfMultiMetricHeader.decodePayloadHeader(recv, header)
-            && header.phase == Phase.ACTIVE.metricCode
+            && PerfMultiMetricHeader.decodePayloadHeader(recv, recvBytes, header)
+            && header.phase == PerfMultiMetricHeader.PHASE_ACTIVE
             && header.msgSize == msgSize;
     }
 
-    private static long drainReadySockets(Poller poller, byte[] buffer,
+    private static long drainReadySockets(SocketPollSet pollSet,
+                                          Message recv,
                                           int pollTimeoutMs) {
-        long drainedCount = 0;
-        int eventCount = poller.pollCount(pollTimeoutMs);
-        for (int i = 0; i < eventCount; i++) {
-            Socket socket = poller.readySocket(i);
-            if (socket == null) {
+        long drained = 0L;
+        pollSet.poll(pollTimeoutMs);
+        for (int i = 0; i < pollSet.size(); i++) {
+            if (!pollSet.isReady(i, PollEventType.POLLIN.getValue())) {
                 continue;
             }
+            Socket socket = pollSet.socket(i);
             while (true) {
-                int n = tryReceive(socket, buffer);
+                int n = recv.tryRecv(socket, ReceiveFlag.DONTWAIT);
                 if (n <= 0) {
                     break;
                 }
-                drainedCount++;
+                drained++;
             }
         }
-        return drainedCount;
-    }
-
-    private static boolean isInterrupted(int errno) {
-        return errno == ERRNO_EINTR;
-    }
-
-    private static boolean isWouldBlock(int errno) {
-        return errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN;
+        return drained;
     }
 
     private static void closeAll(List<? extends AutoCloseable> resources) {

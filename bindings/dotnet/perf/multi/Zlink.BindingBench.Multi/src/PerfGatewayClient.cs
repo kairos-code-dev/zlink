@@ -198,6 +198,11 @@ internal static class PerfGatewayClient
             latencyP99Us);
     }
 
+    private static int EffectiveClientPollTimeoutMs(int timeoutMs)
+    {
+        return Math.Max(1, timeoutMs);
+    }
+
     private static GatewayClientSlot CreateGatewayClientSlot(Context ctx,
         Discovery discovery, string transport, string pattern,
         string registryRouter, string clientServiceName, string? serverRoutingId,
@@ -343,8 +348,6 @@ internal static class PerfGatewayClient
 
         while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            bool progressed = false;
-
             if (allowSend)
             {
                 int start = state.RoundRobinIndex;
@@ -362,8 +365,6 @@ internal static class PerfGatewayClient
                         phase, ref state, index);
                     if (sendResult == GatewayPhaseSendResult.Fatal)
                         return recvCount;
-                    if (sendResult == GatewayPhaseSendResult.Progressed)
-                        progressed = true;
                 }
 
                 state.RoundRobinIndex = activeSlots.Count == 0 ? 0
@@ -371,7 +372,7 @@ internal static class PerfGatewayClient
             }
 
             int written = receiverPoller.Wait(receiverEvents.AsSpan(),
-                Math.Max(0, config.ClientPollTimeoutMs),
+                EffectiveClientPollTimeoutMs(config.ClientPollTimeoutMs),
                 out int readyCount);
             if (readyCount > 0)
             {
@@ -395,7 +396,6 @@ internal static class PerfGatewayClient
                     if (n <= 0)
                         continue;
 
-                    progressed = true;
                     state.AwaitingReply[index] = 0;
                     if (TryDecodeMetricHeader(slot.Recv.AsSpan(0, n),
                             out PerfMetricHeader header)
@@ -419,14 +419,12 @@ internal static class PerfGatewayClient
 
                     if (allowSend)
                     {
-                        GatewayPhaseSendResult sendResult = TryGatewayPhaseSend(
-                            activeSlots, sendPoller, sendPending, msgSize,
-                            runId, phase, ref state, index);
-                        if (sendResult == GatewayPhaseSendResult.Fatal)
-                            return recvCount;
-                        if (sendResult == GatewayPhaseSendResult.Progressed)
-                            progressed = true;
-                    }
+                    GatewayPhaseSendResult sendResult = TryGatewayPhaseSend(
+                        activeSlots, sendPoller, sendPending, msgSize,
+                        runId, phase, ref state, index);
+                    if (sendResult == GatewayPhaseSendResult.Fatal)
+                        return recvCount;
+                }
                 }
             }
 
@@ -448,13 +446,9 @@ internal static class PerfGatewayClient
                         phase, ref state, index);
                     if (sendResult == GatewayPhaseSendResult.Fatal)
                         return recvCount;
-                    if (sendResult == GatewayPhaseSendResult.Progressed)
-                        progressed = true;
                 }
             }
 
-            if (!progressed && config.ClientPollTimeoutMs == 0)
-                Thread.Yield();
         }
 
         return recvCount;

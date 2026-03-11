@@ -2,7 +2,14 @@
 
 package dev.kairoscode.zlink.integration.bench.common;
 
+import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.MonitorSocket;
+import java.util.List;
+
 public final class PerfMultiCommon {
+    public static final int CONNECT_MONITOR_EVENTS =
+        MonitorEventType.CONNECTION_READY.getValue();
+
     private PerfMultiCommon() {
     }
 
@@ -83,6 +90,19 @@ public final class PerfMultiCommon {
     public static int resolveClientPollTimeoutMs() {
         return parseNonNegativeWithAliases(0, "PERF_CLIENT_POLL_TIMEOUT_MS",
             "PERF_MULTI_CLIENT_POLL_TIMEOUT_MS");
+    }
+
+    public static int resolveEffectiveClientPollTimeoutMs() {
+        return Math.max(1, resolveClientPollTimeoutMs());
+    }
+
+    public static boolean waitAllConnectReady(List<MonitorSocket> monitors,
+                                              int timeoutMs) {
+        if (monitors == null || monitors.isEmpty()) {
+            return true;
+        }
+        return PerfMultiClientHelpers.waitAllClientConnectReady(monitors,
+            timeoutMs, false) >= monitors.size();
     }
 
     private static int parsePositiveWithAliases(int fallback,

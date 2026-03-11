@@ -3,8 +3,9 @@
 package dev.kairoscode.zlink.integration.bench.src;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.PollEventType;
-import dev.kairoscode.zlink.Poller;
+import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.ReceiveFlag;
 import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.SocketType;
@@ -18,16 +19,12 @@ import dev.kairoscode.zlink.options.SocketOptions;
 
 /**
  * MULTI_DEALER_DEALER server benchmark.
- * DEALER(bind) receives one-way payloads with PollIn + nonblocking drain.
+ * DEALER(bind) receives one-way payloads with blocking recv + same-iteration
+ * nonblocking drain.
  */
 public final class PerfMultiDealerDealerServer {
     private static final String PATTERN = "MULTI_DEALER_DEALER";
-    private static final int MIN_PAYLOAD_BYTES = 32;
     private static final int HEADER_BYTES = 32;
-    private static final int STARTUP_GRACE_SECONDS = 20;
-    private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
-    private static final long ACTIVE_IDLE_GRACE_NS = 750_000_000L;
-
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
@@ -46,97 +43,60 @@ public final class PerfMultiDealerDealerServer {
         int warmupSeconds = PerfMultiCommon.resolveWarmupSeconds();
         int settleMs = PerfMultiCommon.resolveSettleMs();
         int durationSeconds = PerfMultiCommon.resolveDurationSeconds();
-        int pollTimeoutMs = Math.max(1,
-            PerfMultiCommon.resolveClientPollTimeoutMs());
+        int connectTimeoutMs = PerfMultiCommon.resolveConnectReadyTimeoutMs();
+        int clientCount = PerfMultiCommon.resolveClients(PATTERN);
 
         try (Context context = new Context();
              Socket server = new Socket(context, SocketType.DEALER);
-             Poller poller = new Poller()) {
+             MonitorSocket monitor = server.monitorOpen(
+                 PerfMultiCommon.CONNECT_MONITOR_EVENTS)) {
             PerfCommon.applyServerContextOptions(context);
             applySocketOptions(server);
             PerfMultiTls.configureTlsServerIfNeeded(server, transport);
             server.bind(endpoint);
-            poller.add(server, PollEventType.POLLIN);
             System.out.println("READY," + endpoint);
 
-            byte[] payload = new byte[resolvePayloadSize(msgSize)];
-            PerfCommon.LatencyReservoir reservoir =
-                new PerfCommon.LatencyReservoir(
-                    PerfMultiCommon.resolveLatencySampleCap());
-            PerfMultiMetricHeader.Header header = new PerfMultiMetricHeader.Header();
-
-            long activeCount = 0;
-            long activeStartNs = 0;
-            long activeEndNs = 0;
-            int activeRunId = -1;
-            long serverStartNs = System.nanoTime();
-            long startupDeadlineNs = serverStartNs
-                + ((long) Math.max(0, warmupSeconds)
-                + (long) Math.max(1, durationSeconds)
-                + (long) STARTUP_GRACE_SECONDS)
-                * NANOSECONDS_PER_SECOND
-                + (long) Math.max(0, settleMs) * 1_000_000L;
-            long lastReceiveNs = serverStartNs;
-            long activeDurationNs =
-                (long) Math.max(1, durationSeconds) * NANOSECONDS_PER_SECOND;
-            boolean sawTraffic = false;
-
-            while (true) {
-                long nowNs = System.nanoTime();
-                if (poller.pollCount(pollTimeoutMs) <= 0) {
-                    if (!sawTraffic) {
-                        if (nowNs >= startupDeadlineNs) {
-                            break;
-                        }
-                    } else if ((activeStartNs == 0
-                        || nowNs >= activeEndNs)
-                        && nowNs - lastReceiveNs >= ACTIVE_IDLE_GRACE_NS) {
-                        break;
-                    }
-                    continue;
-                }
-                while (true) {
-                    int n = receiveNonBlocking(server, payload);
-                    if (n <= 0) {
-                        break;
-                    }
-                    nowNs = System.nanoTime();
-                    sawTraffic = true;
-                    lastReceiveNs = nowNs;
-                    if (n < HEADER_BYTES
-                        || !PerfMultiMetricHeader.decodePayloadHeader(payload,
-                        header)
-                        || header.msgSize != msgSize) {
-                        continue;
-                    }
-                    if (activeRunId < 0) {
-                        activeRunId = header.runId;
-                    }
-                    if (header.runId != activeRunId
-                        || header.phase != PerfMultiMetricHeader.PHASE_ACTIVE) {
-                        continue;
-                    }
-                    if (activeStartNs == 0) {
-                        activeStartNs = nowNs;
-                        activeEndNs = activeStartNs + activeDurationNs;
-                    }
-                    if (nowNs > activeEndNs) {
-                        continue;
-                    }
-                    long nowUs = PerfMultiMetricHeader.nowUs();
-                    reservoir.add(Math.max(0L, nowUs - header.sentTsUs));
-                    activeCount++;
-                }
-            }
-
-            if (activeCount <= 0) {
+            if (!waitConnectReadyCount(monitor, clientCount, connectTimeoutMs)) {
                 return 2;
             }
-            double throughput = activeCount / (double) Math.max(1, durationSeconds);
-            PerfCommon.Stats stats = reservoir.snapshot();
-            PerfCommon.printResult(PATTERN, transport, msgSize, throughput,
-                stats.meanUs(), stats.p95Us(), stats.p99Us());
-            return 0;
+
+            try (Message payload = new Message()) {
+                PerfCommon.LatencyReservoir reservoir =
+                    new PerfCommon.LatencyReservoir(
+                        PerfMultiCommon.resolveLatencySampleCap());
+                PerfMultiMetricHeader.Header header =
+                    new PerfMultiMetricHeader.Header();
+
+                int activeRunId = 1;
+                if (!runReceivePhase(server, payload, msgSize, activeRunId,
+                        PerfMultiMetricHeader.PHASE_WARMUP, warmupSeconds,
+                        false, false, header, reservoir)) {
+                    return 2;
+                }
+
+                if (!runReceivePhase(server, payload, msgSize, activeRunId,
+                        PerfMultiMetricHeader.PHASE_DRAIN, settleMs / 1000.0,
+                        false, false, header, reservoir)) {
+                    return 2;
+                }
+
+                ActiveStats active = new ActiveStats();
+                if (!runReceivePhase(server, payload, msgSize, activeRunId,
+                        PerfMultiMetricHeader.PHASE_ACTIVE, durationSeconds,
+                        true, true, header, reservoir, active)) {
+                    return 2;
+                }
+
+                if (active.count <= 0) {
+                    return 2;
+                }
+                double throughput = active.count
+                    / (double) Math.max(1, durationSeconds);
+                PerfCommon.Stats stats = reservoir.snapshot();
+                PerfCommon.printResult(PATTERN, transport, msgSize, throughput,
+                    stats.meanUs(), stats.p95Us(), stats.p99Us());
+                return 0;
+            }
         } catch (RuntimeException ignored) {
             return 2;
         }
@@ -162,11 +122,118 @@ public final class PerfMultiDealerDealerServer {
         return PerfCommon.endpointFor(transport, name);
     }
 
-    private static int receiveNonBlocking(Socket socket, byte[] buffer) {
+    private static boolean waitConnectReadyCount(MonitorSocket monitor,
+                                                 int expectedReady,
+                                                 int timeoutMs) {
+        return PerfMultiClientHelpers.waitConnectReadyCount(monitor,
+            expectedReady, timeoutMs);
+    }
+
+    private static boolean runReceivePhase(Socket server, Message payload,
+                                           int msgSize, int runId, int phase,
+                                           double durationSeconds,
+                                           boolean countMessage,
+                                           boolean collectLatency,
+                                           PerfMultiMetricHeader.Header header,
+                                           PerfCommon.LatencyReservoir reservoir) {
+        return runReceivePhase(server, payload, msgSize, runId, phase,
+            durationSeconds, countMessage, collectLatency, header, reservoir,
+            null);
+    }
+
+    private static boolean runReceivePhase(Socket server, Message payload,
+                                           int msgSize, int runId, int phase,
+                                           double durationSeconds,
+                                           boolean countMessage,
+                                           boolean collectLatency,
+                                           PerfMultiMetricHeader.Header header,
+                                           PerfCommon.LatencyReservoir reservoir,
+                                           ActiveStats active) {
+        if (durationSeconds <= 0.0) {
+            return true;
+        }
+
+        long deadlineNs = System.nanoTime()
+            + (long) (durationSeconds * 1_000_000_000L);
+        while (System.nanoTime() < deadlineNs) {
+            int n = receive(server, payload, ReceiveFlag.NONE);
+            if (n <= 0) {
+                continue;
+            }
+            if (!handleReceived(payload, n, msgSize, runId, phase, countMessage,
+                    collectLatency, header, reservoir, active)) {
+                return false;
+            }
+            if (!drainNonBlockingMessages(server, payload, msgSize, runId, phase,
+                    countMessage, collectLatency, header, reservoir, active)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean drainNonBlockingMessages(Socket server,
+                                                    Message payload,
+                                                    int msgSize, int runId,
+                                                    int phase,
+                                                    boolean countMessage,
+                                                    boolean collectLatency,
+                                                    PerfMultiMetricHeader.Header header,
+                                                    PerfCommon.LatencyReservoir reservoir,
+                                                    ActiveStats active) {
+        while (true) {
+            int n = receive(server, payload, ReceiveFlag.DONTWAIT);
+            if (n < 0) {
+                return false;
+            }
+            if (n == 0) {
+                return true;
+            }
+            if (!handleReceived(payload, n, msgSize, runId, phase, countMessage,
+                    collectLatency, header, reservoir, active)) {
+                return false;
+            }
+        }
+    }
+
+    private static boolean handleReceived(Message payload, int n,
+                                          int msgSize,
+                                          int runId, int phase,
+                                          boolean countMessage,
+                                          boolean collectLatency,
+                                          PerfMultiMetricHeader.Header header,
+                                          PerfCommon.LatencyReservoir reservoir,
+                                          ActiveStats active) {
+        if (n < HEADER_BYTES
+            || !PerfMultiMetricHeader.decodePayloadHeader(payload, n, header)
+            || header.runId != runId
+            || header.phase != phase
+            || header.msgSize != msgSize) {
+            return true;
+        }
+
+        if (countMessage && active != null) {
+            active.count++;
+        }
+        if (collectLatency) {
+            long nowUs = PerfMultiMetricHeader.nowUs();
+            if (header.sentTsUs > 0 && nowUs >= header.sentTsUs) {
+                reservoir.add(Math.max(0L, nowUs - header.sentTsUs));
+            }
+        }
+        return true;
+    }
+
+    private static int receive(Socket socket, Message buffer,
+                               ReceiveFlag flag) {
+        if (flag == ReceiveFlag.DONTWAIT) {
+            int rc = buffer.tryRecv(socket, flag);
+            return rc < 0 ? 0 : rc;
+        }
         while (true) {
             try {
-                return socket.recv(buffer, 0, buffer.length,
-                    ReceiveFlag.DONTWAIT);
+                buffer.recv(socket, flag);
+                return buffer.size();
             } catch (ZlinkException ex) {
                 int errno = ex.errno();
                 if (isInterrupted(errno)) {
@@ -188,7 +255,7 @@ public final class PerfMultiDealerDealerServer {
         return errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN;
     }
 
-    private static int resolvePayloadSize(int msgSize) {
-        return Math.max(msgSize, MIN_PAYLOAD_BYTES);
+    private static final class ActiveStats {
+        long count;
     }
 }

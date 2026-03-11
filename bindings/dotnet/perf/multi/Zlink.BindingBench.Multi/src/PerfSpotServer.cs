@@ -132,12 +132,9 @@ internal static class PerfSpotServer
 
     private static SpotServerResult ComputeResult(SpotServerActiveStats stats)
     {
-        double elapsedSeconds = (stats.BenchEndTicks - stats.BenchStartTicks)
-            / (double)Stopwatch.Frequency;
-        double throughput = elapsedSeconds > 0.0
-            ? stats.SendCount / elapsedSeconds
-            : 0.0;
-        double latencyUs = (elapsedSeconds * 1_000_000.0)
+        double configuredSeconds = Math.Max(1.0, ResolveMultiDurationSeconds());
+        double throughput = stats.SendCount / configuredSeconds;
+        double latencyUs = (configuredSeconds * 1_000_000.0)
             / Math.Max(1.0, stats.SendCount);
         return new SpotServerResult(throughput, latencyUs, latencyUs, latencyUs);
     }

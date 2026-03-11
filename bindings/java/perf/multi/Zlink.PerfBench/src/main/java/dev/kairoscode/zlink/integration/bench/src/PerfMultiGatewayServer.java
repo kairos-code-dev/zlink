@@ -161,7 +161,8 @@ public final class PerfMultiGatewayServer {
                     replyMessage);
 
                 if (request.payloadLength() < HEADER_BYTES
-                    || !PerfMultiMetricHeader.decodePayloadHeader(payload, header)
+                    || !PerfMultiMetricHeader.decodePayloadHeader(payloadSegment,
+                        request.payloadLength(), header)
                     || header.msgSize != msgSize
                     || header.phase != PerfMultiMetricHeader.PHASE_ACTIVE) {
                     continue;
@@ -188,9 +189,8 @@ public final class PerfMultiGatewayServer {
                 return 2;
             }
 
-            double elapsedSec = Math.max(1e-9,
-                (benchEndNs - benchStartNs) / 1_000_000_000.0);
-            double throughput = recvCount / elapsedSec;
+            double configuredSeconds = Math.max(1.0, durationSeconds);
+            double throughput = recvCount / configuredSeconds;
             PerfCommon.Stats stats = reservoir.snapshot();
             PerfCommon.printResult(PATTERN, transport, msgSize, throughput,
                 stats.meanUs(), stats.p95Us(), stats.p99Us());

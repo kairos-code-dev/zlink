@@ -317,6 +317,79 @@ inline bool wait_connect_ready (connect_monitor_t &mon, int timeout_ms)
     return wait_connect_ready_count (mon, 1, timeout_ms);
 }
 
+inline bool wait_all_connect_ready (std::vector<connect_monitor_t> &monitors,
+                                    int timeout_ms)
+{
+    if (monitors.empty ())
+        return true;
+
+    std::vector<char> ready (monitors.size (), 0);
+    std::vector<size_t> active_indices;
+    std::vector<zlink::socket_t *> sockets;
+    active_indices.reserve (monitors.size ());
+    sockets.reserve (monitors.size ());
+
+    size_t ready_count = 0;
+    for (size_t i = 0; i < monitors.size (); ++i) {
+        if (!monitors[i].monitor.get ()) {
+            ready[i] = 1;
+            ++ready_count;
+            continue;
+        }
+        sockets.push_back (&monitors[i].monitor->socket ());
+        active_indices.push_back (i);
+    }
+
+    if (ready_count >= monitors.size ())
+        return true;
+    if (timeout_ms <= 0)
+        return false;
+
+    zlink::poller_t poller;
+    std::vector<zlink::poll_event_t> events;
+    events.reserve (sockets.size ());
+    for (size_t i = 0; i < sockets.size (); ++i) {
+        if (poller.add (*sockets[i], zlink::poll_event::pollin, NULL) != 0)
+            return false;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (timeout_ms);
+    while (ready_count < monitors.size ()) {
+        const auto now = std::chrono::steady_clock::now ();
+        if (now >= deadline)
+            break;
+
+        long wait_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
+                         deadline - now)
+                         .count ();
+        if (wait_ms < 1)
+            wait_ms = 1;
+
+        const int rc = poller.wait (events, wait_ms);
+        if (rc < 0) {
+            if (errno == EINTR)
+                continue;
+            return false;
+        }
+        if (rc == 0)
+            continue;
+
+        for (size_t i = 0; i < active_indices.size (); ++i) {
+            const size_t monitor_index = active_indices[i];
+            if (ready[monitor_index])
+                continue;
+            const int count = poll_connect_ready_count (monitors[monitor_index]);
+            if (count <= 0)
+                continue;
+            ready[monitor_index] = 1;
+            ++ready_count;
+        }
+    }
+
+    return ready_count >= monitors.size ();
+}
+
 inline void close_connect_monitor (connect_monitor_t &mon)
 {
     if (mon.owner) {

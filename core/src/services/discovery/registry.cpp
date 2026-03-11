@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 
+#include "core/recv_internal.hpp"
 #include "services/discovery/registry.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/control/service_control_runtime.hpp"
@@ -329,8 +330,8 @@ int registry_t::ensure_sockets ()
         return -1;
     }
 
-    void *pub = zlink_socket (static_cast<void *> (_ctx), ZLINK_XPUB);
-    void *router = zlink_socket (static_cast<void *> (_ctx), ZLINK_ROUTER);
+    void *pub = static_cast<void *> (_ctx->create_socket (ZLINK_XPUB));
+    void *router = static_cast<void *> (_ctx->create_socket (ZLINK_ROUTER));
     if (!pub || !router) {
         if (pub)
             zlink_close (pub);
@@ -445,7 +446,7 @@ void registry_t::tick ()
         return;
 
     if (!peer_pubs.empty () && !peer_sub) {
-        peer_sub = zlink_socket (static_cast<void *> (_ctx), ZLINK_SUB);
+        peer_sub = static_cast<void *> (_ctx->create_socket (ZLINK_SUB));
         if (peer_sub) {
             for (size_t i = 0; i < peer_sub_opts.size (); ++i) {
                 if (!peer_sub_opts[i].value.empty ())
@@ -479,43 +480,17 @@ void registry_t::tick ()
     }
 
     for (int drain = 0; drain < 64; ++drain) {
-        zlink_pollitem_t items[3];
-        int item_count = 0;
-        items[item_count].socket = router;
-        items[item_count].fd = 0;
-        items[item_count].events = ZLINK_POLLIN;
-        items[item_count].revents = 0;
-        item_count++;
-        items[item_count].socket = pub;
-        items[item_count].fd = 0;
-        items[item_count].events = ZLINK_POLLIN;
-        items[item_count].revents = 0;
-        item_count++;
-        if (peer_sub) {
-            items[item_count].socket = peer_sub;
-            items[item_count].fd = 0;
-            items[item_count].events = ZLINK_POLLIN;
-            items[item_count].revents = 0;
-            item_count++;
-        }
-
-        const int rc = zlink_poll (items, item_count, 0);
-        if (rc <= 0)
-            break;
-
         bool handled = false;
-        int idx = 0;
-        if (items[idx].revents & ZLINK_POLLIN) {
+        if (zlink::wait_socket_events_internal (router, ZLINK_POLLIN, 0) > 0) {
             handle_router (router);
             handled = true;
         }
-        idx++;
-        if (items[idx].revents & ZLINK_POLLIN) {
+        if (zlink::wait_socket_events_internal (pub, ZLINK_POLLIN, 0) > 0) {
             handled = true;
             while (true) {
                 zlink_msg_t submsg;
                 zlink_msg_init (&submsg);
-                if (zlink_msg_recv (&submsg, pub, ZLINK_DONTWAIT) == -1) {
+                if (recv_msg_internal (pub, &submsg, ZLINK_DONTWAIT) == -1) {
                     zlink_msg_close (&submsg);
                     break;
                 }
@@ -528,8 +503,9 @@ void registry_t::tick ()
                 zlink_msg_close (&submsg);
             }
         }
-        idx++;
-        if (peer_sub && (items[idx].revents & ZLINK_POLLIN)) {
+        if (peer_sub
+            && zlink::wait_socket_events_internal (peer_sub, ZLINK_POLLIN, 0)
+                 > 0) {
             handle_peer (peer_sub);
             handled = true;
         }
@@ -570,7 +546,7 @@ void registry_t::handle_router (void *router_)
 {
     zlink_msg_t msg;
     zlink_msg_init (&msg);
-    if (zlink_msg_recv (&msg, router_, ZLINK_DONTWAIT) == -1) {
+    if (recv_msg_internal (router_, &msg, ZLINK_DONTWAIT) == -1) {
         zlink_msg_close (&msg);
         return;
     }
@@ -583,7 +559,7 @@ void registry_t::handle_router (void *router_)
     while (true) {
         zlink_msg_t frame;
         zlink_msg_init (&frame);
-        if (zlink_msg_recv (&frame, router_, ZLINK_DONTWAIT) == -1) {
+        if (recv_msg_internal (router_, &frame, ZLINK_DONTWAIT) == -1) {
             zlink_msg_close (&frame);
             break;
         }
@@ -657,7 +633,7 @@ void registry_t::handle_peer (void *sub_)
     while (true) {
         zlink_msg_t frame;
         zlink_msg_init (&frame);
-        if (zlink_msg_recv (&frame, sub_, ZLINK_DONTWAIT) == -1) {
+        if (recv_msg_internal (sub_, &frame, ZLINK_DONTWAIT) == -1) {
             zlink_msg_close (&frame);
             break;
         }

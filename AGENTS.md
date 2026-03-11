@@ -50,6 +50,7 @@
 
 ## Agent Instructions
 - `AGENTS.md` is the single source of truth for repo guidelines.
+- Agents must address the user as `팀장님`.
 - If any agent-specific files are added in the future, they must reference `AGENTS.md` and instruct contributors to update `AGENTS.md` when guidelines change.
 
 ## External References

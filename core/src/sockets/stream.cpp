@@ -558,11 +558,6 @@ int zlink::stream_t::stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_
     }
 
     std::lock_guard<std::mutex> lk (_dispatch_control_mu);
-    if (_dispatch_active.load (std::memory_order_acquire)) {
-        errno = EBUSY;
-        return -1;
-    }
-
     if (options.stream_notify) {
         // Dispatch callback mode consumes application payloads directly.
         // STREAM_NOTIFY injects control frames into recv path and is not
@@ -588,11 +583,6 @@ int zlink::stream_t::stream_dispatch_start_len32be (
     }
 
     std::lock_guard<std::mutex> lk (_dispatch_control_mu);
-    if (_dispatch_active.load (std::memory_order_acquire)) {
-        errno = EBUSY;
-        return -1;
-    }
-
     if (options.stream_notify) {
         // Dispatch callback mode consumes application payloads directly.
         // STREAM_NOTIFY injects control frames into recv path and is not

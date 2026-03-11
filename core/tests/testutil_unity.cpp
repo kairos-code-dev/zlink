@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #include "testutil_unity.hpp"
+#include "../src/core/recv_internal.hpp"
 
 #include <stdlib.h>
 #include <string.h>
@@ -110,7 +111,7 @@ void recv_string_expect_success (void *socket_, const char *str_, int flags_)
                                        "characters");
 
     const int rc = TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv (socket_, buffer, sizeof (buffer), flags_));
+      zlink::recv_buffer_internal (socket_, buffer, sizeof (buffer), flags_));
     TEST_ASSERT_EQUAL_INT ((int) len, rc);
     if (str_)
         TEST_ASSERT_EQUAL_STRING_LEN (str_, buffer, len);

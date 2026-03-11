@@ -45,7 +45,6 @@ class spot_node_t : public discovery_observer_t
     struct sub_defaults_t
     {
         option_setting_t rcvhwm;
-        option_setting_t rcvtimeo;
         option_setting_t linger;
         option_setting_t sndbuf;
         option_setting_t rcvbuf;

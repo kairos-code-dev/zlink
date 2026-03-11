@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 
+#include "core/recv_internal.hpp"
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/control/service_control_runtime.hpp"
@@ -61,13 +62,7 @@ static bool send_topology_report_frames (socket_base_t *dealer_,
 
 static bool wait_socket_event (void *socket_, short events_, long timeout_ms_)
 {
-    zlink_pollitem_t item;
-    item.socket = socket_;
-    item.fd = 0;
-    item.events = events_;
-    item.revents = 0;
-    const int rc = zlink_poll (&item, 1, timeout_ms_);
-    return rc > 0 && (item.revents & events_) == events_;
+    return zlink::wait_socket_events_internal (socket_, events_, timeout_ms_) > 0;
 }
 
 static std::string topology_routing_key (const zlink_routing_id_t &rid_)
@@ -900,7 +895,7 @@ int discovery_t::ensure_sub_socket ()
     if (_sub_socket)
         return 0;
 
-    void *sub = zlink_socket (static_cast<void *> (_ctx), ZLINK_SUB);
+    void *sub = static_cast<void *> (_ctx->create_socket (ZLINK_SUB));
     if (!sub)
         return -1;
 
@@ -1349,20 +1344,14 @@ void discovery_t::tick ()
     }
 
     while (true) {
-        zlink_pollitem_t item;
-        item.socket = sub;
-        item.fd = 0;
-        item.events = ZLINK_POLLIN;
-        item.revents = 0;
-        const int rc = zlink_poll (&item, 1, 0);
-        if (rc <= 0 || !(item.revents & ZLINK_POLLIN))
+        if (!wait_socket_event (sub, ZLINK_POLLIN, 0))
             break;
 
         std::vector<zlink_msg_t> frames;
         while (true) {
             zlink_msg_t frame;
             zlink_msg_init (&frame);
-            if (zlink_msg_recv (&frame, sub, ZLINK_DONTWAIT) == -1) {
+            if (recv_msg_internal (sub, &frame, ZLINK_DONTWAIT) == -1) {
                 zlink_msg_close (&frame);
                 break;
             }

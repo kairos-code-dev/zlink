@@ -979,15 +979,10 @@ int spot_node_t::validate_sub_option (int option_,
 
     switch (option_) {
         case ZLINK_SPOT_SUB_OPT_RCVHWM:
-        case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
         case ZLINK_SPOT_SUB_OPT_LINGER:
         case ZLINK_SPOT_SUB_OPT_SNDBUF:
         case ZLINK_SPOT_SUB_OPT_RCVBUF:
             return 0;
-        case ZLINK_SPOT_SUB_OPT_QUEUE_NODROP:
-        case ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY:
-            errno = ENOTSUP;
-            return -1;
         default:
             errno = EINVAL;
             return -1;
@@ -1042,9 +1037,6 @@ void spot_node_t::store_sub_option (int option_,
     switch (option_) {
         case ZLINK_SPOT_SUB_OPT_RCVHWM:
             copy_option_setting (&_sub_defaults.rcvhwm, optval_, optvallen_);
-            return;
-        case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
-            copy_option_setting (&_sub_defaults.rcvtimeo, optval_, optvallen_);
             return;
         case ZLINK_SPOT_SUB_OPT_LINGER:
             copy_option_setting (&_sub_defaults.linger, optval_, optvallen_);
@@ -1160,11 +1152,6 @@ int spot_node_t::apply_sub_defaults (spot_sub_t *sub_,
     if (defaults_.rcvhwm.enabled
         && sub_->set_option (ZLINK_SPOT_SUB_OPT_RCVHWM, &defaults_.rcvhwm.value,
                              defaults_.rcvhwm.size)
-             != 0)
-        return -1;
-    if (defaults_.rcvtimeo.enabled
-        && sub_->set_option (ZLINK_SPOT_SUB_OPT_RCVTIMEO,
-                             &defaults_.rcvtimeo.value, defaults_.rcvtimeo.size)
              != 0)
         return -1;
     if (defaults_.linger.enabled

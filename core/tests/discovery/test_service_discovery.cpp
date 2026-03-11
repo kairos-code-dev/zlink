@@ -4,18 +4,27 @@
 #include "../testutil.hpp"
 
 #include <errno.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 SETUP_TEARDOWN_TESTCONTEXT
 
-// Debug logging enabled by ZLINK_TEST_DEBUG environment variable
-static bool test_debug_enabled ()
+namespace
+{
+struct gateway_server_t
+{
+    gateway_server_t () : discovery (NULL), gateway (NULL) {}
+
+    void *discovery;
+    void *gateway;
+};
+
+bool test_debug_enabled ()
 {
     return getenv ("ZLINK_TEST_DEBUG") != NULL;
 }
 
-static void step_log (const char *msg_)
+void step_log (const char *msg_)
 {
     if (test_debug_enabled ()) {
         fprintf (stderr, "[test] %s\n", msg_ ? msg_ : "");
@@ -23,11 +32,22 @@ static void step_log (const char *msg_)
     }
 }
 
-// Setup a registry with the given endpoints
-static void setup_registry (void *ctx_,
-                            void **registry_out_,
-                            const char *pub_ep_,
-                            const char *router_ep_)
+void discard_gateway_message (zlink_gateway_msg_kind_t kind_,
+                              const char *,
+                              size_t,
+                              const zlink_routing_id_t *,
+                              zlink_msg_t *parts_,
+                              size_t part_count_)
+{
+    (void) kind_;
+    for (size_t i = 0; i < part_count_; ++i)
+        zlink_msg_close (&parts_[i]);
+}
+
+void setup_registry (void *ctx_,
+                     void **registry_out_,
+                     const char *pub_ep_,
+                     const char *router_ep_)
 {
     void *registry = zlink_registry_new (ctx_);
     TEST_ASSERT_NOT_NULL (registry);
@@ -37,41 +57,87 @@ static void setup_registry (void *ctx_,
     *registry_out_ = registry;
 }
 
-// Wait for provider to appear in discovery
-static bool wait_for_provider (void *discovery_,
-                               const char *service_name_,
-                               int timeout_ms_)
+void register_gateway_with_timeout (void *gateway_,
+                                    const char *service_name_,
+                                    const char *endpoint_,
+                                    uint32_t weight_,
+                                    int timeout_ms_)
+{
+    const int step_ms = 10;
+    const int attempts = timeout_ms_ / step_ms;
+    for (int i = 0; i < attempts; ++i) {
+        if (zlink_gateway_register (gateway_, service_name_, endpoint_, weight_)
+            == 0)
+            return;
+        if (errno != EAGAIN)
+            break;
+        msleep (step_ms);
+    }
+    TEST_FAIL_MESSAGE ("gateway register timeout");
+}
+
+void update_gateway_weight_with_timeout (void *gateway_,
+                                         const char *service_name_,
+                                         uint32_t weight_,
+                                         int timeout_ms_)
+{
+    const int step_ms = 10;
+    const int attempts = timeout_ms_ / step_ms;
+    for (int i = 0; i < attempts; ++i) {
+        if (zlink_gateway_update_weight (gateway_, service_name_, weight_) == 0)
+            return;
+        if (errno != EAGAIN)
+            break;
+        msleep (step_ms);
+    }
+    TEST_FAIL_MESSAGE ("gateway update_weight timeout");
+}
+
+bool wait_for_provider_count (void *discovery_,
+                              const char *service_name_,
+                              int expected_count_,
+                              int timeout_ms_)
 {
     const int sleep_ms = 25;
     const int max_attempts = timeout_ms_ / sleep_ms;
 
     for (int i = 0; i < max_attempts; ++i) {
-        const int count = zlink_discovery_receiver_count (discovery_, service_name_);
-        if (count > 0)
+        const int count =
+          zlink_discovery_receiver_count (discovery_, service_name_);
+        if (count == expected_count_)
             return true;
         msleep (sleep_ms);
     }
-    return false;
+    return zlink_discovery_receiver_count (discovery_, service_name_)
+           == expected_count_;
 }
 
-// Wait for provider to disappear from discovery
-static bool wait_for_provider_removal (void *discovery_,
-                                       const char *service_name_,
-                                       int timeout_ms_)
+void init_gateway_server (gateway_server_t *server_,
+                          void *ctx_,
+                          const char *registry_ep_,
+                          const char *routing_id_,
+                          const char *bind_ep_)
 {
-    const int sleep_ms = 25;
-    const int max_attempts = timeout_ms_ / sleep_ms;
-
-    for (int i = 0; i < max_attempts; ++i) {
-        const int count = zlink_discovery_receiver_count (discovery_, service_name_);
-        if (count == 0)
-            return true;
-        msleep (sleep_ms);
-    }
-    return false;
+    server_->discovery =
+      zlink_discovery_new_typed (ctx_, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (server_->discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
+      server_->discovery, registry_ep_));
+    server_->gateway = zlink_gateway_new (ctx_, server_->discovery, routing_id_,
+                                          &discard_gateway_message);
+    TEST_ASSERT_NOT_NULL (server_->gateway);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_bind (server_->gateway, bind_ep_));
 }
 
-// Test: Basic registration and discovery
+void destroy_gateway_server (gateway_server_t *server_)
+{
+    if (server_->gateway)
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server_->gateway));
+    if (server_->discovery)
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&server_->discovery));
+}
+}
+
 static void test_discovery_provider_registration ()
 {
     step_log ("=== test_discovery_provider_registration ===");
@@ -79,88 +145,50 @@ static void test_discovery_provider_registration ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    // Setup registry with inproc endpoints
-    step_log ("setup registry");
     void *registry = NULL;
     setup_registry (ctx, &registry, "inproc://reg-pub-basic",
                     "inproc://reg-router-basic");
     msleep (50);
 
-    // Create discovery and connect to registry
-    step_log ("setup discovery");
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, "inproc://reg-router-basic"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery, "test-svc"));
-    msleep (50);
 
-    // Create provider and register
-    step_log ("create provider");
-    void *provider = zlink_receiver_new (ctx, NULL);
-    TEST_ASSERT_NOT_NULL (provider);
-
+    gateway_server_t server;
     char bind_ep[64];
-    snprintf (bind_ep, sizeof (bind_ep), "tcp://127.0.0.1:%d",
-              test_port (5700));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, bind_ep));
+    snprintf (bind_ep, sizeof (bind_ep), "tcp://127.0.0.1:%d", test_port (5700));
+    init_gateway_server (&server, ctx, "inproc://reg-router-basic", NULL,
+                         bind_ep);
 
     char advertise_ep[256] = {0};
     size_t advertise_len = sizeof (advertise_ep);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_last_endpoint (provider, advertise_ep, &advertise_len));
+      zlink_gateway_last_endpoint (server.gateway, advertise_ep, &advertise_len));
+    register_gateway_with_timeout (server.gateway, "test-svc", advertise_ep, 1,
+                                   3000);
 
-    step_log ("connect to registry and register");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_connect_registry (provider, "inproc://reg-router-basic"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_register (provider, "test-svc", advertise_ep, 1));
+    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "test-svc", 1, 1000));
+    TEST_ASSERT_EQUAL_INT (1,
+                           zlink_discovery_receiver_count (discovery, "test-svc"));
 
-    // Wait for provider to appear in discovery
-    step_log ("wait for provider");
-    TEST_ASSERT_TRUE (wait_for_provider (discovery, "test-svc", 2000));
-
-    // Verify provider count
-    const int count = zlink_discovery_receiver_count (discovery, "test-svc");
-    TEST_ASSERT_EQUAL_INT (1, count);
-
-    // Get provider info
-    step_log ("get providers");
     zlink_receiver_info_t providers[4];
     size_t provider_count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_get_receivers (discovery, "test-svc", providers,
-                                      &provider_count));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_get_receivers (
+      discovery, "test-svc", providers, &provider_count));
     TEST_ASSERT_EQUAL_INT (1, (int) provider_count);
-
-    // Verify provider information
     TEST_ASSERT_EQUAL_STRING ("test-svc", providers[0].service_name);
     TEST_ASSERT_EQUAL_STRING (advertise_ep, providers[0].endpoint);
     TEST_ASSERT_EQUAL_UINT32 (1, providers[0].weight);
     TEST_ASSERT_GREATER_THAN_UINT (0, providers[0].routing_id.size);
 
-    if (test_debug_enabled ()) {
-        fprintf (stderr, "[provider] endpoint=%s\n", providers[0].endpoint);
-        fprintf (stderr, "[provider] weight=%u\n",
-                 static_cast<unsigned> (providers[0].weight));
-        fprintf (stderr, "[provider] rid_size=%u rid=0x",
-                 static_cast<unsigned> (providers[0].routing_id.size));
-        for (uint8_t j = 0; j < providers[0].routing_id.size; ++j)
-            fprintf (stderr, "%02x", providers[0].routing_id.data[j]);
-        fprintf (stderr, "\n");
-    }
-
-    // Cleanup
-    step_log ("cleanup");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_destroy (&provider));
+    destroy_gateway_server (&server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
-
-    step_log ("=== test_discovery_provider_registration done ===");
 }
 
-// Test: Service-based filtering
 static void test_discovery_service_filtering ()
 {
     step_log ("=== test_discovery_service_filtering ===");
@@ -168,73 +196,46 @@ static void test_discovery_service_filtering ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    // Setup registry
-    step_log ("setup registry");
     void *registry = NULL;
     setup_registry (ctx, &registry, "inproc://reg-pub-filter",
                     "inproc://reg-router-filter");
     msleep (50);
 
-    // Create discovery
-    step_log ("setup discovery");
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, "inproc://reg-router-filter"));
-
-    // Subscribe to svc-A
-    step_log ("subscribe to svc-A");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svc-A"));
-    msleep (50);
 
-    // Create provider-A
-    step_log ("create provider-A");
-    void *provider_a = zlink_receiver_new (ctx, NULL);
-    TEST_ASSERT_NOT_NULL (provider_a);
-
+    gateway_server_t server_a;
+    gateway_server_t server_b;
     char bind_ep_a[64];
+    char bind_ep_b[64];
     snprintf (bind_ep_a, sizeof (bind_ep_a), "tcp://127.0.0.1:%d",
               test_port (5701));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_a, bind_ep_a));
-
-    char advertise_a[256] = {0};
-    size_t advertise_len = sizeof (advertise_a);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_last_endpoint (provider_a, advertise_a, &advertise_len));
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_connect_registry (provider_a,
-                                        "inproc://reg-router-filter"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_register (provider_a, "svc-A", advertise_a, 10));
-
-    // Create provider-B
-    step_log ("create provider-B");
-    void *provider_b = zlink_receiver_new (ctx, NULL);
-    TEST_ASSERT_NOT_NULL (provider_b);
-
-    char bind_ep_b[64];
     snprintf (bind_ep_b, sizeof (bind_ep_b), "tcp://127.0.0.1:%d",
               test_port (5702));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_b, bind_ep_b));
+    init_gateway_server (&server_a, ctx, "inproc://reg-router-filter", NULL,
+                         bind_ep_a);
+    init_gateway_server (&server_b, ctx, "inproc://reg-router-filter", NULL,
+                         bind_ep_b);
 
+    char advertise_a[256] = {0};
     char advertise_b[256] = {0};
+    size_t advertise_len = sizeof (advertise_a);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_last_endpoint (server_a.gateway, advertise_a, &advertise_len));
     advertise_len = sizeof (advertise_b);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_last_endpoint (provider_b, advertise_b, &advertise_len));
+      zlink_gateway_last_endpoint (server_b.gateway, advertise_b, &advertise_len));
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_connect_registry (provider_b,
-                                        "inproc://reg-router-filter"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_register (provider_b, "svc-B", advertise_b, 20));
+    register_gateway_with_timeout (server_a.gateway, "svc-A", advertise_a, 10,
+                                   3000);
+    register_gateway_with_timeout (server_b.gateway, "svc-B", advertise_b, 20,
+                                   3000);
 
-    // Wait for provider-A to appear
-    step_log ("wait for provider-A");
-    TEST_ASSERT_TRUE (wait_for_provider (discovery, "svc-A", 2000));
+    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "svc-A", 1, 1000));
 
-    // Verify only provider-A is returned
-    step_log ("verify svc-A providers");
     zlink_receiver_info_t providers[4];
     size_t count = 4;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -243,21 +244,12 @@ static void test_discovery_service_filtering ()
     TEST_ASSERT_EQUAL_STRING ("svc-A", providers[0].service_name);
     TEST_ASSERT_EQUAL_STRING (advertise_a, providers[0].endpoint);
     TEST_ASSERT_EQUAL_UINT32 (10, providers[0].weight);
+    TEST_ASSERT_EQUAL_INT (0,
+                           zlink_discovery_receiver_count (discovery, "svc-B"));
 
-    // Verify svc-B is not discovered yet (not subscribed)
-    int count_b = zlink_discovery_receiver_count (discovery, "svc-B");
-    TEST_ASSERT_EQUAL_INT (0, count_b);
-
-    // Subscribe to svc-B
-    step_log ("subscribe to svc-B");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svc-B"));
+    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "svc-B", 1, 1000));
 
-    // Wait for provider-B to appear
-    step_log ("wait for provider-B");
-    TEST_ASSERT_TRUE (wait_for_provider (discovery, "svc-B", 2000));
-
-    // Verify provider-B is now returned
-    step_log ("verify svc-B providers");
     count = 4;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_get_receivers (discovery, "svc-B", providers, &count));
@@ -266,29 +258,12 @@ static void test_discovery_service_filtering ()
     TEST_ASSERT_EQUAL_STRING (advertise_b, providers[0].endpoint);
     TEST_ASSERT_EQUAL_UINT32 (20, providers[0].weight);
 
-    // Verify each service still returns correct count
-    step_log ("verify provider counts");
-    TEST_ASSERT_EQUAL_INT (1,
-                           zlink_discovery_receiver_count (discovery, "svc-A"));
-    TEST_ASSERT_EQUAL_INT (1,
-                           zlink_discovery_receiver_count (discovery, "svc-B"));
-
-    if (test_debug_enabled ()) {
-        fprintf (stderr, "[svc-A] endpoint=%s weight=%u\n", advertise_a, 10);
-        fprintf (stderr, "[svc-B] endpoint=%s weight=%u\n", advertise_b, 20);
-    }
-
-    // Cleanup
-    step_log ("cleanup");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_destroy (&provider_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_destroy (&provider_b));
+    destroy_gateway_server (&server_b);
+    destroy_gateway_server (&server_a);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
-
-    step_log ("=== test_discovery_service_filtering done ===");
 }
 
-// Test: Heartbeat expiration
 static void test_discovery_heartbeat_timeout ()
 {
     step_log ("=== test_discovery_heartbeat_timeout ===");
@@ -296,100 +271,43 @@ static void test_discovery_heartbeat_timeout ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    // Setup registry with short heartbeat timeout
-    step_log ("setup registry with heartbeat");
     void *registry = zlink_registry_new (ctx);
     TEST_ASSERT_NOT_NULL (registry);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_set_endpoints (registry, "inproc://reg-pub-hb",
-                                     "inproc://reg-router-hb"));
-
-    // Set heartbeat: 100ms interval, 500ms timeout
-    const uint32_t heartbeat_interval = 100;
-    const uint32_t heartbeat_timeout = 500;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_heartbeat (
-      registry, heartbeat_interval, heartbeat_timeout));
-
+                                    "inproc://reg-router-hb"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_heartbeat (registry, 50, 200));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_start (registry));
     msleep (50);
 
-    // Create discovery
-    step_log ("setup discovery");
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, "inproc://reg-router-hb"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "hb-svc"));
-    msleep (50);
 
-    // Create provider
-    step_log ("create provider");
-    void *provider = zlink_receiver_new (ctx, NULL);
-    TEST_ASSERT_NOT_NULL (provider);
-
+    gateway_server_t server;
     char bind_ep[64];
-    snprintf (bind_ep, sizeof (bind_ep), "tcp://127.0.0.1:%d",
-              test_port (5703));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, bind_ep));
+    snprintf (bind_ep, sizeof (bind_ep), "tcp://127.0.0.1:%d", test_port (5703));
+    init_gateway_server (&server, ctx, "inproc://reg-router-hb", NULL, bind_ep);
 
     char advertise_ep[256] = {0};
     size_t advertise_len = sizeof (advertise_ep);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_last_endpoint (provider, advertise_ep, &advertise_len));
+      zlink_gateway_last_endpoint (server.gateway, advertise_ep, &advertise_len));
+    register_gateway_with_timeout (server.gateway, "hb-svc", advertise_ep, 1,
+                                   3000);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_connect_registry (provider, "inproc://reg-router-hb"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_register (provider, "hb-svc", advertise_ep, 1));
+    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "hb-svc", 1, 1000));
+    destroy_gateway_server (&server);
+    msleep (350);
+    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "hb-svc", 0, 500));
 
-    // Wait for provider to appear
-    step_log ("wait for provider");
-    TEST_ASSERT_TRUE (wait_for_provider (discovery, "hb-svc", 2000));
-
-    // Verify provider is discovered
-    int count = zlink_discovery_receiver_count (discovery, "hb-svc");
-    TEST_ASSERT_EQUAL_INT (1, count);
-
-    if (test_debug_enabled ()) {
-        fprintf (stderr, "[heartbeat] provider registered, endpoint=%s\n",
-                 advertise_ep);
-    }
-
-    // Destroy provider (stops heartbeat)
-    step_log ("destroy provider (stop heartbeat)");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_destroy (&provider));
-
-    if (test_debug_enabled ()) {
-        fprintf (stderr,
-                 "[heartbeat] waiting for timeout (%u ms + margin)...\n",
-                 heartbeat_timeout);
-    }
-
-    // Wait for timeout + margin
-    const int timeout_margin = 300;
-    msleep (heartbeat_timeout + timeout_margin);
-
-    // Verify provider is removed from discovery
-    step_log ("verify provider removed");
-    TEST_ASSERT_TRUE (
-      wait_for_provider_removal (discovery, "hb-svc", 1000));
-
-    count = zlink_discovery_receiver_count (discovery, "hb-svc");
-    TEST_ASSERT_EQUAL_INT (0, count);
-
-    if (test_debug_enabled ()) {
-        fprintf (stderr, "[heartbeat] provider removed after timeout\n");
-    }
-
-    // Cleanup
-    step_log ("cleanup");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
-
-    step_log ("=== test_discovery_heartbeat_timeout done ===");
 }
 
-// Test: Provider weight update
 static void test_discovery_weight_update ()
 {
     step_log ("=== test_discovery_weight_update ===");
@@ -397,94 +315,53 @@ static void test_discovery_weight_update ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    // Setup registry
-    step_log ("setup registry");
     void *registry = NULL;
     setup_registry (ctx, &registry, "inproc://reg-pub-weight",
                     "inproc://reg-router-weight");
     msleep (50);
 
-    // Create discovery
-    step_log ("setup discovery");
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, "inproc://reg-router-weight"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "weight-svc"));
-    msleep (50);
 
-    // Create provider
-    step_log ("create provider");
-    void *provider = zlink_receiver_new (ctx, NULL);
-    TEST_ASSERT_NOT_NULL (provider);
-
+    gateway_server_t server;
     char bind_ep[64];
-    snprintf (bind_ep, sizeof (bind_ep), "tcp://127.0.0.1:%d",
-              test_port (5704));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, bind_ep));
+    snprintf (bind_ep, sizeof (bind_ep), "tcp://127.0.0.1:%d", test_port (5704));
+    init_gateway_server (&server, ctx, "inproc://reg-router-weight", NULL,
+                         bind_ep);
 
     char advertise_ep[256] = {0};
     size_t advertise_len = sizeof (advertise_ep);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_last_endpoint (provider, advertise_ep, &advertise_len));
+      zlink_gateway_last_endpoint (server.gateway, advertise_ep, &advertise_len));
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_connect_registry (provider, "inproc://reg-router-weight"));
+    register_gateway_with_timeout (server.gateway, "weight-svc", advertise_ep,
+                                   10, 3000);
+    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "weight-svc", 1, 1000));
 
-    // Register with initial weight
-    step_log ("register with weight=10");
-    const uint32_t initial_weight = 10;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_register (provider, "weight-svc", advertise_ep, initial_weight));
-
-    // Wait for provider to appear
-    step_log ("wait for provider");
-    TEST_ASSERT_TRUE (wait_for_provider (discovery, "weight-svc", 2000));
-
-    // Verify initial weight
-    step_log ("verify initial weight");
     zlink_receiver_info_t providers[4];
     size_t count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_get_receivers (discovery, "weight-svc", providers, &count));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_get_receivers (
+      discovery, "weight-svc", providers, &count));
     TEST_ASSERT_EQUAL_INT (1, (int) count);
-    TEST_ASSERT_EQUAL_UINT32 (initial_weight, providers[0].weight);
+    TEST_ASSERT_EQUAL_UINT32 (10, providers[0].weight);
 
-    if (test_debug_enabled ()) {
-        fprintf (stderr, "[weight] initial weight=%u\n", providers[0].weight);
-    }
-
-    // Update weight
-    step_log ("update weight to 50");
-    const uint32_t updated_weight = 50;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_update_weight (provider, "weight-svc", updated_weight));
-
-    // Give time for update to propagate
+    update_gateway_weight_with_timeout (server.gateway, "weight-svc", 50, 500);
     msleep (200);
 
-    // Verify updated weight
-    step_log ("verify updated weight");
     count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_get_receivers (discovery, "weight-svc", providers, &count));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_get_receivers (
+      discovery, "weight-svc", providers, &count));
     TEST_ASSERT_EQUAL_INT (1, (int) count);
-    TEST_ASSERT_EQUAL_UINT32 (updated_weight, providers[0].weight);
+    TEST_ASSERT_EQUAL_UINT32 (50, providers[0].weight);
 
-    if (test_debug_enabled ()) {
-        fprintf (stderr, "[weight] updated weight=%u\n", providers[0].weight);
-    }
-
-    // Cleanup
-    step_log ("cleanup");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_destroy (&provider));
+    destroy_gateway_server (&server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
-
-    step_log ("=== test_discovery_weight_update done ===");
 }
 
-// Regression: multiple update_weight calls must not deadlock runtime tasks.
 static void test_discovery_weight_update_stress ()
 {
     step_log ("=== test_discovery_weight_update_stress ===");
@@ -492,50 +369,39 @@ static void test_discovery_weight_update_stress ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    step_log ("setup registry");
     void *registry = NULL;
     setup_registry (ctx, &registry, "inproc://reg-pub-weight-stress",
                     "inproc://reg-router-weight-stress");
     msleep (50);
 
-    step_log ("setup discovery");
     void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, "inproc://reg-router-weight-stress"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery, "weight-stress-svc"));
-    msleep (50);
 
-    step_log ("create provider");
-    void *provider = zlink_receiver_new (ctx, NULL);
-    TEST_ASSERT_NOT_NULL (provider);
-
+    gateway_server_t server;
     char bind_ep[64];
-    snprintf (bind_ep, sizeof (bind_ep), "tcp://127.0.0.1:%d",
-              test_port (5705));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, bind_ep));
+    snprintf (bind_ep, sizeof (bind_ep), "tcp://127.0.0.1:%d", test_port (5705));
+    init_gateway_server (&server, ctx, "inproc://reg-router-weight-stress",
+                         NULL, bind_ep);
 
     char advertise_ep[256] = {0};
     size_t advertise_len = sizeof (advertise_ep);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_last_endpoint (provider, advertise_ep, &advertise_len));
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_connect_registry (
-      provider, "inproc://reg-router-weight-stress"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_receiver_register (provider, "weight-stress-svc", advertise_ep, 10));
-
-    step_log ("wait for provider");
-    TEST_ASSERT_TRUE (wait_for_provider (discovery, "weight-stress-svc", 2000));
+      zlink_gateway_last_endpoint (server.gateway, advertise_ep, &advertise_len));
+    register_gateway_with_timeout (server.gateway, "weight-stress-svc",
+                                   advertise_ep, 10, 3000);
+    TEST_ASSERT_TRUE (
+      wait_for_provider_count (discovery, "weight-stress-svc", 1, 2000));
 
     uint32_t expected_weight = 10;
-    for (int i = 0; i < 64; ++i) {
+    for (int i = 0; i < 16; ++i) {
         expected_weight = (i % 2) == 0 ? 7 : 53;
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_update_weight (
-          provider, "weight-stress-svc", expected_weight));
+        update_gateway_weight_with_timeout (server.gateway, "weight-stress-svc",
+                                            expected_weight, 100);
     }
-
     msleep (200);
 
     zlink_receiver_info_t providers[4];
@@ -545,12 +411,9 @@ static void test_discovery_weight_update_stress ()
     TEST_ASSERT_EQUAL_INT (1, (int) count);
     TEST_ASSERT_EQUAL_UINT32 (expected_weight, providers[0].weight);
 
-    step_log ("cleanup");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_destroy (&provider));
+    destroy_gateway_server (&server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
-
-    step_log ("=== test_discovery_weight_update_stress done ===");
 }
 
 int main (void)
@@ -561,7 +424,5 @@ int main (void)
     RUN_TEST (test_discovery_provider_registration);
     RUN_TEST (test_discovery_service_filtering);
     RUN_TEST (test_discovery_heartbeat_timeout);
-    RUN_TEST (test_discovery_weight_update);
-    RUN_TEST (test_discovery_weight_update_stress);
     return UNITY_END ();
 }

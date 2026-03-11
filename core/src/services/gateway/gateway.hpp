@@ -13,6 +13,7 @@
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 
+#include <atomic>
 #include <map>
 #include <set>
 #include <stdint.h>
@@ -36,6 +37,12 @@ class gateway_t : public discovery_observer_t
               zlink_msg_t *parts_,
               size_t part_count_,
               int flags_);
+    int bind (const char *endpoint_);
+    int register_service (const char *service_name_,
+                          const char *advertise_endpoint_,
+                          uint32_t weight_);
+    int update_weight (const char *service_name_, uint32_t weight_);
+    int unregister_service (const char *service_name_);
     int recv (zlink_msg_t **parts_,
               size_t *part_count_,
               int flags_,
@@ -49,10 +56,14 @@ class gateway_t : public discovery_observer_t
     int set_lb_strategy (const char *service_name_, int strategy_);
     int set_routing_id (const void *data_, size_t size_);
     int routing_id (zlink_routing_id_t *out_);
+    int last_endpoint (char *endpoint_out_, size_t *size_out_) const;
+    int peer_info (const zlink_routing_id_t *routing_id_,
+                   zlink_peer_info_t *info_out_) const;
     int set_option (int option_, const void *optval_, size_t optvallen_);
     int set_socket_option (int option_,
                            const void *optval_,
                            size_t optvallen_);
+    int set_tls_server (const char *cert_, const char *key_);
     void *monitor_open (int events_);
     void *poller_socket ();
     void *router ();
@@ -60,10 +71,14 @@ class gateway_t : public discovery_observer_t
     void lock_routing_id ();
     int ensure_facade_mode () const;
     int connection_count (const char *service_name_);
+    int set_handler (zlink_gateway_handler_fn handler_);
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
                         int trust_system_);
     void on_service_update (const std::string &service_name_);
+    void dispatch_message (const zlink_routing_id_t *source_rid_,
+                           zlink_msg_t *parts_,
+                           size_t part_count_);
 
     int destroy ();
 
@@ -84,6 +99,10 @@ class gateway_t : public discovery_observer_t
     service_pool_t *get_or_create_pool_cached (const char *service_name_);
     int init_router_socket ();
     int ensure_router_socket ();
+    std::string resolve_advertise (const char *advertise_endpoint_) const;
+    bool classify_message (const zlink_routing_id_t *source_rid_,
+                           zlink_gateway_msg_kind_t *kind_out_,
+                           std::string *service_name_out_) const;
     void refresh_pool (service_pool_t *pool_,
                        const std::vector<provider_info_t> &providers_,
                        uint64_t seq_);
@@ -104,6 +123,9 @@ class gateway_t : public discovery_observer_t
                      const zlink_routing_id_t *routing_id_,
                      uint32_t value_,
                      int32_t error_code_);
+    void emit_control_callback (uint32_t event_type_,
+                                const std::string &service_name_,
+                                int32_t error_code_);
     void report_topology (const std::string &service_name_,
                           const std::string &endpoint_,
                           uint16_t state_,
@@ -145,6 +167,14 @@ class gateway_t : public discovery_observer_t
     int _tls_trust_system;
     zlink_routing_id_t _routing_id;
     std::string _routing_id_override;
+    std::string _bind_endpoint;
+    std::string _server_service_name;
+    std::string _advertise_endpoint;
+    uint32_t _server_weight;
+    std::string _last_register_error;
+    std::string _tls_server_cert;
+    std::string _tls_server_key;
+    std::atomic<zlink_gateway_handler_fn> _handler;
     service_monitor_hub_t _monitor;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (gateway_t)

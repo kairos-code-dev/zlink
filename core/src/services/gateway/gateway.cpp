@@ -3,6 +3,11 @@
 #include "services/gateway/gateway.hpp"
 
 #include "core/msg.hpp"
+#include "core/pipe.hpp"
+#include "core/recv_internal.hpp"
+#include "services/common/advertise_endpoint.hpp"
+#include "services/common/monitor_decode.hpp"
+#include "services/common/socket_monitor_bridge.hpp"
 #include "services/gateway/routing_id_utils.hpp"
 #include "services/control/service_control_runtime.hpp"
 #include "services/discovery/discovery_protocol.hpp"
@@ -19,6 +24,66 @@ namespace zlink
 namespace
 {
 static const uint32_t gateway_tag_value = 0x1e6700d7;
+
+struct gateway_handler_registry_t
+{
+    mutex_t sync;
+    std::map<socket_base_t *, gateway_t *> gateways;
+};
+
+static gateway_handler_registry_t &gateway_handler_registry ()
+{
+    static gateway_handler_registry_t registry;
+    return registry;
+}
+
+static void register_gateway_handler_socket (socket_base_t *socket_,
+                                             gateway_t *gateway_)
+{
+    if (!socket_ || !gateway_)
+        return;
+
+    gateway_handler_registry_t &registry = gateway_handler_registry ();
+    scoped_lock_t lock (registry.sync);
+    registry.gateways[socket_] = gateway_;
+}
+
+static void unregister_gateway_handler_socket (socket_base_t *socket_)
+{
+    if (!socket_)
+        return;
+
+    gateway_handler_registry_t &registry = gateway_handler_registry ();
+    scoped_lock_t lock (registry.sync);
+    registry.gateways.erase (socket_);
+}
+
+static gateway_t *find_gateway_for_dispatch (socket_base_t *socket_)
+{
+    if (!socket_)
+        return NULL;
+
+    gateway_handler_registry_t &registry = gateway_handler_registry ();
+    scoped_lock_t lock (registry.sync);
+    std::map<socket_base_t *, gateway_t *>::iterator it =
+      registry.gateways.find (socket_);
+    return it != registry.gateways.end () ? it->second : NULL;
+}
+
+static void gateway_router_msg_handler (const zlink_routing_id_t *source_rid_,
+                                        zlink_msg_t *parts_,
+                                        size_t part_count_)
+{
+    socket_base_t *socket = socket_base_t::current_socket_msg_dispatch_socket ();
+    gateway_t *gateway = find_gateway_for_dispatch (socket);
+    if (!gateway) {
+        for (size_t i = 0; i < part_count_; ++i)
+            zlink_msg_close (&parts_[i]);
+        return;
+    }
+
+    gateway->dispatch_message (source_rid_, parts_, part_count_);
+}
 
 // Ensure the ROUTER socket has a routing id so peers can reply.
 static void ensure_gateway_routing_id (socket_base_t *socket_,
@@ -114,6 +179,60 @@ static bool routing_id_equals (const zlink_routing_id_t &a_,
     return memcmp (a_.data, b_.data, a_.size) == 0;
 }
 
+static bool pipe_routing_id_equals (const pipe_t *pipe_,
+                                    const zlink_routing_id_t *rid_)
+{
+    if (!pipe_ || !rid_)
+        return false;
+
+    const pipe_t *routing_pipe = pipe_;
+    if (routing_pipe->get_peer ())
+        routing_pipe = routing_pipe->get_peer ();
+
+    const blob_t &routing_id = routing_pipe->get_routing_id ();
+    if (routing_id.size () != rid_->size)
+        return false;
+    if (routing_id.size () == 0)
+        return false;
+    return memcmp (routing_id.data (), rid_->data, rid_->size) == 0;
+}
+
+static int send_parts_via_dispatch_pipe (pipe_t *pipe_,
+                                         zlink_msg_t *parts_,
+                                         size_t part_count_)
+{
+    if (!pipe_ || !parts_ || part_count_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    pipe_t *out = pipe_->get_peer ();
+    if (!out) {
+        errno = EHOSTUNREACH;
+        return -1;
+    }
+
+    for (size_t i = 0; i < part_count_; ++i) {
+        msg_t *part = reinterpret_cast<msg_t *> (&parts_[i]);
+        const bool has_more = i + 1 < part_count_;
+        if (has_more)
+            part->set_flags (msg_t::more);
+        else
+            part->reset_flags (msg_t::more);
+        if (!out->write_no_hwm_check (part)) {
+            if (i > 0)
+                out->rollback ();
+            errno = EAGAIN;
+            return -1;
+        }
+        const int init_rc = part->init ();
+        errno_assert (init_rc == 0);
+    }
+
+    out->flush ();
+    return 0;
+}
+
 static uint64_t rid_handover_guard_ms ()
 {
     return 50;
@@ -143,6 +262,22 @@ static uint32_t count_ready_for_service (
     }
     return count;
 }
+
+static const char *gateway_control_event_name (uint32_t event_type_)
+{
+    switch (event_type_) {
+        case ZLINK_GATEWAY_REGISTER_OK:
+            return "register_ok";
+        case ZLINK_GATEWAY_REGISTER_FAILED:
+            return "register_failed";
+        case ZLINK_GATEWAY_UNREGISTER_OK:
+            return "unregister_ok";
+        case ZLINK_GATEWAY_UNREGISTER_FAILED:
+            return "unregister_failed";
+        default:
+            return "control";
+    }
+}
 }
 
 gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_,
@@ -161,8 +296,10 @@ gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_,
     _refresh_task_id (0),
     _refresh_interval_ms (
       static_cast<uint32_t> (resolve_gateway_refresh_sleep_ms ())),
+    _server_weight (1),
     _tls_trust_system (0),
     _routing_id_override (routing_id_ ? routing_id_ : ""),
+    _handler (NULL),
     _monitor (ctx_)
 {
     zlink_assert (_ctx);
@@ -276,12 +413,22 @@ int gateway_t::init_router_socket ()
             == 0)
             _routing_id.size = static_cast<uint8_t> (size);
     }
+    if (!_tls_server_cert.empty ()) {
+        if (_router_socket->setsockopt (ZLINK_TLS_CERT, _tls_server_cert.data (),
+                                        _tls_server_cert.size ())
+              != 0
+            || _router_socket->setsockopt (ZLINK_TLS_KEY, _tls_server_key.data (),
+                                           _tls_server_key.size ())
+                 != 0) {
+            _router_socket->close ();
+            _router_socket = NULL;
+            return -1;
+        }
+    }
     // Enable socket monitor to receive connection-ready events.
     if (!_monitor_socket) {
-        void *monitor =
-          zlink_socket_monitor_open (static_cast<void *> (_router_socket),
-                                     monitor_event_mask ());
-        _monitor_socket = monitor;
+        _monitor_socket =
+          open_socket_monitor_bridge (_router_socket, monitor_event_mask ());
     }
     // Apply TLS settings before connecting to any providers.
     if (apply_tls_client (_router_socket, _tls_ca, _tls_hostname,
@@ -302,6 +449,16 @@ int gateway_t::init_router_socket ()
     int handover = 1;
     _router_socket->setsockopt (ZLINK_ROUTER_HANDOVER, &handover,
                                 sizeof (handover));
+    if (_handler.load (std::memory_order_acquire) != NULL) {
+        register_gateway_handler_socket (_router_socket, this);
+        if (_router_socket->socket_set_msg_handler (&gateway_router_msg_handler)
+            != 0) {
+            unregister_gateway_handler_socket (_router_socket);
+            _router_socket->close ();
+            _router_socket = NULL;
+            return -1;
+        }
+    }
     return 0;
 }
 
@@ -683,6 +840,227 @@ int gateway_t::send (const char *service_name_,
                                 flags_);
 }
 
+std::string gateway_t::resolve_advertise (const char *advertise_endpoint_) const
+{
+    return services::normalize_advertise_endpoint (advertise_endpoint_,
+                                                   _bind_endpoint);
+}
+
+int gateway_t::bind (const char *endpoint_)
+{
+    if (!endpoint_ || endpoint_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_facade_mode () != 0)
+        return -1;
+    if (ensure_router_socket () != 0 || !_router_socket) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    if (!_tls_server_cert.empty ()) {
+        if (_router_socket->setsockopt (ZLINK_TLS_CERT, _tls_server_cert.data (),
+                                        _tls_server_cert.size ())
+              != 0
+            || _router_socket->setsockopt (ZLINK_TLS_KEY, _tls_server_key.data (),
+                                           _tls_server_key.size ())
+                 != 0)
+            return -1;
+    }
+
+    _bind_endpoint = endpoint_;
+    return _router_socket->bind (endpoint_);
+}
+
+int gateway_t::register_service (const char *service_name_,
+                                 const char *advertise_endpoint_,
+                                 uint32_t weight_)
+{
+    if (!service_name_ || service_name_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_facade_mode () != 0)
+        return -1;
+    if (!_discovery) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    if (ensure_router_socket () != 0 || !_router_socket) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    if (_routing_id.size == 0) {
+        size_t size = sizeof (_routing_id.data);
+        if (_router_socket->getsockopt (ZLINK_ROUTING_ID, _routing_id.data,
+                                        &size)
+            != 0)
+            return -1;
+        _routing_id.size = static_cast<uint8_t> (size);
+    }
+
+    _server_service_name = service_name_;
+    _advertise_endpoint = resolve_advertise (advertise_endpoint_);
+    if (_advertise_endpoint.empty ()) {
+        errno = EINVAL;
+        return -1;
+    }
+    _server_weight = weight_ == 0 ? 1 : weight_;
+
+    std::string resolved;
+    if (_discovery->register_service (
+          discovery_protocol::service_type_gateway_receiver,
+          _server_service_name.c_str (), _advertise_endpoint.c_str (),
+          _server_weight, &resolved, &_routing_id)
+        != 0) {
+        _last_register_error = strerror (errno);
+        zlink_service_event_t ev;
+        memset (&ev, 0, sizeof (ev));
+        ev.service_kind = ZLINK_SERVICE_KIND_GATEWAY;
+        ev.event_type = ZLINK_GATEWAY_REGISTER_FAILED;
+        ev.status = -1;
+        ev.error_code = errno;
+        ev.value = _server_weight;
+        ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
+                          | ZLINK_EVENT_DETAIL_ENDPOINT
+                          | ZLINK_EVENT_DETAIL_SUBJECT_RID;
+        ev.routing_id = _routing_id;
+        strncpy (ev.service_name, _server_service_name.c_str (),
+                 sizeof (ev.service_name) - 1);
+        strncpy (ev.endpoint, _advertise_endpoint.c_str (),
+                 sizeof (ev.endpoint) - 1);
+        _monitor.emit (ev);
+        emit_control_callback (ZLINK_GATEWAY_REGISTER_FAILED,
+                               _server_service_name, errno);
+        return -1;
+    }
+
+    if (!resolved.empty ())
+        _advertise_endpoint.swap (resolved);
+    _last_register_error.clear ();
+    report_topology (_server_service_name, _advertise_endpoint,
+                     ZLINK_TOPOLOGY_STATE_READY, 1, 0);
+
+    zlink_service_event_t ev;
+    memset (&ev, 0, sizeof (ev));
+    ev.service_kind = ZLINK_SERVICE_KIND_GATEWAY;
+    ev.event_type = ZLINK_GATEWAY_REGISTER_OK;
+    ev.status = 0;
+    ev.value = _server_weight;
+    ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
+                      | ZLINK_EVENT_DETAIL_ENDPOINT
+                      | ZLINK_EVENT_DETAIL_SUBJECT_RID;
+    ev.routing_id = _routing_id;
+    strncpy (ev.service_name, _server_service_name.c_str (),
+             sizeof (ev.service_name) - 1);
+    strncpy (ev.endpoint, _advertise_endpoint.c_str (),
+             sizeof (ev.endpoint) - 1);
+    _monitor.emit (ev);
+    emit_control_callback (ZLINK_GATEWAY_REGISTER_OK, _server_service_name, 0);
+    return 0;
+}
+
+int gateway_t::update_weight (const char *service_name_, uint32_t weight_)
+{
+    if (!service_name_ || service_name_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_facade_mode () != 0)
+        return -1;
+    if (!_discovery) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    if (_advertise_endpoint.empty () || _server_service_name != service_name_) {
+        errno = EFSM;
+        return -1;
+    }
+
+    const uint32_t value = weight_ == 0 ? 1 : weight_;
+    if (_discovery->update_service_weight (
+          discovery_protocol::service_type_gateway_receiver, service_name_,
+          _advertise_endpoint.c_str (), value)
+        != 0)
+        return -1;
+    _server_weight = value;
+    return 0;
+}
+
+int gateway_t::unregister_service (const char *service_name_)
+{
+    if (!service_name_ || service_name_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_facade_mode () != 0)
+        return -1;
+    if (!_discovery) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    if (_server_service_name.empty () || _advertise_endpoint.empty ()
+        || _server_service_name != service_name_) {
+        errno = EINVAL;
+    }
+
+    if (_server_service_name.empty () || _advertise_endpoint.empty ()
+        || _server_service_name != service_name_
+        || _discovery->unregister_service (
+             discovery_protocol::service_type_gateway_receiver, service_name_,
+             _advertise_endpoint.c_str ())
+             != 0) {
+        const int saved_errno = errno;
+        zlink_service_event_t ev;
+        memset (&ev, 0, sizeof (ev));
+        ev.service_kind = ZLINK_SERVICE_KIND_GATEWAY;
+        ev.event_type = ZLINK_GATEWAY_UNREGISTER_FAILED;
+        ev.status = -1;
+        ev.error_code = saved_errno;
+        ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
+                          | ZLINK_EVENT_DETAIL_SUBJECT_RID;
+        ev.routing_id = _routing_id;
+        strncpy (ev.service_name, service_name_, sizeof (ev.service_name) - 1);
+        _monitor.emit (ev);
+        emit_control_callback (ZLINK_GATEWAY_UNREGISTER_FAILED,
+                               service_name_, saved_errno);
+        errno = saved_errno;
+        return -1;
+    }
+
+    const std::string service_name (_server_service_name);
+    const std::string endpoint (_advertise_endpoint);
+    _server_service_name.clear ();
+    _advertise_endpoint.clear ();
+    _last_register_error.clear ();
+
+    report_topology (service_name, endpoint, ZLINK_TOPOLOGY_STATE_STOPPED, 0, 0);
+
+    zlink_service_event_t ev;
+    memset (&ev, 0, sizeof (ev));
+    ev.service_kind = ZLINK_SERVICE_KIND_GATEWAY;
+    ev.event_type = ZLINK_GATEWAY_UNREGISTER_OK;
+    ev.status = 0;
+    ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
+                      | ZLINK_EVENT_DETAIL_SUBJECT_RID;
+    ev.routing_id = _routing_id;
+    strncpy (ev.service_name, service_name.c_str (),
+             sizeof (ev.service_name) - 1);
+    _monitor.emit (ev);
+    emit_control_callback (ZLINK_GATEWAY_UNREGISTER_OK, service_name, 0);
+    return 0;
+}
+
 int gateway_t::recv (zlink_msg_t **parts_,
                      size_t *part_count_,
                      int flags_,
@@ -701,6 +1079,10 @@ int gateway_t::recv (zlink_msg_t **parts_,
     scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
     if (ensure_facade_mode () != 0)
         return -1;
+    if (_handler.load (std::memory_order_acquire) != NULL) {
+        errno = EBUSY;
+        return -1;
+    }
     lock_routing_id ();
     if (ensure_router_socket () != 0 || !_router_socket) {
         errno = ENOTSUP;
@@ -713,7 +1095,7 @@ int gateway_t::recv (zlink_msg_t **parts_,
         return -1;
     }
 
-    const int rc = zlink_msg_recv (&msg, _router_socket, flags_);
+    const int rc = recv_msg_internal (_router_socket, &msg, flags_);
     if (rc < 0) {
         zlink_msg_close (&msg);
         return -1;
@@ -738,6 +1120,8 @@ int gateway_t::recv (zlink_msg_t **parts_,
         if (it != _routing_id_to_service.end ())
             service_name = it->second;
     }
+    if (service_name.empty () && !_server_service_name.empty ())
+        service_name = _server_service_name;
 
     if (service_name_out_) {
         memset (service_name_out_, 0, 256);
@@ -761,7 +1145,7 @@ int gateway_t::recv (zlink_msg_t **parts_,
             errno = EFAULT;
             return -1;
         }
-        const int prc = zlink_msg_recv (&part, _router_socket, flags_);
+        const int prc = recv_msg_internal (_router_socket, &part, flags_);
         if (prc < 0) {
             zlink_msg_close (&part);
             close_msg_parts (&tmp_parts);
@@ -817,6 +1201,13 @@ int gateway_t::send_rid (const char *service_name_,
     scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
     if (ensure_facade_mode () != 0)
         return -1;
+    if (_router_socket == socket_base_t::current_socket_msg_dispatch_socket ()) {
+        pipe_t *dispatch_pipe =
+          socket_base_t::current_socket_msg_dispatch_pipe ();
+        if (pipe_routing_id_equals (dispatch_pipe, routing_id_))
+            return send_parts_via_dispatch_pipe (dispatch_pipe, parts_,
+                                                 part_count_);
+    }
     service_pool_t *pool = get_or_create_pool_cached (service_name_);
     if (!pool) {
         errno = ENOMEM;
@@ -824,13 +1215,40 @@ int gateway_t::send_rid (const char *service_name_,
     }
 
     size_t provider_index = 0;
-    if (!find_provider_index (pool, routing_id_, &provider_index)) {
-        errno = EHOSTUNREACH;
+    if (find_provider_index (pool, routing_id_, &provider_index)) {
+        return send_request_frames (pool, provider_index, parts_, part_count_,
+                                    flags_);
+    }
+    if (!_router_socket) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    if (routing_id_->size == 0) {
+        errno = EINVAL;
         return -1;
     }
 
-    return send_request_frames (pool, provider_index, parts_, part_count_,
-                                flags_);
+    zlink_msg_t rid_msg;
+    if (zlink_msg_init_data (&rid_msg, const_cast<uint8_t *> (routing_id_->data),
+                             routing_id_->size, NULL, NULL)
+        != 0)
+        return -1;
+    int send_flags =
+      (part_count_ > 0 ? ZLINK_SNDMORE : 0) | (flags_ & ZLINK_DONTWAIT);
+    if (zlink_msg_send (&rid_msg, _router_socket, send_flags) < 0) {
+        zlink_msg_close (&rid_msg);
+        return -1;
+    }
+    zlink_msg_close (&rid_msg);
+
+    for (size_t i = 0; i < part_count_; ++i) {
+        send_flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
+        send_flags |= (flags_ & ZLINK_DONTWAIT);
+        if (zlink_msg_send (&parts_[i], _router_socket, send_flags) < 0)
+            return -1;
+        zlink_msg_close (&parts_[i]);
+    }
+    return 0;
 }
 
 int gateway_t::set_lb_strategy (const char *service_name_, int strategy_)
@@ -899,6 +1317,39 @@ int gateway_t::routing_id (zlink_routing_id_t *out_)
     return 0;
 }
 
+int gateway_t::last_endpoint (char *endpoint_out_, size_t *size_out_) const
+{
+    if (!endpoint_out_ || !size_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_optional_lock_t lock (_use_lock ? const_cast<mutex_t *> (&_sync) : NULL);
+    if (!_router_socket) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return zlink_getsockopt (static_cast<void *> (_router_socket),
+                             ZLINK_LAST_ENDPOINT, endpoint_out_, size_out_);
+}
+
+int gateway_t::peer_info (const zlink_routing_id_t *routing_id_,
+                          zlink_peer_info_t *info_out_) const
+{
+    if (!routing_id_ || !info_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_optional_lock_t lock (_use_lock ? const_cast<mutex_t *> (&_sync) : NULL);
+    if (!_router_socket) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return zlink_socket_peer_info (static_cast<void *> (_router_socket),
+                                   routing_id_, info_out_);
+}
+
 int gateway_t::set_option (int option_,
                            const void *optval_,
                            size_t optvallen_)
@@ -910,8 +1361,6 @@ int gateway_t::set_option (int option_,
             return set_socket_option (ZLINK_RCVHWM, optval_, optvallen_);
         case ZLINK_GATEWAY_OPT_SNDTIMEO:
             return set_socket_option (ZLINK_SNDTIMEO, optval_, optvallen_);
-        case ZLINK_GATEWAY_OPT_RCVTIMEO:
-            return set_socket_option (ZLINK_RCVTIMEO, optval_, optvallen_);
         case ZLINK_GATEWAY_OPT_LINGER:
             return set_socket_option (ZLINK_LINGER, optval_, optvallen_);
         case ZLINK_GATEWAY_OPT_SNDBUF:
@@ -922,6 +1371,36 @@ int gateway_t::set_option (int option_,
             errno = EINVAL;
             return -1;
     }
+}
+
+int gateway_t::set_tls_server (const char *cert_, const char *key_)
+{
+    if (!cert_ || !key_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_facade_mode () != 0)
+        return -1;
+    if (cert_[0] == '\0' || key_[0] == '\0') {
+        _tls_server_cert.clear ();
+        _tls_server_key.clear ();
+        return 0;
+    }
+
+    _tls_server_cert = cert_;
+    _tls_server_key = key_;
+    if (_router_socket) {
+        if (_router_socket->setsockopt (ZLINK_TLS_CERT, _tls_server_cert.data (),
+                                        _tls_server_cert.size ())
+              != 0
+            || _router_socket->setsockopt (ZLINK_TLS_KEY, _tls_server_key.data (),
+                                           _tls_server_key.size ())
+                 != 0)
+            return -1;
+    }
+    return 0;
 }
 
 void *gateway_t::monitor_open (int events_)
@@ -1038,6 +1517,37 @@ void gateway_t::emit_event (uint32_t event_type_,
         report_topology (service_name_, endpoint_, state, value_, error_code_);
 }
 
+void gateway_t::emit_control_callback (uint32_t event_type_,
+                                       const std::string &service_name_,
+                                       int32_t error_code_)
+{
+    zlink_gateway_handler_fn handler =
+      _handler.load (std::memory_order_acquire);
+    if (!handler)
+        return;
+
+    const char *event_name = gateway_control_event_name (event_type_);
+    char error_text[32];
+    snprintf (error_text, sizeof (error_text), "%d",
+              static_cast<int> (error_code_));
+
+    zlink_msg_t parts[2];
+    memset (parts, 0, sizeof (parts));
+
+    if (zlink_msg_init_size (&parts[0], strlen (event_name)) != 0)
+        return;
+    memcpy (zlink_msg_data (&parts[0]), event_name, strlen (event_name));
+
+    if (zlink_msg_init_size (&parts[1], strlen (error_text)) != 0) {
+        zlink_msg_close (&parts[0]);
+        return;
+    }
+    memcpy (zlink_msg_data (&parts[1]), error_text, strlen (error_text));
+
+    handler (ZLINK_GATEWAY_MSG_CONTROL, service_name_.c_str (),
+             service_name_.size (), NULL, parts, 2);
+}
+
 void gateway_t::report_topology (const std::string &service_name_,
                                  const std::string &endpoint_,
                                  uint16_t state_,
@@ -1103,6 +1613,28 @@ int gateway_t::connection_count (const char *service_name_)
     return static_cast<int> (pool->endpoints.size ());
 }
 
+int gateway_t::set_handler (zlink_gateway_handler_fn handler_)
+{
+    if (!handler_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_facade_mode () != 0)
+        return -1;
+    _handler.store (handler_, std::memory_order_release);
+    if (_router_socket) {
+        register_gateway_handler_socket (_router_socket, this);
+        if (_router_socket->socket_set_msg_handler (&gateway_router_msg_handler)
+            != 0) {
+            unregister_gateway_handler_socket (_router_socket);
+            return -1;
+        }
+    }
+    return 0;
+}
+
 int gateway_t::set_tls_client (const char *ca_cert_,
                                const char *hostname_,
                                int trust_system_)
@@ -1138,6 +1670,11 @@ int gateway_t::destroy ()
     _refresh_task_id = 0;
     if (_discovery)
         _discovery->remove_observer (this);
+    if (_discovery && !_server_service_name.empty () && !_advertise_endpoint.empty ()) {
+        (void) _discovery->unregister_service (
+          discovery_protocol::service_type_gateway_receiver,
+          _server_service_name.c_str (), _advertise_endpoint.c_str ());
+    }
     _pools.clear ();
     _last_service_name.clear ();
     _last_pool = NULL;
@@ -1163,10 +1700,59 @@ int gateway_t::destroy ()
         _monitor_socket = NULL;
     }
     if (_router_socket) {
+        unregister_gateway_handler_socket (_router_socket);
         _router_socket->close ();
         _router_socket = NULL;
     }
     return 0;
+}
+
+bool gateway_t::classify_message (const zlink_routing_id_t *source_rid_,
+                                  zlink_gateway_msg_kind_t *kind_out_,
+                                  std::string *service_name_out_) const
+{
+    if (!kind_out_ || !service_name_out_) {
+        errno = EINVAL;
+        return false;
+    }
+
+    *kind_out_ = ZLINK_GATEWAY_MSG_REQUEST;
+    service_name_out_->clear ();
+
+    if (source_rid_ && source_rid_->size > 0) {
+        const std::string key = routing_id_key (*source_rid_);
+        std::map<std::string, std::string>::const_iterator it =
+          _routing_id_to_service.find (key);
+        if (it != _routing_id_to_service.end ()) {
+            *kind_out_ = ZLINK_GATEWAY_MSG_REPLY;
+            *service_name_out_ = it->second;
+            return true;
+        }
+    }
+
+    if (!_server_service_name.empty ())
+        *service_name_out_ = _server_service_name;
+    return true;
+}
+
+void gateway_t::dispatch_message (const zlink_routing_id_t *source_rid_,
+                                  zlink_msg_t *parts_,
+                                  size_t part_count_)
+{
+    zlink_gateway_handler_fn handler =
+      _handler.load (std::memory_order_acquire);
+    if (!handler) {
+        for (size_t i = 0; i < part_count_; ++i)
+            zlink_msg_close (&parts_[i]);
+        return;
+    }
+
+    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    zlink_gateway_msg_kind_t kind = ZLINK_GATEWAY_MSG_REQUEST;
+    std::string service_name;
+    (void) classify_message (source_rid_, &kind, &service_name);
+    handler (kind, service_name.c_str (), service_name.size (), source_rid_,
+             parts_, part_count_);
 }
 
 void gateway_t::process_monitor_events ()
@@ -1175,8 +1761,8 @@ void gateway_t::process_monitor_events ()
         return;
     while (true) {
         zlink_monitor_event_t event;
-        const int rc = zlink_monitor_recv (_monitor_socket, &event,
-                                           ZLINK_DONTWAIT);
+        const int rc =
+          recv_socket_monitor_event (_monitor_socket, &event, ZLINK_DONTWAIT);
         if (rc != 0) {
             if (errno == EAGAIN)
                 return;

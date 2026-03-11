@@ -3,6 +3,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "../include/zlink.h"
+#include "../src/core/recv_internal.hpp"
 
 #include "testutil.hpp"
 
@@ -156,7 +157,7 @@ void recv_array_expect_success (void *socket_,
                                        "characters");
 
     const int rc = TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv (socket_, buffer, sizeof (buffer), flags_));
+      zlink::recv_buffer_internal (socket_, buffer, sizeof (buffer), flags_));
     TEST_ASSERT_EQUAL_INT (static_cast<int> (SIZE), rc);
     TEST_ASSERT_EQUAL_UINT8_ARRAY (array_, buffer, SIZE);
 }

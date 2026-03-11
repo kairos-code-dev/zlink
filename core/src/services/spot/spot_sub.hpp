@@ -19,6 +19,14 @@ namespace zlink
 class socket_base_t;
 class spot_node_t;
 
+typedef void (*spot_sub_direct_handler_fn) (
+  const zlink_routing_id_t *source_rid_,
+  const char *topic_,
+  size_t topic_len_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
+
 class spot_sub_t
 {
   public:
@@ -40,12 +48,8 @@ class spot_sub_t
     void *monitor_open (int events_);
     void *poller_socket ();
     int configured_rcvhwm () const;
-    int set_handler (zlink_spot_sub_handler_fn handler_, void *userdata_);
-    int recv (zlink_msg_t **parts_,
-              size_t *part_count_,
-              int flags_,
-              char *topic_out_,
-              size_t *topic_len_);
+    int set_direct_handler (spot_sub_direct_handler_fn handler_,
+                            void *userdata_);
     bool has_filters () const;
 
     void emit_ready_event ();
@@ -64,9 +68,10 @@ class spot_sub_t
     static bool is_valid_topic (const char *topic_, std::string *out_);
     static bool is_valid_pattern (const char *pattern_, std::string *prefix_out_);
     static int initialize_routing_id (zlink_routing_id_t *out_);
-    static void dispatch_from_io (const char *topic_,
+    static void dispatch_from_io (const zlink_routing_id_t *source_rid_,
+                                  const char *topic_,
                                   size_t topic_len_,
-                                  const zlink_msg_t *parts_,
+                                  zlink_msg_t *parts_,
                                   size_t part_count_,
                                   void *userdata_);
     static void monitor_thread_main (void *arg_);
@@ -89,11 +94,10 @@ class spot_sub_t
     std::set<std::string> _topics;
     std::set<std::string> _patterns;
 
-    zlink_spot_sub_handler_fn _handler;
-    void *_handler_userdata;
+    spot_sub_direct_handler_fn _direct_handler;
+    void *_direct_handler_userdata;
     handler_state_t _handler_state;
     atomic_counter_t _callback_inflight;
-    atomic_counter_t _recv_in_progress;
     condition_variable_t _callback_cv;
     service_monitor_hub_t _monitor;
     void *_raw_monitor_socket;

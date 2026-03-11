@@ -71,6 +71,9 @@
 
 namespace
 {
+thread_local zlink::socket_base_t *g_current_socket_msg_dispatch_socket = NULL;
+thread_local zlink::pipe_t *g_current_socket_msg_dispatch_pipe = NULL;
+
 static void generate_default_routing_id (unsigned char out_[16])
 {
     zlink::generate_random_bytes (out_, 16);
@@ -193,6 +196,7 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _mailbox_refcnt (0),
     _destroy_pending (false),
     _async_mailbox_active (false),
+    _socket_msg_handler (NULL),
     _monitor_sync (),
     _disconnected (false)
 {
@@ -512,8 +516,7 @@ int zlink::socket_base_t::getsockopt (int option_,
         errno_assert (rc == 0);
 
         return do_getsockopt<int> (optval_, optvallen_,
-                                   (has_out () ? ZLINK_POLLOUT : 0)
-                                     | (has_in () ? ZLINK_POLLIN : 0));
+                                   has_out () ? ZLINK_POLLOUT : 0);
     }
 
     if (option_ == ZLINK_LAST_ENDPOINT) {
@@ -541,10 +544,29 @@ int zlink::socket_base_t::get_events (int events_, uint32_t *out_)
         if (has_out ())
             events |= ZLINK_POLLOUT;
     }
-    if (events_ & ZLINK_POLLIN) {
-        if (has_in ())
-            events |= ZLINK_POLLIN;
+
+    *out_ = events;
+    return 0;
+}
+
+int zlink::socket_base_t::get_events_internal (int events_, uint32_t *out_)
+{
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
     }
+
+    const int rc = process_commands (0, false);
+    if (rc != 0 && (errno == EINTR || errno == ETERM)) {
+        return -1;
+    }
+    errno_assert (rc == 0);
+
+    uint32_t events = 0;
+    if ((events_ & ZLINK_POLLIN) && has_in ())
+        events |= ZLINK_POLLIN;
+    if ((events_ & ZLINK_POLLOUT) && has_out ())
+        events |= ZLINK_POLLOUT;
 
     *out_ = events;
     return 0;
@@ -1313,8 +1335,97 @@ int zlink::socket_base_t::stream_dispatch_msg_from_io (msg_t *msg_,
     return xstream_dispatch_msg (msg_, pipe_);
 }
 
-int zlink::socket_base_t::sub_dispatch_start (
-  zlink_spot_sub_handler_fn callback_, void *userdata_)
+int zlink::socket_base_t::socket_msg_dispatch_from_io (msg_t *msg_,
+                                                       pipe_t *pipe_)
+{
+    if (!socket_msg_dispatch_active ())
+        return 0;
+    pipe_t *previous_pipe = g_current_socket_msg_dispatch_pipe;
+    g_current_socket_msg_dispatch_pipe = pipe_;
+    const int rc = xsocket_msg_dispatch (msg_, pipe_);
+    g_current_socket_msg_dispatch_pipe = previous_pipe;
+    return rc;
+}
+
+int zlink::socket_base_t::socket_set_msg_handler (
+  zlink_socket_msg_handler_fn handler_)
+{
+    if (!handler_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    _socket_msg_handler.store (handler_, std::memory_order_release);
+    return 0;
+}
+
+bool zlink::socket_base_t::socket_msg_dispatch_active () const
+{
+    return _socket_msg_handler.load (std::memory_order_acquire) != NULL;
+}
+
+zlink::socket_base_t *
+zlink::socket_base_t::current_socket_msg_dispatch_socket ()
+{
+    return g_current_socket_msg_dispatch_socket;
+}
+
+zlink::pipe_t *zlink::socket_base_t::current_socket_msg_dispatch_pipe ()
+{
+    return g_current_socket_msg_dispatch_pipe;
+}
+
+zlink_socket_msg_handler_fn zlink::socket_base_t::socket_msg_handler () const
+{
+    return _socket_msg_handler.load (std::memory_order_acquire);
+}
+
+void zlink::socket_base_t::invoke_socket_msg_handler (
+  zlink_socket_msg_handler_fn handler_,
+  const zlink_routing_id_t *source_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_)
+{
+    socket_base_t *previous = g_current_socket_msg_dispatch_socket;
+    g_current_socket_msg_dispatch_socket = this;
+    handler_ (source_rid_, parts_, part_count_);
+    g_current_socket_msg_dispatch_socket = previous;
+}
+
+void zlink::socket_base_t::close_socket_msg_parts (
+  std::vector<zlink_msg_t> *parts_)
+{
+    if (!parts_)
+        return;
+
+    for (size_t i = 0; i < parts_->size (); ++i) {
+        const int rc =
+          reinterpret_cast<msg_t *> (&(*parts_)[i])->close ();
+        errno_assert (rc == 0);
+    }
+    parts_->clear ();
+}
+
+void zlink::socket_base_t::resolve_socket_msg_source_rid (
+  pipe_t *pipe_, zlink_routing_id_t *out_)
+{
+    if (!out_)
+        return;
+
+    memset (out_, 0, sizeof (*out_));
+
+    pipe_t *routing_pipe = pipe_;
+    if (routing_pipe && routing_pipe->get_peer ())
+        routing_pipe = routing_pipe->get_peer ();
+
+    if (!routing_pipe)
+        return;
+
+    copy_routing_id (out_, routing_pipe->get_routing_id ());
+}
+
+int zlink::socket_base_t::sub_dispatch_start (spot_sub_io_handler_fn callback_,
+                                              void *userdata_)
 {
     LIBZLINK_UNUSED (callback_);
     LIBZLINK_UNUSED (userdata_);
@@ -1643,6 +1754,13 @@ int zlink::socket_base_t::xrecv (msg_t *)
     return -1;
 }
 
+int zlink::socket_base_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
+{
+    LIBZLINK_UNUSED (msg_);
+    LIBZLINK_UNUSED (pipe_);
+    return 0;
+}
+
 int zlink::socket_base_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
 {
     LIBZLINK_UNUSED (msg_);
@@ -1870,7 +1988,7 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
     //  Register events to monitor
     _monitor_events = events_;
     //  Create a monitor socket of the specified type.
-    _monitor_socket = zlink_socket (get_ctx (), type_);
+    _monitor_socket = static_cast<void *> (get_ctx ()->create_socket (type_));
     if (_monitor_socket == NULL)
         return -1;
 

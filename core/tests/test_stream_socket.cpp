@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "testutil.hpp"
+#include "testutil_monitoring.hpp"
 #include "testutil_unity.hpp"
 
 #include "utils/config.hpp"
@@ -50,7 +51,9 @@ static bool wait_monitor_event (void *monitor_,
 
         for (;;) {
             zlink_monitor_event_t event;
-            if (zlink_monitor_recv (monitor_, &event, ZLINK_DONTWAIT) != 0)
+            if (recv_monitor_event_from_socket (monitor_, &event,
+                                                ZLINK_DONTWAIT)
+                != 0)
                 break;
             if (event.event != expected_event_)
                 continue;
@@ -499,7 +502,8 @@ static void collect_stream_monitor_events (void *monitor_,
 
     for (;;) {
         zlink_monitor_event_t event;
-        if (zlink_monitor_recv (monitor_, &event, ZLINK_DONTWAIT) != 0)
+        if (recv_monitor_event_from_socket (monitor_, &event, ZLINK_DONTWAIT)
+            != 0)
             break;
         record_stream_monitor_event (probe_, &event);
     }
@@ -628,7 +632,8 @@ static void collect_stream_ordering_monitor_events (
 
     for (;;) {
         zlink_monitor_event_t event;
-        if (zlink_monitor_recv (monitor_, &event, ZLINK_DONTWAIT) != 0)
+        if (recv_monitor_event_from_socket (monitor_, &event, ZLINK_DONTWAIT)
+            != 0)
             break;
 
         if (event.routing_id.size != stream_routing_id_size)
@@ -1122,16 +1127,9 @@ void test_stream_callback_lifecycle ()
     g_stream_callback_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_stream_attach_raw (stream, stream_echo_raw_callback));
-    errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1,
-                           zlink_stream_attach_raw (stream,
-                                                    stream_echo_raw_callback));
-    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (stream));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_raw (stream, stream_echo_raw_callback));
     g_stream_callback_probe = NULL;
-    errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_stream_detach (stream));
-    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     test_context_socket_close_zero_linger (stream);
 }
@@ -1165,7 +1163,6 @@ void test_stream_recv_api_dispatch_conflict ()
     TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, stream, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (stream));
 
     test_context_socket_close_zero_linger (stream);
 }
@@ -1189,7 +1186,6 @@ void test_stream_dispatch_start_rejects_stream_notify ()
       zlink_setsockopt (stream, ZLINK_STREAM_NOTIFY, &disable, sizeof (disable)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_stream_attach_raw (stream, stream_echo_raw_callback));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (stream));
 
     test_context_socket_close_zero_linger (stream);
 }
@@ -1291,7 +1287,6 @@ void test_stream_callback_echo_raw ()
       two_part_reply, recv_two_part,
       static_cast<unsigned int> (sizeof (two_part_reply) - 1));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_callback_probe = NULL;
 
     close_raw_fd (client_fd);
@@ -1344,7 +1339,6 @@ void test_stream_callback_echo_len32be ()
 
     TEST_ASSERT_TRUE (wait_counter_at_least (&probe.matched, 1, 3000));
     TEST_ASSERT_EQUAL_INT (1, probe.send_ok.load (std::memory_order_acquire));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_callback_probe = NULL;
 
     close_raw_fd (client_fd);
@@ -1388,7 +1382,6 @@ void test_stream_callback_echo_single_zero_byte ()
     TEST_ASSERT_TRUE (wait_counter_at_least (&probe.matched, 1, 3000));
     TEST_ASSERT_EQUAL_INT (1, probe.send_ok.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_callback_probe = NULL;
     close_raw_fd (client_fd);
     test_context_socket_close_zero_linger (server);
@@ -1609,7 +1602,6 @@ void test_stream_len32be_single_frame ()
     TEST_ASSERT_EQUAL_INT (0, probe.bad_batch.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_len32be_probe = NULL;
     close_raw_fd (client_fd);
     test_context_socket_close_zero_linger (server);
@@ -1662,7 +1654,6 @@ void test_stream_len32be_header_split ()
     TEST_ASSERT_EQUAL_INT (0, probe.bad_batch.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_len32be_probe = NULL;
     close_raw_fd (client_fd);
     test_context_socket_close_zero_linger (server);
@@ -1716,7 +1707,6 @@ void test_stream_len32be_body_split ()
     TEST_ASSERT_EQUAL_INT (0, probe.bad_batch.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_len32be_probe = NULL;
     close_raw_fd (client_fd);
     test_context_socket_close_zero_linger (server);
@@ -1785,7 +1775,6 @@ void test_stream_len32be_multi_frame_single_read ()
     TEST_ASSERT_EQUAL_INT (0, probe.bad_batch.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_len32be_probe = NULL;
     close_raw_fd (client_fd);
     test_context_socket_close_zero_linger (server);
@@ -1950,7 +1939,6 @@ void test_stream_raw_callback_ready_precedes_first_payload_contract ()
     TEST_ASSERT_EQUAL_INT (
       0, callback_probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_raw_ordering_callback_probe = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     test_context_socket_close_zero_linger (server);
@@ -2028,7 +2016,6 @@ void test_stream_len32be_callback_lifecycle_contract ()
     TEST_ASSERT_EQUAL_INT (
       0, callback_probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_len32be_ordering_callback_probe = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     test_context_socket_close_zero_linger (server);
@@ -2357,7 +2344,6 @@ void test_stream_monitor_len32be_multiclient_connect_disconnect ()
       "callback routing_ids do not fully match monitor ready/disconnected ids");
     TEST_ASSERT_EQUAL_INT (client_count, callback_routing_id_count);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_monitor_callback_probe = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     test_context_socket_close_zero_linger (server);
@@ -2429,7 +2415,6 @@ void test_stream_raw_multiclient_strict_ready_gating_regression ()
     TEST_ASSERT_EQUAL_INT (
       0, callback_probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_raw_ordering_callback_probe = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     test_context_socket_close_zero_linger (server);
@@ -2502,7 +2487,6 @@ void test_stream_len32be_multiclient_strict_ready_gating_regression ()
     TEST_ASSERT_EQUAL_INT (
       0, callback_probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_len32be_ordering_callback_probe = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     test_context_socket_close_zero_linger (server);
@@ -2620,7 +2604,6 @@ void test_stream_raw_multiclient_load_integrity ()
       0, probe.parse_error.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_raw_load_probe = NULL;
     test_context_socket_close_zero_linger (server);
 }
@@ -2668,7 +2651,6 @@ void test_stream_len32be_multiclient_load_integrity ()
       0, probe.invalid_payload.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_load_probe = NULL;
     test_context_socket_close_zero_linger (server);
 }

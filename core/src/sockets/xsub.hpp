@@ -10,6 +10,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
+#include <vector>
 #ifdef ZLINK_USE_RADIX_TREE
 #include "utils/radix_tree.hpp"
 #else
@@ -45,10 +46,12 @@ class xsub_t : public socket_base_t
     bool xhas_in () ZLINK_FINAL;
     void xdispatch_io () ZLINK_OVERRIDE;
     void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
-    int sub_dispatch_start (zlink_spot_sub_handler_fn callback_,
+    int sub_dispatch_start (spot_sub_io_handler_fn callback_,
                             void *userdata_) ZLINK_OVERRIDE;
     int sub_dispatch_stop () ZLINK_OVERRIDE;
     bool sub_dispatch_active () const ZLINK_OVERRIDE;
+    int xsocket_msg_dispatch (zlink::msg_t *msg_,
+                              zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
     void xwrite_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     void xhiccuped (pipe_t *pipe_) ZLINK_FINAL;
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
@@ -62,7 +65,7 @@ class xsub_t : public socket_base_t
     static void
     send_subscription (unsigned char *data_, size_t size_, void *arg_);
     int dispatch_ready_messages ();
-    int dispatch_message (zlink::msg_t *msg_);
+    int dispatch_message (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     void notify_dispatch_stopped ();
 
     //  Fair queueing object for inbound pipes.
@@ -105,12 +108,14 @@ class xsub_t : public socket_base_t
     bool _only_first_subscribe;
 
     std::atomic<bool> _dispatch_active;
-    std::atomic<zlink_spot_sub_handler_fn> _dispatch_callback;
+    std::atomic<spot_sub_io_handler_fn> _dispatch_callback;
     std::atomic<void *> _dispatch_userdata;
     std::atomic<uint32_t> _dispatch_inflight;
     mutable std::mutex _dispatch_control_mu;
     mutable std::mutex _dispatch_inflight_mu;
     std::condition_variable _dispatch_inflight_cv;
+    std::vector<zlink_msg_t> _socket_dispatch_parts;
+    bool _socket_dispatch_drop_message;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (xsub_t)
 };

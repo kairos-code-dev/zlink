@@ -34,15 +34,19 @@ static void set_monitor_socket_defaults (socket_base_t *socket_)
     socket_->setsockopt (ZLINK_RCVHWM, &hwm, sizeof (hwm));
 }
 
-static bool poll_monitor_socket (void *socket_, short events_, long timeout_ms_)
+static bool recv_monitor_handshake (socket_base_t *socket_, long timeout_ms_)
 {
-    zlink_pollitem_t item;
-    item.socket = socket_;
-    item.fd = 0;
-    item.events = events_;
-    item.revents = 0;
-    const int rc = zlink_poll (&item, 1, timeout_ms_);
-    return rc > 0 && (item.revents & events_) == events_;
+    const int timeout = static_cast<int> (timeout_ms_);
+    if (socket_->setsockopt (ZLINK_RCVTIMEO, &timeout, sizeof (timeout)) != 0)
+        return false;
+
+    msg_t msg;
+    if (msg.init () != 0)
+        return false;
+
+    const int rc = socket_->recv (&msg, 0);
+    msg.close ();
+    return rc == 0;
 }
 
 static bool handshake_monitor_pair (socket_base_t *server_, socket_base_t *client_)
@@ -63,15 +67,8 @@ static bool handshake_monitor_pair (socket_base_t *server_, socket_base_t *clien
     }
     msg.close ();
 
-    if (!poll_monitor_socket (static_cast<void *> (server_), ZLINK_POLLIN, 100))
+    if (!recv_monitor_handshake (server_, 100))
         return false;
-    if (msg.init () != 0)
-        return false;
-    if (server_->recv (&msg, 0) != 0) {
-        msg.close ();
-        return false;
-    }
-    msg.close ();
 
     if (msg.init_size (sizeof (ack)) != 0)
         return false;
@@ -82,15 +79,8 @@ static bool handshake_monitor_pair (socket_base_t *server_, socket_base_t *clien
     }
     msg.close ();
 
-    if (!poll_monitor_socket (static_cast<void *> (client_), ZLINK_POLLIN, 100))
+    if (!recv_monitor_handshake (client_, 100))
         return false;
-    if (msg.init () != 0)
-        return false;
-    if (client_->recv (&msg, 0) != 0) {
-        msg.close ();
-        return false;
-    }
-    msg.close ();
 
     return true;
 }
@@ -149,13 +139,13 @@ uint32_t service_monitor_hub_t::event_delivery_mask (uint32_t event_type_)
     switch (event_type_) {
         case ZLINK_DISCOVERY_SERVICE_UP:
         case ZLINK_GATEWAY_SERVICE_READY:
-        case ZLINK_RECEIVER_REGISTER_OK:
+        case ZLINK_GATEWAY_REGISTER_OK:
         case ZLINK_SPOT_SUB_SUBSCRIPTION_READY:
             mask |= ZLINK_MONITOR_EVENT_READY;
             break;
         case ZLINK_DISCOVERY_SERVICE_DOWN:
         case ZLINK_GATEWAY_SERVICE_LOST:
-        case ZLINK_RECEIVER_UNREGISTER_OK:
+        case ZLINK_GATEWAY_UNREGISTER_OK:
             mask |= ZLINK_MONITOR_EVENT_LOST;
             break;
         case ZLINK_GATEWAY_ROUTE_UP:
@@ -164,8 +154,8 @@ uint32_t service_monitor_hub_t::event_delivery_mask (uint32_t event_type_)
         case ZLINK_GATEWAY_ROUTE_DOWN:
             mask |= ZLINK_MONITOR_EVENT_PEER_DOWN;
             break;
-        case ZLINK_RECEIVER_REGISTER_FAILED:
-        case ZLINK_RECEIVER_UNREGISTER_FAILED:
+        case ZLINK_GATEWAY_REGISTER_FAILED:
+        case ZLINK_GATEWAY_UNREGISTER_FAILED:
         case ZLINK_SPOT_PUB_QUEUE_FULL:
             mask |= ZLINK_MONITOR_EVENT_ERROR;
             break;

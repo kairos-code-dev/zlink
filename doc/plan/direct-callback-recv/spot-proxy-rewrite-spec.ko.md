@@ -1193,7 +1193,7 @@ topology 정리 규칙:
 
 ## 12. Topology Summary Reporting
 
-이 장은 `service-topology-reporting-runtime-plan.ko.md`의 공통 원칙 중
+이 장은 topology summary reporting의 공통 원칙 중
 SPOT에 적용되는 규칙을 SPOT 구현 기준으로 재정의한다.
 
 공통 원칙 문서는 policy를, 이 장은 SPOT의 executable spec 역할을 한다.
@@ -1515,14 +1515,14 @@ perf baseline 절차:
 
 ## 17. 기존 계획 문서와의 관계
 
-이 문서는 [`spot-inproc-facade-redesign.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-inproc-facade-redesign.ko.md)를 대체하는 후속 스펙이다.
+이 문서는 기존 spot inproc facade redesign 메모를 대체하는 후속 스펙이다.
 
 기존 문서는 facade 의미 변경 방향을 정의하는 데는 유효했지만,
 실제 구현이 `proxy` 수준 data path를 보장하지 못했다.
 
 이번 재작성은 “facade inproc화”가 아니라 “proxy 기반 data plane 재구축”이 핵심이다.
 
-또한 이 문서는 [`service-topology-reporting-runtime-plan.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/service-topology-reporting-runtime-plan.ko.md)의
+또한 이 문서는 topology summary reporting의
 SPOT 관련 규칙을 흡수한다.
 
 - 공통 문서는 Discovery-owned uplink runtime의 전체 policy를 정의한다

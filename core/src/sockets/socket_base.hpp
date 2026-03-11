@@ -7,6 +7,7 @@
 #include <map>
 #include <stdarg.h>
 #include <atomic>
+#include <vector>
 
 #include "core/own.hpp"
 #include "utils/array.hpp"
@@ -31,6 +32,12 @@ class ctx_t;
 class msg_t;
 class pipe_t;
 class io_thread_t;
+typedef void (*spot_sub_io_handler_fn) (const zlink_routing_id_t *source_rid_,
+                                        const char *topic_,
+                                        size_t topic_len_,
+                                        zlink_msg_t *parts_,
+                                        size_t part_count_,
+                                        void *userdata_);
 class socket_base_t : public own_t,
                       public array_item_t<>,
                       public i_poll_events,
@@ -57,14 +64,20 @@ class socket_base_t : public own_t,
     int setsockopt (int option_, const void *optval_, size_t optvallen_);
     int getsockopt (int option_, void *optval_, size_t *optvallen_);
     int get_events (int events_, uint32_t *out_);
+    int get_events_internal (int events_, uint32_t *out_);
     int bind (const char *endpoint_uri_);
     int connect (const char *endpoint_uri_);
     int term_endpoint (const char *endpoint_uri_);
     int send (zlink::msg_t *msg_, int flags_);
     int recv (zlink::msg_t *msg_, int flags_);
     int close ();
+    int socket_msg_dispatch_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
+    int socket_set_msg_handler (zlink_socket_msg_handler_fn handler_);
+    bool socket_msg_dispatch_active () const;
+    static socket_base_t *current_socket_msg_dispatch_socket ();
+    static zlink::pipe_t *current_socket_msg_dispatch_pipe ();
     int stream_dispatch_msg_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
-    virtual int sub_dispatch_start (zlink_spot_sub_handler_fn callback_,
+    virtual int sub_dispatch_start (spot_sub_io_handler_fn callback_,
                                     void *userdata_);
     virtual int sub_dispatch_stop ();
     virtual bool sub_dispatch_active () const;
@@ -193,6 +206,8 @@ class socket_base_t : public own_t,
     //  The default implementation assumes that recv in not supported.
     virtual bool xhas_in ();
     virtual int xrecv (zlink::msg_t *msg_);
+    virtual int xsocket_msg_dispatch (zlink::msg_t *msg_,
+                                      zlink::pipe_t *pipe_);
     virtual int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     virtual void xdispatch_io ();
 
@@ -206,12 +221,21 @@ class socket_base_t : public own_t,
     virtual int xjoin (const char *group_);
     virtual int xleave (const char *group_);
 
+    void invoke_socket_msg_handler (zlink_socket_msg_handler_fn handler_,
+                                    const zlink_routing_id_t *source_rid_,
+                                    zlink_msg_t *parts_,
+                                    size_t part_count_);
+
     //  Delay actual destruction of the socket.
     void process_destroy () ZLINK_FINAL;
 
     int connect_internal (const char *endpoint_uri_);
     int start_async_mailbox_processing (io_thread_t *io_thread_);
     void stop_async_mailbox_processing ();
+    zlink_socket_msg_handler_fn socket_msg_handler () const;
+    static void close_socket_msg_parts (std::vector<zlink_msg_t> *parts_);
+    static void resolve_socket_msg_source_rid (pipe_t *pipe_,
+                                               zlink_routing_id_t *out_);
 
   private:
     // test if event should be sent and then dispatch it
@@ -349,6 +373,7 @@ class socket_base_t : public own_t,
     atomic_counter_t _mailbox_refcnt;
     bool _destroy_pending;
     std::atomic<bool> _async_mailbox_active;
+    std::atomic<zlink_socket_msg_handler_fn> _socket_msg_handler;
 
     // Mutex to synchronize access to the monitor Pair socket
     mutex_t _monitor_sync;

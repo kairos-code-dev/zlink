@@ -939,6 +939,7 @@ set(api-sources
 
 set(core-sources
     src/core/msg.cpp
+    src/core/recv_internal.cpp
     src/core/ctx.cpp
     src/core/pipe.cpp
     src/core/mailbox.cpp
@@ -971,8 +972,7 @@ set(discovery-sources
     src/services/common/service_monitor.cpp
     src/services/discovery/registry.cpp
     src/services/discovery/discovery.cpp
-    src/services/gateway/gateway.cpp
-    src/services/gateway/receiver.cpp)
+    src/services/gateway/gateway.cpp)
 
 set(spot-sources
     src/services/spot/spot_data_plane.cpp

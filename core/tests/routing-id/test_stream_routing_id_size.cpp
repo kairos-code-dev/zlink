@@ -30,41 +30,6 @@ struct stream_probe_t
 
 static stream_probe_t *g_stream_probe = NULL;
 
-static bool wait_monitor_event (void *monitor_,
-                                void *activity_socket_,
-                                uint64_t expected_event_,
-                                unsigned char routing_id_[stream_routing_id_size],
-                                int timeout_ms_)
-{
-    const int poll_slice_ms = 200;
-    const int poll_timeout = timeout_ms_ > 0 ? timeout_ms_ : 10000;
-    const int attempts = poll_timeout / poll_slice_ms + 1;
-    for (int i = 0; i < attempts; ++i) {
-        zlink_pollitem_t items[] = {
-          {monitor_, 0, ZLINK_POLLIN, 0},
-          {activity_socket_, 0, ZLINK_POLLIN, 0},
-        };
-        const int count = activity_socket_ ? 2 : 1;
-        const int rc = zlink_poll (items, count, poll_slice_ms);
-        if (rc <= 0 || (items[0].revents & ZLINK_POLLIN) == 0)
-            continue;
-
-        for (;;) {
-            zlink_monitor_event_t event;
-            if (zlink_monitor_recv (monitor_, &event, ZLINK_DONTWAIT) != 0)
-                break;
-            if (event.event != expected_event_)
-                continue;
-            if (event.routing_id.size != stream_routing_id_size)
-                continue;
-            memcpy (routing_id_, event.routing_id.data, stream_routing_id_size);
-            return true;
-        }
-    }
-
-    return false;
-}
-
 static bool parse_tcp_endpoint (const char *endpoint_,
                                 char host_[64],
                                 int *port_)
@@ -207,12 +172,6 @@ void test_stream_auto_routing_id_size ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
 
-    void *monitor =
-      zlink_socket_monitor_open (server, ZLINK_EVENT_CONNECTION_READY);
-    TEST_ASSERT_NOT_NULL (monitor);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
-
     const int client_fd = connect_raw_tcp (endpoint);
     TEST_ASSERT_TRUE (client_fd >= 0);
 
@@ -235,9 +194,7 @@ void test_stream_auto_routing_id_size ()
     TEST_ASSERT_EQUAL_INT (1, probe.payload_ok.load (std::memory_order_acquire));
 
     close_raw_fd (client_fd);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_probe = NULL;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     test_context_socket_close_zero_linger (server);
 }
 

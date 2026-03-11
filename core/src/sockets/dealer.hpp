@@ -7,6 +7,7 @@
 #include "core/session_base.hpp"
 #include "sockets/fq.hpp"
 #include "sockets/lb.hpp"
+#include <vector>
 
 namespace zlink
 {
@@ -39,6 +40,8 @@ class dealer_t : public socket_base_t
     void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     void xwrite_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
+    int xsocket_msg_dispatch (zlink::msg_t *msg_,
+                              zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
 
     //  Send and recv - knowing which pipe was used.
     int sendpipe (zlink::msg_t *msg_, zlink::pipe_t **pipe_);
@@ -52,6 +55,7 @@ class dealer_t : public socket_base_t
 
     // if true, send an empty message to every connected router peer
     bool _probe_router;
+    std::vector<zlink_msg_t> _dispatch_parts;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (dealer_t)
 };

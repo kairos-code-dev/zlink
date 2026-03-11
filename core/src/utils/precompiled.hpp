@@ -29,6 +29,18 @@
 // 0MQ definitions and exported functions
 #include "../include/zlink.h"
 
+// Internal core code still uses these recv-side constants even though they are
+// no longer part of the public callback-only API surface.
+#ifndef ZLINK_RCVMORE
+#define ZLINK_RCVMORE 13
+#endif
+#ifndef ZLINK_RCVTIMEO
+#define ZLINK_RCVTIMEO 27
+#endif
+#ifndef ZLINK_POLLIN
+#define ZLINK_POLLIN 1
+#endif
+
 // TODO: expand pch implementation to non-windows builds.
 #ifdef _MSC_VER
 

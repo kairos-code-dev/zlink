@@ -46,6 +46,29 @@ static void close_dispatch_frames (std::vector<zlink_msg_t> *frames_)
     }
     frames_->clear ();
 }
+
+static void close_dispatch_frame (zlink_msg_t *frame_)
+{
+    if (!frame_)
+        return;
+
+    zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (frame_);
+    const int rc = msg->close ();
+    errno_assert (rc == 0);
+}
+
+static void store_dispatch_part (std::vector<zlink_msg_t> *parts_,
+                                 zlink::msg_t *msg_)
+{
+    zlink_msg_t stored;
+    memset (&stored, 0, sizeof (stored));
+    zlink::msg_t *stored_msg = reinterpret_cast<zlink::msg_t *> (&stored);
+    const int init_rc = stored_msg->init ();
+    errno_assert (init_rc == 0);
+    const int move_rc = stored_msg->move (*msg_);
+    errno_assert (move_rc == 0);
+    parts_->push_back (stored);
+}
 }
 
 zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
@@ -59,7 +82,8 @@ zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _dispatch_active (false),
     _dispatch_callback (NULL),
     _dispatch_userdata (NULL),
-    _dispatch_inflight (0)
+    _dispatch_inflight (0),
+    _socket_dispatch_drop_message (false)
 {
     options.type = ZLINK_XSUB;
 
@@ -73,6 +97,7 @@ zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
 
 zlink::xsub_t::~xsub_t ()
 {
+    close_socket_msg_parts (&_socket_dispatch_parts);
     const int rc = _message.close ();
     errno_assert (rc == 0);
 }
@@ -213,7 +238,7 @@ bool zlink::xsub_t::xhas_out ()
     return true;
 }
 
-int zlink::xsub_t::sub_dispatch_start (zlink_spot_sub_handler_fn callback_,
+int zlink::xsub_t::sub_dispatch_start (spot_sub_io_handler_fn callback_,
                                        void *userdata_)
 {
     if (!callback_) {
@@ -367,8 +392,22 @@ int zlink::xsub_t::dispatch_ready_messages ()
         msg_t msg;
         const int init_rc = msg.init ();
         errno_assert (init_rc == 0);
+        pipe_t *pipe = NULL;
 
-        const int rc = xrecv (&msg);
+        int rc = 0;
+        while (true) {
+            rc = _fq.recvpipe (&msg, &pipe);
+            if (rc != 0)
+                break;
+
+            if (!options.filter || match (&msg))
+                break;
+
+            while (msg.flags () & msg_t::more) {
+                rc = _fq.recvpipe (&msg, &pipe);
+                errno_assert (rc == 0);
+            }
+        }
         if (rc != 0) {
             const int close_rc = msg.close ();
             errno_assert (close_rc == 0);
@@ -377,7 +416,7 @@ int zlink::xsub_t::dispatch_ready_messages ()
             return -1;
         }
 
-        const int dispatch_rc = dispatch_message (&msg);
+        const int dispatch_rc = dispatch_message (&msg, pipe);
         if (dispatch_rc != 0)
             return dispatch_rc;
     }
@@ -385,7 +424,7 @@ int zlink::xsub_t::dispatch_ready_messages ()
     return 0;
 }
 
-int zlink::xsub_t::dispatch_message (msg_t *msg_)
+int zlink::xsub_t::dispatch_message (msg_t *msg_, pipe_t *pipe_)
 {
     if (!msg_) {
         errno = EINVAL;
@@ -408,13 +447,13 @@ int zlink::xsub_t::dispatch_message (msg_t *msg_)
 
         const int next_init_rc = msg_->init ();
         errno_assert (next_init_rc == 0);
-        if (xrecv (msg_) != 0) {
+        if (_fq.recvpipe (msg_, &pipe_) != 0) {
             close_dispatch_frames (&frames);
             return -1;
         }
     }
 
-    zlink_spot_sub_handler_fn callback = NULL;
+    spot_sub_io_handler_fn callback = NULL;
     void *userdata = NULL;
     {
         std::lock_guard<std::mutex> lk (_dispatch_control_mu);
@@ -438,13 +477,21 @@ int zlink::xsub_t::dispatch_message (msg_t *msg_)
     const zlink_msg_t *payload =
       frames.size () > 1 ? &frames[1] : static_cast<zlink_msg_t *> (NULL);
     const size_t payload_count = frames.size () - 1;
+    zlink_routing_id_t source_rid;
+    resolve_socket_msg_source_rid (pipe_, &source_rid);
 
     {
         const xsub_dispatch_scope_t dispatch_scope (this);
-        callback (topic_data, topic_size, payload, payload_count, userdata);
+        callback (&source_rid, topic_data, topic_size,
+                  const_cast<zlink_msg_t *> (payload), payload_count,
+                  userdata);
     }
 
-    close_dispatch_frames (&frames);
+    // The callback owns payload frames. The topic frame stays internal and is
+    // released here after the handler returns.
+    if (!frames.empty ())
+        close_dispatch_frame (&frames[0]);
+    frames.clear ();
     notify_dispatch_stopped ();
     return 0;
 }
@@ -457,6 +504,40 @@ void zlink::xsub_t::notify_dispatch_stopped ()
         std::lock_guard<std::mutex> lk (_dispatch_inflight_mu);
         _dispatch_inflight_cv.notify_all ();
     }
+}
+
+int zlink::xsub_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
+{
+    if (!socket_msg_dispatch_active ())
+        return 0;
+
+    const bool final_part = (msg_->flags () & msg_t::more) == 0;
+
+    if (_socket_dispatch_parts.empty () && !_socket_dispatch_drop_message)
+        _socket_dispatch_drop_message = !match (msg_);
+
+    if (_socket_dispatch_drop_message) {
+        if (final_part)
+            _socket_dispatch_drop_message = false;
+        return 1;
+    }
+
+    store_dispatch_part (&_socket_dispatch_parts, msg_);
+    if (!final_part)
+        return 1;
+
+    zlink_socket_msg_handler_fn handler = socket_msg_handler ();
+    if (!handler) {
+        close_socket_msg_parts (&_socket_dispatch_parts);
+        return 1;
+    }
+
+    zlink_routing_id_t source_rid;
+    resolve_socket_msg_source_rid (pipe_, &source_rid);
+    invoke_socket_msg_handler (handler, &source_rid, &_socket_dispatch_parts[0],
+                               _socket_dispatch_parts.size ());
+    _socket_dispatch_parts.clear ();
+    return 1;
 }
 
 bool zlink::xsub_t::match (msg_t *msg_)

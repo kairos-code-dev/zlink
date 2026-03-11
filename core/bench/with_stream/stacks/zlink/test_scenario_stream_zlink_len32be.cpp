@@ -132,8 +132,6 @@ class zlink_stream_echo_server_t
         while (!stop.load (std::memory_order_acquire))
             std::this_thread::sleep_for (std::chrono::milliseconds (200));
 
-        (void) zlink_stream_detach (server);
-
         std::printf ("%s\n",
                      stream_echo::make_metric_line (
                        "zlink-len32be", opt.size,

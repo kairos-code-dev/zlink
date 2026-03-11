@@ -325,10 +325,8 @@ int zlink::socket_poller_t::check_events (zlink::socket_poller_t::event_t *event
         //  The poll item is a 0MQ socket. Retrieve pending events
         //  using the ZLINK_EVENTS socket option.
         if (it->socket) {
-            size_t events_size = sizeof (uint32_t);
             uint32_t events;
-            if (it->socket->getsockopt (ZLINK_EVENTS, &events, &events_size)
-                == -1) {
+            if (it->socket->get_events_internal (it->events, &events) == -1) {
                 return -1;
             }
 

@@ -3,6 +3,8 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_pub.hpp"
+#include "services/common/monitor_decode.hpp"
+#include "services/common/socket_monitor_bridge.hpp"
 #include "services/spot/spot_node.hpp"
 
 #include "sockets/socket_base.hpp"
@@ -293,14 +295,14 @@ int spot_pub_t::ensure_monitor_bridge_started ()
         return -1;
     }
 
-    void *monitor_socket = zlink_socket_monitor_open (
-      static_cast<void *> (_socket),
-      ZLINK_EVENT_CONNECTED | ZLINK_EVENT_ACCEPTED
-        | ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED
-        | ZLINK_EVENT_BIND_FAILED | ZLINK_EVENT_ACCEPT_FAILED
-        | ZLINK_EVENT_CLOSE_FAILED | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
-        | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
-        | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH);
+    void *monitor_socket = open_socket_monitor_bridge (
+      _socket, ZLINK_EVENT_CONNECTED | ZLINK_EVENT_ACCEPTED
+                 | ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED
+                 | ZLINK_EVENT_BIND_FAILED | ZLINK_EVENT_ACCEPT_FAILED
+                 | ZLINK_EVENT_CLOSE_FAILED
+                 | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+                 | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
+                 | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH);
     if (!monitor_socket)
         return -1;
 
@@ -340,17 +342,15 @@ void spot_pub_t::monitor_loop ()
         if (!raw_monitor_socket)
             return;
 
-        zlink_pollitem_t item;
-        item.socket = raw_monitor_socket;
-        item.fd = 0;
-        item.events = ZLINK_POLLIN;
-        item.revents = 0;
-        const int poll_rc = zlink_poll (&item, 1, 50);
-        if (poll_rc <= 0 || (item.revents & ZLINK_POLLIN) == 0)
+        if (zlink::wait_socket_events_internal (raw_monitor_socket,
+                                                ZLINK_POLLIN, 50)
+            <= 0)
             continue;
 
         zlink_monitor_event_t raw;
-        if (zlink_monitor_recv (raw_monitor_socket, &raw, ZLINK_DONTWAIT) != 0) {
+        if (recv_socket_monitor_event (raw_monitor_socket, &raw,
+                                       ZLINK_DONTWAIT)
+            != 0) {
             if (errno == EAGAIN)
                 continue;
             if (_monitor_stop.get () != 0)

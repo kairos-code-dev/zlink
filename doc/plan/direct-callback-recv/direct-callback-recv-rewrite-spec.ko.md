@@ -5,16 +5,14 @@
 이 문서는 `zlink`의 수신 모델을 `recv()`/`poll()` 기반 pull 방식에서
 **callback-only direct dispatch** 방식으로 전면 전환하기 위한 구현 스펙이다.
 
-이 문서는 기존 아이디어 메모인
-[`proactor-recv-threadsafe-socket-plan.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/proactor-recv-threadsafe-socket-plan.ko.md)
-를 구체 구현안으로 확장한 문서다.
+이 문서는 기존 direct-callback 아이디어 메모를 구체 구현안으로 확장한 문서다.
 
 관련 문서 관계:
 
-- [`spot-node-direct-facade-plan.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-node-direct-facade-plan.ko.md)
+- [`spot-node-direct-facade-plan.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/spot-node-direct-facade-plan.ko.md)
   는 `spot_node + default pub/sub facade` 확장 계획이었고,
   본 문서는 그 구조를 바꾸지 않은 채 recv-side callback 모델을 추가하는 구현 스펙이다.
-- [`spot-proxy-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-proxy-rewrite-spec.ko.md)
+- [`spot-proxy-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/spot-proxy-rewrite-spec.ko.md)
   의 data plane worker / mesh / XPUB subscription propagation 구조는
   본 문서와 충돌하지 않으며, 현재 `spot_node` / `spot` 구현의 내부 기반으로 그대로 재사용할 수 있다.
 
@@ -917,7 +915,7 @@ socket/service는 다음을 담당한다.
 
 ### 7.2.5 SPOT data plane
 
-- `SPOT`은 [`spot-proxy-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/spot-proxy-rewrite-spec.ko.md)
+- `SPOT`은 [`spot-proxy-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/spot-proxy-rewrite-spec.ko.md)
   의 data plane worker 구조를 내부 기반으로 유지할 수 있다.
 - 즉 `_local_pub_ingress_sub`, `_mesh_xsub`, `_local_fanout_xpub`, `_mesh_pub`
   같은 worker-owned socket topology를 곧바로 버릴 필요는 없다.
@@ -1210,13 +1208,13 @@ transport-local inproc handoff primitive와 protocol decoder partial buffer,
   - `zlink_recv()` / `zlink_msg_recv()` 사용 테스트
   - `ROUTER/DEALER/PAIR/SUB` recv loop 테스트
 - service 수신 테스트
-  - `zlink_gateway_recv()`
-  - `zlink_receiver_recv()`
-  - `zlink_spot_sub_recv()`
-  - `zlink_spot_node_recv()`
+  - `gateway` message handler callback 테스트
+  - unified `gateway` register/unregister callback 테스트
+  - `spot` / `spot_sub` handler callback 테스트
+  - `spot_node` default sub handler callback 테스트
 - monitor 테스트
-  - `zlink_monitor_recv()`
-  - `zlink_service_monitor_recv()`
+  - raw socket monitor handler callback 테스트
+  - service monitor handler callback 테스트
 - poller 테스트
   - zlink object `POLLIN`을 기대하는 테스트
 
@@ -1462,3 +1460,15 @@ transport-local inproc handoff primitive와 protocol decoder partial buffer,
 
 이 문서의 구현이 완료되면 `zlink`는 외부 API와 내부 data path 모두에서
 기존 reactor 흔적을 걷어내고, proactor 기반 callback 수신 라이브러리로 정리된다.
+
+## 15. 추가 인터페이스 재검토
+
+이 장은 별도 문서로 분리한다.
+
+- [`direct-callback-recv-interface-review.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-interface-review.ko.md)
+
+분리 이유:
+
+- 본문 스펙은 recv 모델 재작성의 고정 계약과 구현 범위에 집중한다.
+- discovery / gateway / spot / socket enum 재설계 논의는 별도 추적 문서로 유지하는 편이
+  후속 정리에 더 적합하다.

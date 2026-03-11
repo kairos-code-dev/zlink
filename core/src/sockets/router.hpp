@@ -4,6 +4,7 @@
 #define __ZLINK_ROUTER_HPP_INCLUDED__
 
 #include <map>
+#include <vector>
 
 #include "sockets/socket_base.hpp"
 #include "core/session_base.hpp"
@@ -38,6 +39,8 @@ class router_t : public routing_socket_base_t
     bool xhas_out () ZLINK_OVERRIDE;
     void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
+    int xsocket_msg_dispatch (zlink::msg_t *msg_,
+                              zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
     int get_peer_state (const void *routing_id_,
                         size_t routing_id_size_) const ZLINK_FINAL;
 
@@ -97,6 +100,9 @@ class router_t : public routing_socket_base_t
     // name collision. The new pipe will take the identity, the old pipe
     // will be terminated.
     bool _handover;
+    std::vector<zlink_msg_t> _dispatch_parts;
+    zlink_routing_id_t _dispatch_source_rid;
+    bool _dispatch_source_rid_valid;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (router_t)
 };

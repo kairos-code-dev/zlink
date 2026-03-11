@@ -6,6 +6,21 @@
 #include "utils/err.hpp"
 #include "core/msg.hpp"
 
+namespace
+{
+void store_dispatch_part (std::vector<zlink_msg_t> *parts_, zlink::msg_t *msg_)
+{
+    zlink_msg_t stored;
+    memset (&stored, 0, sizeof (stored));
+    zlink::msg_t *stored_msg = reinterpret_cast<zlink::msg_t *> (&stored);
+    const int init_rc = stored_msg->init ();
+    errno_assert (init_rc == 0);
+    const int move_rc = stored_msg->move (*msg_);
+    errno_assert (move_rc == 0);
+    parts_->push_back (stored);
+}
+}
+
 zlink::dealer_t::dealer_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     socket_base_t (parent_, tid_, sid_), _probe_router (false)
 {
@@ -16,6 +31,7 @@ zlink::dealer_t::dealer_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
 
 zlink::dealer_t::~dealer_t ()
 {
+    close_socket_msg_parts (&_dispatch_parts);
 }
 
 void zlink::dealer_t::xattach_pipe (pipe_t *pipe_,
@@ -115,4 +131,30 @@ int zlink::dealer_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
 int zlink::dealer_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
 {
     return _fq.recvpipe (msg_, pipe_);
+}
+
+int zlink::dealer_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
+{
+    if (!socket_msg_dispatch_active ())
+        return 0;
+
+    store_dispatch_part (&_dispatch_parts, msg_);
+    if ((reinterpret_cast<msg_t *> (&_dispatch_parts.back ())->flags ()
+         & msg_t::more)
+        != 0) {
+        return 1;
+    }
+
+    zlink_socket_msg_handler_fn handler = socket_msg_handler ();
+    if (!handler) {
+        close_socket_msg_parts (&_dispatch_parts);
+        return 1;
+    }
+
+    zlink_routing_id_t source_rid;
+    resolve_socket_msg_source_rid (pipe_, &source_rid);
+    invoke_socket_msg_handler (handler, &source_rid, &_dispatch_parts[0],
+                               _dispatch_parts.size ());
+    _dispatch_parts.clear ();
+    return 1;
 }

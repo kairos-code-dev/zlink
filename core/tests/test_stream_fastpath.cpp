@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "testutil.hpp"
+#include "testutil_monitoring.hpp"
 #include "testutil_unity.hpp"
 
 #include <errno.h>
@@ -41,7 +42,9 @@ static bool wait_monitor_event (void *monitor_,
 
         for (;;) {
             zlink_monitor_event_t event;
-            if (zlink_monitor_recv (monitor_, &event, ZLINK_DONTWAIT) != 0)
+            if (recv_monitor_event_from_socket (monitor_, &event,
+                                                ZLINK_DONTWAIT)
+                != 0)
                 break;
             if (event.event != expected_event_)
                 continue;

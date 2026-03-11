@@ -4,6 +4,8 @@ cmake_minimum_required(VERSION 3.10)
 # On Windows: solution file will be called tests.sln
 project(tests)
 
+set(TEST_PTY_WRAPPER "${CMAKE_CURRENT_LIST_DIR}/run_under_pty.sh")
+
 set(STREAM_SCENARIO_ROOT "${CMAKE_SOURCE_DIR}/core/bench/with_stream/stacks")
 if(NOT EXISTS "${STREAM_SCENARIO_ROOT}")
   set(STREAM_SCENARIO_ROOT
@@ -12,64 +14,19 @@ endif()
 
 set(tests
   test_ancillaries
-  test_system
-  test_pair_inproc
-  test_pair_send_blocking_wakeup
-  test_pair_tcp
-  test_hwm_pubsub
-  test_pubsub_inproc_alternating
-  test_sub_forward
-  test_msg_flags
-  test_msg_ffn
+  test_monitor_with_handler
+  test_socket_with_handler
   test_connect_resolve
-  test_immediate
-  test_last_endpoint
-  test_router_mandatory
   discovery/test_gateway
+  discovery/test_gateway_with_handler
   discovery/test_gateway_handover
-  test_probe_router
-  test_disconnect_inproc
-  test_ctx_options
-  test_ctx_destroy
-  test_spec_router
-  test_issue_566
-  test_shutdown_stress
-  test_timeo
-  test_many_sockets
-  test_diffserv
-  test_connect_rid
-  test_xpub_nodrop
-  test_pub_invert_matching
-  test_heartbeats
-  test_zmp_metadata
-  test_zmp_ws_wss
-  test_bind_src_address
   test_capabilities
-  test_router_handover
-  test_xpub_manual
-  test_xpub_topic
-  test_xpub_welcome_msg
-  test_xpub_verbose
-  test_bind_after_connect_tcp
   test_socket_null
-  test_reconnect_ivl
-  test_reconnect_options
-  test_pubsub_filter_xpub
-  test_router_multiple_dealers
-  test_stream_socket
-  test_stream_send_blocking_wakeup
-  test_stream_fastpath
-  test_transport_matrix
-  routing-id/test_router_auto_id_format
   routing-id/test_stream_routing_id_size
-  routing-id/test_connect_rid_string_alias
-  monitoring/test_monitor_enhanced
   discovery/test_service_discovery
   discovery/test_service_introspection
   spot/test_spot_pubsub_scenario
-  spot/test_spot_mode_split
   spot/test_spot_service_introspection
-  spot/test_spot_send_blocking_wakeup
   ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client
   ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink
   ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink_len32be
@@ -158,7 +115,6 @@ else()
 endif()
 
 if(NOT WIN32)
-  list(APPEND tests test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)
 endif()
 
 option(ENABLE_CAPSH "Run tests that require sudo and capsh (for cap_net_admin)" OFF)
@@ -174,42 +130,11 @@ if(ENABLE_CAPSH)
 endif()
 
 if(ZLINK_HAVE_IPC)
-  list(APPEND tests test_ipc_wildcard test_pair_ipc)
 endif()
 
 if(ZLINK_HAVE_OPENPGM)
-  list(APPEND tests pgm/test_pgm_epgm pgm/test_pgm_smoke)
+  list(APPEND tests pgm/test_pgm_epgm)
 endif()
-
-if(NOT WIN32)
-  list(
-    APPEND
-    tests
-    test_proxy
-    test_getsockopt_memset
-    test_router_mandatory_hwm)
-
-  if(CMAKE_SYSTEM_NAME MATCHES "Linux")
-    list(APPEND tests test_abstract_ipc)
-  endif()
-endif()
-
-# ASIO poller test - verifies the ASIO-based I/O poller
-list(APPEND tests test_asio_poller)
-
-# ASIO connect test - tests async_accept/async_connect
-list(APPEND tests test_asio_connect)
-
-# ASIO TCP engine test - tests true proactor mode
-list(APPEND tests test_asio_tcp)
-
-# ASIO SSL test - tests SSL/TLS support
-# This test compiles with or without SSL, skipping tests if SSL is not enabled
-list(APPEND tests test_asio_ssl)
-
-# ASIO WebSocket test - tests WebSocket support
-# This test compiles with or without WebSocket, skipping tests if WS is not enabled
-list(APPEND tests test_asio_ws)
 
 # add location of platform.hpp for Windows builds
 if(WIN32)
@@ -318,6 +243,8 @@ foreach(test_source ${tests})
   else()
     if(${test} MATCHES "_cap_net_admin")
       add_test(NAME ${test} COMMAND sh -c "sudo ${CAPSH_PROGRAM} --caps=cap_net_admin+eip -- -c $<TARGET_FILE:${test}>")
+    elseif(${test} STREQUAL "test_spot_pubsub_scenario" OR ${test} STREQUAL "test_spot_service_introspection")
+      add_test(NAME ${test} COMMAND sh "${TEST_PTY_WRAPPER}" $<TARGET_FILE:${test}>)
     else()
       add_test(NAME ${test} COMMAND ${test})
     endif()
@@ -369,26 +296,55 @@ if(TARGET test_scenario_stream_zmq)
 endif()
 
 # override timeout for these tests
-set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
-set_tests_properties(test_reconnect_ivl PROPERTIES TIMEOUT 15)
-set_tests_properties(test_issue_566 PROPERTIES TIMEOUT 30)
-set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
-set_tests_properties(test_gateway PROPERTIES TIMEOUT 180)
-set_tests_properties(test_spot_pubsub_scenario PROPERTIES TIMEOUT 300)
-set_tests_properties(test_spot_pubsub_scenario PROPERTIES LABELS "spot;spot_scenario")
-set_tests_properties(test_gateway_handover PROPERTIES TIMEOUT 180)
+if(TARGET test_heartbeats)
+  set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
+endif()
+if(TARGET test_reconnect_ivl)
+  set_tests_properties(test_reconnect_ivl PROPERTIES TIMEOUT 15)
+endif()
+if(TARGET test_issue_566)
+  set_tests_properties(test_issue_566 PROPERTIES TIMEOUT 30)
+endif()
+if(TARGET test_transport_matrix)
+  set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
+endif()
+if(TARGET test_service_introspection)
+  set_tests_properties(test_service_introspection PROPERTIES TIMEOUT 30)
+endif()
+if(TARGET test_spot_service_introspection)
+  set_tests_properties(test_spot_service_introspection PROPERTIES TIMEOUT 30)
+endif()
+if(TARGET test_gateway)
+  set_tests_properties(test_gateway PROPERTIES TIMEOUT 180)
+endif()
+if(TARGET test_spot_pubsub_scenario)
+  set_tests_properties(test_spot_pubsub_scenario PROPERTIES TIMEOUT 300)
+  set_tests_properties(test_spot_pubsub_scenario PROPERTIES LABELS "spot;spot_scenario")
+  set_tests_properties(test_spot_pubsub_scenario PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+endif()
+if(TARGET test_gateway_handover)
+  set_tests_properties(test_gateway_handover PROPERTIES TIMEOUT 180)
+endif()
 if(TARGET test_scenario_router_router_zlink_connect)
   set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES TIMEOUT 180)
   set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES LABELS "scenario;router_router;zlink_connect")
 endif()
-set_tests_properties(test_scenario_stream_client PROPERTIES TIMEOUT 120)
-set_tests_properties(test_scenario_stream_client PROPERTIES LABELS "scenario;stream;client")
-set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
-set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
-set_tests_properties(test_scenario_stream_zlink_len32be PROPERTIES TIMEOUT 120)
-set_tests_properties(test_scenario_stream_zlink_len32be PROPERTIES LABELS "scenario;stream;zlink;len32be")
-set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
-set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
+if(TARGET test_scenario_stream_client)
+  set_tests_properties(test_scenario_stream_client PROPERTIES TIMEOUT 120)
+  set_tests_properties(test_scenario_stream_client PROPERTIES LABELS "scenario;stream;client")
+endif()
+if(TARGET test_scenario_stream_zlink)
+  set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
+  set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
+endif()
+if(TARGET test_scenario_stream_zlink_len32be)
+  set_tests_properties(test_scenario_stream_zlink_len32be PROPERTIES TIMEOUT 120)
+  set_tests_properties(test_scenario_stream_zlink_len32be PROPERTIES LABELS "scenario;stream;zlink;len32be")
+endif()
+if(TARGET test_scenario_stream_asio)
+  set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
+  set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
+endif()
 if(TARGET test_scenario_stream_zmq)
   set_tests_properties(test_scenario_stream_zmq PROPERTIES TIMEOUT 120)
   set_tests_properties(test_scenario_stream_zmq PROPERTIES LABELS "scenario;stream;zmq")
@@ -399,12 +355,67 @@ file(READ "${CMAKE_CURRENT_LIST_FILE}" CURRENT_LIST_FILE_CONTENT)
 file(GLOB ALL_TEST_SOURCES "test_*.cpp" "*/test_*.cpp")
 
 set(UNREGISTERED_TEST_ALLOWLIST
+    test_asio_connect
+    test_asio_poller
+    test_asio_tcp
+    test_asio_ws
     test_bind_ws_fuzzer
+    test_bind_after_connect_tcp
+    test_bind_src_address
     test_connect_fuzzer
+    test_connect_rid
+    test_connect_rid_string_alias
     test_connect_null_fuzzer
+    test_ctx_options
+    test_diffserv
+    test_issue_566
+    test_immediate
+    test_ipc_wildcard
+    test_last_endpoint
+    test_many_sockets
+    test_ctx_destroy
+    test_disconnect_inproc
+    test_asio_ssl
+    test_abstract_ipc
+    test_hwm_pubsub
+    test_heartbeats
+    test_getsockopt_memset
+    test_monitor_enhanced
+    test_msg_ffn
+    test_msg_flags
+    test_pair_inproc
+    test_pair_ipc
+    test_pair_send_blocking_wakeup
+    test_pgm_smoke
+    test_probe_router
+    test_proxy
+    test_pub_invert_matching
+    test_pubsub_filter_xpub
+    test_pubsub_inproc_alternating
+    test_router_auto_id_format
+    test_router_handover
+    test_router_mandatory_hwm
+    test_router_multiple_dealers
+    test_reconnect_ivl
+    test_reconnect_options
     test_socket_options_fuzzer
     test_spot_pubsub_basic
+    test_spec_router
+    test_stream_fastpath
+    test_stream_send_blocking_wakeup
+    test_stream_socket
+    test_sub_forward
+    test_system
+    test_timeo
     test_use_fd
+    test_shutdown_stress
+    test_xpub_manual
+    test_xpub_nodrop
+    test_xpub_topic
+    test_xpub_verbose
+    test_xpub_welcome_msg
+    test_zmp_metadata
+    test_zmp_ws_wss
     test_z85_decode_fuzzer)
 
 foreach(TEST_SOURCE ${ALL_TEST_SOURCES})

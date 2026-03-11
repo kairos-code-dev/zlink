@@ -1,6 +1,0 @@
-## PATTERN: MULTI_DEALER_DEALER (one-way)
-
-### Transport: tcp
-| Size     |       Throughput | Bandwidth |  Latency(ms) | Lat p95(ms) | Lat p99(ms) | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
-|----------|------------------|-----------|--------------|----------|----------|--------|----------|--------|----------|
-| 64B |   3153.66 Kmsg/s |    201.8 MB/s |  390.4069 ms | 628.6830 ms | 637.3470 ms |    9.1 |    298.4 |    7.3 |    578.1 |

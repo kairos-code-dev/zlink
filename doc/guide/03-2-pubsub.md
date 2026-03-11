@@ -36,7 +36,7 @@ The Publish-Subscribe pattern distributes messages based on topics. zlink provid
 ### Publisher (PUB)
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_PUB, NULL);
 zlink_bind(pub, "tcp://*:5556");
 
 /* Publish message -- dropped if there are no subscribers */
@@ -46,7 +46,7 @@ zlink_send(pub, "weather: sunny", 14, 0);
 ### Subscriber (SUB)
 
 ```c
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SUB, NULL);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 
 /* Subscribe to topic -- set after connect */
@@ -147,11 +147,11 @@ zlink_recv(sub, payload, sizeof(payload), 0); /* "sunny" */
 
 ```c
 /* PUB */
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_PUB, NULL);
 zlink_bind(pub, "tcp://*:5556");
 
 /* SUB -- receive all messages */
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SUB, NULL);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
 
@@ -170,14 +170,14 @@ int size = zlink_recv(sub, buf, sizeof(buf), 0);
 Multiple SUBs connect to a single PUB. Each SUB receives only its own topics.
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_PUB, NULL);
 zlink_bind(pub, "tcp://*:5556");
 
-void *sub_weather = zlink_socket(ctx, ZLINK_SUB);
+void *sub_weather = zlink_socket(ctx, ZLINK_SUB, NULL);
 zlink_connect(sub_weather, "tcp://127.0.0.1:5556");
 zlink_setsockopt(sub_weather, ZLINK_SUBSCRIBE, "weather", 7);
 
-void *sub_sports = zlink_socket(ctx, ZLINK_SUB);
+void *sub_sports = zlink_socket(ctx, ZLINK_SUB, NULL);
 zlink_connect(sub_sports, "tcp://127.0.0.1:5556");
 zlink_setsockopt(sub_sports, ZLINK_SUBSCRIBE, "sports", 6);
 
@@ -189,7 +189,7 @@ zlink_setsockopt(sub_sports, ZLINK_SUBSCRIBE, "sports", 6);
 A SUB can connect to multiple PUBs. It receives messages from all PUBs via fair-queue.
 
 ```c
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SUB, NULL);
 zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
 zlink_connect(sub, "tcp://pub1:5556");
 zlink_connect(sub, "tcp://pub2:5557");
@@ -320,11 +320,11 @@ Build a PUB/SUB proxy using XSUB (frontend) + XPUB (backend).
 
 ```c
 /* Proxy frontend: PUBs connect here */
-void *xsub = zlink_socket(ctx, ZLINK_XSUB);
+void *xsub = zlink_socket(ctx, ZLINK_XSUB, NULL);
 zlink_bind(xsub, "tcp://*:5556");
 
 /* Proxy backend: SUBs connect here */
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_XPUB, NULL);
 zlink_bind(xpub, "tcp://*:5557");
 
 /* Proxy loop: forward messages bidirectionally */
@@ -393,7 +393,7 @@ if (sub_frame[0] == 0x01) {
 Use XPUB to observe which clients subscribe to which topics.
 
 ```c
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_XPUB, NULL);
 zlink_bind(xpub, "tcp://*:5557");
 
 /* Receive subscription frames */

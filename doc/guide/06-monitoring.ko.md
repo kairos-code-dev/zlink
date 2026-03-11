@@ -4,46 +4,45 @@
 
 ## 1. 개요
 
-zlink 모니터링 API는 소켓의 연결/해제/핸드셰이크 등 이벤트를 실시간으로 관찰할 수 있다. Polling 기반으로 동작하며, PAIR 소켓을 통해 이벤트를 수신한다.
+zlink 모니터링 API는 소켓의 연결/해제/핸드셰이크 등 이벤트를 실시간으로 관찰할 수 있다. 콜백 기반으로 동작하며, 이벤트 발생 시 등록된 핸들러 함수가 자동으로 호출된다.
 
 ## 2. 모니터 활성화
 
-### 2.1 자동 생성 (권장)
+### 2.1 콜백 기반 (권장)
 
 ```c
-void *server = zlink_socket(ctx, ZLINK_ROUTER);
+/* 이벤트 핸들러 정의 */
+void on_monitor_event(const zlink_monitor_event_t *ev)
+{
+    printf("이벤트: 0x%llx\n", (unsigned long long)ev->event);
+    printf("로컬: %s\n", ev->local_addr);
+    printf("원격: %s\n", ev->remote_addr);
+
+    if (ev->routing_id.size > 0) {
+        printf("routing_id: ");
+        for (uint8_t i = 0; i < ev->routing_id.size; ++i)
+            printf("%02x", ev->routing_id.data[i]);
+        printf("\n");
+    }
+}
+
+void *server = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(server, "tcp://*:5555");
 
-/* 모니터 소켓 자동 생성 */
-void *mon = zlink_socket_monitor_open(server, ZLINK_EVENT_ALL);
+/* 모니터 생성 (핸들러 등록) */
+void *mon = zlink_socket_monitor_open(server, ZLINK_EVENT_ALL,
+                                       on_monitor_event);
 ```
 
-### 2.2 수동 설정
+이벤트 발생 시 `on_monitor_event` 콜백이 자동으로 호출된다.
+
+### 2.2 수동 설정 (레거시)
 
 ```c
 zlink_socket_monitor(server, "inproc://monitor", ZLINK_EVENT_ALL);
 
-void *mon = zlink_socket(ctx, ZLINK_PAIR);
+void *mon = zlink_socket(ctx, ZLINK_PAIR, NULL);
 zlink_connect(mon, "inproc://monitor");
-```
-
-## 3. 이벤트 수신
-
-```c
-zlink_monitor_event_t ev;
-int rc = zlink_monitor_recv(mon, &ev, ZLINK_DONTWAIT);
-if (rc == 0) {
-    printf("이벤트: 0x%llx\n", (unsigned long long)ev.event);
-    printf("로컬: %s\n", ev.local_addr);
-    printf("원격: %s\n", ev.remote_addr);
-
-    if (ev.routing_id.size > 0) {
-        printf("routing_id: ");
-        for (uint8_t i = 0; i < ev.routing_id.size; ++i)
-            printf("%02x", ev.routing_id.data[i]);
-        printf("\n");
-    }
-}
 ```
 
 ### 이벤트 구조체
@@ -57,23 +56,6 @@ typedef struct {
     char remote_addr[256];        /* 원격 주소 */
 } zlink_monitor_event_t;
 ```
-
-### 타임아웃 설정
-
-모니터 소켓에 `ZLINK_RCVTIMEO`를 설정하여 이벤트 대기 시간을 제어할 수 있다.
-
-```c
-int timeout = 1000;  /* 1초 */
-zlink_setsockopt(mon, ZLINK_RCVTIMEO, &timeout, sizeof(timeout));
-
-zlink_monitor_event_t ev;
-int rc = zlink_monitor_recv(mon, &ev, 0);  /* 최대 1초 대기 */
-if (rc == -1 && errno == EAGAIN) {
-    /* 타임아웃: 이벤트 없음 */
-}
-```
-
-> 참고: `core/tests/testutil_monitoring.cpp` — `get_monitor_event_with_timeout()`
 
 ## 4. 이벤트 타입
 
@@ -315,26 +297,26 @@ CONNECT_DELAYED → CONNECT_RETRIED → CONNECTED → CONNECTION_READY
 ### reason 코드 처리 예제
 
 ```c
-zlink_monitor_event_t ev;
-zlink_monitor_recv(mon, &ev, 0);
-
-if (ev.event == ZLINK_EVENT_DISCONNECTED) {
-    switch (ev.value) {
-        case 0: printf("원인 불명 해제\n"); break;
-        case 1: printf("로컬 종료\n"); break;
-        case 2:
-            printf("원격 피어 종료 — 재연결 시도\n");
-            /* 재연결 로직 */
-            break;
-        case 3:
-            printf("핸드셰이크 실패 — TLS 설정 확인\n");
-            break;
-        case 4:
-            printf("전송 오류 — 네트워크 확인\n");
-            break;
-        case 5:
-            printf("컨텍스트 종료\n");
-            break;
+void on_monitor(const zlink_monitor_event_t *ev)
+{
+    if (ev->event == ZLINK_EVENT_DISCONNECTED) {
+        switch (ev->value) {
+            case 0: printf("원인 불명 해제\n"); break;
+            case 1: printf("로컬 종료\n"); break;
+            case 2:
+                printf("원격 피어 종료 — 재연결 시도\n");
+                /* 재연결 로직 */
+                break;
+            case 3:
+                printf("핸드셰이크 실패 — TLS 설정 확인\n");
+                break;
+            case 4:
+                printf("전송 오류 — 네트워크 확인\n");
+                break;
+            case 5:
+                printf("컨텍스트 종료\n");
+                break;
+        }
     }
 }
 ```
@@ -346,7 +328,8 @@ if (ev.event == ZLINK_EVENT_DISCONNECTED) {
 ```c
 /* 연결/해제 이벤트만 */
 void *mon = zlink_socket_monitor_open(server,
-    ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+    ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
+    on_monitor_event);
 ```
 
 ### 권장 구독 프리셋
@@ -377,7 +360,8 @@ void *mon = zlink_socket_monitor_open(server,
      ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL | \
      ZLINK_EVENT_HANDSHAKE_FAILED_AUTH)
 
-void *mon = zlink_socket_monitor_open(server, MONITOR_PRESET_SECURITY);
+void *mon = zlink_socket_monitor_open(server, MONITOR_PRESET_SECURITY,
+                                      on_monitor_event);
 ```
 
 ## 8. 피어 정보 조회
@@ -417,75 +401,42 @@ for (size_t i = 0; i < peer_count; i++) {
 ### 피어 정보와 모니터링 결합
 
 ```c
-/* CONNECTION_READY 이벤트 수신 시 피어 정보 조회 */
-zlink_monitor_event_t ev;
-zlink_monitor_recv(mon, &ev, 0);
-
-if (ev.event == ZLINK_EVENT_CONNECTION_READY && ev.routing_id.size > 0) {
-    zlink_peer_info_t info;
-    zlink_socket_peer_info(socket, &ev.routing_id, &info);
-    printf("새 연결: remote=%s\n", info.remote_addr);
+/* 콜백 핸들러에서 CONNECTION_READY 이벤트 처리 시 피어 정보 조회 */
+void on_monitor(const zlink_monitor_event_t *ev)
+{
+    if (ev->event == ZLINK_EVENT_CONNECTION_READY && ev->routing_id.size > 0) {
+        zlink_peer_info_t info;
+        zlink_socket_peer_info(g_socket, &ev->routing_id, &info);
+        printf("새 연결: remote=%s\n", info.remote_addr);
+    }
 }
 ```
 
-## 9. 다중 소켓 모니터링 (Poller 활용)
+## 9. 다중 소켓 모니터링
 
-여러 소켓의 이벤트를 하나의 루프에서 처리.
+여러 소켓의 이벤트를 각각의 콜백 핸들러로 처리.
 
 ```c
-void *mon_a = zlink_socket_monitor_open(sock_a, ZLINK_EVENT_ALL);
-void *mon_b = zlink_socket_monitor_open(sock_b, ZLINK_EVENT_ALL);
-
-zlink_pollitem_t items[] = {
-    {mon_a, 0, ZLINK_POLLIN, 0},
-    {mon_b, 0, ZLINK_POLLIN, 0},
-};
-
-while (1) {
-    int rc = zlink_poll(items, 2, 1000);
-    if (rc <= 0) continue;
-
-    zlink_monitor_event_t ev;
-
-    if (items[0].revents & ZLINK_POLLIN) {
-        zlink_monitor_recv(mon_a, &ev, ZLINK_DONTWAIT);
-        printf("소켓 A 이벤트: 0x%llx\n", (unsigned long long)ev.event);
-    }
-    if (items[1].revents & ZLINK_POLLIN) {
-        zlink_monitor_recv(mon_b, &ev, ZLINK_DONTWAIT);
-        printf("소켓 B 이벤트: 0x%llx\n", (unsigned long long)ev.event);
-    }
+void on_event_a(const zlink_monitor_event_t *ev)
+{
+    printf("소켓 A 이벤트: 0x%llx\n", (unsigned long long)ev->event);
 }
+
+void on_event_b(const zlink_monitor_event_t *ev)
+{
+    printf("소켓 B 이벤트: 0x%llx\n", (unsigned long long)ev->event);
+}
+
+void *mon_a = zlink_socket_monitor_open(sock_a, ZLINK_EVENT_ALL, on_event_a);
+void *mon_b = zlink_socket_monitor_open(sock_b, ZLINK_EVENT_ALL, on_event_b);
+
+/* ... 애플리케이션 로직 ... */
 
 /* 정리 */
 zlink_socket_monitor(sock_a, NULL, 0);
 zlink_socket_monitor(sock_b, NULL, 0);
 zlink_close(mon_a);
 zlink_close(mon_b);
-```
-
-### 모니터 + 데이터 소켓 동시 폴링
-
-```c
-zlink_pollitem_t items[] = {
-    {data_socket, 0, ZLINK_POLLIN, 0},  /* 데이터 수신 */
-    {mon_socket, 0, ZLINK_POLLIN, 0},   /* 모니터 이벤트 */
-};
-
-while (1) {
-    zlink_poll(items, 2, 1000);
-
-    if (items[0].revents & ZLINK_POLLIN) {
-        /* 데이터 처리 */
-        char buf[256];
-        zlink_recv(data_socket, buf, sizeof(buf), 0);
-    }
-    if (items[1].revents & ZLINK_POLLIN) {
-        /* 이벤트 처리 */
-        zlink_monitor_event_t ev;
-        zlink_monitor_recv(mon_socket, &ev, ZLINK_DONTWAIT);
-    }
-}
 ```
 
 ## 10. 주의사항
@@ -496,8 +447,9 @@ while (1) {
 
 ```c
 /* 올바른 사용: 소켓 생성 스레드에서 모니터 설정 */
-void *socket = zlink_socket(ctx, ZLINK_ROUTER);
-void *mon = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL);
+void *socket = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+void *mon = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL,
+                                       on_monitor_event);
 
 /* 잘못된 사용: 다른 스레드에서 모니터 설정 */
 /* → 정의되지 않은 동작 */
@@ -507,9 +459,10 @@ void *mon = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL);
 
 동일 소켓에 동시에 여러 모니터를 설정할 수 없다.
 
-### 모니터 속도
+### 콜백 처리 속도
 
-모니터 소켓의 수신이 느리면 이벤트가 **드롭될 수 있다**. DONTWAIT 사용 시 즉시 처리하거나, 별도 스레드에서 처리를 권장한다.
+콜백 핸들러에서 블로킹 작업을 수행하면 I/O 진행에 영향을 줄 수 있다.
+느린 처리가 필요하면 콜백 안에서 사용자 queue로 넘기고 별도 thread에서 처리한다.
 
 ### 모니터 종료 절차
 

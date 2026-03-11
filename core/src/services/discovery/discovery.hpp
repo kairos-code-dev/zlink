@@ -4,8 +4,10 @@
 #define __ZLINK_DISCOVERY_DISCOVERY_HPP_INCLUDED__
 
 #include "core/ctx.hpp"
+#include "services/common/service_runtime_base.hpp"
 #include "services/common/service_monitor.hpp"
 #include "utils/atomic_counter.hpp"
+#include "utils/condition_variable.hpp"
 #include "utils/mutex.hpp"
 
 #include <map>
@@ -108,6 +110,10 @@ class discovery_t
     void tick ();
     int ensure_sub_socket ();
     void close_sub_socket ();
+    void apply_socket_options_locked (socket_base_t *socket_);
+    void apply_socket_options_to_existing_locked (int option_,
+                                                  const void *optval_,
+                                                  size_t optvallen_);
     bool ensure_socket_routing_id (socket_base_t *socket_);
     int bootstrap_registry (const char *registry_endpoint_);
     int ensure_bootstrap_dealer (const std::string &registry_endpoint_,
@@ -194,6 +200,7 @@ class discovery_t
 
     ctx_t *_ctx;
     uint32_t _tag;
+    service_runtime_base_t _lifecycle;
 
     atomic_counter_t _stop;
     uint64_t _task_id;
@@ -214,6 +221,8 @@ class discovery_t
     std::map<uint32_t, uint64_t> _registry_seq;
     std::set<std::string> _subscriptions;
     std::set<discovery_observer_t *> _observers;
+    condition_variable_t _observer_cv;
+    size_t _observer_callbacks_inflight;
     uint64_t _update_seq;
     std::map<std::string, uint64_t> _service_seq;
     struct socket_opt_t

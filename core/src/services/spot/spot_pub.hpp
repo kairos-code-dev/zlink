@@ -22,7 +22,7 @@ class spot_pub_t
 {
   public:
     spot_pub_t (spot_node_t *node_,
-                socket_base_t *socket_,
+                uint64_t attachment_id_,
                 bool node_owned_default_ = false);
     ~spot_pub_t ();
 
@@ -55,12 +55,13 @@ class spot_pub_t
     int destroy_internal (bool allow_embedded_default_, bool notify_node_);
     void submit_error_summary (int error_code_);
     int ensure_monitor_bridge_started ();
-    void stop_monitor_bridge ();
+    int stop_monitor_bridge ();
     void lock_routing_id ();
     static int initialize_routing_id (zlink_routing_id_t *out_);
+    socket_base_t *socket () const;
 
     spot_node_t *_node;
-    socket_base_t *_socket;
+    uint64_t _attachment_id;
     uint32_t _tag;
     bool _node_owned_default;
     mutable mutex_t _sync;

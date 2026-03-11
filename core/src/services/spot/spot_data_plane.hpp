@@ -6,6 +6,7 @@
 namespace zlink
 {
 class spot_node_t;
+class socket_base_t;
 
 class spot_data_plane_t
 {
@@ -13,6 +14,7 @@ class spot_data_plane_t
     static void thread_entry (void *arg_);
 
   private:
+    static void close_socket_ptr (spot_node_t *node_, socket_base_t *&socket_);
     static void run (spot_node_t *node_);
 };
 }

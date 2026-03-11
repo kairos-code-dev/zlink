@@ -6,6 +6,7 @@
 #include "services/discovery/registry.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/control/service_control_runtime.hpp"
+#include "sockets/socket_base.hpp"
 
 #include "utils/err.hpp"
 #include "utils/random.hpp"
@@ -90,6 +91,7 @@ static bool topology_filter_match (
 registry_t::registry_t (ctx_t *ctx_) :
     _ctx (ctx_),
     _tag (registry_tag_value),
+    _lifecycle (ctx_),
     _registry_id (0),
     _registry_id_set (false),
     _list_seq (0),
@@ -341,42 +343,48 @@ int registry_t::ensure_sockets ()
 {
     zlink::clock_t clock;
     const uint64_t now = clock.now_ms ();
+    socket_base_t *old_pub = NULL;
+    socket_base_t *old_router = NULL;
 
-    scoped_lock_t lock (_sync);
-    if (!_started || _stop.get () != 0)
-        return -1;
-    if (_pub_socket && _router_socket)
-        return 0;
-    if (now < _next_socket_retry_ms)
-        return -1;
-    if (_pub_endpoint.empty () || _router_endpoint.empty ()) {
-        errno = EINVAL;
-        return -1;
+    {
+        scoped_lock_t lock (_sync);
+        if (!_started || _stop.get () != 0)
+            return -1;
+        if (_pub_socket && _router_socket)
+            return 0;
+        if (now < _next_socket_retry_ms)
+            return -1;
+        if (_pub_endpoint.empty () || _router_endpoint.empty ()) {
+            errno = EINVAL;
+            return -1;
+        }
     }
 
-    void *pub = static_cast<void *> (_ctx->create_socket (ZLINK_XPUB));
-    void *router = static_cast<void *> (_ctx->create_socket (ZLINK_ROUTER));
+    socket_base_t *pub = _ctx->create_socket (ZLINK_XPUB);
+    socket_base_t *router = _ctx->create_socket (ZLINK_ROUTER);
     if (!pub || !router) {
-        if (pub)
-            zlink_close (pub);
-        if (router)
-            zlink_close (router);
+        (void) _ctx->close_socket_and_wait (pub, 1000);
+        (void) _ctx->close_socket_and_wait (router, 1000);
+        scoped_lock_t lock (_sync);
         _next_socket_retry_ms = now + 100;
         return -1;
     }
 
-    for (size_t i = 0; i < _pub_opts.size (); ++i) {
-        if (!_pub_opts[i].value.empty ())
-            zlink_setsockopt (
-              pub, static_cast<zlink_socket_option_t> (_pub_opts[i].option),
-              &_pub_opts[i].value[0], _pub_opts[i].value.size ());
-    }
-    for (size_t i = 0; i < _router_opts.size (); ++i) {
-        if (!_router_opts[i].value.empty ())
-            zlink_setsockopt (
-              router,
-              static_cast<zlink_socket_option_t> (_router_opts[i].option),
-              &_router_opts[i].value[0], _router_opts[i].value.size ());
+    {
+        scoped_lock_t lock (_sync);
+        for (size_t i = 0; i < _pub_opts.size (); ++i) {
+            if (!_pub_opts[i].value.empty ())
+                zlink_setsockopt (
+                  pub, static_cast<zlink_socket_option_t> (_pub_opts[i].option),
+                  &_pub_opts[i].value[0], _pub_opts[i].value.size ());
+        }
+        for (size_t i = 0; i < _router_opts.size (); ++i) {
+            if (!_router_opts[i].value.empty ())
+                zlink_setsockopt (
+                  router,
+                  static_cast<zlink_socket_option_t> (_router_opts[i].option),
+                  &_router_opts[i].value[0], _router_opts[i].value.size ());
+        }
     }
 
     int verbose = 1;
@@ -387,31 +395,37 @@ int registry_t::ensure_sockets ()
                           sizeof (mandatory));
     }
 
-    if (zlink_bind (pub, _pub_endpoint.c_str ()) != 0
-        || zlink_bind (router, _router_endpoint.c_str ()) != 0) {
-        zlink_close (router);
-        zlink_close (pub);
+    if (pub->bind (_pub_endpoint.c_str ()) != 0
+        || router->bind (_router_endpoint.c_str ()) != 0) {
+        (void) _ctx->close_socket_and_wait (router, 1000);
+        (void) _ctx->close_socket_and_wait (pub, 1000);
+        scoped_lock_t lock (_sync);
         _next_socket_retry_ms = now + 100;
         return -1;
     }
 
-    if (_pub_socket)
-        zlink_close (_pub_socket);
-    if (_router_socket)
-        zlink_close (_router_socket);
-    _pub_socket = pub;
-    _router_socket = router;
+    {
+        scoped_lock_t lock (_sync);
+        old_pub = static_cast<socket_base_t *> (_pub_socket);
+        old_router = static_cast<socket_base_t *> (_router_socket);
+        _pub_socket = pub;
+        _router_socket = router;
+        _lifecycle.register_socket (pub);
+        _lifecycle.register_socket (router);
 
-    if (!_registry_id_set) {
-        _registry_id = zlink::generate_random ();
-        if (_registry_id == 0)
-            _registry_id = 1;
-        _registry_id_set = true;
+        if (!_registry_id_set) {
+            _registry_id = zlink::generate_random ();
+            if (_registry_id == 0)
+                _registry_id = 1;
+            _registry_id_set = true;
+        }
+
+        _next_broadcast_ms = now + _broadcast_interval_ms;
+        _last_sent_seq = _list_seq;
+        _next_socket_retry_ms = 0;
     }
-
-    _next_broadcast_ms = now + _broadcast_interval_ms;
-    _last_sent_seq = _list_seq;
-    _next_socket_retry_ms = 0;
+    (void) _lifecycle.close_socket_and_wait (old_pub, 1000);
+    (void) _lifecycle.close_socket_and_wait (old_router, 1000);
     return 0;
 }
 
@@ -420,23 +434,44 @@ void registry_t::close_sockets ()
     void *pub = NULL;
     void *router = NULL;
     void *peer_sub = NULL;
+    std::string pub_endpoint;
+    std::string router_endpoint;
+    std::vector<std::string> peer_pubs;
     {
         scoped_lock_t lock (_sync);
         pub = _pub_socket;
         router = _router_socket;
         peer_sub = _peer_sub_socket;
+        pub_endpoint = _pub_endpoint;
+        router_endpoint = _router_endpoint;
+        peer_pubs = _peer_pubs;
         _pub_socket = NULL;
         _router_socket = NULL;
         _peer_sub_socket = NULL;
         _peer_connected.clear ();
     }
 
-    if (peer_sub)
-        zlink_close (peer_sub);
-    if (router)
-        zlink_close (router);
-    if (pub)
-        zlink_close (pub);
+    if (peer_sub) {
+        for (size_t i = 0; i < peer_pubs.size (); ++i)
+            zlink_disconnect (peer_sub, peer_pubs[i].c_str ());
+        socket_base_t *peer_sub_socket = static_cast<socket_base_t *> (peer_sub);
+        (void) _lifecycle.close_socket (peer_sub_socket);
+    }
+    if (router) {
+        if (!router_endpoint.empty ())
+            static_cast<socket_base_t *> (router)->term_endpoint (
+              router_endpoint.c_str ());
+        socket_base_t *router_socket = static_cast<socket_base_t *> (router);
+        (void) _lifecycle.close_socket (router_socket);
+    }
+    if (pub) {
+        if (!pub_endpoint.empty ())
+            static_cast<socket_base_t *> (pub)->term_endpoint (
+              pub_endpoint.c_str ());
+        socket_base_t *pub_socket = static_cast<socket_base_t *> (pub);
+        (void) _lifecycle.close_socket (pub_socket);
+    }
+    (void) _lifecycle.wait_drained (10000);
 }
 
 void registry_t::tick ()
@@ -472,7 +507,8 @@ void registry_t::tick ()
         return;
 
     if (!peer_pubs.empty () && !peer_sub) {
-        peer_sub = static_cast<void *> (_ctx->create_socket (ZLINK_SUB));
+        socket_base_t *peer_sub_socket = _ctx->create_socket (ZLINK_SUB);
+        peer_sub = static_cast<void *> (peer_sub_socket);
         if (peer_sub) {
             for (size_t i = 0; i < peer_sub_opts.size (); ++i) {
                 if (!peer_sub_opts[i].value.empty ())
@@ -488,9 +524,11 @@ void registry_t::tick ()
             if (_peer_sub_socket == NULL)
                 _peer_sub_socket = peer_sub;
             else {
-                zlink_close (peer_sub);
+                (void) _ctx->close_socket_and_wait (peer_sub_socket, 1000);
                 peer_sub = _peer_sub_socket;
             }
+            if (_peer_sub_socket == peer_sub)
+                _lifecycle.register_socket (static_cast<socket_base_t *> (peer_sub));
         }
     } else if (peer_sub == NULL && !peer_pubs.empty ()) {
         scoped_lock_t lock (_sync);

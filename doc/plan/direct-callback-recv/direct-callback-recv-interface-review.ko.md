@@ -52,7 +52,7 @@ snapshot이다.
 - public sync recv API는 유지 대상이 아니다.
 - callback 제거 API는 두지 않는다.
 - recv-capable raw socket/service/monitor는 생성 또는 open 시 callback 등록을 기본으로 한다.
-- callback 교체는 같은 `set_handler()` 재호출로 수행한다.
+- 생성/open 이후 callback 교체 API는 두지 않는다.
 - monitor/open 계열은 최초 open 시 non-`NULL` callback 설치를 기본으로 한다.
 - `gateway`는 service-bound handle이다.
 - multipart callback family는 `source_rid + multipart parts` shape를 유지한다.
@@ -125,7 +125,7 @@ typedef struct zlink_socket_handler_t
 
 추가 규칙:
 
-- `zlink_socket()`와 `zlink_socket_set_handler()`는 `zlink_socket_handler_t.kind`와
+- `zlink_socket()`는 `zlink_socket_handler_t.kind`와
   대상 socket family를 엄격히 검증해야 한다.
 - raw `PAIR` / `DEALER` / `ROUTER` / `STREAM`에는
   `ZLINK_SOCKET_HANDLER_MSG`만 허용한다.
@@ -134,14 +134,10 @@ typedef struct zlink_socket_handler_t
 - raw `PUB`은 send-only 타입이므로 생성 시 `handler == NULL`만 허용한다.
 - family가 맞지 않는 socket에 생성/교체를 시도하면 실패해야 하며,
   이 문서 기준 `EINVAL`을 반환한다.
-- callback 제거 전용 API는 없으므로 `zlink_socket_set_handler()`에서
-  `handler == NULL`은 허용하지 않는다.
+- callback 교체/제거 API는 두지 않는다.
 
 추가 공통 규칙:
 
-- `set_handler()` 성공 후에는 다음 dispatch 진입 시점부터 새 handler가 관찰되어야 한다.
-- 이미 실행 중인 in-flight callback은 기존 handler로 마무리한다.
-- `set_handler()` 실패 시 기존 handler를 유지한 채 오류를 반환한다.
 - raw socket 생성자는 `zlink_socket_handler_t` descriptor를 함께 받는
   `zlink_socket()` 하나로 두고, recv-capable 타입은 생성 시점에 family에 맞는
   non-`NULL` handler descriptor를 제공해야 한다.
@@ -266,9 +262,6 @@ int zlink_gateway_router_peers (void *gateway,
 int zlink_gateway_update_peer_weight (void *gateway,
                                       const zlink_routing_id_t *routing_id,
                                       uint32_t weight);
-
-int zlink_gateway_set_handler (void *gateway,
-                               zlink_socket_msg_handler_fn handler);
 
 int zlink_gateway_set_lb_strategy (void *gateway,
                                    zlink_gateway_lb_strategy_t strategy);
@@ -543,14 +536,6 @@ int zlink_spot_sub_set_option (void *sub,
                                const void *optval,
                                size_t optvallen);
 
-int zlink_spot_set_handler (void *spot,
-                            zlink_spot_handler_fn handler);
-
-int zlink_spot_node_set_handler (void *spot_node,
-                                 zlink_spot_handler_fn handler);
-
-int zlink_spot_sub_set_handler (void *sub,
-                                zlink_spot_handler_fn handler);
 ```
 
 추가 원칙:
@@ -626,7 +611,7 @@ int zlink_spot_sub_set_handler (void *sub,
 | `int zlink_setsockopt(void *s, int option, const void *optval, size_t optvallen)` | `int zlink_setsockopt(void *s, zlink_socket_option_t option, const void *optval, size_t optvallen)` | raw socket option namespace를 타입으로 고정한다. |
 | `int zlink_getsockopt(void *s, int option, void *optval, size_t *optvallen)` | `int zlink_getsockopt(void *s, zlink_socket_option_t option, void *optval, size_t *optvallen)` | getter도 동일한 enum typing을 사용한다. |
 | `void *zlink_socket(void *ctx, zlink_socket_type_t type, zlink_socket_msg_handler_fn handler)` | `void *zlink_socket(void *ctx, zlink_socket_type_t type, const zlink_socket_handler_t *handler)` | raw socket 생성 시점에 handler family를 함께 확정하고, constructor에서 socket type과 handler kind를 즉시 검증한다. |
-| `int zlink_socket_set_msg_handler(void *s, zlink_socket_msg_handler_fn handler)` 계열 | `int zlink_socket_set_handler(void *s, const zlink_socket_handler_t *handler)` | raw socket callback 교체 surface는 하나로 통합하고, 내부적으로 `handler.kind`와 socket type의 family 일치 여부를 검증한다. |
+| `int zlink_socket_set_msg_handler(void *s, zlink_socket_msg_handler_fn handler)` 계열 | 삭제 | raw socket callback은 생성 시점에만 설치한다. |
 | `int zlink_getsockopt(void *s, ZLINK_TYPE, void *optval, size_t *optvallen)` | `int zlink_getsockopt(void *s, ZLINK_SOCKOPT_TYPE, void *optval, size_t *optvallen)` | option 값 재배치에 맞춰 type 조회도 새 socket option enum 값으로 정렬한다. |
 | `int zlink_getsockopt(void *s, ZLINK_EVENTS, void *optval, size_t *optvallen)` | `int zlink_getsockopt(void *s, ZLINK_SOCKOPT_EVENTS, void *optval, size_t *optvallen)` | `EVENTS`도 raw socket option enum의 일부로 명시한다. |
 | `int zlink_getsockopt(void *s, ZLINK_FD, void *optval, size_t *optvallen)` | `int zlink_getsockopt(void *s, ZLINK_SOCKOPT_FD, void *optval, size_t *optvallen)` | read-only socket option도 동일 enum 체계에 포함한다. |
@@ -773,9 +758,6 @@ int zlink_getsockopt (void *s,
 void *zlink_socket (void *ctx,
                     zlink_socket_type_t type,
                     const zlink_socket_handler_t *handler);
-
-int zlink_socket_set_handler (void *s,
-                              const zlink_socket_handler_t *handler);
 ```
 
 별도 alias 정리:
@@ -867,7 +849,7 @@ option 외에도 다음 상수군은 macro보다 enum이 더 자연스럽다.
 | SPOT sub option | `int zlink_spot_sub_set_option(void *sub, zlink_spot_sub_option_t sub_option, const void *optval, size_t optvallen)` | 유지 |
 | registry socket role | `int zlink_registry_setsockopt(void *registry, int socket_role, int option, const void *optval, size_t optvallen)` | `int zlink_registry_setsockopt(void *registry, zlink_registry_socket_role_t socket_role, zlink_socket_option_t option, const void *optval, size_t optvallen)` |
 | context option | `int zlink_ctx_set(void *ctx, int option, int optval)` | `int zlink_ctx_set(void *ctx, zlink_ctx_option_t option, int optval)` |
-| raw socket callback | `int zlink_socket_set_msg_handler(void *s, zlink_socket_msg_handler_fn handler)` 계열 | `int zlink_socket_set_handler(void *s, const zlink_socket_handler_t *handler)` |
+| raw socket callback | `int zlink_socket_set_msg_handler(void *s, zlink_socket_msg_handler_fn handler)` 계열 | 삭제 |
 | send-ready callback | 없음 | `int zlink_socket_set_send_ready_handler(void *s, zlink_send_ready_handler_fn handler)` |
 | send-ready callback | 없음 | `int zlink_gateway_set_send_ready_handler(void *gateway, zlink_send_ready_handler_fn handler)` |
 | send-ready callback | 없음 | `int zlink_spot_node_set_send_ready_handler(void *node, zlink_send_ready_handler_fn handler)` |
@@ -892,31 +874,19 @@ option 외에도 다음 상수군은 macro보다 enum이 더 자연스럽다.
 
 대상 API:
 
-- `zlink_socket_set_handler()`
-- `zlink_gateway_set_handler()`
-- `zlink_spot_node_set_handler()`
-- `zlink_spot_set_handler()`
-- `zlink_spot_sub_set_handler()`
-- `zlink_monitor_set_handler()`
-- `zlink_service_monitor_set_handler()`
-
 비고:
 
-- `zlink_socket_set_handler()`는 raw socket callback 교체 surface다.
-  `zlink_socket_handler_t.kind`를 통해 multipart / topic-aware / XPUB control
-  callback family를 선택한다.
-- `zlink_spot_node_set_handler()`는 `spot_node` 자체의 subscription set에 매칭된
-  메시지를 수신하는 callback을 설치한다. attach된 `spot` facade의 subscription set과는
-  독립적이며, 같은 `spot_node`를 공유하더라도 두 경로의 subscription scope는 섞이지 않는다.
-- `zlink_spot_pub_set_handler()`는 대상에 포함하지 않는다.
-  `SpotPub`은 publish-only facade로서 public 수신 callback 경로를 갖지 않기 때문이다.
+- callback은 생성/open 시점에만 설치한다.
+- raw socket은 `zlink_socket()`에서 family를 확정한다.
+- `spot_node`는 `zlink_spot_node_new()`에서 node-owned default sub callback을 고정한다.
+- unified `spot`은 `zlink_spot_new()`에서 callback을 고정한다.
+- standalone `spot_sub`는 `zlink_spot_sub_new()`에서 callback을 고정한다.
+- `SpotPub`은 publish-only facade로서 public 수신 callback 경로를 갖지 않는다.
 
 공통 규칙:
 
-- 생성 후 callback 교체는 같은 setter를 재호출해 수행한다.
+- 생성/open 이후 callback 교체는 허용하지 않는다.
 - `NULL` callback은 허용하지 않는다.
-- callback 제거 전용 API는 두지 않는다.
-- `set_handler()` 실패 시 기존 handler를 유지한 채 오류를 반환한다.
 - 생성/open 시 최초 callback을 받는 API에도 같은 non-`NULL` 원칙을 적용한다.
   즉 `zlink_gateway_new()`,
   `zlink_spot_node_new()`,
@@ -926,19 +896,13 @@ option 외에도 다음 상수군은 macro보다 enum이 더 자연스럽다.
   `zlink_spot_pub_monitor_open()`은 `NULL` callback을 허용하지 않는다.
 - raw recv-capable socket은 `zlink_socket()` 생성 시 family에 맞는 non-`NULL`
   `zlink_socket_handler_t`를 제공해야 한다.
-- `zlink_socket()` / `zlink_socket_set_handler()`는 socket type을 검증해야 하며,
+- `zlink_socket()`는 socket type을 검증해야 하며,
   family가 맞지 않는 handler kind를 주면 `EINVAL`로 실패해야 한다.
 - raw `PUB`만 예외적으로 `zlink_socket(..., handler = NULL)`를 허용한다.
 - `zlink_spot_new()`는 unified `spot`이 항상 recv-capable facade이므로
   `NULL` handler를 허용하지 않는다.
-- in-flight callback에는 기존 handler가 적용된다.
-- 성공한 `set_handler()` 호출은 내부 동기화를 통해 "다음 dispatch 진입 시점"부터
-  새 handler가 관찰되도록 해야 한다.
-- 즉 `set_handler()` 반환 이후에 dispatch 경로에 새로 진입한 메시지는 새 handler를 사용해야 한다.
-  다만 호출자 thread의 다른 작업과 메시지 도착 시점 사이의 더 강한 전역 순서 보장까지
-  이 문서에서 요구하지는 않는다.
-
-즉 setter API는 "install + replace" surface이지 "clear/remove" surface가 아니다.
+- in-flight callback에는 해당 dispatch 진입 시점에 고정된 handler가 적용된다.
+- callback은 생성/open 이후 고정되므로, public contract로서의 replace visibility 규칙은 두지 않는다.
 
 확정 타입/값:
 
@@ -1196,16 +1160,14 @@ int zlink_spot_pub_set_send_ready_handler (void *pub,
   `PUB`만 예외로 `handler == NULL`을 허용하는 send-only 타입으로 본다.
 - `ROUTER` / `DEALER` / `PAIR` / `STREAM`에 `ZLINK_SOCKET_HANDLER_MSG`,
   `SUB` / `XSUB`에 `ZLINK_SOCKET_HANDLER_SPOT`,
-  `XPUB`에 `ZLINK_SOCKET_HANDLER_XPUB`를 넘긴 생성/교체는 모두 성공해야 한다.
-- `zlink_socket()` / `zlink_socket_set_handler()`는 socket type을 검증해야 하며,
+  `XPUB`에 `ZLINK_SOCKET_HANDLER_XPUB`를 넘긴 생성은 성공해야 한다.
+- `zlink_socket()`는 socket type을 검증해야 하며,
   family가 맞지 않는 handler kind에 대한 호출은 `EINVAL`로 실패해야 한다.
 - `SUB` / `XSUB`에 `ZLINK_SOCKET_HANDLER_MSG`,
   `XPUB`에 `ZLINK_SOCKET_HANDLER_SPOT`,
   `PAIR` / `DEALER` / `ROUTER` / `STREAM`에 `ZLINK_SOCKET_HANDLER_XPUB`를 넘기는
   대표 mismatch 조합은 모두 `EINVAL`로 실패해야 한다.
-- raw `PUB`에 non-`NULL` handler를 넘긴 생성 시도와,
-  생성 후 `zlink_socket_set_handler()`로 recv handler를 설치하려는 시도는 모두
-  `EINVAL`로 실패해야 한다.
+- raw `PUB`에 non-`NULL` handler를 넘긴 생성 시도는 모두 `EINVAL`로 실패해야 한다.
 - `DEALER` / `ROUTER` / `PAIR` / `XPUB` 등을 애플리케이션이 사실상 send-only처럼
   사용하더라도 recv-capable raw socket 분류는 유지되며, family에 맞는 no-op callback
   등록 경로가 성공해야 한다.
@@ -1213,9 +1175,7 @@ int zlink_spot_pub_set_send_ready_handler (void *pub,
   `zlink_spot_new()`에서 non-`NULL` handler가 없으면 실패해야 한다.
 - `XPUB`은 publish socket 계열이지만 recv-capable로 분류되어,
   subscribe/unsubscribe control event를 dedicated callback으로 받아야 한다.
-- `set_handler()` 재호출 후에는 다음 dispatch 진입분부터 새 handler가 관찰되고,
-  in-flight callback은 기존 handler로 끝나야 한다.
-- callback 제거 API가 없으므로 `NULL`로 clear하려는 시도는 실패해야 한다.
+- callback 교체/제거 API가 없으므로 생성/open 이후 handler mutation은 public surface에서 지원하지 않는다.
 
 ### 6.2 Service-bound identity 정책
 

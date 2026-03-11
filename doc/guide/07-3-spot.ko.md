@@ -2,6 +2,9 @@
 
 # SPOT 토픽 PUB/SUB (위치투명 발행/구독)
 
+> 이 가이드는 callback-only direct-dispatch surface 기준으로 작성되었다.
+> 모든 수신은 생성 시 등록한 handler callback으로 dispatch된다.
+
 ## 1. 개요
 
 SPOT은 위치 투명한 토픽 기반 발행/구독 시스템이다. Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여, 클러스터 전체에서 토픽 메시지를 발행/구독할 수 있다.
@@ -68,30 +71,25 @@ remote mesh 수신을 local subscriber로 proxy-style forwarding한다.
 void *ctx = zlink_ctx_new();
 
 /* Discovery 설정 (peer 발견 + registry uplink / heartbeat owner) */
-void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_SPOT);
+void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_SPOT);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_subscribe(discovery, "spot-node");
 
-/* SPOT Node 설정 */
-void *node = zlink_spot_node_new(ctx);
+/* SPOT Node 설정 (service_name과 handler를 생성 시점에 고정) */
+void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
-/* Discovery 연결 (register 전에 필수) */
-zlink_spot_node_set_discovery(node, discovery, "spot-node");
-
-/* Discovery uplink를 통해 등록 */
-zlink_spot_node_register(node, "spot-node", "tcp://node1.example.com:9000");
+/* Discovery 연결 */
+zlink_spot_node_attach_discovery(node, discovery);
 ```
 
-**주의:** `register()`는 attached Discovery의 registry uplink runtime을 통해
-registration을 제출한다. 따라서 `set_discovery()` 호출이 `register()`보다
-먼저 와야 한다. Discovery가 attach되지 않은 상태에서 `register()`를 호출하면
-`EFSM`으로 실패한다.
+**주의:** `attach_discovery()`는 bind 이후에 호출하는 것을 권장한다.
+Discovery가 attach되면 Registry를 통해 자동으로 peer를 발견하고 연결한다.
 
 ### 3.2 수동 Mesh
 
 ```c
-void *node = zlink_spot_node_new(ctx);
+void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* 다른 노드의 PUB에 직접 연결 */
@@ -100,7 +98,7 @@ zlink_spot_node_connect_peer_pub(node, "tcp://node3:9000");
 ```
 
 **주의:** 수동 Mesh에서는 Discovery가 없으므로 Registry topology visibility도
-없다. `register()` 호출도 불가능하다. 이는 의도된 제한이다.
+없다. 이는 의도된 제한이다.
 
 ## 4. SPOT Pub/Sub 사용
 
@@ -109,34 +107,26 @@ zlink_spot_node_connect_peer_pub(node, "tcp://node3:9000");
 ```c
 void *pub = zlink_spot_pub_new(node);
 
-/* 발행 */
-const char *msg = "hello world";
-zlink_spot_pub_publish_bytes(pub, "chat:room1:message", msg, 11, 0);
+/* 멀티파트 메시지 구성 및 발행 */
+zlink_msg_t part;
+zlink_msg_init_size(&part, 11);
+memcpy(zlink_msg_data(&part), "hello world", 11);
+zlink_spot_pub_publish(pub, "chat:room1:message", &part, 1, 0);
 ```
 
-멀티파트 payload가 필요하면 `zlink_spot_pub_publish()`를 사용한다.
-
-### 4.2 구독/수신 (SPOT Sub)
+### 4.2 구독 (SPOT Sub)
 
 ```c
-void *sub = zlink_spot_sub_new(node);
+void *sub = zlink_spot_sub_new(node, on_message);
 
 /* 정확한 토픽 구독 */
 zlink_spot_sub_subscribe(sub, "chat:room1:message");
 
 /* 패턴 구독 (접두어 매칭) */
 zlink_spot_sub_subscribe_pattern(sub, "chat:room1:*");
-
-/* 수신 */
-zlink_msg_t *parts = NULL;
-size_t part_count = 0;
-char topic[256];
-size_t topic_len = 256;
-zlink_spot_sub_recv(sub, &parts, &part_count, 0, topic, &topic_len);
-
-printf("토픽: %.*s\n", (int)topic_len, topic);
-zlink_multipart_close(parts, part_count);
 ```
+
+수신은 `on_message` callback으로 자동 dispatch된다 (아래 [4.4 콜백 핸들러](#44-콜백-핸들러-handler) 참조).
 
 ### 4.3 구독 해제
 
@@ -145,59 +135,35 @@ zlink_spot_sub_unsubscribe(sub, "chat:room1:message");
 zlink_spot_sub_unsubscribe(sub, "chat:room1:*");
 ```
 
-### 4.4 폴링 통합
+### 4.4 콜백 핸들러 (Handler)
 
-`spot_sub`과 `spot_pub`은 poller에 직접 등록할 수 있다.
-내부 소켓 핸들은 poller 내부에서만 참조되며 호출자에게 노출되지 않는다.
-poller가 readiness를 시그널한 후에는 기존 서비스 API
-(`zlink_spot_sub_recv`, `zlink_spot_pub_publish_bytes` 등)를 사용하여
-메시지를 송수신한다.
-
-```c
-/* spot_sub을 poller에 등록 */
-zlink_poller_add_spot_sub(poller, sub, NULL, ZLINK_POLLIN);
-
-/* readiness 대기 */
-zlink_poller_event_t ev;
-zlink_poller_wait(poller, &ev, -1);
-
-/* 기존 서비스 API 사용 */
-zlink_spot_sub_recv(sub, &parts, &part_count, 0, topic, &topic_len);
-```
-
-```c
-/* spot_pub을 poller에 등록 (back-pressure 감지용) */
-zlink_poller_add_spot_pub(poller, pub, NULL, ZLINK_POLLOUT);
-```
-
-**중요:** `spot_pub`은 thread-safe로 사용할 수 있다. 반면 `spot_sub`은 동일
-인스턴스를 여러 스레드에서 동시에 사용하면 안 된다. 특히 `recv()`와 handler,
-subscribe/unsubscribe 조작은 한 번에 하나의 실행 컨텍스트에서만 수행해야 한다.
-
-### 4.5 콜백 핸들러 (Handler)
-
-`recv()` 대신 콜백 함수를 등록하면 메시지 도착 시 자동으로 호출된다.
+`spot_sub` 또는 `spot_node`를 생성할 때 callback을 함께 넘기면, 이후 수신
+메시지는 그 callback으로 자동 dispatch된다.
 
 ```c
 /* 콜백 함수 정의 */
-void on_message(const char *topic, size_t topic_len,
-                const zlink_msg_t *parts, size_t part_count,
-                void *userdata)
+void on_message(const zlink_routing_id_t *source_rid,
+                const char *topic, size_t topic_len,
+                zlink_msg_t *parts, size_t part_count)
 {
     printf("토픽: %.*s, 파트: %zu\n", (int)topic_len, topic, part_count);
 }
 
-/* 핸들러 등록 */
-zlink_spot_sub_set_handler(sub, on_message, NULL);
+/* spot_node 생성 시 handler 등록 */
+void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
 
-/* 핸들러 해제 (inflight 콜백 완료 대기 후 반환) */
-zlink_spot_sub_set_handler(sub, NULL, NULL);
+/* 또는 별도 spot_sub 생성 시 handler 등록 */
+void *sub = zlink_spot_sub_new(node, on_message);
 ```
+
+**중요:** `spot_pub`은 thread-safe로 사용할 수 있다. 반면 `spot_sub`은 동일
+인스턴스를 여러 스레드에서 동시에 사용하면 안 된다.
+subscribe/unsubscribe 조작은 한 번에 하나의 실행 컨텍스트에서만 수행해야 한다.
 
 **제약 사항:**
 
-- handler가 활성 상태이면 `recv()` 호출 시 `EINVAL` 반환 (상호 배타)
-- `NULL` 전달로 핸들러를 해제하면, 진행 중인 콜백이 모두 완료된 후 반환
+- callback은 `zlink_spot_node_new()` 또는 `zlink_spot_sub_new()` 호출 시점에 제공해야 한다
+- 생성 후 callback 교체나 해제는 지원하지 않는다
 - 콜백은 소켓 dispatch / I/O 경로에서 직접 호출된다
 - 콜백에서 블로킹 작업을 수행하면 다른 I/O 진행에 영향을 줄 수 있다
 - 느린 처리가 필요하면 콜백 안에서 사용자 queue로 넘기고 별도 thread에서 처리한다

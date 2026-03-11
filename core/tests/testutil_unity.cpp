@@ -122,6 +122,7 @@ static void *internal_manage_test_context (bool init_, bool clear_)
     static void *test_context = NULL;
     if (clear_) {
         TEST_ASSERT_NOT_NULL (test_context);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (test_context));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (test_context));
         test_context = NULL;
     } else {

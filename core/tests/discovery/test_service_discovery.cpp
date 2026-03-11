@@ -11,6 +11,12 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
 {
+bool should_run_named_test (const char *name_)
+{
+    const char *selected = getenv ("ZLINK_TEST_CASE");
+    return !selected || !*selected || strcmp (selected, name_) == 0;
+}
+
 struct gateway_server_t
 {
     gateway_server_t () : discovery (NULL), gateway (NULL) {}
@@ -126,15 +132,19 @@ void init_gateway_server (gateway_server_t *server_,
                           const char *routing_id_,
                           const char *bind_ep_)
 {
+    step_log ("gateway_server: create discovery");
     server_->discovery =
       zlink_discovery_new (ctx_, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (server_->discovery);
+    step_log ("gateway_server: connect registry");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       server_->discovery, registry_ep_));
+    step_log ("gateway_server: create gateway");
     server_->gateway =
       create_gateway_attached (ctx_, server_->discovery, service_name_, routing_id_,
                          &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (server_->gateway);
+    step_log ("gateway_server: bind gateway");
     const int step_ms = 10;
     const int attempts = 3000 / step_ms;
     for (int i = 0; i < attempts; ++i) {
@@ -148,10 +158,14 @@ void init_gateway_server (gateway_server_t *server_,
 
 void destroy_gateway_server (gateway_server_t *server_)
 {
-    if (server_->gateway)
+    if (server_->gateway) {
+        step_log ("gateway_server: destroy gateway");
         TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server_->gateway));
-    if (server_->discovery)
+    }
+    if (server_->discovery) {
+        step_log ("gateway_server: destroy discovery");
         TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&server_->discovery));
+    }
 }
 }
 
@@ -212,9 +226,11 @@ static void test_discovery_service_filtering ()
 {
     step_log ("=== test_discovery_service_filtering ===");
 
+    step_log ("service_filtering: get ctx");
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
+    step_log ("service_filtering: setup registry");
     void *registry = NULL;
     char registry_pub[MAX_SOCKET_STRING];
     char registry_router[MAX_SOCKET_STRING];
@@ -223,8 +239,10 @@ static void test_discovery_service_filtering ()
     setup_registry (ctx, &registry, registry_pub, registry_router);
     msleep (50);
 
+    step_log ("service_filtering: create discovery");
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
+    step_log ("service_filtering: connect/subscribe svc-A");
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svc-A"));
@@ -237,8 +255,10 @@ static void test_discovery_service_filtering ()
               test_port (5701));
     snprintf (bind_ep_b, sizeof (bind_ep_b), "tcp://127.0.0.1:%d",
               test_port (5702));
+    step_log ("service_filtering: init server A");
     init_gateway_server (&server_a, ctx, registry_router, "svc-A",
                          NULL, bind_ep_a);
+    step_log ("service_filtering: init server B");
     init_gateway_server (&server_b, ctx, registry_router, "svc-B",
                          NULL, bind_ep_b);
 
@@ -251,9 +271,11 @@ static void test_discovery_service_filtering ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_last_endpoint (server_b.gateway, advertise_b, &advertise_len));
 
+    step_log ("service_filtering: update weights");
     update_gateway_weight_with_timeout (server_a.gateway, 10, 3000);
     update_gateway_weight_with_timeout (server_b.gateway, 20, 3000);
 
+    step_log ("service_filtering: wait svc-A");
     TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "svc-A", 1, 1000));
 
     zlink_receiver_info_t providers[4];
@@ -267,7 +289,9 @@ static void test_discovery_service_filtering ()
     TEST_ASSERT_EQUAL_INT (0,
                            zlink_discovery_receiver_count (discovery, "svc-B"));
 
+    step_log ("service_filtering: subscribe svc-B");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svc-B"));
+    step_log ("service_filtering: wait svc-B");
     TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "svc-B", 1, 1000));
 
     count = 4;
@@ -278,9 +302,13 @@ static void test_discovery_service_filtering ()
     TEST_ASSERT_EQUAL_STRING (advertise_b, providers[0].endpoint);
     TEST_ASSERT_EQUAL_UINT32 (20, providers[0].weight);
 
+    step_log ("service_filtering: destroy server B");
     destroy_gateway_server (&server_b);
+    step_log ("service_filtering: destroy server A");
     destroy_gateway_server (&server_a);
+    step_log ("service_filtering: destroy discovery");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    step_log ("service_filtering: destroy registry");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
@@ -442,8 +470,14 @@ int main (void)
     setup_test_environment ();
 
     UNITY_BEGIN ();
-    RUN_TEST (test_discovery_provider_registration);
-    RUN_TEST (test_discovery_service_filtering);
-    RUN_TEST (test_discovery_heartbeat_timeout);
+#define RUN_TEST_CASE(name)                                                    \
+    do {                                                                       \
+        if (should_run_named_test (#name))                                     \
+            RUN_TEST (name);                                                   \
+    } while (0)
+    RUN_TEST_CASE (test_discovery_provider_registration);
+    RUN_TEST_CASE (test_discovery_service_filtering);
+    RUN_TEST_CASE (test_discovery_heartbeat_timeout);
+#undef RUN_TEST_CASE
     return UNITY_END ();
 }

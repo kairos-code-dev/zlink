@@ -29,7 +29,7 @@ The ROUTER socket is a **routing_id-based routing** socket. It automatically pre
 ### Creation and Bind
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(router, "tcp://*:5558");
 ```
 
@@ -128,7 +128,7 @@ The most basic ROUTER pattern. Distinguishes multiple DEALER clients by routing_
 
 ```c
 /* Server */
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -136,12 +136,12 @@ size_t len = sizeof(endpoint);
 zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
 /* Client 1 */
-void *d1 = zlink_socket(ctx, ZLINK_DEALER);
+void *d1 = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(d1, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* Client 2 */
-void *d2 = zlink_socket(ctx, ZLINK_DEALER);
+void *d2 = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(d2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(d2, endpoint);
 
@@ -168,7 +168,7 @@ zlink_recv(d2, buf, sizeof(buf), 0);  /* "reply_to_d2" */
 ### Pattern 2: Detecting Send Failures with ROUTER_MANDATORY
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(router, "tcp://*:5558");
 
 /* Default behavior: silently drops undeliverable messages */
@@ -195,7 +195,7 @@ DEALER sends a message first to notify ROUTER of its connection, then ROUTER rep
 
 ```c
 /* DEALER connects and sends initial message */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "X", 1);
 zlink_connect(dealer, endpoint);
 zlink_send(dealer, "Hello", 5, 0);
@@ -218,7 +218,7 @@ zlink_send(router, "Hello", 5, 0);
 Multiple transports can be used to connect DEALERs to the same ROUTER.
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 
 /* TCP */
 zlink_bind(router, "tcp://127.0.0.1:5558");

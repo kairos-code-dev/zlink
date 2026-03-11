@@ -74,6 +74,15 @@ void *create_gateway_attached (void *ctx_,
       zlink_gateway_new (ctx_, service_name_, routing_id_, handler_);
     if (!gateway)
         return NULL;
+    const int linger = 0;
+    if (zlink_gateway_set_option (gateway, ZLINK_GATEWAY_OPT_LINGER, &linger,
+                                  sizeof (linger))
+        != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
     if (zlink_gateway_attach_discovery (gateway, discovery_) != 0) {
         const int err = errno;
         zlink_gateway_destroy (&gateway);
@@ -320,6 +329,7 @@ void setup_registry (void *ctx_,
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_set_broadcast_interval (registry, 50));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_start (registry));
+    msleep (10);
     *registry_out_ = registry;
 }
 
@@ -335,7 +345,8 @@ void create_server_gateway (gateway_server_t *server_,
                             void *ctx_,
                             const char *registry_ep_,
                             const char *service_name_,
-                            const char *routing_id_)
+                            const char *routing_id_,
+                            zlink_socket_msg_handler_fn handler_)
 {
     server_->discovery =
       zlink_discovery_new (ctx_, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -344,7 +355,7 @@ void create_server_gateway (gateway_server_t *server_,
       zlink_discovery_connect_registry (server_->discovery, registry_ep_));
     server_->gateway =
       create_gateway_attached (ctx_, server_->discovery, service_name_, routing_id_,
-                         &discard_gateway_message);
+                         handler_);
     TEST_ASSERT_NOT_NULL (server_->gateway);
 }
 
@@ -353,6 +364,7 @@ void bind_register_server (gateway_server_t *server_,
                            uint32_t weight_,
                            zlink_socket_msg_handler_fn handler_)
 {
+    (void) handler_;
     step_log ("bind_register_server: bind begin");
     bind_gateway_with_timeout (server_->gateway, endpoint_, 3000);
     step_log ("bind_register_server: bind end");
@@ -360,12 +372,6 @@ void bind_register_server (gateway_server_t *server_,
         step_log ("bind_register_server: weight update begin");
         update_gateway_weight_with_timeout (server_->gateway, weight_, 3000);
         step_log ("bind_register_server: weight update end");
-    }
-    if (handler_ != &discard_gateway_message) {
-        step_log ("bind_register_server: handler set begin");
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_gateway_set_handler (server_->gateway, handler_));
-        step_log ("bind_register_server: handler set end");
     }
 }
 
@@ -545,11 +551,11 @@ static void test_gateway_refreshes_existing_service_on_first_connection_count ()
     make_registry_endpoint (registry_pub, sizeof (registry_pub), 25902);
     make_registry_endpoint (registry_router, sizeof (registry_router), 25903);
     setup_registry (ctx, &registry, registry_pub, registry_router);
-    msleep (100);
 
     gateway_server_t server;
     create_server_gateway (&server, ctx, registry_router,
-                           "late-gateway-svc", "late-server");
+                           "late-gateway-svc", "late-server",
+                           &discard_gateway_message);
     char endpoint[MAX_SOCKET_STRING];
     snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
               test_port (22402));
@@ -589,7 +595,6 @@ static void test_gateway_router_peers_do_not_enter_pollable_mode ()
     make_registry_endpoint (registry_pub, sizeof (registry_pub), 25904);
     make_registry_endpoint (registry_router, sizeof (registry_router), 25905);
     setup_registry (ctx, &registry, registry_pub, registry_router);
-    msleep (100);
 
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -607,7 +612,8 @@ static void test_gateway_router_peers_do_not_enter_pollable_mode ()
     g_probe_a = &probe;
     gateway_server_t server;
     create_server_gateway (&server, ctx, registry_router,
-                           "peer-stats-svc", "peer-server");
+                           "peer-stats-svc", "peer-server",
+                           &gateway_handler_a);
     char endpoint[MAX_SOCKET_STRING];
     snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
               test_port (22403));
@@ -642,7 +648,6 @@ static void test_gateway_single_service_tcp ()
     make_registry_endpoint (registry_pub, sizeof (registry_pub), 25906);
     make_registry_endpoint (registry_router, sizeof (registry_router), 25907);
     setup_registry (ctx, &registry, registry_pub, registry_router);
-    msleep (100);
 
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -659,7 +664,7 @@ static void test_gateway_single_service_tcp ()
     g_probe_a = &probe;
     gateway_server_t server;
     create_server_gateway (&server, ctx, registry_router, "svc",
-                           "PROV1");
+                           "PROV1", &gateway_handler_a);
     char endpoint[256];
     snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d", test_port (22500));
     bind_register_server (&server, endpoint, 1, &gateway_handler_a);
@@ -688,7 +693,6 @@ static void test_gateway_send_rid_tcp ()
     make_registry_endpoint (registry_pub, sizeof (registry_pub), 25908);
     make_registry_endpoint (registry_router, sizeof (registry_router), 25909);
     setup_registry (ctx, &registry, registry_pub, registry_router);
-    msleep (100);
 
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -707,9 +711,9 @@ static void test_gateway_send_rid_tcp ()
     gateway_server_t server1;
     gateway_server_t server2;
     create_server_gateway (&server1, ctx, registry_router,
-                           "svc", "PROV-A");
+                           "svc", "PROV-A", &gateway_handler_a);
     create_server_gateway (&server2, ctx, registry_router,
-                           "svc", "PROV-B");
+                           "svc", "PROV-B", &gateway_handler_b);
 
     char ep1[256];
     char ep2[256];
@@ -748,7 +752,6 @@ static void test_gateway_multi_service_tcp ()
     make_registry_endpoint (registry_pub, sizeof (registry_pub), 25910);
     make_registry_endpoint (registry_router, sizeof (registry_router), 25911);
     setup_registry (ctx, &registry, registry_pub, registry_router);
-    msleep (100);
 
     void *discovery_a =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -778,9 +781,9 @@ static void test_gateway_multi_service_tcp ()
     gateway_server_t server_a;
     gateway_server_t server_b;
     create_server_gateway (&server_a, ctx, registry_router,
-                           "svc-A", "A");
+                           "svc-A", "A", &gateway_handler_a);
     create_server_gateway (&server_b, ctx, registry_router,
-                           "svc-B", "B");
+                           "svc-B", "B", &gateway_handler_b);
     char ep_a[256];
     char ep_b[256];
     snprintf (ep_a, sizeof (ep_a), "tcp://127.0.0.1:%d", test_port (22510));
@@ -820,7 +823,6 @@ static void test_gateway_refresh_on_update ()
     make_registry_endpoint (registry_pub, sizeof (registry_pub), 25912);
     make_registry_endpoint (registry_router, sizeof (registry_router), 25913);
     setup_registry (ctx, &registry, registry_pub, registry_router);
-    msleep (100);
 
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -841,7 +843,7 @@ static void test_gateway_refresh_on_update ()
     gateway_server_t server1;
     gateway_server_t server2;
     create_server_gateway (&server1, ctx, registry_router,
-                           "svc-update", "UP1");
+                           "svc-update", "UP1", &gateway_handler_a);
     char ep1[256];
     snprintf (ep1, sizeof (ep1), "tcp://127.0.0.1:%d", test_port (22520));
     bind_register_server (&server1, ep1, 1, &gateway_handler_a);
@@ -854,7 +856,7 @@ static void test_gateway_refresh_on_update ()
     msleep (300);
 
     create_server_gateway (&server2, ctx, registry_router,
-                           "svc-update", "UP2");
+                           "svc-update", "UP2", &gateway_handler_b);
     char ep2[256];
     snprintf (ep2, sizeof (ep2), "tcp://127.0.0.1:%d", test_port (22521));
     bind_register_server (&server2, ep2, 1, &gateway_handler_b);
@@ -890,7 +892,6 @@ static void test_gateway_protocol_ws ()
     make_registry_endpoint (registry_pub, sizeof (registry_pub), 25914);
     make_registry_endpoint (registry_router, sizeof (registry_router), 25915);
     setup_registry (ctx, &registry, registry_pub, registry_router);
-    msleep (100);
 
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -908,7 +909,7 @@ static void test_gateway_protocol_ws ()
     g_probe_a = &probe;
     gateway_server_t server;
     create_server_gateway (&server, ctx, registry_router,
-                           "svc-ws", "PROVWS");
+                           "svc-ws", "PROVWS", &gateway_handler_a);
     char endpoint[256];
     snprintf (endpoint, sizeof (endpoint), "ws://127.0.0.1:%d", test_port (22530));
     bind_register_server (&server, endpoint, 1, &gateway_handler_a);
@@ -942,7 +943,6 @@ static void test_gateway_protocol_tls ()
     make_registry_endpoint (registry_pub, sizeof (registry_pub), 25916);
     make_registry_endpoint (registry_router, sizeof (registry_router), 25917);
     setup_registry (ctx, &registry, registry_pub, registry_router);
-    msleep (100);
 
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -962,7 +962,7 @@ static void test_gateway_protocol_tls ()
     g_probe_a = &probe;
     gateway_server_t server;
     create_server_gateway (&server, ctx, registry_router,
-                           "svc-tls", "PROVTLS");
+                           "svc-tls", "PROVTLS", &gateway_handler_a);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_set_tls_server (server.gateway, files.server_cert.c_str (),
                                     files.server_key.c_str ()));
@@ -1001,7 +1001,6 @@ static void test_gateway_protocol_wss ()
     make_registry_endpoint (registry_pub, sizeof (registry_pub), 25918);
     make_registry_endpoint (registry_router, sizeof (registry_router), 25919);
     setup_registry (ctx, &registry, registry_pub, registry_router);
-    msleep (100);
 
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -1021,7 +1020,7 @@ static void test_gateway_protocol_wss ()
     g_probe_a = &probe;
     gateway_server_t server;
     create_server_gateway (&server, ctx, registry_router,
-                           "svc-wss", "PROVWSS");
+                           "svc-wss", "PROVWSS", &gateway_handler_a);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_set_tls_server (server.gateway, files.server_cert.c_str (),
                                     files.server_key.c_str ()));
@@ -1054,7 +1053,6 @@ static void test_gateway_load_balancing ()
     make_registry_endpoint (registry_pub, sizeof (registry_pub), 25920);
     make_registry_endpoint (registry_router, sizeof (registry_router), 25921);
     setup_registry (ctx, &registry, registry_pub, registry_router);
-    msleep (100);
 
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -1075,9 +1073,9 @@ static void test_gateway_load_balancing ()
     gateway_server_t server1;
     gateway_server_t server2;
     create_server_gateway (&server1, ctx, registry_router, "lb-svc",
-                           "PROV1");
+                           "PROV1", &gateway_handler_a);
     create_server_gateway (&server2, ctx, registry_router, "lb-svc",
-                           "PROV2");
+                           "PROV2", &gateway_handler_b);
     char ep1[256];
     char ep2[256];
     snprintf (ep1, sizeof (ep1), "tcp://127.0.0.1:%d", test_port (22540));
@@ -1114,7 +1112,6 @@ static void test_gateway_weighted_load_balancing ()
     make_registry_endpoint (registry_pub, sizeof (registry_pub), 25922);
     make_registry_endpoint (registry_router, sizeof (registry_router), 25923);
     setup_registry (ctx, &registry, registry_pub, registry_router);
-    msleep (100);
 
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -1137,9 +1134,9 @@ static void test_gateway_weighted_load_balancing ()
     gateway_server_t server1;
     gateway_server_t server2;
     create_server_gateway (&server1, ctx, registry_router,
-                           "lb-weighted", "WPROV1");
+                           "lb-weighted", "WPROV1", &gateway_handler_a);
     create_server_gateway (&server2, ctx, registry_router,
-                           "lb-weighted", "WPROV2");
+                           "lb-weighted", "WPROV2", &gateway_handler_b);
     char ep1[256];
     char ep2[256];
     snprintf (ep1, sizeof (ep1), "tcp://127.0.0.1:%d", test_port (22542));
@@ -1215,7 +1212,6 @@ static void test_gateway_concurrent_send_and_updates ()
     make_registry_endpoint (registry_pub, sizeof (registry_pub), 25924);
     make_registry_endpoint (registry_router, sizeof (registry_router), 25925);
     setup_registry (ctx, &registry, registry_pub, registry_router);
-    msleep (100);
 
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -1233,7 +1229,7 @@ static void test_gateway_concurrent_send_and_updates ()
     g_probe_a = &probe;
     gateway_server_t server;
     create_server_gateway (&server, ctx, registry_router,
-                           "svc-sync", "SYNC");
+                           "svc-sync", "SYNC", &gateway_handler_a);
     char endpoint[256];
     snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d", test_port (22544));
     bind_register_server (&server, endpoint, 1, &gateway_handler_a);
@@ -1310,8 +1306,9 @@ int main (void)
     RUN_GATEWAY_TEST (test_gateway_protocol_wss);
     RUN_GATEWAY_TEST (test_gateway_load_balancing);
     RUN_GATEWAY_TEST (test_gateway_weighted_load_balancing);
-    if (should_run_gateway_concurrent_stress ())
-        RUN_GATEWAY_TEST (test_gateway_concurrent_send_and_updates);
 #undef RUN_GATEWAY_TEST
+    if (should_run_gateway_concurrent_stress ()
+        && should_run_named_test ("test_gateway_concurrent_send_and_updates"))
+        RUN_TEST (test_gateway_concurrent_send_and_updates);
     return UNITY_END ();
 }

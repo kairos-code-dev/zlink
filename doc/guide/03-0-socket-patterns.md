@@ -100,7 +100,7 @@ The basic pattern common to all socket types:
 void *ctx = zlink_ctx_new();
 
 /* 2. Create Socket */
-void *socket = zlink_socket(ctx, ZLINK_<TYPE>);
+void *socket = zlink_socket(ctx, ZLINK_<TYPE>, NULL);
 
 /* 3. Set socket options (before bind/connect) */
 zlink_setsockopt(socket, ZLINK_<OPTION>, &value, sizeof(value));

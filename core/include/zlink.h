@@ -616,16 +616,6 @@ ZLINK_EXPORT void *zlink_socket (void *,
                                  zlink_socket_type_t type_,
                                  const zlink_socket_handler_t *handler_);
 
-/**
- * @brief Replace the direct receive handler on a socket.
- *
- * @param s_ Socket handle.
- * @param handler_ New direct receive handler.
- * @return 0 on success, -1 on failure (errno is set).
- */
-ZLINK_EXPORT int zlink_socket_set_handler (
-  void *s_, const zlink_socket_handler_t *handler_);
-
 ZLINK_EXPORT int zlink_socket_set_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_);
 
@@ -821,14 +811,6 @@ ZLINK_EXPORT void *zlink_socket_monitor_open (void *s_,
                                               zlink_socket_monitor_event_mask_t events_,
                                               zlink_monitor_handler_fn handler_);
 
-/**
- * @brief Replace the direct receive handler on a monitor handle.
- * @param monitor_socket_ Monitor handle from zlink_socket_monitor_open().
- * @param handler_        New monitor event handler.
- */
-ZLINK_EXPORT int zlink_monitor_set_handler (void *monitor_socket_,
-                                            zlink_monitor_handler_fn handler_);
-
 typedef struct {
     zlink_routing_id_t routing_id;
     char remote_addr[256];
@@ -948,6 +930,11 @@ typedef enum zlink_service_type_t
 } zlink_service_type_t;
 /** @} */
 
+typedef enum zlink_discovery_socket_role_t
+{
+    ZLINK_DISCOVERY_SOCKET_SUB = 1
+} zlink_discovery_socket_role_t;
+
 /**
  * @brief Create a Discovery instance with a fixed service family.
  *
@@ -969,6 +956,13 @@ ZLINK_EXPORT void *zlink_discovery_new (void *ctx,
  */
 ZLINK_EXPORT int zlink_discovery_connect_registry (
   void *discovery, const char *registry_endpoint);
+
+ZLINK_EXPORT int zlink_discovery_setsockopt (
+  void *discovery,
+  zlink_discovery_socket_role_t socket_role,
+  zlink_socket_option_t option,
+  const void *optval,
+  size_t optvallen);
 
 /**
  * @brief Override the representative routing id before first subscribe/query/connect.
@@ -1019,8 +1013,9 @@ ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
  * load-balanced request/reply communication.
  *
  * @param ctx         Context handle.
- * @param discovery   Discovery handle (ZLINK_SERVICE_TYPE_GATEWAY type).
+ * @param service_name Service identity fixed at handle creation.
  * @param routing_id  Unique identifier for this Gateway.
+ * @param handler     Direct receive callback fixed at handle creation.
  * @return Gateway handle, or NULL on failure.
  */
 ZLINK_EXPORT void *zlink_gateway_new (void *ctx,
@@ -1030,9 +1025,6 @@ ZLINK_EXPORT void *zlink_gateway_new (void *ctx,
 
 ZLINK_EXPORT int zlink_gateway_attach_discovery (void *gateway,
                                                  void *discovery);
-
-ZLINK_EXPORT int zlink_gateway_set_handler (void *gateway,
-                                            zlink_socket_msg_handler_fn handler);
 
 ZLINK_EXPORT int zlink_gateway_set_send_ready_handler (
   void *gateway,
@@ -1052,12 +1044,6 @@ ZLINK_EXPORT int zlink_gateway_send (void *gateway,
                                      size_t part_count,
                                      zlink_send_flags_t flags);
 
-/**
- * @brief Send a single-part byte buffer to a service (load-balanced).
- * @param data          Payload buffer.
- * @param size          Payload size in bytes.
- * @param flags         Send flags (0 or ZLINK_DONTWAIT).
- */
 /** @brief Send a message directly to a specific Receiver by routing_id. */
 ZLINK_EXPORT int zlink_gateway_send_rid (void *gateway,
                                          const zlink_routing_id_t *routing_id,
@@ -1259,9 +1245,6 @@ ZLINK_EXPORT int zlink_spot_node_subscribe_pattern (void *node,
 ZLINK_EXPORT int zlink_spot_node_unsubscribe_filter (
   void *node, const char *topic_id_or_pattern);
 
-ZLINK_EXPORT int zlink_spot_node_set_handler (void *node,
-                                              zlink_spot_handler_fn handler);
-
 ZLINK_EXPORT int zlink_spot_node_set_send_ready_handler (
   void *node,
   zlink_send_ready_handler_fn handler);
@@ -1278,8 +1261,6 @@ ZLINK_EXPORT int zlink_spot_subscribe (void *spot, const char *topic_id);
 ZLINK_EXPORT int zlink_spot_subscribe_pattern (void *spot, const char *pattern);
 ZLINK_EXPORT int zlink_spot_unsubscribe (void *spot,
                                          const char *topic_id_or_pattern);
-ZLINK_EXPORT int zlink_spot_set_handler (void *spot,
-                                         zlink_spot_handler_fn handler);
 ZLINK_EXPORT int zlink_spot_set_send_ready_handler (
   void *spot,
   zlink_send_ready_handler_fn handler);
@@ -1366,7 +1347,8 @@ ZLINK_EXPORT int zlink_spot_pub_publish (void *pub,
 /* SPOT Sub ---------------------------------------------------------------- */
 
 /** @brief Create a SPOT subscriber attached to the given node. */
-ZLINK_EXPORT void *zlink_spot_sub_new (void *node);
+ZLINK_EXPORT void *zlink_spot_sub_new (void *node,
+                                       zlink_spot_handler_fn handler);
 
 /** @brief Destroy a SPOT subscriber. */
 ZLINK_EXPORT int zlink_spot_sub_destroy (void **sub_p);
@@ -1400,15 +1382,6 @@ ZLINK_EXPORT int zlink_spot_sub_subscribe_pattern (void *sub, const char *patter
 /** @brief Unsubscribe from a topic or pattern. */
 ZLINK_EXPORT int zlink_spot_sub_unsubscribe (void *sub,
                                              const char *topic_id_or_pattern);
-
-/**
- * @brief Set a callback handler for automatic message dispatch.
- *
- * Passing NULL is invalid. Re-registering replaces the handler used for
- * subsequent messages.
- */
-ZLINK_EXPORT int zlink_spot_sub_set_handler (void *sub,
-                                             zlink_spot_handler_fn handler);
 
 /******************************************************************************/
 /*  Service Monitor / Topology API                                            */
@@ -1543,9 +1516,6 @@ ZLINK_EXPORT void *zlink_spot_pub_monitor_open (
   zlink_spot_monitor_event_mask_t events,
   zlink_service_monitor_handler_fn handler);
 
-ZLINK_EXPORT int zlink_service_monitor_set_handler (
-  void *monitor,
-  zlink_service_monitor_handler_fn handler);
 ZLINK_EXPORT int zlink_service_monitor_close (void **monitor_p);
 
 typedef enum zlink_topology_source_t

@@ -2,127 +2,120 @@
 
 # Gateway Service (Location-Transparent Request/Reply)
 
-> Current direction: use service-level APIs for identity, options, readiness,
-> and topology.
->
-> - `zlink_gateway_set_option()` / `zlink_receiver_set_option()`
-> - `zlink_gateway_set_routing_id()` / `zlink_receiver_set_routing_id()`
-> - `zlink_gateway_monitor_open()` / `zlink_receiver_monitor_open()`
-> - `zlink_poller_add_gateway()` / `zlink_poller_add_receiver()` /
->   `zlink_poller_add_monitor()`
->
-> `zlink_receiver_register_result()` remains available only for low-level
-> registration debugging.
-
 ## 1. Overview
 
-Gateway is a client component that sends messages to service Receivers in a location-transparent manner based on Discovery, and receives replies from Receivers. It handles load balancing and automatic connect/disconnect.
+Gateway is a unified service handle that automatically discovers services
+based on Discovery, supports load-balanced message sending, and direct
+callback-based receiving. A single Gateway handle can act as both a
+client (sender) and a server (receiver).
 
-> **About the name**: Gateway serves as an entry point and client-side load balancer for a specific service. Unlike API Gateways (such as Kong or AWS API Gateway) that include authentication, rate limiting, and protocol translation, Gateway is a lightweight gateway focused on service access and load balancing.
+> **About the name**: Gateway serves as an entry point and client-side load
+> balancer for a specific service. Unlike API Gateways (such as Kong or AWS
+> API Gateway) that include authentication, rate limiting, and protocol
+> translation, Gateway is a lightweight gateway focused on service access
+> and load balancing.
 
-**Gateway is thread-safe.** While regular zlink sockets (PAIR, DEALER, ROUTER, etc.) must be used from a single thread only, Gateway can be safely used concurrently from multiple threads through internal mutex protection.
+**Gateway is thread-safe.** While regular zlink sockets (PAIR, DEALER,
+ROUTER, etc.) must be used from a single thread only, Gateway can be
+safely used concurrently from multiple threads through internal mutex
+protection.
 
-## 2. Receiver Setup
+## 2. Creating a Gateway
+
+A Gateway fixes its service name, routing ID, and receive handler at
+creation time.
 
 ```c
-void *receiver = zlink_receiver_new(ctx, "payment-receiver-1");
-
-/* Bind business socket */
-zlink_receiver_bind(receiver, "tcp://*:5555");
-
-/* Connect to Registry */
-zlink_receiver_connect_registry(receiver, "tcp://registry1:5551");
-
-/* Resolve advertised endpoint from the bound service */
-char advertise_endpoint[256];
-size_t advertise_len = sizeof(advertise_endpoint);
-zlink_receiver_last_endpoint(receiver, advertise_endpoint, &advertise_len);
-
-/* Register service */
-zlink_receiver_register(receiver, "payment-service", advertise_endpoint, 1);
-
-/* Check registration result */
-int status;
-char resolved[256], error_msg[256];
-zlink_receiver_register_result(receiver, "payment-service",
-    &status, resolved, error_msg);
-if (status != 0) {
-    fprintf(stderr, "Registration failed: %s\n", error_msg);
-    return -1;
+/* Define receive handler */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* Process incoming message */
+    printf("Received: %.*s\n",
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    /* parts are cleaned up automatically after handler returns */
 }
 
-/* Process business messages */
-zlink_msg_t *parts = NULL;
-size_t part_count = 0;
-zlink_routing_id_t client_rid;
-zlink_receiver_recv(receiver, &parts, &part_count, 0, &client_rid);
-/* Process multipart request and reply via Gateway/Receiver service APIs */
-
-zlink_receiver_destroy(&receiver);
+void *gateway = zlink_gateway_new(ctx, "payment-service",
+                                   "gateway-1", on_message);
 ```
 
-### Endpoint Configuration
+## 3. Server (Receiver) Setup
 
-| bind_endpoint | advertise_endpoint | Result |
-|---------------|-------------------|--------|
-| `tcp://*:5555` | `NULL` | Local IP auto-detected |
-| `tcp://*:5555` | `tcp://payment-server:5555` | Advertised with DNS name |
-
-> In NAT/container environments, advertise_endpoint must be explicitly set.
-
-## 3. Gateway Setup
+To act as a server, bind an endpoint on the Gateway and register via
+Discovery.
 
 ```c
-void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
-/* Registry bootstrap/control endpoint */
+void *ctx = zlink_ctx_new();
+
+/* Discovery setup */
+void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
+
+/* Create Gateway (register receive handler) */
+void *server = zlink_gateway_new(ctx, "payment-service",
+                                  "payment-server-1", on_request);
+
+/* Attach Discovery */
+zlink_gateway_attach_discovery(server, discovery);
+
+/* Bind business socket */
+zlink_gateway_bind(server, "tcp://*:5555");
+```
+
+## 4. Client (Sender) Setup
+
+```c
+/* Discovery setup */
+void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_subscribe(discovery, "payment-service");
 
-void *gateway = zlink_gateway_new(ctx, discovery, "gateway-1");
+/* Create Gateway */
+void *client = zlink_gateway_new(ctx, "payment-service",
+                                  "client-1", on_reply);
+
+/* Attach Discovery */
+zlink_gateway_attach_discovery(client, discovery);
 
 /* Load balancing configuration */
-zlink_gateway_set_lb_strategy(gateway, "payment-service",
-    ZLINK_GATEWAY_LB_ROUND_ROBIN);
+zlink_gateway_set_lb_strategy(client, ZLINK_GATEWAY_LB_ROUND_ROBIN);
 ```
 
-## 4. Sending Messages
+## 5. Sending Messages
 
-### 4.1 Basic Send
+### 5.1 Load-Balanced Send
 
 ```c
-/* Send request from Gateway to Receiver */
-const char *req = "request";
-zlink_gateway_send_bytes(gateway, "payment-service", req, 7, 0);
+/* Construct multipart message and send */
+zlink_msg_t part;
+zlink_msg_init_size(&part, 7);
+memcpy(zlink_msg_data(&part), "request", 7);
+zlink_gateway_send(client, &part, 1, 0);
 ```
 
-For multipart payloads, use `zlink_gateway_send()`.
-
-### 4.2 Receiving Replies (Gateway)
+### 5.2 Send to Specific Peer
 
 ```c
-/* Receive Receiver reply at Gateway */
-zlink_msg_t *parts = NULL;
-size_t part_count = 0;
-char service_name[256];
-int rc = zlink_gateway_recv(gateway, &parts, &part_count, 0, service_name);
-if (rc != -1) {
-    /* Process parts[0..part_count-1] */
-    zlink_multipart_close(parts, part_count);
+/* Send directly to a specific server by routing_id */
+zlink_gateway_send_rid(client, &target_rid, &part, 1, 0);
+```
+
+### 5.3 Receiving Messages
+
+Receives are dispatched automatically through the handler callback
+registered at creation time. There is no separate `recv()` call.
+
+```c
+void on_reply(const zlink_routing_id_t *source_rid,
+              zlink_msg_t *parts, size_t part_count)
+{
+    /* Process reply */
 }
 ```
 
-### 4.3 Receiving/Replying on the Receiver Side
-
-```c
-/* Receive and reply on the Receiver service handle */
-zlink_msg_t *req_parts = NULL;
-size_t req_count = 0;
-zlink_routing_id_t client_rid;
-zlink_receiver_recv(receiver, &req_parts, &req_count, 0, &client_rid);
-/* Process [payload...] and reply */
-```
-
-## 5. Load Balancing
+## 6. Load Balancing
 
 | Strategy | Constant | Description |
 |----------|----------|-------------|
@@ -132,10 +125,11 @@ zlink_receiver_recv(receiver, &req_parts, &req_count, 0, &client_rid);
 ### Updating Weights
 
 ```c
-zlink_receiver_update_weight(receiver, "payment-service", 5);
+/* Update weight for a specific peer */
+zlink_gateway_update_peer_weight(server, &peer_rid, 5);
 ```
 
-## 6. Thread-Safety
+## 7. Thread-Safety
 
 ### Regular Sockets vs Gateway
 
@@ -147,13 +141,11 @@ zlink_receiver_update_weight(receiver, "payment-service", 5);
 
 ### Thread-safe API
 
-All public Gateway APIs are protected by internal mutexes. They are safe to call concurrently from multiple threads.
+All public Gateway APIs are protected by internal mutexes. They are safe
+to call concurrently from multiple threads.
 
 - `zlink_gateway_send()`
-- `zlink_gateway_send_bytes()`
 - `zlink_gateway_send_rid()`
-- `zlink_gateway_send_rid_bytes()`
-- `zlink_gateway_recv()`
 - `zlink_gateway_set_lb_strategy()`
 - `zlink_gateway_set_option()`
 - `zlink_gateway_set_tls_client()`
@@ -163,14 +155,17 @@ All public Gateway APIs are protected by internal mutexes. They are safe to call
 
 ```c
 /* Gateway is thread-safe, so it can be shared across threads */
-void *gateway = zlink_gateway_new(ctx, discovery, "gw-1");
+void *gateway = zlink_gateway_new(ctx, "my-service", "gw-1", on_reply);
+zlink_gateway_attach_discovery(gateway, discovery);
 
 /* Worker thread function */
 void *send_worker(void *arg) {
     void *gw = arg;
-    const char *req = "request";
+    zlink_msg_t part;
+    zlink_msg_init_size(&part, 7);
+    memcpy(zlink_msg_data(&part), "request", 7);
     /* Concurrent send calls from multiple threads -- safe */
-    zlink_gateway_send_bytes(gw, "my-service", req, 7, 0);
+    zlink_gateway_send(gw, &part, 1, 0);
     return NULL;
 }
 
@@ -183,11 +178,15 @@ for (int i = 0; i < 4; i++)
 
 **1. Low contention through send-only design**
 
-Gateway's send/recv are protected by internal mutexes for thread-safety, and the design minimizes lock overhead.
+Gateway's send is protected by internal mutexes for thread-safety, and the
+design minimizes lock overhead.
 
 **2. Simplified application architecture**
 
-Regular sockets require single-thread ownership, so multi-threaded environments need separate message queues or proxy patterns. Gateway eliminates this extra complexity by allowing multiple threads to call send directly.
+Regular sockets require single-thread ownership, so multi-threaded
+environments need separate message queues or proxy patterns. Gateway
+eliminates this extra complexity by allowing multiple threads to call send
+directly.
 
 ```
 Regular sockets (multi-threaded):
@@ -197,28 +196,35 @@ Regular sockets (multi-threaded):
 
 Gateway (multi-threaded):
   Thread A ──┐
-  Thread B ──┼── Gateway (internal mutex protection) ── send ──→ Receiver
+  Thread B ──┼── Gateway (internal mutex protection) ── send ──→ Server
   Thread C ──┘
 ```
 
 **3. Discovery updates do not block sends**
 
-Service pool updates (Receiver add/remove, connect/reconnect) are handled by a dedicated background worker thread. Even if a Discovery event arrives during a send call, the user API is not blocked.
+Service pool updates (server add/remove, connect/reconnect) are handled
+by a dedicated background worker thread. Even if a Discovery event arrives
+during a send call, the user API is not blocked.
 
 **4. Concurrent sends and weight updates are safe**
 
-Multiple threads can send messages concurrently while a Receiver simultaneously updates weights via `zlink_receiver_update_weight()`, all without data races.
+Multiple threads can send messages concurrently while a server
+simultaneously updates weights via `zlink_gateway_update_peer_weight()`,
+all without data races.
 
-> Reference: `core/tests/discovery/test_gateway.cpp` -- `test_gateway_concurrent_send_and_updates()`: verifies concurrent multi-thread sends + weight updates
+> Reference: `core/tests/discovery/test_gateway.cpp` --
+> `test_gateway_concurrent_send_and_updates()`: verifies concurrent
+> multi-thread sends + weight updates
 
-## 7. Automatic Connect/Disconnect
+## 8. Automatic Connect/Disconnect
 
-Gateway automatically connects to and disconnects from Receivers based on Discovery events.
+Gateway automatically connects to and disconnects from peers based on
+Discovery events.
 
-- `RECEIVER_ADDED`: ROUTER connect to new Receiver
-- `RECEIVER_REMOVED`: Disconnect removed Receiver
+- Server added: auto-connect to new server
+- Server removed: disconnect removed server
 
-## 8. End-to-End Example
+## 9. End-to-End Example
 
 ```c
 void *ctx = zlink_ctx_new();
@@ -228,69 +234,66 @@ void *registry = zlink_registry_new(ctx);
 zlink_registry_set_endpoints(registry, "tcp://*:5550", "tcp://*:5551");
 zlink_registry_start(registry);
 
-/* === Receiver === */
-void *receiver = zlink_receiver_new(ctx, "echo-receiver-1");
-zlink_receiver_bind(receiver, "tcp://*:5555");
-zlink_receiver_connect_registry(receiver, "tcp://127.0.0.1:5551");
-zlink_receiver_register(receiver, "echo-service", NULL, 1);
+/* === Server === */
+void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
+
+void *server = zlink_gateway_new(ctx, "echo-service",
+                                  "echo-server-1", on_request);
+zlink_gateway_attach_discovery(server, server_discovery);
+zlink_gateway_bind(server, "tcp://*:5555");
 
 /* === Client === */
-void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
-zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
-zlink_discovery_subscribe(discovery, "echo-service");
+void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
+zlink_discovery_subscribe(client_discovery, "echo-service");
 
-void *gateway = zlink_gateway_new(ctx, discovery, "client-1");
+void *client = zlink_gateway_new(ctx, "echo-service",
+                                  "client-1", on_reply);
+zlink_gateway_attach_discovery(client, client_discovery);
 
 /* Wait for service availability */
-while (!zlink_discovery_service_available(discovery, "echo-service"))
-    sleep(1);
+while (!zlink_discovery_service_available(client_discovery, "echo-service"))
+    msleep(100);
 
-/* Request/Reply */
-const char *req = "hello";
-zlink_gateway_send_bytes(gateway, "echo-service", req, 5, 0);
+/* Send request */
+zlink_msg_t part;
+zlink_msg_init_size(&part, 5);
+memcpy(zlink_msg_data(&part), "hello", 5);
+zlink_gateway_send(client, &part, 1, 0);
 
-/* ... Receiver processes and replies ... */
+/* ... on_request handler processes and replies ... */
 
 /* Cleanup */
-zlink_gateway_destroy(&gateway);
-zlink_discovery_destroy(&discovery);
-zlink_receiver_destroy(&receiver);
+zlink_gateway_destroy(&client);
+zlink_discovery_destroy(&client_discovery);
+zlink_gateway_destroy(&server);
+zlink_discovery_destroy(&server_discovery);
 zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
 ```
 
-## 9. API Summary
+## 10. API Summary
 
-### Gateway API
 | Function | Description |
 |----------|-------------|
-| `zlink_gateway_new(ctx, discovery, routing_id)` | Create Gateway |
-| `zlink_gateway_send(...)` | Send message (with LB) |
-| `zlink_gateway_send_bytes(...)` | Send single-part byte message (with LB) |
-| `zlink_gateway_recv(...)` | Receive message (Receiver reply) |
-| `zlink_gateway_send_rid(...)` | Send to specific Receiver |
-| `zlink_gateway_send_rid_bytes(...)` | Send single-part byte message to specific Receiver |
-| `zlink_gateway_set_lb_strategy(...)` | Set LB strategy |
-| `zlink_gateway_set_option(...)` | Set service options |
-| `zlink_gateway_set_tls_client(...)` | Set TLS client configuration |
-| `zlink_gateway_connection_count(...)` | Get connected Receiver count |
-| `zlink_gateway_destroy(...)` | Destroy |
-
-### Receiver API
-| Function | Description |
-|----------|-------------|
-| `zlink_receiver_new(ctx, routing_id)` | Create Receiver |
-| `zlink_receiver_bind(...)` | ROUTER bind |
-| `zlink_receiver_connect_registry(...)` | Connect to Registry |
-| `zlink_receiver_register(...)` | Register service |
-| `zlink_receiver_register_result(...)` | Check registration result |
-| `zlink_receiver_update_weight(...)` | Update weight |
-| `zlink_receiver_unregister(...)` | Unregister service |
-| `zlink_receiver_set_tls_server(...)` | Set TLS server configuration |
-| `zlink_receiver_set_option(...)` | Set service options |
-| `zlink_receiver_recv(...)` | Receive one multipart request |
-| `zlink_receiver_last_endpoint(...)` | Resolve bound advertise endpoint |
-| `zlink_receiver_destroy(...)` | Destroy |
+| `zlink_gateway_new(ctx, service_name, routing_id, handler)` | Create Gateway |
+| `zlink_gateway_attach_discovery(gateway, discovery)` | Attach Discovery |
+| `zlink_gateway_bind(gateway, endpoint)` | Bind receive endpoint (server role) |
+| `zlink_gateway_send(gateway, parts, count, flags)` | Send multipart message (with LB) |
+| `zlink_gateway_send_rid(gateway, rid, parts, count, flags)` | Send to specific peer |
+| `zlink_gateway_set_lb_strategy(gateway, strategy)` | Set LB strategy |
+| `zlink_gateway_set_option(gateway, option, val, len)` | Set service options |
+| `zlink_gateway_set_routing_id(gateway, data, size)` | Set routing ID |
+| `zlink_gateway_routing_id(gateway, out)` | Get routing ID |
+| `zlink_gateway_set_tls_client(gateway, ca, host, trust)` | Set TLS client configuration |
+| `zlink_gateway_set_tls_server(gateway, cert, key)` | Set TLS server configuration |
+| `zlink_gateway_last_endpoint(gateway, buf, size)` | Resolve bound endpoint |
+| `zlink_gateway_connection_count(gateway)` | Get connected peer count |
+| `zlink_gateway_update_peer_weight(gateway, rid, weight)` | Update peer weight |
+| `zlink_gateway_router_peers(gateway, peers, count)` | List peers |
+| `zlink_gateway_peer_info(gateway, rid, info)` | Get specific peer info |
+| `zlink_gateway_destroy(&gateway)` | Destroy |
 
 ---
 [← Discovery](07-1-discovery.md) | [SPOT →](07-3-spot.md)

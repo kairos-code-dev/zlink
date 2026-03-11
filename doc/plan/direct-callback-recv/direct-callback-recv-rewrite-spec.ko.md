@@ -1,5 +1,10 @@
 # Direct Callback Recv 재작성 스펙
 
+> 상태 메모
+> 이 문서는 재작성 초안이다. 본문에 남아 있는 `*_set_handler()`와 생성 후
+> callback 교체 모델은 현재 canonical public API가 아니다. 최신 기준은
+> `direct-callback-recv-interface-review.ko.md`와 `core/include/zlink.h`를 따른다.
+
 ## 1. 문서 목적
 
 이 문서는 `zlink`의 수신 모델을 `recv()`/`poll()` 기반 pull 방식에서

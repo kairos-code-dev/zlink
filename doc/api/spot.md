@@ -27,19 +27,27 @@ Subscribers that consume them.
 - `zlink_spot_node_register()` submits registration via the attached
   Discovery's uplink runtime. `set_discovery()` must be called first.
 
+> Status note
+> This document predates the current callback-only direct-dispatch API.
+> `zlink_spot_sub_set_handler` and `zlink_spot_sub_recv` are no longer part of
+> the public surface. Current code fixes the callback at creation time via
+> `zlink_spot_node_new(..., handler)`, `zlink_spot_new(..., handler)`, and
+> `zlink_spot_sub_new(..., handler)`.
+
 ## Types
 
 ```c
-typedef void (*zlink_spot_sub_handler_fn)(const char *topic,
-                                         size_t topic_len,
-                                         const zlink_msg_t *parts,
-                                         size_t part_count,
-                                         void *userdata);
+typedef void (*zlink_spot_handler_fn)(const zlink_routing_id_t *source_rid,
+                                      const char *topic,
+                                      size_t topic_len,
+                                      zlink_msg_t *parts,
+                                      size_t part_count);
 ```
 
 Callback function type for handler-based SPOT subscriber dispatch. When
-registered via `zlink_spot_sub_set_handler`, incoming messages are delivered
-automatically through this callback instead of `zlink_spot_sub_recv`.
+passed to `zlink_spot_sub_new`, incoming messages are delivered automatically
+through this callback. The handler is fixed for the lifetime of that
+subscriber handle.
 
 ## Constants
 
@@ -500,31 +508,22 @@ construction for the common single-buffer publish path.
 ## SPOT Sub
 
 A SPOT Subscriber attaches to a Node and receives messages matching its
-subscriptions. Messages can be consumed in two ways:
-
-- **Handler-based:** Register a callback via `zlink_spot_sub_set_handler`.
-  Incoming messages are delivered automatically through the callback. This
-  mode is suitable for event-driven architectures.
-- **Recv-based:** Call `zlink_spot_sub_recv` in a polling loop to receive
-  messages synchronously. This mode provides explicit control over when
-  messages are consumed.
-
-The two modes are mutually exclusive. When a handler is set,
-`zlink_spot_sub_recv` must not be called concurrently. Pass `NULL` to
-`zlink_spot_sub_set_handler` to clear the handler and revert to recv-based
-consumption.
+subscriptions. Incoming messages are delivered through the callback provided
+when the subscriber is created. There is no post-create handler replacement
+API and no public `recv` fallback on the current surface.
 
 ### zlink_spot_sub_new
 
 Create a SPOT subscriber attached to the given node.
 
 ```c
-void *zlink_spot_sub_new(void *node);
+void *zlink_spot_sub_new(void *node, zlink_spot_handler_fn handler);
 ```
 
 Allocates and initializes a new SPOT Subscriber. The Subscriber is attached
 to the specified Node and receives messages from the Node's SUB socket. The
-Node must remain valid for the lifetime of the Subscriber.
+Node must remain valid for the lifetime of the Subscriber. `handler` must be
+non-`NULL`.
 
 **Returns:** A SPOT Subscriber handle on success, or `NULL` on failure.
 
@@ -710,33 +709,25 @@ exact string passed to `zlink_spot_sub_subscribe` or
 
 ---
 
-### zlink_spot_sub_set_handler
+### Callback lifecycle
 
-Set a callback handler for automatic message dispatch.
-
-```c
-int zlink_spot_sub_set_handler(void *sub,
-                               zlink_spot_sub_handler_fn handler,
-                               void *userdata);
-```
-
-Registers a callback function that is invoked automatically for each
-incoming message. When a handler is set, messages are delivered via the
-callback and `zlink_spot_sub_recv` must not be used concurrently. Pass
-`NULL` as `handler` to clear the callback and revert to recv-based
-consumption. The `userdata` pointer is passed to the callback on each
-invocation.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+SPOT subscriber callbacks are installed only at `zlink_spot_sub_new()`
+creation time. Replacing or clearing the callback after creation is not part
+of the public API.
 
 **Errors:**
 - `EBUSY` -- `zlink_spot_sub_recv` is currently in progress on the same subscriber.
 
 **Thread safety:** Not thread-safe.
 
-**See also:** `zlink_spot_sub_recv`
+**See also:** `zlink_spot_sub_new`
 
 ---
+
+> Historical note
+> The `zlink_spot_sub_recv` / poller material below documents an older pull
+> model and is kept only as migration context. It does not describe the current
+> public API.
 
 ### zlink_spot_sub_recv
 
@@ -766,7 +757,7 @@ the actual topic length. Must not be called when a handler is active.
 
 **Thread safety:** Not thread-safe.
 
-**See also:** `zlink_spot_sub_set_handler`, `zlink_spot_sub_subscribe`
+**See also:** `zlink_spot_sub_new`, `zlink_spot_sub_subscribe`
 
 ---
 
@@ -812,7 +803,7 @@ void *ctx = zlink_ctx_new();
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://*:9500");
 
-void *sub = zlink_spot_sub_new(node);
+void *sub = zlink_spot_sub_new(node, on_message);
 zlink_spot_node_connect_peer_pub(node, "tcp://peer:9500");
 zlink_spot_sub_subscribe(sub, "bench");
 
@@ -869,6 +860,5 @@ and `unsubscribe()` must be serialized by the caller.
 |-----|---------|
 | `zlink_spot_pub_peers` / `zlink_spot_sub_peers` | Peer queue stats |
 | `zlink_spot_pub_publish` | Publishing messages |
-| `zlink_spot_sub_set_handler` | Callback-driven consumption |
-| `zlink_spot_sub_recv` | Polling-style consumption from the subscriber queue |
+| `zlink_spot_sub_new(..., handler)` | Callback-driven consumption |
 | `zlink_poller_add_spot_sub` / `zlink_poller_add_spot_pub` | Register service with poller |

@@ -34,7 +34,7 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 ### 2.1 Socket Creation and Closing
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_DEALER);
+void *socket = zlink_socket(ctx, ZLINK_DEALER, NULL);
 /* ... use ... */
 zlink_close(socket);
 ```
@@ -173,11 +173,11 @@ int main(void) {
     void *ctx = zlink_ctx_new();
 
     /* ROUTER (server) */
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
+    void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (client) */
-    void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+    void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */

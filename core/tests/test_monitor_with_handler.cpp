@@ -189,7 +189,7 @@ void bind_gateway_with_timeout (void *gateway_,
 
 SETUP_TEARDOWN_TESTCONTEXT
 
-void test_socket_monitor_set_handler_replaces_dispatch_and_blocks_recv ()
+void test_socket_monitor_open_dispatches_events ()
 {
     void *ctx = get_test_context ();
     const zlink_socket_handler_t msg_handler =
@@ -218,13 +218,11 @@ void test_socket_monitor_set_handler_replaces_dispatch_and_blocks_recv ()
                               probe.primary_event.event);
     TEST_ASSERT_TRUE (probe.primary_event.routing_id.size > 0);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_monitor_set_handler (monitor, &raw_monitor_replacement_handler));
     close_socket_zero_linger (client);
 
-    TEST_ASSERT_TRUE (wait_for_calls (&probe.replacement_calls, 1, 3000));
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.primary_calls, 2, 3000));
     TEST_ASSERT_EQUAL_UINT64 (ZLINK_EVENT_DISCONNECTED,
-                              probe.replacement_event.event);
+                              probe.primary_event.event);
 
     zlink_socket_monitor (server, NULL, 0);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
@@ -248,7 +246,7 @@ void test_socket_monitor_open_requires_handler ()
     close_socket_zero_linger (server);
 }
 
-void test_service_monitor_set_handler_replaces_dispatch_and_blocks_recv ()
+void test_service_monitor_open_dispatches_events ()
 {
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -301,13 +299,11 @@ void test_service_monitor_set_handler_replaces_dispatch_and_blocks_recv ()
                               probe.primary_event.event_type);
     TEST_ASSERT_EQUAL_STRING ("svc-handler", probe.primary_event.service_name);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_set_handler (
-      monitor, &service_monitor_replacement_handler));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
 
-    TEST_ASSERT_TRUE (wait_for_calls (&probe.replacement_calls, 1, 3000));
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.primary_calls, 2, 3000));
     TEST_ASSERT_EQUAL_UINT32 (ZLINK_MONITOR_EVENT_CLOSED,
-                              probe.replacement_event.event_type);
+                              probe.primary_event.event_type);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
@@ -322,8 +318,7 @@ int main (int, char **)
 
     UNITY_BEGIN ();
     RUN_TEST (test_socket_monitor_open_requires_handler);
-    RUN_TEST (test_socket_monitor_set_handler_replaces_dispatch_and_blocks_recv);
-    RUN_TEST (
-      test_service_monitor_set_handler_replaces_dispatch_and_blocks_recv);
+    RUN_TEST (test_socket_monitor_open_dispatches_events);
+    RUN_TEST (test_service_monitor_open_dispatches_events);
     return UNITY_END ();
 }

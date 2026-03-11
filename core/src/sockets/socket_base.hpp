@@ -179,6 +179,7 @@ class socket_base_t : public own_t,
     int socket_peer_routing_id (int index_, zlink_routing_id_t *out_);
     int socket_peer_count ();
     int socket_peers (zlink_peer_info_t *peers_, size_t *count_);
+    int socket_id () const;
 
     bool is_disconnected () const;
     bool is_ctx_terminated () const;

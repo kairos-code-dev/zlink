@@ -204,6 +204,42 @@ void make_registry_endpoint (char *endpoint_out_,
               test_port (port_seed_));
 }
 
+void make_registry_endpoint_transport (char *endpoint_out_,
+                                       size_t endpoint_size_,
+                                       const char *transport_,
+                                       int port_seed_)
+{
+    snprintf (endpoint_out_, endpoint_size_, "%s://127.0.0.1:%d", transport_,
+              test_port (port_seed_));
+}
+
+void set_registry_tls_server_opts (void *registry_,
+                                   zlink_registry_socket_role_t role_,
+                                   const tls_test_files_t &files_)
+{
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_setsockopt (
+      registry_, role_, ZLINK_SOCKOPT_TLS_CERT, files_.server_cert.c_str (),
+      files_.server_cert.size () + 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_setsockopt (
+      registry_, role_, ZLINK_SOCKOPT_TLS_KEY, files_.server_key.c_str (),
+      files_.server_key.size () + 1));
+}
+
+void set_discovery_tls_client_opts (void *discovery_,
+                                    const tls_test_files_t &files_)
+{
+    const int trust_system = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_setsockopt (
+      discovery_, ZLINK_DISCOVERY_SOCKET_SUB, ZLINK_SOCKOPT_TLS_CA,
+      files_.ca_cert.c_str (), files_.ca_cert.size () + 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_setsockopt (
+      discovery_, ZLINK_DISCOVERY_SOCKET_SUB, ZLINK_SOCKOPT_TLS_HOSTNAME,
+      "localhost", sizeof ("localhost")));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_setsockopt (
+      discovery_, ZLINK_DISCOVERY_SOCKET_SUB, ZLINK_SOCKOPT_TLS_TRUST_SYSTEM,
+      &trust_system, sizeof (trust_system)));
+}
+
 int connect_discovery_registry_with_retry (void *discovery_,
                                            const char *endpoint_,
                                            int timeout_ms_)
@@ -612,6 +648,72 @@ static void test_discovery_registry_transport_restriction ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
 }
 
+static void test_discovery_registry_transport_allowed_ws ()
+{
+    if (!zlink_has ("ws")) {
+        TEST_IGNORE_MESSAGE ("WS transport unavailable");
+    }
+
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = NULL;
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    make_registry_endpoint_transport (registry_pub, sizeof (registry_pub), "ws",
+                                      22659);
+    make_registry_endpoint_transport (registry_router, sizeof (registry_router),
+                                      "ws", 22660);
+    setup_registry (ctx, &registry, registry_pub, registry_router);
+
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
+      discovery, registry_router, 2000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+}
+
+static void test_discovery_registry_transport_allowed_tls ()
+{
+    if (!zlink_has ("tls")) {
+        TEST_IGNORE_MESSAGE ("TLS transport unavailable");
+    }
+
+    const tls_test_files_t files = make_tls_test_files ();
+
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    make_registry_endpoint_transport (registry_pub, sizeof (registry_pub), "tls",
+                                      22661);
+    make_registry_endpoint_transport (registry_router, sizeof (registry_router),
+                                      "tls", 22662);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_endpoints (
+      registry, registry_pub, registry_router));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry, 50));
+    set_registry_tls_server_opts (registry, ZLINK_REGISTRY_SOCKET_PUB, files);
+    set_registry_tls_server_opts (registry, ZLINK_REGISTRY_SOCKET_ROUTER, files);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_start (registry));
+
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    set_discovery_tls_client_opts (discovery, files);
+    TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
+      discovery, registry_router, 2000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    cleanup_tls_test_files (files);
+}
+
 static void test_registry_peer_transport_restriction_and_tcp_sync ()
 {
     void *ctx = get_test_context ();
@@ -667,6 +769,68 @@ static void test_registry_peer_transport_restriction_and_tcp_sync ()
 
     TEST_ASSERT_TRUE (
       wait_discovery_receiver_count (discovery_a, "svc-peer-sync", 1, 10000));
+
+    destroy_gateway_server (&server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry_a));
+}
+
+static void test_registry_peer_transport_mixed_ws_sync ()
+{
+    if (!zlink_has ("ws")) {
+        TEST_IGNORE_MESSAGE ("WS transport unavailable");
+    }
+
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry_a = zlink_registry_new (ctx);
+    void *registry_b = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry_a);
+    TEST_ASSERT_NOT_NULL (registry_b);
+
+    char registry_a_pub[MAX_SOCKET_STRING];
+    char registry_a_router[MAX_SOCKET_STRING];
+    char registry_b_pub[MAX_SOCKET_STRING];
+    char registry_b_router[MAX_SOCKET_STRING];
+    make_registry_endpoint_transport (registry_a_pub, sizeof (registry_a_pub),
+                                      "tcp", 22663);
+    make_registry_endpoint_transport (registry_a_router,
+                                      sizeof (registry_a_router), "tcp", 22664);
+    make_registry_endpoint_transport (registry_b_pub, sizeof (registry_b_pub),
+                                      "ws", 22665);
+    make_registry_endpoint_transport (registry_b_router,
+                                      sizeof (registry_b_router), "ws", 22666);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_endpoints (
+      registry_a, registry_a_pub, registry_a_router));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_endpoints (
+      registry_b, registry_b_pub, registry_b_router));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry_a, 50));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry_b, 50));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_add_peer (registry_a, registry_b_pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_start (registry_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_start (registry_b));
+
+    void *discovery_a = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery_a);
+    TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
+      discovery_a, registry_a_router, 2000));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_subscribe (discovery_a, "svc-peer-mixed-ws"));
+
+    gateway_server_t server;
+    char endpoint[MAX_SOCKET_STRING];
+    snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
+              test_port (22667));
+    init_gateway_server (&server, ctx, registry_b_router, "svc-peer-mixed-ws",
+                         "gw-peer-mixed-ws", endpoint,
+                         &discard_gateway_message);
+
+    TEST_ASSERT_TRUE (wait_discovery_receiver_count (
+      discovery_a, "svc-peer-mixed-ws", 1, 10000));
 
     destroy_gateway_server (&server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery_a));
@@ -766,7 +930,10 @@ int main (int, char **)
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_topology_snapshot_and_remote_query);
     RUN_SERVICE_INTROSPECTION_TEST (test_monitor_closed_event_on_service_destroy);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_restriction);
+    RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_allowed_ws);
+    RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_allowed_tls);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_peer_transport_restriction_and_tcp_sync);
+    RUN_SERVICE_INTROSPECTION_TEST (test_registry_peer_transport_mixed_ws_sync);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_topology_reports_discovery_and_gateway);
 #undef RUN_SERVICE_INTROSPECTION_TEST
     return UNITY_END ();

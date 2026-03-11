@@ -96,6 +96,12 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     //  Create and destroy a socket.
     zlink::socket_base_t *create_socket (int type_);
     void destroy_socket (zlink::socket_base_t *socket_);
+    int wait_for_socket_removal (const zlink::socket_base_t *socket_,
+                                 int timeout_ms_);
+    int close_socket_and_wait (zlink::socket_base_t *&socket_,
+                               int timeout_ms_);
+    size_t socket_count () const;
+    int wait_for_socket_count_at_most (size_t max_count_, int timeout_ms_);
 
     //  Send command to the destination thread.
     void send_command (uint32_t tid_, const command_t &command_);
@@ -139,6 +145,7 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
 
   private:
     bool start ();
+    void debug_dump_sockets_locked (const char *phase_) const;
 
     struct pending_connection_t
     {

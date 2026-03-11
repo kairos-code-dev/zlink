@@ -28,7 +28,7 @@ The DEALER socket is an asynchronous request socket. It sends to multiple peers 
 ### Creation and Connection
 
 ```c
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
 
 /* Set routing_id (optional, used for identification by ROUTER) */
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "client-1", 8);
@@ -106,11 +106,11 @@ The most basic pattern. DEALER sends requests, ROUTER replies.
 
 ```c
 /* Server: ROUTER */
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(router, "tcp://*:5558");
 
 /* Client: DEALER */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
@@ -137,18 +137,18 @@ zlink_recv(dealer, data, sizeof(data), 0);
 Multiple DEALERs connect to a single ROUTER. ROUTER distinguishes each DEALER by routing_id.
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
 zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
-void *dealer1 = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer1 = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(dealer1, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer1, endpoint);
 
-void *dealer2 = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer2 = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(dealer2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
@@ -177,11 +177,11 @@ Build a multi-threaded server using ROUTER (frontend) + DEALER (backend).
 
 ```c
 /* Frontend: clients connect here */
-void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
+void *frontend = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(frontend, "tcp://*:5558");
 
 /* Backend: worker threads connect here */
-void *backend = zlink_socket(ctx, ZLINK_DEALER);
+void *backend = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_bind(backend, "inproc://backend");
 
 /* Start worker threads then run proxy */
@@ -191,7 +191,7 @@ zlink_proxy(frontend, backend, NULL);
 ```c
 /* Worker thread */
 void worker_thread(void *arg) {
-    void *worker = zlink_socket(ctx, ZLINK_DEALER);
+    void *worker = zlink_socket(ctx, ZLINK_DEALER, NULL);
     zlink_connect(worker, "inproc://backend");
 
     while (1) {
@@ -214,10 +214,10 @@ void worker_thread(void *arg) {
 Both sides use DEALER for fully asynchronous P2P communication.
 
 ```c
-void *a = zlink_socket(ctx, ZLINK_DEALER);
+void *a = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_bind(a, "tcp://*:5558");
 
-void *b = zlink_socket(ctx, ZLINK_DEALER);
+void *b = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_connect(b, "tcp://127.0.0.1:5558");
 
 /* Bidirectional free send */

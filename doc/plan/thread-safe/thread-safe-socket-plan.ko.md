@@ -1,5 +1,12 @@
 # Thread-Safe Socket / Service 설계 계획
 
+> 상태 메모
+> 이 문서는 thread-safe 설계 초안이며, 본문에 남아 있는 `set_handler()`,
+> `zlink_monitor_set_handler()`, `zlink_service_monitor_set_handler()` 등
+> 생성 후 handler 교체 서술은 현재 canonical public API가 아니다. 최신
+> 기준은 `direct-callback-recv-interface-review.ko.md`와
+> `core/include/zlink.h`를 따른다.
+
 ## 1. 목적
 
 이 문서는 현재 진행 중인

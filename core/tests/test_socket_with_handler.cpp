@@ -346,53 +346,6 @@ void test_router_socket_with_handler_strips_routing_frame ()
     g_probe = NULL;
 }
 
-void test_socket_set_msg_handler_replaces_dispatch ()
-{
-    void *ctx = zlink_ctx_new ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    raw_handler_probe_t primary_probe;
-    raw_handler_probe_t replacement_probe;
-    g_probe = &primary_probe;
-    g_replacement_probe = &replacement_probe;
-
-    const zlink_socket_handler_t msg_handler =
-      make_msg_handler (&capture_raw_message);
-    const zlink_socket_handler_t replacement_handler =
-      make_msg_handler (&capture_replacement_raw_message);
-    const zlink_socket_handler_t discard_handler =
-      make_msg_handler (&discard_raw_message);
-
-    void *server = zlink_socket (ctx, ZLINK_PAIR, &msg_handler);
-    TEST_ASSERT_NOT_NULL (server);
-
-    void *client = zlink_socket (ctx, ZLINK_PAIR, &discard_handler);
-    TEST_ASSERT_NOT_NULL (client);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, ENDPOINT_3));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, ENDPOINT_3));
-    msleep (SETTLE_TIME);
-
-    s_send_seq (client, "first", SEQ_END);
-    TEST_ASSERT_TRUE (wait_for_calls (&primary_probe.calls, 1, 2000));
-    TEST_ASSERT_EQUAL_STRING ("first", primary_probe.parts[0]);
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_socket_set_handler (server, &replacement_handler));
-    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_set_handler (server, NULL));
-    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-
-    s_send_seq (client, "second", SEQ_END);
-    TEST_ASSERT_TRUE (wait_for_calls (&replacement_probe.calls, 1, 2000));
-    TEST_ASSERT_EQUAL_STRING ("second", replacement_probe.parts[0]);
-
-    close_zero_linger (client);
-    close_zero_linger (server);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
-    g_probe = NULL;
-    g_replacement_probe = NULL;
-}
-
 void test_sub_socket_with_handler_applies_filter_before_dispatch ()
 {
     void *ctx = zlink_ctx_new ();
@@ -481,7 +434,6 @@ int main ()
     RUN_TEST (test_socket_handler_family_validation_on_create);
     RUN_TEST (test_pair_socket_with_handler_dispatches_multipart);
     RUN_TEST (test_router_socket_with_handler_strips_routing_frame);
-    RUN_TEST (test_socket_set_msg_handler_replaces_dispatch);
     RUN_TEST (test_sub_socket_with_handler_applies_filter_before_dispatch);
     RUN_TEST (test_xpub_socket_with_handler_receives_subscription_events);
     return UNITY_END ();

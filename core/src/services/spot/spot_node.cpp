@@ -5,23 +5,21 @@
 #include "services/spot/spot_data_plane.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_pub.hpp"
+#include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
 
 #include "services/control/service_control_runtime.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/gateway/routing_id_utils.hpp"
-#include "core/recv_internal.hpp"
 #include "sockets/socket_base.hpp"
-#include "core/socket_poller.hpp"
 #include "utils/clock.hpp"
 #include "utils/err.hpp"
 #include "utils/random.hpp"
 
 #include <algorithm>
 #include <stdio.h>
-#include <stdarg.h>
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <unistd.h>
 #include <vector>
@@ -32,23 +30,35 @@ static const uint32_t spot_node_tag_value = 0x1e6700d9;
 static const size_t spot_sub_queue_hwm_default = 1000;
 static const int ctrl_timeout_ms = 2000;
 
-static void spot_debugf (const char *fmt_, ...)
+static void spot_node_debugf (const char *fmt_, ...)
 {
-    if (!getenv ("ZLINK_SPOT_DEBUG"))
+    if (!std::getenv ("ZLINK_SPOT_NODE_DEBUG"))
         return;
-
-    va_list ap;
-    va_start (ap, fmt_);
-    fprintf (stderr, "[spot] ");
-    vfprintf (stderr, fmt_, ap);
-    fprintf (stderr, "\n");
-    va_end (ap);
+    va_list args;
+    va_start (args, fmt_);
+    std::fprintf (stderr, "[spot-node] ");
+    std::vfprintf (stderr, fmt_, args);
+    std::fprintf (stderr, "\n");
+    va_end (args);
 }
 
-static bool wait_socket_event (void *socket_, short events_, long timeout_ms_)
+static void spot_shutdown_logf (bool always_, const char *fmt_, ...)
 {
-    return zlink::wait_socket_events_internal (socket_, events_, timeout_ms_)
-           > 0;
+    if (!always_ && !std::getenv ("ZLINK_SPOT_SHUTDOWN_LOG"))
+        return;
+    va_list args;
+    va_start (args, fmt_);
+    std::fprintf (stderr, "[spot-shutdown] ");
+    std::vfprintf (stderr, fmt_, args);
+    std::fprintf (stderr, "\n");
+    va_end (args);
+}
+
+static void preserve_first_error (int rc_, int *first_error_)
+{
+    if (rc_ == 0 || !first_error_ || *first_error_ != 0)
+        return;
+    *first_error_ = errno != 0 ? errno : EIO;
 }
 
 static int send_ascii_frame (socket_base_t *socket_,
@@ -63,20 +73,6 @@ static int send_ascii_frame (socket_base_t *socket_,
     const int rc = socket_->send (&msg, flags_);
     msg.close ();
     return rc;
-}
-
-static int send_errno_reply (socket_base_t *socket_, int error_)
-{
-    char buf[32];
-    snprintf (buf, sizeof (buf), "%d", error_);
-    if (send_ascii_frame (socket_, "error", ZLINK_SNDMORE) != 0)
-        return -1;
-    return send_ascii_frame (socket_, buf, 0);
-}
-
-static int send_ok_reply (socket_base_t *socket_)
-{
-    return send_ascii_frame (socket_, "ok", 0);
 }
 
 static int recv_ascii_command (socket_base_t *socket_,
@@ -106,23 +102,356 @@ static int recv_ascii_command (socket_base_t *socket_,
 static void close_socket_ptr (socket_base_t **socket_p_)
 {
     if (socket_p_ && *socket_p_) {
-        (*socket_p_)->close ();
+        socket_base_t *socket = *socket_p_;
+        socket->stop ();
+        socket->close ();
         *socket_p_ = NULL;
     }
+}
+
+spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
+    owner (owner_),
+    data_ctrl_front (NULL),
+    data_ctrl_back (NULL),
+    mesh_pub (NULL),
+    mesh_xsub (NULL),
+    local_pub_ingress_sub (NULL),
+    local_fanout_xpub (NULL),
+    stop (0),
+    task_id (0),
+    node_id (generate_random ()),
+    faulted (false),
+    fault_errno (0),
+    abortive_shutdown (false),
+    next_attachment_id (0)
+{
+    if (node_id == 0)
+        node_id = 1;
+
+    char buf[128];
+    snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.pub-in", node_id);
+    pub_ingress_endpoint = buf;
+    snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.sub-out", node_id);
+    sub_fanout_endpoint = buf;
+    snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.ctrl", node_id);
+    data_ctrl_endpoint = buf;
+}
+
+int spot_runtime_t::create_attachment (int kind_,
+                                       const char *endpoint_,
+                                       uint64_t *out_id_)
+{
+    if (!owner || !owner->_ctx || !endpoint_ || !out_id_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (kind_ != spot_attachment_pub && kind_ != spot_attachment_sub) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const int socket_type = kind_ == spot_attachment_pub ? ZLINK_PUB : ZLINK_SUB;
+    socket_base_t *socket = owner->_ctx->create_socket (socket_type);
+    if (!socket)
+        return -1;
+
+    owner->track_owned_socket (socket);
+    if (socket->connect (endpoint_) != 0) {
+        (void) owner->_lifecycle.close_socket_and_wait (socket, 1000);
+        return -1;
+    }
+
+    spot_attachment_t attachment;
+    {
+        scoped_lock_t lock (attachment_sync);
+        attachment.id = ++next_attachment_id;
+        if (attachment.id == 0)
+            attachment.id = ++next_attachment_id;
+        attachment.kind = kind_;
+        attachment.socket = socket;
+        attachments[attachment.id] = attachment;
+    }
+    *out_id_ = attachment.id;
+    return 0;
+}
+
+socket_base_t *spot_runtime_t::attachment_socket (uint64_t id_) const
+{
+    if (id_ == 0)
+        return NULL;
+    scoped_lock_t lock (const_cast<mutex_t &> (attachment_sync));
+    std::map<uint64_t, spot_attachment_t>::const_iterator it =
+      attachments.find (id_);
+    return it != attachments.end () ? it->second.socket : NULL;
+}
+
+int spot_runtime_t::destroy_attachment (uint64_t id_)
+{
+    if (id_ == 0)
+        return 0;
+
+    socket_base_t *socket = NULL;
+    {
+        scoped_lock_t lock (attachment_sync);
+        std::map<uint64_t, spot_attachment_t>::iterator it = attachments.find (id_);
+        if (it == attachments.end ())
+            return 0;
+        socket = it->second.socket;
+        attachments.erase (it);
+    }
+
+    if (!socket)
+        return 0;
+    if (owner && owner->_ctx)
+        return owner->_lifecycle.close_socket (socket, 10000);
+
+    socket->stop ();
+    socket->close ();
+    return 0;
+}
+
+int spot_runtime_t::start ()
+{
+    if (!owner || !owner->_ctx) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    data_ctrl_front = owner->_ctx->create_socket (ZLINK_PAIR);
+    if (!data_ctrl_front || data_ctrl_front->bind (data_ctrl_endpoint.c_str ()) != 0) {
+        close_socket_ptr (&data_ctrl_front);
+        return -1;
+    }
+    owner->track_owned_socket (data_ctrl_front);
+
+    const int linger = 0;
+    const int timeout = ctrl_timeout_ms;
+    data_ctrl_front->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
+    data_ctrl_front->setsockopt (ZLINK_SNDTIMEO, &timeout, sizeof (timeout));
+    data_ctrl_front->setsockopt (ZLINK_RCVTIMEO, &timeout, sizeof (timeout));
+
+    data_plane_thread.start (spot_data_plane_t::thread_entry, owner, "spot-data");
+
+    int worker_errno = 0;
+    if (!spot_node_t::recv_ctrl_reply (data_ctrl_front, &worker_errno)) {
+        errno = worker_errno != 0 ? worker_errno : ETIMEDOUT;
+        stop.set (1);
+        stop_sockets ();
+        if (data_plane_thread.get_started ())
+            data_plane_thread.stop ();
+        if (owner)
+            owner->untrack_owned_socket (data_ctrl_front);
+        close_socket_ptr (&data_ctrl_front);
+        return -1;
+    }
+    return 0;
+}
+
+int spot_runtime_t::ensure_healthy () const
+{
+    if (stop.get () != 0 || faulted) {
+        errno = EFSM;
+        return -1;
+    }
+    return 0;
+}
+
+void spot_runtime_t::stop_sockets ()
+{
+    socket_base_t *ctrl_front = NULL;
+    socket_base_t *ctrl_back = NULL;
+    socket_base_t *mesh_pub_local = NULL;
+    socket_base_t *mesh_xsub_local = NULL;
+    socket_base_t *ingress = NULL;
+    socket_base_t *fanout = NULL;
+
+    {
+        scoped_lock_t lock (owner->_sync);
+        ctrl_front = data_ctrl_front;
+        ctrl_back = data_ctrl_back;
+        mesh_pub_local = mesh_pub;
+        mesh_xsub_local = mesh_xsub;
+        ingress = local_pub_ingress_sub;
+        fanout = local_fanout_xpub;
+    }
+
+    if (ctrl_front)
+        ctrl_front->stop ();
+    if (ctrl_back)
+        ctrl_back->stop ();
+    if (mesh_pub_local)
+        mesh_pub_local->stop ();
+    if (mesh_xsub_local)
+        mesh_xsub_local->stop ();
+    if (ingress)
+        ingress->stop ();
+    if (fanout)
+        fanout->stop ();
+}
+
+int spot_runtime_t::close_control_sockets ()
+{
+    int first_error = 0;
+    socket_base_t *ctrl_front = NULL;
+    {
+        scoped_lock_t lock (owner->_sync);
+        ctrl_front = data_ctrl_front;
+        data_ctrl_back = NULL;
+        mesh_pub = NULL;
+        mesh_xsub = NULL;
+        local_pub_ingress_sub = NULL;
+        local_fanout_xpub = NULL;
+    }
+    if (ctrl_front) {
+        if (owner && owner->_ctx)
+            preserve_first_error (owner->_lifecycle.close_socket (data_ctrl_front, 2000),
+                                  &first_error);
+        else {
+            ctrl_front->stop ();
+            ctrl_front->close ();
+            data_ctrl_front = NULL;
+        }
+    }
+    if (first_error != 0) {
+        errno = first_error;
+        return -1;
+    }
+    return 0;
+}
+
+int spot_runtime_t::send_command (const char *verb_, const char *arg_) const
+{
+    if (!data_ctrl_front) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    scoped_lock_t lock (const_cast<mutex_t &> (ctrl_sync));
+    if (send_ascii_frame (data_ctrl_front, verb_, arg_ ? ZLINK_SNDMORE : 0) != 0)
+        return -1;
+    if (arg_ && send_ascii_frame (data_ctrl_front, arg_, 0) != 0)
+        return -1;
+
+    int reply_errno = 0;
+    if (!spot_node_t::recv_ctrl_reply (data_ctrl_front, &reply_errno)) {
+        errno = reply_errno != 0 ? reply_errno : ETIMEDOUT;
+        return -1;
+    }
+    return 0;
+}
+
+void spot_runtime_t::mark_fault (int err_)
+{
+    faulted = true;
+    fault_errno = err_ != 0 ? err_ : EIO;
+}
+
+int spot_runtime_t::stop_and_join ()
+{
+    int first_error = 0;
+
+    stop.set (1);
+    stop_sockets ();
+    if (data_plane_thread.get_started ())
+        data_plane_thread.stop ();
+    preserve_first_error (close_control_sockets (), &first_error);
+    if (first_error != 0) {
+        errno = first_error;
+        return -1;
+    }
+    return 0;
+}
+
+size_t spot_runtime_t::live_socket_slot_count () const
+{
+    size_t count = 0;
+    scoped_lock_t lock (const_cast<mutex_t &> (owner->_sync));
+    count += data_ctrl_front != NULL ? 1 : 0;
+    count += data_ctrl_back != NULL ? 1 : 0;
+    count += mesh_pub != NULL ? 1 : 0;
+    count += mesh_xsub != NULL ? 1 : 0;
+    count += local_pub_ingress_sub != NULL ? 1 : 0;
+    count += local_fanout_xpub != NULL ? 1 : 0;
+    return count;
+}
+
+size_t spot_runtime_t::attachment_count () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (attachment_sync));
+    return attachments.size ();
+}
+
+int spot_runtime_t::abortive_stop ()
+{
+    abortive_shutdown = true;
+    stop.set (1);
+
+    socket_base_t *ctrl_front = NULL;
+    socket_base_t *ctrl_back = NULL;
+    socket_base_t *mesh_pub_local = NULL;
+    socket_base_t *mesh_xsub_local = NULL;
+    socket_base_t *ingress = NULL;
+    socket_base_t *fanout = NULL;
+    {
+        scoped_lock_t lock (owner->_sync);
+        ctrl_front = data_ctrl_front;
+        ctrl_back = data_ctrl_back;
+        mesh_pub_local = mesh_pub;
+        mesh_xsub_local = mesh_xsub;
+        ingress = local_pub_ingress_sub;
+        fanout = local_fanout_xpub;
+        data_ctrl_front = NULL;
+        data_ctrl_back = NULL;
+        mesh_pub = NULL;
+        mesh_xsub = NULL;
+        local_pub_ingress_sub = NULL;
+        local_fanout_xpub = NULL;
+    }
+
+    std::vector<socket_base_t *> attachment_sockets;
+    {
+        scoped_lock_t lock (attachment_sync);
+        for (std::map<uint64_t, spot_attachment_t>::iterator it =
+               attachments.begin ();
+             it != attachments.end (); ++it) {
+            if (it->second.socket)
+                attachment_sockets.push_back (it->second.socket);
+        }
+        attachments.clear ();
+    }
+
+    if (owner && owner->_ctx) {
+        (void) owner->_lifecycle.close_socket (ctrl_front, 1000);
+        (void) owner->_lifecycle.close_socket (ctrl_back, 1000);
+        (void) owner->_lifecycle.close_socket (mesh_pub_local, 1000);
+        (void) owner->_lifecycle.close_socket (mesh_xsub_local, 1000);
+        (void) owner->_lifecycle.close_socket (ingress, 1000);
+        (void) owner->_lifecycle.close_socket (fanout, 1000);
+        for (size_t i = 0; i < attachment_sockets.size (); ++i) {
+            socket_base_t *socket = attachment_sockets[i];
+            (void) owner->_lifecycle.close_socket (socket, 1000);
+        }
+    } else {
+        close_socket_ptr (&ctrl_front);
+        close_socket_ptr (&ctrl_back);
+        close_socket_ptr (&mesh_pub_local);
+        close_socket_ptr (&mesh_xsub_local);
+        close_socket_ptr (&ingress);
+        close_socket_ptr (&fanout);
+        for (size_t i = 0; i < attachment_sockets.size (); ++i) {
+            socket_base_t *socket = attachment_sockets[i];
+            close_socket_ptr (&socket);
+        }
+    }
+
+    return 0;
 }
 
 spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _ctx (ctx_),
     _tag (spot_node_tag_value),
-    _data_ctrl_front (NULL),
-    _data_ctrl_back (NULL),
-    _mesh_pub (NULL),
-    _mesh_xsub (NULL),
-    _local_pub_ingress_sub (NULL),
-    _local_fanout_xpub (NULL),
-    _stop (0),
-    _task_id (0),
-    _node_id (generate_random ()),
+    _lifecycle (ctx_),
+    _runtime (NULL),
     _discovery (NULL),
     _discovery_seq (0),
     _registered (false),
@@ -131,8 +460,6 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _mesh_client_tls_locked (false),
     _registration_tls_locked (false),
     _send_ready_handler (NULL),
-    _faulted (false),
-    _fault_errno (0),
     _default_pub (NULL),
     _default_sub (NULL)
 {
@@ -142,29 +469,12 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
         return;
     }
 
-    if (_node_id == 0)
-        _node_id = 1;
-
-    char buf[128];
-    snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.pub-in", _node_id);
-    _pub_ingress_endpoint = buf;
-    snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.sub-out", _node_id);
-    _sub_fanout_endpoint = buf;
-    snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.ctrl", _node_id);
-    _data_ctrl_endpoint = buf;
-
-    _data_ctrl_front = _ctx->create_socket (ZLINK_PAIR);
-    if (!_data_ctrl_front || _data_ctrl_front->bind (_data_ctrl_endpoint.c_str ())
-          != 0) {
-        close_socket_ptr (&_data_ctrl_front);
+    _runtime = new (std::nothrow) spot_runtime_t (this);
+    if (!_runtime) {
+        errno = ENOMEM;
         _tag = 0xdeadbeef;
         return;
     }
-    const int linger = 0;
-    const int timeout = ctrl_timeout_ms;
-    _data_ctrl_front->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
-    _data_ctrl_front->setsockopt (ZLINK_SNDTIMEO, &timeout, sizeof (timeout));
-    _data_ctrl_front->setsockopt (ZLINK_RCVTIMEO, &timeout, sizeof (timeout));
 
     if (start_data_plane () != 0) {
         _tag = 0xdeadbeef;
@@ -176,14 +486,16 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
         _tag = 0xdeadbeef;
         return;
     }
-    _task_id = runtime->add_periodic_task (control_task, this, 10, true);
-    if (_task_id == 0)
+    _runtime->task_id = runtime->add_periodic_task (control_task, this, 10, true);
+    if (_runtime->task_id == 0)
         _tag = 0xdeadbeef;
 }
 
 spot_node_t::~spot_node_t ()
 {
     _tag = 0xdeadbeef;
+    delete _runtime;
+    _runtime = NULL;
 }
 
 bool spot_node_t::check_tag () const
@@ -271,24 +583,31 @@ bool spot_node_t::recv_ctrl_reply (socket_base_t *socket_, int *out_errno_)
 
 int spot_node_t::start_data_plane ()
 {
-    _data_plane_thread.start (spot_data_plane_t::thread_entry, this,
-                              "spot-data");
-    int worker_errno = 0;
-    if (!recv_ctrl_reply (_data_ctrl_front, &worker_errno)) {
-        errno = worker_errno != 0 ? worker_errno : ETIMEDOUT;
+    if (!_runtime) {
+        errno = EFAULT;
         return -1;
     }
-    return 0;
+    return _runtime->start ();
+}
+
+const std::string &spot_node_t::pub_ingress_endpoint () const
+{
+    return _runtime->pub_ingress_endpoint;
+}
+
+const std::string &spot_node_t::sub_fanout_endpoint () const
+{
+    return _runtime->sub_fanout_endpoint;
 }
 
 int spot_node_t::ensure_healthy () const
 {
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    if (_stop.get () != 0 || _faulted) {
-        errno = EFSM;
+    if (!_runtime) {
+        errno = EFAULT;
         return -1;
     }
-    return 0;
+    return _runtime->ensure_healthy ();
 }
 
 void spot_node_t::debug_mark_fault (int err_)
@@ -297,16 +616,19 @@ void spot_node_t::debug_mark_fault (int err_)
     std::vector<spot_sub_t *> subs;
     {
         scoped_lock_t lock (_sync);
-        _faulted = true;
-        _fault_errno = err_ != 0 ? err_ : EIO;
+        if (!_runtime)
+            return;
+        _runtime->mark_fault (err_);
         pubs.assign (_pubs.begin (), _pubs.end ());
         subs.assign (_subs.begin (), _subs.end ());
     }
 
     for (size_t i = 0; i < pubs.size (); ++i)
-        submit_pub_summary (pubs[i], ZLINK_TOPOLOGY_STATE_ERROR, _fault_errno);
+        submit_pub_summary (pubs[i], ZLINK_TOPOLOGY_STATE_ERROR,
+                            _runtime->fault_errno);
     for (size_t i = 0; i < subs.size (); ++i)
-        submit_sub_summary (subs[i], ZLINK_TOPOLOGY_STATE_LOST, _fault_errno);
+        submit_sub_summary (subs[i], ZLINK_TOPOLOGY_STATE_LOST,
+                            _runtime->fault_errno);
 }
 
 void spot_node_t::control_task (void *arg_)
@@ -316,7 +638,7 @@ void spot_node_t::control_task (void *arg_)
 
 void spot_node_t::control_tick ()
 {
-    if (_stop.get () != 0)
+    if (!_runtime || _runtime->stop.get () != 0)
         return;
     if (ensure_healthy () != 0)
         return;
@@ -411,23 +733,11 @@ void spot_node_t::refresh_discovery_peers ()
 int spot_node_t::send_data_plane_command (const char *verb_,
                                           const char *arg_) const
 {
-    if (!_data_ctrl_front) {
+    if (!_runtime) {
         errno = EFAULT;
         return -1;
     }
-
-    scoped_lock_t lock (const_cast<mutex_t &> (_ctrl_sync));
-    if (send_ascii_frame (_data_ctrl_front, verb_, arg_ ? ZLINK_SNDMORE : 0) != 0)
-        return -1;
-    if (arg_ && send_ascii_frame (_data_ctrl_front, arg_, 0) != 0)
-        return -1;
-
-    int reply_errno = 0;
-    if (!recv_ctrl_reply (_data_ctrl_front, &reply_errno)) {
-        errno = reply_errno != 0 ? reply_errno : ETIMEDOUT;
-        return -1;
-    }
-    return 0;
+    return _runtime->send_command (verb_, arg_);
 }
 
 int spot_node_t::wait_facade_peer (socket_base_t *socket_) const
@@ -442,6 +752,21 @@ int spot_node_t::wait_facade_peer (socket_base_t *socket_) const
     }
     errno = ETIMEDOUT;
     return -1;
+}
+
+void spot_node_t::track_owned_socket (socket_base_t *socket_)
+{
+    _lifecycle.register_socket (socket_);
+}
+
+void spot_node_t::untrack_owned_socket (const socket_base_t *socket_)
+{
+    _lifecycle.unregister_socket (socket_);
+}
+
+int spot_node_t::wait_owned_socket_removals (int timeout_ms_)
+{
+    return _lifecycle.wait_drained (timeout_ms_);
 }
 
 std::string spot_node_t::summary_service_name () const
@@ -855,8 +1180,8 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
     refresh_existing_summaries ();
 
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
-    if (runtime && _task_id != 0)
-        runtime->wakeup_task (_task_id);
+    if (runtime && _runtime && _runtime->task_id != 0)
+        runtime->wakeup_task (_runtime->task_id);
     return 0;
 }
 
@@ -867,8 +1192,8 @@ void spot_node_t::on_service_update (const std::string &service_name_)
         return;
     _pending_service_updates.insert (service_name_);
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
-    if (runtime && _task_id != 0)
-        runtime->wakeup_task (_task_id);
+    if (runtime && _runtime && _runtime->task_id != 0)
+        runtime->wakeup_task (_runtime->task_id);
 }
 
 void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
@@ -1175,24 +1500,23 @@ spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
 {
     if (ensure_healthy () != 0)
         return NULL;
-
-    socket_base_t *socket = _ctx->create_socket (ZLINK_PUB);
-    if (!socket)
+    uint64_t attachment_id = 0;
+    if (!_runtime
+        || _runtime->create_attachment (spot_attachment_pub,
+                                        pub_ingress_endpoint ().c_str (),
+                                        &attachment_id)
+             != 0)
         return NULL;
-    if (socket->connect (_pub_ingress_endpoint.c_str ()) != 0) {
-        socket->close ();
-        return NULL;
-    }
 
     spot_pub_t *pub =
-      new (std::nothrow) spot_pub_t (this, socket, node_owned_default_);
+      new (std::nothrow) spot_pub_t (this, attachment_id, node_owned_default_);
     if (!pub) {
-        socket->close ();
+        (void) _runtime->destroy_attachment (attachment_id);
         errno = ENOMEM;
         return NULL;
     }
 
-    if (apply_pub_defaults (pub, defaults_) != 0 || wait_facade_peer (socket) != 0) {
+    if (apply_pub_defaults (pub, defaults_) != 0) {
         const int err = errno;
         pub->abort_create ();
         delete pub;
@@ -1231,24 +1555,23 @@ spot_sub_t *spot_node_t::create_spot_sub_with_defaults (
 {
     if (ensure_healthy () != 0)
         return NULL;
-
-    socket_base_t *socket = _ctx->create_socket (ZLINK_SUB);
-    if (!socket)
+    uint64_t attachment_id = 0;
+    if (!_runtime
+        || _runtime->create_attachment (spot_attachment_sub,
+                                        sub_fanout_endpoint ().c_str (),
+                                        &attachment_id)
+             != 0)
         return NULL;
-    if (socket->connect (_sub_fanout_endpoint.c_str ()) != 0) {
-        socket->close ();
-        return NULL;
-    }
 
     spot_sub_t *sub =
-      new (std::nothrow) spot_sub_t (this, socket, node_owned_default_);
+      new (std::nothrow) spot_sub_t (this, attachment_id, node_owned_default_);
     if (!sub) {
-        socket->close ();
+        (void) _runtime->destroy_attachment (attachment_id);
         errno = ENOMEM;
         return NULL;
     }
 
-    if (apply_sub_defaults (sub, defaults_) != 0 || wait_facade_peer (socket) != 0) {
+    if (apply_sub_defaults (sub, defaults_) != 0) {
         const int err = errno;
         sub->abort_create ();
         delete sub;
@@ -1343,10 +1666,11 @@ void spot_node_t::remove_spot_sub (spot_sub_t *sub_)
     _subs.erase (sub_);
 }
 
-void spot_node_t::destroy_handles ()
+int spot_node_t::destroy_handles ()
 {
     std::vector<spot_pub_t *> pubs;
     std::vector<spot_sub_t *> subs;
+    int first_error = 0;
     {
         scoped_lock_t lock (_sync);
         pubs.assign (_pubs.begin (), _pubs.end ());
@@ -1358,51 +1682,133 @@ void spot_node_t::destroy_handles ()
     }
 
     for (size_t i = 0; i < pubs.size (); ++i) {
-        pubs[i]->destroy_from_node ();
+        preserve_first_error (pubs[i]->destroy_from_node (), &first_error);
         delete pubs[i];
     }
     for (size_t i = 0; i < subs.size (); ++i) {
-        subs[i]->destroy_from_node ();
+        preserve_first_error (subs[i]->destroy_from_node (), &first_error);
         delete subs[i];
     }
+    if (first_error != 0) {
+        errno = first_error;
+        return -1;
+    }
+    return 0;
+}
+
+void spot_node_t::stop_data_plane_sockets ()
+{
+    if (_runtime)
+        _runtime->stop_sockets ();
 }
 
 void spot_node_t::close_control_sockets ()
 {
-    {
-        scoped_lock_t lock (_sync);
-        _data_ctrl_back = NULL;
-        _mesh_pub = NULL;
-        _mesh_xsub = NULL;
-        _local_pub_ingress_sub = NULL;
-        _local_fanout_xpub = NULL;
-    }
-    close_socket_ptr (&_data_ctrl_front);
+    if (_runtime)
+        _runtime->close_control_sockets ();
 }
 
 int spot_node_t::destroy ()
 {
+    discovery_t *discovery = NULL;
+    std::vector<std::string> active_peer_endpoints;
+    std::string bound_endpoint;
+    int first_error = 0;
+    int graceful_error = 0;
+    bool used_abortive = false;
+
+    spot_node_debugf ("destroy begin node=%p service=%s registered=%d",
+                      static_cast<void *> (this), _service_name.c_str (),
+                      _registered ? 1 : 0);
     if (_discovery && _registered)
         (void) unregister_registered ();
-    _stop.set (1);
+    spot_node_debugf ("destroy after unregister node=%p", static_cast<void *> (this));
+    {
+        scoped_lock_t lock (_sync);
+        active_peer_endpoints.assign (_active_peer_endpoints.begin (),
+                                      _active_peer_endpoints.end ());
+        bound_endpoint = _bound_endpoint;
+    }
+    for (size_t i = 0; i < active_peer_endpoints.size (); ++i)
+        (void) send_data_plane_command ("disconnect_peer_pub",
+                                        active_peer_endpoints[i].c_str ());
+    if (!bound_endpoint.empty ())
+        (void) send_data_plane_command ("unbind_pub", bound_endpoint.c_str ());
+    spot_node_debugf ("destroy after disconnect/unbind node=%p",
+                      static_cast<void *> (this));
+    if (_runtime)
+        _runtime->stop.set (1);
     submit_stopped_summaries ();
+    spot_node_debugf ("destroy after stopped summaries node=%p",
+                      static_cast<void *> (this));
 
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
-    if (runtime && _task_id != 0)
-        runtime->remove_task (_task_id);
-    _task_id = 0;
+    if (runtime && _runtime && _runtime->task_id != 0)
+        runtime->remove_task (_runtime->task_id);
+    if (_runtime)
+        _runtime->task_id = 0;
+    spot_node_debugf ("destroy after task remove node=%p", static_cast<void *> (this));
 
-    if (_discovery)
-        _discovery->remove_observer (this);
-    _discovery = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        discovery = _discovery;
+        _discovery = NULL;
+        _discovery_service.clear ();
+        _discovery_seq = 0;
+        _pending_service_updates.clear ();
+        _manual_peer_endpoints.clear ();
+        _active_peer_endpoints.clear ();
+        _discovery_peer_endpoints.clear ();
+        _registered = false;
+        _advertise_endpoint.clear ();
+        _registration_uplink_endpoint.clear ();
+    }
 
-    if (_data_ctrl_front)
-        send_data_plane_command ("terminate");
-    if (_data_plane_thread.get_started ())
-        _data_plane_thread.stop ();
+    if (discovery)
+        discovery->remove_observer (this);
+    spot_node_debugf ("destroy after remove observer node=%p",
+                      static_cast<void *> (this));
 
-    destroy_handles ();
-    close_control_sockets ();
+    preserve_first_error (destroy_handles (), &first_error);
+    spot_node_debugf ("destroy after destroy handles node=%p",
+                      static_cast<void *> (this));
+    if (_runtime)
+        preserve_first_error (_runtime->stop_and_join (), &first_error);
+    spot_node_debugf ("destroy after stop_and_join node=%p",
+                      static_cast<void *> (this));
+    preserve_first_error (wait_owned_socket_removals (10000), &first_error);
+    graceful_error = first_error;
+
+    if (_runtime
+        && (first_error != 0 || _runtime->live_socket_slot_count () != 0
+            || _runtime->attachment_count () != 0)) {
+        const int abort_reason = first_error != 0 ? first_error : ETIMEDOUT;
+        const size_t live_slots = _runtime->live_socket_slot_count ();
+        const size_t live_attachments = _runtime->attachment_count ();
+        used_abortive = true;
+        spot_shutdown_logf (true,
+                            "service=spot node=%p shutdown=abortive reason=%d live_slots=%zu attachments=%zu",
+                            static_cast<void *> (this), abort_reason,
+                            live_slots, live_attachments);
+        _runtime->abortive_stop ();
+        preserve_first_error (_lifecycle.force_wait_remaining (5000),
+                              &graceful_error);
+        preserve_first_error (wait_owned_socket_removals (5000),
+                              &graceful_error);
+        first_error = 0;
+    }
+
+    if (!used_abortive)
+        spot_shutdown_logf (false,
+                            "service=spot node=%p shutdown=graceful",
+                            static_cast<void *> (this));
+    spot_node_debugf ("destroy done node=%p", static_cast<void *> (this));
+    if (first_error != 0) {
+        errno = first_error;
+        return -1;
+    }
+    if (used_abortive && graceful_error != 0)
+        errno = graceful_error;
     return 0;
 }
 }

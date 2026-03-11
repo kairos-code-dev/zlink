@@ -34,7 +34,7 @@ zlink_ctx_term(ctx);  /* 모든 소켓이 닫힌 후 반환 */
 ### 2.1 소켓 생성 및 닫기
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_DEALER);
+void *socket = zlink_socket(ctx, ZLINK_DEALER, NULL);
 /* ... 사용 ... */
 zlink_close(socket);
 ```
@@ -173,11 +173,11 @@ int main(void) {
     void *ctx = zlink_ctx_new();
 
     /* ROUTER (서버) */
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
+    void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (클라이언트) */
-    void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+    void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */

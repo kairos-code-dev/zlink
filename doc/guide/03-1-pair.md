@@ -27,11 +27,11 @@ The PAIR socket forms an exclusive 1:1 bidirectional connection with exactly one
 void *ctx = zlink_ctx_new();
 
 /* Server side */
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_PAIR, NULL);
 zlink_bind(server, "tcp://*:5555");
 
 /* Client side */
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
 zlink_connect(client, "tcp://127.0.0.1:5555");
 ```
 
@@ -108,11 +108,11 @@ The most common PAIR use case. Zero-copy communication between threads via the i
 
 ```c
 /* Main thread */
-void *signal = zlink_socket(ctx, ZLINK_PAIR);
+void *signal = zlink_socket(ctx, ZLINK_PAIR, NULL);
 zlink_bind(signal, "inproc://signal");
 
 /* Worker thread */
-void *worker_signal = zlink_socket(ctx, ZLINK_PAIR);
+void *worker_signal = zlink_socket(ctx, ZLINK_PAIR, NULL);
 zlink_connect(worker_signal, "inproc://signal");
 
 /* Worker → Main: task completion signal */
@@ -131,7 +131,7 @@ zlink_recv(signal, buf, sizeof(buf), 0);
 
 ```c
 /* Server: wildcard port */
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_PAIR, NULL);
 zlink_bind(server, "tcp://127.0.0.1:*");
 
 /* Query the assigned endpoint */
@@ -140,7 +140,7 @@ size_t len = sizeof(endpoint);
 zlink_getsockopt(server, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
 /* Client: connect using the queried endpoint */
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
 zlink_connect(client, endpoint);
 ```
 
@@ -151,7 +151,7 @@ zlink_connect(client, endpoint);
 You can also connect using a hostname.
 
 ```c
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
 zlink_connect(client, "tcp://localhost:5555");
 ```
 
@@ -162,10 +162,10 @@ zlink_connect(client, "tcp://localhost:5555");
 Inter-process communication on the same machine (Linux/macOS).
 
 ```c
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_PAIR, NULL);
 zlink_bind(server, "ipc:///tmp/myapp.ipc");
 
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
 zlink_connect(client, "ipc:///tmp/myapp.ipc");
 ```
 

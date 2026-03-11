@@ -2361,6 +2361,11 @@ void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
     }
 }
 
+int zlink::socket_base_t::socket_id () const
+{
+    return options.socket_id;
+}
+
 bool zlink::socket_base_t::is_disconnected () const
 {
     return _disconnected;

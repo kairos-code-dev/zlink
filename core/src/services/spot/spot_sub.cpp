@@ -6,6 +6,7 @@
 #include "services/common/monitor_decode.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_runtime.hpp"
 
 #include "sockets/socket_base.hpp"
 #include "utils/err.hpp"
@@ -16,6 +17,24 @@
 namespace zlink
 {
 static const uint32_t spot_sub_tag_value = 0x1e6700da;
+
+namespace
+{
+static void preserve_first_error (int rc_, int *first_error_)
+{
+    if (rc_ == 0 || !first_error_ || *first_error_ != 0)
+        return;
+    *first_error_ = errno != 0 ? errno : EIO;
+}
+
+static void close_parts (zlink_msg_t *parts_, size_t part_count_)
+{
+    if (!parts_)
+        return;
+    for (size_t i = 0; i < part_count_; ++i)
+        zlink_msg_close (&parts_[i]);
+}
+}
 
 static void fill_terminal_monitor_event (zlink_service_event_t *event_,
                                          uint32_t event_type_,
@@ -63,10 +82,10 @@ static void fill_socket_monitor_event (zlink_service_event_t *event_,
 }
 
 spot_sub_t::spot_sub_t (spot_node_t *node_,
-                        socket_base_t *socket_,
+                        uint64_t attachment_id_,
                         bool node_owned_default_) :
     _node (node_),
-    _socket (socket_),
+    _attachment_id (attachment_id_),
     _tag (spot_sub_tag_value),
     _node_owned_default (node_owned_default_),
     _routing_id_locked (false),
@@ -96,6 +115,13 @@ bool spot_sub_t::check_tag () const
 bool spot_sub_t::is_node_owned_default () const
 {
     return _node_owned_default;
+}
+
+socket_base_t *spot_sub_t::socket () const
+{
+    if (!_node || !_node->_runtime)
+        return NULL;
+    return _node->_runtime->attachment_socket (_attachment_id);
 }
 
 int spot_sub_t::initialize_routing_id (zlink_routing_id_t *out_)
@@ -145,7 +171,8 @@ void spot_sub_t::lock_routing_id ()
 
 int spot_sub_t::subscribe (const char *topic_)
 {
-    if (!_node || !_socket) {
+    socket_base_t *socket = this->socket ();
+    if (!_node || !socket) {
         errno = EFAULT;
         return -1;
     }
@@ -160,7 +187,7 @@ int spot_sub_t::subscribe (const char *topic_)
     {
         scoped_lock_t lock (_sync);
         lock_routing_id ();
-        if (_socket->setsockopt (ZLINK_SUBSCRIBE, topic.data (), topic.size ())
+        if (socket->setsockopt (ZLINK_SUBSCRIBE, topic.data (), topic.size ())
             != 0)
             return -1;
         _topics.insert (topic);
@@ -172,7 +199,8 @@ int spot_sub_t::subscribe (const char *topic_)
 
 int spot_sub_t::subscribe_pattern (const char *pattern_)
 {
-    if (!_node || !_socket) {
+    socket_base_t *socket = this->socket ();
+    if (!_node || !socket) {
         errno = EFAULT;
         return -1;
     }
@@ -187,7 +215,7 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
     {
         scoped_lock_t lock (_sync);
         lock_routing_id ();
-        if (_socket->setsockopt (ZLINK_SUBSCRIBE, prefix.data (), prefix.size ())
+        if (socket->setsockopt (ZLINK_SUBSCRIBE, prefix.data (), prefix.size ())
             != 0)
             return -1;
         _patterns.insert (prefix);
@@ -199,7 +227,8 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
 
 int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
 {
-    if (!_node || !_socket) {
+    socket_base_t *socket = this->socket ();
+    if (!_node || !socket) {
         errno = EFAULT;
         return -1;
     }
@@ -219,7 +248,7 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
         scoped_lock_t lock (_sync);
         lock_routing_id ();
         const std::string &filter = is_pattern ? prefix : topic;
-        if (_socket->setsockopt (ZLINK_UNSUBSCRIBE, filter.data (), filter.size ())
+        if (socket->setsockopt (ZLINK_UNSUBSCRIBE, filter.data (), filter.size ())
             != 0)
             return -1;
         if (is_pattern)
@@ -241,7 +270,8 @@ int spot_sub_t::set_option (int option_,
                             const void *optval_,
                             size_t optvallen_)
 {
-    if (!_socket) {
+    socket_base_t *socket = this->socket ();
+    if (!socket) {
         errno = EFAULT;
         return -1;
     }
@@ -270,7 +300,7 @@ int spot_sub_t::set_option (int option_,
     }
 
     scoped_lock_t lock (_sync);
-    return _socket->setsockopt (socket_option, optval_, optvallen_);
+    return socket->setsockopt (socket_option, optval_, optvallen_);
 }
 
 int spot_sub_t::set_routing_id (const void *data_, size_t size_)
@@ -303,11 +333,12 @@ int spot_sub_t::routing_id (zlink_routing_id_t *out_) const
 
 int spot_sub_t::peers (zlink_peer_info_t *peers_, size_t *count_) const
 {
-    if (!_socket) {
+    socket_base_t *socket = this->socket ();
+    if (!socket) {
         errno = EFAULT;
         return -1;
     }
-    return zlink_socket_peers (static_cast<void *> (_socket), peers_, count_);
+    return zlink_socket_peers (static_cast<void *> (socket), peers_, count_);
 }
 
 void *spot_sub_t::monitor_open (int events_)
@@ -321,7 +352,7 @@ void *spot_sub_t::monitor_open (int events_)
 void *spot_sub_t::poller_socket ()
 {
     lock_routing_id ();
-    return static_cast<void *> (_socket);
+    return static_cast<void *> (socket ());
 }
 
 bool spot_sub_t::has_filters () const
@@ -333,7 +364,8 @@ bool spot_sub_t::has_filters () const
 int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_,
                                     void *userdata_)
 {
-    if (!_socket) {
+    socket_base_t *socket = this->socket ();
+    if (!socket) {
         errno = EFAULT;
         return -1;
     }
@@ -345,7 +377,6 @@ int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_,
         return -1;
     {
         scoped_lock_t lock (_sync);
-        lock_routing_id ();
         if (_handler_state == handler_active) {
             _direct_handler = handler_;
             _direct_handler_userdata = userdata_;
@@ -360,7 +391,7 @@ int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_,
         _handler_state = handler_active;
     }
 
-    if (_socket->sub_dispatch_start (&spot_sub_t::dispatch_from_io, this) == 0)
+    if (socket->sub_dispatch_start (&spot_sub_t::dispatch_from_io, this) == 0)
         return 0;
 
     {
@@ -384,15 +415,19 @@ void spot_sub_t::dispatch_from_io (const zlink_routing_id_t *source_rid_,
                                    void *userdata_)
 {
     spot_sub_t *self = static_cast<spot_sub_t *> (userdata_);
-    if (!self)
+    if (!self) {
+        close_parts (parts_, part_count_);
         return;
+    }
 
     spot_sub_direct_handler_fn direct_handler = NULL;
     void *direct_handler_userdata = NULL;
     {
         scoped_lock_t lock (self->_sync);
-        if (self->_handler_state != handler_active || !self->_direct_handler)
+        if (self->_handler_state != handler_active || !self->_direct_handler) {
+            close_parts (parts_, part_count_);
             return;
+        }
         direct_handler = self->_direct_handler;
         direct_handler_userdata = self->_direct_handler_userdata;
         self->_callback_inflight.add (1);
@@ -415,16 +450,17 @@ void spot_sub_t::monitor_thread_main (void *arg_)
 
 int spot_sub_t::ensure_monitor_bridge_started ()
 {
+    socket_base_t *socket = this->socket ();
     scoped_lock_t lock (_sync);
     if (_raw_monitor_socket)
         return 0;
-    if (!_socket) {
+    if (!socket) {
         errno = EFAULT;
         return -1;
     }
 
     void *monitor_socket = open_socket_monitor_bridge (
-      _socket, ZLINK_EVENT_CONNECTED | ZLINK_EVENT_ACCEPTED
+      socket, ZLINK_EVENT_CONNECTED | ZLINK_EVENT_ACCEPTED
                  | ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED
                  | ZLINK_EVENT_BIND_FAILED | ZLINK_EVENT_ACCEPT_FAILED
                  | ZLINK_EVENT_CLOSE_FAILED
@@ -441,9 +477,11 @@ int spot_sub_t::ensure_monitor_bridge_started ()
     return 0;
 }
 
-void spot_sub_t::stop_monitor_bridge ()
+int spot_sub_t::stop_monitor_bridge ()
 {
     void *raw_monitor_socket = NULL;
+    ctx_t *ctx = _node ? _node->ctx () : NULL;
+    int first_error = 0;
     {
         scoped_lock_t lock (_sync);
         _monitor_stop.set (1);
@@ -455,8 +493,24 @@ void spot_sub_t::stop_monitor_bridge ()
         _monitor_thread.stop ();
         _monitor_thread_started = false;
     }
-    if (raw_monitor_socket)
-        zlink_close (raw_monitor_socket);
+    if (raw_monitor_socket) {
+        socket_base_t *monitor_socket =
+          static_cast<socket_base_t *> (raw_monitor_socket);
+        if (_node && ctx)
+            preserve_first_error (_node->_lifecycle.close_socket (monitor_socket,
+                                                                  2000),
+                                  &first_error);
+        else {
+            monitor_socket->stop ();
+            monitor_socket->close ();
+            monitor_socket = NULL;
+        }
+    }
+    if (first_error != 0) {
+        errno = first_error;
+        return -1;
+    }
+    return 0;
 }
 
 void spot_sub_t::monitor_loop ()
@@ -539,10 +593,13 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         return -1;
     }
 
-    if (notify_node_ && _node)
-        _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
+    socket_base_t *socket = this->socket ();
+    int first_error = 0;
+
     if (notify_node_ && _node)
         _node->remove_spot_sub (this);
+    if (notify_node_ && _node)
+        _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
 
     bool has_handler = false;
     {
@@ -551,28 +608,57 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         if (has_handler)
             _handler_state = handler_clearing;
     }
-    if (has_handler && _socket && _socket->sub_dispatch_active ())
-        _socket->sub_dispatch_stop ();
+
+    if (socket) {
+        for (std::set<std::string>::const_iterator it = _topics.begin (),
+                                                   end = _topics.end ();
+             it != end; ++it)
+            (void) socket->setsockopt (ZLINK_UNSUBSCRIBE, it->c_str (),
+                                        it->size ());
+        for (std::set<std::string>::const_iterator it = _patterns.begin (),
+                                                   end = _patterns.end ();
+             it != end; ++it)
+            (void) socket->setsockopt (ZLINK_UNSUBSCRIBE, it->c_str (),
+                                        it->size ());
+    }
+    if (has_handler && socket && socket->sub_dispatch_active ())
+        socket->sub_dispatch_stop ();
     {
         scoped_lock_t lock (_sync);
+        while (_callback_inflight.get () > 0)
+            (void) _callback_cv.wait (&_sync, 1000);
+        _topics.clear ();
+        _patterns.clear ();
         _direct_handler = NULL;
         _direct_handler_userdata = NULL;
         _handler_state = handler_none;
         _callback_cv.broadcast ();
     }
-    stop_monitor_bridge ();
+    preserve_first_error (stop_monitor_bridge (), &first_error);
 
     zlink_service_event_t terminal;
     fill_terminal_monitor_event (&terminal, ZLINK_MONITOR_EVENT_CLOSED,
                                  _routing_id);
     _monitor.close_all (&terminal);
 
-    if (_socket) {
-        _socket->close ();
-        _socket = NULL;
+    if (socket) {
+        if (_node)
+            (void) socket->term_endpoint (_node->sub_fanout_endpoint ().c_str ());
+        if (_node && _node->_runtime)
+            preserve_first_error (
+              _node->_runtime->destroy_attachment (_attachment_id), &first_error);
+        else {
+            socket->stop ();
+            socket->close ();
+        }
     }
+    _attachment_id = 0;
     _node = NULL;
     _node_owned_default = false;
+    if (first_error != 0) {
+        errno = first_error;
+        return -1;
+    }
     return 0;
 }
 

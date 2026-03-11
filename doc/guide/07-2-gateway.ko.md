@@ -2,127 +2,115 @@
 
 # Gateway 서비스 (위치투명 요청/응답)
 
-> 현재 권장 방향: identity, option, readiness, topology는 service-level
-> API를 사용합니다.
->
-> - `zlink_gateway_set_option()` / `zlink_receiver_set_option()`
-> - `zlink_gateway_set_routing_id()` / `zlink_receiver_set_routing_id()`
-> - `zlink_gateway_monitor_open()` / `zlink_receiver_monitor_open()`
-> - `zlink_poller_add_gateway()` / `zlink_poller_add_receiver()` /
->   `zlink_poller_add_monitor()`
->
-> `zlink_receiver_register_result()`만 등록 디버그용 저수준 경로로
-> 남겨둡니다.
-
 ## 1. 개요
 
-Gateway는 Discovery 기반으로 서비스 Receiver에 위치투명하게 메시지를 전송하고, Receiver로부터 응답을 수신하는 클라이언트 컴포넌트이다. 로드밸런싱과 자동 연결/해제를 처리한다.
+Gateway는 Discovery 기반으로 서비스를 자동 발견하고, 로드밸런싱된 메시지
+전송과 직접 콜백 수신을 지원하는 통합 서비스 핸들이다. 하나의 Gateway 핸들이
+클라이언트(송신)와 서버(수신) 역할을 모두 수행할 수 있다.
 
-> **명칭에 대하여**: Gateway는 특정 서비스에 대한 접근점(entry point)이자 클라이언트 사이드 로드밸런서다. API Gateway(Kong, AWS API Gateway 등)처럼 인증·rate limiting·프로토콜 변환을 포함하는 개념이 아니라, 서비스 접근 + 로드밸런싱에 집중하는 경량 게이트웨이를 의미한다.
+> **명칭에 대하여**: Gateway는 특정 서비스에 대한 접근점(entry point)이자
+> 클라이언트 사이드 로드밸런서다. API Gateway(Kong, AWS API Gateway 등)처럼
+> 인증·rate limiting·프로토콜 변환을 포함하는 개념이 아니라, 서비스 접근 +
+> 로드밸런싱에 집중하는 경량 게이트웨이를 의미한다.
 
-**Gateway는 thread-safe하다.** 일반 zlink 소켓(PAIR, DEALER, ROUTER 등)은 단일 스레드에서만 사용해야 하지만, Gateway는 내부 mutex 보호를 통해 여러 스레드에서 안전하게 동시 사용할 수 있다.
+**Gateway는 thread-safe하다.** 일반 zlink 소켓(PAIR, DEALER, ROUTER 등)은
+단일 스레드에서만 사용해야 하지만, Gateway는 내부 mutex 보호를 통해 여러
+스레드에서 안전하게 동시 사용할 수 있다.
 
-## 2. Receiver 설정
+## 2. Gateway 생성
+
+Gateway는 생성 시점에 서비스 이름, 라우팅 ID, 수신 핸들러를 고정한다.
 
 ```c
-void *receiver = zlink_receiver_new(ctx, "payment-receiver-1");
-
-/* 비즈니스 소켓 bind */
-zlink_receiver_bind(receiver, "tcp://*:5555");
-
-/* Registry 연결 */
-zlink_receiver_connect_registry(receiver, "tcp://registry1:5551");
-
-/* bind된 service endpoint 조회 */
-char advertise_endpoint[256];
-size_t advertise_len = sizeof(advertise_endpoint);
-zlink_receiver_last_endpoint(receiver, advertise_endpoint, &advertise_len);
-
-/* 서비스 등록 */
-zlink_receiver_register(receiver, "payment-service", advertise_endpoint, 1);
-
-/* 등록 결과 확인 */
-int status;
-char resolved[256], error_msg[256];
-zlink_receiver_register_result(receiver, "payment-service",
-    &status, resolved, error_msg);
-if (status != 0) {
-    fprintf(stderr, "등록 실패: %s\n", error_msg);
-    return -1;
+/* 수신 핸들러 정의 */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* 수신 메시지 처리 */
+    printf("수신: %.*s\n",
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    /* parts는 핸들러 반환 후 자동 정리됨 */
 }
 
-/* 비즈니스 메시지 처리 */
-zlink_msg_t *parts = NULL;
-size_t part_count = 0;
-zlink_routing_id_t client_rid;
-zlink_receiver_recv(receiver, &parts, &part_count, 0, &client_rid);
-/* multipart 요청을 처리하고 service API로 응답 */
-
-zlink_receiver_destroy(&receiver);
+void *gateway = zlink_gateway_new(ctx, "payment-service",
+                                   "gateway-1", on_message);
 ```
 
-### Endpoint 설정
+## 3. 서버 (수신) 측 설정
 
-| bind_endpoint | advertise_endpoint | 결과 |
-|---------------|-------------------|------|
-| `tcp://*:5555` | `NULL` | 로컬 IP 자동 감지 |
-| `tcp://*:5555` | `tcp://payment-server:5555` | DNS 이름으로 광고 |
-
-> NAT/컨테이너 환경에서는 advertise_endpoint를 명시적으로 설정해야 한다.
-
-## 3. Gateway 설정
+서버 역할을 하려면 Gateway에 endpoint를 bind하고, Discovery를 통해
+Registry에 등록한다.
 
 ```c
-void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
-/* Registry bootstrap/control endpoint */
+void *ctx = zlink_ctx_new();
+
+/* Discovery 설정 */
+void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
+
+/* Gateway 생성 (수신 핸들러 등록) */
+void *server = zlink_gateway_new(ctx, "payment-service",
+                                  "payment-server-1", on_request);
+
+/* Discovery 연결 */
+zlink_gateway_attach_discovery(server, discovery);
+
+/* 비즈니스 소켓 bind */
+zlink_gateway_bind(server, "tcp://*:5555");
+```
+
+## 4. 클라이언트 (송신) 측 설정
+
+```c
+/* Discovery 설정 */
+void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_subscribe(discovery, "payment-service");
 
-void *gateway = zlink_gateway_new(ctx, discovery, "gateway-1");
+/* Gateway 생성 */
+void *client = zlink_gateway_new(ctx, "payment-service",
+                                  "client-1", on_reply);
+
+/* Discovery 연결 */
+zlink_gateway_attach_discovery(client, discovery);
 
 /* 로드밸런싱 설정 */
-zlink_gateway_set_lb_strategy(gateway, "payment-service",
-    ZLINK_GATEWAY_LB_ROUND_ROBIN);
+zlink_gateway_set_lb_strategy(client, ZLINK_GATEWAY_LB_ROUND_ROBIN);
 ```
 
-## 4. 메시지 전송
+## 5. 메시지 전송
 
-### 4.1 기본 전송
+### 5.1 로드밸런싱 전송
 
 ```c
-/* Gateway에서 Receiver로 요청 전송 */
-const char *req = "request";
-zlink_gateway_send_bytes(gateway, "payment-service", req, 7, 0);
+/* 멀티파트 메시지 구성 및 전송 */
+zlink_msg_t part;
+zlink_msg_init_size(&part, 7);
+memcpy(zlink_msg_data(&part), "request", 7);
+zlink_gateway_send(client, &part, 1, 0);
 ```
 
-멀티파트 payload가 필요하면 `zlink_gateway_send()`를 사용한다.
-
-### 4.2 응답 수신 (Gateway)
+### 5.2 특정 피어 전송
 
 ```c
-/* Gateway에서 Receiver 응답 수신 */
-zlink_msg_t *parts = NULL;
-size_t part_count = 0;
-char service_name[256];
-int rc = zlink_gateway_recv(gateway, &parts, &part_count, 0, service_name);
-if (rc != -1) {
-    /* parts[0..part_count-1] 처리 */
-    zlink_multipart_close(parts, part_count);
+/* routing_id로 특정 서버에 직접 전송 */
+zlink_gateway_send_rid(client, &target_rid, &part, 1, 0);
+```
+
+### 5.3 메시지 수신
+
+수신은 생성 시 등록한 핸들러 콜백으로 자동 dispatch된다. 별도의 `recv()` 호출은 없다.
+
+```c
+void on_reply(const zlink_routing_id_t *source_rid,
+              zlink_msg_t *parts, size_t part_count)
+{
+    /* 응답 처리 */
 }
 ```
 
-### 4.3 Receiver 측 수신/응답
-
-```c
-/* Receiver service handle에서 수신 및 응답 */
-zlink_msg_t *req_parts = NULL;
-size_t req_count = 0;
-zlink_routing_id_t client_rid;
-zlink_receiver_recv(receiver, &req_parts, &req_count, 0, &client_rid);
-/* [payload...] 처리 후 응답 */
-```
-
-## 5. 로드밸런싱
+## 6. 로드밸런싱
 
 | 전략 | 상수 | 설명 |
 |------|------|------|
@@ -132,10 +120,11 @@ zlink_receiver_recv(receiver, &req_parts, &req_count, 0, &client_rid);
 ### 가중치 갱신
 
 ```c
-zlink_receiver_update_weight(receiver, "payment-service", 5);
+/* 특정 피어의 가중치를 갱신 */
+zlink_gateway_update_peer_weight(server, &peer_rid, 5);
 ```
 
-## 6. Thread-Safety
+## 7. Thread-Safety
 
 ### 일반 소켓 vs Gateway
 
@@ -150,10 +139,7 @@ zlink_receiver_update_weight(receiver, "payment-service", 5);
 Gateway의 모든 공개 API는 내부 mutex로 보호된다. 여러 스레드에서 동시에 호출해도 안전하다.
 
 - `zlink_gateway_send()`
-- `zlink_gateway_send_bytes()`
 - `zlink_gateway_send_rid()`
-- `zlink_gateway_send_rid_bytes()`
-- `zlink_gateway_recv()`
 - `zlink_gateway_set_lb_strategy()`
 - `zlink_gateway_set_option()`
 - `zlink_gateway_set_tls_client()`
@@ -163,14 +149,17 @@ Gateway의 모든 공개 API는 내부 mutex로 보호된다. 여러 스레드�
 
 ```c
 /* Gateway는 thread-safe하므로 여러 스레드에서 공유 가능 */
-void *gateway = zlink_gateway_new(ctx, discovery, "gw-1");
+void *gateway = zlink_gateway_new(ctx, "my-service", "gw-1", on_reply);
+zlink_gateway_attach_discovery(gateway, discovery);
 
 /* 워커 스레드 함수 */
 void *send_worker(void *arg) {
     void *gw = arg;
-    const char *req = "request";
+    zlink_msg_t part;
+    zlink_msg_init_size(&part, 7);
+    memcpy(zlink_msg_data(&part), "request", 7);
     /* 여러 스레드에서 동시에 send 호출 — 안전 */
-    zlink_gateway_send_bytes(gw, "my-service", req, 7, 0);
+    zlink_gateway_send(gw, &part, 1, 0);
     return NULL;
 }
 
@@ -183,11 +172,14 @@ for (int i = 0; i < 4; i++)
 
 **1. Send 전용 설계로 낮은 경합**
 
-Gateway의 send/recv는 내부 mutex로 보호되어 thread-safe하며, lock 오버헤드를 최소화하도록 설계되어 있다.
+Gateway의 send는 내부 mutex로 보호되어 thread-safe하며, lock 오버헤드를
+최소화하도록 설계되어 있다.
 
 **2. 애플리케이션 아키텍처 단순화**
 
-일반 소켓은 단일 스레드 소유 원칙을 지켜야 하므로, 멀티스레드 환경에서 별도의 메시지 큐나 프록시 패턴이 필요하다. Gateway는 이런 추가 구성 없이 여러 스레드가 직접 send를 호출할 수 있다.
+일반 소켓은 단일 스레드 소유 원칙을 지켜야 하므로, 멀티스레드 환경에서 별도의
+메시지 큐나 프록시 패턴이 필요하다. Gateway는 이런 추가 구성 없이 여러 스레드가
+직접 send를 호출할 수 있다.
 
 ```
 일반 소켓 (멀티스레드):
@@ -197,28 +189,31 @@ Gateway의 send/recv는 내부 mutex로 보호되어 thread-safe하며, lock 오
 
 Gateway (멀티스레드):
   Thread A ──┐
-  Thread B ──┼── Gateway (내부 mutex 보호) ── send ──→ Receiver
+  Thread B ──┼── Gateway (내부 mutex 보호) ── send ──→ Server
   Thread C ──┘
 ```
 
 **3. Discovery 갱신이 send를 블록하지 않음**
 
-서비스 풀 갱신(Receiver 추가/제거, 연결/재연결)은 전용 백그라운드 워커 스레드가 처리한다. send 호출 중에 Discovery 이벤트가 도착해도 사용자 API가 블록되지 않는다.
+서비스 풀 갱신(서버 추가/제거, 연결/재연결)은 전용 백그라운드 워커 스레드가
+처리한다. send 호출 중에 Discovery 이벤트가 도착해도 사용자 API가 블록되지 않는다.
 
 **4. 동시 전송과 가중치 갱신이 안전**
 
-여러 스레드가 동시에 메시지를 전송하면서, 동시에 Receiver가 `zlink_receiver_update_weight()`로 가중치를 갱신해도 데이터 경합 없이 안전하게 처리된다.
+여러 스레드가 동시에 메시지를 전송하면서, 동시에 서버가
+`zlink_gateway_update_peer_weight()`로 가중치를 갱신해도 데이터 경합 없이
+안전하게 처리된다.
 
 > 참고: `core/tests/discovery/test_gateway.cpp` — `test_gateway_concurrent_send_and_updates()`: 다중 스레드 동시 전송 + 가중치 갱신 검증
 
-## 7. 자동 연결/해제
+## 8. 자동 연결/해제
 
-Gateway는 Discovery 이벤트를 받아 자동으로 Receiver를 연결/해제한다.
+Gateway는 Discovery 이벤트를 받아 자동으로 피어를 연결/해제한다.
 
-- `RECEIVER_ADDED`: 신규 Receiver에 ROUTER connect
-- `RECEIVER_REMOVED`: 제거된 Receiver disconnect
+- 서버 추가: 신규 서버에 자동 connect
+- 서버 제거: 제거된 서버 disconnect
 
-## 8. End-to-End 예제
+## 9. End-to-End 예제
 
 ```c
 void *ctx = zlink_ctx_new();
@@ -228,69 +223,66 @@ void *registry = zlink_registry_new(ctx);
 zlink_registry_set_endpoints(registry, "tcp://*:5550", "tcp://*:5551");
 zlink_registry_start(registry);
 
-/* === Receiver === */
-void *receiver = zlink_receiver_new(ctx, "echo-receiver-1");
-zlink_receiver_bind(receiver, "tcp://*:5555");
-zlink_receiver_connect_registry(receiver, "tcp://127.0.0.1:5551");
-zlink_receiver_register(receiver, "echo-service", NULL, 1);
+/* === Server === */
+void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
+
+void *server = zlink_gateway_new(ctx, "echo-service",
+                                  "echo-server-1", on_request);
+zlink_gateway_attach_discovery(server, server_discovery);
+zlink_gateway_bind(server, "tcp://*:5555");
 
 /* === Client === */
-void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
-zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
-zlink_discovery_subscribe(discovery, "echo-service");
+void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
+zlink_discovery_subscribe(client_discovery, "echo-service");
 
-void *gateway = zlink_gateway_new(ctx, discovery, "client-1");
+void *client = zlink_gateway_new(ctx, "echo-service",
+                                  "client-1", on_reply);
+zlink_gateway_attach_discovery(client, client_discovery);
 
 /* 서비스 가용 대기 */
-while (!zlink_discovery_service_available(discovery, "echo-service"))
-    sleep(1);
+while (!zlink_discovery_service_available(client_discovery, "echo-service"))
+    msleep(100);
 
-/* 요청/응답 */
-const char *req = "hello";
-zlink_gateway_send_bytes(gateway, "echo-service", req, 5, 0);
+/* 요청 전송 */
+zlink_msg_t part;
+zlink_msg_init_size(&part, 5);
+memcpy(zlink_msg_data(&part), "hello", 5);
+zlink_gateway_send(client, &part, 1, 0);
 
-/* ... Receiver에서 수신/응답 처리 ... */
+/* ... on_request 핸들러에서 수신/응답 처리 ... */
 
 /* 정리 */
-zlink_gateway_destroy(&gateway);
-zlink_discovery_destroy(&discovery);
-zlink_receiver_destroy(&receiver);
+zlink_gateway_destroy(&client);
+zlink_discovery_destroy(&client_discovery);
+zlink_gateway_destroy(&server);
+zlink_discovery_destroy(&server_discovery);
 zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
 ```
 
-## 9. API 요약
+## 10. API 요약
 
-### Gateway API
 | 함수 | 설명 |
 |------|------|
-| `zlink_gateway_new(ctx, discovery, routing_id)` | Gateway 생성 |
-| `zlink_gateway_send(...)` | 메시지 전송 (LB 적용) |
-| `zlink_gateway_send_bytes(...)` | 단일 파트 바이트 메시지 전송 (LB 적용) |
-| `zlink_gateway_recv(...)` | 메시지 수신 (Receiver 응답) |
-| `zlink_gateway_send_rid(...)` | 특정 Receiver로 전송 |
-| `zlink_gateway_send_rid_bytes(...)` | 특정 Receiver로 단일 파트 바이트 메시지 전송 |
-| `zlink_gateway_set_lb_strategy(...)` | LB 전략 설정 |
-| `zlink_gateway_set_option(...)` | service 옵션 설정 |
-| `zlink_gateway_set_tls_client(...)` | TLS 클라이언트 설정 |
-| `zlink_gateway_connection_count(...)` | 연결 Receiver 수 |
-| `zlink_gateway_destroy(...)` | 종료 |
-
-### Receiver API
-| 함수 | 설명 |
-|------|------|
-| `zlink_receiver_new(ctx, routing_id)` | Receiver 생성 |
-| `zlink_receiver_bind(...)` | ROUTER bind |
-| `zlink_receiver_connect_registry(...)` | Registry 연결 |
-| `zlink_receiver_register(...)` | 서비스 등록 |
-| `zlink_receiver_register_result(...)` | 등록 결과 확인 |
-| `zlink_receiver_update_weight(...)` | 가중치 갱신 |
-| `zlink_receiver_unregister(...)` | 서비스 해제 |
-| `zlink_receiver_set_tls_server(...)` | TLS 서버 설정 |
-| `zlink_receiver_set_option(...)` | service 옵션 설정 |
-| `zlink_receiver_recv(...)` | multipart 요청 1건 수신 |
-| `zlink_receiver_last_endpoint(...)` | bind된 advertise endpoint 조회 |
-| `zlink_receiver_destroy(...)` | 종료 |
+| `zlink_gateway_new(ctx, service_name, routing_id, handler)` | Gateway 생성 |
+| `zlink_gateway_attach_discovery(gateway, discovery)` | Discovery 연결 |
+| `zlink_gateway_bind(gateway, endpoint)` | 수신 endpoint bind (서버 역할) |
+| `zlink_gateway_send(gateway, parts, count, flags)` | 멀티파트 메시지 전송 (LB 적용) |
+| `zlink_gateway_send_rid(gateway, rid, parts, count, flags)` | 특정 피어로 전송 |
+| `zlink_gateway_set_lb_strategy(gateway, strategy)` | LB 전략 설정 |
+| `zlink_gateway_set_option(gateway, option, val, len)` | 서비스 옵션 설정 |
+| `zlink_gateway_set_routing_id(gateway, data, size)` | 라우팅 ID 설정 |
+| `zlink_gateway_routing_id(gateway, out)` | 라우팅 ID 조회 |
+| `zlink_gateway_set_tls_client(gateway, ca, host, trust)` | TLS 클라이언트 설정 |
+| `zlink_gateway_set_tls_server(gateway, cert, key)` | TLS 서버 설정 |
+| `zlink_gateway_last_endpoint(gateway, buf, size)` | bind된 endpoint 조회 |
+| `zlink_gateway_connection_count(gateway)` | 연결된 피어 수 |
+| `zlink_gateway_update_peer_weight(gateway, rid, weight)` | 피어 가중치 갱신 |
+| `zlink_gateway_router_peers(gateway, peers, count)` | 피어 목록 조회 |
+| `zlink_gateway_peer_info(gateway, rid, info)` | 특정 피어 정보 조회 |
+| `zlink_gateway_destroy(&gateway)` | 종료 |
 
 ---
 [← Discovery](07-1-discovery.ko.md) | [SPOT →](07-3-spot.ko.md)

@@ -45,19 +45,26 @@ SPOT은 Discovery를 통한 자동 메시 형성으로 토픽 기반의 위치 �
 위 세 옵션은 proxy 기반 재작성 이후 지원하지 않으며, 설정 시 `ENOTSUP`을
 반환합니다.
 
+> 상태 메모
+> 이 문서는 현재 callback-only direct-dispatch API 이전 내용을 일부 포함한다.
+> `zlink_spot_sub_set_handler`와 `zlink_spot_sub_recv`는 더 이상 public
+> surface가 아니다. 현재 코드는 `zlink_spot_node_new(..., handler)`,
+> `zlink_spot_new(..., handler)`, `zlink_spot_sub_new(..., handler)`에서
+> callback을 생성 시점에 고정한다.
+
 ## 타입
 
 ```c
-typedef void (*zlink_spot_sub_handler_fn)(const char *topic,
-                                         size_t topic_len,
-                                         const zlink_msg_t *parts,
-                                         size_t part_count,
-                                         void *userdata);
+typedef void (*zlink_spot_handler_fn)(const zlink_routing_id_t *source_rid,
+                                      const char *topic,
+                                      size_t topic_len,
+                                      zlink_msg_t *parts,
+                                      size_t part_count);
 ```
 
 핸들러 기반 SPOT 구독자 디스패치를 위한 콜백 함수 타입입니다.
-`zlink_spot_sub_set_handler`를 통해 등록하면, 수신 메시지가
-`zlink_spot_sub_recv` 대신 이 콜백을 통해 자동으로 전달됩니다.
+`zlink_spot_sub_new`에 넘기면, 수신 메시지가 이 콜백을 통해 자동으로
+전달됩니다. handler는 subscriber handle 수명 동안 고정됩니다.
 
 ## 상수
 
@@ -505,29 +512,20 @@ int zlink_spot_pub_publish_bytes(void *pub,
 ## SPOT Sub
 
 SPOT Subscriber는 노드에 연결되어 구독과 일치하는 메시지를 수신합니다.
-메시지는 두 가지 방법으로 소비할 수 있습니다:
-
-- **핸들러 기반:** `zlink_spot_sub_set_handler`를 통해 콜백을 등록합니다.
-  수신 메시지는 콜백을 통해 자동으로 전달됩니다. 이 모드는 이벤트 기반
-  아키텍처에 적합합니다.
-- **Recv 기반:** 폴링 루프에서 `zlink_spot_sub_recv`를 호출하여 메시지를
-  동기적으로 수신합니다. 이 모드는 메시지 소비 시점을 명시적으로 제어합니다.
-
-두 모드는 상호 배타적입니다. 핸들러가 설정된 경우 `zlink_spot_sub_recv`를
-동시에 호출해서는 안 됩니다. 핸들러를 지우고 recv 기반 소비로 되돌리려면
-`zlink_spot_sub_set_handler`에 `NULL`을 전달합니다.
+현재 public surface에서는 subscriber 생성 시 넘긴 callback으로만 메시지를
+소비한다. 생성 후 handler 교체 API와 public `recv` fallback은 제공하지 않는다.
 
 ### zlink_spot_sub_new
 
 지정된 노드에 연결된 SPOT subscriber를 생성합니다.
 
 ```c
-void *zlink_spot_sub_new(void *node);
+void *zlink_spot_sub_new(void *node, zlink_spot_handler_fn handler);
 ```
 
 새 SPOT Subscriber를 할당하고 초기화합니다. Subscriber는 지정된 노드에
 연결되며 노드의 SUB 소켓으로부터 메시지를 수신합니다. 노드는 Subscriber의
-수명 동안 유효해야 합니다.
+수명 동안 유효해야 합니다. `handler`는 non-`NULL`이어야 합니다.
 
 **반환값:** 성공 시 SPOT Subscriber 핸들, 실패 시 `NULL`.
 
@@ -709,31 +707,20 @@ int zlink_spot_sub_unsubscribe(void *sub,
 
 ---
 
-### zlink_spot_sub_set_handler
+### callback 수명
 
-자동 메시지 디스패치를 위한 콜백 핸들러를 설정합니다.
-
-```c
-int zlink_spot_sub_set_handler(void *sub,
-                               zlink_spot_sub_handler_fn handler,
-                               void *userdata);
-```
-
-수신 메시지마다 자동으로 호출되는 콜백 함수를 등록합니다. 핸들러가 설정되면
-메시지는 콜백을 통해 전달되며 `zlink_spot_sub_recv`를 동시에 사용해서는
-안 됩니다. 콜백을 지우고 recv 기반 소비로 되돌리려면 `handler`에 `NULL`을
-전달합니다. `userdata` 포인터는 각 호출 시 콜백에 전달됩니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**에러:**
-- `EBUSY` -- 동일 subscriber에서 `zlink_spot_sub_recv`가 진행 중입니다.
+SPOT subscriber callback은 `zlink_spot_sub_new()` 생성 시점에만 설치된다.
+생성 후 callback 교체 또는 제거는 public API에 포함되지 않는다.
 
 **스레드 안전성:** 스레드 안전하지 않음.
 
-**참고:** `zlink_spot_sub_recv`
+**참고:** `zlink_spot_sub_new`
 
 ---
+
+> historical 메모
+> 아래 `zlink_spot_sub_recv` / poller 내용은 과거 pull 모델 설명이며,
+> 마이그레이션 참고용으로만 남겨둔 것이다. 현재 public API 설명으로 보면 안 된다.
 
 ### zlink_spot_sub_recv
 
@@ -763,7 +750,7 @@ int zlink_spot_sub_recv(void *sub,
 
 **스레드 안전성:** 스레드 안전하지 않음.
 
-**참고:** `zlink_spot_sub_set_handler`, `zlink_spot_sub_subscribe`
+**참고:** `zlink_spot_sub_new`, `zlink_spot_sub_subscribe`
 
 ---
 
@@ -808,7 +795,7 @@ void *ctx = zlink_ctx_new();
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://*:9500");
 
-void *sub = zlink_spot_sub_new(node);
+void *sub = zlink_spot_sub_new(node, on_message);
 zlink_spot_node_connect_peer_pub(node, "tcp://peer:9500");
 zlink_spot_sub_subscribe(sub, "bench");
 
@@ -865,6 +852,5 @@ if (zlink_poller_wait(poller, &ev, 1000) == 1) {
 |-----|------|
 | `zlink_spot_pub_peers` / `zlink_spot_sub_peers` | peer queue 통계 |
 | `zlink_spot_pub_publish` | 메시지 발행 |
-| `zlink_spot_sub_set_handler` | 콜백 기반 수신 |
-| `zlink_spot_sub_recv` | subscriber 큐에서 폴링 기반 수신 |
+| `zlink_spot_sub_new(..., handler)` | 콜백 기반 수신 |
 | `zlink_poller_add_spot_sub` / `zlink_poller_add_spot_pub` | poller에 서비스 등록 |

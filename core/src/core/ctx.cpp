@@ -10,6 +10,7 @@
 #include <climits>
 #include <cstdlib>
 #include <new>
+#include <stdio.h>
 #include <sstream>
 #include <string.h>
 
@@ -137,12 +138,74 @@ bool zlink::ctx_t::valid () const
 
 zlink::service_control_runtime_t *zlink::ctx_t::service_control_runtime ()
 {
-    scoped_lock_t locker (_slot_sync);
-    if (_terminating)
-        return NULL;
-    if (_starting && !start ())
-        return NULL;
-    return _service_control_runtime;
+    int last_errno = ENOTSUP;
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        _slot_sync.lock ();
+        if (_terminating) {
+            _slot_sync.unlock ();
+            errno = ETERM;
+            return NULL;
+        }
+        if (_service_control_runtime) {
+            service_control_runtime_t *runtime = _service_control_runtime;
+            _slot_sync.unlock ();
+            return runtime;
+        }
+        if (!_starting) {
+            _slot_sync.unlock ();
+            errno = ENOTSUP;
+            return NULL;
+        }
+
+        const bool started = start ();
+        service_control_runtime_t *runtime = _service_control_runtime;
+        last_errno = errno;
+        _slot_sync.unlock ();
+        if (started && runtime)
+            return runtime;
+#ifndef ZLINK_HAVE_WINDOWS
+        usleep (1000);
+#endif
+    }
+
+    errno = last_errno;
+    return NULL;
+}
+
+void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const
+{
+    if (!getenv ("ZLINK_CTX_DEBUG"))
+        return;
+
+    sockets_t &sockets = const_cast<sockets_t &> (_sockets);
+
+    fprintf (stderr, "[ctx] %s sockets=%zu\n", phase_ ? phase_ : "?",
+             static_cast<size_t> (sockets.size ()));
+
+    for (sockets_t::size_type i = 0, size = sockets.size (); i != size; ++i) {
+        socket_base_t *socket = sockets[i];
+        if (!socket)
+            continue;
+
+        int type = -1;
+        size_t type_size = sizeof (type);
+        char endpoint[256];
+        size_t endpoint_size = sizeof (endpoint);
+        endpoint[0] = '\0';
+
+        if (socket->getsockopt (ZLINK_TYPE, &type, &type_size) != 0)
+            type = -1;
+        if (socket->getsockopt (ZLINK_LAST_ENDPOINT, endpoint, &endpoint_size)
+            != 0)
+            endpoint[0] = '\0';
+
+        fprintf (stderr,
+                 "[ctx]   socket[%zu] ptr=%p tid=%u type=%d endpoint=%s\n",
+                 static_cast<size_t> (i), static_cast<void *> (socket),
+                 static_cast<unsigned int> (socket->get_tid ()), type,
+                 endpoint[0] ? endpoint : "<none>");
+    }
+    fflush (stderr);
 }
 
 int zlink::ctx_t::terminate ()
@@ -187,6 +250,7 @@ int zlink::ctx_t::terminate ()
             //  First send stop command to sockets so that any blocking calls
             //  can be interrupted. If there are no sockets we can ask reaper
             //  thread to stop.
+            debug_dump_sockets_locked ("terminate-before-stop");
             for (sockets_t::size_type i = 0, size = _sockets.size (); i != size;
                  i++) {
                 _sockets[i]->stop ();
@@ -514,11 +578,91 @@ void zlink::ctx_t::destroy_socket (class socket_base_t *socket_)
 
     //  Remove the socket from the list of sockets.
     _sockets.erase (socket_);
+    debug_dump_sockets_locked ("destroy-socket");
 
     //  If zlink_ctx_term() was already called and there are no more socket
     //  we can ask reaper thread to terminate.
     if (_terminating && _sockets.empty ())
         _reaper->stop ();
+}
+
+int zlink::ctx_t::wait_for_socket_removal (const socket_base_t *socket_,
+                                           int timeout_ms_)
+{
+    if (!socket_)
+        return 0;
+
+    int remaining_ms = timeout_ms_ >= 0 ? timeout_ms_ : 0;
+    while (true) {
+        bool present = false;
+        {
+            scoped_lock_t locker (_slot_sync);
+            sockets_t::size_type i = 0;
+            const sockets_t::size_type size = _sockets.size ();
+            for (; i != size; ++i) {
+                if (_sockets[i] == socket_) {
+                    present = true;
+                    break;
+                }
+            }
+        }
+
+        if (!present)
+            return 0;
+        if (remaining_ms == 0) {
+            errno = ETIMEDOUT;
+            return -1;
+        }
+
+#ifdef ZLINK_HAVE_WINDOWS
+        Sleep (1);
+#else
+        usleep (1000);
+#endif
+        if (remaining_ms > 0)
+            --remaining_ms;
+    }
+}
+
+int zlink::ctx_t::close_socket_and_wait (socket_base_t *&socket_,
+                                         int timeout_ms_)
+{
+    if (!socket_)
+        return 0;
+
+    socket_base_t *socket = socket_;
+    socket->stop ();
+    socket->close ();
+    socket_ = NULL;
+    return wait_for_socket_removal (socket, timeout_ms_);
+}
+
+size_t zlink::ctx_t::socket_count () const
+{
+    scoped_lock_t locker (const_cast<mutex_t &> (_slot_sync));
+    sockets_t &sockets = const_cast<sockets_t &> (_sockets);
+    return static_cast<size_t> (sockets.size ());
+}
+
+int zlink::ctx_t::wait_for_socket_count_at_most (size_t max_count_,
+                                                 int timeout_ms_)
+{
+    int remaining_ms = timeout_ms_ >= 0 ? timeout_ms_ : 0;
+    while (true) {
+        if (socket_count () <= max_count_)
+            return 0;
+        if (remaining_ms == 0) {
+            errno = ETIMEDOUT;
+            return -1;
+        }
+#ifdef ZLINK_HAVE_WINDOWS
+        Sleep (1);
+#else
+        usleep (1000);
+#endif
+        if (remaining_ms > 0)
+            --remaining_ms;
+    }
 }
 
 zlink::object_t *zlink::ctx_t::get_reaper () const

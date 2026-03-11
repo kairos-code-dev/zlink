@@ -1,5 +1,11 @@
 # Service Monitor / Readiness 구현 계획
 
+> 상태 메모
+> 이 문서는 초기 설계안이다. 본문에 남아 있는
+> `zlink_service_monitor_set_handler()` 등 생성 후 handler 교체 서술은
+> 현재 canonical public API가 아니다. 최신 기준은
+> `direct-callback-recv-interface-review.ko.md`와 `core/include/zlink.h`를 따른다.
+
 ## 1. 목적
 
 이 문서는 service facade 기준의 monitor/readiness surface를

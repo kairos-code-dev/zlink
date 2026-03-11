@@ -6,6 +6,7 @@
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
 #include "core/thread.hpp"
+#include "services/common/service_runtime_base.hpp"
 #include "services/discovery/discovery.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
@@ -20,6 +21,7 @@ class socket_base_t;
 class spot_pub_t;
 class spot_sub_t;
 class spot_data_plane_t;
+struct spot_runtime_t;
 
 class spot_node_t : public discovery_observer_t
 {
@@ -86,27 +88,25 @@ class spot_node_t : public discovery_observer_t
     void on_discovery_destroyed (discovery_t *discovery_) ZLINK_OVERRIDE;
 
     ctx_t *ctx () const { return _ctx; }
-    const std::string &pub_ingress_endpoint () const
-    {
-        return _pub_ingress_endpoint;
-    }
-    const std::string &sub_fanout_endpoint () const
-    {
-        return _sub_fanout_endpoint;
-    }
+    const std::string &pub_ingress_endpoint () const;
+    const std::string &sub_fanout_endpoint () const;
     int ensure_healthy () const;
     void debug_mark_fault (int err_);
+    void untrack_owned_socket (const socket_base_t *socket_);
 
   private:
     static void control_task (void *arg_);
 
     void control_tick ();
-    void destroy_handles ();
+    int destroy_handles ();
     void close_control_sockets ();
+    void stop_data_plane_sockets ();
     int start_data_plane ();
     int send_data_plane_command (const char *verb_,
                                  const char *arg_ = NULL) const;
     int wait_facade_peer (socket_base_t *socket_) const;
+    void track_owned_socket (socket_base_t *socket_);
+    int wait_owned_socket_removals (int timeout_ms_);
     spot_pub_t *create_spot_pub_with_defaults (const pub_defaults_t &defaults_,
                                                bool node_owned_default_);
     spot_sub_t *create_spot_sub_with_defaults (const sub_defaults_t &defaults_,
@@ -154,25 +154,11 @@ class spot_node_t : public discovery_observer_t
     uint32_t _tag;
 
     mutable mutex_t _sync;
-    mutable mutex_t _ctrl_sync;
     mutable mutex_t _default_pub_sync;
     mutable mutex_t _default_sub_sync;
 
-    socket_base_t *_data_ctrl_front;
-    socket_base_t *_data_ctrl_back;
-    socket_base_t *_mesh_pub;
-    socket_base_t *_mesh_xsub;
-    socket_base_t *_local_pub_ingress_sub;
-    socket_base_t *_local_fanout_xpub;
-    thread_t _data_plane_thread;
-    atomic_counter_t _stop;
+    spot_runtime_t *_runtime;
 
-    uint64_t _task_id;
-    uint32_t _node_id;
-
-    std::string _pub_ingress_endpoint;
-    std::string _sub_fanout_endpoint;
-    std::string _data_ctrl_endpoint;
     std::string _bound_endpoint;
     std::set<std::string> _manual_peer_endpoints;
     std::set<std::string> _active_peer_endpoints;
@@ -198,9 +184,6 @@ class spot_node_t : public discovery_observer_t
     bool _registration_tls_locked;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
 
-    bool _faulted;
-    int _fault_errno;
-
     int _local_pub_ingress_rcvhwm_cfg;
     int _local_fanout_sndhwm_cfg;
     int _local_pub_ingress_rcvhwm_default;
@@ -212,7 +195,9 @@ class spot_node_t : public discovery_observer_t
     sub_defaults_t _sub_defaults;
     std::set<spot_pub_t *> _pubs;
     std::set<spot_sub_t *> _subs;
+    service_runtime_base_t _lifecycle;
 
+    friend struct spot_runtime_t;
     friend class spot_data_plane_t;
     friend class spot_pub_t;
     friend class spot_sub_t;

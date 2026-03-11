@@ -36,7 +36,7 @@
 ### 발행자 (PUB)
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_PUB, NULL);
 zlink_bind(pub, "tcp://*:5556");
 
 /* 메시지 발행 — 구독자가 없으면 드롭 */
@@ -46,7 +46,7 @@ zlink_send(pub, "weather: sunny", 14, 0);
 ### 구독자 (SUB)
 
 ```c
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SUB, NULL);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 
 /* 토픽 구독 — connect 후 설정 */
@@ -147,11 +147,11 @@ zlink_recv(sub, payload, sizeof(payload), 0); /* "sunny" */
 
 ```c
 /* PUB */
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_PUB, NULL);
 zlink_bind(pub, "tcp://*:5556");
 
 /* SUB — 모든 메시지 수신 */
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SUB, NULL);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
 
@@ -170,14 +170,14 @@ int size = zlink_recv(sub, buf, sizeof(buf), 0);
 하나의 PUB에 여러 SUB가 연결. 각 SUB는 자신의 토픽만 수신.
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_PUB, NULL);
 zlink_bind(pub, "tcp://*:5556");
 
-void *sub_weather = zlink_socket(ctx, ZLINK_SUB);
+void *sub_weather = zlink_socket(ctx, ZLINK_SUB, NULL);
 zlink_connect(sub_weather, "tcp://127.0.0.1:5556");
 zlink_setsockopt(sub_weather, ZLINK_SUBSCRIBE, "weather", 7);
 
-void *sub_sports = zlink_socket(ctx, ZLINK_SUB);
+void *sub_sports = zlink_socket(ctx, ZLINK_SUB, NULL);
 zlink_connect(sub_sports, "tcp://127.0.0.1:5556");
 zlink_setsockopt(sub_sports, ZLINK_SUBSCRIBE, "sports", 6);
 
@@ -189,7 +189,7 @@ zlink_setsockopt(sub_sports, ZLINK_SUBSCRIBE, "sports", 6);
 SUB는 여러 PUB에 connect 가능. Fair-queue로 모든 PUB의 메시지를 수신.
 
 ```c
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SUB, NULL);
 zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
 zlink_connect(sub, "tcp://pub1:5556");
 zlink_connect(sub, "tcp://pub2:5557");
@@ -320,11 +320,11 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
 
 ```c
 /* 프록시 프론트엔드: PUB들이 연결 */
-void *xsub = zlink_socket(ctx, ZLINK_XSUB);
+void *xsub = zlink_socket(ctx, ZLINK_XSUB, NULL);
 zlink_bind(xsub, "tcp://*:5556");
 
 /* 프록시 백엔드: SUB들이 연결 */
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_XPUB, NULL);
 zlink_bind(xpub, "tcp://*:5557");
 
 /* 프록시 루프: 양방향으로 메시지 전달 */
@@ -393,7 +393,7 @@ if (sub_frame[0] == 0x01) {
 XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
 
 ```c
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_XPUB, NULL);
 zlink_bind(xpub, "tcp://*:5557");
 
 /* 구독 프레임 수신 */

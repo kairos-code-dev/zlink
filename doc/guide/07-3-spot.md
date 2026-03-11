@@ -2,6 +2,9 @@
 
 # SPOT Topic PUB/SUB (Location-Transparent Publish/Subscribe)
 
+> This guide reflects the callback-only direct-dispatch surface.
+> All receives are dispatched through the handler callback registered at creation time.
+
 ## 1. Overview
 
 SPOT is a location-transparent, topic-based publish/subscribe system. It automatically constructs a PUB/SUB Mesh based on Discovery, enabling topic message publishing and subscribing across the entire cluster.
@@ -68,30 +71,26 @@ local publishes to the remote mesh, and remote mesh receives to local subscriber
 void *ctx = zlink_ctx_new();
 
 /* Discovery setup (peer discovery + registry uplink / heartbeat owner) */
-void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_SPOT);
+void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_SPOT);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_subscribe(discovery, "spot-node");
 
-/* SPOT Node setup */
-void *node = zlink_spot_node_new(ctx);
+/* SPOT Node setup (service_name and handler are fixed at creation time) */
+void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
-/* Attach Discovery (must come before register) */
-zlink_spot_node_set_discovery(node, discovery, "spot-node");
-
-/* Register via Discovery's uplink runtime */
-zlink_spot_node_register(node, "spot-node", "tcp://node1.example.com:9000");
+/* Attach Discovery */
+zlink_spot_node_attach_discovery(node, discovery);
 ```
 
-**Note:** `register()` submits a registration request through the attached
-Discovery's registry uplink runtime. Therefore `set_discovery()` must be
-called before `register()`. Calling `register()` without an attached
-Discovery fails with `EFSM`.
+**Note:** It is recommended to call `attach_discovery()` after bind.
+Once Discovery is attached, peers are automatically discovered and
+connected through the Registry.
 
 ### 3.2 Manual Mesh
 
 ```c
-void *node = zlink_spot_node_new(ctx);
+void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* Directly connect to other nodes' PUB */
@@ -100,8 +99,7 @@ zlink_spot_node_connect_peer_pub(node, "tcp://node3:9000");
 ```
 
 **Note:** In a manual mesh there is no Discovery, so there is no registry
-topology visibility. Calling `register()` is not possible. This is an
-intended limitation.
+topology visibility. This is an intended limitation.
 
 ## 4. SPOT Pub/Sub Usage
 
@@ -110,34 +108,27 @@ intended limitation.
 ```c
 void *pub = zlink_spot_pub_new(node);
 
-/* Publish */
-const char *msg = "hello world";
-zlink_spot_pub_publish_bytes(pub, "chat:room1:message", msg, 11, 0);
+/* Construct multipart message and publish */
+zlink_msg_t part;
+zlink_msg_init_size(&part, 11);
+memcpy(zlink_msg_data(&part), "hello world", 11);
+zlink_spot_pub_publish(pub, "chat:room1:message", &part, 1, 0);
 ```
 
-For multipart payloads, use `zlink_spot_pub_publish()`.
-
-### 4.2 Subscribing/Receiving (SPOT Sub)
+### 4.2 Subscribing (SPOT Sub)
 
 ```c
-void *sub = zlink_spot_sub_new(node);
+void *sub = zlink_spot_sub_new(node, on_message);
 
 /* Subscribe to exact topic */
 zlink_spot_sub_subscribe(sub, "chat:room1:message");
 
 /* Pattern subscription (prefix matching) */
 zlink_spot_sub_subscribe_pattern(sub, "chat:room1:*");
-
-/* Receive */
-zlink_msg_t *parts = NULL;
-size_t part_count = 0;
-char topic[256];
-size_t topic_len = 256;
-zlink_spot_sub_recv(sub, &parts, &part_count, 0, topic, &topic_len);
-
-printf("Topic: %.*s\n", (int)topic_len, topic);
-zlink_multipart_close(parts, part_count);
 ```
+
+Receives are dispatched automatically through the `on_message` callback
+(see [4.4 Callback Handler](#44-callback-handler) below).
 
 ### 4.3 Unsubscribing
 
@@ -146,60 +137,36 @@ zlink_spot_sub_unsubscribe(sub, "chat:room1:message");
 zlink_spot_sub_unsubscribe(sub, "chat:room1:*");
 ```
 
-### 4.4 Polling Integration
+### 4.4 Callback Handler
 
-`spot_sub` and `spot_pub` can be registered with the poller directly.
-Internal socket handles are resolved internally and never exposed to the
-caller. After the poller signals readiness, use the regular service API
-(`zlink_spot_sub_recv`, `zlink_spot_pub_publish_bytes`, etc.) to send or
-receive messages.
-
-```c
-/* Register spot_sub with poller */
-zlink_poller_add_spot_sub(poller, sub, NULL, ZLINK_POLLIN);
-
-/* Wait for readiness */
-zlink_poller_event_t ev;
-zlink_poller_wait(poller, &ev, -1);
-
-/* Use existing service API */
-zlink_spot_sub_recv(sub, &parts, &part_count, 0, topic, &topic_len);
-```
-
-```c
-/* Register spot_pub with poller (for back-pressure awareness) */
-zlink_poller_add_spot_pub(poller, pub, NULL, ZLINK_POLLOUT);
-```
-
-**Important:** `spot_pub` is thread-safe — multiple threads may call
-`publish()` concurrently on the same instance. `spot_sub` is NOT
-thread-safe — `recv()`, handler, `subscribe()`, and `unsubscribe()` must
-be serialized by the caller.
-
-### 4.5 Callback Handler
-
-Instead of `recv()`, you can register a callback function that is automatically invoked when a message arrives.
+Provide the callback when creating a `spot_node` or `spot_sub` handle.
+Incoming messages are then dispatched automatically through that callback.
 
 ```c
 /* Define callback function */
-void on_message(const char *topic, size_t topic_len,
-                const zlink_msg_t *parts, size_t part_count,
-                void *userdata)
+void on_message(const zlink_routing_id_t *source_rid,
+                const char *topic, size_t topic_len,
+                zlink_msg_t *parts, size_t part_count)
 {
     printf("Topic: %.*s, Parts: %zu\n", (int)topic_len, topic, part_count);
 }
 
-/* Register handler */
-zlink_spot_sub_set_handler(sub, on_message, NULL);
+/* Register handler at spot_node creation */
+void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
 
-/* Unregister handler (returns after all in-flight callbacks complete) */
-zlink_spot_sub_set_handler(sub, NULL, NULL);
+/* Or register handler at spot_sub creation */
+void *sub = zlink_spot_sub_new(node, on_message);
 ```
+
+**Important:** `spot_pub` is thread-safe — multiple threads may call
+`publish()` concurrently on the same instance. `spot_sub` is NOT
+thread-safe — `subscribe()` and `unsubscribe()` must be serialized
+by the caller.
 
 **Constraints:**
 
-- When a handler is active, calling `recv()` returns `EINVAL` (mutually exclusive)
-- Passing `NULL` to unregister the handler returns only after all in-flight callbacks complete
+- The callback must be provided at `zlink_spot_node_new()` or `zlink_spot_sub_new()` time
+- Replacing or clearing the callback after creation is not supported
 - Callbacks are invoked on the socket dispatch / I/O path
 - Blocking work in the callback can delay other I/O
 - For slow processing, enqueue from the callback and handle it on your own thread

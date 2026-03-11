@@ -306,17 +306,20 @@ endif()
 if(TARGET test_transport_matrix)
   set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
 endif()
-if(TARGET test_service_discovery)
-  set_tests_properties(test_service_discovery PROPERTIES TIMEOUT 30)
-endif()
 if(TARGET test_service_introspection)
   set_tests_properties(
     test_service_introspection
     PROPERTIES
       TIMEOUT 30
+      DISABLED TRUE
       ENVIRONMENT
         "ZLINK_TEST_CASE=test_discovery_monitor_and_routing_id")
 
+  add_test(
+    NAME test_service_introspection_discovery_monitor
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_discovery_monitor_and_routing_id
+            $<TARGET_FILE:test_service_introspection>)
   add_test(
     NAME test_service_introspection_gateway_options
     COMMAND ${CMAKE_COMMAND} -E env
@@ -343,9 +346,24 @@ if(TARGET test_service_introspection)
             ZLINK_TEST_CASE=test_discovery_registry_transport_restriction
             $<TARGET_FILE:test_service_introspection>)
   add_test(
+    NAME test_service_introspection_transport_ws
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_discovery_registry_transport_allowed_ws
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
+    NAME test_service_introspection_transport_tls
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_discovery_registry_transport_allowed_tls
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
     NAME test_service_introspection_registry_peer_sync
     COMMAND ${CMAKE_COMMAND} -E env
             ZLINK_TEST_CASE=test_registry_peer_transport_restriction_and_tcp_sync
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
+    NAME test_service_introspection_registry_peer_mixed_ws
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_registry_peer_transport_mixed_ws_sync
             $<TARGET_FILE:test_service_introspection>)
   add_test(
     NAME test_service_introspection_topology_reports
@@ -354,12 +372,16 @@ if(TARGET test_service_introspection)
             $<TARGET_FILE:test_service_introspection>)
 
   set_tests_properties(
+    test_service_introspection_discovery_monitor
     test_service_introspection_gateway_options
     test_service_introspection_gateway_monitors
     test_service_introspection_topology_snapshot
     test_service_introspection_closed_event
     test_service_introspection_transport_restriction
+    test_service_introspection_transport_ws
+    test_service_introspection_transport_tls
     test_service_introspection_registry_peer_sync
+    test_service_introspection_registry_peer_mixed_ws
     test_service_introspection_topology_reports
     PROPERTIES
       TIMEOUT 30
@@ -374,205 +396,309 @@ function(add_env_case_test test_name target_name test_case)
             $<TARGET_FILE:${target_name}>)
 endfunction()
 
+function(extract_named_unity_cases out_var source_file macro_name)
+  file(
+    STRINGS "${source_file}" case_lines
+    REGEX "^[ \t]*${macro_name} \\([A-Za-z0-9_]+\\);")
+  set(cases)
+  foreach(line IN LISTS case_lines)
+    string(
+      REGEX REPLACE
+      "^[ \t]*${macro_name} \\(([A-Za-z0-9_]+)\\);.*$"
+      "\\1"
+      case_name
+      "${line}")
+    list(APPEND cases "${case_name}")
+  endforeach()
+  set(${out_var} "${cases}" PARENT_SCOPE)
+endfunction()
+
+function(assert_named_case_coverage label source_file macro_name expected_cases_var)
+  extract_named_unity_cases(actual_cases "${source_file}" "${macro_name}")
+  set(expected_cases "${${expected_cases_var}}")
+  if(NOT "${actual_cases}" STREQUAL "${expected_cases}")
+    message(
+      FATAL_ERROR
+      "${label} split case coverage mismatch.\n"
+      "Source file: ${source_file}\n"
+      "Expected cases: ${expected_cases}\n"
+      "Actual cases: ${actual_cases}")
+  endif()
+endfunction()
+
+function(add_env_case_tests_from_specs target_name specs_var)
+  foreach(spec IN LISTS ${specs_var})
+    string(REPLACE "=" ";" parts "${spec}")
+    list(LENGTH parts part_count)
+    if(NOT part_count EQUAL 2)
+      message(FATAL_ERROR "Invalid case spec '${spec}'")
+    endif()
+    list(GET parts 0 test_name)
+    list(GET parts 1 test_case)
+    add_env_case_test(${test_name} ${target_name} ${test_case})
+  endforeach()
+endfunction()
+
+function(extract_test_names_from_specs out_var specs_var)
+  set(test_names)
+  foreach(spec IN LISTS ${specs_var})
+    string(REPLACE "=" ";" parts "${spec}")
+    list(GET parts 0 test_name)
+    list(APPEND test_names "${test_name}")
+  endforeach()
+  set(${out_var} "${test_names}" PARENT_SCOPE)
+endfunction()
+
+set(SPOT_SERVICE_INTROSPECTION_CASES
+    test_spot_pub_sub_options_and_routing_ids
+    test_spot_monitors_and_monitor_poller
+    test_spot_node_direct_apis_and_explicit_handles_interop
+    test_spot_topology_summary_lifecycle
+    test_spot_register_null_derivation_and_wildcard_rejection
+    test_spot_tls_settings_lock_after_bind_connect_and_register
+    test_spot_late_connect_replays_existing_subscription
+    test_spot_faulted_node_apis_fail_with_efsm)
+
+set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
+    test_spot_service_introspection_pub_sub_options=test_spot_pub_sub_options_and_routing_ids
+    test_spot_service_introspection_monitors=test_spot_monitors_and_monitor_poller
+    test_spot_service_introspection_explicit_handles=test_spot_node_direct_apis_and_explicit_handles_interop
+    test_spot_service_introspection_topology_summary=test_spot_topology_summary_lifecycle
+    test_spot_service_introspection_register_null=test_spot_register_null_derivation_and_wildcard_rejection
+    test_spot_service_introspection_tls_lock=test_spot_tls_settings_lock_after_bind_connect_and_register
+    test_spot_service_introspection_late_connect=test_spot_late_connect_replays_existing_subscription
+    test_spot_service_introspection_faulted=test_spot_faulted_node_apis_fail_with_efsm)
+
+set(SPOT_PUBSUB_CASES
+    test_spot_peer_ipc
+    test_spot_peer_tcp
+    test_spot_peer_ws
+    test_spot_peer_tls
+    test_spot_peer_wss
+    test_spot_multi_publisher
+    test_spot_node_direct_local_and_child_interop
+    test_spot_node_direct_remote_peer_mesh
+    test_spot_node_direct_sub_option_inheritance_and_handler_conflict
+    test_spot_node_direct_first_publish_race
+    test_spot_sub_handler_basic
+    test_spot_facade_handler_receives_source_rid
+    test_spot_sub_handler_replace_barrier
+    test_spot_sub_handler_replace_inside_callback
+    test_spot_pub_async_mode_local_delivery
+    test_spot_pub_async_setsockopt_validation
+    test_spot_pub_async_queue_full_eagain
+    test_spot_pub_async_queue_full_drop
+    test_spot_mmorpg_zone_adjacency_scale
+    test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery)
+
+set(SPOT_PUBSUB_PEER_TEST_SPECS
+    test_spot_pubsub_scenario_peer_ipc=test_spot_peer_ipc
+    test_spot_pubsub_scenario_peer_tcp=test_spot_peer_tcp
+    test_spot_pubsub_scenario_peer_ws=test_spot_peer_ws
+    test_spot_pubsub_scenario_peer_tls=test_spot_peer_tls
+    test_spot_pubsub_scenario_peer_wss=test_spot_peer_wss)
+
+set(SPOT_PUBSUB_LOCAL_TEST_SPECS
+    test_spot_pubsub_scenario_multi_publisher=test_spot_multi_publisher
+    test_spot_pubsub_scenario_node_child_interop=test_spot_node_direct_local_and_child_interop
+    test_spot_pubsub_scenario_node_remote_mesh=test_spot_node_direct_remote_peer_mesh
+    test_spot_pubsub_scenario_sub_option_inheritance=test_spot_node_direct_sub_option_inheritance_and_handler_conflict
+    test_spot_pubsub_scenario_first_publish_race=test_spot_node_direct_first_publish_race
+    test_spot_pubsub_scenario_sub_handler_basic=test_spot_sub_handler_basic
+    test_spot_pubsub_scenario_source_rid=test_spot_facade_handler_receives_source_rid
+    test_spot_pubsub_scenario_handler_replace_barrier=test_spot_sub_handler_replace_barrier
+    test_spot_pubsub_scenario_handler_replace_inside=test_spot_sub_handler_replace_inside_callback
+    test_spot_pubsub_scenario_async_local_delivery=test_spot_pub_async_mode_local_delivery
+    test_spot_pubsub_scenario_async_setsockopt=test_spot_pub_async_setsockopt_validation
+    test_spot_pubsub_scenario_async_eagain=test_spot_pub_async_queue_full_eagain
+    test_spot_pubsub_scenario_async_drop=test_spot_pub_async_queue_full_drop
+    test_spot_pubsub_scenario_scale=test_spot_mmorpg_zone_adjacency_scale
+    test_spot_pubsub_scenario_scale_multi_node=test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery)
+
+set(GATEWAY_CASES
+    test_gateway_provider_setsockopt
+    test_gateway_can_be_polled_via_service_instance
+    test_gateway_refreshes_existing_service_on_first_connection_count
+    test_gateway_router_peers_do_not_enter_pollable_mode
+    test_gateway_single_service_tcp
+    test_gateway_send_rid_tcp
+    test_gateway_multi_service_tcp
+    test_gateway_refresh_on_update
+    test_gateway_protocol_ws
+    test_gateway_protocol_tls
+    test_gateway_protocol_wss
+    test_gateway_load_balancing
+    test_gateway_weighted_load_balancing)
+
+set(GATEWAY_TEST_SPECS
+    test_gateway_provider_options=test_gateway_provider_setsockopt
+    test_gateway_send_ready=test_gateway_can_be_polled_via_service_instance
+    test_gateway_refresh_existing_service=test_gateway_refreshes_existing_service_on_first_connection_count
+    test_gateway_router_peer_stats=test_gateway_router_peers_do_not_enter_pollable_mode
+    test_gateway_single_service=test_gateway_single_service_tcp
+    test_gateway_send_rid=test_gateway_send_rid_tcp
+    test_gateway_multi_service=test_gateway_multi_service_tcp
+    test_gateway_refresh_update=test_gateway_refresh_on_update
+    test_gateway_ws=test_gateway_protocol_ws
+    test_gateway_tls=test_gateway_protocol_tls
+    test_gateway_wss=test_gateway_protocol_wss
+    test_gateway_round_robin=test_gateway_load_balancing
+    test_gateway_weighted=test_gateway_weighted_load_balancing)
+
+set(SERVICE_INTROSPECTION_CASES
+    test_discovery_monitor_and_routing_id
+    test_gateway_receiver_routing_ids_and_options
+    test_gateway_receiver_monitors_and_monitor_poller
+    test_registry_topology_snapshot_and_remote_query
+    test_monitor_closed_event_on_service_destroy
+    test_discovery_registry_transport_restriction
+    test_discovery_registry_transport_allowed_ws
+    test_discovery_registry_transport_allowed_tls
+    test_registry_peer_transport_restriction_and_tcp_sync
+    test_registry_peer_transport_mixed_ws_sync
+    test_registry_topology_reports_discovery_and_gateway)
+
+set(SERVICE_INTROSPECTION_TEST_SPECS
+    test_service_introspection_discovery_monitor=test_discovery_monitor_and_routing_id
+    test_service_introspection_gateway_options=test_gateway_receiver_routing_ids_and_options
+    test_service_introspection_gateway_monitors=test_gateway_receiver_monitors_and_monitor_poller
+    test_service_introspection_topology_snapshot=test_registry_topology_snapshot_and_remote_query
+    test_service_introspection_closed_event=test_monitor_closed_event_on_service_destroy
+    test_service_introspection_transport_restriction=test_discovery_registry_transport_restriction
+    test_service_introspection_transport_ws=test_discovery_registry_transport_allowed_ws
+    test_service_introspection_transport_tls=test_discovery_registry_transport_allowed_tls
+    test_service_introspection_registry_peer_sync=test_registry_peer_transport_restriction_and_tcp_sync
+    test_service_introspection_registry_peer_mixed_ws=test_registry_peer_transport_mixed_ws_sync
+    test_service_introspection_topology_reports=test_registry_topology_reports_discovery_and_gateway)
+
+set(SERVICE_DISCOVERY_CASES
+    test_discovery_provider_registration
+    test_discovery_service_filtering
+    test_discovery_heartbeat_timeout)
+
+set(SERVICE_DISCOVERY_TEST_SPECS
+    test_service_discovery_provider_registration=test_discovery_provider_registration
+    test_service_discovery_service_filtering=test_discovery_service_filtering
+    test_service_discovery_heartbeat_timeout=test_discovery_heartbeat_timeout)
+
+assert_named_case_coverage(
+  "test_service_introspection"
+  "${CMAKE_CURRENT_LIST_DIR}/discovery/test_service_introspection.cpp"
+  "RUN_SERVICE_INTROSPECTION_TEST"
+  SERVICE_INTROSPECTION_CASES)
+assert_named_case_coverage(
+  "test_spot_pubsub_scenario"
+  "${CMAKE_CURRENT_LIST_DIR}/spot/test_spot_pubsub_scenario.cpp"
+  "RUN_SPOT_TEST"
+  SPOT_PUBSUB_CASES)
+assert_named_case_coverage(
+  "test_spot_service_introspection"
+  "${CMAKE_CURRENT_LIST_DIR}/spot/test_spot_service_introspection.cpp"
+  "RUN_SPOT_INTROSPECTION_TEST"
+  SPOT_SERVICE_INTROSPECTION_CASES)
+assert_named_case_coverage(
+  "test_gateway"
+  "${CMAKE_CURRENT_LIST_DIR}/discovery/test_gateway.cpp"
+  "RUN_GATEWAY_TEST"
+  GATEWAY_CASES)
+assert_named_case_coverage(
+  "test_service_discovery"
+  "${CMAKE_CURRENT_LIST_DIR}/discovery/test_service_discovery.cpp"
+  "RUN_TEST"
+  SERVICE_DISCOVERY_CASES)
+
+if(TARGET test_service_discovery)
+  set_tests_properties(
+    test_service_discovery
+    PROPERTIES
+      TIMEOUT 30
+      DISABLED TRUE)
+
+  add_env_case_tests_from_specs(
+    test_service_discovery
+    SERVICE_DISCOVERY_TEST_SPECS)
+  extract_test_names_from_specs(
+    SERVICE_DISCOVERY_TEST_NAMES
+    SERVICE_DISCOVERY_TEST_SPECS)
+
+  set_tests_properties(
+    ${SERVICE_DISCOVERY_TEST_NAMES}
+    PROPERTIES
+      TIMEOUT 30
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+endif()
+
 if(TARGET test_spot_service_introspection)
   set_tests_properties(
     test_spot_service_introspection
     PROPERTIES
-      TIMEOUT 30
-      DISABLED TRUE
-      ENVIRONMENT
-        "ZLINK_TEST_CASE=test_spot_faulted_node_apis_fail_with_efsm")
+      DISABLED TRUE)
 
-  add_env_case_test(
-    test_spot_service_introspection_pub_sub_options
+  add_env_case_tests_from_specs(
     test_spot_service_introspection
-    test_spot_pub_sub_options_and_routing_ids)
-  add_env_case_test(
-    test_spot_service_introspection_monitors
-    test_spot_service_introspection
-    test_spot_monitors_and_monitor_poller)
-  add_env_case_test(
-    test_spot_service_introspection_explicit_handles
-    test_spot_service_introspection
-    test_spot_node_direct_apis_and_explicit_handles_interop)
-  add_env_case_test(
-    test_spot_service_introspection_topology_summary
-    test_spot_service_introspection
-    test_spot_topology_summary_lifecycle)
-  add_env_case_test(
-    test_spot_service_introspection_register_null
-    test_spot_service_introspection
-    test_spot_register_null_derivation_and_wildcard_rejection)
-  add_env_case_test(
-    test_spot_service_introspection_tls_lock
-    test_spot_service_introspection
-    test_spot_tls_settings_lock_after_bind_connect_and_register)
-  add_env_case_test(
-    test_spot_service_introspection_late_connect
-    test_spot_service_introspection
-    test_spot_late_connect_replays_existing_subscription)
-  add_env_case_test(
-    test_spot_service_introspection_faulted
-    test_spot_service_introspection
-    test_spot_faulted_node_apis_fail_with_efsm)
+    SPOT_SERVICE_INTROSPECTION_TEST_SPECS)
+  extract_test_names_from_specs(
+    SPOT_SERVICE_INTROSPECTION_TEST_NAMES
+    SPOT_SERVICE_INTROSPECTION_TEST_SPECS)
 
   set_tests_properties(
-    test_spot_service_introspection_pub_sub_options
-    test_spot_service_introspection_monitors
-    test_spot_service_introspection_explicit_handles
-    test_spot_service_introspection_topology_summary
-    test_spot_service_introspection_register_null
-    test_spot_service_introspection_tls_lock
-    test_spot_service_introspection_late_connect
-    test_spot_service_introspection_faulted
+    ${SPOT_SERVICE_INTROSPECTION_TEST_NAMES}
     PROPERTIES
       TIMEOUT 60
       SKIP_RETURN_CODE 77)
 endif()
 if(TARGET test_gateway)
-  set_tests_properties(test_gateway PROPERTIES TIMEOUT 180)
+  set_tests_properties(
+    test_gateway
+    PROPERTIES
+      DISABLED TRUE)
+
+  add_env_case_tests_from_specs(
+    test_gateway
+    GATEWAY_TEST_SPECS)
+  extract_test_names_from_specs(
+    GATEWAY_TEST_NAMES
+    GATEWAY_TEST_SPECS)
+
+  set_tests_properties(
+    ${GATEWAY_TEST_NAMES}
+    PROPERTIES
+      TIMEOUT 60
+      SKIP_RETURN_CODE 77
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 endif()
 if(TARGET test_spot_pubsub_scenario)
   set_tests_properties(
     test_spot_pubsub_scenario
     PROPERTIES
-      TIMEOUT 120
-      DISABLED TRUE
-      ENVIRONMENT "ZLINK_TEST_CASE=test_spot_peer_tcp"
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+      DISABLED TRUE)
 
-  add_test(
-    NAME test_spot_pubsub_scenario_peer_tcp
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_peer_tcp
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_env_case_test(
-    test_spot_pubsub_scenario_peer_ipc
+  add_env_case_tests_from_specs(
     test_spot_pubsub_scenario
-    test_spot_peer_ipc)
-  add_env_case_test(
-    test_spot_pubsub_scenario_peer_ws
+    SPOT_PUBSUB_PEER_TEST_SPECS)
+  add_env_case_tests_from_specs(
     test_spot_pubsub_scenario
-    test_spot_peer_ws)
-  add_test(
-    NAME test_spot_pubsub_scenario_peer_tls
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_peer_tls
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_env_case_test(
-    test_spot_pubsub_scenario_peer_wss
-    test_spot_pubsub_scenario
-    test_spot_peer_wss)
-  add_test(
-    NAME test_spot_pubsub_scenario_multi_publisher
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_multi_publisher
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_test(
-    NAME test_spot_pubsub_scenario_node_child_interop
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_node_direct_local_and_child_interop
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_test(
-    NAME test_spot_pubsub_scenario_node_remote_mesh
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_node_direct_remote_peer_mesh
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_test(
-    NAME test_spot_pubsub_scenario_sub_option_inheritance
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_node_direct_sub_option_inheritance_and_handler_conflict
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_test(
-    NAME test_spot_pubsub_scenario_first_publish_race
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_node_direct_first_publish_race
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_test(
-    NAME test_spot_pubsub_scenario_sub_handler_basic
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_sub_handler_basic
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_test(
-    NAME test_spot_pubsub_scenario_source_rid
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_facade_handler_receives_source_rid
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_test(
-    NAME test_spot_pubsub_scenario_handler_replace_barrier
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_sub_handler_replace_barrier
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_test(
-    NAME test_spot_pubsub_scenario_handler_replace_inside
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_sub_handler_replace_inside_callback
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_test(
-    NAME test_spot_pubsub_scenario_async_local_delivery
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_pub_async_mode_local_delivery
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_test(
-    NAME test_spot_pubsub_scenario_async_setsockopt
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_pub_async_setsockopt_validation
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_test(
-    NAME test_spot_pubsub_scenario_async_eagain
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_pub_async_queue_full_eagain
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_test(
-    NAME test_spot_pubsub_scenario_async_drop
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_pub_async_queue_full_drop
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_test(
-    NAME test_spot_pubsub_scenario_scale
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_mmorpg_zone_adjacency_scale
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
-  add_test(
-    NAME test_spot_pubsub_scenario_scale_multi_node
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery
-            $<TARGET_FILE:test_spot_pubsub_scenario>)
+    SPOT_PUBSUB_LOCAL_TEST_SPECS)
+  extract_test_names_from_specs(
+    SPOT_PUBSUB_PEER_TEST_NAMES
+    SPOT_PUBSUB_PEER_TEST_SPECS)
+  extract_test_names_from_specs(
+    SPOT_PUBSUB_LOCAL_TEST_NAMES
+    SPOT_PUBSUB_LOCAL_TEST_SPECS)
 
   set_tests_properties(
-    test_spot_pubsub_scenario_multi_publisher
-    test_spot_pubsub_scenario_node_child_interop
-    test_spot_pubsub_scenario_node_remote_mesh
-    test_spot_pubsub_scenario_sub_option_inheritance
-    test_spot_pubsub_scenario_first_publish_race
-    test_spot_pubsub_scenario_sub_handler_basic
-    test_spot_pubsub_scenario_source_rid
-    test_spot_pubsub_scenario_handler_replace_barrier
-    test_spot_pubsub_scenario_handler_replace_inside
-    test_spot_pubsub_scenario_async_local_delivery
-    test_spot_pubsub_scenario_async_setsockopt
-    test_spot_pubsub_scenario_async_eagain
-    test_spot_pubsub_scenario_async_drop
-    test_spot_pubsub_scenario_scale
-    test_spot_pubsub_scenario_scale_multi_node
+    ${SPOT_PUBSUB_LOCAL_TEST_NAMES}
     PROPERTIES
       TIMEOUT 60
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 
   set_tests_properties(
-    test_spot_pubsub_scenario_peer_tcp
-    test_spot_pubsub_scenario_peer_ipc
-    test_spot_pubsub_scenario_peer_ws
-    test_spot_pubsub_scenario_peer_tls
-    test_spot_pubsub_scenario_peer_wss
+    ${SPOT_PUBSUB_PEER_TEST_NAMES}
     PROPERTIES
       TIMEOUT 90
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
-
-  set_tests_properties(test_spot_pubsub_scenario PROPERTIES LABELS "spot;spot_scenario")
-  set_tests_properties(test_spot_pubsub_scenario PROPERTIES RUN_SERIAL TRUE)
 endif()
 if(TARGET test_gateway_handover)
   set_tests_properties(test_gateway_handover PROPERTIES TIMEOUT 180)

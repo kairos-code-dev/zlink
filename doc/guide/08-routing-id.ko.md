@@ -108,7 +108,7 @@ ROUTER 소켓은 수신 메시지에 routing_id 프레임을 자동으로 앞에
 
 ```c
 /* ROUTER 서버 */
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -116,7 +116,7 @@ size_t len = sizeof(endpoint);
 zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
 /* DEALER 클라이언트 (명시적 routing_id) */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer, endpoint);
 

@@ -4,6 +4,7 @@
 #define __ZLINK_DISCOVERY_REGISTRY_HPP_INCLUDED__
 
 #include "core/ctx.hpp"
+#include "services/common/service_runtime_base.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/clock.hpp"
 #include "utils/mutex.hpp"
@@ -140,6 +141,7 @@ class registry_t
 
     ctx_t *_ctx;
     uint32_t _tag;
+    service_runtime_base_t _lifecycle;
 
     std::string _pub_endpoint;
     std::string _router_endpoint;

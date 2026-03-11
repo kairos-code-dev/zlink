@@ -108,7 +108,7 @@ ROUTER sockets automatically prepend a routing_id frame to received messages. Wh
 
 ```c
 /* ROUTER server */
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -116,7 +116,7 @@ size_t len = sizeof(endpoint);
 zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
 /* DEALER client (explicit routing_id) */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer, endpoint);
 

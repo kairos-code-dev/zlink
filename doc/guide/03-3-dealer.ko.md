@@ -28,7 +28,7 @@ DEALER 소켓은 비동기 요청 소켓이다. 여러 피어에 **Round-robin**
 ### 생성 및 연결
 
 ```c
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
 
 /* routing_id 설정 (선택, ROUTER에서 식별용) */
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "client-1", 8);
@@ -106,11 +106,11 @@ zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
 ```c
 /* 서버: ROUTER */
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(router, "tcp://*:5558");
 
 /* 클라이언트: DEALER */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
@@ -137,18 +137,18 @@ zlink_recv(dealer, data, sizeof(data), 0);
 여러 DEALER가 하나의 ROUTER에 연결. ROUTER가 각 DEALER를 routing_id로 구분.
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
 zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
-void *dealer1 = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer1 = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(dealer1, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer1, endpoint);
 
-void *dealer2 = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer2 = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(dealer2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
@@ -177,11 +177,11 @@ ROUTER(프론트엔드) + DEALER(백엔드)로 멀티스레드 서버 구축.
 
 ```c
 /* 프론트엔드: 클라이언트가 연결 */
-void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
+void *frontend = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(frontend, "tcp://*:5558");
 
 /* 백엔드: 워커 스레드가 연결 */
-void *backend = zlink_socket(ctx, ZLINK_DEALER);
+void *backend = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_bind(backend, "inproc://backend");
 
 /* 워커 스레드 시작 후 프록시 실행 */
@@ -191,7 +191,7 @@ zlink_proxy(frontend, backend, NULL);
 ```c
 /* 워커 스레드 */
 void worker_thread(void *arg) {
-    void *worker = zlink_socket(ctx, ZLINK_DEALER);
+    void *worker = zlink_socket(ctx, ZLINK_DEALER, NULL);
     zlink_connect(worker, "inproc://backend");
 
     while (1) {
@@ -214,10 +214,10 @@ void worker_thread(void *arg) {
 양쪽 모두 DEALER를 사용하여 완전 비동기 P2P 통신.
 
 ```c
-void *a = zlink_socket(ctx, ZLINK_DEALER);
+void *a = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_bind(a, "tcp://*:5558");
 
-void *b = zlink_socket(ctx, ZLINK_DEALER);
+void *b = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_connect(b, "tcp://127.0.0.1:5558");
 
 /* 양방향 자유 전송 */

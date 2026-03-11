@@ -100,7 +100,7 @@ zlink는 8종의 소켓 타입을 제공한다. 각 소켓은 고유한 메시�
 void *ctx = zlink_ctx_new();
 
 /* 2. 소켓 생성 */
-void *socket = zlink_socket(ctx, ZLINK_<TYPE>);
+void *socket = zlink_socket(ctx, ZLINK_<TYPE>, NULL);
 
 /* 3. 소켓 옵션 설정 (bind/connect 전) */
 zlink_setsockopt(socket, ZLINK_<OPTION>, &value, sizeof(value));

@@ -29,7 +29,7 @@ ROUTER 소켓은 **routing_id 기반 라우팅** 소켓이다. 수신 메시지�
 ### 생성 및 바인드
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(router, "tcp://*:5558");
 ```
 
@@ -128,7 +128,7 @@ int rc = zlink_send(router, "UNKNOWN", 7, ZLINK_SNDMORE);
 
 ```c
 /* 서버 */
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -136,12 +136,12 @@ size_t len = sizeof(endpoint);
 zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
 /* 클라이언트 1 */
-void *d1 = zlink_socket(ctx, ZLINK_DEALER);
+void *d1 = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(d1, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* 클라이언트 2 */
-void *d2 = zlink_socket(ctx, ZLINK_DEALER);
+void *d2 = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(d2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(d2, endpoint);
 
@@ -168,7 +168,7 @@ zlink_recv(d2, buf, sizeof(buf), 0);  /* "reply_to_d2" */
 ### 패턴 2: ROUTER_MANDATORY로 전송 실패 감지
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 zlink_bind(router, "tcp://*:5558");
 
 /* 기본 동작: 미도달 메시지 조용히 드롭 */
@@ -195,7 +195,7 @@ DEALER가 먼저 메시지를 전송하여 ROUTER에 연결을 알린 후, ROUTE
 
 ```c
 /* DEALER 연결 및 초기 메시지 전송 */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "X", 1);
 zlink_connect(dealer, endpoint);
 zlink_send(dealer, "Hello", 5, 0);
@@ -218,7 +218,7 @@ zlink_send(router, "Hello", 5, 0);
 같은 ROUTER에 다양한 transport로 DEALER를 연결 가능.
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 
 /* TCP */
 zlink_bind(router, "tcp://127.0.0.1:5558");

@@ -71,7 +71,7 @@ zlink_ctx_term(ctx);
 
 ```c
 /* service_type: ZLINK_SERVICE_TYPE_GATEWAY 또는 ZLINK_SERVICE_TYPE_SPOT */
-void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 
 /* Registry bootstrap/control 엔드포인트 연결 (여러 개 가능) */
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");

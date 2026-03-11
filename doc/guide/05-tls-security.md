@@ -9,7 +9,7 @@ zlink natively supports `tls://` and `wss://` transports through OpenSSL. Encryp
 ## 2. TLS Server Setup
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_ROUTER);
+void *socket = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 
 /* Set certificate and key (before bind) */
 zlink_setsockopt(socket, ZLINK_TLS_CERT, "/path/to/server.crt", 0);
@@ -22,7 +22,7 @@ zlink_bind(socket, "tls://*:5555");
 ## 3. TLS Client Setup
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_DEALER);
+void *socket = zlink_socket(ctx, ZLINK_DEALER, NULL);
 
 /* Set CA certificate */
 zlink_setsockopt(socket, ZLINK_TLS_CA, "/path/to/ca.crt", 0);
@@ -41,7 +41,7 @@ WSS is a transport that adds TLS encryption to ws. It requires additional config
 ### WSS Server
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_STREAM);
+void *socket = zlink_socket(ctx, ZLINK_STREAM, NULL);
 
 /* Set TLS certificate/key */
 zlink_setsockopt(socket, ZLINK_TLS_CERT, "/path/to/cert.pem", 0);
@@ -226,17 +226,18 @@ openssl x509 -noout -dates -in server.crt
 ### Detecting TLS Errors via Monitoring
 
 ```c
+void on_tls_error(const zlink_monitor_event_t *ev)
+{
+    printf("Handshake failed: event=0x%llx value=%llu\n",
+           (unsigned long long)ev->event,
+           (unsigned long long)ev->value);
+}
+
 void *mon = zlink_socket_monitor_open(socket,
     ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL |
     ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL |
-    ZLINK_EVENT_HANDSHAKE_FAILED_AUTH);
-
-zlink_monitor_event_t ev;
-if (zlink_monitor_recv(mon, &ev, ZLINK_DONTWAIT) == 0) {
-    printf("Handshake failed: event=0x%llx value=%llu\n",
-           (unsigned long long)ev.event,
-           (unsigned long long)ev.value);
-}
+    ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
+    on_tls_error);
 ```
 
 ## 8. Production Environment Checklist
@@ -274,13 +275,13 @@ int main(void) {
     void *ctx = zlink_ctx_new();
 
     /* TLS Server */
-    void *server = zlink_socket(ctx, ZLINK_PAIR);
+    void *server = zlink_socket(ctx, ZLINK_PAIR, NULL);
     zlink_setsockopt(server, ZLINK_TLS_CERT, "server.crt", 0);
     zlink_setsockopt(server, ZLINK_TLS_KEY, "server.key", 0);
     zlink_bind(server, "tls://*:5555");
 
     /* TLS Client */
-    void *client = zlink_socket(ctx, ZLINK_PAIR);
+    void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
     zlink_setsockopt(client, ZLINK_TLS_CA, "ca.crt", 0);
     zlink_setsockopt(client, ZLINK_TLS_HOSTNAME, "localhost", 9);
     zlink_connect(client, "tls://127.0.0.1:5555");
@@ -306,7 +307,7 @@ int main(void) {
 void *ctx = zlink_ctx_new();
 
 /* WSS Server (STREAM) */
-void *server = zlink_socket(ctx, ZLINK_STREAM);
+void *server = zlink_socket(ctx, ZLINK_STREAM, NULL);
 zlink_setsockopt(server, ZLINK_TLS_CERT, "server.crt", 0);
 zlink_setsockopt(server, ZLINK_TLS_KEY, "server.key", 0);
 int linger = 0;

@@ -24,6 +24,19 @@ namespace zlink
 {
 class clock_t;
 class socket_base_t;
+struct gateway_runtime_t;
+struct gateway_service_pool_t
+{
+    std::string service_name;
+    std::vector<zlink_routing_id_t> routing_ids;
+    std::vector<uint32_t> weights;
+    std::vector<std::string> endpoints;
+    size_t rr_index;
+    int lb_strategy;
+    uint64_t last_seen_seq;
+    bool dirty;
+};
+
 class gateway_t : public discovery_observer_t
 {
   public:
@@ -79,31 +92,19 @@ class gateway_t : public discovery_observer_t
     int destroy ();
 
   private:
-    struct service_pool_t
-    {
-        std::string service_name;
-        std::vector<zlink_routing_id_t> routing_ids;
-        std::vector<uint32_t> weights;
-        std::vector<std::string> endpoints;
-        size_t rr_index;
-        int lb_strategy;
-        uint64_t last_seen_seq;
-        bool dirty;
-    };
-
-    service_pool_t *get_or_create_pool (const std::string &service_name_);
-    service_pool_t *get_or_create_pool_cached ();
+    gateway_service_pool_t *get_or_create_pool (const std::string &service_name_);
+    gateway_service_pool_t *get_or_create_pool_cached ();
     int init_router_socket ();
     int ensure_router_socket ();
     std::string resolve_advertise (const char *advertise_endpoint_) const;
-    void refresh_pool (service_pool_t *pool_,
+    void refresh_pool (gateway_service_pool_t *pool_,
                        const std::vector<provider_info_t> &providers_,
                        uint64_t seq_);
-    bool select_provider (service_pool_t *pool_, size_t *index_out_);
-    bool find_provider_index (service_pool_t *pool_,
+    bool select_provider (gateway_service_pool_t *pool_, size_t *index_out_);
+    bool find_provider_index (gateway_service_pool_t *pool_,
                               const zlink_routing_id_t *rid_,
                               size_t *index_out_);
-    int send_request_frames (service_pool_t *pool_,
+    int send_request_frames (gateway_service_pool_t *pool_,
                              size_t provider_index_,
                              zlink_msg_t *parts_,
                              size_t part_count_,
@@ -127,30 +128,12 @@ class gateway_t : public discovery_observer_t
     ctx_t *_ctx;
     discovery_t *_discovery;
     uint32_t _tag;
-
-    std::map<std::string, service_pool_t> _pools;
-    std::string _last_service_name;
-    service_pool_t *_last_pool;
-    std::map<std::string, std::string> _endpoint_to_service;
-    std::map<std::string, std::string> _routing_id_to_service;
-    std::set<std::string> _ready_endpoints;
-    std::set<std::string> _inflight_endpoints;
-    std::map<std::string, std::string> _inflight_rid_by_endpoint;
-    std::map<std::string, uint64_t> _rid_connect_not_before_ms;
-    std::set<std::string> _down_endpoints;
-    std::map<std::string, uint64_t> _down_until_ms;
-    bool _force_refresh_all;
-    std::set<std::string> _pending_updates;
-    void *_monitor_socket;
-    socket_base_t *_router_socket;
+    gateway_runtime_t *_runtime;
     bool _use_lock;
     bool _pollable_mode;
     bool _routing_id_locked;
-    atomic_counter_t _stop;
-    uint64_t _refresh_task_id;
     uint32_t _refresh_interval_ms;
     mutex_t _sync;
-    clock_t _clock;
 
     std::string _tls_ca;
     std::string _tls_hostname;
@@ -169,6 +152,7 @@ class gateway_t : public discovery_observer_t
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
     service_monitor_hub_t _monitor;
 
+    friend struct gateway_runtime_t;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (gateway_t)
 };
 }

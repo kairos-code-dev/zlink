@@ -59,6 +59,15 @@ void *create_gateway_attached (void *ctx_,
       zlink_gateway_new (ctx_, service_name_, routing_id_, handler_);
     if (!gateway)
         return NULL;
+    const int linger = 0;
+    if (zlink_gateway_set_option (gateway, ZLINK_GATEWAY_OPT_LINGER, &linger,
+                                  sizeof (linger))
+        != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
     if (zlink_gateway_attach_discovery (gateway, discovery_) != 0) {
         const int err = errno;
         zlink_gateway_destroy (&gateway);
@@ -159,7 +168,10 @@ void setup_registry (void *ctx_,
     TEST_ASSERT_NOT_NULL (registry);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_set_endpoints (registry, pub_ep_, router_ep_));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry, 50));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_start (registry));
+    msleep (10);
     *registry_out_ = registry;
 }
 
@@ -196,6 +208,7 @@ void init_gateway_server (gateway_server_t *server_,
                           zlink_socket_msg_handler_fn handler_,
                           gateway_probe_t *probe_)
 {
+    (void) handler_;
     step_log ("server discovery new");
     server_->discovery =
       zlink_discovery_new (ctx_, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -206,17 +219,12 @@ void init_gateway_server (gateway_server_t *server_,
     step_log ("server gateway new");
     server_->gateway =
       create_gateway_attached (ctx_, server_->discovery, service_name_, routing_id_,
-                         &discard_gateway_message);
+                         handler_);
     TEST_ASSERT_NOT_NULL (server_->gateway);
     server_->probe = probe_;
 
     step_log ("server gateway bind");
     bind_gateway_with_timeout (server_->gateway, bind_ep_, 3000);
-    if (handler_ != &discard_gateway_message) {
-        step_log ("server gateway set handler");
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_gateway_set_handler (server_->gateway, handler_));
-    }
     step_log ("server gateway bind done");
 }
 
@@ -243,7 +251,6 @@ void test_gateway_handover_provider_restart ()
     make_registry_endpoint (registry_pub, sizeof (registry_pub), 25800);
     make_registry_endpoint (registry_router, sizeof (registry_router), 25801);
     setup_registry (ctx, &registry, registry_pub, registry_router);
-    msleep (100);
 
     void *client_discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -320,7 +327,6 @@ void test_provider_handover_gateway_reconnect ()
     make_registry_endpoint (registry_pub, sizeof (registry_pub), 25810);
     make_registry_endpoint (registry_router, sizeof (registry_router), 25811);
     setup_registry (ctx, &registry, registry_pub, registry_router);
-    msleep (100);
 
     gateway_probe_t server_probe;
     g_probe_b = &server_probe;

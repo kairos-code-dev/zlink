@@ -4,6 +4,7 @@
 
 #include "services/spot/spot_data_plane.hpp"
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_runtime.hpp"
 
 #include "core/socket_poller.hpp"
 #include "sockets/socket_base.hpp"
@@ -72,14 +73,6 @@ static int recv_ascii_command (socket_base_t *socket_,
     return frames_->empty () ? -1 : 0;
 }
 
-static void close_socket_ptr (socket_base_t **socket_p_)
-{
-    if (socket_p_ && *socket_p_) {
-        (*socket_p_)->close ();
-        *socket_p_ = NULL;
-    }
-}
-
 static int apply_common_internal_opts (socket_base_t *socket_, int linger_)
 {
     return socket_->setsockopt (ZLINK_LINGER, &linger_, sizeof (linger_));
@@ -143,6 +136,20 @@ static int recv_and_forward (socket_base_t *src_,
 
 }
 
+void spot_data_plane_t::close_socket_ptr (spot_node_t *node_,
+                                          socket_base_t *&socket_)
+{
+    if (!socket_)
+        return;
+    if (!node_ || !node_->_ctx) {
+        socket_->stop ();
+        socket_->close ();
+        socket_ = NULL;
+        return;
+    }
+    (void) node_->_lifecycle.close_socket (socket_, 2000);
+}
+
 void spot_data_plane_t::thread_entry (void *arg_)
 {
     run (static_cast<spot_node_t *> (arg_));
@@ -151,6 +158,9 @@ void spot_data_plane_t::thread_entry (void *arg_)
 void spot_data_plane_t::run (spot_node_t *node_)
 {
     if (!node_)
+        return;
+    spot_runtime_t *runtime = node_->_runtime;
+    if (!runtime)
         return;
 
     socket_base_t *ctrl = node_->_ctx->create_socket (ZLINK_PAIR);
@@ -161,26 +171,30 @@ void spot_data_plane_t::run (spot_node_t *node_)
 
     if (!ctrl || !mesh_pub || !mesh_xsub || !ingress || !fanout) {
         const int err = errno != 0 ? errno : ENOMEM;
-        if (ctrl && ctrl->connect (node_->_data_ctrl_endpoint.c_str ()) == 0)
+        if (ctrl && ctrl->connect (runtime->data_ctrl_endpoint.c_str ()) == 0)
             send_errno_reply (ctrl, err);
-        close_socket_ptr (&fanout);
-        close_socket_ptr (&ingress);
-        close_socket_ptr (&mesh_xsub);
-        close_socket_ptr (&mesh_pub);
-        close_socket_ptr (&ctrl);
+        close_socket_ptr (node_, fanout);
+        close_socket_ptr (node_, ingress);
+        close_socket_ptr (node_, mesh_xsub);
+        close_socket_ptr (node_, mesh_pub);
+        close_socket_ptr (node_, ctrl);
         scoped_lock_t lock (node_->_sync);
-        node_->_faulted = true;
-        node_->_fault_errno = err;
+        runtime->mark_fault (err);
         return;
     }
 
     {
         scoped_lock_t lock (node_->_sync);
-        node_->_data_ctrl_back = ctrl;
-        node_->_mesh_pub = mesh_pub;
-        node_->_mesh_xsub = mesh_xsub;
-        node_->_local_pub_ingress_sub = ingress;
-        node_->_local_fanout_xpub = fanout;
+        runtime->data_ctrl_back = ctrl;
+        runtime->mesh_pub = mesh_pub;
+        runtime->mesh_xsub = mesh_xsub;
+        runtime->local_pub_ingress_sub = ingress;
+        runtime->local_fanout_xpub = fanout;
+        node_->track_owned_socket (ctrl);
+        node_->track_owned_socket (mesh_pub);
+        node_->track_owned_socket (mesh_xsub);
+        node_->track_owned_socket (ingress);
+        node_->track_owned_socket (fanout);
     }
 
     const int linger = 0;
@@ -194,7 +208,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
     apply_common_internal_opts (ingress, linger);
     apply_common_internal_opts (fanout, linger);
 
-    ctrl->connect (node_->_data_ctrl_endpoint.c_str ());
+    ctrl->connect (runtime->data_ctrl_endpoint.c_str ());
     ingress->setsockopt (ZLINK_RCVHWM, &zero, sizeof (zero));
     ingress->setsockopt (ZLINK_RCVTIMEO, &neg_one, sizeof (neg_one));
     ingress->setsockopt (ZLINK_SUBSCRIBE, "", 0);
@@ -207,44 +221,42 @@ void spot_data_plane_t::run (spot_node_t *node_)
     mesh_xsub->setsockopt (ZLINK_RCVHWM, &zero, sizeof (zero));
     mesh_xsub->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
 
-    if (ingress->bind (node_->_pub_ingress_endpoint.c_str ()) != 0
-        || fanout->bind (node_->_sub_fanout_endpoint.c_str ()) != 0) {
+    if (ingress->bind (runtime->pub_ingress_endpoint.c_str ()) != 0
+        || fanout->bind (runtime->sub_fanout_endpoint.c_str ()) != 0) {
         const int err = errno;
         send_errno_reply (ctrl, err);
-        close_socket_ptr (&fanout);
-        close_socket_ptr (&ingress);
-        close_socket_ptr (&mesh_xsub);
-        close_socket_ptr (&mesh_pub);
-        close_socket_ptr (&ctrl);
+        close_socket_ptr (node_, fanout);
+        close_socket_ptr (node_, ingress);
+        close_socket_ptr (node_, mesh_xsub);
+        close_socket_ptr (node_, mesh_pub);
+        close_socket_ptr (node_, ctrl);
         {
             scoped_lock_t lock (node_->_sync);
-            node_->_data_ctrl_back = NULL;
-            node_->_mesh_pub = NULL;
-            node_->_mesh_xsub = NULL;
-            node_->_local_pub_ingress_sub = NULL;
-            node_->_local_fanout_xpub = NULL;
-            node_->_faulted = true;
-            node_->_fault_errno = err;
+            runtime->data_ctrl_back = NULL;
+            runtime->mesh_pub = NULL;
+            runtime->mesh_xsub = NULL;
+            runtime->local_pub_ingress_sub = NULL;
+            runtime->local_fanout_xpub = NULL;
+            runtime->mark_fault (err);
         }
         return;
     }
 
     if (send_ok_reply (ctrl) != 0) {
         const int err = errno;
-        close_socket_ptr (&fanout);
-        close_socket_ptr (&ingress);
-        close_socket_ptr (&mesh_xsub);
-        close_socket_ptr (&mesh_pub);
-        close_socket_ptr (&ctrl);
+        close_socket_ptr (node_, fanout);
+        close_socket_ptr (node_, ingress);
+        close_socket_ptr (node_, mesh_xsub);
+        close_socket_ptr (node_, mesh_pub);
+        close_socket_ptr (node_, ctrl);
         {
             scoped_lock_t lock (node_->_sync);
-            node_->_data_ctrl_back = NULL;
-            node_->_mesh_pub = NULL;
-            node_->_mesh_xsub = NULL;
-            node_->_local_pub_ingress_sub = NULL;
-            node_->_local_fanout_xpub = NULL;
-            node_->_faulted = true;
-            node_->_fault_errno = err;
+            runtime->data_ctrl_back = NULL;
+            runtime->mesh_pub = NULL;
+            runtime->mesh_xsub = NULL;
+            runtime->local_pub_ingress_sub = NULL;
+            runtime->local_fanout_xpub = NULL;
+            runtime->mark_fault (err);
         }
         return;
     }
@@ -318,6 +330,11 @@ void spot_data_plane_t::run (spot_node_t *node_)
                         node_->_mesh_client_tls_locked = true;
                         send_ok_reply (ctrl);
                     }
+                } else if (verb == "unbind_pub") {
+                    if (mesh_pub->term_endpoint (arg.c_str ()) != 0)
+                        send_errno_reply (ctrl, errno);
+                    else
+                        send_ok_reply (ctrl);
                 } else if (verb == "disconnect_peer_pub") {
                     if (mesh_xsub->term_endpoint (arg.c_str ()) != 0)
                         send_errno_reply (ctrl, errno);
@@ -358,24 +375,23 @@ void spot_data_plane_t::run (spot_node_t *node_)
         }
     }
 
-    close_socket_ptr (&fanout);
-    close_socket_ptr (&ingress);
-    close_socket_ptr (&mesh_xsub);
-    close_socket_ptr (&mesh_pub);
-    close_socket_ptr (&ctrl);
+    close_socket_ptr (node_, fanout);
+    close_socket_ptr (node_, ingress);
+    close_socket_ptr (node_, mesh_xsub);
+    close_socket_ptr (node_, mesh_pub);
+    close_socket_ptr (node_, ctrl);
     {
         scoped_lock_t lock (node_->_sync);
-        node_->_data_ctrl_back = NULL;
-        node_->_mesh_pub = NULL;
-        node_->_mesh_xsub = NULL;
-        node_->_local_pub_ingress_sub = NULL;
-        node_->_local_fanout_xpub = NULL;
+        runtime->data_ctrl_back = NULL;
+        runtime->mesh_pub = NULL;
+        runtime->mesh_xsub = NULL;
+        runtime->local_pub_ingress_sub = NULL;
+        runtime->local_fanout_xpub = NULL;
     }
 
-    if (fatal_errno != 0 && node_->_stop.get () == 0) {
+    if (fatal_errno != 0 && runtime->stop.get () == 0) {
         scoped_lock_t lock (node_->_sync);
-        node_->_faulted = true;
-        node_->_fault_errno = fatal_errno;
+        runtime->mark_fault (fatal_errno);
     }
 }
 }

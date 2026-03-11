@@ -26,7 +26,7 @@ STREAM 소켓은 **외부 RAW 클라이언트**와 통신하기 위한 **서버 
 ## 2. 서버 생성/바인드
 
 ```c
-void *stream = zlink_socket(ctx, ZLINK_STREAM);
+void *stream = zlink_socket(ctx, ZLINK_STREAM, NULL);
 int linger = 0;
 zlink_setsockopt(stream, ZLINK_LINGER, &linger, sizeof(linger));
 zlink_bind(stream, "tcp://0.0.0.0:8080");

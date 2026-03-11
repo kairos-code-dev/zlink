@@ -97,11 +97,11 @@ int main(void) {
     void *ctx = zlink_ctx_new();
 
     /* 서버 */
-    void *server = zlink_socket(ctx, ZLINK_PAIR);
+    void *server = zlink_socket(ctx, ZLINK_PAIR, NULL);
     zlink_bind(server, "tcp://*:5555");
 
     /* 클라이언트 */
-    void *client = zlink_socket(ctx, ZLINK_PAIR);
+    void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
     zlink_connect(client, "tcp://127.0.0.1:5555");
 
     /* 송신 */

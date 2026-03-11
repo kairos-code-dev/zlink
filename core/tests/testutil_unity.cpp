@@ -202,7 +202,9 @@ void teardown_test_context ()
 
 void *test_context_socket (int type_)
 {
-    void *const socket = zlink_socket (get_test_context (), type_);
+    void *const socket =
+      zlink_socket (get_test_context (),
+                    static_cast<zlink_socket_type_t> (type_), NULL);
     TEST_ASSERT_NOT_NULL (socket);
     internal_manage_test_sockets (socket, true);
     return socket;
@@ -230,7 +232,7 @@ void test_bind (void *socket_,
 {
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (socket_, bind_address_));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (socket_, ZLINK_LAST_ENDPOINT, my_endpoint_, &len_));
+      zlink_getsockopt (socket_, ZLINK_SOCKOPT_LAST_ENDPOINT, my_endpoint_, &len_));
 }
 
 void bind_loopback (void *socket_, int ipv6_, char *my_endpoint_, size_t len_)

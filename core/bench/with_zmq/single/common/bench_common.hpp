@@ -45,8 +45,8 @@ typedef zmq_pollitem_t zlink_pollitem_t;
 #ifndef ZLINK_RCVMORE
 #define ZLINK_RCVMORE ZMQ_RCVMORE
 #endif
-#ifndef ZLINK_LAST_ENDPOINT
-#define ZLINK_LAST_ENDPOINT ZMQ_LAST_ENDPOINT
+#ifndef ZLINK_SOCKOPT_LAST_ENDPOINT
+#define ZLINK_SOCKOPT_LAST_ENDPOINT ZMQ_LAST_ENDPOINT
 #endif
 #ifndef ZLINK_SNDMORE
 #define ZLINK_SNDMORE ZMQ_SNDMORE
@@ -1110,8 +1110,8 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
     if (transport != "inproc") {
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof(last_endpoint);
-        if (zlink_getsockopt(socket_, ZLINK_LAST_ENDPOINT, last_endpoint, &size) != 0) {
-            std::cerr << "getsockopt(ZLINK_LAST_ENDPOINT) failed: "
+        if (zlink_getsockopt(socket_, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size) != 0) {
+            std::cerr << "getsockopt(ZLINK_SOCKOPT_LAST_ENDPOINT) failed: "
                       << zlink_strerror(zlink_errno()) << std::endl;
             return std::string();
         }

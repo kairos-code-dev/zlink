@@ -12,10 +12,66 @@
 #include "utils/random.hpp"
 
 #include <string.h>
+#include <map>
 
 namespace zlink
 {
 static const uint32_t spot_pub_tag_value = 0x1e6700db;
+
+namespace
+{
+struct spot_pub_send_ready_registry_t
+{
+    mutex_t sync;
+    std::map<socket_base_t *, spot_pub_t *> pubs;
+};
+
+static spot_pub_send_ready_registry_t &spot_pub_send_ready_registry ()
+{
+    static spot_pub_send_ready_registry_t registry;
+    return registry;
+}
+
+static void register_spot_pub_socket (socket_base_t *socket_, spot_pub_t *pub_)
+{
+    if (!socket_ || !pub_)
+        return;
+
+    spot_pub_send_ready_registry_t &registry = spot_pub_send_ready_registry ();
+    scoped_lock_t lock (registry.sync);
+    registry.pubs[socket_] = pub_;
+}
+
+static void unregister_spot_pub_socket (socket_base_t *socket_)
+{
+    if (!socket_)
+        return;
+
+    spot_pub_send_ready_registry_t &registry = spot_pub_send_ready_registry ();
+    scoped_lock_t lock (registry.sync);
+    registry.pubs.erase (socket_);
+}
+
+static spot_pub_t *find_spot_pub_for_socket (socket_base_t *socket_)
+{
+    if (!socket_)
+        return NULL;
+
+    spot_pub_send_ready_registry_t &registry = spot_pub_send_ready_registry ();
+    scoped_lock_t lock (registry.sync);
+    std::map<socket_base_t *, spot_pub_t *>::iterator it =
+      registry.pubs.find (socket_);
+    return it != registry.pubs.end () ? it->second : NULL;
+}
+
+static void spot_pub_send_ready_adapter (void *subject_)
+{
+    spot_pub_t *pub = find_spot_pub_for_socket (
+      static_cast<socket_base_t *> (subject_));
+    if (pub)
+        pub->dispatch_send_ready ();
+}
+}
 
 static void fill_terminal_monitor_event (zlink_service_event_t *event_,
                                          uint32_t event_type_,
@@ -70,6 +126,8 @@ spot_pub_t::spot_pub_t (spot_node_t *node_,
     _tag (spot_pub_tag_value),
     _node_owned_default (node_owned_default_),
     _routing_id_locked (false),
+    _send_ready_handler (NULL),
+    _send_ready_subject (NULL),
     _monitor (node_ ? node_->ctx () : NULL),
     _raw_monitor_socket (NULL),
     _monitor_stop (0),
@@ -242,6 +300,24 @@ int spot_pub_t::set_routing_id (const void *data_, size_t size_)
     return 0;
 }
 
+int spot_pub_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_,
+                                        void *subject_)
+{
+    if (!_socket || !handler_ || !subject_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    register_spot_pub_socket (_socket, this);
+    if (_socket->socket_set_send_ready_handler (&spot_pub_send_ready_adapter)
+        != 0)
+        return -1;
+
+    _send_ready_subject.store (subject_, std::memory_order_release);
+    _send_ready_handler.store (handler_, std::memory_order_release);
+    return 0;
+}
+
 int spot_pub_t::routing_id (zlink_routing_id_t *out_) const
 {
     if (!out_) {
@@ -278,6 +354,15 @@ void *spot_pub_t::poller_socket ()
 
 void spot_pub_t::emit_ready_event ()
 {
+}
+
+void spot_pub_t::dispatch_send_ready ()
+{
+    zlink_send_ready_handler_fn handler =
+      _send_ready_handler.load (std::memory_order_acquire);
+    void *subject = _send_ready_subject.load (std::memory_order_acquire);
+    if (handler && subject)
+        handler (subject);
 }
 
 void spot_pub_t::monitor_thread_main (void *arg_)
@@ -425,6 +510,7 @@ int spot_pub_t::destroy_internal (bool allow_embedded_default_,
     _monitor.close_all (&terminal);
 
     if (_socket) {
+        unregister_spot_pub_socket (_socket);
         _socket->close ();
         _socket = NULL;
     }

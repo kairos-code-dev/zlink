@@ -215,7 +215,7 @@ void test_multiple_io_threads ()
     char endpoint[MAX_SOCKET_STRING];
     size_t endpoint_len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len));
+      zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 

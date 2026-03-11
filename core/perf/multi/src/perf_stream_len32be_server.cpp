@@ -105,7 +105,7 @@ inline std::string bind_server_endpoint (void *server,
 
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof (last_endpoint);
-        if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size)
+        if (zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size)
             == 0) {
             endpoint_any.assign (last_endpoint);
             const std::string any_v4 = "://0.0.0.0:";
@@ -133,7 +133,7 @@ inline std::string bind_server_endpoint (void *server,
 
     char last_endpoint[MAX_SOCKET_STRING] = "";
     size_t size = sizeof (last_endpoint);
-    if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size)
+    if (zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size)
         == 0)
         endpoint.assign (last_endpoint);
     apply_debug_timeouts (server, transport);

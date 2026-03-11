@@ -40,6 +40,21 @@
 #ifndef ZLINK_POLLIN
 #define ZLINK_POLLIN 1
 #endif
+#ifndef ZLINK_POLLOUT
+#define ZLINK_POLLOUT 2
+#endif
+#ifndef ZLINK_POLLERR
+#define ZLINK_POLLERR 4
+#endif
+#ifndef ZLINK_POLLPRI
+#define ZLINK_POLLPRI 8
+#endif
+#ifndef ZLINK_POLLITEMS_DFLT
+#define ZLINK_POLLITEMS_DFLT 16
+#endif
+#ifndef ZLINK_HAVE_POLLER
+#define ZLINK_HAVE_POLLER 1
+#endif
 
 // TODO: expand pch implementation to non-windows builds.
 #ifdef _MSC_VER

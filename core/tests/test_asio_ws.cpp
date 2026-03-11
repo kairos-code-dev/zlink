@@ -478,7 +478,7 @@ void test_zlink_ws_bind ()
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zlink_getsockopt (socket, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_getsockopt (socket, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Verify it's a ws:// endpoint
@@ -503,7 +503,7 @@ void test_zlink_ws_connect ()
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zlink_getsockopt (bind_socket, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_getsockopt (bind_socket, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Create connect socket
@@ -542,7 +542,7 @@ void test_zlink_ws_pair_message ()
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zlink_getsockopt (bind_socket, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_getsockopt (bind_socket, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Create connect socket
@@ -598,7 +598,7 @@ void test_zlink_ws_pubsub ()
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zlink_getsockopt (pub_socket, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_getsockopt (pub_socket, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Create SUB socket
@@ -647,7 +647,7 @@ void test_zlink_ws_with_path ()
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zlink_getsockopt (socket, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_getsockopt (socket, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Verify the path is included in the endpoint
@@ -698,7 +698,7 @@ void test_zlink_wss_pair_message ()
 
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_SUCCESS_ERRNO (rc);
 
     //  Connect client

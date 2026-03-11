@@ -124,7 +124,7 @@ inline std::string bind_server_endpoint (void *socket,
     std::string resolved = endpoint;
     char last_endpoint[MAX_SOCKET_STRING] = "";
     size_t size = sizeof (last_endpoint);
-    if (zlink_getsockopt (socket, ZLINK_LAST_ENDPOINT, last_endpoint, &size)
+    if (zlink_getsockopt (socket, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size)
         == 0) {
         resolved.assign (last_endpoint);
     }
@@ -307,7 +307,8 @@ inline int run_multi_server_main (int argc,
     if (!ctx.valid ())
         return 1;
 
-    void *server = zlink_socket (ctx.get (), cfg.server_socket_type);
+    void *server = zlink_socket (
+      ctx.get (), static_cast<zlink_socket_type_t> (cfg.server_socket_type));
     if (!server)
         return 1;
 

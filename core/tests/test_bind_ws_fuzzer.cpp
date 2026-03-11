@@ -21,7 +21,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (server, ZLINK_MAXMSGSIZE, &max_msg_size, sizeof (int64_t)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "ws://127.0.0.1:*"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT,
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT,
                                                my_endpoint, &my_endpoint_size));
     //  Remove trailing /
     my_endpoint[my_endpoint_size - 2] = '\0';

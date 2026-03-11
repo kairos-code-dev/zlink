@@ -27,38 +27,32 @@ class socket_base_t;
 class gateway_t : public discovery_observer_t
 {
   public:
-    gateway_t (ctx_t *ctx_, discovery_t *discovery_,
+    gateway_t (ctx_t *ctx_, const char *service_name_,
                const char *routing_id_ = NULL);
     ~gateway_t ();
 
     bool check_tag () const;
 
-    int send (const char *service_name_,
-              zlink_msg_t *parts_,
-              size_t part_count_,
-              int flags_);
+    int send (zlink_msg_t *parts_, size_t part_count_, int flags_);
+    int attach_discovery (discovery_t *discovery_);
     int bind (const char *endpoint_);
-    int register_service (const char *service_name_,
-                          const char *advertise_endpoint_,
-                          uint32_t weight_);
-    int update_weight (const char *service_name_, uint32_t weight_);
-    int unregister_service (const char *service_name_);
-    int recv (zlink_msg_t **parts_,
-              size_t *part_count_,
-              int flags_,
-              char *service_name_out_);
-    int send_rid (const char *service_name_,
-                  const zlink_routing_id_t *routing_id_,
+    int register_service (const char *advertise_endpoint_, uint32_t weight_);
+    int update_weight (uint32_t weight_);
+    int unregister_service ();
+    int send_rid (const zlink_routing_id_t *routing_id_,
                   zlink_msg_t *parts_,
                   size_t part_count_,
                   int flags_);
 
-    int set_lb_strategy (const char *service_name_, int strategy_);
+    int set_lb_strategy (int strategy_);
     int set_routing_id (const void *data_, size_t size_);
     int routing_id (zlink_routing_id_t *out_);
     int last_endpoint (char *endpoint_out_, size_t *size_out_) const;
     int peer_info (const zlink_routing_id_t *routing_id_,
-                   zlink_peer_info_t *info_out_) const;
+                   zlink_gateway_peer_info_t *info_out_) const;
+    int router_peers (zlink_gateway_peer_info_t *peers_, size_t *count_) const;
+    int update_peer_weight (const zlink_routing_id_t *routing_id_,
+                            uint32_t weight_);
     int set_option (int option_, const void *optval_, size_t optvallen_);
     int set_socket_option (int option_,
                            const void *optval_,
@@ -70,8 +64,9 @@ class gateway_t : public discovery_observer_t
     bool enter_pollable_mode ();
     void lock_routing_id ();
     int ensure_facade_mode () const;
-    int connection_count (const char *service_name_);
-    int set_handler (zlink_gateway_handler_fn handler_);
+    int connection_count ();
+    int set_handler (zlink_socket_msg_handler_fn handler_);
+    int set_send_ready_handler (zlink_send_ready_handler_fn handler_);
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
                         int trust_system_);
@@ -79,6 +74,7 @@ class gateway_t : public discovery_observer_t
     void dispatch_message (const zlink_routing_id_t *source_rid_,
                            zlink_msg_t *parts_,
                            size_t part_count_);
+    void dispatch_send_ready ();
 
     int destroy ();
 
@@ -96,13 +92,10 @@ class gateway_t : public discovery_observer_t
     };
 
     service_pool_t *get_or_create_pool (const std::string &service_name_);
-    service_pool_t *get_or_create_pool_cached (const char *service_name_);
+    service_pool_t *get_or_create_pool_cached ();
     int init_router_socket ();
     int ensure_router_socket ();
     std::string resolve_advertise (const char *advertise_endpoint_) const;
-    bool classify_message (const zlink_routing_id_t *source_rid_,
-                           zlink_gateway_msg_kind_t *kind_out_,
-                           std::string *service_name_out_) const;
     void refresh_pool (service_pool_t *pool_,
                        const std::vector<provider_info_t> &providers_,
                        uint64_t seq_);
@@ -123,9 +116,6 @@ class gateway_t : public discovery_observer_t
                      const zlink_routing_id_t *routing_id_,
                      uint32_t value_,
                      int32_t error_code_);
-    void emit_control_callback (uint32_t event_type_,
-                                const std::string &service_name_,
-                                int32_t error_code_);
     void report_topology (const std::string &service_name_,
                           const std::string &endpoint_,
                           uint16_t state_,
@@ -165,6 +155,7 @@ class gateway_t : public discovery_observer_t
     std::string _tls_ca;
     std::string _tls_hostname;
     int _tls_trust_system;
+    std::string _service_name;
     zlink_routing_id_t _routing_id;
     std::string _routing_id_override;
     std::string _bind_endpoint;
@@ -174,7 +165,8 @@ class gateway_t : public discovery_observer_t
     std::string _last_register_error;
     std::string _tls_server_cert;
     std::string _tls_server_key;
-    std::atomic<zlink_gateway_handler_fn> _handler;
+    std::atomic<zlink_socket_msg_handler_fn> _handler;
+    std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
     service_monitor_hub_t _monitor;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (gateway_t)

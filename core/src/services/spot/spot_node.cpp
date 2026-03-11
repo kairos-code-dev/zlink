@@ -10,6 +10,7 @@
 #include "services/control/service_control_runtime.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/gateway/routing_id_utils.hpp"
+#include "core/recv_internal.hpp"
 #include "sockets/socket_base.hpp"
 #include "core/socket_poller.hpp"
 #include "utils/clock.hpp"
@@ -46,13 +47,8 @@ static void spot_debugf (const char *fmt_, ...)
 
 static bool wait_socket_event (void *socket_, short events_, long timeout_ms_)
 {
-    zlink_pollitem_t item;
-    item.socket = socket_;
-    item.fd = 0;
-    item.events = events_;
-    item.revents = 0;
-    const int rc = zlink_poll (&item, 1, timeout_ms_);
-    return rc > 0 && (item.revents & events_) == events_;
+    return zlink::wait_socket_events_internal (socket_, events_, timeout_ms_)
+           > 0;
 }
 
 static int send_ascii_frame (socket_base_t *socket_,
@@ -115,7 +111,7 @@ static void close_socket_ptr (socket_base_t **socket_p_)
     }
 }
 
-spot_node_t::spot_node_t (ctx_t *ctx_) :
+spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _ctx (ctx_),
     _tag (spot_node_tag_value),
     _data_ctrl_front (NULL),
@@ -134,11 +130,18 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _server_tls_locked (false),
     _mesh_client_tls_locked (false),
     _registration_tls_locked (false),
+    _send_ready_handler (NULL),
     _faulted (false),
     _fault_errno (0),
     _default_pub (NULL),
     _default_sub (NULL)
 {
+    _service_name = service_name_ ? service_name_ : "";
+    if (!validate_service_name (_service_name)) {
+        _tag = 0xdeadbeef;
+        return;
+    }
+
     if (_node_id == 0)
         _node_id = 1;
 
@@ -480,7 +483,7 @@ void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
              sizeof (entry.service_name) - 1);
     strncpy (entry.endpoint, endpoint.c_str (), sizeof (entry.endpoint) - 1);
     entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
-    entry.state = state_;
+    entry.state = static_cast<zlink_topology_state_t> (state_);
     entry.desired_count = 1;
     entry.ready_count = state_ == ZLINK_TOPOLOGY_STATE_READY ? 1 : 0;
     entry.error_code = static_cast<uint32_t> (error_code_ > 0 ? error_code_ : 0);
@@ -516,7 +519,7 @@ void spot_node_t::submit_sub_summary (spot_sub_t *sub_,
     strncpy (entry.service_name, service_name.c_str (),
              sizeof (entry.service_name) - 1);
     entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
-    entry.state = state_;
+    entry.state = static_cast<zlink_topology_state_t> (state_);
     entry.desired_count = 1;
     entry.ready_count = state_ == ZLINK_TOPOLOGY_STATE_READY ? 1 : 0;
     entry.error_code = static_cast<uint32_t> (error_code_ > 0 ? error_code_ : 0);
@@ -632,12 +635,16 @@ int spot_node_t::bind (const char *endpoint_)
         return -1;
 
     std::vector<spot_pub_t *> pubs;
+    bool should_register = false;
     {
         scoped_lock_t lock (_sync);
         _bound_endpoint = endpoint_;
         _server_tls_locked = true;
         pubs.assign (_pubs.begin (), _pubs.end ());
+        should_register = _discovery != NULL;
     }
+    if (should_register && ensure_registered () != 0)
+        return -1;
     for (size_t i = 0; i < pubs.size (); ++i)
         submit_pub_summary (pubs[i], ZLINK_TOPOLOGY_STATE_READY, 0);
     return 0;
@@ -656,6 +663,10 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
     bool had_active_peers = false;
     {
         scoped_lock_t lock (_sync);
+        if (_discovery) {
+            errno = EBUSY;
+            return -1;
+        }
         had_active_peers = !_active_peer_endpoints.empty ();
         if (_manual_peer_endpoints.count (peer_pub_endpoint_) != 0)
             return 0;
@@ -697,6 +708,10 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
     bool had_active_peers = false;
     {
         scoped_lock_t lock (_sync);
+        if (_discovery) {
+            errno = EBUSY;
+            return -1;
+        }
         had_active_peers = !_active_peer_endpoints.empty ();
         _manual_peer_endpoints.erase (peer_pub_endpoint_);
         if (_discovery_peer_endpoints.count (peer_pub_endpoint_) == 0
@@ -722,59 +737,44 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
     return 0;
 }
 
-int spot_node_t::register_node (const char *service_name_,
-                                const char *advertise_endpoint_)
+int spot_node_t::ensure_registered ()
 {
     if (ensure_healthy () != 0)
         return -1;
 
-    std::string service = service_name_ && service_name_[0] != '\0'
-                            ? service_name_
-                            : "spot-node";
-    if (!validate_service_name (service)) {
+    discovery_t *discovery = NULL;
+    std::string advertise;
+    {
+        scoped_lock_t lock (_sync);
+        discovery = _discovery;
+        if (_registered)
+            return 0;
+        if (_bound_endpoint.empty ()) {
+            errno = EFSM;
+            return -1;
+        }
+        advertise = _advertise_endpoint.empty () ? _bound_endpoint
+                                                 : _advertise_endpoint;
+    }
+    if (!discovery) {
+        errno = EFSM;
+        return -1;
+    }
+    if (!validate_public_endpoint (advertise)) {
         errno = EINVAL;
         return -1;
     }
 
-    discovery_t *discovery = NULL;
-    {
-        scoped_lock_t lock (_sync);
-        discovery = _discovery;
-    }
-    if (!discovery) {
-        spot_debugf ("register: no discovery attached");
-        errno = EFSM;
-        return -1;
-    }
-
-    std::string advertise;
-    if (resolve_advertise_endpoint (advertise_endpoint_, &advertise) != 0)
-        return -1;
-    spot_debugf ("register: service=%s advertise=%s", service.c_str (),
-                 advertise.c_str ());
-
-    {
-        scoped_lock_t lock (_sync);
-        if (_registered) {
-            if (_service_name == service && _advertise_endpoint == advertise)
-                return 0;
-            errno = EBUSY;
-            return -1;
-        }
-    }
-
     std::string resolved;
     if (discovery->register_service (discovery_protocol::service_type_spot_node,
-                                     service.c_str (), advertise.c_str (), 1,
-                                     &resolved)
+                                     _service_name.c_str (),
+                                     advertise.c_str (), 1, &resolved)
         != 0) {
-        spot_debugf ("register: discovery register failed errno=%d", errno);
         return -1;
     }
 
     scoped_lock_t lock (_sync);
     _registered = true;
-    _service_name = service;
     _advertise_endpoint = resolved.empty () ? advertise : resolved;
     if (!discovery->latest_registry_uplink (&_registration_uplink_endpoint))
         _registration_uplink_endpoint.clear ();
@@ -782,20 +782,16 @@ int spot_node_t::register_node (const char *service_name_,
     return 0;
 }
 
-int spot_node_t::unregister_node (const char *service_name_)
+int spot_node_t::unregister_registered ()
 {
     if (ensure_healthy () != 0)
         return -1;
 
-    std::string service = service_name_ && service_name_[0] != '\0'
-                            ? service_name_
-                            : "spot-node";
     std::string advertise;
     {
         scoped_lock_t lock (_sync);
         if (!_registered) {
-            errno = EINVAL;
-            return -1;
+            return 0;
         }
         advertise = _advertise_endpoint;
     }
@@ -809,22 +805,20 @@ int spot_node_t::unregister_node (const char *service_name_)
         errno = EFSM;
         return -1;
     }
-    if (discovery->unregister_service (
-          discovery_protocol::service_type_spot_node, service.c_str (),
-          advertise.c_str ())
+    if (discovery->unregister_service (discovery_protocol::service_type_spot_node,
+                                       _service_name.c_str (),
+                                       advertise.c_str ())
         != 0)
         return -1;
 
     scoped_lock_t lock (_sync);
     _registered = false;
-    _service_name.clear ();
     _advertise_endpoint.clear ();
     _registration_uplink_endpoint.clear ();
     return 0;
 }
 
-int spot_node_t::set_discovery (discovery_t *discovery_,
-                                const char *service_name_)
+int spot_node_t::attach_discovery (discovery_t *discovery_)
 {
     if (!discovery_ || discovery_->service_type ()
                           != discovery_protocol::service_type_spot_node) {
@@ -832,47 +826,33 @@ int spot_node_t::set_discovery (discovery_t *discovery_,
         return -1;
     }
 
-    std::string service = service_name_ && service_name_[0] != '\0'
-                            ? service_name_
-                            : "spot-node";
-    if (!validate_service_name (service)) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    discovery_t *old_discovery = NULL;
-    std::set<std::string> old_discovery_endpoints;
+    bool should_register = false;
     {
         scoped_lock_t lock (_sync);
-        old_discovery = _discovery;
-        old_discovery_endpoints = _discovery_peer_endpoints;
+        if (_discovery == discovery_)
+            return 0;
+        if (_discovery || !_manual_peer_endpoints.empty ()) {
+            errno = EBUSY;
+            return -1;
+        }
         _discovery = discovery_;
-        _discovery_service = service;
+        _discovery_service = _service_name;
         _discovery_seq = 0;
-        _pending_service_updates.insert (service);
+        _pending_service_updates.insert (_service_name);
         _discovery_peer_endpoints.clear ();
+        should_register = !_bound_endpoint.empty ();
     }
-
-    if (old_discovery && old_discovery != discovery_)
-        old_discovery->remove_observer (this);
     discovery_->add_observer (this);
-    refresh_existing_summaries ();
-
-    for (std::set<std::string>::const_iterator it =
-           old_discovery_endpoints.begin ();
-         it != old_discovery_endpoints.end (); ++it) {
-        bool should_disconnect = false;
-        {
-            scoped_lock_t lock (_sync);
-            should_disconnect = _manual_peer_endpoints.count (*it) == 0
-                                && _active_peer_endpoints.count (*it) != 0;
+    if (should_register && ensure_registered () != 0) {
+        scoped_lock_t lock (_sync);
+        if (_discovery == discovery_) {
+            _discovery->remove_observer (this);
+            _discovery = NULL;
+            _discovery_service.clear ();
         }
-        if (should_disconnect) {
-            send_data_plane_command ("disconnect_peer_pub", it->c_str ());
-            scoped_lock_t relock (_sync);
-            _active_peer_endpoints.erase (*it);
-        }
+        return -1;
     }
+    refresh_existing_summaries ();
 
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
     if (runtime && _task_id != 0)
@@ -901,6 +881,9 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
     _discovery_seq = 0;
     _pending_service_updates.clear ();
     _discovery_peer_endpoints.clear ();
+    _registered = false;
+    _advertise_endpoint.clear ();
+    _registration_uplink_endpoint.clear ();
 }
 
 int spot_node_t::set_tls_server (const char *cert_, const char *key_)
@@ -938,6 +921,21 @@ int spot_node_t::set_tls_client (const char *ca_cert_,
     _tls_hostname = hostname_ ? hostname_ : "";
     _tls_trust_system = trust_system_;
     return 0;
+}
+
+int spot_node_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_)
+{
+    if (!handler_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    _send_ready_handler.store (handler_, std::memory_order_release);
+    spot_pub_t *pub = ensure_default_pub ();
+    if (!pub)
+        return -1;
+
+    return pub->set_send_ready_handler (handler_, this);
 }
 
 int spot_node_t::validate_pub_option (int option_,
@@ -1211,6 +1209,18 @@ spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
         bound = !_bound_endpoint.empty ();
     }
     pub->emit_ready_event ();
+    if (node_owned_default_) {
+        zlink_send_ready_handler_fn handler =
+          _send_ready_handler.load (std::memory_order_acquire);
+        if (handler && pub->set_send_ready_handler (handler, this) != 0) {
+            const int err = errno;
+            remove_spot_pub (pub);
+            pub->abort_create ();
+            delete pub;
+            errno = err;
+            return NULL;
+        }
+    }
     if (bound)
         submit_pub_summary (pub, ZLINK_TOPOLOGY_STATE_READY, 0);
     return pub;
@@ -1372,6 +1382,8 @@ void spot_node_t::close_control_sockets ()
 
 int spot_node_t::destroy ()
 {
+    if (_discovery && _registered)
+        (void) unregister_registered ();
     _stop.set (1);
     submit_stopped_summaries ();
 

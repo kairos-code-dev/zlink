@@ -798,7 +798,7 @@ inline bool prepare_spot_runtime(ctx_guard_t &ctx,
     if (!discovery_out || !slots_out)
         return false;
 
-    *discovery_out = zlink_discovery_new_typed(ctx.get(), ZLINK_SERVICE_TYPE_SPOT);
+    *discovery_out = zlink_discovery_new (ctx.get(), ZLINK_SERVICE_TYPE_SPOT);
     if (!*discovery_out
         || zlink_discovery_connect_registry(*discovery_out, registry_router_endpoint.c_str()) != 0
         || zlink_discovery_subscribe(*discovery_out, k_service_name) != 0) {

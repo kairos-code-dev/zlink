@@ -139,13 +139,11 @@ uint32_t service_monitor_hub_t::event_delivery_mask (uint32_t event_type_)
     switch (event_type_) {
         case ZLINK_DISCOVERY_SERVICE_UP:
         case ZLINK_GATEWAY_SERVICE_READY:
-        case ZLINK_GATEWAY_REGISTER_OK:
         case ZLINK_SPOT_SUB_SUBSCRIPTION_READY:
             mask |= ZLINK_MONITOR_EVENT_READY;
             break;
         case ZLINK_DISCOVERY_SERVICE_DOWN:
         case ZLINK_GATEWAY_SERVICE_LOST:
-        case ZLINK_GATEWAY_UNREGISTER_OK:
             mask |= ZLINK_MONITOR_EVENT_LOST;
             break;
         case ZLINK_GATEWAY_ROUTE_UP:
@@ -154,8 +152,6 @@ uint32_t service_monitor_hub_t::event_delivery_mask (uint32_t event_type_)
         case ZLINK_GATEWAY_ROUTE_DOWN:
             mask |= ZLINK_MONITOR_EVENT_PEER_DOWN;
             break;
-        case ZLINK_GATEWAY_REGISTER_FAILED:
-        case ZLINK_GATEWAY_UNREGISTER_FAILED:
         case ZLINK_SPOT_PUB_QUEUE_FULL:
             mask |= ZLINK_MONITOR_EVENT_ERROR;
             break;

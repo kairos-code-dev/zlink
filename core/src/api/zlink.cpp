@@ -4,15 +4,7 @@
 #define ZLINK_TYPE_UNSAFE
 
 #include "utils/macros.hpp"
-#include "core/poller.hpp"
 #include "utils/random.hpp"
-
-#if !defined ZLINK_HAVE_POLLER
-#if defined ZLINK_POLL_BASED_ON_POLL && !defined ZLINK_HAVE_WINDOWS
-#include <poll.h>
-#endif
-#include "utils/polling_util.hpp"
-#endif
 
 #include <cstdio>
 
@@ -63,7 +55,6 @@ struct iovec
 #include "core/recv_internal.hpp"
 #include "utils/fd.hpp"
 #include "protocol/metadata.hpp"
-#include "core/socket_poller.hpp"
 #include "core/timers.hpp"
 #include "utils/ip.hpp"
 #include "core/address.hpp"
@@ -143,7 +134,7 @@ int zlink_ctx_shutdown (void *ctx_)
     return (static_cast<zlink::ctx_t *> (ctx_))->shutdown ();
 }
 
-int zlink_ctx_set (void *ctx_, int option_, int optval_)
+int zlink_ctx_set (void *ctx_, zlink_ctx_option_t option_, int optval_)
 {
     return zlink_ctx_set_ext (ctx_, option_, &optval_, sizeof (int));
 }
@@ -161,7 +152,7 @@ int zlink_ctx_set_ext (void *ctx_,
       ->set (option_, optval_, optvallen_);
 }
 
-int zlink_ctx_get (void *ctx_, int option_)
+int zlink_ctx_get (void *ctx_, zlink_ctx_option_t option_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
@@ -175,11 +166,6 @@ int zlink_ctx_get (void *ctx_, int option_)
 struct socket_handle_t
 {
     zlink::socket_base_t *socket;
-};
-
-struct poller_handle_t
-{
-    zlink::socket_poller_t *poller;
 };
 
 struct monitor_handler_state_t
@@ -226,7 +212,6 @@ struct spot_handle_t
         node (NULL),
         pub (NULL),
         sub (NULL),
-        roles (0),
         handler (NULL)
     {
     }
@@ -237,7 +222,6 @@ struct spot_handle_t
     zlink::spot_node_t *node;
     zlink::spot_pub_t *pub;
     zlink::spot_sub_t *sub;
-    int roles;
     zlink_spot_handler_fn handler;
 };
 
@@ -557,12 +541,9 @@ struct registry_query_client_t
                             sizeof (rcvtimeo_ms));
         if (dealer->connect (endpoint_) != 0)
             return -1;
-        zlink_pollitem_t item;
-        item.socket = static_cast<void *> (dealer);
-        item.fd = 0;
-        item.events = ZLINK_POLLOUT;
-        item.revents = 0;
-        if (zlink_poll (&item, 1, 1000) <= 0 || !(item.revents & ZLINK_POLLOUT)) {
+        if (zlink::wait_socket_events_internal (
+              static_cast<void *> (dealer), ZLINK_POLLOUT, 1000)
+            <= 0) {
             errno = EAGAIN;
             return -1;
         }
@@ -600,27 +581,6 @@ static inline socket_handle_t as_socket_handle (void *s_)
     return handle;
 }
 
-static inline poller_handle_t as_poller_handle (void *poller_)
-{
-    poller_handle_t handle;
-    handle.poller = NULL;
-
-    if (!poller_) {
-        errno = EFAULT;
-        return handle;
-    }
-
-    zlink::socket_poller_t *poller =
-      static_cast<zlink::socket_poller_t *> (poller_);
-    if (!poller->check_tag ()) {
-        errno = EFAULT;
-        return handle;
-    }
-
-    handle.poller = poller;
-    return handle;
-}
-
 static inline spot_handle_t *as_spot_handle (void *spot_)
 {
     if (!spot_) {
@@ -648,11 +608,6 @@ static int recv_topology_reply_frames (
 
     zlink_msg_t frame;
     zlink_msg_init (&frame);
-    zlink_pollitem_t item;
-    item.socket = socket_;
-    item.fd = 0;
-    item.events = ZLINK_POLLIN;
-    item.revents = 0;
 #define RECV_TOPOLOGY_FRAME_OR_RETURN()                                          \
     do {                                                                         \
         if (zlink::wait_socket_events_internal (socket_, ZLINK_POLLIN, 1000)     \
@@ -724,88 +679,6 @@ static int recv_topology_reply_frames (
     return 0;
 }
 
-static int poller_add_service_socket (void *poller_,
-                                      zlink::socket_base_t *socket_,
-                                      void *user_data_,
-                                      short events_)
-{
-    poller_handle_t poller = as_poller_handle (poller_);
-    if (!poller.poller)
-        return -1;
-    if (!socket_) {
-        errno = EFAULT;
-        return -1;
-    }
-    return poller.poller->add (socket_, user_data_, events_);
-}
-
-static int poller_modify_service_socket (void *poller_,
-                                         zlink::socket_base_t *socket_,
-                                         short events_)
-{
-    poller_handle_t poller = as_poller_handle (poller_);
-    if (!poller.poller)
-        return -1;
-    if (!socket_) {
-        errno = EFAULT;
-        return -1;
-    }
-    return poller.poller->modify (socket_, events_);
-}
-
-static int poller_remove_service_socket (void *poller_,
-                                         zlink::socket_base_t *socket_)
-{
-    poller_handle_t poller = as_poller_handle (poller_);
-    if (!poller.poller)
-        return -1;
-    if (!socket_) {
-        errno = EFAULT;
-        return -1;
-    }
-    return poller.poller->remove (socket_);
-}
-
-static int poller_add_service_fd (void *poller_,
-                                  zlink::fd_t fd_,
-                                  void *user_data_,
-                                  short events_)
-{
-    poller_handle_t poller = as_poller_handle (poller_);
-    if (!poller.poller)
-        return -1;
-    if (fd_ == zlink::retired_fd) {
-        errno = EFAULT;
-        return -1;
-    }
-    return poller.poller->add_fd (fd_, user_data_, events_);
-}
-
-static int poller_modify_service_fd (void *poller_,
-                                     zlink::fd_t fd_,
-                                     short events_)
-{
-    poller_handle_t poller = as_poller_handle (poller_);
-    if (!poller.poller)
-        return -1;
-    if (fd_ == zlink::retired_fd) {
-        errno = EFAULT;
-        return -1;
-    }
-    return poller.poller->modify_fd (fd_, events_);
-}
-
-static int poller_remove_service_fd (void *poller_, zlink::fd_t fd_)
-{
-    poller_handle_t poller = as_poller_handle (poller_);
-    if (!poller.poller)
-        return -1;
-    if (fd_ == zlink::retired_fd) {
-        errno = EFAULT;
-        return -1;
-    }
-    return poller.poller->remove_fd (fd_);
-}
 
 static zlink::spot_sub_t *as_spot_sub_service (void *sub_)
 {
@@ -877,15 +750,213 @@ static int socket_type (socket_handle_t handle_)
     return type;
 }
 
-static bool is_generic_socket_msg_dispatch_type (int type_)
+static int legacy_socket_type (int type_)
 {
-    return type_ == ZLINK_PAIR || type_ == ZLINK_SUB || type_ == ZLINK_DEALER
-           || type_ == ZLINK_ROUTER;
+    switch (type_) {
+        case ZLINK_SOCKET_PAIR:
+            return ZLINK_PAIR;
+        case ZLINK_SOCKET_PUB:
+            return ZLINK_PUB;
+        case ZLINK_SOCKET_SUB:
+            return ZLINK_SUB;
+        case ZLINK_SOCKET_DEALER:
+            return ZLINK_DEALER;
+        case ZLINK_SOCKET_ROUTER:
+            return ZLINK_ROUTER;
+        case ZLINK_SOCKET_XPUB:
+            return ZLINK_XPUB;
+        case ZLINK_SOCKET_XSUB:
+            return ZLINK_XSUB;
+        case ZLINK_SOCKET_STREAM:
+            return ZLINK_STREAM;
+        default:
+            return type_;
+    }
 }
 
-static bool is_plain_socket_type (int type_)
+static int public_socket_type (int legacy_type_)
 {
-    return type_ == ZLINK_PUB || type_ == ZLINK_XPUB || type_ == ZLINK_STREAM;
+    switch (legacy_type_) {
+        case ZLINK_PAIR:
+            return ZLINK_SOCKET_PAIR;
+        case ZLINK_PUB:
+            return ZLINK_SOCKET_PUB;
+        case ZLINK_SUB:
+            return ZLINK_SOCKET_SUB;
+        case ZLINK_DEALER:
+            return ZLINK_SOCKET_DEALER;
+        case ZLINK_ROUTER:
+            return ZLINK_SOCKET_ROUTER;
+        case ZLINK_XPUB:
+            return ZLINK_SOCKET_XPUB;
+        case ZLINK_XSUB:
+            return ZLINK_SOCKET_XSUB;
+        case ZLINK_STREAM:
+            return ZLINK_SOCKET_STREAM;
+        default:
+            return legacy_type_;
+    }
+}
+
+static int legacy_socket_option (int option_)
+{
+    switch (option_) {
+        case ZLINK_SOCKOPT_AFFINITY:
+            return ZLINK_AFFINITY;
+        case ZLINK_SOCKOPT_ROUTING_ID:
+            return ZLINK_ROUTING_ID;
+        case ZLINK_SOCKOPT_SUBSCRIBE:
+            return ZLINK_SUBSCRIBE;
+        case ZLINK_SOCKOPT_UNSUBSCRIBE:
+            return ZLINK_UNSUBSCRIBE;
+        case ZLINK_SOCKOPT_RATE:
+            return ZLINK_RATE;
+        case ZLINK_SOCKOPT_RECOVERY_IVL:
+            return ZLINK_RECOVERY_IVL;
+        case ZLINK_SOCKOPT_SNDBUF:
+            return ZLINK_SNDBUF;
+        case ZLINK_SOCKOPT_RCVBUF:
+            return ZLINK_RCVBUF;
+        case ZLINK_SOCKOPT_RCVMORE:
+            return ZLINK_RCVMORE;
+        case ZLINK_SOCKOPT_FD:
+            return ZLINK_SOCKOPT_FD;
+        case ZLINK_SOCKOPT_EVENTS:
+            return ZLINK_SOCKOPT_EVENTS;
+        case ZLINK_SOCKOPT_TYPE:
+            return ZLINK_SOCKOPT_TYPE;
+        case ZLINK_SOCKOPT_LINGER:
+            return ZLINK_LINGER;
+        case ZLINK_SOCKOPT_RECONNECT_IVL:
+            return ZLINK_RECONNECT_IVL;
+        case ZLINK_SOCKOPT_BACKLOG:
+            return ZLINK_BACKLOG;
+        case ZLINK_SOCKOPT_RECONNECT_IVL_MAX:
+            return ZLINK_RECONNECT_IVL_MAX;
+        case ZLINK_SOCKOPT_MAXMSGSIZE:
+            return ZLINK_MAXMSGSIZE;
+        case ZLINK_SOCKOPT_SNDHWM:
+            return ZLINK_SNDHWM;
+        case ZLINK_SOCKOPT_RCVHWM:
+            return ZLINK_RCVHWM;
+        case ZLINK_SOCKOPT_MULTICAST_HOPS:
+            return ZLINK_MULTICAST_HOPS;
+        case ZLINK_SOCKOPT_RCVTIMEO:
+            return ZLINK_RCVTIMEO;
+        case ZLINK_SOCKOPT_SNDTIMEO:
+            return ZLINK_SNDTIMEO;
+        case ZLINK_SOCKOPT_LAST_ENDPOINT:
+            return ZLINK_SOCKOPT_LAST_ENDPOINT;
+        case ZLINK_SOCKOPT_ROUTER_MANDATORY:
+            return ZLINK_ROUTER_MANDATORY;
+        case ZLINK_SOCKOPT_TCP_KEEPALIVE:
+            return ZLINK_TCP_KEEPALIVE;
+        case ZLINK_SOCKOPT_TCP_KEEPALIVE_CNT:
+            return ZLINK_TCP_KEEPALIVE_CNT;
+        case ZLINK_SOCKOPT_TCP_KEEPALIVE_IDLE:
+            return ZLINK_TCP_KEEPALIVE_IDLE;
+        case ZLINK_SOCKOPT_TCP_KEEPALIVE_INTVL:
+            return ZLINK_TCP_KEEPALIVE_INTVL;
+        case ZLINK_SOCKOPT_IMMEDIATE:
+            return ZLINK_IMMEDIATE;
+        case ZLINK_SOCKOPT_XPUB_VERBOSE:
+            return ZLINK_XPUB_VERBOSE;
+        case ZLINK_SOCKOPT_IPV6:
+            return ZLINK_IPV6;
+        case ZLINK_SOCKOPT_PROBE_ROUTER:
+            return ZLINK_PROBE_ROUTER;
+        case ZLINK_SOCKOPT_CONFLATE:
+            return ZLINK_CONFLATE;
+        case ZLINK_SOCKOPT_ROUTER_HANDOVER:
+            return ZLINK_ROUTER_HANDOVER;
+        case ZLINK_SOCKOPT_TOS:
+            return ZLINK_TOS;
+        case ZLINK_SOCKOPT_CONNECT_ROUTING_ID:
+            return ZLINK_CONNECT_ROUTING_ID;
+        case ZLINK_SOCKOPT_HANDSHAKE_IVL:
+            return ZLINK_HANDSHAKE_IVL;
+        case ZLINK_SOCKOPT_XPUB_NODROP:
+            return ZLINK_XPUB_NODROP;
+        case ZLINK_SOCKOPT_BLOCKY:
+            return ZLINK_BLOCKY;
+        case ZLINK_SOCKOPT_XPUB_MANUAL:
+            return ZLINK_XPUB_MANUAL;
+        case ZLINK_SOCKOPT_XPUB_WELCOME_MSG:
+            return ZLINK_XPUB_WELCOME_MSG;
+        case ZLINK_SOCKOPT_STREAM_NOTIFY:
+            return ZLINK_STREAM_NOTIFY;
+        case ZLINK_SOCKOPT_INVERT_MATCHING:
+            return ZLINK_INVERT_MATCHING;
+        case ZLINK_SOCKOPT_HEARTBEAT_IVL:
+            return ZLINK_HEARTBEAT_IVL;
+        case ZLINK_SOCKOPT_HEARTBEAT_TTL:
+            return ZLINK_HEARTBEAT_TTL;
+        case ZLINK_SOCKOPT_HEARTBEAT_TIMEOUT:
+            return ZLINK_HEARTBEAT_TIMEOUT;
+        case ZLINK_SOCKOPT_XPUB_VERBOSER:
+            return ZLINK_XPUB_VERBOSER;
+        case ZLINK_SOCKOPT_CONNECT_TIMEOUT:
+            return ZLINK_CONNECT_TIMEOUT;
+        case ZLINK_SOCKOPT_TCP_MAXRT:
+            return ZLINK_TCP_MAXRT;
+        case ZLINK_SOCKOPT_MULTICAST_MAXTPDU:
+            return ZLINK_MULTICAST_MAXTPDU;
+        case ZLINK_SOCKOPT_USE_FD:
+            return ZLINK_USE_FD;
+        case ZLINK_SOCKOPT_BINDTODEVICE:
+            return ZLINK_BINDTODEVICE;
+        case ZLINK_SOCKOPT_TLS_CERT:
+            return ZLINK_TLS_CERT;
+        case ZLINK_SOCKOPT_TLS_KEY:
+            return ZLINK_TLS_KEY;
+        case ZLINK_SOCKOPT_TLS_CA:
+            return ZLINK_TLS_CA;
+        case ZLINK_SOCKOPT_TLS_VERIFY:
+            return ZLINK_TLS_VERIFY;
+        case ZLINK_SOCKOPT_XPUB_MANUAL_LAST_VALUE:
+            return ZLINK_XPUB_MANUAL_LAST_VALUE;
+        case ZLINK_SOCKOPT_TLS_REQUIRE_CLIENT_CERT:
+            return ZLINK_TLS_REQUIRE_CLIENT_CERT;
+        case ZLINK_SOCKOPT_TLS_HOSTNAME:
+            return ZLINK_TLS_HOSTNAME;
+        case ZLINK_SOCKOPT_TLS_TRUST_SYSTEM:
+            return ZLINK_TLS_TRUST_SYSTEM;
+        case ZLINK_SOCKOPT_TLS_PASSWORD:
+            return ZLINK_TLS_PASSWORD;
+        case ZLINK_SOCKOPT_ONLY_FIRST_SUBSCRIBE:
+            return ZLINK_ONLY_FIRST_SUBSCRIBE;
+        case ZLINK_SOCKOPT_TOPICS_COUNT:
+            return ZLINK_TOPICS_COUNT;
+        case ZLINK_SOCKOPT_ZMP_METADATA:
+            return ZLINK_ZMP_METADATA;
+        case ZLINK_SOCKOPT_TCP_NODELAY:
+            return ZLINK_TCP_NODELAY;
+        default:
+            return option_;
+    }
+}
+
+static zlink_socket_handler_kind_t socket_handler_kind_for_type (int type_)
+{
+    switch (type_) {
+        case ZLINK_PAIR:
+        case ZLINK_DEALER:
+        case ZLINK_ROUTER:
+        case ZLINK_STREAM:
+            return ZLINK_SOCKET_HANDLER_MSG;
+        case ZLINK_SUB:
+        case ZLINK_XSUB:
+            return ZLINK_SOCKET_HANDLER_SPOT;
+        case ZLINK_XPUB:
+            return ZLINK_SOCKET_HANDLER_XPUB;
+        default:
+            return static_cast<zlink_socket_handler_kind_t> (0);
+    }
+}
+
+static bool is_send_only_socket_type (int type_)
+{
+    return type_ == ZLINK_PUB;
 }
 
 static bool stream_dispatch_len32be_enabled (socket_handle_t handle_)
@@ -900,13 +971,6 @@ static bool stream_dispatch_active (socket_handle_t handle_)
     if (!handle_.socket)
         return false;
     return handle_.socket->stream_dispatch_active ();
-}
-
-static bool socket_msg_dispatch_active (socket_handle_t handle_)
-{
-    if (!handle_.socket)
-        return false;
-    return handle_.socket->socket_msg_dispatch_active ();
 }
 
 static bool parse_stream_routing_id (const zlink_routing_id_t *rid_,
@@ -944,46 +1008,49 @@ static int stream_payload_result (size_t size_)
 
 } // namespace
 
-void *zlink_socket (void *ctx_, int type_)
+void *zlink_socket (void *ctx_,
+                    zlink_socket_type_t type_,
+                    const zlink_socket_handler_t *handler_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
         return NULL;
     }
-    if (!is_plain_socket_type (type_)) {
-        errno = EINVAL;
-        return NULL;
-    }
-    zlink::ctx_t *ctx = static_cast<zlink::ctx_t *> (ctx_);
-    zlink::socket_base_t *s = ctx->create_socket (type_);
-    return static_cast<void *> (s);
-}
 
-void *zlink_socket_with_handler (void *ctx_,
-                                 int type_,
-                                 zlink_socket_msg_handler_fn handler_)
-{
-    if (!handler_) {
+    const int legacy_type = legacy_socket_type (type_);
+    const zlink_socket_handler_kind_t expected_kind =
+      socket_handler_kind_for_type (legacy_type);
+    if (!is_send_only_socket_type (legacy_type)
+        && expected_kind == static_cast<zlink_socket_handler_kind_t> (0)) {
         errno = EINVAL;
         return NULL;
     }
 
-    if (!is_generic_socket_msg_dispatch_type (type_)) {
-        errno = EINVAL;
-        return NULL;
-    }
-
-    if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
-        errno = EFAULT;
-        return NULL;
+    if (handler_) {
+        if (is_send_only_socket_type (legacy_type)
+            || handler_->kind != expected_kind) {
+            errno = EINVAL;
+            return NULL;
+        }
+        if ((handler_->kind == ZLINK_SOCKET_HANDLER_MSG && !handler_->fn.msg)
+            || (handler_->kind == ZLINK_SOCKET_HANDLER_SPOT
+                && !handler_->fn.spot)
+            || (handler_->kind == ZLINK_SOCKET_HANDLER_XPUB
+                && !handler_->fn.xpub)) {
+            errno = EINVAL;
+            return NULL;
+        }
     }
 
     zlink::ctx_t *ctx = static_cast<zlink::ctx_t *> (ctx_);
-    zlink::socket_base_t *socket = ctx->create_socket (type_);
+    zlink::socket_base_t *socket = ctx->create_socket (legacy_type);
     if (!socket)
         return NULL;
 
-    if (zlink_socket_set_msg_handler (static_cast<void *> (socket), handler_)
+    if (!handler_)
+        return static_cast<void *> (socket);
+
+    if (zlink_socket_set_handler (static_cast<void *> (socket), handler_)
         != 0) {
         const int err = errno;
         (void) zlink_close (static_cast<void *> (socket));
@@ -994,20 +1061,63 @@ void *zlink_socket_with_handler (void *ctx_,
     return static_cast<void *> (socket);
 }
 
-int zlink_socket_set_msg_handler (void *s_,
-                                  zlink_socket_msg_handler_fn handler_)
+int zlink_socket_set_handler (void *s_,
+                              const zlink_socket_handler_t *handler_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
 
     const int type = socket_type (handle);
-    if (!is_generic_socket_msg_dispatch_type (type)) {
+    const zlink_socket_handler_kind_t expected_kind =
+      socket_handler_kind_for_type (type);
+    if (is_send_only_socket_type (type)
+        || expected_kind == static_cast<zlink_socket_handler_kind_t> (0)
+        || !handler_ || handler_->kind != expected_kind) {
         errno = EINVAL;
         return -1;
     }
 
-    return handle.socket->socket_set_msg_handler (handler_);
+    switch (handler_->kind) {
+        case ZLINK_SOCKET_HANDLER_MSG:
+            if (!handler_->fn.msg) {
+                errno = EINVAL;
+                return -1;
+            }
+            return handle.socket->socket_set_msg_handler (handler_->fn.msg);
+        case ZLINK_SOCKET_HANDLER_SPOT:
+            if (!handler_->fn.spot) {
+                errno = EINVAL;
+                return -1;
+            }
+            return handle.socket->socket_set_spot_handler (handler_->fn.spot);
+        case ZLINK_SOCKET_HANDLER_XPUB:
+            if (!handler_->fn.xpub) {
+                errno = EINVAL;
+                return -1;
+            }
+            return handle.socket->socket_set_xpub_handler (handler_->fn.xpub);
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+}
+
+int zlink_socket_set_send_ready_handler (
+  void *s_,
+  zlink_send_ready_handler_fn handler_)
+{
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
+        return -1;
+
+    const int type = socket_type (handle);
+    if (type == ZLINK_SUB || type == ZLINK_XSUB) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    return handle.socket->socket_set_send_ready_handler (handler_);
 }
 
 int zlink_close (void *s_)
@@ -1022,22 +1132,39 @@ int zlink_close (void *s_)
 }
 
 int zlink_setsockopt (void *s_,
-                    int option_,
-                    const void *optval_,
-                    size_t optvallen_)
+                      zlink_socket_option_t option_,
+                      const void *optval_,
+                      size_t optvallen_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-    return handle.socket->setsockopt (option_, optval_, optvallen_);
+    return handle.socket->setsockopt (legacy_socket_option (option_), optval_,
+                                      optvallen_);
 }
 
-int zlink_getsockopt (void *s_, int option_, void *optval_, size_t *optvallen_)
+int zlink_getsockopt (void *s_,
+                      zlink_socket_option_t option_,
+                      void *optval_,
+                      size_t *optvallen_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-    return handle.socket->getsockopt (option_, optval_, optvallen_);
+    const int legacy_option = legacy_socket_option (option_);
+    const int rc = handle.socket->getsockopt (legacy_option, optval_, optvallen_);
+    if (rc != 0)
+        return rc;
+
+    if (legacy_option == ZLINK_SOCKOPT_TYPE && optval_ && optvallen_
+        && *optvallen_ >= sizeof (int)) {
+        int type = 0;
+        memcpy (&type, optval_, sizeof (type));
+        type = public_socket_type (type);
+        memcpy (optval_, &type, sizeof (type));
+    }
+
+    return 0;
 }
 
 int zlink_socket_monitor (void *s_, const char *addr_, int events_)
@@ -1049,7 +1176,7 @@ int zlink_socket_monitor (void *s_, const char *addr_, int events_)
 }
 
 void *zlink_socket_monitor_open (void *s_,
-                                 int events_,
+                                 zlink_socket_monitor_event_mask_t events_,
                                  zlink_monitor_handler_fn handler_)
 {
     if (!handler_) {
@@ -1392,8 +1519,8 @@ int zlink_registry_set_broadcast_interval (void *registry_,
 }
 
 int zlink_registry_setsockopt (void *registry_,
-                               int socket_role_,
-                               int option_,
+                               zlink_registry_socket_role_t socket_role_,
+                               zlink_socket_option_t option_,
                                const void *optval_,
                                size_t optvallen_)
 {
@@ -1404,7 +1531,8 @@ int zlink_registry_setsockopt (void *registry_,
         errno = EFAULT;
         return -1;
     }
-    return registry->set_socket_option (socket_role_, option_, optval_,
+    return registry->set_socket_option (socket_role_,
+                                        legacy_socket_option (option_), optval_,
                                         optvallen_);
 }
 
@@ -1553,7 +1681,7 @@ int zlink_registry_query_destroy (void **client_p_)
     return 0;
 }
 
-void *zlink_discovery_new_typed (void *ctx_, uint16_t service_type_)
+void *zlink_discovery_new (void *ctx_, zlink_service_type_t service_type_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
@@ -1564,9 +1692,16 @@ void *zlink_discovery_new_typed (void *ctx_, uint16_t service_type_)
         errno = EINVAL;
         return NULL;
     }
-    zlink::discovery_t *discovery =
-      new (std::nothrow) zlink::discovery_t (static_cast<zlink::ctx_t *> (ctx_),
-                                             service_type_);
+    uint16_t internal_service_type = 0;
+    if (service_type_ == ZLINK_SERVICE_TYPE_GATEWAY)
+        internal_service_type =
+          zlink::discovery_protocol::service_type_gateway_receiver;
+    else if (service_type_ == ZLINK_SERVICE_TYPE_SPOT)
+        internal_service_type = zlink::discovery_protocol::service_type_spot_node;
+
+    zlink::discovery_t *discovery = new (std::nothrow)
+      zlink::discovery_t (static_cast<zlink::ctx_t *> (ctx_),
+                          internal_service_type);
     if (!discovery) {
         errno = ENOMEM;
         return NULL;
@@ -1680,8 +1815,9 @@ int zlink_discovery_service_available (void *discovery_,
     return discovery->service_available (service_name_);
 }
 
-void *zlink_discovery_monitor_open (void *discovery_,
-                                    int events_,
+void *zlink_discovery_monitor_open (
+  void *discovery_,
+  zlink_discovery_monitor_event_mask_t events_,
                                     zlink_service_monitor_handler_fn handler_)
 {
     if (!handler_) {
@@ -1726,9 +1862,9 @@ int zlink_discovery_destroy (void **discovery_p_)
 }
 
 void *zlink_gateway_new (void *ctx_,
-                         void *discovery_,
+                         const char *service_name_,
                          const char *routing_id_,
-                         zlink_gateway_handler_fn handler_)
+                         zlink_socket_msg_handler_fn handler_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
@@ -1738,18 +1874,13 @@ void *zlink_gateway_new (void *ctx_,
         errno = EINVAL;
         return NULL;
     }
-    if (!discovery_) {
+    if (!service_name_ || service_name_[0] == '\0') {
         errno = EINVAL;
-        return NULL;
-    }
-    zlink::discovery_t *disc = static_cast<zlink::discovery_t *> (discovery_);
-    if (!disc->check_tag ()) {
-        errno = EFAULT;
         return NULL;
     }
     zlink::gateway_t *gateway =
       new (std::nothrow) zlink::gateway_t (static_cast<zlink::ctx_t *> (ctx_),
-                                           disc, routing_id_);
+                                           service_name_, routing_id_);
     if (!gateway) {
         errno = ENOMEM;
         return NULL;
@@ -1764,8 +1895,25 @@ void *zlink_gateway_new (void *ctx_,
     return static_cast<void *> (gateway);
 }
 
+int zlink_gateway_attach_discovery (void *gateway_, void *discovery_)
+{
+    if (!gateway_ || !discovery_)
+        return -1;
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    zlink::discovery_t *disc = static_cast<zlink::discovery_t *> (discovery_);
+    if (!disc->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->attach_discovery (disc);
+}
+
 int zlink_gateway_set_handler (void *gateway_,
-                               zlink_gateway_handler_fn handler_)
+                               zlink_socket_msg_handler_fn handler_)
 {
     if (!gateway_)
         return -1;
@@ -1775,6 +1923,20 @@ int zlink_gateway_set_handler (void *gateway_,
         return -1;
     }
     return gateway->set_handler (handler_);
+}
+
+int zlink_gateway_set_send_ready_handler (
+  void *gateway_,
+  zlink_send_ready_handler_fn handler_)
+{
+    if (!gateway_)
+        return -1;
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->set_send_ready_handler (handler_);
 }
 
 int zlink_gateway_bind (void *gateway_, const char *bind_endpoint_)
@@ -1789,53 +1951,10 @@ int zlink_gateway_bind (void *gateway_, const char *bind_endpoint_)
     return gateway->bind (bind_endpoint_);
 }
 
-int zlink_gateway_register (void *gateway_,
-                            const char *service_name_,
-                            const char *advertise_endpoint_,
-                            uint32_t weight_)
-{
-    if (!gateway_)
-        return -1;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return gateway->register_service (service_name_, advertise_endpoint_,
-                                      weight_);
-}
-
-int zlink_gateway_update_weight (void *gateway_,
-                                 const char *service_name_,
-                                 uint32_t weight_)
-{
-    if (!gateway_)
-        return -1;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return gateway->update_weight (service_name_, weight_);
-}
-
-int zlink_gateway_unregister (void *gateway_, const char *service_name_)
-{
-    if (!gateway_)
-        return -1;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return gateway->unregister_service (service_name_);
-}
-
 int zlink_gateway_send (void *gateway_,
-                        const char *service_name_,
                         zlink_msg_t *parts_,
                         size_t part_count_,
-                        int flags_)
+                        zlink_send_flags_t flags_)
 {
     if (!gateway_)
         return -1;
@@ -1844,49 +1963,14 @@ int zlink_gateway_send (void *gateway_,
         errno = EFAULT;
         return -1;
     }
-    return gateway->send (service_name_, parts_, part_count_, flags_);
-}
-
-int zlink_gateway_send_bytes (void *gateway_,
-                              const char *service_name_,
-                              const void *data_,
-                              size_t size_,
-                              int flags_)
-{
-    if (!gateway_)
-        return -1;
-    if (size_ > 0 && !data_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    zlink_msg_t part;
-    if (zlink_msg_init_size (&part, size_) != 0)
-        return -1;
-    if (size_ > 0)
-        memcpy (zlink_msg_data (&part), data_, size_);
-
-    const int rc = gateway->send (service_name_, &part, 1, flags_);
-    if (unlikely (rc != 0)) {
-        const int err = errno;
-        zlink_msg_close (&part);
-        errno = err;
-    }
-    return rc;
+    return gateway->send (parts_, part_count_, flags_);
 }
 
 int zlink_gateway_send_rid (void *gateway_,
-                            const char *service_name_,
                             const zlink_routing_id_t *routing_id_,
                             zlink_msg_t *parts_,
                             size_t part_count_,
-                            int flags_)
+                            zlink_send_flags_t flags_)
 {
     if (!gateway_)
         return -1;
@@ -1895,49 +1979,11 @@ int zlink_gateway_send_rid (void *gateway_,
         errno = EFAULT;
         return -1;
     }
-    return gateway->send_rid (service_name_, routing_id_, parts_, part_count_,
-                              flags_);
-}
-
-int zlink_gateway_send_rid_bytes (void *gateway_,
-                                  const char *service_name_,
-                                  const zlink_routing_id_t *routing_id_,
-                                  const void *data_,
-                                  size_t size_,
-                                  int flags_)
-{
-    if (!gateway_)
-        return -1;
-    if (size_ > 0 && !data_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    zlink_msg_t part;
-    if (zlink_msg_init_size (&part, size_) != 0)
-        return -1;
-    if (size_ > 0)
-        memcpy (zlink_msg_data (&part), data_, size_);
-
-    const int rc =
-      gateway->send_rid (service_name_, routing_id_, &part, 1, flags_);
-    if (unlikely (rc != 0)) {
-        const int err = errno;
-        zlink_msg_close (&part);
-        errno = err;
-    }
-    return rc;
+    return gateway->send_rid (routing_id_, parts_, part_count_, flags_);
 }
 
 int zlink_gateway_set_lb_strategy (void *gateway_,
-                                   const char *service_name_,
-                                   int strategy_)
+                                   zlink_gateway_lb_strategy_t strategy_)
 {
     if (!gateway_)
         return -1;
@@ -1946,11 +1992,11 @@ int zlink_gateway_set_lb_strategy (void *gateway_,
         errno = EFAULT;
         return -1;
     }
-    return gateway->set_lb_strategy (service_name_, strategy_);
+    return gateway->set_lb_strategy (strategy_);
 }
 
 int zlink_gateway_set_option (void *gateway_,
-                              int option_,
+                              zlink_gateway_option_t option_,
                               const void *optval_,
                               size_t optvallen_)
 {
@@ -2035,7 +2081,7 @@ int zlink_gateway_last_endpoint (void *gateway_,
 
 int zlink_gateway_peer_info (void *gateway_,
                              const zlink_routing_id_t *routing_id_,
-                             zlink_peer_info_t *info_)
+                             zlink_gateway_peer_info_t *info_)
 {
     if (!gateway_)
         return -1;
@@ -2047,8 +2093,9 @@ int zlink_gateway_peer_info (void *gateway_,
     return gateway->peer_info (routing_id_, info_);
 }
 
-void *zlink_gateway_monitor_open (void *gateway_,
-                                  int events_,
+void *zlink_gateway_monitor_open (
+  void *gateway_,
+  zlink_gateway_monitor_event_mask_t events_,
                                   zlink_service_monitor_handler_fn handler_)
 {
     if (!handler_) {
@@ -2075,7 +2122,7 @@ void *zlink_gateway_monitor_open (void *gateway_,
 }
 
 int zlink_gateway_router_peers (void *gateway_,
-                                zlink_peer_info_t *peers_,
+                                zlink_gateway_peer_info_t *peers_,
                                 size_t *count_)
 {
     if (!gateway_)
@@ -2089,15 +2136,10 @@ int zlink_gateway_router_peers (void *gateway_,
         errno = EFAULT;
         return -1;
     }
-    void *router_socket = gateway->poller_socket ();
-    if (!router_socket) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return zlink_socket_peers (router_socket, peers_, count_);
+    return gateway->router_peers (peers_, count_);
 }
 
-int zlink_gateway_connection_count (void *gateway_, const char *service_name_)
+int zlink_gateway_connection_count (void *gateway_)
 {
     if (!gateway_)
         return -1;
@@ -2106,7 +2148,21 @@ int zlink_gateway_connection_count (void *gateway_, const char *service_name_)
         errno = EFAULT;
         return -1;
     }
-    return gateway->connection_count (service_name_);
+    return gateway->connection_count ();
+}
+
+int zlink_gateway_update_peer_weight (void *gateway_,
+                                      const zlink_routing_id_t *routing_id_,
+                                      uint32_t weight_)
+{
+    if (!gateway_)
+        return -1;
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->update_peer_weight (routing_id_, weight_);
 }
 
 int zlink_gateway_destroy (void **gateway_p_)
@@ -2126,16 +2182,35 @@ int zlink_gateway_destroy (void **gateway_p_)
     return 0;
 }
 
-void *zlink_spot_node_new (void *ctx_)
+void *zlink_spot_node_new (void *ctx_,
+                           const char *service_name_,
+                           zlink_spot_handler_fn handler_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
         return NULL;
     }
+    if (!service_name_ || service_name_[0] == '\0' || !handler_) {
+        errno = EINVAL;
+        return NULL;
+    }
     zlink::spot_node_t *node =
-      new (std::nothrow) zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_));
+      new (std::nothrow)
+        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
     if (!node) {
         errno = ENOMEM;
+        return NULL;
+    }
+    if (!node->check_tag ()) {
+        delete node;
+        errno = EINVAL;
+        return NULL;
+    }
+    if (zlink_spot_node_set_handler (node, handler_) != 0) {
+        const int err = errno;
+        node->destroy ();
+        delete node;
+        errno = err;
         return NULL;
     }
     return static_cast<void *> (node);
@@ -2201,35 +2276,7 @@ int zlink_spot_node_disconnect_peer_pub (void *node_,
     return node->disconnect_peer_pub (peer_pub_endpoint_);
 }
 
-int zlink_spot_node_register (void *node_,
-                            const char *service_name_,
-                            const char *advertise_endpoint_)
-{
-    if (!node_)
-        return -1;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return node->register_node (service_name_, advertise_endpoint_);
-}
-
-int zlink_spot_node_unregister (void *node_, const char *service_name_)
-{
-    if (!node_)
-        return -1;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return node->unregister_node (service_name_);
-}
-
-int zlink_spot_node_set_discovery (void *node_,
-                                void *discovery_,
-                                const char *service_name_)
+int zlink_spot_node_attach_discovery (void *node_, void *discovery_)
 {
     if (!node_ || !discovery_)
         return -1;
@@ -2243,7 +2290,7 @@ int zlink_spot_node_set_discovery (void *node_,
         errno = EFAULT;
         return -1;
     }
-    return node->set_discovery (disc, service_name_);
+    return node->attach_discovery (disc);
 }
 
 int zlink_spot_node_set_tls_server (void *node_,
@@ -2279,7 +2326,7 @@ int zlink_spot_node_publish (void *node_,
                              const char *topic_id_,
                              zlink_msg_t *parts_,
                              size_t part_count_,
-                             int flags_)
+                             zlink_send_flags_t flags_)
 {
     if (!node_)
         return -1;
@@ -2292,35 +2339,6 @@ int zlink_spot_node_publish (void *node_,
     if (!pub)
         return -1;
     return pub->publish (topic_id_, parts_, part_count_, flags_);
-}
-
-int zlink_spot_node_publish_bytes (void *node_,
-                                   const char *topic_id_,
-                                   const void *data_,
-                                   size_t size_,
-                                   int flags_)
-{
-    if (!node_)
-        return -1;
-    if (size_ > 0 && !data_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    zlink_msg_t part;
-    if (zlink_msg_init_size (&part, size_) != 0)
-        return -1;
-    if (size_ > 0)
-        memcpy (zlink_msg_data (&part), data_, size_);
-
-    const int rc =
-      zlink_spot_node_publish (node_, topic_id_, &part, 1, flags_);
-    if (unlikely (rc != 0)) {
-        const int err = errno;
-        zlink_msg_close (&part);
-        errno = err;
-    }
-    return rc;
 }
 
 int zlink_spot_node_subscribe (void *node_, const char *topic_id_)
@@ -2411,16 +2429,24 @@ int zlink_spot_node_set_handler (void *node_,
     return -1;
 }
 
-void *zlink_spot_new (void *spot_node_,
-                      int roles_,
-                      zlink_spot_handler_fn handler_)
+int zlink_spot_node_set_send_ready_handler (
+  void *node_,
+  zlink_send_ready_handler_fn handler_)
+{
+    if (!node_)
+        return -1;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node->set_send_ready_handler (handler_);
+}
+
+void *zlink_spot_new (void *spot_node_, zlink_spot_handler_fn handler_)
 {
     if (!spot_node_) {
         errno = EFAULT;
-        return NULL;
-    }
-    if ((roles_ & (ZLINK_SPOT_ROLE_PUB | ZLINK_SPOT_ROLE_SUB)) == 0) {
-        errno = EINVAL;
         return NULL;
     }
 
@@ -2429,7 +2455,7 @@ void *zlink_spot_new (void *spot_node_,
         errno = EFAULT;
         return NULL;
     }
-    if ((roles_ & ZLINK_SPOT_ROLE_SUB) != 0 && !handler_) {
+    if (!handler_) {
         errno = EINVAL;
         return NULL;
     }
@@ -2440,40 +2466,30 @@ void *zlink_spot_new (void *spot_node_,
         return NULL;
     }
     spot->node = node;
-    spot->roles = roles_;
     spot->handler = handler_;
 
-    if ((roles_ & ZLINK_SPOT_ROLE_PUB) != 0) {
-        spot->pub = node->create_spot_pub ();
-        if (!spot->pub) {
-            delete spot;
-            return NULL;
-        }
+    spot->pub = node->create_spot_pub ();
+    if (!spot->pub) {
+        delete spot;
+        return NULL;
     }
 
-    if ((roles_ & ZLINK_SPOT_ROLE_SUB) != 0) {
-        spot->sub = node->create_spot_sub ();
-        if (!spot->sub) {
-            if (spot->pub) {
-                spot->pub->destroy ();
-                delete spot->pub;
-            }
-            delete spot;
-            return NULL;
-        }
-        if (spot->sub->set_direct_handler (&spot_sub_handler_adapter, spot)
-            != 0) {
-            const int err = errno;
-            spot->sub->destroy ();
-            delete spot->sub;
-            if (spot->pub) {
-                spot->pub->destroy ();
-                delete spot->pub;
-            }
-            delete spot;
-            errno = err;
-            return NULL;
-        }
+    spot->sub = node->create_spot_sub ();
+    if (!spot->sub) {
+        spot->pub->destroy ();
+        delete spot->pub;
+        delete spot;
+        return NULL;
+    }
+    if (spot->sub->set_direct_handler (&spot_sub_handler_adapter, spot) != 0) {
+        const int err = errno;
+        spot->sub->destroy ();
+        delete spot->sub;
+        spot->pub->destroy ();
+        delete spot->pub;
+        delete spot;
+        errno = err;
+        return NULL;
     }
 
     return static_cast<void *> (spot);
@@ -2514,7 +2530,7 @@ int zlink_spot_publish (void *spot_,
                         const char *topic_id_,
                         zlink_msg_t *parts_,
                         size_t part_count_,
-                        int flags_)
+                        zlink_send_flags_t flags_)
 {
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
@@ -2524,23 +2540,6 @@ int zlink_spot_publish (void *spot_,
         return -1;
     }
     return spot->pub->publish (topic_id_, parts_, part_count_, flags_);
-}
-
-int zlink_spot_publish_bytes (void *spot_,
-                              const char *topic_id_,
-                              const void *data_,
-                              size_t size_,
-                              int flags_)
-{
-    spot_handle_t *spot = as_spot_handle (spot_);
-    if (!spot)
-        return -1;
-    if (!spot->pub) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return zlink_spot_pub_publish_bytes (spot->pub, topic_id_, data_, size_,
-                                         flags_);
 }
 
 int zlink_spot_subscribe (void *spot_, const char *topic_id_)
@@ -2600,66 +2599,80 @@ int zlink_spot_set_handler (void *spot_, zlink_spot_handler_fn handler_)
     return -1;
 }
 
-int zlink_spot_set_option (void *spot_,
-                           int role_,
-                           int option_,
-                           const void *optval_,
-                           size_t optvallen_)
+int zlink_spot_set_send_ready_handler (void *spot_,
+                                       zlink_send_ready_handler_fn handler_)
 {
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return -1;
-
-    if (role_ == ZLINK_SPOT_ROLE_PUB) {
-        if (!spot->pub) {
-            errno = ENOTSUP;
-            return -1;
-        }
-        return spot->pub->set_option (option_, optval_, optvallen_);
+    if (!spot->pub) {
+        errno = ENOTSUP;
+        return -1;
     }
-    if (role_ == ZLINK_SPOT_ROLE_SUB) {
-        if (!spot->sub) {
-            errno = ENOTSUP;
-            return -1;
-        }
-        return spot->sub->set_option (option_, optval_, optvallen_);
-    }
-
-    errno = EINVAL;
-    return -1;
+    return spot->pub->set_send_ready_handler (handler_, spot);
 }
 
-int zlink_spot_peers (void *spot_,
-                      int role_,
-                      zlink_peer_info_t *peers_,
-                      size_t *count_)
+int zlink_spot_set_pub_option (void *spot_,
+                               zlink_spot_pub_option_t option_,
+                               const void *optval_,
+                               size_t optvallen_)
 {
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return -1;
-
-    if (role_ == ZLINK_SPOT_ROLE_PUB) {
-        if (!spot->pub) {
-            errno = ENOTSUP;
-            return -1;
-        }
-        return spot->pub->peers (peers_, count_);
+    if (!spot->pub) {
+        errno = ENOTSUP;
+        return -1;
     }
-    if (role_ == ZLINK_SPOT_ROLE_SUB) {
-        if (!spot->sub) {
-            errno = ENOTSUP;
-            return -1;
-        }
-        return spot->sub->peers (peers_, count_);
-    }
+    return spot->pub->set_option (option_, optval_, optvallen_);
+}
 
-    errno = EINVAL;
-    return -1;
+int zlink_spot_set_sub_option (void *spot_,
+                               zlink_spot_sub_option_t option_,
+                               const void *optval_,
+                               size_t optvallen_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return -1;
+    if (!spot->sub) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return spot->sub->set_option (option_, optval_, optvallen_);
+}
+
+int zlink_spot_peers_pub (void *spot_,
+                          zlink_peer_info_t *peers_,
+                          size_t *count_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return -1;
+    if (!spot->pub) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return spot->pub->peers (peers_, count_);
+}
+
+int zlink_spot_peers_sub (void *spot_,
+                          zlink_peer_info_t *peers_,
+                          size_t *count_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return -1;
+    if (!spot->sub) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return spot->sub->peers (peers_, count_);
 }
 
 void *zlink_spot_monitor_open (void *spot_,
-                               int role_,
-                               int events_,
+                               zlink_spot_role_t role_,
+                               zlink_spot_monitor_event_mask_t events_,
                                zlink_service_monitor_handler_fn handler_)
 {
     spot_handle_t *spot = as_spot_handle (spot_);
@@ -2685,32 +2698,8 @@ void *zlink_spot_monitor_open (void *spot_,
     return NULL;
 }
 
-void *zlink_spot_node_default_pub (void *node_)
-{
-    if (!node_)
-        return NULL;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return static_cast<void *> (node->ensure_default_pub ());
-}
-
-void *zlink_spot_node_default_sub (void *node_)
-{
-    if (!node_)
-        return NULL;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return static_cast<void *> (node->ensure_default_sub ());
-}
-
 int zlink_spot_node_set_pub_option (void *node_,
-                                    int option_,
+                                    zlink_spot_pub_option_t option_,
                                     const void *optval_,
                                     size_t optvallen_)
 {
@@ -2725,7 +2714,7 @@ int zlink_spot_node_set_pub_option (void *node_,
 }
 
 int zlink_spot_node_set_sub_option (void *node_,
-                                    int option_,
+                                    zlink_spot_sub_option_t option_,
                                     const void *optval_,
                                     size_t optvallen_)
 {
@@ -2776,7 +2765,7 @@ int zlink_spot_pub_publish (void *pub_,
                             const char *topic_id_,
                             zlink_msg_t *parts_,
                             size_t part_count_,
-                            int flags_)
+                            zlink_send_flags_t flags_)
 {
     if (!pub_)
         return -1;
@@ -2788,42 +2777,8 @@ int zlink_spot_pub_publish (void *pub_,
     return pub->publish (topic_id_, parts_, part_count_, flags_);
 }
 
-int zlink_spot_pub_publish_bytes (void *pub_,
-                                  const char *topic_id_,
-                                  const void *data_,
-                                  size_t size_,
-                                  int flags_)
-{
-    if (!pub_)
-        return -1;
-    if (size_ > 0 && !data_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (pub_);
-    if (!pub->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    zlink_msg_t part;
-    if (zlink_msg_init_size (&part, size_) != 0)
-        return -1;
-    if (size_ > 0)
-        memcpy (zlink_msg_data (&part), data_, size_);
-
-    const int rc = pub->publish (topic_id_, &part, 1, flags_);
-    if (unlikely (rc != 0)) {
-        const int err = errno;
-        zlink_msg_close (&part);
-        errno = err;
-    }
-    return rc;
-}
-
 int zlink_spot_pub_set_option (void *pub_,
-                               int option_,
+                               zlink_spot_pub_option_t option_,
                                const void *optval_,
                                size_t optvallen_)
 {
@@ -2835,6 +2790,20 @@ int zlink_spot_pub_set_option (void *pub_,
         return -1;
     }
     return pub->set_option (option_, optval_, optvallen_);
+}
+
+int zlink_spot_pub_set_send_ready_handler (
+  void *pub_,
+  zlink_send_ready_handler_fn handler_)
+{
+    if (!pub_)
+        return -1;
+    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (pub_);
+    if (!pub->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return pub->set_send_ready_handler (handler_, pub);
 }
 
 int zlink_spot_pub_set_routing_id (void *pub_,
@@ -2882,7 +2851,7 @@ int zlink_spot_pub_peers (void *pub_,
 }
 
 void *zlink_spot_pub_monitor_open (void *pub_,
-                                   int events_,
+                                   zlink_spot_monitor_event_mask_t events_,
                                    zlink_service_monitor_handler_fn handler_)
 {
     if (!handler_) {
@@ -3104,7 +3073,7 @@ static void spot_sub_standalone_handler_adapter (
 }
 
 int zlink_spot_sub_set_option (void *sub_,
-                               int option_,
+                               zlink_spot_sub_option_t option_,
                                const void *optval_,
                                size_t optvallen_)
 {
@@ -3163,7 +3132,7 @@ int zlink_spot_sub_peers (void *sub_,
 }
 
 void *zlink_spot_sub_monitor_open (void *sub_,
-                                   int events_,
+                                   zlink_spot_monitor_event_mask_t events_,
                                    zlink_service_monitor_handler_fn handler_)
 {
     if (!handler_) {
@@ -3223,8 +3192,9 @@ int zlink_disconnect (void *s_, const char *addr_)
 
 // Sending functions.
 
-static inline int
-s_sendmsg (socket_handle_t handle_, zlink_msg_t *msg_, int flags_)
+static inline int s_sendmsg (socket_handle_t handle_,
+                             zlink_msg_t *msg_,
+                             zlink_send_flags_t flags_)
 {
     size_t sz = zlink_msg_size (msg_);
     int rc = handle_.socket->send (reinterpret_cast<zlink::msg_t *> (msg_),
@@ -3236,7 +3206,10 @@ s_sendmsg (socket_handle_t handle_, zlink_msg_t *msg_, int flags_)
     return static_cast<int> (sz < max_msgsz ? sz : max_msgsz);
 }
 
-int zlink_send (void *s_, const void *buf_, size_t len_, int flags_)
+int zlink_send (void *s_,
+                const void *buf_,
+                size_t len_,
+                zlink_send_flags_t flags_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
@@ -3312,7 +3285,7 @@ int zlink_stream_send (void *s_,
                        const zlink_routing_id_t *rid_,
                        const void *data_,
                        size_t size_,
-                       int flags_)
+                       zlink_send_flags_t flags_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
@@ -3397,7 +3370,7 @@ int zlink_stream_send (void *s_,
 int zlink_stream_send_msg (void *s_,
                            const zlink_routing_id_t *rid_,
                            zlink_msg_t *msg_,
-                           int flags_)
+                           zlink_send_flags_t flags_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
@@ -3536,7 +3509,9 @@ int zlink_msg_init_data (
       ->init_data (data_, size_, ffn_, hint_);
 }
 
-int zlink_msg_send (zlink_msg_t *msg_, void *s_, int flags_)
+int zlink_msg_send (zlink_msg_t *msg_,
+                    void *s_,
+                    zlink_send_flags_t flags_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
@@ -3610,484 +3585,6 @@ const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_)
 
     errno = EINVAL;
     return NULL;
-}
-
-// Polling.
-
-int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_)
-{
-    if (unlikely (nitems_ < 0)) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (unlikely (nitems_ == 0)) {
-        if (timeout_ == 0)
-            return 0;
-#if defined ZLINK_HAVE_WINDOWS
-        Sleep (timeout_ > 0 ? timeout_ : INFINITE);
-        return 0;
-#else
-        return usleep (timeout_ * 1000);
-#endif
-    }
-    if (!items_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    struct poll_cache_t
-    {
-        std::vector<pollfd> pollfds;
-        std::vector<zlink::socket_base_t *> sockets;
-        std::vector<void *> socket_handles;
-        std::vector<zlink::fd_t> fds;
-        std::vector<short> events;
-        bool socket_fd_unavailable;
-        bool initialized;
-
-        poll_cache_t () :
-            socket_fd_unavailable (false),
-            initialized (false)
-        {
-        }
-    };
-
-    static thread_local poll_cache_t cache;
-
-    bool rebuild_cache =
-      !cache.initialized || static_cast<int> (cache.pollfds.size ()) != nitems_;
-
-    if (!rebuild_cache) {
-        for (int i = 0; i != nitems_; ++i) {
-            if (cache.socket_handles[i] != items_[i].socket
-                || cache.fds[i] != items_[i].fd
-                || cache.events[i] != items_[i].events) {
-                rebuild_cache = true;
-                break;
-            }
-            if (items_[i].socket) {
-                zlink::socket_base_t *socket = cache.sockets[i];
-                if (!socket || !socket->check_tag ()) {
-                    errno = ENOTSOCK;
-                    return -1;
-                }
-            }
-        }
-    }
-
-    if (rebuild_cache) {
-        cache.pollfds.resize (nitems_);
-        cache.sockets.resize (nitems_);
-        cache.socket_handles.resize (nitems_);
-        cache.fds.resize (nitems_);
-        cache.events.resize (nitems_);
-        cache.socket_fd_unavailable = false;
-
-        for (int i = 0; i != nitems_; i++) {
-            cache.socket_handles[i] = items_[i].socket;
-            cache.fds[i] = items_[i].fd;
-            cache.events[i] = items_[i].events;
-            cache.pollfds[i].revents = 0;
-
-            if (items_[i].socket) {
-                zlink::socket_base_t *socket =
-                  static_cast<zlink::socket_base_t *> (items_[i].socket);
-                if (!socket->check_tag ()) {
-                    errno = ENOTSOCK;
-                    return -1;
-                }
-                cache.sockets[i] = socket;
-                size_t zlink_fd_size = sizeof (zlink::fd_t);
-                if (socket->getsockopt (ZLINK_FD, &cache.pollfds[i].fd,
-                                        &zlink_fd_size)
-                    == -1) {
-                    if (errno == EINVAL) {
-                        cache.socket_fd_unavailable = true;
-                        cache.pollfds[i].fd = -1;
-                        cache.pollfds[i].events = 0;
-                        continue;
-                    }
-                    return -1;
-                }
-                cache.pollfds[i].events = items_[i].events ? POLLIN : 0;
-            }
-            else {
-                cache.sockets[i] = NULL;
-                cache.pollfds[i].fd = items_[i].fd;
-                cache.pollfds[i].events =
-                  (items_[i].events & ZLINK_POLLIN ? POLLIN : 0)
-                  | (items_[i].events & ZLINK_POLLOUT ? POLLOUT : 0)
-                  | (items_[i].events & ZLINK_POLLPRI ? POLLPRI : 0);
-            }
-        }
-
-        cache.initialized = true;
-    } else {
-        for (int i = 0; i != nitems_; ++i)
-            cache.pollfds[i].revents = 0;
-    }
-
-    std::vector<pollfd> &pollfds = cache.pollfds;
-    std::vector<zlink::socket_base_t *> &sockets = cache.sockets;
-    const bool socket_fd_unavailable = cache.socket_fd_unavailable;
-
-    zlink::clock_t clock;
-    uint64_t now = 0;
-    uint64_t end = 0;
-    bool first_pass = true;
-    int nevents = 0;
-
-    while (true) {
-        const zlink::timeout_t timeout =
-          zlink::compute_timeout (first_pass, timeout_, now, end);
-
-        int poll_timeout = timeout;
-        if (socket_fd_unavailable) {
-            static const int max_poll_timeout_ms = 10;
-            if (timeout_ == 0) {
-                poll_timeout = 0;
-            } else if (timeout_ < 0) {
-                poll_timeout = max_poll_timeout_ms;
-            } else {
-                poll_timeout = timeout > max_poll_timeout_ms
-                                 ? max_poll_timeout_ms
-                                 : timeout;
-            }
-        }
-
-        {
-            const int rc = poll (&pollfds[0], nitems_, poll_timeout);
-            if (rc == -1 && errno == EINTR) {
-                return -1;
-            }
-            errno_assert (rc >= 0);
-        }
-
-        for (int i = 0; i != nitems_; i++) {
-            items_[i].revents = 0;
-            if (sockets[i]) {
-                uint32_t zlink_events = 0;
-                if (sockets[i]->get_events (items_[i].events, &zlink_events)
-                    == -1) {
-                    return -1;
-                }
-                if ((items_[i].events & ZLINK_POLLOUT)
-                    && (zlink_events & ZLINK_POLLOUT))
-                    items_[i].revents |= ZLINK_POLLOUT;
-                if ((items_[i].events & ZLINK_POLLIN)
-                    && (zlink_events & ZLINK_POLLIN))
-                    items_[i].revents |= ZLINK_POLLIN;
-            }
-            else {
-                if (pollfds[i].revents & POLLIN)
-                    items_[i].revents |= ZLINK_POLLIN;
-                if (pollfds[i].revents & POLLOUT)
-                    items_[i].revents |= ZLINK_POLLOUT;
-                if (pollfds[i].revents & POLLPRI)
-                    items_[i].revents |= ZLINK_POLLPRI;
-                if (pollfds[i].revents & ~(POLLIN | POLLOUT | POLLPRI))
-                    items_[i].revents |= ZLINK_POLLERR;
-            }
-
-            if (items_[i].revents)
-                nevents++;
-        }
-
-        if (timeout_ == 0 || nevents)
-            break;
-
-        if (timeout_ < 0) {
-            first_pass = false;
-            continue;
-        }
-
-        if (first_pass) {
-            now = clock.now_ms ();
-            end = now + timeout_;
-            if (now == end)
-                break;
-            first_pass = false;
-            continue;
-        }
-
-        now = clock.now_ms ();
-        if (now >= end)
-            break;
-    }
-
-    return nevents;
-}
-
-void *zlink_poller_new (void)
-{
-    zlink::socket_poller_t *poller = new (std::nothrow) zlink::socket_poller_t;
-    if (!poller) {
-        errno = ENOMEM;
-        return NULL;
-    }
-    return static_cast<void *> (poller);
-}
-
-int zlink_poller_destroy (void **poller_p)
-{
-    if (!poller_p) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    poller_handle_t handle = as_poller_handle (*poller_p);
-    if (!handle.poller)
-        return -1;
-
-    delete handle.poller;
-    *poller_p = NULL;
-    return 0;
-}
-
-int zlink_poller_size (void *poller_)
-{
-    poller_handle_t handle = as_poller_handle (poller_);
-    if (!handle.poller)
-        return -1;
-    return handle.poller->size ();
-}
-
-int zlink_poller_add (void *poller_,
-                      void *socket_,
-                      void *user_data_,
-                      short events_)
-{
-    poller_handle_t poller = as_poller_handle (poller_);
-    if (!poller.poller)
-        return -1;
-
-    socket_handle_t socket = as_socket_handle (socket_);
-    if (!socket.socket)
-        return -1;
-    if (events_ & ZLINK_POLLIN) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    return poller.poller->add (socket.socket, user_data_, events_);
-}
-
-int zlink_poller_add_fd (void *poller_,
-                         zlink_fd_t fd_,
-                         void *user_data_,
-                         short events_)
-{
-    poller_handle_t poller = as_poller_handle (poller_);
-    if (!poller.poller)
-        return -1;
-
-    return poller.poller->add_fd (static_cast<zlink::fd_t> (fd_),
-                                  user_data_, events_);
-}
-
-int zlink_poller_add_spot_sub (void *poller_,
-                               void *sub_,
-                               void *user_data_,
-                               short events_)
-{
-    zlink::spot_sub_t *sub = as_spot_sub_service (sub_);
-    if (!sub)
-        return -1;
-    return poller_add_service_socket (
-      poller_, static_cast<zlink::socket_base_t *> (sub->poller_socket ()),
-      user_data_, events_);
-}
-
-int zlink_poller_add_spot_pub (void *poller_,
-                               void *pub_,
-                               void *user_data_,
-                               short events_)
-{
-    zlink::spot_pub_t *pub = as_spot_pub_service (pub_);
-    if (!pub)
-        return -1;
-    return poller_add_service_socket (
-      poller_, static_cast<zlink::socket_base_t *> (pub->poller_socket ()),
-      user_data_, events_);
-}
-
-int zlink_poller_add_gateway (void *poller_,
-                              void *gateway_,
-                              void *user_data_,
-                              short events_)
-{
-    zlink::gateway_t *gateway = as_gateway_service (gateway_);
-    if (!gateway)
-        return -1;
-    return poller_add_service_socket (
-      poller_,
-      static_cast<zlink::socket_base_t *> (gateway->poller_socket ()),
-      user_data_, events_);
-}
-
-int zlink_poller_add_monitor (void *poller_,
-                              void *monitor_,
-                              void *user_data_,
-                              short events_)
-{
-    return zlink_poller_add (poller_, monitor_, user_data_, events_);
-}
-
-int zlink_poller_modify (void *poller_, void *socket_, short events_)
-{
-    poller_handle_t poller = as_poller_handle (poller_);
-    if (!poller.poller)
-        return -1;
-
-    socket_handle_t socket = as_socket_handle (socket_);
-    if (!socket.socket)
-        return -1;
-    if (events_ & ZLINK_POLLIN) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    return poller.poller->modify (socket.socket, events_);
-}
-
-int zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, short events_)
-{
-    poller_handle_t poller = as_poller_handle (poller_);
-    if (!poller.poller)
-        return -1;
-
-    return poller.poller->modify_fd (static_cast<zlink::fd_t> (fd_), events_);
-}
-
-int zlink_poller_modify_spot_sub (void *poller_, void *sub_, short events_)
-{
-    zlink::spot_sub_t *sub = as_spot_sub_service (sub_);
-    if (!sub)
-        return -1;
-    return poller_modify_service_socket (
-      poller_, static_cast<zlink::socket_base_t *> (sub->poller_socket ()),
-      events_);
-}
-
-int zlink_poller_modify_spot_pub (void *poller_, void *pub_, short events_)
-{
-    zlink::spot_pub_t *pub = as_spot_pub_service (pub_);
-    if (!pub)
-        return -1;
-    return poller_modify_service_socket (
-      poller_, static_cast<zlink::socket_base_t *> (pub->poller_socket ()),
-      events_);
-}
-
-int zlink_poller_modify_gateway (void *poller_,
-                                 void *gateway_,
-                                 short events_)
-{
-    zlink::gateway_t *gateway = as_gateway_service (gateway_);
-    if (!gateway)
-        return -1;
-    return poller_modify_service_socket (
-      poller_,
-      static_cast<zlink::socket_base_t *> (gateway->poller_socket ()),
-      events_);
-}
-
-int zlink_poller_modify_monitor (void *poller_,
-                                 void *monitor_,
-                                 short events_)
-{
-    return zlink_poller_modify (poller_, monitor_, events_);
-}
-
-int zlink_poller_remove (void *poller_, void *socket_)
-{
-    poller_handle_t poller = as_poller_handle (poller_);
-    if (!poller.poller)
-        return -1;
-
-    socket_handle_t socket = as_socket_handle (socket_);
-    if (!socket.socket)
-        return -1;
-
-    return poller.poller->remove (socket.socket);
-}
-
-int zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_)
-{
-    poller_handle_t poller = as_poller_handle (poller_);
-    if (!poller.poller)
-        return -1;
-
-    return poller.poller->remove_fd (static_cast<zlink::fd_t> (fd_));
-}
-
-int zlink_poller_remove_spot_sub (void *poller_, void *sub_)
-{
-    zlink::spot_sub_t *sub = as_spot_sub_service (sub_);
-    if (!sub)
-        return -1;
-    return poller_remove_service_socket (
-      poller_, static_cast<zlink::socket_base_t *> (sub->poller_socket ()));
-}
-
-int zlink_poller_remove_spot_pub (void *poller_, void *pub_)
-{
-    zlink::spot_pub_t *pub = as_spot_pub_service (pub_);
-    if (!pub)
-        return -1;
-    return poller_remove_service_socket (
-      poller_, static_cast<zlink::socket_base_t *> (pub->poller_socket ()));
-}
-
-int zlink_poller_remove_gateway (void *poller_, void *gateway_)
-{
-    zlink::gateway_t *gateway = as_gateway_service (gateway_);
-    if (!gateway)
-        return -1;
-    return poller_remove_service_socket (
-      poller_,
-      static_cast<zlink::socket_base_t *> (gateway->poller_socket ()));
-}
-
-int zlink_poller_remove_monitor (void *poller_, void *monitor_)
-{
-    return zlink_poller_remove (poller_, monitor_);
-}
-
-int zlink_poller_wait_all (void *poller_,
-                           zlink_poller_event_t *events_,
-                           int n_events_,
-                           long timeout_)
-{
-    poller_handle_t handle = as_poller_handle (poller_);
-    if (!handle.poller)
-        return -1;
-    if (!events_) {
-        errno = EFAULT;
-        return -1;
-    }
-    if (n_events_ <= 0) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    for (int i = 0; i < n_events_; ++i) {
-        events_[i].socket = NULL;
-        events_[i].fd = zlink::retired_fd;
-        events_[i].user_data = NULL;
-        events_[i].events = 0;
-    }
-    const int rc = handle.poller->wait (events_, n_events_, timeout_);
-    if (rc == -1 && errno == EAGAIN)
-        return 0;
-    return rc;
-}
-
-int zlink_poller_wait (void *poller_,
-                       zlink_poller_event_t *event_,
-                       long timeout_)
-{
-    return zlink_poller_wait_all (poller_, event_, 1, timeout_);
 }
 
 int zlink_proxy (void *frontend_, void *backend_, void *capture_)

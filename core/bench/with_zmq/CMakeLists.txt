@@ -36,6 +36,10 @@ else()
     set(BENCH_CXX_FLAGS "-O3")
 endif()
 
+option(ZLINK_BUILD_WITH_ZMQ_ZLINK_BENCHES
+       "Build zlink-vs-zmq comparison benches that still depend on legacy sync recv APIs"
+       OFF)
+
 function(add_std_zmq_bench_single name source)
     add_executable(${name} ${source})
     target_link_libraries(${name} PRIVATE ${STD_LIBZMQ_LIBRARY} Threads::Threads)
@@ -121,41 +125,46 @@ function(add_zlink_bench_multi name source)
 endfunction()
 
 if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
-    # --- zlink (current) ---
-    add_zlink_bench_single(comp_zlink_pair single/zlink/bench_zlink_pair.cpp)
-    add_zlink_bench_single(comp_zlink_pubsub single/zlink/bench_zlink_pubsub.cpp)
-    add_zlink_bench_single(comp_zlink_dealer_dealer single/zlink/bench_zlink_dealer_dealer.cpp)
-    add_zlink_bench_single(comp_zlink_dealer_router single/zlink/bench_zlink_dealer_router.cpp)
-    add_zlink_bench_single(comp_zlink_router_router single/zlink/bench_zlink_router_router.cpp)
-    add_zlink_bench_single(comp_zlink_router_router_poll single/zlink/bench_zlink_router_router_poll.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_dealer_dealer
-                    multi/zlink/bench_zlink_multi_dealer_dealer.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_dealer_router
-                    multi/zlink/bench_zlink_multi_dealer_router.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_router_router
-                    multi/zlink/bench_zlink_multi_router_router.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_pubsub
-                    multi/zlink/bench_zlink_multi_pubsub.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_dealer_dealer_client
-                    multi/zlink/bench_zlink_multi_dealer_dealer_client.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_dealer_dealer_server
-                    multi/zlink/bench_zlink_multi_dealer_dealer_server.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_dealer_router_client
-                    multi/zlink/bench_zlink_multi_dealer_router_client.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_dealer_router_server
-                    multi/zlink/bench_zlink_multi_dealer_router_server.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_router_router_client
-                    multi/zlink/bench_zlink_multi_router_router_client.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_router_router_server
-                    multi/zlink/bench_zlink_multi_router_router_server.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_pubsub_client
-                    multi/zlink/bench_zlink_multi_pubsub_client.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_pubsub_server
-                    multi/zlink/bench_zlink_multi_pubsub_server.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_stream_server
-                    multi/zlink/bench_zlink_multi_stream_server.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_stream
-                    multi/zlink/bench_zlink_multi_stream.cpp)
+    if(ZLINK_BUILD_WITH_ZMQ_ZLINK_BENCHES)
+        # --- zlink (current) ---
+        add_zlink_bench_single(comp_zlink_pair single/zlink/bench_zlink_pair.cpp)
+        add_zlink_bench_single(comp_zlink_pubsub single/zlink/bench_zlink_pubsub.cpp)
+        add_zlink_bench_single(comp_zlink_dealer_dealer single/zlink/bench_zlink_dealer_dealer.cpp)
+        add_zlink_bench_single(comp_zlink_dealer_router single/zlink/bench_zlink_dealer_router.cpp)
+        add_zlink_bench_single(comp_zlink_router_router single/zlink/bench_zlink_router_router.cpp)
+        add_zlink_bench_single(comp_zlink_router_router_poll single/zlink/bench_zlink_router_router_poll.cpp)
+        add_zlink_bench_multi(comp_zlink_multi_dealer_dealer
+                        multi/zlink/bench_zlink_multi_dealer_dealer.cpp)
+        add_zlink_bench_multi(comp_zlink_multi_dealer_router
+                        multi/zlink/bench_zlink_multi_dealer_router.cpp)
+        add_zlink_bench_multi(comp_zlink_multi_router_router
+                        multi/zlink/bench_zlink_multi_router_router.cpp)
+        add_zlink_bench_multi(comp_zlink_multi_pubsub
+                        multi/zlink/bench_zlink_multi_pubsub.cpp)
+        add_zlink_bench_multi(comp_zlink_multi_dealer_dealer_client
+                        multi/zlink/bench_zlink_multi_dealer_dealer_client.cpp)
+        add_zlink_bench_multi(comp_zlink_multi_dealer_dealer_server
+                        multi/zlink/bench_zlink_multi_dealer_dealer_server.cpp)
+        add_zlink_bench_multi(comp_zlink_multi_dealer_router_client
+                        multi/zlink/bench_zlink_multi_dealer_router_client.cpp)
+        add_zlink_bench_multi(comp_zlink_multi_dealer_router_server
+                        multi/zlink/bench_zlink_multi_dealer_router_server.cpp)
+        add_zlink_bench_multi(comp_zlink_multi_router_router_client
+                        multi/zlink/bench_zlink_multi_router_router_client.cpp)
+        add_zlink_bench_multi(comp_zlink_multi_router_router_server
+                        multi/zlink/bench_zlink_multi_router_router_server.cpp)
+        add_zlink_bench_multi(comp_zlink_multi_pubsub_client
+                        multi/zlink/bench_zlink_multi_pubsub_client.cpp)
+        add_zlink_bench_multi(comp_zlink_multi_pubsub_server
+                        multi/zlink/bench_zlink_multi_pubsub_server.cpp)
+        add_zlink_bench_multi(comp_zlink_multi_stream_server
+                        multi/zlink/bench_zlink_multi_stream_server.cpp)
+        add_zlink_bench_multi(comp_zlink_multi_stream
+                        multi/zlink/bench_zlink_multi_stream.cpp)
+    else()
+        message(STATUS
+                "Skipping core/bench/with_zmq zlink comparison benches: they still rely on removed sync recv APIs under the direct-callback ABI.")
+    endif()
 else()
     message(WARNING "zlink headers not found at ${ZLINK_INCLUDE_DIR}")
 endif()

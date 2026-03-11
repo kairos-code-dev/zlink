@@ -488,7 +488,7 @@ inline bool create_gateway_client_slots (
     }
 
     void *discovery =
-      zlink_discovery_new_typed (ctx.get (), ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx.get (), ZLINK_SERVICE_TYPE_GATEWAY);
     if (!discovery)
         return false;
 

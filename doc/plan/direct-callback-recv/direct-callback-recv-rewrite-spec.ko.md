@@ -229,10 +229,10 @@ service 통합 방향은 다음으로 고정한다.
 | `zlink_receiver_new` | 삭제 | `zlink_gateway_new` |
 | `zlink_receiver_bind` | 삭제 | `zlink_gateway_bind` |
 | `zlink_receiver_connect_registry` | 삭제 | `zlink_discovery_connect_registry` |
-| `zlink_receiver_register` | 삭제 | `zlink_gateway_register` |
-| `zlink_receiver_update_weight` | 삭제 | `zlink_gateway_update_weight` |
-| `zlink_receiver_unregister` | 삭제 | `zlink_gateway_unregister` |
-| `zlink_receiver_register_result` | 삭제 | callback / monitor event |
+| `zlink_receiver_register` | 삭제 | 삭제 |
+| `zlink_receiver_update_weight` | 삭제 | `zlink_gateway_update_peer_weight` |
+| `zlink_receiver_unregister` | 삭제 | 삭제 |
+| `zlink_receiver_register_result` | 삭제 | 삭제 |
 | `zlink_receiver_set_tls_server` | 삭제 | `zlink_gateway_set_tls_server` |
 | `zlink_receiver_last_endpoint` | 삭제 | `zlink_gateway_last_endpoint` |
 | `zlink_receiver_peer_info` | 삭제 | `zlink_gateway_peer_info` |
@@ -247,10 +247,9 @@ service 통합 방향은 다음으로 고정한다.
 
 - `receiver`는 public type에서 제거한다.
 - 통합 `gateway`는 단일 ROUTER 기반의 bidirectional service handle이 된다.
-- register/unregister/ack는 통합 `gateway`의 callback 또는 monitor event로 정리한다.
-- `ZLINK_RECEIVER_REGISTER_OK`, `ZLINK_RECEIVER_REGISTER_FAILED`,
-  `ZLINK_RECEIVER_UNREGISTER_OK`, `ZLINK_RECEIVER_UNREGISTER_FAILED`는
-  삭제하고 `ZLINK_GATEWAY_REGISTER_*` 계열로 통합한다.
+- public `gateway`는 data-plane/LB handle로 제한하고 별도 public register/unregister API는 두지 않는다.
+- 공개 가중치 변경 surface는 `zlink_gateway_update_peer_weight()` 하나로 정리한다.
+- receiver 전용 register/unregister result 상수도 함께 제거한다.
 
 #### 5.1.3.2 `spot_pub` / `spot_sub` 정리, `spot_node` 구조 유지
 
@@ -260,7 +259,7 @@ service 통합 방향은 다음으로 고정한다.
 | `zlink_spot_pub_destroy` | 삭제 가능 | node/facade destroy |
 | `zlink_spot_pub_set_option` | 삭제 가능 | `zlink_spot_node_set_pub_option` |
 | `zlink_spot_pub_publish` | 삭제 가능 | `zlink_spot_node_publish` 또는 `zlink_spot_publish` |
-| `zlink_spot_pub_publish_bytes` | 삭제 가능 | `zlink_spot_node_publish_bytes` 또는 `zlink_spot_publish_bytes` |
+| `zlink_spot_pub_publish_bytes` | 삭제 | 삭제 |
 | `zlink_spot_sub_new` | 삭제 가능 | `spot_node` default facade 또는 `spot` facade |
 | `zlink_spot_sub_destroy` | 삭제 가능 | node/facade destroy |
 | `zlink_spot_sub_set_option` | 삭제 가능 | `zlink_spot_node_set_sub_option` |
@@ -394,31 +393,18 @@ typedef enum zlink_gateway_msg_kind_t {
 
 typedef void (*zlink_gateway_handler_fn) (
   zlink_gateway_msg_kind_t kind,
-  const char *service_name,
-  size_t service_name_len,
   const zlink_routing_id_t *source_rid,
   zlink_msg_t *parts,
   size_t part_count);
 
 void *zlink_gateway_new (void *ctx,
                          void *discovery,
+                         const char *service_name,
                          const char *routing_id,
                          zlink_gateway_handler_fn handler);
 
 int zlink_gateway_bind (void *gateway,
                         const char *bind_endpoint);
-
-int zlink_gateway_register (void *gateway,
-                            const char *service_name,
-                            const char *advertise_endpoint,
-                            uint32_t weight);
-
-int zlink_gateway_update_weight (void *gateway,
-                                 const char *service_name,
-                                 uint32_t weight);
-
-int zlink_gateway_unregister (void *gateway,
-                              const char *service_name);
 
 int zlink_gateway_set_tls_server (void *gateway,
                                   const char *cert,
@@ -433,9 +419,42 @@ int zlink_gateway_last_endpoint (void *gateway,
                                  char *endpoint,
                                  size_t *size);
 
+typedef struct zlink_gateway_peer_info_t
+{
+  zlink_routing_id_t routing_id;
+  char remote_addr[256];
+  uint64_t connected_time;
+  uint64_t msgs_sent;
+  uint64_t msgs_received;
+  uint64_t snd_pending_msgs;
+  uint64_t rcv_pending_msgs;
+  uint32_t weight;
+} zlink_gateway_peer_info_t;
+
 int zlink_gateway_peer_info (void *gateway,
                              const zlink_routing_id_t *routing_id,
-                             zlink_peer_info_t *info);
+                             zlink_gateway_peer_info_t *info);
+
+int zlink_gateway_router_peers (void *gateway,
+                                zlink_gateway_peer_info_t *peers,
+                                size_t *count);
+
+int zlink_gateway_send (void *gateway,
+                        zlink_msg_t *parts,
+                        size_t part_count,
+                        zlink_send_flags_t flags);
+
+int zlink_gateway_send_rid (void *gateway,
+                            const zlink_routing_id_t *routing_id,
+                            zlink_msg_t *parts,
+                            size_t part_count,
+                            zlink_send_flags_t flags);
+
+int zlink_gateway_connection_count (void *gateway);
+
+int zlink_gateway_update_peer_weight (void *gateway,
+                                      const zlink_routing_id_t *routing_id,
+                                      uint32_t weight);
 
 int zlink_gateway_set_handler (void *gateway,
                                zlink_gateway_handler_fn handler);
@@ -445,26 +464,31 @@ int zlink_gateway_set_handler (void *gateway,
 
 - 통합 `gateway`는 기존 `gateway`와 `receiver`를 모두 대체한다.
 - 단일 ROUTER가 client-side outbound request와 server-side inbound request를 모두 담당한다.
+- `gateway`는 multi-service handle이 아니라 service-bound handle이다.
 - 생성 시 handler 등록을 기본으로 한다.
 - callback의 `kind`는 inbound message 성격을 구분한다.
   - `ZLINK_GATEWAY_MSG_REQUEST`: bound service endpoint로 들어온 request
   - `ZLINK_GATEWAY_MSG_REPLY`: outbound request에 대한 provider reply
-  - `ZLINK_GATEWAY_MSG_CONTROL`: register/ack/error/status 같은 control plane event
+  - `ZLINK_GATEWAY_MSG_CONTROL`: topology/error/status 같은 control plane event
 - `source_rid`는 항상 sender peer routing id다.
-- `service_name`은 request/reply/control 모두에서 가능한 경우 직접 전달한다.
+- service name은 `zlink_gateway_new()`에서 고정되므로 callback과 send 계열 함수는
+  이를 다시 받지 않는다.
 - `zlink_gateway_send()` / `zlink_gateway_send_rid()`는 유지하되, callback 안에서 reply 송신에도 사용한다.
+- `gateway` 공개 surface는 data-plane/LB handle로 제한하고 별도 public register/unregister API는 두지 않는다.
+- 공개 가중치 변경 surface는 `zlink_gateway_update_peer_weight()` 하나로 정리한다.
+- `zlink_gateway_peer_info()` / `zlink_gateway_router_peers()`는 `weight`를 포함한
+  `zlink_gateway_peer_info_t`를 사용한다.
+- `zlink_gateway_update_peer_weight()` 성공 후에는 local snapshot이 먼저 갱신되고,
+  이후 discovery/registry runtime을 통해 같은 service를 보는 다른 handle에도 동기화되어야 한다.
 - 생성 후 handler 교체가 필요하면 `zlink_gateway_set_handler()`를 다시 호출해 새 callback으로 덮어쓴다.
 - 통합 `gateway`는 single handle에서 client-side TLS와 server-side TLS 설정을 모두 가질 수 있다.
 - `zlink_gateway_set_tls_client()`와 `zlink_gateway_set_tls_server()`는 서로 배타적이지 않다.
 - 실제로 필요한 역할을 시작하기 전 첫 `connect`/`bind` 이전에 관련 TLS 설정을 끝내는 것을 기본 계약으로 둔다.
 - `REQUEST` / `REPLY` demux는 unified gateway ROUTER 수신 경로에서 수행한다.
-- `CONTROL` demux는 discovery/service-control runtime의 ack/error/status를
+- `CONTROL` demux는 discovery/service-control runtime의 topology/error/status를
   unified gateway callback shape로 정규화하는 경로에서 수행한다.
-- monitor event는 `ZLINK_GATEWAY_REGISTER_OK`,
-  `ZLINK_GATEWAY_REGISTER_FAILED`,
-  `ZLINK_GATEWAY_UNREGISTER_OK`,
-  `ZLINK_GATEWAY_UNREGISTER_FAILED`
-  를 사용해 receiver-전용 이벤트를 흡수한다.
+- gateway monitor는 route/service availability 변화만 공개하고,
+  registration result event는 공개하지 않는다.
 
 ### 5.3.4 spot facade callback API
 
@@ -491,11 +515,6 @@ int zlink_spot_publish (void *spot,
                         zlink_msg_t *parts,
                         size_t part_count,
                         int flags);
-int zlink_spot_publish_bytes (void *spot,
-                              const char *topic_id,
-                              const void *data,
-                              size_t size,
-                              int flags);
 int zlink_spot_subscribe (void *spot, const char *topic_id);
 int zlink_spot_subscribe_pattern (void *spot, const char *pattern);
 int zlink_spot_unsubscribe (void *spot,
@@ -524,6 +543,7 @@ void *zlink_spot_monitor_open (void *spot,
 - `spot`은 기능적으로 `spot_pub` + `spot_sub`를 하나로 합친 unified facade다.
 - 이번 재작성은 이 layering을 바꾸지 않고 callback 수신만 추가한다.
 - `spot` facade는 publish, subscribe, callback 수신을 계속 제공할 수 있다.
+- `spot` public send/recv surface는 `msg_t` 기반으로만 유지하고 `*_bytes` helper는 두지 않는다.
 - `zlink_spot_new()`는 `ctx`가 아니라 기존 `spot_node` handle에 attach되는 생성자다.
 - 생성 시 `roles` bitmask로 `PUB`, `SUB`, 또는 둘 다를 선언한다.
 - `roles`에 `ZLINK_SPOT_ROLE_SUB`가 포함되면 생성 시 non-`NULL` handler가 필수다.
@@ -1209,8 +1229,8 @@ transport-local inproc handoff primitive와 protocol decoder partial buffer,
   - `ROUTER/DEALER/PAIR/SUB` recv loop 테스트
 - service 수신 테스트
   - `gateway` message handler callback 테스트
-  - unified `gateway` register/unregister callback 테스트
-  - `spot` / `spot_sub` handler callback 테스트
+  - `gateway` peer weight snapshot/update 테스트
+- `spot` / `spot_sub` handler callback 테스트
   - `spot_node` default sub handler callback 테스트
 - monitor 테스트
   - raw socket monitor handler callback 테스트

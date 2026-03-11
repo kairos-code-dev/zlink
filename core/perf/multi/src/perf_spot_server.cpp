@@ -630,7 +630,7 @@ inline int run_server_benchmark(const std::string &lib_name,
         cleanup();
         return 1;
     }
-    discovery = zlink_discovery_new_typed(ctx.get(), ZLINK_SERVICE_TYPE_SPOT);
+    discovery = zlink_discovery_new (ctx.get(), ZLINK_SERVICE_TYPE_SPOT);
     if (!discovery
         || zlink_discovery_connect_registry(
              discovery, registry_router_endpoint.c_str())

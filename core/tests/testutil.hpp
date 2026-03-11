@@ -32,7 +32,7 @@
 //  get test failures on slower systems due to binds/connects not
 //  settled. Tested to work reliably at 1 msec on a fast PC.
 #define SETTLE_TIME 300 //  In msec
-//  Commonly used buffer size for ZLINK_LAST_ENDPOINT
+//  Commonly used buffer size for ZLINK_SOCKOPT_LAST_ENDPOINT
 //  this used to be sizeof ("tcp://[::ffff:127.127.127.127]:65536"), but this
 //  may be too short for ipc wildcard binds, e.g.
 #define MAX_SOCKET_STRING 256

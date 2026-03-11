@@ -73,6 +73,9 @@ class socket_base_t : public own_t,
     int close ();
     int socket_msg_dispatch_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     int socket_set_msg_handler (zlink_socket_msg_handler_fn handler_);
+    int socket_set_spot_handler (zlink_spot_handler_fn handler_);
+    int socket_set_xpub_handler (zlink_xpub_handler_fn handler_);
+    int socket_set_send_ready_handler (zlink_send_ready_handler_fn handler_);
     bool socket_msg_dispatch_active () const;
     static socket_base_t *current_socket_msg_dispatch_socket ();
     static zlink::pipe_t *current_socket_msg_dispatch_pipe ();
@@ -81,6 +84,8 @@ class socket_base_t : public own_t,
                                     void *userdata_);
     virtual int sub_dispatch_stop ();
     virtual bool sub_dispatch_active () const;
+    virtual int xpub_dispatch_start ();
+    virtual bool xpub_dispatch_active () const;
     virtual int stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_);
     virtual int
     stream_dispatch_start_len32be (zlink_stream_on_packets_fn callback_);
@@ -233,9 +238,21 @@ class socket_base_t : public own_t,
     int start_async_mailbox_processing (io_thread_t *io_thread_);
     void stop_async_mailbox_processing ();
     zlink_socket_msg_handler_fn socket_msg_handler () const;
+    zlink_spot_handler_fn socket_spot_handler () const;
+    zlink_xpub_handler_fn socket_xpub_handler () const;
+    zlink_send_ready_handler_fn socket_send_ready_handler () const;
     static void close_socket_msg_parts (std::vector<zlink_msg_t> *parts_);
     static void resolve_socket_msg_source_rid (pipe_t *pipe_,
                                                zlink_routing_id_t *out_);
+    static void dispatch_spot_handler_from_io (
+      const zlink_routing_id_t *source_rid_,
+      const char *topic_,
+      size_t topic_len_,
+      zlink_msg_t *parts_,
+      size_t part_count_,
+      void *userdata_);
+    void arm_send_ready_notification ();
+    void notify_send_ready_if_armed ();
 
   private:
     // test if event should be sent and then dispatch it
@@ -374,6 +391,10 @@ class socket_base_t : public own_t,
     bool _destroy_pending;
     std::atomic<bool> _async_mailbox_active;
     std::atomic<zlink_socket_msg_handler_fn> _socket_msg_handler;
+    std::atomic<zlink_spot_handler_fn> _spot_handler;
+    std::atomic<zlink_xpub_handler_fn> _xpub_handler;
+    std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
+    std::atomic<bool> _send_ready_armed;
 
     // Mutex to synchronize access to the monitor Pair socket
     mutex_t _monitor_sync;

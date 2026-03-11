@@ -10,6 +10,15 @@
 
 namespace
 {
+zlink_socket_handler_t make_msg_handler (zlink_socket_msg_handler_fn fn_)
+{
+    zlink_socket_handler_t handler;
+    memset (&handler, 0, sizeof (handler));
+    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
+    handler.fn.msg = fn_;
+    return handler;
+}
+
 void discard_socket_message (const zlink_routing_id_t *,
                              zlink_msg_t *parts_,
                              size_t part_count_)
@@ -18,14 +27,10 @@ void discard_socket_message (const zlink_routing_id_t *,
         zlink_msg_close (&parts_[i]);
 }
 
-void discard_gateway_message (zlink_gateway_msg_kind_t kind_,
-                              const char *,
-                              size_t,
-                              const zlink_routing_id_t *,
+void discard_gateway_message (const zlink_routing_id_t *,
                               zlink_msg_t *parts_,
                               size_t part_count_)
 {
-    (void) kind_;
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_close (&parts_[i]);
 }
@@ -73,6 +78,25 @@ bool wait_for_calls (std::atomic<int> *calls_, int expected_, int timeout_ms_)
     }
 
     return calls_->load () >= expected_;
+}
+
+void *create_gateway_attached (void *ctx_,
+                               void *discovery_,
+                               const char *service_name_,
+                               const char *routing_id_,
+                               zlink_socket_msg_handler_fn handler_)
+{
+    void *gateway =
+      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_);
+    if (!gateway)
+        return NULL;
+    if (zlink_gateway_attach_discovery (gateway, discovery_) != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
+    return gateway;
 }
 
 void raw_monitor_primary_handler (const zlink_monitor_event_t *event_)
@@ -146,23 +170,20 @@ void connect_discovery_registry_with_retry (void *discovery_,
       zlink_discovery_connect_registry (discovery_, endpoint_));
 }
 
-void register_gateway_with_timeout (void *gateway_,
-                                    const char *service_name_,
-                                    const char *endpoint_,
-                                    uint32_t weight_,
-                                    int timeout_ms_)
+void bind_gateway_with_timeout (void *gateway_,
+                                const char *endpoint_,
+                                int timeout_ms_)
 {
     const int step_ms = 10;
     const int attempts = timeout_ms_ / step_ms;
     for (int i = 0; i < attempts; ++i) {
-        if (zlink_gateway_register (gateway_, service_name_, endpoint_, weight_)
-            == 0)
+        if (zlink_gateway_bind (gateway_, endpoint_) == 0)
             return;
         if (errno != EAGAIN)
             break;
         msleep (step_ms);
     }
-    TEST_FAIL_MESSAGE ("gateway register timeout");
+    TEST_FAIL_MESSAGE ("gateway bind timeout");
 }
 }
 
@@ -171,10 +192,12 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test_socket_monitor_set_handler_replaces_dispatch_and_blocks_recv ()
 {
     void *ctx = get_test_context ();
+    const zlink_socket_handler_t msg_handler =
+      make_msg_handler (&discard_socket_message);
     void *server =
-      zlink_socket_with_handler (ctx, ZLINK_ROUTER, &discard_socket_message);
+      zlink_socket (ctx, ZLINK_ROUTER, &msg_handler);
     void *client =
-      zlink_socket_with_handler (ctx, ZLINK_DEALER, &discard_socket_message);
+      zlink_socket (ctx, ZLINK_DEALER, &msg_handler);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -212,8 +235,10 @@ void test_socket_monitor_set_handler_replaces_dispatch_and_blocks_recv ()
 void test_socket_monitor_open_requires_handler ()
 {
     void *ctx = get_test_context ();
+    const zlink_socket_handler_t msg_handler =
+      make_msg_handler (&discard_socket_message);
     void *server =
-      zlink_socket_with_handler (ctx, ZLINK_ROUTER, &discard_socket_message);
+      zlink_socket (ctx, ZLINK_ROUTER, &msg_handler);
     TEST_ASSERT_NOT_NULL (server);
 
     TEST_ASSERT_NULL (
@@ -229,13 +254,18 @@ void test_service_monitor_set_handler_replaces_dispatch_and_blocks_recv ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *registry = NULL;
-    setup_registry (ctx, &registry, "inproc://handler-svcmon-pub",
-                    "inproc://handler-svcmon-router");
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
+              test_port (22612));
+    snprintf (registry_router, sizeof (registry_router), "tcp://127.0.0.1:%d",
+              test_port (22613));
+    setup_registry (ctx, &registry, registry_pub, registry_router);
 
     service_monitor_probe_t probe;
     g_service_monitor_probe = &probe;
 
-    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_set_routing_id (discovery, "disc-handler", 12));
@@ -246,26 +276,23 @@ void test_service_monitor_set_handler_replaces_dispatch_and_blocks_recv ()
                                     &service_monitor_primary_handler);
     TEST_ASSERT_NOT_NULL (monitor);
 
-    connect_discovery_registry_with_retry (discovery,
-                                           "inproc://handler-svcmon-router",
-                                           3000);
+    connect_discovery_registry_with_retry (discovery, registry_router, 3000);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery, "svc-handler"));
 
     void *server_discovery =
-      zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (server_discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
-      server_discovery, "inproc://handler-svcmon-router"));
-    void *gateway = zlink_gateway_new (ctx, server_discovery, "rx-handler",
-                                       &discard_gateway_message);
+      server_discovery, registry_router));
+    void *gateway = create_gateway_attached (ctx, server_discovery, "svc-handler",
+                                       "rx-handler", &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (gateway);
 
     char endpoint[MAX_SOCKET_STRING];
     snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
               test_port (22610));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_bind (gateway, endpoint));
-    register_gateway_with_timeout (gateway, "svc-handler", endpoint, 1, 3000);
+    bind_gateway_with_timeout (gateway, endpoint, 3000);
 
     TEST_ASSERT_TRUE (wait_for_calls (&probe.primary_calls, 1, 3000));
     TEST_ASSERT_EQUAL_UINT16 (ZLINK_SERVICE_KIND_DISCOVERY,

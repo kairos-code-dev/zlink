@@ -17,7 +17,7 @@ void test_fair_queue_in (const char *bind_address_)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (receiver, bind_address_));
     size_t len = MAX_SOCKET_STRING;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (receiver, ZLINK_LAST_ENDPOINT, connect_address, &len));
+      zlink_getsockopt (receiver, ZLINK_SOCKOPT_LAST_ENDPOINT, connect_address, &len));
 
     const unsigned char services = 5;
     void *senders[services];
@@ -93,7 +93,7 @@ void test_destroy_queue_on_disconnect (const char *bind_address_)
     size_t len = MAX_SOCKET_STRING;
     char connect_address[MAX_SOCKET_STRING];
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (a, ZLINK_LAST_ENDPOINT, connect_address, &len));
+      zlink_getsockopt (a, ZLINK_SOCKOPT_LAST_ENDPOINT, connect_address, &len));
 
     void *b = test_context_socket (ZLINK_DEALER);
 

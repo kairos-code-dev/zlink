@@ -632,7 +632,7 @@ void run_spot(const std::string &transport,
         return;
     }
 
-    discovery = zlink_discovery_new_typed(ctx.get(), ZLINK_SERVICE_TYPE_SPOT);
+    discovery = zlink_discovery_new (ctx.get(), ZLINK_SERVICE_TYPE_SPOT);
     if (!discovery
         || zlink_discovery_connect_registry(
              discovery, registry_router_endpoint.c_str())

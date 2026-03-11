@@ -243,8 +243,6 @@ foreach(test_source ${tests})
   else()
     if(${test} MATCHES "_cap_net_admin")
       add_test(NAME ${test} COMMAND sh -c "sudo ${CAPSH_PROGRAM} --caps=cap_net_admin+eip -- -c $<TARGET_FILE:${test}>")
-    elseif(${test} STREQUAL "test_spot_pubsub_scenario" OR ${test} STREQUAL "test_spot_service_introspection")
-      add_test(NAME ${test} COMMAND sh "${TEST_PTY_WRAPPER}" $<TARGET_FILE:${test}>)
     else()
       add_test(NAME ${test} COMMAND ${test})
     endif()
@@ -308,19 +306,273 @@ endif()
 if(TARGET test_transport_matrix)
   set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
 endif()
-if(TARGET test_service_introspection)
-  set_tests_properties(test_service_introspection PROPERTIES TIMEOUT 30)
+if(TARGET test_service_discovery)
+  set_tests_properties(test_service_discovery PROPERTIES TIMEOUT 30)
 endif()
+if(TARGET test_service_introspection)
+  set_tests_properties(
+    test_service_introspection
+    PROPERTIES
+      TIMEOUT 30
+      ENVIRONMENT
+        "ZLINK_TEST_CASE=test_discovery_monitor_and_routing_id")
+
+  add_test(
+    NAME test_service_introspection_gateway_options
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_gateway_receiver_routing_ids_and_options
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
+    NAME test_service_introspection_gateway_monitors
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_gateway_receiver_monitors_and_monitor_poller
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
+    NAME test_service_introspection_topology_snapshot
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_registry_topology_snapshot_and_remote_query
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
+    NAME test_service_introspection_closed_event
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_monitor_closed_event_on_service_destroy
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
+    NAME test_service_introspection_transport_restriction
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_discovery_registry_transport_restriction
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
+    NAME test_service_introspection_registry_peer_sync
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_registry_peer_transport_restriction_and_tcp_sync
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
+    NAME test_service_introspection_topology_reports
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_registry_topology_reports_discovery_and_gateway
+            $<TARGET_FILE:test_service_introspection>)
+
+  set_tests_properties(
+    test_service_introspection_gateway_options
+    test_service_introspection_gateway_monitors
+    test_service_introspection_topology_snapshot
+    test_service_introspection_closed_event
+    test_service_introspection_transport_restriction
+    test_service_introspection_registry_peer_sync
+    test_service_introspection_topology_reports
+    PROPERTIES
+      TIMEOUT 30
+      SKIP_RETURN_CODE 77)
+endif()
+
+function(add_env_case_test test_name target_name test_case)
+  add_test(
+    NAME ${test_name}
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=${test_case}
+            $<TARGET_FILE:${target_name}>)
+endfunction()
+
 if(TARGET test_spot_service_introspection)
-  set_tests_properties(test_spot_service_introspection PROPERTIES TIMEOUT 30)
+  set_tests_properties(
+    test_spot_service_introspection
+    PROPERTIES
+      TIMEOUT 30
+      DISABLED TRUE
+      ENVIRONMENT
+        "ZLINK_TEST_CASE=test_spot_faulted_node_apis_fail_with_efsm")
+
+  add_env_case_test(
+    test_spot_service_introspection_pub_sub_options
+    test_spot_service_introspection
+    test_spot_pub_sub_options_and_routing_ids)
+  add_env_case_test(
+    test_spot_service_introspection_monitors
+    test_spot_service_introspection
+    test_spot_monitors_and_monitor_poller)
+  add_env_case_test(
+    test_spot_service_introspection_explicit_handles
+    test_spot_service_introspection
+    test_spot_node_direct_apis_and_explicit_handles_interop)
+  add_env_case_test(
+    test_spot_service_introspection_topology_summary
+    test_spot_service_introspection
+    test_spot_topology_summary_lifecycle)
+  add_env_case_test(
+    test_spot_service_introspection_register_null
+    test_spot_service_introspection
+    test_spot_register_null_derivation_and_wildcard_rejection)
+  add_env_case_test(
+    test_spot_service_introspection_tls_lock
+    test_spot_service_introspection
+    test_spot_tls_settings_lock_after_bind_connect_and_register)
+  add_env_case_test(
+    test_spot_service_introspection_late_connect
+    test_spot_service_introspection
+    test_spot_late_connect_replays_existing_subscription)
+  add_env_case_test(
+    test_spot_service_introspection_faulted
+    test_spot_service_introspection
+    test_spot_faulted_node_apis_fail_with_efsm)
+
+  set_tests_properties(
+    test_spot_service_introspection_pub_sub_options
+    test_spot_service_introspection_monitors
+    test_spot_service_introspection_explicit_handles
+    test_spot_service_introspection_topology_summary
+    test_spot_service_introspection_register_null
+    test_spot_service_introspection_tls_lock
+    test_spot_service_introspection_late_connect
+    test_spot_service_introspection_faulted
+    PROPERTIES
+      TIMEOUT 60
+      SKIP_RETURN_CODE 77)
 endif()
 if(TARGET test_gateway)
   set_tests_properties(test_gateway PROPERTIES TIMEOUT 180)
 endif()
 if(TARGET test_spot_pubsub_scenario)
-  set_tests_properties(test_spot_pubsub_scenario PROPERTIES TIMEOUT 300)
+  set_tests_properties(
+    test_spot_pubsub_scenario
+    PROPERTIES
+      TIMEOUT 120
+      DISABLED TRUE
+      ENVIRONMENT "ZLINK_TEST_CASE=test_spot_peer_tcp"
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+
+  add_test(
+    NAME test_spot_pubsub_scenario_peer_tcp
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_peer_tcp
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_env_case_test(
+    test_spot_pubsub_scenario_peer_ipc
+    test_spot_pubsub_scenario
+    test_spot_peer_ipc)
+  add_env_case_test(
+    test_spot_pubsub_scenario_peer_ws
+    test_spot_pubsub_scenario
+    test_spot_peer_ws)
+  add_test(
+    NAME test_spot_pubsub_scenario_peer_tls
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_peer_tls
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_env_case_test(
+    test_spot_pubsub_scenario_peer_wss
+    test_spot_pubsub_scenario
+    test_spot_peer_wss)
+  add_test(
+    NAME test_spot_pubsub_scenario_multi_publisher
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_multi_publisher
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_test(
+    NAME test_spot_pubsub_scenario_node_child_interop
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_node_direct_local_and_child_interop
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_test(
+    NAME test_spot_pubsub_scenario_node_remote_mesh
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_node_direct_remote_peer_mesh
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_test(
+    NAME test_spot_pubsub_scenario_sub_option_inheritance
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_node_direct_sub_option_inheritance_and_handler_conflict
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_test(
+    NAME test_spot_pubsub_scenario_first_publish_race
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_node_direct_first_publish_race
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_test(
+    NAME test_spot_pubsub_scenario_sub_handler_basic
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_sub_handler_basic
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_test(
+    NAME test_spot_pubsub_scenario_source_rid
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_facade_handler_receives_source_rid
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_test(
+    NAME test_spot_pubsub_scenario_handler_replace_barrier
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_sub_handler_replace_barrier
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_test(
+    NAME test_spot_pubsub_scenario_handler_replace_inside
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_sub_handler_replace_inside_callback
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_test(
+    NAME test_spot_pubsub_scenario_async_local_delivery
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_pub_async_mode_local_delivery
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_test(
+    NAME test_spot_pubsub_scenario_async_setsockopt
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_pub_async_setsockopt_validation
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_test(
+    NAME test_spot_pubsub_scenario_async_eagain
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_pub_async_queue_full_eagain
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_test(
+    NAME test_spot_pubsub_scenario_async_drop
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_pub_async_queue_full_drop
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_test(
+    NAME test_spot_pubsub_scenario_scale
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_mmorpg_zone_adjacency_scale
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+  add_test(
+    NAME test_spot_pubsub_scenario_scale_multi_node
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery
+            $<TARGET_FILE:test_spot_pubsub_scenario>)
+
+  set_tests_properties(
+    test_spot_pubsub_scenario_multi_publisher
+    test_spot_pubsub_scenario_node_child_interop
+    test_spot_pubsub_scenario_node_remote_mesh
+    test_spot_pubsub_scenario_sub_option_inheritance
+    test_spot_pubsub_scenario_first_publish_race
+    test_spot_pubsub_scenario_sub_handler_basic
+    test_spot_pubsub_scenario_source_rid
+    test_spot_pubsub_scenario_handler_replace_barrier
+    test_spot_pubsub_scenario_handler_replace_inside
+    test_spot_pubsub_scenario_async_local_delivery
+    test_spot_pubsub_scenario_async_setsockopt
+    test_spot_pubsub_scenario_async_eagain
+    test_spot_pubsub_scenario_async_drop
+    test_spot_pubsub_scenario_scale
+    test_spot_pubsub_scenario_scale_multi_node
+    PROPERTIES
+      TIMEOUT 60
+      SKIP_RETURN_CODE 77
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+
+  set_tests_properties(
+    test_spot_pubsub_scenario_peer_tcp
+    test_spot_pubsub_scenario_peer_ipc
+    test_spot_pubsub_scenario_peer_ws
+    test_spot_pubsub_scenario_peer_tls
+    test_spot_pubsub_scenario_peer_wss
+    PROPERTIES
+      TIMEOUT 90
+      SKIP_RETURN_CODE 77
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+
   set_tests_properties(test_spot_pubsub_scenario PROPERTIES LABELS "spot;spot_scenario")
-  set_tests_properties(test_spot_pubsub_scenario PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+  set_tests_properties(test_spot_pubsub_scenario PROPERTIES RUN_SERIAL TRUE)
 endif()
 if(TARGET test_gateway_handover)
   set_tests_properties(test_gateway_handover PROPERTIES TIMEOUT 180)

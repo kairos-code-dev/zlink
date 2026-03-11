@@ -69,7 +69,7 @@ void test_without_handover ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "tcp://127.0.0.1:*"));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, my_endpoint, &len));
+      zlink_getsockopt (router, ZLINK_SOCKOPT_LAST_ENDPOINT, my_endpoint, &len));
 
     //  Create dealer called "X" and connect it to our router
     void *dealer_one = test_context_socket (ZLINK_DEALER);

@@ -61,7 +61,7 @@ void test_xpub_subscribe_long_topic ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (xpub, bind_address));
     size_t len = MAX_SOCKET_STRING;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (xpub, ZLINK_LAST_ENDPOINT, connect_address, &len));
+      zlink_getsockopt (xpub, ZLINK_SOCKOPT_LAST_ENDPOINT, connect_address, &len));
 
     void *sub = test_context_socket (ZLINK_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, connect_address));

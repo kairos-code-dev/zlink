@@ -47,21 +47,30 @@ else()
     set(RC_BENCH_CXX_FLAGS "-O3")
 endif()
 
+option(ZLINK_BUILD_WITH_ROUTING_ZLINK_BENCHES
+       "Build routing comparison benches that still depend on legacy sync recv APIs"
+       OFF)
+
 # ============================================================================
 # zlink benchmarks (always build when headers exist)
 # ============================================================================
 if(EXISTS "${RC_ZLINK_INCLUDE_DIR}/zlink.h")
-    add_executable(bench_rc_zlink_server zlink/bench_zlink_router_server.cpp)
-    target_link_libraries(bench_rc_zlink_server PRIVATE libzlink Threads::Threads)
-    target_include_directories(bench_rc_zlink_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common)
-    target_compile_options(bench_rc_zlink_server PRIVATE ${RC_BENCH_CXX_FLAGS})
-    target_compile_features(bench_rc_zlink_server PRIVATE cxx_std_17)
+    if(ZLINK_BUILD_WITH_ROUTING_ZLINK_BENCHES)
+        add_executable(bench_rc_zlink_server zlink/bench_zlink_router_server.cpp)
+        target_link_libraries(bench_rc_zlink_server PRIVATE libzlink Threads::Threads)
+        target_include_directories(bench_rc_zlink_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common)
+        target_compile_options(bench_rc_zlink_server PRIVATE ${RC_BENCH_CXX_FLAGS})
+        target_compile_features(bench_rc_zlink_server PRIVATE cxx_std_17)
 
-    add_executable(bench_rc_zlink_client zlink/bench_zlink_router_client.cpp)
-    target_link_libraries(bench_rc_zlink_client PRIVATE libzlink Threads::Threads)
-    target_include_directories(bench_rc_zlink_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common)
-    target_compile_options(bench_rc_zlink_client PRIVATE ${RC_BENCH_CXX_FLAGS})
-    target_compile_features(bench_rc_zlink_client PRIVATE cxx_std_17)
+        add_executable(bench_rc_zlink_client zlink/bench_zlink_router_client.cpp)
+        target_link_libraries(bench_rc_zlink_client PRIVATE libzlink Threads::Threads)
+        target_include_directories(bench_rc_zlink_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common)
+        target_compile_options(bench_rc_zlink_client PRIVATE ${RC_BENCH_CXX_FLAGS})
+        target_compile_features(bench_rc_zlink_client PRIVATE cxx_std_17)
+    else()
+        message(STATUS
+                "Skipping core/bench/with_routing zlink benches: they still rely on removed sync recv APIs under the direct-callback ABI.")
+    endif()
 else()
     message(WARNING "zlink headers not found at ${RC_ZLINK_INCLUDE_DIR}")
 endif()

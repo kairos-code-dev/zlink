@@ -29,7 +29,7 @@ void test_pair_tcp (extra_func_t extra_func_ = NULL)
         TEST_IGNORE_MESSAGE ("SO_BINDTODEVICE not supported");
     TEST_ASSERT_SUCCESS_ERRNO (rc);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (sb, ZLINK_LAST_ENDPOINT, my_endpoint, &my_endpoint_length));
+      zlink_getsockopt (sb, ZLINK_SOCKOPT_LAST_ENDPOINT, my_endpoint, &my_endpoint_length));
 
     void *sc = test_context_socket (ZLINK_PAIR);
     if (extra_func_)

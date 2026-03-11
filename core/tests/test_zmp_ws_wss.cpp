@@ -28,7 +28,7 @@ void test_zmp_ws_pair_message ()
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len));
+      zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
@@ -77,7 +77,7 @@ void test_zmp_wss_pair_message ()
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len));
+      zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 

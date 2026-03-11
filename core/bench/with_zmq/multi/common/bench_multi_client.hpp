@@ -511,7 +511,8 @@ inline bool create_client_sockets (
 
     const int linger_ms = 0;
     for (size_t i = 0; i < sockets_out->size (); ++i) {
-        void *sock = zlink_socket (ctx.get (), cfg.client_socket_type);
+        void *sock = zlink_socket (
+          ctx.get (), static_cast<zlink_socket_type_t> (cfg.client_socket_type));
         if (!sock) {
             if (bench_debug_enabled ()) {
                 std::cerr << cfg.pattern

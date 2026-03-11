@@ -15,7 +15,7 @@ void tearDown ()
 //  tests all socket-related functions with a NULL socket argument
 void test_zlink_socket_null_context ()
 {
-    TEST_ASSERT_NULL (zlink_socket (NULL, ZLINK_PAIR));
+    TEST_ASSERT_NULL (zlink_socket (NULL, ZLINK_PAIR, NULL));
     TEST_ASSERT_EQUAL_INT (EFAULT, errno); // TODO use EINVAL instead?
 }
 

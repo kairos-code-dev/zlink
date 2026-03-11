@@ -10,6 +10,7 @@
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 
+#include <atomic>
 #include <string>
 
 namespace zlink
@@ -33,6 +34,8 @@ class spot_pub_t
                  size_t part_count_,
                  int flags_);
     int set_option (int option_, const void *optval_, size_t optvallen_);
+    int set_send_ready_handler (zlink_send_ready_handler_fn handler_,
+                                void *subject_);
     int set_routing_id (const void *data_, size_t size_);
     int routing_id (zlink_routing_id_t *out_) const;
     int peers (zlink_peer_info_t *peers_, size_t *count_) const;
@@ -41,6 +44,7 @@ class spot_pub_t
     int configured_sndhwm () const;
 
     void emit_ready_event ();
+    void dispatch_send_ready ();
     int destroy ();
     int destroy_from_node ();
     int abort_create ();
@@ -63,6 +67,8 @@ class spot_pub_t
     zlink_routing_id_t _routing_id;
     bool _routing_id_locked;
     int _configured_sndhwm;
+    std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
+    std::atomic<void *> _send_ready_subject;
     service_monitor_hub_t _monitor;
     void *_raw_monitor_socket;
     thread_t _monitor_thread;

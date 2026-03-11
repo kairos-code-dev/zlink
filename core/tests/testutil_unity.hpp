@@ -219,7 +219,7 @@ void *test_context_socket_close_zero_linger (void *socket_);
 /////////////////////////////////////////////////////////////////////////////
 
 // All function binds a socket to some wildcard address, and retrieve the bound
-// endpoint via the ZLINK_LAST_ENDPOINT socket option to a given buffer.
+// endpoint via the ZLINK_SOCKOPT_LAST_ENDPOINT socket option to a given buffer.
 // Triggers a Unity test assertion in case of a failure (including the buffer
 // being too small for the resulting endpoint string).
 

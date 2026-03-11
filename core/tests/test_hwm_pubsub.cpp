@@ -5,7 +5,7 @@
 
 #include <string.h>
 
-// NOTE: on OSX the endpoint returned by ZLINK_LAST_ENDPOINT may be quite long,
+// NOTE: on OSX the endpoint returned by ZLINK_SOCKOPT_LAST_ENDPOINT may be quite long,
 //       ensure we have extra space for that:
 #define SOCKET_STRING_LEN (MAX_SOCKET_STRING * 4)
 

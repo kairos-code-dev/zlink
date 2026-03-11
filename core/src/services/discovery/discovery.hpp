@@ -226,6 +226,7 @@ class discovery_t
     bool _discovery_summary_enabled;
     zlink_routing_id_t _routing_id;
     std::string _routing_id_override;
+    bool _routing_id_locked;
     uint32_t _heartbeat_interval_ms;
     std::map<registered_service_key_t, registered_service_t> _registered_services;
     std::map<topology_key_t, topology_summary_t> _summary_store;

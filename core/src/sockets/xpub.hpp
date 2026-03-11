@@ -4,6 +4,9 @@
 #define __ZLINK_XPUB_HPP_INCLUDED__
 
 #include <deque>
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
 
 #include "sockets/socket_base.hpp"
 #include "core/session_base.hpp"
@@ -33,6 +36,9 @@ class xpub_t : public socket_base_t
     bool xhas_out () ZLINK_FINAL;
     int xrecv (zlink::msg_t *msg_) ZLINK_OVERRIDE;
     bool xhas_in () ZLINK_OVERRIDE;
+    void xdispatch_io () ZLINK_OVERRIDE;
+    int xpub_dispatch_start () ZLINK_OVERRIDE;
+    bool xpub_dispatch_active () const ZLINK_OVERRIDE;
     void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     void xwrite_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     int
@@ -108,6 +114,15 @@ class xpub_t : public socket_base_t
     std::deque<blob_t> _pending_data;
     std::deque<metadata_t *> _pending_metadata;
     std::deque<unsigned char> _pending_flags;
+    std::atomic<bool> _dispatch_active;
+    std::atomic<uint32_t> _dispatch_inflight;
+    mutable std::mutex _dispatch_control_mu;
+    mutable std::mutex _dispatch_inflight_mu;
+    std::condition_variable _dispatch_inflight_cv;
+
+    int dispatch_ready_messages ();
+    int dispatch_message (zlink::msg_t *msg_);
+    void notify_dispatch_stopped ();
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (xpub_t)
 };

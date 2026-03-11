@@ -10,6 +10,7 @@
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 
+#include <atomic>
 #include <set>
 #include <string>
 
@@ -50,7 +51,7 @@ class spot_node_t : public discovery_observer_t
         option_setting_t rcvbuf;
     };
 
-    explicit spot_node_t (ctx_t *ctx_);
+    spot_node_t (ctx_t *ctx_, const char *service_name_);
     ~spot_node_t ();
 
     bool check_tag () const;
@@ -58,15 +59,12 @@ class spot_node_t : public discovery_observer_t
     int bind (const char *endpoint_);
     int connect_peer_pub (const char *peer_pub_endpoint_);
     int disconnect_peer_pub (const char *peer_pub_endpoint_);
-    int register_node (const char *service_name_,
-                       const char *advertise_endpoint_);
-    int unregister_node (const char *service_name_);
-    int set_discovery (discovery_t *discovery_,
-                       const char *service_name_);
+    int attach_discovery (discovery_t *discovery_);
     int set_tls_server (const char *cert_, const char *key_);
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
                         int trust_system_);
+    int set_send_ready_handler (zlink_send_ready_handler_fn handler_);
     int set_pub_option (int option_,
                         const void *optval_,
                         size_t optvallen_);
@@ -138,6 +136,8 @@ class spot_node_t : public discovery_observer_t
     void refresh_existing_summaries ();
     void refresh_sub_peer_summaries (bool has_active_peers,
                                      bool lost_transition);
+    int ensure_registered ();
+    int unregister_registered ();
 
     static bool validate_service_name (const std::string &name_);
     static bool validate_public_endpoint (const std::string &endpoint_);
@@ -196,6 +196,7 @@ class spot_node_t : public discovery_observer_t
     bool _server_tls_locked;
     bool _mesh_client_tls_locked;
     bool _registration_tls_locked;
+    std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
 
     bool _faulted;
     int _fault_errno;

@@ -816,7 +816,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         return fail ();
     }
     server_discovery =
-      zlink_discovery_new_typed (ctx.get (), ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx.get (), ZLINK_SERVICE_TYPE_GATEWAY);
     if (!server_discovery) {
         std::cerr << "gateway server: discovery create failed" << std::endl;
         return fail ();

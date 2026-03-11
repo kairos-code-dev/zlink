@@ -27,7 +27,7 @@ int zlink::recv_msg_internal (void *socket_, zlink_msg_t *msg_, int flags_)
 
     int type = -1;
     size_t type_len = sizeof (type);
-    if (socket->getsockopt (ZLINK_TYPE, &type, &type_len) != 0)
+    if (socket->getsockopt (ZLINK_SOCKOPT_TYPE, &type, &type_len) != 0)
         return -1;
 
     if (type == ZLINK_STREAM && socket->stream_dispatch_active ()) {

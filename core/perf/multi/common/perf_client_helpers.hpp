@@ -266,7 +266,8 @@ inline bool create_client_sockets (
     monitors_out->assign (settings.clients, connect_monitor_t ());
 
     for (size_t i = 0; i < sockets_out->size (); ++i) {
-        void *sock = zlink_socket (ctx.get (), client_socket_type);
+        void *sock = zlink_socket (
+          ctx.get (), static_cast<zlink_socket_type_t> (client_socket_type));
         if (!sock)
             return false;
 

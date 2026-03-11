@@ -12,15 +12,12 @@ namespace
 {
 struct gateway_probe_t
 {
-    gateway_probe_t () : requests (0), control (0)
+    gateway_probe_t () : requests (0)
     {
-        memset (service, 0, sizeof (service));
         memset (payload, 0, sizeof (payload));
     }
 
     std::atomic<int> requests;
-    std::atomic<int> control;
-    char service[64];
     char payload[64];
 };
 
@@ -44,22 +41,35 @@ void step_log (const char *msg_)
     }
 }
 
-void discard_gateway_message (zlink_gateway_msg_kind_t kind_,
-                              const char *,
-                              size_t,
-                              const zlink_routing_id_t *,
+void discard_gateway_message (const zlink_routing_id_t *,
                               zlink_msg_t *parts_,
                               size_t part_count_)
 {
-    (void) kind_;
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_close (&parts_[i]);
 }
 
+void *create_gateway_attached (void *ctx_,
+                               void *discovery_,
+                               const char *service_name_,
+                               const char *routing_id_,
+                               zlink_socket_msg_handler_fn handler_)
+{
+    void *gateway =
+      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_);
+    if (!gateway)
+        return NULL;
+    if (zlink_gateway_attach_discovery (gateway, discovery_) != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
+    return gateway;
+}
+
 void record_gateway_event (gateway_probe_t *probe_,
-                           zlink_gateway_msg_kind_t kind_,
-                           const char *service_name_,
-                           size_t service_name_len_,
+                           const zlink_routing_id_t *,
                            zlink_msg_t *parts_,
                            size_t part_count_)
 {
@@ -69,56 +79,30 @@ void record_gateway_event (gateway_probe_t *probe_,
         return;
     }
 
-    if (kind_ == ZLINK_GATEWAY_MSG_REQUEST) {
-        const size_t service_copy =
-          service_name_len_ < sizeof (probe_->service) - 1
-            ? service_name_len_
-            : sizeof (probe_->service) - 1;
-        memcpy (probe_->service, service_name_, service_copy);
-        probe_->service[service_copy] = '\0';
-
-        if (part_count_ > 0) {
-            const size_t size = zlink_msg_size (&parts_[0]);
-            const size_t payload_copy =
-              size < sizeof (probe_->payload) - 1
-                ? size
-                : sizeof (probe_->payload) - 1;
-            memcpy (probe_->payload, zlink_msg_data (&parts_[0]), payload_copy);
-            probe_->payload[payload_copy] = '\0';
-        }
-        probe_->requests.fetch_add (1);
-        for (size_t i = 0; i < part_count_; ++i)
-            zlink_msg_close (&parts_[i]);
-        return;
-    } else if (kind_ == ZLINK_GATEWAY_MSG_CONTROL) {
-        probe_->control.fetch_add (1);
-        return;
+    if (part_count_ > 0) {
+        const size_t size = zlink_msg_size (&parts_[0]);
+        const size_t payload_copy =
+          size < sizeof (probe_->payload) - 1 ? size : sizeof (probe_->payload) - 1;
+        memcpy (probe_->payload, zlink_msg_data (&parts_[0]), payload_copy);
+        probe_->payload[payload_copy] = '\0';
     }
-
+    probe_->requests.fetch_add (1);
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_close (&parts_[i]);
 }
 
-void gateway_handler_a (zlink_gateway_msg_kind_t kind_,
-                        const char *service_name_,
-                        size_t service_name_len_,
-                        const zlink_routing_id_t *,
+void gateway_handler_a (const zlink_routing_id_t *source_rid_,
                         zlink_msg_t *parts_,
                         size_t part_count_)
 {
-    record_gateway_event (g_probe_a, kind_, service_name_, service_name_len_,
-                          parts_, part_count_);
+    record_gateway_event (g_probe_a, source_rid_, parts_, part_count_);
 }
 
-void gateway_handler_b (zlink_gateway_msg_kind_t kind_,
-                        const char *service_name_,
-                        size_t service_name_len_,
-                        const zlink_routing_id_t *,
+void gateway_handler_b (const zlink_routing_id_t *source_rid_,
                         zlink_msg_t *parts_,
                         size_t part_count_)
 {
-    record_gateway_event (g_probe_b, kind_, service_name_, service_name_len_,
-                          parts_, part_count_);
+    record_gateway_event (g_probe_b, source_rid_, parts_, part_count_);
 }
 
 bool wait_for_calls (std::atomic<int> *counter_, int expected_, int timeout_ms_)
@@ -133,14 +117,12 @@ bool wait_for_calls (std::atomic<int> *counter_, int expected_, int timeout_ms_)
     return counter_->load () >= expected_;
 }
 
-void wait_gateway_ready (void *gateway_,
-                         const char *service_name_,
-                         int timeout_ms_)
+void wait_gateway_ready (void *gateway_, int timeout_ms_)
 {
     const int step_ms = 10;
     const int attempts = timeout_ms_ / step_ms;
     for (int i = 0; i < attempts; ++i) {
-        if (zlink_gateway_connection_count (gateway_, service_name_) > 0)
+        if (zlink_gateway_connection_count (gateway_) > 0)
             return;
         msleep (step_ms);
     }
@@ -148,17 +130,19 @@ void wait_gateway_ready (void *gateway_,
 }
 
 void send_gateway_with_timeout (void *gateway_,
-                                const char *service_name_,
                                 const char *payload_,
                                 int timeout_ms_)
 {
     const int step_ms = 5;
     const int attempts = timeout_ms_ / step_ms;
     for (int i = 0; i < attempts; ++i) {
-        if (zlink_gateway_send_bytes (gateway_, service_name_, payload_,
-                                      strlen (payload_), ZLINK_DONTWAIT)
-            == 0)
+        zlink_msg_t part;
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_msg_init_size (&part, strlen (payload_)));
+        memcpy (zlink_msg_data (&part), payload_, strlen (payload_));
+        if (zlink_gateway_send (gateway_, &part, 1, ZLINK_DONTWAIT) == 0)
             return;
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&part));
         if (errno != EAGAIN && errno != EHOSTUNREACH)
             break;
         msleep (step_ms);
@@ -179,23 +163,28 @@ void setup_registry (void *ctx_,
     *registry_out_ = registry;
 }
 
-void register_gateway_with_timeout (void *gateway_,
-                                    const char *service_name_,
-                                    const char *endpoint_,
-                                    uint32_t weight_,
-                                    int timeout_ms_)
+void make_registry_endpoint (char *endpoint_out_,
+                             size_t endpoint_size_,
+                             int port_seed_)
+{
+    snprintf (endpoint_out_, endpoint_size_, "tcp://127.0.0.1:%d",
+              test_port (port_seed_));
+}
+
+void bind_gateway_with_timeout (void *gateway_,
+                                const char *endpoint_,
+                                int timeout_ms_)
 {
     const int step_ms = 10;
     const int attempts = timeout_ms_ / step_ms;
     for (int i = 0; i < attempts; ++i) {
-        if (zlink_gateway_register (gateway_, service_name_, endpoint_, weight_)
-            == 0)
+        if (zlink_gateway_bind (gateway_, endpoint_) == 0)
             return;
         if (errno != EAGAIN)
             break;
         msleep (step_ms);
     }
-    TEST_FAIL_MESSAGE ("gateway register timeout");
+    TEST_FAIL_MESSAGE ("gateway bind timeout");
 }
 
 void init_gateway_server (gateway_server_t *server_,
@@ -204,33 +193,31 @@ void init_gateway_server (gateway_server_t *server_,
                           const char *routing_id_,
                           const char *bind_ep_,
                           const char *service_name_,
-                          zlink_gateway_handler_fn handler_,
+                          zlink_socket_msg_handler_fn handler_,
                           gateway_probe_t *probe_)
 {
     step_log ("server discovery new");
     server_->discovery =
-      zlink_discovery_new_typed (ctx_, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx_, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (server_->discovery);
     step_log ("server discovery connect");
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (server_->discovery, registry_ep_));
     step_log ("server gateway new");
-    server_->gateway = zlink_gateway_new (ctx_, server_->discovery, routing_id_,
-                                          &discard_gateway_message);
+    server_->gateway =
+      create_gateway_attached (ctx_, server_->discovery, service_name_, routing_id_,
+                         &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (server_->gateway);
     server_->probe = probe_;
 
     step_log ("server gateway bind");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_bind (server_->gateway, bind_ep_));
-    step_log ("server gateway register");
-    register_gateway_with_timeout (server_->gateway, service_name_, bind_ep_, 1,
-                                   3000);
+    bind_gateway_with_timeout (server_->gateway, bind_ep_, 3000);
     if (handler_ != &discard_gateway_message) {
         step_log ("server gateway set handler");
         TEST_ASSERT_SUCCESS_ERRNO (
           zlink_gateway_set_handler (server_->gateway, handler_));
     }
-    step_log ("server gateway register done");
+    step_log ("server gateway bind done");
 }
 
 void destroy_gateway_server (gateway_server_t *server_)
@@ -251,20 +238,24 @@ void test_gateway_handover_provider_restart ()
 
     step_log ("setup registry");
     void *registry = NULL;
-    setup_registry (ctx, &registry, "inproc://reg-pub-ho1",
-                    "inproc://reg-router-ho1");
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    make_registry_endpoint (registry_pub, sizeof (registry_pub), 25800);
+    make_registry_endpoint (registry_router, sizeof (registry_router), 25801);
+    setup_registry (ctx, &registry, registry_pub, registry_router);
     msleep (100);
 
     void *client_discovery =
-      zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (client_discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (client_discovery, "inproc://reg-router-ho1"));
+      zlink_discovery_connect_registry (client_discovery, registry_router));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (client_discovery, service_name));
 
     void *gateway =
-      zlink_gateway_new (ctx, client_discovery, NULL, &gateway_handler_a);
+      create_gateway_attached (ctx, client_discovery, service_name, NULL,
+                         &gateway_handler_a);
     TEST_ASSERT_NOT_NULL (gateway);
 
     gateway_probe_t probe1;
@@ -273,20 +264,19 @@ void test_gateway_handover_provider_restart ()
     char ep1[256] = {0};
     snprintf (ep1, sizeof (ep1), "tcp://127.0.0.1:%d", test_port (22650));
     step_log ("init server1");
-    init_gateway_server (&server1, ctx, "inproc://reg-router-ho1", "PROV-HO",
+    init_gateway_server (&server1, ctx, registry_router, "PROV-HO",
                          ep1, service_name, &gateway_handler_a, &probe1);
 
     step_log ("wait gateway ready for server1");
-    wait_gateway_ready (gateway, service_name, timeout_ms);
+    wait_gateway_ready (gateway, timeout_ms);
     step_log ("send msg1");
-    send_gateway_with_timeout (gateway, service_name, "msg1", timeout_ms);
+    send_gateway_with_timeout (gateway, "msg1", timeout_ms);
     step_log ("wait request on server1");
     TEST_ASSERT_TRUE (wait_for_calls (&probe1.requests, 1, timeout_ms));
     TEST_ASSERT_EQUAL_STRING ("msg1", probe1.payload);
 
-    step_log ("unregister server1");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_unregister (server1.gateway, service_name));
+    step_log ("destroy server1");
+    destroy_gateway_server (&server1);
     msleep (300);
 
     gateway_probe_t probe2;
@@ -295,13 +285,13 @@ void test_gateway_handover_provider_restart ()
     char ep2[256] = {0};
     snprintf (ep2, sizeof (ep2), "tcp://127.0.0.1:%d", test_port (22651));
     step_log ("init server2");
-    init_gateway_server (&server2, ctx, "inproc://reg-router-ho1", "PROV-HO",
+    init_gateway_server (&server2, ctx, registry_router, "PROV-HO",
                          ep2, service_name, &gateway_handler_a, &probe2);
 
     step_log ("wait gateway ready for server2");
-    wait_gateway_ready (gateway, service_name, timeout_ms);
+    wait_gateway_ready (gateway, timeout_ms);
     step_log ("send msg2");
-    send_gateway_with_timeout (gateway, service_name, "msg2", timeout_ms);
+    send_gateway_with_timeout (gateway, "msg2", timeout_ms);
     step_log ("wait request on server2");
     TEST_ASSERT_TRUE (wait_for_calls (&probe2.requests, 1, timeout_ms));
     TEST_ASSERT_EQUAL_STRING ("msg2", probe2.payload);
@@ -325,8 +315,11 @@ void test_provider_handover_gateway_reconnect ()
 
     step_log ("setup registry");
     void *registry = NULL;
-    setup_registry (ctx, &registry, "inproc://reg-pub-ho2",
-                    "inproc://reg-router-ho2");
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    make_registry_endpoint (registry_pub, sizeof (registry_pub), 25810);
+    make_registry_endpoint (registry_router, sizeof (registry_router), 25811);
+    setup_registry (ctx, &registry, registry_pub, registry_router);
     msleep (100);
 
     gateway_probe_t server_probe;
@@ -334,22 +327,24 @@ void test_provider_handover_gateway_reconnect ()
     gateway_server_t server;
     char ep[256] = {0};
     snprintf (ep, sizeof (ep), "tcp://127.0.0.1:%d", test_port (22652));
-    init_gateway_server (&server, ctx, "inproc://reg-router-ho2", "PROV-HO2",
+    init_gateway_server (&server, ctx, registry_router, "PROV-HO2",
                          ep, service_name, &gateway_handler_b, &server_probe);
 
-    void *discovery1 = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery1 = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery1);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery1, "inproc://reg-router-ho2"));
+      zlink_discovery_connect_registry (discovery1, registry_router));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery1, service_name));
 
-    void *gateway1 = zlink_gateway_new (ctx, discovery1, gw_rid, &gateway_handler_a);
+    void *gateway1 =
+      create_gateway_attached (ctx, discovery1, service_name, gw_rid,
+                         &gateway_handler_a);
     TEST_ASSERT_NOT_NULL (gateway1);
     step_log ("wait gateway1 ready");
-    wait_gateway_ready (gateway1, service_name, timeout_ms);
+    wait_gateway_ready (gateway1, timeout_ms);
     step_log ("send gw-1");
-    send_gateway_with_timeout (gateway1, service_name, "gw-1", timeout_ms);
+    send_gateway_with_timeout (gateway1, "gw-1", timeout_ms);
     step_log ("wait gw-1 request");
     TEST_ASSERT_TRUE (wait_for_calls (&server_probe.requests, 1, timeout_ms));
     TEST_ASSERT_EQUAL_STRING ("gw-1", server_probe.payload);
@@ -358,19 +353,21 @@ void test_provider_handover_gateway_reconnect ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery1));
     msleep (300);
 
-    void *discovery2 = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery2 = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery2);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery2, "inproc://reg-router-ho2"));
+      zlink_discovery_connect_registry (discovery2, registry_router));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_subscribe (discovery2, service_name));
 
-    void *gateway2 = zlink_gateway_new (ctx, discovery2, gw_rid, &gateway_handler_a);
+    void *gateway2 =
+      create_gateway_attached (ctx, discovery2, service_name, gw_rid,
+                         &gateway_handler_a);
     TEST_ASSERT_NOT_NULL (gateway2);
     step_log ("wait gateway2 ready");
-    wait_gateway_ready (gateway2, service_name, timeout_ms);
+    wait_gateway_ready (gateway2, timeout_ms);
     step_log ("send gw-2");
-    send_gateway_with_timeout (gateway2, service_name, "gw-2", timeout_ms);
+    send_gateway_with_timeout (gateway2, "gw-2", timeout_ms);
     step_log ("wait gw-2 request");
     TEST_ASSERT_TRUE (wait_for_calls (&server_probe.requests, 2, timeout_ms));
     TEST_ASSERT_EQUAL_STRING ("gw-2", server_probe.payload);

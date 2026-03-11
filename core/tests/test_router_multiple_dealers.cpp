@@ -32,7 +32,7 @@ void test_router_multiple_dealers_tcp ()
     char endpoint[MAX_SOCKET_STRING];
     size_t len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, endpoint, &len));
+      zlink_getsockopt (router, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer1, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer2, endpoint));
@@ -94,7 +94,7 @@ void test_router_multiple_dealers_ipc ()
     char endpoint[MAX_SOCKET_STRING];
     size_t len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, endpoint, &len));
+      zlink_getsockopt (router, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer1, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer2, endpoint));

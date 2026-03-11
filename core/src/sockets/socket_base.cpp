@@ -197,6 +197,10 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _destroy_pending (false),
     _async_mailbox_active (false),
     _socket_msg_handler (NULL),
+    _spot_handler (NULL),
+    _xpub_handler (NULL),
+    _send_ready_handler (NULL),
+    _send_ready_armed (false),
     _monitor_sync (),
     _disconnected (false)
 {
@@ -503,12 +507,12 @@ int zlink::socket_base_t::getsockopt (int option_,
         return do_getsockopt<int> (optval_, optvallen_, _rcvmore ? 1 : 0);
     }
 
-    if (option_ == ZLINK_FD) {
+    if (option_ == ZLINK_SOCKOPT_FD) {
         return do_getsockopt<fd_t> (
           optval_, optvallen_, static_cast<mailbox_t *> (_mailbox)->get_fd ());
     }
 
-    if (option_ == ZLINK_EVENTS) {
+    if (option_ == ZLINK_SOCKOPT_EVENTS) {
         const int rc = process_commands (0, false);
         if (rc != 0 && (errno == EINTR || errno == ETERM)) {
             return -1;
@@ -519,7 +523,7 @@ int zlink::socket_base_t::getsockopt (int option_,
                                    has_out () ? ZLINK_POLLOUT : 0);
     }
 
-    if (option_ == ZLINK_LAST_ENDPOINT) {
+    if (option_ == ZLINK_SOCKOPT_LAST_ENDPOINT) {
         return do_getsockopt (optval_, optvallen_, _last_endpoint);
     }
 
@@ -1200,6 +1204,7 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
     //  In case of non-blocking send we'll simply propagate
     //  the error - including EAGAIN - up the stack.
     if ((flags_ & ZLINK_DONTWAIT) || options.sndtimeo == 0) {
+        arm_send_ready_notification ();
         return -1;
     }
 
@@ -1359,6 +1364,49 @@ int zlink::socket_base_t::socket_set_msg_handler (
     return 0;
 }
 
+int zlink::socket_base_t::socket_set_spot_handler (
+  zlink_spot_handler_fn handler_)
+{
+    if (!handler_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    _spot_handler.store (handler_, std::memory_order_release);
+    if (sub_dispatch_active ())
+        return 0;
+
+    return sub_dispatch_start (&socket_base_t::dispatch_spot_handler_from_io,
+                               this);
+}
+
+int zlink::socket_base_t::socket_set_xpub_handler (
+  zlink_xpub_handler_fn handler_)
+{
+    if (!handler_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    _xpub_handler.store (handler_, std::memory_order_release);
+    if (xpub_dispatch_active ())
+        return 0;
+
+    return xpub_dispatch_start ();
+}
+
+int zlink::socket_base_t::socket_set_send_ready_handler (
+  zlink_send_ready_handler_fn handler_)
+{
+    if (!handler_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    _send_ready_handler.store (handler_, std::memory_order_release);
+    return 0;
+}
+
 bool zlink::socket_base_t::socket_msg_dispatch_active () const
 {
     return _socket_msg_handler.load (std::memory_order_acquire) != NULL;
@@ -1378,6 +1426,22 @@ zlink::pipe_t *zlink::socket_base_t::current_socket_msg_dispatch_pipe ()
 zlink_socket_msg_handler_fn zlink::socket_base_t::socket_msg_handler () const
 {
     return _socket_msg_handler.load (std::memory_order_acquire);
+}
+
+zlink_spot_handler_fn zlink::socket_base_t::socket_spot_handler () const
+{
+    return _spot_handler.load (std::memory_order_acquire);
+}
+
+zlink_xpub_handler_fn zlink::socket_base_t::socket_xpub_handler () const
+{
+    return _xpub_handler.load (std::memory_order_acquire);
+}
+
+zlink_send_ready_handler_fn
+zlink::socket_base_t::socket_send_ready_handler () const
+{
+    return _send_ready_handler.load (std::memory_order_acquire);
 }
 
 void zlink::socket_base_t::invoke_socket_msg_handler (
@@ -1424,6 +1488,57 @@ void zlink::socket_base_t::resolve_socket_msg_source_rid (
     copy_routing_id (out_, routing_pipe->get_routing_id ());
 }
 
+void zlink::socket_base_t::dispatch_spot_handler_from_io (
+  const zlink_routing_id_t *source_rid_,
+  const char *topic_,
+  size_t topic_len_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_)
+{
+    socket_base_t *self = static_cast<socket_base_t *> (userdata_);
+    if (!self) {
+        for (size_t i = 0; i < part_count_; ++i) {
+            const int rc = reinterpret_cast<msg_t *> (&parts_[i])->close ();
+            errno_assert (rc == 0);
+        }
+        return;
+    }
+
+    zlink_spot_handler_fn handler = self->socket_spot_handler ();
+    if (!handler) {
+        for (size_t i = 0; i < part_count_; ++i) {
+            const int rc = reinterpret_cast<msg_t *> (&parts_[i])->close ();
+            errno_assert (rc == 0);
+        }
+        return;
+    }
+
+    handler (source_rid_, topic_, topic_len_, parts_, part_count_);
+}
+
+void zlink::socket_base_t::arm_send_ready_notification ()
+{
+    if (socket_send_ready_handler ())
+        _send_ready_armed.store (true, std::memory_order_release);
+}
+
+void zlink::socket_base_t::notify_send_ready_if_armed ()
+{
+    if (!_send_ready_armed.load (std::memory_order_acquire) || !has_out ())
+        return;
+
+    bool expected = true;
+    if (!_send_ready_armed.compare_exchange_strong (
+          expected, false, std::memory_order_acq_rel,
+          std::memory_order_acquire))
+        return;
+
+    zlink_send_ready_handler_fn handler = socket_send_ready_handler ();
+    if (handler)
+        handler (this);
+}
+
 int zlink::socket_base_t::sub_dispatch_start (spot_sub_io_handler_fn callback_,
                                               void *userdata_)
 {
@@ -1440,6 +1555,17 @@ int zlink::socket_base_t::sub_dispatch_stop ()
 }
 
 bool zlink::socket_base_t::sub_dispatch_active () const
+{
+    return false;
+}
+
+int zlink::socket_base_t::xpub_dispatch_start ()
+{
+    errno = ENOTSUP;
+    return -1;
+}
+
+bool zlink::socket_base_t::xpub_dispatch_active () const
 {
     return false;
 }
@@ -1886,6 +2012,7 @@ void zlink::socket_base_t::read_activated (pipe_t *pipe_)
 void zlink::socket_base_t::write_activated (pipe_t *pipe_)
 {
     xwrite_activated (pipe_);
+    notify_send_ready_if_armed ();
 }
 
 void zlink::socket_base_t::hiccuped (pipe_t *pipe_)

@@ -536,7 +536,7 @@ void run_gateway(const std::string &transport,
         return;
     }
 
-    discovery = zlink_discovery_new_typed(ctx.get(), ZLINK_SERVICE_TYPE_GATEWAY);
+    discovery = zlink_discovery_new (ctx.get(), ZLINK_SERVICE_TYPE_GATEWAY);
     if (!discovery) {
         cleanup();
         return;

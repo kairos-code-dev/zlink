@@ -45,6 +45,22 @@ static std::string topology_routing_key (const zlink_routing_id_t &rid_)
     return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
 }
 
+static bool is_supported_registry_transport (const char *endpoint_)
+{
+    if (!endpoint_ || endpoint_[0] == '\0')
+        return false;
+
+    const char *scheme_end = strstr (endpoint_, "://");
+    if (!scheme_end)
+        return false;
+
+    const size_t scheme_len = static_cast<size_t> (scheme_end - endpoint_);
+    return (scheme_len == 3 && strncmp (endpoint_, "tcp", 3) == 0)
+           || (scheme_len == 2 && strncmp (endpoint_, "ws", 2) == 0)
+           || (scheme_len == 3 && strncmp (endpoint_, "wss", 3) == 0)
+           || (scheme_len == 3 && strncmp (endpoint_, "tls", 3) == 0);
+}
+
 static bool topology_filter_match (
   const zlink_registry_topology_entry_t &entry_,
   const zlink_registry_topology_filter_t *filter_)
@@ -130,6 +146,10 @@ int registry_t::add_peer (const char *peer_pub_endpoint_)
         errno = EINVAL;
         return -1;
     }
+    if (!is_supported_registry_transport (peer_pub_endpoint_)) {
+        errno = EPROTONOSUPPORT;
+        return -1;
+    }
     scoped_lock_t lock (_sync);
     _peer_pubs.push_back (peer_pub_endpoint_);
     return 0;
@@ -194,7 +214,9 @@ int registry_t::set_socket_option (int socket_role_,
               static_cast<const unsigned char *> (optval_),
               static_cast<const unsigned char *> (optval_) + optvallen_);
             if (existing_socket)
-                zlink_setsockopt (existing_socket, option_, optval_, optvallen_);
+                zlink_setsockopt (
+                  existing_socket, static_cast<zlink_socket_option_t> (option_),
+                  optval_, optvallen_);
             return 0;
         }
     }
@@ -205,7 +227,9 @@ int registry_t::set_socket_option (int socket_role_,
                         + optvallen_);
     opts->push_back (opt);
     if (existing_socket)
-        zlink_setsockopt (existing_socket, option_, optval_, optvallen_);
+        zlink_setsockopt (
+          existing_socket, static_cast<zlink_socket_option_t> (option_),
+          optval_, optvallen_);
     return 0;
 }
 
@@ -343,14 +367,16 @@ int registry_t::ensure_sockets ()
 
     for (size_t i = 0; i < _pub_opts.size (); ++i) {
         if (!_pub_opts[i].value.empty ())
-            zlink_setsockopt (pub, _pub_opts[i].option, &_pub_opts[i].value[0],
-                              _pub_opts[i].value.size ());
+            zlink_setsockopt (
+              pub, static_cast<zlink_socket_option_t> (_pub_opts[i].option),
+              &_pub_opts[i].value[0], _pub_opts[i].value.size ());
     }
     for (size_t i = 0; i < _router_opts.size (); ++i) {
         if (!_router_opts[i].value.empty ())
-            zlink_setsockopt (router, _router_opts[i].option,
-                              &_router_opts[i].value[0],
-                              _router_opts[i].value.size ());
+            zlink_setsockopt (
+              router,
+              static_cast<zlink_socket_option_t> (_router_opts[i].option),
+              &_router_opts[i].value[0], _router_opts[i].value.size ());
     }
 
     int verbose = 1;
@@ -450,9 +476,12 @@ void registry_t::tick ()
         if (peer_sub) {
             for (size_t i = 0; i < peer_sub_opts.size (); ++i) {
                 if (!peer_sub_opts[i].value.empty ())
-                    zlink_setsockopt (peer_sub, peer_sub_opts[i].option,
-                                      &peer_sub_opts[i].value[0],
-                                      peer_sub_opts[i].value.size ());
+                    zlink_setsockopt (
+                      peer_sub,
+                      static_cast<zlink_socket_option_t> (
+                        peer_sub_opts[i].option),
+                      &peer_sub_opts[i].value[0],
+                      peer_sub_opts[i].value.size ());
             }
             zlink_setsockopt (peer_sub, ZLINK_SUBSCRIBE, "", 0);
             scoped_lock_t lock (_sync);

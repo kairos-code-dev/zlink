@@ -28,7 +28,7 @@ static void test_pubsub_filter_transport (const char *endpoint_)
         || strncmp (endpoint_, "ipc://", 6) == 0) {
         size_t len = sizeof (connect_endpoint);
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_getsockopt (pub, ZLINK_LAST_ENDPOINT, connect_endpoint, &len));
+          zlink_getsockopt (pub, ZLINK_SOCKOPT_LAST_ENDPOINT, connect_endpoint, &len));
     } else {
         strcpy (connect_endpoint, endpoint_);
     }
@@ -83,7 +83,7 @@ void test_pubsub_xpub_xsub_tcp ()
     char endpoint[MAX_SOCKET_STRING];
     size_t len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (xpub, ZLINK_LAST_ENDPOINT, endpoint, &len));
+      zlink_getsockopt (xpub, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (xsub, endpoint));
 
@@ -117,7 +117,7 @@ void test_pubsub_xpub_xsub_ipc ()
     char endpoint[MAX_SOCKET_STRING];
     size_t len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (xpub, ZLINK_LAST_ENDPOINT, endpoint, &len));
+      zlink_getsockopt (xpub, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (xsub, endpoint));
 

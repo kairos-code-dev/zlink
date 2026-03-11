@@ -33,6 +33,11 @@
   `service-option-surface-plan.ko.md`,
   `spot-node-direct-facade-plan.ko.md`
   가 이미 확정한 계약을 덮어쓰지 않는다.
+- 이 문서에 나오는 구체 숫자 값(`0x2101`, `0x1001`, `0x3001` 등)은
+  final ABI를 확정하는 규범값이 아니라, family별 값 대역 분리 방향을 설명하기 위한
+  placeholder 예시다.
+- final header 값은 구현 단계에서 한 번에 확정하며, 이 문서의 숫자 예시는 그대로
+  복사해 고정 계약으로 읽지 않는다.
 
 핵심 원칙:
 
@@ -53,7 +58,7 @@
 |---|---|---|
 | `zlink_discovery_new_typed(void *ctx, uint16_t service_type)` | `zlink_discovery_new(void *ctx, zlink_service_type_t service_type)` | `typed`는 불필요하게 장황하다. 인자 자체가 type scope를 이미 표현하므로 이름을 단순화하고, service type도 dedicated enum으로 고정한다. |
 | `zlink_gateway_msg_kind_t` | 유지 | 메인 스펙 기준 unified gateway callback은 `REQUEST` / `REPLY` / `CONTROL` demux를 `kind`로 구분한다. |
-| `typedef void (*zlink_gateway_handler_fn)(zlink_gateway_msg_kind_t kind, const char *service_name, size_t service_name_len, const zlink_routing_id_t *source_rid, zlink_msg_t *parts, size_t part_count)` | 유지 | unified gateway가 inbound request, outbound reply, control plane event를 한 handle에서 받는 구조에서는 `kind`와 `service_name`이 필요하다. |
+| `typedef void (*zlink_gateway_handler_fn)(zlink_gateway_msg_kind_t kind, const char *service_name, size_t service_name_len, const zlink_routing_id_t *source_rid, zlink_msg_t *parts, size_t part_count)` | 유지 | unified gateway가 inbound request, outbound reply, control plane event를 한 handle에서 받는 구조에서는 `kind`와 `service_name`이 필요하다. callback ABI는 `service_name`을 NUL-terminated 문자열이 아니라 pointer+length span으로 취급하는 편이 안전하므로 `service_name_len`도 유지한다. |
 | `zlink_gateway_new(void *ctx, void *discovery, const char *routing_id, zlink_gateway_handler_fn handler)` | 유지 | 메인 스펙의 unified gateway는 service-bound handle이 아니라 multi-service capable handle이다. 대표 identity는 `routing_id`이고, service name은 register/send 시점에 지정한다. |
 | `zlink_gateway_register()` | 유지 | 메인 스펙 기준 gateway registration lifecycle은 계속 `gateway` handle이 담당한다. |
 | `zlink_gateway_update_weight()` | 유지 | 현재 메인 스펙의 canonical weight update path다. peer 단위 weight API는 별도 후속 검토 후보로 남긴다. |
@@ -132,6 +137,9 @@ int zlink_gateway_set_lb_strategy (void *gateway,
 - unified `gateway`는 service-bound handle이 아니라 multi-service capable handle이다.
 - callback의 `kind`와 `service_name`은 unified gateway의 inbound request / outbound reply /
   control plane event를 구분하기 위해 유지한다.
+- `service_name_len`은 중복 파라미터가 아니라 callback ABI의 authoritative length다.
+  즉 callback은 `service_name`이 NUL-terminated라고 가정하지 않고
+  `service_name + service_name_len` span으로 해석하는 계약을 명시하는 편이 안전하다.
 - registration lifecycle은 현재 메인 스펙 기준으로 `gateway`가 담당한다.
 - 따라서 `ZLINK_GATEWAY_REGISTER_OK`,
   `ZLINK_GATEWAY_REGISTER_FAILED`,
@@ -168,6 +176,13 @@ enum typing/값 배치 원칙으로 읽는다.
 | unified `zlink_spot_set_option(..., role, option, ...)` | 장기적으로 `zlink_spot_set_pub_option()` / `zlink_spot_set_sub_option()`로 분리 권장 | `role + int option` 조합은 enum 타입 이점을 약화시킨다. role별 enum을 제대로 살리려면 setter도 분리하는 편이 낫다. |
 
 권장 값 배정 예시:
+
+주의:
+
+- 아래 표와 코드 블록의 숫자 값은 non-normative placeholder다.
+- 목적은 "family별 값 대역을 분리한다"는 방향 설명이지,
+  각 상수의 final ABI 번호를 여기서 확정하는 것이 아니다.
+- 최종 숫자 배정은 header 전체 migration/alias 전략과 함께 별도 정리해야 한다.
 
 | enum type | 값 대역 | 예시 |
 |---|---|---|
@@ -228,6 +243,17 @@ typedef enum zlink_spot_sub_option_t
   `service-option-surface-plan.ko.md`와
   `spot-node-direct-facade-plan.ko.md`가 우선하며,
   여기의 enum 예시는 naming/typing과 값 배치 방향을 보여주는 용도다.
+- 숫자 값 자체는 final ABI 확정안이 아니다.
+- 따라서 `zlink_gateway_option_t` 예시에서
+  `ZLINK_GATEWAY_OPT_RCVTIMEO`를 제외하고 `ZLINK_GATEWAY_OPT_SNDBUF` /
+  `ZLINK_GATEWAY_OPT_RCVBUF`를 포함한 것은
+  `service-option-surface-plan.ko.md`의 현재 canonical 결정을 그대로 따른 것이다.
+- `ZLINK_SPOT_PUB_OPT_RCVBUF` / `ZLINK_SPOT_SUB_OPT_SNDBUF`처럼
+  facade의 논리적 publish/subscribe 방향과 직관이 어긋나는 transport buffer 항목은
+  `service-option-surface-plan.ko.md`의 결정을 따른다.
+  이 값들은 "pub이 recv를 한다 / sub가 send를 한다"는 의미가 아니라,
+  underlying full-duplex transport socket의 OS buffer tuning을 public surface에 남길지
+  여부를 표현하는 항목으로 읽는다.
 
 ## 3. SPOT 인터페이스 추가 재검토
 
@@ -361,6 +387,14 @@ int zlink_spot_sub_set_option (void *sub,
   `zlink_spot_sub_monitor_open()`을 병행 제공한다.
 - unified facade의 peer 조회는 C API 이름 충돌을 피하기 위해
   `zlink_spot_peers_pub()` / `zlink_spot_peers_sub()`로 분리한다.
+- unified `spot` naming policy는 다음으로 고정하는 편이 일관적이다.
+  - query/list API는 return subject를 suffix로 드러낸다:
+    `*_peers_pub()`, `*_peers_sub()`
+  - mutator/setter API는 verb 단계에서 subject를 분리한다:
+    `*_set_pub_option()`, `*_set_sub_option()`
+  - monitor open은 unified facade entrypoint를 유지하되,
+    attached facade 자체가 단일 handle이므로 `role` selector를 인자로 받는다:
+    `zlink_spot_monitor_open(..., role, ...)`
 - `SpotPub` / `SpotSub` option의 실제 public 지원 여부와 `ENOTSUP` 항목은
   별도 option 계획 문서를 따르며, direct facade의 정확한 지원 매트릭스는
   `spot-node-direct-facade-plan.ko.md`를 우선한다.
@@ -404,6 +438,14 @@ int zlink_spot_sub_set_option (void *sub,
   `LAST_ENDPOINT`)도 별도 예외 없이 같은 enum에 포함한다.
 
 권장 값 대역 예시:
+
+주의:
+
+- 아래 값 대역과 enum 값은 non-normative placeholder다.
+- socket/service family가 서로 다른 값 공간을 사용한다는 방향 설명용이며,
+  final ABI 번호를 확정하는 표가 아니다.
+- 실제 숫자 migration은 기존 `ZLINK_PAIR`, `ZLINK_AFFINITY` 등 현행 값과의
+  호환성 영향, alias 전략, bindings 동시 업데이트 범위를 함께 검토한 뒤 별도 확정해야 한다.
 
 | enum type | 값 대역 | 예시 |
 |---|---|---|
@@ -472,6 +514,29 @@ raw socket option에 대한 결론:
 - 일반 socket option도 service option과 동일하게 값 재배치 대상이다.
 - 즉 raw socket option도 "enum type화 + 전역 유일 값 재배치"가 적절하다.
 - 기존 libzmq 숫자와의 정렬은 설계 목표에서 제외한다.
+- 다만 이 섹션의 구체 숫자 값은 final ABI를 확정하는 규범값이 아니라
+  방향 설명용 placeholder 예시다.
+
+### 4.1 Registry / Context option 누락 보완
+
+이번 callback-recv rewrite의 직접 대상은 아니지만,
+header 전반의 typed-constant 정리 범위에서는 아래 surface도 같이 검토 대상에 넣는 편이 맞다.
+
+| 현재 인터페이스 | 변경안 | 이유 |
+|---|---|---|
+| `#define ZLINK_REGISTRY_SOCKET_PUB`, `..._ROUTER`, `..._PEER_SUB` | `zlink_registry_socket_role_t` 후보 | internal registry socket role도 닫힌 값 집합이다. |
+| `zlink_registry_setsockopt(void *registry, int socket_role, int option, ...)` | `zlink_registry_setsockopt(void *registry, zlink_registry_socket_role_t socket_role, zlink_socket_option_t option, ...)` | raw `int` 두 개보다 role/option 소속을 명확히 한다. |
+| `#define ZLINK_IO_THREADS`, `ZLINK_MAX_SOCKETS`, ... | `zlink_ctx_option_t` 후보 | context option도 닫힌 값 집합이다. |
+| `zlink_ctx_set(void *ctx, int option, int optval)` | `zlink_ctx_set(void *ctx, zlink_ctx_option_t option, int optval)` | context option namespace를 타입으로 고정한다. |
+| `zlink_ctx_get(void *ctx, int option)` 계열 | `zlink_ctx_option_t` 사용 | getter도 동일한 enum typing을 사용한다. |
+
+추가 규칙:
+
+- `registry` / `ctx` option은 callback-only recv 의미와 직접 연결되지는 않지만,
+  public header의 loosely typed 상수 집합을 정리한다는 관점에서는 같은 migration 작업에
+  포함시키는 편이 일관적이다.
+- 다만 우선순위는 raw socket / service option / monitor / poller보다 낮으므로
+  후속 정리 항목으로 명시하면 충분하다.
 
 ## 5. 기타 상수군 enum 후보
 
@@ -517,15 +582,19 @@ option 외에도 다음 상수군은 macro보다 enum이 더 자연스럽다.
 | SPOT pub option | `zlink_spot_pub_set_option(void *pub, int option, ...)` | `zlink_spot_pub_set_option(void *pub, zlink_spot_pub_option_t option, ...)` |
 | SPOT sub option | `zlink_spot_node_set_sub_option(void *node, int option, ...)` | `zlink_spot_node_set_sub_option(void *node, zlink_spot_sub_option_t option, ...)` |
 | SPOT sub option | `zlink_spot_sub_set_option(void *sub, int option, ...)` | `zlink_spot_sub_set_option(void *sub, zlink_spot_sub_option_t option, ...)` |
+| registry socket role | `zlink_registry_setsockopt(void *registry, int socket_role, int option, ...)` | `zlink_registry_setsockopt(void *registry, zlink_registry_socket_role_t socket_role, zlink_socket_option_t option, ...)` |
+| context option | `zlink_ctx_set(void *ctx, int option, int optval)` | `zlink_ctx_set(void *ctx, zlink_ctx_option_t option, int optval)` |
 | poller event mask | `zlink_poller_add(..., short events)` | `zlink_poller_add(..., zlink_poller_event_mask_t events)` |
 | poller event mask | `zlink_poller_add_spot_sub(..., short events)` | `zlink_poller_add_spot_sub(..., zlink_poller_event_mask_t events)` |
 | poller event mask | `zlink_poller_add_spot_pub(..., short events)` | `zlink_poller_add_spot_pub(..., zlink_poller_event_mask_t events)` |
 | poller event mask | `zlink_poller_add_gateway(..., short events)` | `zlink_poller_add_gateway(..., zlink_poller_event_mask_t events)` |
+| poller event mask | `zlink_poller_add_monitor(..., short events)` | `zlink_poller_add_monitor(..., zlink_poller_event_mask_t events)` |
 | poller event mask | `zlink_poller_add_fd(..., short events)` | `zlink_poller_add_fd(..., zlink_poller_event_mask_t events)` |
 | poller event mask | `zlink_poller_modify(..., short events)` | `zlink_poller_modify(..., zlink_poller_event_mask_t events)` |
 | poller event mask | `zlink_poller_modify_spot_sub(..., short events)` | `zlink_poller_modify_spot_sub(..., zlink_poller_event_mask_t events)` |
 | poller event mask | `zlink_poller_modify_spot_pub(..., short events)` | `zlink_poller_modify_spot_pub(..., zlink_poller_event_mask_t events)` |
 | poller event mask | `zlink_poller_modify_gateway(..., short events)` | `zlink_poller_modify_gateway(..., zlink_poller_event_mask_t events)` |
+| poller event mask | `zlink_poller_modify_monitor(..., short events)` | `zlink_poller_modify_monitor(..., zlink_poller_event_mask_t events)` |
 | poller event mask | `zlink_poller_modify_fd(..., short events)` | `zlink_poller_modify_fd(..., zlink_poller_event_mask_t events)` |
 | monitor event mask | `zlink_socket_monitor_open(void *s, int events, ...)` | `zlink_socket_monitor_open(void *s, zlink_socket_monitor_event_mask_t events, ...)` |
 | discovery monitor event mask | `zlink_discovery_monitor_open(void *discovery, int events, ...)` | `zlink_discovery_monitor_open(void *discovery, zlink_discovery_monitor_event_mask_t events, ...)` |
@@ -539,7 +608,36 @@ option 외에도 다음 상수군은 macro보다 enum이 더 자연스럽다.
 | topology source | `zlink_registry_topology_entry_t.source` / `zlink_registry_topology_filter_t.source` | `zlink_topology_source_t` 사용 |
 | topology state | `zlink_registry_topology_entry_t.state` / `zlink_registry_topology_filter_t.state` | `zlink_topology_state_t` 사용 |
 
+### 5.1 callback setter 계약
+
+메인 스펙과 정렬된 현재 권장 계약은 다음이다.
+
+대상 API:
+
+- `zlink_gateway_set_handler()`
+- `zlink_spot_node_set_handler()`
+- `zlink_spot_set_handler()`
+- `zlink_spot_sub_set_handler()`
+- `zlink_monitor_set_handler()`
+- `zlink_service_monitor_set_handler()`
+
+공통 규칙:
+
+- 생성 후 callback 교체는 같은 setter를 재호출해 수행한다.
+- `NULL` callback은 허용하지 않는다.
+- callback 제거 전용 API는 두지 않는다.
+- `set_handler()` 실패 시 기존 handler를 유지한 채 오류를 반환한다.
+- in-flight callback에는 기존 handler가 적용되고, 이후 도착분부터 새 handler를 적용한다.
+
+즉 setter API는 "install + replace" surface이지 "clear/remove" surface가 아니다.
+
 권장 타입 예시:
+
+주의:
+
+- 아래 enum 값 역시 non-normative placeholder다.
+- 특히 bitmask/event 상수와 socket/service type 상수의 최종 header 표현은
+  구현 제약과 migration 전략을 반영해 별도 확정해야 한다.
 
 ```c
 typedef enum zlink_service_type_t
@@ -568,86 +666,79 @@ typedef enum zlink_spot_role_mask_t
   ZLINK_SPOT_ROLE_MASK_SUB = 0x0002
 } zlink_spot_role_mask_t;
 
-typedef enum zlink_poller_event_mask_t
-{
-  ZLINK_POLLER_EVENT_OUT = 0x0002,
-  ZLINK_POLLER_EVENT_ERR = 0x0004,
-  ZLINK_POLLER_EVENT_PRI = 0x0008
-} zlink_poller_event_mask_t;
+typedef uint32_t zlink_poller_event_mask_t;
 
-typedef enum zlink_socket_monitor_event_mask_t
-{
-  ZLINK_SOCKET_MONITOR_EVENT_CONNECTED = 0x0001,
-  ZLINK_SOCKET_MONITOR_EVENT_CONNECT_DELAYED = 0x0002,
-  ZLINK_SOCKET_MONITOR_EVENT_CONNECT_RETRIED = 0x0004,
-  ZLINK_SOCKET_MONITOR_EVENT_LISTENING = 0x0008,
-  ZLINK_SOCKET_MONITOR_EVENT_BIND_FAILED = 0x0010,
-  ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED = 0x0020,
-  ZLINK_SOCKET_MONITOR_EVENT_ACCEPT_FAILED = 0x0040,
-  ZLINK_SOCKET_MONITOR_EVENT_CLOSED = 0x0080,
-  ZLINK_SOCKET_MONITOR_EVENT_CLOSE_FAILED = 0x0100,
-  ZLINK_SOCKET_MONITOR_EVENT_DISCONNECTED = 0x0200,
-  ZLINK_SOCKET_MONITOR_EVENT_MONITOR_STOPPED = 0x0400,
-  ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_NO_DETAIL = 0x0800,
-  ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY = 0x1000,
-  ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_PROTOCOL = 0x2000,
-  ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_AUTH = 0x4000,
-  ZLINK_SOCKET_MONITOR_EVENT_ALL = 0xFFFF
-} zlink_socket_monitor_event_mask_t;
+#define ZLINK_POLLER_EVENT_OUT ((zlink_poller_event_mask_t) 0x0002u)
+#define ZLINK_POLLER_EVENT_ERR ((zlink_poller_event_mask_t) 0x0004u)
+#define ZLINK_POLLER_EVENT_PRI ((zlink_poller_event_mask_t) 0x0008u)
 
-typedef enum zlink_discovery_monitor_event_mask_t
-{
-  ZLINK_DISCOVERY_MONITOR_EVENT_READY = (1u << 0),
-  ZLINK_DISCOVERY_MONITOR_EVENT_LOST = (1u << 1),
-  ZLINK_DISCOVERY_MONITOR_EVENT_ERROR = (1u << 4),
-  ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP = (1u << 5),
-  ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_DOWN = (1u << 6),
-  ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED = (1u << 7),
-  ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED = (1u << 17)
-} zlink_discovery_monitor_event_mask_t;
+typedef uint32_t zlink_socket_monitor_event_mask_t;
 
-typedef enum zlink_gateway_monitor_event_mask_t
-{
-  ZLINK_GATEWAY_MONITOR_EVENT_ERROR = (1u << 4),
-  ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY = (1u << 8),
-  ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_LOST = (1u << 9),
-  ZLINK_GATEWAY_MONITOR_EVENT_CONNECTION_COUNT_CHANGED = (1u << 10),
-  ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP = (1u << 11),
-  ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_DOWN = (1u << 12),
-  ZLINK_GATEWAY_MONITOR_EVENT_CLOSED = (1u << 17),
-  ZLINK_GATEWAY_MONITOR_EVENT_REGISTER_OK = (1u << 18),
-  ZLINK_GATEWAY_MONITOR_EVENT_REGISTER_FAILED = (1u << 19),
-  ZLINK_GATEWAY_MONITOR_EVENT_UNREGISTER_OK = (1u << 20),
-  ZLINK_GATEWAY_MONITOR_EVENT_UNREGISTER_FAILED = (1u << 21)
-} zlink_gateway_monitor_event_mask_t;
+#define ZLINK_SOCKET_MONITOR_EVENT_CONNECTED                  ((zlink_socket_monitor_event_mask_t) 0x0001u)
+#define ZLINK_SOCKET_MONITOR_EVENT_CONNECT_DELAYED            ((zlink_socket_monitor_event_mask_t) 0x0002u)
+#define ZLINK_SOCKET_MONITOR_EVENT_CONNECT_RETRIED            ((zlink_socket_monitor_event_mask_t) 0x0004u)
+#define ZLINK_SOCKET_MONITOR_EVENT_LISTENING                  ((zlink_socket_monitor_event_mask_t) 0x0008u)
+#define ZLINK_SOCKET_MONITOR_EVENT_BIND_FAILED                ((zlink_socket_monitor_event_mask_t) 0x0010u)
+#define ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED                   ((zlink_socket_monitor_event_mask_t) 0x0020u)
+#define ZLINK_SOCKET_MONITOR_EVENT_ACCEPT_FAILED              ((zlink_socket_monitor_event_mask_t) 0x0040u)
+#define ZLINK_SOCKET_MONITOR_EVENT_CLOSED                     ((zlink_socket_monitor_event_mask_t) 0x0080u)
+#define ZLINK_SOCKET_MONITOR_EVENT_CLOSE_FAILED               ((zlink_socket_monitor_event_mask_t) 0x0100u)
+#define ZLINK_SOCKET_MONITOR_EVENT_DISCONNECTED               ((zlink_socket_monitor_event_mask_t) 0x0200u)
+#define ZLINK_SOCKET_MONITOR_EVENT_MONITOR_STOPPED            ((zlink_socket_monitor_event_mask_t) 0x0400u)
+#define ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_NO_DETAIL ((zlink_socket_monitor_event_mask_t) 0x0800u)
+#define ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY           ((zlink_socket_monitor_event_mask_t) 0x1000u)
+#define ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_PROTOCOL  ((zlink_socket_monitor_event_mask_t) 0x2000u)
+#define ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_AUTH      ((zlink_socket_monitor_event_mask_t) 0x4000u)
+#define ZLINK_SOCKET_MONITOR_EVENT_ALL                        ((zlink_socket_monitor_event_mask_t) 0xFFFFu)
 
-typedef enum zlink_spot_monitor_event_mask_t
-{
-  ZLINK_SPOT_MONITOR_EVENT_READY = (1u << 0),
-  ZLINK_SPOT_MONITOR_EVENT_LOST = (1u << 1),
-  ZLINK_SPOT_MONITOR_EVENT_PEER_UP = (1u << 2),
-  ZLINK_SPOT_MONITOR_EVENT_PEER_DOWN = (1u << 3),
-  ZLINK_SPOT_MONITOR_EVENT_ERROR = (1u << 4),
-  ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED = (1u << 13),
-  ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY = (1u << 14),
-  ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_FULL = (1u << 15),
-  ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_DRAINED = (1u << 16),
-  ZLINK_SPOT_MONITOR_EVENT_CLOSED = (1u << 17)
-} zlink_spot_monitor_event_mask_t;
+typedef uint32_t zlink_discovery_monitor_event_mask_t;
 
-typedef enum zlink_service_event_detail_mask_t
-{
-  ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME = 0x0001,
-  ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT = 0x0002,
-  ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_RID = 0x0004,
-  ZLINK_SERVICE_EVENT_DETAIL_PEER_RID = 0x0008
-} zlink_service_event_detail_mask_t;
+#define ZLINK_DISCOVERY_MONITOR_EVENT_READY             ((zlink_discovery_monitor_event_mask_t) (1u << 0))
+#define ZLINK_DISCOVERY_MONITOR_EVENT_LOST              ((zlink_discovery_monitor_event_mask_t) (1u << 1))
+#define ZLINK_DISCOVERY_MONITOR_EVENT_ERROR             ((zlink_discovery_monitor_event_mask_t) (1u << 4))
+#define ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP        ((zlink_discovery_monitor_event_mask_t) (1u << 5))
+#define ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_DOWN      ((zlink_discovery_monitor_event_mask_t) (1u << 6))
+#define ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED ((zlink_discovery_monitor_event_mask_t) (1u << 7))
+#define ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED            ((zlink_discovery_monitor_event_mask_t) (1u << 17))
 
-typedef enum zlink_send_flags_t
-{
-  ZLINK_SEND_FLAG_DONTWAIT = 0x0001,
-  ZLINK_SEND_FLAG_SNDMORE = 0x0002
-} zlink_send_flags_t;
+typedef uint32_t zlink_gateway_monitor_event_mask_t;
+
+#define ZLINK_GATEWAY_MONITOR_EVENT_ERROR                    ((zlink_gateway_monitor_event_mask_t) (1u << 4))
+#define ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY            ((zlink_gateway_monitor_event_mask_t) (1u << 8))
+#define ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_LOST             ((zlink_gateway_monitor_event_mask_t) (1u << 9))
+#define ZLINK_GATEWAY_MONITOR_EVENT_CONNECTION_COUNT_CHANGED ((zlink_gateway_monitor_event_mask_t) (1u << 10))
+#define ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP                 ((zlink_gateway_monitor_event_mask_t) (1u << 11))
+#define ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_DOWN               ((zlink_gateway_monitor_event_mask_t) (1u << 12))
+#define ZLINK_GATEWAY_MONITOR_EVENT_CLOSED                   ((zlink_gateway_monitor_event_mask_t) (1u << 17))
+#define ZLINK_GATEWAY_MONITOR_EVENT_REGISTER_OK              ((zlink_gateway_monitor_event_mask_t) (1u << 18))
+#define ZLINK_GATEWAY_MONITOR_EVENT_REGISTER_FAILED          ((zlink_gateway_monitor_event_mask_t) (1u << 19))
+#define ZLINK_GATEWAY_MONITOR_EVENT_UNREGISTER_OK            ((zlink_gateway_monitor_event_mask_t) (1u << 20))
+#define ZLINK_GATEWAY_MONITOR_EVENT_UNREGISTER_FAILED        ((zlink_gateway_monitor_event_mask_t) (1u << 21))
+
+typedef uint32_t zlink_spot_monitor_event_mask_t;
+
+#define ZLINK_SPOT_MONITOR_EVENT_READY                ((zlink_spot_monitor_event_mask_t) (1u << 0))
+#define ZLINK_SPOT_MONITOR_EVENT_LOST                 ((zlink_spot_monitor_event_mask_t) (1u << 1))
+#define ZLINK_SPOT_MONITOR_EVENT_PEER_UP              ((zlink_spot_monitor_event_mask_t) (1u << 2))
+#define ZLINK_SPOT_MONITOR_EVENT_PEER_DOWN            ((zlink_spot_monitor_event_mask_t) (1u << 3))
+#define ZLINK_SPOT_MONITOR_EVENT_ERROR                ((zlink_spot_monitor_event_mask_t) (1u << 4))
+#define ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED   ((zlink_spot_monitor_event_mask_t) (1u << 13))
+#define ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY   ((zlink_spot_monitor_event_mask_t) (1u << 14))
+#define ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_FULL       ((zlink_spot_monitor_event_mask_t) (1u << 15))
+#define ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_DRAINED    ((zlink_spot_monitor_event_mask_t) (1u << 16))
+#define ZLINK_SPOT_MONITOR_EVENT_CLOSED               ((zlink_spot_monitor_event_mask_t) (1u << 17))
+
+typedef uint32_t zlink_service_event_detail_mask_t;
+
+#define ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME ((zlink_service_event_detail_mask_t) 0x0001u)
+#define ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT     ((zlink_service_event_detail_mask_t) 0x0002u)
+#define ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_RID  ((zlink_service_event_detail_mask_t) 0x0004u)
+#define ZLINK_SERVICE_EVENT_DETAIL_PEER_RID     ((zlink_service_event_detail_mask_t) 0x0008u)
+
+typedef uint32_t zlink_send_flags_t;
+
+#define ZLINK_SEND_FLAG_DONTWAIT ((zlink_send_flags_t) 0x0001u)
+#define ZLINK_SEND_FLAG_SNDMORE  ((zlink_send_flags_t) 0x0002u)
 
 typedef enum zlink_disconnect_reason_t
 {
@@ -680,14 +771,24 @@ typedef enum zlink_topology_state_t
 추가 정리 원칙:
 
 - 단순 상수 집합이면 enum으로 승격하고, 관련 함수 시그니처도 같은 enum 타입을 받도록 맞춘다.
-- bitmask 성격의 상수군도 enum으로 표현할 수 있지만, 문서와 이름에서 반드시 `*_mask_t` 또는
-  `*_flags_t`임을 드러낸다.
+- bitmask 성격의 상수군은 이름만 `*_mask_t` / `*_flags_t`로 끝나는 enum 예시에
+  머물지 말고, final C header 표현까지 별도로 확정해야 한다.
+- portable C header 기준의 1차 권장안은 plain enum typedef보다
+  `typedef uint32_t ..._mask_t;` + typed macro/상수 조합이다.
+  OR 결과가 `int`가 되는 C enum 규칙 때문에, 단순 `typedef enum ..._mask_t`는
+  final exported form으로는 부적합할 수 있다.
+- compiler-specific `flag_enum`류 확장은 선택 사항일 뿐,
+  portable baseline으로 가정하지 않는다.
 - `int`, `short`, `uint16_t` 같은 원시 타입으로 상수 집합 의미를 암묵적으로 표현하는 방식을
   줄이는 것이 목표다.
 - 다만 poller event bit, socket monitor bit, zero-init default 의미를 가지는 mode/policy처럼
   기존 비트/기본값 의미가 중요한 상수군은 enum으로 승격하더라도 기존 수치 값을 유지한다.
 - service monitor 계열은 discovery / gateway / spot의 공개 이벤트 집합이 서로 다르므로
   공통 enum 하나로 뭉뚱그리지 않고 함수 family별 mask enum으로 분리한다.
+- `ZLINK_SOCKET_MONITOR_EVENT_ALL`은 raw socket monitor가 legacy aggregate mask를 이미
+  갖고 있는 전제를 반영한 예시다.
+- discovery / gateway / spot monitor는 service별 공개 이벤트 집합이 더 자주 달라지므로,
+  현재 예시에서는 대응 `*_ALL` sentinel을 두지 않는다.
 - `gateway` monitor는 공통 `READY/LOST`나 `PEER_UP/DOWN` 대신
   `SERVICE_READY/SERVICE_LOST`, `ROUTE_UP/ROUTE_DOWN`,
   `REGISTER_OK/FAILED`, `UNREGISTER_OK/FAILED`를 공개한다.
@@ -704,3 +805,7 @@ typedef enum zlink_topology_state_t
 - poller event mask (`ZLINK_POLLOUT`, `ZLINK_POLLERR`, `ZLINK_POLLPRI`)
 - discovery / gateway / spot monitor event mask
 - service event detail mask
+- 특히 poller event는 현재 공개 header에 `ZLINK_POLLIN`이 없으므로,
+  이 문서의 typed-mask 예시도 현재 공개 집합에 맞춰 `OUT/ERR/PRI`만 유지한다.
+- readable event를 의미하는 `IN` bit를 새로 도입할지는 별도 기능 결정이 필요하며,
+  이 문서의 현재 예시로는 확정하지 않는다.

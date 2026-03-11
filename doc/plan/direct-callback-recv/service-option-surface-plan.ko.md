@@ -135,6 +135,13 @@ public support 대상이 아니다.
 | send buffer | `ZLINK_SPOT_PUB_OPT_SNDBUF` | 유지 | socket buffer tuning |
 | recv buffer | `ZLINK_SPOT_PUB_OPT_RCVBUF` | 유지 | socket buffer tuning |
 
+설명:
+
+- `SNDBUF` / `RCVBUF`는 facade의 논리적 publish direction이 아니라
+  underlying transport socket의 OS buffer tuning을 의미한다.
+- 따라서 `SpotPub`에 `RCVBUF`가 남는 것은 "pub이 recv API를 가진다"는 뜻이 아니라,
+  full-duplex transport layer의 receive buffer 크기를 조정할 수 있다는 의미다.
+
 ### 4.3 SpotSub
 
 | 항목 | API/상수 | 처리 | 비고 |
@@ -146,6 +153,13 @@ public support 대상이 아니다.
 | queue full policy | `ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY` | 삭제 | public recv queue 제거 |
 | send buffer | `ZLINK_SPOT_SUB_OPT_SNDBUF` | 유지 | socket buffer tuning |
 | recv buffer | `ZLINK_SPOT_SUB_OPT_RCVBUF` | 유지 | socket buffer tuning |
+
+설명:
+
+- `SNDBUF` / `RCVBUF`는 facade의 논리적 subscribe direction이 아니라
+  underlying transport socket의 OS buffer tuning을 의미한다.
+- 따라서 `SpotSub`에 `SNDBUF`가 남는 것도 "sub가 publish를 한다"는 뜻이 아니라,
+  full-duplex transport layer의 send buffer 크기를 조정할 수 있다는 의미다.
 
 ## 5. 권장 public API 모양
 

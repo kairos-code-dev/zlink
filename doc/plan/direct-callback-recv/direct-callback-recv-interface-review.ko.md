@@ -278,6 +278,12 @@ int zlink_gateway_set_lb_strategy (void *gateway,
   다시 노출하지 않는다.
 - `gateway`는 생성 시 discovery를 받지 않는다.
 - `zlink_gateway_attach_discovery()`는 선택적 topology source attach API다.
+- `zlink_discovery_connect_registry()`가 허용하는 registry 연결 transport는
+  `tcp`, `ws`, `wss`, `tls` 네 가지로 제한한다.
+- discovery/registry control-plane 연결에는 `ipc`, `inproc`, `pgm`, `epgm`,
+  `tipc` 등 허용 목록 밖 transport를 public canonical 범위에 포함하지 않는다.
+- 허용되지 않은 transport scheme로 `zlink_discovery_connect_registry()`를 호출하면
+  즉시 실패해야 하며, 이 문서 기준 `EPROTONOSUPPORT`를 반환한다.
 - discovery를 attach하지 않은 상태에서는 manual `connect` / `disconnect`를 허용한다.
 - 이미 manual peer/route가 존재하는 상태에서는 `zlink_gateway_attach_discovery()`를 허용하지 않는다.
   이 경우 `EBUSY`를 반환해 topology ownership 전환 시점을 호출자가 먼저 정리하게 한다.
@@ -439,6 +445,8 @@ data 전달은 `msg_t` 중심으로 단순화"하는 쪽이 더 일관적이다.
 | `int zlink_spot_node_attach_discovery(void *node, void *discovery)` | 유지 | discovery watch 대상 service도 `spot_node` 생성 시점 identity를 사용하므로 service 인자를 받지 않는 attach API를 유지한다. |
 | `int zlink_spot_node_set_pub_option(void *node, zlink_spot_pub_option_t option, const void *optval, size_t optvallen)` | 유지 | node default pub option도 standalone `spot_pub`와 동일 enum을 사용한다. |
 | `int zlink_spot_node_set_sub_option(void *node, zlink_spot_sub_option_t option, const void *optval, size_t optvallen)` | 유지 | node default sub option도 standalone `spot_sub`와 동일 enum을 사용한다. |
+| `void *zlink_spot_node_default_pub(void *node)` | 삭제 | `spot_node` 내부 lazy child handle을 public에 노출하지 않는다. public split child accessor는 unified `spot` / `spot_node_*` contract와 충돌하므로 제거한다. |
+| `void *zlink_spot_node_default_sub(void *node)` | 삭제 | 위와 동일. |
 | `int zlink_spot_pub_set_option(void *pub, zlink_spot_pub_option_t pub_option, const void *optval, size_t optvallen)` | 유지 | standalone pub도 같은 pub option enum을 유지한다. |
 | `int zlink_spot_sub_set_option(void *sub, zlink_spot_sub_option_t sub_option, const void *optval, size_t optvallen)` | 유지 | standalone sub도 같은 sub option enum을 유지한다. |
 | `ZLINK_SPOT_NODE_PUB_MODE_*` / `QUEUE_HWM` / `QUEUE_FULL_POLICY` | typed enum으로 유지, 실제 public 지원/`ENOTSUP`도 이 문서 기준으로 고정 | enum naming과 runtime support 매트릭스를 같은 canonical 문서에서 함께 고정한다. |
@@ -1126,6 +1134,8 @@ typedef enum zlink_topology_state_t
   send/callback/public query 경로에서 per-call service override가 없어야 한다.
 - `spot_node`는 생성 시 고정된 `service_name`으로만 동작하고,
   attach된 `spot` / `spot_pub` / `spot_sub`는 그 identity를 공유해야 한다.
+- `zlink_spot_node_default_pub()` / `zlink_spot_node_default_sub()`는 public API에
+  존재하지 않아야 한다.
 - representative routing id setter는 first-use 이전에는 성공하고,
   첫 bind/connect/publish/subscribe 이후에는 실패해야 한다.
 
@@ -1133,6 +1143,10 @@ typedef enum zlink_topology_state_t
 
 - `gateway_attach_discovery()` / `spot_node_attach_discovery()` 이전에는
   manual `connect` / `disconnect`가 가능해야 한다.
+- `zlink_discovery_connect_registry()`는 `tcp`, `ws`, `wss`, `tls` endpoint만
+  허용해야 한다.
+- `ipc`, `inproc`, `pgm`, `epgm`, `tipc` 등 허용 목록 밖 transport로
+  `zlink_discovery_connect_registry()`를 호출하면 `EPROTONOSUPPORT`로 실패해야 한다.
 - manual peer/route가 하나라도 존재하는 상태에서
   `gateway_attach_discovery()` / `spot_node_attach_discovery()`를 호출하면
   `EBUSY`를 반환해야 한다.

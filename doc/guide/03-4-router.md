@@ -35,22 +35,36 @@ zlink_bind(router, "tcp://*:5558");
 
 ### Receiving Messages
 
-ROUTER automatically prepends a routing_id frame to received messages.
+ROUTER receives messages via a handler callback registered at creation time.
+The callback's `source_rid` parameter contains the sender's routing_id.
 
 ```c
-/* DEALER sends "Hello" → ROUTER receives [routing_id][Hello] */
-char identity[32], data[256];
-int id_size = zlink_recv(router, identity, sizeof(identity), 0);
-int data_size = zlink_recv(router, data, sizeof(data), 0);
+/* DEALER sends "Hello" → handler receives source_rid + parts */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    printf("From [%.*s]: %.*s\n",
+           (int)source_rid->size, source_rid->data,
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_message
+};
+void *router = zlink_socket(ctx, ZLINK_ROUTER, &handler);
 ```
 
 ### Sending Messages
 
-When replying, send the received routing_id as the first frame to specify the target.
+When replying, send `source_rid` as the first frame to specify the target.
 
 ```c
-/* Use the received routing_id as-is to reply */
-zlink_send(router, identity, id_size, ZLINK_SNDMORE);
+/* Reply using source_rid from the callback */
+zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
 zlink_send(router, "World", 5, 0);
 ```
 
@@ -76,22 +90,20 @@ ROUTER sends:   [routing_id][frame1][frame2]
 DEALER receives: [frame1][frame2]   ← routing_id stripped
 ```
 
-### Receive/Reply Using zlink_msg_t
+### Receive/Reply Using Handler Callback
 
 ```c
-/* Receive */
-zlink_msg_t rid, data;
-zlink_msg_init(&rid);
-zlink_msg_init(&data);
-zlink_msg_recv(&rid, router, 0);   /* routing_id frame */
-zlink_msg_recv(&data, router, 0);  /* data frame */
+/* Receive: handler callback provides routing_id and data */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* Reply: send routing_id frame then data */
+    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
+    zlink_send(router, "reply", 5, 0);
 
-/* Reply: reuse routing_id as-is */
-zlink_msg_send(&rid, router, ZLINK_SNDMORE);
-zlink_send(router, "reply", 5, 0);
-
-zlink_msg_close(&rid);
-zlink_msg_close(&data);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
 ## 4. Socket Options
@@ -127,8 +139,22 @@ int rc = zlink_send(router, "UNKNOWN", 7, ZLINK_SNDMORE);
 The most basic ROUTER pattern. Distinguishes multiple DEALER clients by routing_id.
 
 ```c
-/* Server */
-void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+/* Server: ROUTER with handler */
+void on_request(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* Reply to the sender */
+    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
+    zlink_send(router, "reply", 5, 0);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
+zlink_socket_handler_t router_handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_request
+};
+void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -136,31 +162,28 @@ size_t len = sizeof(endpoint);
 zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
 /* Client 1 */
-void *d1 = zlink_socket(ctx, ZLINK_DEALER, NULL);
+zlink_socket_handler_t d1_handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_reply
+};
+void *d1 = zlink_socket(ctx, ZLINK_DEALER, &d1_handler);
 zlink_setsockopt(d1, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* Client 2 */
-void *d2 = zlink_socket(ctx, ZLINK_DEALER, NULL);
+zlink_socket_handler_t d2_handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_reply
+};
+void *d2 = zlink_socket(ctx, ZLINK_DEALER, &d2_handler);
 zlink_setsockopt(d2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(d2, endpoint);
 
-/* Receive messages from each client */
-char id[32], msg[64];
-int id_size = zlink_recv(router, id, sizeof(id), 0);
-int msg_size = zlink_recv(router, msg, sizeof(msg), 0);
+/* Each client sends a message -- on_request receives with source_rid */
+zlink_send(d1, "from_d1", 7, 0);
+zlink_send(d2, "from_d2", 7, 0);
 
-/* Reply to specific clients */
-zlink_send(router, "D1", 2, ZLINK_SNDMORE);
-zlink_send(router, "reply_to_d1", 11, 0);
-
-zlink_send(router, "D2", 2, ZLINK_SNDMORE);
-zlink_send(router, "reply_to_d2", 11, 0);
-
-/* Each DEALER receives only its own reply */
-char buf[64];
-zlink_recv(d1, buf, sizeof(buf), 0);  /* "reply_to_d1" */
-zlink_recv(d2, buf, sizeof(buf), 0);  /* "reply_to_d2" */
+/* on_reply receives the reply for each DEALER */
 ```
 
 > Reference: `core/tests/test_router_multiple_dealers.cpp` -- TCP/IPC/inproc across 3 transports
@@ -194,21 +217,25 @@ if (rc == -1 && errno == EHOSTUNREACH) {
 DEALER sends a message first to notify ROUTER of its connection, then ROUTER replies.
 
 ```c
+/* ROUTER handler: DEALER's initial message confirms connection */
+void on_connect(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* source_rid->data = "X" -- now it is safe to send to "X" */
+    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
+    zlink_send(router, "Welcome", 7, 0);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
 /* DEALER connects and sends initial message */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "X", 1);
 zlink_connect(dealer, endpoint);
 zlink_send(dealer, "Hello", 5, 0);
 
-/* ROUTER: confirm DEALER's connection */
-char id[32];
-zlink_recv(router, id, sizeof(id), 0);  /* "X" */
-char buf[64];
-zlink_recv(router, buf, sizeof(buf), 0);  /* "Hello" */
-
-/* Now it is safe to send to "X" */
-zlink_send(router, "X", 1, ZLINK_SNDMORE);
-zlink_send(router, "Hello", 5, 0);
+/* on_connect receives: source_rid = "X", parts[0] = "Hello"
+   and replies with "Welcome" */
 ```
 
 > Reference: `core/tests/test_router_mandatory.cpp` -- DEALER connect → message → ROUTER reply

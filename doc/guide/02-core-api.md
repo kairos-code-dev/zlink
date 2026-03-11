@@ -93,53 +93,60 @@ Key options:
 
 ## 3. Sending and Receiving Messages
 
-### 3.1 Simple Send/Receive
+### 3.1 Sending
 
 ```c
-/* Send */
+/* Simple send */
 zlink_send(socket, "Hello", 5, 0);
 
-/* Receive */
-char buf[256];
-int size = zlink_recv(socket, buf, sizeof(buf), 0);
+/* Multipart send */
+zlink_send(socket, "header", 6, ZLINK_SNDMORE);
+zlink_send(socket, "body", 4, 0);
 ```
 
-### 3.2 Flags
+### 3.2 Receiving (Callback Handler)
+
+All receives are dispatched through a handler callback registered at socket creation time.
+There is no `recv()` function — the callback is invoked asynchronously when a message arrives.
+
+```c
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    for (size_t i = 0; i < part_count; i++) {
+        printf("Frame %zu: %.*s\n", i,
+               (int)zlink_msg_size(&parts[i]),
+               (char *)zlink_msg_data(&parts[i]));
+        zlink_msg_close(&parts[i]);
+    }
+}
+
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_message
+};
+void *socket = zlink_socket(ctx, ZLINK_PAIR, &handler);
+```
+
+### 3.3 Send Flags
 
 | Flag | Description |
 |------|-------------|
-| `ZLINK_DONTWAIT` | Non-blocking mode (returns EAGAIN immediately if no data) |
+| `ZLINK_DONTWAIT` | Non-blocking mode (returns EAGAIN immediately if cannot send) |
 | `ZLINK_SNDMORE` | Intermediate frame of a multipart message |
 
-### 3.3 Non-Blocking Receive
+## 4. Handler Types
 
-```c
-int size = zlink_recv(socket, buf, sizeof(buf), ZLINK_DONTWAIT);
-if (size == -1 && zlink_errno() == EAGAIN) {
-    /* No data available */
-}
-```
+Each socket type accepts a specific handler kind at creation time:
 
-## 4. Poller API
+| Socket Type | Handler Kind | Callback Signature |
+|---|---|---|
+| PAIR, DEALER, ROUTER | `ZLINK_SOCKET_HANDLER_MSG` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count)` |
+| SUB | `ZLINK_SOCKET_HANDLER_SPOT` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count)` |
+| XPUB | `ZLINK_SOCKET_HANDLER_XPUB` | `void fn(int subscribed, const uint8_t *topic, size_t topic_len)` |
+| PUB, XSUB | N/A (NULL) | Send-only sockets |
 
-### 4.1 zlink_poll
-
-```c
-zlink_pollitem_t items[] = {
-    { socket1, 0, ZLINK_POLLIN, 0 },
-    { socket2, 0, ZLINK_POLLIN, 0 },
-};
-
-int rc = zlink_poll(items, 2, 1000); /* 1-second timeout */
-if (rc > 0) {
-    if (items[0].revents & ZLINK_POLLIN) {
-        /* Data available on socket1 */
-    }
-    if (items[1].revents & ZLINK_POLLIN) {
-        /* Data available on socket2 */
-    }
-}
-```
+Callbacks are invoked on the I/O thread. Avoid blocking work inside callbacks — if slow processing is needed, enqueue to a user queue and handle on a separate thread.
 
 ## 5. Error Handling
 
@@ -169,43 +176,52 @@ Key error codes:
 #include <string.h>
 #include <stdio.h>
 
+void on_router_message(const zlink_routing_id_t *source_rid,
+                       zlink_msg_t *parts, size_t part_count)
+{
+    printf("Received from [%.*s]: %.*s\n",
+           (int)source_rid->size, source_rid->data,
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
+void on_dealer_message(const zlink_routing_id_t *source_rid,
+                       zlink_msg_t *parts, size_t part_count)
+{
+    printf("Reply: %.*s\n",
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
 int main(void) {
     void *ctx = zlink_ctx_new();
 
     /* ROUTER (server) */
-    void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+    zlink_socket_handler_t router_handler = {
+        .kind = ZLINK_SOCKET_HANDLER_MSG,
+        .fn.msg = on_router_message
+    };
+    void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (client) */
-    void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
+    zlink_socket_handler_t dealer_handler = {
+        .kind = ZLINK_SOCKET_HANDLER_MSG,
+        .fn.msg = on_dealer_message
+    };
+    void *dealer = zlink_socket(ctx, ZLINK_DEALER, &dealer_handler);
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */
     zlink_send(dealer, "request", 7, 0);
 
-    /* ROUTER: receive routing_id + data */
-    zlink_msg_t id, body;
-    zlink_msg_init(&id);
-    zlink_msg_init(&body);
-    zlink_msg_recv(&id, router, 0);    /* routing_id frame */
-    zlink_msg_recv(&body, router, 0);  /* data frame */
+    /* Handler callbacks process messages asynchronously */
+    msleep(100);
 
-    printf("Received: %.*s\n",
-           (int)zlink_msg_size(&body),
-           (char *)zlink_msg_data(&body));
-
-    /* ROUTER → DEALER (reply) */
-    zlink_msg_send(&id, router, ZLINK_SNDMORE);
-    zlink_send(router, "reply", 5, 0);
-
-    /* DEALER receives reply */
-    char buf[256];
-    int size = zlink_recv(dealer, buf, sizeof(buf), 0);
-    buf[size] = '\0';
-    printf("Reply: %s\n", buf);
-
-    zlink_msg_close(&id);
-    zlink_msg_close(&body);
     zlink_close(dealer);
     zlink_close(router);
     zlink_ctx_term(ctx);

@@ -273,12 +273,7 @@ inline void apply_ctx_options(void *ctx_)
         }
     }
 
-    const int blocky = bench_ctx_blocky();
-    const int blocky_rc = zlink_ctx_set(ctx_, ZLINK_BLOCKY, blocky);
-    if (blocky_rc != 0 && debug) {
-        std::cerr << "zlink_ctx_set(ZLINK_BLOCKY) failed: "
-                  << zlink_strerror(zlink_errno()) << std::endl;
-    }
+    (void) debug;
 }
 
 class ctx_guard_t {
@@ -323,7 +318,9 @@ private:
 class socket_guard_t {
 public:
     socket_guard_t() : _socket(NULL) {}
-    socket_guard_t(void *ctx_, int type_) : _socket(zlink_socket(ctx_, type_)) {}
+    socket_guard_t(void *ctx_, int type_) :
+        _socket(zlink_socket(
+          ctx_, static_cast<zlink_socket_type_t>(type_))) {}
     ~socket_guard_t() {
         if (_socket)
             zlink_close(_socket);
@@ -342,8 +339,7 @@ private:
 
 struct connect_monitor_t {
     void *owner;
-    void *monitor;
-    connect_monitor_t() : owner(NULL), monitor(NULL) {}
+    connect_monitor_t() : owner(NULL) {}
 };
 
 inline int bench_monitor_hwm()
@@ -372,42 +368,17 @@ inline int bench_monitor_hwm()
 
 inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
 {
-    int events = ZLINK_EVENT_CONNECTION_READY;
-    void *monitor = zlink_socket_monitor_open(socket_, events);
-    if (!monitor)
-        return false;
-
-    const int linger_ms = 0;
-    zlink_setsockopt(monitor, ZLINK_LINGER, &linger_ms, sizeof(linger_ms));
-    const int monitor_hwm = bench_monitor_hwm();
-    if (monitor_hwm > 0) {
-        zlink_setsockopt(
-          monitor, ZLINK_RCVHWM, &monitor_hwm, sizeof(monitor_hwm));
-        zlink_setsockopt(
-          monitor, ZLINK_SNDHWM, &monitor_hwm, sizeof(monitor_hwm));
-    }
     out_.owner = socket_;
-    out_.monitor = monitor;
-    return true;
+    return socket_ != NULL;
 }
 
 inline int poll_connect_ready_count(connect_monitor_t &monitor_);
 
 inline int poll_connect_ready_count(connect_monitor_t &monitor_)
 {
-    if (!monitor_.monitor)
+    if (!monitor_.owner)
         return 0;
-
-    int ready = 0;
-    for (;;) {
-        zlink_monitor_event_t ev;
-        if (zlink_monitor_recv(monitor_.monitor, &ev, ZLINK_DONTWAIT) != 0)
-            break;
-        if (ev.event == ZLINK_EVENT_CONNECTION_READY) {
-            ++ready;
-        }
-    }
-    return ready;
+    return std::max(0, zlink_socket_peer_count(monitor_.owner));
 }
 
 inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
@@ -416,7 +387,7 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
 {
     if (expected_ready_ == 0)
         return true;
-    if (!monitor_.monitor)
+    if (!monitor_.owner)
         return false;
 
     size_t ready = static_cast<size_t>(poll_connect_ready_count(monitor_));
@@ -431,18 +402,10 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
         if (now >= deadline)
             break;
 
-        const long remain_ms = remaining_milliseconds(
-                                 deadline, now);
-        zlink_pollitem_t item[] = {{monitor_.monitor, 0, ZLINK_POLLIN, 0}};
-        const int rc = zlink_poll(item, 1, remain_ms > 0 ? remain_ms : 0);
-        if (rc < 0) {
-            if (zlink_errno() == EINTR)
-                continue;
-            return false;
-        }
-        if (rc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
-            continue;
-
+        const long remain_ms = remaining_milliseconds(deadline, now);
+        const long sleep_ms = std::min<long>(50, remain_ms > 0 ? remain_ms : 0);
+        if (sleep_ms > 0)
+            std::this_thread::sleep_for(milliseconds_t(sleep_ms));
         ready += static_cast<size_t>(poll_connect_ready_count(monitor_));
         if (ready >= expected_ready_)
             return true;
@@ -452,12 +415,7 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
 
 inline void close_connect_monitor(connect_monitor_t &monitor_)
 {
-    if (monitor_.owner)
-        zlink_socket_monitor(monitor_.owner, NULL, 0);
-    if (monitor_.monitor)
-        zlink_close(monitor_.monitor);
     monitor_.owner = NULL;
-    monitor_.monitor = NULL;
 }
 
 inline void print_result(const std::string& lib_type,
@@ -642,7 +600,9 @@ inline bool bench_debug_enabled() {
     return enabled;
 }
 
-inline bool set_sockopt_int(void *socket_, int option_, int value_,
+inline bool set_sockopt_int(void *socket_,
+                            zlink_socket_option_t option_,
+                            int value_,
                             const char *name_) {
     const int rc = zlink_setsockopt(socket_, option_, &value_, sizeof(value_));
     if (rc != 0 && bench_debug_enabled()) {

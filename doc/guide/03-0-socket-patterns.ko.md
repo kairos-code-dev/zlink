@@ -99,22 +99,34 @@ zlink는 8종의 소켓 타입을 제공한다. 각 소켓은 고유한 메시�
 /* 1. Context 생성 */
 void *ctx = zlink_ctx_new();
 
-/* 2. 소켓 생성 */
-void *socket = zlink_socket(ctx, ZLINK_<TYPE>, NULL);
+/* 2. 핸들러 콜백 정의 */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* 수신 메시지 처리 */
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 
-/* 3. 소켓 옵션 설정 (bind/connect 전) */
+/* 3. 소켓 생성 (수신용 핸들러 등록) */
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_message
+};
+void *socket = zlink_socket(ctx, ZLINK_<TYPE>, &handler);
+
+/* 4. 소켓 옵션 설정 (bind/connect 전) */
 zlink_setsockopt(socket, ZLINK_<OPTION>, &value, sizeof(value));
 
-/* 4. 연결 (bind 또는 connect) */
+/* 5. 연결 (bind 또는 connect) */
 zlink_bind(socket, "tcp://*:5555");
 // 또는
 zlink_connect(socket, "tcp://127.0.0.1:5555");
 
-/* 5. 메시지 송수신 */
+/* 6. 메시지 송신 (수신은 콜백으로 처리) */
 zlink_send(socket, data, size, flags);
-zlink_recv(socket, buf, buf_size, flags);
 
-/* 6. 정리 */
+/* 7. 정리 */
 zlink_close(socket);
 zlink_ctx_term(ctx);
 ```

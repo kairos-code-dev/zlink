@@ -286,13 +286,10 @@ int main(void) {
     zlink_setsockopt(client, ZLINK_TLS_HOSTNAME, "localhost", 9);
     zlink_connect(client, "tls://127.0.0.1:5555");
 
-    /* Encrypted communication */
+    /* Encrypted communication — server receives via handler callback */
     zlink_send(client, "Secure Hello", 12, 0);
 
-    char buf[256];
-    int size = zlink_recv(server, buf, sizeof(buf), 0);
-    buf[size] = '\0';
-    printf("Received: %s\n", buf);
+    /* on_message callback receives: parts[0] = "Secure Hello" */
 
     zlink_close(client);
     zlink_close(server);

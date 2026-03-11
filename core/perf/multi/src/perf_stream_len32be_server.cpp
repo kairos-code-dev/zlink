@@ -9,6 +9,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <condition_variable>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -28,14 +29,17 @@ static const char *k_pattern = "STREAM_LEN32BE";
 
 static std::atomic<bool> g_stop_requested (false);
 static std::atomic<bool> g_callback_failed (false);
+static std::atomic<bool> g_sender_failed (false);
 static void *g_server_socket = NULL;
 static std::atomic<bool> g_queue_probe_pending (false);
 static std::atomic<size_t> g_queue_probe_size (0);
 static std::mutex g_pending_mutex;
+static std::condition_variable g_pending_cv;
 
 inline void on_signal (int)
 {
     g_stop_requested.store (true, std::memory_order_release);
+    g_pending_cv.notify_all ();
 }
 
 inline void install_signal_handlers ()
@@ -257,6 +261,7 @@ inline bool enqueue_pending_stream_message_locked (
     if (!g_pending_messages[g_pending_count].move_from (message))
         return false;
     ++g_pending_count;
+    g_pending_cv.notify_one ();
     return true;
 }
 
@@ -312,32 +317,20 @@ int on_stream_packets (const zlink_routing_id_t *rid,
             (void) zlink_msg_close (msg);
             for (size_t j = i + 1; j < msg_count; ++j)
                 (void) zlink_msg_close (&msgs[j]);
+            g_pending_cv.notify_all ();
             return 1;
         }
         request.has_payload = true;
-        const send_status_t send_rc = try_send_stream_message (&request);
-        if (send_rc == send_done) {
+        std::lock_guard<std::mutex> guard (g_pending_mutex);
+        if (!enqueue_pending_stream_message_locked (&request)) {
+            g_callback_failed.store (true, std::memory_order_release);
             (void) zlink_msg_close (msg);
-            continue;
+            for (size_t j = i + 1; j < msg_count; ++j)
+                (void) zlink_msg_close (&msgs[j]);
+            g_pending_cv.notify_all ();
+            return 1;
         }
-        if (send_rc == send_blocked) {
-            std::lock_guard<std::mutex> guard (g_pending_mutex);
-            if (!enqueue_pending_stream_message_locked (&request)) {
-                g_callback_failed.store (true, std::memory_order_release);
-                (void) zlink_msg_close (msg);
-                for (size_t j = i + 1; j < msg_count; ++j)
-                    (void) zlink_msg_close (&msgs[j]);
-                return 1;
-            }
-            (void) zlink_msg_close (msg);
-            continue;
-        }
-
-        g_callback_failed.store (true, std::memory_order_release);
         (void) zlink_msg_close (msg);
-        for (size_t j = i + 1; j < msg_count; ++j)
-            (void) zlink_msg_close (&msgs[j]);
-        return 1;
     }
 
     return 0;
@@ -402,6 +395,7 @@ int main (int argc, char **argv)
 
     g_stop_requested.store (false, std::memory_order_release);
     g_callback_failed.store (false, std::memory_order_release);
+    g_sender_failed.store (false, std::memory_order_release);
     g_queue_probe_pending.store (false, std::memory_order_release);
     g_queue_probe_size.store (0, std::memory_order_release);
     g_server_socket = server;
@@ -432,54 +426,57 @@ int main (int argc, char **argv)
             }
             if (line == "STOP" || line == "QUIT") {
                 g_stop_requested.store (true, std::memory_order_release);
+                g_pending_cv.notify_all ();
                 return;
             }
         }
         g_stop_requested.store (true, std::memory_order_release);
+        g_pending_cv.notify_all ();
     });
     stdin_watcher.detach ();
+
+    std::thread sender_thread ([server] () {
+        while (true) {
+            {
+                std::unique_lock<std::mutex> guard (g_pending_mutex);
+                while (g_pending_count == 0
+                       && !g_stop_requested.load (std::memory_order_acquire)
+                       && !g_callback_failed.load (std::memory_order_acquire)) {
+                    g_pending_cv.wait_for (guard, std::chrono::milliseconds (50));
+                }
+                if (g_pending_count == 0
+                    && (g_stop_requested.load (std::memory_order_acquire)
+                        || g_callback_failed.load (std::memory_order_acquire))) {
+                    return;
+                }
+            }
+
+            std::lock_guard<std::mutex> guard (g_pending_mutex);
+            if (!flush_pending_stream_messages_locked ()) {
+                g_sender_failed.store (true, std::memory_order_release);
+                g_pending_cv.notify_all ();
+                return;
+            }
+        }
+    });
 
     std::cout << "READY," << endpoint << std::endl;
 
     int rc = 0;
     while (!g_stop_requested.load (std::memory_order_acquire)) {
         emit_requested_queue_probe (lib_name, transport, server, server);
-        if (g_callback_failed.load (std::memory_order_acquire)) {
+        if (g_callback_failed.load (std::memory_order_acquire)
+            || g_sender_failed.load (std::memory_order_acquire)) {
             rc = 1;
             break;
         }
-
-        bool have_pending = false;
-        {
-            std::lock_guard<std::mutex> guard (g_pending_mutex);
-            have_pending = g_pending_count > 0;
-        }
-        if (!have_pending) {
-            if (zlink_poll (NULL, 0, 50) < 0 && zlink_errno () != EINTR) {
-                rc = 1;
-                break;
-            }
-            continue;
-        }
-
-        zlink_pollitem_t item = {server, 0, ZLINK_POLLOUT, 0};
-        const int prc = zlink_poll (&item, 1, 50);
-        if (prc < 0) {
-            if (zlink_errno () == EINTR)
-                continue;
-            rc = 1;
-            break;
-        }
-        if (prc > 0 && (item.revents & ZLINK_POLLOUT) != 0) {
-            std::lock_guard<std::mutex> guard (g_pending_mutex);
-            if (!flush_pending_stream_messages_locked ()) {
-                rc = 1;
-                break;
-            }
-        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (50));
     }
 
-    (void) zlink_stream_detach (server);
+    g_stop_requested.store (true, std::memory_order_release);
+    g_pending_cv.notify_all ();
+    sender_thread.join ();
+
     delete[] g_pending_messages;
     g_pending_messages = NULL;
     g_pending_capacity = 0;

@@ -107,8 +107,25 @@ ROUTER 소켓은 수신 메시지에 routing_id 프레임을 자동으로 앞에
 ### 기본 요청-응답
 
 ```c
-/* ROUTER 서버 */
-void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+/* ROUTER 서버 (핸들러 사용) */
+void on_request(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* source_rid = "D1" (2 bytes), parts[0] = "Hello" (5 bytes) */
+
+    /* 응답: routing_id를 첫 프레임으로 전송 */
+    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
+    zlink_send(router, "World", 5, 0);
+
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
+zlink_socket_handler_t router_handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_request
+};
+void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -123,18 +140,7 @@ zlink_connect(dealer, endpoint);
 /* DEALER 전송 */
 zlink_send(dealer, "Hello", 5, 0);
 
-/* ROUTER 수신: [routing_id="D1"] + [data="Hello"] */
-char identity[32], data[256];
-int id_size = zlink_recv(router, identity, sizeof(identity), 0);
-int data_size = zlink_recv(router, data, sizeof(data), 0);
-/* identity = "D1" (2 bytes), data = "Hello" (5 bytes) */
-
-/* ROUTER 응답: routing_id를 첫 프레임으로 전송 */
-zlink_send(router, identity, id_size, ZLINK_SNDMORE);
-zlink_send(router, "World", 5, 0);
-
-/* DEALER 수신: "World" (routing_id 프레임은 자동 제거) */
-zlink_recv(dealer, data, sizeof(data), 0);
+/* on_request 콜백이 메시지를 수신하고 응답 */
 ```
 
 ### 다중 클라이언트 구분
@@ -148,12 +154,17 @@ zlink_connect(dealer1, endpoint);
 zlink_setsockopt(dealer2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
-/* ROUTER에서 특정 클라이언트에게만 응답 */
-zlink_send(router, "D1", 2, ZLINK_SNDMORE);
-zlink_send(router, "reply_to_d1", 11, 0);
-
-zlink_send(router, "D2", 2, ZLINK_SNDMORE);
-zlink_send(router, "reply_to_d2", 11, 0);
+/* ROUTER 핸들러가 source_rid로 클라이언트를 구분 */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* source_rid->data에 "D1" 또는 "D2" 포함 */
+    /* 특정 클라이언트에게 응답 */
+    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
+    zlink_send(router, "reply", 5, 0);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — 다중 DEALER 예제
@@ -161,86 +172,74 @@ zlink_send(router, "reply_to_d2", 11, 0);
 ### zlink_msg_t를 사용한 routing_id 처리
 
 ```c
-/* 수신 */
-zlink_msg_t rid, data;
-zlink_msg_init(&rid);
-zlink_msg_init(&data);
-zlink_msg_recv(&rid, router, 0);   /* routing_id 프레임 */
-zlink_msg_recv(&data, router, 0);  /* 데이터 프레임 */
+/* 핸들러 콜백이 routing_id와 데이터를 직접 제공 */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* routing_id 크기 및 내용 확인 */
+    printf("routing_id: %zu bytes\n", source_rid->size);
 
-/* routing_id 크기 및 내용 확인 */
-printf("routing_id: %zu bytes\n", zlink_msg_size(&rid));
+    /* 응답: source_rid 사용 */
+    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
+    zlink_send(router, "reply", 5, 0);
 
-/* 응답: 수신한 routing_id 재사용 */
-zlink_msg_send(&rid, router, ZLINK_SNDMORE);
-zlink_send(router, "reply", 5, 0);
-
-zlink_msg_close(&rid);
-zlink_msg_close(&data);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
 ## 7. STREAM 소켓에서 routing_id 사용법
 
 STREAM 소켓은 4B uint32 peer routing_id로 외부 클라이언트를 식별한다.
-이 섹션의 "기본 사용"은 콜백 dispatch OFF
-(`zlink_stream_attach()` 미사용) 기준이다.
 
 ### 기본 사용
 
 ```c
-/* 수신: [routing_id (4B)] + [payload] */
-unsigned char rid[4];
-char payload[4096];
+/* LEN32BE 콜백 dispatch */
+int on_packets(const zlink_routing_id_t *rid,
+               zlink_msg_t *msgs, size_t count)
+{
+    for (size_t i = 0; i < count; ++i) {
+        void *data = zlink_msg_data(&msgs[i]);
+        size_t size = zlink_msg_size(&msgs[i]);
 
-zlink_recv(stream, rid, 4, 0);         /* 항상 4바이트 */
-int size = zlink_recv(stream, payload, sizeof(payload), 0);
+        /* 응답: 동일 routing_id 사용 */
+        zlink_stream_send(stream, rid, data, size, 0);
+        zlink_msg_close(&msgs[i]);
+    }
+    return 0;
+}
 
-/* 응답: 동일 routing_id 사용 */
-zlink_send(stream, rid, 4, ZLINK_SNDMORE);
-zlink_send(stream, response, resp_len, 0);
+zlink_stream_attach_len32be(stream, on_packets);
 ```
 
 ### 연결/해제 이벤트의 routing_id
 
 ```c
-unsigned char rid[4];
-unsigned char code;
+int on_packets(const zlink_routing_id_t *rid,
+               zlink_msg_t *msgs, size_t count)
+{
+    for (size_t i = 0; i < count; ++i) {
+        uint8_t *data = (uint8_t *)zlink_msg_data(&msgs[i]);
+        size_t size = zlink_msg_size(&msgs[i]);
 
-zlink_recv(stream, rid, 4, 0);
-zlink_recv(stream, &code, 1, 0);
-
-if (code == 0x01) {
-    /* 새 클라이언트 연결: rid를 저장하여 이후 통신에 사용 */
-    printf("연결: %02x%02x%02x%02x\n", rid[0], rid[1], rid[2], rid[3]);
-} else if (code == 0x00) {
-    /* 클라이언트 해제: rid로 식별하여 정리 */
-    printf("해제: %02x%02x%02x%02x\n", rid[0], rid[1], rid[2], rid[3]);
+        if (size == 1 && data[0] == 0x01) {
+            /* 새 클라이언트 연결: rid로 식별 */
+            printf("연결: ");
+            for (size_t j = 0; j < rid->size; j++)
+                printf("%02x", rid->data[j]);
+            printf("\n");
+        } else if (size == 1 && data[0] == 0x00) {
+            /* 클라이언트 해제: rid로 식별하여 정리 */
+            printf("해제\n");
+        }
+        zlink_msg_close(&msgs[i]);
+    }
+    return 0;
 }
 ```
 
 > 참고: `core/tests/test_stream_socket.cpp` — `recv_stream_event()`, `send_stream_msg()`
-
-### 콜백 Dispatch 사용 (`zlink_stream_attach` ON)
-
-콜백 dispatch를 attach한 경우 STREAM 페이로드는 `zlink_recv()`가 아니라
-콜백에서 소비한다.
-
-```c
-int on_packets(const zlink_routing_id_t *rid, zlink_msg_t *msgs, size_t count) {
-    for (size_t i = 0; i < count; ++i) {
-        const void *data = zlink_msg_data(&msgs[i]);
-        size_t size = zlink_msg_size(&msgs[i]);
-
-        /* 동일 peer routing_id로 응답 */
-        zlink_stream_send(stream, rid, data, size, 0);
-    }
-    return 0;
-}
-
-zlink_stream_attach(stream, on_packets, ZLINK_STREAM_DISPATCH_LEN32BE);
-/* ... */
-zlink_stream_detach(stream);  /* 필요 시 zlink_recv() 패턴으로 복귀 */
-```
 
 ### ROUTER vs STREAM routing_id 비교
 
@@ -266,10 +265,14 @@ void print_routing_id(const void *data, size_t size) {
     printf("\n");
 }
 
-/* 사용 */
-char rid[255];
-int rid_size = zlink_recv(router, rid, sizeof(rid), 0);
-print_routing_id(rid, rid_size);
+/* 핸들러 콜백 내에서 */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    print_routing_id(source_rid->data, source_rid->size);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
 ### 문자열 routing_id
@@ -279,11 +282,17 @@ print_routing_id(rid, rid_size);
 ```c
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 
-/* ROUTER에서 수신 시 */
-char rid[32];
-int rid_size = zlink_recv(router, rid, sizeof(rid), 0);
-rid[rid_size] = '\0';
-printf("routing_id: %s\n", rid);  /* "D1" */
+/* ROUTER 핸들러 콜백 내에서 */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    char rid[256];
+    memcpy(rid, source_rid->data, source_rid->size);
+    rid[source_rid->size] = '\0';
+    printf("routing_id: %s\n", rid);  /* "D1" */
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
 ### 자동 생성 routing_id 확인

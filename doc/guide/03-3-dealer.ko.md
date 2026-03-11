@@ -45,10 +45,7 @@ zlink_send(dealer, "request-1", 9, 0);
 zlink_send(dealer, "request-2", 9, 0);
 zlink_send(dealer, "request-3", 9, 0);
 
-/* 응답 수신 — 순서 제약 없이 연속 수신 가능 */
-char buf[256];
-zlink_recv(dealer, buf, sizeof(buf), 0);
-zlink_recv(dealer, buf, sizeof(buf), 0);
+/* 응답은 생성 시 등록한 핸들러 콜백으로 디스패치됨 */
 ```
 
 ## 3. 메시지 형식
@@ -105,29 +102,45 @@ zlink_connect(dealer, "tcp://127.0.0.1:5558");
 가장 기본적인 패턴. DEALER가 요청, ROUTER가 응답.
 
 ```c
-/* 서버: ROUTER */
-void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+/* 서버: 핸들러가 있는 ROUTER */
+void on_request(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* source_rid에 DEALER의 routing_id가 포함됨 */
+    printf("수신 [%.*s]: %.*s\n",
+           (int)source_rid->size, source_rid->data,
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+
+    /* 응답: routing_id를 앞에 붙여 전송 */
+    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
+    zlink_send(router, "World", 5, 0);
+
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
+zlink_socket_handler_t router_handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_request
+};
+void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
 zlink_bind(router, "tcp://*:5558");
 
 /* 클라이언트: DEALER */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
+zlink_socket_handler_t dealer_handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_reply
+};
+void *dealer = zlink_socket(ctx, ZLINK_DEALER, &dealer_handler);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
 /* 클라이언트 요청 */
 zlink_send(dealer, "Hello", 5, 0);
 
-/* 서버 수신: [routing_id="D1"] + [data="Hello"] */
-char identity[32], data[256];
-int id_size = zlink_recv(router, identity, sizeof(identity), 0);
-int data_size = zlink_recv(router, data, sizeof(data), 0);
-
-/* 서버 응답: routing_id를 앞에 붙여 전송 */
-zlink_send(router, identity, id_size, ZLINK_SNDMORE);
-zlink_send(router, "World", 5, 0);
-
-/* 클라이언트 수신: "World" */
-zlink_recv(dealer, data, sizeof(data), 0);
+/* on_request가 메시지를 수신하여 "World"로 응답
+   on_reply가 응답을 수신 */
 ```
 
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — TCP/IPC/inproc 예제
@@ -137,7 +150,23 @@ zlink_recv(dealer, data, sizeof(data), 0);
 여러 DEALER가 하나의 ROUTER에 연결. ROUTER가 각 DEALER를 routing_id로 구분.
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+/* ROUTER는 핸들러 콜백으로 수신하며 source_rid로 각 DEALER를 구분 */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* source_rid->data = "D1" 또는 "D2" */
+    /* 특정 DEALER에게 응답 */
+    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
+    zlink_send(router, "reply", 5, 0);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
+zlink_socket_handler_t router_handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_message
+};
+void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -156,17 +185,7 @@ zlink_connect(dealer2, endpoint);
 zlink_send(dealer1, "from_dealer1", 12, 0);
 zlink_send(dealer2, "from_dealer2", 12, 0);
 
-/* ROUTER는 routing_id로 각 DEALER를 구분하여 수신 */
-char id[32], msg[64];
-zlink_recv(router, id, sizeof(id), 0);  /* "D1" 또는 "D2" */
-zlink_recv(router, msg, sizeof(msg), 0);
-
-/* 특정 DEALER에게 응답 */
-zlink_send(router, "D1", 2, ZLINK_SNDMORE);
-zlink_send(router, "reply_to_d1", 11, 0);
-
-zlink_send(router, "D2", 2, ZLINK_SNDMORE);
-zlink_send(router, "reply_to_d2", 11, 0);
+/* on_message가 각 DEALER의 메시지를 routing_id와 함께 수신 */
 ```
 
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — `test_router_multiple_dealers_tcp()`
@@ -191,19 +210,25 @@ zlink_proxy(frontend, backend, NULL);
 ```c
 /* 워커 스레드 */
 void worker_thread(void *arg) {
-    void *worker = zlink_socket(ctx, ZLINK_DEALER, NULL);
+    void on_work(const zlink_routing_id_t *source_rid,
+                 zlink_msg_t *parts, size_t part_count)
+    {
+        /* 처리 후 동일 routing_id로 응답 */
+        zlink_send(worker, source_rid->data, source_rid->size, ZLINK_SNDMORE);
+        for (size_t i = 0; i < part_count; i++) {
+            int more = (i < part_count - 1) ? ZLINK_SNDMORE : 0;
+            zlink_msg_send(&parts[i], worker, more);
+        }
+    }
+
+    zlink_socket_handler_t handler = {
+        .kind = ZLINK_SOCKET_HANDLER_MSG,
+        .fn.msg = on_work
+    };
+    void *worker = zlink_socket(ctx, ZLINK_DEALER, &handler);
     zlink_connect(worker, "inproc://backend");
 
-    while (1) {
-        /* [routing_id][data] 수신 */
-        char routing_id[32], content[256];
-        int id_size = zlink_recv(worker, routing_id, sizeof(routing_id), 0);
-        int msg_size = zlink_recv(worker, content, sizeof(content), 0);
-
-        /* 처리 후 동일 routing_id로 응답 */
-        zlink_send(worker, routing_id, id_size, ZLINK_SNDMORE);
-        zlink_send(worker, content, msg_size, 0);
-    }
+    /* 소켓이 닫힐 때까지 워커 유지 */
 }
 ```
 
@@ -214,20 +239,25 @@ void worker_thread(void *arg) {
 양쪽 모두 DEALER를 사용하여 완전 비동기 P2P 통신.
 
 ```c
-void *a = zlink_socket(ctx, ZLINK_DEALER, NULL);
+zlink_socket_handler_t handler_a = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_message_a
+};
+void *a = zlink_socket(ctx, ZLINK_DEALER, &handler_a);
 zlink_bind(a, "tcp://*:5558");
 
-void *b = zlink_socket(ctx, ZLINK_DEALER, NULL);
+zlink_socket_handler_t handler_b = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_message_b
+};
+void *b = zlink_socket(ctx, ZLINK_DEALER, &handler_b);
 zlink_connect(b, "tcp://127.0.0.1:5558");
 
 /* 양방향 자유 전송 */
 zlink_send(a, "ping", 4, 0);
 zlink_send(b, "pong", 4, 0);
 
-/* 양방향 자유 수신 */
-char buf[64];
-zlink_recv(b, buf, sizeof(buf), 0);  /* "ping" */
-zlink_recv(a, buf, sizeof(buf), 0);  /* "pong" */
+/* on_message_b가 "ping" 수신, on_message_a가 "pong" 수신 */
 ```
 
 ## 6. 주의사항

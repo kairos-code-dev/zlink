@@ -72,86 +72,65 @@ Frame 1: payload (N bytes)
 
 ---
 
-## 4. Server Receive/Reply Pattern
+## 4. Callback Dispatch (Receive/Reply)
+
+STREAM uses callback dispatch for all receive operations. Register a callback
+via `zlink_stream_attach_len32be()` or `zlink_stream_attach_raw()`.
+
+### LEN32BE Packet Dispatch
 
 ```c
-unsigned char rid[4];
-unsigned char payload[4096];
-
-int rid_size = zlink_recv(stream, rid, sizeof(rid), 0);  // must be 4
-int more = 0;
-size_t more_size = sizeof(more);
-zlink_getsockopt(stream, ZLINK_RCVMORE, &more, &more_size);
-
-int n = zlink_recv(stream, payload, sizeof(payload), 0);
-
-if (n == 1 && payload[0] == 0x01) {
-    // new client connected
-} else if (n == 1 && payload[0] == 0x00) {
-    // client disconnected
-} else {
-    // regular data, reply using same rid
-    zlink_send(stream, rid, 4, ZLINK_SNDMORE);
-    zlink_send(stream, payload, n, 0);
-}
-```
-
----
-
-## 4b. Callback Dispatch Pattern (High-Performance)
-
-For high-throughput servers, use the callback dispatch API instead of polling
-with `zlink_recv()`. The callback is invoked directly on the I/O thread,
-eliminating poll overhead.
-
-### Attach with LEN32BE decoding
-
-```c
-int on_packets (const zlink_routing_id_t *rid,
-                zlink_msg_t *msgs, size_t count)
+int on_packets(const zlink_routing_id_t *rid,
+               zlink_msg_t *msgs, size_t count)
 {
     for (size_t i = 0; i < count; ++i) {
-        void *data = zlink_msg_data (&msgs[i]);
-        size_t size = zlink_msg_size (&msgs[i]);
+        void *data = zlink_msg_data(&msgs[i]);
+        size_t size = zlink_msg_size(&msgs[i]);
 
         if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
-            /* connect event */
+            /* new client connected */
         } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
-            /* disconnect event */
+            /* client disconnected */
         } else {
             /* echo reply */
-            zlink_stream_send (stream, rid, data, size, 0);
+            zlink_stream_send(stream, rid, data, size, 0);
         }
-        zlink_msg_close (&msgs[i]); /* callback owns each msg */
+        zlink_msg_close(&msgs[i]);
     }
     return 0;  /* 0 = continue, non-zero = stop */
 }
 
-/* attach */
-zlink_stream_attach (stream, on_packets, ZLINK_STREAM_DISPATCH_LEN32BE);
-
-/* ... when done: */
-zlink_stream_detach (stream);
+/* Attach LEN32BE callback dispatch */
+zlink_stream_attach_len32be(stream, on_packets);
 ```
 
-### Key differences from Section 4
+### Raw Chunk Dispatch
 
-| | `zlink_recv()` pattern | Callback dispatch |
+For raw byte-stream handling without LEN32BE framing:
+
+```c
+int on_raw(const zlink_routing_id_t *rid, zlink_msg_t *msg)
+{
+    void *data = zlink_msg_data(msg);
+    size_t size = zlink_msg_size(msg);
+    /* process raw bytes */
+    zlink_msg_close(msg);
+    return 0;
+}
+
+zlink_stream_attach_raw(stream, on_raw);
+```
+
+### Key Points
+
+| | LEN32BE dispatch | Raw dispatch |
 |---|---|---|
-| Thread | Application thread polls | I/O thread invokes callback |
-| Framing | Manual 2-frame recv | Automatic (LEN32BE mode) |
-| Send | `zlink_send()` with SNDMORE | `zlink_stream_send()` |
-| Concurrency | One at a time | Parallel I/O threads |
+| API | `zlink_stream_attach_len32be()` | `zlink_stream_attach_raw()` |
+| Callback | `zlink_stream_on_packets_fn` | `zlink_stream_on_raw_fn` |
+| Framing | Automatic LEN32BE decode | Raw bytes as received |
+| Send | `zlink_stream_send()` | `zlink_stream_send()` |
 
-> For the full API reference, see [Socket API — STREAM Callback Dispatch](../api/socket.md#stream-callback-dispatch-api).
-
-### 4c. STREAM Receive Mode Rules (Important)
-
-- Callback mode ON (`zlink_stream_attach`): receive path is callback dispatch.
-- In callback mode, do not mix `zlink_recv()` for STREAM payload consumption.
-- Callback mode OFF (not attached): use normal `zlink_recv()` 2-frame pattern.
-- After `zlink_stream_detach()`, you can return to the `zlink_recv()` pattern.
-- There is no `zlink_stream_recv()` API.
+> Reattaching replaces the callback. There is no detach API.
 
 ---
 

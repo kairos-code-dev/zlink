@@ -38,16 +38,35 @@ zlink_connect(client, "tcp://127.0.0.1:5555");
 ### Message Exchange
 
 ```c
-/* Server → Client */
-zlink_send(server, "Hello", 5, 0);
+/* Define receive handler */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    printf("Received: %.*s\n",
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 
-/* Client receives */
-char buf[256];
-int size = zlink_recv(client, buf, sizeof(buf), 0);
+/* Server with handler */
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_message
+};
+void *server = zlink_socket(ctx, ZLINK_PAIR, &handler);
 
-/* Client → Server (immediately possible since it is bidirectional) */
-zlink_send(client, "World", 5, 0);
-size = zlink_recv(server, buf, sizeof(buf), 0);
+/* Client (send only) */
+void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
+
+/* ... bind/connect ... */
+
+/* Client → Server */
+zlink_send(client, "Hello", 5, 0);
+/* on_message callback receives "Hello" asynchronously */
+
+/* Server → Client (bidirectional, but client needs handler too for receiving) */
+zlink_send(server, "World", 5, 0);
 ```
 
 ### Sending Multipart Data
@@ -59,9 +78,8 @@ frame.
 zlink_send(server, "foo", 3, ZLINK_SNDMORE);
 zlink_send(server, "foobar", 6, 0);
 
-/* Receiver receives normally */
-zlink_recv(client, buf, sizeof(buf), 0);  /* "foo" */
-zlink_recv(client, buf, sizeof(buf), 0);  /* "foobar" */
+/* Receiver's on_message callback receives both frames as:
+   parts[0] = "foo", parts[1] = "foobar", part_count = 2 */
 ```
 
 > Reference: `core/tests/test_pair_inproc.cpp` -- `test_zlink_send_multipart()` test
@@ -108,7 +126,11 @@ The most common PAIR use case. Zero-copy communication between threads via the i
 
 ```c
 /* Main thread */
-void *signal = zlink_socket(ctx, ZLINK_PAIR, NULL);
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_signal
+};
+void *signal = zlink_socket(ctx, ZLINK_PAIR, &handler);
 zlink_bind(signal, "inproc://signal");
 
 /* Worker thread */
@@ -118,9 +140,7 @@ zlink_connect(worker_signal, "inproc://signal");
 /* Worker → Main: task completion signal */
 zlink_send(worker_signal, "DONE", 4, 0);
 
-/* Main: wait for signal */
-char buf[16];
-zlink_recv(signal, buf, sizeof(buf), 0);
+/* Main: on_signal callback receives "DONE" asynchronously */
 ```
 
 > Reference: `core/tests/test_pair_inproc.cpp` -- bind → connect → bounce pattern

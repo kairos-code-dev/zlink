@@ -8,7 +8,7 @@ The Publish-Subscribe pattern distributes messages based on topics. zlink provid
 
 | Socket | Role | Characteristics |
 |------|------|------|
-| **PUB** | Publisher | Broadcasts to all subscribers. Cannot receive (recv). |
+| **PUB** | Publisher | Broadcasts to all subscribers. Cannot receive. |
 | **SUB** | Subscriber | Topic prefix match filtering. Cannot send. |
 | **XPUB** | Advanced Publisher | PUB + can receive subscription frames |
 | **XSUB** | Advanced Subscriber | SUB + can send subscription frames directly |
@@ -46,16 +46,29 @@ zlink_send(pub, "weather: sunny", 14, 0);
 ### Subscriber (SUB)
 
 ```c
-void *sub = zlink_socket(ctx, ZLINK_SUB, NULL);
+void on_topic(const zlink_routing_id_t *source_rid,
+              const char *topic, size_t topic_len,
+              zlink_msg_t *parts, size_t part_count)
+{
+    printf("Topic: %.*s, Data: %.*s\n",
+           (int)topic_len, topic,
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_SPOT,
+    .fn.spot = on_topic
+};
+void *sub = zlink_socket(ctx, ZLINK_SUB, &handler);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 
 /* Subscribe to topic -- set after connect */
 zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "weather", 7);
 
-/* Receive (includes topic prefix) */
-char buf[256];
-int size = zlink_recv(sub, buf, sizeof(buf), 0);
-/* buf = "weather: sunny" */
+/* Messages are dispatched to on_topic callback */
 ```
 
 > Reference: `core/tests/test_pubsub.cpp` -- empty subscription ("") → receives all messages
@@ -103,10 +116,9 @@ The topic is embedded in the data. Simple but requires parsing.
 /* Publish */
 zlink_send(pub, "weather: sunny", 14, 0);
 
-/* Receive: parse topic and data from the full string */
-char buf[256];
-int size = zlink_recv(sub, buf, sizeof(buf), 0);
-/* buf = "weather: sunny" */
+/* SUB handler callback receives:
+   topic = "weather: sunny" (full match prefix)
+   parts[0] = "weather: sunny" (full data) */
 ```
 
 ### Multipart Frame (Topic + Data Separated)
@@ -118,10 +130,9 @@ The topic and data are sent as separate frames. No parsing needed.
 zlink_send(pub, "weather", 7, ZLINK_SNDMORE);
 zlink_send(pub, "sunny", 5, 0);
 
-/* Receive: process frame by frame */
-char topic[64], payload[256];
-zlink_recv(sub, topic, sizeof(topic), 0);    /* "weather" */
-zlink_recv(sub, payload, sizeof(payload), 0); /* "sunny" */
+/* SUB handler callback receives:
+   topic = "weather"
+   parts[0] = "sunny" (payload frames only) */
 ```
 
 ## 5. PUB/SUB Socket Options
@@ -151,7 +162,11 @@ void *pub = zlink_socket(ctx, ZLINK_PUB, NULL);
 zlink_bind(pub, "tcp://*:5556");
 
 /* SUB -- receive all messages */
-void *sub = zlink_socket(ctx, ZLINK_SUB, NULL);
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_SPOT,
+    .fn.spot = on_topic
+};
+void *sub = zlink_socket(ctx, ZLINK_SUB, &handler);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
 
@@ -159,8 +174,7 @@ msleep(100);  /* time for subscription to reach PUB */
 
 zlink_send(pub, "test", 4, 0);
 
-char buf[64];
-int size = zlink_recv(sub, buf, sizeof(buf), 0);
+/* on_topic callback receives "test" asynchronously */
 ```
 
 > Reference: `core/tests/test_pubsub.cpp` -- `test_tcp()`
@@ -222,8 +236,8 @@ msleep(100);  /* wait for subscription propagation */
 ### Direction Constraints
 
 ```c
-/* PUB cannot recv → ENOTSUP */
-zlink_recv(pub, buf, sizeof(buf), 0);  /* errno = ENOTSUP */
+/* PUB cannot receive → ENOTSUP */
+/* PUB socket does not accept a handler at creation */
 
 /* SUB cannot send → ENOTSUP */
 zlink_send(sub, "data", 4, 0);  /* errno = ENOTSUP */
@@ -265,16 +279,22 @@ const uint8_t unsubscribe[] = {0x00, 'A'};  /* unsubscribe from topic "A" */
 zlink_send(xsub, unsubscribe, 2, 0);
 ```
 
-XPUB receives subscription frames via `zlink_recv()`:
+XPUB receives subscription frames via a callback handler:
 
 ```c
-uint8_t buf[256];
-int size = zlink_recv(xpub, buf, sizeof(buf), 0);
-if (buf[0] == 0x01) {
-    /* Subscription request: buf+1 = topic */
-} else if (buf[0] == 0x00) {
-    /* Unsubscription request: buf+1 = topic */
+void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len)
+{
+    if (subscribed)
+        printf("Subscribe: %.*s\n", (int)topic_len, (const char *)topic);
+    else
+        printf("Unsubscribe: %.*s\n", (int)topic_len, (const char *)topic);
 }
+
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_XPUB,
+    .fn.xpub = on_subscription
+};
+void *xpub = zlink_socket(ctx, ZLINK_XPUB, &handler);
 ```
 
 > Reference: `core/tests/test_xpub_manual.cpp` -- `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
@@ -297,12 +317,8 @@ By default, XPUB processes SUB subscriptions automatically. In MANUAL mode, afte
 int manual = 1;
 zlink_setsockopt(xpub, ZLINK_XPUB_MANUAL, &manual, sizeof(manual));
 
-/* Receive subscription frame */
-uint8_t buf[256];
-int size = zlink_recv(xpub, buf, sizeof(buf), 0);
-/* buf = {0x01, 'A'} -- subscription request for topic "A" */
-
-/* Transform subscription to a different topic instead of the original */
+/* on_subscription callback fires with subscribed=1, topic="A"
+   Then apply transformed subscription: */
 zlink_setsockopt(xpub, ZLINK_SUBSCRIBE, "XA", 2);
 
 /* Publish */
@@ -327,33 +343,8 @@ zlink_bind(xsub, "tcp://*:5556");
 void *xpub = zlink_socket(ctx, ZLINK_XPUB, NULL);
 zlink_bind(xpub, "tcp://*:5557");
 
-/* Proxy loop: forward messages bidirectionally */
-zlink_pollitem_t items[] = {
-    {xsub, 0, ZLINK_POLLIN, 0},
-    {xpub, 0, ZLINK_POLLIN, 0},
-};
-
-while (1) {
-    zlink_poll(items, 2, -1);
-
-    if (items[0].revents & ZLINK_POLLIN) {
-        /* Data message: XSUB → XPUB */
-        zlink_msg_t msg;
-        zlink_msg_init(&msg);
-        zlink_msg_recv(&msg, xsub, 0);
-        int more = zlink_msg_more(&msg);
-        zlink_msg_send(&msg, xpub, more ? ZLINK_SNDMORE : 0);
-        zlink_msg_close(&msg);
-    }
-    if (items[1].revents & ZLINK_POLLIN) {
-        /* Subscription frame: XPUB → XSUB */
-        zlink_msg_t msg;
-        zlink_msg_init(&msg);
-        zlink_msg_recv(&msg, xpub, 0);
-        zlink_msg_send(&msg, xsub, 0);
-        zlink_msg_close(&msg);
-    }
-}
+/* Run proxy (forwards messages and subscriptions bidirectionally) */
+zlink_proxy(xsub, xpub, NULL);
 ```
 
 ### Pattern 2: MANUAL Mode Proxy (Subscription Transformation)
@@ -364,25 +355,27 @@ An advanced proxy that transforms or filters subscription requests.
 int manual = 1;
 zlink_setsockopt(xpub, ZLINK_XPUB_MANUAL, &manual, sizeof(manual));
 
-/* Receive subscription */
-uint8_t sub_frame[256];
-int size = zlink_recv(xpub, sub_frame, sizeof(sub_frame), 0);
+/* on_subscription callback processes subscription requests */
+void on_sub(int subscribed, const uint8_t *topic, size_t topic_len)
+{
+    if (subscribed) {
+        /* Register subscription */
+        zlink_setsockopt(xpub, ZLINK_SUBSCRIBE, topic, topic_len);
 
-if (sub_frame[0] == 0x01) {
-    /* Subscription request: transform and register original topic */
-    char *topic = (char *)(sub_frame + 1);
-    int topic_len = size - 1;
-    zlink_setsockopt(xpub, ZLINK_SUBSCRIBE, topic, topic_len);
+        /* Propagate subscription upstream (XSUB) */
+        uint8_t sub_frame[256];
+        sub_frame[0] = 0x01;
+        memcpy(sub_frame + 1, topic, topic_len);
+        zlink_send(xsub, sub_frame, 1 + topic_len, 0);
+    } else {
+        /* Unsubscription */
+        zlink_setsockopt(xpub, ZLINK_UNSUBSCRIBE, topic, topic_len);
 
-    /* Propagate subscription upstream (XSUB) */
-    zlink_send(xsub, sub_frame, size, 0);
-} else if (sub_frame[0] == 0x00) {
-    /* Unsubscription */
-    char *topic = (char *)(sub_frame + 1);
-    int topic_len = size - 1;
-    zlink_setsockopt(xpub, ZLINK_UNSUBSCRIBE, topic, topic_len);
-
-    zlink_send(xsub, sub_frame, size, 0);
+        uint8_t unsub_frame[256];
+        unsub_frame[0] = 0x00;
+        memcpy(unsub_frame + 1, topic, topic_len);
+        zlink_send(xsub, unsub_frame, 1 + topic_len, 0);
+    }
 }
 ```
 
@@ -393,18 +386,22 @@ if (sub_frame[0] == 0x01) {
 Use XPUB to observe which clients subscribe to which topics.
 
 ```c
-void *xpub = zlink_socket(ctx, ZLINK_XPUB, NULL);
+void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len)
+{
+    if (subscribed)
+        printf("New subscription: %.*s\n", (int)topic_len, (const char *)topic);
+    else
+        printf("Unsubscription: %.*s\n", (int)topic_len, (const char *)topic);
+}
+
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_XPUB,
+    .fn.xpub = on_subscription
+};
+void *xpub = zlink_socket(ctx, ZLINK_XPUB, &handler);
 zlink_bind(xpub, "tcp://*:5557");
 
-/* Receive subscription frames */
-uint8_t buf[256];
-int size = zlink_recv(xpub, buf, sizeof(buf), ZLINK_DONTWAIT);
-if (size > 0) {
-    if (buf[0] == 0x01)
-        printf("New subscription: %.*s\n", size - 1, buf + 1);
-    else if (buf[0] == 0x00)
-        printf("Unsubscription: %.*s\n", size - 1, buf + 1);
-}
+/* Subscription events are dispatched to on_subscription callback */
 ```
 
 ### Pattern 4: Automatic Unsubscribe on Subscriber Disconnect
@@ -415,10 +412,8 @@ When a SUB disconnects, an unsubscribe frame is automatically delivered to XPUB.
 /* After SUB disconnects */
 zlink_close(sub);
 
-/* XPUB receives unsubscribe frame */
-uint8_t buf[256];
-int size = zlink_recv(xpub, buf, sizeof(buf), 0);
-/* buf[0] == 0x00: unsubscribe frame */
+/* XPUB's on_subscription callback receives unsubscribe event
+   (subscribed=0, topic=subscribed topic) */
 ```
 
 > Reference: `core/tests/test_xpub_manual.cpp` -- `test_xpub_proxy_unsubscribe_on_disconnect()`

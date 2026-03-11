@@ -99,22 +99,34 @@ The basic pattern common to all socket types:
 /* 1. Create Context */
 void *ctx = zlink_ctx_new();
 
-/* 2. Create Socket */
-void *socket = zlink_socket(ctx, ZLINK_<TYPE>, NULL);
+/* 2. Define handler callback */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* process received message */
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 
-/* 3. Set socket options (before bind/connect) */
+/* 3. Create Socket (with handler for receiving) */
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_message
+};
+void *socket = zlink_socket(ctx, ZLINK_<TYPE>, &handler);
+
+/* 4. Set socket options (before bind/connect) */
 zlink_setsockopt(socket, ZLINK_<OPTION>, &value, sizeof(value));
 
-/* 4. Establish connection (bind or connect) */
+/* 5. Establish connection (bind or connect) */
 zlink_bind(socket, "tcp://*:5555");
 // or
 zlink_connect(socket, "tcp://127.0.0.1:5555");
 
-/* 5. Send/receive messages */
+/* 6. Send messages (receive is handled by callback) */
 zlink_send(socket, data, size, flags);
-zlink_recv(socket, buf, buf_size, flags);
 
-/* 6. Cleanup */
+/* 7. Cleanup */
 zlink_close(socket);
 zlink_ctx_term(ctx);
 ```

@@ -28,7 +28,7 @@ zlink 메시지는 `zlink_msg_t` 구조체로 표현되며, 64바이트 고정 �
 ```c
 zlink_msg_t msg;
 zlink_msg_init(&msg);
-/* 이후 zlink_msg_recv()로 데이터 수신, 또는 zlink_msg_close()로 해제 */
+/* 초기화 또는 zlink_msg_copy() 대상으로 사용. zlink_msg_close()로 해제 */
 ```
 
 #### zlink_msg_init_size — 크기 지정 (복사 필요)
@@ -88,16 +88,19 @@ if (rc == -1) {
 
 ### 3.4 수신
 
+메시지는 소켓 생성 시 등록한 핸들러 콜백으로 수신된다. 콜백이 `zlink_msg_t` 파트를 직접 제공한다:
+
 ```c
-zlink_msg_t msg;
-zlink_msg_init(&msg);
-int rc = zlink_msg_recv(&msg, socket, 0);
-if (rc != -1) {
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
     printf("수신: %.*s\n",
-           (int)zlink_msg_size(&msg),
-           (char *)zlink_msg_data(&msg));
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
 }
-zlink_msg_close(&msg);
 ```
 
 ### 3.5 해제
@@ -112,7 +115,7 @@ zlink_msg_close(&msg);
 |------|--------|-----------|
 | `zlink_msg_send` 성공 | 라이브러리로 이전 | msg는 빈 상태, 접근 불가 |
 | `zlink_msg_send` 실패 | 호출자가 여전히 소유 | `zlink_msg_close()` 호출 필요 |
-| `zlink_msg_recv` 성공 | 라이브러리가 msg에 데이터 채움 | `zlink_msg_close()` 호출 필요 |
+| 핸들러 콜백이 msg 전달 | 라이브러리가 msg 파트 제공 | 각 파트에 `zlink_msg_close()` 호출 필요 |
 | `zlink_msg_close` | 리소스 해제 | msg 재사용 가능 (재초기화 필요) |
 
 ### 소유권 규칙 실전
@@ -219,19 +222,19 @@ zlink_msg_send(&part2, socket, 0);
 /* DEALER → ROUTER: 단일 프레임 전송 */
 zlink_send(dealer, "request", 7, 0);
 
-/* ROUTER 수신: [routing_id][request] — 2프레임 멀티파트 */
-zlink_msg_t rid, data;
-zlink_msg_init(&rid);
-zlink_msg_init(&data);
-zlink_msg_recv(&rid, router, 0);   /* more=1 */
-zlink_msg_recv(&data, router, 0);  /* more=0 */
+/* ROUTER 핸들러 콜백 수신: source_rid + parts */
+void on_request(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* parts[0] = "request", source_rid = DEALER의 routing_id */
 
-/* ROUTER 응답: routing_id + 데이터 */
-zlink_msg_send(&rid, router, ZLINK_SNDMORE);
-zlink_send(router, "reply", 5, 0);
+    /* ROUTER 응답: routing_id + 데이터 */
+    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
+    zlink_send(router, "reply", 5, 0);
 
-zlink_msg_close(&rid);
-zlink_msg_close(&data);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
 > 참고: `core/tests/test_msg_flags.cpp` — `test_more()`: DEALER→ROUTER 멀티파트
@@ -243,30 +246,32 @@ zlink_msg_close(&data);
 zlink_send(pub, "weather", 7, ZLINK_SNDMORE);
 zlink_send(pub, "sunny", 5, 0);
 
-/* SUB: 멀티파트 수신 */
-char topic[64], payload[256];
-zlink_recv(sub, topic, sizeof(topic), 0);
-zlink_recv(sub, payload, sizeof(payload), 0);
+/* SUB 핸들러 콜백이 토픽과 페이로드를 분리하여 수신 */
+void on_spot(const zlink_routing_id_t *source_rid,
+             const char *topic, size_t topic_len,
+             zlink_msg_t *parts, size_t part_count)
+{
+    /* topic = "weather", parts[0] = "sunny" */
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
-### 패턴 3: 범용 멀티파트 수신 루프
+### 패턴 3: 핸들러 콜백에서 멀티파트 처리
 
 ```c
-do {
-    zlink_msg_t frame;
-    zlink_msg_init(&frame);
-    zlink_msg_recv(&frame, socket, 0);
-
-    printf("프레임[%zu bytes]: %.*s\n",
-           zlink_msg_size(&frame),
-           (int)zlink_msg_size(&frame),
-           (char *)zlink_msg_data(&frame));
-
-    int more = zlink_msg_more(&frame);
-    zlink_msg_close(&frame);
-
-    if (!more) break;
-} while (1);
+/* 핸들러 콜백이 모든 프레임을 parts 배열로 수신 */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    for (size_t i = 0; i < part_count; i++) {
+        printf("프레임[%zu bytes]: %.*s\n",
+               zlink_msg_size(&parts[i]),
+               (int)zlink_msg_size(&parts[i]),
+               (char *)zlink_msg_data(&parts[i]));
+        zlink_msg_close(&parts[i]);
+    }
+}
 ```
 
 ## 7. 메시지 복사

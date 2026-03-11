@@ -286,13 +286,10 @@ int main(void) {
     zlink_setsockopt(client, ZLINK_TLS_HOSTNAME, "localhost", 9);
     zlink_connect(client, "tls://127.0.0.1:5555");
 
-    /* 암호화된 통신 */
+    /* 암호화된 통신 — 서버는 핸들러 콜백으로 수신 */
     zlink_send(client, "Secure Hello", 12, 0);
 
-    char buf[256];
-    int size = zlink_recv(server, buf, sizeof(buf), 0);
-    buf[size] = '\0';
-    printf("수신: %s\n", buf);
+    /* on_message 콜백 수신: parts[0] = "Secure Hello" */
 
     zlink_close(client);
     zlink_close(server);

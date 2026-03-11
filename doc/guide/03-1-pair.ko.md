@@ -38,16 +38,35 @@ zlink_connect(client, "tcp://127.0.0.1:5555");
 ### 메시지 교환
 
 ```c
-/* 서버 → 클라이언트 */
-zlink_send(server, "Hello", 5, 0);
+/* 수신 핸들러 정의 */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    printf("Received: %.*s\n",
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 
-/* 클라이언트 수신 */
-char buf[256];
-int size = zlink_recv(client, buf, sizeof(buf), 0);
+/* 서버 (핸들러 등록) */
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_message
+};
+void *server = zlink_socket(ctx, ZLINK_PAIR, &handler);
 
-/* 클라이언트 → 서버 (양방향이므로 즉시 가능) */
-zlink_send(client, "World", 5, 0);
-size = zlink_recv(server, buf, sizeof(buf), 0);
+/* 클라이언트 (송신 전용) */
+void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
+
+/* ... bind/connect ... */
+
+/* 클라이언트 → 서버 */
+zlink_send(client, "Hello", 5, 0);
+/* on_message 콜백이 "Hello"를 비동기로 수신 */
+
+/* 서버 → 클라이언트 (양방향이지만 클라이언트도 수신하려면 핸들러 필요) */
+zlink_send(server, "World", 5, 0);
 ```
 
 ### 멀티파트 데이터 전송
@@ -59,9 +78,8 @@ size = zlink_recv(server, buf, sizeof(buf), 0);
 zlink_send(server, "foo", 3, ZLINK_SNDMORE);
 zlink_send(server, "foobar", 6, 0);
 
-/* 수신 측에서 정상적으로 수신 */
-zlink_recv(client, buf, sizeof(buf), 0);  /* "foo" */
-zlink_recv(client, buf, sizeof(buf), 0);  /* "foobar" */
+/* 수신 측 on_message 콜백이 두 프레임을 다음과 같이 수신:
+   parts[0] = "foo", parts[1] = "foobar", part_count = 2 */
 ```
 
 > 참고: `core/tests/test_pair_inproc.cpp` — `test_zlink_send_multipart()` 테스트
@@ -108,7 +126,11 @@ zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
 
 ```c
 /* 메인 스레드 */
-void *signal = zlink_socket(ctx, ZLINK_PAIR, NULL);
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_signal
+};
+void *signal = zlink_socket(ctx, ZLINK_PAIR, &handler);
 zlink_bind(signal, "inproc://signal");
 
 /* 워커 스레드 */
@@ -118,9 +140,7 @@ zlink_connect(worker_signal, "inproc://signal");
 /* 워커 → 메인: 작업 완료 시그널 */
 zlink_send(worker_signal, "DONE", 4, 0);
 
-/* 메인: 시그널 대기 */
-char buf[16];
-zlink_recv(signal, buf, sizeof(buf), 0);
+/* 메인: on_signal 콜백이 "DONE"을 비동기로 수신 */
 ```
 
 > 참고: `core/tests/test_pair_inproc.cpp` — bind → connect → bounce 패턴

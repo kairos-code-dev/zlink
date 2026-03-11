@@ -23,7 +23,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 ```
 ┌──────────────────────────────────────────────────────┐
 │  Application Layer                                    │
-│  zlink_ctx_new() · zlink_socket() · zlink_send/recv() │
+│  zlink_ctx_new() · zlink_socket() · zlink_send() · callback dispatch │
 ├──────────────────────────────────────────────────────┤
 │  Socket Logic Layer                                   │
 │  PAIR · PUB/SUB · XPUB/XSUB · DEALER/ROUTER · STREAM│
@@ -93,14 +93,28 @@ cmake --build build
 #include <string.h>
 #include <stdio.h>
 
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    printf("수신: %.*s\n",
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
 int main(void) {
     void *ctx = zlink_ctx_new();
 
-    /* 서버 */
-    void *server = zlink_socket(ctx, ZLINK_PAIR, NULL);
+    /* 서버 (수신 핸들러 등록) */
+    zlink_socket_handler_t handler = {
+        .kind = ZLINK_SOCKET_HANDLER_MSG,
+        .fn.msg = on_message
+    };
+    void *server = zlink_socket(ctx, ZLINK_PAIR, &handler);
     zlink_bind(server, "tcp://*:5555");
 
-    /* 클라이언트 */
+    /* 클라이언트 (송신 전용) */
     void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
     zlink_connect(client, "tcp://127.0.0.1:5555");
 
@@ -108,11 +122,8 @@ int main(void) {
     const char *msg = "Hello zlink!";
     zlink_send(client, msg, strlen(msg), 0);
 
-    /* 수신 */
-    char buf[256];
-    int size = zlink_recv(server, buf, sizeof(buf), 0);
-    buf[size] = '\0';
-    printf("수신: %s\n", buf);
+    /* 핸들러 콜백이 비동기로 메시지를 수신 */
+    msleep(100);
 
     zlink_close(client);
     zlink_close(server);

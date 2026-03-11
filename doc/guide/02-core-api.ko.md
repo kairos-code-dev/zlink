@@ -93,53 +93,60 @@ zlink_getsockopt(socket, ZLINK_SNDHWM, &value, &len);
 
 ## 3. 메시지 송수신
 
-### 3.1 간단한 송수신
+### 3.1 송신
 
 ```c
-/* 송신 */
+/* 단순 송신 */
 zlink_send(socket, "Hello", 5, 0);
 
-/* 수신 */
-char buf[256];
-int size = zlink_recv(socket, buf, sizeof(buf), 0);
+/* 멀티파트 송신 */
+zlink_send(socket, "header", 6, ZLINK_SNDMORE);
+zlink_send(socket, "body", 4, 0);
 ```
 
-### 3.2 플래그
+### 3.2 수신 (콜백 핸들러)
+
+모든 수신은 소켓 생성 시 등록한 핸들러 콜백을 통해 디스패치된다.
+`recv()` 함수는 없으며, 메시지가 도착하면 콜백이 비동기로 호출된다.
+
+```c
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    for (size_t i = 0; i < part_count; i++) {
+        printf("프레임 %zu: %.*s\n", i,
+               (int)zlink_msg_size(&parts[i]),
+               (char *)zlink_msg_data(&parts[i]));
+        zlink_msg_close(&parts[i]);
+    }
+}
+
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_message
+};
+void *socket = zlink_socket(ctx, ZLINK_PAIR, &handler);
+```
+
+### 3.3 송신 플래그
 
 | 플래그 | 설명 |
 |--------|------|
-| `ZLINK_DONTWAIT` | 논블로킹 모드 (데이터 없으면 즉시 EAGAIN) |
+| `ZLINK_DONTWAIT` | 논블로킹 모드 (송신 불가 시 즉시 EAGAIN 반환) |
 | `ZLINK_SNDMORE` | 멀티파트 메시지의 중간 프레임 |
 
-### 3.3 논블로킹 수신
+## 4. 핸들러 타입
 
-```c
-int size = zlink_recv(socket, buf, sizeof(buf), ZLINK_DONTWAIT);
-if (size == -1 && zlink_errno() == EAGAIN) {
-    /* 데이터 없음 */
-}
-```
+각 소켓 타입은 생성 시 특정 핸들러 종류를 받는다:
 
-## 4. Poller API
+| 소켓 타입 | 핸들러 종류 | 콜백 시그니처 |
+|---|---|---|
+| PAIR, DEALER, ROUTER | `ZLINK_SOCKET_HANDLER_MSG` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count)` |
+| SUB | `ZLINK_SOCKET_HANDLER_SPOT` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count)` |
+| XPUB | `ZLINK_SOCKET_HANDLER_XPUB` | `void fn(int subscribed, const uint8_t *topic, size_t topic_len)` |
+| PUB, XSUB | N/A (NULL) | 송신 전용 소켓 |
 
-### 4.1 zlink_poll
-
-```c
-zlink_pollitem_t items[] = {
-    { socket1, 0, ZLINK_POLLIN, 0 },
-    { socket2, 0, ZLINK_POLLIN, 0 },
-};
-
-int rc = zlink_poll(items, 2, 1000); /* 1초 타임아웃 */
-if (rc > 0) {
-    if (items[0].revents & ZLINK_POLLIN) {
-        /* socket1에서 수신 가능 */
-    }
-    if (items[1].revents & ZLINK_POLLIN) {
-        /* socket2에서 수신 가능 */
-    }
-}
-```
+콜백은 I/O 스레드에서 호출된다. 콜백 내부에서 블로킹 작업을 피해야 한다 — 느린 처리가 필요하면 사용자 큐에 넣고 별도 스레드에서 처리한다.
 
 ## 5. 에러 처리
 
@@ -169,43 +176,52 @@ if (rc == -1) {
 #include <string.h>
 #include <stdio.h>
 
+void on_router_message(const zlink_routing_id_t *source_rid,
+                       zlink_msg_t *parts, size_t part_count)
+{
+    printf("[%.*s]로부터 수신: %.*s\n",
+           (int)source_rid->size, source_rid->data,
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
+void on_dealer_message(const zlink_routing_id_t *source_rid,
+                       zlink_msg_t *parts, size_t part_count)
+{
+    printf("응답: %.*s\n",
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
 int main(void) {
     void *ctx = zlink_ctx_new();
 
     /* ROUTER (서버) */
-    void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+    zlink_socket_handler_t router_handler = {
+        .kind = ZLINK_SOCKET_HANDLER_MSG,
+        .fn.msg = on_router_message
+    };
+    void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (클라이언트) */
-    void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
+    zlink_socket_handler_t dealer_handler = {
+        .kind = ZLINK_SOCKET_HANDLER_MSG,
+        .fn.msg = on_dealer_message
+    };
+    void *dealer = zlink_socket(ctx, ZLINK_DEALER, &dealer_handler);
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */
     zlink_send(dealer, "request", 7, 0);
 
-    /* ROUTER: routing_id + data 수신 */
-    zlink_msg_t id, body;
-    zlink_msg_init(&id);
-    zlink_msg_init(&body);
-    zlink_msg_recv(&id, router, 0);    /* routing_id 프레임 */
-    zlink_msg_recv(&body, router, 0);  /* 데이터 프레임 */
+    /* 핸들러 콜백이 비동기로 메시지를 처리 */
+    msleep(100);
 
-    printf("수신: %.*s\n",
-           (int)zlink_msg_size(&body),
-           (char *)zlink_msg_data(&body));
-
-    /* ROUTER → DEALER (응답) */
-    zlink_msg_send(&id, router, ZLINK_SNDMORE);
-    zlink_send(router, "reply", 5, 0);
-
-    /* DEALER 응답 수신 */
-    char buf[256];
-    int size = zlink_recv(dealer, buf, sizeof(buf), 0);
-    buf[size] = '\0';
-    printf("응답: %s\n", buf);
-
-    zlink_msg_close(&id);
-    zlink_msg_close(&body);
     zlink_close(dealer);
     zlink_close(router);
     zlink_ctx_term(ctx);

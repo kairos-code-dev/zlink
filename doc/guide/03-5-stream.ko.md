@@ -72,85 +72,65 @@ Frame 1: payload (N bytes)
 
 ---
 
-## 4. 수신/응답 패턴 (서버)
+## 4. 콜백 Dispatch (수신/응답)
+
+STREAM은 모든 수신 작업에 콜백 dispatch를 사용한다.
+`zlink_stream_attach_len32be()` 또는 `zlink_stream_attach_raw()`로 콜백을 등록한다.
+
+### LEN32BE 패킷 Dispatch
 
 ```c
-unsigned char rid[4];
-unsigned char payload[4096];
-
-int rid_size = zlink_recv(stream, rid, sizeof(rid), 0);  // 반드시 4
-int more = 0;
-size_t more_size = sizeof(more);
-zlink_getsockopt(stream, ZLINK_RCVMORE, &more, &more_size);
-
-int n = zlink_recv(stream, payload, sizeof(payload), 0);
-
-if (n == 1 && payload[0] == 0x01) {
-    // 새 클라이언트 연결
-} else if (n == 1 && payload[0] == 0x00) {
-    // 클라이언트 연결 해제
-} else {
-    // 일반 데이터 처리 후 동일 rid로 응답
-    zlink_send(stream, rid, 4, ZLINK_SNDMORE);
-    zlink_send(stream, payload, n, 0);
-}
-```
-
----
-
-## 4b. 콜백 Dispatch 패턴 (고성능)
-
-고처리량 서버에서는 `zlink_recv()` 폴링 대신 콜백 dispatch API를 사용한다.
-콜백이 I/O 스레드에서 직접 호출되어 poll 오버헤드를 제거한다.
-
-### LEN32BE 디코딩으로 attach
-
-```c
-int on_packets (const zlink_routing_id_t *rid,
-                zlink_msg_t *msgs, size_t count)
+int on_packets(const zlink_routing_id_t *rid,
+               zlink_msg_t *msgs, size_t count)
 {
     for (size_t i = 0; i < count; ++i) {
-        void *data = zlink_msg_data (&msgs[i]);
-        size_t size = zlink_msg_size (&msgs[i]);
+        void *data = zlink_msg_data(&msgs[i]);
+        size_t size = zlink_msg_size(&msgs[i]);
 
         if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
-            /* 연결 이벤트 */
+            /* 새 클라이언트 연결 */
         } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
-            /* 연결 해제 이벤트 */
+            /* 클라이언트 연결 해제 */
         } else {
             /* 에코 응답 */
-            zlink_stream_send (stream, rid, data, size, 0);
+            zlink_stream_send(stream, rid, data, size, 0);
         }
-        zlink_msg_close (&msgs[i]); /* 콜백이 각 msg 소유 */
+        zlink_msg_close(&msgs[i]);
     }
     return 0;  /* 0 = 계속, 0이 아니면 = 중지 */
 }
 
-/* attach */
-zlink_stream_attach (stream, on_packets, ZLINK_STREAM_DISPATCH_LEN32BE);
-
-/* ... 완료 시: */
-zlink_stream_detach (stream);
+/* LEN32BE 콜백 dispatch attach */
+zlink_stream_attach_len32be(stream, on_packets);
 ```
 
-### 섹션 4와의 주요 차이점
+### Raw 청크 Dispatch
 
-| | `zlink_recv()` 패턴 | 콜백 dispatch |
+LEN32BE 프레이밍 없이 raw 바이트 스트림을 처리하려면:
+
+```c
+int on_raw(const zlink_routing_id_t *rid, zlink_msg_t *msg)
+{
+    void *data = zlink_msg_data(msg);
+    size_t size = zlink_msg_size(msg);
+    /* raw 바이트 처리 */
+    zlink_msg_close(msg);
+    return 0;
+}
+
+zlink_stream_attach_raw(stream, on_raw);
+```
+
+### 주요 사항
+
+| | LEN32BE dispatch | Raw dispatch |
 |---|---|---|
-| 스레드 | 애플리케이션 스레드에서 폴링 | I/O 스레드에서 콜백 호출 |
-| 프레이밍 | 수동 2프레임 수신 | 자동 (LEN32BE 모드) |
-| 전송 | `zlink_send()` + SNDMORE | `zlink_stream_send()` |
-| 동시성 | 하나씩 처리 | 병렬 I/O 스레드 |
+| API | `zlink_stream_attach_len32be()` | `zlink_stream_attach_raw()` |
+| 콜백 | `zlink_stream_on_packets_fn` | `zlink_stream_on_raw_fn` |
+| 프레이밍 | 자동 LEN32BE 디코드 | 수신된 raw 바이트 |
+| 전송 | `zlink_stream_send()` | `zlink_stream_send()` |
 
-> 전체 API 레퍼런스는 [소켓 API — STREAM 콜백 Dispatch](../api/socket.ko.md#stream-콜백-dispatch-api)를 참고한다.
-
-### 4c. STREAM 수신 모드 규칙 (중요)
-
-- 콜백 모드 ON(`zlink_stream_attach`): 수신 경로는 콜백 dispatch이다.
-- 콜백 모드에서는 STREAM 페이로드 수신에 `zlink_recv()`를 혼용하지 않는다.
-- 콜백 모드 OFF(attach 안 함): 기존 `zlink_recv()` 2프레임 패턴을 사용한다.
-- `zlink_stream_detach()` 이후에는 `zlink_recv()` 패턴으로 복귀할 수 있다.
-- `zlink_stream_recv()` API는 제공되지 않는다.
+> 재attach 시 콜백이 교체된다. detach API는 제공되지 않는다.
 
 ---
 

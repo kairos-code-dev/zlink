@@ -20,6 +20,7 @@
 #include "core/pipe.hpp"
 #include "core/endpoint.hpp"
 #include "utils/atomic_counter.hpp"
+#include "utils/condition_variable.hpp"
 #include "zlink.h"
 
 extern "C" {
@@ -238,6 +239,7 @@ class socket_base_t : public own_t,
     int connect_internal (const char *endpoint_uri_);
     int start_async_mailbox_processing (io_thread_t *io_thread_);
     void stop_async_mailbox_processing ();
+    void wait_async_quiesced (int timeout_ms_);
     zlink_socket_msg_handler_fn socket_msg_handler () const;
     zlink_spot_handler_fn socket_spot_handler () const;
     zlink_xpub_handler_fn socket_xpub_handler () const;
@@ -391,6 +393,10 @@ class socket_base_t : public own_t,
     atomic_counter_t _mailbox_refcnt;
     bool _destroy_pending;
     std::atomic<bool> _async_mailbox_active;
+    std::atomic<bool> _async_quiesce_pending;
+    std::atomic<bool> _async_processing_done;
+    mutex_t _async_done_mu;
+    condition_variable_t _async_done_cv;
     std::atomic<zlink_socket_msg_handler_fn> _socket_msg_handler;
     std::atomic<zlink_spot_handler_fn> _spot_handler;
     std::atomic<zlink_xpub_handler_fn> _xpub_handler;

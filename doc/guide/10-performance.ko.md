@@ -212,15 +212,21 @@ printf("처리량: %.2f MB/s\n", (count * size) / elapsed / 1e6);
 ### 지연시간 측정 (Ping-Pong)
 
 ```c
-/* 클라이언트 */
+/* 클라이언트: ping 전송, 콜백에서 pong 수신 시 종료 시간 기록 */
 clock_gettime(CLOCK_MONOTONIC, &start);
 zlink_send(socket, "ping", 4, 0);
-zlink_recv(socket, buf, sizeof(buf), 0);
-clock_gettime(CLOCK_MONOTONIC, &end);
 
-double rtt_us = ((end.tv_sec - start.tv_sec) * 1e6 +
-                 (end.tv_nsec - start.tv_nsec) / 1e3);
-printf("RTT: %.1f us\n", rtt_us);
+/* 핸들러 콜백이 "pong" 응답을 수신하여 종료 시간 기록 */
+void on_pong(const zlink_routing_id_t *source_rid,
+             zlink_msg_t *parts, size_t part_count)
+{
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double rtt_us = ((end.tv_sec - start.tv_sec) * 1e6 +
+                     (end.tv_nsec - start.tv_nsec) / 1e3);
+    printf("RTT: %.1f us\n", rtt_us);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
 ## 9. 성능 체크리스트

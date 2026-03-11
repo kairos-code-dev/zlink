@@ -107,8 +107,25 @@ ROUTER sockets automatically prepend a routing_id frame to received messages. Wh
 ### Basic Request-Reply
 
 ```c
-/* ROUTER server */
-void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+/* ROUTER server (with handler) */
+void on_request(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* source_rid = "D1" (2 bytes), parts[0] = "Hello" (5 bytes) */
+
+    /* Reply: send routing_id as the first frame */
+    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
+    zlink_send(router, "World", 5, 0);
+
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
+zlink_socket_handler_t router_handler = {
+    .kind = ZLINK_SOCKET_HANDLER_MSG,
+    .fn.msg = on_request
+};
+void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -123,18 +140,7 @@ zlink_connect(dealer, endpoint);
 /* DEALER send */
 zlink_send(dealer, "Hello", 5, 0);
 
-/* ROUTER receive: [routing_id="D1"] + [data="Hello"] */
-char identity[32], data[256];
-int id_size = zlink_recv(router, identity, sizeof(identity), 0);
-int data_size = zlink_recv(router, data, sizeof(data), 0);
-/* identity = "D1" (2 bytes), data = "Hello" (5 bytes) */
-
-/* ROUTER reply: send routing_id as the first frame */
-zlink_send(router, identity, id_size, ZLINK_SNDMORE);
-zlink_send(router, "World", 5, 0);
-
-/* DEALER receive: "World" (routing_id frame is automatically stripped) */
-zlink_recv(dealer, data, sizeof(data), 0);
+/* on_request callback receives the message and replies */
 ```
 
 ### Distinguishing Multiple Clients
@@ -148,12 +154,17 @@ zlink_connect(dealer1, endpoint);
 zlink_setsockopt(dealer2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
-/* ROUTER replies to specific clients only */
-zlink_send(router, "D1", 2, ZLINK_SNDMORE);
-zlink_send(router, "reply_to_d1", 11, 0);
-
-zlink_send(router, "D2", 2, ZLINK_SNDMORE);
-zlink_send(router, "reply_to_d2", 11, 0);
+/* ROUTER handler distinguishes clients by source_rid */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* source_rid->data contains "D1" or "D2" */
+    /* Reply to specific client */
+    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
+    zlink_send(router, "reply", 5, 0);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
 > Reference: `core/tests/test_router_multiple_dealers.cpp` — Multiple DEALER example
@@ -161,86 +172,74 @@ zlink_send(router, "reply_to_d2", 11, 0);
 ### Handling routing_id with zlink_msg_t
 
 ```c
-/* Receive */
-zlink_msg_t rid, data;
-zlink_msg_init(&rid);
-zlink_msg_init(&data);
-zlink_msg_recv(&rid, router, 0);   /* routing_id frame */
-zlink_msg_recv(&data, router, 0);  /* data frame */
+/* Handler callback provides routing_id and data directly */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* Check routing_id size and content */
+    printf("routing_id: %zu bytes\n", source_rid->size);
 
-/* Check routing_id size and content */
-printf("routing_id: %zu bytes\n", zlink_msg_size(&rid));
+    /* Reply: use source_rid */
+    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
+    zlink_send(router, "reply", 5, 0);
 
-/* Reply: reuse the received routing_id */
-zlink_msg_send(&rid, router, ZLINK_SNDMORE);
-zlink_send(router, "reply", 5, 0);
-
-zlink_msg_close(&rid);
-zlink_msg_close(&data);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
 ## 7. Using routing_id with STREAM Sockets
 
 STREAM sockets identify external clients using a 4B uint32 peer routing_id.
-In this section, "Basic Usage" is the callback-dispatch OFF pattern
-(`zlink_stream_attach()` not used).
 
 ### Basic Usage
 
 ```c
-/* Receive: [routing_id (4B)] + [payload] */
-unsigned char rid[4];
-char payload[4096];
+/* Callback dispatch with LEN32BE */
+int on_packets(const zlink_routing_id_t *rid,
+               zlink_msg_t *msgs, size_t count)
+{
+    for (size_t i = 0; i < count; ++i) {
+        void *data = zlink_msg_data(&msgs[i]);
+        size_t size = zlink_msg_size(&msgs[i]);
 
-zlink_recv(stream, rid, 4, 0);         /* always 4 bytes */
-int size = zlink_recv(stream, payload, sizeof(payload), 0);
+        /* Reply: use the same routing_id */
+        zlink_stream_send(stream, rid, data, size, 0);
+        zlink_msg_close(&msgs[i]);
+    }
+    return 0;
+}
 
-/* Reply: use the same routing_id */
-zlink_send(stream, rid, 4, ZLINK_SNDMORE);
-zlink_send(stream, response, resp_len, 0);
+zlink_stream_attach_len32be(stream, on_packets);
 ```
 
 ### routing_id in Connect/Disconnect Events
 
 ```c
-unsigned char rid[4];
-unsigned char code;
+int on_packets(const zlink_routing_id_t *rid,
+               zlink_msg_t *msgs, size_t count)
+{
+    for (size_t i = 0; i < count; ++i) {
+        uint8_t *data = (uint8_t *)zlink_msg_data(&msgs[i]);
+        size_t size = zlink_msg_size(&msgs[i]);
 
-zlink_recv(stream, rid, 4, 0);
-zlink_recv(stream, &code, 1, 0);
-
-if (code == 0x01) {
-    /* New client connected: save rid for subsequent communication */
-    printf("Connected: %02x%02x%02x%02x\n", rid[0], rid[1], rid[2], rid[3]);
-} else if (code == 0x00) {
-    /* Client disconnected: identify by rid and clean up */
-    printf("Disconnected: %02x%02x%02x%02x\n", rid[0], rid[1], rid[2], rid[3]);
+        if (size == 1 && data[0] == 0x01) {
+            /* New client connected: identify by rid */
+            printf("Connected: ");
+            for (size_t j = 0; j < rid->size; j++)
+                printf("%02x", rid->data[j]);
+            printf("\n");
+        } else if (size == 1 && data[0] == 0x00) {
+            /* Client disconnected: identify by rid and clean up */
+            printf("Disconnected\n");
+        }
+        zlink_msg_close(&msgs[i]);
+    }
+    return 0;
 }
 ```
 
 > Reference: `core/tests/test_stream_socket.cpp` — `recv_stream_event()`, `send_stream_msg()`
-
-### Callback Dispatch Usage (`zlink_stream_attach` ON)
-
-When callback dispatch is attached, consume STREAM payloads in the callback
-instead of `zlink_recv()`.
-
-```c
-int on_packets(const zlink_routing_id_t *rid, zlink_msg_t *msgs, size_t count) {
-    for (size_t i = 0; i < count; ++i) {
-        const void *data = zlink_msg_data(&msgs[i]);
-        size_t size = zlink_msg_size(&msgs[i]);
-
-        /* reply with the same peer routing id */
-        zlink_stream_send(stream, rid, data, size, 0);
-    }
-    return 0;
-}
-
-zlink_stream_attach(stream, on_packets, ZLINK_STREAM_DISPATCH_LEN32BE);
-/* ... */
-zlink_stream_detach(stream);  /* optional: return to zlink_recv() pattern */
-```
 
 ### ROUTER vs STREAM routing_id Comparison
 
@@ -266,10 +265,14 @@ void print_routing_id(const void *data, size_t size) {
     printf("\n");
 }
 
-/* Usage */
-char rid[255];
-int rid_size = zlink_recv(router, rid, sizeof(rid), 0);
-print_routing_id(rid, rid_size);
+/* In handler callback */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    print_routing_id(source_rid->data, source_rid->size);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
 ### String routing_id
@@ -279,11 +282,17 @@ If the user-defined routing_id is an ASCII string, it can be printed directly.
 ```c
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 
-/* When received at the ROUTER */
-char rid[32];
-int rid_size = zlink_recv(router, rid, sizeof(rid), 0);
-rid[rid_size] = '\0';
-printf("routing_id: %s\n", rid);  /* "D1" */
+/* In ROUTER handler callback */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    char rid[256];
+    memcpy(rid, source_rid->data, source_rid->size);
+    rid[source_rid->size] = '\0';
+    printf("routing_id: %s\n", rid);  /* "D1" */
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
 ### Checking Auto-Generated routing_id

@@ -3,6 +3,10 @@
 #include <zlink.h>
 #include <algorithm>
 #include <atomic>
+#include <condition_variable>
+#include <cstring>
+#include <deque>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -14,55 +18,73 @@ namespace {
 
 typedef std::chrono::steady_clock steady_clock_t;
 
-inline int recv_single_part_header_flags (
-  void *socket,
-  size_t expected_size,
-  int flags,
-  perf_single_metric::header_t *header_out,
-  bool *header_ok_out)
+struct pair_receive_event_t
 {
-    if (!socket)
-        return -1;
-
-    if (header_ok_out)
-        *header_ok_out = false;
-
-    zlink_msg_t msg;
-    if (zlink_msg_init (&msg) != 0)
-        return -1;
-
-    const int rc = zlink_msg_recv (&msg, socket, flags);
-    if (rc < 0) {
-        const int err = zlink_errno ();
-        zlink_msg_close (&msg);
-        if (err == EAGAIN || err == EINTR)
-            return 0;
-        return -1;
+    pair_receive_event_t () :
+        payload_size (0),
+        header_ok (false),
+        valid (false)
+    {
+        std::memset (&header, 0, sizeof (header));
     }
 
-    const size_t actual_size = zlink_msg_size (&msg);
-    const bool size_ok = actual_size == expected_size;
-    const bool has_more = zlink_msg_more (&msg) != 0;
-    bool header_ok = false;
+    size_t payload_size;
+    bool header_ok;
+    bool valid;
+    perf_single_metric::header_t header;
+};
 
-    if (size_ok && !has_more) {
-        if (header_out) {
-            header_ok = perf_single_metric::decode_payload_header (
-              zlink_msg_data (&msg), actual_size, header_out);
-        } else {
-            header_ok = true;
-        }
+struct pair_receive_probe_t
+{
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::deque<pair_receive_event_t> events;
+    bool failed;
+    bool closed;
+
+    pair_receive_probe_t () : failed (false), closed (false) {}
+};
+
+static pair_receive_probe_t *g_pair_receive_probe = NULL;
+
+inline zlink_socket_handler_t make_msg_handler (zlink_socket_msg_handler_fn fn_)
+{
+    zlink_socket_handler_t handler;
+    std::memset (&handler, 0, sizeof (handler));
+    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
+    handler.fn.msg = fn_;
+    return handler;
+}
+
+void pair_receive_handler (const zlink_routing_id_t *,
+                           zlink_msg_t *parts_,
+                           size_t part_count_)
+{
+    pair_receive_probe_t *probe = g_pair_receive_probe;
+    pair_receive_event_t event;
+    event.valid = part_count_ == 1;
+
+    if (event.valid && parts_) {
+        event.payload_size = zlink_msg_size (&parts_[0]);
+        event.header_ok = perf_single_metric::decode_payload_header (
+          zlink_msg_data (&parts_[0]), event.payload_size, &event.header);
     }
 
-    zlink_msg_close (&msg);
+    if (parts_) {
+        for (size_t i = 0; i < part_count_; ++i)
+            zlink_msg_close (&parts_[i]);
+    }
 
-    if (!size_ok || has_more)
-        return -1;
+    if (!probe)
+        return;
 
-    if (header_ok_out)
-        *header_ok_out = header_ok;
-
-    return 1;
+    {
+        std::lock_guard<std::mutex> guard (probe->mutex);
+        if (!event.valid)
+            probe->failed = true;
+        probe->events.push_back (event);
+    }
+    probe->cv.notify_one ();
 }
 
 inline bool run_one_way_phase (void *sender,
@@ -96,6 +118,8 @@ inline bool run_one_way_phase (void *sender,
     std::atomic<bool> recv_failed (false);
     unsigned long long received = 0;
     latency_stats_builder_t latency_builder;
+    pair_receive_probe_t probe;
+    g_pair_receive_probe = &probe;
 
     std::thread receiver_thread ([&] () {
         auto last_recv_at = steady_clock_t::now ();
@@ -129,52 +153,42 @@ inline bool run_one_way_phase (void *sender,
             queue_probe->force_sample_recv ();
 
         while (true) {
-            const bool done = sender_done.load (std::memory_order_acquire);
-            const int flags = done ? ZLINK_DONTWAIT : 0;
-
-            perf_single_metric::header_t header;
-            bool header_ok = false;
-            int recv_rc = recv_single_part_header_flags (
-              receiver, payload_size, flags, &header, &header_ok);
-            if (recv_rc > 0) {
-                last_recv_at = steady_clock_t::now ();
-                account_header (header, header_ok);
-
-                for (;;) {
-                    perf_single_metric::header_t burst_header;
-                    bool burst_header_ok = false;
-                    recv_rc = recv_single_part_header_flags (
-                      receiver,
-                      payload_size,
-                      ZLINK_DONTWAIT,
-                      &burst_header,
-                      &burst_header_ok);
-                    if (recv_rc > 0) {
-                        last_recv_at = steady_clock_t::now ();
-                        account_header (burst_header, burst_header_ok);
-                        continue;
+            pair_receive_event_t event;
+            bool have_event = false;
+            {
+                std::unique_lock<std::mutex> guard (probe.mutex);
+                if (probe.events.empty ()) {
+                    const bool done = sender_done.load (std::memory_order_acquire);
+                    if (done) {
+                        probe.cv.wait_for (guard, drain_idle_limit);
+                    } else {
+                        probe.cv.wait_for (guard, std::chrono::milliseconds (10));
                     }
-                    if (recv_rc == 0)
-                        break;
-
+                }
+                if (!probe.events.empty ()) {
+                    event = probe.events.front ();
+                    probe.events.pop_front ();
+                    have_event = true;
+                } else if (probe.failed) {
                     recv_failed.store (true, std::memory_order_release);
                     break;
                 }
+            }
 
-                if (recv_failed.load (std::memory_order_acquire))
+            if (have_event) {
+                if (!event.valid || event.payload_size != payload_size) {
+                    recv_failed.store (true, std::memory_order_release);
                     break;
+                }
+                last_recv_at = steady_clock_t::now ();
+                account_header (event.header, event.header_ok);
                 continue;
             }
 
-            if (recv_rc == 0) {
-                if (done && steady_clock_t::now () - last_recv_at >= drain_idle_limit)
-                    break;
-                std::this_thread::yield ();
-                continue;
+            if (sender_done.load (std::memory_order_acquire)
+                && steady_clock_t::now () - last_recv_at >= drain_idle_limit) {
+                break;
             }
-
-            recv_failed.store (true, std::memory_order_release);
-            break;
         }
 
         if (active_phase && queue_probe)
@@ -222,7 +236,9 @@ inline bool run_one_way_phase (void *sender,
         queue_probe->force_sample_send ();
 
     sender_done.store (true, std::memory_order_release);
+    probe.cv.notify_all ();
     receiver_thread.join ();
+    g_pair_receive_probe = NULL;
 
     if (send_failed || recv_failed.load (std::memory_order_acquire))
         return false;
@@ -258,35 +274,42 @@ void run_pair (const std::string &transport,
         return;
     }
 
-    socket_guard_t s_bind (ctx.get (), ZLINK_PAIR);
-    socket_guard_t s_conn (ctx.get (), ZLINK_PAIR);
-    if (!s_bind.valid () || !s_conn.valid ()) {
+    const zlink_socket_handler_t recv_handler = make_msg_handler (
+      &pair_receive_handler);
+    void *s_bind = zlink_socket (ctx.get (), ZLINK_PAIR, &recv_handler);
+    void *s_conn = zlink_socket (ctx.get (), ZLINK_PAIR);
+    if (!s_bind || !s_conn) {
+        if (s_bind)
+            zlink_close (s_bind);
+        if (s_conn)
+            zlink_close (s_conn);
         print_fail_no_queue ();
         return;
     }
 
     int nodelay = 1;
-    set_sockopt_int (s_bind.get (), ZLINK_TCP_NODELAY, nodelay,
+    set_sockopt_int (s_bind, ZLINK_TCP_NODELAY, nodelay,
                      "ZLINK_TCP_NODELAY");
-    set_sockopt_int (s_conn.get (), ZLINK_TCP_NODELAY, nodelay,
+    set_sockopt_int (s_conn, ZLINK_TCP_NODELAY, nodelay,
                      "ZLINK_TCP_NODELAY");
 
-    if (!setup_connected_pair (
-          s_bind.get (), s_conn.get (), transport, lib_name + "_pair")) {
+    if (!setup_connected_pair (s_bind, s_conn, transport, lib_name + "_pair")) {
+        zlink_close (s_conn);
+        zlink_close (s_bind);
         print_fail_no_queue ();
         return;
     }
 
     const int recv_timeout_ms = resolve_single_recv_timeout_ms ();
-    set_sockopt_int (s_bind.get (), ZLINK_RCVTIMEO, recv_timeout_ms,
+    set_sockopt_int (s_bind, ZLINK_RCVTIMEO, recv_timeout_ms,
                      "ZLINK_RCVTIMEO");
-    set_sockopt_int (s_conn.get (), ZLINK_RCVTIMEO, recv_timeout_ms,
+    set_sockopt_int (s_conn, ZLINK_RCVTIMEO, recv_timeout_ms,
                      "ZLINK_RCVTIMEO");
 
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
-    queue_probe_t queue_probe (s_conn.get (), s_bind.get ());
+    queue_probe_t queue_probe (s_conn, s_bind);
 
     auto print_fail_with_queue = [&] () {
         print_fail_result (lib_name, "PAIR", transport, msg_size, &queue_probe);
@@ -297,8 +320,8 @@ void run_pair (const std::string &transport,
 
     unsigned long long warmup_received = 0;
     const int warmup_count = resolve_bench_count ("PERF_WARMUP_COUNT", 1000);
-    if (!run_one_way_phase (s_conn.get (),
-                            s_bind.get (),
+    if (!run_one_way_phase (s_conn,
+                            s_bind,
                             &payload,
                             payload_size,
                             msg_size,
@@ -312,14 +335,16 @@ void run_pair (const std::string &transport,
                             &warmup_received,
                             NULL)) {
         print_fail_with_queue ();
+        zlink_close (s_conn);
+        zlink_close (s_bind);
         return;
     }
 
     const int duration_s = std::max (1, resolve_single_duration_seconds ());
     unsigned long long received = 0;
     latency_stats_t latency_stats;
-    if (!run_one_way_phase (s_conn.get (),
-                            s_bind.get (),
+    if (!run_one_way_phase (s_conn,
+                            s_bind,
                             &payload,
                             payload_size,
                             msg_size,
@@ -333,6 +358,8 @@ void run_pair (const std::string &transport,
                             &received,
                             &latency_stats)) {
         print_fail_with_queue ();
+        zlink_close (s_conn);
+        zlink_close (s_bind);
         return;
     }
 
@@ -349,6 +376,8 @@ void run_pair (const std::string &transport,
                   latency_stats.p95_us,
                   latency_stats.p99_us,
                   queue_stats);
+    zlink_close (s_conn);
+    zlink_close (s_bind);
 }
 
 int main (int argc, char **argv)

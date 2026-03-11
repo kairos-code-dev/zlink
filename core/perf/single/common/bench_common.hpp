@@ -347,7 +347,9 @@ private:
 class socket_guard_t {
 public:
     socket_guard_t() : _socket(NULL) {}
-    socket_guard_t(void *ctx_, int type_) : _socket(zlink_socket(ctx_, type_)) {}
+    socket_guard_t(void *ctx_, int type_) :
+        _socket(zlink_socket(
+          ctx_, static_cast<zlink_socket_type_t>(type_))) {}
     ~socket_guard_t() {
         if (_socket)
             zlink_close(_socket);
@@ -450,9 +452,12 @@ inline bool recv_exact(void *socket_,
                        size_t size_,
                        int flags_ = 0)
 {
-    if (!socket_)
-        return false;
-    return zlink_recv(socket_, data_, size_, flags_) == static_cast<int>(size_);
+    (void) socket_;
+    (void) data_;
+    (void) size_;
+    (void) flags_;
+    errno = ENOTSUP;
+    return false;
 }
 
 inline bool bench_debug_enabled() {
@@ -460,7 +465,9 @@ inline bool bench_debug_enabled() {
     return enabled;
 }
 
-inline bool set_sockopt_int(void *socket_, int option_, int value_,
+inline bool set_sockopt_int(void *socket_,
+                            zlink_socket_option_t option_,
+                            int value_,
                             const char *name_) {
     const int rc = zlink_setsockopt(socket_, option_, &value_, sizeof(value_));
     if (rc != 0 && bench_debug_enabled()) {

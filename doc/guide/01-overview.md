@@ -23,7 +23,7 @@ Note: `pgm://` and `epgm://` are currently disabled and unsupported in zlink.
 ```
 ┌──────────────────────────────────────────────────────┐
 │  Application Layer                                    │
-│  zlink_ctx_new() · zlink_socket() · zlink_send/recv() │
+│  zlink_ctx_new() · zlink_socket() · zlink_send() · callback dispatch │
 ├──────────────────────────────────────────────────────┤
 │  Socket Logic Layer                                   │
 │  PAIR · PUB/SUB · XPUB/XSUB · DEALER/ROUTER · STREAM│
@@ -93,14 +93,28 @@ cmake --build build
 #include <string.h>
 #include <stdio.h>
 
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    printf("Received: %.*s\n",
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
 int main(void) {
     void *ctx = zlink_ctx_new();
 
-    /* Server */
-    void *server = zlink_socket(ctx, ZLINK_PAIR, NULL);
+    /* Server (with receive handler) */
+    zlink_socket_handler_t handler = {
+        .kind = ZLINK_SOCKET_HANDLER_MSG,
+        .fn.msg = on_message
+    };
+    void *server = zlink_socket(ctx, ZLINK_PAIR, &handler);
     zlink_bind(server, "tcp://*:5555");
 
-    /* Client */
+    /* Client (send only) */
     void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
     zlink_connect(client, "tcp://127.0.0.1:5555");
 
@@ -108,11 +122,8 @@ int main(void) {
     const char *msg = "Hello zlink!";
     zlink_send(client, msg, strlen(msg), 0);
 
-    /* Receive */
-    char buf[256];
-    int size = zlink_recv(server, buf, sizeof(buf), 0);
-    buf[size] = '\0';
-    printf("Received: %s\n", buf);
+    /* Handler callback receives the message asynchronously */
+    msleep(100);
 
     zlink_close(client);
     zlink_close(server);

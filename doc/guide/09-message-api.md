@@ -28,7 +28,7 @@ Used for receiving messages or initialization purposes. Creates a message withou
 ```c
 zlink_msg_t msg;
 zlink_msg_init(&msg);
-/* Then receive data with zlink_msg_recv(), or free with zlink_msg_close() */
+/* Used for initialization or as a target for zlink_msg_copy(). Free with zlink_msg_close() */
 ```
 
 #### zlink_msg_init_size — Size-Specified (Requires Copy)
@@ -88,16 +88,19 @@ if (rc == -1) {
 
 ### 3.4 Receiving
 
+Messages are received via handler callbacks registered at socket creation time. The callback provides `zlink_msg_t` parts directly:
+
 ```c
-zlink_msg_t msg;
-zlink_msg_init(&msg);
-int rc = zlink_msg_recv(&msg, socket, 0);
-if (rc != -1) {
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
     printf("Received: %.*s\n",
-           (int)zlink_msg_size(&msg),
-           (char *)zlink_msg_data(&msg));
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
 }
-zlink_msg_close(&msg);
 ```
 
 ### 3.5 Deallocation
@@ -112,7 +115,7 @@ zlink_msg_close(&msg);
 |-----------|-----------|-------------------|
 | `zlink_msg_send` succeeds | Transferred to library | msg is empty, must not be accessed |
 | `zlink_msg_send` fails | Caller still owns | Must call `zlink_msg_close()` |
-| `zlink_msg_recv` succeeds | Library fills msg with data | Must call `zlink_msg_close()` |
+| Handler callback delivers msg | Library provides msg parts | Must call `zlink_msg_close()` per part |
 | `zlink_msg_close` | Resources freed | msg can be reused (re-initialization required) |
 
 ### Ownership Rules in Practice
@@ -219,19 +222,19 @@ Multipart messages send consecutive frames using the `ZLINK_SNDMORE` flag. The r
 /* DEALER → ROUTER: send single frame */
 zlink_send(dealer, "request", 7, 0);
 
-/* ROUTER receive: [routing_id][request] — 2-frame multipart */
-zlink_msg_t rid, data;
-zlink_msg_init(&rid);
-zlink_msg_init(&data);
-zlink_msg_recv(&rid, router, 0);   /* more=1 */
-zlink_msg_recv(&data, router, 0);  /* more=0 */
+/* ROUTER handler callback receives: source_rid + parts */
+void on_request(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    /* parts[0] = "request", source_rid = DEALER's routing_id */
 
-/* ROUTER reply: routing_id + data */
-zlink_msg_send(&rid, router, ZLINK_SNDMORE);
-zlink_send(router, "reply", 5, 0);
+    /* ROUTER reply: routing_id + data */
+    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
+    zlink_send(router, "reply", 5, 0);
 
-zlink_msg_close(&rid);
-zlink_msg_close(&data);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
 > Reference: `core/tests/test_msg_flags.cpp` — `test_more()`: DEALER→ROUTER multipart
@@ -243,30 +246,32 @@ zlink_msg_close(&data);
 zlink_send(pub, "weather", 7, ZLINK_SNDMORE);
 zlink_send(pub, "sunny", 5, 0);
 
-/* SUB: receive multipart */
-char topic[64], payload[256];
-zlink_recv(sub, topic, sizeof(topic), 0);
-zlink_recv(sub, payload, sizeof(payload), 0);
+/* SUB handler callback receives topic and payload separately */
+void on_spot(const zlink_routing_id_t *source_rid,
+             const char *topic, size_t topic_len,
+             zlink_msg_t *parts, size_t part_count)
+{
+    /* topic = "weather", parts[0] = "sunny" */
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
-### Pattern 3: Generic Multipart Receive Loop
+### Pattern 3: Multipart Processing in Handler Callback
 
 ```c
-do {
-    zlink_msg_t frame;
-    zlink_msg_init(&frame);
-    zlink_msg_recv(&frame, socket, 0);
-
-    printf("Frame[%zu bytes]: %.*s\n",
-           zlink_msg_size(&frame),
-           (int)zlink_msg_size(&frame),
-           (char *)zlink_msg_data(&frame));
-
-    int more = zlink_msg_more(&frame);
-    zlink_msg_close(&frame);
-
-    if (!more) break;
-} while (1);
+/* Handler callback receives all frames as parts array */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count)
+{
+    for (size_t i = 0; i < part_count; i++) {
+        printf("Frame[%zu bytes]: %.*s\n",
+               zlink_msg_size(&parts[i]),
+               (int)zlink_msg_size(&parts[i]),
+               (char *)zlink_msg_data(&parts[i]));
+        zlink_msg_close(&parts[i]);
+    }
+}
 ```
 
 ## 7. Message Copying

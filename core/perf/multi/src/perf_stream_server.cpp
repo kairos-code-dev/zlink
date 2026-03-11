@@ -6,10 +6,11 @@
 #include <atomic>
 #include <cerrno>
 #include <csignal>
-#include <cstdint>
+#include <condition_variable>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -27,13 +28,18 @@ namespace {
 static const char *k_pattern = "STREAM";
 
 static std::atomic<bool> g_stop_requested (false);
+static std::atomic<bool> g_callback_failed (false);
+static std::atomic<bool> g_sender_failed (false);
 static void *g_server_socket = NULL;
 static std::atomic<bool> g_queue_probe_pending (false);
 static std::atomic<size_t> g_queue_probe_size (0);
+static std::mutex g_pending_mutex;
+static std::condition_variable g_pending_cv;
 
 inline void on_signal (int)
 {
     g_stop_requested.store (true, std::memory_order_release);
+    g_pending_cv.notify_all ();
 }
 
 inline void install_signal_handlers ()
@@ -87,8 +93,7 @@ inline std::string bind_server_endpoint (void *server,
                                          const std::string &transport,
                                          const std::string &token)
 {
-    const int bind_port =
-      resolve_int_env ("PERF_SERVER_BIND_PORT", 0, 0);
+    const int bind_port = resolve_int_env ("PERF_SERVER_BIND_PORT", 0, 0);
     if (bind_port <= 0) {
         std::string endpoint_any = make_endpoint (transport, token);
         if (endpoint_any.empty ()) {
@@ -104,7 +109,8 @@ inline std::string bind_server_endpoint (void *server,
 
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof (last_endpoint);
-        if (zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size)
+        if (zlink_getsockopt (
+              server, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size)
             == 0) {
             endpoint_any.assign (last_endpoint);
             const std::string any_v4 = "://0.0.0.0:";
@@ -132,8 +138,11 @@ inline std::string bind_server_endpoint (void *server,
 
     char last_endpoint[MAX_SOCKET_STRING] = "";
     size_t size = sizeof (last_endpoint);
-    if (zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size) == 0)
+    if (zlink_getsockopt (
+          server, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size)
+        == 0) {
         endpoint.assign (last_endpoint);
+    }
     apply_debug_timeouts (server, transport);
     return endpoint;
 }
@@ -159,20 +168,9 @@ inline void print_server_metrics (
                       << std::setprecision (2) << metrics.mem_mb << std::endl;
         }
         print_server_queue_metrics (
-          lib_name,
-          k_pattern,
-          transport,
-          sizes[i],
-          queue_stats);
+          lib_name, k_pattern, transport, sizes[i], queue_stats);
     }
 }
-
-enum relay_status_t
-{
-    relay_idle = 0,
-    relay_progress = 1,
-    relay_error = 2
-};
 
 enum send_status_t
 {
@@ -228,10 +226,16 @@ struct pending_stream_message_t
     }
 };
 
+static pending_stream_message_t *g_pending_messages = NULL;
+static size_t g_pending_capacity = 0;
+static size_t g_pending_count = 0;
+
 inline send_status_t try_send_stream_message (pending_stream_message_t *message)
 {
-    if (!g_server_socket || !message || !message->has_payload || message->rid.size == 0)
+    if (!g_server_socket || !message || !message->has_payload
+        || message->rid.size == 0) {
         return send_fatal;
+    }
 
     const size_t payload_size = zlink_msg_size (&message->payload);
     const int rc = zlink_stream_send_msg (
@@ -245,48 +249,43 @@ inline send_status_t try_send_stream_message (pending_stream_message_t *message)
         return send_fatal;
 
     const int err = zlink_errno ();
-    if (err == EINTR || err == EAGAIN)
+    if (err == EAGAIN || err == EINTR)
         return send_blocked;
     return send_fatal;
 }
 
-inline bool enqueue_pending_stream_message (pending_stream_message_t *pending,
-                                           size_t capacity,
-                                           size_t *count_io,
-                                           pending_stream_message_t *message)
+inline bool enqueue_pending_stream_message_locked (
+  pending_stream_message_t *message)
 {
-    if (!pending || !count_io || !message || *count_io >= capacity)
+    if (!message || !g_pending_messages || g_pending_count >= g_pending_capacity)
         return false;
-    if (!pending[*count_io].move_from (message))
+    if (!g_pending_messages[g_pending_count].move_from (message))
         return false;
-    ++(*count_io);
+    ++g_pending_count;
+    g_pending_cv.notify_one ();
     return true;
 }
 
-inline void erase_pending_stream_message (pending_stream_message_t *pending,
-                                          size_t *count_io,
-                                          size_t idx)
+inline void erase_pending_stream_message_locked (size_t idx)
 {
-    if (!pending || !count_io || idx >= *count_io)
+    if (!g_pending_messages || idx >= g_pending_count)
         return;
-    const size_t last = *count_io - 1;
-    pending[idx].reset ();
+    const size_t last = g_pending_count - 1;
+    g_pending_messages[idx].reset ();
     if (idx != last)
-        (void) pending[idx].move_from (&pending[last]);
-    pending[last].reset ();
-    --(*count_io);
+        (void) g_pending_messages[idx].move_from (&g_pending_messages[last]);
+    g_pending_messages[last].reset ();
+    --g_pending_count;
 }
 
-inline bool flush_pending_stream_messages (pending_stream_message_t *pending,
-                                           size_t *count_io)
+inline bool flush_pending_stream_messages_locked ()
 {
-    if (!pending || !count_io)
-        return false;
     size_t idx = 0;
-    while (idx < *count_io) {
-        const send_status_t send_rc = try_send_stream_message (&pending[idx]);
+    while (idx < g_pending_count) {
+        const send_status_t send_rc =
+          try_send_stream_message (&g_pending_messages[idx]);
         if (send_rc == send_done) {
-            erase_pending_stream_message (pending, count_io, idx);
+            erase_pending_stream_message_locked (idx);
             continue;
         }
         if (send_rc == send_fatal)
@@ -296,149 +295,38 @@ inline bool flush_pending_stream_messages (pending_stream_message_t *pending,
     return true;
 }
 
-inline bool extract_stream_routing_id (const zlink_msg_t *id_frame,
-                                       zlink_routing_id_t *rid_out)
+int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg)
 {
-    if (!id_frame || !rid_out)
-        return false;
+    if (!rid || !msg || !g_server_socket)
+        return 0;
 
-    const size_t id_size = zlink_msg_size (const_cast<zlink_msg_t *> (id_frame));
-    if (id_size == 0 || id_size > sizeof (rid_out->data))
-        return false;
-
-    const unsigned char *id_data = static_cast<const unsigned char *> (
-      zlink_msg_data (const_cast<zlink_msg_t *> (id_frame)));
-    if (!id_data)
-        return false;
-
-    rid_out->size = static_cast<uint8_t> (id_size);
-    std::memcpy (rid_out->data, id_data, id_size);
-    return true;
-}
-
-inline relay_status_t relay_stream_message_non_blocking (
-  void *server,
-  pending_stream_message_t *pending,
-  size_t pending_capacity,
-  size_t *pending_count)
-{
-    if (!server)
-        return relay_error;
-
-    zlink_msg_t id_frame;
-    zlink_msg_t payload_frame;
-    zlink_msg_init (&id_frame);
-    zlink_msg_init (&payload_frame);
-
-    int id_len = zlink_msg_recv (&id_frame, server, ZLINK_DONTWAIT);
-    while (id_len < 0 && zlink_errno () == EINTR)
-        id_len = zlink_msg_recv (&id_frame, server, ZLINK_DONTWAIT);
-    if (id_len < 0) {
-        const int err = zlink_errno ();
-        (void) zlink_msg_close (&id_frame);
-        (void) zlink_msg_close (&payload_frame);
-        if (err == EAGAIN || err == EINTR)
-            return relay_idle;
-        return relay_error;
+    const unsigned char *payload =
+      static_cast<const unsigned char *> (zlink_msg_data (msg));
+    const size_t payload_size = zlink_msg_size (msg);
+    if (is_stream_event_payload (payload, payload_size)) {
+        (void) zlink_msg_close (msg);
+        return 0;
     }
 
-    int more = 0;
-    size_t more_size = sizeof (more);
-    if (zlink_getsockopt (server, ZLINK_RCVMORE, &more, &more_size) != 0 || !more) {
-        (void) zlink_msg_close (&id_frame);
-        (void) zlink_msg_close (&payload_frame);
-        return relay_error;
+    pending_stream_message_t request;
+    request.rid = *rid;
+    if (zlink_msg_move (&request.payload, msg) != 0) {
+        g_callback_failed.store (true, std::memory_order_release);
+        (void) zlink_msg_close (msg);
+        g_pending_cv.notify_all ();
+        return 1;
     }
+    request.has_payload = true;
 
-    zlink_routing_id_t rid;
-    const bool rid_ok = extract_stream_routing_id (&id_frame, &rid);
-    bool ok = rid_ok;
-
-    // Some transports can surface more than one payload frame for a routing-id.
-    // Echo every non-event payload frame instead of dropping extras.
-    while (true) {
-        int payload_len = zlink_msg_recv (&payload_frame, server, ZLINK_DONTWAIT);
-        while (payload_len < 0 && zlink_errno () == EINTR)
-            payload_len = zlink_msg_recv (&payload_frame, server, ZLINK_DONTWAIT);
-        if (payload_len < 0) {
-            const int err = zlink_errno ();
-            ok = (err == EAGAIN || err == EINTR);
-            break;
-        }
-
-        const unsigned char *payload = static_cast<const unsigned char *> (
-          zlink_msg_data (&payload_frame));
-        const size_t payload_size = zlink_msg_size (&payload_frame);
-        if (!is_stream_event_payload (payload, payload_size)) {
-            pending_stream_message_t request;
-            request.rid = rid;
-            if (zlink_msg_move (&request.payload, &payload_frame) != 0) {
-                ok = false;
-            } else {
-                request.has_payload = true;
-                const send_status_t send_rc = try_send_stream_message (&request);
-                if (send_rc == send_blocked) {
-                    ok = enqueue_pending_stream_message (
-                      pending, pending_capacity, pending_count, &request);
-                } else if (send_rc == send_fatal) {
-                    ok = false;
-                }
-            }
-        }
-
-        (void) zlink_msg_close (&payload_frame);
-        (void) zlink_msg_init (&payload_frame);
-
-        more = 0;
-        more_size = sizeof (more);
-        if (zlink_getsockopt (server, ZLINK_RCVMORE, &more, &more_size) != 0 || !more)
-            break;
+    std::lock_guard<std::mutex> guard (g_pending_mutex);
+    if (!enqueue_pending_stream_message_locked (&request)) {
+        g_callback_failed.store (true, std::memory_order_release);
+        (void) zlink_msg_close (msg);
+        g_pending_cv.notify_all ();
+        return 1;
     }
-
-    (void) zlink_msg_close (&id_frame);
-    (void) zlink_msg_close (&payload_frame);
-    return ok ? relay_progress : relay_error;
-}
-
-inline bool relay_stream_once (void *server,
-                               pending_stream_message_t *pending,
-                               size_t pending_capacity,
-                               size_t *pending_count,
-                               int poll_timeout_ms)
-{
-    if (!server)
-        return false;
-
-    zlink_pollitem_t item[] = {{
-      server,
-      0,
-      static_cast<short> (ZLINK_POLLIN
-                          | ((pending_count && *pending_count > 0) ? ZLINK_POLLOUT
-                                                                  : 0)),
-      0}};
-    int prc = zlink_poll (item, 1, poll_timeout_ms);
-    if (prc < 0)
-        return zlink_errno () == EINTR;
-    if ((item[0].revents & ZLINK_POLLOUT) != 0
-        && pending_count && *pending_count > 0
-        && !flush_pending_stream_messages (pending, pending_count)) {
-        return false;
-    }
-    if (prc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
-        return true;
-
-    // Process at least one message, then drain all currently queued messages
-    // without going back to a long poll wait.
-    while (!g_stop_requested.load (std::memory_order_acquire)) {
-        const relay_status_t status = relay_stream_message_non_blocking (
-          server, pending, pending_capacity, pending_count);
-        if (status == relay_error)
-            return false;
-        if (status == relay_idle)
-            break;
-    }
-
-    return true;
+    (void) zlink_msg_close (msg);
+    return 0;
 }
 
 } // namespace
@@ -473,7 +361,9 @@ int main (int argc, char **argv)
 
     const bench_cpu_sample_t cpu_start = bench_capture_cpu_sample ();
     const bench_settings_t settings = resolve_bench_settings ();
-    const std::vector<size_t> sizes = resolve_bench_msg_sizes (64);
+    std::vector<size_t> sizes = resolve_bench_msg_sizes (64);
+    if (sizes.empty ())
+        sizes.push_back (64);
 
     const int linger_ms = 0;
     set_sockopt_int (server, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
@@ -489,18 +379,35 @@ int main (int argc, char **argv)
         return 1;
     }
 
-    const std::string endpoint = bind_server_endpoint (
-      server, transport, lib_name + "_stream_server");
+    const std::string endpoint =
+      bind_server_endpoint (server, transport, lib_name + "_stream_server");
     if (endpoint.empty ()) {
         zlink_close (server);
         return 1;
     }
 
     g_stop_requested.store (false, std::memory_order_release);
+    g_callback_failed.store (false, std::memory_order_release);
+    g_sender_failed.store (false, std::memory_order_release);
     g_queue_probe_pending.store (false, std::memory_order_release);
     g_queue_probe_size.store (0, std::memory_order_release);
     g_server_socket = server;
+    g_pending_capacity =
+      std::max<size_t> (
+        64,
+        std::max<size_t> (
+          settings.clients,
+          static_cast<size_t> (settings.hwm > 0 ? settings.hwm : 1))
+          * 2);
+    g_pending_messages = new pending_stream_message_t[g_pending_capacity];
+    g_pending_count = 0;
     install_signal_handlers ();
+
+    if (zlink_stream_attach_raw (server, on_stream_packet) != 0) {
+        g_server_socket = NULL;
+        zlink_close (server);
+        return 1;
+    }
 
     std::thread stdin_watcher ([] () {
         std::string line;
@@ -512,35 +419,64 @@ int main (int argc, char **argv)
             }
             if (line == "STOP" || line == "QUIT") {
                 g_stop_requested.store (true, std::memory_order_release);
+                g_pending_cv.notify_all ();
                 return;
             }
         }
         g_stop_requested.store (true, std::memory_order_release);
+        g_pending_cv.notify_all ();
     });
     stdin_watcher.detach ();
+
+    std::thread sender_thread ([server] () {
+        while (true) {
+            {
+                std::unique_lock<std::mutex> guard (g_pending_mutex);
+                while (g_pending_count == 0
+                       && !g_stop_requested.load (std::memory_order_acquire)
+                       && !g_callback_failed.load (std::memory_order_acquire)) {
+                    g_pending_cv.wait_for (guard, std::chrono::milliseconds (50));
+                }
+                if (g_pending_count == 0
+                    && (g_stop_requested.load (std::memory_order_acquire)
+                        || g_callback_failed.load (std::memory_order_acquire))) {
+                    return;
+                }
+            }
+
+            {
+                std::lock_guard<std::mutex> guard (g_pending_mutex);
+                if (!flush_pending_stream_messages_locked ()) {
+                    g_sender_failed.store (true, std::memory_order_release);
+                    g_pending_cv.notify_all ();
+                    return;
+                }
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
+    });
 
     std::cout << "READY," << endpoint << std::endl;
 
     int rc = 0;
-    const size_t pending_capacity =
-      std::max<size_t> (
-        64,
-        std::max<size_t> (
-          settings.clients,
-          static_cast<size_t> (settings.hwm > 0 ? settings.hwm : 1))
-          * 2);
-    pending_stream_message_t *pending =
-      new pending_stream_message_t[pending_capacity];
-    size_t pending_count = 0;
     while (!g_stop_requested.load (std::memory_order_acquire)) {
         emit_requested_queue_probe (lib_name, transport, server, server);
-        if (!relay_stream_once (
-              server, pending, pending_capacity, &pending_count, 50)) {
+        if (g_callback_failed.load (std::memory_order_acquire)
+            || g_sender_failed.load (std::memory_order_acquire)) {
             rc = 1;
             break;
         }
+        std::this_thread::sleep_for (std::chrono::milliseconds (50));
     }
 
+    g_stop_requested.store (true, std::memory_order_release);
+    g_pending_cv.notify_all ();
+    sender_thread.join ();
+
+    delete[] g_pending_messages;
+    g_pending_messages = NULL;
+    g_pending_capacity = 0;
+    g_pending_count = 0;
     g_server_socket = NULL;
 
     const bench_resource_metrics_t metrics =
@@ -548,7 +484,6 @@ int main (int argc, char **argv)
     const server_queue_stats_t queue_stats =
       sample_server_queue_stats (server, server);
     print_server_metrics (lib_name, transport, sizes, metrics, queue_stats);
-    delete[] pending;
     zlink_close (server);
     return rc;
 }

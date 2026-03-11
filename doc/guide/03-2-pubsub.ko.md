@@ -8,7 +8,7 @@
 
 | 소켓 | 역할 | 특성 |
 |------|------|------|
-| **PUB** | 발행자 | 모든 구독자에게 브로드캐스트. 수신(recv) 불가. |
+| **PUB** | 발행자 | 모든 구독자에게 브로드캐스트. 수신 불가. |
 | **SUB** | 구독자 | 토픽 prefix match 필터링. 송신(send) 불가. |
 | **XPUB** | 고급 발행자 | PUB + 구독 프레임 수신 가능 |
 | **XSUB** | 고급 구독자 | SUB + 구독 프레임 직접 송신 |
@@ -46,16 +46,29 @@ zlink_send(pub, "weather: sunny", 14, 0);
 ### 구독자 (SUB)
 
 ```c
-void *sub = zlink_socket(ctx, ZLINK_SUB, NULL);
+void on_topic(const zlink_routing_id_t *source_rid,
+              const char *topic, size_t topic_len,
+              zlink_msg_t *parts, size_t part_count)
+{
+    printf("Topic: %.*s, Data: %.*s\n",
+           (int)topic_len, topic,
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_SPOT,
+    .fn.spot = on_topic
+};
+void *sub = zlink_socket(ctx, ZLINK_SUB, &handler);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 
 /* 토픽 구독 — connect 후 설정 */
 zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "weather", 7);
 
-/* 수신 (토픽 prefix 포함) */
-char buf[256];
-int size = zlink_recv(sub, buf, sizeof(buf), 0);
-/* buf = "weather: sunny" */
+/* on_topic 콜백으로 메시지가 dispatch됨 */
 ```
 
 > 참고: `core/tests/test_pubsub.cpp` — 빈 구독("") → 모든 메시지 수신
@@ -103,10 +116,9 @@ PUB/SUB 메시지는 두 가지 형식을 사용할 수 있다.
 /* 발행 */
 zlink_send(pub, "weather: sunny", 14, 0);
 
-/* 수신: 전체 문자열에서 토픽과 데이터를 파싱 */
-char buf[256];
-int size = zlink_recv(sub, buf, sizeof(buf), 0);
-/* buf = "weather: sunny" */
+/* SUB 핸들러 콜백 수신:
+   topic = "weather: sunny" (전체 매치 prefix)
+   parts[0] = "weather: sunny" (전체 데이터) */
 ```
 
 ### 멀티파트 프레임 (토픽 + 데이터 분리)
@@ -118,10 +130,9 @@ int size = zlink_recv(sub, buf, sizeof(buf), 0);
 zlink_send(pub, "weather", 7, ZLINK_SNDMORE);
 zlink_send(pub, "sunny", 5, 0);
 
-/* 수신: 프레임별 처리 */
-char topic[64], payload[256];
-zlink_recv(sub, topic, sizeof(topic), 0);    /* "weather" */
-zlink_recv(sub, payload, sizeof(payload), 0); /* "sunny" */
+/* SUB 핸들러 콜백 수신:
+   topic = "weather"
+   parts[0] = "sunny" (페이로드 프레임만) */
 ```
 
 ## 5. PUB/SUB 소켓 옵션
@@ -151,7 +162,11 @@ void *pub = zlink_socket(ctx, ZLINK_PUB, NULL);
 zlink_bind(pub, "tcp://*:5556");
 
 /* SUB — 모든 메시지 수신 */
-void *sub = zlink_socket(ctx, ZLINK_SUB, NULL);
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_SPOT,
+    .fn.spot = on_topic
+};
+void *sub = zlink_socket(ctx, ZLINK_SUB, &handler);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
 
@@ -159,8 +174,7 @@ msleep(100);  /* 구독이 PUB에 도달할 시간 */
 
 zlink_send(pub, "test", 4, 0);
 
-char buf[64];
-int size = zlink_recv(sub, buf, sizeof(buf), 0);
+/* on_topic 콜백이 비동기로 수신 */
 ```
 
 > 참고: `core/tests/test_pubsub.cpp` — `test_tcp()`
@@ -222,8 +236,8 @@ msleep(100);  /* 구독 전파 대기 */
 ### 방향 제약
 
 ```c
-/* PUB은 recv 불가 → ENOTSUP */
-zlink_recv(pub, buf, sizeof(buf), 0);  /* errno = ENOTSUP */
+/* PUB은 수신 불가 → ENOTSUP */
+/* PUB 소켓은 생성 시 핸들러를 받지 않음 */
 
 /* SUB는 send 불가 → ENOTSUP */
 zlink_send(sub, "data", 4, 0);  /* errno = ENOTSUP */
@@ -265,16 +279,22 @@ const uint8_t unsubscribe[] = {0x00, 'A'};  /* "A" 토픽 해제 */
 zlink_send(xsub, unsubscribe, 2, 0);
 ```
 
-XPUB는 구독 프레임을 `zlink_recv()`로 수신한다:
+XPUB는 구독 프레임을 콜백 핸들러로 수신한다:
 
 ```c
-uint8_t buf[256];
-int size = zlink_recv(xpub, buf, sizeof(buf), 0);
-if (buf[0] == 0x01) {
-    /* 구독 요청: buf+1 = 토픽 */
-} else if (buf[0] == 0x00) {
-    /* 구독 해제: buf+1 = 토픽 */
+void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len)
+{
+    if (subscribed)
+        printf("새 구독: %.*s\n", (int)topic_len, (const char *)topic);
+    else
+        printf("구독 해제: %.*s\n", (int)topic_len, (const char *)topic);
 }
+
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_XPUB,
+    .fn.xpub = on_subscription
+};
+void *xpub = zlink_socket(ctx, ZLINK_XPUB, &handler);
 ```
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
@@ -297,12 +317,8 @@ if (buf[0] == 0x01) {
 int manual = 1;
 zlink_setsockopt(xpub, ZLINK_XPUB_MANUAL, &manual, sizeof(manual));
 
-/* 구독 프레임 수신 */
-uint8_t buf[256];
-int size = zlink_recv(xpub, buf, sizeof(buf), 0);
-/* buf = {0x01, 'A'} — "A" 토픽 구독 요청 */
-
-/* 원본 토픽 대신 다른 토픽으로 구독 변환 */
+/* on_subscription 콜백에서 수신 후 subscribed=1, topic="A"
+   변환된 구독 적용: */
 zlink_setsockopt(xpub, ZLINK_SUBSCRIBE, "XA", 2);
 
 /* 발행 */
@@ -327,33 +343,8 @@ zlink_bind(xsub, "tcp://*:5556");
 void *xpub = zlink_socket(ctx, ZLINK_XPUB, NULL);
 zlink_bind(xpub, "tcp://*:5557");
 
-/* 프록시 루프: 양방향으로 메시지 전달 */
-zlink_pollitem_t items[] = {
-    {xsub, 0, ZLINK_POLLIN, 0},
-    {xpub, 0, ZLINK_POLLIN, 0},
-};
-
-while (1) {
-    zlink_poll(items, 2, -1);
-
-    if (items[0].revents & ZLINK_POLLIN) {
-        /* 데이터 메시지: XSUB → XPUB */
-        zlink_msg_t msg;
-        zlink_msg_init(&msg);
-        zlink_msg_recv(&msg, xsub, 0);
-        int more = zlink_msg_more(&msg);
-        zlink_msg_send(&msg, xpub, more ? ZLINK_SNDMORE : 0);
-        zlink_msg_close(&msg);
-    }
-    if (items[1].revents & ZLINK_POLLIN) {
-        /* 구독 프레임: XPUB → XSUB */
-        zlink_msg_t msg;
-        zlink_msg_init(&msg);
-        zlink_msg_recv(&msg, xpub, 0);
-        zlink_msg_send(&msg, xsub, 0);
-        zlink_msg_close(&msg);
-    }
-}
+/* 프록시 실행 (메시지와 구독을 양방향으로 전달) */
+zlink_proxy(xsub, xpub, NULL);
 ```
 
 ### 패턴 2: MANUAL 모드 프록시 (구독 변환)
@@ -364,25 +355,27 @@ while (1) {
 int manual = 1;
 zlink_setsockopt(xpub, ZLINK_XPUB_MANUAL, &manual, sizeof(manual));
 
-/* 구독 수신 */
-uint8_t sub_frame[256];
-int size = zlink_recv(xpub, sub_frame, sizeof(sub_frame), 0);
+/* on_subscription 콜백이 구독 요청을 처리 */
+void on_sub(int subscribed, const uint8_t *topic, size_t topic_len)
+{
+    if (subscribed) {
+        /* 구독 등록 */
+        zlink_setsockopt(xpub, ZLINK_SUBSCRIBE, topic, topic_len);
 
-if (sub_frame[0] == 0x01) {
-    /* 구독 요청: 원본 토픽을 변환하여 등록 */
-    char *topic = (char *)(sub_frame + 1);
-    int topic_len = size - 1;
-    zlink_setsockopt(xpub, ZLINK_SUBSCRIBE, topic, topic_len);
+        /* 업스트림에 구독 전파 (XSUB) */
+        uint8_t sub_frame[256];
+        sub_frame[0] = 0x01;
+        memcpy(sub_frame + 1, topic, topic_len);
+        zlink_send(xsub, sub_frame, 1 + topic_len, 0);
+    } else {
+        /* 구독 해제 */
+        zlink_setsockopt(xpub, ZLINK_UNSUBSCRIBE, topic, topic_len);
 
-    /* 업스트림(XSUB)에 구독 전파 */
-    zlink_send(xsub, sub_frame, size, 0);
-} else if (sub_frame[0] == 0x00) {
-    /* 구독 해제 */
-    char *topic = (char *)(sub_frame + 1);
-    int topic_len = size - 1;
-    zlink_setsockopt(xpub, ZLINK_UNSUBSCRIBE, topic, topic_len);
-
-    zlink_send(xsub, sub_frame, size, 0);
+        uint8_t unsub_frame[256];
+        unsub_frame[0] = 0x00;
+        memcpy(unsub_frame + 1, topic, topic_len);
+        zlink_send(xsub, unsub_frame, 1 + topic_len, 0);
+    }
 }
 ```
 
@@ -393,18 +386,22 @@ if (sub_frame[0] == 0x01) {
 XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
 
 ```c
-void *xpub = zlink_socket(ctx, ZLINK_XPUB, NULL);
+void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len)
+{
+    if (subscribed)
+        printf("새 구독: %.*s\n", (int)topic_len, (const char *)topic);
+    else
+        printf("구독 해제: %.*s\n", (int)topic_len, (const char *)topic);
+}
+
+zlink_socket_handler_t handler = {
+    .kind = ZLINK_SOCKET_HANDLER_XPUB,
+    .fn.xpub = on_subscription
+};
+void *xpub = zlink_socket(ctx, ZLINK_XPUB, &handler);
 zlink_bind(xpub, "tcp://*:5557");
 
-/* 구독 프레임 수신 */
-uint8_t buf[256];
-int size = zlink_recv(xpub, buf, sizeof(buf), ZLINK_DONTWAIT);
-if (size > 0) {
-    if (buf[0] == 0x01)
-        printf("새 구독: %.*s\n", size - 1, buf + 1);
-    else if (buf[0] == 0x00)
-        printf("구독 해제: %.*s\n", size - 1, buf + 1);
-}
+/* 구독 이벤트가 on_subscription 콜백으로 dispatch됨 */
 ```
 
 ### 패턴 4: 구독자 해제 시 자동 unsubscribe
@@ -415,10 +412,8 @@ SUB가 연결을 끊으면 XPUB에 자동으로 unsubscribe 프레임이 전달�
 /* SUB 연결 해제 후 */
 zlink_close(sub);
 
-/* XPUB에서 unsubscribe 프레임 수신 */
-uint8_t buf[256];
-int size = zlink_recv(xpub, buf, sizeof(buf), 0);
-/* buf[0] == 0x00: 해제 프레임 */
+/* XPUB의 on_subscription 콜백이 해제 이벤트를 수신
+   (subscribed=0, topic=구독된 토픽) */
 ```
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `test_xpub_proxy_unsubscribe_on_disconnect()`

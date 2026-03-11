@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
+import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
 import dev.kairoscode.zlink.options.SocketOptionKey;
 import dev.kairoscode.zlink.options.SocketOptions;
@@ -18,6 +19,9 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 
 public final class Socket implements AutoCloseable {
@@ -647,6 +651,40 @@ public final class Socket implements AutoCloseable {
 
     public Long streamPeerRoutingId() {
         return streamPeerRoutingId(0);
+    }
+
+    public List<PeerInfo> peers() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
+            count.set(ValueLayout.JAVA_LONG, 0, 0L);
+            int rc = Native.socketPeers(handle, MemorySegment.NULL, count);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_socket_peers");
+            long available = count.get(ValueLayout.JAVA_LONG, 0);
+            if (available <= 0)
+                return Collections.emptyList();
+
+            MemorySegment peersMem = arena.allocate(NativeLayouts.PEER_INFO_LAYOUT,
+              available);
+            count.set(ValueLayout.JAVA_LONG, 0, available);
+            rc = Native.socketPeers(handle, peersMem, count);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_socket_peers");
+
+            long actualLong = count.get(ValueLayout.JAVA_LONG, 0);
+            if (actualLong < 0)
+                actualLong = 0;
+            if (actualLong > available)
+                actualLong = available;
+            int actual = (int) actualLong;
+            long stride = NativeLayouts.PEER_INFO_LAYOUT.byteSize();
+            ArrayList<PeerInfo> out = new ArrayList<>(actual);
+            for (int i = 0; i < actual; i++) {
+                out.add(PeerInfo.fromNative(peersMem.asSlice((long) i * stride,
+                  stride)));
+            }
+            return out;
+        }
     }
 
     public int streamSend(long routingId, byte[] payload, SendFlag flags) {

@@ -86,15 +86,22 @@ public final class PerfMultiDealerDealerServer {
                         true, true, header, reservoir, active)) {
                     return 2;
                 }
-
-                if (active.count <= 0) {
+                if (active.count <= 0L) {
                     return 2;
                 }
-                double throughput = active.count
-                    / (double) Math.max(1, durationSeconds);
+
                 PerfCommon.Stats stats = reservoir.snapshot();
-                PerfCommon.printResult(PATTERN, transport, msgSize, throughput,
-                    stats.meanUs(), stats.p95Us(), stats.p99Us());
+                double configuredSeconds = Math.max(1, durationSeconds);
+                double throughput = active.count / configuredSeconds;
+                double fallbackLatencyUs =
+                    (configuredSeconds * 1_000_000.0)
+                    / Math.max(1.0, active.count);
+                double meanUs = stats.meanUs() > 0.0
+                    ? stats.meanUs() : fallbackLatencyUs;
+                double p95Us = stats.p95Us() > 0.0 ? stats.p95Us() : meanUs;
+                double p99Us = stats.p99Us() > 0.0 ? stats.p99Us() : p95Us;
+                PerfCommon.printResult(PATTERN, transport, msgSize,
+                    throughput, meanUs, p95Us, p99Us);
                 return 0;
             }
         } catch (RuntimeException ignored) {

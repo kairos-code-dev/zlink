@@ -80,7 +80,7 @@ public final class PerfMultiPubSubClient {
             PerfMultiCommon.resolveDurationSeconds(),
             PerfMultiCommon.resolveSettleMs(),
             PerfMultiCommon.resolveConnectReadyTimeoutMs(),
-            Math.max(0, PerfMultiCommon.resolveClientPollTimeoutMs()));
+            PerfMultiCommon.resolveEffectiveClientPollTimeoutMs());
 
         try (Context context = new Context()) {
             PerfCommon.applyClientContextOptions(context);

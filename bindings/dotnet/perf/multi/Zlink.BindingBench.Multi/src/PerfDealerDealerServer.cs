@@ -54,6 +54,7 @@ internal static class PerfDealerDealerServer
                 PerfPhase.Active, Math.Max(1, durationSeconds), true, true,
                 latSamples, ref sampleSeen, ref rng, ref recvCount))
             return 2;
+
         if (recvCount <= 0)
             return 2;
 
@@ -62,8 +63,7 @@ internal static class PerfDealerDealerServer
         var latency = ComputeLatencyStats(latSamples);
         double fallbackLatencyUs = (configuredSeconds * 1_000_000.0)
             / Math.Max(1.0, recvCount);
-        double latencyUs = latency.mean > 0.0 ? latency.mean
-            : fallbackLatencyUs;
+        double latencyUs = latency.mean > 0.0 ? latency.mean : fallbackLatencyUs;
         double latencyP95Us = latency.p95 > 0.0 ? latency.p95 : latencyUs;
         double latencyP99Us = latency.p99 > 0.0 ? latency.p99 : latencyP95Us;
         PrintResult(pattern, transport, size, throughput, latencyUs,

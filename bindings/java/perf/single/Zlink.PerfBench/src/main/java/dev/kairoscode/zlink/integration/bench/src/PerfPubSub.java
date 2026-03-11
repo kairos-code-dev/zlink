@@ -57,7 +57,7 @@ public final class PerfPubSub {
             String endpoint = PerfCommon.endpointFor(transport, "pubsub");
             publisher.bind(endpoint);
             subscriber.connect(endpoint);
-            if (!PerfCommon.waitMonitorReady(subscriberMonitor, 5000, true)) {
+            if (!PerfCommon.waitConnectReady(transport, subscriberMonitor, 5000, true)) {
                 return 2;
             }
 

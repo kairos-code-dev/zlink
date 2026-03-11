@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.3] - 2026-03-12
+
+### Fixed
+
+**Release Build Parity**
+- Aligned the core GitHub Actions native release workflow with the current core build baseline by building Linux release artifacts on Ubuntu 24.04 and using the default C++17 setting on Windows release jobs.
+- This keeps the packaged native libraries used by bindings closer to the locally built core runtime when benchmarking STREAM raw/callback/LEN32BE paths.
+
 ## [5.0.2] - 2026-03-10
 
 ### Fixed

@@ -53,7 +53,7 @@ public final class PerfDealerRouter {
             String endpoint = PerfCommon.endpointFor(transport, "dealer-router");
             router.bind(endpoint);
             dealer.connect(endpoint);
-            if (!PerfCommon.waitMonitorReady(dealerMonitor, 5000, true)) {
+            if (!PerfCommon.waitConnectReady(transport, dealerMonitor, 5000, true)) {
                 return 2;
             }
 

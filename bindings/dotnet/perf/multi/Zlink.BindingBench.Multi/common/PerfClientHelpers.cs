@@ -1,49 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Zlink;
 
 internal static partial class PerfRunner
 {
-    private const short PollIn = 0x0001;
-    private const short PollOut = 0x0002;
+    internal const PollEvents SocketPollIn = PollEvents.PollIn;
+    internal const PollEvents SocketPollOut = PollEvents.PollOut;
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct ZlinkPollItemUnix
-    {
-        public IntPtr Socket;
-        public int Fd;
-        public short Events;
-        public short Revents;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct ZlinkPollItemWindows
-    {
-        public IntPtr Socket;
-        public ulong Fd;
-        public short Events;
-        public short Revents;
-    }
-
-    private static class PerfNative
-    {
-        [DllImport("zlink", EntryPoint = "zlink_poll",
-            CallingConvention = CallingConvention.Cdecl)]
-        internal static extern int zlink_poll_unix(
-            [In, Out] ZlinkPollItemUnix[] items, int nitems, long timeout);
-
-        [DllImport("zlink", EntryPoint = "zlink_poll",
-            CallingConvention = CallingConvention.Cdecl)]
-        internal static extern int zlink_poll_windows(
-            [In, Out] ZlinkPollItemWindows[] items, int nitems, long timeout);
-    }
-
-    private static ZlinkPollItemUnix[]? _pollItemsUnix;
-    private static ZlinkPollItemWindows[]? _pollItemsWindows;
-    private static ZlinkPollItemUnix[]? _socketPollItemsUnix;
-    private static ZlinkPollItemWindows[]? _socketPollItemsWindows;
+    private static PollEvents[]? _monitorPollEvents;
+    private static PollEvents[]? _monitorRevents;
+    private static PollEvents[]? _socketPollEvents;
+    private static PollEvents[]? _socketRevents;
 
     internal static bool IsSupportedTransport(string transport)
     {
@@ -72,64 +40,78 @@ internal static partial class PerfRunner
             return activeClients;
 
         var ready = new bool[count];
-        int remaining = count;
-        var activeIndices = new int[count];
-        int activeCount = 0;
+        var pendingIndices = new List<int>(count);
         for (int i = 0; i < count; i++)
         {
             if (monitors[i] == null)
             {
                 ready[i] = true;
-                activeClients.Add(clients[i]);
-                remaining--;
                 continue;
             }
-            activeIndices[activeCount++] = i;
+
+            if (TryConsumeReadyEvent(monitors[i]))
+            {
+                ready[i] = true;
+                continue;
+            }
+
+            pendingIndices.Add(i);
         }
 
-        if (remaining <= 0)
+        if (pendingIndices.Count == 0)
+        {
+            for (int i = 0; i < count; i++)
+                if (ready[i])
+                    activeClients.Add(clients[i]);
             return activeClients;
+        }
 
         long deadlineTicks = DeadlineTicksFromMilliseconds(readyTimeoutMs);
-
-        while (remaining > 0)
+        while (pendingIndices.Count > 0)
         {
             long nowTicks = Stopwatch.GetTimestamp();
             if (nowTicks >= deadlineTicks)
-                break;
-
-            int readyEvents = PollMonitorHandles(monitors, activeIndices,
-                activeCount, deadlineTicks, nowTicks);
-            if (readyEvents < 0)
             {
                 activeClients.Clear();
                 return activeClients;
             }
-            if (readyEvents == 0)
+
+            long remainingMs = (deadlineTicks - nowTicks) * 1000L
+                / Stopwatch.Frequency;
+            int pollCount = pendingIndices.Count;
+            EnsureMonitorPollCapacity(pollCount);
+
+            var pollMonitors = new List<MonitorSocket>(pollCount);
+            for (int i = 0; i < pollCount; i++)
+            {
+                pollMonitors.Add(monitors[pendingIndices[i]]);
+                _monitorPollEvents![i] = PollEvents.PollIn;
+                _monitorRevents![i] = PollEvents.None;
+            }
+
+            int readyEvents = ZlinkPoll.Poll(pollMonitors, _monitorPollEvents!,
+                _monitorRevents!.AsSpan(0, pollCount), (int)Math.Max(0, remainingMs));
+            if (readyEvents <= 0)
                 continue;
 
-            for (int i = 0; i < activeCount; i++)
+            for (int i = pollCount - 1; i >= 0; i--)
             {
-                int monitorIndex = activeIndices[i];
-                if (monitorIndex < 0 || ready[monitorIndex])
-                    continue;
-                if (!IsPollInReady(i))
+                if ((_monitorRevents![i] & PollEvents.PollIn) == 0)
                     continue;
 
-                if (!TryConsumeReadyEvent(monitors[monitorIndex]))
+                int index = pendingIndices[i];
+                if (!TryConsumeReadyEvent(monitors[index]))
                     continue;
 
-                ready[monitorIndex] = true;
-                activeClients.Add(clients[monitorIndex]);
-                remaining--;
-                activeIndices[i] = -1;
+                ready[index] = true;
+                pendingIndices.RemoveAt(i);
             }
         }
 
-        if (remaining > 0)
+        for (int i = 0; i < count; i++)
         {
-            activeClients.Clear();
-            return activeClients;
+            if (ready[i])
+                activeClients.Add(clients[i]);
         }
 
         return activeClients;
@@ -138,140 +120,79 @@ internal static partial class PerfRunner
     private static int PollMonitorHandles(List<MonitorSocket> monitors,
         int[] activeIndices, int activeCount, long deadlineTicks, long nowTicks)
     {
+        if (activeCount <= 0)
+            return 0;
+
         long remainingMs = (deadlineTicks - nowTicks) * 1000L
             / Stopwatch.Frequency;
-        if (remainingMs < 0)
-            remainingMs = 0;
+        EnsureMonitorPollCapacity(activeCount);
 
-        if (OperatingSystem.IsWindows())
-        {
-            if (_pollItemsWindows == null || _pollItemsWindows.Length < activeCount)
-                _pollItemsWindows = new ZlinkPollItemWindows[activeCount];
-
-            for (int i = 0; i < activeCount; i++)
-            {
-                ref ZlinkPollItemWindows item = ref _pollItemsWindows[i];
-                int monitorIndex = activeIndices[i];
-                if (monitorIndex < 0)
-                {
-                    item = default;
-                    continue;
-                }
-                item.Socket = monitors[monitorIndex].Handle;
-                item.Fd = 0;
-                item.Events = PollIn;
-                item.Revents = 0;
-            }
-
-            return PerfNative.zlink_poll_windows(_pollItemsWindows, activeCount,
-                remainingMs);
-        }
-
-        if (_pollItemsUnix == null || _pollItemsUnix.Length < activeCount)
-            _pollItemsUnix = new ZlinkPollItemUnix[activeCount];
-
+        var pollMonitors = new List<MonitorSocket>(activeCount);
         for (int i = 0; i < activeCount; i++)
         {
-            ref ZlinkPollItemUnix item = ref _pollItemsUnix[i];
-            int monitorIndex = activeIndices[i];
-            if (monitorIndex < 0)
-            {
-                item = default;
-                continue;
-            }
-            item.Socket = monitors[monitorIndex].Handle;
-            item.Fd = 0;
-            item.Events = PollIn;
-            item.Revents = 0;
+            pollMonitors.Add(monitors[activeIndices[i]]);
+            _monitorPollEvents![i] = PollEvents.PollIn;
+            _monitorRevents![i] = PollEvents.None;
         }
 
-        return PerfNative.zlink_poll_unix(_pollItemsUnix, activeCount,
-            remainingMs);
-    }
-
-    private static bool IsPollInReady(int index)
-    {
-        if (OperatingSystem.IsWindows())
-            return _pollItemsWindows != null
-                && (_pollItemsWindows[index].Revents & PollIn) != 0;
-
-        return _pollItemsUnix != null
-            && (_pollItemsUnix[index].Revents & PollIn) != 0;
+        return ZlinkPoll.Poll(pollMonitors, _monitorPollEvents!,
+            _monitorRevents!.AsSpan(0, activeCount), (int)Math.Max(0, remainingMs));
     }
 
     internal static int PollSocketReadReady(IReadOnlyList<Zlink.Socket> sockets,
         int timeoutMs)
     {
-        return PollSocketEvents(sockets, PollIn, timeoutMs);
+        return PollSocketEvents(sockets, PollEvents.PollIn, timeoutMs);
     }
 
     internal static int PollSocketWriteReady(IReadOnlyList<Zlink.Socket> sockets,
         int timeoutMs)
     {
-        return PollSocketEvents(sockets, PollOut, timeoutMs);
+        return PollSocketEvents(sockets, PollEvents.PollOut, timeoutMs);
+    }
+
+    internal static int PollSocketEvents(IReadOnlyList<Zlink.Socket> sockets,
+        IReadOnlyList<PollEvents> eventMasks, int timeoutMs)
+    {
+        int count = sockets.Count;
+        if (count <= 0 || eventMasks.Count < count)
+            return 0;
+
+        EnsureSocketPollCapacity(count);
+        return ZlinkPoll.Poll(sockets, eventMasks,
+            _socketRevents!.AsSpan(0, count), timeoutMs);
     }
 
     private static int PollSocketEvents(IReadOnlyList<Zlink.Socket> sockets,
-        short events, int timeoutMs)
+        PollEvents events, int timeoutMs)
     {
         int count = sockets.Count;
         if (count <= 0)
             return 0;
 
-        long boundedTimeoutMs = Math.Max(0, timeoutMs);
-        if (OperatingSystem.IsWindows())
-        {
-            if (_socketPollItemsWindows == null
-                || _socketPollItemsWindows.Length < count)
-            {
-                _socketPollItemsWindows = new ZlinkPollItemWindows[count];
-            }
-
-            for (int i = 0; i < count; i++)
-            {
-                _socketPollItemsWindows[i].Socket = sockets[i].Handle;
-                _socketPollItemsWindows[i].Fd = 0;
-                _socketPollItemsWindows[i].Events = events;
-                _socketPollItemsWindows[i].Revents = 0;
-            }
-
-            return PerfNative.zlink_poll_windows(_socketPollItemsWindows, count,
-                boundedTimeoutMs);
-        }
-
-        if (_socketPollItemsUnix == null || _socketPollItemsUnix.Length < count)
-            _socketPollItemsUnix = new ZlinkPollItemUnix[count];
-
+        EnsureSocketPollCapacity(count);
         for (int i = 0; i < count; i++)
-        {
-            _socketPollItemsUnix[i].Socket = sockets[i].Handle;
-            _socketPollItemsUnix[i].Fd = 0;
-            _socketPollItemsUnix[i].Events = events;
-            _socketPollItemsUnix[i].Revents = 0;
-        }
-
-        return PerfNative.zlink_poll_unix(_socketPollItemsUnix, count,
-            boundedTimeoutMs);
+            _socketPollEvents![i] = events;
+        return ZlinkPoll.Poll(sockets, _socketPollEvents!,
+            _socketRevents!.AsSpan(0, count), timeoutMs);
     }
 
     internal static bool IsSocketReadReady(int index)
     {
-        return IsSocketReady(index, PollIn);
+        return IsSocketReady(index, PollEvents.PollIn);
     }
 
     internal static bool IsSocketWriteReady(int index)
     {
-        return IsSocketReady(index, PollOut);
+        return IsSocketReady(index, PollEvents.PollOut);
     }
 
-    private static bool IsSocketReady(int index, short events)
+    private static bool IsSocketReady(int index, PollEvents events)
     {
-        if (OperatingSystem.IsWindows())
-            return _socketPollItemsWindows != null
-                && (_socketPollItemsWindows[index].Revents & events) != 0;
-
-        return _socketPollItemsUnix != null
-            && (_socketPollItemsUnix[index].Revents & events) != 0;
+        return _socketRevents != null
+            && index >= 0
+            && index < _socketRevents.Length
+            && (_socketRevents[index] & events) != 0;
     }
 
     private static bool TryConsumeReadyEvent(MonitorSocket monitor)
@@ -344,5 +265,21 @@ internal static partial class PerfRunner
         catch
         {
         }
+    }
+
+    private static void EnsureMonitorPollCapacity(int count)
+    {
+        if (_monitorPollEvents == null || _monitorPollEvents.Length < count)
+            _monitorPollEvents = new PollEvents[count];
+        if (_monitorRevents == null || _monitorRevents.Length < count)
+            _monitorRevents = new PollEvents[count];
+    }
+
+    private static void EnsureSocketPollCapacity(int count)
+    {
+        if (_socketPollEvents == null || _socketPollEvents.Length < count)
+            _socketPollEvents = new PollEvents[count];
+        if (_socketRevents == null || _socketRevents.Length < count)
+            _socketRevents = new PollEvents[count];
     }
 }

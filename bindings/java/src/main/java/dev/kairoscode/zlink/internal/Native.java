@@ -71,6 +71,13 @@ public final class Native {
       downcall("zlink_socket_peer_routing_id",
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
           ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SOCKET_PEER_COUNT =
+      downcall("zlink_socket_peer_count",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SOCKET_PEERS =
+      downcall("zlink_socket_peers",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+          ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SETSOCKOPT = downcall("zlink_setsockopt",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_GETSOCKOPT = downcall("zlink_getsockopt",
@@ -503,6 +510,23 @@ public final class Native {
               outRid);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_socket_peer_routing_id failed", t);
+        }
+    }
+
+    public static int socketPeerCount(MemorySegment socket) {
+        try {
+            return (int) MH_SOCKET_PEER_COUNT.invokeExact(socket);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_socket_peer_count failed", t);
+        }
+    }
+
+    public static int socketPeers(MemorySegment socket, MemorySegment peers,
+                                  MemorySegment count) {
+        try {
+            return (int) MH_SOCKET_PEERS.invokeExact(socket, peers, count);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_socket_peers failed", t);
         }
     }
 

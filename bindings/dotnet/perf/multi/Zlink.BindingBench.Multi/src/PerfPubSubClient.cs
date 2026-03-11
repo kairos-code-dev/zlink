@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using Zlink;
 using static PerfRunner;
@@ -23,6 +24,7 @@ internal static class PerfPubSubClient
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs();
         int latencySampleCap = ResolveMultiLatencySampleCap();
         int clientCount = ResolveMultiClients(pattern);
+        int pollTimeoutMs = ResolveEffectiveMultiClientPollTimeoutMs();
 
         using var ctx = new Context();
         ApplyMultiClientContextOptions(ctx);
@@ -56,7 +58,7 @@ internal static class PerfPubSubClient
 
             var recv = new byte[Math.Max(256, Math.Max(size, MultiStopToken.Length))];
             var result = RunMultiPubSubClientLoop(activeClients, recv,
-                size, latencySampleCap,
+                size, latencySampleCap, pollTimeoutMs,
                 warmupSeconds, durationSeconds, settleMs, drainMs,
                 sizeTransitionDrainMs, activeWarmup, warmupDrainMs);
 
@@ -74,7 +76,8 @@ internal static class PerfPubSubClient
     private static (double throughput, double latencyUs, double latencyP95Us,
         double latencyP99Us)
         RunMultiPubSubClientLoop(List<Zlink.Socket> activeClients,
-            byte[] recv, int msgSize, int latencySampleCap, int warmupSeconds,
+            byte[] recv, int msgSize, int latencySampleCap, int pollTimeoutMs,
+            int warmupSeconds,
             int durationSeconds, int settleMs, int drainMs,
             int sizeTransitionDrainMs, bool activeWarmup, int warmupDrainMs)
     {
@@ -87,13 +90,11 @@ internal static class PerfPubSubClient
         _ = activeWarmup;
         if (warmupSeconds > 0)
         {
-            DateTime warmupDeadline = DateTime.UtcNow.AddSeconds(
-                Math.Max(0, warmupSeconds));
-            while (DateTime.UtcNow < warmupDeadline)
+            long warmupDeadlineTicks = Stopwatch.GetTimestamp()
+                + (long)Math.Max(0, warmupSeconds) * Stopwatch.Frequency;
+            while (Stopwatch.GetTimestamp() < warmupDeadlineTicks)
             {
-                int remainingMs = (int)Math.Max(0,
-                    (warmupDeadline - DateTime.UtcNow).TotalMilliseconds);
-                if (PollSocketReadReady(activeClients, remainingMs) <= 0)
+                if (PollSocketReadReady(activeClients, pollTimeoutMs) <= 0)
                     continue;
 
                 for (int i = 0; i < activeClients.Count; i++)
@@ -110,15 +111,29 @@ internal static class PerfPubSubClient
         }
 
         if (settleMs > 0)
-            Thread.Sleep(settleMs);
-
-        DateTime benchDeadline = DateTime.UtcNow.AddSeconds(
-            Math.Max(1, durationSeconds));
-        while (DateTime.UtcNow < benchDeadline)
         {
-            int remainingMs = (int)Math.Max(0,
-                (benchDeadline - DateTime.UtcNow).TotalMilliseconds);
-            if (PollSocketReadReady(activeClients, remainingMs) <= 0)
+            long settleDeadlineTicks = Stopwatch.GetTimestamp()
+                + (long)Math.Max(0, settleMs) * Stopwatch.Frequency / 1000;
+            while (Stopwatch.GetTimestamp() < settleDeadlineTicks)
+            {
+                if (PollSocketReadReady(activeClients, pollTimeoutMs) <= 0)
+                    continue;
+
+                for (int i = 0; i < activeClients.Count; i++)
+                {
+                    if (!IsSocketReadReady(i))
+                        continue;
+                    DrainReadableSocket(activeClients[i], recv.AsSpan(),
+                        static _ => true);
+                }
+            }
+        }
+
+        long benchDeadlineTicks = Stopwatch.GetTimestamp()
+            + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
+        while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
+        {
+            if (PollSocketReadReady(activeClients, pollTimeoutMs) <= 0)
             {
                 continue;
             }

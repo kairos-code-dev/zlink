@@ -53,7 +53,7 @@ public final class PerfPair {
             String endpoint = PerfCommon.endpointFor(transport, "pair");
             receiver.bind(endpoint);
             sender.connect(endpoint);
-            if (!PerfCommon.waitMonitorReady(senderMonitor, 5000, true)) {
+            if (!PerfCommon.waitConnectReady(transport, senderMonitor, 5000, true)) {
                 return 2;
             }
 

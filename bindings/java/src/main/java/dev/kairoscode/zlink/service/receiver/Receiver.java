@@ -26,6 +26,11 @@ import java.util.Objects;
 
 public class Receiver implements AutoCloseable {
     private static final int ENDPOINT_CAPACITY = 256;
+    private static final int ERRNO_EINTR = 4;
+    private static final int ERRNO_EAGAIN = 11;
+    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+    private static final long RETRY_TIMEOUT_NS = 10_000_000_000L;
+    private static final long RETRY_SLEEP_MS = 20L;
     private MemorySegment handle;
     private Arena sockOptArena = Arena.ofShared();
     private MemorySegment sockOptScratch = MemorySegment.NULL;
@@ -60,22 +65,29 @@ public class Receiver implements AutoCloseable {
     }
 
     public void connectRegistry(String endpoint) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.providerConnectRegistry(handle, NativeHelpers.toCString(arena, endpoint));
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_receiver_connect_registry");
-        }
+        retryTransient("zlink_receiver_connect_registry", () -> {
+            try (Arena arena = Arena.ofConfined()) {
+                int rc = Native.providerConnectRegistry(handle,
+                    NativeHelpers.toCString(arena, endpoint));
+                if (rc != 0)
+                    throw ZlinkException.fromLastError(
+                        "zlink_receiver_connect_registry");
+            }
+        });
     }
 
     public void register(String serviceName, String advertiseEndpoint, int weight) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.providerRegister(handle,
-                NativeHelpers.toCString(arena, serviceName),
-                NativeHelpers.toCString(arena, advertiseEndpoint),
-                weight);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_receiver_register");
-        }
+        retryTransient("zlink_receiver_register", () -> {
+            try (Arena arena = Arena.ofConfined()) {
+                int rc = Native.providerRegister(handle,
+                    NativeHelpers.toCString(arena, serviceName),
+                    NativeHelpers.toCString(arena, advertiseEndpoint),
+                    weight);
+                if (rc != 0)
+                    throw ZlinkException.fromLastError(
+                        "zlink_receiver_register");
+            }
+        });
     }
 
     public void updateWeight(String serviceName, int weight) {
@@ -347,6 +359,39 @@ public class Receiver implements AutoCloseable {
           && role != ReceiverSocketRole.DEALER) {
             throw new IllegalArgumentException(
               "unsupported Receiver socket role: " + role);
+        }
+    }
+
+    private static void retryTransient(String operation, Runnable action) {
+        ZlinkException last = null;
+        long deadlineNs = System.nanoTime() + RETRY_TIMEOUT_NS;
+        while (System.nanoTime() < deadlineNs) {
+            try {
+                action.run();
+                return;
+            } catch (ZlinkException ex) {
+                if (!isTransient(ex.errno()))
+                    throw ex;
+                last = ex;
+            }
+            sleepRetry();
+        }
+
+        if (last != null)
+            throw last;
+        throw new IllegalStateException(operation + " timed out");
+    }
+
+    private static boolean isTransient(int errno) {
+        return errno == ERRNO_EINTR || errno == ERRNO_EAGAIN
+               || errno == ERRNO_EWOULDBLOCK_WIN;
+    }
+
+    private static void sleepRetry() {
+        try {
+            Thread.sleep(RETRY_SLEEP_MS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
         }
     }
 

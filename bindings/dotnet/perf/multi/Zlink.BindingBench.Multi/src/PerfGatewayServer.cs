@@ -9,7 +9,7 @@ using static PerfRunner;
 internal static class PerfGatewayServer
 {
     private const string Pattern = "GATEWAY";
-    private const string ServiceName = "perf-gateway";
+    private const string ServiceName = "perf-server";
     private const string ServerGatewayRoutingId = "sg";
     private const uint ExpectedRunId = 1;
 
@@ -38,6 +38,13 @@ internal static class PerfGatewayServer
             ConnectRegistryWithRetry(() =>
                 receiver.ConnectRegistry(config.RegistryRouter));
             receiver.Register(ServiceName, config.Endpoint, 1);
+            if (!WaitUntil(() =>
+                    receiver.GetRegisterResult(ServiceName).Status == 0,
+                    config.ReadyTimeoutMs, 10))
+            {
+                throw new TimeoutException(
+                    "gateway_server_receiver_register_not_ready");
+            }
             ApplyReceiverSocketOptions(receiver, Pattern, config.SndTimeoutMs,
                 config.RcvTimeoutMs);
 

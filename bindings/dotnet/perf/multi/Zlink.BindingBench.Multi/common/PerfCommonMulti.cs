@@ -132,9 +132,19 @@ internal static partial class PerfRunner
         return ParseFirstPositiveEnv(5000, "PERF_CONNECT_READY_TIMEOUT_MS");
     }
 
+    internal static int ResolveStreamIoTimeoutMs()
+    {
+        return ParseFirstNonNegativeEnv(5000, "PERF_STREAM_TIMEOUT_MS");
+    }
+
     internal static int ResolveMultiClientPollTimeoutMs()
     {
         return ParseFirstNonNegativeEnv(0, "PERF_CLIENT_POLL_TIMEOUT_MS");
+    }
+
+    internal static int ResolveEffectiveMultiClientPollTimeoutMs()
+    {
+        return Math.Max(1, ResolveMultiClientPollTimeoutMs());
     }
 
     internal static int ResolveHwm(string pattern)
@@ -164,6 +174,9 @@ internal static partial class PerfRunner
     internal static bool WaitMonitorReady(MonitorSocket monitor, int timeoutMs,
         bool acceptFallback)
     {
+        if (DrainReadyEvents(monitor, acceptFallback) > 0)
+            return true;
+
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
         while (true)
         {
@@ -201,7 +214,10 @@ internal static partial class PerfRunner
         if (expectedReady <= 0)
             return true;
 
-        int readyCount = 0;
+        int readyCount = DrainReadyEvents(monitor, false);
+        if (readyCount >= expectedReady)
+            return true;
+
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
         while (true)
         {
@@ -320,6 +336,66 @@ internal static partial class PerfRunner
     internal static int ResolveMultiLatencySampleCap()
     {
         return ParsePositiveEnv("PERF_LATENCY_SAMPLE_CAP", 200000);
+    }
+
+    internal static bool IsCoreStreamServerTransport(string transport)
+    {
+        return transport.Equals("tcp", StringComparison.OrdinalIgnoreCase)
+            || transport.Equals("tls", StringComparison.OrdinalIgnoreCase)
+            || transport.Equals("ws", StringComparison.OrdinalIgnoreCase)
+            || transport.Equals("wss", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal readonly struct ServerQueueStats
+    {
+        internal ServerQueueStats(double sndPendingMax, double rcvPendingMax,
+            double rcvPendingEnd)
+        {
+            SndPendingMax = sndPendingMax;
+            RcvPendingMax = rcvPendingMax;
+            RcvPendingEnd = rcvPendingEnd;
+        }
+
+        internal double SndPendingMax { get; }
+        internal double RcvPendingMax { get; }
+        internal double RcvPendingEnd { get; }
+    }
+
+    internal static ServerQueueStats SampleServerQueueStats(Zlink.Socket socket)
+    {
+        PeerRecord[] peers = socket.GetPeers();
+        if (peers.Length == 0)
+            return new ServerQueueStats(0, 0, 0);
+
+        PeerRecord best = peers[0];
+        ulong bestActivity = best.MsgsSent + best.MsgsReceived;
+        for (int i = 1; i < peers.Length; i++)
+        {
+            PeerRecord candidate = peers[i];
+            ulong candidateActivity = candidate.MsgsSent + candidate.MsgsReceived;
+            if (candidate.ConnectedTime > best.ConnectedTime
+                || (candidate.ConnectedTime == best.ConnectedTime
+                    && candidateActivity > bestActivity))
+            {
+                best = candidate;
+                bestActivity = candidateActivity;
+            }
+        }
+
+        double sndPending = best.SndPendingMsgs;
+        double rcvPending = best.RcvPendingMsgs;
+        return new ServerQueueStats(sndPending, rcvPending, rcvPending);
+    }
+
+    internal static void PrintServerQueueMetrics(string pattern, string transport,
+        int size, ServerQueueStats stats)
+    {
+        Console.WriteLine(
+            $"RESULT,current,{pattern},{transport},{size},server_snd_pending_max,{stats.SndPendingMax:F2}");
+        Console.WriteLine(
+            $"RESULT,current,{pattern},{transport},{size},server_rcv_pending_max,{stats.RcvPendingMax:F2}");
+        Console.WriteLine(
+            $"RESULT,current,{pattern},{transport},{size},server_rcv_pending_end,{stats.RcvPendingEnd:F2}");
     }
 
 }

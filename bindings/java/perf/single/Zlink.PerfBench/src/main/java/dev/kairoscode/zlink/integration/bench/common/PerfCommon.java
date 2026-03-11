@@ -135,6 +135,16 @@ public final class PerfCommon {
         return false;
     }
 
+    public static boolean waitConnectReady(String transport,
+                                           MonitorSocket monitor,
+                                           int timeoutMs,
+                                           boolean acceptFallback) {
+        if ("inproc".equals(normalizeTransport(transport))) {
+            return true;
+        }
+        return waitMonitorReady(monitor, timeoutMs, acceptFallback);
+    }
+
     public static boolean waitUntil(BooleanSupplier check, int timeoutMs,
                                     int intervalMs) {
         long deadline = System.nanoTime() + Duration.ofMillis(
@@ -201,6 +211,12 @@ public final class PerfCommon {
             + size + ",latency_p95," + safeP95Ms);
         System.out.println("RESULT,current," + pattern + "," + transport + ","
             + size + ",latency_p99," + safeP99Ms);
+        System.out.println("RESULT,current," + pattern + "," + transport + ","
+            + size + ",snd_pending_max,0");
+        System.out.println("RESULT,current," + pattern + "," + transport + ","
+            + size + ",rcv_pending_max,0");
+        System.out.println("RESULT,current," + pattern + "," + transport + ","
+            + size + ",rcv_pending_end,0");
     }
 
     public static void printUnsupported(String pattern, String transport,

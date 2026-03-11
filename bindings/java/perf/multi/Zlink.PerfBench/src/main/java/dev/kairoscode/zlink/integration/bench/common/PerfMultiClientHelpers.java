@@ -67,8 +67,9 @@ public final class PerfMultiClientHelpers {
             return readyCount;
         }
 
+        long boundedTimeoutMs = Math.max(0L, timeoutMs);
         long deadlineNs = System.nanoTime()
-            + (long) Math.max(1, timeoutMs) * 1_000_000L;
+            + boundedTimeoutMs * 1_000_000L;
         try (SocketPollSet pollSet = new SocketPollSet(activeCount)) {
             for (int i = 0; i < activeCount; i++) {
                 pollSet.setSocket(i, monitors.get(activeIndices[i]).socket(),
@@ -80,8 +81,8 @@ public final class PerfMultiClientHelpers {
                 if (remainNs <= 0L) {
                     break;
                 }
-                int readyEvents = pollSet.poll((int) Math.max(1L,
-                    remainNs / 1_000_000L));
+                int timeoutSliceMs = (int) Math.max(0L, remainNs / 1_000_000L);
+                int readyEvents = pollSet.poll(timeoutSliceMs);
                 if (readyEvents <= 0) {
                     continue;
                 }
@@ -114,9 +115,14 @@ public final class PerfMultiClientHelpers {
             return false;
         }
 
-        int readyCount = 0;
+        int readyCount = drainMonitorReadyCount(monitor, false);
+        if (readyCount >= expectedReady) {
+            return true;
+        }
+
+        long boundedTimeoutMs = Math.max(0L, timeoutMs);
         long deadlineNs = System.nanoTime()
-            + (long) Math.max(1, timeoutMs) * 1_000_000L;
+            + boundedTimeoutMs * 1_000_000L;
         try (SocketPollSet pollSet = new SocketPollSet(1)) {
             pollSet.setSocket(0, monitor.socket(), PollEventType.POLLIN.getValue());
 
@@ -125,8 +131,8 @@ public final class PerfMultiClientHelpers {
                 if (remainNs <= 0L) {
                     break;
                 }
-                int readyEvents = pollSet.poll((int) Math.max(1L,
-                    remainNs / 1_000_000L));
+                int timeoutSliceMs = (int) Math.max(0L, remainNs / 1_000_000L);
+                int readyEvents = pollSet.poll(timeoutSliceMs);
                 if (readyEvents <= 0
                     || !pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
                     continue;

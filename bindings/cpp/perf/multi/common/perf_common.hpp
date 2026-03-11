@@ -469,6 +469,64 @@ inline void settle ()
     std::this_thread::sleep_for (std::chrono::milliseconds (300));
 }
 
+inline bool debug_header_trace_enabled ()
+{
+    return std::getenv ("PERF_DEBUG_HEADER_TRACE") != NULL;
+}
+
+inline int debug_header_trace_limit ()
+{
+    const char *env = std::getenv ("PERF_DEBUG_HEADER_TRACE_LIMIT");
+    if (!env || !*env)
+        return 8;
+
+    char *end = NULL;
+    const long parsed = std::strtol (env, &end, 10);
+    if (end == env || *end != '\0' || parsed <= 0)
+        return 8;
+    if (parsed > INT_MAX)
+        return INT_MAX;
+    return static_cast<int> (parsed);
+}
+
+inline void debug_header_trace (const char *role,
+                                const std::string &pattern,
+                                const std::string &transport,
+                                size_t size,
+                                const char *stage,
+                                uint32_t phase,
+                                uint32_t run_id,
+                                uint64_t seq,
+                                uint64_t sent_ts_us,
+                                uint64_t observed_ts_us,
+                                double latency_us)
+{
+    if (!debug_header_trace_enabled ())
+        return;
+
+    static int remaining = debug_header_trace_limit ();
+    if (remaining <= 0)
+        return;
+    --remaining;
+
+    std::cerr << "HEADER_TRACE"
+              << ",role=" << (role ? role : "")
+              << ",pattern=" << pattern
+              << ",transport=" << transport
+              << ",size=" << size
+              << ",stage=" << (stage ? stage : "")
+              << ",phase=" << phase
+              << ",run_id=" << run_id
+              << ",seq=" << seq
+              << ",sent_ts_us=" << sent_ts_us
+              << ",observed_ts_us=" << observed_ts_us;
+    if (latency_us >= 0.0) {
+        std::cerr << ",latency_us=" << std::fixed << std::setprecision (3)
+                  << latency_us;
+    }
+    std::cerr << std::endl;
+}
+
 inline bool is_stop_token (const void *data, size_t size)
 {
     const size_t token_size = std::strlen (k_stop_token);
@@ -514,19 +572,19 @@ inline void print_result (const std::string &lib,
     const double p99_ms = p99_us / 1000.0;
 
     std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",throughput," << std::fixed << std::setprecision (2) << throughput
+              << ",throughput," << std::fixed << std::setprecision (3) << throughput
               << std::endl;
     std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",bandwidth," << std::fixed << std::setprecision (2) << bandwidth
+              << ",bandwidth," << std::fixed << std::setprecision (3) << bandwidth
               << std::endl;
     std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",latency," << std::fixed << std::setprecision (2) << latency_ms
+              << ",latency," << std::fixed << std::setprecision (3) << latency_ms
               << std::endl;
     std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",latency_p95," << std::fixed << std::setprecision (2) << p95_ms
+              << ",latency_p95," << std::fixed << std::setprecision (3) << p95_ms
               << std::endl;
     std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",latency_p99," << std::fixed << std::setprecision (2) << p99_ms
+              << ",latency_p99," << std::fixed << std::setprecision (3) << p99_ms
               << std::endl;
 }
 

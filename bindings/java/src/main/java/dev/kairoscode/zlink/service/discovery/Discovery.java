@@ -21,6 +21,11 @@ import java.util.List;
 import java.util.Objects;
 
 public final class Discovery implements AutoCloseable {
+    private static final int ERRNO_EINTR = 4;
+    private static final int ERRNO_EAGAIN = 11;
+    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+    private static final long RETRY_TIMEOUT_NS = 10_000_000_000L;
+    private static final long RETRY_SLEEP_MS = 20L;
     private MemorySegment handle;
 
     public Discovery(Context ctx, ServiceType serviceType) {
@@ -34,12 +39,15 @@ public final class Discovery implements AutoCloseable {
     }
 
     public void connectRegistry(String registryEndpoint) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.discoveryConnectRegistry(handle,
-                NativeHelpers.toCString(arena, registryEndpoint));
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_discovery_connect_registry");
-        }
+        retryTransient("zlink_discovery_connect_registry", () -> {
+            try (Arena arena = Arena.ofConfined()) {
+                int rc = Native.discoveryConnectRegistry(handle,
+                    NativeHelpers.toCString(arena, registryEndpoint));
+                if (rc != 0)
+                    throw ZlinkException.fromLastError(
+                        "zlink_discovery_connect_registry");
+            }
+        });
     }
 
     public void subscribe(String serviceName) {
@@ -218,5 +226,38 @@ public final class Discovery implements AutoCloseable {
         throw new UnsupportedOperationException(
           "Discovery socket option '" + optionName
             + "' is not supported by the current core API.");
+    }
+
+    private static void retryTransient(String operation, Runnable action) {
+        ZlinkException last = null;
+        long deadlineNs = System.nanoTime() + RETRY_TIMEOUT_NS;
+        while (System.nanoTime() < deadlineNs) {
+            try {
+                action.run();
+                return;
+            } catch (ZlinkException ex) {
+                if (!isTransient(ex.errno()))
+                    throw ex;
+                last = ex;
+            }
+            sleepRetry();
+        }
+
+        if (last != null)
+            throw last;
+        throw new IllegalStateException(operation + " timed out");
+    }
+
+    private static boolean isTransient(int errno) {
+        return errno == ERRNO_EINTR || errno == ERRNO_EAGAIN
+               || errno == ERRNO_EWOULDBLOCK_WIN;
+    }
+
+    private static void sleepRetry() {
+        try {
+            Thread.sleep(RETRY_SLEEP_MS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

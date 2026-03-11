@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using Zlink;
 using static PerfRunner;
@@ -8,8 +7,6 @@ using static PerfRunner;
 internal static class PerfStreamCallbackServer
 {
     private const string Pattern = "STREAM_CALLBACK";
-    private const int StreamBacklogFloor = 4096;
-    private const int ReadyDelayMs = 200;
 
     private enum SendStatus
     {
@@ -21,12 +18,13 @@ internal static class PerfStreamCallbackServer
     internal static int Run(string transport, int size)
     {
         size = Math.Max(1, size);
-        int warmupSeconds = ResolveMultiWarmupSeconds();
-        int durationSeconds = ResolveMultiDurationSeconds();
-        int settleMs = ResolveMultiSettleMs();
-        int rcvTimeoutMs = ResolveMultiRcvTimeoutMs();
-        int settleSeconds = (settleMs + 999) / 1000;
-        int backlog = Math.Max(StreamBacklogFloor, ResolveClients(Pattern));
+        if (!IsCoreStreamServerTransport(transport))
+        {
+            Console.WriteLine($"UNSUPPORTED,current,{Pattern},{transport}");
+            return 0;
+        }
+
+        int ioTimeoutMs = ResolveStreamIoTimeoutMs();
         int pendingCapacity = ResolvePendingCapacity();
         string endpoint = MultiEndpointFor(transport, "multi-stream-callback");
 
@@ -35,21 +33,15 @@ internal static class PerfStreamCallbackServer
         using var server = new Zlink.Socket(ctx, Zlink.SocketType.Stream);
         ApplyMultiSocketOptions(server, Pattern);
         ConfigureTlsServerIfNeeded(server, transport);
-        server.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
-        server.SetOption(SocketOptions.Backlog, backlog);
+        server.SetOption(SocketOptions.SndTimeo, ioTimeoutMs);
+        server.SetOption(SocketOptions.RcvTimeo, ioTimeoutMs);
+        server.SetOption(SocketOptions.TcpNoDelay, 1);
 
-        int stopRequested = 0;
+        var control = new ControlState();
         int callbackFailed = 0;
-        long payloadSeen = 0;
-        long lastActivityTicks = Stopwatch.GetTimestamp();
-        object pendingLock = new object();
-        var stopParsers = new Dictionary<uint, Len32StopTokenParser>();
+        object pendingLock = new();
         PendingStreamPacket[] pending = CreatePendingMessages(pendingCapacity);
         int pendingCount = 0;
-        using var activitySignal = new AutoResetEvent(false);
-        using var poller = new Poller();
-        poller.Add(server, PollEvents.None);
-        var pollEvents = new List<PollEvent>(1);
 
         StreamPacketHandler rawHandler = (rid, payload) =>
         {
@@ -59,19 +51,6 @@ internal static class PerfStreamCallbackServer
                 payload.Dispose();
                 return 0;
             }
-
-            if (payloadBytes.SequenceEqual(MultiStopToken)
-                || ConsumeLen32StopToken(stopParsers, pendingLock, rid,
-                    payloadBytes))
-            {
-                Interlocked.Exchange(ref stopRequested, 1);
-                payload.Dispose();
-                activitySignal.Set();
-                return 0;
-            }
-
-            Interlocked.Increment(ref payloadSeen);
-            Interlocked.Exchange(ref lastActivityTicks, Stopwatch.GetTimestamp());
 
             lock (pendingLock)
             {
@@ -85,41 +64,37 @@ internal static class PerfStreamCallbackServer
                     {
                         request.Clear();
                         Interlocked.Exchange(ref callbackFailed, 1);
-                        Interlocked.Exchange(ref stopRequested, 1);
+                        return 1;
                     }
                 }
                 else if (sendStatus == SendStatus.Fatal)
                 {
                     request.Clear();
                     Interlocked.Exchange(ref callbackFailed, 1);
-                    Interlocked.Exchange(ref stopRequested, 1);
+                    return 1;
                 }
             }
 
-            activitySignal.Set();
             return 0;
         };
 
         server.AttachStreamRaw(rawHandler);
         server.Bind(endpoint);
         Console.WriteLine($"READY,{endpoint}");
-        Thread.Sleep(ReadyDelayMs);
+        StartControlWatcher(control);
 
-        long firstPacketDeadlineTicks = Stopwatch.GetTimestamp()
-            + (long)Math.Max(8, warmupSeconds + durationSeconds + settleSeconds + 5)
-            * Stopwatch.Frequency;
-        long idleBreakTicks = (long)(Stopwatch.Frequency
-            * (Math.Max(rcvTimeoutMs * 2, 1000) / 1000.0));
-        while (Volatile.Read(ref stopRequested) == 0)
+        int rc = 0;
+        using var poller = new Poller();
+        poller.Add(server, PollEvents.None);
+        var pollEvents = new List<PollEvent>(1);
+        while (Volatile.Read(ref control.StopRequested) == 0)
         {
+            EmitRequestedQueueProbe(server, transport, size, control);
             if (Volatile.Read(ref callbackFailed) != 0)
-                return 2;
-
-            int waitMs = ComputeWaitTimeout(Volatile.Read(ref payloadSeen),
-                Volatile.Read(ref lastActivityTicks), firstPacketDeadlineTicks,
-                idleBreakTicks);
-            if (waitMs <= 0)
+            {
+                rc = 1;
                 break;
+            }
 
             bool havePending;
             lock (pendingLock)
@@ -131,11 +106,11 @@ internal static class PerfStreamCallbackServer
 
             if (!havePending)
             {
-                activitySignal.WaitOne(Math.Min(waitMs, 50));
+                Thread.Sleep(50);
                 continue;
             }
 
-            if (!WaitForEvents(poller, pollEvents, waitMs))
+            if (!WaitForEvents(poller, pollEvents, 50))
                 continue;
 
             bool writable = false;
@@ -154,9 +129,8 @@ internal static class PerfStreamCallbackServer
             {
                 if (!FlushPendingMessages(server, pending, ref pendingCount))
                 {
-                    Interlocked.Exchange(ref callbackFailed, 1);
-                    Interlocked.Exchange(ref stopRequested, 1);
-                    return 2;
+                    rc = 1;
+                    break;
                 }
             }
         }
@@ -170,7 +144,61 @@ internal static class PerfStreamCallbackServer
         {
         }
 
-        return Volatile.Read(ref callbackFailed) == 0 ? 0 : 2;
+        PrintServerQueueMetrics(Pattern, transport, size,
+            SampleServerQueueStats(server));
+        return rc;
+    }
+
+    private static void StartControlWatcher(ControlState control)
+    {
+        Thread watcher = new(() =>
+        {
+            try
+            {
+                string? line;
+                while ((line = Console.In.ReadLine()) != null)
+                {
+                    if (TryParseQueueProbe(line, out int requestedSize))
+                    {
+                        Interlocked.Exchange(ref control.QueueProbeSize, requestedSize);
+                        Interlocked.Exchange(ref control.QueueProbePending, 1);
+                        continue;
+                    }
+                    if (line == "STOP" || line == "QUIT")
+                    {
+                        Interlocked.Exchange(ref control.StopRequested, 1);
+                        return;
+                    }
+                }
+            }
+            finally
+            {
+                Interlocked.Exchange(ref control.StopRequested, 1);
+            }
+        });
+        watcher.IsBackground = true;
+        watcher.Start();
+    }
+
+    private static bool TryParseQueueProbe(string line, out int size)
+    {
+        size = 0;
+        if (string.IsNullOrWhiteSpace(line)
+            || !line.StartsWith("QUEUE,", StringComparison.Ordinal))
+            return false;
+        return int.TryParse(line.AsSpan("QUEUE,".Length), out size) && size > 0;
+    }
+
+    private static void EmitRequestedQueueProbe(Zlink.Socket server,
+        string transport, int fallbackSize, ControlState control)
+    {
+        if (Interlocked.Exchange(ref control.QueueProbePending, 0) == 0)
+            return;
+        int size = (int)Math.Max(1L, Interlocked.Read(ref control.QueueProbeSize));
+        if (size <= 0)
+            size = fallbackSize;
+        PrintServerQueueMetrics(Pattern, transport, size,
+            SampleServerQueueStats(server));
     }
 
     private static int ResolvePendingCapacity()
@@ -179,23 +207,6 @@ internal static class PerfStreamCallbackServer
         int hwm = ResolveHwm(Pattern);
         long capacity = Math.Max(64L, Math.Max(clients, Math.Max(1, hwm)) * 2L);
         return capacity > int.MaxValue ? int.MaxValue : (int)capacity;
-    }
-
-    private static int ComputeWaitTimeout(long payloadSeen,
-        long lastActivityTicks, long firstPacketDeadlineTicks,
-        long idleBreakTicks)
-    {
-        long nowTicks = Stopwatch.GetTimestamp();
-        long remainingTicks = payloadSeen > 0
-            ? idleBreakTicks - (nowTicks - lastActivityTicks)
-            : firstPacketDeadlineTicks - nowTicks;
-        if (remainingTicks <= 0)
-            return 0;
-        long timeoutMs = (remainingTicks * 1000 + Stopwatch.Frequency - 1)
-            / Stopwatch.Frequency;
-        return timeoutMs <= 0 ? 1 : timeoutMs > int.MaxValue
-            ? int.MaxValue
-            : (int)timeoutMs;
     }
 
     private static PendingStreamPacket[] CreatePendingMessages(int capacity)
@@ -269,24 +280,9 @@ internal static class PerfStreamCallbackServer
         }
     }
 
-    private static bool ConsumeLen32StopToken(
-        Dictionary<uint, Len32StopTokenParser> stopParsers, object sync,
-        uint routingId, ReadOnlySpan<byte> payload)
-    {
-        lock (sync)
-        {
-            if (!stopParsers.TryGetValue(routingId, out Len32StopTokenParser? parser))
-            {
-                parser = new Len32StopTokenParser();
-                stopParsers[routingId] = parser;
-            }
-            return parser.Consume(payload);
-        }
-    }
-
     private static bool IsStreamEventPayload(ReadOnlySpan<byte> payload)
     {
-        return payload.Length == 1 && (payload[0] == 0x00 || payload[0] == 0x01);
+        return payload.Length == 0;
     }
 
     private sealed class PendingStreamPacket
@@ -316,5 +312,12 @@ internal static class PerfStreamCallbackServer
             Payload = null;
             RoutingId = 0;
         }
+    }
+
+    private sealed class ControlState
+    {
+        internal int StopRequested;
+        internal long QueueProbeSize;
+        internal int QueueProbePending;
     }
 }

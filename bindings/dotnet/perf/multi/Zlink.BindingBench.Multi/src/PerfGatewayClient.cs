@@ -9,7 +9,7 @@ using static PerfRunner;
 internal static class PerfGatewayClient
 {
     private const string Pattern = "GATEWAY";
-    private const string ServerServiceName = "perf-gateway";
+    private const string ServerServiceName = "perf-server";
     private const string ClientServicePrefix = "c";
     private const uint RunId = 1;
 
@@ -34,22 +34,14 @@ internal static class PerfGatewayClient
             ConnectRegistryWithRetry(() => discovery.ConnectRegistry(
                 registryRouter));
             discovery.Subscribe(ServerServiceName);
-            if (!WaitUntil(() => discovery.ReceiverCount(ServerServiceName) > 0,
-                    config.ReadyTimeoutMs))
-            {
-                Console.Error.WriteLine(
-                    "multi_client_error:gateway_discovery_not_ready");
-                return 2;
-            }
-
-            string? serverRoutingId = ResolveServerRoutingId(discovery);
 
             for (int i = 0; i < config.ClientCount; i++)
             {
                 string clientServiceName = $"{ClientServicePrefix}{i}";
                 GatewayClientSlot slot = CreateGatewayClientSlot(ctx, discovery,
                     config.Transport, Pattern, registryRouter,
-                    clientServiceName, serverRoutingId, i, config.Size,
+                    clientServiceName, null, i, config.Size,
+                    config.ReadyTimeoutMs,
                     config.SndTimeoutMs, config.RcvTimeoutMs);
                 slots.Add(slot);
             }
@@ -59,6 +51,19 @@ internal static class PerfGatewayClient
                 Console.Error.WriteLine("multi_client_error:no_ready_connections");
                 return 2;
             }
+
+            if (!WaitUntil(() =>
+                    discovery.ServiceAvailable(ServerServiceName),
+                    checked(config.ReadyTimeoutMs * 4), 10))
+            {
+                Console.Error.WriteLine(
+                    "multi_client_error:gateway_discovery_not_ready");
+                return 2;
+            }
+
+            string? serverRoutingId = ResolveServerRoutingId(discovery);
+            for (int i = 0; i < slots.Count; i++)
+                slots[i].ServerRoutingId = serverRoutingId;
 
             if (!PrimeRoundtripAllSlots(slots, config))
             {
@@ -206,7 +211,8 @@ internal static class PerfGatewayClient
     private static GatewayClientSlot CreateGatewayClientSlot(Context ctx,
         Discovery discovery, string transport, string pattern,
         string registryRouter, string clientServiceName, string? serverRoutingId,
-        int index, int payloadCapacity, int sndTimeoutMs, int rcvTimeoutMs)
+        int index, int payloadCapacity, int readyTimeoutMs, int sndTimeoutMs,
+        int rcvTimeoutMs)
     {
         var receiver = new Receiver(ctx, clientServiceName);
         ConfigureReceiverTlsServerIfNeeded(receiver, transport);
@@ -215,6 +221,13 @@ internal static class PerfGatewayClient
         receiver.Bind(receiverEndpoint);
         ConnectRegistryWithRetry(() => receiver.ConnectRegistry(registryRouter));
         receiver.Register(clientServiceName, receiverEndpoint, 1);
+        if (!WaitUntil(() =>
+                receiver.GetRegisterResult(clientServiceName).Status == 0,
+                readyTimeoutMs, 10))
+        {
+            throw new TimeoutException(
+                $"gateway client receiver register timeout: {clientServiceName}");
+        }
         ApplyReceiverSocketOptions(receiver, pattern, sndTimeoutMs, rcvTimeoutMs);
 
         var gateway = new Gateway(ctx, discovery, clientServiceName);
@@ -843,7 +856,7 @@ internal static class PerfGatewayClient
         internal Receiver Receiver { get; }
         internal Gateway Gateway { get; }
         internal Gateway.PreparedService ServerService { get; }
-        internal string? ServerRoutingId { get; }
+        internal string? ServerRoutingId { get; set; }
         internal byte[] Payload { get; }
         internal byte[] Recv { get; }
 

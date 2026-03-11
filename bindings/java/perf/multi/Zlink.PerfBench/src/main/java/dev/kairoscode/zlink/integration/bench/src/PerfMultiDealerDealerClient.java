@@ -96,7 +96,6 @@ public final class PerfMultiDealerDealerClient {
         int settleMs = PerfMultiCommon.resolveSettleMs();
         int connectTimeoutMs = PerfMultiCommon.resolveConnectReadyTimeoutMs();
         int payloadSize = Math.max(msgSize, MIN_PAYLOAD_BYTES);
-        int pollTimeoutMs = Math.max(0, PerfMultiCommon.resolveClientPollTimeoutMs());
 
         try (Context context = new Context()) {
             PerfCommon.applyClientContextOptions(context);
@@ -137,17 +136,17 @@ public final class PerfMultiDealerDealerClient {
                 try (SocketPollSet pollSet = SocketPollSet.fromSockets(sockets, 0)) {
                     SendPhaseResult warmup = runSendPhase(sockets, pendingSends,
                         pollSet, runId, msgSize, 1L, warmupSeconds * NANOS_PER_SECOND,
-                        Phase.WARMUP, 0, pollTimeoutMs, true);
+                        Phase.WARMUP, 0, true);
 
                     SendPhaseResult drain = runSendPhase(sockets, pendingSends,
                         pollSet, runId, msgSize, warmup.nextSeq,
                         Math.max(0L, (long) settleMs) * NANOS_PER_MILLISECOND,
-                        Phase.DRAIN, warmup.nextIndex, pollTimeoutMs, false);
+                        Phase.DRAIN, warmup.nextIndex, false);
 
                     SendPhaseResult active = runSendPhase(sockets, pendingSends,
                         pollSet, runId, msgSize, drain.nextSeq,
                         Math.max(1L, durationSeconds) * NANOS_PER_SECOND,
-                        Phase.ACTIVE, drain.nextIndex, pollTimeoutMs, true);
+                        Phase.ACTIVE, drain.nextIndex, true);
                     if (!active.anySent) {
                         System.err.println(
                             "ERROR,MULTI_DEALER_DEALER,client,no_active_send");
@@ -181,7 +180,6 @@ public final class PerfMultiDealerDealerClient {
                                                 long durationNs,
                                                 Phase phase,
                                                 int indexStart,
-                                                int pollTimeoutMs,
                                                 boolean sendActive) {
         if (durationNs <= 0L) {
             return new SendPhaseResult(seqStart, indexStart, false);
@@ -249,8 +247,7 @@ public final class PerfMultiDealerDealerClient {
                 continue;
             }
 
-            int timeoutMs = resolveSendPollTimeoutMs(progressed, deadlineNs,
-                pollTimeoutMs);
+            int timeoutMs = resolveSendPollTimeoutMs(progressed, deadlineNs);
             pollSet.poll(timeoutMs);
         }
 
@@ -289,8 +286,7 @@ public final class PerfMultiDealerDealerClient {
     }
 
     private static int resolveSendPollTimeoutMs(boolean progressed,
-                                                long deadlineNs,
-                                                int pollTimeoutMs) {
+                                                long deadlineNs) {
         if (progressed) {
             return 0;
         }
@@ -299,9 +295,8 @@ public final class PerfMultiDealerDealerClient {
             return 0;
         }
         long remainMs = remainNs / NANOS_PER_MILLISECOND;
-        int baseTimeoutMs = pollTimeoutMs > 0 ? pollTimeoutMs
-            : SEND_BACKOFF_POLL_TIMEOUT_MS;
-        return (int) Math.min(baseTimeoutMs, Math.max(0L, remainMs));
+        return (int) Math.min(SEND_BACKOFF_POLL_TIMEOUT_MS,
+            Math.max(0L, remainMs));
     }
 
     private static PendingSend[] createPendingSends(int count, int payloadSize) {

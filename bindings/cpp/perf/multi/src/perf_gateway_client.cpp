@@ -466,6 +466,19 @@ class gateway_client_bench_t
                                              sent_ts)) {
                 return false;
             }
+            if (phase == perf_metric::phase_active) {
+                perf::multi::debug_header_trace ("client",
+                                                k_pattern_result,
+                                                _transport,
+                                                _msg_size,
+                                                "send",
+                                                static_cast<uint32_t> (phase),
+                                                _run_id,
+                                                _seq - 1,
+                                                sent_ts,
+                                                sent_ts,
+                                                -1.0);
+            }
         }
 
         if (state.gateway->send (k_server_service_name,
@@ -555,8 +568,19 @@ class gateway_client_bench_t
                 const uint64_t now_us = perf_metric::now_us ();
                 const double latency_us =
                   now_us >= header.sent_ts_us
-                    ? static_cast<double> (now_us - header.sent_ts_us)
+                    ? static_cast<double> (now_us - header.sent_ts_us) * 0.5
                     : 0.0;
+                perf::multi::debug_header_trace ("client",
+                                                k_pattern_result,
+                                                _transport,
+                                                _msg_size,
+                                                "recv",
+                                                header.phase,
+                                                header.run_id,
+                                                header.seq,
+                                                header.sent_ts_us,
+                                                now_us,
+                                                latency_us);
                 lat_out->add (latency_us);
             }
         }

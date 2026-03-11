@@ -551,6 +551,24 @@ class gateway_server_bench_t
             }
 
             payload_out->assign (_recv_buffer.begin (), _recv_buffer.begin () + received);
+            perf_metric::header_t header;
+            if (perf_metric::decode_payload_header (payload_out->data (),
+                                                    payload_out->size (),
+                                                    &header)
+                && header.phase
+                     == static_cast<uint32_t> (perf_metric::phase_active)) {
+                perf::multi::debug_header_trace ("server",
+                                                k_pattern_result,
+                                                _transport,
+                                                header.msg_size,
+                                                "recv",
+                                                header.phase,
+                                                header.run_id,
+                                                header.seq,
+                                                header.sent_ts_us,
+                                                perf_metric::now_us (),
+                                                -1.0);
+            }
             return 1;
         }
     }
@@ -560,6 +578,24 @@ class gateway_server_bench_t
         if (slot_index >= _client_services.size ()) {
             errno = EINVAL;
             return -1;
+        }
+        perf_metric::header_t header;
+        const bool header_ok =
+          perf_metric::decode_payload_header (
+            payload.empty () ? NULL : payload.data (), payload.size (), &header);
+        if (header_ok
+            && header.phase == static_cast<uint32_t> (perf_metric::phase_active)) {
+            perf::multi::debug_header_trace ("server",
+                                            k_pattern_result,
+                                            _transport,
+                                            header.msg_size,
+                                            "send",
+                                            header.phase,
+                                            header.run_id,
+                                            header.seq,
+                                            header.sent_ts_us,
+                                            perf_metric::now_us (),
+                                            -1.0);
         }
         if (_gateway->send (_client_services[slot_index],
                             payload.empty () ? NULL : payload.data (),

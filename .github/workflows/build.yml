@@ -23,7 +23,7 @@ env:
 jobs:
   read-versions:
     name: Read Version Information
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       libzlink_version: ${{ steps.versions.outputs.libzlink_version }}
       libzlink_lib_suffix: ${{ steps.versions.outputs.libzlink_lib_suffix }}
@@ -96,7 +96,7 @@ jobs:
             -DBUILD_SHARED=ON `
             -DBUILD_STATIC=OFF `
             -DBUILD_TESTS=ON `
-            -DZLINK_CXX_STANDARD=20 `
+            -DZLINK_CXX_STANDARD=17 `
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR"
           cmake --build . --config Release --parallel
           cmake --install . --config Release --prefix ../core/dist/windows-x64
@@ -173,7 +173,7 @@ jobs:
             -DBUILD_SHARED=ON `
             -DBUILD_STATIC=OFF `
             -DBUILD_TESTS=OFF `
-            -DZLINK_CXX_STANDARD=20 `
+            -DZLINK_CXX_STANDARD=17 `
             -DWITH_TLS=ON `
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
@@ -189,7 +189,7 @@ jobs:
 
   build-linux:
     name: Build Linux x64
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: read-versions
     steps:
       - name: Checkout repository
@@ -221,7 +221,7 @@ jobs:
 
   build-linux-arm64:
     name: Build Linux ARM64
-    runs-on: ubuntu-22.04-arm
+    runs-on: ubuntu-24.04-arm
     needs: read-versions
     steps:
       - name: Checkout repository
@@ -326,7 +326,7 @@ jobs:
 
   verify:
     name: Verify Build Artifacts
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs:
       - read-versions
       - build-windows
@@ -388,7 +388,7 @@ jobs:
 
   release:
     name: Create Release
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs:
       - read-versions
       - verify

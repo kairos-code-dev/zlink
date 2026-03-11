@@ -52,21 +52,10 @@ internal static class PerfPubSubServer
         if (settleMs > 0)
             Thread.Sleep(settleMs);
 
-        long benchStartTicks = Stopwatch.GetTimestamp();
-        long benchDeadlineTicks = benchStartTicks
+        long benchDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
-        long sendCount = RunPublishPhase(server, pollSockets, payload, runId,
+        _ = RunPublishPhase(server, pollSockets, payload, runId,
             size, PerfPhase.Active, ref seq, benchDeadlineTicks);
-        long benchEndTicks = Stopwatch.GetTimestamp();
-
-        double elapsedSeconds = (benchEndTicks - benchStartTicks)
-            / (double)Stopwatch.Frequency;
-        double configuredSeconds = Math.Max(1.0, durationSeconds);
-        double throughput = sendCount / configuredSeconds;
-        double latencyUs = (configuredSeconds * 1_000_000.0)
-            / Math.Max(1.0, sendCount);
-        PrintResult(pattern, transport, size, throughput, latencyUs,
-            latencyUs, latencyUs);
 
         return 0;
     }

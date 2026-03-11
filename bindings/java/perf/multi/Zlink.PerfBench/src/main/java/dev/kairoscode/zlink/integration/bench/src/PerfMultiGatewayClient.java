@@ -40,6 +40,22 @@ public final class PerfMultiGatewayClient {
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+    private static final int ERRNO_ENOENT = 2;
+    private static final int ERRNO_ENOTCONN = 57;
+    private static final int ERRNO_ENOTCONN_LINUX = 107;
+    private static final int ERRNO_ETIMEDOUT = 60;
+    private static final int ERRNO_ETIMEDOUT_LINUX = 110;
+    private static final int ERRNO_ECONNREFUSED = 61;
+    private static final int ERRNO_ECONNREFUSED_LINUX = 111;
+    private static final int ERRNO_EHOSTUNREACH = 65;
+    private static final int ERRNO_EHOSTUNREACH_LINUX = 113;
+    private static final int ERRNO_ECONNABORTED = 103;
+    private static final int ERRNO_ECONNRESET = 104;
+    private static final int ERRNO_WSAENOTCONN = 10057;
+    private static final int ERRNO_WSAETIMEDOUT = 10060;
+    private static final int ERRNO_WSAECONNREFUSED = 10061;
+    private static final int ERRNO_WSAEHOSTUNREACH = 10065;
+    private static final int ERRNO_EFSM = 156384763;
 
     private PerfMultiGatewayClient() {
     }
@@ -70,15 +86,14 @@ public final class PerfMultiGatewayClient {
         int payloadSize = Math.max(msgSize, Math.max(MIN_PAYLOAD_BYTES,
             HEADER_BYTES));
 
-        try (Context context = new Context();
-             Discovery discovery = new Discovery(context, ServiceType.GATEWAY)) {
+        try (Context context = new Context()) {
             PerfCommon.applyClientContextOptions(context);
-            connectRegistryWithRetry(() ->
-                discovery.connectRegistry(endpoint.registryRouter()));
-            discovery.subscribe(SERVICE_NAME);
-
+            Discovery discovery = null;
             List<ClientSlot> slots = new ArrayList<>(clients);
             try {
+                discovery = createConnectedDiscovery(context,
+                    endpoint.registryRouter());
+                final Discovery readyDiscovery = discovery;
                 for (int i = 0; i < clients; i++) {
                     slots.add(createClientSlot(context, discovery, transport,
                         endpoint.registryRouter(), i, connectTimeoutMs,
@@ -86,8 +101,8 @@ public final class PerfMultiGatewayClient {
                 }
 
                 if (!PerfCommon.waitUntil(
-                    () -> discovery.receiverCount(SERVICE_NAME) > 0,
-                    connectTimeoutMs,
+                    () -> readyDiscovery.serviceAvailable(SERVICE_NAME),
+                    connectTimeoutMs * 4,
                     10)) {
                     return 2;
                 }
@@ -142,10 +157,24 @@ public final class PerfMultiGatewayClient {
                 return 0;
             } finally {
                 closeSlots(slots);
+                closeQuietly(discovery);
             }
         } catch (RuntimeException ex) {
             logFailure("client", ex);
             return 2;
+        }
+    }
+
+    private static Discovery createConnectedDiscovery(Context context,
+                                                      String registryRouter) {
+        Discovery discovery = new Discovery(context, ServiceType.GATEWAY);
+        try {
+            discovery.connectRegistry(registryRouter);
+            discovery.subscribe(SERVICE_NAME);
+            return discovery;
+        } catch (RuntimeException ex) {
+            closeQuietly(discovery);
+            throw ex;
         }
     }
 
@@ -169,7 +198,7 @@ public final class PerfMultiGatewayClient {
                 "multi-gateway-client-" + index);
             receiver.bind(receiverEndpoint);
             connectReceiverRegistryWithRetry(receiver, registryRouterEndpoint);
-            receiver.register(serviceName, receiverEndpoint, 1);
+            registerReceiverWithRetry(receiver, serviceName, receiverEndpoint);
             if (!waitReceiverRegistered(receiver, serviceName, readyTimeoutMs)) {
                 throw new IllegalStateException(
                     "gateway_client_receiver_register_not_ready");
@@ -330,7 +359,7 @@ public final class PerfMultiGatewayClient {
                         && header.phase == PerfMultiMetricHeader.PHASE_ACTIVE
                         && header.msgSize == msgSize) {
                         long nowUs = PerfMultiMetricHeader.nowUs();
-                        reservoir.add(Math.max(0L, nowUs - header.sentTsUs));
+                        reservoir.add(Math.max(0L, nowUs - header.sentTsUs) / 2.0);
                         matchedCount++;
                     }
 
@@ -420,7 +449,7 @@ public final class PerfMultiGatewayClient {
                 if (isInterrupted(errno)) {
                     continue;
                 }
-                if (isWouldBlock(errno)) {
+                if (isGatewaySendBlocked(errno)) {
                     state.sendPending[index] = true;
                     sendPoller.modifyGateway(slot.gateway,
                         PollEventType.POLLOUT.getValue());
@@ -484,12 +513,13 @@ public final class PerfMultiGatewayClient {
                 if (isInterrupted(errno)) {
                     continue;
                 }
-                if (isWouldBlock(errno)) {
+                if (isGatewaySendBlocked(errno)) {
                     sendPending[index] = true;
                     sendPoller.modifyGateway(slot.gateway,
                         PollEventType.POLLOUT.getValue());
                     return true;
                 }
+                System.err.println("gateway_prime_send_errno=" + errno);
                 return false;
             }
         }
@@ -545,7 +575,13 @@ public final class PerfMultiGatewayClient {
 
     private static void connectReceiverRegistryWithRetry(Receiver receiver,
                                                          String endpoint) {
-        connectRegistryWithRetry(() -> receiver.connectRegistry(endpoint));
+        receiver.connectRegistry(endpoint);
+    }
+
+    private static void registerReceiverWithRetry(Receiver receiver,
+                                                  String serviceName,
+                                                  String endpoint) {
+        receiver.register(serviceName, endpoint, 1);
     }
 
     private static void applyReceiverOptions(Receiver receiver) {
@@ -586,6 +622,26 @@ public final class PerfMultiGatewayClient {
 
     private static boolean isWouldBlock(int errno) {
         return errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN;
+    }
+
+    private static boolean isGatewaySendBlocked(int errno) {
+        return isWouldBlock(errno)
+            || errno == ERRNO_ENOENT
+            || errno == ERRNO_ENOTCONN
+            || errno == ERRNO_ENOTCONN_LINUX
+            || errno == ERRNO_ETIMEDOUT
+            || errno == ERRNO_ETIMEDOUT_LINUX
+            || errno == ERRNO_ECONNREFUSED
+            || errno == ERRNO_ECONNREFUSED_LINUX
+            || errno == ERRNO_EHOSTUNREACH
+            || errno == ERRNO_EHOSTUNREACH_LINUX
+            || errno == ERRNO_ECONNABORTED
+            || errno == ERRNO_ECONNRESET
+            || errno == ERRNO_WSAENOTCONN
+            || errno == ERRNO_WSAETIMEDOUT
+            || errno == ERRNO_WSAECONNREFUSED
+            || errno == ERRNO_WSAEHOSTUNREACH
+            || errno == ERRNO_EFSM;
     }
 
     private static boolean isInterrupted(int errno) {

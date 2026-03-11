@@ -59,7 +59,7 @@ public final class PerfRouterRouter {
             String endpoint = PerfCommon.endpointFor(transport, "router-router");
             receiver.bind(endpoint);
             sender.connect(endpoint);
-            if (!PerfCommon.waitMonitorReady(senderMonitor, 5000, true)
+            if (!PerfCommon.waitConnectReady(transport, senderMonitor, 5000, true)
                 || !performHandshake(receiver, sender)) {
                 return 2;
             }

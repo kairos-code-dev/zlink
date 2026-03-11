@@ -278,12 +278,6 @@ int zlink_gateway_set_lb_strategy (void *gateway,
   다시 노출하지 않는다.
 - `gateway`는 생성 시 discovery를 받지 않는다.
 - `zlink_gateway_attach_discovery()`는 선택적 topology source attach API다.
-- `zlink_discovery_connect_registry()`가 허용하는 registry 연결 transport는
-  `tcp`, `ws`, `wss`, `tls` 네 가지로 제한한다.
-- discovery/registry control-plane 연결에는 `ipc`, `inproc`, `pgm`, `epgm`,
-  `tipc` 등 허용 목록 밖 transport를 public canonical 범위에 포함하지 않는다.
-- 허용되지 않은 transport scheme로 `zlink_discovery_connect_registry()`를 호출하면
-  즉시 실패해야 하며, 이 문서 기준 `EPROTONOSUPPORT`를 반환한다.
 - discovery를 attach하지 않은 상태에서는 manual `connect` / `disconnect`를 허용한다.
 - 이미 manual peer/route가 존재하는 상태에서는 `zlink_gateway_attach_discovery()`를 허용하지 않는다.
   이 경우 `EBUSY`를 반환해 topology ownership 전환 시점을 호출자가 먼저 정리하게 한다.
@@ -325,6 +319,22 @@ int zlink_gateway_set_lb_strategy (void *gateway,
 - `zlink_gateway_update_peer_weight()` 성공 후 같은 `gateway`의 peer snapshot이 즉시 갱신된다.
 - 같은 service를 보는 다른 `gateway`/discovery view는 discovery/registry 동기화 후 변경된 `weight`를 관찰한다.
 - 존재하지 않는 `routing_id`에 대한 `zlink_gateway_update_peer_weight()`는 `ENOENT`를 반환한다.
+
+### 1.1 Discovery / Registry Transport 정책
+
+- discovery/registry control-plane 연결에서 허용하는 transport는
+  `tcp`, `ws`, `wss`, `tls` 네 가지로 제한한다.
+- 이 정책은 `zlink_discovery_connect_registry()`와 registry peer sync에 모두 적용한다.
+- registry peer sync는 각 registry가 광고한 peer PUB endpoint를 기준으로 연결되며,
+  허용 transport 안에서는 endpoint별 mixed deployment를 코드상 허용한다.
+- 다만 mixed transport deployment는 운영 복잡도와 장애 분석 비용을 늘리므로
+  비권장으로 본다. 동일 registry cluster는 가능한 한 하나의 transport family로
+  통일하는 쪽을 canonical 운영 정책으로 본다.
+- `ipc`, `inproc`, `pgm`, `epgm`, `tipc` 등 허용 목록 밖 transport는 public canonical
+  범위에 포함하지 않는다.
+- 허용되지 않은 transport scheme로
+  `zlink_discovery_connect_registry()` 또는 registry peer endpoint 구성을 시도하면
+  즉시 실패해야 하며, 이 문서 기준 `EPROTONOSUPPORT`를 반환한다.
 
 ## 2. Service option enum / 값 재배치 원칙
 
@@ -1143,15 +1153,24 @@ typedef enum zlink_topology_state_t
 
 - `gateway_attach_discovery()` / `spot_node_attach_discovery()` 이전에는
   manual `connect` / `disconnect`가 가능해야 한다.
-- `zlink_discovery_connect_registry()`는 `tcp`, `ws`, `wss`, `tls` endpoint만
-  허용해야 한다.
-- `ipc`, `inproc`, `pgm`, `epgm`, `tipc` 등 허용 목록 밖 transport로
-  `zlink_discovery_connect_registry()`를 호출하면 `EPROTONOSUPPORT`로 실패해야 한다.
 - manual peer/route가 하나라도 존재하는 상태에서
   `gateway_attach_discovery()` / `spot_node_attach_discovery()`를 호출하면
   `EBUSY`를 반환해야 한다.
 - discovery attach 이후에는 manual `connect` / `disconnect`가 금지되어야 한다.
 - discovery attach 이후 peer/topology 변화는 discovery-driven convergence로만 반영되어야 한다.
+
+### 6.3.1 Discovery / Registry transport 회귀
+
+- `zlink_discovery_connect_registry()`는 `tcp`, `ws`, `wss`, `tls` endpoint에서
+  성공 경로를 가져야 한다.
+- registry peer sync도 `tcp`, `ws`, `wss`, `tls` peer PUB endpoint에서
+  정상적으로 topology/service list convergence를 형성해야 한다.
+- 허용 transport 안의 mixed deployment
+  (예: registry A=`tcp`, B=`ws`, C=`tls`)도 peer sync와 topology convergence가
+  정상 동작해야 한다.
+- `ipc`, `inproc`, `pgm`, `epgm`, `tipc` 등 허용 목록 밖 transport로
+  discovery bootstrap 또는 registry peer 구성을 시도하면 `EPROTONOSUPPORT`로
+  실패해야 한다.
 
 ### 6.4 Public register 제거 정책
 

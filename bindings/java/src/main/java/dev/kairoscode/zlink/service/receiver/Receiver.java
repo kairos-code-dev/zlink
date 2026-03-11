@@ -12,6 +12,7 @@ import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
+import dev.kairoscode.zlink.internal.NativeMsg;
 import dev.kairoscode.zlink.options.SocketOptionKey;
 import dev.kairoscode.zlink.options.SocketOptionValueType;
 import java.lang.foreign.Arena;
@@ -29,6 +30,8 @@ public class Receiver implements AutoCloseable {
     private Arena sockOptArena = Arena.ofShared();
     private MemorySegment sockOptScratch = MemorySegment.NULL;
     private int sockOptScratchCapacity = 16;
+    private final ThreadLocal<RecvContext> recvScratch =
+      ThreadLocal.withInitial(RecvContext::new);
 
     public Receiver(Context ctx) {
         this(ctx, null);
@@ -249,6 +252,24 @@ public class Receiver implements AutoCloseable {
           "Receiver router socket handle is not exposed by the current core API.");
     }
 
+    public int recvSinglePayload(MemorySegment payloadBuffer,
+                                 ReceiveFlag flags) {
+        Objects.requireNonNull(payloadBuffer, "payloadBuffer");
+        RecvContext context = recvScratch.get();
+        int rc = Native.providerRecv(handle, context.partsPtr(),
+          context.partCount(), flags.getValue(), context.routingId());
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_receiver_recv");
+        long count = context.partCount().get(ValueLayout.JAVA_LONG, 0);
+        MemorySegment partsAddr = context.partsPtr().get(ValueLayout.ADDRESS, 0);
+        try {
+            return copySinglePartPayload(partsAddr, count, payloadBuffer);
+        } finally {
+            if (partsAddr.address() != 0 && count > 0)
+                NativeMsg.msgvClose(partsAddr, count);
+        }
+    }
+
     public List<PeerInfo> routerPeers() {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
@@ -290,6 +311,9 @@ public class Receiver implements AutoCloseable {
             return;
         Native.providerDestroy(handle);
         handle = MemorySegment.NULL;
+        RecvContext recvContext = recvScratch.get();
+        recvContext.close();
+        recvScratch.remove();
         closeArena(sockOptArena);
         sockOptArena = null;
         sockOptScratch = MemorySegment.NULL;
@@ -373,6 +397,74 @@ public class Receiver implements AutoCloseable {
             default -> throw new IllegalArgumentException(
               "unsupported Receiver socket option: " + optionId);
         };
+    }
+
+    private static int copySinglePartPayload(MemorySegment partsAddr, long count,
+                                             MemorySegment destination) {
+        if (partsAddr.address() == 0 || count == 0)
+            return 0;
+        if (count != 1) {
+            throw new IllegalStateException(
+              "recvSinglePayload expects exactly one message part");
+        }
+
+        MemorySegment parts = MemorySegment.ofAddress(partsAddr.address())
+          .reinterpret(NativeLayouts.MSG_LAYOUT.byteSize() * count);
+        MemorySegment msg = parts.asSlice(0, NativeLayouts.MSG_LAYOUT.byteSize());
+        long payloadSize = NativeMsg.msgSize(msg);
+        if (payloadSize <= 0)
+            return 0;
+        if (payloadSize > destination.byteSize()) {
+            throw new IllegalArgumentException("destination buffer too small");
+        }
+
+        MemorySegment data = NativeMsg.msgData(msg);
+        if (data.address() == 0)
+            return 0;
+        MemorySegment.copy(data.reinterpret(payloadSize), 0, destination, 0,
+          payloadSize);
+        return (int) payloadSize;
+    }
+
+    private static final class RecvContext implements AutoCloseable {
+        private Arena arena;
+        private final MemorySegment partsPtr;
+        private final MemorySegment partCount;
+        private final MemorySegment routingId;
+
+        RecvContext() {
+            this.arena = Arena.ofShared();
+            this.partsPtr = arena.allocate(ValueLayout.ADDRESS);
+            this.partCount = arena.allocate(ValueLayout.JAVA_LONG);
+            this.routingId = arena.allocate(256);
+        }
+
+        MemorySegment partsPtr() {
+            ensureOpen();
+            return partsPtr;
+        }
+
+        MemorySegment partCount() {
+            ensureOpen();
+            return partCount;
+        }
+
+        MemorySegment routingId() {
+            ensureOpen();
+            return routingId;
+        }
+
+        private void ensureOpen() {
+            if (arena == null || !arena.scope().isAlive())
+                throw new IllegalStateException("recv context is closed");
+        }
+
+        @Override
+        public void close() {
+            if (arena != null && arena.scope().isAlive())
+                arena.close();
+            arena = null;
+        }
     }
 
     public record ReceiverResult(int status, String resolvedEndpoint, String errorMessage) {}

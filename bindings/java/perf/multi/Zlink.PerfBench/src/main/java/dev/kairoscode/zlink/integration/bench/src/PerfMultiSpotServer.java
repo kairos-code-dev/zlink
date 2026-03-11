@@ -15,6 +15,8 @@ import dev.kairoscode.zlink.integration.bench.common.PerfMultiMetricHeader;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiTls;
 import java.lang.foreign.MemorySegment;
 import dev.kairoscode.zlink.options.SocketOptions;
+import dev.kairoscode.zlink.service.discovery.Discovery;
+import dev.kairoscode.zlink.ServiceType;
 import dev.kairoscode.zlink.service.registry.Registry;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
@@ -28,6 +30,7 @@ public final class PerfMultiSpotServer {
     private static final String PATTERN = "MULTI_SPOT";
     private static final String SERVICE_NAME = "perf-spot";
     private static final String TOPIC = "bench";
+    private static final int RUN_ID = 1;
     private static final int MIN_PAYLOAD_BYTES = 32;
     private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
     private static final long NANOSECONDS_PER_MILLISECOND = 1_000_000L;
@@ -76,16 +79,19 @@ public final class PerfMultiSpotServer {
 
         try (Context context = new Context();
              Registry registry = new Registry(context);
+             Discovery discovery = new Discovery(context, ServiceType.SPOT);
              SpotNode node = new SpotNode(context)) {
             PerfCommon.applyServerContextOptions(context);
             registry.setEndpoints(endpoints.registryPub(), endpoints.registryRouter());
             registry.setHeartbeat(5000, 120000);
             registry.setBroadcastInterval(Math.max(100, settleMs));
             registry.start();
+            discovery.connectRegistry(endpoints.registryRouter());
 
             applySpotNodeOptions(node);
             PerfMultiTls.configureSpotPublisherTlsIfNeeded(node, transport);
             PerfMultiTls.configureSpotSubscriberTlsIfNeeded(node, transport);
+            node.setDiscovery(discovery, SERVICE_NAME);
             node.bind(endpoints.serverEndpoint());
             node.register(SERVICE_NAME, endpoints.serverEndpoint());
             System.out.println("READY," + endpoints.serverEndpoint() + "|"
@@ -101,13 +107,11 @@ public final class PerfMultiSpotServer {
                 poller.addSpotPub(publisher, 0);
 
                 MemorySegment payloadSegment = payloadMessage.dataSegment();
-                int runId = (int) (PerfMultiMetricHeader.nowUs()
-                    & 0x7FFF_FFFFL);
                 PendingPublish pending = new PendingPublish(1L);
 
                 // --- Warmup ---
                 long nextSeq = runPublishPhase(publisher, topic, publishContext,
-                    payloadMessage, payloadSegment, poller, msgSize, runId,
+                    payloadMessage, payloadSegment, poller, msgSize, RUN_ID,
                     PerfMultiMetricHeader.PHASE_WARMUP, Math.max(0,
                         warmupSeconds) * NANOSECONDS_PER_SECOND,
                     pollTimeoutMs, connectTimeoutMs, pending);
@@ -120,7 +124,7 @@ public final class PerfMultiSpotServer {
                 // --- Active measurement ---
                 pending.seq = nextSeq;
                 runPublishPhase(publisher, topic, publishContext, payloadMessage,
-                    payloadSegment, poller, msgSize, runId,
+                    payloadSegment, poller, msgSize, RUN_ID,
                     PerfMultiMetricHeader.PHASE_ACTIVE, Math.max(1,
                         durationSeconds) * NANOSECONDS_PER_SECOND,
                     pollTimeoutMs, connectTimeoutMs, pending);
@@ -262,17 +266,14 @@ public final class PerfMultiSpotServer {
         int rcvTimeoutMs = PerfMultiCommon.resolveRcvTimeoutMs();
         int xpubNoDrop = resolveXpubNoDrop();
         node.setOption(SpotNodeSocketRole.PUB, SocketOptions.SNDHWM, sndHwm);
-        node.setOption(SpotNodeSocketRole.PUB, SocketOptions.RCVHWM, rcvHwm);
         node.setOption(SpotNodeSocketRole.PUB, SocketOptions.SNDTIMEO, 0);
-        node.setOption(SpotNodeSocketRole.PUB, SocketOptions.RCVTIMEO,
-            rcvTimeoutMs);
         node.setOption(SpotNodeSocketRole.PUB, SocketOptions.XPUB_NODROP,
-            xpubNoDrop);
-        node.setOption(SpotNodeSocketRole.SUB, SocketOptions.XPUB_NODROP,
             xpubNoDrop);
         node.setOption(SpotNodeSocketRole.PUB, SocketOptions.LINGER, 0);
         node.setOption(SpotNodeSocketRole.SUB, SocketOptions.LINGER, 0);
-        node.setOption(SpotNodeSocketRole.DEALER, SocketOptions.LINGER, 0);
+        node.setOption(SpotNodeSocketRole.SUB, SocketOptions.RCVHWM, rcvHwm);
+        node.setOption(SpotNodeSocketRole.SUB, SocketOptions.RCVTIMEO,
+            rcvTimeoutMs);
     }
 
     private static boolean waitPubPeers(SpotNode node,

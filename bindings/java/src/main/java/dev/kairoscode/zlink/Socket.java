@@ -50,6 +50,8 @@ public final class Socket implements AutoCloseable {
     private final ThreadLocal<MemorySegment> streamRoutingIdScratch =
       ThreadLocal.withInitial(
         () -> Arena.ofAuto().allocate(STREAM_ROUTING_ID_LAYOUT_SIZE));
+    private final ThreadLocal<Message> recvFrameScratch =
+      ThreadLocal.withInitial(Message::new);
 
     public Socket(Context ctx, SocketType type) {
         this.handle = Native.socket(ctx.handle(), type.getValue());
@@ -672,6 +674,15 @@ public final class Socket implements AutoCloseable {
     public int recv(MemorySegment segment, ReceiveFlag flags) {
         Objects.requireNonNull(segment, "segment");
         return recv(segment, 0, segment.byteSize(), flags);
+    }
+
+    public boolean recvFrameHasMore(ReceiveFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+
+        Message msg = recvFrameScratch.get();
+        msg.resetForReuse();
+        msg.recv(this, flags);
+        return msg.more();
     }
 
     public int recv(MemorySegment segment, long offset, long length, ReceiveFlag flags) {

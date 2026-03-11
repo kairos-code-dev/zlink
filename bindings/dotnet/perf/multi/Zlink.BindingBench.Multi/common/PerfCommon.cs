@@ -145,7 +145,7 @@ internal static partial class PerfRunner
     }
 
     internal static bool WaitUntil(Func<bool> check, int timeoutMs,
-        int intervalMs = 10)
+        int intervalMs = 1)
     {
         long deadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, timeoutMs) * Stopwatch.Frequency / 1000;

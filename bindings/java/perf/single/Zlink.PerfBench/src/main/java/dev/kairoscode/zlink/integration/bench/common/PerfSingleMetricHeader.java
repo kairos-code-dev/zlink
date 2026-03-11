@@ -2,6 +2,10 @@
 
 package dev.kairoscode.zlink.integration.bench.common;
 
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+import java.nio.ByteOrder;
+
 public final class PerfSingleMetricHeader {
     public static final int HEADER_SIZE = 32;
     public static final int MAGIC = 0x53504631; // SPF1
@@ -11,6 +15,10 @@ public final class PerfSingleMetricHeader {
     public static final int PHASE_UNKNOWN = 0;
     public static final int PHASE_WARMUP = 1;
     public static final int PHASE_ACTIVE = 2;
+    private static final ValueLayout.OfInt INT_LE =
+        ValueLayout.JAVA_INT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
+    private static final ValueLayout.OfLong LONG_LE =
+        ValueLayout.JAVA_LONG_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
 
     private PerfSingleMetricHeader() {
     }
@@ -46,6 +54,41 @@ public final class PerfSingleMetricHeader {
         out.msgSize = getIntLe(payload, 12);
         out.seq = getLongLe(payload, 16);
         out.sentTsUs = getLongLe(payload, 24);
+        return true;
+    }
+
+    public static boolean stampPayload(MemorySegment payload, long payloadSize,
+                                       int runId, int phase, int msgSize,
+                                       long seq, long sentTsUs) {
+        if (payload == null || payloadSize < HEADER_SIZE
+            || payload.byteSize() < payloadSize) {
+            return false;
+        }
+        payload.set(INT_LE, 0, MAGIC);
+        payload.set(INT_LE, 4, runId);
+        payload.set(INT_LE, 8, phase);
+        payload.set(INT_LE, 12, msgSize);
+        payload.set(LONG_LE, 16, seq);
+        payload.set(LONG_LE, 24, sentTsUs);
+        return true;
+    }
+
+    public static boolean decodePayloadHeader(MemorySegment payload,
+                                              long payloadSize,
+                                              Header out) {
+        if (payload == null || out == null || payloadSize < HEADER_SIZE
+            || payload.byteSize() < payloadSize) {
+            return false;
+        }
+        out.magic = payload.get(INT_LE, 0);
+        if (out.magic != MAGIC) {
+            return false;
+        }
+        out.runId = payload.get(INT_LE, 4);
+        out.phase = payload.get(INT_LE, 8);
+        out.msgSize = payload.get(INT_LE, 12);
+        out.seq = payload.get(LONG_LE, 16);
+        out.sentTsUs = payload.get(LONG_LE, 24);
         return true;
     }
 

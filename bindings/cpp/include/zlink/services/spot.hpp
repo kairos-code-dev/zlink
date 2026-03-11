@@ -7,6 +7,7 @@
 #include "../types.hpp"
 
 #include <cerrno>
+#include <cstring>
 #include <cstdlib>
 #include <type_traits>
 
@@ -691,6 +692,83 @@ class spot_t
           topic_len < sizeof (topic_buf) ? topic_len : sizeof (topic_buf) - 1;
         topic_.assign (topic_buf, topic_size);
         return move_received_parts (out_, parts, count);
+    }
+
+    /**
+     * @brief Receive one single-frame payload into a caller buffer.
+     * @param topic_ Output topic string.
+     * @param data_ Destination payload buffer.
+     * @param size_ Destination buffer size in bytes.
+     * @param received_size_ Output payload size copied.
+     * @param flags_ Receive flags.
+     * @param topic_len_out_ Optional output for full topic byte length.
+     * @param truncated_out_ Optional output for topic truncation flag.
+     * @return 0 on success, -1 on failure.
+     */
+    ZLINK_CPP_NODISCARD int
+    recv (std::string &topic_,
+          void *data_,
+          size_t size_,
+          size_t *received_size_,
+          recv_flag flags_ = recv_flag::none,
+          size_t *topic_len_out_ = NULL,
+          bool *truncated_out_ = NULL)
+    {
+        if (!_sub) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+        if (!received_size_ || (size_ > 0 && !data_)) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        zlink_msg_t *parts = NULL;
+        size_t count = 0;
+        char topic_buf[256];
+        size_t topic_len = sizeof (topic_buf);
+        const int rc = zlink_spot_sub_recv (
+          _sub,
+          &parts,
+          &count,
+          static_cast<int> (flags_),
+          topic_buf,
+          &topic_len);
+        if (rc != 0)
+            return rc;
+
+        const bool truncated = topic_len > (sizeof (topic_buf) - 1);
+        if (topic_len_out_)
+            *topic_len_out_ = topic_len;
+        if (truncated_out_)
+            *truncated_out_ = truncated;
+
+        const size_t topic_size =
+          topic_len < sizeof (topic_buf) ? topic_len : sizeof (topic_buf) - 1;
+        topic_.assign (topic_buf, topic_size);
+
+        *received_size_ = 0;
+        if (!parts || count != 1) {
+            close_received_parts (parts, count);
+            errno = EPROTO;
+            return -1;
+        }
+
+        const size_t payload_size = zlink_msg_size (&parts[0]);
+        if (payload_size > size_) {
+            close_received_parts (parts, count);
+            errno = EMSGSIZE;
+            return -1;
+        }
+
+        if (payload_size > 0) {
+            void *payload_data = zlink_msg_data (&parts[0]);
+            if (payload_data && data_)
+                memcpy (data_, payload_data, payload_size);
+        }
+        *received_size_ = payload_size;
+        close_received_parts (parts, count);
+        return 0;
     }
 
     /**

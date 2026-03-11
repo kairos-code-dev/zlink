@@ -208,6 +208,8 @@ public final class Native {
                     ValueLayout.ADDRESS));
     private static final MethodHandle MH_GATEWAY_SEND = downcall("zlink_gateway_send",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_GATEWAY_SEND_BYTES = downcall("zlink_gateway_send_bytes",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_GATEWAY_SEND_RID_BYTES = downcall("zlink_gateway_send_rid_bytes",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_GATEWAY_SEND_RID = downcall("zlink_gateway_send_rid",
@@ -318,7 +320,6 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_SUB_RECV = downcall("zlink_spot_sub_recv",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-
     private Native() {}
 
     public static int[] version() {
@@ -980,6 +981,16 @@ public final class Native {
             return (int) MH_GATEWAY_SEND.invokeExact(gw, service, parts, count, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_gateway_send failed", t);
+        }
+    }
+
+    public static int gatewaySendBytes(MemorySegment gw, MemorySegment service,
+                                       MemorySegment data, long size, int flags) {
+        try {
+            return (int) MH_GATEWAY_SEND_BYTES.invokeExact(gw, service, data,
+              size, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_gateway_send_bytes failed", t);
         }
     }
 

@@ -1,24 +1,19 @@
 // DEALER-ROUTER benchmark: one-way dealer->router.
-// Topology: dealer(connect) -> router(bind)
 
 #include "../common/perf_single_common.hpp"
 #include "../common/perf_single_runner.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
+#include <thread>
 #include <vector>
 
 namespace {
 
-bool send_single_payload_once (zlink::socket_t &socket,
-                               const void *payload,
-                               size_t payload_size)
-{
-    return socket.send (payload, payload_size, zlink::send_flag::none)
-           == static_cast<int> (payload_size);
-}
+typedef std::chrono::steady_clock steady_clock_t;
 
-int recv_header_router (zlink::socket_t &router,
+int recv_router_header (zlink::socket_t &router,
                         size_t payload_size,
                         zlink::recv_flag flags,
                         perf_single_metric::header_t *header_out,
@@ -57,41 +52,6 @@ int recv_header_router (zlink::socket_t &router,
     return 1;
 }
 
-bool drain_router_queue (zlink::socket_t &router,
-                         size_t payload_size,
-                         uint32_t run_id,
-                         perf_single_metric::phase_t phase,
-                         size_t msg_size,
-                         bool active,
-                         unsigned long long *received,
-                         perf::single::latency_stats_builder_t *latency_builder)
-{
-    for (;;) {
-        perf_single_metric::header_t header;
-        bool header_ok = false;
-        const int recv_rc = recv_header_router (
-          router, payload_size, zlink::recv_flag::dontwait, &header, &header_ok);
-        if (recv_rc == 0)
-            return true;
-        if (recv_rc < 0)
-            return false;
-        if (!header_ok || !perf_single_metric::is_expected (
-                            header, run_id, phase, msg_size)) {
-            continue;
-        }
-
-        ++(*received);
-        if (active && latency_builder) {
-            const uint64_t now = perf_single_metric::now_us ();
-            const double latency_us =
-              now >= header.sent_ts_us
-                ? static_cast<double> (now - header.sent_ts_us)
-                : 0.0;
-            latency_builder->add (latency_us);
-        }
-    }
-}
-
 bool run_phase (zlink::socket_t &dealer,
                 zlink::socket_t &router,
                 std::vector<char> &payload,
@@ -101,6 +61,7 @@ bool run_phase (zlink::socket_t &dealer,
                 perf_single_metric::phase_t phase,
                 int warmup_count,
                 int duration_s,
+                int recv_timeout_ms,
                 perf::single::queue_probe_t *queue_probe,
                 unsigned long long *received_out,
                 perf::single::latency_stats_t *latency_out)
@@ -109,86 +70,160 @@ bool run_phase (zlink::socket_t &dealer,
         return false;
 
     const bool active = phase == perf_single_metric::phase_active;
-    const size_t payload_size = payload.size ();
+    const auto deadline =
+      active ? steady_clock_t::now ()
+                   + std::chrono::seconds (duration_s > 0 ? duration_s : 1)
+             : steady_clock_t::time_point ();
+    const auto drain_idle_limit =
+      std::chrono::milliseconds (recv_timeout_ms > 0 ? recv_timeout_ms : 200);
 
     perf::single::latency_stats_builder_t latency_builder (
       perf::single::resolve_single_latency_sample_cap ());
+    std::atomic<bool> sender_done (false);
+    std::atomic<bool> recv_failed (false);
     unsigned long long received = 0;
 
-    auto do_one = [&] () -> bool {
-        const uint64_t sent_ts = perf_single_metric::now_us ();
-        if (!perf_single_metric::stamp_payload (payload.data (),
-                                                payload_size,
-                                                run_id,
-                                                phase,
-                                                msg_size,
-                                                seq++,
-                                                sent_ts)
-            || !send_single_payload_once (dealer, payload.data (), payload_size)) {
-            return false;
-        }
-        if (queue_probe)
-            queue_probe->sample_send_if_due ();
+    std::thread receiver_thread ([&] () {
+        auto last_recv_at = steady_clock_t::now ();
 
-        perf_single_metric::header_t header;
-        bool header_ok = false;
-        const int recv_rc = recv_header_router (
-          router, payload_size, zlink::recv_flag::none, &header, &header_ok);
-        if (recv_rc <= 0)
-            return false;
-        if (queue_probe)
-            queue_probe->sample_recv_if_due ();
+        auto account_header =
+          [&] (const perf_single_metric::header_t &header, bool header_ok) {
+              if (active && queue_probe)
+                  queue_probe->sample_recv_if_due ();
 
-        if (header_ok && perf_single_metric::is_expected (
-                           header, run_id, phase, msg_size)) {
-            ++received;
-            if (active) {
-                const uint64_t now = perf_single_metric::now_us ();
-                const double latency_us =
-                  now >= header.sent_ts_us
-                    ? static_cast<double> (now - header.sent_ts_us)
-                    : 0.0;
-                latency_builder.add (latency_us);
+              if (!header_ok
+                  || !perf_single_metric::is_expected (
+                    header, run_id, phase, msg_size)) {
+                  return;
+              }
+
+              ++received;
+              if (!active)
+                  return;
+
+              const uint64_t now = perf_single_metric::now_us ();
+              const double latency_us =
+                now >= header.sent_ts_us
+                  ? static_cast<double> (now - header.sent_ts_us)
+                  : 0.0;
+              latency_builder.add (latency_us);
+          };
+
+        if (active && queue_probe)
+            queue_probe->force_sample_recv ();
+
+        while (true) {
+            const bool done = sender_done.load (std::memory_order_acquire);
+            const zlink::recv_flag flags =
+              done ? zlink::recv_flag::dontwait : zlink::recv_flag::none;
+
+            perf_single_metric::header_t header;
+            bool header_ok = false;
+            int recv_rc =
+              recv_router_header (router, payload.size (), flags, &header, &header_ok);
+            if (recv_rc > 0) {
+                last_recv_at = steady_clock_t::now ();
+                account_header (header, header_ok);
+
+                for (;;) {
+                    perf_single_metric::header_t burst_header;
+                    bool burst_ok = false;
+                    recv_rc = recv_router_header (router,
+                                                  payload.size (),
+                                                  zlink::recv_flag::dontwait,
+                                                  &burst_header,
+                                                  &burst_ok);
+                    if (recv_rc > 0) {
+                        last_recv_at = steady_clock_t::now ();
+                        account_header (burst_header, burst_ok);
+                        continue;
+                    }
+                    if (recv_rc == 0)
+                        break;
+
+                    recv_failed.store (true, std::memory_order_release);
+                    break;
+                }
+
+                if (recv_failed.load (std::memory_order_acquire))
+                    break;
+                continue;
             }
+
+            if (recv_rc == 0) {
+                if (done && steady_clock_t::now () - last_recv_at >= drain_idle_limit)
+                    break;
+                std::this_thread::yield ();
+                continue;
+            }
+
+            recv_failed.store (true, std::memory_order_release);
+            break;
         }
 
-        return drain_router_queue (router,
-                                   payload_size,
-                                   run_id,
-                                   phase,
-                                   msg_size,
-                                   active,
-                                   &received,
-                                   active ? &latency_builder : NULL);
-    };
+        if (active && queue_probe)
+            queue_probe->force_sample_recv ();
+    });
+
+    bool send_failed = false;
+    if (active && queue_probe)
+        queue_probe->force_sample_send ();
 
     if (active) {
-        const auto deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::seconds (duration_s > 0 ? duration_s : 1);
-        while (std::chrono::steady_clock::now () < deadline) {
-            if (!do_one ())
-                return false;
+        while (steady_clock_t::now () < deadline) {
+            const uint64_t sent_ts = perf_single_metric::now_us ();
+            if (!perf_single_metric::stamp_payload (payload.data (),
+                                                    payload.size (),
+                                                    run_id,
+                                                    phase,
+                                                    msg_size,
+                                                    seq++,
+                                                    sent_ts)
+                || dealer.send (
+                     payload.data (), payload.size (), zlink::send_flag::none)
+                     != static_cast<int> (payload.size ())) {
+                send_failed = true;
+                break;
+            }
+            if (queue_probe)
+                queue_probe->sample_send_if_due ();
         }
     } else {
         for (int i = 0; i < warmup_count; ++i) {
-            if (!do_one ())
-                return false;
+            if (!perf_single_metric::stamp_payload (payload.data (),
+                                                    payload.size (),
+                                                    run_id,
+                                                    phase,
+                                                    msg_size,
+                                                    seq++,
+                                                    perf_single_metric::now_us ())
+                || dealer.send (
+                     payload.data (), payload.size (), zlink::send_flag::none)
+                     != static_cast<int> (payload.size ())) {
+                send_failed = true;
+                break;
+            }
         }
     }
 
-    if (queue_probe) {
+    if (active && queue_probe)
         queue_probe->force_sample_send ();
-        queue_probe->force_sample_recv ();
-    }
 
+    sender_done.store (true, std::memory_order_release);
+    receiver_thread.join ();
+
+    if (send_failed || recv_failed.load (std::memory_order_acquire))
+        return false;
+
+    *received_out = received;
     if (active) {
         if (received == 0 || latency_builder.count () == 0 || !latency_out)
             return false;
         *latency_out = latency_builder.snapshot ();
+    } else if (received < static_cast<unsigned long long> (warmup_count)) {
+        return false;
     }
 
-    *received_out = received;
     return true;
 }
 
@@ -237,7 +272,6 @@ void run_pattern_dealer_router (const std::string &transport,
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
-
     perf::single::queue_probe_t queue_probe (&dealer.sock (), &router.sock ());
 
     const uint32_t run_id = static_cast<uint32_t> (perf_single_metric::now_us ());
@@ -255,6 +289,7 @@ void run_pattern_dealer_router (const std::string &transport,
                     perf_single_metric::phase_warmup,
                     warmup_count,
                     0,
+                    recv_timeout,
                     NULL,
                     &warmup_received,
                     NULL)) {
@@ -263,7 +298,8 @@ void run_pattern_dealer_router (const std::string &transport,
         return;
     }
 
-    const int duration_s = std::max (1, perf::single::resolve_single_duration_seconds ());
+    const int duration_s =
+      std::max (1, perf::single::resolve_single_duration_seconds ());
     unsigned long long received = 0;
     perf::single::latency_stats_t latency;
     if (!run_phase (dealer.sock (),
@@ -275,6 +311,7 @@ void run_pattern_dealer_router (const std::string &transport,
                     perf_single_metric::phase_active,
                     0,
                     duration_s,
+                    recv_timeout,
                     &queue_probe,
                     &received,
                     &latency)) {
@@ -298,5 +335,6 @@ void run_pattern_dealer_router (const std::string &transport,
 
 int main (int argc, char **argv)
 {
-    return perf::single::run_standard_bench_main (argc, argv, run_pattern_dealer_router);
+    return perf::single::run_standard_bench_main (
+      argc, argv, run_pattern_dealer_router);
 }

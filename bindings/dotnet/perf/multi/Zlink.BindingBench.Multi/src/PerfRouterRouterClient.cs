@@ -161,7 +161,8 @@ internal static class PerfRouterRouterClient
         Poller poller, List<PollEvent> pollEvents, int msgSize, int warmupSeconds,
         bool activeWarmup, int warmupDrainMs, uint runId, ref ulong seq)
     {
-        if (!activeWarmup || warmupSeconds <= 0)
+        _ = activeWarmup;
+        if (warmupSeconds <= 0)
             return;
 
         long warmupDeadlineTicks = Stopwatch.GetTimestamp()

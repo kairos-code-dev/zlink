@@ -331,16 +331,69 @@ public sealed class Receiver : IDisposable
         return new ReceiverMessage(publicRoutingId, messages);
     }
 
+    public Message ReceiveSingleMessage(ReceiveFlags flags = ReceiveFlags.None)
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_receiver_recv(_handle, out var parts,
+            out var count, (int)flags, IntPtr.Zero);
+        if (rc != 0)
+            throw ZlinkException.FromLastError();
+        if (parts == IntPtr.Zero || count == 0)
+            throw new InvalidOperationException("Expected a single-part message.");
+
+        try
+        {
+            if (count != 1)
+                throw new InvalidOperationException(
+                    "Expected a single-part message.");
+            return Message.MoveFromNativeSingle(parts);
+        }
+        finally
+        {
+            NativeMethods.zlink_multipart_close(parts, count);
+        }
+    }
+
     public int ReceiveSinglePayload(Span<byte> payloadBuffer,
         ReceiveFlags flags = ReceiveFlags.None)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_receiver_recv(_handle, out var parts,
-            out var count, (int)flags, out _);
+            out var count, (int)flags, IntPtr.Zero);
         if (rc != 0)
             throw ZlinkException.FromLastError();
         try
         {
+            return Message.CopySinglePartPayload(parts, count, payloadBuffer);
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero && count > 0)
+                NativeMethods.zlink_multipart_close(parts, count);
+        }
+    }
+
+    public unsafe int ReceiveSinglePayload(Span<byte> payloadBuffer,
+        Span<byte> routingIdBuffer, out int routingIdLength,
+        ReceiveFlags flags = ReceiveFlags.None)
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_receiver_recv(_handle, out var parts,
+            out var count, (int)flags, out ZlinkRoutingId routingId);
+        if (rc != 0)
+            throw ZlinkException.FromLastError();
+        try
+        {
+            int sourceLength = routingId.Size;
+            if (sourceLength > routingIdBuffer.Length)
+            {
+                throw new ArgumentException("routingIdBuffer is too small.",
+                    nameof(routingIdBuffer));
+            }
+
+            routingIdLength = sourceLength;
+            for (int i = 0; i < sourceLength; i++)
+                routingIdBuffer[i] = routingId.Data[i];
             return Message.CopySinglePartPayload(parts, count, payloadBuffer);
         }
         finally

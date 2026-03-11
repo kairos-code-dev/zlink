@@ -132,6 +132,11 @@ internal static partial class PerfRunner
         return ParseFirstPositiveEnv(5000, "PERF_CONNECT_READY_TIMEOUT_MS");
     }
 
+    internal static int ResolveMultiClientPollTimeoutMs()
+    {
+        return ParseFirstNonNegativeEnv(0, "PERF_CLIENT_POLL_TIMEOUT_MS");
+    }
+
     internal static int ResolveHwm(string pattern)
     {
         return IsMultiStreamPattern(pattern) ? 10 : 100;
@@ -171,7 +176,7 @@ internal static partial class PerfRunner
             catch (ZlinkException ex) when (ex.Errno == ErrnoEagain
                                             || ex.Errno == ErrnoEintr)
             {
-                Thread.Yield();
+                Thread.Sleep(1);
             }
             catch
             {

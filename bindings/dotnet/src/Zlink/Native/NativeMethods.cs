@@ -524,6 +524,12 @@ internal static class NativeMethods
         out IntPtr parts, out nuint partCount, int flags,
         out ZlinkRoutingId routingId);
 
+    [DllImport(LibraryName, EntryPoint = "zlink_receiver_recv",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_receiver_recv(IntPtr receiver,
+        out IntPtr parts, out nuint partCount, int flags,
+        IntPtr routingId);
+
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_receiver_last_endpoint(IntPtr receiver,
         byte[] endpoint, ref nuint size);

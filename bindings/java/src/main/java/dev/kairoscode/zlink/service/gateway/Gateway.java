@@ -110,6 +110,24 @@ public final class Gateway implements AutoCloseable {
         sendTo(serviceName, messages, SendFlag.NONE);
     }
 
+    public void sendTo(String serviceName, MemorySegment payload,
+                       SendFlag flags) {
+        sendTo(serviceName, payload, 0, payload.byteSize(), flags);
+    }
+
+    public void sendTo(String serviceName, MemorySegment payload) {
+        sendTo(serviceName, payload, SendFlag.NONE);
+    }
+
+    public void sendTo(String serviceName, MemorySegment payload, long offset,
+                       long length, SendFlag flags) {
+        Objects.requireNonNull(serviceName, "serviceName");
+        Objects.requireNonNull(payload, "payload");
+        validatePayloadRange(payload, offset, length);
+        MemorySegment service = serviceNameCString(serviceName);
+        sendBytesInternal(service, payload, offset, length, flags);
+    }
+
     public void sendTo(String serviceName, String routingId,
                        Message message, SendFlag flags) {
         Objects.requireNonNull(message, "message");
@@ -947,6 +965,19 @@ public final class Gateway implements AutoCloseable {
             closeMsgVector(vec, initialized);
             throw ex;
         }
+    }
+
+    private void sendBytesInternal(MemorySegment serviceName,
+                                   MemorySegment payload,
+                                   long offset,
+                                   long length,
+                                   SendFlag flags) {
+        MemorySegment slice = length == 0 ? MemorySegment.NULL
+          : payload.asSlice(offset, length);
+        int rc = Native.gatewaySendBytes(handle, serviceName, slice, length,
+            flags.getValue());
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_gateway_send_bytes");
     }
 
     private void sendToRoutingIdBytesInternal(MemorySegment serviceName,

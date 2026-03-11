@@ -103,7 +103,7 @@ internal static partial class PerfRunner
     }
 
     internal static bool WaitUntil(Func<bool> check, int timeoutMs,
-        int intervalMs = 10)
+        int intervalMs = 1)
     {
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
         while (Stopwatch.GetTimestamp() < deadlineTicks)
@@ -251,6 +251,21 @@ internal static partial class PerfRunner
             ? 200
             : 500;
         return ParseEnv("PERF_LAT_COUNT", fallback);
+    }
+
+    internal static int ResolveGatewayReadyTimeoutMs()
+    {
+        return 1000;
+    }
+
+    internal static int ResolveSpotDiscoveryTimeoutMs()
+    {
+        return ParseEnvNonNegative("PERF_SPOT_DISCOVERY_TIMEOUT_MS", 4000);
+    }
+
+    internal static int ResolveSpotReadyTimeoutMs()
+    {
+        return ParseEnvNonNegative("PERF_SPOT_READY_TIMEOUT_MS", 2000);
     }
 
     internal static bool IsSecureTransport(string transport)

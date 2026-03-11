@@ -12,12 +12,9 @@ internal static class PerfDealerRouter
         int warmupCount = ResolveSingleWarmupCount("DEALER_ROUTER");
         int settleMs = SingleSettleTimeMs;
         int durationSeconds = ParseEnv("PERF_SINGLE_DURATION_SECONDS", 5);
-        int drainMs = ParseEnvNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
+        int recvTimeoutMs = ParseEnvNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
         int latCount = ResolveSingleLatencyCount("DEALER_ROUTER");
 
-        var process = Process.GetCurrentProcess();
-        TimeSpan cpuStart = process.TotalProcessorTime;
-        var wall = Stopwatch.StartNew();
         using var ctx = new Context();
         ApplySingleContextOptions(ctx);
         using var router = new Zlink.Socket(ctx, SocketType.Router);
@@ -35,74 +32,221 @@ internal static class PerfDealerRouter
             dealer.Connect(ep);
             Thread.Sleep(SingleConnectWaitMs);
 
-            var buf = new byte[size];
-            Array.Fill(buf, (byte)'a');
-            var rid = new byte[256];
-            var recv = new byte[Math.Max(256, size)];
+            int payloadSize = Math.Max(size, sizeof(long));
+            var payload = new byte[payloadSize];
+            Array.Fill(payload, (byte)'a');
 
-            for (int i = 0; i < warmupCount; i++)
+            if (!RunPhase(dealer, router, payload, payloadSize, warmupCount, 0,
+                    recvTimeoutMs, 0, out long warmupReceived, out _)
+                || warmupReceived < warmupCount)
             {
-                SendBlocking(dealer, buf.AsSpan(), SendFlags.None);
-                ReceiveBlocking(router, rid.AsSpan(), ReceiveFlags.None);
-                ReceiveBlocking(router, recv.AsSpan(0, size), ReceiveFlags.None);
-                DrainRemainingFramesNonBlocking(router);
+                return 2;
             }
 
             Thread.Sleep(settleMs);
 
-            int recvCount = 0;
-            long benchStartTicks = Stopwatch.GetTimestamp();
-            long throughputDeadlineTicks = DeadlineTicksFromSeconds(
-                durationSeconds);
-            while (Stopwatch.GetTimestamp() < throughputDeadlineTicks)
+            if (!RunPhase(dealer, router, payload, payloadSize, 0,
+                    durationSeconds, recvTimeoutMs, latCount, out long received,
+                    out var latencySamples))
             {
-                SendBlocking(dealer, buf.AsSpan(), SendFlags.None);
-                ReceiveBlocking(router, rid.AsSpan(), ReceiveFlags.None);
-                int n = ReceiveBlocking(router, recv.AsSpan(0, size), ReceiveFlags.None);
-                DrainRemainingFramesNonBlocking(router);
-                if (n == size)
-                    recvCount++;
+                return 2;
             }
 
-            double elapsedSeconds = ElapsedSecondsFromTicks(benchStartTicks,
-                Stopwatch.GetTimestamp());
-            double thr = recvCount > 0 && elapsedSeconds > 0.0
-                ? recvCount / elapsedSeconds
-                : 0.0;
-
-            if (drainMs > 0)
-                Thread.Sleep(drainMs);
-
-            var latSamples = new List<double>(latCount);
-            long sampleSeen = 0;
-            uint rng = 0xA341316Cu;
-            for (int i = 0; i < latCount; i++)
-            {
-                long begin = Stopwatch.GetTimestamp();
-                SendBlocking(dealer, buf.AsSpan(), SendFlags.None);
-                int ridLen = ReceiveBlocking(router, rid.AsSpan(), ReceiveFlags.None);
-                ReceiveBlocking(router, recv.AsSpan(0, size), ReceiveFlags.None);
-                DrainRemainingFramesNonBlocking(router);
-                SendBlocking(router, rid.AsSpan(0, ridLen), SendFlags.SendMore);
-                SendBlocking(router, buf.AsSpan(), SendFlags.None);
-                ReceiveBlocking(dealer, recv.AsSpan(0, size), ReceiveFlags.None);
-                long end = Stopwatch.GetTimestamp();
-                double oneWayUs = ((end - begin) * 1_000_000.0
-                                   / Stopwatch.Frequency) / 2.0;
-                ReservoirSample(latSamples, oneWayUs, ref sampleSeen, latCount,
-                    ref rng);
-            }
-            var latency = ComputeLatencyStats(latSamples);
-            PrintResult("DEALER_ROUTER", transport, size, thr, latency.mean,
-                latency.p95, latency.p99);
-            wall.Stop();
-            PrintSingleProcessMetrics("DEALER_ROUTER", transport, size, cpuStart,
-                wall);
+            double throughput = received / (double)Math.Max(durationSeconds, 1);
+            var latency = ComputeLatencyStats(latencySamples);
+            PrintResult("DEALER_ROUTER", transport, size, throughput,
+                latency.mean, latency.p95, latency.p99);
             return 0;
         }
         catch
         {
             return 2;
         }
+    }
+
+    private static bool RunPhase(Zlink.Socket sender, Zlink.Socket receiver,
+        byte[] payload, int payloadSize, int warmupCount, int durationSeconds,
+        int recvTimeoutMs, int latencyCap, out long receivedOut,
+        out List<double> latencySamples)
+    {
+        bool active = durationSeconds > 0;
+        long deadlineTicks = active ? DeadlineTicksFromSeconds(durationSeconds) : 0;
+        long drainTicks = Math.Max(1,
+            (long)Math.Ceiling(recvTimeoutMs * Stopwatch.Frequency / 1000.0));
+
+        long received = 0;
+        int senderDone = 0;
+        Exception? recvError = null;
+        var samples = new List<double>(Math.Max(0, latencyCap));
+        long sampleSeen = 0;
+        uint rng = 0xA341316Cu;
+
+        var recvThread = new Thread(() =>
+        {
+            long lastRecvTicks = Stopwatch.GetTimestamp();
+            var routingId = new byte[256];
+            var recvBuffer = new byte[payloadSize];
+
+            void AccountMessage(int bytesRead)
+            {
+                if (bytesRead != payloadSize)
+                    return;
+
+                Interlocked.Increment(ref received);
+                if (!active)
+                    return;
+
+                long nowUs = TimestampUs();
+                long sentUs = DecodeHeader(recvBuffer.AsSpan(0, sizeof(long)));
+                double latencyUs = Math.Max(0L, nowUs - sentUs);
+                ReservoirSample(samples, latencyUs, ref sampleSeen, latencyCap,
+                    ref rng);
+            }
+
+            try
+            {
+                while (true)
+                {
+                    bool done = Volatile.Read(ref senderDone) != 0;
+                    int flags = done ? (int)ReceiveFlags.DontWait : (int)ReceiveFlags.None;
+                    int recvRc = ReceiveRouterPayload(receiver, routingId, recvBuffer,
+                        flags);
+                    if (recvRc > 0)
+                    {
+                        lastRecvTicks = Stopwatch.GetTimestamp();
+                        AccountMessage(recvRc);
+
+                        while (true)
+                        {
+                            recvRc = ReceiveRouterPayload(receiver, routingId, recvBuffer,
+                                (int)ReceiveFlags.DontWait);
+                            if (recvRc > 0)
+                            {
+                                lastRecvTicks = Stopwatch.GetTimestamp();
+                                AccountMessage(recvRc);
+                                continue;
+                            }
+                            if (recvRc == 0)
+                                break;
+                            throw new InvalidOperationException("router_recv_failed");
+                        }
+
+                        continue;
+                    }
+
+                    if (recvRc == 0)
+                    {
+                        if (done && Stopwatch.GetTimestamp() - lastRecvTicks >= drainTicks)
+                            break;
+                        Thread.Yield();
+                        continue;
+                    }
+
+                    throw new InvalidOperationException("router_recv_failed");
+                }
+            }
+            catch (Exception ex)
+            {
+                recvError = ex;
+            }
+        });
+        recvThread.IsBackground = true;
+        recvThread.Start();
+
+        bool sendFailed = false;
+        if (active)
+        {
+            while (Stopwatch.GetTimestamp() < deadlineTicks)
+            {
+                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
+                try
+                {
+                    SendBlocking(sender, payload.AsSpan(), SendFlags.None);
+                }
+                catch
+                {
+                    sendFailed = true;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < warmupCount; i++)
+            {
+                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
+                try
+                {
+                    SendBlocking(sender, payload.AsSpan(), SendFlags.None);
+                }
+                catch
+                {
+                    sendFailed = true;
+                    break;
+                }
+            }
+        }
+
+        Volatile.Write(ref senderDone, 1);
+        recvThread.Join();
+
+        latencySamples = samples;
+        receivedOut = received;
+        if (sendFailed || recvError != null)
+            return false;
+
+        if (!active)
+            return received >= warmupCount;
+
+        return received > 0 && latencySamples.Count > 0;
+    }
+
+    private static int ReceiveRouterPayload(Zlink.Socket socket, byte[] routingId,
+        byte[] payloadBuffer, int flags)
+    {
+        ReceiveFlags recvFlags = (ReceiveFlags)flags;
+        int ridLen;
+        try
+        {
+            ridLen = socket.Receive(routingId.AsSpan(), recvFlags);
+        }
+        catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
+        {
+            return 0;
+        }
+        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
+        {
+            return 0;
+        }
+
+        if (ridLen <= 0 || socket.GetOption(SocketOptions.RcvMore) == 0)
+            return -1;
+
+        try
+        {
+            int payloadLen = socket.Receive(payloadBuffer.AsSpan(), ReceiveFlags.None);
+            DrainRemainingFramesNonBlocking(socket);
+            return payloadLen;
+        }
+        catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
+        {
+            return 0;
+        }
+        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
+        {
+            return 0;
+        }
+    }
+
+    private static bool IsInterrupted(int errno)
+    {
+        ErrorCode code = ZlinkException.MapErrorCode(errno);
+        return code == ErrorCode.EIntr || errno == 4;
+    }
+
+    private static bool IsWouldBlock(int errno)
+    {
+        ErrorCode code = ZlinkException.MapErrorCode(errno);
+        return code == ErrorCode.EAgain || errno == 11;
     }
 }

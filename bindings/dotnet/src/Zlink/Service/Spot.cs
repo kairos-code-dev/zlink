@@ -2,6 +2,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
 using Zlink;
@@ -393,11 +394,14 @@ public sealed class Spot : IDisposable
 {
     private const int StackPublishPartLimit = 8;
     private const int TopicBufferSize = 256;
+    private const int TopicCacheLimit = 1024;
     private IntPtr _pubHandle;
     private IntPtr _subHandle;
     private SpotSubHandler? _subHandler;
     private SpotSubPacketHandler? _subPacketHandler;
     private NativeMethods.ZlinkSpotSubHandlerDelegate? _subHandlerNative;
+    private readonly ConcurrentDictionary<string, byte[]> _topicCache =
+        new(StringComparer.Ordinal);
 
     internal IntPtr PubHandle => _pubHandle;
     internal IntPtr SubHandle => _subHandle;
@@ -429,6 +433,14 @@ public sealed class Spot : IDisposable
         Publish(topicId, parts.AsSpan(), flags);
     }
 
+    public void Publish(PreparedTopic topic, Message[] parts,
+        SendFlags flags = SendFlags.None)
+    {
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
+        Publish(topic, parts.AsSpan(), flags);
+    }
+
     public unsafe void Publish(string topicId, ReadOnlySpan<Message> parts,
         SendFlags flags = SendFlags.None)
     {
@@ -437,7 +449,23 @@ public sealed class Spot : IDisposable
         if (parts.Length == 0)
             throw new ArgumentException("Parts must not be empty.", nameof(parts));
         byte[] topicUtf8 = GetTopicUtf8(topicId);
+        PublishCore(topicUtf8, parts, flags);
+    }
 
+    public unsafe void Publish(PreparedTopic topic, ReadOnlySpan<Message> parts,
+        SendFlags flags = SendFlags.None)
+    {
+        EnsureNotDisposed();
+        if (topic == null)
+            throw new ArgumentNullException(nameof(topic));
+        if (parts.Length == 0)
+            throw new ArgumentException("Parts must not be empty.", nameof(parts));
+        PublishCore(topic.Utf8, parts, flags);
+    }
+
+    private unsafe void PublishCore(byte[] topicUtf8, ReadOnlySpan<Message> parts,
+        SendFlags flags)
+    {
         ZlinkMsg[]? rented = null;
         Span<ZlinkMsg> nativeParts = parts.Length <= StackPublishPartLimit
             ? stackalloc ZlinkMsg[StackPublishPartLimit]
@@ -493,8 +521,21 @@ public sealed class Spot : IDisposable
     {
         EnsureNotDisposed();
         ValidateTopicId(topicId, nameof(topicId));
-        byte[] topicUtf8 = GetTopicUtf8(topicId);
+        PublishCore(GetTopicUtf8(topicId), payload, flags);
+    }
 
+    public unsafe void Publish(PreparedTopic topic, ReadOnlySpan<byte> payload,
+        SendFlags flags = SendFlags.None)
+    {
+        EnsureNotDisposed();
+        if (topic == null)
+            throw new ArgumentNullException(nameof(topic));
+        PublishCore(topic.Utf8, payload, flags);
+    }
+
+    private unsafe void PublishCore(byte[] topicUtf8, ReadOnlySpan<byte> payload,
+        SendFlags flags)
+    {
         int rc;
         fixed (byte* topicPtr = topicUtf8)
         fixed (byte* payloadPtr = payload)
@@ -503,6 +544,13 @@ public sealed class Spot : IDisposable
                 payloadPtr, (nuint)payload.Length, (int)flags);
         }
         ZlinkException.ThrowIfError(rc);
+    }
+
+    public PreparedTopic PrepareTopic(string topicId)
+    {
+        ValidateTopicId(topicId, nameof(topicId));
+        EnsureNotDisposed();
+        return new PreparedTopic(topicId, GetTopicUtf8(topicId));
     }
 
     public void Subscribe(string topicId)
@@ -753,7 +801,14 @@ public sealed class Spot : IDisposable
 
     private byte[] GetTopicUtf8(string topicId)
     {
-        return EncodeTopicUtf8(topicId);
+        if (_topicCache.TryGetValue(topicId, out byte[]? cached))
+            return cached;
+
+        byte[] encoded = EncodeTopicUtf8(topicId);
+        if (_topicCache.Count >= TopicCacheLimit)
+            return encoded;
+
+        return _topicCache.GetOrAdd(topicId, encoded);
     }
 
     private static void ValidateTopicId(string value, string paramName)
@@ -779,6 +834,21 @@ public sealed class Spot : IDisposable
         bytes[byteCount] = 0;
         return bytes;
     }
+}
+
+public sealed class PreparedTopic
+{
+    private readonly byte[] _utf8;
+
+    internal PreparedTopic(string topicId, byte[] utf8)
+    {
+        TopicId = topicId ?? throw new ArgumentNullException(nameof(topicId));
+        _utf8 = utf8 ?? throw new ArgumentNullException(nameof(utf8));
+    }
+
+    public string TopicId { get; }
+
+    internal byte[] Utf8 => _utf8;
 }
 
 /// <summary>

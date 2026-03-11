@@ -236,6 +236,18 @@ public final class PerfCommon {
         return parseEnv("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200_000);
     }
 
+    public static int resolveGatewayReadyTimeoutMs() {
+        return 1000;
+    }
+
+    public static int resolveSpotDiscoveryTimeoutMs() {
+        return parseEnvNonNegative("PERF_SPOT_DISCOVERY_TIMEOUT_MS", 4000);
+    }
+
+    public static int resolveSpotReadyTimeoutMs() {
+        return parseEnvNonNegative("PERF_SPOT_READY_TIMEOUT_MS", 2000);
+    }
+
     public static int randomRunId() {
         return (int) (PerfSingleMetricHeader.nowUs() & 0x7FFF_FFFFL);
     }

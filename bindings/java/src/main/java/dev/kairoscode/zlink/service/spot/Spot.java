@@ -204,6 +204,24 @@ public final class Spot implements AutoCloseable {
         return new SpotMessage(topicId, parts);
     }
 
+    public int recvSinglePayload(MemorySegment payloadBuffer,
+                                 ReceiveFlag flags) {
+        Objects.requireNonNull(payloadBuffer, "payloadBuffer");
+        RecvContext context = recvScratch.get();
+        context.ensureOpen();
+        SpotRawBorrowed raw = recvRawBorrowed(flags, context);
+        Message[] parts = raw.parts();
+        if (parts.length != 1)
+            throw new IllegalStateException("Expected a single-part message.");
+        int size = parts[0].size();
+        if (size > payloadBuffer.byteSize())
+            throw new IllegalArgumentException("payloadBuffer is too small.");
+        if (size > 0)
+            MemorySegment.copy(parts[0].dataSegment(), 0, payloadBuffer, 0,
+                size);
+        return size;
+    }
+
     public RecvContext createRecvContext() {
         return new RecvContext();
     }
@@ -385,6 +403,7 @@ public final class Spot implements AutoCloseable {
         private final MemorySegment partCount;
         private final MemorySegment topicId;
         private final MemorySegment topicLength;
+        private final MemorySegment receivedSize;
         private int topicIdLength;
         private Message[] reusableParts;
         private final SpotRawBorrowed borrowedRaw;
@@ -395,6 +414,7 @@ public final class Spot implements AutoCloseable {
             this.partCount = arena.allocate(ValueLayout.JAVA_LONG);
             this.topicId = arena.allocate(TOPIC_CAPACITY);
             this.topicLength = arena.allocate(ValueLayout.JAVA_LONG);
+            this.receivedSize = arena.allocate(ValueLayout.JAVA_LONG);
             this.topicIdLength = 0;
             this.reusableParts = new Message[0];
             this.borrowedRaw = new SpotRawBorrowed();
@@ -423,6 +443,11 @@ public final class Spot implements AutoCloseable {
         MemorySegment topicLength() {
             ensureOpen();
             return topicLength;
+        }
+
+        MemorySegment receivedSize() {
+            ensureOpen();
+            return receivedSize;
         }
 
         int topicIdLength() {

@@ -14,33 +14,33 @@ import dev.kairoscode.zlink.integration.bench.common.PerfCommon;
 import dev.kairoscode.zlink.integration.bench.common.PerfSingleMetricHeader;
 import dev.kairoscode.zlink.integration.bench.common.PerfTls;
 import dev.kairoscode.zlink.options.SocketOptions;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.LongAdder;
 
-/**
- * ROUTER_ROUTER one-way benchmark.
- * sender=ROUTER(connect), receiver=ROUTER(bind), routing-id handshake required.
- */
 public final class PerfRouterRouter {
-    private static final String PATTERN = "ROUTER_ROUTER";
-
-    private static final int ERRNO_EINTR = 4;
-    private static final int ERRNO_EAGAIN = 11;
-    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
-    private static final int CONNECT_MONITOR_EVENTS =
-        MonitorEventType.CONNECTION_READY.getValue()
-            | MonitorEventType.CONNECTED.getValue()
-            | MonitorEventType.ACCEPTED.getValue();
     private static final byte[] ROUTE_TO_RECEIVER =
         "ROUTER1".getBytes(StandardCharsets.UTF_8);
     private static final byte[] ROUTE_TO_SENDER =
         "ROUTER2".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] PING = "PING".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] PONG = "PONG".getBytes(StandardCharsets.UTF_8);
+    private static final int CONNECT_MONITOR_EVENTS =
+        MonitorEventType.CONNECTION_READY.getValue()
+            | MonitorEventType.CONNECTED.getValue()
+            | MonitorEventType.ACCEPTED.getValue();
 
     private PerfRouterRouter() {
     }
 
     public static int run(String transport, int msgSize) {
+        return runInternal(transport, msgSize, false);
+    }
+
+    static int runInternal(String transport, int msgSize, boolean usePoll) {
+        String pattern = usePoll ? "ROUTER_ROUTER_POLL" : "ROUTER_ROUTER";
+
         try (Context context = new Context();
              Socket receiver = new Socket(context, SocketType.ROUTER);
              Socket sender = new Socket(context, SocketType.ROUTER);
@@ -48,7 +48,6 @@ public final class PerfRouterRouter {
             PerfCommon.applySingleContextOptions(context);
             PerfCommon.applySingleSocketOptions(receiver);
             PerfCommon.applySingleSocketOptions(sender);
-
             PerfTls.configureTlsServerIfNeeded(receiver, transport);
             PerfTls.configureTlsClientIfNeeded(sender, transport);
 
@@ -60,75 +59,46 @@ public final class PerfRouterRouter {
             String endpoint = PerfCommon.endpointFor(transport, "router-router");
             receiver.bind(endpoint);
             sender.connect(endpoint);
-            if (!PerfCommon.waitMonitorReady(senderMonitor, 5000, true)) {
-                return 2;
-            }
-
-            if (!performHandshake(receiver, sender)) {
+            if (!PerfCommon.waitMonitorReady(senderMonitor, 5000, true)
+                || !performHandshake(receiver, sender)) {
                 return 2;
             }
 
             int payloadSize = Math.max(msgSize, PerfSingleMetricHeader.HEADER_SIZE);
-            byte[] payload = new byte[payloadSize];
-            byte[] recv = new byte[payloadSize];
-            byte[] routingId = new byte[256];
+            int warmupCount = PerfCommon.resolveWarmupCount(pattern, msgSize);
+            int durationSeconds = PerfCommon.resolveDurationSeconds();
+            int latencyCap = PerfCommon.resolveLatencySampleCap();
+            int recvTimeoutMs = PerfCommon.resolveRecvTimeoutMs();
             int runId = PerfCommon.randomRunId();
-            long seq = 1;
 
-            int warmupCount = PerfCommon.resolveWarmupCount(PATTERN, msgSize);
-            for (int i = 0; i < warmupCount; i++) {
-                PerfSingleMetricHeader.stampPayload(payload, runId,
-                    PerfSingleMetricHeader.PHASE_WARMUP, msgSize, seq++,
-                    PerfSingleMetricHeader.nowUs());
-                sendBlocking(sender, ROUTE_TO_RECEIVER, SendFlag.SNDMORE);
-                sendBlocking(sender, payload, SendFlag.NONE);
-                receiveBlocking(receiver, routingId);
-                receiveBlocking(receiver, recv);
-                while (drainRouterMessageNonBlocking(receiver, routingId, recv) > 0) {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment payload = arena.allocate(payloadSize, 8);
+                payload.fill((byte) 'a');
+                long[] seq = new long[] {1L};
+
+                PhaseResult warmup = runPhase(sender, receiver, payload, payloadSize,
+                    msgSize, runId, seq, PerfSingleMetricHeader.PHASE_WARMUP,
+                    warmupCount, 0, 0, recvTimeoutMs, usePoll);
+                if (!warmup.ok || warmup.received < warmupCount) {
+                    return 2;
                 }
-            }
 
-            Thread.sleep(PerfCommon.resolveSettleMs());
+                Thread.sleep(PerfCommon.resolveSettleMs());
 
-            PerfSingleMetricHeader.Header header = new PerfSingleMetricHeader.Header();
-            PerfCommon.LatencyReservoir latency =
-                new PerfCommon.LatencyReservoir(PerfCommon.resolveLatencySampleCap());
-
-            long received = 0;
-            long endNs = System.nanoTime()
-                + (long) PerfCommon.resolveDurationSeconds() * 1_000_000_000L;
-            long beginNs = System.nanoTime();
-
-            while (System.nanoTime() < endNs) {
-                PerfSingleMetricHeader.stampPayload(payload, runId,
-                    PerfSingleMetricHeader.PHASE_ACTIVE, msgSize, seq++,
-                    PerfSingleMetricHeader.nowUs());
-                sendBlocking(sender, ROUTE_TO_RECEIVER, SendFlag.SNDMORE);
-                sendBlocking(sender, payload, SendFlag.NONE);
-                receiveBlocking(receiver, routingId);
-
-                int n = receiveBlocking(receiver, recv);
-                if (n > 0) {
-                    received += collectActiveSample(recv, n, runId, header, latency);
-                    while (true) {
-                        int drained = drainRouterMessageNonBlocking(receiver, routingId,
-                            recv);
-                        if (drained <= 0) {
-                            break;
-                        }
-                        received += collectActiveSample(recv, drained, runId, header,
-                            latency);
-                    }
+                PhaseResult active = runPhase(sender, receiver, payload, payloadSize,
+                    msgSize, runId, seq, PerfSingleMetricHeader.PHASE_ACTIVE,
+                    0, durationSeconds, latencyCap, recvTimeoutMs, usePoll);
+                if (!active.ok || active.received <= 0) {
+                    return 2;
                 }
-            }
 
-            double elapsedSec = Math.max(1e-9,
-                (System.nanoTime() - beginNs) / 1_000_000_000.0);
-            double throughput = received / elapsedSec;
-            PerfCommon.Stats stats = latency.snapshot();
-            PerfCommon.printResult(PATTERN, transport, msgSize, throughput,
-                stats.meanUs(), stats.p95Us(), stats.p99Us());
-            return 0;
+                double throughput =
+                    active.received / (double) Math.max(durationSeconds, 1);
+                PerfCommon.Stats stats = active.latency.snapshot();
+                PerfCommon.printResult(pattern, transport, msgSize, throughput,
+                    stats.meanUs(), stats.p95Us(), stats.p99Us());
+                return 0;
+            }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             return 2;
@@ -138,57 +108,195 @@ public final class PerfRouterRouter {
     }
 
     private static boolean performHandshake(Socket receiver, Socket sender) {
-        byte[] rid = new byte[256];
-        byte[] data = new byte[256];
+        byte[] ping = new byte[8];
+        sendBlocking(sender, ROUTE_TO_RECEIVER, SendFlag.SNDMORE);
+        sendBlocking(sender, "PING".getBytes(StandardCharsets.UTF_8),
+            SendFlag.NONE);
+        if (!receiveMultipart(receiver, ping, ReceiveFlag.NONE)) {
+            return false;
+        }
 
+        sendBlocking(receiver, ROUTE_TO_SENDER, SendFlag.SNDMORE);
+        sendBlocking(receiver, "PONG".getBytes(StandardCharsets.UTF_8),
+            SendFlag.NONE);
+        return receiveMultipart(sender, ping, ReceiveFlag.NONE);
+    }
+
+    private static boolean receiveMultipart(Socket socket, byte[] payloadBuffer,
+                                            ReceiveFlag flags) {
         try {
-            sendBlocking(sender, ROUTE_TO_RECEIVER, SendFlag.SNDMORE);
-            sendBlocking(sender, PING, SendFlag.NONE);
-            receiveBlocking(receiver, rid);
-            int pingLen = receiveBlocking(receiver, data);
-            if (!matches(data, pingLen, PING)) {
+            if (!socket.recvFrameHasMore(flags)) {
                 return false;
             }
-            sendBlocking(receiver, ROUTE_TO_SENDER, SendFlag.SNDMORE);
-            sendBlocking(receiver, PONG, SendFlag.NONE);
-            receiveBlocking(sender, rid);
-            int pongLen = receiveBlocking(sender, data);
-            return matches(data, pongLen, PONG);
-        } catch (RuntimeException ex) {
+            return receive(socket, payloadBuffer, ReceiveFlag.NONE) > 0;
+        } catch (ZlinkException ex) {
             return false;
         }
     }
 
-    private static boolean matches(byte[] buffer, int length, byte[] expected) {
-        if (length != expected.length) {
-            return false;
-        }
-        for (int i = 0; i < expected.length; i++) {
-            if (buffer[i] != expected[i]) {
-                return false;
+    private static PhaseResult runPhase(Socket sender, Socket receiver,
+                                        MemorySegment payload, int payloadSize,
+                                        int msgSize, int runId, long[] seq,
+                                        int phase, int warmupCount,
+                                        int durationSeconds, int latencyCap,
+                                        int recvTimeoutMs, boolean usePoll) {
+        final boolean active = durationSeconds > 0;
+        final long deadlineNs = active
+            ? System.nanoTime()
+                + (long) Math.max(durationSeconds, 1) * 1_000_000_000L
+            : 0L;
+        final long drainDeadlineNs =
+            (long) Math.max(recvTimeoutMs, 1) * 1_000_000L;
+        final LongAdder received = new LongAdder();
+        final AtomicBoolean senderDone = new AtomicBoolean(false);
+        final AtomicReference<RuntimeException> recvError =
+            new AtomicReference<>();
+        final PerfCommon.LatencyReservoir latency =
+            new PerfCommon.LatencyReservoir(Math.max(latencyCap, 1));
+
+        Thread receiverThread = new Thread(() -> {
+            long lastRecvNs = System.nanoTime();
+            PerfSingleMetricHeader.Header header =
+                new PerfSingleMetricHeader.Header();
+
+            try (Arena recvArena = Arena.ofConfined()) {
+                MemorySegment recvBuffer = recvArena.allocate(payloadSize, 8);
+
+                while (true) {
+                    boolean done = senderDone.get();
+                    if (usePoll && !PerfCommon.waitForInput(receiver, 0)) {
+                        if (done
+                            && System.nanoTime() - lastRecvNs >= drainDeadlineNs) {
+                            break;
+                        }
+                        Thread.yield();
+                        continue;
+                    }
+
+                    int recvRc = receiveRouterPayload(receiver, recvBuffer,
+                        done ? ReceiveFlag.DONTWAIT : ReceiveFlag.NONE);
+                    if (recvRc > 0) {
+                        lastRecvNs = System.nanoTime();
+                        accountMessage(recvBuffer, recvRc, payloadSize, active,
+                            runId, phase, header, received, latency);
+
+                        while (true) {
+                            recvRc = receiveRouterPayload(receiver, recvBuffer,
+                                ReceiveFlag.DONTWAIT);
+                            if (recvRc > 0) {
+                                lastRecvNs = System.nanoTime();
+                                accountMessage(recvBuffer, recvRc, payloadSize,
+                                    active, runId, phase, header, received,
+                                    latency);
+                                continue;
+                            }
+                            if (recvRc == 0) {
+                                break;
+                            }
+                            throw new IllegalStateException("router_recv_failed");
+                        }
+                        continue;
+                    }
+
+                    if (recvRc == 0) {
+                        if (done
+                            && System.nanoTime() - lastRecvNs >= drainDeadlineNs) {
+                            break;
+                        }
+                        Thread.yield();
+                        continue;
+                    }
+
+                    throw new IllegalStateException("router_recv_failed");
+                }
+            } catch (RuntimeException ex) {
+                recvError.set(ex);
+            }
+        }, usePoll ? "zlink-java-perf-router-router-poll-recv"
+            : "zlink-java-perf-router-router-recv");
+        receiverThread.setDaemon(true);
+        receiverThread.start();
+
+        boolean ok = true;
+        if (active) {
+            while (System.nanoTime() < deadlineNs) {
+                if (!PerfSingleMetricHeader.stampPayload(payload, payloadSize,
+                    runId, phase, msgSize, seq[0]++, PerfSingleMetricHeader.nowUs())) {
+                    ok = false;
+                    break;
+                }
+                sendBlocking(sender, ROUTE_TO_RECEIVER, SendFlag.SNDMORE);
+                sendBlocking(sender, payload, payloadSize, SendFlag.NONE);
+            }
+        } else {
+            for (int i = 0; i < warmupCount; i++) {
+                if (!PerfSingleMetricHeader.stampPayload(payload, payloadSize,
+                    runId, phase, msgSize, seq[0]++, PerfSingleMetricHeader.nowUs())) {
+                    ok = false;
+                    break;
+                }
+                sendBlocking(sender, ROUTE_TO_RECEIVER, SendFlag.SNDMORE);
+                sendBlocking(sender, payload, payloadSize, SendFlag.NONE);
             }
         }
-        return true;
+
+        senderDone.set(true);
+        try {
+            receiverThread.join();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return new PhaseResult(false, received.sum(), latency);
+        }
+
+        return new PhaseResult(ok && recvError.get() == null, received.sum(),
+            latency);
     }
 
-    private static long collectActiveSample(byte[] recv, int recvBytes, int runId,
-                                            PerfSingleMetricHeader.Header header,
-                                            PerfCommon.LatencyReservoir latency) {
-        if (recvBytes < PerfSingleMetricHeader.HEADER_SIZE
-            || !PerfSingleMetricHeader.decodePayloadHeader(recv, header)
+    private static void accountMessage(MemorySegment recvBuffer, int bytesRead,
+                                       int payloadSize, boolean active,
+                                       int runId, int phase,
+                                       PerfSingleMetricHeader.Header header,
+                                       LongAdder received,
+                                       PerfCommon.LatencyReservoir latency) {
+        if (bytesRead != payloadSize
+            || !PerfSingleMetricHeader.decodePayloadHeader(recvBuffer, payloadSize,
+                header)
             || header.runId != runId
-            || header.phase != PerfSingleMetricHeader.PHASE_ACTIVE) {
-            return 0L;
+            || header.phase != phase) {
+            return;
+        }
+        received.increment();
+        if (!active) {
+            return;
         }
         long nowUs = PerfSingleMetricHeader.nowUs();
         latency.add(Math.max(0L, nowUs - header.sentTsUs));
-        return 1L;
     }
 
-    private static int receiveBlocking(Socket socket, byte[] buffer) {
+    private static int receiveRouterPayload(Socket socket,
+                                            MemorySegment payloadBuffer,
+                                            ReceiveFlag flags) {
+        try {
+            if (!socket.recvFrameHasMore(flags)) {
+                return -1;
+            }
+            int payloadLen = receive(socket, payloadBuffer, ReceiveFlag.NONE);
+            if (payloadLen == 0) {
+                payloadLen = receive(socket, payloadBuffer, ReceiveFlag.NONE);
+            }
+            return payloadLen;
+        } catch (ZlinkException ex) {
+            if (isInterrupted(ex.errno()) || isWouldBlock(ex.errno())) {
+                return 0;
+            }
+            throw ex;
+        }
+    }
+
+    private static int receive(Socket socket, byte[] buffer, ReceiveFlag flags) {
         while (true) {
             try {
-                return socket.recv(buffer, 0, buffer.length, ReceiveFlag.NONE);
+                return socket.recv(buffer, 0, buffer.length, flags);
             } catch (ZlinkException ex) {
                 if (isInterrupted(ex.errno())) {
                     continue;
@@ -201,10 +309,11 @@ public final class PerfRouterRouter {
         }
     }
 
-    private static int receiveNonBlocking(Socket socket, byte[] buffer) {
+    private static int receive(Socket socket, MemorySegment buffer,
+                               ReceiveFlag flags) {
         while (true) {
             try {
-                return socket.recv(buffer, 0, buffer.length, ReceiveFlag.DONTWAIT);
+                return socket.recv(buffer, flags);
             } catch (ZlinkException ex) {
                 if (isInterrupted(ex.errno())) {
                     continue;
@@ -215,36 +324,33 @@ public final class PerfRouterRouter {
                 throw ex;
             }
         }
-    }
-
-    private static int drainRouterMessageNonBlocking(Socket socket,
-                                                     byte[] routingIdBuffer,
-                                                     byte[] payloadBuffer) {
-        int idLen = receiveNonBlocking(socket, routingIdBuffer);
-        if (idLen <= 0) {
-            return 0;
-        }
-        int payloadLen = receiveNonBlocking(socket, payloadBuffer);
-        if (payloadLen <= 0) {
-            throw new IllegalStateException("router_partial_message");
-        }
-        return payloadLen;
     }
 
     private static void sendBlocking(Socket socket, byte[] payload,
                                      SendFlag flags) {
-        SendFlag op = flags == null ? SendFlag.NONE : flags;
-        int written = socket.send(payload, 0, payload.length, op);
-        if (written <= 0) {
+        int written = socket.send(payload, 0, payload.length, flags);
+        if (written != payload.length) {
+            throw new IllegalStateException("send_failed");
+        }
+    }
+
+    private static void sendBlocking(Socket socket, MemorySegment payload,
+                                     long payloadSize, SendFlag flags) {
+        int written = socket.send(payload, 0, payloadSize, flags);
+        if (written != payloadSize) {
             throw new IllegalStateException("send_failed");
         }
     }
 
     private static boolean isInterrupted(int errno) {
-        return errno == ERRNO_EINTR;
+        return errno == 4;
     }
 
     private static boolean isWouldBlock(int errno) {
-        return errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN;
+        return errno == 11 || errno == 10035;
+    }
+
+    private record PhaseResult(boolean ok, long received,
+                               PerfCommon.LatencyReservoir latency) {
     }
 }

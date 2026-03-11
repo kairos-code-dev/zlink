@@ -9,6 +9,7 @@
 
 #include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <type_traits>
 
 namespace zlink
@@ -827,6 +828,61 @@ class receiver_t
     {
         return zlink_receiver_set_tls_server (
           _receiver, cert_.c_str (), key_.c_str ());
+    }
+
+    /**
+     * @brief Receive one single-frame payload into a caller buffer.
+     * @param data_ Destination payload buffer.
+     * @param size_ Destination buffer size in bytes.
+     * @param received_size_ Output payload size copied.
+     * @param flags_ Receive flags.
+     * @param routing_id_out_ Optional routing id output.
+     * @return 0 on success, -1 on failure.
+     */
+    ZLINK_CPP_NODISCARD int
+    recv (void *data_,
+          size_t size_,
+          size_t *received_size_,
+          recv_flag flags_ = recv_flag::none,
+          zlink_routing_id_t *routing_id_out_ = NULL)
+    {
+        if (!received_size_ || (size_ > 0 && !data_)) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        zlink_msg_t *parts = NULL;
+        size_t count = 0;
+        const int rc = zlink_receiver_recv (
+          _receiver, &parts, &count, static_cast<int> (flags_), routing_id_out_);
+        if (rc != 0)
+            return rc;
+
+        *received_size_ = 0;
+        if (!parts || count != 1) {
+            if (parts) {
+                for (size_t i = 0; i < count; ++i)
+                    zlink_msg_close (&parts[i]);
+                std::free (parts);
+            }
+            errno = EPROTO;
+            return -1;
+        }
+
+        const size_t payload_size = zlink_msg_size (&parts[0]);
+        if (payload_size > size_) {
+            zlink_msg_close (&parts[0]);
+            std::free (parts);
+            errno = EMSGSIZE;
+            return -1;
+        }
+
+        if (payload_size > 0)
+            std::memcpy (data_, zlink_msg_data (&parts[0]), payload_size);
+        *received_size_ = payload_size;
+        zlink_msg_close (&parts[0]);
+        std::free (parts);
+        return 0;
     }
 
     /**

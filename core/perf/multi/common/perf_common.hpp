@@ -1,6 +1,7 @@
 #ifndef PERF_RUNTIME_COMMON_HPP
 #define PERF_RUNTIME_COMMON_HPP
 
+#include <atomic>
 #include <chrono>
 #include <vector>
 #include <string>
@@ -274,7 +275,8 @@ inline void apply_ctx_options(void *ctx_)
     }
 
     const int blocky = bench_ctx_blocky();
-    const int blocky_rc = zlink_ctx_set(ctx_, ZLINK_BLOCKY, blocky);
+    const int blocky_rc =
+      zlink_ctx_set(ctx_, static_cast<zlink_ctx_option_t>(ZLINK_BLOCKY), blocky);
     if (blocky_rc != 0 && debug) {
         std::cerr << "zlink_ctx_set(ZLINK_BLOCKY) failed: "
                   << zlink_strerror(zlink_errno()) << std::endl;
@@ -323,7 +325,7 @@ private:
 class socket_guard_t {
 public:
     socket_guard_t() : _socket(NULL) {}
-    socket_guard_t(void *ctx_, int type_) : _socket(zlink_socket(ctx_, type_)) {}
+    socket_guard_t(void *ctx_, zlink_socket_type_t type_) : _socket(zlink_socket(ctx_, type_)) {}
     ~socket_guard_t() {
         if (_socket)
             zlink_close(_socket);
@@ -343,71 +345,38 @@ private:
 struct connect_monitor_t {
     void *owner;
     void *monitor;
-    connect_monitor_t() : owner(NULL), monitor(NULL) {}
+    std::atomic<int> ready_count;
+    connect_monitor_t() : owner(NULL), monitor(NULL), ready_count(0) {}
 };
 
-inline int bench_monitor_hwm()
+static std::atomic<int> *g_perf_monitor_ready_ptr = NULL;
+
+inline void perf_on_monitor_event(const zlink_monitor_event_t *ev)
 {
-    static int monitor_hwm = -1;
-    if (monitor_hwm >= 0)
-        return monitor_hwm;
-
-    const char *env = std::getenv("PERF_MONITOR_HWM");
-    if (!env || !*env) {
-        monitor_hwm = 1000;
-        return monitor_hwm;
-    }
-
-    errno = 0;
-    char *end = NULL;
-    const long parsed = std::strtol(env, &end, 10);
-    if (errno != 0 || end == env || parsed <= 0) {
-        monitor_hwm = 0;
-        return monitor_hwm;
-    }
-
-    monitor_hwm = static_cast<int>(parsed);
-    return monitor_hwm;
+    if (ev && ev->event == ZLINK_EVENT_CONNECTION_READY
+        && g_perf_monitor_ready_ptr)
+        g_perf_monitor_ready_ptr->fetch_add(1, std::memory_order_release);
 }
 
 inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
 {
-    int events = ZLINK_EVENT_CONNECTION_READY;
-    void *monitor = zlink_socket_monitor_open(socket_, events);
+    out_.ready_count.store(0, std::memory_order_release);
+    g_perf_monitor_ready_ptr = &out_.ready_count;
+
+    zlink_socket_monitor_event_mask_t events = ZLINK_EVENT_CONNECTION_READY;
+    void *monitor =
+      zlink_socket_monitor_open(socket_, events, perf_on_monitor_event);
     if (!monitor)
         return false;
 
-    const int linger_ms = 0;
-    zlink_setsockopt(monitor, ZLINK_LINGER, &linger_ms, sizeof(linger_ms));
-    const int monitor_hwm = bench_monitor_hwm();
-    if (monitor_hwm > 0) {
-        zlink_setsockopt(
-          monitor, ZLINK_RCVHWM, &monitor_hwm, sizeof(monitor_hwm));
-        zlink_setsockopt(
-          monitor, ZLINK_SNDHWM, &monitor_hwm, sizeof(monitor_hwm));
-    }
     out_.owner = socket_;
     out_.monitor = monitor;
     return true;
 }
 
-inline int poll_connect_ready_count(connect_monitor_t &monitor_);
-
 inline int poll_connect_ready_count(connect_monitor_t &monitor_)
 {
-    if (!monitor_.monitor)
-        return 0;
-
-    int ready = 0;
-    for (;;) {
-        zlink_monitor_event_t ev;
-        if (zlink_monitor_recv(monitor_.monitor, &ev, ZLINK_DONTWAIT) != 0)
-            break;
-        if (ev.event == ZLINK_EVENT_CONNECTION_READY) {
-            ++ready;
-        }
-    }
-    return ready;
+    return monitor_.ready_count.load(std::memory_order_acquire);
 }
 
 inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
@@ -419,35 +388,19 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
     if (!monitor_.monitor)
         return false;
 
-    size_t ready = static_cast<size_t>(poll_connect_ready_count(monitor_));
-    if (ready >= expected_ready_)
-        return true;
-
     const int bounded_timeout = timeout_ms_ > 0 ? timeout_ms_ : 0;
     const auto deadline = steady_clock_t::now()
                           + milliseconds_t(bounded_timeout);
-    while (ready < expected_ready_) {
-        const auto now = steady_clock_t::now();
-        if (now >= deadline)
+    while (static_cast<size_t>(
+             monitor_.ready_count.load(std::memory_order_acquire))
+           < expected_ready_) {
+        if (steady_clock_t::now() >= deadline)
             break;
-
-        const long remain_ms = remaining_milliseconds(
-                                 deadline, now);
-        zlink_pollitem_t item[] = {{monitor_.monitor, 0, ZLINK_POLLIN, 0}};
-        const int rc = zlink_poll(item, 1, remain_ms > 0 ? remain_ms : 0);
-        if (rc < 0) {
-            if (zlink_errno() == EINTR)
-                continue;
-            return false;
-        }
-        if (rc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
-            continue;
-
-        ready += static_cast<size_t>(poll_connect_ready_count(monitor_));
-        if (ready >= expected_ready_)
-            return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    return ready >= expected_ready_;
+    return static_cast<size_t>(
+             monitor_.ready_count.load(std::memory_order_acquire))
+           >= expected_ready_;
 }
 
 inline void close_connect_monitor(connect_monitor_t &monitor_)
@@ -456,6 +409,7 @@ inline void close_connect_monitor(connect_monitor_t &monitor_)
         zlink_socket_monitor(monitor_.owner, NULL, 0);
     if (monitor_.monitor)
         zlink_close(monitor_.monitor);
+    g_perf_monitor_ready_ptr = NULL;
     monitor_.owner = NULL;
     monitor_.monitor = NULL;
 }
@@ -640,8 +594,8 @@ inline bool bench_debug_enabled() {
     return enabled;
 }
 
-inline bool set_sockopt_int(void *socket_, int option_, int value_,
-                            const char *name_) {
+inline bool set_sockopt_int(void *socket_, zlink_socket_option_t option_,
+                            int value_, const char *name_) {
     const int rc = zlink_setsockopt(socket_, option_, &value_, sizeof(value_));
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "setsockopt(" << name_ << ") failed: "

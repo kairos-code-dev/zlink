@@ -1,4 +1,4 @@
-#include "../common/perf_entry.hpp"
+#include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_resource.hpp"
@@ -311,7 +311,7 @@ int main (int argc, char **argv)
 
     const std::string lib_name = argv[1];
     const std::string transport = argv[2];
-    set_perf_pattern_env (k_pattern);
+    set_perf_multi_pattern_env (k_pattern);
 
     if (!is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
@@ -406,10 +406,7 @@ int main (int argc, char **argv)
             rc = 1;
             break;
         }
-        if (zlink_poll (NULL, 0, 50) < 0 && zlink_errno () != EINTR) {
-            rc = 1;
-            break;
-        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (50));
     }
 
     if (g_callback_failed.load (std::memory_order_acquire))

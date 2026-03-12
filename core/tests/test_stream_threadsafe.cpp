@@ -658,6 +658,306 @@ void test_stream_callback_handoff_to_worker_thread_send_msg_is_safe ()
 #endif
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// Regression: reattach after detach must work
+///////////////////////////////////////////////////////////////////////////////
+
+void test_stream_reattach_after_detach ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+#else
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_socket (server);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    const int raw_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT (0, raw_fd);
+    set_raw_timeout (raw_fd, 500);
+
+    //  First attach → send → detach cycle
+    zlink_routing_id_t rid;
+    establish_route (server, raw_fd, &rid, false);
+
+    std::vector<unsigned char> payload (kPayloadSize, 0xAA);
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (payload.size ()),
+      zlink_stream_send (server, &rid, &payload[0], payload.size (), 0));
+
+    std::vector<unsigned char> echoed (payload.size ());
+    TEST_ASSERT_TRUE (recv_exact_bytes (raw_fd, &echoed[0], echoed.size ()));
+    TEST_ASSERT_EQUAL_INT (0, memcmp (&payload[0], &echoed[0], payload.size ()));
+
+    //  Second attach → send → detach cycle (reattach)
+    route_probe_t probe2;
+    g_route_probe = &probe2;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_raw (server, capture_route_callback));
+
+    const unsigned char ping = 0xBB;
+    TEST_ASSERT_EQUAL_INT (0, send_all (raw_fd, &ping, sizeof (ping)));
+    TEST_ASSERT_TRUE (wait_flag (&probe2.ready, 5000));
+    g_route_probe = NULL;
+
+    //  Send again after reattach
+    std::fill (payload.begin (), payload.end (), 0xCC);
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (payload.size ()),
+      zlink_stream_send (server, &probe2.rid, &payload[0], payload.size (), 0));
+
+    TEST_ASSERT_TRUE (recv_exact_bytes (raw_fd, &echoed[0], echoed.size ()));
+    TEST_ASSERT_EQUAL_INT (0, memcmp (&payload[0], &echoed[0], payload.size ()));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
+    close_raw_fd (raw_fd);
+    test_context_socket_close_zero_linger (server);
+#endif
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Regression: send_msg from multiple app threads is thread-safe
+///////////////////////////////////////////////////////////////////////////////
+
+void test_stream_send_msg_is_thread_safe ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+#else
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_socket (server);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    const int raw_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT (0, raw_fd);
+    set_raw_timeout (raw_fd, 500);
+
+    zlink_routing_id_t rid;
+    establish_route (server, raw_fd, &rid, false);
+
+    const int send_msg_threads = 4;
+    const int msgs_per_thread = 32;
+    std::atomic<int> send_errors (0);
+
+    auto msg_sender = [&] (unsigned char fill_) {
+        for (int i = 0; i < msgs_per_thread; ++i) {
+            zlink_msg_t msg;
+            if (zlink_msg_init_size (&msg, kPayloadSize) != 0) {
+                send_errors.fetch_add (1, std::memory_order_release);
+                return;
+            }
+            memset (zlink_msg_data (&msg), fill_, kPayloadSize);
+
+            const int rc = zlink_stream_send_msg (server, &rid, &msg, 0);
+            if (rc != static_cast<int> (kPayloadSize)) {
+                send_errors.fetch_add (1, std::memory_order_release);
+                zlink_msg_close (&msg);
+                return;
+            }
+        }
+    };
+
+    std::atomic<size_t> received_bytes (0);
+    std::atomic<int> recv_errors (0);
+    const size_t expected_bytes = send_msg_threads * msgs_per_thread * kPayloadSize;
+    std::thread reader (drain_exact_bytes, raw_fd, expected_bytes,
+                        &received_bytes, &recv_errors);
+
+    std::vector<std::thread> senders;
+    for (int i = 0; i < send_msg_threads; ++i) {
+        senders.push_back (
+          std::thread (msg_sender, static_cast<unsigned char> (0x40 + i)));
+    }
+
+    for (size_t i = 0; i < senders.size (); ++i)
+        senders[i].join ();
+    reader.join ();
+
+    TEST_ASSERT_EQUAL_INT (0, send_errors.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (0, recv_errors.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_UINT (
+      static_cast<unsigned int> (expected_bytes),
+      static_cast<unsigned int> (
+        received_bytes.load (std::memory_order_acquire)));
+
+    close_raw_fd (raw_fd);
+    test_context_socket_close_zero_linger (server);
+#endif
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Regression: many rapid client connect/disconnect during active sends
+///////////////////////////////////////////////////////////////////////////////
+
+void test_stream_rapid_client_churn_during_send ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+#else
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_socket (server);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    //  Establish a persistent client that sends/receives throughout
+    const int persistent_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT (0, persistent_fd);
+    set_raw_timeout (persistent_fd, 1000);
+
+    zlink_routing_id_t persistent_rid;
+    establish_route (server, persistent_fd, &persistent_rid, false);
+
+    //  In one thread, send a stream of messages to the persistent client
+    std::atomic<int> send_done (0);
+    std::atomic<int> send_errors (0);
+    const int total_sends = 128;
+    std::thread sender ([&] () {
+        std::vector<unsigned char> payload (kPayloadSize, 0xEE);
+        for (int i = 0; i < total_sends; ++i) {
+            const int rc = zlink_stream_send (
+              server, &persistent_rid, &payload[0], payload.size (), 0);
+            if (rc != static_cast<int> (payload.size ())) {
+                send_errors.fetch_add (1, std::memory_order_release);
+            }
+        }
+        send_done.store (1, std::memory_order_release);
+    });
+
+    //  In another thread, rapidly connect/disconnect ephemeral clients
+    const int churn_count = 16;
+    std::thread churner ([&] () {
+        for (int i = 0; i < churn_count; ++i) {
+            const int fd = connect_raw_tcp (endpoint);
+            if (fd >= 0) {
+                const unsigned char ping = 0x01;
+                (void) send_all (fd, &ping, sizeof (ping));
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                close_raw_fd (fd);
+            }
+        }
+    });
+
+    //  Drain on the persistent client side
+    std::atomic<size_t> received_bytes (0);
+    std::atomic<int> recv_errors (0);
+    const size_t expected_bytes = total_sends * kPayloadSize;
+    std::thread reader (drain_exact_bytes, persistent_fd, expected_bytes,
+                        &received_bytes, &recv_errors);
+
+    sender.join ();
+    churner.join ();
+    reader.join ();
+
+    TEST_ASSERT_EQUAL_INT (0, send_errors.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (0, recv_errors.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_UINT (
+      static_cast<unsigned int> (expected_bytes),
+      static_cast<unsigned int> (
+        received_bytes.load (std::memory_order_acquire)));
+
+    close_raw_fd (persistent_fd);
+    test_context_socket_close_zero_linger (server);
+#endif
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Regression: double detach returns error, does not crash
+///////////////////////////////////////////////////////////////////////////////
+
+void test_stream_double_detach_returns_error ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+#else
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_socket (server);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    const int raw_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT (0, raw_fd);
+    set_raw_timeout (raw_fd, 500);
+
+    zlink_routing_id_t rid;
+    establish_route (server, raw_fd, &rid, false);
+
+    //  First detach is already done inside establish_route (keep_attached=false)
+    //  Attach again, then detach twice
+    route_probe_t probe;
+    g_route_probe = &probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_raw (server, capture_route_callback));
+
+    const unsigned char ping = 0x01;
+    TEST_ASSERT_EQUAL_INT (0, send_all (raw_fd, &ping, sizeof (ping)));
+    TEST_ASSERT_TRUE (wait_flag (&probe.ready, 5000));
+    g_route_probe = NULL;
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
+
+    //  Second detach should fail (already detached)
+    const int rc = zlink_stream_detach (server);
+    TEST_ASSERT_EQUAL_INT (-1, rc);
+
+    close_raw_fd (raw_fd);
+    test_context_socket_close_zero_linger (server);
+#endif
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Regression: send to stale routing_id after client disconnects
+///////////////////////////////////////////////////////////////////////////////
+
+void test_stream_send_to_stale_rid_after_disconnect ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+#else
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_socket (server);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    const int raw_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT (0, raw_fd);
+    set_raw_timeout (raw_fd, 500);
+
+    zlink_routing_id_t rid;
+    establish_route (server, raw_fd, &rid, false);
+
+    //  Verify send works while connected
+    std::vector<unsigned char> payload (kPayloadSize, 0x77);
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (payload.size ()),
+      zlink_stream_send (server, &rid, &payload[0], payload.size (), 0));
+
+    //  Disconnect the raw client
+    close_raw_fd (raw_fd);
+
+    //  Allow disconnect to propagate
+    msleep (SETTLE_TIME);
+
+    //  Send to the stale routing_id should fail gracefully, not crash
+    const int rc =
+      zlink_stream_send (server, &rid, &payload[0], payload.size (), 0);
+    //  Either returns error or succeeds (buffered) — the key assertion is no crash
+    LIBZLINK_UNUSED (rc);
+
+    test_context_socket_close_zero_linger (server);
+#endif
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -668,5 +968,10 @@ int main ()
     RUN_TEST (test_stream_send_and_detach_race_is_safe);
     RUN_TEST (test_stream_send_and_close_race_is_safe);
     RUN_TEST (test_stream_callback_handoff_to_worker_thread_send_msg_is_safe);
+    RUN_TEST (test_stream_reattach_after_detach);
+    RUN_TEST (test_stream_send_msg_is_thread_safe);
+    RUN_TEST (test_stream_rapid_client_churn_during_send);
+    RUN_TEST (test_stream_double_detach_returns_error);
+    RUN_TEST (test_stream_send_to_stale_rid_after_disconnect);
     return UNITY_END ();
 }

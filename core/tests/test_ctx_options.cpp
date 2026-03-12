@@ -187,7 +187,7 @@ void test_ctx_option_io_threads ()
 
 void test_ctx_option_ipv6 ()
 {
-    TEST_ASSERT_EQUAL_INT (0, zlink_ctx_get (get_test_context (), ZLINK_IPV6));
+    TEST_ASSERT_EQUAL_INT (0, zlink_ctx_get (get_test_context (), static_cast<zlink_ctx_option_t>(ZLINK_IPV6)));
 }
 
 void test_ctx_option_msg_t_size ()
@@ -201,14 +201,14 @@ void test_ctx_option_msg_t_size ()
 void test_ctx_option_ipv6_set ()
 {
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (get_test_context (), ZLINK_IPV6, true));
-    TEST_ASSERT_EQUAL_INT (1, zlink_ctx_get (get_test_context (), ZLINK_IPV6));
+      zlink_ctx_set (get_test_context (), static_cast<zlink_ctx_option_t>(ZLINK_IPV6), true));
+    TEST_ASSERT_EQUAL_INT (1, zlink_ctx_get (get_test_context (), static_cast<zlink_ctx_option_t>(ZLINK_IPV6)));
 }
 
 void test_ctx_option_blocky ()
 {
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (get_test_context (), ZLINK_IPV6, true));
+      zlink_ctx_set (get_test_context (), static_cast<zlink_ctx_option_t>(ZLINK_IPV6), true));
 
     void *router = test_context_socket (ZLINK_ROUTER);
     int value;
@@ -231,9 +231,9 @@ void test_ctx_option_blocky ()
 #endif
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (get_test_context (), ZLINK_BLOCKY, false));
+      zlink_ctx_set (get_test_context (), static_cast<zlink_ctx_option_t>(ZLINK_BLOCKY), false));
     TEST_ASSERT_EQUAL_INT (0, TEST_ASSERT_SUCCESS_ERRNO ((zlink_ctx_get (
-                                get_test_context (), ZLINK_BLOCKY))));
+                                get_test_context (), static_cast<zlink_ctx_option_t>(ZLINK_BLOCKY)))));
     router = test_context_socket (ZLINK_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_getsockopt (router, ZLINK_LINGER, &value, &optsize));
@@ -243,9 +243,9 @@ void test_ctx_option_blocky ()
 
 void test_ctx_option_invalid ()
 {
-    TEST_ASSERT_EQUAL_INT (-1, zlink_ctx_set (get_test_context (), -1, 0));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_ctx_set (get_test_context (), static_cast<zlink_ctx_option_t>(-1), 0));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_EQUAL_INT (-1, zlink_ctx_get (get_test_context (), -1));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_ctx_get (get_test_context (), static_cast<zlink_ctx_option_t>(-1)));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 }
 

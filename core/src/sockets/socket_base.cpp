@@ -1579,25 +1579,8 @@ bool zlink::socket_base_t::xpub_dispatch_active () const
     return false;
 }
 
-int zlink::socket_base_t::stream_dispatch_start (
-  zlink_stream_on_packets_fn callback_, int flags_)
-{
-    LIBZLINK_UNUSED (callback_);
-    LIBZLINK_UNUSED (flags_);
-    errno = ENOTSUP;
-    return -1;
-}
-
 int zlink::socket_base_t::stream_dispatch_start_raw (
   zlink_stream_on_raw_fn callback_)
-{
-    LIBZLINK_UNUSED (callback_);
-    errno = ENOTSUP;
-    return -1;
-}
-
-int zlink::socket_base_t::stream_dispatch_start_len32be (
-  zlink_stream_on_packets_fn callback_)
 {
     LIBZLINK_UNUSED (callback_);
     errno = ENOTSUP;
@@ -1610,12 +1593,12 @@ int zlink::socket_base_t::stream_dispatch_stop ()
     return -1;
 }
 
-bool zlink::socket_base_t::stream_dispatch_len32be_enabled () const
+bool zlink::socket_base_t::stream_dispatch_active () const
 {
     return false;
 }
 
-bool zlink::socket_base_t::stream_dispatch_active () const
+bool zlink::socket_base_t::stream_dispatch_in_callback () const
 {
     return false;
 }
@@ -1624,8 +1607,7 @@ int zlink::socket_base_t::stream_dispatch_send_from_io (
   const zlink_routing_id_t *,
   const void *,
   size_t,
-  int,
-  bool)
+  int)
 {
     return 0;
 }
@@ -1633,10 +1615,14 @@ int zlink::socket_base_t::stream_dispatch_send_from_io (
 int zlink::socket_base_t::stream_dispatch_send_msg_from_io (
   const zlink_routing_id_t *,
   msg_t *,
-  int,
-  bool)
+  int)
 {
     return 0;
+}
+
+std::recursive_mutex *zlink::socket_base_t::api_sync_mutex ()
+{
+    return NULL;
 }
 
 int zlink::socket_base_t::close ()

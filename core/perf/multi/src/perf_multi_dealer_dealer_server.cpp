@@ -21,7 +21,7 @@ namespace {
 
 static const char *k_pattern = "MULTI_DEALER_DEALER";
 static const char *k_token = "dealer_dealer";
-static const int k_server_socket_type = ZLINK_DEALER;
+static const zlink_socket_type_t k_server_socket_type = ZLINK_DEALER;
 
 static std::atomic<bool> g_stop_requested (false);
 

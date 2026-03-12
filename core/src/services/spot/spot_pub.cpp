@@ -554,8 +554,6 @@ int spot_pub_t::destroy_internal (bool allow_embedded_default_,
     _monitor.close_all (&terminal);
 
     if (socket) {
-        if (_node)
-            (void) socket->term_endpoint (_node->pub_ingress_endpoint ().c_str ());
         unregister_spot_pub_socket (socket);
         if (_node && _node->_runtime)
             preserve_first_error (

@@ -206,6 +206,10 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _monitor_sync (),
     _disconnected (false)
 {
+#ifndef NDEBUG
+    _term_pipe_acks_registered = 0;
+    _term_pipe_acks_received = 0;
+#endif
     options.socket_id = sid_;
     options.ipv6 = (parent_->get (ZLINK_IPV6) != 0);
     options.linger.store (parent_->get (ZLINK_BLOCKY) ? -1 : 0);
@@ -463,6 +467,9 @@ void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
     //  straight away.
     if (is_terminating ()) {
         register_term_acks (1);
+#ifndef NDEBUG
+        ++_term_pipe_acks_registered;
+#endif
         pipe_->terminate (false);
     }
 }
@@ -1634,12 +1641,27 @@ int zlink::socket_base_t::stream_dispatch_send_msg_from_io (
 
 int zlink::socket_base_t::close ()
 {
+    //  If async mailbox is active, quiesce it before handing off to
+    //  the reaper.  This prevents data races between the I/O thread
+    //  (process_async_mailbox -> process_commands -> pipe state) and
+    //  the reaper thread (start_reaping -> terminate -> pipe state).
+    //
+    //  Two cases:
+    //  (a) async mailbox still active — stop it and wait.
+    //  (b) sub_dispatch_stop() already called but I/O thread hasn't
+    //      finished yet — _async_quiesce_pending is true.
+    if (_async_mailbox_active.load (std::memory_order_acquire)) {
+        stop_async_mailbox_processing ();
+        wait_async_quiesced (2000);
+    } else if (_async_quiesce_pending.load (std::memory_order_acquire)) {
+        wait_async_quiesced (2000);
+    }
+
     if (_mailbox)
         static_cast<mailbox_t *> (_mailbox)->clear_signalers ();
 
     //  Mark the socket as dead
     _tag = 0xdeadbeef;
-
 
     //  Transfer the ownership of the socket from this application thread
     //  to the reaper thread which will take care of the rest of shutdown
@@ -1687,6 +1709,12 @@ void zlink::socket_base_t::async_mailbox_pre_post (void *arg_)
 
 void zlink::socket_base_t::start_reaping (poller_t *poller_)
 {
+    //  Safety net: if the async mailbox handler is still running
+    //  (e.g. close() was bypassed or quiesce timed out), wait here
+    //  before the reaper touches socket internal state.
+    if (_async_quiesce_pending.load (std::memory_order_acquire))
+        wait_async_quiesced (1000);
+
     //  Plug the socket to the reaper thread.
     _poller = poller_;
 
@@ -1772,8 +1800,24 @@ int zlink::socket_base_t::start_async_mailbox_processing (
 void zlink::socket_base_t::stop_async_mailbox_processing ()
 {
     _async_mailbox_active.store (false, std::memory_order_release);
+    _async_processing_done.store (false, std::memory_order_release);
+    _async_quiesce_pending.store (true, std::memory_order_release);
     mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
     mailbox->schedule_if_needed ();
+}
+
+void zlink::socket_base_t::wait_async_quiesced (int timeout_ms_)
+{
+    if (_async_processing_done.load (std::memory_order_acquire))
+        return;
+    scoped_lock_t lock (_async_done_mu);
+    while (!_async_processing_done.load (std::memory_order_acquire)) {
+        const int rc =
+          _async_done_cv.wait (&_async_done_mu,
+                               timeout_ms_ > 0 ? timeout_ms_ : 2000);
+        if (rc != 0)
+            break;
+    }
 }
 
 void zlink::socket_base_t::process_stop ()
@@ -1807,6 +1851,10 @@ void zlink::socket_base_t::process_term (int linger_)
         _pipes[i]->terminate (false);
     }
     register_term_acks (static_cast<int> (_pipes.size ()));
+#ifndef NDEBUG
+    _term_pipe_acks_registered = static_cast<int> (_pipes.size ());
+    _term_pipe_acks_received = 0;
+#endif
 
     //  Continue the termination process immediately.
     own_t::process_term (linger_);
@@ -1831,6 +1879,15 @@ void zlink::socket_base_t::update_pipe_options (int option_)
 
 void zlink::socket_base_t::process_destroy ()
 {
+#ifndef NDEBUG
+    if (_term_pipe_acks_registered != _term_pipe_acks_received) {
+        fprintf (stderr,
+                 "[term-diag] socket %p id=%d type=%d pipe_acks: "
+                 "registered=%d received=%d\n",
+                 static_cast<void *> (this), options.socket_id, options.type,
+                 _term_pipe_acks_registered, _term_pipe_acks_received);
+    }
+#endif
     _destroyed = true;
 }
 
@@ -1945,6 +2002,15 @@ void zlink::socket_base_t::process_async_mailbox ()
             mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
             mailbox->reschedule_if_needed ();
             mailbox->set_io_context (NULL, NULL, NULL, NULL);
+            //  Signal quiesce completion to waiting close()/start_reaping().
+            if (_async_quiesce_pending.load (std::memory_order_acquire)) {
+                _async_quiesce_pending.store (false,
+                                              std::memory_order_release);
+                _async_processing_done.store (true,
+                                              std::memory_order_release);
+                scoped_lock_t lock (_async_done_mu);
+                _async_done_cv.broadcast ();
+            }
             return;
         }
     } while (static_cast<mailbox_t *> (_mailbox)->reschedule_if_needed ());
@@ -2052,8 +2118,12 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
         }
     }
 
-    if (is_terminating ())
+    if (is_terminating ()) {
+#ifndef NDEBUG
+        ++_term_pipe_acks_received;
+#endif
         unregister_term_ack ();
+    }
 }
 
 void zlink::socket_base_t::extract_flags (const msg_t *msg_)

@@ -365,6 +365,12 @@ class socket_base_t : public own_t,
     typedef array_t<pipe_t, 3> pipes_t;
     pipes_t _pipes;
 
+#ifndef NDEBUG
+    //  Diagnostic counters for termination accounting.
+    int _term_pipe_acks_registered;
+    int _term_pipe_acks_received;
+#endif
+
     //  Reaper's poller.
     poller_t *_poller;
 

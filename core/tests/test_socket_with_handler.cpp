@@ -283,8 +283,9 @@ void test_pair_socket_with_handler_dispatches_multipart ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
       client, ZLINK_ROUTING_ID, client_rid, sizeof (client_rid)));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, ENDPOINT_0));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, ENDPOINT_0));
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
     msleep (SETTLE_TIME);
 
     s_send_seq (client, "alpha", "beta", SEQ_END);
@@ -326,8 +327,9 @@ void test_router_socket_with_handler_strips_routing_frame ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
       client, ZLINK_ROUTING_ID, client_rid, sizeof (client_rid)));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, ENDPOINT_1));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, ENDPOINT_1));
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
     msleep (SETTLE_TIME);
 
     s_send_seq (client, "first", "second", SEQ_END);
@@ -368,8 +370,9 @@ void test_sub_socket_with_handler_applies_filter_before_dispatch ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "topic", 5));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, ENDPOINT_2));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, ENDPOINT_2));
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (pub, endpoint, sizeof endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
     msleep (SETTLE_TIME);
 
     s_send_seq (pub, "other", "skip", SEQ_END);

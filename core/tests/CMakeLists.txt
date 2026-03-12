@@ -449,6 +449,8 @@ function(extract_test_names_from_specs out_var specs_var)
   set(${out_var} "${test_names}" PARENT_SCOPE)
 endfunction()
 
+set(NETWORK_INTEGRATION_RESOURCE_LOCK "zlink-network-integration")
+
 set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_pub_sub_options_and_routing_ids
     test_spot_monitors_and_monitor_poller
@@ -625,7 +627,8 @@ if(TARGET test_service_discovery)
     ${SERVICE_DISCOVERY_TEST_NAMES}
     PROPERTIES
       TIMEOUT 30
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 
 if(TARGET test_spot_service_introspection)
@@ -645,7 +648,8 @@ if(TARGET test_spot_service_introspection)
     ${SPOT_SERVICE_INTROSPECTION_TEST_NAMES}
     PROPERTIES
       TIMEOUT 60
-      SKIP_RETURN_CODE 77)
+      SKIP_RETURN_CODE 77
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_gateway)
   set_tests_properties(
@@ -665,7 +669,15 @@ if(TARGET test_gateway)
     PROPERTIES
       TIMEOUT 60
       SKIP_RETURN_CODE 77
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+
+  set_tests_properties(
+    test_gateway_multi_service
+    test_gateway_round_robin
+    test_gateway_weighted
+    PROPERTIES
+      TIMEOUT 120)
 endif()
 if(TARGET test_spot_pubsub_scenario)
   set_tests_properties(
@@ -691,17 +703,29 @@ if(TARGET test_spot_pubsub_scenario)
     PROPERTIES
       TIMEOUT 60
       SKIP_RETURN_CODE 77
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 
   set_tests_properties(
     ${SPOT_PUBSUB_PEER_TEST_NAMES}
     PROPERTIES
       TIMEOUT 90
       SKIP_RETURN_CODE 77
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+endif()
+if(TARGET test_gateway_with_handler)
+  set_tests_properties(
+    test_gateway_with_handler
+    PROPERTIES
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_gateway_handover)
-  set_tests_properties(test_gateway_handover PROPERTIES TIMEOUT 180)
+  set_tests_properties(
+    test_gateway_handover
+    PROPERTIES
+      TIMEOUT 180
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_scenario_router_router_zlink_connect)
   set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES TIMEOUT 180)

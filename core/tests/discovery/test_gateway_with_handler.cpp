@@ -190,14 +190,31 @@ void test_gateway_handler_dispatches_request_and_reply ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *registry = NULL;
     char registry_pub[MAX_SOCKET_STRING];
     char registry_router[MAX_SOCKET_STRING];
-    snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
-              test_port (22610));
-    snprintf (registry_router, sizeof (registry_router), "tcp://127.0.0.1:%d",
-              test_port (22611));
-    setup_registry (ctx, &registry, registry_pub, registry_router);
+    int registry_seed = 22610;
+    void *registry = NULL;
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        registry = zlink_registry_new (ctx);
+        if (!registry)
+            break;
+        snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
+                  test_port (registry_seed));
+        snprintf (registry_router, sizeof (registry_router),
+                  "tcp://127.0.0.1:%d", test_port (registry_seed + 1));
+        if (zlink_registry_set_endpoints (registry, registry_pub,
+                                          registry_router)
+              == 0
+            && zlink_registry_set_broadcast_interval (registry, 50) == 0
+            && zlink_registry_start (registry) == 0) {
+            registry_seed += 2;
+            break;
+        }
+        zlink_registry_destroy (&registry);
+        registry = NULL;
+        registry_seed += 2;
+    }
+    TEST_ASSERT_NOT_NULL (registry);
 
     void *client_discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -227,9 +244,28 @@ void test_gateway_handler_dispatches_request_and_reply ()
     g_probe = &probe;
 
     char endpoint[MAX_SOCKET_STRING];
-    snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
-              test_port (22620));
-    bind_gateway_with_timeout (server, endpoint, 3000);
+    int bind_seed = 22620;
+    for (int ba = 0; ba < 32; ++ba) {
+        snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
+                  test_port (bind_seed));
+        bool bound = false;
+        for (int bi = 0; bi < 300; ++bi) {
+            if (zlink_gateway_bind (server, endpoint) == 0) {
+                bound = true;
+                break;
+            }
+            if (errno == EADDRINUSE)
+                break;
+            if (errno != EAGAIN)
+                break;
+            msleep (10);
+        }
+        if (bound)
+            break;
+        if (errno != EADDRINUSE)
+            TEST_FAIL_MESSAGE ("gateway bind failed");
+        bind_seed += 1;
+    }
 
     for (int i = 0; i < 400; ++i) {
         if (zlink_gateway_connection_count (client) > 0)

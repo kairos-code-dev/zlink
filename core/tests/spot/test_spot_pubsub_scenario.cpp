@@ -877,9 +877,9 @@ static void test_spot_facade_handler_receives_source_rid ()
     TEST_ASSERT_NOT_NULL (sub);
 
     char endpoint[MAX_SOCKET_STRING];
-    snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
-              test_port (22102));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (pub_node, endpoint));
+    int port_seed = 22102;
+    TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+      pub_node, "tcp://127.0.0.1:", &port_seed, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer_pub (sub_node, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "rid:test"));

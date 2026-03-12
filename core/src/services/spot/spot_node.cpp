@@ -463,8 +463,10 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _default_pub (NULL),
     _default_sub (NULL)
 {
+    _lifecycle.transition_to (service_state_starting);
     _service_name = service_name_ ? service_name_ : "";
     if (!validate_service_name (_service_name)) {
+        _lifecycle.mark_faulted (EINVAL);
         _tag = 0xdeadbeef;
         return;
     }
@@ -472,23 +474,30 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _runtime = new (std::nothrow) spot_runtime_t (this);
     if (!_runtime) {
         errno = ENOMEM;
+        _lifecycle.mark_faulted (ENOMEM);
         _tag = 0xdeadbeef;
         return;
     }
 
     if (start_data_plane () != 0) {
+        _lifecycle.mark_faulted (errno);
         _tag = 0xdeadbeef;
         return;
     }
 
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
     if (!runtime) {
+        _lifecycle.mark_faulted (errno);
         _tag = 0xdeadbeef;
         return;
     }
     _runtime->task_id = runtime->add_periodic_task (control_task, this, 10, true);
-    if (_runtime->task_id == 0)
+    if (_runtime->task_id == 0) {
+        _lifecycle.mark_faulted (errno);
         _tag = 0xdeadbeef;
+    } else {
+        _lifecycle.transition_to (service_state_running);
+    }
 }
 
 spot_node_t::~spot_node_t ()
@@ -602,6 +611,11 @@ const std::string &spot_node_t::sub_fanout_endpoint () const
 
 int spot_node_t::ensure_healthy () const
 {
+    if (!_lifecycle.is_running ()) {
+        const int fe = _lifecycle.fault_errno ();
+        errno = fe != 0 ? fe : EFSM;
+        return -1;
+    }
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
     if (!_runtime) {
         errno = EFAULT;
@@ -1710,6 +1724,7 @@ void spot_node_t::close_control_sockets ()
 
 int spot_node_t::destroy ()
 {
+    _lifecycle.transition_to (service_state_stopping);
     discovery_t *discovery = NULL;
     std::vector<std::string> active_peer_endpoints;
     std::string bound_endpoint;
@@ -1718,12 +1733,13 @@ int spot_node_t::destroy ()
     int final_error = 0;
     bool used_abortive = false;
 
-    spot_node_debugf ("destroy begin node=%p service=%s registered=%d",
-                      static_cast<void *> (this), _service_name.c_str (),
-                      _registered ? 1 : 0);
+    spot_shutdown_logf (false,
+                        "step=begin node=%p service=%s state=%d tracked=%zu",
+                        static_cast<void *> (this), _service_name.c_str (),
+                        static_cast<int> (_lifecycle.state ()),
+                        _lifecycle.owned_socket_count ());
     if (_discovery && _registered)
         (void) unregister_registered ();
-    spot_node_debugf ("destroy after unregister node=%p", static_cast<void *> (this));
     {
         scoped_lock_t lock (_sync);
         active_peer_endpoints.assign (_active_peer_endpoints.begin (),
@@ -1735,20 +1751,24 @@ int spot_node_t::destroy ()
                                         active_peer_endpoints[i].c_str ());
     if (!bound_endpoint.empty ())
         (void) send_data_plane_command ("unbind_pub", bound_endpoint.c_str ());
-    spot_node_debugf ("destroy after disconnect/unbind node=%p",
-                      static_cast<void *> (this));
+    spot_shutdown_logf (false,
+                        "step=peer_disconnect node=%p",
+                        static_cast<void *> (this));
     if (_runtime)
         _runtime->stop.set (1);
     submit_stopped_summaries ();
-    spot_node_debugf ("destroy after stopped summaries node=%p",
-                      static_cast<void *> (this));
+    spot_shutdown_logf (false,
+                        "step=summaries_stopped node=%p",
+                        static_cast<void *> (this));
 
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
     if (runtime && _runtime && _runtime->task_id != 0)
         runtime->remove_task (_runtime->task_id);
     if (_runtime)
         _runtime->task_id = 0;
-    spot_node_debugf ("destroy after task remove node=%p", static_cast<void *> (this));
+    spot_shutdown_logf (false,
+                        "step=task_removed node=%p",
+                        static_cast<void *> (this));
 
     {
         scoped_lock_t lock (_sync);
@@ -1767,16 +1787,20 @@ int spot_node_t::destroy ()
 
     if (discovery)
         discovery->remove_observer (this);
-    spot_node_debugf ("destroy after remove observer node=%p",
-                      static_cast<void *> (this));
+    spot_shutdown_logf (false,
+                        "step=observer_removed node=%p",
+                        static_cast<void *> (this));
 
-    preserve_first_error (destroy_handles (), &first_error);
-    spot_node_debugf ("destroy after destroy handles node=%p",
-                      static_cast<void *> (this));
     if (_runtime)
         preserve_first_error (_runtime->stop_and_join (), &first_error);
-    spot_node_debugf ("destroy after stop_and_join node=%p",
-                      static_cast<void *> (this));
+    spot_shutdown_logf (false,
+                        "step=data_plane_stopped node=%p error=%d",
+                        static_cast<void *> (this), first_error);
+    preserve_first_error (destroy_handles (), &first_error);
+    spot_shutdown_logf (false,
+                        "step=handles_destroyed node=%p error=%d tracked=%zu",
+                        static_cast<void *> (this), first_error,
+                        _lifecycle.owned_socket_count ());
     preserve_first_error (wait_owned_socket_removals (10000), &first_error);
     graceful_error = first_error;
     final_error = graceful_error;
@@ -1794,7 +1818,6 @@ int spot_node_t::destroy ()
                             static_cast<void *> (this), abort_reason,
                             live_slots, live_attachments, tracked_sockets);
         _runtime->abortive_stop ();
-        final_error = 0;
         preserve_first_error (_lifecycle.force_wait_remaining (5000),
                               &final_error);
         preserve_first_error (wait_owned_socket_removals (5000), &final_error);
@@ -1804,7 +1827,12 @@ int spot_node_t::destroy ()
         spot_shutdown_logf (false,
                             "service=spot node=%p shutdown=graceful",
                             static_cast<void *> (this));
-    spot_node_debugf ("destroy done node=%p", static_cast<void *> (this));
+    _lifecycle.transition_to (service_state_stopped);
+    spot_shutdown_logf (false,
+                        "step=complete node=%p state=%d error=%d tracked=%zu",
+                        static_cast<void *> (this),
+                        static_cast<int> (_lifecycle.state ()),
+                        final_error, _lifecycle.owned_socket_count ());
     if (final_error != 0) {
         errno = final_error;
         return -1;

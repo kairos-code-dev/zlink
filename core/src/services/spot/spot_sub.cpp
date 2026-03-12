@@ -642,8 +642,6 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     _monitor.close_all (&terminal);
 
     if (socket) {
-        if (_node)
-            (void) socket->term_endpoint (_node->sub_fanout_endpoint ().c_str ());
         if (_node && _node->_runtime)
             preserve_first_error (
               _node->_runtime->destroy_attachment (_attachment_id), &first_error);

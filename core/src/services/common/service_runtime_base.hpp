@@ -17,10 +17,25 @@
 
 namespace zlink
 {
+enum service_lifecycle_state_t
+{
+    service_state_idle = 0,
+    service_state_starting = 1,
+    service_state_running = 2,
+    service_state_stopping = 3,
+    service_state_stopped = 4,
+    service_state_faulted = 5
+};
+
 class service_runtime_base_t
 {
   public:
-    explicit service_runtime_base_t (ctx_t *ctx_ = NULL) : _ctx (ctx_) {}
+    explicit service_runtime_base_t (ctx_t *ctx_ = NULL) :
+        _ctx (ctx_),
+        _state (service_state_idle),
+        _fault_errno (0)
+    {
+    }
 
     void set_ctx (ctx_t *ctx_)
     {
@@ -28,11 +43,80 @@ class service_runtime_base_t
         _ctx = ctx_;
     }
 
+    bool transition_to (service_lifecycle_state_t target_)
+    {
+        scoped_lock_t lock (_sync);
+        bool valid = false;
+        switch (target_) {
+            case service_state_starting:
+                valid = (_state == service_state_idle);
+                break;
+            case service_state_running:
+                valid = (_state == service_state_starting);
+                break;
+            case service_state_stopping:
+                valid = (_state == service_state_running);
+                break;
+            case service_state_stopped:
+                valid = (_state == service_state_stopping);
+                break;
+            case service_state_faulted:
+                valid = (_state == service_state_starting
+                         || _state == service_state_running
+                         || _state == service_state_stopping);
+                break;
+            default:
+                break;
+        }
+        if (!valid) {
+            errno = EFSM;
+            return false;
+        }
+        _state = target_;
+        return true;
+    }
+
+    service_lifecycle_state_t state () const
+    {
+        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        return _state;
+    }
+
+    bool is_running () const
+    {
+        return state () == service_state_running;
+    }
+
+    bool is_stopping () const
+    {
+        return state () == service_state_stopping;
+    }
+
+    bool is_stopped () const
+    {
+        return state () == service_state_stopped;
+    }
+
+    void mark_faulted (int err_)
+    {
+        scoped_lock_t lock (_sync);
+        _state = service_state_faulted;
+        _fault_errno = err_;
+    }
+
+    int fault_errno () const
+    {
+        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        return _fault_errno;
+    }
+
     void register_socket (socket_base_t *socket_)
     {
         if (!socket_)
             return;
         scoped_lock_t lock (_sync);
+        if (_state >= service_state_stopping)
+            return;
         _owned_sockets[socket_->socket_id ()] = socket_;
     }
 
@@ -236,6 +320,8 @@ class service_runtime_base_t
     }
 
     ctx_t *_ctx;
+    service_lifecycle_state_t _state;
+    int _fault_errno;
     mutable mutex_t _sync;
     std::map<int, const socket_base_t *> _owned_sockets;
     std::map<int, const socket_base_t *> _closing_sockets;

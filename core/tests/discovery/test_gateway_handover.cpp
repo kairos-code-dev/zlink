@@ -199,6 +199,65 @@ void bind_gateway_with_timeout (void *gateway_,
     TEST_FAIL_MESSAGE ("gateway bind timeout");
 }
 
+void *create_started_registry_with_port_seed (void *ctx_,
+                                               int *port_seed_,
+                                               char *pub_ep_out_,
+                                               size_t pub_size_,
+                                               char *router_ep_out_,
+                                               size_t router_size_)
+{
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        void *registry = zlink_registry_new (ctx_);
+        if (!registry)
+            return NULL;
+        snprintf (pub_ep_out_, pub_size_, "tcp://127.0.0.1:%d",
+                  test_port (*port_seed_));
+        snprintf (router_ep_out_, router_size_, "tcp://127.0.0.1:%d",
+                  test_port (*port_seed_ + 1));
+        if (zlink_registry_set_endpoints (registry, pub_ep_out_,
+                                          router_ep_out_) == 0
+            && zlink_registry_set_broadcast_interval (registry, 50) == 0
+            && zlink_registry_start (registry) == 0) {
+            *port_seed_ += 2;
+            return registry;
+        }
+        zlink_registry_destroy (&registry);
+        *port_seed_ += 2;
+    }
+    errno = EADDRINUSE;
+    return NULL;
+}
+
+void bind_gateway_with_port_seed (void *gateway_,
+                                   const char *transport_,
+                                   int *port_seed_,
+                                   char *endpoint_out_,
+                                   size_t endpoint_size_,
+                                   int timeout_ms_)
+{
+    for (int port_attempt = 0; port_attempt < 32; ++port_attempt) {
+        snprintf (endpoint_out_, endpoint_size_, "%s://127.0.0.1:%d",
+                  transport_, test_port (*port_seed_));
+        const int step_ms = 10;
+        const int attempts = timeout_ms_ / step_ms;
+        for (int i = 0; i < attempts; ++i) {
+            if (zlink_gateway_bind (gateway_, endpoint_out_) == 0) {
+                *port_seed_ += 1;
+                return;
+            }
+            if (errno == EADDRINUSE)
+                break;
+            if (errno != EAGAIN)
+                break;
+            msleep (step_ms);
+        }
+        if (errno != EADDRINUSE)
+            break;
+        *port_seed_ += 1;
+    }
+    TEST_FAIL_MESSAGE ("gateway bind with port seed timeout");
+}
+
 void init_gateway_server (gateway_server_t *server_,
                           void *ctx_,
                           const char *registry_ep_,
@@ -228,6 +287,37 @@ void init_gateway_server (gateway_server_t *server_,
     step_log ("server gateway bind done");
 }
 
+void init_gateway_server_with_port_seed (gateway_server_t *server_,
+                                          void *ctx_,
+                                          const char *registry_ep_,
+                                          const char *routing_id_,
+                                          int *port_seed_,
+                                          char *bind_ep_out_,
+                                          size_t bind_ep_size_,
+                                          const char *service_name_,
+                                          zlink_socket_msg_handler_fn handler_,
+                                          gateway_probe_t *probe_)
+{
+    step_log ("server discovery new");
+    server_->discovery =
+      zlink_discovery_new (ctx_, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (server_->discovery);
+    step_log ("server discovery connect");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (server_->discovery, registry_ep_));
+    step_log ("server gateway new");
+    server_->gateway =
+      create_gateway_attached (ctx_, server_->discovery, service_name_, routing_id_,
+                         handler_);
+    TEST_ASSERT_NOT_NULL (server_->gateway);
+    server_->probe = probe_;
+
+    step_log ("server gateway bind");
+    bind_gateway_with_port_seed (server_->gateway, "tcp", port_seed_,
+                                  bind_ep_out_, bind_ep_size_, 3000);
+    step_log ("server gateway bind done");
+}
+
 void destroy_gateway_server (gateway_server_t *server_)
 {
     if (server_->gateway)
@@ -244,13 +334,15 @@ void test_gateway_handover_provider_restart ()
     const char *service_name = "ho-svc";
     const int timeout_ms = 3000;
 
+    int port_seed = 25800;
+
     step_log ("setup registry");
-    void *registry = NULL;
     char registry_pub[MAX_SOCKET_STRING];
     char registry_router[MAX_SOCKET_STRING];
-    make_registry_endpoint (registry_pub, sizeof (registry_pub), 25800);
-    make_registry_endpoint (registry_router, sizeof (registry_router), 25801);
-    setup_registry (ctx, &registry, registry_pub, registry_router);
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &port_seed, registry_pub, sizeof (registry_pub), registry_router,
+      sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
 
     void *client_discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -269,10 +361,10 @@ void test_gateway_handover_provider_restart ()
     g_probe_a = &probe1;
     gateway_server_t server1;
     char ep1[256] = {0};
-    snprintf (ep1, sizeof (ep1), "tcp://127.0.0.1:%d", test_port (22650));
     step_log ("init server1");
-    init_gateway_server (&server1, ctx, registry_router, "PROV-HO",
-                         ep1, service_name, &gateway_handler_a, &probe1);
+    init_gateway_server_with_port_seed (&server1, ctx, registry_router,
+                         "PROV-HO", &port_seed, ep1, sizeof (ep1),
+                         service_name, &gateway_handler_a, &probe1);
 
     step_log ("wait gateway ready for server1");
     wait_gateway_ready (gateway, timeout_ms);
@@ -290,10 +382,10 @@ void test_gateway_handover_provider_restart ()
     g_probe_a = &probe2;
     gateway_server_t server2;
     char ep2[256] = {0};
-    snprintf (ep2, sizeof (ep2), "tcp://127.0.0.1:%d", test_port (22651));
     step_log ("init server2");
-    init_gateway_server (&server2, ctx, registry_router, "PROV-HO",
-                         ep2, service_name, &gateway_handler_a, &probe2);
+    init_gateway_server_with_port_seed (&server2, ctx, registry_router,
+                         "PROV-HO", &port_seed, ep2, sizeof (ep2),
+                         service_name, &gateway_handler_a, &probe2);
 
     step_log ("wait gateway ready for server2");
     wait_gateway_ready (gateway, timeout_ms);
@@ -320,21 +412,23 @@ void test_provider_handover_gateway_reconnect ()
     const int timeout_ms = 3000;
     const char gw_rid[] = "GW-HO";
 
+    int port_seed = 25810;
+
     step_log ("setup registry");
-    void *registry = NULL;
     char registry_pub[MAX_SOCKET_STRING];
     char registry_router[MAX_SOCKET_STRING];
-    make_registry_endpoint (registry_pub, sizeof (registry_pub), 25810);
-    make_registry_endpoint (registry_router, sizeof (registry_router), 25811);
-    setup_registry (ctx, &registry, registry_pub, registry_router);
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &port_seed, registry_pub, sizeof (registry_pub), registry_router,
+      sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
 
     gateway_probe_t server_probe;
     g_probe_b = &server_probe;
     gateway_server_t server;
     char ep[256] = {0};
-    snprintf (ep, sizeof (ep), "tcp://127.0.0.1:%d", test_port (22652));
-    init_gateway_server (&server, ctx, registry_router, "PROV-HO2",
-                         ep, service_name, &gateway_handler_b, &server_probe);
+    init_gateway_server_with_port_seed (&server, ctx, registry_router,
+                         "PROV-HO2", &port_seed, ep, sizeof (ep),
+                         service_name, &gateway_handler_b, &server_probe);
 
     void *discovery1 = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery1);

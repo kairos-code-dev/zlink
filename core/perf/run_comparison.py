@@ -33,45 +33,35 @@ REQUIRED_RESULT_METRICS = (
     LATENCY_P99_METRIC,
 )
 REQUIRED_RESULT_METRIC_COUNT = len(REQUIRED_RESULT_METRICS)
-MULTI_SERVER_QUEUE_METRICS = (
+SERVER_QUEUE_METRICS = (
     "server_snd_pending_max",
     "server_rcv_pending_max",
     "server_rcv_pending_end",
 )
 PATTERN_SEPARATOR = "==============================================================================="
-STREAM_VARIANT_PATTERNS = (
-    "MULTI_STREAM",
-    "MULTI_STREAM_CALLBACK",
-    "MULTI_STREAM_LEN32BE",
-)
+STREAM_VARIANT_PATTERNS = ("STREAM_CALLBACK",)
 PATTERN_ALIASES = {
     "STREAM": STREAM_VARIANT_PATTERNS,
     "STREAMS": STREAM_VARIANT_PATTERNS,
 }
 STREAM_SHARED_CLIENT_BINARY = "perf_stream_client"
 STREAM_SERVER_BINARY_BY_PATTERN = {
-    "MULTI_STREAM": "comp_current_multi_stream_server",
-    "MULTI_STREAM_CALLBACK": "comp_current_multi_stream_callback_server",
-    "MULTI_STREAM_LEN32BE": "comp_current_multi_stream_len32be_server",
+    "STREAM_CALLBACK": "comp_src_stream_callback_server",
 }
-MULTI_PATTERN_SUFFIX = {
-    "MULTI_DEALER_DEALER": "dealer_dealer",
-    "MULTI_DEALER_ROUTER": "dealer_router",
-    "MULTI_ROUTER_ROUTER": "router_router",
-    "MULTI_PUBSUB": "pubsub",
-    "MULTI_GATEWAY": "gateway",
-    "MULTI_SPOT": "spot",
-    "MULTI_STREAM": "stream",
-    "MULTI_STREAM_CALLBACK": "stream_callback",
-    "MULTI_STREAM_LEN32BE": "stream_len32be",
+PATTERN_SUFFIX = {
+    "DEALER_DEALER": "dealer_dealer",
+    "DEALER_ROUTER": "dealer_router",
+    "ROUTER_ROUTER": "router_router",
+    "PUBSUB": "pubsub",
+    "GATEWAY": "gateway",
+    "SPOT": "spot",
+    "STREAM_CALLBACK": "stream_callback",
 }
-MULTI_ECHO_PATTERNS = {
-    "MULTI_DEALER_ROUTER",
-    "MULTI_ROUTER_ROUTER",
-    "MULTI_GATEWAY",
-    "MULTI_STREAM",
-    "MULTI_STREAM_CALLBACK",
-    "MULTI_STREAM_LEN32BE",
+ECHO_PATTERNS = {
+    "DEALER_ROUTER",
+    "ROUTER_ROUTER",
+    "GATEWAY",
+    "STREAM_CALLBACK",
 }
 SINGLE_ECHO_PATTERNS = {
     "PAIR",
@@ -80,6 +70,27 @@ SINGLE_ECHO_PATTERNS = {
     "ROUTER_ROUTER",
     "ROUTER_ROUTER_POLL",
 }
+ALLOW_MULTI = os.environ.get("PERF_ALLOW_MULTI", "0") == "1"
+SINGLE_COMPARISONS = [
+    ("perf_pair", "PAIR"),
+    ("perf_pubsub", "PUBSUB"),
+    ("perf_dealer_dealer", "DEALER_DEALER"),
+    ("perf_dealer_router", "DEALER_ROUTER"),
+    ("perf_router_router", "ROUTER_ROUTER"),
+    ("perf_router_router_poll", "ROUTER_ROUTER_POLL"),
+    ("perf_gateway", "GATEWAY"),
+    ("perf_spot", "SPOT"),
+]
+MULTI_COMPARISONS = [
+    ("comp_src_dealer_dealer_client", "DEALER_DEALER"),
+    ("comp_src_dealer_router_client", "DEALER_ROUTER"),
+    ("comp_src_router_router_client", "ROUTER_ROUTER"),
+    ("comp_src_pubsub_client", "PUBSUB"),
+    ("comp_src_gateway_client", "GATEWAY"),
+    ("comp_src_spot_client", "SPOT"),
+    ("perf_stream_client", "STREAM_CALLBACK"),
+]
+MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
 
 
 class TeeStream:
@@ -99,8 +110,8 @@ class TeeStream:
 
 def is_echo_pattern(pattern_name):
     pattern = (pattern_name or "").strip().upper()
-    if pattern.startswith("MULTI_"):
-        return pattern in MULTI_ECHO_PATTERNS
+    if ALLOW_MULTI:
+        return pattern in ECHO_PATTERNS
     return pattern in SINGLE_ECHO_PATTERNS
 
 
@@ -125,26 +136,26 @@ def resolve_stream_server_binary(pattern_name):
 
 def resolve_required_binaries(current_bin, pattern_name):
     pattern = (pattern_name or "").strip().upper()
-    if pattern in STREAM_VARIANT_PATTERNS:
-        server_binary = resolve_stream_server_binary(pattern)
-        if not server_binary:
-            return []
-        return [server_binary, STREAM_SHARED_CLIENT_BINARY]
-    if pattern.startswith("MULTI_"):
-        bins = resolve_multi_required_binaries(pattern)
+    if ALLOW_MULTI:
+        if pattern in STREAM_VARIANT_PATTERNS:
+            server_binary = resolve_stream_server_binary(pattern)
+            if not server_binary:
+                return []
+            return [server_binary, STREAM_SHARED_CLIENT_BINARY]
+        bins = resolve_split_required_binaries(pattern)
         if bins:
             return bins
     return [current_bin]
 
 
-def resolve_multi_required_binaries(pattern_name):
+def resolve_split_required_binaries(pattern_name):
     pattern = (pattern_name or "").strip().upper()
-    suffix = MULTI_PATTERN_SUFFIX.get(pattern)
+    suffix = PATTERN_SUFFIX.get(pattern)
     if not suffix:
         return []
     return [
-        f"comp_current_multi_{suffix}_server",
-        f"comp_current_multi_{suffix}_client",
+        f"comp_src_{suffix}_server",
+        f"comp_src_{suffix}_client",
     ]
 
 
@@ -779,33 +790,34 @@ if not IS_WINDOWS:
     TRANSPORTS.append("ipc")
 
 # Default transports for multi non-service patterns.
-MULTI_NON_SERVICE_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
+NON_SERVICE_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 if not IS_WINDOWS:
-    MULTI_NON_SERVICE_TRANSPORTS.append("ipc")
+    NON_SERVICE_TRANSPORTS.append("ipc")
 
 # STREAM socket uses different transports (raw TCP/TLS/WS/WSS)
 STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 FAIL_FAST = os.environ.get("PERF_FAIL_FAST", "0") == "1"
 
 
-def is_multi_pattern(pattern_name):
-    return pattern_name.startswith("MULTI_")
+def is_pattern(pattern_name):
+    if not ALLOW_MULTI:
+        return False
+    pattern = (pattern_name or "").strip().upper()
+    return pattern in MULTI_PATTERN_NAMES
 
 
 def select_transports(pattern_name):
-    multi_service_or_stream = pattern_name in (
-        "MULTI_STREAM",
-        "MULTI_STREAM_CALLBACK",
-        "MULTI_STREAM_LEN32BE",
-        "MULTI_GATEWAY",
-        "MULTI_SPOT",
+    service_or_stream = pattern_name in (
+        "STREAM_CALLBACK",
+        "GATEWAY",
+        "SPOT",
     )
     if pattern_name in ("GATEWAY", "SPOT"):
         base = STREAM_TRANSPORTS
-    elif multi_service_or_stream:
+    elif service_or_stream:
         base = STREAM_TRANSPORTS
-    elif is_multi_pattern(pattern_name):
-        base = MULTI_NON_SERVICE_TRANSPORTS
+    elif is_pattern(pattern_name):
+        base = NON_SERVICE_TRANSPORTS
     else:
         base = TRANSPORTS
     if not _env_transports:
@@ -819,23 +831,23 @@ if _env_sizes:
 else:
     MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
 
-_env_multi_stream_sizes = parse_env_list(
-    "PERF_MULTI_STREAM_MSG_SIZES",
+_env_stream_sizes = parse_env_list(
+    "PERF_STREAM_MSG_SIZES",
     int,
 )
-if _env_multi_stream_sizes:
-    MULTI_STREAM_MSG_SIZES = _env_multi_stream_sizes
+if _env_stream_sizes:
+    STREAM_MSG_SIZES = _env_stream_sizes
 elif _env_sizes:
     # Keep stream sizes aligned with --msg-sizes/PERF_MSG_SIZES
     # unless a stream-specific override is explicitly provided.
-    MULTI_STREAM_MSG_SIZES = _env_sizes
+    STREAM_MSG_SIZES = _env_sizes
 else:
-    MULTI_STREAM_MSG_SIZES = [64, 256, 1024, 65536]
+    STREAM_MSG_SIZES = [64, 256, 1024, 65536]
 
 DEFAULT_RUN_COOLDOWN_MS = max(
     0,
     parse_env_int(
-        "PERF_MULTI_RUN_COOLDOWN_MS",
+        "PERF_RUN_COOLDOWN_MS",
         3000,
     ),
 )
@@ -845,39 +857,39 @@ base_env = os.environ.copy()
 ENV_ALIAS_KEYS = (
     "PERF_TRANSPORTS",
     "PERF_MSG_SIZES",
-    "PERF_MULTI_STREAM_MSG_SIZES",
-    "PERF_MULTI_PATTERN",
-    "PERF_MULTI_CLIENTS",
-    "PERF_MULTI_HWM",
-    "PERF_MULTI_WARMUP_SECONDS",
-    "PERF_MULTI_DURATION_SECONDS",
-    "PERF_MULTI_SNDTIMEO_MS",
-    "PERF_MULTI_RCVTIMEO_MS",
-    "PERF_MULTI_CONNECT_CONCURRENCY",
-    "PERF_MULTI_CLIENT_POLL_TIMEOUT_MS",
-    "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
-    "PERF_MULTI_MONITOR_HWM",
-    "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
-    "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
-    "PERF_MULTI_SERVER_BIND_PORT",
-    "PERF_MULTI_SERVER_IO_THREADS",
-    "PERF_MULTI_CLIENT_IO_THREADS",
-    "PERF_MULTI_STREAM_SERVER_IO_THREADS",
-    "PERF_MULTI_STREAM_CLIENT_IO_THREADS",
+    "PERF_STREAM_MSG_SIZES",
+    "PERF_PATTERN",
+    "PERF_CLIENTS",
+    "PERF_HWM",
+    "PERF_WARMUP_SECONDS",
+    "PERF_DURATION_SECONDS",
+    "PERF_SNDTIMEO_MS",
+    "PERF_RCVTIMEO_MS",
+    "PERF_CONNECT_CONCURRENCY",
+    "PERF_CLIENT_POLL_TIMEOUT_MS",
+    "PERF_CONNECT_READY_TIMEOUT_MS",
+    "PERF_MONITOR_HWM",
+    "PERF_SERVER_READY_TIMEOUT_MS",
+    "PERF_SERVER_SHUTDOWN_TIMEOUT_MS",
+    "PERF_SERVER_BIND_PORT",
+    "PERF_SERVER_IO_THREADS",
+    "PERF_CLIENT_IO_THREADS",
+    "PERF_STREAM_SERVER_IO_THREADS",
+    "PERF_STREAM_CLIENT_IO_THREADS",
     "PERF_IO_THREADS",
-    "PERF_MULTI_DEFAULT_IO_THREADS",
-    "PERF_MULTI_DEFAULT_STREAM_IO_THREADS",
-    "PERF_MULTI_DEFAULT_HWM",
-    "PERF_MULTI_DEFAULT_STREAM_HWM",
+    "PERF_DEFAULT_IO_THREADS",
+    "PERF_DEFAULT_STREAM_IO_THREADS",
+    "PERF_DEFAULT_HWM",
+    "PERF_DEFAULT_STREAM_HWM",
     "PERF_MAX_SOCKETS",
     "PERF_LAT_COUNT",
-    "PERF_MULTI_LAT_TIMEOUT_MS",
-    "PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX",
-    "PERF_MULTI_STREAM_SEND_BATCH",
-    "PERF_MULTI_STREAM_SEND_WORKERS",
-    "PERF_MULTI_STREAM_DRAIN_IDLE_MS",
-    "PERF_MULTI_STREAM_DRAIN_MAX_MS",
-    "PERF_MULTI_STREAM_DRAIN_RELAY_BUDGET",
+    "PERF_LAT_TIMEOUT_MS",
+    "PERF_STREAM_NON_TCP_CLIENTS_MAX",
+    "PERF_STREAM_SEND_BATCH",
+    "PERF_STREAM_SEND_WORKERS",
+    "PERF_STREAM_DRAIN_IDLE_MS",
+    "PERF_STREAM_DRAIN_MAX_MS",
+    "PERF_STREAM_DRAIN_RELAY_BUDGET",
 )
 
 
@@ -1031,7 +1043,7 @@ def parse_result_connect_line(line, transport, expected_sizes):
     return (line_transport, line_size, ok_value, fail_value, target_value), None
 
 
-def _emit_multi_result_metric_callback(
+def _emit_result_metric_callback(
     result_line_callback, line_transport, line_size, metric_name, value
 ):
     if result_line_callback is None:
@@ -1042,7 +1054,7 @@ def _emit_multi_result_metric_callback(
         pass
 
 
-def emit_multi_result_metrics_from_line(
+def emit_result_metrics_from_line(
     line, transport, expected_sizes, result_line_callback
 ):
     if result_line_callback is None:
@@ -1051,8 +1063,8 @@ def emit_multi_result_metrics_from_line(
     parsed_line, _ = parse_result_line(line, transport, expected_sizes)
     if parsed_line:
         line_transport, line_size, metric, value = parsed_line
-        metric_name = normalize_multi_metric_name(metric)
-        _emit_multi_result_metric_callback(
+        metric_name = normalize_metric_name(metric)
+        _emit_result_metric_callback(
             result_line_callback, line_transport, line_size, metric_name, value
         )
         return
@@ -1062,13 +1074,13 @@ def emit_multi_result_metrics_from_line(
         return
 
     line_transport, line_size, ok_value, fail_value, target_value = connect_line
-    _emit_multi_result_metric_callback(
+    _emit_result_metric_callback(
         result_line_callback, line_transport, line_size, "connect_ok", ok_value
     )
-    _emit_multi_result_metric_callback(
+    _emit_result_metric_callback(
         result_line_callback, line_transport, line_size, "connect_fail", fail_value
     )
-    _emit_multi_result_metric_callback(
+    _emit_result_metric_callback(
         result_line_callback,
         line_transport,
         line_size,
@@ -1120,29 +1132,29 @@ def detect_special_status(stdout, expected_lib, expected_pattern, expected_trans
     return "", ""
 
 
-def multi_pattern_default_clients(pattern_name, transport=None):
+def pattern_default_clients(pattern_name, transport=None):
     if pattern_name in STREAM_VARIANT_PATTERNS:
-        base = max(1, parse_env_int("PERF_MULTI_DEFAULT_STREAM_CLIENTS", 10000))
+        base = max(1, parse_env_int("PERF_DEFAULT_STREAM_CLIENTS", 10000))
         tr = (transport or "").strip().lower()
         if tr in ("tls", "ws", "wss"):
             non_tcp_cap = max(
-                1, parse_env_int("PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX", 10000)
+                1, parse_env_int("PERF_STREAM_NON_TCP_CLIENTS_MAX", 10000)
             )
             return min(base, non_tcp_cap)
         return base
-    return max(1, parse_env_int("PERF_MULTI_DEFAULT_CLIENTS", 100))
+    return max(1, parse_env_int("PERF_DEFAULT_CLIENTS", 100))
 
 
-def multi_pattern_default_hwm(pattern_name):
+def pattern_default_hwm(pattern_name):
     if pattern_name in STREAM_VARIANT_PATTERNS:
-        return max(1, parse_env_int("PERF_MULTI_DEFAULT_STREAM_HWM", 10))
-    return max(1, parse_env_int("PERF_MULTI_DEFAULT_HWM", 100))
+        return max(1, parse_env_int("PERF_DEFAULT_STREAM_HWM", 10))
+    return max(1, parse_env_int("PERF_DEFAULT_HWM", 100))
 
 
-def multi_pattern_default_io_threads(pattern_name):
+def pattern_default_io_threads(pattern_name):
     if pattern_name in STREAM_VARIANT_PATTERNS:
-        return max(1, parse_env_int("PERF_MULTI_DEFAULT_STREAM_IO_THREADS", 4))
-    return max(1, parse_env_int("PERF_MULTI_DEFAULT_IO_THREADS", 2))
+        return max(1, parse_env_int("PERF_DEFAULT_STREAM_IO_THREADS", 4))
+    return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 2))
 
 
 def resolve_pattern_connect_concurrency(clients):
@@ -1151,7 +1163,7 @@ def resolve_pattern_connect_concurrency(clients):
     return 128
 
 
-def normalize_multi_metric_name(metric):
+def normalize_metric_name(metric):
     if metric == "cpu_pct":
         return "client_cpu_pct"
     if metric == "mem_mb":
@@ -1159,7 +1171,7 @@ def normalize_multi_metric_name(metric):
     return metric
 
 
-def should_warn_duplicate_multi_metric(metric_name):
+def should_warn_duplicate_metric(metric_name):
     # Queue probe metrics can be emitted multiple times; keep the first value and
     # suppress duplicate warnings for these keys.
     if metric_name in (
@@ -1171,13 +1183,13 @@ def should_warn_duplicate_multi_metric(metric_name):
     return True
 
 
-def resolve_multi_binary_names(pattern_name):
-    suffix = MULTI_PATTERN_SUFFIX.get(pattern_name)
+def resolve_binary_names(pattern_name):
+    suffix = PATTERN_SUFFIX.get(pattern_name)
     if not suffix:
         return None
     return {
-        "server": f"comp_current_multi_{suffix}_server",
-        "client": f"comp_current_multi_{suffix}_client",
+        "server": f"comp_src_{suffix}_server",
+        "client": f"comp_src_{suffix}_client",
     }
 
 
@@ -1242,9 +1254,9 @@ def build_bench_cmd(binary_path, args):
     return [binary_path] + list(args)
 
 
-def _resolve_multi_server_timeouts(pattern_name, transport, ready_timeout_ms, shutdown_timeout_ms):
+def _resolve_server_timeouts(pattern_name, transport, ready_timeout_ms, shutdown_timeout_ms):
     if (
-        pattern_name in ("MULTI_GATEWAY", "MULTI_SPOT")
+        pattern_name in ("GATEWAY", "SPOT")
         and transport in ("tls", "wss")
     ):
         ready_timeout_ms = max(ready_timeout_ms, 20000)
@@ -1252,24 +1264,24 @@ def _resolve_multi_server_timeouts(pattern_name, transport, ready_timeout_ms, sh
     return ready_timeout_ms, shutdown_timeout_ms
 
 
-def _resolve_multi_io_threads(env, io_key, pattern_name):
+def _resolve_io_threads(env, io_key, pattern_name):
     io_value = env_pair_value(env, io_key)
     if not io_value and pattern_name in STREAM_VARIANT_PATTERNS:
-        if io_key == "PERF_MULTI_SERVER_IO_THREADS":
-            io_value = env_pair_value(env, "PERF_MULTI_STREAM_SERVER_IO_THREADS")
-        elif io_key == "PERF_MULTI_CLIENT_IO_THREADS":
-            io_value = env_pair_value(env, "PERF_MULTI_STREAM_CLIENT_IO_THREADS")
+        if io_key == "PERF_SERVER_IO_THREADS":
+            io_value = env_pair_value(env, "PERF_STREAM_SERVER_IO_THREADS")
+        elif io_key == "PERF_CLIENT_IO_THREADS":
+            io_value = env_pair_value(env, "PERF_STREAM_CLIENT_IO_THREADS")
     if not io_value:
         io_value = env_pair_value(env, "PERF_IO_THREADS")
     if not io_value:
-        io_value = str(multi_pattern_default_io_threads(pattern_name))
+        io_value = str(pattern_default_io_threads(pattern_name))
     try:
         return max(1, int(io_value))
     except (TypeError, ValueError):
-        return multi_pattern_default_io_threads(pattern_name)
+        return pattern_default_io_threads(pattern_name)
 
 
-def _prepare_multi_case_env(
+def _prepare_case_env(
     lib_name,
     transport,
     sizes,
@@ -1279,47 +1291,47 @@ def _prepare_multi_case_env(
     env = get_env_for_lib(lib_name)
     size_csv = ",".join(str(sz) for sz in sizes)
     set_env_pair(env, "PERF_MSG_SIZES", size_csv)
-    set_env_pair(env, "PERF_MULTI_PATTERN", pattern_name)
+    set_env_pair(env, "PERF_PATTERN", pattern_name)
     if force_stream_sizes or pattern_name in STREAM_VARIANT_PATTERNS:
-        set_env_pair(env, "PERF_MULTI_STREAM_MSG_SIZES", size_csv)
+        set_env_pair(env, "PERF_STREAM_MSG_SIZES", size_csv)
 
-    clients_value = env_pair_value(env, "PERF_MULTI_CLIENTS")
+    clients_value = env_pair_value(env, "PERF_CLIENTS")
     if not clients_value:
-        clients_value = str(multi_pattern_default_clients(pattern_name, transport))
-    set_env_pair(env, "PERF_MULTI_CLIENTS", clients_value)
+        clients_value = str(pattern_default_clients(pattern_name, transport))
+    set_env_pair(env, "PERF_CLIENTS", clients_value)
     try:
         clients_int = max(1, int(clients_value))
     except ValueError:
-        clients_int = multi_pattern_default_clients(pattern_name, transport)
+        clients_int = pattern_default_clients(pattern_name, transport)
 
-    connect_value = env_pair_value(env, "PERF_MULTI_CONNECT_CONCURRENCY")
+    connect_value = env_pair_value(env, "PERF_CONNECT_CONCURRENCY")
     if not connect_value:
         connect_value = str(resolve_pattern_connect_concurrency(clients_int))
-    set_env_pair(env, "PERF_MULTI_CONNECT_CONCURRENCY", connect_value)
+    set_env_pair(env, "PERF_CONNECT_CONCURRENCY", connect_value)
 
-    if pattern_name == "MULTI_GATEWAY":
+    if pattern_name == "GATEWAY":
         gateway_refresh_sleep_ms = max(
-            1, parse_env_int("PERF_MULTI_GATEWAY_REFRESH_SLEEP_MS", 1)
+            1, parse_env_int("PERF_GATEWAY_REFRESH_SLEEP_MS", 1)
         )
         receiver_hb_chunk_ms = max(
-            1, parse_env_int("PERF_MULTI_RECEIVER_HEARTBEAT_CHUNK_MS", 100)
+            1, parse_env_int("PERF_RECEIVER_HEARTBEAT_CHUNK_MS", 100)
         )
         set_env_pair(env, "ZLINK_GATEWAY_REFRESH_SLEEP_MS", gateway_refresh_sleep_ms)
         set_env_pair(env, "ZLINK_RECEIVER_HEARTBEAT_CHUNK_MS", receiver_hb_chunk_ms)
-    if pattern_name == "MULTI_SPOT":
-        spot_idle_sleep_ms = max(1, parse_env_int("PERF_MULTI_SPOT_IDLE_SLEEP_MS", 1))
+    if pattern_name == "SPOT":
+        spot_idle_sleep_ms = max(1, parse_env_int("PERF_SPOT_IDLE_SLEEP_MS", 1))
         set_env_pair(env, "ZLINK_SPOT_IDLE_SLEEP_MS", spot_idle_sleep_ms)
 
-    server_io_threads_int = _resolve_multi_io_threads(
-        env, "PERF_MULTI_SERVER_IO_THREADS", pattern_name
+    server_io_threads_int = _resolve_io_threads(
+        env, "PERF_SERVER_IO_THREADS", pattern_name
     )
-    client_io_threads_int = _resolve_multi_io_threads(
-        env, "PERF_MULTI_CLIENT_IO_THREADS", pattern_name
+    client_io_threads_int = _resolve_io_threads(
+        env, "PERF_CLIENT_IO_THREADS", pattern_name
     )
     return env, size_csv, clients_int, server_io_threads_int, client_io_threads_int
 
 
-def run_multi_sizes_test_stream_shared(
+def run_sizes_test_stream_shared(
     server_binary_name,
     lib_name,
     transport,
@@ -1341,18 +1353,18 @@ def run_multi_sizes_test_stream_shared(
             "warnings": [],
         }
 
-    duration_seconds = max(1, parse_env_int("PERF_MULTI_DURATION_SECONDS", 5))
-    timeout_override = parse_env_int("PERF_MULTI_TIMEOUT_SECONDS", 0)
+    duration_seconds = max(1, parse_env_int("PERF_DURATION_SECONDS", 5))
+    timeout_override = parse_env_int("PERF_TIMEOUT_SECONDS", 0)
     if timeout_override > 0:
         timeout_sec = timeout_override
     else:
         timeout_sec = max(60, duration_seconds * max(1, len(sizes)) * 4 + 30)
-    ready_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000))
-    shutdown_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
-    ready_timeout_ms, shutdown_timeout_ms = _resolve_multi_server_timeouts(
+    ready_timeout_ms = max(0, parse_env_int("PERF_SERVER_READY_TIMEOUT_MS", 10000))
+    shutdown_timeout_ms = max(0, parse_env_int("PERF_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
+    ready_timeout_ms, shutdown_timeout_ms = _resolve_server_timeouts(
         pattern_name, transport, ready_timeout_ms, shutdown_timeout_ms
     )
-    bind_port = max(0, parse_env_int("PERF_MULTI_SERVER_BIND_PORT", 0))
+    bind_port = max(0, parse_env_int("PERF_SERVER_BIND_PORT", 0))
     expected_sizes = set(sizes)
 
     (
@@ -1361,7 +1373,7 @@ def run_multi_sizes_test_stream_shared(
         clients_int,
         server_io_threads_int,
         client_io_threads_int,
-    ) = _prepare_multi_case_env(
+    ) = _prepare_case_env(
         lib_name,
         transport,
         sizes,
@@ -1369,11 +1381,11 @@ def run_multi_sizes_test_stream_shared(
         force_stream_sizes=True,
     )
 
-    set_env_pair(env, "PERF_MULTI_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
-    set_env_pair(env, "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
-    set_env_pair(env, "PERF_MULTI_SERVER_BIND_PORT", bind_port)
+    set_env_pair(env, "PERF_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
+    set_env_pair(env, "PERF_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
+    set_env_pair(env, "PERF_SERVER_BIND_PORT", bind_port)
     warmup_seconds = max(
-        0, parse_env_int("PERF_MULTI_WARMUP_SECONDS", 2)
+        0, parse_env_int("PERF_WARMUP_SECONDS", 2)
     )
 
     server_cmd = build_bench_cmd(server_binary_path, [lib_name, transport])
@@ -1416,7 +1428,7 @@ def run_multi_sizes_test_stream_shared(
 
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
-        emit_multi_result_metrics_from_line(
+        emit_result_metrics_from_line(
             line, transport, expected_sizes, result_line_callback
         )
 
@@ -1655,7 +1667,7 @@ def run_multi_sizes_test_stream_shared(
                 return
 
             if last_server_cpu[0] is not None:
-                _emit_multi_result_metric_callback(
+                _emit_result_metric_callback(
                     result_line_callback,
                     line_transport,
                     target_size,
@@ -1663,7 +1675,7 @@ def run_multi_sizes_test_stream_shared(
                     last_server_cpu[0],
                 )
             if last_server_mem[0] is not None:
-                _emit_multi_result_metric_callback(
+                _emit_result_metric_callback(
                     result_line_callback,
                     line_transport,
                     target_size,
@@ -1689,7 +1701,7 @@ def run_multi_sizes_test_stream_shared(
                 return
 
             if last_client_cpu[0] is not None:
-                _emit_multi_result_metric_callback(
+                _emit_result_metric_callback(
                     result_line_callback,
                     line_transport,
                     target_size,
@@ -1697,7 +1709,7 @@ def run_multi_sizes_test_stream_shared(
                     last_client_cpu[0],
                 )
             if last_client_mem[0] is not None:
-                _emit_multi_result_metric_callback(
+                _emit_result_metric_callback(
                     result_line_callback,
                     line_transport,
                     target_size,
@@ -1709,7 +1721,7 @@ def run_multi_sizes_test_stream_shared(
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
             update_live_size_from_line(line)
-            emit_multi_result_metrics_from_line(
+            emit_result_metrics_from_line(
                 line, transport, expected_sizes, result_line_callback
             )
             parsed_line, _warning = parse_result_line(
@@ -1717,7 +1729,7 @@ def run_multi_sizes_test_stream_shared(
             )
             if parsed_line:
                 _line_transport, line_size, metric_name, _value = parsed_line
-                if normalize_multi_metric_name(metric_name) == "throughput":
+                if normalize_metric_name(metric_name) == "throughput":
                     request_server_queue_probe(line_size)
             emit_live_server_metrics()
             emit_live_client_metrics(None, None)
@@ -1773,12 +1785,12 @@ def run_multi_sizes_test_stream_shared(
                 continue
 
             line_transport, line_size, metric, value = parsed_line
-            metric_name = normalize_multi_metric_name(metric)
+            metric_name = normalize_metric_name(metric)
             key = f"{line_transport}|{line_size}|{metric_name}"
             if key in parsed:
-                if metric_name in MULTI_SERVER_QUEUE_METRICS:
+                if metric_name in SERVER_QUEUE_METRICS:
                     continue
-                if should_warn_duplicate_multi_metric(metric_name):
+                if should_warn_duplicate_metric(metric_name):
                     warnings.append(
                         "duplicate RESULT metric detected; keeping last value: "
                         f"{pattern_name} {transport} {line_size}B {metric_name}"
@@ -1822,6 +1834,12 @@ def run_multi_sizes_test_stream_shared(
                 **progress_meta,
             }
         if server_rc not in (0, None):
+            detail = summarize_server_startup_detail(
+                server_stdout_buffer.text(), server_stderr_buffer.text()
+            )
+            reason = f"server_non_zero_exit_{server_rc}"
+            if detail:
+                reason = f"{reason}::{detail}"
             return {
                 "status": "fail",
                 "parsed": parsed,
@@ -1829,7 +1847,7 @@ def run_multi_sizes_test_stream_shared(
                 "returncode": server_rc,
                 "cpu_pct": sampled.get("cpu_pct"),
                 "mem_mb": sampled.get("mem_mb"),
-                "reason": f"server_non_zero_exit_{server_rc}",
+                "reason": reason,
                 "warnings": warnings,
                 **progress_meta,
             }
@@ -1909,7 +1927,7 @@ def run_multi_sizes_test_stream_shared(
     }
 
 
-def run_multi_sizes_test_split(
+def run_sizes_test_split(
     server_binary_name,
     client_binary_name,
     lib_name,
@@ -1921,29 +1939,29 @@ def run_multi_sizes_test_split(
     server_binary_path = os.path.join(BUILD_DIR, server_binary_name + EXE_SUFFIX)
     client_binary_path = os.path.join(BUILD_DIR, client_binary_name + EXE_SUFFIX)
     fallback_size = sizes[0] if sizes else 64
-    duration_seconds = max(1, parse_env_int("PERF_MULTI_DURATION_SECONDS", 5))
-    timeout_override = parse_env_int("PERF_MULTI_TIMEOUT_SECONDS", 0)
+    duration_seconds = max(1, parse_env_int("PERF_DURATION_SECONDS", 5))
+    timeout_override = parse_env_int("PERF_TIMEOUT_SECONDS", 0)
     if timeout_override > 0:
         timeout_sec = timeout_override
     else:
         size_count = max(1, len(sizes))
         has_large_payload = any(sz >= 131072 for sz in sizes)
         is_secure_transport = transport in ("tls", "wss")
-        if pattern_name == "MULTI_SPOT":
+        if pattern_name == "SPOT":
             timeout_sec = max(180, duration_seconds * size_count * 8 + 80)
-        elif pattern_name == "MULTI_GATEWAY":
+        elif pattern_name == "GATEWAY":
             timeout_sec = max(120, duration_seconds * size_count * 8 + 40)
         elif is_secure_transport and has_large_payload:
             timeout_sec = max(240, duration_seconds * size_count * 12 + 60)
         else:
             timeout_sec = max(45, duration_seconds * size_count * 3 + 20)
 
-    ready_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000))
-    shutdown_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
-    ready_timeout_ms, shutdown_timeout_ms = _resolve_multi_server_timeouts(
+    ready_timeout_ms = max(0, parse_env_int("PERF_SERVER_READY_TIMEOUT_MS", 10000))
+    shutdown_timeout_ms = max(0, parse_env_int("PERF_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
+    ready_timeout_ms, shutdown_timeout_ms = _resolve_server_timeouts(
         pattern_name, transport, ready_timeout_ms, shutdown_timeout_ms
     )
-    bind_port = max(0, parse_env_int("PERF_MULTI_SERVER_BIND_PORT", 0))
+    bind_port = max(0, parse_env_int("PERF_SERVER_BIND_PORT", 0))
     expected_sizes = set(sizes)
 
     (
@@ -1952,16 +1970,16 @@ def run_multi_sizes_test_split(
         clients_int,
         server_io_threads_int,
         client_io_threads_int,
-    ) = _prepare_multi_case_env(
+    ) = _prepare_case_env(
         lib_name,
         transport,
         sizes,
         pattern_name,
     )
 
-    set_env_pair(env, "PERF_MULTI_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
-    set_env_pair(env, "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
-    set_env_pair(env, "PERF_MULTI_SERVER_BIND_PORT", bind_port)
+    set_env_pair(env, "PERF_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
+    set_env_pair(env, "PERF_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
+    set_env_pair(env, "PERF_SERVER_BIND_PORT", bind_port)
     server_cmd = build_bench_cmd(server_binary_path, [lib_name, transport])
     client_cmd = build_bench_cmd(
         client_binary_path, [lib_name, transport, str(fallback_size)]
@@ -1982,7 +2000,7 @@ def run_multi_sizes_test_split(
 
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
-        emit_multi_result_metrics_from_line(
+        emit_result_metrics_from_line(
             line, transport, expected_sizes, result_line_callback
         )
 
@@ -2218,7 +2236,7 @@ def run_multi_sizes_test_split(
                 return
 
             if last_server_cpu[0] is not None:
-                _emit_multi_result_metric_callback(
+                _emit_result_metric_callback(
                     result_line_callback,
                     line_transport,
                     target_size,
@@ -2226,7 +2244,7 @@ def run_multi_sizes_test_split(
                     last_server_cpu[0],
                 )
             if last_server_mem[0] is not None:
-                _emit_multi_result_metric_callback(
+                _emit_result_metric_callback(
                     result_line_callback,
                     line_transport,
                     target_size,
@@ -2238,7 +2256,7 @@ def run_multi_sizes_test_split(
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
             update_live_size_from_line(line)
-            emit_multi_result_metrics_from_line(
+            emit_result_metrics_from_line(
                 line, transport, expected_sizes, result_line_callback
             )
             parsed_line, _warning = parse_result_line(
@@ -2246,7 +2264,7 @@ def run_multi_sizes_test_split(
             )
             if parsed_line:
                 _line_transport, line_size, metric_name, _value = parsed_line
-                if normalize_multi_metric_name(metric_name) == "throughput":
+                if normalize_metric_name(metric_name) == "throughput":
                     request_server_queue_probe(line_size)
             emit_live_server_metrics()
 
@@ -2287,12 +2305,12 @@ def run_multi_sizes_test_split(
             if not parsed_line:
                 continue
             line_transport, line_size, metric, value = parsed_line
-            metric_name = normalize_multi_metric_name(metric)
+            metric_name = normalize_metric_name(metric)
             key = f"{line_transport}|{line_size}|{metric_name}"
             if key in parsed:
-                if metric_name in MULTI_SERVER_QUEUE_METRICS:
+                if metric_name in SERVER_QUEUE_METRICS:
                     continue
-                if should_warn_duplicate_multi_metric(metric_name):
+                if should_warn_duplicate_metric(metric_name):
                     warnings.append(
                         "duplicate RESULT metric detected; keeping last value: "
                         f"{pattern_name} {transport} {line_size}B {metric_name}"
@@ -2328,6 +2346,12 @@ def run_multi_sizes_test_split(
                 **progress_meta,
             }
         if server_rc not in (0, None):
+            detail = summarize_server_startup_detail(
+                server_stdout_buffer.text(), server_stderr_buffer.text()
+            )
+            reason = f"server_non_zero_exit_{server_rc}"
+            if detail:
+                reason = f"{reason}::{detail}"
             return {
                 "status": "fail",
                 "parsed": parsed,
@@ -2335,7 +2359,7 @@ def run_multi_sizes_test_split(
                 "returncode": server_rc,
                 "cpu_pct": sampled.get("cpu_pct"),
                 "mem_mb": sampled.get("mem_mb"),
-                "reason": f"server_non_zero_exit_{server_rc}",
+                "reason": reason,
                 "warnings": warnings,
                 **progress_meta,
             }
@@ -2415,7 +2439,7 @@ def run_multi_sizes_test_split(
     }
 
 
-def run_multi_sizes_test(
+def run_sizes_test(
     _binary_name,
     lib_name,
     transport,
@@ -2440,7 +2464,7 @@ def run_multi_sizes_test(
             }
 
         def run_one_size_case(case_size):
-            return run_multi_sizes_test_stream_shared(
+            return run_sizes_test_stream_shared(
                 server_binary,
                 lib_name,
                 transport,
@@ -2450,7 +2474,7 @@ def run_multi_sizes_test(
             )
 
     else:
-        names = resolve_multi_binary_names(pattern_name)
+        names = resolve_binary_names(pattern_name)
         if not names:
             return {
                 "status": "fail",
@@ -2459,7 +2483,7 @@ def run_multi_sizes_test(
                 "returncode": -1,
                 "cpu_pct": None,
                 "mem_mb": None,
-                "reason": "invalid_multi_pattern",
+                "reason": "invalid_pattern",
                 "warnings": [],
             }
 
@@ -2478,7 +2502,7 @@ def run_multi_sizes_test(
             }
 
         def run_one_size_case(case_size):
-            return run_multi_sizes_test_split(
+            return run_sizes_test_split(
                 names["server"],
                 names["client"],
                 lib_name,
@@ -2532,24 +2556,24 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
     """Runs a single binary for one specific config."""
     binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
     timeout_sec = 60
-    if pattern_name.startswith("MULTI_"):
+    if is_pattern(pattern_name):
         timeout_sec = max(
             60,
-            parse_env_int("PERF_MULTI_WARMUP_SECONDS", 2)
-            + parse_env_int("PERF_MULTI_DURATION_SECONDS", 5)
+            parse_env_int("PERF_WARMUP_SECONDS", 2)
+            + parse_env_int("PERF_DURATION_SECONDS", 5)
             + 30,
         )
     if pattern_name in STREAM_VARIANT_PATTERNS:
         timeout_sec = max(
             120,
-            parse_env_int("PERF_MULTI_WARMUP_SECONDS", 2)
-            + parse_env_int("PERF_MULTI_DURATION_SECONDS", 5)
+            parse_env_int("PERF_WARMUP_SECONDS", 2)
+            + parse_env_int("PERF_DURATION_SECONDS", 5)
             + 90,
         )
 
     env = get_env_for_lib(lib_name)
-    if pattern_name.startswith("MULTI_"):
-        set_env_pair(env, "PERF_MULTI_PATTERN", pattern_name)
+    if is_pattern(pattern_name):
+        set_env_pair(env, "PERF_PATTERN", pattern_name)
     try:
         if IS_WINDOWS:
             cmd = [binary_path, lib_name, transport, str(size)]
@@ -2594,12 +2618,12 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
 
 def _table_header_line(is_multi):
     size_w = 8
-    tp_w = 16
-    bw_w = 12
-    lat_w = 12
-    lat95_w = 12
-    lat99_w = 12
-    cpu_w = 6
+    tp_w = 18
+    bw_w = 14
+    lat_w = 13
+    lat95_w = 13
+    lat99_w = 13
+    cpu_w = 7
     mem_w = 8
     sndq_w = 9
     rcvq_w = 9
@@ -2620,12 +2644,12 @@ def _table_header_line(is_multi):
 
 def _table_separator_line(is_multi):
     size_w = 8
-    tp_w = 16
-    bw_w = 12
-    lat_w = 12
-    lat95_w = 12
-    lat99_w = 12
-    cpu_w = 6
+    tp_w = 18
+    bw_w = 14
+    lat_w = 13
+    lat95_w = 13
+    lat99_w = 13
+    cpu_w = 7
     mem_w = 8
     sndq_w = 9
     rcvq_w = 9
@@ -2688,22 +2712,22 @@ def _emit_table_row(
         bw_s = format_bandwidth(bandwidth if bandwidth is not None else 0.0)
         if is_multi:
             lat_s = (
-                f"{((latency_mean if latency_mean is not None else 0.0) / 1000.0):8.2f} ms"
+                f"{((latency_mean if latency_mean is not None else 0.0) / 1000.0):9.3f} ms"
             )
             lat95_s = (
-                f"{((latency_p95_value if latency_p95_value is not None else 0.0) / 1000.0):8.2f} ms"
+                f"{((latency_p95_value if latency_p95_value is not None else 0.0) / 1000.0):9.3f} ms"
             )
             lat99_s = (
-                f"{((latency_p99_value if latency_p99_value is not None else 0.0) / 1000.0):8.2f} ms"
+                f"{((latency_p99_value if latency_p99_value is not None else 0.0) / 1000.0):9.3f} ms"
             )
         else:
-            lat_s = f"{(latency_mean if latency_mean is not None else 0.0):8.2f} us"
-            lat95_s = f"{(latency_p95_value if latency_p95_value is not None else 0.0):8.2f} us"
-            lat99_s = f"{(latency_p99_value if latency_p99_value is not None else 0.0):8.2f} us"
-        cpu_s = f"{float(client_cpu):4.1f}" if client_cpu is not None else "N/A"
-        mem_s = f"{float(client_mem):6.1f}" if client_mem is not None else "N/A"
-        server_cpu_s = f"{float(server_cpu):4.1f}" if server_cpu is not None else "N/A"
-        server_mem_s = f"{float(server_mem):6.1f}" if server_mem is not None else "N/A"
+            lat_s = f"{(latency_mean if latency_mean is not None else 0.0):9.3f} us"
+            lat95_s = f"{(latency_p95_value if latency_p95_value is not None else 0.0):9.3f} us"
+            lat99_s = f"{(latency_p99_value if latency_p99_value is not None else 0.0):9.3f} us"
+        cpu_s = f"{float(client_cpu):6.3f}" if client_cpu is not None else "N/A"
+        mem_s = f"{float(client_mem):8.3f}" if client_mem is not None else "N/A"
+        server_cpu_s = f"{float(server_cpu):6.3f}" if server_cpu is not None else "N/A"
+        server_mem_s = f"{float(server_mem):8.3f}" if server_mem is not None else "N/A"
         server_sndq_s = (
             f"{int(round(float(server_sndq_max))):d}"
             if server_sndq_max is not None
@@ -2764,14 +2788,14 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
         transports = TRANSPORTS
 
     run_cooldown_ms = max(
-        0, parse_env_int("PERF_MULTI_RUN_COOLDOWN_MS", DEFAULT_RUN_COOLDOWN_MS)
+        0, parse_env_int("PERF_RUN_COOLDOWN_MS", DEFAULT_RUN_COOLDOWN_MS)
     )
     transport_transition_ms = max(
-        0, parse_env_int("PERF_MULTI_TRANSPORT_TRANSITION_MS", 3000)
+        0, parse_env_int("PERF_TRANSPORT_TRANSITION_MS", 3000)
     )
 
-    is_multi = pattern_name.startswith("MULTI_")
-    sizes = MULTI_STREAM_MSG_SIZES if pattern_name in STREAM_VARIANT_PATTERNS else MSG_SIZES
+    is_multi = is_pattern(pattern_name)
+    sizes = STREAM_MSG_SIZES if pattern_name in STREAM_VARIANT_PATTERNS else MSG_SIZES
 
     for tr_idx, tr in enumerate(transports):
         has_next_transport = (tr_idx + 1) < len(transports)
@@ -2788,8 +2812,8 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                 stream_runs_limit = max(
                     1,
                     parse_env_int(
-                        "PERF_MULTI_STREAM_RUNS",
-                        parse_env_int("PERF_MULTI_STREAM_RUNS", 1),
+                        "PERF_STREAM_RUNS",
+                        parse_env_int("PERF_STREAM_RUNS", 1),
                     ),
                 )
                 pattern_runs = min(num_runs, stream_runs_limit)
@@ -2892,7 +2916,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         connect_ok_int = int(round(float(connect_ok_value)))
                         connect_target_int = int(round(float(connect_target_value)))
                         if connect_target_int <= 0:
-                            connect_target_int = multi_pattern_default_clients(
+                            connect_target_int = pattern_default_clients(
                                 pattern_name, tr
                             )
                         connect_required_int = max(1, connect_target_int)
@@ -2928,7 +2952,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     live_metrics[key] = value
                     maybe_emit_live_row(line_size)
 
-                outcome = run_multi_sizes_test(
+                outcome = run_sizes_test(
                     binary_name,
                     lib_name,
                     tr,
@@ -3096,7 +3120,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         connect_ok_int = int(round(float(connect_ok_value)))
                         connect_target_int = int(round(float(connect_target_value)))
                         if connect_target_int <= 0:
-                            connect_target_int = multi_pattern_default_clients(
+                            connect_target_int = pattern_default_clients(
                                 pattern_name, tr
                             )
                         connect_required_int = max(1, connect_target_int)
@@ -3499,11 +3523,11 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
     return final_stats, failures
 def format_throughput(pattern_name, throughput_per_sec):
     unit = "Kops/s" if is_echo_pattern(pattern_name) else "Kmsg/s"
-    return f"{throughput_per_sec/1e3:6.2f} {unit}"
+    return f"{throughput_per_sec/1e3:8.3f} {unit}"
 
 
 def format_bandwidth(bandwidth_mb_s):
-    return f"{bandwidth_mb_s:8.2f} MB/s"
+    return f"{bandwidth_mb_s:10.3f} MB/s"
 
 
 def get_os_label():
@@ -3588,22 +3612,22 @@ def detect_build_type(build_dir):
 
 
 def resolve_clients_meta(selected_patterns):
-    env_clients = os.environ.get("PERF_MULTI_CLIENTS", "").strip()
+    env_clients = os.environ.get("PERF_CLIENTS", "").strip()
     if not env_clients:
-        env_clients = os.environ.get("PERF_MULTI_CLIENTS", "").strip()
+        env_clients = os.environ.get("PERF_CLIENTS", "").strip()
     if env_clients.isdigit():
         return env_clients
 
-    if not selected_patterns or not all(is_multi_pattern(p) for p in selected_patterns):
+    if not selected_patterns or not all(is_pattern(p) for p in selected_patterns):
         return ""
 
     stream_default = parse_env_int(
-        "PERF_MULTI_DEFAULT_STREAM_CLIENTS",
-        parse_env_int("PERF_MULTI_DEFAULT_STREAM_CLIENTS", 10000),
+        "PERF_DEFAULT_STREAM_CLIENTS",
+        parse_env_int("PERF_DEFAULT_STREAM_CLIENTS", 10000),
     )
     general_default = parse_env_int(
-        "PERF_MULTI_DEFAULT_CLIENTS",
-        parse_env_int("PERF_MULTI_DEFAULT_CLIENTS", 100),
+        "PERF_DEFAULT_CLIENTS",
+        parse_env_int("PERF_DEFAULT_CLIENTS", 100),
     )
     if len(selected_patterns) == 1 and selected_patterns[0] in STREAM_VARIANT_PATTERNS:
         return str(stream_default)
@@ -3642,15 +3666,15 @@ def build_effective_option_items(args, selected_patterns):
     for pattern in selected_patterns:
         transports.extend(select_transports(pattern))
         if pattern in STREAM_VARIANT_PATTERNS:
-            sizes.extend(MULTI_STREAM_MSG_SIZES)
+            sizes.extend(STREAM_MSG_SIZES)
         else:
             sizes.extend(MSG_SIZES)
 
     unique_transports = sorted(set(transports))
     unique_sizes = sorted(set(sizes))
     num_runs = args["num_runs"]
-    multi_only = bool(selected_patterns) and all(
-        is_multi_pattern(pattern) for pattern in selected_patterns
+    only = bool(selected_patterns) and all(
+        is_pattern(pattern) for pattern in selected_patterns
     )
 
     items = [
@@ -3660,13 +3684,13 @@ def build_effective_option_items(args, selected_patterns):
         ("msg_sizes", ",".join(str(sz) for sz in unique_sizes) if unique_sizes else "none"),
     ]
 
-    if multi_only:
-        hwm_raw = os.environ.get("PERF_MULTI_HWM", "").strip()
+    if only:
+        hwm_raw = os.environ.get("PERF_HWM", "").strip()
         default_hwm_values = set()
         for pattern in selected_patterns:
-            default_hwm_values.add(multi_pattern_default_hwm(pattern))
+            default_hwm_values.add(pattern_default_hwm(pattern))
         if hwm_raw:
-            base_hwm = max(1, parse_env_int("PERF_MULTI_HWM", 100))
+            base_hwm = max(1, parse_env_int("PERF_HWM", 100))
             hwm_display = str(base_hwm)
         elif not default_hwm_values:
             base_hwm = 100
@@ -3682,31 +3706,33 @@ def build_effective_option_items(args, selected_patterns):
                 + ")"
             )
 
-        sndhwm = parse_env_int("PERF_MULTI_SNDHWM", base_hwm)
-        rcvhwm = parse_env_int("PERF_MULTI_RCVHWM", base_hwm)
+        sndhwm = parse_env_int("PERF_SNDHWM", base_hwm)
+        rcvhwm = parse_env_int("PERF_RCVHWM", base_hwm)
+        sndbuf = os.environ.get("PERF_SNDBUF", "").strip()
+        rcvbuf = os.environ.get("PERF_RCVBUF", "").strip()
         sndhwm_display = str(sndhwm)
         rcvhwm_display = str(rcvhwm)
-        if not os.environ.get("PERF_MULTI_SNDHWM", "").strip():
+        if not os.environ.get("PERF_SNDHWM", "").strip():
             sndhwm_display = hwm_display
-        if not os.environ.get("PERF_MULTI_RCVHWM", "").strip():
+        if not os.environ.get("PERF_RCVHWM", "").strip():
             rcvhwm_display = hwm_display
-        timeout_override = parse_env_int("PERF_MULTI_TIMEOUT_SECONDS", 0)
-        service_clients = parse_env_int("PERF_MULTI_SERVICE_CLIENTS", 0)
-        default_clients = max(1, parse_env_int("PERF_MULTI_DEFAULT_CLIENTS", 100))
+        timeout_override = parse_env_int("PERF_TIMEOUT_SECONDS", 0)
+        service_clients = parse_env_int("PERF_SERVICE_CLIENTS", 0)
+        default_clients = max(1, parse_env_int("PERF_DEFAULT_CLIENTS", 100))
         default_stream_clients = max(
-            1, parse_env_int("PERF_MULTI_DEFAULT_STREAM_CLIENTS", 10000)
+            1, parse_env_int("PERF_DEFAULT_STREAM_CLIENTS", 10000)
         )
-        explicit_server_io = os.environ.get("PERF_MULTI_SERVER_IO_THREADS", "").strip()
-        explicit_client_io = os.environ.get("PERF_MULTI_CLIENT_IO_THREADS", "").strip()
+        explicit_server_io = os.environ.get("PERF_SERVER_IO_THREADS", "").strip()
+        explicit_client_io = os.environ.get("PERF_CLIENT_IO_THREADS", "").strip()
         explicit_stream_server_io = os.environ.get(
-            "PERF_MULTI_STREAM_SERVER_IO_THREADS", ""
+            "PERF_STREAM_SERVER_IO_THREADS", ""
         ).strip()
         explicit_stream_client_io = os.environ.get(
-            "PERF_MULTI_STREAM_CLIENT_IO_THREADS", ""
+            "PERF_STREAM_CLIENT_IO_THREADS", ""
         ).strip()
         explicit_perf_io = os.environ.get("PERF_IO_THREADS", "").strip()
         if explicit_server_io:
-            server_io_threads = max(1, parse_env_int("PERF_MULTI_SERVER_IO_THREADS", 2))
+            server_io_threads = max(1, parse_env_int("PERF_SERVER_IO_THREADS", 2))
             server_io_display = str(server_io_threads)
         elif (
             explicit_stream_server_io
@@ -3714,7 +3740,7 @@ def build_effective_option_items(args, selected_patterns):
             and all(p in STREAM_VARIANT_PATTERNS for p in selected_patterns)
         ):
             server_io_threads = max(
-                1, parse_env_int("PERF_MULTI_STREAM_SERVER_IO_THREADS", 4)
+                1, parse_env_int("PERF_STREAM_SERVER_IO_THREADS", 4)
             )
             server_io_display = f"{server_io_threads} (stream override)"
         elif explicit_perf_io:
@@ -3722,7 +3748,7 @@ def build_effective_option_items(args, selected_patterns):
             server_io_display = f"{server_io_threads} (from PERF_IO_THREADS)"
         else:
             default_server_io_values = {
-                multi_pattern_default_io_threads(pattern)
+                pattern_default_io_threads(pattern)
                 for pattern in selected_patterns
             }
             if len(default_server_io_values) == 1:
@@ -3737,7 +3763,7 @@ def build_effective_option_items(args, selected_patterns):
                 )
 
         if explicit_client_io:
-            client_io_threads = max(1, parse_env_int("PERF_MULTI_CLIENT_IO_THREADS", 2))
+            client_io_threads = max(1, parse_env_int("PERF_CLIENT_IO_THREADS", 2))
             client_io_display = str(client_io_threads)
         elif (
             explicit_stream_client_io
@@ -3745,7 +3771,7 @@ def build_effective_option_items(args, selected_patterns):
             and all(p in STREAM_VARIANT_PATTERNS for p in selected_patterns)
         ):
             client_io_threads = max(
-                1, parse_env_int("PERF_MULTI_STREAM_CLIENT_IO_THREADS", 4)
+                1, parse_env_int("PERF_STREAM_CLIENT_IO_THREADS", 4)
             )
             client_io_display = f"{client_io_threads} (stream override)"
         elif explicit_perf_io:
@@ -3753,7 +3779,7 @@ def build_effective_option_items(args, selected_patterns):
             client_io_display = f"{client_io_threads} (from PERF_IO_THREADS)"
         else:
             default_client_io_values = {
-                multi_pattern_default_io_threads(pattern)
+                pattern_default_io_threads(pattern)
                 for pattern in selected_patterns
             }
             if len(default_client_io_values) == 1:
@@ -3773,7 +3799,7 @@ def build_effective_option_items(args, selected_patterns):
         except ValueError:
             clients_for_connect = 100
 
-        connect_raw = os.environ.get("PERF_MULTI_CONNECT_CONCURRENCY", "").strip()
+        connect_raw = os.environ.get("PERF_CONNECT_CONCURRENCY", "").strip()
         connect_display = (
             connect_raw
             if connect_raw
@@ -3782,9 +3808,9 @@ def build_effective_option_items(args, selected_patterns):
 
         items.extend(
             [
-                ("warmup_seconds", str(parse_env_int("PERF_MULTI_WARMUP_SECONDS", 2))),
-                ("active_warmup", str(parse_env_int("PERF_MULTI_ACTIVE_WARMUP", 0))),
-                ("duration_seconds", str(parse_env_int("PERF_MULTI_DURATION_SECONDS", 5))),
+                ("warmup_seconds", str(parse_env_int("PERF_WARMUP_SECONDS", 2))),
+                ("active_warmup", str(parse_env_int("PERF_ACTIVE_WARMUP", 0))),
+                ("duration_seconds", str(parse_env_int("PERF_DURATION_SECONDS", 5))),
                 ("clients", clients_meta),
                 ("default_clients", str(default_clients)),
                 ("default_stream_clients", str(default_stream_clients)),
@@ -3797,19 +3823,21 @@ def build_effective_option_items(args, selected_patterns):
                 ("hwm", hwm_display),
                 ("sndhwm", sndhwm_display),
                 ("rcvhwm", rcvhwm_display),
-                ("sndtimeo_ms", str(parse_env_int("PERF_MULTI_SNDTIMEO_MS", 200))),
-                ("rcvtimeo_ms", str(parse_env_int("PERF_MULTI_RCVTIMEO_MS", 200))),
+                ("sndbuf", sndbuf or "default(os)"),
+                ("rcvbuf", rcvbuf or "default(os)"),
+                ("sndtimeo_ms", str(parse_env_int("PERF_SNDTIMEO_MS", 200))),
+                ("rcvtimeo_ms", str(parse_env_int("PERF_RCVTIMEO_MS", 200))),
                 ("connect_concurrency", connect_display),
-                ("settle_ms", str(parse_env_int("PERF_MULTI_SETTLE_MS", 500))),
+                ("settle_ms", str(parse_env_int("PERF_SETTLE_MS", 500))),
                 (
                     "client_poll_timeout_ms",
-                    str(parse_env_int("PERF_MULTI_CLIENT_POLL_TIMEOUT_MS", 0)),
+                    str(parse_env_int("PERF_CLIENT_POLL_TIMEOUT_MS", 0)),
                 ),
                 (
                     "connect_ready_timeout_ms",
-                    str(parse_env_int("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5000)),
+                    str(parse_env_int("PERF_CONNECT_READY_TIMEOUT_MS", 5000)),
                 ),
-                ("monitor_hwm", str(parse_env_int("PERF_MULTI_MONITOR_HWM", 1000))),
+                ("monitor_hwm", str(parse_env_int("PERF_MONITOR_HWM", 1000))),
                 ("server_ready_timeout_ms", str(args["server_ready_timeout_ms"])),
                 (
                     "server_shutdown_timeout_ms",
@@ -3820,11 +3848,11 @@ def build_effective_option_items(args, selected_patterns):
                 ("pattern_transition_ms", str(args["pattern_transition_ms"])),
                 (
                     "lat_timeout_ms",
-                    str(parse_env_int("PERF_MULTI_LAT_TIMEOUT_MS", 5000)),
+                    str(parse_env_int("PERF_LAT_TIMEOUT_MS", 5000)),
                 ),
                 (
                     "stream_non_tcp_clients_max",
-                    str(parse_env_int("PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX", 10000)),
+                    str(parse_env_int("PERF_STREAM_NON_TCP_CLIENTS_MAX", 10000)),
                 ),
                 (
                     "disable_resource_metrics",
@@ -3875,11 +3903,11 @@ def resolve_results_root(configured=""):
     return os.path.join(SCRIPT_DIR, "results")
 
 
-def resolve_multi_results_dirs(results_root):
-    multi_root = os.path.join(results_root, "multi")
+def resolve_results_dirs(results_root):
+    root = os.path.join(results_root, "multi")
     return {
-        "root": multi_root,
-        "report": os.path.join(multi_root, "report"),
+        "root": root,
+        "report": os.path.join(root, "report"),
     }
 
 
@@ -3954,14 +3982,15 @@ def emit_result_lines(result_map):
     for key in sorted(result_map.keys()):
         pattern, transport, size, metric = key
         value = result_map[key]
-        print(f"RESULT,current,{pattern},{transport},{size},{metric},{value:.2f}")
+        print(f"RESULT,current,{pattern},{transport},{size},{metric},{value:.3f}")
 
 
 def parse_args():
+    mode_scope = "multi patterns" if ALLOW_MULTI else "single patterns"
     usage = (
         "Usage: run_comparison.py [PATTERN] [options]\n\n"
         "Measure current zlink benchmarks.\n\n"
-        "Note: PATTERN=ALL includes single (non-STREAM) and MULTI_* patterns by default.\n\n"
+        f"Note: PATTERN=ALL includes {mode_scope} by default.\n\n"
         "Options:\n"
         "  --runs N                     Iterations per configuration (default: 1)\n"
         "  --duration N                 Override PERF_SINGLE_DURATION_SECONDS (single patterns)\n"
@@ -3988,18 +4017,18 @@ def parse_args():
     results_tag = os.environ.get("PERF_RESULTS_TAG", "").strip()
     result_file = ""
     transport_transition_ms = max(
-        0, parse_env_int("PERF_MULTI_TRANSPORT_TRANSITION_MS", 3000)
+        0, parse_env_int("PERF_TRANSPORT_TRANSITION_MS", 3000)
     )
     pattern_transition_ms = max(
-        0, parse_env_int("PERF_MULTI_PATTERN_TRANSITION_MS", 3000)
+        0, parse_env_int("PERF_PATTERN_TRANSITION_MS", 3000)
     )
     server_ready_timeout_ms = max(
-        0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000)
+        0, parse_env_int("PERF_SERVER_READY_TIMEOUT_MS", 10000)
     )
     server_shutdown_timeout_ms = max(
-        0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000)
+        0, parse_env_int("PERF_SERVER_SHUTDOWN_TIMEOUT_MS", 5000)
     )
-    server_bind_port = max(0, parse_env_int("PERF_MULTI_SERVER_BIND_PORT", 0))
+    server_bind_port = max(0, parse_env_int("PERF_SERVER_BIND_PORT", 0))
 
     i = 1
     while i < len(sys.argv):
@@ -4218,36 +4247,18 @@ def main():
         base_env["PERF_SINGLE_DURATION_SECONDS"] = duration_seconds
         os.environ["PERF_SINGLE_DURATION_SECONDS"] = duration_seconds
     timeout_env_values = {
-        "PERF_MULTI_SERVER_READY_TIMEOUT_MS": str(args["server_ready_timeout_ms"]),
-        "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS": str(
+        "PERF_SERVER_READY_TIMEOUT_MS": str(args["server_ready_timeout_ms"]),
+        "PERF_SERVER_SHUTDOWN_TIMEOUT_MS": str(
             args["server_shutdown_timeout_ms"]
         ),
-        "PERF_MULTI_SERVER_BIND_PORT": str(args["server_bind_port"]),
+        "PERF_SERVER_BIND_PORT": str(args["server_bind_port"]),
     }
     for env_key, env_value in timeout_env_values.items():
         base_env[env_key] = env_value
         os.environ[env_key] = env_value
     sync_perf_bench_aliases(base_env)
 
-    comparisons = [
-        ("perf_pair", "PAIR"),
-        ("perf_pubsub", "PUBSUB"),
-        ("perf_dealer_dealer", "DEALER_DEALER"),
-        ("perf_dealer_router", "DEALER_ROUTER"),
-        ("perf_router_router", "ROUTER_ROUTER"),
-        ("perf_router_router_poll", "ROUTER_ROUTER_POLL"),
-        ("comp_current_multi_dealer_dealer_client", "MULTI_DEALER_DEALER"),
-        ("comp_current_multi_dealer_router_client", "MULTI_DEALER_ROUTER"),
-        ("comp_current_multi_router_router_client", "MULTI_ROUTER_ROUTER"),
-        ("comp_current_multi_pubsub_client", "MULTI_PUBSUB"),
-        ("comp_current_multi_gateway_client", "MULTI_GATEWAY"),
-        ("comp_current_multi_spot_client", "MULTI_SPOT"),
-        ("perf_stream_client", "MULTI_STREAM"),
-        ("perf_stream_client", "MULTI_STREAM_CALLBACK"),
-        ("perf_stream_client", "MULTI_STREAM_LEN32BE"),
-        ("perf_gateway", "GATEWAY"),
-        ("perf_spot", "SPOT"),
-    ]
+    comparisons = list(MULTI_COMPARISONS if ALLOW_MULTI else SINGLE_COMPARISONS)
 
     if p_req == "ALL":
         requested = None
@@ -4271,10 +4282,10 @@ def main():
     selected_patterns = [
         p_name for _, p_name in comparisons if requested is None or p_name in requested
     ]
-    multi_only_run = bool(selected_patterns) and all(is_multi_pattern(p) for p in selected_patterns)
+    only_run = bool(selected_patterns) and all(is_pattern(p) for p in selected_patterns)
 
     results_root = resolve_results_root(args["results_dir"])
-    results_layout = resolve_multi_results_dirs(results_root)
+    results_layout = resolve_results_dirs(results_root)
     result_file = args["result_file"]
     if not result_file:
         tag = args["results_tag"]
@@ -4352,7 +4363,7 @@ def main():
         for current_bin, p_name in comparisons
         if requested is None or p_name in requested
     ]
-    pattern_transition_ms = args["pattern_transition_ms"] if multi_only_run else 0
+    pattern_transition_ms = args["pattern_transition_ms"] if only_run else 0
 
     for pattern_idx, (current_bin, p_name) in enumerate(selected_comparisons):
         if pattern_idx > 0:
@@ -4375,8 +4386,8 @@ def main():
         failure_lookup = build_failure_lookup(failures, p_name)
 
         # Classify statuses and collect RESULT lines.
-        is_multi = is_multi_pattern(p_name)
-        sizes = MULTI_STREAM_MSG_SIZES if p_name in STREAM_VARIANT_PATTERNS else MSG_SIZES
+        is_multi = is_pattern(p_name)
+        sizes = STREAM_MSG_SIZES if p_name in STREAM_VARIANT_PATTERNS else MSG_SIZES
         for tr in pattern_transports:
             for sz in sizes:
                 unsupported = bool(c_stats.get(f"{tr}|{sz}|unsupported", 0))

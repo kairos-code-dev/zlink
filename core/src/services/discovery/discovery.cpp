@@ -14,10 +14,21 @@
 #include <cstdarg>
 #include <cstdio>
 #include <string.h>
+#if !defined _WIN32
 #include <unistd.h>
+#endif
 
 namespace zlink
 {
+static void discovery_sleep_1ms ()
+{
+#if defined _WIN32
+    Sleep (1);
+#else
+    usleep (1000);
+#endif
+}
+
 static const uint32_t discovery_tag_value = 0x1e6700d6;
 
 static bool is_supported_registry_transport (const char *endpoint_)
@@ -308,7 +319,7 @@ int discovery_t::connect_registry (const char *registry_endpoint_)
         }
         if (rc == -1 && errno != EAGAIN)
             return -1;
-        usleep (1000);
+        discovery_sleep_1ms ();
     }
 
     {

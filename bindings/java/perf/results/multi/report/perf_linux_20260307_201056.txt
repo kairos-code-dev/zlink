@@ -1,6 +1,0 @@
-## PATTERN: MULTI_SPOT (one-way)
-
-### Transport: tcp
-| Size     |       Throughput | Bandwidth |  Latency(ms) | Lat p95(ms) | Lat p99(ms) | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
-|----------|------------------|-----------|--------------|----------|----------|--------|----------|--------|----------|
-| 64B |   1231.12 Kmsg/s |     78.8 MB/s | 13152.3711 ms | 15253.8823 ms | 15533.6050 ms |   10.9 |     51.4 |    7.4 |    610.5 |

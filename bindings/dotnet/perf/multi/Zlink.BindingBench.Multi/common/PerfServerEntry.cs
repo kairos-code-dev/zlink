@@ -64,6 +64,8 @@ internal static partial class PerfRunner
             $"RESULT,current,{pattern},{transport},{size},server_cpu_pct,{cpuPct}");
         Console.WriteLine(
             $"RESULT,current,{pattern},{transport},{size},server_mem_mb,{memMb}");
+        if (IsMultiStreamPattern(pattern))
+            return;
         Console.WriteLine(
             $"RESULT,current,{pattern},{transport},{size},server_snd_pending_max,0");
         Console.WriteLine(

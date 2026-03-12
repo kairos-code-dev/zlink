@@ -208,6 +208,8 @@ buildenv/win/env.ps1
 
 # Local test environments
 .venv-bindings/
+local.tar
+local.tar.gz
 
 # Local benchmark outputs
 core/bench/**/results/

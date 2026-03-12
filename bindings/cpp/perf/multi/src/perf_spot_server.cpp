@@ -21,6 +21,8 @@
 
 namespace {
 
+static const char *k_service_name = "perf-spot";
+
 int bench_pid ()
 {
 #if defined(_WIN32)
@@ -40,6 +42,11 @@ std::string make_transport_endpoint (const std::string &transport, int port)
     if (transport == "tls")
         return std::string ("tls://127.0.0.1:") + suffix;
     return std::string ("tcp://127.0.0.1:") + suffix;
+}
+
+std::string make_tcp_endpoint (int port)
+{
+    return std::string ("tcp://127.0.0.1:") + std::to_string (port);
 }
 
 std::string bind_spot_endpoint (zlink::service::spot_node_t &node,
@@ -71,28 +78,28 @@ bool configure_spot_server_tls (zlink::service::spot_node_t &node,
 }
 
 bool wait_pub_peer_ready (zlink::service::spot_node_t &node,
+                          size_t target_count,
                           int timeout_ms)
 {
+    const size_t target = std::max<size_t> (1, target_count);
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (std::max (timeout_ms, 1000));
     while (std::chrono::steady_clock::now () < deadline) {
         size_t peer_count = 0;
-        if (node.pub_peers (NULL, &peer_count) == 0 && peer_count > 0)
+        if (node.pub_peers (NULL, &peer_count) == 0 && peer_count >= target)
             return true;
-        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
 
     size_t peer_count = 0;
-    return node.pub_peers (NULL, &peer_count) == 0 && peer_count > 0;
+    return node.pub_peers (NULL, &peer_count) == 0 && peer_count >= target;
 }
 
-struct pending_send_t
+bool is_transient_publish_error (int err)
 {
-    bool pending;
-    bool topic_sent;
-
-    pending_send_t () : pending (false), topic_sent (false) {}
-};
+    return err == EINTR || err == EAGAIN || err == ENOTCONN || err == ENOENT
+           || err == EHOSTUNREACH;
+}
 
 long compute_wait_ms (const perf::multi::multi_bench_settings_t &settings,
                       const std::chrono::steady_clock::time_point &deadline)
@@ -108,7 +115,7 @@ long compute_wait_ms (const perf::multi::multi_bench_settings_t &settings,
     return wait_ms;
 }
 
-bool run_phase (zlink::socket_t &publisher,
+bool run_phase (zlink::service::spot_t &spot,
                 zlink::poller_t &poller,
                 std::vector<zlink::poll_event_t> &events,
                 std::vector<char> &payload,
@@ -122,12 +129,11 @@ bool run_phase (zlink::socket_t &publisher,
     if (duration <= std::chrono::steady_clock::duration::zero ())
         return true;
 
-    pending_send_t pending;
+    bool pending = false;
     const char *topic = "bench";
-    const size_t topic_size = std::strlen (topic);
     const auto deadline = std::chrono::steady_clock::now () + duration;
     while (std::chrono::steady_clock::now () < deadline) {
-        if (!pending.pending) {
+        if (!pending) {
             if (!perf_metric::stamp_payload (payload.data (),
                                              payload.size (),
                                              run_id,
@@ -139,42 +145,24 @@ bool run_phase (zlink::socket_t &publisher,
             }
         }
 
-        if (!pending.topic_sent) {
-            const int topic_sent = publisher.send (
-              topic, topic_size, zlink::send_flag::sndmore | zlink::send_flag::dontwait);
-            if (topic_sent != static_cast<int> (topic_size)) {
-                if (topic_sent < 0 && errno == EAGAIN) {
-                    pending.pending = true;
-                    if (poller.modify (publisher, zlink::poll_event::pollout) != 0)
-                        return false;
-                } else {
-                    return false;
-                }
-            } else {
-                pending.pending = true;
-                pending.topic_sent = true;
-            }
+        if (spot.publish (
+              topic,
+              payload.data (),
+              payload.size (),
+              zlink::send_flag::dontwait)
+            == 0) {
+            pending = false;
+        } else if (is_transient_publish_error (errno)) {
+            pending = true;
+            if (poller.modify_spot_pub (spot, zlink::poll_event::pollout) != 0)
+                return false;
+        } else {
+            return false;
         }
 
-        if (pending.topic_sent) {
-            const int payload_sent = publisher.send (
-              payload.data (), payload.size (), zlink::send_flag::dontwait);
-            if (payload_sent != static_cast<int> (payload.size ())) {
-                if (payload_sent < 0 && errno == EAGAIN) {
-                    pending.pending = true;
-                    if (poller.modify (publisher, zlink::poll_event::pollout) != 0)
-                        return false;
-                } else {
-                    return false;
-                }
-            } else {
-                pending.pending = false;
-                pending.topic_sent = false;
-            }
-        }
-
-        if (!pending.pending) {
-            if (poller.modify (publisher, static_cast<zlink::poll_event> (0)) != 0)
+        if (!pending) {
+            if (poller.modify_spot_pub (spot, static_cast<zlink::poll_event> (0))
+                != 0)
                 return false;
             continue;
         }
@@ -211,6 +199,8 @@ bool perf_spot_server (const std::string &transport, size_t msg_size)
                                                                               : 0;
 
     perf::multi::ctx_guard_t ctx;
+    zlink::service::registry_t registry (ctx.ctx ());
+    zlink::service::discovery_t discovery (ctx.ctx (), zlink::service_type::spot);
     zlink::service::spot_node_t node (ctx.ctx ());
 
     (void) node.set_sockopt (
@@ -219,24 +209,30 @@ bool perf_spot_server (const std::string &transport, size_t msg_size)
       settings.sndhwm);
     (void) node.set_sockopt (
       zlink::spot_node_socket_role::pub,
-      zlink::socket_options::rcvhwm,
-      settings.rcvhwm);
-    (void) node.set_sockopt (
-      zlink::spot_node_socket_role::pub,
       zlink::socket_options::sndtimeo,
       send_timeout_ms);
     (void) node.set_sockopt (
       zlink::spot_node_socket_role::pub,
-      zlink::socket_options::rcvtimeo,
-      settings.rcvtimeo_ms);
-    (void) node.set_sockopt (
-      zlink::spot_node_socket_role::pub,
       zlink::socket_options::xpub_nodrop,
       xpub_nodrop);
-    (void) node.set_sockopt (
-      zlink::spot_node_socket_role::sub,
-      zlink::socket_options::xpub_nodrop,
-      xpub_nodrop);
+
+    const int registry_base_port = settings.server_bind_port > 0
+                                     ? settings.server_bind_port + 64
+                                     : 30000 + ((bench_pid () % 5000) * 3);
+    const std::string registry_pub_endpoint = make_tcp_endpoint (registry_base_port + 1);
+    const std::string registry_router_endpoint =
+      make_tcp_endpoint (registry_base_port + 2);
+    if (!registry.valid () || !discovery.valid ()
+        || registry.set_endpoints (registry_pub_endpoint, registry_router_endpoint)
+             != 0
+        || registry.set_broadcast_interval (
+             static_cast<uint32_t> (std::max (100, settings.settle_ms)))
+             != 0
+        || registry.start () != 0
+        || discovery.connect_registry (registry_router_endpoint) != 0
+        || node.set_discovery (discovery.handle (), k_service_name) != 0) {
+        return false;
+    }
 
     if (!configure_spot_server_tls (node, transport))
         return false;
@@ -247,15 +243,26 @@ bool perf_spot_server (const std::string &transport, size_t msg_size)
     const std::string endpoint = bind_spot_endpoint (node, transport, base_port);
     if (endpoint.empty ())
         return false;
-
-    zlink::socket_t pub_socket = zlink::socket_t::wrap (node.pub_socket_handle ());
-    if (!pub_socket.handle ())
+    if (node.register_service (k_service_name, endpoint) != 0)
         return false;
 
-    perf::multi::print_ready (endpoint);
-
-    if (!wait_pub_peer_ready (node, settings.connect_ready_timeout_ms))
+    zlink::service::spot_t spot (node);
+    if (!spot.valid ())
         return false;
+
+    perf::multi::print_ready (
+      endpoint + "|" + registry_pub_endpoint + "|" + registry_router_endpoint);
+
+    const size_t service_clients = std::max<size_t> (1, settings.clients);
+    if (!wait_pub_peer_ready (node, service_clients, settings.connect_ready_timeout_ms)
+        && std::getenv ("PERF_DEBUG") != NULL) {
+        std::cerr << "spot server: peer wait timed out, continuing" << std::endl;
+    }
+    if (std::getenv ("PERF_DEBUG") != NULL) {
+        size_t peer_count = 0;
+        if (node.pub_peers (NULL, &peer_count) == 0)
+            std::cerr << "spot server: pub peers=" << peer_count << std::endl;
+    }
 
     std::vector<char> payload (
       std::max<size_t> (msg_size, perf_metric::header_size ()), 's');
@@ -266,10 +273,20 @@ bool perf_spot_server (const std::string &transport, size_t msg_size)
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
-    (void) poller.add (pub_socket, zlink::poll_event::pollout);
-    (void) poller.modify (pub_socket, static_cast<zlink::poll_event> (0));
+    if (poller.add_spot_pub (spot, zlink::poll_event::pollout) != 0) {
+        if (std::getenv ("PERF_DEBUG") != NULL)
+            std::cerr << "spot server: add poller failed errno=" << errno
+                      << std::endl;
+        return false;
+    }
+    if (poller.modify_spot_pub (spot, static_cast<zlink::poll_event> (0)) != 0) {
+        if (std::getenv ("PERF_DEBUG") != NULL)
+            std::cerr << "spot server: modify poller failed errno=" << errno
+                      << std::endl;
+        return false;
+    }
 
-    if (!run_phase (pub_socket,
+    if (!run_phase (spot,
                     poller,
                     events,
                     payload,
@@ -278,9 +295,12 @@ bool perf_spot_server (const std::string &transport, size_t msg_size)
                     seq,
                     perf_metric::phase_warmup,
                     std::chrono::seconds (std::max (0, settings.warmup_seconds)),
-                    settings))
+                    settings)) {
+        if (std::getenv ("PERF_DEBUG") != NULL)
+            std::cerr << "spot server: warmup failed errno=" << errno << std::endl;
         return false;
-    if (!run_phase (pub_socket,
+    }
+    if (!run_phase (spot,
                     poller,
                     events,
                     payload,
@@ -289,9 +309,12 @@ bool perf_spot_server (const std::string &transport, size_t msg_size)
                     seq,
                     perf_metric::phase_drain,
                     std::chrono::milliseconds (std::max (0, settings.settle_ms)),
-                    settings))
+                    settings)) {
+        if (std::getenv ("PERF_DEBUG") != NULL)
+            std::cerr << "spot server: settle failed errno=" << errno << std::endl;
         return false;
-    if (!run_phase (pub_socket,
+    }
+    if (!run_phase (spot,
                     poller,
                     events,
                     payload,
@@ -300,8 +323,11 @@ bool perf_spot_server (const std::string &transport, size_t msg_size)
                     seq,
                     perf_metric::phase_active,
                     std::chrono::seconds (std::max (1, settings.duration_seconds)),
-                    settings))
+                    settings)) {
+        if (std::getenv ("PERF_DEBUG") != NULL)
+            std::cerr << "spot server: active failed errno=" << errno << std::endl;
         return false;
+    }
 
     perf::multi::print_server_queue_metrics (
       "current",

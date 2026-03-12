@@ -7,6 +7,7 @@
 #include "../types.hpp"
 
 #include <cerrno>
+#include <cstring>
 #include <cstdlib>
 #include <type_traits>
 
@@ -14,6 +15,51 @@ namespace zlink
 {
 namespace service
 {
+
+namespace detail
+{
+
+inline int spot_pub_option_from_socket_option (socket_option option_)
+{
+    switch (option_) {
+    case socket_option::sndhwm:
+        return ZLINK_SPOT_PUB_OPT_SNDHWM;
+    case socket_option::sndtimeo:
+        return ZLINK_SPOT_PUB_OPT_SNDTIMEO;
+    case socket_option::linger:
+        return ZLINK_SPOT_PUB_OPT_LINGER;
+    case socket_option::xpub_nodrop:
+        return ZLINK_SPOT_PUB_OPT_NODROP;
+    case socket_option::sndbuf:
+        return ZLINK_SPOT_PUB_OPT_SNDBUF;
+    case socket_option::rcvbuf:
+        return ZLINK_SPOT_PUB_OPT_RCVBUF;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+inline int spot_sub_option_from_socket_option (socket_option option_)
+{
+    switch (option_) {
+    case socket_option::rcvhwm:
+        return ZLINK_SPOT_SUB_OPT_RCVHWM;
+    case socket_option::rcvtimeo:
+        return ZLINK_SPOT_SUB_OPT_RCVTIMEO;
+    case socket_option::linger:
+        return ZLINK_SPOT_SUB_OPT_LINGER;
+    case socket_option::sndbuf:
+        return ZLINK_SPOT_SUB_OPT_SNDBUF;
+    case socket_option::rcvbuf:
+        return ZLINK_SPOT_SUB_OPT_RCVBUF;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+} // namespace detail
 
 /**
  * @brief Spot node wrapper that manages publish/subscribe service sockets.
@@ -181,9 +227,26 @@ class spot_node_t
                  const void *value_,
                  size_t len_)
     {
-        return zlink_spot_node_setsockopt (
-          _node, static_cast<int> (role_), static_cast<int> (option_), value_,
-          len_);
+        int mapped = -1;
+
+        switch (role_) {
+        case spot_node_socket_role::pub:
+            mapped = detail::spot_pub_option_from_socket_option (option_);
+            if (mapped < 0)
+                return -1;
+            return zlink_spot_node_set_pub_option (_node, mapped, value_, len_);
+        case spot_node_socket_role::sub:
+            mapped = detail::spot_sub_option_from_socket_option (option_);
+            if (mapped < 0)
+                return -1;
+            return zlink_spot_node_set_sub_option (_node, mapped, value_, len_);
+        case spot_node_socket_role::node:
+            errno = ENOTSUP;
+            return -1;
+        default:
+            errno = EINVAL;
+            return -1;
+        }
     }
 
     /**
@@ -241,9 +304,8 @@ class spot_node_t
      */
     ZLINK_CPP_NODISCARD int set_sockopt (spot_node_option option_, int value_)
     {
-        return zlink_spot_node_setsockopt (
-          _node, static_cast<int> (spot_node_socket_role::node),
-          static_cast<int> (option_), &value_, sizeof (value_));
+        return zlink_spot_node_set_pub_option (
+          _node, static_cast<int> (option_), &value_, sizeof (value_));
     }
 
     /**
@@ -252,7 +314,7 @@ class spot_node_t
      */
     void *pub_socket_handle () const
     {
-        return zlink_spot_node_pub_socket (_node);
+        return zlink_spot_node_default_pub (_node);
     }
 
     /**
@@ -261,7 +323,7 @@ class spot_node_t
      */
     void *sub_socket_handle () const
     {
-        return zlink_spot_node_sub_socket (_node);
+        return zlink_spot_node_default_sub (_node);
     }
 
     /**
@@ -273,7 +335,11 @@ class spot_node_t
     ZLINK_CPP_NODISCARD int
     pub_peers (zlink_peer_info_t *peers_, size_t *count_)
     {
-        return zlink_spot_node_pub_peers (_node, peers_, count_);
+        void *pub = zlink_spot_node_default_pub (_node);
+        if (!pub)
+            return -1;
+
+        return zlink_spot_pub_peers (pub, peers_, count_);
     }
 
     /**
@@ -285,7 +351,11 @@ class spot_node_t
     ZLINK_CPP_NODISCARD int
     sub_peers (zlink_peer_info_t *peers_, size_t *count_)
     {
-        return zlink_spot_node_sub_peers (_node, peers_, count_);
+        void *sub = zlink_spot_node_default_sub (_node);
+        if (!sub)
+            return -1;
+
+        return zlink_spot_sub_peers (sub, peers_, count_);
     }
 
     /**
@@ -622,6 +692,83 @@ class spot_t
           topic_len < sizeof (topic_buf) ? topic_len : sizeof (topic_buf) - 1;
         topic_.assign (topic_buf, topic_size);
         return move_received_parts (out_, parts, count);
+    }
+
+    /**
+     * @brief Receive one single-frame payload into a caller buffer.
+     * @param topic_ Output topic string.
+     * @param data_ Destination payload buffer.
+     * @param size_ Destination buffer size in bytes.
+     * @param received_size_ Output payload size copied.
+     * @param flags_ Receive flags.
+     * @param topic_len_out_ Optional output for full topic byte length.
+     * @param truncated_out_ Optional output for topic truncation flag.
+     * @return 0 on success, -1 on failure.
+     */
+    ZLINK_CPP_NODISCARD int
+    recv (std::string &topic_,
+          void *data_,
+          size_t size_,
+          size_t *received_size_,
+          recv_flag flags_ = recv_flag::none,
+          size_t *topic_len_out_ = NULL,
+          bool *truncated_out_ = NULL)
+    {
+        if (!_sub) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+        if (!received_size_ || (size_ > 0 && !data_)) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        zlink_msg_t *parts = NULL;
+        size_t count = 0;
+        char topic_buf[256];
+        size_t topic_len = sizeof (topic_buf);
+        const int rc = zlink_spot_sub_recv (
+          _sub,
+          &parts,
+          &count,
+          static_cast<int> (flags_),
+          topic_buf,
+          &topic_len);
+        if (rc != 0)
+            return rc;
+
+        const bool truncated = topic_len > (sizeof (topic_buf) - 1);
+        if (topic_len_out_)
+            *topic_len_out_ = topic_len;
+        if (truncated_out_)
+            *truncated_out_ = truncated;
+
+        const size_t topic_size =
+          topic_len < sizeof (topic_buf) ? topic_len : sizeof (topic_buf) - 1;
+        topic_.assign (topic_buf, topic_size);
+
+        *received_size_ = 0;
+        if (!parts || count != 1) {
+            close_received_parts (parts, count);
+            errno = EPROTO;
+            return -1;
+        }
+
+        const size_t payload_size = zlink_msg_size (&parts[0]);
+        if (payload_size > size_) {
+            close_received_parts (parts, count);
+            errno = EMSGSIZE;
+            return -1;
+        }
+
+        if (payload_size > 0) {
+            void *payload_data = zlink_msg_data (&parts[0]);
+            if (payload_data && data_)
+                memcpy (data_, payload_data, payload_size);
+        }
+        *received_size_ = payload_size;
+        close_received_parts (parts, count);
+        return 0;
     }
 
     /**

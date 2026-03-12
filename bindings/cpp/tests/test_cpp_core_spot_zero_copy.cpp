@@ -59,19 +59,29 @@ void test_spot_publish_zero_local_delivery ()
     std::atomic<int> free_count (0);
     {
         zlink::context_t ctx;
-        zlink::service::spot_node_t node (ctx);
-        zlink::service::spot_t spot (node);
-        assert (spot.valid ());
-        assert (spot.subscribe ("zero:topic") == 0);
+        zlink::service::spot_node_t pub_node (ctx);
+        zlink::service::spot_node_t sub_node (ctx);
+        const std::string endpoint =
+          unique_inproc ("inproc://cpp-", "spot-zero-copy");
+
+        assert (pub_node.bind (endpoint.c_str ()) == 0);
+        assert (sub_node.connect_peer_pub (endpoint.c_str ()) == 0);
+
+        zlink::service::spot_t pub_spot (pub_node);
+        zlink::service::spot_t sub_spot (sub_node);
+        assert (pub_spot.valid ());
+        assert (sub_spot.valid ());
+        assert (sub_spot.subscribe ("zero:topic") == 0);
+        sleep_ms (100);
 
         char *payload = alloc_payload ("pong", 4);
-        assert (spot.publish_zero (
+        assert (pub_spot.publish_zero (
                   "zero:topic", payload, 4, &counting_free_fn, &free_count)
                 == 0);
 
         std::vector<zlink::message_t> recv_parts;
         std::string topic;
-        assert (recv_spot_with_timeout (spot, recv_parts, topic, 2000));
+        assert (recv_spot_with_timeout (sub_spot, recv_parts, topic, 2000));
         assert (topic == "zero:topic");
         assert (recv_parts.size () == 1);
         assert (recv_parts[0].size () == 4);

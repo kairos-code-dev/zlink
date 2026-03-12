@@ -116,6 +116,35 @@ public sealed class Socket : IDisposable
         return rc;
     }
 
+    public unsafe bool TrySend(ReadOnlySpan<byte> buffer, SendFlags flags,
+        out int written)
+    {
+        EnsureNotDisposed();
+        while (true)
+        {
+            fixed (byte* ptr = buffer)
+            {
+                int rc = NativeMethods.zlink_send(_handle, ptr,
+                    (nuint)buffer.Length, (int)flags);
+                if (rc >= 0)
+                {
+                    written = rc;
+                    return true;
+                }
+            }
+
+            int errno = NativeMethods.zlink_errno();
+            if (ZlinkException.MapErrorCode(errno) == ErrorCode.EIntr)
+                continue;
+            if (ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain)
+            {
+                written = 0;
+                return false;
+            }
+            throw ZlinkException.FromLastError();
+        }
+    }
+
     public void AttachStreamRaw(StreamPacketHandler handler)
     {
         EnsureNotDisposed();
@@ -350,6 +379,35 @@ public sealed class Socket : IDisposable
         }
         ZlinkException.ThrowIfError(rc);
         return rc;
+    }
+
+    public unsafe bool TryReceive(Span<byte> buffer, ReceiveFlags flags,
+        out int read)
+    {
+        EnsureNotDisposed();
+        while (true)
+        {
+            fixed (byte* ptr = buffer)
+            {
+                int rc = NativeMethods.zlink_recv(_handle, ptr,
+                    (nuint)buffer.Length, (int)flags);
+                if (rc >= 0)
+                {
+                    read = rc;
+                    return true;
+                }
+            }
+
+            int errno = NativeMethods.zlink_errno();
+            if (ZlinkException.MapErrorCode(errno) == ErrorCode.EIntr)
+                continue;
+            if (ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain)
+            {
+                read = 0;
+                return false;
+            }
+            throw ZlinkException.FromLastError();
+        }
     }
 
     /// <summary>

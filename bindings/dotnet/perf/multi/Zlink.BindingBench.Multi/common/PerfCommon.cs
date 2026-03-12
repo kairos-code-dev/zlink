@@ -2,6 +2,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Threading;
@@ -54,6 +55,11 @@ internal static partial class PerfRunner
     {
         while (true)
         {
+            if (socket.TryReceive(buffer, flags, out int read))
+                return read;
+
+            if ((flags & ReceiveFlags.DontWait) != 0)
+                return 0;
             try
             {
                 return socket.Receive(buffer, flags);
@@ -80,21 +86,7 @@ internal static partial class PerfRunner
     internal static int ReceiveRetry(Zlink.Socket socket, Span<byte> buffer,
         ReceiveFlags flags = ReceiveFlags.None)
     {
-        while (true)
-        {
-            try
-            {
-                return socket.Receive(buffer, flags);
-            }
-            catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
-            {
-                continue;
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
-            {
-                return 0;
-            }
-        }
+        return socket.TryReceive(buffer, flags, out int read) ? read : 0;
     }
 
     internal static int DrainReadableSocket(Zlink.Socket socket, Span<byte> buffer,
@@ -145,7 +137,7 @@ internal static partial class PerfRunner
     }
 
     internal static bool WaitUntil(Func<bool> check, int timeoutMs,
-        int intervalMs = 10)
+        int intervalMs = 1)
     {
         long deadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, timeoutMs) * Stopwatch.Frequency / 1000;
@@ -196,15 +188,15 @@ internal static partial class PerfRunner
         double latencyP95Ms = UsToMs(latencyP95Us);
         double latencyP99Ms = UsToMs(latencyP99Us);
         Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},throughput,{throughput}");
+            $"RESULT,current,{pattern},{transport},{size},throughput,{FormatMetric(throughput)}");
         Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},bandwidth,{bandwidth}");
+            $"RESULT,current,{pattern},{transport},{size},bandwidth,{FormatMetric(bandwidth)}");
         Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},latency,{latencyMs}");
+            $"RESULT,current,{pattern},{transport},{size},latency,{FormatMetric(latencyMs)}");
         Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},latency_p95,{latencyP95Ms}");
+            $"RESULT,current,{pattern},{transport},{size},latency_p95,{FormatMetric(latencyP95Ms)}");
         Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},latency_p99,{latencyP99Ms}");
+            $"RESULT,current,{pattern},{transport},{size},latency_p99,{FormatMetric(latencyP99Ms)}");
     }
 
     private static double BandwidthMbps(string pattern, double throughput, int size)
@@ -216,6 +208,11 @@ internal static partial class PerfRunner
     private static double UsToMs(double latencyUs)
     {
         return latencyUs / 1000.0;
+    }
+
+    private static string FormatMetric(double value)
+    {
+        return value.ToString("F3", CultureInfo.InvariantCulture);
     }
 
     internal static string EndpointFor(string transport, string name)

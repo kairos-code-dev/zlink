@@ -1,2 +1,5 @@
 /single/build/
 /multi/build/
+/results/**/*.txt
+/results/**/*.log
+!/results/**/.gitkeep

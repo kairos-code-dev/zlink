@@ -4,11 +4,9 @@ import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.Poller;
-import dev.kairoscode.zlink.Socket;
-import dev.kairoscode.zlink.SocketOption;
-import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.ServiceType;
+import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.gateway.Gateway;
 import dev.kairoscode.zlink.service.receiver.Receiver;
@@ -18,7 +16,6 @@ import org.junit.jupiter.api.Test;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestGatewayServicePollerPortedTest {
     private static final Integer CLIENT_TAG = Integer.valueOf(101);
@@ -27,117 +24,16 @@ public class TestGatewayServicePollerPortedTest {
 
     @Test
     public void testGatewayReceiverRoundTripViaServicePoller() {
-        TestSupport.assumeNative();
-
-        String suffix = Long.toUnsignedString(System.nanoTime(), 36);
-        String regPub = TestSupport.inprocEndpoint("gw-sp-pub-" + suffix);
-        String regRouter = TestSupport.inprocEndpoint("gw-sp-router-" + suffix);
-        String serverEndpoint = TestSupport.tcpEndpoint();
-        String clientEndpoint = TestSupport.tcpEndpoint();
-
-        try (Context ctx = new Context();
-             Registry registry = new Registry(ctx);
-             Discovery clientDiscovery = new Discovery(ctx, ServiceType.GATEWAY);
-             Discovery serverDiscovery = new Discovery(ctx, ServiceType.GATEWAY);
-             Receiver serverReceiver = new Receiver(ctx);
-             Receiver clientReceiver = new Receiver(ctx, "c0");
-             Gateway clientGateway = new Gateway(ctx, clientDiscovery, "c0");
-             Gateway serverGateway = new Gateway(ctx, serverDiscovery, "sg");
-             Poller clientPoller = new Poller();
-             Poller serverPoller = new Poller();
-             Poller gatewayPoller = new Poller()) {
-            registry.setEndpoints(regPub, regRouter);
-            registry.start();
-            TestSupport.sleepMs(100);
-
-            clientDiscovery.connectRegistry(regPub);
-            serverDiscovery.connectRegistry(regPub);
-            clientDiscovery.subscribe("perf-server");
-            serverDiscovery.subscribe("c0");
-
-            serverReceiver.bind(serverEndpoint);
-            serverReceiver.connectRegistry(regRouter);
-            serverReceiver.register("perf-server", serverEndpoint, 1);
-            clientReceiver.bind(clientEndpoint);
-            clientReceiver.connectRegistry(regRouter);
-            clientReceiver.register("c0", clientEndpoint, 1);
-
-            TestSupport.waitUntil(
-                () -> serverReceiver.registerResult("perf-server").status() == 0,
-                TestSupport.DEFAULT_TIMEOUT_MS,
-                "server receiver register did not succeed");
-            TestSupport.waitUntil(
-                () -> clientReceiver.registerResult("c0").status() == 0,
-                TestSupport.DEFAULT_TIMEOUT_MS,
-                "client receiver register did not succeed");
-            TestSupport.waitUntil(
-                () -> clientGateway.connectionCount("perf-server") > 0,
-                TestSupport.DEFAULT_TIMEOUT_MS,
-                "client gateway did not connect to perf-server");
-            TestSupport.waitUntil(
-                () -> serverGateway.connectionCount("c0") > 0,
-                TestSupport.DEFAULT_TIMEOUT_MS,
-                "server gateway did not connect to c0");
-
-            clientPoller.addReceiver(clientReceiver,
-                PollEventType.POLLIN.getValue(), CLIENT_TAG);
-            serverPoller.addReceiver(serverReceiver,
-                PollEventType.POLLIN.getValue(), SERVER_TAG);
-            gatewayPoller.addGateway(serverGateway,
-                PollEventType.POLLOUT.getValue(), GATEWAY_TAG);
-            TestSupport.waitUntil(() -> gatewayPoller.pollCount(50) > 0,
-                TestSupport.DEFAULT_TIMEOUT_MS,
-                "server gateway poller never became writable");
-            assertEquals(GATEWAY_TAG, gatewayPoller.readyTag(0));
-
-            try (Message outbound = Message.fromBytes(
-                "hello".getBytes(StandardCharsets.UTF_8));
-                 Socket serverRouter = serverReceiver.routerSocket();
-                 Socket clientRouter = clientReceiver.routerSocket()) {
-                clientGateway.sendTo("perf-server", outbound, SendFlag.DONTWAIT);
-
-                TestSupport.waitUntil(() -> serverPoller.pollCount(50) > 0,
-                    TestSupport.DEFAULT_TIMEOUT_MS,
-                    "server receiver poller never became readable");
-                assertEquals(SERVER_TAG, serverPoller.readyTag(0));
-                byte[] serverRid = TestSupport.recvWithTimeout(serverRouter, 256,
-                    TestSupport.DEFAULT_TIMEOUT_MS);
-                byte[] serverPayload = TestSupport.recvWithTimeout(serverRouter, 256,
-                    TestSupport.DEFAULT_TIMEOUT_MS);
-                while (serverRouter.getSockOptInt(SocketOption.RCVMORE) != 0) {
-                    serverPayload = TestSupport.recvWithTimeout(serverRouter, 256,
-                        TestSupport.DEFAULT_TIMEOUT_MS);
-                }
-                assertEquals("c0",
-                    new String(serverRid, StandardCharsets.UTF_8));
-                assertEquals("hello",
-                    new String(serverPayload, StandardCharsets.UTF_8));
-
-                try (Message echo = Message.fromBytes(serverPayload)) {
-                    serverGateway.sendTo("c0", echo, SendFlag.DONTWAIT);
-                }
-
-                TestSupport.waitUntil(() -> clientPoller.pollCount(50) > 0,
-                    TestSupport.DEFAULT_TIMEOUT_MS,
-                    "client receiver poller never became readable");
-                assertEquals(CLIENT_TAG, clientPoller.readyTag(0));
-                byte[] clientRid = TestSupport.recvWithTimeout(clientRouter, 256,
-                    TestSupport.DEFAULT_TIMEOUT_MS);
-                byte[] clientPayload = TestSupport.recvWithTimeout(clientRouter, 256,
-                    TestSupport.DEFAULT_TIMEOUT_MS);
-                while (clientRouter.getSockOptInt(SocketOption.RCVMORE) != 0) {
-                    clientPayload = TestSupport.recvWithTimeout(clientRouter, 256,
-                        TestSupport.DEFAULT_TIMEOUT_MS);
-                }
-                assertTrue(clientRid.length > 0);
-                assertEquals("hello",
-                    new String(clientPayload, StandardCharsets.UTF_8));
-            }
-        }
+        runRoundTrip(new Context(), new Context(), new Context(), true);
     }
 
     @Test
     public void testGatewayReceiverRoundTripViaServicePollerAcrossContexts() {
+        runRoundTrip(new Context(), new Context(), new Context(), false);
+    }
+
+    private static void runRoundTrip(Context registryCtx, Context serverCtx,
+                                     Context clientCtx, boolean sameContext) {
         TestSupport.assumeNative();
 
         String suffix = Long.toUnsignedString(System.nanoTime(), 36);
@@ -146,9 +42,7 @@ public class TestGatewayServicePollerPortedTest {
         String serverEndpoint = TestSupport.tcpEndpoint();
         String clientEndpoint = TestSupport.tcpEndpoint();
 
-        try (Context registryCtx = new Context();
-             Context serverCtx = new Context();
-             Context clientCtx = new Context();
+        try (registryCtx; serverCtx; clientCtx;
              Registry registry = new Registry(registryCtx);
              Discovery clientDiscovery = new Discovery(clientCtx, ServiceType.GATEWAY);
              Discovery serverDiscovery = new Discovery(serverCtx, ServiceType.GATEWAY);
@@ -163,88 +57,79 @@ public class TestGatewayServicePollerPortedTest {
             registry.start();
             TestSupport.sleepMs(100);
 
-            clientDiscovery.connectRegistry(regPub);
-            serverDiscovery.connectRegistry(regPub);
+            clientDiscovery.connectRegistry(regRouter);
+            serverDiscovery.connectRegistry(regRouter);
             clientDiscovery.subscribe("perf-server");
             serverDiscovery.subscribe("c0");
 
             serverReceiver.bind(serverEndpoint);
             serverReceiver.connectRegistry(regRouter);
-            serverReceiver.register("perf-server", serverEndpoint, 1);
+            serverReceiver.register("perf-server", serverReceiver.lastEndpoint(), 1);
             clientReceiver.bind(clientEndpoint);
             clientReceiver.connectRegistry(regRouter);
-            clientReceiver.register("c0", clientEndpoint, 1);
+            clientReceiver.register("c0", clientReceiver.lastEndpoint(), 1);
 
             TestSupport.waitUntil(
-                () -> serverReceiver.registerResult("perf-server").status() == 0,
-                TestSupport.DEFAULT_TIMEOUT_MS,
-                "server receiver register did not succeed");
+              () -> serverReceiver.registerResult("perf-server").status() == 0,
+              TestSupport.DEFAULT_TIMEOUT_MS,
+              "server receiver register did not succeed");
             TestSupport.waitUntil(
-                () -> clientReceiver.registerResult("c0").status() == 0,
-                TestSupport.DEFAULT_TIMEOUT_MS,
-                "client receiver register did not succeed");
+              () -> clientReceiver.registerResult("c0").status() == 0,
+              TestSupport.DEFAULT_TIMEOUT_MS,
+              "client receiver register did not succeed");
             TestSupport.waitUntil(
-                () -> clientGateway.connectionCount("perf-server") > 0,
-                TestSupport.DEFAULT_TIMEOUT_MS,
-                "client gateway did not connect to perf-server");
+              () -> clientGateway.connectionCount("perf-server") > 0,
+              TestSupport.DEFAULT_TIMEOUT_MS,
+              "client gateway did not connect to perf-server");
             TestSupport.waitUntil(
-                () -> serverGateway.connectionCount("c0") > 0,
-                TestSupport.DEFAULT_TIMEOUT_MS,
-                "server gateway did not connect to c0");
+              () -> serverGateway.connectionCount("c0") > 0,
+              TestSupport.DEFAULT_TIMEOUT_MS,
+              "server gateway did not connect to c0");
 
             clientPoller.addReceiver(clientReceiver,
-                PollEventType.POLLIN.getValue(), CLIENT_TAG);
+              PollEventType.POLLIN.getValue(), CLIENT_TAG);
             serverPoller.addReceiver(serverReceiver,
-                PollEventType.POLLIN.getValue(), SERVER_TAG);
+              PollEventType.POLLIN.getValue(), SERVER_TAG);
             gatewayPoller.addGateway(serverGateway,
-                PollEventType.POLLOUT.getValue(), GATEWAY_TAG);
+              PollEventType.POLLOUT.getValue(), GATEWAY_TAG);
             TestSupport.waitUntil(() -> gatewayPoller.pollCount(50) > 0,
-                TestSupport.DEFAULT_TIMEOUT_MS,
-                "server gateway poller never became writable");
+              TestSupport.DEFAULT_TIMEOUT_MS,
+              "server gateway poller never became writable");
             assertEquals(GATEWAY_TAG, gatewayPoller.readyTag(0));
 
             try (Message outbound = Message.fromBytes(
-                ("hello-" + suffix).getBytes(StandardCharsets.UTF_8));
-                 Socket serverRouter = serverReceiver.routerSocket();
-                 Socket clientRouter = clientReceiver.routerSocket()) {
+              ("hello-" + suffix).getBytes(StandardCharsets.UTF_8))) {
                 clientGateway.sendTo("perf-server", outbound, SendFlag.DONTWAIT);
+            }
 
-                TestSupport.waitUntil(() -> serverPoller.pollCount(50) > 0,
-                    TestSupport.DEFAULT_TIMEOUT_MS,
-                    "server receiver poller never became readable");
-                assertEquals(SERVER_TAG, serverPoller.readyTag(0));
-                byte[] serverRid = TestSupport.recvWithTimeout(serverRouter, 256,
-                    TestSupport.DEFAULT_TIMEOUT_MS);
-                byte[] serverPayload = TestSupport.recvWithTimeout(serverRouter, 256,
-                    TestSupport.DEFAULT_TIMEOUT_MS);
-                while (serverRouter.getSockOptInt(SocketOption.RCVMORE) != 0) {
-                    serverPayload = TestSupport.recvWithTimeout(serverRouter, 256,
-                        TestSupport.DEFAULT_TIMEOUT_MS);
-                }
-                assertEquals("c0",
-                    new String(serverRid, StandardCharsets.UTF_8));
-                assertEquals("hello-" + suffix,
-                    new String(serverPayload, StandardCharsets.UTF_8));
+            TestSupport.waitUntil(() -> serverPoller.pollCount(50) > 0,
+              TestSupport.DEFAULT_TIMEOUT_MS,
+              "server receiver poller never became readable");
+            assertEquals(SERVER_TAG, serverPoller.readyTag(0));
+            String serverPayload;
+            try (Receiver.ReceiverMessages received = TestSupport.receiverRecvWithTimeout(
+              serverReceiver, TestSupport.DEFAULT_TIMEOUT_MS)) {
+                Message[] parts = received.parts();
+                serverPayload = new String(parts[parts.length - 1].data(),
+                  StandardCharsets.UTF_8);
+            }
+            assertEquals("hello-" + suffix, serverPayload);
 
-                try (Message echo = Message.fromBytes(serverPayload)) {
-                    serverGateway.sendTo("c0", echo, SendFlag.DONTWAIT);
-                }
+            try (Message echo = Message.fromBytes(serverPayload.getBytes(
+              StandardCharsets.UTF_8))) {
+                serverGateway.sendTo("c0", echo, SendFlag.DONTWAIT);
+            }
 
-                TestSupport.waitUntil(() -> clientPoller.pollCount(50) > 0,
-                    TestSupport.DEFAULT_TIMEOUT_MS,
-                    "client receiver poller never became readable");
-                assertEquals(CLIENT_TAG, clientPoller.readyTag(0));
-                byte[] clientRid = TestSupport.recvWithTimeout(clientRouter, 256,
-                    TestSupport.DEFAULT_TIMEOUT_MS);
-                byte[] clientPayload = TestSupport.recvWithTimeout(clientRouter, 256,
-                    TestSupport.DEFAULT_TIMEOUT_MS);
-                while (clientRouter.getSockOptInt(SocketOption.RCVMORE) != 0) {
-                    clientPayload = TestSupport.recvWithTimeout(clientRouter, 256,
-                        TestSupport.DEFAULT_TIMEOUT_MS);
-                }
-                assertTrue(clientRid.length > 0);
-                assertEquals("hello-" + suffix,
-                    new String(clientPayload, StandardCharsets.UTF_8));
+            TestSupport.waitUntil(() -> clientPoller.pollCount(50) > 0,
+              TestSupport.DEFAULT_TIMEOUT_MS,
+              "client receiver poller never became readable");
+            assertEquals(CLIENT_TAG, clientPoller.readyTag(0));
+            try (Receiver.ReceiverMessages received = TestSupport.receiverRecvWithTimeout(
+              clientReceiver, TestSupport.DEFAULT_TIMEOUT_MS)) {
+                Message[] parts = received.parts();
+                String clientPayload = new String(parts[parts.length - 1].data(),
+                  StandardCharsets.UTF_8);
+                assertEquals("hello-" + suffix, clientPayload);
             }
         }
     }

@@ -12,6 +12,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <thread>
@@ -25,6 +26,11 @@ static const char *k_server_service_name = "perf-server";
 static const char *k_client_service_prefix = "c";
 static const char k_payload_fill = 'g';
 static const int k_ready_timeout_ms = 5000;
+
+bool perf_debug_enabled ()
+{
+    return std::getenv ("PERF_DEBUG") != NULL;
+}
 
 bool configure_gateway_tls (zlink::service::gateway_t &gateway,
                             const std::string &transport)
@@ -83,6 +89,11 @@ bool parse_ready_payload (const std::string &raw,
            && !registry_router_out->empty ();
 }
 
+zlink::poll_event no_events ()
+{
+    return static_cast<zlink::poll_event> (0);
+}
+
 std::string make_client_service_name (size_t index)
 {
     return std::string (k_client_service_prefix) + std::to_string (index);
@@ -97,7 +108,7 @@ bool wait_discovery_ready (zlink::service::discovery_t &discovery,
     while (std::chrono::steady_clock::now () < deadline) {
         if (discovery.receiver_count (service) > 0)
             return true;
-        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
     return discovery.receiver_count (service) > 0;
 }
@@ -111,7 +122,7 @@ bool wait_gateway_ready (zlink::service::gateway_t &gateway,
     while (std::chrono::steady_clock::now () < deadline) {
         if (gateway.connection_count (service) > 0)
             return true;
-        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
     return gateway.connection_count (service) > 0;
 }
@@ -124,12 +135,13 @@ std::string bind_receiver_endpoint (zlink::service::receiver_t &receiver,
     if (receiver.bind (endpoint) != 0)
         return std::string ();
 
-    zlink::socket_t router = zlink::socket_t::wrap (receiver.router_handle ());
-    std::string last;
-    if (router.get (zlink::socket_options::last_endpoint, last) != 0)
-        return std::string ();
+    char last_endpoint[256] = "";
+    size_t size = sizeof (last_endpoint);
+    std::string resolved = endpoint;
+    if (zlink_receiver_last_endpoint (receiver.handle (), last_endpoint, &size) == 0)
+        resolved.assign (last_endpoint);
 
-    return perf::multi::normalize_endpoint_host (last);
+    return perf::multi::normalize_endpoint_host (resolved);
 }
 
 long compute_wait_ms (const std::chrono::steady_clock::time_point &deadline,
@@ -170,9 +182,9 @@ struct slot_state_t
 {
     zlink::service::gateway_t *gateway;
     zlink::service::receiver_t *receiver;
-    zlink::socket_t *receiver_router;
     std::string service_name;
     std::vector<char> payload;
+    std::vector<char> recv_buffer;
     bool awaiting_reply;
     bool send_pending;
     bool pollout_enabled;
@@ -180,9 +192,9 @@ struct slot_state_t
     slot_state_t ()
         : gateway (NULL),
           receiver (NULL),
-          receiver_router (NULL),
           service_name (),
           payload (),
+          recv_buffer (),
           awaiting_reply (false),
           send_pending (false),
           pollout_enabled (false)
@@ -208,7 +220,6 @@ class gateway_client_bench_t
           _discovery (_ctx.ctx (), zlink::service_type::gateway),
           _receiver_holders (),
           _gateway_holders (),
-          _router_holders (),
           _states (),
           _receiver_poller (),
           _gateway_poller (),
@@ -221,7 +232,6 @@ class gateway_client_bench_t
     {
         _receiver_holders.reserve (_settings.clients);
         _gateway_holders.reserve (_settings.clients);
-        _router_holders.reserve (_settings.clients);
         _states.reserve (_settings.clients);
         _receiver_events.reserve (_settings.clients);
         _gateway_events.reserve (_settings.clients);
@@ -237,25 +247,49 @@ class gateway_client_bench_t
                                   &_server_endpoint,
                                   &_registry_pub_endpoint,
                                   &_registry_router_endpoint)) {
+            if (perf_debug_enabled ())
+                std::cerr << "gateway client: parse ready payload failed: "
+                          << _endpoint << std::endl;
             return false;
         }
-        if (!setup_discovery ())
+        if (!setup_discovery ()) {
+            if (perf_debug_enabled ())
+                std::cerr << "gateway client: setup discovery failed" << std::endl;
             return false;
-        if (!setup_slots ())
+        }
+        if (!setup_slots ()) {
+            if (perf_debug_enabled ())
+                std::cerr << "gateway client: setup slots failed" << std::endl;
             return false;
-        if (!prime_roundtrips ())
+        }
+        if (!prime_roundtrips ()) {
+            if (perf_debug_enabled ())
+                std::cerr << "gateway client: prime roundtrips failed" << std::endl;
             return false;
+        }
 
         perf::multi::settle ();
 
-        if (!run_warmup ())
+        if (!run_warmup ()) {
+            if (perf_debug_enabled ())
+                std::cerr << "gateway client: warmup failed" << std::endl;
             return false;
-        if (!run_settle ())
+        }
+        if (!run_settle ()) {
+            if (perf_debug_enabled ())
+                std::cerr << "gateway client: settle failed" << std::endl;
             return false;
-        if (!run_active ())
+        }
+        if (!run_active ()) {
+            if (perf_debug_enabled ())
+                std::cerr << "gateway client: active failed" << std::endl;
             return false;
-        if (_result.active_count == 0)
+        }
+        if (_result.active_count == 0) {
+            if (perf_debug_enabled ())
+                std::cerr << "gateway client: no active messages" << std::endl;
             return false;
+        }
 
         send_stop_token_once ();
         print_result ();
@@ -266,8 +300,13 @@ class gateway_client_bench_t
     bool setup_discovery ()
     {
         if (!_discovery.valid ()
-            || _discovery.connect_registry (_registry_pub_endpoint) != 0
+            || _discovery.connect_registry (_registry_router_endpoint) != 0
             || _discovery.subscribe (k_server_service_name) != 0) {
+            if (perf_debug_enabled ()) {
+                std::cerr << "gateway client: discovery connect/subscribe failed registry="
+                          << _registry_router_endpoint
+                          << " err=" << zlink::last_error ().what () << std::endl;
+            }
             return false;
         }
 
@@ -290,8 +329,12 @@ class gateway_client_bench_t
             _receiver_holders.emplace_back (
               new zlink::service::receiver_t (_ctx.ctx (), service_name));
             zlink::service::receiver_t &receiver = *_receiver_holders.back ();
-            if (!receiver.valid ())
+            if (!receiver.valid ()) {
+                if (perf_debug_enabled ())
+                    std::cerr << "gateway client: receiver create failed service="
+                              << service_name << std::endl;
                 return false;
+            }
 
             (void) receiver.set_sockopt (zlink::receiver_socket_role::router,
                                          zlink::socket_options::sndhwm,
@@ -306,31 +349,44 @@ class gateway_client_bench_t
                                          zlink::socket_options::rcvtimeo,
                                          _settings.rcvtimeo_ms);
 
-            if (!configure_receiver_tls (receiver, _transport))
+            if (!configure_receiver_tls (receiver, _transport)) {
+                if (perf_debug_enabled ())
+                    std::cerr << "gateway client: receiver tls configure failed service="
+                              << service_name << std::endl;
                 return false;
+            }
 
             const std::string receiver_endpoint =
               bind_receiver_endpoint (receiver,
                                       _transport,
                                       std::string ("cpp_multi_gateway_client_")
                                         + std::to_string (i));
-            if (receiver_endpoint.empty ())
-                return false;
-            if (receiver.connect_registry (_registry_router_endpoint) != 0
-                || receiver.register_service (service_name, receiver_endpoint, 1) != 0) {
+            if (receiver_endpoint.empty ()) {
+                if (perf_debug_enabled ())
+                    std::cerr << "gateway client: receiver bind failed service="
+                              << service_name << std::endl;
                 return false;
             }
-
-            _router_holders.emplace_back (
-              new zlink::socket_t (zlink::socket_t::wrap (receiver.router_handle ())));
-            perf::multi::apply_benchmark_socket_options (
-              *_router_holders.back (), _settings, _transport);
+            if (receiver.connect_registry (_registry_router_endpoint) != 0
+                || receiver.register_service (service_name, receiver_endpoint, 1) != 0) {
+                if (perf_debug_enabled ()) {
+                    std::cerr << "gateway client: receiver register failed service="
+                              << service_name << " endpoint=" << receiver_endpoint
+                              << " registry=" << _registry_router_endpoint
+                              << " err=" << zlink::last_error ().what () << std::endl;
+                }
+                return false;
+            }
 
             _gateway_holders.emplace_back (
               new zlink::service::gateway_t (_ctx.ctx (), _discovery, service_name));
             zlink::service::gateway_t &gateway = *_gateway_holders.back ();
-            if (!gateway.valid ())
+            if (!gateway.valid ()) {
+                if (perf_debug_enabled ())
+                    std::cerr << "gateway client: gateway create failed service="
+                              << service_name << std::endl;
                 return false;
+            }
 
             (void) gateway.set_sockopt (zlink::socket_options::sndhwm,
                                         _settings.sndhwm);
@@ -341,18 +397,26 @@ class gateway_client_bench_t
             (void) gateway.set_sockopt (zlink::socket_options::rcvtimeo,
                                         _settings.rcvtimeo_ms);
 
-            if (!configure_gateway_tls (gateway, _transport))
+            if (!configure_gateway_tls (gateway, _transport)) {
+                if (perf_debug_enabled ())
+                    std::cerr << "gateway client: gateway tls configure failed service="
+                              << service_name << std::endl;
                 return false;
-            if (!wait_gateway_ready (gateway, k_server_service_name, ready_timeout_ms))
+            }
+            if (!wait_gateway_ready (gateway, k_server_service_name, ready_timeout_ms)) {
+                if (perf_debug_enabled ())
+                    std::cerr << "gateway client: gateway ready wait failed service="
+                              << service_name << std::endl;
                 return false;
+            }
 
             _states.emplace_back ();
             slot_state_t &state = _states.back ();
             state.gateway = &gateway;
             state.receiver = &receiver;
-            state.receiver_router = _router_holders.back ().get ();
             state.service_name = service_name;
             state.payload.assign (payload_size, k_payload_fill);
+            state.recv_buffer.assign (payload_size, '\0');
 
             if (_receiver_poller.add_receiver (receiver,
                                               zlink::poll_event::pollin,
@@ -361,7 +425,7 @@ class gateway_client_bench_t
                 return false;
             }
             if (_gateway_poller.add_gateway (gateway,
-                                             zlink::poll_event::pollin,
+                                             no_events (),
                                              &state)
                 != 0) {
                 return false;
@@ -379,8 +443,7 @@ class gateway_client_bench_t
             return true;
 
         const zlink::poll_event events =
-          enabled ? (zlink::poll_event::pollin | zlink::poll_event::pollout)
-                  : zlink::poll_event::pollin;
+          enabled ? zlink::poll_event::pollout : no_events ();
         if (_gateway_poller.modify_gateway (*state.gateway, events) != 0)
             return false;
         state.pollout_enabled = enabled;
@@ -403,6 +466,19 @@ class gateway_client_bench_t
                                              sent_ts)) {
                 return false;
             }
+            if (phase == perf_metric::phase_active) {
+                perf::multi::debug_header_trace ("client",
+                                                k_pattern_result,
+                                                _transport,
+                                                _msg_size,
+                                                "send",
+                                                static_cast<uint32_t> (phase),
+                                                _run_id,
+                                                _seq - 1,
+                                                sent_ts,
+                                                sent_ts,
+                                                -1.0);
+            }
         }
 
         if (state.gateway->send (k_server_service_name,
@@ -423,39 +499,36 @@ class gateway_client_bench_t
         return false;
     }
 
-    bool recv_last_frame (zlink::socket_t &sock,
-                          zlink::message_t *payload_out,
+    bool recv_reply_payload (slot_state_t &state,
+                          size_t *received_size_out,
                           bool *idle_out)
     {
-        if (!payload_out)
+        if (!state.receiver || state.recv_buffer.empty () || !received_size_out)
             return false;
         if (idle_out)
             *idle_out = false;
+        *received_size_out = 0;
 
-        zlink::message_t frame;
-        if (sock.recv (frame, zlink::recv_flag::dontwait) < 0) {
+        for (;;) {
+            size_t received = 0;
+            if (state.receiver->recv (state.recv_buffer.data (),
+                                      state.recv_buffer.size (),
+                                      &received,
+                                      zlink::recv_flag::dontwait)
+                == 0) {
+                *received_size_out = received;
+                return true;
+            }
+
             if (errno == EAGAIN) {
                 if (idle_out)
                     *idle_out = true;
                 return true;
             }
             if (errno == EINTR)
-                return recv_last_frame (sock, payload_out, idle_out);
+                continue;
             return false;
         }
-
-        *payload_out = std::move (frame);
-        while (payload_out->more ()) {
-            zlink::message_t next;
-            if (sock.recv (next, zlink::recv_flag::dontwait) < 0) {
-                if (errno == EINTR)
-                    continue;
-                errno = EPROTO;
-                return false;
-            }
-            *payload_out = std::move (next);
-        }
-        return true;
     }
 
     bool drain_receiver (slot_state_t &state,
@@ -468,9 +541,9 @@ class gateway_client_bench_t
             *progress_out = false;
 
         for (;;) {
-            zlink::message_t payload;
+            size_t payload_size = 0;
             bool idle = false;
-            if (!recv_last_frame (*state.receiver_router, &payload, &idle))
+            if (!recv_reply_payload (state, &payload_size, &idle))
                 return false;
             if (idle)
                 return true;
@@ -480,8 +553,8 @@ class gateway_client_bench_t
             state.awaiting_reply = false;
 
             perf_metric::header_t header;
-            if (!perf_metric::decode_payload_header (payload.data (),
-                                                     payload.size (),
+            if (!perf_metric::decode_payload_header (state.recv_buffer.data (),
+                                                     payload_size,
                                                      &header)) {
                 continue;
             }
@@ -495,8 +568,19 @@ class gateway_client_bench_t
                 const uint64_t now_us = perf_metric::now_us ();
                 const double latency_us =
                   now_us >= header.sent_ts_us
-                    ? static_cast<double> (now_us - header.sent_ts_us)
+                    ? static_cast<double> (now_us - header.sent_ts_us) * 0.5
                     : 0.0;
+                perf::multi::debug_header_trace ("client",
+                                                k_pattern_result,
+                                                _transport,
+                                                _msg_size,
+                                                "recv",
+                                                header.phase,
+                                                header.run_id,
+                                                header.seq,
+                                                header.sent_ts_us,
+                                                now_us,
+                                                latency_us);
                 lat_out->add (latency_us);
             }
         }
@@ -511,7 +595,7 @@ class gateway_client_bench_t
         for (size_t i = 0; i < _receiver_events.size (); ++i) {
             slot_state_t *state =
               static_cast<slot_state_t *> (_receiver_events[i].user);
-            if (!state || !state->receiver_router)
+            if (!state || !state->receiver)
                 continue;
             if (!(_receiver_events[i].revents
                   & static_cast<short> (zlink::poll_event::pollin))) {
@@ -770,7 +854,6 @@ class gateway_client_bench_t
     zlink::service::discovery_t _discovery;
     std::vector<std::unique_ptr<zlink::service::receiver_t> > _receiver_holders;
     std::vector<std::unique_ptr<zlink::service::gateway_t> > _gateway_holders;
-    std::vector<std::unique_ptr<zlink::socket_t> > _router_holders;
     std::vector<slot_state_t> _states;
     zlink::poller_t _receiver_poller;
     zlink::poller_t _gateway_poller;

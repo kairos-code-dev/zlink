@@ -53,6 +53,15 @@ public final class PerfMultiServerEntry {
                 + msgSize + ",server_cpu_pct," + cpuPct);
             System.out.println("RESULT,current," + pattern + "," + transport + ","
                 + msgSize + ",server_mem_mb," + memMb);
+            if (PerfCommon.isStreamPattern(pattern)) {
+                return rc;
+            }
+            System.out.println("RESULT,current," + pattern + "," + transport + ","
+                + msgSize + ",server_snd_pending_max,0");
+            System.out.println("RESULT,current," + pattern + "," + transport + ","
+                + msgSize + ",server_rcv_pending_max,0");
+            System.out.println("RESULT,current," + pattern + "," + transport + ","
+                + msgSize + ",server_rcv_pending_end,0");
         }
 
         return rc;

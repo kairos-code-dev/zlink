@@ -8,10 +8,21 @@ java {
     }
 }
 
+repositories {
+    mavenCentral()
+}
+
 dependencies {
     implementation project(':')
+    implementation 'io.netty:netty-buffer:4.1.100.Final'
 }
 
 jar {
     enabled = false
+}
+
+tasks.register('printRuntimeClasspath') {
+    doLast {
+        println sourceSets.main.runtimeClasspath.asPath
+    }
 }

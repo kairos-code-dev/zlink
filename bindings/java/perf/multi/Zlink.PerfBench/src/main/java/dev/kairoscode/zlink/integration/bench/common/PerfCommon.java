@@ -20,6 +20,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 
@@ -175,15 +176,19 @@ public final class PerfCommon {
         double bandwidth = (safeThroughput * size * multiplier) / 1_000_000.0;
 
         System.out.println("RESULT,current," + pattern + "," + transport + ","
-            + size + ",throughput," + safeThroughput);
+            + size + ",throughput," + formatMetric(safeThroughput));
         System.out.println("RESULT,current," + pattern + "," + transport + ","
-            + size + ",bandwidth," + bandwidth);
+            + size + ",bandwidth," + formatMetric(bandwidth));
         System.out.println("RESULT,current," + pattern + "," + transport + ","
-            + size + ",latency," + safeLatencyMs);
+            + size + ",latency," + formatMetric(safeLatencyMs));
         System.out.println("RESULT,current," + pattern + "," + transport + ","
-            + size + ",latency_p95," + safeP95Ms);
+            + size + ",latency_p95," + formatMetric(safeP95Ms));
         System.out.println("RESULT,current," + pattern + "," + transport + ","
-            + size + ",latency_p99," + safeP99Ms);
+            + size + ",latency_p99," + formatMetric(safeP99Ms));
+    }
+
+    private static String formatMetric(double value) {
+        return String.format(Locale.ROOT, "%.3f", value);
     }
 
     public static void printUnsupported(String pattern, String transport,

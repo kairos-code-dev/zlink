@@ -5,6 +5,7 @@
 #include "../common/perf_single_runner.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <thread>
@@ -318,7 +319,7 @@ bool wait_discovery_ready (zlink::service::discovery_t &discovery,
     while (std::chrono::steady_clock::now () < deadline) {
         if (discovery.service_available (service) > 0)
             return true;
-        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
     return false;
 }
@@ -332,13 +333,13 @@ bool wait_gateway_ready (zlink::service::gateway_t &gateway,
     while (std::chrono::steady_clock::now () < deadline) {
         if (gateway.connection_count (service) > 0)
             return true;
-        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
     return false;
 }
 
-int recv_provider_header (zlink::socket_t &provider_router,
-                          size_t payload_size,
+int recv_provider_header (zlink::service::receiver_t &receiver,
+                          std::vector<char> &recv_buffer,
                           zlink::recv_flag flags,
                           perf_single_metric::header_t *header_out,
                           bool *header_ok_out)
@@ -346,29 +347,24 @@ int recv_provider_header (zlink::socket_t &provider_router,
     if (header_ok_out)
         *header_ok_out = false;
 
-    zlink::message_t routing_id;
-    const int id_rc = provider_router.recv (routing_id, flags);
-    if (id_rc < 0) {
+    size_t received_size = 0;
+    const int rc = receiver.recv (recv_buffer.data (),
+                                  recv_buffer.size (),
+                                  &received_size,
+                                  flags);
+    if (rc != 0) {
         const int err = errno;
         if (err == EAGAIN || err == EINTR)
             return 0;
         return -1;
     }
-
-    if (!routing_id.more ())
-        return -1;
-
-    zlink::message_t payload;
-    if (provider_router.recv (payload, zlink::recv_flag::none) < 0)
-        return -1;
-
-    if (payload.more () || payload.size () != payload_size)
+    if (received_size != recv_buffer.size ())
         return -1;
 
     bool header_ok = false;
     if (header_out) {
         header_ok = perf_single_metric::decode_payload_header (
-          payload.data (), payload.size (), header_out);
+          recv_buffer.data (), recv_buffer.size (), header_out);
     }
 
     if (header_ok_out)
@@ -378,7 +374,7 @@ int recv_provider_header (zlink::socket_t &provider_router,
 
 bool run_phase (zlink::service::gateway_t &gateway,
                 const std::string &service,
-                zlink::socket_t &provider_router,
+                zlink::service::receiver_t &receiver,
                 std::vector<char> &payload,
                 size_t msg_size,
                 uint32_t run_id,
@@ -386,6 +382,7 @@ bool run_phase (zlink::service::gateway_t &gateway,
                 perf_single_metric::phase_t phase,
                 int warmup_count,
                 int duration_s,
+                int recv_timeout_ms,
                 gateway_queue_probe_t *queue_probe,
                 unsigned long long *received_out,
                 perf::single::latency_stats_t *latency_out)
@@ -395,15 +392,23 @@ bool run_phase (zlink::service::gateway_t &gateway,
 
     const bool active = phase == perf_single_metric::phase_active;
     const size_t payload_size = payload.size ();
+    const auto deadline =
+      active ? std::chrono::steady_clock::now ()
+                   + std::chrono::seconds (duration_s > 0 ? duration_s : 1)
+             : std::chrono::steady_clock::time_point ();
+    const auto drain_idle_limit =
+      std::chrono::milliseconds (recv_timeout_ms > 0 ? recv_timeout_ms : 200);
 
     perf::single::latency_stats_builder_t latency_builder (
       perf::single::resolve_single_latency_sample_cap ());
     unsigned long long received = 0;
-    unsigned long long iterations = 0;
+    std::atomic<bool> sender_done (false);
+    std::atomic<bool> recv_failed (false);
+    std::vector<char> recv_buffer (payload_size);
 
     auto account_header = [&] (const perf_single_metric::header_t &header,
                                bool header_ok) {
-        if (queue_probe)
+        if (active && queue_probe)
             queue_probe->sample_recv_if_due ();
 
         if (!header_ok
@@ -423,74 +428,128 @@ bool run_phase (zlink::service::gateway_t &gateway,
         latency_builder.add (latency_us);
     };
 
-    auto do_one = [&] () -> bool {
-        const uint64_t sent_ts = perf_single_metric::now_us ();
-        if (!perf_single_metric::stamp_payload (payload.data (),
-                                                payload_size,
-                                                run_id,
-                                                phase,
-                                                msg_size,
-                                                seq++,
-                                                sent_ts)
-            || gateway.send (service,
-                             payload.data (),
-                             payload_size,
-                             zlink::send_flag::none)
-                 != 0) {
-            return false;
-        }
-        if (queue_probe)
-            queue_probe->sample_send_if_due ();
+    std::thread receiver_thread ([&] () {
+        auto last_recv_at = std::chrono::steady_clock::now ();
 
-        perf_single_metric::header_t header;
-        bool header_ok = false;
-        int recv_rc = recv_provider_header (
-          provider_router,
-          payload_size,
-          zlink::recv_flag::none,
-          &header,
-          &header_ok);
-        if (recv_rc <= 0)
-            return false;
-        account_header (header, header_ok);
+        if (active && queue_probe)
+            queue_probe->force_sample_recv ();
 
-        for (;;) {
-            perf_single_metric::header_t burst_header;
-            bool burst_header_ok = false;
-            recv_rc = recv_provider_header (provider_router,
-                                            payload_size,
-                                            zlink::recv_flag::dontwait,
-                                            &burst_header,
-                                            &burst_header_ok);
+        while (true) {
+            const bool done = sender_done.load (std::memory_order_acquire);
+            const zlink::recv_flag flags =
+              done ? zlink::recv_flag::dontwait : zlink::recv_flag::none;
+
+            perf_single_metric::header_t header;
+            bool header_ok = false;
+            int recv_rc =
+              recv_provider_header (receiver, recv_buffer, flags, &header, &header_ok);
             if (recv_rc > 0) {
-                account_header (burst_header, burst_header_ok);
+                last_recv_at = std::chrono::steady_clock::now ();
+                account_header (header, header_ok);
+
+                for (;;) {
+                    perf_single_metric::header_t burst_header;
+                    bool burst_header_ok = false;
+                    recv_rc = recv_provider_header (receiver,
+                                                    recv_buffer,
+                                                    zlink::recv_flag::dontwait,
+                                                    &burst_header,
+                                                    &burst_header_ok);
+                    if (recv_rc > 0) {
+                        last_recv_at = std::chrono::steady_clock::now ();
+                        account_header (burst_header, burst_header_ok);
+                        continue;
+                    }
+
+                    const int err = errno;
+                    if (recv_rc == 0 || err == EAGAIN)
+                        break;
+                    if (err == EINTR)
+                        continue;
+
+                    recv_failed.store (true, std::memory_order_release);
+                    break;
+                }
+
+                if (recv_failed.load (std::memory_order_acquire))
+                    break;
                 continue;
             }
-            if (recv_rc == 0 && errno == EINTR)
+
+            const int err = errno;
+            if (err == EINTR)
                 continue;
-            if (recv_rc == 0)
-                break;
-            return false;
+            if (err == EAGAIN) {
+                if (done
+                    && std::chrono::steady_clock::now () - last_recv_at
+                         >= drain_idle_limit) {
+                    break;
+                }
+                std::this_thread::yield ();
+                continue;
+            }
+
+            recv_failed.store (true, std::memory_order_release);
+            break;
         }
 
-        ++iterations;
-        return true;
-    };
+        if (active && queue_probe)
+            queue_probe->force_sample_recv ();
+    });
+
+    bool send_failed = false;
+    if (active && queue_probe)
+        queue_probe->force_sample_send ();
 
     if (active) {
-        const auto deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::seconds (duration_s > 0 ? duration_s : 1);
         while (std::chrono::steady_clock::now () < deadline) {
-            if (!do_one ())
-                return false;
+            const uint64_t sent_ts = perf_single_metric::now_us ();
+            if (!perf_single_metric::stamp_payload (payload.data (),
+                                                    payload_size,
+                                                    run_id,
+                                                    phase,
+                                                    msg_size,
+                                                    seq++,
+                                                    sent_ts)
+                || gateway.send (service,
+                                 payload.data (),
+                                 payload_size,
+                                 zlink::send_flag::none)
+                     != 0) {
+                send_failed = true;
+                break;
+            }
+            if (queue_probe)
+                queue_probe->sample_send_if_due ();
         }
     } else {
         for (int i = 0; i < warmup_count; ++i) {
-            if (!do_one ())
-                return false;
+            if (!perf_single_metric::stamp_payload (payload.data (),
+                                                    payload_size,
+                                                    run_id,
+                                                    phase,
+                                                    msg_size,
+                                                    seq++,
+                                                    perf_single_metric::now_us ())
+                || gateway.send (service,
+                                 payload.data (),
+                                 payload_size,
+                                 zlink::send_flag::none)
+                     != 0) {
+                send_failed = true;
+                break;
+            }
         }
     }
+
+    if (active && queue_probe)
+        queue_probe->force_sample_send ();
+
+    sender_done.store (true, std::memory_order_release);
+    receiver_thread.join ();
+
+    if (send_failed || recv_failed.load (std::memory_order_acquire))
+        return false;
 
     if (queue_probe) {
         queue_probe->force_sample_send ();
@@ -501,7 +560,7 @@ bool run_phase (zlink::service::gateway_t &gateway,
         if (received == 0 || latency_builder.count () == 0 || !latency_out)
             return false;
         *latency_out = latency_builder.snapshot ();
-    } else if (received < iterations) {
+    } else if (received < static_cast<unsigned long long> (warmup_count)) {
         return false;
     }
 
@@ -545,7 +604,7 @@ void run_pattern_gateway (const std::string &transport,
 
     zlink::service::discovery_t discovery (ctx.ctx (),
                                            zlink::service_type::gateway);
-    if (!discovery.valid () || discovery.connect_registry (reg_pub) != 0
+    if (!discovery.valid () || discovery.connect_registry (reg_router) != 0
         || discovery.subscribe (service_name) != 0) {
         perf::single::print_fail_result (lib_name, "GATEWAY", transport, msg_size);
         return;
@@ -601,14 +660,12 @@ void run_pattern_gateway (const std::string &transport,
         return;
     }
 
-    if (!wait_discovery_ready (discovery, service_name, 3000)
-        || !wait_gateway_ready (gateway, service_name, 3000)) {
+    if (!wait_discovery_ready (discovery, service_name, 1000)
+        || !wait_gateway_ready (gateway, service_name, 1000)) {
         perf::single::print_fail_result (lib_name, "GATEWAY", transport, msg_size);
         return;
     }
 
-    zlink::socket_t provider_router =
-      zlink::socket_t::wrap (receiver.router_handle ());
     gateway_queue_probe_t queue_probe (&gateway, &receiver);
     auto print_fail_with_queue = [&] () {
         perf::single::print_queue_metrics (
@@ -628,7 +685,7 @@ void run_pattern_gateway (const std::string &transport,
     unsigned long long warmup_received = 0;
     if (!run_phase (gateway,
                     service_name,
-                    provider_router,
+                    receiver,
                     payload,
                     msg_size,
                     run_id,
@@ -636,6 +693,7 @@ void run_pattern_gateway (const std::string &transport,
                     perf_single_metric::phase_warmup,
                     warmup_count,
                     0,
+                    recv_timeout,
                     NULL,
                     &warmup_received,
                     NULL)) {
@@ -648,7 +706,7 @@ void run_pattern_gateway (const std::string &transport,
     perf::single::latency_stats_t latency;
     if (!run_phase (gateway,
                     service_name,
-                    provider_router,
+                    receiver,
                     payload,
                     msg_size,
                     run_id,
@@ -656,6 +714,7 @@ void run_pattern_gateway (const std::string &transport,
                     perf_single_metric::phase_active,
                     0,
                     duration_s,
+                    recv_timeout,
                     &queue_probe,
                     &received,
                     &latency)) {

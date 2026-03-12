@@ -3,6 +3,7 @@
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <thread>
@@ -30,6 +31,19 @@ const int kSocketBufBytes = 4096;
 const int kProbeTimeoutMs = 250;
 const int kLingerMs = 0;
 const int kFillDeadlineMs = 5000;
+
+struct stream_route_probe_t
+{
+    stream_route_probe_t () : ready (0), rid ()
+    {
+        memset (&rid, 0, sizeof (rid));
+    }
+
+    std::atomic<int> ready;
+    zlink_routing_id_t rid;
+};
+
+stream_route_probe_t *g_stream_route_probe = NULL;
 
 void configure_stream_socket (void *socket_)
 {
@@ -189,29 +203,50 @@ void set_raw_timeout (int fd_, int timeout_ms_)
 }
 #endif
 
+bool wait_stream_route_ready (stream_route_probe_t *probe_, int timeout_ms_)
+{
+    if (!probe_)
+        return false;
+
+    const auto deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (probe_->ready.load (std::memory_order_acquire) != 0)
+            return true;
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    return probe_->ready.load (std::memory_order_acquire) != 0;
+}
+
+int capture_stream_route_callback (const zlink_routing_id_t *rid_,
+                                   zlink_msg_t *msg_)
+{
+    if (msg_) {
+        if (g_stream_route_probe && rid_
+            && zlink_msg_size (msg_) > 0 && rid_->size == kRouteIdSize
+            && g_stream_route_probe->ready.load (std::memory_order_acquire) == 0) {
+            g_stream_route_probe->rid.size = rid_->size;
+            memcpy (g_stream_route_probe->rid.data, rid_->data, kRouteIdSize);
+            g_stream_route_probe->ready.store (1, std::memory_order_release);
+        }
+        (void) zlink_msg_close (msg_);
+    }
+    return 0;
+}
+
 void establish_stream_route (void *server_, int raw_fd_, zlink_routing_id_t *rid_)
 {
+    stream_route_probe_t probe;
+    g_stream_route_probe = &probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_raw (server_, capture_stream_route_callback));
+
     const unsigned char request = 0xA5;
     TEST_ASSERT_EQUAL_INT (0, send_all (raw_fd_, &request, sizeof (request)));
+    TEST_ASSERT_TRUE (wait_stream_route_ready (&probe, 5000));
 
-    unsigned char routing_id[kRouteIdSize];
-    unsigned char payload[16];
-    const int rid_rc = zlink_recv (server_, routing_id, sizeof (routing_id), 0);
-    TEST_ASSERT_EQUAL_INT (kRouteIdSize, rid_rc);
-
-    int more = 0;
-    size_t more_size = sizeof (more);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (server_, ZLINK_RCVMORE, &more, &more_size));
-    TEST_ASSERT_EQUAL_INT (1, more);
-
-    const int payload_rc = zlink_recv (server_, payload, sizeof (payload), 0);
-    TEST_ASSERT_EQUAL_INT (1, payload_rc);
-    TEST_ASSERT_EQUAL_UINT8 (request, payload[0]);
-
-    memset (rid_, 0, sizeof (*rid_));
-    rid_->size = static_cast<uint8_t> (kRouteIdSize);
-    memcpy (rid_->data, routing_id, kRouteIdSize);
+    *rid_ = probe.rid;
+    g_stream_route_probe = NULL;
 }
 
 void fill_stream_send_queue_until_hwm (void *server_, const zlink_routing_id_t *rid_)
@@ -311,6 +346,7 @@ void test_stream_queue_reopens_after_peer_reads ()
     }
     TEST_ASSERT_TRUE (reopened);
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     close_raw_fd (raw_fd);
     test_context_socket_close (server);
 #endif
@@ -347,6 +383,7 @@ void test_stream_blocking_send_times_out_without_peer_reads ()
     TEST_ASSERT_TRUE (
       elapsed_ms >= static_cast<unsigned int> (kSendTimeoutMs - 150));
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     close_raw_fd (raw_fd);
     test_context_socket_close (server);
 #endif

@@ -2,18 +2,30 @@
 
 package dev.kairoscode.zlink;
 
+import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Objects;
 
 public final class Message implements AutoCloseable {
+    private static final int ERRNO_EINTR = 4;
+    private static final int ERRNO_EAGAIN = 11;
+    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+    private static final ValueLayout.OfInt INT_LE =
+        ValueLayout.JAVA_INT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
+    private static final ValueLayout.OfLong LONG_LE =
+        ValueLayout.JAVA_LONG_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
+
     private final Arena arena;
     private final MemorySegment msg;
     private boolean valid;
     private boolean closed;
+    private boolean recvArmed;
     private Object zeroCopyAnchor;
 
     private Message(boolean raw) {
@@ -21,6 +33,7 @@ public final class Message implements AutoCloseable {
         this.msg = arena.allocate(64);
         this.valid = false;
         this.closed = false;
+        this.recvArmed = false;
         this.zeroCopyAnchor = null;
     }
 
@@ -33,6 +46,7 @@ public final class Message implements AutoCloseable {
             throw ZlinkException.fromLastError("zlink_msg_init");
         }
         valid = true;
+        recvArmed = true;
     }
 
     public Message(int size) {
@@ -44,6 +58,7 @@ public final class Message implements AutoCloseable {
             throw ZlinkException.fromLastError("zlink_msg_init_size");
         }
         valid = true;
+        recvArmed = false;
     }
 
     public static Message fromBytes(byte[] data) {
@@ -111,6 +126,7 @@ public final class Message implements AutoCloseable {
             throw ZlinkException.fromLastError("zlink_msg_init_data");
         }
         msg.valid = true;
+        msg.recvArmed = false;
         msg.zeroCopyAnchor = data;
         return msg;
     }
@@ -129,6 +145,7 @@ public final class Message implements AutoCloseable {
             throw ZlinkException.fromLastError("zlink_msg_init_data");
         }
         msg.valid = true;
+        msg.recvArmed = false;
         msg.zeroCopyAnchor = data;
         data.position(data.position() + length);
         return msg;
@@ -140,16 +157,67 @@ public final class Message implements AutoCloseable {
         if (rc < 0)
             throw ZlinkException.fromLastError("zlink_msg_send");
         valid = false;
+        recvArmed = false;
         zeroCopyAnchor = null;
     }
 
-    public void recv(Socket socket, ReceiveFlag flag) {
+    public boolean trySend(Socket socket, SendFlag flag) {
+        Objects.requireNonNull(socket, "socket");
         Objects.requireNonNull(flag, "flag");
+        while (true) {
+            int rc = NativeMsg.msgSend(msg, socket.handle(), flag.getValue());
+            if (rc >= 0) {
+                valid = false;
+                recvArmed = false;
+                zeroCopyAnchor = null;
+                return true;
+            }
+
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR) {
+                continue;
+            }
+            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
+                return false;
+            }
+            throw ZlinkException.fromLastError("zlink_msg_send");
+        }
+    }
+
+    public void recv(Socket socket, ReceiveFlag flag) {
+        Objects.requireNonNull(socket, "socket");
+        Objects.requireNonNull(flag, "flag");
+        prepareForReceive();
         int rc = NativeMsg.msgRecv(msg, socket.handle(), flag.getValue());
         if (rc < 0)
             throw ZlinkException.fromLastError("zlink_msg_recv");
         valid = true;
+        recvArmed = false;
         zeroCopyAnchor = null;
+    }
+
+    public int tryRecv(Socket socket, ReceiveFlag flag) {
+        Objects.requireNonNull(socket, "socket");
+        Objects.requireNonNull(flag, "flag");
+        prepareForReceive();
+        while (true) {
+            int rc = NativeMsg.msgRecv(msg, socket.handle(), flag.getValue());
+            if (rc >= 0) {
+                valid = true;
+                recvArmed = false;
+                zeroCopyAnchor = null;
+                return rc;
+            }
+
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR) {
+                continue;
+            }
+            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
+                return -1;
+            }
+            throw ZlinkException.fromLastError("zlink_msg_recv");
+        }
     }
 
     public int size() {
@@ -165,6 +233,24 @@ public final class Message implements AutoCloseable {
         if (size <= 0)
             return MemorySegment.NULL;
         return NativeMsg.msgData(msg).reinterpret(size);
+    }
+
+    public MemorySegment dataSegment(int knownSize) {
+        if (knownSize <= 0)
+            return MemorySegment.NULL;
+        return NativeMsg.msgData(msg).reinterpret(knownSize);
+    }
+
+    public int readIntLe(int offset) {
+        int size = size();
+        validateRange(size, offset, Integer.BYTES, "offset");
+        return NativeMsg.msgData(msg).reinterpret(size).get(INT_LE, offset);
+    }
+
+    public long readLongLe(int offset) {
+        int size = size();
+        validateRange(size, offset, Long.BYTES, "offset");
+        return NativeMsg.msgData(msg).reinterpret(size).get(LONG_LE, offset);
     }
 
     public ByteBuffer dataBuffer() {
@@ -232,6 +318,7 @@ public final class Message implements AutoCloseable {
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_move");
         valid = false;
+        recvArmed = false;
         zeroCopyAnchor = null;
     }
 
@@ -248,6 +335,7 @@ public final class Message implements AutoCloseable {
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_init");
         valid = true;
+        recvArmed = true;
         zeroCopyAnchor = null;
     }
 
@@ -312,6 +400,7 @@ public final class Message implements AutoCloseable {
                     throw ZlinkException.fromLastError("zlink_msg_move");
                 }
                 msg.valid = true;
+                msg.recvArmed = false;
                 msg.zeroCopyAnchor = null;
                 built++;
             }
@@ -353,6 +442,8 @@ public final class Message implements AutoCloseable {
             int rc = NativeMsg.msgMove(out.msg, nativeMsg);
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_msg_move");
+            out.valid = true;
+            out.recvArmed = false;
             rc = NativeMsg.msgClose(nativeMsg);
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_msg_close");
@@ -411,10 +502,17 @@ public final class Message implements AutoCloseable {
             NativeMsg.msgClose(msg);
             valid = false;
         }
+        recvArmed = false;
         zeroCopyAnchor = null;
         if (arena.scope().isAlive())
             arena.close();
         closed = true;
+    }
+
+    private void prepareForReceive() {
+        if (!recvArmed) {
+            resetForReuse();
+        }
     }
 
     private static void validateRange(int total, int offset, int length, String name) {

@@ -6,6 +6,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.3] - 2026-03-12
+
+### Fixed
+
+**Release Build Parity**
+- Aligned the core GitHub Actions native release workflow with the current core build baseline by building Linux release artifacts on Ubuntu 24.04 and using the default C++17 setting on Windows release jobs.
+- This keeps the packaged native libraries used by bindings closer to the locally built core runtime when benchmarking STREAM raw/callback/LEN32BE paths.
+
+## [5.0.2] - 2026-03-10
+
+### Fixed
+
+**Windows Core Build Portability**
+- Guarded POSIX-only `unistd.h` includes and replaced direct `usleep()` calls with platform-specific 1ms sleep helpers in Discovery and SpotNode so Windows release builds complete.
+
+## [5.0.1] - 2026-03-10
+
+### Fixed
+
+**macOS ARM64 Core Build**
+- Replaced the non-portable `ECOMM` monitor-handshake failure path with a portable protocol error so Apple Silicon release builds complete successfully.
+
+## [5.0.0] - 2026-03-10
+
+### Breaking Changes
+
+**Service Option And Handle API Refresh**
+- Replaced service-specific `*_setsockopt` and unsafe raw-socket accessors on Discovery, Gateway, Receiver, and SpotNode with explicit option, routing-id, monitor, and poller-facing APIs.
+- Discovery now connects through a Registry bootstrap endpoint instead of a direct PUB-only endpoint.
+- SpotNode removes the direct registry-connect and internal PUB/SUB socket borrowing APIs in favor of managed facade operations.
+
+**SPOT Data Plane Rewrite**
+- Reworked SPOT around a proxy-based data plane and node-owned default pub/sub facades.
+- Removed the previous direct-routing/async-mode surface in favor of thread-safe facade publishing and managed subscriber handling.
+
+### Added
+
+**Service Introspection And Monitoring**
+- Added service monitor open/recv/close APIs for Discovery, Gateway, Receiver, SpotPub, and SpotSub.
+- Added registry topology snapshot/query APIs and representative routing-id APIs across service facades.
+- Added poller integration and peer/option surfaces for Gateway, Receiver, SpotPub, and SpotSub services.
+
+**Spot Node Direct Facade**
+- Added node-level publish, subscribe, unsubscribe, handler, and recv APIs backed by node-owned default SpotPub and SpotSub instances.
+- Added per-node default pub/sub option application and direct facade helpers for SPOT applications.
+
+### Fixed
+
+**Transport And Stream Reliability**
+- Preserved WebSocket and WSS stream message boundaries.
+- Disabled speculative writes on WS transports until the handshake path is ready.
+- Enforced stream ready ordering before payload delivery.
+
+**Thread Safety And Runtime Stability**
+- Made random initialization thread-safe.
+- Restored single-throughput semantics and pub/sub flow control behavior in the perf/runtime path.
+
 ## [4.0.2] - 2026-03-07
 
 ### Fixed

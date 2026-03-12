@@ -3,6 +3,8 @@
 #ifndef __ZLINK_PIPE_HPP_INCLUDED__
 #define __ZLINK_PIPE_HPP_INCLUDED__
 
+#include <atomic>
+
 #include "core/ypipe_base.hpp"
 #include "utils/config.hpp"
 #include "core/object.hpp"
@@ -12,6 +14,7 @@
 #include "core/options.hpp"
 #include "core/endpoint.hpp"
 #include "core/msg.hpp"
+#include "utils/fast_mutex.hpp"
 
 namespace zlink
 {
@@ -73,25 +76,8 @@ class pipe_t ZLINK_FINAL : public object_t,
     uint64_t get_snd_pending_msgs () const;
     uint64_t get_rcv_pending_msgs_approx () const;
     uint64_t get_connected_time () const;
-    struct stream_reassembly_state_t
-    {
-        unsigned char header[4];
-        size_t header_written;
-        msg_t assembling;
-        uint32_t payload_len;
-        size_t written;
-        bool active;
-
-        stream_reassembly_state_t ();
-        ~stream_reassembly_state_t ();
-        void reset ();
-    };
-
-    stream_reassembly_state_t &stream_reassembly_state ();
-    const stream_reassembly_state_t &stream_reassembly_state () const;
-    void reset_stream_reassembly_state ();
-    uint32_t get_stream_reassembly_epoch () const;
-    void set_stream_reassembly_epoch (uint32_t epoch_);
+    bool mark_stream_connect_event_emitted ();
+    void reset_stream_connect_event_emitted ();
 
     //  Returns true if there is at least one message to read in the pipe.
     bool check_read ();
@@ -249,9 +235,7 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  Routing id of the writer. Used uniquely by the reader side.
     int _server_socket_routing_id;
 
-    //  STREAM LEN32BE per-pipe reassembly state (owner thread only).
-    stream_reassembly_state_t _stream_reassembly_state;
-    uint32_t _stream_reassembly_epoch;
+    std::atomic<bool> _stream_connect_event_emitted;
 
     //  Returns true if the message is delimiter; false otherwise.
     static bool is_delimiter (const msg_t &msg_);
@@ -266,6 +250,7 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     // Disconnect msg
     msg_t _disconnect_msg;
+    fast_mutex_t _out_sync;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (pipe_t)
 };

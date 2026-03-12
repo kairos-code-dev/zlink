@@ -24,6 +24,7 @@ internal static class PerfRouterRouterClient
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs();
         int latencySampleCap = ResolveMultiLatencySampleCap();
         int clientCount = ResolveMultiClients(pattern);
+        int pollTimeoutMs = ResolveEffectiveMultiClientPollTimeoutMs();
         ReadOnlySpan<byte> serverRoutingId = "SERVER"u8;
 
         using var ctx = new Context();
@@ -40,8 +41,7 @@ internal static class PerfRouterRouterClient
                 client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
                 client.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
                 client.SetOption(SocketOptions.RoutingId, $"CLIENT-{i}");
-                var monitor = client.MonitorOpen(
-                    SocketEvent.ConnectionReady | SocketEvent.Connected);
+                var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
                 client.Connect(endpoint);
                 clients.Add(client);
                 monitors.Add(monitor);
@@ -49,17 +49,20 @@ internal static class PerfRouterRouterClient
 
             List<Zlink.Socket> activeClients = WaitAllClientConnectReady(clients,
                 monitors, readyTimeoutMs);
-            if (activeClients.Count == 0)
+            if (activeClients.Count != clients.Count)
             {
                 Console.Error.WriteLine("multi_client_error:no_ready_connections");
                 return 2;
             }
+            DisposeAllQuietly(monitors);
+            monitors.Clear();
 
             var slots = CreateSlots(activeClients, serverRoutingId, size);
             var result = RunMultiRouterRouterClientLoop(slots, size,
-                latencySampleCap,
+                latencySampleCap, pollTimeoutMs,
                 warmupSeconds, durationSeconds, settleMs, drainMs,
-                sizeTransitionDrainMs, activeWarmup, warmupDrainMs);
+                sizeTransitionDrainMs, activeWarmup, warmupDrainMs,
+                readyTimeoutMs);
 
             TrySendRouterStopToken(activeClients, serverRoutingId);
 
@@ -97,43 +100,49 @@ internal static class PerfRouterRouterClient
     private static (double throughput, double latencyUs, double latencyP95Us,
         double latencyP99Us)
         RunMultiRouterRouterClientLoop(RouterRouterClientSlot[] slots,
-            int msgSize, int latencySampleCap, int warmupSeconds,
+            int msgSize, int latencySampleCap, int pollTimeoutMs,
+            int warmupSeconds,
             int durationSeconds, int settleMs, int drainMs,
-            int sizeTransitionDrainMs, bool activeWarmup, int warmupDrainMs)
+            int sizeTransitionDrainMs, bool activeWarmup, int warmupDrainMs,
+            int readyTimeoutMs)
     {
         const uint runId = 1;
         var latSamples = new List<double>(latencySampleCap);
         ulong seq = 1;
+        int rrIndex = 0;
         var metrics = new RouterRouterMetrics(latSamples, latencySampleCap);
 
-        using var poller = new Poller();
-        var pollEvents = new List<PollEvent>(slots.Length);
-        for (int i = 0; i < slots.Length; i++)
-            poller.Add(slots[i].Socket, PollEvents.PollIn, slots[i]);
+        var sockets = CollectSockets(slots);
+        var eventMasks = new PollEvents[slots.Length];
+        ResetPollMasks(slots, eventMasks);
 
-        RunWarmupPhase(slots, poller, pollEvents, msgSize, warmupSeconds,
-            activeWarmup, warmupDrainMs, runId, ref seq);
+        RunWarmupPhase(slots, sockets, eventMasks, msgSize, warmupSeconds,
+            activeWarmup, warmupDrainMs, runId, ref seq, ref rrIndex,
+            pollTimeoutMs);
 
-        if (settleMs > 0)
-            Thread.Sleep(settleMs);
+        RunDrainPhase(slots, sockets, eventMasks, msgSize, settleMs, runId,
+            ref seq, pollTimeoutMs);
+        if (!DrainPendingReplies(slots, sockets, eventMasks, msgSize, runId,
+                readyTimeoutMs, settleMs, pollTimeoutMs,
+                ref seq))
+        {
+            return (0.0, 0.0, 0.0, 0.0);
+        }
 
         long benchStartTicks = Stopwatch.GetTimestamp();
         long benchDeadlineTicks = benchStartTicks
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
         while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
         {
-            TryScheduleIdleSends(slots, poller, msgSize, runId, PerfPhase.Active,
-                ref seq);
+            TryScheduleIdleSends(slots, eventMasks, msgSize, runId, PerfPhase.Active,
+                ref seq, ref rrIndex);
 
-            if (!WaitForEvents(poller, pollEvents,
-                    RemainingMilliseconds(benchDeadlineTicks)))
-            {
+            if (PollSocketEvents(sockets, eventMasks, pollTimeoutMs) <= 0)
                 continue;
-            }
 
-            for (int i = 0; i < pollEvents.Count; i++)
-                HandleClientEvent(pollEvents[i], poller, msgSize, runId,
-                    PerfPhase.Active, ref seq, metrics);
+            for (int i = 0; i < slots.Length; i++)
+                HandleClientEvent(slots, i, eventMasks, msgSize, runId,
+                    PerfPhase.Active, ref seq, metrics, allowSend: true);
         }
 
         long benchEndTicks = Stopwatch.GetTimestamp();
@@ -144,10 +153,9 @@ internal static class PerfRouterRouterClient
 
         double elapsedSeconds = (benchEndTicks - benchStartTicks)
             / (double)Stopwatch.Frequency;
-        double throughput = elapsedSeconds > 0.0
-            ? metrics.MeasureCount / elapsedSeconds
-            : 0.0;
-        double fallbackLatencyUs = (elapsedSeconds * 1_000_000.0)
+        double configuredSeconds = Math.Max(1.0, durationSeconds);
+        double throughput = metrics.MeasureCount / configuredSeconds;
+        double fallbackLatencyUs = (configuredSeconds * 1_000_000.0)
             / Math.Max(1.0, metrics.MeasureCount * 2.0);
         var latency = ComputeLatencyStats(latSamples);
         double latencyUs = latency.mean > 0.0 ? latency.mean : fallbackLatencyUs;
@@ -158,30 +166,31 @@ internal static class PerfRouterRouterClient
     }
 
     private static void RunWarmupPhase(RouterRouterClientSlot[] slots,
-        Poller poller, List<PollEvent> pollEvents, int msgSize, int warmupSeconds,
-        bool activeWarmup, int warmupDrainMs, uint runId, ref ulong seq)
+        IReadOnlyList<Zlink.Socket> sockets, PollEvents[] eventMasks, int msgSize,
+        int warmupSeconds,
+        bool activeWarmup, int warmupDrainMs, uint runId, ref ulong seq,
+        ref int rrIndex, int pollTimeoutMs)
     {
-        if (!activeWarmup || warmupSeconds <= 0)
+        _ = activeWarmup;
+        if (warmupSeconds <= 0)
             return;
 
         long warmupDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(0, warmupSeconds) * Stopwatch.Frequency;
         while (Stopwatch.GetTimestamp() < warmupDeadlineTicks)
         {
-            TryScheduleIdleSends(slots, poller, msgSize, runId, PerfPhase.Warmup,
-                ref seq);
+            TryScheduleIdleSends(slots, eventMasks, msgSize, runId,
+                PerfPhase.Warmup,
+                ref seq, ref rrIndex);
 
-            if (!WaitForEvents(poller, pollEvents,
-                    RemainingMilliseconds(warmupDeadlineTicks)))
-            {
+            if (PollSocketEvents(sockets, eventMasks, pollTimeoutMs) <= 0)
                 continue;
-            }
 
-            for (int i = 0; i < pollEvents.Count; i++)
+            for (int i = 0; i < slots.Length; i++)
             {
                 var ignoredMetrics = new RouterRouterMetrics(null, 0);
-                HandleClientEvent(pollEvents[i], poller, msgSize, runId,
-                    PerfPhase.Warmup, ref seq, ignoredMetrics);
+                HandleClientEvent(slots, i, eventMasks, msgSize, runId,
+                    PerfPhase.Warmup, ref seq, ignoredMetrics, allowSend: true);
             }
         }
 
@@ -189,12 +198,81 @@ internal static class PerfRouterRouterClient
             Thread.Sleep(warmupDrainMs);
     }
 
-    private static void TryScheduleIdleSends(RouterRouterClientSlot[] slots,
-        Poller poller, int msgSize, uint runId, PerfPhase phase, ref ulong seq)
+    private static void RunDrainPhase(RouterRouterClientSlot[] slots,
+        IReadOnlyList<Zlink.Socket> sockets, PollEvents[] eventMasks, int msgSize,
+        int settleMs,
+        uint runId, ref ulong seq, int pollTimeoutMs)
+    {
+        if (settleMs <= 0)
+            return;
+
+        long deadlineTicks = Stopwatch.GetTimestamp()
+            + (long)Math.Max(0, settleMs) * Stopwatch.Frequency / 1000;
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            if (PollSocketEvents(sockets, eventMasks, pollTimeoutMs) <= 0)
+                continue;
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                var ignoredMetrics = new RouterRouterMetrics(null, 0);
+                HandleClientEvent(slots, i, eventMasks, msgSize, runId,
+                    PerfPhase.Warmup, ref seq, ignoredMetrics, allowSend: false);
+            }
+        }
+    }
+
+    private static bool DrainPendingReplies(RouterRouterClientSlot[] slots,
+        IReadOnlyList<Zlink.Socket> sockets, PollEvents[] eventMasks, int msgSize,
+        uint runId,
+        int readyTimeoutMs, int settleMs, int pollTimeoutMs, ref ulong seq)
+    {
+        if (!HasPendingReplies(slots))
+            return true;
+
+        long deadlineTicks = Stopwatch.GetTimestamp()
+            + (long)Math.Max(readyTimeoutMs, Math.Max(100, settleMs))
+            * Stopwatch.Frequency / 1000;
+        while (HasPendingReplies(slots))
+        {
+            int timeoutMs = Math.Min(pollTimeoutMs,
+                RemainingMilliseconds(deadlineTicks));
+            if (timeoutMs <= 0)
+                return false;
+            if (PollSocketEvents(sockets, eventMasks, timeoutMs) <= 0)
+                continue;
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                var ignoredMetrics = new RouterRouterMetrics(null, 0);
+                HandleClientEvent(slots, i, eventMasks, msgSize, runId,
+                    PerfPhase.Warmup, ref seq, ignoredMetrics, allowSend: false);
+            }
+        }
+
+        return true;
+    }
+
+    private static bool HasPendingReplies(RouterRouterClientSlot[] slots)
     {
         for (int i = 0; i < slots.Length; i++)
         {
-            RouterRouterClientSlot slot = slots[i];
+            if (slots[i].WaitingForReply)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static void TryScheduleIdleSends(RouterRouterClientSlot[] slots,
+        PollEvents[] eventMasks, int msgSize, uint runId, PerfPhase phase, ref ulong seq,
+        ref int rrIndex)
+    {
+        int startIndex = rrIndex;
+        for (int i = 0; i < slots.Length; i++)
+        {
+            int slotIndex = (startIndex + i) % slots.Length;
+            RouterRouterClientSlot slot = slots[slotIndex];
             if (slot.WaitingForReply || slot.PendingStage != RouterSendStage.None)
                 continue;
 
@@ -202,34 +280,36 @@ internal static class PerfRouterRouterClient
             if (TrySend(slot))
             {
                 slot.WaitingForReply = true;
-                slot.SendStartTicks = Stopwatch.GetTimestamp();
+                UpdatePollMask(slot, eventMasks, slotIndex);
                 continue;
             }
 
-            poller.Modify(slot.Socket, PollEvents.PollIn | PollEvents.PollOut);
+            UpdatePollMask(slot, eventMasks, slotIndex);
         }
+
+        if (slots.Length > 0)
+            rrIndex = (startIndex + 1) % slots.Length;
     }
 
-    private static void HandleClientEvent(PollEvent pollEvent, Poller poller,
+    private static void HandleClientEvent(RouterRouterClientSlot[] slots,
+        int slotIndex, PollEvents[] eventMasks,
         int msgSize, uint runId, PerfPhase phase, ref ulong seq,
-        RouterRouterMetrics metrics)
+        RouterRouterMetrics metrics, bool allowSend)
     {
-        if (pollEvent.Tag is not RouterRouterClientSlot slot)
-            return;
+        RouterRouterClientSlot slot = slots[slotIndex];
 
-        if ((pollEvent.Revents & PollEvents.PollOut) != 0
+        if (IsSocketWriteReady(slotIndex)
             && slot.PendingStage != RouterSendStage.None
             && !slot.WaitingForReply)
         {
             if (TrySend(slot))
             {
                 slot.WaitingForReply = true;
-                slot.SendStartTicks = Stopwatch.GetTimestamp();
-                poller.Modify(slot.Socket, PollEvents.PollIn);
+                UpdatePollMask(slot, eventMasks, slotIndex);
             }
         }
 
-        if ((pollEvent.Revents & PollEvents.PollIn) == 0)
+        if (!IsSocketReadReady(slotIndex))
             return;
 
         while (TryReceiveReply(slot, out int received) && received > 0)
@@ -238,24 +318,72 @@ internal static class PerfRouterRouterClient
                 continue;
 
             slot.WaitingForReply = false;
-            if (phase != PerfPhase.Active)
+            if (phase == PerfPhase.Active)
+            {
+                ReadOnlySpan<byte> body = slot.Recv.AsSpan(0, received);
+                if (TryDecodeMetricHeader(body, out PerfMetricHeader header)
+                    && header.RunId == runId
+                    && header.MsgSize == (uint)msgSize
+                    && header.Phase == (uint)phase)
+                {
+                    metrics.MeasureCount++;
+                    if (metrics.LatencySamples != null && header.SentTsUs > 0)
+                    {
+                        ulong nowUs = EpochUs();
+                        if (nowUs >= header.SentTsUs)
+                        {
+                            double sampleLatencyUs = nowUs - header.SentTsUs;
+                            long sampleSeen = metrics.SampleSeen;
+                            uint rng = metrics.Rng;
+                            ReservoirSample(metrics.LatencySamples, sampleLatencyUs,
+                                ref sampleSeen, metrics.LatencySampleCap, ref rng);
+                            metrics.SampleSeen = sampleSeen;
+                            metrics.Rng = rng;
+                        }
+                    }
+                }
+            }
+
+            if (!allowSend)
                 continue;
 
-            long endTicks = Stopwatch.GetTimestamp();
-            metrics.MeasureCount++;
-            if (metrics.LatencySamples != null)
+            if (slot.PendingStage == RouterSendStage.None)
+                PreparePayload(slot, msgSize, runId, phase, ref seq);
+            if (TrySend(slot))
             {
-                double oneWayLatencyUs = ((endTicks - slot.SendStartTicks)
-                                          * 1_000_000.0 / Stopwatch.Frequency)
-                    / 2.0;
-                long sampleSeen = metrics.SampleSeen;
-                uint rng = metrics.Rng;
-                ReservoirSample(metrics.LatencySamples, oneWayLatencyUs,
-                    ref sampleSeen, metrics.LatencySampleCap, ref rng);
-                metrics.SampleSeen = sampleSeen;
-                metrics.Rng = rng;
+                slot.WaitingForReply = true;
+                UpdatePollMask(slot, eventMasks, slotIndex);
+            }
+            else
+            {
+                UpdatePollMask(slot, eventMasks, slotIndex);
             }
         }
+    }
+
+    private static List<Zlink.Socket> CollectSockets(
+        RouterRouterClientSlot[] slots)
+    {
+        var sockets = new List<Zlink.Socket>(slots.Length);
+        for (int i = 0; i < slots.Length; i++)
+            sockets.Add(slots[i].Socket);
+        return sockets;
+    }
+
+    private static void ResetPollMasks(RouterRouterClientSlot[] slots,
+        PollEvents[] eventMasks)
+    {
+        for (int i = 0; i < slots.Length; i++)
+            UpdatePollMask(slots[i], eventMasks, i);
+    }
+
+    private static void UpdatePollMask(RouterRouterClientSlot slot,
+        PollEvents[] eventMasks, int index)
+    {
+        PollEvents events = SocketPollIn;
+        if (slot.PendingStage != RouterSendStage.None && !slot.WaitingForReply)
+            events |= SocketPollOut;
+        eventMasks[index] = events;
     }
 
     private static void PreparePayload(RouterRouterClientSlot slot, int msgSize,
@@ -268,30 +396,29 @@ internal static class PerfRouterRouterClient
 
     private static bool TrySend(RouterRouterClientSlot slot)
     {
-        try
+        if (slot.PendingStage == RouterSendStage.RoutingId)
         {
-            if (slot.PendingStage == RouterSendStage.RoutingId)
+            if (!slot.Socket.TrySend(slot.ServerRoutingId.AsSpan(),
+                    SendFlags.SendMore | SendFlags.DontWait, out int ridWritten)
+                || ridWritten <= 0)
             {
-                if (slot.Socket.Send(slot.ServerRoutingId.AsSpan(),
-                        SendFlags.SendMore | SendFlags.DontWait) <= 0)
-                    return false;
-                slot.PendingStage = RouterSendStage.Payload;
+                return false;
             }
-
-            if (slot.PendingStage == RouterSendStage.Payload)
-            {
-                if (slot.Socket.Send(slot.Payload.AsSpan(), SendFlags.DontWait) <= 0)
-                    return false;
-                slot.PendingStage = RouterSendStage.None;
-            }
-
-            return true;
+            slot.PendingStage = RouterSendStage.Payload;
         }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                                        || IsInterrupted(ex.Errno))
+
+        if (slot.PendingStage == RouterSendStage.Payload)
         {
-            return false;
+            if (!slot.Socket.TrySend(slot.Payload.AsSpan(), SendFlags.DontWait,
+                    out int payloadWritten)
+                || payloadWritten <= 0)
+            {
+                return false;
+            }
+            slot.PendingStage = RouterSendStage.None;
         }
+
+        return true;
     }
 
     private static bool TryReceiveReply(RouterRouterClientSlot slot,
@@ -380,7 +507,6 @@ internal static class PerfRouterRouterClient
         internal byte[] Recv { get; }
         internal RouterSendStage PendingStage { get; set; }
         internal bool WaitingForReply { get; set; }
-        internal long SendStartTicks { get; set; }
     }
 
     private sealed class RouterRouterMetrics

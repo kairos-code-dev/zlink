@@ -470,10 +470,8 @@ void print_fail_result (const std::string &lib_type,
                         const std::string &transport,
                         size_t size)
 {
-    (void) lib_type;
-    (void) pattern;
-    (void) transport;
-    (void) size;
+    std::cout << "FAIL," << lib_type << "," << pattern << "," << transport
+              << "," << size << std::endl;
 }
 
 queue_probe_t::queue_probe_t (zlink::socket_t *send_socket_,

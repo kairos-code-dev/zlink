@@ -6,17 +6,18 @@ import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.PollEventType;
-import dev.kairoscode.zlink.Poller;
 import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.Socket;
+import dev.kairoscode.zlink.SocketPollSet;
 import dev.kairoscode.zlink.SocketType;
-import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.integration.bench.common.PerfCommon;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiClientHelpers;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiCommon;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiMetricHeader;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiTls;
 import dev.kairoscode.zlink.options.SocketOptions;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,10 +29,13 @@ public final class PerfMultiDealerDealerClient {
     private static final String PATTERN = "MULTI_DEALER_DEALER";
     private static final SocketType CLIENT_SOCKET_TYPE = SocketType.DEALER;
     private static final int MIN_PAYLOAD_BYTES = 32;
-    private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
+    private static final int SEND_BACKOFF_POLL_TIMEOUT_MS = 50;
+    private static final long NANOS_PER_SECOND = 1_000_000_000L;
+    private static final long NANOS_PER_MILLISECOND = 1_000_000L;
 
     private enum Phase {
         WARMUP(PerfMultiMetricHeader.PHASE_WARMUP),
+        DRAIN(PerfMultiMetricHeader.PHASE_DRAIN),
         ACTIVE(PerfMultiMetricHeader.PHASE_ACTIVE);
 
         final int metricCode;
@@ -41,34 +45,35 @@ public final class PerfMultiDealerDealerClient {
         }
     }
 
-    private static final class ClientConfig {
-        final int clients;
-        final int warmupSeconds;
-        final int durationSeconds;
-        final int settleMs;
-        final int connectTimeoutMs;
-        final int payloadSize;
-        final int pollTimeoutMs;
+    private static final class PendingSend {
+        boolean pending;
+        final ByteBuf payload;
 
-        ClientConfig(int clients, int warmupSeconds, int durationSeconds,
-                     int settleMs, int connectTimeoutMs, int payloadSize,
-                     int pollTimeoutMs) {
-            this.clients = clients;
-            this.warmupSeconds = warmupSeconds;
-            this.durationSeconds = durationSeconds;
-            this.settleMs = settleMs;
-            this.connectTimeoutMs = connectTimeoutMs;
-            this.payloadSize = payloadSize;
-            this.pollTimeoutMs = pollTimeoutMs;
+        PendingSend(int payloadSize) {
+            payload = Unpooled.directBuffer(payloadSize, payloadSize);
+            payload.writeZero(payloadSize);
+            reset();
+        }
+
+        void reset() {
+            payload.readerIndex(0);
+            payload.writerIndex(payload.capacity());
+        }
+
+        void release() {
+            payload.release();
         }
     }
 
-    private static final class PendingSend {
-        boolean pending;
-        final byte[] payload;
+    private static final class SendPhaseResult {
+        final long nextSeq;
+        final int nextIndex;
+        final boolean anySent;
 
-        PendingSend(int payloadSize) {
-            this.payload = new byte[payloadSize];
+        SendPhaseResult(long nextSeq, int nextIndex, boolean anySent) {
+            this.nextSeq = nextSeq;
+            this.nextIndex = nextIndex;
+            this.anySent = anySent;
         }
     }
 
@@ -85,63 +90,78 @@ public final class PerfMultiDealerDealerClient {
             return 1;
         }
 
-        ClientConfig config = resolveConfig(msgSize);
+        int clients = PerfMultiCommon.resolveClients(PATTERN);
+        int warmupSeconds = PerfMultiCommon.resolveWarmupSeconds();
+        int durationSeconds = PerfMultiCommon.resolveDurationSeconds();
+        int settleMs = PerfMultiCommon.resolveSettleMs();
+        int connectTimeoutMs = PerfMultiCommon.resolveConnectReadyTimeoutMs();
+        int payloadSize = Math.max(msgSize, MIN_PAYLOAD_BYTES);
 
         try (Context context = new Context()) {
             PerfCommon.applyClientContextOptions(context);
 
-            List<Socket> sockets = new ArrayList<>(config.clients);
-            List<MonitorSocket> monitors = new ArrayList<>(config.clients);
-            List<Socket> activeSockets = new ArrayList<>(config.clients);
+            List<Socket> sockets = new ArrayList<>(clients);
+            List<MonitorSocket> monitors = new ArrayList<>(clients);
+            PendingSend[] pendingSends = null;
 
             try {
-                for (int i = 0; i < config.clients; i++) {
+                for (int i = 0; i < clients; i++) {
                     Socket socket = new Socket(context, CLIENT_SOCKET_TYPE);
                     applySocketOptions(socket);
                     PerfMultiTls.configureTlsClientIfNeeded(socket, transport);
                     MonitorSocket monitor = socket.monitorOpen(
-                        MonitorEventType.CONNECTION_READY.getValue()
-                            | MonitorEventType.CONNECTED.getValue()
-                            | MonitorEventType.ACCEPTED.getValue());
+                        PerfMultiCommon.CONNECT_MONITOR_EVENTS);
+                    monitor.setOption(SocketOptions.RCVHWM,
+                        PerfMultiCommon.resolveMonitorHwm());
                     socket.connect(endpoint);
                     sockets.add(socket);
                     monitors.add(monitor);
                 }
 
-                for (int i = 0; i < monitors.size(); i++) {
-                    if (PerfCommon.waitMonitorReady(monitors.get(i),
-                        config.connectTimeoutMs,
-                        true)) {
-                        activeSockets.add(sockets.get(i));
-                    }
+                if (!PerfMultiCommon.waitAllConnectReady(monitors,
+                        connectTimeoutMs)) {
+                    System.err.println("ERROR,MULTI_DEALER_DEALER,client,no_active_sockets");
+                    return 2;
                 }
-                if (activeSockets.isEmpty()) {
+                closeAll(monitors);
+                monitors.clear();
+                if (sockets.size() != clients) {
                     System.err.println("ERROR,MULTI_DEALER_DEALER,client,no_active_sockets");
                     return 2;
                 }
 
-                byte[] payload = new byte[config.payloadSize];
-                int runId = (int) (PerfMultiMetricHeader.nowUs() & 0x7FFF_FFFFL);
+                pendingSends = createPendingSends(sockets.size(), payloadSize);
+                int runId = 1;
 
-                SendPhaseResult warmup = runSendPhase(activeSockets, payload,
-                    runId, msgSize, 1L, config.warmupSeconds, Phase.WARMUP, 0,
-                    config.pollTimeoutMs);
-                if (config.settleMs > 0) {
-                    PerfCommon.sleepMillis(config.settleMs);
-                }
+                try (SocketPollSet pollSet = SocketPollSet.fromSockets(sockets, 0)) {
+                    SendPhaseResult warmup = runSendPhase(sockets, pendingSends,
+                        pollSet, runId, msgSize, 1L, warmupSeconds * NANOS_PER_SECOND,
+                        Phase.WARMUP, 0, true);
 
-                SendPhaseResult active = runSendPhase(activeSockets, payload,
-                    runId, msgSize, warmup.nextSeq,
-                    Math.max(1, config.durationSeconds), Phase.ACTIVE,
-                    warmup.nextIndex, config.pollTimeoutMs);
-                if (!active.anySent) {
-                    System.err.println("ERROR,MULTI_DEALER_DEALER,client,no_active_send");
-                    return 2;
+                    SendPhaseResult drain = runSendPhase(sockets, pendingSends,
+                        pollSet, runId, msgSize, warmup.nextSeq,
+                        Math.max(0L, (long) settleMs) * NANOS_PER_MILLISECOND,
+                        Phase.DRAIN, warmup.nextIndex, false);
+
+                    SendPhaseResult active = runSendPhase(sockets, pendingSends,
+                        pollSet, runId, msgSize, drain.nextSeq,
+                        Math.max(1L, durationSeconds) * NANOS_PER_SECOND,
+                        Phase.ACTIVE, drain.nextIndex, true);
+                    if (!active.anySent) {
+                        System.err.println(
+                            "ERROR,MULTI_DEALER_DEALER,client,no_active_send");
+                        return 2;
+                    }
                 }
                 return 0;
             } finally {
+                releasePending(pendingSends);
                 closeAll(monitors);
                 closeAll(sockets);
+                try {
+                    context.shutdown();
+                } catch (RuntimeException ignored) {
+                }
             }
         } catch (RuntimeException ex) {
             System.err.println("ERROR,MULTI_DEALER_DEALER,client,"
@@ -151,78 +171,140 @@ public final class PerfMultiDealerDealerClient {
         }
     }
 
-    private static ClientConfig resolveConfig(int msgSize) {
-        return new ClientConfig(
-            PerfMultiCommon.resolveClients(PATTERN),
-            PerfMultiCommon.resolveWarmupSeconds(),
-            PerfMultiCommon.resolveDurationSeconds(),
-            PerfMultiCommon.resolveSettleMs(),
-            PerfMultiCommon.resolveConnectReadyTimeoutMs(),
-            Math.max(msgSize, MIN_PAYLOAD_BYTES),
-            PerfMultiCommon.resolveClientPollTimeoutMs()
-        );
-    }
-
-    private static final class SendPhaseResult {
-        final long nextSeq;
-        final int nextIndex;
-        final boolean anySent;
-
-        SendPhaseResult(long nextSeq, int nextIndex, boolean anySent) {
-            this.nextSeq = nextSeq;
-            this.nextIndex = nextIndex;
-            this.anySent = anySent;
-        }
-    }
-
     private static SendPhaseResult runSendPhase(List<Socket> sockets,
-                                                byte[] payload,
-                                                int runId, int msgSize,
+                                                PendingSend[] pendingSends,
+                                                SocketPollSet pollSet,
+                                                int runId,
+                                                int msgSize,
                                                 long seqStart,
-                                                int durationSeconds,
+                                                long durationNs,
                                                 Phase phase,
                                                 int indexStart,
-                                                int pollTimeoutMs) {
+                                                boolean sendActive) {
+        if (durationNs <= 0L) {
+            return new SendPhaseResult(seqStart, indexStart, false);
+        }
+
+        long deadlineNs = System.nanoTime() + durationNs;
         long seq = seqStart;
         int index = indexStart;
         boolean anySent = false;
-        long deadline = System.nanoTime()
-            + (long) Math.max(0, durationSeconds) * NANOSECONDS_PER_SECOND;
         int socketCount = sockets.size();
-        PendingSend[] pendingSends = new PendingSend[socketCount];
-        for (int i = 0; i < socketCount; i++) {
-            pendingSends[i] = new PendingSend(payload.length);
-        }
 
-        try (Poller poller = new Poller()) {
-            while (System.nanoTime() < deadline) {
-                boolean progressed = false;
-                Socket socket = sockets.get(index);
-                PendingSend pending = pendingSends[index];
-                if (!pending.pending) {
-                    PerfMultiMetricHeader.stampPayload(pending.payload, runId,
-                        phase.metricCode, msgSize, seq++,
-                        PerfMultiMetricHeader.nowUs());
-                    progressed = tryStartSend(poller, socket, index, pending);
-                    anySent = anySent || progressed;
-                }
-                index = (index + 1) % socketCount;
+        while (System.nanoTime() < deadlineNs) {
+            boolean havePollout = false;
+            boolean progressed = false;
 
-                int eventCount = poller.pollCount(progressed ? 0 : pollTimeoutMs);
-                for (int i = 0; i < eventCount; i++) {
-                    Socket readySocket = poller.readySocket(i);
-                    if (readySocket == null) {
+            if (sendActive) {
+                int startIndex = index;
+                for (int attempt = 0; attempt < socketCount; attempt++) {
+                    int socketIndex = (startIndex + attempt) % socketCount;
+                    PendingSend pending = pendingSends[socketIndex];
+                    if (pending.pending
+                        && !pollSet.isReady(socketIndex,
+                            PollEventType.POLLOUT.getValue())) {
                         continue;
                     }
-                    int socketIndex = (Integer) poller.readyTag(i);
-                    progressed |= tryFlushPending(poller, readySocket,
-                        pendingSends[socketIndex]);
-                    anySent = anySent || progressed;
+
+                    SendStatus status = trySendOneMessage(
+                        sockets.get(socketIndex), pending, runId,
+                        phase.metricCode, msgSize, seq);
+                    if (status == SendStatus.OK) {
+                        seq++;
+                        progressed = true;
+                        anySent = true;
+                        pending.pending = false;
+                    } else if (status == SendStatus.BLOCKED) {
+                        pending.pending = true;
+                    } else {
+                        return new SendPhaseResult(seq, index, anySent);
+                    }
+                }
+                index = socketCount == 0 ? 0 : (startIndex + 1) % socketCount;
+            } else {
+                for (PendingSend pending : pendingSends) {
+                    pending.pending = false;
                 }
             }
+
+            for (int i = 0; i < socketCount; i++) {
+                int events = pendingSends[i].pending
+                    ? PollEventType.POLLOUT.getValue() : 0;
+                pollSet.setEvents(i, events);
+                if (events != 0) {
+                    havePollout = true;
+                }
+            }
+
+            if (!havePollout) {
+                if (progressed || sendActive) {
+                    continue;
+                }
+                int idleTimeoutMs = resolveIdlePollTimeoutMs(deadlineNs);
+                if (idleTimeoutMs > 0) {
+                    PerfCommon.sleepMillis(idleTimeoutMs);
+                }
+                continue;
+            }
+
+            int timeoutMs = resolveSendPollTimeoutMs(progressed, deadlineNs);
+            pollSet.poll(timeoutMs);
         }
 
         return new SendPhaseResult(seq, index, anySent);
+    }
+
+    private enum SendStatus {
+        OK,
+        BLOCKED,
+        FATAL
+    }
+
+    private static SendStatus trySendOneMessage(Socket socket,
+                                                PendingSend pending,
+                                                int runId,
+                                                int phase,
+                                                int msgSize,
+                                                long seq) {
+        pending.reset();
+        if (!PerfMultiMetricHeader.stampPayload(pending.payload, runId, phase,
+                msgSize, seq, PerfMultiMetricHeader.nowUs())) {
+            return SendStatus.FATAL;
+        }
+        return socket.trySend(pending.payload, SendFlag.DONTWAIT)
+            ? SendStatus.OK : SendStatus.BLOCKED;
+    }
+
+    private static int resolveIdlePollTimeoutMs(long deadlineNs) {
+        long remainNs = deadlineNs - System.nanoTime();
+        if (remainNs <= 0L) {
+            return 0;
+        }
+        long remainMs = remainNs / NANOS_PER_MILLISECOND;
+        return (int) Math.min(SEND_BACKOFF_POLL_TIMEOUT_MS,
+            Math.max(0L, remainMs));
+    }
+
+    private static int resolveSendPollTimeoutMs(boolean progressed,
+                                                long deadlineNs) {
+        if (progressed) {
+            return 0;
+        }
+        long remainNs = deadlineNs - System.nanoTime();
+        if (remainNs <= 0L) {
+            return 0;
+        }
+        long remainMs = remainNs / NANOS_PER_MILLISECOND;
+        return (int) Math.min(SEND_BACKOFF_POLL_TIMEOUT_MS,
+            Math.max(0L, remainMs));
+    }
+
+    private static PendingSend[] createPendingSends(int count, int payloadSize) {
+        PendingSend[] pendingSends = new PendingSend[count];
+        for (int i = 0; i < count; i++) {
+            pendingSends[i] = new PendingSend(payloadSize);
+        }
+        return pendingSends;
     }
 
     private static void applySocketOptions(Socket socket) {
@@ -237,50 +319,13 @@ public final class PerfMultiDealerDealerClient {
         socket.setOption(SocketOptions.LINGER, 0);
     }
 
-    private static boolean tryStartSend(Poller poller, Socket socket, int index,
-                                        PendingSend pending) {
-        if (trySendNonBlocking(socket, pending.payload)) {
-            return true;
+    private static void releasePending(PendingSend[] pendingSends) {
+        if (pendingSends == null) {
+            return;
         }
-        if (!pending.pending) {
-            pending.pending = true;
-            poller.add(socket, PollEventType.POLLOUT.getValue(),
-                Integer.valueOf(index));
-        }
-        return false;
-    }
-
-    private static boolean tryFlushPending(Poller poller, Socket socket,
-                                           PendingSend pending) {
-        if (!pending.pending) {
-            return false;
-        }
-        if (!trySendNonBlocking(socket, pending.payload)) {
-            return false;
-        }
-        pending.pending = false;
-        poller.remove(socket);
-        return true;
-    }
-
-    private static boolean trySendNonBlocking(Socket socket, byte[] payload) {
-        while (true) {
-            try {
-                int written = socket.send(payload, 0, payload.length,
-                    SendFlag.DONTWAIT);
-                if (written != payload.length) {
-                    throw new IllegalStateException("send_failed");
-                }
-                return true;
-            } catch (ZlinkException ex) {
-                int errno = ex.errno();
-                if (errno == 4) {
-                    continue;
-                }
-                if (errno == 11 || errno == 10035) {
-                    return false;
-                }
-                throw ex;
+        for (PendingSend pending : pendingSends) {
+            if (pending != null) {
+                pending.release();
             }
         }
     }

@@ -1,6 +1,0 @@
-## PATTERN: GATEWAY (one-way)
-
-### Transport: tcp
-| Size     |       Throughput | Bandwidth |  Latency(ms) | Lat p95(ms) | Lat p99(ms) | CPU% | Mem MB |
-|----------|------------------|-----------|--------------|----------|----------|------|--------|
-| 64B |     20.62 Kmsg/s |      1.3 MB/s |    0.0478 ms |   0.0890 ms |   0.1260 ms |  4.9 |   93.8 |

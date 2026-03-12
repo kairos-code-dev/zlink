@@ -176,8 +176,6 @@ Fixed `len32be` framing on all transports:
    ├─ 5e. Collect & report metrics
    │       └─ throughput, latency percentiles (p50/p95/p99)
    │
-   └─ 5f. Size transition drain (--size-transition-drain-ms)
-       │
 6. Shutdown all sessions, join worker threads
        │
 7. (optional) Send stop token to server
@@ -208,17 +206,16 @@ Ephemeral port range is read from `/proc/sys/net/ipv4/ip_local_port_range`.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--transport` | `tcp` | Transport protocol: `tcp`, `tls`, `ws`, `wss` |
-| `--pattern` | `STREAM` | Label for result output routing |
+| `--pattern` | `STREAM_CALLBACK` | Label for result output routing |
 | `--endpoint` | — | Full endpoint URI (e.g., `tcp://127.0.0.1:15557`). Overrides `--host`/`--port`/`--transport`. |
 | `--host` | `127.0.0.1` | Server host |
 | `--port` | `38001` | Server port |
-| `--ccu` | `1000` | Concurrent connections |
-| `--sizes` | `64,1024,65536` | Comma-separated payload sizes (bytes) |
+| `--ccu` | `10000` | Concurrent connections |
+| `--sizes` | `64` | Payload size (bytes). If multiple values are provided, only the first is used. |
 | `--runs` | `1` | Number of benchmark runs per size |
 | `--warmup` | `2` | Warmup duration (seconds) |
 | `--duration` | `10` | Measurement duration (seconds) |
 | `--drain-ms` | `0` | Post-measurement drain wait (ms) |
-| `--size-transition-drain-ms` | `0` | Drain between size transitions (ms) |
 | `--io-threads` | `4` | I/O worker thread count |
 | `--print-perf-result` | `0` | Output format: 0=detailed, 1=both, 2=CSV only |
 | `--send-stop-token` | `0` | Send stop token to server after benchmark |
@@ -250,11 +247,11 @@ cmake --build core/build --target perf_stream_client -j$(nproc)
 
 ```bash
 core/build/bin/perf_stream_client \
-  --pattern MULTI_STREAM \
+  --pattern STREAM_CALLBACK \
   --transport tcp \
   --endpoint tcp://127.0.0.1:15557 \
   --sizes 64 \
-  --ccu 1000 \
+  --ccu 10000 \
   --warmup 3 \
   --duration 5 \
   --io-threads 4 \

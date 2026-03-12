@@ -2,6 +2,8 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text;
 using Zlink;
 using Zlink.Native;
@@ -10,8 +12,24 @@ namespace Zlink.Service;
 
 public sealed class Gateway : IDisposable
 {
+    public sealed class PreparedService
+    {
+        internal PreparedService(string name, IntPtr utf8Ptr)
+        {
+            Name = name;
+            Utf8Ptr = utf8Ptr;
+        }
+
+        public string Name { get; }
+        internal IntPtr Utf8Ptr { get; }
+    }
+
     private const int StackSendPartLimit = 8;
     private IntPtr _handle;
+    private readonly Dictionary<string, IntPtr> _serviceNameUtf8Cache =
+        new(StringComparer.Ordinal);
+    private string? _lastServiceName;
+    private IntPtr _lastServiceNameUtf8;
 
     internal IntPtr Handle => _handle;
 
@@ -74,6 +92,15 @@ public sealed class Gateway : IDisposable
             payload, flags);
     }
 
+    public unsafe void Send(PreparedService service, ReadOnlySpan<byte> payload,
+        SendFlags flags = SendFlags.None)
+    {
+        if (service == null)
+            throw new ArgumentNullException(nameof(service));
+        SendSinglePayloadCore(service.Utf8Ptr, default, useRoutingId: false,
+            payload, flags);
+    }
+
     public void SendToRoutingId(string serviceName, string routingId,
         Message[] parts, SendFlags flags = SendFlags.None)
     {
@@ -112,7 +139,7 @@ public sealed class Gateway : IDisposable
         if (parts.Length == 0)
             throw new ArgumentException("Parts must not be empty.", nameof(parts));
 
-        byte[] serviceNameUtf8 = GetServiceNameUtf8(serviceName);
+        IntPtr serviceNameUtf8 = GetServiceNameUtf8Ptr(serviceName);
         ZlinkRoutingId nativeRoutingId = default;
         if (useRoutingId)
             nativeRoutingId = NativeHelpers.WriteRoutingId(routingId);
@@ -141,8 +168,8 @@ public sealed class Gateway : IDisposable
             }
 
             fixed (ZlinkMsg* ptr = nativeParts)
-            fixed (byte* serviceNamePtr = serviceNameUtf8)
             {
+                byte* serviceNamePtr = (byte*)serviceNameUtf8;
                 if (useRoutingId)
                 {
                     rc = NativeMethods.zlink_gateway_send_rid(_handle,
@@ -178,16 +205,23 @@ public sealed class Gateway : IDisposable
     {
         EnsureNotDisposed();
         ValidateServiceName(serviceName, nameof(serviceName));
+        SendSinglePayloadCore(GetServiceNameUtf8Ptr(serviceName), routingId,
+            useRoutingId, payload, flags);
+    }
 
-        byte[] serviceNameUtf8 = GetServiceNameUtf8(serviceName);
+    private unsafe void SendSinglePayloadCore(IntPtr serviceNameUtf8,
+        ReadOnlySpan<byte> routingId, bool useRoutingId,
+        ReadOnlySpan<byte> payload, SendFlags flags)
+    {
+        EnsureNotDisposed();
         ZlinkRoutingId nativeRoutingId = default;
         if (useRoutingId)
             nativeRoutingId = NativeHelpers.WriteRoutingId(routingId);
 
         int rc = 0;
-        fixed (byte* serviceNamePtr = serviceNameUtf8)
         fixed (byte* payloadPtr = payload)
         {
+            byte* serviceNamePtr = (byte*)serviceNameUtf8;
             if (useRoutingId)
             {
                 rc = NativeMethods.zlink_gateway_send_rid_bytes(_handle,
@@ -202,6 +236,14 @@ public sealed class Gateway : IDisposable
             }
         }
         ZlinkException.ThrowIfError(rc);
+    }
+
+    public PreparedService PrepareService(string serviceName)
+    {
+        EnsureNotDisposed();
+        ValidateServiceName(serviceName, nameof(serviceName));
+        IntPtr utf8 = GetServiceNameUtf8Ptr(serviceName);
+        return new PreparedService(serviceName, utf8);
     }
 
     private static void CloseNativeParts(Span<ZlinkMsg> nativeParts, int count)
@@ -287,10 +329,8 @@ public sealed class Gateway : IDisposable
     public Socket CreateRouterSocket()
     {
         EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_gateway_router_socket(_handle);
-        if (handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-        return Socket.Adopt(handle, false);
+        throw new ZlinkException((int)ErrorCode.ENotSup,
+            "Gateway router socket handle is not exposed by the current core API.");
     }
 
     public PeerRecord[] GetRouterPeers()
@@ -366,34 +406,38 @@ public sealed class Gateway : IDisposable
 
     private unsafe void SetOptionInt32(SocketOption option, int value)
     {
+        int mapped = MapGatewayOption(option);
         int tmp = value;
-        int rc = NativeMethods.zlink_gateway_setsockopt(_handle, (int)option,
+        int rc = NativeMethods.zlink_gateway_set_option(_handle, mapped,
             (IntPtr)(&tmp), (nuint)sizeof(int));
         ZlinkException.ThrowIfError(rc);
     }
 
     private unsafe void SetOptionInt64(SocketOption option, long value)
     {
+        int mapped = MapGatewayOption(option);
         long tmp = value;
-        int rc = NativeMethods.zlink_gateway_setsockopt(_handle, (int)option,
+        int rc = NativeMethods.zlink_gateway_set_option(_handle, mapped,
             (IntPtr)(&tmp), (nuint)sizeof(long));
         ZlinkException.ThrowIfError(rc);
     }
 
     private unsafe void SetOptionUInt64(SocketOption option, ulong value)
     {
+        int mapped = MapGatewayOption(option);
         ulong tmp = value;
-        int rc = NativeMethods.zlink_gateway_setsockopt(_handle, (int)option,
+        int rc = NativeMethods.zlink_gateway_set_option(_handle, mapped,
             (IntPtr)(&tmp), (nuint)sizeof(ulong));
         ZlinkException.ThrowIfError(rc);
     }
 
     private unsafe void SetOptionBytes(SocketOption option, ReadOnlySpan<byte> value)
     {
+        int mapped = MapGatewayOption(option);
         fixed (byte* ptr = value)
         {
-            int rc = NativeMethods.zlink_gateway_setsockopt(_handle,
-                (int)option, (IntPtr)ptr, (nuint)value.Length);
+            int rc = NativeMethods.zlink_gateway_set_option(_handle, mapped,
+                (IntPtr)ptr, (nuint)value.Length);
             ZlinkException.ThrowIfError(rc);
         }
     }
@@ -429,6 +473,14 @@ public sealed class Gateway : IDisposable
         if (_handle == IntPtr.Zero)
             return;
         NativeMethods.zlink_gateway_destroy(ref _handle);
+        foreach (IntPtr ptr in _serviceNameUtf8Cache.Values)
+        {
+            if (ptr != IntPtr.Zero)
+                Marshal.FreeHGlobal(ptr);
+        }
+        _serviceNameUtf8Cache.Clear();
+        _lastServiceName = null;
+        _lastServiceNameUtf8 = IntPtr.Zero;
         _handle = IntPtr.Zero;
         GC.SuppressFinalize(this);
     }
@@ -444,9 +496,20 @@ public sealed class Gateway : IDisposable
             throw new ObjectDisposedException(nameof(Gateway));
     }
 
-    private byte[] GetServiceNameUtf8(string serviceName)
+    private IntPtr GetServiceNameUtf8Ptr(string serviceName)
     {
-        return EncodeServiceNameUtf8(serviceName);
+        if (string.Equals(_lastServiceName, serviceName, StringComparison.Ordinal))
+            return _lastServiceNameUtf8;
+
+        if (!_serviceNameUtf8Cache.TryGetValue(serviceName, out IntPtr bytes))
+        {
+            bytes = EncodeServiceNameUtf8(serviceName);
+            _serviceNameUtf8Cache[serviceName] = bytes;
+        }
+
+        _lastServiceName = serviceName;
+        _lastServiceNameUtf8 = bytes;
+        return bytes;
     }
 
     private byte[] GetRoutingIdUtf8(string routingId)
@@ -454,12 +517,13 @@ public sealed class Gateway : IDisposable
         return RoutingIdCodec.FromPublicString(routingId, nameof(routingId));
     }
 
-    private static byte[] EncodeServiceNameUtf8(string serviceName)
+    private static unsafe IntPtr EncodeServiceNameUtf8(string serviceName)
     {
         int byteCount = Encoding.UTF8.GetByteCount(serviceName);
-        byte[] bytes = new byte[byteCount + 1];
-        Encoding.UTF8.GetBytes(serviceName, bytes.AsSpan(0, byteCount));
-        bytes[byteCount] = 0;
+        IntPtr bytes = Marshal.AllocHGlobal(byteCount + 1);
+        var span = new Span<byte>((void*)bytes, byteCount + 1);
+        Encoding.UTF8.GetBytes(serviceName.AsSpan(), span);
+        span[byteCount] = 0;
         return bytes;
     }
 
@@ -470,6 +534,23 @@ public sealed class Gateway : IDisposable
         if (serviceName.Length == 0)
             throw new ArgumentException("Service name must not be empty.",
                 paramName);
+    }
+
+    private static int MapGatewayOption(SocketOption option)
+    {
+        return option switch
+        {
+            SocketOption.SndHwm => 1,
+            SocketOption.RcvHwm => 2,
+            SocketOption.SndTimeo => 3,
+            SocketOption.RcvTimeo => 4,
+            SocketOption.Linger => 5,
+            SocketOption.SndBuf => 6,
+            SocketOption.RcvBuf => 7,
+            _ => throw new ArgumentException(
+                $"Socket option '{option}' is not supported by Gateway.",
+                nameof(option))
+        };
     }
 
 }

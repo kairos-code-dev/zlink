@@ -425,7 +425,7 @@ enum class registry_socket_role : int
  */
 enum class discovery_socket_role : int
 {
-    sub = ZLINK_DISCOVERY_SOCKET_SUB
+    sub = 0
 };
 
 /**
@@ -433,7 +433,7 @@ enum class discovery_socket_role : int
  */
 enum class gateway_socket_role : int
 {
-    router = ZLINK_GATEWAY_SOCKET_ROUTER
+    router = 0
 };
 
 /**
@@ -441,8 +441,8 @@ enum class gateway_socket_role : int
  */
 enum class receiver_socket_role : int
 {
-    router = ZLINK_RECEIVER_SOCKET_ROUTER,
-    dealer = ZLINK_RECEIVER_SOCKET_DEALER
+    router = 0,
+    dealer = 1
 };
 
 /**
@@ -450,10 +450,10 @@ enum class receiver_socket_role : int
  */
 enum class spot_node_socket_role : int
 {
-    node = ZLINK_SPOT_NODE_SOCKET_NODE,
-    pub = ZLINK_SPOT_NODE_SOCKET_PUB,
-    sub = ZLINK_SPOT_NODE_SOCKET_SUB,
-    dealer = ZLINK_SPOT_NODE_SOCKET_DEALER
+    node = 0,
+    pub = 1,
+    sub = 2,
+    dealer = 3
 };
 
 /**
@@ -461,9 +461,9 @@ enum class spot_node_socket_role : int
  */
 enum class spot_node_option : int
 {
-    pub_mode = ZLINK_SPOT_NODE_OPT_PUB_MODE,
-    pub_queue_hwm = ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM,
-    pub_queue_full_policy = ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY
+    pub_mode = ZLINK_SPOT_PUB_OPT_MODE,
+    pub_queue_hwm = ZLINK_SPOT_PUB_OPT_QUEUE_HWM,
+    pub_queue_full_policy = ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY
 };
 
 /**

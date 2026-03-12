@@ -22,6 +22,16 @@ set(tests
   discovery/test_gateway_handover
   test_capabilities
   test_socket_null
+  test_reconnect_ivl
+  test_reconnect_options
+  test_pubsub_filter_xpub
+  test_router_multiple_dealers
+  test_stream_socket
+  test_stream_threadsafe
+  test_stream_send_blocking_wakeup
+  test_stream_fastpath
+  test_transport_matrix
+  routing-id/test_router_auto_id_format
   routing-id/test_stream_routing_id_size
   discovery/test_service_discovery
   discovery/test_service_introspection
@@ -29,7 +39,6 @@ set(tests
   spot/test_spot_service_introspection
   ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client
   ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink
-  ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink_len32be
   ${STREAM_SCENARIO_ROOT}/asio/test_scenario_stream_asio)
 
 set(ROUTER_ROUTER_ZLINK_CONNECT_TEST
@@ -731,22 +740,12 @@ if(TARGET test_scenario_router_router_zlink_connect)
   set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES TIMEOUT 180)
   set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES LABELS "scenario;router_router;zlink_connect")
 endif()
-if(TARGET test_scenario_stream_client)
-  set_tests_properties(test_scenario_stream_client PROPERTIES TIMEOUT 120)
-  set_tests_properties(test_scenario_stream_client PROPERTIES LABELS "scenario;stream;client")
-endif()
-if(TARGET test_scenario_stream_zlink)
-  set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
-  set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
-endif()
-if(TARGET test_scenario_stream_zlink_len32be)
-  set_tests_properties(test_scenario_stream_zlink_len32be PROPERTIES TIMEOUT 120)
-  set_tests_properties(test_scenario_stream_zlink_len32be PROPERTIES LABELS "scenario;stream;zlink;len32be")
-endif()
-if(TARGET test_scenario_stream_asio)
-  set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
-  set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
-endif()
+set_tests_properties(test_scenario_stream_client PROPERTIES TIMEOUT 120)
+set_tests_properties(test_scenario_stream_client PROPERTIES LABELS "scenario;stream;client")
+set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
+set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
+set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
+set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
 if(TARGET test_scenario_stream_zmq)
   set_tests_properties(test_scenario_stream_zmq PROPERTIES TIMEOUT 120)
   set_tests_properties(test_scenario_stream_zmq PROPERTIES LABELS "scenario;stream;zmq")

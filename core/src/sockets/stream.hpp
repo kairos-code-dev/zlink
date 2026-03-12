@@ -3,15 +3,15 @@
 #ifndef __ZLINK_STREAM_HPP_INCLUDED__
 #define __ZLINK_STREAM_HPP_INCLUDED__
 
-#include <deque>
+#include <atomic>
+#include <map>
 #include <mutex>
-#include <set>
 #include <string>
 #include <vector>
-#include <atomic>
 
 #include "sockets/socket_base.hpp"
 #include "sockets/fq.hpp"
+#include "utils/fast_mutex.hpp"
 #include "utils/stdint.hpp"
 
 namespace zlink
@@ -38,70 +38,54 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
       ZLINK_FINAL;
     int stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_)
       ZLINK_OVERRIDE;
-    int stream_dispatch_start_len32be (
-      zlink_stream_on_packets_fn callback_) ZLINK_OVERRIDE;
-    int stream_dispatch_start (zlink_stream_on_packets_fn callback_,
-                               int flags_) ZLINK_OVERRIDE;
     int stream_dispatch_stop () ZLINK_OVERRIDE;
-    bool stream_dispatch_len32be_enabled () const ZLINK_OVERRIDE;
     bool stream_dispatch_active () const ZLINK_OVERRIDE;
+    bool stream_dispatch_in_callback () const ZLINK_OVERRIDE;
     int stream_dispatch_send_from_io (const zlink_routing_id_t *rid_,
                                       const void *data_,
                                       size_t size_,
-                                      int flags_,
-                                      bool len32be_) ZLINK_OVERRIDE;
+                                      int flags_) ZLINK_OVERRIDE;
     int stream_dispatch_send_msg_from_io (const zlink_routing_id_t *rid_,
                                           zlink::msg_t *msg_,
-                                          int flags_,
-                                          bool len32be_) ZLINK_OVERRIDE;
+                                          int flags_) ZLINK_OVERRIDE;
+    std::recursive_mutex *api_sync_mutex () ZLINK_OVERRIDE;
 
   private:
-    typedef std::vector<uint32_t> pending_notify_vec_t;
-    typedef std::deque<uint32_t> pending_notify_deque_t;
+    enum
+    {
+        route_shard_count = 64
+    };
 
+    struct route_shard_t
+    {
+        typedef std::map<uint32_t, zlink::pipe_t *> routes_t;
+
+        fast_mutex_t sync;
+        routes_t routes;
+    };
+
+    route_shard_t &route_shard_for (uint32_t routing_id_);
     void identify_peer (pipe_t *pipe_, bool locally_initiated_);
     uint32_t ensure_dispatch_routing_id (pipe_t *pipe_);
-    void queue_notify_event (uint32_t routing_id_value_);
-    bool prefetch_notify_event ();
-    int deliver_prefetched (msg_t *msg_);
-    void init_routing_id_frame (msg_t *msg_,
-                                uint32_t routing_id_value_,
-                                metadata_t *metadata_);
     void maybe_emit_connect_event (pipe_t *pipe_,
                                    uint32_t routing_id_value_ = 0);
     int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_)
       ZLINK_OVERRIDE;
-    int dispatch_len32be (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     uint32_t resolve_dispatch_routing_id_fast (const zlink::msg_t *msg_,
                                                zlink::pipe_t *pipe_);
     void stop_dispatch_from_callback ();
 
     fq_t _fq;
 
-    bool _prefetched;
-    bool _routing_id_sent;
-    uint32_t _prefetched_routing_id_value;
-    msg_t _prefetched_msg;
-
     zlink::pipe_t *_current_out;
     bool _more_out;
 
     std::atomic<uint32_t> _next_integral_routing_id;
-    typedef std::vector<zlink::pipe_t *> out_pipe_vec_t;
-
-    out_pipe_vec_t _out_by_id;
-
-    pending_notify_vec_t _pending_notify_events_vec;
-    pending_notify_deque_t _pending_notify_events_deque;
+    route_shard_t _route_shards[route_shard_count];
 
     std::atomic<bool> _dispatch_active;
-    std::atomic<bool> _dispatch_len32be;
     std::atomic<zlink_stream_on_raw_fn> _dispatch_raw_callback;
-    std::atomic<zlink_stream_on_packets_fn> _dispatch_packets_callback;
-    std::atomic<uint32_t> _dispatch_reassembly_epoch;
-    mutable std::mutex _dispatch_control_mu;
-    mutable std::mutex _connect_event_mu;
-    std::set<uint32_t> _connect_event_routing_ids;
+    mutable std::recursive_mutex _api_mutex;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (stream_t)
 };

@@ -59,6 +59,7 @@ class dealer_dealer_client_bench_t
           _settings (settings),
           _ctx (),
           _holders (),
+          _monitors (),
           _socket_states (),
           _poller (),
           _poll_events (),
@@ -70,6 +71,7 @@ class dealer_dealer_client_bench_t
           _result ()
     {
         _holders.reserve (_settings.clients);
+        _monitors.reserve (_settings.clients);
         _socket_states.reserve (_settings.clients);
         _poll_events.reserve (_settings.clients);
 
@@ -114,6 +116,9 @@ class dealer_dealer_client_bench_t
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
             if (!perf::multi::setup_tls_client (sock, _transport))
                 return false;
+            _monitors.push_back (perf::multi::connect_monitor_t ());
+            if (!perf::multi::open_connect_monitor (sock, _monitors.back ()))
+                return false;
             if (sock.connect (_endpoint) != 0)
                 return false;
 
@@ -125,6 +130,13 @@ class dealer_dealer_client_bench_t
                                 &_socket_states.back ());
             (void) _poller.modify (sock, static_cast<zlink::poll_event> (0));
         }
+
+        const bool ready = perf::multi::wait_all_connect_ready (
+          _monitors, _settings.connect_ready_timeout_ms);
+        for (size_t i = 0; i < _monitors.size (); ++i)
+            perf::multi::close_connect_monitor (_monitors[i]);
+        if (!ready)
+            return false;
 
         return !_socket_states.empty ();
     }
@@ -342,6 +354,7 @@ class dealer_dealer_client_bench_t
 
     perf::multi::ctx_guard_t _ctx;
     std::vector<std::unique_ptr<perf::multi::socket_guard_t> > _holders;
+    std::vector<perf::multi::connect_monitor_t> _monitors;
     std::vector<socket_state_t> _socket_states;
     zlink::poller_t _poller;
     std::vector<zlink::poll_event_t> _poll_events;

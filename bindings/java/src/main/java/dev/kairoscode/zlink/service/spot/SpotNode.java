@@ -125,8 +125,7 @@ public final class SpotNode implements AutoCloseable {
 
     public void setSockOpt(SpotNodeOption option, int value) {
         Objects.requireNonNull(option, "option");
-        setSockOptInt(SpotNodeSocketRole.NODE.getValue(), option.getValue(),
-            value);
+        setSockOptPubInt(option.getValue(), value);
     }
 
     public void setOption(SpotNodeSocketRole role,
@@ -175,16 +174,16 @@ public final class SpotNode implements AutoCloseable {
     }
 
     public Socket pubSocket() {
-        MemorySegment sock = Native.spotNodePubSocket(handle);
+        MemorySegment sock = Native.spotNodeDefaultPub(handle);
         if (sock == null || sock.address() == 0)
-            throw ZlinkException.fromLastError("zlink_spot_node_pub_socket");
+            throw ZlinkException.fromLastError("zlink_spot_node_default_pub");
         return Socket.adopt(sock, false);
     }
 
     public Socket subSocket() {
-        MemorySegment sock = Native.spotNodeSubSocket(handle);
+        MemorySegment sock = Native.spotNodeDefaultSub(handle);
         if (sock == null || sock.address() == 0)
-            throw ZlinkException.fromLastError("zlink_spot_node_sub_socket");
+            throw ZlinkException.fromLastError("zlink_spot_node_default_sub");
         return Socket.adopt(sock, false);
     }
 
@@ -192,9 +191,10 @@ public final class SpotNode implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
             count.set(ValueLayout.JAVA_LONG, 0, 0L);
-            int rc = Native.spotNodePubPeers(handle, MemorySegment.NULL, count);
+            MemorySegment pub = Native.spotNodeDefaultPub(handle);
+            int rc = Native.spotPubPeers(pub, MemorySegment.NULL, count);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_pub_peers");
+                throw ZlinkException.fromLastError("zlink_spot_pub_peers");
             long available = count.get(ValueLayout.JAVA_LONG, 0);
             if (available <= 0)
                 return Collections.emptyList();
@@ -202,9 +202,9 @@ public final class SpotNode implements AutoCloseable {
             MemorySegment peersMem = arena.allocate(NativeLayouts.PEER_INFO_LAYOUT,
               available);
             count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.spotNodePubPeers(handle, peersMem, count);
+            rc = Native.spotPubPeers(pub, peersMem, count);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_pub_peers");
+                throw ZlinkException.fromLastError("zlink_spot_pub_peers");
 
             long actualLong = count.get(ValueLayout.JAVA_LONG, 0);
             if (actualLong < 0)
@@ -226,9 +226,10 @@ public final class SpotNode implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
             count.set(ValueLayout.JAVA_LONG, 0, 0L);
-            int rc = Native.spotNodeSubPeers(handle, MemorySegment.NULL, count);
+            MemorySegment sub = Native.spotNodeDefaultSub(handle);
+            int rc = Native.spotSubPeers(sub, MemorySegment.NULL, count);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_sub_peers");
+                throw ZlinkException.fromLastError("zlink_spot_sub_peers");
             long available = count.get(ValueLayout.JAVA_LONG, 0);
             if (available <= 0)
                 return Collections.emptyList();
@@ -236,9 +237,9 @@ public final class SpotNode implements AutoCloseable {
             MemorySegment peersMem = arena.allocate(NativeLayouts.PEER_INFO_LAYOUT,
               available);
             count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.spotNodeSubPeers(handle, peersMem, count);
+            rc = Native.spotSubPeers(sub, peersMem, count);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_sub_peers");
+                throw ZlinkException.fromLastError("zlink_spot_sub_peers");
 
             long actualLong = count.get(ValueLayout.JAVA_LONG, 0);
             if (actualLong < 0)
@@ -291,9 +292,23 @@ public final class SpotNode implements AutoCloseable {
 
     private void setSockOptRaw(int role, int optionId, MemorySegment value,
                                long len) {
-        int rc = Native.spotNodeSetSockOpt(handle, role, optionId, value, len);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_spot_node_setsockopt");
+        int rc;
+        if (role == SpotNodeSocketRole.PUB.getValue()) {
+            rc = Native.spotNodeSetPubOption(handle, mapPubOption(optionId),
+              value, len);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_spot_node_set_pub_option");
+            return;
+        }
+        if (role == SpotNodeSocketRole.SUB.getValue()) {
+            rc = Native.spotNodeSetSubOption(handle, mapSubOption(optionId),
+              value, len);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_spot_node_set_sub_option");
+            return;
+        }
+        throw new UnsupportedOperationException(
+          "Node-level generic socket options are not supported.");
     }
 
     private void setSockOptBytes(int role, int optionId, byte[] value,
@@ -319,8 +334,42 @@ public final class SpotNode implements AutoCloseable {
         setSockOptRaw(role, optionId, buf, Long.BYTES);
     }
 
+    private void setSockOptPubInt(int optionId, int value) {
+        MemorySegment buf = ensureSockOptScratch(Integer.BYTES);
+        buf.set(ValueLayout.JAVA_INT, 0, value);
+        int rc = Native.spotNodeSetPubOption(handle, optionId, buf,
+          Integer.BYTES);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_spot_node_set_pub_option");
+    }
+
     private static void closeArena(Arena arena) {
         if (arena != null && arena.scope().isAlive())
             arena.close();
+    }
+
+    private static int mapPubOption(int optionId) {
+        return switch (optionId) {
+            case 23 -> 1;
+            case 28 -> 2;
+            case 17 -> 3;
+            case 69 -> 4;
+            case 11 -> 8;
+            case 12 -> 9;
+            default -> throw new IllegalArgumentException(
+              "unsupported Spot PUB socket option: " + optionId);
+        };
+    }
+
+    private static int mapSubOption(int optionId) {
+        return switch (optionId) {
+            case 24 -> 1;
+            case 27 -> 2;
+            case 17 -> 3;
+            case 11 -> 6;
+            case 12 -> 7;
+            default -> throw new IllegalArgumentException(
+              "unsupported Spot SUB socket option: " + optionId);
+        };
     }
 }

@@ -3,10 +3,9 @@
 package dev.kairoscode.zlink.integration.bench.src;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.ReceiveFlag;
+import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.ServiceType;
-import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.integration.bench.common.PerfCommon;
 import dev.kairoscode.zlink.integration.bench.common.PerfSingleMetricHeader;
@@ -16,11 +15,14 @@ import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.gateway.Gateway;
 import dev.kairoscode.zlink.service.receiver.Receiver;
 import dev.kairoscode.zlink.service.registry.Registry;
+import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * GATEWAY benchmark using high-level Gateway/Receiver APIs.
- * sender=Gateway, receiver=Receiver.routerSocket().
  */
 public final class PerfGateway {
     private static final String PATTERN = "GATEWAY";
@@ -56,170 +58,246 @@ public final class PerfGateway {
             registry.setHeartbeat(5000, 60000);
             registry.start();
 
-            discovery.connectRegistry(regPub);
+            connectRegistryWithRetry(() -> discovery.connectRegistry(regRouter));
             discovery.subscribe(serviceName);
+
+            applyServiceSocketOptions(gateway, receiver);
 
             String providerEndpoint = PerfCommon.endpointFor(tr,
                 "gateway-provider");
             PerfTls.configureReceiverTlsServerIfNeeded(receiver, tr);
             receiver.bind(providerEndpoint);
-            receiver.connectRegistry(regRouter);
+            connectRegistryWithRetry(() -> receiver.connectRegistry(regRouter));
             receiver.register(serviceName, providerEndpoint, 1);
 
             PerfTls.configureGatewayTlsClientIfNeeded(gateway, tr);
+            int readyTimeoutMs = PerfCommon.resolveGatewayReadyTimeoutMs();
 
             if (!PerfCommon.waitUntil(
                 () -> receiver.registerResult(serviceName).status() == 0,
-                5000,
-                20)) {
+                readyTimeoutMs, 1)) {
                 return 2;
             }
 
             if (!PerfCommon.waitUntil(() -> discovery.receiverCount(serviceName) > 0,
-                5000,
-                20)) {
+                readyTimeoutMs, 1)) {
                 return 2;
             }
 
             if (!PerfCommon.waitUntil(() -> gateway.connectionCount(serviceName) > 0,
-                5000,
-                20)) {
+                readyTimeoutMs, 1)) {
                 return 2;
             }
 
-            try (Socket providerRouter = receiver.routerSocket()) {
-                PerfCommon.applySingleSocketOptions(providerRouter);
-                providerRouter.setOption(SocketOptions.RCVTIMEO, 5000);
+            int payloadSize = Math.max(msgSize, PerfSingleMetricHeader.HEADER_SIZE);
+            int warmupCount = PerfCommon.resolveWarmupCount(PATTERN, msgSize);
+            int durationSeconds = PerfCommon.resolveDurationSeconds();
+            int latencyCap = PerfCommon.resolveLatencySampleCap();
+            int recvTimeoutMs = PerfCommon.resolveRecvTimeoutMs();
+            int runId = PerfCommon.randomRunId();
 
-                int payloadSize = Math.max(msgSize,
-                    PerfSingleMetricHeader.HEADER_SIZE);
-                byte[] payload = new byte[payloadSize];
-                byte[] recv = new byte[payloadSize];
-                byte[] routingId = new byte[256];
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment payload = arena.allocate(payloadSize, 8);
+                payload.fill((byte) 'a');
+                long[] seq = new long[] {1L};
 
-                int runId = PerfCommon.randomRunId();
-                long seq = 1;
-                try (Message payloadMessage = new Message(payloadSize)) {
-
-                    MemorySegment payloadSegment = MemorySegment.ofArray(payload);
-                    int warmupCount = PerfCommon.resolveWarmupCount(PATTERN, msgSize);
-                    for (int i = 0; i < warmupCount; i++) {
-                        PerfSingleMetricHeader.stampPayload(payload, runId,
-                            PerfSingleMetricHeader.PHASE_WARMUP, msgSize, seq++,
-                            PerfSingleMetricHeader.nowUs());
-                        MemorySegment.copy(payloadSegment, 0,
-                            payloadMessage.dataSegment(), 0, payloadSize);
-                        gateway.sendTo(serviceName, payloadMessage);
-                        gatewayReceiveProviderMessage(providerRouter, routingId, recv);
-                    }
-
-                    Thread.sleep(PerfCommon.resolveSettleMs());
-
-                    PerfSingleMetricHeader.Header header =
-                        new PerfSingleMetricHeader.Header();
-                    PerfCommon.LatencyReservoir latency =
-                        new PerfCommon.LatencyReservoir(
-                            PerfCommon.resolveLatencySampleCap());
-
-                    long received = 0;
-                    long endNs = System.nanoTime()
-                        + (long) PerfCommon.resolveDurationSeconds() * 1_000_000_000L;
-                    long beginNs = System.nanoTime();
-
-                    while (System.nanoTime() < endNs) {
-                        PerfSingleMetricHeader.stampPayload(payload, runId,
-                            PerfSingleMetricHeader.PHASE_ACTIVE, msgSize, seq++,
-                            PerfSingleMetricHeader.nowUs());
-                        MemorySegment.copy(payloadSegment, 0,
-                            payloadMessage.dataSegment(), 0, payloadSize);
-                        gateway.sendTo(serviceName, payloadMessage);
-
-                        gatewayReceiveProviderMessage(providerRouter, routingId, recv);
-                        if (PerfSingleMetricHeader.decodePayloadHeader(recv, header)
-                            && header.runId == runId
-                            && header.phase == PerfSingleMetricHeader.PHASE_ACTIVE) {
-                            long nowUs = PerfSingleMetricHeader.nowUs();
-                            latency.add(Math.max(0L, nowUs - header.sentTsUs));
-                            received++;
-                        }
-                    }
-
-                    double elapsedSec = Math.max(1e-9,
-                        (System.nanoTime() - beginNs) / 1_000_000_000.0);
-                    double throughput = received / elapsedSec;
-                    PerfCommon.Stats stats = latency.snapshot();
-                    PerfCommon.printResult(PATTERN, tr, msgSize, throughput,
-                        stats.meanUs(), stats.p95Us(), stats.p99Us());
-                    return 0;
+                PhaseResult warmup = runPhase(gateway, receiver, serviceName,
+                    payload, payloadSize, msgSize, runId, seq,
+                    PerfSingleMetricHeader.PHASE_WARMUP, warmupCount, 0, 0,
+                    recvTimeoutMs);
+                if (!warmup.ok || warmup.received < warmupCount) {
+                    return 2;
                 }
+
+                Thread.sleep(PerfCommon.resolveSettleMs());
+
+                PhaseResult active = runPhase(gateway, receiver, serviceName,
+                    payload, payloadSize, msgSize, runId, seq,
+                    PerfSingleMetricHeader.PHASE_ACTIVE, 0, durationSeconds,
+                    latencyCap, recvTimeoutMs);
+                if (!active.ok || active.received <= 0) {
+                    return 2;
+                }
+
+                double throughput =
+                    active.received / (double) Math.max(durationSeconds, 1);
+                PerfCommon.Stats stats = active.latency.snapshot();
+                PerfCommon.printResult(PATTERN, tr, msgSize, throughput,
+                    stats.meanUs(), stats.p95Us(), stats.p99Us());
+                return 0;
             }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             return 2;
         } catch (RuntimeException ex) {
+            String message = ex.getMessage() == null
+                ? ex.getClass().getSimpleName()
+                : ex.getMessage();
+            System.err.println("single_gateway_error:" + message);
             return 2;
         }
     }
 
-    private static void gatewayReceiveProviderMessage(Socket router,
-                                                      byte[] routingIdBuffer,
-                                                      byte[] payloadBuffer) {
-        int idLen = receiveBlocking(router, routingIdBuffer);
-        if (idLen <= 0 || getRcvMore(router) == 0) {
-            throw new IllegalStateException(
-                "gateway provider message missing routing frame");
-        }
+    private static PhaseResult runPhase(Gateway gateway, Receiver receiver,
+                                        String serviceName,
+                                        MemorySegment payload, int payloadSize,
+                                        int msgSize, int runId, long[] seq,
+                                        int phase, int warmupCount,
+                                        int durationSeconds, int latencyCap,
+                                        int recvTimeoutMs) {
+        final boolean active = durationSeconds > 0;
+        final long deadlineNs = active
+            ? System.nanoTime()
+                + (long) Math.max(durationSeconds, 1) * 1_000_000_000L
+            : 0L;
+        final long drainDeadlineNs =
+            (long) Math.max(recvTimeoutMs, 1) * 1_000_000L;
+        final LongAdder received = new LongAdder();
+        final AtomicBoolean senderDone = new AtomicBoolean(false);
+        final AtomicReference<RuntimeException> recvError =
+            new AtomicReference<>();
+        final PerfCommon.LatencyReservoir latency =
+            new PerfCommon.LatencyReservoir(Math.max(latencyCap, 1));
 
-        int payloadLen = receiveBlocking(router, payloadBuffer);
-        if (payloadLen < 0) {
-            throw new IllegalStateException(
-                "gateway provider message payload receive failed");
-        }
+        Thread receiverThread = new Thread(() -> {
+            long lastRecvNs = System.nanoTime();
+            PerfSingleMetricHeader.Header header =
+                new PerfSingleMetricHeader.Header();
 
-        while (getRcvMore(router) != 0) {
-            int drained = receiveNonBlocking(router, payloadBuffer);
-            if (drained <= 0) {
-                throw new IllegalStateException(
-                    "gateway provider message multipart drain failed");
+            try (Arena recvArena = Arena.ofConfined()) {
+                MemorySegment recvBuffer = recvArena.allocate(payloadSize, 8);
+                while (true) {
+                    boolean done = senderDone.get();
+                    try {
+                        int bytesRead = receiver.recvSinglePayload(recvBuffer,
+                            done ? ReceiveFlag.DONTWAIT : ReceiveFlag.NONE);
+                        lastRecvNs = System.nanoTime();
+                        accountMessage(recvBuffer, bytesRead, payloadSize,
+                            active, runId, phase, header, received, latency);
+
+                        while (true) {
+                            bytesRead = receiver.recvSinglePayload(recvBuffer,
+                                ReceiveFlag.DONTWAIT);
+                            lastRecvNs = System.nanoTime();
+                            accountMessage(recvBuffer, bytesRead, payloadSize,
+                                active, runId, phase, header, received, latency);
+                        }
+                    } catch (ZlinkException ex) {
+                        if (isInterrupted(ex.errno())) {
+                            continue;
+                        }
+                        if (isWouldBlock(ex.errno())) {
+                            if (done
+                                && System.nanoTime() - lastRecvNs >= drainDeadlineNs) {
+                                break;
+                            }
+                            Thread.yield();
+                            continue;
+                        }
+                        throw ex;
+                    }
+                }
+            } catch (RuntimeException ex) {
+                recvError.set(ex);
+            }
+        }, "zlink-java-perf-gateway-recv");
+        receiverThread.setDaemon(true);
+        receiverThread.start();
+
+        boolean ok = true;
+        if (active) {
+            while (System.nanoTime() < deadlineNs) {
+                if (!PerfSingleMetricHeader.stampPayload(payload, payloadSize,
+                    runId, phase, msgSize, seq[0]++,
+                    PerfSingleMetricHeader.nowUs())) {
+                    ok = false;
+                    break;
+                }
+                try {
+                    gateway.sendTo(serviceName, payload, SendFlag.NONE);
+                } catch (RuntimeException ex) {
+                    ok = false;
+                    break;
+                }
+            }
+        } else {
+            for (int i = 0; i < warmupCount; i++) {
+                if (!PerfSingleMetricHeader.stampPayload(payload, payloadSize,
+                    runId, phase, msgSize, seq[0]++,
+                    PerfSingleMetricHeader.nowUs())) {
+                    ok = false;
+                    break;
+                }
+                try {
+                    gateway.sendTo(serviceName, payload, SendFlag.NONE);
+                } catch (RuntimeException ex) {
+                    ok = false;
+                    break;
+                }
             }
         }
-    }
 
-    private static int receiveBlocking(Socket socket, byte[] buffer) {
-        while (true) {
-            try {
-                return socket.recv(buffer, 0, buffer.length, ReceiveFlag.NONE);
-            } catch (ZlinkException ex) {
-                if (isInterrupted(ex.errno())) {
-                    continue;
-                }
-                if (isWouldBlock(ex.errno())) {
-                    return 0;
-                }
-                throw ex;
-            }
+        senderDone.set(true);
+        try {
+            receiverThread.join();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return new PhaseResult(false, received.sum(), latency);
         }
+
+        return new PhaseResult(ok && recvError.get() == null, received.sum(),
+            latency);
     }
 
-    private static int receiveNonBlocking(Socket socket, byte[] buffer) {
-        while (true) {
-            try {
-                return socket.recv(buffer, 0, buffer.length, ReceiveFlag.DONTWAIT);
-            } catch (ZlinkException ex) {
-                if (isInterrupted(ex.errno())) {
-                    continue;
-                }
-                if (isWouldBlock(ex.errno())) {
-                    return 0;
-                }
-                throw ex;
-            }
+    private static void accountMessage(MemorySegment recvBuffer, int bytesRead,
+                                       int payloadSize, boolean active,
+                                       int runId, int phase,
+                                       PerfSingleMetricHeader.Header header,
+                                       LongAdder received,
+                                       PerfCommon.LatencyReservoir latency) {
+        if (bytesRead != payloadSize) {
+            return;
         }
+        if (!PerfSingleMetricHeader.decodePayloadHeader(recvBuffer, payloadSize,
+            header)) {
+            return;
+        }
+        if (header.runId != runId || header.phase != phase) {
+            return;
+        }
+
+        received.increment();
+        if (!active) {
+            return;
+        }
+        long nowUs = PerfSingleMetricHeader.nowUs();
+        latency.add(Math.max(0L, nowUs - header.sentTsUs));
     }
 
-    private static int getRcvMore(Socket socket) {
-        Integer value = socket.getOption(SocketOptions.RCVMORE);
-        return value == null ? 0 : value;
+    private static void applyServiceSocketOptions(Gateway gateway,
+                                                  Receiver receiver) {
+        int sndHwm = resolveSingleHwmValue("PERF_SINGLE_SNDHWM");
+        int rcvHwm = resolveSingleHwmValue("PERF_SINGLE_RCVHWM");
+        int sndTimeo = PerfCommon.parseEnvNonNegative(
+            "PERF_SINGLE_SNDTIMEO_MS", 200);
+        int recvTimeo = PerfCommon.parseEnvNonNegative(
+            "PERF_SINGLE_RCVTIMEO_MS", 200);
+
+        gateway.setOption(SocketOptions.SNDHWM, sndHwm);
+        gateway.setOption(SocketOptions.RCVHWM, rcvHwm);
+        gateway.setOption(SocketOptions.SNDTIMEO, sndTimeo);
+        gateway.setOption(SocketOptions.RCVTIMEO, recvTimeo);
+
+        receiver.setOption(SocketOptions.SNDHWM, sndHwm);
+        receiver.setOption(SocketOptions.RCVHWM, rcvHwm);
+        receiver.setOption(SocketOptions.SNDTIMEO, sndTimeo);
+        receiver.setOption(SocketOptions.RCVTIMEO, recvTimeo);
+    }
+
+    private static int resolveSingleHwmValue(String specificName) {
+        int hwm = PerfCommon.parseEnv("PERF_SINGLE_HWM", 1000);
+        int specific = PerfCommon.parseEnv(specificName, 0);
+        return specific > 0 ? specific : hwm;
     }
 
     private static boolean isWouldBlock(int errno) {
@@ -228,5 +306,36 @@ public final class PerfGateway {
 
     private static boolean isInterrupted(int errno) {
         return errno == ERRNO_EINTR;
+    }
+
+    private static void connectRegistryWithRetry(Runnable connect) {
+        RuntimeException last = null;
+        long deadlineNs = System.nanoTime() + 5_000_000_000L;
+        while (System.nanoTime() < deadlineNs) {
+            try {
+                connect.run();
+                return;
+            } catch (ZlinkException ex) {
+                if (!isInterrupted(ex.errno()) && !isWouldBlock(ex.errno())) {
+                    throw ex;
+                }
+                last = ex;
+            }
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("registry connect interrupted", ex);
+            }
+        }
+
+        if (last != null) {
+            throw last;
+        }
+        throw new IllegalStateException("registry connect timeout");
+    }
+
+    private record PhaseResult(boolean ok, long received,
+                               PerfCommon.LatencyReservoir latency) {
     }
 }

@@ -10,6 +10,7 @@ namespace Zlink.Service;
 
 public sealed class Receiver : IDisposable
 {
+    private const int EndpointBufferSize = 256;
     private IntPtr _handle;
 
     internal IntPtr Handle => _handle;
@@ -105,94 +106,157 @@ public sealed class Receiver : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public void SetOption(ReceiverSocketRole role, SocketOptionKey<int> option,
-        int value)
+    public unsafe void SetRoutingId(string routingId)
+    {
+        ValidateNotEmpty(routingId, nameof(routingId));
+        EnsureNotDisposed();
+        byte[] encoded = RoutingIdCodec.FromPublicString(routingId,
+            nameof(routingId));
+        fixed (byte* ptr = encoded)
+        {
+            int rc = NativeMethods.zlink_receiver_set_routing_id(_handle,
+                (IntPtr)ptr, (nuint)encoded.Length);
+            ZlinkException.ThrowIfError(rc);
+        }
+    }
+
+    public string GetLastEndpoint()
+    {
+        EnsureNotDisposed();
+        byte[] endpoint = new byte[EndpointBufferSize];
+        nuint size = EndpointBufferSize;
+        int rc = NativeMethods.zlink_receiver_last_endpoint(_handle, endpoint,
+            ref size);
+        ZlinkException.ThrowIfError(rc);
+        int length = (int)Math.Min((nuint)endpoint.Length, size);
+        if (length > 0 && endpoint[length - 1] == 0)
+            length--;
+        return Encoding.UTF8.GetString(endpoint, 0, length);
+    }
+
+    public void SetOption(SocketOptionKey<int> option, int value)
     {
         EnsureNotDisposed();
         SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
-        SetOptionInt32(role, option.Option, value);
+        SetOptionInt32(option.Option, value);
+    }
+
+    public void SetOption(SocketOptionKey<long> option, long value)
+    {
+        EnsureNotDisposed();
+        SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
+        SetOptionInt64(option.Option, value);
+    }
+
+    public void SetOption(SocketOptionKey<ulong> option, ulong value)
+    {
+        EnsureNotDisposed();
+        SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
+        SetOptionUInt64(option.Option, value);
+    }
+
+    public void SetOption(SocketOptionKey<byte[]> option, byte[] value)
+    {
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+        SetOption(option, value.AsSpan());
+    }
+
+    public void SetOption(SocketOptionKey<byte[]> option, ReadOnlySpan<byte> value)
+    {
+        EnsureNotDisposed();
+        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
+        SetOptionBytes(option.Option, value);
+    }
+
+    public void SetOption(SocketOptionKey<string> option, string value)
+    {
+        EnsureNotDisposed();
+        SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
+        SetOptionString(option.Option, value);
+    }
+
+    public void SetOption(ReceiverSocketRole role, SocketOptionKey<int> option,
+        int value)
+    {
+        ValidateRole(role);
+        SetOption(option, value);
     }
 
     public void SetOption(ReceiverSocketRole role, SocketOptionKey<long> option,
         long value)
     {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
-        SetOptionInt64(role, option.Option, value);
+        ValidateRole(role);
+        SetOption(option, value);
     }
 
     public void SetOption(ReceiverSocketRole role, SocketOptionKey<ulong> option,
         ulong value)
     {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
-        SetOptionUInt64(role, option.Option, value);
+        ValidateRole(role);
+        SetOption(option, value);
     }
 
     public void SetOption(ReceiverSocketRole role, SocketOptionKey<byte[]> option,
         byte[] value)
     {
-        if (value == null)
-            throw new ArgumentNullException(nameof(value));
-        SetOption(role, option, value.AsSpan());
+        ValidateRole(role);
+        SetOption(option, value);
     }
 
     public void SetOption(ReceiverSocketRole role, SocketOptionKey<byte[]> option,
         ReadOnlySpan<byte> value)
     {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
-        SetOptionBytes(role, option.Option, value);
+        ValidateRole(role);
+        SetOption(option, value);
     }
 
     public void SetOption(ReceiverSocketRole role, SocketOptionKey<string> option,
         string value)
     {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
-        SetOptionString(role, option.Option, value);
+        ValidateRole(role);
+        SetOption(option, value);
     }
 
-    private unsafe void SetOptionInt32(ReceiverSocketRole role,
-        SocketOption option, int value)
+    private unsafe void SetOptionInt32(SocketOption option, int value)
     {
+        int mapped = MapReceiverOption(option);
         int tmp = value;
-        int rc = NativeMethods.zlink_receiver_setsockopt(_handle, (int)role,
-            (int)option, (IntPtr)(&tmp), (nuint)sizeof(int));
+        int rc = NativeMethods.zlink_receiver_set_option(_handle, mapped,
+            (IntPtr)(&tmp), (nuint)sizeof(int));
         ZlinkException.ThrowIfError(rc);
     }
 
-    private unsafe void SetOptionInt64(ReceiverSocketRole role,
-        SocketOption option, long value)
+    private unsafe void SetOptionInt64(SocketOption option, long value)
     {
+        int mapped = MapReceiverOption(option);
         long tmp = value;
-        int rc = NativeMethods.zlink_receiver_setsockopt(_handle, (int)role,
-            (int)option, (IntPtr)(&tmp), (nuint)sizeof(long));
+        int rc = NativeMethods.zlink_receiver_set_option(_handle, mapped,
+            (IntPtr)(&tmp), (nuint)sizeof(long));
         ZlinkException.ThrowIfError(rc);
     }
 
-    private unsafe void SetOptionUInt64(ReceiverSocketRole role,
-        SocketOption option, ulong value)
+    private unsafe void SetOptionUInt64(SocketOption option, ulong value)
     {
+        int mapped = MapReceiverOption(option);
         ulong tmp = value;
-        int rc = NativeMethods.zlink_receiver_setsockopt(_handle, (int)role,
-            (int)option, (IntPtr)(&tmp), (nuint)sizeof(ulong));
+        int rc = NativeMethods.zlink_receiver_set_option(_handle, mapped,
+            (IntPtr)(&tmp), (nuint)sizeof(ulong));
         ZlinkException.ThrowIfError(rc);
     }
 
-    private unsafe void SetOptionBytes(ReceiverSocketRole role,
-        SocketOption option, ReadOnlySpan<byte> value)
+    private unsafe void SetOptionBytes(SocketOption option, ReadOnlySpan<byte> value)
     {
+        int mapped = MapReceiverOption(option);
         fixed (byte* ptr = value)
         {
-            int rc = NativeMethods.zlink_receiver_setsockopt(_handle, (int)role,
-                (int)option, (IntPtr)ptr, (nuint)value.Length);
+            int rc = NativeMethods.zlink_receiver_set_option(_handle, mapped,
+                (IntPtr)ptr, (nuint)value.Length);
             ZlinkException.ThrowIfError(rc);
         }
     }
 
-    private void SetOptionString(ReceiverSocketRole role, SocketOption option,
-        string value)
+    private void SetOptionString(SocketOption option, string value)
     {
         if (value == null)
             throw new ArgumentNullException(nameof(value));
@@ -202,7 +266,7 @@ public sealed class Receiver : IDisposable
         {
             Span<byte> buffer = stackalloc byte[maxByteCount];
             int byteCount = Encoding.UTF8.GetBytes(value.AsSpan(), buffer);
-            SetOptionBytes(role, option, buffer.Slice(0, byteCount));
+            SetOptionBytes(option, buffer.Slice(0, byteCount));
             return;
         }
 
@@ -210,7 +274,7 @@ public sealed class Receiver : IDisposable
         try
         {
             int byteCount = Encoding.UTF8.GetBytes(value, rented);
-            SetOptionBytes(role, option, rented.AsSpan(0, byteCount));
+            SetOptionBytes(option, rented.AsSpan(0, byteCount));
         }
         finally
         {
@@ -221,10 +285,8 @@ public sealed class Receiver : IDisposable
     public Socket CreateRouterSocket()
     {
         EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_receiver_router_socket_unsafe(_handle);
-        if (handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-        return Socket.Adopt(handle, false);
+        throw new ZlinkException((int)ErrorCode.ENotSup,
+            "Receiver router socket handle is not exposed by the current core API.");
     }
 
     public PeerRecord[] GetRouterPeers()
@@ -256,6 +318,91 @@ public sealed class Receiver : IDisposable
         }
     }
 
+    public ReceiverMessage Receive(ReceiveFlags flags = ReceiveFlags.None)
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_receiver_recv(_handle, out var parts,
+            out var count, (int)flags, out var routingId);
+        if (rc != 0)
+            throw ZlinkException.FromLastError();
+        Message[] messages = Message.FromNativeVector(parts, count);
+        string publicRoutingId = RoutingIdCodec.ToPublicString(
+            NativeHelpers.ReadRoutingId(ref routingId));
+        return new ReceiverMessage(publicRoutingId, messages);
+    }
+
+    public Message ReceiveSingleMessage(ReceiveFlags flags = ReceiveFlags.None)
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_receiver_recv(_handle, out var parts,
+            out var count, (int)flags, IntPtr.Zero);
+        if (rc != 0)
+            throw ZlinkException.FromLastError();
+        if (parts == IntPtr.Zero || count == 0)
+            throw new InvalidOperationException("Expected a single-part message.");
+
+        try
+        {
+            if (count != 1)
+                throw new InvalidOperationException(
+                    "Expected a single-part message.");
+            return Message.MoveFromNativeSingle(parts);
+        }
+        finally
+        {
+            NativeMethods.zlink_multipart_close(parts, count);
+        }
+    }
+
+    public int ReceiveSinglePayload(Span<byte> payloadBuffer,
+        ReceiveFlags flags = ReceiveFlags.None)
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_receiver_recv(_handle, out var parts,
+            out var count, (int)flags, IntPtr.Zero);
+        if (rc != 0)
+            throw ZlinkException.FromLastError();
+        try
+        {
+            return Message.CopySinglePartPayload(parts, count, payloadBuffer);
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero && count > 0)
+                NativeMethods.zlink_multipart_close(parts, count);
+        }
+    }
+
+    public unsafe int ReceiveSinglePayload(Span<byte> payloadBuffer,
+        Span<byte> routingIdBuffer, out int routingIdLength,
+        ReceiveFlags flags = ReceiveFlags.None)
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_receiver_recv(_handle, out var parts,
+            out var count, (int)flags, out ZlinkRoutingId routingId);
+        if (rc != 0)
+            throw ZlinkException.FromLastError();
+        try
+        {
+            int sourceLength = routingId.Size;
+            if (sourceLength > routingIdBuffer.Length)
+            {
+                throw new ArgumentException("routingIdBuffer is too small.",
+                    nameof(routingIdBuffer));
+            }
+
+            routingIdLength = sourceLength;
+            for (int i = 0; i < sourceLength; i++)
+                routingIdBuffer[i] = routingId.Data[i];
+            return Message.CopySinglePartPayload(parts, count, payloadBuffer);
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero && count > 0)
+                NativeMethods.zlink_multipart_close(parts, count);
+        }
+    }
+
     public void Dispose()
     {
         if (_handle == IntPtr.Zero)
@@ -283,6 +430,33 @@ public sealed class Receiver : IDisposable
         if (value.Length == 0)
             throw new ArgumentException("Value must not be empty.", paramName);
     }
+
+    private static void ValidateRole(ReceiverSocketRole role)
+    {
+        if (role != ReceiverSocketRole.Router
+            && role != ReceiverSocketRole.Dealer)
+        {
+            throw new ArgumentException(
+                $"Unsupported receiver socket role '{role}'.", nameof(role));
+        }
+    }
+
+    private static int MapReceiverOption(SocketOption option)
+    {
+        return option switch
+        {
+            SocketOption.SndHwm => 1,
+            SocketOption.RcvHwm => 2,
+            SocketOption.SndTimeo => 3,
+            SocketOption.RcvTimeo => 4,
+            SocketOption.Linger => 5,
+            SocketOption.SndBuf => 6,
+            SocketOption.RcvBuf => 7,
+            _ => throw new ArgumentException(
+                $"Socket option '{option}' is not supported by Receiver.",
+                nameof(option))
+        };
+    }
 }
 
 public readonly struct ReceiverRegisterResult
@@ -298,4 +472,16 @@ public readonly struct ReceiverRegisterResult
     public int Status { get; }
     public string ResolvedEndpoint { get; }
     public string ErrorMessage { get; }
+}
+
+public readonly struct ReceiverMessage
+{
+    public ReceiverMessage(string routingId, Message[] parts)
+    {
+        RoutingId = routingId;
+        Parts = parts;
+    }
+
+    public string RoutingId { get; }
+    public Message[] Parts { get; }
 }

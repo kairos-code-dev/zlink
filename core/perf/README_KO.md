@@ -63,7 +63,7 @@ multi 패턴 래퍼 스크립트다. multi 옵션을 정규화한 뒤 `PERF_ALLO
 
 ### 기본 패턴
 
-`DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE`
+`DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM_CALLBACK`
 
 ### 옵션
 
@@ -163,11 +163,11 @@ multi 전체 실행:
 ./core/perf/run_benchmarks_multi.sh
 ```
 
-multi STREAM만 실행:
+multi STREAM callback-only 실행:
 
 ```bash
 ./core/perf/run_benchmarks_multi.sh \
-  --pattern STREAM \
+  --pattern STREAM_CALLBACK \
   --clients 5000 \
   --duration 10 \
   --transports tcp

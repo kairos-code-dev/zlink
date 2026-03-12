@@ -3,7 +3,6 @@
 package dev.kairoscode.zlink.integration.bench.src;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.Poller;
 import dev.kairoscode.zlink.ReceiveFlag;
@@ -14,13 +13,13 @@ import dev.kairoscode.zlink.integration.bench.common.PerfMultiClientHelpers;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiCommon;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiMetricHeader;
 import dev.kairoscode.zlink.integration.bench.common.PerfMultiTls;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 import dev.kairoscode.zlink.options.SocketOptions;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import dev.kairoscode.zlink.service.spot.SpotNodeSocketRole;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,8 +31,9 @@ public final class PerfMultiSpotClient {
     private static final String PATTERN = "MULTI_SPOT";
     private static final String SERVICE_NAME = "perf-spot";
     private static final String TOPIC = "bench";
+    private static final int RUN_ID = 1;
     private static final int HEADER_BYTES = 32;
-    private static final int INITIAL_SETTLE_MS = 300;
+    private static final int INITIAL_SETTLE_MS = 1000;
     private static final long NANOSECONDS_PER_MILLISECOND = 1_000_000L;
     private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
     private static final long ACTIVE_IDLE_TIMEOUT_NS = 1L
@@ -66,13 +66,10 @@ public final class PerfMultiSpotClient {
     private static final class ClientSlot {
         final SpotNode node;
         final Spot subscriber;
-        final Spot.RecvContext recvContext;
 
-        ClientSlot(SpotNode node, Spot subscriber,
-                   Spot.RecvContext recvContext) {
+        ClientSlot(SpotNode node, Spot subscriber) {
             this.node = node;
             this.subscriber = subscriber;
-            this.recvContext = recvContext;
         }
     }
 
@@ -99,12 +96,12 @@ public final class PerfMultiSpotClient {
             PerfMultiCommon.resolveDurationSeconds(),
             PerfMultiCommon.resolveSettleMs(),
             Math.max(5000, PerfMultiCommon.resolveConnectReadyTimeoutMs() * 3),
-            Math.max(1, PerfMultiCommon.resolveClientPollTimeoutMs()));
+            PerfMultiCommon.resolveEffectiveClientPollTimeoutMs());
 
         try (Context context = new Context();
              Discovery discovery = new Discovery(context, ServiceType.SPOT)) {
             PerfCommon.applyClientContextOptions(context);
-            discovery.connectRegistry(endpoint.registryPub());
+            discovery.connectRegistry(endpoint.registryRouter());
             discovery.subscribe(SERVICE_NAME);
 
             if (!PerfCommon.waitUntil(
@@ -132,8 +129,7 @@ public final class PerfMultiSpotClient {
                     Spot subscriber = new Spot(node);
                     subscriber.subscribe(TOPIC);
                     node.setDiscovery(discovery, SERVICE_NAME);
-                    slots.add(new ClientSlot(node, subscriber,
-                        subscriber.createRecvContext()));
+                    slots.add(new ClientSlot(node, subscriber));
                 }
 
                 if (slots.isEmpty()) {
@@ -148,7 +144,8 @@ public final class PerfMultiSpotClient {
                 PerfCommon.sleepMillis(Math.max(INITIAL_SETTLE_MS,
                     config.settleMs));
 
-                try (Poller poller = new Poller()) {
+                try (Arena recvArena = Arena.ofConfined();
+                     Poller poller = new Poller()) {
                     for (int i = 0; i < slots.size(); i++) {
                         poller.addSpotSub(slots.get(i).subscriber,
                             PollEventType.POLLIN.getValue(), Integer.valueOf(i));
@@ -156,16 +153,16 @@ public final class PerfMultiSpotClient {
 
                     PerfMultiMetricHeader.Header header =
                         new PerfMultiMetricHeader.Header();
+                    MemorySegment recvBuffer =
+                        recvArena.allocate(Math.max(HEADER_BYTES, msgSize));
 
-                    // --- Warmup ---
-                    runDrainPhase(poller, slots, Math.max(0,
-                        config.warmupSeconds) * NANOSECONDS_PER_SECOND,
-                        config.pollTimeoutMs);
-
-                    // --- Settle ---
-                    runDrainPhase(poller, slots, Math.max(0,
-                        config.settleMs) * NANOSECONDS_PER_MILLISECOND,
-                        config.pollTimeoutMs);
+                    int activeRunId = waitForMsgSizeStart(poller, slots, header,
+                        recvBuffer, msgSize, config.pollTimeoutMs,
+                        config.connectTimeoutMs);
+                    if (activeRunId < 0) {
+                        System.err.println("ERROR,MULTI_SPOT,client,no_msg_size_start");
+                        return 2;
+                    }
 
                     PerfCommon.LatencyReservoir reservoir =
                         new PerfCommon.LatencyReservoir(
@@ -173,15 +170,15 @@ public final class PerfMultiSpotClient {
 
                     // --- Active measurement ---
                     ActiveResult active = runActive(poller, slots, header,
-                        msgSize, reservoir, config.durationSeconds,
-                        config.pollTimeoutMs);
+                        recvBuffer, msgSize, reservoir, activeRunId,
+                        config.durationSeconds, config.pollTimeoutMs);
                     if (active.count <= 0) {
                         System.err.println("ERROR,MULTI_SPOT,client,no_active_frames");
                         return 2;
                     }
 
                     double throughput = active.count
-                        / Math.max(1.0, active.elapsedSec);
+                        / Math.max(1.0, config.durationSeconds);
                     PerfCommon.Stats stats = reservoir.snapshot();
                     PerfCommon.printResult(PATTERN, transport, msgSize,
                         throughput, stats.meanUs(), stats.p95Us(),
@@ -201,69 +198,38 @@ public final class PerfMultiSpotClient {
 
     private static final class ActiveResult {
         final long count;
-        final double elapsedSec;
 
-        ActiveResult(long count, double elapsedSec) {
+        ActiveResult(long count) {
             this.count = count;
-            this.elapsedSec = elapsedSec;
-        }
-    }
-
-    private static void runDrainPhase(Poller poller,
-                                      List<ClientSlot> slots,
-                                      long durationNs,
-                                      int pollTimeoutMs) {
-        if (durationNs <= 0L) {
-            return;
-        }
-        long deadline = System.nanoTime() + durationNs;
-        while (System.nanoTime() < deadline) {
-            drainEvents(poller, slots, null, -1, null, -1, pollTimeoutMs);
         }
     }
 
     private static ActiveResult runActive(Poller poller,
                                           List<ClientSlot> slots,
                                           PerfMultiMetricHeader.Header header,
+                                          MemorySegment recvBuffer,
                                           int msgSize,
                                           PerfCommon.LatencyReservoir reservoir,
+                                          int activeRunId,
                                           int durationSeconds,
                                           int pollTimeoutMs) {
         long durationNs = (long) Math.max(1, durationSeconds)
             * NANOSECONDS_PER_SECOND;
-        long activeDeadlineNs = 0L;
-        long activeBeginNs = 0L;
+        long activeBeginNs = System.nanoTime();
+        long activeDeadlineNs = activeBeginNs + durationNs;
         long count = 0L;
-        int activeRunId = -1;
-        long lastDrainNs = System.nanoTime();
 
-        while (activeBeginNs == 0L || System.nanoTime() < activeDeadlineNs) {
+        while (System.nanoTime() < activeDeadlineNs) {
             ActiveDrainResult drained = drainEvents(poller, slots, header,
-                msgSize, reservoir, activeRunId, pollTimeoutMs);
-            long nowNs = System.nanoTime();
-            if (drained.drainedFrames > 0L) {
-                lastDrainNs = nowNs;
-            }
-            if (drained.count <= 0 || !drained.startedActive) {
-                if (activeBeginNs == 0L
-                    && nowNs - lastDrainNs >= ACTIVE_IDLE_TIMEOUT_NS) {
-                    break;
-                }
+                recvBuffer, msgSize, reservoir, activeRunId, pollTimeoutMs,
+                activeDeadlineNs);
+            if (drained.count <= 0L) {
                 continue;
             }
             count += drained.count;
-            if (activeRunId < 0) {
-                activeRunId = drained.runId;
-            }
-            if (activeBeginNs == 0L) {
-                activeBeginNs = nowNs;
-                activeDeadlineNs = activeBeginNs + durationNs;
-            }
         }
 
-        double elapsedSec = activeBeginNs == 0L ? 0.0
-            : (System.nanoTime() - activeBeginNs) / 1_000_000_000.0;
-        return new ActiveResult(count, elapsedSec);
+        return new ActiveResult(count);
     }
 
     private static final class ActiveDrainResult {
@@ -276,10 +242,12 @@ public final class PerfMultiSpotClient {
     private static ActiveDrainResult drainEvents(Poller poller,
                                     List<ClientSlot> slots,
                                     PerfMultiMetricHeader.Header header,
+                                    MemorySegment recvBuffer,
                                     int msgSize,
                                     PerfCommon.LatencyReservoir reservoir,
                                     int activeRunId,
-                                    int pollTimeoutMs) {
+                                    int pollTimeoutMs,
+                                    long deadlineNs) {
         ActiveDrainResult result = new ActiveDrainResult();
         int eventCount = poller.pollCount(pollTimeoutMs);
         for (int i = 0; i < eventCount; i++) {
@@ -293,16 +261,19 @@ public final class PerfMultiSpotClient {
             }
             ClientSlot slot = slots.get(slotIndex);
             while (true) {
-                Spot.SpotRawBorrowed raw = receiveSpotPayloadNonBlocking(slot);
-                if (raw == null) {
+                if (deadlineNs > 0L && System.nanoTime() >= deadlineNs) {
+                    return result;
+                }
+                int payloadSize = receiveSpotPayloadNonBlocking(slot, recvBuffer);
+                if (payloadSize <= 0) {
                     break;
                 }
                 result.drainedFrames++;
-                if (header == null || reservoir == null) {
+                if (header == null) {
                     continue;
                 }
-                long sampleCount = collectActiveSample(raw, header, msgSize,
-                    reservoir, activeRunId);
+                long sampleCount = collectActiveSample(recvBuffer, payloadSize,
+                    header, msgSize, reservoir, activeRunId);
                 if (sampleCount <= 0L) {
                     continue;
                 }
@@ -316,64 +287,63 @@ public final class PerfMultiSpotClient {
         return result;
     }
 
-    private static long collectActiveSample(Spot.SpotRawBorrowed raw,
+    private static int waitForMsgSizeStart(Poller poller,
+                                           List<ClientSlot> slots,
+                                           PerfMultiMetricHeader.Header header,
+                                           MemorySegment recvBuffer,
+                                           int msgSize,
+                                           int pollTimeoutMs,
+                                           int timeoutMs) {
+        long deadlineNs = System.nanoTime()
+            + (long) Math.max(15000, timeoutMs * 2)
+            * NANOSECONDS_PER_MILLISECOND;
+        while (System.nanoTime() < deadlineNs) {
+            ActiveDrainResult drained = drainEvents(poller, slots, header,
+                recvBuffer, msgSize, null, -1, pollTimeoutMs, deadlineNs);
+            if (drained.startedActive) {
+                return drained.runId;
+            }
+        }
+        return -1;
+    }
+
+    private static long collectActiveSample(MemorySegment payload,
+                                            int payloadSize,
                                             PerfMultiMetricHeader.Header header,
                                             int msgSize,
                                             PerfCommon.LatencyReservoir reservoir,
                                             int activeRunId) {
-        if (!matchesTopic(raw.topicIdBuffer(), raw.topicIdLength())) {
-            return 0L;
-        }
-        Message[] parts = raw.parts();
-        if (parts.length != 1) {
-            return 0L;
-        }
-        Message payload = parts[0];
-        int payloadSize = payload.size();
         if (payloadSize < HEADER_BYTES
-            || !PerfMultiMetricHeader.decodePayloadHeader(payload.dataSegment(),
-            payloadSize, header)
-            || header.phase != PerfMultiMetricHeader.PHASE_ACTIVE
+            || !PerfMultiMetricHeader.decodePayloadHeader(payload, payloadSize,
+            header)
+            || header.runId != RUN_ID
             || header.msgSize != msgSize
             || (activeRunId >= 0 && header.runId != activeRunId)) {
             return 0L;
         }
         long nowUs = PerfMultiMetricHeader.nowUs();
-        reservoir.add(Math.max(0L, nowUs - header.sentTsUs));
+        if (reservoir != null) {
+            reservoir.add(Math.max(0L, nowUs - header.sentTsUs));
+        }
         return 1L;
     }
 
-    private static Spot.SpotRawBorrowed receiveSpotPayloadNonBlocking(
-      ClientSlot slot) {
+    private static int receiveSpotPayloadNonBlocking(ClientSlot slot,
+                                                     MemorySegment recvBuffer) {
         while (true) {
             try {
-                return slot.subscriber.recvRawBorrowed(ReceiveFlag.DONTWAIT,
-                    slot.recvContext);
+                return slot.subscriber.recvSinglePayload(recvBuffer,
+                    ReceiveFlag.DONTWAIT);
             } catch (ZlinkException ex) {
                 if (isInterrupted(ex.errno())) {
                     continue;
                 }
                 if (isWouldBlock(ex.errno())) {
-                    return null;
+                    return 0;
                 }
                 throw ex;
             }
         }
-    }
-
-    private static boolean matchesTopic(MemorySegment topicBuffer, int topicLen) {
-        if (topicBuffer == null
-            || topicBuffer.address() == 0
-            || topicLen != TOPIC.length()) {
-            return false;
-        }
-        for (int i = 0; i < TOPIC.length(); i++) {
-            if (topicBuffer.get(ValueLayout.JAVA_BYTE, i)
-                != (byte) TOPIC.charAt(i)) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private static boolean isWouldBlock(int errno) {
@@ -387,7 +357,6 @@ public final class PerfMultiSpotClient {
     private static void closeSlots(List<ClientSlot> slots) {
         for (int i = slots.size() - 1; i >= 0; i--) {
             ClientSlot slot = slots.get(i);
-            closeQuietly(slot.recvContext);
             closeQuietly(slot.subscriber);
             closeQuietly(slot.node);
         }
@@ -406,22 +375,15 @@ public final class PerfMultiSpotClient {
     private static void applySpotNodeOptions(SpotNode node) {
         int sndHwm = PerfMultiCommon.resolveSndHwm(PATTERN);
         int rcvHwm = PerfMultiCommon.resolveRcvHwm(PATTERN);
-        int sndTimeoutMs = PerfMultiCommon.resolveSndTimeoutMs();
         int rcvTimeoutMs = PerfMultiCommon.resolveRcvTimeoutMs();
         int xpubNoDrop = resolveXpubNoDrop();
-        node.setOption(SpotNodeSocketRole.SUB, SocketOptions.SNDHWM, sndHwm);
         node.setOption(SpotNodeSocketRole.SUB, SocketOptions.RCVHWM, rcvHwm);
-        node.setOption(SpotNodeSocketRole.SUB, SocketOptions.SNDTIMEO,
-            sndTimeoutMs);
         node.setOption(SpotNodeSocketRole.SUB, SocketOptions.RCVTIMEO,
             rcvTimeoutMs);
         node.setOption(SpotNodeSocketRole.PUB, SocketOptions.XPUB_NODROP,
             xpubNoDrop);
-        node.setOption(SpotNodeSocketRole.SUB, SocketOptions.XPUB_NODROP,
-            xpubNoDrop);
         node.setOption(SpotNodeSocketRole.PUB, SocketOptions.LINGER, 0);
         node.setOption(SpotNodeSocketRole.SUB, SocketOptions.LINGER, 0);
-        node.setOption(SpotNodeSocketRole.DEALER, SocketOptions.LINGER, 0);
     }
 
     private static boolean waitSubPeers(List<ClientSlot> slots, int timeoutMs) {

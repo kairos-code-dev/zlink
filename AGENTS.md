@@ -60,6 +60,7 @@ The following rules apply to **all** test categories: unit tests (`unittests/`),
 - `AGENTS.md` is the single source of truth for repo guidelines.
 - Agents must address the user as `팀장님`.
 - If any agent-specific files are added in the future, they must reference `AGENTS.md` and instruct contributors to update `AGENTS.md` when guidelines change.
+- When the user says `posd` in the context of design or refactoring, interpret it as John Ousterhout's *A Philosophy of Software Design* and apply that book's principles.
 
 ## External References
 - Upstream reference project: `https://github.com/zeromq/libzmq`

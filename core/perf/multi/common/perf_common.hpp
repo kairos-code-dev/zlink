@@ -1,5 +1,5 @@
-#ifndef PERF_COMMON_HPP
-#define PERF_COMMON_HPP
+#ifndef PERF_RUNTIME_COMMON_HPP
+#define PERF_RUNTIME_COMMON_HPP
 
 #include <chrono>
 #include <vector>
@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cerrno>
+#include <cctype>
 #include <cstring>
 #include <iostream>
 #include <iomanip>
@@ -44,6 +45,24 @@
 #define ZLINK_TLS_HOSTNAME 100
 #endif
 
+typedef std::chrono::steady_clock steady_clock_t;
+typedef std::chrono::milliseconds milliseconds_t;
+typedef std::chrono::seconds seconds_t;
+typedef std::chrono::nanoseconds nanoseconds_t;
+typedef std::chrono::duration<double> floating_seconds_t;
+
+inline steady_clock_t::duration to_clock_duration (double seconds)
+{
+    return std::chrono::duration_cast<steady_clock_t::duration> (
+      floating_seconds_t (seconds));
+}
+
+inline long remaining_milliseconds (const steady_clock_t::time_point &deadline,
+                                    const steady_clock_t::time_point &now)
+{
+    return std::chrono::duration_cast<milliseconds_t> (deadline - now).count ();
+}
+
 // --- Configuration ---
 static const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 262144};
 static const std::vector<std::string> TRANSPORTS = {"tcp", "inproc", "ipc"};
@@ -54,13 +73,13 @@ static const int SETTLE_TIME_MS = 300;
 // --- Stopwatch ---
 class stopwatch_t {
 public:
-    void start() { _start = std::chrono::steady_clock::now(); }
+    void start() { _start = steady_clock_t::now(); }
     double elapsed_ms() const {
-        auto end = std::chrono::steady_clock::now();
+        auto end = steady_clock_t::now();
         return std::chrono::duration<double, std::milli>(end - _start).count();
     }
 private:
-    std::chrono::steady_clock::time_point _start;
+    steady_clock_t::time_point _start;
 };
 
 inline int parse_positive_env(const char *name_, int default_value_)
@@ -83,10 +102,10 @@ inline int parse_positive_env(const char *name_, int default_value_)
     return static_cast<int>(parsed);
 }
 
-inline size_t resolve_multi_latency_sample_cap()
+inline size_t resolve_latency_sample_cap()
 {
     const int cap =
-      parse_positive_env("PERF_MULTI_LATENCY_SAMPLE_CAP", 200000);
+      parse_positive_env("PERF_LATENCY_SAMPLE_CAP", 200000);
     return cap > 0 ? static_cast<size_t>(cap) : static_cast<size_t>(200000);
 }
 
@@ -112,7 +131,7 @@ struct server_queue_stats_t {
 class bench_latency_sampler_t {
 public:
     explicit bench_latency_sampler_t(
-      size_t sample_cap_ = resolve_multi_latency_sample_cap()) :
+      size_t sample_cap_ = resolve_latency_sample_cap()) :
       _sample_cap(sample_cap_ > 0 ? sample_cap_ : 1),
       _count(0),
       _sum_us(0.0),
@@ -207,7 +226,7 @@ inline int bench_max_sockets()
     if (explicit_max > 0)
         return explicit_max;
 
-    const int clients = parse_positive_env("PERF_MULTI_CLIENTS", 0);
+    const int clients = parse_positive_env("PERF_CLIENTS", 0);
     if (clients <= 0)
         return 0;
 
@@ -333,7 +352,7 @@ inline int bench_monitor_hwm()
     if (monitor_hwm >= 0)
         return monitor_hwm;
 
-    const char *env = std::getenv("PERF_MULTI_MONITOR_HWM");
+    const char *env = std::getenv("PERF_MONITOR_HWM");
     if (!env || !*env) {
         monitor_hwm = 1000;
         return monitor_hwm;
@@ -374,37 +393,6 @@ inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
 
 inline int poll_connect_ready_count(connect_monitor_t &monitor_);
 
-inline bool wait_connect_ready(connect_monitor_t &monitor_, int timeout_ms_)
-{
-    if (!monitor_.monitor)
-        return false;
-
-    const int bounded_timeout = timeout_ms_ > 0 ? timeout_ms_ : 0;
-    const auto deadline = std::chrono::steady_clock::now()
-                          + std::chrono::milliseconds(bounded_timeout);
-    while (true) {
-        const auto now = std::chrono::steady_clock::now();
-        if (now >= deadline)
-            return false;
-
-        const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                 deadline - now)
-                                 .count();
-        zlink_pollitem_t item[] = {{monitor_.monitor, 0, ZLINK_POLLIN, 0}};
-        const int rc = zlink_poll(item, 1, remain_ms > 0 ? remain_ms : 0);
-        if (rc < 0) {
-            if (zlink_errno() == EINTR)
-                continue;
-            return false;
-        }
-        if (rc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
-            continue;
-
-        if (poll_connect_ready_count(monitor_) > 0)
-            return true;
-    }
-}
-
 inline int poll_connect_ready_count(connect_monitor_t &monitor_)
 {
     if (!monitor_.monitor)
@@ -436,16 +424,15 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
         return true;
 
     const int bounded_timeout = timeout_ms_ > 0 ? timeout_ms_ : 0;
-    const auto deadline = std::chrono::steady_clock::now()
-                          + std::chrono::milliseconds(bounded_timeout);
+    const auto deadline = steady_clock_t::now()
+                          + milliseconds_t(bounded_timeout);
     while (ready < expected_ready_) {
-        const auto now = std::chrono::steady_clock::now();
+        const auto now = steady_clock_t::now();
         if (now >= deadline)
             break;
 
-        const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                 deadline - now)
-                                 .count();
+        const long remain_ms = remaining_milliseconds(
+                                 deadline, now);
         zlink_pollitem_t item[] = {{monitor_.monitor, 0, ZLINK_POLLIN, 0}};
         const int rc = zlink_poll(item, 1, remain_ms > 0 ? remain_ms : 0);
         if (rc < 0) {
@@ -482,25 +469,23 @@ inline void print_result(const std::string& lib_type,
                          double latency_p95,
                          double latency_p99) {
     const bool is_echo_pattern =
-      pattern == "MULTI_DEALER_ROUTER"
-      || pattern == "MULTI_ROUTER_ROUTER"
-      || pattern == "MULTI_GATEWAY"
-      || pattern == "MULTI_STREAM"
-      || pattern == "MULTI_STREAM_CALLBACK"
-      || pattern == "MULTI_STREAM_LEN32BE";
+      pattern == "DEALER_ROUTER"
+      || pattern == "ROUTER_ROUTER"
+      || pattern == "GATEWAY"
+      || pattern == "STREAM_CALLBACK";
     const double direction_factor = is_echo_pattern ? 2.0 : 1.0;
     const double bandwidth_mb_s =
       (throughput * static_cast<double>(size) * direction_factor) / 1000000.0;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",throughput," << std::fixed << std::setprecision(2) << throughput << std::endl;
+              << ",throughput," << std::fixed << std::setprecision(3) << throughput << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",bandwidth," << std::fixed << std::setprecision(2) << bandwidth_mb_s << std::endl;
+              << ",bandwidth," << std::fixed << std::setprecision(3) << bandwidth_mb_s << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",latency," << std::fixed << std::setprecision(2) << latency << std::endl;
+              << ",latency," << std::fixed << std::setprecision(3) << latency << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",latency_p95," << std::fixed << std::setprecision(2) << latency_p95 << std::endl;
+              << ",latency_p95," << std::fixed << std::setprecision(3) << latency_p95 << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",latency_p99," << std::fixed << std::setprecision(2) << latency_p99 << std::endl;
+              << ",latency_p99," << std::fixed << std::setprecision(3) << latency_p99 << std::endl;
 }
 
 inline void print_server_queue_metrics(const std::string &lib_type,
@@ -511,15 +496,15 @@ inline void print_server_queue_metrics(const std::string &lib_type,
 {
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",server_snd_pending_max,"
-              << std::fixed << std::setprecision(2) << queue_stats.snd_pending_max
+              << std::fixed << std::setprecision(3) << queue_stats.snd_pending_max
               << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",server_rcv_pending_max,"
-              << std::fixed << std::setprecision(2) << queue_stats.rcv_pending_max
+              << std::fixed << std::setprecision(3) << queue_stats.rcv_pending_max
               << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",server_rcv_pending_end,"
-              << std::fixed << std::setprecision(2) << queue_stats.rcv_pending_end
+              << std::fixed << std::setprecision(3) << queue_stats.rcv_pending_end
               << std::endl;
 }
 
@@ -560,6 +545,65 @@ inline bool read_first_peer_info(void *socket_, zlink_peer_info_t *info_)
 
     *info_ = peers[best];
     return true;
+}
+
+inline bool read_first_service_peer_info (
+  int (*peers_fn_) (void *, zlink_peer_info_t *, size_t *),
+  void *service_,
+  zlink_peer_info_t *info_)
+{
+    if (!peers_fn_ || !service_ || !info_)
+        return false;
+
+    size_t peer_count = 0;
+    if (peers_fn_ (service_, NULL, &peer_count) != 0 || peer_count == 0)
+        return false;
+
+    std::vector<zlink_peer_info_t> peers (peer_count);
+    size_t to_copy = peer_count;
+    if (peers_fn_ (service_, &peers[0], &to_copy) != 0 || to_copy == 0)
+        return false;
+
+    size_t best = 0;
+    for (size_t i = 1; i < to_copy; ++i) {
+        const zlink_peer_info_t &cand = peers[i];
+        const zlink_peer_info_t &cur = peers[best];
+        if (cand.connected_time > cur.connected_time) {
+            best = i;
+            continue;
+        }
+        if (cand.connected_time == cur.connected_time
+            && peer_activity_score (cand) > peer_activity_score (cur)) {
+            best = i;
+        }
+    }
+
+    *info_ = peers[best];
+    return true;
+}
+
+inline server_queue_stats_t sample_service_queue_stats (
+  int (*send_peers_fn_) (void *, zlink_peer_info_t *, size_t *),
+  void *send_service_,
+  int (*recv_peers_fn_) (void *, zlink_peer_info_t *, size_t *),
+  void *recv_service_)
+{
+    server_queue_stats_t out;
+    zlink_peer_info_t info;
+
+    if (read_first_service_peer_info (send_peers_fn_, send_service_, &info))
+        out.snd_pending_max =
+          static_cast<double> (
+            static_cast<unsigned long long> (info.snd_pending_msgs));
+    if (read_first_service_peer_info (recv_peers_fn_, recv_service_, &info)) {
+        const double pending =
+          static_cast<double> (
+            static_cast<unsigned long long> (info.rcv_pending_msgs));
+        out.rcv_pending_max = pending;
+        out.rcv_pending_end = pending;
+    }
+
+    return out;
 }
 
 inline server_queue_stats_t sample_server_queue_stats(void *send_socket_,
@@ -639,9 +683,9 @@ inline void apply_benchmark_hwm(void *socket_, int hwm_value)
         return;
 
     const int sndhwm =
-      bench_hwm_from_env("PERF_MULTI_SNDHWM", hwm_value);
+      bench_hwm_from_env("PERF_SNDHWM", hwm_value);
     const int rcvhwm =
-      bench_hwm_from_env("PERF_MULTI_RCVHWM", hwm_value);
+      bench_hwm_from_env("PERF_RCVHWM", hwm_value);
     set_sockopt_int(socket_, ZLINK_SNDHWM, sndhwm, "ZLINK_SNDHWM");
     set_sockopt_int(socket_, ZLINK_RCVHWM, rcvhwm, "ZLINK_RCVHWM");
 }
@@ -665,14 +709,70 @@ inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)
     return static_cast<int>(parsed);
 }
 
+inline int parse_byte_size_token(const char *value_, int default_value_)
+{
+    if (!value_ || !*value_)
+        return default_value_;
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long long parsed = std::strtoull(value_, &end, 10);
+    if (errno != 0 || end == value_)
+        return default_value_;
+
+    unsigned long long multiplier = 1;
+    if (end && *end) {
+        char suffix[3] = {0, 0, 0};
+        size_t suffix_len = 0;
+        while (end[suffix_len] != '\0' && suffix_len < 2) {
+            suffix[suffix_len] =
+              static_cast<char>(std::tolower(static_cast<unsigned char>(end[suffix_len])));
+            ++suffix_len;
+        }
+        if (end[suffix_len] != '\0')
+            return default_value_;
+
+        if (suffix[0] == 'b' && suffix[1] == '\0')
+            multiplier = 1;
+        else if (suffix[0] == 'k' && (suffix[1] == '\0' || suffix[1] == 'b'))
+            multiplier = 1024ULL;
+        else if (suffix[0] == 'm' && (suffix[1] == '\0' || suffix[1] == 'b'))
+            multiplier = 1024ULL * 1024ULL;
+        else if (suffix[0] == 'g' && (suffix[1] == '\0' || suffix[1] == 'b'))
+            multiplier = 1024ULL * 1024ULL * 1024ULL;
+        else
+            return default_value_;
+    }
+
+    const unsigned long long bytes = parsed * multiplier;
+    if (bytes == 0)
+        return default_value_;
+    if (bytes > static_cast<unsigned long long>(INT_MAX))
+        return INT_MAX;
+    return static_cast<int>(bytes);
+}
+
+inline int bench_socket_buffer_bytes_from_env(const char *name_,
+                                              int default_bytes_)
+{
+    if (!name_ || !*name_)
+        return default_bytes_;
+
+    const char *value = std::getenv(name_);
+    if (!value || !*value)
+        return default_bytes_;
+
+    return parse_byte_size_token(value, default_bytes_);
+}
+
 inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
     if (transport == "inproc")
         return;
 
     const int sndtimeo_ms =
-      bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 200);
+      bench_timeout_ms_from_env("PERF_SNDTIMEO_MS", 200);
     const int rcvtimeo_ms =
-      bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 200);
+      bench_timeout_ms_from_env("PERF_RCVTIMEO_MS", 200);
     set_sockopt_int(socket_, ZLINK_SNDTIMEO, sndtimeo_ms, "ZLINK_SNDTIMEO");
     set_sockopt_int(socket_, ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
 }
@@ -685,7 +785,15 @@ inline void apply_benchmark_socket_options(void *socket_,
         return;
 
     const int linger_ms = 0;
+    const int sndbuf =
+      bench_socket_buffer_bytes_from_env("PERF_SNDBUF", -1);
+    const int rcvbuf =
+      bench_socket_buffer_bytes_from_env("PERF_RCVBUF", -1);
     set_sockopt_int(socket_, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    if (sndbuf > 0)
+        set_sockopt_int(socket_, ZLINK_SNDBUF, sndbuf, "ZLINK_SNDBUF");
+    if (rcvbuf > 0)
+        set_sockopt_int(socket_, ZLINK_RCVBUF, rcvbuf, "ZLINK_RCVBUF");
     apply_benchmark_hwm(socket_, hwm_value);
     apply_debug_timeouts(socket_, transport);
 }
@@ -957,7 +1065,7 @@ inline bool transport_available(const std::string& transport) {
 }
 
 inline void settle() {
-    std::this_thread::sleep_for(std::chrono::milliseconds(SETTLE_TIME_MS));
+    std::this_thread::sleep_for(milliseconds_t(SETTLE_TIME_MS));
 }
 
 inline bool connect_checked(void *socket_,
@@ -995,34 +1103,6 @@ inline bool setup_connected_pair(void *bind_socket_,
     return true;
 }
 
-template <typename StepFn>
-inline void repeat_n(int count_, StepFn step_) {
-    for (int i = 0; i < count_; ++i)
-        step_();
-}
-
-template <typename RoundTripFn>
-inline double measure_roundtrip_latency_us(int roundtrip_count_,
-                                           RoundTripFn roundtrip_) {
-    stopwatch_t sw;
-    sw.start();
-    repeat_n(roundtrip_count_, roundtrip_);
-    return (sw.elapsed_ms() * 1000.0) / (roundtrip_count_ * 2);
-}
-
-template <typename SendOneFn, typename RecvOneFn>
-inline double measure_throughput_msgs_per_sec(int msg_count_,
-                                              SendOneFn send_one_,
-                                              RecvOneFn recv_one_) {
-    std::thread receiver([&]() { repeat_n(msg_count_, recv_one_); });
-    stopwatch_t sw;
-    sw.start();
-    repeat_n(msg_count_, send_one_);
-    receiver.join();
-    const double elapsed_ms = sw.elapsed_ms();
-    return elapsed_ms > 0 ? (double)msg_count_ / (elapsed_ms / 1000.0) : 0.0;
-}
-
 inline int resolve_msg_count(size_t size) {
     int count = (size <= 1024) ? 200000 : 20000;
     if (const char *env = std::getenv("PERF_MSG_COUNT")) {
@@ -1036,7 +1116,10 @@ inline int resolve_msg_count(size_t size) {
 
 inline std::vector<size_t> resolve_bench_msg_sizes(size_t fallback_size)
 {
-    std::vector<size_t> sizes;
+    const size_t default_size = fallback_size > 0 ? fallback_size : 64;
+    size_t resolved_size = default_size;
+    size_t parsed_size_count = 0;
+
     if (const char *env = std::getenv("PERF_MSG_SIZES")) {
         const char *cur = env;
         while (*cur) {
@@ -1048,8 +1131,11 @@ inline std::vector<size_t> resolve_bench_msg_sizes(size_t fallback_size)
             errno = 0;
             char *end = NULL;
             const unsigned long parsed = std::strtoul(cur, &end, 10);
-            if (errno == 0 && end != cur && parsed > 0)
-                sizes.push_back(static_cast<size_t>(parsed));
+            if (errno == 0 && end != cur && parsed > 0) {
+                if (parsed_size_count == 0)
+                    resolved_size = static_cast<size_t>(parsed);
+                ++parsed_size_count;
+            }
 
             if (!end || end == cur)
                 break;
@@ -1061,8 +1147,13 @@ inline std::vector<size_t> resolve_bench_msg_sizes(size_t fallback_size)
         }
     }
 
-    if (sizes.empty())
-        sizes.push_back(fallback_size);
+    if (parsed_size_count > 1) {
+        std::cerr << "[perf-multi] PERF_MSG_SIZES supports one size per run; "
+                  << "using first size=" << resolved_size << std::endl;
+    }
+
+    std::vector<size_t> sizes;
+    sizes.push_back(resolved_size);
     return sizes;
 }
 

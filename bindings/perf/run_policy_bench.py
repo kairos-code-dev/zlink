@@ -39,9 +39,6 @@ SINGLE_PATTERNS: List[str] = [
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
     "ROUTER_ROUTER_POLL",
-    "STREAM",
-    "STREAM_CALLBACK",
-    "STREAM_LEN32BE",
     "GATEWAY",
     "SPOT",
 ]
@@ -114,6 +111,12 @@ MULTI_STREAM_PATTERNS = {
     "MULTI_STREAM_LEN32BE",
 }
 
+STREAM_VARIANT_PATTERNS = MULTI_STREAM_PATTERNS | {
+    "STREAM",
+    "STREAM_CALLBACK",
+    "STREAM_LEN32BE",
+}
+
 STREAM_SINGLE_PATTERNS = {
     "STREAM",
     "STREAM_CALLBACK",
@@ -131,6 +134,8 @@ STREAM_CLIENT_BUILD_SCRIPT = STREAM_CLIENT_DIR / "build.sh"
 STREAM_CLIENT_BIN = STREAM_CLIENT_DIR / "build" / (
     "perf_stream_client.exe" if IS_WINDOWS else "perf_stream_client"
 )
+
+JAVA_RUNTIME_CP_CACHE: Dict[str, str] = {}
 
 CPP_SINGLE_PATTERN_SPECS: Dict[str, Tuple[str, str, str]] = {
     "PAIR": ("perf_pair.cpp", "run_pattern_pair", "perf_pair"),
@@ -262,7 +267,7 @@ class Tee:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             self._fh = output_path.open("w", encoding="utf-8")
 
-    def print(self, msg: str = "", *, end: str = "\n", flush: bool = False) -> None:
+    def print(self, msg: str = "", *, end: str = "\n", flush: bool = True) -> None:
         sys.stdout.write(msg + end)
         if self._fh:
             self._fh.write(msg + end)
@@ -299,6 +304,12 @@ class ComboStats:
     client_mem_mb: Optional[float] = None
     server_cpu_pct: Optional[float] = None
     server_mem_mb: Optional[float] = None
+    snd_pending_max: Optional[float] = None
+    rcv_pending_max: Optional[float] = None
+    rcv_pending_end: Optional[float] = None
+    server_snd_pending_max: Optional[float] = None
+    server_rcv_pending_max: Optional[float] = None
+    server_rcv_pending_end: Optional[float] = None
     reason: str = ""
 
 
@@ -317,6 +328,7 @@ class SuiteConfig:
     result: bool  # report save flag (--result)
     results_root: Path
     results_tag: str
+    result_file: Optional[Path]
     output: Optional[Path]
     multi_warmup_seconds: int
     multi_duration_seconds: int
@@ -846,23 +858,7 @@ def binding_cmd_prefix(cfg: SuiteConfig, requested_pattern: str) -> Tuple[List[s
         java = shutil.which("java")
         if not java:
             raise RuntimeError("java not found")
-        cp = os.pathsep.join(
-            [
-                str(
-                    BINDINGS_DIR
-                    / "java"
-                    / "perf"
-                    / "single"
-                    / "Zlink.PerfBench"
-                    / "build"
-                    / "classes"
-                    / "java"
-                    / "main"
-                ),
-                str(BINDINGS_DIR / "java" / "build" / "classes" / "java" / "main"),
-                str(BINDINGS_DIR / "java" / "build" / "resources" / "main"),
-            ]
-        )
+        cp = java_runtime_classpath(cfg.suite)
         cmd = [
             java,
             "--enable-native-access=ALL-UNNAMED",
@@ -891,6 +887,26 @@ def binding_cmd_prefix(cfg: SuiteConfig, requested_pattern: str) -> Tuple[List[s
         raise RuntimeError(f"unsupported binding: {cfg.binding}")
 
     return cmd, base_pattern
+
+
+def java_runtime_classpath(suite: str) -> str:
+    cached = JAVA_RUNTIME_CP_CACHE.get(suite)
+    if cached:
+        return cached
+
+    task = ":perf-multi:printRuntimeClasspath" if suite == "multi" else ":perf-single:printRuntimeClasspath"
+    result = subprocess.run(
+        ["./gradlew", "-q", task],
+        cwd=BINDINGS_DIR / "java",
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    cp = result.stdout.strip().splitlines()[-1].strip()
+    if not cp:
+        raise RuntimeError(f"empty runtime classpath for java suite={suite}")
+    JAVA_RUNTIME_CP_CACHE[suite] = cp
+    return cp
 
 
 def multi_pattern_token(pattern: str) -> str:
@@ -1051,23 +1067,7 @@ def binding_multi_role_command(
         java = shutil.which("java")
         if not java:
             raise RuntimeError("java not found")
-        cp = os.pathsep.join(
-            [
-                str(
-                    BINDINGS_DIR
-                    / "java"
-                    / "perf"
-                    / "multi"
-                    / "Zlink.PerfBench"
-                    / "build"
-                    / "classes"
-                    / "java"
-                    / "main"
-                ),
-                str(BINDINGS_DIR / "java" / "build" / "classes" / "java" / "main"),
-                str(BINDINGS_DIR / "java" / "build" / "resources" / "main"),
-            ]
-        )
+        cp = java_runtime_classpath("multi")
         if role == "server":
             cmd = [
                 java,
@@ -1140,9 +1140,12 @@ def prepare_runtime_env(cfg: SuiteConfig, native_dir: Path) -> Dict[str, str]:
         set_perf_env("PERF_DURATION_SECONDS", str(cfg.multi_duration_seconds))
         if cfg.multi_clients > 0:
             set_perf_env("PERF_CLIENTS", str(cfg.multi_clients))
-        set_perf_env("PERF_HWM", str(cfg.multi_hwm))
-        set_perf_env("PERF_SNDTIMEO_MS", str(cfg.multi_sndtimeo_ms))
-        set_perf_env("PERF_RCVTIMEO_MS", str(cfg.multi_rcvtimeo_ms))
+        if cfg.multi_hwm > 0:
+            set_perf_env("PERF_HWM", str(cfg.multi_hwm))
+        if cfg.multi_sndtimeo_ms > 0:
+            set_perf_env("PERF_SNDTIMEO_MS", str(cfg.multi_sndtimeo_ms))
+        if cfg.multi_rcvtimeo_ms > 0:
+            set_perf_env("PERF_RCVTIMEO_MS", str(cfg.multi_rcvtimeo_ms))
         set_perf_env(
             "PERF_SERVER_READY_TIMEOUT_MS",
             str(cfg.multi_server_ready_timeout_ms),
@@ -1156,7 +1159,8 @@ def prepare_runtime_env(cfg: SuiteConfig, native_dir: Path) -> Dict[str, str]:
             "PERF_CONNECT_READY_TIMEOUT_MS",
             str(cfg.multi_connect_ready_timeout_ms),
         )
-        set_perf_env("PERF_MONITOR_HWM", str(cfg.multi_monitor_hwm))
+        if cfg.multi_monitor_hwm >= 0:
+            set_perf_env("PERF_MONITOR_HWM", str(cfg.multi_monitor_hwm))
 
         # Dotnet follows core-style PERF_* only.
         # Other bindings may still rely on PERF_MULTI_* compatibility names.
@@ -1167,9 +1171,12 @@ def prepare_runtime_env(cfg: SuiteConfig, native_dir: Path) -> Dict[str, str]:
             )
             if cfg.multi_clients > 0:
                 set_perf_env("PERF_MULTI_CLIENTS", str(cfg.multi_clients))
-            set_perf_env("PERF_MULTI_HWM", str(cfg.multi_hwm))
-            set_perf_env("PERF_MULTI_SNDTIMEO_MS", str(cfg.multi_sndtimeo_ms))
-            set_perf_env("PERF_MULTI_RCVTIMEO_MS", str(cfg.multi_rcvtimeo_ms))
+            if cfg.multi_hwm > 0:
+                set_perf_env("PERF_MULTI_HWM", str(cfg.multi_hwm))
+            if cfg.multi_sndtimeo_ms > 0:
+                set_perf_env("PERF_MULTI_SNDTIMEO_MS", str(cfg.multi_sndtimeo_ms))
+            if cfg.multi_rcvtimeo_ms > 0:
+                set_perf_env("PERF_MULTI_RCVTIMEO_MS", str(cfg.multi_rcvtimeo_ms))
             set_perf_env(
                 "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
                 str(cfg.multi_server_ready_timeout_ms),
@@ -1185,7 +1192,8 @@ def prepare_runtime_env(cfg: SuiteConfig, native_dir: Path) -> Dict[str, str]:
                 "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
                 str(cfg.multi_connect_ready_timeout_ms),
             )
-            set_perf_env("PERF_MULTI_MONITOR_HWM", str(cfg.multi_monitor_hwm))
+            if cfg.multi_monitor_hwm >= 0:
+                set_perf_env("PERF_MULTI_MONITOR_HWM", str(cfg.multi_monitor_hwm))
             if cfg.multi_drain_ms is not None:
                 set_perf_env("PERF_MULTI_DRAIN_MS", str(cfg.multi_drain_ms))
 
@@ -1303,7 +1311,7 @@ def stream_shared_client_cmd(
                 "--print-perf-result",
                 "2",
                 "--send-stop-token",
-                "1",
+                "0",
                 "--stop-token",
                 "__zlink_perf_stop__",
             ]
@@ -1357,7 +1365,7 @@ def stream_shared_client_cmd(
             "--print-perf-result",
             "2",
             "--send-stop-token",
-            "1",
+            "0",
             "--stop-token",
             "__zlink_perf_stop__",
         ]
@@ -1413,6 +1421,30 @@ def pattern_aliases(pattern: str) -> Set[str]:
     return aliases
 
 
+def read_linux_cpu_ticks(pid: int) -> Optional[int]:
+    try:
+        with open(f"/proc/{pid}/stat", "r", encoding="utf-8", errors="ignore") as fh:
+            parts = fh.read().strip().split()
+        if len(parts) < 15:
+            return None
+        return int(parts[13]) + int(parts[14])
+    except Exception:
+        return None
+
+
+def read_linux_mem_mb(pid: int) -> Optional[float]:
+    try:
+        with open(f"/proc/{pid}/status", "r", encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                if line.startswith("VmRSS:"):
+                    cols = line.split()
+                    if len(cols) >= 2:
+                        return float(cols[1]) / 1024.0
+    except Exception:
+        return None
+    return None
+
+
 def run_command_with_metrics(cmd: List[str], env: Dict[str, str], timeout_sec: int) -> Dict[str, object]:
     start = time.monotonic()
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
@@ -1420,28 +1452,6 @@ def run_command_with_metrics(cmd: List[str], env: Dict[str, str], timeout_sec: i
     cpu_start = None
     cpu_end = None
     rss_end = None
-
-    def read_linux_cpu_ticks(pid: int) -> Optional[int]:
-        try:
-            with open(f"/proc/{pid}/stat", "r", encoding="utf-8", errors="ignore") as fh:
-                parts = fh.read().strip().split()
-            if len(parts) < 15:
-                return None
-            return int(parts[13]) + int(parts[14])
-        except Exception:
-            return None
-
-    def read_linux_mem_mb(pid: int) -> Optional[float]:
-        try:
-            with open(f"/proc/{pid}/status", "r", encoding="utf-8", errors="ignore") as fh:
-                for line in fh:
-                    if line.startswith("VmRSS:"):
-                        cols = line.split()
-                        if len(cols) >= 2:
-                            return float(cols[1]) / 1024.0
-        except Exception:
-            return None
-        return None
 
     sampling_mode = ""
     win_handle = None
@@ -1623,6 +1633,11 @@ class ProcessCapture:
     stderr_lines: List[str]
     stdout_queue: "queue.Queue[str]"
     _threads: List[threading.Thread]
+    started_at: float
+    ended_at: Optional[float]
+    cpu_start: Optional[int]
+    cpu_end: Optional[int]
+    mem_mb: Optional[float]
 
     def wait(self, timeout: Optional[float] = None) -> int:
         return self.proc.wait(timeout=timeout)
@@ -1639,6 +1654,20 @@ class ProcessCapture:
             return
         self.proc.terminate()
 
+    def write_stdin_line(self, line: str) -> None:
+        if self.proc.poll() is not None or self.proc.stdin is None:
+            return
+        self.proc.stdin.write(line + "\n")
+        self.proc.stdin.flush()
+
+    def close_stdin(self) -> None:
+        if self.proc.stdin is None:
+            return
+        try:
+            self.proc.stdin.close()
+        except Exception:
+            pass
+
     def kill(self) -> None:
         if self.proc.poll() is not None:
             return
@@ -1654,10 +1683,27 @@ class ProcessCapture:
     def stderr_text(self) -> str:
         return "".join(self.stderr_lines)
 
+    def sampled_cpu_pct(self) -> Optional[float]:
+        if not IS_LINUX:
+            return None
+        if self.cpu_start is None or self.cpu_end is None:
+            return None
+        end_time = self.ended_at if self.ended_at is not None else time.monotonic()
+        elapsed = max(1e-6, end_time - self.started_at)
+        try:
+            hz = float(os.sysconf("SC_CLK_TCK"))
+        except Exception:
+            hz = 100.0
+        delta = max(0.0, float(self.cpu_end - self.cpu_start)) / max(1.0, hz)
+        ncpu = max(1.0, float(os.cpu_count() or 1))
+        return (delta / (elapsed * ncpu)) * 100.0
+
 
 def spawn_capture_process(cmd: List[str], env: Dict[str, str]) -> ProcessCapture:
+    started_at = time.monotonic()
     proc = subprocess.Popen(
         cmd,
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -1668,6 +1714,7 @@ def spawn_capture_process(cmd: List[str], env: Dict[str, str]) -> ProcessCapture
     stderr_lines: List[str] = []
     stdout_queue: "queue.Queue[str]" = queue.Queue()
     threads: List[threading.Thread] = []
+    cpu_start: Optional[int] = None
 
     def _pump_stdout() -> None:
         stream = proc.stdout
@@ -1702,13 +1749,40 @@ def spawn_capture_process(cmd: List[str], env: Dict[str, str]) -> ProcessCapture
     t_err.start()
     threads.extend([t_out, t_err])
 
-    return ProcessCapture(
+    capture = ProcessCapture(
         proc=proc,
         stdout_lines=stdout_lines,
         stderr_lines=stderr_lines,
         stdout_queue=stdout_queue,
         _threads=threads,
+        started_at=started_at,
+        ended_at=None,
+        cpu_start=cpu_start,
+        cpu_end=cpu_start,
+        mem_mb=None,
     )
+
+    if IS_LINUX and os.path.exists("/proc"):
+        capture.cpu_start = read_linux_cpu_ticks(proc.pid)
+        capture.cpu_end = capture.cpu_start
+
+        def _sample_proc() -> None:
+            while True:
+                tick = read_linux_cpu_ticks(proc.pid)
+                if tick is not None:
+                    capture.cpu_end = tick
+                rss = read_linux_mem_mb(proc.pid)
+                if rss is not None:
+                    capture.mem_mb = rss
+                if proc.poll() is not None:
+                    capture.ended_at = time.monotonic()
+                    return
+                time.sleep(0.02)
+
+        t_sample = threading.Thread(target=_sample_proc, daemon=True)
+        t_sample.start()
+        threads.append(t_sample)
+    return capture
 
 
 def wait_for_server_ready(
@@ -1766,8 +1840,12 @@ def detect_status_token(text: str) -> Optional[str]:
 
 def effective_server_shutdown_timeout_ms(cfg: SuiteConfig, pattern: str) -> int:
     timeout_ms = max(1, cfg.multi_server_shutdown_timeout_ms)
-    if cfg.binding == "dotnet" and pattern.strip().upper() == "MULTI_SPOT":
-        return max(timeout_ms, 7000)
+    if cfg.binding == "dotnet":
+        normalized = pattern.strip().upper()
+        if normalized == "MULTI_SPOT":
+            return max(timeout_ms, 7000)
+        if normalized == "MULTI_DEALER_DEALER":
+            return max(timeout_ms, 15000)
     return timeout_ms
 
 
@@ -1972,6 +2050,30 @@ def aggregate_combo(outcomes: List[RunOutcome]) -> ComboStats:
     server_mem_vals = [
         o.metrics["server_mem_mb"] for o in success if "server_mem_mb" in o.metrics
     ]
+    snd_pending_vals = [
+        o.metrics["snd_pending_max"] for o in success if "snd_pending_max" in o.metrics
+    ]
+    rcv_pending_max_vals = [
+        o.metrics["rcv_pending_max"] for o in success if "rcv_pending_max" in o.metrics
+    ]
+    rcv_pending_end_vals = [
+        o.metrics["rcv_pending_end"] for o in success if "rcv_pending_end" in o.metrics
+    ]
+    server_snd_pending_vals = [
+        o.metrics["server_snd_pending_max"]
+        for o in success
+        if "server_snd_pending_max" in o.metrics
+    ]
+    server_rcv_pending_max_vals = [
+        o.metrics["server_rcv_pending_max"]
+        for o in success
+        if "server_rcv_pending_max" in o.metrics
+    ]
+    server_rcv_pending_end_vals = [
+        o.metrics["server_rcv_pending_end"]
+        for o in success
+        if "server_rcv_pending_end" in o.metrics
+    ]
     return ComboStats(
         status="success",
         throughput=statistics.median(thr_vals) if thr_vals else 0.0,
@@ -1985,34 +2087,345 @@ def aggregate_combo(outcomes: List[RunOutcome]) -> ComboStats:
         client_mem_mb=statistics.median(client_mem_vals) if client_mem_vals else None,
         server_cpu_pct=statistics.median(server_cpu_vals) if server_cpu_vals else None,
         server_mem_mb=statistics.median(server_mem_vals) if server_mem_vals else None,
+        snd_pending_max=statistics.median(snd_pending_vals) if snd_pending_vals else None,
+        rcv_pending_max=statistics.median(rcv_pending_max_vals)
+        if rcv_pending_max_vals
+        else None,
+        rcv_pending_end=statistics.median(rcv_pending_end_vals)
+        if rcv_pending_end_vals
+        else None,
+        server_snd_pending_max=statistics.median(server_snd_pending_vals)
+        if server_snd_pending_vals
+        else None,
+        server_rcv_pending_max=statistics.median(server_rcv_pending_max_vals)
+        if server_rcv_pending_max_vals
+        else None,
+        server_rcv_pending_end=statistics.median(server_rcv_pending_end_vals)
+        if server_rcv_pending_end_vals
+        else None,
     )
 
 
 def format_thr(v: float, pattern: str, suite: str) -> str:
     unit = throughput_unit_label(pattern, suite)
-    return f"{v/1000.0:8.2f} {unit}"
+    return f"{v/1000.0:8.3f} {unit}"
 
 
 def format_bw(v: float) -> str:
-    return f"{v:8.1f} MB/s"
+    return f"{v:10.3f} MB/s"
 
 
-def format_lat(v: float, binding: str) -> str:
+def format_lat(v: float, binding: str, pattern: Optional[str] = None) -> str:
     if binding in {"cpp", "dotnet", "java"}:
-        return f"{v:8.4f} ms"
-    return f"{v:8.2f} us"
+        if pattern in STREAM_VARIANT_PATTERNS:
+            return f"{(v / 1000.0):9.3f} ms"
+        return f"{v:9.3f} ms"
+    return f"{v:9.3f} us"
 
 
 def format_cpu(v: Optional[float]) -> str:
     if v is None:
         return "N/A"
-    return f"{v:4.1f}"
+    return f"{v:6.3f}"
 
 
 def format_mem(v: Optional[float]) -> str:
     if v is None:
         return "N/A"
-    return f"{v:6.1f}"
+    return f"{v:8.3f}"
+
+
+def format_queue_pending_single(v: Optional[float]) -> str:
+    if v is None:
+        return "N/A"
+    return f"{v:,.0f}"
+
+
+def format_queue_pending_multi(v: Optional[float]) -> str:
+    if v is None:
+        return "N/A"
+    return f"{int(round(float(v))):d}"
+
+
+def queue_or_zero(v: Optional[float]) -> float:
+    if v is None:
+        return 0.0
+    return float(v)
+
+
+def use_core_output_style() -> bool:
+    return os.environ.get("PERF_OUTPUT_STYLE", "").strip().lower() == "core"
+
+
+def display_pattern_name(pattern: str, suite: str) -> str:
+    if suite == "multi" and pattern.startswith("MULTI_"):
+        return pattern[len("MULTI_") :]
+    return pattern
+
+
+def core_style_meta_items(
+    cfg: SuiteConfig, patterns: Sequence[str]
+) -> List[Tuple[str, str]]:
+    meta = collect_host_meta()
+    items: List[Tuple[str, str]] = []
+    for key in ("os", "cpu", "cores", "build", "commit", "timestamp", "load_avg"):
+        if key in meta:
+            items.append((key, meta[key]))
+    items.append(("runs", str(cfg.runs)))
+    if cfg.suite == "multi":
+        clients = (
+            str(cfg.multi_clients)
+            if cfg.multi_clients > 0
+            else (
+                env_first("PERF_CLIENTS")
+                or ("10000" if any(p in MULTI_STREAM_PATTERNS for p in patterns) else "100")
+            )
+        )
+        items.append(("clients", clients))
+    return items
+
+
+def core_style_effective_option_items(
+    cfg: SuiteConfig, patterns: Sequence[str]
+) -> List[Tuple[str, str]]:
+    transports: List[str] = []
+    sizes: List[int] = []
+    for pattern in patterns:
+        transports.extend(resolve_transports_for_pattern(cfg, pattern))
+        sizes.extend(resolve_sizes_for_pattern(cfg, pattern))
+    unique_transports = sorted(set(transports))
+    unique_sizes = sorted(set(sizes))
+
+    items: List[Tuple[str, str]] = [
+        ("runs", str(cfg.runs)),
+        (
+            "patterns",
+            ",".join(display_pattern_name(pattern, cfg.suite) for pattern in patterns)
+            if patterns
+            else "none",
+        ),
+        ("transports", ",".join(unique_transports) if unique_transports else "none"),
+        ("msg_sizes", ",".join(str(sz) for sz in unique_sizes) if unique_sizes else "none"),
+    ]
+
+    if cfg.suite == "single":
+        duration_seconds = env_int_from_map(
+            os.environ, "PERF_SINGLE_DURATION_SECONDS", 5
+        )
+        default_timeout_seconds = max(30, duration_seconds * 6 + 15)
+        timeout_seconds = max(
+            1,
+            env_int_from_map(
+                os.environ,
+                "PERF_SINGLE_TIMEOUT_SECONDS",
+                default_timeout_seconds,
+            ),
+        )
+        base_hwm = env_int_from_map(os.environ, "PERF_SINGLE_HWM", 1000)
+        sndhwm = env_int_from_map(os.environ, "PERF_SINGLE_SNDHWM", base_hwm)
+        rcvhwm = env_int_from_map(os.environ, "PERF_SINGLE_RCVHWM", base_hwm)
+        items = [
+            ("runs", str(cfg.runs)),
+            ("duration_seconds", str(duration_seconds)),
+            ("timeout_seconds", str(timeout_seconds)),
+            (
+                "io_threads",
+                str(cfg.io_threads) if cfg.io_threads is not None else "default(binary=2)",
+            ),
+            ("hwm", str(base_hwm)),
+            ("sndhwm", str(sndhwm)),
+            ("rcvhwm", str(rcvhwm)),
+            ("sndbuf", env_first("PERF_SINGLE_SNDBUF") or "default(os)"),
+            ("rcvbuf", env_first("PERF_SINGLE_RCVBUF") or "default(os)"),
+            ("sndtimeo_ms", str(env_int_from_map(os.environ, "PERF_SINGLE_SNDTIMEO_MS", 200))),
+            ("rcvtimeo_ms", str(env_int_from_map(os.environ, "PERF_SINGLE_RCVTIMEO_MS", 200))),
+            (
+                "patterns",
+                ",".join(display_pattern_name(pattern, cfg.suite) for pattern in patterns)
+                if patterns
+                else "none",
+            ),
+            ("transports", ",".join(unique_transports) if unique_transports else "none"),
+            ("msg_sizes", ",".join(str(sz) for sz in unique_sizes) if unique_sizes else "none"),
+        ]
+        return items
+
+    clients = (
+        cfg.multi_clients
+        if cfg.multi_clients > 0
+        else int(
+            env_first("PERF_CLIENTS")
+            or ("10000" if any(p in MULTI_STREAM_PATTERNS for p in patterns) else "100")
+        )
+    )
+    server_io_threads = env_first("PERF_SERVER_IO_THREADS") or "2"
+    client_io_threads = env_first("PERF_CLIENT_IO_THREADS") or "2"
+    base_hwm = env_first("PERF_HWM") or "100"
+    sndhwm = env_first("PERF_SNDHWM") or base_hwm
+    rcvhwm = env_first("PERF_RCVHWM") or base_hwm
+    connect_concurrency = env_first("PERF_CONNECT_CONCURRENCY") or (
+        "1024" if any(p in MULTI_STREAM_PATTERNS for p in patterns) and clients >= 10000 else "128"
+    )
+    connect_concurrency_display = connect_concurrency
+    if connect_concurrency == "128":
+        connect_concurrency_display = "128 (default)"
+    items.extend(
+        [
+            ("warmup_seconds", str(cfg.multi_warmup_seconds)),
+            ("active_warmup", "0"),
+            ("duration_seconds", str(cfg.multi_duration_seconds)),
+            ("clients", str(clients)),
+            ("default_clients", env_first("PERF_DEFAULT_CLIENTS") or "100"),
+            ("default_stream_clients", env_first("PERF_DEFAULT_STREAM_CLIENTS") or "10000"),
+            ("service_clients", "auto"),
+            ("server_io_threads", f"{server_io_threads} (default)" if not env_first("PERF_SERVER_IO_THREADS") else server_io_threads),
+            ("client_io_threads", f"{client_io_threads} (default)" if not env_first("PERF_CLIENT_IO_THREADS") else client_io_threads),
+            ("hwm", f"{base_hwm} (default)" if not env_first("PERF_HWM") else base_hwm),
+            ("sndhwm", f"{sndhwm} (default)" if not env_first("PERF_SNDHWM") else sndhwm),
+            ("rcvhwm", f"{rcvhwm} (default)" if not env_first("PERF_RCVHWM") else rcvhwm),
+            ("sndbuf", env_first("PERF_SNDBUF") or "default(os)"),
+            ("rcvbuf", env_first("PERF_RCVBUF") or "default(os)"),
+            ("sndtimeo_ms", str(cfg.multi_sndtimeo_ms if cfg.multi_sndtimeo_ms > 0 else 200)),
+            ("rcvtimeo_ms", str(cfg.multi_rcvtimeo_ms if cfg.multi_rcvtimeo_ms > 0 else 200)),
+            ("connect_concurrency", connect_concurrency_display),
+            ("settle_ms", str(env_int_from_map(os.environ, "PERF_SETTLE_MS", 500))),
+            ("client_poll_timeout_ms", str(env_int_from_map(os.environ, "PERF_CLIENT_POLL_TIMEOUT_MS", 0))),
+            ("connect_ready_timeout_ms", str(cfg.multi_connect_ready_timeout_ms)),
+            ("monitor_hwm", str(cfg.multi_monitor_hwm if cfg.multi_monitor_hwm >= 0 else 1000)),
+            ("server_ready_timeout_ms", str(cfg.multi_server_ready_timeout_ms)),
+            ("server_shutdown_timeout_ms", str(cfg.multi_server_shutdown_timeout_ms)),
+            ("server_bind_port", str(cfg.multi_server_bind_port)),
+            ("transport_transition_ms", str(cfg.multi_transport_transition_ms)),
+            ("pattern_transition_ms", str(cfg.multi_pattern_transition_ms)),
+            ("lat_timeout_ms", str(env_int_from_map(os.environ, "PERF_LAT_TIMEOUT_MS", 5000))),
+            ("stream_non_tcp_clients_max", str(env_int_from_map(os.environ, "PERF_STREAM_NON_TCP_CLIENTS_MAX", 10000))),
+            ("disable_resource_metrics", env_first("PERF_DISABLE_RESOURCE_METRICS") or "0"),
+            ("timeout_seconds", "auto"),
+        ]
+    )
+    return items
+
+
+def core_style_status_counts(
+    combo_results: Dict[Tuple[str, str, int], ComboStats]
+) -> Dict[str, int]:
+    counts = {"success": 0, "unsupported": 0, "skip": 0, "fail": 0}
+    for combo in combo_results.values():
+        if combo.status == "success":
+            counts["success"] += 1
+        else:
+            counts["fail"] += 1
+    return counts
+
+
+def core_single_header_line() -> str:
+    return (
+        "| Size     |         Throughput |      Bandwidth |   Lat.Mean(ms) |"
+        "    Lat.P95(ms) |    Lat.P99(ms) |   CPU% |   Mem MB |"
+        " Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |"
+    )
+
+
+def core_multi_header_line() -> str:
+    return (
+        "| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |"
+        "   Lat.P95(ms) |   Lat.P99(ms) |  S.CPU% | S.Mem MB |"
+        " Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |"
+    )
+
+
+def core_table_separator_line() -> str:
+    return (
+        "|----------|--------------------|----------------|---------------|"
+        "---------------|---------------|--------|----------|-----------|"
+        "-----------|-----------|"
+    )
+
+
+def core_single_row_line(
+    pattern: str, size: int, combo: Optional[ComboStats]
+) -> str:
+    size_label = f"{size}B"
+    if combo is None or combo.status != "success":
+        return (
+            f"| {size_label:<8} | {'N/A':>18} | {'N/A':>14} | {'N/A':>13} |"
+            f" {'N/A':>13} | {'N/A':>13} | {'N/A':>6} | {'N/A':>8} |"
+            f" {'N/A':>9} | {'N/A':>9} | {'N/A':>9} |"
+        )
+    return (
+        f"| {size_label:<8} | {format_thr(combo.throughput, pattern, 'single'):>18} |"
+        f" {format_bw(combo.bandwidth):>14} | {format_lat(combo.latency, 'dotnet', pattern):>13} |"
+        f" {format_lat(combo.latency_p95, 'dotnet', pattern):>13} |"
+        f" {format_lat(combo.latency_p99, 'dotnet', pattern):>13} |"
+        f" {format_cpu(combo.cpu_pct):>6} | {format_mem(combo.mem_mb):>8} |"
+        f" {format_queue_pending_single(queue_or_zero(combo.snd_pending_max)):>9} |"
+        f" {format_queue_pending_single(queue_or_zero(combo.rcv_pending_max)):>9} |"
+        f" {format_queue_pending_single(queue_or_zero(combo.rcv_pending_end)):>9} |"
+    )
+
+
+def core_multi_row_line(
+    pattern: str, size: int, combo: Optional[ComboStats]
+) -> str:
+    size_label = f"{size}B"
+    if combo is None or combo.status != "success":
+        return (
+            f"| {size_label:<8} | {'N/A':>18} | {'N/A':>14} | {'N/A':>13} |"
+            f" {'N/A':>13} | {'N/A':>13} | {'N/A':>7} | {'N/A':>8} |"
+            f" {'N/A':>9} | {'N/A':>9} | {'N/A':>9} |"
+        )
+    return (
+        f"| {size_label:<8} | {format_thr(combo.throughput, pattern, 'multi'):>18} |"
+        f" {format_bw(combo.bandwidth):>14} | {format_lat(combo.latency, 'dotnet', pattern):>13} |"
+        f" {format_lat(combo.latency_p95, 'dotnet', pattern):>13} |"
+        f" {format_lat(combo.latency_p99, 'dotnet', pattern):>13} |"
+        f" {format_cpu(combo.server_cpu_pct):>7} | {format_mem(combo.server_mem_mb):>8} |"
+        f" {format_queue_pending_multi(queue_or_zero(combo.server_snd_pending_max)):>9} |"
+        f" {format_queue_pending_multi(queue_or_zero(combo.server_rcv_pending_max)):>9} |"
+        f" {format_queue_pending_multi(queue_or_zero(combo.server_rcv_pending_end)):>9} |"
+    )
+
+
+def emit_core_style_result_lines(
+    logger: Tee, suite: str, result_map: Dict[MetricKey, float]
+) -> None:
+    metric_order = {
+        "throughput": 0,
+        "bandwidth": 1,
+        "latency": 2,
+        "latency_p95": 3,
+        "latency_p99": 4,
+        "cpu_pct": 5,
+        "mem_mb": 6,
+        "client_cpu_pct": 5,
+        "client_mem_mb": 6,
+        "server_cpu_pct": 7,
+        "server_mem_mb": 8,
+        "snd_pending_max": 9,
+        "rcv_pending_max": 10,
+        "rcv_pending_end": 11,
+        "server_snd_pending_max": 12,
+        "server_rcv_pending_max": 13,
+        "server_rcv_pending_end": 14,
+    }
+
+    def result_sort_key(item: Tuple[MetricKey, float]) -> Tuple[str, str, str, int, int]:
+        (lib, pattern, transport, size, metric), _ = item
+        return (
+            lib,
+            pattern,
+            transport,
+            size,
+            metric_order.get(metric, 99),
+        )
+
+    for (lib, pattern, transport, size, metric), value in sorted(
+        result_map.items(), key=result_sort_key
+    ):
+        logger.print(
+            f"RESULT,{lib},{display_pattern_name(pattern, suite)},{transport},"
+            f"{size},{metric},{value:.3f}"
+        )
 
 
 def build_table_lines(
@@ -2020,6 +2433,49 @@ def build_table_lines(
     patterns: Sequence[str],
     combo_results: Dict[Tuple[str, str, int], ComboStats],
 ) -> List[str]:
+    if use_core_output_style():
+        lines: List[str] = []
+        divider = "=" * 79
+
+        if cfg.suite == "multi":
+            header = (
+                "| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |  S.CPU% | S.Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |"
+            )
+            separator = (
+                "|----------|--------------------|----------------|---------------|---------------|---------------|---------|----------|-----------|-----------|-----------|"
+            )
+        else:
+            header = (
+                "| Size     |         Throughput |      Bandwidth |   Lat.Mean(ms) |    Lat.P95(ms) |    Lat.P99(ms) |   CPU% |   Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |"
+            )
+            separator = (
+                "|----------|--------------------|----------------|---------------|---------------|---------------|--------|----------|-----------|-----------|-----------|"
+            )
+
+        for pattern_index, pattern in enumerate(patterns):
+            transports = resolve_transports_for_pattern(cfg, pattern)
+            direction = pattern_direction(pattern, cfg.suite)
+            if pattern_index > 0:
+                lines.append("")
+                lines.append(divider)
+                lines.append("")
+            display_pattern = display_pattern_name(pattern, cfg.suite)
+            lines.append(f"## PATTERN: {display_pattern} ({direction})")
+            lines.append(f"  > Benchmarking current for {display_pattern}...")
+            for tr in transports:
+                lines.append(f"    Testing {tr}:")
+                lines.append(f"      {header}")
+                lines.append(f"      {separator}")
+                for size in resolve_sizes_for_pattern(cfg, pattern):
+                    combo = combo_results.get((pattern, tr, size))
+                    if cfg.suite == "multi":
+                        row = core_multi_row_line(pattern, size, combo)
+                    else:
+                        row = core_single_row_line(pattern, size, combo)
+                    lines.append(f"      {row}")
+                lines.append(f"    Testing {tr}: Done")
+        return lines
+
     lines: List[str] = []
     divider = "=" * 79
 
@@ -2042,7 +2498,7 @@ def build_table_lines(
             lines.append("")
             lines.append(divider)
             lines.append("")
-        lines.append(f"## PATTERN: {pattern} ({direction})")
+        lines.append(f"## PATTERN: {display_pattern_name(pattern, cfg.suite)} ({direction})")
         for tr in transports:
             lines.append("")
             lines.append(f"### Transport: {tr}")
@@ -2086,11 +2542,11 @@ def build_table_lines(
                     server_cpu = combo.server_cpu_pct
                     server_mem = combo.server_mem_mb
                     lines.append(
-                        f"| {size}B | {format_thr(combo.throughput, pattern, cfg.suite):>16} | {format_bw(combo.bandwidth):>9} | {format_lat(combo.latency, cfg.binding):>12} | {format_lat(combo.latency_p95, cfg.binding):>8} | {format_lat(combo.latency_p99, cfg.binding):>8} | {format_cpu(client_cpu):>6} | {format_mem(client_mem):>8} | {format_cpu(server_cpu):>6} | {format_mem(server_mem):>8} |"
+                        f"| {size}B | {format_thr(combo.throughput, pattern, cfg.suite):>16} | {format_bw(combo.bandwidth):>9} | {format_lat(combo.latency, cfg.binding, pattern):>12} | {format_lat(combo.latency_p95, cfg.binding, pattern):>8} | {format_lat(combo.latency_p99, cfg.binding, pattern):>8} | {format_cpu(client_cpu):>6} | {format_mem(client_mem):>8} | {format_cpu(server_cpu):>6} | {format_mem(server_mem):>8} |"
                     )
                 else:
                     lines.append(
-                        f"| {size}B | {format_thr(combo.throughput, pattern, cfg.suite):>16} | {format_bw(combo.bandwidth):>9} | {format_lat(combo.latency, cfg.binding):>12} | {format_lat(combo.latency_p95, cfg.binding):>8} | {format_lat(combo.latency_p99, cfg.binding):>8} | {format_cpu(combo.cpu_pct):>4} | {format_mem(combo.mem_mb):>6} |"
+                        f"| {size}B | {format_thr(combo.throughput, pattern, cfg.suite):>16} | {format_bw(combo.bandwidth):>9} | {format_lat(combo.latency, cfg.binding, pattern):>12} | {format_lat(combo.latency_p95, cfg.binding, pattern):>8} | {format_lat(combo.latency_p99, cfg.binding, pattern):>8} | {format_cpu(combo.cpu_pct):>4} | {format_mem(combo.mem_mb):>6} |"
                     )
 
     if lines and lines[0] == "":
@@ -2098,10 +2554,46 @@ def build_table_lines(
     return lines
 
 
+def get_os_label() -> str:
+    system = platform.system()
+    release = platform.release()
+    if system and release:
+        return f"{system} {release}"
+    return platform.platform()
+
+
+def get_cpu_model() -> str:
+    try:
+        if platform.system() == "Linux":
+            with open("/proc/cpuinfo", "r", encoding="utf-8", errors="ignore") as handle:
+                for line in handle:
+                    if line.lower().startswith("model name"):
+                        parts = line.split(":", 1)
+                        if len(parts) == 2:
+                            model = parts[1].strip()
+                            if model:
+                                return model
+        elif platform.system() == "Darwin":
+            output = subprocess.check_output(
+                ["sysctl", "-n", "machdep.cpu.brand_string"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+            if output:
+                return output
+    except Exception:
+        pass
+
+    cpu = platform.processor().strip()
+    if cpu:
+        return cpu
+    return platform.machine()
+
+
 def collect_host_meta() -> Dict[str, str]:
     meta = {
-        "os": platform.platform(),
-        "cpu": platform.processor() or platform.machine(),
+        "os": get_os_label(),
+        "cpu": get_cpu_model(),
         "cores": str(os.cpu_count() or 1),
         "build": "Release",
         "commit": "unknown",
@@ -2158,6 +2650,12 @@ def render_meta_result_lines(meta: Dict[str, str], results: Dict[MetricKey, floa
         "client_mem_mb": 6,
         "server_cpu_pct": 7,
         "server_mem_mb": 8,
+        "snd_pending_max": 9,
+        "rcv_pending_max": 10,
+        "rcv_pending_end": 11,
+        "server_snd_pending_max": 12,
+        "server_rcv_pending_max": 13,
+        "server_rcv_pending_end": 14,
     }
 
     def result_sort_key(item: Tuple[MetricKey, float]) -> Tuple[str, str, str, int, int]:
@@ -2231,15 +2729,16 @@ def make_parser() -> argparse.ArgumentParser:
     ap.add_argument("--result", action="store_true")
     ap.add_argument("--results-dir", default="")
     ap.add_argument("--results-tag", default="")
+    ap.add_argument("--result-file", default="")
 
     ap.add_argument("--mode", choices=("observe", "trend", "gate"), default="observe")
 
-    ap.add_argument("--multi-warmup-seconds", type=int, default=3)
+    ap.add_argument("--multi-warmup-seconds", type=int, default=2)
     ap.add_argument("--multi-duration-seconds", type=int, default=5)
     ap.add_argument("--multi-clients", type=int, default=0)
-    ap.add_argument("--multi-hwm", type=int, default=100000)
-    ap.add_argument("--multi-sndtimeo-ms", type=int, default=5000)
-    ap.add_argument("--multi-rcvtimeo-ms", type=int, default=5000)
+    ap.add_argument("--multi-hwm", type=int, default=-1)
+    ap.add_argument("--multi-sndtimeo-ms", type=int, default=-1)
+    ap.add_argument("--multi-rcvtimeo-ms", type=int, default=-1)
     ap.add_argument("--multi-connect-concurrency", type=int, default=1024)
     ap.add_argument("--multi-drain-ms", type=int, default=-1)
     ap.add_argument("--multi-transport-transition-ms", type=int, default=3000)
@@ -2248,7 +2747,7 @@ def make_parser() -> argparse.ArgumentParser:
     ap.add_argument("--multi-server-shutdown-timeout-ms", type=int, default=5000)
     ap.add_argument("--multi-server-bind-port", type=int, default=0)
     ap.add_argument("--multi-connect-ready-timeout-ms", type=int, default=5000)
-    ap.add_argument("--multi-monitor-hwm", type=int, default=200000)
+    ap.add_argument("--multi-monitor-hwm", type=int, default=-1)
 
     return ap
 
@@ -2290,6 +2789,7 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
             transports_override = parse_csv_names(env_transports)
 
     results_root = Path(args.results_dir) if args.results_dir else binding_perf_dir(binding) / "results"
+    result_file = Path(args.result_file) if args.result_file else None
     output = Path(args.output) if args.output else None
 
     multi_clients = args.multi_clients
@@ -2316,7 +2816,7 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
         0,
         env_int_if_default(
             args.multi_warmup_seconds,
-            3,
+            2,
             "PERF_WARMUP_SECONDS",
             "PERF_MULTI_WARMUP_SECONDS",
         ),
@@ -2330,26 +2830,20 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
             "PERF_MULTI_DURATION_SECONDS",
         ),
     )
-    multi_hwm = max(
-        1, env_int_if_default(args.multi_hwm, 100000, "PERF_HWM", "PERF_MULTI_HWM")
+    multi_hwm = env_int_if_default(
+        args.multi_hwm, -1, "PERF_HWM", "PERF_MULTI_HWM"
     )
-    multi_sndtimeo_ms = max(
-        1,
-        env_int_if_default(
-            args.multi_sndtimeo_ms,
-            5000,
-            "PERF_SNDTIMEO_MS",
-            "PERF_MULTI_SNDTIMEO_MS",
-        ),
+    multi_sndtimeo_ms = env_int_if_default(
+        args.multi_sndtimeo_ms,
+        -1,
+        "PERF_SNDTIMEO_MS",
+        "PERF_MULTI_SNDTIMEO_MS",
     )
-    multi_rcvtimeo_ms = max(
-        1,
-        env_int_if_default(
-            args.multi_rcvtimeo_ms,
-            5000,
-            "PERF_RCVTIMEO_MS",
-            "PERF_MULTI_RCVTIMEO_MS",
-        ),
+    multi_rcvtimeo_ms = env_int_if_default(
+        args.multi_rcvtimeo_ms,
+        -1,
+        "PERF_RCVTIMEO_MS",
+        "PERF_MULTI_RCVTIMEO_MS",
     )
     multi_transport_transition_ms = max(
         0,
@@ -2369,7 +2863,7 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
         0,
         env_int_if_default(
             args.multi_server_ready_timeout_ms,
-            15000,
+            10000,
             "PERF_SERVER_READY_TIMEOUT_MS",
             "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
         ),
@@ -2399,14 +2893,11 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
             "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
         ),
     )
-    multi_monitor_hwm = max(
-        0,
-        env_int_if_default(
-            args.multi_monitor_hwm,
-            200000,
-            "PERF_MONITOR_HWM",
-            "PERF_MULTI_MONITOR_HWM",
-        ),
+    multi_monitor_hwm = env_int_if_default(
+        args.multi_monitor_hwm,
+        -1,
+        "PERF_MONITOR_HWM",
+        "PERF_MULTI_MONITOR_HWM",
     )
     multi_drain_ms = args.multi_drain_ms
     if multi_drain_ms < 0:
@@ -2433,6 +2924,7 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
         result=args.result,
         results_root=results_root,
         results_tag=args.results_tag,
+        result_file=result_file,
         output=output,
         multi_warmup_seconds=multi_warmup_seconds,
         multi_duration_seconds=multi_duration_seconds,
@@ -2464,11 +2956,17 @@ def run_single_pattern_transport(
     failures: List[Tuple[str, str, int, str]],
     warnings: List[str],
 ) -> None:
+    if use_core_output_style():
+        logger.print(f"    Testing {transport}:")
+        logger.print(f"      {core_single_header_line()}")
+        logger.print(f"      {core_table_separator_line()}")
     for size in sizes:
-        logger.print(f"    Testing {transport} | {size}B: ", end="", flush=True)
+        if not use_core_output_style():
+            logger.print(f"    Testing {transport} | {size}B: ", end="", flush=True)
         outcomes: List[RunOutcome] = []
         for run_idx in range(cfg.runs):
-            logger.print(f"{run_idx + 1} ", end="", flush=True)
+            if not use_core_output_style():
+                logger.print(f"{run_idx + 1} ", end="", flush=True)
             timeout = int(env_first("PERF_SINGLE_TIMEOUT_SECONDS") or "120")
             if (
                 pattern in STREAM_SINGLE_PATTERNS
@@ -2527,6 +3025,11 @@ def run_single_pattern_transport(
                             f"server READY timeout: pattern={pattern} transport={transport} size={size}"
                         )
                 else:
+                    if pattern in STREAM_VARIANT_PATTERNS:
+                        try:
+                            server_cap.write_stdin_line(f"QUEUE,{size}")
+                        except Exception:
+                            pass
                     client_cmd = stream_shared_client_cmd(
                         cfg=cfg,
                         env=env,
@@ -2546,6 +3049,13 @@ def run_single_pattern_transport(
                         process_role="single",
                         require_percentiles=require_dotnet_percentiles(cfg, pattern),
                     )
+
+                    if pattern in STREAM_VARIANT_PATTERNS:
+                        try:
+                            server_cap.write_stdin_line("STOP")
+                        except Exception:
+                            pass
+                        server_cap.close_stdin()
 
                     server_shutdown_timeout = (
                         effective_server_shutdown_timeout_ms(cfg, pattern) / 1000.0
@@ -2595,11 +3105,16 @@ def run_single_pattern_transport(
 
         combo = aggregate_combo(outcomes)
         combo_results[(pattern, transport, size)] = combo
+        if use_core_output_style():
+            logger.print(f"      {core_single_row_line(pattern, size, combo)}")
         if combo.status == "fail":
             failures.append((pattern, transport, size, combo.reason))
-            logger.print("(failures=1) Done")
-        else:
+            if not use_core_output_style():
+                logger.print("(failures=1) Done")
+        elif not use_core_output_style():
             logger.print("Done")
+    if use_core_output_style():
+        logger.print(f"    Testing {transport}: Done")
 
 
 def run_multi_pattern_transport(
@@ -2613,12 +3128,21 @@ def run_multi_pattern_transport(
     failures: List[Tuple[str, str, int, str]],
     warnings: List[str],
 ) -> None:
-    size_tag = ",".join(f"{size}B" for size in sizes)
-    logger.print(f"    Testing {transport} | {size_tag}: ", end="", flush=True)
+    pattern_env = env.copy()
+    if "PERF_IO_THREADS" not in pattern_env or not str(
+        pattern_env.get("PERF_IO_THREADS", "")
+    ).strip():
+        default_io_threads = 4 if pattern in STREAM_VARIANT_PATTERNS else 2
+        pattern_env["PERF_IO_THREADS"] = str(default_io_threads)
 
-    combo_outcomes: Dict[Tuple[str, str, int], List[RunOutcome]] = {
-        (pattern, transport, size): [] for size in sizes
-    }
+    size_tag = ",".join(f"{size}B" for size in sizes)
+    if use_core_output_style():
+        logger.print(f"    Testing {transport}:")
+        logger.print(f"      {core_multi_header_line()}")
+        logger.print(f"      {core_table_separator_line()}")
+    if not use_core_output_style():
+        logger.print(f"    Testing {transport} | {size_tag}: ", end="", flush=True)
+
     timeout = max(120, cfg.multi_warmup_seconds + cfg.multi_duration_seconds + 60)
     stream_size_transition_ms = 0
     if cfg.binding == "dotnet" and pattern in MULTI_STREAM_PATTERNS:
@@ -2630,9 +3154,11 @@ def run_multi_pattern_transport(
         if stream_size_transition_ms < 0:
             stream_size_transition_ms = 0
 
-    for run_idx in range(cfg.runs):
-        logger.print(f"{run_idx + 1} ", end="", flush=True)
-        for size_index, size in enumerate(sizes):
+    for size_index, size in enumerate(sizes):
+        combo_outcomes: List[RunOutcome] = []
+        for run_idx in range(cfg.runs):
+            if not use_core_output_style():
+                logger.print(f"{run_idx + 1} ", end="", flush=True)
             combo_key = (pattern, transport, size)
             if supports_split_multi(cfg.binding):
                 server_cmd = binding_multi_role_command(
@@ -2642,7 +3168,7 @@ def run_multi_pattern_transport(
                     transport,
                     size=size,
                 )
-                server_cap = spawn_capture_process(server_cmd, env)
+                server_cap = spawn_capture_process(server_cmd, pattern_env)
                 ready_ok, endpoint = wait_for_server_ready(
                     server_cap, cfg.multi_server_ready_timeout_ms
                 )
@@ -2674,7 +3200,7 @@ def run_multi_pattern_transport(
                             metrics={},
                             reason="server_ready_timeout",
                         )
-                    combo_outcomes[combo_key].append(outcome)
+                    combo_outcomes.append(outcome)
                     if status_token == "unsupported":
                         warnings.append(
                             f"server reported unsupported before READY: pattern={pattern} transport={transport} size={size}"
@@ -2690,9 +3216,13 @@ def run_multi_pattern_transport(
                     continue
 
                 if pattern in MULTI_STREAM_PATTERNS:
+                    try:
+                        server_cap.write_stdin_line(f"QUEUE,{size}")
+                    except Exception:
+                        pass
                     client_cmd = stream_shared_client_cmd(
                         cfg=cfg,
-                        env=env,
+                        env=pattern_env,
                         pattern=pattern,
                         transport=transport,
                         size=size,
@@ -2708,7 +3238,7 @@ def run_multi_pattern_transport(
                         size=size,
                         endpoint=endpoint,
                     )
-                sampled = run_command_with_metrics(client_cmd, env, timeout)
+                sampled = run_command_with_metrics(client_cmd, pattern_env, timeout)
                 outcome = parse_run_outcome(
                     pattern,
                     pattern,
@@ -2720,6 +3250,12 @@ def run_multi_pattern_transport(
                 )
 
                 # Server-side informational metrics may be emitted by the server process.
+                if pattern in MULTI_STREAM_PATTERNS:
+                    try:
+                        server_cap.write_stdin_line("STOP")
+                    except Exception:
+                        pass
+                    server_cap.close_stdin()
                 server_shutdown_timeout = (
                     effective_server_shutdown_timeout_ms(cfg, pattern) / 1000.0
                 )
@@ -2736,9 +3272,17 @@ def run_multi_pattern_transport(
 
                 server_cap.join_readers()
                 server_stdout = server_cap.stdout_text()
+                server_out_pattern = pattern
+                if cfg.binding == "dotnet" and pattern.startswith("MULTI_"):
+                    server_out_pattern = pattern[len("MULTI_") :]
+
                 server_metrics = parse_result_metrics_from_text(
                     server_stdout, pattern, transport, size
                 )
+                if not server_metrics and server_out_pattern != pattern:
+                    server_metrics = parse_result_metrics_from_text(
+                        server_stdout, server_out_pattern, transport, size
+                    )
                 # DEALER_DEALER one-way in split multi can emit throughput/latency
                 # on the server side (receiver), while the client is send-only.
                 if (
@@ -2773,8 +3317,24 @@ def run_multi_pattern_transport(
                         )
                 if "server_cpu_pct" in server_metrics:
                     outcome.metrics["server_cpu_pct"] = server_metrics["server_cpu_pct"]
+                elif server_cap.sampled_cpu_pct() is not None:
+                    outcome.metrics["server_cpu_pct"] = float(server_cap.sampled_cpu_pct())
                 if "server_mem_mb" in server_metrics:
                     outcome.metrics["server_mem_mb"] = server_metrics["server_mem_mb"]
+                elif server_cap.mem_mb is not None:
+                    outcome.metrics["server_mem_mb"] = float(server_cap.mem_mb)
+                if "server_snd_pending_max" in server_metrics:
+                    outcome.metrics["server_snd_pending_max"] = server_metrics[
+                        "server_snd_pending_max"
+                    ]
+                if "server_rcv_pending_max" in server_metrics:
+                    outcome.metrics["server_rcv_pending_max"] = server_metrics[
+                        "server_rcv_pending_max"
+                    ]
+                if "server_rcv_pending_end" in server_metrics:
+                    outcome.metrics["server_rcv_pending_end"] = server_metrics[
+                        "server_rcv_pending_end"
+                    ]
 
                 if server_timed_out and outcome.status == "success":
                     outcome = RunOutcome(
@@ -2795,7 +3355,7 @@ def run_multi_pattern_transport(
             else:
                 cmd_prefix, out_pattern = binding_cmd_prefix(cfg, pattern)
                 cmd = cmd_prefix + [transport, str(size)]
-                sampled = run_command_with_metrics(cmd, env, timeout)
+                sampled = run_command_with_metrics(cmd, pattern_env, timeout)
                 outcome = parse_run_outcome(
                     pattern,
                     out_pattern,
@@ -2804,26 +3364,28 @@ def run_multi_pattern_transport(
                     sampled,
                     require_percentiles=require_dotnet_percentiles(cfg, pattern),
                 )
-            combo_outcomes[combo_key].append(outcome)
+            combo_outcomes.append(outcome)
             if outcome.warnings:
                 warnings.extend(outcome.warnings)
-            if stream_size_transition_ms > 0 and size_index + 1 < len(sizes):
-                sleep_ms(stream_size_transition_ms)
+            if run_idx + 1 < cfg.runs:
+                sleep_ms(int(env_first("PERF_MULTI_RUN_COOLDOWN_MS") or "3000"))
 
-        if run_idx + 1 < cfg.runs:
-            sleep_ms(int(env_first("PERF_MULTI_RUN_COOLDOWN_MS") or "3000"))
-
-    for size in sizes:
-        combo_key = (pattern, transport, size)
-        combo = aggregate_combo(combo_outcomes[combo_key])
+        combo = aggregate_combo(combo_outcomes)
         combo_results[combo_key] = combo
+        if use_core_output_style():
+            logger.print(f"      {core_multi_row_line(pattern, size, combo)}")
         if combo.status == "fail":
             failures.append((pattern, transport, size, combo.reason))
+        if stream_size_transition_ms > 0 and size_index + 1 < len(sizes):
+            sleep_ms(stream_size_transition_ms)
 
-    if any(combo_results[(pattern, transport, size)].status == "fail" for size in sizes):
-        logger.print("(failures=1) Done")
+    if not use_core_output_style():
+        if any(combo_results[(pattern, transport, size)].status == "fail" for size in sizes):
+            logger.print("(failures=1) Done")
+        else:
+            logger.print("Done")
     else:
-        logger.print("Done")
+        logger.print(f"    Testing {transport}: Done")
 
 
 def execute_benchmarks(
@@ -2841,8 +3403,19 @@ def execute_benchmarks(
     warnings: List[str] = []
 
     for pattern_index, pattern in enumerate(patterns):
-        logger.print("")
-        logger.print(f"  > Benchmarking current for {pattern}...")
+        display_pattern = display_pattern_name(pattern, cfg.suite)
+        if use_core_output_style():
+            if pattern_index > 0:
+                logger.print("")
+                logger.print("=" * 79)
+                logger.print("")
+            logger.print(
+                f"## PATTERN: {display_pattern} ({pattern_direction(pattern, cfg.suite)})"
+            )
+            logger.print(f"  > Benchmarking current for {display_pattern}...")
+        else:
+            logger.print("")
+            logger.print(f"  > Benchmarking current for {pattern}...")
 
         transports = resolve_transports_for_pattern(cfg, pattern)
         if not transports:
@@ -2956,6 +3529,15 @@ def build_result_map(
                 result_map[
                     ("current", pattern, transport, size, "server_mem_mb")
                 ] = combo.server_mem_mb
+            result_map[
+                ("current", pattern, transport, size, "server_snd_pending_max")
+            ] = queue_or_zero(combo.server_snd_pending_max)
+            result_map[
+                ("current", pattern, transport, size, "server_rcv_pending_max")
+            ] = queue_or_zero(combo.server_rcv_pending_max)
+            result_map[
+                ("current", pattern, transport, size, "server_rcv_pending_end")
+            ] = queue_or_zero(combo.server_rcv_pending_end)
         else:
             if combo.cpu_pct is not None:
                 result_map[("current", pattern, transport, size, "cpu_pct")] = (
@@ -2963,6 +3545,15 @@ def build_result_map(
                 )
             if combo.mem_mb is not None:
                 result_map[("current", pattern, transport, size, "mem_mb")] = combo.mem_mb
+            result_map[("current", pattern, transport, size, "snd_pending_max")] = (
+                queue_or_zero(combo.snd_pending_max)
+            )
+            result_map[("current", pattern, transport, size, "rcv_pending_max")] = (
+                queue_or_zero(combo.rcv_pending_max)
+            )
+            result_map[("current", pattern, transport, size, "rcv_pending_end")] = (
+                queue_or_zero(combo.rcv_pending_end)
+            )
 
     return result_map
 
@@ -2984,12 +3575,16 @@ def run() -> int:
     parser = make_parser()
     args = parser.parse_args()
 
-    cfg, patterns = resolve_config(args)
-    logger = Tee(cfg.output)
+    cfg: Optional[SuiteConfig] = None
+    patterns: List[str] = []
+    logger: Optional[Tee] = None
 
     exit_code = 0
 
     try:
+        cfg, patterns = resolve_config(args)
+        logger = Tee(cfg.output)
+
         if env_first("PERF_COMPARISON_SCRIPT"):
             raise RuntimeError(
                 "PERF_COMPARISON_SCRIPT override is not allowed by perf policy"
@@ -3000,20 +3595,29 @@ def run() -> int:
         for lib in binding_native_candidates(cfg.binding):
             v = detect_zlink_version(lib)
             versions.append((lib, v))
-        ver_text = ", ".join(f"{p.name}:{v or 'unknown'}" for p, v in versions)
-        logger.print(f"Using distribution native libs ({cfg.binding}): {ver_text}")
 
         build_binding_if_needed(cfg, logger)
 
         env = prepare_runtime_env(cfg, native_dir)
+
+        if use_core_output_style():
+            if cfg.suite == "multi":
+                for key, value in core_style_meta_items(cfg, patterns):
+                    logger.print(f"META,{key},{value}")
+            start_items = core_style_effective_option_items(cfg, patterns)
+            logger.print("")
+            logger.print("## Effective Options (start)")
+            for key, value in start_items:
+                logger.print(f"- {key}: {value}")
 
         combo_results, failures, warnings = execute_benchmarks(
             cfg, patterns, env, logger
         )
 
         table_lines = build_table_lines(cfg, patterns, combo_results)
-        for line in table_lines:
-            logger.print(line)
+        if not use_core_output_style():
+            for line in table_lines:
+                logger.print(line)
 
         if warnings:
             logger.print("")
@@ -3035,7 +3639,7 @@ def run() -> int:
             host_meta["clients"] = str(cfg.multi_clients)
 
         result_map = build_result_map(cfg, combo_results)
-        required_metrics = 5 if cfg.binding == "dotnet" else 3
+        required_metrics = 5
         status, expected, actual = compute_completion_status(
             combo_results, required_metrics
         )
@@ -3049,10 +3653,44 @@ def run() -> int:
         report_dir.mkdir(parents=True, exist_ok=True)
 
         # tmp is always saved (policy v1.3).
-        tmp_file = tmp_dir / result_file_name(cfg.results_tag)
+        tmp_file = cfg.result_file if cfg.result_file else tmp_dir / result_file_name(cfg.results_tag)
+        tmp_file.parent.mkdir(parents=True, exist_ok=True)
         write_result_file(tmp_file, host_meta, result_map, table_lines)
         enforce_retention(tmp_dir)
-        logger.print(f"Saved result file: {tmp_file}")
+
+        if use_core_output_style():
+            result_items = core_style_effective_option_items(cfg, patterns)
+            logger.print("")
+            logger.print("## Effective Options (result)")
+            for key, value in result_items:
+                logger.print(f"- {key}: {value}")
+
+            if cfg.suite == "single":
+                logger.print("")
+                logger.print("## Completion")
+                logger.print(f"- status: {status}")
+                logger.print(f"- expected_result_lines: {expected}")
+                logger.print(f"- actual_result_lines: {actual}")
+                logger.print("")
+                logger.print(f"Saved result file: {tmp_file} (status={status})")
+            else:
+                logger.print("")
+                logger.print("## Result Data")
+                emit_core_style_result_lines(logger, cfg.suite, result_map)
+                logger.print("")
+                logger.print(f"Saved result file: {tmp_file} (status={status})")
+                counts = core_style_status_counts(combo_results)
+                logger.print("")
+                logger.print("## Status Summary")
+                logger.print(f"- success: {counts['success']}")
+                logger.print(f"- unsupported: {counts['unsupported']}")
+                logger.print(f"- skip: {counts['skip']}")
+                logger.print(f"- fail: {counts['fail']}")
+                logger.print(f"- expected result lines: {expected}")
+                logger.print(f"- actual result lines: {actual}")
+                logger.print(f"- status: {status}")
+        else:
+            logger.print(f"Saved result file: {tmp_file} (status={status})")
 
         # --result => report save (complete-only).
         if cfg.result:
@@ -3068,13 +3706,18 @@ def run() -> int:
             exit_code = max(exit_code, 1)
 
     except ValueError as exc:
+        if logger is None:
+            logger = Tee(None)
         logger.print(f"Error: {exc}")
         exit_code = max(exit_code, 1)
     except RuntimeError as exc:
+        if logger is None:
+            logger = Tee(None)
         logger.print(f"Error: {exc}")
         exit_code = max(exit_code, 1)
     finally:
-        logger.close()
+        if logger is not None:
+            logger.close()
 
     return exit_code
 

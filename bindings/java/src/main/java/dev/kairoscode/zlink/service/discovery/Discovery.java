@@ -6,26 +6,27 @@ import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.ServiceType;
 import dev.kairoscode.zlink.SocketOption;
 import dev.kairoscode.zlink.ZlinkException;
-import dev.kairoscode.zlink.options.SocketOptionKey;
-import dev.kairoscode.zlink.options.SocketOptionValueType;
-import dev.kairoscode.zlink.service.receiver.ReceiverInfo;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
+import dev.kairoscode.zlink.options.SocketOptionKey;
+import dev.kairoscode.zlink.options.SocketOptionValueType;
+import dev.kairoscode.zlink.service.receiver.ReceiverInfo;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
 public final class Discovery implements AutoCloseable {
+    private static final int ERRNO_EINTR = 4;
+    private static final int ERRNO_EAGAIN = 11;
+    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+    private static final long RETRY_TIMEOUT_NS = 10_000_000_000L;
+    private static final long RETRY_SLEEP_MS = 20L;
     private MemorySegment handle;
-    private Arena sockOptArena = Arena.ofShared();
-    private MemorySegment sockOptScratch = MemorySegment.NULL;
-    private int sockOptScratchCapacity = 16;
 
     public Discovery(Context ctx, ServiceType serviceType) {
         this.handle = Native.discoveryNew(ctx.handle(), (short) serviceType.getValue());
@@ -37,18 +38,22 @@ public final class Discovery implements AutoCloseable {
         return handle;
     }
 
-    public void connectRegistry(String registryPubEndpoint) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.discoveryConnectRegistry(handle,
-                NativeHelpers.toCString(arena, registryPubEndpoint));
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_discovery_connect_registry");
-        }
+    public void connectRegistry(String registryEndpoint) {
+        retryTransient("zlink_discovery_connect_registry", () -> {
+            try (Arena arena = Arena.ofConfined()) {
+                int rc = Native.discoveryConnectRegistry(handle,
+                    NativeHelpers.toCString(arena, registryEndpoint));
+                if (rc != 0)
+                    throw ZlinkException.fromLastError(
+                        "zlink_discovery_connect_registry");
+            }
+        });
     }
 
     public void subscribe(String serviceName) {
         try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.discoverySubscribe(handle, NativeHelpers.toCString(arena, serviceName));
+            int rc = Native.discoverySubscribe(handle,
+                NativeHelpers.toCString(arena, serviceName));
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_discovery_subscribe");
         }
@@ -56,74 +61,98 @@ public final class Discovery implements AutoCloseable {
 
     public void unsubscribe(String serviceName) {
         try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.discoveryUnsubscribe(handle, NativeHelpers.toCString(arena, serviceName));
+            int rc = Native.discoveryUnsubscribe(handle,
+                NativeHelpers.toCString(arena, serviceName));
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_discovery_unsubscribe");
         }
     }
 
-    public void setSockOpt(DiscoverySocketRole role, SocketOption option, byte[] value) {
-        Objects.requireNonNull(role, "role");
+    public void setSockOpt(SocketOption option, byte[] value) {
         Objects.requireNonNull(option, "option");
         Objects.requireNonNull(value, "value");
-        setSockOptBytes(role.getValue(), option.getValue(), value, 0,
-            value.length);
+        throwSocketOptionNotSupported(option.toString());
     }
 
-    public void setSockOpt(DiscoverySocketRole role, SocketOption option, int value) {
-        Objects.requireNonNull(role, "role");
+    public void setSockOpt(SocketOption option, int value) {
         Objects.requireNonNull(option, "option");
-        setSockOptInt(role.getValue(), option.getValue(), value);
+        throwSocketOptionNotSupported(option.toString());
+    }
+
+    public void setSockOpt(DiscoverySocketRole role, SocketOption option,
+                           byte[] value) {
+        validateRole(role);
+        setSockOpt(option, value);
+    }
+
+    public void setSockOpt(DiscoverySocketRole role, SocketOption option,
+                           int value) {
+        validateRole(role);
+        setSockOpt(option, value);
+    }
+
+    public void setOption(SocketOptionKey<Integer> option, int value) {
+        Objects.requireNonNull(option, "option");
+        validateOptionType(option, SocketOptionValueType.INT32);
+        option.requireWritable();
+        throwSocketOptionNotSupported(option.name());
+    }
+
+    public void setOption(SocketOptionKey<Long> option, long value) {
+        Objects.requireNonNull(option, "option");
+        validateOptionType(option, SocketOptionValueType.INT64);
+        option.requireWritable();
+        throwSocketOptionNotSupported(option.name());
+    }
+
+    public void setOption(SocketOptionKey<String> option, String value) {
+        Objects.requireNonNull(option, "option");
+        validateOptionType(option, SocketOptionValueType.STRING);
+        option.requireWritable();
+        Objects.requireNonNull(value, "value");
+        throwSocketOptionNotSupported(option.name());
+    }
+
+    public void setOption(SocketOptionKey<byte[]> option, byte[] value) {
+        Objects.requireNonNull(option, "option");
+        validateOptionType(option, SocketOptionValueType.BYTES);
+        option.requireWritable();
+        Objects.requireNonNull(value, "value");
+        throwSocketOptionNotSupported(option.name());
     }
 
     public void setOption(DiscoverySocketRole role,
                           SocketOptionKey<Integer> option,
                           int value) {
-        Objects.requireNonNull(role, "role");
-        Objects.requireNonNull(option, "option");
-        validateOptionType(option, SocketOptionValueType.INT32);
-        option.requireWritable();
-        setSockOptInt(role.getValue(), option.optionId(), value);
+        validateRole(role);
+        setOption(option, value);
     }
 
     public void setOption(DiscoverySocketRole role,
                           SocketOptionKey<Long> option,
                           long value) {
-        Objects.requireNonNull(role, "role");
-        Objects.requireNonNull(option, "option");
-        validateOptionType(option, SocketOptionValueType.INT64);
-        option.requireWritable();
-        setSockOptLong(role.getValue(), option.optionId(), value);
+        validateRole(role);
+        setOption(option, value);
     }
 
     public void setOption(DiscoverySocketRole role,
                           SocketOptionKey<String> option,
                           String value) {
-        Objects.requireNonNull(role, "role");
-        Objects.requireNonNull(option, "option");
-        validateOptionType(option, SocketOptionValueType.STRING);
-        option.requireWritable();
-        byte[] utf8 = Objects.requireNonNull(value, "value").getBytes(
-          StandardCharsets.UTF_8);
-        setSockOptBytes(role.getValue(), option.optionId(), utf8, 0,
-            utf8.length);
+        validateRole(role);
+        setOption(option, value);
     }
 
     public void setOption(DiscoverySocketRole role,
                           SocketOptionKey<byte[]> option,
                           byte[] value) {
-        Objects.requireNonNull(role, "role");
-        Objects.requireNonNull(option, "option");
-        validateOptionType(option, SocketOptionValueType.BYTES);
-        option.requireWritable();
-        Objects.requireNonNull(value, "value");
-        setSockOptBytes(role.getValue(), option.optionId(), value, 0,
-            value.length);
+        validateRole(role);
+        setOption(option, value);
     }
 
     public int receiverCount(String serviceName) {
         try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.discoveryProviderCount(handle, NativeHelpers.toCString(arena, serviceName));
+            int rc = Native.discoveryProviderCount(handle,
+                NativeHelpers.toCString(arena, serviceName));
             if (rc < 0)
                 throw ZlinkException.fromLastError("zlink_discovery_receiver_count");
             return rc;
@@ -132,7 +161,8 @@ public final class Discovery implements AutoCloseable {
 
     public boolean serviceAvailable(String serviceName) {
         try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.discoveryServiceAvailable(handle, NativeHelpers.toCString(arena, serviceName));
+            int rc = Native.discoveryServiceAvailable(handle,
+                NativeHelpers.toCString(arena, serviceName));
             if (rc < 0)
                 throw ZlinkException.fromLastError("zlink_discovery_service_available");
             return rc != 0;
@@ -147,7 +177,8 @@ public final class Discovery implements AutoCloseable {
             MemorySegment arr = arena.allocate(NativeLayouts.PROVIDER_INFO_LAYOUT, count);
             MemorySegment cnt = arena.allocate(ValueLayout.JAVA_LONG);
             cnt.set(ValueLayout.JAVA_LONG, 0, count);
-            int rc = Native.discoveryGetProviders(handle, NativeHelpers.toCString(arena, serviceName), arr, cnt);
+            int rc = Native.discoveryGetProviders(handle,
+                NativeHelpers.toCString(arena, serviceName), arr, cnt);
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_discovery_get_receivers");
             long actualLong = cnt.get(ValueLayout.JAVA_LONG, 0);
@@ -172,22 +203,6 @@ public final class Discovery implements AutoCloseable {
             return;
         Native.discoveryDestroy(handle);
         handle = MemorySegment.NULL;
-        closeArena(sockOptArena);
-        sockOptArena = null;
-        sockOptScratch = MemorySegment.NULL;
-        sockOptScratchCapacity = 0;
-    }
-
-    private MemorySegment ensureSockOptScratch(int length) {
-        if (length <= 0)
-            return MemorySegment.NULL;
-        if (sockOptScratch.address() == 0 || sockOptScratchCapacity < length) {
-            closeArena(sockOptArena);
-            sockOptArena = Arena.ofShared();
-            sockOptScratch = sockOptArena.allocate(length);
-            sockOptScratchCapacity = length;
-        }
-        return sockOptScratch.asSlice(0, length);
     }
 
     private static void validateOptionType(SocketOptionKey<?> option,
@@ -199,38 +214,50 @@ public final class Discovery implements AutoCloseable {
         }
     }
 
-    private void setSockOptRaw(int role, int optionId, MemorySegment value,
-                               long len) {
-        int rc = Native.discoverySetSockOpt(handle, role, optionId, value, len);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_discovery_setsockopt");
-    }
-
-    private void setSockOptBytes(int role, int optionId, byte[] value,
-                                 int offset, int length) {
-        MemorySegment buf = length == 0 ? MemorySegment.NULL
-            : ensureSockOptScratch(length);
-        if (length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), offset, buf, 0,
-                length);
+    private static void validateRole(DiscoverySocketRole role) {
+        Objects.requireNonNull(role, "role");
+        if (role != DiscoverySocketRole.SUB) {
+            throw new IllegalArgumentException(
+              "unsupported Discovery socket role: " + role);
         }
-        setSockOptRaw(role, optionId, buf, length);
     }
 
-    private void setSockOptInt(int role, int optionId, int value) {
-        MemorySegment buf = ensureSockOptScratch(Integer.BYTES);
-        buf.set(ValueLayout.JAVA_INT, 0, value);
-        setSockOptRaw(role, optionId, buf, Integer.BYTES);
+    private void throwSocketOptionNotSupported(String optionName) {
+        throw new UnsupportedOperationException(
+          "Discovery socket option '" + optionName
+            + "' is not supported by the current core API.");
     }
 
-    private void setSockOptLong(int role, int optionId, long value) {
-        MemorySegment buf = ensureSockOptScratch(Long.BYTES);
-        buf.set(ValueLayout.JAVA_LONG, 0, value);
-        setSockOptRaw(role, optionId, buf, Long.BYTES);
+    private static void retryTransient(String operation, Runnable action) {
+        ZlinkException last = null;
+        long deadlineNs = System.nanoTime() + RETRY_TIMEOUT_NS;
+        while (System.nanoTime() < deadlineNs) {
+            try {
+                action.run();
+                return;
+            } catch (ZlinkException ex) {
+                if (!isTransient(ex.errno()))
+                    throw ex;
+                last = ex;
+            }
+            sleepRetry();
+        }
+
+        if (last != null)
+            throw last;
+        throw new IllegalStateException(operation + " timed out");
     }
 
-    private static void closeArena(Arena arena) {
-        if (arena != null && arena.scope().isAlive())
-            arena.close();
+    private static boolean isTransient(int errno) {
+        return errno == ERRNO_EINTR || errno == ERRNO_EAGAIN
+               || errno == ERRNO_EWOULDBLOCK_WIN;
+    }
+
+    private static void sleepRetry() {
+        try {
+            Thread.sleep(RETRY_SLEEP_MS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

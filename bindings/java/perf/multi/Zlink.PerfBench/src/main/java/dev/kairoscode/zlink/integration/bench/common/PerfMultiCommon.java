@@ -2,7 +2,16 @@
 
 package dev.kairoscode.zlink.integration.bench.common;
 
+import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.MonitorSocket;
+import dev.kairoscode.zlink.PeerInfo;
+import dev.kairoscode.zlink.Socket;
+import java.util.List;
+
 public final class PerfMultiCommon {
+    public static final int CONNECT_MONITOR_EVENTS =
+        MonitorEventType.CONNECTION_READY.getValue();
+
     private PerfMultiCommon() {
     }
 
@@ -55,6 +64,10 @@ public final class PerfMultiCommon {
             "PERF_MULTI_RCVTIMEO_MS");
     }
 
+    public static int resolveStreamIoTimeoutMs() {
+        return parseNonNegativeWithAliases(5000, "PERF_STREAM_TIMEOUT_MS");
+    }
+
     public static int resolveConnectReadyTimeoutMs() {
         return parsePositiveWithAliases(5000, "PERF_CONNECT_READY_TIMEOUT_MS",
             "PERF_MULTI_CONNECT_READY_TIMEOUT_MS");
@@ -85,6 +98,63 @@ public final class PerfMultiCommon {
             "PERF_MULTI_CLIENT_POLL_TIMEOUT_MS");
     }
 
+    public static int resolveEffectiveClientPollTimeoutMs() {
+        return Math.max(1, resolveClientPollTimeoutMs());
+    }
+
+    public static boolean isCoreStreamServerTransport(String transport) {
+        if (transport == null) {
+            return false;
+        }
+        String tr = transport.trim().toLowerCase();
+        return tr.equals("tcp") || tr.equals("tls") || tr.equals("ws")
+            || tr.equals("wss");
+    }
+
+    public static ServerQueueStats sampleServerQueueStats(Socket socket) {
+        List<PeerInfo> peers = socket.peers();
+        if (peers.isEmpty()) {
+            return new ServerQueueStats(0.0, 0.0, 0.0);
+        }
+
+        PeerInfo best = peers.get(0);
+        long bestActivity = best.msgsSent() + best.msgsReceived();
+        for (int i = 1; i < peers.size(); i++) {
+            PeerInfo candidate = peers.get(i);
+            long candidateActivity = candidate.msgsSent() + candidate.msgsReceived();
+            if (candidate.connectedTime() > best.connectedTime()
+                || (candidate.connectedTime() == best.connectedTime()
+                && candidateActivity > bestActivity)) {
+                best = candidate;
+                bestActivity = candidateActivity;
+            }
+        }
+
+        double sndPending = best.sndPendingMsgs();
+        double rcvPending = best.rcvPendingMsgs();
+        return new ServerQueueStats(sndPending, rcvPending, rcvPending);
+    }
+
+    public static void printServerQueueMetrics(String pattern, String transport,
+                                               int size,
+                                               ServerQueueStats stats) {
+        System.out.println("RESULT,current," + pattern + "," + transport + ","
+            + size + ",server_snd_pending_max," + stats.sndPendingMax());
+        System.out.println("RESULT,current," + pattern + "," + transport + ","
+            + size + ",server_rcv_pending_max," + stats.rcvPendingMax());
+        System.out.println("RESULT,current," + pattern + "," + transport + ","
+            + size + ",server_rcv_pending_end," + stats.rcvPendingEnd());
+    }
+
+    public static boolean waitAllConnectReady(List<MonitorSocket> monitors,
+                                              int timeoutMs) {
+        if (monitors == null || monitors.isEmpty()) {
+            return true;
+        }
+        return PerfMultiClientHelpers.waitAllClientConnectReady(monitors,
+            timeoutMs, false) >= monitors.size();
+    }
+
     private static int parsePositiveWithAliases(int fallback,
                                                 String... names) {
         for (String name : names) {
@@ -105,5 +175,9 @@ public final class PerfMultiCommon {
             }
         }
         return fallback;
+    }
+
+    public record ServerQueueStats(double sndPendingMax, double rcvPendingMax,
+                                   double rcvPendingEnd) {
     }
 }

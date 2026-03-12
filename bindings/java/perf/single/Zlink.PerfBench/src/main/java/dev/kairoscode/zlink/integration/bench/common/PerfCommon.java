@@ -135,6 +135,16 @@ public final class PerfCommon {
         return false;
     }
 
+    public static boolean waitConnectReady(String transport,
+                                           MonitorSocket monitor,
+                                           int timeoutMs,
+                                           boolean acceptFallback) {
+        if ("inproc".equals(normalizeTransport(transport))) {
+            return true;
+        }
+        return waitMonitorReady(monitor, timeoutMs, acceptFallback);
+    }
+
     public static boolean waitUntil(BooleanSupplier check, int timeoutMs,
                                     int intervalMs) {
         long deadline = System.nanoTime() + Duration.ofMillis(
@@ -201,6 +211,12 @@ public final class PerfCommon {
             + size + ",latency_p95," + safeP95Ms);
         System.out.println("RESULT,current," + pattern + "," + transport + ","
             + size + ",latency_p99," + safeP99Ms);
+        System.out.println("RESULT,current," + pattern + "," + transport + ","
+            + size + ",snd_pending_max,0");
+        System.out.println("RESULT,current," + pattern + "," + transport + ","
+            + size + ",rcv_pending_max,0");
+        System.out.println("RESULT,current," + pattern + "," + transport + ","
+            + size + ",rcv_pending_end,0");
     }
 
     public static void printUnsupported(String pattern, String transport,
@@ -234,6 +250,18 @@ public final class PerfCommon {
 
     public static int resolveLatencySampleCap() {
         return parseEnv("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200_000);
+    }
+
+    public static int resolveGatewayReadyTimeoutMs() {
+        return 1000;
+    }
+
+    public static int resolveSpotDiscoveryTimeoutMs() {
+        return parseEnvNonNegative("PERF_SPOT_DISCOVERY_TIMEOUT_MS", 4000);
+    }
+
+    public static int resolveSpotReadyTimeoutMs() {
+        return parseEnvNonNegative("PERF_SPOT_READY_TIMEOUT_MS", 2000);
     }
 
     public static int randomRunId() {

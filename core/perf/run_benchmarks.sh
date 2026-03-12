@@ -72,6 +72,7 @@ else
 fi
 
 STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL,GATEWAY,SPOT"
+MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM_CALLBACK"
 PATTERN="ALL"
 OUTPUT_FILE=""
 RESULTS_DIR=""
@@ -89,6 +90,8 @@ SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
 SINGLE_HWM="${PERF_SINGLE_HWM:-}"
 SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
 SINGLE_RCVHWM="${PERF_SINGLE_RCVHWM:-}"
+SINGLE_SNDBUF="${PERF_SINGLE_SNDBUF:-${PERF_SNDBUF:-}}"
+SINGLE_RCVBUF="${PERF_SINGLE_RCVBUF:-${PERF_RCVBUF:-}}"
 SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
 PERF_ALLOW_MULTI="${PERF_ALLOW_MULTI:-0}"
@@ -107,6 +110,7 @@ Measure current zlink single-pattern performance.
 Options:
   -h, --help                  Show this help.
   --pattern NAME              Pattern list (comma-separated) or ALL.
+                              In multi mode, STREAM/STREAMS map to STREAM_CALLBACK.
   --build-dir PATH            Build directory (default: core/build/<platform>-<arch>).
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
   --clean-build               Remove build directory and do a clean build.
@@ -118,6 +122,8 @@ Options:
   --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
   --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
   --recv-hwm N                Override PERF_SINGLE_RCVHWM (fallback: --hwm).
+  --sndbuf SIZE               Override PERF_SINGLE_SNDBUF (e.g. 64b, 1k, 64k).
+  --rcvbuf SIZE               Override PERF_SINGLE_RCVBUF (e.g. 64b, 1k, 64k).
   --sndtimeo N                Override PERF_SINGLE_SNDTIMEO_MS (default: 200).
   --rcvtimeo N                Override PERF_SINGLE_RCVTIMEO_MS (default: 200).
   --send-timeout-ms N         Alias of --sndtimeo.
@@ -131,7 +137,7 @@ Notes:
   - result is saved under results/<single|multi>/report/.
   - default build mode is incremental (configure/build without deleting build dir).
   - --output and result save can be used together.
-  - MULTI_* patterns are rejected by this script.
+  - single mode rejects multi patterns; run_benchmarks_multi.sh enables multi mode.
 USAGE
 }
 
@@ -147,6 +153,22 @@ set_build_mode() {
   fi
   BUILD_MODE="${next_mode}"
   BUILD_MODE_EXPLICIT=1
+}
+
+normalize_multi_pattern_alias() {
+  local raw="${1:-}"
+  if [[ "${raw}" == MULTI_* ]]; then
+    raw="${raw#MULTI_}"
+  fi
+
+  case "${raw}" in
+    STREAM|STREAMS|STREAM_CALLBACK)
+      printf '%s' "STREAM_CALLBACK"
+      ;;
+    *)
+      printf '%s' "${raw}"
+      ;;
+  esac
 }
 
 while [[ $# -gt 0 ]]; do
@@ -196,6 +218,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --recv-hwm)
       SINGLE_RCVHWM="${2:-}"
+      shift
+      ;;
+    --sndbuf)
+      SINGLE_SNDBUF="${2:-}"
+      shift
+      ;;
+    --rcvbuf)
+      SINGLE_RCVBUF="${2:-}"
       shift
       ;;
     --sndtimeo|--send-timeout-ms)
@@ -251,7 +281,11 @@ fi
 if [[ "${PATTERN}" != "ALL" ]]; then
   PATTERN="$(printf '%s' "${PATTERN}" | tr '[:lower:]' '[:upper:]')"
 else
-  PATTERN="${STANDARD_PATTERNS}"
+  if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
+    PATTERN="${MULTI_PATTERNS}"
+  else
+    PATTERN="${STANDARD_PATTERNS}"
+  fi
 fi
 
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERN}"
@@ -266,27 +300,38 @@ for i in "${!PATTERN_LIST[@]}"; do
     echo "Error: empty pattern entry in list." >&2
     exit 1
   fi
-done
-
-MULTI_PATTERN_COUNT=0
-SINGLE_PATTERN_COUNT=0
-for p in "${PATTERN_LIST[@]}"; do
-  if [[ "${p}" == MULTI_* ]]; then
-    MULTI_PATTERN_COUNT=$((MULTI_PATTERN_COUNT + 1))
-    if [[ "${PERF_ALLOW_MULTI}" != "1" ]]; then
-      echo "Error: run_benchmarks.sh is single-pattern mode only." >&2
-      echo "Use run_benchmarks_multi.sh for MULTI_* patterns." >&2
-      exit 1
-    fi
-  else
-    SINGLE_PATTERN_COUNT=$((SINGLE_PATTERN_COUNT + 1))
+  if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
+    PATTERN_LIST[i]="$(normalize_multi_pattern_alias "${PATTERN_LIST[i]}")"
   fi
 done
 
-if (( MULTI_PATTERN_COUNT > 0 && SINGLE_PATTERN_COUNT > 0 )); then
-  echo "Error: cannot mix single and multi patterns in one run." >&2
-  exit 1
-fi
+PATTERN_COUNT=0
+SINGLE_PATTERN_COUNT=0
+for p in "${PATTERN_LIST[@]}"; do
+  if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
+    case ",${MULTI_PATTERNS}," in
+      *,"${p}",*)
+        PATTERN_COUNT=$((PATTERN_COUNT + 1))
+        ;;
+      *)
+        echo "Error: unsupported multi pattern: ${p}" >&2
+        echo "Supported multi patterns: ${MULTI_PATTERNS}" >&2
+        exit 1
+        ;;
+    esac
+  else
+    case ",${STANDARD_PATTERNS}," in
+      *,"${p}",*)
+        SINGLE_PATTERN_COUNT=$((SINGLE_PATTERN_COUNT + 1))
+        ;;
+      *)
+        echo "Error: unsupported single pattern: ${p}" >&2
+        echo "Supported single patterns: ${STANDARD_PATTERNS}" >&2
+        exit 1
+        ;;
+    esac
+  fi
+done
 
 if [[ ! -f "${PERF_COMPARISON_SCRIPT}" ]]; then
   echo "Error: comparison script not found: ${PERF_COMPARISON_SCRIPT}" >&2
@@ -363,7 +408,7 @@ if [[ -n "${RESULTS_TAG}" ]]; then
   NAME="${NAME}_${RESULTS_TAG}"
 fi
 RESULT_SUITE="single"
-if (( MULTI_PATTERN_COUNT > 0 )); then
+if (( PATTERN_COUNT > 0 )); then
   RESULT_SUITE="multi"
 fi
 RESULT_FILE="${RESULTS_DIR}/${RESULT_SUITE}/report/${NAME}.txt"
@@ -551,6 +596,12 @@ fi
 if [[ -n "${SINGLE_RCVHWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVHWM="${SINGLE_RCVHWM}")
 fi
+if [[ -n "${SINGLE_SNDBUF}" ]]; then
+  RUN_ENV+=(PERF_SINGLE_SNDBUF="${SINGLE_SNDBUF}")
+fi
+if [[ -n "${SINGLE_RCVBUF}" ]]; then
+  RUN_ENV+=(PERF_SINGLE_RCVBUF="${SINGLE_RCVBUF}")
+fi
 if [[ -n "${SINGLE_SNDTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_SNDTIMEO_MS="${SINGLE_SNDTIMEO_MS}")
 fi
@@ -582,7 +633,7 @@ print_effective_option() {
 
 EFFECTIVE_SEND_HWM="${SINGLE_SNDHWM:-${SINGLE_HWM:-}}"
 EFFECTIVE_RECV_HWM="${SINGLE_RCVHWM:-${SINGLE_HWM:-}}"
-EFFECTIVE_IO_THREADS="${PERF_IO_THREADS:-0}"
+EFFECTIVE_IO_THREADS="$(value_or_default "${PERF_IO_THREADS}" "default(binary=2)")"
 
 echo
 echo "## Effective Options (runner)"
@@ -596,6 +647,8 @@ print_effective_option "duration_seconds" "${SINGLE_DURATION_SECONDS}"
 print_effective_option "hwm" "$(value_or_default "${SINGLE_HWM}" "default(binary)")"
 print_effective_option "send_hwm" "$(value_or_default "${EFFECTIVE_SEND_HWM}" "default(binary)")"
 print_effective_option "recv_hwm" "$(value_or_default "${EFFECTIVE_RECV_HWM}" "default(binary)")"
+print_effective_option "sndbuf" "$(value_or_default "${SINGLE_SNDBUF}" "default(os)")"
+print_effective_option "rcvbuf" "$(value_or_default "${SINGLE_RCVBUF}" "default(os)")"
 print_effective_option "sndtimeo_ms" "${SINGLE_SNDTIMEO_MS}"
 print_effective_option "rcvtimeo_ms" "${SINGLE_RCVTIMEO_MS}"
 print_effective_option "pin_cpu" "${PIN_CPU}"

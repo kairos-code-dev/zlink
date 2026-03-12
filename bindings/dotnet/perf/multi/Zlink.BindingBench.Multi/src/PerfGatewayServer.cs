@@ -9,7 +9,7 @@ using static PerfRunner;
 internal static class PerfGatewayServer
 {
     private const string Pattern = "GATEWAY";
-    private const string ServiceName = "perf-gateway";
+    private const string ServiceName = "perf-server";
     private const string ServerGatewayRoutingId = "sg";
     private const uint ExpectedRunId = 1;
 
@@ -23,7 +23,6 @@ internal static class PerfGatewayServer
         Receiver? receiver = null;
         Discovery? discovery = null;
         Gateway? gateway = null;
-        Zlink.Socket? receiverRouter = null;
         try
         {
             registry = new Registry(ctx);
@@ -36,18 +35,22 @@ internal static class PerfGatewayServer
             receiver = new Receiver(ctx);
             ConfigureReceiverTlsServerIfNeeded(receiver, config.Transport);
             receiver.Bind(config.Endpoint);
-            receiver.ConnectRegistry(config.RegistryRouter);
+            ConnectRegistryWithRetry(() =>
+                receiver.ConnectRegistry(config.RegistryRouter));
             receiver.Register(ServiceName, config.Endpoint, 1);
+            if (!WaitUntil(() =>
+                    receiver.GetRegisterResult(ServiceName).Status == 0,
+                    config.ReadyTimeoutMs, 10))
+            {
+                throw new TimeoutException(
+                    "gateway_server_receiver_register_not_ready");
+            }
             ApplyReceiverSocketOptions(receiver, Pattern, config.SndTimeoutMs,
                 config.RcvTimeoutMs);
-            receiverRouter = receiver.CreateRouterSocket();
-            ApplyMultiSocketOptions(receiverRouter, Pattern);
-            receiverRouter.SetOption(SocketOptions.RcvTimeo, config.RcvTimeoutMs);
 
             discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
-            discovery.ConnectRegistry(config.RegistryPub);
-            ApplyDiscoverySocketOptions(discovery, Pattern, config.SndTimeoutMs,
-                config.RcvTimeoutMs);
+            ConnectRegistryWithRetry(() =>
+                discovery.ConnectRegistry(config.RegistryRouter));
             for (int i = 0; i < config.ClientCount; i++)
                 discovery.Subscribe($"c{i}");
 
@@ -69,10 +72,10 @@ internal static class PerfGatewayServer
             var routingId = new byte[256];
             var payload = new byte[Math.Max(256, Math.Max(Math.Max(config.Size,
                 PerfMetricHeaderSize), MultiStopToken.Length))];
-            string[] clientServiceNames = BuildClientServiceNames(
-                config.ClientCount);
-            GatewayServerResult result = RunActivePhase(receiver, receiverRouter,
-                gateway, routingId, payload, clientServiceNames, config);
+            Gateway.PreparedService[] clientServices = BuildClientServices(
+                gateway, config.ClientCount);
+            GatewayServerResult result = RunActivePhase(receiver, gateway,
+                routingId, payload, clientServices, config);
             if (result.HasValue)
             {
                 PrintResult(Pattern, config.Transport, config.Size,
@@ -86,7 +89,6 @@ internal static class PerfGatewayServer
         {
             TryDisposeQuietly(gateway);
             TryDisposeQuietly(discovery);
-            TryDisposeQuietly(receiverRouter);
             TryDisposeQuietly(receiver);
             TryDisposeQuietly(registry);
         }
@@ -112,8 +114,8 @@ internal static class PerfGatewayServer
     }
 
     private static GatewayServerResult RunActivePhase(Receiver receiver,
-        Zlink.Socket receiverRouter, Gateway gateway, byte[] routingId, byte[] payload,
-        string[] clientServiceNames,
+        Gateway gateway, byte[] routingId, byte[] payload,
+        Gateway.PreparedService[] clientServices,
         GatewayServerConfig config)
     {
         long recvCount = 0;
@@ -167,19 +169,20 @@ internal static class PerfGatewayServer
             }
 
             bool drainedAny = false;
-            while (TryReceiveGatewayRequest(receiverRouter, routingId, payload,
-                       out int ridLen, out int n))
+            while (TryReceiveGatewayRequest(receiver, routingId, payload,
+                       out int routingIdLength, out int n))
             {
                 drainedAny = true;
                 ReadOnlySpan<byte> body = payload.AsSpan(0, n);
                 if (IsStopTokenPayload(body))
                     goto Done;
 
-                if (!TryParseClientIndex(routingId.AsSpan(0, ridLen),
-                        clientServiceNames.Length, out int clientIndex))
+                if (!TryParseClientIndex(routingId.AsSpan(0, routingIdLength),
+                        clientServices.Length,
+                        out int clientIndex))
                     continue;
                 EnqueueOrSendGatewayReply(gateway, pendingReplies,
-                    ref pendingReplyCount, clientServiceNames[clientIndex], body);
+                    ref pendingReplyCount, clientServices[clientIndex], body);
                 if (!TryDecodeMetricHeader(body, out PerfMetricHeader header))
                     continue;
                 if (header.RunId != ExpectedRunId
@@ -224,11 +227,10 @@ Done:
 
         double elapsedSeconds = (benchEndTicks - benchStartTicks)
             / (double)Stopwatch.Frequency;
-        double throughput = elapsedSeconds > 0.0
-            ? recvCount / elapsedSeconds
-            : 0.0;
+        double configuredSeconds = Math.Max(1.0, config.DurationSeconds);
+        double throughput = recvCount / configuredSeconds;
         var latency = ComputeLatencyStats(latencySamples);
-        double fallbackLatencyUs = (elapsedSeconds * 1_000_000.0)
+        double fallbackLatencyUs = (configuredSeconds * 1_000_000.0)
             / Math.Max(1.0, recvCount);
         double latencyUs = latency.mean > 0.0 ? latency.mean : fallbackLatencyUs;
         double latencyP95Us = latency.p95 > 0.0 ? latency.p95 : latencyUs;
@@ -237,12 +239,13 @@ Done:
             latencyP99Us);
     }
 
-    private static string[] BuildClientServiceNames(int clientCount)
+    private static Gateway.PreparedService[] BuildClientServices(Gateway gateway,
+        int clientCount)
     {
-        var names = new string[Math.Max(0, clientCount)];
-        for (int i = 0; i < names.Length; i++)
-            names[i] = $"c{i}";
-        return names;
+        var services = new Gateway.PreparedService[Math.Max(0, clientCount)];
+        for (int i = 0; i < services.Length; i++)
+            services[i] = gateway.PrepareService($"c{i}");
+        return services;
     }
 
     private static bool TryParseClientIndex(ReadOnlySpan<byte> routingId,
@@ -297,61 +300,41 @@ Done:
     {
         int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", pattern);
         int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", pattern);
-        receiver.SetOption(ReceiverSocketRole.Router, SocketOptions.Linger, 0);
-        receiver.SetOption(ReceiverSocketRole.Dealer, SocketOptions.Linger, 0);
-        receiver.SetOption(ReceiverSocketRole.Router, SocketOptions.SndHwm, sndHwm);
-        receiver.SetOption(ReceiverSocketRole.Router, SocketOptions.RcvHwm, rcvHwm);
-        receiver.SetOption(ReceiverSocketRole.Dealer, SocketOptions.SndHwm, sndHwm);
-        receiver.SetOption(ReceiverSocketRole.Dealer, SocketOptions.RcvHwm, rcvHwm);
-        receiver.SetOption(ReceiverSocketRole.Router, SocketOptions.SndTimeo,
-            sndTimeoutMs);
-        receiver.SetOption(ReceiverSocketRole.Router, SocketOptions.RcvTimeo,
-            rcvTimeoutMs);
-        receiver.SetOption(ReceiverSocketRole.Dealer, SocketOptions.SndTimeo,
-            sndTimeoutMs);
-        receiver.SetOption(ReceiverSocketRole.Dealer, SocketOptions.RcvTimeo,
-            rcvTimeoutMs);
+        receiver.SetOption(SocketOptions.Linger, 0);
+        receiver.SetOption(SocketOptions.SndHwm, sndHwm);
+        receiver.SetOption(SocketOptions.RcvHwm, rcvHwm);
+        receiver.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
+        receiver.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
     }
 
-    private static void ApplyDiscoverySocketOptions(Discovery discovery,
-        string pattern, int sndTimeoutMs, int rcvTimeoutMs)
-    {
-        int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", pattern);
-        int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", pattern);
-        discovery.SetOption(DiscoverySocketRole.Sub, SocketOptions.Linger, 0);
-        discovery.SetOption(DiscoverySocketRole.Sub, SocketOptions.SndHwm, sndHwm);
-        discovery.SetOption(DiscoverySocketRole.Sub, SocketOptions.RcvHwm, rcvHwm);
-        discovery.SetOption(DiscoverySocketRole.Sub, SocketOptions.SndTimeo,
-            sndTimeoutMs);
-        discovery.SetOption(DiscoverySocketRole.Sub, SocketOptions.RcvTimeo,
-            rcvTimeoutMs);
-    }
-
-    private static bool TryReceiveGatewayRequest(Zlink.Socket receiverRouter,
+    private static bool TryReceiveGatewayRequest(Receiver receiver,
         byte[] routingId, byte[] payload, out int routingIdLength,
         out int payloadLength)
     {
-        routingIdLength = ReceiveRetry(receiverRouter, routingId.AsSpan(),
-            ReceiveFlags.DontWait);
-        if (routingIdLength <= 0)
+        try
         {
+            payloadLength = receiver.ReceiveSinglePayload(payload.AsSpan(),
+                routingId.AsSpan(), out routingIdLength,
+                ReceiveFlags.DontWait);
+            return payloadLength > 0;
+        }
+        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
+                                        || IsInterrupted(ex.Errno))
+        {
+            routingIdLength = 0;
             payloadLength = 0;
             return false;
         }
-
-        payloadLength = ReceiveRetry(receiverRouter, payload.AsSpan(),
-            ReceiveFlags.DontWait);
-        return payloadLength > 0;
     }
 
     private static void EnqueueOrSendGatewayReply(Gateway gateway,
         PendingGatewayReply[] pendingReplies, ref int pendingReplyCount,
-        string serviceName,
+        Gateway.PreparedService service,
         ReadOnlySpan<byte> payload)
     {
-        if (!TrySendGatewayEcho(gateway, serviceName, payload))
+        if (!TrySendGatewayEcho(gateway, service, payload))
             EnqueuePendingReply(pendingReplies, ref pendingReplyCount,
-                serviceName, payload);
+                service, payload);
     }
 
     private static void FlushPendingReplies(Gateway gateway,
@@ -360,8 +343,9 @@ Done:
         for (int i = 0; i < pendingReplyCount;)
         {
             PendingGatewayReply reply = pendingReplies[i];
-            if (!TryGatewayReady(gateway, reply.ServiceName)
-                || !TrySendGatewayEcho(gateway, reply.ServiceName,
+            if (reply.Service == null
+                || !TryGatewayReady(gateway, reply.Service)
+                || !TrySendGatewayEcho(gateway, reply.Service,
                     reply.Payload.AsSpan(0, reply.PayloadLength)))
             {
                 i++;
@@ -385,24 +369,52 @@ Done:
         return replies;
     }
 
+    private static void ConnectRegistryWithRetry(Action connect)
+    {
+        Exception? last = null;
+        if (WaitUntil(() =>
+            {
+                try
+                {
+                    connect();
+                    return true;
+                }
+                catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
+                                                || IsInterrupted(ex.Errno))
+                {
+                    last = ex;
+                    return false;
+                }
+            }, 5000, 20))
+        {
+            return;
+        }
+
+        if (last != null)
+            throw last;
+        throw new TimeoutException("registry connect timeout");
+    }
+
     private static void EnqueuePendingReply(PendingGatewayReply[] pendingReplies,
-        ref int pendingReplyCount, string serviceName, ReadOnlySpan<byte> payload)
+        ref int pendingReplyCount, Gateway.PreparedService service,
+        ReadOnlySpan<byte> payload)
     {
         if (pendingReplyCount >= pendingReplies.Length)
             throw new InvalidOperationException("gateway_pending_reply_overflow");
 
-        pendingReplies[pendingReplyCount].Set(serviceName, payload);
+        pendingReplies[pendingReplyCount].Set(service, payload);
         pendingReplyCount++;
     }
 
-    private static bool TryGatewayReady(Gateway gateway, string serviceName)
+    private static bool TryGatewayReady(Gateway gateway,
+        Gateway.PreparedService service)
     {
-        if (string.IsNullOrEmpty(serviceName))
+        if (service == null)
             throw new InvalidOperationException("gateway_empty_service_name:ready");
 
         try
         {
-            return gateway.ConnectionCount(serviceName) > 0;
+            return gateway.ConnectionCount(service.Name) > 0;
         }
         catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
                                         || IsInterrupted(ex.Errno)
@@ -412,15 +424,16 @@ Done:
         }
     }
 
-    private static bool TrySendGatewayEcho(Gateway gateway, string serviceName,
+    private static bool TrySendGatewayEcho(Gateway gateway,
+        Gateway.PreparedService service,
         ReadOnlySpan<byte> payload)
     {
-        if (string.IsNullOrEmpty(serviceName))
+        if (service == null)
             throw new InvalidOperationException("gateway_empty_service_name:send");
 
         try
         {
-            gateway.Send(serviceName, payload, SendFlags.DontWait);
+            gateway.Send(service, payload, SendFlags.DontWait);
             return true;
         }
         catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
@@ -497,26 +510,27 @@ Done:
             Payload = new byte[Math.Max(1, payloadCapacity)];
         }
 
-        internal string ServiceName { get; private set; } = string.Empty;
+        internal Gateway.PreparedService? Service { get; private set; }
         internal byte[] Payload { get; }
         internal int PayloadLength { get; private set; }
 
-        internal void Set(string serviceName, ReadOnlySpan<byte> payload)
+        internal void Set(Gateway.PreparedService service,
+            ReadOnlySpan<byte> payload)
         {
-            ServiceName = serviceName;
+            Service = service;
             payload.CopyTo(Payload);
             PayloadLength = payload.Length;
         }
 
         internal void Clear()
         {
-            ServiceName = string.Empty;
+            Service = null;
             PayloadLength = 0;
         }
 
         internal void CopyFrom(PendingGatewayReply other)
         {
-            ServiceName = other.ServiceName;
+            Service = other.Service;
             other.Payload.AsSpan(0, other.PayloadLength).CopyTo(Payload);
             PayloadLength = other.PayloadLength;
         }

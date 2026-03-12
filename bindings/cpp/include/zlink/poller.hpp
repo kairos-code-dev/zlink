@@ -131,6 +131,34 @@ class poller_t
         return 0;
     }
 
+    int add_spot_sub (service::spot_node_t &node_,
+                      poll_event events_,
+                      void *user_ = NULL)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (find_socket (node_.sub_socket_handle ()) >= 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_add_spot_sub (
+          _poller, node_.sub_socket_handle (), user_, static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+
+        item_t item;
+        item.socket = NULL;
+        item.socket_handle = node_.sub_socket_handle ();
+        item.fd = 0;
+        item.events = static_cast<short> (events_);
+        item.user = user_;
+        item.is_socket = true;
+        _items.push_back (item);
+        return 0;
+    }
+
     int add_spot_pub (service::spot_t &spot_,
                       poll_event events_,
                       void *user_ = NULL)
@@ -151,6 +179,34 @@ class poller_t
         item_t item;
         item.socket = NULL;
         item.socket_handle = spot_.pub_handle ();
+        item.fd = 0;
+        item.events = static_cast<short> (events_);
+        item.user = user_;
+        item.is_socket = true;
+        _items.push_back (item);
+        return 0;
+    }
+
+    int add_spot_pub (service::spot_node_t &node_,
+                      poll_event events_,
+                      void *user_ = NULL)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (find_socket (node_.pub_socket_handle ()) >= 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_add_spot_pub (
+          _poller, node_.pub_socket_handle (), user_, static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+
+        item_t item;
+        item.socket = NULL;
+        item.socket_handle = node_.pub_socket_handle ();
         item.fd = 0;
         item.events = static_cast<short> (events_);
         item.user = user_;
@@ -292,6 +348,25 @@ class poller_t
         return 0;
     }
 
+    int modify_spot_sub (service::spot_node_t &node_, poll_event events_)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        const int index = find_socket (node_.sub_socket_handle ());
+        if (index < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_modify_spot_sub (
+          _poller, node_.sub_socket_handle (), static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+        _items[static_cast<size_t> (index)].events = static_cast<short> (events_);
+        return 0;
+    }
+
     int modify_spot_pub (service::spot_t &spot_, poll_event events_)
     {
         if (!_poller) {
@@ -305,6 +380,25 @@ class poller_t
         }
         const int rc = zlink_poller_modify_spot_pub (
           _poller, spot_.pub_handle (), static_cast<short> (events_));
+        if (rc != 0)
+            return rc;
+        _items[static_cast<size_t> (index)].events = static_cast<short> (events_);
+        return 0;
+    }
+
+    int modify_spot_pub (service::spot_node_t &node_, poll_event events_)
+    {
+        if (!_poller) {
+            errno = EFAULT;
+            return -1;
+        }
+        const int index = find_socket (node_.pub_socket_handle ());
+        if (index < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int rc = zlink_poller_modify_spot_pub (
+          _poller, node_.pub_socket_handle (), static_cast<short> (events_));
         if (rc != 0)
             return rc;
         _items[static_cast<size_t> (index)].events = static_cast<short> (events_);

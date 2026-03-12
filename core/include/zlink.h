@@ -1508,6 +1508,11 @@ ZLINK_EXPORT void *zlink_gateway_monitor_open (
   void *gateway,
   zlink_gateway_monitor_event_mask_t events,
   zlink_service_monitor_handler_fn handler);
+ZLINK_EXPORT void *zlink_spot_node_monitor_open (
+  void *node,
+  zlink_spot_role_t role,
+  zlink_spot_monitor_event_mask_t events,
+  zlink_service_monitor_handler_fn handler);
 ZLINK_EXPORT void *zlink_spot_monitor_open (
   void *spot,
   zlink_spot_role_t role,

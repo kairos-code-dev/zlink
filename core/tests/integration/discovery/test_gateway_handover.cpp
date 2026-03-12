@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../testutil.hpp"
-#include "../testutil_unity.hpp"
+#include "../../testutil.hpp"
+#include "../../testutil_unity.hpp"
 
 #include <atomic>
 #include <string.h>

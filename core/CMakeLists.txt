@@ -1483,11 +1483,6 @@ set(ZLINK_BUILD_TESTS
 if(ZLINK_BUILD_TESTS)
   enable_testing() # Enable testing only works in root scope
   add_subdirectory(tests)
-  if(BUILD_STATIC)
-    add_subdirectory(unittests)
-  else()
-    message(WARNING "Not building unit tests, since BUILD_STATIC is not enabled")
-  endif()
 endif()
 
 # -----------------------------------------------------------------------------

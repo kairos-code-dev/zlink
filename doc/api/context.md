@@ -12,16 +12,19 @@ shared across threads.
 Options are set and queried with `zlink_ctx_set` and `zlink_ctx_get`.
 
 ```c
-#define ZLINK_IO_THREADS              1
-#define ZLINK_MAX_SOCKETS             2
-#define ZLINK_SOCKET_LIMIT            3
-#define ZLINK_THREAD_PRIORITY         3
-#define ZLINK_THREAD_SCHED_POLICY     4
-#define ZLINK_MAX_MSGSZ               5
-#define ZLINK_MSG_T_SIZE              6
-#define ZLINK_THREAD_AFFINITY_CPU_ADD      7
-#define ZLINK_THREAD_AFFINITY_CPU_REMOVE   8
-#define ZLINK_THREAD_NAME_PREFIX      9
+typedef enum zlink_ctx_option_t
+{
+    ZLINK_IO_THREADS              = 1,
+    ZLINK_MAX_SOCKETS             = 2,
+    ZLINK_SOCKET_LIMIT            = 3,
+    ZLINK_THREAD_PRIORITY         = 3,
+    ZLINK_THREAD_SCHED_POLICY     = 4,
+    ZLINK_MAX_MSGSZ               = 5,
+    ZLINK_MSG_T_SIZE              = 6,
+    ZLINK_THREAD_AFFINITY_CPU_ADD      = 7,
+    ZLINK_THREAD_AFFINITY_CPU_REMOVE   = 8,
+    ZLINK_THREAD_NAME_PREFIX      = 9
+} zlink_ctx_option_t;
 ```
 
 | Constant | Value | Description |
@@ -133,7 +136,7 @@ when sockets are used across multiple threads.
 Set a context option.
 
 ```c
-int zlink_ctx_set(void *context_, int option_, int optval_);
+int zlink_ctx_set(void *context_, zlink_ctx_option_t option_, int optval_);
 ```
 
 Configures the context before or after sockets have been created. Some options
@@ -157,7 +160,7 @@ their semantics.
 Get a context option.
 
 ```c
-int zlink_ctx_get(void *context_, int option_);
+int zlink_ctx_get(void *context_, zlink_ctx_option_t option_);
 ```
 
 Retrieves the current value of a context option. Can be used at any time to

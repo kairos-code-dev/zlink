@@ -259,6 +259,10 @@ static void close_spot_parts (zlink_msg_t *parts_, size_t part_count_)
         zlink_msg_close (&parts_[i]);
 }
 
+static void *open_spot_service_monitor (
+  void *monitor_,
+  zlink_service_monitor_handler_fn handler_);
+
 static int recv_socket_monitor_event_unchecked (void *monitor_socket_,
                                                 zlink_monitor_event_t *event_,
                                                 int flags_);
@@ -2581,6 +2585,39 @@ int zlink_spot_node_set_send_ready_handler (
         return -1;
     }
     return node->set_send_ready_handler (handler_);
+}
+
+void *zlink_spot_node_monitor_open (void *node_,
+                                    zlink_spot_role_t role_,
+                                    zlink_spot_monitor_event_mask_t events_,
+                                    zlink_service_monitor_handler_fn handler_)
+{
+    if (!node_) {
+        errno = EFAULT;
+        return NULL;
+    }
+
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+
+    if (role_ == ZLINK_SPOT_ROLE_PUB) {
+        zlink::spot_pub_t *pub = node->ensure_default_pub ();
+        if (!pub)
+            return NULL;
+        return open_spot_service_monitor (pub->monitor_open (events_), handler_);
+    }
+    if (role_ == ZLINK_SPOT_ROLE_SUB) {
+        zlink::spot_sub_t *sub = node->ensure_default_sub ();
+        if (!sub)
+            return NULL;
+        return open_spot_service_monitor (sub->monitor_open (events_), handler_);
+    }
+
+    errno = EINVAL;
+    return NULL;
 }
 
 void *zlink_spot_new (void *spot_node_, zlink_spot_handler_fn handler_)

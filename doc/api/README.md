@@ -3,25 +3,25 @@
 # zlink API Reference
 
 The zlink C library provides a messaging and service-discovery toolkit built
-on top of lightweight I/O threads and lock-free queues. This reference covers
-every public function, type, and constant exported by `<zlink.h>`.
+on top of lightweight I/O threads. All message receiving is handled through
+handler callbacks registered at creation time. This reference covers every
+public function, type, and constant exported by `<zlink.h>`.
 
 ## API Groups
 
-| Group | File | Description | Functions |
-|-------|------|-------------|-----------|
-| Error Handling & Version | [errors.md](errors.md) | Error codes, error strings, and version query | 3 |
-| Context | [context.md](context.md) | Context creation, termination, and option tuning | 5 |
-| Message | [message.md](message.md) | Message lifecycle, data access, and properties | 16 |
-| Socket | [socket.md](socket.md) | Socket creation, options, bind/connect, and send/recv | 13 |
-| Monitoring | [monitoring.md](monitoring.md) | Socket monitors, events, and peer inspection | 7 |
-| Registry | [registry.md](registry.md) | Service registry creation, configuration, and clustering | 9 |
-| Discovery | [discovery.md](discovery.md) | Service discovery, subscription, and receiver lookup | 9 |
-| Gateway | [gateway.md](gateway.md) | Load-balanced request/reply gateway | 10 |
-| Receiver | [receiver.md](receiver.md) | Server-side request receiver and service registration | 11 |
-| SPOT | [spot.md](spot.md) | Topic-based PUB/SUB nodes, publishers, and subscribers | 27 |
-| Polling | [polling.md](polling.md) | I/O multiplexing and proxy helpers | 4 |
-| Utilities | [utilities.md](utilities.md) | Timers, threads, stopwatch, atomics, and capability query | ~20 |
+| Group | File | Description |
+|-------|------|-------------|
+| Error Handling & Version | [errors.md](errors.md) | Error codes, error strings, and version query |
+| Context | [context.md](context.md) | Context creation, termination, and option tuning |
+| Message | [message.md](message.md) | Message lifecycle, data access, and properties |
+| Socket | [socket.md](socket.md) | Socket creation with handler, options, bind/connect, send, and STREAM API |
+| Monitoring | [monitoring.md](monitoring.md) | Socket monitors, service monitors, and peer inspection |
+| Registry | [registry.md](registry.md) | Service registry creation, configuration, topology, and clustering |
+| Discovery | [discovery.md](discovery.md) | Service discovery, subscription, and receiver lookup |
+| Gateway | [gateway.md](gateway.md) | Service-bound load-balanced request/reply |
+| SPOT | [spot.md](spot.md) | Topic-based PUB/SUB nodes and unified spot facades |
+| Proxy & Utilities | [polling.md](polling.md) | Proxy helpers and capability query |
+| Utilities | [utilities.md](utilities.md) | Timers, threads, stopwatch, and atomics |
 
 ## Types
 
@@ -29,19 +29,27 @@ every public function, type, and constant exported by `<zlink.h>`.
 |------|-----------|-------------|
 | [`zlink_msg_t`](message.md) | message.md | Opaque message container (64-byte, stack-allocatable) |
 | [`zlink_routing_id_t`](message.md) | message.md | Peer routing identity (1-byte size + 255-byte data) |
+| [`zlink_socket_handler_t`](socket.md) | socket.md | Socket receive handler descriptor |
 | [`zlink_monitor_event_t`](monitoring.md) | monitoring.md | Monitor event structure (event, value, addresses) |
 | [`zlink_peer_info_t`](monitoring.md) | monitoring.md | Connected-peer statistics (routing id, address, counters) |
+| [`zlink_service_event_t`](monitoring.md) | monitoring.md | Service monitor event structure |
 | [`zlink_receiver_info_t`](discovery.md) | discovery.md | Discovered service-receiver entry (name, endpoint, weight) |
-| [`zlink_pollitem_t`](polling.md) | polling.md | Poll item for I/O multiplexing (socket or fd) |
+| [`zlink_gateway_peer_info_t`](gateway.md) | gateway.md | Gateway peer info with weight |
 
 ## Callback Types
 
 | Type | Defined in | Description |
 |------|-----------|-------------|
+| [`zlink_socket_msg_handler_fn`](socket.md) | socket.md | Socket multipart message dispatch callback |
+| [`zlink_spot_handler_fn`](socket.md) | socket.md | Topic-based message dispatch callback |
+| [`zlink_xpub_handler_fn`](socket.md) | socket.md | XPUB subscription notification callback |
+| [`zlink_stream_on_raw_fn`](socket.md) | socket.md | STREAM raw chunk dispatch callback |
+| [`zlink_monitor_handler_fn`](monitoring.md) | monitoring.md | Socket monitor event callback |
+| [`zlink_service_monitor_handler_fn`](monitoring.md) | monitoring.md | Service monitor event callback |
+| [`zlink_send_ready_handler_fn`](socket.md) | socket.md | Send-ready transition callback |
 | [`zlink_free_fn`](message.md) | message.md | Deallocation callback for zero-copy messages |
 | [`zlink_timer_fn`](utilities.md) | utilities.md | Timer expiry callback |
 | [`zlink_thread_fn`](utilities.md) | utilities.md | Thread entry-point function |
-| [`zlink_spot_sub_handler_fn`](spot.md) | spot.md | SPOT subscriber message-dispatch callback |
 
 ---
 

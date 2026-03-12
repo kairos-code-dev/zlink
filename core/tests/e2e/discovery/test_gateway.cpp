@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../testutil.hpp"
-#include "../testutil_unity.hpp"
-#include "../../src/services/gateway/gateway.hpp"
-#include "../../src/sockets/socket_base.hpp"
+#include "../../testutil.hpp"
+#include "../../testutil_unity.hpp"
+#include "../../../src/services/gateway/gateway.hpp"
+#include "../../../src/sockets/socket_base.hpp"
 
 #include <atomic>
 #include <string.h>

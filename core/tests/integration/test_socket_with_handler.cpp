@@ -1,11 +1,18 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "testutil.hpp"
+#include "testutil_monitoring.hpp"
 #include "testutil_unity.hpp"
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <stdio.h>
 #include <string.h>
+#include <thread>
+#include <vector>
 
 namespace
 {
@@ -66,10 +73,32 @@ struct xpub_handler_probe_t
     size_t topic_len;
 };
 
+struct concurrent_send_probe_t
+{
+    concurrent_send_probe_t () : calls (0), close_failures (0) {}
+
+    std::atomic<int> calls;
+    std::atomic<int> close_failures;
+    std::mutex mutex;
+    std::condition_variable cv;
+};
+
+struct raw_monitor_probe_t
+{
+    raw_monitor_probe_t () : calls (0), last_event (0) {}
+
+    std::atomic<int> calls;
+    uint64_t last_event;
+    std::mutex mutex;
+    std::condition_variable cv;
+};
+
 raw_handler_probe_t *g_probe = NULL;
 raw_handler_probe_t *g_replacement_probe = NULL;
 spot_handler_probe_t *g_spot_probe = NULL;
 xpub_handler_probe_t *g_xpub_probe = NULL;
+concurrent_send_probe_t *g_concurrent_send_probe = NULL;
+raw_monitor_probe_t *g_raw_monitor_probe = NULL;
 
 zlink_socket_handler_t make_msg_handler (zlink_socket_msg_handler_fn fn_)
 {
@@ -228,6 +257,71 @@ void discard_raw_message (const zlink_routing_id_t *,
                           size_t part_count_)
 {
     close_parts (NULL, parts_, part_count_);
+}
+
+void count_concurrent_raw_message (const zlink_routing_id_t *,
+                                   zlink_msg_t *parts_,
+                                   size_t part_count_)
+{
+    concurrent_send_probe_t *probe = g_concurrent_send_probe;
+    for (size_t i = 0; i < part_count_; ++i) {
+        const int rc = zlink_msg_close (&parts_[i]);
+        if (rc != 0 && probe)
+            probe->close_failures.fetch_add (1);
+    }
+
+    if (!probe)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock (probe->mutex);
+        probe->calls.fetch_add (1);
+    }
+    probe->cv.notify_all ();
+}
+
+bool wait_for_concurrent_calls (concurrent_send_probe_t *probe_,
+                                int expected_,
+                                int timeout_ms_)
+{
+    if (!probe_)
+        return false;
+
+    std::unique_lock<std::mutex> lock (probe_->mutex);
+    return probe_->cv.wait_for (
+      lock, std::chrono::milliseconds (timeout_ms_),
+      [probe_, expected_]() { return probe_->calls.load () >= expected_; });
+}
+
+void raw_monitor_ready_handler (const zlink_monitor_event_t *event_)
+{
+    raw_monitor_probe_t *probe = g_raw_monitor_probe;
+    if (!probe || !event_)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock (probe->mutex);
+        probe->last_event = event_->event;
+        probe->calls.fetch_add (1);
+    }
+    probe->cv.notify_all ();
+}
+
+bool wait_for_raw_monitor_event (raw_monitor_probe_t *probe_,
+                                 int expected_calls_,
+                                 uint64_t expected_event_,
+                                 int timeout_ms_)
+{
+    if (!probe_)
+        return false;
+
+    std::unique_lock<std::mutex> lock (probe_->mutex);
+    return probe_->cv.wait_for (
+      lock, std::chrono::milliseconds (timeout_ms_),
+      [probe_, expected_calls_, expected_event_]() {
+          return probe_->calls.load () >= expected_calls_
+                 && probe_->last_event == expected_event_;
+      });
 }
 
 void test_socket_handler_family_validation_on_create ()
@@ -426,6 +520,106 @@ void test_xpub_socket_with_handler_receives_subscription_events ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
     g_xpub_probe = NULL;
 }
+
+void test_pair_socket_same_handle_concurrent_send_is_thread_safe ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    concurrent_send_probe_t probe;
+    g_concurrent_send_probe = &probe;
+
+    const zlink_socket_handler_t msg_handler =
+      make_msg_handler (&count_concurrent_raw_message);
+    const zlink_socket_handler_t discard_handler =
+      make_msg_handler (&discard_raw_message);
+
+    void *server = zlink_socket (ctx, ZLINK_PAIR, &msg_handler);
+    TEST_ASSERT_NOT_NULL (server);
+
+    void *client = zlink_socket (ctx, ZLINK_PAIR, &discard_handler);
+    TEST_ASSERT_NOT_NULL (client);
+
+    raw_monitor_probe_t monitor_probe;
+    g_raw_monitor_probe = &monitor_probe;
+    void *monitor = zlink_socket_monitor_open (
+      server, ZLINK_EVENT_CONNECTION_READY, &raw_monitor_ready_handler);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
+    TEST_ASSERT_TRUE (wait_for_raw_monitor_event (
+      &monitor_probe, 1, ZLINK_EVENT_CONNECTION_READY, 3000));
+
+    const char warmup[] = "warmup";
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (sizeof (warmup) - 1),
+      zlink_send (client, warmup, sizeof (warmup) - 1, 0));
+    TEST_ASSERT_TRUE (wait_for_concurrent_calls (&probe, 1, 3000));
+
+    const int sender_count = 4;
+    const int messages_per_sender = 32;
+    std::mutex start_mutex;
+    std::condition_variable start_cv;
+    int ready_threads = 0;
+    bool start = false;
+    std::vector<int> worker_errno (sender_count, 0);
+    std::vector<int> worker_progress (sender_count, 0);
+    std::vector<std::thread> workers;
+
+    for (int i = 0; i < sender_count; ++i) {
+        workers.push_back (std::thread ([&, i]() {
+            {
+                std::unique_lock<std::mutex> lock (start_mutex);
+                ++ready_threads;
+                start_cv.notify_all ();
+                start_cv.wait (lock, [&start]() { return start; });
+            }
+
+            for (int seq = 0; seq < messages_per_sender; ++seq) {
+                char payload[32];
+                const int len = snprintf (payload, sizeof (payload),
+                                          "sender-%d-%02d", i, seq);
+                const int rc = zlink_send (client, payload,
+                                           static_cast<size_t> (len), 0);
+                if (rc != len) {
+                    worker_errno[i] = errno;
+                    return;
+                }
+                worker_progress[i] += 1;
+            }
+        }));
+    }
+
+    {
+        std::unique_lock<std::mutex> lock (start_mutex);
+        TEST_ASSERT_TRUE (start_cv.wait_for (
+          lock, std::chrono::seconds (5),
+          [&ready_threads, sender_count]() { return ready_threads == sender_count; }));
+        start = true;
+        start_cv.notify_all ();
+    }
+
+    for (size_t i = 0; i < workers.size (); ++i)
+        workers[i].join ();
+
+    const int expected_calls = 1 + sender_count * messages_per_sender;
+    TEST_ASSERT_TRUE (wait_for_concurrent_calls (&probe, expected_calls, 3000));
+
+    for (int i = 0; i < sender_count; ++i) {
+        TEST_ASSERT_EQUAL_INT (messages_per_sender, worker_progress[i]);
+        TEST_ASSERT_EQUAL_INT (0, worker_errno[i]);
+    }
+    TEST_ASSERT_EQUAL_INT (0, probe.close_failures.load ());
+
+    close_zero_linger (client);
+    close_zero_linger (monitor);
+    close_zero_linger (server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+    g_concurrent_send_probe = NULL;
+    g_raw_monitor_probe = NULL;
+}
 }
 
 int main ()
@@ -438,5 +632,6 @@ int main ()
     RUN_TEST (test_router_socket_with_handler_strips_routing_frame);
     RUN_TEST (test_sub_socket_with_handler_applies_filter_before_dispatch);
     RUN_TEST (test_xpub_socket_with_handler_receives_subscription_events);
+    RUN_TEST (test_pair_socket_same_handle_concurrent_send_is_thread_safe);
     return UNITY_END ();
 }

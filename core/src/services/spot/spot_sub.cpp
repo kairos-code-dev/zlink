@@ -34,6 +34,7 @@ static void close_parts (zlink_msg_t *parts_, size_t part_count_)
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_close (&parts_[i]);
 }
+
 }
 
 static void fill_terminal_monitor_event (zlink_service_event_t *event_,
@@ -77,6 +78,22 @@ static void fill_socket_monitor_event (zlink_service_event_t *event_,
     if (raw_.remote_addr[0] != '\0') {
         copy_endpoint (event_->endpoint, sizeof (event_->endpoint),
                        raw_.remote_addr);
+        event_->detail_flags |= ZLINK_EVENT_DETAIL_ENDPOINT;
+    }
+}
+
+static void fill_subject_monitor_event (zlink_service_event_t *event_,
+                                        uint32_t event_type_,
+                                        const zlink_routing_id_t &rid_,
+                                        const char *endpoint_)
+{
+    memset (event_, 0, sizeof (*event_));
+    event_->service_kind = ZLINK_SERVICE_KIND_SPOT_SUB;
+    event_->event_type = event_type_;
+    event_->routing_id = rid_;
+    event_->detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
+    if (endpoint_ && endpoint_[0] != '\0') {
+        copy_endpoint (event_->endpoint, sizeof (event_->endpoint), endpoint_);
         event_->detail_flags |= ZLINK_EVENT_DETAIL_ENDPOINT;
     }
 }
@@ -192,8 +209,10 @@ int spot_sub_t::subscribe (const char *topic_)
             return -1;
         _topics.insert (topic);
     }
-    if (_node)
+    if (_node) {
         _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
+        emit_filter_applied_event ();
+    }
     return 0;
 }
 
@@ -220,8 +239,10 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
             return -1;
         _patterns.insert (prefix);
     }
-    if (_node)
+    if (_node) {
         _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
+        emit_filter_applied_event ();
+    }
     return 0;
 }
 
@@ -336,6 +357,36 @@ bool spot_sub_t::has_filters () const
 {
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
     return !_topics.empty () || !_patterns.empty ();
+}
+
+void spot_sub_t::emit_filter_applied_event ()
+{
+    zlink_service_event_t event;
+    {
+        scoped_lock_t lock (_sync);
+        fill_subject_monitor_event (&event, ZLINK_SPOT_SUB_FILTER_APPLIED,
+                                    _routing_id, NULL);
+    }
+    _monitor.emit (event);
+}
+
+void spot_sub_t::emit_subscription_ready_event (const char *endpoint_)
+{
+    zlink_service_event_t event;
+    {
+        scoped_lock_t lock (_sync);
+        fill_subject_monitor_event (&event, ZLINK_SPOT_SUB_SUBSCRIPTION_READY,
+                                    _routing_id, endpoint_);
+    }
+    _monitor.emit (event);
+}
+
+std::string spot_sub_t::first_ready_peer_endpoint () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    if (_ready_peer_endpoints.empty ())
+        return std::string ();
+    return *_ready_peer_endpoints.begin ();
 }
 
 int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_,
@@ -526,16 +577,37 @@ void spot_sub_t::monitor_loop ()
                 _monitor.emit (event);
                 break;
 
-            case ZLINK_EVENT_CONNECTION_READY:
+            case ZLINK_EVENT_CONNECTION_READY: {
+                std::string ready_endpoint;
+                {
+                    scoped_lock_t lock (_sync);
+                    if (raw.remote_addr[0] != '\0')
+                        _ready_peer_endpoints.insert (raw.remote_addr);
+                    if ((!_topics.empty () || !_patterns.empty ())
+                        && !_ready_peer_endpoints.empty ()) {
+                        if (raw.remote_addr[0] != '\0')
+                            ready_endpoint = raw.remote_addr;
+                        else
+                            ready_endpoint = *_ready_peer_endpoints.begin ();
+                    }
+                }
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_READY,
                                            raw);
                 _monitor.emit (event);
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_PEER_UP,
                                            raw);
                 _monitor.emit (event);
+                if (!ready_endpoint.empty ())
+                    emit_subscription_ready_event (ready_endpoint.c_str ());
                 break;
+            }
 
             case ZLINK_EVENT_DISCONNECTED:
+                {
+                    scoped_lock_t lock (_sync);
+                    if (raw.remote_addr[0] != '\0')
+                        _ready_peer_endpoints.erase (raw.remote_addr);
+                }
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_LOST,
                                            raw);
                 _monitor.emit (event);
@@ -606,6 +678,7 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
             (void) _callback_cv.wait (&_sync, 1000);
         _topics.clear ();
         _patterns.clear ();
+        _ready_peer_endpoints.clear ();
         _direct_handler = NULL;
         _direct_handler_userdata = NULL;
         _handler_state = handler_none;

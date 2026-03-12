@@ -19,8 +19,6 @@
 #include <zlink.h>
 
 #include "../../../src/core/recv_internal.hpp"
-#include "../../../src/services/common/monitor_decode.hpp"
-#include "../../../src/services/common/socket_monitor_bridge.hpp"
 
 #if !defined(_WIN32)
 #include <arpa/inet.h>
@@ -445,12 +443,10 @@ inline int zlink_recv(void *socket_, void *buf_, size_t len_, int flags_)
 
 struct connect_monitor_t {
     void *owner;
-    void *monitor;
     int ready_count;
-    connect_monitor_t() : owner(NULL), monitor(NULL), ready_count(0) {}
+    connect_monitor_t() : owner(NULL), ready_count(0) {}
     connect_monitor_t(const connect_monitor_t &other_) :
         owner(other_.owner),
-        monitor(other_.monitor),
         ready_count(other_.ready_count)
     {}
     connect_monitor_t &operator=(const connect_monitor_t &other_)
@@ -458,64 +454,29 @@ struct connect_monitor_t {
         if (this == &other_)
             return *this;
         owner = other_.owner;
-        monitor = other_.monitor;
         ready_count = other_.ready_count;
         return *this;
     }
 };
 
-inline int perf_monitor_hwm()
-{
-    static int monitor_hwm = -1;
-    if (monitor_hwm >= 0)
-        return monitor_hwm;
-
-    monitor_hwm = resolve_multi_int_env("PERF_MULTI_MONITOR_HWM", 1000, 0);
-    return monitor_hwm;
-}
-
 inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
 {
-    out_.ready_count = 0;
-
-    const int events = ZLINK_EVENT_CONNECTION_READY;
-    void *monitor = zlink::open_socket_monitor_bridge(
-      static_cast<zlink::socket_base_t *>(socket_), events);
-    if (!monitor)
-        return false;
-
-    const int linger_ms = 0;
-    zlink_setsockopt(monitor, ZLINK_LINGER, &linger_ms, sizeof(linger_ms));
-    const int monitor_hwm = perf_monitor_hwm();
-    if (monitor_hwm > 0) {
-        zlink_setsockopt(monitor, ZLINK_RCVHWM, &monitor_hwm,
-                         sizeof(monitor_hwm));
-        zlink_setsockopt(monitor, ZLINK_SNDHWM, &monitor_hwm,
-                         sizeof(monitor_hwm));
-    }
-
     out_.owner = socket_;
-    out_.monitor = monitor;
-    return true;
+    out_.ready_count = 0;
+    return socket_ != NULL;
 }
 
 inline int poll_connect_ready_count(connect_monitor_t &monitor_)
 {
-    if (!monitor_.monitor)
+    if (!monitor_.owner)
         return 0;
 
-    int ready = 0;
-    for (;;) {
-        zlink_monitor_event_t ev;
-        if (zlink::recv_socket_monitor_event(monitor_.monitor, &ev,
-                                             ZLINK_DONTWAIT)
-            != 0)
-            break;
-        if (ev.event == ZLINK_EVENT_CONNECTION_READY)
-            ++ready;
-    }
-    monitor_.ready_count += ready;
-    return ready;
+    const int peer_count = zlink_socket_peer_count(monitor_.owner);
+    if (peer_count <= monitor_.ready_count)
+        return 0;
+
+    monitor_.ready_count = peer_count;
+    return peer_count;
 }
 
 inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
@@ -524,7 +485,7 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
 {
     if (expected_ready_ == 0)
         return true;
-    if (!monitor_.monitor)
+    if (!monitor_.owner)
         return false;
 
     (void) poll_connect_ready_count(monitor_);
@@ -540,34 +501,18 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
         if (now >= deadline)
             return false;
 
-        const long remain_ms =
-          std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now)
-            .count();
-        zlink_pollitem_t item[] = {{monitor_.monitor, 0, ZLINK_POLLIN, 0}};
-        const int rc =
-          zlink_poll(item, 1, remain_ms > 0 ? remain_ms : 0);
-        if (rc < 0) {
-            if (zlink_errno() == EINTR)
-                continue;
-            return false;
-        }
-        if (rc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
-            continue;
-
         (void) poll_connect_ready_count(monitor_);
+        if (static_cast<size_t>(monitor_.ready_count) >= expected_ready_)
+            return true;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     return static_cast<size_t>(monitor_.ready_count) >= expected_ready_;
 }
 
 inline void close_connect_monitor(connect_monitor_t &monitor_)
 {
-    if (monitor_.monitor) {
-        const int zero = 0;
-        zlink_setsockopt(monitor_.monitor, ZLINK_LINGER, &zero, sizeof(zero));
-        zlink_close(monitor_.monitor);
-    }
     monitor_.owner = NULL;
-    monitor_.monitor = NULL;
     monitor_.ready_count = 0;
 }
 

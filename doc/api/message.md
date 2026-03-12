@@ -2,10 +2,10 @@
 
 # Message API Reference
 
-The Message API provides functions for creating, sending, receiving, and
-managing zlink messages. Messages are the fundamental unit of data exchange
-between sockets and can carry arbitrary binary payloads, support zero-copy
-semantics, and form multipart sequences.
+The Message API provides functions for creating, sending, and managing zlink
+messages. Messages are the fundamental unit of data exchange between sockets
+and can carry arbitrary binary payloads, support zero-copy semantics, and
+form multipart sequences.
 
 ## Types
 
@@ -136,7 +136,7 @@ modify or free `data_` until `ffn_` has been called.
 Send a message on a socket.
 
 ```c
-int zlink_msg_send (zlink_msg_t *msg_, void *s_, int flags_);
+int zlink_msg_send (zlink_msg_t *msg_, void *s_, zlink_send_flags_t flags_);
 ```
 
 Sends the message `msg_` on socket `s_`. On success, ownership of the message
@@ -157,32 +157,7 @@ is set).
 
 **Thread safety:** Not thread-safe on the same socket.
 
-**See also:** `zlink_msg_recv`, `zlink_send`
-
----
-
-### zlink_msg_recv
-
-Receive a message from a socket.
-
-```c
-int zlink_msg_recv (zlink_msg_t *msg_, void *s_, int flags_);
-```
-
-Receives a message from socket `s_` and stores it in `msg_`. Any previous
-content of `msg_` is properly released before storing the new message. The
-caller owns the received message and must close it with `zlink_msg_close()`
-when finished.
-
-**Returns:** Number of bytes in the received message on success, -1 on failure
-(errno is set).
-
-**Errors:** `EAGAIN` if no message is available and `ZLINK_DONTWAIT` was set.
-`ETERM` if the context was terminated.
-
-**Thread safety:** Not thread-safe on the same socket.
-
-**See also:** `zlink_msg_send`, `zlink_recv`
+**See also:** `zlink_send`
 
 ---
 
@@ -202,7 +177,7 @@ invalid and must be re-initialized before reuse.
 
 **Thread safety:** Not thread-safe.
 
-**See also:** `zlink_msg_init`, `zlink_msgv_close`
+**See also:** `zlink_msg_init`, `zlink_multipart_close`
 
 ---
 
@@ -295,8 +270,8 @@ int zlink_msg_more (const zlink_msg_t *msg_);
 ```
 
 Queries the `ZLINK_MORE` flag on the message. Returns 1 if the message is part
-of a multipart sequence and more parts follow, 0 otherwise. Typically called
-after `zlink_msg_recv()` to determine whether to continue receiving.
+of a multipart sequence and more parts follow, 0 otherwise. Typically checked inside a receive callback to determine if additional parts
+follow.
 
 **Returns:** 1 if more parts follow, 0 otherwise.
 
@@ -374,12 +349,12 @@ metadata.
 
 ---
 
-### zlink_msgv_close
+### zlink_multipart_close
 
 Close all parts in a multipart message array.
 
 ```c
-void zlink_msgv_close (zlink_msg_t *parts, size_t part_count);
+void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 ```
 
 Convenience function that calls `zlink_msg_close()` on each element of the

@@ -212,7 +212,7 @@ generate_settings_json() {
         "\${workspaceFolder}/core/include",
         "\${workspaceFolder}/core/src",
         "\${workspaceFolder}/core/tests",
-        "\${workspaceFolder}/core/unittests",
+        "\${workspaceFolder}/core/tests/unittest",
         "\${workspaceFolder}/bindings/cpp/include",
         "\${workspaceFolder}/bindings/node/native/src",
         "\${workspaceFolder}/core/external/boost",

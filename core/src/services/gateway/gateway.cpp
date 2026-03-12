@@ -1234,9 +1234,17 @@ int gateway_t::send_rid (const zlink_routing_id_t *routing_id_,
     scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
     if (ensure_facade_mode () != 0)
         return -1;
-    if (_runtime->router_socket == socket_base_t::current_socket_msg_dispatch_socket ()) {
+    if (_runtime->router_socket
+        == socket_base_t::current_socket_msg_dispatch_socket ()) {
         pipe_t *dispatch_pipe =
           socket_base_t::current_socket_msg_dispatch_pipe ();
+        zlink_routing_id_t dispatch_source_rid;
+        if (dispatch_pipe
+            && socket_base_t::current_socket_msg_dispatch_source_rid (
+              &dispatch_source_rid)
+            && routing_id_equals (dispatch_source_rid, *routing_id_))
+            return send_parts_via_dispatch_pipe (dispatch_pipe, parts_,
+                                                 part_count_);
         if (pipe_routing_id_equals (dispatch_pipe, routing_id_))
             return send_parts_via_dispatch_pipe (dispatch_pipe, parts_,
                                                  part_count_);

@@ -2,9 +2,9 @@
 
 #include <unity.h>
 #include "utils/macros.hpp"
-#include "../tests/testutil.hpp"
-#include "../tests/testutil_unity.hpp"
-#include "../unittests/unittest_resolver_common.hpp"
+#include "../testutil.hpp"
+#include "../testutil_unity.hpp"
+#include "unittest_resolver_common.hpp"
 
 #include <ip_resolver.hpp>
 #include <ip.hpp>

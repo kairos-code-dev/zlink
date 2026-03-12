@@ -99,7 +99,7 @@ English | [한국어](README.ko.md)
 | [cmake-options.md](building/cmake-options.md) | CMake options reference |
 | [packaging.md](building/packaging.md) | Release and packaging |
 | [release-accounts.md](building/release-accounts.md) | Official distribution accounts/secrets |
-| [testing.md](building/testing.md) | Test strategy and execution |
+| [../core/tests/README.md](../core/tests/README.md) | Test strategy, layout, and lane execution |
 | [platforms.md](building/platforms.md) | Supported platforms and compilers |
 
 ## Reference (plan/)

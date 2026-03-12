@@ -82,7 +82,7 @@ if [ "$RUN_TESTS" = "ON" ]; then
     BUILD_TESTS_FLAG="ON"
 fi
 
-# Unit tests in core/unittests are wired when BUILD_STATIC is enabled.
+# Unit tests in core/tests/unittest are wired when BUILD_STATIC is enabled.
 # Keep default packaging build shared-only, but include static lib for test runs.
 BUILD_STATIC_FLAG="OFF"
 if [ "$RUN_TESTS" = "ON" ]; then

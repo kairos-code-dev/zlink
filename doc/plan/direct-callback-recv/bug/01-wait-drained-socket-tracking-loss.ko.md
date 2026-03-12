@@ -82,4 +82,4 @@ while (true) {
 |------|------|
 | `core/src/services/common/service_runtime_base.hpp` | swap → copy + 개별 erase |
 | `core/src/services/spot/spot_node.cpp` | abortive 로그 개선 |
-| `core/tests/unittest_service_runtime_base.cpp` | 회귀 테스트 추가 |
+| `core/tests/unittest/unittest_service_runtime_base.cpp` | 회귀 테스트 추가 |

@@ -74,6 +74,8 @@ namespace
 thread_local zlink::socket_base_t *g_current_socket_msg_dispatch_socket = NULL;
 thread_local zlink::socket_base_t *g_current_send_ready_dispatch_socket = NULL;
 thread_local zlink::pipe_t *g_current_socket_msg_dispatch_pipe = NULL;
+thread_local zlink_routing_id_t g_current_socket_msg_dispatch_source_rid;
+thread_local bool g_current_socket_msg_dispatch_source_rid_valid = false;
 
 static void generate_default_routing_id (unsigned char out_[16])
 {
@@ -1355,6 +1357,8 @@ int zlink::socket_base_t::socket_msg_dispatch_from_io (msg_t *msg_,
 {
     if (!socket_msg_dispatch_active ())
         return 0;
+    std::lock_guard<std::recursive_mutex> dispatch_lock (
+      _socket_msg_dispatch_sync);
     pipe_t *previous_pipe = g_current_socket_msg_dispatch_pipe;
     g_current_socket_msg_dispatch_pipe = pipe_;
     const int rc = xsocket_msg_dispatch (msg_, pipe_);
@@ -1443,6 +1447,15 @@ zlink::pipe_t *zlink::socket_base_t::current_socket_msg_dispatch_pipe ()
     return g_current_socket_msg_dispatch_pipe;
 }
 
+bool zlink::socket_base_t::current_socket_msg_dispatch_source_rid (
+  zlink_routing_id_t *out_)
+{
+    if (!out_ || !g_current_socket_msg_dispatch_source_rid_valid)
+        return false;
+    *out_ = g_current_socket_msg_dispatch_source_rid;
+    return true;
+}
+
 bool zlink::socket_base_t::send_ready_dispatch_in_callback () const
 {
     return g_current_send_ready_dispatch_socket == this;
@@ -1488,9 +1501,30 @@ void zlink::socket_base_t::invoke_socket_msg_handler (
   size_t part_count_)
 {
     socket_base_t *previous = g_current_socket_msg_dispatch_socket;
+    zlink_routing_id_t previous_source_rid;
+    const bool previous_source_rid_valid =
+      g_current_socket_msg_dispatch_source_rid_valid;
+    if (previous_source_rid_valid)
+        previous_source_rid = g_current_socket_msg_dispatch_source_rid;
     g_current_socket_msg_dispatch_socket = this;
+    if (source_rid_) {
+        g_current_socket_msg_dispatch_source_rid = *source_rid_;
+        g_current_socket_msg_dispatch_source_rid_valid = true;
+    } else {
+        memset (&g_current_socket_msg_dispatch_source_rid, 0,
+                sizeof (g_current_socket_msg_dispatch_source_rid));
+        g_current_socket_msg_dispatch_source_rid_valid = false;
+    }
     handler_ (source_rid_, parts_, part_count_);
     g_current_socket_msg_dispatch_socket = previous;
+    if (previous_source_rid_valid) {
+        g_current_socket_msg_dispatch_source_rid = previous_source_rid;
+        g_current_socket_msg_dispatch_source_rid_valid = true;
+    } else {
+        memset (&g_current_socket_msg_dispatch_source_rid, 0,
+                sizeof (g_current_socket_msg_dispatch_source_rid));
+        g_current_socket_msg_dispatch_source_rid_valid = false;
+    }
 }
 
 void zlink::socket_base_t::close_socket_msg_parts (

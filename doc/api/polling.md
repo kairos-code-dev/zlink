@@ -1,10 +1,14 @@
 [English](polling.md) | [한국어](polling.ko.md)
 
-# Polling & Proxy
+# Proxy & Utilities
 
-Functions for multiplexing I/O across multiple sockets and for building
-message-forwarding proxies. The polling API lets you wait for events on any
-combination of zlink sockets and native file descriptors in a single call.
+Functions for building message-forwarding proxies and querying library
+capabilities.
+
+With the callback-only receive model, the polling API (`zlink_poll`,
+`zlink_pollitem_t`, `ZLINK_POLLIN`) has been removed. All message receiving is
+now handled through handler callbacks. The proxy and capability-check functions
+remain.
 
 ## Types
 
@@ -18,80 +22,18 @@ typedef unsigned int zlink_fd_t;
 #else
 typedef int zlink_fd_t;
 #endif
-
-typedef struct zlink_pollitem_t
-{
-    void *socket;
-    zlink_fd_t fd;
-    short events;
-    short revents;
-} zlink_pollitem_t;
 ```
 
-`zlink_fd_t` is a platform-dependent file-descriptor type: `unsigned __int64`
-on 64-bit Windows, `unsigned int` on 32-bit Windows, and `int` on POSIX
-systems.
-
-`zlink_pollitem_t` describes one item to poll. Set `socket` to a zlink socket
-handle or set `fd` to a native file descriptor (when `socket` is `NULL`).
-`events` specifies the events to watch for and `revents` is filled in by
-`zlink_poll` with the events that actually occurred.
-
-## Constants
-
-```c
-#define ZLINK_POLLIN   1
-#define ZLINK_POLLOUT  2
-#define ZLINK_POLLERR  4
-#define ZLINK_POLLPRI  8
-
-#define ZLINK_POLLITEMS_DFLT  16
-```
-
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `ZLINK_POLLIN` | 1 | At least one message can be received without blocking |
-| `ZLINK_POLLOUT` | 2 | At least one message can be sent without blocking |
-| `ZLINK_POLLERR` | 4 | An error condition is present |
-| `ZLINK_POLLPRI` | 8 | High-priority data is available (for raw file descriptors) |
-| `ZLINK_POLLITEMS_DFLT` | 16 | Suggested default allocation size for poll-item arrays |
+`zlink_fd_t` is a platform-dependent file-descriptor type.
 
 ## Functions
-
-### zlink_poll
-
-Poll for events on a set of sockets and/or file descriptors.
-
-```c
-int zlink_poll(zlink_pollitem_t *items_, int nitems_, long timeout_);
-```
-
-Waits until at least one item signals a requested event, or the timeout
-expires. Set `timeout_` to `-1` for infinite blocking, `0` for an immediate
-non-blocking check, or a positive value for the maximum wait in milliseconds.
-On return, each item's `revents` field indicates which events occurred.
-
-**Returns:** The number of items with signalled events, `0` if the timeout
-expired with no events, or `-1` on failure (errno is set).
-
-**Errors:**
-- `ETERM` -- the context associated with one of the sockets was terminated.
-- `EFAULT` -- `items_` is `NULL` while `nitems_` is non-zero.
-- `EINTR` -- the call was interrupted by a signal.
-
-**Thread safety:** Each poll item must not be shared with another thread during
-the call. Different threads may poll different item sets concurrently.
-
-**See also:** `zlink_proxy`, `zlink_proxy_steerable`
-
----
 
 ### zlink_proxy
 
 Start a built-in proxy between a frontend and a backend socket.
 
 ```c
-int zlink_proxy(void *frontend_, void *backend_, void *capture_);
+int zlink_proxy (void *frontend_, void *backend_, void *capture_);
 ```
 
 Connects a frontend socket to a backend socket, forwarding messages in both
@@ -107,7 +49,7 @@ context is terminated) and does not return under normal operation.
 **Thread safety:** The three socket handles must not be used by other threads
 while the proxy is running.
 
-**See also:** `zlink_proxy_steerable`, `zlink_poll`
+**See also:** `zlink_proxy_steerable`
 
 ---
 
@@ -116,10 +58,10 @@ while the proxy is running.
 Start a steerable proxy with an additional control socket.
 
 ```c
-int zlink_proxy_steerable(void *frontend_,
-                          void *backend_,
-                          void *capture_,
-                          void *control_);
+int zlink_proxy_steerable (void *frontend_,
+                           void *backend_,
+                           void *capture_,
+                           void *control_);
 ```
 
 Behaves like `zlink_proxy` but accepts commands on `control_`. Send the string
@@ -130,101 +72,11 @@ behaves identically to `zlink_proxy`.
 **Returns:** `0` when terminated via the control socket, or `-1` on failure
 (errno is set).
 
-**Errors:**
-- `ETERM` -- the context was terminated.
-
 **Thread safety:** The four socket handles must not be used by other threads
 while the proxy is running. The control socket may be written to from any
 thread.
 
-**See also:** `zlink_proxy`, `zlink_poll`
-
----
-
-## Service Polling
-
-In addition to raw sockets and file descriptors, the poller can monitor
-service instances directly. Internal socket handles are resolved internally
-and are never exposed to the caller. After the poller signals readiness,
-continue using the regular service API to send or receive messages.
-
-Supported services: `spot_sub`, `spot_pub`, `gateway`, `receiver`.
-
-### zlink_poller_add_spot_sub / zlink_poller_add_spot_pub
-
-Register a SPOT service instance with the poller.
-
-```c
-int zlink_poller_add_spot_sub(void *poller, void *sub,
-                              void *userdata, short events);
-int zlink_poller_add_spot_pub(void *poller, void *pub,
-                              void *userdata, short events);
-```
-
-Adds the service instance to the poller's watch set. `events` is a bitmask
-of `ZLINK_POLLIN` / `ZLINK_POLLOUT`. `userdata` is returned in the event
-structure when this item fires.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**See also:** `zlink_poller_modify_spot_sub`, `zlink_poller_remove_spot_sub`
-
----
-
-### zlink_poller_add_gateway / zlink_poller_add_receiver
-
-Register a Gateway or Receiver service instance with the poller.
-
-```c
-int zlink_poller_add_gateway(void *poller, void *gateway,
-                             void *userdata, short events);
-int zlink_poller_add_receiver(void *poller, void *receiver,
-                              void *userdata, short events);
-```
-
-Same semantics as the spot service registration APIs but for gateway and
-receiver services.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**See also:** `zlink_poller_modify_gateway`, `zlink_poller_remove_gateway`
-
----
-
-### zlink_poller_modify_* / zlink_poller_remove_*
-
-Modify or remove a registered service instance.
-
-```c
-int zlink_poller_modify_spot_sub(void *poller, void *sub, short events);
-int zlink_poller_modify_spot_pub(void *poller, void *pub, short events);
-int zlink_poller_modify_gateway(void *poller, void *gateway, short events);
-int zlink_poller_modify_receiver(void *poller, void *receiver, short events);
-
-int zlink_poller_remove_spot_sub(void *poller, void *sub);
-int zlink_poller_remove_spot_pub(void *poller, void *pub);
-int zlink_poller_remove_gateway(void *poller, void *gateway);
-int zlink_poller_remove_receiver(void *poller, void *receiver);
-```
-
-`modify` updates the watched event mask. `remove` unregisters the service
-from the poller.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
----
-
-### Service polling usage pattern
-
-```text
-1. Create service instance (spot_sub, spot_pub, gateway, receiver)
-2. Register service instance with poller
-3. Wait for readiness via zlink_poller_wait
-4. Use existing service API to send/recv
-```
-
-**Important:** Using the same service instance from multiple threads
-concurrently is unsupported.
+**See also:** `zlink_proxy`
 
 ---
 
@@ -233,7 +85,7 @@ concurrently is unsupported.
 Check whether the library supports a given capability.
 
 ```c
-int zlink_has(const char *capability_);
+int zlink_has (const char *capability_);
 ```
 
 Queries the library for compile-time or run-time support of a named feature.

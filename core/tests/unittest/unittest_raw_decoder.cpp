@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../tests/testutil.hpp"
+#include "../testutil.hpp"
 
 #include "protocol/raw_decoder.hpp"
 #include "utils/ip.hpp"

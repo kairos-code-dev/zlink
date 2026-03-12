@@ -238,6 +238,9 @@ inline int run_client_benchmark (const std::string &lib_name,
           settings,
           &sockets,
           &monitors)) {
+        if (bench_debug_enabled ())
+            std::cerr << "[multi-dealer-dealer-client] create sockets failed"
+                      << std::endl;
         close_client_monitors (&monitors);
         close_client_sockets (&sockets);
         return 1;
@@ -246,6 +249,10 @@ inline int run_client_benchmark (const std::string &lib_name,
     if (!wait_all_client_connect_ready (
           monitors,
           settings.connect_ready_timeout_ms)) {
+        if (bench_debug_enabled ())
+            std::cerr
+              << "[multi-dealer-dealer-client] connect-ready wait failed"
+              << std::endl;
         close_client_monitors (&monitors);
         close_client_sockets (&sockets);
         return 1;
@@ -275,6 +282,10 @@ inline int run_client_benchmark (const std::string &lib_name,
               payload,
               msg_sizes[si],
               run_id)) {
+            if (bench_debug_enabled ())
+                std::cerr
+                  << "[multi-dealer-dealer-client] size case failed size="
+                  << msg_sizes[si] << std::endl;
             close_client_sockets (&sockets);
             return 1;
         }

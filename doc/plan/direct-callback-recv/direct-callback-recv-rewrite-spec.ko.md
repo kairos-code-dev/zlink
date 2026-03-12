@@ -1218,7 +1218,7 @@ transport-local inproc handoff primitive와 protocol decoder partial buffer,
 영향 영역:
 
 - `core/tests/`
-- `core/unittests/`
+- `core/tests/unittest/`
 - `core/perf/`
 
 작업:
@@ -1265,12 +1265,12 @@ transport-local inproc handoff primitive와 protocol decoder partial buffer,
 - `receiver` 생성/파괴/monitor 시나리오는 통합 `gateway`의 server-side bind/register 흐름으로 치환
 - `spot_node` / `spot` readiness/recv 시나리오는 handler + peer readiness/monitor 관찰로 치환
 
-### 9.8.2 `core/unittests`
+### 9.8.2 `core/tests/unittest`
 
 수정 대상 범주:
 
 - poller unit test
-  - `core/unittests/unittest_poller.cpp`
+  - `core/tests/unittest/unittest_poller.cpp`
 
 수정 방향:
 
@@ -1330,7 +1330,7 @@ transport-local inproc handoff primitive와 protocol decoder partial buffer,
 
 - public API에서 삭제 대상으로 지정한 recv/pollin/legacy facade가 모두 제거되어 있다.
 - 내부 구현에서 삭제 대상으로 지정한 legacy path, 임시 bridge, dead code가 모두 제거되어 있다.
-- `core/tests`, `core/unittests`, `core/perf`, guide/doc/api 문서, bindings wrapper에
+- `core/tests`, `core/tests/unittest`, `core/perf`, guide/doc/api 문서, bindings wrapper에
   삭제된 API/경로 참조가 남아 있지 않다.
 - "나중에 정리"를 전제로 한 dormant code path, compatibility flag, legacy wrapper를 남기지 않는다.
 - callback-only contract가 실제 production path의 유일한 recv path가 되어 있다.
@@ -1416,7 +1416,7 @@ transport-local inproc handoff primitive와 protocol decoder partial buffer,
 검증 원칙:
 
 - 각 작업 묶음이 끝날 때마다 해당 범위가 다시 컴파일 가능해야 한다.
-- 관련 `core/tests`, `core/unittests`, `core/perf`를 바로 갱신하고 실행해
+- 관련 `core/tests`, `core/tests/unittest`, `core/perf`를 바로 갱신하고 실행해
   새 callback-only 경로 기준으로 회귀를 확인한다.
 - 버그 수정은 마지막에 몰아서 하지 않고, 각 작업 묶음 직후 바로 처리한다.
 - "일단 크게 다 바꾼 뒤 나중에 테스트하면서 정리" 방식은 지양한다.

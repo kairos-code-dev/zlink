@@ -25,6 +25,8 @@ namespace {
 static const char *k_pattern = "GATEWAY";
 static const char *k_service_name = "perf-gateway";
 static const char *k_server_routing_id = "perf-gateway-server";
+static std::atomic<int> g_debug_recv_logs(0);
+static std::atomic<int> g_debug_send_logs(0);
 
 using perf_multi_client::next_metric_run_id;
 using perf_multi_client::parse_endpoint_arg;
@@ -40,6 +42,8 @@ struct gateway_client_slot_t
         send_pending(false),
         inflight(false),
         send_enabled(false),
+        auto_send_on_recv(false),
+        completed_replies(0),
         run_id(0),
         msg_size(0),
         next_seq(1),
@@ -55,6 +59,8 @@ struct gateway_client_slot_t
     bool send_pending;
     bool inflight;
     bool send_enabled;
+    bool auto_send_on_recv;
+    unsigned long long completed_replies;
     uint32_t run_id;
     size_t msg_size;
     uint64_t next_seq;
@@ -91,6 +97,12 @@ void gateway_client_send_ready(void *subject);
 void gateway_client_recv_handler(const zlink_routing_id_t *,
                                  zlink_msg_t *parts,
                                  size_t part_count);
+bool wait_all_gateway_ready(const std::vector<gateway_client_slot_t *> &slots,
+                            int timeout_ms);
+bool prime_gateway_slot(gateway_client_state_t *state,
+                        gateway_client_slot_t *slot,
+                        size_t msg_size,
+                        int timeout_ms);
 
 bool is_supported_transport(const std::string &transport)
 {
@@ -262,20 +274,25 @@ send_status_t send_gateway_request_locked(gateway_client_slot_t *slot)
     }
 
     zlink_msg_t part;
-    if (zlink_msg_init_data(
-          &part,
-          payload_size > 0
-            ? static_cast<void *>(slot->payload.data())
-            : static_cast<void *>(NULL),
-          payload_size,
-          NULL,
-          NULL)
-        != 0) {
+    if (zlink_msg_init_size(&part, payload_size) != 0) {
         return send_fatal;
+    }
+    if (payload_size > 0) {
+        std::memcpy(
+          zlink_msg_data(&part),
+          static_cast<const void *>(slot->payload.data()),
+          payload_size);
     }
 
     const int rc = zlink_gateway_send(slot->gateway, &part, 1, ZLINK_DONTWAIT);
     if (rc == 0) {
+        if (bench_debug_enabled()
+            && g_debug_send_logs.fetch_add(1, std::memory_order_acq_rel) < 8) {
+            std::cerr << "[multi-gateway-client] send ok slot="
+                      << slot->slot_index << " size=" << payload_size
+                      << " phase=" << static_cast<int>(slot->phase)
+                      << " run=" << slot->run_id << std::endl;
+        }
         slot->send_pending = false;
         slot->inflight = true;
         ++slot->next_seq;
@@ -286,6 +303,13 @@ send_status_t send_gateway_request_locked(gateway_client_slot_t *slot)
 
     if (saved_errno == EAGAIN || saved_errno == EHOSTUNREACH
         || saved_errno == ENOTCONN) {
+        if (bench_debug_enabled()
+            && g_debug_send_logs.fetch_add(1, std::memory_order_acq_rel) < 8) {
+            std::cerr << "[multi-gateway-client] send blocked slot="
+                      << slot->slot_index << " errno=" << saved_errno
+                      << " phase=" << static_cast<int>(slot->phase)
+                      << " run=" << slot->run_id << std::endl;
+        }
         slot->send_pending = true;
         slot->inflight = false;
         errno = saved_errno;
@@ -344,6 +368,21 @@ bool create_gateway_slots(ctx_guard_t &ctx,
                                perf_multi_metric::header_size()),
                              'g');
         slots_out->push_back(slot);
+
+        std::vector<gateway_client_slot_t *> ready_slots(1, slot);
+        if (!wait_all_gateway_ready(
+              ready_slots,
+              settings.connect_ready_timeout_ms)) {
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(SETTLE_TIME_MS));
+        if (!prime_gateway_slot(
+              g_client_state,
+              slot,
+              max_payload_size,
+              settings.connect_ready_timeout_ms)) {
+            return false;
+        }
     }
 
     return !slots_out->empty();
@@ -359,8 +398,12 @@ bool wait_all_gateway_ready(const std::vector<gateway_client_slot_t *> &slots,
     while (std::chrono::steady_clock::now() < deadline) {
         size_t ready = 0;
         for (size_t i = 0; i < slots.size(); ++i) {
+            size_t peer_count = 0;
             if (slots[i]
-                && zlink_gateway_connection_count(slots[i]->gateway) > 0) {
+                && zlink_gateway_router_peers(
+                     slots[i]->gateway, NULL, &peer_count)
+                     == 0
+                && peer_count > 0) {
                 ++ready;
             }
         }
@@ -370,8 +413,14 @@ bool wait_all_gateway_ready(const std::vector<gateway_client_slot_t *> &slots,
     }
 
     for (size_t i = 0; i < slots.size(); ++i) {
-        if (!slots[i] || zlink_gateway_connection_count(slots[i]->gateway) <= 0)
+        size_t peer_count = 0;
+        if (!slots[i]
+            || zlink_gateway_router_peers(
+                 slots[i]->gateway, NULL, &peer_count)
+                 != 0
+            || peer_count == 0) {
             return false;
+        }
     }
 
     return true;
@@ -405,7 +454,88 @@ void configure_phase_slots(const std::vector<gateway_client_slot_t *> &slots,
         slot->send_pending = false;
         slot->inflight = false;
         slot->send_enabled = send_enabled;
+        slot->auto_send_on_recv = send_enabled;
     }
+}
+
+bool prime_gateway_slot(gateway_client_state_t *state,
+                        gateway_client_slot_t *slot,
+                        size_t msg_size,
+                        int timeout_ms)
+{
+    if (!state || !slot || msg_size == 0)
+        return false;
+
+    const uint32_t run_id = next_metric_run_id();
+    unsigned long long baseline_replies = 0;
+    {
+        std::lock_guard<std::mutex> lock(slot->mutex);
+        slot->run_id = run_id;
+        slot->msg_size = msg_size;
+        slot->phase = perf_multi_metric::phase_warmup;
+        slot->next_seq = 1;
+        slot->send_pending = false;
+        slot->inflight = false;
+        slot->send_enabled = true;
+        slot->auto_send_on_recv = false;
+        baseline_replies = slot->completed_replies;
+        const send_status_t rc = send_gateway_request_locked(slot);
+        if (rc == send_fatal) {
+            mark_fatal(errno);
+            return false;
+        }
+    }
+
+    const auto deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(std::max(1, timeout_ms));
+    while (std::chrono::steady_clock::now() < deadline) {
+        {
+            std::lock_guard<std::mutex> lock(state->metrics_mutex);
+            if (state->fatal)
+                return false;
+        }
+        {
+            std::lock_guard<std::mutex> lock(slot->mutex);
+            if (slot->completed_replies > baseline_replies) {
+                slot->send_enabled = false;
+                slot->send_pending = false;
+                slot->inflight = false;
+                return true;
+            }
+        }
+
+        std::unique_lock<std::mutex> metrics_lock(state->metrics_mutex);
+        state->metrics_cv.wait_for(metrics_lock, std::chrono::milliseconds(2));
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(slot->mutex);
+        slot->send_enabled = false;
+        slot->send_pending = false;
+        slot->auto_send_on_recv = false;
+    }
+    return false;
+}
+
+bool prime_gateway_slots(gateway_client_state_t *state,
+                         const std::vector<gateway_client_slot_t *> &slots,
+                         size_t msg_size,
+                         int timeout_ms)
+{
+    if (!state)
+        return false;
+
+    for (size_t i = 0; i < slots.size(); ++i) {
+        if (!prime_gateway_slot(state, slots[i], msg_size, timeout_ms)) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-gateway-client] prime failed slot=" << i
+                          << std::endl;
+            }
+            return false;
+        }
+    }
+    return true;
 }
 
 bool seed_phase_requests(const std::vector<gateway_client_slot_t *> &slots,
@@ -448,6 +578,7 @@ void stop_phase(const std::vector<gateway_client_slot_t *> &slots)
         std::lock_guard<std::mutex> lock(slot->mutex);
         slot->send_enabled = false;
         slot->send_pending = false;
+        slot->auto_send_on_recv = false;
     }
 }
 
@@ -546,11 +677,22 @@ void gateway_client_recv_handler(const zlink_routing_id_t *,
         return;
     }
     close_parts(parts, part_count);
+    if (bench_debug_enabled()
+        && g_debug_recv_logs.fetch_add(1, std::memory_order_acq_rel) < 8) {
+        std::cerr << "[multi-gateway-client] recv header_ok=" << header_ok;
+        if (header_ok) {
+            std::cerr << " run=" << header.run_id
+                      << " phase=" << header.phase
+                      << " size=" << header.msg_size
+                      << " seq=" << header.seq;
+        }
+        std::cerr << std::endl;
+    }
 
     {
         std::lock_guard<std::mutex> lock(slot->mutex);
         slot->inflight = false;
-        if (slot->send_enabled) {
+        if (slot->send_enabled && slot->auto_send_on_recv) {
             const send_status_t rc = send_gateway_request_locked(slot);
             if (rc == send_fatal) {
                 mark_fatal(errno);
@@ -561,6 +703,7 @@ void gateway_client_recv_handler(const zlink_routing_id_t *,
 
     if (header_ok) {
         std::lock_guard<std::mutex> metrics_lock(state->metrics_mutex);
+        ++slot->completed_replies;
         if (state->collect_active
             && perf_multi_metric::is_expected(
               header,
@@ -725,6 +868,8 @@ int run_client_benchmark(const std::string &lib_name,
         g_client_state = NULL;
         return 1;
     }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(SETTLE_TIME_MS));
 
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
         if (!run_single_size_case(&state, settings, lib_name, transport,

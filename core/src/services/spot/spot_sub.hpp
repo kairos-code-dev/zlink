@@ -48,6 +48,9 @@ class spot_sub_t
     int set_direct_handler (spot_sub_direct_handler_fn handler_,
                             void *userdata_);
     bool has_filters () const;
+    void emit_filter_applied_event ();
+    void emit_subscription_ready_event (const char *endpoint_);
+    std::string first_ready_peer_endpoint () const;
 
     void emit_ready_event ();
     int destroy ();
@@ -90,6 +93,7 @@ class spot_sub_t
 
     std::set<std::string> _topics;
     std::set<std::string> _patterns;
+    std::set<std::string> _ready_peer_endpoints;
 
     spot_sub_direct_handler_fn _direct_handler;
     void *_direct_handler_userdata;

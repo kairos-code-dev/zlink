@@ -82,6 +82,8 @@ class socket_base_t : public own_t,
     static socket_base_t *current_socket_msg_dispatch_socket ();
     static socket_base_t *current_send_ready_dispatch_socket ();
     static zlink::pipe_t *current_socket_msg_dispatch_pipe ();
+    static bool current_socket_msg_dispatch_source_rid (
+      zlink_routing_id_t *out_);
     bool send_ready_dispatch_in_callback () const;
     void invoke_send_ready_handler_for_testing ();
     int stream_dispatch_msg_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
@@ -407,6 +409,7 @@ class socket_base_t : public own_t,
     std::atomic<zlink_xpub_handler_fn> _xpub_handler;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
     std::atomic<bool> _send_ready_armed;
+    std::recursive_mutex _socket_msg_dispatch_sync;
 
     // Mutex to synchronize access to the monitor Pair socket
     mutex_t _monitor_sync;

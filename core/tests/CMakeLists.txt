@@ -5,6 +5,9 @@ cmake_minimum_required(VERSION 3.10)
 project(tests)
 
 set(TEST_PTY_WRAPPER "${CMAKE_CURRENT_LIST_DIR}/run_under_pty.sh")
+set(REGISTERED_TESTS)
+set(INTEGRATION_TEST_ROOT "integration")
+set(E2E_TEST_ROOT "e2e")
 
 set(STREAM_SCENARIO_ROOT "${CMAKE_SOURCE_DIR}/core/bench/with_stream/stacks")
 if(NOT EXISTS "${STREAM_SCENARIO_ROOT}")
@@ -13,38 +16,39 @@ if(NOT EXISTS "${STREAM_SCENARIO_ROOT}")
 endif()
 
 set(tests
-  test_ancillaries
-  test_monitor_with_handler
-  test_socket_with_handler
-  test_connect_resolve
-  discovery/test_gateway
-  discovery/test_gateway_with_handler
-  discovery/test_gateway_handover
-  test_capabilities
-  test_socket_null
-  test_heartbeats
+  ${INTEGRATION_TEST_ROOT}/test_ancillaries
+  ${INTEGRATION_TEST_ROOT}/test_thread_safe_contract_policy
+  ${INTEGRATION_TEST_ROOT}/test_monitor_with_handler
+  ${INTEGRATION_TEST_ROOT}/test_socket_with_handler
+  ${INTEGRATION_TEST_ROOT}/test_connect_resolve
+  ${E2E_TEST_ROOT}/discovery/test_gateway
+  ${INTEGRATION_TEST_ROOT}/discovery/test_gateway_with_handler
+  ${INTEGRATION_TEST_ROOT}/discovery/test_gateway_handover
+  ${INTEGRATION_TEST_ROOT}/test_capabilities
+  ${INTEGRATION_TEST_ROOT}/test_socket_null
+  ${INTEGRATION_TEST_ROOT}/test_heartbeats
   # TODO: test_reconnect_ivl needs rewrite (uses removed sync recv / bounce)
   #test_reconnect_ivl
-  test_reconnect_options
+  ${INTEGRATION_TEST_ROOT}/test_reconnect_options
   # TODO: test_pubsub_filter_xpub needs rewrite (uses removed sync recv)
   #test_pubsub_filter_xpub
   # TODO: test_router_multiple_dealers needs rewrite (uses removed sync recv)
   #test_router_multiple_dealers
   # TODO: test_stream_socket needs rewrite (uses removed zlink_poll / zlink_monitor_recv)
   #test_stream_socket
-  test_stream_threadsafe
-  test_stream_send_blocking_wakeup
+  ${INTEGRATION_TEST_ROOT}/test_stream_threadsafe
+  ${INTEGRATION_TEST_ROOT}/test_stream_send_blocking_wakeup
   # TODO: test_stream_fastpath needs rewrite (uses removed zlink_poll / zlink_monitor_recv)
   #test_stream_fastpath
   # TODO: test_transport_matrix needs rewrite (uses removed sync recv)
   #test_transport_matrix
   # TODO: test_router_auto_id_format needs rewrite (uses removed sync recv)
   #routing-id/test_router_auto_id_format
-  routing-id/test_stream_routing_id_size
-  discovery/test_service_discovery
-  discovery/test_service_introspection
-  spot/test_spot_pubsub_scenario
-  spot/test_spot_service_introspection
+  ${INTEGRATION_TEST_ROOT}/routing-id/test_stream_routing_id_size
+  ${E2E_TEST_ROOT}/discovery/test_service_discovery
+  ${E2E_TEST_ROOT}/discovery/test_service_introspection
+  ${E2E_TEST_ROOT}/spot/test_spot_pubsub_scenario
+  ${E2E_TEST_ROOT}/spot/test_spot_service_introspection
   ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client
   ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink
   ${STREAM_SCENARIO_ROOT}/asio/test_scenario_stream_asio)
@@ -140,7 +144,7 @@ if(ENABLE_CAPSH)
   find_program(CAPSH_PROGRAM NAMES capsh)
 
   if(CAPSH_PROGRAM)
-    list(APPEND tests test_pair_tcp_cap_net_admin)
+    list(APPEND tests ${INTEGRATION_TEST_ROOT}/test_pair_tcp_cap_net_admin)
   else()
     message(STATUS "capsh not found, skipping tests that require CAP_NET_ADMIN")
   endif()
@@ -150,7 +154,7 @@ if(ZLINK_HAVE_IPC)
 endif()
 
 if(ZLINK_HAVE_OPENPGM)
-  list(APPEND tests pgm/test_pgm_epgm)
+  list(APPEND tests ${INTEGRATION_TEST_ROOT}/pgm/test_pgm_epgm)
 endif()
 
 # add location of platform.hpp for Windows builds
@@ -196,6 +200,12 @@ else()
   set(TESTUTIL_LIB testutil)
 endif()
 
+if(BUILD_STATIC)
+  add_subdirectory(unittest)
+else()
+  message(WARNING "Not building unit tests, since BUILD_STATIC is not enabled")
+endif()
+
 if(MSVC_VERSION LESS 1700)
   set_source_files_properties("${CMAKE_SOURCE_DIR}/core/external/unity/unity.c" PROPERTIES LANGUAGE CXX)
 endif()
@@ -218,11 +228,12 @@ endif()
 
 # Does not work, times out every time
 if(WIN32)
-  list(REMOVE_ITEM tests test_many_sockets)
+  list(REMOVE_ITEM tests ${INTEGRATION_TEST_ROOT}/test_many_sockets)
 endif()
 
 foreach(test_source ${tests})
   get_filename_component(test ${test_source} NAME)
+  list(APPEND REGISTERED_TESTS ${test})
   # target_sources not supported before CMake 3.1
   add_executable(${test} ${test_source}.cpp)
 
@@ -282,6 +293,12 @@ foreach(test_source ${tests})
   endif()
 endforeach()
 
+if(TARGET test_thread_safe_contract_policy)
+  target_compile_definitions(
+    test_thread_safe_contract_policy
+    PRIVATE TEST_ZLINK_HEADER_PATH="${CMAKE_SOURCE_DIR}/core/include/zlink.h")
+endif()
+
 target_sources(
   test_scenario_stream_client
   PRIVATE ${STREAM_SCENARIO_ROOT}/client/stream_client_core.cpp)
@@ -331,9 +348,9 @@ if(TARGET test_service_introspection)
     test_service_introspection
     PROPERTIES
       TIMEOUT 30
-      DISABLED TRUE
-      ENVIRONMENT
-        "ZLINK_TEST_CASE=test_discovery_monitor_and_routing_id")
+      SKIP_RETURN_CODE 77
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 
   add_test(
     NAME test_service_introspection_discovery_monitor
@@ -470,11 +487,14 @@ function(extract_test_names_from_specs out_var specs_var)
 endfunction()
 
 set(NETWORK_INTEGRATION_RESOURCE_LOCK "zlink-network-integration")
+set(SPOT_TEST_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+set(SPOT_SPLIT_TEST_WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 
 set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_pub_sub_options_and_routing_ids
     test_spot_monitors_and_monitor_poller
     test_spot_node_direct_apis_and_explicit_handles_interop
+    test_spot_node_send_ready_handler_isolated_by_service
     test_spot_topology_summary_lifecycle
     test_spot_register_null_derivation_and_wildcard_rejection
     test_spot_tls_settings_lock_after_bind_connect_and_register
@@ -485,6 +505,7 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_pub_sub_options=test_spot_pub_sub_options_and_routing_ids
     test_spot_service_introspection_monitors=test_spot_monitors_and_monitor_poller
     test_spot_service_introspection_explicit_handles=test_spot_node_direct_apis_and_explicit_handles_interop
+    test_spot_service_introspection_send_ready_isolation=test_spot_node_send_ready_handler_isolated_by_service
     test_spot_service_introspection_topology_summary=test_spot_topology_summary_lifecycle
     test_spot_service_introspection_register_null=test_spot_register_null_derivation_and_wildcard_rejection
     test_spot_service_introspection_tls_lock=test_spot_tls_settings_lock_after_bind_connect_and_register
@@ -503,14 +524,14 @@ set(SPOT_PUBSUB_CASES
     test_spot_node_direct_sub_option_inheritance_and_handler_conflict
     test_spot_node_direct_first_publish_race
     test_spot_sub_handler_basic
+    test_spot_recv_callback_isolated_by_handle
+    test_spot_recv_callback_isolated_by_service_with_discovery
     test_spot_facade_handler_receives_source_rid
-    test_spot_sub_handler_replace_barrier
-    test_spot_sub_handler_replace_inside_callback
+    test_spot_node_discovery_direct_and_child_interop
     test_spot_pub_async_mode_local_delivery
     test_spot_pub_async_setsockopt_validation
     test_spot_pub_async_queue_full_eagain
     test_spot_pub_async_queue_full_drop
-    test_spot_mmorpg_zone_adjacency_scale
     test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery)
 
 set(SPOT_PUBSUB_PEER_TEST_SPECS
@@ -527,15 +548,13 @@ set(SPOT_PUBSUB_LOCAL_TEST_SPECS
     test_spot_pubsub_scenario_sub_option_inheritance=test_spot_node_direct_sub_option_inheritance_and_handler_conflict
     test_spot_pubsub_scenario_first_publish_race=test_spot_node_direct_first_publish_race
     test_spot_pubsub_scenario_sub_handler_basic=test_spot_sub_handler_basic
+    test_spot_pubsub_scenario_recv_handle_isolation=test_spot_recv_callback_isolated_by_handle
+    test_spot_pubsub_scenario_recv_service_isolation=test_spot_recv_callback_isolated_by_service_with_discovery
     test_spot_pubsub_scenario_source_rid=test_spot_facade_handler_receives_source_rid
-    test_spot_pubsub_scenario_handler_replace_barrier=test_spot_sub_handler_replace_barrier
-    test_spot_pubsub_scenario_handler_replace_inside=test_spot_sub_handler_replace_inside_callback
     test_spot_pubsub_scenario_async_local_delivery=test_spot_pub_async_mode_local_delivery
     test_spot_pubsub_scenario_async_setsockopt=test_spot_pub_async_setsockopt_validation
     test_spot_pubsub_scenario_async_eagain=test_spot_pub_async_queue_full_eagain
-    test_spot_pubsub_scenario_async_drop=test_spot_pub_async_queue_full_drop
-    test_spot_pubsub_scenario_scale=test_spot_mmorpg_zone_adjacency_scale
-    test_spot_pubsub_scenario_scale_multi_node=test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery)
+    test_spot_pubsub_scenario_async_drop=test_spot_pub_async_queue_full_drop)
 
 set(GATEWAY_CASES
     test_gateway_provider_setsockopt
@@ -609,27 +628,27 @@ set(SERVICE_DISCOVERY_TEST_SPECS
 
 assert_named_case_coverage(
   "test_service_introspection"
-  "${CMAKE_CURRENT_LIST_DIR}/discovery/test_service_introspection.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/e2e/discovery/test_service_introspection.cpp"
   "RUN_SERVICE_INTROSPECTION_TEST"
   SERVICE_INTROSPECTION_CASES)
 assert_named_case_coverage(
   "test_spot_pubsub_scenario"
-  "${CMAKE_CURRENT_LIST_DIR}/spot/test_spot_pubsub_scenario.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/e2e/spot/test_spot_pubsub_scenario.cpp"
   "RUN_SPOT_TEST"
   SPOT_PUBSUB_CASES)
 assert_named_case_coverage(
   "test_spot_service_introspection"
-  "${CMAKE_CURRENT_LIST_DIR}/spot/test_spot_service_introspection.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/e2e/spot/test_spot_service_introspection.cpp"
   "RUN_SPOT_INTROSPECTION_TEST"
   SPOT_SERVICE_INTROSPECTION_CASES)
 assert_named_case_coverage(
   "test_gateway"
-  "${CMAKE_CURRENT_LIST_DIR}/discovery/test_gateway.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/e2e/discovery/test_gateway.cpp"
   "RUN_GATEWAY_TEST"
   GATEWAY_CASES)
 assert_named_case_coverage(
   "test_service_discovery"
-  "${CMAKE_CURRENT_LIST_DIR}/discovery/test_service_discovery.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/e2e/discovery/test_service_discovery.cpp"
   "RUN_TEST_CASE"
   SERVICE_DISCOVERY_CASES)
 
@@ -638,7 +657,9 @@ if(TARGET test_service_discovery)
     test_service_discovery
     PROPERTIES
       TIMEOUT 30
-      DISABLED TRUE)
+      SKIP_RETURN_CODE 77
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 
   add_env_case_tests_from_specs(
     test_service_discovery
@@ -659,7 +680,10 @@ if(TARGET test_spot_service_introspection)
   set_tests_properties(
     test_spot_service_introspection
     PROPERTIES
-      DISABLED TRUE)
+      TIMEOUT 60
+      SKIP_RETURN_CODE 77
+      WORKING_DIRECTORY "${SPOT_TEST_WORKING_DIRECTORY}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 
   add_env_case_tests_from_specs(
     test_spot_service_introspection
@@ -673,13 +697,17 @@ if(TARGET test_spot_service_introspection)
     PROPERTIES
       TIMEOUT 60
       SKIP_RETURN_CODE 77
+      WORKING_DIRECTORY "${SPOT_TEST_WORKING_DIRECTORY}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_gateway)
   set_tests_properties(
     test_gateway
     PROPERTIES
-      DISABLED TRUE)
+      TIMEOUT 180
+      SKIP_RETURN_CODE 77
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 
   add_env_case_tests_from_specs(
     test_gateway
@@ -707,7 +735,12 @@ if(TARGET test_spot_pubsub_scenario)
   set_tests_properties(
     test_spot_pubsub_scenario
     PROPERTIES
-      DISABLED TRUE)
+      TIMEOUT 180
+      SKIP_RETURN_CODE 77
+      WORKING_DIRECTORY "${SPOT_TEST_WORKING_DIRECTORY}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}"
+      ENVIRONMENT
+        "ZLINK_TEST_SUITE_MODE=e2e;ZLINK_SPOT_RUN_MULTI_NODE_DISCOVERY=1;ZLINK_SPOT_MULTI_NODE_FIELD_WIDTH=4;ZLINK_SPOT_MULTI_NODE_FIELD_HEIGHT=4;ZLINK_SPOT_MULTI_NODE_COUNT=2")
 
   add_env_case_tests_from_specs(
     test_spot_pubsub_scenario
@@ -727,7 +760,7 @@ if(TARGET test_spot_pubsub_scenario)
     PROPERTIES
       TIMEOUT 60
       SKIP_RETURN_CODE 77
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      WORKING_DIRECTORY "${SPOT_SPLIT_TEST_WORKING_DIRECTORY}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 
   set_tests_properties(
@@ -735,7 +768,7 @@ if(TARGET test_spot_pubsub_scenario)
     PROPERTIES
       TIMEOUT 90
       SKIP_RETURN_CODE 77
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      WORKING_DIRECTORY "${SPOT_SPLIT_TEST_WORKING_DIRECTORY}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_gateway_with_handler)
@@ -766,9 +799,46 @@ if(TARGET test_scenario_stream_zmq)
   set_tests_properties(test_scenario_stream_zmq PROPERTIES LABELS "scenario;stream;zmq")
 endif()
 
+set(E2E_SERIAL_TESTS
+    test_gateway
+    test_service_discovery
+    test_service_introspection
+    test_spot_pubsub_scenario
+    test_spot_service_introspection
+    test_scenario_stream_client
+    test_scenario_stream_zlink
+    test_scenario_stream_asio)
+if(TARGET test_scenario_stream_zmq)
+  list(APPEND E2E_SERIAL_TESTS test_scenario_stream_zmq)
+endif()
+if(TARGET test_scenario_router_router_zlink_connect)
+  list(APPEND E2E_SERIAL_TESTS test_scenario_router_router_zlink_connect)
+endif()
+
+set(INTEGRATION_SERIAL_TESTS ${REGISTERED_TESTS})
+list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS ${E2E_SERIAL_TESTS})
+list(APPEND INTEGRATION_SERIAL_TESTS
+     ${SERVICE_INTROSPECTION_TEST_NAMES}
+     ${SERVICE_DISCOVERY_TEST_NAMES}
+     ${SPOT_SERVICE_INTROSPECTION_TEST_NAMES}
+     ${GATEWAY_TEST_NAMES}
+     ${SPOT_PUBSUB_PEER_TEST_NAMES}
+     ${SPOT_PUBSUB_LOCAL_TEST_NAMES})
+list(REMOVE_DUPLICATES INTEGRATION_SERIAL_TESTS)
+
+if(INTEGRATION_SERIAL_TESTS)
+  set_tests_properties(${INTEGRATION_SERIAL_TESTS} PROPERTIES RUN_SERIAL TRUE)
+  set_property(TEST ${INTEGRATION_SERIAL_TESTS} APPEND PROPERTY LABELS "integration;serial")
+endif()
+
+if(E2E_SERIAL_TESTS)
+  set_tests_properties(${E2E_SERIAL_TESTS} PROPERTIES RUN_SERIAL TRUE)
+  set_property(TEST ${E2E_SERIAL_TESTS} APPEND PROPERTY LABELS "e2e;serial")
+endif()
+
 # Check whether all tests in the current folder are present
 file(READ "${CMAKE_CURRENT_LIST_FILE}" CURRENT_LIST_FILE_CONTENT)
-file(GLOB ALL_TEST_SOURCES "test_*.cpp" "*/test_*.cpp")
+file(GLOB_RECURSE ALL_TEST_SOURCES "test_*.cpp")
 
 set(UNREGISTERED_TEST_ALLOWLIST
     test_asio_connect

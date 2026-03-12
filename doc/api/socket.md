@@ -3,31 +3,124 @@
 # Socket API Reference
 
 The Socket API provides functions for creating, configuring, binding,
-connecting, and performing I/O on zlink sockets. Sockets are the primary
-interface for sending and receiving data and support several messaging
-patterns including publish/subscribe, request/reply, and pipeline.
+connecting, and performing I/O on zlink sockets. All message receiving is
+handled through handler callbacks registered at socket creation time. There is
+no `recv()` function. Sockets support several messaging patterns including
+publish/subscribe, request/reply, and raw stream.
+
+## Callback Types
+
+### zlink_socket_msg_handler_fn
+
+```c
+typedef void (*zlink_socket_msg_handler_fn) (
+  const zlink_routing_id_t *source_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_);
+```
+
+Callback for multipart message dispatch on PAIR, DEALER, ROUTER sockets.
+Invoked on the owning I/O thread. Ownership of all message parts is
+transferred to the callback; each part must be closed or consumed exactly once.
+
+### zlink_spot_handler_fn
+
+```c
+typedef void (*zlink_spot_handler_fn) (const zlink_routing_id_t *source_rid_,
+                                       const char *topic_,
+                                       size_t topic_len_,
+                                       zlink_msg_t *parts_,
+                                       size_t part_count_);
+```
+
+Callback for topic-based message dispatch on SUB and XSUB sockets.
+Invoked on the owning I/O thread. Ownership of parts is transferred.
+
+### zlink_xpub_handler_fn
+
+```c
+typedef void (*zlink_xpub_handler_fn) (int subscribed_,
+                                       const uint8_t *topic_,
+                                       size_t topic_len_);
+```
+
+Callback for subscription notifications on XPUB sockets.
+
+### zlink_socket_handler_t
+
+```c
+typedef enum zlink_socket_handler_kind_t
+{
+    ZLINK_SOCKET_HANDLER_MSG  = 0x1201,
+    ZLINK_SOCKET_HANDLER_SPOT = 0x1202,
+    ZLINK_SOCKET_HANDLER_XPUB = 0x1203
+} zlink_socket_handler_kind_t;
+
+typedef struct zlink_socket_handler_t
+{
+    zlink_socket_handler_kind_t kind;
+    union
+    {
+        zlink_socket_msg_handler_fn msg;
+        zlink_spot_handler_fn spot;
+        zlink_xpub_handler_fn xpub;
+    } fn;
+} zlink_socket_handler_t;
+```
+
+Handler descriptor passed to `zlink_socket()`. The `kind` field selects the
+callback variant. The mapping of socket types to handler kinds:
+
+| Socket Type | Handler Kind | Callback |
+|---|---|---|
+| PAIR, DEALER, ROUTER | `ZLINK_SOCKET_HANDLER_MSG` | `zlink_socket_msg_handler_fn` |
+| SUB, XSUB | `ZLINK_SOCKET_HANDLER_SPOT` | `zlink_spot_handler_fn` |
+| XPUB | `ZLINK_SOCKET_HANDLER_XPUB` | `zlink_xpub_handler_fn` |
+| PUB | N/A | Send-only; pass `NULL` handler |
+| STREAM | `ZLINK_SOCKET_HANDLER_MSG` | See STREAM callback API below |
+
+### zlink_send_ready_handler_fn
+
+```c
+typedef void (*zlink_send_ready_handler_fn) (void *subject_);
+```
+
+Callback invoked when a send-capable handle transitions to writable.
 
 ## Constants
 
 ### Socket Types
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_PAIR` | 0 | Exclusive pair (bidirectional one-to-one) |
-| `ZLINK_PUB` | 1 | Publisher (one-to-many broadcast) |
-| `ZLINK_SUB` | 2 | Subscriber (receive from publishers) |
-| `ZLINK_DEALER` | 5 | Asynchronous request/reply client |
-| `ZLINK_ROUTER` | 6 | Asynchronous request/reply server (identity-routed) |
-| `ZLINK_XPUB` | 9 | Extended publisher (receives subscription messages) |
-| `ZLINK_XSUB` | 10 | Extended subscriber (sends subscription messages) |
-| `ZLINK_STREAM` | 11 | Raw TCP stream socket |
+```c
+typedef enum zlink_socket_type_t
+{
+    ZLINK_SOCKET_PAIR   = 0x1001,
+    ZLINK_SOCKET_PUB    = 0x1002,
+    ZLINK_SOCKET_SUB    = 0x1003,
+    ZLINK_SOCKET_DEALER = 0x1004,
+    ZLINK_SOCKET_ROUTER = 0x1005,
+    ZLINK_SOCKET_XPUB   = 0x1006,
+    ZLINK_SOCKET_XSUB   = 0x1007,
+    ZLINK_SOCKET_STREAM = 0x1008
+} zlink_socket_type_t;
+```
 
-### Send/Recv Flags
+Short-form aliases are also available: `ZLINK_PAIR`, `ZLINK_PUB`, `ZLINK_SUB`,
+`ZLINK_DEALER`, `ZLINK_ROUTER`, `ZLINK_XPUB`, `ZLINK_XSUB`, `ZLINK_STREAM`.
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_DONTWAIT` | 1 | Non-blocking operation; return immediately with `EAGAIN` if the operation would block |
-| `ZLINK_SNDMORE` | 2 | Indicates that more message parts will follow in a multipart message |
+### Send Flags
+
+```c
+typedef uint32_t zlink_send_flags_t;
+
+#define ZLINK_DONTWAIT  ((zlink_send_flags_t) 0x0001u)
+#define ZLINK_SNDMORE   ((zlink_send_flags_t) 0x0002u)
+```
+
+| Constant | Description |
+|---|---|
+| `ZLINK_DONTWAIT` | Non-blocking operation; return immediately with `EAGAIN` if the operation would block |
+| `ZLINK_SNDMORE` | Indicates that more message parts will follow in a multipart message |
 
 ### Security Mechanisms
 
@@ -39,142 +132,148 @@ patterns including publish/subscribe, request/reply, and pipeline.
 ### Socket Options
 
 Socket options are configured with `zlink_setsockopt()` and queried with
-`zlink_getsockopt()`. The tables below list every option constant grouped by
-category.
+`zlink_getsockopt()`. Options use the `zlink_socket_option_t` enum.
+Short-form aliases (e.g. `ZLINK_LINGER`) are also available.
 
 #### General
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_AFFINITY` | 4 | I/O thread affinity bitmask (`uint64_t`) |
-| `ZLINK_ROUTING_ID` | 5 | Socket identity for ROUTER addressing (`binary`, max 255 bytes) |
-| `ZLINK_TYPE` | 16 | Socket type (read-only, `int`) |
-| `ZLINK_LINGER` | 17 | Linger period for socket shutdown in milliseconds (`int`; -1 = infinite, 0 = discard immediately) |
-| `ZLINK_BACKLOG` | 19 | Maximum length of the pending connections queue (`int`) |
-| `ZLINK_LAST_ENDPOINT` | 32 | Last endpoint bound (read-only, `string`) |
-| `ZLINK_FD` | 14 | File descriptor for integration with external event loops (read-only, `zlink_fd_t`) |
-| `ZLINK_EVENTS` | 15 | Event state bitmask: `ZLINK_POLLIN`, `ZLINK_POLLOUT` (read-only, `int`) |
-| `ZLINK_RCVMORE` | 13 | More message parts pending (read-only, `int`; 1 = yes) |
+| Constant | Description |
+|---|---|
+| `ZLINK_SOCKOPT_AFFINITY` | I/O thread affinity bitmask (`uint64_t`) |
+| `ZLINK_SOCKOPT_ROUTING_ID` | Socket identity for ROUTER addressing (`binary`, max 255 bytes) |
+| `ZLINK_SOCKOPT_TYPE` | Socket type (read-only, `int`) |
+| `ZLINK_SOCKOPT_LINGER` | Linger period for socket shutdown in milliseconds (`int`; -1 = infinite, 0 = discard immediately) |
+| `ZLINK_SOCKOPT_BACKLOG` | Maximum length of the pending connections queue (`int`) |
+| `ZLINK_SOCKOPT_LAST_ENDPOINT` | Last endpoint bound (read-only, `string`) |
+| `ZLINK_SOCKOPT_FD` | File descriptor for integration with external event loops (read-only, `zlink_fd_t`) |
+| `ZLINK_SOCKOPT_EVENTS` | Event state bitmask (read-only, `int`) |
 
 #### High Water Mark
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_SNDHWM` | 23 | Send high water mark; max messages queued for sending (`int`; 0 = unlimited) |
-| `ZLINK_RCVHWM` | 24 | Receive high water mark; max messages queued for receiving (`int`; 0 = unlimited) |
-| `ZLINK_MAXMSGSIZE` | 22 | Maximum inbound message size in bytes (`int64_t`; -1 = unlimited) |
+| Constant | Description |
+|---|---|
+| `ZLINK_SOCKOPT_SNDHWM` | Send high water mark; max messages queued for sending (`int`; 0 = unlimited) |
+| `ZLINK_SOCKOPT_RCVHWM` | Receive high water mark; max messages queued for receiving (`int`; 0 = unlimited) |
+| `ZLINK_SOCKOPT_MAXMSGSIZE` | Maximum inbound message size in bytes (`int64_t`; -1 = unlimited) |
 
 #### Buffers
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_SNDBUF` | 11 | Kernel transmit buffer size in bytes (`int`; 0 = OS default) |
-| `ZLINK_RCVBUF` | 12 | Kernel receive buffer size in bytes (`int`; 0 = OS default) |
+| Constant | Description |
+|---|---|
+| `ZLINK_SOCKOPT_SNDBUF` | Kernel transmit buffer size in bytes (`int`; 0 = OS default) |
+| `ZLINK_SOCKOPT_RCVBUF` | Kernel receive buffer size in bytes (`int`; 0 = OS default) |
 
 #### Timing
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_RCVTIMEO` | 27 | Receive timeout in milliseconds (`int`; -1 = infinite) |
-| `ZLINK_SNDTIMEO` | 28 | Send timeout in milliseconds (`int`; -1 = infinite) |
-| `ZLINK_RECONNECT_IVL` | 18 | Initial reconnection interval in milliseconds (`int`) |
-| `ZLINK_RECONNECT_IVL_MAX` | 21 | Maximum reconnection interval in milliseconds (`int`; 0 = use `RECONNECT_IVL` only) |
-| `ZLINK_CONNECT_TIMEOUT` | 79 | Connection timeout in milliseconds (`int`) |
-| `ZLINK_TCP_MAXRT` | 80 | Maximum TCP retransmit timeout in milliseconds (`int`) |
-| `ZLINK_HANDSHAKE_IVL` | 66 | ZMTP handshake timeout in milliseconds (`int`) |
+| Constant | Description |
+|---|---|
+| `ZLINK_SOCKOPT_SNDTIMEO` | Send timeout in milliseconds (`int`; -1 = infinite) |
+| `ZLINK_SOCKOPT_RECONNECT_IVL` | Initial reconnection interval in milliseconds (`int`) |
+| `ZLINK_SOCKOPT_RECONNECT_IVL_MAX` | Maximum reconnection interval in milliseconds (`int`; 0 = use `RECONNECT_IVL` only) |
+| `ZLINK_SOCKOPT_CONNECT_TIMEOUT` | Connection timeout in milliseconds (`int`) |
+| `ZLINK_SOCKOPT_TCP_MAXRT` | Maximum TCP retransmit timeout in milliseconds (`int`) |
+| `ZLINK_SOCKOPT_HANDSHAKE_IVL` | ZMTP handshake timeout in milliseconds (`int`) |
 
 #### TCP
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_TCP_KEEPALIVE` | 34 | Override SO_KEEPALIVE (`int`; -1 = OS default, 0 = off, 1 = on) |
-| `ZLINK_TCP_KEEPALIVE_CNT` | 35 | Override TCP_KEEPCNT (`int`; -1 = OS default) |
-| `ZLINK_TCP_KEEPALIVE_IDLE` | 36 | Override TCP_KEEPIDLE in seconds (`int`; -1 = OS default) |
-| `ZLINK_TCP_KEEPALIVE_INTVL` | 37 | Override TCP_KEEPINTVL in seconds (`int`; -1 = OS default) |
+| Constant | Description |
+|---|---|
+| `ZLINK_SOCKOPT_TCP_KEEPALIVE` | Override SO_KEEPALIVE (`int`; -1 = OS default, 0 = off, 1 = on) |
+| `ZLINK_SOCKOPT_TCP_KEEPALIVE_CNT` | Override TCP_KEEPCNT (`int`; -1 = OS default) |
+| `ZLINK_SOCKOPT_TCP_KEEPALIVE_IDLE` | Override TCP_KEEPIDLE in seconds (`int`; -1 = OS default) |
+| `ZLINK_SOCKOPT_TCP_KEEPALIVE_INTVL` | Override TCP_KEEPINTVL in seconds (`int`; -1 = OS default) |
+| `ZLINK_SOCKOPT_TCP_NODELAY` | Enable TCP_NODELAY (`int`; 0 or 1) |
 
 #### Pub/Sub
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_SUBSCRIBE` | 6 | Subscribe to a topic prefix (`binary`) |
-| `ZLINK_UNSUBSCRIBE` | 7 | Unsubscribe from a topic prefix (`binary`) |
-| `ZLINK_XPUB_VERBOSE` | 40 | Pass all subscription messages upstream (`int`; 0 or 1) |
-| `ZLINK_XPUB_NODROP` | 69 | Do not silently drop messages on HWM; return `EAGAIN` instead (`int`; 0 or 1) |
-| `ZLINK_XPUB_MANUAL` | 71 | Enable manual subscription management on XPUB (`int`; 0 or 1) |
-| `ZLINK_XPUB_WELCOME_MSG` | 72 | Message sent to new subscribers on connect (`binary`) |
-| `ZLINK_XPUB_VERBOSER` | 78 | Pass all subscribe and unsubscribe messages upstream (`int`; 0 or 1) |
-| `ZLINK_XPUB_MANUAL_LAST_VALUE` | 98 | Enable last-value caching in manual XPUB mode (`int`; 0 or 1) |
-| `ZLINK_INVERT_MATCHING` | 74 | Invert topic matching: deliver messages that do NOT match subscriptions (`int`; 0 or 1) |
-| `ZLINK_CONFLATE` | 54 | Keep only the most recent message per topic (`int`; 0 or 1) |
-| `ZLINK_ONLY_FIRST_SUBSCRIBE` | 108 | Only process the first subscription per topic prefix (`int`; 0 or 1) |
-| `ZLINK_TOPICS_COUNT` | 116 | Number of subscribed topics (read-only, `int`) |
+| Constant | Description |
+|---|---|
+| `ZLINK_SOCKOPT_SUBSCRIBE` | Subscribe to a topic prefix (`binary`) |
+| `ZLINK_SOCKOPT_UNSUBSCRIBE` | Unsubscribe from a topic prefix (`binary`) |
+| `ZLINK_SOCKOPT_XPUB_VERBOSE` | Pass all subscription messages upstream (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_XPUB_NODROP` | Do not silently drop messages on HWM; return `EAGAIN` instead (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_XPUB_MANUAL` | Enable manual subscription management on XPUB (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_XPUB_WELCOME_MSG` | Message sent to new subscribers on connect (`binary`) |
+| `ZLINK_SOCKOPT_XPUB_VERBOSER` | Pass all subscribe and unsubscribe messages upstream (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_XPUB_MANUAL_LAST_VALUE` | Enable last-value caching in manual XPUB mode (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_INVERT_MATCHING` | Invert topic matching (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_CONFLATE` | Keep only the most recent message per topic (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_ONLY_FIRST_SUBSCRIBE` | Only process the first subscription per topic prefix (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_TOPICS_COUNT` | Number of subscribed topics (read-only, `int`) |
 
 #### Router
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_ROUTER_MANDATORY` | 33 | Return `EHOSTUNREACH` when routing to an unconnected peer (`int`; 0 or 1) |
-| `ZLINK_ROUTER_HANDOVER` | 56 | Allow new connection to take over an existing routing identity (`int`; 0 or 1) |
-| `ZLINK_PROBE_ROUTER` | 51 | Send an empty message on connect to establish identity at the ROUTER peer (`int`; 0 or 1) |
+| Constant | Description |
+|---|---|
+| `ZLINK_SOCKOPT_ROUTER_MANDATORY` | Return `EHOSTUNREACH` when routing to an unconnected peer (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_ROUTER_HANDOVER` | Allow new connection to take over an existing routing identity (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_PROBE_ROUTER` | Send an empty message on connect to establish identity at the ROUTER peer (`int`; 0 or 1) |
 
 #### Heartbeat
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_HEARTBEAT_IVL` | 75 | ZMTP heartbeat interval in milliseconds (`int`; 0 = disabled) |
-| `ZLINK_HEARTBEAT_TTL` | 76 | ZMTP heartbeat time-to-live in milliseconds (`int`) |
-| `ZLINK_HEARTBEAT_TIMEOUT` | 77 | ZMTP heartbeat timeout in milliseconds (`int`) |
+| Constant | Description |
+|---|---|
+| `ZLINK_SOCKOPT_HEARTBEAT_IVL` | ZMTP heartbeat interval in milliseconds (`int`; 0 = disabled) |
+| `ZLINK_SOCKOPT_HEARTBEAT_TTL` | ZMTP heartbeat time-to-live in milliseconds (`int`) |
+| `ZLINK_SOCKOPT_HEARTBEAT_TIMEOUT` | ZMTP heartbeat timeout in milliseconds (`int`) |
 
 #### TLS
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_TLS_CERT` | 95 | Path to PEM-encoded TLS certificate (`string`) |
-| `ZLINK_TLS_KEY` | 96 | Path to PEM-encoded TLS private key (`string`) |
-| `ZLINK_TLS_CA` | 97 | Path to PEM-encoded CA certificate bundle (`string`) |
-| `ZLINK_TLS_VERIFY` | 98 | Enable TLS peer certificate verification (`int`; 0 or 1) |
-| `ZLINK_TLS_REQUIRE_CLIENT_CERT` | 99 | Require TLS client certificate on server sockets (`int`; 0 or 1) |
-| `ZLINK_TLS_HOSTNAME` | 100 | Expected hostname for TLS SNI and certificate verification (`string`) |
-| `ZLINK_TLS_TRUST_SYSTEM` | 101 | Trust the system CA certificate store (`int`; 0 or 1) |
-| `ZLINK_TLS_PASSWORD` | 102 | Password for encrypted TLS private key (`string`) |
+| Constant | Description |
+|---|---|
+| `ZLINK_SOCKOPT_TLS_CERT` | Path to PEM-encoded TLS certificate (`string`) |
+| `ZLINK_SOCKOPT_TLS_KEY` | Path to PEM-encoded TLS private key (`string`) |
+| `ZLINK_SOCKOPT_TLS_CA` | Path to PEM-encoded CA certificate bundle (`string`) |
+| `ZLINK_SOCKOPT_TLS_VERIFY` | Enable TLS peer certificate verification (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_TLS_REQUIRE_CLIENT_CERT` | Require TLS client certificate on server sockets (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_TLS_HOSTNAME` | Expected hostname for TLS SNI and certificate verification (`string`) |
+| `ZLINK_SOCKOPT_TLS_TRUST_SYSTEM` | Trust the system CA certificate store (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_TLS_PASSWORD` | Password for encrypted TLS private key (`string`) |
 
 #### Other
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_IPV6` | 42 | Enable IPv6 on the socket (`int`; 0 or 1) |
-| `ZLINK_IMMEDIATE` | 39 | Queue messages only to completed connections (`int`; 0 or 1) |
-| `ZLINK_BLOCKY` | 70 | Legacy option: block on context termination (`int`; 0 or 1) |
-| `ZLINK_USE_FD` | 89 | Use a pre-created file descriptor instead of creating a new one (`int`) |
-| `ZLINK_BINDTODEVICE` | 92 | Bind socket to a specific network interface (`string`) |
-| `ZLINK_CONNECT_ROUTING_ID` | 61 | Set routing identity for the next outgoing connection (`binary`, ROUTER path; STREAM returns `EOPNOTSUPP`) |
-| `ZLINK_RATE` | 8 | Multicast data rate in kbps (`int`) |
-| `ZLINK_RECOVERY_IVL` | 9 | Multicast recovery interval in milliseconds (`int`) |
-| `ZLINK_MULTICAST_HOPS` | 25 | Maximum multicast hops (TTL) (`int`) |
-| `ZLINK_TOS` | 57 | IP Type-of-Service value (`int`) |
-| `ZLINK_MULTICAST_MAXTPDU` | 84 | Maximum multicast transport data unit size in bytes (`int`) |
-| `ZLINK_ZMP_METADATA` | 117 | Attach ZMP metadata properties to outgoing connections (`binary`) |
+| Constant | Description |
+|---|---|
+| `ZLINK_SOCKOPT_IPV6` | Enable IPv6 on the socket (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_IMMEDIATE` | Queue messages only to completed connections (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_BLOCKY` | Legacy option: block on context termination (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_USE_FD` | Use a pre-created file descriptor instead of creating a new one (`int`) |
+| `ZLINK_SOCKOPT_BINDTODEVICE` | Bind socket to a specific network interface (`string`) |
+| `ZLINK_SOCKOPT_CONNECT_ROUTING_ID` | Set routing identity for the next outgoing connection (`binary`) |
+| `ZLINK_SOCKOPT_STREAM_NOTIFY` | Enable STREAM connect/disconnect notifications (`int`; 0 or 1) |
+| `ZLINK_SOCKOPT_RATE` | Multicast data rate in kbps (`int`) |
+| `ZLINK_SOCKOPT_RECOVERY_IVL` | Multicast recovery interval in milliseconds (`int`) |
+| `ZLINK_SOCKOPT_MULTICAST_HOPS` | Maximum multicast hops (TTL) (`int`) |
+| `ZLINK_SOCKOPT_TOS` | IP Type-of-Service value (`int`) |
+| `ZLINK_SOCKOPT_MULTICAST_MAXTPDU` | Maximum multicast transport data unit size in bytes (`int`) |
+| `ZLINK_SOCKOPT_ZMP_METADATA` | Attach ZMP metadata properties to outgoing connections (`binary`) |
 
 ## Functions
 
 ### zlink_socket
 
-Create a socket.
+Create a socket with a receive handler.
 
 ```c
-void *zlink_socket (void *context_, int type_);
+void *zlink_socket (void *context_,
+                    zlink_socket_type_t type_,
+                    const zlink_socket_handler_t *handler_);
 ```
 
 Creates a new socket within the given context. The `type_` parameter selects
-the messaging pattern (`ZLINK_PAIR`, `ZLINK_PUB`, `ZLINK_SUB`, `ZLINK_DEALER`,
-`ZLINK_ROUTER`, etc.). The returned handle is used for all subsequent socket
-operations. The socket must be closed with `zlink_close()` before the context
-is terminated.
+the messaging pattern. The `handler_` parameter specifies the receive callback
+that will be invoked on the I/O thread when messages arrive. For send-only
+sockets (PUB), pass `NULL`. For all recv-capable types the handler must be
+non-NULL.
+
+The callback is fixed at creation time and cannot be replaced. The socket must
+be closed with `zlink_close()` before the context is terminated.
 
 **Returns:** Socket handle on success, `NULL` on failure (errno is set).
 
-**Errors:** `EINVAL` if the socket type is invalid. `EMFILE` if the maximum
-number of sockets has been reached. `ETERM` if the context was terminated.
+**Errors:** `EINVAL` if the socket type is invalid or handler is NULL for a
+recv-capable type. `EMFILE` if the maximum number of sockets has been reached.
+`ETERM` if the context was terminated.
 
 **Thread safety:** Thread-safe with respect to the context.
 
@@ -192,13 +291,14 @@ int zlink_close (void *s_);
 
 Closes the socket and releases all associated resources. Any outstanding
 messages in the send queue are discarded or sent depending on the
-`ZLINK_LINGER` setting. The socket handle is invalid after this call.
+`ZLINK_LINGER` setting. If another thread has an in-flight callback or
+operational API on the same handle, close fails with `errno=EBUSY`. Self-close
+from a send-ready or monitor callback is deferred until callback epilogue.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
-**Errors:** `ENOTSOCK` if the handle is not a valid socket.
-
-**Thread safety:** Not thread-safe on the same socket.
+**Errors:** `ENOTSOCK` if the handle is not a valid socket. `EBUSY` if a
+callback or operation is in-flight on the handle.
 
 **See also:** `zlink_socket`
 
@@ -209,24 +309,22 @@ messages in the send queue are discarded or sent depending on the
 Set a socket option.
 
 ```c
-int zlink_setsockopt (void *s_, int option_, const void *optval_, size_t optvallen_);
+int zlink_setsockopt (void *s_,
+                      zlink_socket_option_t option_,
+                      const void *optval_,
+                      size_t optvallen_);
 ```
 
 Configures a socket option. The `option_` parameter identifies the option
 (e.g. `ZLINK_SNDHWM`, `ZLINK_LINGER`, `ZLINK_SUBSCRIBE`). The `optval_`
-pointer supplies the value and `optvallen_` specifies its size in bytes. For
-integer options, pass a pointer to an `int` with `optvallen_` set to
-`sizeof(int)`. For string/binary options, pass the data pointer and its length.
+pointer supplies the value and `optvallen_` specifies its size in bytes.
 
-Some options must be set before binding or connecting the socket. Refer to the
-Socket Options tables above for the expected type and semantics of each option.
+Some options must be set before binding or connecting the socket.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
 **Errors:** `EINVAL` if the option is unknown or the value is out of range.
 `ETERM` if the context was terminated.
-
-**Thread safety:** Not thread-safe on the same socket.
 
 **See also:** `zlink_getsockopt`
 
@@ -237,20 +335,15 @@ Socket Options tables above for the expected type and semantics of each option.
 Get a socket option.
 
 ```c
-int zlink_getsockopt (void *s_, int option_, void *optval_, size_t *optvallen_);
+int zlink_getsockopt (void *s_,
+                      zlink_socket_option_t option_,
+                      void *optval_,
+                      size_t *optvallen_);
 ```
 
-Retrieves the current value of a socket option. The caller provides a buffer
-`optval_` and passes its size via `optvallen_`. On success, `optvallen_` is
-updated to reflect the actual size written. For integer options, `optval_`
-must point to an `int` and `*optvallen_` must be at least `sizeof(int)`.
+Retrieves the current value of a socket option.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `EINVAL` if the option is unknown or the buffer is too small.
-`ETERM` if the context was terminated.
-
-**Thread safety:** Not thread-safe on the same socket.
 
 **See also:** `zlink_setsockopt`
 
@@ -283,8 +376,6 @@ the actual endpoint.
 the interface does not exist. `EPROTONOSUPPORT` if the transport is not
 supported.
 
-**Thread safety:** Not thread-safe on the same socket.
-
 **See also:** `zlink_connect`, `zlink_unbind`
 
 ---
@@ -303,11 +394,6 @@ library handles reconnection automatically if the peer becomes unavailable.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
-**Errors:** `EPROTONOSUPPORT` if the transport is not supported.
-`ENOCOMPATPROTO` if the transport is not compatible with the socket type.
-
-**Thread safety:** Not thread-safe on the same socket.
-
 **See also:** `zlink_bind`, `zlink_disconnect`
 
 ---
@@ -320,15 +406,9 @@ Unbind a socket from an address.
 int zlink_unbind (void *s_, const char *addr_);
 ```
 
-Removes a previously established binding. The `addr_` string must match the
-endpoint used in the original `zlink_bind()` call (or the value retrieved
-from `ZLINK_LAST_ENDPOINT` for ephemeral ports).
+Removes a previously established binding.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `ENOENT` if the endpoint was not bound.
-
-**Thread safety:** Not thread-safe on the same socket.
 
 **See also:** `zlink_bind`
 
@@ -342,14 +422,9 @@ Disconnect a socket from a remote address.
 int zlink_disconnect (void *s_, const char *addr_);
 ```
 
-Removes a previously established connection. The `addr_` string must match the
-endpoint used in the original `zlink_connect()` call.
+Removes a previously established connection.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `ENOENT` if the endpoint was not connected.
-
-**Thread safety:** Not thread-safe on the same socket.
 
 **See also:** `zlink_connect`
 
@@ -360,12 +435,15 @@ endpoint used in the original `zlink_connect()` call.
 Send buffer data on a socket.
 
 ```c
-int zlink_send (void *s_, const void *buf_, size_t len_, int flags_);
+int zlink_send (void *s_,
+                const void *buf_,
+                size_t len_,
+                zlink_send_flags_t flags_);
 ```
 
 Sends `len_` bytes from `buf_` on socket `s_`. The data is copied into an
 internal message before transmission. The `flags_` parameter may be 0,
-`ZLINK_DONTWAIT`, `ZLINK_SNDMORE`, or a bitwise combination of these. Use
+`ZLINK_DONTWAIT`, `ZLINK_SNDMORE`, or a bitwise combination. Use
 `ZLINK_SNDMORE` to send multipart messages; only the final part should omit
 this flag.
 
@@ -374,126 +452,110 @@ this flag.
 **Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was set.
 `ETERM` if the context was terminated.
 
-**Thread safety:** Not thread-safe on the same socket.
-
-**See also:** `zlink_recv`, `zlink_msg_send`, `zlink_msg_init_data`
+**See also:** `zlink_msg_send`
 
 ---
 
-### zlink_recv
+### zlink_socket_set_send_ready_handler
 
-Receive data from a socket.
-
-```c
-int zlink_recv (void *s_, void *buf_, size_t len_, int flags_);
-```
-
-Receives up to `len_` bytes into `buf_` from socket `s_`. If the incoming
-message is larger than `len_`, it is silently truncated and the return value
-still reflects the original message size (which will exceed `len_`). To detect
-truncation, compare the return value against `len_`. The `flags_` parameter
-may be 0 or `ZLINK_DONTWAIT`.
-
-**Returns:** Number of bytes in the original message on success (may exceed
-`len_` if truncated), -1 on failure (errno is set).
-
-**Errors:** `EAGAIN` if no message is available and `ZLINK_DONTWAIT` was set.
-`ETERM` if the context was terminated.
-
-**Thread safety:** Not thread-safe on the same socket.
-
-**See also:** `zlink_send`, `zlink_msg_recv`
-
----
-
-### STREAM Callback Dispatch API
-
-The following functions provide a high-performance callback-based interface
-for STREAM sockets. Instead of polling with `zlink_recv()`, the application
-attaches a callback that is invoked directly on the I/O thread when data
-arrives.
-
-Mode rules:
-- `zlink_stream_attach()` ON: consume STREAM data in callback dispatch.
-- While attached, do not mix `zlink_recv()` for STREAM payload consumption.
-- After `zlink_stream_detach()`, `zlink_recv()` pattern is available again.
-- There is no `zlink_stream_recv()` API.
-
-#### Constants
-
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_STREAM_DISPATCH_LEN32BE` | `0x0001` | Decode 4-byte big-endian length-prefixed frames before invoking the callback. Each callback invocation receives complete payloads. |
-
-#### Types
-
-##### zlink_stream_on_packets_fn
+Install or replace the send-ready callback.
 
 ```c
-typedef int (*zlink_stream_on_packets_fn) (const zlink_routing_id_t *rid_,
-                                           zlink_msg_t *msgs_,
-                                           size_t msg_count_);
+int zlink_socket_set_send_ready_handler (
+  void *s_, zlink_send_ready_handler_fn handler_);
 ```
 
-Callback invoked on the STREAM I/O thread when data arrives. `rid_` identifies
-the peer. `msgs_` is an array of `msg_count_` messages — in LEN32BE mode each
-entry is a complete payload; otherwise each entry may be a raw stream chunk.
-Ownership of each `msgs_` item is transferred to the callback. The callback
-must release each item exactly once (for example, `zlink_msg_close()` or
-consume via `zlink_stream_send_msg()`) before returning, and must not retain
-pointers to message structs after returning.
-Return 0 to continue dispatch, non-zero to request shutdown.
-
----
-
-#### zlink_stream_attach
-
-Attach a callback dispatch to a STREAM socket.
-
-```c
-int zlink_stream_attach (void *s_,
-                         zlink_stream_on_packets_fn on_packets_,
-                         int flags_);
-```
-
-Registers `on_packets_` as the dispatch callback for STREAM socket `s_`. Pass
-`ZLINK_STREAM_DISPATCH_LEN32BE` in `flags_` to enable automatic LEN32BE frame
-decoding. Only one callback can be attached at a time; calling this while a
-callback is already attached returns -1 with `errno=EBUSY`.
+The handler is replace-only. Passing NULL is invalid. A successful replace is
+visible from the next writable transition. If called reentrantly from the
+same handle's send-ready callback, the call fails with `errno=EDEADLK`.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
-**Errors:** `EINVAL` if `s_` is not a STREAM socket or `on_packets_` is NULL.
-`EBUSY` if a callback is already attached.
+**See also:** `zlink_send`
 
-**Thread safety:** Not thread-safe on the same socket.
+---
+
+### zlink_multipart_close
+
+Close all parts in a multipart message array.
+
+```c
+void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
+```
+
+Convenience function that calls `zlink_msg_close()` on each element.
+
+**See also:** `zlink_msg_close`
+
+---
+
+## STREAM Callback Dispatch API
+
+The following functions provide a callback-based interface for STREAM sockets.
+STREAM receive is callback-only; `recv()` is not supported. The application
+attaches a raw callback that is invoked directly on the I/O thread when data
+arrives.
+
+### zlink_stream_on_raw_fn
+
+```c
+typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *rid_,
+                                       zlink_msg_t *msg_);
+```
+
+Callback invoked on the STREAM I/O thread when data arrives. `rid_` identifies
+the peer. `msg_` is a raw stream chunk; ownership is transferred to the
+callback. The callback must release it exactly once (e.g. `zlink_msg_close()`
+or consume via `zlink_stream_send_msg()`) before return, and must not retain
+this pointer after return. Return 0 to continue dispatch, non-zero to request
+shutdown.
+
+---
+
+### zlink_stream_attach_raw
+
+Attach raw STREAM callback dispatch.
+
+```c
+int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_);
+```
+
+Registers `on_raw_` as the dispatch callback for STREAM socket `s_`. Only one
+callback can be attached at a time; calling this while a callback is already
+attached returns -1 with `errno=EBUSY`. Attach/detach are safe to call from
+application threads and serialized with STREAM send/close. Calling
+attach/detach from the raw callback is not supported.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**Errors:** `EINVAL` if `s_` is not a STREAM socket or `on_raw_` is NULL.
+`EBUSY` if a callback is already attached.
 
 **See also:** `zlink_stream_detach`, `zlink_stream_send`
 
 ---
 
-#### zlink_stream_detach
+### zlink_stream_detach
 
-Detach callback dispatch from a STREAM socket.
+Detach STREAM callback dispatch from a socket.
 
 ```c
 int zlink_stream_detach (void *s_);
 ```
 
-Removes the previously attached dispatch callback. After detaching, the socket
-reverts to the standard `zlink_recv()` pattern.
+Removes the previously attached dispatch callback. Safe to call from
+application threads and serialized with STREAM send/close. Calling detach
+from the raw callback is not supported.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
 **Errors:** `EINVAL` if `s_` is not a STREAM socket.
 
-**Thread safety:** Not thread-safe on the same socket.
-
-**See also:** `zlink_stream_attach`
+**See also:** `zlink_stream_attach_raw`
 
 ---
 
-#### zlink_stream_send
+### zlink_stream_send
 
 Send payload to a specific STREAM peer by routing id.
 
@@ -502,26 +564,24 @@ int zlink_stream_send (void *s_,
                        const zlink_routing_id_t *rid_,
                        const void *data_,
                        size_t size_,
-                       int flags_);
+                       zlink_send_flags_t flags_);
 ```
 
 Sends `size_` bytes from `data_` to the peer identified by `rid_`. Internally
-sends the routing id as the first frame and the payload as the second frame. If
-the dispatcher was attached in LEN32BE mode, the payload is automatically framed
-with a 4-byte big-endian length prefix before sending.
+sends the routing id as the first frame and the payload as the second frame.
+STREAM send APIs are safe to call from application threads and STREAM dispatch
+callbacks; internally the socket serializes outgoing state.
 
 **Returns:** Number of payload bytes accepted (`size_`), or -1 on failure.
 
 **Errors:** `EINVAL` if `s_` is not a STREAM socket or `rid_` is invalid.
 `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was set.
 
-**Thread safety:** Not thread-safe on the same socket.
-
-**See also:** `zlink_stream_send_msg`, `zlink_stream_attach`
+**See also:** `zlink_stream_send_msg`, `zlink_stream_attach_raw`
 
 ---
 
-#### zlink_stream_send_msg
+### zlink_stream_send_msg
 
 Send a message to a specific STREAM peer by routing id.
 
@@ -529,66 +589,36 @@ Send a message to a specific STREAM peer by routing id.
 int zlink_stream_send_msg (void *s_,
                            const zlink_routing_id_t *rid_,
                            zlink_msg_t *msg_,
-                           int flags_);
+                           zlink_send_flags_t flags_);
 ```
 
 Behaves like `zlink_stream_send()` but takes a `zlink_msg_t` instead of a raw
 buffer. The message `msg_` is consumed (moved) by this call and reinitialized
-before returning. If LEN32BE mode is active, the payload is automatically
-length-prefixed.
+before returning.
 
 **Returns:** Number of payload bytes accepted, or -1 on failure.
 
-**Errors:** `EINVAL` if `s_` is not a STREAM socket or `rid_` is invalid.
-`EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was set.
-
-**Thread safety:** Not thread-safe on the same socket.
-
-**See also:** `zlink_stream_send`, `zlink_stream_attach`
+**See also:** `zlink_stream_send`, `zlink_stream_attach_raw`
 
 ---
 
-### zlink_socket_monitor
-
-Start a socket monitor via an inproc address (legacy).
-
-```c
-int zlink_socket_monitor (void *s_, const char *addr_, int events_);
-```
-
-Starts monitoring socket events and publishes them to the specified inproc
-endpoint `addr_`. Another socket (typically `ZLINK_PAIR`) can connect to
-`addr_` to receive event notifications. The `events_` parameter is a bitmask
-of `ZLINK_EVENT_*` constants selecting which events to monitor. Pass
-`ZLINK_EVENT_ALL` to monitor all events.
-
-This is the legacy monitoring interface. Prefer `zlink_socket_monitor_open()`
-for new code, which returns a direct monitor handle and avoids the need for
-a separate inproc socket.
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Thread safety:** Not thread-safe on the same socket.
-
-**See also:** `zlink_socket_monitor_open`
-
----
+## Socket Monitor
 
 ### zlink_socket_monitor_open
 
-Open and return a socket monitor handle directly.
+Open and return a socket monitor handle with a fixed callback.
 
 ```c
-void *zlink_socket_monitor_open (void *s_, int events_);
+void *zlink_socket_monitor_open (void *s_,
+                                 zlink_socket_monitor_event_mask_t events_,
+                                 zlink_monitor_handler_fn handler_);
 ```
 
-Creates a monitor for socket `s_` and returns a handle that can be used with
-`zlink_monitor_recv()` to receive events directly, without requiring an inproc
-endpoint. The `events_` parameter is a bitmask of `ZLINK_EVENT_*` constants.
-The returned handle must be closed with `zlink_close()` when no longer needed.
+Creates a monitor for socket `s_` and returns a handle. Events matching the
+`events_` bitmask are dispatched through the `handler_` callback on the I/O
+thread. The monitor handle must be closed with `zlink_close()` when no longer
+needed.
 
 **Returns:** Monitor handle on success, `NULL` on failure (errno is set).
 
-**Thread safety:** Not thread-safe on the same socket.
-
-**See also:** `zlink_socket_monitor`, `zlink_monitor_recv`
+**See also:** `zlink_close`

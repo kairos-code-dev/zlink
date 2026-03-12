@@ -19,9 +19,12 @@ list to all connected Discovery instances.
 ## Constants
 
 ```c
-#define ZLINK_REGISTRY_SOCKET_PUB      1
-#define ZLINK_REGISTRY_SOCKET_ROUTER   2
-#define ZLINK_REGISTRY_SOCKET_PEER_SUB 3
+typedef enum zlink_registry_socket_role_t
+{
+    ZLINK_REGISTRY_SOCKET_PUB      = 1,
+    ZLINK_REGISTRY_SOCKET_ROUTER   = 2,
+    ZLINK_REGISTRY_SOCKET_PEER_SUB = 3
+} zlink_registry_socket_role_t;
 ```
 
 | Constant | Value | Description |
@@ -167,8 +170,8 @@ Set a socket option on an internal Registry socket.
 
 ```c
 int zlink_registry_setsockopt(void *registry,
-                              int socket_role,
-                              int option,
+                              zlink_registry_socket_role_t socket_role,
+                              zlink_socket_option_t option,
                               const void *optval,
                               size_t optvallen);
 ```
@@ -270,11 +273,11 @@ by the Registry.
 typedef struct zlink_registry_topology_entry_t
 {
     zlink_routing_id_t routing_id;
-    uint16_t service_kind;
+    zlink_service_kind_t service_kind;
     char service_name[256];
     char endpoint[256];
-    uint16_t source;
-    uint16_t state;
+    zlink_topology_source_t source;
+    zlink_topology_state_t state;
     uint32_t desired_count;
     uint32_t ready_count;
     uint32_t error_code;
@@ -300,11 +303,11 @@ typedef struct zlink_registry_topology_entry_t
 ```c
 typedef struct zlink_registry_topology_filter_t
 {
-    uint16_t service_kind;
+    zlink_service_kind_t service_kind;
     char service_name[256];
     zlink_routing_id_t routing_id;
-    uint16_t state;
-    uint16_t source;
+    zlink_topology_state_t state;
+    zlink_topology_source_t source;
 } zlink_registry_topology_filter_t;
 ```
 

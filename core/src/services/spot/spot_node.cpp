@@ -75,6 +75,30 @@ static int send_ascii_frame (socket_base_t *socket_,
     return rc;
 }
 
+static void snapshot_connected_mesh_peer_endpoints (socket_base_t *mesh_xsub_,
+                                                    std::set<std::string> *out_)
+{
+    if (!out_)
+        return;
+    out_->clear ();
+    if (!mesh_xsub_)
+        return;
+
+    size_t available = 0;
+    if (mesh_xsub_->socket_peers (NULL, &available) != 0 || available == 0)
+        return;
+
+    std::vector<zlink_peer_info_t> peers (available);
+    size_t count = available;
+    if (mesh_xsub_->socket_peers (&peers[0], &count) != 0)
+        return;
+
+    for (size_t i = 0; i < count; ++i) {
+        if (peers[i].remote_addr[0] != '\0')
+            out_->insert (peers[i].remote_addr);
+    }
+}
+
 static int recv_ascii_command (socket_base_t *socket_,
                                std::vector<std::string> *frames_)
 {
@@ -452,6 +476,8 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _tag (spot_node_tag_value),
     _lifecycle (ctx_),
     _runtime (NULL),
+    _subscription_ready_refresh_pending (false),
+    _subscription_ready_refresh_holdoff_ticks (0),
     _discovery (NULL),
     _discovery_seq (0),
     _registered (false),
@@ -609,6 +635,20 @@ const std::string &spot_node_t::sub_fanout_endpoint () const
     return _runtime->sub_fanout_endpoint;
 }
 
+bool spot_node_t::has_active_peers () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    return !_active_peer_endpoints.empty ();
+}
+
+std::string spot_node_t::first_active_peer_endpoint () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    if (_active_peer_endpoints.empty ())
+        return std::string ();
+    return *_active_peer_endpoints.begin ();
+}
+
 int spot_node_t::ensure_healthy () const
 {
     if (!_lifecycle.is_running ()) {
@@ -658,6 +698,8 @@ void spot_node_t::control_tick ()
         return;
 
     refresh_discovery_peers ();
+    refresh_connected_peer_endpoints ();
+    emit_pending_subscription_ready_events ();
 }
 
 void spot_node_t::refresh_discovery_peers ()
@@ -742,6 +784,108 @@ void spot_node_t::refresh_discovery_peers ()
         refresh_sub_peer_summaries (true, false);
     else if (old_active_count > 0 && new_active_count == 0)
         refresh_sub_peer_summaries (false, true);
+}
+
+void spot_node_t::refresh_connected_peer_endpoints ()
+{
+    socket_base_t *mesh_xsub = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        if (!_runtime)
+            return;
+        mesh_xsub = _runtime->mesh_xsub;
+    }
+    if (!mesh_xsub)
+        return;
+
+    std::set<std::string> connected;
+    snapshot_connected_mesh_peer_endpoints (mesh_xsub, &connected);
+
+    bool changed = false;
+    std::vector<spot_sub_t *> subs;
+    {
+        scoped_lock_t lock (_sync);
+        if (connected == _connected_peer_endpoints)
+            return;
+        _connected_peer_endpoints.swap (connected);
+        changed = true;
+        if (_connected_peer_endpoints.empty ()) {
+            _subscription_ready_refresh_pending = false;
+            _subscription_ready_refresh_holdoff_ticks = 0;
+            return;
+        }
+        subs.assign (_subs.begin (), _subs.end ());
+    }
+
+    bool has_filters = false;
+    for (size_t i = 0; i < subs.size (); ++i) {
+        if (subs[i]->has_filters ()) {
+            has_filters = true;
+            break;
+        }
+    }
+
+    if (changed && has_filters)
+        schedule_subscription_ready_refresh ();
+}
+
+std::string spot_node_t::first_connected_peer_endpoint () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    if (_connected_peer_endpoints.empty ())
+        return std::string ();
+    return *_connected_peer_endpoints.begin ();
+}
+
+void spot_node_t::schedule_subscription_ready_refresh ()
+{
+    service_control_runtime_t *runtime = NULL;
+    uint64_t task_id = 0;
+    {
+        scoped_lock_t lock (_sync);
+        _subscription_ready_refresh_pending = true;
+        _subscription_ready_refresh_holdoff_ticks = 20;
+        if (_runtime) {
+            task_id = _runtime->task_id;
+            runtime = _ctx ? _ctx->service_control_runtime () : NULL;
+        }
+    }
+    if (runtime && task_id != 0)
+        runtime->wakeup_task (task_id);
+}
+
+void spot_node_t::emit_pending_subscription_ready_events ()
+{
+    std::vector<spot_sub_t *> subs;
+    std::string ready_endpoint;
+    {
+        scoped_lock_t lock (_sync);
+        if (!_subscription_ready_refresh_pending)
+            return;
+        if (_connected_peer_endpoints.empty ()) {
+            _subscription_ready_refresh_pending = false;
+            _subscription_ready_refresh_holdoff_ticks = 0;
+            return;
+        }
+        if (_subscription_ready_refresh_holdoff_ticks > 0) {
+            --_subscription_ready_refresh_holdoff_ticks;
+            return;
+        }
+        ready_endpoint = *_connected_peer_endpoints.begin ();
+        subs.assign (_subs.begin (), _subs.end ());
+        _subscription_ready_refresh_pending = false;
+        _subscription_ready_refresh_holdoff_ticks = 0;
+    }
+
+    for (size_t i = 0; i < subs.size (); ++i) {
+        if (subs[i]->has_filters ())
+            subs[i]->emit_subscription_ready_event (ready_endpoint.c_str ());
+    }
+}
+
+void spot_node_t::notify_subscription_forwarded ()
+{
+    schedule_subscription_ready_refresh ();
 }
 
 int spot_node_t::send_data_plane_command (const char *verb_,
@@ -919,9 +1063,9 @@ void spot_node_t::refresh_sub_peer_summaries (bool has_active_peers,
         if (lost_transition) {
             submit_sub_summary (subs[i], ZLINK_TOPOLOGY_STATE_LOST, 0);
         } else if (has_active_peers) {
-            submit_sub_summary (subs[i], subs[i]->has_filters ()
-                                             ? ZLINK_TOPOLOGY_STATE_READY
-                                             : ZLINK_TOPOLOGY_STATE_CONNECTING,
+            const bool ready = subs[i]->has_filters ();
+            submit_sub_summary (subs[i], ready ? ZLINK_TOPOLOGY_STATE_READY
+                                               : ZLINK_TOPOLOGY_STATE_CONNECTING,
                                 0);
         }
     }
@@ -1220,6 +1364,7 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
     _discovery_seq = 0;
     _pending_service_updates.clear ();
     _discovery_peer_endpoints.clear ();
+    _connected_peer_endpoints.clear ();
     _registered = false;
     _advertise_endpoint.clear ();
     _registration_uplink_endpoint.clear ();
@@ -1517,12 +1662,20 @@ spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
     if (ensure_healthy () != 0)
         return NULL;
     uint64_t attachment_id = 0;
+    socket_base_t *attachment_socket = NULL;
     if (!_runtime
         || _runtime->create_attachment (spot_attachment_pub,
                                         pub_ingress_endpoint ().c_str (),
                                         &attachment_id)
              != 0)
         return NULL;
+    attachment_socket = _runtime->attachment_socket (attachment_id);
+    if (!attachment_socket || wait_facade_peer (attachment_socket) != 0) {
+        const int err = errno != 0 ? errno : ETIMEDOUT;
+        (void) _runtime->destroy_attachment (attachment_id);
+        errno = err;
+        return NULL;
+    }
 
     spot_pub_t *pub =
       new (std::nothrow) spot_pub_t (this, attachment_id, node_owned_default_);
@@ -1572,12 +1725,20 @@ spot_sub_t *spot_node_t::create_spot_sub_with_defaults (
     if (ensure_healthy () != 0)
         return NULL;
     uint64_t attachment_id = 0;
+    socket_base_t *attachment_socket = NULL;
     if (!_runtime
         || _runtime->create_attachment (spot_attachment_sub,
                                         sub_fanout_endpoint ().c_str (),
                                         &attachment_id)
              != 0)
         return NULL;
+    attachment_socket = _runtime->attachment_socket (attachment_id);
+    if (!attachment_socket || wait_facade_peer (attachment_socket) != 0) {
+        const int err = errno != 0 ? errno : ETIMEDOUT;
+        (void) _runtime->destroy_attachment (attachment_id);
+        errno = err;
+        return NULL;
+    }
 
     spot_sub_t *sub =
       new (std::nothrow) spot_sub_t (this, attachment_id, node_owned_default_);
@@ -1781,6 +1942,7 @@ int spot_node_t::destroy ()
         _pending_service_updates.clear ();
         _manual_peer_endpoints.clear ();
         _active_peer_endpoints.clear ();
+        _connected_peer_endpoints.clear ();
         _discovery_peer_endpoints.clear ();
         _registered = false;
         _advertise_endpoint.clear ();

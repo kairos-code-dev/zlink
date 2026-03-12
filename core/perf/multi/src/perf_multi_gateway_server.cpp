@@ -1,6 +1,7 @@
 #include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
+#include "../common/perf_multi_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
@@ -26,6 +27,8 @@ static const char *k_server_routing_id = "perf-gateway-server";
 static std::atomic<bool> g_stop_requested(false);
 static std::atomic<bool> g_queue_probe_pending(false);
 static std::atomic<size_t> g_queue_probe_size(0);
+static std::atomic<int> g_debug_recv_logs(0);
+static std::atomic<int> g_debug_send_logs(0);
 
 struct pending_gateway_echo_t
 {
@@ -35,7 +38,7 @@ struct pending_gateway_echo_t
     }
 
     zlink_routing_id_t routing_id;
-    std::vector<char> payload;
+    std::vector<std::vector<char> > parts;
 };
 
 struct gateway_server_state_t
@@ -64,6 +67,48 @@ void close_parts(zlink_msg_t *parts, size_t part_count)
         return;
     for (size_t i = 0; i < part_count; ++i)
         zlink_msg_close(&parts[i]);
+}
+
+ptrdiff_t select_gateway_payload_part(zlink_msg_t *parts, size_t part_count)
+{
+    if (!parts || part_count == 0)
+        return -1;
+
+    for (size_t i = 0; i < part_count; ++i) {
+        perf_multi_metric::header_t header;
+        if (perf_multi_metric::decode_payload_header(
+              zlink_msg_data(&parts[i]),
+              zlink_msg_size(&parts[i]),
+              &header)
+            && header.magic == perf_multi_metric::k_magic) {
+            return static_cast<ptrdiff_t>(i);
+        }
+    }
+
+    for (size_t i = 0; i < part_count; ++i) {
+        if (zlink_msg_size(&parts[i]) > 0)
+            return static_cast<ptrdiff_t>(i);
+    }
+
+    return -1;
+}
+
+bool init_owned_part_copy(zlink_msg_t *out_part,
+                          zlink_msg_t *parts,
+                          size_t part_index)
+{
+    if (!out_part || !parts)
+        return false;
+
+    const size_t payload_size = zlink_msg_size(&parts[part_index]);
+    if (zlink_msg_init_size(out_part, payload_size) != 0)
+        return false;
+    if (payload_size > 0) {
+        std::memcpy(zlink_msg_data(out_part),
+                    zlink_msg_data(&parts[part_index]),
+                    payload_size);
+    }
+    return true;
 }
 
 bool is_supported_transport(const std::string &transport)
@@ -267,68 +312,122 @@ enum send_status_t
     send_status_fatal = 2
 };
 
-bool move_part(zlink_msg_t *dest, zlink_msg_t *src)
-{
-    if (!dest || !src)
-        return false;
-
-    if (zlink_msg_init(dest) != 0)
-        return false;
-
-    if (zlink_msg_move(dest, src) == 0)
-        return true;
-
-    (void) zlink_msg_close(dest);
-    return false;
-}
-
 send_status_t try_send_gateway_reply(void *gateway,
                                      const zlink_routing_id_t *routing_id,
-                                     const void *data,
-                                     size_t size)
+                                     zlink_msg_t *parts,
+                                     size_t part_count)
 {
-    zlink_msg_t part;
-    if (zlink_msg_init_data(
-          &part,
-          size > 0 ? const_cast<void *>(data) : NULL,
-          size,
-          NULL,
-          NULL)
-        != 0) {
+    if (!gateway || !routing_id || !parts || part_count == 0)
         return send_status_fatal;
+
+    const ptrdiff_t payload_index = select_gateway_payload_part(parts, part_count);
+    if (payload_index < 0)
+        return send_status_fatal;
+
+    for (int attempt = 0; attempt < 256; ++attempt) {
+        zlink_msg_t reply_part;
+        if (!init_owned_part_copy(
+              &reply_part,
+              parts,
+              static_cast<size_t>(payload_index))) {
+            return send_status_fatal;
+        }
+
+        const int rc =
+          zlink_gateway_send_rid(gateway, routing_id, &reply_part, 1, 0);
+        if (rc == 0)
+            return send_status_ok;
+
+        const int saved_errno = errno;
+        zlink_msg_close(&reply_part);
+        if (saved_errno != EAGAIN && saved_errno != EINTR
+            && saved_errno != EHOSTUNREACH && saved_errno != ENOTCONN) {
+            errno = saved_errno;
+            return send_status_fatal;
+        }
+        if (attempt + 1 == 256) {
+            errno = saved_errno;
+            return send_status_blocked;
+        }
+        std::this_thread::yield();
     }
 
-    const int rc =
-      zlink_gateway_send_rid(gateway, routing_id, &part, 1, ZLINK_DONTWAIT);
+    errno = EAGAIN;
+    return send_status_blocked;
+}
+
+pending_gateway_echo_t make_pending_reply(const zlink_routing_id_t *routing_id,
+                                          zlink_msg_t *parts,
+                                          size_t part_count)
+{
+    pending_gateway_echo_t entry;
+    if (!routing_id || !parts || part_count == 0)
+        return entry;
+
+    const ptrdiff_t payload_index = select_gateway_payload_part(parts, part_count);
+    if (payload_index < 0)
+        return entry;
+
+    entry.routing_id = *routing_id;
+    entry.parts.resize(1);
+    const char *data =
+      static_cast<const char *>(
+        zlink_msg_data(&parts[static_cast<size_t>(payload_index)]));
+    const size_t size =
+      zlink_msg_size(&parts[static_cast<size_t>(payload_index)]);
+    entry.parts[0].assign(data, data + size);
+    return entry;
+}
+
+void enqueue_pending_reply(gateway_server_state_t *state,
+                           const pending_gateway_echo_t &entry)
+{
+    if (!state || entry.parts.empty())
+        return;
+
+    std::lock_guard<std::mutex> lock(state->mutex);
+    state->pending.push_back(entry);
+}
+
+send_status_t try_send_pending_reply(void *gateway,
+                                     const pending_gateway_echo_t &pending)
+{
+    if (!gateway || pending.parts.empty())
+        return send_status_fatal;
+
+    std::vector<zlink_msg_t> send_parts(pending.parts.size());
+    for (size_t i = 0; i < pending.parts.size(); ++i) {
+        const std::vector<char> &payload = pending.parts[i];
+        if (zlink_msg_init_data(
+              &send_parts[i],
+              payload.empty()
+                ? static_cast<void *>(NULL)
+                : static_cast<void *>(const_cast<char *>(payload.data())),
+              payload.size(),
+              NULL,
+              NULL)
+            != 0) {
+            close_parts(&send_parts[0], i);
+            return send_status_fatal;
+        }
+    }
+
+    const int rc = zlink_gateway_send_rid(gateway, &pending.routing_id,
+                                          &send_parts[0], send_parts.size(),
+                                          ZLINK_DONTWAIT);
     if (rc == 0)
         return send_status_ok;
+
     const int saved_errno = errno;
-    (void) zlink_msg_close(&part);
-    if (saved_errno == EAGAIN || saved_errno == EHOSTUNREACH
-        || saved_errno == ENOTCONN) {
+    close_parts(&send_parts[0], send_parts.size());
+    if (saved_errno == EAGAIN || saved_errno == EINTR
+        || saved_errno == EHOSTUNREACH || saved_errno == ENOTCONN) {
         errno = saved_errno;
         return send_status_blocked;
     }
 
     errno = saved_errno;
     return send_status_fatal;
-}
-
-void enqueue_pending_reply(gateway_server_state_t *state,
-                           const zlink_routing_id_t *routing_id,
-                           const void *data,
-                           size_t size)
-{
-    if (!state || !routing_id)
-        return;
-
-    pending_gateway_echo_t entry;
-    entry.routing_id = *routing_id;
-    entry.payload.assign(static_cast<const char *>(data),
-                         static_cast<const char *>(data) + size);
-
-    std::lock_guard<std::mutex> lock(state->mutex);
-    state->pending.push_back(entry);
 }
 
 void gateway_server_handler(const zlink_routing_id_t *source_rid,
@@ -341,13 +440,32 @@ void gateway_server_handler(const zlink_routing_id_t *source_rid,
         return;
     }
     if (part_count != 1) {
-        state->send_failures.fetch_add(1, std::memory_order_acq_rel);
+        if (bench_debug_enabled()
+            && g_debug_recv_logs.fetch_add(1, std::memory_order_acq_rel) < 8) {
+            std::cerr << "[multi-gateway-server] drop multipart part_count="
+                      << part_count << std::endl;
+        }
         close_parts(parts, part_count);
         return;
     }
-
-    const void *payload_data = zlink_msg_data(&parts[0]);
-    const size_t payload_size = zlink_msg_size(&parts[0]);
+    const zlink_routing_id_t reply_routing_id = *source_rid;
+    const ptrdiff_t payload_index = select_gateway_payload_part(parts, part_count);
+    const size_t payload_size =
+      payload_index >= 0
+        ? zlink_msg_size(&parts[static_cast<size_t>(payload_index)])
+        : 0;
+    if (bench_debug_enabled()
+        && g_debug_recv_logs.fetch_add(1, std::memory_order_acq_rel) < 8) {
+        size_t pending_depth = 0;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            pending_depth = state->pending.size();
+        }
+        std::cerr << "[multi-gateway-server] recv size=" << payload_size
+                  << " part_count=" << part_count
+                  << " pending=" << pending_depth;
+        std::cerr << std::endl;
+    }
 
     bool has_pending = false;
     {
@@ -356,40 +474,49 @@ void gateway_server_handler(const zlink_routing_id_t *source_rid,
     }
     if (has_pending) {
         state->recv_count.fetch_add(1, std::memory_order_acq_rel);
-        enqueue_pending_reply(state, source_rid, payload_data, payload_size);
+        enqueue_pending_reply(state,
+                              make_pending_reply(&reply_routing_id,
+                                                 parts,
+                                                 part_count));
         close_parts(parts, part_count);
         return;
     }
 
     state->recv_count.fetch_add(1, std::memory_order_acq_rel);
-    zlink_msg_t send_part;
-    if (!move_part(&send_part, &parts[0])) {
-        state->send_failures.fetch_add(1, std::memory_order_acq_rel);
-        close_parts(parts, part_count);
-        return;
-    }
-
-    const int send_rc =
-      zlink_gateway_send_rid(state->gateway, source_rid, &send_part, 1,
-                             ZLINK_DONTWAIT);
-    if (send_rc == 0) {
+    const pending_gateway_echo_t pending_entry =
+      make_pending_reply(&reply_routing_id, parts, part_count);
+    const send_status_t send_rc =
+      try_send_gateway_reply(state->gateway,
+                             &reply_routing_id,
+                             parts,
+                             part_count);
+    if (send_rc == send_status_ok) {
+        if (bench_debug_enabled()
+            && g_debug_send_logs.fetch_add(1, std::memory_order_acq_rel) < 8) {
+            std::cerr << "[multi-gateway-server] send ok size="
+                      << payload_size << " part_count=" << part_count
+                      << std::endl;
+        }
         state->send_ok_count.fetch_add(1, std::memory_order_acq_rel);
         close_parts(parts, part_count);
         return;
     }
-    const int saved_errno = errno;
-    if (saved_errno == EAGAIN || saved_errno == EHOSTUNREACH
-        || saved_errno == ENOTCONN) {
-        enqueue_pending_reply(state, source_rid, zlink_msg_data(&send_part),
-                            zlink_msg_size(&send_part));
+    if (send_rc == send_status_blocked) {
+        if (bench_debug_enabled()
+            && g_debug_send_logs.fetch_add(1, std::memory_order_acq_rel) < 8) {
+            std::cerr << "[multi-gateway-server] send blocked errno="
+                      << errno << " size=" << payload_size
+                      << " part_count=" << part_count
+                      << std::endl;
+        }
+        enqueue_pending_reply(state, pending_entry);
+        close_parts(parts, part_count);
     } else {
         state->send_failures.fetch_add(1, std::memory_order_acq_rel);
         std::cerr << "gateway server send failed: "
-                  << zlink_strerror(saved_errno) << std::endl;
+                  << zlink_strerror(errno) << std::endl;
+        close_parts(parts, part_count);
     }
-
-    (void) zlink_msg_close(&send_part);
-    close_parts(parts, part_count);
 }
 
 void gateway_server_send_ready(void *subject)
@@ -408,11 +535,7 @@ void gateway_server_send_ready(void *subject)
         }
 
         const send_status_t send_rc =
-          try_send_gateway_reply(state->gateway, &pending.routing_id,
-                                 pending.payload.empty()
-                                   ? static_cast<const void *>(NULL)
-                                   : static_cast<const void *>(pending.payload.data()),
-                                 pending.payload.size());
+          try_send_pending_reply(state->gateway, pending);
         if (send_rc == send_status_ok) {
             state->send_ok_count.fetch_add(1, std::memory_order_acq_rel);
             std::lock_guard<std::mutex> lock(state->mutex);
@@ -462,6 +585,8 @@ bool run_server_loop(const std::string &lib_name,
                      const std::string &transport)
 {
     while (!g_stop_requested.load(std::memory_order_acquire)) {
+        if (g_server_state && g_server_state->gateway)
+            gateway_server_send_ready(g_server_state->gateway);
         emit_requested_queue_probe(lib_name, transport);
         if (g_server_state
             && g_server_state->send_failures.load(std::memory_order_acquire) > 0)
@@ -550,15 +675,6 @@ int run_server_benchmark(const std::string &lib_name,
       bench_multi_capture_cpu_sample();
 
     std::cout << "READY," << endpoint << std::endl;
-
-    const size_t target_clients =
-      resolve_multi_service_clients(settings.clients);
-    if (!wait_for_gateway_peers(gateway, target_clients,
-                                settings.connect_ready_timeout_ms)) {
-        g_server_state = NULL;
-        zlink_gateway_destroy(&gateway);
-        return 1;
-    }
 
     const bool ok = run_server_loop(lib_name, transport);
 

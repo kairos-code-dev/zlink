@@ -134,6 +134,50 @@ static int recv_and_forward (socket_base_t *src_,
     }
 }
 
+static int recv_and_forward_subscription_updates (socket_base_t *src_,
+                                                  socket_base_t *dst_,
+                                                  bool *saw_subscribe_)
+{
+    bool saw_subscribe = false;
+    for (;;) {
+        msg_t msg;
+        if (msg.init () != 0)
+            return -1;
+        if (src_->recv (&msg, ZLINK_DONTWAIT) != 0) {
+            const int err = errno;
+            msg.close ();
+            if (err == EAGAIN) {
+                if (saw_subscribe_)
+                    *saw_subscribe_ = saw_subscribe;
+                return 0;
+            }
+            errno = err;
+            return -1;
+        }
+
+        int more = 0;
+        size_t more_sz = sizeof (more);
+        if (src_->getsockopt (ZLINK_RCVMORE, &more, &more_sz) != 0) {
+            msg.close ();
+            return -1;
+        }
+
+        if (msg.size () > 0) {
+            const unsigned char *data =
+              static_cast<const unsigned char *> (msg.data ());
+            if (data[0] == 1)
+                saw_subscribe = true;
+        }
+
+        if (dst_ && dst_->send (&msg, more ? ZLINK_SNDMORE : 0) != 0) {
+            msg.close ();
+            return -1;
+        }
+
+        msg.close ();
+    }
+}
+
 }
 
 void spot_data_plane_t::close_socket_ptr (spot_node_t *node_,
@@ -365,11 +409,16 @@ void spot_data_plane_t::run (spot_node_t *node_)
             }
 
             if (events[i].socket == fanout) {
-                if (recv_and_forward (fanout, mesh_xsub, NULL) != 0) {
+                bool saw_subscribe = false;
+                if (recv_and_forward_subscription_updates (
+                      fanout, mesh_xsub, &saw_subscribe)
+                    != 0) {
                     fatal_errno = errno;
                     running = false;
                     break;
                 }
+                if (saw_subscribe)
+                    node_->notify_subscription_forwarded ();
                 continue;
             }
         }

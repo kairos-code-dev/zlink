@@ -2,7 +2,7 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
-#include "../src/sockets/socket_base.hpp"
+#include "../../src/sockets/socket_base.hpp"
 
 #include <atomic>
 #include <climits>
@@ -110,12 +110,37 @@ struct callback_close_probe_t
     std::condition_variable cv;
 };
 
+struct monitor_parent_query_probe_t
+{
+    monitor_parent_query_probe_t () :
+        discovery (NULL),
+        calls (0),
+        receiver_count (-1),
+        query_errno (0),
+        done (false)
+    {
+        service_name[0] = '\0';
+        memset (&event, 0, sizeof (event));
+    }
+
+    void *discovery;
+    std::atomic<int> calls;
+    int receiver_count;
+    int query_errno;
+    bool done;
+    char service_name[64];
+    zlink_service_event_t event;
+    std::mutex sync;
+    std::condition_variable cv;
+};
+
 raw_monitor_probe_t *g_raw_monitor_probe = NULL;
 service_monitor_probe_t *g_service_monitor_probe = NULL;
 callback_close_probe_t *g_raw_monitor_self_close_probe = NULL;
 callback_close_probe_t *g_raw_monitor_blocking_probe = NULL;
 callback_close_probe_t *g_service_monitor_self_close_probe = NULL;
 callback_close_probe_t *g_service_monitor_blocking_probe = NULL;
+monitor_parent_query_probe_t *g_service_monitor_query_probe = NULL;
 void *g_raw_send_ready_subject = NULL;
 std::atomic<int> *g_raw_send_ready_calls = NULL;
 int g_raw_send_ready_rc = 0;
@@ -197,6 +222,29 @@ void service_monitor_replacement_handler (const zlink_service_event_t *event_)
         return;
     g_service_monitor_probe->replacement_event = *event_;
     g_service_monitor_probe->replacement_calls.fetch_add (1);
+}
+
+void service_monitor_parent_query_handler (const zlink_service_event_t *event_)
+{
+    monitor_parent_query_probe_t *probe = g_service_monitor_query_probe;
+    if (!probe || !event_)
+        return;
+
+    errno = 0;
+    const int receiver_count =
+      zlink_discovery_receiver_count (probe->discovery, probe->service_name);
+    const int query_errno = receiver_count >= 0 ? 0 : errno;
+
+    {
+        std::lock_guard<std::mutex> lock (probe->sync);
+        probe->event = *event_;
+        probe->receiver_count = receiver_count;
+        probe->query_errno = query_errno;
+        probe->done = true;
+    }
+
+    probe->calls.fetch_add (1);
+    probe->cv.notify_all ();
 }
 
 void raw_monitor_self_close_handler (const zlink_monitor_event_t *)
@@ -914,6 +962,94 @@ void test_service_monitor_close_during_callback_returns_ebusy ()
     g_service_monitor_blocking_probe = NULL;
 }
 
+void test_service_monitor_callback_can_query_parent_without_deadlock ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    int registry_seed = 22652;
+    void *registry = NULL;
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        registry = zlink_registry_new (ctx);
+        TEST_ASSERT_NOT_NULL (registry);
+        snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
+                  test_port (registry_seed));
+        snprintf (registry_router, sizeof (registry_router),
+                  "tcp://127.0.0.1:%d", test_port (registry_seed + 1));
+        if (zlink_registry_set_endpoints (registry, registry_pub,
+                                          registry_router)
+              == 0
+            && zlink_registry_set_broadcast_interval (registry, 50) == 0
+            && zlink_registry_start (registry) == 0) {
+            break;
+        }
+        zlink_registry_destroy (&registry);
+        registry = NULL;
+        registry_seed += 2;
+    }
+    TEST_ASSERT_NOT_NULL (registry);
+
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_set_routing_id (discovery, "disc-query", 10));
+
+    monitor_parent_query_probe_t probe;
+    probe.discovery = discovery;
+    strncpy (probe.service_name, "svc-query-monitor",
+             sizeof (probe.service_name) - 1);
+    probe.service_name[sizeof (probe.service_name) - 1] = '\0';
+    g_service_monitor_query_probe = &probe;
+
+    void *monitor =
+      zlink_discovery_monitor_open (discovery, ZLINK_DISCOVERY_SERVICE_UP,
+                                    &service_monitor_parent_query_handler);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    connect_discovery_registry_with_retry (discovery, registry_router, 3000);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_subscribe (discovery, probe.service_name));
+
+    void *server_discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (server_discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (server_discovery, registry_router));
+    void *gateway =
+      create_gateway_attached (ctx, server_discovery, probe.service_name,
+                               "rx-query-monitor", &discard_gateway_message);
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22654;
+    bind_gateway_with_port_seed (gateway, &bind_seed, endpoint, sizeof (endpoint),
+                                 3000);
+
+    {
+        std::unique_lock<std::mutex> lock (probe.sync);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (
+          lock, std::chrono::seconds (5), [&probe]() { return probe.done; }));
+    }
+
+    TEST_ASSERT_EQUAL_INT (1, probe.calls.load ());
+    TEST_ASSERT_EQUAL_UINT16 (ZLINK_SERVICE_KIND_DISCOVERY,
+                              probe.event.service_kind);
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_DISCOVERY_SERVICE_UP,
+                              probe.event.event_type);
+    TEST_ASSERT_EQUAL_STRING (probe.service_name, probe.event.service_name);
+    TEST_ASSERT_EQUAL_INT (0, probe.query_errno);
+    TEST_ASSERT_TRUE (probe.receiver_count >= 1);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&server_discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    g_service_monitor_query_probe = NULL;
+}
+
 int main (int, char **)
 {
     setup_test_environment ();
@@ -932,5 +1068,6 @@ int main (int, char **)
     RUN_TEST (test_service_monitor_open_dispatches_events);
     RUN_TEST (test_service_monitor_self_close_defers_until_callback_return);
     RUN_TEST (test_service_monitor_close_during_callback_returns_ebusy);
+    RUN_TEST (test_service_monitor_callback_can_query_parent_without_deadlock);
     return UNITY_END ();
 }

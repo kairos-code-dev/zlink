@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../tests/testutil.hpp"
-#include "../tests/testutil_unity.hpp"
+#include "../testutil.hpp"
+#include "../testutil_unity.hpp"
 
 #include "core/ctx.hpp"
 #include "services/common/service_runtime_base.hpp"

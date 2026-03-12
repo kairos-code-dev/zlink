@@ -90,6 +90,8 @@ class spot_node_t : public discovery_observer_t
     ctx_t *ctx () const { return _ctx; }
     const std::string &pub_ingress_endpoint () const;
     const std::string &sub_fanout_endpoint () const;
+    bool has_active_peers () const;
+    std::string first_active_peer_endpoint () const;
     int ensure_healthy () const;
     void debug_mark_fault (int err_);
     void untrack_owned_socket (const socket_base_t *socket_);
@@ -129,6 +131,7 @@ class spot_node_t : public discovery_observer_t
     void refresh_local_pub_ingress_hwm ();
     void refresh_local_fanout_hwm ();
     void refresh_discovery_peers ();
+    void refresh_connected_peer_endpoints ();
     std::string summary_service_name () const;
     void submit_pub_summary (spot_pub_t *pub_, uint16_t state_, int error_code_);
     void submit_sub_summary (spot_sub_t *sub_, uint16_t state_, int error_code_);
@@ -136,6 +139,10 @@ class spot_node_t : public discovery_observer_t
     void refresh_existing_summaries ();
     void refresh_sub_peer_summaries (bool has_active_peers,
                                      bool lost_transition);
+    void schedule_subscription_ready_refresh ();
+    void emit_pending_subscription_ready_events ();
+    std::string first_connected_peer_endpoint () const;
+    void notify_subscription_forwarded ();
     int ensure_registered ();
     int unregister_registered ();
 
@@ -162,7 +169,10 @@ class spot_node_t : public discovery_observer_t
     std::string _bound_endpoint;
     std::set<std::string> _manual_peer_endpoints;
     std::set<std::string> _active_peer_endpoints;
+    std::set<std::string> _connected_peer_endpoints;
     std::set<std::string> _discovery_peer_endpoints;
+    bool _subscription_ready_refresh_pending;
+    unsigned int _subscription_ready_refresh_holdoff_ticks;
 
     discovery_t *_discovery;
     std::string _discovery_service;

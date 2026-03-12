@@ -15,7 +15,7 @@
         "${workspaceFolder}/core/include",
         "${workspaceFolder}/core/src",
         "${workspaceFolder}/core/tests",
-        "${workspaceFolder}/core/unittests",
+        "${workspaceFolder}/core/tests/unittest",
         "${workspaceFolder}/bindings/cpp/include",
         "${workspaceFolder}/bindings/cpp/tests",
         "${workspaceFolder}/bindings/node/native/src",

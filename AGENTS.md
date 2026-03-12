@@ -3,8 +3,10 @@
 ## Project Structure and Module Organization
 - `core/src/`: core libzlink implementation (C++98/11 style).
 - `core/include/`: public headers like `core/include/zlink.h`.
-- `core/tests/`: functional test suite (Unity), files named `core/tests/test_*.cpp`.
-- `core/unittests/`: internal tests named `core/unittests/unittest_*.cpp`.
+- `core/tests/unittest/`: internal Unity tests named `unittest_*.cpp`.
+- `core/tests/integration/`: focused functional Unity tests.
+- `core/tests/e2e/`: umbrella and smoke-style Unity tests.
+- `core/tests/`: shared test helpers, README, and lane runner script.
 - `core/build-scripts/`: platform build scripts (e.g., `core/build-scripts/linux/build.sh`).
 - `core/builds/`: build helpers, templates, and CI tooling (CMake modules, platform helpers).
 - `core/external/`: bundled third-party sources (Boost, Unity, etc.).
@@ -18,7 +20,12 @@
 - `./core/build.sh`: clean CMake build in `core/build/` and runs tests (Linux-style `nproc`).
 - `./core/build-scripts/linux/build.sh x64 ON`: Linux build with tests (macOS and Windows have equivalent scripts).
 - `cmake -B build -DZLINK_BUILD_TESTS=ON`: configure; `cmake --build build` to compile.
-- `ctest --output-on-failure`: run tests from a build dir (e.g., `core/build/linux-x64`).
+- `ctest --output-on-failure`: run all registered tests from a build dir; prefer lane-based commands below for real verification.
+- `ctest --output-on-failure -L unittest -j$(nproc)`: run unit tests in parallel.
+- `ctest --output-on-failure -L integration -j1`: run integration tests serially.
+- `ctest --output-on-failure -L e2e -j1`: run e2e umbrella/scenario tests serially.
+- `./core/tests/run_test_lanes.sh`: run the default sequential lane pipeline (`unittest` then `integration`).
+- `./core/tests/run_test_lanes.sh --include-e2e`: run the full sequential lane pipeline (`unittest`, `integration`, `e2e`).
 - Optional flags: `-DZLINK_CXX_STANDARD=17` (see `CXX_BUILD_EXAMPLES.md`).
 
 ## Coding Style and Naming Conventions
@@ -29,6 +36,8 @@
 ## Testing Guidelines
 - Tests use the Unity framework; add coverage in `tests/` for behavior changes and `unittests/` for internal logic.
 - Some suites are platform-specific (IPC/TIPC, fuzzers); note skips in PRs.
+- Test layout, lane policy, and runner usage: `core/tests/README.md`
+- Do not launch multiple `ctest` processes concurrently for serial lanes; `RESOURCE_LOCK` only coordinates tests within one `ctest` process.
 
 ### Fail-Fast Policy (all test types)
 The following rules apply to **all** test categories: unit tests (`unittests/`), functional tests (`tests/`), perf tests (`perf/`), and bench tests (`bench/`).

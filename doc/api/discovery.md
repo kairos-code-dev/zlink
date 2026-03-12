@@ -39,31 +39,38 @@ records the registration timestamp.
 ## Constants
 
 ```c
-#define ZLINK_SERVICE_TYPE_GATEWAY 1
-#define ZLINK_SERVICE_TYPE_SPOT    2
-#define ZLINK_DISCOVERY_SOCKET_SUB 1
+typedef enum zlink_service_type_t
+{
+    ZLINK_SERVICE_TYPE_GATEWAY = 0x3001,
+    ZLINK_SERVICE_TYPE_SPOT    = 0x3002
+} zlink_service_type_t;
+
+typedef enum zlink_discovery_socket_role_t
+{
+    ZLINK_DISCOVERY_SOCKET_SUB = 1
+} zlink_discovery_socket_role_t;
 ```
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `ZLINK_SERVICE_TYPE_GATEWAY` | 1 | Discovery type for Gateway/Receiver services |
-| `ZLINK_SERVICE_TYPE_SPOT` | 2 | Discovery type for SPOT Node services |
-| `ZLINK_DISCOVERY_SOCKET_SUB` | 1 | SUB socket used for receiving Registry broadcasts |
+| Constant | Description |
+|----------|-------------|
+| `ZLINK_SERVICE_TYPE_GATEWAY` | Discovery type for Gateway services |
+| `ZLINK_SERVICE_TYPE_SPOT` | Discovery type for SPOT Node services |
+| `ZLINK_DISCOVERY_SOCKET_SUB` | SUB socket used for receiving Registry broadcasts |
 
 ## Functions
 
-### zlink_discovery_new_typed
+### zlink_discovery_new
 
-Create a typed Discovery instance.
+Create a Discovery instance with a fixed service family.
 
 ```c
-void *zlink_discovery_new_typed(void *ctx, uint16_t service_type);
+void *zlink_discovery_new (void *ctx, zlink_service_type_t service_type);
 ```
 
 Allocates and initializes a new Discovery instance scoped to the given
 service type. The type is fixed at creation time and cannot be changed. All
 subscribe, get, and count queries operate within the specified service type
-scope. Use `ZLINK_SERVICE_TYPE_GATEWAY` for Gateway/Receiver services or
+scope. Use `ZLINK_SERVICE_TYPE_GATEWAY` for Gateway services or
 `ZLINK_SERVICE_TYPE_SPOT` for SPOT Node services.
 
 **Returns:** A Discovery handle on success, or `NULL` on failure.
@@ -205,14 +212,53 @@ returns a value greater than zero, but expressed as a boolean result.
 
 ---
 
-### Discovery options
+### zlink_discovery_setsockopt
 
-Discovery is intentionally excluded from the first service-level option
-surface. Its public setup surface is limited to:
+Set a socket option on an internal Discovery socket.
 
-- `zlink_discovery_set_routing_id()`
-- `zlink_discovery_connect_registry()`
-- `zlink_discovery_subscribe()` / `zlink_discovery_unsubscribe()`
+```c
+int zlink_discovery_setsockopt (
+  void *discovery,
+  zlink_discovery_socket_role_t socket_role,
+  zlink_socket_option_t option,
+  const void *optval,
+  size_t optvallen);
+```
+
+Applies a low-level socket option to one of the Discovery's internal sockets.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+---
+
+### zlink_discovery_set_routing_id
+
+Override the representative routing id before first subscribe/query/connect.
+
+```c
+int zlink_discovery_set_routing_id (void *discovery,
+                                    const void *data,
+                                    size_t size);
+```
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**See also:** `zlink_discovery_routing_id`
+
+---
+
+### zlink_discovery_routing_id
+
+Return the representative routing id for this Discovery.
+
+```c
+int zlink_discovery_routing_id (void *discovery,
+                                zlink_routing_id_t *out);
+```
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**See also:** `zlink_discovery_set_routing_id`
 
 ---
 
@@ -233,4 +279,4 @@ destruction.
 **Thread safety:** Not thread-safe. Must not be called concurrently with other
 Discovery operations.
 
-**See also:** `zlink_discovery_new_typed`
+**See also:** `zlink_discovery_new`

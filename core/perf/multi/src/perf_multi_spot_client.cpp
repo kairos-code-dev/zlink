@@ -48,7 +48,8 @@ struct spot_client_state_t
         fatal(false),
         fatal_errno(0),
         seen_msg_size(0),
-        seen_phase(perf_multi_metric::phase_unknown)
+        seen_phase(perf_multi_metric::phase_unknown),
+        last_recv_us(0)
     {
     }
 
@@ -63,6 +64,7 @@ struct spot_client_state_t
     int fatal_errno;
     size_t seen_msg_size;
     perf_multi_metric::phase_t seen_phase;
+    uint64_t last_recv_us;
 };
 
 spot_client_state_t *g_client_state = NULL;
@@ -272,6 +274,32 @@ bool wait_phase_duration(spot_client_state_t *state, double seconds)
     return !state->fatal;
 }
 
+bool wait_for_quiet(spot_client_state_t *state, int quiet_ms, int timeout_ms)
+{
+    if (!state)
+        return false;
+
+    const uint64_t quiet_us =
+      static_cast<uint64_t>(std::max(1, quiet_ms)) * 1000ULL;
+    const auto deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(std::max(1, timeout_ms));
+
+    std::unique_lock<std::mutex> lock(state->mutex);
+    while (!state->fatal) {
+        const uint64_t now_us = perf_multi_metric::now_us();
+        if (state->last_recv_us != 0 && now_us >= state->last_recv_us
+            && (now_us - state->last_recv_us) >= quiet_us) {
+            return true;
+        }
+        if (std::chrono::steady_clock::now() >= deadline)
+            break;
+        state->cv.wait_for(lock, std::chrono::milliseconds(5));
+    }
+
+    return !state->fatal;
+}
+
 void spot_client_sub_handler(const zlink_routing_id_t *,
                              const char *topic,
                              size_t topic_len,
@@ -299,6 +327,7 @@ void spot_client_sub_handler(const zlink_routing_id_t *,
         state->seen_msg_size = header.msg_size;
         state->seen_phase =
           static_cast<perf_multi_metric::phase_t>(header.phase);
+        state->last_recv_us = perf_multi_metric::now_us();
         if (state->collect_active
             && perf_multi_metric::is_expected(
               header,
@@ -456,6 +485,11 @@ int run_client_benchmark(const std::string &lib_name,
             return 1;
         }
     }
+
+    (void) wait_for_quiet(
+      &state,
+      std::max(100, settings.settle_ms),
+      settings.connect_ready_timeout_ms);
 
     destroy_spot_slots(&state.slots);
     g_client_state = NULL;

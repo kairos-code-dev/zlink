@@ -311,7 +311,7 @@ gateway_t::gateway_t (ctx_t *ctx_,
     _routing_id_locked (false),
     _refresh_interval_ms (
       static_cast<uint32_t> (resolve_gateway_refresh_sleep_ms ())),
-    _server_weight (1),
+    _server_weight (0),
     _tls_trust_system (0),
     _service_name (service_name_ ? service_name_ : ""),
     _routing_id_override (routing_id_ ? routing_id_ : ""),
@@ -379,6 +379,12 @@ int gateway_t::attach_discovery (discovery_t *discovery_)
             errno = EBUSY;
             return -1;
         }
+        if (!_runtime->manual_routes.empty () || !_runtime->ready_endpoints.empty ()
+            || !_runtime->inflight_endpoints.empty ()
+            || !_runtime->down_endpoints.empty ()) {
+            errno = EBUSY;
+            return -1;
+        }
 
         _discovery = discovery_;
         _discovery->add_observer (this);
@@ -404,6 +410,95 @@ int gateway_t::attach_discovery (discovery_t *discovery_)
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
     if (runtime && _runtime->refresh_task_id != 0)
         runtime->wakeup_task (_runtime->refresh_task_id);
+    return 0;
+}
+
+int gateway_t::connect (const char *endpoint_,
+                        const zlink_routing_id_t *routing_id_)
+{
+    if (!endpoint_ || endpoint_[0] == '\0' || !routing_id_
+        || routing_id_->size == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    bool changed = false;
+    {
+        scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+        if (ensure_facade_mode () != 0)
+            return -1;
+        if (_discovery) {
+            errno = EBUSY;
+            return -1;
+        }
+        lock_routing_id ();
+        gateway_manual_route_t route;
+        memset (&route, 0, sizeof (route));
+        route.routing_id = *routing_id_;
+        route.weight = 1;
+
+        std::map<std::string, gateway_manual_route_t>::iterator it =
+          _runtime->manual_routes.find (endpoint_);
+        if (it != _runtime->manual_routes.end ()) {
+            if (routing_id_equals (it->second.routing_id, *routing_id_))
+                return 0;
+            errno = EBUSY;
+            return -1;
+        }
+
+        _runtime->manual_routes[endpoint_] = route;
+        gateway_service_pool_t *pool = get_or_create_pool_cached ();
+        if (!pool)
+            return -1;
+        pool->dirty = true;
+        _runtime->pending_updates.insert (_service_name);
+        changed = true;
+    }
+
+    if (changed) {
+        service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+        if (runtime && _runtime->refresh_task_id != 0)
+            runtime->wakeup_task (_runtime->refresh_task_id);
+    }
+    return 0;
+}
+
+int gateway_t::disconnect (const char *endpoint_)
+{
+    if (!endpoint_ || endpoint_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+
+    bool changed = false;
+    {
+        scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+        if (ensure_facade_mode () != 0)
+            return -1;
+        if (_discovery) {
+            errno = EBUSY;
+            return -1;
+        }
+
+        std::map<std::string, gateway_manual_route_t>::iterator it =
+          _runtime->manual_routes.find (endpoint_);
+        if (it == _runtime->manual_routes.end ())
+            return 0;
+
+        _runtime->manual_routes.erase (it);
+        gateway_service_pool_t *pool = get_or_create_pool_cached ();
+        if (!pool)
+            return -1;
+        pool->dirty = true;
+        _runtime->pending_updates.insert (_service_name);
+        changed = true;
+    }
+
+    if (changed) {
+        service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+        if (runtime && _runtime->refresh_task_id != 0)
+            runtime->wakeup_task (_runtime->refresh_task_id);
+    }
     return 0;
 }
 
@@ -434,36 +529,37 @@ void gateway_t::refresh_tick ()
                 ++it;
             }
         }
-        if (_discovery) {
-            if (_runtime->force_refresh_all) {
-                for (std::map<std::string, gateway_service_pool_t>::iterator it =
-                       _runtime->pools.begin ();
-                     it != _runtime->pools.end (); ++it) {
-                    it->second.dirty = true;
-                    services_to_refresh.push_back (it->first);
-                }
-            } else {
-                for (std::set<std::string>::iterator sit =
-                       _runtime->pending_updates.begin ();
-                     sit != _runtime->pending_updates.end (); ++sit) {
-                    std::map<std::string, gateway_service_pool_t>::iterator pit =
-                      _runtime->pools.find (*sit);
-                    if (pit != _runtime->pools.end ()) {
-                        pit->second.dirty = true;
-                        services_to_refresh.push_back (*sit);
-                    }
+        if (_runtime->force_refresh_all) {
+            for (std::map<std::string, gateway_service_pool_t>::iterator it =
+                   _runtime->pools.begin ();
+                 it != _runtime->pools.end (); ++it) {
+                it->second.dirty = true;
+                services_to_refresh.push_back (it->first);
+            }
+        } else {
+            for (std::set<std::string>::iterator sit =
+                   _runtime->pending_updates.begin ();
+                 sit != _runtime->pending_updates.end (); ++sit) {
+                std::map<std::string, gateway_service_pool_t>::iterator pit =
+                  _runtime->pools.find (*sit);
+                if (pit != _runtime->pools.end ()) {
+                    pit->second.dirty = true;
+                    services_to_refresh.push_back (*sit);
                 }
             }
         }
         _runtime->pending_updates.clear ();
         _runtime->force_refresh_all = false;
     }
-    if (_discovery && !services_to_refresh.empty ()) {
+    if (!services_to_refresh.empty ()) {
         for (size_t i = 0; i < services_to_refresh.size (); ++i) {
             const std::string &service = services_to_refresh[i];
             std::vector<provider_info_t> providers;
-            _discovery->snapshot_providers (service, &providers);
-            const uint64_t seq = _discovery->service_update_seq (service);
+            uint64_t seq = 0;
+            if (_discovery) {
+                _discovery->snapshot_providers (service, &providers);
+                seq = _discovery->service_update_seq (service);
+            }
             scoped_lock_t lock (_sync);
             std::map<std::string, gateway_service_pool_t>::iterator it =
               _runtime->pools.find (service);
@@ -602,7 +698,7 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
     if (!pool_ || !_runtime->router_socket)
         return;
 
-    if (!providers.empty ())
+    if (!providers.empty () || !_runtime->manual_routes.empty ())
         lock_routing_id ();
 
     process_monitor_events ();
@@ -619,10 +715,19 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
     };
     std::map<std::string, provider_route_t> routing_map;
 
-    for (size_t i = 0; i < providers.size (); ++i) {
-        const provider_info_t &entry = providers[i];
-        provider_route_t route = {entry.routing_id, entry.weight};
-        routing_map[entry.endpoint] = route;
+    if (_discovery) {
+        for (size_t i = 0; i < providers.size (); ++i) {
+            const provider_info_t &entry = providers[i];
+            provider_route_t route = {entry.routing_id, entry.weight};
+            routing_map[entry.endpoint] = route;
+        }
+    } else if (pool_->service_name == _service_name) {
+        for (std::map<std::string, gateway_manual_route_t>::const_iterator it =
+               _runtime->manual_routes.begin ();
+             it != _runtime->manual_routes.end (); ++it) {
+            provider_route_t route = {it->second.routing_id, it->second.weight};
+            routing_map[it->first] = route;
+        }
     }
 
     // 3) Connect and keep only peers that are actually ready (POLLOUT).
@@ -632,7 +737,7 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
         const std::string &endpoint = it->first;
         const zlink_routing_id_t &rid = it->second.rid;
         const std::string rid_key = routing_id_key (rid);
-        const uint32_t weight = it->second.weight == 0 ? 1 : it->second.weight;
+        const uint32_t weight = it->second.weight;
         if (rid.size == 0 || rid_key.empty ())
             continue;
         std::map<std::string, uint64_t>::iterator dit =
@@ -722,7 +827,7 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
         next_weights.push_back (weight);
     }
 
-    // 4) Disconnect endpoints that disappeared from discovery only.
+    // 4) Disconnect endpoints that disappeared from the active route source.
     //    Readiness is transient; do not term on temporary not-ready.
     for (size_t i = 0; i < pool_->endpoints.size (); ++i) {
         const std::string &endpoint = pool_->endpoints[i];
@@ -782,13 +887,13 @@ bool gateway_t::select_provider (gateway_service_pool_t *pool_, size_t *index_ou
         && pool_->weights.size () == pool_->routing_ids.size ()) {
         size_t total_weight = 0;
         for (size_t i = 0; i < pool_->weights.size (); ++i)
-            total_weight += pool_->weights[i] == 0 ? 1 : pool_->weights[i];
+            total_weight += pool_->weights[i];
 
         if (total_weight > 0) {
             size_t slot = pool_->rr_index % total_weight;
             pool_->rr_index++;
             for (size_t i = 0; i < pool_->weights.size (); ++i) {
-                const size_t weight = pool_->weights[i] == 0 ? 1 : pool_->weights[i];
+                const size_t weight = pool_->weights[i];
                 if (slot < weight) {
                     *index_out_ = i;
                     return true;
@@ -1022,7 +1127,7 @@ int gateway_t::register_service (const char *advertise_endpoint_,
         errno = EINVAL;
         return -1;
     }
-    _server_weight = weight_ == 0 ? 1 : weight_;
+    _server_weight = weight_;
 
     std::string resolved;
     if (_discovery->register_service (
@@ -1061,7 +1166,7 @@ int gateway_t::update_weight (uint32_t weight_)
         return -1;
     }
 
-    const uint32_t value = weight_ == 0 ? 1 : weight_;
+    const uint32_t value = weight_;
     if (_discovery->update_service_weight (
           discovery_protocol::service_type_gateway_receiver, _service_name.c_str (),
           _advertise_endpoint.c_str (), value)
@@ -1307,15 +1412,14 @@ int gateway_t::peer_info (const zlink_routing_id_t *routing_id_,
     info_out_->msgs_received = base_info.msgs_received;
     info_out_->snd_pending_msgs = base_info.snd_pending_msgs;
     info_out_->rcv_pending_msgs = base_info.rcv_pending_msgs;
-    info_out_->weight = 1;
+    info_out_->weight = 0;
 
     if (_discovery) {
         std::vector<provider_info_t> providers;
         _discovery->snapshot_providers (_service_name, &providers);
         for (size_t i = 0; i < providers.size (); ++i) {
             if (routing_id_equals (providers[i].routing_id, *routing_id_)) {
-                info_out_->weight =
-                  providers[i].weight == 0 ? 1 : providers[i].weight;
+                info_out_->weight = providers[i].weight;
                 break;
             }
         }
@@ -1369,12 +1473,11 @@ int gateway_t::router_peers (zlink_gateway_peer_info_t *peers_,
         peers_[i].msgs_received = base_infos[i].msgs_received;
         peers_[i].snd_pending_msgs = base_infos[i].snd_pending_msgs;
         peers_[i].rcv_pending_msgs = base_infos[i].rcv_pending_msgs;
-        peers_[i].weight = 1;
+        peers_[i].weight = 0;
         for (size_t pi = 0; pi < providers.size (); ++pi) {
             if (routing_id_equals (providers[pi].routing_id,
                                    base_infos[i].routing_id)) {
-                peers_[i].weight =
-                  providers[pi].weight == 0 ? 1 : providers[pi].weight;
+                peers_[i].weight = providers[pi].weight;
                 break;
             }
         }
@@ -1422,7 +1525,7 @@ int gateway_t::update_peer_weight (const zlink_routing_id_t *routing_id_,
         return -1;
     }
 
-    const uint32_t value = weight_ == 0 ? 1 : weight_;
+    const uint32_t value = weight_;
     if (_discovery->update_service_weight (
           discovery_protocol::service_type_gateway_receiver, _service_name.c_str (),
           endpoint.c_str (), value)
@@ -1662,6 +1765,19 @@ void gateway_t::on_service_update (const std::string &service_name_)
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
     if (runtime && _runtime->refresh_task_id != 0)
         runtime->wakeup_task (_runtime->refresh_task_id);
+}
+
+void gateway_t::on_discovery_destroyed (discovery_t *discovery_)
+{
+    scoped_lock_t lock (_sync);
+    if (_discovery != discovery_)
+        return;
+    _discovery = NULL;
+    _runtime->pending_updates.clear ();
+    _runtime->force_refresh_all = false;
+    _server_service_name.clear ();
+    _advertise_endpoint.clear ();
+    _last_register_error.clear ();
 }
 
 int gateway_t::connection_count ()

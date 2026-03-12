@@ -18,6 +18,8 @@
 #include <climits>
 #include <zlink.h>
 
+#include "../../../src/core/recv_internal.hpp"
+
 #if !defined(_WIN32)
 #include <arpa/inet.h>
 #include <ifaddrs.h>
@@ -342,6 +344,16 @@ private:
     void *_socket;
 };
 
+inline int zlink_msg_recv(zlink_msg_t *msg_, void *socket_, int flags_)
+{
+    return zlink::recv_msg_internal(socket_, msg_, flags_);
+}
+
+inline int zlink_recv(void *socket_, void *buf_, size_t len_, int flags_)
+{
+    return zlink::recv_buffer_internal(socket_, buf_, len_, flags_);
+}
+
 struct connect_monitor_t {
     void *owner;
     void *monitor;
@@ -405,10 +417,11 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
 
 inline void close_connect_monitor(connect_monitor_t &monitor_)
 {
-    if (monitor_.owner)
-        zlink_socket_monitor(monitor_.owner, NULL, 0);
-    if (monitor_.monitor)
+    if (monitor_.monitor) {
+        const int zero = 0;
+        zlink_setsockopt(monitor_.monitor, ZLINK_LINGER, &zero, sizeof(zero));
         zlink_close(monitor_.monitor);
+    }
     g_perf_monitor_ready_ptr = NULL;
     monitor_.owner = NULL;
     monitor_.monitor = NULL;

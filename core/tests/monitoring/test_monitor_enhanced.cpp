@@ -196,7 +196,6 @@ static void run_client_monitor_ready_disconnected_test (int client_type_,
           routing_id_equal (&ready.routing_id, &disconnected.routing_id));
     }
 
-    zlink_socket_monitor (client, NULL, 0);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (mon));
     test_context_socket_close_zero_linger (client);
 }
@@ -242,7 +241,6 @@ void test_monitor_open_and_connection_ready ()
 
     TEST_ASSERT_TRUE (wait_for_event (mon, ZLINK_EVENT_DISCONNECTED, NULL));
 
-    zlink_socket_monitor (server, NULL, 0);
     int linger = 0;
     zlink_setsockopt (mon, ZLINK_LINGER, &linger, sizeof (linger));
     zlink_close (mon);
@@ -293,7 +291,6 @@ void test_peer_enumeration ()
     send_string_expect_success (server, payload, 0);
     recv_string_expect_success (client, payload, 0);
 
-    zlink_socket_monitor (server, NULL, 0);
     int linger = 0;
     zlink_setsockopt (mon, ZLINK_LINGER, &linger, sizeof (linger));
     zlink_close (mon);
@@ -347,7 +344,6 @@ void test_router_monitor_event_sequence_timing ()
                             &probe.disconnected.routing_id));
     }
 
-    zlink_socket_monitor (server, NULL, 0);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (mon));
     test_context_socket_close_zero_linger (server);
 }

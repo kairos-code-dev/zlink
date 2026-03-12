@@ -399,6 +399,7 @@ typedef enum zlink_socket_option_t
     ZLINK_SOCKOPT_TCP_NODELAY = 0x1141
 } zlink_socket_option_t;
 
+#ifdef ZLINK_INTERNAL_BUILD
 #define ZLINK_PAIR ((zlink_socket_type_t) 0)
 #define ZLINK_PUB ((zlink_socket_type_t) 1)
 #define ZLINK_SUB ((zlink_socket_type_t) 2)
@@ -469,6 +470,78 @@ typedef enum zlink_socket_option_t
 #define ZLINK_TOPICS_COUNT ((zlink_socket_option_t) 116)
 #define ZLINK_ZMP_METADATA ((zlink_socket_option_t) 117)
 #define ZLINK_TCP_NODELAY ((zlink_socket_option_t) 118)
+#else
+#define ZLINK_PAIR ZLINK_SOCKET_PAIR
+#define ZLINK_PUB ZLINK_SOCKET_PUB
+#define ZLINK_SUB ZLINK_SOCKET_SUB
+#define ZLINK_DEALER ZLINK_SOCKET_DEALER
+#define ZLINK_ROUTER ZLINK_SOCKET_ROUTER
+#define ZLINK_XPUB ZLINK_SOCKET_XPUB
+#define ZLINK_XSUB ZLINK_SOCKET_XSUB
+#define ZLINK_STREAM ZLINK_SOCKET_STREAM
+
+#define ZLINK_AFFINITY ZLINK_SOCKOPT_AFFINITY
+#define ZLINK_ROUTING_ID ZLINK_SOCKOPT_ROUTING_ID
+#define ZLINK_SUBSCRIBE ZLINK_SOCKOPT_SUBSCRIBE
+#define ZLINK_UNSUBSCRIBE ZLINK_SOCKOPT_UNSUBSCRIBE
+#define ZLINK_RATE ZLINK_SOCKOPT_RATE
+#define ZLINK_RECOVERY_IVL ZLINK_SOCKOPT_RECOVERY_IVL
+#define ZLINK_SNDBUF ZLINK_SOCKOPT_SNDBUF
+#define ZLINK_RCVBUF ZLINK_SOCKOPT_RCVBUF
+#define ZLINK_RCVMORE ZLINK_SOCKOPT_RCVMORE
+#define ZLINK_LINGER ZLINK_SOCKOPT_LINGER
+#define ZLINK_RECONNECT_IVL ZLINK_SOCKOPT_RECONNECT_IVL
+#define ZLINK_BACKLOG ZLINK_SOCKOPT_BACKLOG
+#define ZLINK_RECONNECT_IVL_MAX ZLINK_SOCKOPT_RECONNECT_IVL_MAX
+#define ZLINK_MAXMSGSIZE ZLINK_SOCKOPT_MAXMSGSIZE
+#define ZLINK_SNDHWM ZLINK_SOCKOPT_SNDHWM
+#define ZLINK_RCVHWM ZLINK_SOCKOPT_RCVHWM
+#define ZLINK_MULTICAST_HOPS ZLINK_SOCKOPT_MULTICAST_HOPS
+#define ZLINK_RCVTIMEO ZLINK_SOCKOPT_RCVTIMEO
+#define ZLINK_SNDTIMEO ZLINK_SOCKOPT_SNDTIMEO
+#define ZLINK_ROUTER_MANDATORY ZLINK_SOCKOPT_ROUTER_MANDATORY
+#define ZLINK_TCP_KEEPALIVE ZLINK_SOCKOPT_TCP_KEEPALIVE
+#define ZLINK_TCP_KEEPALIVE_CNT ZLINK_SOCKOPT_TCP_KEEPALIVE_CNT
+#define ZLINK_TCP_KEEPALIVE_IDLE ZLINK_SOCKOPT_TCP_KEEPALIVE_IDLE
+#define ZLINK_TCP_KEEPALIVE_INTVL ZLINK_SOCKOPT_TCP_KEEPALIVE_INTVL
+#define ZLINK_IMMEDIATE ZLINK_SOCKOPT_IMMEDIATE
+#define ZLINK_XPUB_VERBOSE ZLINK_SOCKOPT_XPUB_VERBOSE
+#define ZLINK_IPV6 ZLINK_SOCKOPT_IPV6
+#define ZLINK_PROBE_ROUTER ZLINK_SOCKOPT_PROBE_ROUTER
+#define ZLINK_CONFLATE ZLINK_SOCKOPT_CONFLATE
+#define ZLINK_ROUTER_HANDOVER ZLINK_SOCKOPT_ROUTER_HANDOVER
+#define ZLINK_TOS ZLINK_SOCKOPT_TOS
+#define ZLINK_CONNECT_ROUTING_ID ZLINK_SOCKOPT_CONNECT_ROUTING_ID
+#define ZLINK_HANDSHAKE_IVL ZLINK_SOCKOPT_HANDSHAKE_IVL
+#define ZLINK_XPUB_NODROP ZLINK_SOCKOPT_XPUB_NODROP
+#define ZLINK_BLOCKY ZLINK_SOCKOPT_BLOCKY
+#define ZLINK_XPUB_MANUAL ZLINK_SOCKOPT_XPUB_MANUAL
+#define ZLINK_XPUB_WELCOME_MSG ZLINK_SOCKOPT_XPUB_WELCOME_MSG
+#define ZLINK_STREAM_NOTIFY ZLINK_SOCKOPT_STREAM_NOTIFY
+#define ZLINK_INVERT_MATCHING ZLINK_SOCKOPT_INVERT_MATCHING
+#define ZLINK_HEARTBEAT_IVL ZLINK_SOCKOPT_HEARTBEAT_IVL
+#define ZLINK_HEARTBEAT_TTL ZLINK_SOCKOPT_HEARTBEAT_TTL
+#define ZLINK_HEARTBEAT_TIMEOUT ZLINK_SOCKOPT_HEARTBEAT_TIMEOUT
+#define ZLINK_XPUB_VERBOSER ZLINK_SOCKOPT_XPUB_VERBOSER
+#define ZLINK_CONNECT_TIMEOUT ZLINK_SOCKOPT_CONNECT_TIMEOUT
+#define ZLINK_TCP_MAXRT ZLINK_SOCKOPT_TCP_MAXRT
+#define ZLINK_MULTICAST_MAXTPDU ZLINK_SOCKOPT_MULTICAST_MAXTPDU
+#define ZLINK_USE_FD ZLINK_SOCKOPT_USE_FD
+#define ZLINK_BINDTODEVICE ZLINK_SOCKOPT_BINDTODEVICE
+#define ZLINK_TLS_CERT ZLINK_SOCKOPT_TLS_CERT
+#define ZLINK_TLS_KEY ZLINK_SOCKOPT_TLS_KEY
+#define ZLINK_TLS_CA ZLINK_SOCKOPT_TLS_CA
+#define ZLINK_TLS_VERIFY ZLINK_SOCKOPT_TLS_VERIFY
+#define ZLINK_XPUB_MANUAL_LAST_VALUE ZLINK_SOCKOPT_XPUB_MANUAL_LAST_VALUE
+#define ZLINK_TLS_REQUIRE_CLIENT_CERT ZLINK_SOCKOPT_TLS_REQUIRE_CLIENT_CERT
+#define ZLINK_TLS_HOSTNAME ZLINK_SOCKOPT_TLS_HOSTNAME
+#define ZLINK_TLS_TRUST_SYSTEM ZLINK_SOCKOPT_TLS_TRUST_SYSTEM
+#define ZLINK_TLS_PASSWORD ZLINK_SOCKOPT_TLS_PASSWORD
+#define ZLINK_ONLY_FIRST_SUBSCRIBE ZLINK_SOCKOPT_ONLY_FIRST_SUBSCRIBE
+#define ZLINK_TOPICS_COUNT ZLINK_SOCKOPT_TOPICS_COUNT
+#define ZLINK_ZMP_METADATA ZLINK_SOCKOPT_ZMP_METADATA
+#define ZLINK_TCP_NODELAY ZLINK_SOCKOPT_TCP_NODELAY
+#endif
 
 #define ZLINK_FD ZLINK_SOCKOPT_FD
 #define ZLINK_EVENTS ZLINK_SOCKOPT_EVENTS
@@ -494,37 +567,58 @@ typedef enum zlink_msg_property_t
 /******************************************************************************/
 typedef uint32_t zlink_socket_monitor_event_mask_t;
 
-#define ZLINK_EVENT_CONNECTED                                                \
+#define ZLINK_SOCKET_MONITOR_EVENT_CONNECTED                                 \
     ((zlink_socket_monitor_event_mask_t) 0x0001u)
-#define ZLINK_EVENT_CONNECT_DELAYED                                          \
+#define ZLINK_SOCKET_MONITOR_EVENT_CONNECT_DELAYED                           \
     ((zlink_socket_monitor_event_mask_t) 0x0002u)
-#define ZLINK_EVENT_CONNECT_RETRIED                                          \
+#define ZLINK_SOCKET_MONITOR_EVENT_CONNECT_RETRIED                           \
     ((zlink_socket_monitor_event_mask_t) 0x0004u)
-#define ZLINK_EVENT_LISTENING                                                \
+#define ZLINK_SOCKET_MONITOR_EVENT_LISTENING                                 \
     ((zlink_socket_monitor_event_mask_t) 0x0008u)
-#define ZLINK_EVENT_BIND_FAILED                                              \
+#define ZLINK_SOCKET_MONITOR_EVENT_BIND_FAILED                               \
     ((zlink_socket_monitor_event_mask_t) 0x0010u)
-#define ZLINK_EVENT_ACCEPTED                                                 \
+#define ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED                                  \
     ((zlink_socket_monitor_event_mask_t) 0x0020u)
-#define ZLINK_EVENT_ACCEPT_FAILED                                            \
+#define ZLINK_SOCKET_MONITOR_EVENT_ACCEPT_FAILED                             \
     ((zlink_socket_monitor_event_mask_t) 0x0040u)
-#define ZLINK_EVENT_CLOSED                                                   \
+#define ZLINK_SOCKET_MONITOR_EVENT_CLOSED                                    \
     ((zlink_socket_monitor_event_mask_t) 0x0080u)
-#define ZLINK_EVENT_CLOSE_FAILED                                             \
+#define ZLINK_SOCKET_MONITOR_EVENT_CLOSE_FAILED                              \
     ((zlink_socket_monitor_event_mask_t) 0x0100u)
-#define ZLINK_EVENT_DISCONNECTED                                             \
+#define ZLINK_SOCKET_MONITOR_EVENT_DISCONNECTED                              \
     ((zlink_socket_monitor_event_mask_t) 0x0200u)
-#define ZLINK_EVENT_MONITOR_STOPPED                                          \
+#define ZLINK_SOCKET_MONITOR_EVENT_MONITOR_STOPPED                           \
     ((zlink_socket_monitor_event_mask_t) 0x0400u)
-#define ZLINK_EVENT_ALL ((zlink_socket_monitor_event_mask_t) 0xFFFFu)
-#define ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL                               \
+#define ZLINK_SOCKET_MONITOR_EVENT_ALL                                       \
+    ((zlink_socket_monitor_event_mask_t) 0xFFFFu)
+#define ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_NO_DETAIL                \
     ((zlink_socket_monitor_event_mask_t) 0x0800u)
-#define ZLINK_EVENT_CONNECTION_READY                                         \
+#define ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY                          \
     ((zlink_socket_monitor_event_mask_t) 0x1000u)
-#define ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL                                \
+#define ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_PROTOCOL                 \
     ((zlink_socket_monitor_event_mask_t) 0x2000u)
-#define ZLINK_EVENT_HANDSHAKE_FAILED_AUTH                                    \
+#define ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_AUTH                     \
     ((zlink_socket_monitor_event_mask_t) 0x4000u)
+
+#define ZLINK_EVENT_CONNECTED ZLINK_SOCKET_MONITOR_EVENT_CONNECTED
+#define ZLINK_EVENT_CONNECT_DELAYED ZLINK_SOCKET_MONITOR_EVENT_CONNECT_DELAYED
+#define ZLINK_EVENT_CONNECT_RETRIED ZLINK_SOCKET_MONITOR_EVENT_CONNECT_RETRIED
+#define ZLINK_EVENT_LISTENING ZLINK_SOCKET_MONITOR_EVENT_LISTENING
+#define ZLINK_EVENT_BIND_FAILED ZLINK_SOCKET_MONITOR_EVENT_BIND_FAILED
+#define ZLINK_EVENT_ACCEPTED ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED
+#define ZLINK_EVENT_ACCEPT_FAILED ZLINK_SOCKET_MONITOR_EVENT_ACCEPT_FAILED
+#define ZLINK_EVENT_CLOSED ZLINK_SOCKET_MONITOR_EVENT_CLOSED
+#define ZLINK_EVENT_CLOSE_FAILED ZLINK_SOCKET_MONITOR_EVENT_CLOSE_FAILED
+#define ZLINK_EVENT_DISCONNECTED ZLINK_SOCKET_MONITOR_EVENT_DISCONNECTED
+#define ZLINK_EVENT_MONITOR_STOPPED ZLINK_SOCKET_MONITOR_EVENT_MONITOR_STOPPED
+#define ZLINK_EVENT_ALL ZLINK_SOCKET_MONITOR_EVENT_ALL
+#define ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL                               \
+    ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+#define ZLINK_EVENT_CONNECTION_READY ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY
+#define ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL                                \
+    ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_PROTOCOL
+#define ZLINK_EVENT_HANDSHAKE_FAILED_AUTH                                    \
+    ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_AUTH
 
 typedef enum zlink_disconnect_reason_t
 {
@@ -755,13 +849,6 @@ ZLINK_EXPORT int zlink_stream_send_msg (void *s_,
                                         const zlink_routing_id_t *rid_,
                                         zlink_msg_t *msg_,
                                         zlink_send_flags_t flags_);
-
-/**
- * @brief Start a socket monitor via an inproc address (legacy).
- * @param addr_    Monitor inproc endpoint.
- * @param events_  Event bitmask (combination of ZLINK_EVENT_* flags).
- */
-ZLINK_EXPORT int zlink_socket_monitor (void *s_, const char *addr_, int events_);
 
 typedef struct {
     uint64_t event;
@@ -1004,6 +1091,24 @@ ZLINK_EXPORT int zlink_gateway_set_send_ready_handler (
 
 ZLINK_EXPORT int zlink_gateway_bind (void *gateway,
                                      const char *bind_endpoint);
+
+/**
+ * @brief Connect the Gateway to a manually managed remote peer route.
+ *
+ * Manual connect/disconnect are only allowed before discovery attachment.
+ * The remote routing id identifies the peer for request dispatch.
+ */
+ZLINK_EXPORT int zlink_gateway_connect (void *gateway,
+                                        const char *endpoint,
+                                        const zlink_routing_id_t *routing_id);
+
+/**
+ * @brief Disconnect a manually managed remote peer route.
+ *
+ * Manual connect/disconnect are only allowed before discovery attachment.
+ */
+ZLINK_EXPORT int zlink_gateway_disconnect (void *gateway,
+                                           const char *endpoint);
 
 /**
  * @brief Send a message to the bound service (load-balanced).
@@ -1441,14 +1546,19 @@ typedef uint32_t zlink_service_event_detail_mask_t;
 #define ZLINK_SPOT_PUB_QUEUE_FULL ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_FULL
 #define ZLINK_SPOT_PUB_QUEUE_DRAINED ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_DRAINED
 #define ZLINK_MONITOR_EVENT_CLOSED ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED
-#define ZLINK_EVENT_DETAIL_SERVICE_NAME                                      \
+#define ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME                              \
     ((zlink_service_event_detail_mask_t) 0x0001u)
-#define ZLINK_EVENT_DETAIL_ENDPOINT                                          \
+#define ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT                                  \
     ((zlink_service_event_detail_mask_t) 0x0002u)
-#define ZLINK_EVENT_DETAIL_SUBJECT_RID                                       \
+#define ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_RID                               \
     ((zlink_service_event_detail_mask_t) 0x0004u)
-#define ZLINK_EVENT_DETAIL_PEER_RID                                          \
+#define ZLINK_SERVICE_EVENT_DETAIL_PEER_RID                                  \
     ((zlink_service_event_detail_mask_t) 0x0008u)
+
+#define ZLINK_EVENT_DETAIL_SERVICE_NAME ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME
+#define ZLINK_EVENT_DETAIL_ENDPOINT ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT
+#define ZLINK_EVENT_DETAIL_SUBJECT_RID ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_RID
+#define ZLINK_EVENT_DETAIL_PEER_RID ZLINK_SERVICE_EVENT_DETAIL_PEER_RID
 
 typedef struct zlink_service_event_t
 {
@@ -1640,10 +1750,71 @@ ZLINK_EXPORT void zlink_thread_join (void *thread_);
 #ifdef __cplusplus
 }
 
+#ifdef ZLINK_INTERNAL_BUILD
+inline void zlink_internal_discard_socket_parts (const zlink_routing_id_t *,
+                                                 zlink_msg_t *parts_,
+                                                 size_t part_count_)
+{
+    zlink_multipart_close (parts_, part_count_);
+}
+
+inline void zlink_internal_discard_spot_parts (const zlink_routing_id_t *,
+                                               const char *,
+                                               size_t,
+                                               zlink_msg_t *parts_,
+                                               size_t part_count_)
+{
+    zlink_multipart_close (parts_, part_count_);
+}
+
+inline void zlink_internal_discard_xpub_event (int, const uint8_t *, size_t)
+{
+}
+
+inline const zlink_socket_handler_t *
+zlink_internal_default_socket_handler (zlink_socket_type_t type_)
+{
+    static zlink_socket_handler_t msg_handler = {};
+    static zlink_socket_handler_t spot_handler = {};
+    static zlink_socket_handler_t xpub_handler = {};
+    static bool initialized = false;
+
+    if (!initialized) {
+        msg_handler.kind = ZLINK_SOCKET_HANDLER_MSG;
+        msg_handler.fn.msg = &zlink_internal_discard_socket_parts;
+
+        spot_handler.kind = ZLINK_SOCKET_HANDLER_SPOT;
+        spot_handler.fn.spot = &zlink_internal_discard_spot_parts;
+
+        xpub_handler.kind = ZLINK_SOCKET_HANDLER_XPUB;
+        xpub_handler.fn.xpub = &zlink_internal_discard_xpub_event;
+
+        initialized = true;
+    }
+
+    switch (type_) {
+        case ZLINK_PAIR:
+        case ZLINK_DEALER:
+        case ZLINK_ROUTER:
+        case ZLINK_STREAM:
+            return &msg_handler;
+        case ZLINK_SUB:
+        case ZLINK_XSUB:
+            return &spot_handler;
+        case ZLINK_XPUB:
+            return &xpub_handler;
+        case ZLINK_PUB:
+            return static_cast<const zlink_socket_handler_t *> (NULL);
+        default:
+            return static_cast<const zlink_socket_handler_t *> (NULL);
+    }
+}
+
 inline void *zlink_socket (void *ctx_, zlink_socket_type_t type_)
 {
-    return zlink_socket (ctx_, type_, static_cast<const zlink_socket_handler_t *> (NULL));
+    return zlink_socket (ctx_, type_, zlink_internal_default_socket_handler (type_));
 }
+#endif
 #endif
 
 #endif

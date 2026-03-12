@@ -30,6 +30,7 @@ struct gateway_runtime_t
     atomic_counter_t stop;
     uint64_t refresh_task_id;
     std::map<std::string, gateway_service_pool_t> pools;
+    std::map<std::string, gateway_manual_route_t> manual_routes;
     std::string last_service_name;
     gateway_service_pool_t *last_pool;
     std::map<std::string, std::string> endpoint_to_service;

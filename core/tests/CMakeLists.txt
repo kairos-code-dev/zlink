@@ -22,10 +22,10 @@ set(tests
   discovery/test_gateway_handover
   test_capabilities
   test_socket_null
+  test_heartbeats
   # TODO: test_reconnect_ivl needs rewrite (uses removed sync recv / bounce)
   #test_reconnect_ivl
-  # TODO: test_reconnect_options needs rewrite (uses removed sync recv / zlink_socket_monitor)
-  #test_reconnect_options
+  test_reconnect_options
   # TODO: test_pubsub_filter_xpub needs rewrite (uses removed sync recv)
   #test_pubsub_filter_xpub
   # TODO: test_router_multiple_dealers needs rewrite (uses removed sync recv)
@@ -547,7 +547,9 @@ set(GATEWAY_CASES
     test_gateway_protocol_tls
     test_gateway_protocol_wss
     test_gateway_load_balancing
-    test_gateway_weighted_load_balancing)
+    test_gateway_weighted_load_balancing
+    test_gateway_manual_connect_disconnect_topology_ownership
+    test_gateway_local_weight_zero_is_preserved)
 
 set(GATEWAY_TEST_SPECS
     test_gateway_provider_options=test_gateway_provider_setsockopt
@@ -562,7 +564,9 @@ set(GATEWAY_TEST_SPECS
     test_gateway_tls=test_gateway_protocol_tls
     test_gateway_wss=test_gateway_protocol_wss
     test_gateway_round_robin=test_gateway_load_balancing
-    test_gateway_weighted=test_gateway_weighted_load_balancing)
+    test_gateway_weighted=test_gateway_weighted_load_balancing
+    test_gateway_manual_topology_ownership=test_gateway_manual_connect_disconnect_topology_ownership
+    test_gateway_local_weight_zero=test_gateway_local_weight_zero_is_preserved)
 
 set(SERVICE_INTROSPECTION_CASES
     test_discovery_monitor_and_routing_id

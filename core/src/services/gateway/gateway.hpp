@@ -37,6 +37,12 @@ struct gateway_service_pool_t
     bool dirty;
 };
 
+struct gateway_manual_route_t
+{
+    zlink_routing_id_t routing_id;
+    uint32_t weight;
+};
+
 class gateway_t : public discovery_observer_t
 {
   public:
@@ -49,6 +55,8 @@ class gateway_t : public discovery_observer_t
     int send (zlink_msg_t *parts_, size_t part_count_, int flags_);
     int attach_discovery (discovery_t *discovery_);
     int bind (const char *endpoint_);
+    int connect (const char *endpoint_, const zlink_routing_id_t *routing_id_);
+    int disconnect (const char *endpoint_);
     int register_service (const char *advertise_endpoint_, uint32_t weight_);
     int update_weight (uint32_t weight_);
     int unregister_service ();
@@ -84,6 +92,7 @@ class gateway_t : public discovery_observer_t
                         const char *hostname_,
                         int trust_system_);
     void on_service_update (const std::string &service_name_);
+    void on_discovery_destroyed (discovery_t *discovery_) ZLINK_OVERRIDE;
     void dispatch_message (const zlink_routing_id_t *source_rid_,
                            zlink_msg_t *parts_,
                            size_t part_count_);

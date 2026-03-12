@@ -13,6 +13,70 @@
 #include <stdio.h>
 #endif
 
+namespace
+{
+void discard_test_socket_parts (const zlink_routing_id_t *,
+                                zlink_msg_t *parts_,
+                                size_t part_count_)
+{
+    zlink_multipart_close (parts_, part_count_);
+}
+
+void discard_test_spot_parts (const zlink_routing_id_t *,
+                              const char *,
+                              size_t,
+                              zlink_msg_t *parts_,
+                              size_t part_count_)
+{
+    zlink_multipart_close (parts_, part_count_);
+}
+
+void discard_test_xpub_event (int, const uint8_t *, size_t)
+{
+}
+
+const zlink_socket_handler_t *test_socket_handler_for_type (int type_)
+{
+    static zlink_socket_handler_t msg_handler;
+    static zlink_socket_handler_t spot_handler;
+    static zlink_socket_handler_t xpub_handler;
+    static bool initialized = false;
+
+    if (!initialized) {
+        memset (&msg_handler, 0, sizeof (msg_handler));
+        msg_handler.kind = ZLINK_SOCKET_HANDLER_MSG;
+        msg_handler.fn.msg = &discard_test_socket_parts;
+
+        memset (&spot_handler, 0, sizeof (spot_handler));
+        spot_handler.kind = ZLINK_SOCKET_HANDLER_SPOT;
+        spot_handler.fn.spot = &discard_test_spot_parts;
+
+        memset (&xpub_handler, 0, sizeof (xpub_handler));
+        xpub_handler.kind = ZLINK_SOCKET_HANDLER_XPUB;
+        xpub_handler.fn.xpub = &discard_test_xpub_event;
+
+        initialized = true;
+    }
+
+    switch (static_cast<zlink_socket_type_t> (type_)) {
+        case ZLINK_PAIR:
+        case ZLINK_DEALER:
+        case ZLINK_ROUTER:
+        case ZLINK_STREAM:
+            return &msg_handler;
+        case ZLINK_SUB:
+        case ZLINK_XSUB:
+            return &spot_handler;
+        case ZLINK_XPUB:
+            return &xpub_handler;
+        case ZLINK_PUB:
+            return NULL;
+        default:
+            return NULL;
+    }
+}
+}
+
 int test_assert_success_message_errno_helper (int rc_,
                                               const char *msg_,
                                               const char *expr_,
@@ -205,7 +269,8 @@ void *test_context_socket (int type_)
 {
     void *const socket =
       zlink_socket (get_test_context (),
-                    static_cast<zlink_socket_type_t> (type_), NULL);
+                    static_cast<zlink_socket_type_t> (type_),
+                    test_socket_handler_for_type (type_));
     TEST_ASSERT_NOT_NULL (socket);
     internal_manage_test_sockets (socket, true);
     return socket;

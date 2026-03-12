@@ -519,12 +519,12 @@ internal static class PerfTls
 
 single 의 PerfCommon 유틸 중 필요한 것을 포함하되, multi 는 다음 정책으로 분리한다.
 
-- recv: `Poller` + `PollIn` + non-blocking drain (`EAGAIN`까지, cap 없음)
-- send: `DontWait` 1회 시도, `EAGAIN`이면 pending 상태만 유지
-- `PollOut` 기본 OFF, pending send 소켓에만 ON
-- `PollOut`에서 pending send가 비면 즉시 OFF
+- recv: 모든 recv 는 **callback-only** 다. 소켓 생성 시 recv handler 를 등록하면 I/O thread 에서 콜백이 호출된다. poller(`PollIn`) 는 사용하지 않는다.
+- send: recv callback 안에서 직접 `Send(DontWait)` 를 호출한다 (callback 중 same-handle send 허용).
+- `EAGAIN` 시 per-socket pending 에 저장하고, `SetSendReadyHandler()` 로 writable transition 콜백을 등록한다.
+- send-ready callback 에서 pending 을 `EAGAIN` 까지 drain 한다.
+- 동일 소켓의 recv callback 과 send-ready callback 은 직렬화되므로 pending 에 대한 동시 접근이 없다.
 - `Thread.Sleep` / `Thread.Yield` / retry budget 으로 `would-block` 은폐 금지
-- `Gateway`/`Receiver`/`Spot` poller 등록은 raw socket helper가 아니라 service instance 기준으로 구현한다 (`core/v4.0.0`)
 
 **`PerfCommonMulti.cs`** — (core/perf multi/common/perf_common_multi.hpp 대응)
 
@@ -866,13 +866,9 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 - send/recv 버퍼는 루프 밖에서 1회 할당 후 재사용한다.
 - core/perf 와 달리 dotnet 은 패턴 간 send/recv 공통화를 금지하고, **각 패턴 파일 내부 private helper** 까지만 허용한다.
 - client cap/retry budget/fallback 으로 실패를 성공처럼 보이게 만드는 동작을 금지한다.
-- send 정책은 고정한다: single=`blocking send 1회`, multi=`DontWait 1회 + pending 시 PollOut`.
-- recv 정책은 고정한다: single=`blocking recv + non-blocking drain`, multi=`poller + non-blocking drain(무제한, cap 없음)`.
+- send 정책은 고정한다: single=`blocking send 1회`, multi=`recv callback 내 DontWait send + pending 시 send-ready handler drain`.
+- recv 정책은 고정한다: single=`blocking recv + non-blocking drain`, multi=`callback-only recv (poller 미사용)`.
 - hot loop 에서는 `Thread.Sleep` / `Thread.Yield` 를 금지하고, settle/drain 같은 phase 경계 sleep 만 허용한다.
-- `core/v4.0.0` 이후 public poller 방향은 raw socket helper가 아니라 **service instance poller** 기준이다.
-- `Gateway`/`Receiver`/`Spot`은 `Poller.AddGateway`, `Poller.AddReceiver`, `Poller.AddSpotPub`, `Poller.AddSpotSub`로 등록한다.
-- `Gateway.CreateRouterSocket()` 또는 `SpotNode.GetPubSocket()/GetSubSocket()`는 internal/debug transport 경로로만 취급하고, perf poller 등록 대상으로 쓰지 않는다.
-- raw socket helper를 직접 획득한 경우에만 pollable transport mode로 간주하며, 그때 facade I/O 호출은 `EFSM`이 정상이다.
 
 **실행 단계(이번 리팩토링):**
 1. Config/Result/Phase 개념을 파일 로컬 타입으로 명확화한다.
@@ -935,13 +931,11 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 
 ### 15.2 필수 사항
 
-- 각 벤치마크 소스에 **소켓 생성, bind/connect, send/recv 루프, 페이즈 컨트롤** 인라인
+- 각 벤치마크 소스에 **소켓 생성, bind/connect, recv callback/send-ready handler 등록, 페이즈 컨트롤** 인라인
 - single send 경로는 **blocking send(backpressure 존중)** 로 구현
-- multi send 경로는 **DontWait 1회 + pending 시 PollOut** 으로 구현
+- multi send 경로는 **recv callback 내 DontWait send + EAGAIN 시 pending + send-ready handler drain** 으로 구현
 - single recv 경로는 **blocking recv + non-blocking drain** 구조
-- multi recv 경로는 **poller + non-blocking drain(무제한, cap 없음)** 구조
-- `SPOT` multi send 는 현재 service API 제약상 `Publish(DontWait)` 대신 `PollOut` readiness 확인 후 `Publish(None)`를 호출하는 예외 구현을 사용한다.
-- `Gateway`/`Receiver`/`Spot` multi poller 대상은 raw socket helper가 아니라 service instance다
+- multi recv 경로는 **callback-only recv (poller 미사용)** 구조
 - STREAM 서버는 accept backlog 병목을 피하기 위해 `SocketOptions.Backlog = max(4096, PERF_CLIENTS)` 로 설정한다
 - `RESULT,current,...` 형식의 stdout 출력
 - STREAM 서버는 stop-token `__zlink_perf_stop__` 수신 시 정상 종료
@@ -971,9 +965,9 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 
 **패턴 파일 내부에만 정의 (다른 파일과 공유 금지)**:
 - single send 루프 (warmup / active phase, blocking send, send retry 없음)
-- multi send 루프 (`DontWait` 1회, pending send 발생 시에만 `PollOut` 등록)
+- multi send: recv callback 내 `DontWait` send + EAGAIN 시 pending + send-ready handler drain
 - single recv 루프 (blocking recv + non-blocking drain)
-- multi recv 루프 (poller + non-blocking drain, drain cap 없음)
+- multi recv: callback-only (poller 미사용)
 - 메시지 파싱/매칭 (header decode + phase/run_id 검증)
 - latency 수집 (sent_ts_us 기반 계산)
 
@@ -1124,7 +1118,7 @@ internal static class PerfDealerDealerServer
   ```bash
   python3 bindings/dotnet/perf/run_comparison.py \
     --binding dotnet --suite multi \
-    --pattern MULTI_STREAM --transports tcp --msg-sizes 64 \
+    --pattern MULTI_STREAM_CALLBACK --transports tcp --msg-sizes 64 \
     --runs 1 --duration 1 --clients 100 --reuse-build
   ```
 - TLS smoke:
@@ -1778,9 +1772,9 @@ head -20 bindings/dotnet/perf/results/multi/tmp/perf_*.txt
 - [x] **CL-15.16** STREAM 벤치마크 클라이언트 C# 구현 없음
 - [x] **CL-15.17** single send 경로는 blocking send 1회 호출 기준, send retry 없음
 - [x] **CL-15.18** single recv 구조: blocking recv + non-blocking drain
-- [x] **CL-15.19** multi recv 구조: poller + non-blocking drain(무제한, cap 없음)
-- [x] **CL-15.20** multi send 구조: `DontWait` 1회 시도 + pending send 발생 시에만 `PollOut` ON
-- [x] **CL-15.21** multi `PollOut` 상시 등록 없음, pending drain 완료 시 즉시 OFF
+- [ ] **CL-15.19** multi recv 구조: callback-only recv (poller 미사용)
+- [ ] **CL-15.20** multi send 구조: recv callback 내 `DontWait` send + EAGAIN 시 pending + send-ready handler drain
+- [ ] **CL-15.21** multi backpressure: `SetSendReadyHandler()` 기반, `PollOut` 미사용
 
 ---
 
@@ -1802,7 +1796,7 @@ head -20 bindings/dotnet/perf/results/multi/tmp/perf_*.txt
 
 - [x] **CL-16.7** single smoke: PAIR / tcp / 64 → 성공
 - [x] **CL-16.8** multi smoke: MULTI_DEALER_DEALER / tcp / 64 / 10 clients → 성공
-- [ ] **CL-16.9** stream smoke: MULTI_STREAM / tcp / 64 / 100 clients → 성공
+- [ ] **CL-16.9** stream smoke: MULTI_STREAM_CALLBACK / tcp / 64 / 100 clients → 성공
 - [ ] **CL-16.10** TLS smoke: PAIR / tls / 64 → 성공
 
 **메트릭 정확성:**

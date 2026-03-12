@@ -266,7 +266,7 @@ static void test_discovery_provider_registration ()
     TEST_ASSERT_EQUAL_INT (1, (int) provider_count);
     TEST_ASSERT_EQUAL_STRING ("test-svc", providers[0].service_name);
     TEST_ASSERT_EQUAL_STRING (advertise_ep, providers[0].endpoint);
-    TEST_ASSERT_EQUAL_UINT32 (1, providers[0].weight);
+    TEST_ASSERT_EQUAL_UINT32 (0, providers[0].weight);
     TEST_ASSERT_GREATER_THAN_UINT (0, providers[0].routing_id.size);
 
     destroy_gateway_server (&server);

@@ -3,131 +3,208 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
-#include "testutil_monitoring.hpp"
 
+#include <atomic>
+#include <mutex>
+#include <string.h>
 #include <unity.h>
+
+namespace
+{
+struct monitor_probe_t
+{
+    monitor_probe_t () : count (0)
+    {
+        memset (events, 0, sizeof (events));
+    }
+
+    std::mutex sync;
+    int count;
+    uint64_t events[16];
+};
+
+monitor_probe_t *g_monitor_probe = NULL;
+
+void record_monitor_event (const zlink_monitor_event_t *event_)
+{
+    if (!g_monitor_probe || !event_)
+        return;
+
+    std::lock_guard<std::mutex> lock (g_monitor_probe->sync);
+    if (g_monitor_probe->count
+        < static_cast<int> (sizeof (g_monitor_probe->events)
+                            / sizeof (g_monitor_probe->events[0]))) {
+        g_monitor_probe->events[g_monitor_probe->count] = event_->event;
+    }
+    ++g_monitor_probe->count;
+}
+
+int monitor_event_count (monitor_probe_t *probe_)
+{
+    std::lock_guard<std::mutex> lock (probe_->sync);
+    return probe_->count;
+}
+
+uint64_t monitor_event_at (monitor_probe_t *probe_, int index_)
+{
+    std::lock_guard<std::mutex> lock (probe_->sync);
+    return probe_->events[index_];
+}
+
+bool wait_for_monitor_event_count (monitor_probe_t *probe_,
+                                   int expected_,
+                                   int timeout_ms_)
+{
+    const int step_ms = 10;
+    const int attempts = timeout_ms_ / step_ms;
+
+    for (int i = 0; i < attempts; ++i) {
+        if (monitor_event_count (probe_) >= expected_)
+            return true;
+        msleep (step_ms);
+    }
+    return monitor_event_count (probe_) >= expected_;
+}
+
+bool wait_for_no_additional_monitor_events (monitor_probe_t *probe_,
+                                            int baseline_,
+                                            int timeout_ms_)
+{
+    const int step_ms = 10;
+    const int attempts = timeout_ms_ / step_ms;
+
+    for (int i = 0; i < attempts; ++i) {
+        if (monitor_event_count (probe_) > baseline_)
+            return false;
+        msleep (step_ms);
+    }
+    return monitor_event_count (probe_) == baseline_;
+}
+
+void expect_monitor_sequence (monitor_probe_t *probe_,
+                              const uint64_t *expected_,
+                              int count_,
+                              int timeout_ms_)
+{
+    TEST_ASSERT_TRUE (wait_for_monitor_event_count (probe_, count_, timeout_ms_));
+    for (int i = 0; i < count_; ++i)
+        TEST_ASSERT_EQUAL_UINT64 (expected_[i], monitor_event_at (probe_, i));
+}
+
+void close_monitor_handle (void **monitor_p_)
+{
+    if (!monitor_p_ || !*monitor_p_)
+        return;
+
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (*monitor_p_, ZLINK_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (*monitor_p_));
+    *monitor_p_ = NULL;
+}
+
+void *open_monitor (void *socket_, monitor_probe_t *probe_)
+{
+    g_monitor_probe = probe_;
+    void *monitor =
+      zlink_socket_monitor_open (socket_, ZLINK_EVENT_ALL, &record_monitor_event);
+    TEST_ASSERT_NOT_NULL (monitor);
+    return monitor;
+}
+}
 
 // test behavior with (mostly) default values
 void reconnect_default ()
 {
-    // setup pub socket
     void *pub = test_context_socket (ZLINK_PUB);
-    //  Bind pub socket
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, ENDPOINT_0));
 
-    // setup sub socket
     void *sub = test_context_socket (ZLINK_SUB);
-    //  Monitor all events on sub
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_socket_monitor (sub, "inproc://monitor-sub", ZLINK_EVENT_ALL));
-    //  Create socket for collecting monitor events
-    void *sub_mon = test_context_socket (ZLINK_PAIR);
-    //  Connect so they'll get events
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_mon, "inproc://monitor-sub"));
-    // set reconnect interval so only a single reconnect is tried
+    monitor_probe_t probe;
+    void *monitor = open_monitor (sub, &probe);
+
     int interval = 60 * 1000;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (sub, ZLINK_RECONNECT_IVL, &interval, sizeof (interval)));
-    // connect to pub
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, ENDPOINT_0));
 
-    //  confirm that we get following events
-    expect_monitor_event (sub_mon, ZLINK_EVENT_CONNECT_DELAYED);
-    expect_monitor_event (sub_mon, ZLINK_EVENT_CONNECTED);
-    expect_monitor_event (sub_mon, ZLINK_EVENT_CONNECTION_READY);
+    const uint64_t initial_events[] = {ZLINK_EVENT_CONNECT_DELAYED,
+                                       ZLINK_EVENT_CONNECTED,
+                                       ZLINK_EVENT_CONNECTION_READY};
+    expect_monitor_sequence (&probe, initial_events,
+                             sizeof (initial_events) / sizeof (initial_events[0]),
+                             3000);
 
-    // close the pub socket
     test_context_socket_close_zero_linger (pub);
 
-    //  confirm that we get following events
-    expect_monitor_event (sub_mon, ZLINK_EVENT_DISCONNECTED);
-    expect_monitor_event (sub_mon, ZLINK_EVENT_CONNECT_RETRIED);
+    const uint64_t disconnect_events[] = {
+      ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
+      ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_DISCONNECTED,
+      ZLINK_EVENT_CONNECT_RETRIED};
+    expect_monitor_sequence (
+      &probe, disconnect_events,
+      sizeof (disconnect_events) / sizeof (disconnect_events[0]), 3000);
+    TEST_ASSERT_TRUE (wait_for_no_additional_monitor_events (&probe, 5, 2000));
 
-    // ZLINK_EVENT_CONNECT_RETRIED should be last event, because of timeout set above
-    int event;
-    char *event_address;
-    int rc = get_monitor_event_with_timeout (sub_mon, &event, &event_address,
-                                             2 * 1000);
-    assert (rc == -1);
-    LIBZLINK_UNUSED (rc);
-
-    //  Close sub
-    //  TODO why does this use zero_linger?
+    close_monitor_handle (&monitor);
     test_context_socket_close_zero_linger (sub);
-
-    //  Close monitor
-    //  TODO why does this use zero_linger?
-    test_context_socket_close_zero_linger (sub_mon);
+    g_monitor_probe = NULL;
 }
-
 
 // test successful reconnect
 void reconnect_success ()
 {
-    // setup pub socket
     void *pub = test_context_socket (ZLINK_PUB);
-    //  Bind pub socket
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, ENDPOINT_0));
 
-    // setup sub socket
     void *sub = test_context_socket (ZLINK_SUB);
-    //  Monitor all events on sub
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_socket_monitor (sub, "inproc://monitor-sub", ZLINK_EVENT_ALL));
-    //  Create socket for collecting monitor events
-    void *sub_mon = test_context_socket (ZLINK_PAIR);
-    //  Connect so they'll get events
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_mon, "inproc://monitor-sub"));
-    // set reconnect interval so only a single reconnect is tried
+    monitor_probe_t probe;
+    void *monitor = open_monitor (sub, &probe);
+
     int interval = 1 * 1000;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (sub, ZLINK_RECONNECT_IVL, &interval, sizeof (interval)));
-    // connect to pub
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, ENDPOINT_0));
 
-    //  confirm that we get following events
-    expect_monitor_event (sub_mon, ZLINK_EVENT_CONNECT_DELAYED);
-    expect_monitor_event (sub_mon, ZLINK_EVENT_CONNECTED);
-    expect_monitor_event (sub_mon, ZLINK_EVENT_CONNECTION_READY);
+    const uint64_t initial_events[] = {ZLINK_EVENT_CONNECT_DELAYED,
+                                       ZLINK_EVENT_CONNECTED,
+                                       ZLINK_EVENT_CONNECTION_READY};
+    expect_monitor_sequence (&probe, initial_events,
+                             sizeof (initial_events) / sizeof (initial_events[0]),
+                             3000);
 
-    // close the pub socket
     test_context_socket_close_zero_linger (pub);
 
-    //  confirm that we get following events
-    expect_monitor_event (sub_mon, ZLINK_EVENT_DISCONNECTED);
-    expect_monitor_event (sub_mon, ZLINK_EVENT_CONNECT_RETRIED);
+    const uint64_t reconnect_wait_events[] = {
+      ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
+      ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_DISCONNECTED,
+      ZLINK_EVENT_CONNECT_RETRIED};
+    expect_monitor_sequence (
+      &probe, reconnect_wait_events,
+      sizeof (reconnect_wait_events) / sizeof (reconnect_wait_events[0]), 3000);
+    TEST_ASSERT_TRUE (
+      wait_for_no_additional_monitor_events (&probe, 5, SETTLE_TIME));
 
-    // ZLINK_EVENT_CONNECT_RETRIED should be last event, because of timeout set above
-    int event;
-    char *event_address;
-    int rc = get_monitor_event_with_timeout (sub_mon, &event, &event_address,
-                                             SETTLE_TIME);
-    assert (rc == -1);
-    LIBZLINK_UNUSED (rc);
-
-    //  Now re-bind pub socket and wait for re-connect
     pub = test_context_socket (ZLINK_PUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, ENDPOINT_0));
-    msleep (SETTLE_TIME);
 
-    //  confirm that we get following events
-    expect_monitor_event (sub_mon, ZLINK_EVENT_CONNECT_DELAYED);
-    expect_monitor_event (sub_mon, ZLINK_EVENT_CONNECTED);
-    expect_monitor_event (sub_mon, ZLINK_EVENT_CONNECTION_READY);
+    const uint64_t reconnect_success_events[] = {
+      ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
+      ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_DISCONNECTED,
+      ZLINK_EVENT_CONNECT_RETRIED,  ZLINK_EVENT_CONNECT_DELAYED,
+      ZLINK_EVENT_CONNECTED,        ZLINK_EVENT_CONNECTION_READY};
+    expect_monitor_sequence (
+      &probe, reconnect_success_events,
+      sizeof (reconnect_success_events)
+        / sizeof (reconnect_success_events[0]),
+      3000);
+    TEST_ASSERT_TRUE (
+      wait_for_no_additional_monitor_events (&probe, 8, SETTLE_TIME));
 
-    // ZLINK_EVENT_CONNECTION_READY should be last event
-    rc = get_monitor_event_with_timeout (sub_mon, &event, &event_address,
-                                         SETTLE_TIME);
-    assert (rc == -1);
-
-    //  Close sub
-    //  TODO why does this use zero_linger?
+    close_monitor_handle (&monitor);
     test_context_socket_close_zero_linger (sub);
     test_context_socket_close_zero_linger (pub);
-
-    //  Close monitor
-    //  TODO why does this use zero_linger?
-    test_context_socket_close_zero_linger (sub_mon);
+    g_monitor_probe = NULL;
 }
 
 void setUp ()

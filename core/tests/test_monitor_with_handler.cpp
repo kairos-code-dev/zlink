@@ -224,7 +224,9 @@ void test_socket_monitor_open_dispatches_events ()
     TEST_ASSERT_EQUAL_UINT64 (ZLINK_EVENT_DISCONNECTED,
                               probe.primary_event.event);
 
-    zlink_socket_monitor (server, NULL, 0);
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     close_socket_zero_linger (server);
     g_raw_monitor_probe = NULL;

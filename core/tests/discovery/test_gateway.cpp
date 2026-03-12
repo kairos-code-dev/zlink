@@ -188,6 +188,20 @@ void wait_gateway_connections (void *gateway_,
     TEST_FAIL_MESSAGE ("gateway expected connection count timeout");
 }
 
+void wait_gateway_connection_count_exact (void *gateway_,
+                                          int expected_,
+                                          int timeout_ms_)
+{
+    const int step_ms = 10;
+    const int attempts = timeout_ms_ / step_ms;
+    for (int i = 0; i < attempts; ++i) {
+        if (zlink_gateway_connection_count (gateway_) == expected_)
+            return;
+        msleep (step_ms);
+    }
+    TEST_FAIL_MESSAGE ("gateway expected exact connection count timeout");
+}
+
 void wait_gateway_peer_weights (void *gateway_,
                                 size_t expected_count_,
                                 uint32_t expected_weight_sum_,
@@ -206,7 +220,7 @@ void wait_gateway_peer_weights (void *gateway_,
                      == 0) {
                 uint32_t sum = 0;
                 for (size_t pi = 0; pi < filled; ++pi)
-                    sum += peers[pi].weight == 0 ? 1 : peers[pi].weight;
+                    sum += peers[pi].weight;
                 if (filled == expected_count_ && sum == expected_weight_sum_)
                     return;
             }
@@ -428,7 +442,7 @@ void bind_register_server (gateway_server_t *server_,
     step_log ("bind_register_server: bind begin");
     bind_gateway_with_timeout (server_->gateway, endpoint_, 3000);
     step_log ("bind_register_server: bind end");
-    if (weight_ != 1) {
+    if (weight_ != 0) {
         step_log ("bind_register_server: weight update begin");
         update_gateway_weight_with_timeout (server_->gateway, weight_, 3000);
         step_log ("bind_register_server: weight update end");
@@ -1224,6 +1238,7 @@ static void test_gateway_weighted_load_balancing ()
     step_log ("test_gateway_weighted_load_balancing: bind server2");
     bind_gateway_with_port_seed (server2.gateway, "tcp", &bind_seed, ep2,
                                  sizeof (ep2), 3000);
+    update_gateway_weight_with_timeout (server2.gateway, 1, 3000);
     if (getenv ("ZLINK_TEST_DEBUG")) {
         zlink_routing_id_t rid1;
         zlink_routing_id_t rid2;
@@ -1277,6 +1292,130 @@ static void test_gateway_weighted_load_balancing ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
     g_probe_a = NULL;
     g_probe_b = NULL;
+}
+
+static void test_gateway_manual_connect_disconnect_topology_ownership ()
+{
+    step_log ("test_gateway_manual_connect_disconnect_topology_ownership");
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    gateway_probe_t probe;
+    g_probe_a = &probe;
+
+    void *server = zlink_gateway_new (ctx, "manual-svc", "manual-server",
+                                      &gateway_handler_a);
+    TEST_ASSERT_NOT_NULL (server);
+    void *client = zlink_gateway_new (ctx, "manual-svc", "manual-client",
+                                      &discard_gateway_message);
+    TEST_ASSERT_NOT_NULL (client);
+
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
+      server, ZLINK_GATEWAY_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
+      client, ZLINK_GATEWAY_OPT_LINGER, &zero, sizeof (zero)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22544;
+    bind_gateway_with_port_seed (server, "tcp", &bind_seed, endpoint,
+                                 sizeof (endpoint), 3000);
+
+    zlink_routing_id_t server_rid;
+    memset (&server_rid, 0, sizeof (server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_connect (client, endpoint, &server_rid));
+    wait_gateway_ready (client, 3000);
+
+    send_gateway_with_timeout (client, "manual", 2000);
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.requests, 1, 2000));
+    TEST_ASSERT_EQUAL_STRING ("manual", probe.payload);
+
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_attach_discovery (client, discovery));
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_disconnect (client, endpoint));
+    wait_gateway_connection_count_exact (client, 0, 3000);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_attach_discovery (client, discovery));
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_connect (client, endpoint, &server_rid));
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_disconnect (client, endpoint));
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server));
+    g_probe_a = NULL;
+}
+
+static void test_gateway_local_weight_zero_is_preserved ()
+{
+    step_log ("test_gateway_local_weight_zero_is_preserved");
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    int registry_seed = 25924;
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &registry_seed, registry_pub, sizeof (registry_pub),
+      registry_router, sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
+
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (discovery, registry_router));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_subscribe (discovery, "weight-zero"));
+    void *client =
+      create_gateway_attached (ctx, discovery, "weight-zero", NULL,
+                               &discard_gateway_message);
+    TEST_ASSERT_NOT_NULL (client);
+
+    gateway_server_t server;
+    create_server_gateway (&server, ctx, registry_router, "weight-zero",
+                           "WEIGHT0", &discard_gateway_message);
+    char endpoint[256];
+    int bind_seed = 22546;
+    bind_gateway_with_port_seed (server.gateway, "tcp", &bind_seed, endpoint,
+                                 sizeof (endpoint), 3000);
+
+    wait_gateway_ready (client, 3000);
+    wait_gateway_peer_weights (client, 1, 0, 3000);
+
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server.gateway, &rid));
+
+    zlink_gateway_peer_info_t info;
+    memset (&info, 0, sizeof (info));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_peer_info (client, &rid, &info));
+    TEST_ASSERT_EQUAL_UINT32 (0, info.weight);
+
+    update_gateway_weight_with_timeout (server.gateway, 5, 3000);
+    wait_gateway_peer_weights (client, 1, 5, 3000);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_peer_info (client, &rid, &info));
+    TEST_ASSERT_EQUAL_UINT32 (5, info.weight);
+
+    update_gateway_weight_with_timeout (server.gateway, 0, 3000);
+    wait_gateway_peer_weights (client, 1, 0, 3000);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_peer_info (client, &rid, &info));
+    TEST_ASSERT_EQUAL_UINT32 (0, info.weight);
+
+    destroy_server_gateway (&server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
 static void test_gateway_concurrent_send_and_updates ()
@@ -1387,6 +1526,8 @@ int main (void)
     RUN_GATEWAY_TEST (test_gateway_protocol_wss);
     RUN_GATEWAY_TEST (test_gateway_load_balancing);
     RUN_GATEWAY_TEST (test_gateway_weighted_load_balancing);
+    RUN_GATEWAY_TEST (test_gateway_manual_connect_disconnect_topology_ownership);
+    RUN_GATEWAY_TEST (test_gateway_local_weight_zero_is_preserved);
 #undef RUN_GATEWAY_TEST
     if (should_run_gateway_concurrent_stress ()
         && should_run_named_test ("test_gateway_concurrent_send_and_updates"))

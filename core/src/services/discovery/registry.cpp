@@ -798,9 +798,9 @@ void registry_t::handle_peer (void *sub_)
             entry.endpoint = discovery_protocol::read_string (frames[index++]);
             discovery_protocol::read_routing_id (frames[index++],
                                                  &entry.routing_id);
-            uint32_t weight = 1;
+            uint32_t weight = 0;
             discovery_protocol::read_u32 (frames[index++], &weight);
-            entry.weight = weight == 0 ? 1 : weight;
+            entry.weight = weight;
             entry.registered_at = now;
             entry.last_heartbeat = now;
             entry.source_registry = peer_registry_id;
@@ -962,11 +962,9 @@ void registry_t::handle_register (void *router_, const zlink_msg_t *frames_,
         return;
     }
 
-    uint32_t weight = 1;
+    uint32_t weight = 0;
     if (frame_count_ >= 5)
         discovery_protocol::read_u32 (frames_[4], &weight);
-    if (weight == 0)
-        weight = 1;
 
     zlink::clock_t clock;
     const uint64_t now = clock.now_ms ();
@@ -1133,10 +1131,8 @@ void registry_t::handle_update_weight (void *router_, const zlink_msg_t *frames_
       discovery_protocol::read_string (frames_[2]);
     const std::string endpoint =
       discovery_protocol::read_string (frames_[3]);
-    uint32_t weight = 1;
+    uint32_t weight = 0;
     discovery_protocol::read_u32 (frames_[4], &weight);
-    if (weight == 0)
-        weight = 1;
 
     service_key_t service_key;
     service_key.service_type = service_type;

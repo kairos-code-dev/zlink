@@ -12,6 +12,13 @@ void tearDown ()
 {
 }
 
+namespace
+{
+void discard_monitor_event (const zlink_monitor_event_t *)
+{
+}
+}
+
 //  tests all socket-related functions with a NULL socket argument
 void test_zlink_socket_null_context ()
 {
@@ -44,10 +51,11 @@ void test_zlink_getsockopt_null_socket ()
     TEST_ASSERT_EQUAL_INT (ENOTSOCK, errno); // TODO use EINVAL instead?
 }
 
-void test_zlink_socket_monitor_null_socket ()
+void test_zlink_socket_monitor_open_null_socket ()
 {
-    int rc = zlink_socket_monitor (NULL, "inproc://monitor", ZLINK_EVENT_ALL);
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    void *monitor = zlink_socket_monitor_open (
+      NULL, ZLINK_EVENT_ALL, &discard_monitor_event);
+    TEST_ASSERT_NULL (monitor);
     TEST_ASSERT_EQUAL_INT (ENOTSOCK, errno); // TODO use EINVAL instead?
 }
 
@@ -88,7 +96,7 @@ int main (void)
     RUN_TEST (test_zlink_close_null_socket);
     RUN_TEST (test_zlink_setsockopt_null_socket);
     RUN_TEST (test_zlink_getsockopt_null_socket);
-    RUN_TEST (test_zlink_socket_monitor_null_socket);
+    RUN_TEST (test_zlink_socket_monitor_open_null_socket);
     RUN_TEST (test_zlink_bind_null_socket);
     RUN_TEST (test_zlink_connect_null_socket);
     RUN_TEST (test_zlink_unbind_null_socket);

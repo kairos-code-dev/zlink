@@ -26,26 +26,29 @@
 ### 1.1 Multi 핵심 정책
 
 - 목적
-  - 여러 소켓을 단일 app thread에서 돌리되, 벤치 코드가 병목이 되지 않게 유지한다.
+  - 벤치 코드가 병목이 되지 않게 유지하면서, callback-only recv 모델의 성능을 측정한다.
+  - app thread는 setup/phase 제어/teardown만 수행하며, 측정 구간에서는 I/O thread의 콜백이 모든 recv/send를 처리한다.
 - recv
-  - recv 역할 소켓은 기본적으로 `PollIn ON` 상태다.
-  - readiness가 오면 `recv(..., DONTWAIT)`로 drain한다.
-  - drain은 `EAGAIN`까지 무제한 수행한다.
-  - cap은 두지 않는다.
+  - 모든 recv는 **callback-only**다. `zlink_recv()` / `zlink_msg_recv()` 동기 수신 API는 존재하지 않는다.
+  - 소켓 생성 시 recv handler를 등록하면, 메시지 도착 시 I/O thread에서 콜백이 호출된다.
+  - poller(`PollIn`)는 사용하지 않는다.
 - send
-  - shared event loop에서 blocking send를 금지한다.
-  - `PollOut`은 기본 `OFF`다.
-  - `send(..., DONTWAIT)`는 readiness cycle 당 1회만 시도한다.
-  - `EAGAIN`이면 오류가 아니라 pending 상태만 기록한다.
-  - pending이 생긴 소켓에 대해서만 `PollOut ON`으로 전환한다.
-  - 다음 `PollOut` readiness에서만 send를 재개한다.
-  - pending이 해소되면 즉시 `PollOut OFF`로 되돌린다.
+  - `send(..., DONTWAIT)` nonblocking send를 사용한다.
+  - echo 패턴(서버/클라이언트): recv callback 안에서 직접 `send(DONTWAIT)`를 호출한다.
+    - callback 중 same-handle send는 thread-safe socket plan에 의해 공식 허용된다.
+  - `EAGAIN` 시 per-socket pending deque에 메시지를 저장한다.
+  - `zlink_socket_set_send_ready_handler()`로 writable transition 콜백을 등록한다.
+  - send-ready callback에서 pending deque를 drain한다 (`EAGAIN`까지).
+  - pending이 있는 동안 recv callback의 새 send는 pending deque에 추가만 한다.
   - `while (send 실패)` 식의 즉시 재시도는 금지한다.
+- pending deque
+  - recv callback과 send-ready callback은 동일 소켓에 대해 직렬화된다 (같은 I/O thread).
+  - 따라서 per-socket pending은 일반 `std::deque`로 충분하며, concurrent queue가 필요 없다.
 - 한 줄 요약
-  - `multi = PollIn + nonblocking drain`
-  - `send = dontwait 1회 + pending + PollOut on-demand`
+  - `multi = callback recv + direct nonblocking send in callback`
+  - `backpressure = per-socket pending deque + send_ready_handler drain`
 
-### 1.1 프로세스 모델
+### 1.2 프로세스 모델
 
 Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 
@@ -143,7 +146,7 @@ perf/multi/
 - `SKIP` 토큰 형식: `SKIP,<lib>,<pattern>,<transport>,<reason>`
 - **stderr 기반 unsupported 판정**: 바이너리 stderr에 `protocol not supported` 문자열이 포함되면 실행 엔진이 해당 조합을 `unsupported`로 자동 분류한다. 이는 런타임에서 지원되지 않는 transport를 감지하는 메커니즘이다.
 - 동일 조합에서 RESULT line과 UNSUPPORTED/SKIP 토큰이 동시에 출력되면 **RESULT line을 우선**한다.
-- MULTI_STREAM 계열에서 테스트 모델 위반(예: non-STREAM server 사용, zlink STREAM client `connect()` 경로 사용)은 `UNSUPPORTED`/`SKIP` 대상이 아니다.
+- MULTI_STREAM_CALLBACK / MULTI_STREAM_LEN32BE에서 테스트 모델 위반(예: non-STREAM server 사용, zlink STREAM client `connect()` 경로 사용)은 `UNSUPPORTED`/`SKIP` 대상이 아니다.
 - 해당 구현 경로는 코드에서 삭제하고, `zlink STREAM server(bind-only) + raw client(connect)` 모델로 재구현해야 한다.
 
 ### 3.2 유효성 규칙
@@ -197,13 +200,13 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 
 실패한 조합을 자동으로 재시도하지 않는다. 상세 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md)을 참조한다.
 
-> STREAM 서버도 동일 정책을 따른다. `EAGAIN`은 pending 상태로 기록하고 `PollOut` readiness에서 재개할 수 있으나, 동일 호출 흐름에서의 즉시 retry loop는 두지 않는다. 스크립트/조합 레벨의 재시도(retry)와는 다르다.
+> STREAM 서버도 동일 정책을 따른다. `EAGAIN`은 pending 상태로 기록하고 `send_ready_handler` 콜백에서 재개할 수 있으나, 동일 호출 흐름에서의 즉시 retry loop는 두지 않는다. 스크립트/조합 레벨의 재시도(retry)와는 다르다.
 
 ### 3.6 코어 로직 인라인 원칙
 
 각 벤치마크 소스 파일은 해당 패턴의 zlink API 사용법을 명시적으로 보여주는 샘플 역할을 해야 한다. 상세 규칙은 [PERF_POLICY.md § 8.5](PERF_POLICY.md)를 참조한다.
 
-- **server 바이너리**: 소켓 생성, bind, send/recv 루프, phase 제어가 각 파일에 인라인으로 존재해야 한다.
+- **server 바이너리**: 소켓 생성, bind, recv callback/send-ready handler 등록, phase 제어가 각 파일에 인라인으로 존재해야 한다.
 - **client 바이너리**: 공통 헬퍼(`perf_multi_client_helpers.hpp`)의 `run_multi_echo_client_benchmark` / `run_multi_oneway_client_benchmark` 함수로 위임하는 것을 허용한다. client 측 소켓 연결/측정 로직은 패턴 간 구조적 차이가 적어 공통화가 실질적이며, 각 client 소스는 패턴 상수(소켓 타입, routing id, echo/oneway 모드)를 명시하여 호출한다.
 - **동일 파일 내 extract method(의미 단위 함수 분리)** 는 허용/권장한다.
 
@@ -388,7 +391,7 @@ run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 �
 core/perf/run_benchmarks_multi.sh
 
 # 특정 패턴만 실행
-core/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
+core/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM_CALLBACK
 
 # 여러 패턴
 core/perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_DEALER,MULTI_PUBSUB
@@ -427,10 +430,7 @@ core/perf/run_benchmarks_multi.sh --warmup 5 --duration 10
 # 터미널 2 (client)
 ./core/build/linux-x64/bin/comp_src_dealer_dealer_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 
-# 예시: MULTI_STREAM 계열 (server는 패턴별 바이너리, client는 공유 바이너리)
-./core/build/linux-x64/bin/comp_src_stream_server current tcp
-./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
-
+# 예시: MULTI_STREAM_CALLBACK / MULTI_STREAM_LEN32BE (server는 패턴별 바이너리, client는 공유 바이너리)
 ./core/build/linux-x64/bin/comp_src_stream_callback_server current tcp
 ./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 
@@ -471,7 +471,7 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 | 필드 | 설명 |
 |------|------|
 | `lib` | 라이브러리 식별자 (`current`) |
-| `pattern` | `MULTI_DEALER_DEALER`, `MULTI_STREAM` 등 |
+| `pattern` | `MULTI_DEALER_DEALER`, `MULTI_STREAM_CALLBACK` 등 |
 | `transport` | `tcp`, `tls`, `ws`, `wss` |
 | `size` | 메시지 크기(bytes) |
 | `metric` | `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99`, `client_cpu_pct`, `client_mem_mb`, `server_cpu_pct`, `server_mem_mb`, `server_snd_pending_max`, `server_rcv_pending_max`, `server_rcv_pending_end` |
@@ -516,7 +516,7 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 
 ===============================================================================
 
-## PATTERN: MULTI_STREAM (echo)
+## PATTERN: MULTI_STREAM_CALLBACK (echo)
 
 ### Transport: tcp
 | Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | S.CPU% | S.Mem MB |
@@ -607,7 +607,7 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 
 ```text
 ## Failures
-- MULTI_STREAM current wss 65536B: timeout
+- MULTI_STREAM_CALLBACK current wss 65536B: timeout
 ```
 
 ### 6.5 결과 파일 저장
@@ -734,7 +734,7 @@ active warmup은 active phase 시작 전 추가 송수신 워밍업을 수행하
 
 | 방향 | 단위 | 의미 | 측정 지점 | 패턴 |
 |------|------|------|-----------|------|
-| echo | `ops/s` | 왕복 완료 수/초 | client 측 recv | MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_GATEWAY, MULTI_STREAM, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE |
+| echo | `ops/s` | 왕복 완료 수/초 | client 측 recv | MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_GATEWAY, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE |
 | one-way | `msg/s` | 단방향 수신 수/초 | receiver 측 recv | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT |
 
 - echo 패턴: client가 send → server echo → client recv. 1 rtt = 2 message hops. client가 echo를 수신한 횟수를 카운트한다.
@@ -779,7 +779,7 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 
 | 유형 | divisor | 적용 패턴 |
 |------|---------|-----------|
-| 양방향 RTT | `2` | MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_GATEWAY, MULTI_STREAM, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE |
+| 양방향 RTT | `2` | MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_GATEWAY, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE |
 | 단방향 | `received_count` | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT |
 
 ### 9.2 계산식
@@ -856,7 +856,7 @@ one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 
 ### 11.1 지원 패턴
 
-MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MULTI_GATEWAY, MULTI_SPOT, MULTI_STREAM, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE
+MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MULTI_GATEWAY, MULTI_SPOT, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE
 
 #### 바인딩 소스 파일 명명 규칙
 
@@ -871,7 +871,7 @@ MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MUL
 | Node | `perf_multi_<pattern>_server.js` | `perf_multi_<pattern>_client.js` | `perf_multi_stream_server.js` |
 | Python | `perf_multi_<pattern>_server.py` | `perf_multi_<pattern>_client.py` | `perf_multi_stream_server.py` |
 
-- STREAM 계열은 각각 별도 server/client 파일: `stream`, `stream_callback`, `stream_len32be`
+- STREAM 계열은 각각 별도 server/client 파일: `stream_callback`, `stream_len32be`
 - 공통 유틸리티 파일도 `perf_` 접두어: `perf_common.hpp`, `PerfCommon.cs`, `PerfUtil.java`, `perf_common.py` 등
 - 실행 스크립트: bindings는 `multi/run_benchmarks.sh` / `.ps1`, core는 `run_benchmarks_multi.sh` / `.ps1` ([PERF_POLICY.md § 3.1](PERF_POLICY.md) 참조)
 - 파일 분리 대신 단일 runner를 사용하는 경우에도 실행 시점에서는 반드시 server/client 별도 프로세스로 동작해야 하며 READY/RESULT 프로토콜은 동일하게 준수한다.
@@ -888,27 +888,26 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | MULTI_PUBSUB | `*_pubsub_server.cpp` | `comp_src_pubsub_server` | `*_pubsub_client.cpp` | `comp_src_pubsub_client` |
 | MULTI_GATEWAY | `*_gateway_server.cpp` | `comp_src_gateway_server` | `*_gateway_client.cpp` | `comp_src_gateway_client` |
 | MULTI_SPOT | `*_spot_server.cpp` | `comp_src_spot_server` | `*_spot_client.cpp` | `comp_src_spot_client` |
-| MULTI_STREAM | `*_stream_server.cpp` | `comp_src_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 | MULTI_STREAM_CALLBACK | `*_stream_callback_server.cpp` | `comp_src_stream_callback_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 | MULTI_STREAM_LEN32BE | `*_stream_len32be_server.cpp` | `comp_src_stream_len32be_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
-> STREAM client 예외(core): `MULTI_STREAM*` client는 [PERF_POLICY.md § 8.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. server는 패턴별 분리를 유지해야 한다.
+> STREAM client 예외(core): `MULTI_STREAM_CALLBACK` / `MULTI_STREAM_LEN32BE` client는 [PERF_POLICY.md § 8.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. server는 패턴별 분리를 유지해야 한다.
 
-#### MULTI_STREAM 계열 패턴
+#### MULTI_STREAM_CALLBACK 계열 패턴
 
 > **STREAM 소켓은 multi suite에서만 테스트한다.** single suite에서는 STREAM 테스트를 수행하지 않는다. STREAM의 성능 특성은 대량 동시 연결 환경(multi)에서 평가하는 것이 의미 있으므로, 모든 STREAM 벤치마크는 multi suite에 집중한다.
 
 | 패턴 | server 수신 방식 | 설명 |
 |------|-----------------|------|
-| MULTI_STREAM | 기본 recv 루프 | 기존 소켓 recv API(`zlink_recv`/`zmq_recv` 계열)로 메시지 수신 |
 | MULTI_STREAM_CALLBACK | callback dispatch | stream dispatch callback API로 수신 |
 | MULTI_STREAM_LEN32BE | callback + len32be framing | callback dispatch + 32-bit big-endian length-prefixed framing |
 
-- 세 패턴은 동일한 transport, size, clients 설정을 공유한다.
+- 두 패턴은 동일한 transport, size, clients 설정을 공유한다.
 - **Wire protocol**: client는 `[4B length (big-endian)][payload]` (len32be framing)으로 통일한다. server 수신 방식만 패턴별로 다르다. 상세는 [PERF_POLICY.md § 2.0.3 Wire Protocol](PERF_POLICY.md)을 참조한다.
 - 수신 방식만 다르므로 throughput/latency 차이를 직접 비교할 수 있다.
-- MULTI_STREAM 계열의 server 프로세스는 반드시 zlink STREAM 소켓으로 `bind`해야 하며, DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로 대체할 수 없다.
+- MULTI_STREAM(기존 sync recv 기반)은 삭제되었다. callback-only recv 모델 전환에 따라 MULTI_STREAM_CALLBACK이 STREAM 수신의 기본 패턴이다.
+- MULTI_STREAM_CALLBACK / MULTI_STREAM_LEN32BE의 server 프로세스는 반드시 zlink STREAM 소켓으로 `bind`해야 하며, DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로 대체할 수 없다.
 - client 프로세스는 raw transport(`tcp`,`tls`,`ws`,`wss`)로 `connect`해야 하며, zlink STREAM 소켓의 client `connect()` 경로를 사용하지 않는다.
 - 각 size 측정에서 `connect_ok`는 `target clients`와 동일해야 한다(100%). 하나라도 미달하면 해당 조합은 `fail`이다.
 - 위 모델을 위반한 구현은 정책 위반이므로 해당 코드를 삭제하고 정책 모델로 다시 구현해야 한다.
@@ -919,7 +918,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | 패턴군 | 크기 |
 |--------|------|
 | MULTI_DEALER / MULTI_ROUTER / MULTI_PUBSUB | `[64, 256, 1024, 65536, 131072, 262144]` |
-| MULTI_STREAM / MULTI_STREAM_CALLBACK / MULTI_STREAM_LEN32BE | `[64, 256, 1024, 65536]` |
+| MULTI_STREAM_CALLBACK / MULTI_STREAM_LEN32BE | `[64, 256, 1024, 65536]` |
 | MULTI_GATEWAY / MULTI_SPOT | `[64, 256, 1024, 65536, 131072, 262144]` |
 
 - STREAM 계열은 대량 동시 연결 환경에서 테스트하므로 65536B까지만 측정한다.
@@ -930,7 +929,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 |--------|-----------|
 | MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB | tcp, tls, ws, wss (Python 엔진 기본값에 ipc 포함, 단 shell wrapper 기본값은 tcp,tls,ws,wss; Windows: ipc 제외) |
 | MULTI_GATEWAY, MULTI_SPOT | tcp, tls, ws, wss |
-| MULTI_STREAM, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE | tcp, tls, ws, wss |
+| MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE | tcp, tls, ws, wss |
 
 ---
 
@@ -978,15 +977,14 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `PERF_MULTI_CLIENT_POLL_TIMEOUT_MS` | 클라이언트 poll 타임아웃(ms) | 0 |
 | `PERF_MULTI_SNDTIMEO_MS` | 송신 타임아웃(ms) | 200 |
 | `PERF_MULTI_RCVTIMEO_MS` | 수신 타임아웃(ms) | 200 |
 | `PERF_MULTI_MONITOR_HWM` | 모니터 소켓 HWM | 1000 |
 | `PERF_MULTI_PUBSUB_XPUB_NODROP` | PUBSUB 서버의 `ZLINK_XPUB_NODROP` 기본값 | 1 |
 | `PERF_MULTI_SPOT_XPUB_NODROP` | SPOT 서버의 `ZLINK_XPUB_NODROP` 기본값 | 1 |
 
-- `PERF_MULTI_CLIENT_IDLE_SLEEP_US`, `PERF_MULTI_SEND_BACKOFF_US`, `PERF_MULTI_BLOCKING_SEND`는 삭제됐다 (항상 blocking send, 불필요 backoff 제거).
-- `PERF_MULTI_RECV_BATCH`, `PERF_MULTI_SEND_WORKERS`, `PERF_SERVER_RECV_THREADS`는 삭제됐다. multi client는 단일 제어 루프에서 readiness 기반으로 즉시 drain한다.
+- `PERF_MULTI_CLIENT_POLL_TIMEOUT_MS`, `PERF_MULTI_CLIENT_IDLE_SLEEP_US`, `PERF_MULTI_SEND_BACKOFF_US`, `PERF_MULTI_BLOCKING_SEND`는 삭제됐다. callback-only recv 모델에서 poller를 사용하지 않는다.
+- `PERF_MULTI_RECV_BATCH`, `PERF_MULTI_SEND_WORKERS`, `PERF_SERVER_RECV_THREADS`는 삭제됐다. recv는 콜백으로 자동 처리되며, send는 콜백 내에서 직접 호출한다.
 
 ### 12.5 프로세스 조정
 
@@ -1035,10 +1033,10 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | cold path (setup/teardown/결과 출력) | 제한 없음 | — |
 
 - **이유**: lock contention이 throughput/latency 측정값에 포함되어 벤치마크 대상(라이브러리 성능)이 아닌 동기화 오버헤드를 측정하게 된다.
-- **dispatch callback 패턴 (MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE)**: I/O 스레드에서 호출되는 dispatch callback과 측정 스레드 간 데이터 전달에 lock 대신 `std::atomic` 카운터 또는 lock-free queue를 사용한다.
+- **callback-only recv 모델**: 모든 패턴에서 recv는 I/O thread의 콜백으로 처리된다. echo 패턴의 서버/클라이언트는 recv callback 안에서 직접 `send(DONTWAIT)`를 호출하고, backpressure 시 per-socket pending deque에 저장 후 `send_ready_handler`에서 drain한다. 동일 소켓의 콜백은 직렬화되므로 pending deque에 대한 동시 접근이 없어 lock이 불필요하다.
 - throughput 측정 시 callback에서 `atomic_fetch_add`로 카운트만 증가시키고, 패킷 복사/큐잉을 하지 않는 **direct count mode**를 기본으로 한다.
 - latency 측정 등 패킷 내용이 필요한 경우에만 큐잉을 허용하되, lock-free 자료구조를 사용한다.
-- **Multi의 sender/receiver 스레드 간 동기화**: 카운터·플래그 등은 `std::atomic`으로 구현하며, blocking lock을 사용하지 않는다.
+- **app thread와 I/O thread(callback) 간 동기화**: 카운터·플래그 등은 `std::atomic`으로 구현하며, blocking lock을 사용하지 않는다.
 
 ### 13.2 불필요한 메모리 할당/복사 금지
 
@@ -1053,7 +1051,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | routing_id | 필요 시 고정 버퍼에 1회 저장 | 매 메시지마다 `std::vector<unsigned char>` 할당 |
 | 카운터/통계 | `std::atomic<int64_t>` | 구조체를 큐에 push |
 
-- **원칙**: active phase(throughput/latency)에서 벤치마크 인프라 코드의 `malloc`/`new`/`vector::push_back` 호출이 0에 수렴해야 한다. 측정 결과에 라이브러리 외 오버헤드가 포함되면 패턴 간 비교(예: MULTI_STREAM vs MULTI_STREAM_CALLBACK)가 공정하지 않다.
+- **원칙**: active phase(throughput/latency)에서 벤치마크 인프라 코드의 `malloc`/`new`/`vector::push_back` 호출이 0에 수렴해야 한다. 측정 결과에 라이브러리 외 오버헤드가 포함되면 패턴 간 비교(예: MULTI_STREAM_CALLBACK vs MULTI_STREAM_LEN32BE)가 공정하지 않다.
 - warmup phase 이전(setup/connect)과 active 이후(결과 출력/정리)에서는 할당/복사에 제한이 없다.
 - `zlink_msg_data()` 반환 포인터를 직접 참조하여 불필요한 복사를 피한다. 내용 검증이 필요 없는 throughput 측정에서는 payload를 읽지 않는다.
 - Multi의 대량 클라이언트(1000~10000) 환경에서는 per-client 버퍼도 setup 시 사전 할당하고, duration 내에서 재사용한다.
@@ -1064,14 +1062,14 @@ client 프로세스가 server에 대한 **연결 완료(CONNECT READY)**를 확�
 
 | 항목 | 규칙 |
 |------|------|
-| 연결 확인 API | `zlink_socket_monitor_open()` + `zlink_monitor_recv()` |
+| 연결 확인 API | `zlink_socket_monitor_open(..., handler)` — monitor callback으로 이벤트 수신 |
 | 감시 이벤트 | `ZLINK_EVENT_CONNECTION_READY` (필수), `ZLINK_EVENT_CONNECTED` · `ZLINK_EVENT_ACCEPTED` (호환용 선택) |
-| 대기 방식 | `zlink_poll()` + 타임아웃 기반 — busy-wait/sleep 금지 |
+| 대기 방식 | monitor callback에서 atomic counter 증가 + app thread에서 타임아웃 기반 대기 — busy-wait/sleep 금지 |
 | 타임아웃 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` (기본 5000ms) 초과 시 run 실패 처리 |
 | Monitor HWM | `PERF_MULTI_MONITOR_HWM` (기본 1,000) — monitor event queue 상한 |
 
 - **이유**: `ZLINK_EVENT_CONNECTION_READY`는 transport 레벨에서 연결이 확정된 시점을 정확히 통지한다. Sleep은 환경에 따라 불충분하거나 과다하고, handshake barrier는 메시지 전송 자체가 측정 인프라 오버헤드를 유발하여 정확한 준비 시점을 보장하지 못한다.
-- 대기 함수 구현 시 `wait_connect_ready_count(monitor, expected_count, timeout_ms)` 형태로 N개 클라이언트의 연결 완료를 카운트 기반으로 확인한다.
+- 대기 함수 구현 시 monitor callback에서 `atomic_fetch_add`로 connection ready 카운트를 증가시키고, app thread에서 `wait_connect_ready_count(expected_count, timeout_ms)` 형태로 atomic 카운터가 목표에 도달할 때까지 대기한다.
 - server 측에서 client 연결 수락 확인이 필요한 경우에도 동일하게 server 소켓에 MONITOR를 열어 `ZLINK_EVENT_ACCEPTED` / `ZLINK_EVENT_CONNECTION_READY`로 확인한다.
 
 ---
@@ -1096,7 +1094,7 @@ def bandwidth_mbps(throughput, msg_size, is_echo):
     return throughput * msg_size * multiplier / 1_000_000
 
 def latency_rtt_us(elapsed_us, roundtrip_count):
-    """MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_GATEWAY, MULTI_STREAM*"""
+    """MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_GATEWAY, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE"""
     return elapsed_us / max(1, roundtrip_count * 2)
 
 def latency_oneway_us(elapsed_us, count):

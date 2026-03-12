@@ -386,8 +386,6 @@ inline bool wait_all_connect_ready(std::vector<connect_monitor_t> &monitors,
 
 inline void close_connect_monitor(connect_monitor_t &monitor_)
 {
-    if (monitor_.owner)
-        zlink_socket_monitor(monitor_.owner, NULL, 0);
     if (monitor_.monitor)
         zlink_close(monitor_.monitor);
     monitor_.owner = NULL;

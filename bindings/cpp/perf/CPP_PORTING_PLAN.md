@@ -278,7 +278,6 @@ CPP_MULTI_SERVER_PATTERN_SPECS = {
     "MULTI_PUBSUB":          ("perf_pubsub_server.cpp",          ...),
     "MULTI_GATEWAY":         ("perf_gateway_server.cpp",         ...),
     "MULTI_SPOT":            ("perf_spot_server.cpp",            ...),
-    "MULTI_STREAM":          ("perf_stream_server.cpp",          ...),
     "MULTI_STREAM_CALLBACK": ("perf_stream_callback_server.cpp", ...),
     "MULTI_STREAM_LEN32BE":  ("perf_stream_len32be_server.cpp",  ...),
 }
@@ -1134,25 +1133,18 @@ rg -n "std::vector|std::string|new |malloc|make_unique|make_shared" \
 - single 패턴의 기본 메커니즘은 poller 가 아니다. `ROUTER_ROUTER_POLL` 도 이름만 유지하고 동일 정책을 따른다.
 
 **Multi 공통 정책**
-- `recv`: recv 역할 소켓은 기본적으로 `PollIn ON` 으로 등록하고, readiness 발생 시 `recv_flag::dontwait` 로 `EAGAIN` 까지 무제한 drain 한다.
-- `send`: 공유 이벤트 루프에서 `blocking send` 를 사용하지 않는다.
-- `PollOut` 은 기본적으로 `OFF` 이다.
-- 전송 시 `send(..., dontwait)` 를 1회 시도하고, `EAGAIN` 이면 pending 상태만 저장한 뒤 `PollOut ON` 으로 전환한다.
-- pending send 는 **다음 `PollOut` readiness 에서만** 재개한다. `while(send 실패)` 같은 즉시 재시도는 금지한다.
-- pending 이 모두 해소되면 즉시 `PollOut OFF` 로 되돌린다.
+- `recv`: 모든 recv 는 **callback-only** 다. 소켓 생성 시 recv handler 를 등록하면 I/O thread 에서 콜백이 호출된다. poller(`PollIn`) 는 사용하지 않는다.
+- `send`: recv callback 안에서 직접 `send(..., dontwait)` 를 호출한다 (callback 중 same-handle send 허용).
+- `EAGAIN` 시 per-socket pending deque 에 저장하고, `set_send_ready_handler()` 로 writable transition 콜백을 등록한다.
+- send-ready callback 에서 pending deque 를 `EAGAIN` 까지 drain 한다.
+- 동일 소켓의 recv callback 과 send-ready callback 은 직렬화되므로 pending deque 는 일반 `std::deque` 로 충분하다.
+- `while(send 실패)` 같은 즉시 재시도는 금지한다.
 
 **패턴 해석**
-- `echo`: 소켓당 inflight 1개만 유지한다. 응답을 받기 전 같은 소켓에 다음 요청을 보내지 않는다.
-- `one-way send`: recv 없음. `PollOut` 가능 시에만 계속 보내고, `EAGAIN` 에서 멈춘다.
-- `one-way recv`: send 없음. `PollIn + nonblocking drain` 만 수행한다.
+- `echo`: recv callback 에서 echo 메시지를 직접 `send(dontwait)` 로 되돌린다. 소켓당 inflight 1개만 유지한다.
+- `one-way send`: recv 없음. app thread 에서 `send(dontwait)` 로 전송하고, `EAGAIN` 시 `set_send_ready_handler()` 로 재개한다.
+- `one-way recv`: send 없음. recv callback 에서 카운트만 증가시킨다.
 - `pub/sub`, `spot`: 발행/송신 쪽은 one-way send, 구독/수신 쪽은 one-way recv 정책을 따른다.
-- public binding wrapper/documentation 방향은 `core/v4.0.0` 기준 service-instance poller API (`poller.add_spot_sub/pub`, `add_gateway`, `add_receiver`) 를 우선한다.
-- 단, perf 구현은 정책상 핵심 send/recv/backpressure 루프를 파일 안에 명시적으로 유지해야 하므로, facade/service API 가 이를 숨기거나 `dontwait` 를 지원하지 않는 패턴은 raw transport socket 경로를 유지한다.
-- `SPOT` 는 perf 에서 **pollable transport mode 전용** 으로 사용한다.
-  - `spot_node_t::pub_socket_handle()` / `sub_socket_handle()` 를 `zlink::socket_t::wrap(...)` 으로 감싼 raw PUB/SUB 소켓만 사용한다.
-  - 같은 node 기반 `spot_t::publish()`, `spot_t::recv()`, `spot_t::subscribe()` 와 혼용하지 않는다.
-  - 이유: perf multi 정책은 publisher 측 `send(..., dontwait)` + `PollOut` backpressure 제어를 요구하고, 현재 `spot_t::publish(..., send_flag::dontwait)` 는 지원되지 않는다 (`ENOTSUP`).
-  - 따라서 perf 는 service facade convenience 가 아니라 explicit transport path 측정을 위해 socket-level pollable mode 를 유지한다.
 
 ### 15.5 코드 인라이닝 정책
 
@@ -1263,7 +1255,7 @@ while (active) {
   ```bash
   python3 bindings/perf/run_policy_bench.py \
     --binding cpp --suite multi \
-    --pattern MULTI_STREAM --transports tcp --msg-sizes 64 \
+    --pattern MULTI_STREAM_CALLBACK --transports tcp --msg-sizes 64 \
     --runs 1 --multi-duration-seconds 1 --multi-clients 100 --reuse-build
   ```
 - TLS smoke:

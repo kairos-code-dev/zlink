@@ -381,16 +381,14 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 3 | PerfMultiRouterRouterServer | PerfMultiRouterRouterClient | ROUTER_ROUTER | ROUTER bind, echo | ROUTER connect, send+recv |
 | 4 | PerfMultiPubSubServer | PerfMultiPubSubClient | PUBSUB | PUB bind, publish | SUB connect, recv |
 | 5 | PerfMultiGatewayServer | PerfMultiGatewayClient | GATEWAY | Receiver bind, echo | Gateway connect, send+recv |
-| 6 | PerfMultiSpotServer | PerfMultiSpotClient | SPOT | Spot service instance publish + `zlink_poller_add_spot_pub` | Spot service instance recv + `zlink_poller_add_spot_sub` |
-| 7 | PerfMultiStreamServer | (공통 stream client) | STREAM | STREAM bind, raw echo | C++ stream client |
-| 8 | PerfMultiStreamCallbackServer | (공통 stream client) | STREAM_CALLBACK | attachStream callback | C++ stream client |
+| 6 | PerfMultiSpotServer | PerfMultiSpotClient | SPOT | Spot service instance publish | Spot service instance recv |
+| 7 | PerfMultiStreamCallbackServer | (공통 stream client) | STREAM_CALLBACK | attachStream callback | C++ stream client |
 | 9 | PerfMultiStreamLen32BeServer | (공통 stream client) | STREAM_LEN32BE | attachStreamLen32be | C++ stream client |
 
 > 기준 릴리스는 `core/v4.0.0` 이고, native/runtime 동기화 커밋은 `da1d308a`
 > (`chore(bindings): sync runtimes for core v4.0.0`) 이다.
-> public 방향은 socket handover 가 아니라 service instance poller 기준이다.
-> Spot/Gateway/Receiver 는 `zlink_poller_add_*` service API 로 poller 에 등록하고,
-> `SpotNode.open_*()` 류 helper 확장은 권장하지 않는다.
+> callback-only recv 모델 전환에 따라 모든 recv 는 콜백으로 처리하고, poller 는 사용하지 않는다.
+> MULTI_STREAM(기존 sync recv 기반)은 삭제되었다. MULTI_STREAM_CALLBACK 이 STREAM 수신의 기본 패턴이다.
 
 **Multi 서버 통신 프로토콜:**
 - 서버 stdout 에 `READY,<endpoint>` 출력 → 스크립트가 클라이언트 시작
@@ -1030,7 +1028,7 @@ while (System.nanoTime() < activeDeadline) {
   ```bash
   python3 bindings/perf/run_policy_bench.py \
     --binding java --suite multi \
-    --pattern MULTI_STREAM --transports tcp --msg-sizes 64 \
+    --pattern MULTI_STREAM_CALLBACK --transports tcp --msg-sizes 64 \
     --runs 1 --multi-duration-seconds 1 --multi-clients 100 --reuse-build
   ```
 - TLS smoke:
@@ -1494,7 +1492,7 @@ ls -la bindings/java/perf/results/multi/report/perf_*.txt
   - 재검증:
     `TestStreamSocketPortedTest` backlog echo,
     `run_policy_bench.py --binding java --suite multi --pattern MULTI_STREAM_LEN32BE --transports tcp --msg-sizes 64 --runs 1 --result`
-- [x] 멀티 스모크 검증 통과 (tcp/64B): `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`, `MULTI_GATEWAY`, `MULTI_SPOT`, `MULTI_STREAM`, `MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`
+- [x] 멀티 스모크 검증 통과 (tcp/64B): `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`, `MULTI_GATEWAY`, `MULTI_SPOT`, `MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`
 - [ ] 기본설정 `runs=3` 부분 검증 통과: `MULTI_PUBSUB`(all transport/size), `MULTI_GATEWAY`(all), `MULTI_SPOT`(all)
 - [ ] `MULTI_STREAM_LEN32BE` all transport/size `runs=1` 분할 검증 통과
 - [ ] 기본설정 `runs=3` 전체 완주 검증(`MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`) 완료
@@ -1549,21 +1547,18 @@ ls -la bindings/java/perf/results/multi/report/perf_*.txt
 - [ ] 실패를 성공처럼 보이게 만드는 우회 로직 금지
 - [ ] 문서/DoD와 충돌하는 동작 변경 금지
 
-**I/O 실행 정책 (2026-03-07, core/v4.0.0 service-instance poller 반영)**
+**I/O 실행 정책 (callback-only recv 모델)**
 - [ ] `single send`: blocking 단발 호출만 허용 (`SendFlag.NONE`/`SNDMORE`)
-- [ ] `multi send`: `DONTWAIT` 1회 시도 + `EAGAIN` 시 pending 상태만 유지하고 `PollOut` readiness 에서만 재개
-- [ ] `multi send`: `PollOut` 상시 ON 금지 (pending send가 있을 때만 ON, 완료 즉시 OFF)
+- [ ] `multi send`: recv callback 내 `DONTWAIT` send + EAGAIN 시 per-socket pending + `setSendReadyHandler()` drain
+- [ ] `multi backpressure`: `setSendReadyHandler()` 기반, `PollOut` 미사용
 - [ ] `send` 실패(`EAGAIN` 제외) 시 즉시 실패 처리하고 원인(errno/message)을 그대로 노출한다
 - [ ] `single recv`: blocking recv 1회 후 `DONTWAIT` nonblocking drain
-- [ ] `multi recv`: poller readiness 기반으로 소켓별 `DONTWAIT` nonblocking drain (무제한, batch cap 없음)
+- [ ] `multi recv`: callback-only recv (poller 미사용). 소켓 생성 시 recv handler 등록, I/O thread 에서 콜백 호출
 - [ ] one-way recv active 측정은 pre-active backlog(warmup/settle 잔여분)를 drain 한 뒤 첫 active frame 도착 시점부터 시작한다
 - [ ] active-frame 탐색은 고정 cap 으로 끊지 않고, backlog 가 계속 drain 되는 동안에는 계속 진행한다
 - [ ] `PERF_MULTI_RECV_BATCH`류 제어 변수/우회 옵션을 도입하지 않는다
 - [ ] `core/perf`와 달리 send/recv 공통화는 패턴 간 공유 유틸로 추출하지 않고, 각 패턴 파일 내부 `private helper`까지만 허용한다
-- [ ] 핵심 send/recv 루프는 각 패턴 파일에서 샘플 코드처럼 명시적으로 읽히도록 유지한다
-- [ ] Spot/Gateway/Receiver(multi)는 service instance poller 고정:
-  `Poller.addSpotSub/addSpotPub/addGateway/addReceiver` 사용
-- [ ] SpotNode socket handover / `open_*()` helper 확장 방향으로 wrapper 를 늘리지 않는다
+- [ ] 핵심 recv callback/send-ready handler 는 각 패턴 파일에서 샘플 코드처럼 명시적으로 읽히도록 유지한다
 - [ ] STREAM 계열 검증은 큰 backlog/HWM 조건에서도 callback ownership/echo 경로가 유지되는지 확인한다
 
 **6-6 진행 현황 (1차, 2026-03-06)**
@@ -1637,7 +1632,7 @@ ls -la bindings/java/perf/results/multi/report/perf_*.txt
 - [x] **stream tcp smoke** 통과
   ```bash
   python3 bindings/perf/run_policy_bench.py \
-    --binding java --suite multi --pattern MULTI_STREAM --transports tcp --msg-sizes 64 \
+    --binding java --suite multi --pattern MULTI_STREAM_CALLBACK --transports tcp --msg-sizes 64 \
     --runs 1 --multi-duration-seconds 1 --multi-clients 100 --reuse-build
   ```
 - [x] **single tls smoke** 통과

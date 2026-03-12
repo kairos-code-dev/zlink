@@ -241,9 +241,8 @@ void test_socket_handler_family_validation_on_create ()
     const zlink_socket_handler_t xpub_handler =
       make_xpub_handler (&capture_xpub_event);
 
-    void *pair = zlink_socket (ctx, ZLINK_PAIR, NULL);
-    TEST_ASSERT_NOT_NULL (pair);
-    close_zero_linger (pair);
+    TEST_ASSERT_NULL (zlink_socket (ctx, ZLINK_PAIR, NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_NULL (zlink_socket (ctx, ZLINK_PUB, &msg_handler));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_NULL (zlink_socket (ctx, ZLINK_XPUB, &msg_handler));

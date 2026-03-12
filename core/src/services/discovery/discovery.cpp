@@ -1158,8 +1158,7 @@ int discovery_t::register_service (uint16_t service_type_,
              < 0
         || discovery_protocol::send_string (dealer, endpoint_, ZLINK_SNDMORE)
              < 0
-        || discovery_protocol::send_u32 (
-             dealer, weight_ == 0 ? 1 : weight_, 0)
+        || discovery_protocol::send_u32 (dealer, weight_, 0)
              < 0)
         {
             (void) close_transient_dealer (_ctx, dealer);
@@ -1202,7 +1201,7 @@ int discovery_t::register_service (uint16_t service_type_,
         service.service_name = service_name_;
         service.endpoint = key.endpoint;
         service.uplink_endpoint = uplink;
-        service.weight = weight_ == 0 ? 1 : weight_;
+        service.weight = weight_;
         service.last_heartbeat_ms = clock_t ().now_ms ();
     }
 
@@ -1248,7 +1247,7 @@ int discovery_t::update_service_weight (uint16_t service_type_,
         return -1;
     }
 
-    const uint32_t value = weight_ == 0 ? 1 : weight_;
+    const uint32_t value = weight_;
     if (discovery_protocol::send_u16 (
           dealer, discovery_protocol::msg_update_weight, ZLINK_SNDMORE)
           < 0

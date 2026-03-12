@@ -113,7 +113,7 @@ class zlink_stream_echo_server_t
 
         (void) zlink_ctx_set (ctx, ZLINK_IO_THREADS, opt.io_threads);
 
-        server = zlink_socket (ctx, ZLINK_STREAM, NULL);
+        server = zlink_socket (ctx, ZLINK_STREAM);
         if (!server) {
             std::fprintf (stderr, "zlink stream: zlink_socket failed: %s\n",
                           zlink_strerror (zlink_errno ()));

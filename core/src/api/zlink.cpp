@@ -1013,24 +1013,9 @@ static int install_socket_handler (zlink::socket_base_t *socket_,
 
     const zlink_socket_handler_kind_t expected_kind =
       socket_handler_kind_for_type (type_);
-    zlink_socket_handler_t effective_handler;
-    memset (&effective_handler, 0, sizeof (effective_handler));
     if (!handler_) {
-        effective_handler.kind = expected_kind;
-        switch (expected_kind) {
-            case ZLINK_SOCKET_HANDLER_MSG:
-                effective_handler.fn.msg = &discard_socket_msg_handler;
-                break;
-            case ZLINK_SOCKET_HANDLER_SPOT:
-                effective_handler.fn.spot = &discard_spot_handler;
-                break;
-            case ZLINK_SOCKET_HANDLER_XPUB:
-                effective_handler.fn.xpub = &discard_xpub_handler;
-                break;
-            default:
-                break;
-        }
-        handler_ = &effective_handler;
+        errno = EINVAL;
+        return -1;
     }
 
     if (expected_kind == static_cast<zlink_socket_handler_kind_t> (0)
@@ -1199,7 +1184,11 @@ void *zlink_socket (void *ctx_,
             errno = EINVAL;
             return NULL;
         }
-    } else if (handler_) {
+    } else {
+        if (!handler_) {
+            errno = EINVAL;
+            return NULL;
+        }
         if (handler_->kind != expected_kind) {
             errno = EINVAL;
             return NULL;
@@ -1305,14 +1294,6 @@ int zlink_getsockopt (void *s_,
     }
 
     return 0;
-}
-
-int zlink_socket_monitor (void *s_, const char *addr_, int events_)
-{
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return -1;
-    return handle.socket->monitor (addr_, events_, 3, ZLINK_PAIR);
 }
 
 void *zlink_socket_monitor_open (void *s_,
@@ -2077,6 +2058,32 @@ int zlink_gateway_bind (void *gateway_, const char *bind_endpoint_)
         return -1;
     }
     return gateway->bind (bind_endpoint_);
+}
+
+int zlink_gateway_connect (void *gateway_,
+                           const char *endpoint_,
+                           const zlink_routing_id_t *routing_id_)
+{
+    if (!gateway_)
+        return -1;
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->connect (endpoint_, routing_id_);
+}
+
+int zlink_gateway_disconnect (void *gateway_, const char *endpoint_)
+{
+    if (!gateway_)
+        return -1;
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->disconnect (endpoint_);
 }
 
 int zlink_gateway_send (void *gateway_,

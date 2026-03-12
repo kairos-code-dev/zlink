@@ -10,6 +10,11 @@ endif()
 
 project(zlink VERSION 1.6.1 LANGUAGES C CXX)
 
+# Internal repo targets still include the public header from core/include.
+# Define a build-only macro so the header can preserve legacy constants and
+# C++ helper overloads for in-tree code without changing the installed ABI.
+add_compile_definitions(ZLINK_INTERNAL_BUILD=1)
+
 include(CheckIncludeFiles)
 include(CheckCCompilerFlag)
 include(CheckCXXCompilerFlag)

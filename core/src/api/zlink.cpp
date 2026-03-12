@@ -3278,47 +3278,6 @@ int zlink_send (void *s_,
 
 // Receiving functions.
 
-static int s_recvmsg (socket_handle_t handle_, zlink_msg_t *msg_, int flags_)
-{
-    int rc =
-      handle_.socket->recv (reinterpret_cast<zlink::msg_t *> (msg_), flags_);
-    if (unlikely (rc < 0))
-        return -1;
-
-    const size_t sz = zlink_msg_size (msg_);
-    return static_cast<int> (sz < INT_MAX ? sz : INT_MAX);
-}
-
-int zlink_recv (void *s_, void *buf_, size_t len_, int flags_)
-{
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return -1;
-    if (is_stream_type (handle)) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    zlink_msg_t msg;
-    int rc = zlink_msg_init (&msg);
-    errno_assert (rc == 0);
-
-    const int nbytes = s_recvmsg (handle, &msg, flags_);
-    if (unlikely (nbytes < 0)) {
-        const int err = errno;
-        zlink_msg_close (&msg);
-        errno = err;
-        return -1;
-    }
-
-    const size_t to_copy = size_t (nbytes) < len_ ? size_t (nbytes) : len_;
-    if (to_copy) {
-        memcpy (buf_, zlink_msg_data (&msg), to_copy);
-    }
-    zlink_msg_close (&msg);
-
-    return nbytes;
-}
-
 int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_)
 {
     socket_handle_t handle = as_socket_handle (s_);
@@ -3518,19 +3477,6 @@ int zlink_msg_send (zlink_msg_t *msg_,
         return -1;
     return s_sendmsg (handle, msg_, flags_);
 }
-
-int zlink_msg_recv (zlink_msg_t *msg_, void *s_, int flags_)
-{
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return -1;
-    if (is_stream_type (handle)) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return s_recvmsg (handle, msg_, flags_);
-}
-
 
 int zlink_msg_close (zlink_msg_t *msg_)
 {

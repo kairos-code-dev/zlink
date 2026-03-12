@@ -4,9 +4,9 @@
 #define __ZLINK_H_INCLUDED__
 
 /*  Version macros for compile-time API version detection                     */
-#define ZLINK_VERSION_MAJOR 5
+#define ZLINK_VERSION_MAJOR 4
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 3
+#define ZLINK_VERSION_PATCH 2
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -286,14 +286,6 @@ ZLINK_EXPORT int zlink_msg_init_data (
 ZLINK_EXPORT int zlink_msg_send (zlink_msg_t *msg_,
                                  void *s_,
                                  zlink_send_flags_t flags_);
-
-/**
- * @brief Receive a message from a socket.
- *
- * STREAM sockets do not support recv-based consumption; use
- * zlink_stream_attach_raw() instead.
- */
-ZLINK_EXPORT int zlink_msg_recv (zlink_msg_t *msg_, void *s_, int flags_);
 
 /** @brief Release message resources. Must be called after init. */
 ZLINK_EXPORT int zlink_msg_close (zlink_msg_t *msg_);
@@ -680,18 +672,6 @@ ZLINK_EXPORT int zlink_send (void *s_,
                              const void *buf_,
                              size_t len_,
                              zlink_send_flags_t flags_);
-
-/**
- * @brief Receive data from a socket.
- * @param buf_   Receive buffer.
- * @param len_   Maximum buffer size.
- * @param flags_ 0 or ZLINK_DONTWAIT.
- * @return Number of bytes received, or -1 on failure (errno is set).
- *
- * STREAM sockets do not support recv-based consumption; use
- * zlink_stream_attach_raw() instead.
- */
-ZLINK_EXPORT int zlink_recv (void *s_, void *buf_, size_t len_, int flags_);
 
 /**
  * @brief Callback type for raw STREAM chunk dispatch.

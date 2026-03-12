@@ -1,7 +1,7 @@
-#include "../common/perf_entry.hpp"
+#include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
-#include "../../../bench/with_zmq/multi/common/bench_resource.hpp"
+#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <atomic>
 #include <cerrno>
@@ -16,7 +16,7 @@
 
 namespace {
 
-static const char *k_pattern = "ROUTER_ROUTER";
+static const char *k_pattern = "MULTI_ROUTER_ROUTER";
 static const char *k_token = "router_router";
 static const int k_server_socket_type = ZLINK_ROUTER;
 static const bool k_server_has_routing_id = true;
@@ -82,7 +82,7 @@ inline std::string bind_server_endpoint (void *server,
                                          const std::string &token)
 {
     const int bind_port =
-      resolve_int_env ("PERF_SERVER_BIND_PORT", 0, 0);
+      resolve_multi_int_env ("PERF_MULTI_SERVER_BIND_PORT", 0, 0);
     if (bind_port <= 0) {
         std::string endpoint_any = make_endpoint (transport, token);
         if (endpoint_any.empty ()) {
@@ -98,7 +98,7 @@ inline std::string bind_server_endpoint (void *server,
 
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof (last_endpoint);
-        if (zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size)
+        if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size)
             == 0) {
             endpoint_any.assign (last_endpoint);
             const std::string any_v4 = "://0.0.0.0:";
@@ -126,7 +126,7 @@ inline std::string bind_server_endpoint (void *server,
 
     char last_endpoint[MAX_SOCKET_STRING] = "";
     size_t size = sizeof (last_endpoint);
-    if (zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size) == 0)
+    if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size) == 0)
         endpoint.assign (last_endpoint);
     apply_debug_timeouts (server, transport);
     return endpoint;
@@ -139,238 +139,87 @@ enum relay_status_t
     relay_progress = 1
 };
 
-enum send_status_t
+inline relay_status_t relay_router_message_non_blocking (void *server)
 {
-    send_done = 0,
-    send_blocked = 1,
-    send_fatal = 2
-};
-
-struct pending_router_message_t
-{
+    // Identity frame
     zlink_msg_t identity;
-    zlink_msg_t payload;
-    int send_stage;
-    bool has_identity;
-    bool has_payload;
-
-    pending_router_message_t () :
-        send_stage (0),
-        has_identity (false),
-        has_payload (false)
-    {
-        zlink_msg_init (&identity);
-        zlink_msg_init (&payload);
-    }
-
-    ~pending_router_message_t ()
-    {
-        reset ();
-        zlink_msg_close (&identity);
-        zlink_msg_close (&payload);
-    }
-
-    void reset ()
-    {
-        if (has_identity) {
-            zlink_msg_close (&identity);
-            zlink_msg_init (&identity);
-            has_identity = false;
-        }
-        if (has_payload) {
-            zlink_msg_close (&payload);
-            zlink_msg_init (&payload);
-            has_payload = false;
-        }
-        send_stage = 0;
-    }
-
-    bool move_from (pending_router_message_t *other)
-    {
-        if (!other)
-            return false;
-        reset ();
-        if (other->has_identity) {
-            if (zlink_msg_move (&identity, &other->identity) != 0)
-                return false;
-            has_identity = true;
-        }
-        if (other->has_payload) {
-            if (zlink_msg_move (&payload, &other->payload) != 0) {
-                reset ();
-                return false;
-            }
-            has_payload = true;
-        }
-        send_stage = other->send_stage;
-        other->has_identity = false;
-        other->has_payload = false;
-        other->send_stage = 0;
-        return true;
-    }
-};
-
-inline send_status_t try_send_router_message (void *server,
-                                              pending_router_message_t *message)
-{
-    if (!server || !message || !message->has_identity || !message->has_payload)
-        return send_fatal;
-
-    if (message->send_stage == 0) {
-        const int id_rc =
-          zlink_msg_send (&message->identity, server, ZLINK_SNDMORE | ZLINK_DONTWAIT);
-        if (id_rc < 0) {
-            const int err = zlink_errno ();
-            if (err == EINTR || err == EAGAIN)
-                return send_blocked;
-            return send_fatal;
-        }
-        message->send_stage = 1;
-    }
-
-    const int payload_rc =
-      zlink_msg_send (&message->payload, server, ZLINK_DONTWAIT);
-    if (payload_rc < 0) {
-        const int err = zlink_errno ();
-        if (err == EINTR || err == EAGAIN)
-            return send_blocked;
-        return send_fatal;
-    }
-
-    message->reset ();
-    return send_done;
-}
-
-inline bool enqueue_pending_router_message (
-  pending_router_message_t *pending,
-  size_t capacity,
-  size_t *count_io,
-  pending_router_message_t *message)
-{
-    if (!pending || !count_io || !message || *count_io >= capacity)
-        return false;
-    if (!pending[*count_io].move_from (message))
-        return false;
-    ++(*count_io);
-    return true;
-}
-
-inline void erase_pending_router_message (pending_router_message_t *pending,
-                                          size_t *count_io,
-                                          size_t idx)
-{
-    if (!pending || !count_io || idx >= *count_io)
-        return;
-    const size_t last = *count_io - 1;
-    pending[idx].reset ();
-    if (idx != last)
-        (void) pending[idx].move_from (&pending[last]);
-    pending[last].reset ();
-    --(*count_io);
-}
-
-inline bool flush_pending_router_messages (void *server,
-                                           pending_router_message_t *pending,
-                                           size_t *count_io)
-{
-    if (!server || !pending || !count_io)
-        return false;
-
-    size_t idx = 0;
-    while (idx < *count_io) {
-        const send_status_t send_rc =
-          try_send_router_message (server, &pending[idx]);
-        if (send_rc == send_done) {
-            erase_pending_router_message (pending, count_io, idx);
-            continue;
-        }
-        if (send_rc == send_fatal)
-            return false;
-        ++idx;
-    }
-
-    return true;
-}
-
-inline relay_status_t recv_router_message_non_blocking (
-  void *server,
-  pending_router_message_t *message)
-{
-    if (!message)
+    if (zlink_msg_init (&identity) != 0)
         return relay_error;
-    message->reset ();
 
-    int recv_rc = zlink_msg_recv (&message->identity, server, ZLINK_DONTWAIT);
+    int recv_rc = zlink_msg_recv (&identity, server, ZLINK_DONTWAIT);
     while (recv_rc < 0 && zlink_errno () == EINTR)
-        recv_rc = zlink_msg_recv (&message->identity, server, ZLINK_DONTWAIT);
+        recv_rc = zlink_msg_recv (&identity, server, ZLINK_DONTWAIT);
     if (recv_rc < 0) {
         const int err = zlink_errno ();
+        zlink_msg_close (&identity);
         if (err == EAGAIN)
             return relay_idle;
         return relay_error;
     }
-    message->has_identity = true;
 
-    if (zlink_msg_more (&message->identity) == 0)
+    while (!g_stop_requested.load (std::memory_order_acquire)) {
+        const int send_rc = zlink_msg_send (&identity, server, ZLINK_SNDMORE);
+        if (send_rc >= 0)
+            break;
+        const int err = zlink_errno ();
+        if (err == EINTR)
+            continue;
+        if (err == EAGAIN) {
+            std::this_thread::yield ();
+            continue;
+        }
+        zlink_msg_close (&identity);
+        return relay_error;
+    }
+    zlink_msg_close (&identity);
+
+    // Payload frame
+    zlink_msg_t payload;
+    if (zlink_msg_init (&payload) != 0)
         return relay_error;
 
-    recv_rc = zlink_msg_recv (&message->payload, server, ZLINK_DONTWAIT);
+    recv_rc = zlink_msg_recv (&payload, server, 0);
     while (recv_rc < 0 && zlink_errno () == EINTR)
-        recv_rc = zlink_msg_recv (&message->payload, server, ZLINK_DONTWAIT);
+        recv_rc = zlink_msg_recv (&payload, server, 0);
     if (recv_rc < 0) {
-        message->reset ();
+        zlink_msg_close (&payload);
         return relay_error;
     }
-    message->has_payload = true;
-    if (zlink_msg_more (&message->payload) != 0) {
-        message->reset ();
+
+    while (!g_stop_requested.load (std::memory_order_acquire)) {
+        const int send_rc = zlink_msg_send (&payload, server, 0);
+        if (send_rc >= 0)
+            break;
+        const int err = zlink_errno ();
+        if (err == EINTR)
+            continue;
+        if (err == EAGAIN) {
+            std::this_thread::yield ();
+            continue;
+        }
+        zlink_msg_close (&payload);
         return relay_error;
     }
+    zlink_msg_close (&payload);
 
     return relay_progress;
 }
 
-inline bool relay_router_once (void *server,
-                               pending_router_message_t *pending,
-                               size_t pending_capacity,
-                               size_t *pending_count,
-                               int poll_timeout_ms)
+inline bool relay_router_once (void *server, int poll_timeout_ms)
 {
     zlink_pollitem_t item[] = {{server, 0, ZLINK_POLLIN, 0}};
-    if (pending_count && *pending_count > 0)
-        item[0].events |= ZLINK_POLLOUT;
     const int prc = zlink_poll (item, 1, poll_timeout_ms);
     if (prc < 0)
         return zlink_errno () == EINTR;
-
-    if ((item[0].revents & ZLINK_POLLOUT) != 0
-        && pending_count && *pending_count > 0
-        && !flush_pending_router_messages (server, pending, pending_count)) {
-        return false;
-    }
-
     if (prc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
         return true;
 
-    pending_router_message_t request;
     while (!g_stop_requested.load (std::memory_order_acquire)) {
-        const relay_status_t recv_rc =
-          recv_router_message_non_blocking (server, &request);
-        if (recv_rc == relay_error)
+        const relay_status_t status = relay_router_message_non_blocking (server);
+        if (status == relay_error)
             return false;
-        if (recv_rc == relay_idle)
+        if (status == relay_idle)
             break;
-
-        const send_status_t send_rc =
-          try_send_router_message (server, &request);
-        if (send_rc == send_done)
-            continue;
-        if (send_rc == send_fatal)
-            return false;
-        if (!enqueue_pending_router_message (
-              pending, pending_capacity, pending_count, &request)) {
-            return false;
-        }
     }
 
     return true;
@@ -380,7 +229,7 @@ inline void print_server_metrics (
   const std::string &lib_name,
   const std::string &transport,
   const std::vector<size_t> &sizes,
-  const bench_resource_metrics_t &metrics,
+  const bench_multi_resource_metrics_t &metrics,
   const server_queue_stats_t &queue_stats)
 {
     for (size_t i = 0; i < sizes.size (); ++i) {
@@ -406,41 +255,28 @@ inline void print_server_metrics (
 }
 
 inline bool run_server_loop (void *server,
-                             const bench_settings_t &settings,
+                             const multi_bench_settings_t &settings,
                              const std::string &lib_name,
                              const std::string &transport)
 {
+    (void) settings;
     if (!server)
         return false;
 
-    const size_t pending_capacity =
-      std::max<size_t> (
-        64,
-        std::max<size_t> (
-          settings.clients,
-          static_cast<size_t> (settings.hwm > 0 ? settings.hwm : 1))
-          * 2);
-    pending_router_message_t *pending =
-      new pending_router_message_t[pending_capacity];
-    size_t pending_count = 0;
-
     while (!g_stop_requested.load (std::memory_order_acquire)) {
         emit_requested_queue_probe (lib_name, transport, server, server);
-        if (!relay_router_once (
-              server, pending, pending_capacity, &pending_count, 50)) {
-            delete[] pending;
+        if (!relay_router_once (server, 50)) {
             return false;
         }
     }
 
-    delete[] pending;
     return true;
 }
 
 inline int run_server_benchmark (const std::string &lib_name,
                                  const std::string &transport)
 {
-    set_perf_pattern_env (k_pattern);
+    set_perf_multi_pattern_env (k_pattern);
 
     if (!is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
@@ -457,12 +293,11 @@ inline int run_server_benchmark (const std::string &lib_name,
     if (!ctx.valid ())
         return 1;
 
-    void *server = zlink_socket (
-      ctx.get (), static_cast<zlink_socket_type_t> (k_server_socket_type));
+    void *server = zlink_socket (ctx.get (), k_server_socket_type);
     if (!server)
         return 1;
 
-    const bench_settings_t settings = resolve_bench_settings ();
+    const multi_bench_settings_t settings = resolve_multi_bench_settings ();
     const int linger_ms = 0;
     set_sockopt_int (server, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
@@ -521,7 +356,7 @@ inline int run_server_benchmark (const std::string &lib_name,
     if (sizes.empty ())
         sizes.push_back (64);
 
-    const bench_cpu_sample_t sample_start = bench_capture_cpu_sample ();
+    const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
 
     std::cout << "READY," << endpoint << std::endl;
 
@@ -536,8 +371,8 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     const bool loop_ok = run_server_loop (server, settings, lib_name, transport);
 
-    const bench_resource_metrics_t metrics =
-      bench_finish_resource_probe (sample_start);
+    const bench_multi_resource_metrics_t metrics =
+      bench_multi_finish_resource_probe (sample_start);
     const server_queue_stats_t queue_stats =
       sample_server_queue_stats (server, server);
     print_server_metrics (lib_name, transport, sizes, metrics, queue_stats);

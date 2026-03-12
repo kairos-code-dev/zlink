@@ -1,11 +1,11 @@
-#ifndef PERF_METRIC_HEADER_HPP
-#define PERF_METRIC_HEADER_HPP
+#ifndef PERF_MULTI_METRIC_HEADER_HPP
+#define PERF_MULTI_METRIC_HEADER_HPP
 
 #include <chrono>
 #include <cstring>
 #include <stdint.h>
 
-namespace perf_metric {
+namespace perf_multi_metric {
 
 static const uint32_t k_magic = 0x4d504631U; // "MPF1"
 
@@ -122,6 +122,6 @@ inline bool is_expected (const header_t &h,
            && h.msg_size == static_cast<uint32_t> (msg_size);
 }
 
-} // namespace perf_metric
+} // namespace perf_multi_metric
 
 #endif

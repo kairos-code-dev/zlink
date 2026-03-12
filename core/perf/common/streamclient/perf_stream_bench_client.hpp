@@ -120,12 +120,6 @@ make_loopback_bind_plan (const boost::asio::ip::tcp::endpoint &endpoint, int ccu
 class bench_client_t : public bench_client_iface_t
 {
   public:
-    using steady_clock_t = perf_stream_common::steady_clock_t;
-    using milliseconds_t = perf_stream_common::milliseconds_t;
-    using seconds_t = perf_stream_common::seconds_t;
-    using nanoseconds_t = perf_stream_common::nanoseconds_t;
-    using floating_seconds_t = perf_stream_common::floating_seconds_t;
-
     explicit bench_client_t (const client_options_t &opt_)
         : opt (opt_),
           io (),
@@ -172,8 +166,8 @@ class bench_client_t : public bench_client_iface_t
 
         schedule_connects ();
 
-        const auto connect_deadline = steady_clock_t::now ()
-                                      + seconds_t (
+        const auto connect_deadline = std::chrono::steady_clock::now ()
+                                      + std::chrono::seconds (
                                         k_connect_timeout_s);
         {
             std::unique_lock<std::mutex> lk (connect_mu);
@@ -256,6 +250,8 @@ class bench_client_t : public bench_client_iface_t
                 std::fflush (stdout);
                 if (!m.pass)
                     all_pass = false;
+                if ((i + 1) < opt.sizes.size ())
+                    run_size_transition_drain ();
             }
         }
 
@@ -308,14 +304,14 @@ class bench_client_t : public bench_client_iface_t
         return 1U;
     }
 
-    perf_metric::phase_t metric_phase () const override
+    perf_multi_metric::phase_t metric_phase () const override
     {
         const int current_mode = mode.load (std::memory_order_acquire);
         if (current_mode == phase_warmup)
-            return perf_metric::phase_warmup;
+            return perf_multi_metric::phase_warmup;
         if (current_mode == phase_measure)
-            return perf_metric::phase_active;
-        return perf_metric::phase_unknown;
+            return perf_multi_metric::phase_active;
+        return perf_multi_metric::phase_unknown;
     }
 
     uint64_t next_seq () override
@@ -339,7 +335,7 @@ class bench_client_t : public bench_client_iface_t
           static_cast<long long> (bytes), std::memory_order_relaxed);
 
         if (sent_ts_us > 0) {
-            const uint64_t now_us = perf_metric::now_us ();
+            const uint64_t now_us = perf_multi_metric::now_us ();
             if (now_us >= sent_ts_us)
                 add_rtt_sample (
                   static_cast<double> (now_us - sent_ts_us));
@@ -376,7 +372,7 @@ class bench_client_t : public bench_client_iface_t
   private:
     int resolve_connect_batch_limit () const
     {
-        const char *raw = std::getenv ("PERF_STREAM_CONNECT_BATCH");
+        const char *raw = std::getenv ("PERF_MULTI_STREAM_CONNECT_BATCH");
         if (raw && *raw) {
             char *end = NULL;
             errno = 0;
@@ -467,8 +463,8 @@ class bench_client_t : public bench_client_iface_t
         for (size_t i = 0; i < copy.size (); ++i)
             copy[i]->set_chunk_size (size, latch);
 
-        const auto deadline = steady_clock_t::now ()
-                              + seconds_t (k_resize_timeout_s);
+        const auto deadline = std::chrono::steady_clock::now ()
+                              + std::chrono::seconds (k_resize_timeout_s);
         std::unique_lock<std::mutex> lk (latch->mu);
         while (latch->pending > 0) {
             if (latch->cv.wait_until (lk, deadline) == std::cv_status::timeout)
@@ -512,7 +508,7 @@ class bench_client_t : public bench_client_iface_t
                     std::memory_order_release);
 
         kick_phase_for_connected ();
-        std::this_thread::sleep_for (seconds_t (duration_s));
+        std::this_thread::sleep_for (std::chrono::seconds (duration_s));
 
         mode.store (phase_idle, std::memory_order_release);
         collect_metrics.store (false, std::memory_order_release);
@@ -520,12 +516,12 @@ class bench_client_t : public bench_client_iface_t
         const int drain_ms = std::max (0, opt.drain_ms);
         if (drain_ms > 0) {
             const auto drain_deadline =
-              steady_clock_t::now ()
-              + milliseconds_t (drain_ms);
-            while (steady_clock_t::now () < drain_deadline) {
+              std::chrono::steady_clock::now ()
+              + std::chrono::milliseconds (drain_ms);
+            while (std::chrono::steady_clock::now () < drain_deadline) {
                 if (outstanding_total.load (std::memory_order_relaxed) <= 0)
                     break;
-                std::this_thread::sleep_for (milliseconds_t (1));
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
             }
 
             const long remaining = outstanding_total.load (std::memory_order_relaxed);
@@ -536,6 +532,23 @@ class bench_client_t : public bench_client_iface_t
         }
 
         return true;
+    }
+
+    // Brief drain between size transitions to let in-flight ops complete.
+    void run_size_transition_drain ()
+    {
+        const int drain_ms = std::max (0, opt.size_transition_drain_ms);
+        if (drain_ms <= 0)
+            return;
+
+        const auto drain_deadline =
+          std::chrono::steady_clock::now ()
+          + std::chrono::milliseconds (drain_ms);
+        while (std::chrono::steady_clock::now () < drain_deadline) {
+            if (outstanding_total.load (std::memory_order_relaxed) <= 0)
+                break;
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
     }
 
     void reset_measurement_counters ()

@@ -31,6 +31,7 @@ struct client_options_t
     int warmup;
     int duration;
     int drain_ms;
+    int size_transition_drain_ms;
     int io_threads;
     int print_perf_result;
     std::string stop_token;
@@ -47,12 +48,15 @@ struct client_options_t
           warmup (2),
           duration (10),
           drain_ms (0),
+          size_transition_drain_ms (0),
           io_threads (4),
           print_perf_result (0),
           stop_token ("__zlink_perf_stop__"),
           send_stop_token (0)
     {
         sizes.push_back (64);
+        sizes.push_back (1024);
+        sizes.push_back (65536);
     }
 };
 
@@ -108,6 +112,8 @@ inline bool parse_options (int argc, char **argv, client_options_t &opt)
     opt.warmup = args.get_int ("--warmup", opt.warmup, 0);
     opt.duration = args.get_int ("--duration", opt.duration, 1);
     opt.drain_ms = args.get_int ("--drain-ms", opt.drain_ms, 0);
+    opt.size_transition_drain_ms = args.get_int (
+      "--size-transition-drain-ms", opt.size_transition_drain_ms, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
     opt.print_perf_result = args.get_int ("--print-perf-result",
                                           opt.print_perf_result, 0);
@@ -145,16 +151,6 @@ inline bool parse_options (int argc, char **argv, client_options_t &opt)
             std::fprintf (stderr, "invalid --sizes: %s\n", sizes_text.c_str ());
             return false;
         }
-    }
-    if (opt.sizes.empty ())
-        opt.sizes.push_back (64);
-    if (opt.sizes.size () > 1) {
-        const size_t first_size = opt.sizes[0];
-        opt.sizes.assign (1, first_size);
-        std::fprintf (stderr,
-                      "perf_stream_client: --sizes supports one size per run; "
-                      "using first=%zu\n",
-                      first_size);
     }
 
     return true;

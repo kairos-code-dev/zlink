@@ -8,8 +8,6 @@
 
 namespace {
 
-typedef std::chrono::steady_clock steady_clock_t;
-
 inline int recv_single_part_header_flags (
   void *socket,
   size_t expected_size,
@@ -61,20 +59,20 @@ inline int recv_single_part_header_flags (
     return 1;
 }
 
-inline bool run_one_way_phase (void *sender,
-                               void *receiver,
-                               std::vector<char> *payload,
-                               size_t payload_size,
-                               size_t msg_size,
-                               uint32_t run_id,
-                               uint64_t *seq,
-                               perf_single_metric::phase_t phase,
-                               int warmup_count,
-                               int duration_s,
-                               int recv_timeout_ms,
-                               queue_probe_t *queue_probe,
-                               unsigned long long *out_received,
-                               latency_stats_t *out_latency)
+inline bool run_oneway_phase (void *sender,
+                              void *receiver,
+                              std::vector<char> *payload,
+                              size_t payload_size,
+                              size_t msg_size,
+                              uint32_t run_id,
+                              uint64_t *seq,
+                              perf_single_metric::phase_t phase,
+                              int warmup_count,
+                              int duration_s,
+                              int recv_timeout_ms,
+                              queue_probe_t *queue_probe,
+                              unsigned long long *out_received,
+                              latency_stats_t *out_latency)
 {
     if (!sender || !receiver || !payload || !seq || !out_received)
         return false;
@@ -82,22 +80,24 @@ inline bool run_one_way_phase (void *sender,
     const bool active_phase = phase == perf_single_metric::phase_active;
     const auto deadline =
       active_phase
-        ? steady_clock_t::now ()
-            + seconds_t (duration_s > 0 ? duration_s : 1)
-        : steady_clock_t::time_point ();
-    const auto drain_idle_limit =
-      milliseconds_t (recv_timeout_ms > 0 ? recv_timeout_ms : 200);
+        ? std::chrono::steady_clock::now ()
+            + std::chrono::seconds (duration_s > 0 ? duration_s : 1)
+        : std::chrono::steady_clock::time_point ();
+    const auto drain_idle_limit = std::chrono::milliseconds (
+      recv_timeout_ms > 0 ? recv_timeout_ms : 200);
 
     std::atomic<bool> sender_done (false);
     std::atomic<bool> recv_failed (false);
+
     unsigned long long received = 0;
     latency_stats_builder_t latency_builder;
 
     std::thread receiver_thread ([&] () {
-        auto last_recv_at = steady_clock_t::now ();
+        auto last_recv_at = std::chrono::steady_clock::now ();
 
         auto account_header =
-          [&] (const perf_single_metric::header_t &header, bool header_ok) {
+          [&] (const perf_single_metric::header_t &header,
+               bool header_ok) {
               if (active_phase && queue_probe)
                   queue_probe->sample_recv_if_due ();
 
@@ -107,7 +107,7 @@ inline bool run_one_way_phase (void *sender,
               }
 
               if (active_phase) {
-                  if (steady_clock_t::now () < deadline) {
+                  if (std::chrono::steady_clock::now () < deadline) {
                       ++received;
                       const uint64_t now = perf_single_metric::now_us ();
                       const double latency_us =
@@ -126,31 +126,31 @@ inline bool run_one_way_phase (void *sender,
 
         while (true) {
             const bool done = sender_done.load (std::memory_order_acquire);
-            const int flags = done ? ZLINK_DONTWAIT : 0;
+            const int flags = 0;
 
             perf_single_metric::header_t header;
             bool header_ok = false;
-            int recv_rc = recv_single_part_header_flags (
+            const int recv_rc = recv_single_part_header_flags (
               receiver, payload_size, flags, &header, &header_ok);
             if (recv_rc > 0) {
-                last_recv_at = steady_clock_t::now ();
+                last_recv_at = std::chrono::steady_clock::now ();
                 account_header (header, header_ok);
 
                 for (;;) {
                     perf_single_metric::header_t burst_header;
                     bool burst_header_ok = false;
-                    recv_rc = recv_single_part_header_flags (
+                    const int burst_rc = recv_single_part_header_flags (
                       receiver,
                       payload_size,
                       ZLINK_DONTWAIT,
                       &burst_header,
                       &burst_header_ok);
-                    if (recv_rc > 0) {
-                        last_recv_at = steady_clock_t::now ();
+                    if (burst_rc > 0) {
+                        last_recv_at = std::chrono::steady_clock::now ();
                         account_header (burst_header, burst_header_ok);
                         continue;
                     }
-                    if (recv_rc == 0)
+                    if (burst_rc == 0)
                         break;
 
                     recv_failed.store (true, std::memory_order_release);
@@ -163,9 +163,11 @@ inline bool run_one_way_phase (void *sender,
             }
 
             if (recv_rc == 0) {
-                if (done && steady_clock_t::now () - last_recv_at >= drain_idle_limit)
+                if (done
+                    && std::chrono::steady_clock::now () - last_recv_at
+                         >= drain_idle_limit) {
                     break;
-                std::this_thread::yield ();
+                }
                 continue;
             }
 
@@ -177,11 +179,12 @@ inline bool run_one_way_phase (void *sender,
             queue_probe->force_sample_recv ();
     });
 
+    bool send_failed = false;
     if (active_phase && queue_probe)
         queue_probe->force_sample_send ();
-    bool send_failed = false;
+
     if (active_phase) {
-        while (steady_clock_t::now () < deadline) {
+        while (std::chrono::steady_clock::now () < deadline) {
             const uint64_t sent_ts = perf_single_metric::now_us ();
             if (!perf_single_metric::stamp_payload (payload->data (),
                                                     payload_size,
@@ -224,6 +227,7 @@ inline bool run_one_way_phase (void *sender,
         return false;
 
     *out_received = received;
+
     if (active_phase) {
         if (received == 0 || latency_builder.count () == 0 || !out_latency)
             return false;
@@ -288,20 +292,20 @@ void run_dealer_dealer (const std::string &transport,
 
     unsigned long long warmup_received = 0;
     const int warmup_count = resolve_bench_count ("PERF_WARMUP_COUNT", 1000);
-    if (!run_one_way_phase (s2.get (),
-                            s1.get (),
-                            &payload,
-                            payload_size,
-                            msg_size,
-                            run_id,
-                            &seq,
-                            perf_single_metric::phase_warmup,
-                            warmup_count,
-                            0,
-                            recv_timeout_ms,
-                            NULL,
-                            &warmup_received,
-                            NULL)) {
+    if (!run_oneway_phase (s2.get (),
+                           s1.get (),
+                           &payload,
+                           payload_size,
+                           msg_size,
+                           run_id,
+                           &seq,
+                           perf_single_metric::phase_warmup,
+                           warmup_count,
+                           0,
+                           recv_timeout_ms,
+                           NULL,
+                           &warmup_received,
+                           NULL)) {
         print_fail_with_queue ();
         return;
     }
@@ -309,20 +313,20 @@ void run_dealer_dealer (const std::string &transport,
     const int duration_s = std::max (1, resolve_single_duration_seconds ());
     unsigned long long received = 0;
     latency_stats_t latency_stats;
-    if (!run_one_way_phase (s2.get (),
-                            s1.get (),
-                            &payload,
-                            payload_size,
-                            msg_size,
-                            run_id,
-                            &seq,
-                            perf_single_metric::phase_active,
-                            0,
-                            duration_s,
-                            recv_timeout_ms,
-                            &queue_probe,
-                            &received,
-                            &latency_stats)) {
+    if (!run_oneway_phase (s2.get (),
+                           s1.get (),
+                           &payload,
+                           payload_size,
+                           msg_size,
+                           run_id,
+                           &seq,
+                           perf_single_metric::phase_active,
+                           0,
+                           duration_s,
+                           recv_timeout_ms,
+                           &queue_probe,
+                           &received,
+                           &latency_stats)) {
         print_fail_with_queue ();
         return;
     }

@@ -2,9 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE"
-TRANSPORTS="tcp,tls,ws,wss"
-IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
+MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE"
+MULTI_TRANSPORTS="tcp,tls,ws,wss"
+IFS=',' read -r -a MULTI_PATTERN_LIST <<< "${MULTI_PATTERNS}"
 
 SECONDS=0
 SHOW_TOTAL_TIME=0
@@ -37,28 +37,6 @@ trap 'print_total_time $?' EXIT
 is_uint() {
   local value="${1:-}"
   [[ "${value}" =~ ^[0-9]+$ ]]
-}
-
-first_env_value() {
-  local name=""
-  for name in "$@"; do
-    if [[ -n "${!name:-}" ]]; then
-      printf '%s' "${!name}"
-      return 0
-    fi
-  done
-  return 1
-}
-
-env_or_default() {
-  local default_value="${1:-}"
-  shift || true
-  local resolved=""
-  if resolved="$(first_env_value "$@" 2>/dev/null)"; then
-    printf '%s' "${resolved}"
-  else
-    printf '%s' "${default_value}"
-  fi
 }
 
 NOFILE_SKIP_REASON=""
@@ -142,12 +120,9 @@ resolve_memory_max_clients() {
     return
   fi
 
-  local budget_pct
-  local base_mb
-  local per_client_kb
-  budget_pct="$(env_or_default "70" PERF_MEMORY_BUDGET_PCT PERF_MULTI_MEMORY_BUDGET_PCT)"
-  base_mb="$(env_or_default "512" PERF_MEMORY_BASE_MB PERF_MULTI_MEMORY_BASE_MB)"
-  per_client_kb="$(env_or_default "1024" PERF_MEMORY_PER_CLIENT_KB PERF_MULTI_MEMORY_PER_CLIENT_KB)"
+  local budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-70}"
+  local base_mb="${PERF_MULTI_MEMORY_BASE_MB:-512}"
+  local per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-1024}"
   if ! is_uint "${budget_pct}" || (( budget_pct < 1 || budget_pct > 95 )); then
     echo ""
     return
@@ -197,12 +172,9 @@ ensure_memory_budget() {
 
   local available_kb
   available_kb="$(memory_available_kb)"
-  local budget_pct
-  local base_mb
-  local per_client_kb
-  budget_pct="$(env_or_default "70" PERF_MEMORY_BUDGET_PCT PERF_MULTI_MEMORY_BUDGET_PCT)"
-  base_mb="$(env_or_default "512" PERF_MEMORY_BASE_MB PERF_MULTI_MEMORY_BASE_MB)"
-  per_client_kb="$(env_or_default "1024" PERF_MEMORY_PER_CLIENT_KB PERF_MULTI_MEMORY_PER_CLIENT_KB)"
+  local budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-70}"
+  local base_mb="${PERF_MULTI_MEMORY_BASE_MB:-512}"
+  local per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-1024}"
   MEMORY_SKIP_REASON="clients=${clients},max_clients=${max_clients},mem_available_kb=${available_kb},budget_pct=${budget_pct},base_mb=${base_mb},per_client_kb=${per_client_kb}"
   return 1
 }
@@ -214,13 +186,13 @@ Usage: core/perf/run_benchmarks_multi.sh [options]
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
   DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE
-Legacy MULTI_ prefix is accepted and stripped automatically.
+The MULTI_ prefix is auto-prepended internally; you may omit it.
 By default, this wrapper runs current zlink only.
 By default, multi-bench keeps warmup at 2s and duration window at 5s.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
 
 Options:
-  --pattern NAME         Benchmark pattern (default: all patterns above). Legacy MULTI_ prefix is optional.
+  --pattern NAME         Benchmark pattern (default: all patterns above). MULTI_ prefix is optional.
                          Alias: stream/streams => STREAM,STREAM_CALLBACK,STREAM_LEN32BE
   --help                 Show this help.
   --reuse-build          Reuse existing build directory as-is (skip configure/build).
@@ -232,48 +204,46 @@ Options:
   --runs N               Iterations per configuration (default: 1).
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
   --io-threads N         Legacy alias that sets both server/client io-threads.
-  --server-io-threads N  Set PERF_SERVER_IO_THREADS
+  --server-io-threads N  Set PERF_MULTI_SERVER_IO_THREADS
                          (default: non-stream=2, stream=4).
-  --client-io-threads N  Set PERF_CLIENT_IO_THREADS
+  --client-io-threads N  Set PERF_MULTI_CLIENT_IO_THREADS
                          (default: non-stream=2, stream=4).
   --msg-sizes LIST       Comma-separated message sizes.
   --transports LIST      Comma-separated transports.
   --warmup N             Optional override for multi warmup seconds (default 2).
   --duration N           Optional override for multi duration seconds (default 5).
   --clients N            Override number of client sockets per pattern (default: 100, stream=10000).
-  --hwm N                Override PERF_HWM (default: 100, stream=10 in binary).
-  --send-hwm N           Override PERF_SNDHWM (fallback: --hwm).
-  --recv-hwm N           Override PERF_RCVHWM (fallback: --hwm).
-  --sndbuf SIZE          Override PERF_SNDBUF (e.g. 64b, 1k, 64k).
-  --rcvbuf SIZE          Override PERF_RCVBUF (e.g. 64b, 1k, 64k).
-  --sndtimeo N           Override PERF_SNDTIMEO_MS (default: 200).
-  --rcvtimeo N           Override PERF_RCVTIMEO_MS (default: 200).
+  --hwm N                Override PERF_MULTI_HWM (default: 100, stream=10 in binary).
+  --send-hwm N           Override PERF_MULTI_SNDHWM (fallback: --hwm).
+  --recv-hwm N           Override PERF_MULTI_RCVHWM (fallback: --hwm).
+  --sndtimeo N           Override PERF_MULTI_SNDTIMEO_MS (default: 200).
+  --rcvtimeo N           Override PERF_MULTI_RCVTIMEO_MS (default: 200).
   --send-timeout-ms N    Alias of --sndtimeo.
   --recv-timeout-ms N    Alias of --rcvtimeo.
   --connect-concurrency N
                          Override concurrent connect count.
   --transport-transition-ms N
-                         Override PERF_TRANSPORT_TRANSITION_MS (default: 3000).
+                         Override PERF_MULTI_TRANSPORT_TRANSITION_MS (default: 3000).
   --pattern-transition-ms N
-                         Override PERF_PATTERN_TRANSITION_MS (default: 3000).
+                         Override PERF_MULTI_PATTERN_TRANSITION_MS (default: 3000).
   --server-ready-timeout-ms N
-                         Override PERF_SERVER_READY_TIMEOUT_MS (default: 10000).
+                         Override PERF_MULTI_SERVER_READY_TIMEOUT_MS (default: 10000).
   --connect-ready-timeout-ms N
-                         Override PERF_CONNECT_READY_TIMEOUT_MS (default: 5000).
-  --monitor-hwm N        Override PERF_MONITOR_HWM (default: 1000).
+                         Override PERF_MULTI_CONNECT_READY_TIMEOUT_MS (default: 5000).
+  --monitor-hwm N        Override PERF_MULTI_MONITOR_HWM (default: 1000).
   --server-shutdown-timeout-ms N
-                         Override PERF_SERVER_SHUTDOWN_TIMEOUT_MS (default: 5000).
+                         Override PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS (default: 5000).
   --server-bind-port N
-                         Override PERF_SERVER_BIND_PORT (default: 0=auto).
+                         Override PERF_MULTI_SERVER_BIND_PORT (default: 0=auto).
 
 Environment:
   PERF_SKIP_NOFILE_CHECK=1   Disable preflight nofile(limit) check
   PERF_SKIP_MEMORY_CHECK=1   Disable preflight memory guard check
-  PERF_MEMORY_BUDGET_PCT=70
+  PERF_MULTI_MEMORY_BUDGET_PCT=70
                             Percent of MemAvailable reserved for multi benchmark sockets
-  PERF_MEMORY_BASE_MB=512
+  PERF_MULTI_MEMORY_BASE_MB=512
                             Fixed memory reserve before per-client estimate
-  PERF_MEMORY_PER_CLIENT_KB=1024
+  PERF_MULTI_MEMORY_PER_CLIENT_KB=1024
                             Estimated memory per client socket for guard
 Notes:
   - result is saved under results/multi/report/.
@@ -283,8 +253,8 @@ USAGE
 
 resolve_pattern_connect_concurrency() {
   local clients="${1:-}"
-  if [[ -n "${CONNECT_CONCURRENCY}" ]]; then
-    echo "${CONNECT_CONCURRENCY}"
+  if [[ -n "${MULTI_CONNECT_CONCURRENCY}" ]]; then
+    echo "${MULTI_CONNECT_CONCURRENCY}"
     return
   fi
   if [[ "${clients}" =~ ^[0-9]+$ ]] && (( clients >= 10000 )); then
@@ -341,48 +311,34 @@ HAS_EXPLICIT_RUNS=0
 HAS_EXPLICIT_RESULTS_DIR=0
 BUILD_MODE="incremental"
 BUILD_MODE_EXPLICIT=0
-WARMUP_SECONDS="$(env_or_default "2" PERF_WARMUP_SECONDS PERF_MULTI_WARMUP_SECONDS)"
-DURATION_SECONDS="$(env_or_default "5" PERF_DURATION_SECONDS PERF_MULTI_DURATION_SECONDS)"
-CLIENTS="$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)"
-HWM="$(env_or_default "" PERF_HWM PERF_MULTI_HWM)"
-SNDHWM="$(env_or_default "" PERF_SNDHWM PERF_MULTI_SNDHWM)"
-RCVHWM="$(env_or_default "" PERF_RCVHWM PERF_MULTI_RCVHWM)"
-SNDBUF="$(env_or_default "" PERF_SNDBUF PERF_MULTI_SNDBUF)"
-RCVBUF="$(env_or_default "" PERF_RCVBUF PERF_MULTI_RCVBUF)"
-SNDTIMEO_MS="$(env_or_default "200" PERF_SNDTIMEO_MS PERF_MULTI_SNDTIMEO_MS)"
-RCVTIMEO_MS="$(env_or_default "200" PERF_RCVTIMEO_MS PERF_MULTI_RCVTIMEO_MS)"
-CONNECT_CONCURRENCY="$(env_or_default "" PERF_CONNECT_CONCURRENCY PERF_MULTI_CONNECT_CONCURRENCY)"
-ACTIVE_WARMUP="$(env_or_default "" PERF_ACTIVE_WARMUP PERF_MULTI_ACTIVE_WARMUP)"
-SETTLE_MS="$(env_or_default "" PERF_SETTLE_MS PERF_MULTI_SETTLE_MS)"
-CLIENT_POLL_TIMEOUT_MS="$(env_or_default "" PERF_CLIENT_POLL_TIMEOUT_MS PERF_MULTI_CLIENT_POLL_TIMEOUT_MS)"
-SERVICE_CLIENTS="$(env_or_default "" PERF_SERVICE_CLIENTS PERF_MULTI_SERVICE_CLIENTS)"
-LATENCY_SAMPLE_CAP="$(env_or_default "" PERF_LATENCY_SAMPLE_CAP PERF_MULTI_LATENCY_SAMPLE_CAP)"
-TIMEOUT_SECONDS="$(env_or_default "" PERF_TIMEOUT_SECONDS PERF_MULTI_TIMEOUT_SECONDS)"
-STREAM_MSG_SIZES="$(env_or_default "" PERF_STREAM_MSG_SIZES PERF_MULTI_STREAM_MSG_SIZES)"
-PUBSUB_XPUB_NODROP="$(env_or_default "" PERF_PUBSUB_XPUB_NODROP PERF_MULTI_PUBSUB_XPUB_NODROP)"
-SPOT_XPUB_NODROP="$(env_or_default "" PERF_SPOT_XPUB_NODROP PERF_MULTI_SPOT_XPUB_NODROP)"
-RUN_COOLDOWN_MS="$(env_or_default "3000" PERF_RUN_COOLDOWN_MS PERF_MULTI_RUN_COOLDOWN_MS)"
-TRANSPORT_TRANSITION_MS="$(env_or_default "3000" PERF_TRANSPORT_TRANSITION_MS PERF_MULTI_TRANSPORT_TRANSITION_MS)"
-PATTERN_TRANSITION_MS="$(env_or_default "3000" PERF_PATTERN_TRANSITION_MS PERF_MULTI_PATTERN_TRANSITION_MS)"
-SERVER_READY_TIMEOUT_MS="$(env_or_default "10000" PERF_SERVER_READY_TIMEOUT_MS PERF_MULTI_SERVER_READY_TIMEOUT_MS)"
-CONNECT_READY_TIMEOUT_MS="$(env_or_default "5000" PERF_CONNECT_READY_TIMEOUT_MS PERF_MULTI_CONNECT_READY_TIMEOUT_MS)"
-MONITOR_HWM="$(env_or_default "1000" PERF_MONITOR_HWM PERF_MULTI_MONITOR_HWM)"
-SERVER_SHUTDOWN_TIMEOUT_MS="$(env_or_default "5000" PERF_SERVER_SHUTDOWN_TIMEOUT_MS PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS)"
-SERVER_BIND_PORT="$(env_or_default "0" PERF_SERVER_BIND_PORT PERF_MULTI_SERVER_BIND_PORT)"
+MULTI_WARMUP_SECONDS="${PERF_MULTI_WARMUP_SECONDS:-2}"
+MULTI_DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-5}"
+MULTI_CLIENTS="${PERF_MULTI_CLIENTS:-}"
+MULTI_HWM="${PERF_MULTI_HWM:-}"
+MULTI_SNDHWM="${PERF_MULTI_SNDHWM:-}"
+MULTI_RCVHWM="${PERF_MULTI_RCVHWM:-}"
+MULTI_SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-200}"
+MULTI_RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-200}"
+MULTI_CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-}"
+MULTI_TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
+MULTI_PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
+MULTI_SERVER_READY_TIMEOUT_MS="${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-10000}"
+MULTI_CONNECT_READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
+MULTI_MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-1000}"
+MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}"
+MULTI_SERVER_BIND_PORT="${PERF_MULTI_SERVER_BIND_PORT:-0}"
 DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 EXPLICIT_PATTERNS=()
 SCRIPT_ARGS=()
-EFFECTIVE_DEFAULT_CLIENTS="${PERF_DEFAULT_CLIENTS:-100}"
-EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_DEFAULT_STREAM_CLIENTS:-10000}"
-EFFECTIVE_DEFAULT_HWM="${PERF_DEFAULT_HWM:-100}"
-EFFECTIVE_DEFAULT_STREAM_HWM="${PERF_DEFAULT_STREAM_HWM:-10}"
-EFFECTIVE_DEFAULT_IO_THREADS="$(env_or_default "2" PERF_DEFAULT_IO_THREADS PERF_MULTI_DEFAULT_IO_THREADS)"
-EFFECTIVE_DEFAULT_STREAM_IO_THREADS="$(env_or_default "4" PERF_DEFAULT_STREAM_IO_THREADS PERF_MULTI_STREAM_DEFAULT_IO_THREADS)"
-SERVER_IO_THREADS="$(env_or_default "" PERF_SERVER_IO_THREADS PERF_MULTI_SERVER_IO_THREADS)"
-CLIENT_IO_THREADS="$(env_or_default "" PERF_CLIENT_IO_THREADS PERF_MULTI_CLIENT_IO_THREADS)"
-STREAM_SERVER_IO_THREADS="$(env_or_default "" PERF_STREAM_SERVER_IO_THREADS PERF_MULTI_STREAM_SERVER_IO_THREADS)"
-STREAM_CLIENT_IO_THREADS="$(env_or_default "" PERF_STREAM_CLIENT_IO_THREADS PERF_MULTI_STREAM_CLIENT_IO_THREADS)"
+EFFECTIVE_DEFAULT_MULTI_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-100}"
+EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-10000}"
+EFFECTIVE_DEFAULT_MULTI_HWM="${PERF_MULTI_DEFAULT_HWM:-100}"
+EFFECTIVE_DEFAULT_STREAM_HWM="${PERF_MULTI_DEFAULT_STREAM_HWM:-10}"
+EFFECTIVE_DEFAULT_MULTI_IO_THREADS="${PERF_MULTI_DEFAULT_IO_THREADS:-2}"
+EFFECTIVE_DEFAULT_STREAM_IO_THREADS="${PERF_MULTI_DEFAULT_STREAM_IO_THREADS:-4}"
+MULTI_SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-}"
+MULTI_CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-}"
 
 set_build_mode() {
   local next_mode="${1:-}"
@@ -429,7 +385,7 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       if [[ "$(printf '%s' "$2" | tr '[:lower:]' '[:upper:]')" == "ALL" ]]; then
-        EXPLICIT_PATTERNS=("${PATTERN_LIST[@]}")
+        EXPLICIT_PATTERNS=("${MULTI_PATTERN_LIST[@]}")
         shift 2
         continue
       fi
@@ -475,7 +431,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      WARMUP_SECONDS="${2}"
+      MULTI_WARMUP_SECONDS="${2}"
       shift 2
       ;;
     --duration)
@@ -483,7 +439,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      DURATION_SECONDS="${2}"
+      MULTI_DURATION_SECONDS="${2}"
       shift 2
       ;;
     --pin-cpu)
@@ -513,8 +469,8 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      SERVER_IO_THREADS="${2}"
-      CLIENT_IO_THREADS="${2}"
+      MULTI_SERVER_IO_THREADS="${2}"
+      MULTI_CLIENT_IO_THREADS="${2}"
       shift 2
       ;;
     --server-io-threads)
@@ -522,7 +478,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      SERVER_IO_THREADS="${2}"
+      MULTI_SERVER_IO_THREADS="${2}"
       shift 2
       ;;
     --client-io-threads)
@@ -530,7 +486,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      CLIENT_IO_THREADS="${2}"
+      MULTI_CLIENT_IO_THREADS="${2}"
       shift 2
       ;;
     --clients)
@@ -538,7 +494,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      CLIENTS="${2}"
+      MULTI_CLIENTS="${2}"
       shift 2
       ;;
     --hwm)
@@ -546,7 +502,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      HWM="${2}"
+      MULTI_HWM="${2}"
       shift 2
       ;;
     --send-hwm)
@@ -554,7 +510,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      SNDHWM="${2}"
+      MULTI_SNDHWM="${2}"
       shift 2
       ;;
     --recv-hwm)
@@ -562,23 +518,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      RCVHWM="${2}"
-      shift 2
-      ;;
-    --sndbuf)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: $1 requires a value." >&2
-        exit 1
-      fi
-      SNDBUF="${2}"
-      shift 2
-      ;;
-    --rcvbuf)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: $1 requires a value." >&2
-        exit 1
-      fi
-      RCVBUF="${2}"
+      MULTI_RCVHWM="${2}"
       shift 2
       ;;
     --sndtimeo|--send-timeout-ms)
@@ -586,7 +526,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      SNDTIMEO_MS="${2}"
+      MULTI_SNDTIMEO_MS="${2}"
       shift 2
       ;;
     --rcvtimeo|--recv-timeout-ms)
@@ -594,7 +534,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      RCVTIMEO_MS="${2}"
+      MULTI_RCVTIMEO_MS="${2}"
       shift 2
       ;;
     --connect-concurrency)
@@ -602,7 +542,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      CONNECT_CONCURRENCY="${2}"
+      MULTI_CONNECT_CONCURRENCY="${2}"
       shift 2
       ;;
     --transport-transition-ms)
@@ -610,7 +550,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      TRANSPORT_TRANSITION_MS="${2}"
+      MULTI_TRANSPORT_TRANSITION_MS="${2}"
       shift 2
       ;;
     --pattern-transition-ms)
@@ -618,7 +558,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      PATTERN_TRANSITION_MS="${2}"
+      MULTI_PATTERN_TRANSITION_MS="${2}"
       shift 2
       ;;
     --server-ready-timeout-ms)
@@ -626,7 +566,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      SERVER_READY_TIMEOUT_MS="${2}"
+      MULTI_SERVER_READY_TIMEOUT_MS="${2}"
       shift 2
       ;;
     --connect-ready-timeout-ms)
@@ -634,7 +574,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      CONNECT_READY_TIMEOUT_MS="${2}"
+      MULTI_CONNECT_READY_TIMEOUT_MS="${2}"
       shift 2
       ;;
     --monitor-hwm)
@@ -642,7 +582,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      MONITOR_HWM="${2}"
+      MULTI_MONITOR_HWM="${2}"
       shift 2
       ;;
     --server-shutdown-timeout-ms)
@@ -650,7 +590,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      SERVER_SHUTDOWN_TIMEOUT_MS="${2}"
+      MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${2}"
       shift 2
       ;;
     --server-bind-port)
@@ -658,7 +598,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      SERVER_BIND_PORT="${2}"
+      MULTI_SERVER_BIND_PORT="${2}"
       shift 2
       ;;
     --*)
@@ -674,101 +614,97 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if ! is_uint "${TRANSPORT_TRANSITION_MS}"; then
+if ! is_uint "${MULTI_TRANSPORT_TRANSITION_MS}"; then
   echo "Error: --transport-transition-ms must be a non-negative integer." >&2
   exit 1
 fi
-if ! is_uint "${RUN_COOLDOWN_MS}"; then
-  echo "Error: run cooldown must be a non-negative integer." >&2
-  exit 1
-fi
-if ! is_uint "${PATTERN_TRANSITION_MS}"; then
+if ! is_uint "${MULTI_PATTERN_TRANSITION_MS}"; then
   echo "Error: --pattern-transition-ms must be a non-negative integer." >&2
   exit 1
 fi
-if ! is_uint "${SERVER_READY_TIMEOUT_MS}"; then
+if ! is_uint "${MULTI_SERVER_READY_TIMEOUT_MS}"; then
   echo "Error: --server-ready-timeout-ms must be a non-negative integer." >&2
   exit 1
 fi
-if ! is_uint "${CONNECT_READY_TIMEOUT_MS}"; then
+if ! is_uint "${MULTI_CONNECT_READY_TIMEOUT_MS}"; then
   echo "Error: --connect-ready-timeout-ms must be a non-negative integer." >&2
   exit 1
 fi
-if ! is_uint "${MONITOR_HWM}"; then
+if ! is_uint "${MULTI_MONITOR_HWM}"; then
   echo "Error: --monitor-hwm must be a non-negative integer." >&2
   exit 1
 fi
-if [[ -n "${HWM}" ]] && ( ! is_uint "${HWM}" || (( HWM < 1 )) ); then
+if [[ -n "${MULTI_HWM}" ]] && ( ! is_uint "${MULTI_HWM}" || (( MULTI_HWM < 1 )) ); then
   echo "Error: --hwm must be a positive integer." >&2
   exit 1
 fi
-if [[ -n "${SNDHWM}" ]] && ( ! is_uint "${SNDHWM}" || (( SNDHWM < 1 )) ); then
+if [[ -n "${MULTI_SNDHWM}" ]] && ( ! is_uint "${MULTI_SNDHWM}" || (( MULTI_SNDHWM < 1 )) ); then
   echo "Error: --send-hwm must be a positive integer." >&2
   exit 1
 fi
-if [[ -n "${RCVHWM}" ]] && ( ! is_uint "${RCVHWM}" || (( RCVHWM < 1 )) ); then
+if [[ -n "${MULTI_RCVHWM}" ]] && ( ! is_uint "${MULTI_RCVHWM}" || (( MULTI_RCVHWM < 1 )) ); then
   echo "Error: --recv-hwm must be a positive integer." >&2
   exit 1
 fi
-if [[ -n "${SNDTIMEO_MS}" ]] && ( ! is_uint "${SNDTIMEO_MS}" || (( SNDTIMEO_MS < 1 )) ); then
+if [[ -n "${MULTI_SNDTIMEO_MS}" ]] && ( ! is_uint "${MULTI_SNDTIMEO_MS}" || (( MULTI_SNDTIMEO_MS < 1 )) ); then
   echo "Error: --sndtimeo must be a positive integer." >&2
   exit 1
 fi
-if [[ -n "${RCVTIMEO_MS}" ]] && ( ! is_uint "${RCVTIMEO_MS}" || (( RCVTIMEO_MS < 1 )) ); then
+if [[ -n "${MULTI_RCVTIMEO_MS}" ]] && ( ! is_uint "${MULTI_RCVTIMEO_MS}" || (( MULTI_RCVTIMEO_MS < 1 )) ); then
   echo "Error: --rcvtimeo must be a positive integer." >&2
   exit 1
 fi
-if [[ -n "${SERVER_IO_THREADS}" ]] && ( ! is_uint "${SERVER_IO_THREADS}" || (( SERVER_IO_THREADS < 1 )) ); then
+if [[ -n "${MULTI_SERVER_IO_THREADS}" ]] && ( ! is_uint "${MULTI_SERVER_IO_THREADS}" || (( MULTI_SERVER_IO_THREADS < 1 )) ); then
   echo "Error: --server-io-threads must be a positive integer." >&2
   exit 1
 fi
-if [[ -n "${CLIENT_IO_THREADS}" ]] && ( ! is_uint "${CLIENT_IO_THREADS}" || (( CLIENT_IO_THREADS < 1 )) ); then
+if [[ -n "${MULTI_CLIENT_IO_THREADS}" ]] && ( ! is_uint "${MULTI_CLIENT_IO_THREADS}" || (( MULTI_CLIENT_IO_THREADS < 1 )) ); then
   echo "Error: --client-io-threads must be a positive integer." >&2
   exit 1
 fi
-if ! is_uint "${SERVER_SHUTDOWN_TIMEOUT_MS}"; then
+if ! is_uint "${MULTI_SERVER_SHUTDOWN_TIMEOUT_MS}"; then
   echo "Error: --server-shutdown-timeout-ms must be a non-negative integer." >&2
   exit 1
 fi
-if ! is_uint "${SERVER_BIND_PORT}" || (( SERVER_BIND_PORT > 65535 )); then
+if ! is_uint "${MULTI_SERVER_BIND_PORT}" || (( MULTI_SERVER_BIND_PORT > 65535 )); then
   echo "Error: --server-bind-port must be an integer in range 0..65535." >&2
   exit 1
 fi
 
-if [[ -z "${CLIENTS}" && -z "$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)" ]]; then
+if [[ -z "${MULTI_CLIENTS}" && -z "${PERF_MULTI_CLIENTS:-}" ]]; then
   memory_max_clients="$(resolve_memory_max_clients)"
   if is_uint "${memory_max_clients}"; then
-    default_clients_before="${EFFECTIVE_DEFAULT_CLIENTS}"
+    default_clients_before="${EFFECTIVE_DEFAULT_MULTI_CLIENTS}"
     default_stream_clients_before="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}"
-    if is_uint "${EFFECTIVE_DEFAULT_CLIENTS}" && (( EFFECTIVE_DEFAULT_CLIENTS > memory_max_clients )); then
-      EFFECTIVE_DEFAULT_CLIENTS="${memory_max_clients}"
+    if is_uint "${EFFECTIVE_DEFAULT_MULTI_CLIENTS}" && (( EFFECTIVE_DEFAULT_MULTI_CLIENTS > memory_max_clients )); then
+      EFFECTIVE_DEFAULT_MULTI_CLIENTS="${memory_max_clients}"
     fi
     if is_uint "${EFFECTIVE_DEFAULT_STREAM_CLIENTS}" && (( EFFECTIVE_DEFAULT_STREAM_CLIENTS > memory_max_clients )); then
       EFFECTIVE_DEFAULT_STREAM_CLIENTS="${memory_max_clients}"
     fi
-    if [[ "${EFFECTIVE_DEFAULT_CLIENTS}" != "${default_clients_before}" || "${EFFECTIVE_DEFAULT_STREAM_CLIENTS}" != "${default_stream_clients_before}" ]]; then
+    if [[ "${EFFECTIVE_DEFAULT_MULTI_CLIENTS}" != "${default_clients_before}" || "${EFFECTIVE_DEFAULT_STREAM_CLIENTS}" != "${default_stream_clients_before}" ]]; then
       mem_kb_now="$(memory_available_kb)"
       mem_mb_now=""
       if is_uint "${mem_kb_now}"; then
         mem_mb_now="$(( mem_kb_now / 1024 ))"
       fi
-      echo "Info: memory guard capped default clients (general ${default_clients_before}->${EFFECTIVE_DEFAULT_CLIENTS}, stream ${default_stream_clients_before}->${EFFECTIVE_DEFAULT_STREAM_CLIENTS}, mem_available_mb=${mem_mb_now:-unknown})."
+      echo "Info: memory guard capped default clients (general ${default_clients_before}->${EFFECTIVE_DEFAULT_MULTI_CLIENTS}, stream ${default_stream_clients_before}->${EFFECTIVE_DEFAULT_STREAM_CLIENTS}, mem_available_mb=${mem_mb_now:-unknown})."
     fi
   fi
 fi
 
-PATTERNS=("${PATTERN_LIST[@]}")
+PATTERNS=("${MULTI_PATTERN_LIST[@]}")
 if [[ "${#EXPLICIT_PATTERNS[@]}" -gt 0 ]]; then
   PATTERNS=("${EXPLICIT_PATTERNS[@]}")
 fi
 
 RUN_BASE_ARGS=()
-RUN_BASE_ARGS+=(--duration "${DURATION_SECONDS}")
+RUN_BASE_ARGS+=(--duration "${MULTI_DURATION_SECONDS}")
 if [[ "${HAS_EXPLICIT_TRANSPORT}" -eq 0 ]]; then
   if [[ -n "${PERF_TRANSPORTS:-}" ]]; then
     RUN_BASE_ARGS+=(--transports "${PERF_TRANSPORTS}")
   else
-    RUN_BASE_ARGS+=(--transports "${TRANSPORTS}")
+    RUN_BASE_ARGS+=(--transports "${MULTI_TRANSPORTS}")
   fi
 fi
 if [[ "${HAS_EXPLICIT_MSG_SIZES}" -eq 0 ]]; then
@@ -791,87 +727,47 @@ fi
 
 RUN_ENV=()
 RUN_ENV+=(PERF_ALLOW_MULTI="1")
-RUN_ENV+=(PERF_POLICY="1")
+RUN_ENV+=(PERF_MULTI_POLICY="1")
 RUN_ENV+=(PERF_RESULTS_DIR="${RESULTS_DIR_OVERRIDE}")
-RUN_ENV+=(PERF_WARMUP_SECONDS="${WARMUP_SECONDS}")
-RUN_ENV+=(PERF_DURATION_SECONDS="${DURATION_SECONDS}")
-RUN_ENV+=(PERF_RUN_COOLDOWN_MS="${RUN_COOLDOWN_MS}")
-RUN_ENV+=(PERF_TRANSPORT_TRANSITION_MS="${TRANSPORT_TRANSITION_MS}")
-RUN_ENV+=(PERF_PATTERN_TRANSITION_MS="${PATTERN_TRANSITION_MS}")
-RUN_ENV+=(PERF_SERVER_READY_TIMEOUT_MS="${SERVER_READY_TIMEOUT_MS}")
-RUN_ENV+=(PERF_CONNECT_READY_TIMEOUT_MS="${CONNECT_READY_TIMEOUT_MS}")
-RUN_ENV+=(PERF_MONITOR_HWM="${MONITOR_HWM}")
-RUN_ENV+=(PERF_SERVER_SHUTDOWN_TIMEOUT_MS="${SERVER_SHUTDOWN_TIMEOUT_MS}")
-RUN_ENV+=(PERF_SERVER_BIND_PORT="${SERVER_BIND_PORT}")
+RUN_ENV+=(PERF_MULTI_WARMUP_SECONDS="${MULTI_WARMUP_SECONDS}")
+RUN_ENV+=(PERF_MULTI_DURATION_SECONDS="${MULTI_DURATION_SECONDS}")
+RUN_ENV+=(PERF_MULTI_TRANSPORT_TRANSITION_MS="${MULTI_TRANSPORT_TRANSITION_MS}")
+RUN_ENV+=(PERF_MULTI_PATTERN_TRANSITION_MS="${MULTI_PATTERN_TRANSITION_MS}")
+RUN_ENV+=(PERF_MULTI_SERVER_READY_TIMEOUT_MS="${MULTI_SERVER_READY_TIMEOUT_MS}")
+RUN_ENV+=(PERF_MULTI_CONNECT_READY_TIMEOUT_MS="${MULTI_CONNECT_READY_TIMEOUT_MS}")
+RUN_ENV+=(PERF_MULTI_MONITOR_HWM="${MULTI_MONITOR_HWM}")
+RUN_ENV+=(PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${MULTI_SERVER_SHUTDOWN_TIMEOUT_MS}")
+RUN_ENV+=(PERF_MULTI_SERVER_BIND_PORT="${MULTI_SERVER_BIND_PORT}")
 RUN_ENV+=(PERF_DISABLE_RESOURCE_METRICS="${DISABLE_RESOURCE_METRICS}")
-RUN_ENV+=(PERF_DEFAULT_CLIENTS="${EFFECTIVE_DEFAULT_CLIENTS}")
-RUN_ENV+=(PERF_DEFAULT_STREAM_CLIENTS="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}")
-RUN_ENV+=(PERF_DEFAULT_HWM="${EFFECTIVE_DEFAULT_HWM}")
-RUN_ENV+=(PERF_DEFAULT_STREAM_HWM="${EFFECTIVE_DEFAULT_STREAM_HWM}")
-RUN_ENV+=(PERF_DEFAULT_IO_THREADS="${EFFECTIVE_DEFAULT_IO_THREADS}")
-RUN_ENV+=(PERF_DEFAULT_STREAM_IO_THREADS="${EFFECTIVE_DEFAULT_STREAM_IO_THREADS}")
-if [[ -n "${CLIENTS}" ]]; then
-  RUN_ENV+=(PERF_CLIENTS="${CLIENTS}")
+RUN_ENV+=(PERF_MULTI_DEFAULT_CLIENTS="${EFFECTIVE_DEFAULT_MULTI_CLIENTS}")
+RUN_ENV+=(PERF_MULTI_DEFAULT_STREAM_CLIENTS="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}")
+RUN_ENV+=(PERF_MULTI_DEFAULT_HWM="${EFFECTIVE_DEFAULT_MULTI_HWM}")
+RUN_ENV+=(PERF_MULTI_DEFAULT_STREAM_HWM="${EFFECTIVE_DEFAULT_STREAM_HWM}")
+RUN_ENV+=(PERF_MULTI_DEFAULT_IO_THREADS="${EFFECTIVE_DEFAULT_MULTI_IO_THREADS}")
+RUN_ENV+=(PERF_MULTI_DEFAULT_STREAM_IO_THREADS="${EFFECTIVE_DEFAULT_STREAM_IO_THREADS}")
+if [[ -n "${MULTI_CLIENTS}" ]]; then
+  RUN_ENV+=(PERF_MULTI_CLIENTS="${MULTI_CLIENTS}")
 fi
-if [[ -n "${ACTIVE_WARMUP}" ]]; then
-  RUN_ENV+=(PERF_ACTIVE_WARMUP="${ACTIVE_WARMUP}")
+if [[ -n "${MULTI_SERVER_IO_THREADS}" ]]; then
+  RUN_ENV+=(PERF_MULTI_SERVER_IO_THREADS="${MULTI_SERVER_IO_THREADS}")
 fi
-if [[ -n "${SETTLE_MS}" ]]; then
-  RUN_ENV+=(PERF_SETTLE_MS="${SETTLE_MS}")
+if [[ -n "${MULTI_CLIENT_IO_THREADS}" ]]; then
+  RUN_ENV+=(PERF_MULTI_CLIENT_IO_THREADS="${MULTI_CLIENT_IO_THREADS}")
 fi
-if [[ -n "${CLIENT_POLL_TIMEOUT_MS}" ]]; then
-  RUN_ENV+=(PERF_CLIENT_POLL_TIMEOUT_MS="${CLIENT_POLL_TIMEOUT_MS}")
+if [[ -n "${MULTI_HWM}" ]]; then
+  RUN_ENV+=(PERF_MULTI_HWM="${MULTI_HWM}")
 fi
-if [[ -n "${SERVICE_CLIENTS}" ]]; then
-  RUN_ENV+=(PERF_SERVICE_CLIENTS="${SERVICE_CLIENTS}")
+if [[ -n "${MULTI_SNDHWM}" ]]; then
+  RUN_ENV+=(PERF_MULTI_SNDHWM="${MULTI_SNDHWM}")
 fi
-if [[ -n "${LATENCY_SAMPLE_CAP}" ]]; then
-  RUN_ENV+=(PERF_LATENCY_SAMPLE_CAP="${LATENCY_SAMPLE_CAP}")
+if [[ -n "${MULTI_RCVHWM}" ]]; then
+  RUN_ENV+=(PERF_MULTI_RCVHWM="${MULTI_RCVHWM}")
 fi
-if [[ -n "${TIMEOUT_SECONDS}" ]]; then
-  RUN_ENV+=(PERF_TIMEOUT_SECONDS="${TIMEOUT_SECONDS}")
+if [[ -n "${MULTI_SNDTIMEO_MS}" ]]; then
+  RUN_ENV+=(PERF_MULTI_SNDTIMEO_MS="${MULTI_SNDTIMEO_MS}")
 fi
-if [[ -n "${STREAM_MSG_SIZES}" ]]; then
-  RUN_ENV+=(PERF_STREAM_MSG_SIZES="${STREAM_MSG_SIZES}")
-fi
-if [[ -n "${PUBSUB_XPUB_NODROP}" ]]; then
-  RUN_ENV+=(PERF_PUBSUB_XPUB_NODROP="${PUBSUB_XPUB_NODROP}")
-fi
-if [[ -n "${SPOT_XPUB_NODROP}" ]]; then
-  RUN_ENV+=(PERF_SPOT_XPUB_NODROP="${SPOT_XPUB_NODROP}")
-fi
-if [[ -n "${SERVER_IO_THREADS}" ]]; then
-  RUN_ENV+=(PERF_SERVER_IO_THREADS="${SERVER_IO_THREADS}")
-fi
-if [[ -n "${CLIENT_IO_THREADS}" ]]; then
-  RUN_ENV+=(PERF_CLIENT_IO_THREADS="${CLIENT_IO_THREADS}")
-fi
-if [[ -n "${STREAM_SERVER_IO_THREADS}" ]]; then
-  RUN_ENV+=(PERF_STREAM_SERVER_IO_THREADS="${STREAM_SERVER_IO_THREADS}")
-fi
-if [[ -n "${STREAM_CLIENT_IO_THREADS}" ]]; then
-  RUN_ENV+=(PERF_STREAM_CLIENT_IO_THREADS="${STREAM_CLIENT_IO_THREADS}")
-fi
-if [[ -n "${HWM}" ]]; then
-  RUN_ENV+=(PERF_HWM="${HWM}")
-fi
-if [[ -n "${SNDHWM}" ]]; then
-  RUN_ENV+=(PERF_SNDHWM="${SNDHWM}")
-fi
-if [[ -n "${RCVHWM}" ]]; then
-  RUN_ENV+=(PERF_RCVHWM="${RCVHWM}")
-fi
-if [[ -n "${SNDBUF}" ]]; then
-  RUN_ENV+=(PERF_SNDBUF="${SNDBUF}")
-fi
-if [[ -n "${RCVBUF}" ]]; then
-  RUN_ENV+=(PERF_RCVBUF="${RCVBUF}")
-fi
-if [[ -n "${SNDTIMEO_MS}" ]]; then
-  RUN_ENV+=(PERF_SNDTIMEO_MS="${SNDTIMEO_MS}")
-fi
-if [[ -n "${RCVTIMEO_MS}" ]]; then
-  RUN_ENV+=(PERF_RCVTIMEO_MS="${RCVTIMEO_MS}")
+if [[ -n "${MULTI_RCVTIMEO_MS}" ]]; then
+  RUN_ENV+=(PERF_MULTI_RCVTIMEO_MS="${MULTI_RCVTIMEO_MS}")
 fi
 if [[ "${HAS_EXPLICIT_RESULTS_DIR}" -eq 0 && -n "${PERF_RESULTS_DIR:-}" ]]; then
   RUN_ENV+=(PERF_RESULTS_DIR="${PERF_RESULTS_DIR:-}")
@@ -879,53 +775,39 @@ fi
 
 SHOW_TOTAL_TIME=1
 FAILED_PATTERNS=()
-RUN_PATTERNS=()
 SKIPPED_PATTERNS=()
-
-record_skip() {
-  local pattern="${1:-}"
-  local reason="${2:-skip}"
-  SKIPPED_PATTERNS+=("${pattern}: ${reason}")
-}
-
-print_skip_summary() {
-  if [[ "${#SKIPPED_PATTERNS[@]}" -eq 0 ]]; then
-    return
-  fi
-  echo
-  echo "## Skips"
-  local item=""
-  for item in "${SKIPPED_PATTERNS[@]}"; do
-    echo "- ${item}"
-  done
-}
-
+SKIP_REASONS=()
+RUN_PATTERNS=()
 for raw_pattern in "${PATTERNS[@]}"; do
   pattern="$(printf '%s' "${raw_pattern}" | tr '[:lower:]' '[:upper:]')"
-  if [[ "${pattern}" == MULTI_* ]]; then
-    pattern="${pattern#MULTI_}"
+  if [[ "${pattern}" != MULTI_* ]]; then
+    pattern="MULTI_${pattern}"
   fi
-  if [[ "${pattern}" == "ROUTER_ROUTER_POLL" ]]; then
+  if [[ "${pattern}" == "MULTI_ROUTER_ROUTER_POLL" ]]; then
     echo "Error: ROUTER_ROUTER_POLL is removed from multi benchmarks." >&2
     exit 1
   fi
 
-  pattern_clients="${CLIENTS:-$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)}"
+  pattern_clients="${MULTI_CLIENTS:-${PERF_MULTI_CLIENTS:-}}"
   if [[ -z "${pattern_clients}" ]]; then
-    if [[ "${pattern}" == "STREAM" || "${pattern}" == "STREAM_CALLBACK" || "${pattern}" == "STREAM_LEN32BE" ]]; then
+    if [[ "${pattern}" == "MULTI_STREAM" || "${pattern}" == "MULTI_STREAM_CALLBACK" || "${pattern}" == "MULTI_STREAM_LEN32BE" ]]; then
       pattern_clients="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}"
     else
-      pattern_clients="${EFFECTIVE_DEFAULT_CLIENTS}"
+      pattern_clients="${EFFECTIVE_DEFAULT_MULTI_CLIENTS}"
     fi
   fi
 
   if ! ensure_nofile_limit "${pattern_clients}"; then
-    record_skip "${pattern}" "preflight_nofile_${NOFILE_SKIP_REASON}"
+    echo "SKIP,current,${pattern},all,nofile:${NOFILE_SKIP_REASON}" >&2
+    SKIPPED_PATTERNS+=("${pattern}")
+    SKIP_REASONS+=("nofile preflight unmet (${NOFILE_SKIP_REASON})")
     continue
   fi
 
   if ! ensure_memory_budget "${pattern_clients}"; then
-    record_skip "${pattern}" "preflight_memory_${MEMORY_SKIP_REASON}"
+    echo "SKIP,current,${pattern},all,memory:${MEMORY_SKIP_REASON}" >&2
+    SKIPPED_PATTERNS+=("${pattern}")
+    SKIP_REASONS+=("memory preflight unmet (${MEMORY_SKIP_REASON})")
     continue
   fi
 
@@ -933,21 +815,23 @@ for raw_pattern in "${PATTERNS[@]}"; do
 done
 
 if [[ "${#RUN_PATTERNS[@]}" -eq 0 ]]; then
-  if [[ "${#SKIPPED_PATTERNS[@]}" -eq 0 ]]; then
-    echo "Error: no patterns selected to run." >&2
-    exit 1
+  if [[ "${#SKIPPED_PATTERNS[@]}" -gt 0 ]]; then
+    echo
+    echo "## Skips"
+    for i in "${!SKIPPED_PATTERNS[@]}"; do
+      echo "- ${SKIPPED_PATTERNS[i]}: ${SKIP_REASONS[i]}"
+    done
   fi
-  print_skip_summary
   exit 0
 fi
 
-if [[ -n "${CONNECT_CONCURRENCY}" ]]; then
-  RUN_ENV+=(PERF_CONNECT_CONCURRENCY="${CONNECT_CONCURRENCY}")
+if [[ -n "${MULTI_CONNECT_CONCURRENCY}" ]]; then
+  RUN_ENV+=(PERF_MULTI_CONNECT_CONCURRENCY="${MULTI_CONNECT_CONCURRENCY}")
 fi
 
 PATTERN_CSV="$(IFS=,; echo "${RUN_PATTERNS[*]}")"
 echo "=== Running multi benchmark: ${PATTERN_CSV} ==="
-echo "    warmup=${WARMUP_SECONDS}s duration=${DURATION_SECONDS}s"
+echo "    warmup=${MULTI_WARMUP_SECONDS}s duration=${MULTI_DURATION_SECONDS}s"
 RUN_EXIT_CODE=0
 if PERF_ALLOW_MULTI=1 \
   PERF_SUPPRESS_TOTAL_TIME=1 \
@@ -962,8 +846,15 @@ else
   FAILED_PATTERNS+=("${PATTERN_CSV}")
 fi
 
+if [[ "${#SKIPPED_PATTERNS[@]}" -gt 0 ]]; then
+  echo
+  echo "## Skips"
+  for i in "${!SKIPPED_PATTERNS[@]}"; do
+    echo "- ${SKIPPED_PATTERNS[i]}: ${SKIP_REASONS[i]}"
+  done
+fi
+
 if [[ "${#FAILED_PATTERNS[@]}" -gt 0 ]]; then
-  print_skip_summary
   echo
   echo "## Failures"
   for pattern in "${FAILED_PATTERNS[@]}"; do
@@ -971,5 +862,3 @@ if [[ "${#FAILED_PATTERNS[@]}" -gt 0 ]]; then
   done
   exit 1
 fi
-
-print_skip_summary

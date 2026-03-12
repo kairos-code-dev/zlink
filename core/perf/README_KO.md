@@ -30,8 +30,6 @@ ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT)의 성능을 측정한다.
 | `--hwm N` | — | `PERF_SINGLE_HWM` fallback 설정 |
 | `--send-hwm N` | — | `PERF_SINGLE_SNDHWM` 설정 |
 | `--recv-hwm N` | — | `PERF_SINGLE_RCVHWM` 설정 |
-| `--sndtimeo N` / `--send-timeout-ms N` | `200` | `PERF_SINGLE_SNDTIMEO_MS` 설정 |
-| `--rcvtimeo N` / `--recv-timeout-ms N` | `200` | `PERF_SINGLE_RCVTIMEO_MS` 설정 |
 | `--pin-cpu` | 비활성 | CPU 고정(Linux taskset) |
 | `--io-threads N` | — | `PERF_IO_THREADS` 설정 |
 | `--msg-sizes LIST` | — | 메시지 크기 목록(쉼표 구분) |
@@ -46,19 +44,6 @@ ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT)의 성능을 측정한다.
 - active 구간에서 throughput + latency를 **동시에** 측정
 - 집계는 payload header 검증 성공 데이터만 사용(header 기반 집계)
 - 재시도/드레인 단계 없음
-
-### service poller 정책
-
-- `GATEWAY`, `RECEIVER`, `SPOT_SUB`, `SPOT_PUB` perf 경로의 readiness는
-  service instance poller API로 얻어야 한다.
-- `zlink_poller_add_gateway`, `zlink_poller_add_receiver`,
-  `zlink_poller_add_spot_sub`, `zlink_poller_add_spot_pub`를 우선 사용한다.
-- service setup은 internal socket-role option API나 `*_peers` polling 대신
-  `*_set_option`, `*_set_routing_id`, service monitor, registry topology API를
-  사용해야 한다.
-- perf 샘플/문서에서 `SpotNode`를 poller 대상으로 다시 노출하면 안 된다.
-- service instance를 poller에 등록한 뒤에도 send/recv는 기존 service API를
-  계속 사용하고, internal socket 직접 접근은 내부용/디버그용으로만 취급한다.
 
 ### 결과 저장
 
@@ -84,7 +69,7 @@ multi 패턴 래퍼 스크립트다. multi 옵션을 정규화한 뒤 `PERF_ALLO
 
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
-| `--pattern NAME` | 기본 전체 | 패턴 목록(쉼표 구분), `` 접두어 생략 가능 |
+| `--pattern NAME` | 기본 전체 | 패턴 목록(쉼표 구분), `MULTI_` 접두어 생략 가능 |
 | `--help` | — | 도움말 |
 | `--reuse-build` | 비활성 | 기존 빌드 재사용 |
 | `--clean-build` | 비활성 | 클린 빌드 |
@@ -102,11 +87,11 @@ multi 패턴 래퍼 스크립트다. multi 옵션을 정규화한 뒤 `PERF_ALLO
 | `--warmup N` | `2` | warmup 시간(초) |
 | `--duration N` | `5` | active 측정 시간(초) |
 | `--clients N` | `100` (`stream=10000`) | 패턴별 클라이언트 수 |
-| `--hwm N` | env/바이너리 기본값 | `PERF_HWM` 설정 |
-| `--send-hwm N` | `--hwm` fallback | `PERF_SNDHWM` 설정 |
-| `--recv-hwm N` | `--hwm` fallback | `PERF_RCVHWM` 설정 |
-| `--sndtimeo N` / `--send-timeout-ms N` | `200` | `PERF_SNDTIMEO_MS` |
-| `--rcvtimeo N` / `--recv-timeout-ms N` | `200` | `PERF_RCVTIMEO_MS` |
+| `--hwm N` | env/바이너리 기본값 | `PERF_MULTI_HWM` 설정 |
+| `--send-hwm N` | `--hwm` fallback | `PERF_MULTI_SNDHWM` 설정 |
+| `--recv-hwm N` | `--hwm` fallback | `PERF_MULTI_RCVHWM` 설정 |
+| `--sndtimeo N` / `--send-timeout-ms N` | `200` | `PERF_MULTI_SNDTIMEO_MS` |
+| `--rcvtimeo N` / `--recv-timeout-ms N` | `200` | `PERF_MULTI_RCVTIMEO_MS` |
 | `--connect-concurrency N` | 자동 | 동시 연결 수 |
 | `--transport-transition-ms N` | `3000` | 트랜스포트 전환 대기 |
 | `--pattern-transition-ms N` | `3000` | 패턴 전환 대기 |
@@ -129,9 +114,9 @@ results/
 
 - nofile 가드 (`PERF_SKIP_NOFILE_CHECK=1`로 비활성화)
 - 메모리 가드 (`PERF_SKIP_MEMORY_CHECK=1`로 비활성화)
-  - `PERF_MEMORY_BUDGET_PCT=70` — MemAvailable 대비 예산 비율(%)
-  - `PERF_MEMORY_BASE_MB=512` — 기본 메모리 예약(MB)
-  - `PERF_MEMORY_PER_CLIENT_KB=1024` — 클라이언트당 예상 메모리(KB)
+  - `PERF_MULTI_MEMORY_BUDGET_PCT=70` — MemAvailable 대비 예산 비율(%)
+  - `PERF_MULTI_MEMORY_BASE_MB=512` — 기본 메모리 예약(MB)
+  - `PERF_MULTI_MEMORY_PER_CLIENT_KB=1024` — 클라이언트당 예상 메모리(KB)
 
 ---
 
@@ -149,7 +134,7 @@ results/
 | `PERF_TASKSET` | CPU 고정 (`1`) |
 
 single 상세 제약/정책은 `PERF_SINGLE_TEST_POLICY.md`,
-multi 상세 제약/정책은 `PERF_TEST_POLICY.md`를 따른다.
+multi 상세 제약/정책은 `PERF_MULTI_TEST_POLICY.md`를 따른다.
 
 ---
 

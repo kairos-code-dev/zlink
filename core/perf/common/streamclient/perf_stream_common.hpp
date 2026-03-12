@@ -18,24 +18,6 @@
 
 namespace perf_stream_common {
 
-using steady_clock_t = std::chrono::steady_clock;
-using milliseconds_t = std::chrono::milliseconds;
-using seconds_t = std::chrono::seconds;
-using nanoseconds_t = std::chrono::nanoseconds;
-using floating_seconds_t = std::chrono::duration<double>;
-
-inline steady_clock_t::duration to_clock_duration (double seconds)
-{
-    return std::chrono::duration_cast<steady_clock_t::duration> (
-      floating_seconds_t (seconds));
-}
-
-inline long remaining_milliseconds (const steady_clock_t::time_point &deadline,
-                                    const steady_clock_t::time_point &now)
-{
-    return std::chrono::duration_cast<milliseconds_t> (deadline - now).count ();
-}
-
 // Payload size constraints enforced on both send and receive.
 inline constexpr size_t k_stream_min_chunk_size = 16;
 inline constexpr size_t k_stream_max_chunk_size = 4 * 1024 * 1024;
@@ -43,9 +25,11 @@ inline constexpr size_t k_stream_max_chunk_size = 4 * 1024 * 1024;
 // Monotonic nanosecond timestamp for latency measurement.
 inline uint64_t perf_stream_now_ns ()
 {
-    const steady_clock_t::time_point now = steady_clock_t::now ();
+    const std::chrono::steady_clock::time_point now =
+      std::chrono::steady_clock::now ();
     return static_cast<uint64_t> (
-      std::chrono::duration_cast<nanoseconds_t> (now.time_since_epoch ())
+      std::chrono::duration_cast<std::chrono::nanoseconds> (
+        now.time_since_epoch ())
         .count ());
 }
 

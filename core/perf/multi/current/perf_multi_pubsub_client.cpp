@@ -1,8 +1,8 @@
-#include "../common/perf_entry.hpp"
+#include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
-#include "../common/perf_client_helpers.hpp"
-#include "../../../bench/with_zmq/multi/common/bench_resource.hpp"
+#include "../common/perf_multi_client_helpers.hpp"
+#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -15,27 +15,27 @@
 
 namespace {
 
-static const char *k_pattern = "PUBSUB";
+static const char *k_pattern = "MULTI_PUBSUB";
 static const int k_client_socket_type = ZLINK_SUB;
 static const uint32_t k_metric_run_id = 1U;
 
-using perf_client::close_client_monitors;
-using perf_client::close_client_sockets;
-using perf_client::is_supported_transport;
-using perf_client::parse_endpoint_arg;
-using perf_client::print_client_result_lines;
-using perf_client::resolve_case_msg_sizes;
-using perf_client::wait_all_client_connect_ready;
+using perf_multi_client::close_client_monitors;
+using perf_multi_client::close_client_sockets;
+using perf_multi_client::is_supported_transport;
+using perf_multi_client::parse_endpoint_arg;
+using perf_multi_client::print_client_result_lines;
+using perf_multi_client::resolve_case_msg_sizes;
+using perf_multi_client::wait_all_client_connect_ready;
 
 inline bool create_client_sockets (
   ctx_guard_t &ctx,
   const std::string &transport,
   const std::string &endpoint,
-  const bench_settings_t &settings,
+  const multi_bench_settings_t &settings,
   std::vector<void *> *sockets_out,
   std::vector<connect_monitor_t> *monitors_out)
 {
-    return perf_client::create_client_sockets (
+    return perf_multi_client::create_client_sockets (
       ctx,
       transport,
       endpoint,
@@ -45,8 +45,8 @@ inline bool create_client_sockets (
       monitors_out);
 }
 
-inline bool run_client_size_case (const std::vector<void *> &sockets,
-                                  const bench_settings_t &base_settings,
+inline bool run_single_size_case (const std::vector<void *> &sockets,
+                                  const multi_bench_settings_t &base_settings,
                                   size_t scratch_capacity,
                                   const std::string &lib_name,
                                   const std::string &transport,
@@ -54,8 +54,8 @@ inline bool run_client_size_case (const std::vector<void *> &sockets,
 {
     double throughput = 0.0;
     bench_latency_stats_t latency;
-    bench_resource_metrics_t metrics;
-    if (!perf_client::run_one_way_size_case (
+    bench_multi_resource_metrics_t metrics;
+    if (!perf_multi_client::run_one_way_duration (
           sockets,
           base_settings,
           msg_size,
@@ -84,7 +84,7 @@ inline int run_client_benchmark (const std::string &lib_name,
                                  const std::string &endpoint,
                                  size_t fallback_size)
 {
-    set_perf_pattern_env (k_pattern);
+    set_perf_multi_pattern_env (k_pattern);
 
     if (!is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
@@ -97,7 +97,7 @@ inline int run_client_benchmark (const std::string &lib_name,
         return 1;
     }
 
-    const bench_settings_t base_settings = resolve_bench_settings ();
+    const multi_bench_settings_t base_settings = resolve_multi_bench_settings ();
     const std::vector<size_t> msg_sizes = resolve_case_msg_sizes (fallback_size);
 
     ctx_guard_t ctx;
@@ -131,7 +131,7 @@ inline int run_client_benchmark (const std::string &lib_name,
 
     for (size_t si = 0; si < msg_sizes.size (); ++si) {
         const size_t msg_size = msg_sizes[si];
-        if (!run_client_size_case (
+        if (!run_single_size_case (
               sockets,
               base_settings,
               scratch_capacity,

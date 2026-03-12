@@ -1,5 +1,5 @@
-#include "../common/perf_entry.hpp"
-#include "../common/perf_client_helpers.hpp"
+#include "../common/perf_multi_entry.hpp"
+#include "../common/perf_multi_client_helpers.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -7,7 +7,7 @@
 
 namespace {
 
-static const char *k_pattern = "DEALER_ROUTER";
+static const char *k_pattern = "MULTI_DEALER_ROUTER";
 static const int k_client_socket_type = ZLINK_DEALER;
 static const bool k_client_router_send = false;
 static const char *k_server_routing_id = "SERVER";
@@ -25,12 +25,12 @@ int main (int argc, char **argv)
       static_cast<size_t> (std::strtoull (argv[3], NULL, 10));
 
     std::string endpoint;
-    if (!perf_client::parse_endpoint_arg (argc, argv, &endpoint)) {
+    if (!perf_multi_client::parse_endpoint_arg (argc, argv, &endpoint)) {
         std::cerr << "missing --endpoint" << std::endl;
         return 1;
     }
 
-    return perf_client::run_echo_client_benchmark (
+    return perf_multi_client::run_multi_echo_client_benchmark (
       k_pattern,
       k_client_socket_type,
       k_client_router_send,

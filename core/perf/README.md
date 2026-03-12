@@ -30,8 +30,6 @@ DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT).
 | `--hwm N` | — | Set `PERF_SINGLE_HWM` fallback |
 | `--send-hwm N` | — | Set `PERF_SINGLE_SNDHWM` |
 | `--recv-hwm N` | — | Set `PERF_SINGLE_RCVHWM` |
-| `--sndtimeo N` / `--send-timeout-ms N` | `200` | Set `PERF_SINGLE_SNDTIMEO_MS` |
-| `--rcvtimeo N` / `--recv-timeout-ms N` | `200` | Set `PERF_SINGLE_RCVTIMEO_MS` |
 | `--pin-cpu` | off | Pin CPU core (Linux taskset) |
 | `--io-threads N` | — | Set `PERF_IO_THREADS` |
 | `--msg-sizes LIST` | — | Comma-separated sizes |
@@ -46,20 +44,6 @@ Note: `pgm`/`epgm` are currently disabled in single perf.
 - Throughput and latency are measured **simultaneously** in active
 - Active aggregation uses payload header validation (header-based only)
 - No retry/drain phase
-
-### Service poller note
-
-- `GATEWAY`, `RECEIVER`, `SPOT_SUB`, and `SPOT_PUB` perf paths should obtain
-  readiness through the service-instance poller APIs.
-- Prefer `zlink_poller_add_gateway`, `zlink_poller_add_receiver`,
-  `zlink_poller_add_spot_sub`, and `zlink_poller_add_spot_pub`.
-- Service setup should use `*_set_option`, `*_set_routing_id`, service monitor,
-  and registry topology APIs instead of internal socket-role option APIs or
-  `*_peers` polling.
-- Do not document or reintroduce `SpotNode` as a poller target in perf samples.
-- After a service instance is registered with a poller, perf code should keep
-  using the service API for send/recv and treat direct internal socket access as
-  internal-only/debug-only.
 
 ### Result storage
 
@@ -85,7 +69,7 @@ and delegates execution to `run_benchmarks.sh`.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--pattern NAME` | all defaults | Pattern list (comma-separated). `` prefix optional |
+| `--pattern NAME` | all defaults | Pattern list (comma-separated). `MULTI_` prefix optional |
 | `--help` | — | Show help |
 | `--reuse-build` | off | Reuse existing build directory |
 | `--clean-build` | off | Clean build directory first |
@@ -103,11 +87,11 @@ and delegates execution to `run_benchmarks.sh`.
 | `--warmup N` | `2` | Multi warmup seconds |
 | `--duration N` | `5` | Multi active duration seconds |
 | `--clients N` | `100` (`stream=10000`) | Clients per pattern |
-| `--hwm N` | env/binary default | Set `PERF_HWM` |
-| `--send-hwm N` | `--hwm` fallback | Set `PERF_SNDHWM` |
-| `--recv-hwm N` | `--hwm` fallback | Set `PERF_RCVHWM` |
-| `--sndtimeo N` / `--send-timeout-ms N` | `200` | Set `PERF_SNDTIMEO_MS` |
-| `--rcvtimeo N` / `--recv-timeout-ms N` | `200` | Set `PERF_RCVTIMEO_MS` |
+| `--hwm N` | env/binary default | Set `PERF_MULTI_HWM` |
+| `--send-hwm N` | `--hwm` fallback | Set `PERF_MULTI_SNDHWM` |
+| `--recv-hwm N` | `--hwm` fallback | Set `PERF_MULTI_RCVHWM` |
+| `--sndtimeo N` / `--send-timeout-ms N` | `200` | Set `PERF_MULTI_SNDTIMEO_MS` |
+| `--rcvtimeo N` / `--recv-timeout-ms N` | `200` | Set `PERF_MULTI_RCVTIMEO_MS` |
 | `--connect-concurrency N` | auto | Concurrent connect count |
 | `--transport-transition-ms N` | `3000` | Transport cooldown |
 | `--pattern-transition-ms N` | `3000` | Pattern cooldown |
@@ -130,9 +114,9 @@ results/
 
 - nofile guard (`PERF_SKIP_NOFILE_CHECK=1` to disable)
 - memory guard (`PERF_SKIP_MEMORY_CHECK=1` to disable)
-  - `PERF_MEMORY_BUDGET_PCT=70` — percent of MemAvailable reserved
-  - `PERF_MEMORY_BASE_MB=512` — fixed memory reserve
-  - `PERF_MEMORY_PER_CLIENT_KB=1024` — estimated memory per client
+  - `PERF_MULTI_MEMORY_BUDGET_PCT=70` — percent of MemAvailable reserved
+  - `PERF_MULTI_MEMORY_BASE_MB=512` — fixed memory reserve
+  - `PERF_MULTI_MEMORY_PER_CLIENT_KB=1024` — estimated memory per client
 
 ---
 
@@ -153,7 +137,7 @@ Single-specific variables and full constraints are documented in
 `PERF_SINGLE_TEST_POLICY.md`.
 
 Multi-specific variables and full constraints are documented in
-`PERF_TEST_POLICY.md`.
+`PERF_MULTI_TEST_POLICY.md`.
 
 ---
 

@@ -1,8 +1,8 @@
-#include "../common/perf_entry.hpp"
+#include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
-#include "../common/perf_metric_header.hpp"
-#include "../../../bench/with_zmq/multi/common/bench_resource.hpp"
+#include "../common/perf_multi_metric_header.hpp"
+#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -19,9 +19,7 @@
 
 namespace {
 
-typedef std::chrono::steady_clock steady_clock_t;
-
-static const char *k_pattern = "DEALER_DEALER";
+static const char *k_pattern = "MULTI_DEALER_DEALER";
 static const char *k_token = "dealer_dealer";
 static const int k_server_socket_type = ZLINK_DEALER;
 
@@ -57,7 +55,7 @@ inline std::string bind_server_endpoint (void *server,
                                          const std::string &token)
 {
     const int bind_port =
-      resolve_int_env ("PERF_SERVER_BIND_PORT", 0, 0);
+      resolve_multi_int_env ("PERF_MULTI_SERVER_BIND_PORT", 0, 0);
     if (bind_port <= 0) {
         std::string endpoint_any = make_endpoint (transport, token);
         if (endpoint_any.empty ()) {
@@ -73,7 +71,7 @@ inline std::string bind_server_endpoint (void *server,
 
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof (last_endpoint);
-        if (zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size)
+        if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size)
             == 0) {
             endpoint_any.assign (last_endpoint);
             const std::string any_v4 = "://0.0.0.0:";
@@ -102,7 +100,7 @@ inline std::string bind_server_endpoint (void *server,
 
     char last_endpoint[MAX_SOCKET_STRING] = "";
     size_t size = sizeof (last_endpoint);
-    if (zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size) == 0)
+    if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size) == 0)
         endpoint.assign (last_endpoint);
     apply_debug_timeouts (server, transport);
     return endpoint;
@@ -118,20 +116,20 @@ enum recv_result_t
 inline bool decode_and_match_header (const zlink_msg_t *msg,
                                      size_t expected_msg_size,
                                      uint32_t expected_run_id,
-                                     perf_metric::phase_t expected_phase,
-                                     perf_metric::header_t *header_out)
+                                     perf_multi_metric::phase_t expected_phase,
+                                     perf_multi_metric::header_t *header_out)
 {
     if (!msg || !header_out)
         return false;
 
-    if (!perf_metric::decode_payload_header (
+    if (!perf_multi_metric::decode_payload_header (
           zlink_msg_data (const_cast<zlink_msg_t *> (msg)),
           zlink_msg_size (const_cast<zlink_msg_t *> (msg)),
           header_out)) {
         return false;
     }
 
-    return header_out->magic == perf_metric::k_magic
+    return header_out->magic == perf_multi_metric::k_magic
            && header_out->run_id == expected_run_id
            && header_out->phase == static_cast<uint32_t> (expected_phase)
            && header_out->msg_size == static_cast<uint32_t> (expected_msg_size);
@@ -142,7 +140,7 @@ inline recv_result_t receive_one_message (
   int flags,
   size_t expected_msg_size,
   uint32_t expected_run_id,
-  perf_metric::phase_t expected_phase,
+  perf_multi_metric::phase_t expected_phase,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -166,7 +164,7 @@ inline recv_result_t receive_one_message (
         return recv_fatal;
     }
 
-    perf_metric::header_t header;
+    perf_multi_metric::header_t header;
     const bool matched = decode_and_match_header (
       &msg,
       expected_msg_size,
@@ -178,7 +176,7 @@ inline recv_result_t receive_one_message (
         (*message_count)++;
 
     if (matched && collect_latency && lat_sum && lat_count) {
-        const uint64_t now_us = perf_metric::now_us ();
+        const uint64_t now_us = perf_multi_metric::now_us ();
         if (header.sent_ts_us > 0 && now_us >= header.sent_ts_us) {
             const double sample_us = static_cast<double> (now_us - header.sent_ts_us);
             *lat_sum += sample_us;
@@ -196,7 +194,7 @@ inline bool drain_non_blocking_messages (
   void *server,
   size_t expected_msg_size,
   uint32_t expected_run_id,
-  perf_metric::phase_t expected_phase,
+  perf_multi_metric::phase_t expected_phase,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -225,11 +223,11 @@ inline bool drain_non_blocking_messages (
     return true;
 }
 
-inline bool run_receive_phase (
+inline bool run_receive_window (
   void *server,
   size_t expected_msg_size,
   uint32_t expected_run_id,
-  perf_metric::phase_t expected_phase,
+  perf_multi_metric::phase_t expected_phase,
   double duration_seconds,
   bool count_message,
   bool collect_latency,
@@ -243,12 +241,13 @@ inline bool run_receive_phase (
     if (duration_seconds <= 0.0)
         return true;
 
-    const steady_clock_t::time_point deadline =
-      steady_clock_t::now ()
-      + to_clock_duration (duration_seconds);
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
+        std::chrono::duration<double> (duration_seconds));
 
     while (!g_stop_requested.load (std::memory_order_acquire)
-           && steady_clock_t::now () < deadline) {
+           && std::chrono::steady_clock::now () < deadline) {
         const recv_result_t status = receive_one_message (
           server,
           0,
@@ -310,9 +309,9 @@ inline void normalize_latency_stats (double lat_sum,
     *latency_out = stats;
 }
 
-inline bool run_server_size_case (
+inline bool run_one_size_benchmark (
   void *server,
-  const bench_settings_t &settings,
+  const multi_bench_settings_t &settings,
   size_t msg_size,
   uint32_t run_id,
   const std::string &lib_name,
@@ -325,11 +324,11 @@ inline bool run_server_size_case (
     const double active_s =
       static_cast<double> (std::max (1, settings.duration_seconds));
 
-    if (!run_receive_phase (
+    if (!run_receive_window (
           server,
           msg_size,
           run_id,
-          perf_metric::phase_warmup,
+          perf_multi_metric::phase_warmup,
           warmup_s,
           false,
           false,
@@ -340,11 +339,11 @@ inline bool run_server_size_case (
         return false;
     }
 
-    if (!run_receive_phase (
+    if (!run_receive_window (
           server,
           msg_size,
           run_id,
-          perf_metric::phase_drain,
+          perf_multi_metric::phase_drain,
           settle_s,
           false,
           false,
@@ -360,11 +359,11 @@ inline bool run_server_size_case (
     long lat_count = 0;
     bench_latency_sampler_t lat_samples;
 
-    if (!run_receive_phase (
+    if (!run_receive_window (
           server,
           msg_size,
           run_id,
-          perf_metric::phase_active,
+          perf_multi_metric::phase_active,
           active_s,
           true,
           true,
@@ -411,7 +410,7 @@ inline void print_server_resource_metrics (
   const std::string &lib_name,
   const std::string &transport,
   const std::vector<size_t> &sizes,
-  const bench_resource_metrics_t &metrics)
+  const bench_multi_resource_metrics_t &metrics)
 {
     for (size_t i = 0; i < sizes.size (); ++i) {
         if (metrics.has_cpu_pct) {
@@ -432,7 +431,7 @@ inline void print_server_resource_metrics (
 inline int run_server_benchmark (const std::string &lib_name,
                                  const std::string &transport)
 {
-    set_perf_pattern_env (k_pattern);
+    set_perf_multi_pattern_env (k_pattern);
 
     if (!is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
@@ -449,12 +448,11 @@ inline int run_server_benchmark (const std::string &lib_name,
     if (!ctx.valid ())
         return 1;
 
-    void *server = zlink_socket (
-      ctx.get (), static_cast<zlink_socket_type_t> (k_server_socket_type));
+    void *server = zlink_socket (ctx.get (), k_server_socket_type);
     if (!server)
         return 1;
 
-    const bench_settings_t settings = resolve_bench_settings ();
+    const multi_bench_settings_t settings = resolve_multi_bench_settings ();
     apply_benchmark_socket_options (server, settings.hwm, transport);
 
     if (!setup_tls_server (server, transport)) {
@@ -508,7 +506,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         return 1;
     }
 
-    const bench_cpu_sample_t sample_start = bench_capture_cpu_sample ();
+    const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
 
     bool ok = true;
     for (size_t si = 0; si < sizes.size (); ++si) {
@@ -518,7 +516,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         }
 
         const uint32_t run_id = static_cast<uint32_t> (si + 1);
-        if (!run_server_size_case (
+        if (!run_one_size_benchmark (
               server,
               settings,
               sizes[si],
@@ -530,8 +528,8 @@ inline int run_server_benchmark (const std::string &lib_name,
         }
     }
 
-    const bench_resource_metrics_t metrics =
-      bench_finish_resource_probe (sample_start);
+    const bench_multi_resource_metrics_t metrics =
+      bench_multi_finish_resource_probe (sample_start);
     print_server_resource_metrics (lib_name, transport, sizes, metrics);
 
     close_connect_monitor (server_monitor);

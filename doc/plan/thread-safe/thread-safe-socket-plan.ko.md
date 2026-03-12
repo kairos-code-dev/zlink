@@ -1,255 +1,100 @@
 # Thread-Safe Socket / Service 설계 계획
 
 > 상태 메모
-> 이 문서는 thread-safe 설계 초안이며, 본문에 남아 있는 `set_handler()`,
-> `zlink_monitor_set_handler()`, `zlink_service_monitor_set_handler()` 등
-> 생성 후 handler 교체 서술은 현재 canonical public API가 아니다. 최신
-> 기준은 `direct-callback-recv-interface-review.ko.md`와
-> `core/include/zlink.h`를 따른다.
+> 이 문서는 raw socket, `discovery`, `gateway`, `spot` 계열, monitor handle을
+> 모두 `thread-safe only` public contract로 정리한 설계안이다.
+> public selectable thread mode는 두지 않는다.
+> recv handler는 생성 시 고정이며 런타임 교체 API는 존재하지 않는다.
+> 런타임에 교체 가능한 유일한 callback setter는 `*_set_send_ready_handler()`
+> 계열이다.
+> 실제 함수 이름과 canonical public shape는
+> [`direct-callback-recv-interface-review.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-interface-review.ko.md)
+> 와 [`zlink.h`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/include/zlink.h)를
+> 따른다.
 
 ## 1. 목적
 
 이 문서는 현재 진행 중인
 [`direct-callback-recv-interface-review.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-interface-review.ko.md)
 기준 인터페이스를 전제로,
-raw socket / `gateway` / `spot` 계열을 동일한 수준의 thread mode 개념으로 정렬하는
-상세 설계 계획이다.
+raw socket / `gateway` / `spot` / `discovery` / monitor handle의 공개 동시성
+계약을 하나의 규칙으로 정리한다.
 
 핵심 목표:
 
-- raw socket과 service facade의 thread-safety 모델을 하나의 public 개념으로 통일한다.
-- 생성 시 `non-thread-safe` / `thread-safe` mode를 선택할 수 있게 한다.
-- `gateway`, `spot`, `spot_node`, `spot_pub`, `spot_sub`를
-  “특별취급된 service”가 아니라 raw socket과 동일 계층의
-  `thread mode` 대상 subject로 정리한다.
-- callback-only recv 모델과 충돌하지 않는 범위에서 same-handle concurrent `send`
-  와 lifecycle API 동기화 범위를 명확히 한다.
-- single-thread 전용 사용자는 no-lock fast path를 선택할 수 있게 하고,
-  multi-thread 사용자는 안전한 기본 모드를 선택할 수 있게 한다.
-- 기존 ABI 호환성은 고려하지 않는다.
-  필요한 인터페이스 변경은 기존 생성자/함수 시그니처를 직접 바꾸는 것으로 전제한다.
+- 모든 주요 public handle을 thread-safe contract로 통일한다.
+- 생성자에 동시성 관련 추가 인자를 받지 않는다.
+- raw socket, `gateway`, `spot_node`, unified `spot`, `spot_pub`,
+  `spot_sub`, `discovery`, monitor handle을 같은 계층의 concurrency
+  subject로 본다.
+- same-handle concurrent `send` / `publish`, send-ready handler 교체,
+  subscription mutation, query, lifecycle API의 경계를 명확히 한다.
+- callback-only recv 모델과 충돌하지 않는 범위에서 callback 중 send를
+  공식 허용 패턴으로 유지한다.
+- 종료 API는 운영 API보다 더 보수적으로 다뤄서 `close` / `destroy` race를
+  명시 계약으로 고정한다.
 
-쉽게 말해 이 문서는 다음 질문에 한 번에 답하려는 계획이다.
+한 줄로 줄이면 방향은 단순하다.
 
-- "이 handle을 여러 thread에서 같이 써도 되나?"
-- "같은 handle에서 동시에 send해도 되나?"
-- "callback이 도는 중에 handler를 바꾸거나 close해도 되나?"
-- "spot/gateway/raw socket마다 규칙이 왜 다른가?"
+- 모든 public handle은 생성 즉시 thread-safe다.
+- 운영 API는 라이브러리가 per-handle 기준으로 직렬화한다.
+- `close` / `destroy`는 예외적으로 더 엄격하게 제한한다.
 
-이 문서의 답은 단순하다.
+## 2. 기준 문서와 용어
 
-- 생성할 때 `THREAD_SAFE` 또는 `NON_THREAD_SAFE`를 명시한다.
-- `THREAD_SAFE`면 same-handle concurrent `send`와 주요 mutation을 라이브러리가 직렬화한다.
-- `NON_THREAD_SAFE`면 호출자가 외부에서 직렬화 책임을 진다.
-- 단, `close` / `destroy`는 두 mode 모두 가장 엄격하게 다룬다.
-
-## 한눈에 보는 구조
-
-이 문서의 전체 그림은 아래처럼 이해하면 된다.
-
-### 1) 모든 subject는 생성 시 mode를 고른다
-
-```text
-create(...)
-   |
-   +-- THREAD_SAFE
-   |      -> 같은 handle을 여러 thread가 함께 써도 됨
-   |      -> send / handler 교체 / 주요 mutation을 라이브러리가 직렬화
-   |
-   +-- NON_THREAD_SAFE
-          -> 같은 handle은 한 thread에서만 쓰는 것이 기본
-          -> 여러 thread가 쓰려면 앱이 직접 락으로 감싸야 함
-```
-
-### 2) 단, close / destroy는 예외적으로 더 보수적이다
-
-```text
-다른 API 실행 중
-   |
-   +-- send 중
-   +-- subscribe 중
-   +-- callback 실행 중
-   +-- option setter 중
-        |
-        +-- 이때 다른 thread가 close/destroy 호출
-               -> 성공하지 않음
-               -> EBUSY
-```
-
-즉 `THREAD_SAFE`는 "무조건 아무 때나 다 동시에 호출 가능"이 아니라,
-"운영 중 API는 직렬화해 주되, 종료 API는 별도로 엄격하게 막는다"에 가깝다.
-
-### 3) `spot_node`와 unified `spot`의 관계는 이렇게 본다
-
-```text
-spot_node
-   |
-   +-- 내부 data-plane thread
-   |      +-- ingress SUB
-   |      +-- fanout XPUB
-   |      +-- mesh PUB / XSUB
-   |
-   +-- zlink_spot_new()
-          |
-          +-- 별도 spot_pub 생성
-          +-- 별도 spot_sub 생성
-          +-- node 내부 proxy endpoint에 attach
-```
-
-중요한 점:
-
-- unified `spot`은 `spot_node`의 public handle을 그대로 재사용하는 구조가 아니다.
-- child pub/sub를 따로 만들고 node 내부 data-plane에 붙는다.
-- 그래서 `spot`의 publish/subscribe 경로와 `spot_node` direct API 경로를 개념적으로 분리해서 볼 수 있다.
-
-## 2. 기준 문서와 우선순위
-
-이 문서의 직접 기준은 다음이다.
+직접 기준은 다음이다.
 
 - 인터페이스 기준:
   [`direct-callback-recv-interface-review.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-interface-review.ko.md)
 - recv/callback 실행 모델 기준:
   [`direct-callback-recv-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-rewrite-spec.ko.md)
+- 현재 공개 헤더 기준:
+  [`zlink.h`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/include/zlink.h)
 
 우선순위:
 
-1. 현재 public ABI shape 판단은 `direct-callback-recv-interface-review.ko.md`를 기준으로 한다.
-2. callback-only recv, handler replace/no-remove, ownership 규칙은
-   `direct-callback-recv-rewrite-spec.ko.md`를 따른다.
-3. 이 문서는 thread mode 도입 시 필요한 생성자/계약/락 전략을 추가 정의한다.
+1. canonical public 함수 이름과 시그니처는 interface review와 `zlink.h`를 따른다.
+2. callback-only recv, ownership, deferred teardown 규칙은 rewrite spec을 따른다.
+3. 이 문서는 위 인터페이스 위에서 thread-safe public contract를 추가 정의한다.
 
-즉, 새 컨텍스트에서 이 문서만 보더라도 작업할 수 있어야 하지만,
-public 함수 이름과 현재 canonical shape는
-`direct-callback-recv-interface-review.ko.md` 기준으로 해석한다.
+자주 쓰는 용어:
 
-## 용어 정리
+- same-handle:
+  같은 public handle 값 하나를 여러 thread가 공유해서 사용하는 경우.
+- callback thread:
+  recv callback, send-ready callback, 또는 monitor callback이 실제로 실행되는 thread.
+- worker thread:
+  callback thread가 아닌 일반 작업 thread.
+- in-flight API:
+  public API 호출이 시작됐고 아직 return하지 않은 상태.
+- self-close:
+  callback 안에서 자기 자신이 소유한 handle의 종료를 요청하는 경우.
+- child handle:
+  parent subject에 attach되어 열린 subordinate handle. monitor,
+  standalone `spot_pub`, standalone `spot_sub`, unified `spot`이 여기에
+  해당한다.
 
-이 문서는 동시성 관련 표현을 많이 사용하므로, 먼저 자주 나오는 용어를 고정한다.
+## 3. 핵심 결정
 
-### same-handle
+### 3.1 public selectable thread mode는 두지 않는다
 
-같은 public handle 값 하나를 여러 thread가 공유해서 쓰는 경우를 뜻한다.
+이 계획에서는 thread mode 개념 자체를 public surface에서 제거한다.
 
-예:
+- `zlink_thread_mode_t` 같은 enum을 도입하지 않는다.
+- 생성자나 `*_monitor_open()`에 `thread_mode` 인자를 추가하지 않는다.
+- parent-child 사이의 stronger/weaker 조합 매트릭스를 두지 않는다.
+- thread-safety는 선택 옵션이 아니라 기본 공개 계약이다.
 
-- 같은 `gateway` handle로 thread A와 thread B가 동시에 `zlink_gateway_send()` 호출
-- 같은 `spot` handle로 callback thread와 worker thread가 동시에 `zlink_spot_publish()` 호출
+즉 사용자는 더 이상 "이 handle을 어떤 mode로 만들었나"를 기억할 필요가 없다.
+질문은 하나로 줄어든다.
 
-### callback thread
+- "이 public handle은 same-handle concurrent 사용이 허용되나?"
 
-해당 recv callback이 실제로 실행되는 thread를 뜻한다.
-대개 해당 subject의 I/O dispatch를 수행하는 thread다.
+이 문서의 답은 일관되게 "허용된다. 단, 종료 API는 예외다."이다.
 
-### worker thread
+### 3.2 모든 주요 subject는 thread-safe contract를 가진다
 
-callback thread가 아닌, 사용자가 따로 만든 일반 작업 thread를 뜻한다.
-문서에서 "다른 thread"라고 하면 특별한 언급이 없는 한 callback thread 외부 thread를 뜻한다.
-
-### in-flight API / in-flight operation
-
-어떤 public API 호출이 "이미 시작됐지만 아직 return하지 않은 상태"를 뜻한다.
-
-예:
-
-- `send()` 함수에 진입했지만 아직 return 전
-- `subscribe()`가 내부 socket option 적용 중이라 아직 return 전
-- recv callback이 실행 중이라 아직 callback return 전
-
-이 문서에서 `in-flight`는 "이미 실행이 시작된 상태"를 뜻한다.
-큐에 들어가서 나중에 처리될 예정이라는 뜻으로 쓰지 않는다.
-
-### dispatch
-
-수신된 메시지 또는 이벤트를 callback으로 넘겨 실행하는 전체 과정을 뜻한다.
-"다음 dispatch 진입 시점"은 다음 메시지/event에 대해 callback 호출 경로에 들어가는 순간을 뜻한다.
-
-### match
-
-주로 subscribe/unsubscribe 설명에서 쓰는 용어다.
-들어온 메시지가 현재 subscription 집합에 매칭되는지 판단하는 단계를 뜻한다.
-
-### visibility
-
-어떤 변경이 언제부터 관찰되는지를 뜻한다.
-
-예:
-
-- `set_handler()` 후 "다음 dispatch 진입 시점부터 visible"
-- `unsubscribe()` 후 "다음 match 진입 시점부터 visible"
-
-### cross-thread close/destroy
-
-현재 callback을 실행 중인 thread가 아닌 다른 thread에서
-같은 handle의 `close()` / `destroy()` / monitor close를 호출하는 경우를 뜻한다.
-
-### self-close / self-destroy
-
-callback 안에서 자기 자신이 소유한 handle 종료를 요청하는 경우를 뜻한다.
-
-예:
-
-- raw socket callback 안에서 `zlink_close(socket_handle)`
-- service callback 안에서 `zlink_spot_destroy(&spot_handle_slot)`
-
-### child handle
-
-다른 subject에 attach되어 열리는 subordinate handle을 뜻한다.
-
-예:
-
-- socket monitor
-- service monitor
-- `spot_node`에 attach된 `spot_pub`, `spot_sub`, unified `spot`
-
-### direct API / direct path
-
-어떤 parent subject 자체의 public API를 직접 호출하는 경로를 뜻한다.
-
-예:
-
-- `zlink_spot_node_publish()`, `zlink_spot_node_subscribe()`
-- `zlink_gateway_send()`
-
-문서에서 "node direct API"라고 하면 `zlink_spot_node_*` 계열을 뜻한다.
-
-### fail-fast
-
-잘못된 사용을 조용한 data corruption이나 UB로 넘기지 않고,
-가능한 빨리 `EINVAL`, `EBUSY`, assert/log 같은 형태로 드러내는 정책을 뜻한다.
-
-## 3. 배경과 문제 정의
-
-지금 public surface를 보면 subject마다 thread-safety 성격이 조금씩 다르다.
-그래서 사용자는 "이건 여러 thread에서 써도 되나?"를 API마다 따로 기억해야 한다.
-
-현재 상태를 짧게 정리하면 다음과 같다.
-
-- raw socket은 public 계약상 완전 thread-safe subject가 아니다.
-- `gateway`는 내부적으로 `_use_lock` 기반 직렬화를 이미 가지고 있다.
-- `spot_pub`는 comment와 구현 모두 thread-safe subject에 가깝다.
-- `spot_sub`, unified `spot`, `spot_node`는 API별로 thread-safe 범위가 섞여 있다.
-- recv가 callback-only가 되면서, 과거의 큰 recv-side queue/fq 경쟁보다
-  same-handle `send`, handler 교체, subscribe/unsubscribe, destroy race가
-  더 중요한 동시성 문제가 됐다.
-
-이 상태가 불편한 이유는 다음과 같다.
-
-- public 사용자 입장에서 “무엇이 thread-safe인가”를 API family마다 따로 외워야 한다.
-- `gateway`와 `spot_pub`만 특별취급되면 ABI가 일관되지 않다.
-- single-thread 앱은 굳이 lock 비용을 부담하고,
-  multi-thread 앱은 subject마다 다른 안전 규칙을 알아야 한다.
-
-그래서 이 문서는 public 규칙을 이렇게 단순화하려고 한다.
-
-- handle을 만들 때 mode를 고른다.
-- 그 mode가 그 handle의 thread-safety 계약이 된다.
-- raw socket, gateway, spot 계열 모두 같은 틀로 설명한다.
-
-## 4. 핵심 결정
-
-### 4.1 thread mode를 생성 시 고정한다
-
-모든 주요 public subject는 생성 시 thread mode를 고정한다.
+적용 대상:
 
 - raw socket
 - `discovery`
@@ -258,1326 +103,658 @@ callback 안에서 자기 자신이 소유한 handle 종료를 요청하는 경�
 - unified `spot`
 - standalone `spot_pub`
 - standalone `spot_sub`
-- monitor handle도 같은 thread mode 개념으로 정렬한다.
+- socket/service monitor handle
 
-런타임에 mode를 바꾸는 API는 두지 않는다.
+이 대상들은 모두 same-handle concurrent `send`, `publish`, send-ready handler
+교체, subscription mutation, query, option setter, attach 계열 호출에 대해
+data race가 없도록 정의한다.
 
-이유:
+recv handler는 생성 시 고정이며 런타임 교체 API가 없으므로 동시성 보호 대상이
+아니다.
 
-- lock on/off 분기와 lifetime 계약이 생성 이후 바뀌면 구현 복잡도가 급증한다.
-- handle identity와 마찬가지로 concurrency identity도 생성 시 고정하는 편이 자연스럽다.
-- debug assertion, test matrix, 문서화가 쉬워진다.
+### 3.3 thread-safe 범위는 문서 계약으로 고정한다
 
-### 4.2 mode는 항상 명시적으로 받는다
+이 문서에서 말하는 thread-safe 범위는 구현 내부 선택사항이 아니라
+public contract다.
 
-생성자는 모두 `zlink_thread_mode_t`를 명시적으로 받는다.
+- 어떤 API를 same-handle concurrent 호출할 수 있는지는 문서, header comment,
+  테스트에서 먼저 고정한다.
+- 구현은 그 계약을 만족하는 방법을 선택할 수 있지만, 계약 자체를 구현마다
+  다르게 해석하면 안 된다.
+- 즉 범위는 문서가 정하고, mutex/atomic/TLS/batching 같은 메커니즘은 구현이
+  선택한다.
 
-- implicit default mode를 두지 않는다.
-- 호출자가 `THREAD_SAFE` / `NON_THREAD_SAFE`를 명확히 선언해야 한다.
-- 문서와 테스트도 explicit mode 기준으로만 정리한다.
+포함할 범위:
 
-### 4.3 non-thread-safe mode는 no-lock contract다
+- same-handle concurrent `send` / `publish` / `send_rid`
+- same-handle `*_set_send_ready_handler()` 교체
+- same-handle subscribe / unsubscribe / option setter / query / peer query
+- same-handle `attach_discovery()`, bind/connect, monitor open/close 같은 운영 중
+  lifecycle-adjacent API
+- callback thread와 worker thread가 같은 handle을 함께 사용하는 경우
 
-`NON_THREAD_SAFE` mode에서는 라이브러리가 내부 직렬화를 하지 않는다.
+제외할 범위:
 
-- same-handle concurrent `send`는 허용되지 않으며,
-  debug에서는 assert/log, release에서는 가능한 범위에서 `EINVAL` 또는 `EBUSY`로 실패시킨다.
-- callback thread와 다른 thread에서 같은 handle의 lifecycle API를 동시에 호출하면 안 된다.
-- 라이브러리는 fast path를 위해 per-handle mutex를 생략할 수 있다.
+- `close` / `destroy`를 다른 운영 API와 자유롭게 병행하는 것
+- parent와 child handle을 하나의 원자적 종료 단위로 암묵 처리하는 것
+- 서로 다른 handle 사이의 전역 ordering 또는 fairness 보장
+- 사용자 callback 내부 상태까지 라이브러리가 대신 동기화하는 것
+- lock-free 보장, 최고 성능 보장, starvation 부재 보장
 
-### 4.4 thread-safe mode는 per-handle serialization을 기본으로 한다
+즉 이 문서의 thread-safe는 "same-handle 운영 API의 정합성을 라이브러리가
+보장한다"는 뜻이며, "모든 API를 아무 때나 병행 호출해도 된다"는 뜻은 아니다.
 
-`THREAD_SAFE` mode는 다음을 기본 보장으로 둔다.
+### 3.4 기본 구현 전략은 per-handle serialization이다
 
-- same-handle concurrent `send` 허용
-- `set_handler()`와 dispatch 간 최소한의 safe replace 보장
-- option setter / subscribe 같은 state mutation의 직렬화
-- destroy/close는 더 강한 drain/reference-count 정책이 필요하므로 별도 규칙을 둔다
+기본 전략은 global lock이 아니라 handle 단위 직렬화다.
 
-이 문서의 목표는 public 계약을 바로 이 형태로 바꾸는 것이다.
-단계적 도입이나 compatibility wrapper는 전제하지 않는다.
+- 각 handle은 자기 상태를 스스로 보호한다.
+- 서로 다른 handle 사이에는 불필요한 전역 락을 두지 않는다.
+- parent-child coordination은 공유 상태 경계에서만 명시적으로 잡는다.
 
-쉽게 말해:
+사용자 관점의 의미는 단순하다.
 
-- `THREAD_SAFE` = "같은 handle을 여러 thread에서 써도 라이브러리가 정리해 준다."
-- `NON_THREAD_SAFE` = "같은 handle은 한 thread에서만 쓰거나, 앱이 직접 락을 잡아라."
-- 두 mode 모두 `close` / `destroy`는 예외적으로 더 보수적이다.
+- worker thread 두 개가 같은 handle로 `send()`를 호출할 수 있다.
+- callback thread와 worker thread가 같은 handle로 동시에 `publish()`할 수 있다.
+- mutation/query가 동시에 들어와도 반쯤 적용된 중간 상태가 보이면 안 된다.
 
-대표 시나리오로 보면 더 단순하다.
+### 3.5 `close` / `destroy`는 운영 API보다 더 엄격하다
 
-| 시나리오 | `THREAD_SAFE` | `NON_THREAD_SAFE` |
-|---|---|---|
-| A: worker 두 개가 같은 handle로 send | 허용 | 외부 락 없으면 misuse |
-| B: callback 중 다른 thread가 handler 교체 | 허용, 다음 dispatch 반영 | 금지 |
-| C: callback 중 다른 thread가 close/destroy | `EBUSY` | caller 책임, 가능하면 fail-fast |
+thread-safe contract가 있다고 해서 종료 API까지 아무 때나 병행 허용하는 것은 아니다.
 
-## 5. 새 public enum 제안
+- same-handle public API가 하나라도 in-flight면 cross-thread
+  `close` / `destroy`는 성공하지 않는다.
+- 이 경우 라이브러리는 `EBUSY`를 반환한다.
+- callback 안의 self-close는 허용하지만 실제 teardown은 callback return 뒤로
+  미룬다.
 
-```c
-typedef enum zlink_thread_mode_t
-{
-  ZLINK_THREAD_MODE_THREAD_SAFE = 0,
-  ZLINK_THREAD_MODE_NON_THREAD_SAFE = 1
-} zlink_thread_mode_t;
-```
+### 3.6 callback 중 send와 visibility 규칙을 유지한다
 
-원칙:
+callback 안 send는 중요한 사용 패턴이므로 유지한다.
 
-- 닫힌 값 집합이므로 enum으로 공개한다.
-- 기본값은 `THREAD_SAFE = 0`으로 둔다.
-  구조체 zero-init이나 FFI/binding enum 기본값이 유효 상태로 남기 쉽다.
-  이것은 enum 값 배치 원칙일 뿐, 생성 API에서 implicit default mode를 둔다는 뜻은 아니다.
-- `AUTO`, `EXTERNAL_SERIALIZED` 같은 추가 mode는 현재 범위에 넣지 않는다.
+- recv callback 안 same-handle `send` / `publish` 허용
+- monitor callback 안 parent subject send 계열 API 허용
+- send-ready handler 교체는 "다음 writable transition"부터 visible
+- subscribe / unsubscribe는 "다음 match 또는 dispatch 진입 시점"부터 visible
 
-## 6. 공개 생성 API 재설계
+핵심 시나리오를 표로 요약하면 다음과 같다.
 
-### 6.1 API shape 원칙
+| 시나리오 | 결과 |
+|---|---|
+| worker 두 개가 같은 handle로 `send` | 허용, per-handle 기준 직렬화 |
+| callback thread와 worker thread가 동시에 `publish` | 허용 |
+| `set_send_ready_handler()` 도중 writable transition 발생 | 기존 또는 새 handler 중 하나로 완결 처리 |
+| `unsubscribe()` 반환 후 새 메시지 유입 | 새 subscription 상태 적용 |
+| 다른 thread가 in-flight API 중 `close` 호출 | `EBUSY` |
+| callback 안 self-close | 성공 처리 후 epilogue teardown |
 
-이 절은 "최종 public 함수 모양을 어떻게 맞출 것인가"를 설명한다.
+## 4. 한눈에 보는 구조
 
-생성자 이름은 가능하면 그대로 유지하고, 기존 생성자 시그니처에
-`zlink_thread_mode_t`를 직접 추가한다.
-단, `NULL` 허용으로 자연스럽게 통합되는 경우는 두 생성자를 하나로 병합한다.
-
-이유:
-
-- 호환성 alias/wrapper 없이 곧바로 최종 shape로 정리할 수 있다.
-- 문서와 코드가 임시 이행 상태 없이 바로 일치한다.
-- 바인딩과 테스트도 최종 생성자만 따르면 된다.
-
-즉 방향은 "새 이름을 잔뜩 만드는 것"이 아니라
-"기존 생성자에 mode 인자를 추가해서 최종 형태로 바로 정리하는 것"이다.
-
-### 6.2 raw socket
-
-현재:
-
-```c
-void *zlink_socket (void *ctx,
-                    zlink_socket_type_t type,
-                    const zlink_socket_handler_t *handler);
-```
-
-변경안:
-
-```c
-void *zlink_socket (void *ctx,
-                    zlink_socket_type_t type,
-                    const zlink_socket_handler_t *handler,
-                    zlink_thread_mode_t thread_mode);
-```
-
-비고:
-
-- `zlink_socket_handler_t`는 `kind` + fn union 구조의 descriptor다.
-  `ZLINK_SOCKET_HANDLER_MSG` / `ZLINK_SOCKET_HANDLER_SPOT` / `ZLINK_SOCKET_HANDLER_XPUB` 중 하나를
-  socket type family에 맞게 선택한다.
-- recv-capable 타입은 family에 맞는 non-`NULL` descriptor가 필수이고,
-  send-only `PUB`만 `handler == NULL` 경로를 허용한다.
-- `zlink_socket_set_handler(void *s, const zlink_socket_handler_t *handler)` 로
-  callback 교체를 수행한다. (`zlink_socket_set_msg_handler()` 대체)
-
-읽는 포인트는 단순하다.
-
-- raw socket도 이제 다른 subject와 똑같이 생성 시 mode를 고른다.
-- recv-capable socket은 처음부터 handler가 있어야 한다.
-- handler 교체는 생성 후 `set_handler()`로 한다.
-
-### 6.3 discovery
-
-`discovery`도 내부적으로 mutable topology cache와 observer list를 가지므로
-동일한 mode 대상에 넣는 편이 일관적이다.
-
-즉 `discovery`도 "그냥 보조 객체"로 두지 않고,
-thread mode를 가지는 독립 subject로 본다.
-
-현재:
-
-```c
-void *zlink_discovery_new (void *ctx,
-                           zlink_service_type_t service_type);
-```
-
-변경안:
-
-```c
-void *zlink_discovery_new (void *ctx,
-                           zlink_service_type_t service_type,
-                           zlink_thread_mode_t thread_mode);
-```
-
-비고:
-
-- `discovery`에서 `THREAD_SAFE`의 의미는 same-handle concurrent `send`보다는
-  topology cache update, observer attach/detach, service query 같은 관리 API를
-  데이터 race 없이 함께 호출할 수 있다는 뜻에 가깝다.
-- 즉 `discovery`는 다른 subject와 같은 enum을 쓰지만,
-  실제 보호 대상은 topology/observer/query 경로다.
-
-### 6.4 gateway
-
-현재:
-
-```c
-void *zlink_gateway_new (void *ctx,
-                         const char *service_name,
-                         const char *routing_id,
-                         zlink_socket_msg_handler_fn handler);
-```
-
-변경안:
-
-```c
-void *zlink_gateway_new (void *ctx,
-                         const char *service_name,
-                         const char *routing_id,
-                         zlink_socket_msg_handler_fn handler,
-                         zlink_thread_mode_t thread_mode);
-```
-
-비고:
-
-- canonical interface review 기준으로 gateway는 `zlink_socket_msg_handler_fn`을 사용한다.
-  `zlink_gateway_handler_fn` typedef는 canonical에서 삭제됐다.
-- `handler`는 필수 non-`NULL`이다. `NULL`로 생성하면 `EINVAL` / `NULL`을 반환한다.
-  `gateway`는 항상 recv-capable이므로 handler 없이 생성할 수 없다.
-- 현재 `gateway_t`는 내부 `_use_lock`를 이미 가지고 있으므로
-  `thread_mode`는 `_use_lock` 초기값으로 직접 연결할 수 있다.
-- 즉 `THREAD_SAFE`면 `_use_lock = true`,
-  `NON_THREAD_SAFE`면 `_use_lock = false`가 기본 구현 경로다.
-- `gateway`와 `discovery` 간 mode 호환 규칙은 `zlink_gateway_new()` 시점이 아니라
-  `zlink_gateway_attach_discovery()` 시점에 체크한다.
-  즉 `discovery`가 `NON_THREAD_SAFE`인 상태에서
-  `THREAD_SAFE` `gateway`가 `zlink_gateway_attach_discovery()`를 호출하면 `EINVAL`로 막는다.
-
-`gateway`는 이미 `_use_lock` 기반 경로가 있어서 `thread_mode` 연결이 가장 쉬운 대상이다.
-
-### 6.5 spot_node
-
-현재:
-
-```c
-void *zlink_spot_node_new (void *ctx,
-                           const char *service_name,
-                           zlink_spot_handler_fn handler);
-```
-
-변경안:
-
-```c
-void *zlink_spot_node_new (void *ctx,
-                           const char *service_name,
-                           zlink_spot_handler_fn handler,
-                           zlink_thread_mode_t thread_mode);
-```
-
-비고:
-
-- `handler`는 필수 non-`NULL`이다. `NULL`로 생성하면 `EINVAL` / `NULL`을 반환한다.
-
-이유:
-
-- `spot_node`는 bind/connect/register/discovery/TLS/subscription set을
-  다루므로 사실상 독립 concurrency subject다.
-- `gateway`와 레벨을 맞추려면 `spot_node`도 thread mode를 명시적으로 가져야 한다.
-
-즉 `spot_node`는 단순한 container가 아니라,
-그 자체로 별도 concurrency 규칙을 가져야 하는 parent subject다.
-
-### 6.6 unified spot
-
-현재:
-
-```c
-void *zlink_spot_new (void *spot_node,
-                      zlink_spot_handler_fn handler);
-```
-
-변경안:
-
-```c
-void *zlink_spot_new (void *spot_node,
-                      zlink_spot_handler_fn handler,
-                      zlink_thread_mode_t thread_mode);
-```
-
-비고:
-
-- `handler`는 필수 non-`NULL`이다. `NULL`로 생성하면 `EINVAL` / `NULL`을 반환한다.
-- unified `spot`은 parent `spot_node`의 thread mode와 무관하게 독립적으로 thread mode를 선택한다.
-  `spot_node`가 `NON_THREAD_SAFE`이어도 `spot`을 `THREAD_SAFE`로 생성할 수 있다.
-- 이 관계는 아래처럼 이해하면 된다.
+전체 그림은 아래처럼 이해하면 된다.
 
 ```text
-thread-safe가 아닌 spot_node
-        |
-        +-- zlink_spot_new(...)
-               |
-               +-- 새 spot_pub
-               +-- 새 spot_sub
-               +-- node 내부 data-plane endpoint에 연결
+create/open(...)
+   |
+   +-- thread-safe handle
+          |
+          +-- recv handler는 생성 시 고정 (런타임 교체 없음)
+          +-- same-handle concurrent send / mutation 허용
+          +-- callback 중 send 허용
+          +-- send-ready handler / subscription visibility는 다음 transition/match 기준
+          +-- cross-thread close/destroy는 in-flight가 있으면 EBUSY
+          +-- self-close는 deferred teardown
 ```
 
-구조:
+`spot_node`와 child facade의 관계는 아래처럼 본다.
 
-- unified `spot`은 `spot_node`의 public pub/sub handle을 빌려 쓰는 얇은 alias가 아니다.
-- 생성 시 별도 child facade를 만들고,
-  이 child facade들이 node 내부 proxy/data-plane에 붙는 구조다.
-- 그래서 data path 관점에서는 parent와 child가 같은 public socket handle을 공유하지 않는다.
-
-동기화 경계:
-
-- unified `spot`의 publish/subscribe/handler 경로 동기화는
-  `spot` 자체의 동기화 책임 범위에서 처리한다.
-- 반대로 `spot_node`의 thread mode는 `zlink_spot_node_*` direct API 계약에 적용된다.
-- `spot_node`의 `NON_THREAD_SAFE`는
-  `zlink_spot_node_*` direct API 호출에 대한 외부 직렬화 책임을 뜻한다.
-  node 내부 data-plane thread나 child facade와의 내부 coordination lock까지
-  제거한다는 뜻은 아니다.
-
-기타:
-
-- unified `spot`은 생성 시 역할을 선택하지 않는다.
-  항상 pub/sub를 함께 가진 facade이므로 `roles` 인자를 받지 않는다.
-
-실제로 사용자가 느끼는 모습은 다음과 같다.
-
-- `spot_node`는 "노드 전체를 관리하는 parent"
-- unified `spot`은 "그 parent 위에 붙는 독립 pub/sub facade"
-- 둘은 완전히 무관한 객체는 아니지만,
-  same-handle thread-safety를 판단할 때는 다른 subject로 보는 편이 더 정확하다
-
-### 6.7 standalone SpotPub / SpotSub
-
-현재:
-
-```c
-void *zlink_spot_pub_new (void *node);
-void *zlink_spot_sub_new (void *node);
+```text
+spot_node
+   |
+   +-- zlink_spot_new()
+   |      -> child pub/sub를 별도 생성
+   |      -> node 내부 data-plane endpoint에 attach
+   |
+   +-- zlink_spot_pub_new()
+   +-- zlink_spot_sub_new()
+   |
+   +-- child와 parent는 모두 thread-safe contract를 가짐
 ```
 
-변경안:
+즉 unified `spot`, standalone `spot_pub`, standalone `spot_sub`, monitor handle은
+parent와 연결된 child지만, thread-safety를 더 약하게 해석하는 별도 등급으로
+보지 않는다.
 
-```c
-void *zlink_spot_pub_new (void *node,
-                          zlink_thread_mode_t thread_mode);
+## 5. 공개 API 방향
 
-void *zlink_spot_sub_new (void *node,
-                          zlink_thread_mode_t thread_mode);
-```
+이 문서의 방향은 "생성자 시그니처에 동시성 옵션을 추가하는 것"이 아니다.
+canonical public shape는 그대로 유지하고, 그 위에 thread-safe contract를
+명시적으로 올린다.
 
-비고:
-
-- `zlink_spot_sub_new()`는 handler를 생성자 인자로 받지 않는다.
-  handler는 생성 후 `zlink_spot_sub_set_handler(sub, handler)`로 별도 지정한다.
-  (zlink.h 현재 구현 및 spot-node-direct-facade-plan 일치)
-
-추가 규칙:
-
-- parent `spot_node`가 `NON_THREAD_SAFE`인데 standalone `spot_pub` / `spot_sub`를
-  `THREAD_SAFE`로 만드는 것은 `EINVAL`로 막는다.
-- parent가 `THREAD_SAFE`일 때 child가 `NON_THREAD_SAFE`인 것은 허용 가능하다.
-
-### 6.8 monitor handle
-
-`monitor`도 독립 handle로 열리고 callback/set_handler/close 경쟁을 가지므로
-같은 `thread_mode` surface에 포함한다.
-
-즉 monitor도 "부가 기능" 정도로 보지 않고,
-handler 교체와 close 경쟁이 있는 별도 child handle로 취급한다.
-
-현재:
-
-```c
-void *zlink_socket_monitor_open (void *s,
-                                 zlink_socket_monitor_event_mask_t events,
-                                 zlink_monitor_handler_fn handler);
-
-void *zlink_discovery_monitor_open (void *discovery,
-                                    zlink_discovery_monitor_event_mask_t events,
-                                    zlink_service_monitor_handler_fn handler);
-
-void *zlink_gateway_monitor_open (void *gateway,
-                                  zlink_gateway_monitor_event_mask_t events,
-                                  zlink_service_monitor_handler_fn handler);
-
-void *zlink_spot_monitor_open (void *spot,
-                               zlink_spot_role_t role,
-                               zlink_spot_monitor_event_mask_t events,
-                               zlink_service_monitor_handler_fn handler);
-
-void *zlink_spot_sub_monitor_open (void *sub,
-                                   zlink_spot_monitor_event_mask_t events,
-                                   zlink_service_monitor_handler_fn handler);
-
-void *zlink_spot_pub_monitor_open (void *pub,
-                                   zlink_spot_monitor_event_mask_t events,
-                                   zlink_service_monitor_handler_fn handler);
-```
-
-변경안:
-
-```c
-void *zlink_socket_monitor_open (void *s,
-                                 zlink_socket_monitor_event_mask_t events,
-                                 zlink_monitor_handler_fn handler,
-                                 zlink_thread_mode_t thread_mode);
-
-void *zlink_discovery_monitor_open (void *discovery,
-                                    zlink_discovery_monitor_event_mask_t events,
-                                    zlink_service_monitor_handler_fn handler,
-                                    zlink_thread_mode_t thread_mode);
-
-void *zlink_gateway_monitor_open (void *gateway,
-                                  zlink_gateway_monitor_event_mask_t events,
-                                  zlink_service_monitor_handler_fn handler,
-                                  zlink_thread_mode_t thread_mode);
-
-void *zlink_spot_monitor_open (void *spot,
-                               zlink_spot_role_t role,
-                               zlink_spot_monitor_event_mask_t events,
-                               zlink_service_monitor_handler_fn handler,
-                               zlink_thread_mode_t thread_mode);
-
-void *zlink_spot_sub_monitor_open (void *sub,
-                                   zlink_spot_monitor_event_mask_t events,
-                                   zlink_service_monitor_handler_fn handler,
-                                   zlink_thread_mode_t thread_mode);
-
-void *zlink_spot_pub_monitor_open (void *pub,
-                                   zlink_spot_monitor_event_mask_t events,
-                                   zlink_service_monitor_handler_fn handler,
-                                   zlink_thread_mode_t thread_mode);
-```
-
-추가 규칙:
-
-- `monitor`는 attached child handle로 본다.
-- `handler`는 필수 non-`NULL`이다. `NULL`로 open하면 `EINVAL` / `NULL`을 반환한다.
-  monitor는 항상 recv-capable이므로 handler 없이 open할 수 없다.
-- parent subject가 `NON_THREAD_SAFE`이면 child monitor를 `THREAD_SAFE`로 여는 것은 `EINVAL`로 막는다.
-- parent가 `THREAD_SAFE`일 때 child monitor가 `NON_THREAD_SAFE`인 것은 허용할 수 있다.
-- `zlink_monitor_set_handler()` / `zlink_service_monitor_set_handler()`의 교체 visibility는
-  parent subject의 direct callback 계약과 동일하게 “다음 dispatch 진입 시점” 기준으로 맞춘다.
-
-### 6.9 공개 인터페이스 변경 요약
-
-아래 표는 이 문서 범위에서 실제로 public 시그니처가 어떻게 바뀌는지를
-한 번에 보여준다.
-
-읽을 때는 표 전체를 외우기보다 아래 두 점만 보면 된다.
-
-- 거의 모든 생성/open 함수에 `zlink_thread_mode_t`가 추가된다.
-- close/destroy 함수 이름은 유지하고, 계약만 더 엄격하게 정리한다.
-
-| 현재 인터페이스 | 변경안 | 비고 |
+| Subject | Canonical 생성/open API | 계획 방향 |
 |---|---|---|
-| `zlink_socket(void *ctx, zlink_socket_type_t type, const zlink_socket_handler_t *handler)` | `zlink_socket(void *ctx, zlink_socket_type_t type, const zlink_socket_handler_t *handler, zlink_thread_mode_t thread_mode)` | raw socket 생성자에 `thread_mode` 추가; handler는 descriptor struct |
-| `zlink_discovery_new(void *ctx, zlink_service_type_t service_type)` | `zlink_discovery_new(void *ctx, zlink_service_type_t service_type, zlink_thread_mode_t thread_mode)` | discovery도 thread mode 대상 |
-| `zlink_gateway_new(void *ctx, const char *service_name, const char *routing_id, zlink_socket_msg_handler_fn handler)` | `zlink_gateway_new(void *ctx, const char *service_name, const char *routing_id, zlink_socket_msg_handler_fn handler, zlink_thread_mode_t thread_mode)` | `zlink_gateway_handler_fn` 삭제; `zlink_socket_msg_handler_fn` 사용; mode 호환 체크는 `attach_discovery` 시점 |
-| `zlink_spot_node_new(void *ctx, const char *service_name, zlink_spot_handler_fn handler)` | `zlink_spot_node_new(void *ctx, const char *service_name, zlink_spot_handler_fn handler, zlink_thread_mode_t thread_mode)` | node가 parent mode를 고정 |
-| `zlink_spot_new(void *spot_node, zlink_spot_handler_fn handler)` | `zlink_spot_new(void *spot_node, zlink_spot_handler_fn handler, zlink_thread_mode_t thread_mode)` | roles 없음; parent `spot_node`와 독립적으로 mode 선택 |
-| `zlink_spot_pub_new(void *node)` | `zlink_spot_pub_new(void *node, zlink_thread_mode_t thread_mode)` | standalone child 생성자 |
-| `zlink_spot_sub_new(void *node)` | `zlink_spot_sub_new(void *node, zlink_thread_mode_t thread_mode)` | standalone child 생성자; handler는 생성 후 `set_handler()`로 지정 |
-| `zlink_socket_monitor_open(void *s, zlink_socket_monitor_event_mask_t events, zlink_monitor_handler_fn handler)` | `zlink_socket_monitor_open(void *s, zlink_socket_monitor_event_mask_t events, zlink_monitor_handler_fn handler, zlink_thread_mode_t thread_mode)` | monitor handle도 explicit mode |
-| `zlink_discovery_monitor_open(void *discovery, zlink_discovery_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler)` | `zlink_discovery_monitor_open(void *discovery, zlink_discovery_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler, zlink_thread_mode_t thread_mode)` | discovery child monitor |
-| `zlink_gateway_monitor_open(void *gateway, zlink_gateway_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler)` | `zlink_gateway_monitor_open(void *gateway, zlink_gateway_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler, zlink_thread_mode_t thread_mode)` | gateway child monitor |
-| `zlink_spot_monitor_open(void *spot, zlink_spot_role_t role, zlink_spot_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler)` | `zlink_spot_monitor_open(void *spot, zlink_spot_role_t role, zlink_spot_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler, zlink_thread_mode_t thread_mode)` | unified spot monitor |
-| `zlink_spot_sub_monitor_open(void *sub, zlink_spot_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler)` | `zlink_spot_sub_monitor_open(void *sub, zlink_spot_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler, zlink_thread_mode_t thread_mode)` | split sub monitor |
-| `zlink_spot_pub_monitor_open(void *pub, zlink_spot_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler)` | `zlink_spot_pub_monitor_open(void *pub, zlink_spot_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler, zlink_thread_mode_t thread_mode)` | split pub monitor |
-| `zlink_monitor_set_handler(void *monitor_socket, zlink_monitor_handler_fn handler)` | 시그니처 유지 | 교체 visibility만 “다음 dispatch 진입 시점”으로 명시 |
-| `zlink_service_monitor_set_handler(void *monitor, zlink_service_monitor_handler_fn handler)` | 시그니처 유지 | 교체 visibility만 “다음 dispatch 진입 시점”으로 명시 |
-| `zlink_close(void *s)` | 시그니처 유지 | cross-thread close: `EBUSY`; callback self-close: deferred teardown |
-| `zlink_service_monitor_close(void **monitor_p)` | 시그니처 유지 | 동일 정책 적용 |
+| raw socket | `zlink_socket(ctx, type, handler)` | recv-capable socket은 생성 즉시 thread-safe recv/send subject로 본다. raw `PUB`만 `handler == NULL` 경로를 유지한다. |
+| `discovery` | `zlink_discovery_new(ctx, service_type)` | topology cache, observer, query, monitor 경로를 thread-safe subject로 정리한다. |
+| `gateway` | `zlink_gateway_new(ctx, service_name, routing_id, handler)` | existing `_sync` 기반 구조를 재사용하되 공개 계약은 unconditional thread-safe로 올린다. |
+| `spot_node` | `zlink_spot_node_new(ctx, service_name, handler)` | publish, subscribe, discovery attach, TLS, peer connect, child registry를 thread-safe subject로 본다. |
+| unified `spot` | `zlink_spot_new(spot_node, handler)` | facade-level publish/subscribe/peer query를 thread-safe contract로 유지한다. |
+| standalone `spot_pub` | `zlink_spot_pub_new(node)` | 이미 thread-safe로 설명되던 성격을 공통 계약 일부로 흡수한다. |
+| standalone `spot_sub` | `zlink_spot_sub_new(node, handler)` | subscription mutation, peer query를 thread-safe subject로 정리한다. |
+| monitor handle | `*_monitor_open(..., handler)` | 모든 monitor를 독립 thread-safe child handle로 본다. |
 
-## 7. 허용 동시 호출 계약
+추가 방향:
+
+- `zlink_gateway_attach_discovery()` / `zlink_spot_node_attach_discovery()`는
+  동시성 모드 호환 체크를 하지 않는다. 단, topology ownership 규칙은 유지한다:
+  - manual peer/route가 하나라도 존재하는 상태에서 attach를 호출하면 `EBUSY`
+  - attach 이후에는 manual `connect` / `disconnect`가 금지된다
+  - topology 변화는 discovery-driven convergence로만 반영된다
+  - attach 시점에는 위 ownership 전제와 lifetime / in-flight state를 함께 검증한다.
+- `zlink_spot_pub_new()`의 "default thread-safe" 같은 문구는 공통 규칙에 맞춰
+  일반화한다. 이제 특별취급된 예외가 아니라 전체 모델의 일부다.
+- public header에는 `_use_lock`나 internal sync field를 노출하지 않는다.
+
+## 6. 허용 동시 호출 계약
 
 이 절은 "어디까지를 라이브러리가 책임지고 직렬화해 주는가"를 정리한다.
 
-- `THREAD_SAFE`의 기본 의미는 same-handle concurrent operation 허용이다.
-- `NON_THREAD_SAFE`의 기본 의미는 same-handle concurrent operation 금지다.
-- 단, `close` / `destroy`는 `THREAD_SAFE`여도 아무 때나 허용하지 않는다.
-
-읽을 때는 아래 두 문장만 먼저 기억하면 된다.
-
-- 운영 API(`send`, `set_handler`, subscribe, option setter 등)는 mode에 따라 허용 범위를 나눈다.
-- 종료 API(`close`, `destroy`)는 mode와 별개로 가장 보수적으로 다룬다.
-
-### 7.1 thread-safe mode
+### 6.1 send / publish / reply
 
 허용:
 
-- same-handle concurrent `send`
-- callback thread와 다른 thread에서 `set_handler`
-- concurrent option setter / query / peer query
-- `spot_pub` / `spot_node_publish` / `gateway send`의 same-handle concurrent send
+- same-handle concurrent `zlink_send()`
+- same-handle concurrent `zlink_gateway_send()`
+- same-handle concurrent `zlink_gateway_send_rid()`
+- same-handle concurrent `zlink_spot_node_publish()`
+- same-handle concurrent `zlink_spot_publish()`
+- same-handle concurrent `zlink_spot_pub_publish()`
+- callback thread와 worker thread의 동시 send/publish/reply
 
-예:
+보장:
 
-- worker thread A가 `send()` 중일 때 worker thread B가 같은 handle로 `send()` → 허용
-- callback thread가 reply/publish 중일 때 worker thread가 같은 handle로 `send()` → 허용
-- worker thread가 `set_handler()` 하는 동안 다른 thread가 `send()` → 허용
+- data corruption이 없어야 한다.
+- deadlock이 없어야 한다.
+- 성공 또는 명시적 에러(`EAGAIN` 등) 중 하나로 완결되어야 한다.
+- 조용한 data loss나 중간 상태 노출은 허용하지 않는다.
 
-제한적 허용:
+### 6.2 send-ready handler
 
-- `spot` / `spot_node`의 subscribe mutation은 thread-safe mode에서도
-  “데이터 race 없이 호출 가능”으로 제한한다.
-- publish path와 subscribe/unsubscribe가 동시에 호출될 수는 있지만,
-  새 subscription이나 unsubscribe가 정확히 어느 메시지부터 관찰되는지는
-  별도 visibility 규칙을 명시한다.
+`*_set_send_ready_handler()`는 런타임에 교체 가능한 유일한 callback setter다.
 
-조건:
+대상 API:
 
-- 각 API는 per-handle serialization 아래에서 defined order를 가져야 한다.
-- callback은 inline 실행되더라도 same-handle `send`에서 deadlock 나면 안 된다.
-- `set_handler()`는 성공 후 다음 dispatch 진입 시점부터 새 handler가 관찰되어야 한다.
-- subscribe/unsubscribe는 `set_handler()`와 같은 수준의 “다음 match/dispatch 진입 시점”
-  visibility를 기본 계약으로 둔다.
-- 즉 unsubscribe 성공 전에 이미 match/dispatch 단계에 들어간 in-flight 메시지는
-  기존 subscription 기준으로 전달될 수 있고,
-  unsubscribe 반환 이후 새로 match에 들어가는 메시지부터 새 subscription 상태를 본다.
-- subscribe도 동일하게, 호출 반환 이후 새로 match에 들어가는 메시지부터 적용되는 것으로 본다.
+- `zlink_socket_set_send_ready_handler()`
+- `zlink_gateway_set_send_ready_handler()`
+- `zlink_spot_node_set_send_ready_handler()`
+- `zlink_spot_set_send_ready_handler()`
+- `zlink_spot_pub_set_send_ready_handler()`
 
-`set_handler()`, subscribe/unsubscribe 모두 같은 visibility 패턴을 따른다.
+동시성 계약:
 
-```text
-시간 -->
-msg A (match 진입) ... set_handler()/unsubscribe() 반환 ... msg B (match 진입)
-                                    |
-           A는 기존 handler/subscription으로 처리될 수 있음
-                                    B부터 새 handler/subscription 적용
-```
+- send-ready handler 교체와 send path / writable transition dispatch는 동시에
+  발생할 수 있다. 라이브러리가 data race 없이 직렬화한다.
+- 교체가 성공하면 다음 writable transition부터 새 handler가 관찰된다.
+- 이미 in-flight인 send-ready callback은 기존 handler로 완료될 수 있다.
+- canonical interface review에 따라 replace-only surface다. `NULL` 제거는
+  허용하지 않으며, `NULL`을 전달하면 `EINVAL`을 반환한다.
 
-제한:
+callback 중 재진입:
 
-- `destroy` / `close`와 다른 API 동시 호출은 가장 엄격한 제한을 둔다.
-- 기본 규칙은 “same-handle public API가 하나라도 in-flight면 close/destroy는 성공하지 않는다”이다.
-- 즉 cross-thread `close` / `destroy`는 in-flight callback뿐 아니라
-  in-flight `send`, option setter, subscribe/unsubscribe, query, monitor API와도 충돌하면
-  `EBUSY`를 반환해야 한다.
+- send-ready callback 안에서 same-handle `send` / `publish`를 호출할 수 있다.
+- send-ready callback 안에서 `*_set_send_ready_handler()`를 다시 호출하면
+  `EDEADLK`를 반환한다 (재진입 금지).
 
-### 7.2 non-thread-safe mode
+close race:
+
+- send-ready callback 실행 중 다른 thread에서 `close` / `destroy` 호출 시
+  `EBUSY`를 반환한다 (9절 공통 정책).
+- send-ready callback 안 self-close는 recv callback과 동일한 deferred teardown
+  규칙을 따른다.
+
+### 6.3 mutation / query / attach
 
 허용:
 
-- 단일 thread 또는 외부 직렬화 아래의 모든 기존 사용 패턴
-- callback thread 내 same-handle `send`
+- send-ready handler 교체와 send path / writable transition의 공존
+- subscribe / unsubscribe와 publish의 공존
+- option setter / query / peer query의 공존
+- `attach_discovery()`, bind/connect, monitor open/close 같은 lifecycle-adjacent
+  API의 thread-safe 직렬화
 
-금지:
+정의:
 
-- same-handle concurrent `send`
-- callback thread와 다른 thread에서 동시에 mutation API 호출
-- subscribe/unsubscribe/set_handler/destroy race
+- 각 API는 per-handle 기준의 defined order를 가져야 한다.
+- 호출이 겹치더라도 반쯤 적용된 subscription, 손상된
+  topology cache가 보이면 안 된다.
 
-권장 디버그 정책:
+참고: recv handler는 생성 시 고정이므로 교체 동시성을 고려할 필요가 없다.
 
-- debug build에서 owner thread 또는 external serialization 위반을 assert/log 한다.
-- release build에서는 UB로 남기지 않고 가능한 범위에서 `EINVAL` 또는 `EBUSY`로 fail-fast 한다.
+### 6.4 visibility
 
-close/destroy에 대해서는 다음처럼 해석한다.
+send-ready handler 교체:
 
-- `NON_THREAD_SAFE`에서도 close/destroy 관련 최소 상태(`closing_requested`,
-  in-flight counter, callback depth 같은 파괴 방지용 상태)는 atomic 또는 경량 guard로 유지할 수 있다.
-- 즉 no-lock contract는 "운영 API를 라이브러리가 직렬화하지 않는다"는 뜻이지,
-  self-close 안전성이나 best-effort `EBUSY` 판단에 필요한 최소 보호까지 없앤다는 뜻은 아니다.
-- 따라서 `NON_THREAD_SAFE`에서도 cross-thread close/destroy가 감지 가능한 경우에는
-  best-effort로 `EBUSY`를 반환하는 것을 권장한다.
+- `*_set_send_ready_handler()`가 성공하면 다음 writable transition부터
+  새 handler가 관찰되어야 한다.
+- 이미 in-flight인 send-ready callback은 기존 handler로 완료될 수 있다.
 
-쉽게 말해:
+subscription mutation:
 
-- debug: 잘못 쓰면 바로 assert/log
-- release: 가능한 한 조용히 망가지지 말고 `EINVAL` / `EBUSY`로 빠르게 실패
+- `unsubscribe()` 반환 전에 이미 match/dispatch에 진입한 메시지는 기존 구독
+  상태로 전달될 수 있다.
+- `unsubscribe()` 반환 이후 새로 match에 진입한 메시지부터 새 상태를 본다.
+- `subscribe()`도 동일하게 반환 이후 새로 match에 진입한 메시지부터 적용된다.
 
-## 8. 락/동기화 설계
+## 7. 락/동기화 설계
 
-### 8.1 기본 전략
+### 7.1 기본 전략
 
-thread-safe mode의 기본 구현은 “global lock”이 아니라 “per-handle lock”이다.
+권장 구현은 아래 조합이다.
 
-즉 "라이브러리 전체에 큰 락 하나"가 아니라,
-"각 handle이 자기 상태를 스스로 지키는 방식"을 기본으로 한다.
+- per-handle mutex 또는 동등한 직렬화 primitive
+- atomic send-ready handler pointer 또는 동일 효과의 lock-minimized snapshot
+- public API in-flight counter
+- callback depth
+- `closing_requested` / `closed` 상태 플래그
+- parent-child reference guard
 
-- raw socket: socket handle별 mutex
-- `gateway`: existing `_sync` 재사용
-- `spot_node`: existing `_sync` / `_ctrl_sync` 정리
-- `spot_pub`: existing `_sync` 재사용
-- `spot_sub`: 새 per-handle lock 또는 parent serialization 재사용
-- unified `spot`: facade-level state lock + child pub/sub lock 연계
+핵심은 "모든 것을 lock-free로 만들자"가 아니라
+"public contract를 지키면서 lock hold 시간을 줄이자"다.
 
-### 8.2 callback 중 send 허용
+### 7.2 callback 중 send 허용
 
-현재 구조상 callback 안 send는 중요한 사용 패턴이므로 유지한다.
-
-설계 원칙:
-
-- callback 호출 시 send path와 동일한 non-reentrant lock을 쥔 채 진입하면 안 된다.
-- 이미 recursive mutex를 쓰는 곳은 즉시 동작시킬 수 있지만,
-  장기적으로는 dispatch 진입 시 어떤 handler를 호출할지 판단하는 단계(classification)의
-  lock scope를 최소화하는 것이 더 바람직하다.
-- reply/publish 같은 callback 내 send는 deadlock 없이 동작해야 한다.
+callback 안 send를 허용하려면 callback 호출 시 send path와 동일한 non-reentrant
+락을 오래 쥔 채 진입하면 안 된다.
 
 권장 패턴:
 
-- dispatch 진입 시 handler pointer와 callback에 필요한 최소 상태만 읽는다.
-- 필요하면 in-dispatch flag 또는 callback depth를 올린다.
-- 그 뒤 subject lock을 풀고 callback을 호출한다.
-- callback 안 `send`는 일반 send path와 동일하게 per-handle lock을 다시 잡아 처리한다.
+1. dispatch 진입 시 recv handler(고정)와 최소 분기 상태만 읽는다.
+2. 필요하면 callback depth / in-flight를 올린다.
+3. subject lock을 풀고 callback을 호출한다.
+4. callback 안 send는 일반 send path가 다시 lock을 잡아 처리한다.
 
-즉 핵심은 "callback 호출 시점에는 send path와 같은 락을 오래 쥐고 있지 않는다"이다.
+즉 "classification은 락 안에서 짧게, callback 실행은 가능한 한 락 밖에서"가
+원칙이다.
 
-### 8.3 handler pointer
+### 7.3 send-ready handler pointer
 
-가능한 경우 handler pointer는 atomic pointer를 사용한다.
+recv handler는 생성 시 고정이므로 atomic 보호가 필요 없다.
 
-이유:
+send-ready handler는 런타임에 교체 가능하므로 가능한 경우 atomic으로 다룬다.
 
-- dispatch fast path에서 lock hold 시간을 줄일 수 있다.
-- `set_handler()` visibility semantics를 구현하기 쉽다.
+- 교체는 store-release
+- writable transition read는 load-acquire
 
-권장 규칙:
+이렇게 하면 writable transition fast path의 lock hold 시간을 줄이고
+visibility semantics를 구현하기 쉬워진다.
 
-- handler 교체는 atomic store-release
-- dispatch read는 atomic load-acquire
-- 단, handler 외의 연관 상태가 있으면 그 상태는 별도 mutex 보호가 필요하다.
+### 7.4 내부 구현 세부사항은 공개 계약과 분리한다
 
-### 8.4 mode별 lock 분기
+현재 일부 subject가 `_use_lock` 또는 개별 `_sync`를 이미 가지고 있더라도,
+그것은 구현 세부사항일 뿐이다.
 
-모든 handle은 내부에 다음과 같은 필드를 가질 수 있다.
+- `_use_lock`를 public 옵션으로 승격하지 않는다.
+- 기존 lock이 있으면 재사용하되, 공개 계약은 unconditional thread-safe다.
+- 기존 lock이 없다면 raw socket / discovery / monitor 쪽에 공통 수명 보호와
+  직렬화 계층을 추가한다.
 
-```c
-zlink_thread_mode_t _thread_mode;
-bool _use_lock;
-```
+## 8. subject별 상세 계획
 
-규칙:
-
-- `THREAD_SAFE` -> `_use_lock = true`
-- `NON_THREAD_SAFE` -> `_use_lock = false`
-
-단, 모든 상태가 완전히 lock-free가 되는 것은 아니다.
-다음은 mode와 무관하게 atomic 또는 내부 transport 보호가 필요할 수 있다.
-
-- stop flag
-- handler pointer
-- monitor close guard
-- shared I/O registration state
-
-## 9. subject별 상세 계획
-
-### 9.1 raw socket
+### 8.1 raw socket
 
 구현 목표:
 
-- recv-capable raw socket의 same-handle concurrent `send`를 지원
-- `zlink_socket_set_handler()`와 dispatch race를 정의
-- `zlink_close()`는 cross-thread close면 `EBUSY`, callback self-close면 deferred teardown으로 정리
+- recv-capable raw socket의 same-handle concurrent `send` 지원
+- `zlink_socket_set_send_ready_handler()` 교체와 writable transition dispatch의
+  동시성 보호
+- `zlink_stream_attach_raw()` / `zlink_stream_attach_len32be()` 같은 attach 교체와
+  dispatch race 정의
+- `zlink_close()`에 공통 `EBUSY` / self-close deferred teardown 정책 적용
 
-비고:
-
-- send-only socket도 동일한 thread mode enum을 사용한다.
-- send-only socket에서 `THREAD_SAFE`의 의미는 concurrent `send` 허용이다.
-
-raw socket 쪽에서 핵심은 두 가지다.
-
-- recv-capable socket도 same-handle concurrent `send`를 명시적으로 지원할 것
-- close와 handler 교체 race를 더 이상 암묵 규칙으로 두지 않을 것
-
-### 9.2 discovery
-
-`discovery`는 raw socket이나 `gateway`와 성격이 조금 다르다.
-핵심은 메시지 send 경쟁이 아니라 topology/observer/query 경쟁이다.
+### 8.2 discovery
 
 구현 목표:
 
-- `zlink_discovery_new(..., thread_mode)`로 생성자 시그니처 변경
-- topology cache update와 service query가 동시에 돌아도 data race가 없도록 정리
-- observer attach/detach와 monitor open/set_handler/close 경쟁을 정의
+- topology cache update, subscribe/unsubscribe, service query, monitor open/close를
+  thread-safe subject로 정리
+- observer list와 representative routing id 변경을 data race 없이 처리
+- topology ownership 규칙과 lifetime ordering을 검증
+  (manual peer가 있으면 attach `EBUSY`, attach 후 manual connect/disconnect 금지)
 
-쉽게 말해 `discovery`의 `THREAD_SAFE`는
-"여러 thread가 같은 discovery를 동시에 조회/관찰/갱신해도 계약이 깨지지 않는다"는 뜻이다.
-
-### 9.3 gateway
-
-현재 구현은 이미 thread-safe 지향이므로 가장 먼저 정리하기 좋다.
+### 8.3 gateway
 
 구현 목표:
 
-- `_use_lock`를 public `thread_mode`와 직접 연결
-- `zlink_gateway_new(..., thread_mode)`로 생성자 시그니처 변경
-- send/send_rid/set_handler/monitor_open에
-  동일한 mode 계약 적용
-- callback 중 `send_rid()` reply를 공식 허용 패턴으로 문서화
+- existing `_sync` 재사용
+- `send`, `send_rid`, send-ready handler 교체, monitor 경로를 동일 계약 아래 정리
+- recv callback 안 `zlink_gateway_send_rid()` reply를 공식 허용 패턴으로 문서화
 
-추가 검토:
-
-- 현재 dispatch에서 `_sync`를 잡고 handler를 호출하는 구조는 동작은 되지만
-  lock hold가 길 수 있다.
-- classification(어떤 handler를 호출할지 판단하는 단계)에 필요한 최소 state만
-  복사한 뒤 lock을 풀고 callback을 호출하는 방향을 권장한다.
-
-즉 `gateway`는 이미 lock 기반 구조가 있으니,
-"락을 잡고 오래 버티는 구현"을 줄이고
-"필요한 상태만 복사하고 callback은 락 밖에서 실행"하는 쪽으로 다듬는 것이 좋다.
-
-### 9.4 spot_node
-
-`spot_node`는 publish, subscribe, discovery attach, register/unregister, TLS/bind/peer connect가
-모두 한 subject에 걸쳐 있어서 가장 까다롭다.
-data path만이 아니라 discovery, TLS, peer 관리, child facade 관리까지 함께 보는 대상이다.
+### 8.4 spot_node
 
 구현 목표:
 
-- `zlink_spot_node_new(..., thread_mode)`로 생성자 시그니처 변경
-- publish vs subscribe mutation vs handler 교체를 defined order로 정리
+- publish, subscribe, unsubscribe, discovery attach, TLS 설정, peer connect/disconnect,
+  child registry를 thread-safe subject로 정리
+- node direct API와 child facade coordination을 같은 수명 보호 체계 아래 둔다
 
-### 9.5 unified spot
-
-구현 목표:
-
-- `zlink_spot_new(..., thread_mode)`로 생성자 시그니처 변경
-- `spot->handler`, `spot->pub`, `spot->sub`, role mask state 보호
-- callback 중 `zlink_spot_publish()` 허용
-- `spot` facade-level API와 child pub/sub API의 thread mode 상호작용 정의
-- subscribe/unsubscribe의 visibility 규칙을 `set_handler()`와 같은 수준으로 명시
-- unified `spot`은 node-owned default pub/sub를 재사용하지 않고
-  생성 시 별도 child pub/sub를 attach하는 구조를 유지한다.
-  즉 `spot`의 `THREAD_SAFE` 보장은 자기 child facade lock과 child socket 기준으로 성립해야 한다.
-- `spot_node`와 `spot` 사이에 남는 공유 영역은
-  health/fault 상태, child registry, topology summary 같은 관리 상태다.
-  이 부분은 node 내부 coordination으로 보호되고,
-  `spot_node` direct API의 `NON_THREAD_SAFE` 계약과 분리해서 정의해야 한다.
-
-unified `spot`의 thread-safety는 두 축으로 나눠서 본다:
-data path(publish/subscribe)는 child facade 기준,
-node와의 공유 영역(health/fault, child registry 등)은 관리 상태로 구분한다.
-
-### 9.6 SpotPub / SpotSub
-
-`SpotPub`는 이미 thread-safe subject에 가깝다.
-이번 계획에서는 “특별취급된 예외”가 아니라 전체 모델의 일부로 재정의한다.
+### 8.5 unified `spot`
 
 구현 목표:
 
-- `zlink_spot_pub_new(..., thread_mode)` / `zlink_spot_sub_new(..., thread_mode)`로
-  생성자 시그니처 변경
-- `SpotPub`은 기존 thread-safe publish 의미를 유지하되 public mode enum으로 정렬
-- `SpotSub`도 subscribe/unsubscribe/set_handler/peer query에 동일한 mode 규칙 적용
+- facade-level `publish`, `subscribe`, `unsubscribe`, peer query, send-ready handler 교체 보호
+- callback 안 `zlink_spot_publish()` 허용
+- child pub/sub attach 구조는 유지하되, thread-safety는 facade-level contract로
+  설명
 
-## 10. parent-child mode 제약
+구조상 중요한 점:
 
-이 절은 "parent가 어떤 mode일 때 child를 어떤 mode로 만들 수 있나"를 정리한다.
-핵심은 stronger child on weaker parent를 어디까지 허용할지다.
+- unified `spot`은 `spot_node`의 public handle alias가 아니다.
+- 생성 시 child pub/sub를 별도로 만들고 node 내부 data-plane endpoint에 붙는다.
+- 따라서 `spot`과 `spot_node`는 연결되어 있지만 같은 public handle 경쟁으로
+  설명하지 않는 편이 정확하다.
 
-먼저 사용자 관점에서 가장 헷갈릴 수 있는 차이를 짚으면 다음과 같다.
+### 8.6 standalone `spot_pub` / `spot_sub`
 
-- unified `spot`은 생성 시 별도 child pub/sub를 만들고,
-  node 내부 inproc proxy/data-plane endpoint에 연결된다.
-  그래서 parent `spot_node` handle과 같은 public socket handle을 직접 공유하지 않는다.
-- standalone `spot_pub` / `spot_sub`는 parent `spot_node`와 더 직접적인 조합으로 본다.
-  따라서 parent보다 stronger한 mode를 가지게 하지 않는다.
+구현 목표:
 
-즉 둘 다 `spot_node`에 attach되지만,
-문서에서는 unified `spot`을 "독립 facade 조합",
-standalone `spot_pub` / `spot_sub`를 "parent와 더 직접적인 child 조합"으로 구분해서 본다.
+- 두 handle 모두 공통 thread-safe contract 대상에 포함
+- `SpotPub`의 sync/async publish 실행 방식은 thread-safety 등급이 아니라
+  내부 send semantics로 분리
+- `SpotSub`의 subscription mutation visibility를 unified `spot`과 같은
+  수준으로 고정
 
-### 10.1 unified spot (`zlink_spot_new`)
+### 8.7 monitor handle
 
-`zlink_spot_new()`는 parent `spot_node`의 thread mode와 무관하게 독립적으로 mode를 선택할 수 있다.
-mode 조합 제약 없이 모든 조합이 허용된다.
+구현 목표:
 
-근거:
+- `zlink_socket_monitor_open()`
+- `zlink_discovery_monitor_open()`
+- `zlink_gateway_monitor_open()`
+- `zlink_spot_monitor_open()`
+- `zlink_spot_sub_monitor_open()`
+- `zlink_spot_pub_monitor_open()`
 
-- unified `spot`은 parent `spot_node`의 default pub/sub handle을 공유하지 않는다.
-- 생성 시 별도 `spot_pub` / `spot_sub`를 만들고,
-  이 child facade들은 node 내부 data-plane의 inproc proxy endpoint에 연결된다.
-- 따라서 `spot`의 publish/subscribe/handler 경로는
-  `spot_node` direct API와 동일 public socket handle을 놓고 경쟁하지 않는다.
-- parent `spot_node`의 `NON_THREAD_SAFE`는 node direct API 사용 규칙을 뜻하며,
-  node 내부 data-plane 및 child facade coordination까지 no-lock으로 바꾼다는 뜻은 아니다.
+위 handle들을 모두 독립 thread-safe child handle로 정리한다.
 
-즉 unified `spot`은 예외가 아니라,
-"별도 child facade가 node 내부 proxy에 연결되는 구조"라는 점 때문에
-독립 mode 선택이 가능한 케이스라고 이해하면 된다.
+- monitor handle의 recv handler도 생성 시(`*_monitor_open()`) 고정이며 교체
+  API가 없다.
+- monitor callback과 parent subject API 사이에도 동일한 close/teardown 정책을
+  적용한다.
 
-### 10.2 standalone SpotPub / SpotSub
+## 9. `close` / `destroy` 정책
 
-`zlink_spot_pub_new()` / `zlink_spot_sub_new()`는 parent `spot_node`의 mode와 다음 제약을 가진다.
+이 항목은 thread-safe only 설계에서 가장 중요한 리스크다.
 
-| parent `spot_node` | standalone pub/sub | 허용 여부 | 이유 |
-|---|---|---|---|
-| `THREAD_SAFE` | `THREAD_SAFE` | 허용 | 가장 자연스러운 조합 |
-| `THREAD_SAFE` | `NON_THREAD_SAFE` | 허용 | child만 no-lock fast path 선택 가능 |
-| `NON_THREAD_SAFE` | `NON_THREAD_SAFE` | 허용 | 전체를 외부 직렬화로 운용 |
-| `NON_THREAD_SAFE` | `THREAD_SAFE` | 금지 | weaker parent를 stronger child가 보정할 수 없음 |
+### 9.1 cross-thread close / destroy
 
-권장 에러:
+기본 규칙:
 
-- invalid 조합은 `EINVAL`
-
-standalone pub/sub는 unified `spot`과 다르게 parent mode 제약을 둔다.
-이 문서는 그 차이를 일부러 남긴다.
-
-- unified `spot`은 별도 facade 조합으로 본다.
-- standalone pub/sub는 parent `spot_node`와 더 직접적인 조합으로 본다.
-
-### 10.3 discovery-gateway / discovery-spot_node mode 제약
-
-`gateway`와 `discovery`, `spot_node`와 `discovery`의 mode 관계는 standalone pub/sub와 같은 원칙을 따른다.
-
-단, `gateway` / `spot_node`는 생성 시 `discovery`를 받지 않고 `attach_discovery()`로 나중에 연결하므로,
-mode 호환 체크는 생성 시점이 아니라 `attach_discovery()` 호출 시점에 수행한다.
-
-| `discovery` mode | `gateway` mode | 허용 여부 | 이유 |
-|---|---|---|---|
-| `THREAD_SAFE` | `THREAD_SAFE` | 허용 | 가장 자연스러운 조합 |
-| `THREAD_SAFE` | `NON_THREAD_SAFE` | 허용 | child만 no-lock fast path 선택 가능 |
-| `NON_THREAD_SAFE` | `NON_THREAD_SAFE` | 허용 | 전체를 외부 직렬화로 운용 |
-| `NON_THREAD_SAFE` | `THREAD_SAFE` | 금지 | weaker parent를 stronger child가 보정할 수 없음 |
-
-## 11. destroy / close 정책
-
-이 항목은 thread-safe 설계에서 가장 중요한 리스크다.
-
-먼저 핵심 규칙을 짧게 적으면 다음과 같다.
-
-- `close` / `destroy`는 모든 public API 중 가장 강한 제약을 가진다.
-- cross-thread close/destroy는 same-handle in-flight public API가 하나라도 있으면 `EBUSY`다.
-- self-close는 허용하지만 "즉시 free"가 아니라 "close 요청만 기록하고 callback return 뒤 teardown"이다.
-- self-close 성공 후에는 그 handle을 다시 쓰면 안 된다.
-
-여기서 in-flight public API에는 다음이 포함된다.
-
-- recv callback dispatch
-- `send` / `publish`
-- `set_handler`
-- subscribe / unsubscribe
-- option setter / query
-- monitor open / close / set_handler
-- bind / connect / attach_discovery 같은 lifecycle-adjacent API
-
-머릿속에서는 아래 순서로 그리면 된다.
-
-```text
-1. handle이 평소처럼 동작 중
-2. 어떤 API가 들어와서 아직 return하지 않음   <- in-flight
-3. 이때 다른 thread가 close/destroy 호출
-4. 라이브러리는 "지금은 종료하면 위험하다"고 판단
-5. EBUSY 반환
-6. 호출자가 작업이 끝난 뒤 다시 close/destroy 시도
-```
-
-### 11.1 cross-thread close/destroy (callback thread 외부에서 호출)
-
-위 흐름을 그대로 적용한다.
-`THREAD_SAFE` mode라도 close/destroy는 "아무 concurrent call과도 안전하게 섞이는 API"가 아니다.
-
-- 다른 thread에서 같은 handle의 public API가 하나라도 in-flight면
-  `close()` / `*_destroy()` / `zlink_service_monitor_close()`는 `EBUSY`를 반환한다.
-- `EBUSY`를 받은 caller는 in-flight 작업이 끝난 뒤 다시 시도해야 한다.
-- 완료 시점 판단은 caller 책임이며, 라이브러리는 별도 wait API를 제공하지 않는다.
+- same-handle public API가 하나라도 in-flight면 cross-thread
+  `close` / `destroy`는 `EBUSY`
+- 대상에는 callback dispatch (recv / send-ready / monitor), `send`, `publish`,
+  `*_set_send_ready_handler()`, subscribe/unsubscribe, option setter/query,
+  monitor open/close, `attach_discovery`, bind/connect 계열이 포함된다
 
 예:
 
-| 상황 | 결과 |
-|---|---|
-| thread A가 `send()` 중일 때 thread B가 `zlink_close()` | `EBUSY` |
-| thread A가 `subscribe()` 중일 때 thread B가 `zlink_spot_destroy()` | `EBUSY` |
-| monitor callback 실행 중일 때 다른 thread가 `zlink_service_monitor_close()` | `EBUSY` |
+- thread A가 `send()` 중일 때 thread B가 `zlink_close()` 호출 -> `EBUSY`
+- callback 실행 중 다른 thread가 `zlink_spot_destroy()` 호출 -> `EBUSY`
+- monitor callback 실행 중 다른 thread가 `zlink_service_monitor_close()` 호출 -> `EBUSY`
 
-`NON_THREAD_SAFE` mode에서도 해석은 크게 다르지 않다.
+### 9.2 self-close
 
-- 라이브러리는 운영 API를 내부 lock으로 직렬화하지 않는다.
-- 하지만 self-close 안전성과 파괴 방지용 최소 상태는 유지할 수 있다.
-- 따라서 cross-thread close/destroy가 명확히 감지되면 best-effort `EBUSY`를 반환할 수 있다.
-- 다만 `THREAD_SAFE`처럼 강한 직렬화 보장을 제공하는 것은 아니며,
-  외부 직렬화 책임은 여전히 caller에 있다.
+허용:
 
-### 11.2 self-close (callback 안에서 자기 handle close/destroy 호출)
+- callback 안에서 자기 자신의 handle 종료 요청
 
-- callback 안에서 자기 자신의 handle 종료를 요청하는 것은 허용한다.
-- 단 성공의 의미는 "지금 즉시 메모리를 해제했다"가 아니라
-  "close 요청을 accepted 했고 callback return 뒤 teardown 하겠다"이다.
-- 구현은 `closing_requested` 같은 내부 플래그만 세우고,
-  실제 shutdown / free는 dispatcher epilogue에서 수행한다.
-- 이 정책은 `direct-callback-recv-rewrite-spec.ko.md`의 deferred teardown 계약을 그대로 따른다.
+의미:
 
-흐름으로 보면 다음과 같다.
+- 즉시 free가 아니다.
+- `closing_requested`를 기록하고 callback return 뒤 dispatcher epilogue에서
+  실제 teardown을 수행한다.
 
-```text
-callback 진입
-   |
-   +-- callback 안에서 self-close 요청
-   |      -> 성공 반환
-   |      -> 하지만 아직 free는 안 함
-   |
-   +-- callback return
-          |
-          +-- dispatcher epilogue
-                 -> closing_requested 확인
-                 -> 실제 teardown / free
-```
+호출 형태:
 
-왜 이렇게 하느냐:
+- raw socket / raw monitor: `zlink_close(handle)`
+- service object: `*_destroy(&handle_slot)`
+- service monitor: `zlink_service_monitor_close(&handle_slot)`
 
-- callback stack 위에서 즉시 free하면 현재 실행 중인 frame이 dangling reference가 되기 쉽다.
-- 따라서 self-close는 "지금 닫아 달라"는 요청만 받고,
-  실제 객체 해제는 callback이 완전히 빠져나간 뒤로 미룬다.
+추가 규칙:
 
-raw socket의 self-close:
+- self-close 이후 callback 안에서 같은 handle을 다시 쓰는 것은 정의하지 않는다.
+- self-close는 callback의 마지막 동작으로 보는 것이 맞다.
 
-- raw socket과 raw monitor handle은 `zlink_close(handle)`로 self-close를 요청한다.
+### 9.3 close 진입 원자성 프로토콜
 
-service object의 self-close:
+`close` / `destroy`와 운영 API 사이의 race를 방지하기 위해 다음 순서를 따른다.
 
-- `gateway`, `discovery`, `spot_node`, `spot`, `spot_pub`, `spot_sub`,
-  service monitor는 기존 시그니처를 유지하므로 `*_destroy(void **handle_p)` 또는
-  `zlink_service_monitor_close(void **handle_p)`로 self-close를 요청한다.
-- 즉 callback 안에서 service handle을 닫고 싶다면,
-  caller는 자신이 소유한 handle slot의 주소를 넘겨야 한다.
+1. `close` / `destroy` 진입 시 per-handle lock을 잡고 `closing_requested`를
+   atomic하게 설정한다.
+2. `closing_requested`가 설정되면 이후 **외부 thread에서의** 새 운영 API 진입은
+   즉시 에러로 반환한다 (`ETERM` 또는 동등한 에러).
+3. in-flight counter를 확인한다.
+   - in-flight > 0이면 lock을 풀고 `EBUSY`를 반환한다. `closing_requested`는
+     유지되므로 새 외부 API 진입은 이미 차단된 상태다.
+   - in-flight == 0이면 teardown을 진행한다.
+4. `EBUSY`를 받은 호출자는 in-flight 작업의 완료를 보장한 뒤 재시도한다.
+   두 번째 시도에서는 in-flight == 0이 보장되므로 teardown이 진행된다.
 
-예:
+callback 중 send 보호:
 
-```c
-static void *g_spot = NULL;
+- `closing_requested` 상태에서도 이미 in-flight인 callback 안에서의
+  same-handle `send` / `publish`는 허용한다.
+- 판별 기준은 현재 thread가 callback thread인지 여부다. per-handle에 기록된
+  callback thread ID와 현재 thread ID를 비교하거나, thread-local callback
+  depth를 사용한다. per-handle callback depth 카운터만으로는 외부 thread가
+  잘못 우회할 수 있으므로 thread 식별이 반드시 필요하다.
+- 이 규칙이 없으면 3.6절의 "callback 중 send 허용" 패턴이 close race에서
+  깨진다.
 
-static void on_spot_msg (const zlink_routing_id_t *rid,
-                         const char *topic,
-                         size_t topic_len,
-                         zlink_msg_t *parts,
-                         size_t part_count)
-{
-  zlink_spot_destroy (&g_spot);
-  return;
-}
-```
+이 프로토콜의 핵심은 `closing_requested` 설정과 in-flight 확인 사이에
+외부 thread의 새 운영 API가 진입할 수 없도록 하되,
+이미 in-flight인 callback의 정상 동작은 보장하는 것이다.
 
-service self-close의 추가 규칙:
+### 9.4 parent-child 종료 순서
 
-- `handle_p`는 실제 현재 handle을 가리키는 유효한 storage slot이어야 한다.
-- self-close가 성공하면 라이브러리는 그 slot을 더 이상 재사용 대상으로 보지 않는다.
-  실제 메모리 해제는 epilogue로 미루더라도, 호출자 관점에서는 "이 handle은 끝났다"로 본다.
-- self-close 이후 callback 안에서 같은 handle로 추가 API를 호출하는 것은 정의하지 않는다.
-  self-close는 callback의 마지막 동작이어야 한다.
+parent subject(`spot_node`, 또는 monitor의 parent)를 종료할 때
+살아있는 child handle이 있는 경우의 정책:
 
-실무적으로는 아래처럼 이해하면 된다.
+- child handle(unified `spot`, standalone `spot_pub`, standalone `spot_sub`,
+  monitor handle)이 하나라도 열려 있으면 parent `destroy`는 `EBUSY`를 반환한다.
+- 호출자는 child를 먼저 종료한 뒤 parent를 종료해야 한다.
+- child callback 안에서 parent를 종료하는 것은 허용하지 않는다.
 
-- raw socket: handle 값 자체를 넘겨서 닫는다.
-- service object: handle 변수가 들어 있는 slot 주소를 넘겨서 닫는다.
-- 둘 다 "즉시 해제"가 아니라 "종료 예약"에 가깝다.
+이 정책은 parent가 child를 암묵적으로 강제 teardown하는 것을 방지한다.
+child의 수명은 호출자가 명시적으로 관리한다.
 
-### 11.3 권장 공개 계약 문구
+### 9.5 double close / double destroy
 
-문서와 header comment에는 아래 수준으로 직접 적는 것을 권장한다.
+- `closing_requested`가 이미 설정된 handle에 대해 다시 `close` / `destroy`를
+  호출하면:
+  - in-flight > 0이면 `EBUSY`를 반환한다 (첫 번째 시도와 동일).
+  - in-flight == 0이면 teardown을 진행한다.
+- 이미 teardown이 완료된 handle에 대한 `close` / `destroy`는 정의하지 않는다
+  (dangling handle 사용과 동일).
+- self-close 후 같은 callback 내에서 다시 close를 호출하는 것은 정의하지 않는다.
 
-- "`THREAD_SAFE` handle도 close/destroy는 다른 same-handle public API와 자유롭게 병행할 수 없다."
-- "cross-thread close/destroy는 same-handle in-flight public API가 있으면 `EBUSY`를 반환한다."
-- "callback 안 self-close는 허용하지만 실제 teardown은 callback return 뒤 수행된다."
-- "service object self-close는 `void **handle_p`를 받는 기존 destroy/close API로 요청한다."
+### 9.6 호출자 권장 패턴
 
-## 12. 성능 관점
+- 외부 thread에서 종료가 필요하면 먼저 worker와 callback source를 quiesce한다.
+- 그 다음 `close` / `destroy`를 호출한다.
+- `EBUSY`를 받으면 in-flight 작업이 끝났음을 보장한 뒤 재시도한다.
+  `closing_requested`는 이미 설정되어 있으므로 외부 thread의 새 운영 API
+  진입은 차단된 상태이며, 재시도 시 teardown이 진행된다.
+  단, in-flight callback 안에서의 same-handle send/publish는 callback이
+  끝날 때까지 계속 허용된다.
+- `while (close() == EBUSY) sleep(...)` 같은 busy-wait retry는 권장하지 않는다.
+- child가 있는 parent를 종료할 때는 child를 먼저 종료한다.
 
-이 절의 요점은 "thread-safe mode를 넣어도 성능이 무조건 나빠진다"는 뜻이 아니라,
-"비용이 어디서 생기는지 알고 선택하자"에 가깝다.
+## 10. 성능 관점
 
-### 12.1 예상 효과
+이 설계는 공개 계약을 단순하게 만드는 대신,
+unconditional thread-safe이므로 lock 비활성화 옵션을 public API로 드러내지 않는다.
 
-- recv callback-only 구조에서는 recv-side queue lock 경쟁이 줄어든다.
-- 따라서 thread-safe mode의 추가 비용은 대부분 send/mutation/lifecycle 직렬화에 집중된다.
-- 일반 네트워크/TLS/syscall 지배 workload에서는 uncontended per-handle lock 비용이
-  큰 문제일 가능성은 낮다.
+의미는 다음과 같다.
 
-### 12.2 주의 workload
+- per-handle serialization 비용은 받아들인다.
+- 대신 recv callback-only 구조, lock hold 최소화, snapshot 기반 dispatch로
+  실효 비용을 낮춘다.
+- 최적화 포인트는 "lock을 끄는 선택지"가 아니라 "lock을 짧게 잡는 구현"이다.
 
-다음은 lock 비용이 눈에 띌 수 있다.
-
-- inproc 중심
-- 매우 작은 메시지
-- 매우 높은 same-handle fan-in send
-- callback 안에서 즉시 same-handle send 반복
-
-따라서 single-thread 최적화가 필요한 사용자를 위해
-`NON_THREAD_SAFE` mode를 계속 제공해야 한다.
-
-### 12.3 앱 레벨 권장 패턴
-
-thread-safe mode가 있더라도 최고 성능 패턴은 여전히 다음이다.
+권장 앱 패턴:
 
 - callback에서는 최소 작업만 수행
-- ownership move 또는 shallow copy 후 worker queue에 enqueue
-- 실제 비즈니스 처리와 fanout send는 worker thread에서 수행
-- callback 안에서 종료가 필요하면 가능하면 self-close를 사용한다.
-- 외부 thread에서 종료가 필요하면 stop flag, worker join, callback quiesce 같은 방식으로
-  먼저 in-flight 작업을 정리한 뒤 close/destroy를 호출한다.
-- `while (close() == EBUSY) sleep(...)` 같은 busy-wait retry는 권장하지 않는다.
+- ownership move 또는 shallow copy 후 worker queue로 넘김
+- 비즈니스 처리와 fanout send는 worker thread에서 수행
+- 종료는 deterministic quiesce 후 수행
 
-즉, thread-safe mode는 correctness와 usability를 높이는 기본 장치이지,
-모든 workload에서 최저 latency를 보장하는 마법은 아니다.
+성능 측정 계획:
 
-## 13. 구현 항목
+- thread-safe 적용 전후의 single-thread send/recv throughput을 perf benchmark로
+  비교한다. per-handle lock의 uncontended 비용을 정량화한다.
+- concurrent send thread 수를 1, 2, 4, 8로 변경하며 throughput 변화를 측정한다.
+  `zlink_spot_pub_publish()`, `zlink_gateway_send()`, raw `zlink_send()` 경로를
+  각각 대상으로 한다.
+- recv callback 안 send 경로의 lock 재진입 오버헤드를 측정한다.
+- 기존 perf benchmark 인프라를 재사용하되, concurrent sender 시나리오를 추가한다.
 
-### 13.1 enum / 생성자 정리
+## 11. 구현 항목
 
-- `zlink_thread_mode_t` 추가
-- 기존 생성자 시그니처에 `thread_mode` 추가
-- `zlink_socket`: `handler` / `thread_mode` 추가 (단일 함수로 통합 완료)
+1. raw socket, `discovery`, `gateway`, `spot`, monitor에 공통 lifetime guard와
+   per-handle serialization을 넣는다.
+2. 기존 `_sync`가 있는 subject는 재사용하고, 없는 subject는 공통 보호 계층을
+   추가한다.
+3. send-ready handler 교체 visibility를 전 subject에 같은 규칙으로 맞춘다.
+4. subscribe / unsubscribe visibility를 unified `spot`, `spot_sub`,
+   `spot_node` direct API에 일관되게 맞춘다.
+5. cross-thread `close` / `destroy`의 `EBUSY` 판단과 self-close deferred teardown을
+   공통 정책으로 구현한다.
+6. 선택적 동시성 모드를 전제한 기존 설계 문구와 테스트 항목을 걷어낸다.
+7. 공개 문서와 header comment를 "thread-safe only contract" 기준으로 다시 쓴다.
 
-구현 항목은 순서를 이렇게 보면 된다.
+## 12. 테스트 계획
 
-1. public enum과 생성자 시그니처를 먼저 고친다.
-2. 각 subject 내부에 mode-aware synchronization을 넣는다.
-3. 마지막으로 close/destroy race와 테스트를 닫는다.
+테스트는 "새 enum이 생겼는가"보다 "새 계약이 실제로 지켜지는가"를 확인하는 데
+초점을 둔다.
 
-### 13.2 raw socket 내부 반영
+### 12.1 생성과 기본 검증
 
-- socket base 또는 handle wrapper에 `_thread_mode`, `_use_lock` 추가
-- recv-capable raw socket의 send/set_handler/close 경로에 mode-aware serialization 도입
+- `zlink_socket(ctx, ZLINK_SOCKET_PUB, NULL)`은 send-only `PUB` 경로로 성공
+- recv-capable raw socket + `NULL` handler는 실패
+- `zlink_gateway_new(..., NULL)` 실패
+- `zlink_spot_node_new(..., NULL)` 실패
+- `zlink_spot_new(..., NULL)` 실패
+- `zlink_spot_sub_new(node, NULL)` 실패
+- `*_monitor_open(..., NULL)` 실패
 
-### 13.3 gateway 반영
+### 12.2 concurrent send / publish
 
-- 기존 `_use_lock`와 public `thread_mode` 연결
-- `gateway` 회귀 테스트를 mode별로 분리
-
-### 13.4 monitor 계열 반영
-
-- `zlink_socket_monitor_open()`, `zlink_discovery_monitor_open()`,
-  `zlink_gateway_monitor_open()`, `zlink_spot_monitor_open()`,
-  `zlink_spot_sub_monitor_open()`, `zlink_spot_pub_monitor_open()`에
-  `thread_mode` 시그니처 변경 반영
-- parent subject와 child monitor 간 stronger-on-weaker 금지 규칙 구현
-- `zlink_monitor_set_handler()` / `zlink_service_monitor_set_handler()`의
-  replace visibility를 “다음 dispatch 진입 시점” 계약으로 고정
-- monitor close guard와 in-flight callback 경쟁을 mode-aware하게 정리
-
-### 13.5 spot 계열 정리
-
-- `spot_node`, unified `spot`, `spot_pub`, `spot_sub` 생성자 시그니처 변경
-- standalone `spot_pub` / `spot_sub` 에 대한 parent-child mode 제약 구현
-
-### 13.6 destroy race 정리
-
-- cross-thread close: same-handle in-flight public API 감지 후 `EBUSY` 반환 구현
-- self-close: `closing_requested` 플래그 설정 및 dispatcher epilogue에서 실제 teardown 수행 구현
-- 두 케이스를 구분하는 내부 상태(callback thread id, in-dispatch flag,
-  public API in-flight counter 등) 결정 및 구현
-- 위 정책에 맞는 cross-thread close 테스트 및 self-close deferred teardown 테스트 추가
-
-## 14. 테스트 계획
-
-이 절은 "새 API가 생겼는가"보다 "새 계약이 실제로 지켜지는가"를 확인하는 데 초점을 둔다.
-
-### 14.1 공통 생성 mode 테스트
-
-- 생성자는 requested mode를 내부에 반영한다.
-- invalid mode 값은 `EINVAL`
-- `zlink_socket(ctx, ZLINK_SOCKET_PUB, NULL, thread_mode)`: send-only `PUB`은 handler 없이 생성 성공
-- `zlink_socket(ctx, recv_capable_type, NULL, thread_mode)`: recv-capable 타입은 `NULL` handler로 생성 실패
-- `zlink_socket(..., handler, thread_mode)`: recv-capable 타입은 handler와 함께 생성 성공, 첫 메시지부터 handler 호출
-- `zlink_spot_node_new(ctx, service_name, handler, thread_mode)`: service-bound 생성 성공
-- `zlink_spot_sub_new(node, THREAD_SAFE)`: 생성 성공; handler는 이후 `set_handler()`로 지정
-- `zlink_spot_sub_new(node, invalid_mode)`: 유효하지 않은 mode → `NULL` / `EINVAL`
-
-### 14.2 thread-safe mode 테스트
-
-- same-handle concurrent send 성공
+- same-handle concurrent `zlink_send()` 성공 또는 명시적 에러만 반환
 - callback thread와 worker thread의 동시 send 성공
-- `set_handler()` 후 다음 dispatch부터 새 handler 적용
-- handler 교체 실패 시 기존 handler 유지
-
-### 14.3 non-thread-safe mode 테스트
-
-- single-thread 사용은 정상 동작
-- debug build에서 cross-thread misuse assert 또는 로그
-- release build에서는 `EINVAL` 또는 `EBUSY` fail-fast 확인
-
-### 14.4 gateway 테스트
-
-- callback 안 `zlink_gateway_send_rid()` reply 성공
-- multi-thread `send` / `set_handler` 공존
-- `NON_THREAD_SAFE` gateway에서 concurrent mutation misuse 검출
-
-### 14.5 monitor 테스트
-
-- `*_monitor_open(..., thread_mode)`가 requested mode를 monitor handle에 반영
-- parent `NON_THREAD_SAFE` + child `THREAD_SAFE monitor` 조합은 `EINVAL`
-- parent `THREAD_SAFE` + child `NON_THREAD_SAFE monitor` 조합은 허용 여부대로 동작
-- `zlink_monitor_set_handler()` / `zlink_service_monitor_set_handler()` 후
-  다음 dispatch부터 새 handler 적용
-- monitor callback in-flight 중 다른 thread에서 close → `EBUSY`; callback self-close → deferred teardown
-
-### 14.6 spot 테스트
-
-- callback 안 `zlink_spot_publish()` 성공
-- standalone `spot_pub` / `spot_sub` parent `NON_THREAD_SAFE` + child `THREAD_SAFE` → `EINVAL`
-- `spot_sub` concurrent subscribe/unsubscribe/set_handler ordering
-
-### 14.7 destroy 테스트
-
-- cross-thread close: in-flight callback 실행 중 다른 thread에서 close/destroy → `EBUSY` 반환 확인
-- cross-thread close: in-flight `send` / subscribe / option setter 중 다른 thread에서 close/destroy → `EBUSY` 반환 확인
-- cross-thread close: `EBUSY` 후 in-flight 완료 보장 뒤 재시도 → 성공 확인
-- raw self-close: callback 안에서 자기 handle `zlink_close()` → 즉시 성공, epilogue에서 teardown 확인
-- service self-close: callback 안에서 `*_destroy(&handle_slot)` 또는
-  `zlink_service_monitor_close(&handle_slot)` → 즉시 성공, epilogue에서 teardown 확인
-- concurrent send + cross-thread close race → `EBUSY` 또는 send 정상 처리 확인
-- monitor cross-thread close race → 동일 policy 적용 확인
-
-## 15. 정책 회귀 테스트
-
-이 절은 thread mode 도입으로 새로 생기는 공개 정책이 구현 이후에도 다시 무너지지 않도록
-막는 회귀 테스트 항목을 정리한다.
-시그니처 값 대조 테스트보다 "정책 계약이 지켜지는가"를 중점적으로 확인한다.
-
-쉽게 말해 이 절은 "헤더 모양이 맞는가"와
-"실행해 봤을 때 정말 그 규칙대로 동작하는가"를 분리해서 보는 체크리스트다.
-
-각 항목은 아래 기준으로 분류한다.
-
-- **[런타임]**: 실행 중 결과 또는 에러코드를 직접 확인하는 테스트
-- **[ABI]**: API/타입 존재 여부 검증. 컴파일 타임 또는 헤더 정적 검사로 수행
-
-### 15.1 thread mode 고정 정책
-
-**[ABI]** 모든 주요 생성자(`zlink_socket`, `zlink_discovery_new`, `zlink_gateway_new`,
-`zlink_spot_node_new`, `zlink_spot_new`, `zlink_spot_pub_new`, `zlink_spot_sub_new`,
-`*_monitor_open`)는 `zlink_thread_mode_t` 인자를 명시적으로 받는다.
-implicit default mode를 가진 overload가 추가되면 헤더 검사로 검출한다.
-
-**[ABI]** 생성 후 thread mode를 바꾸는 setter가 public header에 존재하지 않아야 한다.
-(예: `zlink_socket_set_thread_mode()` 같은 이름의 API가 생기면 즉시 회귀)
-
-**[런타임]** 유효하지 않은 `thread_mode` 값으로 생성하면 `NULL` / `EINVAL`을 반환해야 한다.
-
-**[런타임]** `THREAD_SAFE`로 생성한 handle은 concurrent send가 data corruption 없이 처리된다.
-`NON_THREAD_SAFE`로 생성한 handle은 단일 thread에서 동일한 기능 결과를 낸다.
-(내부 `_use_lock` 상태를 직접 조회하는 API는 없으므로 동작 기반 간접 검증으로 대체한다.)
-
-### 15.2 parent-child mode 제약 정책
-
-standalone `spot_pub` / `spot_sub` 조합 (금지 케이스):
-
-**[런타임]** `NON_THREAD_SAFE` `spot_node`에서 `THREAD_SAFE` `spot_pub` 생성 → `EINVAL` / `NULL`
-
-**[런타임]** `NON_THREAD_SAFE` `spot_node`에서 `THREAD_SAFE` `spot_sub` 생성 → `EINVAL` / `NULL`
-
-standalone `spot_pub` / `spot_sub` 조합 (허용 케이스):
-
-**[런타임]** `THREAD_SAFE` `spot_node`에서 `NON_THREAD_SAFE` `spot_pub` 생성 → 성공
-
-**[런타임]** `THREAD_SAFE` `spot_node`에서 `NON_THREAD_SAFE` `spot_sub` 생성 → 성공
-
-**[런타임]** `NON_THREAD_SAFE` `spot_node`에서 `NON_THREAD_SAFE` `spot_pub` / `spot_sub` 생성 → 성공
-
-unified `spot` 조합:
-
-**[런타임]** `NON_THREAD_SAFE` `spot_node`에서 `THREAD_SAFE` `spot` 생성 → 성공
-(unified `spot`은 parent mode 제약 없이 독립 mode 선택 가능)
-
-**[런타임]** `THREAD_SAFE` `spot_node`에서 `NON_THREAD_SAFE` `spot` 생성 → 성공
-
-spot mode 독립성 검증 (핵심 케이스):
-
-**[런타임]** `NON_THREAD_SAFE` `spot_node` + `THREAD_SAFE` `spot` 조합에서
-`spot`에 대한 concurrent publish / set_handler 호출이 data corruption 없이 처리되어야 한다.
-`spot_node`가 `NON_THREAD_SAFE`이더라도 `spot` 자체의 thread-safe 보장은 유지되어야 한다.
-
-**[런타임]** 위 조합에서 callback thread와 worker thread가 동시에 `zlink_spot_publish()`를 호출해도
-deadlock이나 data corruption이 발생하지 않아야 한다.
-
-비고:
-이 두 항목은 `spot`의 thread mode가 `spot_node`로부터 완전히 독립적임을 실제 concurrent 동작으로
-검증하는 핵심 회귀 테스트다. unified `spot`은 child pub/sub를 별도로 만들고
-node data-plane proxy에 attach되므로, `spot_node`의 `NON_THREAD_SAFE`가
-`spot`의 publish/subscribe/handler 경로 thread-safe 보장을 깨지 않는지 확인한다.
-
-monitor 조합:
-
-**[런타임]** `NON_THREAD_SAFE` subject에서 `THREAD_SAFE` monitor open → `EINVAL` / `NULL`
-
-**[런타임]** `THREAD_SAFE` subject에서 `NON_THREAD_SAFE` monitor open → 성공
-
-위 규칙은 `zlink_socket_monitor_open`, `zlink_discovery_monitor_open`,
-`zlink_gateway_monitor_open`, `zlink_spot_monitor_open`,
-`zlink_spot_pub_monitor_open`, `zlink_spot_sub_monitor_open` 전체에 동일하게 적용된다.
-
-### 15.3 discovery attach 시점 mode 호환 정책
-
-`gateway` attach 케이스:
-
-**[런타임]** `THREAD_SAFE` `gateway`에 `NON_THREAD_SAFE` `discovery` attach → `EINVAL`
-
-**[런타임]** `NON_THREAD_SAFE` `gateway`에 `NON_THREAD_SAFE` `discovery` attach → 성공
-
-**[런타임]** `THREAD_SAFE` `gateway`에 `THREAD_SAFE` `discovery` attach → 성공
-
-**[런타임]** `NON_THREAD_SAFE` `gateway`에 `THREAD_SAFE` `discovery` attach → 성공
-
-체크 시점 검증:
-
-**[런타임]** `THREAD_SAFE` `gateway`를 `zlink_gateway_new()`로 생성하는 것 자체는 항상 성공해야 한다.
-`NON_THREAD_SAFE` discovery가 이후에 attach 시도될 때 비로소 `EINVAL`이 발생해야 한다.
-
-`spot_node` attach 케이스:
-
-**[런타임]** `THREAD_SAFE` `spot_node`에 `NON_THREAD_SAFE` `discovery` attach → `EINVAL`
-
-**[런타임]** `NON_THREAD_SAFE` `spot_node`에 `NON_THREAD_SAFE` `discovery` attach → 성공
-
-**[런타임]** `THREAD_SAFE` `spot_node`에 `THREAD_SAFE` `discovery` attach → 성공
-
-**[런타임]** `NON_THREAD_SAFE` `spot_node`에 `THREAD_SAFE` `discovery` attach → 성공
-
-**[런타임]** 체크는 `zlink_spot_node_new()` 시점이 아니라 `attach_discovery()` 호출 시점에 발생해야 한다.
-
-### 15.4 직렬화 및 visibility 정책
-
-send 직렬화:
-
-**[런타임]** `THREAD_SAFE` handle에서 N개 thread로 same-handle concurrent send를 동시에 호출하면
-data corruption 없이 처리되거나 명시적 에러(`EAGAIN` 등)를 반환해야 한다.
-조용한 data loss나 UB는 없어야 한다.
-
-**[런타임]** `THREAD_SAFE` gateway에서 callback thread와 worker thread가 동시에 `send_rid()`를 호출해도
-deadlock이 발생하지 않아야 한다.
-
-**[런타임]** `THREAD_SAFE` `spot_pub`에서 concurrent `publish()`가 data corruption 없이 처리된다.
-
-**[런타임]** `THREAD_SAFE` handle에서 concurrent send 중 `set_handler()` 호출이 동시에 발생해도
-data corruption이나 handler 중간 상태 없이 처리되어야 한다.
-send는 정상 처리되거나 에러를 반환하고, handler는 기존 또는 새 handler 중 하나로 완전히 교체된 상태여야 한다.
-
-이 절에서 중요한 포인트는 "중간 상태가 보이면 안 된다"는 점이다.
-즉 호출 결과가 성공이든 실패든,
-사용자는 반쯤 바뀐 handler나 반쯤 적용된 subscription 상태를 보면 안 된다.
-
-handler replace visibility (두 mode 공통):
-
-**[런타임]** `set_handler()` 반환 이후에 dispatch 경로에 새로 진입한 메시지는
-새 handler를 호출해야 한다. (THREAD_SAFE / NON_THREAD_SAFE 두 mode 모두 해당)
-
-**[런타임]** `set_handler()` 호출 시점에 이미 in-flight인 callback은 기존 handler로 완료된다.
-
-**[런타임]** `set_handler(NULL)` 호출은 `EINVAL`을 반환하고 기존 handler를 유지해야 한다.
-
-**[런타임]** `set_handler()` 실패는 기존 handler를 변경하지 않아야 한다.
-
-subscribe/unsubscribe visibility (두 mode 공통):
-
-**[런타임]** `unsubscribe()` 반환 이후에 새로 match에 진입하는 메시지는
-해당 subscription을 더 이상 관찰하지 않아야 한다. (THREAD_SAFE / NON_THREAD_SAFE 두 mode 모두)
-
-**[런타임]** `unsubscribe()` 호출 시점에 이미 match/dispatch 단계에 진입한 in-flight 메시지는
-기존 subscription 기준으로 전달될 수 있다.
-
-**[런타임]** `subscribe()` 반환 이후 새로 match에 진입하는 메시지부터 적용된다.
-
-### 15.5 callback 중 send 허용 정책 (deadlock 없음)
-
-**[런타임]** `THREAD_SAFE` gateway recv callback 안에서 `zlink_gateway_send_rid()` 호출 → deadlock 없음
-
-**[런타임]** `THREAD_SAFE` `spot` recv callback 안에서 `zlink_spot_publish()` 호출 → deadlock 없음
-
-**[런타임]** `THREAD_SAFE` raw socket recv callback 안에서 같은 handle send 계열 API 호출 → deadlock 없음
-
-**[런타임]** gateway monitor callback 안에서 parent gateway의 send 계열 API 호출 → deadlock 없음
-
-**[런타임]** 위 패턴은 `NON_THREAD_SAFE` mode에서도 동일하게 동작해야 한다.
-(callback thread에서의 send는 두 mode 모두 공식 허용 패턴이다.)
-
-### 15.6 NON_THREAD_SAFE no-lock 정책
-
-**[런타임]** `NON_THREAD_SAFE` mode handle은 단일 thread 또는 외부 직렬화 아래에서
-`THREAD_SAFE` mode와 동일한 기능 결과를 내야 한다.
-
-**[런타임/death test]** debug build에서는 `NON_THREAD_SAFE` handle의 cross-thread 동시 호출이
-assert / log 등으로 검출되어야 한다.
-이 테스트는 의도적으로 violation을 유발하는 death test 패턴(callback 안에서 다른 thread로 mutation)으로
-구현하고, assert 또는 abort로 종료됨을 검증한다.
-
-**[런타임]** release build에서는 cross-thread misuse가 documented UB가 아니라
-가능한 범위에서 `EINVAL` 또는 `EBUSY` fail-fast로 관찰되어야 한다.
-
-### 15.7 destroy/close race 정책
-
-**cross-thread close/destroy** (다른 thread에서 close 호출):
+- `zlink_gateway_send_rid()` concurrent reply에 deadlock 없음
+- `zlink_spot_node_publish()`, `zlink_spot_publish()`,
+  `zlink_spot_pub_publish()` concurrent 호출에 data corruption 없음
+
+### 12.3 send-ready handler
+
+- `*_set_send_ready_handler()` 교체와 동시 send 호출에 data race 없음
+- send-ready callback 안에서 same-handle `send` / `publish`에 deadlock 없음
+- send-ready callback 안에서 `*_set_send_ready_handler()` 재진입 시 에러 반환
+- send-ready callback 실행 중 다른 thread에서 `close` / `destroy` 호출 시 `EBUSY`
+- send-ready callback 안 self-close는 deferred teardown으로 처리
+- `NULL`을 전달하면 `EINVAL` 반환 (replace-only, no-remove)
+- raw `SUB` / `XSUB`에 대한 `zlink_socket_set_send_ready_handler()` 호출은 `EINVAL`
+
+### 12.4 visibility
+
+- `*_set_send_ready_handler()` 교체 후 다음 writable transition부터 새 handler 적용
+- 교체 시점에 이미 in-flight인 send-ready callback은 기존 handler로 완료 가능
+- `unsubscribe()` 반환 이후 새 메시지부터 새 subscription 상태 적용
+- `subscribe()` 반환 이후 새 메시지부터 새 구독 상태 적용
+- 실패한 send-ready handler 교체는 기존 handler 유지
+
+### 12.5 attach / query / monitor
+
+- `attach_discovery()`와 query / option setter / peer query 동시 호출 시 data race 없음
+- manual peer/route가 존재하는 상태에서 `attach_discovery()` 호출 시 `EBUSY`
+- `attach_discovery()` 이후 manual `connect` / `disconnect` 호출 시 에러 반환
+- monitor callback 중 parent API 호출에 deadlock 없음
+- monitor open/close와 parent lifecycle API가 공통 `EBUSY` 정책을 따름
+
+### 12.6 close / destroy
+
+- in-flight callback 중 다른 thread에서 `close` / `destroy` -> `EBUSY`
+- in-flight `send`, subscribe, option setter 중 다른 thread에서 종료 -> `EBUSY`
+- `EBUSY` 반환 후 `closing_requested` 상태에서 외부 thread의 새 운영 API 진입이 에러로 차단됨
+- `EBUSY` 반환 후 in-flight callback 안 same-handle `send` / `publish`는 정상 동작
+- `EBUSY` 반환 후 in-flight 완료 뒤 재시도하면 teardown 성공
+- self-close 요청은 즉시 성공하고 callback return 뒤 teardown 수행
+- teardown 뒤 handle 재사용이 실패함을 확인
+- child handle이 열려 있는 상태에서 parent `destroy` -> `EBUSY`
+- child를 먼저 종료한 뒤 parent `destroy` 성공
+- `closing_requested` 상태에서 double close 시 in-flight에 따라 `EBUSY` 또는 teardown
 
 테스트 구현 원칙:
-in-flight 상태를 강제하기 위해 callback 내부에서 semaphore 또는 condition variable로
-close 호출 thread에 신호를 보내고, 그 신호 이후 close를 호출하는 blocking callback 패턴을 사용한다.
 
-또한 callback뿐 아니라 다른 public API도 in-flight 상태로 만들어 같은 정책을 확인해야 한다.
+- retry loop를 넣지 않는다.
+- `sleep()` 기반 동기화를 쓰지 않는다.
+- semaphore, condition variable, event flag와 hard timeout으로 in-flight 상태를
+  강제한다.
+- 단일 실패가 즉시 test executable 실패로 이어져야 한다.
 
-이 절은 "종료 API는 언제나 마지막에만 안전하다"는 사실을 테스트로 고정하는 부분이다.
+## 13. 정책 회귀 테스트
 
-**[런타임]** `THREAD_SAFE` mode에서 same-handle in-flight public API가 실행 중인 동안
-다른 thread가 `zlink_close()` / `*_destroy()` / `zlink_service_monitor_close()`를 호출하면
-`EBUSY`를 반환해야 한다.
+### 13.1 ABI / header 검증
 
-**[런타임]** `EBUSY` 수신 후 caller가 in-flight 작업 완료를 보장한 뒤 재시도하면 성공해야 한다.
+- public header에 `zlink_thread_mode_t` 같은 selectable thread mode type이 없어야 한다
+- 생성자와 `*_monitor_open()`에 `thread_mode` 인자가 추가되지 않아야 한다
+- `*_set_thread_mode()` 같은 API가 존재하지 않아야 한다
+- recv handler 교체 API(`*_set_handler()`, `*_set_recv_handler()` 등)가 존재하지
+  않아야 한다 — recv handler는 생성 시 고정이다
+- `_use_lock` 등 내부 직렬화 상태를 public API로 노출하지 않아야 한다
 
-**[런타임]** in-flight send / subscribe / option setter와 cross-thread close/destroy 충돌 시에도
-동일한 `EBUSY` policy가 적용되어야 한다.
+### 13.2 런타임 계약 검증
 
-**[런타임]** monitor handle의 in-flight callback 중 다른 thread에서
-`zlink_service_monitor_close()` 호출 시 동일 `EBUSY` policy가 적용되어야 한다.
+- 모든 주요 handle이 same-handle concurrent send / mutation에서 data race 없이 동작
+- close / destroy는 공통 `EBUSY` 정책을 유지
+- self-close는 공통 deferred teardown 정책을 유지
+- parent-child 생성과 attach에 동시성 모드 호환성 에러 케이스가 존재하지 않아야 한다
 
-**self-close** (callback thread 안에서 자기 handle close 호출):
-
-**[런타임]** `THREAD_SAFE` mode에서 callback 안에서 자기 자신의 handle에 `zlink_close()`를 호출하면
-즉시 `EBUSY`를 반환하지 않고 성공해야 한다. (deferred teardown — `closing_requested` 설정)
-
-**[런타임]** `THREAD_SAFE` mode에서 service callback 안에서
-`*_destroy(&handle_slot)` 또는 `zlink_service_monitor_close(&handle_slot)`를 호출해도
-즉시 `EBUSY`를 반환하지 않고 성공해야 한다.
-
-**[런타임]** self-close 이후 callback이 반환되면 dispatcher epilogue가 실제 teardown을 수행해야 한다.
-teardown 완료 이후 handle은 더 이상 유효하지 않아야 한다.
-
-**[런타임]** self-close 이후 callback 내에서 같은 handle로 추가 API 호출은 정의되지 않은 동작이다.
-(self-close는 callback의 마지막 동작으로 수행하는 것이 올바른 사용 패턴임)
-
-**[런타임]** `NON_THREAD_SAFE` mode에서 cross-thread destroy/close 경쟁은 caller 책임이며,
-라이브러리가 내부 직렬화로 이를 막지 않아야 한다.
-
-**[런타임]** `NON_THREAD_SAFE` mode에서 callback self-close도 동일하게 deferred teardown이 적용되어야 한다.
-(self-close 정책은 mode에 무관하게 공통이다. callback stack 위에서 즉시 free를 하면 안 된다.)
-
-### 15.8 mode 전이 금지 정책 (ABI 검증)
-
-이 섹션은 런타임 테스트가 아니라 public header에 대한 정적/ABI 검증 항목이다.
-구현 완료 후 header를 직접 검사하거나 빌드 단계에서 확인한다.
-
-**[ABI]** 생성 이후 `THREAD_SAFE` ↔ `NON_THREAD_SAFE` 전환 setter가 public header에 존재하지 않아야 한다.
-이를 시도하는 API가 생기면 즉시 회귀로 간주한다.
-
-**[ABI]** `_use_lock` 같은 내부 상태를 public API로 직접 노출하는 setter가 생겨서는 안 된다.
-
-## 16. 공개 문서 반영 대상
+## 14. 공개 문서 반영 대상
 
 이 설계가 구현되면 다음 문서도 같이 업데이트해야 한다.
 
-- `direct-callback-recv-interface-review.ko.md`
-  - 생성자 시그니처에 `thread_mode` 확장안 반영
-  - callback setter 계약에 mode별 제약 추가
-- `direct-callback-recv-rewrite-spec.ko.md`
-  - thread safety 섹션을 “선행 조건 아님”에서
-    “public selectable mode” 기준으로 갱신
-- `core/include/zlink.h`
-  - 새 enum / 변경된 생성자 시그니처 문서화
+- [`direct-callback-recv-interface-review.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-interface-review.ko.md)
+  - 생성자 시그니처에 선택적 동시성 모드 확장 전제가 남아 있지 않도록 정리
+  - thread-safe contract를 생성 옵션이 아니라 공통 공개 계약으로 명시
+- [`direct-callback-recv-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-rewrite-spec.ko.md)
+  - thread safety 섹션을 unconditional public contract 기준으로 정리
+  - deferred teardown과 visibility 규칙을 본 문서와 맞춤
+- [`zlink.h`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/include/zlink.h)
+  - `spot_pub`의 "default thread-safe" 문구를 공통 규칙에 맞게 일반화
+  - raw socket / gateway / spot / monitor 계열의 동시성 계약을 header comment에 반영
 
-## 17. 최종 권장안
+## 15. 최종 권장안
 
-요약하면 다음이 권장안이다.
+요약하면 권장안은 다음과 같다.
 
-1. raw socket과 service facade를 동일한 `zlink_thread_mode_t` 개념으로 정렬한다.
-2. `discovery`, `gateway`, `spot` 계열도 raw socket과 같은 수준의 thread mode 대상에 넣는다.
-3. 생성 시 `THREAD_SAFE` / `NON_THREAD_SAFE`를 고정한다.
-4. 기존 생성자 이름은 유지하고 시그니처를 직접 바꾼다.
-5. `gateway`와 `spot`을 다른 socket보다 특별취급하지 않고 같은 계층의 concurrency subject로 다룬다.
-6. 구현은 per-handle serialization 중심으로 가고, destroy race는 보수적으로 제한한다.
-7. single-thread 최적화가 필요한 사용자는 명시적으로 `NON_THREAD_SAFE`를 선택하게 한다.
+1. 선택적 동시성 모드 옵션을 도입하지 않는다. 모든 handle은 unconditional
+   thread-safe다.
+2. 현재 canonical 생성자와 monitor open 시그니처를 유지한다.
+3. thread-safe 범위는 public contract로 문서에 먼저 고정하고, 구현은 그
+   계약을 만족하는 메커니즘만 선택한다.
+4. recv handler는 생성 시 고정이며 런타임 교체 API를 두지 않는다.
+5. `*_set_send_ready_handler()`는 유일한 런타임 교체 가능 callback setter이며,
+   동시성 계약 범위에 포함한다.
+6. raw socket, `discovery`, `gateway`, `spot` 계열, monitor handle을 모두
+   thread-safe contract로 통일한다.
+7. 구현은 per-handle serialization과 공통 lifetime guard를 중심으로 정리한다.
+8. `close` / `destroy`는 `closing_requested` 원자 설정, `EBUSY`,
+   deferred teardown, parent-child 순서, double close 규칙으로 보수적으로 묶는다.
+9. `attach_discovery()`는 topology ownership 규칙(manual peer 존재 시 `EBUSY`,
+   attach 후 manual connect/disconnect 금지)을 유지한다.
+10. 성능 최적화는 no-lock 분기가 아니라 lock scope 축소와 dispatch snapshot으로
+   해결하며, 적용 전후 throughput을 perf benchmark로 검증한다.
 
-한 줄로 줄이면 다음과 같다.
+한 줄 요약:
 
-"모든 subject가 생성 시 thread mode를 가지게 하고,
-운영 중 API는 mode에 따라 직렬화하되,
+"모든 public handle은 thread-safe이고, 운영 API는 직렬화되며,
 종료 API는 항상 가장 보수적으로 다룬다."

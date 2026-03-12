@@ -8,7 +8,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cerrno>
-#include <cctype>
 #include <cstring>
 #include <iostream>
 #include <iomanip>
@@ -16,6 +15,7 @@
 #include <fstream>
 #include <climits>
 #include <zlink.h>
+#include "../../../src/core/recv_internal.hpp"
 
 #if !defined(_WIN32)
 #include <arpa/inet.h>
@@ -45,24 +45,6 @@
 #define ZLINK_TLS_HOSTNAME 100
 #endif
 
-typedef std::chrono::steady_clock steady_clock_t;
-typedef std::chrono::milliseconds milliseconds_t;
-typedef std::chrono::seconds seconds_t;
-typedef std::chrono::nanoseconds nanoseconds_t;
-typedef std::chrono::duration<double> floating_seconds_t;
-
-inline steady_clock_t::duration to_clock_duration (double seconds)
-{
-    return std::chrono::duration_cast<steady_clock_t::duration> (
-      floating_seconds_t (seconds));
-}
-
-inline long remaining_milliseconds (const steady_clock_t::time_point &deadline,
-                                    const steady_clock_t::time_point &now)
-{
-    return std::chrono::duration_cast<milliseconds_t> (deadline - now).count ();
-}
-
 // --- Configuration ---
 static const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 262144};
 static const std::vector<std::string> TRANSPORTS = {"tcp", "inproc", "ipc"};
@@ -73,13 +55,13 @@ static const int SETTLE_TIME_MS = 100;
 // --- Stopwatch ---
 class stopwatch_t {
 public:
-    void start() { _start = steady_clock_t::now(); }
+    void start() { _start = std::chrono::steady_clock::now(); }
     double elapsed_ms() const {
-        auto end = steady_clock_t::now();
+        auto end = std::chrono::steady_clock::now();
         return std::chrono::duration<double, std::milli>(end - _start).count();
     }
 private:
-    steady_clock_t::time_point _start;
+    std::chrono::steady_clock::time_point _start;
 };
 
 inline int parse_positive_env(const char *name_, int default_value_)
@@ -100,60 +82,6 @@ inline int parse_positive_env(const char *name_, int default_value_)
     if (parsed > INT_MAX)
         return INT_MAX;
     return static_cast<int>(parsed);
-}
-
-inline int parse_byte_size_token(const char *value_, int default_value_)
-{
-    if (!value_ || !*value_)
-        return default_value_;
-
-    errno = 0;
-    char *end = NULL;
-    const unsigned long long parsed = std::strtoull(value_, &end, 10);
-    if (errno != 0 || end == value_)
-        return default_value_;
-
-    unsigned long long multiplier = 1;
-    if (end && *end) {
-        char suffix[3] = {0, 0, 0};
-        size_t suffix_len = 0;
-        while (end[suffix_len] != '\0' && suffix_len < 2) {
-            suffix[suffix_len] =
-              static_cast<char>(std::tolower(static_cast<unsigned char>(end[suffix_len])));
-            ++suffix_len;
-        }
-        if (end[suffix_len] != '\0')
-            return default_value_;
-
-        if (suffix[0] == 'b' && suffix[1] == '\0')
-            multiplier = 1;
-        else if (suffix[0] == 'k' && (suffix[1] == '\0' || suffix[1] == 'b'))
-            multiplier = 1024ULL;
-        else if (suffix[0] == 'm' && (suffix[1] == '\0' || suffix[1] == 'b'))
-            multiplier = 1024ULL * 1024ULL;
-        else if (suffix[0] == 'g' && (suffix[1] == '\0' || suffix[1] == 'b'))
-            multiplier = 1024ULL * 1024ULL * 1024ULL;
-        else
-            return default_value_;
-    }
-
-    const unsigned long long bytes = parsed * multiplier;
-    if (bytes == 0)
-        return default_value_;
-    if (bytes > static_cast<unsigned long long>(INT_MAX))
-        return INT_MAX;
-    return static_cast<int>(bytes);
-}
-
-inline int resolve_single_socket_buffer_bytes(const char *primary_env_,
-                                              const char *fallback_env_)
-{
-    const char *value = primary_env_ ? std::getenv(primary_env_) : NULL;
-    if ((!value || !*value) && fallback_env_)
-        value = std::getenv(fallback_env_);
-    if (!value || !*value)
-        return -1;
-    return parse_byte_size_token(value, -1);
 }
 
 inline int resolve_single_duration_seconds()
@@ -289,7 +217,7 @@ inline int bench_max_sockets()
     if (explicit_max > 0)
         return explicit_max;
 
-    const int clients = parse_positive_env("PERF_CLIENTS", 0);
+    const int clients = parse_positive_env("PERF_MULTI_CLIENTS", 0);
     if (clients <= 0)
         return 0;
 
@@ -348,8 +276,8 @@ class socket_guard_t {
 public:
     socket_guard_t() : _socket(NULL) {}
     socket_guard_t(void *ctx_, int type_) :
-        _socket(zlink_socket(
-          ctx_, static_cast<zlink_socket_type_t>(type_))) {}
+        _socket(zlink_socket(ctx_, static_cast<zlink_socket_type_t>(type_)))
+    {}
     ~socket_guard_t() {
         if (_socket)
             zlink_close(_socket);
@@ -377,15 +305,15 @@ inline void print_result(const std::string& lib_type,
     const double bandwidth_mb_s =
       (throughput * static_cast<double>(size)) / 1000000.0;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",throughput," << std::fixed << std::setprecision(3) << throughput << std::endl;
+              << ",throughput," << std::fixed << std::setprecision(2) << throughput << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",bandwidth," << std::fixed << std::setprecision(3) << bandwidth_mb_s << std::endl;
+              << ",bandwidth," << std::fixed << std::setprecision(2) << bandwidth_mb_s << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",latency," << std::fixed << std::setprecision(3) << latency << std::endl;
+              << ",latency," << std::fixed << std::setprecision(2) << latency << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",latency_p95," << std::fixed << std::setprecision(3) << latency_p95 << std::endl;
+              << ",latency_p95," << std::fixed << std::setprecision(2) << latency_p95 << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",latency_p99," << std::fixed << std::setprecision(3) << latency_p99 << std::endl;
+              << ",latency_p99," << std::fixed << std::setprecision(2) << latency_p99 << std::endl;
 }
 
 inline void print_queue_metrics(const std::string &lib_type,
@@ -397,17 +325,17 @@ inline void print_queue_metrics(const std::string &lib_type,
     if (queue_stats.has_snd_pending) {
         std::cout << "RESULT," << lib_type << "," << pattern << ","
                   << transport << "," << size << ",snd_pending_max,"
-                  << std::fixed << std::setprecision(3)
+                  << std::fixed << std::setprecision(2)
                   << queue_stats.snd_pending_max << std::endl;
     }
     if (queue_stats.has_rcv_pending) {
         std::cout << "RESULT," << lib_type << "," << pattern << ","
                   << transport << "," << size << ",rcv_pending_max,"
-                  << std::fixed << std::setprecision(3)
+                  << std::fixed << std::setprecision(2)
                   << queue_stats.rcv_pending_max << std::endl;
         std::cout << "RESULT," << lib_type << "," << pattern << ","
                   << transport << "," << size << ",rcv_pending_end,"
-                  << std::fixed << std::setprecision(3)
+                  << std::fixed << std::setprecision(2)
                   << queue_stats.rcv_pending_end << std::endl;
     }
 }
@@ -437,6 +365,16 @@ inline void print_result(const std::string& lib_type,
       lib_type, pattern, transport, size, throughput, latency, latency, latency);
 }
 
+inline int zlink_msg_recv(zlink_msg_t *msg_, void *socket_, int flags_)
+{
+    return zlink::recv_msg_internal(socket_, msg_, flags_);
+}
+
+inline int zlink_recv(void *socket_, void *buf_, size_t len_, int flags_)
+{
+    return zlink::recv_buffer_internal(socket_, buf_, len_, flags_);
+}
+
 inline bool send_exact(void *socket_,
                        const void *data_,
                        size_t size_,
@@ -452,12 +390,92 @@ inline bool recv_exact(void *socket_,
                        size_t size_,
                        int flags_ = 0)
 {
-    (void) socket_;
-    (void) data_;
-    (void) size_;
-    (void) flags_;
-    errno = ENOTSUP;
-    return false;
+    if (!socket_)
+        return false;
+    return zlink_recv(socket_, data_, size_, flags_) == static_cast<int>(size_);
+}
+
+inline int recv_single_part_msg_flags(void *socket_,
+                                      size_t expected_size_,
+                                      int flags_)
+{
+    if (!socket_)
+        return -1;
+
+    zlink_msg_t msg;
+    if (zlink_msg_init(&msg) != 0)
+        return -1;
+
+    const int rc = zlink_msg_recv(&msg, socket_, flags_);
+    if (rc < 0) {
+        const int err = zlink_errno();
+        zlink_msg_close(&msg);
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
+    }
+
+    const bool size_ok = zlink_msg_size(&msg) == expected_size_;
+    const bool has_more = zlink_msg_more(&msg) != 0;
+    zlink_msg_close(&msg);
+    if (!size_ok || has_more)
+        return -1;
+    return 1;
+}
+
+inline int recv_two_part_msg_flags(void *socket_,
+                                   size_t payload_size_,
+                                   std::vector<char> *routing_id_out_,
+                                   int flags_)
+{
+    if (!socket_)
+        return -1;
+
+    zlink_msg_t routing_id;
+    if (zlink_msg_init(&routing_id) != 0)
+        return -1;
+
+    const int id_rc = zlink_msg_recv(&routing_id, socket_, flags_);
+    if (id_rc < 0) {
+        const int err = zlink_errno();
+        zlink_msg_close(&routing_id);
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
+    }
+
+    if (zlink_msg_more(&routing_id) == 0) {
+        zlink_msg_close(&routing_id);
+        return -1;
+    }
+
+    if (routing_id_out_) {
+        const size_t id_size = zlink_msg_size(&routing_id);
+        routing_id_out_->clear();
+        if (id_size > 0) {
+            const char *id_data =
+              static_cast<const char *>(zlink_msg_data(&routing_id));
+            routing_id_out_->assign(id_data, id_data + id_size);
+        }
+    }
+
+    zlink_msg_close(&routing_id);
+
+    zlink_msg_t payload;
+    if (zlink_msg_init(&payload) != 0)
+        return -1;
+
+    if (zlink_msg_recv(&payload, socket_, 0) < 0) {
+        zlink_msg_close(&payload);
+        return -1;
+    }
+
+    const bool payload_ok = zlink_msg_size(&payload) == payload_size_;
+    const bool payload_has_more = zlink_msg_more(&payload) != 0;
+    zlink_msg_close(&payload);
+    if (!payload_ok || payload_has_more)
+        return -1;
+    return 1;
 }
 
 inline bool bench_debug_enabled() {
@@ -465,11 +483,11 @@ inline bool bench_debug_enabled() {
     return enabled;
 }
 
-inline bool set_sockopt_int(void *socket_,
-                            zlink_socket_option_t option_,
-                            int value_,
+inline bool set_sockopt_int(void *socket_, int option_, int value_,
                             const char *name_) {
-    const int rc = zlink_setsockopt(socket_, option_, &value_, sizeof(value_));
+    const int rc = zlink_setsockopt(
+      socket_, static_cast<zlink_socket_option_t>(option_), &value_,
+      sizeof(value_));
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "setsockopt(" << name_ << ") failed: "
                   << zlink_strerror(zlink_errno()) << std::endl;
@@ -477,7 +495,9 @@ inline bool set_sockopt_int(void *socket_,
     if (bench_debug_enabled()) {
         int out = 0;
         size_t out_size = sizeof(out);
-        const int grc = zlink_getsockopt(socket_, option_, &out, &out_size);
+        const int grc = zlink_getsockopt(
+          socket_, static_cast<zlink_socket_option_t>(option_), &out,
+          &out_size);
         if (grc == 0) {
             std::cerr << "setsockopt(" << name_ << ") = " << out << std::endl;
         }
@@ -520,34 +540,9 @@ inline int resolve_single_queue_sample_every_msgs()
 
 class queue_probe_t {
 public:
-    typedef int (*peer_list_fn_t)(void *, zlink_peer_info_t *, size_t *);
-
     queue_probe_t(void *send_socket_, void *recv_socket_) :
-        _send_target(send_socket_),
-        _recv_target(recv_socket_),
-        _send_peer_list_fn(read_socket_peers),
-        _recv_peer_list_fn(read_socket_peers),
-        _sample_interval_ns(resolve_sample_interval_ns()),
-        _sample_every_msgs(resolve_sample_every_msgs()),
-        _send_last_sample_ns(0),
-        _recv_last_sample_ns(0),
-        _send_msgs_since_sample(0),
-        _recv_msgs_since_sample(0),
-        _snd_pending_max(0),
-        _rcv_pending_max(0),
-        _rcv_pending_end(0),
-        _snd_seen(false),
-        _rcv_seen(false)
-    {}
-
-    queue_probe_t(peer_list_fn_t send_peer_list_fn_,
-                  void *send_target_,
-                  peer_list_fn_t recv_peer_list_fn_,
-                  void *recv_target_) :
-        _send_target(send_target_),
-        _recv_target(recv_target_),
-        _send_peer_list_fn(send_peer_list_fn_),
-        _recv_peer_list_fn(recv_peer_list_fn_),
+        _send_socket(send_socket_),
+        _recv_socket(recv_socket_),
         _sample_interval_ns(resolve_sample_interval_ns()),
         _sample_every_msgs(resolve_sample_every_msgs()),
         _send_last_sample_ns(0),
@@ -600,7 +595,7 @@ private:
     {
         return static_cast<unsigned long long>(
           std::chrono::duration_cast<std::chrono::nanoseconds>(
-            steady_clock_t::now().time_since_epoch())
+            std::chrono::steady_clock::now().time_since_epoch())
             .count());
     }
 
@@ -611,27 +606,18 @@ private:
                + static_cast<unsigned long long>(info_.msgs_received);
     }
 
-    static int read_socket_peers(void *socket_,
-                                 zlink_peer_info_t *peers_,
-                                 size_t *count_)
+    static bool read_first_peer_info(void *socket_, zlink_peer_info_t *info_)
     {
-        return zlink_socket_peers(socket_, peers_, count_);
-    }
-
-    static bool read_first_peer_info(peer_list_fn_t peers_fn_,
-                                     void *target_,
-                                     zlink_peer_info_t *info_)
-    {
-        if (!peers_fn_ || !target_ || !info_)
+        if (!socket_ || !info_)
             return false;
 
         size_t peer_count = 0;
-        if (peers_fn_(target_, NULL, &peer_count) != 0 || peer_count == 0)
+        if (zlink_socket_peers(socket_, NULL, &peer_count) != 0 || peer_count == 0)
             return false;
 
         std::vector<zlink_peer_info_t> peers(peer_count);
         size_t to_copy = peer_count;
-        if (peers_fn_(target_, &peers[0], &to_copy) != 0 || to_copy == 0)
+        if (zlink_socket_peers(socket_, &peers[0], &to_copy) != 0 || to_copy == 0)
             return false;
 
         size_t best = 0;
@@ -654,7 +640,7 @@ private:
 
     void maybe_sample_send(bool force_)
     {
-        if (!_send_target || !_send_peer_list_fn)
+        if (!_send_socket)
             return;
 
         if (force_) {
@@ -674,7 +660,7 @@ private:
         _send_last_sample_ns = now;
 
         zlink_peer_info_t info;
-        if (!read_first_peer_info(_send_peer_list_fn, _send_target, &info))
+        if (!read_first_peer_info(_send_socket, &info))
             return;
 
         const unsigned long long pending =
@@ -686,7 +672,7 @@ private:
 
     void maybe_sample_recv(bool force_)
     {
-        if (!_recv_target || !_recv_peer_list_fn)
+        if (!_recv_socket)
             return;
 
         if (force_) {
@@ -706,7 +692,7 @@ private:
         _recv_last_sample_ns = now;
 
         zlink_peer_info_t info;
-        if (!read_first_peer_info(_recv_peer_list_fn, _recv_target, &info))
+        if (!read_first_peer_info(_recv_socket, &info))
             return;
 
         const unsigned long long pending =
@@ -717,10 +703,8 @@ private:
         _rcv_seen = true;
     }
 
-    void *_send_target;
-    void *_recv_target;
-    peer_list_fn_t _send_peer_list_fn;
-    peer_list_fn_t _recv_peer_list_fn;
+    void *_send_socket;
+    void *_recv_socket;
     unsigned long long _sample_interval_ns;
     unsigned int _sample_every_msgs;
     unsigned long long _send_last_sample_ns;
@@ -780,15 +764,7 @@ inline void apply_single_benchmark_socket_options(void *socket_,
     const int linger_ms = 0;
     const int sndtimeo_ms = resolve_single_send_timeout_ms();
     const int rcvtimeo_ms = resolve_single_recv_timeout_ms();
-    const int sndbuf =
-      resolve_single_socket_buffer_bytes("PERF_SINGLE_SNDBUF", "PERF_SNDBUF");
-    const int rcvbuf =
-      resolve_single_socket_buffer_bytes("PERF_SINGLE_RCVBUF", "PERF_RCVBUF");
     set_sockopt_int(socket_, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
-    if (sndbuf > 0)
-        set_sockopt_int(socket_, ZLINK_SNDBUF, sndbuf, "ZLINK_SNDBUF");
-    if (rcvbuf > 0)
-        set_sockopt_int(socket_, ZLINK_RCVBUF, rcvbuf, "ZLINK_RCVBUF");
     set_sockopt_int(socket_, ZLINK_SNDTIMEO, sndtimeo_ms, "ZLINK_SNDTIMEO");
     set_sockopt_int(socket_, ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
 }
@@ -1029,8 +1005,8 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
     if (transport != "inproc") {
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof(last_endpoint);
-        if (zlink_getsockopt(socket_, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size) != 0) {
-            std::cerr << "getsockopt(ZLINK_SOCKOPT_LAST_ENDPOINT) failed: "
+        if (zlink_getsockopt(socket_, ZLINK_LAST_ENDPOINT, last_endpoint, &size) != 0) {
+            std::cerr << "getsockopt(ZLINK_LAST_ENDPOINT) failed: "
                       << zlink_strerror(zlink_errno()) << std::endl;
             return std::string();
         }
@@ -1065,7 +1041,7 @@ inline bool transport_available(const std::string& transport) {
 }
 
 inline void settle() {
-    std::this_thread::sleep_for(milliseconds_t(SETTLE_TIME_MS));
+    std::this_thread::sleep_for(std::chrono::milliseconds(SETTLE_TIME_MS));
 }
 
 inline bool connect_checked(void *socket_, const std::string& endpoint) {

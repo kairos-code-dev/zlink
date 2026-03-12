@@ -40,6 +40,7 @@ struct iovec
 #include <climits>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #include "sockets/proxy.hpp"
 #include "sockets/socket_base.hpp"
@@ -512,14 +513,6 @@ static zlink::receiver_t *as_receiver_service (void *receiver_)
 
 namespace
 {
-static void store_u32_be (unsigned char *dst_, uint32_t value_)
-{
-    dst_[0] = static_cast<unsigned char> ((value_ >> 24) & 0xFF);
-    dst_[1] = static_cast<unsigned char> ((value_ >> 16) & 0xFF);
-    dst_[2] = static_cast<unsigned char> ((value_ >> 8) & 0xFF);
-    dst_[3] = static_cast<unsigned char> (value_ & 0xFF);
-}
-
 static bool is_stream_type (socket_handle_t handle_)
 {
     if (!handle_.socket)
@@ -532,19 +525,22 @@ static bool is_stream_type (socket_handle_t handle_)
     return type == ZLINK_STREAM;
 }
 
-static bool stream_dispatch_len32be_enabled (socket_handle_t handle_)
+class stream_api_lock_t
 {
-    if (!handle_.socket)
-        return false;
-    return handle_.socket->stream_dispatch_len32be_enabled ();
-}
+  public:
+    explicit stream_api_lock_t (socket_handle_t handle_) : _lock ()
+    {
+        if (!handle_.socket)
+            return;
 
-static bool stream_dispatch_active (socket_handle_t handle_)
-{
-    if (!handle_.socket)
-        return false;
-    return handle_.socket->stream_dispatch_active ();
-}
+        std::recursive_mutex *mutex = handle_.socket->api_sync_mutex ();
+        if (mutex)
+            _lock = std::unique_lock<std::recursive_mutex> (*mutex);
+    }
+
+  private:
+    std::unique_lock<std::recursive_mutex> _lock;
+};
 
 static bool parse_stream_routing_id (const zlink_routing_id_t *rid_,
                                      uint32_t *routing_id_out_)
@@ -597,6 +593,20 @@ int zlink_close (void *s_)
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
+
+    if (handle.socket->api_sync_mutex ()) {
+        if (handle.socket->stream_dispatch_in_callback ()) {
+            errno = EBUSY;
+            return -1;
+        }
+
+        handle.socket->stop ();
+        stream_api_lock_t api_lock (handle);
+        (void) handle.socket->stream_dispatch_stop ();
+        handle.socket->close ();
+        return 0;
+    }
+
     (void) handle.socket->stream_dispatch_stop ();
     handle.socket->close ();
     return 0;
@@ -2525,8 +2535,8 @@ int zlink_recv (void *s_, void *buf_, size_t len_, int flags_)
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-    if (is_stream_type (handle) && stream_dispatch_active (handle)) {
-        errno = EBUSY;
+    if (is_stream_type (handle)) {
+        errno = ENOTSUP;
         return -1;
     }
     zlink_msg_t msg;
@@ -2550,17 +2560,6 @@ int zlink_recv (void *s_, void *buf_, size_t len_, int flags_)
     return nbytes;
 }
 
-int zlink_stream_attach (void *s_,
-                        zlink_stream_on_packets_fn on_packet_,
-                        int flags_)
-{
-    if ((flags_ & ~ZLINK_STREAM_DISPATCH_LEN32BE) != 0) {
-        errno = EINVAL;
-        return -1;
-    }
-    return zlink_stream_attach_len32be (s_, on_packet_);
-}
-
 int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_)
 {
     socket_handle_t handle = as_socket_handle (s_);
@@ -2577,27 +2576,13 @@ int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_)
         return -1;
     }
 
+    if (handle.socket->stream_dispatch_in_callback ()) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    stream_api_lock_t api_lock (handle);
     return handle.socket->stream_dispatch_start_raw (on_raw_);
-}
-
-int zlink_stream_attach_len32be (void *s_,
-                                 zlink_stream_on_packets_fn on_packets_)
-{
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return -1;
-
-    if (!on_packets_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (!is_stream_type (handle)) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    return handle.socket->stream_dispatch_start_len32be (on_packets_);
 }
 
 int zlink_stream_detach (void *s_)
@@ -2610,6 +2595,12 @@ int zlink_stream_detach (void *s_)
         return -1;
     }
 
+    if (handle.socket->stream_dispatch_in_callback ()) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    stream_api_lock_t api_lock (handle);
     return handle.socket->stream_dispatch_stop ();
 }
 
@@ -2646,35 +2637,15 @@ int zlink_stream_send (void *s_,
       | (static_cast<uint32_t> (rid_->data[2]) << 8)
       | static_cast<uint32_t> (rid_->data[3]);
 
-    const bool len32be = stream_dispatch_len32be_enabled (handle);
-    if (len32be && size_ > static_cast<size_t> (0xFFFFFFFFu)) {
-        errno = EMSGSIZE;
-        return -1;
-    }
+    stream_api_lock_t api_lock (handle);
 
-    // Callback-driven STREAM receive path can reply directly on the current
-    // I/O thread pipe. If not in that context, fall back to generic send.
-    const int io_send_rc = handle.socket->stream_dispatch_send_from_io (
-      rid_, data_, size_, flags_, len32be);
-    if (io_send_rc < 0)
-        return -1;
-    if (io_send_rc > 0)
-        return static_cast<int> (size_ < static_cast<size_t> (INT_MAX) ? size_
-                                                                        : INT_MAX);
-
-    const size_t wire_size = len32be ? (size_ + 4) : size_;
     zlink_msg_t msg;
-    if (zlink_msg_init_size (&msg, wire_size) != 0)
+    if (zlink_msg_init_size (&msg, size_) != 0)
         return -1;
 
     unsigned char *dst = static_cast<unsigned char *> (zlink_msg_data (&msg));
-    if (len32be) {
-        store_u32_be (dst, static_cast<uint32_t> (size_));
-        if (size_ > 0)
-            memcpy (dst + 4, data_, size_);
-    } else if (size_ > 0) {
+    if (size_ > 0)
         memcpy (dst, data_, size_);
-    }
 
     zlink::msg_t *core_msg = reinterpret_cast<zlink::msg_t *> (&msg);
     if (core_msg->set_routing_id (routing_id) != 0) {
@@ -2694,7 +2665,7 @@ int zlink_stream_send (void *s_,
     }
 
     (void) zlink_msg_close (&msg);
-
+    errno = 0;
     return static_cast<int> (size_ < static_cast<size_t> (INT_MAX) ? size_
                                                                     : INT_MAX);
 }
@@ -2734,86 +2705,24 @@ int zlink_stream_send_msg (void *s_,
     }
 
     const size_t payload_size = core_msg->size ();
-    const bool len32be = stream_dispatch_len32be_enabled (handle);
-    if (len32be && payload_size > static_cast<size_t> (0xFFFFFFFFu)) {
-        errno = EMSGSIZE;
-        release_stream_send_msg (core_msg);
-        return -1;
-    }
-
-    const int io_send_rc = handle.socket->stream_dispatch_send_msg_from_io (
-      rid_, core_msg, flags_, len32be);
-    if (io_send_rc < 0) {
+    stream_api_lock_t api_lock (handle);
+    if (core_msg->set_routing_id (routing_id) != 0) {
         const int err = errno;
         release_stream_send_msg (core_msg);
         errno = err;
         return -1;
     }
-    if (io_send_rc > 0)
-        return stream_payload_result (payload_size);
 
     const int base_flags = flags_ & ZLINK_DONTWAIT;
-    if (!len32be) {
-        if (core_msg->set_routing_id (routing_id) != 0) {
-            const int err = errno;
-            release_stream_send_msg (core_msg);
-            errno = err;
-            return -1;
-        }
-
-        const int send_rc = s_sendmsg (handle, msg_, base_flags);
-        if (send_rc < 0) {
-            const int err = errno;
-            release_stream_send_msg (core_msg);
-            errno = err;
-            return -1;
-        }
-        return stream_payload_result (payload_size);
-    }
-
-    const unsigned char *payload =
-      static_cast<const unsigned char *> (core_msg->data ());
-    if (!payload && payload_size > 0) {
-        errno = EFAULT;
-        release_stream_send_msg (core_msg);
-        return -1;
-    }
-
-    const size_t wire_size = payload_size + 4;
-    zlink_msg_t wire_msg;
-    if (zlink_msg_init_size (&wire_msg, wire_size) != 0) {
-        const int err = errno;
-        release_stream_send_msg (core_msg);
-        errno = err;
-        return -1;
-    }
-
-    unsigned char *wire =
-      static_cast<unsigned char *> (zlink_msg_data (&wire_msg));
-    store_u32_be (wire, static_cast<uint32_t> (payload_size));
-    if (payload_size > 0)
-        memcpy (wire + 4, payload, payload_size);
-
-    zlink::msg_t *wire_core = reinterpret_cast<zlink::msg_t *> (&wire_msg);
-    if (wire_core->set_routing_id (routing_id) != 0) {
-        const int err = errno;
-        (void) zlink_msg_close (&wire_msg);
-        release_stream_send_msg (core_msg);
-        errno = err;
-        return -1;
-    }
-
-    const int send_rc = s_sendmsg (handle, &wire_msg, base_flags);
+    const int send_rc = s_sendmsg (handle, msg_, base_flags);
     if (send_rc < 0) {
         const int err = errno;
-        (void) zlink_msg_close (&wire_msg);
         release_stream_send_msg (core_msg);
         errno = err;
         return -1;
     }
 
-    (void) zlink_msg_close (&wire_msg);
-    release_stream_send_msg (core_msg);
+    errno = 0;
     return stream_payload_result (payload_size);
 }
 
@@ -2854,8 +2763,8 @@ int zlink_msg_recv (zlink_msg_t *msg_, void *s_, int flags_)
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-    if (is_stream_type (handle) && stream_dispatch_active (handle)) {
-        errno = EBUSY;
+    if (is_stream_type (handle)) {
+        errno = ENOTSUP;
         return -1;
     }
     return s_recvmsg (handle, msg_, flags_);

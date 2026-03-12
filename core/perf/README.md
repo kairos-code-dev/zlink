@@ -79,7 +79,7 @@ and delegates execution to `run_benchmarks.sh`.
 
 ### Default patterns
 
-`DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE`
+`DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM_CALLBACK`
 
 ### Options
 
@@ -182,11 +182,11 @@ Multi full run:
 ./core/perf/run_benchmarks_multi.sh
 ```
 
-Multi STREAM only:
+Multi STREAM callback-only:
 
 ```bash
 ./core/perf/run_benchmarks_multi.sh \
-  --pattern STREAM \
+  --pattern STREAM_CALLBACK \
   --clients 5000 \
   --duration 10 \
   --transports tcp

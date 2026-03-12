@@ -204,11 +204,11 @@ shards = ceil(ccu / 사용 가능한 임시 포트 수)
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
 | `--transport` | `tcp` | 전송 프로토콜: `tcp`, `tls`, `ws`, `wss` |
-| `--pattern` | `STREAM` | 결과 출력 라우팅용 레이블 |
+| `--pattern` | `STREAM_CALLBACK` | 결과 출력 라우팅용 레이블 |
 | `--endpoint` | — | 전체 엔드포인트 URI (예: `tcp://127.0.0.1:15557`). `--host`/`--port`/`--transport`를 덮어씀. |
 | `--host` | `127.0.0.1` | 서버 호스트 |
 | `--port` | `38001` | 서버 포트 |
-| `--ccu` | `1000` | 동시 연결 수 |
+| `--ccu` | `10000` | 동시 연결 수 |
 | `--sizes` | `64` | 페이로드 크기 (바이트). 여러 값을 주면 첫 번째 값만 사용한다. |
 | `--runs` | `1` | 크기별 벤치마크 반복 횟수 |
 | `--warmup` | `2` | 워밍업 시간 (초) |
@@ -245,11 +245,11 @@ cmake --build core/build --target perf_stream_client -j$(nproc)
 
 ```bash
 core/build/bin/perf_stream_client \
-  --pattern STREAM \
+  --pattern STREAM_CALLBACK \
   --transport tcp \
   --endpoint tcp://127.0.0.1:15557 \
   --sizes 64 \
-  --ccu 1000 \
+  --ccu 10000 \
   --warmup 3 \
   --duration 5 \
   --io-threads 4 \

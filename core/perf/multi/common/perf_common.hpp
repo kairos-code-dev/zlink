@@ -472,9 +472,7 @@ inline void print_result(const std::string& lib_type,
       pattern == "DEALER_ROUTER"
       || pattern == "ROUTER_ROUTER"
       || pattern == "GATEWAY"
-      || pattern == "STREAM"
-      || pattern == "STREAM_CALLBACK"
-      || pattern == "STREAM_LEN32BE";
+      || pattern == "STREAM_CALLBACK";
     const double direction_factor = is_echo_pattern ? 2.0 : 1.0;
     const double bandwidth_mb_s =
       (throughput * static_cast<double>(size) * direction_factor) / 1000000.0;

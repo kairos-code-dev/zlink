@@ -39,20 +39,14 @@ SERVER_QUEUE_METRICS = (
     "server_rcv_pending_end",
 )
 PATTERN_SEPARATOR = "==============================================================================="
-STREAM_VARIANT_PATTERNS = (
-    "STREAM",
-    "STREAM_CALLBACK",
-    "STREAM_LEN32BE",
-)
+STREAM_VARIANT_PATTERNS = ("STREAM_CALLBACK",)
 PATTERN_ALIASES = {
     "STREAM": STREAM_VARIANT_PATTERNS,
     "STREAMS": STREAM_VARIANT_PATTERNS,
 }
 STREAM_SHARED_CLIENT_BINARY = "perf_stream_client"
 STREAM_SERVER_BINARY_BY_PATTERN = {
-    "STREAM": "comp_src_stream_server",
     "STREAM_CALLBACK": "comp_src_stream_callback_server",
-    "STREAM_LEN32BE": "comp_src_stream_len32be_server",
 }
 PATTERN_SUFFIX = {
     "DEALER_DEALER": "dealer_dealer",
@@ -61,17 +55,13 @@ PATTERN_SUFFIX = {
     "PUBSUB": "pubsub",
     "GATEWAY": "gateway",
     "SPOT": "spot",
-    "STREAM": "stream",
     "STREAM_CALLBACK": "stream_callback",
-    "STREAM_LEN32BE": "stream_len32be",
 }
 ECHO_PATTERNS = {
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
     "GATEWAY",
-    "STREAM",
     "STREAM_CALLBACK",
-    "STREAM_LEN32BE",
 }
 SINGLE_ECHO_PATTERNS = {
     "PAIR",
@@ -98,9 +88,7 @@ MULTI_COMPARISONS = [
     ("comp_src_pubsub_client", "PUBSUB"),
     ("comp_src_gateway_client", "GATEWAY"),
     ("comp_src_spot_client", "SPOT"),
-    ("perf_stream_client", "STREAM"),
     ("perf_stream_client", "STREAM_CALLBACK"),
-    ("perf_stream_client", "STREAM_LEN32BE"),
 ]
 MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
 
@@ -820,9 +808,7 @@ def is_pattern(pattern_name):
 
 def select_transports(pattern_name):
     service_or_stream = pattern_name in (
-        "STREAM",
         "STREAM_CALLBACK",
-        "STREAM_LEN32BE",
         "GATEWAY",
         "SPOT",
     )

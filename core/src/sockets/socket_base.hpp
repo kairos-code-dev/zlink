@@ -7,6 +7,7 @@
 #include <map>
 #include <stdarg.h>
 #include <atomic>
+#include <mutex>
 
 #include "core/own.hpp"
 #include "utils/array.hpp"
@@ -69,23 +70,18 @@ class socket_base_t : public own_t,
     virtual int sub_dispatch_stop ();
     virtual bool sub_dispatch_active () const;
     virtual int stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_);
-    virtual int
-    stream_dispatch_start_len32be (zlink_stream_on_packets_fn callback_);
-    virtual int stream_dispatch_start (zlink_stream_on_packets_fn callback_,
-                                       int flags_);
     virtual int stream_dispatch_stop ();
-    virtual bool stream_dispatch_len32be_enabled () const;
     virtual bool stream_dispatch_active () const;
+    virtual bool stream_dispatch_in_callback () const;
     virtual int stream_dispatch_send_from_io (const zlink_routing_id_t *rid_,
                                               const void *data_,
                                               size_t size_,
-                                              int flags_,
-                                              bool len32be_);
+                                              int flags_);
     virtual int stream_dispatch_send_msg_from_io (
       const zlink_routing_id_t *rid_,
       zlink::msg_t *msg_,
-      int flags_,
-      bool len32be_);
+      int flags_);
+    virtual std::recursive_mutex *api_sync_mutex ();
 
     //  These functions are used by the polling mechanism to determine
     //  which events are to be reported from this socket.

@@ -72,7 +72,7 @@ else
 fi
 
 STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL,GATEWAY,SPOT"
-MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE"
+MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM_CALLBACK"
 PATTERN="ALL"
 OUTPUT_FILE=""
 RESULTS_DIR=""
@@ -110,6 +110,7 @@ Measure current zlink single-pattern performance.
 Options:
   -h, --help                  Show this help.
   --pattern NAME              Pattern list (comma-separated) or ALL.
+                              In multi mode, STREAM/STREAMS map to STREAM_CALLBACK.
   --build-dir PATH            Build directory (default: core/build/<platform>-<arch>).
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
   --clean-build               Remove build directory and do a clean build.
@@ -152,6 +153,22 @@ set_build_mode() {
   fi
   BUILD_MODE="${next_mode}"
   BUILD_MODE_EXPLICIT=1
+}
+
+normalize_multi_pattern_alias() {
+  local raw="${1:-}"
+  if [[ "${raw}" == MULTI_* ]]; then
+    raw="${raw#MULTI_}"
+  fi
+
+  case "${raw}" in
+    STREAM|STREAMS|STREAM_CALLBACK)
+      printf '%s' "STREAM_CALLBACK"
+      ;;
+    *)
+      printf '%s' "${raw}"
+      ;;
+  esac
 }
 
 while [[ $# -gt 0 ]]; do
@@ -282,6 +299,9 @@ for i in "${!PATTERN_LIST[@]}"; do
   if [[ -z "${PATTERN_LIST[i]}" ]]; then
     echo "Error: empty pattern entry in list." >&2
     exit 1
+  fi
+  if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
+    PATTERN_LIST[i]="$(normalize_multi_pattern_alias "${PATTERN_LIST[i]}")"
   fi
 done
 

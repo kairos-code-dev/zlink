@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM_CALLBACK"
 TRANSPORTS="tcp,tls,ws,wss"
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
 
@@ -213,7 +213,7 @@ Usage: core/perf/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE
+  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM_CALLBACK
 Legacy MULTI_ prefix is accepted and stripped automatically.
 By default, this wrapper runs current zlink only.
 By default, multi-bench keeps warmup at 2s and duration window at 5s.
@@ -221,7 +221,7 @@ By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with 
 
 Options:
   --pattern NAME         Benchmark pattern (default: all patterns above). Legacy MULTI_ prefix is optional.
-                         Alias: stream/streams => STREAM,STREAM_CALLBACK,STREAM_LEN32BE
+                         Alias: stream/streams => STREAM_CALLBACK
   --help                 Show this help.
   --reuse-build          Reuse existing build directory as-is (skip configure/build).
   --clean-build          Remove build directory and do a clean build.
@@ -323,10 +323,8 @@ expand_and_add_explicit_pattern() {
   fi
 
   case "${base}" in
-    STREAM|STREAMS)
-      add_explicit_pattern_unique "STREAM"
+    STREAM|STREAMS|STREAM_CALLBACK)
       add_explicit_pattern_unique "STREAM_CALLBACK"
-      add_explicit_pattern_unique "STREAM_LEN32BE"
       ;;
     *)
       add_explicit_pattern_unique "${base}"
@@ -912,7 +910,7 @@ for raw_pattern in "${PATTERNS[@]}"; do
 
   pattern_clients="${CLIENTS:-$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)}"
   if [[ -z "${pattern_clients}" ]]; then
-    if [[ "${pattern}" == "STREAM" || "${pattern}" == "STREAM_CALLBACK" || "${pattern}" == "STREAM_LEN32BE" ]]; then
+    if [[ "${pattern}" == "STREAM_CALLBACK" ]]; then
       pattern_clients="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}"
     else
       pattern_clients="${EFFECTIVE_DEFAULT_CLIENTS}"

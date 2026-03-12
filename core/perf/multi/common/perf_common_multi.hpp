@@ -47,9 +47,7 @@ inline int resolve_default_hwm (const char *pattern, int clients)
 
     if (pattern && *pattern) {
         const bool is_stream_variant =
-          std::strcmp (pattern, "STREAM") == 0
-          || std::strcmp (pattern, "STREAM_CALLBACK") == 0
-          || std::strcmp (pattern, "STREAM_LEN32BE") == 0;
+          std::strcmp (pattern, "STREAM_CALLBACK") == 0;
         if (is_stream_variant)
             return 10;
     }
@@ -61,9 +59,7 @@ inline int resolve_default_clients (const char *pattern)
 {
     if (pattern && *pattern) {
         const bool is_stream_variant =
-          std::strcmp (pattern, "STREAM") == 0
-          || std::strcmp (pattern, "STREAM_CALLBACK") == 0
-          || std::strcmp (pattern, "STREAM_LEN32BE") == 0;
+          std::strcmp (pattern, "STREAM_CALLBACK") == 0;
         if (is_stream_variant)
             return 10000;
     }

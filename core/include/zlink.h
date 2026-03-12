@@ -278,7 +278,12 @@ ZLINK_EXPORT int zlink_msg_init_data (
 /** @brief Send a message on a socket. On success, ownership is transferred. */
 ZLINK_EXPORT int zlink_msg_send (zlink_msg_t *msg_, void *s_, int flags_);
 
-/** @brief Receive a message from a socket. */
+/**
+ * @brief Receive a message from a socket.
+ *
+ * STREAM sockets do not support recv-based consumption; use
+ * zlink_stream_attach_raw() instead.
+ */
 ZLINK_EXPORT int zlink_msg_recv (zlink_msg_t *msg_, void *s_, int flags_);
 
 /** @brief Release message resources. Must be called after init. */
@@ -449,7 +454,13 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
  */
 ZLINK_EXPORT void *zlink_socket (void *, int type_);
 
-/** @brief Close a socket and release its resources. */
+/**
+ * @brief Close a socket and release its resources.
+ *
+ * For STREAM sockets, close is safe to call from application threads and is
+ * serialized against STREAM send/attach/detach. Closing a STREAM socket from
+ * inside its raw callback is not supported.
+ */
 ZLINK_EXPORT int zlink_close (void *s_);
 
 /**
@@ -494,6 +505,9 @@ ZLINK_EXPORT int zlink_send (void *s_, const void *buf_, size_t len_, int flags_
  * @param len_   Maximum buffer size.
  * @param flags_ 0 or ZLINK_DONTWAIT.
  * @return Number of bytes received, or -1 on failure (errno is set).
+ *
+ * STREAM sockets do not support recv-based consumption; use
+ * zlink_stream_attach_raw() instead.
  */
 ZLINK_EXPORT int zlink_recv (void *s_, void *buf_, size_t len_, int flags_);
 
@@ -514,33 +528,15 @@ typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *rid_,
                                        zlink_msg_t *msg_);
 
 /**
- * @brief Callback type for LEN32BE STREAM packet dispatch.
- *
- * Callback is invoked on the owning STREAM I/O thread.
- * Returning non-zero requests dispatcher shutdown.
- *
- * @param rid_ Routing id for the peer that produced these packets.
- * @param msgs_ Message payload array. Each item is one complete LEN32BE packet.
- *              Ownership is transferred to the callback. The callback must
- *              release each item exactly once (e.g. zlink_msg_close() or
- *              consume via zlink_stream_send_msg()) before return, and must
- *              not retain pointers to message structs after callback return.
- * @param msg_count_ Number of entries in @p msgs_.
- * @return 0 to continue dispatch, non-zero to stop.
- */
-typedef int (*zlink_stream_on_packets_fn) (const zlink_routing_id_t *rid_,
-                                           zlink_msg_t *msgs_,
-                                           size_t msg_count_);
-
-/** @brief zlink_stream_attach() flag: decode LEN32BE frames before callback. */
-#define ZLINK_STREAM_DISPATCH_LEN32BE 0x0001
-
-/**
  * @brief Attach raw STREAM callback dispatch.
  *
  * Valid only for ZLINK_STREAM sockets.
  * If a callback is already attached for the socket, returns -1 with
  * errno=EBUSY.
+ * STREAM receive is callback-only; recv()/zlink_msg_recv() are not supported.
+ * Attach/detach are safe to call from application threads and serialized with
+ * STREAM send/close. Calling attach/detach from the raw callback is not
+ * supported.
  *
  * @param s_ STREAM socket.
  * @param on_raw_ Callback for raw stream chunks.
@@ -550,36 +546,10 @@ ZLINK_EXPORT int zlink_stream_attach_raw (void *s_,
                                           zlink_stream_on_raw_fn on_raw_);
 
 /**
- * @brief Attach LEN32BE STREAM callback dispatch.
- *
- * Valid only for ZLINK_STREAM sockets.
- * If a callback is already attached for the socket, returns -1 with
- * errno=EBUSY.
- *
- * @param s_ STREAM socket.
- * @param on_packets_ Callback for decoded LEN32BE packets.
- * @return 0 on success, -1 on failure (errno is set).
- */
-ZLINK_EXPORT int zlink_stream_attach_len32be (
-  void *s_, zlink_stream_on_packets_fn on_packets_);
-
-/**
- * @brief Attach STREAM callback dispatch (legacy wrapper).
- *
- * This wrapper now registers LEN32BE packet dispatch. `flags_` must be 0 or
- * include only `ZLINK_STREAM_DISPATCH_LEN32BE`.
- *
- * @param s_ STREAM socket.
- * @param on_packets_ Callback for decoded LEN32BE packets.
- * @param flags_ Legacy flags value.
- * @return 0 on success, -1 on failure (errno is set).
- */
-ZLINK_EXPORT int zlink_stream_attach (void *s_,
-                                      zlink_stream_on_packets_fn on_packets_,
-                                      int flags_);
-
-/**
  * @brief Detach STREAM callback dispatch from a socket.
+ *
+ * Safe to call from application threads and serialized with STREAM
+ * send/close. Calling detach from the raw callback is not supported.
  *
  * @param s_ STREAM socket.
  * @return 0 on success, -1 on failure (errno is set).
@@ -590,8 +560,8 @@ ZLINK_EXPORT int zlink_stream_detach (void *s_);
  * @brief Send STREAM payload to a specific peer by routing id.
  *
  * Sends routing id as the first STREAM frame and payload as the second frame.
- * If dispatcher was attached in LEN32BE mode for this socket, payload is framed
- * as 4-byte big-endian length + payload before sending.
+ * STREAM send APIs are safe to call from application threads and STREAM
+ * dispatch callbacks; internally the socket serializes outgoing state.
  *
  * @param s_    STREAM socket.
  * @param rid_  Target peer routing id.
@@ -610,8 +580,8 @@ ZLINK_EXPORT int zlink_stream_send (void *s_,
  * @brief Send STREAM payload message to a specific peer by routing id.
  *
  * This API consumes @p msg_ and reinitializes it before returning.
- * If dispatcher was attached in LEN32BE mode for this socket, payload is framed
- * as 4-byte big-endian length + payload before sending.
+ * STREAM send APIs are safe to call from application threads and STREAM
+ * dispatch callbacks; internally the socket serializes outgoing state.
  *
  * @param s_    STREAM socket.
  * @param rid_  Target peer routing id.

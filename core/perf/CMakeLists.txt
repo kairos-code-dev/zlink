@@ -112,12 +112,8 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
                            multi/src/perf_spot_server.cpp)
     add_current_bench_multi(comp_src_spot_client
                            multi/src/perf_spot_client.cpp)
-    add_current_bench_multi(comp_src_stream_server
-                           multi/src/perf_stream_server.cpp)
     add_current_bench_multi(comp_src_stream_callback_server
                            multi/src/perf_stream_callback_server.cpp)
-    add_current_bench_multi(comp_src_stream_len32be_server
-                           multi/src/perf_stream_len32be_server.cpp)
 else()
     message(WARNING "zlink headers not found at ${ZLINK_INCLUDE_DIR}")
 endif()

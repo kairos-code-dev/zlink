@@ -33,6 +33,7 @@ Measure current zlink single-pattern performance.
 Options:
   -Help                        Show this help.
   -Pattern NAME                Pattern list (comma-separated) or ALL.
+                               In multi mode, STREAM/STREAMS map to STREAM_CALLBACK.
   -BuildDir PATH               Build directory (default: core\build\windows-x64).
   -Build                       Force clean build (default is reuse-build).
   -OutputFile PATH             Tee console logs to a file.
@@ -100,7 +101,7 @@ $AllowMulti = ($env:PERF_ALLOW_MULTI -eq "1")
 $MultiPatternCount = 0
 $SinglePatternCount = 0
 $SinglePatterns = @("PAIR", "PUBSUB", "DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER", "ROUTER_ROUTER_POLL", "GATEWAY", "SPOT")
-$MultiPatterns = @("DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER", "PUBSUB", "GATEWAY", "SPOT", "STREAM", "STREAM_CALLBACK", "STREAM_LEN32BE")
+$MultiPatterns = @("DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER", "PUBSUB", "GATEWAY", "SPOT", "STREAM_CALLBACK")
 $SinglePatternSet = @{}
 foreach ($name in $SinglePatterns) { $SinglePatternSet[$name] = $true }
 $MultiPatternSet = @{}
@@ -161,6 +162,15 @@ if ($Pattern.Trim().ToUpperInvariant() -eq "ALL") {
     $Pattern = ($PatternList -join ",")
 } else {
     $PatternList = $Pattern.Split(",") | ForEach-Object { $_.Trim().ToUpperInvariant() } | Where-Object { $_ -ne "" }
+    if ($AllowMulti) {
+        $PatternList = $PatternList | ForEach-Object {
+            switch ($_) {
+                "STREAM" { "STREAM_CALLBACK"; break }
+                "STREAMS" { "STREAM_CALLBACK"; break }
+                default { $_; break }
+            }
+        }
+    }
     if ($PatternList.Count -eq 0) {
         throw "Error: no valid pattern specified."
     }

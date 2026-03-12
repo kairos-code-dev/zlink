@@ -206,11 +206,11 @@ Ephemeral port range is read from `/proc/sys/net/ipv4/ip_local_port_range`.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--transport` | `tcp` | Transport protocol: `tcp`, `tls`, `ws`, `wss` |
-| `--pattern` | `STREAM` | Label for result output routing |
+| `--pattern` | `STREAM_CALLBACK` | Label for result output routing |
 | `--endpoint` | — | Full endpoint URI (e.g., `tcp://127.0.0.1:15557`). Overrides `--host`/`--port`/`--transport`. |
 | `--host` | `127.0.0.1` | Server host |
 | `--port` | `38001` | Server port |
-| `--ccu` | `1000` | Concurrent connections |
+| `--ccu` | `10000` | Concurrent connections |
 | `--sizes` | `64` | Payload size (bytes). If multiple values are provided, only the first is used. |
 | `--runs` | `1` | Number of benchmark runs per size |
 | `--warmup` | `2` | Warmup duration (seconds) |
@@ -247,11 +247,11 @@ cmake --build core/build --target perf_stream_client -j$(nproc)
 
 ```bash
 core/build/bin/perf_stream_client \
-  --pattern STREAM \
+  --pattern STREAM_CALLBACK \
   --transport tcp \
   --endpoint tcp://127.0.0.1:15557 \
   --sizes 64 \
-  --ccu 1000 \
+  --ccu 10000 \
   --warmup 3 \
   --duration 5 \
   --io-threads 4 \

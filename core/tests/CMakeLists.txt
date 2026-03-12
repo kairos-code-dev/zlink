@@ -57,6 +57,7 @@ set(tests
   test_pubsub_filter_xpub
   test_router_multiple_dealers
   test_stream_socket
+  test_stream_threadsafe
   test_stream_send_blocking_wakeup
   test_stream_fastpath
   test_transport_matrix
@@ -72,7 +73,6 @@ set(tests
   spot/test_spot_send_blocking_wakeup
   ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client
   ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink
-  ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink_len32be
   ${STREAM_SCENARIO_ROOT}/asio/test_scenario_stream_asio)
 
 set(ROUTER_ROUTER_ZLINK_CONNECT_TEST
@@ -385,8 +385,6 @@ set_tests_properties(test_scenario_stream_client PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_client PROPERTIES LABELS "scenario;stream;client")
 set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
-set_tests_properties(test_scenario_stream_zlink_len32be PROPERTIES TIMEOUT 120)
-set_tests_properties(test_scenario_stream_zlink_len32be PROPERTIES LABELS "scenario;stream;zlink;len32be")
 set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
 if(TARGET test_scenario_stream_zmq)

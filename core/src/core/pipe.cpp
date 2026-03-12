@@ -73,46 +73,6 @@ void zlink::send_hello_msg (pipe_t *pipe_, const options_t &options_)
     pipe_->flush ();
 }
 
-zlink::pipe_t::stream_reassembly_state_t::stream_reassembly_state_t () :
-    header (),
-    header_written (0),
-    assembling (),
-    payload_len (0),
-    written (0),
-    active (false)
-{
-    header[0] = 0;
-    header[1] = 0;
-    header[2] = 0;
-    header[3] = 0;
-}
-
-zlink::pipe_t::stream_reassembly_state_t::~stream_reassembly_state_t ()
-{
-    if (active) {
-        const int rc = assembling.close ();
-        errno_assert (rc == 0);
-        active = false;
-    }
-}
-
-void zlink::pipe_t::stream_reassembly_state_t::reset ()
-{
-    if (active) {
-        const int rc = assembling.close ();
-        errno_assert (rc == 0);
-        active = false;
-    }
-
-    header[0] = 0;
-    header[1] = 0;
-    header[2] = 0;
-    header[3] = 0;
-    header_written = 0;
-    payload_len = 0;
-    written = 0;
-}
-
 zlink::pipe_t::pipe_t (object_t *parent_,
                      upipe_t *inpipe_,
                      upipe_t *outpipe_,
@@ -137,8 +97,7 @@ zlink::pipe_t::pipe_t (object_t *parent_,
     _state (active),
     _delay (true),
     _server_socket_routing_id (0),
-    _stream_reassembly_state (),
-    _stream_reassembly_epoch (0),
+    _stream_connect_event_emitted (false),
     _conflate (conflate_)
 {
     _disconnect_msg.init ();
@@ -212,6 +171,8 @@ uint64_t zlink::pipe_t::get_msgs_read () const
 
 uint64_t zlink::pipe_t::get_snd_pending_msgs () const
 {
+    scoped_optional_fast_lock_t lock (
+      const_cast<fast_mutex_t *> (&_out_sync));
     if (_msgs_written <= _peers_msgs_read)
         return 0;
     return _msgs_written - _peers_msgs_read;
@@ -233,35 +194,24 @@ uint64_t zlink::pipe_t::get_connected_time () const
     return _connected_time;
 }
 
-zlink::pipe_t::stream_reassembly_state_t &
-zlink::pipe_t::stream_reassembly_state ()
+bool zlink::pipe_t::mark_stream_connect_event_emitted ()
 {
-    return _stream_reassembly_state;
+    if (_stream_connect_event_emitted.load (std::memory_order_acquire))
+        return false;
+
+    bool expected = false;
+    return _stream_connect_event_emitted.compare_exchange_strong (
+      expected, true, std::memory_order_acq_rel, std::memory_order_acquire);
 }
 
-const zlink::pipe_t::stream_reassembly_state_t &
-zlink::pipe_t::stream_reassembly_state () const
+void zlink::pipe_t::reset_stream_connect_event_emitted ()
 {
-    return _stream_reassembly_state;
-}
-
-void zlink::pipe_t::reset_stream_reassembly_state ()
-{
-    _stream_reassembly_state.reset ();
-}
-
-uint32_t zlink::pipe_t::get_stream_reassembly_epoch () const
-{
-    return _stream_reassembly_epoch;
-}
-
-void zlink::pipe_t::set_stream_reassembly_epoch (uint32_t epoch_)
-{
-    _stream_reassembly_epoch = epoch_;
+    _stream_connect_event_emitted.store (false, std::memory_order_release);
 }
 
 bool zlink::pipe_t::check_read ()
 {
+    scoped_fast_lock_t lock (_out_sync);
     if (unlikely (!_in_active))
         return false;
     if (unlikely (_state != active && _state != waiting_for_delimiter))
@@ -288,6 +238,7 @@ bool zlink::pipe_t::check_read ()
 
 bool zlink::pipe_t::read (msg_t *msg_)
 {
+    scoped_fast_lock_t lock (_out_sync);
     if (unlikely (!_in_active))
         return false;
     if (unlikely (_state != active && _state != waiting_for_delimiter))
@@ -325,6 +276,7 @@ bool zlink::pipe_t::read (msg_t *msg_)
 
 bool zlink::pipe_t::check_write ()
 {
+    scoped_fast_lock_t lock (_out_sync);
     if (unlikely (!_out_active || _state != active))
         return false;
 
@@ -340,8 +292,16 @@ bool zlink::pipe_t::check_write ()
 
 bool zlink::pipe_t::write (const msg_t *msg_)
 {
-    if (unlikely (!check_write ()))
+    scoped_fast_lock_t lock (_out_sync);
+
+    if (unlikely (!_out_active || _state != active))
         return false;
+
+    const bool full = !check_hwm ();
+    if (unlikely (full)) {
+        _out_active = false;
+        return false;
+    }
 
     const bool more = (msg_->flags () & msg_t::more) != 0;
     const bool is_routing_id = msg_->is_routing_id ();
@@ -354,6 +314,7 @@ bool zlink::pipe_t::write (const msg_t *msg_)
 
 bool zlink::pipe_t::write_no_hwm_check (const msg_t *msg_)
 {
+    scoped_fast_lock_t lock (_out_sync);
     if (unlikely (!_out_active || _state != active))
         return false;
 
@@ -368,6 +329,8 @@ bool zlink::pipe_t::write_no_hwm_check (const msg_t *msg_)
 
 void zlink::pipe_t::rollback () const
 {
+    scoped_optional_fast_lock_t lock (
+      const_cast<fast_mutex_t *> (&_out_sync));
     //  Remove incomplete message from the outbound pipe.
     msg_t msg;
     if (_out_pipe) {
@@ -381,6 +344,7 @@ void zlink::pipe_t::rollback () const
 
 void zlink::pipe_t::flush ()
 {
+    scoped_fast_lock_t lock (_out_sync);
     //  The peer does not exist anymore at this point.
     if (_state == term_ack_sent)
         return;
@@ -391,52 +355,75 @@ void zlink::pipe_t::flush ()
 
 void zlink::pipe_t::process_activate_read ()
 {
-    if (!_in_active && (_state == active || _state == waiting_for_delimiter)) {
-        _in_active = true;
-        _sink->read_activated (this);
+    bool notify = false;
+    {
+        scoped_fast_lock_t lock (_out_sync);
+        if (!_in_active && (_state == active || _state == waiting_for_delimiter)) {
+            _in_active = true;
+            notify = true;
+        }
     }
+
+    if (notify)
+        _sink->read_activated (this);
 }
 
 void zlink::pipe_t::process_activate_write (uint64_t msgs_read_)
 {
-    //  Remember the peer's message sequence number.
-    _peers_msgs_read = msgs_read_;
+    bool notify = false;
+    {
+        scoped_fast_lock_t lock (_out_sync);
 
-    if (!_out_active && _state == active) {
-        _out_active = true;
-        _sink->write_activated (this);
+        //  Remember the peer's message sequence number.
+        _peers_msgs_read = msgs_read_;
+
+        if (!_out_active && _state == active) {
+            _out_active = true;
+            notify = true;
+        }
     }
+
+    if (notify)
+        _sink->write_activated (this);
 }
 
 void zlink::pipe_t::process_hiccup (void *pipe_)
 {
-    //  Destroy old outpipe. Note that the read end of the pipe was already
-    //  migrated to this thread.
-    zlink_assert (_out_pipe);
-    _out_pipe->flush ();
-    msg_t msg;
-    while (_out_pipe->read (&msg)) {
-        if (!(msg.flags () & msg_t::more))
-            _msgs_written--;
-        const int rc = msg.close ();
-        errno_assert (rc == 0);
+    bool notify = false;
+    {
+        scoped_fast_lock_t lock (_out_sync);
+
+        //  Destroy old outpipe. Note that the read end of the pipe was already
+        //  migrated to this thread.
+        zlink_assert (_out_pipe);
+        _out_pipe->flush ();
+        msg_t msg;
+        while (_out_pipe->read (&msg)) {
+            if (!(msg.flags () & msg_t::more))
+                _msgs_written--;
+            const int rc = msg.close ();
+            errno_assert (rc == 0);
+        }
+        LIBZLINK_DELETE (_out_pipe);
+
+        //  Plug in the new outpipe.
+        zlink_assert (pipe_);
+        _out_pipe = static_cast<upipe_t *> (pipe_);
+        _out_active = true;
+
+        //  If appropriate, notify the user about the hiccup.
+        notify = (_state == active);
     }
-    LIBZLINK_DELETE (_out_pipe);
 
-    //  Plug in the new outpipe.
-    zlink_assert (pipe_);
-    _out_pipe = static_cast<upipe_t *> (pipe_);
-    _out_active = true;
-
-    //  If appropriate, notify the user about the hiccup.
-    if (_state == active)
+    if (notify)
         _sink->hiccuped (this);
 }
 
 void zlink::pipe_t::process_pipe_term ()
 {
+    scoped_fast_lock_t lock (_out_sync);
     zlink_assert (_state == active || _state == delimiter_received
-                || _state == term_req_sent1);
+                  || _state == term_req_sent1);
 
     //  This is the simple case of peer-induced termination. If there are no
     //  more pending messages to read, or if the pipe was configured to drop
@@ -473,19 +460,27 @@ void zlink::pipe_t::process_pipe_term ()
 
 void zlink::pipe_t::process_pipe_term_ack ()
 {
+    bool ack_peer = false;
+    {
+        scoped_fast_lock_t lock (_out_sync);
+
+        //  In term_ack_sent and term_req_sent2 states there's nothing to do.
+        //  Simply deallocate the pipe. In term_req_sent1 state we have to ack
+        //  the peer before deallocating this side of the pipe.
+        //  All the other states are invalid.
+        if (_state == term_req_sent1) {
+            _out_pipe = NULL;
+            ack_peer = true;
+        } else
+            zlink_assert (_state == term_ack_sent || _state == term_req_sent2);
+    }
+
     //  Notify the user that all the references to the pipe should be dropped.
     zlink_assert (_sink);
     _sink->pipe_terminated (this);
 
-    //  In term_ack_sent and term_req_sent2 states there's nothing to do.
-    //  Simply deallocate the pipe. In term_req_sent1 state we have to ack
-    //  the peer before deallocating this side of the pipe.
-    //  All the other states are invalid.
-    if (_state == term_req_sent1) {
-        _out_pipe = NULL;
+    if (ack_peer)
         send_pipe_term_ack (_peer);
-    } else
-        zlink_assert (_state == term_ack_sent || _state == term_req_sent2);
 
     //  We'll deallocate the inbound pipe, the peer will deallocate the outbound
     //  pipe (which is an inbound pipe from its point of view).
@@ -520,6 +515,8 @@ void zlink::pipe_t::set_nodelay ()
 
 void zlink::pipe_t::terminate (bool delay_)
 {
+    scoped_fast_lock_t lock (_out_sync);
+
     //  Overload the value specified at pipe creation.
     _delay = delay_;
 
@@ -608,6 +605,7 @@ int zlink::pipe_t::compute_lwm (int hwm_)
 
 void zlink::pipe_t::process_delimiter ()
 {
+    scoped_fast_lock_t lock (_out_sync);
     zlink_assert (_state == active || _state == waiting_for_delimiter);
 
     if (_state == active)
@@ -666,6 +664,8 @@ void zlink::pipe_t::set_hwms_boost (int inhwmboost_, int outhwmboost_)
 
 bool zlink::pipe_t::check_hwm () const
 {
+    scoped_optional_fast_lock_t lock (
+      const_cast<fast_mutex_t *> (&_out_sync));
     const bool full =
       _hwm > 0 && _msgs_written - _peers_msgs_read >= uint64_t (_hwm);
     return !full;
@@ -688,6 +688,7 @@ const zlink::endpoint_uri_pair_t &zlink::pipe_t::get_endpoint_pair () const
 
 void zlink::pipe_t::send_disconnect_msg ()
 {
+    scoped_fast_lock_t lock (_out_sync);
     if (_disconnect_msg.size () > 0 && _out_pipe) {
         // Rollback any incomplete message in the pipe, and push the disconnect message.
         rollback ();
@@ -709,6 +710,7 @@ void zlink::pipe_t::set_disconnect_msg (
 
 void zlink::pipe_t::send_hiccup_msg (const std::vector<unsigned char> &hiccup_)
 {
+    scoped_fast_lock_t lock (_out_sync);
     if (!hiccup_.empty () && _out_pipe) {
         msg_t msg;
         const int rc = msg.init_buffer (&hiccup_[0], hiccup_.size ());

@@ -55,7 +55,7 @@ Run only multi-socket benchmark patterns.
 
 Options:
   -Pattern NAME                Pattern list (comma-separated) or ALL. Legacy MULTI_ prefix is optional.
-                               Alias: stream/streams => STREAM,STREAM_CALLBACK,STREAM_LEN32BE
+                               Alias: stream/streams => STREAM_CALLBACK
   -BuildDir PATH               Build directory.
   -OutputFile PATH             Tee console logs to file.
   -Runs N                      Iterations per configuration (default: 3).
@@ -114,9 +114,7 @@ $DefaultPatterns = @(
     "PUBSUB",
     "GATEWAY",
     "SPOT",
-    "STREAM",
     "STREAM_CALLBACK",
-    "STREAM_LEN32BE"
 )
 
 function Add-UniquePattern {
@@ -143,15 +141,15 @@ function Expand-AndAddPatternAlias {
 
     switch ($p) {
         "STREAM" {
-            Add-UniquePattern -List $List -PatternName "STREAM"
             Add-UniquePattern -List $List -PatternName "STREAM_CALLBACK"
-            Add-UniquePattern -List $List -PatternName "STREAM_LEN32BE"
             break
         }
         "STREAMS" {
-            Add-UniquePattern -List $List -PatternName "STREAM"
             Add-UniquePattern -List $List -PatternName "STREAM_CALLBACK"
-            Add-UniquePattern -List $List -PatternName "STREAM_LEN32BE"
+            break
+        }
+        "STREAM_CALLBACK" {
+            Add-UniquePattern -List $List -PatternName "STREAM_CALLBACK"
             break
         }
         default {

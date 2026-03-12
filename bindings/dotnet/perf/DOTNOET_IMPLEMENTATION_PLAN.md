@@ -521,9 +521,14 @@ single 의 PerfCommon 유틸 중 필요한 것을 포함하되, multi 는 다음
 
 - recv: 모든 recv 는 **callback-only** 다. 소켓 생성 시 recv handler 를 등록하면 I/O thread 에서 콜백이 호출된다. poller(`PollIn`) 는 사용하지 않는다.
 - send: recv callback 안에서 직접 `Send(DontWait)` 를 호출한다 (callback 중 same-handle send 허용).
-- `EAGAIN` 시 per-socket pending 에 저장하고, `SetSendReadyHandler()` 로 writable transition 콜백을 등록한다.
-- send-ready callback 에서 pending 을 `EAGAIN` 까지 drain 한다.
-- 동일 소켓의 recv callback 과 send-ready callback 은 직렬화되므로 pending 에 대한 동시 접근이 없다.
+- `SetSendReadyHandler()` 로 writable transition 콜백을 등록한다.
+- 동일 소켓의 recv callback 과 send-ready callback 은 직렬화되므로 concurrent queue 가 필요 없다.
+- 역할별 backpressure:
+  - echo 서버 (소켓 1개 × 클라이언트 N개): `EAGAIN` 시 per-socket pending 큐에 저장, send-ready callback 에서 drain
+  - echo 클라이언트 (per-socket, inflight 1): `EAGAIN` 시 `bool` 플래그만 설정, send-ready callback 에서 재전송
+  - one-way sender: `EAGAIN` 시 `bool` 플래그만 설정, send-ready callback 에서 재전송
+  - one-way receiver: send 없음, backpressure 불필요
+- perf 환경(HWM 100, inflight 1/peer)에서 EAGAIN 은 사실상 발생하지 않으며, backpressure 자료구조는 safety net 이다.
 - `Thread.Sleep` / `Thread.Yield` / retry budget 으로 `would-block` 은폐 금지
 
 **`PerfCommonMulti.cs`** — (core/perf multi/common/perf_common_multi.hpp 대응)
@@ -933,7 +938,7 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 
 - 각 벤치마크 소스에 **소켓 생성, bind/connect, recv callback/send-ready handler 등록, 페이즈 컨트롤** 인라인
 - single send 경로는 **blocking send(backpressure 존중)** 로 구현
-- multi send 경로는 **recv callback 내 DontWait send + EAGAIN 시 pending + send-ready handler drain** 으로 구현
+- multi send 경로는 **recv callback 내 DontWait send + EAGAIN 시 역할별 backpressure (echo 서버: pending 큐, echo 클라이언트/one-way sender: bool 플래그) + send-ready handler** 로 구현
 - single recv 경로는 **blocking recv + non-blocking drain** 구조
 - multi recv 경로는 **callback-only recv (poller 미사용)** 구조
 - STREAM 서버는 accept backlog 병목을 피하기 위해 `SocketOptions.Backlog = max(4096, PERF_CLIENTS)` 로 설정한다
@@ -965,7 +970,7 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 
 **패턴 파일 내부에만 정의 (다른 파일과 공유 금지)**:
 - single send 루프 (warmup / active phase, blocking send, send retry 없음)
-- multi send: recv callback 내 `DontWait` send + EAGAIN 시 pending + send-ready handler drain
+- multi send: recv callback 내 `DontWait` send + EAGAIN 시 역할별 backpressure (echo 서버: pending 큐, echo 클라이언트/one-way sender: bool 플래그) + send-ready handler
 - single recv 루프 (blocking recv + non-blocking drain)
 - multi recv: callback-only (poller 미사용)
 - 메시지 파싱/매칭 (header decode + phase/run_id 검증)
@@ -1773,8 +1778,8 @@ head -20 bindings/dotnet/perf/results/multi/tmp/perf_*.txt
 - [x] **CL-15.17** single send 경로는 blocking send 1회 호출 기준, send retry 없음
 - [x] **CL-15.18** single recv 구조: blocking recv + non-blocking drain
 - [ ] **CL-15.19** multi recv 구조: callback-only recv (poller 미사용)
-- [ ] **CL-15.20** multi send 구조: recv callback 내 `DontWait` send + EAGAIN 시 pending + send-ready handler drain
-- [ ] **CL-15.21** multi backpressure: `SetSendReadyHandler()` 기반, `PollOut` 미사용
+- [ ] **CL-15.20** multi send 구조: recv callback 내 `DontWait` send + EAGAIN 시 역할별 backpressure (echo 서버: pending 큐, echo 클라이언트/one-way sender: bool 플래그)
+- [ ] **CL-15.21** multi backpressure: `SetSendReadyHandler()` 기반, `PollOut` 미사용. EAGAIN 은 perf 환경에서 사실상 미발생
 
 ---
 

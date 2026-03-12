@@ -1549,8 +1549,12 @@ ls -la bindings/java/perf/results/multi/report/perf_*.txt
 
 **I/O 실행 정책 (callback-only recv 모델)**
 - [ ] `single send`: blocking 단발 호출만 허용 (`SendFlag.NONE`/`SNDMORE`)
-- [ ] `multi send`: recv callback 내 `DONTWAIT` send + EAGAIN 시 per-socket pending + `setSendReadyHandler()` drain
-- [ ] `multi backpressure`: `setSendReadyHandler()` 기반, `PollOut` 미사용
+- [ ] `multi send`: recv callback 내 `DONTWAIT` send + EAGAIN 시 역할별 backpressure:
+  - echo 서버 (소켓 1개 × 클라이언트 N개): per-socket pending 큐 + `setSendReadyHandler()` drain
+  - echo 클라이언트 (per-socket, inflight 1): `boolean sendPending` 플래그 + `setSendReadyHandler()` 재전송
+  - one-way sender: `boolean sendPending` 플래그 + `setSendReadyHandler()` 재전송
+  - one-way receiver: send 없음, backpressure 불필요
+- [ ] `multi backpressure`: `setSendReadyHandler()` 기반, `PollOut` 미사용. EAGAIN 은 perf 환경(HWM 100, inflight 1/peer)에서 사실상 미발생
 - [ ] `send` 실패(`EAGAIN` 제외) 시 즉시 실패 처리하고 원인(errno/message)을 그대로 노출한다
 - [ ] `single recv`: blocking recv 1회 후 `DONTWAIT` nonblocking drain
 - [ ] `multi recv`: callback-only recv (poller 미사용). 소켓 생성 시 recv handler 등록, I/O thread 에서 콜백 호출

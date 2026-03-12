@@ -34,19 +34,34 @@
   - poller(`PollIn`)는 사용하지 않는다.
 - send
   - `send(..., DONTWAIT)` nonblocking send를 사용한다.
-  - echo 패턴(서버/클라이언트): recv callback 안에서 직접 `send(DONTWAIT)`를 호출한다.
+  - recv callback 안에서 직접 `send(DONTWAIT)`를 호출한다.
     - callback 중 same-handle send는 thread-safe socket plan에 의해 공식 허용된다.
-  - `EAGAIN` 시 per-socket pending deque에 메시지를 저장한다.
+  - `EAGAIN` 시 역할별 backpressure 전략을 적용한다 (아래 참조).
   - `zlink_socket_set_send_ready_handler()`로 writable transition 콜백을 등록한다.
-  - send-ready callback에서 pending deque를 drain한다 (`EAGAIN`까지).
-  - pending이 있는 동안 recv callback의 새 send는 pending deque에 추가만 한다.
   - `while (send 실패)` 식의 즉시 재시도는 금지한다.
-- pending deque
+- backpressure 전략 (역할별)
+  - **echo 서버** (소켓 1개 × 클라이언트 N개):
+    - `EAGAIN` 시 per-socket pending deque에 메시지를 저장한다.
+    - pending이 있는 동안 recv callback의 새 send는 pending deque에 추가만 한다.
+    - send-ready callback에서 pending deque를 `EAGAIN`까지 drain한다.
+    - 소켓 1개로 N개 클라이언트를 처리하므로, EAGAIN 중에도 다른 클라이언트의 메시지가 도착할 수 있어 deque가 필요하다.
+  - **echo 클라이언트** (per-socket, inflight 1):
+    - `EAGAIN` 시 `bool send_pending` 플래그만 설정한다.
+    - send-ready callback에서 플래그 확인 후 재전송한다.
+    - 응답 수신 → 다음 전송의 1:1 대응이므로 deque 불필요하다.
+  - **one-way sender** (단일 흐름):
+    - `EAGAIN` 시 `bool send_pending` 플래그만 설정한다.
+    - send-ready callback에서 플래그 확인 후 재전송한다.
+  - **one-way receiver**: send 없음, backpressure 불필요.
+- 동시성
   - recv callback과 send-ready callback은 동일 소켓에 대해 직렬화된다 (같은 I/O thread).
   - 따라서 per-socket pending은 일반 `std::deque`로 충분하며, concurrent queue가 필요 없다.
+- 성능 참고
+  - perf 환경(HWM 100, inflight 1/peer)에서 EAGAIN은 사실상 발생하지 않는다.
+  - deque/플래그는 정확성을 위한 safety net이며, hot path에서는 `empty()` / `bool` 체크만 수행된다.
 - 한 줄 요약
   - `multi = callback recv + direct nonblocking send in callback`
-  - `backpressure = per-socket pending deque + send_ready_handler drain`
+  - `backpressure = echo 서버: deque, echo 클라이언트/one-way sender: bool 플래그`
 
 ### 1.2 프로세스 모델
 
@@ -1033,7 +1048,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | cold path (setup/teardown/결과 출력) | 제한 없음 | — |
 
 - **이유**: lock contention이 throughput/latency 측정값에 포함되어 벤치마크 대상(라이브러리 성능)이 아닌 동기화 오버헤드를 측정하게 된다.
-- **callback-only recv 모델**: 모든 패턴에서 recv는 I/O thread의 콜백으로 처리된다. echo 패턴의 서버/클라이언트는 recv callback 안에서 직접 `send(DONTWAIT)`를 호출하고, backpressure 시 per-socket pending deque에 저장 후 `send_ready_handler`에서 drain한다. 동일 소켓의 콜백은 직렬화되므로 pending deque에 대한 동시 접근이 없어 lock이 불필요하다.
+- **callback-only recv 모델**: 모든 패턴에서 recv는 I/O thread의 콜백으로 처리된다. recv callback 안에서 직접 `send(DONTWAIT)`를 호출하고, backpressure 시 역할별로 echo 서버는 per-socket pending deque, echo 클라이언트/one-way sender는 bool 플래그를 사용한다. 동일 소켓의 콜백은 직렬화되므로 pending 자료구조에 대한 동시 접근이 없어 lock이 불필요하다. perf 환경(HWM 100, inflight 1/peer)에서 EAGAIN은 사실상 발생하지 않으므로, hot path에서는 `deque::empty()` / `bool` 체크만 실행된다.
 - throughput 측정 시 callback에서 `atomic_fetch_add`로 카운트만 증가시키고, 패킷 복사/큐잉을 하지 않는 **direct count mode**를 기본으로 한다.
 - latency 측정 등 패킷 내용이 필요한 경우에만 큐잉을 허용하되, lock-free 자료구조를 사용한다.
 - **app thread와 I/O thread(callback) 간 동기화**: 카운터·플래그 등은 `std::atomic`으로 구현하며, blocking lock을 사용하지 않는다.

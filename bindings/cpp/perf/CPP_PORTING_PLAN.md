@@ -1135,16 +1135,17 @@ rg -n "std::vector|std::string|new |malloc|make_unique|make_shared" \
 **Multi 공통 정책**
 - `recv`: 모든 recv 는 **callback-only** 다. 소켓 생성 시 recv handler 를 등록하면 I/O thread 에서 콜백이 호출된다. poller(`PollIn`) 는 사용하지 않는다.
 - `send`: recv callback 안에서 직접 `send(..., dontwait)` 를 호출한다 (callback 중 same-handle send 허용).
-- `EAGAIN` 시 per-socket pending deque 에 저장하고, `set_send_ready_handler()` 로 writable transition 콜백을 등록한다.
-- send-ready callback 에서 pending deque 를 `EAGAIN` 까지 drain 한다.
-- 동일 소켓의 recv callback 과 send-ready callback 은 직렬화되므로 pending deque 는 일반 `std::deque` 로 충분하다.
+- `set_send_ready_handler()` 로 writable transition 콜백을 등록한다.
+- 동일 소켓의 recv callback 과 send-ready callback 은 직렬화되므로 concurrent queue 가 필요 없다.
 - `while(send 실패)` 같은 즉시 재시도는 금지한다.
+- perf 환경(HWM 100, inflight 1/peer)에서 EAGAIN 은 사실상 발생하지 않으며, backpressure 자료구조는 safety net 이다.
 
-**패턴 해석**
-- `echo`: recv callback 에서 echo 메시지를 직접 `send(dontwait)` 로 되돌린다. 소켓당 inflight 1개만 유지한다.
-- `one-way send`: recv 없음. app thread 에서 `send(dontwait)` 로 전송하고, `EAGAIN` 시 `set_send_ready_handler()` 로 재개한다.
-- `one-way recv`: send 없음. recv callback 에서 카운트만 증가시킨다.
-- `pub/sub`, `spot`: 발행/송신 쪽은 one-way send, 구독/수신 쪽은 one-way recv 정책을 따른다.
+**역할별 backpressure**
+- `echo 서버` (소켓 1개 × 클라이언트 N개): `EAGAIN` 시 per-socket `std::deque` 에 저장. pending 이 있는 동안 recv callback 의 새 send 는 deque 에 추가만 한다. send-ready callback 에서 deque 를 `EAGAIN` 까지 drain 한다.
+- `echo 클라이언트` (per-socket, inflight 1): `EAGAIN` 시 `bool send_pending` 플래그만 설정. send-ready callback 에서 재전송. 응답 수신 → 다음 전송의 1:1 대응이므로 deque 불필요.
+- `one-way sender`: `EAGAIN` 시 `bool send_pending` 플래그만 설정. send-ready callback 에서 재전송.
+- `one-way receiver`: send 없음. recv callback 에서 카운트만 증가시킨다.
+- `pub/sub`, `spot`: 발행/송신 쪽은 one-way sender, 구독/수신 쪽은 one-way receiver 정책을 따른다.
 
 ### 15.5 코드 인라이닝 정책
 

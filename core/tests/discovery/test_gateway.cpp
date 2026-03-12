@@ -2,6 +2,8 @@
 
 #include "../testutil.hpp"
 #include "../testutil_unity.hpp"
+#include "../../src/services/gateway/gateway.hpp"
+#include "../../src/sockets/socket_base.hpp"
 
 #include <atomic>
 #include <string.h>
@@ -35,12 +37,36 @@ gateway_probe_t *g_probe_a = NULL;
 gateway_probe_t *g_probe_b = NULL;
 std::atomic<int> *g_ready_calls = NULL;
 void *g_ready_subject = NULL;
+void *g_reentrant_gateway = NULL;
+std::atomic<int> *g_reentrant_ready_calls = NULL;
+int g_reentrant_ready_rc = 0;
+int g_reentrant_ready_errno = 0;
+
+zlink_socket_handler_t make_msg_handler (zlink_socket_msg_handler_fn fn_)
+{
+    zlink_socket_handler_t handler;
+    memset (&handler, 0, sizeof (handler));
+    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
+    handler.fn.msg = fn_;
+    return handler;
+}
 
 void gateway_ready_handler (void *subject_)
 {
     g_ready_subject = subject_;
     if (g_ready_calls)
         g_ready_calls->fetch_add (1);
+}
+
+void gateway_reentrant_ready_handler (void *subject_)
+{
+    if (g_reentrant_ready_calls)
+        g_reentrant_ready_calls->fetch_add (1);
+    g_reentrant_gateway = subject_;
+    errno = 0;
+    g_reentrant_ready_rc = zlink_gateway_set_send_ready_handler (
+      subject_, &gateway_reentrant_ready_handler);
+    g_reentrant_ready_errno = errno;
 }
 
 void step_log (const char *msg_)
@@ -586,6 +612,10 @@ static void test_gateway_can_be_polled_via_service_instance ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
+    TEST_ASSERT_NULL (
+      zlink_gateway_new (ctx, "gw-null-handler", "gw-null-handler", NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
     std::atomic<int> ready_calls (0);
     g_ready_calls = &ready_calls;
     g_ready_subject = NULL;
@@ -597,8 +627,15 @@ static void test_gateway_can_be_polled_via_service_instance ()
     const int hwm = 2;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
       gateway, ZLINK_GATEWAY_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_NULL (zlink_gateway_monitor_open (
+      gateway, ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY, NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_set_send_ready_handler (gateway, NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_set_send_ready_handler (gateway, &gateway_ready_handler));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_set_send_ready_handler (gateway, NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     step_log ("gateway ready handler installed");
 
     char endpoint[MAX_SOCKET_STRING];
@@ -606,11 +643,53 @@ static void test_gateway_can_be_polled_via_service_instance ()
     bind_gateway_with_port_seed (gateway, "tcp", &bind_seed, endpoint,
                                  sizeof (endpoint), 2000);
     step_log ("gateway bound");
-    TEST_ASSERT_EQUAL_INT (0, ready_calls.load ());
+    zlink::gateway_t *gateway_impl = static_cast<zlink::gateway_t *> (gateway);
+    gateway_impl->dispatch_send_ready ();
+    TEST_ASSERT_EQUAL_INT (1, ready_calls.load ());
+    TEST_ASSERT_EQUAL_PTR (gateway, g_ready_subject);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
     g_ready_calls = NULL;
     g_ready_subject = NULL;
+}
+
+static void test_gateway_send_ready_handler_reentrant_replace_returns_edeadlk ()
+{
+    step_log ("test_gateway_send_ready_handler_reentrant_replace_returns_edeadlk");
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    std::atomic<int> ready_calls (0);
+    g_reentrant_ready_calls = &ready_calls;
+    g_reentrant_gateway = NULL;
+    g_reentrant_ready_rc = 0;
+    g_reentrant_ready_errno = 0;
+
+    void *gateway = zlink_gateway_new (ctx, "ready-reentrant", "gw-reentrant",
+                                       &discard_gateway_message);
+    TEST_ASSERT_NOT_NULL (gateway);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_send_ready_handler (
+      gateway, &gateway_reentrant_ready_handler));
+
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22401;
+    bind_gateway_with_port_seed (gateway, "tcp", &bind_seed, endpoint,
+                                 sizeof (endpoint), 2000);
+
+    zlink::gateway_t *gateway_impl = static_cast<zlink::gateway_t *> (gateway);
+    zlink::socket_base_t *router =
+      static_cast<zlink::socket_base_t *> (gateway_impl->router ());
+    TEST_ASSERT_NOT_NULL (router);
+    router->invoke_send_ready_handler_for_testing ();
+
+    TEST_ASSERT_EQUAL_INT (1, ready_calls.load ());
+    TEST_ASSERT_EQUAL_PTR (gateway, g_reentrant_gateway);
+    TEST_ASSERT_EQUAL_INT (-1, g_reentrant_ready_rc);
+    TEST_ASSERT_EQUAL_INT (EDEADLK, g_reentrant_ready_errno);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    g_reentrant_ready_calls = NULL;
+    g_reentrant_gateway = NULL;
 }
 
 static void test_gateway_refreshes_existing_service_on_first_connection_count ()
@@ -1515,6 +1594,8 @@ int main (void)
     } while (0)
     RUN_GATEWAY_TEST (test_gateway_provider_setsockopt);
     RUN_GATEWAY_TEST (test_gateway_can_be_polled_via_service_instance);
+    RUN_GATEWAY_TEST (
+      test_gateway_send_ready_handler_reentrant_replace_returns_edeadlk);
     RUN_GATEWAY_TEST (test_gateway_refreshes_existing_service_on_first_connection_count);
     RUN_GATEWAY_TEST (test_gateway_router_peers_do_not_enter_pollable_mode);
     RUN_GATEWAY_TEST (test_gateway_single_service_tcp);

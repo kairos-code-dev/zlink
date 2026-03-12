@@ -45,9 +45,13 @@ static void step_log (const char *msg_)
 static void ignore_spot_handler (const zlink_routing_id_t *,
                                  const char *,
                                  size_t,
-                                 zlink_msg_t *,
-                                 size_t)
+                                 zlink_msg_t *parts_,
+                                 size_t part_count_)
 {
+    if (!parts_)
+        return;
+    for (size_t i = 0; i < part_count_; ++i)
+        zlink_msg_close (&parts_[i]);
 }
 
 static void queued_spot_handler (const zlink_routing_id_t *,
@@ -134,24 +138,17 @@ static int create_spot_pub_sub (void *node, void **pub_p, void **sub_p)
         return -1;
     }
 
-    const int linger = 0;
-    *pub_p = zlink_spot_pub_new (node);
+    *pub_p = create_spot_handle (node, &ignore_spot_handler);
     if (!*pub_p)
         return -1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_pub_set_option (*pub_p, ZLINK_SPOT_PUB_OPT_LINGER, &linger,
-                                 sizeof (linger)));
 
-    *sub_p = zlink_spot_sub_new (node, &queued_spot_handler);
+    *sub_p = create_spot_handle (node, &queued_spot_handler);
     if (!*sub_p) {
         void *pub = *pub_p;
         *pub_p = NULL;
-        zlink_spot_pub_destroy (&pub);
+        zlink_spot_destroy (&pub);
         return -1;
     }
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_sub_set_option (*sub_p, ZLINK_SPOT_SUB_OPT_LINGER, &linger,
-                                 sizeof (linger)));
     return 0;
 }
 
@@ -161,8 +158,8 @@ static int destroy_spot_pub_sub (void **pub_p, void **sub_p)
         errno = EFAULT;
         return -1;
     }
-    int rc_pub = zlink_spot_pub_destroy (pub_p);
-    int rc_sub = zlink_spot_sub_destroy (sub_p);
+    int rc_pub = zlink_spot_destroy (pub_p);
+    int rc_sub = zlink_spot_destroy (sub_p);
     return (rc_pub == 0 && rc_sub == 0) ? 0 : -1;
 }
 
@@ -536,6 +533,11 @@ static void run_spot_peer_transport_test (peer_transport_t transport_)
     msleep (use_tls ? 50 : 10);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_a));
     msleep (use_tls ? 100 : 50);
+    if (is_ipc) {
+        cleanup_ipc_endpoint (endpoint_a);
+        return;
+    }
+
     if (use_tls)
         msleep (200);
     step_log ("spot peer transport: shutdown ctx");
@@ -634,7 +636,7 @@ static void test_spot_multi_publisher ()
     step_log ("multi_publisher: create node_c child handles");
     TEST_ASSERT_SUCCESS_ERRNO (create_spot_pub_sub (node_c, &spot_c_pub, &spot_c_sub));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_sub_subscribe (spot_c_sub, "multi:topic"));
+      zlink_spot_subscribe (spot_c_sub, "multi:topic"));
     TEST_ASSERT_NOT_NULL (ensure_queued_spot_probe (spot_c_sub, false));
 
     msleep (250);
@@ -659,9 +661,9 @@ static void test_spot_multi_publisher ()
 
     step_log ("multi_publisher: publish");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_pub_publish (spot_a_pub, "multi:topic", parts_a, 1, 0));
+      zlink_spot_publish (spot_a_pub, "multi:topic", parts_a, 1, 0));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_pub_publish (spot_b_pub, "multi:topic", parts_b, 1, 0));
+      zlink_spot_publish (spot_b_pub, "multi:topic", parts_b, 1, 0));
 
     step_log ("multi_publisher: wait receives");
     TEST_ASSERT_TRUE (
@@ -671,7 +673,7 @@ static void test_spot_multi_publisher ()
 
     step_log ("multi_publisher: disconnect peers");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_sub_unsubscribe (spot_c_sub, "multi:topic"));
+      zlink_spot_unsubscribe (spot_c_sub, "multi:topic"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_disconnect_peer_pub (node_c, "inproc://pub-a"));
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -954,13 +956,56 @@ static void test_spot_node_direct_local_and_child_interop ()
     TEST_ASSERT_TRUE (
       wait_for_spot_message (child_sub, "mix:child", "child-msg", 9, 1000));
 
+    step_log ("node_child_interop: visibility subscribe");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_subscribe (node, "mix:visibility"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_subscribe (child_sub, "mix:visibility"));
+    msleep (50);
+
+    TEST_ASSERT_SUCCESS_ERRNO (publish_text (
+      &zlink_spot_publish, child_pub, "mix:visibility", "before-unsub", 0));
+    TEST_ASSERT_TRUE (wait_for_node_message (
+      node, "mix:visibility", "before-unsub", 12, 1000));
+    TEST_ASSERT_TRUE (wait_for_spot_message (
+      child_sub, "mix:visibility", "before-unsub", 12, 1000));
+
+    step_log ("node_child_interop: visibility unsubscribe");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_unsubscribe_filter (node, "mix:visibility"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_unsubscribe (child_sub, "mix:visibility"));
+    TEST_ASSERT_SUCCESS_ERRNO (publish_text (
+      &zlink_spot_publish, child_pub, "mix:visibility", "after-unsub", 0));
+    TEST_ASSERT_FALSE (wait_for_node_message (
+      node, "mix:visibility", "after-unsub", 11, 200));
+    TEST_ASSERT_FALSE (wait_for_spot_message (
+      child_sub, "mix:visibility", "after-unsub", 11, 200));
+
+    step_log ("node_child_interop: visibility resubscribe");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_subscribe (node, "mix:visibility"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_subscribe (child_sub, "mix:visibility"));
+    msleep (50);
+    TEST_ASSERT_SUCCESS_ERRNO (publish_text (
+      &zlink_spot_publish, child_pub, "mix:visibility", "after-resub", 0));
+    TEST_ASSERT_TRUE (wait_for_node_message (
+      node, "mix:visibility", "after-resub", 11, 1000));
+    TEST_ASSERT_TRUE (wait_for_spot_message (
+      child_sub, "mix:visibility", "after-resub", 11, 1000));
+
     step_log ("node_child_interop: unsubscribe and reset handlers");
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_unsubscribe_filter (node, "mix:direct"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_unsubscribe_filter (node, "mix:child"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_unsubscribe_filter (node, "mix:visibility"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_unsubscribe (child_sub, "mix:direct"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_unsubscribe (child_sub, "mix:child"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_unsubscribe (child_sub, "mix:visibility"));
     msleep (50);
 
     step_log ("node_child_interop: destroy child_sub");
@@ -1140,11 +1185,11 @@ static void test_spot_pub_async_mode_local_delivery ()
     TEST_ASSERT_SUCCESS_ERRNO (create_spot_pub_sub (node, &pub, &sub));
     int pub_mode = ZLINK_SPOT_PUB_MODE_ASYNC;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_pub_set_option (pub, ZLINK_SPOT_PUB_OPT_MODE, &pub_mode,
+      -1, zlink_spot_set_pub_option (pub, ZLINK_SPOT_PUB_OPT_MODE, &pub_mode,
                                      sizeof (pub_mode)));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_sub_subscribe (sub, "pub:async:test"));
+      zlink_spot_subscribe (sub, "pub:async:test"));
     TEST_ASSERT_NOT_NULL (ensure_queued_spot_probe (sub, false));
     msleep (50);
 
@@ -1152,7 +1197,7 @@ static void test_spot_pub_async_mode_local_delivery ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
     memcpy (zlink_msg_data (&part), "pong", 4);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_pub_publish (pub, "pub:async:test", &part, 1, 0));
+      zlink_spot_publish (pub, "pub:async:test", &part, 1, 0));
 
     TEST_ASSERT_TRUE_MESSAGE (
       wait_for_spot_message (sub, "pub:async:test", "pong", 4, 1000),
@@ -1225,17 +1270,17 @@ static void test_spot_pub_async_queue_full_eagain ()
     TEST_ASSERT_SUCCESS_ERRNO (create_spot_pub_sub (node, &pub, &sub));
     int value = ZLINK_SPOT_PUB_MODE_ASYNC;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_pub_set_option (pub, ZLINK_SPOT_PUB_OPT_MODE, &value,
+      -1, zlink_spot_set_pub_option (pub, ZLINK_SPOT_PUB_OPT_MODE, &value,
                                      sizeof (value)));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     value = 1;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_pub_set_option (pub, ZLINK_SPOT_PUB_OPT_QUEUE_HWM, &value,
+      -1, zlink_spot_set_pub_option (pub, ZLINK_SPOT_PUB_OPT_QUEUE_HWM, &value,
                                      sizeof (value)));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     value = ZLINK_SPOT_PUB_QUEUE_FULL_EAGAIN;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_pub_set_option (
+      -1, zlink_spot_set_pub_option (
             pub, ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY, &value,
             sizeof (value)));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
@@ -1256,17 +1301,17 @@ static void test_spot_pub_async_queue_full_drop ()
     TEST_ASSERT_SUCCESS_ERRNO (create_spot_pub_sub (node, &pub, &sub));
     int value = ZLINK_SPOT_PUB_MODE_ASYNC;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_pub_set_option (pub, ZLINK_SPOT_PUB_OPT_MODE, &value,
+      -1, zlink_spot_set_pub_option (pub, ZLINK_SPOT_PUB_OPT_MODE, &value,
                                      sizeof (value)));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     value = 1;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_pub_set_option (pub, ZLINK_SPOT_PUB_OPT_QUEUE_HWM, &value,
+      -1, zlink_spot_set_pub_option (pub, ZLINK_SPOT_PUB_OPT_QUEUE_HWM, &value,
                                      sizeof (value)));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     value = ZLINK_SPOT_PUB_QUEUE_FULL_DROP;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_pub_set_option (
+      -1, zlink_spot_set_pub_option (
             pub, ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY, &value,
             sizeof (value)));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
@@ -1627,7 +1672,7 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
                         continue;
 
                     const int src_idx = zone_idx (src_x, src_y, field_width);
-                    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (
+                    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (
                       spot_subs[dst_idx], topics[src_idx].c_str ()));
                     expected_counts[dst_idx]++;
                     total_expected_messages++;
@@ -1653,8 +1698,8 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
             memcpy (zlink_msg_data (&part), &src_idx, sizeof (int));
 
             TEST_ASSERT_SUCCESS_ERRNO (
-              zlink_spot_pub_publish (spot_pubs[src_idx],
-                                      topics[src_idx].c_str (), &part, 1, 0));
+              zlink_spot_publish (spot_pubs[src_idx], topics[src_idx].c_str (),
+                                  &part, 1, 0));
             if (((src_idx + 1) % inflight) == 0)
                 msleep (1);
         }
@@ -1893,7 +1938,7 @@ static void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
                         continue;
 
                     const int src_idx = zone_idx (src_x, src_y, field_width);
-                    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (
+                    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (
                       spot_subs[dst_idx], topics[src_idx].c_str ()));
                 }
             }
@@ -1935,8 +1980,8 @@ static void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
         TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, sizeof (int)));
         memcpy (zlink_msg_data (&part), &src_idx, sizeof (int));
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_spot_pub_publish (spot_pubs[src_idx], topics[src_idx].c_str (),
-                                  &part, 1, 0));
+          zlink_spot_publish (spot_pubs[src_idx], topics[src_idx].c_str (),
+                              &part, 1, 0));
 
         for (int oy = -1; oy <= 1; ++oy) {
             for (int ox = -1; ox <= 1; ++ox) {

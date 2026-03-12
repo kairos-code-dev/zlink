@@ -303,23 +303,6 @@ int spot_sub_t::set_option (int option_,
     return socket->setsockopt (socket_option, optval_, optvallen_);
 }
 
-int spot_sub_t::set_routing_id (const void *data_, size_t size_)
-{
-    if (!data_ || size_ == 0 || size_ > sizeof (_routing_id.data)) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    scoped_lock_t lock (_sync);
-    if (_routing_id_locked) {
-        errno = EFSM;
-        return -1;
-    }
-    _routing_id.size = static_cast<uint8_t> (size_);
-    memcpy (_routing_id.data, data_, size_);
-    return 0;
-}
-
 int spot_sub_t::routing_id (zlink_routing_id_t *out_) const
 {
     if (!out_) {
@@ -347,12 +330,6 @@ void *spot_sub_t::monitor_open (int events_)
     if (ensure_monitor_bridge_started () != 0)
         return NULL;
     return _monitor.open (events_);
-}
-
-void *spot_sub_t::poller_socket ()
-{
-    lock_routing_id ();
-    return static_cast<void *> (socket ());
 }
 
 bool spot_sub_t::has_filters () const

@@ -80,7 +80,6 @@ class gateway_t : public discovery_observer_t
                            size_t optvallen_);
     int set_tls_server (const char *cert_, const char *key_);
     void *monitor_open (int events_);
-    void *poller_socket ();
     void *router ();
     bool enter_pollable_mode ();
     void lock_routing_id ();

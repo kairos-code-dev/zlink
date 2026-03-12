@@ -1269,12 +1269,14 @@ int spot_node_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_)
         return -1;
     }
 
-    _send_ready_handler.store (handler_, std::memory_order_release);
     spot_pub_t *pub = ensure_default_pub ();
     if (!pub)
         return -1;
 
-    return pub->set_send_ready_handler (handler_, this);
+    const int rc = pub->set_send_ready_handler (handler_, this);
+    if (rc == 0)
+        _send_ready_handler.store (handler_, std::memory_order_release);
+    return rc;
 }
 
 int spot_node_t::validate_pub_option (int option_,

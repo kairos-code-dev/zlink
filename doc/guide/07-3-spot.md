@@ -101,45 +101,42 @@ zlink_spot_node_connect_peer_pub(node, "tcp://node3:9000");
 **Note:** In a manual mesh there is no Discovery, so there is no registry
 topology visibility. This is an intended limitation.
 
-## 4. SPOT Pub/Sub Usage
+## 4. Unified SPOT Usage
 
-### 4.1 Publishing (SPOT Pub)
+### 4.1 Create a unified handle
 
 ```c
-void *pub = zlink_spot_pub_new(node);
+void *spot = zlink_spot_new(node, on_message);
+```
 
-/* Construct multipart message and publish */
+`zlink_spot_new()` returns a unified facade with both publish and subscribe
+behavior. There are no public standalone `spot_pub` / `spot_sub` constructors.
+
+### 4.2 Publishing
+
+```c
 zlink_msg_t part;
 zlink_msg_init_size(&part, 11);
 memcpy(zlink_msg_data(&part), "hello world", 11);
-zlink_spot_pub_publish(pub, "chat:room1:message", &part, 1, 0);
+zlink_spot_publish(spot, "chat:room1:message", &part, 1, 0);
 ```
 
-### 4.2 Subscribing (SPOT Sub)
+### 4.3 Subscribing and unsubscribing
 
 ```c
-void *sub = zlink_spot_sub_new(node, on_message);
+zlink_spot_subscribe(spot, "chat:room1:message");
+zlink_spot_subscribe_pattern(spot, "chat:room1:*");
 
-/* Subscribe to exact topic */
-zlink_spot_sub_subscribe(sub, "chat:room1:message");
-
-/* Pattern subscription (prefix matching) */
-zlink_spot_sub_subscribe_pattern(sub, "chat:room1:*");
+zlink_spot_unsubscribe(spot, "chat:room1:message");
+zlink_spot_unsubscribe(spot, "chat:room1:*");
 ```
 
 Receives are dispatched automatically through the `on_message` callback
 (see [4.4 Callback Handler](#44-callback-handler) below).
 
-### 4.3 Unsubscribing
-
-```c
-zlink_spot_sub_unsubscribe(sub, "chat:room1:message");
-zlink_spot_sub_unsubscribe(sub, "chat:room1:*");
-```
-
 ### 4.4 Callback Handler
 
-Provide the callback when creating a `spot_node` or `spot_sub` handle.
+Provide the callback when creating a `spot_node` or unified `spot` handle.
 Incoming messages are then dispatched automatically through that callback.
 
 ```c
@@ -154,18 +151,17 @@ void on_message(const zlink_routing_id_t *source_rid,
 /* Register handler at spot_node creation */
 void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
 
-/* Or register handler at spot_sub creation */
-void *sub = zlink_spot_sub_new(node, on_message);
+/* Or register handler at unified spot creation */
+void *spot = zlink_spot_new(node, on_message);
 ```
 
-**Important:** `spot_pub` is thread-safe — multiple threads may call
-`publish()` concurrently on the same instance. `spot_sub` is NOT
-thread-safe — `subscribe()` and `unsubscribe()` must be serialized
-by the caller.
+**Important:** A unified `spot` handle is thread-safe for same-handle
+operational APIs. Callbacks still run on the I/O path, so slow work should be
+offloaded to an application queue or worker thread.
 
 **Constraints:**
 
-- The callback must be provided at `zlink_spot_node_new()` or `zlink_spot_sub_new()` time
+- The callback must be provided at `zlink_spot_node_new()` or `zlink_spot_new()` time
 - Replacing or clearing the callback after creation is not supported
 - Callbacks are invoked on the socket dispatch / I/O path
 - Blocking work in the callback can delay other I/O
@@ -190,13 +186,13 @@ Examples:
 
 ## 6. Delivery Policy
 
-- Local publish (`spot_pub`) distributes to local SPOT Subs + sends out via PUB (remote propagation)
+- Local publish (`spot`) distributes to local SPOT Subs + sends out via PUB (remote propagation)
 - Remote receive (SUB) distributes to local SPOT Subs only (no re-publishing)
 - No re-publishing prevents message loops and duplicates
 - `subscribe()` / `unsubscribe()` return means the local socket filter has been applied;
   it does not guarantee cluster-wide propagation
-- Message ordering is preserved within a single `SpotPub` instance
-- Global ordering across different `SpotPub` instances is not guaranteed
+- Message ordering is preserved within a single `spot` handle
+- Global ordering across different `spot` handles is not guaranteed
 - If both an exact topic and a pattern match the same message on the same subscriber,
   the message is delivered only once
 
@@ -206,15 +202,14 @@ ack/retry, exactly-once semantics, or past message replay for late joiners.
 ## 7. Cleanup
 
 ```c
-zlink_spot_pub_destroy(&pub);
-zlink_spot_sub_destroy(&sub);
+zlink_spot_destroy(&spot);
 zlink_spot_node_destroy(&node);
 zlink_discovery_destroy(&discovery);
 ```
 
-**Destroy order:** Destroy `SpotPub` / `SpotSub` first, then `SpotNode`,
-and finally `Discovery`. All external use of `SpotPub` / `SpotSub` must
-stop before calling `SpotNode` destroy.
+**Destroy order:** Destroy `spot` first, then `SpotNode`, and finally
+`Discovery`. All external use of `spot` must stop before calling
+`SpotNode` destroy.
 
 ---
 [← Gateway](07-2-gateway.md) | [Routing ID →](08-routing-id.md)

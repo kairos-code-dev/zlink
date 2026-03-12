@@ -23,7 +23,47 @@
 | 기본 runs | 1 |
 | 결과 출력 | RESULT line |
 
-### 1.1 프로세스 모델
+### 1.1 Multi 핵심 정책
+
+- 목적
+  - 벤치 코드가 병목이 되지 않게 유지하면서, callback-only recv 모델의 성능을 측정한다.
+  - app thread는 setup/phase 제어/teardown만 수행하며, 측정 구간에서는 I/O thread의 콜백이 모든 recv/send를 처리한다.
+- recv
+  - 모든 recv는 **callback-only**다. `zlink_recv()` / `zlink_msg_recv()` 동기 수신 API는 존재하지 않는다.
+  - 소켓 생성 시 recv handler를 등록하면, 메시지 도착 시 I/O thread에서 콜백이 호출된다.
+  - poller(`PollIn`)는 사용하지 않는다.
+- send
+  - `send(..., DONTWAIT)` nonblocking send를 사용한다.
+  - recv callback 안에서 직접 `send(DONTWAIT)`를 호출한다.
+    - callback 중 same-handle send는 thread-safe socket plan에 의해 공식 허용된다.
+  - `EAGAIN` 시 역할별 backpressure 전략을 적용한다 (아래 참조).
+  - `zlink_socket_set_send_ready_handler()`로 writable transition 콜백을 등록한다.
+  - `while (send 실패)` 식의 즉시 재시도는 금지한다.
+- backpressure 전략 (역할별)
+  - **echo 서버** (소켓 1개 × 클라이언트 N개):
+    - `EAGAIN` 시 per-socket pending deque에 메시지를 저장한다.
+    - pending이 있는 동안 recv callback의 새 send는 pending deque에 추가만 한다.
+    - send-ready callback에서 pending deque를 `EAGAIN`까지 drain한다.
+    - 소켓 1개로 N개 클라이언트를 처리하므로, EAGAIN 중에도 다른 클라이언트의 메시지가 도착할 수 있어 deque가 필요하다.
+  - **echo 클라이언트** (per-socket, inflight 1):
+    - `EAGAIN` 시 `bool send_pending` 플래그만 설정한다.
+    - send-ready callback에서 플래그 확인 후 재전송한다.
+    - 응답 수신 → 다음 전송의 1:1 대응이므로 deque 불필요하다.
+  - **one-way sender** (단일 흐름):
+    - `EAGAIN` 시 `bool send_pending` 플래그만 설정한다.
+    - send-ready callback에서 플래그 확인 후 재전송한다.
+  - **one-way receiver**: send 없음, backpressure 불필요.
+- 동시성
+  - recv callback과 send-ready callback은 동일 소켓에 대해 직렬화된다 (같은 I/O thread).
+  - 따라서 per-socket pending은 일반 `std::deque`로 충분하며, concurrent queue가 필요 없다.
+- 성능 참고
+  - perf 환경(HWM 100, inflight 1/peer)에서 EAGAIN은 사실상 발생하지 않는다.
+  - deque/플래그는 정확성을 위한 safety net이며, hot path에서는 `empty()` / `bool` 체크만 수행된다.
+- 한 줄 요약
+  - `multi = callback recv + direct nonblocking send in callback`
+  - `backpressure = echo 서버: deque, echo 클라이언트/one-way sender: bool 플래그`
+
+### 1.2 프로세스 모델
 
 Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 

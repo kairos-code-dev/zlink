@@ -323,6 +323,9 @@ endif()
 if(TARGET test_transport_matrix)
   set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
 endif()
+if(TARGET test_monitor_with_handler)
+  set_tests_properties(test_monitor_with_handler PROPERTIES TIMEOUT 30)
+endif()
 if(TARGET test_service_introspection)
   set_tests_properties(
     test_service_introspection

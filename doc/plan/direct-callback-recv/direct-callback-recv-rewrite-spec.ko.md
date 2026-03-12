@@ -99,12 +99,18 @@ network -> decoder -> session->push_msg -> pipe/fq/inproc queue -> recv()
 
 ### 2.6 thread safety
 
-이번 문서의 목표는 recv 모델 재작성이다.
+최신 public contract는 recv 재작성 문서만으로 결정하지 않는다.
 
-- same-socket multi-thread `send()` 직렬화는 본 재작성에 포함될 수도 있지만,
-  recv 모델 재작성의 선행 완료 조건으로 두지는 않는다.
-- 전 소켓 완전 thread-safe 보장은 이번 재작성의 선행 조건이 아니다.
-- 단, callback 내부에서 같은 handle에 대해 허용되는 API는 명시해야 한다.
+- thread-safety canonical 기준은
+  [`thread-safe-socket-plan.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/thread-safe/thread-safe-socket-plan.ko.md)
+  와 `core/include/zlink.h`를 따른다.
+- recv-capable raw socket, `discovery`, `gateway`, `spot` 계열, monitor handle은
+  모두 thread-safe only public handle로 본다.
+- same-handle operational API는 라이브러리가 직렬화한다.
+- `close` / `destroy`는 예외적으로 더 보수적이며, in-flight callback/API가 있으면
+  cross-thread 종료는 `EBUSY`다.
+- send-ready setter는 replace-only이며, 동일 handle의 send-ready callback 안
+  재진입 호출은 `EDEADLK`다.
 
 ## 3. 유지되는 의미와 변경되는 의미
 
@@ -260,26 +266,27 @@ service 통합 방향은 다음으로 고정한다.
 
 | API | 조치 | 대체 |
 |---|---|---|
-| `zlink_spot_pub_new` | 삭제 가능 | `spot_node` default facade 또는 `spot` facade |
-| `zlink_spot_pub_destroy` | 삭제 가능 | node/facade destroy |
-| `zlink_spot_pub_set_option` | 삭제 가능 | `zlink_spot_node_set_pub_option` |
-| `zlink_spot_pub_publish` | 삭제 가능 | `zlink_spot_node_publish` 또는 `zlink_spot_publish` |
+| `zlink_spot_pub_new` | 삭제 | `zlink_spot_new` |
+| `zlink_spot_pub_destroy` | 삭제 | `zlink_spot_destroy` |
+| `zlink_spot_pub_set_option` | 삭제 | `zlink_spot_set_pub_option` 또는 `zlink_spot_node_set_pub_option` |
+| `zlink_spot_pub_publish` | 삭제 | `zlink_spot_publish` 또는 `zlink_spot_node_publish` |
 | `zlink_spot_pub_publish_bytes` | 삭제 | 삭제 |
-| `zlink_spot_sub_new` | 삭제 가능 | `spot_node` default facade 또는 `spot` facade |
-| `zlink_spot_sub_destroy` | 삭제 가능 | node/facade destroy |
-| `zlink_spot_sub_set_option` | 삭제 가능 | `zlink_spot_node_set_sub_option` |
-| `zlink_spot_sub_subscribe` | 삭제 가능 | `zlink_spot_node_subscribe` 또는 `zlink_spot_subscribe` |
-| `zlink_spot_sub_subscribe_pattern` | 삭제 가능 | `zlink_spot_node_subscribe_pattern` 또는 `zlink_spot_subscribe_pattern` |
-| `zlink_spot_sub_unsubscribe` | 삭제 가능 | `zlink_spot_node_unsubscribe_filter` 또는 `zlink_spot_unsubscribe` |
-| `zlink_spot_sub_set_handler` | 삭제 가능 | `zlink_spot_node_set_handler` 또는 `zlink_spot_set_handler` |
-| `zlink_spot_sub_monitor_open` | 삭제 가능 | node/facade monitor |
+| `zlink_spot_sub_new` | 삭제 | `zlink_spot_new` |
+| `zlink_spot_sub_destroy` | 삭제 | `zlink_spot_destroy` |
+| `zlink_spot_sub_set_option` | 삭제 | `zlink_spot_set_sub_option` 또는 `zlink_spot_node_set_sub_option` |
+| `zlink_spot_sub_subscribe` | 삭제 | `zlink_spot_subscribe` 또는 `zlink_spot_node_subscribe` |
+| `zlink_spot_sub_subscribe_pattern` | 삭제 | `zlink_spot_subscribe_pattern` 또는 `zlink_spot_node_subscribe_pattern` |
+| `zlink_spot_sub_unsubscribe` | 삭제 | `zlink_spot_unsubscribe` 또는 `zlink_spot_node_unsubscribe_filter` |
+| `zlink_spot_sub_set_handler` | 삭제 | 생성 시 callback 고정 모델로 대체 |
+| `zlink_spot_sub_monitor_open` | 삭제 | `zlink_spot_monitor_open(..., role, ...)` |
 
 정리 원칙:
 
 - `spot_node`는 public SPOT service의 canonical handle로 유지한다.
 - `spot`은 지금처럼 내부적으로 `spot_node`에 inproc으로 연결된 facade로 유지한다.
 - `spot`은 `spot_pub` + `spot_sub`를 하나로 감싼 public facade다.
-- node-owned default pub/sub facade 개념은 유지할 수 있다.
+- standalone public `spot_pub` / `spot_sub` 생성자는 유지하지 않는다.
+- node-owned default pub/sub facade는 internal/runtime 개념으로만 유지한다.
 - 이번 재작성의 SPOT 범위는 구조 재설계가 아니라 recv/callback 의미 정렬이다.
 - `spot` facade 생성은 기존 `spot_node`를 인자로 받는 attach 모델로 정렬한다.
 

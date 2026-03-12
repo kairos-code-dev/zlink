@@ -441,7 +441,7 @@ data 전달은 `msg_t` 중심으로 단순화"하는 쪽이 더 일관적이다.
 | 현재 인터페이스 | 변경안 | 변경 이유 |
 |---|---|---|
 | `int zlink_spot_publish_bytes(void *spot, const char *topic_id, const void *data, size_t size, zlink_send_flags_t flags)` | 삭제 상태 유지 | `spot` public send/recv surface도 `msg_t` 기반으로만 유지한다. |
-| `int zlink_spot_pub_publish_bytes(void *pub, const char *topic_id, const void *data, size_t size, zlink_send_flags_t flags)` | 삭제 상태 유지 | standalone `spot_pub`도 `msg_t` 기반 surface만 유지한다. |
+| `int zlink_spot_pub_publish_bytes(void *pub, const char *topic_id, const void *data, size_t size, zlink_send_flags_t flags)` | 삭제 상태 유지 | split public `spot_pub` surface 자체를 유지하지 않는다. |
 | `int zlink_spot_node_publish_bytes(void *node, const char *topic_id, const void *data, size_t size, zlink_send_flags_t flags)` | 삭제 상태 유지 | `spot_node` publish 경로도 `msg_t` 기반 surface만 유지한다. |
 | `void *zlink_spot_node_new(void *ctx, const char *service_name, zlink_spot_handler_fn handler)` | 유지 | `spot_node`는 service-bound handle이므로 `service_name`을 생성 시점에 고정하고, recv-capable surface이므로 최초 handler도 생성 시점에 받는다. |
 | `int zlink_spot_set_pub_option(void *spot, zlink_spot_pub_option_t option, const void *optval, size_t optvallen)`, `int zlink_spot_set_sub_option(void *spot, zlink_spot_sub_option_t option, const void *optval, size_t optvallen)` | 유지 | pub/sub option namespace를 함수 시그니처에서 직접 분리하는 현재 public shape를 유지한다. |
@@ -449,16 +449,13 @@ data 전달은 `msg_t` 중심으로 단순화"하는 쪽이 더 일관적이다.
 | `int zlink_spot_node_register(void *node, const char *advertise_endpoint)` | 삭제 상태 유지 | public `spot_node`도 `gateway`와 같은 레벨로 맞추고 별도 public register API는 두지 않는다. discovery/runtime이 service-bound node identity를 기준으로 topology를 수렴한다. |
 | `int zlink_spot_node_unregister(void *node)` | 삭제 상태 유지 | unregister도 별도 public API로 두지 않는다. |
 | `int zlink_spot_node_attach_discovery(void *node, void *discovery)` | 유지 | discovery watch 대상 service도 `spot_node` 생성 시점 identity를 사용하므로 service 인자를 받지 않는 attach API를 유지한다. |
-| `int zlink_spot_node_set_pub_option(void *node, zlink_spot_pub_option_t option, const void *optval, size_t optvallen)` | 유지 | node pub option도 standalone `spot_pub`와 동일 enum을 사용한다. |
-| `int zlink_spot_node_set_sub_option(void *node, zlink_spot_sub_option_t option, const void *optval, size_t optvallen)` | 유지 | node sub option도 standalone `spot_sub`와 동일 enum을 사용한다. |
+| `int zlink_spot_node_set_pub_option(void *node, zlink_spot_pub_option_t option, const void *optval, size_t optvallen)` | 유지 | node pub option도 unified `spot` publish side와 동일 enum을 사용한다. |
+| `int zlink_spot_node_set_sub_option(void *node, zlink_spot_sub_option_t option, const void *optval, size_t optvallen)` | 유지 | node sub option도 unified `spot` subscribe side와 동일 enum을 사용한다. |
 | `void *zlink_spot_node_default_pub(void *node)` | 삭제 | `spot_node` 내부 lazy child handle을 public에 노출하지 않는다. public split child accessor는 unified `spot` / `spot_node_*` contract와 충돌하므로 제거한다. |
 | `void *zlink_spot_node_default_sub(void *node)` | 삭제 | 위와 동일. |
-| `int zlink_spot_pub_set_option(void *pub, zlink_spot_pub_option_t pub_option, const void *optval, size_t optvallen)` | 유지 | standalone pub도 같은 pub option enum을 유지한다. |
-| `int zlink_spot_sub_set_option(void *sub, zlink_spot_sub_option_t sub_option, const void *optval, size_t optvallen)` | 유지 | standalone sub도 같은 sub option enum을 유지한다. |
 | `ZLINK_SPOT_NODE_PUB_MODE_*` / `QUEUE_HWM` / `QUEUE_FULL_POLICY` | typed enum으로 유지, 실제 public 지원/`ENOTSUP`도 이 문서 기준으로 고정 | enum naming과 runtime support 매트릭스를 같은 canonical 문서에서 함께 고정한다. |
 | `ZLINK_SPOT_SUB_OPT_RCVTIMEO` / `QUEUE_NODROP` / `QUEUE_FULL_POLICY` | 삭제/비공개 | 현재 canonical option surface에서는 삭제 대상으로 확정하므로 enum namespace에도 남기지 않는다. |
 | `void *zlink_spot_new(void *spot_node, zlink_spot_handler_fn handler)` | 유지 | unified `spot`은 내부에 pub/sub를 함께 가진 facade이므로 생성 시 역할을 고르지 않는다. |
-| `int zlink_spot_pub_set_routing_id(void *pub, const void *data, size_t size)` / `int zlink_spot_sub_set_routing_id(void *sub, const void *data, size_t size)` | 유지, 단 “첫 publish/subscribe/connect 이전에만 유효”로 제한 | identity 고정 원칙과 충돌하지 않도록 first-use 이후 변경을 금지한다. |
 
 확정 시그니처:
 
@@ -526,16 +523,6 @@ int zlink_spot_node_set_sub_option (void *node,
                                     const void *optval,
                                     size_t optvallen);
 
-int zlink_spot_pub_set_option (void *pub,
-                               zlink_spot_pub_option_t pub_option,
-                               const void *optval,
-                               size_t optvallen);
-
-int zlink_spot_sub_set_option (void *sub,
-                               zlink_spot_sub_option_t sub_option,
-                               const void *optval,
-                               size_t optvallen);
-
 ```
 
 추가 원칙:
@@ -544,12 +531,10 @@ int zlink_spot_sub_set_option (void *sub,
 - 이는 bytes convenience helper 제거를 의미하며,
   `zlink_msg_t` ownership/zero-copy 경로 자체를 제거한다는 뜻은 아니다.
 - `spot_node`는 `service_name`을 생성 시점에 받는 service-bound handle이다.
-- `spot` / `spot_pub` / `spot_sub`는 이미 service-bound인 `spot_node`에 attach되는 facade다.
+- `spot`은 이미 service-bound인 `spot_node`에 attach되는 facade다.
 - unified `spot`은 생성 시 역할을 선택하지 않으며, 항상 pub/sub를 함께 가진 facade로 본다.
 - `spot_node` 내부 pub/sub와 attached `spot` facade가 공존하더라도
   pub/sub option namespace는 동일 enum 체계를 공유하도록 정리한다.
-- standalone `spot_pub` / `spot_sub`를 유지하더라도 unified `spot` facade와
-  option/publish 계약이 다르게 보이지 않도록 맞춘다.
 - `spot_node`는 별도 option namespace를 갖지 않는다.
   node 내부 pub/sub도 각각 `zlink_spot_pub_option_t`,
   `zlink_spot_sub_option_t`를 그대로 사용한다.
@@ -572,9 +557,8 @@ int zlink_spot_sub_set_option (void *sub,
   이 경우 `EBUSY`를 반환해 topology ownership 전환 시점을 호출자가 먼저 정리하게 한다.
 - discovery를 attach한 이후에는 topology ownership이 discovery로 넘어가므로
   manual `connect` / `disconnect`는 허용하지 않는다.
-- unified `zlink_spot_monitor_open()`은 attached unified `spot` facade를 위한 API로
-  유지하고, split handle 사용자에게는 `zlink_spot_pub_monitor_open()` /
-  `zlink_spot_sub_monitor_open()`을 병행 제공한다.
+- unified `zlink_spot_monitor_open()`은 attached unified `spot` facade를 위한
+  유일한 public monitor entrypoint로 유지한다.
 - unified facade의 peer 조회는 C API 이름 충돌을 피하기 위해
   `zlink_spot_peers_pub()` / `zlink_spot_peers_sub()`로 분리한다.
 - unified `spot` naming policy는 다음으로 고정하는 편이 일관적이다.
@@ -839,14 +823,10 @@ option 외에도 다음 상수군은 macro보다 enum이 더 자연스럽다.
 | gateway LB strategy | `int zlink_gateway_set_lb_strategy(void *gateway, int strategy)` | `int zlink_gateway_set_lb_strategy(void *gateway, zlink_gateway_lb_strategy_t strategy)` |
 | representative routing id policy | `int zlink_discovery_set_routing_id(void *discovery, const void *data, size_t size)` | first-use 이전에만 허용 |
 | representative routing id policy | `int zlink_gateway_set_routing_id(void *gateway, const void *data, size_t size)` | first-use 이전에만 허용 |
-| representative routing id policy | `int zlink_spot_pub_set_routing_id(void *pub, const void *data, size_t size)` | first publish/connect 이전에만 허용 |
-| representative routing id policy | `int zlink_spot_sub_set_routing_id(void *sub, const void *data, size_t size)` | first subscribe/connect 이전에만 허용 |
 | SPOT role selector | 없음 (이미 split setter 사용) | 삭제 상태 유지 |
 | unified `spot` 생성 | `void *zlink_spot_new(void *spot_node, zlink_spot_handler_fn handler)` | 유지 |
 | SPOT pub option | `int zlink_spot_node_set_pub_option(void *node, zlink_spot_pub_option_t pub_option, const void *optval, size_t optvallen)` | 유지 |
-| SPOT pub option | `int zlink_spot_pub_set_option(void *pub, zlink_spot_pub_option_t pub_option, const void *optval, size_t optvallen)` | 유지 |
 | SPOT sub option | `int zlink_spot_node_set_sub_option(void *node, zlink_spot_sub_option_t sub_option, const void *optval, size_t optvallen)` | 유지 |
-| SPOT sub option | `int zlink_spot_sub_set_option(void *sub, zlink_spot_sub_option_t sub_option, const void *optval, size_t optvallen)` | 유지 |
 | registry socket role | `int zlink_registry_setsockopt(void *registry, int socket_role, int option, const void *optval, size_t optvallen)` | `int zlink_registry_setsockopt(void *registry, zlink_registry_socket_role_t socket_role, zlink_socket_option_t option, const void *optval, size_t optvallen)` |
 | context option | `int zlink_ctx_set(void *ctx, int option, int optval)` | `int zlink_ctx_set(void *ctx, zlink_ctx_option_t option, int optval)` |
 | raw socket callback | `int zlink_socket_set_msg_handler(void *s, zlink_socket_msg_handler_fn handler)` 계열 | 삭제 |
@@ -854,14 +834,12 @@ option 외에도 다음 상수군은 macro보다 enum이 더 자연스럽다.
 | send-ready callback | 없음 | `int zlink_gateway_set_send_ready_handler(void *gateway, zlink_send_ready_handler_fn handler)` |
 | send-ready callback | 없음 | `int zlink_spot_node_set_send_ready_handler(void *node, zlink_send_ready_handler_fn handler)` |
 | send-ready callback | 없음 | `int zlink_spot_set_send_ready_handler(void *spot, zlink_send_ready_handler_fn handler)` |
-| send-ready callback | 없음 | `int zlink_spot_pub_set_send_ready_handler(void *pub, zlink_send_ready_handler_fn handler)` |
 | poller API | `zlink_poll()`, `zlink_poller_*` 전 계열 | 삭제 |
 | monitor event mask | `void *zlink_socket_monitor_open(void *s, int events, zlink_monitor_handler_fn handler)` | `void *zlink_socket_monitor_open(void *s, zlink_socket_monitor_event_mask_t events, zlink_monitor_handler_fn handler)` |
 | discovery monitor event mask | `void *zlink_discovery_monitor_open(void *discovery, int events, zlink_service_monitor_handler_fn handler)` | `void *zlink_discovery_monitor_open(void *discovery, zlink_discovery_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler)` |
 | gateway monitor event mask | `void *zlink_gateway_monitor_open(void *gateway, int events, zlink_service_monitor_handler_fn handler)` | `void *zlink_gateway_monitor_open(void *gateway, zlink_gateway_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler)` |
 | SPOT monitor event mask | `void *zlink_spot_monitor_open(void *spot, int role, int events, zlink_service_monitor_handler_fn handler)` | `void *zlink_spot_monitor_open(void *spot, zlink_spot_role_t role, zlink_spot_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler)` |
-| SPOT sub monitor event mask | `void *zlink_spot_sub_monitor_open(void *sub, int events, zlink_service_monitor_handler_fn handler)` | `void *zlink_spot_sub_monitor_open(void *sub, zlink_spot_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler)` |
-| SPOT pub monitor event mask | `void *zlink_spot_pub_monitor_open(void *pub, int events, zlink_service_monitor_handler_fn handler)` | `void *zlink_spot_pub_monitor_open(void *pub, zlink_spot_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler)` |
+| SPOT monitor event mask | `void *zlink_spot_monitor_open(void *spot, int role, int events, zlink_service_monitor_handler_fn handler)` | `void *zlink_spot_monitor_open(void *spot, zlink_spot_role_t role, zlink_spot_monitor_event_mask_t events, zlink_service_monitor_handler_fn handler)` |
 | service event detail mask | `zlink_service_event_t.detail_flags` | `zlink_service_event_detail_mask_t` 값 집합으로 문서화 |
 | send flags | `zlink_send(..., int flags)` 등 send 계열 전반 | `zlink_send_flags_t flags` 사용 |
 | disconnect reason | `zlink_monitor_event_t.value`가 disconnect reason일 때 | `zlink_disconnect_reason_t` 값 집합으로 문서화 |
@@ -880,9 +858,6 @@ option 외에도 다음 상수군은 macro보다 enum이 더 자연스럽다.
 - raw socket은 `zlink_socket()`에서 family를 확정한다.
 - `spot_node`는 `zlink_spot_node_new()`에서 node-owned default sub callback을 고정한다.
 - unified `spot`은 `zlink_spot_new()`에서 callback을 고정한다.
-- standalone `spot_sub`는 `zlink_spot_sub_new()`에서 callback을 고정한다.
-- `SpotPub`은 publish-only facade로서 public 수신 callback 경로를 갖지 않는다.
-
 공통 규칙:
 
 - 생성/open 이후 callback 교체는 허용하지 않는다.
@@ -891,9 +866,8 @@ option 외에도 다음 상수군은 macro보다 enum이 더 자연스럽다.
   즉 `zlink_gateway_new()`,
   `zlink_spot_node_new()`,
   `zlink_socket_monitor_open()`, `zlink_discovery_monitor_open()`,
-  `zlink_gateway_monitor_open()`, `zlink_spot_monitor_open()`,
-  `zlink_spot_sub_monitor_open()`,
-  `zlink_spot_pub_monitor_open()`은 `NULL` callback을 허용하지 않는다.
+  `zlink_gateway_monitor_open()`, `zlink_spot_monitor_open()`은
+  `NULL` callback을 허용하지 않는다.
 - raw recv-capable socket은 `zlink_socket()` 생성 시 family에 맞는 non-`NULL`
   `zlink_socket_handler_t`를 제공해야 한다.
 - `zlink_socket()`는 socket type을 검증해야 하며,
@@ -1083,9 +1057,6 @@ int zlink_spot_node_set_send_ready_handler (void *node,
 
 int zlink_spot_set_send_ready_handler (void *spot,
                                        zlink_send_ready_handler_fn handler);
-
-int zlink_spot_pub_set_send_ready_handler (void *pub,
-                                           zlink_send_ready_handler_fn handler);
 ```
 
 추가 규칙:
@@ -1134,9 +1105,7 @@ int zlink_spot_pub_set_send_ready_handler (void *pub,
   `EINVAL`로 실패해야 한다.
 - `zlink_gateway_set_send_ready_handler()`,
   `zlink_spot_node_set_send_ready_handler()`,
-  `zlink_spot_set_send_ready_handler()`,
-  `zlink_spot_pub_set_send_ready_handler()`는 허용한다.
-- `spot_sub`에는 별도 send-ready handler surface를 두지 않는다.
+  `zlink_spot_set_send_ready_handler()`는 허용한다.
 - send-ready callback은 "지금 한 번의 send 성공이 보장된다"는 의미가 아니라,
   "queue full -> writable transition이 있었으니 drain을 다시 시도하라"는 힌트다.
 - callback은 가능한 한 lightweight signal 용도에만 사용한다.
@@ -1147,6 +1116,14 @@ int zlink_spot_pub_set_send_ready_handler (void *pub,
 - drain loop는 send가 성공하는 동안 계속 비우고, 다시 `EAGAIN`을 만나면 중단한다.
 - `set_send_ready_handler()`도 callback setter family와 동일하게 replace-only surface로 본다.
   `NULL` 제거 API는 두지 않는다.
+- latest public contract는
+  [`thread-safe-socket-plan.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/thread-safe/thread-safe-socket-plan.ko.md)
+  기준 thread-safe only다.
+  same-handle operational API는 thread-safe이며, `close` / `destroy`는 더 보수적이다.
+- `set_send_ready_handler()`를 동일 handle의 send-ready callback 안에서 다시 호출하면
+  `EDEADLK`를 반환해야 한다.
+- service/raw monitor handle은 callback 안 self-close를 허용하되 실제 teardown은
+  callback return 뒤로 미뤄야 한다.
 
 ## 6. 정책 회귀 테스트 추가 항목
 
@@ -1256,8 +1233,7 @@ int zlink_spot_pub_set_send_ready_handler (void *pub,
   `zlink_socket_set_send_ready_handler()`,
   `zlink_gateway_set_send_ready_handler()`,
   `zlink_spot_node_set_send_ready_handler()`,
-  `zlink_spot_set_send_ready_handler()`,
-  `zlink_spot_pub_set_send_ready_handler()`가 재시도 신호로 동작해야 한다.
+  `zlink_spot_set_send_ready_handler()`가 재시도 신호로 동작해야 한다.
 - raw `SUB` / `XSUB`에 대한 `zlink_socket_set_send_ready_handler()` 호출은
   `EINVAL`로 실패해야 한다.
 - send-ready callback은 writable transition hint이며, callback 직후 단 한 번의 send 성공을

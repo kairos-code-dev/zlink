@@ -5,9 +5,12 @@
 #include "../testutil_unity.hpp"
 
 #include "../../src/services/spot/spot_dispatch_internal.hpp"
+#include "../../src/services/spot/spot_pub.hpp"
+#include "../../src/sockets/socket_base.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/discovery/discovery.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <map>
 #include <mutex>
@@ -43,6 +46,14 @@ static void spot_probe_handler (const zlink_routing_id_t *,
                                 size_t topic_len_,
                                 zlink_msg_t *parts_,
                                 size_t part_count_);
+static void *g_spot_reentrant_ready_subject = NULL;
+static std::atomic<int> *g_spot_reentrant_ready_calls = NULL;
+static int g_spot_reentrant_ready_rc = 0;
+static int g_spot_reentrant_ready_errno = 0;
+static void *g_spot_ready_subject = NULL;
+static std::atomic<int> *g_spot_ready_calls = NULL;
+static int g_spot_ready_publish_rc = 0;
+static int g_spot_ready_publish_errno = 0;
 
 void setUp ()
 {
@@ -56,16 +67,6 @@ void tearDown ()
         std::lock_guard<std::mutex> lock (g_spot_probe_registry_mutex);
         g_spot_handle_probes.clear ();
     }
-}
-
-static void assert_routing_id_bytes (const zlink_routing_id_t *rid_,
-                                     const char *expected_)
-{
-    TEST_ASSERT_NOT_NULL (rid_);
-    TEST_ASSERT_NOT_NULL (expected_);
-    const size_t expected_size = strlen (expected_);
-    TEST_ASSERT_EQUAL_UINT8 (static_cast<uint8_t> (expected_size), rid_->size);
-    TEST_ASSERT_EQUAL_MEMORY (expected_, rid_->data, expected_size);
 }
 
 static bool wait_for_registry_uplink (void *discovery_, int timeout_ms_)
@@ -184,9 +185,57 @@ static void *create_started_registry_with_port_seed (void *ctx_,
 static void ignore_spot_handler (const zlink_routing_id_t *,
                                  const char *,
                                  size_t,
-                                 zlink_msg_t *,
-                                 size_t)
+                                 zlink_msg_t *parts_,
+                                 size_t part_count_)
 {
+    if (!parts_)
+        return;
+    for (size_t i = 0; i < part_count_; ++i)
+        zlink_msg_close (&parts_[i]);
+}
+
+static void spot_reentrant_ready_handler (void *subject_)
+{
+    g_spot_reentrant_ready_subject = subject_;
+    if (g_spot_reentrant_ready_calls)
+        g_spot_reentrant_ready_calls->fetch_add (1);
+    errno = 0;
+    g_spot_reentrant_ready_rc = zlink_spot_node_set_send_ready_handler (
+      subject_, &spot_reentrant_ready_handler);
+    g_spot_reentrant_ready_errno = errno;
+}
+
+static void spot_counting_ready_handler (void *subject_)
+{
+    g_spot_ready_subject = subject_;
+    if (g_spot_ready_calls)
+        g_spot_ready_calls->fetch_add (1);
+}
+
+static void spot_publish_from_ready_handler (void *subject_)
+{
+    g_spot_ready_subject = subject_;
+    if (g_spot_ready_calls)
+        g_spot_ready_calls->fetch_add (1);
+
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, 5) != 0) {
+        g_spot_ready_publish_rc = -1;
+        g_spot_ready_publish_errno = errno;
+        return;
+    }
+    memcpy (zlink_msg_data (&part), "ready", 5);
+
+    errno = 0;
+    g_spot_ready_publish_rc =
+      zlink_spot_node_publish (subject_, "ready:topic", &part, 1, 0);
+    g_spot_ready_publish_errno =
+      g_spot_ready_publish_rc == 0 ? 0 : errno;
+    if (g_spot_ready_publish_rc != 0) {
+        const int err = errno;
+        zlink_msg_close (&part);
+        errno = err;
+    }
 }
 
 static void destroy_test_ctx (void *ctx_)
@@ -214,30 +263,30 @@ static void *create_spot_node (void *ctx_, const char *service_name_)
     return node;
 }
 
-static void *create_spot_pub_handle (void *node_)
+static void *create_spot_handle (void *node_, zlink_spot_handler_fn handler_)
 {
-    void *pub = zlink_spot_pub_new (node_);
-    if (!pub)
+    void *spot = zlink_spot_new (node_, handler_);
+    if (!spot)
         return NULL;
 
     const int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_pub_set_option (pub, ZLINK_SPOT_PUB_OPT_LINGER, &linger,
+      zlink_spot_set_pub_option (spot, ZLINK_SPOT_PUB_OPT_LINGER, &linger,
                                  sizeof (linger)));
-    return pub;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_set_sub_option (spot, ZLINK_SPOT_SUB_OPT_LINGER, &linger,
+                                 sizeof (linger)));
+    return spot;
+}
+
+static void *create_spot_pub_handle (void *node_)
+{
+    return create_spot_handle (node_, &ignore_spot_handler);
 }
 
 static void *create_spot_sub_handle (void *node_)
 {
-    void *sub = zlink_spot_sub_new (node_, &spot_probe_handler);
-    if (!sub)
-        return NULL;
-
-    const int linger = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_sub_set_option (sub, ZLINK_SPOT_SUB_OPT_LINGER, &linger,
-                                 sizeof (linger)));
-    return sub;
+    return create_spot_handle (node_, &spot_probe_handler);
 }
 
 typedef int (*spot_publish_fn_t) (void *,
@@ -437,52 +486,47 @@ static void test_spot_pub_sub_options_and_routing_ids ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
+    TEST_ASSERT_NULL (zlink_spot_node_new (ctx, "spot-null-handler", NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+
     step_log ("pub_sub_options: create nodes");
     void *pub_node = create_spot_node (ctx, "spot-test");
     void *sub_node = create_spot_node (ctx, "spot-test");
     TEST_ASSERT_NOT_NULL (pub_node);
     TEST_ASSERT_NOT_NULL (sub_node);
+    TEST_ASSERT_NULL (zlink_spot_new (pub_node, NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     step_log ("pub_sub_options: create handles");
     void *pub = create_spot_pub_handle (pub_node);
     void *sub = create_spot_sub_handle (sub_node);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
-
-    const char *pub_rid = "spot-pub-rid";
-    const char *sub_rid = "spot-sub-rid";
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_pub_set_routing_id (pub, pub_rid, strlen (pub_rid)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_sub_set_routing_id (sub, sub_rid, strlen (sub_rid)));
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_spot_node_set_send_ready_handler (pub_node, NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_set_send_ready_handler (pub, NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     const int pub_sndhwm = 222;
     const int pub_sndtimeo = 90;
     const int sub_rcvhwm = 333;
     const int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_pub_set_option (pub, ZLINK_SPOT_PUB_OPT_SNDHWM, &pub_sndhwm,
+      zlink_spot_set_pub_option (pub, ZLINK_SPOT_PUB_OPT_SNDHWM, &pub_sndhwm,
                                  sizeof (pub_sndhwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_pub_set_option (pub, ZLINK_SPOT_PUB_OPT_SNDTIMEO,
+      zlink_spot_set_pub_option (pub, ZLINK_SPOT_PUB_OPT_SNDTIMEO,
                                  &pub_sndtimeo, sizeof (pub_sndtimeo)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_pub_set_option (pub, ZLINK_SPOT_PUB_OPT_LINGER, &linger,
+      zlink_spot_set_pub_option (pub, ZLINK_SPOT_PUB_OPT_LINGER, &linger,
                                  sizeof (linger)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_sub_set_option (sub, ZLINK_SPOT_SUB_OPT_RCVHWM, &sub_rcvhwm,
+      zlink_spot_set_sub_option (sub, ZLINK_SPOT_SUB_OPT_RCVHWM, &sub_rcvhwm,
                                  sizeof (sub_rcvhwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_sub_set_option (sub, ZLINK_SPOT_SUB_OPT_LINGER, &linger,
+      zlink_spot_set_sub_option (sub, ZLINK_SPOT_SUB_OPT_LINGER, &linger,
                                  sizeof (linger)));
-
-    zlink_routing_id_t rid;
-    memset (&rid, 0, sizeof (rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_routing_id (pub, &rid));
-    assert_routing_id_bytes (&rid, pub_rid);
-    memset (&rid, 0, sizeof (rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_routing_id (sub, &rid));
-    assert_routing_id_bytes (&rid, sub_rid);
 
     step_log ("pub_sub_options: bind/connect");
     char endpoint[MAX_SOCKET_STRING];
@@ -492,48 +536,89 @@ static void test_spot_pub_sub_options_and_routing_ids ()
       sizeof (endpoint)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer_pub (sub_node, endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (sub, "svc-int"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "svc-int"));
     spot_probe_t *sub_probe = new spot_probe_t;
     TEST_ASSERT_SUCCESS_ERRNO (attach_spot_probe (sub, sub_probe));
     msleep (100);
 
     zlink_peer_info_t peers[4];
     size_t peer_count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_peers (pub, peers, &peer_count));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_peers_pub (pub, peers, &peer_count));
     TEST_ASSERT_TRUE (peer_count > 0);
     peer_count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_peers (sub, peers, &peer_count));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_peers_sub (sub, peers, &peer_count));
     TEST_ASSERT_TRUE (peer_count > 0);
+
+    step_log ("pub_sub_options: send-ready guards");
+    std::atomic<int> ready_calls (0);
+    g_spot_ready_subject = NULL;
+    g_spot_ready_calls = &ready_calls;
+    g_spot_ready_publish_rc = -999;
+    g_spot_ready_publish_errno = 0;
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
+      pub_node, &spot_counting_ready_handler));
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_spot_node_set_send_ready_handler (pub_node, NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+
+    zlink::spot_node_t *pub_node_impl =
+      static_cast<zlink::spot_node_t *> (pub_node);
+    zlink::spot_pub_t *pub_impl = pub_node_impl->ensure_default_pub ();
+    TEST_ASSERT_NOT_NULL (pub_impl);
+    pub_impl->invoke_send_ready_for_testing ();
+
+    TEST_ASSERT_EQUAL_INT (1, ready_calls.load ());
+    TEST_ASSERT_EQUAL_PTR (pub_node, g_spot_ready_subject);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
+      pub_node, &spot_publish_from_ready_handler));
+    pub_impl->invoke_send_ready_for_testing ();
+
+    TEST_ASSERT_EQUAL_INT (2, ready_calls.load ());
+    TEST_ASSERT_EQUAL_PTR (pub_node, g_spot_ready_subject);
+    TEST_ASSERT_EQUAL_INT (0, g_spot_ready_publish_rc);
+    TEST_ASSERT_EQUAL_INT (0, g_spot_ready_publish_errno);
+
+    step_log ("pub_sub_options: send-ready reentrant replace");
+    std::atomic<int> reentrant_ready_calls (0);
+    g_spot_reentrant_ready_subject = NULL;
+    g_spot_reentrant_ready_calls = &reentrant_ready_calls;
+    g_spot_reentrant_ready_rc = 0;
+    g_spot_reentrant_ready_errno = 0;
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
+      pub_node, &spot_reentrant_ready_handler));
+    pub_impl->invoke_send_ready_for_testing ();
+
+    TEST_ASSERT_EQUAL_INT (1, reentrant_ready_calls.load ());
+    TEST_ASSERT_EQUAL_PTR (pub_node, g_spot_reentrant_ready_subject);
+    TEST_ASSERT_EQUAL_INT (-1, g_spot_reentrant_ready_rc);
+    TEST_ASSERT_EQUAL_INT (EDEADLK, g_spot_reentrant_ready_errno);
 
     step_log ("pub_sub_options: publish");
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_spot_pub_publish, pub, "svc-int", "pong", 0));
+      publish_text (&zlink_spot_publish, pub, "svc-int", "pong", 0));
     TEST_ASSERT_TRUE (
       wait_for_spot_message_bytes (sub_probe, "svc-int", "pong", 4, 1000));
 
-    errno = 0;
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_pub_set_routing_id (pub, "late", 4));
-    TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
-    errno = 0;
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_sub_set_routing_id (sub, "late", 4));
-    TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
-
     step_log ("pub_sub_options: unsubscribe/disconnect");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_unsubscribe (sub, "svc-int"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_unsubscribe (sub, "svc-int"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_disconnect_peer_pub (sub_node, endpoint));
     msleep (50);
 
     step_log ("pub_sub_options: destroy handles");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&sub));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_destroy (&pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
     step_log ("pub_sub_options: destroy nodes");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
     step_log ("pub_sub_options: destroy ctx");
-    destroy_test_ctx (ctx);
+    g_spot_reentrant_ready_subject = NULL;
+    g_spot_reentrant_ready_calls = NULL;
+    g_spot_ready_subject = NULL;
+    g_spot_ready_calls = NULL;
 }
 
 static void test_spot_monitors_and_monitor_poller ()
@@ -554,21 +639,25 @@ static void test_spot_monitors_and_monitor_poller ()
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_pub_set_routing_id (pub, "pub-mon", 7));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_sub_set_routing_id (sub, "sub-mon", 7));
+    TEST_ASSERT_NULL (zlink_spot_monitor_open (
+      sub, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_READY, NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    TEST_ASSERT_NULL (zlink_spot_monitor_open (
+      pub, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_READY, NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     void *sub_monitor =
-      zlink_spot_sub_monitor_open (sub, ZLINK_MONITOR_EVENT_READY
-                                          | ZLINK_MONITOR_EVENT_PEER_UP
-                                          | ZLINK_SPOT_SUB_FILTER_APPLIED,
-                                   ignore_service_monitor_event);
+      zlink_spot_monitor_open (sub, ZLINK_SPOT_ROLE_SUB,
+                               ZLINK_MONITOR_EVENT_READY
+                                 | ZLINK_MONITOR_EVENT_PEER_UP
+                                 | ZLINK_SPOT_SUB_FILTER_APPLIED,
+                               ignore_service_monitor_event);
     void *pub_monitor =
-      zlink_spot_pub_monitor_open (pub, ZLINK_MONITOR_EVENT_READY
-                                          | ZLINK_MONITOR_EVENT_PEER_UP
-                                          | ZLINK_SPOT_PUB_QUEUE_DRAINED,
-                                   ignore_service_monitor_event);
+      zlink_spot_monitor_open (pub, ZLINK_SPOT_ROLE_PUB,
+                               ZLINK_MONITOR_EVENT_READY
+                                 | ZLINK_MONITOR_EVENT_PEER_UP
+                                 | ZLINK_SPOT_PUB_QUEUE_DRAINED,
+                               ignore_service_monitor_event);
     TEST_ASSERT_NOT_NULL (sub_monitor);
     TEST_ASSERT_NOT_NULL (pub_monitor);
 
@@ -580,28 +669,21 @@ static void test_spot_monitors_and_monitor_poller ()
       sizeof (endpoint)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer_pub (sub_node, endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (sub, "svc-mon"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "svc-mon"));
     step_log ("monitors: publish");
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_spot_pub_publish, pub, "svc-mon", "payload", 0));
+      publish_text (&zlink_spot_publish, pub, "svc-mon", "payload", 0));
 
     msleep (100);
-    step_log ("monitors: unsubscribe/disconnect");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_unsubscribe (sub, "svc-mon"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_disconnect_peer_pub (sub_node, endpoint));
-    msleep (50);
     step_log ("monitors: close monitors");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&sub_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&pub_monitor));
     step_log ("monitors: destroy handles");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&sub));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_destroy (&pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
     step_log ("monitors: destroy nodes");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
-    step_log ("monitors: destroy ctx");
-    destroy_test_ctx (ctx);
 }
 
 static void test_spot_node_direct_apis_and_explicit_handles_interop ()
@@ -622,23 +704,30 @@ static void test_spot_node_direct_apis_and_explicit_handles_interop ()
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
 
-    zlink_routing_id_t pub_rid;
-    zlink_routing_id_t sub_rid;
-    memset (&pub_rid, 0, sizeof (pub_rid));
-    memset (&sub_rid, 0, sizeof (sub_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_routing_id (pub, &pub_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_routing_id (sub, &sub_rid));
-    TEST_ASSERT_TRUE (pub_rid.size > 0);
-    TEST_ASSERT_TRUE (sub_rid.size > 0);
+    char endpoint[MAX_SOCKET_STRING];
+    int endpoint_seed = 22762;
+    TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+      pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
+      sizeof (endpoint)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer_pub (sub_node, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_subscribe (sub_node, "svc-node"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "svc-node"));
+    spot_probe_t *sub_probe = new spot_probe_t;
+    TEST_ASSERT_SUCCESS_ERRNO (attach_spot_probe (sub, sub_probe));
+    msleep (100);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      publish_text (&zlink_spot_publish, pub, "svc-node", "node", 0));
+    TEST_ASSERT_TRUE (
+      wait_for_spot_message_bytes (sub_probe, "svc-node", "node", 4, 1000));
 
     step_log ("explicit_handles: destroy handles");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&sub));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_destroy (&pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
     step_log ("explicit_handles: destroy nodes");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
-    step_log ("explicit_handles: destroy ctx");
-    destroy_test_ctx (ctx);
 }
 
 static void test_spot_topology_summary_lifecycle ()
@@ -682,43 +771,31 @@ static void test_spot_topology_summary_lifecycle ()
       node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
       sizeof (endpoint)));
 
-    step_log ("topology_summary: create handles");
-    void *pub = create_spot_pub_handle (node);
-    void *sub = create_spot_sub_handle (node);
-    TEST_ASSERT_NOT_NULL (pub);
-    TEST_ASSERT_NOT_NULL (sub);
-
-    zlink_routing_id_t pub_rid;
-    zlink_routing_id_t sub_rid;
-    memset (&pub_rid, 0, sizeof (pub_rid));
-    memset (&sub_rid, 0, sizeof (sub_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_routing_id (pub, &pub_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_routing_id (sub, &sub_rid));
+    step_log ("topology_summary: create unified handle");
+    void *spot = create_spot_handle (node, &ignore_spot_handler);
+    TEST_ASSERT_NOT_NULL (spot);
 
     step_log ("topology_summary: wait initial states");
     TEST_ASSERT_TRUE (wait_for_topology_state (
-      registry, ZLINK_SERVICE_KIND_SPOT_PUB, "svc-summary", &pub_rid,
+      registry, ZLINK_SERVICE_KIND_SPOT_PUB, "svc-summary", NULL,
       ZLINK_TOPOLOGY_STATE_READY, 2000));
     TEST_ASSERT_TRUE (wait_for_topology_state (
-      registry, ZLINK_SERVICE_KIND_SPOT_SUB, "svc-summary", &sub_rid,
+      registry, ZLINK_SERVICE_KIND_SPOT_SUB, "svc-summary", NULL,
       ZLINK_TOPOLOGY_STATE_CONNECTING, 2000));
 
     step_log ("topology_summary: subscribe");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (sub, "svc-summary"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (spot, "svc-summary"));
     TEST_ASSERT_TRUE (wait_for_topology_state (
-      registry, ZLINK_SERVICE_KIND_SPOT_SUB, "svc-summary", &sub_rid,
+      registry, ZLINK_SERVICE_KIND_SPOT_SUB, "svc-summary", NULL,
       ZLINK_TOPOLOGY_STATE_READY, 2000));
 
-    step_log ("topology_summary: destroy sub");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&sub));
+    step_log ("topology_summary: destroy unified handle");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_TRUE (wait_for_topology_state (
-      registry, ZLINK_SERVICE_KIND_SPOT_SUB, "svc-summary", &sub_rid,
+      registry, ZLINK_SERVICE_KIND_SPOT_SUB, "svc-summary", NULL,
       ZLINK_TOPOLOGY_STATE_STOPPED, 2000));
-
-    step_log ("topology_summary: destroy pub");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_destroy (&pub));
     TEST_ASSERT_TRUE (wait_for_topology_state (
-      registry, ZLINK_SERVICE_KIND_SPOT_PUB, "svc-summary", &pub_rid,
+      registry, ZLINK_SERVICE_KIND_SPOT_PUB, "svc-summary", NULL,
       ZLINK_TOPOLOGY_STATE_STOPPED, 2000));
 
     step_log ("topology_summary: destroy node");
@@ -727,8 +804,6 @@ static void test_spot_topology_summary_lifecycle ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     step_log ("topology_summary: destroy registry");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
-    step_log ("topology_summary: destroy ctx");
-    destroy_test_ctx (ctx);
 }
 
 static void test_spot_register_null_derivation_and_wildcard_rejection ()
@@ -784,7 +859,6 @@ static void test_spot_register_null_derivation_and_wildcard_rejection ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&ok_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
-    destroy_test_ctx (ctx);
 }
 
 static void test_spot_tls_settings_lock_after_bind_connect_and_register ()
@@ -879,8 +953,6 @@ static void test_spot_tls_settings_lock_after_bind_connect_and_register ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     step_log ("tls_lock: destroy registry");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
-    step_log ("tls_lock: destroy ctx");
-    destroy_test_ctx (ctx);
     step_log ("tls_lock: cleanup tls");
     cleanup_tls_test_files (files);
 }
@@ -911,7 +983,7 @@ static void test_spot_late_connect_replays_existing_subscription ()
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (sub, "svc-late"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "svc-late"));
     spot_probe_t *sub_probe = new spot_probe_t;
     TEST_ASSERT_SUCCESS_ERRNO (attach_spot_probe (sub, sub_probe));
 
@@ -928,7 +1000,7 @@ static void test_spot_late_connect_replays_existing_subscription ()
           snprintf (payload, sizeof (payload), "m-%d", seq++);
         TEST_ASSERT_TRUE (payload_size > 0);
         TEST_ASSERT_SUCCESS_ERRNO (
-          publish_text (&zlink_spot_pub_publish, pub, "svc-late", payload, 0));
+          publish_text (&zlink_spot_publish, pub, "svc-late", payload, 0));
         received =
           wait_for_spot_message_bytes (sub_probe, "svc-late", payload,
                                        payload_size, 100);
@@ -936,11 +1008,10 @@ static void test_spot_late_connect_replays_existing_subscription ()
     TEST_ASSERT_TRUE_MESSAGE (
       received, "late-connect peer did not receive replayed subscription");
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&sub));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_destroy (&pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
-    destroy_test_ctx (ctx);
 }
 
 static void test_spot_faulted_node_apis_fail_with_efsm ()
@@ -957,16 +1028,17 @@ static void test_spot_faulted_node_apis_fail_with_efsm ()
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_spot_node_bind (node_handle, "tcp://127.0.0.1:9"));
     TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
-    TEST_ASSERT_EQUAL_PTR (NULL, zlink_spot_pub_new (node_handle));
+    TEST_ASSERT_EQUAL_PTR (
+      NULL, zlink_spot_new (node_handle, &ignore_spot_handler));
     TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
-    TEST_ASSERT_EQUAL_PTR (NULL, zlink_spot_sub_new (node_handle, NULL));
+    TEST_ASSERT_EQUAL_PTR (
+      NULL, zlink_spot_new (node_handle, &spot_probe_handler));
     TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_spot_node_connect_peer_pub (node_handle, "tcp://127.0.0.1:9"));
     TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_handle));
-    destroy_test_ctx (ctx);
 }
 
 int main (int, char **)

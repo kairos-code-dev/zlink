@@ -1638,15 +1638,6 @@ void *gateway_t::router ()
     return static_cast<void *> (_runtime->router_socket);
 }
 
-void *gateway_t::poller_socket ()
-{
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
-    lock_routing_id ();
-    if (ensure_router_socket () != 0)
-        return NULL;
-    return static_cast<void *> (_runtime->router_socket);
-}
-
 bool gateway_t::enter_pollable_mode ()
 {
     _pollable_mode = true;
@@ -1827,7 +1818,6 @@ int gateway_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_)
         return -1;
     }
 
-    _send_ready_handler.store (handler_, std::memory_order_release);
     if (_runtime->router_socket) {
         register_gateway_handler_socket (_runtime->router_socket, this);
         if (_runtime->router_socket->socket_set_send_ready_handler (
@@ -1836,6 +1826,7 @@ int gateway_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_)
             return -1;
         }
     }
+    _send_ready_handler.store (handler_, std::memory_order_release);
     return 0;
 }
 

@@ -45,6 +45,94 @@
 #define ZLINK_TLS_HOSTNAME 100
 #endif
 
+#if defined(_WIN32)
+typedef unsigned int zlink_fd_t;
+#else
+typedef int zlink_fd_t;
+#endif
+
+#ifndef ZLINK_POLLIN
+#define ZLINK_POLLIN 1
+#endif
+#ifndef ZLINK_POLLOUT
+#define ZLINK_POLLOUT 2
+#endif
+#ifndef ZLINK_POLLERR
+#define ZLINK_POLLERR 4
+#endif
+#ifndef ZLINK_POLLPRI
+#define ZLINK_POLLPRI 8
+#endif
+
+typedef struct zlink_pollitem_t
+{
+    void *socket;
+    zlink_fd_t fd;
+    short events;
+    short revents;
+} zlink_pollitem_t;
+
+inline int zlink_poll(zlink_pollitem_t *items_, int nitems_, long timeout_)
+{
+    if (nitems_ < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (nitems_ == 0 || !items_) {
+        if (timeout_ > 0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(timeout_));
+        return 0;
+    }
+
+    const auto start = std::chrono::steady_clock::now();
+    while (true) {
+        int ready = 0;
+        for (int i = 0; i < nitems_; ++i) {
+            items_[i].revents = 0;
+            if (!items_[i].socket) {
+                if (items_[i].fd != 0) {
+                    errno = EINVAL;
+                    return -1;
+                }
+                continue;
+            }
+
+            int events = 0;
+            size_t events_len = sizeof(events);
+            if (zlink_getsockopt(items_[i].socket, ZLINK_EVENTS, &events,
+                                 &events_len)
+                != 0) {
+                return -1;
+            }
+
+            if ((items_[i].events & ZLINK_POLLIN) != 0
+                && (events & ZLINK_POLLIN) != 0)
+                items_[i].revents |= ZLINK_POLLIN;
+            if ((items_[i].events & ZLINK_POLLOUT) != 0
+                && (events & ZLINK_POLLOUT) != 0)
+                items_[i].revents |= ZLINK_POLLOUT;
+
+            if (items_[i].revents != 0)
+                ++ready;
+        }
+
+        if (ready > 0 || timeout_ == 0)
+            return ready;
+
+        if (timeout_ > 0) {
+            const long elapsed_ms = static_cast<long>(
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - start)
+                .count());
+            if (elapsed_ms >= timeout_)
+                return 0;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
 // --- Configuration ---
 static const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 262144};
 static const std::vector<std::string> TRANSPORTS = {"tcp", "inproc", "ipc"};

@@ -72,12 +72,9 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     add_current_bench_single(perf_dealer_dealer single/src/perf_dealer_dealer.cpp)
     add_current_bench_single(perf_dealer_router single/src/perf_dealer_router.cpp)
     add_current_bench_single(perf_router_router single/src/perf_router_router.cpp)
-    # TODO: poll-based benchmark needs rewrite (zlink_poll removed)
-    #add_current_bench_single(perf_router_router_poll single/src/perf_router_router_poll.cpp)
-    # TODO: perf_gateway needs rewrite (uses removed zlink_receiver_* API)
-    #add_current_bench_single(perf_gateway single/src/perf_gateway.cpp)
-    # TODO: spot benchmark needs adaptation to new spot API
-    #add_current_bench_single(perf_spot single/src/perf_spot.cpp)
+    add_current_bench_single(perf_router_router_poll single/src/perf_router_router_poll.cpp)
+    add_current_bench_single(perf_gateway single/src/perf_gateway.cpp)
+    add_current_bench_single(perf_spot single/src/perf_spot.cpp)
 
     # Standalone STREAM client (multi-only).
     add_executable(
@@ -93,29 +90,28 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
 
     add_current_bench_multi(comp_src_dealer_dealer_server
                            multi/src/perf_multi_dealer_dealer_server.cpp)
+    add_current_bench_multi(comp_src_dealer_router_server
+                           multi/src/perf_multi_dealer_router_server.cpp)
+    add_current_bench_multi(comp_src_router_router_server
+                           multi/src/perf_multi_router_router_server.cpp)
     add_current_bench_multi(comp_src_pubsub_server
                            multi/src/perf_multi_pubsub_server.cpp)
-    # TODO: multi benchmarks below need rewrite (zlink_poll removed, spot API changed)
-    #add_current_bench_multi(comp_src_dealer_router_server
-    #                       multi/src/perf_multi_dealer_router_server.cpp)
-    #add_current_bench_multi(comp_src_router_router_server
-    #                       multi/src/perf_multi_router_router_server.cpp)
-    #add_current_bench_multi(comp_src_gateway_server
-    #                       multi/src/perf_multi_gateway_server.cpp)
-    #add_current_bench_multi(comp_src_dealer_dealer_client
-    #                       multi/src/perf_multi_dealer_dealer_client.cpp)
-    #add_current_bench_multi(comp_src_dealer_router_client
-    #                       multi/src/perf_multi_dealer_router_client.cpp)
-    #add_current_bench_multi(comp_src_router_router_client
-    #                       multi/src/perf_multi_router_router_client.cpp)
-    #add_current_bench_multi(comp_src_pubsub_client
-    #                       multi/src/perf_multi_pubsub_client.cpp)
-    #add_current_bench_multi(comp_src_gateway_client
-    #                       multi/src/perf_multi_gateway_client.cpp)
-    #add_current_bench_multi(comp_src_spot_server
-    #                       multi/src/perf_multi_spot_server.cpp)
-    #add_current_bench_multi(comp_src_spot_client
-    #                       multi/src/perf_multi_spot_client.cpp)
+    add_current_bench_multi(comp_src_gateway_server
+                           multi/src/perf_multi_gateway_server.cpp)
+    add_current_bench_multi(comp_src_spot_server
+                           multi/src/perf_multi_spot_server.cpp)
+    add_current_bench_multi(comp_src_dealer_dealer_client
+                           multi/src/perf_multi_dealer_dealer_client.cpp)
+    add_current_bench_multi(comp_src_dealer_router_client
+                           multi/src/perf_multi_dealer_router_client.cpp)
+    add_current_bench_multi(comp_src_router_router_client
+                           multi/src/perf_multi_router_router_client.cpp)
+    add_current_bench_multi(comp_src_pubsub_client
+                           multi/src/perf_multi_pubsub_client.cpp)
+    add_current_bench_multi(comp_src_gateway_client
+                           multi/src/perf_multi_gateway_client.cpp)
+    add_current_bench_multi(comp_src_spot_client
+                           multi/src/perf_multi_spot_client.cpp)
     add_current_bench_multi(comp_src_stream_callback_server
                            multi/src/perf_multi_stream_callback_server.cpp)
 else()

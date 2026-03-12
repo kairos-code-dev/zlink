@@ -80,7 +80,10 @@ class socket_base_t : public own_t,
     int socket_set_send_ready_handler (zlink_send_ready_handler_fn handler_);
     bool socket_msg_dispatch_active () const;
     static socket_base_t *current_socket_msg_dispatch_socket ();
+    static socket_base_t *current_send_ready_dispatch_socket ();
     static zlink::pipe_t *current_socket_msg_dispatch_pipe ();
+    bool send_ready_dispatch_in_callback () const;
+    void invoke_send_ready_handler_for_testing ();
     int stream_dispatch_msg_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     virtual int sub_dispatch_start (spot_sub_io_handler_fn callback_,
                                     void *userdata_);

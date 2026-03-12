@@ -710,15 +710,25 @@ ZLINK_EXPORT void *zlink_socket (void *,
                                  zlink_socket_type_t type_,
                                  const zlink_socket_handler_t *handler_);
 
+/**
+ * @brief Install or replace the send-ready callback for a send-capable handle.
+ *
+ * The handler is replace-only. Passing NULL is invalid. A successful replace is
+ * visible from the next writable transition. If called reentrantly from the
+ * same handle's send-ready callback, the call fails with errno=EDEADLK.
+ */
 ZLINK_EXPORT int zlink_socket_set_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_);
 
 /**
  * @brief Close a socket and release its resources.
  *
- * For STREAM sockets, close is safe to call from application threads and is
- * serialized against STREAM send/attach/detach. Closing a STREAM socket from
- * inside its raw callback is not supported.
+ * Public socket handles are thread-safe for same-handle operational APIs.
+ * close/destroy is more restrictive: if another thread has an in-flight
+ * callback or operational API on the same handle, close fails with errno=EBUSY.
+ * Self-close from a send-ready or monitor callback is deferred until callback
+ * epilogue. For STREAM raw callbacks, close from inside the raw callback is not
+ * supported and fails with errno=EBUSY.
  */
 ZLINK_EXPORT int zlink_close (void *s_);
 
@@ -1368,98 +1378,6 @@ ZLINK_EXPORT int zlink_spot_node_set_sub_option (void *node,
                                                  const void *optval,
                                                  size_t optvallen);
 
-/* SPOT Pub (default thread-safe) ------------------------------------------ */
-
-/** @brief Create a thread-safe SPOT publisher attached to the given node. */
-ZLINK_EXPORT void *zlink_spot_pub_new (void *node);
-
-/** @brief Destroy a SPOT publisher. */
-ZLINK_EXPORT int zlink_spot_pub_destroy (void **pub_p);
-
-/** @brief Set a SpotPub service option. */
-ZLINK_EXPORT int zlink_spot_pub_set_option (void *pub,
-                                            zlink_spot_pub_option_t option,
-                                            const void *optval,
-                                            size_t optvallen);
-
-ZLINK_EXPORT int zlink_spot_pub_set_send_ready_handler (
-  void *pub,
-  zlink_send_ready_handler_fn handler);
-
-/** @brief Override the representative routing id before first use. */
-ZLINK_EXPORT int zlink_spot_pub_set_routing_id (void *pub,
-                                                const void *data,
-                                                size_t size);
-
-/** @brief Return the representative routing id for this SpotPub. */
-ZLINK_EXPORT int zlink_spot_pub_routing_id (void *pub,
-                                            zlink_routing_id_t *out);
-
-/** @brief Enumerate SpotPub peer queue stats. */
-ZLINK_EXPORT int zlink_spot_pub_peers (void *pub,
-                                       zlink_peer_info_t *peers,
-                                       size_t *count);
-
-/**
- * @brief Publish a multipart message under a topic.
- *
- * Thread-safe:
- * - SYNC mode (default): concurrent calls are serialized internally.
- * - ASYNC mode: calls enqueue into an internal queue and return on enqueue.
- *
- * ASYNC mode can return EAGAIN when the queue is full and the queue-full
- * policy is ZLINK_SPOT_PUB_QUEUE_FULL_EAGAIN.
- *
- * @param topic_id    Topic identifier string.
- * @param parts       Multipart message array.
- * @param part_count  Number of parts.
- * @param flags       Send flags (typically 0).
- */
-ZLINK_EXPORT int zlink_spot_pub_publish (void *pub,
-                                         const char *topic_id,
-                                         zlink_msg_t *parts,
-                                         size_t part_count,
-                                         zlink_send_flags_t flags);
-
-/* SPOT Sub ---------------------------------------------------------------- */
-
-/** @brief Create a SPOT subscriber attached to the given node. */
-ZLINK_EXPORT void *zlink_spot_sub_new (void *node,
-                                       zlink_spot_handler_fn handler);
-
-/** @brief Destroy a SPOT subscriber. */
-ZLINK_EXPORT int zlink_spot_sub_destroy (void **sub_p);
-
-/** @brief Set a SpotSub service option. */
-ZLINK_EXPORT int zlink_spot_sub_set_option (void *sub,
-                                            zlink_spot_sub_option_t option,
-                                            const void *optval,
-                                            size_t optvallen);
-
-/** @brief Override the representative routing id before first use. */
-ZLINK_EXPORT int zlink_spot_sub_set_routing_id (void *sub,
-                                                const void *data,
-                                                size_t size);
-
-/** @brief Return the representative routing id for this SpotSub. */
-ZLINK_EXPORT int zlink_spot_sub_routing_id (void *sub,
-                                            zlink_routing_id_t *out);
-
-/** @brief Enumerate SpotSub peer queue stats. */
-ZLINK_EXPORT int zlink_spot_sub_peers (void *sub,
-                                       zlink_peer_info_t *peers,
-                                       size_t *count);
-
-/** @brief Subscribe to an exact topic. */
-ZLINK_EXPORT int zlink_spot_sub_subscribe (void *sub, const char *topic_id);
-
-/** @brief Subscribe to a topic pattern (prefix match). */
-ZLINK_EXPORT int zlink_spot_sub_subscribe_pattern (void *sub, const char *pattern);
-
-/** @brief Unsubscribe from a topic or pattern. */
-ZLINK_EXPORT int zlink_spot_sub_unsubscribe (void *sub,
-                                             const char *topic_id_or_pattern);
-
 /******************************************************************************/
 /*  Service Monitor / Topology API                                            */
 /******************************************************************************/
@@ -1576,6 +1494,12 @@ typedef struct zlink_service_event_t
 typedef void (*zlink_service_monitor_handler_fn) (
   const zlink_service_event_t *event_);
 
+/**
+ * @brief Open a service monitor handle with a fixed callback.
+ *
+ * Monitor handles are thread-safe child handles. The callback is fixed at
+ * open time and cannot be replaced later.
+ */
 ZLINK_EXPORT void *zlink_discovery_monitor_open (
   void *discovery,
   zlink_discovery_monitor_event_mask_t events,
@@ -1589,15 +1513,14 @@ ZLINK_EXPORT void *zlink_spot_monitor_open (
   zlink_spot_role_t role,
   zlink_spot_monitor_event_mask_t events,
   zlink_service_monitor_handler_fn handler);
-ZLINK_EXPORT void *zlink_spot_sub_monitor_open (
-  void *sub,
-  zlink_spot_monitor_event_mask_t events,
-  zlink_service_monitor_handler_fn handler);
-ZLINK_EXPORT void *zlink_spot_pub_monitor_open (
-  void *pub,
-  zlink_spot_monitor_event_mask_t events,
-  zlink_service_monitor_handler_fn handler);
 
+/**
+ * @brief Close a service monitor handle.
+ *
+ * If another thread is executing the monitor callback, the close fails with
+ * errno=EBUSY. Self-close from the callback succeeds and is deferred until the
+ * callback returns.
+ */
 ZLINK_EXPORT int zlink_service_monitor_close (void **monitor_p);
 
 typedef enum zlink_topology_source_t

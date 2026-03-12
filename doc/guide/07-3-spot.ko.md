@@ -100,44 +100,41 @@ zlink_spot_node_connect_peer_pub(node, "tcp://node3:9000");
 **주의:** 수동 Mesh에서는 Discovery가 없으므로 Registry topology visibility도
 없다. 이는 의도된 제한이다.
 
-## 4. SPOT Pub/Sub 사용
+## 4. Unified SPOT 사용
 
-### 4.1 발행 (SPOT Pub)
+### 4.1 생성
 
 ```c
-void *pub = zlink_spot_pub_new(node);
+void *spot = zlink_spot_new(node, on_message);
+```
 
-/* 멀티파트 메시지 구성 및 발행 */
+`zlink_spot_new()`는 publish와 subscribe를 함께 가진 unified facade를
+반환한다. public standalone `spot_pub` / `spot_sub` 생성자는 제공하지 않는다.
+
+### 4.2 발행
+
+```c
 zlink_msg_t part;
 zlink_msg_init_size(&part, 11);
 memcpy(zlink_msg_data(&part), "hello world", 11);
-zlink_spot_pub_publish(pub, "chat:room1:message", &part, 1, 0);
+zlink_spot_publish(spot, "chat:room1:message", &part, 1, 0);
 ```
 
-### 4.2 구독 (SPOT Sub)
+### 4.3 구독 / 해제
 
 ```c
-void *sub = zlink_spot_sub_new(node, on_message);
+zlink_spot_subscribe(spot, "chat:room1:message");
+zlink_spot_subscribe_pattern(spot, "chat:room1:*");
 
-/* 정확한 토픽 구독 */
-zlink_spot_sub_subscribe(sub, "chat:room1:message");
-
-/* 패턴 구독 (접두어 매칭) */
-zlink_spot_sub_subscribe_pattern(sub, "chat:room1:*");
+zlink_spot_unsubscribe(spot, "chat:room1:message");
+zlink_spot_unsubscribe(spot, "chat:room1:*");
 ```
 
 수신은 `on_message` callback으로 자동 dispatch된다 (아래 [4.4 콜백 핸들러](#44-콜백-핸들러-handler) 참조).
 
-### 4.3 구독 해제
-
-```c
-zlink_spot_sub_unsubscribe(sub, "chat:room1:message");
-zlink_spot_sub_unsubscribe(sub, "chat:room1:*");
-```
-
 ### 4.4 콜백 핸들러 (Handler)
 
-`spot_sub` 또는 `spot_node`를 생성할 때 callback을 함께 넘기면, 이후 수신
+`spot` 또는 `spot_node`를 생성할 때 callback을 함께 넘기면, 이후 수신
 메시지는 그 callback으로 자동 dispatch된다.
 
 ```c
@@ -152,17 +149,17 @@ void on_message(const zlink_routing_id_t *source_rid,
 /* spot_node 생성 시 handler 등록 */
 void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
 
-/* 또는 별도 spot_sub 생성 시 handler 등록 */
-void *sub = zlink_spot_sub_new(node, on_message);
+/* 또는 unified spot 생성 시 handler 등록 */
+void *spot = zlink_spot_new(node, on_message);
 ```
 
-**중요:** `spot_pub`은 thread-safe로 사용할 수 있다. 반면 `spot_sub`은 동일
-인스턴스를 여러 스레드에서 동시에 사용하면 안 된다.
-subscribe/unsubscribe 조작은 한 번에 하나의 실행 컨텍스트에서만 수행해야 한다.
+**중요:** unified `spot` handle은 same-handle operational API 기준 thread-safe다.
+다만 callback은 I/O 경로에서 직접 호출되므로, 느린 처리는 사용자 queue로
+넘겨 별도 thread에서 처리하는 편이 안전하다.
 
 **제약 사항:**
 
-- callback은 `zlink_spot_node_new()` 또는 `zlink_spot_sub_new()` 호출 시점에 제공해야 한다
+- callback은 `zlink_spot_node_new()` 또는 `zlink_spot_new()` 호출 시점에 제공해야 한다
 - 생성 후 callback 교체나 해제는 지원하지 않는다
 - 콜백은 소켓 dispatch / I/O 경로에서 직접 호출된다
 - 콜백에서 블로킹 작업을 수행하면 다른 I/O 진행에 영향을 줄 수 있다
@@ -187,13 +184,13 @@ subscribe/unsubscribe 조작은 한 번에 하나의 실행 컨텍스트에서�
 
 ## 6. 전달 정책
 
-- 로컬 publish (`spot_pub`) → 로컬 SPOT Sub 분배 + PUB 송출 (원격 전파)
+- 로컬 publish (`spot`) → 로컬 SPOT Sub 분배 + PUB 송출 (원격 전파)
 - 원격 수신 (SUB) → 로컬 SPOT Sub 분배만 (재발행 없음)
 - 재발행 없음으로 메시지 루프/중복 방지
 - `subscribe()` / `unsubscribe()` 반환은 local socket filter 적용 의미이며,
   클러스터 전체 전파 완료를 보장하지 않는다
-- 같은 `SpotPub` 인스턴스에서 연속 publish된 메시지의 순서는 보존된다
-- 서로 다른 `SpotPub` 인스턴스 사이의 전역 순서는 보장하지 않는다
+- 같은 `spot` handle에서 연속 publish된 메시지의 순서는 보존된다
+- 서로 다른 `spot` handle 사이의 전역 순서는 보장하지 않는다
 - 동일 subscriber에 exact topic + pattern이 둘 다 매칭되더라도 메시지는 1회만 전달된다
 
 SPOT은 live pub/sub이며, durable delivery, ack/retry, exactly-once,
@@ -202,15 +199,14 @@ late join에 대한 과거 메시지 재전송은 보장하지 않는다.
 ## 7. 정리
 
 ```c
-zlink_spot_pub_destroy(&pub);
-zlink_spot_sub_destroy(&sub);
+zlink_spot_destroy(&spot);
 zlink_spot_node_destroy(&node);
 zlink_discovery_destroy(&discovery);
 ```
 
-**정리 순서:** `SpotPub` / `SpotSub`를 먼저 destroy하고, 그 다음 `SpotNode`,
-마지막으로 `Discovery` 순서로 정리한다. `SpotNode` destroy 전에 관련
-`SpotPub` / `SpotSub`의 외부 사용을 중단해야 한다.
+**정리 순서:** `spot`을 먼저 destroy하고, 그 다음 `SpotNode`, 마지막으로
+`Discovery` 순서로 정리한다. `SpotNode` destroy 전에 관련 `spot`의 외부 사용을
+중단해야 한다.
 
 ---
 [← Gateway](07-2-gateway.ko.md) | [Routing ID →](08-routing-id.ko.md)

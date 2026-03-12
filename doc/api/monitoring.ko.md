@@ -441,41 +441,27 @@ void *zlink_receiver_monitor_open(void *receiver, int events);
 
 ---
 
-### zlink_spot_sub_monitor_open
+### zlink_spot_monitor_open
 
-SPOT Subscriber의 서비스 모니터를 엽니다.
+unified SPOT handle의 role-specific 서비스 모니터를 엽니다.
 
 ```c
-void *zlink_spot_sub_monitor_open(void *sub, int events);
+void *zlink_spot_monitor_open(void *spot,
+                              zlink_spot_role_t role,
+                              zlink_spot_monitor_event_mask_t events,
+                              zlink_service_monitor_handler_fn handler);
 ```
 
-`events` 비트마스크와 일치하는 SPOT Subscriber 이벤트를 전달하는 서비스
-모니터를 생성합니다. `ZLINK_SPOT_SUB_FILTER_APPLIED`,
-`ZLINK_SPOT_SUB_SUBSCRIPTION_READY` 및 공통 이벤트 상수를 사용합니다.
+`role`은 `ZLINK_SPOT_ROLE_PUB` 또는 `ZLINK_SPOT_ROLE_SUB`입니다.
+
+- `ZLINK_SPOT_ROLE_SUB`일 때는 `ZLINK_SPOT_SUB_FILTER_APPLIED`,
+  `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` 및 공통 이벤트 상수를 사용합니다.
+- `ZLINK_SPOT_ROLE_PUB`일 때는 `ZLINK_SPOT_PUB_QUEUE_FULL`,
+  `ZLINK_SPOT_PUB_QUEUE_DRAINED` 및 공통 이벤트 상수를 사용합니다.
 
 **반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음.
-
-**참고:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
-
----
-
-### zlink_spot_pub_monitor_open
-
-SPOT Publisher의 서비스 모니터를 엽니다.
-
-```c
-void *zlink_spot_pub_monitor_open(void *pub, int events);
-```
-
-`events` 비트마스크와 일치하는 SPOT Publisher 이벤트를 전달하는 서비스
-모니터를 생성합니다. `ZLINK_SPOT_PUB_QUEUE_FULL`,
-`ZLINK_SPOT_PUB_QUEUE_DRAINED` 및 공통 이벤트 상수를 사용합니다.
-
-**반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
-
-**스레드 안전성:** 스레드 안전하지 않음.
+**스레드 안전성:** 모니터 handle 자체는 thread-safe child handle입니다.
 
 **참고:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
 
@@ -505,8 +491,7 @@ int zlink_service_monitor_recv(void *monitor,
 **스레드 안전성:** 모니터 핸들을 소유한 스레드에서 호출해야 합니다.
 
 **참고:** `zlink_discovery_monitor_open`, `zlink_gateway_monitor_open`,
-`zlink_receiver_monitor_open`, `zlink_spot_sub_monitor_open`,
-`zlink_spot_pub_monitor_open`
+`zlink_receiver_monitor_open`, `zlink_spot_monitor_open`
 
 ---
 

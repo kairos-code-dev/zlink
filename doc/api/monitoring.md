@@ -443,41 +443,27 @@ Creates a service monitor that delivers Receiver events matching the
 
 ---
 
-### zlink_spot_sub_monitor_open
+### zlink_spot_monitor_open
 
-Open a service monitor for a SPOT Subscriber.
+Open a role-specific service monitor for a unified SPOT handle.
 
 ```c
-void *zlink_spot_sub_monitor_open(void *sub, int events);
+void *zlink_spot_monitor_open(void *spot,
+                              zlink_spot_role_t role,
+                              zlink_spot_monitor_event_mask_t events,
+                              zlink_service_monitor_handler_fn handler);
 ```
 
-Creates a service monitor that delivers SPOT Subscriber events matching
-the `events` bitmask. Use `ZLINK_SPOT_SUB_FILTER_APPLIED`,
-`ZLINK_SPOT_SUB_SUBSCRIPTION_READY`, and the common event constants.
+`role` is `ZLINK_SPOT_ROLE_PUB` or `ZLINK_SPOT_ROLE_SUB`.
+
+- For `ZLINK_SPOT_ROLE_SUB`, use `ZLINK_SPOT_SUB_FILTER_APPLIED`,
+  `ZLINK_SPOT_SUB_SUBSCRIPTION_READY`, and the common event constants.
+- For `ZLINK_SPOT_ROLE_PUB`, use `ZLINK_SPOT_PUB_QUEUE_FULL`,
+  `ZLINK_SPOT_PUB_QUEUE_DRAINED`, and the common event constants.
 
 **Returns:** Monitor handle on success, or `NULL` on failure (errno is set).
 
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
-
----
-
-### zlink_spot_pub_monitor_open
-
-Open a service monitor for a SPOT Publisher.
-
-```c
-void *zlink_spot_pub_monitor_open(void *pub, int events);
-```
-
-Creates a service monitor that delivers SPOT Publisher events matching
-the `events` bitmask. Use `ZLINK_SPOT_PUB_QUEUE_FULL`,
-`ZLINK_SPOT_PUB_QUEUE_DRAINED`, and the common event constants.
-
-**Returns:** Monitor handle on success, or `NULL` on failure (errno is set).
-
-**Thread safety:** Not thread-safe.
+**Thread safety:** The monitor handle itself is a thread-safe child handle.
 
 **See also:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
 
@@ -507,8 +493,7 @@ one of the `zlink_*_monitor_open()` functions.
 **Thread safety:** Must be called from the thread that owns the monitor handle.
 
 **See also:** `zlink_discovery_monitor_open`, `zlink_gateway_monitor_open`,
-`zlink_receiver_monitor_open`, `zlink_spot_sub_monitor_open`,
-`zlink_spot_pub_monitor_open`
+`zlink_receiver_monitor_open`, `zlink_spot_monitor_open`
 
 ---
 

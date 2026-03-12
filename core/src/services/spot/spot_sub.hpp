@@ -42,12 +42,9 @@ class spot_sub_t
     int subscribe_pattern (const char *pattern_);
     int unsubscribe (const char *topic_or_pattern_);
     int set_option (int option_, const void *optval_, size_t optvallen_);
-    int set_routing_id (const void *data_, size_t size_);
     int routing_id (zlink_routing_id_t *out_) const;
     int peers (zlink_peer_info_t *peers_, size_t *count_) const;
     void *monitor_open (int events_);
-    void *poller_socket ();
-    int configured_rcvhwm () const;
     int set_direct_handler (spot_sub_direct_handler_fn handler_,
                             void *userdata_);
     bool has_filters () const;
@@ -90,7 +87,6 @@ class spot_sub_t
     mutable mutex_t _sync;
     zlink_routing_id_t _routing_id;
     bool _routing_id_locked;
-    int _configured_rcvhwm;
 
     std::set<std::string> _topics;
     std::set<std::string> _patterns;

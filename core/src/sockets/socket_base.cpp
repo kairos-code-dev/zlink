@@ -72,6 +72,7 @@
 namespace
 {
 thread_local zlink::socket_base_t *g_current_socket_msg_dispatch_socket = NULL;
+thread_local zlink::socket_base_t *g_current_send_ready_dispatch_socket = NULL;
 thread_local zlink::pipe_t *g_current_socket_msg_dispatch_pipe = NULL;
 
 static void generate_default_routing_id (unsigned char out_[16])
@@ -1411,6 +1412,10 @@ int zlink::socket_base_t::socket_set_send_ready_handler (
         errno = EINVAL;
         return -1;
     }
+    if (send_ready_dispatch_in_callback ()) {
+        errno = EDEADLK;
+        return -1;
+    }
 
     _send_ready_handler.store (handler_, std::memory_order_release);
     return 0;
@@ -1427,9 +1432,32 @@ zlink::socket_base_t::current_socket_msg_dispatch_socket ()
     return g_current_socket_msg_dispatch_socket;
 }
 
+zlink::socket_base_t *
+zlink::socket_base_t::current_send_ready_dispatch_socket ()
+{
+    return g_current_send_ready_dispatch_socket;
+}
+
 zlink::pipe_t *zlink::socket_base_t::current_socket_msg_dispatch_pipe ()
 {
     return g_current_socket_msg_dispatch_pipe;
+}
+
+bool zlink::socket_base_t::send_ready_dispatch_in_callback () const
+{
+    return g_current_send_ready_dispatch_socket == this;
+}
+
+void zlink::socket_base_t::invoke_send_ready_handler_for_testing ()
+{
+    zlink_send_ready_handler_fn handler = socket_send_ready_handler ();
+    if (!handler)
+        return;
+
+    socket_base_t *previous = g_current_send_ready_dispatch_socket;
+    g_current_send_ready_dispatch_socket = this;
+    handler (this);
+    g_current_send_ready_dispatch_socket = previous;
 }
 
 zlink_socket_msg_handler_fn zlink::socket_base_t::socket_msg_handler () const
@@ -1544,8 +1572,9 @@ void zlink::socket_base_t::notify_send_ready_if_armed ()
         return;
 
     zlink_send_ready_handler_fn handler = socket_send_ready_handler ();
-    if (handler)
-        handler (this);
+    if (handler) {
+        invoke_send_ready_handler_for_testing ();
+    }
 }
 
 int zlink::socket_base_t::sub_dispatch_start (spot_sub_io_handler_fn callback_,

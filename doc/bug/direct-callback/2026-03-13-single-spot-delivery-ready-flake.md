@@ -9,6 +9,29 @@
 즉 현재 `DELIVERY_READY_CHANGED`도 perf가 기대하는
 "이 이벤트를 본 뒤 바로 첫 publish 가능" 계약을 아직 안정적으로 보장하지 못한다.
 
+## Status Update (2026-03-13)
+
+- 최소 service contract 회귀 테스트는 추가했고 통과한다.
+  - `core/tests/integration/monitoring/test_monitor_service_contract.cpp`
+  - `test_spot_delivery_ready_changed_implies_first_publish_delivery`
+- 즉 single pub/sub 최소 경로에서는
+  `*_DELIVERY_READY_CHANGED -> 첫 publish/receive` contract가 성립한다.
+- 그러나 direct perf tcp 재실행에서는 flake가 여전히 남아 있다.
+
+```bash
+for i in 1 2 3 4 5; do
+  timeout 30s env PERF_SINGLE_DURATION_SECONDS=2 \
+    PERF_SINGLE_SNDTIMEO_MS=200 PERF_SINGLE_RCVTIMEO_MS=200 \
+    ./core/build/bin/perf_spot current tcp 1024
+done
+```
+
+- 관측 결과: `exit=0, 0, 0, 0, 1`
+- 따라서 이 리포트는 아직 open 상태다.
+- 현재 범위는 "minimal single spot contract 전체가 깨진다"보다,
+  `perf_spot` startup/phase 경로에서만 드러나는 race 또는 timing gap일 가능성이
+  더 크다.
+
 ## Current perf gate
 
 현재 [perf_spot.cpp](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/perf/single/src/perf_spot.cpp)

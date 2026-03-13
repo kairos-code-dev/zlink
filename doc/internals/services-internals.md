@@ -82,8 +82,8 @@ struct registry_state_t {
 
 ## 5. Receiver Internal Implementation
 
-> **Note**: The public C API and internal C++ implementation are aligned on
-> `receiver` naming (`receiver_t` in `core/src/services/gateway/receiver.hpp`).
+> **Note**: The receiver role is now unified into `gateway_t`
+> (`core/src/services/gateway/gateway.cpp/hpp`). There is no separate `receiver_t` class.
 
 ### 5.1 State Machine
 ```

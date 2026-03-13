@@ -106,13 +106,6 @@ inline bool should_ignore (const error_info_t &err)
     return err.sev == severity::ignore;
 }
 
-//  Extension point for SSL errors
-//  Implemented in asio_ssl_error_handler.hpp when SSL is enabled
-//
-//  #ifdef ZLINK_HAVE_ASIO_SSL
-//  error_info_t classify_ssl (const boost::system::error_code &ec);
-//  #endif
-
 } // namespace asio_error
 } // namespace zlink
 

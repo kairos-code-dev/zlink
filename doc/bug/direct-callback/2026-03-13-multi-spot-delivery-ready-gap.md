@@ -14,6 +14,36 @@ contract가 server-visible delivery-ready를 충분히 표현하지 못하는 �
 
 기존 single `SPOT` wss gap 문서와는 별개다.
 
+## Status Update (2026-03-13)
+
+- single pub/sub 최소 contract 회귀 테스트는 추가했고 통과한다.
+  - `core/tests/integration/monitoring/test_monitor_service_contract.cpp`
+  - `test_spot_delivery_ready_changed_implies_first_publish_delivery`
+- 즉 문제는 single minimal delivery-ready contract 전체보다는
+  multi perf server/client phase 전환에 더 가깝다.
+- direct multi repro는 여전히 재현된다.
+
+Server:
+
+```bash
+env PERF_DEBUG=1 PERF_MSG_SIZES=1024 PERF_CLIENTS=16 \
+  ./core/build/bin/comp_src_spot_server current tcp
+```
+
+Client:
+
+```bash
+timeout 45s env PERF_DEBUG=1 PERF_MSG_SIZES=1024 PERF_CLIENTS=16 \
+  ./core/build/bin/comp_src_spot_client current tcp 1024 \
+    --endpoint tcp://127.0.0.1:37800
+```
+
+- 관측 결과:
+  - server: `READY,tcp://127.0.0.1:37800`
+  - client: `[multi-spot-client] warmup start timeout size=1024`
+  - client 종료: `exit=124`
+- 따라서 이 리포트도 아직 open 상태다.
+
 파일:
 - `doc/bug/direct-callback/2026-03-13-spot-subscription-ready-wss-delivery-gap.md`
 

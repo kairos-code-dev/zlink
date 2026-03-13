@@ -97,8 +97,8 @@ struct gateway_queue_probe_t
             return;
         }
         last_sample_ns = now;
-        LIBZLINK_UNUSED (send_path_);
-        LIBZLINK_UNUSED (force_);
+        (void) send_path_;
+        (void) force_;
         // Registry-based gateway peer introspection intentionally does not
         // expose socket queue counters, so this probe remains best-effort only.
     }
@@ -106,17 +106,10 @@ struct gateway_queue_probe_t
 
 struct gateway_server_state_t
 {
-    gateway_server_state_t () : gateway (NULL), send_failures (0) {}
-
-    void *gateway;
-    std::atomic<int> send_failures;
-};
-
-struct gateway_client_state_t
-{
-    gateway_client_state_t () :
+    gateway_server_state_t () :
         run_id (0),
         msg_size (0),
+        active_deadline_us (0),
         warmup_received (0),
         active_received (0),
         probe (NULL)
@@ -125,6 +118,7 @@ struct gateway_client_state_t
 
     uint32_t run_id;
     size_t msg_size;
+    uint64_t active_deadline_us;
     unsigned long long warmup_received;
     unsigned long long active_received;
     latency_stats_builder_t latency;
@@ -134,7 +128,6 @@ struct gateway_client_state_t
 };
 
 gateway_server_state_t *g_server_state = NULL;
-gateway_client_state_t *g_client_state = NULL;
 
 struct gateway_ready_monitor_state_t
 {
@@ -264,13 +257,6 @@ bool open_gateway_ready_monitor (void *gateway_,
     if (!state)
         return false;
 
-    zlink_gateway_monitor_snapshot_t snapshot;
-    memset (&snapshot, 0, sizeof (snapshot));
-    if (zlink_gateway_monitor_snapshot (gateway_, &snapshot) == 0) {
-        state->ready_peer_count = snapshot.ready_peer_count;
-        state->send_ready = snapshot.send_ready != 0;
-    }
-
     void *monitor = zlink_gateway_monitor_open (
       gateway_,
       ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
@@ -287,6 +273,14 @@ bool open_gateway_ready_monitor (void *gateway_,
     if (monitor_hwm > 0) {
         set_sockopt_int (monitor, ZLINK_SNDHWM, monitor_hwm, "ZLINK_SNDHWM");
         set_sockopt_int (monitor, ZLINK_RCVHWM, monitor_hwm, "ZLINK_RCVHWM");
+    }
+
+    zlink_monitor_snapshot_t snapshot;
+    memset (&snapshot, 0, sizeof (snapshot));
+    if (zlink_monitor_snapshot (monitor, &snapshot) == 0) {
+        state->ready_peer_count = snapshot.ready_peer_count;
+        state->send_ready =
+          (snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0;
     }
 
     register_gateway_ready_monitor (monitor, state);
@@ -351,7 +345,6 @@ void cleanup_gateway_case (void **client_gateway_,
     if (server_gateway_ && *server_gateway_)
         zlink_gateway_destroy (server_gateway_);
     g_server_state = NULL;
-    g_client_state = NULL;
 }
 
 bool is_supported_transport (const std::string &transport_)
@@ -459,26 +452,8 @@ void server_handler (const zlink_routing_id_t *source_rid_,
                      zlink_msg_t *parts_,
                      size_t part_count_)
 {
-    if (!g_server_state || !g_server_state->gateway || !source_rid_
-        || part_count_ == 0) {
-        close_parts (parts_, part_count_);
-        return;
-    }
-
-    if (zlink_gateway_send_rid (
-          g_server_state->gateway, source_rid_, parts_, part_count_, 0)
-        != 0) {
-        g_server_state->send_failures.fetch_add (1, std::memory_order_release);
-        close_parts (parts_, part_count_);
-    }
-}
-
-void client_handler (const zlink_routing_id_t *,
-                     zlink_msg_t *parts_,
-                     size_t part_count_)
-{
-    gateway_client_state_t *state = g_client_state;
-    if (!state || part_count_ == 0) {
+    gateway_server_state_t *state = g_server_state;
+    if (!state || !source_rid_ || part_count_ == 0) {
         close_parts (parts_, part_count_);
         return;
     }
@@ -489,22 +464,23 @@ void client_handler (const zlink_routing_id_t *,
         zlink_msg_data (&parts_[0]), zlink_msg_size (&parts_[0]), &header)
       && header.run_id == state->run_id && header.msg_size == state->msg_size;
 
-    {
+    if (header_ok) {
         std::lock_guard<std::mutex> lock (state->mutex);
-        if (header_ok
-            && header.phase == static_cast<uint32_t> (
-                                perf_single_metric::phase_warmup)) {
+        if (header.phase
+            == static_cast<uint32_t> (perf_single_metric::phase_warmup)) {
             ++state->warmup_received;
-        } else if (header_ok
-                   && header.phase == static_cast<uint32_t> (
-                                        perf_single_metric::phase_active)) {
-            ++state->active_received;
+        } else if (header.phase
+                   == static_cast<uint32_t> (
+                        perf_single_metric::phase_active)) {
             const uint64_t now_us = perf_single_metric::now_us ();
-            const double latency_us =
-              now_us >= header.sent_ts_us
-                ? static_cast<double> (now_us - header.sent_ts_us)
-                : 0.0;
-            state->latency.add (latency_us);
+            if (state->active_deadline_us > 0
+                && now_us <= state->active_deadline_us) {
+                ++state->active_received;
+                state->latency.add (
+                  now_us >= header.sent_ts_us
+                    ? static_cast<double> (now_us - header.sent_ts_us)
+                    : 0.0);
+            }
         }
         if (state->probe)
             state->probe->sample_recv_if_due ();
@@ -514,38 +490,50 @@ void client_handler (const zlink_routing_id_t *,
     state->cv.notify_all ();
 }
 
+void client_handler (const zlink_routing_id_t *,
+                     zlink_msg_t *parts_,
+                     size_t part_count_)
+{
+    close_parts (parts_, part_count_);
+}
+
 bool run_warmup (void *gateway_,
-                 gateway_client_state_t &client_state_,
+                 gateway_server_state_t &server_state_,
                  gateway_queue_probe_t &probe_,
                  std::vector<char> &payload_,
                  size_t msg_size_)
 {
     const int warmup_count = resolve_bench_count ("PERF_WARMUP_COUNT", 200);
     const int wait_timeout_ms = std::max (1000, resolve_single_recv_timeout_ms () * 10);
+    {
+        std::lock_guard<std::mutex> lock (server_state_.mutex);
+        server_state_.warmup_received = 0;
+        server_state_.active_received = 0;
+        server_state_.active_deadline_us = 0;
+        server_state_.latency = latency_stats_builder_t ();
+    }
+
     for (int i = 0; i < warmup_count; ++i) {
         probe_.sample_send_if_due ();
         if (!send_payload (gateway_,
                            payload_,
                            msg_size_,
-                           client_state_.run_id,
+                           server_state_.run_id,
                            perf_single_metric::phase_warmup,
                            static_cast<uint64_t> (i + 1))) {
             return false;
         }
-
-        if (!wait_for_counter (client_state_.cv,
-                               client_state_.mutex,
-                               &client_state_.warmup_received,
-                               static_cast<unsigned long long> (i + 1),
-                               wait_timeout_ms)) {
-            return false;
-        }
     }
-    return true;
+
+    return wait_for_counter (server_state_.cv,
+                             server_state_.mutex,
+                             &server_state_.warmup_received,
+                             static_cast<unsigned long long> (warmup_count),
+                             wait_timeout_ms);
 }
 
 bool run_active (void *gateway_,
-                 gateway_client_state_t &client_state_,
+                 gateway_server_state_t &server_state_,
                  gateway_queue_probe_t &probe_,
                  std::vector<char> &payload_,
                  size_t msg_size_,
@@ -556,27 +544,42 @@ bool run_active (void *gateway_,
     const auto deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
     const auto active_start = std::chrono::steady_clock::now ();
-    unsigned long long target = 0;
     uint64_t seq = 1;
+
+    {
+        std::lock_guard<std::mutex> lock (server_state_.mutex);
+        server_state_.active_received = 0;
+        server_state_.active_deadline_us =
+          perf_single_metric::now_us ()
+          + static_cast<uint64_t> (
+              std::max (1, duration_s) * 1000000ULL);
+        server_state_.latency = latency_stats_builder_t ();
+    }
 
     while (std::chrono::steady_clock::now () < deadline) {
         probe_.sample_send_if_due ();
         if (!send_payload (gateway_,
                            payload_,
                            msg_size_,
-                           client_state_.run_id,
+                           server_state_.run_id,
                            perf_single_metric::phase_active,
                            seq++)) {
             return false;
         }
-        ++target;
-        if (!wait_for_counter (client_state_.cv,
-                               client_state_.mutex,
-                               &client_state_.active_received,
-                               target,
-                               std::max (
-                                 1000, resolve_single_recv_timeout_ms () * 10))) {
-            break;
+    }
+
+    {
+        std::unique_lock<std::mutex> lock (server_state_.mutex);
+        const std::chrono::milliseconds idle_timeout (
+          std::max (1000, resolve_single_recv_timeout_ms () * 10));
+        while (true) {
+            const unsigned long long observed = server_state_.active_received;
+            const bool changed = server_state_.cv.wait_for (
+              lock, idle_timeout, [&server_state_, observed] () {
+                  return server_state_.active_received != observed;
+              });
+            if (!changed)
+                break;
         }
     }
 
@@ -588,10 +591,12 @@ bool run_active (void *gateway_,
 
     if (throughput_out_)
         *throughput_out_ =
-          static_cast<double> (client_state_.active_received) / elapsed_s;
-    if (latency_out_)
-        *latency_out_ = client_state_.latency.snapshot ();
-    return client_state_.active_received > 0;
+          static_cast<double> (server_state_.active_received) / elapsed_s;
+    if (latency_out_) {
+        std::lock_guard<std::mutex> lock (server_state_.mutex);
+        *latency_out_ = server_state_.latency.snapshot ();
+    }
+    return server_state_.active_received > 0;
 }
 
 int run_case (const std::string &lib_name_,
@@ -616,10 +621,8 @@ int run_case (const std::string &lib_name_,
     }
 
     gateway_server_state_t server_state;
-    gateway_client_state_t client_state;
     gateway_ready_monitor_t client_monitor;
     g_server_state = &server_state;
-    g_client_state = &client_state;
 
     void *server_gateway =
       zlink_gateway_new (ctx.get (), "perf-gateway", k_server_routing_id,
@@ -691,14 +694,13 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    server_state.gateway = server_gateway;
-    client_state.run_id = static_cast<uint32_t> (current_process_id ());
-    client_state.msg_size = msg_size_;
+    server_state.run_id = static_cast<uint32_t> (current_process_id ());
+    server_state.msg_size = msg_size_;
     gateway_queue_probe_t probe (client_gateway);
-    client_state.probe = &probe;
+    server_state.probe = &probe;
 
     std::vector<char> payload;
-    if (!run_warmup (client_gateway, client_state, probe, payload, msg_size_)) {
+    if (!run_warmup (client_gateway, server_state, probe, payload, msg_size_)) {
         const queue_stats_t queue_stats = probe.snapshot ();
         print_result (lib_name_,
                       k_pattern,
@@ -717,7 +719,7 @@ int run_case (const std::string &lib_name_,
     latency_stats_t latency;
     const bool active_ok =
       run_active (
-        client_gateway, client_state, probe, payload, msg_size_, &throughput,
+        client_gateway, server_state, probe, payload, msg_size_, &throughput,
         &latency);
     const queue_stats_t queue_stats = probe.snapshot ();
     print_result (lib_name_,
@@ -730,12 +732,8 @@ int run_case (const std::string &lib_name_,
                   active_ok ? latency.p99_us : 0.0,
                   queue_stats);
 
-    const bool success =
-      active_ok
-      && server_state.send_failures.load (std::memory_order_acquire) == 0;
-
     cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);
-    return success ? 0 : 1;
+    return active_ok ? 0 : 1;
 }
 } // namespace
 

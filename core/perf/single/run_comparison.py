@@ -1128,7 +1128,7 @@ def build_single_option_items(
     rcvhwm = parse_env_int("PERF_SINGLE_RCVHWM", base_hwm)
     sndtimeo_ms = parse_env_int("PERF_SINGLE_SNDTIMEO_MS", 200)
     rcvtimeo_ms = parse_env_int("PERF_SINGLE_RCVTIMEO_MS", 200)
-    io_threads = max(0, parse_env_int("PERF_IO_THREADS", 0))
+    io_threads = max(1, parse_env_int("PERF_IO_THREADS", 2))
     items: List[Tuple[str, str]] = [
         ("runs", str(args.runs)),
         ("duration_seconds", str(parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5))),

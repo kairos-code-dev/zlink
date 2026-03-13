@@ -18,24 +18,6 @@ Registry directly.
 - Use Registry topology snapshot/query APIs for global summary inspection.
 - Discovery is not part of the new service-level option surface.
 
-## Types
-
-```c
-typedef struct {
-    char service_name[256];
-    char endpoint[256];
-    zlink_routing_id_t routing_id;
-    uint32_t weight;
-    uint64_t registered_at;
-} zlink_receiver_info_t;
-```
-
-Each `zlink_receiver_info_t` describes a single registered service instance.
-The `service_name` and `endpoint` fields identify the service. The
-`routing_id` is the unique identifier assigned by the Receiver or SPOT Node.
-The `weight` value is used for weighted load balancing, and `registered_at`
-records the registration timestamp.
-
 ## Constants
 
 ```c
@@ -99,75 +81,7 @@ starts receiving periodic service list broadcasts.
 
 **Thread safety:** Not thread-safe. Call before concurrent access begins.
 
-**See also:** `zlink_discovery_get_receivers`
-
----
-
-### zlink_discovery_get_receivers
-
-Get the list of receivers for a service.
-
-```c
-int zlink_discovery_get_receivers(void *discovery,
-                                  const char *service_name,
-                                  zlink_receiver_info_t *providers,
-                                  size_t *count);
-```
-
-Copies the currently known receivers for `service_name` into the caller-
-provided array. On input, `*count` specifies the array capacity. On output,
-`*count` is set to the actual number of entries written. If the array is too
-small, the function writes as many entries as fit and sets `*count` to the
-number written.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_discovery_receiver_count`, `zlink_discovery_service_available`
-
----
-
-### zlink_discovery_receiver_count
-
-Return the number of registered receivers for a service.
-
-```c
-int zlink_discovery_receiver_count(void *discovery,
-                                   const char *service_name);
-```
-
-Returns the count of receivers currently cached for the given service name.
-This is a lightweight check that does not copy any data.
-
-**Returns:** The receiver count on success (zero or positive), or `-1` on
-failure (errno is set).
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_discovery_get_receivers`, `zlink_discovery_service_available`
-
----
-
-### zlink_discovery_service_available
-
-Check if a service is available.
-
-```c
-int zlink_discovery_service_available(void *discovery,
-                                      const char *service_name);
-```
-
-Returns whether at least one receiver is registered for the given service
-name. This is equivalent to checking if `zlink_discovery_receiver_count`
-returns a value greater than zero, but expressed as a boolean result.
-
-**Returns:** `1` if the service is available, `0` if not, or `-1` on failure
-(errno is set).
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_discovery_receiver_count`
+**See also:** `zlink_discovery_destroy`
 
 ---
 

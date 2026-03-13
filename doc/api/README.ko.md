@@ -17,9 +17,9 @@ zlink C 라이브러리는 경량 I/O 스레드와 락프리 큐를 기반으로
 | Monitoring | [monitoring.ko.md](monitoring.ko.md) | 소켓 모니터, 이벤트, 피어 검사 | 7 |
 | Events | [events.ko.md](events.ko.md) | canonical 이벤트 카탈로그와 readiness 의미 | - |
 | Registry | [registry.ko.md](registry.ko.md) | 서비스 레지스트리 생성, 구성, 클러스터링 | 9 |
-| Discovery | [discovery.ko.md](discovery.ko.md) | 서비스 디스커버리, 구독, 리시버 조회 | 9 |
-| Gateway | [gateway.ko.md](gateway.ko.md) | 로드밸런싱 요청/응답 게이트웨이 | 10 |
-| Receiver | [receiver.ko.md](receiver.ko.md) | 서버 측 요청 리시버 및 서비스 등록 | 11 |
+| Discovery | [discovery.ko.md](discovery.ko.md) | 서비스 디스커버리, Registry 연결, 라우팅 ID | 6 |
+| Gateway | [gateway.ko.md](gateway.ko.md) | 서비스 바인딩 로드밸런싱 요청/응답 | 17 |
+| Receiver (제거됨) | [receiver.ko.md](receiver.ko.md) | Gateway로 통합됨 — 마이그레이션 가이드 참조 | - |
 | SPOT | [spot.ko.md](spot.ko.md) | 토픽 기반 PUB/SUB 노드, 퍼블리셔, 서브스크라이버 | 27 |
 | Polling | [polling.ko.md](polling.ko.md) | I/O 다중화 및 프록시 헬퍼 | 4 |
 | Utilities | [utilities.ko.md](utilities.ko.md) | 타이머, 스레드, 스톱워치, 아토믹, 기능 조회 | ~20 |
@@ -33,7 +33,6 @@ zlink C 라이브러리는 경량 I/O 스레드와 락프리 큐를 기반으로
 | [`zlink_monitor_event_t`](monitoring.ko.md) | monitoring.ko.md | 모니터 이벤트 구조체 (이벤트, 값, 주소) |
 | [`zlink_monitor_snapshot_t`](monitoring.ko.md) | monitoring.ko.md | aggregate monitor snapshot (상태, ready-peer 수, queue depth) |
 | [`zlink_service_event_t`](events.ko.md) | events.ko.md | 서비스 모니터 이벤트 구조체와 subject-aware payload |
-| [`zlink_receiver_info_t`](discovery.ko.md) | discovery.ko.md | 디스커버리된 서비스 리시버 항목 (이름, 엔드포인트, 가중치) |
 | [`zlink_pollitem_t`](polling.ko.md) | polling.ko.md | I/O 다중화를 위한 폴 아이템 (소켓 또는 fd) |
 
 ## 콜백 타입
@@ -43,7 +42,7 @@ zlink C 라이브러리는 경량 I/O 스레드와 락프리 큐를 기반으로
 | [`zlink_free_fn`](message.ko.md) | message.ko.md | 제로카피 메시지를 위한 해제 콜백 |
 | [`zlink_timer_fn`](utilities.ko.md) | utilities.ko.md | 타이머 만료 콜백 |
 | [`zlink_thread_fn`](utilities.ko.md) | utilities.ko.md | 스레드 진입점 함수 |
-| [`zlink_spot_sub_handler_fn`](spot.ko.md) | spot.ko.md | SPOT 서브스크라이버 메시지 디스패치 콜백 |
+| [`zlink_spot_handler_fn`](spot.ko.md) | spot.ko.md | SPOT 메시지 디스패치 콜백 |
 
 ---
 

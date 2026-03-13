@@ -217,29 +217,6 @@ std::string bind_gateway_endpoint(void *gateway,
     return replace_any_host_with_localhost(endpoint);
 }
 
-bool wait_for_gateway_peers(void *gateway, size_t target_count, int timeout_ms)
-{
-    const int expected = static_cast<int>(std::max<size_t>(1, target_count));
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(1, timeout_ms));
-
-    while (std::chrono::steady_clock::now() < deadline) {
-        zlink_gateway_monitor_snapshot_t snapshot;
-        memset(&snapshot, 0, sizeof(snapshot));
-        if (zlink_gateway_monitor_snapshot(gateway, &snapshot) == 0
-            && static_cast<int>(snapshot.ready_peer_count) >= expected) {
-            return true;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-
-    zlink_gateway_monitor_snapshot_t snapshot;
-    memset(&snapshot, 0, sizeof(snapshot));
-    return zlink_gateway_monitor_snapshot(gateway, &snapshot) == 0
-           && static_cast<int>(snapshot.ready_peer_count) >= expected;
-}
-
 server_queue_stats_t sample_gateway_queue_stats(void *gateway,
                                                 size_t pending_depth)
 {

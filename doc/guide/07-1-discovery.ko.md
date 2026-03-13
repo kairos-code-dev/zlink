@@ -12,8 +12,8 @@ zlink Service Discovery는 마이크로서비스 환경에서 서비스 인스�
 |------|------|
 | **Registry** | 서비스 등록/해제 관리, 목록 브로드캐스트 (PUB+ROUTER) |
 | **Discovery** | Registry 구독, 서비스 목록 관리 (SUB) |
-| **Receiver** | 서비스 수신자, Registry에 등록 (DEALER+ROUTER) |
-| **Heartbeat** | Receiver 생존 확인 (5초 주기, 15초 타임아웃) |
+| **Gateway (서버)** | 서버 측 Gateway, Discovery를 통해 Registry에 등록 |
+| **Heartbeat** | 서비스 생존 확인 (5초 주기, 15초 타임아웃) |
 
 ### 아키텍처
 
@@ -25,12 +25,12 @@ zlink Service Discovery는 마이크로서비스 환경에서 서비스 인스�
 │       │ (서비스 목록 브로드캐스트)         │
 └───────┼──────────────────────────────────┘
         │
-   ┌────┴────┐      ┌──────────┐
-   │Discovery│      │ Receiver │
-   │ (SUB)   │      │(DEALER+  │
-   │    │    │      │ ROUTER)  │
-   │    ▼    │      └──────────┘
-   │ Gateway │
+   ┌────┴────┐
+   │Discovery│
+   │ (SUB)   │
+   │    │    │
+   │    ▼    │
+   │ Gateway │  (클라이언트 또는 bind 서버)
    │(ROUTER) │
    └─────────┘
 ```
@@ -74,32 +74,24 @@ void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 
-/* 서비스 가용 확인 */
-while (!zlink_discovery_service_available(discovery, "payment-service")) {
-    printf("대기 중...\n");
-    sleep(1);
-}
+/* 모니터로 서비스 상태 관찰 */
+void *mon = zlink_discovery_monitor_open(
+    discovery,
+    ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
+      | ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED,
+    on_discovery_event);
 
-/* Receiver 목록 조회 */
-zlink_receiver_info_t receivers[10];
-size_t count = 10;
-zlink_discovery_get_receivers(discovery, "payment-service",
-                              receivers, &count);
-for (size_t i = 0; i < count; i++) {
-    printf("Receiver: %s (weight=%u)\n",
-           receivers[i].endpoint, receivers[i].weight);
-}
+/* ... Discovery가 콜백을 통해 이벤트 전달 ... */
 
-/* Receiver 수 조회 */
-int n = zlink_discovery_receiver_count(discovery, "payment-service");
-
+/* 정리 */
+zlink_service_monitor_close(&mon);
 zlink_discovery_destroy(&discovery);
 ```
 
 ## 4. Liveness 및 Summary 업데이트
 
 ```
-Receiver/SpotNode           Discovery               Registry
+Gateway/SpotNode            Discovery               Registry
    │  REGISTER / summary        │                      │
    │──────────────────────────► │                      │
    │                            │ bootstrap + uplink   │
@@ -113,7 +105,7 @@ Receiver/SpotNode           Discovery               Registry
 
 - Registry visibility는 Discovery가 소유하는 heartbeat/topology uplink로
   유지됩니다.
-- Receiver와 Spot 서비스는 로컬 registration/summary 변경을 제출하지만,
+- Gateway와 Spot 서비스는 로컬 registration/summary 변경을 제출하지만,
   주기적 uplink cadence는 Discovery가 담당합니다.
 - Registry summary는 eventually consistent한 coarse/global view이며,
   strict final readiness gate로 사용하면 안 됩니다.

@@ -1,6 +1,7 @@
 #include "../common/bench_common.hpp"
 #include "../common/perf_single_metric_header.hpp"
 
+#include <atomic>
 #include <condition_variable>
 #include <cstring>
 #include <mutex>
@@ -41,9 +42,9 @@ int current_process_id ()
 
 struct spot_queue_probe_t
 {
-    spot_queue_probe_t (void *pub_, void *sub_) :
-        pub (pub_),
-        sub (sub_),
+    spot_queue_probe_t (void *pub_monitor_, void *sub_monitor_) :
+        pub_monitor (pub_monitor_),
+        sub_monitor (sub_monitor_),
         sample_interval_ns (resolve_sample_interval_ns ()),
         last_send_sample_ns (0),
         last_recv_sample_ns (0),
@@ -75,8 +76,8 @@ struct spot_queue_probe_t
         return stats;
     }
 
-    void *pub;
-    void *sub;
+    void *pub_monitor;
+    void *sub_monitor;
     unsigned long long sample_interval_ns;
     unsigned long long last_send_sample_ns;
     unsigned long long last_recv_sample_ns;
@@ -103,64 +104,14 @@ struct spot_queue_probe_t
             .count ());
     }
 
-    static unsigned long long peer_score (const zlink_peer_info_t &info_)
+    static bool read_spot_snapshot (void *monitor_,
+                                    zlink_monitor_snapshot_t *out_)
     {
-        return static_cast<unsigned long long> (info_.msgs_sent)
-               + static_cast<unsigned long long> (info_.msgs_received);
-    }
-
-    static bool read_best_pub_peer (void *pub_, zlink_peer_info_t *info_out_)
-    {
-        if (!pub_ || !info_out_)
+        if (!monitor_ || !out_)
             return false;
 
-        size_t count = 0;
-        if (zlink_spot_peers_pub (pub_, NULL, &count) != 0 || count == 0)
-            return false;
-
-        std::vector<zlink_peer_info_t> peers (count);
-        size_t filled = count;
-        if (zlink_spot_peers_pub (pub_, &peers[0], &filled) != 0 || filled == 0)
-            return false;
-
-        size_t best = 0;
-        for (size_t i = 1; i < filled; ++i) {
-            if (peers[i].connected_time > peers[best].connected_time
-                || (peers[i].connected_time == peers[best].connected_time
-                    && peer_score (peers[i]) > peer_score (peers[best]))) {
-                best = i;
-            }
-        }
-
-        *info_out_ = peers[best];
-        return true;
-    }
-
-    static bool read_best_sub_peer (void *sub_, zlink_peer_info_t *info_out_)
-    {
-        if (!sub_ || !info_out_)
-            return false;
-
-        size_t count = 0;
-        if (zlink_spot_peers_sub (sub_, NULL, &count) != 0 || count == 0)
-            return false;
-
-        std::vector<zlink_peer_info_t> peers (count);
-        size_t filled = count;
-        if (zlink_spot_peers_sub (sub_, &peers[0], &filled) != 0 || filled == 0)
-            return false;
-
-        size_t best = 0;
-        for (size_t i = 1; i < filled; ++i) {
-            if (peers[i].connected_time > peers[best].connected_time
-                || (peers[i].connected_time == peers[best].connected_time
-                    && peer_score (peers[i]) > peer_score (peers[best]))) {
-                best = i;
-            }
-        }
-
-        *info_out_ = peers[best];
-        return true;
+        memset (out_, 0, sizeof (*out_));
+        return zlink_monitor_snapshot (monitor_, out_) == 0;
     }
 
     void maybe_sample (bool send_path_, bool force_)
@@ -174,22 +125,28 @@ struct spot_queue_probe_t
         }
         last_sample_ns = now;
 
-        zlink_peer_info_t info;
+        zlink_monitor_snapshot_t snapshot;
         if (send_path_) {
-            if (!read_best_pub_peer (pub, &info))
+            if (!read_spot_snapshot (pub_monitor, &snapshot)
+                || !(snapshot.detail_flags
+                     & ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS)) {
                 return;
+            }
             const unsigned long long pending =
-              static_cast<unsigned long long> (info.snd_pending_msgs);
+              static_cast<unsigned long long> (snapshot.snd_pending_msgs);
             if (!seen_send || pending > snd_pending_max)
                 snd_pending_max = pending;
             seen_send = true;
             return;
         }
 
-        if (!read_best_sub_peer (sub, &info))
+        if (!read_spot_snapshot (sub_monitor, &snapshot)
+            || !(snapshot.detail_flags
+                 & ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS)) {
             return;
+        }
         const unsigned long long pending =
-          static_cast<unsigned long long> (info.rcv_pending_msgs);
+          static_cast<unsigned long long> (snapshot.rcv_pending_msgs);
         if (!seen_recv || pending > rcv_pending_max)
             rcv_pending_max = pending;
         rcv_pending_end = pending;
@@ -202,19 +159,29 @@ struct spot_client_state_t
     spot_client_state_t () :
         run_id (0),
         msg_size (0),
+        active_deadline_us (0),
+        callback_activity (0),
         warmup_received (0),
+        warmup_target (0),
         active_received (0),
+        warmup_waiting (false),
+        drain_waiting (false),
         probe (NULL)
     {
     }
 
     uint32_t run_id;
     size_t msg_size;
-    unsigned long long warmup_received;
-    unsigned long long active_received;
+    std::atomic<uint64_t> active_deadline_us;
+    std::atomic<unsigned long long> callback_activity;
+    std::atomic<unsigned long long> warmup_received;
+    std::atomic<unsigned long long> warmup_target;
+    std::atomic<unsigned long long> active_received;
+    std::atomic<bool> warmup_waiting;
+    std::atomic<bool> drain_waiting;
     latency_stats_builder_t latency;
     spot_queue_probe_t *probe;
-    std::mutex mutex;
+    std::mutex cv_mutex;
     std::condition_variable cv;
 };
 
@@ -227,6 +194,7 @@ struct service_monitor_probe_t
 
 spot_client_state_t *g_client_state = NULL;
 service_monitor_probe_t *g_service_monitor_probe = NULL;
+service_monitor_probe_t *g_pub_service_monitor_probe = NULL;
 
 bool is_supported_transport (const std::string &transport_)
 {
@@ -282,6 +250,19 @@ std::string bind_node (void *node_, const std::string &transport_, int base_port
 void spot_monitor_handler (const zlink_service_event_t *event_)
 {
     service_monitor_probe_t *probe = g_service_monitor_probe;
+    if (!probe || !event_)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock (probe->mutex);
+        probe->events.push_back (*event_);
+    }
+    probe->cv.notify_all ();
+}
+
+void spot_pub_monitor_handler (const zlink_service_event_t *event_)
+{
+    service_monitor_probe_t *probe = g_pub_service_monitor_probe;
     if (!probe || !event_)
         return;
 
@@ -366,73 +347,58 @@ int resolve_spot_subscription_ready_timeout_ms (
     return 3000;
 }
 
-bool wait_for_counter (std::condition_variable &cv_,
-                       std::mutex &mutex_,
-                       unsigned long long *value_,
-                       unsigned long long expected_,
-                       int timeout_ms_)
+bool wait_for_warmup_counter (spot_client_state_t &state_,
+                              unsigned long long expected_,
+                              int timeout_ms_)
 {
-    std::unique_lock<std::mutex> lock (mutex_);
-    return cv_.wait_for (
+    std::unique_lock<std::mutex> lock (state_.cv_mutex);
+    const bool ok = state_.cv.wait_for (
       lock,
       std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1),
-      [value_, expected_] () { return *value_ >= expected_; });
+      [&state_, expected_] () {
+          return state_.warmup_received.load (std::memory_order_acquire)
+                 >= expected_;
+      });
+    state_.warmup_waiting.store (false, std::memory_order_release);
+    state_.warmup_target.store (0, std::memory_order_release);
+    return ok;
 }
 
-unsigned long long resolve_spot_max_inflight ()
-{
-    const int configured =
-      resolve_bench_count ("PERF_SINGLE_SPOT_MAX_INFLIGHT", 64);
-    return static_cast<unsigned long long> (configured > 0 ? configured : 64);
-}
-
-bool wait_for_inflight_budget (std::condition_variable &cv_,
-                               std::mutex &mutex_,
-                               unsigned long long *received_,
-                               unsigned long long sent_,
-                               unsigned long long max_inflight_,
-                               int timeout_ms_)
-{
-    if (!received_ || max_inflight_ == 0 || sent_ < max_inflight_)
-        return true;
-
-    const unsigned long long required = sent_ - max_inflight_ + 1;
-    return wait_for_counter (
-      cv_, mutex_, received_, required, timeout_ms_ > 0 ? timeout_ms_ : 1);
-}
-
-void wait_for_idle_receive_drain (std::condition_variable &cv_,
-                                  std::mutex &mutex_,
-                                  unsigned long long *value_,
+void wait_for_idle_receive_drain (spot_client_state_t &state_,
                                   int idle_timeout_ms_)
 {
-    if (!value_)
-        return;
-
-    std::unique_lock<std::mutex> lock (mutex_);
+    std::unique_lock<std::mutex> lock (state_.cv_mutex);
     const std::chrono::milliseconds idle_timeout (
       idle_timeout_ms_ > 0 ? idle_timeout_ms_ : 1);
+    state_.drain_waiting.store (true, std::memory_order_release);
 
     while (true) {
-        const unsigned long long observed = *value_;
-        const bool changed = cv_.wait_for (
-          lock, idle_timeout, [value_, observed] () {
-              return *value_ != observed;
+        const unsigned long long observed =
+          state_.callback_activity.load (std::memory_order_acquire);
+        const bool changed = state_.cv.wait_for (
+          lock, idle_timeout, [&state_, observed] () {
+              return state_.callback_activity.load (std::memory_order_acquire)
+                     != observed;
           });
         if (!changed)
-            return;
+            break;
     }
+    state_.drain_waiting.store (false, std::memory_order_release);
 }
 
 void cleanup_spot_case (void **sub_monitor_,
+                        void **pub_monitor_,
                         void **sub_,
                         void **pub_,
                         void **sub_node_,
                         void **pub_node_)
 {
     g_service_monitor_probe = NULL;
+    g_pub_service_monitor_probe = NULL;
     if (sub_monitor_ && *sub_monitor_)
         (void) zlink_service_monitor_close (sub_monitor_);
+    if (pub_monitor_ && *pub_monitor_)
+        (void) zlink_service_monitor_close (pub_monitor_);
     if (sub_ && *sub_)
         (void) zlink_spot_destroy (sub_);
     if (pub_ && *pub_)
@@ -452,7 +418,8 @@ bool publish_payload (void *pub_,
 {
     const size_t payload_size =
       std::max (msg_size_, perf_single_metric::header_size ());
-    payload_.assign (payload_size, 's');
+    if (payload_.size () != payload_size)
+        payload_.assign (payload_size, 's');
     if (!perf_single_metric::stamp_payload (
           payload_.data (),
           payload_.size (),
@@ -497,29 +464,42 @@ void sub_handler (const zlink_routing_id_t *,
         zlink_msg_data (&parts_[0]), zlink_msg_size (&parts_[0]), &header)
       && header.run_id == state->run_id && header.msg_size == state->msg_size;
 
-    {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        if (header_ok
-            && header.phase == static_cast<uint32_t> (
-                                perf_single_metric::phase_warmup)) {
-            ++state->warmup_received;
-        } else if (header_ok
-                   && header.phase == static_cast<uint32_t> (
-                                        perf_single_metric::phase_active)) {
-            ++state->active_received;
-            const uint64_t now_us = perf_single_metric::now_us ();
+    bool notify = false;
+    state->callback_activity.fetch_add (1, std::memory_order_acq_rel);
+    if (header_ok
+        && header.phase == static_cast<uint32_t> (
+                            perf_single_metric::phase_warmup)) {
+        const unsigned long long received =
+          state->warmup_received.fetch_add (1, std::memory_order_acq_rel) + 1;
+        const unsigned long long target =
+          state->warmup_target.load (std::memory_order_acquire);
+        if (state->warmup_waiting.load (std::memory_order_acquire) && target > 0
+            && received >= target) {
+            notify = true;
+        }
+    } else if (header_ok
+               && header.phase == static_cast<uint32_t> (
+                                    perf_single_metric::phase_active)) {
+        const uint64_t now_us = perf_single_metric::now_us ();
+        const uint64_t deadline_us =
+          state->active_deadline_us.load (std::memory_order_acquire);
+        if (deadline_us > 0 && now_us <= deadline_us) {
+            state->active_received.fetch_add (1, std::memory_order_acq_rel);
             const double latency_us =
               now_us >= header.sent_ts_us
                 ? static_cast<double> (now_us - header.sent_ts_us)
                 : 0.0;
             state->latency.add (latency_us);
         }
-        if (state->probe)
-            state->probe->sample_recv_if_due ();
     }
+    if (state->probe)
+        state->probe->sample_recv_if_due ();
 
     close_parts (parts_, part_count_);
-    state->cv.notify_all ();
+    if (state->drain_waiting.load (std::memory_order_acquire))
+        notify = true;
+    if (notify)
+        state->cv.notify_all ();
 }
 
 bool run_warmup (void *pub_,
@@ -533,6 +513,14 @@ bool run_warmup (void *pub_,
       resolve_bench_count ("PERF_WARMUP_COUNT", default_warmup);
     const int wait_timeout_ms = std::max (
       1000, resolve_single_recv_timeout_ms () * 10);
+    client_state_.callback_activity.store (0, std::memory_order_release);
+    client_state_.warmup_received.store (0, std::memory_order_release);
+    client_state_.warmup_target.store (warmup_count, std::memory_order_release);
+    client_state_.active_received.store (0, std::memory_order_release);
+    client_state_.active_deadline_us.store (0, std::memory_order_release);
+    client_state_.warmup_waiting.store (true, std::memory_order_release);
+    client_state_.drain_waiting.store (false, std::memory_order_release);
+    client_state_.latency = latency_stats_builder_t ();
 
     for (int i = 0; i < warmup_count; ++i) {
         probe_.sample_send_if_due ();
@@ -544,22 +532,14 @@ bool run_warmup (void *pub_,
                               static_cast<uint64_t> (i + 1))) {
             return false;
         }
-
-        if (!wait_for_counter (client_state_.cv,
-                               client_state_.mutex,
-                               &client_state_.warmup_received,
-                               static_cast<unsigned long long> (i + 1),
-                               wait_timeout_ms)) {
-            return false;
-        }
     }
 
-    wait_for_idle_receive_drain (client_state_.cv,
-                                 client_state_.mutex,
-                                 &client_state_.warmup_received,
-                                 resolve_single_pubsub_recv_timeout_ms ());
-    std::this_thread::sleep_for (std::chrono::milliseconds (SETTLE_TIME_MS));
-    return true;
+    return wait_for_warmup_counter (
+             client_state_,
+             static_cast<unsigned long long> (warmup_count),
+             wait_timeout_ms)
+           && (wait_for_idle_receive_drain (client_state_, wait_timeout_ms),
+               true);
 }
 
 bool run_active (void *pub_,
@@ -575,9 +555,16 @@ bool run_active (void *pub_,
     const auto deadline = active_start + std::chrono::seconds (duration_s);
     const int wait_timeout_ms = std::max (
       1000, resolve_single_pubsub_recv_timeout_ms () * 10);
-    const unsigned long long max_inflight = resolve_spot_max_inflight ();
-    unsigned long long sent = 0;
     uint64_t seq = 1;
+
+    client_state_.callback_activity.store (0, std::memory_order_release);
+    client_state_.active_received.store (0, std::memory_order_release);
+    client_state_.active_deadline_us.store (
+      perf_single_metric::now_us ()
+        + static_cast<uint64_t> (std::max (1, duration_s) * 1000000ULL),
+      std::memory_order_release);
+    client_state_.drain_waiting.store (false, std::memory_order_release);
+    client_state_.latency = latency_stats_builder_t ();
 
     while (std::chrono::steady_clock::now () < deadline) {
         probe_.sample_send_if_due ();
@@ -589,30 +576,19 @@ bool run_active (void *pub_,
                               seq++)) {
             break;
         }
-        ++sent;
-
-        if (!wait_for_inflight_budget (client_state_.cv,
-                                       client_state_.mutex,
-                                       &client_state_.active_received,
-                                       sent,
-                                       max_inflight,
-                                       wait_timeout_ms)) {
-            break;
-        }
     }
 
-    wait_for_idle_receive_drain (client_state_.cv,
-                                 client_state_.mutex,
-                                 &client_state_.active_received,
-                                 resolve_single_pubsub_recv_timeout_ms ());
+    wait_for_idle_receive_drain (client_state_, wait_timeout_ms);
 
     const double elapsed_s = std::max (0.001, static_cast<double> (duration_s));
     if (throughput_out_)
         *throughput_out_ =
-          static_cast<double> (client_state_.active_received) / elapsed_s;
+          static_cast<double> (
+            client_state_.active_received.load (std::memory_order_acquire))
+          / elapsed_s;
     if (latency_out_)
         *latency_out_ = client_state_.latency.snapshot ();
-    return client_state_.active_received > 0;
+    return client_state_.active_received.load (std::memory_order_acquire) > 0;
 }
 
 int run_case (const std::string &lib_name_,
@@ -651,12 +627,15 @@ int run_case (const std::string &lib_name_,
     const int sndhwm = resolve_single_socket_hwm (true);
     const int rcvhwm = resolve_single_socket_hwm (false);
     const int sndtimeo_ms = resolve_single_send_timeout_ms ();
+    const int nodrop = 1;
     (void) zlink_spot_node_set_pub_option (
       pub_node, ZLINK_SPOT_PUB_OPT_LINGER, &linger, sizeof (linger));
     (void) zlink_spot_node_set_pub_option (
       pub_node, ZLINK_SPOT_PUB_OPT_SNDHWM, &sndhwm, sizeof (sndhwm));
     (void) zlink_spot_node_set_pub_option (
       pub_node, ZLINK_SPOT_PUB_OPT_SNDTIMEO, &sndtimeo_ms, sizeof (sndtimeo_ms));
+    (void) zlink_spot_node_set_pub_option (
+      pub_node, ZLINK_SPOT_PUB_OPT_NODROP, &nodrop, sizeof (nodrop));
     (void) zlink_spot_node_set_sub_option (
       sub_node, ZLINK_SPOT_SUB_OPT_LINGER, &linger, sizeof (linger));
     (void) zlink_spot_node_set_sub_option (
@@ -668,13 +647,15 @@ int run_case (const std::string &lib_name_,
         zlink_spot_node_destroy (&pub_node);
         return 1;
     }
-
     void *pub = zlink_spot_new (pub_node, &discard_spot_handler);
     void *sub = zlink_spot_new (sub_node, &sub_handler);
     void *sub_monitor = NULL;
+    void *pub_monitor = NULL;
     service_monitor_probe_t monitor_probe;
+    service_monitor_probe_t pub_monitor_probe;
     if (!pub || !sub) {
-        cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
+        cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
+                           &pub_node);
         return 1;
     }
 
@@ -684,26 +665,36 @@ int run_case (const std::string &lib_name_,
       ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
         | ZLINK_MONITOR_EVENT_ERROR,
       &spot_monitor_handler);
-    if (!sub_monitor) {
-        cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
+    pub_monitor = zlink_spot_monitor_open (
+      pub,
+      ZLINK_SPOT_ROLE_PUB,
+      ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR,
+      &spot_pub_monitor_handler);
+    if (!sub_monitor || !pub_monitor) {
+        cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
+                           &pub_node);
         return 1;
     }
 
     g_service_monitor_probe = &monitor_probe;
+    g_pub_service_monitor_probe = &pub_monitor_probe;
     const int base_port = 35000 + (current_process_id () % 1000) * 8;
     const std::string endpoint = bind_node (pub_node, transport_, base_port);
     if (endpoint.empty ()) {
-        cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
+        cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
+                           &pub_node);
         return 1;
     }
 
     if (zlink_spot_node_connect_peer_pub (sub_node, endpoint.c_str ()) != 0) {
-        cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
+        cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
+                           &pub_node);
         return 1;
     }
 
     if (zlink_spot_subscribe (sub, k_topic) != 0) {
-        cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
+        cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
+                           &pub_node);
         return 1;
     }
 
@@ -716,8 +707,16 @@ int run_case (const std::string &lib_name_,
                                     k_topic,
                                     1,
                                     resolve_spot_subscription_ready_timeout_ms (
+                                      transport_))
+        || !wait_for_service_event (&pub_monitor_probe,
+                                    ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED,
+                                    NULL,
+                                    k_topic,
+                                    1,
+                                    resolve_spot_subscription_ready_timeout_ms (
                                       transport_))) {
-        cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
+        cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
+                           &pub_node);
         return 1;
     }
 
@@ -725,7 +724,7 @@ int run_case (const std::string &lib_name_,
     g_client_state = &client_state;
     client_state.run_id = static_cast<uint32_t> (current_process_id ());
     client_state.msg_size = msg_size_;
-    spot_queue_probe_t probe (pub, sub);
+    spot_queue_probe_t probe (pub_monitor, sub_monitor);
     client_state.probe = &probe;
 
     std::vector<char> payload;
@@ -741,7 +740,8 @@ int run_case (const std::string &lib_name_,
                       0.0,
                       queue_stats);
         g_client_state = NULL;
-        cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
+        cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
+                           &pub_node);
         return 1;
     }
 
@@ -762,7 +762,8 @@ int run_case (const std::string &lib_name_,
                   queue_stats);
 
     g_client_state = NULL;
-    cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
+    cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
+                       &pub_node);
     return active_ok ? 0 : 1;
 }
 } // namespace

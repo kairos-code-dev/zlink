@@ -1236,21 +1236,26 @@ core/
 │   │
 │   ├── services/                    # High-level services
 │   │   ├── common/                  # Common service utilities
-│   │   │   ├── heartbeat.hpp
-│   │   │   ├── service_key.hpp
-│   │   │   └── service_types.hpp
+│   │   │   ├── advertise_endpoint.hpp   # Endpoint resolution for service registration
+│   │   │   ├── monitor_decode.hpp       # Monitor event decoding
+│   │   │   ├── service_monitor.cpp/hpp  # Service-level monitor implementation
+│   │   │   ├── service_runtime_base.hpp # Service lifecycle kernel
+│   │   │   └── socket_monitor_bridge.hpp # PAIR-based socket monitor bridge
 │   │   ├── discovery/               # Service discovery
 │   │   │   ├── discovery.cpp/hpp
 │   │   │   ├── discovery_protocol.hpp
 │   │   │   └── registry.cpp/hpp
 │   │   ├── gateway/                 # Gateway
-│   │   │   ├── gateway.cpp/hpp
-│   │   │   ├── receiver.cpp/hpp
+│   │   │   ├── gateway.cpp/hpp      # Gateway + receiver (unified)
+│   │   │   ├── gateway_runtime.hpp  # Gateway runtime state and lifecycle
 │   │   │   └── routing_id_utils.hpp
 │   │   └── spot/                    # SPOT service
+│   │       ├── spot_node.cpp/hpp    # Network control (PUB/SUB mesh)
 │   │       ├── spot_pub.cpp/hpp     # Publish handle (thread-safe)
 │   │       ├── spot_sub.cpp/hpp     # Subscribe/receive handle
-│   │       └── spot_node.cpp/hpp    # Network control (PUB/SUB mesh)
+│   │       ├── spot_data_plane.cpp/hpp  # Data plane loop (SUB recv, local dispatch)
+│   │       ├── spot_dispatch_internal.hpp # Internal dispatch helpers
+│   │       └── spot_runtime.hpp     # SPOT runtime state and lifecycle
 │   │
 │   └── utils/                       # Utilities
 │       ├── ypipe.hpp                # Lock-free pipe

@@ -249,9 +249,8 @@ void *client = zlink_gateway_new(ctx, "echo-service",
                                   "client-1", on_reply);
 zlink_gateway_attach_discovery(client, client_discovery);
 
-/* Wait for service availability */
-while (!zlink_discovery_service_available(client_discovery, "echo-service"))
-    msleep(100);
+/* Wait for route readiness via gateway monitor */
+/* (use ZLINK_GATEWAY_ROUTE_UP event or zlink_monitor_snapshot) */
 
 /* Send request */
 zlink_msg_t part;

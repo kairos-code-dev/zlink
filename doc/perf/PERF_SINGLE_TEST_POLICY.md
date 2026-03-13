@@ -251,8 +251,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 
 | 방향 | 패턴 | throughput 단위 |
 |------|------|----------------|
-| one-way (단방향) | PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER | `msg/s` |
-| echo (왕복) | ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT | `msg/s` |
+| one-way (단방향) | PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, SPOT | `msg/s` |
 
 > **구현 참고**: `run_comparison.py`는 소켓 동작(echo/one-way)과 무관하게 모든 single 패턴을 **one-way 방향**, **Kmsg/s** 단위로 출력한다. bandwidth도 방향과 무관하게 `throughput × size / 1,000,000`으로 계산한다 (direction_factor를 적용하지 않는다).
 
@@ -276,7 +275,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `PERF_DEBUG` | 디버그 로그 | unset |
-| `PERF_IO_THREADS` | context I/O threads | 0 |
+| `PERF_IO_THREADS` | context I/O threads | 2 |
 | `PERF_MSG_SIZES` | size 목록 override (러너가 size별 케이스로 분할 실행) | 정책 기본값 |
 | `PERF_TRANSPORTS` | transport 목록 override | 패턴 기본값 |
 | `PERF_TASKSET` | CPU pinning 활성화 (`1`) | 0 |

@@ -110,12 +110,6 @@ inline size_t valid_pollset_bytes (const fd_set & /*pollset_*/)
 
 
 #if defined ZLINK_HAVE_WINDOWS
-// struct fd_set {
-//  u_int   fd_count;
-//  SOCKET  fd_array[1];
-// };
-// NOTE: offsetof(fd_set, fd_array)==sizeof(SOCKET) on both x86 and x64
-//       due to alignment bytes for the latter.
 class optimized_fd_set_t
 {
   public:

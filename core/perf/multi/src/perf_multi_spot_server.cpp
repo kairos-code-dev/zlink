@@ -128,7 +128,7 @@ void spot_server_ready_monitor_handler(const zlink_service_event_t *event)
     {
         std::lock_guard<std::mutex> lock(state->mutex);
         switch (event->event_type) {
-            case ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED:
+            case ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED:
                 if (spot_event_matches_subject(event, k_topic))
                     state->ready_count = static_cast<size_t>(event->value);
                 break;
@@ -161,7 +161,7 @@ bool open_spot_server_ready_monitor(void *pub,
     void *monitor = zlink_spot_monitor_open(
       pub,
       ZLINK_SPOT_ROLE_PUB,
-      ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR,
+      ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR,
       &spot_server_ready_monitor_handler);
     if (!monitor) {
         delete state;
@@ -386,41 +386,19 @@ server_queue_stats_t sample_spot_queue_stats(void *pub, bool send_pending)
     if (!pub)
         return stats;
 
-    size_t count = 0;
-    if (zlink_spot_peers_pub(pub, NULL, &count) != 0 || count == 0) {
-        stats.snd_pending_max = send_pending ? 1.0 : 0.0;
+    zlink_monitor_snapshot_t snapshot;
+    if (read_spot_snapshot_once(pub, ZLINK_SPOT_ROLE_PUB, &snapshot)
+        && (snapshot.detail_flags
+            & ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS)) {
+        stats.snd_pending_max = static_cast<double>(
+          std::max<unsigned long long>(snapshot.snd_pending_msgs,
+                                       send_pending ? 1ULL : 0ULL));
         return stats;
     }
 
-    std::vector<zlink_peer_info_t> peers(count);
-    size_t filled = count;
-    if (zlink_spot_peers_pub(pub, &peers[0], &filled) != 0 || filled == 0) {
-        stats.snd_pending_max = send_pending ? 1.0 : 0.0;
-        return stats;
+    if (send_pending) {
+        stats.snd_pending_max = 1.0;
     }
-
-    size_t best = 0;
-    for (size_t i = 1; i < filled; ++i) {
-        if (peers[i].connected_time > peers[best].connected_time) {
-            best = i;
-            continue;
-        }
-        const unsigned long long cand_score =
-          static_cast<unsigned long long>(peers[i].msgs_sent)
-          + static_cast<unsigned long long>(peers[i].msgs_received);
-        const unsigned long long best_score =
-          static_cast<unsigned long long>(peers[best].msgs_sent)
-          + static_cast<unsigned long long>(peers[best].msgs_received);
-        if (peers[i].connected_time == peers[best].connected_time
-            && cand_score > best_score) {
-            best = i;
-        }
-    }
-
-    stats.snd_pending_max = static_cast<double>(
-      std::max<unsigned long long>(
-        peers[best].snd_pending_msgs,
-        send_pending ? 1ULL : 0ULL));
     return stats;
 }
 
@@ -752,7 +730,7 @@ int run_server_benchmark(const std::string &lib_name,
     const size_t target_clients =
       resolve_multi_service_clients(settings.clients);
     if (!wait_for_spot_ready(&pub_monitor,
-                             std::min<size_t>(target_clients, 1),
+                             target_clients,
                              settings.connect_ready_timeout_ms)) {
         close_spot_server_ready_monitor(&pub_monitor);
         g_server_state = NULL;

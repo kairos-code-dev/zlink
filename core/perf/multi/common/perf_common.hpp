@@ -608,6 +608,17 @@ inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
     return true;
 }
 
+inline void stop_and_close_socket_monitor(void *owner_, void **monitor_p_)
+{
+    if (!monitor_p_ || !*monitor_p_)
+        return;
+
+    (void) owner_;
+    void *monitor = *monitor_p_;
+    *monitor_p_ = NULL;
+    (void) zlink_close(monitor);
+}
+
 inline int poll_connect_ready_count(connect_monitor_t &monitor_)
 {
     if (!monitor_.state)
@@ -650,7 +661,9 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
 inline void close_connect_monitor(connect_monitor_t &monitor_)
 {
     connect_monitor_state_t *state = monitor_.state;
+    void *owner = monitor_.owner;
     void *monitor = monitor_.monitor;
+    void *monitor_id = monitor;
     monitor_.owner = NULL;
     monitor_.monitor = NULL;
     monitor_.state = NULL;
@@ -658,8 +671,9 @@ inline void close_connect_monitor(connect_monitor_t &monitor_)
     if (!monitor && !state)
         return;
 
-    if (monitor && zlink_close(monitor) == 0) {
-        unregister_connect_monitor(monitor);
+    if (monitor) {
+        stop_and_close_socket_monitor(owner, &monitor);
+        unregister_connect_monitor(monitor_id);
         delete state;
         return;
     }
@@ -724,116 +738,98 @@ inline void print_server_queue_metrics(const std::string &lib_type,
               << std::endl;
 }
 
-inline unsigned long long peer_activity_score(
-  const zlink_peer_info_t &info_)
+inline bool read_socket_snapshot_once(void *socket_,
+                                      zlink_monitor_snapshot_t *out_)
 {
-    return static_cast<unsigned long long>(info_.msgs_sent)
-           + static_cast<unsigned long long>(info_.msgs_received);
+    if (!socket_ || !out_)
+        return false;
+
+    void *monitor = zlink_socket_monitor_open(
+      socket_, ZLINK_EVENT_ALL, &zlink_monitor_ignore_handler);
+    if (!monitor)
+        return false;
+
+    memset(out_, 0, sizeof(*out_));
+    const int rc = zlink_monitor_snapshot(monitor, out_);
+    stop_and_close_socket_monitor(socket_, &monitor);
+    return rc == 0;
 }
 
-inline bool read_first_peer_info(void *socket_, zlink_peer_info_t *info_)
+inline bool read_gateway_snapshot_once(void *gateway_,
+                                       zlink_monitor_snapshot_t *out_)
 {
-    if (!socket_ || !info_)
+    if (!gateway_ || !out_)
         return false;
 
-    size_t peer_count = 0;
-    if (zlink_socket_peers(socket_, NULL, &peer_count) != 0 || peer_count == 0)
+    void *monitor = zlink_gateway_monitor_open(
+      gateway_,
+      ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
+        | ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+        | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
+      &zlink_service_monitor_ignore_handler);
+    if (!monitor)
         return false;
 
-    std::vector<zlink_peer_info_t> peers(peer_count);
-    size_t to_copy = peer_count;
-    if (zlink_socket_peers(socket_, &peers[0], &to_copy) != 0 || to_copy == 0)
-        return false;
-
-    size_t best = 0;
-    for (size_t i = 1; i < to_copy; ++i) {
-        const zlink_peer_info_t &cand = peers[i];
-        const zlink_peer_info_t &cur = peers[best];
-        if (cand.connected_time > cur.connected_time) {
-            best = i;
-            continue;
-        }
-        if (cand.connected_time == cur.connected_time
-            && peer_activity_score(cand) > peer_activity_score(cur)) {
-            best = i;
-        }
-    }
-
-    *info_ = peers[best];
-    return true;
+    memset(out_, 0, sizeof(*out_));
+    const int rc = zlink_monitor_snapshot(monitor, out_);
+    (void) zlink_service_monitor_close(&monitor);
+    return rc == 0;
 }
 
-inline bool read_first_service_peer_info (
-  int (*peers_fn_) (void *, zlink_peer_info_t *, size_t *),
-  void *service_,
-  zlink_peer_info_t *info_)
+inline bool read_spot_snapshot_once(void *spot_,
+                                    zlink_spot_role_t role_,
+                                    zlink_monitor_snapshot_t *out_)
 {
-    if (!peers_fn_ || !service_ || !info_)
+    if (!spot_ || !out_)
         return false;
 
-    size_t peer_count = 0;
-    if (peers_fn_ (service_, NULL, &peer_count) != 0 || peer_count == 0)
+    void *monitor = zlink_spot_monitor_open(
+      spot_, role_,
+      ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
+        | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
+        | ZLINK_MONITOR_EVENT_ERROR
+        | ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
+        | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
+        | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED,
+      &zlink_service_monitor_ignore_handler);
+    if (!monitor)
         return false;
 
-    std::vector<zlink_peer_info_t> peers (peer_count);
-    size_t to_copy = peer_count;
-    if (peers_fn_ (service_, &peers[0], &to_copy) != 0 || to_copy == 0)
-        return false;
-
-    size_t best = 0;
-    for (size_t i = 1; i < to_copy; ++i) {
-        const zlink_peer_info_t &cand = peers[i];
-        const zlink_peer_info_t &cur = peers[best];
-        if (cand.connected_time > cur.connected_time) {
-            best = i;
-            continue;
-        }
-        if (cand.connected_time == cur.connected_time
-            && peer_activity_score (cand) > peer_activity_score (cur)) {
-            best = i;
-        }
-    }
-
-    *info_ = peers[best];
-    return true;
+    memset(out_, 0, sizeof(*out_));
+    const int rc = zlink_monitor_snapshot(monitor, out_);
+    (void) zlink_service_monitor_close(&monitor);
+    return rc == 0;
 }
 
-inline server_queue_stats_t sample_service_queue_stats (
-  int (*send_peers_fn_) (void *, zlink_peer_info_t *, size_t *),
-  void *send_service_,
-  int (*recv_peers_fn_) (void *, zlink_peer_info_t *, size_t *),
-  void *recv_service_)
+inline size_t read_socket_ready_peer_count(void *socket_)
 {
-    server_queue_stats_t out;
-    zlink_peer_info_t info;
-
-    if (read_first_service_peer_info (send_peers_fn_, send_service_, &info))
-        out.snd_pending_max =
-          static_cast<double> (
-            static_cast<unsigned long long> (info.snd_pending_msgs));
-    if (read_first_service_peer_info (recv_peers_fn_, recv_service_, &info)) {
-        const double pending =
-          static_cast<double> (
-            static_cast<unsigned long long> (info.rcv_pending_msgs));
-        out.rcv_pending_max = pending;
-        out.rcv_pending_end = pending;
+    zlink_monitor_snapshot_t snapshot;
+    if (!read_socket_snapshot_once(socket_, &snapshot)
+        || !(snapshot.detail_flags
+             & ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT)) {
+        return 0;
     }
-
-    return out;
+    return static_cast<size_t>(snapshot.ready_peer_count);
 }
 
 inline server_queue_stats_t sample_server_queue_stats(void *send_socket_,
                                                       void *recv_socket_)
 {
     server_queue_stats_t out;
-    zlink_peer_info_t info;
+    zlink_monitor_snapshot_t snapshot;
 
-    if (read_first_peer_info(send_socket_, &info))
+    if (read_socket_snapshot_once(send_socket_, &snapshot)
+        && (snapshot.detail_flags
+            & ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS)) {
         out.snd_pending_max =
-          static_cast<double>(static_cast<unsigned long long>(info.snd_pending_msgs));
-    if (read_first_peer_info(recv_socket_, &info)) {
-        const double pending =
-          static_cast<double>(static_cast<unsigned long long>(info.rcv_pending_msgs));
+          static_cast<double>(static_cast<unsigned long long>(
+            snapshot.snd_pending_msgs));
+    }
+    if (read_socket_snapshot_once(recv_socket_, &snapshot)
+        && (snapshot.detail_flags
+            & ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS)) {
+        const double pending = static_cast<double>(
+          static_cast<unsigned long long>(snapshot.rcv_pending_msgs));
         out.rcv_pending_max = pending;
         out.rcv_pending_end = pending;
     }

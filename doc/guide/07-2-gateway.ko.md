@@ -238,9 +238,8 @@ void *client = zlink_gateway_new(ctx, "echo-service",
                                   "client-1", on_reply);
 zlink_gateway_attach_discovery(client, client_discovery);
 
-/* 서비스 가용 대기 */
-while (!zlink_discovery_service_available(client_discovery, "echo-service"))
-    msleep(100);
+/* gateway monitor로 route readiness 대기 */
+/* (ZLINK_GATEWAY_ROUTE_UP 이벤트 또는 zlink_monitor_snapshot 사용) */
 
 /* 요청 전송 */
 zlink_msg_t part;

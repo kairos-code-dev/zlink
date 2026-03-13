@@ -215,13 +215,6 @@ bool open_gateway_ready_monitor(gateway_client_slot_t *slot)
     if (!state)
         return false;
 
-    zlink_gateway_monitor_snapshot_t snapshot;
-    memset(&snapshot, 0, sizeof(snapshot));
-    if (zlink_gateway_monitor_snapshot(slot->gateway, &snapshot) == 0) {
-        state->ready_peer_count = snapshot.ready_peer_count;
-        state->send_ready = snapshot.send_ready != 0;
-    }
-
     void *monitor = zlink_gateway_monitor_open(
       slot->gateway,
       ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
@@ -238,6 +231,14 @@ bool open_gateway_ready_monitor(gateway_client_slot_t *slot)
     if (monitor_hwm > 0) {
         set_sockopt_int(monitor, ZLINK_SNDHWM, monitor_hwm, "ZLINK_SNDHWM");
         set_sockopt_int(monitor, ZLINK_RCVHWM, monitor_hwm, "ZLINK_RCVHWM");
+    }
+
+    zlink_monitor_snapshot_t snapshot;
+    memset(&snapshot, 0, sizeof(snapshot));
+    if (zlink_monitor_snapshot(monitor, &snapshot) == 0) {
+        state->ready_peer_count = snapshot.ready_peer_count;
+        state->send_ready =
+          (snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0;
     }
 
     register_gateway_ready_monitor(monitor, state);

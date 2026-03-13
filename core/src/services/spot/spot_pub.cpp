@@ -159,9 +159,11 @@ static void fill_subject_monitor_event (zlink_service_event_t *event_,
 }
 
 spot_pub_t::spot_pub_t (spot_node_t *node_,
+                        socket_base_t *socket_,
                         uint64_t attachment_id_,
                         bool node_owned_default_) :
     _node (node_),
+    _socket (socket_),
     _attachment_id (attachment_id_),
     _tag (spot_pub_tag_value),
     _node_owned_default (node_owned_default_),
@@ -220,9 +222,7 @@ void spot_pub_t::emit_monitor_event (const zlink_service_event_t &event_)
 
 socket_base_t *spot_pub_t::socket () const
 {
-    if (!_node || !_node->_runtime)
-        return NULL;
-    return _node->_runtime->attachment_socket (_attachment_id);
+    return _socket;
 }
 
 int spot_pub_t::initialize_routing_id (zlink_routing_id_t *out_)
@@ -646,6 +646,7 @@ int spot_pub_t::destroy_internal (bool allow_embedded_default_,
             socket->close ();
         }
     }
+    _socket = NULL;
     _attachment_id = 0;
     _node = NULL;
     _node_owned_default = false;

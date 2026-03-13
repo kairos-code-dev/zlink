@@ -12,8 +12,8 @@ zlink Service Discovery provides the infrastructure to dynamically discover and 
 |------|-------------|
 | **Registry** | Manages service registration/deregistration, broadcasts service list (PUB+ROUTER) |
 | **Discovery** | Subscribes to Registry, manages service list (SUB) |
-| **Receiver** | Service receiver, registers with Registry (DEALER+ROUTER) |
-| **Heartbeat** | Receiver liveness check (5-second interval, 15-second timeout) |
+| **Gateway (server)** | Server-side Gateway, registers with Registry via Discovery |
+| **Heartbeat** | Service liveness check (5-second interval, 15-second timeout) |
 
 ### Architecture
 
@@ -25,12 +25,12 @@ zlink Service Discovery provides the infrastructure to dynamically discover and 
 │       │ (service list broadcast)          │
 └───────┼──────────────────────────────────┘
         │
-   ┌────┴────┐      ┌──────────┐
-   │Discovery│      │ Receiver │
-   │ (SUB)   │      │(DEALER+  │
-   │    │    │      │ ROUTER)  │
-   │    ▼    │      └──────────┘
-   │ Gateway │
+   ┌────┴────┐
+   │Discovery│
+   │ (SUB)   │
+   │    │    │
+   │    ▼    │
+   │ Gateway │  (client or server via bind)
    │(ROUTER) │
    └─────────┘
 ```
@@ -74,32 +74,24 @@ void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 
-/* Check service availability */
-while (!zlink_discovery_service_available(discovery, "payment-service")) {
-    printf("Waiting...\n");
-    sleep(1);
-}
+/* Observe service state via monitor */
+void *mon = zlink_discovery_monitor_open(
+    discovery,
+    ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
+      | ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED,
+    on_discovery_event);
 
-/* Query receiver list */
-zlink_receiver_info_t receivers[10];
-size_t count = 10;
-zlink_discovery_get_receivers(discovery, "payment-service",
-                              receivers, &count);
-for (size_t i = 0; i < count; i++) {
-    printf("Receiver: %s (weight=%u)\n",
-           receivers[i].endpoint, receivers[i].weight);
-}
+/* ... Discovery delivers events through the callback ... */
 
-/* Query receiver count */
-int n = zlink_discovery_receiver_count(discovery, "payment-service");
-
+/* Cleanup */
+zlink_service_monitor_close(&mon);
 zlink_discovery_destroy(&discovery);
 ```
 
 ## 4. Liveness and Summary Updates
 
 ```
-Receiver/SpotNode           Discovery               Registry
+Gateway/SpotNode            Discovery               Registry
    │  REGISTER / summary        │                      │
    │──────────────────────────► │                      │
    │                            │ bootstrap + uplink   │
@@ -113,7 +105,7 @@ Receiver/SpotNode           Discovery               Registry
 
 - Registry visibility is maintained through Discovery-owned heartbeat/topology
   uplink.
-- Receiver and Spot services still submit local registration/summary changes,
+- Gateway and Spot services still submit local registration/summary changes,
   but Discovery owns the periodic uplink cadence.
 - Registry summary is eventually consistent and should be treated as a
   coarse/global view, not a strict final readiness gate.

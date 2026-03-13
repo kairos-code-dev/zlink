@@ -1230,21 +1230,26 @@ core/
 │   │
 │   ├── services/                    # 고수준 서비스
 │   │   ├── common/                  # 공통 서비스 유틸리티
-│   │   │   ├── heartbeat.hpp
-│   │   │   ├── service_key.hpp
-│   │   │   └── service_types.hpp
+│   │   │   ├── advertise_endpoint.hpp   # 서비스 등록용 엔드포인트 해석
+│   │   │   ├── monitor_decode.hpp       # 모니터 이벤트 디코딩
+│   │   │   ├── service_monitor.cpp/hpp  # 서비스 레벨 모니터 구현
+│   │   │   ├── service_runtime_base.hpp # 서비스 라이프사이클 커널
+│   │   │   └── socket_monitor_bridge.hpp # PAIR 기반 소켓 모니터 브릿지
 │   │   ├── discovery/               # 서비스 디스커버리
 │   │   │   ├── discovery.cpp/hpp
 │   │   │   ├── discovery_protocol.hpp
 │   │   │   └── registry.cpp/hpp
 │   │   ├── gateway/                 # 게이트웨이
-│   │   │   ├── gateway.cpp/hpp
-│   │   │   ├── receiver.cpp/hpp
+│   │   │   ├── gateway.cpp/hpp      # 게이트웨이 + 리시버 (통합)
+│   │   │   ├── gateway_runtime.hpp  # 게이트웨이 런타임 상태 및 라이프사이클
 │   │   │   └── routing_id_utils.hpp
 │   │   └── spot/                    # SPOT 서비스
+│   │       ├── spot_node.cpp/hpp    # 네트워크 제어 (PUB/SUB mesh)
 │   │       ├── spot_pub.cpp/hpp     # 발행 핸들 (thread-safe)
 │   │       ├── spot_sub.cpp/hpp     # 구독/수신 핸들
-│   │       └── spot_node.cpp/hpp    # 네트워크 제어 (PUB/SUB mesh)
+│   │       ├── spot_data_plane.cpp/hpp  # 데이터 플레인 루프 (SUB 수신, 로컬 분배)
+│   │       ├── spot_dispatch_internal.hpp # 내부 분배 헬퍼
+│   │       └── spot_runtime.hpp     # SPOT 런타임 상태 및 라이프사이클
 │   │
 │   └── utils/                       # 유틸리티
 │       ├── ypipe.hpp                # Lock-free 파이프

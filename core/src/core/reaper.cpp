@@ -102,7 +102,6 @@ void zlink::reaper_t::process_mailbox ()
     do {
 #ifdef HAVE_FORK
         if (unlikely (_pid != getpid ())) {
-            //printf("zlink::reaper_t::process_mailbox return in child process %d\n", (int)getpid());
             return;
         }
 #endif

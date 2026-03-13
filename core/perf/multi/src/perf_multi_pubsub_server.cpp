@@ -526,7 +526,7 @@ inline int run_server_benchmark (const std::string &lib_name,
           settings.connect_ready_timeout_ms)) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-pubsub-server] connect-ready timeout peers="
-                      << zlink_socket_peer_count(server) << " expected="
+                      << read_socket_ready_peer_count(server) << " expected="
                       << settings.clients << std::endl;
         }
         close_connect_monitor (server_monitor);

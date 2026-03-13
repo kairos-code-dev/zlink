@@ -34,7 +34,7 @@ public function, type, and constant exported by `<zlink.h>`.
 | [`zlink_monitor_event_t`](monitoring.md) | monitoring.md | Monitor event structure (event, value, addresses) |
 | [`zlink_monitor_snapshot_t`](monitoring.md) | monitoring.md | Aggregate monitor snapshot (state, ready-peer count, queue depth) |
 | [`zlink_service_event_t`](events.md) | events.md | Service monitor event structure and subject-aware payload |
-| [`zlink_receiver_info_t`](discovery.md) | discovery.md | Discovered service-receiver entry (name, endpoint, weight) |
+| [`zlink_pollitem_t`](polling.md) | polling.md | Poll item for I/O multiplexing (socket or fd) |
 
 ## Callback Types
 

@@ -96,17 +96,17 @@ perf/                                       # bindings/<lang>/perf/
 
 ### 2.0.3 STREAM 소켓 테스트 모델 (공통 필수)
 
-- **STREAM 계열은 multi suite에서만 테스트한다.** single suite에서는 STREAM 소켓 테스트를 수행하지 않는다.
-- STREAM 계열(`MULTI_STREAM`, `MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`)은 반드시 **zlink STREAM server(bind only)** + **raw transport client(connect)** 모델로 측정한다.
+- **MULTI_STREAM_CALLBACK은 multi suite에서만 테스트한다.** single suite에서는 STREAM 소켓 테스트를 수행하지 않는다.
+- MULTI_STREAM_CALLBACK은 반드시 **zlink STREAM server(bind only)** + **raw transport client(connect)** 모델로 측정한다.
 - zlink STREAM 소켓의 client `connect()` 경로를 벤치마크 클라이언트로 사용하지 않는다.
 - STREAM 테스트에서 server를 DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로 대체하면 정책 위반이며 결과는 무효다.
 - 모델 위반/불일치 구현은 정책 위반으로 간주하며, 해당 코드 경로를 삭제한 뒤 정책 모델로 재구현해야 한다.
 - 모델 위반 구현에서 나온 결과는 `UNSUPPORTED`/`SKIP`으로 우회할 수 없으며 정책 산출물로 인정하지 않는다.
-- STREAM multi 측정에서는 각 size마다 `connect_ok == target clients`(100%)를 충족해야 하며, 미달 시 반드시 `fail`로 처리한다.
+- MULTI_STREAM_CALLBACK 측정에서는 각 size마다 `connect_ok == target clients`(100%)를 충족해야 하며, 미달 시 반드시 `fail`로 처리한다.
 
 #### Wire Protocol
 
-STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
+MULTI_STREAM_CALLBACK 벤치마크는 **len32be framing** 프로토콜을 사용한다.
 
 ```text
 ┌──────────────────────┬──────────────────────────────┐
@@ -115,16 +115,12 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 └──────────────────────┴──────────────────────────────┘
 ```
 
-- **client**: 모든 STREAM 패턴에서 동일한 공통 raw client를 사용하며, `[4B length (big-endian)][payload]` 형식으로 송신한다. 수신(echo)도 동일한 framing으로 읽는다.
-- **server**: zlink STREAM 소켓으로 bind한 뒤, 수신 방식에 따라 3가지 패턴으로 분기한다:
+- **client**: 공통 raw client를 사용하며, `[4B length (big-endian)][payload]` 형식으로 송신한다. 수신(echo)도 동일한 framing으로 읽는다.
+- **server**: zlink STREAM 소켓으로 bind한 뒤, stream dispatch callback API로 수신한다.
 
 | 패턴 | server 수신 방식 | 설명 |
 |------|-----------------|------|
-| STREAM / MULTI_STREAM | 기본 recv 루프 | 기존 소켓 recv API(`zlink_recv`/`zmq_recv` 계열)로 메시지 수신 |
-| STREAM_CALLBACK / MULTI_STREAM_CALLBACK | callback dispatch | stream dispatch callback API로 수신 |
-| STREAM_LEN32BE / MULTI_STREAM_LEN32BE | callback + len32be framing | callback dispatch + 4B big-endian length-prefixed framing 인식 |
-
-- client의 wire protocol을 len32be로 통일하는 이유: 서버 수신 방식만 다르고 client는 동일한 공통 바이너리를 사용하므로, 테스트 용이성과 비교 공정성을 위해 client 측 framing을 len32be로 고정한다.
+| MULTI_STREAM_CALLBACK | callback dispatch | stream dispatch callback API로 수신 |
 - 이 프로토콜은 multi suite에 적용된다. single suite에서는 STREAM 테스트를 수행하지 않는다.
 
 ### 2.1 결과 저장 규칙
@@ -164,11 +160,11 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 perf/run_benchmarks.sh --pattern PAIR
 
 # core multi만 실행
-perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
+perf/run_benchmarks_multi.sh --pattern MULTI_STREAM_CALLBACK
 
 # bindings 실행 (예: node)
 perf/single/run_benchmarks.sh --pattern PAIR
-perf/multi/run_benchmarks.sh --pattern MULTI_STREAM
+perf/multi/run_benchmarks.sh --pattern MULTI_STREAM_CALLBACK
 ```
 
 각 스크립트의 상세 옵션은 개별 정책 문서의 섹션 5를 참조한다.
@@ -410,7 +406,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 ```text
 ## Failures
 - PAIR current ipc 64B: timeout
-- MULTI_STREAM current wss 65536B: no_data
+- MULTI_STREAM_CALLBACK current wss 65536B: no_data
 ```
 
 ---
@@ -440,7 +436,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 |------|------|
 | 스크립트 레벨 재시도 | 금지 — 실패한 pattern/transport/size 조합을 자동으로 다시 실행하지 않는다 |
 | 바이너리 내부 재시도 | 금지 — send/recv 실패 시 자동 재시도하지 않는다 |
-| 환경 변수 | `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 **삭제 대상**이다. 구현에 존재하면 제거해야 한다 |
+| 환경 변수 | `PERF_MULTI_ATTEMPTS` 및 레거시 retry 관련 변수는 **삭제 대상**이다. 구현에 존재하면 제거해야 한다 |
 
 - **이유**: 재시도는 실패 원인을 숨긴다. 벤치마크 실패는 라이브러리 또는 환경의 실제 문제를 반영하며, 재시도로 통과시키면 회귀가 감지되지 않는다.
 
@@ -513,8 +509,8 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 - STREAM client 공통 구현은 `common/streamclient/`에 모아둘 수 있다.
 - 각 pattern 소스(`multi/current`)는 해당 client를 호출하는
   엔트리/실행 흐름을 유지해야 한다.
-- 이 예외는 STREAM 계열 client 인프라에만 적용한다.
-- STREAM 계열은 multi suite에서만 테스트하므로 single suite에는 해당 없다.
+- 이 예외는 MULTI_STREAM_CALLBACK client 인프라에만 적용한다.
+- MULTI_STREAM_CALLBACK은 multi suite에서만 테스트하므로 single suite에는 해당 없다.
 
 #### 인라인 필수 (코어 로직)
 
@@ -558,12 +554,17 @@ int main (int argc, char **argv)
     zlink_setsockopt (socket, ZLINK_ROUTING_ID, id, id_len);
     zlink_connect (socket, endpoint);
 
-    // warmup phase
-    for (...) { zlink_send (...); zlink_recv (...); }
+    // warmup phase (duration-based, active와 동일 로직, 집계 제외)
+    warmup_sw.start ();
+    while (warmup_sw.elapsed_s () < warmup_seconds) {
+        zlink_send (...); zlink_recv (...);
+    }
 
-    // measure phase — throughput 측정
+    // measure phase — throughput 측정 (duration-based)
     stopwatch.start ();
-    for (...) { zlink_send (...); zlink_recv (...); count++; }
+    while (stopwatch.elapsed_s () < duration_seconds) {
+        zlink_send (...); zlink_recv (...); count++;
+    }
     double throughput = count / elapsed;
 
     // drain phase

@@ -2135,8 +2135,8 @@ spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
         return NULL;
     }
 
-    spot_pub_t *pub =
-      new (std::nothrow) spot_pub_t (this, attachment_id, node_owned_default_);
+    spot_pub_t *pub = new (std::nothrow)
+      spot_pub_t (this, attachment_socket, attachment_id, node_owned_default_);
     if (!pub) {
         (void) _runtime->destroy_attachment (attachment_id);
         errno = ENOMEM;
@@ -2198,8 +2198,8 @@ spot_sub_t *spot_node_t::create_spot_sub_with_defaults (
         return NULL;
     }
 
-    spot_sub_t *sub =
-      new (std::nothrow) spot_sub_t (this, attachment_id, node_owned_default_);
+    spot_sub_t *sub = new (std::nothrow)
+      spot_sub_t (this, attachment_socket, attachment_id, node_owned_default_);
     if (!sub) {
         (void) _runtime->destroy_attachment (attachment_id);
         errno = ENOMEM;

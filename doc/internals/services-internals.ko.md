@@ -82,8 +82,8 @@ struct registry_state_t {
 
 ## 5. Receiver 내부 구현
 
-> **참고**: 공개 C API와 내부 C++ 구현의 네이밍을 `receiver`로 통일했다
-> (`core/src/services/gateway/receiver.hpp`의 `receiver_t`).
+> **참고**: receiver 역할은 `gateway_t`로 통합되었다
+> (`core/src/services/gateway/gateway.cpp/hpp`). 별도 `receiver_t` 클래스는 없다.
 
 ### 5.1 상태 머신
 ```

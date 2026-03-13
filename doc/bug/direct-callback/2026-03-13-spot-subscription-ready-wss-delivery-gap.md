@@ -8,6 +8,26 @@
 핵심은 perf 보정 문제가 아니라, `SUBSCRIPTION_READY` 이벤트 의미와 실제 data-plane readiness가
 일치하지 않는다는 점이다. 팀장님 지시대로 event 확인 후 통신이 안 되면 bug로 보고한다.
 
+## 상태 업데이트 (2026-03-13)
+
+- 가이드와 monitor contract 스펙에서는 이제 `SUBSCRIPTION_READY`를
+  delivery gate로 쓰지 않는다.
+- 현재 canonical gate는 `*_DELIVERY_READY_CHANGED`다.
+- 즉 이 리포트의 원래 문제 제기는 "왜 `SUBSCRIPTION_READY`만으로는 안 되나"에 대한
+  semantic 정리는 끝난 상태다.
+- 다만 WSS single perf 자체는 아직 실패한다.
+
+```bash
+timeout 45s env PERF_SINGLE_DURATION_SECONDS=2 \
+  PERF_SINGLE_SNDTIMEO_MS=200 PERF_SINGLE_RCVTIMEO_MS=200 \
+  ./core/build/bin/perf_spot current wss 64
+```
+
+- 관측 결과: `exit=1`, throughput/bandwidth/latency 전부 `0.00`
+- 따라서 WSS delivery 문제는 닫지 않는다.
+- 다만 current contract 기준으로는 이 리포트보다
+  `single-spot-delivery-ready-flake.md`의 후속 이슈로 보는 것이 더 정확하다.
+
 ## 현재 perf 측 조건
 
 현재 [perf_spot.cpp](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/perf/single/src/perf_spot.cpp#L699) 경로는 아래 순서만 사용한다.

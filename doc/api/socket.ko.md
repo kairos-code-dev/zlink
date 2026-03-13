@@ -371,46 +371,15 @@ int zlink_send (void *s_, const void *buf_, size_t len_, int flags_);
 
 **스레드 안전성:** 동일 소켓에서 스레드 안전하지 않습니다.
 
-**참고:** `zlink_recv`, `zlink_msg_send`, `zlink_msg_init_data`
-
----
-
-### zlink_recv
-
-소켓에서 데이터를 수신합니다.
-
-```c
-int zlink_recv (void *s_, void *buf_, size_t len_, int flags_);
-```
-
-소켓 `s_`에서 `buf_`로 최대 `len_` 바이트를 수신합니다. 수신 메시지가 `len_`보다
-크면 자동으로 잘리며 반환값은 여전히 원래 메시지 크기를 반영합니다(`len_`을
-초과). 잘림을 감지하려면 반환값을 `len_`과 비교하세요. `flags_` 매개변수는
-0 또는 `ZLINK_DONTWAIT`일 수 있습니다.
-
-**반환값:** 성공 시 원래 메시지의 바이트 수 (잘린 경우 `len_`을 초과할 수 있음),
-실패 시 -1 (errno가 설정됨).
-
-**에러:** 사용 가능한 메시지가 없고 `ZLINK_DONTWAIT`가 설정된 경우 `EAGAIN`.
-Context가 종료된 경우 `ETERM`.
-
-**스레드 안전성:** 동일 소켓에서 스레드 안전하지 않습니다.
-
-**참고:** `zlink_send`, `zlink_msg_recv`
+**참고:** `zlink_msg_send`, `zlink_msg_init_data`
 
 ---
 
 ### STREAM 콜백 Dispatch API
 
-다음 함수들은 STREAM 소켓을 위한 고성능 콜백 기반 인터페이스를 제공합니다.
-`zlink_recv()`로 폴링하는 대신, I/O 스레드에서 데이터 도착 시 직접 호출되는
+다음 함수들은 STREAM 소켓을 위한 콜백 기반 인터페이스를 제공합니다.
+STREAM 수신은 콜백 전용이며, I/O 스레드에서 데이터 도착 시 직접 호출되는
 콜백을 등록합니다.
-
-모드 규칙:
-- `zlink_stream_attach()` ON: STREAM 데이터는 콜백 dispatch에서 소비합니다.
-- attach 상태에서 STREAM 페이로드 수신에 `zlink_recv()`를 혼용하지 않습니다.
-- `zlink_stream_detach()` 이후에는 `zlink_recv()` 패턴을 다시 사용할 수 있습니다.
-- `zlink_stream_recv()` API는 제공되지 않습니다.
 
 #### 상수
 
@@ -472,8 +441,7 @@ STREAM 소켓에서 콜백 dispatch를 해제합니다.
 int zlink_stream_detach (void *s_);
 ```
 
-이전에 등록된 dispatch 콜백을 제거합니다. 해제 후 소켓은 표준
-`zlink_recv()` 패턴으로 돌아갑니다.
+이전에 등록된 dispatch 콜백을 제거합니다.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
@@ -573,13 +541,13 @@ int zlink_socket_monitor (void *s_, const char *addr_, int events_);
 void *zlink_socket_monitor_open (void *s_, int events_);
 ```
 
-소켓 `s_`에 대한 모니터를 생성하고, inproc 엔드포인트 없이
-`zlink_monitor_recv()`로 직접 이벤트를 수신할 수 있는 핸들을 반환합니다.
-`events_` 매개변수는 `ZLINK_EVENT_*` 상수의 비트마스크입니다. 반환된 핸들은
-더 이상 필요하지 않을 때 `zlink_close()`로 닫아야 합니다.
+소켓 `s_`에 대한 모니터를 생성하고 핸들을 반환합니다. `events_` 비트마스크에
+해당하는 이벤트가 콜백을 통해 전달됩니다. `events_` 매개변수는 `ZLINK_EVENT_*`
+상수의 비트마스크입니다. 반환된 핸들은 더 이상 필요하지 않을 때
+`zlink_close()`로 닫아야 합니다.
 
 **반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
 
 **스레드 안전성:** 동일 소켓에서 스레드 안전하지 않습니다.
 
-**참고:** `zlink_socket_monitor`, `zlink_monitor_recv`
+**참고:** `zlink_socket_monitor`

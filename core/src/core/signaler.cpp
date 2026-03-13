@@ -147,7 +147,6 @@ void zlink::signaler_t::send ()
 {
 #if defined HAVE_FORK
     if (unlikely (pid != getpid ())) {
-        //printf("Child process %d signaler_t::send returning without sending #1\n", getpid());
         return; // do not send anything in forked child context
     }
 #endif
@@ -173,7 +172,7 @@ void zlink::signaler_t::send ()
             continue;
 #if defined(HAVE_FORK)
         if (unlikely (pid != getpid ())) {
-            //printf("Child process %d signaler_t::send returning without sending #2\n", getpid());
+    
             errno = EINTR;
             break;
         }
@@ -189,7 +188,7 @@ void zlink::signaler_t::send ()
             continue;
 #if defined(HAVE_FORK)
         if (unlikely (pid != getpid ())) {
-            //printf("Child process %d signaler_t::send returning without sending #2\n", getpid());
+    
             errno = EINTR;
             break;
         }
@@ -206,7 +205,7 @@ int zlink::signaler_t::wait (int timeout_) const
     if (unlikely (pid != getpid ())) {
         // we have forked and the file descriptor is closed. Emulate an interrupt
         // response.
-        //printf("Child process %d signaler_t::wait returning simulating interrupt #1\n", getpid());
+
         errno = EINTR;
         return -1;
     }
@@ -229,7 +228,6 @@ int zlink::signaler_t::wait (int timeout_) const
     if (unlikely (pid != getpid ())) {
         // we have forked and the file descriptor is closed. Emulate an interrupt
         // response.
-        //printf("Child process %d signaler_t::wait returning simulating interrupt #2\n", getpid());
         errno = EINTR;
         return -1;
     }

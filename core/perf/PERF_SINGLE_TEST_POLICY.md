@@ -18,7 +18,7 @@
 
 | 항목 | 기준 |
 |------|------|
-| 측정 모델 | warmup(count) + active(duration) |
+| 측정 모델 | warmup(duration) + active(duration) |
 | throughput | `active 수신 건수 / active 시간(초)` |
 | latency | active 구간 수신 payload header timestamp 기반 |
 | 대표값 | runs > 1일 때 metric별 median |
@@ -33,15 +33,15 @@
 ## 2. 바이너리 Phase 규칙
 
 ```text
-[single phase]: [warmup] -> [active(duration)]
+[single phase]: [warmup(duration)] -> [active(duration)]
 ```
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
-| warmup | count-based | 패턴별 기본값 | `PERF_WARMUP_COUNT` |
+| warmup | time-based | 2s | `PERF_SINGLE_WARMUP_SECONDS` |
 | active | time-based | 5s | `PERF_SINGLE_DURATION_SECONDS` |
 
-- warmup 데이터는 최종 집계에서 제외한다.
+- warmup은 active와 동일한 send/recv 로직을 수행하되, 집계에서 제외한다.
 - active에서만 throughput/latency를 계산한다.
 
 ### 2.1 Header 기반 집계 (필수)
@@ -178,6 +178,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 |------|------|--------|
 | `--pattern NAME` | 패턴 목록 (쉼표 구분) | `ALL` |
 | `--runs N` | 조합별 반복 횟수 | 1 |
+| `--warmup N` | warmup 구간 시간(초) | 2 |
 | `--duration N` | active 구간 시간(초) | 5 |
 | `--build-dir PATH` | 빌드 디렉터리 | 자동 탐색 |
 | `--results-dir PATH` | 결과 루트 디렉터리 | `core/perf/results` |
@@ -213,7 +214,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 - GATEWAY
 - SPOT
 
-> STREAM 계열(STREAM, STREAM_CALLBACK, STREAM_LEN32BE)은 single suite에서 테스트하지 않는다.
+> STREAM_CALLBACK은 multi suite에서만 테스트하며, single suite에서는 테스트하지 않는다.
 
 ### 7.2 표준 메시지 크기
 
@@ -235,7 +236,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `PERF_DEBUG` | 디버그 로그 | unset |
-| `PERF_IO_THREADS` | context I/O threads | 0 |
+| `PERF_IO_THREADS` | context I/O threads | 2 |
 | `PERF_MSG_SIZES` | size 목록 override | 정책 기본값 |
 | `PERF_TRANSPORTS` | transport 목록 override | 패턴 기본값 |
 | `PERF_TASKSET` | CPU pinning 활성화 (`1`) | 0 |
@@ -245,7 +246,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `PERF_WARMUP_COUNT` | warmup 메시지 개수 | 패턴별 기본값 |
+| `PERF_SINGLE_WARMUP_SECONDS` | warmup 시간(초) | 2 |
 | `PERF_SINGLE_DURATION_SECONDS` | active 구간 시간(초) | 5 |
 | `PERF_SINGLE_TIMEOUT_SECONDS` | 프로세스 timeout(초) | `max(30, duration*6+15)` |
 

@@ -99,6 +99,21 @@ static void snapshot_connected_mesh_peer_endpoints (socket_base_t *mesh_xsub_,
     }
 }
 
+static unsigned int subscription_ready_holdoff_ticks (
+  const std::set<std::string> &connected_endpoints_)
+{
+    for (std::set<std::string>::const_iterator it =
+           connected_endpoints_.begin ();
+         it != connected_endpoints_.end (); ++it) {
+        if (it->compare (0, 6, "wss://") == 0
+            || it->compare (0, 6, "tls://") == 0) {
+            return 100;
+        }
+    }
+
+    return 20;
+}
+
 static int recv_ascii_command (socket_base_t *socket_,
                                std::vector<std::string> *frames_)
 {
@@ -841,10 +856,13 @@ void spot_node_t::schedule_subscription_ready_refresh ()
 {
     service_control_runtime_t *runtime = NULL;
     uint64_t task_id = 0;
+    unsigned int holdoff_ticks = 20;
     {
         scoped_lock_t lock (_sync);
         _subscription_ready_refresh_pending = true;
-        _subscription_ready_refresh_holdoff_ticks = 20;
+        holdoff_ticks =
+          subscription_ready_holdoff_ticks (_connected_peer_endpoints);
+        _subscription_ready_refresh_holdoff_ticks = holdoff_ticks;
         if (_runtime) {
             task_id = _runtime->task_id;
             runtime = _ctx ? _ctx->service_control_runtime () : NULL;

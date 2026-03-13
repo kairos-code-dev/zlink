@@ -245,6 +245,16 @@ bool zlink::current_spot_dispatch_is_node ()
     return g_current_spot_dispatch_is_node;
 }
 
+namespace zlink
+{
+void *current_monitor_dispatch_handle ()
+{
+    return g_current_monitor_handler_state
+             ? static_cast<void *> (g_current_monitor_handler_state->socket)
+             : NULL;
+}
+}
+
 static spot_node_handler_registry_t &spot_node_handler_registry ()
 {
     static spot_node_handler_registry_t registry;

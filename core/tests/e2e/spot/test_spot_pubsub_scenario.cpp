@@ -363,6 +363,23 @@ static queued_spot_probe_t *ensure_queued_spot_probe (
     return probe;
 }
 
+static void remove_queued_spot_probe (void *handle_, bool node_owned_)
+{
+    if (!handle_)
+        return;
+
+    std::map<void *, queued_spot_probe_t *> *probe_map =
+      node_owned_ ? &g_node_probes : &g_sub_probes;
+
+    std::lock_guard<std::mutex> lock (g_spot_probe_mutex);
+    std::map<void *, queued_spot_probe_t *>::iterator it =
+      probe_map->find (handle_);
+    if (it == probe_map->end ())
+        return;
+
+    probe_map->erase (it);
+}
+
 static bool pop_matching_spot_message_locked (
   queued_spot_probe_t *probe_,
   const char *expected_topic_,
@@ -478,6 +495,40 @@ static int bind_spot_node_with_port_seed (void *node_,
             return 0;
     }
     return -1;
+}
+
+static bool wait_for_spot_pub_peers (void *pub_, int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        size_t count = 0;
+        if (zlink_spot_peers_pub (pub_, NULL, &count) == 0 && count > 0)
+            return true;
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+
+    size_t count = 0;
+    return zlink_spot_peers_pub (pub_, NULL, &count) == 0 && count > 0;
+}
+
+static bool wait_for_spot_sub_peers (void *sub_, int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        size_t count = 0;
+        if (zlink_spot_peers_sub (sub_, NULL, &count) == 0 && count > 0)
+            return true;
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+
+    size_t count = 0;
+    return zlink_spot_peers_sub (sub_, NULL, &count) == 0 && count > 0;
 }
 
 static void make_registry_endpoint (char *endpoint_out_,
@@ -767,6 +818,112 @@ static void test_spot_peer_wss ()
         return;
     }
     run_spot_peer_transport_test (peer_transport_wss);
+}
+
+static void test_spot_unified_wss_subscription_ready_first_delivery ()
+{
+    if (!zlink_has ("wss")) {
+        TEST_IGNORE_MESSAGE ("WSS not available");
+        return;
+    }
+
+    const int iteration_count = 16;
+    const char *const topic = "wss:ready:first-delivery";
+    const char *const payload = "wss-ready";
+    tls_test_files_t files = make_tls_test_files ();
+    int port_seed = 35200;
+
+    for (int iteration = 0; iteration < iteration_count; ++iteration) {
+        step_log ("spot unified wss ready delivery: create ctx");
+        void *ctx = zlink_ctx_new ();
+        TEST_ASSERT_NOT_NULL (ctx);
+
+        void *pub_node =
+          zlink_spot_node_new (ctx, "perf-spot", &ignore_spot_handler);
+        void *sub_node =
+          zlink_spot_node_new (ctx, "perf-spot-client", &ignore_spot_handler);
+        TEST_ASSERT_NOT_NULL (pub_node);
+        TEST_ASSERT_NOT_NULL (sub_node);
+
+        const int linger = 0;
+        const int sndhwm = 1000;
+        const int rcvhwm = 1000;
+        const int sndtimeo_ms = 200;
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_spot_node_set_pub_option (pub_node, ZLINK_SPOT_PUB_OPT_LINGER,
+                                          &linger, sizeof (linger)));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_spot_node_set_pub_option (pub_node, ZLINK_SPOT_PUB_OPT_SNDHWM,
+                                          &sndhwm, sizeof (sndhwm)));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_spot_node_set_pub_option (pub_node, ZLINK_SPOT_PUB_OPT_SNDTIMEO,
+                                          &sndtimeo_ms,
+                                          sizeof (sndtimeo_ms)));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_spot_node_set_sub_option (sub_node, ZLINK_SPOT_SUB_OPT_LINGER,
+                                          &linger, sizeof (linger)));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_spot_node_set_sub_option (sub_node, ZLINK_SPOT_SUB_OPT_RCVHWM,
+                                          &rcvhwm, sizeof (rcvhwm)));
+
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_spot_node_set_tls_server (pub_node, files.server_cert.c_str (),
+                                          files.server_key.c_str ()));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_tls_client (
+          sub_node, files.ca_cert.c_str (), "localhost", 0));
+
+        step_log ("spot unified wss ready delivery: create handles");
+        void *pub = zlink_spot_new (pub_node, &ignore_spot_handler);
+        void *sub = zlink_spot_new (sub_node, &queued_spot_handler);
+        TEST_ASSERT_NOT_NULL (pub);
+        TEST_ASSERT_NOT_NULL (sub);
+        TEST_ASSERT_NOT_NULL (ensure_queued_spot_probe (sub, false));
+
+        service_monitor_probe_t monitor_probe;
+        g_service_monitor_probe = &monitor_probe;
+        void *sub_monitor = zlink_spot_monitor_open (
+          sub,
+          ZLINK_SPOT_ROLE_SUB,
+          ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_SUBSCRIPTION_READY
+            | ZLINK_MONITOR_EVENT_ERROR,
+          &queued_service_monitor_handler);
+        TEST_ASSERT_NOT_NULL (sub_monitor);
+
+        char endpoint[MAX_SOCKET_STRING] = {0};
+        step_log ("spot unified wss ready delivery: bind/connect");
+        TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+          pub_node, "wss://localhost:", &port_seed, endpoint));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_spot_node_connect_peer_pub (sub_node, endpoint));
+
+        step_log ("spot unified wss ready delivery: subscribe and wait");
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, topic));
+        TEST_ASSERT_TRUE (wait_for_spot_pub_peers (pub, 5000));
+        TEST_ASSERT_TRUE (wait_for_spot_sub_peers (sub, 5000));
+        TEST_ASSERT_TRUE (wait_for_service_event (
+          &monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
+        TEST_ASSERT_TRUE (wait_for_service_event (
+          &monitor_probe, ZLINK_SPOT_SUB_SUBSCRIPTION_READY, endpoint,
+          10000));
+
+        step_log ("spot unified wss ready delivery: publish immediately");
+        TEST_ASSERT_SUCCESS_ERRNO (
+          publish_text (&zlink_spot_publish, pub, topic, payload, 0));
+        TEST_ASSERT_TRUE (
+          wait_for_spot_message (sub, topic, payload, strlen (payload), 3000));
+
+        g_service_monitor_probe = NULL;
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&sub_monitor));
+        remove_queued_spot_probe (sub, false);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+    }
+
+    cleanup_tls_test_files (files);
 }
 
 static void test_spot_multi_publisher ()
@@ -2111,6 +2268,7 @@ int main (int, char **)
     RUN_SPOT_TEST (test_spot_peer_ws);
     RUN_SPOT_TEST (test_spot_peer_tls);
     RUN_SPOT_TEST (test_spot_peer_wss);
+    RUN_SPOT_TEST (test_spot_unified_wss_subscription_ready_first_delivery);
     RUN_SPOT_TEST (test_spot_multi_publisher);
     RUN_SPOT_TEST (test_spot_node_direct_local_and_child_interop);
     RUN_SPOT_TEST (test_spot_node_direct_remote_peer_mesh);

@@ -518,6 +518,7 @@ set(SPOT_PUBSUB_CASES
     test_spot_peer_ws
     test_spot_peer_tls
     test_spot_peer_wss
+    test_spot_unified_wss_subscription_ready_first_delivery
     test_spot_multi_publisher
     test_spot_node_direct_local_and_child_interop
     test_spot_node_direct_remote_peer_mesh
@@ -539,7 +540,8 @@ set(SPOT_PUBSUB_PEER_TEST_SPECS
     test_spot_pubsub_scenario_peer_tcp=test_spot_peer_tcp
     test_spot_pubsub_scenario_peer_ws=test_spot_peer_ws
     test_spot_pubsub_scenario_peer_tls=test_spot_peer_tls
-    test_spot_pubsub_scenario_peer_wss=test_spot_peer_wss)
+    test_spot_pubsub_scenario_peer_wss=test_spot_peer_wss
+    test_spot_pubsub_scenario_unified_wss_ready_delivery=test_spot_unified_wss_subscription_ready_first_delivery)
 
 set(SPOT_PUBSUB_LOCAL_TEST_SPECS
     test_spot_pubsub_scenario_multi_publisher=test_spot_multi_publisher

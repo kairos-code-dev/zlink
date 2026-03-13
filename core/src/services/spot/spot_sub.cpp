@@ -578,18 +578,10 @@ void spot_sub_t::monitor_loop ()
                 break;
 
             case ZLINK_EVENT_CONNECTION_READY: {
-                std::string ready_endpoint;
                 {
                     scoped_lock_t lock (_sync);
                     if (raw.remote_addr[0] != '\0')
                         _ready_peer_endpoints.insert (raw.remote_addr);
-                    if ((!_topics.empty () || !_patterns.empty ())
-                        && !_ready_peer_endpoints.empty ()) {
-                        if (raw.remote_addr[0] != '\0')
-                            ready_endpoint = raw.remote_addr;
-                        else
-                            ready_endpoint = *_ready_peer_endpoints.begin ();
-                    }
                 }
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_READY,
                                            raw);
@@ -597,8 +589,6 @@ void spot_sub_t::monitor_loop ()
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_PEER_UP,
                                            raw);
                 _monitor.emit (event);
-                if (!ready_endpoint.empty ())
-                    emit_subscription_ready_event (ready_endpoint.c_str ());
                 break;
             }
 

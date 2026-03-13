@@ -60,7 +60,7 @@ detail flag:
 - `*_DELIVERY_READY_CHANGED`: 특정 subject에 대해 첫 delivery 보장 가능 상태
 
 권장 gate:
-- publisher는 `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED`에서 `value >= 1`을
+- publisher는 `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED`에서 `value >= 1`을
   기다린 뒤 publish 시작
 - subscriber는 `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED`에서 `value == 1`을
   기다린 뒤 측정/통신 시작
@@ -131,6 +131,7 @@ disconnect reason:
 | `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | Spot sub / node-sub monitor | legacy subscription-ready 전이 |
 | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | Spot sub / node-sub monitor | subject별 delivery-ready 상태 변화. `value`는 `0` 또는 `1` |
 | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | subject별 remote delivery-ready 카운트 변화. `value`는 현재 ready subscriber 수 |
+| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | publisher가 제어 gate로 써야 하는 first-delivery-safe ready 카운트 변화 |
 
 SPOT subject 규칙:
 - sub 쪽은 exact topic / pattern에 대해 `subject_kind`가 채워집니다.
@@ -155,7 +156,7 @@ if (event->event_type == ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
 publisher gate:
 
 ```c
-if (event->event_type == ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
+if (event->event_type == ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
     && (event->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
     && strcmp(event->subject, "bench") == 0
     && event->value >= 1) {

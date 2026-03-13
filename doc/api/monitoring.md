@@ -265,6 +265,7 @@ Callback for service monitor events, invoked on the I/O thread.
 | `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | `1 << 14` | Subscription is ready to receive |
 | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | Subject-specific remote delivery-ready count changed |
 | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | `1 << 19` | Subject-specific delivery-ready state changed |
+| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | `1 << 20` | Publisher-side first-delivery-safe ready count changed |
 
 ### Detail Flag Constants
 

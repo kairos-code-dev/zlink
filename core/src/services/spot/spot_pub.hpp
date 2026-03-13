@@ -9,6 +9,7 @@
 #include "services/common/service_monitor.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
+#include "../../../external/moodycamel/concurrentqueue.h"
 
 #include <atomic>
 #include <string>
@@ -44,6 +45,10 @@ class spot_pub_t
                                             bool include_subject_kind_,
                                             uint32_t subject_kind_,
                                             uint32_t ready_count_);
+    void emit_first_delivery_ready_changed_event (const char *subject_,
+                                                  bool include_subject_kind_,
+                                                  uint32_t subject_kind_,
+                                                  uint32_t ready_count_);
 
     void emit_ready_event ();
     void dispatch_send_ready ();
@@ -58,6 +63,7 @@ class spot_pub_t
     void submit_error_summary (int error_code_);
     int ensure_monitor_bridge_started ();
     int stop_monitor_bridge ();
+    void emit_monitor_event (const zlink_service_event_t &event_);
     void lock_routing_id ();
     static int initialize_routing_id (zlink_routing_id_t *out_);
     socket_base_t *socket () const;
@@ -72,6 +78,9 @@ class spot_pub_t
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
     std::atomic<void *> _send_ready_subject;
     service_monitor_hub_t _monitor;
+    moodycamel::ConcurrentQueue<zlink_service_event_t> _monitor_event_queue;
+    std::atomic<bool> _monitor_event_draining;
+    std::atomic<uint32_t> _monitor_event_pending;
     void *_raw_monitor_socket;
     thread_t _monitor_thread;
     atomic_counter_t _monitor_stop;

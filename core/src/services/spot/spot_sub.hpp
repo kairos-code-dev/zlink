@@ -10,7 +10,10 @@
 #include "utils/condition_variable.hpp"
 #include "utils/macros.hpp"
 #include "utils/mutex.hpp"
+#include "../../../external/moodycamel/concurrentqueue.h"
 
+#include <atomic>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -58,6 +61,7 @@ class spot_sub_t
                             void *userdata_);
     bool has_filters () const;
     void append_raw_filters (std::set<std::string> *out_) const;
+    void append_replay_raw_filters (std::set<std::string> *out_) const;
     void append_all_subjects (std::vector<subject_descriptor_t> *out_) const;
     void append_subjects_for_raw_filter (
       const std::string &raw_filter_,
@@ -67,12 +71,16 @@ class spot_sub_t
     void emit_subscription_ready_event (const char *endpoint_,
                                         const char *subject_,
                                         uint32_t subject_kind_);
+    void mark_subject_subscription_ready (const subject_descriptor_t &subject_,
+                                          const char *endpoint_);
     void emit_delivery_ready_changed_event (const char *subject_,
                                             uint32_t subject_kind_,
                                             uint32_t ready_,
                                             const char *endpoint_);
     void mark_subject_ready (const subject_descriptor_t &subject_,
                              const char *endpoint_);
+    void backfill_subject_ready_endpoint (const subject_descriptor_t &subject_,
+                                          const char *endpoint_);
     void mark_subject_lost (const subject_descriptor_t &subject_,
                             const char *endpoint_);
     void mark_all_subjects_lost (const char *endpoint_);
@@ -105,6 +113,14 @@ class spot_sub_t
     int destroy_internal (bool allow_embedded_default_, bool notify_node_);
     int ensure_monitor_bridge_started ();
     int stop_monitor_bridge ();
+    void handle_ready_probe (const std::string &raw_filter_,
+                             const std::string &peer_endpoint_);
+    std::string ready_ack_source_id () const;
+    void release_ready_ack_endpoints (const std::string &raw_filter_,
+                                      std::vector<std::string> *out_);
+    void release_all_ready_ack_endpoints (
+      std::vector<std::pair<std::string, std::string> > *out_);
+    void emit_monitor_event (const zlink_service_event_t &event_);
     void lock_routing_id ();
     socket_base_t *socket () const;
 
@@ -119,8 +135,10 @@ class spot_sub_t
 
     std::set<std::string> _topics;
     std::set<std::string> _patterns;
+    std::set<std::string> _delivery_ready_raw_filters;
     std::set<std::string> _ready_peer_endpoints;
-    std::set<std::string> _ready_subject_keys;
+    std::map<std::string, std::string> _ready_subject_endpoints;
+    std::map<std::string, std::set<std::string> > _ready_ack_endpoints;
 
     spot_sub_direct_handler_fn _direct_handler;
     void *_direct_handler_userdata;
@@ -128,6 +146,9 @@ class spot_sub_t
     atomic_counter_t _callback_inflight;
     condition_variable_t _callback_cv;
     service_monitor_hub_t _monitor;
+    moodycamel::ConcurrentQueue<zlink_service_event_t> _monitor_event_queue;
+    std::atomic<bool> _monitor_event_draining;
+    std::atomic<uint32_t> _monitor_event_pending;
     void *_raw_monitor_socket;
     thread_t _monitor_thread;
     atomic_counter_t _monitor_stop;

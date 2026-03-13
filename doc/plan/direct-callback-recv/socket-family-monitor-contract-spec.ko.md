@@ -128,7 +128,8 @@ handler가 필요 없으면 `NULL`을 넘기지 않고 아래 symbol을 사용�
 | `ZLINK_GATEWAY_ROUTE_UP/DOWN` | session-ready | peer route 증감 | route count 변화 통지 |
 | `ZLINK_SPOT_SUB_FILTER_APPLIED` | control-plane-ready | local filter 설치 완료 | remote forwarding 보장 아님 |
 | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | delivery-ready | subscriber가 해당 subject 첫 delivery 수신 가능 | `value`는 `0/1` |
-| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | delivery-ready | publisher가 해당 subject로 실제 delivery 시작 가능 | `value`는 ready subscriber 수 |
+| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | delivery-ready | remote ready-ack count 변화 관찰 | 운영/관찰용 count surface |
+| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | delivery-ready | publisher가 해당 subject로 첫 publish를 제어 gate로 시작 가능 | `value`는 first-delivery-safe ready subscriber 수 |
 | `ZLINK_MONITOR_EVENT_READY/LOST` | generic readiness | 서비스 계열 generic alias | concrete event로 재해석 필요 |
 
 ## 6. 소켓 패밀리별 Contract

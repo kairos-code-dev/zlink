@@ -403,7 +403,8 @@ service overlay는 raw socket보다 한 단계 높은 의미를 가진다. 그�
   - 그 이후 증감은 `SEND_READY_CHANGED`, `ROUTE_UP/DOWN`으로 받는다.
 - `SPOT`
   - `FILTER_APPLIED`, `SUBSCRIPTION_READY`는 control-plane progress다.
-  - 실제 첫 publish/receive gate는 `*_DELIVERY_READY_CHANGED`다.
+  - subscriber 쪽 첫 receive gate는 `SUB_DELIVERY_READY_CHANGED`다.
+  - publisher 쪽 첫 publish gate는 `PUB_FIRST_DELIVERY_READY_CHANGED`다.
   - snapshot은 aggregate peer/queue 상태를 읽는 용도로 함께 쓴다.
 
 즉 "어떤 event는 제어용이고 어떤 event는 아니냐"가 아니라,
@@ -487,7 +488,7 @@ session, delivery 레벨이 다르기 때문에 gate도 다르게 잡아야 한�
 | `PUB/SUB` | bind/connect/handshake 상태 관찰 | raw `CONNECTION_READY`를 첫 publish delivery gate로 사용 | application barrier 또는 상위 service event |
 | `STREAM` | server `CONNECTION_READY.routing_id` 이후 첫 payload 송수신 시작 | `ACCEPTED`만 보고 payload 송수신 시작 | snapshot + stream `routing_id` |
 | `Gateway` | `ZLINK_GATEWAY_SEND_READY_CHANGED(value=1)` 이후 첫 request 시작 | `SERVICE_READY`, `ROUTE_UP`만으로 send gate 판단 | `zlink_monitor_snapshot()` + service monitor |
-| `SPOT` | `*_DELIVERY_READY_CHANGED` 이후 첫 publish/first receive 시작 | raw `CONNECTION_READY`, `PEER_UP`, `FILTER_APPLIED`만으로 delivery gate 판단 | `SPOT` service monitor |
+| `SPOT` | sub는 `SUB_DELIVERY_READY_CHANGED`, pub는 `PUB_FIRST_DELIVERY_READY_CHANGED` 이후 첫 publish/first receive 시작 | raw `CONNECTION_READY`, `PEER_UP`, `FILTER_APPLIED`만으로 delivery gate 판단 | `SPOT` service monitor |
 
 실전 규칙:
 

@@ -92,6 +92,8 @@ class spot_node_t : public discovery_observer_t
     const std::string &pub_ingress_endpoint () const;
     const std::string &sub_fanout_endpoint () const;
     bool has_active_peers () const;
+    int replay_subscriptions_if_active_peers ();
+    void schedule_subscription_replay ();
     std::string first_active_peer_endpoint () const;
     int ensure_healthy () const;
     void debug_mark_fault (int err_);
@@ -133,6 +135,7 @@ class spot_node_t : public discovery_observer_t
     void refresh_local_fanout_hwm ();
     void refresh_discovery_peers ();
     void refresh_connected_peer_endpoints ();
+    void emit_pending_subscription_replays ();
     std::string summary_service_name () const;
     void submit_pub_summary (spot_pub_t *pub_, uint16_t state_, int error_code_);
     void submit_sub_summary (spot_sub_t *sub_, uint16_t state_, int error_code_);
@@ -143,13 +146,23 @@ class spot_node_t : public discovery_observer_t
     void snapshot_raw_subscription_filters (
       std::set<std::string> *out_) const;
     void schedule_subscription_ready_refresh ();
+    void schedule_pub_delivery_ready_refresh ();
     void queue_all_subscription_ready_filters ();
     void queue_subscription_ready_filter (const std::string &raw_filter_);
     void emit_pending_subscription_ready_events ();
+    void emit_pending_pub_delivery_ready_events ();
     std::string first_connected_peer_endpoint () const;
     void notify_subscription_forwarded (const std::string &raw_filter_);
-    void notify_pub_delivery_ready_changed (const std::string &subject_,
-                                            bool subscribe_);
+    void notify_pub_delivery_ready_ack (const std::string &target_endpoint_,
+                                        const std::string &subject_,
+                                        const std::string &ack_source_id_,
+                                        bool subscribe_);
+    void notify_pub_first_delivery_ready_settled (const std::string &subject_,
+                                                  uint32_t ready_count_);
+    int send_ready_ack_update (const std::string &target_endpoint_,
+                               const std::string &raw_filter_,
+                               const std::string &ack_source_id_,
+                               bool subscribe_);
     int ensure_registered ();
     int unregister_registered ();
 
@@ -179,9 +192,15 @@ class spot_node_t : public discovery_observer_t
     std::set<std::string> _connected_peer_endpoints;
     std::set<std::string> _discovery_peer_endpoints;
     std::set<std::string> _pending_subscription_ready_filters;
-    std::map<std::string, uint32_t> _pub_delivery_ready_counts;
+    std::map<std::string, std::set<std::string> > _pub_delivery_ready_sources;
+    std::map<std::string, uint32_t> _pending_pub_delivery_ready_counts;
     bool _subscription_ready_refresh_pending;
     unsigned int _subscription_ready_refresh_holdoff_ticks;
+    bool _subscription_replay_pending;
+    unsigned int _subscription_replay_attempts;
+    unsigned int _subscription_replay_holdoff_ticks;
+    bool _pub_delivery_ready_refresh_pending;
+    unsigned int _pub_delivery_ready_refresh_holdoff_ticks;
 
     discovery_t *_discovery;
     std::string _discovery_service;

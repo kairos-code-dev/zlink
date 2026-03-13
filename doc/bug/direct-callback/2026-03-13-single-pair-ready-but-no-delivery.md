@@ -10,7 +10,8 @@
 
 - 이 이슈는 `core` 회귀 테스트로 고정했고, 이제 `perf_pair` 흐름을 닮은
   회귀까지 통과하는 상태로 수정했다.
-- acceptance는 perf binary 재실행이 아니라 `core/tests` 회귀 테스트다.
+- `core` 수정 반영 후 `libzlink`와 `perf_pair`를 clean-first로 다시 빌드했고,
+  최초 리포트와 동일한 direct/wrapper perf 명령도 재실행해 정상 종료를 확인했다.
 - 추가된 회귀:
   - `core/tests/integration/monitoring/test_monitor_enhanced.cpp`
   - `test_pair_monitor_ready_implies_first_bidirectional_delivery`
@@ -67,15 +68,38 @@ PERF_SINGLE_RCVTIMEO_MS=200 \
 
 ## 재검증 결과
 
-- 이 문서의 acceptance는 현재 `core/tests` 회귀다.
-- 과거 direct perf timeout 관측은 이슈 최초 발견 근거로만 유지한다.
-- 현재는 아래 회귀가 모두 통과하면 이 리포트를 닫는다.
+- 아래 회귀가 모두 통과한다.
 
 ```bash
 ./build-codex/bin/test_monitor_perf_contract
 ctest --test-dir build-codex --output-on-failure \
   -R '^(test_monitor_perf_contract|test_monitor_enhanced|test_monitor_with_handler|test_monitor_stream_contract|test_monitor_service_contract)$'
 ```
+
+- direct perf도 이제 정상 종료한다.
+
+```bash
+PERF_SINGLE_DURATION_SECONDS=2 \
+PERF_SINGLE_SNDTIMEO_MS=200 \
+PERF_SINGLE_RCVTIMEO_MS=200 \
+./core/build/bin/perf_pair current tcp 1024
+```
+
+- wrapper smoke도 이제 정상 종료한다.
+
+```bash
+./core/perf/run_benchmarks.sh \
+  --reuse-build \
+  --build-dir /home/hep7/project/kairos/zlink-direct-callback-rewrite/core/build \
+  --pattern PAIR \
+  --transports tcp \
+  --msg-sizes 1024 \
+  --runs 1 \
+  --duration 2
+```
+
+- 최신 정상 산출물:
+  - `/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/perf/results/single/report/perf_linux_20260313_191323.txt`
 
 ## 재현 코드 경로
 

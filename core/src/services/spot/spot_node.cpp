@@ -29,6 +29,7 @@ namespace zlink
 static const uint32_t spot_node_tag_value = 0x1e6700d9;
 static const size_t spot_sub_queue_hwm_default = 1000;
 static const int ctrl_timeout_ms = 2000;
+static const char spot_ready_probe_prefix[] = "__zlink.ready__/";
 
 static void spot_node_debugf (const char *fmt_, ...)
 {
@@ -103,6 +104,43 @@ static unsigned int subscription_ready_holdoff_ticks (
     }
 
     return 50;
+}
+
+static unsigned int subscription_replay_attempt_count (
+  const std::set<std::string> &connected_endpoints_)
+{
+    for (std::set<std::string>::const_iterator it =
+           connected_endpoints_.begin ();
+         it != connected_endpoints_.end (); ++it) {
+        if (it->compare (0, 6, "wss://") == 0)
+            return 300;
+        if (it->compare (0, 6, "tls://") == 0)
+            return 150;
+    }
+
+    return 50;
+}
+
+static unsigned int pub_delivery_ready_holdoff_ticks (
+  const std::set<std::string> &connected_endpoints_)
+{
+    for (std::set<std::string>::const_iterator it =
+           connected_endpoints_.begin ();
+         it != connected_endpoints_.end (); ++it) {
+        if (it->compare (0, 6, "wss://") == 0)
+            return 50;
+        if (it->compare (0, 6, "tls://") == 0)
+            return 15;
+    }
+
+    return 20;
+}
+
+static std::string make_ready_ack_arg (const std::string &target_endpoint_,
+                                       const std::string &raw_filter_,
+                                       const std::string &ack_source_id_)
+{
+    return target_endpoint_ + "\n" + raw_filter_ + "\n" + ack_source_id_;
 }
 
 static int recv_ascii_command (socket_base_t *socket_,
@@ -484,6 +522,11 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _runtime (NULL),
     _subscription_ready_refresh_pending (false),
     _subscription_ready_refresh_holdoff_ticks (0),
+    _subscription_replay_pending (false),
+    _subscription_replay_attempts (0),
+    _subscription_replay_holdoff_ticks (0),
+    _pub_delivery_ready_refresh_pending (false),
+    _pub_delivery_ready_refresh_holdoff_ticks (0),
     _discovery (NULL),
     _discovery_seq (0),
     _registered (false),
@@ -647,6 +690,46 @@ bool spot_node_t::has_active_peers () const
     return !_active_peer_endpoints.empty ();
 }
 
+int spot_node_t::replay_subscriptions_if_active_peers ()
+{
+    if (ensure_healthy () != 0)
+        return -1;
+    if (!has_active_peers ())
+        return 0;
+    if (std::getenv ("ZLINK_DEBUG_SPOT_REPLAY"))
+        std::fprintf (stderr, "[spot-replay] immediate replay request\n");
+    if (send_data_plane_command ("replay_subscriptions") != 0)
+        return -1;
+    queue_all_subscription_ready_filters ();
+    return 0;
+}
+
+void spot_node_t::schedule_subscription_replay ()
+{
+    service_control_runtime_t *runtime = NULL;
+    uint64_t task_id = 0;
+    unsigned int attempts = 0;
+    {
+        scoped_lock_t lock (_sync);
+        _subscription_replay_pending = true;
+        const unsigned int target_attempts =
+          subscription_replay_attempt_count (_active_peer_endpoints);
+        if (_subscription_replay_attempts < target_attempts)
+            _subscription_replay_attempts = target_attempts;
+        _subscription_replay_holdoff_ticks = 0;
+        attempts = _subscription_replay_attempts;
+        if (_runtime) {
+            task_id = _runtime->task_id;
+            runtime = _ctx ? _ctx->service_control_runtime () : NULL;
+        }
+    }
+    if (std::getenv ("ZLINK_DEBUG_SPOT_REPLAY"))
+        std::fprintf (stderr, "[spot-replay] scheduled attempts=%u\n",
+                      attempts);
+    if (runtime && task_id != 0)
+        runtime->wakeup_task (task_id);
+}
+
 std::string spot_node_t::first_active_peer_endpoint () const
 {
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
@@ -705,7 +788,44 @@ void spot_node_t::control_tick ()
 
     refresh_discovery_peers ();
     refresh_connected_peer_endpoints ();
+    emit_pending_subscription_replays ();
     emit_pending_subscription_ready_events ();
+}
+
+void spot_node_t::emit_pending_subscription_replays ()
+{
+    bool should_replay = false;
+    {
+        scoped_lock_t lock (_sync);
+        if (!_subscription_replay_pending)
+            return;
+        if (_active_peer_endpoints.empty ())
+            return;
+        if (_subscription_replay_attempts == 0) {
+            _subscription_replay_pending = false;
+            _subscription_replay_holdoff_ticks = 0;
+            return;
+        }
+        if (_subscription_replay_holdoff_ticks > 0) {
+            --_subscription_replay_holdoff_ticks;
+            return;
+        }
+        should_replay = true;
+        --_subscription_replay_attempts;
+        _subscription_replay_holdoff_ticks = 5;
+        if (_subscription_replay_attempts == 0)
+            _subscription_replay_pending = false;
+    }
+
+    if (!should_replay)
+        return;
+
+    if (std::getenv ("ZLINK_DEBUG_SPOT_REPLAY"))
+        std::fprintf (stderr, "[spot-replay] emit pending replay\n");
+    if (send_data_plane_command ("replay_subscriptions") != 0) {
+        debug_mark_fault (errno);
+        return;
+    }
 }
 
 void spot_node_t::refresh_discovery_peers ()
@@ -786,26 +906,33 @@ void spot_node_t::refresh_discovery_peers ()
         new_active_count = _active_peer_endpoints.size ();
     }
 
-    if (old_active_count == 0 && new_active_count > 0)
+    if (old_active_count == 0 && new_active_count > 0) {
+        schedule_subscription_replay ();
+        if (replay_subscriptions_if_active_peers () != 0) {
+            debug_mark_fault (errno);
+            return;
+        }
         refresh_sub_peer_summaries (true, false);
-    else if (old_active_count > 0 && new_active_count == 0)
+    } else if (!to_connect.empty () && new_active_count > 0) {
+        schedule_subscription_replay ();
+        if (replay_subscriptions_if_active_peers () != 0) {
+            debug_mark_fault (errno);
+            return;
+        }
+    } else if (old_active_count > 0 && new_active_count == 0)
         refresh_sub_peer_summaries (false, true);
 }
 
 void spot_node_t::refresh_connected_peer_endpoints ()
 {
-    socket_base_t *mesh_xsub = NULL;
+    std::set<std::string> connected;
     {
         scoped_lock_t lock (_sync);
-        if (!_runtime)
+        if (!_runtime || !_runtime->mesh_xsub)
             return;
-        mesh_xsub = _runtime->mesh_xsub;
+        snapshot_connected_mesh_peer_endpoints (_runtime->mesh_xsub,
+                                                &connected);
     }
-    if (!mesh_xsub)
-        return;
-
-    std::set<std::string> connected;
-    snapshot_connected_mesh_peer_endpoints (mesh_xsub, &connected);
 
     bool changed = false;
     std::vector<spot_sub_t *> subs;
@@ -816,22 +943,25 @@ void spot_node_t::refresh_connected_peer_endpoints ()
         scoped_lock_t lock (_sync);
         if (connected == _connected_peer_endpoints)
             return;
-        const size_t previous_connected_count = connected.size ();
+        const size_t previous_connected_count = _connected_peer_endpoints.size ();
         _connected_peer_endpoints.swap (connected);
         changed = true;
         if (_connected_peer_endpoints.empty ()) {
             _subscription_ready_refresh_pending = false;
             _subscription_ready_refresh_holdoff_ticks = 0;
             _pending_subscription_ready_filters.clear ();
+            _pub_delivery_ready_refresh_pending = false;
+            _pub_delivery_ready_refresh_holdoff_ticks = 0;
+            _pending_pub_delivery_ready_counts.clear ();
             subs.assign (_subs.begin (), _subs.end ());
             pubs.assign (_pubs.begin (), _pubs.end ());
-            for (std::map<std::string, uint32_t>::iterator it =
-                   _pub_delivery_ready_counts.begin ();
-                 it != _pub_delivery_ready_counts.end (); ++it) {
+            for (std::map<std::string, std::set<std::string> >::iterator it =
+                   _pub_delivery_ready_sources.begin ();
+                 it != _pub_delivery_ready_sources.end (); ++it) {
                 pub_ready_updates.push_back (
                   std::make_pair (it->first, static_cast<uint32_t> (0)));
             }
-            _pub_delivery_ready_counts.clear ();
+            _pub_delivery_ready_sources.clear ();
             became_empty = true;
         } else {
             subs.assign (_subs.begin (), _subs.end ());
@@ -840,12 +970,13 @@ void spot_node_t::refresh_connected_peer_endpoints ()
             if (connected_peer_count < previous_connected_count) {
                 const uint32_t max_ready =
                   static_cast<uint32_t> (connected_peer_count);
-                for (std::map<std::string, uint32_t>::iterator it =
-                       _pub_delivery_ready_counts.begin ();
-                     it != _pub_delivery_ready_counts.end (); ++it) {
-                    if (it->second <= max_ready)
+                for (std::map<std::string, std::set<std::string> >::iterator it =
+                       _pub_delivery_ready_sources.begin ();
+                     it != _pub_delivery_ready_sources.end (); ++it) {
+                    const uint32_t current_ready =
+                      static_cast<uint32_t> (it->second.size ());
+                    if (current_ready <= max_ready)
                         continue;
-                    it->second = max_ready;
                     pub_ready_updates.push_back (
                       std::make_pair (it->first, max_ready));
                 }
@@ -856,6 +987,10 @@ void spot_node_t::refresh_connected_peer_endpoints ()
     for (size_t i = 0; i < pubs.size (); ++i) {
         for (size_t j = 0; j < pub_ready_updates.size (); ++j) {
             pubs[i]->emit_delivery_ready_changed_event (
+              pub_ready_updates[j].first.c_str (), false,
+              ZLINK_SERVICE_EVENT_SUBJECT_NONE,
+              pub_ready_updates[j].second);
+            pubs[i]->emit_first_delivery_ready_changed_event (
               pub_ready_updates[j].first.c_str (), false,
               ZLINK_SERVICE_EVENT_SUBJECT_NONE,
               pub_ready_updates[j].second);
@@ -904,6 +1039,26 @@ void spot_node_t::schedule_subscription_ready_refresh ()
         holdoff_ticks =
           subscription_ready_holdoff_ticks (_connected_peer_endpoints);
         _subscription_ready_refresh_holdoff_ticks = holdoff_ticks;
+        if (_runtime) {
+            task_id = _runtime->task_id;
+            runtime = _ctx ? _ctx->service_control_runtime () : NULL;
+        }
+    }
+    if (runtime && task_id != 0)
+        runtime->wakeup_task (task_id);
+}
+
+void spot_node_t::schedule_pub_delivery_ready_refresh ()
+{
+    service_control_runtime_t *runtime = NULL;
+    uint64_t task_id = 0;
+    unsigned int holdoff_ticks = 20;
+    {
+        scoped_lock_t lock (_sync);
+        _pub_delivery_ready_refresh_pending = true;
+        holdoff_ticks =
+          pub_delivery_ready_holdoff_ticks (_active_peer_endpoints);
+        _pub_delivery_ready_refresh_holdoff_ticks = holdoff_ticks;
         if (_runtime) {
             task_id = _runtime->task_id;
             runtime = _ctx ? _ctx->service_control_runtime () : NULL;
@@ -986,8 +1141,45 @@ void spot_node_t::emit_pending_subscription_ready_events ()
             std::vector<spot_sub_t::subject_descriptor_t> subjects;
             subs[i]->append_subjects_for_raw_filter (*filter_it, &subjects);
             for (size_t j = 0; j < subjects.size (); ++j)
-                subs[i]->mark_subject_ready (subjects[j],
-                                             ready_endpoint.c_str ());
+                subs[i]->mark_subject_subscription_ready (
+                  subjects[j], ready_endpoint.c_str ());
+        }
+    }
+}
+
+void spot_node_t::emit_pending_pub_delivery_ready_events ()
+{
+    std::vector<spot_pub_t *> pubs;
+    std::vector<std::pair<std::string, uint32_t> > updates;
+    {
+        scoped_lock_t lock (_sync);
+        if (!_pub_delivery_ready_refresh_pending)
+            return;
+        if (_pub_delivery_ready_refresh_holdoff_ticks > 0) {
+            --_pub_delivery_ready_refresh_holdoff_ticks;
+            return;
+        }
+        if (_pending_pub_delivery_ready_counts.empty ()) {
+            _pub_delivery_ready_refresh_pending = false;
+            _pub_delivery_ready_refresh_holdoff_ticks = 0;
+            return;
+        }
+        pubs.assign (_pubs.begin (), _pubs.end ());
+        for (std::map<std::string, uint32_t>::const_iterator it =
+               _pending_pub_delivery_ready_counts.begin ();
+             it != _pending_pub_delivery_ready_counts.end (); ++it) {
+            updates.push_back (std::make_pair (it->first, it->second));
+        }
+        _pending_pub_delivery_ready_counts.clear ();
+        _pub_delivery_ready_refresh_pending = false;
+        _pub_delivery_ready_refresh_holdoff_ticks = 0;
+    }
+
+    for (size_t i = 0; i < pubs.size (); ++i) {
+        for (size_t j = 0; j < updates.size (); ++j) {
+            pubs[i]->emit_first_delivery_ready_changed_event (
+              updates[j].first.c_str (), false,
+              ZLINK_SERVICE_EVENT_SUBJECT_NONE, updates[j].second);
         }
     }
 }
@@ -997,66 +1189,103 @@ void spot_node_t::notify_subscription_forwarded (const std::string &raw_filter_)
     queue_subscription_ready_filter (raw_filter_);
 }
 
-void spot_node_t::notify_pub_delivery_ready_changed (
+void spot_node_t::notify_pub_delivery_ready_ack (
+  const std::string &target_endpoint_,
   const std::string &subject_,
+  const std::string &ack_source_id_,
   bool subscribe_)
 {
-    if (subject_.empty ())
+    if (target_endpoint_.empty () || subject_.empty () || ack_source_id_.empty ())
         return;
 
-    socket_base_t *mesh_pub = NULL;
+    std::string self_endpoint;
     {
         scoped_lock_t lock (_sync);
-        if (_runtime)
-            mesh_pub = _runtime->mesh_pub;
+        self_endpoint =
+          _advertise_endpoint.empty () ? _bound_endpoint : _advertise_endpoint;
     }
-
-    uint32_t mesh_peer_count = 0;
-    if (mesh_pub) {
-        zlink_monitor_snapshot_t snapshot;
-        if (mesh_pub->monitor_snapshot (&snapshot) == 0)
-            mesh_peer_count = snapshot.ready_peer_count;
-    }
+    if (self_endpoint.empty () || self_endpoint != target_endpoint_)
+        return;
 
     std::vector<spot_pub_t *> pubs;
     uint32_t ready_count = 0;
     {
         scoped_lock_t lock (_sync);
-        uint32_t current_count = 0;
-        uint32_t max_ready = mesh_peer_count;
-        if (max_ready == 0)
-            max_ready = static_cast<uint32_t> (_connected_peer_endpoints.size ());
-        if (max_ready == 0)
-            max_ready = static_cast<uint32_t> (_active_peer_endpoints.size ());
-        std::map<std::string, uint32_t>::iterator it =
-          _pub_delivery_ready_counts.find (subject_);
-        if (it != _pub_delivery_ready_counts.end ())
-            current_count = it->second;
+        std::set<std::string> &ready_sources =
+          _pub_delivery_ready_sources[subject_];
+        const uint32_t current_count =
+          static_cast<uint32_t> (ready_sources.size ());
 
         if (subscribe_) {
-            ready_count = current_count + 1;
-            if (max_ready > 0 && ready_count > max_ready)
-                ready_count = max_ready;
-            if (ready_count == current_count)
+            if (!ready_sources.insert (ack_source_id_).second)
                 return;
-            _pub_delivery_ready_counts[subject_] = ready_count;
+            ready_count = static_cast<uint32_t> (ready_sources.size ());
         } else {
-            if (current_count == 0)
+            if (ready_sources.erase (ack_source_id_) == 0)
                 return;
-            ready_count = current_count - 1;
-            if (ready_count == 0)
-                _pub_delivery_ready_counts.erase (subject_);
-            else
-                _pub_delivery_ready_counts[subject_] = ready_count;
+            ready_count = static_cast<uint32_t> (ready_sources.size ());
+            if (ready_sources.empty ())
+                _pub_delivery_ready_sources.erase (subject_);
         }
 
         pubs.assign (_pubs.begin (), _pubs.end ());
+        if (!subscribe_) {
+            _pending_pub_delivery_ready_counts.erase (subject_);
+            _pub_delivery_ready_refresh_pending = false;
+            _pub_delivery_ready_refresh_holdoff_ticks = 0;
+        }
     }
 
-    for (size_t i = 0; i < pubs.size (); ++i)
+    for (size_t i = 0; i < pubs.size (); ++i) {
         pubs[i]->emit_delivery_ready_changed_event (
           subject_.c_str (), false, ZLINK_SERVICE_EVENT_SUBJECT_NONE,
           ready_count);
+        // A ready-ack means the subscriber has already received a probe on the
+        // same data path, so the publisher can treat the aggregated ack count
+        // as first-delivery-safe from this point.
+        pubs[i]->emit_first_delivery_ready_changed_event (
+          subject_.c_str (), false, ZLINK_SERVICE_EVENT_SUBJECT_NONE,
+          ready_count);
+    }
+
+}
+
+void spot_node_t::notify_pub_first_delivery_ready_settled (
+  const std::string &subject_,
+  uint32_t ready_count_)
+{
+    if (subject_.empty ())
+        return;
+
+    std::vector<spot_pub_t *> pubs;
+    {
+        scoped_lock_t lock (_sync);
+        pubs.assign (_pubs.begin (), _pubs.end ());
+    }
+
+    for (size_t i = 0; i < pubs.size (); ++i) {
+        pubs[i]->emit_first_delivery_ready_changed_event (
+          subject_.c_str (), false, ZLINK_SERVICE_EVENT_SUBJECT_NONE,
+          ready_count_);
+    }
+}
+
+int spot_node_t::send_ready_ack_update (const std::string &target_endpoint_,
+                                        const std::string &raw_filter_,
+                                        const std::string &ack_source_id_,
+                                        bool subscribe_)
+{
+    if (target_endpoint_.empty () || raw_filter_.empty ()
+        || ack_source_id_.empty ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const std::string arg =
+      make_ready_ack_arg (target_endpoint_, raw_filter_, ack_source_id_);
+    return send_data_plane_command (
+      subscribe_ ? "ready_ack_subscribe" : "ready_ack_unsubscribe",
+      arg.c_str ());
 }
 
 int spot_node_t::send_data_plane_command (const char *verb_,
@@ -1255,7 +1484,7 @@ void spot_node_t::snapshot_raw_subscription_filters (
     }
 
     for (size_t i = 0; i < subs.size (); ++i)
-        subs[i]->append_raw_filters (out_);
+        subs[i]->append_replay_raw_filters (out_);
 }
 
 int spot_node_t::resolve_advertise_endpoint (const char *advertise_endpoint_,
@@ -1360,8 +1589,13 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
         _active_peer_endpoints.insert (peer_pub_endpoint_);
         has_active_peers = !_active_peer_endpoints.empty ();
     }
-    if (!had_active_peers && has_active_peers)
-        refresh_sub_peer_summaries (true, false);
+    if (has_active_peers) {
+        schedule_subscription_replay ();
+        if (replay_subscriptions_if_active_peers () != 0)
+            return -1;
+        if (!had_active_peers)
+            refresh_sub_peer_summaries (true, false);
+    }
     return 0;
 }
 
@@ -1413,13 +1647,13 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
                 _pending_subscription_ready_filters.clear ();
                 subs.assign (_subs.begin (), _subs.end ());
                 pubs.assign (_pubs.begin (), _pubs.end ());
-                for (std::map<std::string, uint32_t>::iterator it =
-                       _pub_delivery_ready_counts.begin ();
-                     it != _pub_delivery_ready_counts.end (); ++it) {
+                for (std::map<std::string, std::set<std::string> >::iterator it =
+                       _pub_delivery_ready_sources.begin ();
+                     it != _pub_delivery_ready_sources.end (); ++it) {
                     pub_ready_updates.push_back (
                       std::make_pair (it->first, static_cast<uint32_t> (0)));
                 }
-                _pub_delivery_ready_counts.clear ();
+                _pub_delivery_ready_sources.clear ();
             }
             refresh_sub_peer_summaries (false, true);
             for (size_t i = 0; i < subs.size (); ++i)
@@ -1427,6 +1661,10 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
             for (size_t i = 0; i < pubs.size (); ++i) {
                 for (size_t j = 0; j < pub_ready_updates.size (); ++j) {
                     pubs[i]->emit_delivery_ready_changed_event (
+                      pub_ready_updates[j].first.c_str (), false,
+                      ZLINK_SERVICE_EVENT_SUBJECT_NONE,
+                      pub_ready_updates[j].second);
+                    pubs[i]->emit_first_delivery_ready_changed_event (
                       pub_ready_updates[j].first.c_str (), false,
                       ZLINK_SERVICE_EVENT_SUBJECT_NONE,
                       pub_ready_updates[j].second);
@@ -1444,6 +1682,7 @@ int spot_node_t::ensure_registered ()
 
     discovery_t *discovery = NULL;
     std::string advertise;
+    bool need_default_pub = false;
     {
         scoped_lock_t lock (_sync);
         discovery = _discovery;
@@ -1473,12 +1712,19 @@ int spot_node_t::ensure_registered ()
         return -1;
     }
 
-    scoped_lock_t lock (_sync);
-    _registered = true;
-    _advertise_endpoint = resolved.empty () ? advertise : resolved;
-    if (!discovery->latest_registry_uplink (&_registration_uplink_endpoint))
-        _registration_uplink_endpoint.clear ();
-    _registration_tls_locked = true;
+    {
+        scoped_lock_t lock (_sync);
+        _registered = true;
+        _advertise_endpoint = resolved.empty () ? advertise : resolved;
+        if (!discovery->latest_registry_uplink (&_registration_uplink_endpoint))
+            _registration_uplink_endpoint.clear ();
+        _registration_tls_locked = true;
+        need_default_pub = _pubs.empty () && !_default_pub;
+    }
+
+    if (need_default_pub && !ensure_default_pub ())
+        return -1;
+
     return 0;
 }
 

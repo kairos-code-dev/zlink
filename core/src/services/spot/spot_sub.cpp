@@ -12,14 +12,31 @@
 #include "utils/err.hpp"
 #include "utils/random.hpp"
 
+#include <stdio.h>
 #include <string.h>
 
 namespace zlink
 {
 static const uint32_t spot_sub_tag_value = 0x1e6700da;
+static const char spot_ready_probe_prefix[] = "__zlink.ready__/";
+static const char spot_ready_probe_marker[] =
+  "\x00zlink.ready.probe.v1\x00";
 
 namespace
 {
+static std::string routing_id_to_hex (const zlink_routing_id_t &rid_)
+{
+    static const char hex[] = "0123456789abcdef";
+    std::string out;
+    out.reserve (static_cast<size_t> (rid_.size) * 2);
+    for (size_t i = 0; i < rid_.size; ++i) {
+        const unsigned char byte = rid_.data[i];
+        out.push_back (hex[(byte >> 4) & 0x0f]);
+        out.push_back (hex[byte & 0x0f]);
+    }
+    return out;
+}
+
 static void preserve_first_error (int rc_, int *first_error_)
 {
     if (rc_ == 0 || !first_error_ || *first_error_ != 0)
@@ -33,6 +50,35 @@ static void close_parts (zlink_msg_t *parts_, size_t part_count_)
         return;
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_close (&parts_[i]);
+}
+
+static bool is_ready_probe_message (const char *topic_,
+                                    size_t topic_len_,
+                                    zlink_msg_t *parts_,
+                                    size_t part_count_,
+                                    std::string *raw_filter_out_,
+                                    std::string *peer_endpoint_out_)
+{
+    if (!topic_ || topic_len_ == 0 || !parts_ || part_count_ != 2)
+        return false;
+    if (zlink_msg_size (&parts_[0]) != sizeof (spot_ready_probe_marker) - 1)
+        return false;
+    if (memcmp (zlink_msg_data (&parts_[0]), spot_ready_probe_marker,
+                sizeof (spot_ready_probe_marker) - 1)
+        != 0) {
+        return false;
+    }
+    if (zlink_msg_size (&parts_[1]) == 0)
+        return false;
+
+    if (raw_filter_out_)
+        raw_filter_out_->assign (topic_, topic_len_);
+    if (peer_endpoint_out_) {
+        peer_endpoint_out_->assign (
+          static_cast<const char *> (zlink_msg_data (&parts_[1])),
+          zlink_msg_size (&parts_[1]));
+    }
+    return true;
 }
 
 }
@@ -141,6 +187,9 @@ spot_sub_t::spot_sub_t (spot_node_t *node_,
     _handler_state (handler_none),
     _callback_inflight (0),
     _monitor (node_ ? node_->ctx () : NULL),
+    _monitor_event_queue (),
+    _monitor_event_draining (false),
+    _monitor_event_pending (0),
     _raw_monitor_socket (NULL),
     _monitor_stop (0),
     _monitor_thread_started (false)
@@ -162,6 +211,29 @@ bool spot_sub_t::check_tag () const
 bool spot_sub_t::is_node_owned_default () const
 {
     return _node_owned_default;
+}
+
+void spot_sub_t::emit_monitor_event (const zlink_service_event_t &event_)
+{
+    _monitor_event_queue.enqueue (event_);
+    _monitor_event_pending.fetch_add (1, std::memory_order_release);
+
+    if (_monitor_event_draining.exchange (true, std::memory_order_acq_rel))
+        return;
+
+    for (;;) {
+        zlink_service_event_t next_event;
+        while (_monitor_event_queue.try_dequeue (next_event)) {
+            _monitor.emit (next_event);
+            _monitor_event_pending.fetch_sub (1, std::memory_order_acq_rel);
+        }
+
+        _monitor_event_draining.store (false, std::memory_order_release);
+        if (_monitor_event_pending.load (std::memory_order_acquire) == 0)
+            break;
+        if (_monitor_event_draining.exchange (true, std::memory_order_acq_rel))
+            break;
+    }
 }
 
 socket_base_t *spot_sub_t::socket () const
@@ -238,11 +310,15 @@ int spot_sub_t::subscribe (const char *topic_)
             != 0)
             return -1;
         _topics.insert (topic);
+        _delivery_ready_raw_filters.erase (topic);
     }
     if (_node) {
-        _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
         emit_filter_applied_event (topic.c_str (),
                                    ZLINK_SERVICE_EVENT_SUBJECT_TOPIC);
+        _node->schedule_subscription_replay ();
+        if (_node->replay_subscriptions_if_active_peers () != 0)
+            return -1;
+        _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
     }
     return 0;
 }
@@ -269,12 +345,16 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
             != 0)
             return -1;
         _patterns.insert (prefix);
+        _delivery_ready_raw_filters.erase (prefix);
     }
     if (_node) {
-        _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
         std::string subject = prefix + "*";
         emit_filter_applied_event (subject.c_str (),
                                    ZLINK_SERVICE_EVENT_SUBJECT_PATTERN);
+        _node->schedule_subscription_replay ();
+        if (_node->replay_subscriptions_if_active_peers () != 0)
+            return -1;
+        _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
     }
     return 0;
 }
@@ -298,14 +378,15 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
         return -1;
 
     bool has_filters_after = false;
+    std::vector<std::string> ready_ack_endpoints;
     subject_descriptor_t subject;
     subject.subject_kind = is_pattern ? ZLINK_SERVICE_EVENT_SUBJECT_PATTERN
                                       : ZLINK_SERVICE_EVENT_SUBJECT_TOPIC;
     subject.subject = is_pattern ? prefix + "*" : topic;
+    const std::string filter = is_pattern ? prefix : topic;
     {
         scoped_lock_t lock (_sync);
         lock_routing_id ();
-        const std::string &filter = is_pattern ? prefix : topic;
         if (socket->setsockopt (ZLINK_UNSUBSCRIBE, filter.data (), filter.size ())
             != 0)
             return -1;
@@ -313,7 +394,16 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
             _patterns.erase (prefix);
         else
             _topics.erase (topic);
+        _delivery_ready_raw_filters.erase (filter);
         has_filters_after = !_topics.empty () || !_patterns.empty ();
+    }
+    release_ready_ack_endpoints (filter, &ready_ack_endpoints);
+    if (_node) {
+        const std::string ack_source_id = ready_ack_source_id ();
+        for (size_t i = 0; i < ready_ack_endpoints.size (); ++i) {
+            (void) _node->send_ready_ack_update (ready_ack_endpoints[i], filter,
+                                                 ack_source_id, false);
+        }
     }
     if (_node) {
         _node->submit_sub_summary (this, has_filters_after
@@ -373,6 +463,12 @@ int spot_sub_t::routing_id (zlink_routing_id_t *out_) const
     return 0;
 }
 
+std::string spot_sub_t::ready_ack_source_id () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    return routing_id_to_hex (_routing_id);
+}
+
 int spot_sub_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const
 {
     if (!out_) {
@@ -424,6 +520,24 @@ void spot_sub_t::append_raw_filters (std::set<std::string> *out_) const
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
     out_->insert (_topics.begin (), _topics.end ());
     out_->insert (_patterns.begin (), _patterns.end ());
+}
+
+void spot_sub_t::append_replay_raw_filters (std::set<std::string> *out_) const
+{
+    if (!out_)
+        return;
+
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    for (std::set<std::string>::const_iterator it = _topics.begin ();
+         it != _topics.end (); ++it) {
+        if (_delivery_ready_raw_filters.count (*it) == 0)
+            out_->insert (*it);
+    }
+    for (std::set<std::string>::const_iterator it = _patterns.begin ();
+         it != _patterns.end (); ++it) {
+        if (_delivery_ready_raw_filters.count (*it) == 0)
+            out_->insert (*it);
+    }
 }
 
 void spot_sub_t::append_all_subjects (
@@ -481,7 +595,7 @@ void spot_sub_t::emit_filter_applied_event (const char *subject_,
                                     _routing_id, NULL, subject_,
                                     subject_kind_, 0);
     }
-    _monitor.emit (event);
+    emit_monitor_event (event);
 }
 
 void spot_sub_t::emit_subscription_ready_event (const char *endpoint_,
@@ -495,7 +609,7 @@ void spot_sub_t::emit_subscription_ready_event (const char *endpoint_,
                                     _routing_id, endpoint_, subject_,
                                     subject_kind_, 1);
     }
-    _monitor.emit (event);
+    emit_monitor_event (event);
 }
 
 void spot_sub_t::emit_delivery_ready_changed_event (const char *subject_,
@@ -511,7 +625,20 @@ void spot_sub_t::emit_delivery_ready_changed_event (const char *subject_,
                                     _routing_id, endpoint_, subject_,
                                     subject_kind_, ready_);
     }
-    _monitor.emit (event);
+    emit_monitor_event (event);
+}
+
+void spot_sub_t::mark_subject_subscription_ready (
+  const subject_descriptor_t &subject_,
+  const char *endpoint_)
+{
+    if (subject_.subject.empty ()
+        || subject_.subject_kind == ZLINK_SERVICE_EVENT_SUBJECT_NONE)
+        return;
+
+    emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
+                                   subject_.subject_kind);
+    backfill_subject_ready_endpoint (subject_, endpoint_);
 }
 
 std::string spot_sub_t::first_ready_peer_endpoint () const
@@ -575,18 +702,74 @@ void spot_sub_t::mark_subject_ready (const subject_descriptor_t &subject_,
         || subject_.subject_kind == ZLINK_SERVICE_EVENT_SUBJECT_NONE)
         return;
 
-    bool inserted = false;
+    bool emit = false;
+    std::string endpoint_value;
     {
         scoped_lock_t lock (_sync);
-        inserted = _ready_subject_keys.insert (
-                     make_subject_key (subject_.subject, subject_.subject_kind))
-                     .second;
+        const std::string key =
+          make_subject_key (subject_.subject, subject_.subject_kind);
+        std::map<std::string, std::string>::iterator it =
+          _ready_subject_endpoints.find (key);
+        const std::string new_endpoint =
+          endpoint_ && endpoint_[0] != '\0' ? std::string (endpoint_)
+                                            : std::string ();
+        if (it == _ready_subject_endpoints.end ()) {
+            _ready_subject_endpoints[key] = new_endpoint;
+            endpoint_value = new_endpoint;
+            emit = true;
+        } else if (it->second.empty () && !new_endpoint.empty ()) {
+            it->second = new_endpoint;
+            endpoint_value = new_endpoint;
+            emit = true;
+        }
     }
-    if (!inserted)
+    if (!emit)
         return;
 
-    emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
-                                   subject_.subject_kind);
+    emit_delivery_ready_changed_event (subject_.subject.c_str (),
+                                       subject_.subject_kind, 1,
+                                       endpoint_value.empty ()
+                                         ? NULL
+                                         : endpoint_value.c_str ());
+}
+
+void spot_sub_t::backfill_subject_ready_endpoint (
+  const subject_descriptor_t &subject_,
+  const char *endpoint_)
+{
+    if (subject_.subject.empty ()
+        || subject_.subject_kind == ZLINK_SERVICE_EVENT_SUBJECT_NONE
+        || !endpoint_ || endpoint_[0] == '\0')
+        return;
+
+    bool emit = false;
+    {
+        scoped_lock_t lock (_sync);
+        const std::string key =
+          make_subject_key (subject_.subject, subject_.subject_kind);
+        std::map<std::string, std::string>::iterator it =
+          _ready_subject_endpoints.find (key);
+        if (getenv ("ZLINK_DEBUG_SPOT_BACKFILL")) {
+            fprintf (stderr,
+                     "[spot-backfill] subject=%s kind=%u endpoint=%s found=%d "
+                     "stored=%s\n",
+                     subject_.subject.c_str (),
+                     static_cast<unsigned int> (subject_.subject_kind),
+                     endpoint_,
+                     it != _ready_subject_endpoints.end () ? 1 : 0,
+                     (it != _ready_subject_endpoints.end ()
+                      && !it->second.empty ())
+                       ? it->second.c_str ()
+                       : "-");
+        }
+        if (it != _ready_subject_endpoints.end () && it->second.empty ()) {
+            it->second = endpoint_;
+            emit = true;
+        }
+    }
+    if (!emit)
+        return;
+
     emit_delivery_ready_changed_event (subject_.subject.c_str (),
                                        subject_.subject_kind, 1, endpoint_);
 }
@@ -602,7 +785,7 @@ void spot_sub_t::mark_subject_lost (const subject_descriptor_t &subject_,
     {
         scoped_lock_t lock (_sync);
         erased =
-          _ready_subject_keys.erase (
+          _ready_subject_endpoints.erase (
             make_subject_key (subject_.subject, subject_.subject_kind))
           != 0;
     }
@@ -616,7 +799,21 @@ void spot_sub_t::mark_subject_lost (const subject_descriptor_t &subject_,
 void spot_sub_t::mark_all_subjects_lost (const char *endpoint_)
 {
     std::vector<subject_descriptor_t> subjects;
+    std::vector<std::pair<std::string, std::string> > ready_ack_updates;
+    {
+        scoped_lock_t lock (_sync);
+        _delivery_ready_raw_filters.clear ();
+    }
     append_all_subjects (&subjects);
+    release_all_ready_ack_endpoints (&ready_ack_updates);
+    if (_node) {
+        const std::string ack_source_id = ready_ack_source_id ();
+        for (size_t i = 0; i < ready_ack_updates.size (); ++i) {
+            (void) _node->send_ready_ack_update (ready_ack_updates[i].second,
+                                                 ready_ack_updates[i].first,
+                                                 ack_source_id, false);
+        }
+    }
     for (size_t i = 0; i < subjects.size (); ++i)
         mark_subject_lost (subjects[i], endpoint_);
 }
@@ -630,6 +827,15 @@ void spot_sub_t::dispatch_from_io (const zlink_routing_id_t *source_rid_,
 {
     spot_sub_t *self = static_cast<spot_sub_t *> (userdata_);
     if (!self) {
+        close_parts (parts_, part_count_);
+        return;
+    }
+
+    std::string raw_filter;
+    std::string peer_endpoint;
+    if (is_ready_probe_message (topic_, topic_len_, parts_, part_count_,
+                                &raw_filter, &peer_endpoint)) {
+        self->handle_ready_probe (raw_filter, peer_endpoint);
         close_parts (parts_, part_count_);
         return;
     }
@@ -655,6 +861,96 @@ void spot_sub_t::dispatch_from_io (const zlink_routing_id_t *source_rid_,
         self->_callback_inflight.sub (1);
         self->_callback_cv.broadcast ();
     }
+}
+
+void spot_sub_t::handle_ready_probe (const std::string &raw_filter_,
+                                     const std::string &peer_endpoint_)
+{
+    if (raw_filter_.empty ())
+        return;
+
+    if (getenv ("ZLINK_DEBUG_SPOT_READY_PROBE")) {
+        fprintf (stderr, "[spot-ready-probe] recv raw=%s endpoint=%s\n",
+                 raw_filter_.c_str (),
+                 peer_endpoint_.empty () ? "-" : peer_endpoint_.c_str ());
+    }
+
+    std::vector<subject_descriptor_t> subjects;
+    append_subjects_for_raw_filter (raw_filter_, &subjects);
+    if (subjects.empty ())
+        return;
+    const std::string endpoint =
+      !peer_endpoint_.empty () ? peer_endpoint_ : first_ready_peer_endpoint ();
+    const char *endpoint_ptr = endpoint.empty () ? NULL : endpoint.c_str ();
+    {
+        scoped_lock_t lock (_sync);
+        _delivery_ready_raw_filters.insert (raw_filter_);
+    }
+    for (size_t i = 0; i < subjects.size (); ++i)
+        mark_subject_ready (subjects[i], endpoint_ptr);
+
+    if (endpoint.empty () || !_node)
+        return;
+
+    bool already_acked = false;
+    {
+        scoped_lock_t lock (_sync);
+        std::map<std::string, std::set<std::string> >::const_iterator it =
+          _ready_ack_endpoints.find (raw_filter_);
+        already_acked =
+          it != _ready_ack_endpoints.end ()
+          && it->second.count (endpoint) != 0;
+    }
+    if (already_acked)
+        return;
+
+    if (_node->send_ready_ack_update (endpoint, raw_filter_,
+                                      ready_ack_source_id (), true)
+        != 0)
+        return;
+
+    {
+        scoped_lock_t lock (_sync);
+        _ready_ack_endpoints[raw_filter_].insert (endpoint);
+    }
+}
+
+void spot_sub_t::release_ready_ack_endpoints (
+  const std::string &raw_filter_,
+  std::vector<std::string> *out_)
+{
+    if (!out_ || raw_filter_.empty ())
+        return;
+
+    out_->clear ();
+    scoped_lock_t lock (_sync);
+    std::map<std::string, std::set<std::string> >::iterator it =
+      _ready_ack_endpoints.find (raw_filter_);
+    if (it == _ready_ack_endpoints.end ())
+        return;
+
+    out_->insert (out_->end (), it->second.begin (), it->second.end ());
+    _ready_ack_endpoints.erase (it);
+}
+
+void spot_sub_t::release_all_ready_ack_endpoints (
+  std::vector<std::pair<std::string, std::string> > *out_)
+{
+    if (!out_)
+        return;
+
+    out_->clear ();
+    scoped_lock_t lock (_sync);
+    for (std::map<std::string, std::set<std::string> >::const_iterator it =
+           _ready_ack_endpoints.begin ();
+         it != _ready_ack_endpoints.end (); ++it) {
+        for (std::set<std::string>::const_iterator endpoint_it =
+               it->second.begin ();
+             endpoint_it != it->second.end (); ++endpoint_it) {
+            out_->push_back (std::make_pair (it->first, *endpoint_it));
+        }
+    }
+    _ready_ack_endpoints.clear ();
 }
 
 void spot_sub_t::monitor_thread_main (void *arg_)
@@ -765,7 +1061,7 @@ void spot_sub_t::monitor_loop ()
             case ZLINK_EVENT_ACCEPTED:
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_PEER_UP,
                                            raw);
-                _monitor.emit (event);
+                emit_monitor_event (event);
                 break;
 
             case ZLINK_EVENT_CONNECTION_READY: {
@@ -776,10 +1072,10 @@ void spot_sub_t::monitor_loop ()
                 }
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_READY,
                                            raw);
-                _monitor.emit (event);
+                emit_monitor_event (event);
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_PEER_UP,
                                            raw);
-                _monitor.emit (event);
+                emit_monitor_event (event);
                 break;
             }
 
@@ -791,10 +1087,10 @@ void spot_sub_t::monitor_loop ()
                 }
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_LOST,
                                            raw);
-                _monitor.emit (event);
+                emit_monitor_event (event);
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_PEER_DOWN,
                                            raw);
-                _monitor.emit (event);
+                emit_monitor_event (event);
                 break;
 
             case ZLINK_EVENT_BIND_FAILED:
@@ -806,7 +1102,7 @@ void spot_sub_t::monitor_loop ()
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_ERROR,
                                            raw);
                 event.error_code = static_cast<int32_t> (raw.value);
-                _monitor.emit (event);
+                emit_monitor_event (event);
                 break;
 
             default:
@@ -825,6 +1121,17 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
 
     socket_base_t *socket = this->socket ();
     int first_error = 0;
+    std::vector<std::pair<std::string, std::string> > ready_ack_updates;
+
+    release_all_ready_ack_endpoints (&ready_ack_updates);
+    if (_node) {
+        const std::string ack_source_id = ready_ack_source_id ();
+        for (size_t i = 0; i < ready_ack_updates.size (); ++i) {
+            (void) _node->send_ready_ack_update (ready_ack_updates[i].second,
+                                                 ready_ack_updates[i].first,
+                                                 ack_source_id, false);
+        }
+    }
 
     if (notify_node_ && _node)
         _node->remove_spot_sub (this);
@@ -860,7 +1167,8 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         _topics.clear ();
         _patterns.clear ();
         _ready_peer_endpoints.clear ();
-        _ready_subject_keys.clear ();
+        _ready_subject_endpoints.clear ();
+        _ready_ack_endpoints.clear ();
         _direct_handler = NULL;
         _direct_handler_userdata = NULL;
         _handler_state = handler_none;

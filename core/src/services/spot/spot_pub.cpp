@@ -169,6 +169,9 @@ spot_pub_t::spot_pub_t (spot_node_t *node_,
     _send_ready_handler (NULL),
     _send_ready_subject (NULL),
     _monitor (node_ ? node_->ctx () : NULL),
+    _monitor_event_queue (),
+    _monitor_event_draining (false),
+    _monitor_event_pending (0),
     _raw_monitor_socket (NULL),
     _monitor_stop (0),
     _monitor_thread_started (false)
@@ -190,6 +193,29 @@ bool spot_pub_t::check_tag () const
 bool spot_pub_t::is_node_owned_default () const
 {
     return _node_owned_default;
+}
+
+void spot_pub_t::emit_monitor_event (const zlink_service_event_t &event_)
+{
+    _monitor_event_queue.enqueue (event_);
+    _monitor_event_pending.fetch_add (1, std::memory_order_release);
+
+    if (_monitor_event_draining.exchange (true, std::memory_order_acq_rel))
+        return;
+
+    for (;;) {
+        zlink_service_event_t next_event;
+        while (_monitor_event_queue.try_dequeue (next_event)) {
+            _monitor.emit (next_event);
+            _monitor_event_pending.fetch_sub (1, std::memory_order_acq_rel);
+        }
+
+        _monitor_event_draining.store (false, std::memory_order_release);
+        if (_monitor_event_pending.load (std::memory_order_acquire) == 0)
+            break;
+        if (_monitor_event_draining.exchange (true, std::memory_order_acq_rel))
+            break;
+    }
 }
 
 socket_base_t *spot_pub_t::socket () const
@@ -405,7 +431,25 @@ void spot_pub_t::emit_delivery_ready_changed_event (const char *subject_,
                                     include_subject_kind_, subject_kind_,
                                     ready_count_);
     }
-    _monitor.emit (event);
+    emit_monitor_event (event);
+}
+
+void spot_pub_t::emit_first_delivery_ready_changed_event (
+  const char *subject_,
+  bool include_subject_kind_,
+  uint32_t subject_kind_,
+  uint32_t ready_count_)
+{
+    zlink_service_event_t event;
+    {
+        scoped_lock_t lock (_sync);
+        fill_subject_monitor_event (&event,
+                                    ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED,
+                                    _routing_id, subject_,
+                                    include_subject_kind_, subject_kind_,
+                                    ready_count_);
+    }
+    emit_monitor_event (event);
 }
 
 void spot_pub_t::emit_ready_event ()
@@ -529,25 +573,25 @@ void spot_pub_t::monitor_loop ()
             case ZLINK_EVENT_ACCEPTED:
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_PEER_UP,
                                            raw);
-                _monitor.emit (event);
+                emit_monitor_event (event);
                 break;
 
             case ZLINK_EVENT_CONNECTION_READY:
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_READY,
                                            raw);
-                _monitor.emit (event);
+                emit_monitor_event (event);
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_PEER_UP,
                                            raw);
-                _monitor.emit (event);
+                emit_monitor_event (event);
                 break;
 
             case ZLINK_EVENT_DISCONNECTED:
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_LOST,
                                            raw);
-                _monitor.emit (event);
+                emit_monitor_event (event);
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_PEER_DOWN,
                                            raw);
-                _monitor.emit (event);
+                emit_monitor_event (event);
                 break;
 
             case ZLINK_EVENT_BIND_FAILED:
@@ -559,7 +603,7 @@ void spot_pub_t::monitor_loop ()
                 fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_ERROR,
                                            raw);
                 event.error_code = static_cast<int32_t> (raw.value);
-                _monitor.emit (event);
+                emit_monitor_event (event);
                 submit_error_summary (static_cast<int> (raw.value));
                 break;
 

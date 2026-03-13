@@ -264,6 +264,7 @@ typedef struct zlink_service_event_t
 | `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | `1 << 14` | 구독 수신 준비 완료 |
 | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | subject별 remote delivery-ready 카운트 변화 |
 | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | `1 << 19` | subject별 delivery-ready 상태 변화 |
+| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | `1 << 20` | publisher 기준 first-delivery-safe ready 카운트 변화 |
 
 ### Detail 플래그 상수
 

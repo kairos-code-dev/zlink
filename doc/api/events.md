@@ -58,7 +58,7 @@ Detail flags:
 - `*_DELIVERY_READY_CHANGED`: first-delivery contract for a specific subject
 
 Recommended gates:
-- start publish only after `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` with
+- start publish only after `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` with
   `value >= 1`
 - start subscriber measurement only after
   `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` with `value == 1`
@@ -129,6 +129,7 @@ Disconnect reasons:
 | `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | Spot sub / node-sub monitor | Legacy subscription-ready transition |
 | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | Spot sub / node-sub monitor | Subject-specific delivery-ready state changed; `value` is `0` or `1` |
 | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | Subject-specific remote delivery-ready count changed; `value` is the current ready subscriber count |
+| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | First-delivery-safe remote ready count changed; use this as the publisher control gate |
 
 SPOT subject rules:
 - sub-side `subject_kind` is populated for exact topic and pattern subscriptions
@@ -153,7 +154,7 @@ if (event->event_type == ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
 Publisher gate:
 
 ```c
-if (event->event_type == ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
+if (event->event_type == ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
     && (event->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
     && strcmp(event->subject, "bench") == 0
     && event->value >= 1) {

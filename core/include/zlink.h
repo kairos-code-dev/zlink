@@ -1396,6 +1396,8 @@ typedef uint32_t zlink_service_event_detail_mask_t;
     ((zlink_spot_monitor_event_mask_t) (1u << 18))
 #define ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED                  \
     ((zlink_spot_monitor_event_mask_t) (1u << 19))
+#define ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED            \
+    ((zlink_spot_monitor_event_mask_t) (1u << 20))
 
 #define ZLINK_MONITOR_EVENT_READY ZLINK_DISCOVERY_MONITOR_EVENT_READY
 #define ZLINK_MONITOR_EVENT_LOST ZLINK_DISCOVERY_MONITOR_EVENT_LOST
@@ -1418,6 +1420,8 @@ typedef uint32_t zlink_service_event_detail_mask_t;
     ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
 #define ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED                                \
     ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
+#define ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED                          \
+    ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
 #define ZLINK_MONITOR_EVENT_CLOSED ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED
 #define ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME                              \
     ((zlink_service_event_detail_mask_t) 0x0001u)

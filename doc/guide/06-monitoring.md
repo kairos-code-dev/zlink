@@ -402,7 +402,9 @@ Service overlays sit one level above raw sockets, so the right pattern for
     `ROUTE_UP/DOWN`.
 - `SPOT`
   - `FILTER_APPLIED` and `SUBSCRIPTION_READY` are control-plane progress.
-  - The actual first publish/receive gate is `*_DELIVERY_READY_CHANGED`.
+  - Subscriber-side first receive gate is `SUB_DELIVERY_READY_CHANGED`.
+  - Publisher-side first publish gate is
+    `PUB_FIRST_DELIVERY_READY_CHANGED`.
   - Snapshots complement that by exposing aggregate peer and queue state.
 
 So the rule is not "some public events are control events and some are not".
@@ -487,7 +489,7 @@ differ as well.
 | `PUB/SUB` | observing bind/connect/handshake state | using raw `CONNECTION_READY` as first publish delivery gate | application barrier or higher service event |
 | `STREAM` | first payload send/recv after server `CONNECTION_READY.routing_id` | starting payload I/O on `ACCEPTED` alone | snapshot plus stream `routing_id` |
 | `Gateway` | first request after `ZLINK_GATEWAY_SEND_READY_CHANGED(value=1)` | inferring sendability from `SERVICE_READY` or `ROUTE_UP` alone | service monitor plus `zlink_monitor_snapshot()` |
-| `SPOT` | first publish/receive after `*_DELIVERY_READY_CHANGED` | using raw `CONNECTION_READY`, `PEER_UP`, or `FILTER_APPLIED` alone as delivery gates | `SPOT` service monitor |
+| `SPOT` | sub: `SUB_DELIVERY_READY_CHANGED`, pub: `PUB_FIRST_DELIVERY_READY_CHANGED` | using raw `CONNECTION_READY`, `PEER_UP`, or `FILTER_APPLIED` alone as delivery gates | `SPOT` service monitor |
 
 Operational rules:
 

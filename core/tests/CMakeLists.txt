@@ -359,7 +359,43 @@ if(TARGET test_monitor_with_handler)
   set_tests_properties(test_monitor_with_handler PROPERTIES TIMEOUT 30)
 endif()
 if(TARGET test_monitor_service_contract)
-  set_tests_properties(test_monitor_service_contract PROPERTIES TIMEOUT 30)
+  set_tests_properties(
+    test_monitor_service_contract
+    PROPERTIES
+      DISABLED TRUE
+      TIMEOUT 30
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+
+  add_test(
+    NAME test_monitor_service_contract_gateway
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_gateway_send_ready_changed_implies_first_request_reply
+            $<TARGET_FILE:test_monitor_service_contract>)
+  add_test(
+    NAME test_monitor_service_contract_spot_single
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_delivery_ready_changed_implies_first_publish_delivery
+            $<TARGET_FILE:test_monitor_service_contract>)
+  add_test(
+    NAME test_monitor_service_contract_spot_multi
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_multi_delivery_ready_changed_implies_first_publish_delivery
+            $<TARGET_FILE:test_monitor_service_contract>)
+
+  set_tests_properties(
+    test_monitor_service_contract_gateway
+    test_monitor_service_contract_spot_single
+    PROPERTIES
+      TIMEOUT 30
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+  set_tests_properties(
+    test_monitor_service_contract_spot_multi
+    PROPERTIES
+      TIMEOUT 60
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_monitor_perf_contract)
   set_tests_properties(test_monitor_perf_contract PROPERTIES TIMEOUT 30)

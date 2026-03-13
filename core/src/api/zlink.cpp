@@ -1546,9 +1546,18 @@ int zlink_service_monitor_close (void **monitor_p_)
         return -1;
     }
     void *monitor = *monitor_p_;
+    socket_handle_t handle = as_socket_handle (monitor);
+    if (!handle.socket)
+        return -1;
+
+    zlink::ctx_t *ctx = handle.socket->get_ctx ();
+    zlink::socket_base_t *socket = handle.socket;
     const int rc = zlink_close (monitor);
-    if (rc == 0)
+    if (rc == 0) {
+        if (ctx)
+            (void) ctx->wait_for_socket_removal (socket, 2000);
         *monitor_p_ = NULL;
+    }
     return rc;
 }
 
@@ -1901,30 +1910,6 @@ int zlink_discovery_setsockopt (void *discovery_,
                                          optvallen_);
 }
 
-int zlink_discovery_subscribe (void *discovery_, const char *service_name_)
-{
-    if (!discovery_)
-        return -1;
-    zlink::discovery_t *discovery = static_cast<zlink::discovery_t *> (discovery_);
-    if (!discovery->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return discovery->subscribe (service_name_);
-}
-
-int zlink_discovery_unsubscribe (void *discovery_, const char *service_name_)
-{
-    if (!discovery_)
-        return -1;
-    zlink::discovery_t *discovery = static_cast<zlink::discovery_t *> (discovery_);
-    if (!discovery->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return discovery->unsubscribe (service_name_);
-}
-
 int zlink_discovery_set_routing_id (void *discovery_,
                                     const void *data_,
                                     size_t size_)
@@ -1951,47 +1936,6 @@ int zlink_discovery_routing_id (void *discovery_, zlink_routing_id_t *out_)
         return -1;
     }
     return discovery->routing_id (out_);
-}
-
-int zlink_discovery_get_receivers (void *discovery_,
-                                 const char *service_name_,
-                                 zlink_receiver_info_t *providers_,
-                                 size_t *count_)
-{
-    if (!discovery_)
-        return -1;
-    zlink::discovery_t *discovery = static_cast<zlink::discovery_t *> (discovery_);
-    if (!discovery->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return discovery->get_receivers (service_name_, providers_, count_);
-}
-
-int zlink_discovery_receiver_count (void *discovery_,
-                                  const char *service_name_)
-{
-    if (!discovery_)
-        return -1;
-    zlink::discovery_t *discovery = static_cast<zlink::discovery_t *> (discovery_);
-    if (!discovery->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return discovery->receiver_count (service_name_);
-}
-
-int zlink_discovery_service_available (void *discovery_,
-                                       const char *service_name_)
-{
-    if (!discovery_)
-        return -1;
-    zlink::discovery_t *discovery = static_cast<zlink::discovery_t *> (discovery_);
-    if (!discovery->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return discovery->service_available (service_name_);
 }
 
 void *zlink_discovery_monitor_open (
@@ -2602,6 +2546,10 @@ void *zlink_spot_node_monitor_open (void *node_,
                                     zlink_spot_monitor_event_mask_t events_,
                                     zlink_service_monitor_handler_fn handler_)
 {
+    if (!handler_) {
+        errno = EINVAL;
+        return NULL;
+    }
     if (!node_) {
         errno = EFAULT;
         return NULL;
@@ -2840,6 +2788,8 @@ static void *open_spot_service_monitor (void *monitor_,
                                         zlink_service_monitor_handler_fn handler_)
 {
     if (!handler_) {
+        if (monitor_)
+            zlink_service_monitor_close (&monitor_);
         errno = EINVAL;
         return NULL;
     }
@@ -2866,6 +2816,10 @@ void *zlink_spot_monitor_open (void *spot_,
                                zlink_spot_monitor_event_mask_t events_,
                                zlink_service_monitor_handler_fn handler_)
 {
+    if (!handler_) {
+        errno = EINVAL;
+        return NULL;
+    }
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return NULL;

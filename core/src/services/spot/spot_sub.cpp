@@ -676,6 +676,7 @@ int spot_sub_t::stop_monitor_bridge ()
 {
     void *raw_monitor_socket = NULL;
     ctx_t *ctx = _node ? _node->ctx () : NULL;
+    socket_base_t *socket = this->socket ();
     int first_error = 0;
     {
         scoped_lock_t lock (_sync);
@@ -683,6 +684,10 @@ int spot_sub_t::stop_monitor_bridge ()
         raw_monitor_socket = _raw_monitor_socket;
         _raw_monitor_socket = NULL;
     }
+
+    if (socket)
+        preserve_first_error (socket->monitor (NULL, 0, 3, ZLINK_PAIR),
+                              &first_error);
 
     if (_monitor_thread_started) {
         _monitor_thread.stop ();
@@ -692,8 +697,8 @@ int spot_sub_t::stop_monitor_bridge ()
         socket_base_t *monitor_socket =
           static_cast<socket_base_t *> (raw_monitor_socket);
         if (_node && ctx)
-            preserve_first_error (_node->_lifecycle.close_socket (monitor_socket,
-                                                                  2000),
+            preserve_first_error (
+              _node->_lifecycle.close_socket_and_wait (monitor_socket, 2000),
                                   &first_error);
         else {
             monitor_socket->stop ();

@@ -254,10 +254,15 @@ static void spot_publish_from_ready_handler (void *subject_)
 static void destroy_test_ctx (void *ctx_)
 {
     TEST_ASSERT_NOT_NULL (ctx_);
+    step_log ("ctx: pre-shutdown sleep");
     msleep (50);
+    step_log ("ctx: shutdown");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx_));
+    step_log ("ctx: post-shutdown sleep");
     msleep (10);
+    step_log ("ctx: term");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx_));
+    step_log ("ctx: term done");
 }
 
 static void *create_spot_node (void *ctx_, const char *service_name_)
@@ -329,7 +334,7 @@ static int publish_text (spot_publish_fn_t publish_fn_,
     return rc;
 }
 
-static bool wait_for_provider_count (void *discovery_,
+static bool wait_for_provider_count (void *registry_,
                                      const char *service_name_,
                                      int expected_count_,
                                      int timeout_ms_)
@@ -338,14 +343,32 @@ static bool wait_for_provider_count (void *discovery_,
       std::chrono::steady_clock::now ()
       + std::chrono::milliseconds (timeout_ms_);
     while (std::chrono::steady_clock::now () < deadline) {
-        if (zlink_discovery_receiver_count (discovery_, service_name_)
-            >= expected_count_) {
+        zlink_registry_topology_filter_t filter;
+        memset (&filter, 0, sizeof (filter));
+        filter.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
+        filter.state = ZLINK_TOPOLOGY_STATE_READY;
+        strncpy (filter.service_name, service_name_,
+                 sizeof (filter.service_name) - 1);
+
+        size_t count = 0;
+        if (zlink_registry_topology_query (registry_, &filter, NULL, &count)
+                == 0
+            && count >= static_cast<size_t> (expected_count_)) {
             return true;
         }
         msleep (10);
     }
-    return zlink_discovery_receiver_count (discovery_, service_name_)
-           >= expected_count_;
+    size_t count = 0;
+    zlink_registry_topology_filter_t filter;
+    memset (&filter, 0, sizeof (filter));
+    filter.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
+    filter.state = ZLINK_TOPOLOGY_STATE_READY;
+    strncpy (filter.service_name, service_name_,
+             sizeof (filter.service_name) - 1);
+    if (zlink_registry_topology_query (registry_, &filter, NULL, &count)
+        != 0)
+        return false;
+    return count >= static_cast<size_t> (expected_count_);
 }
 
 struct spot_probe_message_t
@@ -518,6 +541,49 @@ static bool consume_matching_service_event_locked (
     return false;
 }
 
+static bool consume_exact_service_event_locked (
+  service_monitor_probe_t *probe_,
+  uint32_t expected_event_type_,
+  const char *endpoint_prefix_,
+  const char *subject_,
+  int expected_value_,
+  zlink_service_event_t *event_out_)
+{
+    if (!probe_)
+        return false;
+
+    for (std::vector<zlink_service_event_t>::iterator it =
+           probe_->events.begin ();
+         it != probe_->events.end (); ++it) {
+        if (it->event_type != expected_event_type_)
+            continue;
+        if (endpoint_prefix_ && endpoint_prefix_[0] != '\0') {
+            if ((it->detail_flags & ZLINK_EVENT_DETAIL_ENDPOINT) == 0)
+                continue;
+            if (strncmp (it->endpoint, endpoint_prefix_,
+                         strlen (endpoint_prefix_))
+                != 0) {
+                continue;
+            }
+        }
+        if (subject_ && subject_[0] != '\0') {
+            if ((it->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) == 0)
+                continue;
+            if (strcmp (it->subject, subject_) != 0)
+                continue;
+        }
+        if (expected_value_ >= 0
+            && static_cast<int> (it->value) != expected_value_) {
+            continue;
+        }
+        if (event_out_)
+            *event_out_ = *it;
+        probe_->events.erase (it);
+        return true;
+    }
+    return false;
+}
+
 static bool wait_for_service_event_match (service_monitor_probe_t *probe_,
                                           uint32_t expected_event_type_,
                                           const char *endpoint_prefix_,
@@ -553,6 +619,34 @@ static bool wait_for_service_event (service_monitor_probe_t *probe_,
     return wait_for_service_event_match (probe_, expected_event_type_,
                                          endpoint_prefix_, NULL, -1, NULL,
                                          timeout_ms_);
+}
+
+static bool wait_for_service_event_exact_value (
+  service_monitor_probe_t *probe_,
+  uint32_t expected_event_type_,
+  const char *endpoint_prefix_,
+  const char *subject_,
+  int expected_value_,
+  zlink_service_event_t *event_out_,
+  int timeout_ms_)
+{
+    if (!probe_)
+        return false;
+
+    std::unique_lock<std::mutex> lock (probe_->mutex);
+    if (consume_exact_service_event_locked (
+          probe_, expected_event_type_, endpoint_prefix_, subject_,
+          expected_value_, event_out_)) {
+        return true;
+    }
+    return probe_->cv.wait_for (
+      lock, std::chrono::milliseconds (timeout_ms_),
+      [probe_, expected_event_type_, endpoint_prefix_, subject_,
+       expected_value_, event_out_]() {
+          return consume_exact_service_event_locked (
+            probe_, expected_event_type_, endpoint_prefix_, subject_,
+            expected_value_, event_out_);
+      });
 }
 
 static void spot_probe_handler (const zlink_routing_id_t *,
@@ -806,6 +900,8 @@ static void test_spot_monitors_and_monitor_poller ()
     step_log ("monitors: create ctx");
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
+    zlink::ctx_t *ctx_impl = static_cast<zlink::ctx_t *> (ctx);
+    TEST_ASSERT_NOT_NULL (ctx_impl);
 
     step_log ("monitors: create nodes");
     void *pub_node = create_spot_node (ctx, "spot-test");
@@ -818,6 +914,8 @@ static void test_spot_monitors_and_monitor_poller ()
     void *sub = create_spot_sub_handle (sub_node);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
+    const size_t socket_count_before_null_monitor_checks =
+      ctx_impl->socket_count ();
 
     TEST_ASSERT_NULL (zlink_spot_monitor_open (
       sub, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_READY, NULL));
@@ -831,6 +929,11 @@ static void test_spot_monitors_and_monitor_poller ()
     TEST_ASSERT_NULL (zlink_spot_node_monitor_open (
       pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_READY, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    TEST_ASSERT_SUCCESS_ERRNO (
+      ctx_impl->wait_for_socket_count_at_most (
+        socket_count_before_null_monitor_checks, 1000));
+    TEST_ASSERT_EQUAL_UINT (
+      socket_count_before_null_monitor_checks, ctx_impl->socket_count ());
 
     spot_probe_t *sub_probe = new spot_probe_t;
     TEST_ASSERT_SUCCESS_ERRNO (attach_spot_probe (sub, sub_probe));
@@ -904,6 +1007,7 @@ static void test_spot_monitors_and_monitor_poller ()
     step_log ("monitors: pattern subscribe");
     zlink_service_event_t pattern_filter_event;
     zlink_service_event_t pattern_ready_event;
+    zlink_service_event_t pattern_pub_ready_event;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe_pattern (sub, "svc-pat*"));
     TEST_ASSERT_TRUE (wait_for_service_event_match (
       &sub_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, "svc-pat*", -1,
@@ -915,6 +1019,10 @@ static void test_spot_monitors_and_monitor_poller ()
       "svc-pat*", 1, &pattern_ready_event, 3000));
     TEST_ASSERT_EQUAL_UINT32 (ZLINK_SERVICE_EVENT_SUBJECT_PATTERN,
                               pattern_ready_event.subject_kind);
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &pub_monitor_probe, ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED, NULL,
+      "svc-pat", 1, &pattern_pub_ready_event, 3000));
+    TEST_ASSERT_EQUAL_UINT32 (1u, pattern_pub_ready_event.value);
     TEST_ASSERT_SUCCESS_ERRNO (
       publish_text (&zlink_spot_publish, pub, "svc-pat-42", "pattern", 0));
     TEST_ASSERT_TRUE (wait_for_spot_message_bytes (sub_probe, "svc-pat-42",
@@ -923,12 +1031,16 @@ static void test_spot_monitors_and_monitor_poller ()
     step_log ("monitors: disconnect");
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_disconnect_peer_pub (sub_node, endpoint));
-    TEST_ASSERT_TRUE (wait_for_service_event_match (
+    zlink_service_event_t pub_lost_event;
+    zlink_service_event_t sub_lost_event;
+    TEST_ASSERT_TRUE (wait_for_service_event_exact_value (
       &pub_monitor_probe, ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED, NULL,
-      "svc-mon", 0, NULL, 3000));
-    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      "svc-mon", 0, &pub_lost_event, 3000));
+    TEST_ASSERT_EQUAL_UINT32 (0u, pub_lost_event.value);
+    TEST_ASSERT_TRUE (wait_for_service_event_exact_value (
       &sub_monitor_probe, ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED, NULL,
-      "svc-mon", 0, NULL, 3000));
+      "svc-mon", 0, &sub_lost_event, 3000));
+    TEST_ASSERT_EQUAL_UINT32 (0u, sub_lost_event.value);
 
     step_log ("monitors: destroy handles");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
@@ -944,8 +1056,11 @@ static void test_spot_monitors_and_monitor_poller ()
     step_log ("monitors: destroy nodes");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (ctx_impl->wait_for_socket_count_at_most (0, 3000));
+    TEST_ASSERT_EQUAL_UINT (0u, ctx_impl->socket_count ());
     g_service_monitor_probe_a = NULL;
     g_service_monitor_probe_b = NULL;
+    destroy_test_ctx (ctx);
 }
 
 static void test_spot_node_direct_apis_and_explicit_handles_interop ()
@@ -990,6 +1105,7 @@ static void test_spot_node_direct_apis_and_explicit_handles_interop ()
     step_log ("explicit_handles: destroy nodes");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    destroy_test_ctx (ctx);
 }
 
 static void test_spot_node_send_ready_handler_isolated_by_service ()
@@ -1048,7 +1164,7 @@ static void test_spot_node_send_ready_handler_isolated_by_service ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_b));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+    destroy_test_ctx (ctx);
 }
 
 static void test_spot_topology_summary_lifecycle ()
@@ -1076,9 +1192,6 @@ static void test_spot_topology_summary_lifecycle ()
       zlink_discovery_set_routing_id (discovery, "spot-summary-disc", 17));
     TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
       discovery, registry_router, 2000));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "svc-summary"));
-
     step_log ("topology_summary: create node");
     void *node = create_spot_node (ctx, "svc-summary");
     TEST_ASSERT_NOT_NULL (node);
@@ -1125,6 +1238,7 @@ static void test_spot_topology_summary_lifecycle ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     step_log ("topology_summary: destroy registry");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    destroy_test_ctx (ctx);
 }
 
 static void test_spot_register_null_derivation_and_wildcard_rejection ()
@@ -1150,8 +1264,6 @@ static void test_spot_register_null_derivation_and_wildcard_rejection ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
       discovery, registry_router, 2000));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "svc-regnull"));
     TEST_ASSERT_TRUE (wait_for_registry_uplink (discovery, 2000));
 
     void *ok_node = create_spot_node (ctx, "svc-regnull");
@@ -1170,7 +1282,7 @@ static void test_spot_register_null_derivation_and_wildcard_rejection ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (wild_node, wildcard_endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_attach_discovery (ok_node, discovery));
-    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "svc-regnull", 1,
+    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "svc-regnull", 1,
                                                5000));
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_spot_node_attach_discovery (wild_node, discovery));
@@ -1180,6 +1292,7 @@ static void test_spot_register_null_derivation_and_wildcard_rejection ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&ok_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    destroy_test_ctx (ctx);
 }
 
 static void test_spot_tls_settings_lock_after_bind_connect_and_register ()
@@ -1210,8 +1323,6 @@ static void test_spot_tls_settings_lock_after_bind_connect_and_register ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
       discovery, registry_router, 2000));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "svc-tlslock"));
     TEST_ASSERT_TRUE (wait_for_registry_uplink (discovery, 2000));
 
     step_log ("tls_lock: create nodes");
@@ -1257,7 +1368,7 @@ static void test_spot_tls_settings_lock_after_bind_connect_and_register ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_attach_discovery (reg_node, discovery));
     step_log ("tls_lock: wait provider");
-    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "svc-tlslock", 1,
+    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "svc-tlslock", 1,
                                                5000));
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_spot_node_set_tls_client (reg_node, files.ca_cert.c_str (),
@@ -1276,6 +1387,7 @@ static void test_spot_tls_settings_lock_after_bind_connect_and_register ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
     step_log ("tls_lock: cleanup tls");
     cleanup_tls_test_files (files);
+    destroy_test_ctx (ctx);
 }
 
 static void test_spot_late_connect_replays_existing_subscription ()
@@ -1304,35 +1416,57 @@ static void test_spot_late_connect_replays_existing_subscription ()
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "svc-late"));
     spot_probe_t *sub_probe = new spot_probe_t;
     TEST_ASSERT_SUCCESS_ERRNO (attach_spot_probe (sub, sub_probe));
+    service_monitor_probe_t sub_monitor_probe;
+    service_monitor_probe_t pub_monitor_probe;
+    g_service_monitor_probe_a = &sub_monitor_probe;
+    g_service_monitor_probe_b = &pub_monitor_probe;
+    void *sub_monitor =
+      zlink_spot_monitor_open (sub, ZLINK_SPOT_ROLE_SUB,
+                               ZLINK_SPOT_SUB_FILTER_APPLIED
+                                 | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
+                                 | ZLINK_MONITOR_EVENT_ERROR,
+                               queued_service_monitor_handler_a);
+    void *pub_monitor =
+      zlink_spot_monitor_open (pub, ZLINK_SPOT_ROLE_PUB,
+                               ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
+                                 | ZLINK_MONITOR_EVENT_ERROR,
+                               queued_service_monitor_handler_b);
+    TEST_ASSERT_NOT_NULL (sub_monitor);
+    TEST_ASSERT_NOT_NULL (pub_monitor);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "svc-late"));
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &sub_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, "svc-late", -1,
+      NULL, 3000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer_pub (sub_node, endpoint));
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &sub_monitor_probe, ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED, endpoint,
+      "svc-late", 1, NULL, 5000));
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &pub_monitor_probe, ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED, NULL,
+      "svc-late", 1, NULL, 5000));
 
-    const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (2000);
-    bool received = false;
-    int seq = 0;
-    while (std::chrono::steady_clock::now () < deadline && !received) {
-        char payload[16];
-        const int payload_size =
-          snprintf (payload, sizeof (payload), "m-%d", seq++);
-        TEST_ASSERT_TRUE (payload_size > 0);
-        TEST_ASSERT_SUCCESS_ERRNO (
-          publish_text (&zlink_spot_publish, pub, "svc-late", payload, 0));
-        received =
-          wait_for_spot_message_bytes (sub_probe, "svc-late", payload,
-                                       payload_size, 100);
-    }
+    const char *payload = "late-replay";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      publish_text (&zlink_spot_publish, pub, "svc-late", payload, 0));
     TEST_ASSERT_TRUE_MESSAGE (
-      received, "late-connect peer did not receive replayed subscription");
+      wait_for_spot_message_bytes (sub_probe, "svc-late", payload,
+                                   strlen (payload), 3000),
+      "late-connect peer did not receive replayed subscription");
 
+    g_service_monitor_probe_a = NULL;
+    g_service_monitor_probe_b = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&sub_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&pub_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    destroy_test_ctx (ctx);
 }
 
 static void test_spot_faulted_node_apis_fail_with_efsm ()
@@ -1360,6 +1494,7 @@ static void test_spot_faulted_node_apis_fail_with_efsm ()
     TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_handle));
+    destroy_test_ctx (ctx);
 }
 
 int main (int, char **)

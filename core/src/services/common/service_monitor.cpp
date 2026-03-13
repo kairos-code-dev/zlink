@@ -206,31 +206,47 @@ void service_monitor_hub_t::emit (const zlink_service_event_t &event_)
 
 void service_monitor_hub_t::close_all (const zlink_service_event_t *terminal_event_)
 {
-    scoped_lock_t lock (_sync);
-    if (terminal_event_) {
-        for (size_t i = 0; i < _watchers.size (); ++i) {
-            watcher_t &watcher = _watchers[i];
-            if (!watcher.server)
-                continue;
-            if ((watcher.events & event_delivery_mask (*terminal_event_))
-                == 0)
-                continue;
+    std::vector<socket_base_t *> servers;
+    {
+        scoped_lock_t lock (_sync);
+        if (terminal_event_) {
+            for (size_t i = 0; i < _watchers.size (); ++i) {
+                watcher_t &watcher = _watchers[i];
+                if (!watcher.server)
+                    continue;
+                if ((watcher.events & event_delivery_mask (*terminal_event_))
+                    == 0)
+                    continue;
 
-            msg_t msg;
-            if (msg.init_size (sizeof (*terminal_event_)) != 0)
-                continue;
-            memcpy (msg.data (), terminal_event_, sizeof (*terminal_event_));
-            if (watcher.server->send (&msg, ZLINK_DONTWAIT) != 0) {
+                msg_t msg;
+                if (msg.init_size (sizeof (*terminal_event_)) != 0)
+                    continue;
+                memcpy (msg.data (), terminal_event_, sizeof (*terminal_event_));
+                if (watcher.server->send (&msg, ZLINK_DONTWAIT) != 0) {
+                    msg.close ();
+                    continue;
+                }
                 msg.close ();
-                continue;
             }
-            msg.close ();
+        }
+
+        for (size_t i = 0; i < _watchers.size (); ++i) {
+            if (_watchers[i].server)
+                servers.push_back (_watchers[i].server);
+        }
+        _watchers.clear ();
+    }
+
+    for (size_t i = 0; i < servers.size (); ++i) {
+        socket_base_t *server = servers[i];
+        if (!server)
+            continue;
+        if (_ctx)
+            (void) _ctx->close_socket_and_wait (server, 2000);
+        else {
+            server->stop ();
+            server->close ();
         }
     }
-    for (size_t i = 0; i < _watchers.size (); ++i) {
-        if (_watchers[i].server)
-            _watchers[i].server->close ();
-    }
-    _watchers.clear ();
 }
 }

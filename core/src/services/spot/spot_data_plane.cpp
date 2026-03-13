@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <set>
 #include <vector>
 
 namespace zlink
@@ -189,6 +190,29 @@ static int recv_and_forward_subscription_updates (socket_base_t *src_,
     }
 }
 
+static int send_subscription_update (socket_base_t *socket_,
+                                     const std::string &raw_filter_,
+                                     bool subscribe_)
+{
+    if (!socket_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    msg_t msg;
+    if (msg.init_size (raw_filter_.size () + 1) != 0)
+        return -1;
+
+    unsigned char *data = static_cast<unsigned char *> (msg.data ());
+    data[0] = subscribe_ ? 1 : 0;
+    if (!raw_filter_.empty ())
+        memcpy (data + 1, raw_filter_.data (), raw_filter_.size ());
+
+    const int rc = socket_->send (&msg, 0);
+    msg.close ();
+    return rc;
+}
+
 }
 
 void spot_data_plane_t::close_socket_ptr (spot_node_t *node_,
@@ -202,7 +226,7 @@ void spot_data_plane_t::close_socket_ptr (spot_node_t *node_,
         socket_ = NULL;
         return;
     }
-    (void) node_->_lifecycle.close_socket (socket_, 2000);
+    (void) node_->_lifecycle.close_socket_and_wait (socket_, 2000);
 }
 
 void spot_data_plane_t::thread_entry (void *arg_)
@@ -387,6 +411,26 @@ void spot_data_plane_t::run (spot_node_t *node_)
                         node_->_mesh_client_tls_locked = true;
                         send_ok_reply (ctrl);
                     }
+                } else if (verb == "replay_subscriptions") {
+                    std::set<std::string> raw_filters;
+                    node_->snapshot_raw_subscription_filters (&raw_filters);
+                    bool replay_failed = false;
+                    int replay_error = 0;
+                    for (std::set<std::string>::const_iterator it =
+                           raw_filters.begin ();
+                         it != raw_filters.end (); ++it) {
+                        if (send_subscription_update (mesh_xsub, *it, true)
+                            != 0) {
+                            replay_failed = true;
+                            replay_error = errno != 0 ? errno : EIO;
+                            break;
+                        }
+                        node_->notify_subscription_forwarded (*it);
+                    }
+                    if (replay_failed)
+                        send_errno_reply (ctrl, replay_error);
+                    else
+                        send_ok_reply (ctrl);
                 } else if (verb == "unbind_pub") {
                     if (mesh_pub->term_endpoint (arg.c_str ()) != 0)
                         send_errno_reply (ctrl, errno);

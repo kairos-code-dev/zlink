@@ -6,6 +6,11 @@
 
 zlink 모니터링 API는 소켓의 연결/해제/핸드셰이크 등 이벤트를 실시간으로 관찰할 수 있다. 콜백 기반으로 동작하며, 이벤트 발생 시 등록된 핸들러 함수가 자동으로 호출된다.
 
+패밀리별 control contract와 회귀 테스트 기준은
+[socket-family-monitor-contract-spec.ko.md](../plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md)에
+별도로 정리한다. 이 가이드는 실제 사용 시 어떤 event를 gate로 써야 하는지에
+집중한다.
+
 ## 2. 모니터 활성화
 
 ### 2.1 콜백 기반 (권장)
@@ -102,6 +107,8 @@ TCP 연결이 성립되었을 때 **클라이언트 측**에서 발생한다. �
 - **`local_addr`**: 리스닝 엔드포인트 주소.
 - **`remote_addr`**: 원격 피어 주소.
 - **다음 이벤트**: 성공 시 `CONNECTION_READY`, 실패 시 `HANDSHAKE_FAILED_*` 또는 `DISCONNECTED`.
+- **제어 규칙**: transport 수락 관찰에는 써도 되지만, business message 송신
+  또는 first-delivery gate로 쓰면 안 된다.
 
 #### CONNECTION_READY (`0x1000`)
 
@@ -113,6 +120,10 @@ zlink 핸드셰이크가 성공적으로 완료되어 데이터 전송이 가능
 - **`remote_addr`**: 원격 엔드포인트 주소.
 - **일반적 용도**: 피어 등록, 메시지 전송 시작, `zlink_monitor_snapshot()`을
   통한 aggregate queue/readiness 상태 조회.
+- **패밀리 규칙**:
+  - `PAIR`, `DEALER/ROUTER`, `STREAM`: raw first-I/O gate로 사용 가능
+  - `PUB/SUB`: transport/session readiness까지만 뜻하며, 첫 publish delivery
+    gate로 사용하면 안 됨
 
 #### DISCONNECTED (`0x0200`)
 
@@ -356,7 +367,8 @@ void *mon = zlink_socket_monitor_open(server, MONITOR_PRESET_SECURITY,
 ### aggregate socket 상태 조회
 
 ```c
-void *monitor = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL, NULL);
+void *monitor = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL,
+                                          zlink_monitor_ignore_handler);
 zlink_monitor_snapshot_t snapshot;
 zlink_monitor_snapshot(monitor, &snapshot);
 printf("ready peers: %u, sndq=%llu, rcvq=%llu\n",
@@ -377,6 +389,26 @@ void on_monitor(const zlink_monitor_event_t *ev)
     }
 }
 ```
+
+### service monitor의 초기 gate
+
+service overlay는 raw socket보다 한 단계 높은 의미를 가진다. 그래서
+`Gateway`와 `SPOT`은 `open -> snapshot -> incremental events`를 기본 패턴으로
+쓰는 것이 맞다.
+
+- `Gateway`
+  - `SERVICE_READY`는 local publication/bind 상태다.
+  - 실제 첫 request gate는 monitor handle snapshot에서
+    `SEND_READY`와 `ready_peer_count > 0`을 확인하는 것이다.
+  - 그 이후 증감은 `SEND_READY_CHANGED`, `ROUTE_UP/DOWN`으로 받는다.
+- `SPOT`
+  - `FILTER_APPLIED`, `SUBSCRIPTION_READY`는 control-plane progress다.
+  - 실제 첫 publish/receive gate는 `*_DELIVERY_READY_CHANGED`다.
+  - snapshot은 aggregate peer/queue 상태를 읽는 용도로 함께 쓴다.
+
+즉 "어떤 event는 제어용이고 어떤 event는 아니냐"가 아니라,
+"모든 public event는 자기 레벨의 제어에는 써도 되지만 더 강한 레벨의 gate로
+올려 해석하면 안 된다"가 정확한 규칙이다.
 
 ## 9. 다중 소켓 모니터링
 
@@ -441,6 +473,29 @@ zlink_close(mon);
 ```
 
 반드시 두 단계를 모두 수행해야 한다. `zlink_close(mon)`만 호출하면 내부 리소스가 정리되지 않을 수 있다.
+
+## 11. 패밀리별 제어 Gate
+
+핵심 기준은 간단하다. public event는 제어에 써도 되지만, 그 event가 보장하는
+레벨 안에서만 써야 한다. 이상한 예외 규칙이 있는 것이 아니라, transport,
+session, delivery 레벨이 다르기 때문에 gate도 다르게 잡아야 한다.
+
+| 패밀리 | raw/socket monitor에서 제어 gate로 써도 되는 것 | 쓰면 안 되는 것 | 대신 써야 할 것 |
+|---|---|---|---|
+| `PAIR` | 양쪽 `CONNECTION_READY` 이후 첫 양방향 송수신 시작 | bind-side `ACCEPTED`만 보고 송수신 시작 | 필요 시 snapshot으로 `READY`, `ready_peer_count` 확인 |
+| `DEALER/ROUTER` | dealer `CONNECTION_READY`, router `CONNECTION_READY.routing_id` 이후 첫 request/reply 시작 | router `ACCEPTED`만 보고 routed send 시작 | snapshot + `routing_id` 사용 |
+| `PUB/SUB` | bind/connect/handshake 상태 관찰 | raw `CONNECTION_READY`를 첫 publish delivery gate로 사용 | application barrier 또는 상위 service event |
+| `STREAM` | server `CONNECTION_READY.routing_id` 이후 첫 payload 송수신 시작 | `ACCEPTED`만 보고 payload 송수신 시작 | snapshot + stream `routing_id` |
+| `Gateway` | `ZLINK_GATEWAY_SEND_READY_CHANGED(value=1)` 이후 첫 request 시작 | `SERVICE_READY`, `ROUTE_UP`만으로 send gate 판단 | `zlink_monitor_snapshot()` + service monitor |
+| `SPOT` | `*_DELIVERY_READY_CHANGED` 이후 첫 publish/first receive 시작 | raw `CONNECTION_READY`, `PEER_UP`, `FILTER_APPLIED`만으로 delivery gate 판단 | `SPOT` service monitor |
+
+실전 규칙:
+
+- `ACCEPTED`는 transport-progress event다.
+- raw `CONNECTION_READY`는 raw session-ready event다.
+- first-delivery readiness가 더 필요한 패턴은 상위 service event를 써야 한다.
+- gate를 통과한 뒤에도 sleep/retry가 필요하다면, 그 event 의미가 약한 것이고
+  더 강한 event를 사용해야 한다.
 
 ---
 [← TLS 보안](05-tls-security.ko.md) | [서비스 개요 →](07-0-services.ko.md)

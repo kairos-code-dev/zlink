@@ -4,6 +4,9 @@
 
 canonical 이벤트 카탈로그는 이제 [events.ko.md](events.ko.md)에 정리합니다.
 이 문서는 monitor API, callback, monitor snapshot 중심으로 봅니다.
+패밀리별 control contract와 회귀 테스트 기준은
+[socket-family-monitor-contract-spec.ko.md](../plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md)를
+참조합니다.
 
 ## 현재 권장 API 방향
 
@@ -133,7 +136,7 @@ int zlink_socket_monitor(void *s_, const char *addr_, int events_);
 
 **스레드 안전성:** 소켓을 소유한 스레드에서 호출해야 합니다.
 
-**참고:** `zlink_socket_monitor_open`, `zlink_monitor_recv`
+**참고:** `zlink_socket_monitor_open`
 
 ---
 
@@ -147,36 +150,13 @@ void *zlink_socket_monitor_open(void *s_,
                                 zlink_monitor_handler_fn handler_);
 ```
 
-소켓 `s_`에 모니터를 생성하고 불투명 모니터 핸들을 반환합니다. 핸들을 `zlink_monitor_recv()`에 직접 전달하여 구조화된 이벤트 데이터를 수신할 수 있습니다. `events_` 비트마스크와 일치하는 이벤트만 전달됩니다. 완료 후 모니터 핸들은 `zlink_close()`로 닫으세요.
+소켓 `s_`에 모니터를 생성하고 불투명 모니터 핸들을 반환합니다. `events_` 비트마스크와 일치하는 이벤트가 `handler_` 콜백을 통해 I/O 스레드에서 전달됩니다. 완료 후 모니터 핸들은 `zlink_close()`로 닫으세요.
 
 **반환값:** 성공 시 모니터 핸들, 실패 시 NULL (errno가 설정됨).
 
 **스레드 안전성:** 소켓을 소유한 스레드에서 호출해야 합니다.
 
-**참고:** `zlink_monitor_recv`, `zlink_close`
-
----
-
-### zlink_monitor_recv
-
-모니터 핸들에서 이벤트를 수신합니다.
-
-```c
-int zlink_monitor_recv(void *monitor_socket_, zlink_monitor_event_t *event_, int flags_);
-```
-
-`monitor_socket_`(`zlink_socket_monitor_open()`에서 얻은)에서 모니터 이벤트를 사용할 수 있을 때까지 블로킹한 후 `event_` 구조체를 채웁니다. 대기 중인 이벤트가 없는 경우 즉시 `EAGAIN`과 함께 반환하려면 `flags_`에 `ZLINK_DONTWAIT`를 전달합니다.
-
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
-
-**에러:**
-
-- `EAGAIN` -- 사용 가능한 이벤트가 없고 `ZLINK_DONTWAIT`가 지정됨.
-- `ETERM` -- Context가 종료되었습니다.
-
-**스레드 안전성:** 모니터 핸들을 소유한 스레드에서 호출해야 합니다.
-
-**참고:** `zlink_socket_monitor_open`, `zlink_monitor_event_t`
+**참고:** `zlink_close`
 
 ---
 
@@ -199,10 +179,11 @@ queue 값은 조회 시점에 source에서 직접 읽어오며, `rcv_pending_msg
 
 ## 서비스 모니터 API
 
-서비스 모니터는 서비스 계층 컴포넌트(Discovery, Gateway, Receiver, SPOT Pub,
+서비스 모니터는 서비스 계층 컴포넌트(Discovery, Gateway, SPOT Pub,
 SPOT Sub)의 상태 전이 이벤트를 제공합니다. transport 레벨 이벤트를 보고하는
-raw socket monitor와 달리, 서비스 모니터는 readiness, route 변화, 등록 결과,
-SPOT 필터 적용 등의 상위 수준 이벤트를 보고합니다.
+raw socket monitor와 달리, 서비스 모니터는 readiness, route 변화,
+SPOT 필터 적용 등의 상위 수준 이벤트를 보고합니다. 모든 이벤트는 monitor 생성
+시 고정된 콜백을 통해 전달됩니다.
 
 ### zlink_service_event_t
 
@@ -241,9 +222,8 @@ typedef struct zlink_service_event_t
 |------|-----|------|
 | `ZLINK_SERVICE_KIND_DISCOVERY` | 1 | Discovery 컴포넌트 |
 | `ZLINK_SERVICE_KIND_GATEWAY` | 2 | Gateway 컴포넌트 |
-| `ZLINK_SERVICE_KIND_RECEIVER` | 3 | Receiver 컴포넌트 |
-| `ZLINK_SERVICE_KIND_SPOT_SUB` | 4 | SPOT Subscriber 컴포넌트 |
-| `ZLINK_SERVICE_KIND_SPOT_PUB` | 5 | SPOT Publisher 컴포넌트 |
+| `ZLINK_SERVICE_KIND_SPOT_SUB` | 3 | SPOT Subscriber 컴포넌트 |
+| `ZLINK_SERVICE_KIND_SPOT_PUB` | 4 | SPOT Publisher 컴포넌트 |
 
 ### 서비스 이벤트 상수
 
@@ -276,23 +256,14 @@ typedef struct zlink_service_event_t
 | `ZLINK_GATEWAY_ROUTE_UP` | `1 << 11` | Receiver로의 경로 활성화됨, `value`는 현재 ready route 수 |
 | `ZLINK_GATEWAY_ROUTE_DOWN` | `1 << 12` | Receiver로의 경로 비활성화됨, `value`는 현재 ready route 수 |
 
-#### Receiver 이벤트
-
-| 상수 | 값 | 설명 |
-|------|-----|------|
-| `ZLINK_RECEIVER_REGISTER_OK` | `1 << 13` | 등록 성공 |
-| `ZLINK_RECEIVER_REGISTER_FAILED` | `1 << 14` | 등록 실패 |
-| `ZLINK_RECEIVER_UNREGISTER_OK` | `1 << 15` | 등록 해제 성공 |
-| `ZLINK_RECEIVER_UNREGISTER_FAILED` | `1 << 16` | 등록 해제 실패 |
-
 #### SPOT 이벤트
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_SPOT_SUB_FILTER_APPLIED` | `1 << 17` | 구독 필터 적용됨 |
-| `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | `1 << 18` | 구독 수신 준비 완료 |
-| `ZLINK_SPOT_PUB_QUEUE_FULL` | `1 << 19` | 비동기 발행 큐 가득 참 |
-| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | `1 << 20` | 비동기 발행 큐 비워짐 |
+| `ZLINK_SPOT_SUB_FILTER_APPLIED` | `1 << 13` | 구독 필터 적용됨 |
+| `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | `1 << 14` | 구독 수신 준비 완료 |
+| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | subject별 remote delivery-ready 카운트 변화 |
+| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | `1 << 19` | subject별 delivery-ready 상태 변화 |
 
 ### Detail 플래그 상수
 
@@ -321,7 +292,7 @@ void *zlink_discovery_monitor_open(void *discovery, int events);
 
 **스레드 안전성:** 스레드 안전하지 않음.
 
-**참고:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
+**참고:** `zlink_service_monitor_close`
 
 ---
 
@@ -342,28 +313,7 @@ void *zlink_gateway_monitor_open(void *gateway, int events);
 
 **스레드 안전성:** 스레드 안전하지 않음.
 
-**참고:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
-
----
-
-### zlink_receiver_monitor_open
-
-Receiver 인스턴스의 서비스 모니터를 엽니다.
-
-```c
-void *zlink_receiver_monitor_open(void *receiver, int events);
-```
-
-`events` 비트마스크와 일치하는 Receiver 이벤트를 전달하는 서비스 모니터를
-생성합니다. `ZLINK_RECEIVER_REGISTER_OK`, `ZLINK_RECEIVER_REGISTER_FAILED`,
-`ZLINK_RECEIVER_UNREGISTER_OK`, `ZLINK_RECEIVER_UNREGISTER_FAILED` 및 공통
-이벤트 상수를 사용합니다.
-
-**반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
-
-**스레드 안전성:** 스레드 안전하지 않음.
-
-**참고:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
+**참고:** `zlink_service_monitor_close`
 
 ---
 
@@ -381,43 +331,16 @@ void *zlink_spot_monitor_open(void *spot,
 `role`은 `ZLINK_SPOT_ROLE_PUB` 또는 `ZLINK_SPOT_ROLE_SUB`입니다.
 
 - `ZLINK_SPOT_ROLE_SUB`일 때는 `ZLINK_SPOT_SUB_FILTER_APPLIED`,
-  `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` 및 공통 이벤트 상수를 사용합니다.
-- `ZLINK_SPOT_ROLE_PUB`일 때는 `ZLINK_SPOT_PUB_QUEUE_FULL`,
-  `ZLINK_SPOT_PUB_QUEUE_DRAINED` 및 공통 이벤트 상수를 사용합니다.
+  `ZLINK_SPOT_SUB_SUBSCRIPTION_READY`, `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED`
+  및 공통 이벤트 상수를 사용합니다.
+- `ZLINK_SPOT_ROLE_PUB`일 때는 `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED`
+  및 공통 이벤트 상수를 사용합니다.
 
 **반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
 
 **스레드 안전성:** 모니터 handle 자체는 thread-safe child handle입니다.
 
-**참고:** `zlink_service_monitor_recv`, `zlink_service_monitor_close`
-
----
-
-### zlink_service_monitor_recv
-
-서비스 모니터 핸들에서 이벤트를 수신합니다.
-
-```c
-int zlink_service_monitor_recv(void *monitor,
-                                zlink_service_event_t *event,
-                                int flags);
-```
-
-`monitor`에서 서비스 이벤트를 사용할 수 있을 때까지 블록한 후 `event`
-구조체를 채웁니다. 대기 중인 이벤트가 없는 경우 즉시 `EAGAIN`과 함께
-반환하려면 `flags`에 `ZLINK_DONTWAIT`를 전달합니다. 모니터 핸들은
-`zlink_*_monitor_open()` 함수 중 하나에서 얻습니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**에러:**
-- `EAGAIN` -- 사용 가능한 이벤트가 없고 `ZLINK_DONTWAIT`가 지정됨.
-- `ETERM` -- Context가 종료되었습니다.
-
-**스레드 안전성:** 모니터 핸들을 소유한 스레드에서 호출해야 합니다.
-
-**참고:** `zlink_discovery_monitor_open`, `zlink_gateway_monitor_open`,
-`zlink_receiver_monitor_open`, `zlink_spot_monitor_open`
+**참고:** `zlink_service_monitor_close`
 
 ---
 
@@ -436,4 +359,5 @@ int zlink_service_monitor_close(void **monitor_p);
 
 **스레드 안전성:** 스레드 안전하지 않음.
 
-**참고:** `zlink_service_monitor_recv`
+**참고:** `zlink_discovery_monitor_open`, `zlink_gateway_monitor_open`,
+`zlink_spot_monitor_open`

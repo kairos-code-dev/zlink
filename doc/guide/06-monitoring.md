@@ -6,6 +6,10 @@
 
 The zlink monitoring API allows real-time observation of socket events such as connection, disconnection, and handshake. It operates on a callback basis, automatically invoking the registered handler function when events occur.
 
+The family-level control contract and regression matrix are documented in
+[socket-family-monitor-contract-spec.ko.md](../plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md).
+This guide focuses on which events may be used as gates in real code.
+
 ## 2. Enabling the Monitor
 
 ### 2.1 Callback-Based (Recommended)
@@ -102,6 +106,8 @@ Fired on the **server side** when an incoming TCP connection is accepted by a li
 - **`local_addr`**: The listening endpoint address.
 - **`remote_addr`**: The remote peer's address.
 - **Next event**: `CONNECTION_READY` on success, or `HANDSHAKE_FAILED_*` / `DISCONNECTED` on failure.
+- **Control rule**: safe for transport acceptance bookkeeping, not safe as a
+  business-message or first-delivery gate.
 
 #### CONNECTION_READY (`0x1000`)
 
@@ -113,6 +119,10 @@ Fired when the zlink handshake completes successfully and the connection is read
 - **`remote_addr`**: The remote endpoint address.
 - **Typical usage**: Trigger peer registration, start sending messages, or
   read aggregate queue/readiness state via `zlink_monitor_snapshot()`.
+- **Family rule**:
+  - `PAIR`, `DEALER/ROUTER`, `STREAM`: valid raw first-I/O gate
+  - `PUB/SUB`: transport/session readiness only, not a first-publish
+    delivery gate
 
 #### DISCONNECTED (`0x0200`)
 
@@ -356,7 +366,8 @@ void *mon = zlink_socket_monitor_open(server, MONITOR_PRESET_SECURITY,
 ### Aggregate Socket State
 
 ```c
-void *monitor = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL, NULL);
+void *monitor = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL,
+                                          zlink_monitor_ignore_handler);
 zlink_monitor_snapshot_t snapshot;
 zlink_monitor_snapshot(monitor, &snapshot);
 printf("Ready peers: %u, sndq=%llu, rcvq=%llu\n",
@@ -377,6 +388,26 @@ void on_monitor(const zlink_monitor_event_t *ev)
     }
 }
 ```
+
+### Initial Gates for Service Monitors
+
+Service overlays sit one level above raw sockets, so the right pattern for
+`Gateway` and `SPOT` is `open -> snapshot -> incremental events`.
+
+- `Gateway`
+  - `SERVICE_READY` means local publication/bind readiness.
+  - The actual first-request gate is the monitor-handle snapshot showing
+    `SEND_READY` with `ready_peer_count > 0`.
+  - Subsequent transitions are driven by `SEND_READY_CHANGED` and
+    `ROUTE_UP/DOWN`.
+- `SPOT`
+  - `FILTER_APPLIED` and `SUBSCRIPTION_READY` are control-plane progress.
+  - The actual first publish/receive gate is `*_DELIVERY_READY_CHANGED`.
+  - Snapshots complement that by exposing aggregate peer and queue state.
+
+So the rule is not "some public events are control events and some are not".
+The real rule is "every public event is usable for control at its advertised
+level, but must not be reinterpreted as a stronger gate".
 
 ## 9. Multi-Socket Monitoring
 
@@ -441,6 +472,29 @@ zlink_close(mon);
 ```
 
 Both steps must be performed. Calling only `zlink_close(mon)` may leave internal resources uncleared.
+
+## 11. Family Gate Rules
+
+The core rule is simple: a public event may be used for control, but only
+within the level it actually guarantees. This is not an arbitrary exception
+list; transport, session, and delivery are different levels, so their gates
+differ as well.
+
+| Family | Safe raw/socket-monitor gate | Do not use as gate | Use instead |
+|---|---|---|---|
+| `PAIR` | first bidirectional send/recv after `CONNECTION_READY` on both sides | starting I/O on bind-side `ACCEPTED` alone | snapshot `READY` and `ready_peer_count` as needed |
+| `DEALER/ROUTER` | dealer `CONNECTION_READY`, router `CONNECTION_READY.routing_id` for first request/reply | routed send on router `ACCEPTED` alone | snapshot plus ready-event `routing_id` |
+| `PUB/SUB` | observing bind/connect/handshake state | using raw `CONNECTION_READY` as first publish delivery gate | application barrier or higher service event |
+| `STREAM` | first payload send/recv after server `CONNECTION_READY.routing_id` | starting payload I/O on `ACCEPTED` alone | snapshot plus stream `routing_id` |
+| `Gateway` | first request after `ZLINK_GATEWAY_SEND_READY_CHANGED(value=1)` | inferring sendability from `SERVICE_READY` or `ROUTE_UP` alone | service monitor plus `zlink_monitor_snapshot()` |
+| `SPOT` | first publish/receive after `*_DELIVERY_READY_CHANGED` | using raw `CONNECTION_READY`, `PEER_UP`, or `FILTER_APPLIED` alone as delivery gates | `SPOT` service monitor |
+
+Operational rules:
+
+- `ACCEPTED` is a transport-progress event.
+- raw `CONNECTION_READY` is a raw session-ready event.
+- patterns that need first-delivery readiness must use a stronger service-level event.
+- if an event still requires sleeps or retries after the gate, that event is too weak for the intended control decision.
 
 ---
 [← TLS Security](05-tls-security.md) | [Services Overview →](07-0-services.md)

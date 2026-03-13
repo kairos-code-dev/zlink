@@ -18,6 +18,10 @@ endif()
 set(tests
   ${INTEGRATION_TEST_ROOT}/test_ancillaries
   ${INTEGRATION_TEST_ROOT}/test_thread_safe_contract_policy
+  ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_enhanced
+  ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_perf_contract
+  ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_service_contract
+  ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_stream_contract
   ${INTEGRATION_TEST_ROOT}/test_monitor_with_handler
   ${INTEGRATION_TEST_ROOT}/test_socket_with_handler
   ${INTEGRATION_TEST_ROOT}/test_connect_resolve
@@ -353,6 +357,12 @@ if(TARGET test_transport_matrix)
 endif()
 if(TARGET test_monitor_with_handler)
   set_tests_properties(test_monitor_with_handler PROPERTIES TIMEOUT 30)
+endif()
+if(TARGET test_monitor_service_contract)
+  set_tests_properties(test_monitor_service_contract PROPERTIES TIMEOUT 30)
+endif()
+if(TARGET test_monitor_perf_contract)
+  set_tests_properties(test_monitor_perf_contract PROPERTIES TIMEOUT 30)
 endif()
 if(TARGET test_service_introspection)
   set_tests_properties(

@@ -2398,8 +2398,17 @@ void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
     // contexts where the _monitor_sync mutex has been locked before
 
     if (_monitor_socket) {
+        socket_base_t *monitor_socket =
+          static_cast<socket_base_t *> (_monitor_socket);
+        bool can_emit_monitor_stopped = false;
+
         if ((_monitor_events & ZLINK_EVENT_MONITOR_STOPPED)
             && send_monitor_stopped_event_) {
+            monitor_socket->process_commands (0, false);
+            can_emit_monitor_stopped = !monitor_socket->_pipes.empty ();
+        }
+
+        if (can_emit_monitor_stopped) {
             uint64_t values[1] = {0};
             monitor_event (ZLINK_EVENT_MONITOR_STOPPED, values, 1, NULL, 0,
                            endpoint_uri_pair_t ());

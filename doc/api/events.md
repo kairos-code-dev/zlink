@@ -129,8 +129,6 @@ Disconnect reasons:
 | `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | Spot sub / node-sub monitor | Legacy subscription-ready transition |
 | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | Spot sub / node-sub monitor | Subject-specific delivery-ready state changed; `value` is `0` or `1` |
 | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | Subject-specific remote delivery-ready count changed; `value` is the current ready subscriber count |
-| `ZLINK_SPOT_PUB_QUEUE_FULL` | Spot pub / node-pub monitor | Async queue saturated |
-| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | Spot pub / node-pub monitor | Async queue drained |
 
 SPOT subject rules:
 - sub-side `subject_kind` is populated for exact topic and pattern subscriptions

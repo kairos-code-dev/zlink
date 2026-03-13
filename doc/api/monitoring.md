@@ -263,8 +263,8 @@ Callback for service monitor events, invoked on the I/O thread.
 |----------|-----|-------------|
 | `ZLINK_SPOT_SUB_FILTER_APPLIED` | `1 << 13` | Subscription filter applied |
 | `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | `1 << 14` | Subscription is ready to receive |
-| `ZLINK_SPOT_PUB_QUEUE_FULL` | `1 << 15` | Async publish queue is full |
-| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | `1 << 16` | Async publish queue drained |
+| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | Subject-specific remote delivery-ready count changed |
+| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | `1 << 19` | Subject-specific delivery-ready state changed |
 
 ### Detail Flag Constants
 

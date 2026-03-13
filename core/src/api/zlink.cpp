@@ -350,6 +350,8 @@ static void *open_spot_service_monitor (
   zlink_service_monitor_handler_fn handler_,
   monitor_snapshot_provider_fn snapshot_provider_,
   void *snapshot_subject_);
+static int socket_monitor_snapshot_provider (void *subject_,
+                                             zlink_monitor_snapshot_t *out_);
 
 static int recv_socket_monitor_event_unchecked (void *monitor_socket_,
                                                 zlink_monitor_event_t *event_,
@@ -499,6 +501,46 @@ find_monitor_handler_state (zlink::socket_base_t *socket_)
 static bool monitor_handler_active (zlink::socket_base_t *socket_)
 {
     return find_monitor_handler_state (socket_) != NULL;
+}
+
+static zlink::socket_base_t *
+raw_monitor_snapshot_subject (monitor_handler_state_t *state_)
+{
+    if (!state_ || state_->service)
+        return NULL;
+
+    monitor_snapshot_provider_fn provider =
+      state_->snapshot_provider.load (std::memory_order_acquire);
+    if (provider != &socket_monitor_snapshot_provider)
+        return NULL;
+
+    return static_cast<zlink::socket_base_t *> (
+      state_->snapshot_subject.load (std::memory_order_acquire));
+}
+
+static void clear_raw_monitor_snapshot_subjects (zlink::socket_base_t *source_)
+{
+    if (!source_)
+        return;
+
+    monitor_handler_registry_t &registry = monitor_handler_registry ();
+    zlink::scoped_lock_t lock (registry.sync);
+    for (std::map<zlink::socket_base_t *, monitor_handler_state_t *>::iterator it =
+           registry.handlers.begin ();
+         it != registry.handlers.end ();
+         ++it) {
+        monitor_handler_state_t *state = it->second;
+        if (!state || state->service)
+            continue;
+
+        monitor_snapshot_provider_fn provider =
+          state->snapshot_provider.load (std::memory_order_acquire);
+        if (provider != &socket_monitor_snapshot_provider)
+            continue;
+
+        if (state->snapshot_subject.load (std::memory_order_acquire) == source_)
+            state->snapshot_subject.store (NULL, std::memory_order_release);
+    }
 }
 
 static void unregister_monitor_handlers (zlink::socket_base_t *socket_)
@@ -1434,6 +1476,8 @@ int zlink_close (void *s_)
 
     monitor_handler_state_t *monitor_state =
       find_monitor_handler_state (handle.socket);
+    zlink::socket_base_t *raw_monitor_source =
+      raw_monitor_snapshot_subject (monitor_state);
     if (monitor_state) {
         if (g_current_monitor_handler_state == monitor_state) {
             monitor_state->close_requested.store (true,
@@ -1447,6 +1491,13 @@ int zlink_close (void *s_)
             errno = EBUSY;
             return -1;
         }
+    }
+
+    if (raw_monitor_source && raw_monitor_source != handle.socket) {
+        monitor_state->snapshot_subject.store (NULL, std::memory_order_release);
+        (void) raw_monitor_source->monitor (NULL, 0, 3, ZLINK_PAIR);
+    } else {
+        clear_raw_monitor_snapshot_subjects (handle.socket);
     }
 
     unregister_monitor_handlers (handle.socket);

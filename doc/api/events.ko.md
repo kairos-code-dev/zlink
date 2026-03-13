@@ -8,6 +8,8 @@ catalog입니다.
 사용 기준:
 - [monitoring.ko.md](monitoring.ko.md): monitor API와 peer inspection API
 - 이 문서: 이벤트 의미, payload 필드, 권장 gate
+- [socket-family-monitor-contract-spec.ko.md](../plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md):
+  패밀리별 제어 가능 범위와 회귀 테스트 기준
 
 ## Service Event 모델
 
@@ -129,8 +131,6 @@ disconnect reason:
 | `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | Spot sub / node-sub monitor | legacy subscription-ready 전이 |
 | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | Spot sub / node-sub monitor | subject별 delivery-ready 상태 변화. `value`는 `0` 또는 `1` |
 | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | subject별 remote delivery-ready 카운트 변화. `value`는 현재 ready subscriber 수 |
-| `ZLINK_SPOT_PUB_QUEUE_FULL` | Spot pub / node-pub monitor | async queue 포화 |
-| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | Spot pub / node-pub monitor | async queue 해소 |
 
 SPOT subject 규칙:
 - sub 쪽은 exact topic / pattern에 대해 `subject_kind`가 채워집니다.

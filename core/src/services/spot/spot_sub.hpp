@@ -13,6 +13,7 @@
 
 #include <set>
 #include <string>
+#include <vector>
 
 namespace zlink
 {
@@ -30,6 +31,14 @@ typedef void (*spot_sub_direct_handler_fn) (
 class spot_sub_t
 {
   public:
+    struct subject_descriptor_t
+    {
+        subject_descriptor_t ();
+
+        std::string subject;
+        uint32_t subject_kind;
+    };
+
     spot_sub_t (spot_node_t *node_,
                 uint64_t attachment_id_,
                 bool node_owned_default_ = false);
@@ -48,8 +57,25 @@ class spot_sub_t
     int set_direct_handler (spot_sub_direct_handler_fn handler_,
                             void *userdata_);
     bool has_filters () const;
-    void emit_filter_applied_event ();
-    void emit_subscription_ready_event (const char *endpoint_);
+    void append_raw_filters (std::set<std::string> *out_) const;
+    void append_all_subjects (std::vector<subject_descriptor_t> *out_) const;
+    void append_subjects_for_raw_filter (
+      const std::string &raw_filter_,
+      std::vector<subject_descriptor_t> *out_) const;
+    void emit_filter_applied_event (const char *subject_,
+                                    uint32_t subject_kind_);
+    void emit_subscription_ready_event (const char *endpoint_,
+                                        const char *subject_,
+                                        uint32_t subject_kind_);
+    void emit_delivery_ready_changed_event (const char *subject_,
+                                            uint32_t subject_kind_,
+                                            uint32_t ready_,
+                                            const char *endpoint_);
+    void mark_subject_ready (const subject_descriptor_t &subject_,
+                             const char *endpoint_);
+    void mark_subject_lost (const subject_descriptor_t &subject_,
+                            const char *endpoint_);
+    void mark_all_subjects_lost (const char *endpoint_);
     std::string first_ready_peer_endpoint () const;
 
     void emit_ready_event ();
@@ -94,6 +120,7 @@ class spot_sub_t
     std::set<std::string> _topics;
     std::set<std::string> _patterns;
     std::set<std::string> _ready_peer_endpoints;
+    std::set<std::string> _ready_subject_keys;
 
     spot_sub_direct_handler_fn _direct_handler;
     void *_direct_handler_userdata;

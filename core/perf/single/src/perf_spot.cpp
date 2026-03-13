@@ -218,7 +218,15 @@ struct spot_client_state_t
     std::condition_variable cv;
 };
 
+struct service_monitor_probe_t
+{
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::vector<zlink_service_event_t> events;
+};
+
 spot_client_state_t *g_client_state = NULL;
+service_monitor_probe_t *g_service_monitor_probe = NULL;
 
 bool is_supported_transport (const std::string &transport_)
 {
@@ -271,20 +279,91 @@ std::string bind_node (void *node_, const std::string &transport_, int base_port
     return std::string ();
 }
 
-bool wait_for_sub_peers (void *sub_, int timeout_ms_)
+void spot_monitor_handler (const zlink_service_event_t *event_)
 {
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
-    while (std::chrono::steady_clock::now () < deadline) {
-        size_t count = 0;
-        if (zlink_spot_peers_sub (sub_, NULL, &count) == 0 && count > 0)
-            return true;
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    service_monitor_probe_t *probe = g_service_monitor_probe;
+    if (!probe || !event_)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock (probe->mutex);
+        probe->events.push_back (*event_);
+    }
+    probe->cv.notify_all ();
+}
+
+bool consume_matching_service_event_locked (
+  service_monitor_probe_t *probe_,
+  uint32_t expected_event_type_,
+  const char *endpoint_prefix_,
+  const char *subject_,
+  int min_value_)
+{
+    if (!probe_)
+        return false;
+
+    for (std::vector<zlink_service_event_t>::iterator it =
+           probe_->events.begin ();
+         it != probe_->events.end (); ++it) {
+        if (it->event_type != expected_event_type_)
+            continue;
+        if (endpoint_prefix_ && endpoint_prefix_[0] != '\0') {
+            if ((it->detail_flags & ZLINK_EVENT_DETAIL_ENDPOINT) == 0)
+                continue;
+            if (std::strncmp (
+                  it->endpoint, endpoint_prefix_, std::strlen (endpoint_prefix_))
+                != 0) {
+                continue;
+            }
+        }
+        if (subject_ && subject_[0] != '\0') {
+            if ((it->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) == 0)
+                continue;
+            if (std::strcmp (it->subject, subject_) != 0)
+                continue;
+        }
+        if (min_value_ >= 0 && static_cast<int> (it->value) < min_value_)
+            continue;
+        probe_->events.erase (it);
+        return true;
     }
 
-    size_t count = 0;
-    return zlink_spot_peers_sub (sub_, NULL, &count) == 0 && count > 0;
+    return false;
+}
+
+bool wait_for_service_event (service_monitor_probe_t *probe_,
+                             uint32_t expected_event_type_,
+                             const char *endpoint_prefix_,
+                             const char *subject_,
+                             int min_value_,
+                             int timeout_ms_)
+{
+    if (!probe_)
+        return false;
+
+    std::unique_lock<std::mutex> lock (probe_->mutex);
+    if (consume_matching_service_event_locked (
+          probe_, expected_event_type_, endpoint_prefix_, subject_,
+          min_value_)) {
+        return true;
+    }
+
+    return probe_->cv.wait_for (
+      lock,
+      std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1),
+      [probe_, expected_event_type_, endpoint_prefix_, subject_, min_value_] () {
+          return consume_matching_service_event_locked (
+            probe_, expected_event_type_, endpoint_prefix_, subject_,
+            min_value_);
+      });
+}
+
+int resolve_spot_subscription_ready_timeout_ms (
+  const std::string &transport_)
+{
+    if (transport_ == "tls" || transport_ == "wss")
+        return 10000;
+    return 3000;
 }
 
 bool wait_for_counter (std::condition_variable &cv_,
@@ -298,6 +377,70 @@ bool wait_for_counter (std::condition_variable &cv_,
       lock,
       std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1),
       [value_, expected_] () { return *value_ >= expected_; });
+}
+
+unsigned long long resolve_spot_max_inflight ()
+{
+    const int configured =
+      resolve_bench_count ("PERF_SINGLE_SPOT_MAX_INFLIGHT", 64);
+    return static_cast<unsigned long long> (configured > 0 ? configured : 64);
+}
+
+bool wait_for_inflight_budget (std::condition_variable &cv_,
+                               std::mutex &mutex_,
+                               unsigned long long *received_,
+                               unsigned long long sent_,
+                               unsigned long long max_inflight_,
+                               int timeout_ms_)
+{
+    if (!received_ || max_inflight_ == 0 || sent_ < max_inflight_)
+        return true;
+
+    const unsigned long long required = sent_ - max_inflight_ + 1;
+    return wait_for_counter (
+      cv_, mutex_, received_, required, timeout_ms_ > 0 ? timeout_ms_ : 1);
+}
+
+void wait_for_idle_receive_drain (std::condition_variable &cv_,
+                                  std::mutex &mutex_,
+                                  unsigned long long *value_,
+                                  int idle_timeout_ms_)
+{
+    if (!value_)
+        return;
+
+    std::unique_lock<std::mutex> lock (mutex_);
+    const std::chrono::milliseconds idle_timeout (
+      idle_timeout_ms_ > 0 ? idle_timeout_ms_ : 1);
+
+    while (true) {
+        const unsigned long long observed = *value_;
+        const bool changed = cv_.wait_for (
+          lock, idle_timeout, [value_, observed] () {
+              return *value_ != observed;
+          });
+        if (!changed)
+            return;
+    }
+}
+
+void cleanup_spot_case (void **sub_monitor_,
+                        void **sub_,
+                        void **pub_,
+                        void **sub_node_,
+                        void **pub_node_)
+{
+    g_service_monitor_probe = NULL;
+    if (sub_monitor_ && *sub_monitor_)
+        (void) zlink_service_monitor_close (sub_monitor_);
+    if (sub_ && *sub_)
+        (void) zlink_spot_destroy (sub_);
+    if (pub_ && *pub_)
+        (void) zlink_spot_destroy (pub_);
+    if (sub_node_ && *sub_node_)
+        (void) zlink_spot_node_destroy (sub_node_);
+    if (pub_node_ && *pub_node_)
+        (void) zlink_spot_node_destroy (pub_node_);
 }
 
 bool publish_payload (void *pub_,
@@ -388,6 +531,9 @@ bool run_warmup (void *pub_,
     const int default_warmup = msg_size_ >= 65536 ? 20 : 200;
     const int warmup_count =
       resolve_bench_count ("PERF_WARMUP_COUNT", default_warmup);
+    const int wait_timeout_ms = std::max (
+      1000, resolve_single_recv_timeout_ms () * 10);
+
     for (int i = 0; i < warmup_count; ++i) {
         probe_.sample_send_if_due ();
         if (!publish_payload (pub_,
@@ -398,14 +544,22 @@ bool run_warmup (void *pub_,
                               static_cast<uint64_t> (i + 1))) {
             return false;
         }
+
+        if (!wait_for_counter (client_state_.cv,
+                               client_state_.mutex,
+                               &client_state_.warmup_received,
+                               static_cast<unsigned long long> (i + 1),
+                               wait_timeout_ms)) {
+            return false;
+        }
     }
 
-    return wait_for_counter (client_state_.cv,
-                             client_state_.mutex,
-                             &client_state_.warmup_received,
-                             static_cast<unsigned long long> (warmup_count),
-                             std::max (
-                               1000, resolve_single_recv_timeout_ms () * 10));
+    wait_for_idle_receive_drain (client_state_.cv,
+                                 client_state_.mutex,
+                                 &client_state_.warmup_received,
+                                 resolve_single_pubsub_recv_timeout_ms ());
+    std::this_thread::sleep_for (std::chrono::milliseconds (SETTLE_TIME_MS));
+    return true;
 }
 
 bool run_active (void *pub_,
@@ -419,6 +573,10 @@ bool run_active (void *pub_,
     const int duration_s = resolve_single_duration_seconds ();
     const auto active_start = std::chrono::steady_clock::now ();
     const auto deadline = active_start + std::chrono::seconds (duration_s);
+    const int wait_timeout_ms = std::max (
+      1000, resolve_single_pubsub_recv_timeout_ms () * 10);
+    const unsigned long long max_inflight = resolve_spot_max_inflight ();
+    unsigned long long sent = 0;
     uint64_t seq = 1;
 
     while (std::chrono::steady_clock::now () < deadline) {
@@ -429,25 +587,26 @@ bool run_active (void *pub_,
                               client_state_.run_id,
                               perf_single_metric::phase_active,
                               seq++)) {
-            return false;
+            break;
+        }
+        ++sent;
+
+        if (!wait_for_inflight_budget (client_state_.cv,
+                                       client_state_.mutex,
+                                       &client_state_.active_received,
+                                       sent,
+                                       max_inflight,
+                                       wait_timeout_ms)) {
+            break;
         }
     }
 
-    const int wait_timeout_ms = std::max (
-      1000, resolve_single_pubsub_recv_timeout_ms () * 10);
-    {
-        std::unique_lock<std::mutex> lock (client_state_.mutex);
-        client_state_.cv.wait_for (
-          lock,
-          std::chrono::milliseconds (wait_timeout_ms),
-          [&client_state_] () { return client_state_.active_received > 0; });
-    }
+    wait_for_idle_receive_drain (client_state_.cv,
+                                 client_state_.mutex,
+                                 &client_state_.active_received,
+                                 resolve_single_pubsub_recv_timeout_ms ());
 
-    const double elapsed_s = std::max (
-      0.001,
-      std::chrono::duration_cast<std::chrono::duration<double> > (
-        std::chrono::steady_clock::now () - active_start)
-        .count ());
+    const double elapsed_s = std::max (0.001, static_cast<double> (duration_s));
     if (throughput_out_)
         *throughput_out_ =
           static_cast<double> (client_state_.active_received) / elapsed_s;
@@ -510,41 +669,57 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
+    void *pub = zlink_spot_new (pub_node, &discard_spot_handler);
+    void *sub = zlink_spot_new (sub_node, &sub_handler);
+    void *sub_monitor = NULL;
+    service_monitor_probe_t monitor_probe;
+    if (!pub || !sub) {
+        cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
+        return 1;
+    }
+
+    sub_monitor = zlink_spot_monitor_open (
+      sub,
+      ZLINK_SPOT_ROLE_SUB,
+      ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
+        | ZLINK_MONITOR_EVENT_ERROR,
+      &spot_monitor_handler);
+    if (!sub_monitor) {
+        cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
+        return 1;
+    }
+
+    g_service_monitor_probe = &monitor_probe;
     const int base_port = 35000 + (current_process_id () % 1000) * 8;
     const std::string endpoint = bind_node (pub_node, transport_, base_port);
     if (endpoint.empty ()) {
-        zlink_spot_node_destroy (&sub_node);
-        zlink_spot_node_destroy (&pub_node);
+        cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
     if (zlink_spot_node_connect_peer_pub (sub_node, endpoint.c_str ()) != 0) {
-        zlink_spot_node_destroy (&sub_node);
-        zlink_spot_node_destroy (&pub_node);
+        cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
-    void *pub = zlink_spot_new (pub_node, &discard_spot_handler);
-    void *sub = zlink_spot_new (sub_node, &sub_handler);
-    if (!pub || !sub || zlink_spot_subscribe (sub, k_topic) != 0) {
-        if (sub)
-            zlink_spot_destroy (&sub);
-        if (pub)
-            zlink_spot_destroy (&pub);
-        zlink_spot_node_destroy (&sub_node);
-        zlink_spot_node_destroy (&pub_node);
+    if (zlink_spot_subscribe (sub, k_topic) != 0) {
+        cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
-    if (!wait_for_sub_peers (sub, 5000)) {
-        zlink_spot_destroy (&sub);
-        zlink_spot_destroy (&pub);
-        zlink_spot_node_destroy (&sub_node);
-        zlink_spot_node_destroy (&pub_node);
+    if (!wait_for_service_event (
+          &monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, k_topic, -1,
+          3000)
+        || !wait_for_service_event (&monitor_probe,
+                                    ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED,
+                                    endpoint.c_str (),
+                                    k_topic,
+                                    1,
+                                    resolve_spot_subscription_ready_timeout_ms (
+                                      transport_))) {
+        cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
         return 1;
     }
-
-    std::this_thread::sleep_for (std::chrono::milliseconds (SETTLE_TIME_MS));
 
     spot_client_state_t client_state;
     g_client_state = &client_state;
@@ -566,10 +741,7 @@ int run_case (const std::string &lib_name_,
                       0.0,
                       queue_stats);
         g_client_state = NULL;
-        zlink_spot_destroy (&sub);
-        zlink_spot_destroy (&pub);
-        zlink_spot_node_destroy (&sub_node);
-        zlink_spot_node_destroy (&pub_node);
+        cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
@@ -590,10 +762,7 @@ int run_case (const std::string &lib_name_,
                   queue_stats);
 
     g_client_state = NULL;
-    zlink_spot_destroy (&sub);
-    zlink_spot_destroy (&pub);
-    zlink_spot_node_destroy (&sub_node);
-    zlink_spot_node_destroy (&pub_node);
+    cleanup_spot_case (&sub_monitor, &sub, &pub, &sub_node, &pub_node);
     return active_ok ? 0 : 1;
 }
 } // namespace

@@ -62,6 +62,11 @@ static void copy_endpoint (char *dst_, size_t dst_size_, const char *src_)
     dst_[copy_size] = '\0';
 }
 
+static void copy_subject (char *dst_, size_t dst_size_, const char *src_)
+{
+    copy_endpoint (dst_, dst_size_, src_);
+}
+
 static void fill_socket_monitor_event (zlink_service_event_t *event_,
                                        uint32_t event_type_,
                                        const zlink_monitor_event_t &raw_)
@@ -85,17 +90,42 @@ static void fill_socket_monitor_event (zlink_service_event_t *event_,
 static void fill_subject_monitor_event (zlink_service_event_t *event_,
                                         uint32_t event_type_,
                                         const zlink_routing_id_t &rid_,
-                                        const char *endpoint_)
+                                        const char *endpoint_,
+                                        const char *subject_,
+                                        uint32_t subject_kind_,
+                                        uint32_t value_)
 {
     memset (event_, 0, sizeof (*event_));
     event_->service_kind = ZLINK_SERVICE_KIND_SPOT_SUB;
     event_->event_type = event_type_;
     event_->routing_id = rid_;
+    event_->value = value_;
     event_->detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
     if (endpoint_ && endpoint_[0] != '\0') {
         copy_endpoint (event_->endpoint, sizeof (event_->endpoint), endpoint_);
         event_->detail_flags |= ZLINK_EVENT_DETAIL_ENDPOINT;
     }
+    if (subject_ && subject_[0] != '\0') {
+        copy_subject (event_->subject, sizeof (event_->subject), subject_);
+        event_->detail_flags |= ZLINK_EVENT_DETAIL_SUBJECT;
+    }
+    if (subject_kind_ != ZLINK_SERVICE_EVENT_SUBJECT_NONE) {
+        event_->subject_kind = subject_kind_;
+        event_->detail_flags |= ZLINK_EVENT_DETAIL_SUBJECT_KIND;
+    }
+}
+
+static std::string make_subject_key (const std::string &subject_,
+                                     uint32_t subject_kind_)
+{
+    char prefix[16];
+    snprintf (prefix, sizeof (prefix), "%u:", subject_kind_);
+    return std::string (prefix) + subject_;
+}
+
+spot_sub_t::subject_descriptor_t::subject_descriptor_t () :
+    subject_kind (ZLINK_SERVICE_EVENT_SUBJECT_NONE)
+{
 }
 
 spot_sub_t::spot_sub_t (spot_node_t *node_,
@@ -211,7 +241,8 @@ int spot_sub_t::subscribe (const char *topic_)
     }
     if (_node) {
         _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
-        emit_filter_applied_event ();
+        emit_filter_applied_event (topic.c_str (),
+                                   ZLINK_SERVICE_EVENT_SUBJECT_TOPIC);
     }
     return 0;
 }
@@ -241,7 +272,9 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
     }
     if (_node) {
         _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
-        emit_filter_applied_event ();
+        std::string subject = prefix + "*";
+        emit_filter_applied_event (subject.c_str (),
+                                   ZLINK_SERVICE_EVENT_SUBJECT_PATTERN);
     }
     return 0;
 }
@@ -265,6 +298,10 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
         return -1;
 
     bool has_filters_after = false;
+    subject_descriptor_t subject;
+    subject.subject_kind = is_pattern ? ZLINK_SERVICE_EVENT_SUBJECT_PATTERN
+                                      : ZLINK_SERVICE_EVENT_SUBJECT_TOPIC;
+    subject.subject = is_pattern ? prefix + "*" : topic;
     {
         scoped_lock_t lock (_sync);
         lock_routing_id ();
@@ -284,6 +321,7 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
                                            : ZLINK_TOPOLOGY_STATE_CONNECTING,
                                    0);
     }
+    mark_subject_lost (subject, NULL);
     return 0;
 }
 
@@ -359,24 +397,100 @@ bool spot_sub_t::has_filters () const
     return !_topics.empty () || !_patterns.empty ();
 }
 
-void spot_sub_t::emit_filter_applied_event ()
+void spot_sub_t::append_raw_filters (std::set<std::string> *out_) const
+{
+    if (!out_)
+        return;
+
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    out_->insert (_topics.begin (), _topics.end ());
+    out_->insert (_patterns.begin (), _patterns.end ());
+}
+
+void spot_sub_t::append_all_subjects (
+  std::vector<subject_descriptor_t> *out_) const
+{
+    if (!out_)
+        return;
+
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    for (std::set<std::string>::const_iterator it = _topics.begin ();
+         it != _topics.end (); ++it) {
+        subject_descriptor_t subject;
+        subject.subject = *it;
+        subject.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_TOPIC;
+        out_->push_back (subject);
+    }
+    for (std::set<std::string>::const_iterator it = _patterns.begin ();
+         it != _patterns.end (); ++it) {
+        subject_descriptor_t subject;
+        subject.subject = *it + "*";
+        subject.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_PATTERN;
+        out_->push_back (subject);
+    }
+}
+
+void spot_sub_t::append_subjects_for_raw_filter (
+  const std::string &raw_filter_,
+  std::vector<subject_descriptor_t> *out_) const
+{
+    if (!out_ || raw_filter_.empty ())
+        return;
+
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    if (_topics.count (raw_filter_) != 0) {
+        subject_descriptor_t subject;
+        subject.subject = raw_filter_;
+        subject.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_TOPIC;
+        out_->push_back (subject);
+    }
+    if (_patterns.count (raw_filter_) != 0) {
+        subject_descriptor_t subject;
+        subject.subject = raw_filter_ + "*";
+        subject.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_PATTERN;
+        out_->push_back (subject);
+    }
+}
+
+void spot_sub_t::emit_filter_applied_event (const char *subject_,
+                                            uint32_t subject_kind_)
 {
     zlink_service_event_t event;
     {
         scoped_lock_t lock (_sync);
         fill_subject_monitor_event (&event, ZLINK_SPOT_SUB_FILTER_APPLIED,
-                                    _routing_id, NULL);
+                                    _routing_id, NULL, subject_,
+                                    subject_kind_, 0);
     }
     _monitor.emit (event);
 }
 
-void spot_sub_t::emit_subscription_ready_event (const char *endpoint_)
+void spot_sub_t::emit_subscription_ready_event (const char *endpoint_,
+                                                const char *subject_,
+                                                uint32_t subject_kind_)
 {
     zlink_service_event_t event;
     {
         scoped_lock_t lock (_sync);
         fill_subject_monitor_event (&event, ZLINK_SPOT_SUB_SUBSCRIPTION_READY,
-                                    _routing_id, endpoint_);
+                                    _routing_id, endpoint_, subject_,
+                                    subject_kind_, 1);
+    }
+    _monitor.emit (event);
+}
+
+void spot_sub_t::emit_delivery_ready_changed_event (const char *subject_,
+                                                    uint32_t subject_kind_,
+                                                    uint32_t ready_,
+                                                    const char *endpoint_)
+{
+    zlink_service_event_t event;
+    {
+        scoped_lock_t lock (_sync);
+        fill_subject_monitor_event (&event,
+                                    ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED,
+                                    _routing_id, endpoint_, subject_,
+                                    subject_kind_, ready_);
     }
     _monitor.emit (event);
 }
@@ -433,6 +547,59 @@ int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_,
 
 void spot_sub_t::emit_ready_event ()
 {
+}
+
+void spot_sub_t::mark_subject_ready (const subject_descriptor_t &subject_,
+                                     const char *endpoint_)
+{
+    if (subject_.subject.empty ()
+        || subject_.subject_kind == ZLINK_SERVICE_EVENT_SUBJECT_NONE)
+        return;
+
+    bool inserted = false;
+    {
+        scoped_lock_t lock (_sync);
+        inserted = _ready_subject_keys.insert (
+                     make_subject_key (subject_.subject, subject_.subject_kind))
+                     .second;
+    }
+    if (!inserted)
+        return;
+
+    emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
+                                   subject_.subject_kind);
+    emit_delivery_ready_changed_event (subject_.subject.c_str (),
+                                       subject_.subject_kind, 1, endpoint_);
+}
+
+void spot_sub_t::mark_subject_lost (const subject_descriptor_t &subject_,
+                                    const char *endpoint_)
+{
+    if (subject_.subject.empty ()
+        || subject_.subject_kind == ZLINK_SERVICE_EVENT_SUBJECT_NONE)
+        return;
+
+    bool erased = false;
+    {
+        scoped_lock_t lock (_sync);
+        erased =
+          _ready_subject_keys.erase (
+            make_subject_key (subject_.subject, subject_.subject_kind))
+          != 0;
+    }
+    if (!erased)
+        return;
+
+    emit_delivery_ready_changed_event (subject_.subject.c_str (),
+                                       subject_.subject_kind, 0, endpoint_);
+}
+
+void spot_sub_t::mark_all_subjects_lost (const char *endpoint_)
+{
+    std::vector<subject_descriptor_t> subjects;
+    append_all_subjects (&subjects);
+    for (size_t i = 0; i < subjects.size (); ++i)
+        mark_subject_lost (subjects[i], endpoint_);
 }
 
 void spot_sub_t::dispatch_from_io (const zlink_routing_id_t *source_rid_,
@@ -669,6 +836,7 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         _topics.clear ();
         _patterns.clear ();
         _ready_peer_endpoints.clear ();
+        _ready_subject_keys.clear ();
         _direct_handler = NULL;
         _direct_handler_userdata = NULL;
         _handler_state = handler_none;

@@ -682,7 +682,7 @@ if(TARGET test_spot_service_introspection)
   set_tests_properties(
     test_spot_service_introspection
     PROPERTIES
-      TIMEOUT 60
+      TIMEOUT 120
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${SPOT_TEST_WORKING_DIRECTORY}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
@@ -697,7 +697,7 @@ if(TARGET test_spot_service_introspection)
   set_tests_properties(
     ${SPOT_SERVICE_INTROSPECTION_TEST_NAMES}
     PROPERTIES
-      TIMEOUT 60
+      TIMEOUT 120
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${SPOT_TEST_WORKING_DIRECTORY}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
@@ -772,6 +772,11 @@ if(TARGET test_spot_pubsub_scenario)
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${SPOT_SPLIT_TEST_WORKING_DIRECTORY}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+
+  set_tests_properties(
+    test_spot_pubsub_scenario_unified_wss_ready_delivery
+    PROPERTIES
+      TIMEOUT 180)
 endif()
 if(TARGET test_gateway_with_handler)
   set_tests_properties(

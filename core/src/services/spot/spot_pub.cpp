@@ -109,6 +109,11 @@ static void copy_endpoint (char *dst_, size_t dst_size_, const char *src_)
     dst_[copy_size] = '\0';
 }
 
+static void copy_subject (char *dst_, size_t dst_size_, const char *src_)
+{
+    copy_endpoint (dst_, dst_size_, src_);
+}
+
 static void fill_socket_monitor_event (zlink_service_event_t *event_,
                                        uint32_t event_type_,
                                        const zlink_monitor_event_t &raw_)
@@ -126,6 +131,30 @@ static void fill_socket_monitor_event (zlink_service_event_t *event_,
         copy_endpoint (event_->endpoint, sizeof (event_->endpoint),
                        raw_.remote_addr);
         event_->detail_flags |= ZLINK_EVENT_DETAIL_ENDPOINT;
+    }
+}
+
+static void fill_subject_monitor_event (zlink_service_event_t *event_,
+                                        uint32_t event_type_,
+                                        const zlink_routing_id_t &rid_,
+                                        const char *subject_,
+                                        bool include_subject_kind_,
+                                        uint32_t subject_kind_,
+                                        uint32_t ready_count_)
+{
+    memset (event_, 0, sizeof (*event_));
+    event_->service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
+    event_->event_type = event_type_;
+    event_->routing_id = rid_;
+    event_->value = ready_count_;
+    event_->detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
+    if (subject_ && subject_[0] != '\0') {
+        copy_subject (event_->subject, sizeof (event_->subject), subject_);
+        event_->detail_flags |= ZLINK_EVENT_DETAIL_SUBJECT;
+    }
+    if (include_subject_kind_) {
+        event_->subject_kind = subject_kind_;
+        event_->detail_flags |= ZLINK_EVENT_DETAIL_SUBJECT_KIND;
     }
 }
 
@@ -355,6 +384,23 @@ void spot_pub_t::invoke_send_ready_for_testing ()
     socket_base_t *pub_socket = socket ();
     if (pub_socket)
         pub_socket->invoke_send_ready_handler_for_testing ();
+}
+
+void spot_pub_t::emit_delivery_ready_changed_event (const char *subject_,
+                                                    bool include_subject_kind_,
+                                                    uint32_t subject_kind_,
+                                                    uint32_t ready_count_)
+{
+    zlink_service_event_t event;
+    {
+        scoped_lock_t lock (_sync);
+        fill_subject_monitor_event (&event,
+                                    ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED,
+                                    _routing_id, subject_,
+                                    include_subject_kind_, subject_kind_,
+                                    ready_count_);
+    }
+    _monitor.emit (event);
 }
 
 void spot_pub_t::emit_ready_event ()

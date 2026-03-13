@@ -421,7 +421,10 @@ static bool pop_matching_spot_message (queued_spot_probe_t *probe_,
 static bool pop_matching_service_event_locked (
   service_monitor_probe_t *probe_,
   uint32_t expected_event_type_,
-  const char *endpoint_prefix_)
+  const char *endpoint_prefix_,
+  const char *subject_,
+  int min_value_,
+  zlink_service_event_t *event_out_)
 {
     if (!probe_)
         return false;
@@ -440,6 +443,16 @@ static bool pop_matching_service_event_locked (
                 continue;
             }
         }
+        if (subject_ && subject_[0] != '\0') {
+            if ((it->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) == 0)
+                continue;
+            if (strcmp (it->subject, subject_) != 0)
+                continue;
+        }
+        if (min_value_ >= 0 && static_cast<int> (it->value) < min_value_)
+            continue;
+        if (event_out_)
+            *event_out_ = *it;
         probe_->events.erase (it);
         return true;
     }
@@ -455,8 +468,16 @@ static bool pop_matching_service_event (service_monitor_probe_t *probe_,
 
     std::lock_guard<std::mutex> lock (probe_->mutex);
     return pop_matching_service_event_locked (
-      probe_, expected_event_type_, endpoint_prefix_);
+      probe_, expected_event_type_, endpoint_prefix_, NULL, -1, NULL);
 }
+
+static bool wait_for_service_event_match (service_monitor_probe_t *probe_,
+                                          uint32_t expected_event_type_,
+                                          const char *endpoint_prefix_,
+                                          const char *subject_,
+                                          int min_value_,
+                                          zlink_service_event_t *event_out_,
+                                          int timeout_ms_);
 
 static bool pop_next_spot_message_locked (queued_spot_probe_t *probe_,
                                           queued_spot_message_t *message_out_)
@@ -884,7 +905,8 @@ static void test_spot_unified_wss_subscription_ready_first_delivery ()
         void *sub_monitor = zlink_spot_monitor_open (
           sub,
           ZLINK_SPOT_ROLE_SUB,
-          ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_SUBSCRIPTION_READY
+          ZLINK_SPOT_SUB_FILTER_APPLIED
+            | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
             | ZLINK_MONITOR_EVENT_ERROR,
           &queued_service_monitor_handler);
         TEST_ASSERT_NOT_NULL (sub_monitor);
@@ -900,11 +922,12 @@ static void test_spot_unified_wss_subscription_ready_first_delivery ()
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, topic));
         TEST_ASSERT_TRUE (wait_for_spot_pub_peers (pub, 5000));
         TEST_ASSERT_TRUE (wait_for_spot_sub_peers (sub, 5000));
-        TEST_ASSERT_TRUE (wait_for_service_event (
-          &monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
-        TEST_ASSERT_TRUE (wait_for_service_event (
-          &monitor_probe, ZLINK_SPOT_SUB_SUBSCRIPTION_READY, endpoint,
-          10000));
+        TEST_ASSERT_TRUE (wait_for_service_event_match (
+          &monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, topic, -1, NULL,
+          3000));
+        TEST_ASSERT_TRUE (wait_for_service_event_match (
+          &monitor_probe, ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED, endpoint,
+          topic, 1, NULL, 10000));
 
         step_log ("spot unified wss ready delivery: publish immediately");
         TEST_ASSERT_SUCCESS_ERRNO (
@@ -1879,25 +1902,41 @@ static bool wait_for_provider_count (void *discovery_,
     return false;
 }
 
-static bool wait_for_service_event (service_monitor_probe_t *probe_,
-                                    uint32_t expected_event_type_,
-                                    const char *endpoint_prefix_,
-                                    int timeout_ms_)
+static bool wait_for_service_event_match (service_monitor_probe_t *probe_,
+                                          uint32_t expected_event_type_,
+                                          const char *endpoint_prefix_,
+                                          const char *subject_,
+                                          int min_value_,
+                                          zlink_service_event_t *event_out_,
+                                          int timeout_ms_)
 {
     if (!probe_)
         return false;
 
     std::unique_lock<std::mutex> lock (probe_->mutex);
     if (pop_matching_service_event_locked (
-          probe_, expected_event_type_, endpoint_prefix_)) {
+          probe_, expected_event_type_, endpoint_prefix_, subject_, min_value_,
+          event_out_)) {
         return true;
     }
     return probe_->cv.wait_for (
       lock, std::chrono::milliseconds (timeout_ms_),
-      [probe_, expected_event_type_, endpoint_prefix_]() {
+      [probe_, expected_event_type_, endpoint_prefix_, subject_, min_value_,
+       event_out_]() {
           return pop_matching_service_event_locked (
-            probe_, expected_event_type_, endpoint_prefix_);
+            probe_, expected_event_type_, endpoint_prefix_, subject_,
+            min_value_, event_out_);
       });
+}
+
+static bool wait_for_service_event (service_monitor_probe_t *probe_,
+                                    uint32_t expected_event_type_,
+                                    const char *endpoint_prefix_,
+                                    int timeout_ms_)
+{
+    return wait_for_service_event_match (probe_, expected_event_type_,
+                                         endpoint_prefix_, NULL, -1, NULL,
+                                         timeout_ms_);
 }
 
 static bool wait_for_spot_message (void *spot_sub_,

@@ -134,10 +134,11 @@ void *service_monitor_hub_t::open (int events_)
     return static_cast<void *> (client);
 }
 
-uint32_t service_monitor_hub_t::event_delivery_mask (uint32_t event_type_)
+uint32_t service_monitor_hub_t::event_delivery_mask (
+  const zlink_service_event_t &event_)
 {
-    uint32_t mask = event_type_;
-    switch (event_type_) {
+    uint32_t mask = event_.event_type;
+    switch (event_.event_type) {
         case ZLINK_DISCOVERY_SERVICE_UP:
         case ZLINK_GATEWAY_SERVICE_READY:
         case ZLINK_SPOT_SUB_SUBSCRIPTION_READY:
@@ -156,6 +157,11 @@ uint32_t service_monitor_hub_t::event_delivery_mask (uint32_t event_type_)
         case ZLINK_SPOT_PUB_QUEUE_FULL:
             mask |= ZLINK_MONITOR_EVENT_ERROR;
             break;
+        case ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED:
+        case ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED:
+            mask |= event_.value > 0 ? ZLINK_MONITOR_EVENT_READY
+                                     : ZLINK_MONITOR_EVENT_LOST;
+            break;
         case ZLINK_MONITOR_EVENT_CLOSED:
             mask |= ZLINK_MONITOR_EVENT_CLOSED;
             break;
@@ -168,7 +174,7 @@ uint32_t service_monitor_hub_t::event_delivery_mask (uint32_t event_type_)
 void service_monitor_hub_t::emit (const zlink_service_event_t &event_)
 {
     scoped_lock_t lock (_sync);
-    const uint32_t delivery_mask = event_delivery_mask (event_.event_type);
+    const uint32_t delivery_mask = event_delivery_mask (event_);
 
     for (std::vector<watcher_t>::iterator it = _watchers.begin ();
          it != _watchers.end ();) {
@@ -206,7 +212,7 @@ void service_monitor_hub_t::close_all (const zlink_service_event_t *terminal_eve
             watcher_t &watcher = _watchers[i];
             if (!watcher.server)
                 continue;
-            if ((watcher.events & event_delivery_mask (terminal_event_->event_type))
+            if ((watcher.events & event_delivery_mask (*terminal_event_))
                 == 0)
                 continue;
 

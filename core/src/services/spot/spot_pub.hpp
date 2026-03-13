@@ -40,6 +40,10 @@ class spot_pub_t
     int peers (zlink_peer_info_t *peers_, size_t *count_) const;
     void *monitor_open (int events_);
     void invoke_send_ready_for_testing ();
+    void emit_delivery_ready_changed_event (const char *subject_,
+                                            bool include_subject_kind_,
+                                            uint32_t subject_kind_,
+                                            uint32_t ready_count_);
 
     void emit_ready_event ();
     void dispatch_send_ready ();

@@ -145,7 +145,7 @@ void *zlink_spot_monitor_open(void *spot,
 - `role`은 `ZLINK_SPOT_ROLE_PUB` 또는 `ZLINK_SPOT_ROLE_SUB`입니다.
 - split `zlink_spot_pub_monitor_open()` / `zlink_spot_sub_monitor_open()`는
   public API가 아닙니다.
-- 상세 event 정의는 [monitoring.ko.md](monitoring.ko.md)를 참고합니다.
+- 상세 event 정의와 readiness 의미는 [events.ko.md](events.ko.md)를 참고합니다.
 
 ## 제거된 public API
 

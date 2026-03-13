@@ -12,6 +12,7 @@
 #include "utils/mutex.hpp"
 
 #include <atomic>
+#include <map>
 #include <set>
 #include <string>
 
@@ -140,9 +141,13 @@ class spot_node_t : public discovery_observer_t
     void refresh_sub_peer_summaries (bool has_active_peers,
                                      bool lost_transition);
     void schedule_subscription_ready_refresh ();
+    void queue_all_subscription_ready_filters ();
+    void queue_subscription_ready_filter (const std::string &raw_filter_);
     void emit_pending_subscription_ready_events ();
     std::string first_connected_peer_endpoint () const;
-    void notify_subscription_forwarded ();
+    void notify_subscription_forwarded (const std::string &raw_filter_);
+    void notify_pub_delivery_ready_changed (const std::string &subject_,
+                                            bool subscribe_);
     int ensure_registered ();
     int unregister_registered ();
 
@@ -171,6 +176,8 @@ class spot_node_t : public discovery_observer_t
     std::set<std::string> _active_peer_endpoints;
     std::set<std::string> _connected_peer_endpoints;
     std::set<std::string> _discovery_peer_endpoints;
+    std::set<std::string> _pending_subscription_ready_filters;
+    std::map<std::string, uint32_t> _pub_delivery_ready_counts;
     bool _subscription_ready_refresh_pending;
     unsigned int _subscription_ready_refresh_holdoff_ticks;
 

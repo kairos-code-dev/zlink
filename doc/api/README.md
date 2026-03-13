@@ -16,6 +16,7 @@ public function, type, and constant exported by `<zlink.h>`.
 | Message | [message.md](message.md) | Message lifecycle, data access, and properties |
 | Socket | [socket.md](socket.md) | Socket creation with handler, options, bind/connect, send, and STREAM API |
 | Monitoring | [monitoring.md](monitoring.md) | Socket monitors, service monitors, and peer inspection |
+| Events | [events.md](events.md) | Canonical event catalog and readiness semantics |
 | Registry | [registry.md](registry.md) | Service registry creation, configuration, topology, and clustering |
 | Discovery | [discovery.md](discovery.md) | Service discovery, subscription, and receiver lookup |
 | Gateway | [gateway.md](gateway.md) | Service-bound load-balanced request/reply |
@@ -32,7 +33,7 @@ public function, type, and constant exported by `<zlink.h>`.
 | [`zlink_socket_handler_t`](socket.md) | socket.md | Socket receive handler descriptor |
 | [`zlink_monitor_event_t`](monitoring.md) | monitoring.md | Monitor event structure (event, value, addresses) |
 | [`zlink_peer_info_t`](monitoring.md) | monitoring.md | Connected-peer statistics (routing id, address, counters) |
-| [`zlink_service_event_t`](monitoring.md) | monitoring.md | Service monitor event structure |
+| [`zlink_service_event_t`](events.md) | events.md | Service monitor event structure and subject-aware payload |
 | [`zlink_receiver_info_t`](discovery.md) | discovery.md | Discovered service-receiver entry (name, endpoint, weight) |
 | [`zlink_gateway_peer_info_t`](gateway.md) | gateway.md | Gateway peer info with weight |
 

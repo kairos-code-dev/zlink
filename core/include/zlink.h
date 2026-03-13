@@ -956,14 +956,20 @@ ZLINK_EXPORT int zlink_registry_add_peer (void *registry,
 
 /**
  * @brief Set heartbeat interval and timeout.
+ * Defaults are 5000 ms for the heartbeat interval and 15000 ms for
+ * the timeout.
  * @param interval_ms  Heartbeat send interval in milliseconds.
- * @param timeout_ms   Expiry time when no heartbeat is received, in milliseconds.
+ * @param timeout_ms   Expiry time when no heartbeat is received, in
+ *                     milliseconds.
  */
 ZLINK_EXPORT int zlink_registry_set_heartbeat (void *registry,
                                            uint32_t interval_ms,
                                            uint32_t timeout_ms);
 
-/** @brief Set the service list broadcast interval in milliseconds. */
+/**
+ * @brief Set the service list broadcast interval in milliseconds.
+ * Default is 30000 ms.
+ */
 ZLINK_EXPORT int zlink_registry_set_broadcast_interval (void *registry,
                                                     uint32_t interval_ms);
 
@@ -975,7 +981,14 @@ typedef enum zlink_registry_socket_role_t
     ZLINK_REGISTRY_SOCKET_PEER_SUB = 3
 } zlink_registry_socket_role_t;
 
-/** @brief Set a socket option on an internal registry socket. */
+/**
+ * @brief Set a socket option on an internal registry socket.
+ *
+ * Internal registry socket options already applied:
+ * - PUB: `ZLINK_XPUB_VERBOSE=1`
+ * - ROUTER: `ZLINK_ROUTER_MANDATORY=1` by default
+ * - PEER_SUB: `ZLINK_SUBSCRIBE=""` (subscribe to all topics)
+ */
 ZLINK_EXPORT int zlink_registry_setsockopt (void *registry,
                                             zlink_registry_socket_role_t socket_role,
                                             zlink_socket_option_t option,
@@ -1445,6 +1458,10 @@ typedef uint32_t zlink_service_event_detail_mask_t;
     ((zlink_spot_monitor_event_mask_t) (1u << 16))
 #define ZLINK_SPOT_MONITOR_EVENT_CLOSED                                      \
     ((zlink_spot_monitor_event_mask_t) (1u << 17))
+#define ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED                  \
+    ((zlink_spot_monitor_event_mask_t) (1u << 18))
+#define ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED                  \
+    ((zlink_spot_monitor_event_mask_t) (1u << 19))
 
 #define ZLINK_MONITOR_EVENT_READY ZLINK_DISCOVERY_MONITOR_EVENT_READY
 #define ZLINK_MONITOR_EVENT_LOST ZLINK_DISCOVERY_MONITOR_EVENT_LOST
@@ -1463,6 +1480,10 @@ typedef uint32_t zlink_service_event_detail_mask_t;
 #define ZLINK_SPOT_SUB_SUBSCRIPTION_READY ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY
 #define ZLINK_SPOT_PUB_QUEUE_FULL ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_FULL
 #define ZLINK_SPOT_PUB_QUEUE_DRAINED ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_DRAINED
+#define ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED                                \
+    ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
+#define ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED                                \
+    ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
 #define ZLINK_MONITOR_EVENT_CLOSED ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED
 #define ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME                              \
     ((zlink_service_event_detail_mask_t) 0x0001u)
@@ -1472,11 +1493,24 @@ typedef uint32_t zlink_service_event_detail_mask_t;
     ((zlink_service_event_detail_mask_t) 0x0004u)
 #define ZLINK_SERVICE_EVENT_DETAIL_PEER_RID                                  \
     ((zlink_service_event_detail_mask_t) 0x0008u)
+#define ZLINK_SERVICE_EVENT_DETAIL_SUBJECT                                   \
+    ((zlink_service_event_detail_mask_t) 0x0010u)
+#define ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_KIND                              \
+    ((zlink_service_event_detail_mask_t) 0x0020u)
 
 #define ZLINK_EVENT_DETAIL_SERVICE_NAME ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME
 #define ZLINK_EVENT_DETAIL_ENDPOINT ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT
 #define ZLINK_EVENT_DETAIL_SUBJECT_RID ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_RID
 #define ZLINK_EVENT_DETAIL_PEER_RID ZLINK_SERVICE_EVENT_DETAIL_PEER_RID
+#define ZLINK_EVENT_DETAIL_SUBJECT ZLINK_SERVICE_EVENT_DETAIL_SUBJECT
+#define ZLINK_EVENT_DETAIL_SUBJECT_KIND ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_KIND
+
+typedef enum zlink_service_event_subject_kind_t
+{
+    ZLINK_SERVICE_EVENT_SUBJECT_NONE = 0,
+    ZLINK_SERVICE_EVENT_SUBJECT_TOPIC = 1,
+    ZLINK_SERVICE_EVENT_SUBJECT_PATTERN = 2
+} zlink_service_event_subject_kind_t;
 
 typedef struct zlink_service_event_t
 {
@@ -1489,6 +1523,8 @@ typedef struct zlink_service_event_t
     char service_name[256];
     char endpoint[256];
     zlink_routing_id_t routing_id;
+    char subject[256];
+    uint32_t subject_kind;
 } zlink_service_event_t;
 
 typedef void (*zlink_service_monitor_handler_fn) (

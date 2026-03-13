@@ -2,6 +2,9 @@
 
 # 모니터링 & 피어 정보 API 레퍼런스
 
+canonical 이벤트 카탈로그는 이제 [events.ko.md](events.ko.md)에 정리합니다.
+이 문서는 monitor API, callback, peer inspection helper 중심으로 봅니다.
+
 ## 현재 권장 API 방향
 
 이제 모니터링 계층은 두 가지로 분리됩니다.

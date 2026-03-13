@@ -2,6 +2,9 @@
 
 # Monitoring & Peer Info API Reference
 
+The canonical event catalog now lives in [events.md](events.md). This file
+focuses on monitor APIs, callbacks, and peer-inspection helpers.
+
 ## Current API Direction
 
 There are two distinct monitoring layers:

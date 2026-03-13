@@ -35,7 +35,7 @@ class service_monitor_hub_t
         watcher_t () : server (NULL), events (0) {}
     };
 
-    static uint32_t event_delivery_mask (uint32_t event_type_);
+    static uint32_t event_delivery_mask (const zlink_service_event_t &event_);
 
     ctx_t *_ctx;
     mutex_t _sync;

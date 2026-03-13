@@ -440,10 +440,10 @@ static void queued_service_monitor_handler_a (
 
     if (test_debug_enabled ()) {
         fprintf (stderr,
-                 "[spot-monitor-a] type=%u kind=%u flags=0x%x endpoint=%s\n",
+                 "[spot-monitor-a] type=%u kind=%u flags=0x%x endpoint=%s subject=%s value=%u\n",
                  event_->event_type, event_->service_kind,
                  static_cast<unsigned int> (event_->detail_flags),
-                 event_->endpoint);
+                 event_->endpoint, event_->subject, event_->value);
         fflush (stderr);
     }
 
@@ -463,10 +463,10 @@ static void queued_service_monitor_handler_b (
 
     if (test_debug_enabled ()) {
         fprintf (stderr,
-                 "[spot-monitor-b] type=%u kind=%u flags=0x%x endpoint=%s\n",
+                 "[spot-monitor-b] type=%u kind=%u flags=0x%x endpoint=%s subject=%s value=%u\n",
                  event_->event_type, event_->service_kind,
                  static_cast<unsigned int> (event_->detail_flags),
-                 event_->endpoint);
+                 event_->endpoint, event_->subject, event_->value);
         fflush (stderr);
     }
 
@@ -480,7 +480,10 @@ static void queued_service_monitor_handler_b (
 static bool consume_matching_service_event_locked (
   service_monitor_probe_t *probe_,
   uint32_t expected_event_type_,
-  const char *endpoint_prefix_)
+  const char *endpoint_prefix_,
+  const char *subject_,
+  int min_value_,
+  zlink_service_event_t *event_out_)
 {
     if (!probe_)
         return false;
@@ -499,10 +502,47 @@ static bool consume_matching_service_event_locked (
                 continue;
             }
         }
+        if (subject_ && subject_[0] != '\0') {
+            if ((it->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) == 0)
+                continue;
+            if (strcmp (it->subject, subject_) != 0)
+                continue;
+        }
+        if (min_value_ >= 0 && static_cast<int> (it->value) < min_value_)
+            continue;
+        if (event_out_)
+            *event_out_ = *it;
         probe_->events.erase (it);
         return true;
     }
     return false;
+}
+
+static bool wait_for_service_event_match (service_monitor_probe_t *probe_,
+                                          uint32_t expected_event_type_,
+                                          const char *endpoint_prefix_,
+                                          const char *subject_,
+                                          int min_value_,
+                                          zlink_service_event_t *event_out_,
+                                          int timeout_ms_)
+{
+    if (!probe_)
+        return false;
+
+    std::unique_lock<std::mutex> lock (probe_->mutex);
+    if (consume_matching_service_event_locked (
+          probe_, expected_event_type_, endpoint_prefix_, subject_, min_value_,
+          event_out_)) {
+        return true;
+    }
+    return probe_->cv.wait_for (
+      lock, std::chrono::milliseconds (timeout_ms_),
+      [probe_, expected_event_type_, endpoint_prefix_, subject_, min_value_,
+       event_out_]() {
+          return consume_matching_service_event_locked (
+            probe_, expected_event_type_, endpoint_prefix_, subject_,
+            min_value_, event_out_);
+      });
 }
 
 static bool wait_for_service_event (service_monitor_probe_t *probe_,
@@ -510,20 +550,9 @@ static bool wait_for_service_event (service_monitor_probe_t *probe_,
                                     const char *endpoint_prefix_,
                                     int timeout_ms_)
 {
-    if (!probe_)
-        return false;
-
-    std::unique_lock<std::mutex> lock (probe_->mutex);
-    if (consume_matching_service_event_locked (
-          probe_, expected_event_type_, endpoint_prefix_)) {
-        return true;
-    }
-    return probe_->cv.wait_for (
-      lock, std::chrono::milliseconds (timeout_ms_),
-      [probe_, expected_event_type_, endpoint_prefix_]() {
-          return consume_matching_service_event_locked (
-            probe_, expected_event_type_, endpoint_prefix_);
-      });
+    return wait_for_service_event_match (probe_, expected_event_type_,
+                                         endpoint_prefix_, NULL, -1, NULL,
+                                         timeout_ms_);
 }
 
 static void spot_probe_handler (const zlink_routing_id_t *,
@@ -820,7 +849,8 @@ static void test_spot_monitors_and_monitor_poller ()
                                  | ZLINK_MONITOR_EVENT_CLOSED
                                  | ZLINK_MONITOR_EVENT_ERROR
                                  | ZLINK_SPOT_SUB_FILTER_APPLIED
-                                 | ZLINK_SPOT_SUB_SUBSCRIPTION_READY,
+                                 | ZLINK_SPOT_SUB_SUBSCRIPTION_READY
+                                 | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED,
                                queued_service_monitor_handler_a);
     void *pub_monitor =
       zlink_spot_monitor_open (pub, ZLINK_SPOT_ROLE_PUB,
@@ -829,7 +859,8 @@ static void test_spot_monitors_and_monitor_poller ()
                                  | ZLINK_MONITOR_EVENT_LOST
                                  | ZLINK_MONITOR_EVENT_PEER_DOWN
                                  | ZLINK_MONITOR_EVENT_CLOSED
-                                 | ZLINK_MONITOR_EVENT_ERROR,
+                                 | ZLINK_MONITOR_EVENT_ERROR
+                                 | ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED,
                                queued_service_monitor_handler_b);
     TEST_ASSERT_NOT_NULL (sub_monitor);
     TEST_ASSERT_NOT_NULL (pub_monitor);
@@ -843,11 +874,26 @@ static void test_spot_monitors_and_monitor_poller ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer_pub (sub_node, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "svc-mon"));
-    TEST_ASSERT_TRUE (wait_for_service_event (
-      &sub_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
-    TEST_ASSERT_TRUE (wait_for_service_event (
-      &sub_monitor_probe, ZLINK_SPOT_SUB_SUBSCRIPTION_READY, endpoint,
-      3000));
+    zlink_service_event_t filter_event;
+    zlink_service_event_t sub_ready_event;
+    zlink_service_event_t pub_ready_event;
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &sub_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, "svc-mon", -1,
+      &filter_event, 3000));
+    TEST_ASSERT_TRUE ((filter_event.detail_flags & ZLINK_EVENT_DETAIL_SUBJECT)
+                      != 0);
+    TEST_ASSERT_TRUE (
+      (filter_event.detail_flags & ZLINK_EVENT_DETAIL_SUBJECT_KIND) != 0);
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_SERVICE_EVENT_SUBJECT_TOPIC,
+                              filter_event.subject_kind);
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &sub_monitor_probe, ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED, endpoint,
+      "svc-mon", 1, &sub_ready_event, 3000));
+    TEST_ASSERT_EQUAL_UINT32 (1u, sub_ready_event.value);
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &pub_monitor_probe, ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED, NULL,
+      "svc-mon", 1, &pub_ready_event, 3000));
+    TEST_ASSERT_EQUAL_UINT32 (1u, pub_ready_event.value);
 
     step_log ("monitors: publish");
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -855,9 +901,34 @@ static void test_spot_monitors_and_monitor_poller ()
     TEST_ASSERT_TRUE (
       wait_for_spot_message_bytes (sub_probe, "svc-mon", "payload", 7, 1000));
 
+    step_log ("monitors: pattern subscribe");
+    zlink_service_event_t pattern_filter_event;
+    zlink_service_event_t pattern_ready_event;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe_pattern (sub, "svc-pat*"));
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &sub_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, "svc-pat*", -1,
+      &pattern_filter_event, 3000));
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_SERVICE_EVENT_SUBJECT_PATTERN,
+                              pattern_filter_event.subject_kind);
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &sub_monitor_probe, ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED, endpoint,
+      "svc-pat*", 1, &pattern_ready_event, 3000));
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_SERVICE_EVENT_SUBJECT_PATTERN,
+                              pattern_ready_event.subject_kind);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      publish_text (&zlink_spot_publish, pub, "svc-pat-42", "pattern", 0));
+    TEST_ASSERT_TRUE (wait_for_spot_message_bytes (sub_probe, "svc-pat-42",
+                                                   "pattern", 7, 1000));
+
     step_log ("monitors: disconnect");
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_disconnect_peer_pub (sub_node, endpoint));
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &pub_monitor_probe, ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED, NULL,
+      "svc-mon", 0, NULL, 3000));
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &sub_monitor_probe, ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED, NULL,
+      "svc-mon", 0, NULL, 3000));
 
     step_log ("monitors: destroy handles");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));

@@ -147,7 +147,7 @@ void *zlink_spot_monitor_open(void *spot,
 - `role` is `ZLINK_SPOT_ROLE_PUB` or `ZLINK_SPOT_ROLE_SUB`.
 - Split `zlink_spot_pub_monitor_open()` and `zlink_spot_sub_monitor_open()` are
   not public APIs.
-- See [monitoring.md](monitoring.md) for the event model.
+- See [events.md](events.md) for the event catalog and readiness semantics.
 
 ## Removed public APIs
 

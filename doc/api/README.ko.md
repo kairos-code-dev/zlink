@@ -15,6 +15,7 @@ zlink C 라이브러리는 경량 I/O 스레드와 락프리 큐를 기반으로
 | Message | [message.ko.md](message.ko.md) | 메시지 생명주기, 데이터 접근, 속성 | 16 |
 | Socket | [socket.ko.md](socket.ko.md) | 소켓 생성, 옵션, bind/connect, 송수신 | 13 |
 | Monitoring | [monitoring.ko.md](monitoring.ko.md) | 소켓 모니터, 이벤트, 피어 검사 | 7 |
+| Events | [events.ko.md](events.ko.md) | canonical 이벤트 카탈로그와 readiness 의미 | - |
 | Registry | [registry.ko.md](registry.ko.md) | 서비스 레지스트리 생성, 구성, 클러스터링 | 9 |
 | Discovery | [discovery.ko.md](discovery.ko.md) | 서비스 디스커버리, 구독, 리시버 조회 | 9 |
 | Gateway | [gateway.ko.md](gateway.ko.md) | 로드밸런싱 요청/응답 게이트웨이 | 10 |
@@ -31,6 +32,7 @@ zlink C 라이브러리는 경량 I/O 스레드와 락프리 큐를 기반으로
 | [`zlink_routing_id_t`](message.ko.md) | message.ko.md | 피어 라우팅 아이덴티티 (1바이트 크기 + 255바이트 데이터) |
 | [`zlink_monitor_event_t`](monitoring.ko.md) | monitoring.ko.md | 모니터 이벤트 구조체 (이벤트, 값, 주소) |
 | [`zlink_peer_info_t`](monitoring.ko.md) | monitoring.ko.md | 연결된 피어 통계 (라우팅 아이디, 주소, 카운터) |
+| [`zlink_service_event_t`](events.ko.md) | events.ko.md | 서비스 모니터 이벤트 구조체와 subject-aware payload |
 | [`zlink_receiver_info_t`](discovery.ko.md) | discovery.ko.md | 디스커버리된 서비스 리시버 항목 (이름, 엔드포인트, 가중치) |
 | [`zlink_pollitem_t`](polling.ko.md) | polling.ko.md | I/O 다중화를 위한 폴 아이템 (소켓 또는 fd) |
 

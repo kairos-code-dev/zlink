@@ -21,6 +21,14 @@ namespace
 {
 static const size_t spot_sub_queue_hwm_default = 1000;
 
+struct subscription_update_t
+{
+    subscription_update_t () : subscribe (false) {}
+
+    std::string subject;
+    bool subscribe;
+};
+
 static int send_ascii_frame (socket_base_t *socket_,
                              const std::string &value_,
                              int flags_)
@@ -136,9 +144,8 @@ static int recv_and_forward (socket_base_t *src_,
 
 static int recv_and_forward_subscription_updates (socket_base_t *src_,
                                                   socket_base_t *dst_,
-                                                  bool *saw_subscribe_)
+                                                  std::vector<subscription_update_t> *updates_)
 {
-    bool saw_subscribe = false;
     for (;;) {
         msg_t msg;
         if (msg.init () != 0)
@@ -147,8 +154,6 @@ static int recv_and_forward_subscription_updates (socket_base_t *src_,
             const int err = errno;
             msg.close ();
             if (err == EAGAIN) {
-                if (saw_subscribe_)
-                    *saw_subscribe_ = saw_subscribe;
                 return 0;
             }
             errno = err;
@@ -165,8 +170,14 @@ static int recv_and_forward_subscription_updates (socket_base_t *src_,
         if (msg.size () > 0) {
             const unsigned char *data =
               static_cast<const unsigned char *> (msg.data ());
-            if (data[0] == 1)
-                saw_subscribe = true;
+            if (data[0] == 0 || data[0] == 1) {
+                subscription_update_t update;
+                update.subscribe = data[0] == 1;
+                update.subject.assign (
+                  reinterpret_cast<const char *> (data + 1), msg.size () - 1);
+                if (updates_)
+                    updates_->push_back (update);
+            }
         }
 
         if (dst_ && dst_->send (&msg, more ? ZLINK_SNDMORE : 0) != 0) {
@@ -208,7 +219,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
         return;
 
     socket_base_t *ctrl = node_->_ctx->create_socket (ZLINK_PAIR);
-    socket_base_t *mesh_pub = node_->_ctx->create_socket (ZLINK_PUB);
+    socket_base_t *mesh_pub = node_->_ctx->create_socket (ZLINK_XPUB);
     socket_base_t *mesh_xsub = node_->_ctx->create_socket (ZLINK_XSUB);
     socket_base_t *ingress = node_->_ctx->create_socket (ZLINK_SUB);
     socket_base_t *fanout = node_->_ctx->create_socket (ZLINK_XPUB);
@@ -261,6 +272,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
     fanout->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
     fanout->setsockopt (ZLINK_RCVHWM, &zero, sizeof (zero));
     fanout->setsockopt (ZLINK_XPUB_NODROP, &one, sizeof (one));
+    mesh_pub->setsockopt (ZLINK_XPUB_VERBOSER, &one, sizeof (one));
     mesh_pub->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
     mesh_xsub->setsockopt (ZLINK_RCVHWM, &zero, sizeof (zero));
     mesh_xsub->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
@@ -308,14 +320,15 @@ void spot_data_plane_t::run (spot_node_t *node_)
     socket_poller_t poller;
     poller.add (ctrl, NULL, ZLINK_POLLIN);
     poller.add (ingress, NULL, ZLINK_POLLIN);
+    poller.add (mesh_pub, NULL, ZLINK_POLLIN);
     poller.add (mesh_xsub, NULL, ZLINK_POLLIN);
     poller.add (fanout, NULL, ZLINK_POLLIN);
 
     bool running = true;
     int fatal_errno = 0;
     while (running) {
-        socket_poller_t::event_t events[4];
-        const int rc = poller.wait (events, 4, -1);
+        socket_poller_t::event_t events[5];
+        const int rc = poller.wait (events, 5, -1);
         if (rc < 0) {
             fatal_errno = errno;
             break;
@@ -399,6 +412,21 @@ void spot_data_plane_t::run (spot_node_t *node_)
                 continue;
             }
 
+            if (events[i].socket == mesh_pub) {
+                std::vector<subscription_update_t> updates;
+                if (recv_and_forward_subscription_updates (mesh_pub, NULL,
+                                                           &updates)
+                    != 0) {
+                    fatal_errno = errno;
+                    running = false;
+                    break;
+                }
+                for (size_t j = 0; j < updates.size (); ++j)
+                    node_->notify_pub_delivery_ready_changed (
+                      updates[j].subject, updates[j].subscribe);
+                continue;
+            }
+
             if (events[i].socket == mesh_xsub) {
                 if (recv_and_forward (mesh_xsub, fanout, NULL) != 0) {
                     fatal_errno = errno;
@@ -409,16 +437,19 @@ void spot_data_plane_t::run (spot_node_t *node_)
             }
 
             if (events[i].socket == fanout) {
-                bool saw_subscribe = false;
-                if (recv_and_forward_subscription_updates (
-                      fanout, mesh_xsub, &saw_subscribe)
+                std::vector<subscription_update_t> updates;
+                if (recv_and_forward_subscription_updates (fanout, mesh_xsub,
+                                                           &updates)
                     != 0) {
                     fatal_errno = errno;
                     running = false;
                     break;
                 }
-                if (saw_subscribe)
-                    node_->notify_subscription_forwarded ();
+                for (size_t j = 0; j < updates.size (); ++j) {
+                    if (updates[j].subscribe)
+                        node_->notify_subscription_forwarded (
+                          updates[j].subject);
+                }
                 continue;
             }
         }

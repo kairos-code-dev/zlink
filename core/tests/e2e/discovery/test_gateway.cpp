@@ -193,11 +193,15 @@ void wait_gateway_ready (void *gateway_,
     const int step_ms = 10;
     const int attempts = timeout_ms_ / step_ms;
     for (int i = 0; i < attempts; ++i) {
-        if (zlink_gateway_connection_count (gateway_) > 0)
+        zlink_gateway_monitor_snapshot_t snapshot;
+        memset (&snapshot, 0, sizeof (snapshot));
+        if (zlink_gateway_monitor_snapshot (gateway_, &snapshot) == 0
+            && snapshot.send_ready != 0) {
             return;
+        }
         msleep (step_ms);
     }
-    TEST_FAIL_MESSAGE ("gateway connection timeout");
+    TEST_FAIL_MESSAGE ("gateway send ready timeout");
 }
 
 void wait_gateway_connections (void *gateway_,
@@ -207,11 +211,15 @@ void wait_gateway_connections (void *gateway_,
     const int step_ms = 10;
     const int attempts = timeout_ms_ / step_ms;
     for (int i = 0; i < attempts; ++i) {
-        if (zlink_gateway_connection_count (gateway_) >= expected_)
+        zlink_gateway_monitor_snapshot_t snapshot;
+        memset (&snapshot, 0, sizeof (snapshot));
+        if (zlink_gateway_monitor_snapshot (gateway_, &snapshot) == 0
+            && static_cast<int> (snapshot.ready_peer_count) >= expected_) {
             return;
+        }
         msleep (step_ms);
     }
-    TEST_FAIL_MESSAGE ("gateway expected connection count timeout");
+    TEST_FAIL_MESSAGE ("gateway expected ready peer count timeout");
 }
 
 void wait_gateway_connection_count_exact (void *gateway_,
@@ -221,14 +229,58 @@ void wait_gateway_connection_count_exact (void *gateway_,
     const int step_ms = 10;
     const int attempts = timeout_ms_ / step_ms;
     for (int i = 0; i < attempts; ++i) {
-        if (zlink_gateway_connection_count (gateway_) == expected_)
+        zlink_gateway_monitor_snapshot_t snapshot;
+        memset (&snapshot, 0, sizeof (snapshot));
+        if (zlink_gateway_monitor_snapshot (gateway_, &snapshot) == 0
+            && static_cast<int> (snapshot.ready_peer_count) == expected_) {
             return;
+        }
         msleep (step_ms);
     }
-    TEST_FAIL_MESSAGE ("gateway expected exact connection count timeout");
+    TEST_FAIL_MESSAGE ("gateway expected exact ready peer count timeout");
 }
 
-void wait_gateway_peer_weights (void *gateway_,
+bool query_gateway_peer_entries (
+  void *registry_,
+  void *gateway_,
+  zlink_registry_gateway_peer_filter_t *filter_io_,
+  std::vector<zlink_registry_gateway_peer_entry_t> *entries_out_)
+{
+    if (!registry_ || !gateway_ || !entries_out_)
+        return false;
+
+    zlink_routing_id_t gateway_rid;
+    memset (&gateway_rid, 0, sizeof (gateway_rid));
+    if (zlink_gateway_routing_id (gateway_, &gateway_rid) != 0)
+        return false;
+
+    zlink_registry_gateway_peer_filter_t filter;
+    memset (&filter, 0, sizeof (filter));
+    if (filter_io_)
+        filter = *filter_io_;
+    filter.gateway_routing_id = gateway_rid;
+
+    size_t count = 0;
+    if (zlink_registry_gateway_peers_query (registry_, &filter, NULL, &count) != 0)
+        return false;
+
+    entries_out_->clear ();
+    if (count == 0)
+        return true;
+
+    entries_out_->resize (count);
+    if (zlink_registry_gateway_peers_query (registry_, &filter,
+                                            &(*entries_out_)[0], &count)
+        != 0) {
+        entries_out_->clear ();
+        return false;
+    }
+    entries_out_->resize (count);
+    return true;
+}
+
+void wait_gateway_peer_weights (void *registry_,
+                                void *gateway_,
                                 size_t expected_count_,
                                 uint32_t expected_weight_sum_,
                                 int timeout_ms_)
@@ -236,20 +288,17 @@ void wait_gateway_peer_weights (void *gateway_,
     const int step_ms = 10;
     const int attempts = timeout_ms_ / step_ms;
     for (int i = 0; i < attempts; ++i) {
-        size_t count = 0;
-        if (zlink_gateway_router_peers (gateway_, NULL, &count) == 0
-            && count == expected_count_) {
-            std::vector<zlink_gateway_peer_info_t> peers (count);
-            size_t filled = count;
-            if (count == 0
-                || zlink_gateway_router_peers (gateway_, &peers[0], &filled)
-                     == 0) {
-                uint32_t sum = 0;
-                for (size_t pi = 0; pi < filled; ++pi)
-                    sum += peers[pi].weight;
-                if (filled == expected_count_ && sum == expected_weight_sum_)
-                    return;
-            }
+        zlink_registry_gateway_peer_filter_t filter;
+        memset (&filter, 0, sizeof (filter));
+        filter.state = ZLINK_TOPOLOGY_STATE_READY;
+        std::vector<zlink_registry_gateway_peer_entry_t> peers;
+        if (query_gateway_peer_entries (registry_, gateway_, &filter, &peers)
+            && peers.size () == expected_count_) {
+            uint32_t sum = 0;
+            for (size_t pi = 0; pi < peers.size (); ++pi)
+                sum += peers[pi].weight;
+            if (peers.size () == expected_count_ && sum == expected_weight_sum_)
+                return;
         }
         msleep (step_ms);
     }
@@ -511,9 +560,6 @@ void *create_client_gateway (void *ctx_,
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_ep_));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, service_name_));
-
     void *gateway =
       create_gateway_attached (ctx_, discovery, service_name_, routing_id_,
                          &discard_gateway_message);
@@ -720,15 +766,16 @@ static void test_gateway_refreshes_existing_service_on_first_connection_count ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "late-gateway-svc"));
     void *client =
       create_gateway_attached (ctx, discovery, "late-gateway-svc", NULL,
                          &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (client);
 
     wait_gateway_ready (client, 2000);
-    TEST_ASSERT_TRUE (zlink_gateway_connection_count (client) > 0);
+    zlink_gateway_monitor_snapshot_t snapshot;
+    memset (&snapshot, 0, sizeof (snapshot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_monitor_snapshot (client, &snapshot));
+    TEST_ASSERT_TRUE (snapshot.send_ready != 0);
 
     destroy_server_gateway (&server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
@@ -755,8 +802,6 @@ static void test_gateway_router_peers_do_not_enter_pollable_mode ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "peer-stats-svc"));
     void *client =
       create_gateway_attached (ctx, discovery, "peer-stats-svc", NULL,
                          &discard_gateway_message);
@@ -775,9 +820,12 @@ static void test_gateway_router_peers_do_not_enter_pollable_mode ()
 
     wait_gateway_ready (client, 2000);
 
-    size_t count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_router_peers (client, NULL, &count));
-    TEST_ASSERT_TRUE (count > 0);
+    zlink_registry_gateway_peer_filter_t filter;
+    memset (&filter, 0, sizeof (filter));
+    filter.state = ZLINK_TOPOLOGY_STATE_READY;
+    std::vector<zlink_registry_gateway_peer_entry_t> peers;
+    TEST_ASSERT_TRUE (query_gateway_peer_entries (registry, client, &filter, &peers));
+    TEST_ASSERT_TRUE (peers.size () > 0);
 
     send_gateway_with_timeout (client, "ping", 2000);
     TEST_ASSERT_TRUE (wait_for_calls (&probe.requests, 1, 2000));
@@ -808,8 +856,6 @@ static void test_gateway_single_service_tcp ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "svc"));
     void *client =
       create_gateway_attached (ctx, discovery, "svc", NULL, &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (client);
@@ -855,7 +901,6 @@ static void test_gateway_send_rid_tcp ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svc"));
     void *client =
       create_gateway_attached (ctx, discovery, "svc", NULL, &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (client);
@@ -921,8 +966,6 @@ static void test_gateway_multi_service_tcp ()
       discovery_a, registry_router));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery_b, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery_a, "svc-A"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery_b, "svc-B"));
     void *client_a =
       create_gateway_attached (ctx, discovery_a, "svc-A", NULL,
                          &discard_gateway_message);
@@ -989,8 +1032,6 @@ static void test_gateway_refresh_on_update ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "svc-update"));
     void *client =
       create_gateway_attached (ctx, discovery, "svc-update", NULL,
                          &discard_gateway_message);
@@ -1060,8 +1101,6 @@ static void test_gateway_protocol_ws ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "svc-ws"));
     void *client =
       create_gateway_attached (ctx, discovery, "svc-ws", NULL,
                          &discard_gateway_message);
@@ -1113,8 +1152,6 @@ static void test_gateway_protocol_tls ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "svc-tls"));
     void *client =
       create_gateway_attached (ctx, discovery, "svc-tls", NULL,
                          &discard_gateway_message);
@@ -1172,8 +1209,6 @@ static void test_gateway_protocol_wss ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "svc-wss"));
     void *client =
       create_gateway_attached (ctx, discovery, "svc-wss", NULL,
                          &discard_gateway_message);
@@ -1225,8 +1260,6 @@ static void test_gateway_load_balancing ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "lb-svc"));
     void *client =
       create_gateway_attached (ctx, discovery, "lb-svc", NULL,
                          &discard_gateway_message);
@@ -1288,8 +1321,6 @@ static void test_gateway_weighted_load_balancing ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "lb-weighted"));
     void *client =
       create_gateway_attached (ctx, discovery, "lb-weighted", NULL,
                          &discard_gateway_message);
@@ -1336,7 +1367,7 @@ static void test_gateway_weighted_load_balancing ()
 
     step_log ("test_gateway_weighted_load_balancing: wait ready");
     wait_gateway_connections (client, 2, 3000);
-    wait_gateway_peer_weights (client, 2, 9, 3000);
+    wait_gateway_peer_weights (registry, client, 2, 9, 3000);
     step_log ("test_gateway_weighted_load_balancing: send batch begin");
     for (int i = 0; i < 27; ++i)
         send_gateway_with_timeout (client, "wt", 2000);
@@ -1420,7 +1451,21 @@ static void test_gateway_manual_connect_disconnect_topology_ownership ()
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_disconnect (client, endpoint));
-    wait_gateway_connection_count_exact (client, 0, 3000);
+    {
+        const int step_ms = 10;
+        const int attempts = 3000 / step_ms;
+        zlink_gateway_monitor_snapshot_t snapshot;
+        memset (&snapshot, 0, sizeof (snapshot));
+        for (int i = 0; i < attempts; ++i) {
+            if (zlink_gateway_monitor_snapshot (client, &snapshot) == 0
+                && snapshot.ready_peer_count == 0) {
+                break;
+            }
+            msleep (step_ms);
+        }
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_monitor_snapshot (client, &snapshot));
+        TEST_ASSERT_EQUAL_INT (0, static_cast<int> (snapshot.ready_peer_count));
+    }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_attach_discovery (client, discovery));
 
@@ -1454,8 +1499,6 @@ static void test_gateway_local_weight_zero_is_preserved ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "weight-zero"));
     void *client =
       create_gateway_attached (ctx, discovery, "weight-zero", NULL,
                                &discard_gateway_message);
@@ -1470,26 +1513,32 @@ static void test_gateway_local_weight_zero_is_preserved ()
                                  sizeof (endpoint), 3000);
 
     wait_gateway_ready (client, 3000);
-    wait_gateway_peer_weights (client, 1, 0, 3000);
+    wait_gateway_peer_weights (registry, client, 1, 0, 3000);
 
     zlink_routing_id_t rid;
     memset (&rid, 0, sizeof (rid));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server.gateway, &rid));
 
-    zlink_gateway_peer_info_t info;
-    memset (&info, 0, sizeof (info));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_peer_info (client, &rid, &info));
-    TEST_ASSERT_EQUAL_UINT32 (0, info.weight);
+    zlink_registry_gateway_peer_filter_t filter;
+    memset (&filter, 0, sizeof (filter));
+    filter.state = ZLINK_TOPOLOGY_STATE_READY;
+    filter.peer_routing_id = rid;
+    std::vector<zlink_registry_gateway_peer_entry_t> peers;
+    TEST_ASSERT_TRUE (query_gateway_peer_entries (registry, client, &filter, &peers));
+    TEST_ASSERT_EQUAL_UINT32 (1, static_cast<uint32_t> (peers.size ()));
+    TEST_ASSERT_EQUAL_UINT32 (0, peers[0].weight);
 
     update_gateway_weight_with_timeout (server.gateway, 5, 3000);
-    wait_gateway_peer_weights (client, 1, 5, 3000);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_peer_info (client, &rid, &info));
-    TEST_ASSERT_EQUAL_UINT32 (5, info.weight);
+    wait_gateway_peer_weights (registry, client, 1, 5, 3000);
+    TEST_ASSERT_TRUE (query_gateway_peer_entries (registry, client, &filter, &peers));
+    TEST_ASSERT_EQUAL_UINT32 (1, static_cast<uint32_t> (peers.size ()));
+    TEST_ASSERT_EQUAL_UINT32 (5, peers[0].weight);
 
     update_gateway_weight_with_timeout (server.gateway, 0, 3000);
-    wait_gateway_peer_weights (client, 1, 0, 3000);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_peer_info (client, &rid, &info));
-    TEST_ASSERT_EQUAL_UINT32 (0, info.weight);
+    wait_gateway_peer_weights (registry, client, 1, 0, 3000);
+    TEST_ASSERT_TRUE (query_gateway_peer_entries (registry, client, &filter, &peers));
+    TEST_ASSERT_EQUAL_UINT32 (1, static_cast<uint32_t> (peers.size ()));
+    TEST_ASSERT_EQUAL_UINT32 (0, peers[0].weight);
 
     destroy_server_gateway (&server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
@@ -1516,8 +1565,6 @@ static void test_gateway_concurrent_send_and_updates ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "svc-sync"));
     void *client =
       create_gateway_attached (ctx, discovery, "svc-sync", NULL,
                          &discard_gateway_message);

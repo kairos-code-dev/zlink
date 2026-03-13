@@ -373,6 +373,11 @@ if(TARGET test_service_introspection)
             ZLINK_TEST_CASE=test_registry_topology_snapshot_and_remote_query
             $<TARGET_FILE:test_service_introspection>)
   add_test(
+    NAME test_service_introspection_gateway_peer_snapshot
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_registry_gateway_peer_snapshot_and_remote_query
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
     NAME test_service_introspection_closed_event
     COMMAND ${CMAKE_COMMAND} -E env
             ZLINK_TEST_CASE=test_monitor_closed_event_on_service_destroy

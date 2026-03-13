@@ -70,7 +70,6 @@ zlink_gateway_bind(server, "tcp://*:5555");
 /* Discovery setup */
 void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
-zlink_discovery_subscribe(discovery, "payment-service");
 
 /* Create Gateway */
 void *client = zlink_gateway_new(ctx, "payment-service",
@@ -149,7 +148,7 @@ to call concurrently from multiple threads.
 - `zlink_gateway_set_lb_strategy()`
 - `zlink_gateway_set_option()`
 - `zlink_gateway_set_tls_client()`
-- `zlink_gateway_connection_count()`
+- `zlink_gateway_monitor_snapshot()`
 
 ### Multi-threaded Usage Example
 
@@ -246,7 +245,6 @@ zlink_gateway_bind(server, "tcp://*:5555");
 /* === Client === */
 void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
-zlink_discovery_subscribe(client_discovery, "echo-service");
 
 void *client = zlink_gateway_new(ctx, "echo-service",
                                   "client-1", on_reply);
@@ -289,10 +287,9 @@ zlink_ctx_term(ctx);
 | `zlink_gateway_set_tls_client(gateway, ca, host, trust)` | Set TLS client configuration |
 | `zlink_gateway_set_tls_server(gateway, cert, key)` | Set TLS server configuration |
 | `zlink_gateway_last_endpoint(gateway, buf, size)` | Resolve bound endpoint |
-| `zlink_gateway_connection_count(gateway)` | Get connected peer count |
+| `zlink_gateway_monitor_snapshot(gateway, &snapshot)` | Read local bind/send readiness |
 | `zlink_gateway_update_peer_weight(gateway, rid, weight)` | Update peer weight |
-| `zlink_gateway_router_peers(gateway, peers, count)` | List peers |
-| `zlink_gateway_peer_info(gateway, rid, info)` | Get specific peer info |
+| `zlink_registry_gateway_peers_query(registry, &filter, entries, &count)` | Query operational gateway-peer state |
 | `zlink_gateway_destroy(&gateway)` | Destroy |
 
 ---

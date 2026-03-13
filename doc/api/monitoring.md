@@ -320,11 +320,11 @@ Callback for service monitor events, invoked on the I/O thread.
 
 | Constant | Bit | Description |
 |----------|-----|-------------|
-| `ZLINK_GATEWAY_SERVICE_READY` | `1 << 8` | Gateway service is ready (at least one peer connected) |
-| `ZLINK_GATEWAY_SERVICE_LOST` | `1 << 9` | Gateway service lost (all peers disconnected) |
-| `ZLINK_GATEWAY_CONNECTION_COUNT_CHANGED` | `1 << 10` | Number of connected peers changed |
-| `ZLINK_GATEWAY_ROUTE_UP` | `1 << 11` | A route came up |
-| `ZLINK_GATEWAY_ROUTE_DOWN` | `1 << 12` | A route went down |
+| `ZLINK_GATEWAY_SERVICE_READY` | `1 << 8` | Local Gateway service bind/register became ready |
+| `ZLINK_GATEWAY_SERVICE_LOST` | `1 << 9` | Local Gateway service publication was removed |
+| `ZLINK_GATEWAY_SEND_READY_CHANGED` | `1 << 10` | Aggregate send-readiness changed; `value` is `0` or `1` |
+| `ZLINK_GATEWAY_ROUTE_UP` | `1 << 11` | A route came up; `value` is current ready route count |
+| `ZLINK_GATEWAY_ROUTE_DOWN` | `1 << 12` | A route went down; `value` is current ready route count |
 
 #### SPOT Events
 

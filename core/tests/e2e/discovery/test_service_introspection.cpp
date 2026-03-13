@@ -114,22 +114,6 @@ bool wait_for_calls (std::atomic<int> *counter_, int expected_, int timeout_ms_)
     return counter_->load () >= expected_;
 }
 
-bool wait_discovery_receiver_count (void *discovery_,
-                                    const char *service_name_,
-                                    int expected_min_,
-                                    int timeout_ms_)
-{
-    const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
-    while (std::chrono::steady_clock::now () < deadline) {
-        if (zlink_discovery_receiver_count (discovery_, service_name_)
-            >= expected_min_)
-            return true;
-        msleep (10);
-    }
-    return false;
-}
-
 bool wait_gateway_connection_count (void *gateway_,
                                     int expected_min_,
                                     int timeout_ms_)
@@ -137,8 +121,12 @@ bool wait_gateway_connection_count (void *gateway_,
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
     while (std::chrono::steady_clock::now () < deadline) {
-        if (zlink_gateway_connection_count (gateway_) >= expected_min_)
+        zlink_gateway_monitor_snapshot_t snapshot;
+        memset (&snapshot, 0, sizeof (snapshot));
+        if (zlink_gateway_monitor_snapshot (gateway_, &snapshot) == 0
+            && static_cast<int> (snapshot.ready_peer_count) >= expected_min_) {
             return true;
+        }
         msleep (10);
     }
     return false;
@@ -169,6 +157,42 @@ bool wait_for_topology_state (void *registry_,
             std::vector<zlink_registry_topology_entry_t> entries (count);
             if (zlink_registry_topology_query (registry_, &filter, &entries[0],
                                                &count)
+                == 0) {
+                for (size_t i = 0; i < count; ++i) {
+                    if (entries[i].state == state_)
+                        return true;
+                }
+            }
+        }
+        msleep (10);
+    }
+    return false;
+}
+
+bool wait_for_gateway_peer_state (void *registry_,
+                                  const zlink_routing_id_t *gateway_rid_,
+                                  const zlink_routing_id_t *peer_rid_,
+                                  zlink_topology_state_t state_,
+                                  int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        zlink_registry_gateway_peer_filter_t filter;
+        memset (&filter, 0, sizeof (filter));
+        filter.state = state_;
+        if (gateway_rid_)
+            filter.gateway_routing_id = *gateway_rid_;
+        if (peer_rid_)
+            filter.peer_routing_id = *peer_rid_;
+
+        size_t count = 0;
+        if (zlink_registry_gateway_peers_query (registry_, &filter, NULL, &count)
+              == 0
+            && count > 0) {
+            std::vector<zlink_registry_gateway_peer_entry_t> entries (count);
+            if (zlink_registry_gateway_peers_query (registry_, &filter,
+                                                    &entries[0], &count)
                 == 0) {
                 for (size_t i = 0; i < count; ++i) {
                     if (entries[i].state == state_)
@@ -447,9 +471,6 @@ static void test_discovery_monitor_and_routing_id ()
 
     TEST_ASSERT_SUCCESS_ERRNO (
       connect_discovery_registry_with_retry (discovery, registry_router, 2000));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "svcmon"));
-
     gateway_server_t server;
     char endpoint[MAX_SOCKET_STRING];
     int bind_seed = 22600;
@@ -458,8 +479,6 @@ static void test_discovery_monitor_and_routing_id ()
                                          endpoint, sizeof (endpoint),
                                          &discard_gateway_message);
 
-    TEST_ASSERT_TRUE (
-      wait_discovery_receiver_count (discovery, "svcmon", 1, 3000));
     TEST_ASSERT_TRUE (wait_for_calls (&probe.calls, 1, 3000));
     TEST_ASSERT_EQUAL_UINT16 (ZLINK_SERVICE_KIND_DISCOVERY,
                               probe.last_event.service_kind);
@@ -498,9 +517,6 @@ static void test_gateway_receiver_routing_ids_and_options ()
     TEST_ASSERT_NOT_NULL (client_discovery);
     TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
       client_discovery, registry_router, 2000));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (client_discovery, "svc-int-opt"));
-
     void *client =
       create_gateway_attached (ctx, client_discovery, "svc-int-opt", NULL,
                          &discard_gateway_message);
@@ -540,8 +556,6 @@ static void test_gateway_receiver_routing_ids_and_options ()
                                 sizeof (hwm)));
 
     TEST_ASSERT_TRUE (
-      wait_discovery_receiver_count (client_discovery, "svc-int-opt", 1, 3000));
-    TEST_ASSERT_TRUE (
       wait_gateway_connection_count (client, 1, 3000));
 
     errno = 0;
@@ -572,9 +586,6 @@ static void test_gateway_receiver_monitors_and_monitor_poller ()
     TEST_ASSERT_NOT_NULL (client_discovery);
     TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
       client_discovery, registry_router, 2000));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (client_discovery, "svc-int"));
-
     void *client =
       create_gateway_attached (ctx, client_discovery, "svc-int", NULL,
                          &discard_gateway_message);
@@ -595,7 +606,7 @@ static void test_gateway_receiver_monitors_and_monitor_poller ()
     monitor_probe_t server_probe;
     g_monitor_b = &server_probe;
     void *client_monitor = zlink_gateway_monitor_open (
-      client, ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_ROUTE_UP,
+      client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP,
       &service_monitor_handler_a);
     void *server_monitor = zlink_gateway_monitor_open (
       server.gateway, ZLINK_GATEWAY_SERVICE_READY,
@@ -605,10 +616,6 @@ static void test_gateway_receiver_monitors_and_monitor_poller ()
     bind_gateway_with_port_seed (server.gateway, "tcp", &bind_seed, endpoint,
                                   sizeof (endpoint), 3000);
 
-    TEST_ASSERT_TRUE (
-      wait_discovery_receiver_count (client_discovery, "svc-int", 1, 3000));
-    TEST_ASSERT_TRUE (
-      wait_gateway_connection_count (client, 1, 3000));
     TEST_ASSERT_TRUE (wait_for_calls (&server_probe.calls, 1, 3000));
 
     TEST_ASSERT_EQUAL_UINT16 (ZLINK_SERVICE_KIND_GATEWAY,
@@ -721,6 +728,97 @@ static void test_registry_topology_snapshot_and_remote_query ()
     TEST_ASSERT_EQUAL_UINT (1, count);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_query_destroy (&client));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+}
+
+static void test_registry_gateway_peer_snapshot_and_remote_query ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    int registry_seed = 22666;
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &registry_seed, registry_pub, sizeof (registry_pub),
+      registry_router, sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
+
+    gateway_server_t server;
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22623;
+    init_gateway_server_with_port_seed (&server, ctx, registry_router,
+                                        "svc-peer-query", "gw-peer-server",
+                                        "tcp", &bind_seed, endpoint,
+                                        sizeof (endpoint),
+                                        &discard_gateway_message);
+
+    void *client_discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (client_discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
+      client_discovery, registry_router, 2000));
+    void *client_gateway =
+      create_gateway_attached (ctx, client_discovery, "svc-peer-query",
+                               "gw-peer-client", &discard_gateway_message);
+    TEST_ASSERT_NOT_NULL (client_gateway);
+
+    TEST_ASSERT_TRUE (wait_gateway_connection_count (client_gateway, 1, 3000));
+
+    zlink_routing_id_t client_rid;
+    zlink_routing_id_t server_rid;
+    memset (&client_rid, 0, sizeof (client_rid));
+    memset (&server_rid, 0, sizeof (server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_routing_id (client_gateway, &client_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_routing_id (server.gateway, &server_rid));
+
+    TEST_ASSERT_TRUE (wait_for_gateway_peer_state (
+      registry, &client_rid, &server_rid, ZLINK_TOPOLOGY_STATE_READY, 3000));
+
+    zlink_registry_gateway_peer_filter_t filter;
+    memset (&filter, 0, sizeof (filter));
+    filter.gateway_routing_id = client_rid;
+    filter.peer_routing_id = server_rid;
+    filter.state = ZLINK_TOPOLOGY_STATE_READY;
+
+    size_t count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_gateway_peers_query (registry, &filter, NULL, &count));
+    TEST_ASSERT_EQUAL_UINT (1, count);
+
+    std::vector<zlink_registry_gateway_peer_entry_t> entries (count);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_gateway_peers_query (
+      registry, &filter, &entries[0], &count));
+    TEST_ASSERT_EQUAL_UINT16 (ZLINK_TOPOLOGY_STATE_READY, entries[0].state);
+    TEST_ASSERT_EQUAL_STRING ("svc-peer-query", entries[0].service_name);
+    TEST_ASSERT_EQUAL_STRING (endpoint, entries[0].peer_endpoint);
+    TEST_ASSERT_EQUAL_UINT32 (0, entries[0].weight);
+
+    void *client = zlink_registry_query_client_new (ctx);
+    TEST_ASSERT_NOT_NULL (client);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_query_client_connect (client, registry_router));
+    count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_query_gateway_peers_snapshot (
+      client, &filter, NULL, &count));
+    TEST_ASSERT_EQUAL_UINT (1, count);
+
+    std::vector<zlink_registry_gateway_peer_entry_t> remote_entries (count);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_query_gateway_peers_snapshot (
+      client, &filter, &remote_entries[0], &count));
+    TEST_ASSERT_EQUAL_UINT16 (ZLINK_TOPOLOGY_STATE_READY,
+                              remote_entries[0].state);
+    TEST_ASSERT_EQUAL_STRING (endpoint, remote_entries[0].peer_endpoint);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client_gateway));
+    TEST_ASSERT_TRUE (wait_for_gateway_peer_state (
+      registry, &client_rid, &server_rid, ZLINK_TOPOLOGY_STATE_STOPPED, 3000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&client_discovery));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_query_destroy (&client));
+    destroy_gateway_server (&server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
@@ -905,9 +1003,6 @@ static void test_registry_peer_transport_restriction_and_tcp_sync ()
     TEST_ASSERT_NOT_NULL (discovery_a);
     TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
       discovery_a, registry_a_router, 2000));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery_a, "svc-peer-sync"));
-
     gateway_server_t server;
     char endpoint[MAX_SOCKET_STRING];
     int bind_seed = 22658;
@@ -922,8 +1017,9 @@ static void test_registry_peer_transport_restriction_and_tcp_sync ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_routing_id (server.gateway, &gateway_rid));
 
-    TEST_ASSERT_TRUE (
-      wait_discovery_receiver_count (discovery_a, "svc-peer-sync", 1, 10000));
+    TEST_ASSERT_TRUE (wait_for_topology_state (
+      registry_a, ZLINK_SERVICE_KIND_GATEWAY, "svc-peer-sync", NULL,
+      ZLINK_TOPOLOGY_STATE_READY, 10000));
 
     destroy_gateway_server (&server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery_a));
@@ -989,9 +1085,6 @@ static void test_registry_peer_transport_mixed_ws_sync ()
     TEST_ASSERT_NOT_NULL (discovery_a);
     TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
       discovery_a, registry_a_router, 2000));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery_a, "svc-peer-mixed-ws"));
-
     gateway_server_t server;
     char endpoint[MAX_SOCKET_STRING];
     int bind_seed = 22667;
@@ -1002,8 +1095,9 @@ static void test_registry_peer_transport_mixed_ws_sync ()
                                          sizeof (endpoint),
                                          &discard_gateway_message);
 
-    TEST_ASSERT_TRUE (wait_discovery_receiver_count (
-      discovery_a, "svc-peer-mixed-ws", 1, 10000));
+    TEST_ASSERT_TRUE (wait_for_topology_state (
+      registry_a, ZLINK_SERVICE_KIND_GATEWAY, "svc-peer-mixed-ws", NULL,
+      ZLINK_TOPOLOGY_STATE_READY, 10000));
 
     destroy_gateway_server (&server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery_a));
@@ -1030,9 +1124,6 @@ static void test_registry_topology_reports_discovery_and_gateway ()
       zlink_discovery_set_routing_id (discovery, "disc-topology", 13));
     TEST_ASSERT_SUCCESS_ERRNO (
       connect_discovery_registry_with_retry (discovery, registry_router, 2000));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "svc-gw-topology"));
-
     void *client =
       create_gateway_attached (ctx, discovery, "svc-gw-topology", "gw-topology",
                          &discard_gateway_message);
@@ -1047,8 +1138,6 @@ static void test_registry_topology_reports_discovery_and_gateway ()
                                          &bind_seed, endpoint,
                                          sizeof (endpoint),
                                          &discard_gateway_message);
-    TEST_ASSERT_TRUE (
-      wait_discovery_receiver_count (discovery, "svc-gw-topology", 1, 3000));
     TEST_ASSERT_TRUE (
       wait_gateway_connection_count (client, 1, 3000));
 
@@ -1104,6 +1193,8 @@ int main (int, char **)
     RUN_SERVICE_INTROSPECTION_TEST (test_gateway_receiver_routing_ids_and_options);
     RUN_SERVICE_INTROSPECTION_TEST (test_gateway_receiver_monitors_and_monitor_poller);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_topology_snapshot_and_remote_query);
+    RUN_SERVICE_INTROSPECTION_TEST (
+      test_registry_gateway_peer_snapshot_and_remote_query);
     RUN_SERVICE_INTROSPECTION_TEST (test_monitor_closed_event_on_service_destroy);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_restriction);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_allowed_ws);

@@ -117,11 +117,11 @@ Disconnect reasons:
 
 | Constant | Meaning |
 |---|---|
-| `ZLINK_GATEWAY_SERVICE_READY` | At least one route is ready |
-| `ZLINK_GATEWAY_SERVICE_LOST` | All routes lost |
-| `ZLINK_GATEWAY_CONNECTION_COUNT_CHANGED` | Connection count changed |
-| `ZLINK_GATEWAY_ROUTE_UP` | A route became active |
-| `ZLINK_GATEWAY_ROUTE_DOWN` | A route became inactive |
+| `ZLINK_GATEWAY_SERVICE_READY` | Local service bind/register became ready |
+| `ZLINK_GATEWAY_SERVICE_LOST` | Local service publication was removed |
+| `ZLINK_GATEWAY_SEND_READY_CHANGED` | Gateway send-readiness changed; `value` is `0` or `1` |
+| `ZLINK_GATEWAY_ROUTE_UP` | A route became active; `value` is current ready route count |
+| `ZLINK_GATEWAY_ROUTE_DOWN` | A route became inactive; `value` is current ready route count |
 
 ### SPOT
 

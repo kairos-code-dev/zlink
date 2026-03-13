@@ -11,12 +11,12 @@ Gateway는 Discovery를 통해 서비스 위치를 자동으로 확인하는 클
 - 공개 서비스 옵션 설정은 `zlink_gateway_set_option()`을 사용합니다.
 - 대표 identity는 `zlink_gateway_set_routing_id()` /
   `zlink_gateway_routing_id()`로 다룹니다.
-- `ZLINK_GATEWAY_SERVICE_READY`, `ZLINK_GATEWAY_ROUTE_UP` 같은 상태 전이는
-  `zlink_gateway_monitor_open()`으로 관찰합니다.
+- 현재 로컬 제어 상태는 `zlink_gateway_monitor_snapshot()`으로 읽습니다.
+- `ZLINK_GATEWAY_SEND_READY_CHANGED`, `ZLINK_GATEWAY_ROUTE_UP` 같은
+  edge 전이는 `zlink_gateway_monitor_open()`으로 관찰합니다.
 - 데이터 readiness는 `zlink_poller_add_gateway()`, monitor readiness는
   `zlink_poller_add_monitor()`으로 같은 루프에 통합합니다.
-- `zlink_gateway_connection_count()`는 디버그/점검 용도로만 보고,
-  새 코드의 기본 readiness 경로로는 사용하지 않는 것이 좋습니다.
+- 운영적인 peer 조회는 registry gateway-peer query를 사용합니다.
 
 ## 상수
 
@@ -252,45 +252,23 @@ Receiver 인증서를 검증하는 데 사용되는 CA 인증서 파일 경로�
 
 ---
 
-### zlink_gateway_router_peers
+### zlink_gateway_monitor_snapshot
 
-Gateway ROUTER 소켓의 peer queue 정보를 조회합니다.
+현재 로컬 monitor 상태를 읽습니다.
 
 ```c
-int zlink_gateway_router_peers(void *gateway,
-                               zlink_peer_info_t *peers,
-                               size_t *count);
+int zlink_gateway_monitor_snapshot(void *gateway,
+                                   zlink_gateway_monitor_snapshot_t *out);
 ```
 
-내부 ROUTER 소켓의 peer 단위 queue 통계(송신/수신 pending 메시지 수 포함)를
-반환합니다. 먼저 `peers = NULL`로 필요한 개수를 조회한 뒤, 버퍼를 할당하여
-다시 호출합니다.
+`send_ready`는 현재 전송 가능한 route가 하나 이상 있으면 `1`입니다.
+`bound_ready`는 로컬 service endpoint가 bind 되어 있으면 `1`입니다.
+`ready_peer_count`는 이 handle이 현재 알고 있는 ready route 수입니다.
+
+late subscriber는 monitor를 열기 전에 이 API로 초기 상태를 읽고,
+그 이후 edge 전이는 monitor로 받는 패턴을 사용합니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
-
-**참고:** `zlink_socket_peers`, `zlink_gateway_connection_count`
-
----
-
-### zlink_gateway_connection_count
-
-서비스에 연결된 수신자 수를 반환합니다.
-
-```c
-int zlink_gateway_connection_count(void *gateway,
-                                   const char *service_name);
-```
-
-지정된 서비스 이름에 대해 현재 연결된 Receiver 수를 반환합니다. 이는
-Discovery가 보고하는 수가 아닌 활성 전송 수준 연결을 반영합니다.
-
-**반환값:** 성공 시 연결 수(0 이상), 실패 시 `-1` (errno가 설정됨).
-
-**스레드 안전성:** 스레드 안전하지 않음.
-
-**참고:** `zlink_discovery_receiver_count`
 
 ---
 

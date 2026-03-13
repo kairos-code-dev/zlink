@@ -77,9 +77,6 @@ void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 
-/* 서비스 구독 */
-zlink_discovery_subscribe(discovery, "payment-service");
-
 /* 서비스 가용 확인 */
 while (!zlink_discovery_service_available(discovery, "payment-service")) {
     printf("대기 중...\n");

@@ -26,6 +26,9 @@ static const uint16_t msg_topology_report = 0x000A;
 static const uint16_t msg_topology_query = 0x000B;
 static const uint16_t msg_topology_reply = 0x000C;
 static const uint16_t msg_unregister_ack = 0x000D;
+static const uint16_t msg_gateway_peer_report = 0x000E;
+static const uint16_t msg_gateway_peer_query = 0x000F;
+static const uint16_t msg_gateway_peer_reply = 0x0010;
 
 static const uint16_t service_type_gateway_receiver = 1;
 static const uint16_t service_type_spot_node = 2;

@@ -69,9 +69,6 @@ class gateway_t : public discovery_observer_t
     int set_routing_id (const void *data_, size_t size_);
     int routing_id (zlink_routing_id_t *out_);
     int last_endpoint (char *endpoint_out_, size_t *size_out_) const;
-    int peer_info (const zlink_routing_id_t *routing_id_,
-                   zlink_gateway_peer_info_t *info_out_) const;
-    int router_peers (zlink_gateway_peer_info_t *peers_, size_t *count_) const;
     int update_peer_weight (const zlink_routing_id_t *routing_id_,
                             uint32_t weight_);
     int set_option (int option_, const void *optval_, size_t optvallen_);
@@ -84,7 +81,7 @@ class gateway_t : public discovery_observer_t
     bool enter_pollable_mode ();
     void lock_routing_id ();
     int ensure_facade_mode () const;
-    int connection_count ();
+    int monitor_snapshot (zlink_gateway_monitor_snapshot_t *out_);
     int set_handler (zlink_socket_msg_handler_fn handler_);
     int set_send_ready_handler (zlink_send_ready_handler_fn handler_);
     int set_tls_client (const char *ca_cert_,
@@ -130,6 +127,13 @@ class gateway_t : public discovery_observer_t
                           uint16_t state_,
                           uint32_t ready_count_,
                           int32_t error_code_);
+    void report_gateway_peer (const std::string &service_name_,
+                              const std::string &peer_endpoint_,
+                              const zlink_routing_id_t &peer_routing_id_,
+                              uint32_t weight_,
+                              uint16_t state_,
+                              uint64_t connected_since_ms);
+    void sync_gateway_peer_reports (uint64_t now_ms_);
     static void refresh_task (void *arg_);
     void refresh_tick ();
 

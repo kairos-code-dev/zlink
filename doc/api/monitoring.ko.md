@@ -347,11 +347,11 @@ typedef struct zlink_service_event_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_GATEWAY_SERVICE_READY` | `1 << 8` | Gateway 서비스 준비 완료 (하나 이상의 Receiver 연결됨) |
-| `ZLINK_GATEWAY_SERVICE_LOST` | `1 << 9` | Gateway 서비스 손실 (모든 Receiver 연결 해제됨) |
-| `ZLINK_GATEWAY_CONNECTION_COUNT_CHANGED` | `1 << 10` | 연결된 Receiver 수 변경됨 |
-| `ZLINK_GATEWAY_ROUTE_UP` | `1 << 11` | Receiver로의 경로 활성화됨 |
-| `ZLINK_GATEWAY_ROUTE_DOWN` | `1 << 12` | Receiver로의 경로 비활성화됨 |
+| `ZLINK_GATEWAY_SERVICE_READY` | `1 << 8` | 로컬 Gateway service bind/register 준비 완료 |
+| `ZLINK_GATEWAY_SERVICE_LOST` | `1 << 9` | 로컬 Gateway service publication 제거됨 |
+| `ZLINK_GATEWAY_SEND_READY_CHANGED` | `1 << 10` | aggregate send readiness 변화, `value`는 `0` 또는 `1` |
+| `ZLINK_GATEWAY_ROUTE_UP` | `1 << 11` | Receiver로의 경로 활성화됨, `value`는 현재 ready route 수 |
+| `ZLINK_GATEWAY_ROUTE_DOWN` | `1 << 12` | Receiver로의 경로 비활성화됨, `value`는 현재 ready route 수 |
 
 #### Receiver 이벤트
 
@@ -413,7 +413,7 @@ void *zlink_gateway_monitor_open(void *gateway, int events);
 `events` 비트마스크와 일치하는 Gateway 이벤트를 전달하는 서비스 모니터를
 생성합니다. `ZLINK_GATEWAY_SERVICE_READY`, `ZLINK_GATEWAY_SERVICE_LOST`,
 `ZLINK_GATEWAY_ROUTE_UP`, `ZLINK_GATEWAY_ROUTE_DOWN`,
-`ZLINK_GATEWAY_CONNECTION_COUNT_CHANGED` 및 공통 이벤트 상수를 사용합니다.
+`ZLINK_GATEWAY_SEND_READY_CHANGED` 및 공통 이벤트 상수를 사용합니다.
 
 **반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
 

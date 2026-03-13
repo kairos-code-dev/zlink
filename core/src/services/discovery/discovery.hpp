@@ -54,8 +54,6 @@ class discovery_t
     bool check_tag () const;
 
     int connect_registry (const char *registry_endpoint_);
-    int subscribe (const char *service_name_);
-    int unsubscribe (const char *service_name_);
     int set_routing_id (const void *data_, size_t size_);
     int routing_id (zlink_routing_id_t *out_) const;
     int set_socket_option (int socket_role_,
@@ -64,11 +62,6 @@ class discovery_t
                            size_t optvallen_);
     void *monitor_open (int events_);
 
-    int get_receivers (const char *service_name_,
-                       zlink_receiver_info_t *providers_,
-                       size_t *count_);
-    int receiver_count (const char *service_name_);
-    int service_available (const char *service_name_);
     int destroy ();
     void set_discovery_summary_enabled (bool enabled_);
     int register_service (uint16_t service_type_,
@@ -95,6 +88,8 @@ class discovery_t
     void add_observer (discovery_observer_t *observer_);
     void remove_observer (discovery_observer_t *observer_);
     void upsert_service_summary (const zlink_registry_topology_entry_t &entry_);
+    void upsert_gateway_peer_summary (
+      const zlink_registry_gateway_peer_entry_t &entry_);
     void erase_service_summary (uint16_t service_kind_,
                                 const zlink_routing_id_t &routing_id_,
                                 const std::string &service_name_,
@@ -126,6 +121,7 @@ class discovery_t
     int ensure_control_dealer_locked (const std::string &uplink_endpoint_,
                                       socket_base_t **dealer_out_);
     void flush_topology_reports ();
+    void flush_gateway_peer_reports ();
     void refresh_registered_service_heartbeats (uint64_t now_ms_);
 
     struct topology_key_t
@@ -149,6 +145,28 @@ class discovery_t
         zlink_registry_topology_entry_t entry;
         bool dirty;
         bool tombstone;
+    };
+
+    struct gateway_peer_key_t
+    {
+        std::string gateway_routing_id_key;
+        std::string service_name;
+        std::string peer_routing_id_key;
+
+        bool operator< (const gateway_peer_key_t &other_) const
+        {
+            if (gateway_routing_id_key != other_.gateway_routing_id_key)
+                return gateway_routing_id_key < other_.gateway_routing_id_key;
+            if (service_name != other_.service_name)
+                return service_name < other_.service_name;
+            return peer_routing_id_key < other_.peer_routing_id_key;
+        }
+    };
+
+    struct gateway_peer_summary_t
+    {
+        zlink_registry_gateway_peer_entry_t entry;
+        bool dirty;
     };
 
     struct bootstrap_state_t
@@ -219,7 +237,6 @@ class discovery_t
     std::map<std::string, socket_base_t *> _control_dealers;
     std::map<std::string, service_state_t> _services;
     std::map<uint32_t, uint64_t> _registry_seq;
-    std::set<std::string> _subscriptions;
     std::set<discovery_observer_t *> _observers;
     condition_variable_t _observer_cv;
     size_t _observer_callbacks_inflight;
@@ -239,6 +256,7 @@ class discovery_t
     uint32_t _heartbeat_interval_ms;
     std::map<registered_service_key_t, registered_service_t> _registered_services;
     std::map<topology_key_t, topology_summary_t> _summary_store;
+    std::map<gateway_peer_key_t, gateway_peer_summary_t> _gateway_peer_summary_store;
     service_monitor_hub_t _monitor;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (discovery_t)
 };

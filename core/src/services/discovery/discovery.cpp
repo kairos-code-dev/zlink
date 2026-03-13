@@ -88,6 +88,21 @@ static bool send_topology_report_frames (socket_base_t *dealer_,
                 >= 0;
 }
 
+static bool send_gateway_peer_report_frames (
+  socket_base_t *dealer_,
+  const zlink_registry_gateway_peer_entry_t &entry_)
+{
+    if (!dealer_)
+        return false;
+
+    return zlink::discovery_protocol::send_u16 (
+             dealer_, discovery_protocol::msg_gateway_peer_report, ZLINK_SNDMORE)
+             >= 0
+           && zlink::discovery_protocol::send_frame (
+                dealer_, &entry_, sizeof (entry_), 0)
+                >= 0;
+}
+
 static bool wait_socket_event (void *socket_, short events_, long timeout_ms_)
 {
     return zlink::wait_socket_events_internal (socket_, events_, timeout_ms_) > 0;
@@ -345,29 +360,6 @@ int discovery_t::connect_registry (const char *registry_endpoint_)
             runtime->wakeup_task (_task_id);
     }
 
-    return 0;
-}
-
-int discovery_t::subscribe (const char *service_name_)
-{
-    if (!service_name_ || service_name_[0] == '\0') {
-        errno = EINVAL;
-        return -1;
-    }
-    scoped_lock_t lock (_sync);
-    _routing_id_locked = true;
-    _subscriptions.insert (service_name_);
-    return 0;
-}
-
-int discovery_t::unsubscribe (const char *service_name_)
-{
-    if (!service_name_ || service_name_[0] == '\0') {
-        errno = EINVAL;
-        return -1;
-    }
-    scoped_lock_t lock (_sync);
-    _subscriptions.erase (service_name_);
     return 0;
 }
 
@@ -689,9 +681,6 @@ void discovery_t::snapshot_providers (const std::string &service_name_,
         return;
     out_->clear ();
     scoped_lock_t lock (_sync);
-    if (!_subscriptions.empty ()
-        && _subscriptions.find (service_name_) == _subscriptions.end ())
-        return;
     std::map<std::string, service_state_t>::iterator it =
       _services.find (service_name_);
     if (it == _services.end ())
@@ -769,6 +758,31 @@ void discovery_t::upsert_service_summary (
         runtime->wakeup_task (_task_id);
 }
 
+void discovery_t::upsert_gateway_peer_summary (
+  const zlink_registry_gateway_peer_entry_t &entry_)
+{
+    if (entry_.gateway_routing_id.size == 0 || entry_.peer_routing_id.size == 0
+        || entry_.service_name[0] == '\0') {
+        return;
+    }
+
+    gateway_peer_key_t key;
+    key.gateway_routing_id_key = topology_routing_key (entry_.gateway_routing_id);
+    key.service_name = entry_.service_name;
+    key.peer_routing_id_key = topology_routing_key (entry_.peer_routing_id);
+
+    {
+        scoped_lock_t lock (_sync);
+        gateway_peer_summary_t &summary = _gateway_peer_summary_store[key];
+        summary.entry = entry_;
+        summary.dirty = true;
+    }
+
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (runtime && _task_id != 0)
+        runtime->wakeup_task (_task_id);
+}
+
 void discovery_t::erase_service_summary (uint16_t service_kind_,
                                          const zlink_routing_id_t &routing_id_,
                                          const std::string &service_name_,
@@ -804,82 +818,6 @@ void discovery_t::erase_service_summary (uint16_t service_kind_,
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
     if (runtime && _task_id != 0)
         runtime->wakeup_task (_task_id);
-}
-
-int discovery_t::get_receivers (const char *service_name_,
-                                zlink_receiver_info_t *providers_,
-                                size_t *count_)
-{
-    if (!service_name_ || !count_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    {
-        scoped_lock_t lock (_sync);
-        _routing_id_locked = true;
-    }
-
-    std::vector<provider_info_t> snapshot;
-    snapshot_providers (service_name_, &snapshot);
-
-    const size_t capacity = *count_;
-    *count_ = snapshot.size ();
-    if (!providers_)
-        return 0;
-
-    const size_t copy_count = std::min (capacity, snapshot.size ());
-    for (size_t i = 0; i < copy_count; ++i) {
-        const provider_info_t &entry = snapshot[i];
-        memset (&providers_[i], 0, sizeof (providers_[i]));
-        strncpy (providers_[i].service_name, entry.service_name.c_str (),
-                 sizeof (providers_[i].service_name) - 1);
-        strncpy (providers_[i].endpoint, entry.endpoint.c_str (),
-                 sizeof (providers_[i].endpoint) - 1);
-        providers_[i].routing_id = entry.routing_id;
-        providers_[i].weight = entry.weight;
-        providers_[i].registered_at = entry.registered_at;
-    }
-
-    return 0;
-}
-
-int discovery_t::receiver_count (const char *service_name_)
-{
-    if (!service_name_ || service_name_[0] == '\0') {
-        errno = EINVAL;
-        return -1;
-    }
-
-    scoped_lock_t lock (_sync);
-    _routing_id_locked = true;
-    if (!_subscriptions.empty ()
-        && _subscriptions.find (service_name_) == _subscriptions.end ())
-        return 0;
-    std::map<std::string, service_state_t>::iterator it =
-      _services.find (service_name_);
-    if (it == _services.end ())
-        return 0;
-    return static_cast<int> (it->second.providers.size ());
-}
-
-int discovery_t::service_available (const char *service_name_)
-{
-    if (!service_name_ || service_name_[0] == '\0') {
-        errno = EINVAL;
-        return -1;
-    }
-
-    scoped_lock_t lock (_sync);
-    _routing_id_locked = true;
-    if (!_subscriptions.empty ()
-        && _subscriptions.find (service_name_) == _subscriptions.end ())
-        return 0;
-    std::map<std::string, service_state_t>::iterator it =
-      _services.find (service_name_);
-    if (it == _services.end ())
-        return 0;
-    return it->second.providers.empty () ? 0 : 1;
 }
 
 int discovery_t::destroy ()
@@ -1474,6 +1412,7 @@ void discovery_t::tick ()
 
     refresh_registered_service_heartbeats (clock_t ().now_ms ());
     flush_topology_reports ();
+    flush_gateway_peer_reports ();
 }
 
 void discovery_t::notify_observers (const std::set<std::string> &services_)
@@ -1754,6 +1693,73 @@ void discovery_t::flush_topology_reports ()
             std::map<topology_key_t, topology_summary_t>::iterator it =
               _summary_store.find (keys[i]);
             if (it == _summary_store.end () || !sent[i])
+                continue;
+            it->second.dirty = false;
+        }
+    }
+}
+
+void discovery_t::flush_gateway_peer_reports ()
+{
+    if (ensure_topology_reporters () != 0)
+        return;
+
+    std::vector<gateway_peer_key_t> keys;
+    std::vector<zlink_registry_gateway_peer_entry_t> entries;
+    {
+        scoped_lock_t lock (_sync);
+        for (std::map<gateway_peer_key_t, gateway_peer_summary_t>::iterator it =
+               _gateway_peer_summary_store.begin ();
+             it != _gateway_peer_summary_store.end (); ++it) {
+            if (!it->second.dirty)
+                continue;
+            keys.push_back (it->first);
+            entries.push_back (it->second.entry);
+        }
+    }
+
+    if (entries.empty ())
+        return;
+
+    std::vector<bool> sent (entries.size (), false);
+    std::vector<socket_base_t *> dealers;
+    {
+        scoped_lock_t lock (_sync);
+        for (std::map<std::string, socket_base_t *>::const_iterator it =
+               _report_dealers.begin ();
+             it != _report_dealers.end (); ++it) {
+            if (it->second)
+                dealers.push_back (it->second);
+        }
+    }
+    if (dealers.empty ())
+        return;
+
+    scoped_lock_t uplink_lock (_uplink_sync);
+    for (size_t i = 0; i < entries.size (); ++i) {
+        bool all_sent = true;
+        for (size_t d = 0; d < dealers.size (); ++d) {
+            if (!wait_socket_event (static_cast<void *> (dealers[d]),
+                                    ZLINK_POLLOUT, 0)) {
+                all_sent = false;
+                continue;
+            }
+            if (!send_gateway_peer_report_frames (dealers[d], entries[i]))
+                all_sent = false;
+        }
+        sent[i] = all_sent;
+        if (!all_sent) {
+            discovery_debugf ("gateway peer report send failed service=%s errno=%d",
+                              entries[i].service_name, errno);
+        }
+    }
+
+    {
+        scoped_lock_t lock (_sync);
+        for (size_t i = 0; i < keys.size (); ++i) {
+            std::map<gateway_peer_key_t, gateway_peer_summary_t>::iterator it =
+              _gateway_peer_summary_store.find (keys[i]);
+            if (it == _gateway_peer_summary_store.end () || !sent[i])
                 continue;
             it->second.dirty = false;
         }

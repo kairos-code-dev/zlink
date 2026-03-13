@@ -148,6 +148,10 @@ uint32_t service_monitor_hub_t::event_delivery_mask (
         case ZLINK_GATEWAY_SERVICE_LOST:
             mask |= ZLINK_MONITOR_EVENT_LOST;
             break;
+        case ZLINK_GATEWAY_SEND_READY_CHANGED:
+            mask |= event_.value > 0 ? ZLINK_MONITOR_EVENT_READY
+                                     : ZLINK_MONITOR_EVENT_LOST;
+            break;
         case ZLINK_GATEWAY_ROUTE_UP:
             mask |= ZLINK_MONITOR_EVENT_PEER_UP;
             break;

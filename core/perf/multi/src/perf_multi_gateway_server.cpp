@@ -225,18 +225,19 @@ bool wait_for_gateway_peers(void *gateway, size_t target_count, int timeout_ms)
       + std::chrono::milliseconds(std::max(1, timeout_ms));
 
     while (std::chrono::steady_clock::now() < deadline) {
-        if (zlink_gateway_connection_count(gateway) >= expected)
+        zlink_gateway_monitor_snapshot_t snapshot;
+        memset(&snapshot, 0, sizeof(snapshot));
+        if (zlink_gateway_monitor_snapshot(gateway, &snapshot) == 0
+            && static_cast<int>(snapshot.ready_peer_count) >= expected) {
             return true;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    return zlink_gateway_connection_count(gateway) >= expected;
-}
-
-unsigned long long gateway_peer_score(const zlink_gateway_peer_info_t &info)
-{
-    return static_cast<unsigned long long>(info.msgs_sent)
-           + static_cast<unsigned long long>(info.msgs_received);
+    zlink_gateway_monitor_snapshot_t snapshot;
+    memset(&snapshot, 0, sizeof(snapshot));
+    return zlink_gateway_monitor_snapshot(gateway, &snapshot) == 0
+           && static_cast<int>(snapshot.ready_peer_count) >= expected;
 }
 
 server_queue_stats_t sample_gateway_queue_stats(void *gateway,
@@ -246,39 +247,11 @@ server_queue_stats_t sample_gateway_queue_stats(void *gateway,
     if (!gateway)
         return stats;
 
-    size_t peer_count = 0;
-    if (zlink_gateway_router_peers(gateway, NULL, &peer_count) != 0
-        || peer_count == 0) {
-        stats.snd_pending_max = static_cast<double>(pending_depth);
-        return stats;
-    }
-
-    std::vector<zlink_gateway_peer_info_t> peers(peer_count);
-    size_t filled = peer_count;
-    if (zlink_gateway_router_peers(gateway, &peers[0], &filled) != 0
-        || filled == 0) {
-        stats.snd_pending_max = static_cast<double>(pending_depth);
-        return stats;
-    }
-
-    size_t best = 0;
-    for (size_t i = 1; i < filled; ++i) {
-        if (peers[i].connected_time > peers[best].connected_time
-            || (peers[i].connected_time == peers[best].connected_time
-                && gateway_peer_score(peers[i])
-                     > gateway_peer_score(peers[best]))) {
-            best = i;
-        }
-    }
-
-    stats.snd_pending_max = static_cast<double>(
-      std::max<unsigned long long>(
-        peers[best].snd_pending_msgs,
-        static_cast<unsigned long long>(pending_depth)));
-    stats.rcv_pending_max =
-      static_cast<double>(peers[best].rcv_pending_msgs);
-    stats.rcv_pending_end =
-      static_cast<double>(peers[best].rcv_pending_msgs);
+    // Registry-based gateway peer introspection intentionally does not expose
+    // socket queue counters. Preserve the local pending depth signal only.
+    stats.snd_pending_max = static_cast<double>(pending_depth);
+    stats.rcv_pending_max = 0.0;
+    stats.rcv_pending_end = 0.0;
     return stats;
 }
 

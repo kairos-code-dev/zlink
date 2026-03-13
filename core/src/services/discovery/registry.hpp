@@ -38,6 +38,12 @@ class registry_t
     int topology_query (const zlink_registry_topology_filter_t *filter_,
                         zlink_registry_topology_entry_t *entries_,
                         size_t *count_);
+    int gateway_peers_snapshot (zlink_registry_gateway_peer_entry_t *entries_,
+                                size_t *count_);
+    int gateway_peers_query (
+      const zlink_registry_gateway_peer_filter_t *filter_,
+      zlink_registry_gateway_peer_entry_t *entries_,
+      size_t *count_);
     int start ();
     int destroy ();
 
@@ -95,6 +101,27 @@ class registry_t
         zlink_registry_topology_entry_t entry;
     };
 
+    struct gateway_peer_key_t
+    {
+        std::string gateway_routing_id_key;
+        std::string service_name;
+        std::string peer_routing_id_key;
+
+        bool operator< (const gateway_peer_key_t &other_) const
+        {
+            if (gateway_routing_id_key != other_.gateway_routing_id_key)
+                return gateway_routing_id_key < other_.gateway_routing_id_key;
+            if (service_name != other_.service_name)
+                return service_name < other_.service_name;
+            return peer_routing_id_key < other_.peer_routing_id_key;
+        }
+    };
+
+    struct gateway_peer_entry_t
+    {
+        zlink_registry_gateway_peer_entry_t entry;
+    };
+
     static void control_task (void *arg_);
     void tick ();
     int ensure_sockets ();
@@ -116,6 +143,12 @@ class registry_t
                                 const zlink_msg_t *frames_,
                                 size_t frame_count_,
                                 const zlink_routing_id_t &sender_id_);
+    void handle_gateway_peer_report (const zlink_msg_t *frames_,
+                                     size_t frame_count_);
+    void handle_gateway_peer_query (void *router_,
+                                    const zlink_msg_t *frames_,
+                                    size_t frame_count_,
+                                    const zlink_routing_id_t &sender_id_);
     void handle_update_weight (void *router_, const zlink_msg_t *frames_,
                                size_t frame_count_,
                                const zlink_routing_id_t &sender_id_);
@@ -132,10 +165,17 @@ class registry_t
                               const zlink_routing_id_t &sender_id_,
                               const std::vector<zlink_registry_topology_entry_t>
                                 &entries_);
+    void send_gateway_peer_reply (
+      void *router_,
+      const zlink_routing_id_t &sender_id_,
+      const std::vector<zlink_registry_gateway_peer_entry_t> &entries_);
     void send_bootstrap_reply (void *router_,
                                const zlink_routing_id_t &sender_id_);
     void upsert_topology_entry (const zlink_registry_topology_entry_t &entry_,
                                 uint64_t now_ms_);
+    void upsert_gateway_peer_entry (
+      const zlink_registry_gateway_peer_entry_t &entry_,
+      uint64_t now_ms_);
     void send_service_list (void *pub_);
     void remove_expired (uint64_t now_ms_);
 
@@ -179,6 +219,7 @@ class registry_t
 
     service_map_t _services;
     std::map<topology_key_t, topology_entry_t> _topology;
+    std::map<gateway_peer_key_t, gateway_peer_entry_t> _gateway_peers;
     std::map<uint32_t, uint64_t> _peer_seq;
     std::map<uint32_t, uint64_t> _peer_last_seen;
 

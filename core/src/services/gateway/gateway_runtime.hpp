@@ -23,6 +23,20 @@ struct gateway_runtime_t
 {
     explicit gateway_runtime_t (gateway_t *owner_);
 
+    struct gateway_peer_report_t
+    {
+        std::string service_name;
+        std::string peer_endpoint;
+        zlink_routing_id_t peer_routing_id;
+        uint32_t weight;
+        uint64_t connected_since_ms;
+
+        gateway_peer_report_t () : weight (0), connected_since_ms (0)
+        {
+            peer_routing_id.size = 0;
+        }
+    };
+
     gateway_t *owner;
     service_runtime_base_t lifecycle;
     void *monitor_socket;
@@ -41,6 +55,8 @@ struct gateway_runtime_t
     std::map<std::string, uint64_t> rid_connect_not_before_ms;
     std::set<std::string> down_endpoints;
     std::map<std::string, uint64_t> down_until_ms;
+    std::map<std::string, gateway_peer_report_t> ready_peer_reports;
+    uint64_t next_gateway_peer_report_ms;
     bool force_refresh_all;
     std::set<std::string> pending_updates;
     clock_t clock;

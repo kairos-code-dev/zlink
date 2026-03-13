@@ -35,7 +35,7 @@ public function, type, and constant exported by `<zlink.h>`.
 | [`zlink_peer_info_t`](monitoring.md) | monitoring.md | Connected-peer statistics (routing id, address, counters) |
 | [`zlink_service_event_t`](events.md) | events.md | Service monitor event structure and subject-aware payload |
 | [`zlink_receiver_info_t`](discovery.md) | discovery.md | Discovered service-receiver entry (name, endpoint, weight) |
-| [`zlink_gateway_peer_info_t`](gateway.md) | gateway.md | Gateway peer info with weight |
+| [`zlink_gateway_monitor_snapshot_t`](gateway.md) | gateway.md | Local gateway control snapshot (bind/send readiness) |
 
 ## Callback Types
 

@@ -117,11 +117,11 @@ disconnect reason:
 
 | 상수 | 의미 |
 |---|---|
-| `ZLINK_GATEWAY_SERVICE_READY` | 하나 이상의 route가 ready |
-| `ZLINK_GATEWAY_SERVICE_LOST` | 모든 route 상실 |
-| `ZLINK_GATEWAY_CONNECTION_COUNT_CHANGED` | 연결 수 변경 |
-| `ZLINK_GATEWAY_ROUTE_UP` | route 활성화 |
-| `ZLINK_GATEWAY_ROUTE_DOWN` | route 비활성화 |
+| `ZLINK_GATEWAY_SERVICE_READY` | 로컬 service bind/register 준비 완료 |
+| `ZLINK_GATEWAY_SERVICE_LOST` | 로컬 service publication 제거됨 |
+| `ZLINK_GATEWAY_SEND_READY_CHANGED` | Gateway send readiness 변화, `value`는 `0` 또는 `1` |
+| `ZLINK_GATEWAY_ROUTE_UP` | route 활성화, `value`는 현재 ready route 수 |
+| `ZLINK_GATEWAY_ROUTE_DOWN` | route 비활성화, `value`는 현재 ready route 수 |
 
 ### SPOT
 

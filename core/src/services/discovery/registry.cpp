@@ -88,6 +88,40 @@ static bool topology_filter_match (
     return true;
 }
 
+static bool gateway_peer_filter_match (
+  const zlink_registry_gateway_peer_entry_t &entry_,
+  const zlink_registry_gateway_peer_filter_t *filter_)
+{
+    if (!filter_)
+        return true;
+    if (filter_->state != 0 && filter_->state != entry_.state)
+        return false;
+    if (filter_->service_name[0] != '\0'
+        && strcmp (filter_->service_name, entry_.service_name) != 0) {
+        return false;
+    }
+    if (filter_->gateway_routing_id.size > 0) {
+        if (filter_->gateway_routing_id.size != entry_.gateway_routing_id.size)
+            return false;
+        if (memcmp (filter_->gateway_routing_id.data,
+                    entry_.gateway_routing_id.data,
+                    filter_->gateway_routing_id.size)
+            != 0) {
+            return false;
+        }
+    }
+    if (filter_->peer_routing_id.size > 0) {
+        if (filter_->peer_routing_id.size != entry_.peer_routing_id.size)
+            return false;
+        if (memcmp (filter_->peer_routing_id.data, entry_.peer_routing_id.data,
+                    filter_->peer_routing_id.size)
+            != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 registry_t::registry_t (ctx_t *ctx_) :
     _ctx (ctx_),
     _tag (registry_tag_value),
@@ -109,6 +143,15 @@ registry_t::registry_t (ctx_t *ctx_) :
     _next_socket_retry_ms (0)
 {
     zlink_assert (_ctx);
+
+    // Default to failing undeliverable registry replies instead of
+    // silently dropping them on the ROUTER socket.
+    socket_opt_t mandatory_opt;
+    mandatory_opt.option = ZLINK_ROUTER_MANDATORY;
+    mandatory_opt.value.resize (sizeof (int));
+    const int mandatory = 1;
+    memcpy (&mandatory_opt.value[0], &mandatory, sizeof (mandatory));
+    _router_opts.push_back (mandatory_opt);
 }
 
 registry_t::~registry_t ()
@@ -276,6 +319,49 @@ int registry_t::topology_query (const zlink_registry_topology_filter_t *filter_,
     return 0;
 }
 
+int registry_t::gateway_peers_snapshot (
+  zlink_registry_gateway_peer_entry_t *entries_,
+  size_t *count_)
+{
+    return gateway_peers_query (NULL, entries_, count_);
+}
+
+int registry_t::gateway_peers_query (
+  const zlink_registry_gateway_peer_filter_t *filter_,
+  zlink_registry_gateway_peer_entry_t *entries_,
+  size_t *count_)
+{
+    if (!count_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::vector<zlink_registry_gateway_peer_entry_t> matched;
+    {
+        scoped_lock_t lock (_sync);
+        for (std::map<gateway_peer_key_t, gateway_peer_entry_t>::const_iterator it =
+               _gateway_peers.begin ();
+             it != _gateway_peers.end (); ++it) {
+            if (gateway_peer_filter_match (it->second.entry, filter_))
+                matched.push_back (it->second.entry);
+        }
+    }
+
+    if (!entries_) {
+        *count_ = matched.size ();
+        return 0;
+    }
+    if (*count_ < matched.size ()) {
+        *count_ = matched.size ();
+        errno = ENOBUFS;
+        return -1;
+    }
+    for (size_t i = 0; i < matched.size (); ++i)
+        entries_[i] = matched[i];
+    *count_ = matched.size ();
+    return 0;
+}
+
 int registry_t::start ()
 {
     {
@@ -389,11 +475,6 @@ int registry_t::ensure_sockets ()
 
     int verbose = 1;
     zlink_setsockopt (pub, ZLINK_XPUB_VERBOSE, &verbose, sizeof (verbose));
-    if (std::getenv ("ZLINK_REGISTRY_DEBUG")) {
-        int mandatory = 1;
-        zlink_setsockopt (router, ZLINK_ROUTER_MANDATORY, &mandatory,
-                          sizeof (mandatory));
-    }
 
     if (pub->bind (_pub_endpoint.c_str ()) != 0
         || router->bind (_router_endpoint.c_str ()) != 0) {
@@ -676,6 +757,12 @@ void registry_t::handle_router (void *router_)
             break;
         case discovery_protocol::msg_topology_query:
             handle_topology_query (router_, &frames[0], frames.size (), sender);
+            break;
+        case discovery_protocol::msg_gateway_peer_report:
+            handle_gateway_peer_report (&frames[0], frames.size ());
+            break;
+        case discovery_protocol::msg_gateway_peer_query:
+            handle_gateway_peer_query (router_, &frames[0], frames.size (), sender);
             break;
         case discovery_protocol::msg_update_weight:
             handle_update_weight (router_, &frames[0], frames.size (), sender);
@@ -1080,6 +1167,23 @@ void registry_t::handle_topology_report (const zlink_msg_t *frames_,
     upsert_topology_entry (entry, zlink::clock_t ().now_ms ());
 }
 
+void registry_t::handle_gateway_peer_report (const zlink_msg_t *frames_,
+                                             size_t frame_count_)
+{
+    if (frame_count_ < 2)
+        return;
+    if (zlink_msg_size (&frames_[1])
+        != sizeof (zlink_registry_gateway_peer_entry_t)) {
+        return;
+    }
+
+    zlink_registry_gateway_peer_entry_t entry;
+    memcpy (&entry,
+            zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[1])),
+            sizeof (entry));
+    upsert_gateway_peer_entry (entry, zlink::clock_t ().now_ms ());
+}
+
 void registry_t::handle_topology_query (void *router_,
                                         const zlink_msg_t *frames_,
                                         size_t frame_count_,
@@ -1107,6 +1211,36 @@ void registry_t::handle_topology_query (void *router_,
         }
     }
     send_topology_reply (router_, sender_id_, entries);
+}
+
+void registry_t::handle_gateway_peer_query (
+  void *router_,
+  const zlink_msg_t *frames_,
+  size_t frame_count_,
+  const zlink_routing_id_t &sender_id_)
+{
+    zlink_registry_gateway_peer_filter_t filter;
+    memset (&filter, 0, sizeof (filter));
+    const zlink_registry_gateway_peer_filter_t *filter_ptr = NULL;
+
+    if (frame_count_ >= 2 && zlink_msg_size (&frames_[1]) == sizeof (filter)) {
+        memcpy (&filter,
+                zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[1])),
+                sizeof (filter));
+        filter_ptr = &filter;
+    }
+
+    std::vector<zlink_registry_gateway_peer_entry_t> entries;
+    {
+        scoped_lock_t lock (_sync);
+        for (std::map<gateway_peer_key_t, gateway_peer_entry_t>::const_iterator it =
+               _gateway_peers.begin ();
+             it != _gateway_peers.end (); ++it) {
+            if (gateway_peer_filter_match (it->second.entry, filter_ptr))
+                entries.push_back (it->second.entry);
+        }
+    }
+    send_gateway_peer_reply (router_, sender_id_, entries);
 }
 
 void registry_t::handle_update_weight (void *router_, const zlink_msg_t *frames_,
@@ -1267,6 +1401,32 @@ void registry_t::send_topology_reply (
     }
 }
 
+void registry_t::send_gateway_peer_reply (
+  void *router_,
+  const zlink_routing_id_t &sender_id_,
+  const std::vector<zlink_registry_gateway_peer_entry_t> &entries_)
+{
+    zlink_msg_t id_frame;
+    zlink_msg_init_size (&id_frame, sender_id_.size);
+    if (sender_id_.size > 0)
+        memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
+    if (zlink_msg_send (&id_frame, router_, ZLINK_SNDMORE) == -1) {
+        zlink_msg_close (&id_frame);
+        return;
+    }
+
+    discovery_protocol::send_u16 (
+      router_, discovery_protocol::msg_gateway_peer_reply, ZLINK_SNDMORE);
+    discovery_protocol::send_u32 (router_,
+                                  static_cast<uint32_t> (entries_.size ()),
+                                  entries_.empty () ? 0 : ZLINK_SNDMORE);
+    for (size_t i = 0; i < entries_.size (); ++i) {
+        discovery_protocol::send_frame (
+          router_, &entries_[i], sizeof (entries_[i]),
+          (i + 1 == entries_.size ()) ? 0 : ZLINK_SNDMORE);
+    }
+}
+
 void registry_t::send_bootstrap_reply (void *router_,
                                        const zlink_routing_id_t &sender_id_)
 {
@@ -1327,6 +1487,20 @@ void registry_t::upsert_topology_entry (
     key.service_name = entry_.service_name;
 
     topology_entry_t &stored = _topology[key];
+    stored.entry = entry_;
+    stored.entry.last_reported_ms = now_ms_;
+}
+
+void registry_t::upsert_gateway_peer_entry (
+  const zlink_registry_gateway_peer_entry_t &entry_,
+  uint64_t now_ms_)
+{
+    gateway_peer_key_t key;
+    key.gateway_routing_id_key = topology_routing_key (entry_.gateway_routing_id);
+    key.service_name = entry_.service_name;
+    key.peer_routing_id_key = topology_routing_key (entry_.peer_routing_id);
+
+    gateway_peer_entry_t &stored = _gateway_peers[key];
     stored.entry = entry_;
     stored.entry.last_reported_ms = now_ms_;
 }
@@ -1476,6 +1650,26 @@ void registry_t::remove_expired (uint64_t now_ms_)
             }
         } else if (age > stale_gc_timeout_ms) {
             it = _topology.erase (it);
+            continue;
+        } else if (age > report_timeout_ms && entry.state == ZLINK_TOPOLOGY_STATE_READY) {
+            entry.state = ZLINK_TOPOLOGY_STATE_LOST;
+        }
+        ++it;
+    }
+
+    for (std::map<gateway_peer_key_t, gateway_peer_entry_t>::iterator it =
+           _gateway_peers.begin ();
+         it != _gateway_peers.end ();) {
+        zlink_registry_gateway_peer_entry_t &entry = it->second.entry;
+        const uint64_t age =
+          now_ms_ > entry.last_reported_ms ? now_ms_ - entry.last_reported_ms : 0;
+        if (entry.state == ZLINK_TOPOLOGY_STATE_STOPPED) {
+            if (age > stopped_gc_timeout_ms) {
+                it = _gateway_peers.erase (it);
+                continue;
+            }
+        } else if (age > stale_gc_timeout_ms) {
+            it = _gateway_peers.erase (it);
             continue;
         } else if (age > report_timeout_ms && entry.state == ZLINK_TOPOLOGY_STATE_READY) {
             entry.state = ZLINK_TOPOLOGY_STATE_LOST;

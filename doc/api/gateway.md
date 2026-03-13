@@ -17,8 +17,10 @@ time. There is no `recv()` function.
   peer management (before discovery attachment only).
 - Use `zlink_gateway_set_option()` for service-level tuning.
 - Use `zlink_gateway_set_send_ready_handler()` for send-side backpressure.
-- Use `zlink_gateway_monitor_open()` for state transitions such as
-  `ZLINK_GATEWAY_SERVICE_READY` and `ZLINK_GATEWAY_ROUTE_UP`.
+- Use `zlink_gateway_monitor_snapshot()` to read current local control state.
+- Use `zlink_gateway_monitor_open()` for edge transitions such as
+  `ZLINK_GATEWAY_SEND_READY_CHANGED` and `ZLINK_GATEWAY_ROUTE_UP`.
+- Use registry gateway-peer query APIs for operational peer inspection.
 
 ## Constants
 
@@ -62,20 +64,16 @@ typedef enum zlink_gateway_option_t
 
 ## Types
 
-### zlink_gateway_peer_info_t
+### zlink_gateway_monitor_snapshot_t
 
 ```c
-typedef struct zlink_gateway_peer_info_t
+typedef struct zlink_gateway_monitor_snapshot_t
 {
-    zlink_routing_id_t routing_id;
-    char remote_addr[256];
-    uint64_t connected_time;
-    uint64_t msgs_sent;
-    uint64_t msgs_received;
-    uint64_t snd_pending_msgs;
-    uint64_t rcv_pending_msgs;
-    uint32_t weight;
-} zlink_gateway_peer_info_t;
+    uint32_t ready_peer_count;
+    uint8_t send_ready;
+    uint8_t bound_ready;
+    uint8_t reserved[2];
+} zlink_gateway_monitor_snapshot_t;
 ```
 
 ## Functions
@@ -238,6 +236,8 @@ int zlink_gateway_set_send_ready_handler (
 ```
 
 The handler is invoked when the Gateway transitions to writable.
+Use `zlink_gateway_monitor_snapshot()` to seed initial state when the handler
+is installed after startup.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
@@ -378,54 +378,25 @@ int zlink_gateway_last_endpoint (void *gateway,
 
 ---
 
-### zlink_gateway_connection_count
+### zlink_gateway_monitor_snapshot
 
-Return the number of receivers connected.
-
-```c
-int zlink_gateway_connection_count (void *gateway);
-```
-
-Returns the number of peers currently connected. This reflects active
-transport-level connections, not the count reported by Discovery.
-
-**Returns:** The connection count on success (zero or positive), or `-1` on
-failure.
-
----
-
-### zlink_gateway_peer_info
-
-Return queue/peer info for a specific peer.
+Read the current local monitor state.
 
 ```c
-int zlink_gateway_peer_info (void *gateway,
-                             const zlink_routing_id_t *routing_id,
-                             zlink_gateway_peer_info_t *info);
+int zlink_gateway_monitor_snapshot (
+  void *gateway,
+  zlink_gateway_monitor_snapshot_t *out);
 ```
+
+Returns the current control snapshot for this Gateway. `send_ready` is `1`
+when at least one route is currently usable for send. `bound_ready` is `1`
+when the local service endpoint is bound. `ready_peer_count` is the current
+number of ready routes known to this handle.
+
+This API is intended to seed state before opening a monitor or when a caller
+needs a local readiness snapshot without polling transport internals.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**See also:** `zlink_gateway_router_peers`
-
----
-
-### zlink_gateway_router_peers
-
-Enumerate peer queue info from the Gateway ROUTER socket.
-
-```c
-int zlink_gateway_router_peers (void *gateway,
-                                zlink_gateway_peer_info_t *peers,
-                                size_t *count);
-```
-
-Returns peer-level queue stats. Use `peers = NULL` to query required count
-first, then call again with an allocated array.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**See also:** `zlink_gateway_peer_info`, `zlink_gateway_connection_count`
 
 ---
 

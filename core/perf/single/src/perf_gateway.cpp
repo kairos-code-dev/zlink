@@ -1,10 +1,13 @@
 #include "../common/bench_common.hpp"
 #include "../common/perf_single_metric_header.hpp"
+#include "../../../src/core/monitor_dispatch_internal.hpp"
 
 #include <atomic>
 #include <condition_variable>
 #include <cstring>
+#include <map>
 #include <mutex>
+#include <new>
 #include <thread>
 #include <vector>
 
@@ -84,49 +87,8 @@ struct gateway_queue_probe_t
             .count ());
     }
 
-    static unsigned long long peer_score (const zlink_gateway_peer_info_t &info_)
-    {
-        return static_cast<unsigned long long> (info_.msgs_sent)
-               + static_cast<unsigned long long> (info_.msgs_received);
-    }
-
-    bool read_best_peer (zlink_gateway_peer_info_t *info_out_) const
-    {
-        if (!gateway || !info_out_)
-            return false;
-
-        size_t count = 0;
-        if (zlink_gateway_router_peers (gateway, NULL, &count) != 0 || count == 0)
-            return false;
-
-        std::vector<zlink_gateway_peer_info_t> peers (count);
-        size_t filled = count;
-        if (zlink_gateway_router_peers (gateway, &peers[0], &filled) != 0
-            || filled == 0) {
-            return false;
-        }
-
-        size_t best = 0;
-        for (size_t i = 1; i < filled; ++i) {
-            const zlink_gateway_peer_info_t &cand = peers[i];
-            const zlink_gateway_peer_info_t &cur = peers[best];
-            if (cand.connected_time > cur.connected_time
-                || (cand.connected_time == cur.connected_time
-                    && peer_score (cand) > peer_score (cur))) {
-                best = i;
-            }
-        }
-
-        *info_out_ = peers[best];
-        return true;
-    }
-
     void maybe_sample (bool send_path_, bool force_)
     {
-        zlink_gateway_peer_info_t info;
-        if (!read_best_peer (&info))
-            return;
-
         const unsigned long long now = now_ns ();
         unsigned long long &last_sample_ns =
           send_path_ ? last_send_sample_ns : last_recv_sample_ns;
@@ -135,22 +97,10 @@ struct gateway_queue_probe_t
             return;
         }
         last_sample_ns = now;
-
-        if (send_path_) {
-            const unsigned long long pending =
-              static_cast<unsigned long long> (info.snd_pending_msgs);
-            if (!seen_send || pending > snd_pending_max)
-                snd_pending_max = pending;
-            seen_send = true;
-            return;
-        }
-
-        const unsigned long long pending =
-          static_cast<unsigned long long> (info.rcv_pending_msgs);
-        if (!seen_recv || pending > rcv_pending_max)
-            rcv_pending_max = pending;
-        rcv_pending_end = pending;
-        seen_recv = true;
+        LIBZLINK_UNUSED (send_path_);
+        LIBZLINK_UNUSED (force_);
+        // Registry-based gateway peer introspection intentionally does not
+        // expose socket queue counters, so this probe remains best-effort only.
     }
 };
 
@@ -185,6 +135,224 @@ struct gateway_client_state_t
 
 gateway_server_state_t *g_server_state = NULL;
 gateway_client_state_t *g_client_state = NULL;
+
+struct gateway_ready_monitor_state_t
+{
+    gateway_ready_monitor_state_t () :
+        ready_peer_count (0),
+        send_ready (false),
+        error_code (0)
+    {
+    }
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    size_t ready_peer_count;
+    bool send_ready;
+    int error_code;
+};
+
+struct gateway_ready_monitor_t
+{
+    gateway_ready_monitor_t () : monitor (NULL), state (NULL) {}
+
+    void *monitor;
+    gateway_ready_monitor_state_t *state;
+};
+
+struct gateway_ready_monitor_registry_t
+{
+    std::mutex mutex;
+    std::map<void *, gateway_ready_monitor_state_t *> states;
+};
+
+gateway_ready_monitor_registry_t &gateway_ready_monitor_registry ()
+{
+    static gateway_ready_monitor_registry_t registry;
+    return registry;
+}
+
+void register_gateway_ready_monitor (
+  void *monitor_,
+  gateway_ready_monitor_state_t *state_)
+{
+    if (!monitor_ || !state_)
+        return;
+
+    gateway_ready_monitor_registry_t &registry =
+      gateway_ready_monitor_registry ();
+    std::lock_guard<std::mutex> lock (registry.mutex);
+    registry.states[monitor_] = state_;
+}
+
+void unregister_gateway_ready_monitor (void *monitor_)
+{
+    if (!monitor_)
+        return;
+
+    gateway_ready_monitor_registry_t &registry =
+      gateway_ready_monitor_registry ();
+    std::lock_guard<std::mutex> lock (registry.mutex);
+    registry.states.erase (monitor_);
+}
+
+gateway_ready_monitor_state_t *find_gateway_ready_monitor_state ()
+{
+    void *monitor = zlink::current_monitor_dispatch_handle ();
+    if (!monitor)
+        return NULL;
+
+    gateway_ready_monitor_registry_t &registry =
+      gateway_ready_monitor_registry ();
+    std::lock_guard<std::mutex> lock (registry.mutex);
+    std::map<void *, gateway_ready_monitor_state_t *>::iterator it =
+      registry.states.find (monitor);
+    return it != registry.states.end () ? it->second : NULL;
+}
+
+size_t gateway_ready_count (const gateway_ready_monitor_state_t *state_)
+{
+    if (!state_)
+        return 0;
+
+    return std::max (state_->ready_peer_count,
+                     state_->send_ready ? size_t (1) : 0);
+}
+
+void gateway_ready_monitor_handler (const zlink_service_event_t *event_)
+{
+    gateway_ready_monitor_state_t *state =
+      find_gateway_ready_monitor_state ();
+    if (!state || !event_)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        switch (event_->event_type) {
+            case ZLINK_GATEWAY_ROUTE_UP:
+            case ZLINK_GATEWAY_ROUTE_DOWN:
+                state->ready_peer_count =
+                  static_cast<size_t> (event_->value);
+                break;
+
+            case ZLINK_GATEWAY_SEND_READY_CHANGED:
+                state->send_ready = event_->value > 0;
+                break;
+
+            case ZLINK_GATEWAY_MONITOR_EVENT_ERROR:
+                if (state->error_code == 0)
+                    state->error_code =
+                      event_->error_code != 0 ? event_->error_code : EIO;
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    state->cv.notify_all ();
+}
+
+bool open_gateway_ready_monitor (void *gateway_,
+                                 gateway_ready_monitor_t *out_)
+{
+    if (!gateway_ || !out_)
+        return false;
+
+    gateway_ready_monitor_state_t *state =
+      new (std::nothrow) gateway_ready_monitor_state_t ();
+    if (!state)
+        return false;
+
+    zlink_gateway_monitor_snapshot_t snapshot;
+    memset (&snapshot, 0, sizeof (snapshot));
+    if (zlink_gateway_monitor_snapshot (gateway_, &snapshot) == 0) {
+        state->ready_peer_count = snapshot.ready_peer_count;
+        state->send_ready = snapshot.send_ready != 0;
+    }
+
+    void *monitor = zlink_gateway_monitor_open (
+      gateway_,
+      ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+        | ZLINK_GATEWAY_ROUTE_DOWN
+        | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
+      &gateway_ready_monitor_handler);
+    if (!monitor) {
+        delete state;
+        return false;
+    }
+
+    const int monitor_hwm = parse_positive_env ("PERF_MONITOR_HWM", 1000);
+    set_sockopt_int (monitor, ZLINK_LINGER, 0, "ZLINK_LINGER");
+    if (monitor_hwm > 0) {
+        set_sockopt_int (monitor, ZLINK_SNDHWM, monitor_hwm, "ZLINK_SNDHWM");
+        set_sockopt_int (monitor, ZLINK_RCVHWM, monitor_hwm, "ZLINK_RCVHWM");
+    }
+
+    register_gateway_ready_monitor (monitor, state);
+    out_->monitor = monitor;
+    out_->state = state;
+    return true;
+}
+
+bool wait_gateway_ready (gateway_ready_monitor_t *monitor_,
+                         size_t expected_,
+                         int timeout_ms_)
+{
+    if (expected_ == 0)
+        return true;
+    if (!monitor_ || !monitor_->state)
+        return false;
+
+    std::unique_lock<std::mutex> lock (monitor_->state->mutex);
+    if (monitor_->state->error_code != 0)
+        return false;
+    if (gateway_ready_count (monitor_->state) >= expected_)
+        return true;
+
+    return monitor_->state->cv.wait_for (
+             lock,
+             std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1),
+             [monitor_, expected_] () {
+                 return monitor_->state->error_code != 0
+                        || gateway_ready_count (monitor_->state) >= expected_;
+             })
+           && monitor_->state->error_code == 0
+           && gateway_ready_count (monitor_->state) >= expected_;
+}
+
+void close_gateway_ready_monitor (gateway_ready_monitor_t *monitor_)
+{
+    if (!monitor_)
+        return;
+
+    gateway_ready_monitor_state_t *state = monitor_->state;
+    void *monitor = monitor_->monitor;
+    monitor_->state = NULL;
+    monitor_->monitor = NULL;
+
+    if (!monitor && !state)
+        return;
+
+    if (monitor && zlink_service_monitor_close (&monitor) == 0) {
+        unregister_gateway_ready_monitor (monitor);
+        delete state;
+        return;
+    }
+}
+
+void cleanup_gateway_case (void **client_gateway_,
+                           void **server_gateway_,
+                           gateway_ready_monitor_t *client_monitor_)
+{
+    close_gateway_ready_monitor (client_monitor_);
+    if (client_gateway_ && *client_gateway_)
+        zlink_gateway_destroy (client_gateway_);
+    if (server_gateway_ && *server_gateway_)
+        zlink_gateway_destroy (server_gateway_);
+    g_server_state = NULL;
+    g_client_state = NULL;
+}
 
 bool is_supported_transport (const std::string &transport_)
 {
@@ -237,19 +405,6 @@ std::string bind_server_gateway (void *gateway_,
             return endpoint;
     }
     return std::string ();
-}
-
-bool wait_for_gateway_connections (void *gateway_, int expected_, int timeout_ms_)
-{
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
-    while (std::chrono::steady_clock::now () < deadline) {
-        if (zlink_gateway_connection_count (gateway_) >= expected_)
-            return true;
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
-    }
-    return zlink_gateway_connection_count (gateway_) >= expected_;
 }
 
 bool wait_for_counter (std::condition_variable &cv_,
@@ -462,6 +617,7 @@ int run_case (const std::string &lib_name_,
 
     gateway_server_state_t server_state;
     gateway_client_state_t client_state;
+    gateway_ready_monitor_t client_monitor;
     g_server_state = &server_state;
     g_client_state = &client_state;
 
@@ -472,12 +628,7 @@ int run_case (const std::string &lib_name_,
       zlink_gateway_new (ctx.get (), "perf-gateway", "perf-gateway-client",
                          &client_handler);
     if (!server_gateway || !client_gateway) {
-        if (server_gateway)
-            zlink_gateway_destroy (&server_gateway);
-        if (client_gateway)
-            zlink_gateway_destroy (&client_gateway);
-        g_server_state = NULL;
-        g_client_state = NULL;
+        cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);
         return 1;
     }
 
@@ -508,10 +659,12 @@ int run_case (const std::string &lib_name_,
 
     if (!configure_tls_server (server_gateway, transport_)
         || !configure_tls_client (client_gateway, transport_)) {
-        zlink_gateway_destroy (&client_gateway);
-        zlink_gateway_destroy (&server_gateway);
-        g_server_state = NULL;
-        g_client_state = NULL;
+        cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);
+        return 1;
+    }
+
+    if (!open_gateway_ready_monitor (client_gateway, &client_monitor)) {
+        cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);
         return 1;
     }
 
@@ -520,10 +673,7 @@ int run_case (const std::string &lib_name_,
     const std::string endpoint =
       bind_server_gateway (server_gateway, transport_, base_port);
     if (endpoint.empty ()) {
-        zlink_gateway_destroy (&client_gateway);
-        zlink_gateway_destroy (&server_gateway);
-        g_server_state = NULL;
-        g_client_state = NULL;
+        cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);
         return 1;
     }
 
@@ -536,15 +686,10 @@ int run_case (const std::string &lib_name_,
 
     if (zlink_gateway_connect (client_gateway, endpoint.c_str (), &server_rid)
         != 0
-        || !wait_for_gateway_connections (client_gateway, 1, 5000)) {
-        zlink_gateway_destroy (&client_gateway);
-        zlink_gateway_destroy (&server_gateway);
-        g_server_state = NULL;
-        g_client_state = NULL;
+        || !wait_gateway_ready (&client_monitor, 1, 5000)) {
+        cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);
         return 1;
     }
-
-    std::this_thread::sleep_for (std::chrono::milliseconds (SETTLE_TIME_MS));
 
     server_state.gateway = server_gateway;
     client_state.run_id = static_cast<uint32_t> (current_process_id ());
@@ -564,10 +709,7 @@ int run_case (const std::string &lib_name_,
                       0.0,
                       0.0,
                       queue_stats);
-        zlink_gateway_destroy (&client_gateway);
-        zlink_gateway_destroy (&server_gateway);
-        g_server_state = NULL;
-        g_client_state = NULL;
+        cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);
         return 1;
     }
 
@@ -592,10 +734,7 @@ int run_case (const std::string &lib_name_,
       active_ok
       && server_state.send_failures.load (std::memory_order_acquire) == 0;
 
-    zlink_gateway_destroy (&client_gateway);
-    zlink_gateway_destroy (&server_gateway);
-    g_server_state = NULL;
-    g_client_state = NULL;
+    cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);
     return success ? 0 : 1;
 }
 } // namespace

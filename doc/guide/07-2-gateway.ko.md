@@ -66,7 +66,6 @@ zlink_gateway_bind(server, "tcp://*:5555");
 /* Discovery 설정 */
 void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
-zlink_discovery_subscribe(discovery, "payment-service");
 
 /* Gateway 생성 */
 void *client = zlink_gateway_new(ctx, "payment-service",
@@ -143,7 +142,7 @@ Gateway의 모든 공개 API는 내부 mutex로 보호된다. 여러 스레드�
 - `zlink_gateway_set_lb_strategy()`
 - `zlink_gateway_set_option()`
 - `zlink_gateway_set_tls_client()`
-- `zlink_gateway_connection_count()`
+- `zlink_gateway_monitor_snapshot()`
 
 ### 멀티스레드 사용 예제
 
@@ -235,7 +234,6 @@ zlink_gateway_bind(server, "tcp://*:5555");
 /* === Client === */
 void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
-zlink_discovery_subscribe(client_discovery, "echo-service");
 
 void *client = zlink_gateway_new(ctx, "echo-service",
                                   "client-1", on_reply);
@@ -278,10 +276,9 @@ zlink_ctx_term(ctx);
 | `zlink_gateway_set_tls_client(gateway, ca, host, trust)` | TLS 클라이언트 설정 |
 | `zlink_gateway_set_tls_server(gateway, cert, key)` | TLS 서버 설정 |
 | `zlink_gateway_last_endpoint(gateway, buf, size)` | bind된 endpoint 조회 |
-| `zlink_gateway_connection_count(gateway)` | 연결된 피어 수 |
+| `zlink_gateway_monitor_snapshot(gateway, &snapshot)` | 로컬 bind/send readiness 조회 |
 | `zlink_gateway_update_peer_weight(gateway, rid, weight)` | 피어 가중치 갱신 |
-| `zlink_gateway_router_peers(gateway, peers, count)` | 피어 목록 조회 |
-| `zlink_gateway_peer_info(gateway, rid, info)` | 특정 피어 정보 조회 |
+| `zlink_registry_gateway_peers_query(registry, &filter, entries, &count)` | 운영용 gateway-peer 상태 조회 |
 | `zlink_gateway_destroy(&gateway)` | 종료 |
 
 ---

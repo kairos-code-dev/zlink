@@ -131,11 +131,15 @@ void wait_gateway_ready (void *gateway_, int timeout_ms_)
     const int step_ms = 10;
     const int attempts = timeout_ms_ / step_ms;
     for (int i = 0; i < attempts; ++i) {
-        if (zlink_gateway_connection_count (gateway_) > 0)
+        zlink_gateway_monitor_snapshot_t snapshot;
+        memset (&snapshot, 0, sizeof (snapshot));
+        if (zlink_gateway_monitor_snapshot (gateway_, &snapshot) == 0
+            && snapshot.send_ready != 0) {
             return;
+        }
         msleep (step_ms);
     }
-    TEST_FAIL_MESSAGE ("gateway connection timeout");
+    TEST_FAIL_MESSAGE ("gateway send ready timeout");
 }
 
 void send_gateway_with_timeout (void *gateway_,
@@ -349,9 +353,6 @@ void test_gateway_handover_provider_restart ()
     TEST_ASSERT_NOT_NULL (client_discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (client_discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (client_discovery, service_name));
-
     void *gateway =
       create_gateway_attached (ctx, client_discovery, service_name, NULL,
                          &gateway_handler_a);
@@ -434,9 +435,6 @@ void test_provider_handover_gateway_reconnect ()
     TEST_ASSERT_NOT_NULL (discovery1);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery1, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery1, service_name));
-
     void *gateway1 =
       create_gateway_attached (ctx, discovery1, service_name, gw_rid,
                          &gateway_handler_a);
@@ -457,9 +455,6 @@ void test_provider_handover_gateway_reconnect ()
     TEST_ASSERT_NOT_NULL (discovery2);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery2, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery2, service_name));
-
     void *gateway2 =
       create_gateway_attached (ctx, discovery2, service_name, gw_rid,
                          &gateway_handler_a);

@@ -61,10 +61,10 @@ void *zlink_discovery_new_typed(void *ctx, uint16_t service_type);
 ```
 
 지정된 서비스 타입으로 범위가 지정된 새 Discovery 인스턴스를 할당하고
-초기화합니다. 타입은 생성 시 고정되며 변경할 수 없습니다. 모든 subscribe,
-get, count 쿼리는 지정된 서비스 타입 범위 내에서 작동합니다.
-Gateway/Receiver 서비스에는 `ZLINK_SERVICE_TYPE_GATEWAY`를, SPOT 노드
-서비스에는 `ZLINK_SERVICE_TYPE_SPOT`을 사용합니다.
+초기화합니다. 타입은 생성 시 고정되며 변경할 수 없습니다. 모든 get/count
+쿼리는 지정된 서비스 타입 범위 내에서 작동합니다. Gateway/Receiver
+서비스에는 `ZLINK_SERVICE_TYPE_GATEWAY`를, SPOT 노드 서비스에는
+`ZLINK_SERVICE_TYPE_SPOT`을 사용합니다.
 
 **반환값:** 성공 시 Discovery 핸들, 실패 시 `NULL`.
 
@@ -91,48 +91,7 @@ Registry 응답에서 내부 broadcast/uplink 엔드포인트를 학습하고, D
 
 **스레드 안전성:** 스레드 안전하지 않음. 동시 접근이 시작되기 전에 호출해야 합니다.
 
-**참고:** `zlink_discovery_subscribe`
-
----
-
-### zlink_discovery_subscribe
-
-서비스 이름을 구독합니다.
-
-```c
-int zlink_discovery_subscribe(void *discovery,
-                              const char *service_name);
-```
-
-특정 서비스 이름에 대한 관심을 등록합니다. Registry 브로드캐스트에서 구독된
-서비스 이름과 일치하는 항목만 보유됩니다. Discovery 인스턴스는 여러 서비스
-이름을 구독할 수 있습니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**스레드 안전성:** 스레드 안전하지 않음.
-
-**참고:** `zlink_discovery_unsubscribe`, `zlink_discovery_get_receivers`
-
----
-
-### zlink_discovery_unsubscribe
-
-서비스 이름 구독을 해제합니다.
-
-```c
-int zlink_discovery_unsubscribe(void *discovery,
-                                const char *service_name);
-```
-
-지정된 서비스 이름에 대한 구독을 제거합니다. 이 서비스에 대한 캐시된
-항목은 삭제되며 더 이상 업데이트를 수신하지 않습니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**스레드 안전성:** 스레드 안전하지 않음.
-
-**참고:** `zlink_discovery_subscribe`
+**참고:** `zlink_discovery_get_receivers`
 
 ---
 
@@ -156,7 +115,7 @@ int zlink_discovery_get_receivers(void *discovery,
 
 **스레드 안전성:** 스레드 안전하지 않음.
 
-**참고:** `zlink_discovery_receiver_count`, `zlink_discovery_subscribe`
+**참고:** `zlink_discovery_receiver_count`, `zlink_discovery_service_available`
 
 ---
 
@@ -209,7 +168,6 @@ Discovery는 1차 service-level option surface 대상에서 의도적으로
 
 - `zlink_discovery_set_routing_id()`
 - `zlink_discovery_connect_registry()`
-- `zlink_discovery_subscribe()` / `zlink_discovery_unsubscribe()`
 
 ---
 

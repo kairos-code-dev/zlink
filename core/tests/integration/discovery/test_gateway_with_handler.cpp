@@ -115,11 +115,18 @@ bool wait_for_gateway_connections (void *gateway_,
     const int step_ms = 10;
     const int attempts = timeout_ms_ / step_ms;
     for (int i = 0; i < attempts; ++i) {
-        if (zlink_gateway_connection_count (gateway_) >= expected_)
+        zlink_gateway_monitor_snapshot_t snapshot;
+        memset (&snapshot, 0, sizeof (snapshot));
+        if (zlink_gateway_monitor_snapshot (gateway_, &snapshot) == 0
+            && static_cast<int> (snapshot.ready_peer_count) >= expected_) {
             return true;
+        }
         msleep (step_ms);
     }
-    return zlink_gateway_connection_count (gateway_) >= expected_;
+    zlink_gateway_monitor_snapshot_t snapshot;
+    memset (&snapshot, 0, sizeof (snapshot));
+    return zlink_gateway_monitor_snapshot (gateway_, &snapshot) == 0
+           && static_cast<int> (snapshot.ready_peer_count) >= expected_;
 }
 
 void gateway_server_handler (const zlink_routing_id_t *source_rid_,
@@ -312,9 +319,6 @@ void test_gateway_handler_dispatches_request_and_reply ()
       client_discovery, registry_router));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       server_discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (client_discovery, "svc-handler"));
-
     void *client = create_gateway_attached (ctx, client_discovery, "svc-handler",
                                       "gw-client-h",
                                       &gateway_client_handler);
@@ -352,12 +356,17 @@ void test_gateway_handler_dispatches_request_and_reply ()
         bind_seed += 1;
     }
 
+    zlink_gateway_monitor_snapshot_t snapshot;
+    memset (&snapshot, 0, sizeof (snapshot));
     for (int i = 0; i < 400; ++i) {
-        if (zlink_gateway_connection_count (client) > 0)
+        if (zlink_gateway_monitor_snapshot (client, &snapshot) == 0
+            && snapshot.send_ready != 0) {
             break;
+        }
         msleep (10);
     }
-    TEST_ASSERT_TRUE (zlink_gateway_connection_count (client) > 0);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_monitor_snapshot (client, &snapshot));
+    TEST_ASSERT_TRUE (snapshot.send_ready != 0);
 
     zlink_msg_t request_part;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&request_part, 4));

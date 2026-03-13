@@ -285,6 +285,23 @@ static uint32_t count_ready_for_service (
     return count;
 }
 
+static uint64_t gateway_peer_report_interval_ms ()
+{
+    return 1000;
+}
+
+static std::string gateway_peer_key (const std::string &service_name_,
+                                     const zlink_routing_id_t &rid_)
+{
+    if (service_name_.empty () || rid_.size == 0)
+        return std::string ();
+
+    std::string key = service_name_;
+    key.push_back ('\0');
+    key.append (reinterpret_cast<const char *> (rid_.data), rid_.size);
+    return key;
+}
+
 }
 
 gateway_runtime_t::gateway_runtime_t (gateway_t *owner_) :
@@ -295,6 +312,7 @@ gateway_runtime_t::gateway_runtime_t (gateway_t *owner_) :
     stop (0),
     refresh_task_id (0),
     last_pool (NULL),
+    next_gateway_peer_report_ms (0),
     force_refresh_all (false)
 {
 }
@@ -514,10 +532,11 @@ void gateway_t::refresh_tick ()
         return;
 
     std::vector<std::string> services_to_refresh;
+    uint64_t now_ms = 0;
     {
         scoped_lock_t lock (_sync);
         process_monitor_events ();
-        const uint64_t now_ms = _runtime->clock.now_ms ();
+        now_ms = _runtime->clock.now_ms ();
         for (std::map<std::string, uint64_t>::iterator it =
                _runtime->down_until_ms.begin ();
              it != _runtime->down_until_ms.end ();) {
@@ -570,6 +589,9 @@ void gateway_t::refresh_tick ()
             refresh_pool (&it->second, providers, seq);
         }
     }
+
+    scoped_lock_t lock (_sync);
+    sync_gateway_peer_reports (now_ms);
 }
 
 int gateway_t::init_router_socket ()
@@ -833,8 +855,22 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
         const std::string &endpoint = pool_->endpoints[i];
         if (routing_map.find (endpoint) == routing_map.end ()) {
             if (i < pool_->routing_ids.size ()) {
+                const zlink_routing_id_t &removed_rid = pool_->routing_ids[i];
+                const std::string peer_key =
+                  gateway_peer_key (pool_->service_name, removed_rid);
+                std::map<std::string,
+                         gateway_runtime_t::gateway_peer_report_t>::iterator rit =
+                  _runtime->ready_peer_reports.find (peer_key);
+                if (rit != _runtime->ready_peer_reports.end ()) {
+                    report_gateway_peer (
+                      rit->second.service_name, rit->second.peer_endpoint,
+                      rit->second.peer_routing_id, rit->second.weight,
+                      ZLINK_TOPOLOGY_STATE_LOST,
+                      rit->second.connected_since_ms);
+                    _runtime->ready_peer_reports.erase (rit);
+                }
                 const std::string removed_rid_key =
-                  routing_id_key (pool_->routing_ids[i]);
+                  routing_id_key (removed_rid);
                 if (!removed_rid_key.empty ()) {
                     _runtime->rid_connect_not_before_ms[removed_rid_key] =
                       _runtime->clock.now_ms () + rid_handover_guard_ms ();
@@ -872,6 +908,21 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
     }
     for (size_t i = 0; i < pool_->endpoints.size (); ++i) {
         _runtime->endpoint_to_service[pool_->endpoints[i]] = pool_->service_name;
+    }
+    for (size_t i = 0; i < pool_->routing_ids.size () && i < pool_->endpoints.size ();
+         ++i) {
+        const std::string peer_key =
+          gateway_peer_key (pool_->service_name, pool_->routing_ids[i]);
+        if (peer_key.empty ())
+            continue;
+        gateway_runtime_t::gateway_peer_report_t &report =
+          _runtime->ready_peer_reports[peer_key];
+        if (report.connected_since_ms == 0)
+            report.connected_since_ms = _runtime->clock.now_ms ();
+        report.service_name = pool_->service_name;
+        report.peer_endpoint = pool_->endpoints[i];
+        report.peer_routing_id = pool_->routing_ids[i];
+        report.weight = i < pool_->weights.size () ? pool_->weights[i] : 0;
     }
     pool_->dirty = keep_dirty;
     pool_->last_seen_seq = seq_;
@@ -1044,6 +1095,7 @@ int gateway_t::bind (const char *endpoint_)
     bool should_register = false;
     uint32_t server_weight = 0;
     bool needs_bind = false;
+    bool was_bound_ready = false;
     {
         scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
         if (ensure_facade_mode () != 0)
@@ -1067,6 +1119,7 @@ int gateway_t::bind (const char *endpoint_)
                 return -1;
         }
 
+        was_bound_ready = !_bind_endpoint.empty ();
         const bool already_bound_same_endpoint =
           !_bind_endpoint.empty () && _bind_endpoint == endpoint_;
 
@@ -1086,10 +1139,21 @@ int gateway_t::bind (const char *endpoint_)
         return -1;
     }
 
-    if (!should_register)
-        return 0;
+    if (should_register && register_service (endpoint_, server_weight) != 0)
+        return -1;
 
-    return register_service (endpoint_, server_weight);
+    if (!was_bound_ready) {
+        std::string ready_endpoint;
+        {
+            scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+            ready_endpoint =
+              !_advertise_endpoint.empty () ? _advertise_endpoint : _bind_endpoint;
+        }
+        emit_event (ZLINK_GATEWAY_SERVICE_READY, _service_name, ready_endpoint,
+                    NULL, 1, 0);
+    }
+
+    return 0;
 }
 
 int gateway_t::register_service (const char *advertise_endpoint_,
@@ -1142,8 +1206,6 @@ int gateway_t::register_service (const char *advertise_endpoint_,
     if (!resolved.empty ())
         _advertise_endpoint.swap (resolved);
     _last_register_error.clear ();
-    emit_event (ZLINK_GATEWAY_SERVICE_READY, _server_service_name,
-                _advertise_endpoint, NULL, 1, 0);
     return 0;
 }
 
@@ -1211,9 +1273,8 @@ int gateway_t::unregister_service ()
     _advertise_endpoint.clear ();
     _last_register_error.clear ();
 
-    report_topology (service_name, endpoint, ZLINK_TOPOLOGY_STATE_STOPPED, 0, 0);
-
     emit_event (ZLINK_GATEWAY_SERVICE_LOST, service_name, endpoint, NULL, 0, 0);
+    report_topology (service_name, endpoint, ZLINK_TOPOLOGY_STATE_STOPPED, 0, 0);
     return 0;
 }
 
@@ -1392,107 +1453,56 @@ int gateway_t::last_endpoint (char *endpoint_out_, size_t *size_out_) const
     return 0;
 }
 
-int gateway_t::peer_info (const zlink_routing_id_t *routing_id_,
-                          zlink_gateway_peer_info_t *info_out_) const
+void gateway_t::report_gateway_peer (const std::string &service_name_,
+                                     const std::string &peer_endpoint_,
+                                     const zlink_routing_id_t &peer_routing_id_,
+                                     uint32_t weight_,
+                                     uint16_t state_,
+                                     uint64_t connected_since_ms)
 {
-    if (!routing_id_ || !info_out_) {
-        errno = EINVAL;
-        return -1;
+    if (!_discovery || service_name_.empty () || _routing_id.size == 0
+        || peer_routing_id_.size == 0) {
+        return;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? const_cast<mutex_t *> (&_sync) : NULL);
-    if (!_runtime->router_socket) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    zlink_peer_info_t base_info;
-    if (zlink_socket_peer_info (static_cast<void *> (_runtime->router_socket), routing_id_,
-                                &base_info)
-        != 0)
-        return -1;
-
-    memset (info_out_, 0, sizeof (*info_out_));
-    info_out_->routing_id = base_info.routing_id;
-    memcpy (info_out_->remote_addr, base_info.remote_addr,
-            sizeof (info_out_->remote_addr));
-    info_out_->connected_time = base_info.connected_time;
-    info_out_->msgs_sent = base_info.msgs_sent;
-    info_out_->msgs_received = base_info.msgs_received;
-    info_out_->snd_pending_msgs = base_info.snd_pending_msgs;
-    info_out_->rcv_pending_msgs = base_info.rcv_pending_msgs;
-    info_out_->weight = 0;
-
-    if (_discovery) {
-        std::vector<provider_info_t> providers;
-        _discovery->snapshot_providers (_service_name, &providers);
-        for (size_t i = 0; i < providers.size (); ++i) {
-            if (routing_id_equals (providers[i].routing_id, *routing_id_)) {
-                info_out_->weight = providers[i].weight;
-                break;
-            }
-        }
-    }
-    return 0;
+    zlink_registry_gateway_peer_entry_t entry;
+    memset (&entry, 0, sizeof (entry));
+    entry.gateway_routing_id = _routing_id;
+    entry.peer_routing_id = peer_routing_id_;
+    entry.state = static_cast<zlink_topology_state_t> (state_);
+    entry.weight = weight_;
+    entry.connected_since_ms = connected_since_ms;
+    entry.last_reported_ms = _runtime->clock.now_ms ();
+    strncpy (entry.service_name, service_name_.c_str (),
+             sizeof (entry.service_name) - 1);
+    if (!_bind_endpoint.empty ())
+        strncpy (entry.gateway_endpoint, _bind_endpoint.c_str (),
+                 sizeof (entry.gateway_endpoint) - 1);
+    if (!peer_endpoint_.empty ())
+        strncpy (entry.peer_endpoint, peer_endpoint_.c_str (),
+                 sizeof (entry.peer_endpoint) - 1);
+    _discovery->upsert_gateway_peer_summary (entry);
 }
 
-int gateway_t::router_peers (zlink_gateway_peer_info_t *peers_,
-                             size_t *count_) const
+void gateway_t::sync_gateway_peer_reports (uint64_t now_ms_)
 {
-    if (!count_) {
-        errno = EINVAL;
-        return -1;
+    if (!_discovery || _runtime->ready_peer_reports.empty ())
+        return;
+    if (_runtime->next_gateway_peer_report_ms != 0
+        && now_ms_ < _runtime->next_gateway_peer_report_ms) {
+        return;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? const_cast<mutex_t *> (&_sync) : NULL);
-    if (!_runtime->router_socket) {
-        errno = ENOTSUP;
-        return -1;
+    for (std::map<std::string, gateway_runtime_t::gateway_peer_report_t>::const_iterator
+           it = _runtime->ready_peer_reports.begin ();
+         it != _runtime->ready_peer_reports.end (); ++it) {
+        report_gateway_peer (it->second.service_name, it->second.peer_endpoint,
+                             it->second.peer_routing_id, it->second.weight,
+                             ZLINK_TOPOLOGY_STATE_READY,
+                             it->second.connected_since_ms);
     }
-
-    size_t available = 0;
-    if (zlink_socket_peers (static_cast<void *> (_runtime->router_socket), NULL, &available)
-        != 0)
-        return -1;
-
-    if (!peers_) {
-        *count_ = available;
-        return 0;
-    }
-
-    size_t to_copy = *count_ < available ? *count_ : available;
-    std::vector<zlink_peer_info_t> base_infos (to_copy);
-    if (to_copy > 0
-        && zlink_socket_peers (static_cast<void *> (_runtime->router_socket), &base_infos[0],
-                               &to_copy)
-             != 0)
-        return -1;
-
-    std::vector<provider_info_t> providers;
-    if (_discovery)
-        _discovery->snapshot_providers (_service_name, &providers);
-
-    for (size_t i = 0; i < to_copy; ++i) {
-        memset (&peers_[i], 0, sizeof (peers_[i]));
-        peers_[i].routing_id = base_infos[i].routing_id;
-        memcpy (peers_[i].remote_addr, base_infos[i].remote_addr,
-                sizeof (peers_[i].remote_addr));
-        peers_[i].connected_time = base_infos[i].connected_time;
-        peers_[i].msgs_sent = base_infos[i].msgs_sent;
-        peers_[i].msgs_received = base_infos[i].msgs_received;
-        peers_[i].snd_pending_msgs = base_infos[i].snd_pending_msgs;
-        peers_[i].rcv_pending_msgs = base_infos[i].rcv_pending_msgs;
-        peers_[i].weight = 0;
-        for (size_t pi = 0; pi < providers.size (); ++pi) {
-            if (routing_id_equals (providers[pi].routing_id,
-                                   base_infos[i].routing_id)) {
-                peers_[i].weight = providers[pi].weight;
-                break;
-            }
-        }
-    }
-
-    *count_ = to_copy;
-    return 0;
+    _runtime->next_gateway_peer_report_ms =
+      now_ms_ + gateway_peer_report_interval_ms ();
 }
 
 int gateway_t::update_peer_weight (const zlink_routing_id_t *routing_id_,
@@ -1550,6 +1560,18 @@ int gateway_t::update_peer_weight (const zlink_routing_id_t *routing_id_,
                 break;
             }
         }
+    }
+
+    const std::string peer_key = gateway_peer_key (_service_name, *routing_id_);
+    std::map<std::string, gateway_runtime_t::gateway_peer_report_t>::iterator it =
+      _runtime->ready_peer_reports.find (peer_key);
+    if (it != _runtime->ready_peer_reports.end ()) {
+        it->second.weight = value;
+        report_gateway_peer (it->second.service_name, it->second.peer_endpoint,
+                             it->second.peer_routing_id, it->second.weight,
+                             ZLINK_TOPOLOGY_STATE_READY,
+                             it->second.connected_since_ms);
+        _runtime->next_gateway_peer_report_ms = 0;
     }
 
     if (_routing_id.size > 0 && routing_id_equals (_routing_id, *routing_id_))
@@ -1705,7 +1727,8 @@ void gateway_t::emit_event (uint32_t event_type_,
         case ZLINK_GATEWAY_SERVICE_LOST:
             state = ZLINK_TOPOLOGY_STATE_LOST;
             break;
-        case ZLINK_GATEWAY_CONNECTION_COUNT_CHANGED:
+        case ZLINK_GATEWAY_ROUTE_UP:
+        case ZLINK_GATEWAY_ROUTE_DOWN:
             state = value_ > 0 ? ZLINK_TOPOLOGY_STATE_READY
                                : ZLINK_TOPOLOGY_STATE_CONNECTING;
             break;
@@ -1779,9 +1802,9 @@ void gateway_t::on_discovery_destroyed (discovery_t *discovery_)
     _last_register_error.clear ();
 }
 
-int gateway_t::connection_count ()
+int gateway_t::monitor_snapshot (zlink_gateway_monitor_snapshot_t *out_)
 {
-    if (_service_name.empty ()) {
+    if (!out_ || _service_name.empty ()) {
         errno = EINVAL;
         return -1;
     }
@@ -1791,10 +1814,13 @@ int gateway_t::connection_count ()
         return -1;
     lock_routing_id ();
     process_monitor_events ();
+    memset (out_, 0, sizeof (*out_));
+    out_->bound_ready = _bind_endpoint.empty () ? 0 : 1;
     gateway_service_pool_t *pool = get_or_create_pool (_service_name);
-    if (!pool)
-        return 0;
-    return static_cast<int> (pool->endpoints.size ());
+    out_->ready_peer_count =
+      pool ? static_cast<uint32_t> (pool->endpoints.size ()) : 0;
+    out_->send_ready = out_->ready_peer_count > 0 ? 1 : 0;
+    return 0;
 }
 
 int gateway_t::set_handler (zlink_socket_msg_handler_fn handler_)
@@ -1892,6 +1918,14 @@ int gateway_t::destroy ()
                               _runtime->inflight_endpoints.end ());
     endpoints_to_term.insert (_runtime->down_endpoints.begin (),
                               _runtime->down_endpoints.end ());
+    for (std::map<std::string, gateway_runtime_t::gateway_peer_report_t>::const_iterator
+           it = _runtime->ready_peer_reports.begin ();
+         it != _runtime->ready_peer_reports.end (); ++it) {
+        report_gateway_peer (it->second.service_name, it->second.peer_endpoint,
+                             it->second.peer_routing_id, it->second.weight,
+                             ZLINK_TOPOLOGY_STATE_STOPPED,
+                             it->second.connected_since_ms);
+    }
     _runtime->pools.clear ();
     _runtime->last_service_name.clear ();
     _runtime->last_pool = NULL;
@@ -1903,6 +1937,8 @@ int gateway_t::destroy ()
     _runtime->rid_connect_not_before_ms.clear ();
     _runtime->down_endpoints.clear ();
     _runtime->down_until_ms.clear ();
+    _runtime->ready_peer_reports.clear ();
+    _runtime->next_gateway_peer_report_ms = 0;
     _runtime->force_refresh_all = false;
     _runtime->pending_updates.clear ();
     zlink_service_event_t terminal;
@@ -2005,24 +2041,66 @@ void gateway_t::process_monitor_events ()
               count_ready_for_service (service_name, _runtime->endpoint_to_service,
                                        _runtime->ready_endpoints);
             if (event.event == ZLINK_EVENT_CONNECTION_READY) {
+                const std::string peer_key =
+                  gateway_peer_key (service_name, event.routing_id);
+                if (!peer_key.empty ()) {
+                    gateway_runtime_t::gateway_peer_report_t &report =
+                      _runtime->ready_peer_reports[peer_key];
+                    if (report.connected_since_ms == 0)
+                        report.connected_since_ms = _runtime->clock.now_ms ();
+                    report.service_name = service_name;
+                    report.peer_endpoint = endpoint;
+                    report.peer_routing_id = event.routing_id;
+                    report.weight = 0;
+                    std::map<std::string, gateway_service_pool_t>::iterator pit =
+                      _runtime->pools.find (service_name);
+                    if (pit != _runtime->pools.end ()) {
+                        for (size_t i = 0; i < pit->second.routing_ids.size (); ++i) {
+                            if (routing_id_equals (pit->second.routing_ids[i],
+                                                   event.routing_id)) {
+                                if (i < pit->second.weights.size ())
+                                    report.weight = pit->second.weights[i];
+                                if (i < pit->second.endpoints.size ())
+                                    report.peer_endpoint = pit->second.endpoints[i];
+                                break;
+                            }
+                        }
+                    }
+                    report_gateway_peer (service_name, report.peer_endpoint,
+                                         report.peer_routing_id, report.weight,
+                                         ZLINK_TOPOLOGY_STATE_READY,
+                                         report.connected_since_ms);
+                    _runtime->next_gateway_peer_report_ms = 0;
+                }
                 emit_event (ZLINK_GATEWAY_ROUTE_UP, service_name, endpoint,
                             &event.routing_id, ready_count, 0);
-                emit_event (ZLINK_GATEWAY_CONNECTION_COUNT_CHANGED,
-                            service_name, endpoint, NULL, ready_count, 0);
                 if (ready_count == 1)
-                    emit_event (ZLINK_GATEWAY_SERVICE_READY, service_name,
+                    emit_event (ZLINK_GATEWAY_SEND_READY_CHANGED, service_name,
                                 endpoint, NULL, ready_count, 0);
             } else if (event.event == ZLINK_EVENT_DISCONNECTED
                        || event.event == ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
                        || event.event == ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
                        || event.event == ZLINK_EVENT_HANDSHAKE_FAILED_AUTH) {
+                const std::string peer_key =
+                  gateway_peer_key (service_name, event.routing_id);
+                std::map<std::string,
+                         gateway_runtime_t::gateway_peer_report_t>::iterator pit =
+                  _runtime->ready_peer_reports.find (peer_key);
+                if (pit != _runtime->ready_peer_reports.end ()) {
+                    report_gateway_peer (pit->second.service_name,
+                                         pit->second.peer_endpoint,
+                                         pit->second.peer_routing_id,
+                                         pit->second.weight,
+                                         ZLINK_TOPOLOGY_STATE_LOST,
+                                         pit->second.connected_since_ms);
+                    _runtime->ready_peer_reports.erase (pit);
+                    _runtime->next_gateway_peer_report_ms = 0;
+                }
                 emit_event (ZLINK_GATEWAY_ROUTE_DOWN, service_name, endpoint,
                             &event.routing_id, ready_count,
                             static_cast<int32_t> (event.event));
-                emit_event (ZLINK_GATEWAY_CONNECTION_COUNT_CHANGED,
-                            service_name, endpoint, NULL, ready_count, 0);
                 if (ready_count == 0)
-                    emit_event (ZLINK_GATEWAY_SERVICE_LOST, service_name,
+                    emit_event (ZLINK_GATEWAY_SEND_READY_CHANGED, service_name,
                                 endpoint, NULL, 0,
                                 static_cast<int32_t> (event.event));
             }

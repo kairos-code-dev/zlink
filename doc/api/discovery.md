@@ -69,8 +69,8 @@ void *zlink_discovery_new (void *ctx, zlink_service_type_t service_type);
 
 Allocates and initializes a new Discovery instance scoped to the given
 service type. The type is fixed at creation time and cannot be changed. All
-subscribe, get, and count queries operate within the specified service type
-scope. Use `ZLINK_SERVICE_TYPE_GATEWAY` for Gateway services or
+get and count queries operate within the specified service type scope. Use
+`ZLINK_SERVICE_TYPE_GATEWAY` for Gateway services or
 `ZLINK_SERVICE_TYPE_SPOT` for SPOT Node services.
 
 **Returns:** A Discovery handle on success, or `NULL` on failure.
@@ -99,48 +99,7 @@ starts receiving periodic service list broadcasts.
 
 **Thread safety:** Not thread-safe. Call before concurrent access begins.
 
-**See also:** `zlink_discovery_subscribe`
-
----
-
-### zlink_discovery_subscribe
-
-Subscribe to a service name.
-
-```c
-int zlink_discovery_subscribe(void *discovery,
-                              const char *service_name);
-```
-
-Registers interest in a particular service name. Only entries matching
-subscribed service names are retained from Registry broadcasts. A Discovery
-instance may subscribe to multiple service names.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_discovery_unsubscribe`, `zlink_discovery_get_receivers`
-
----
-
-### zlink_discovery_unsubscribe
-
-Unsubscribe from a service name.
-
-```c
-int zlink_discovery_unsubscribe(void *discovery,
-                                const char *service_name);
-```
-
-Removes the subscription for the given service name. Cached entries for
-this service are discarded and no further updates will be received for it.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_discovery_subscribe`
+**See also:** `zlink_discovery_get_receivers`
 
 ---
 
@@ -165,7 +124,7 @@ number written.
 
 **Thread safety:** Not thread-safe.
 
-**See also:** `zlink_discovery_receiver_count`, `zlink_discovery_subscribe`
+**See also:** `zlink_discovery_receiver_count`, `zlink_discovery_service_available`
 
 ---
 

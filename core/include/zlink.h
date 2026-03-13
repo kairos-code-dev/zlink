@@ -917,14 +917,6 @@ ZLINK_EXPORT void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 /*  Service Discovery API                                                     */
 /******************************************************************************/
 
-typedef struct {
-    char service_name[256];
-    char endpoint[256];
-    zlink_routing_id_t routing_id;
-    uint32_t weight;
-    uint64_t registered_at;
-} zlink_receiver_info_t;
-
 /* Registry ----------------------------------------------------------------- */
 
 /**
@@ -1047,7 +1039,7 @@ ZLINK_EXPORT int zlink_discovery_setsockopt (
   size_t optvallen);
 
 /**
- * @brief Override the representative routing id before first subscribe/query/connect.
+ * @brief Override the representative routing id before first query/connect.
  */
 ZLINK_EXPORT int zlink_discovery_set_routing_id (void *discovery,
                                                  const void *data,
@@ -1056,32 +1048,6 @@ ZLINK_EXPORT int zlink_discovery_set_routing_id (void *discovery,
 /** @brief Return the representative routing id for this Discovery. */
 ZLINK_EXPORT int zlink_discovery_routing_id (void *discovery,
                                              zlink_routing_id_t *out);
-
-/** @brief Subscribe to a service name. Receives matching entries from broadcasts. */
-ZLINK_EXPORT int zlink_discovery_subscribe (void *discovery,
-                                        const char *service_name);
-
-/** @brief Unsubscribe from a service name. */
-ZLINK_EXPORT int zlink_discovery_unsubscribe (void *discovery,
-                                          const char *service_name);
-
-/**
- * @brief Get the list of receivers for a service.
- * @param[out] providers  Array to receive results.
- * @param[in,out] count   On input, array capacity; on output, actual count.
- */
-ZLINK_EXPORT int zlink_discovery_get_receivers (void *discovery,
-                                            const char *service_name,
-                                            zlink_receiver_info_t *providers,
-                                            size_t *count);
-
-/** @brief Return the number of registered receivers for a service. */
-ZLINK_EXPORT int zlink_discovery_receiver_count (void *discovery,
-                                             const char *service_name);
-
-/** @brief Check if a service is available (at least one receiver exists). */
-ZLINK_EXPORT int zlink_discovery_service_available (void *discovery,
-                                                const char *service_name);
 
 /** @brief Destroy the discovery instance and release all resources. */
 ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
@@ -1118,8 +1084,8 @@ ZLINK_EXPORT int zlink_gateway_bind (void *gateway,
 /**
  * @brief Connect the Gateway to a manually managed remote peer route.
  *
- * Manual connect/disconnect are only allowed before discovery attachment.
  * The remote routing id identifies the peer for request dispatch.
+ * Returns EFSM if discovery is already attached.
  */
 ZLINK_EXPORT int zlink_gateway_connect (void *gateway,
                                         const char *endpoint,
@@ -1128,7 +1094,7 @@ ZLINK_EXPORT int zlink_gateway_connect (void *gateway,
 /**
  * @brief Disconnect a manually managed remote peer route.
  *
- * Manual connect/disconnect are only allowed before discovery attachment.
+ * Returns EFSM if discovery is already attached.
  */
 ZLINK_EXPORT int zlink_gateway_disconnect (void *gateway,
                                            const char *endpoint);
@@ -1166,15 +1132,25 @@ ZLINK_EXPORT int zlink_gateway_set_lb_strategy (
 
 typedef enum zlink_gateway_option_t
 {
-    ZLINK_GATEWAY_OPT_SNDHWM = 0x2101,
-    ZLINK_GATEWAY_OPT_RCVHWM = 0x2102,
-    ZLINK_GATEWAY_OPT_SNDTIMEO = 0x2103,
-    ZLINK_GATEWAY_OPT_LINGER = 0x2104,
-    ZLINK_GATEWAY_OPT_SNDBUF = 0x2105,
-    ZLINK_GATEWAY_OPT_RCVBUF = 0x2106
+    ZLINK_GATEWAY_OPT_SNDHWM = 0x2101,   /**< Send high water mark (int, default: 1000) */
+    ZLINK_GATEWAY_OPT_RCVHWM = 0x2102,   /**< Recv high water mark (int, default: 1000) */
+    ZLINK_GATEWAY_OPT_SNDTIMEO = 0x2103,  /**< Send timeout in ms (int, default: -1 = blocking) */
+    ZLINK_GATEWAY_OPT_LINGER = 0x2104,    /**< Linger time in ms (int, default: -1, internally forced to 0) */
+    ZLINK_GATEWAY_OPT_SNDBUF = 0x2105,    /**< Kernel SO_SNDBUF in bytes (int, default: -1 = OS default) */
+    ZLINK_GATEWAY_OPT_RCVBUF = 0x2106     /**< Kernel SO_RCVBUF in bytes (int, default: -1 = OS default) */
 } zlink_gateway_option_t;
 
-/** @brief Set a Gateway service option. */
+/**
+ * @brief Set a Gateway service option.
+ *
+ * Internally the ROUTER socket is also configured with:
+ *   - ROUTER_MANDATORY = 1  (unknown routing id causes error, not silent drop)
+ *   - ROUTER_HANDOVER  = 1  (reconnect with same routing id replaces old peer)
+ *   - LINGER           = 0  (pending messages discarded on close)
+ *
+ * Note: LINGER is forced to 0 at socket creation. To override, call
+ * set_option with ZLINK_GATEWAY_OPT_LINGER after bind/connect.
+ */
 ZLINK_EXPORT int zlink_gateway_set_option (void *gateway,
                                            zlink_gateway_option_t option,
                                            const void *optval,
@@ -1207,30 +1183,18 @@ ZLINK_EXPORT int zlink_gateway_last_endpoint (void *gateway,
                                               char *endpoint,
                                               size_t *size);
 
-typedef struct zlink_gateway_peer_info_t
+typedef struct zlink_gateway_monitor_snapshot_t
 {
-    zlink_routing_id_t routing_id;
-    char remote_addr[256];
-    uint64_t connected_time;
-    uint64_t msgs_sent;
-    uint64_t msgs_received;
-    uint64_t snd_pending_msgs;
-    uint64_t rcv_pending_msgs;
-    uint32_t weight;
-} zlink_gateway_peer_info_t;
+    uint32_t ready_peer_count;
+    uint8_t send_ready;
+    uint8_t bound_ready;
+    uint8_t reserved[2];
+} zlink_gateway_monitor_snapshot_t;
 
-/** @brief Return queue/peer info for a specific Gateway ROUTER peer. */
-ZLINK_EXPORT int zlink_gateway_peer_info (void *gateway,
-                                          const zlink_routing_id_t *routing_id,
-                                          zlink_gateway_peer_info_t *info);
-
-/** @brief Enumerate peer queue info from the Gateway ROUTER socket. */
-ZLINK_EXPORT int zlink_gateway_router_peers (void *gateway,
-                                             zlink_gateway_peer_info_t *peers,
-                                             size_t *count);
-
-/** @brief Return the number of receivers connected for the bound service. */
-ZLINK_EXPORT int zlink_gateway_connection_count (void *gateway);
+/** @brief Read the current local monitor state for control decisions. */
+ZLINK_EXPORT int zlink_gateway_monitor_snapshot (
+  void *gateway,
+  zlink_gateway_monitor_snapshot_t *out);
 
 /** @brief Update the authoritative weight for a specific service peer. */
 ZLINK_EXPORT int zlink_gateway_update_peer_weight (
@@ -1258,11 +1222,19 @@ ZLINK_EXPORT int zlink_spot_node_destroy (void **node_p);
 /** @brief Bind the SPOT node to an endpoint. */
 ZLINK_EXPORT int zlink_spot_node_bind (void *node, const char *endpoint);
 
-/** @brief Connect to a peer node's PUB endpoint (mesh topology). */
+/**
+ * @brief Connect to a peer node's PUB endpoint (mesh topology).
+ *
+ * Returns EFSM if discovery is already attached.
+ */
 ZLINK_EXPORT int zlink_spot_node_connect_peer_pub (void *node,
                                                const char *peer_pub_endpoint);
 
-/** @brief Disconnect from a peer node's PUB endpoint. */
+/**
+ * @brief Disconnect from a peer node's PUB endpoint.
+ *
+ * Returns EFSM if discovery is already attached.
+ */
 ZLINK_EXPORT int zlink_spot_node_disconnect_peer_pub (
   void *node, const char *peer_pub_endpoint);
 
@@ -1289,27 +1261,12 @@ typedef enum zlink_spot_role_t
     ZLINK_SPOT_ROLE_SUB = 2
 } zlink_spot_role_t;
 
-typedef enum zlink_spot_pub_mode_t
-{
-    ZLINK_SPOT_PUB_MODE_SYNC = 0,
-    ZLINK_SPOT_PUB_MODE_ASYNC = 1
-} zlink_spot_pub_mode_t;
-
-typedef enum zlink_spot_pub_queue_full_policy_t
-{
-    ZLINK_SPOT_PUB_QUEUE_FULL_EAGAIN = 0,
-    ZLINK_SPOT_PUB_QUEUE_FULL_DROP = 1
-} zlink_spot_pub_queue_full_policy_t;
-
 typedef enum zlink_spot_pub_option_t
 {
     ZLINK_SPOT_PUB_OPT_SNDHWM = 0x2201,
     ZLINK_SPOT_PUB_OPT_SNDTIMEO = 0x2202,
     ZLINK_SPOT_PUB_OPT_LINGER = 0x2203,
     ZLINK_SPOT_PUB_OPT_NODROP = 0x2204,
-    ZLINK_SPOT_PUB_OPT_MODE = 0x2205,
-    ZLINK_SPOT_PUB_OPT_QUEUE_HWM = 0x2206,
-    ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY = 0x2207,
     ZLINK_SPOT_PUB_OPT_SNDBUF = 0x2208,
     ZLINK_SPOT_PUB_OPT_RCVBUF = 0x2209
 } zlink_spot_pub_option_t;
@@ -1322,10 +1279,6 @@ typedef enum zlink_spot_sub_option_t
     ZLINK_SPOT_SUB_OPT_RCVBUF = 0x2304
 } zlink_spot_sub_option_t;
 
-#define ZLINK_SPOT_NODE_PUB_MODE_SYNC ZLINK_SPOT_PUB_MODE_SYNC
-#define ZLINK_SPOT_NODE_PUB_MODE_ASYNC ZLINK_SPOT_PUB_MODE_ASYNC
-#define ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN ZLINK_SPOT_PUB_QUEUE_FULL_EAGAIN
-#define ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP ZLINK_SPOT_PUB_QUEUE_FULL_DROP
 
 /** @brief Publish via the node-owned default SpotPub facade. */
 ZLINK_EXPORT int zlink_spot_node_publish (void *node,
@@ -1429,7 +1382,7 @@ typedef uint32_t zlink_service_event_detail_mask_t;
     ((zlink_gateway_monitor_event_mask_t) (1u << 8))
 #define ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_LOST                             \
     ((zlink_gateway_monitor_event_mask_t) (1u << 9))
-#define ZLINK_GATEWAY_MONITOR_EVENT_CONNECTION_COUNT_CHANGED                 \
+#define ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED                       \
     ((zlink_gateway_monitor_event_mask_t) (1u << 10))
 #define ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP                                 \
     ((zlink_gateway_monitor_event_mask_t) (1u << 11))
@@ -1473,7 +1426,7 @@ typedef uint32_t zlink_service_event_detail_mask_t;
 #define ZLINK_DISCOVERY_PROVIDERS_CHANGED ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED
 #define ZLINK_GATEWAY_SERVICE_READY ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY
 #define ZLINK_GATEWAY_SERVICE_LOST ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_LOST
-#define ZLINK_GATEWAY_CONNECTION_COUNT_CHANGED ZLINK_GATEWAY_MONITOR_EVENT_CONNECTION_COUNT_CHANGED
+#define ZLINK_GATEWAY_SEND_READY_CHANGED ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
 #define ZLINK_GATEWAY_ROUTE_UP ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP
 #define ZLINK_GATEWAY_ROUTE_DOWN ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_DOWN
 #define ZLINK_SPOT_SUB_FILTER_APPLIED ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED
@@ -1621,6 +1574,42 @@ ZLINK_EXPORT int zlink_registry_query_snapshot (
   void *client,
   const zlink_registry_topology_filter_t *filter,
   zlink_registry_topology_entry_t *entries,
+  size_t *count);
+
+typedef struct zlink_registry_gateway_peer_entry_t
+{
+    zlink_routing_id_t gateway_routing_id;
+    char gateway_endpoint[256];
+    char service_name[256];
+    zlink_routing_id_t peer_routing_id;
+    char peer_endpoint[256];
+    zlink_topology_state_t state;
+    uint32_t weight;
+    uint64_t connected_since_ms;
+    uint64_t last_reported_ms;
+} zlink_registry_gateway_peer_entry_t;
+
+typedef struct zlink_registry_gateway_peer_filter_t
+{
+    zlink_routing_id_t gateway_routing_id;
+    char service_name[256];
+    zlink_routing_id_t peer_routing_id;
+    zlink_topology_state_t state;
+} zlink_registry_gateway_peer_filter_t;
+
+ZLINK_EXPORT int zlink_registry_gateway_peers_snapshot (
+  void *registry,
+  zlink_registry_gateway_peer_entry_t *entries,
+  size_t *count);
+ZLINK_EXPORT int zlink_registry_gateway_peers_query (
+  void *registry,
+  const zlink_registry_gateway_peer_filter_t *filter,
+  zlink_registry_gateway_peer_entry_t *entries,
+  size_t *count);
+ZLINK_EXPORT int zlink_registry_query_gateway_peers_snapshot (
+  void *client,
+  const zlink_registry_gateway_peer_filter_t *filter,
+  zlink_registry_gateway_peer_entry_t *entries,
   size_t *count);
 ZLINK_EXPORT int zlink_registry_query_destroy (void **client_p);
 

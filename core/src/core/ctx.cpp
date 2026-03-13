@@ -920,7 +920,7 @@ zlink::endpoint_t zlink::ctx_t::find_endpoint (const char *addr_)
     return endpoint;
 }
 
-void zlink::ctx_t::pend_connection (const std::string &addr_,
+bool zlink::ctx_t::pend_connection (const std::string &addr_,
                                   const endpoint_t &endpoint_,
                                   pipe_t **pipes_)
 {
@@ -935,10 +935,12 @@ void zlink::ctx_t::pend_connection (const std::string &addr_,
         endpoint_.socket->inc_seqnum ();
         _pending_connections.ZLINK_MAP_INSERT_OR_EMPLACE (addr_,
                                                         pending_connection);
+        return false;
     } else {
         //  Bind has happened in the mean time, connect directly
         connect_inproc_sockets (it->second.socket, it->second.options,
                                 pending_connection, connect_side);
+        return true;
     }
 }
 
@@ -997,11 +999,16 @@ void zlink::ctx_t::connect_inproc_sockets (
         cmd.type = command_t::bind;
         cmd.args.bind.pipe = pending_connection_.bind_pipe;
         bind_socket_->process_command (cmd);
+        bind_socket_->emit_inproc_connection_ready (pending_connection_.bind_pipe);
+        pending_connection_.endpoint.socket->emit_inproc_connection_ready (
+          pending_connection_.connect_pipe);
         bind_socket_->send_inproc_connected (
           pending_connection_.endpoint.socket);
-    } else
+    } else {
         pending_connection_.connect_pipe->send_bind (
           bind_socket_, pending_connection_.bind_pipe, false);
+        bind_socket_->emit_inproc_connection_ready (pending_connection_.bind_pipe);
+    }
 
     // When a ctx is terminated all pending inproc connection will be
     // connected, but the socket will already be closed and the pipe will be

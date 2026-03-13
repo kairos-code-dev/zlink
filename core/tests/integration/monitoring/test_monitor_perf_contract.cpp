@@ -20,6 +20,8 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
 {
+std::atomic<unsigned int> g_inproc_endpoint_counter (0);
+
 struct connect_monitor_state_t
 {
     connect_monitor_state_t () :
@@ -332,6 +334,14 @@ bool recv_exact (void *socket_, const std::vector<char> &expected_)
     return rc == static_cast<int> (expected_.size ())
            && memcmp (&actual[0], &expected_[0], expected_.size ()) == 0;
 }
+
+void make_unique_inproc_endpoint (char *endpoint_, size_t size_)
+{
+    TEST_ASSERT_NOT_NULL (endpoint_);
+    const unsigned int endpoint_id =
+      g_inproc_endpoint_counter.fetch_add (1, std::memory_order_acq_rel) + 1;
+    snprintf (endpoint_, size_, "inproc://monitor-perf-pair-%u", endpoint_id);
+}
 }
 
 void run_pair_perf_like_monitor_sampling_case (bool sample_send_,
@@ -428,6 +438,51 @@ void test_pair_perf_like_bidirectional_sampling_preserves_oneway_delivery ()
     run_pair_perf_like_monitor_sampling_case (true, true);
 }
 
+void test_pair_inproc_perf_like_monitor_ready_implies_bidirectional_delivery ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *server = zlink_socket (ctx, ZLINK_PAIR);
+    void *client = zlink_socket (ctx, ZLINK_PAIR);
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+
+    configure_bounded_pair_socket (server, 200);
+    configure_bounded_pair_socket (client, 200);
+
+    char endpoint[128];
+    make_unique_inproc_endpoint (endpoint, sizeof (endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, endpoint));
+
+    connect_monitor_t server_monitor;
+    connect_monitor_t client_monitor;
+    TEST_ASSERT_TRUE (open_perf_like_connect_monitor (server, &server_monitor));
+    TEST_ASSERT_TRUE (open_perf_like_connect_monitor (client, &client_monitor));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
+
+    TEST_ASSERT_TRUE (wait_perf_like_connect_ready (&server_monitor, 3000));
+    TEST_ASSERT_TRUE (wait_perf_like_connect_ready (&client_monitor, 3000));
+
+    close_perf_like_connect_monitor (&client_monitor);
+    close_perf_like_connect_monitor (&server_monitor);
+
+    static const char hello[] = "pair-inproc-hello";
+    static const char ack[] = "pair-inproc-ack";
+
+    send_string_expect_success (client, hello, 0);
+    recv_string_expect_success (server, hello, 0);
+
+    send_string_expect_success (server, ack, 0);
+    recv_string_expect_success (client, ack, 0);
+
+    close_socket_zero_linger (client);
+    close_socket_zero_linger (server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -436,5 +491,7 @@ int main ()
     RUN_TEST (test_pair_perf_like_send_sampling_preserves_oneway_delivery);
     RUN_TEST (test_pair_perf_like_recv_sampling_preserves_oneway_delivery);
     RUN_TEST (test_pair_perf_like_bidirectional_sampling_preserves_oneway_delivery);
+    RUN_TEST (
+      test_pair_inproc_perf_like_monitor_ready_implies_bidirectional_delivery);
     return UNITY_END ();
 }

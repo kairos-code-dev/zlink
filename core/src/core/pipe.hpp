@@ -78,6 +78,8 @@ class pipe_t ZLINK_FINAL : public object_t,
     uint64_t get_connected_time () const;
     bool mark_stream_connect_event_emitted ();
     void reset_stream_connect_event_emitted ();
+    bool mark_connection_ready_event_emitted ();
+    void reset_connection_ready_event_emitted ();
 
     //  Returns true if there is at least one message to read in the pipe.
     bool check_read ();
@@ -236,6 +238,7 @@ class pipe_t ZLINK_FINAL : public object_t,
     int _server_socket_routing_id;
 
     std::atomic<bool> _stream_connect_event_emitted;
+    std::atomic<bool> _connection_ready_event_emitted;
 
     //  Returns true if the message is delimiter; false otherwise.
     static bool is_delimiter (const msg_t &msg_);

@@ -170,6 +170,7 @@ class socket_base_t : public own_t,
     event_connection_ready (const endpoint_uri_pair_t &endpoint_uri_pair_,
                             const unsigned char *routing_id_,
                             size_t routing_id_size_);
+    void emit_inproc_connection_ready (pipe_t *pipe_);
 
     //  Query the state of a specific peer. The default implementation
     //  always returns an ENOTSUP error.

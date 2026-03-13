@@ -126,7 +126,7 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
                              const socket_base_t *socket_);
     void unregister_endpoints (const zlink::socket_base_t *socket_);
     endpoint_t find_endpoint (const char *addr_);
-    void pend_connection (const std::string &addr_,
+    bool pend_connection (const std::string &addr_,
                           const endpoint_t &endpoint_,
                           pipe_t **pipes_);
     void connect_pending (const char *addr_, zlink::socket_base_t *bind_socket_);

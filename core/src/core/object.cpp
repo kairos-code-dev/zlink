@@ -152,11 +152,11 @@ zlink::endpoint_t zlink::object_t::find_endpoint (const char *addr_) const
     return _ctx->find_endpoint (addr_);
 }
 
-void zlink::object_t::pend_connection (const std::string &addr_,
+bool zlink::object_t::pend_connection (const std::string &addr_,
                                      const endpoint_t &endpoint_,
                                      pipe_t **pipes_)
 {
-    _ctx->pend_connection (addr_, endpoint_, pipes_);
+    return _ctx->pend_connection (addr_, endpoint_, pipes_);
 }
 
 void zlink::object_t::connect_pending (const char *addr_,

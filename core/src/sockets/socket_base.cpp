@@ -771,6 +771,8 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
 
         errno_assert (rc == 0);
 
+        bool connected_inproc_now = false;
+
         if (!peer.socket) {
             //  The peer doesn't exist yet so we don't know whether
             //  to send the routing id message or not. To resolve this,
@@ -779,7 +781,8 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
             send_routing_id (new_pipes[0], options);
 
             const endpoint_t endpoint = {this, options};
-            pend_connection (std::string (endpoint_uri_), endpoint, new_pipes);
+            connected_inproc_now =
+              pend_connection (std::string (endpoint_uri_), endpoint, new_pipes);
         } else {
             //  If required, send the routing id of the local socket to the peer.
             if (peer.options.recv_routing_id) {
@@ -800,10 +803,14 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
             //  seqnum was incremented in find_endpoint function. We don't need it
             //  increased here.
             send_bind (peer.socket, new_pipes[1], false);
+            peer.socket->emit_inproc_connection_ready (new_pipes[1]);
+            connected_inproc_now = true;
         }
 
         //  Attach local end of the pipe to this socket object.
         attach_pipe (new_pipes[0], false, true);
+        if (connected_inproc_now)
+            emit_inproc_connection_ready (new_pipes[0]);
 
         // Save last endpoint URI
         _last_endpoint.assign (endpoint_uri_);
@@ -2288,6 +2295,22 @@ void zlink::socket_base_t::event_connection_ready (
     uint64_t values[1] = {0};
     event (endpoint_uri_pair_, routing_id_, routing_id_size_, values, 1,
            ZLINK_EVENT_CONNECTION_READY);
+}
+
+void zlink::socket_base_t::emit_inproc_connection_ready (pipe_t *pipe_)
+{
+    if (!pipe_)
+        return;
+
+    if (!pipe_->mark_connection_ready_event_emitted ())
+        return;
+
+    const endpoint_uri_pair_t &endpoint_pair = pipe_->get_endpoint_pair ();
+    const blob_t &routing_id = pipe_->get_routing_id ();
+    const unsigned char *routing_id_data =
+      routing_id.size () > 0 ? routing_id.data () : NULL;
+    event_connection_ready (endpoint_pair, routing_id_data,
+                            routing_id.size ());
 }
 
 void zlink::socket_base_t::event (const endpoint_uri_pair_t &endpoint_uri_pair_,

@@ -98,6 +98,7 @@ zlink::pipe_t::pipe_t (object_t *parent_,
     _delay (true),
     _server_socket_routing_id (0),
     _stream_connect_event_emitted (false),
+    _connection_ready_event_emitted (false),
     _conflate (conflate_)
 {
     _disconnect_msg.init ();
@@ -207,6 +208,21 @@ bool zlink::pipe_t::mark_stream_connect_event_emitted ()
 void zlink::pipe_t::reset_stream_connect_event_emitted ()
 {
     _stream_connect_event_emitted.store (false, std::memory_order_release);
+}
+
+bool zlink::pipe_t::mark_connection_ready_event_emitted ()
+{
+    if (_connection_ready_event_emitted.load (std::memory_order_acquire))
+        return false;
+
+    bool expected = false;
+    return _connection_ready_event_emitted.compare_exchange_strong (
+      expected, true, std::memory_order_acq_rel, std::memory_order_acquire);
+}
+
+void zlink::pipe_t::reset_connection_ready_event_emitted ()
+{
+    _connection_ready_event_emitted.store (false, std::memory_order_release);
 }
 
 bool zlink::pipe_t::check_read ()

@@ -25,8 +25,6 @@ public sealed class test_service_discovery
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         Assert.Throws<ArgumentException>(() => discovery.ConnectRegistry(""));
-        Assert.Throws<ArgumentException>(() => discovery.Subscribe(""));
-        Assert.Throws<ArgumentException>(() => discovery.Unsubscribe(""));
         Assert.Throws<ArgumentException>(() => discovery.ReceiverCount(""));
         Assert.Throws<ArgumentException>(() => discovery.ServiceAvailable(""));
         Assert.Throws<ArgumentException>(() => discovery.GetReceivers(""));
@@ -79,8 +77,6 @@ public sealed class test_service_discovery
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe("svc-A");
-
         using var providerA = new Receiver(ctx);
         string bindA = CoreTestSupport.NewEndpoint("tcp", "svc-a");
         providerA.Bind(bindA);
@@ -110,7 +106,7 @@ public sealed class test_service_discovery
     }
 
     [Fact]
-    public void discovery_service_filtering_multiple_subscriptions()
+    public void discovery_reports_multiple_services()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -124,8 +120,6 @@ public sealed class test_service_discovery
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe("svc-A");
-
         using var providerA = new Receiver(ctx);
         using var providerB = new Receiver(ctx);
         string advertiseA = RegisterProvider(providerA, regRouter, "svc-A", 10);
@@ -133,16 +127,14 @@ public sealed class test_service_discovery
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
             discovery.ReceiverCount("svc-A") == 1, 3000));
-        Assert.Equal(0, discovery.ReceiverCount("svc-B"));
+        Assert.True(CoreTestSupport.WaitUntil(() =>
+            discovery.ReceiverCount("svc-B") == 1, 3000));
 
         ReceiverInfoRecord[] providersA = discovery.GetReceivers("svc-A");
         Assert.Single(providersA);
         Assert.Equal(advertiseA, providersA[0].Endpoint);
         Assert.Equal((uint)10, providersA[0].Weight);
 
-        discovery.Subscribe("svc-B");
-        Assert.True(CoreTestSupport.WaitUntil(() =>
-            discovery.ReceiverCount("svc-B") == 1, 3000));
         ReceiverInfoRecord[] providersB = discovery.GetReceivers("svc-B");
         Assert.Single(providersB);
         Assert.Equal((uint)20, providersB[0].Weight);
@@ -164,8 +156,6 @@ public sealed class test_service_discovery
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe("hb-svc");
-
         using var provider = new Receiver(ctx);
         _ = RegisterProvider(provider, regRouter, "hb-svc", 1);
 
@@ -192,8 +182,6 @@ public sealed class test_service_discovery
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe("weight-svc");
-
         using var provider = new Receiver(ctx);
         _ = RegisterProvider(provider, regRouter, "weight-svc", 10);
 

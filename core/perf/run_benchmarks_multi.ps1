@@ -176,9 +176,6 @@ foreach ($p in $ExpandedPatterns) {
     if ($normalized.StartsWith("MULTI_")) {
         $normalized = $normalized.Substring(6)
     }
-    if ($normalized -eq "ROUTER_ROUTER_POLL") {
-        throw "ROUTER_ROUTER_POLL is removed from multi benchmarks."
-    }
     $PatternList += $normalized
 }
 if ($PatternList.Count -eq 0) {

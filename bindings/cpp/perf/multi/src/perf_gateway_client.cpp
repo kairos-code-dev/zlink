@@ -300,10 +300,9 @@ class gateway_client_bench_t
     bool setup_discovery ()
     {
         if (!_discovery.valid ()
-            || _discovery.connect_registry (_registry_router_endpoint) != 0
-            || _discovery.subscribe (k_server_service_name) != 0) {
+            || _discovery.connect_registry (_registry_router_endpoint) != 0) {
             if (perf_debug_enabled ()) {
-                std::cerr << "gateway client: discovery connect/subscribe failed registry="
+                std::cerr << "gateway client: discovery connect failed registry="
                           << _registry_router_endpoint
                           << " err=" << zlink::last_error ().what () << std::endl;
             }

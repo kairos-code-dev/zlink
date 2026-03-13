@@ -73,6 +73,67 @@ typedef char
 int zlink_msg_init_buffer (zlink_msg_t *msg_, const void *buf_, size_t size_);
 int zlink_ctx_set_ext (void *ctx_, int option_, const void *optval_, size_t optvallen_);
 
+//  Default discard handlers – used as sentinels so that sockets created
+//  without an explicit handler silently drop incoming messages.
+static void discard_socket_parts (const zlink_routing_id_t *,
+                                  zlink_msg_t *parts_,
+                                  size_t part_count_)
+{
+    zlink_multipart_close (parts_, part_count_);
+}
+
+static void discard_spot_parts (const zlink_routing_id_t *,
+                                const char *,
+                                size_t,
+                                zlink_msg_t *parts_,
+                                size_t part_count_)
+{
+    zlink_multipart_close (parts_, part_count_);
+}
+
+static void discard_xpub_event (int, const uint8_t *, size_t)
+{
+}
+
+static const zlink_socket_handler_t *
+default_socket_handler (zlink_socket_type_t type_)
+{
+    static zlink_socket_handler_t msg_handler = {};
+    static zlink_socket_handler_t spot_handler = {};
+    static zlink_socket_handler_t xpub_handler = {};
+    static bool initialized = false;
+
+    if (!initialized) {
+        msg_handler.kind = ZLINK_SOCKET_HANDLER_MSG;
+        msg_handler.fn.msg = &discard_socket_parts;
+
+        spot_handler.kind = ZLINK_SOCKET_HANDLER_SPOT;
+        spot_handler.fn.spot = &discard_spot_parts;
+
+        xpub_handler.kind = ZLINK_SOCKET_HANDLER_XPUB;
+        xpub_handler.fn.xpub = &discard_xpub_event;
+
+        initialized = true;
+    }
+
+    switch (type_) {
+        case ZLINK_PAIR:
+        case ZLINK_DEALER:
+        case ZLINK_ROUTER:
+        case ZLINK_STREAM:
+            return &msg_handler;
+        case ZLINK_SUB:
+        case ZLINK_XSUB:
+            return &spot_handler;
+        case ZLINK_XPUB:
+            return &xpub_handler;
+        case ZLINK_PUB:
+            return static_cast<const zlink_socket_handler_t *> (NULL);
+        default:
+            return static_cast<const zlink_socket_handler_t *> (NULL);
+    }
+}
+
 void zlink_version (int *major_, int *minor_, int *patch_)
 {
     *major_ = ZLINK_VERSION_MAJOR;
@@ -88,6 +149,14 @@ const char *zlink_strerror (int errnum_)
 int zlink_errno (void)
 {
     return errno;
+}
+
+void zlink_monitor_ignore_handler (const zlink_monitor_event_t *)
+{
+}
+
+void zlink_service_monitor_ignore_handler (const zlink_service_event_t *)
+{
 }
 
 //  New context API
@@ -169,12 +238,17 @@ struct socket_handle_t
     zlink::socket_base_t *socket;
 };
 
+typedef int (*monitor_snapshot_provider_fn) (void *subject_,
+                                             zlink_monitor_snapshot_t *out_);
+
 struct monitor_handler_state_t
 {
     monitor_handler_state_t (zlink::socket_base_t *socket_, bool service_) :
         socket (socket_),
         socket_handler (NULL),
         service_handler (NULL),
+        snapshot_provider (NULL),
+        snapshot_subject (NULL),
         stop (false),
         callback_depth (0),
         close_requested (false),
@@ -185,6 +259,8 @@ struct monitor_handler_state_t
     zlink::socket_base_t *socket;
     std::atomic<zlink_monitor_handler_fn> socket_handler;
     std::atomic<zlink_service_monitor_handler_fn> service_handler;
+    std::atomic<monitor_snapshot_provider_fn> snapshot_provider;
+    std::atomic<void *> snapshot_subject;
     std::atomic<bool> stop;
     std::atomic<int> callback_depth;
     std::atomic<bool> close_requested;
@@ -271,7 +347,9 @@ static void close_spot_parts (zlink_msg_t *parts_, size_t part_count_)
 
 static void *open_spot_service_monitor (
   void *monitor_,
-  zlink_service_monitor_handler_fn handler_);
+  zlink_service_monitor_handler_fn handler_,
+  monitor_snapshot_provider_fn snapshot_provider_,
+  void *snapshot_subject_);
 
 static int recv_socket_monitor_event_unchecked (void *monitor_socket_,
                                                 zlink_monitor_event_t *event_,
@@ -532,9 +610,11 @@ static bool decode_socket_monitor_event_parts (zlink_msg_t *parts_,
 static int set_monitor_handler_state (zlink::socket_base_t *socket_,
                                       zlink_monitor_handler_fn socket_handler_,
                                       zlink_service_monitor_handler_fn service_handler_,
-                                      bool service_)
+                                      bool service_,
+                                      monitor_snapshot_provider_fn snapshot_provider_,
+                                      void *snapshot_subject_)
 {
-    if (!socket_ || (!socket_handler_ && !service_handler_)) {
+    if (!socket_) {
         errno = EINVAL;
         return -1;
     }
@@ -563,9 +643,57 @@ static int set_monitor_handler_state (zlink::socket_base_t *socket_,
 
     state->socket_handler.store (socket_handler_, std::memory_order_release);
     state->service_handler.store (service_handler_, std::memory_order_release);
-    if (!state->worker.joinable ())
+    state->snapshot_provider.store (snapshot_provider_,
+                                    std::memory_order_release);
+    state->snapshot_subject.store (snapshot_subject_, std::memory_order_release);
+    if ((socket_handler_ || service_handler_) && !state->worker.joinable ())
         state->worker = std::thread (&monitor_handler_worker, state);
     return 0;
+}
+
+static int socket_monitor_snapshot_provider (void *subject_,
+                                             zlink_monitor_snapshot_t *out_)
+{
+    zlink::socket_base_t *socket =
+      static_cast<zlink::socket_base_t *> (subject_);
+    if (!socket || !out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    return socket->monitor_snapshot (out_);
+}
+
+static int gateway_monitor_snapshot_provider (void *subject_,
+                                              zlink_monitor_snapshot_t *out_)
+{
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (subject_);
+    if (!gateway || !out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    return gateway->fill_monitor_snapshot (out_);
+}
+
+static int spot_pub_monitor_snapshot_provider (void *subject_,
+                                               zlink_monitor_snapshot_t *out_)
+{
+    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (subject_);
+    if (!pub || !out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    return pub->fill_monitor_snapshot (out_);
+}
+
+static int spot_sub_monitor_snapshot_provider (void *subject_,
+                                               zlink_monitor_snapshot_t *out_)
+{
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (subject_);
+    if (!sub || !out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    return sub->fill_monitor_snapshot (out_);
 }
 
 struct registry_query_client_t
@@ -1110,16 +1238,14 @@ static int install_socket_handler (zlink::socket_base_t *socket_,
         return -1;
     }
 
-#if defined(ZLINK_INTERNAL_BUILD)
     if ((handler_->kind == ZLINK_SOCKET_HANDLER_MSG
-         && handler_->fn.msg == &zlink_internal_discard_socket_parts)
+         && handler_->fn.msg == &discard_socket_parts)
         || (handler_->kind == ZLINK_SOCKET_HANDLER_SPOT
-            && handler_->fn.spot == &zlink_internal_discard_spot_parts)
+            && handler_->fn.spot == &discard_spot_parts)
         || (handler_->kind == ZLINK_SOCKET_HANDLER_XPUB
-            && handler_->fn.xpub == &zlink_internal_discard_xpub_event)) {
+            && handler_->fn.xpub == &discard_xpub_event)) {
         return 0;
     }
-#endif
 
     switch (handler_->kind) {
         case ZLINK_SOCKET_HANDLER_MSG:
@@ -1278,6 +1404,11 @@ void *zlink_socket (void *ctx_,
     return static_cast<void *> (socket);
 }
 
+void *zlink_socket (void *ctx_, zlink_socket_type_t type_)
+{
+    return zlink_socket (ctx_, type_, default_socket_handler (type_));
+}
+
 int zlink_socket_set_send_ready_handler (
   void *s_,
   zlink_send_ready_handler_fn handler_)
@@ -1378,14 +1509,17 @@ void *zlink_socket_monitor_open (void *s_,
                                  zlink_socket_monitor_event_mask_t events_,
                                  zlink_monitor_handler_fn handler_)
 {
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
+        return NULL;
     if (!handler_) {
         errno = EINVAL;
         return NULL;
     }
 
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return NULL;
+    zlink_monitor_handler_fn effective_handler = handler_;
+    if (handler_ == &zlink_monitor_ignore_handler)
+        effective_handler = NULL;
 
     char endpoint[128];
     const uint32_t rand_id = zlink::generate_random ();
@@ -1411,7 +1545,10 @@ void *zlink_socket_monitor_open (void *s_,
         return NULL;
     }
 
-    if (set_monitor_handler_state (monitor_socket_base, handler_, NULL, false)
+    if (set_monitor_handler_state (monitor_socket_base, effective_handler, NULL,
+                                   false,
+                                   &socket_monitor_snapshot_provider,
+                                   static_cast<void *> (handle.socket))
         != 0) {
         const int err = errno;
         zlink_close (monitor_socket);
@@ -1573,49 +1710,53 @@ int zlink_service_monitor_close (void **monitor_p_)
 
     zlink::ctx_t *ctx = handle.socket->get_ctx ();
     zlink::socket_base_t *socket = handle.socket;
+    const int linger = 0;
+    (void) socket->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
+    monitor_handler_state_t *monitor_state = find_monitor_handler_state (socket);
+    const bool no_dispatch_monitor =
+      monitor_state
+      && !monitor_state->socket_handler.load (std::memory_order_acquire)
+      && !monitor_state->service_handler.load (std::memory_order_acquire);
+    if (no_dispatch_monitor) {
+        // Ignore-handler/direct-poll monitors do not run a dispatch worker.
+        socket->stop ();
+    }
     const int rc = zlink_close (monitor);
     if (rc == 0) {
-        if (ctx)
+        if (ctx && !no_dispatch_monitor)
             (void) ctx->wait_for_socket_removal (socket, 2000);
         *monitor_p_ = NULL;
     }
     return rc;
 }
 
-int zlink_socket_peer_info (void *socket_,
-                          const zlink_routing_id_t *routing_id_,
-                          zlink_peer_info_t *info_)
+int zlink_monitor_snapshot (void *monitor_,
+                            zlink_monitor_snapshot_t *out_)
 {
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
+    if (!out_) {
+        errno = EINVAL;
         return -1;
-    return handle.socket->socket_peer_info (routing_id_, info_);
-}
+    }
 
-int zlink_socket_peer_routing_id (void *socket_,
-                                int index_,
-                                zlink_routing_id_t *out_)
-{
-    socket_handle_t handle = as_socket_handle (socket_);
+    socket_handle_t handle = as_socket_handle (monitor_);
     if (!handle.socket)
         return -1;
-    return handle.socket->socket_peer_routing_id (index_, out_);
-}
 
-int zlink_socket_peer_count (void *socket_)
-{
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
+    monitor_handler_state_t *state = find_monitor_handler_state (handle.socket);
+    if (!state) {
+        errno = EINVAL;
         return -1;
-    return handle.socket->socket_peer_count ();
-}
+    }
 
-int zlink_socket_peers (void *socket_, zlink_peer_info_t *peers_, size_t *count_)
-{
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
+    monitor_snapshot_provider_fn provider =
+      state->snapshot_provider.load (std::memory_order_acquire);
+    void *subject = state->snapshot_subject.load (std::memory_order_acquire);
+    if (!provider) {
+        errno = ENOTSUP;
         return -1;
-    return handle.socket->socket_peers (peers_, count_);
+    }
+
+    return provider (subject, out_);
 }
 
 void zlink_multipart_close (zlink_msg_t *parts_, size_t part_count_)
@@ -1644,9 +1785,9 @@ void *zlink_registry_new (void *ctx_)
     return static_cast<void *> (registry);
 }
 
-int zlink_registry_set_endpoints (void *registry_,
-                                const char *pub_endpoint_,
-                                const char *router_endpoint_)
+int zlink_registry_bind (void *registry_,
+                         const char *pub_endpoint_,
+                         const char *router_endpoint_)
 {
     if (!registry_)
         return -1;
@@ -1655,7 +1796,7 @@ int zlink_registry_set_endpoints (void *registry_,
         errno = EFAULT;
         return -1;
     }
-    return registry->set_endpoints (pub_endpoint_, router_endpoint_);
+    return registry->bind (pub_endpoint_, router_endpoint_);
 }
 
 int zlink_registry_set_id (void *registry_, uint32_t registry_id_)
@@ -1725,18 +1866,6 @@ int zlink_registry_setsockopt (void *registry_,
     return registry->set_socket_option (socket_role_,
                                         legacy_socket_option (option_), optval_,
                                         optvallen_);
-}
-
-int zlink_registry_start (void *registry_)
-{
-    if (!registry_)
-        return -1;
-    zlink::registry_t *registry = static_cast<zlink::registry_t *> (registry_);
-    if (!registry->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return registry->start ();
 }
 
 int zlink_registry_destroy (void **registry_p_)
@@ -2033,24 +2162,31 @@ void *zlink_discovery_monitor_open (
   zlink_discovery_monitor_event_mask_t events_,
                                     zlink_service_monitor_handler_fn handler_)
 {
+    if (!discovery_)
+        return NULL;
     if (!handler_) {
         errno = EINVAL;
         return NULL;
     }
-    if (!discovery_)
-        return NULL;
     zlink::discovery_t *discovery =
       static_cast<zlink::discovery_t *> (discovery_);
     if (!discovery->check_tag ()) {
         errno = EFAULT;
         return NULL;
     }
+    zlink_service_monitor_handler_fn effective_handler = handler_;
+    if (handler_ == &zlink_service_monitor_ignore_handler)
+        effective_handler = NULL;
+
     void *monitor = discovery->monitor_open (events_);
     if (!monitor)
         return NULL;
     socket_handle_t handle = as_socket_handle (monitor);
     if (!handle.socket
-        || set_monitor_handler_state (handle.socket, NULL, handler_, true) != 0) {
+        || set_monitor_handler_state (handle.socket, NULL, effective_handler,
+                                      true, NULL,
+                                      NULL)
+             != 0) {
         const int err = errno;
         zlink_service_monitor_close (&monitor);
         errno = err;
@@ -2312,43 +2448,37 @@ void *zlink_gateway_monitor_open (
   zlink_gateway_monitor_event_mask_t events_,
                                   zlink_service_monitor_handler_fn handler_)
 {
+    if (!gateway_)
+        return NULL;
     if (!handler_) {
         errno = EINVAL;
         return NULL;
     }
-    if (!gateway_)
-        return NULL;
     zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
     if (!gateway->check_tag ()) {
         errno = EFAULT;
         return NULL;
     }
+    zlink_service_monitor_handler_fn effective_handler = handler_;
+    if (handler_ == &zlink_service_monitor_ignore_handler)
+        effective_handler = NULL;
+
     void *monitor = gateway->monitor_open (events_);
     if (!monitor)
         return NULL;
     socket_handle_t handle = as_socket_handle (monitor);
     if (!handle.socket
-        || set_monitor_handler_state (handle.socket, NULL, handler_, true) != 0) {
+        || set_monitor_handler_state (handle.socket, NULL, effective_handler,
+                                      true,
+                                      &gateway_monitor_snapshot_provider,
+                                      static_cast<void *> (gateway))
+             != 0) {
         const int err = errno;
         zlink_service_monitor_close (&monitor);
         errno = err;
         return NULL;
     }
     return monitor;
-}
-
-int zlink_gateway_monitor_snapshot (
-  void *gateway_,
-  zlink_gateway_monitor_snapshot_t *out_)
-{
-    if (!gateway_)
-        return -1;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return gateway->monitor_snapshot (out_);
 }
 
 int zlink_gateway_update_peer_weight (void *gateway_,
@@ -2571,8 +2701,8 @@ int zlink_spot_node_subscribe_pattern (void *node_, const char *pattern_)
     return sub->subscribe_pattern (pattern_);
 }
 
-int zlink_spot_node_unsubscribe_filter (void *node_,
-                                        const char *topic_id_or_pattern_)
+int zlink_spot_node_unsubscribe (void *node_,
+                                 const char *topic_id_or_pattern_)
 {
     if (!node_)
         return -1;
@@ -2606,12 +2736,12 @@ void *zlink_spot_node_monitor_open (void *node_,
                                     zlink_spot_monitor_event_mask_t events_,
                                     zlink_service_monitor_handler_fn handler_)
 {
-    if (!handler_) {
-        errno = EINVAL;
-        return NULL;
-    }
     if (!node_) {
         errno = EFAULT;
+        return NULL;
+    }
+    if (!handler_) {
+        errno = EINVAL;
         return NULL;
     }
 
@@ -2625,13 +2755,19 @@ void *zlink_spot_node_monitor_open (void *node_,
         zlink::spot_pub_t *pub = node->ensure_default_pub ();
         if (!pub)
             return NULL;
-        return open_spot_service_monitor (pub->monitor_open (events_), handler_);
+        return open_spot_service_monitor (
+          pub->monitor_open (events_), handler_,
+          &spot_pub_monitor_snapshot_provider,
+          static_cast<void *> (pub));
     }
     if (role_ == ZLINK_SPOT_ROLE_SUB) {
         zlink::spot_sub_t *sub = node->ensure_default_sub ();
         if (!sub)
             return NULL;
-        return open_spot_service_monitor (sub->monitor_open (events_), handler_);
+        return open_spot_service_monitor (
+          sub->monitor_open (events_), handler_,
+          &spot_sub_monitor_snapshot_provider,
+          static_cast<void *> (sub));
     }
 
     errno = EINVAL;
@@ -2816,45 +2952,22 @@ int zlink_spot_set_sub_option (void *spot_,
     return spot->sub->set_option (option_, optval_, optvallen_);
 }
 
-int zlink_spot_peers_pub (void *spot_,
-                          zlink_peer_info_t *peers_,
-                          size_t *count_)
-{
-    spot_handle_t *spot = as_spot_handle (spot_);
-    if (!spot)
-        return -1;
-    if (!spot->pub) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return spot->pub->peers (peers_, count_);
-}
-
-int zlink_spot_peers_sub (void *spot_,
-                          zlink_peer_info_t *peers_,
-                          size_t *count_)
-{
-    spot_handle_t *spot = as_spot_handle (spot_);
-    if (!spot)
-        return -1;
-    if (!spot->sub) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return spot->sub->peers (peers_, count_);
-}
-
 static void *open_spot_service_monitor (void *monitor_,
-                                        zlink_service_monitor_handler_fn handler_)
+                                        zlink_service_monitor_handler_fn handler_,
+                                        monitor_snapshot_provider_fn snapshot_provider_,
+                                        void *snapshot_subject_)
 {
-    if (!handler_) {
-        if (monitor_)
-            zlink_service_monitor_close (&monitor_);
-        errno = EINVAL;
-        return NULL;
-    }
     if (!monitor_)
         return NULL;
+    if (!handler_) {
+        errno = EINVAL;
+        zlink_service_monitor_close (&monitor_);
+        return NULL;
+    }
+
+    zlink_service_monitor_handler_fn effective_handler = handler_;
+    if (handler_ == &zlink_service_monitor_ignore_handler)
+        effective_handler = NULL;
 
     socket_handle_t handle = as_socket_handle (monitor_);
     if (!handle.socket) {
@@ -2862,7 +2975,9 @@ static void *open_spot_service_monitor (void *monitor_,
         errno = EFAULT;
         return NULL;
     }
-    if (set_monitor_handler_state (handle.socket, NULL, handler_, true) != 0) {
+    if (set_monitor_handler_state (handle.socket, NULL, effective_handler, true,
+                                   snapshot_provider_, snapshot_subject_)
+        != 0) {
         const int err = errno;
         zlink_service_monitor_close (&monitor_);
         errno = err;
@@ -2876,29 +2991,33 @@ void *zlink_spot_monitor_open (void *spot_,
                                zlink_spot_monitor_event_mask_t events_,
                                zlink_service_monitor_handler_fn handler_)
 {
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return NULL;
     if (!handler_) {
         errno = EINVAL;
         return NULL;
     }
-    spot_handle_t *spot = as_spot_handle (spot_);
-    if (!spot)
-        return NULL;
 
     if (role_ == ZLINK_SPOT_ROLE_PUB) {
         if (!spot->pub) {
             errno = ENOTSUP;
             return NULL;
         }
-        return open_spot_service_monitor (spot->pub->monitor_open (events_),
-                                          handler_);
+        return open_spot_service_monitor (
+          spot->pub->monitor_open (events_), handler_,
+          &spot_pub_monitor_snapshot_provider,
+          static_cast<void *> (spot->pub));
     }
     if (role_ == ZLINK_SPOT_ROLE_SUB) {
         if (!spot->sub) {
             errno = ENOTSUP;
             return NULL;
         }
-        return open_spot_service_monitor (spot->sub->monitor_open (events_),
-                                          handler_);
+        return open_spot_service_monitor (
+          spot->sub->monitor_open (events_), handler_,
+          &spot_sub_monitor_snapshot_provider,
+          static_cast<void *> (spot->sub));
     }
 
     errno = EINVAL;

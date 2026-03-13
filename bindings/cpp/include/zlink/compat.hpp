@@ -251,10 +251,6 @@ inline int discovery_connect_registry (void *discovery_, const char *endpoint_)
 {
     return zlink_discovery_connect_registry (discovery_, endpoint_);
 }
-inline int discovery_subscribe (void *discovery_, const char *service_)
-{
-    return zlink_discovery_subscribe (discovery_, service_);
-}
 inline int discovery_receiver_count (void *discovery_, const char *service_)
 {
     return zlink_discovery_receiver_count (discovery_, service_);
@@ -409,15 +405,8 @@ inline int spot_node_setsockopt (void *node_,
 {
     switch (role_) {
     case 0:
-        switch (option_) {
-        case ZLINK_SPOT_PUB_OPT_MODE:
-        case ZLINK_SPOT_PUB_OPT_QUEUE_HWM:
-        case ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY:
-            return zlink_spot_node_set_pub_option (node_, option_, value_, len_);
-        default:
-            errno = EINVAL;
-            return -1;
-        }
+        errno = EINVAL;
+        return -1;
     case 1: {
         const int mapped = detail::spot_pub_option_from_socket_option (option_);
         if (mapped < 0)

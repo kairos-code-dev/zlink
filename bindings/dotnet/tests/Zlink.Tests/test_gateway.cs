@@ -119,7 +119,6 @@ public sealed class test_gateway
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe("svc");
 
         using var receiver = new Receiver(ctx);
         const string targetRoutingId = "RID-STR-1";
@@ -165,7 +164,6 @@ public sealed class test_gateway
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe("svc");
 
         using var receiver = new Receiver(ctx);
         RegisterProvider(receiver, regRouter, "svc", 1, "PROV1");
@@ -198,7 +196,6 @@ public sealed class test_gateway
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe("svc-own");
 
         using var receiver = new Receiver(ctx);
         RegisterProvider(receiver, regRouter, "svc-own", 1, "OWN1");
@@ -237,7 +234,6 @@ public sealed class test_gateway
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe("svc-missing");
 
         using var gateway = new Gateway(ctx, discovery);
         using var message = Message.FromBytes("owned-fail"u8);
@@ -265,8 +261,6 @@ public sealed class test_gateway
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe("svc-A");
-        discovery.Subscribe("svc-B");
 
         using var providerA = new Receiver(ctx);
         RegisterProvider(providerA, regRouter, "svc-A", 1, "PROVA");
@@ -309,7 +303,6 @@ public sealed class test_gateway
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe("svc-update");
 
         using var provider1 = new Receiver(ctx);
         RegisterProvider(provider1, regRouter, "svc-update", 1, "P1");
@@ -358,7 +351,6 @@ public sealed class test_gateway
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe("svc-ws");
 
         using var provider = new Receiver(ctx);
         RegisterProvider(provider, regRouter, "svc-ws", 1, "PROVWS", "ws");
@@ -394,7 +386,6 @@ public sealed class test_gateway
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe("svc-tls");
 
         using var provider = new Receiver(ctx);
         provider.SetTlsServer(serverCert, serverKey);
@@ -432,7 +423,6 @@ public sealed class test_gateway
 
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe("svc-wss");
 
         using var provider = new Receiver(ctx);
         provider.SetTlsServer(serverCert, serverKey);
@@ -467,7 +457,6 @@ public sealed class test_gateway
         const string serviceName = "lb-svc";
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe(serviceName);
 
         using var provider1 = new Receiver(ctx);
         RegisterProvider(provider1, regRouter, serviceName, 10, "PROV1");
@@ -515,7 +504,6 @@ public sealed class test_gateway
         const string serviceName = "lb-weighted";
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe(serviceName);
 
         using var provider1 = new Receiver(ctx);
         RegisterProvider(provider1, regRouter, serviceName, 8, "WPROV1");
@@ -567,7 +555,6 @@ public sealed class test_gateway
         const string serviceName = "svc-sync";
         using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
         discovery.ConnectRegistry(regRouter);
-        discovery.Subscribe(serviceName);
 
         using var provider = new Receiver(ctx);
         RegisterProvider(provider, regRouter, serviceName, 1, "SYNC1");

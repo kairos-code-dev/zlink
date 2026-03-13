@@ -37,8 +37,6 @@ internal static class PerfGateway
 
             discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
             discovery.ConnectRegistry(regRouter);
-            discovery.Subscribe(service);
-
             receiver = new Receiver(ctx);
             string providerEp = EndpointFor(transport, "gateway-provider");
             ConfigureReceiverTlsServerIfNeeded(receiver, transport);

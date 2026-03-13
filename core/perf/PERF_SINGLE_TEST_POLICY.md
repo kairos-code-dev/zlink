@@ -210,7 +210,6 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 - DEALER_DEALER
 - DEALER_ROUTER
 - ROUTER_ROUTER
-- ROUTER_ROUTER_POLL
 - GATEWAY
 - SPOT
 

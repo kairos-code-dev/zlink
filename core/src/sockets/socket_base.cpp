@@ -252,120 +252,48 @@ static void copy_routing_id (zlink_routing_id_t *out_,
         memcpy (out_->data, routing_id_.data (), copy_size);
 }
 
-static bool routing_id_matches (const zlink::blob_t &routing_id_,
-                                const zlink_routing_id_t *probe_)
+int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
 {
-    if (!probe_)
-        return false;
-    if (routing_id_.size () != probe_->size)
-        return false;
-    if (probe_->size == 0)
-        return true;
-    return memcmp (routing_id_.data (), probe_->data, probe_->size) == 0;
-}
-
-int zlink::socket_base_t::socket_peer_info (const zlink_routing_id_t *routing_id_,
-                                          zlink_peer_info_t *info_)
-{
-    if (!routing_id_ || !info_) {
+    if (!out_) {
         errno = EINVAL;
         return -1;
     }
 
     process_commands (0, false);
+    memset (out_, 0, sizeof (*out_));
+    out_->source_kind = ZLINK_MONITOR_SOURCE_SOCKET;
+    out_->detail_flags =
+      ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT
+      | ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+      | ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS;
+    out_->ready_peer_count = static_cast<uint32_t> (_pipes.size ());
+    if (out_->ready_peer_count > 0)
+        out_->state_flags |= ZLINK_MONITOR_STATE_READY;
 
     for (pipes_t::size_type i = 0; i < _pipes.size (); ++i) {
         pipe_t *pipe = _pipes[i];
-        if (routing_id_matches (pipe->get_routing_id (), routing_id_)) {
-            memset (info_, 0, sizeof (*info_));
-            copy_routing_id (&info_->routing_id, pipe->get_routing_id ());
-            const std::string &remote = pipe->get_endpoint_pair ().remote;
-            const size_t copy_size =
-              std::min (remote.size (), sizeof (info_->remote_addr) - 1);
-            if (copy_size > 0) {
-                memcpy (info_->remote_addr, remote.c_str (), copy_size);
-                info_->remote_addr[copy_size] = '\0';
-            } else {
-                info_->remote_addr[0] = '\0';
-            }
-            info_->connected_time = pipe->get_connected_time ();
-            info_->msgs_sent = pipe->get_msgs_written ();
-            info_->msgs_received = pipe->get_msgs_read ();
-            info_->snd_pending_msgs = pipe->get_snd_pending_msgs ();
-            info_->rcv_pending_msgs = pipe->get_rcv_pending_msgs_approx ();
-            return 0;
-        }
+        out_->snd_pending_msgs += pipe->get_snd_pending_msgs ();
+        out_->rcv_pending_msgs += pipe->get_rcv_pending_msgs_approx ();
     }
 
-    errno = ENOENT;
-    return -1;
-}
-
-int zlink::socket_base_t::socket_peer_routing_id (int index_,
-                                                zlink_routing_id_t *out_)
-{
-    if (index_ < 0 || !out_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    process_commands (0, false);
-
-    if (static_cast<pipes_t::size_type> (index_) >= _pipes.size ()) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    pipe_t *pipe = _pipes[static_cast<pipes_t::size_type> (index_)];
-    copy_routing_id (out_, pipe->get_routing_id ());
     return 0;
 }
 
-int zlink::socket_base_t::socket_peer_count ()
+void zlink::socket_base_t::socket_peer_remote_endpoints (
+  std::vector<std::string> *out_)
 {
-    process_commands (0, false);
-
-    return static_cast<int> (_pipes.size ());
-}
-
-int zlink::socket_base_t::socket_peers (zlink_peer_info_t *peers_,
-                                      size_t *count_)
-{
-    if (!count_) {
-        errno = EINVAL;
-        return -1;
-    }
+    if (!out_)
+        return;
 
     process_commands (0, false);
-
-    const size_t available = _pipes.size ();
-    if (!peers_) {
-        *count_ = available;
-        return 0;
-    }
-
-    size_t to_copy = *count_ < available ? *count_ : available;
-    for (size_t i = 0; i < to_copy; ++i) {
+    out_->clear ();
+    out_->reserve (_pipes.size ());
+    for (pipes_t::size_type i = 0; i < _pipes.size (); ++i) {
         pipe_t *pipe = _pipes[i];
-        zlink_peer_info_t *info = &peers_[i];
-        memset (info, 0, sizeof (*info));
-        copy_routing_id (&info->routing_id, pipe->get_routing_id ());
         const std::string &remote = pipe->get_endpoint_pair ().remote;
-        const size_t copy_size =
-          std::min (remote.size (), sizeof (info->remote_addr) - 1);
-        if (copy_size > 0) {
-            memcpy (info->remote_addr, remote.c_str (), copy_size);
-            info->remote_addr[copy_size] = '\0';
-        }
-        info->connected_time = pipe->get_connected_time ();
-        info->msgs_sent = pipe->get_msgs_written ();
-        info->msgs_received = pipe->get_msgs_read ();
-        info->snd_pending_msgs = pipe->get_snd_pending_msgs ();
-        info->rcv_pending_msgs = pipe->get_rcv_pending_msgs_approx ();
+        if (!remote.empty ())
+            out_->push_back (remote);
     }
-
-    *count_ = to_copy;
-    return 0;
 }
 
 zlink::socket_base_t::~socket_base_t ()

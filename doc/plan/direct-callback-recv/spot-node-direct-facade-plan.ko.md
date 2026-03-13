@@ -98,7 +98,7 @@ int zlink_spot_node_publish_bytes(void *node,
 
 int zlink_spot_node_subscribe(void *node, const char *topic_id);
 int zlink_spot_node_subscribe_pattern(void *node, const char *pattern);
-int zlink_spot_node_unsubscribe_filter(void *node,
+int zlink_spot_node_unsubscribe(void *node,
                                        const char *topic_id_or_pattern);
 
 int zlink_spot_node_set_handler(void *node,

@@ -72,7 +72,6 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     add_current_bench_single(perf_dealer_dealer single/src/perf_dealer_dealer.cpp)
     add_current_bench_single(perf_dealer_router single/src/perf_dealer_router.cpp)
     add_current_bench_single(perf_router_router single/src/perf_router_router.cpp)
-    add_current_bench_single(perf_router_router_poll single/src/perf_router_router_poll.cpp)
     add_current_bench_single(perf_gateway single/src/perf_gateway.cpp)
     add_current_bench_single(perf_spot single/src/perf_spot.cpp)
 

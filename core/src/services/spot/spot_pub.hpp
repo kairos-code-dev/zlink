@@ -37,7 +37,7 @@ class spot_pub_t
     int set_send_ready_handler (zlink_send_ready_handler_fn handler_,
                                 void *subject_);
     int routing_id (zlink_routing_id_t *out_) const;
-    int peers (zlink_peer_info_t *peers_, size_t *count_) const;
+    int fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const;
     void *monitor_open (int events_);
     void invoke_send_ready_for_testing ();
     void emit_delivery_ready_changed_event (const char *subject_,

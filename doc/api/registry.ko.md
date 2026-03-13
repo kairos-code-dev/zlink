@@ -47,30 +47,31 @@ Registry의 수명 동안 유효해야 합니다.
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
-**참고:** `zlink_registry_set_endpoints`, `zlink_registry_start`, `zlink_registry_destroy`
+**참고:** `zlink_registry_bind`, `zlink_registry_destroy`
 
 ---
 
-### zlink_registry_set_endpoints
+### zlink_registry_bind
 
-Registry의 PUB 및 ROUTER 엔드포인트를 설정합니다.
+Registry의 PUB 및 ROUTER 엔드포인트를 바인딩하고 Registry를 시작합니다.
 
 ```c
-int zlink_registry_set_endpoints(void *registry,
-                                 const char *pub_endpoint,
-                                 const char *router_endpoint);
+int zlink_registry_bind(void *registry,
+                        const char *pub_endpoint,
+                        const char *router_endpoint);
 ```
 
-Registry가 바인딩할 엔드포인트를 구성합니다. PUB 엔드포인트는 Discovery
-인스턴스에 서비스 목록을 브로드캐스트하는 데 사용됩니다. ROUTER 엔드포인트는
-Receiver 및 SPOT 노드로부터 등록, 등록 해제, 하트비트 메시지를 수신하는 데
-사용됩니다. `zlink_registry_start` 호출 전에 설정해야 합니다.
+Registry의 PUB 및 ROUTER 엔드포인트를 바인딩하고, 바인드 성공을 확인한 뒤,
+내부 control task를 시작하며 서비스 등록 수신과 브로드캐스트를 시작합니다.
+PUB 엔드포인트는 Discovery 인스턴스에 서비스 목록을 브로드캐스트하는 데
+사용됩니다. ROUTER 엔드포인트는 Receiver 및 SPOT 노드로부터 등록, 등록 해제,
+하트비트 메시지를 수신하는 데 사용됩니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_start` 호출 전에 설정해야 합니다.
+**스레드 안전성:** 스레드 안전하지 않음. Registry당 한 번만 호출해야 합니다.
 
-**참고:** `zlink_registry_new`, `zlink_registry_start`
+**참고:** `zlink_registry_new`, `zlink_registry_destroy`
 
 ---
 
@@ -84,11 +85,11 @@ int zlink_registry_set_id(void *registry, uint32_t registry_id);
 
 이 Registry 인스턴스에 고유 식별자를 할당합니다. ID는 여러 레지스트리가
 피어 연결을 통해 서로 동기화하는 클러스터 구성에 사용됩니다.
-`zlink_registry_start` 호출 전에 설정해야 합니다.
+`zlink_registry_bind` 호출 전에 설정해야 합니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_start` 호출 전에 설정해야 합니다.
+**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_bind` 호출 전에 설정해야 합니다.
 
 **참고:** `zlink_registry_add_peer`
 
@@ -105,11 +106,11 @@ int zlink_registry_add_peer(void *registry,
 
 이 Registry를 피어 Registry의 PUB 엔드포인트에 연결하여 클러스터 전체에서
 서비스 목록을 동기화할 수 있도록 합니다. 여러 피어를 추가할 수 있습니다.
-`zlink_registry_start` 호출 전에 설정해야 합니다.
+`zlink_registry_bind` 호출 전에 설정해야 합니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_start` 호출 전에 설정해야 합니다.
+**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_bind` 호출 전에 설정해야 합니다.
 
 **참고:** `zlink_registry_set_id`
 
@@ -131,7 +132,7 @@ Registry가 등록된 서비스로부터 하트비트 메시지를 기대하는 
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_start` 호출 전에 설정해야 합니다.
+**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_bind` 호출 전에 설정해야 합니다.
 
 **참고:** `zlink_registry_set_broadcast_interval`
 
@@ -152,7 +153,7 @@ PUB 엔드포인트를 구독하는 Discovery 인스턴스는 이 간격으로 �
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_start` 호출 전에 설정해야 합니다.
+**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_bind` 호출 전에 설정해야 합니다.
 
 **참고:** `zlink_registry_set_heartbeat`
 
@@ -172,36 +173,16 @@ int zlink_registry_setsockopt(void *registry,
 
 `socket_role`로 식별되는 Registry 내부 소켓 중 하나에 저수준 소켓 옵션을
 적용합니다. `ZLINK_REGISTRY_SOCKET_*` 상수를 사용하여 대상 소켓을 선택합니다.
-`zlink_registry_start` 호출 전에 설정해야 합니다.
+`zlink_registry_bind` 호출 전에 설정해야 합니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
 **에러:**
 - `EINVAL` -- 잘못된 소켓 역할 또는 알 수 없는 옵션.
 
-**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_start` 호출 전에 설정해야 합니다.
+**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_bind` 호출 전에 설정해야 합니다.
 
-**참고:** `zlink_registry_set_endpoints`
-
----
-
-### zlink_registry_start
-
-Registry를 시작합니다.
-
-```c
-int zlink_registry_start(void *registry);
-```
-
-구성된 엔드포인트를 바인딩하고, 내부 스레드를 생성하며, 등록 수신 및 서비스
-목록 브로드캐스트를 시작합니다. 모든 구성(엔드포인트, 하트비트, 브로드캐스트
-간격, 소켓 옵션, 피어)은 이 함수를 호출하기 전에 설정해야 합니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**스레드 안전성:** 스레드 안전하지 않음. Registry당 정확히 한 번만 호출해야 합니다.
-
-**참고:** `zlink_registry_set_endpoints`, `zlink_registry_destroy`
+**참고:** `zlink_registry_bind`
 
 ---
 
@@ -221,7 +202,7 @@ int zlink_registry_destroy(void **registry_p);
 
 **스레드 안전성:** 스레드 안전하지 않음. 다른 Registry 작업과 동시에 호출해서는 안 됩니다.
 
-**참고:** `zlink_registry_new`
+**참고:** `zlink_registry_new`, `zlink_registry_bind`
 
 ---
 

@@ -38,7 +38,6 @@ public class TestDiscoveryGatewaySpotPortedTest {
                 registry.start();
 
                 discovery.connectRegistry(regRouter);
-                discovery.subscribe("svc");
 
                 receiver.bind(TestSupport.tcpEndpoint());
                 receiver.connectRegistry(regRouter);

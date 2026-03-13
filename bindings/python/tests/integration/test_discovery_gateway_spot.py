@@ -40,7 +40,6 @@ class DiscoveryGatewaySpotScenarioTest(unittest.TestCase):
 
                         discovery = zlink.Discovery(ctx, zlink.SERVICE_TYPE_GATEWAY)
                         discovery.connect_registry(reg_pub)
-                        discovery.subscribe("svc")
 
                         receiver = zlink.Receiver(ctx)
                         svc_ep = endpoint_for(name, endpoint, "-svc")

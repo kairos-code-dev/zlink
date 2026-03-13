@@ -63,6 +63,27 @@ static send_ready_probe_t *g_send_ready_probe_a = NULL;
 static send_ready_probe_t *g_send_ready_probe_b = NULL;
 static send_ready_probe_t *g_send_ready_probe_replace = NULL;
 
+static bool read_spot_snapshot (void *spot_,
+                                zlink_spot_role_t role_,
+                                zlink_monitor_snapshot_t *out_)
+{
+    if (!spot_ || !out_)
+        return false;
+
+    void *monitor = zlink_spot_monitor_open (
+      spot_, role_,
+      ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
+        | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
+        | ZLINK_MONITOR_EVENT_ERROR,
+      &zlink_service_monitor_ignore_handler);
+    if (!monitor)
+        return false;
+
+    const int rc = zlink_monitor_snapshot (monitor, out_);
+    zlink_service_monitor_close (&monitor);
+    return rc == 0;
+}
+
 void setUp ()
 {
     std::lock_guard<std::mutex> lock (g_spot_probe_registry_mutex);
@@ -174,10 +195,9 @@ static void *create_started_registry_with_port_seed (void *ctx_,
         snprintf (router_endpoint_out_, router_size_, "tcp://127.0.0.1:%d",
                   test_port (*port_seed_ + 1));
 
-        if (zlink_registry_set_endpoints (registry, pub_endpoint_out_,
-                                          router_endpoint_out_)
-            == 0
-            && zlink_registry_start (registry) == 0) {
+        if (zlink_registry_bind (registry, pub_endpoint_out_,
+                                 router_endpoint_out_)
+            == 0) {
             *port_seed_ += 2;
             return registry;
         }
@@ -811,13 +831,23 @@ static void test_spot_pub_sub_options_and_routing_ids ()
     TEST_ASSERT_SUCCESS_ERRNO (attach_spot_probe (sub, sub_probe));
     msleep (100);
 
-    zlink_peer_info_t peers[4];
-    size_t peer_count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_peers_pub (pub, peers, &peer_count));
-    TEST_ASSERT_TRUE (peer_count > 0);
-    peer_count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_peers_sub (sub, peers, &peer_count));
-    TEST_ASSERT_TRUE (peer_count > 0);
+    zlink_monitor_snapshot_t snapshot;
+    memset (&snapshot, 0, sizeof (snapshot));
+    for (int i = 0; i < 200; ++i) {
+        if (read_spot_snapshot (pub, ZLINK_SPOT_ROLE_PUB, &snapshot)
+            && snapshot.ready_peer_count > 0)
+            break;
+        msleep (10);
+    }
+    TEST_ASSERT_TRUE (snapshot.ready_peer_count > 0);
+    memset (&snapshot, 0, sizeof (snapshot));
+    for (int i = 0; i < 200; ++i) {
+        if (read_spot_snapshot (sub, ZLINK_SPOT_ROLE_SUB, &snapshot)
+            && snapshot.ready_peer_count > 0)
+            break;
+        msleep (10);
+    }
+    TEST_ASSERT_TRUE (snapshot.ready_peer_count > 0);
 
     step_log ("pub_sub_options: send-ready guards");
     std::atomic<int> ready_calls (0);
@@ -914,26 +944,51 @@ static void test_spot_monitors_and_monitor_poller ()
     void *sub = create_spot_sub_handle (sub_node);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
-    const size_t socket_count_before_null_monitor_checks =
-      ctx_impl->socket_count ();
+    errno = 0;
+    void *sub_null_monitor = zlink_spot_monitor_open (
+      sub, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_READY, NULL);
+    TEST_ASSERT_NULL (sub_null_monitor);
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+    errno = 0;
+    void *pub_null_monitor = zlink_spot_monitor_open (
+      pub, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_READY, NULL);
+    TEST_ASSERT_NULL (pub_null_monitor);
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+    errno = 0;
+    void *sub_node_null_monitor = zlink_spot_node_monitor_open (
+      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_READY, NULL);
+    TEST_ASSERT_NULL (sub_node_null_monitor);
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+    errno = 0;
+    void *pub_node_null_monitor = zlink_spot_node_monitor_open (
+      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_READY, NULL);
+    TEST_ASSERT_NULL (pub_node_null_monitor);
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
-    TEST_ASSERT_NULL (zlink_spot_monitor_open (
-      sub, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_READY, NULL));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
-    TEST_ASSERT_NULL (zlink_spot_monitor_open (
-      pub, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_READY, NULL));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
-    TEST_ASSERT_NULL (zlink_spot_node_monitor_open (
-      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_READY, NULL));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
-    TEST_ASSERT_NULL (zlink_spot_node_monitor_open (
-      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_READY, NULL));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    void *sub_ignore_monitor = zlink_spot_monitor_open (
+      sub, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_READY,
+      &zlink_service_monitor_ignore_handler);
+    TEST_ASSERT_NOT_NULL (sub_ignore_monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
-      ctx_impl->wait_for_socket_count_at_most (
-        socket_count_before_null_monitor_checks, 1000));
-    TEST_ASSERT_EQUAL_UINT (
-      socket_count_before_null_monitor_checks, ctx_impl->socket_count ());
+      zlink_service_monitor_close (&sub_ignore_monitor));
+    void *pub_ignore_monitor = zlink_spot_monitor_open (
+      pub, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_READY,
+      &zlink_service_monitor_ignore_handler);
+    TEST_ASSERT_NOT_NULL (pub_ignore_monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_service_monitor_close (&pub_ignore_monitor));
+    void *sub_node_ignore_monitor = zlink_spot_node_monitor_open (
+      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_READY,
+      &zlink_service_monitor_ignore_handler);
+    TEST_ASSERT_NOT_NULL (sub_node_ignore_monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_service_monitor_close (&sub_node_ignore_monitor));
+    void *pub_node_ignore_monitor = zlink_spot_node_monitor_open (
+      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_READY,
+      &zlink_service_monitor_ignore_handler);
+    TEST_ASSERT_NOT_NULL (pub_node_ignore_monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_service_monitor_close (&pub_node_ignore_monitor));
 
     spot_probe_t *sub_probe = new spot_probe_t;
     TEST_ASSERT_SUCCESS_ERRNO (attach_spot_probe (sub, sub_probe));

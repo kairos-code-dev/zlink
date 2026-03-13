@@ -247,7 +247,6 @@ static void on_discovery_event(const zlink_service_event_t *ev)
 
 void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, registry_router);
-zlink_discovery_subscribe(discovery, "svc-a");
 
 void *mon = zlink_discovery_monitor_open(
     discovery,

@@ -68,7 +68,6 @@ SINGLE_ECHO_PATTERNS = {
     "DEALER_DEALER",
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
-    "ROUTER_ROUTER_POLL",
 }
 ALLOW_MULTI = os.environ.get("PERF_ALLOW_MULTI", "0") == "1"
 SINGLE_COMPARISONS = [
@@ -77,7 +76,6 @@ SINGLE_COMPARISONS = [
     ("perf_dealer_dealer", "DEALER_DEALER"),
     ("perf_dealer_router", "DEALER_ROUTER"),
     ("perf_router_router", "ROUTER_ROUTER"),
-    ("perf_router_router_poll", "ROUTER_ROUTER_POLL"),
     ("perf_gateway", "GATEWAY"),
     ("perf_spot", "SPOT"),
 ]

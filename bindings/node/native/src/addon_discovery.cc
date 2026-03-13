@@ -240,38 +240,6 @@ napi_value discovery_connect(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value discovery_subscribe(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *disc = NULL;
-    napi_get_value_external(env, argv[0], &disc);
-    std::string service = get_string(env, argv[1]);
-    int rc = zlink_discovery_subscribe(disc, service.c_str());
-    if (rc != 0)
-        return throw_last_error(env, "discovery_subscribe failed");
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
-}
-
-napi_value discovery_unsubscribe(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *disc = NULL;
-    napi_get_value_external(env, argv[0], &disc);
-    std::string service = get_string(env, argv[1]);
-    int rc = zlink_discovery_unsubscribe(disc, service.c_str());
-    if (rc != 0)
-        return throw_last_error(env, "discovery_unsubscribe failed");
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
-}
-
 napi_value discovery_provider_count(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];

@@ -72,7 +72,7 @@ typedef struct zlink_pollitem_t
     short revents;
 } zlink_pollitem_t;
 
-inline int zlink_poll(zlink_pollitem_t *items_, int nitems_, long timeout_)
+inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_)
 {
     if (nitems_ < 0) {
         errno = EINVAL;

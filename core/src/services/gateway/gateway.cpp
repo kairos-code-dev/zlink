@@ -1802,7 +1802,7 @@ void gateway_t::on_discovery_destroyed (discovery_t *discovery_)
     _last_register_error.clear ();
 }
 
-int gateway_t::monitor_snapshot (zlink_gateway_monitor_snapshot_t *out_)
+int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
 {
     if (!out_ || _service_name.empty ()) {
         errno = EINVAL;
@@ -1815,11 +1815,25 @@ int gateway_t::monitor_snapshot (zlink_gateway_monitor_snapshot_t *out_)
     lock_routing_id ();
     process_monitor_events ();
     memset (out_, 0, sizeof (*out_));
-    out_->bound_ready = _bind_endpoint.empty () ? 0 : 1;
+    out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+    out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT;
+    out_->state_flags =
+      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
     gateway_service_pool_t *pool = get_or_create_pool (_service_name);
     out_->ready_peer_count =
       pool ? static_cast<uint32_t> (pool->endpoints.size ()) : 0;
-    out_->send_ready = out_->ready_peer_count > 0 ? 1 : 0;
+    if (out_->ready_peer_count > 0)
+        out_->state_flags |=
+          ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+    if (_runtime->router_socket) {
+        zlink_monitor_snapshot_t router_snapshot;
+        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
+            out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+            out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+            out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+                                  | ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS;
+        }
+    }
     return 0;
 }
 

@@ -31,7 +31,7 @@ zlink C 라이브러리는 경량 I/O 스레드와 락프리 큐를 기반으로
 | [`zlink_msg_t`](message.ko.md) | message.ko.md | 불투명 메시지 컨테이너 (64바이트, 스택 할당 가능) |
 | [`zlink_routing_id_t`](message.ko.md) | message.ko.md | 피어 라우팅 아이덴티티 (1바이트 크기 + 255바이트 데이터) |
 | [`zlink_monitor_event_t`](monitoring.ko.md) | monitoring.ko.md | 모니터 이벤트 구조체 (이벤트, 값, 주소) |
-| [`zlink_peer_info_t`](monitoring.ko.md) | monitoring.ko.md | 연결된 피어 통계 (라우팅 아이디, 주소, 카운터) |
+| [`zlink_monitor_snapshot_t`](monitoring.ko.md) | monitoring.ko.md | aggregate monitor snapshot (상태, ready-peer 수, queue depth) |
 | [`zlink_service_event_t`](events.ko.md) | events.ko.md | 서비스 모니터 이벤트 구조체와 subject-aware payload |
 | [`zlink_receiver_info_t`](discovery.ko.md) | discovery.ko.md | 디스커버리된 서비스 리시버 항목 (이름, 엔드포인트, 가중치) |
 | [`zlink_pollitem_t`](polling.ko.md) | polling.ko.md | I/O 다중화를 위한 폴 아이템 (소켓 또는 fd) |

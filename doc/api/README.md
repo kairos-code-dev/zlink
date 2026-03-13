@@ -32,10 +32,9 @@ public function, type, and constant exported by `<zlink.h>`.
 | [`zlink_routing_id_t`](message.md) | message.md | Peer routing identity (1-byte size + 255-byte data) |
 | [`zlink_socket_handler_t`](socket.md) | socket.md | Socket receive handler descriptor |
 | [`zlink_monitor_event_t`](monitoring.md) | monitoring.md | Monitor event structure (event, value, addresses) |
-| [`zlink_peer_info_t`](monitoring.md) | monitoring.md | Connected-peer statistics (routing id, address, counters) |
+| [`zlink_monitor_snapshot_t`](monitoring.md) | monitoring.md | Aggregate monitor snapshot (state, ready-peer count, queue depth) |
 | [`zlink_service_event_t`](events.md) | events.md | Service monitor event structure and subject-aware payload |
 | [`zlink_receiver_info_t`](discovery.md) | discovery.md | Discovered service-receiver entry (name, endpoint, weight) |
-| [`zlink_gateway_monitor_snapshot_t`](gateway.md) | gateway.md | Local gateway control snapshot (bind/send readiness) |
 
 ## Callback Types
 

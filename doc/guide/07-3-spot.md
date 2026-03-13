@@ -73,7 +73,6 @@ void *ctx = zlink_ctx_new();
 /* Discovery setup (peer discovery + registry uplink / heartbeat owner) */
 void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_SPOT);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
-zlink_discovery_subscribe(discovery, "spot-node");
 
 /* SPOT Node setup (service_name and handler are fixed at creation time) */
 void *node = zlink_spot_node_new(ctx, "spot-node", on_message);

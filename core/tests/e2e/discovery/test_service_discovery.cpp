@@ -3,9 +3,14 @@
 #include "../../testutil_unity.hpp"
 #include "../../testutil.hpp"
 
+#include "services/discovery/discovery.hpp"
+
+#include <chrono>
 #include <errno.h>
 #include <stdlib.h>
+#include <string>
 #include <string.h>
+#include <vector>
 
 SETUP_TEARDOWN_TESTCONTEXT
 
@@ -46,6 +51,25 @@ void discard_gateway_message (const zlink_routing_id_t *,
         zlink_msg_close (&parts_[i]);
 }
 
+bool wait_for_registry_uplink (void *discovery_, int timeout_ms_)
+{
+    zlink::discovery_t *discovery =
+      static_cast<zlink::discovery_t *> (discovery_);
+    if (!discovery)
+        return false;
+
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        std::string uplink;
+        if (discovery->latest_registry_uplink (&uplink) && !uplink.empty ())
+            return true;
+        msleep (10);
+    }
+    return false;
+}
+
 void *create_gateway_attached (void *ctx_,
                                void *discovery_,
                                const char *service_name_,
@@ -73,8 +97,7 @@ void setup_registry (void *ctx_,
     void *registry = zlink_registry_new (ctx_);
     TEST_ASSERT_NOT_NULL (registry);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_set_endpoints (registry, pub_ep_, router_ep_));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_start (registry));
+      zlink_registry_bind (registry, pub_ep_, router_ep_));
     *registry_out_ = registry;
 }
 
@@ -101,9 +124,7 @@ void *create_started_registry_with_port_seed (void *ctx_,
                   test_port (*port_seed_));
         snprintf (router_ep_out_, router_size_, "tcp://127.0.0.1:%d",
                   test_port (*port_seed_ + 1));
-        if (zlink_registry_set_endpoints (registry, pub_ep_out_,
-                                          router_ep_out_) == 0
-            && zlink_registry_start (registry) == 0) {
+        if (zlink_registry_bind (registry, pub_ep_out_, router_ep_out_) == 0) {
             *port_seed_ += 2;
             return registry;
         }
@@ -143,27 +164,36 @@ void bind_gateway_with_port_seed (void *gateway_,
     TEST_FAIL_MESSAGE ("gateway bind with port seed timeout");
 }
 
-void update_gateway_weight_with_timeout (void *gateway_,
-                                         uint32_t weight_,
-                                         int timeout_ms_)
+bool query_ready_gateway_entries (
+  void *registry_,
+  const char *service_name_,
+  std::vector<zlink_registry_topology_entry_t> *entries_out_)
 {
-    zlink_routing_id_t rid;
-    memset (&rid, 0, sizeof (rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (gateway_, &rid));
+    if (!registry_ || !service_name_ || !entries_out_)
+        return false;
 
-    const int step_ms = 10;
-    const int attempts = timeout_ms_ / step_ms;
-    for (int i = 0; i < attempts; ++i) {
-        if (zlink_gateway_update_peer_weight (gateway_, &rid, weight_) == 0)
-            return;
-        if (errno != EAGAIN && errno != ENOENT)
-            break;
-        msleep (step_ms);
-    }
-    TEST_FAIL_MESSAGE ("gateway update_peer_weight timeout");
+    zlink_registry_topology_filter_t filter;
+    memset (&filter, 0, sizeof (filter));
+    filter.service_kind = ZLINK_SERVICE_KIND_GATEWAY;
+    filter.state = ZLINK_TOPOLOGY_STATE_READY;
+    strncpy (filter.service_name, service_name_,
+             sizeof (filter.service_name) - 1);
+
+    size_t count = 0;
+    if (zlink_registry_topology_query (registry_, &filter, NULL, &count) != 0)
+        return false;
+
+    entries_out_->clear ();
+    if (count == 0)
+        return true;
+
+    entries_out_->resize (count);
+    return zlink_registry_topology_query (registry_, &filter, &(*entries_out_)[0],
+                                          &count)
+           == 0;
 }
 
-bool wait_for_provider_count (void *discovery_,
+bool wait_for_provider_count (void *registry_,
                               const char *service_name_,
                               int expected_count_,
                               int timeout_ms_)
@@ -172,14 +202,17 @@ bool wait_for_provider_count (void *discovery_,
     const int max_attempts = timeout_ms_ / sleep_ms;
 
     for (int i = 0; i < max_attempts; ++i) {
-        const int count =
-          zlink_discovery_receiver_count (discovery_, service_name_);
-        if (count == expected_count_)
+        std::vector<zlink_registry_topology_entry_t> entries;
+        if (!query_ready_gateway_entries (registry_, service_name_, &entries))
+            return false;
+        if (entries.size () == static_cast<size_t> (expected_count_))
             return true;
         msleep (sleep_ms);
     }
-    return zlink_discovery_receiver_count (discovery_, service_name_)
-           == expected_count_;
+
+    std::vector<zlink_registry_topology_entry_t> entries;
+    return query_ready_gateway_entries (registry_, service_name_, &entries)
+           && entries.size () == static_cast<size_t> (expected_count_);
 }
 
 void init_gateway_server (gateway_server_t *server_,
@@ -198,6 +231,7 @@ void init_gateway_server (gateway_server_t *server_,
     step_log ("gateway_server: connect registry");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       server_->discovery, registry_ep_));
+    TEST_ASSERT_TRUE (wait_for_registry_uplink (server_->discovery, 2000));
     step_log ("gateway_server: create gateway");
     server_->gateway =
       create_gateway_attached (ctx_, server_->discovery, service_name_, routing_id_,
@@ -241,9 +275,6 @@ static void test_discovery_provider_registration ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "test-svc"));
-
     gateway_server_t server;
     char bind_ep[64];
     int bind_seed = 5700;
@@ -255,19 +286,15 @@ static void test_discovery_provider_registration ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_last_endpoint (server.gateway, advertise_ep, &advertise_len));
 
-    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "test-svc", 1, 1000));
-    TEST_ASSERT_EQUAL_INT (1,
-                           zlink_discovery_receiver_count (discovery, "test-svc"));
+    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "test-svc", 1, 1000));
 
-    zlink_receiver_info_t providers[4];
-    size_t provider_count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_get_receivers (
-      discovery, "test-svc", providers, &provider_count));
-    TEST_ASSERT_EQUAL_INT (1, (int) provider_count);
-    TEST_ASSERT_EQUAL_STRING ("test-svc", providers[0].service_name);
-    TEST_ASSERT_EQUAL_STRING (advertise_ep, providers[0].endpoint);
-    TEST_ASSERT_EQUAL_UINT32 (0, providers[0].weight);
-    TEST_ASSERT_GREATER_THAN_UINT (0, providers[0].routing_id.size);
+    std::vector<zlink_registry_topology_entry_t> entries;
+    TEST_ASSERT_TRUE (
+      query_ready_gateway_entries (registry, "test-svc", &entries));
+    TEST_ASSERT_EQUAL_INT (1, (int) entries.size ());
+    TEST_ASSERT_EQUAL_STRING ("test-svc", entries[0].service_name);
+    TEST_ASSERT_EQUAL_STRING (advertise_ep, entries[0].endpoint);
+    TEST_ASSERT_GREATER_THAN_UINT (0, entries[0].routing_id.size);
 
     destroy_gateway_server (&server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
@@ -295,10 +322,9 @@ static void test_discovery_service_filtering ()
     step_log ("service_filtering: create discovery");
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
-    step_log ("service_filtering: connect/subscribe svc-A");
+    step_log ("service_filtering: connect discovery");
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svc-A"));
 
     gateway_server_t server_a;
     gateway_server_t server_b;
@@ -322,36 +348,22 @@ static void test_discovery_service_filtering ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_last_endpoint (server_b.gateway, advertise_b, &advertise_len));
 
-    step_log ("service_filtering: update weights");
-    update_gateway_weight_with_timeout (server_a.gateway, 10, 3000);
-    update_gateway_weight_with_timeout (server_b.gateway, 20, 3000);
-
     step_log ("service_filtering: wait svc-A");
-    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "svc-A", 1, 1000));
+    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "svc-A", 1, 1000));
 
-    zlink_receiver_info_t providers[4];
-    size_t count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_get_receivers (discovery, "svc-A", providers, &count));
-    TEST_ASSERT_EQUAL_INT (1, (int) count);
-    TEST_ASSERT_EQUAL_STRING ("svc-A", providers[0].service_name);
-    TEST_ASSERT_EQUAL_STRING (advertise_a, providers[0].endpoint);
-    TEST_ASSERT_EQUAL_UINT32 (10, providers[0].weight);
-    TEST_ASSERT_EQUAL_INT (0,
-                           zlink_discovery_receiver_count (discovery, "svc-B"));
+    std::vector<zlink_registry_topology_entry_t> entries;
+    TEST_ASSERT_TRUE (query_ready_gateway_entries (registry, "svc-A", &entries));
+    TEST_ASSERT_EQUAL_INT (1, (int) entries.size ());
+    TEST_ASSERT_EQUAL_STRING ("svc-A", entries[0].service_name);
+    TEST_ASSERT_EQUAL_STRING (advertise_a, entries[0].endpoint);
 
-    step_log ("service_filtering: subscribe svc-B");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svc-B"));
     step_log ("service_filtering: wait svc-B");
-    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "svc-B", 1, 1000));
+    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "svc-B", 1, 1000));
 
-    count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_get_receivers (discovery, "svc-B", providers, &count));
-    TEST_ASSERT_EQUAL_INT (1, (int) count);
-    TEST_ASSERT_EQUAL_STRING ("svc-B", providers[0].service_name);
-    TEST_ASSERT_EQUAL_STRING (advertise_b, providers[0].endpoint);
-    TEST_ASSERT_EQUAL_UINT32 (20, providers[0].weight);
+    TEST_ASSERT_TRUE (query_ready_gateway_entries (registry, "svc-B", &entries));
+    TEST_ASSERT_EQUAL_INT (1, (int) entries.size ());
+    TEST_ASSERT_EQUAL_STRING ("svc-B", entries[0].service_name);
+    TEST_ASSERT_EQUAL_STRING (advertise_b, entries[0].endpoint);
 
     step_log ("service_filtering: destroy server B");
     destroy_gateway_server (&server_b);
@@ -381,10 +393,9 @@ static void test_discovery_heartbeat_timeout ()
                                 registry_seed);
         make_registry_endpoint (registry_router, sizeof (registry_router),
                                 registry_seed + 1);
-        if (zlink_registry_set_endpoints (registry, registry_pub,
-                                          registry_router) == 0
-            && zlink_registry_set_heartbeat (registry, 50, 200) == 0
-            && zlink_registry_start (registry) == 0) {
+        if (zlink_registry_set_heartbeat (registry, 50, 200) == 0
+            && zlink_registry_bind (registry, registry_pub, registry_router)
+                 == 0) {
             registry_seed += 2;
             break;
         }
@@ -399,136 +410,38 @@ static void test_discovery_heartbeat_timeout ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "hb-svc"));
-
     gateway_server_t server;
     char bind_ep[64];
     int bind_seed = 5703;
     init_gateway_server (&server, ctx, registry_router, "hb-svc",
                          NULL, &bind_seed, bind_ep, sizeof (bind_ep));
 
-    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "hb-svc", 1, 1000));
+    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "hb-svc", 1, 1000));
     destroy_gateway_server (&server);
     msleep (350);
-    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "hb-svc", 0, 500));
+    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "hb-svc", 0, 500));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
-static void test_discovery_weight_update ()
+static void test_registry_bind_rejects_rebind ()
 {
-    step_log ("=== test_discovery_weight_update ===");
-
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
     char registry_pub[MAX_SOCKET_STRING];
     char registry_router[MAX_SOCKET_STRING];
-    int registry_seed = 25730;
-    void *registry = create_started_registry_with_port_seed (
-      ctx, &registry_seed, registry_pub, sizeof (registry_pub),
-      registry_router, sizeof (registry_router));
+    make_registry_endpoint (registry_pub, sizeof (registry_pub), 22640);
+    make_registry_endpoint (registry_router, sizeof (registry_router), 22641);
+
+    void *registry = zlink_registry_new (ctx);
     TEST_ASSERT_NOT_NULL (registry);
-    msleep (50);
-
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
-    TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "weight-svc"));
-
-    gateway_server_t server;
-    char bind_ep[64];
-    int bind_seed = 5704;
-    init_gateway_server (&server, ctx, registry_router,
-                         "weight-svc", NULL, &bind_seed, bind_ep,
-                         sizeof (bind_ep));
-
-    char advertise_ep[256] = {0};
-    size_t advertise_len = sizeof (advertise_ep);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_last_endpoint (server.gateway, advertise_ep, &advertise_len));
-
-    update_gateway_weight_with_timeout (server.gateway, 10, 3000);
-    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "weight-svc", 1, 1000));
-
-    zlink_receiver_info_t providers[4];
-    size_t count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_get_receivers (
-      discovery, "weight-svc", providers, &count));
-    TEST_ASSERT_EQUAL_INT (1, (int) count);
-    TEST_ASSERT_EQUAL_UINT32 (10, providers[0].weight);
-
-    update_gateway_weight_with_timeout (server.gateway, 50, 500);
-    msleep (200);
-
-    count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_get_receivers (
-      discovery, "weight-svc", providers, &count));
-    TEST_ASSERT_EQUAL_INT (1, (int) count);
-    TEST_ASSERT_EQUAL_UINT32 (50, providers[0].weight);
-
-    destroy_gateway_server (&server);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
-}
-
-static void test_discovery_weight_update_stress ()
-{
-    step_log ("=== test_discovery_weight_update_stress ===");
-
-    void *ctx = get_test_context ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    char registry_pub[MAX_SOCKET_STRING];
-    char registry_router[MAX_SOCKET_STRING];
-    int registry_seed = 25740;
-    void *registry = create_started_registry_with_port_seed (
-      ctx, &registry_seed, registry_pub, sizeof (registry_pub),
-      registry_router, sizeof (registry_router));
-    TEST_ASSERT_NOT_NULL (registry);
-    msleep (50);
-
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
-    TEST_ASSERT_NOT_NULL (discovery);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
-      discovery, registry_router));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "weight-stress-svc"));
-
-    gateway_server_t server;
-    char bind_ep[64];
-    int bind_seed = 5705;
-    init_gateway_server (&server, ctx, registry_router,
-                         "weight-stress-svc", NULL, &bind_seed, bind_ep,
-                         sizeof (bind_ep));
-
-    char advertise_ep[256] = {0};
-    size_t advertise_len = sizeof (advertise_ep);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_last_endpoint (server.gateway, advertise_ep, &advertise_len));
-    update_gateway_weight_with_timeout (server.gateway, 10, 3000);
-    TEST_ASSERT_TRUE (
-      wait_for_provider_count (discovery, "weight-stress-svc", 1, 2000));
-
-    uint32_t expected_weight = 10;
-    for (int i = 0; i < 16; ++i) {
-        expected_weight = (i % 2) == 0 ? 7 : 53;
-        update_gateway_weight_with_timeout (server.gateway, expected_weight,
-                                            100);
-    }
-    msleep (200);
-
-    zlink_receiver_info_t providers[4];
-    size_t count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_get_receivers (
-      discovery, "weight-stress-svc", providers, &count));
-    TEST_ASSERT_EQUAL_INT (1, (int) count);
-    TEST_ASSERT_EQUAL_UINT32 (expected_weight, providers[0].weight);
-
-    destroy_gateway_server (&server);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+      zlink_registry_bind (registry, registry_pub, registry_router));
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_registry_bind (registry, registry_pub, registry_router));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
@@ -545,6 +458,7 @@ int main (void)
     RUN_TEST_CASE (test_discovery_provider_registration);
     RUN_TEST_CASE (test_discovery_service_filtering);
     RUN_TEST_CASE (test_discovery_heartbeat_timeout);
+    RUN_TEST_CASE (test_registry_bind_rejects_rebind);
 #undef RUN_TEST_CASE
     return UNITY_END ();
 }

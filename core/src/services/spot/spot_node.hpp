@@ -140,6 +140,8 @@ class spot_node_t : public discovery_observer_t
     void refresh_existing_summaries ();
     void refresh_sub_peer_summaries (bool has_active_peers,
                                      bool lost_transition);
+    void snapshot_raw_subscription_filters (
+      std::set<std::string> *out_) const;
     void schedule_subscription_ready_refresh ();
     void queue_all_subscription_ready_filters ();
     void queue_subscription_ready_filter (const std::string &raw_filter_);

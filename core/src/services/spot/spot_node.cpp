@@ -84,19 +84,10 @@ static void snapshot_connected_mesh_peer_endpoints (socket_base_t *mesh_xsub_,
     if (!mesh_xsub_)
         return;
 
-    size_t available = 0;
-    if (mesh_xsub_->socket_peers (NULL, &available) != 0 || available == 0)
-        return;
-
-    std::vector<zlink_peer_info_t> peers (available);
-    size_t count = available;
-    if (mesh_xsub_->socket_peers (&peers[0], &count) != 0)
-        return;
-
-    for (size_t i = 0; i < count; ++i) {
-        if (peers[i].remote_addr[0] != '\0')
-            out_->insert (peers[i].remote_addr);
-    }
+    std::vector<std::string> peers;
+    mesh_xsub_->socket_peer_remote_endpoints (&peers);
+    for (size_t i = 0; i < peers.size (); ++i)
+        out_->insert (peers[i]);
 }
 
 static unsigned int subscription_ready_holdoff_ticks (
@@ -1022,9 +1013,9 @@ void spot_node_t::notify_pub_delivery_ready_changed (
 
     uint32_t mesh_peer_count = 0;
     if (mesh_pub) {
-        const int peer_count = mesh_pub->socket_peer_count ();
-        if (peer_count > 0)
-            mesh_peer_count = static_cast<uint32_t> (peer_count);
+        zlink_monitor_snapshot_t snapshot;
+        if (mesh_pub->monitor_snapshot (&snapshot) == 0)
+            mesh_peer_count = snapshot.ready_peer_count;
     }
 
     std::vector<spot_pub_t *> pubs;
@@ -1082,9 +1073,9 @@ int spot_node_t::wait_facade_peer (socket_base_t *socket_) const
 {
     const uint64_t deadline_ms = clock_t ().now_ms () + 1000;
     while (clock_t ().now_ms () < deadline_ms) {
-        size_t count = 0;
-        if (zlink_socket_peers (static_cast<void *> (socket_), NULL, &count) == 0
-            && count > 0)
+        zlink_monitor_snapshot_t snapshot;
+        if (socket_ && socket_->monitor_snapshot (&snapshot) == 0
+            && snapshot.ready_peer_count > 0)
             return 0;
         usleep (1000);
     }
@@ -1667,11 +1658,6 @@ int spot_node_t::validate_pub_option (int option_,
         case ZLINK_SPOT_PUB_OPT_SNDBUF:
         case ZLINK_SPOT_PUB_OPT_RCVBUF:
             return 0;
-        case ZLINK_SPOT_PUB_OPT_MODE:
-        case ZLINK_SPOT_PUB_OPT_QUEUE_HWM:
-        case ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY:
-            errno = ENOTSUP;
-            return -1;
         default:
             errno = EINVAL;
             return -1;

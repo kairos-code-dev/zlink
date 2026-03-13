@@ -62,12 +62,9 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.ErrorCode.EMTHREAD), 156384766)
 
     def test_protocol_error_values(self):
-        self.assertEqual(int(zlink.ProtocolError.ZMP_UNSPECIFIED), 0x10000000)
         self.assertEqual(
-            int(zlink.ProtocolError.ZMP_MALFORMED_COMMAND_WELCOME), 0x10000017
+            int(zlink.ProtocolError.ZMP_MALFORMED_COMMAND_HELLO), 0x10000013
         )
-        self.assertEqual(int(zlink.ProtocolError.ZMP_MECHANISM_MISMATCH), 0x11000002)
-        self.assertEqual(int(zlink.ProtocolError.WS_UNSPECIFIED), 0x30000000)
 
     def test_service_type_values(self):
         self.assertEqual(int(zlink.ServiceType.GATEWAY), 1)

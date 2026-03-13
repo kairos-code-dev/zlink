@@ -197,10 +197,6 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
     private static final MethodHandle MH_DISC_CONNECT = downcall("zlink_discovery_connect_registry",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_SUB = downcall("zlink_discovery_subscribe",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_UNSUB = downcall("zlink_discovery_unsubscribe",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISC_GET = downcall("zlink_discovery_get_receivers",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISC_COUNT = downcall("zlink_discovery_receiver_count",
@@ -939,22 +935,6 @@ public final class Native {
             return (int) MH_DISC_CONNECT.invokeExact(disc, pub);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_discovery_connect_registry failed", t);
-        }
-    }
-
-    public static int discoverySubscribe(MemorySegment disc, MemorySegment service) {
-        try {
-            return (int) MH_DISC_SUB.invokeExact(disc, service);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_subscribe failed", t);
-        }
-    }
-
-    public static int discoveryUnsubscribe(MemorySegment disc, MemorySegment service) {
-        try {
-            return (int) MH_DISC_UNSUB.invokeExact(disc, service);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_unsubscribe failed", t);
         }
     }
 

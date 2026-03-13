@@ -244,8 +244,7 @@ class spot_client_bench_t
     bool setup_discovery ()
     {
         if (!_discovery.valid ()
-            || _discovery.connect_registry (_registry_router_endpoint) != 0
-            || _discovery.subscribe (k_service_name) != 0) {
+            || _discovery.connect_registry (_registry_router_endpoint) != 0) {
             return false;
         }
 

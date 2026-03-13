@@ -83,6 +83,25 @@ void service_monitor_handler_c (const zlink_service_event_t *event_)
     g_monitor_c->calls.fetch_add (1);
 }
 
+bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
+{
+    if (!gateway_ || !out_)
+        return false;
+
+    void *monitor = zlink_gateway_monitor_open (
+      gateway_,
+      ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
+        | ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+        | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
+      &zlink_service_monitor_ignore_handler);
+    if (!monitor)
+        return false;
+
+    const int rc = zlink_monitor_snapshot (monitor, out_);
+    zlink_service_monitor_close (&monitor);
+    return rc == 0;
+}
+
 void *create_gateway_attached (void *ctx_,
                                void *discovery_,
                                const char *service_name_,
@@ -121,9 +140,9 @@ bool wait_gateway_connection_count (void *gateway_,
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
     while (std::chrono::steady_clock::now () < deadline) {
-        zlink_gateway_monitor_snapshot_t snapshot;
+        zlink_monitor_snapshot_t snapshot;
         memset (&snapshot, 0, sizeof (snapshot));
-        if (zlink_gateway_monitor_snapshot (gateway_, &snapshot) == 0
+        if (read_gateway_snapshot (gateway_, &snapshot)
             && static_cast<int> (snapshot.ready_peer_count) >= expected_min_) {
             return true;
         }
@@ -213,10 +232,9 @@ void setup_registry (void *ctx_,
     void *registry = zlink_registry_new (ctx_);
     TEST_ASSERT_NOT_NULL (registry);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_set_endpoints (registry, pub_ep_, router_ep_));
-    TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_set_broadcast_interval (registry, 50));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_start (registry));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_bind (registry, pub_ep_, router_ep_));
     *registry_out_ = registry;
 }
 
@@ -339,10 +357,9 @@ void *create_started_registry_with_port_seed (void *ctx_,
                   test_port (*port_seed_));
         snprintf (router_ep_out_, router_size_, "tcp://127.0.0.1:%d",
                   test_port (*port_seed_ + 1));
-        if (zlink_registry_set_endpoints (registry, pub_ep_out_,
-                                          router_ep_out_) == 0
-            && zlink_registry_set_broadcast_interval (registry, 50) == 0
-            && zlink_registry_start (registry) == 0) {
+        if (zlink_registry_set_broadcast_interval (registry, 50) == 0
+            && zlink_registry_bind (registry, pub_ep_out_, router_ep_out_)
+                 == 0) {
             *port_seed_ += 2;
             return registry;
         }
@@ -370,10 +387,9 @@ void *create_started_registry_with_port_seed_transport (
                   test_port (*port_seed_));
         snprintf (router_ep_out_, router_size_, "%s://127.0.0.1:%d",
                   transport_, test_port (*port_seed_ + 1));
-        if (zlink_registry_set_endpoints (registry, pub_ep_out_,
-                                          router_ep_out_) == 0
-            && zlink_registry_set_broadcast_interval (registry, 50) == 0
-            && zlink_registry_start (registry) == 0) {
+        if (zlink_registry_set_broadcast_interval (registry, 50) == 0
+            && zlink_registry_bind (registry, pub_ep_out_, router_ep_out_)
+                 == 0) {
             *port_seed_ += 2;
             return registry;
         }
@@ -914,16 +930,14 @@ static void test_discovery_registry_transport_allowed_tls ()
                   test_port (registry_seed));
         snprintf (registry_router, sizeof (registry_router),
                   "tls://127.0.0.1:%d", test_port (registry_seed + 1));
-        if (zlink_registry_set_endpoints (r, registry_pub, registry_router)
-              != 0
-            || zlink_registry_set_broadcast_interval (r, 50) != 0) {
+        if (zlink_registry_set_broadcast_interval (r, 50) != 0) {
             zlink_registry_destroy (&r);
             registry_seed += 2;
             continue;
         }
         set_registry_tls_server_opts (r, ZLINK_REGISTRY_SOCKET_PUB, files);
         set_registry_tls_server_opts (r, ZLINK_REGISTRY_SOCKET_ROUTER, files);
-        if (zlink_registry_start (r) == 0) {
+        if (zlink_registry_bind (r, registry_pub, registry_router) == 0) {
             registry = r;
             registry_seed += 2;
             break;
@@ -970,15 +984,13 @@ static void test_registry_peer_transport_restriction_and_tcp_sync ()
                   "tcp://127.0.0.1:%d", test_port (peer_seed_b));
         snprintf (registry_b_router, sizeof (registry_b_router),
                   "tcp://127.0.0.1:%d", test_port (peer_seed_b + 1));
-        if (zlink_registry_set_endpoints (ra, registry_a_pub,
-                                          registry_a_router) != 0
-            || zlink_registry_set_endpoints (rb, registry_b_pub,
-                                             registry_b_router) != 0
-            || zlink_registry_set_broadcast_interval (ra, 50) != 0
+        if (zlink_registry_set_broadcast_interval (ra, 50) != 0
             || zlink_registry_set_broadcast_interval (rb, 50) != 0
             || zlink_registry_add_peer (ra, registry_b_pub) != 0
-            || zlink_registry_start (ra) != 0
-            || zlink_registry_start (rb) != 0) {
+            || zlink_registry_bind (rb, registry_b_pub, registry_b_router)
+                 != 0
+            || zlink_registry_bind (ra, registry_a_pub, registry_a_router)
+                 != 0) {
             zlink_registry_destroy (&ra);
             zlink_registry_destroy (&rb);
             peer_seed_a += 2;
@@ -1001,6 +1013,12 @@ static void test_registry_peer_transport_restriction_and_tcp_sync ()
 
     void *discovery_a = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery_a);
+    monitor_probe_t probe;
+    g_monitor_a = &probe;
+    void *monitor =
+      zlink_discovery_monitor_open (discovery_a, ZLINK_DISCOVERY_SERVICE_UP,
+                                    &service_monitor_handler_a);
+    TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
       discovery_a, registry_a_router, 2000));
     gateway_server_t server;
@@ -1012,19 +1030,20 @@ static void test_registry_peer_transport_restriction_and_tcp_sync ()
                                          sizeof (endpoint),
                                          &discard_gateway_message);
 
-    zlink_routing_id_t gateway_rid;
-    memset (&gateway_rid, 0, sizeof (gateway_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_routing_id (server.gateway, &gateway_rid));
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.calls, 1, 10000));
+    TEST_ASSERT_EQUAL_UINT16 (ZLINK_SERVICE_KIND_DISCOVERY,
+                              probe.last_event.service_kind);
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_DISCOVERY_SERVICE_UP,
+                              probe.last_event.event_type);
+    TEST_ASSERT_EQUAL_STRING ("svc-peer-sync", probe.last_event.service_name);
+    TEST_ASSERT_TRUE (probe.last_event.value > 0);
 
-    TEST_ASSERT_TRUE (wait_for_topology_state (
-      registry_a, ZLINK_SERVICE_KIND_GATEWAY, "svc-peer-sync", NULL,
-      ZLINK_TOPOLOGY_STATE_READY, 10000));
-
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
     destroy_gateway_server (&server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery_a));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry_b));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry_a));
+    g_monitor_a = NULL;
 }
 
 static void test_registry_peer_transport_mixed_ws_sync ()
@@ -1057,15 +1076,13 @@ static void test_registry_peer_transport_mixed_ws_sync ()
                   "ws://127.0.0.1:%d", test_port (peer_seed_b));
         snprintf (registry_b_router, sizeof (registry_b_router),
                   "ws://127.0.0.1:%d", test_port (peer_seed_b + 1));
-        if (zlink_registry_set_endpoints (ra, registry_a_pub,
-                                          registry_a_router) != 0
-            || zlink_registry_set_endpoints (rb, registry_b_pub,
-                                             registry_b_router) != 0
-            || zlink_registry_set_broadcast_interval (ra, 50) != 0
+        if (zlink_registry_set_broadcast_interval (ra, 50) != 0
             || zlink_registry_set_broadcast_interval (rb, 50) != 0
             || zlink_registry_add_peer (ra, registry_b_pub) != 0
-            || zlink_registry_start (ra) != 0
-            || zlink_registry_start (rb) != 0) {
+            || zlink_registry_bind (rb, registry_b_pub, registry_b_router)
+                 != 0
+            || zlink_registry_bind (ra, registry_a_pub, registry_a_router)
+                 != 0) {
             zlink_registry_destroy (&ra);
             zlink_registry_destroy (&rb);
             peer_seed_a += 2;
@@ -1083,6 +1100,12 @@ static void test_registry_peer_transport_mixed_ws_sync ()
 
     void *discovery_a = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery_a);
+    monitor_probe_t probe;
+    g_monitor_a = &probe;
+    void *monitor =
+      zlink_discovery_monitor_open (discovery_a, ZLINK_DISCOVERY_SERVICE_UP,
+                                    &service_monitor_handler_a);
+    TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
       discovery_a, registry_a_router, 2000));
     gateway_server_t server;
@@ -1095,14 +1118,21 @@ static void test_registry_peer_transport_mixed_ws_sync ()
                                          sizeof (endpoint),
                                          &discard_gateway_message);
 
-    TEST_ASSERT_TRUE (wait_for_topology_state (
-      registry_a, ZLINK_SERVICE_KIND_GATEWAY, "svc-peer-mixed-ws", NULL,
-      ZLINK_TOPOLOGY_STATE_READY, 10000));
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.calls, 1, 10000));
+    TEST_ASSERT_EQUAL_UINT16 (ZLINK_SERVICE_KIND_DISCOVERY,
+                              probe.last_event.service_kind);
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_DISCOVERY_SERVICE_UP,
+                              probe.last_event.event_type);
+    TEST_ASSERT_EQUAL_STRING ("svc-peer-mixed-ws",
+                              probe.last_event.service_name);
+    TEST_ASSERT_TRUE (probe.last_event.value > 0);
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
     destroy_gateway_server (&server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery_a));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry_b));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry_a));
+    g_monitor_a = NULL;
 }
 
 static void test_registry_topology_reports_discovery_and_gateway ()

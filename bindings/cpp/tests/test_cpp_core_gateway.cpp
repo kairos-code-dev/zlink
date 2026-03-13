@@ -118,8 +118,6 @@ void test_gateway_single_service_tcp ()
     assert (discovery.valid ());
     step_log ("connect discovery");
     assert (discovery.connect_registry (eps.router) == 0);
-    assert (discovery.subscribe (service_name) == 0);
-
     step_log ("setup provider");
     zlink::service::receiver_t provider (ctx);
     assert (provider.valid ());

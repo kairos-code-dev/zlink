@@ -276,7 +276,7 @@ service 통합 방향은 다음으로 고정한다.
 | `zlink_spot_sub_set_option` | 삭제 | `zlink_spot_set_sub_option` 또는 `zlink_spot_node_set_sub_option` |
 | `zlink_spot_sub_subscribe` | 삭제 | `zlink_spot_subscribe` 또는 `zlink_spot_node_subscribe` |
 | `zlink_spot_sub_subscribe_pattern` | 삭제 | `zlink_spot_subscribe_pattern` 또는 `zlink_spot_node_subscribe_pattern` |
-| `zlink_spot_sub_unsubscribe` | 삭제 | `zlink_spot_unsubscribe` 또는 `zlink_spot_node_unsubscribe_filter` |
+| `zlink_spot_sub_unsubscribe` | 삭제 | `zlink_spot_unsubscribe` 또는 `zlink_spot_node_unsubscribe` |
 | `zlink_spot_sub_set_handler` | 삭제 | 생성 시 callback 고정 모델로 대체 |
 | `zlink_spot_sub_monitor_open` | 삭제 | `zlink_spot_monitor_open(..., role, ...)` |
 
@@ -653,7 +653,6 @@ int zlink_service_monitor_set_handler (void *monitor,
 | registry bootstrap endpoint | `zlink_discovery_connect_registry()` | 유지 | registry broadcast/uplink bootstrap |
 | routing id override | `zlink_discovery_set_routing_id()` | 유지 | 첫 사용 전 representative identity 고정 |
 | routing id 조회 | `zlink_discovery_routing_id()` | 유지 | representative identity 조회 |
-| subscription set | `zlink_discovery_subscribe()` / `zlink_discovery_unsubscribe()` | 유지 | service name watch set |
 | provider snapshot | `zlink_discovery_get_receivers()` | 유지 | 현재 provider snapshot 조회 |
 | availability query | `zlink_discovery_receiver_count()` / `zlink_discovery_service_available()` | 유지 | callback 모델과 무관한 query API |
 | monitor | `zlink_discovery_monitor_open()` | 유지 | discovery event 관찰 |

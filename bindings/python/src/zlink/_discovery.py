@@ -127,16 +127,6 @@ class Discovery:
         if rc != 0:
             _raise_last_error()
 
-    def subscribe(self, service):
-        rc = lib().zlink_discovery_subscribe(self._handle, service.encode())
-        if rc != 0:
-            _raise_last_error()
-
-    def unsubscribe(self, service):
-        rc = lib().zlink_discovery_unsubscribe(self._handle, service.encode())
-        if rc != 0:
-            _raise_last_error()
-
     def receiver_count(self, service):
         rc = lib().zlink_discovery_receiver_count(self._handle, service.encode())
         if rc < 0:

@@ -1133,7 +1133,8 @@ void test_stream_raw_callback_ready_precedes_first_payload_contract ()
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
     void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
+      &zlink_monitor_ignore_handler);
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1271,7 +1272,8 @@ void test_stream_raw_multiclient_strict_ready_gating_regression ()
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
     void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
+      &zlink_monitor_ignore_handler);
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1395,7 +1397,8 @@ void test_stream_tcp_basic ()
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
     void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
+      &zlink_monitor_ignore_handler);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
@@ -1461,7 +1464,8 @@ void test_stream_maxmsgsize ()
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
     void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
+      &zlink_monitor_ignore_handler);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));

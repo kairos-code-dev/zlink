@@ -277,12 +277,6 @@ def _load_lib():
     ]
     _lib.zlink_discovery_connect_registry.restype = ctypes.c_int
 
-    _lib.zlink_discovery_subscribe.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-    _lib.zlink_discovery_subscribe.restype = ctypes.c_int
-
-    _lib.zlink_discovery_unsubscribe.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-    _lib.zlink_discovery_unsubscribe.restype = ctypes.c_int
-
     _lib.zlink_discovery_get_receivers.argtypes = [
         ctypes.c_void_p,
         ctypes.c_char_p,

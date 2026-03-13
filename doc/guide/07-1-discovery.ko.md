@@ -41,8 +41,8 @@ zlink Service Discovery는 마이크로서비스 환경에서 서비스 인스�
 void *ctx = zlink_ctx_new();
 void *registry = zlink_registry_new(ctx);
 
-/* 엔드포인트 설정 */
-zlink_registry_set_endpoints(registry,
+/* bind + start */
+zlink_registry_bind(registry,
     "tcp://*:5550",    /* PUB (브로드캐스트) */
     "tcp://*:5551"     /* ROUTER (등록/Heartbeat) */
 );
@@ -56,9 +56,6 @@ zlink_registry_set_heartbeat(registry, 5000, 15000);
 
 /* 브로드캐스트 주기 (선택, 기본 30초) */
 zlink_registry_set_broadcast_interval(registry, 30000);
-
-/* 시작 */
-zlink_registry_start(registry);
 
 /* ... 애플리케이션 로직 ... */
 

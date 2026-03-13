@@ -81,7 +81,7 @@ class gateway_t : public discovery_observer_t
     bool enter_pollable_mode ();
     void lock_routing_id ();
     int ensure_facade_mode () const;
-    int monitor_snapshot (zlink_gateway_monitor_snapshot_t *out_);
+    int fill_monitor_snapshot (zlink_monitor_snapshot_t *out_);
     int set_handler (zlink_socket_msg_handler_fn handler_);
     int set_send_ready_handler (zlink_send_ready_handler_fn handler_);
     int set_tls_client (const char *ca_cert_,

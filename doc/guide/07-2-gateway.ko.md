@@ -142,7 +142,7 @@ Gateway의 모든 공개 API는 내부 mutex로 보호된다. 여러 스레드�
 - `zlink_gateway_set_lb_strategy()`
 - `zlink_gateway_set_option()`
 - `zlink_gateway_set_tls_client()`
-- `zlink_gateway_monitor_snapshot()`
+- open한 gateway monitor에 대한 `zlink_monitor_snapshot()`
 
 ### 멀티스레드 사용 예제
 
@@ -219,8 +219,7 @@ void *ctx = zlink_ctx_new();
 
 /* === Registry === */
 void *registry = zlink_registry_new(ctx);
-zlink_registry_set_endpoints(registry, "tcp://*:5550", "tcp://*:5551");
-zlink_registry_start(registry);
+zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* === Server === */
 void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -276,7 +275,7 @@ zlink_ctx_term(ctx);
 | `zlink_gateway_set_tls_client(gateway, ca, host, trust)` | TLS 클라이언트 설정 |
 | `zlink_gateway_set_tls_server(gateway, cert, key)` | TLS 서버 설정 |
 | `zlink_gateway_last_endpoint(gateway, buf, size)` | bind된 endpoint 조회 |
-| `zlink_gateway_monitor_snapshot(gateway, &snapshot)` | 로컬 bind/send readiness 조회 |
+| `zlink_monitor_snapshot(monitor, &snapshot)` | 로컬 bind/send readiness 및 queue depth 조회 |
 | `zlink_gateway_update_peer_weight(gateway, rid, weight)` | 피어 가중치 갱신 |
 | `zlink_registry_gateway_peers_query(registry, &filter, entries, &count)` | 운영용 gateway-peer 상태 조회 |
 | `zlink_gateway_destroy(&gateway)` | 종료 |

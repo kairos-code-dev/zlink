@@ -34,7 +34,6 @@ public class TestGatewayHandoverPortedTest {
             TestSupport.sleepMs(100);
 
             discovery.connectRegistry(regRouter);
-            discovery.subscribe(service);
 
             try (Receiver provider1 = new Receiver(ctx)) {
                 provider1.setRoutingId(providerRoutingId);
@@ -88,7 +87,6 @@ public class TestGatewayHandoverPortedTest {
             try (Discovery discovery1 = new Discovery(ctx, ServiceType.GATEWAY);
                  Gateway gateway1 = new Gateway(ctx, discovery1, gwRoutingId)) {
                 discovery1.connectRegistry(regRouter);
-                discovery1.subscribe(service);
                 waitGatewayReady(gateway1, service);
                 sendGatewayMessage(gateway1, service, "gw-1");
                 assertEquals("gw-1", recvProviderPayload(provider));
@@ -99,7 +97,6 @@ public class TestGatewayHandoverPortedTest {
             try (Discovery discovery2 = new Discovery(ctx, ServiceType.GATEWAY);
                  Gateway gateway2 = new Gateway(ctx, discovery2, gwRoutingId)) {
                 discovery2.connectRegistry(regRouter);
-                discovery2.subscribe(service);
                 waitGatewayReady(gateway2, service);
                 sendGatewayMessage(gateway2, service, "gw-2");
                 assertEquals("gw-2", recvProviderPayload(provider));

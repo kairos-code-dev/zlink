@@ -38,22 +38,6 @@ public sealed class Discovery : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public void Subscribe(string serviceName)
-    {
-        ValidateNotEmpty(serviceName, nameof(serviceName));
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_discovery_subscribe(_handle, serviceName);
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    public void Unsubscribe(string serviceName)
-    {
-        ValidateNotEmpty(serviceName, nameof(serviceName));
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_discovery_unsubscribe(_handle, serviceName);
-        ZlinkException.ThrowIfError(rc);
-    }
-
     public void SetOption(SocketOptionKey<int> option, int value)
     {
         SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));

@@ -59,9 +59,6 @@ public class TestGatewayServicePollerPortedTest {
 
             clientDiscovery.connectRegistry(regRouter);
             serverDiscovery.connectRegistry(regRouter);
-            clientDiscovery.subscribe("perf-server");
-            serverDiscovery.subscribe("c0");
-
             serverReceiver.bind(serverEndpoint);
             serverReceiver.connectRegistry(regRouter);
             serverReceiver.register("perf-server", serverReceiver.lastEndpoint(), 1);

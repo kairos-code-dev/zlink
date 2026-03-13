@@ -303,28 +303,8 @@ enum class error_code : int
  */
 enum class protocol_error : int
 {
-    zmp_unspecified = ZLINK_PROTOCOL_ERROR_ZMP_UNSPECIFIED,
-    zmp_unexpected_command = ZLINK_PROTOCOL_ERROR_ZMP_UNEXPECTED_COMMAND,
-    zmp_invalid_sequence = ZLINK_PROTOCOL_ERROR_ZMP_INVALID_SEQUENCE,
-    zmp_key_exchange = ZLINK_PROTOCOL_ERROR_ZMP_KEY_EXCHANGE,
-    zmp_malformed_command_unspecified =
-      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_UNSPECIFIED,
-    zmp_malformed_command_message =
-      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_MESSAGE,
     zmp_malformed_command_hello =
-      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO,
-    zmp_malformed_command_initiate =
-      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_INITIATE,
-    zmp_malformed_command_error =
-      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_ERROR,
-    zmp_malformed_command_ready =
-      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_READY,
-    zmp_malformed_command_welcome =
-      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_WELCOME,
-    zmp_invalid_metadata = ZLINK_PROTOCOL_ERROR_ZMP_INVALID_METADATA,
-    zmp_cryptographic = ZLINK_PROTOCOL_ERROR_ZMP_CRYPTOGRAPHIC,
-    zmp_mechanism_mismatch = ZLINK_PROTOCOL_ERROR_ZMP_MECHANISM_MISMATCH,
-    ws_unspecified = ZLINK_PROTOCOL_ERROR_WS_UNSPECIFIED
+      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO
 };
 
 /**
@@ -365,8 +345,6 @@ inline monitor_event operator| (monitor_event a, monitor_event b)
 enum class disconnect_reason : int
 {
     unknown = ZLINK_DISCONNECT_UNKNOWN,
-    local = ZLINK_DISCONNECT_LOCAL,
-    remote = ZLINK_DISCONNECT_REMOTE,
     handshake_failed = ZLINK_DISCONNECT_HANDSHAKE_FAILED,
     transport_error = ZLINK_DISCONNECT_TRANSPORT_ERROR,
     ctx_term = ZLINK_DISCONNECT_CTX_TERM
@@ -454,34 +432,6 @@ enum class spot_node_socket_role : int
     pub = 1,
     sub = 2,
     dealer = 3
-};
-
-/**
- * @brief Node-level options for spot node behavior.
- */
-enum class spot_node_option : int
-{
-    pub_mode = ZLINK_SPOT_PUB_OPT_MODE,
-    pub_queue_hwm = ZLINK_SPOT_PUB_OPT_QUEUE_HWM,
-    pub_queue_full_policy = ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY
-};
-
-/**
- * @brief Publish mode for spot node.
- */
-enum class spot_node_pub_mode : int
-{
-    sync = ZLINK_SPOT_NODE_PUB_MODE_SYNC,
-    async = ZLINK_SPOT_NODE_PUB_MODE_ASYNC
-};
-
-/**
- * @brief Behavior when async spot publish queue is full.
- */
-enum class spot_node_pub_queue_full_policy : int
-{
-    eagain = ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN,
-    drop = ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP
 };
 
 /**

@@ -126,10 +126,6 @@ class _Lib:
         L.zlink_discovery_new_typed.restype = ctypes.c_void_p
         L.zlink_discovery_connect_registry.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         L.zlink_discovery_connect_registry.restype = ctypes.c_int
-        L.zlink_discovery_subscribe.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_discovery_subscribe.restype = ctypes.c_int
-        L.zlink_discovery_unsubscribe.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_discovery_unsubscribe.restype = ctypes.c_int
         L.zlink_discovery_get_receivers.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
         L.zlink_discovery_get_receivers.restype = ctypes.c_int
         L.zlink_discovery_receiver_count.argtypes = [ctypes.c_void_p, ctypes.c_char_p]

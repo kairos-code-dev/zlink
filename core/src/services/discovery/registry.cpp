@@ -164,17 +164,26 @@ bool registry_t::check_tag () const
     return _tag == registry_tag_value;
 }
 
-int registry_t::set_endpoints (const char *pub_endpoint_,
-                               const char *router_endpoint_)
+int registry_t::bind (const char *pub_endpoint_,
+                      const char *router_endpoint_)
 {
-    if (!pub_endpoint_ || !router_endpoint_) {
+    if (!pub_endpoint_ || !router_endpoint_ || pub_endpoint_[0] == '\0'
+        || router_endpoint_[0] == '\0') {
         errno = EINVAL;
         return -1;
     }
-    scoped_lock_t lock (_sync);
-    _pub_endpoint = pub_endpoint_;
-    _router_endpoint = router_endpoint_;
-    return 0;
+
+    {
+        scoped_lock_t lock (_sync);
+        if (_started) {
+            errno = EBUSY;
+            return -1;
+        }
+        _pub_endpoint = pub_endpoint_;
+        _router_endpoint = router_endpoint_;
+    }
+
+    return start ();
 }
 
 int registry_t::set_id (uint32_t registry_id_)
@@ -370,8 +379,10 @@ int registry_t::start ()
             errno = EINVAL;
             return -1;
         }
-        if (_started)
-            return 0;
+        if (_started) {
+            errno = EBUSY;
+            return -1;
+        }
         _stop.set (0);
         _started = true;
         _next_broadcast_ms = 0;

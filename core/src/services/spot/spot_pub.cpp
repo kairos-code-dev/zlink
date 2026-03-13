@@ -317,11 +317,6 @@ int spot_pub_t::set_option (int option_,
         case ZLINK_SPOT_PUB_OPT_NODROP:
             socket_option = ZLINK_XPUB_NODROP;
             break;
-        case ZLINK_SPOT_PUB_OPT_MODE:
-        case ZLINK_SPOT_PUB_OPT_QUEUE_HWM:
-        case ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY:
-            errno = ENOTSUP;
-            return -1;
         default:
             errno = EINVAL;
             return -1;
@@ -361,14 +356,24 @@ int spot_pub_t::routing_id (zlink_routing_id_t *out_) const
     return 0;
 }
 
-int spot_pub_t::peers (zlink_peer_info_t *peers_, size_t *count_) const
+int spot_pub_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const
 {
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
     socket_base_t *socket = this->socket ();
     if (!socket) {
         errno = EFAULT;
         return -1;
     }
-    return zlink_socket_peers (static_cast<void *> (socket), peers_, count_);
+    if (socket->monitor_snapshot (out_) != 0)
+        return -1;
+    out_->source_kind = ZLINK_MONITOR_SOURCE_SPOT_PUB;
+    if (out_->ready_peer_count > 0)
+        out_->state_flags |=
+          ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+    return 0;
 }
 
 void *spot_pub_t::monitor_open (int events_)

@@ -51,9 +51,6 @@ internal static class PerfGatewayServer
             discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
             ConnectRegistryWithRetry(() =>
                 discovery.ConnectRegistry(config.RegistryRouter));
-            for (int i = 0; i < config.ClientCount; i++)
-                discovery.Subscribe($"c{i}");
-
             gateway = new Gateway(ctx, discovery, ServerGatewayRoutingId);
             ConfigureGatewayTlsClientIfNeeded(gateway, config.Transport);
             gateway.SetOption(SocketOptions.SndHwm,

@@ -69,6 +69,25 @@ void gateway_reentrant_ready_handler (void *subject_)
     g_reentrant_ready_errno = errno;
 }
 
+bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
+{
+    if (!gateway_ || !out_)
+        return false;
+
+    void *monitor = zlink_gateway_monitor_open (
+      gateway_,
+      ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
+        | ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+        | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
+      &zlink_service_monitor_ignore_handler);
+    if (!monitor)
+        return false;
+
+    const int rc = zlink_monitor_snapshot (monitor, out_);
+    zlink_service_monitor_close (&monitor);
+    return rc == 0;
+}
+
 void step_log (const char *msg_)
 {
     if (getenv ("ZLINK_TEST_DEBUG")) {
@@ -193,10 +212,10 @@ void wait_gateway_ready (void *gateway_,
     const int step_ms = 10;
     const int attempts = timeout_ms_ / step_ms;
     for (int i = 0; i < attempts; ++i) {
-        zlink_gateway_monitor_snapshot_t snapshot;
+        zlink_monitor_snapshot_t snapshot;
         memset (&snapshot, 0, sizeof (snapshot));
-        if (zlink_gateway_monitor_snapshot (gateway_, &snapshot) == 0
-            && snapshot.send_ready != 0) {
+        if (read_gateway_snapshot (gateway_, &snapshot)
+            && (snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0) {
             return;
         }
         msleep (step_ms);
@@ -211,9 +230,9 @@ void wait_gateway_connections (void *gateway_,
     const int step_ms = 10;
     const int attempts = timeout_ms_ / step_ms;
     for (int i = 0; i < attempts; ++i) {
-        zlink_gateway_monitor_snapshot_t snapshot;
+        zlink_monitor_snapshot_t snapshot;
         memset (&snapshot, 0, sizeof (snapshot));
-        if (zlink_gateway_monitor_snapshot (gateway_, &snapshot) == 0
+        if (read_gateway_snapshot (gateway_, &snapshot)
             && static_cast<int> (snapshot.ready_peer_count) >= expected_) {
             return;
         }
@@ -229,9 +248,9 @@ void wait_gateway_connection_count_exact (void *gateway_,
     const int step_ms = 10;
     const int attempts = timeout_ms_ / step_ms;
     for (int i = 0; i < attempts; ++i) {
-        zlink_gateway_monitor_snapshot_t snapshot;
+        zlink_monitor_snapshot_t snapshot;
         memset (&snapshot, 0, sizeof (snapshot));
-        if (zlink_gateway_monitor_snapshot (gateway_, &snapshot) == 0
+        if (read_gateway_snapshot (gateway_, &snapshot)
             && static_cast<int> (snapshot.ready_peer_count) == expected_) {
             return;
         }
@@ -414,10 +433,9 @@ void setup_registry (void *ctx_,
     void *registry = zlink_registry_new (ctx_);
     TEST_ASSERT_NOT_NULL (registry);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_set_endpoints (registry, pub_ep_, router_ep_));
-    TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_set_broadcast_interval (registry, 50));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_start (registry));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_bind (registry, pub_ep_, router_ep_));
     msleep (10);
     *registry_out_ = registry;
 }
@@ -445,11 +463,10 @@ void *create_started_registry_with_port_seed (void *ctx_,
                   test_port (*port_seed_));
         snprintf (router_endpoint_out_, router_size_, "tcp://127.0.0.1:%d",
                   test_port (*port_seed_ + 1));
-        if (zlink_registry_set_endpoints (registry, pub_endpoint_out_,
-                                          router_endpoint_out_)
-              == 0
-            && zlink_registry_set_broadcast_interval (registry, 50) == 0
-            && zlink_registry_start (registry) == 0) {
+        if (zlink_registry_set_broadcast_interval (registry, 50) == 0
+            && zlink_registry_bind (registry, pub_endpoint_out_,
+                                    router_endpoint_out_)
+                 == 0) {
             *port_seed_ += 2;
             return registry;
         }
@@ -673,9 +690,11 @@ static void test_gateway_can_be_polled_via_service_instance ()
     const int hwm = 2;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
       gateway, ZLINK_GATEWAY_OPT_SNDHWM, &hwm, sizeof (hwm)));
-    TEST_ASSERT_NULL (zlink_gateway_monitor_open (
-      gateway, ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY, NULL));
-    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+    void *monitor = zlink_gateway_monitor_open (
+      gateway, ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY,
+      &zlink_service_monitor_ignore_handler);
+    TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
     TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_set_send_ready_handler (gateway, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -772,10 +791,10 @@ static void test_gateway_refreshes_existing_service_on_first_connection_count ()
     TEST_ASSERT_NOT_NULL (client);
 
     wait_gateway_ready (client, 2000);
-    zlink_gateway_monitor_snapshot_t snapshot;
+    zlink_monitor_snapshot_t snapshot;
     memset (&snapshot, 0, sizeof (snapshot));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_monitor_snapshot (client, &snapshot));
-    TEST_ASSERT_TRUE (snapshot.send_ready != 0);
+    TEST_ASSERT_TRUE (read_gateway_snapshot (client, &snapshot));
+    TEST_ASSERT_TRUE ((snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0);
 
     destroy_server_gateway (&server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
@@ -1454,16 +1473,16 @@ static void test_gateway_manual_connect_disconnect_topology_ownership ()
     {
         const int step_ms = 10;
         const int attempts = 3000 / step_ms;
-        zlink_gateway_monitor_snapshot_t snapshot;
+        zlink_monitor_snapshot_t snapshot;
         memset (&snapshot, 0, sizeof (snapshot));
         for (int i = 0; i < attempts; ++i) {
-            if (zlink_gateway_monitor_snapshot (client, &snapshot) == 0
+            if (read_gateway_snapshot (client, &snapshot)
                 && snapshot.ready_peer_count == 0) {
                 break;
             }
             msleep (step_ms);
         }
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_monitor_snapshot (client, &snapshot));
+        TEST_ASSERT_TRUE (read_gateway_snapshot (client, &snapshot));
         TEST_ASSERT_EQUAL_INT (0, static_cast<int> (snapshot.ready_peer_count));
     }
 

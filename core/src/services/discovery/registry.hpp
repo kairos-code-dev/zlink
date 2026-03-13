@@ -24,7 +24,7 @@ class registry_t
 
     bool check_tag () const;
 
-    int set_endpoints (const char *pub_endpoint_, const char *router_endpoint_);
+    int bind (const char *pub_endpoint_, const char *router_endpoint_);
     int set_id (uint32_t registry_id_);
     int add_peer (const char *peer_pub_endpoint_);
     int set_heartbeat (uint32_t interval_ms_, uint32_t timeout_ms_);

@@ -12,7 +12,7 @@ zlink perf는 아래 두 개의 진입 스크립트로 실행한다.
 ## run_benchmarks.sh
 
 single 패턴(PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER,
-ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT)의 성능을 측정한다.
+ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
 
 ### 옵션
 

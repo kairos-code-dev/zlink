@@ -148,7 +148,7 @@ to call concurrently from multiple threads.
 - `zlink_gateway_set_lb_strategy()`
 - `zlink_gateway_set_option()`
 - `zlink_gateway_set_tls_client()`
-- `zlink_gateway_monitor_snapshot()`
+- `zlink_monitor_snapshot()` on an open gateway monitor
 
 ### Multi-threaded Usage Example
 
@@ -230,8 +230,7 @@ void *ctx = zlink_ctx_new();
 
 /* === Registry === */
 void *registry = zlink_registry_new(ctx);
-zlink_registry_set_endpoints(registry, "tcp://*:5550", "tcp://*:5551");
-zlink_registry_start(registry);
+zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* === Server === */
 void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
@@ -287,7 +286,7 @@ zlink_ctx_term(ctx);
 | `zlink_gateway_set_tls_client(gateway, ca, host, trust)` | Set TLS client configuration |
 | `zlink_gateway_set_tls_server(gateway, cert, key)` | Set TLS server configuration |
 | `zlink_gateway_last_endpoint(gateway, buf, size)` | Resolve bound endpoint |
-| `zlink_gateway_monitor_snapshot(gateway, &snapshot)` | Read local bind/send readiness |
+| `zlink_monitor_snapshot(monitor, &snapshot)` | Read local bind/send readiness and queue depth |
 | `zlink_gateway_update_peer_weight(gateway, rid, weight)` | Update peer weight |
 | `zlink_registry_gateway_peers_query(registry, &filter, entries, &count)` | Query operational gateway-peer state |
 | `zlink_gateway_destroy(&gateway)` | Destroy |

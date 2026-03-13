@@ -30,7 +30,6 @@ DEFAULT_PATTERNS = [
     "DEALER_DEALER",
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
-    "ROUTER_ROUTER_POLL",
     "GATEWAY",
     "SPOT",
 ]
@@ -41,7 +40,6 @@ PATTERN_TO_BINARY = {
     "DEALER_DEALER": "perf_dealer_dealer",
     "DEALER_ROUTER": "perf_dealer_router",
     "ROUTER_ROUTER": "perf_router_router",
-    "ROUTER_ROUTER_POLL": "perf_router_router_poll",
     "GATEWAY": "perf_gateway",
     "SPOT": "perf_spot",
 }
@@ -121,6 +119,39 @@ class TeeStream:
     def flush(self) -> None:
         for stream in self._streams:
             stream.flush()
+
+
+def emit_result_lines(combo_results: Dict[Tuple[str, str, int], ComboRecord]) -> None:
+    for key in sorted(combo_results.keys()):
+        pattern, transport, size = key
+        record = combo_results[key]
+        if record.status != "success":
+            continue
+
+        metrics = [
+            ("throughput", record.throughput),
+            ("bandwidth", record.bandwidth),
+            ("latency", record.latency),
+            (LATENCY_P95_METRIC, record.latency_p95),
+            (LATENCY_P99_METRIC, record.latency_p99),
+        ]
+
+        if record.cpu_pct is not None:
+            metrics.append(("cpu_pct", record.cpu_pct))
+        if record.mem_mb is not None:
+            metrics.append(("mem_mb", record.mem_mb))
+        if record.snd_pending_max is not None:
+            metrics.append((SND_PENDING_MAX_METRIC, record.snd_pending_max))
+        if record.rcv_pending_max is not None:
+            metrics.append((RCV_PENDING_MAX_METRIC, record.rcv_pending_max))
+        if record.rcv_pending_end is not None:
+            metrics.append((RCV_PENDING_END_METRIC, record.rcv_pending_end))
+
+        for metric_name, value in metrics:
+            print(
+                f"RESULT,current,{pattern},{transport},{size},"
+                f"{metric_name},{value:.3f}"
+            )
 
 
 def env_get(primary_name: str, legacy_name: Optional[str] = None) -> str:
@@ -1567,6 +1598,9 @@ def main() -> int:
     )
 
     print_effective_options("result", effective_options)
+    if any(record.status == "success" for record in combo_results.values()):
+        print("\n## Result Data")
+        emit_result_lines(combo_results)
     print("\n## Completion")
     print(f"- status: {completion_status}")
     print(f"- expected_result_lines: {expected_result_lines}")

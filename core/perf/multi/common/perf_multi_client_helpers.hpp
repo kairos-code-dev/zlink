@@ -141,28 +141,22 @@ inline bool wait_all_client_connect_ready (std::vector<connect_monitor_t> &monit
     if (monitors.empty ())
         return true;
 
-    std::vector<char> ready (monitors.size (), 0);
-    size_t ready_count = 0;
     const int bounded_timeout = timeout_ms > 0 ? timeout_ms : 0;
     const auto deadline =
       std::chrono::steady_clock::now ()
       + std::chrono::milliseconds (bounded_timeout);
 
-    while (ready_count < monitors.size ()) {
-        if (std::chrono::steady_clock::now () >= deadline)
+    for (size_t i = 0; i < monitors.size (); ++i) {
+        const auto now = std::chrono::steady_clock::now ();
+        if (now >= deadline)
             return false;
 
-        for (size_t i = 0; i < monitors.size (); ++i) {
-            if (ready[i])
-                continue;
-            if (poll_connect_ready_count (monitors[i]) <= 0)
-                continue;
-            ready[i] = 1;
-            ++ready_count;
-        }
-
-        if (ready_count < monitors.size ())
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        const int remaining_ms = static_cast<int> (
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            deadline - now)
+            .count ());
+        if (!wait_connect_ready_count (monitors[i], 1, remaining_ms))
+            return false;
     }
 
     return true;
@@ -515,7 +509,7 @@ inline bool run_one_way_window_loop (
         for (size_t i = 0; i < poll_items.size (); ++i)
             poll_items[i].revents = 0;
 
-        const int prc = zlink_poll (
+        const int prc = perf_socket_poll (
           &poll_items[0],
           static_cast<int> (poll_items.size ()),
           poll_timeout_ms);
@@ -809,7 +803,7 @@ inline bool run_echo_window_round_robin (
         for (size_t i = 0; i < poll_items.size (); ++i)
             poll_items[i].revents = 0;
 
-        const int prc = zlink_poll (
+        const int prc = perf_socket_poll (
           &poll_items[0], static_cast<int> (poll_items.size ()), poll_timeout_ms);
         if (prc < 0) {
             if (zlink_errno () != EINTR) {

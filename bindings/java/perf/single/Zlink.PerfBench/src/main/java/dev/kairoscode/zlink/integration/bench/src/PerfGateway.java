@@ -59,7 +59,6 @@ public final class PerfGateway {
             registry.start();
 
             connectRegistryWithRetry(() -> discovery.connectRegistry(regRouter));
-            discovery.subscribe(serviceName);
 
             applyServiceSocketOptions(gateway, receiver);
 

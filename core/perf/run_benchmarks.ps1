@@ -100,7 +100,7 @@ if (-not $ResultsTag) {
 $AllowMulti = ($env:PERF_ALLOW_MULTI -eq "1")
 $MultiPatternCount = 0
 $SinglePatternCount = 0
-$SinglePatterns = @("PAIR", "PUBSUB", "DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER", "ROUTER_ROUTER_POLL", "GATEWAY", "SPOT")
+$SinglePatterns = @("PAIR", "PUBSUB", "DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER", "GATEWAY", "SPOT")
 $MultiPatterns = @("DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER", "PUBSUB", "GATEWAY", "SPOT", "STREAM_CALLBACK")
 $SinglePatternSet = @{}
 foreach ($name in $SinglePatterns) { $SinglePatternSet[$name] = $true }

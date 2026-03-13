@@ -115,17 +115,19 @@ struct monitor_parent_query_probe_t
     monitor_parent_query_probe_t () :
         discovery (NULL),
         calls (0),
-        receiver_count (-1),
+        query_routing_id_size (0),
         query_errno (0),
         done (false)
     {
         service_name[0] = '\0';
         memset (&event, 0, sizeof (event));
+        memset (&query_routing_id, 0, sizeof (query_routing_id));
     }
 
     void *discovery;
     std::atomic<int> calls;
-    int receiver_count;
+    zlink_routing_id_t query_routing_id;
+    size_t query_routing_id_size;
     int query_errno;
     bool done;
     char service_name[64];
@@ -231,14 +233,16 @@ void service_monitor_parent_query_handler (const zlink_service_event_t *event_)
         return;
 
     errno = 0;
-    const int receiver_count =
-      zlink_discovery_receiver_count (probe->discovery, probe->service_name);
-    const int query_errno = receiver_count >= 0 ? 0 : errno;
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    const int rc = zlink_discovery_routing_id (probe->discovery, &rid);
+    const int query_errno = rc == 0 ? 0 : errno;
 
     {
         std::lock_guard<std::mutex> lock (probe->sync);
         probe->event = *event_;
-        probe->receiver_count = receiver_count;
+        probe->query_routing_id = rid;
+        probe->query_routing_id_size = rc == 0 ? rid.size : 0;
         probe->query_errno = query_errno;
         probe->done = true;
     }
@@ -364,9 +368,8 @@ void setup_registry (void *ctx_,
     for (int attempt = 0; attempt < 32; ++attempt) {
         registry = zlink_registry_new (ctx_);
         TEST_ASSERT_NOT_NULL (registry);
-        if (zlink_registry_set_endpoints (registry, pub_ep_, router_ep_) == 0
-            && zlink_registry_set_broadcast_interval (registry, 50) == 0
-            && zlink_registry_start (registry) == 0) {
+        if (zlink_registry_set_broadcast_interval (registry, 50) == 0
+            && zlink_registry_bind (registry, pub_ep_, router_ep_) == 0) {
             *registry_out_ = registry;
             return;
         }
@@ -590,9 +593,28 @@ void test_socket_monitor_open_requires_handler ()
       zlink_socket (ctx, ZLINK_ROUTER, &msg_handler);
     TEST_ASSERT_NOT_NULL (server);
 
-    TEST_ASSERT_NULL (
-      zlink_socket_monitor_open (server, ZLINK_EVENT_CONNECTION_READY, NULL));
+    errno = 0;
+    void *monitor =
+      zlink_socket_monitor_open (server, ZLINK_EVENT_CONNECTION_READY, NULL);
+    TEST_ASSERT_NULL (monitor);
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    close_socket_zero_linger (server);
+}
+
+void test_socket_monitor_open_accepts_ignore_handler ()
+{
+    void *ctx = get_test_context ();
+    const zlink_socket_handler_t msg_handler =
+      make_msg_handler (&discard_socket_message);
+    void *server =
+      zlink_socket (ctx, ZLINK_ROUTER, &msg_handler);
+    TEST_ASSERT_NOT_NULL (server);
+
+    void *monitor = zlink_socket_monitor_open (
+      server, ZLINK_EVENT_CONNECTION_READY, &zlink_monitor_ignore_handler);
+    TEST_ASSERT_NOT_NULL (monitor);
+    close_socket_zero_linger (monitor);
 
     close_socket_zero_linger (server);
 }
@@ -605,9 +627,28 @@ void test_discovery_monitor_open_requires_handler ()
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
 
-    TEST_ASSERT_NULL (
-      zlink_discovery_monitor_open (discovery, ZLINK_DISCOVERY_SERVICE_UP, NULL));
+    errno = 0;
+    void *monitor =
+      zlink_discovery_monitor_open (discovery, ZLINK_DISCOVERY_SERVICE_UP, NULL);
+    TEST_ASSERT_NULL (monitor);
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+}
+
+void test_discovery_monitor_open_accepts_ignore_handler ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+
+    void *monitor = zlink_discovery_monitor_open (
+      discovery, ZLINK_DISCOVERY_SERVICE_UP,
+      &zlink_service_monitor_ignore_handler);
+    TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
 }
@@ -622,9 +663,30 @@ void test_gateway_monitor_open_requires_handler ()
                          &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (gateway);
 
-    TEST_ASSERT_NULL (zlink_gateway_monitor_open (
-      gateway, ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY, NULL));
+    errno = 0;
+    void *monitor = zlink_gateway_monitor_open (
+      gateway, ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY, NULL);
+    TEST_ASSERT_NULL (monitor);
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+}
+
+void test_gateway_monitor_open_accepts_ignore_handler ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *gateway =
+      zlink_gateway_new (ctx, "gw-monitor-ignore", "gw-monitor-ignore",
+                         &discard_gateway_message);
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    void *monitor = zlink_gateway_monitor_open (
+      gateway, ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY,
+      &zlink_service_monitor_ignore_handler);
+    TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
 }
@@ -646,11 +708,9 @@ void test_service_monitor_open_dispatches_events ()
                   test_port (registry_seed));
         snprintf (registry_router, sizeof (registry_router),
                   "tcp://127.0.0.1:%d", test_port (registry_seed + 1));
-        if (zlink_registry_set_endpoints (registry, registry_pub,
-                                          registry_router)
-              == 0
-            && zlink_registry_set_broadcast_interval (registry, 50) == 0
-            && zlink_registry_start (registry) == 0) {
+        if (zlink_registry_set_broadcast_interval (registry, 50) == 0
+            && zlink_registry_bind (registry, registry_pub, registry_router)
+                 == 0) {
             registry_seed += 2;
             break;
         }
@@ -675,9 +735,6 @@ void test_service_monitor_open_dispatches_events ()
     TEST_ASSERT_NOT_NULL (monitor);
 
     connect_discovery_registry_with_retry (discovery, registry_router, 3000);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "svc-handler"));
-
     void *server_discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (server_discovery);
@@ -822,11 +879,9 @@ void test_service_monitor_self_close_defers_until_callback_return ()
                   test_port (registry_seed));
         snprintf (registry_router, sizeof (registry_router),
                   "tcp://127.0.0.1:%d", test_port (registry_seed + 1));
-        if (zlink_registry_set_endpoints (registry, registry_pub,
-                                          registry_router)
-              == 0
-            && zlink_registry_set_broadcast_interval (registry, 50) == 0
-            && zlink_registry_start (registry) == 0) {
+        if (zlink_registry_set_broadcast_interval (registry, 50) == 0
+            && zlink_registry_bind (registry, registry_pub, registry_router)
+                 == 0) {
             break;
         }
         zlink_registry_destroy (&registry);
@@ -848,9 +903,6 @@ void test_service_monitor_self_close_defers_until_callback_return ()
     g_service_monitor_self_close_probe = &probe;
 
     connect_discovery_registry_with_retry (discovery, registry_router, 3000);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "svc-self-close"));
-
     void *server_discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (server_discovery);
@@ -894,11 +946,9 @@ void test_service_monitor_close_during_callback_returns_ebusy ()
                   test_port (registry_seed));
         snprintf (registry_router, sizeof (registry_router),
                   "tcp://127.0.0.1:%d", test_port (registry_seed + 1));
-        if (zlink_registry_set_endpoints (registry, registry_pub,
-                                          registry_router)
-              == 0
-            && zlink_registry_set_broadcast_interval (registry, 50) == 0
-            && zlink_registry_start (registry) == 0) {
+        if (zlink_registry_set_broadcast_interval (registry, 50) == 0
+            && zlink_registry_bind (registry, registry_pub, registry_router)
+                 == 0) {
             break;
         }
         zlink_registry_destroy (&registry);
@@ -919,9 +969,6 @@ void test_service_monitor_close_during_callback_returns_ebusy ()
     g_service_monitor_blocking_probe = &probe;
 
     connect_discovery_registry_with_retry (discovery, registry_router, 3000);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, "svc-close-ebusy"));
-
     void *server_discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (server_discovery);
@@ -978,11 +1025,9 @@ void test_service_monitor_callback_can_query_parent_without_deadlock ()
                   test_port (registry_seed));
         snprintf (registry_router, sizeof (registry_router),
                   "tcp://127.0.0.1:%d", test_port (registry_seed + 1));
-        if (zlink_registry_set_endpoints (registry, registry_pub,
-                                          registry_router)
-              == 0
-            && zlink_registry_set_broadcast_interval (registry, 50) == 0
-            && zlink_registry_start (registry) == 0) {
+        if (zlink_registry_set_broadcast_interval (registry, 50) == 0
+            && zlink_registry_bind (registry, registry_pub, registry_router)
+                 == 0) {
             break;
         }
         zlink_registry_destroy (&registry);
@@ -1009,9 +1054,6 @@ void test_service_monitor_callback_can_query_parent_without_deadlock ()
     TEST_ASSERT_NOT_NULL (monitor);
 
     connect_discovery_registry_with_retry (discovery, registry_router, 3000);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_subscribe (discovery, probe.service_name));
-
     void *server_discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (server_discovery);
@@ -1040,7 +1082,12 @@ void test_service_monitor_callback_can_query_parent_without_deadlock ()
                               probe.event.event_type);
     TEST_ASSERT_EQUAL_STRING (probe.service_name, probe.event.service_name);
     TEST_ASSERT_EQUAL_INT (0, probe.query_errno);
-    TEST_ASSERT_TRUE (probe.receiver_count >= 1);
+    TEST_ASSERT_TRUE (probe.query_routing_id_size > 0);
+    TEST_ASSERT_EQUAL_UINT8 (probe.event.routing_id.size,
+                             probe.query_routing_id.size);
+    TEST_ASSERT_EQUAL_MEMORY (probe.event.routing_id.data,
+                              probe.query_routing_id.data,
+                              probe.query_routing_id.size);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
@@ -1056,8 +1103,11 @@ int main (int, char **)
 
     UNITY_BEGIN ();
     RUN_TEST (test_socket_monitor_open_requires_handler);
+    RUN_TEST (test_socket_monitor_open_accepts_ignore_handler);
     RUN_TEST (test_discovery_monitor_open_requires_handler);
+    RUN_TEST (test_discovery_monitor_open_accepts_ignore_handler);
     RUN_TEST (test_gateway_monitor_open_requires_handler);
+    RUN_TEST (test_gateway_monitor_open_accepts_ignore_handler);
     RUN_TEST (test_socket_send_ready_handler_requires_handler);
     RUN_TEST (test_socket_send_ready_handler_reentrant_replace_returns_edeadlk);
     RUN_TEST (test_socket_send_ready_handler_failed_replace_keeps_previous_handler);

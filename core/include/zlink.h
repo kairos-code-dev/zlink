@@ -623,35 +623,20 @@ typedef uint32_t zlink_socket_monitor_event_mask_t;
 typedef enum zlink_disconnect_reason_t
 {
     ZLINK_DISCONNECT_REASON_UNKNOWN = 0,
-    ZLINK_DISCONNECT_REASON_LOCAL = 1,
-    ZLINK_DISCONNECT_REASON_REMOTE = 2,
     ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED = 3,
     ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR = 4,
     ZLINK_DISCONNECT_REASON_CTX_TERM = 5
 } zlink_disconnect_reason_t;
 
 #define ZLINK_DISCONNECT_UNKNOWN ZLINK_DISCONNECT_REASON_UNKNOWN
-#define ZLINK_DISCONNECT_LOCAL ZLINK_DISCONNECT_REASON_LOCAL
-#define ZLINK_DISCONNECT_REMOTE ZLINK_DISCONNECT_REASON_REMOTE
 #define ZLINK_DISCONNECT_HANDSHAKE_FAILED ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED
 #define ZLINK_DISCONNECT_TRANSPORT_ERROR ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR
 #define ZLINK_DISCONNECT_CTX_TERM ZLINK_DISCONNECT_REASON_CTX_TERM
 
-#define ZLINK_PROTOCOL_ERROR_ZMP_UNSPECIFIED 0x10000000
-#define ZLINK_PROTOCOL_ERROR_ZMP_UNEXPECTED_COMMAND 0x10000001
-#define ZLINK_PROTOCOL_ERROR_ZMP_INVALID_SEQUENCE 0x10000002
-#define ZLINK_PROTOCOL_ERROR_ZMP_KEY_EXCHANGE 0x10000003
-#define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_UNSPECIFIED 0x10000011
-#define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_MESSAGE 0x10000012
-#define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO 0x10000013
-#define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_INITIATE 0x10000014
-#define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_ERROR 0x10000015
-#define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_READY 0x10000016
-#define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_WELCOME 0x10000017
-#define ZLINK_PROTOCOL_ERROR_ZMP_INVALID_METADATA 0x10000018
-#define ZLINK_PROTOCOL_ERROR_ZMP_CRYPTOGRAPHIC 0x11000001
-#define ZLINK_PROTOCOL_ERROR_ZMP_MECHANISM_MISMATCH 0x11000002
-#define ZLINK_PROTOCOL_ERROR_WS_UNSPECIFIED 0x30000000
+typedef enum zlink_protocol_error_t
+{
+    ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO = 0x10000013
+} zlink_protocol_error_t;
 
 /**
  * @brief Callback type for direct multipart socket dispatch.
@@ -872,6 +857,50 @@ typedef void (*zlink_monitor_handler_fn) (
   const zlink_monitor_event_t *event_);
 
 /**
+ * @brief Ignore socket monitor events while keeping a valid handler symbol.
+ *
+ * Pass this when you want snapshot or direct polling on the returned monitor
+ * handle without automatic callback dispatch.
+ */
+ZLINK_EXPORT void zlink_monitor_ignore_handler (
+  const zlink_monitor_event_t *event_);
+
+typedef enum zlink_monitor_source_kind_t
+{
+    ZLINK_MONITOR_SOURCE_SOCKET = 1,
+    ZLINK_MONITOR_SOURCE_GATEWAY = 2,
+    ZLINK_MONITOR_SOURCE_SPOT_PUB = 3,
+    ZLINK_MONITOR_SOURCE_SPOT_SUB = 4
+} zlink_monitor_source_kind_t;
+
+typedef uint32_t zlink_monitor_state_mask_t;
+typedef uint32_t zlink_monitor_snapshot_detail_mask_t;
+
+#define ZLINK_MONITOR_STATE_READY ((zlink_monitor_state_mask_t) (1u << 0))
+#define ZLINK_MONITOR_STATE_BOUND_READY                                   \
+    ((zlink_monitor_state_mask_t) (1u << 1))
+#define ZLINK_MONITOR_STATE_SEND_READY                                    \
+    ((zlink_monitor_state_mask_t) (1u << 2))
+#define ZLINK_MONITOR_STATE_CLOSED ((zlink_monitor_state_mask_t) (1u << 3))
+
+#define ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT                    \
+    ((zlink_monitor_snapshot_detail_mask_t) (1u << 0))
+#define ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS                    \
+    ((zlink_monitor_snapshot_detail_mask_t) (1u << 1))
+#define ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS                    \
+    ((zlink_monitor_snapshot_detail_mask_t) (1u << 2))
+
+typedef struct zlink_monitor_snapshot_t
+{
+    zlink_monitor_source_kind_t source_kind;
+    zlink_monitor_state_mask_t state_flags;
+    zlink_monitor_snapshot_detail_mask_t detail_flags;
+    uint32_t ready_peer_count;
+    uint64_t snd_pending_msgs;
+    uint64_t rcv_pending_msgs;
+} zlink_monitor_snapshot_t;
+
+/**
  * @brief Open and return a socket monitor handle directly.
  * @param events_  Event bitmask.
  * @return Monitor handle, or NULL on failure.
@@ -880,35 +909,9 @@ ZLINK_EXPORT void *zlink_socket_monitor_open (void *s_,
                                               zlink_socket_monitor_event_mask_t events_,
                                               zlink_monitor_handler_fn handler_);
 
-typedef struct {
-    zlink_routing_id_t routing_id;
-    char remote_addr[256];
-    uint64_t connected_time;
-    uint64_t msgs_sent;
-    uint64_t msgs_received;
-    /* Local outbound queue backlog (messages not yet consumed by peer). */
-    uint64_t snd_pending_msgs;
-    /* Approximate local inbound backlog snapshot (peer-written - local-read). */
-    uint64_t rcv_pending_msgs;
-} zlink_peer_info_t;
-
-/** @brief Get peer info by routing_id. */
-ZLINK_EXPORT int zlink_socket_peer_info (void *socket_,
-                                     const zlink_routing_id_t *routing_id_,
-                                     zlink_peer_info_t *info_);
-
-/** @brief Get a peer's routing_id by index. */
-ZLINK_EXPORT int zlink_socket_peer_routing_id (void *socket_,
-                                           int index_,
-                                           zlink_routing_id_t *out_);
-
-/** @brief Return the number of connected peers. */
-ZLINK_EXPORT int zlink_socket_peer_count (void *socket_);
-
-/** @brief Get info for all connected peers as an array. */
-ZLINK_EXPORT int zlink_socket_peers (void *socket_,
-                                 zlink_peer_info_t *peers_,
-                                 size_t *count_);
+/** @brief Read the current snapshot for a socket or service monitor handle. */
+ZLINK_EXPORT int zlink_monitor_snapshot (void *monitor_,
+                                         zlink_monitor_snapshot_t *out_);
 
 /** @brief Close all parts in a multipart message array. */
 ZLINK_EXPORT void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
@@ -931,13 +934,13 @@ ZLINK_EXPORT void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 ZLINK_EXPORT void *zlink_registry_new (void *ctx);
 
 /**
- * @brief Set the registry PUB and ROUTER endpoints.
+ * @brief Bind the registry PUB and ROUTER endpoints and start the registry.
  * @param pub_endpoint     PUB endpoint for broadcasting.
  * @param router_endpoint  ROUTER endpoint for receiving registrations.
  */
-ZLINK_EXPORT int zlink_registry_set_endpoints (void *registry,
-                                           const char *pub_endpoint,
-                                           const char *router_endpoint);
+ZLINK_EXPORT int zlink_registry_bind (void *registry,
+                                      const char *pub_endpoint,
+                                      const char *router_endpoint);
 
 /** @brief Set the registry unique ID (used for cluster configuration). */
 ZLINK_EXPORT int zlink_registry_set_id (void *registry, uint32_t registry_id);
@@ -986,9 +989,6 @@ ZLINK_EXPORT int zlink_registry_setsockopt (void *registry,
                                             zlink_socket_option_t option,
                                             const void *optval,
                                             size_t optvallen);
-
-/** @brief Start the registry. Spawns an internal thread. */
-ZLINK_EXPORT int zlink_registry_start (void *registry);
 
 /** @brief Destroy the registry and release all resources. */
 ZLINK_EXPORT int zlink_registry_destroy (void **registry_p);
@@ -1183,19 +1183,6 @@ ZLINK_EXPORT int zlink_gateway_last_endpoint (void *gateway,
                                               char *endpoint,
                                               size_t *size);
 
-typedef struct zlink_gateway_monitor_snapshot_t
-{
-    uint32_t ready_peer_count;
-    uint8_t send_ready;
-    uint8_t bound_ready;
-    uint8_t reserved[2];
-} zlink_gateway_monitor_snapshot_t;
-
-/** @brief Read the current local monitor state for control decisions. */
-ZLINK_EXPORT int zlink_gateway_monitor_snapshot (
-  void *gateway,
-  zlink_gateway_monitor_snapshot_t *out);
-
 /** @brief Update the authoritative weight for a specific service peer. */
 ZLINK_EXPORT int zlink_gateway_update_peer_weight (
   void *gateway,
@@ -1295,7 +1282,7 @@ ZLINK_EXPORT int zlink_spot_node_subscribe_pattern (void *node,
                                                     const char *pattern);
 
 /** @brief Unsubscribe a topic or pattern via the node-owned default SpotSub. */
-ZLINK_EXPORT int zlink_spot_node_unsubscribe_filter (
+ZLINK_EXPORT int zlink_spot_node_unsubscribe (
   void *node, const char *topic_id_or_pattern);
 
 ZLINK_EXPORT int zlink_spot_node_set_send_ready_handler (
@@ -1325,12 +1312,6 @@ ZLINK_EXPORT int zlink_spot_set_sub_option (void *spot,
                                             zlink_spot_sub_option_t option,
                                             const void *optval,
                                             size_t optvallen);
-ZLINK_EXPORT int zlink_spot_peers_pub (void *spot,
-                                       zlink_peer_info_t *peers,
-                                       size_t *count);
-ZLINK_EXPORT int zlink_spot_peers_sub (void *spot,
-                                       zlink_peer_info_t *peers,
-                                       size_t *count);
 
 /** @brief Set a default SpotPub option for the node and future child pubs. */
 ZLINK_EXPORT int zlink_spot_node_set_pub_option (void *node,
@@ -1481,6 +1462,15 @@ typedef struct zlink_service_event_t
 } zlink_service_event_t;
 
 typedef void (*zlink_service_monitor_handler_fn) (
+  const zlink_service_event_t *event_);
+
+/**
+ * @brief Ignore service monitor events while keeping a valid handler symbol.
+ *
+ * Pass this when you want snapshot or direct polling on the returned monitor
+ * handle without automatic callback dispatch.
+ */
+ZLINK_EXPORT void zlink_service_monitor_ignore_handler (
   const zlink_service_event_t *event_);
 
 /**
@@ -1704,69 +1694,7 @@ ZLINK_EXPORT void zlink_thread_join (void *thread_);
 }
 
 #ifdef ZLINK_INTERNAL_BUILD
-inline void zlink_internal_discard_socket_parts (const zlink_routing_id_t *,
-                                                 zlink_msg_t *parts_,
-                                                 size_t part_count_)
-{
-    zlink_multipart_close (parts_, part_count_);
-}
-
-inline void zlink_internal_discard_spot_parts (const zlink_routing_id_t *,
-                                               const char *,
-                                               size_t,
-                                               zlink_msg_t *parts_,
-                                               size_t part_count_)
-{
-    zlink_multipart_close (parts_, part_count_);
-}
-
-inline void zlink_internal_discard_xpub_event (int, const uint8_t *, size_t)
-{
-}
-
-inline const zlink_socket_handler_t *
-zlink_internal_default_socket_handler (zlink_socket_type_t type_)
-{
-    static zlink_socket_handler_t msg_handler = {};
-    static zlink_socket_handler_t spot_handler = {};
-    static zlink_socket_handler_t xpub_handler = {};
-    static bool initialized = false;
-
-    if (!initialized) {
-        msg_handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-        msg_handler.fn.msg = &zlink_internal_discard_socket_parts;
-
-        spot_handler.kind = ZLINK_SOCKET_HANDLER_SPOT;
-        spot_handler.fn.spot = &zlink_internal_discard_spot_parts;
-
-        xpub_handler.kind = ZLINK_SOCKET_HANDLER_XPUB;
-        xpub_handler.fn.xpub = &zlink_internal_discard_xpub_event;
-
-        initialized = true;
-    }
-
-    switch (type_) {
-        case ZLINK_PAIR:
-        case ZLINK_DEALER:
-        case ZLINK_ROUTER:
-        case ZLINK_STREAM:
-            return &msg_handler;
-        case ZLINK_SUB:
-        case ZLINK_XSUB:
-            return &spot_handler;
-        case ZLINK_XPUB:
-            return &xpub_handler;
-        case ZLINK_PUB:
-            return static_cast<const zlink_socket_handler_t *> (NULL);
-        default:
-            return static_cast<const zlink_socket_handler_t *> (NULL);
-    }
-}
-
-inline void *zlink_socket (void *ctx_, zlink_socket_type_t type_)
-{
-    return zlink_socket (ctx_, type_, zlink_internal_default_socket_handler (type_));
-}
+void *zlink_socket (void *ctx_, zlink_socket_type_t type_);
 #endif
 #endif
 

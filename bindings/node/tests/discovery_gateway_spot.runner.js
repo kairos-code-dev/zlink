@@ -32,8 +32,6 @@ async function runCase(ctx, tc) {
 
     discovery = new zlink.Discovery(ctx, zlink.SERVICE_TYPE_GATEWAY);
     discovery.connectRegistry(regPub);
-    discovery.subscribe('svc');
-
     receiver = new zlink.Receiver(ctx);
     const serviceEp = await endpointFor(tc.name, tc.endpoint, '-svc');
     receiver.bind(serviceEp);

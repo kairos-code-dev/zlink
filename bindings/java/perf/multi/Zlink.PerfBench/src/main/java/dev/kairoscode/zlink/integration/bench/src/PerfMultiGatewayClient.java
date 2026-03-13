@@ -170,7 +170,6 @@ public final class PerfMultiGatewayClient {
         Discovery discovery = new Discovery(context, ServiceType.GATEWAY);
         try {
             discovery.connectRegistry(registryRouter);
-            discovery.subscribe(SERVICE_NAME);
             return discovery;
         } catch (RuntimeException ex) {
             closeQuietly(discovery);

@@ -50,24 +50,6 @@ public final class Discovery implements AutoCloseable {
         });
     }
 
-    public void subscribe(String serviceName) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.discoverySubscribe(handle,
-                NativeHelpers.toCString(arena, serviceName));
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_discovery_subscribe");
-        }
-    }
-
-    public void unsubscribe(String serviceName) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.discoveryUnsubscribe(handle,
-                NativeHelpers.toCString(arena, serviceName));
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_discovery_unsubscribe");
-        }
-    }
-
     public void setSockOpt(SocketOption option, byte[] value) {
         Objects.requireNonNull(option, "option");
         Objects.requireNonNull(value, "value");

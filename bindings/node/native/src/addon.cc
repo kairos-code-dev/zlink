@@ -36,8 +36,6 @@ static napi_value init(napi_env env, napi_value exports)
 
         {"discoveryNew", 0, discovery_new, 0, 0, 0, napi_default, 0},
         {"discoveryConnectRegistry", 0, discovery_connect, 0, 0, 0, napi_default, 0},
-        {"discoverySubscribe", 0, discovery_subscribe, 0, 0, 0, napi_default, 0},
-        {"discoveryUnsubscribe", 0, discovery_unsubscribe, 0, 0, 0, napi_default, 0},
         {"discoveryProviderCount", 0, discovery_provider_count, 0, 0, 0, napi_default, 0},
         {"discoveryServiceAvailable", 0, discovery_service_available, 0, 0, 0, napi_default, 0},
         {"discoveryGetProviders", 0, discovery_get_providers, 0, 0, 0, napi_default, 0},

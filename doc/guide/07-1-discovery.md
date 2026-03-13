@@ -41,8 +41,8 @@ zlink Service Discovery provides the infrastructure to dynamically discover and 
 void *ctx = zlink_ctx_new();
 void *registry = zlink_registry_new(ctx);
 
-/* Endpoint configuration */
-zlink_registry_set_endpoints(registry,
+/* Bind and start */
+zlink_registry_bind(registry,
     "tcp://*:5550",    /* PUB (broadcast) */
     "tcp://*:5551"     /* ROUTER (registration/heartbeat) */
 );
@@ -56,9 +56,6 @@ zlink_registry_set_heartbeat(registry, 5000, 15000);
 
 /* Broadcast interval (optional, default 30 seconds) */
 zlink_registry_set_broadcast_interval(registry, 30000);
-
-/* Start */
-zlink_registry_start(registry);
 
 /* ... application logic ... */
 

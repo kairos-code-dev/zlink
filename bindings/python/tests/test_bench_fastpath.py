@@ -179,7 +179,6 @@ class BenchFastpathTests(unittest.TestCase):
 
             discovery = zlink.Discovery(ctx, int(zlink.ServiceType.GATEWAY))
             discovery.connect_registry(reg_pub)
-            discovery.subscribe("svc")
 
             receiver = zlink.Receiver(ctx)
             receiver.bind(provider_ep)

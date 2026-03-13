@@ -102,7 +102,6 @@ public final class PerfMultiSpotClient {
              Discovery discovery = new Discovery(context, ServiceType.SPOT)) {
             PerfCommon.applyClientContextOptions(context);
             discovery.connectRegistry(endpoint.registryRouter());
-            discovery.subscribe(SERVICE_NAME);
 
             if (!PerfCommon.waitUntil(
                 () -> discovery.serviceAvailable(SERVICE_NAME)

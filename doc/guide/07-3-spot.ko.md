@@ -73,7 +73,6 @@ void *ctx = zlink_ctx_new();
 /* Discovery 설정 (peer 발견 + registry uplink / heartbeat owner) */
 void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_SPOT);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
-zlink_discovery_subscribe(discovery, "spot-node");
 
 /* SPOT Node 설정 (service_name과 handler를 생성 시점에 고정) */
 void *node = zlink_spot_node_new(ctx, "spot-node", on_message);

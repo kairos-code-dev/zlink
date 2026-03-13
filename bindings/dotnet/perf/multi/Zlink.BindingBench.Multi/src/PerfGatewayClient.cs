@@ -33,8 +33,6 @@ internal static class PerfGatewayClient
             discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
             ConnectRegistryWithRetry(() => discovery.ConnectRegistry(
                 registryRouter));
-            discovery.Subscribe(ServerServiceName);
-
             for (int i = 0; i < config.ClientCount; i++)
             {
                 string clientServiceName = $"{ClientServicePrefix}{i}";

@@ -172,7 +172,8 @@ static void run_client_monitor_ready_disconnected_test (int client_type_,
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
 
     void *mon = zlink_socket_monitor_open (
-      client, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+      client, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
+      &zlink_monitor_ignore_handler);
     TEST_ASSERT_NOT_NULL (mon);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (mon, ZLINK_LINGER, &zero, sizeof (zero)));
@@ -225,7 +226,8 @@ void test_monitor_open_and_connection_ready ()
 
     void *mon = zlink_socket_monitor_open (server,
                                          ZLINK_EVENT_CONNECTION_READY
-                                           | ZLINK_EVENT_DISCONNECTED);
+                                           | ZLINK_EVENT_DISCONNECTED,
+                                         &zlink_monitor_ignore_handler);
     TEST_ASSERT_NOT_NULL (mon);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
@@ -257,18 +259,20 @@ void test_peer_enumeration ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
 
-    void *mon = zlink_socket_monitor_open (server, ZLINK_EVENT_CONNECTION_READY);
+    void *mon = zlink_socket_monitor_open (server, ZLINK_EVENT_CONNECTION_READY,
+                                           &zlink_monitor_ignore_handler);
     TEST_ASSERT_NOT_NULL (mon);
 
+    zlink_monitor_event_t ready;
+    memset (&ready, 0, sizeof (ready));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
-    TEST_ASSERT_TRUE (wait_for_event (mon, ZLINK_EVENT_CONNECTION_READY, NULL));
+    TEST_ASSERT_TRUE (wait_for_event (mon, ZLINK_EVENT_CONNECTION_READY, &ready));
 
-    const int peer_count = zlink_socket_peer_count (server);
-    TEST_ASSERT_TRUE (peer_count >= 1);
-
-    zlink_routing_id_t peer_id;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_peer_routing_id (server, 0, &peer_id));
-    TEST_ASSERT_TRUE (peer_id.size > 0);
+    zlink_monitor_snapshot_t snapshot;
+    memset (&snapshot, 0, sizeof (snapshot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_snapshot (mon, &snapshot));
+    TEST_ASSERT_TRUE (snapshot.ready_peer_count >= 1);
+    TEST_ASSERT_TRUE (ready.routing_id.size > 0);
 
     const char payload[] = "ping";
     send_string_expect_success (client, payload, 0);
@@ -278,16 +282,13 @@ void test_peer_enumeration ()
     TEST_ASSERT_TRUE (rid_size > 0);
     recv_string_expect_success (server, payload, 0);
 
-    TEST_ASSERT_EQUAL_INT (peer_id.size, rid_size);
-
-    zlink_peer_info_t info;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_peer_info (server, &peer_id, &info));
-    TEST_ASSERT_TRUE (info.routing_id.size > 0);
+    TEST_ASSERT_EQUAL_INT (ready.routing_id.size, rid_size);
 
     TEST_ASSERT_EQUAL_INT (
-      peer_id.size,
+      ready.routing_id.size,
       TEST_ASSERT_SUCCESS_ERRNO (
-        zlink_send (server, peer_id.data, peer_id.size, ZLINK_SNDMORE)));
+        zlink_send (server, ready.routing_id.data, ready.routing_id.size,
+                    ZLINK_SNDMORE)));
     send_string_expect_success (server, payload, 0);
     recv_string_expect_success (client, payload, 0);
 
@@ -318,7 +319,8 @@ void test_router_monitor_event_sequence_timing ()
 
     void *mon = zlink_socket_monitor_open (
       server, ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_CONNECTION_READY
-                | ZLINK_EVENT_DISCONNECTED);
+                | ZLINK_EVENT_DISCONNECTED,
+      &zlink_monitor_ignore_handler);
     TEST_ASSERT_NOT_NULL (mon);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (mon, ZLINK_LINGER, &zero, sizeof (zero)));

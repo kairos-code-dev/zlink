@@ -83,26 +83,6 @@ class discovery_t
     }
 
     /**
-     * @brief Subscribe to a service name.
-     * @param service_ Service name.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int subscribe (const std::string &service_)
-    {
-        return zlink_discovery_subscribe (_disc, service_.c_str ());
-    }
-
-    /**
-     * @brief Unsubscribe from a service name.
-     * @param service_ Service name.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int unsubscribe (const std::string &service_)
-    {
-        return zlink_discovery_unsubscribe (_disc, service_.c_str ());
-    }
-
-    /**
      * @brief Get number of known receivers for a service.
      * @param service_ Service name.
      * @return Receiver count, or -1 on failure.

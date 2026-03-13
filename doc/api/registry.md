@@ -51,31 +51,31 @@ The context handle must remain valid for the lifetime of the Registry.
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_registry_set_endpoints`, `zlink_registry_start`, `zlink_registry_destroy`
+**See also:** `zlink_registry_bind`, `zlink_registry_destroy`
 
 ---
 
-### zlink_registry_set_endpoints
+### zlink_registry_bind
 
-Set the Registry PUB and ROUTER endpoints.
+Bind the Registry PUB and ROUTER endpoints and start the Registry.
 
 ```c
-int zlink_registry_set_endpoints(void *registry,
-                                 const char *pub_endpoint,
-                                 const char *router_endpoint);
+int zlink_registry_bind(void *registry,
+                        const char *pub_endpoint,
+                        const char *router_endpoint);
 ```
 
-Configures the endpoints that the Registry will bind to. The PUB endpoint
-is used for broadcasting the service list to Discovery instances. The ROUTER
-endpoint is used for receiving registration, deregistration, and heartbeat
-messages from Receivers and SPOT Nodes. Must be called before
-`zlink_registry_start`.
+Binds the Registry's PUB and ROUTER endpoints, verifies the bind succeeds,
+starts the internal control task, and begins accepting registrations and
+broadcasting the service list. The PUB endpoint is used for broadcasting to
+Discovery instances. The ROUTER endpoint is used for receiving registration,
+deregistration, and heartbeat messages from Receivers and SPOT Nodes.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Not thread-safe. Must be called before `zlink_registry_start`.
+**Thread safety:** Not thread-safe. Must be called at most once per Registry.
 
-**See also:** `zlink_registry_new`, `zlink_registry_start`
+**See also:** `zlink_registry_new`, `zlink_registry_destroy`
 
 ---
 
@@ -89,11 +89,11 @@ int zlink_registry_set_id(void *registry, uint32_t registry_id);
 
 Assigns a unique identifier to this Registry instance. The ID is used for
 cluster configuration when multiple registries synchronize with each other
-via peer connections. Must be called before `zlink_registry_start`.
+via peer connections. Must be called before `zlink_registry_bind`.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Not thread-safe. Must be called before `zlink_registry_start`.
+**Thread safety:** Not thread-safe. Must be called before `zlink_registry_bind`.
 
 **See also:** `zlink_registry_add_peer`
 
@@ -110,11 +110,11 @@ int zlink_registry_add_peer(void *registry,
 
 Connects this Registry to a peer Registry's PUB endpoint so that service
 lists can be synchronized across a cluster. Multiple peers may be added.
-Must be called before `zlink_registry_start`.
+Must be called before `zlink_registry_bind`.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Not thread-safe. Must be called before `zlink_registry_start`.
+**Thread safety:** Not thread-safe. Must be called before `zlink_registry_bind`.
 
 **See also:** `zlink_registry_set_id`
 
@@ -137,7 +137,7 @@ removes it from the service list.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Not thread-safe. Must be called before `zlink_registry_start`.
+**Thread safety:** Not thread-safe. Must be called before `zlink_registry_bind`.
 
 **See also:** `zlink_registry_set_broadcast_interval`
 
@@ -158,7 +158,7 @@ updates at this interval.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Not thread-safe. Must be called before `zlink_registry_start`.
+**Thread safety:** Not thread-safe. Must be called before `zlink_registry_bind`.
 
 **See also:** `zlink_registry_set_heartbeat`
 
@@ -178,37 +178,16 @@ int zlink_registry_setsockopt(void *registry,
 
 Applies a low-level socket option to one of the Registry's internal sockets
 identified by `socket_role`. Use the `ZLINK_REGISTRY_SOCKET_*` constants to
-select the target socket. Must be called before `zlink_registry_start`.
+select the target socket. Must be called before `zlink_registry_bind`.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
 **Errors:**
 - `EINVAL` -- invalid socket role or unknown option.
 
-**Thread safety:** Not thread-safe. Must be called before `zlink_registry_start`.
+**Thread safety:** Not thread-safe. Must be called before `zlink_registry_bind`.
 
-**See also:** `zlink_registry_set_endpoints`
-
----
-
-### zlink_registry_start
-
-Start the Registry.
-
-```c
-int zlink_registry_start(void *registry);
-```
-
-Binds the configured endpoints, spawns an internal thread, and begins
-accepting registrations and broadcasting the service list. All configuration
-(endpoints, heartbeat, broadcast interval, socket options, peers) must be
-set before calling this function.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Thread safety:** Not thread-safe. Must be called exactly once per Registry.
-
-**See also:** `zlink_registry_set_endpoints`, `zlink_registry_destroy`
+**See also:** `zlink_registry_bind`
 
 ---
 
@@ -229,7 +208,7 @@ was started, this function blocks until the internal thread exits.
 **Thread safety:** Not thread-safe. Must not be called concurrently with other
 Registry operations.
 
-**See also:** `zlink_registry_new`
+**See also:** `zlink_registry_new`, `zlink_registry_bind`
 
 ---
 

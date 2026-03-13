@@ -77,11 +77,8 @@ public class CoreEnumPortedTest {
         assertEquals(156384765, ErrorCode.ETERM.getValue());
         assertEquals(156384766, ErrorCode.EMTHREAD.getValue());
 
-        assertEquals(0x10000000, ProtocolError.ZMP_UNSPECIFIED.getValue());
-        assertEquals(0x10000017,
-            ProtocolError.ZMP_MALFORMED_COMMAND_WELCOME.getValue());
-        assertEquals(0x11000002, ProtocolError.ZMP_MECHANISM_MISMATCH.getValue());
-        assertEquals(0x30000000, ProtocolError.WS_UNSPECIFIED.getValue());
+        assertEquals(0x10000013,
+            ProtocolError.ZMP_MALFORMED_COMMAND_HELLO.getValue());
     }
 
     @Test

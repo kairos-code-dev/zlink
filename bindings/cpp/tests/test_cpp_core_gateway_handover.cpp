@@ -134,8 +134,6 @@ void test_gateway_handover_provider_restart ()
     zlink::service::discovery_t discovery (ctx, zlink::service_type::gateway);
     assert (discovery.valid ());
     assert (discovery.connect_registry (eps.router) == 0);
-    assert (discovery.subscribe (service_name) == 0);
-
     zlink::service::gateway_t gateway (ctx, discovery);
     assert (gateway.valid ());
 
@@ -218,8 +216,6 @@ void test_provider_handover_gateway_reconnect ()
         zlink::service::discovery_t discovery1 (ctx, zlink::service_type::gateway);
         assert (discovery1.valid ());
         assert (discovery1.connect_registry (eps.router) == 0);
-        assert (discovery1.subscribe (service_name) == 0);
-
         zlink::service::gateway_t gateway1 (ctx, discovery1, gateway_rid);
         assert (gateway1.valid ());
         assert (wait_gateway_ready (gateway1, service_name, timeout_ms));
@@ -235,8 +231,6 @@ void test_provider_handover_gateway_reconnect ()
         zlink::service::discovery_t discovery2 (ctx, zlink::service_type::gateway);
         assert (discovery2.valid ());
         assert (discovery2.connect_registry (eps.router) == 0);
-        assert (discovery2.subscribe (service_name) == 0);
-
         zlink::service::gateway_t gateway2 (ctx, discovery2, gateway_rid);
         assert (gateway2.valid ());
         assert (wait_gateway_ready (gateway2, service_name, timeout_ms));

@@ -111,7 +111,8 @@ Fired when the zlink handshake completes successfully and the connection is read
 - **`routing_id`**: Available for ROUTER sockets — contains the peer's assigned routing identity.
 - **`local_addr`**: The local endpoint address.
 - **`remote_addr`**: The remote endpoint address.
-- **Typical usage**: Trigger peer registration, start sending messages, or query peer info via `zlink_socket_peer_info()`.
+- **Typical usage**: Trigger peer registration, start sending messages, or
+  read aggregate queue/readiness state via `zlink_monitor_snapshot()`.
 
 #### DISCONNECTED (`0x0200`)
 
@@ -230,21 +231,7 @@ When `HANDSHAKE_FAILED_PROTOCOL` fires, the `value` field contains one of these 
 
 | Constant | Value | Description |
 |---|---|---|
-| `ZLINK_PROTOCOL_ERROR_ZMP_UNSPECIFIED` | `0x10000000` | Unspecified ZMP protocol error. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_UNEXPECTED_COMMAND` | `0x10000001` | Unexpected ZMP command received during handshake. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_INVALID_SEQUENCE` | `0x10000002` | ZMP commands arrived in an invalid order. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_KEY_EXCHANGE` | `0x10000003` | Key exchange step of ZMP handshake failed. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_UNSPECIFIED` | `0x10000011` | A ZMP command was malformed (unspecified). |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_MESSAGE` | `0x10000012` | Malformed ZMP MESSAGE command. |
 | `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO` | `0x10000013` | Malformed ZMP HELLO command. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_INITIATE` | `0x10000014` | Malformed ZMP INITIATE command. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_ERROR` | `0x10000015` | Malformed ZMP ERROR command. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_READY` | `0x10000016` | Malformed ZMP READY command. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_WELCOME` | `0x10000017` | Malformed ZMP WELCOME command. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_INVALID_METADATA` | `0x10000018` | Invalid metadata in ZMP handshake. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_CRYPTOGRAPHIC` | `0x11000001` | Cryptographic verification failed during ZMP handshake. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MECHANISM_MISMATCH` | `0x11000002` | Client and server security mechanisms do not match. |
-| `ZLINK_PROTOCOL_ERROR_WS_UNSPECIFIED` | `0x30000000` | Unspecified WebSocket protocol error. |
 
 ## 5. Event Flow Diagrams
 
@@ -364,50 +351,29 @@ void *mon = zlink_socket_monitor_open(server, MONITOR_PRESET_SECURITY,
                                       on_monitor_event);
 ```
 
-## 8. Peer Information Queries
+## 8. Monitor Snapshots
 
-### Connected Peer Count
+### Aggregate Socket State
 
 ```c
-int count = zlink_socket_peer_count(socket);
-printf("Connected peers: %d\n", count);
+void *monitor = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL, NULL);
+zlink_monitor_snapshot_t snapshot;
+zlink_monitor_snapshot(monitor, &snapshot);
+printf("Ready peers: %u, sndq=%llu, rcvq=%llu\n",
+       snapshot.ready_peer_count,
+       (unsigned long long) snapshot.snd_pending_msgs,
+       (unsigned long long) snapshot.rcv_pending_msgs);
 ```
 
-### Specific Peer Information
+### Combining Snapshots with Monitoring
 
 ```c
-/* Query routing_id by index */
-zlink_routing_id_t rid;
-zlink_socket_peer_routing_id(socket, 0, &rid);
-
-/* Query detailed info by routing_id */
-zlink_peer_info_t info;
-zlink_socket_peer_info(socket, &rid, &info);
-printf("Remote: %s, Connected time: %llu\n", info.remote_addr, info.connected_time);
-```
-
-### Full Peer List
-
-```c
-zlink_peer_info_t peers[64];
-size_t peer_count = 64;
-zlink_socket_peers(socket, peers, &peer_count);
-
-for (size_t i = 0; i < peer_count; i++) {
-    printf("Peer %zu: remote=%s\n", i, peers[i].remote_addr);
-}
-```
-
-### Combining Peer Information with Monitoring
-
-```c
-/* Query peer info in callback handler when CONNECTION_READY event fires */
 void on_monitor(const zlink_monitor_event_t *ev)
 {
-    if (ev->event == ZLINK_EVENT_CONNECTION_READY && ev->routing_id.size > 0) {
-        zlink_peer_info_t info;
-        zlink_socket_peer_info(g_socket, &ev->routing_id, &info);
-        printf("New connection: remote=%s\n", info.remote_addr);
+    if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
+        zlink_monitor_snapshot_t snapshot;
+        zlink_monitor_snapshot(g_monitor, &snapshot);
+        printf("Ready peers now: %u\n", snapshot.ready_peer_count);
     }
 }
 ```

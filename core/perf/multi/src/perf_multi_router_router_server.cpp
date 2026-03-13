@@ -208,7 +208,7 @@ inline relay_status_t relay_router_message_non_blocking (void *server)
 inline bool relay_router_once (void *server, int poll_timeout_ms)
 {
     zlink_pollitem_t item[] = {{server, 0, ZLINK_POLLIN, 0}};
-    const int prc = zlink_poll (item, 1, poll_timeout_ms);
+    const int prc = perf_socket_poll (item, 1, poll_timeout_ms);
     if (prc < 0)
         return zlink_errno () == EINTR;
     if (prc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)

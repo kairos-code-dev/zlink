@@ -303,6 +303,17 @@ target_sources(
   test_scenario_stream_client
   PRIVATE ${STREAM_SCENARIO_ROOT}/client/stream_client_core.cpp)
 
+if(TARGET test_spot_pubsub_scenario)
+  target_sources(
+    test_spot_pubsub_scenario
+    PRIVATE
+      ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_shared.cpp
+      ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_peer_cases.cpp
+      ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_callback_cases.cpp
+      ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_node_cases.cpp
+      ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_discovery_cases.cpp)
+endif()
+
 if(TARGET test_scenario_stream_zmq)
   target_include_directories(
     test_scenario_stream_zmq PRIVATE ${STREAM_SCENARIO_ZMQ_INCLUDE_DIR})
@@ -534,10 +545,6 @@ set(SPOT_PUBSUB_CASES
     test_spot_recv_callback_isolated_by_service_with_discovery
     test_spot_facade_handler_receives_source_rid
     test_spot_node_discovery_direct_and_child_interop
-    test_spot_pub_async_mode_local_delivery
-    test_spot_pub_async_setsockopt_validation
-    test_spot_pub_async_queue_full_eagain
-    test_spot_pub_async_queue_full_drop
     test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery)
 
 set(SPOT_PUBSUB_PEER_TEST_SPECS
@@ -557,11 +564,7 @@ set(SPOT_PUBSUB_LOCAL_TEST_SPECS
     test_spot_pubsub_scenario_sub_handler_basic=test_spot_sub_handler_basic
     test_spot_pubsub_scenario_recv_handle_isolation=test_spot_recv_callback_isolated_by_handle
     test_spot_pubsub_scenario_recv_service_isolation=test_spot_recv_callback_isolated_by_service_with_discovery
-    test_spot_pubsub_scenario_source_rid=test_spot_facade_handler_receives_source_rid
-    test_spot_pubsub_scenario_async_local_delivery=test_spot_pub_async_mode_local_delivery
-    test_spot_pubsub_scenario_async_setsockopt=test_spot_pub_async_setsockopt_validation
-    test_spot_pubsub_scenario_async_eagain=test_spot_pub_async_queue_full_eagain
-    test_spot_pubsub_scenario_async_drop=test_spot_pub_async_queue_full_drop)
+    test_spot_pubsub_scenario_source_rid=test_spot_facade_handler_receives_source_rid)
 
 set(GATEWAY_CASES
     test_gateway_provider_setsockopt
@@ -626,12 +629,14 @@ set(SERVICE_INTROSPECTION_TEST_SPECS
 set(SERVICE_DISCOVERY_CASES
     test_discovery_provider_registration
     test_discovery_service_filtering
-    test_discovery_heartbeat_timeout)
+    test_discovery_heartbeat_timeout
+    test_registry_bind_rejects_rebind)
 
 set(SERVICE_DISCOVERY_TEST_SPECS
     test_service_discovery_provider_registration=test_discovery_provider_registration
     test_service_discovery_service_filtering=test_discovery_service_filtering
-    test_service_discovery_heartbeat_timeout=test_discovery_heartbeat_timeout)
+    test_service_discovery_heartbeat_timeout=test_discovery_heartbeat_timeout
+    test_service_discovery_registry_rebind=test_registry_bind_rejects_rebind)
 
 assert_named_case_coverage(
   "test_service_introspection"

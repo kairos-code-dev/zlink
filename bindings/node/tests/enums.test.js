@@ -67,10 +67,7 @@ test('ErrorCode values match C defines', () => {
 });
 
 test('ProtocolError values match C defines', () => {
-  assert.strictEqual(zlink.ProtocolError.ZMP_UNSPECIFIED, 0x10000000);
-  assert.strictEqual(zlink.ProtocolError.ZMP_MALFORMED_COMMAND_WELCOME, 0x10000017);
-  assert.strictEqual(zlink.ProtocolError.ZMP_MECHANISM_MISMATCH, 0x11000002);
-  assert.strictEqual(zlink.ProtocolError.WS_UNSPECIFIED, 0x30000000);
+  assert.strictEqual(zlink.ProtocolError.ZMP_MALFORMED_COMMAND_HELLO, 0x10000013);
 });
 
 test('ServiceType values match C defines', () => {

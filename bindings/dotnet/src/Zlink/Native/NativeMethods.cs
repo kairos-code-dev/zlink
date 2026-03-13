@@ -367,14 +367,6 @@ internal static class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string registryPubEndpoint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_discovery_subscribe(IntPtr discovery,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_discovery_unsubscribe(IntPtr discovery,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_discovery_get_receivers(IntPtr discovery,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
         [In, Out] ZlinkProviderInfo[] providers, ref nuint count);

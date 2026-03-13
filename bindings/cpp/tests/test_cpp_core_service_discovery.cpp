@@ -94,7 +94,6 @@ static void test_discovery_provider_registration ()
     zlink::service::discovery_t discovery (ctx, zlink::service_type::gateway);
     assert (discovery.handle () != NULL);
     assert (discovery.connect_registry (eps.router.c_str ()) == 0);
-    assert (discovery.subscribe ("test-svc") == 0);
     sleep_ms (50);
 
     zlink::service::receiver_t provider (ctx);
@@ -140,7 +139,6 @@ static void test_discovery_service_filtering ()
     zlink::service::discovery_t discovery (ctx, zlink::service_type::gateway);
     assert (discovery.handle () != NULL);
     assert (discovery.connect_registry (eps.router.c_str ()) == 0);
-    assert (discovery.subscribe ("svc-A") == 0);
     sleep_ms (50);
 
     zlink::service::receiver_t provider_a (ctx);
@@ -170,9 +168,6 @@ static void test_discovery_service_filtering ()
     assert (std::strcmp (providers[0].endpoint, advertise_a.c_str ()) == 0);
     assert (providers[0].weight == 10);
 
-    assert (discovery.receiver_count ("svc-B") == 0);
-
-    assert (discovery.subscribe ("svc-B") == 0);
     assert (wait_for_provider (discovery, "svc-B", 2000));
 
     std::memset (providers, 0, sizeof (providers));
@@ -207,7 +202,6 @@ static void test_discovery_heartbeat_timeout ()
     zlink::service::discovery_t discovery (ctx, zlink::service_type::gateway);
     assert (discovery.handle () != NULL);
     assert (discovery.connect_registry (eps.router.c_str ()) == 0);
-    assert (discovery.subscribe ("hb-svc") == 0);
     sleep_ms (50);
 
     zlink::service::receiver_t provider (ctx);
@@ -249,7 +243,6 @@ static void test_discovery_weight_update ()
     zlink::service::discovery_t discovery (ctx, zlink::service_type::gateway);
     assert (discovery.handle () != NULL);
     assert (discovery.connect_registry (eps.router.c_str ()) == 0);
-    assert (discovery.subscribe ("weight-svc") == 0);
     sleep_ms (50);
 
     zlink::service::receiver_t provider (ctx);

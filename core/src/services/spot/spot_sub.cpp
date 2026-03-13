@@ -373,14 +373,33 @@ int spot_sub_t::routing_id (zlink_routing_id_t *out_) const
     return 0;
 }
 
-int spot_sub_t::peers (zlink_peer_info_t *peers_, size_t *count_) const
+int spot_sub_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const
 {
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
     socket_base_t *socket = this->socket ();
     if (!socket) {
         errno = EFAULT;
         return -1;
     }
-    return zlink_socket_peers (static_cast<void *> (socket), peers_, count_);
+    if (socket->monitor_snapshot (out_) != 0)
+        return -1;
+    out_->source_kind = ZLINK_MONITOR_SOURCE_SPOT_SUB;
+    {
+        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        const uint32_t ready_peer_count =
+          static_cast<uint32_t> (_ready_peer_endpoints.size ());
+        if (out_->ready_peer_count < ready_peer_count)
+            out_->ready_peer_count = ready_peer_count;
+    }
+    out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT;
+    if (out_->ready_peer_count > 0)
+        out_->state_flags |= ZLINK_MONITOR_STATE_READY;
+    else
+        out_->state_flags &= ~ZLINK_MONITOR_STATE_READY;
+    return 0;
 }
 
 void *spot_sub_t::monitor_open (int events_)

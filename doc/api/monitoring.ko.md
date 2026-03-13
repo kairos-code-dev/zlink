@@ -1,25 +1,28 @@
 [English](monitoring.md) | [한국어](monitoring.ko.md)
 
-# 모니터링 & 피어 정보 API 레퍼런스
+# 모니터링 API 레퍼런스
 
 canonical 이벤트 카탈로그는 이제 [events.ko.md](events.ko.md)에 정리합니다.
-이 문서는 monitor API, callback, peer inspection helper 중심으로 봅니다.
+이 문서는 monitor API, callback, monitor snapshot 중심으로 봅니다.
 
 ## 현재 권장 API 방향
 
 이제 모니터링 계층은 두 가지로 분리됩니다.
 
 - raw socket monitor:
-  `zlink_socket_monitor_open()`, `zlink_monitor_recv()`
+  `zlink_socket_monitor_open()`, `zlink_close()`
 - service monitor:
-  `zlink_*_monitor_open()`, `zlink_service_monitor_recv()`,
-  `zlink_poller_add_monitor()`
+  `zlink_*_monitor_open()`, `zlink_service_monitor_close()`
+
+monitor handle은 세 가지 방식으로 사용할 수 있습니다.
+
+- handler를 넘긴 callback delivery
+- monitor handle 직접 polling
+- `zlink_monitor_snapshot()`을 통한 aggregate 상태 조회
 
 transport/socket 진단은 raw socket monitor를 사용하고, readiness,
 route 변화, registration 결과, SPOT filter 적용 같은 service 상태 전이는
 service monitor를 사용합니다.
-
-모니터링 API를 사용하면 연결, 연결 해제, 핸드셰이크 실패 등의 소켓 생명주기 이벤트를 관찰할 수 있습니다. 피어 정보 API는 ROUTER 소켓에 현재 연결된 피어 집합에 대한 피어별 메시지 카운터 및 연결 타임스탬프를 포함한 인트로스펙션을 제공합니다.
 
 ## 타입
 
@@ -45,27 +48,28 @@ typedef struct {
 | `local_addr` | null 종료 로컬 엔드포인트 주소 문자열. |
 | `remote_addr` | null 종료 원격 엔드포인트 주소 문자열. |
 
-### zlink_peer_info_t
-
-단일 연결된 피어에 대한 정보를 포함합니다.
+### zlink_monitor_snapshot_t
 
 ```c
-typedef struct {
-    zlink_routing_id_t routing_id;
-    char remote_addr[256];
-    uint64_t connected_time;
-    uint64_t msgs_sent;
-    uint64_t msgs_received;
-} zlink_peer_info_t;
+typedef struct zlink_monitor_snapshot_t
+{
+    zlink_monitor_source_kind_t source_kind;
+    zlink_monitor_state_mask_t state_flags;
+    zlink_monitor_snapshot_detail_mask_t detail_flags;
+    uint32_t ready_peer_count;
+    uint64_t snd_pending_msgs;
+    uint64_t rcv_pending_msgs;
+} zlink_monitor_snapshot_t;
 ```
 
 | 필드 | 설명 |
 |------|------|
-| `routing_id` | 피어의 라우팅 아이덴티티. |
-| `remote_addr` | 피어의 null 종료 원격 주소. |
-| `connected_time` | 피어가 연결된 시점의 타임스탬프 (에포크 밀리초). |
-| `msgs_sent` | 이 피어에 송신된 메시지 수. |
-| `msgs_received` | 이 피어로부터 수신된 메시지 수. |
+| `source_kind` | snapshot source(`SOCKET`, `GATEWAY`, `SPOT_PUB`, `SPOT_SUB`) |
+| `state_flags` | `READY`, `BOUND_READY`, `SEND_READY` 같은 aggregate 상태 |
+| `detail_flags` | 어떤 numeric field가 채워졌는지 표시 |
+| `ready_peer_count` | 지원되는 경우 aggregate ready/connected peer 수 |
+| `snd_pending_msgs` | 지원되는 경우 aggregate 로컬 송신 backlog |
+| `rcv_pending_msgs` | 지원되는 경우 aggregate 로컬 수신 backlog snapshot |
 
 ## 상수
 
@@ -99,8 +103,6 @@ typedef struct {
 | 상수 | 값 | 설명 |
 |------|-----|------|
 | `ZLINK_DISCONNECT_UNKNOWN` | `0` | 사유를 확인할 수 없음. |
-| `ZLINK_DISCONNECT_LOCAL` | `1` | 로컬 측에서 연결 해제를 시작함. |
-| `ZLINK_DISCONNECT_REMOTE` | `2` | 원격 피어에서 연결 해제를 시작함. |
 | `ZLINK_DISCONNECT_HANDSHAKE_FAILED` | `3` | 핸드셰이크 실패로 인한 연결 해제. |
 | `ZLINK_DISCONNECT_TRANSPORT_ERROR` | `4` | 트랜스포트 계층 에러로 인한 연결 해제. |
 | `ZLINK_DISCONNECT_CTX_TERM` | `5` | Context 종료로 인한 연결 해제. |
@@ -111,21 +113,7 @@ typedef struct {
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_PROTOCOL_ERROR_ZMP_UNSPECIFIED` | `0x10000000` | 지정되지 않은 ZMP 프로토콜 에러. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_UNEXPECTED_COMMAND` | `0x10000001` | 예기치 않은 ZMP 명령 수신. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_INVALID_SEQUENCE` | `0x10000002` | 유효하지 않은 ZMP 명령 시퀀스. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_KEY_EXCHANGE` | `0x10000003` | ZMP 키 교환 실패. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_UNSPECIFIED` | `0x10000011` | 잘못된 형식의 ZMP 명령 (지정되지 않음). |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_MESSAGE` | `0x10000012` | 잘못된 형식의 ZMP MESSAGE 명령. |
 | `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO` | `0x10000013` | 잘못된 형식의 ZMP HELLO 명령. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_INITIATE` | `0x10000014` | 잘못된 형식의 ZMP INITIATE 명령. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_ERROR` | `0x10000015` | 잘못된 형식의 ZMP ERROR 명령. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_READY` | `0x10000016` | 잘못된 형식의 ZMP READY 명령. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_WELCOME` | `0x10000017` | 잘못된 형식의 ZMP WELCOME 명령. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_INVALID_METADATA` | `0x10000018` | 유효하지 않은 ZMP 메타데이터. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_CRYPTOGRAPHIC` | `0x11000001` | ZMP 암호화 에러. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MECHANISM_MISMATCH` | `0x11000002` | ZMP 보안 메커니즘 불일치. |
-| `ZLINK_PROTOCOL_ERROR_WS_UNSPECIFIED` | `0x30000000` | 지정되지 않은 WebSocket 프로토콜 에러. |
 
 ## 함수
 
@@ -154,7 +142,9 @@ int zlink_socket_monitor(void *s_, const char *addr_, int events_);
 소켓 모니터 핸들을 직접 열고 반환합니다. 소켓 이벤트를 모니터링하는 데 권장되는 방식입니다.
 
 ```c
-void *zlink_socket_monitor_open(void *s_, int events_);
+void *zlink_socket_monitor_open(void *s_,
+                                zlink_socket_monitor_event_mask_t events_,
+                                zlink_monitor_handler_fn handler_);
 ```
 
 소켓 `s_`에 모니터를 생성하고 불투명 모니터 핸들을 반환합니다. 핸들을 `zlink_monitor_recv()`에 직접 전달하여 구조화된 이벤트 데이터를 수신할 수 있습니다. `events_` 비트마스크와 일치하는 이벤트만 전달됩니다. 완료 후 모니터 핸들은 `zlink_close()`로 닫으세요.
@@ -190,87 +180,20 @@ int zlink_monitor_recv(void *monitor_socket_, zlink_monitor_event_t *event_, int
 
 ---
 
-### zlink_socket_peer_info
-
-라우팅 아이덴티티로 피어 정보를 가져옵니다.
+### zlink_monitor_snapshot
 
 ```c
-int zlink_socket_peer_info(void *socket_, const zlink_routing_id_t *routing_id_, zlink_peer_info_t *info_);
+int zlink_monitor_snapshot(void *monitor_, zlink_monitor_snapshot_t *out_);
 ```
 
-주어진 ROUTER 소켓에서 `routing_id_`로 식별되는 피어를 조회하고 `info_` 구조체에 주소, 연결 시간, 메시지 카운터를 채웁니다.
+socket/service monitor handle의 현재 aggregate snapshot을 읽습니다.
+queue 값은 조회 시점에 source에서 직접 읽어오며, `rcv_pending_msgs`는
+여전히 approximate 값입니다.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
-**에러:**
-
-- `EINVAL` -- 라우팅 아이덴티티를 찾을 수 없거나 소켓이 ROUTER가 아닙니다.
-
-**스레드 안전성:** 소켓을 소유한 스레드에서 호출해야 합니다.
-
-**참고:** `zlink_socket_peer_routing_id`, `zlink_socket_peers`
-
----
-
-### zlink_socket_peer_routing_id
-
-인덱스로 피어의 라우팅 아이덴티티를 가져옵니다.
-
-```c
-int zlink_socket_peer_routing_id(void *socket_, int index_, zlink_routing_id_t *out_);
-```
-
-소켓의 내부 피어 테이블에서 위치 `index_` (0부터 시작)에 있는 피어의 라우팅 아이덴티티를 가져옵니다. 모든 피어를 순회하려면 `zlink_socket_peer_count()`와 함께 사용합니다.
-
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
-
-**에러:**
-
-- `EINVAL` -- 인덱스가 범위를 벗어나거나 소켓이 ROUTER가 아닙니다.
-
-**스레드 안전성:** 소켓을 소유한 스레드에서 호출해야 합니다.
-
-**참고:** `zlink_socket_peer_count`, `zlink_socket_peer_info`
-
----
-
-### zlink_socket_peer_count
-
-연결된 피어 수를 반환합니다.
-
-```c
-int zlink_socket_peer_count(void *socket_);
-```
-
-ROUTER 소켓 `socket_`에 현재 연결된 피어 수를 반환합니다. 피어가 연결 및 연결 해제됨에 따라 호출 사이에 카운트가 변경될 수 있습니다.
-
-**반환값:** 연결된 피어 수 (>= 0), 또는 실패 시 -1 (errno가 설정됨).
-
-**스레드 안전성:** 소켓을 소유한 스레드에서 호출해야 합니다.
-
-**참고:** `zlink_socket_peer_routing_id`, `zlink_socket_peers`
-
----
-
-### zlink_socket_peers
-
-연결된 모든 피어의 정보를 배열로 가져옵니다.
-
-```c
-int zlink_socket_peers(void *socket_, zlink_peer_info_t *peers_, size_t *count_);
-```
-
-ROUTER 소켓에 연결된 모든 피어의 정보를 `peers_` 배열에 채웁니다. 입력 시 `*count_`는 배열의 용량을 포함해야 합니다. 출력 시 `*count_`는 기록된 실제 피어 수로 설정됩니다. 배열이 너무 작은 경우 호출은 성공하지만 처음 `*count_`(입력) 항목만 기록되며 `*count_`(출력)는 연결된 총 피어 수를 반영합니다.
-
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
-
-**에러:**
-
-- `EINVAL` -- 소켓이 ROUTER가 아니거나, `peers_` 또는 `count_`가 NULL입니다.
-
-**스레드 안전성:** 소켓을 소유한 스레드에서 호출해야 합니다.
-
-**참고:** `zlink_socket_peer_count`, `zlink_socket_peer_info`
+**참고:** `zlink_socket_monitor_open`, `zlink_gateway_monitor_open`,
+`zlink_spot_monitor_open`
 
 ---
 

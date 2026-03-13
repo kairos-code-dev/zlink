@@ -47,8 +47,6 @@ napi_value registry_destroy(napi_env env, napi_callback_info info);
 
 napi_value discovery_new(napi_env env, napi_callback_info info);
 napi_value discovery_connect(napi_env env, napi_callback_info info);
-napi_value discovery_subscribe(napi_env env, napi_callback_info info);
-napi_value discovery_unsubscribe(napi_env env, napi_callback_info info);
 napi_value discovery_provider_count(napi_env env, napi_callback_info info);
 napi_value discovery_service_available(napi_env env, napi_callback_info info);
 napi_value discovery_get_providers(napi_env env, napi_callback_info info);

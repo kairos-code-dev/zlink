@@ -176,11 +176,8 @@ class socket_base_t : public own_t,
     virtual int get_peer_state (const void *routing_id_,
                                 size_t routing_id_size_) const;
 
-    int socket_peer_info (const zlink_routing_id_t *routing_id_,
-                          zlink_peer_info_t *info_);
-    int socket_peer_routing_id (int index_, zlink_routing_id_t *out_);
-    int socket_peer_count ();
-    int socket_peers (zlink_peer_info_t *peers_, size_t *count_);
+    int monitor_snapshot (zlink_monitor_snapshot_t *out_);
+    void socket_peer_remote_endpoints (std::vector<std::string> *out_);
     int socket_id () const;
 
     bool is_disconnected () const;

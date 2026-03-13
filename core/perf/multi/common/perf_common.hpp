@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -16,9 +17,13 @@
 #include <thread>
 #include <fstream>
 #include <climits>
+#include <map>
+#include <mutex>
+#include <new>
 #include <zlink.h>
 
 #include "../../../src/core/recv_internal.hpp"
+#include "../../../src/core/monitor_dispatch_internal.hpp"
 
 #if !defined(_WIN32)
 #include <arpa/inet.h>
@@ -81,7 +86,7 @@ typedef std::chrono::seconds seconds_t;
 typedef std::chrono::nanoseconds nanoseconds_t;
 typedef std::chrono::duration<double> floating_seconds_t;
 
-inline int zlink_poll(zlink_pollitem_t *items_, int nitems_, long timeout_)
+inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_)
 {
     if (nitems_ < 0) {
         errno = EINVAL;
@@ -441,42 +446,175 @@ inline int zlink_recv(void *socket_, void *buf_, size_t len_, int flags_)
     return zlink::recv_buffer_internal(socket_, buf_, len_, flags_);
 }
 
-struct connect_monitor_t {
-    void *owner;
-    int ready_count;
-    connect_monitor_t() : owner(NULL), ready_count(0) {}
-    connect_monitor_t(const connect_monitor_t &other_) :
-        owner(other_.owner),
-        ready_count(other_.ready_count)
+inline bool bench_debug_enabled();
+inline int bench_hwm_from_env(const char *name_, int default_hwm_);
+inline bool set_sockopt_int(void *socket_,
+                            zlink_socket_option_t option_,
+                            int value_,
+                            const char *label_);
+
+struct connect_monitor_state_t {
+    connect_monitor_state_t() :
+        connection_ready_count(0),
+        accepted_count(0),
+        connected_count(0),
+        error_code(0)
     {}
-    connect_monitor_t &operator=(const connect_monitor_t &other_)
-    {
-        if (this == &other_)
-            return *this;
-        owner = other_.owner;
-        ready_count = other_.ready_count;
-        return *this;
-    }
+
+    std::mutex sync;
+    std::condition_variable cv;
+    size_t connection_ready_count;
+    size_t accepted_count;
+    size_t connected_count;
+    int error_code;
 };
+
+struct connect_monitor_t {
+    connect_monitor_t() : owner(NULL), monitor(NULL), state(NULL) {}
+
+    void *owner;
+    void *monitor;
+    connect_monitor_state_t *state;
+};
+
+struct connect_monitor_registry_t {
+    std::mutex sync;
+    std::map<void *, connect_monitor_state_t *> states;
+};
+
+inline connect_monitor_registry_t &connect_monitor_registry()
+{
+    static connect_monitor_registry_t registry;
+    return registry;
+}
+
+inline void register_connect_monitor(void *monitor_,
+                                     connect_monitor_state_t *state_)
+{
+    if (!monitor_ || !state_)
+        return;
+
+    connect_monitor_registry_t &registry = connect_monitor_registry();
+    std::lock_guard<std::mutex> lock(registry.sync);
+    registry.states[monitor_] = state_;
+}
+
+inline void unregister_connect_monitor(void *monitor_)
+{
+    if (!monitor_)
+        return;
+
+    connect_monitor_registry_t &registry = connect_monitor_registry();
+    std::lock_guard<std::mutex> lock(registry.sync);
+    registry.states.erase(monitor_);
+}
+
+inline connect_monitor_state_t *find_connect_monitor_state_for_current_dispatch()
+{
+    void *monitor = zlink::current_monitor_dispatch_handle();
+    if (!monitor)
+        return NULL;
+
+    connect_monitor_registry_t &registry = connect_monitor_registry();
+    std::lock_guard<std::mutex> lock(registry.sync);
+    std::map<void *, connect_monitor_state_t *>::iterator it =
+      registry.states.find(monitor);
+    return it != registry.states.end() ? it->second : NULL;
+}
+
+inline void connect_monitor_handler(const zlink_monitor_event_t *event_)
+{
+    connect_monitor_state_t *state =
+      find_connect_monitor_state_for_current_dispatch();
+    if (!state || !event_)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock(state->sync);
+        switch (event_->event) {
+            case ZLINK_EVENT_CONNECTION_READY:
+                ++state->connection_ready_count;
+                break;
+
+            case ZLINK_EVENT_ACCEPTED:
+                ++state->accepted_count;
+                break;
+
+            case ZLINK_EVENT_CONNECTED:
+                ++state->connected_count;
+                break;
+
+            case ZLINK_EVENT_BIND_FAILED:
+            case ZLINK_EVENT_ACCEPT_FAILED:
+            case ZLINK_EVENT_CLOSE_FAILED:
+            case ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL:
+            case ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL:
+            case ZLINK_EVENT_HANDSHAKE_FAILED_AUTH:
+                if (state->error_code == 0)
+                    state->error_code =
+                      event_->value > 0 ? static_cast<int>(event_->value) : EIO;
+                break;
+
+            default:
+                break;
+        }
+    }
+    state->cv.notify_all();
+}
+
+inline size_t connect_ready_count(const connect_monitor_state_t *state_)
+{
+    if (!state_)
+        return 0;
+    return std::max(state_->connection_ready_count, state_->accepted_count);
+}
 
 inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
 {
     out_.owner = socket_;
-    out_.ready_count = 0;
-    return socket_ != NULL;
+    out_.monitor = NULL;
+    out_.state = NULL;
+    if (!socket_)
+        return false;
+
+    connect_monitor_state_t *state = new (std::nothrow) connect_monitor_state_t();
+    if (!state)
+        return false;
+
+    void *monitor = zlink_socket_monitor_open(
+      socket_,
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_CONNECTED
+        | ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_BIND_FAILED
+        | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
+        | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+        | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
+        | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
+      &connect_monitor_handler);
+    if (!monitor) {
+        delete state;
+        return false;
+    }
+
+    const int monitor_hwm = bench_hwm_from_env("PERF_MONITOR_HWM", 1000);
+    set_sockopt_int(monitor, ZLINK_LINGER, 0, "ZLINK_LINGER");
+    if (monitor_hwm > 0) {
+        set_sockopt_int(monitor, ZLINK_SNDHWM, monitor_hwm, "ZLINK_SNDHWM");
+        set_sockopt_int(monitor, ZLINK_RCVHWM, monitor_hwm, "ZLINK_RCVHWM");
+    }
+
+    register_connect_monitor(monitor, state);
+    out_.monitor = monitor;
+    out_.state = state;
+    return true;
 }
 
 inline int poll_connect_ready_count(connect_monitor_t &monitor_)
 {
-    if (!monitor_.owner)
+    if (!monitor_.state)
         return 0;
 
-    const int peer_count = zlink_socket_peer_count(monitor_.owner);
-    if (peer_count <= monitor_.ready_count)
-        return 0;
-
-    monitor_.ready_count = peer_count;
-    return peer_count;
+    std::lock_guard<std::mutex> lock(monitor_.state->sync);
+    return static_cast<int>(connect_ready_count(monitor_.state));
 }
 
 inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
@@ -485,35 +623,53 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
 {
     if (expected_ready_ == 0)
         return true;
-    if (!monitor_.owner)
+    if (!monitor_.state)
         return false;
 
-    (void) poll_connect_ready_count(monitor_);
-    if (static_cast<size_t>(monitor_.ready_count) >= expected_ready_) {
+    std::unique_lock<std::mutex> lock(monitor_.state->sync);
+    if (monitor_.state->error_code != 0)
+        return false;
+    if (connect_ready_count(monitor_.state) >= expected_ready_)
         return true;
-    }
 
     const int bounded_timeout = timeout_ms_ > 0 ? timeout_ms_ : 0;
-    const auto deadline = steady_clock_t::now()
-                          + milliseconds_t(bounded_timeout);
-    while (static_cast<size_t>(monitor_.ready_count) < expected_ready_) {
-        const auto now = steady_clock_t::now();
-        if (now >= deadline)
-            return false;
+    if (bounded_timeout == 0)
+        return false;
 
-        (void) poll_connect_ready_count(monitor_);
-        if (static_cast<size_t>(monitor_.ready_count) >= expected_ready_)
-            return true;
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    return static_cast<size_t>(monitor_.ready_count) >= expected_ready_;
+    const bool signaled = monitor_.state->cv.wait_for(
+      lock,
+      milliseconds_t(bounded_timeout),
+      [&monitor_, expected_ready_]() {
+          return monitor_.state->error_code != 0
+                 || connect_ready_count(monitor_.state) >= expected_ready_;
+      });
+    return signaled && monitor_.state->error_code == 0
+           && connect_ready_count(monitor_.state) >= expected_ready_;
 }
 
 inline void close_connect_monitor(connect_monitor_t &monitor_)
 {
+    connect_monitor_state_t *state = monitor_.state;
+    void *monitor = monitor_.monitor;
     monitor_.owner = NULL;
-    monitor_.ready_count = 0;
+    monitor_.monitor = NULL;
+    monitor_.state = NULL;
+
+    if (!monitor && !state)
+        return;
+
+    if (monitor && zlink_close(monitor) == 0) {
+        unregister_connect_monitor(monitor);
+        delete state;
+        return;
+    }
+
+    if (bench_debug_enabled()) {
+        std::cerr << "[perf-multi] monitor close failed";
+        if (monitor)
+            std::cerr << ": " << zlink_strerror(zlink_errno());
+        std::cerr << std::endl;
+    }
 }
 
 inline void print_result(const std::string& lib_type,

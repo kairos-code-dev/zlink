@@ -30,7 +30,6 @@ public class TestServiceDiscoveryPortedTest {
                 registry.start();
 
                 discovery.connectRegistry(regRouter);
-                discovery.subscribe("test-svc");
 
                 receiver.bind(TestSupport.tcpEndpoint());
                 String advertise = receiver.lastEndpoint();
@@ -62,7 +61,7 @@ public class TestServiceDiscoveryPortedTest {
     }
 
     @Test
-    public void testDiscoveryServiceFiltering() {
+    public void testDiscoverySeesMultipleServices() {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context()) {
@@ -77,7 +76,6 @@ public class TestServiceDiscoveryPortedTest {
                 registry.start();
 
                 discovery.connectRegistry(regRouter);
-                discovery.subscribe("svc-A");
 
                 receiverA.bind(TestSupport.tcpEndpoint());
                 receiverB.bind(TestSupport.tcpEndpoint());
@@ -99,13 +97,10 @@ public class TestServiceDiscoveryPortedTest {
                 assertEquals(advertiseA, aInfos.get(0).endpoint());
                 assertEquals(10, aInfos.get(0).weight());
 
-                assertEquals(0, discovery.receiverCount("svc-B"));
-
-                discovery.subscribe("svc-B");
                 TestSupport.waitUntil(
                   () -> discovery.receiverCount("svc-B") > 0,
                   TestSupport.DEFAULT_TIMEOUT_MS,
-                  "svc-B provider not discovered after subscribe");
+                  "svc-B provider not discovered");
 
                 List<ReceiverInfo> bInfos = discovery.getReceivers("svc-B");
                 assertEquals(1, bInfos.size());

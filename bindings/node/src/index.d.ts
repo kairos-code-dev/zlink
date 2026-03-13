@@ -69,21 +69,7 @@ export declare const ErrorCode: {
 };
 
 export declare const ProtocolError: {
-  readonly ZMP_UNSPECIFIED: 0x10000000;
-  readonly ZMP_UNEXPECTED_COMMAND: 0x10000001;
-  readonly ZMP_INVALID_SEQUENCE: 0x10000002;
-  readonly ZMP_KEY_EXCHANGE: 0x10000003;
-  readonly ZMP_MALFORMED_COMMAND_UNSPECIFIED: 0x10000011;
-  readonly ZMP_MALFORMED_COMMAND_MESSAGE: 0x10000012;
   readonly ZMP_MALFORMED_COMMAND_HELLO: 0x10000013;
-  readonly ZMP_MALFORMED_COMMAND_INITIATE: 0x10000014;
-  readonly ZMP_MALFORMED_COMMAND_ERROR: 0x10000015;
-  readonly ZMP_MALFORMED_COMMAND_READY: 0x10000016;
-  readonly ZMP_MALFORMED_COMMAND_WELCOME: 0x10000017;
-  readonly ZMP_INVALID_METADATA: 0x10000018;
-  readonly ZMP_CRYPTOGRAPHIC: 0x11000001;
-  readonly ZMP_MECHANISM_MISMATCH: 0x11000002;
-  readonly WS_UNSPECIFIED: 0x30000000;
 };
 
 export declare const MonitorEvent: {
@@ -101,7 +87,7 @@ export declare const MonitorEvent: {
 };
 
 export declare const DisconnectReason: {
-  readonly UNKNOWN: 0; readonly LOCAL: 1; readonly REMOTE: 2;
+  readonly UNKNOWN: 0;
   readonly HANDSHAKE_FAILED: 3; readonly TRANSPORT_ERROR: 4;
   readonly CTX_TERM: 5;
 };

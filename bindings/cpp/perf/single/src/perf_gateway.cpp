@@ -604,8 +604,7 @@ void run_pattern_gateway (const std::string &transport,
 
     zlink::service::discovery_t discovery (ctx.ctx (),
                                            zlink::service_type::gateway);
-    if (!discovery.valid () || discovery.connect_registry (reg_router) != 0
-        || discovery.subscribe (service_name) != 0) {
+    if (!discovery.valid () || discovery.connect_registry (reg_router) != 0) {
         perf::single::print_fail_result (lib_name, "GATEWAY", transport, msg_size);
         return;
     }

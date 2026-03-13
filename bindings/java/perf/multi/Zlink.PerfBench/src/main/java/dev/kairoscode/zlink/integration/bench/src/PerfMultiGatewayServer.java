@@ -115,10 +115,6 @@ public final class PerfMultiGatewayServer {
 
                 connectRegistryWithRetry(() ->
                     discovery.connectRegistry(endpoints.registryRouter));
-                for (int i = 0; i < clients; i++) {
-                    discovery.subscribe(CLIENT_SERVICE_PREFIX + i);
-                }
-
                 applyGatewayOptions(gateway);
                 PerfMultiTls.configureGatewayTlsClientIfNeeded(gateway,
                     transport);

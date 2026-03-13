@@ -42,7 +42,7 @@ int zlink_spot_node_publish(void *node,
                             zlink_send_flags_t flags);
 int zlink_spot_node_subscribe(void *node, const char *topic_id);
 int zlink_spot_node_subscribe_pattern(void *node, const char *pattern);
-int zlink_spot_node_unsubscribe_filter(void *node,
+int zlink_spot_node_unsubscribe(void *node,
                                        const char *topic_id_or_pattern);
 
 int zlink_spot_node_set_send_ready_handler(
@@ -91,16 +91,13 @@ int zlink_spot_set_sub_option(void *spot,
                               zlink_spot_sub_option_t option,
                               const void *optval,
                               size_t optvallen);
-int zlink_spot_peers_pub(void *spot,
-                         zlink_peer_info_t *peers,
-                         size_t *count);
-int zlink_spot_peers_sub(void *spot,
-                         zlink_peer_info_t *peers,
-                         size_t *count);
 ```
 
 `zlink_spot_new()`는 항상 pub/sub가 합쳐진 facade를 생성합니다.
 publish-only 혹은 subscribe-only public child handle은 더 이상 제공하지 않습니다.
+
+aggregate ready-peer / queue 조회는 `zlink_spot_monitor_open()`과
+`zlink_monitor_snapshot()` 조합을 사용합니다.
 
 ## callback 계약
 

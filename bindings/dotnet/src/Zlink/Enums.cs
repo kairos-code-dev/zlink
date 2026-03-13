@@ -153,21 +153,7 @@ public enum ErrorCode
 
 public enum ProtocolError
 {
-    ZmpUnspecified = 0x10000000,
-    ZmpUnexpectedCommand = 0x10000001,
-    ZmpInvalidSequence = 0x10000002,
-    ZmpKeyExchange = 0x10000003,
-    ZmpMalformedCommandUnspecified = 0x10000011,
-    ZmpMalformedCommandMessage = 0x10000012,
-    ZmpMalformedCommandHello = 0x10000013,
-    ZmpMalformedCommandInitiate = 0x10000014,
-    ZmpMalformedCommandError = 0x10000015,
-    ZmpMalformedCommandReady = 0x10000016,
-    ZmpMalformedCommandWelcome = 0x10000017,
-    ZmpInvalidMetadata = 0x10000018,
-    ZmpCryptographic = 0x11000001,
-    ZmpMechanismMismatch = 0x11000002,
-    WsUnspecified = 0x30000000
+    ZmpMalformedCommandHello = 0x10000013
 }
 
 [Flags]
@@ -194,8 +180,6 @@ public enum SocketEvent
 public enum DisconnectReason
 {
     Unknown = 0,
-    Local = 1,
-    Remote = 2,
     HandshakeFailed = 3,
     TransportError = 4,
     CtxTerm = 5

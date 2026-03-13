@@ -1059,15 +1059,15 @@ client 프로세스가 server에 대한 **연결 완료(CONNECT READY)**를 확�
 
 | 항목 | 규칙 |
 |------|------|
-| 연결 확인 API | `zlink_socket_monitor_open()` + `zlink_monitor_recv()` |
+| 연결 확인 API | socket은 `zlink_socket_monitor_open()`, service는 `zlink_*_monitor_open()` callback |
 | 감시 이벤트 | `ZLINK_EVENT_CONNECTION_READY` (필수), `ZLINK_EVENT_CONNECTED` · `ZLINK_EVENT_ACCEPTED` (호환용 선택) |
-| 대기 방식 | `zlink_poll()` + 타임아웃 기반 — busy-wait/sleep 금지 |
+| 대기 방식 | monitor callback + `condition_variable` + 타임아웃 기반 — busy-wait/sleep 금지 |
 | 타임아웃 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` (기본 5000ms) 초과 시 run 실패 처리 |
 | Monitor HWM | `PERF_MULTI_MONITOR_HWM` (기본 1,000) — monitor event queue 상한 |
 
-- **이유**: `ZLINK_EVENT_CONNECTION_READY`는 transport 레벨에서 연결이 확정된 시점을 정확히 통지한다. Sleep은 환경에 따라 불충분하거나 과다하고, handshake barrier는 메시지 전송 자체가 측정 인프라 오버헤드를 유발하여 정확한 준비 시점을 보장하지 못한다.
-- 대기 함수 구현 시 `wait_connect_ready_count(monitor, expected_count, timeout_ms)` 형태로 N개 클라이언트의 연결 완료를 카운트 기반으로 확인한다.
-- server 측에서 client 연결 수락 확인이 필요한 경우에도 동일하게 server 소켓에 MONITOR를 열어 `ZLINK_EVENT_ACCEPTED` / `ZLINK_EVENT_CONNECTION_READY`로 확인한다.
+- **이유**: `ZLINK_EVENT_CONNECTION_READY`와 service monitor ready 이벤트는 transport/service 레벨에서 준비 완료 시점을 직접 통지한다. Sleep은 환경에 따라 불충분하거나 과다하고, handshake barrier는 메시지 전송 자체가 측정 인프라 오버헤드를 유발하여 정확한 준비 시점을 보장하지 못한다.
+- 소켓 패턴은 `wait_connect_ready_count(monitor, expected_count, timeout_ms)` 형태로 N개 클라이언트의 연결 완료를 카운트 기반으로 확인한다.
+- gateway/spot처럼 service monitor를 쓰는 패턴은 callback에서 ready/error 상태를 축적하고 `condition_variable`로 기다린다. 준비 이벤트 뒤에도 통신이 되지 않으면 perf 보정이 아니라 core bug로 보고한다.
 
 ---
 

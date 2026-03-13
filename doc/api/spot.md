@@ -43,7 +43,7 @@ int zlink_spot_node_publish(void *node,
                             zlink_send_flags_t flags);
 int zlink_spot_node_subscribe(void *node, const char *topic_id);
 int zlink_spot_node_subscribe_pattern(void *node, const char *pattern);
-int zlink_spot_node_unsubscribe_filter(void *node,
+int zlink_spot_node_unsubscribe(void *node,
                                        const char *topic_id_or_pattern);
 
 int zlink_spot_node_set_send_ready_handler(
@@ -92,17 +92,14 @@ int zlink_spot_set_sub_option(void *spot,
                               zlink_spot_sub_option_t option,
                               const void *optval,
                               size_t optvallen);
-int zlink_spot_peers_pub(void *spot,
-                         zlink_peer_info_t *peers,
-                         size_t *count);
-int zlink_spot_peers_sub(void *spot,
-                         zlink_peer_info_t *peers,
-                         size_t *count);
 ```
 
 `zlink_spot_new()` always returns a unified facade with both pub and sub
 behavior. There is no separate public publish-only or subscribe-only child
 handle.
+
+Use `zlink_spot_monitor_open()` plus `zlink_monitor_snapshot()` for aggregate
+ready-peer and queue inspection.
 
 ## Callback contract
 

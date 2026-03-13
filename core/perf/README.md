@@ -12,7 +12,7 @@ Both scripts write official results under `core/perf/results/.../report/`.
 ## run_benchmarks.sh
 
 Measures current single-pattern performance (PAIR, PUBSUB, DEALER_DEALER,
-DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT).
+DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, SPOT).
 
 ### Options
 

@@ -11,9 +11,10 @@ Gateway는 Discovery를 통해 서비스 위치를 자동으로 확인하는 클
 - 공개 서비스 옵션 설정은 `zlink_gateway_set_option()`을 사용합니다.
 - 대표 identity는 `zlink_gateway_set_routing_id()` /
   `zlink_gateway_routing_id()`로 다룹니다.
-- 현재 로컬 제어 상태는 `zlink_gateway_monitor_snapshot()`으로 읽습니다.
 - `ZLINK_GATEWAY_SEND_READY_CHANGED`, `ZLINK_GATEWAY_ROUTE_UP` 같은
   edge 전이는 `zlink_gateway_monitor_open()`으로 관찰합니다.
+- 현재 로컬 제어 상태와 queue depth는 monitor handle에 대해
+  `zlink_monitor_snapshot()`으로 읽습니다.
 - 데이터 readiness는 `zlink_poller_add_gateway()`, monitor readiness는
   `zlink_poller_add_monitor()`으로 같은 루프에 통합합니다.
 - 운영적인 peer 조회는 registry gateway-peer query를 사용합니다.
@@ -252,23 +253,14 @@ Receiver 인증서를 검증하는 데 사용되는 CA 인증서 파일 경로�
 
 ---
 
-### zlink_gateway_monitor_snapshot
+### monitor snapshot
 
-현재 로컬 monitor 상태를 읽습니다.
+Gateway의 현재 로컬 제어 상태는 `gateway` 객체에서 직접 읽지 않고,
+open한 monitor handle에 대해 `zlink_monitor_snapshot()`으로 읽습니다.
 
-```c
-int zlink_gateway_monitor_snapshot(void *gateway,
-                                   zlink_gateway_monitor_snapshot_t *out);
-```
-
-`send_ready`는 현재 전송 가능한 route가 하나 이상 있으면 `1`입니다.
-`bound_ready`는 로컬 service endpoint가 bind 되어 있으면 `1`입니다.
-`ready_peer_count`는 이 handle이 현재 알고 있는 ready route 수입니다.
-
-late subscriber는 monitor를 열기 전에 이 API로 초기 상태를 읽고,
+late subscriber는 `zlink_gateway_monitor_open()` 이후
+`zlink_monitor_snapshot(monitor, &snapshot)`으로 초기 상태를 seed하고,
 그 이후 edge 전이는 monitor로 받는 패턴을 사용합니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
 ---
 

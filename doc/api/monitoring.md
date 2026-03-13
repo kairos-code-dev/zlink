@@ -1,22 +1,24 @@
 [English](monitoring.md) | [한국어](monitoring.ko.md)
 
-# Monitoring & Peer Info API Reference
+# Monitoring API Reference
 
 The canonical event catalog now lives in [events.md](events.md). This file
-focuses on monitor APIs, callbacks, and peer-inspection helpers.
+focuses on monitor APIs, callbacks, and monitor snapshots.
 
 ## Current API Direction
 
 There are two distinct monitoring layers:
 
 - Raw socket monitoring:
-  `zlink_socket_monitor_open()` with a callback handler.
+  `zlink_socket_monitor_open()` and `zlink_close()`
 - Service monitoring:
-  `zlink_*_monitor_open()` with a callback handler and
-  `zlink_service_monitor_close()`.
+  `zlink_*_monitor_open()` and `zlink_service_monitor_close()`
 
-All monitor events are dispatched through callbacks registered at monitor
-creation time. There is no `recv()` or polling-based consumption.
+Monitor handles support three patterns:
+
+- callback delivery when a handler is supplied
+- polling the monitor handle directly
+- reading aggregate state with `zlink_monitor_snapshot()`
 
 Use raw socket monitors for transport/socket diagnostics. Use service
 monitors for local service state transitions such as readiness, route
@@ -55,31 +57,28 @@ typedef void (*zlink_monitor_handler_fn) (
 
 Callback for socket monitor events, invoked on the I/O thread.
 
-### zlink_peer_info_t
-
-Contains information about a single connected peer.
+### zlink_monitor_snapshot_t
 
 ```c
-typedef struct {
-    zlink_routing_id_t routing_id;
-    char remote_addr[256];
-    uint64_t connected_time;
-    uint64_t msgs_sent;
-    uint64_t msgs_received;
+typedef struct zlink_monitor_snapshot_t
+{
+    zlink_monitor_source_kind_t source_kind;
+    zlink_monitor_state_mask_t state_flags;
+    zlink_monitor_snapshot_detail_mask_t detail_flags;
+    uint32_t ready_peer_count;
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
-} zlink_peer_info_t;
+} zlink_monitor_snapshot_t;
 ```
 
 | Field | Description |
 |---|---|
-| `routing_id` | The peer's routing identity. |
-| `remote_addr` | Null-terminated remote address of the peer. |
-| `connected_time` | Timestamp (epoch milliseconds) when the peer connected. |
-| `msgs_sent` | Number of messages sent to this peer. |
-| `msgs_received` | Number of messages received from this peer. |
-| `snd_pending_msgs` | Local outbound queue backlog (messages not yet consumed by peer). |
-| `rcv_pending_msgs` | Approximate local inbound backlog snapshot. |
+| `source_kind` | Snapshot source (`SOCKET`, `GATEWAY`, `SPOT_PUB`, `SPOT_SUB`). |
+| `state_flags` | Aggregate state bits such as `READY`, `BOUND_READY`, `SEND_READY`. |
+| `detail_flags` | Indicates which numeric fields are populated. |
+| `ready_peer_count` | Aggregate ready/connected peer count when supported. |
+| `snd_pending_msgs` | Aggregate local outbound backlog in messages when supported. |
+| `rcv_pending_msgs` | Aggregate local inbound backlog snapshot when supported. |
 
 ## Constants
 
@@ -114,8 +113,6 @@ Values carried in `zlink_monitor_event_t.value` when the event is `ZLINK_EVENT_D
 | Constant | Value | Description |
 |---|---|---|
 | `ZLINK_DISCONNECT_UNKNOWN` | `0` | Reason could not be determined. |
-| `ZLINK_DISCONNECT_LOCAL` | `1` | Disconnect initiated by the local side. |
-| `ZLINK_DISCONNECT_REMOTE` | `2` | Disconnect initiated by the remote peer. |
 | `ZLINK_DISCONNECT_HANDSHAKE_FAILED` | `3` | Disconnect due to a handshake failure. |
 | `ZLINK_DISCONNECT_TRANSPORT_ERROR` | `4` | Disconnect due to a transport-layer error. |
 | `ZLINK_DISCONNECT_CTX_TERM` | `5` | Disconnect caused by context termination. |
@@ -126,21 +123,7 @@ Values carried in `zlink_monitor_event_t.value` when the event is `ZLINK_EVENT_H
 
 | Constant | Value | Description |
 |---|---|---|
-| `ZLINK_PROTOCOL_ERROR_ZMP_UNSPECIFIED` | `0x10000000` | Unspecified ZMP protocol error. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_UNEXPECTED_COMMAND` | `0x10000001` | Unexpected ZMP command received. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_INVALID_SEQUENCE` | `0x10000002` | Invalid ZMP command sequence. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_KEY_EXCHANGE` | `0x10000003` | ZMP key exchange failure. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_UNSPECIFIED` | `0x10000011` | Malformed ZMP command (unspecified). |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_MESSAGE` | `0x10000012` | Malformed ZMP MESSAGE command. |
 | `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO` | `0x10000013` | Malformed ZMP HELLO command. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_INITIATE` | `0x10000014` | Malformed ZMP INITIATE command. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_ERROR` | `0x10000015` | Malformed ZMP ERROR command. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_READY` | `0x10000016` | Malformed ZMP READY command. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_WELCOME` | `0x10000017` | Malformed ZMP WELCOME command. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_INVALID_METADATA` | `0x10000018` | Invalid ZMP metadata. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_CRYPTOGRAPHIC` | `0x11000001` | ZMP cryptographic error. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MECHANISM_MISMATCH` | `0x11000002` | ZMP security mechanism mismatch. |
-| `ZLINK_PROTOCOL_ERROR_WS_UNSPECIFIED` | `0x30000000` | Unspecified WebSocket protocol error. |
 
 ## Functions
 
@@ -167,73 +150,21 @@ longer needed.
 
 ---
 
-### zlink_socket_peer_info
-
-Get peer info by routing identity.
+### zlink_monitor_snapshot
 
 ```c
-int zlink_socket_peer_info (void *socket_,
-                            const zlink_routing_id_t *routing_id_,
-                            zlink_peer_info_t *info_);
+int zlink_monitor_snapshot (void *monitor_,
+                            zlink_monitor_snapshot_t *out_);
 ```
 
-Looks up the peer identified by `routing_id_` and fills the `info_` structure.
+Reads the current aggregate snapshot for a socket or service monitor handle.
+The snapshot is queried from the monitor source at call time. Queue counts are
+local message counts, and `rcv_pending_msgs` remains approximate.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
-**See also:** `zlink_socket_peer_routing_id`, `zlink_socket_peers`
-
----
-
-### zlink_socket_peer_routing_id
-
-Get a peer's routing identity by index.
-
-```c
-int zlink_socket_peer_routing_id (void *socket_,
-                                  int index_,
-                                  zlink_routing_id_t *out_);
-```
-
-Retrieves the routing identity of the peer at position `index_` (zero-based).
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**See also:** `zlink_socket_peer_count`, `zlink_socket_peer_info`
-
----
-
-### zlink_socket_peer_count
-
-Return the number of connected peers.
-
-```c
-int zlink_socket_peer_count (void *socket_);
-```
-
-**Returns:** Number of connected peers (>= 0), or -1 on failure (errno is set).
-
-**See also:** `zlink_socket_peer_routing_id`, `zlink_socket_peers`
-
----
-
-### zlink_socket_peers
-
-Get info for all connected peers as an array.
-
-```c
-int zlink_socket_peers (void *socket_,
-                        zlink_peer_info_t *peers_,
-                        size_t *count_);
-```
-
-Fills the `peers_` array with information about every connected peer. On
-input, `*count_` must contain the capacity of the array. On output,
-`*count_` is set to the actual number of peers written.
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**See also:** `zlink_socket_peer_count`, `zlink_socket_peer_info`
+**See also:** `zlink_socket_monitor_open`, `zlink_gateway_monitor_open`,
+`zlink_spot_monitor_open`
 
 ---
 

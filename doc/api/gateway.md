@@ -17,9 +17,10 @@ time. There is no `recv()` function.
   peer management (before discovery attachment only).
 - Use `zlink_gateway_set_option()` for service-level tuning.
 - Use `zlink_gateway_set_send_ready_handler()` for send-side backpressure.
-- Use `zlink_gateway_monitor_snapshot()` to read current local control state.
 - Use `zlink_gateway_monitor_open()` for edge transitions such as
   `ZLINK_GATEWAY_SEND_READY_CHANGED` and `ZLINK_GATEWAY_ROUTE_UP`.
+- Use `zlink_monitor_snapshot()` on the monitor handle to read current local
+  control state and queue depth.
 - Use registry gateway-peer query APIs for operational peer inspection.
 
 ## Constants
@@ -61,20 +62,6 @@ typedef enum zlink_gateway_option_t
 | `ZLINK_GATEWAY_OPT_LINGER` | Linger period (ms) |
 | `ZLINK_GATEWAY_OPT_SNDBUF` | Kernel transmit buffer size in bytes |
 | `ZLINK_GATEWAY_OPT_RCVBUF` | Kernel receive buffer size in bytes |
-
-## Types
-
-### zlink_gateway_monitor_snapshot_t
-
-```c
-typedef struct zlink_gateway_monitor_snapshot_t
-{
-    uint32_t ready_peer_count;
-    uint8_t send_ready;
-    uint8_t bound_ready;
-    uint8_t reserved[2];
-} zlink_gateway_monitor_snapshot_t;
-```
 
 ## Functions
 
@@ -236,8 +223,8 @@ int zlink_gateway_set_send_ready_handler (
 ```
 
 The handler is invoked when the Gateway transitions to writable.
-Use `zlink_gateway_monitor_snapshot()` to seed initial state when the handler
-is installed after startup.
+Use `zlink_monitor_snapshot()` on an open Gateway monitor to seed initial
+state when the handler is installed after startup.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
@@ -375,28 +362,6 @@ int zlink_gateway_last_endpoint (void *gateway,
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
 **See also:** `zlink_gateway_bind`
-
----
-
-### zlink_gateway_monitor_snapshot
-
-Read the current local monitor state.
-
-```c
-int zlink_gateway_monitor_snapshot (
-  void *gateway,
-  zlink_gateway_monitor_snapshot_t *out);
-```
-
-Returns the current control snapshot for this Gateway. `send_ready` is `1`
-when at least one route is currently usable for send. `bound_ready` is `1`
-when the local service endpoint is bound. `ready_peer_count` is the current
-number of ready routes known to this handle.
-
-This API is intended to seed state before opening a monitor or when a caller
-needs a local readiness snapshot without polling transport internals.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
 
 ---
 

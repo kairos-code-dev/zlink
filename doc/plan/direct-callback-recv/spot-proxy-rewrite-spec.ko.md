@@ -781,7 +781,6 @@ void *ctx = zlink_ctx_new();
 /* peer discovery용 */
 void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_SPOT);
 zlink_discovery_connect_registry(discovery, "tcp://registry-pub:5551");
-zlink_discovery_subscribe(discovery, "spot-node");
 
 /* local/remote bridge owner */
 void *node = zlink_spot_node_new(ctx);

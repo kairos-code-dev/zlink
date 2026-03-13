@@ -128,21 +128,7 @@ const ErrorCode = Object.freeze({
 });
 
 const ProtocolError = Object.freeze({
-  ZMP_UNSPECIFIED: 0x10000000,
-  ZMP_UNEXPECTED_COMMAND: 0x10000001,
-  ZMP_INVALID_SEQUENCE: 0x10000002,
-  ZMP_KEY_EXCHANGE: 0x10000003,
-  ZMP_MALFORMED_COMMAND_UNSPECIFIED: 0x10000011,
-  ZMP_MALFORMED_COMMAND_MESSAGE: 0x10000012,
-  ZMP_MALFORMED_COMMAND_HELLO: 0x10000013,
-  ZMP_MALFORMED_COMMAND_INITIATE: 0x10000014,
-  ZMP_MALFORMED_COMMAND_ERROR: 0x10000015,
-  ZMP_MALFORMED_COMMAND_READY: 0x10000016,
-  ZMP_MALFORMED_COMMAND_WELCOME: 0x10000017,
-  ZMP_INVALID_METADATA: 0x10000018,
-  ZMP_CRYPTOGRAPHIC: 0x11000001,
-  ZMP_MECHANISM_MISMATCH: 0x11000002,
-  WS_UNSPECIFIED: 0x30000000
+  ZMP_MALFORMED_COMMAND_HELLO: 0x10000013
 });
 
 const MonitorEvent = Object.freeze({
@@ -160,7 +146,7 @@ const MonitorEvent = Object.freeze({
 });
 
 const DisconnectReason = Object.freeze({
-  UNKNOWN: 0, LOCAL: 1, REMOTE: 2,
+  UNKNOWN: 0,
   HANDSHAKE_FAILED: 3, TRANSPORT_ERROR: 4, CTX_TERM: 5
 });
 
@@ -373,8 +359,6 @@ class Registry {
 class Discovery {
   constructor(ctx, serviceType) { this._native = requireNative().discoveryNew(ctx._native, serviceType); }
   connectRegistry(pub) { requireNative().discoveryConnectRegistry(this._native, pub); }
-  subscribe(service) { requireNative().discoverySubscribe(this._native, service); }
-  unsubscribe(service) { requireNative().discoveryUnsubscribe(this._native, service); }
   receiverCount(service) { return requireNative().discoveryProviderCount(this._native, service); }
   serviceAvailable(service) { return requireNative().discoveryServiceAvailable(this._native, service); }
   getReceivers(service) { return requireNative().discoveryGetProviders(this._native, service); }

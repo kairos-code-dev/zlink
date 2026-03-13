@@ -33,7 +33,6 @@ internal static class PerfSpotClient
             discovery = new Discovery(ctx, DiscoveryServiceType.Spot);
             ConnectRegistryWithRetry(() => discovery.ConnectRegistry(
                 registryRouter));
-            discovery.Subscribe(ServiceName);
             if (!WaitUntil(() => discovery.ServiceAvailable(ServiceName)
                     || discovery.ReceiverCount(ServiceName) > 0,
                     Math.Max(5000, config.ConnectReadyTimeoutMs)))

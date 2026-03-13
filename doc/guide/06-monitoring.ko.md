@@ -111,7 +111,8 @@ zlink 핸드셰이크가 성공적으로 완료되어 데이터 전송이 가능
 - **`routing_id`**: ROUTER 소켓의 경우 사용 가능 — 피어에 할당된 라우팅 ID를 포함한다.
 - **`local_addr`**: 로컬 엔드포인트 주소.
 - **`remote_addr`**: 원격 엔드포인트 주소.
-- **일반적 용도**: 피어 등록, 메시지 전송 시작, `zlink_socket_peer_info()`를 통한 피어 정보 조회.
+- **일반적 용도**: 피어 등록, 메시지 전송 시작, `zlink_monitor_snapshot()`을
+  통한 aggregate queue/readiness 상태 조회.
 
 #### DISCONNECTED (`0x0200`)
 
@@ -230,21 +231,7 @@ ZMP 또는 WebSocket 프로토콜 오류로 핸드셰이크가 실패. `value` �
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_PROTOCOL_ERROR_ZMP_UNSPECIFIED` | `0x10000000` | 불특정 ZMP 프로토콜 오류. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_UNEXPECTED_COMMAND` | `0x10000001` | 핸드셰이크 중 예기치 않은 ZMP 커맨드 수신. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_INVALID_SEQUENCE` | `0x10000002` | ZMP 커맨드가 잘못된 순서로 도착. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_KEY_EXCHANGE` | `0x10000003` | ZMP 핸드셰이크의 키 교환 단계 실패. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_UNSPECIFIED` | `0x10000011` | 잘못된 형식의 ZMP 커맨드 (불특정). |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_MESSAGE` | `0x10000012` | 잘못된 형식의 ZMP MESSAGE 커맨드. |
 | `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO` | `0x10000013` | 잘못된 형식의 ZMP HELLO 커맨드. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_INITIATE` | `0x10000014` | 잘못된 형식의 ZMP INITIATE 커맨드. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_ERROR` | `0x10000015` | 잘못된 형식의 ZMP ERROR 커맨드. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_READY` | `0x10000016` | 잘못된 형식의 ZMP READY 커맨드. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_WELCOME` | `0x10000017` | 잘못된 형식의 ZMP WELCOME 커맨드. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_INVALID_METADATA` | `0x10000018` | ZMP 핸드셰이크의 유효하지 않은 메타데이터. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_CRYPTOGRAPHIC` | `0x11000001` | ZMP 핸드셰이크 중 암호화 검증 실패. |
-| `ZLINK_PROTOCOL_ERROR_ZMP_MECHANISM_MISMATCH` | `0x11000002` | 클라이언트와 서버의 보안 메커니즘 불일치. |
-| `ZLINK_PROTOCOL_ERROR_WS_UNSPECIFIED` | `0x30000000` | 불특정 WebSocket 프로토콜 오류. |
 
 ## 5. 이벤트 흐름 다이어그램
 
@@ -364,50 +351,29 @@ void *mon = zlink_socket_monitor_open(server, MONITOR_PRESET_SECURITY,
                                       on_monitor_event);
 ```
 
-## 8. 피어 정보 조회
+## 8. Monitor Snapshot
 
-### 연결된 피어 수
+### aggregate socket 상태 조회
 
 ```c
-int count = zlink_socket_peer_count(socket);
-printf("연결된 피어 수: %d\n", count);
+void *monitor = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL, NULL);
+zlink_monitor_snapshot_t snapshot;
+zlink_monitor_snapshot(monitor, &snapshot);
+printf("ready peers: %u, sndq=%llu, rcvq=%llu\n",
+       snapshot.ready_peer_count,
+       (unsigned long long) snapshot.snd_pending_msgs,
+       (unsigned long long) snapshot.rcv_pending_msgs);
 ```
 
-### 특정 피어 정보
+### monitor event와 snapshot 결합
 
 ```c
-/* 인덱스로 routing_id 조회 */
-zlink_routing_id_t rid;
-zlink_socket_peer_routing_id(socket, 0, &rid);
-
-/* routing_id로 상세 정보 조회 */
-zlink_peer_info_t info;
-zlink_socket_peer_info(socket, &rid, &info);
-printf("원격: %s, 연결시간: %llu\n", info.remote_addr, info.connected_time);
-```
-
-### 전체 피어 목록
-
-```c
-zlink_peer_info_t peers[64];
-size_t peer_count = 64;
-zlink_socket_peers(socket, peers, &peer_count);
-
-for (size_t i = 0; i < peer_count; i++) {
-    printf("피어 %zu: remote=%s\n", i, peers[i].remote_addr);
-}
-```
-
-### 피어 정보와 모니터링 결합
-
-```c
-/* 콜백 핸들러에서 CONNECTION_READY 이벤트 처리 시 피어 정보 조회 */
 void on_monitor(const zlink_monitor_event_t *ev)
 {
-    if (ev->event == ZLINK_EVENT_CONNECTION_READY && ev->routing_id.size > 0) {
-        zlink_peer_info_t info;
-        zlink_socket_peer_info(g_socket, &ev->routing_id, &info);
-        printf("새 연결: remote=%s\n", info.remote_addr);
+    if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
+        zlink_monitor_snapshot_t snapshot;
+        zlink_monitor_snapshot(g_monitor, &snapshot);
+        printf("현재 ready peers: %u\n", snapshot.ready_peer_count);
     }
 }
 ```

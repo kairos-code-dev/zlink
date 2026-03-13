@@ -64,6 +64,20 @@ Default runner behavior:
 - `integration` serially
 - `e2e` only when `--include-e2e` is specified
 
+SPOT WSS first-delivery note:
+
+- `test_spot_pubsub_scenario_unified_wss_ready_delivery` defaults to a single
+  iteration in normal lanes.
+- To rerun the historical flake regression with repeated attempts, execute the
+  single-iteration test repeatedly via CTest.
+
+```bash
+ctest --test-dir core/build \
+  --output-on-failure \
+  --repeat until-fail:16 \
+  -R '^test_spot_pubsub_scenario_unified_wss_ready_delivery$'
+```
+
 ## Writing Tests
 
 - Add new internal logic tests under `core/tests/unittest/`.

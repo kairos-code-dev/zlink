@@ -419,27 +419,11 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_EVENT_HANDSHAKE_FAILED_AUTH 0x4000
 
 #define ZLINK_DISCONNECT_UNKNOWN 0
-#define ZLINK_DISCONNECT_LOCAL 1
-#define ZLINK_DISCONNECT_REMOTE 2
 #define ZLINK_DISCONNECT_HANDSHAKE_FAILED 3
 #define ZLINK_DISCONNECT_TRANSPORT_ERROR 4
 #define ZLINK_DISCONNECT_CTX_TERM 5
 
-#define ZLINK_PROTOCOL_ERROR_ZMP_UNSPECIFIED 0x10000000
-#define ZLINK_PROTOCOL_ERROR_ZMP_UNEXPECTED_COMMAND 0x10000001
-#define ZLINK_PROTOCOL_ERROR_ZMP_INVALID_SEQUENCE 0x10000002
-#define ZLINK_PROTOCOL_ERROR_ZMP_KEY_EXCHANGE 0x10000003
-#define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_UNSPECIFIED 0x10000011
-#define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_MESSAGE 0x10000012
 #define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO 0x10000013
-#define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_INITIATE 0x10000014
-#define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_ERROR 0x10000015
-#define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_READY 0x10000016
-#define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_WELCOME 0x10000017
-#define ZLINK_PROTOCOL_ERROR_ZMP_INVALID_METADATA 0x10000018
-#define ZLINK_PROTOCOL_ERROR_ZMP_CRYPTOGRAPHIC 0x11000001
-#define ZLINK_PROTOCOL_ERROR_ZMP_MECHANISM_MISMATCH 0x11000002
-#define ZLINK_PROTOCOL_ERROR_WS_UNSPECIFIED 0x30000000
 
 /**
  * @brief Create a socket.
@@ -799,14 +783,6 @@ ZLINK_EXPORT int zlink_discovery_set_routing_id (void *discovery,
 ZLINK_EXPORT int zlink_discovery_routing_id (void *discovery,
                                              zlink_routing_id_t *out);
 
-/** @brief Subscribe to a service name. Receives matching entries from broadcasts. */
-ZLINK_EXPORT int zlink_discovery_subscribe (void *discovery,
-                                        const char *service_name);
-
-/** @brief Unsubscribe from a service name. */
-ZLINK_EXPORT int zlink_discovery_unsubscribe (void *discovery,
-                                          const char *service_name);
-
 /**
  * @brief Get the list of receivers for a service.
  * @param[out] providers  Array to receive results.
@@ -816,14 +792,6 @@ ZLINK_EXPORT int zlink_discovery_get_receivers (void *discovery,
                                             const char *service_name,
                                             zlink_receiver_info_t *providers,
                                             size_t *count);
-
-/** @brief Return the number of registered receivers for a service. */
-ZLINK_EXPORT int zlink_discovery_receiver_count (void *discovery,
-                                             const char *service_name);
-
-/** @brief Check if a service is available (at least one receiver exists). */
-ZLINK_EXPORT int zlink_discovery_service_available (void *discovery,
-                                                const char *service_name);
 
 /** @brief Destroy the discovery instance and release all resources. */
 ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
@@ -1162,7 +1130,7 @@ ZLINK_EXPORT int zlink_spot_node_subscribe_pattern (void *node,
                                                     const char *pattern);
 
 /** @brief Unsubscribe a topic or pattern via the node-owned default SpotSub. */
-ZLINK_EXPORT int zlink_spot_node_unsubscribe_filter (
+ZLINK_EXPORT int zlink_spot_node_unsubscribe (
   void *node, const char *topic_id_or_pattern);
 
 /**
@@ -1203,14 +1171,6 @@ ZLINK_EXPORT int zlink_spot_node_set_sub_option (void *node,
                                                  const void *optval,
                                                  size_t optvallen);
 
-/* Spot publish modes */
-#define ZLINK_SPOT_NODE_PUB_MODE_SYNC 0
-#define ZLINK_SPOT_NODE_PUB_MODE_ASYNC 1
-
-/* Spot async pub queue full policy */
-#define ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN 0
-#define ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP 1
-
 /* SPOT Pub (default thread-safe) ------------------------------------------ */
 
 /* SpotPub service options */
@@ -1218,9 +1178,6 @@ ZLINK_EXPORT int zlink_spot_node_set_sub_option (void *node,
 #define ZLINK_SPOT_PUB_OPT_SNDTIMEO 2
 #define ZLINK_SPOT_PUB_OPT_LINGER 3
 #define ZLINK_SPOT_PUB_OPT_NODROP 4
-#define ZLINK_SPOT_PUB_OPT_MODE 5
-#define ZLINK_SPOT_PUB_OPT_QUEUE_HWM 6
-#define ZLINK_SPOT_PUB_OPT_QUEUE_FULL_POLICY 7
 #define ZLINK_SPOT_PUB_OPT_SNDBUF 8
 #define ZLINK_SPOT_PUB_OPT_RCVBUF 9
 
@@ -1252,13 +1209,6 @@ ZLINK_EXPORT int zlink_spot_pub_peers (void *pub,
 
 /**
  * @brief Publish a multipart message under a topic.
- *
- * Thread-safe:
- * - SYNC mode (default): concurrent calls are serialized internally.
- * - ASYNC mode: calls enqueue into an internal queue and return on enqueue.
- *
- * ASYNC mode can return EAGAIN when the queue is full and the queue-full
- * policy is ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN.
  *
  * @param topic_id    Topic identifier string.
  * @param parts       Multipart message array.

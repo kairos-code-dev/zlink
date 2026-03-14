@@ -359,8 +359,8 @@ close race:
 
 - send-ready callback 실행 중 다른 thread에서 `close` / `destroy` 호출 시
   `EBUSY`를 반환한다 (9절 공통 정책).
-- send-ready callback 안 self-close는 recv callback과 동일한 deferred teardown
-  규칙을 따른다.
+- send-ready callback 안 self-close는 service recv callback과 동일한 deferred teardown
+  규칙을 따른다 (허용 callback 목록은 9.2절 참조).
 
 ### 6.3 mutation / query / attach
 

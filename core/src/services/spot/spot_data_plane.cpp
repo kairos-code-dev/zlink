@@ -32,7 +32,50 @@ namespace
 static const size_t spot_sub_queue_hwm_default = 1000;
 static const unsigned int ingress_forward_batch_limit = 4096;
 static const unsigned int ctrl_poll_batch_limit = 128;
-static const uint64_t bootstrap_broadcast_interval_ms = 100;
+static uint64_t default_bootstrap_broadcast_interval_ms (
+  const spot_runtime_t *runtime_)
+{
+    if (runtime_) {
+        const std::string &bound_endpoint = runtime_->bound_endpoint;
+        if (bound_endpoint.compare (0, 6, "tcp://") == 0
+            || bound_endpoint.compare (0, 6, "tls://") == 0) {
+            return 5000;
+        }
+    }
+
+    return 1000;
+}
+
+static uint64_t resolve_bootstrap_broadcast_interval_ms (
+  const spot_runtime_t *runtime_,
+  bool bootstrap_ready_)
+{
+    static uint64_t env_cached = 0;
+    static bool env_checked = false;
+    if (env_checked)
+        return env_cached != 0 ? env_cached
+                               : (bootstrap_ready_
+                                    ? default_bootstrap_broadcast_interval_ms (
+                                        runtime_)
+                                    : 1000);
+
+    uint64_t value = 0;
+    const char *env = getenv ("ZLINK_SPOT_BOOTSTRAP_INTERVAL_MS");
+    if (env && *env) {
+        char *end = NULL;
+        const unsigned long parsed = strtoul (env, &end, 10);
+        if (end != env && parsed > 0)
+            value = static_cast<uint64_t> (parsed);
+    }
+
+    env_cached = value;
+    env_checked = true;
+    return env_cached != 0 ? env_cached
+                           : (bootstrap_ready_
+                                ? default_bootstrap_broadcast_interval_ms (
+                                    runtime_)
+                                : 1000);
+}
 
 static int resolve_internal_hwm_override (const char *env_name_,
                                           int default_value_)
@@ -760,8 +803,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
                                strlen (spot_control_protocol::ctrl_prefix));
 
     mesh_xsub_monitor = static_cast<socket_base_t *> (open_socket_monitor_bridge (
-      mesh_xsub, ZLINK_EVENT_CONNECTED | ZLINK_EVENT_ACCEPTED
-                   | ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED));
+      mesh_xsub, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED));
     if (!mesh_xsub_monitor) {
         const int err = errno != 0 ? errno : EIO;
         send_errno_reply (ctrl, err);
@@ -1043,8 +1085,6 @@ void spot_data_plane_t::run (spot_node_t *node_)
                     }
 
                     switch (raw.event) {
-                        case ZLINK_EVENT_CONNECTED:
-                        case ZLINK_EVENT_ACCEPTED:
                         case ZLINK_EVENT_CONNECTION_READY:
                             sync_mesh_xsub_connected_endpoint (runtime, raw,
                                                                true);
@@ -1086,7 +1126,9 @@ void spot_data_plane_t::run (spot_node_t *node_)
                 running = false;
                 break;
             }
-            next_bootstrap_ms = now_ms + bootstrap_broadcast_interval_ms;
+            next_bootstrap_ms =
+              now_ms + resolve_bootstrap_broadcast_interval_ms (
+                         runtime, !peer_ready_filters.empty ());
         }
     }
 

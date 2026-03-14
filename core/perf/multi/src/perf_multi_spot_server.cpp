@@ -26,12 +26,42 @@
 #include <unistd.h>
 #endif
 
+namespace zlink {
+class spot_node_t;
+class spot_pub_t;
+class spot_sub_t;
+}
+
 namespace {
 
 static const char *k_pattern = "SPOT";
 static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
 static const uint32_t k_metric_run_id = 1U;
+static const uint32_t k_spot_handle_tag = 0x1e6700dcU;
+
+struct perf_spot_handle_t
+{
+    uint32_t tag;
+    zlink::spot_node_t *node;
+    zlink::spot_pub_t *pub;
+    zlink::spot_sub_t *sub;
+    zlink_spot_handler_fn handler;
+};
+
+struct perf_spot_pub_layout_t
+{
+    zlink::spot_node_t *node;
+    void *socket;
+};
+
+void *spot_pub_socket(void *spot)
+{
+    perf_spot_handle_t *handle = static_cast<perf_spot_handle_t *>(spot);
+    if (!handle || handle->tag != k_spot_handle_tag || !handle->pub)
+        return NULL;
+    return reinterpret_cast<perf_spot_pub_layout_t *>(handle->pub)->socket;
+}
 
 static std::atomic<bool> g_stop_requested(false);
 static std::atomic<bool> g_queue_probe_pending(false);

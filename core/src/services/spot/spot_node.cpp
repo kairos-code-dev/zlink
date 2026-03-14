@@ -128,6 +128,8 @@ static unsigned int subscription_replay_attempt_count (
             return 300;
         if (it->compare (0, 6, "tls://") == 0)
             return 150;
+        if (it->compare (0, 5, "ws://") == 0)
+            return 50;
     }
 
     return 50;

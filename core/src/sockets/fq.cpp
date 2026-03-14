@@ -74,10 +74,19 @@ int zlink::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
             return 0;
         }
 
-        //  Check the atomicity of the message.
-        //  If we've already received the first part of the message
-        //  we should get the remaining parts without blocking.
-        zlink_assert (!_more);
+        //  A pipe can disappear while a multipart message is being torn down.
+        //  Surface that as a protocol error instead of aborting the process.
+        if (_more) {
+            _more = false;
+            _active--;
+            _pipes.swap (_current, _active);
+            if (_current == _active)
+                _current = 0;
+            rc = msg_->init ();
+            errno_assert (rc == 0);
+            errno = EPROTO;
+            return -1;
+        }
 
         _active--;
         _pipes.swap (_current, _active);

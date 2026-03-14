@@ -47,12 +47,27 @@ static void spot_shutdown_logf (bool always_, const char *fmt_, ...)
 {
     if (!always_ && !std::getenv ("ZLINK_SPOT_SHUTDOWN_LOG"))
         return;
-    va_list args;
-    va_start (args, fmt_);
+    va_list stderr_args;
+    va_start (stderr_args, fmt_);
     std::fprintf (stderr, "[spot-shutdown] ");
-    std::vfprintf (stderr, fmt_, args);
+    std::vfprintf (stderr, fmt_, stderr_args);
     std::fprintf (stderr, "\n");
-    va_end (args);
+    va_end (stderr_args);
+
+    FILE *fp = std::fopen ("/tmp/zlink_spot_shutdown.log", "a");
+    if (!fp)
+        return;
+
+    std::fprintf (fp,
+                  "ts=%llu pid=%ld ",
+                  static_cast<unsigned long long> (zlink::clock_t ().now_ms ()),
+                  static_cast<long> (getpid ()));
+    va_list file_args;
+    va_start (file_args, fmt_);
+    std::vfprintf (fp, fmt_, file_args);
+    std::fprintf (fp, "\n");
+    va_end (file_args);
+    std::fclose (fp);
 }
 
 static void preserve_first_error (int rc_, int *first_error_)
@@ -271,7 +286,7 @@ int spot_runtime_t::destroy_attachment (uint64_t id_)
     if (!socket)
         return 0;
     if (owner && owner->_ctx)
-        return owner->_lifecycle.close_socket_and_wait (socket, 2000);
+        return owner->_lifecycle.close_socket (socket, 2000);
 
     socket->stop ();
     socket->close ();
@@ -419,7 +434,8 @@ int spot_runtime_t::stop_and_join ()
     int first_error = 0;
 
     stop.set (1);
-    stop_sockets ();
+    if (data_ctrl_front)
+        preserve_first_error (send_command ("terminate", NULL), &first_error);
     if (data_plane_thread.get_started ())
         data_plane_thread.stop ();
     preserve_first_error (close_control_sockets (), &first_error);
@@ -535,6 +551,8 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _mesh_client_tls_locked (false),
     _registration_tls_locked (false),
     _send_ready_handler (NULL),
+    _local_filtered_sub_count (0),
+    _active_peer_count (0),
     _default_pub (NULL),
     _default_sub (NULL)
 {
@@ -686,8 +704,31 @@ const std::string &spot_node_t::sub_fanout_endpoint () const
 
 bool spot_node_t::has_active_peers () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    return !_active_peer_endpoints.empty ();
+    return _active_peer_count.load (std::memory_order_acquire) != 0;
+}
+
+bool spot_node_t::has_local_filtered_subs () const
+{
+    return _local_filtered_sub_count.load (std::memory_order_acquire) != 0;
+}
+
+void spot_node_t::note_local_sub_filters_changed (bool had_filters_,
+                                                  bool has_filters_)
+{
+    if (had_filters_ == has_filters_)
+        return;
+
+    if (has_filters_) {
+        _local_filtered_sub_count.fetch_add (1, std::memory_order_acq_rel);
+        return;
+    }
+
+    uint32_t current = _local_filtered_sub_count.load (std::memory_order_acquire);
+    while (current != 0
+           && !_local_filtered_sub_count.compare_exchange_weak (
+             current, current - 1, std::memory_order_acq_rel,
+             std::memory_order_acquire)) {
+    }
 }
 
 int spot_node_t::replay_subscriptions_if_active_peers ()
@@ -787,6 +828,19 @@ void spot_node_t::control_tick ()
         return;
 
     refresh_discovery_peers ();
+    if (std::getenv ("ZLINK_DEBUG_SPOT_SKIP_CONTROL_EXTRA")) {
+        bool skip_extra = false;
+        {
+            scoped_lock_t lock (_sync);
+            skip_extra = _discovery == NULL
+                         && !_connected_peer_endpoints.empty ()
+                         && !_subscription_replay_pending
+                         && !_subscription_ready_refresh_pending
+                         && !_pub_delivery_ready_refresh_pending;
+        }
+        if (skip_extra)
+            return;
+    }
     refresh_connected_peer_endpoints ();
     emit_pending_subscription_replays ();
     emit_pending_subscription_ready_events ();
@@ -812,7 +866,7 @@ void spot_node_t::emit_pending_subscription_replays ()
         }
         should_replay = true;
         --_subscription_replay_attempts;
-        _subscription_replay_holdoff_ticks = 5;
+        _subscription_replay_holdoff_ticks = 10;
         if (_subscription_replay_attempts == 0)
             _subscription_replay_pending = false;
     }
@@ -887,7 +941,8 @@ void spot_node_t::refresh_discovery_peers ()
         if (send_data_plane_command ("connect_peer_pub", to_connect[i].c_str ())
             == 0) {
             scoped_lock_t lock (_sync);
-            _active_peer_endpoints.insert (to_connect[i]);
+            if (_active_peer_endpoints.insert (to_connect[i]).second)
+                _active_peer_count.fetch_add (1, std::memory_order_acq_rel);
         }
     }
 
@@ -895,7 +950,8 @@ void spot_node_t::refresh_discovery_peers ()
         if (send_data_plane_command ("disconnect_peer_pub", to_disconnect[i].c_str ())
             == 0) {
             scoped_lock_t lock (_sync);
-            _active_peer_endpoints.erase (to_disconnect[i]);
+            if (_active_peer_endpoints.erase (to_disconnect[i]) != 0)
+                _active_peer_count.fetch_sub (1, std::memory_order_acq_rel);
         }
     }
 
@@ -907,17 +963,21 @@ void spot_node_t::refresh_discovery_peers ()
     }
 
     if (old_active_count == 0 && new_active_count > 0) {
-        schedule_subscription_replay ();
-        if (replay_subscriptions_if_active_peers () != 0) {
-            debug_mark_fault (errno);
-            return;
+        if (has_local_filtered_subs ()) {
+            schedule_subscription_replay ();
+            if (replay_subscriptions_if_active_peers () != 0) {
+                debug_mark_fault (errno);
+                return;
+            }
         }
         refresh_sub_peer_summaries (true, false);
     } else if (!to_connect.empty () && new_active_count > 0) {
-        schedule_subscription_replay ();
-        if (replay_subscriptions_if_active_peers () != 0) {
-            debug_mark_fault (errno);
-            return;
+        if (has_local_filtered_subs ()) {
+            schedule_subscription_replay ();
+            if (replay_subscriptions_if_active_peers () != 0) {
+                debug_mark_fault (errno);
+                return;
+            }
         }
     } else if (old_active_count > 0 && new_active_count == 0)
         refresh_sub_peer_summaries (false, true);
@@ -1180,6 +1240,8 @@ void spot_node_t::emit_pending_pub_delivery_ready_events ()
             pubs[i]->emit_first_delivery_ready_changed_event (
               updates[j].first.c_str (), false,
               ZLINK_SERVICE_EVENT_SUBJECT_NONE, updates[j].second);
+            if (updates[j].second > 0)
+                pubs[i]->dispatch_send_ready ();
         }
     }
 }
@@ -1240,12 +1302,11 @@ void spot_node_t::notify_pub_delivery_ready_ack (
         pubs[i]->emit_delivery_ready_changed_event (
           subject_.c_str (), false, ZLINK_SERVICE_EVENT_SUBJECT_NONE,
           ready_count);
-        // A ready-ack means the subscriber has already received a probe on the
-        // same data path, so the publisher can treat the aggregated ack count
-        // as first-delivery-safe from this point.
-        pubs[i]->emit_first_delivery_ready_changed_event (
-          subject_.c_str (), false, ZLINK_SERVICE_EVENT_SUBJECT_NONE,
-          ready_count);
+        if (!subscribe_) {
+            pubs[i]->emit_first_delivery_ready_changed_event (
+              subject_.c_str (), false, ZLINK_SERVICE_EVENT_SUBJECT_NONE,
+              ready_count);
+        }
     }
 
 }
@@ -1267,7 +1328,22 @@ void spot_node_t::notify_pub_first_delivery_ready_settled (
         pubs[i]->emit_first_delivery_ready_changed_event (
           subject_.c_str (), false, ZLINK_SERVICE_EVENT_SUBJECT_NONE,
           ready_count_);
+        if (ready_count_ > 0)
+            pubs[i]->dispatch_send_ready ();
     }
+}
+
+int spot_node_t::send_subscription_update (const std::string &raw_filter_,
+                                           bool subscribe_)
+{
+    if (raw_filter_.empty ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    return send_data_plane_command (
+      subscribe_ ? "subscription_subscribe" : "subscription_unsubscribe",
+      raw_filter_.c_str ());
 }
 
 int spot_node_t::send_ready_ack_update (const std::string &target_endpoint_,
@@ -1586,13 +1662,16 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
     {
         scoped_lock_t lock (_sync);
         _mesh_client_tls_locked = true;
-        _active_peer_endpoints.insert (peer_pub_endpoint_);
+        if (_active_peer_endpoints.insert (peer_pub_endpoint_).second)
+            _active_peer_count.fetch_add (1, std::memory_order_acq_rel);
         has_active_peers = !_active_peer_endpoints.empty ();
     }
     if (has_active_peers) {
-        schedule_subscription_replay ();
-        if (replay_subscriptions_if_active_peers () != 0)
-            return -1;
+        if (has_local_filtered_subs ()) {
+            schedule_subscription_replay ();
+            if (replay_subscriptions_if_active_peers () != 0)
+                return -1;
+        }
         if (!had_active_peers)
             refresh_sub_peer_summaries (true, false);
     }
@@ -1632,7 +1711,8 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
         bool has_active_peers = false;
         {
             scoped_lock_t lock (_sync);
-            _active_peer_endpoints.erase (peer_pub_endpoint_);
+            if (_active_peer_endpoints.erase (peer_pub_endpoint_) != 0)
+                _active_peer_count.fetch_sub (1, std::memory_order_acq_rel);
             has_active_peers = !_active_peer_endpoints.empty ();
         }
         if (had_active_peers && !has_active_peers) {
@@ -1924,6 +2004,7 @@ int spot_node_t::validate_sub_option (int option_,
         case ZLINK_SPOT_SUB_OPT_LINGER:
         case ZLINK_SPOT_SUB_OPT_SNDBUF:
         case ZLINK_SPOT_SUB_OPT_RCVBUF:
+        case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
             return 0;
         default:
             errno = EINVAL;
@@ -1988,6 +2069,9 @@ void spot_node_t::store_sub_option (int option_,
             return;
         case ZLINK_SPOT_SUB_OPT_RCVBUF:
             copy_option_setting (&_sub_defaults.rcvbuf, optval_, optvallen_);
+            return;
+        case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
+            copy_option_setting (&_sub_defaults.rcvtimeo, optval_, optvallen_);
             return;
         default:
             return;
@@ -2109,6 +2193,12 @@ int spot_node_t::apply_sub_defaults (spot_sub_t *sub_,
     if (defaults_.rcvbuf.enabled
         && sub_->set_option (ZLINK_SPOT_SUB_OPT_RCVBUF, &defaults_.rcvbuf.value,
                              defaults_.rcvbuf.size)
+             != 0)
+        return -1;
+    if (defaults_.rcvtimeo.enabled
+        && sub_->set_option (ZLINK_SPOT_SUB_OPT_RCVTIMEO,
+                             &defaults_.rcvtimeo.value,
+                             defaults_.rcvtimeo.size)
              != 0)
         return -1;
     return 0;
@@ -2299,6 +2389,8 @@ void spot_node_t::remove_spot_sub (spot_sub_t *sub_)
     if (_default_sub == sub_)
         _default_sub = NULL;
     _subs.erase (sub_);
+    if (sub_ && sub_->has_filters ())
+        note_local_sub_filters_changed (true, false);
 }
 
 int spot_node_t::destroy_handles ()
@@ -2400,6 +2492,7 @@ int spot_node_t::destroy ()
         _pending_service_updates.clear ();
         _manual_peer_endpoints.clear ();
         _active_peer_endpoints.clear ();
+        _active_peer_count.store (0, std::memory_order_release);
         _connected_peer_endpoints.clear ();
         _discovery_peer_endpoints.clear ();
         _registered = false;

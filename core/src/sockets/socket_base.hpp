@@ -75,13 +75,18 @@ class socket_base_t : public own_t,
     int close ();
     int socket_msg_dispatch_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     int socket_set_msg_handler (zlink_socket_msg_handler_fn handler_);
+    int socket_set_msg_handler_ex (zlink_socket_msg_handler_fn handler_,
+                                   void *subject_);
     int socket_set_spot_handler (zlink_spot_handler_fn handler_);
     int socket_set_xpub_handler (zlink_xpub_handler_fn handler_);
     int socket_set_send_ready_handler (zlink_send_ready_handler_fn handler_);
+    int socket_set_send_ready_handler_ex (zlink_send_ready_handler_fn handler_,
+                                          void *subject_);
     bool socket_msg_dispatch_active () const;
     static socket_base_t *current_socket_msg_dispatch_socket ();
     static socket_base_t *current_send_ready_dispatch_socket ();
     static zlink::pipe_t *current_socket_msg_dispatch_pipe ();
+    static void *current_socket_msg_dispatch_subject ();
     static bool current_socket_msg_dispatch_source_rid (
       zlink_routing_id_t *out_);
     bool send_ready_dispatch_in_callback () const;
@@ -243,6 +248,8 @@ class socket_base_t : public own_t,
     zlink_spot_handler_fn socket_spot_handler () const;
     zlink_xpub_handler_fn socket_xpub_handler () const;
     zlink_send_ready_handler_fn socket_send_ready_handler () const;
+    void *socket_msg_handler_subject () const;
+    void *socket_send_ready_handler_subject () const;
     static void close_socket_msg_parts (std::vector<zlink_msg_t> *parts_);
     static void resolve_socket_msg_source_rid (pipe_t *pipe_,
                                                zlink_routing_id_t *out_);
@@ -403,9 +410,11 @@ class socket_base_t : public own_t,
     mutex_t _async_done_mu;
     condition_variable_t _async_done_cv;
     std::atomic<zlink_socket_msg_handler_fn> _socket_msg_handler;
+    std::atomic<void *> _socket_msg_handler_subject;
     std::atomic<zlink_spot_handler_fn> _spot_handler;
     std::atomic<zlink_xpub_handler_fn> _xpub_handler;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
+    std::atomic<void *> _send_ready_handler_subject;
     std::atomic<bool> _send_ready_armed;
     std::recursive_mutex _socket_msg_dispatch_sync;
 

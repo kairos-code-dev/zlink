@@ -114,6 +114,7 @@ class xsub_t : public socket_base_t
     mutable std::mutex _dispatch_control_mu;
     mutable std::mutex _dispatch_inflight_mu;
     std::condition_variable _dispatch_inflight_cv;
+    std::vector<zlink_msg_t> _dispatch_parts;
     std::vector<zlink_msg_t> _socket_dispatch_parts;
     bool _socket_dispatch_drop_message;
 

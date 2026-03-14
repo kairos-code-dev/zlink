@@ -160,12 +160,13 @@ struct spot_client_state_t
         run_id (0),
         msg_size (0),
         active_deadline_us (0),
-        callback_activity (0),
+        stop (false),
+        fatal (false),
+        fatal_errno (0),
         warmup_received (0),
         warmup_target (0),
         active_received (0),
-        warmup_waiting (false),
-        drain_waiting (false),
+        recv_activity (0),
         probe (NULL)
     {
     }
@@ -173,15 +174,17 @@ struct spot_client_state_t
     uint32_t run_id;
     size_t msg_size;
     std::atomic<uint64_t> active_deadline_us;
-    std::atomic<unsigned long long> callback_activity;
+    std::atomic<bool> stop;
+    std::atomic<bool> fatal;
+    std::atomic<int> fatal_errno;
     std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> warmup_target;
     std::atomic<unsigned long long> active_received;
-    std::atomic<bool> warmup_waiting;
-    std::atomic<bool> drain_waiting;
+    std::atomic<unsigned long long> recv_activity;
     latency_stats_builder_t latency;
     spot_queue_probe_t *probe;
-    std::mutex cv_mutex;
+    std::mutex mutex;
+    std::mutex latency_mutex;
     std::condition_variable cv;
 };
 
@@ -192,7 +195,6 @@ struct service_monitor_probe_t
     std::vector<zlink_service_event_t> events;
 };
 
-spot_client_state_t *g_client_state = NULL;
 service_monitor_probe_t *g_service_monitor_probe = NULL;
 service_monitor_probe_t *g_pub_service_monitor_probe = NULL;
 
@@ -351,39 +353,61 @@ bool wait_for_warmup_counter (spot_client_state_t &state_,
                               unsigned long long expected_,
                               int timeout_ms_)
 {
-    std::unique_lock<std::mutex> lock (state_.cv_mutex);
+    std::unique_lock<std::mutex> lock (state_.mutex);
     const bool ok = state_.cv.wait_for (
       lock,
       std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1),
       [&state_, expected_] () {
           return state_.warmup_received.load (std::memory_order_acquire)
-                 >= expected_;
+                   >= expected_
+                 || state_.fatal.load (std::memory_order_acquire);
       });
-    state_.warmup_waiting.store (false, std::memory_order_release);
     state_.warmup_target.store (0, std::memory_order_release);
-    return ok;
+    return ok && !state_.fatal.load (std::memory_order_acquire);
 }
 
-void wait_for_idle_receive_drain (spot_client_state_t &state_,
-                                  int idle_timeout_ms_)
+bool wait_for_receive_quiet (spot_client_state_t &state_,
+                             int idle_timeout_ms_,
+                             int total_timeout_ms_)
 {
-    std::unique_lock<std::mutex> lock (state_.cv_mutex);
-    const std::chrono::milliseconds idle_timeout (
-      idle_timeout_ms_ > 0 ? idle_timeout_ms_ : 1);
-    state_.drain_waiting.store (true, std::memory_order_release);
+    const auto total_deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (total_timeout_ms_ > 0 ? total_timeout_ms_ : 1);
+    auto idle_deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (idle_timeout_ms_ > 0 ? idle_timeout_ms_ : 1);
+    unsigned long long observed =
+      state_.recv_activity.load (std::memory_order_acquire);
 
-    while (true) {
-        const unsigned long long observed =
-          state_.callback_activity.load (std::memory_order_acquire);
-        const bool changed = state_.cv.wait_for (
-          lock, idle_timeout, [&state_, observed] () {
-              return state_.callback_activity.load (std::memory_order_acquire)
-                     != observed;
+    std::unique_lock<std::mutex> lock (state_.mutex);
+    while (std::chrono::steady_clock::now () < total_deadline) {
+        const auto wait_deadline =
+          idle_deadline < total_deadline ? idle_deadline : total_deadline;
+        const bool changed = state_.cv.wait_until (
+          lock, wait_deadline, [&state_, observed] () {
+              return state_.recv_activity.load (std::memory_order_acquire)
+                       != observed
+                     || state_.fatal.load (std::memory_order_acquire);
           });
+        if (state_.fatal.load (std::memory_order_acquire))
+            return false;
         if (!changed)
-            break;
+            return true;
+
+        observed = state_.recv_activity.load (std::memory_order_acquire);
+        idle_deadline =
+          std::chrono::steady_clock::now ()
+          + std::chrono::milliseconds (idle_timeout_ms_ > 0 ? idle_timeout_ms_
+                                                            : 1);
     }
-    state_.drain_waiting.store (false, std::memory_order_release);
+
+    return !state_.fatal.load (std::memory_order_acquire);
+}
+
+void close_recv_parts (zlink_msg_t *parts_, size_t part_count_)
+{
+    close_parts (parts_, part_count_);
+    free (parts_);
 }
 
 void cleanup_spot_case (void **sub_monitor_,
@@ -414,7 +438,8 @@ bool publish_payload (void *pub_,
                       size_t msg_size_,
                       uint32_t run_id_,
                       perf_single_metric::phase_t phase_,
-                      uint64_t seq_)
+                      uint64_t seq_,
+                      int flags_)
 {
     const size_t payload_size =
       std::max (msg_size_, perf_single_metric::header_size ());
@@ -435,7 +460,7 @@ bool publish_payload (void *pub_,
     if (zlink_msg_init_size (&part, payload_.size ()) != 0)
         return false;
     std::memcpy (zlink_msg_data (&part), payload_.data (), payload_.size ());
-    if (zlink_spot_publish (pub_, k_topic, &part, 1, 0) != 0) {
+    if (zlink_spot_publish (pub_, k_topic, &part, 1, flags_) != 0) {
         const int err = errno;
         zlink_msg_close (&part);
         errno = err;
@@ -445,61 +470,195 @@ bool publish_payload (void *pub_,
     return true;
 }
 
-void sub_handler (const zlink_routing_id_t *,
-                  const char *topic_,
-                  size_t topic_len_,
-                  zlink_msg_t *parts_,
-                  size_t part_count_)
+int try_publish_payload (void *pub_,
+                         std::vector<char> &payload_,
+                         size_t msg_size_,
+                         uint32_t run_id_,
+                         perf_single_metric::phase_t phase_,
+                         uint64_t seq_)
 {
-    spot_client_state_t *state = g_client_state;
-    if (!state || !topic_ || topic_len_ != std::strlen (k_topic)
-        || std::memcmp (topic_, k_topic, topic_len_) != 0 || part_count_ == 0) {
-        close_parts (parts_, part_count_);
+    if (publish_payload (pub_,
+                         payload_,
+                         msg_size_,
+                         run_id_,
+                         phase_,
+                         seq_,
+                         ZLINK_DONTWAIT)) {
+        return 1;
+    }
+
+    const int err = errno;
+    if (err == EAGAIN || err == EINTR)
+        return 0;
+    return -1;
+}
+
+void receiver_thread_main (void *sub_, spot_client_state_t *state_)
+{
+    if (!sub_ || !state_)
         return;
-    }
 
-    perf_single_metric::header_t header;
-    const bool header_ok =
-      perf_single_metric::decode_payload_header (
-        zlink_msg_data (&parts_[0]), zlink_msg_size (&parts_[0]), &header)
-      && header.run_id == state->run_id && header.msg_size == state->msg_size;
+    while (!state_->stop.load (std::memory_order_acquire)) {
+        bool notify = false;
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        char topic[256];
+        size_t topic_len = sizeof (topic) - 1;
+        const int rc =
+          zlink_spot_recv (sub_, &parts, &part_count, 0, topic, &topic_len);
+        if (rc != 0) {
+            const int err = errno;
+            if (state_->stop.load (std::memory_order_acquire))
+                break;
+            if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK
+                || err == ETIMEDOUT) {
+                continue;
+            }
 
-    bool notify = false;
-    state->callback_activity.fetch_add (1, std::memory_order_acq_rel);
-    if (header_ok
-        && header.phase == static_cast<uint32_t> (
-                            perf_single_metric::phase_warmup)) {
-        const unsigned long long received =
-          state->warmup_received.fetch_add (1, std::memory_order_acq_rel) + 1;
-        const unsigned long long target =
-          state->warmup_target.load (std::memory_order_acquire);
-        if (state->warmup_waiting.load (std::memory_order_acquire) && target > 0
-            && received >= target) {
-            notify = true;
+            state_->fatal_errno.store (err, std::memory_order_release);
+            state_->fatal.store (true, std::memory_order_release);
+            state_->cv.notify_all ();
+            break;
         }
-    } else if (header_ok
-               && header.phase == static_cast<uint32_t> (
-                                    perf_single_metric::phase_active)) {
-        const uint64_t now_us = perf_single_metric::now_us ();
-        const uint64_t deadline_us =
-          state->active_deadline_us.load (std::memory_order_acquire);
-        if (deadline_us > 0 && now_us <= deadline_us) {
-            state->active_received.fetch_add (1, std::memory_order_acq_rel);
-            const double latency_us =
-              now_us >= header.sent_ts_us
-                ? static_cast<double> (now_us - header.sent_ts_us)
-                : 0.0;
-            state->latency.add (latency_us);
+
+        if (topic_len < sizeof (topic)) {
+            topic[topic_len] = '\0';
+            if (std::strcmp (topic, k_topic) == 0 && part_count > 0) {
+                perf_single_metric::header_t header;
+                const bool header_ok =
+                  perf_single_metric::decode_payload_header (
+                    zlink_msg_data (&parts[0]),
+                    zlink_msg_size (&parts[0]),
+                    &header)
+                  && header.run_id == state_->run_id
+                  && header.msg_size == state_->msg_size;
+
+                if (header_ok
+                    && header.phase == static_cast<uint32_t> (
+                                        perf_single_metric::phase_warmup)) {
+                    const unsigned long long received =
+                      state_->warmup_received.fetch_add (
+                        1, std::memory_order_acq_rel)
+                      + 1;
+                    const unsigned long long target =
+                      state_->warmup_target.load (std::memory_order_acquire);
+                    if (target > 0 && received >= target)
+                        notify = true;
+                } else if (
+                  header_ok
+                  && header.phase == static_cast<uint32_t> (
+                                       perf_single_metric::phase_active)) {
+                    const uint64_t now_us = perf_single_metric::now_us ();
+                    const uint64_t deadline_us =
+                      state_->active_deadline_us.load (
+                        std::memory_order_acquire);
+                    if (deadline_us > 0 && now_us <= deadline_us) {
+                        state_->active_received.fetch_add (
+                          1, std::memory_order_acq_rel);
+                        const double latency_us =
+                          now_us >= header.sent_ts_us
+                            ? static_cast<double> (now_us - header.sent_ts_us)
+                            : 0.0;
+                        {
+                            std::lock_guard<std::mutex> lock (
+                              state_->latency_mutex);
+                            state_->latency.add (latency_us);
+                        }
+                    }
+                }
+
+                state_->recv_activity.fetch_add (1, std::memory_order_acq_rel);
+                if (state_->probe)
+                    state_->probe->sample_recv_if_due ();
+                notify = true;
+            }
+        }
+
+        close_recv_parts (parts, part_count);
+        if (notify)
+            state_->cv.notify_all ();
+
+        for (;;) {
+            notify = false;
+            parts = NULL;
+            part_count = 0;
+            topic_len = sizeof (topic) - 1;
+            const int burst_rc = zlink_spot_recv (
+              sub_, &parts, &part_count, ZLINK_DONTWAIT, topic, &topic_len);
+            if (burst_rc != 0) {
+                const int err = errno;
+                if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK
+                    || err == ETIMEDOUT) {
+                    break;
+                }
+
+                state_->fatal_errno.store (err, std::memory_order_release);
+                state_->fatal.store (true, std::memory_order_release);
+                state_->cv.notify_all ();
+                return;
+            }
+
+            if (topic_len < sizeof (topic)) {
+                topic[topic_len] = '\0';
+                if (std::strcmp (topic, k_topic) == 0 && part_count > 0) {
+                    perf_single_metric::header_t header;
+                    const bool header_ok =
+                      perf_single_metric::decode_payload_header (
+                        zlink_msg_data (&parts[0]),
+                        zlink_msg_size (&parts[0]),
+                        &header)
+                      && header.run_id == state_->run_id
+                      && header.msg_size == state_->msg_size;
+
+                    if (header_ok
+                        && header.phase == static_cast<uint32_t> (
+                                            perf_single_metric::phase_warmup)) {
+                        const unsigned long long received =
+                          state_->warmup_received.fetch_add (
+                            1, std::memory_order_acq_rel)
+                          + 1;
+                        const unsigned long long target =
+                          state_->warmup_target.load (
+                            std::memory_order_acquire);
+                        if (target > 0 && received >= target)
+                            notify = true;
+                    } else if (
+                      header_ok
+                      && header.phase == static_cast<uint32_t> (
+                                           perf_single_metric::phase_active)) {
+                        const uint64_t now_us = perf_single_metric::now_us ();
+                        const uint64_t deadline_us =
+                          state_->active_deadline_us.load (
+                            std::memory_order_acquire);
+                        if (deadline_us > 0 && now_us <= deadline_us) {
+                            state_->active_received.fetch_add (
+                              1, std::memory_order_acq_rel);
+                            const double latency_us =
+                              now_us >= header.sent_ts_us
+                                ? static_cast<double> (
+                                    now_us - header.sent_ts_us)
+                                : 0.0;
+                            {
+                                std::lock_guard<std::mutex> lock (
+                                  state_->latency_mutex);
+                                state_->latency.add (latency_us);
+                            }
+                        }
+                    }
+
+                    state_->recv_activity.fetch_add (
+                      1, std::memory_order_acq_rel);
+                    if (state_->probe)
+                        state_->probe->sample_recv_if_due ();
+                    notify = true;
+                }
+            }
+
+            close_recv_parts (parts, part_count);
+            if (notify)
+                state_->cv.notify_all ();
         }
     }
-    if (state->probe)
-        state->probe->sample_recv_if_due ();
-
-    close_parts (parts_, part_count_);
-    if (state->drain_waiting.load (std::memory_order_acquire))
-        notify = true;
-    if (notify)
-        state->cv.notify_all ();
 }
 
 bool run_warmup (void *pub_,
@@ -513,33 +672,40 @@ bool run_warmup (void *pub_,
       resolve_bench_count ("PERF_WARMUP_COUNT", default_warmup);
     const int wait_timeout_ms = std::max (
       1000, resolve_single_recv_timeout_ms () * 10);
-    client_state_.callback_activity.store (0, std::memory_order_release);
+    client_state_.fatal.store (false, std::memory_order_release);
+    client_state_.fatal_errno.store (0, std::memory_order_release);
     client_state_.warmup_received.store (0, std::memory_order_release);
     client_state_.warmup_target.store (warmup_count, std::memory_order_release);
     client_state_.active_received.store (0, std::memory_order_release);
+    client_state_.recv_activity.store (0, std::memory_order_release);
     client_state_.active_deadline_us.store (0, std::memory_order_release);
-    client_state_.warmup_waiting.store (true, std::memory_order_release);
-    client_state_.drain_waiting.store (false, std::memory_order_release);
-    client_state_.latency = latency_stats_builder_t ();
+    {
+        std::lock_guard<std::mutex> lock (client_state_.latency_mutex);
+        client_state_.latency = latency_stats_builder_t ();
+    }
 
     for (int i = 0; i < warmup_count; ++i) {
         probe_.sample_send_if_due ();
-        if (!publish_payload (pub_,
-                              payload_,
-                              msg_size_,
-                              client_state_.run_id,
-                              perf_single_metric::phase_warmup,
-                              static_cast<uint64_t> (i + 1))) {
-            return false;
+        for (;;) {
+            const int rc = try_publish_payload (
+              pub_,
+              payload_,
+              msg_size_,
+              client_state_.run_id,
+              perf_single_metric::phase_warmup,
+              static_cast<uint64_t> (i + 1));
+            if (rc > 0)
+                break;
+            if (rc < 0)
+                return false;
+            std::this_thread::yield ();
         }
     }
 
     return wait_for_warmup_counter (
              client_state_,
              static_cast<unsigned long long> (warmup_count),
-             wait_timeout_ms)
-           && (wait_for_idle_receive_drain (client_state_, wait_timeout_ms),
-               true);
+             wait_timeout_ms);
 }
 
 bool run_active (void *pub_,
@@ -553,32 +719,55 @@ bool run_active (void *pub_,
     const int duration_s = resolve_single_duration_seconds ();
     const auto active_start = std::chrono::steady_clock::now ();
     const auto deadline = active_start + std::chrono::seconds (duration_s);
-    const int wait_timeout_ms = std::max (
-      1000, resolve_single_pubsub_recv_timeout_ms () * 10);
     uint64_t seq = 1;
+    bool send_failed = false;
 
-    client_state_.callback_activity.store (0, std::memory_order_release);
+    client_state_.fatal.store (false, std::memory_order_release);
+    client_state_.fatal_errno.store (0, std::memory_order_release);
     client_state_.active_received.store (0, std::memory_order_release);
+    client_state_.recv_activity.store (0, std::memory_order_release);
     client_state_.active_deadline_us.store (
       perf_single_metric::now_us ()
         + static_cast<uint64_t> (std::max (1, duration_s) * 1000000ULL),
       std::memory_order_release);
-    client_state_.drain_waiting.store (false, std::memory_order_release);
-    client_state_.latency = latency_stats_builder_t ();
-
-    while (std::chrono::steady_clock::now () < deadline) {
-        probe_.sample_send_if_due ();
-        if (!publish_payload (pub_,
-                              payload_,
-                              msg_size_,
-                              client_state_.run_id,
-                              perf_single_metric::phase_active,
-                              seq++)) {
-            break;
-        }
+    {
+        std::lock_guard<std::mutex> lock (client_state_.latency_mutex);
+        client_state_.latency = latency_stats_builder_t ();
     }
 
-    wait_for_idle_receive_drain (client_state_, wait_timeout_ms);
+    while (std::chrono::steady_clock::now () < deadline) {
+        bool sent = false;
+        while (std::chrono::steady_clock::now () < deadline) {
+            probe_.sample_send_if_due ();
+            const int rc =
+              try_publish_payload (pub_,
+                                   payload_,
+                                   msg_size_,
+                                   client_state_.run_id,
+                                   perf_single_metric::phase_active,
+                                   seq);
+            if (rc > 0) {
+                ++seq;
+                sent = true;
+                break;
+            }
+            if (rc < 0) {
+                send_failed = true;
+                break;
+            }
+            std::this_thread::yield ();
+        }
+        if (send_failed || !sent)
+            break;
+        if (client_state_.fatal.load (std::memory_order_acquire))
+            break;
+    }
+
+    const int idle_timeout_ms = std::max (10, resolve_single_recv_timeout_ms ());
+    const int total_timeout_ms = std::max (100, idle_timeout_ms * 2);
+    (void) wait_for_receive_quiet (
+      client_state_, idle_timeout_ms, total_timeout_ms);
+    client_state_.active_deadline_us.store (0, std::memory_order_release);
 
     const double elapsed_s = std::max (0.001, static_cast<double> (duration_s));
     if (throughput_out_)
@@ -586,9 +775,13 @@ bool run_active (void *pub_,
           static_cast<double> (
             client_state_.active_received.load (std::memory_order_acquire))
           / elapsed_s;
-    if (latency_out_)
+    if (latency_out_) {
+        std::lock_guard<std::mutex> lock (client_state_.latency_mutex);
         *latency_out_ = client_state_.latency.snapshot ();
-    return client_state_.active_received.load (std::memory_order_acquire) > 0;
+    }
+    return !client_state_.fatal.load (std::memory_order_acquire)
+           && client_state_.active_received.load (std::memory_order_acquire)
+                > 0;
 }
 
 int run_case (const std::string &lib_name_,
@@ -627,6 +820,7 @@ int run_case (const std::string &lib_name_,
     const int sndhwm = resolve_single_socket_hwm (true);
     const int rcvhwm = resolve_single_socket_hwm (false);
     const int sndtimeo_ms = resolve_single_send_timeout_ms ();
+    const int rcvtimeo_ms = resolve_single_recv_timeout_ms ();
     const int nodrop = 1;
     (void) zlink_spot_node_set_pub_option (
       pub_node, ZLINK_SPOT_PUB_OPT_LINGER, &linger, sizeof (linger));
@@ -640,6 +834,9 @@ int run_case (const std::string &lib_name_,
       sub_node, ZLINK_SPOT_SUB_OPT_LINGER, &linger, sizeof (linger));
     (void) zlink_spot_node_set_sub_option (
       sub_node, ZLINK_SPOT_SUB_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
+    (void) zlink_spot_node_set_sub_option (
+      sub_node, ZLINK_SPOT_SUB_OPT_RCVTIMEO, &rcvtimeo_ms,
+      sizeof (rcvtimeo_ms));
 
     if (!configure_tls_server (pub_node, transport_)
         || !configure_tls_client (sub_node, transport_)) {
@@ -648,7 +845,7 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
     void *pub = zlink_spot_new (pub_node, &discard_spot_handler);
-    void *sub = zlink_spot_new (sub_node, &sub_handler);
+    void *sub = zlink_spot_new (sub_node, NULL);
     void *sub_monitor = NULL;
     void *pub_monitor = NULL;
     service_monitor_probe_t monitor_probe;
@@ -698,6 +895,13 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
+    spot_client_state_t client_state;
+    client_state.run_id = static_cast<uint32_t> (current_process_id ());
+    client_state.msg_size = msg_size_;
+    spot_queue_probe_t probe (pub_monitor, sub_monitor);
+    client_state.probe = &probe;
+    std::thread recv_thread (receiver_thread_main, sub, &client_state);
+
     if (!wait_for_service_event (
           &monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, k_topic, -1,
           3000)
@@ -715,17 +919,12 @@ int run_case (const std::string &lib_name_,
                                     1,
                                     resolve_spot_subscription_ready_timeout_ms (
                                       transport_))) {
+        client_state.stop.store (true, std::memory_order_release);
+        recv_thread.join ();
         cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
                            &pub_node);
         return 1;
     }
-
-    spot_client_state_t client_state;
-    g_client_state = &client_state;
-    client_state.run_id = static_cast<uint32_t> (current_process_id ());
-    client_state.msg_size = msg_size_;
-    spot_queue_probe_t probe (pub_monitor, sub_monitor);
-    client_state.probe = &probe;
 
     std::vector<char> payload;
     if (!run_warmup (pub, client_state, probe, payload, msg_size_)) {
@@ -739,7 +938,8 @@ int run_case (const std::string &lib_name_,
                       0.0,
                       0.0,
                       queue_stats);
-        g_client_state = NULL;
+        client_state.stop.store (true, std::memory_order_release);
+        recv_thread.join ();
         cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
                            &pub_node);
         return 1;
@@ -761,7 +961,8 @@ int run_case (const std::string &lib_name_,
                   active_ok ? latency.p99_us : 0.0,
                   queue_stats);
 
-    g_client_state = NULL;
+    client_state.stop.store (true, std::memory_order_release);
+    recv_thread.join ();
     cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
                        &pub_node);
     return active_ok ? 0 : 1;

@@ -52,6 +52,15 @@ static void close_parts (zlink_msg_t *parts_, size_t part_count_)
         zlink_msg_close (&parts_[i]);
 }
 
+static void close_msgv (std::vector<zlink_msg_t> *parts_)
+{
+    if (!parts_)
+        return;
+    for (size_t i = 0; i < parts_->size (); ++i)
+        zlink_msg_close (&(*parts_)[i]);
+    parts_->clear ();
+}
+
 static bool is_ready_probe_message (const char *topic_,
                                     size_t topic_len_,
                                     zlink_msg_t *parts_,
@@ -79,6 +88,23 @@ static bool is_ready_probe_message (const char *topic_,
           zlink_msg_size (&parts_[1]));
     }
     return true;
+}
+
+static void spot_sub_diag_log (const char *stage_)
+{
+    if (!getenv ("ZLINK_SPOT_SUB_DIAG_LOG"))
+        return;
+
+    FILE *fp = fopen ("/tmp/zlink_spot_sub_diag.log", "a");
+    if (!fp)
+        return;
+
+    fprintf (fp,
+             "ts=%llu pid=%ld stage=%s\n",
+             static_cast<unsigned long long> (zlink::clock_t ().now_ms ()),
+             static_cast<long> (getpid ()),
+             stage_ ? stage_ : "?");
+    fclose (fp);
 }
 
 }
@@ -180,12 +206,13 @@ spot_sub_t::spot_sub_t (spot_node_t *node_,
                         bool node_owned_default_) :
     _node (node_),
     _socket (socket_),
+    _runtime (node_ ? node_->runtime () : NULL),
     _attachment_id (attachment_id_),
     _tag (spot_sub_tag_value),
     _node_owned_default (node_owned_default_),
     _routing_id_locked (false),
-    _direct_handler (NULL),
-    _direct_handler_userdata (NULL),
+    _direct_handler_binding_index (0),
+    _active_direct_handler (NULL),
     _handler_state (handler_none),
     _callback_inflight (0),
     _monitor (node_ ? node_->ctx () : NULL),
@@ -303,18 +330,25 @@ int spot_sub_t::subscribe (const char *topic_)
     if (_node->ensure_healthy () != 0)
         return -1;
 
+    bool had_filters = false;
+    bool has_filters = false;
     {
         scoped_lock_t lock (_sync);
+        had_filters = !_topics.empty () || !_patterns.empty ();
         lock_routing_id ();
         if (socket->setsockopt (ZLINK_SUBSCRIBE, topic.data (), topic.size ())
             != 0)
             return -1;
         _topics.insert (topic);
         _delivery_ready_raw_filters.erase (topic);
+        has_filters = !_topics.empty () || !_patterns.empty ();
     }
     if (_node) {
+        _node->note_local_sub_filters_changed (had_filters, has_filters);
         emit_filter_applied_event (topic.c_str (),
                                    ZLINK_SERVICE_EVENT_SUBJECT_TOPIC);
+        if (_node->send_subscription_update (topic, true) != 0)
+            return -1;
         _node->schedule_subscription_replay ();
         if (_node->replay_subscriptions_if_active_peers () != 0)
             return -1;
@@ -338,19 +372,26 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
     if (_node->ensure_healthy () != 0)
         return -1;
 
+    bool had_filters = false;
+    bool has_filters = false;
     {
         scoped_lock_t lock (_sync);
+        had_filters = !_topics.empty () || !_patterns.empty ();
         lock_routing_id ();
         if (socket->setsockopt (ZLINK_SUBSCRIBE, prefix.data (), prefix.size ())
             != 0)
             return -1;
         _patterns.insert (prefix);
         _delivery_ready_raw_filters.erase (prefix);
+        has_filters = !_topics.empty () || !_patterns.empty ();
     }
     if (_node) {
+        _node->note_local_sub_filters_changed (had_filters, has_filters);
         std::string subject = prefix + "*";
         emit_filter_applied_event (subject.c_str (),
                                    ZLINK_SERVICE_EVENT_SUBJECT_PATTERN);
+        if (_node->send_subscription_update (prefix, true) != 0)
+            return -1;
         _node->schedule_subscription_replay ();
         if (_node->replay_subscriptions_if_active_peers () != 0)
             return -1;
@@ -377,7 +418,9 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
     if (_node->ensure_healthy () != 0)
         return -1;
 
+    bool had_filters = false;
     bool has_filters_after = false;
+    int first_error = 0;
     std::vector<std::string> ready_ack_endpoints;
     subject_descriptor_t subject;
     subject.subject_kind = is_pattern ? ZLINK_SERVICE_EVENT_SUBJECT_PATTERN
@@ -386,6 +429,7 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
     const std::string filter = is_pattern ? prefix : topic;
     {
         scoped_lock_t lock (_sync);
+        had_filters = !_topics.empty () || !_patterns.empty ();
         lock_routing_id ();
         if (socket->setsockopt (ZLINK_UNSUBSCRIBE, filter.data (), filter.size ())
             != 0)
@@ -397,6 +441,10 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
         _delivery_ready_raw_filters.erase (filter);
         has_filters_after = !_topics.empty () || !_patterns.empty ();
     }
+    if (_node)
+        _node->note_local_sub_filters_changed (had_filters, has_filters_after);
+    if (_node && _node->send_subscription_update (filter, false) != 0)
+        first_error = errno != 0 ? errno : EIO;
     release_ready_ack_endpoints (filter, &ready_ack_endpoints);
     if (_node) {
         const std::string ack_source_id = ready_ack_source_id ();
@@ -412,6 +460,10 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
                                    0);
     }
     mark_subject_lost (subject, NULL);
+    if (first_error != 0) {
+        errno = first_error;
+        return -1;
+    }
     return 0;
 }
 
@@ -442,6 +494,9 @@ int spot_sub_t::set_option (int option_,
             break;
         case ZLINK_SPOT_SUB_OPT_RCVBUF:
             socket_option = ZLINK_RCVBUF;
+            break;
+        case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
+            socket_option = ZLINK_RCVTIMEO;
             break;
         default:
             errno = EINVAL;
@@ -665,18 +720,26 @@ int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_,
         return -1;
     {
         scoped_lock_t lock (_sync);
-        if (_handler_state == handler_active) {
-            _direct_handler = handler_;
-            _direct_handler_userdata = userdata_;
+        if (_handler_state.load (std::memory_order_acquire) == handler_active) {
+            const unsigned int next_binding =
+              (_direct_handler_binding_index + 1) % 2;
+            _direct_handler_bindings[next_binding].handler = handler_;
+            _direct_handler_bindings[next_binding].userdata = userdata_;
+            _active_direct_handler.store (&_direct_handler_bindings[next_binding],
+                                          std::memory_order_release);
+            _direct_handler_binding_index = next_binding;
             return 0;
         }
-        if (_handler_state != handler_none) {
+        if (_handler_state.load (std::memory_order_acquire) != handler_none) {
             errno = EBUSY;
             return -1;
         }
-        _direct_handler = handler_;
-        _direct_handler_userdata = userdata_;
-        _handler_state = handler_active;
+        _direct_handler_bindings[0].handler = handler_;
+        _direct_handler_bindings[0].userdata = userdata_;
+        _direct_handler_binding_index = 0;
+        _active_direct_handler.store (&_direct_handler_bindings[0],
+                                      std::memory_order_release);
+        _handler_state.store (handler_active, std::memory_order_release);
     }
 
     if (socket->sub_dispatch_start (&spot_sub_t::dispatch_from_io, this) == 0)
@@ -684,11 +747,210 @@ int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_,
 
     {
         scoped_lock_t lock (_sync);
-        _direct_handler = NULL;
-        _direct_handler_userdata = NULL;
-        _handler_state = handler_none;
+        _active_direct_handler.store (NULL, std::memory_order_release);
+        _handler_state.store (handler_none, std::memory_order_release);
     }
     return -1;
+}
+
+int spot_sub_t::recv (zlink_msg_t **parts_,
+                      size_t *part_count_,
+                      int flags_,
+                      char *topic_out_,
+                      size_t *topic_len_)
+{
+    socket_base_t *socket = this->socket ();
+    if (!parts_ || !part_count_) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (!_node || !socket) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (!_runtime || _runtime->ensure_healthy () != 0)
+        return -1;
+
+    {
+        scoped_lock_t lock (_sync);
+        if (_handler_state.load (std::memory_order_acquire) != handler_none) {
+            errno = EBUSY;
+            return -1;
+        }
+        lock_routing_id ();
+    }
+
+    while (true) {
+        *parts_ = NULL;
+        *part_count_ = 0;
+
+        std::vector<zlink_msg_t> frames;
+        frames.reserve (2);
+
+        int rc = 0;
+        zlink_msg_t topic_frame;
+        zlink_msg_init (&topic_frame);
+        rc = socket->recv (reinterpret_cast<msg_t *> (&topic_frame), flags_);
+        if (rc != 0) {
+            zlink_msg_close (&topic_frame);
+            return -1;
+        }
+        frames.push_back (topic_frame);
+
+        if (zlink_msg_more (&topic_frame)) {
+            zlink_msg_t first_payload_frame;
+            zlink_msg_init (&first_payload_frame);
+            rc = socket->recv (reinterpret_cast<msg_t *> (&first_payload_frame), 0);
+            if (rc != 0) {
+                zlink_msg_close (&first_payload_frame);
+                close_msgv (&frames);
+                return -1;
+            }
+
+            if (!zlink_msg_more (&first_payload_frame)) {
+                const char *topic_data = static_cast<const char *> (
+                  zlink_msg_data (&frames[0]));
+                const size_t topic_size = zlink_msg_size (&frames[0]);
+
+                if (topic_out_ && topic_len_) {
+                    if (*topic_len_ < topic_size) {
+                        zlink_msg_close (&first_payload_frame);
+                        close_msgv (&frames);
+                        errno = EMSGSIZE;
+                        return -1;
+                    }
+                    if (topic_size > 0)
+                        memcpy (topic_out_, topic_data, topic_size);
+                    *topic_len_ = topic_size;
+                } else if (topic_out_) {
+                    if (topic_size > 0)
+                        memcpy (topic_out_, topic_data, topic_size);
+                    topic_out_[topic_size] = '\0';
+                } else if (topic_len_) {
+                    *topic_len_ = topic_size;
+                }
+
+                zlink_msg_t *payload =
+                  static_cast<zlink_msg_t *> (malloc (sizeof (zlink_msg_t)));
+                if (!payload) {
+                    zlink_msg_close (&first_payload_frame);
+                    close_msgv (&frames);
+                    errno = ENOMEM;
+                    return -1;
+                }
+                memset (payload, 0, sizeof (zlink_msg_t));
+
+                msg_t *dst = reinterpret_cast<msg_t *> (payload);
+                if (dst->init () != 0
+                    || dst->move (
+                         *reinterpret_cast<msg_t *> (&first_payload_frame))
+                         != 0) {
+                    zlink_msg_close (&first_payload_frame);
+                    zlink_msg_close (payload);
+                    free (payload);
+                    close_msgv (&frames);
+                    errno = EFAULT;
+                    return -1;
+                }
+
+                zlink_msg_close (&frames[0]);
+                zlink_msg_close (&first_payload_frame);
+                *parts_ = payload;
+                *part_count_ = 1;
+                return 0;
+            }
+
+            frames.push_back (first_payload_frame);
+            while (true) {
+                zlink_msg_t frame;
+                zlink_msg_init (&frame);
+                rc = socket->recv (reinterpret_cast<msg_t *> (&frame), 0);
+                if (rc != 0) {
+                    zlink_msg_close (&frame);
+                    close_msgv (&frames);
+                    return -1;
+                }
+                frames.push_back (frame);
+                if (!zlink_msg_more (&frame))
+                    break;
+            }
+        }
+
+        if (rc != 0)
+            return -1;
+        if (frames.empty ()) {
+            errno = EPROTO;
+            return -1;
+        }
+
+        zlink_msg_t &topic = frames[0];
+        const char *topic_data =
+          static_cast<const char *> (zlink_msg_data (&topic));
+        const size_t topic_size = zlink_msg_size (&topic);
+
+        std::string raw_filter;
+        std::string peer_endpoint;
+        if (is_ready_probe_message (topic_data,
+                                    topic_size,
+                                    frames.size () > 1 ? &frames[1] : NULL,
+                                    frames.size () - 1,
+                                    &raw_filter,
+                                    &peer_endpoint)) {
+            close_msgv (&frames);
+            handle_ready_probe (raw_filter, peer_endpoint);
+            continue;
+        }
+
+        if (topic_out_ && topic_len_) {
+            if (*topic_len_ < topic_size) {
+                close_msgv (&frames);
+                errno = EMSGSIZE;
+                return -1;
+            }
+            if (topic_size > 0)
+                memcpy (topic_out_, topic_data, topic_size);
+            *topic_len_ = topic_size;
+        } else if (topic_out_) {
+            if (topic_size > 0)
+                memcpy (topic_out_, topic_data, topic_size);
+            topic_out_[topic_size] = '\0';
+        } else if (topic_len_) {
+            *topic_len_ = topic_size;
+        }
+
+        const size_t payload_count = frames.size () - 1;
+        if (payload_count == 0) {
+            close_msgv (&frames);
+            return 0;
+        }
+
+        zlink_msg_t *payload = static_cast<zlink_msg_t *> (
+          malloc (payload_count * sizeof (zlink_msg_t)));
+        if (!payload) {
+            close_msgv (&frames);
+            errno = ENOMEM;
+            return -1;
+        }
+        memset (payload, 0, payload_count * sizeof (zlink_msg_t));
+
+        for (size_t i = 0; i < payload_count; ++i) {
+            msg_t *dst = reinterpret_cast<msg_t *> (&payload[i]);
+            if (dst->init () != 0
+                || dst->move (*reinterpret_cast<msg_t *> (&frames[i + 1])) != 0) {
+                for (size_t j = 0; j <= i; ++j)
+                    zlink_msg_close (&payload[j]);
+                free (payload);
+                close_msgv (&frames);
+                errno = EFAULT;
+                return -1;
+            }
+        }
+
+        zlink_msg_close (&frames[0]);
+        *parts_ = payload;
+        *part_count_ = payload_count;
+        return 0;
+    }
 }
 
 void spot_sub_t::emit_ready_event ()
@@ -840,25 +1102,37 @@ void spot_sub_t::dispatch_from_io (const zlink_routing_id_t *source_rid_,
         return;
     }
 
-    spot_sub_direct_handler_fn direct_handler = NULL;
-    void *direct_handler_userdata = NULL;
-    {
-        scoped_lock_t lock (self->_sync);
-        if (self->_handler_state != handler_active || !self->_direct_handler) {
-            close_parts (parts_, part_count_);
-            return;
-        }
-        direct_handler = self->_direct_handler;
-        direct_handler_userdata = self->_direct_handler_userdata;
-        self->_callback_inflight.add (1);
+    direct_handler_binding_t *binding =
+      self->_active_direct_handler.load (std::memory_order_acquire);
+    if (self->_handler_state.load (std::memory_order_acquire) != handler_active
+        || !binding || !binding->handler) {
+        close_parts (parts_, part_count_);
+        return;
     }
 
-    direct_handler (source_rid_, topic_, topic_len_, parts_, part_count_,
-                    direct_handler_userdata);
+    self->_callback_inflight.add (1);
+    binding = self->_active_direct_handler.load (std::memory_order_acquire);
+    if (self->_handler_state.load (std::memory_order_acquire) != handler_active
+        || !binding || !binding->handler) {
+        const bool callbacks_remaining = self->_callback_inflight.sub (1);
+        if (!callbacks_remaining
+            && self->_handler_state.load (std::memory_order_acquire)
+                 != handler_active) {
+            scoped_lock_t lock (self->_sync);
+            self->_callback_cv.broadcast ();
+        }
+        close_parts (parts_, part_count_);
+        return;
+    }
 
-    {
+    binding->handler (source_rid_, topic_, topic_len_, parts_, part_count_,
+                      binding->userdata);
+
+    const bool callbacks_remaining = self->_callback_inflight.sub (1);
+    if (!callbacks_remaining
+        && self->_handler_state.load (std::memory_order_acquire)
+             != handler_active) {
         scoped_lock_t lock (self->_sync);
-        self->_callback_inflight.sub (1);
         self->_callback_cv.broadcast ();
     }
 }
@@ -1013,7 +1287,7 @@ int spot_sub_t::stop_monitor_bridge ()
           static_cast<socket_base_t *> (raw_monitor_socket);
         if (_node && ctx)
             preserve_first_error (
-              _node->_lifecycle.close_socket_and_wait (monitor_socket, 2000),
+              _node->_lifecycle.close_socket (monitor_socket, 2000),
                                   &first_error);
         else {
             monitor_socket->stop ();
@@ -1114,6 +1388,7 @@ void spot_sub_t::monitor_loop ()
 int spot_sub_t::destroy_internal (bool allow_embedded_default_,
                                   bool notify_node_)
 {
+    spot_sub_diag_log ("destroy.begin");
     if (_node_owned_default && !allow_embedded_default_) {
         errno = EINVAL;
         return -1;
@@ -1141,9 +1416,10 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     bool has_handler = false;
     {
         scoped_lock_t lock (_sync);
-        has_handler = _handler_state != handler_none;
+        has_handler = _handler_state.load (std::memory_order_acquire)
+                      != handler_none;
         if (has_handler)
-            _handler_state = handler_clearing;
+            _handler_state.store (handler_clearing, std::memory_order_release);
     }
 
     if (socket) {
@@ -1159,7 +1435,11 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
                                         it->size ());
     }
     if (has_handler && socket && socket->sub_dispatch_active ())
+        spot_sub_diag_log ("destroy.before-sub-dispatch-stop");
+    if (has_handler && socket && socket->sub_dispatch_active ())
         socket->sub_dispatch_stop ();
+    if (has_handler)
+        spot_sub_diag_log ("destroy.after-sub-dispatch-stop");
     {
         scoped_lock_t lock (_sync);
         while (_callback_inflight.get () > 0)
@@ -1169,22 +1449,28 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         _ready_peer_endpoints.clear ();
         _ready_subject_endpoints.clear ();
         _ready_ack_endpoints.clear ();
-        _direct_handler = NULL;
-        _direct_handler_userdata = NULL;
-        _handler_state = handler_none;
+        _active_direct_handler.store (NULL, std::memory_order_release);
+        _handler_state.store (handler_none, std::memory_order_release);
         _callback_cv.broadcast ();
     }
+    spot_sub_diag_log ("destroy.before-stop-monitor-bridge");
     preserve_first_error (stop_monitor_bridge (), &first_error);
+    spot_sub_diag_log ("destroy.after-stop-monitor-bridge");
 
     zlink_service_event_t terminal;
     fill_terminal_monitor_event (&terminal, ZLINK_MONITOR_EVENT_CLOSED,
                                  _routing_id);
     _monitor.close_all (&terminal);
+    spot_sub_diag_log ("destroy.after-monitor-close-all");
 
     if (socket) {
         if (_node && _node->_runtime)
+            spot_sub_diag_log ("destroy.before-destroy-attachment");
+        if (socket && _node && _node->_runtime)
             preserve_first_error (
               _node->_runtime->destroy_attachment (_attachment_id), &first_error);
+        if (socket && _node && _node->_runtime)
+            spot_sub_diag_log ("destroy.after-destroy-attachment");
         else {
             socket->stop ();
             socket->close ();
@@ -1198,6 +1484,7 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         errno = first_error;
         return -1;
     }
+    spot_sub_diag_log ("destroy.end");
     return 0;
 }
 

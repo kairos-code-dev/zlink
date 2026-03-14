@@ -203,6 +203,65 @@ void spot_ready_monitor_handler(const zlink_service_event_t *event)
     state->cv.notify_all();
 }
 
+void close_parts(zlink_msg_t *parts, size_t part_count)
+{
+    if (!parts)
+        return;
+    for (size_t i = 0; i < part_count; ++i)
+        zlink_msg_close(&parts[i]);
+}
+
+void discard_spot_parts(const zlink_routing_id_t *,
+                        const char *,
+                        size_t,
+                        zlink_msg_t *parts,
+                        size_t part_count)
+{
+    close_parts(parts, part_count);
+}
+
+bool is_supported_transport(const std::string &transport)
+{
+    return transport == "tcp" || transport == "tls" || transport == "ws"
+           || transport == "wss";
+}
+
+void mark_fatal(int err)
+{
+    spot_client_state_t *state = g_client_state;
+    if (!state)
+        return;
+
+    std::lock_guard<std::mutex> lock(state->mutex);
+    state->fatal = true;
+    state->fatal_errno = err != 0 ? err : EIO;
+    state->cv.notify_all();
+}
+
+bool configure_spot_tls_client(void *node, const std::string &transport)
+{
+    if (transport != "tls" && transport != "wss")
+        return true;
+
+    static const std::string ca_path =
+      write_temp_cert(test_certs::ca_cert_pem, "multi_spot_ca");
+    return zlink_spot_node_set_tls_client(node, ca_path.c_str(), "localhost", 0)
+           == 0;
+}
+
+bool apply_spot_sub_options(void *sub, const multi_bench_settings_t &settings)
+{
+    const int linger_ms = 0;
+    const int rcvhwm = bench_hwm_from_env("PERF_MULTI_RCVHWM", settings.hwm);
+
+    return zlink_spot_set_sub_option(sub, ZLINK_SPOT_SUB_OPT_LINGER,
+                                     &linger_ms, sizeof(linger_ms))
+             == 0
+           && zlink_spot_set_sub_option(sub, ZLINK_SPOT_SUB_OPT_RCVHWM,
+                                        &rcvhwm, sizeof(rcvhwm))
+                == 0;
+}
+
 bool open_spot_ready_monitor(spot_client_slot_t *slot,
                              const std::string &endpoint)
 {
@@ -282,71 +341,6 @@ void close_spot_ready_monitor(spot_client_slot_t *slot)
     }
 }
 
-void spot_client_sub_handler(const zlink_routing_id_t *,
-                             const char *topic,
-                             size_t topic_len,
-                             zlink_msg_t *parts,
-                             size_t part_count);
-
-void close_parts(zlink_msg_t *parts, size_t part_count)
-{
-    if (!parts)
-        return;
-    for (size_t i = 0; i < part_count; ++i)
-        zlink_msg_close(&parts[i]);
-}
-
-void discard_spot_parts(const zlink_routing_id_t *,
-                        const char *,
-                        size_t,
-                        zlink_msg_t *parts,
-                        size_t part_count)
-{
-    close_parts(parts, part_count);
-}
-
-bool is_supported_transport(const std::string &transport)
-{
-    return transport == "tcp" || transport == "tls" || transport == "ws"
-           || transport == "wss";
-}
-
-void mark_fatal(int err)
-{
-    spot_client_state_t *state = g_client_state;
-    if (!state)
-        return;
-
-    std::lock_guard<std::mutex> lock(state->mutex);
-    state->fatal = true;
-    state->fatal_errno = err != 0 ? err : EIO;
-    state->cv.notify_all();
-}
-
-bool configure_spot_tls_client(void *node, const std::string &transport)
-{
-    if (transport != "tls" && transport != "wss")
-        return true;
-
-    static const std::string ca_path =
-      write_temp_cert(test_certs::ca_cert_pem, "multi_spot_ca");
-    return zlink_spot_node_set_tls_client(node, ca_path.c_str(), "localhost", 0)
-           == 0;
-}
-
-bool apply_spot_sub_options(void *sub, const multi_bench_settings_t &settings)
-{
-    const int linger_ms = 0;
-    const int rcvhwm = bench_hwm_from_env("PERF_MULTI_RCVHWM", settings.hwm);
-
-    return zlink_spot_set_sub_option(sub, ZLINK_SPOT_SUB_OPT_LINGER,
-                                     &linger_ms, sizeof(linger_ms))
-             == 0
-           && zlink_spot_set_sub_option(sub, ZLINK_SPOT_SUB_OPT_RCVHWM,
-                                        &rcvhwm, sizeof(rcvhwm))
-                == 0;
-}
-
 void destroy_spot_slots(std::vector<spot_client_slot_t *> *slots)
 {
     if (!slots)
@@ -367,6 +361,56 @@ void destroy_spot_slots(std::vector<spot_client_slot_t *> *slots)
     slots->clear();
 }
 
+void spot_client_sub_handler(const zlink_routing_id_t *,
+                             const char *topic,
+                             size_t topic_len,
+                             zlink_msg_t *parts,
+                             size_t part_count)
+{
+    spot_client_state_t *state = g_client_state;
+    if (!state || !topic || topic_len != std::strlen(k_topic)
+        || std::memcmp(topic, k_topic, topic_len) != 0 || part_count == 0) {
+        close_parts(parts, part_count);
+        return;
+    }
+
+    perf_multi_metric::header_t header;
+    const bool header_ok =
+      perf_multi_metric::decode_payload_header(zlink_msg_data(&parts[0]),
+                                               zlink_msg_size(&parts[0]),
+                                               &header);
+    close_parts(parts, part_count);
+    if (!header_ok)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (bench_debug_enabled() && state->seen_msg_size == 0) {
+            std::cerr << "[multi-spot-client] first recv size="
+                      << header.msg_size << " phase=" << header.phase
+                      << " run=" << header.run_id << std::endl;
+        }
+        state->seen_msg_size = header.msg_size;
+        state->seen_phase =
+          static_cast<perf_multi_metric::phase_t>(header.phase);
+        state->last_recv_us = perf_multi_metric::now_us();
+        if (state->collect_active
+            && perf_multi_metric::is_expected(
+              header,
+              k_metric_run_id,
+              perf_multi_metric::phase_active,
+              state->expected_msg_size)) {
+            ++state->active_received;
+            const double latency_us =
+              header.sent_ts_us > 0 && state->last_recv_us >= header.sent_ts_us
+                ? static_cast<double>(state->last_recv_us - header.sent_ts_us)
+                : 0.0;
+            state->latency.add(latency_us);
+        }
+        state->cv.notify_all();
+    }
+}
+
 bool create_spot_slots(ctx_guard_t &ctx,
                        const std::string &transport,
                        const std::string &endpoint,
@@ -379,7 +423,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
     const size_t service_clients =
       resolve_multi_service_clients(settings.clients);
     for (size_t i = 0; i < service_clients; ++i) {
-        spot_client_slot_t *slot = new spot_client_slot_t();
+        spot_client_slot_t *slot = new (std::nothrow) spot_client_slot_t();
         if (!slot)
             return false;
 
@@ -388,6 +432,9 @@ bool create_spot_slots(ctx_guard_t &ctx,
         slot->node =
           zlink_spot_node_new(ctx.get(), service_name, &discard_spot_parts);
         if (!slot->node || !configure_spot_tls_client(slot->node, transport)) {
+            if (bench_debug_enabled())
+                std::cerr << "[multi-spot-client] node create/tls failed slot="
+                          << i << " err=" << zlink_errno() << std::endl;
             if (slot->node)
                 zlink_spot_node_destroy(&slot->node);
             delete slot;
@@ -395,10 +442,14 @@ bool create_spot_slots(ctx_guard_t &ctx,
         }
 
         slot->sub = zlink_spot_new(slot->node, &spot_client_sub_handler);
-        if (!slot->sub || apply_spot_sub_options(slot->sub, settings) == false
+        if (!slot->sub || !apply_spot_sub_options(slot->sub, settings)
             || !open_spot_ready_monitor(slot, endpoint)
             || zlink_spot_subscribe(slot->sub, k_topic) != 0
             || zlink_spot_node_connect_peer_pub(slot->node, endpoint.c_str()) != 0) {
+            if (bench_debug_enabled())
+                std::cerr << "[multi-spot-client] slot create failed slot=" << i
+                          << " sub=" << (slot->sub != NULL)
+                          << " err=" << zlink_errno() << std::endl;
             close_spot_ready_monitor(slot);
             if (slot->sub)
                 zlink_spot_destroy(&slot->sub);
@@ -481,6 +532,7 @@ bool wait_phase_duration(spot_client_state_t *state, double seconds)
         if (state->cv.wait_until(lock, deadline) == std::cv_status::timeout)
             break;
     }
+
     return !state->fatal;
 }
 
@@ -510,52 +562,6 @@ bool wait_for_quiet(spot_client_state_t *state, int quiet_ms, int timeout_ms)
     return !state->fatal;
 }
 
-void spot_client_sub_handler(const zlink_routing_id_t *,
-                             const char *topic,
-                             size_t topic_len,
-                             zlink_msg_t *parts,
-                             size_t part_count)
-{
-    spot_client_state_t *state = g_client_state;
-    if (!state || !topic || topic_len != std::strlen(k_topic)
-        || std::memcmp(topic, k_topic, topic_len) != 0 || part_count == 0) {
-        close_parts(parts, part_count);
-        return;
-    }
-
-    perf_multi_metric::header_t header;
-    const bool header_ok =
-      perf_multi_metric::decode_payload_header(zlink_msg_data(&parts[0]),
-                                               zlink_msg_size(&parts[0]),
-                                               &header);
-    close_parts(parts, part_count);
-    if (!header_ok)
-        return;
-
-    {
-        std::lock_guard<std::mutex> lock(state->mutex);
-        state->seen_msg_size = header.msg_size;
-        state->seen_phase =
-          static_cast<perf_multi_metric::phase_t>(header.phase);
-        state->last_recv_us = perf_multi_metric::now_us();
-        if (state->collect_active
-            && perf_multi_metric::is_expected(
-              header,
-              k_metric_run_id,
-              perf_multi_metric::phase_active,
-              state->expected_msg_size)) {
-            ++state->active_received;
-            const uint64_t now_us = perf_multi_metric::now_us();
-            const double latency_us =
-              header.sent_ts_us > 0 && now_us >= header.sent_ts_us
-                ? static_cast<double>(now_us - header.sent_ts_us)
-                : 0.0;
-            state->latency.add(latency_us);
-        }
-        state->cv.notify_all();
-    }
-}
-
 bool run_single_size_case(spot_client_state_t *state,
                           const multi_bench_settings_t &settings,
                           const std::string &lib_name,
@@ -565,7 +571,7 @@ bool run_single_size_case(spot_client_state_t *state,
     reset_metrics(state, msg_size);
     if (!wait_phase_start(state, msg_size, perf_multi_metric::phase_warmup,
                           settings.connect_ready_timeout_ms)) {
-        if (bench_debug_enabled ())
+        if (bench_debug_enabled())
             std::cerr << "[multi-spot-client] warmup start timeout size="
                       << msg_size << std::endl;
         return false;
@@ -573,7 +579,7 @@ bool run_single_size_case(spot_client_state_t *state,
 
     if (!wait_phase_duration(
           state, static_cast<double>(std::max(0, settings.warmup_seconds)))) {
-        if (bench_debug_enabled ())
+        if (bench_debug_enabled())
             std::cerr << "[multi-spot-client] warmup wait failed size="
                       << msg_size << std::endl;
         return false;
@@ -585,7 +591,7 @@ bool run_single_size_case(spot_client_state_t *state,
                              perf_multi_metric::phase_drain,
                              std::max(settings.connect_ready_timeout_ms,
                                       settings.settle_ms))) {
-        if (bench_debug_enabled ())
+        if (bench_debug_enabled())
             std::cerr << "[multi-spot-client] drain start timeout size="
                       << msg_size << std::endl;
         return false;
@@ -594,7 +600,7 @@ bool run_single_size_case(spot_client_state_t *state,
     reset_metrics(state, msg_size);
     if (!wait_phase_start(state, msg_size, perf_multi_metric::phase_active,
                           settings.connect_ready_timeout_ms)) {
-        if (bench_debug_enabled ())
+        if (bench_debug_enabled())
             std::cerr << "[multi-spot-client] active start timeout size="
                       << msg_size << std::endl;
         return false;
@@ -608,7 +614,7 @@ bool run_single_size_case(spot_client_state_t *state,
     }
     if (!wait_phase_duration(
           state, static_cast<double>(std::max(1, settings.duration_seconds)))) {
-        if (bench_debug_enabled ())
+        if (bench_debug_enabled())
             std::cerr << "[multi-spot-client] active wait failed size="
                       << msg_size << std::endl;
         return false;
@@ -627,11 +633,12 @@ bool run_single_size_case(spot_client_state_t *state,
         std::lock_guard<std::mutex> lock(state->mutex);
         if (state->fatal || state->active_received == 0
             || state->latency.count() == 0) {
-            if (bench_debug_enabled ()) {
+            if (bench_debug_enabled()) {
                 std::cerr << "[multi-spot-client] metrics invalid fatal="
                           << state->fatal << " received="
-                          << state->active_received << " latency_count="
-                          << state->latency.count() << std::endl;
+                          << state->active_received
+                          << " latency_count=" << state->latency.count()
+                          << std::endl;
             }
             return false;
         }
@@ -673,13 +680,16 @@ int run_client_benchmark(const std::string &lib_name,
     spot_client_state_t state;
     g_client_state = &state;
     if (!create_spot_slots(ctx, transport, endpoint, settings, &state.slots)) {
+        if (bench_debug_enabled())
+            std::cerr << "[multi-spot-client] create_spot_slots failed"
+                      << std::endl;
         destroy_spot_slots(&state.slots);
         g_client_state = NULL;
         return 1;
     }
 
     if (!wait_all_sub_ready(state.slots, settings.connect_ready_timeout_ms)) {
-        if (bench_debug_enabled ())
+        if (bench_debug_enabled())
             std::cerr << "[multi-spot-client] subscription ready timeout"
                       << std::endl;
         destroy_spot_slots(&state.slots);

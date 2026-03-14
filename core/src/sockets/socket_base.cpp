@@ -74,6 +74,7 @@ namespace
 thread_local zlink::socket_base_t *g_current_socket_msg_dispatch_socket = NULL;
 thread_local zlink::socket_base_t *g_current_send_ready_dispatch_socket = NULL;
 thread_local zlink::pipe_t *g_current_socket_msg_dispatch_pipe = NULL;
+thread_local void *g_current_socket_msg_dispatch_subject = NULL;
 thread_local zlink_routing_id_t g_current_socket_msg_dispatch_source_rid;
 thread_local bool g_current_socket_msg_dispatch_source_rid_valid = false;
 
@@ -202,9 +203,11 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _async_quiesce_pending (false),
     _async_processing_done (true),
     _socket_msg_handler (NULL),
+    _socket_msg_handler_subject (NULL),
     _spot_handler (NULL),
     _xpub_handler (NULL),
     _send_ready_handler (NULL),
+    _send_ready_handler_subject (NULL),
     _send_ready_armed (false),
     _monitor_sync (),
     _disconnected (false)
@@ -1145,6 +1148,12 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
         }
     }
     if (unlikely (errno != EAGAIN)) {
+        if ((flags_ & ZLINK_DONTWAIT) || options.sndtimeo == 0) {
+            if (errno == ENOTCONN || errno == EHOSTUNREACH
+                || errno == ETIMEDOUT) {
+                arm_send_ready_notification ();
+            }
+        }
         return -1;
     }
 
@@ -1304,12 +1313,19 @@ int zlink::socket_base_t::socket_msg_dispatch_from_io (msg_t *msg_,
 int zlink::socket_base_t::socket_set_msg_handler (
   zlink_socket_msg_handler_fn handler_)
 {
+    return socket_set_msg_handler_ex (handler_, NULL);
+}
+
+int zlink::socket_base_t::socket_set_msg_handler_ex (
+  zlink_socket_msg_handler_fn handler_, void *subject_)
+{
     if (!handler_) {
         errno = EINVAL;
         return -1;
     }
 
     _socket_msg_handler.store (handler_, std::memory_order_release);
+    _socket_msg_handler_subject.store (subject_, std::memory_order_release);
     return 0;
 }
 
@@ -1347,6 +1363,12 @@ int zlink::socket_base_t::socket_set_xpub_handler (
 int zlink::socket_base_t::socket_set_send_ready_handler (
   zlink_send_ready_handler_fn handler_)
 {
+    return socket_set_send_ready_handler_ex (handler_, NULL);
+}
+
+int zlink::socket_base_t::socket_set_send_ready_handler_ex (
+  zlink_send_ready_handler_fn handler_, void *subject_)
+{
     if (!handler_) {
         errno = EINVAL;
         return -1;
@@ -1357,6 +1379,7 @@ int zlink::socket_base_t::socket_set_send_ready_handler (
     }
 
     _send_ready_handler.store (handler_, std::memory_order_release);
+    _send_ready_handler_subject.store (subject_, std::memory_order_release);
     return 0;
 }
 
@@ -1382,6 +1405,11 @@ zlink::pipe_t *zlink::socket_base_t::current_socket_msg_dispatch_pipe ()
     return g_current_socket_msg_dispatch_pipe;
 }
 
+void *zlink::socket_base_t::current_socket_msg_dispatch_subject ()
+{
+    return g_current_socket_msg_dispatch_subject;
+}
+
 bool zlink::socket_base_t::current_socket_msg_dispatch_source_rid (
   zlink_routing_id_t *out_)
 {
@@ -1404,7 +1432,8 @@ void zlink::socket_base_t::invoke_send_ready_handler_for_testing ()
 
     socket_base_t *previous = g_current_send_ready_dispatch_socket;
     g_current_send_ready_dispatch_socket = this;
-    handler (this);
+    void *subject = socket_send_ready_handler_subject ();
+    handler (subject ? subject : this);
     g_current_send_ready_dispatch_socket = previous;
 }
 
@@ -1429,6 +1458,16 @@ zlink::socket_base_t::socket_send_ready_handler () const
     return _send_ready_handler.load (std::memory_order_acquire);
 }
 
+void *zlink::socket_base_t::socket_msg_handler_subject () const
+{
+    return _socket_msg_handler_subject.load (std::memory_order_acquire);
+}
+
+void *zlink::socket_base_t::socket_send_ready_handler_subject () const
+{
+    return _send_ready_handler_subject.load (std::memory_order_acquire);
+}
+
 void zlink::socket_base_t::invoke_socket_msg_handler (
   zlink_socket_msg_handler_fn handler_,
   const zlink_routing_id_t *source_rid_,
@@ -1436,12 +1475,14 @@ void zlink::socket_base_t::invoke_socket_msg_handler (
   size_t part_count_)
 {
     socket_base_t *previous = g_current_socket_msg_dispatch_socket;
+    void *previous_subject = g_current_socket_msg_dispatch_subject;
     zlink_routing_id_t previous_source_rid;
     const bool previous_source_rid_valid =
       g_current_socket_msg_dispatch_source_rid_valid;
     if (previous_source_rid_valid)
         previous_source_rid = g_current_socket_msg_dispatch_source_rid;
     g_current_socket_msg_dispatch_socket = this;
+    g_current_socket_msg_dispatch_subject = socket_msg_handler_subject ();
     if (source_rid_) {
         g_current_socket_msg_dispatch_source_rid = *source_rid_;
         g_current_socket_msg_dispatch_source_rid_valid = true;
@@ -1452,6 +1493,7 @@ void zlink::socket_base_t::invoke_socket_msg_handler (
     }
     handler_ (source_rid_, parts_, part_count_);
     g_current_socket_msg_dispatch_socket = previous;
+    g_current_socket_msg_dispatch_subject = previous_subject;
     if (previous_source_rid_valid) {
         g_current_socket_msg_dispatch_source_rid = previous_source_rid;
         g_current_socket_msg_dispatch_source_rid_valid = true;

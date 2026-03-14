@@ -13,8 +13,6 @@
 #include "utils/random.hpp"
 
 #include <string.h>
-#include <map>
-
 namespace zlink
 {
 static const uint32_t spot_pub_tag_value = 0x1e6700db;
@@ -31,54 +29,9 @@ static void preserve_first_error (int rc_, int *first_error_)
 
 namespace
 {
-struct spot_pub_send_ready_registry_t
-{
-    mutex_t sync;
-    std::map<socket_base_t *, spot_pub_t *> pubs;
-};
-
-static spot_pub_send_ready_registry_t &spot_pub_send_ready_registry ()
-{
-    static spot_pub_send_ready_registry_t registry;
-    return registry;
-}
-
-static void register_spot_pub_socket (socket_base_t *socket_, spot_pub_t *pub_)
-{
-    if (!socket_ || !pub_)
-        return;
-
-    spot_pub_send_ready_registry_t &registry = spot_pub_send_ready_registry ();
-    scoped_lock_t lock (registry.sync);
-    registry.pubs[socket_] = pub_;
-}
-
-static void unregister_spot_pub_socket (socket_base_t *socket_)
-{
-    if (!socket_)
-        return;
-
-    spot_pub_send_ready_registry_t &registry = spot_pub_send_ready_registry ();
-    scoped_lock_t lock (registry.sync);
-    registry.pubs.erase (socket_);
-}
-
-static spot_pub_t *find_spot_pub_for_socket (socket_base_t *socket_)
-{
-    if (!socket_)
-        return NULL;
-
-    spot_pub_send_ready_registry_t &registry = spot_pub_send_ready_registry ();
-    scoped_lock_t lock (registry.sync);
-    std::map<socket_base_t *, spot_pub_t *>::iterator it =
-      registry.pubs.find (socket_);
-    return it != registry.pubs.end () ? it->second : NULL;
-}
-
 static void spot_pub_send_ready_adapter (void *subject_)
 {
-    spot_pub_t *pub = find_spot_pub_for_socket (
-      static_cast<socket_base_t *> (subject_));
+    spot_pub_t *pub = static_cast<spot_pub_t *> (subject_);
     if (pub)
         pub->dispatch_send_ready ();
 }
@@ -164,6 +117,7 @@ spot_pub_t::spot_pub_t (spot_node_t *node_,
                         bool node_owned_default_) :
     _node (node_),
     _socket (socket_),
+    _runtime (node_ ? node_->runtime () : NULL),
     _attachment_id (attachment_id_),
     _tag (spot_pub_tag_value),
     _node_owned_default (node_owned_default_),
@@ -268,7 +222,7 @@ int spot_pub_t::publish (const char *topic_,
         errno = EINVAL;
         return -1;
     }
-    if (_node->ensure_healthy () != 0)
+    if (!_runtime || _runtime->ensure_healthy () != 0)
         return -1;
 
     int saved_errno = 0;
@@ -361,8 +315,8 @@ int spot_pub_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_,
         return -1;
     }
 
-    register_spot_pub_socket (socket, this);
-    if (socket->socket_set_send_ready_handler (&spot_pub_send_ready_adapter)
+    if (socket->socket_set_send_ready_handler_ex (&spot_pub_send_ready_adapter,
+                                                  this)
         != 0)
         return -1;
 
@@ -525,7 +479,7 @@ int spot_pub_t::stop_monitor_bridge ()
           static_cast<socket_base_t *> (raw_monitor_socket);
         if (_node && ctx)
             preserve_first_error (
-              _node->_lifecycle.close_socket_and_wait (monitor_socket, 2000),
+              _node->_lifecycle.close_socket (monitor_socket, 2000),
                                   &first_error);
         else {
             monitor_socket->stop ();
@@ -637,7 +591,6 @@ int spot_pub_t::destroy_internal (bool allow_embedded_default_,
     _monitor.close_all (&terminal);
 
     if (socket) {
-        unregister_spot_pub_socket (socket);
         if (_node && _node->_runtime)
             preserve_first_error (
               _node->_runtime->destroy_attachment (_attachment_id), &first_error);
@@ -647,6 +600,7 @@ int spot_pub_t::destroy_internal (bool allow_embedded_default_,
         }
     }
     _socket = NULL;
+    _runtime = NULL;
     _attachment_id = 0;
     _node = NULL;
     _node_owned_default = false;

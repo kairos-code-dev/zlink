@@ -1329,8 +1329,7 @@ inline int resolve_msg_count(size_t size) {
 inline std::vector<size_t> resolve_bench_msg_sizes(size_t fallback_size)
 {
     const size_t default_size = fallback_size > 0 ? fallback_size : 64;
-    size_t resolved_size = default_size;
-    size_t parsed_size_count = 0;
+    std::vector<size_t> sizes;
 
     if (const char *env = std::getenv("PERF_MSG_SIZES")) {
         const char *cur = env;
@@ -1343,11 +1342,8 @@ inline std::vector<size_t> resolve_bench_msg_sizes(size_t fallback_size)
             errno = 0;
             char *end = NULL;
             const unsigned long parsed = std::strtoul(cur, &end, 10);
-            if (errno == 0 && end != cur && parsed > 0) {
-                if (parsed_size_count == 0)
-                    resolved_size = static_cast<size_t>(parsed);
-                ++parsed_size_count;
-            }
+            if (errno == 0 && end != cur && parsed > 0)
+                sizes.push_back(static_cast<size_t>(parsed));
 
             if (!end || end == cur)
                 break;
@@ -1359,13 +1355,8 @@ inline std::vector<size_t> resolve_bench_msg_sizes(size_t fallback_size)
         }
     }
 
-    if (parsed_size_count > 1) {
-        std::cerr << "[perf-multi] PERF_MSG_SIZES supports one size per run; "
-                  << "using first size=" << resolved_size << std::endl;
-    }
-
-    std::vector<size_t> sizes;
-    sizes.push_back(resolved_size);
+    if (sizes.empty())
+        sizes.push_back(default_size);
     return sizes;
 }
 

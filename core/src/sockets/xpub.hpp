@@ -7,6 +7,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
+#include <vector>
 
 #include "sockets/socket_base.hpp"
 #include "core/session_base.hpp"
@@ -23,6 +24,11 @@ class io_thread_t;
 class xpub_t : public socket_base_t
 {
   public:
+    enum
+    {
+        send_all_data_option = 0x7f010001
+    };
+
     xpub_t (zlink::ctx_t *parent_,
             uint32_t tid_,
             int sid_);
@@ -91,6 +97,10 @@ class xpub_t : public socket_base_t
     //  Drop messages if HWM reached, otherwise return with EAGAIN
     bool _lossy;
 
+    //  If true, forward data frames like PUB while still receiving
+    //  subscription updates from downstream XSUB peers.
+    bool _send_all_data;
+
     //  Subscriptions will not bed added automatically, only after calling set option with ZLINK_SUBSCRIBE or ZLINK_UNSUBSCRIBE
     bool _manual;
 
@@ -99,6 +109,7 @@ class xpub_t : public socket_base_t
 
     //  Function to be applied to match the last pipe.
     static void mark_last_pipe_as_matching (zlink::pipe_t *pipe_, xpub_t *self_);
+    static void capture_and_mark_as_matching (zlink::pipe_t *pipe_, xpub_t *self_);
 
     //  Last pipe that sent subscription message, only used if xpub is on manual
     pipe_t *_last_pipe;
@@ -114,6 +125,11 @@ class xpub_t : public socket_base_t
     std::deque<blob_t> _pending_data;
     std::deque<metadata_t *> _pending_metadata;
     std::deque<unsigned char> _pending_flags;
+    uint64_t _subscription_generation;
+    uint64_t _cached_match_generation;
+    std::vector<unsigned char> _cached_match_topic;
+    std::vector<pipe_t *> _cached_match_pipes;
+    std::vector<pipe_t *> _cache_build_pipes;
     std::atomic<bool> _dispatch_active;
     std::atomic<uint32_t> _dispatch_inflight;
     mutable std::mutex _dispatch_control_mu;
@@ -123,6 +139,7 @@ class xpub_t : public socket_base_t
     int dispatch_ready_messages ();
     int dispatch_message (zlink::msg_t *msg_);
     void notify_dispatch_stopped ();
+    void invalidate_match_cache ();
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (xpub_t)
 };

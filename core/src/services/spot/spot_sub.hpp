@@ -22,6 +22,7 @@ namespace zlink
 {
 class socket_base_t;
 class spot_node_t;
+struct spot_runtime_t;
 
 typedef void (*spot_sub_direct_handler_fn) (
   const zlink_routing_id_t *source_rid_,
@@ -42,6 +43,14 @@ class spot_sub_t
         uint32_t subject_kind;
     };
 
+    struct direct_handler_binding_t
+    {
+        direct_handler_binding_t () : handler (NULL), userdata (NULL) {}
+
+        spot_sub_direct_handler_fn handler;
+        void *userdata;
+    };
+
     spot_sub_t (spot_node_t *node_,
                 socket_base_t *socket_,
                 uint64_t attachment_id_,
@@ -60,6 +69,11 @@ class spot_sub_t
     void *monitor_open (int events_);
     int set_direct_handler (spot_sub_direct_handler_fn handler_,
                             void *userdata_);
+    int recv (zlink_msg_t **parts_,
+              size_t *part_count_,
+              int flags_,
+              char *topic_out_,
+              size_t *topic_len_);
     bool has_filters () const;
     void append_raw_filters (std::set<std::string> *out_) const;
     void append_replay_raw_filters (std::set<std::string> *out_) const;
@@ -127,6 +141,7 @@ class spot_sub_t
 
     spot_node_t *_node;
     socket_base_t *_socket;
+    spot_runtime_t *_runtime;
     uint64_t _attachment_id;
     uint32_t _tag;
     bool _node_owned_default;
@@ -142,9 +157,10 @@ class spot_sub_t
     std::map<std::string, std::string> _ready_subject_endpoints;
     std::map<std::string, std::set<std::string> > _ready_ack_endpoints;
 
-    spot_sub_direct_handler_fn _direct_handler;
-    void *_direct_handler_userdata;
-    handler_state_t _handler_state;
+    direct_handler_binding_t _direct_handler_bindings[2];
+    unsigned int _direct_handler_binding_index;
+    std::atomic<direct_handler_binding_t *> _active_direct_handler;
+    std::atomic<handler_state_t> _handler_state;
     atomic_counter_t _callback_inflight;
     condition_variable_t _callback_cv;
     service_monitor_hub_t _monitor;

@@ -392,6 +392,7 @@ int zlink::router_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
         source_rid = _dispatch_source_rid;
     else
         resolve_socket_msg_source_rid (pipe_, &source_rid);
+
     invoke_socket_msg_handler (handler, &source_rid, &_dispatch_parts[0],
                                _dispatch_parts.size ());
     _dispatch_parts.clear ();

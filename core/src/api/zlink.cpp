@@ -840,6 +840,47 @@ static inline spot_handle_t *as_spot_handle (void *spot_)
     return spot;
 }
 
+static zlink::spot_pub_t *ensure_spot_pub (spot_handle_t *spot_)
+{
+    if (!spot_ || !spot_->node) {
+        errno = EFAULT;
+        return NULL;
+    }
+
+    if (spot_->pub)
+        return spot_->pub;
+
+    spot_->pub = spot_->node->create_spot_pub ();
+    return spot_->pub;
+}
+
+static zlink::spot_sub_t *ensure_spot_sub (spot_handle_t *spot_)
+{
+    if (!spot_ || !spot_->node) {
+        errno = EFAULT;
+        return NULL;
+    }
+
+    if (spot_->sub)
+        return spot_->sub;
+
+    zlink::spot_sub_t *sub = spot_->node->create_spot_sub ();
+    if (!sub)
+        return NULL;
+
+    if (spot_->handler
+        && sub->set_direct_handler (&spot_sub_handler_adapter, spot_) != 0) {
+        const int err = errno;
+        (void) sub->destroy ();
+        delete sub;
+        errno = err;
+        return NULL;
+    }
+
+    spot_->sub = sub;
+    return spot_->sub;
+}
+
 static int recv_registry_reply_frames (void *socket_,
                                        uint16_t expected_msg_id_,
                                        void *entries_,
@@ -1759,23 +1800,43 @@ int zlink_service_monitor_close (void **monitor_p_)
     if (!handle.socket)
         return -1;
 
-    zlink::ctx_t *ctx = handle.socket->get_ctx ();
     zlink::socket_base_t *socket = handle.socket;
     const int linger = 0;
     (void) socket->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
     monitor_handler_state_t *monitor_state = find_monitor_handler_state (socket);
+    const bool had_dispatch_monitor =
+      monitor_state
+      && (monitor_state->socket_handler.load (std::memory_order_acquire)
+            || monitor_state->service_handler.load (std::memory_order_acquire));
     const bool no_dispatch_monitor =
       monitor_state
       && !monitor_state->socket_handler.load (std::memory_order_acquire)
       && !monitor_state->service_handler.load (std::memory_order_acquire);
+    if (monitor_state && had_dispatch_monitor) {
+        monitor_state->socket_handler.store (NULL, std::memory_order_release);
+        monitor_state->service_handler.store (NULL,
+                                              std::memory_order_release);
+    }
     if (no_dispatch_monitor) {
         // Ignore-handler/direct-poll monitors do not run a dispatch worker.
         socket->stop ();
+    } else if (monitor_state) {
+        const uint64_t deadline_ms = zlink::clock_t ().now_ms () + 2000;
+        while (monitor_state->callback_depth.load (std::memory_order_acquire)
+               > 0) {
+            if (zlink::clock_t ().now_ms () >= deadline_ms) {
+                errno = EBUSY;
+                return -1;
+            }
+#ifdef ZLINK_HAVE_WINDOWS
+            Sleep (1);
+#else
+            usleep (1000);
+#endif
+        }
     }
     const int rc = zlink_close (monitor);
     if (rc == 0) {
-        if (ctx && !no_dispatch_monitor)
-            (void) ctx->wait_for_socket_removal (socket, 2000);
         *monitor_p_ = NULL;
     }
     return rc;
@@ -2571,7 +2632,7 @@ void *zlink_spot_node_new (void *ctx_,
         errno = EFAULT;
         return NULL;
     }
-    if (!service_name_ || service_name_[0] == '\0' || !handler_) {
+    if (!service_name_ || service_name_[0] == '\0') {
         errno = EINVAL;
         return NULL;
     }
@@ -2587,7 +2648,7 @@ void *zlink_spot_node_new (void *ctx_,
         errno = EINVAL;
         return NULL;
     }
-    if (install_spot_node_handler (node, handler_) != 0) {
+    if (handler_ && install_spot_node_handler (node, handler_) != 0) {
         const int err = errno;
         node->destroy ();
         delete node;
@@ -2837,10 +2898,8 @@ void *zlink_spot_new (void *spot_node_, zlink_spot_handler_fn handler_)
         errno = EFAULT;
         return NULL;
     }
-    if (!handler_) {
-        errno = EINVAL;
+    if (node->ensure_healthy () != 0)
         return NULL;
-    }
 
     spot_handle_t *spot = new (std::nothrow) spot_handle_t;
     if (!spot) {
@@ -2849,30 +2908,6 @@ void *zlink_spot_new (void *spot_node_, zlink_spot_handler_fn handler_)
     }
     spot->node = node;
     spot->handler = handler_;
-
-    spot->pub = node->create_spot_pub ();
-    if (!spot->pub) {
-        delete spot;
-        return NULL;
-    }
-
-    spot->sub = node->create_spot_sub ();
-    if (!spot->sub) {
-        spot->pub->destroy ();
-        delete spot->pub;
-        delete spot;
-        return NULL;
-    }
-    if (spot->sub->set_direct_handler (&spot_sub_handler_adapter, spot) != 0) {
-        const int err = errno;
-        spot->sub->destroy ();
-        delete spot->sub;
-        spot->pub->destroy ();
-        delete spot->pub;
-        delete spot;
-        errno = err;
-        return NULL;
-    }
 
     return static_cast<void *> (spot);
 }
@@ -2917,11 +2952,30 @@ int zlink_spot_publish (void *spot_,
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return -1;
-    if (!spot->pub) {
+    zlink::spot_pub_t *pub = ensure_spot_pub (spot);
+    if (!pub) {
         errno = ENOTSUP;
         return -1;
     }
-    return spot->pub->publish (topic_id_, parts_, part_count_, flags_);
+    return pub->publish (topic_id_, parts_, part_count_, flags_);
+}
+
+int zlink_spot_recv (void *spot_,
+                     zlink_msg_t **parts_,
+                     size_t *part_count_,
+                     int flags_,
+                     char *topic_out_,
+                     size_t *topic_len_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return -1;
+    zlink::spot_sub_t *sub = ensure_spot_sub (spot);
+    if (!sub) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return sub->recv (parts_, part_count_, flags_, topic_out_, topic_len_);
 }
 
 int zlink_spot_subscribe (void *spot_, const char *topic_id_)
@@ -2929,11 +2983,12 @@ int zlink_spot_subscribe (void *spot_, const char *topic_id_)
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return -1;
-    if (!spot->sub) {
+    zlink::spot_sub_t *sub = ensure_spot_sub (spot);
+    if (!sub) {
         errno = ENOTSUP;
         return -1;
     }
-    return spot->sub->subscribe (topic_id_);
+    return sub->subscribe (topic_id_);
 }
 
 int zlink_spot_subscribe_pattern (void *spot_, const char *pattern_)
@@ -2941,11 +2996,12 @@ int zlink_spot_subscribe_pattern (void *spot_, const char *pattern_)
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return -1;
-    if (!spot->sub) {
+    zlink::spot_sub_t *sub = ensure_spot_sub (spot);
+    if (!sub) {
         errno = ENOTSUP;
         return -1;
     }
-    return spot->sub->subscribe_pattern (pattern_);
+    return sub->subscribe_pattern (pattern_);
 }
 
 int zlink_spot_unsubscribe (void *spot_, const char *topic_id_or_pattern_)
@@ -2953,11 +3009,12 @@ int zlink_spot_unsubscribe (void *spot_, const char *topic_id_or_pattern_)
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return -1;
-    if (!spot->sub) {
+    zlink::spot_sub_t *sub = ensure_spot_sub (spot);
+    if (!sub) {
         errno = ENOTSUP;
         return -1;
     }
-    return spot->sub->unsubscribe (topic_id_or_pattern_);
+    return sub->unsubscribe (topic_id_or_pattern_);
 }
 
 int zlink_spot_set_send_ready_handler (void *spot_,
@@ -2966,11 +3023,12 @@ int zlink_spot_set_send_ready_handler (void *spot_,
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return -1;
-    if (!spot->pub) {
+    zlink::spot_pub_t *pub = ensure_spot_pub (spot);
+    if (!pub) {
         errno = ENOTSUP;
         return -1;
     }
-    return spot->pub->set_send_ready_handler (handler_, spot);
+    return pub->set_send_ready_handler (handler_, spot);
 }
 
 int zlink_spot_set_pub_option (void *spot_,
@@ -2981,11 +3039,12 @@ int zlink_spot_set_pub_option (void *spot_,
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return -1;
-    if (!spot->pub) {
+    zlink::spot_pub_t *pub = ensure_spot_pub (spot);
+    if (!pub) {
         errno = ENOTSUP;
         return -1;
     }
-    return spot->pub->set_option (option_, optval_, optvallen_);
+    return pub->set_option (option_, optval_, optvallen_);
 }
 
 int zlink_spot_set_sub_option (void *spot_,
@@ -2996,11 +3055,12 @@ int zlink_spot_set_sub_option (void *spot_,
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return -1;
-    if (!spot->sub) {
+    zlink::spot_sub_t *sub = ensure_spot_sub (spot);
+    if (!sub) {
         errno = ENOTSUP;
         return -1;
     }
-    return spot->sub->set_option (option_, optval_, optvallen_);
+    return sub->set_option (option_, optval_, optvallen_);
 }
 
 static void *open_spot_service_monitor (void *monitor_,
@@ -3051,24 +3111,26 @@ void *zlink_spot_monitor_open (void *spot_,
     }
 
     if (role_ == ZLINK_SPOT_ROLE_PUB) {
-        if (!spot->pub) {
+        zlink::spot_pub_t *pub = ensure_spot_pub (spot);
+        if (!pub) {
             errno = ENOTSUP;
             return NULL;
         }
         return open_spot_service_monitor (
-          spot->pub->monitor_open (events_), handler_,
+          pub->monitor_open (events_), handler_,
           &spot_pub_monitor_snapshot_provider,
-          static_cast<void *> (spot->pub));
+          static_cast<void *> (pub));
     }
     if (role_ == ZLINK_SPOT_ROLE_SUB) {
-        if (!spot->sub) {
+        zlink::spot_sub_t *sub = ensure_spot_sub (spot);
+        if (!sub) {
             errno = ENOTSUP;
             return NULL;
         }
         return open_spot_service_monitor (
-          spot->sub->monitor_open (events_), handler_,
+          sub->monitor_open (events_), handler_,
           &spot_sub_monitor_snapshot_provider,
-          static_cast<void *> (spot->sub));
+          static_cast<void *> (sub));
     }
 
     errno = EINVAL;

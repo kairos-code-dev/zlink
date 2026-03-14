@@ -19,10 +19,13 @@ zlink::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _process_subscribe (false),
     _only_first_subscribe (false),
     _lossy (true),
+    _send_all_data (false),
     _manual (false),
     _send_last_pipe (false),
     _pending_pipes (),
     _welcome_msg (),
+    _subscription_generation (1),
+    _cached_match_generation (0),
     _dispatch_active (false),
     _dispatch_inflight (0)
 {
@@ -49,11 +52,14 @@ void zlink::xpub_t::xattach_pipe (pipe_t *pipe_,
 
     zlink_assert (pipe_);
     _dist.attach (pipe_);
+    invalidate_match_cache ();
 
     //  If subscribe_to_all_ is specified, the caller would like to subscribe
     //  to all data on this pipe, implicitly.
-    if (subscribe_to_all_)
+    if (subscribe_to_all_) {
         _subscriptions.add (NULL, 0, pipe_);
+        ++_subscription_generation;
+    }
 
     // if welcome message exists, send a copy of it
     if (_welcome_msg.size () > 0) {
@@ -122,10 +128,16 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
                     //  TODO reconsider what to do if rm_result == mtrie_t::not_found
                     notify =
                       rm_result != mtrie_t::values_remain || _verbose_unsubs;
+                    if (rm_result != mtrie_t::not_found) {
+                        ++_subscription_generation;
+                        invalidate_match_cache ();
+                    }
                 } else {
                     const bool first_added =
                       _subscriptions.add (data, size, pipe_);
                     notify = first_added || _verbose_subs;
+                    ++_subscription_generation;
+                    invalidate_match_cache ();
                 }
             }
 
@@ -173,6 +185,7 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
 
 void zlink::xpub_t::xwrite_activated (pipe_t *pipe_)
 {
+    invalidate_match_cache ();
     _dist.activated (pipe_);
 }
 
@@ -203,14 +216,29 @@ int zlink::xpub_t::xsetsockopt (int option_,
             _manual = (*static_cast<const int *> (optval_) != 0);
         else if (option_ == ZLINK_ONLY_FIRST_SUBSCRIBE)
             _only_first_subscribe = (*static_cast<const int *> (optval_) != 0);
+        invalidate_match_cache ();
+    } else if (option_ == send_all_data_option) {
+        if (optvallen_ != sizeof (int)
+            || *static_cast<const int *> (optval_) < 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        _send_all_data = (*static_cast<const int *> (optval_) != 0);
+        invalidate_match_cache ();
     } else if (option_ == ZLINK_SUBSCRIBE && _manual) {
-        if (_last_pipe != NULL)
+        if (_last_pipe != NULL) {
             _subscriptions.add ((unsigned char *) optval_, optvallen_,
                                 _last_pipe);
+            ++_subscription_generation;
+            invalidate_match_cache ();
+        }
     } else if (option_ == ZLINK_UNSUBSCRIBE && _manual) {
-        if (_last_pipe != NULL)
+        if (_last_pipe != NULL) {
             _subscriptions.rm ((unsigned char *) optval_, optvallen_,
                                _last_pipe);
+            ++_subscription_generation;
+            invalidate_match_cache ();
+        }
     } else if (option_ == ZLINK_XPUB_WELCOME_MSG) {
         _welcome_msg.close ();
 
@@ -254,6 +282,7 @@ static void stub (zlink::mtrie_t::prefix_t data_, size_t size_, void *arg_)
 
 void zlink::xpub_t::xpipe_terminated (pipe_t *pipe_)
 {
+    bool changed = false;
     if (_manual) {
         //  Remove the pipe from the trie and send corresponding manual
         //  unsubscriptions upstream.
@@ -262,6 +291,7 @@ void zlink::xpub_t::xpipe_terminated (pipe_t *pipe_)
         //  care of by the manual call above. subscriptions is the real mtrie,
         //  so the pipe must be removed from there or it will be left over.
         _subscriptions.rm (pipe_, stub, static_cast<void *> (NULL), false);
+        changed = true;
 
         // In case the pipe is currently set as last we must clear it to prevent
         // subscriptions from being re-added.
@@ -273,14 +303,25 @@ void zlink::xpub_t::xpipe_terminated (pipe_t *pipe_)
         //  is interested in anymore, send corresponding unsubscriptions
         //  upstream.
         _subscriptions.rm (pipe_, send_unsubscription, this, !_verbose_unsubs);
+        changed = true;
     }
 
+    if (changed) {
+        ++_subscription_generation;
+        invalidate_match_cache ();
+    }
     _dist.pipe_terminated (pipe_);
 }
 
 void zlink::xpub_t::mark_as_matching (pipe_t *pipe_, xpub_t *self_)
 {
     self_->_dist.match (pipe_);
+}
+
+void zlink::xpub_t::capture_and_mark_as_matching (pipe_t *pipe_, xpub_t *self_)
+{
+    self_->_dist.match (pipe_);
+    self_->_cache_build_pipes.push_back (pipe_);
 }
 
 void zlink::xpub_t::mark_last_pipe_as_matching (pipe_t *pipe_, xpub_t *self_)
@@ -293,19 +334,53 @@ int zlink::xpub_t::xsend (msg_t *msg_)
 {
     const bool msg_more = (msg_->flags () & msg_t::more) != 0;
 
+    if (_send_all_data && !_manual && !options.invert_matching) {
+        int rc = -1;
+        if (_lossy || _dist.check_hwm ()) {
+            if (_dist.send_to_all (msg_) == 0) {
+                _more_send = msg_more;
+                rc = 0;
+            }
+        } else
+            errno = EAGAIN;
+        return rc;
+    }
+
     //  For the first part of multi-part message, find the matching pipes.
     if (!_more_send) {
         // Ensure nothing from previous failed attempt to send is left matched
         _dist.unmatch ();
 
-        if (unlikely (_manual && _last_pipe && _send_last_pipe)) {
+        const unsigned char *data =
+          static_cast<const unsigned char *> (msg_->data ());
+        const size_t size = msg_->size ();
+        const bool can_use_cached_matches =
+          !_manual && !options.invert_matching
+          && _cached_match_generation == _subscription_generation
+          && _cached_match_topic.size () == size
+          && (size == 0
+              || memcmp (&_cached_match_topic[0], data, size) == 0);
+
+        if (can_use_cached_matches) {
+            for (std::vector<pipe_t *>::const_iterator it =
+                   _cached_match_pipes.begin ();
+                 it != _cached_match_pipes.end (); ++it)
+                _dist.match (*it);
+        } else if (unlikely (_manual && _last_pipe && _send_last_pipe)) {
             _subscriptions.match (static_cast<unsigned char *> (msg_->data ()),
                                   msg_->size (), mark_last_pipe_as_matching,
                                   this);
             _last_pipe = NULL;
-        } else
+            invalidate_match_cache ();
+        } else {
+            _cache_build_pipes.clear ();
             _subscriptions.match (static_cast<unsigned char *> (msg_->data ()),
-                                  msg_->size (), mark_as_matching, this);
+                                  msg_->size (), capture_and_mark_as_matching,
+                                  this);
+            _cached_match_pipes.swap (_cache_build_pipes);
+            _cached_match_topic.assign (data, data + size);
+            _cached_match_generation = _subscription_generation;
+        }
         // If inverted matching is used, reverse the selection now
         if (options.invert_matching) {
             _dist.reverse_match ();
@@ -325,6 +400,14 @@ int zlink::xpub_t::xsend (msg_t *msg_)
     } else
         errno = EAGAIN;
     return rc;
+}
+
+void zlink::xpub_t::invalidate_match_cache ()
+{
+    _cached_match_generation = 0;
+    _cached_match_topic.clear ();
+    _cached_match_pipes.clear ();
+    _cache_build_pipes.clear ();
 }
 
 bool zlink::xpub_t::xhas_out ()

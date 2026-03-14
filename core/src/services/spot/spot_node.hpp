@@ -52,6 +52,7 @@ class spot_node_t : public discovery_observer_t
         option_setting_t linger;
         option_setting_t sndbuf;
         option_setting_t rcvbuf;
+        option_setting_t rcvtimeo;
     };
 
     spot_node_t (ctx_t *ctx_, const char *service_name_);
@@ -89,9 +90,13 @@ class spot_node_t : public discovery_observer_t
     void on_discovery_destroyed (discovery_t *discovery_) ZLINK_OVERRIDE;
 
     ctx_t *ctx () const { return _ctx; }
+    spot_runtime_t *runtime () const { return _runtime; }
     const std::string &pub_ingress_endpoint () const;
     const std::string &sub_fanout_endpoint () const;
     bool has_active_peers () const;
+    bool has_local_filtered_subs () const;
+    void note_local_sub_filters_changed (bool had_filters_,
+                                         bool has_filters_);
     int replay_subscriptions_if_active_peers ();
     void schedule_subscription_replay ();
     std::string first_active_peer_endpoint () const;
@@ -159,6 +164,8 @@ class spot_node_t : public discovery_observer_t
                                         bool subscribe_);
     void notify_pub_first_delivery_ready_settled (const std::string &subject_,
                                                   uint32_t ready_count_);
+    int send_subscription_update (const std::string &raw_filter_,
+                                  bool subscribe_);
     int send_ready_ack_update (const std::string &target_endpoint_,
                                const std::string &raw_filter_,
                                const std::string &ack_source_id_,
@@ -226,6 +233,8 @@ class spot_node_t : public discovery_observer_t
     int _local_fanout_sndhwm_cfg;
     int _local_pub_ingress_rcvhwm_default;
     int _local_fanout_sndhwm_default;
+    std::atomic<uint32_t> _local_filtered_sub_count;
+    std::atomic<uint32_t> _active_peer_count;
 
     spot_pub_t *_default_pub;
     spot_sub_t *_default_sub;

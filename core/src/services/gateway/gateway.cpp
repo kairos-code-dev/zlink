@@ -19,6 +19,7 @@
 #include <cerrno>
 #include <cstring>
 #include <cstdlib>
+#include <cstdio>
 
 #include <zlink.h>
 
@@ -28,57 +29,12 @@ namespace
 {
 static const uint32_t gateway_tag_value = 0x1e6700d7;
 
-struct gateway_handler_registry_t
-{
-    mutex_t sync;
-    std::map<socket_base_t *, gateway_t *> gateways;
-};
-
-static gateway_handler_registry_t &gateway_handler_registry ()
-{
-    static gateway_handler_registry_t registry;
-    return registry;
-}
-
-static void register_gateway_handler_socket (socket_base_t *socket_,
-                                             gateway_t *gateway_)
-{
-    if (!socket_ || !gateway_)
-        return;
-
-    gateway_handler_registry_t &registry = gateway_handler_registry ();
-    scoped_lock_t lock (registry.sync);
-    registry.gateways[socket_] = gateway_;
-}
-
-static void unregister_gateway_handler_socket (socket_base_t *socket_)
-{
-    if (!socket_)
-        return;
-
-    gateway_handler_registry_t &registry = gateway_handler_registry ();
-    scoped_lock_t lock (registry.sync);
-    registry.gateways.erase (socket_);
-}
-
-static gateway_t *find_gateway_for_dispatch (socket_base_t *socket_)
-{
-    if (!socket_)
-        return NULL;
-
-    gateway_handler_registry_t &registry = gateway_handler_registry ();
-    scoped_lock_t lock (registry.sync);
-    std::map<socket_base_t *, gateway_t *>::iterator it =
-      registry.gateways.find (socket_);
-    return it != registry.gateways.end () ? it->second : NULL;
-}
-
 static void gateway_router_msg_handler (const zlink_routing_id_t *source_rid_,
                                         zlink_msg_t *parts_,
                                         size_t part_count_)
 {
-    socket_base_t *socket = socket_base_t::current_socket_msg_dispatch_socket ();
-    gateway_t *gateway = find_gateway_for_dispatch (socket);
+    gateway_t *gateway = static_cast<gateway_t *> (
+      socket_base_t::current_socket_msg_dispatch_subject ());
     if (!gateway) {
         for (size_t i = 0; i < part_count_; ++i)
             zlink_msg_close (&parts_[i]);
@@ -90,8 +46,7 @@ static void gateway_router_msg_handler (const zlink_routing_id_t *source_rid_,
 
 static void gateway_send_ready_handler (void *subject_)
 {
-    gateway_t *gateway = find_gateway_for_dispatch (
-      static_cast<socket_base_t *> (subject_));
+    gateway_t *gateway = static_cast<gateway_t *> (subject_);
     if (!gateway)
         return;
     gateway->dispatch_send_ready ();
@@ -214,8 +169,6 @@ static void rollback_gateway_runtime_socket_init (gateway_runtime_t *runtime_)
     if (!runtime_)
         return;
 
-    if (runtime_->router_socket)
-        unregister_gateway_handler_socket (runtime_->router_socket);
     if (runtime_->monitor_socket) {
         socket_base_t *monitor_socket =
           static_cast<socket_base_t *> (runtime_->monitor_socket);
@@ -288,6 +241,24 @@ static uint32_t count_ready_for_service (
 static uint64_t gateway_peer_report_interval_ms ()
 {
     return 1000;
+}
+
+static void gateway_diag_log (const char *stage_)
+{
+    if (!getenv ("ZLINK_GATEWAY_DIAG_LOG"))
+        return;
+
+    const uint64_t now_ms = zlink::clock_t ().now_ms ();
+    FILE *fp = fopen ("/tmp/zlink_gateway_diag.log", "a");
+    if (!fp)
+        return;
+
+    fprintf (fp,
+             "ts=%llu pid=%ld stage=%s\n",
+             static_cast<unsigned long long> (now_ms),
+             static_cast<long> (getpid ()),
+             stage_ ? stage_ : "?");
+    fclose (fp);
 }
 
 static std::string gateway_peer_key (const std::string &service_name_,
@@ -646,17 +617,16 @@ int gateway_t::init_router_socket ()
     _runtime->router_socket->setsockopt (ZLINK_ROUTER_HANDOVER, &handover,
                                 sizeof (handover));
     if (_handler.load (std::memory_order_acquire) != NULL) {
-        register_gateway_handler_socket (_runtime->router_socket, this);
-        if (_runtime->router_socket->socket_set_msg_handler (&gateway_router_msg_handler)
+        if (_runtime->router_socket->socket_set_msg_handler_ex (
+              &gateway_router_msg_handler, this)
             != 0) {
             rollback_gateway_runtime_socket_init (_runtime);
             return -1;
         }
     }
     if (_send_ready_handler.load (std::memory_order_acquire) != NULL) {
-        register_gateway_handler_socket (_runtime->router_socket, this);
-        if (_runtime->router_socket->socket_set_send_ready_handler (
-              &gateway_send_ready_handler)
+        if (_runtime->router_socket->socket_set_send_ready_handler_ex (
+              &gateway_send_ready_handler, this)
             != 0) {
             rollback_gateway_runtime_socket_init (_runtime);
             return -1;
@@ -1849,10 +1819,9 @@ int gateway_t::set_handler (zlink_socket_msg_handler_fn handler_)
         return -1;
     _handler.store (handler_, std::memory_order_release);
     if (_runtime->router_socket) {
-        register_gateway_handler_socket (_runtime->router_socket, this);
-        if (_runtime->router_socket->socket_set_msg_handler (&gateway_router_msg_handler)
+        if (_runtime->router_socket->socket_set_msg_handler_ex (
+              &gateway_router_msg_handler, this)
             != 0) {
-            unregister_gateway_handler_socket (_runtime->router_socket);
             return -1;
         }
     }
@@ -1867,9 +1836,8 @@ int gateway_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_)
     }
 
     if (_runtime->router_socket) {
-        register_gateway_handler_socket (_runtime->router_socket, this);
-        if (_runtime->router_socket->socket_set_send_ready_handler (
-              &gateway_send_ready_handler)
+        if (_runtime->router_socket->socket_set_send_ready_handler_ex (
+              &gateway_send_ready_handler, this)
             != 0) {
             return -1;
         }
@@ -1906,12 +1874,14 @@ int gateway_t::set_tls_client (const char *ca_cert_,
 
 int gateway_t::destroy ()
 {
+    gateway_diag_log ("destroy.begin");
     std::set<std::string> endpoints_to_term;
 
     _runtime->stop.set (1);
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
     if (runtime && _runtime->refresh_task_id != 0)
         runtime->remove_task (_runtime->refresh_task_id);
+    gateway_diag_log ("destroy.after-remove-task");
     _runtime->refresh_task_id = 0;
     if (_discovery)
         _discovery->remove_observer (this);
@@ -1962,21 +1932,24 @@ int gateway_t::destroy ()
     terminal.detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
     terminal.routing_id = _routing_id;
     _monitor.close_all (&terminal);
+    gateway_diag_log ("destroy.after-monitor-close-all");
     if (_runtime->monitor_socket) {
         socket_base_t *monitor_socket =
           static_cast<socket_base_t *> (_runtime->monitor_socket);
         _runtime->lifecycle.close_socket (monitor_socket);
         _runtime->monitor_socket = NULL;
     }
+    gateway_diag_log ("destroy.after-monitor-socket-close");
     if (_runtime->router_socket) {
         for (std::set<std::string>::const_iterator it = endpoints_to_term.begin (),
                                                    end = endpoints_to_term.end ();
              it != end; ++it)
             (void) _runtime->router_socket->term_endpoint (it->c_str ());
-        unregister_gateway_handler_socket (_runtime->router_socket);
         (void) _runtime->lifecycle.close_socket (_runtime->router_socket);
     }
+    gateway_diag_log ("destroy.before-wait-drained");
     (void) _runtime->lifecycle.wait_drained (10000);
+    gateway_diag_log ("destroy.after-wait-drained");
     return 0;
 }
 

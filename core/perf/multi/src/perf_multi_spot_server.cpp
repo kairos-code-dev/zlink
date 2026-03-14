@@ -471,12 +471,23 @@ send_status_t try_publish_locked(spot_server_state_t *state)
     (void) zlink_msg_close(&part);
 
     if (rc == 0) {
+        if (bench_debug_enabled () && state->next_seq == 1) {
+            std::cerr << "[multi-spot-server] first send ok size="
+                      << state->msg_size << " phase="
+                      << static_cast<int> (state->phase) << std::endl;
+        }
         state->send_pending = false;
         ++state->next_seq;
         return send_status_ok;
     }
     if (saved_errno == EAGAIN || saved_errno == EHOSTUNREACH
         || saved_errno == ENOTCONN || saved_errno == ETIMEDOUT) {
+        if (bench_debug_enabled () && state->next_seq == 1) {
+            std::cerr << "[multi-spot-server] first send blocked size="
+                      << state->msg_size << " phase="
+                      << static_cast<int> (state->phase)
+                      << " errno=" << saved_errno << std::endl;
+        }
         state->send_pending = true;
         errno = saved_errno;
         return send_status_blocked;
@@ -591,6 +602,12 @@ bool run_phase(spot_server_state_t *state,
         std::lock_guard<std::mutex> lock(state->mutex);
         state->send_enabled = false;
         state->send_pending = false;
+        if (bench_debug_enabled ()) {
+            std::cerr << "[multi-spot-server] phase done size=" << msg_size
+                      << " phase=" << static_cast<int> (phase)
+                      << " sent=" << (state->next_seq > 0 ? state->next_seq - 1 : 0)
+                      << " fatal_errno=" << state->fatal_errno << std::endl;
+        }
         if (state->fatal_errno != 0)
             return false;
     }

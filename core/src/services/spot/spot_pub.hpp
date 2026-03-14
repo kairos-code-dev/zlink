@@ -18,6 +18,7 @@ namespace zlink
 {
 class socket_base_t;
 class spot_node_t;
+struct spot_runtime_t;
 
 class spot_pub_t
 {
@@ -71,6 +72,7 @@ class spot_pub_t
 
     spot_node_t *_node;
     socket_base_t *_socket;
+    spot_runtime_t *_runtime;
     uint64_t _attachment_id;
     uint32_t _tag;
     bool _node_owned_default;

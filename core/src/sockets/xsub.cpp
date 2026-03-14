@@ -83,6 +83,7 @@ zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _dispatch_callback (NULL),
     _dispatch_userdata (NULL),
     _dispatch_inflight (0),
+    _dispatch_parts (),
     _socket_dispatch_drop_message (false)
 {
     options.type = ZLINK_XSUB;
@@ -93,10 +94,13 @@ zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
 
     const int rc = _message.init ();
     errno_assert (rc == 0);
+    _dispatch_parts.reserve (2);
+    _socket_dispatch_parts.reserve (2);
 }
 
 zlink::xsub_t::~xsub_t ()
 {
+    close_dispatch_frames (&_dispatch_parts);
     close_socket_msg_parts (&_socket_dispatch_parts);
     const int rc = _message.close ();
     errno_assert (rc == 0);
@@ -431,16 +435,12 @@ int zlink::xsub_t::dispatch_message (msg_t *msg_, pipe_t *pipe_)
         return -1;
     }
 
-    std::vector<zlink_msg_t> frames;
+    close_dispatch_frames (&_dispatch_parts);
     while (true) {
-        zlink_msg_t stored;
-        memset (&stored, 0, sizeof (stored));
-        msg_t *stored_msg = reinterpret_cast<msg_t *> (&stored);
-        const int stored_init_rc = stored_msg->init ();
-        errno_assert (stored_init_rc == 0);
-        const int move_rc = stored_msg->move (*msg_);
-        errno_assert (move_rc == 0);
-        frames.push_back (stored);
+        store_dispatch_part (&_dispatch_parts, msg_);
+        msg_t *stored_msg =
+          reinterpret_cast<msg_t *> (
+            &_dispatch_parts[_dispatch_parts.size () - 1]);
 
         if ((stored_msg->flags () & msg_t::more) == 0)
             break;
@@ -448,35 +448,35 @@ int zlink::xsub_t::dispatch_message (msg_t *msg_, pipe_t *pipe_)
         const int next_init_rc = msg_->init ();
         errno_assert (next_init_rc == 0);
         if (_fq.recvpipe (msg_, &pipe_) != 0) {
-            close_dispatch_frames (&frames);
+            close_dispatch_frames (&_dispatch_parts);
             return -1;
         }
     }
 
-    spot_sub_io_handler_fn callback = NULL;
-    void *userdata = NULL;
-    {
-        std::lock_guard<std::mutex> lk (_dispatch_control_mu);
-        if (!_dispatch_active.load (std::memory_order_acquire)) {
-            close_dispatch_frames (&frames);
-            return 0;
-        }
-        callback = _dispatch_callback.load (std::memory_order_acquire);
-        userdata = _dispatch_userdata.load (std::memory_order_acquire);
-        if (!callback) {
-            close_dispatch_frames (&frames);
-            return 0;
-        }
-        _dispatch_inflight.fetch_add (1, std::memory_order_acq_rel);
+    spot_sub_io_handler_fn callback =
+      _dispatch_callback.load (std::memory_order_acquire);
+    if (!_dispatch_active.load (std::memory_order_acquire) || !callback) {
+        close_dispatch_frames (&_dispatch_parts);
+        return 0;
     }
 
-    const zlink_msg_t &topic = frames[0];
+    _dispatch_inflight.fetch_add (1, std::memory_order_acq_rel);
+    callback = _dispatch_callback.load (std::memory_order_acquire);
+    void *userdata = _dispatch_userdata.load (std::memory_order_acquire);
+    if (!_dispatch_active.load (std::memory_order_acquire) || !callback) {
+        close_dispatch_frames (&_dispatch_parts);
+        notify_dispatch_stopped ();
+        return 0;
+    }
+
+    const zlink_msg_t &topic = _dispatch_parts[0];
     const char *topic_data =
       static_cast<const char *> (zlink_msg_data (const_cast<zlink_msg_t *> (&topic)));
     const size_t topic_size = zlink_msg_size (const_cast<zlink_msg_t *> (&topic));
     const zlink_msg_t *payload =
-      frames.size () > 1 ? &frames[1] : static_cast<zlink_msg_t *> (NULL);
-    const size_t payload_count = frames.size () - 1;
+      _dispatch_parts.size () > 1 ? &_dispatch_parts[1]
+                                  : static_cast<zlink_msg_t *> (NULL);
+    const size_t payload_count = _dispatch_parts.size () - 1;
     zlink_routing_id_t source_rid;
     resolve_socket_msg_source_rid (pipe_, &source_rid);
 
@@ -489,9 +489,9 @@ int zlink::xsub_t::dispatch_message (msg_t *msg_, pipe_t *pipe_)
 
     // The callback owns payload frames. The topic frame stays internal and is
     // released here after the handler returns.
-    if (!frames.empty ())
-        close_dispatch_frame (&frames[0]);
-    frames.clear ();
+    if (!_dispatch_parts.empty ())
+        close_dispatch_frame (&_dispatch_parts[0]);
+    _dispatch_parts.clear ();
     notify_dispatch_stopped ();
     return 0;
 }

@@ -1198,7 +1198,11 @@ ZLINK_EXPORT int zlink_gateway_destroy (void **gateway_p);
 
 /* SPOT Node --------------------------------------------------------------- */
 
-/** @brief Create a service-bound SPOT node. */
+/**
+ * @brief Create a service-bound SPOT node.
+ *
+ * Pass `NULL` for `handler` when node-level callback dispatch is not needed.
+ */
 ZLINK_EXPORT void *zlink_spot_node_new (void *ctx,
                                         const char *service_name,
                                         zlink_spot_handler_fn handler);
@@ -1263,7 +1267,8 @@ typedef enum zlink_spot_sub_option_t
     ZLINK_SPOT_SUB_OPT_RCVHWM = 0x2301,
     ZLINK_SPOT_SUB_OPT_LINGER = 0x2302,
     ZLINK_SPOT_SUB_OPT_SNDBUF = 0x2303,
-    ZLINK_SPOT_SUB_OPT_RCVBUF = 0x2304
+    ZLINK_SPOT_SUB_OPT_RCVBUF = 0x2304,
+    ZLINK_SPOT_SUB_OPT_RCVTIMEO = 0x2305
 } zlink_spot_sub_option_t;
 
 
@@ -1297,6 +1302,12 @@ ZLINK_EXPORT int zlink_spot_publish (void *spot,
                                      zlink_msg_t *parts,
                                      size_t part_count,
                                      zlink_send_flags_t flags);
+ZLINK_EXPORT int zlink_spot_recv (void *spot,
+                                  zlink_msg_t **parts,
+                                  size_t *part_count,
+                                  int flags,
+                                  char *topic_out,
+                                  size_t *topic_len);
 ZLINK_EXPORT int zlink_spot_subscribe (void *spot, const char *topic_id);
 ZLINK_EXPORT int zlink_spot_subscribe_pattern (void *spot, const char *pattern);
 ZLINK_EXPORT int zlink_spot_unsubscribe (void *spot,

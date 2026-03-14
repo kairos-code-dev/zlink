@@ -74,63 +74,54 @@ Frame 1: payload (N bytes)
 
 ## 4. Callback Dispatch (Receive/Reply)
 
-STREAM uses callback dispatch for all receive operations. Register a callback
-via `zlink_stream_attach_len32be()` or `zlink_stream_attach_raw()`.
+STREAM uses callback-only dispatch for all receive operations.
+`recv()` / `zlink_msg_recv()` are not supported on STREAM sockets.
+Register a raw callback via `zlink_stream_attach_raw()` and remove it
+with `zlink_stream_detach()`.
 
-### LEN32BE Packet Dispatch
-
-```c
-int on_packets(const zlink_routing_id_t *rid,
-               zlink_msg_t *msgs, size_t count)
-{
-    for (size_t i = 0; i < count; ++i) {
-        void *data = zlink_msg_data(&msgs[i]);
-        size_t size = zlink_msg_size(&msgs[i]);
-
-        if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
-            /* new client connected */
-        } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
-            /* client disconnected */
-        } else {
-            /* echo reply */
-            zlink_stream_send(stream, rid, data, size, 0);
-        }
-        zlink_msg_close(&msgs[i]);
-    }
-    return 0;  /* 0 = continue, non-zero = stop */
-}
-
-/* Attach LEN32BE callback dispatch */
-zlink_stream_attach_len32be(stream, on_packets);
-```
-
-### Raw Chunk Dispatch
-
-For raw byte-stream handling without LEN32BE framing:
+### Raw Callback Dispatch
 
 ```c
 int on_raw(const zlink_routing_id_t *rid, zlink_msg_t *msg)
 {
     void *data = zlink_msg_data(msg);
     size_t size = zlink_msg_size(msg);
-    /* process raw bytes */
+
+    if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
+        /* new client connected */
+    } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
+        /* client disconnected */
+    } else {
+        /* echo reply */
+        zlink_stream_send(stream, rid, data, size, 0);
+    }
     zlink_msg_close(msg);
-    return 0;
+    return 0;  /* 0 = continue, non-zero = stop */
 }
 
+/* Attach raw callback dispatch */
 zlink_stream_attach_raw(stream, on_raw);
+
+/* Detach when done */
+zlink_stream_detach(stream);
 ```
 
 ### Key Points
 
-| | LEN32BE dispatch | Raw dispatch |
-|---|---|---|
-| API | `zlink_stream_attach_len32be()` | `zlink_stream_attach_raw()` |
-| Callback | `zlink_stream_on_packets_fn` | `zlink_stream_on_raw_fn` |
-| Framing | Automatic LEN32BE decode | Raw bytes as received |
-| Send | `zlink_stream_send()` | `zlink_stream_send()` |
+| Item | Description |
+|---|---|
+| Attach API | `zlink_stream_attach_raw()` |
+| Detach API | `zlink_stream_detach()` |
+| Callback | `zlink_stream_on_raw_fn` |
+| Framing | Raw bytes as received from the transport |
+| Send | `zlink_stream_send()` / `zlink_stream_send_msg()` |
 
-> Reattaching replaces the callback. There is no detach API.
+- Only one callback can be attached at a time; calling attach while a
+  callback is already attached returns `-1` with `errno=EBUSY`.
+- Attach/detach are safe to call from application threads and serialized
+  with STREAM send/close.
+- Calling attach/detach from inside the raw callback is not supported.
+- Close from inside the raw callback is not supported (fails with `EBUSY`).
 
 ---
 

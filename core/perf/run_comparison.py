@@ -1152,6 +1152,8 @@ def pattern_default_hwm(pattern_name):
 def pattern_default_io_threads(pattern_name):
     if pattern_name in STREAM_VARIANT_PATTERNS:
         return max(1, parse_env_int("PERF_DEFAULT_STREAM_IO_THREADS", 4))
+    if pattern_name in ("GATEWAY", "SPOT"):
+        return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 1))
     return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 2))
 
 
@@ -2332,6 +2334,10 @@ def run_sizes_test_split(
                 **progress_meta,
             }
         if sampled.get("returncode", 0) != 0:
+            detail = summarize_server_startup_detail(client_stdout, client_stderr)
+            reason = f"non_zero_exit_{sampled.get('returncode', -1)}"
+            if detail:
+                reason = f"{reason}_{detail}"
             return {
                 "status": "fail",
                 "parsed": parsed,
@@ -2339,7 +2345,7 @@ def run_sizes_test_split(
                 "returncode": sampled.get("returncode", -1),
                 "cpu_pct": sampled.get("cpu_pct"),
                 "mem_mb": sampled.get("mem_mb"),
-                "reason": f"non_zero_exit_{sampled.get('returncode', -1)}",
+                "reason": reason,
                 "warnings": warnings,
                 **progress_meta,
             }

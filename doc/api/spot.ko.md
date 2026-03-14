@@ -83,6 +83,13 @@ int zlink_spot_unsubscribe(void *spot,
 int zlink_spot_set_send_ready_handler(
   void *spot,
   zlink_send_ready_handler_fn handler);
+int zlink_spot_recv(void *spot,
+                    zlink_msg_t **parts,
+                    size_t *part_count,
+                    int flags,
+                    char *topic_out,
+                    size_t *topic_len);
+
 int zlink_spot_set_pub_option(void *spot,
                               zlink_spot_pub_option_t option,
                               const void *optval,
@@ -95,6 +102,11 @@ int zlink_spot_set_sub_option(void *spot,
 
 `zlink_spot_new()`는 항상 pub/sub가 합쳐진 facade를 생성합니다.
 publish-only 혹은 subscribe-only public child handle은 더 이상 제공하지 않습니다.
+
+`zlink_spot_recv()`는 unified facade에서 동기적 polling 수신을 제공합니다.
+호출자는 수신 토픽을 위한 `topic_out` 버퍼와 `topic_len`을 제공합니다.
+성공 시 `parts`와 `part_count`에 수신된 multipart payload가 채워집니다.
+호출자는 수신된 모든 part를 close해야 합니다.
 
 aggregate ready-peer / queue 조회는 `zlink_spot_monitor_open()`과
 `zlink_monitor_snapshot()` 조합을 사용합니다.
@@ -110,10 +122,11 @@ typedef void (*zlink_spot_handler_fn)(const zlink_routing_id_t *source_rid,
 ```
 
 - `zlink_spot_node_new(..., handler)`와 `zlink_spot_new(..., handler)`는
-  `handler != NULL`을 요구합니다.
+  handler callback을 받습니다. callback dispatch가 불필요하고
+  `zlink_spot_recv()`를 사용할 경우 `NULL`을 전달합니다.
 - callback은 생성 시점에 고정되며 이후 교체할 수 없습니다.
 - callback은 전달받은 `parts`의 ownership을 소비해야 합니다.
-- public polling recv API는 없습니다.
+- `zlink_spot_recv()`로 unified facade에서 동기적 polling 수신이 가능합니다.
 
 ## 옵션 요약
 
@@ -152,7 +165,6 @@ void *zlink_spot_monitor_open(void *spot,
 - `zlink_spot_sub_*`
 - `zlink_spot_publish_bytes`
 - `zlink_spot_node_publish_bytes`
-- `zlink_spot_sub_recv`
 - `zlink_spot_sub_set_handler`
 - `zlink_spot_node_default_pub`
 - `zlink_spot_node_default_sub`

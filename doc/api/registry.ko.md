@@ -18,9 +18,12 @@ SPOT 노드로부터 서비스 등록, 등록 해제, 하트비트 요청을 수
 ## 상수
 
 ```c
-#define ZLINK_REGISTRY_SOCKET_PUB      1
-#define ZLINK_REGISTRY_SOCKET_ROUTER   2
-#define ZLINK_REGISTRY_SOCKET_PEER_SUB 3
+typedef enum zlink_registry_socket_role_t
+{
+    ZLINK_REGISTRY_SOCKET_PUB      = 1,
+    ZLINK_REGISTRY_SOCKET_ROUTER   = 2,
+    ZLINK_REGISTRY_SOCKET_PEER_SUB = 3
+} zlink_registry_socket_role_t;
 ```
 
 | 상수 | 값 | 설명 |
@@ -165,8 +168,8 @@ PUB 엔드포인트를 구독하는 Discovery 인스턴스는 이 간격으로 �
 
 ```c
 int zlink_registry_setsockopt(void *registry,
-                              int socket_role,
-                              int option,
+                              zlink_registry_socket_role_t socket_role,
+                              zlink_socket_option_t option,
                               const void *optval,
                               size_t optvallen);
 ```
@@ -245,11 +248,11 @@ Registry가 관리하는 전역 서비스 토폴로지를 조회하는 API입니
 typedef struct zlink_registry_topology_entry_t
 {
     zlink_routing_id_t routing_id;
-    uint16_t service_kind;
+    zlink_service_kind_t service_kind;
     char service_name[256];
     char endpoint[256];
-    uint16_t source;
-    uint16_t state;
+    zlink_topology_source_t source;
+    zlink_topology_state_t state;
     uint32_t desired_count;
     uint32_t ready_count;
     uint32_t error_code;
@@ -275,11 +278,11 @@ typedef struct zlink_registry_topology_entry_t
 ```c
 typedef struct zlink_registry_topology_filter_t
 {
-    uint16_t service_kind;
+    zlink_service_kind_t service_kind;
     char service_name[256];
     zlink_routing_id_t routing_id;
-    uint16_t state;
-    uint16_t source;
+    zlink_topology_state_t state;
+    zlink_topology_source_t source;
 } zlink_registry_topology_filter_t;
 ```
 
@@ -408,3 +411,125 @@ int zlink_registry_query_destroy(void **client_p);
 **스레드 안전성:** 스레드 안전하지 않음.
 
 **참고:** `zlink_registry_query_client_new`
+
+---
+
+## Gateway Peers Topology API
+
+Registry가 관리하는 Gateway 서비스의 피어별 연결 상태를 조회하는 API입니다.
+
+### Gateway Peers 타입
+
+#### zlink_registry_gateway_peer_entry_t
+
+```c
+typedef struct zlink_registry_gateway_peer_entry_t
+{
+    zlink_routing_id_t gateway_routing_id;
+    char gateway_endpoint[256];
+    char service_name[256];
+    zlink_routing_id_t peer_routing_id;
+    char peer_endpoint[256];
+    zlink_topology_state_t state;
+    uint32_t weight;
+    uint64_t connected_since_ms;
+    uint64_t last_reported_ms;
+} zlink_registry_gateway_peer_entry_t;
+```
+
+| 필드 | 설명 |
+|------|------|
+| `gateway_routing_id` | Gateway 인스턴스의 라우팅 아이덴티티. |
+| `gateway_endpoint` | null 종료 Gateway 엔드포인트. |
+| `service_name` | null 종료 서비스 이름. |
+| `peer_routing_id` | 연결된 피어의 라우팅 아이덴티티. |
+| `peer_endpoint` | null 종료 피어 엔드포인트. |
+| `state` | 현재 상태 (`ZLINK_TOPOLOGY_STATE_*`). |
+| `weight` | 가중 로드밸런싱을 위한 피어 가중치. |
+| `connected_since_ms` | 피어 연결 시점 타임스탬프 (에포크 ms). |
+| `last_reported_ms` | 마지막 하트비트 또는 업데이트 타임스탬프 (에포크 ms). |
+
+#### zlink_registry_gateway_peer_filter_t
+
+```c
+typedef struct zlink_registry_gateway_peer_filter_t
+{
+    zlink_routing_id_t gateway_routing_id;
+    char service_name[256];
+    zlink_routing_id_t peer_routing_id;
+    zlink_topology_state_t state;
+} zlink_registry_gateway_peer_filter_t;
+```
+
+0이 아닌 값으로 설정된 필드를 기준으로 필터링합니다. 0인 필드는
+와일드카드(모두 일치)로 처리됩니다.
+
+---
+
+### zlink_registry_gateway_peers_snapshot
+
+로컬 Registry에서 모든 gateway 피어 연결의 스냅샷을 가져옵니다.
+
+```c
+int zlink_registry_gateway_peers_snapshot(
+  void *registry,
+  zlink_registry_gateway_peer_entry_t *entries,
+  size_t *count);
+```
+
+`entries`에 모든 gateway 피어 연결을 채웁니다. 입력 시 `*count`는 배열
+용량이고, 출력 시 실제 개수입니다. 필요한 개수를 먼저 조회하려면
+`entries = NULL`을 전달합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_registry_gateway_peers_query`
+
+---
+
+### zlink_registry_gateway_peers_query
+
+필터를 사용하여 로컬 Registry에서 gateway 피어 연결을 조회합니다.
+
+```c
+int zlink_registry_gateway_peers_query(
+  void *registry,
+  const zlink_registry_gateway_peer_filter_t *filter,
+  zlink_registry_gateway_peer_entry_t *entries,
+  size_t *count);
+```
+
+`zlink_registry_gateway_peers_snapshot`과 동일하지만 `filter` 조건과 일치하는
+항목만 반환합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_registry_gateway_peers_snapshot`
+
+---
+
+### zlink_registry_query_gateway_peers_snapshot
+
+쿼리 클라이언트를 통해 원격 Registry에서 gateway 피어 연결을 조회합니다.
+
+```c
+int zlink_registry_query_gateway_peers_snapshot(
+  void *client,
+  const zlink_registry_gateway_peer_filter_t *filter,
+  zlink_registry_gateway_peer_entry_t *entries,
+  size_t *count);
+```
+
+연결된 원격 Registry에 gateway peers 조회를 전송하고 일치하는 결과를
+`entries`에 채웁니다. 입력 시 `*count`는 배열 용량이고, 출력 시 실제
+개수입니다. 필터 없이 전체 스냅샷을 가져오려면 `filter = NULL`을 전달합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 스레드 안전하지 않음.
+
+**참고:** `zlink_registry_query_client_connect`

@@ -84,6 +84,13 @@ int zlink_spot_unsubscribe(void *spot,
 int zlink_spot_set_send_ready_handler(
   void *spot,
   zlink_send_ready_handler_fn handler);
+int zlink_spot_recv(void *spot,
+                    zlink_msg_t **parts,
+                    size_t *part_count,
+                    int flags,
+                    char *topic_out,
+                    size_t *topic_len);
+
 int zlink_spot_set_pub_option(void *spot,
                               zlink_spot_pub_option_t option,
                               const void *optval,
@@ -98,6 +105,12 @@ int zlink_spot_set_sub_option(void *spot,
 behavior. There is no separate public publish-only or subscribe-only child
 handle.
 
+`zlink_spot_recv()` provides synchronous polling receive on the unified
+facade. The caller provides a `topic_out` buffer and `topic_len` for the
+received topic. On success, `parts` and `part_count` are filled with the
+received multipart payload. The caller is responsible for closing all
+received parts.
+
 Use `zlink_spot_monitor_open()` plus `zlink_monitor_snapshot()` for aggregate
 ready-peer and queue inspection.
 
@@ -111,11 +124,12 @@ typedef void (*zlink_spot_handler_fn)(const zlink_routing_id_t *source_rid,
                                       size_t part_count);
 ```
 
-- `zlink_spot_node_new(..., handler)` and `zlink_spot_new(..., handler)` both
-  require `handler != NULL`.
+- `zlink_spot_node_new(..., handler)` and `zlink_spot_new(..., handler)` accept
+  a handler callback. Pass `NULL` when callback dispatch is not needed and
+  `zlink_spot_recv()` will be used instead.
 - The callback is fixed at construction time and cannot be replaced later.
 - The callback consumes ownership of `parts`.
-- There is no public polling recv API.
+- `zlink_spot_recv()` provides synchronous polling receive on unified facades.
 
 ## Option summary
 
@@ -154,7 +168,6 @@ The following families are not part of the current public SPOT surface:
 - `zlink_spot_sub_*`
 - `zlink_spot_publish_bytes`
 - `zlink_spot_node_publish_bytes`
-- `zlink_spot_sub_recv`
 - `zlink_spot_sub_set_handler`
 - `zlink_spot_node_default_pub`
 - `zlink_spot_node_default_sub`

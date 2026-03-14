@@ -74,63 +74,54 @@ Frame 1: payload (N bytes)
 
 ## 4. 콜백 Dispatch (수신/응답)
 
-STREAM은 모든 수신 작업에 콜백 dispatch를 사용한다.
-`zlink_stream_attach_len32be()` 또는 `zlink_stream_attach_raw()`로 콜백을 등록한다.
+STREAM은 모든 수신 작업에 콜백 전용 dispatch를 사용한다.
+`recv()` / `zlink_msg_recv()`는 STREAM 소켓에서 지원하지 않는다.
+`zlink_stream_attach_raw()`로 raw 콜백을 등록하고,
+`zlink_stream_detach()`로 해제한다.
 
-### LEN32BE 패킷 Dispatch
-
-```c
-int on_packets(const zlink_routing_id_t *rid,
-               zlink_msg_t *msgs, size_t count)
-{
-    for (size_t i = 0; i < count; ++i) {
-        void *data = zlink_msg_data(&msgs[i]);
-        size_t size = zlink_msg_size(&msgs[i]);
-
-        if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
-            /* 새 클라이언트 연결 */
-        } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
-            /* 클라이언트 연결 해제 */
-        } else {
-            /* 에코 응답 */
-            zlink_stream_send(stream, rid, data, size, 0);
-        }
-        zlink_msg_close(&msgs[i]);
-    }
-    return 0;  /* 0 = 계속, 0이 아니면 = 중지 */
-}
-
-/* LEN32BE 콜백 dispatch attach */
-zlink_stream_attach_len32be(stream, on_packets);
-```
-
-### Raw 청크 Dispatch
-
-LEN32BE 프레이밍 없이 raw 바이트 스트림을 처리하려면:
+### Raw 콜백 Dispatch
 
 ```c
 int on_raw(const zlink_routing_id_t *rid, zlink_msg_t *msg)
 {
     void *data = zlink_msg_data(msg);
     size_t size = zlink_msg_size(msg);
-    /* raw 바이트 처리 */
+
+    if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
+        /* 새 클라이언트 연결 */
+    } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
+        /* 클라이언트 연결 해제 */
+    } else {
+        /* 에코 응답 */
+        zlink_stream_send(stream, rid, data, size, 0);
+    }
     zlink_msg_close(msg);
-    return 0;
+    return 0;  /* 0 = 계속, 0이 아니면 = 중지 */
 }
 
+/* raw 콜백 dispatch attach */
 zlink_stream_attach_raw(stream, on_raw);
+
+/* 완료 시 detach */
+zlink_stream_detach(stream);
 ```
 
 ### 주요 사항
 
-| | LEN32BE dispatch | Raw dispatch |
-|---|---|---|
-| API | `zlink_stream_attach_len32be()` | `zlink_stream_attach_raw()` |
-| 콜백 | `zlink_stream_on_packets_fn` | `zlink_stream_on_raw_fn` |
-| 프레이밍 | 자동 LEN32BE 디코드 | 수신된 raw 바이트 |
-| 전송 | `zlink_stream_send()` | `zlink_stream_send()` |
+| 항목 | 설명 |
+|---|---|
+| Attach API | `zlink_stream_attach_raw()` |
+| Detach API | `zlink_stream_detach()` |
+| 콜백 | `zlink_stream_on_raw_fn` |
+| 프레이밍 | transport에서 수신된 raw 바이트 |
+| 전송 | `zlink_stream_send()` / `zlink_stream_send_msg()` |
 
-> 재attach 시 콜백이 교체된다. detach API는 제공되지 않는다.
+- 한 번에 하나의 콜백만 등록 가능하며, 이미 등록된 상태에서 attach를
+  호출하면 `errno=EBUSY`와 함께 `-1`을 반환한다.
+- attach/detach는 애플리케이션 스레드에서 호출할 수 있으며 STREAM
+  send/close와 직렬화된다.
+- raw 콜백 내부에서 attach/detach를 호출하는 것은 지원되지 않는다.
+- raw 콜백 내부에서 close를 호출하는 것은 지원되지 않는다 (`EBUSY` 실패).
 
 ---
 

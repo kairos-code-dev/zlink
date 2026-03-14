@@ -126,6 +126,12 @@ void zlink::object_t::process_command (const command_t &cmd_)
 
         case command_t::done:
         default:
+            fprintf (stderr,
+                     "[object-cmd] unexpected command type=%d this=%p tid=%u dest=%p\n",
+                     static_cast<int> (cmd_.type), static_cast<void *> (this),
+                     static_cast<unsigned int> (_tid),
+                     static_cast<void *> (cmd_.destination));
+            fflush (stderr);
             zlink_assert (false);
     }
 }

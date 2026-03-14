@@ -226,6 +226,13 @@ bool is_supported_transport(const std::string &transport)
            || transport == "wss";
 }
 
+void fast_exit_process(int exit_code)
+{
+    std::cout.flush();
+    std::cerr.flush();
+    std::_Exit(exit_code);
+}
+
 void mark_fatal(int err)
 {
     spot_client_state_t *state = g_client_state;
@@ -341,6 +348,17 @@ void close_spot_ready_monitor(spot_client_slot_t *slot)
     }
 }
 
+void close_all_spot_ready_monitors(std::vector<spot_client_slot_t *> *slots)
+{
+    if (!slots)
+        return;
+
+    for (size_t i = 0; i < slots->size(); ++i) {
+        if ((*slots)[i])
+            close_spot_ready_monitor((*slots)[i]);
+    }
+}
+
 void destroy_spot_slots(std::vector<spot_client_slot_t *> *slots)
 {
     if (!slots)
@@ -429,8 +447,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
 
         char service_name[64];
         std::snprintf(service_name, sizeof(service_name), "perf-spot-c%zu", i);
-        slot->node =
-          zlink_spot_node_new(ctx.get(), service_name, &discard_spot_parts);
+        slot->node = zlink_spot_node_new(ctx.get(), service_name, NULL);
         if (!slot->node || !configure_spot_tls_client(slot->node, transport)) {
             if (bench_debug_enabled())
                 std::cerr << "[multi-spot-client] node create/tls failed slot="
@@ -517,6 +534,48 @@ bool wait_phase_start(spot_client_state_t *state,
       });
 }
 
+bool wait_msg_size_phase(spot_client_state_t *state,
+                         size_t msg_size,
+                         int timeout_ms,
+                         perf_multi_metric::phase_t *phase_out)
+{
+    if (!state)
+        return false;
+
+    std::unique_lock<std::mutex> lock(state->mutex);
+    const bool ready = state->cv.wait_for(
+      lock,
+      std::chrono::milliseconds(std::max(1, timeout_ms)),
+      [state, msg_size]() {
+          return state->fatal
+                 || (state->seen_msg_size == msg_size
+                     && state->seen_phase != perf_multi_metric::phase_unknown);
+      });
+    if (!ready || state->fatal)
+        return false;
+
+    if (phase_out)
+        *phase_out = state->seen_phase;
+    return true;
+}
+
+int resolve_spot_phase_timeout_ms(const multi_bench_settings_t &settings,
+                                  size_t msg_size)
+{
+    int timeout_ms =
+      std::max(settings.connect_ready_timeout_ms,
+               std::max(1, settings.duration_seconds) * 5000);
+    if (msg_size >= 131072) {
+        timeout_ms =
+          std::max(timeout_ms,
+                   std::max(30000, settings.connect_ready_timeout_ms * 6));
+    }
+
+    return resolve_multi_int_env("PERF_MULTI_SPOT_PHASE_TIMEOUT_MS",
+                                 timeout_ms,
+                                 1);
+}
+
 bool wait_phase_duration(spot_client_state_t *state, double seconds)
 {
     if (seconds <= 0.0)
@@ -568,38 +627,43 @@ bool run_single_size_case(spot_client_state_t *state,
                           const std::string &transport,
                           size_t msg_size)
 {
+    const int phase_timeout_ms =
+      resolve_spot_phase_timeout_ms(settings, msg_size);
+
     reset_metrics(state, msg_size);
-    if (!wait_phase_start(state, msg_size, perf_multi_metric::phase_warmup,
-                          settings.connect_ready_timeout_ms)) {
+    perf_multi_metric::phase_t start_phase =
+      perf_multi_metric::phase_unknown;
+    if (!wait_msg_size_phase(state, msg_size, phase_timeout_ms,
+                             &start_phase)) {
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-client] warmup start timeout size="
                       << msg_size << std::endl;
         return false;
     }
 
-    if (!wait_phase_duration(
-          state, static_cast<double>(std::max(0, settings.warmup_seconds)))) {
-        if (bench_debug_enabled())
-            std::cerr << "[multi-spot-client] warmup wait failed size="
-                      << msg_size << std::endl;
+    if (start_phase != perf_multi_metric::phase_warmup
+        && start_phase != perf_multi_metric::phase_active) {
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-spot-client] unexpected start phase size="
+                      << msg_size << " phase="
+                      << static_cast<int>(start_phase) << std::endl;
+        }
         return false;
+    } else if (start_phase == perf_multi_metric::phase_active
+               && bench_debug_enabled()) {
+        std::cerr << "[multi-spot-client] warmup already advanced size="
+                  << msg_size << std::endl;
     }
 
-    if (settings.settle_ms > 0
+    {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->collect_active = true;
+    }
+    if (start_phase != perf_multi_metric::phase_active
         && !wait_phase_start(state,
                              msg_size,
-                             perf_multi_metric::phase_drain,
-                             std::max(settings.connect_ready_timeout_ms,
-                                      settings.settle_ms))) {
-        if (bench_debug_enabled())
-            std::cerr << "[multi-spot-client] drain start timeout size="
-                      << msg_size << std::endl;
-        return false;
-    }
-
-    reset_metrics(state, msg_size);
-    if (!wait_phase_start(state, msg_size, perf_multi_metric::phase_active,
-                          settings.connect_ready_timeout_ms)) {
+                             perf_multi_metric::phase_active,
+                             phase_timeout_ms)) {
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-client] active start timeout size="
                       << msg_size << std::endl;
@@ -608,10 +672,6 @@ bool run_single_size_case(spot_client_state_t *state,
 
     const bench_multi_cpu_sample_t sample_start =
       bench_multi_capture_cpu_sample();
-    {
-        std::lock_guard<std::mutex> lock(state->mutex);
-        state->collect_active = true;
-    }
     if (!wait_phase_duration(
           state, static_cast<double>(std::max(1, settings.duration_seconds)))) {
         if (bench_debug_enabled())
@@ -646,6 +706,21 @@ bool run_single_size_case(spot_client_state_t *state,
           static_cast<double>(state->active_received)
           / static_cast<double>(std::max(1, settings.duration_seconds));
         latency = state->latency.snapshot();
+    }
+
+    if (settings.settle_ms > 0) {
+        const int quiet_timeout_ms =
+          std::max(settings.connect_ready_timeout_ms,
+                   std::max(1, settings.duration_seconds) * 5000);
+        if (!wait_for_quiet(state,
+                            std::max(100, settings.settle_ms),
+                            quiet_timeout_ms)) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-spot-client] quiet wait failed size="
+                          << msg_size << std::endl;
+            }
+            return false;
+        }
     }
 
     print_client_result_lines(k_pattern, lib_name, transport, msg_size,
@@ -697,22 +772,18 @@ int run_client_benchmark(const std::string &lib_name,
         return 1;
     }
 
+    close_all_spot_ready_monitors(&state.slots);
+
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
         if (!run_single_size_case(&state, settings, lib_name, transport,
                                   msg_sizes[i])) {
-            destroy_spot_slots(&state.slots);
             g_client_state = NULL;
-            return 1;
+            fast_exit_process(1);
         }
     }
 
-    (void) wait_for_quiet(
-      &state,
-      std::max(100, settings.settle_ms),
-      settings.connect_ready_timeout_ms);
-
-    destroy_spot_slots(&state.slots);
     g_client_state = NULL;
+    fast_exit_process(0);
     return 0;
 }
 

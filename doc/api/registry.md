@@ -416,3 +416,127 @@ Closes the client connection and sets `*client_p` to `NULL`.
 **Thread safety:** Not thread-safe.
 
 **See also:** `zlink_registry_query_client_new`
+
+---
+
+## Gateway Peers Topology API
+
+These APIs provide introspection into the per-peer connection state of
+Gateway services managed by the Registry.
+
+### Gateway Peers Types
+
+#### zlink_registry_gateway_peer_entry_t
+
+```c
+typedef struct zlink_registry_gateway_peer_entry_t
+{
+    zlink_routing_id_t gateway_routing_id;
+    char gateway_endpoint[256];
+    char service_name[256];
+    zlink_routing_id_t peer_routing_id;
+    char peer_endpoint[256];
+    zlink_topology_state_t state;
+    uint32_t weight;
+    uint64_t connected_since_ms;
+    uint64_t last_reported_ms;
+} zlink_registry_gateway_peer_entry_t;
+```
+
+| Field | Description |
+|-------|-------------|
+| `gateway_routing_id` | Routing identity of the Gateway instance. |
+| `gateway_endpoint` | Null-terminated Gateway endpoint. |
+| `service_name` | Null-terminated service name. |
+| `peer_routing_id` | Routing identity of the connected peer. |
+| `peer_endpoint` | Null-terminated peer endpoint. |
+| `state` | Current state (`ZLINK_TOPOLOGY_STATE_*`). |
+| `weight` | Peer weight for weighted load balancing. |
+| `connected_since_ms` | Timestamp (epoch ms) when the peer connected. |
+| `last_reported_ms` | Timestamp (epoch ms) of the last heartbeat or update. |
+
+#### zlink_registry_gateway_peer_filter_t
+
+```c
+typedef struct zlink_registry_gateway_peer_filter_t
+{
+    zlink_routing_id_t gateway_routing_id;
+    char service_name[256];
+    zlink_routing_id_t peer_routing_id;
+    zlink_topology_state_t state;
+} zlink_registry_gateway_peer_filter_t;
+```
+
+Set fields to non-zero values to filter by that criterion. Zero-valued
+fields are treated as wildcards (match all).
+
+---
+
+### zlink_registry_gateway_peers_snapshot
+
+Get a snapshot of all gateway peer connections from a local Registry.
+
+```c
+int zlink_registry_gateway_peers_snapshot(
+  void *registry,
+  zlink_registry_gateway_peer_entry_t *entries,
+  size_t *count);
+```
+
+Fills `entries` with all gateway peer connections. On input `*count` is
+the array capacity; on output it is the actual count. Pass `entries = NULL`
+to query the required count first.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_registry_gateway_peers_query`
+
+---
+
+### zlink_registry_gateway_peers_query
+
+Query gateway peer connections from a local Registry with a filter.
+
+```c
+int zlink_registry_gateway_peers_query(
+  void *registry,
+  const zlink_registry_gateway_peer_filter_t *filter,
+  zlink_registry_gateway_peer_entry_t *entries,
+  size_t *count);
+```
+
+Like `zlink_registry_gateway_peers_snapshot` but only returns entries
+matching the `filter` criteria.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_registry_gateway_peers_snapshot`
+
+---
+
+### zlink_registry_query_gateway_peers_snapshot
+
+Query gateway peer connections from a remote Registry via query client.
+
+```c
+int zlink_registry_query_gateway_peers_snapshot(
+  void *client,
+  const zlink_registry_gateway_peer_filter_t *filter,
+  zlink_registry_gateway_peer_entry_t *entries,
+  size_t *count);
+```
+
+Sends a gateway peers query to the connected remote Registry and fills
+`entries` with matching results. On input `*count` is the array capacity;
+on output it is the actual count. Pass `filter = NULL` for an unfiltered
+snapshot.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_registry_query_client_connect`

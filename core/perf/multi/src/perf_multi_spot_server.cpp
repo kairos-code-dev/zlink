@@ -11,6 +11,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
+#include <cstdlib>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
@@ -274,6 +275,13 @@ bool is_supported_transport(const std::string &transport)
            || transport == "wss";
 }
 
+void fast_exit_process(int exit_code)
+{
+    std::cout.flush();
+    std::cerr.flush();
+    std::_Exit(exit_code);
+}
+
 void on_signal(int)
 {
     g_stop_requested.store(true, std::memory_order_release);
@@ -294,6 +302,9 @@ void request_queue_probe(size_t msg_size)
     g_queue_probe_size.store(msg_size, std::memory_order_release);
     g_queue_probe_pending.store(true, std::memory_order_release);
 }
+
+void emit_requested_queue_probe(const std::string &lib_name,
+                                const std::string &transport);
 
 bool configure_spot_tls_server(void *node, const std::string &transport)
 {
@@ -402,6 +413,71 @@ server_queue_stats_t sample_spot_queue_stats(void *pub, bool send_pending)
     return stats;
 }
 
+int resolve_spot_queue_drain_timeout_ms(const multi_bench_settings_t &settings,
+                                        size_t msg_size)
+{
+    int timeout_ms =
+      std::max(settings.connect_ready_timeout_ms,
+               std::max(1, settings.duration_seconds) * 5000);
+    if (msg_size >= 131072) {
+        timeout_ms =
+          std::max(timeout_ms,
+                   std::max(30000, settings.connect_ready_timeout_ms * 6));
+    }
+
+    return resolve_multi_int_env("PERF_MULTI_SPOT_QUEUE_DRAIN_TIMEOUT_MS",
+                                 timeout_ms,
+                                 1);
+}
+
+bool wait_for_spot_queue_drain(spot_server_state_t *state,
+                               const multi_bench_settings_t &settings,
+                               const std::string &lib_name,
+                               const std::string &transport,
+                               size_t msg_size,
+                               const char *phase_name)
+{
+    if (!state || !state->pub)
+        return false;
+
+    const auto deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(
+          resolve_spot_queue_drain_timeout_ms(settings, msg_size));
+
+    while (!g_stop_requested.load(std::memory_order_acquire)) {
+        emit_requested_queue_probe(lib_name, transport);
+
+        bool send_pending = false;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (state->fatal_errno != 0)
+                return false;
+            send_pending = state->send_pending;
+        }
+
+        const server_queue_stats_t queue_stats =
+          sample_spot_queue_stats(state->pub, send_pending);
+        if (!send_pending && queue_stats.snd_pending_max <= 0.0)
+            return true;
+
+        if (std::chrono::steady_clock::now() >= deadline) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-spot-server] queue drain timeout phase="
+                          << (phase_name ? phase_name : "?")
+                          << " size=" << msg_size
+                          << " snd_pending_max=" << queue_stats.snd_pending_max
+                          << " send_pending=" << send_pending << std::endl;
+            }
+            return false;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    return false;
+}
+
 void emit_requested_queue_probe(const std::string &lib_name,
                                 const std::string &transport)
 {
@@ -453,16 +529,13 @@ send_status_t try_publish_locked(spot_server_state_t *state)
     }
 
     zlink_msg_t part;
-    if (zlink_msg_init_data(
-          &part,
-          payload_size > 0
-            ? static_cast<void *>(state->payload.data())
-            : static_cast<void *>(NULL),
-          payload_size,
-          NULL,
-          NULL)
-        != 0) {
+    if (zlink_msg_init_size(&part, payload_size) != 0) {
         return send_status_fatal;
+    }
+    if (payload_size > 0) {
+        std::memcpy(zlink_msg_data(&part),
+                    state->payload.data(),
+                    payload_size);
     }
 
     const int rc =
@@ -594,8 +667,12 @@ bool run_phase(spot_server_state_t *state,
             }
         }
 
-        if (!progressed)
-            std::this_thread::yield();
+        if (!progressed) {
+            if (send_enabled)
+                std::this_thread::yield();
+            else
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
 
     {
@@ -634,13 +711,25 @@ bool run_server_loop(spot_server_state_t *state,
 
         if (!run_phase(state, lib_name, transport, msg_sizes[i],
                        perf_multi_metric::phase_warmup, warmup_seconds, true)
+            || !wait_for_spot_queue_drain(state,
+                                          settings,
+                                          lib_name,
+                                          transport,
+                                          msg_sizes[i],
+                                          "warmup")
+            || !run_phase(state, lib_name, transport, msg_sizes[i],
+                          perf_multi_metric::phase_active, active_seconds,
+                          true)
             || (settle_seconds > 0.0
                 && !run_phase(state, lib_name, transport, msg_sizes[i],
                               perf_multi_metric::phase_drain, settle_seconds,
-                              true))
-            || !run_phase(state, lib_name, transport, msg_sizes[i],
-                          perf_multi_metric::phase_active, active_seconds,
-                          true)) {
+                              false))
+            || !wait_for_spot_queue_drain(state,
+                                          settings,
+                                          lib_name,
+                                          transport,
+                                          msg_sizes[i],
+                                          "active")) {
             return false;
         }
     }
@@ -678,8 +767,7 @@ int run_server_benchmark(const std::string &lib_name,
             max_msg_size = msg_sizes[i];
     }
 
-    void *node =
-      zlink_spot_node_new(ctx.get(), k_service_name, &discard_spot_parts);
+    void *node = zlink_spot_node_new(ctx.get(), k_service_name, NULL);
     if (!node)
         return 1;
 
@@ -756,6 +844,8 @@ int run_server_benchmark(const std::string &lib_name,
         return 1;
     }
 
+    close_spot_server_ready_monitor(&pub_monitor);
+
     const bool ok =
       run_server_loop(&state, settings, lib_name, transport, msg_sizes);
 
@@ -769,11 +859,7 @@ int run_server_benchmark(const std::string &lib_name,
     const server_queue_stats_t queue_stats =
       sample_spot_queue_stats(pub, send_pending);
     print_server_metrics(lib_name, transport, msg_sizes, metrics, queue_stats);
-
-    close_spot_server_ready_monitor(&pub_monitor);
-    g_server_state = NULL;
-    zlink_spot_destroy(&pub);
-    zlink_spot_node_destroy(&node);
+    fast_exit_process(ok ? 0 : 1);
     return ok ? 0 : 1;
 }
 

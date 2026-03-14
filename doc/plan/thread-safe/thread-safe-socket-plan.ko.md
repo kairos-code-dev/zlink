@@ -1323,9 +1323,10 @@ destroy는 `EBUSY`이고, parent가 먼저 closing이면 open/create는
 | `*_monitor_open(..., NULL)` 또는 service 생성에 `NULL` handler | `EINVAL` |
 
 참고:
-- `EBUSY`와 `ESHUTDOWN`은 구분이 중요하다. `EBUSY`는 "handle이 아직 live이며
-  나중에 재시도 가능하다"는 뜻이고, `ESHUTDOWN`은 "handle이 closing에 진입했으며
-  복구 불가"라는 뜻이다.
+- `EBUSY`와 `ESHUTDOWN`은 구분이 중요하다. `EBUSY`는 "이번 종료 시도는
+  거절됐고, handle은 아직 live이며, quiesce 후 새 단일 시도를 할 수 있다"는
+  뜻이다 (blind retry나 busy-wait는 금지, 9.6절). `ESHUTDOWN`은 "handle이
+  closing에 진입했으며 복구 불가"라는 뜻이다.
 - 이 테이블에 없는 에러 코드가 추가되면 이 절을 동시에 갱신한다.
 
 ### 9.7 wait-to-drain → fail-fast `EBUSY` 마이그레이션
@@ -1838,7 +1839,6 @@ setter-vs-dispatch 겹침 시나리오는 타이밍에 의존하므로 stress la
   - monitor callback 안 parent data-plane API 호출은 timeout 내 return해야 한다
   - monitor callback 안 parent lifecycle/control-plane API는 문서에 정의한 에러
     (`EBUSY` 또는 `ESHUTDOWN`)로 실패해야 한다
-  - monitor open/close와 parent lifecycle API는 공통 `EBUSY` 정책을 따라야 한다
   - `*_monitor_open()` vs parent `destroy` 경합: open이 승리한 경우 parent
     `destroy`는 `EBUSY`여야 한다. destroy가 승리한 경우 `*_monitor_open()`은
     `ESHUTDOWN`이어야 하며 partially initialized child가 남으면 실패다 (9.4-a절).

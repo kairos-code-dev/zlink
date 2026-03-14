@@ -543,7 +543,6 @@ bool run_active (void *gateway_,
     const int duration_s = resolve_single_duration_seconds ();
     const auto deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
-    const auto active_start = std::chrono::steady_clock::now ();
     uint64_t seq = 1;
 
     {
@@ -583,20 +582,19 @@ bool run_active (void *gateway_,
         }
     }
 
-    const double elapsed_s = std::max (
-      0.001,
-      std::chrono::duration_cast<std::chrono::duration<double> > (
-        std::chrono::steady_clock::now () - active_start)
-        .count ());
+    unsigned long long active_received = 0;
+    {
+        std::lock_guard<std::mutex> lock (server_state_.mutex);
+        active_received = server_state_.active_received;
+        if (latency_out_)
+            *latency_out_ = server_state_.latency.snapshot ();
+    }
 
     if (throughput_out_)
         *throughput_out_ =
-          static_cast<double> (server_state_.active_received) / elapsed_s;
-    if (latency_out_) {
-        std::lock_guard<std::mutex> lock (server_state_.mutex);
-        *latency_out_ = server_state_.latency.snapshot ();
-    }
-    return server_state_.active_received > 0;
+          static_cast<double> (active_received)
+          / static_cast<double> (std::max (1, duration_s));
+    return active_received > 0;
 }
 
 int run_case (const std::string &lib_name_,

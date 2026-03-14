@@ -2,21 +2,24 @@
 
 #include "precompiled.hpp"
 
+#include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_data_plane.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
 
 #include "core/socket_poller.hpp"
 #include "sockets/socket_base.hpp"
-#include "sockets/xpub.hpp"
+#include "utils/clock.hpp"
 #include "utils/err.hpp"
 
+#include <errno.h>
+#include <map>
+#include <set>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <map>
 #include <string>
-#include <set>
 #include <vector>
 
 namespace zlink
@@ -24,130 +27,21 @@ namespace zlink
 namespace
 {
 static const size_t spot_sub_queue_hwm_default = 1000;
-static const char spot_ready_probe_prefix[] = "__zlink.ready__/";
-static const char spot_ready_ack_prefix[] = "__zlink.ready_ack__/";
-static const char spot_ready_probe_marker[] =
-  "\x00zlink.ready.probe.v1\x00";
-static const unsigned int ready_probe_attempt_count = 50;
-static const unsigned int ready_probe_holdoff_after_subscribe = 1;
 static const unsigned int ingress_forward_batch_limit = 4096;
+static const unsigned int ctrl_poll_batch_limit = 128;
+static const uint64_t bootstrap_broadcast_interval_ms = 100;
 
-struct subscription_update_t
+static void spot_ctrl_debugf (const char *fmt_, ...)
 {
-    subscription_update_t () : subscribe (false) {}
+    if (!getenv ("ZLINK_SPOT_CTRL_DEBUG"))
+        return;
 
-    std::string subject;
-    bool subscribe;
-};
-
-struct ready_probe_state_t
-{
-    ready_probe_state_t () :
-        attempts_remaining (0),
-        holdoff_ticks (0),
-        ack_count_observed (0)
-    {
-    }
-
-    unsigned int attempts_remaining;
-    unsigned int holdoff_ticks;
-    uint32_t ack_count_observed;
-};
-
-static bool parse_ready_ack_arg (const std::string &arg_,
-                                 std::string *target_endpoint_out_,
-                                 std::string *raw_filter_out_,
-                                 std::string *ack_source_id_out_)
-{
-    const size_t endpoint_sep = arg_.find ('\n');
-    if (endpoint_sep == std::string::npos || endpoint_sep == 0
-        || endpoint_sep + 1 >= arg_.size ())
-        return false;
-    const size_t raw_filter_sep = arg_.find ('\n', endpoint_sep + 1);
-    if (raw_filter_sep == std::string::npos || raw_filter_sep == endpoint_sep + 1
-        || raw_filter_sep + 1 >= arg_.size ())
-        return false;
-
-    if (target_endpoint_out_)
-        target_endpoint_out_->assign (arg_.data (), endpoint_sep);
-    if (raw_filter_out_) {
-        raw_filter_out_->assign (arg_.data () + endpoint_sep + 1,
-                                 raw_filter_sep - endpoint_sep - 1);
-    }
-    if (ack_source_id_out_) {
-        ack_source_id_out_->assign (arg_.data () + raw_filter_sep + 1,
-                                    arg_.size () - raw_filter_sep - 1);
-    }
-    return true;
-}
-
-static std::string ready_probe_filter (const std::string &raw_filter_)
-{
-    return std::string (spot_ready_probe_prefix) + raw_filter_;
-}
-
-static bool is_ready_probe_filter (const std::string &raw_filter_)
-{
-    return raw_filter_.compare (0, sizeof (spot_ready_probe_prefix) - 1,
-                                spot_ready_probe_prefix)
-           == 0;
-}
-
-static std::string ready_ack_filter (const std::string &target_endpoint_,
-                                     const std::string &raw_filter_,
-                                     const std::string &ack_source_id_)
-{
-    return std::string (spot_ready_ack_prefix) + target_endpoint_ + "\n"
-           + raw_filter_ + "\n" + ack_source_id_;
-}
-
-static bool parse_ready_ack_filter (const std::string &filter_,
-                                    std::string *target_endpoint_out_,
-                                    std::string *raw_filter_out_,
-                                    std::string *ack_source_id_out_)
-{
-    const size_t prefix_len = sizeof (spot_ready_ack_prefix) - 1;
-    if (filter_.size () <= prefix_len
-        || filter_.compare (0, prefix_len, spot_ready_ack_prefix) != 0) {
-        return false;
-    }
-
-    const size_t endpoint_sep = filter_.find ('\n', prefix_len);
-    if (endpoint_sep == std::string::npos || endpoint_sep == prefix_len
-        || endpoint_sep + 1 >= filter_.size ()) {
-        return false;
-    }
-    const size_t raw_filter_sep = filter_.find ('\n', endpoint_sep + 1);
-    if (raw_filter_sep == std::string::npos || raw_filter_sep == endpoint_sep + 1
-        || raw_filter_sep + 1 >= filter_.size ()) {
-        return false;
-    }
-
-    if (target_endpoint_out_) {
-        target_endpoint_out_->assign (filter_.data () + prefix_len,
-                                      endpoint_sep - prefix_len);
-    }
-    if (raw_filter_out_) {
-        raw_filter_out_->assign (filter_.data () + endpoint_sep + 1,
-                                 raw_filter_sep - endpoint_sep - 1);
-    }
-    if (ack_source_id_out_) {
-        ack_source_id_out_->assign (filter_.data () + raw_filter_sep + 1,
-                                    filter_.size () - raw_filter_sep - 1);
-    }
-    return true;
-}
-
-static bool is_data_subscription_filter (const std::string &filter_)
-{
-    if (filter_.empty () || is_ready_probe_filter (filter_))
-        return false;
-
-    std::string target_endpoint;
-    std::string raw_filter;
-    std::string ack_source_id;
-    return !parse_ready_ack_filter (filter_, &target_endpoint, &raw_filter,
-                                    &ack_source_id);
+    va_list args;
+    va_start (args, fmt_);
+    fprintf (stderr, "[spot-ctrl] ");
+    vfprintf (stderr, fmt_, args);
+    fprintf (stderr, "\n");
+    va_end (args);
 }
 
 static uint64_t make_affinity_mask (int io_threads_, int parity_)
@@ -163,31 +57,6 @@ static uint64_t make_affinity_mask (int io_threads_, int parity_)
         mask |= (uint64_t (1) << i);
     }
     return mask;
-}
-
-static void apply_remote_data_subscription_update (
-  const subscription_update_t &update_,
-  std::map<std::string, uint32_t> *counts_,
-  uint32_t *total_)
-{
-    if (!counts_ || !total_ || !is_data_subscription_filter (update_.subject))
-        return;
-
-    if (update_.subscribe) {
-        ++(*counts_)[update_.subject];
-        ++(*total_);
-        return;
-    }
-
-    std::map<std::string, uint32_t>::iterator it =
-      counts_->find (update_.subject);
-    if (it == counts_->end () || it->second == 0)
-        return;
-
-    --it->second;
-    --(*total_);
-    if (it->second == 0)
-        counts_->erase (it);
 }
 
 static int send_ascii_frame (socket_base_t *socket_,
@@ -247,70 +116,188 @@ static int apply_common_internal_opts (socket_base_t *socket_, int linger_)
     return socket_->setsockopt (ZLINK_LINGER, &linger_, sizeof (linger_));
 }
 
-static int recv_and_forward (socket_base_t *src_,
-                             socket_base_t *dst_a_,
-                             socket_base_t *dst_b_)
+static int send_subscription_update (socket_base_t *socket_,
+                                     const std::string &raw_filter_,
+                                     bool subscribe_)
 {
-    bool receiving_multipart = false;
-    for (;;) {
-        msg_t msg;
-        if (msg.init () != 0)
-            return -1;
-        const int recv_flags = receiving_multipart ? 0 : ZLINK_DONTWAIT;
-        if (src_->recv (&msg, recv_flags) != 0) {
-            const int err = errno;
-            msg.close ();
-            if (err == EAGAIN && !receiving_multipart)
-                return 0;
-            errno = err != 0 ? err : EPROTO;
-            return -1;
-        }
-
-        int more = 0;
-        size_t more_sz = sizeof (more);
-        if (src_->getsockopt (ZLINK_RCVMORE, &more, &more_sz) != 0) {
-            msg.close ();
-            return -1;
-        }
-
-        if (dst_a_ && dst_b_) {
-            msg_t copy;
-            if (copy.init () != 0) {
-                msg.close ();
-                return -1;
-            }
-            if (copy.copy (msg) != 0) {
-                copy.close ();
-                msg.close ();
-                return -1;
-            }
-            if (dst_a_->send (&msg, more ? ZLINK_SNDMORE : 0) != 0) {
-                copy.close ();
-                msg.close ();
-                return -1;
-            }
-            if (dst_b_->send (&copy, more ? ZLINK_SNDMORE : 0) != 0) {
-                copy.close ();
-                return -1;
-            }
-            copy.close ();
-        } else if (dst_a_) {
-            if (dst_a_->send (&msg, more ? ZLINK_SNDMORE : 0) != 0) {
-                msg.close ();
-                return -1;
-            }
-        }
-
-        receiving_multipart = more != 0;
-        msg.close ();
+    if (!socket_) {
+        errno = EFAULT;
+        return -1;
     }
+
+    msg_t msg;
+    if (msg.init_size (raw_filter_.size () + 1) != 0)
+        return -1;
+
+    unsigned char *data = static_cast<unsigned char *> (msg.data ());
+    data[0] = subscribe_ ? 1 : 0;
+    if (!raw_filter_.empty ())
+        memcpy (data + 1, raw_filter_.data (), raw_filter_.size ());
+
+    const int rc = socket_->send (&msg, 0);
+    msg.close ();
+    return rc;
+}
+
+static int send_control_snapshot (socket_base_t *socket_,
+                                  const std::string &target_endpoint_,
+                                  const std::string &source_node_id_,
+                                  const std::set<std::string> &filters_)
+{
+    if (!socket_ || target_endpoint_.empty () || source_node_id_.empty ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const std::string version =
+      spot_control_protocol::node_id_string (
+        static_cast<uint32_t> (spot_control_protocol::protocol_version));
+
+    if (send_ascii_frame (socket_, spot_control_protocol::ctrl_snapshot_topic,
+                          ZLINK_SNDMORE)
+        != 0
+        || send_ascii_frame (socket_, target_endpoint_, ZLINK_SNDMORE) != 0
+        || send_ascii_frame (socket_, source_node_id_, ZLINK_SNDMORE) != 0) {
+        return -1;
+    }
+
+    const bool has_filters = !filters_.empty ();
+    if (send_ascii_frame (socket_, version, has_filters ? ZLINK_SNDMORE : 0)
+        != 0)
+        return -1;
+
+    std::set<std::string>::const_iterator it = filters_.begin ();
+    while (it != filters_.end ()) {
+        std::set<std::string>::const_iterator next = it;
+        ++next;
+        if (send_ascii_frame (socket_, *it,
+                              next != filters_.end () ? ZLINK_SNDMORE : 0)
+            != 0) {
+            return -1;
+        }
+        it = next;
+    }
+
+    spot_ctrl_debugf ("send snapshot target=%s source=%s filters=%zu",
+                      target_endpoint_.c_str (), source_node_id_.c_str (),
+                      static_cast<size_t> (filters_.size ()));
+
+    return 0;
+}
+
+static int send_snapshot_to_target (socket_base_t *socket_,
+                                    spot_node_t *node_,
+                                    const std::string &target_endpoint_)
+{
+    if (!socket_ || !node_ || target_endpoint_.empty ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::set<std::string> filters;
+    node_->snapshot_raw_subscription_filters (&filters);
+    return send_control_snapshot (
+      socket_, target_endpoint_,
+      spot_control_protocol::node_id_string (node_->runtime ()->node_id),
+      filters);
+}
+
+static int send_snapshot_to_peers (
+  socket_base_t *socket_,
+  spot_node_t *node_,
+  const std::map<std::string, std::string> &peer_ctrl_endpoints_)
+{
+    if (!socket_ || !node_)
+        return 0;
+
+    std::set<std::string> filters;
+    node_->snapshot_raw_subscription_filters (&filters);
+    const std::string source_node_id =
+      spot_control_protocol::node_id_string (node_->runtime ()->node_id);
+
+    for (std::map<std::string, std::string>::const_iterator it =
+           peer_ctrl_endpoints_.begin ();
+         it != peer_ctrl_endpoints_.end (); ++it) {
+        if (it->first.empty ())
+            continue;
+        if (send_control_snapshot (socket_, it->first, source_node_id, filters)
+            != 0) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+static int publish_bootstrap_descriptor (socket_base_t *mesh_pub_,
+                                         spot_node_t *node_,
+                                         spot_runtime_t *runtime_)
+{
+    if (!mesh_pub_ || !node_ || !runtime_ || runtime_->peer_ctrl_endpoint.empty ())
+        return 0;
+
+    std::string public_data_endpoint;
+    public_data_endpoint = node_->public_endpoint ();
+
+    if (public_data_endpoint.empty ())
+        return 0;
+
+    const std::string source_node_id =
+      spot_control_protocol::node_id_string (runtime_->node_id);
+    const std::string version =
+      spot_control_protocol::node_id_string (
+        static_cast<uint32_t> (spot_control_protocol::protocol_version));
+
+    if (send_ascii_frame (mesh_pub_,
+                          spot_control_protocol::bootstrap_ctrl_descriptor_topic,
+                          ZLINK_SNDMORE)
+          != 0
+        || send_ascii_frame (mesh_pub_, public_data_endpoint, ZLINK_SNDMORE)
+             != 0
+        || send_ascii_frame (mesh_pub_, runtime_->peer_ctrl_endpoint,
+                             ZLINK_SNDMORE)
+             != 0
+        || send_ascii_frame (mesh_pub_, source_node_id, ZLINK_SNDMORE) != 0
+        || send_ascii_frame (mesh_pub_, version, 0) != 0) {
+        return -1;
+    }
+
+    spot_ctrl_debugf ("broadcast bootstrap data=%s ctrl=%s",
+                      public_data_endpoint.c_str (),
+                      runtime_->peer_ctrl_endpoint.c_str ());
+
+    return 0;
+}
+
+static void clear_snapshot_sources (
+  spot_node_t *node_,
+  std::map<std::string, std::set<std::string> > *peer_ready_filters_)
+{
+    if (!node_ || !peer_ready_filters_)
+        return;
+
+    std::string self_endpoint;
+    self_endpoint = node_->public_endpoint ();
+    if (self_endpoint.empty ())
+        return;
+
+    for (std::map<std::string, std::set<std::string> >::iterator it =
+           peer_ready_filters_->begin ();
+         it != peer_ready_filters_->end (); ++it) {
+        for (std::set<std::string>::const_iterator filter_it =
+               it->second.begin ();
+             filter_it != it->second.end (); ++filter_it) {
+            node_->notify_pub_delivery_ready_ack (self_endpoint, *filter_it,
+                                                  it->first, false);
+        }
+    }
+    peer_ready_filters_->clear ();
 }
 
 static int recv_and_forward_ingress (socket_base_t *src_,
                                      socket_base_t *mesh_pub_,
                                      socket_base_t *fanout_,
-                                     const spot_node_t *node_,
-                                     bool has_remote_data_subscriptions_)
+                                     const spot_node_t *node_)
 {
     bool receiving_multipart = false;
     bool forward_to_fanout = false;
@@ -337,12 +324,10 @@ static int recv_and_forward_ingress (socket_base_t *src_,
             return -1;
         }
 
-        if (!receiving_multipart) {
-            forward_to_fanout =
-              fanout_ && node_ && node_->has_local_filtered_subs ();
-        }
+        if (!receiving_multipart)
+            forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
 
-        if (mesh_pub_ && has_remote_data_subscriptions_ && forward_to_fanout) {
+        if (mesh_pub_ && forward_to_fanout) {
             msg_t copy;
             if (copy.init () != 0) {
                 msg.close ();
@@ -363,7 +348,7 @@ static int recv_and_forward_ingress (socket_base_t *src_,
                 return -1;
             }
             copy.close ();
-        } else if (mesh_pub_ && has_remote_data_subscriptions_) {
+        } else if (mesh_pub_) {
             if (mesh_pub_->send (&msg, more ? ZLINK_SNDMORE : 0) != 0) {
                 msg.close ();
                 return -1;
@@ -386,136 +371,235 @@ static int recv_and_forward_ingress (socket_base_t *src_,
     }
 }
 
-static int recv_and_forward_subscription_updates (socket_base_t *src_,
-                                                  socket_base_t *dst_,
-                                                  std::vector<subscription_update_t> *updates_)
+static int recv_remaining_frame_strings (socket_base_t *socket_,
+                                         std::vector<std::string> *out_)
 {
-    for (;;) {
+    if (!socket_ || !out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    out_->clear ();
+    while (true) {
+        msg_t frame;
+        if (frame.init () != 0)
+            return -1;
+        if (socket_->recv (&frame, 0) != 0) {
+            frame.close ();
+            return -1;
+        }
+        out_->push_back (std::string (
+          static_cast<const char *> (frame.data ()), frame.size ()));
+        const bool more = (frame.flags () & msg_t::more) != 0;
+        frame.close ();
+        if (!more)
+            break;
+    }
+    return 0;
+}
+
+static int forward_topic_and_remaining (socket_base_t *fanout_,
+                                        msg_t *topic_msg_,
+                                        socket_base_t *src_)
+{
+    if (!fanout_ || !topic_msg_ || !src_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    int more = 0;
+    size_t more_sz = sizeof (more);
+    if (src_->getsockopt (ZLINK_RCVMORE, &more, &more_sz) != 0)
+        return -1;
+
+    if (fanout_->send (topic_msg_, more ? ZLINK_SNDMORE : 0) != 0)
+        return -1;
+
+    while (more) {
         msg_t msg;
         if (msg.init () != 0)
             return -1;
-        if (src_->recv (&msg, ZLINK_DONTWAIT) != 0) {
-            const int err = errno;
+        if (src_->recv (&msg, 0) != 0) {
             msg.close ();
-            if (err == EAGAIN) {
-                return 0;
-            }
             return -1;
         }
-
-        int more = 0;
-        size_t more_sz = sizeof (more);
+        more_sz = sizeof (more);
         if (src_->getsockopt (ZLINK_RCVMORE, &more, &more_sz) != 0) {
             msg.close ();
             return -1;
         }
-
-        if (msg.size () > 0) {
-            const unsigned char *data =
-              static_cast<const unsigned char *> (msg.data ());
-            if (data[0] == 0 || data[0] == 1) {
-                subscription_update_t update;
-                update.subscribe = data[0] == 1;
-                update.subject.assign (
-                  reinterpret_cast<const char *> (data + 1), msg.size () - 1);
-                if (updates_)
-                    updates_->push_back (update);
-            }
-        }
-
-        if (dst_ && dst_->send (&msg, more ? ZLINK_SNDMORE : 0) != 0) {
+        if (fanout_->send (&msg, more ? ZLINK_SNDMORE : 0) != 0) {
             msg.close ();
             return -1;
         }
         msg.close ();
     }
-}
 
-static int send_subscription_update (socket_base_t *socket_,
-                                     const std::string &raw_filter_,
-                                     bool subscribe_)
-{
-    if (!socket_) {
-        errno = EFAULT;
-        return -1;
-    }
-    msg_t msg;
-    if (msg.init_size (raw_filter_.size () + 1) != 0)
-        return -1;
-
-    unsigned char *data = static_cast<unsigned char *> (msg.data ());
-    data[0] = subscribe_ ? 1 : 0;
-    if (!raw_filter_.empty ())
-        memcpy (data + 1, raw_filter_.data (), raw_filter_.size ());
-
-    const int rc = socket_->send (&msg, 0);
-    msg.close ();
-    return rc;
-}
-
-static uint32_t socket_peer_count (socket_base_t *socket_)
-{
-    if (!socket_)
-        return 0;
-
-    std::vector<std::string> peers;
-    socket_->socket_peer_remote_endpoints (&peers);
-    std::set<std::string> unique_peers (peers.begin (), peers.end ());
-    return static_cast<uint32_t> (unique_peers.size ());
-}
-
-static int publish_ready_probe (socket_base_t *probe_pub_,
-                                const std::string &raw_filter_,
-                                const std::string &probe_endpoint_)
-{
-    if (!probe_pub_ || raw_filter_.empty () || probe_endpoint_.empty ()) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    const std::string &topic = raw_filter_;
-    if (getenv ("ZLINK_DEBUG_SPOT_READY_PROBE")) {
-        fprintf (stderr, "[spot-ready-probe] publish raw=%s topic=%s\n",
-                 raw_filter_.c_str (), topic.c_str ());
-    }
-    msg_t topic_msg;
-    if (topic_msg.init_size (topic.size ()) != 0)
-        return -1;
-    memcpy (topic_msg.data (), topic.data (), topic.size ());
-
-    msg_t marker_msg;
-    if (marker_msg.init_size (sizeof (spot_ready_probe_marker) - 1) != 0) {
-        topic_msg.close ();
-        return -1;
-    }
-    memcpy (marker_msg.data (), spot_ready_probe_marker,
-            sizeof (spot_ready_probe_marker) - 1);
-
-    msg_t endpoint_msg;
-    if (endpoint_msg.init_size (probe_endpoint_.size ()) != 0) {
-        marker_msg.close ();
-        topic_msg.close ();
-        return -1;
-    }
-    memcpy (endpoint_msg.data (), probe_endpoint_.data (),
-            probe_endpoint_.size ());
-
-    if (probe_pub_->send (&topic_msg, ZLINK_SNDMORE) != 0
-        || probe_pub_->send (&marker_msg, ZLINK_SNDMORE) != 0
-        || probe_pub_->send (&endpoint_msg, 0) != 0) {
-        endpoint_msg.close ();
-        marker_msg.close ();
-        topic_msg.close ();
-        return -1;
-    }
-
-    endpoint_msg.close ();
-    marker_msg.close ();
-    topic_msg.close ();
     return 0;
 }
 
+static int recv_and_dispatch_mesh_xsub (
+  socket_base_t *mesh_xsub_,
+  socket_base_t *fanout_,
+  socket_base_t *peer_ctrl_pub_,
+  spot_node_t *node_,
+  std::map<std::string, std::string> *peer_ctrl_endpoints_)
+{
+    if (!mesh_xsub_ || !fanout_ || !peer_ctrl_pub_ || !node_
+        || !peer_ctrl_endpoints_) {
+        errno = EFAULT;
+        return -1;
+    }
 
+    for (;;) {
+        msg_t topic_msg;
+        if (topic_msg.init () != 0)
+            return -1;
+        if (mesh_xsub_->recv (&topic_msg, ZLINK_DONTWAIT) != 0) {
+            const int err = errno;
+            topic_msg.close ();
+            if (err == EAGAIN)
+                return 0;
+            return -1;
+        }
+
+        const char *topic_data =
+          static_cast<const char *> (topic_msg.data ());
+        const size_t topic_size = topic_msg.size ();
+
+        if (!spot_control_protocol::is_bootstrap_ctrl_descriptor_topic (
+              topic_data, topic_size)) {
+            if (forward_topic_and_remaining (fanout_, &topic_msg, mesh_xsub_)
+                != 0) {
+                topic_msg.close ();
+                return -1;
+            }
+            topic_msg.close ();
+            continue;
+        }
+
+        std::vector<std::string> frames;
+        if (recv_remaining_frame_strings (mesh_xsub_, &frames) != 0) {
+            topic_msg.close ();
+            return -1;
+        }
+        topic_msg.close ();
+
+        if (frames.size () < 4)
+            continue;
+
+        const std::string &peer_data_endpoint = frames[0];
+        const std::string &peer_ctrl_endpoint = frames[1];
+        if (peer_data_endpoint.empty () || peer_ctrl_endpoint.empty ())
+            continue;
+
+        const std::map<std::string, std::string>::iterator existing =
+          peer_ctrl_endpoints_->find (peer_data_endpoint);
+        bool changed = existing == peer_ctrl_endpoints_->end ()
+                       || existing->second != peer_ctrl_endpoint;
+        if (!changed)
+            continue;
+
+        if (existing != peer_ctrl_endpoints_->end ()
+            && !existing->second.empty ()) {
+            (void) peer_ctrl_pub_->term_endpoint (existing->second.c_str ());
+        }
+
+        if (peer_ctrl_pub_->connect (peer_ctrl_endpoint.c_str ()) != 0)
+            return -1;
+
+        (*peer_ctrl_endpoints_)[peer_data_endpoint] = peer_ctrl_endpoint;
+        spot_ctrl_debugf ("connect peer ctrl data=%s ctrl=%s",
+                          peer_data_endpoint.c_str (),
+                          peer_ctrl_endpoint.c_str ());
+        if (send_snapshot_to_target (peer_ctrl_pub_, node_, peer_data_endpoint)
+            != 0) {
+            return -1;
+        }
+        node_->schedule_subscription_replay ();
+    }
+}
+
+static int recv_and_process_ctrl_messages (
+  socket_base_t *ctrl_sub_,
+  spot_node_t *node_,
+  std::map<std::string, std::set<std::string> > *peer_ready_filters_)
+{
+    if (!ctrl_sub_ || !node_ || !peer_ready_filters_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    unsigned int processed = 0;
+    while (processed < ctrl_poll_batch_limit) {
+        msg_t topic_msg;
+        if (topic_msg.init () != 0)
+            return -1;
+        if (ctrl_sub_->recv (&topic_msg, ZLINK_DONTWAIT) != 0) {
+            const int err = errno;
+            topic_msg.close ();
+            if (err == EAGAIN)
+                return 0;
+            return -1;
+        }
+
+        const std::string topic (
+          static_cast<const char *> (topic_msg.data ()), topic_msg.size ());
+        std::vector<std::string> frames;
+        if (recv_remaining_frame_strings (ctrl_sub_, &frames) != 0) {
+            topic_msg.close ();
+            return -1;
+        }
+        topic_msg.close ();
+        ++processed;
+
+        if (!spot_control_protocol::is_ctrl_snapshot_topic (topic)
+            || frames.size () < 3) {
+            continue;
+        }
+
+        const std::string &target_endpoint = frames[0];
+        const std::string &source_node_id = frames[1];
+        if (target_endpoint.empty () || source_node_id.empty ())
+            continue;
+
+        std::set<std::string> new_filters;
+        for (size_t i = 3; i < frames.size (); ++i) {
+            if (!frames[i].empty ())
+                new_filters.insert (frames[i]);
+        }
+
+        std::set<std::string> &previous_filters =
+          (*peer_ready_filters_)[source_node_id];
+
+        for (std::set<std::string>::const_iterator it =
+               previous_filters.begin ();
+             it != previous_filters.end (); ++it) {
+            if (new_filters.count (*it) != 0)
+                continue;
+            node_->notify_pub_delivery_ready_ack (target_endpoint, *it,
+                                                  source_node_id, false);
+        }
+
+        for (std::set<std::string>::const_iterator it = new_filters.begin ();
+             it != new_filters.end (); ++it) {
+            if (previous_filters.count (*it) != 0)
+                continue;
+            node_->notify_pub_delivery_ready_ack (target_endpoint, *it,
+                                                  source_node_id, true);
+        }
+
+        spot_ctrl_debugf ("recv snapshot target=%s source=%s filters=%zu",
+                          target_endpoint.c_str (), source_node_id.c_str (),
+                          static_cast<size_t> (new_filters.size ()));
+
+        previous_filters.swap (new_filters);
+        if (previous_filters.empty ())
+            peer_ready_filters_->erase (source_node_id);
+    }
+
+    return 0;
+}
 }
 
 void spot_data_plane_t::close_socket_ptr (spot_node_t *node_,
@@ -546,20 +630,22 @@ void spot_data_plane_t::run (spot_node_t *node_)
         return;
 
     socket_base_t *ctrl = node_->_ctx->create_socket (ZLINK_PAIR);
-    socket_base_t *mesh_pub = node_->_ctx->create_socket (ZLINK_XPUB);
+    socket_base_t *mesh_pub = node_->_ctx->create_socket (ZLINK_PUB);
     socket_base_t *mesh_xsub = node_->_ctx->create_socket (ZLINK_XSUB);
+    socket_base_t *peer_ctrl_pub = node_->_ctx->create_socket (ZLINK_PUB);
+    socket_base_t *peer_ctrl_sub = node_->_ctx->create_socket (ZLINK_SUB);
     socket_base_t *ingress = node_->_ctx->create_socket (ZLINK_SUB);
     socket_base_t *fanout = node_->_ctx->create_socket (ZLINK_PUB);
-    socket_base_t *probe_pub = node_->_ctx->create_socket (ZLINK_PUB);
 
-    if (!ctrl || !mesh_pub || !mesh_xsub || !ingress || !fanout
-        || !probe_pub) {
+    if (!ctrl || !mesh_pub || !mesh_xsub || !peer_ctrl_pub || !peer_ctrl_sub
+        || !ingress || !fanout) {
         const int err = errno != 0 ? errno : ENOMEM;
         if (ctrl && ctrl->connect (runtime->data_ctrl_endpoint.c_str ()) == 0)
             send_errno_reply (ctrl, err);
-        close_socket_ptr (node_, probe_pub);
         close_socket_ptr (node_, fanout);
         close_socket_ptr (node_, ingress);
+        close_socket_ptr (node_, peer_ctrl_sub);
+        close_socket_ptr (node_, peer_ctrl_pub);
         close_socket_ptr (node_, mesh_xsub);
         close_socket_ptr (node_, mesh_pub);
         close_socket_ptr (node_, ctrl);
@@ -573,14 +659,17 @@ void spot_data_plane_t::run (spot_node_t *node_)
         runtime->data_ctrl_back = ctrl;
         runtime->mesh_pub = mesh_pub;
         runtime->mesh_xsub = mesh_xsub;
+        runtime->peer_ctrl_pub = peer_ctrl_pub;
+        runtime->peer_ctrl_sub = peer_ctrl_sub;
         runtime->local_pub_ingress_sub = ingress;
         runtime->local_fanout_xpub = fanout;
         node_->track_owned_socket (ctrl);
         node_->track_owned_socket (mesh_pub);
         node_->track_owned_socket (mesh_xsub);
+        node_->track_owned_socket (peer_ctrl_pub);
+        node_->track_owned_socket (peer_ctrl_sub);
         node_->track_owned_socket (ingress);
         node_->track_owned_socket (fanout);
-        node_->track_owned_socket (probe_pub);
     }
 
     const int linger = 0;
@@ -594,9 +683,10 @@ void spot_data_plane_t::run (spot_node_t *node_)
     apply_common_internal_opts (ctrl, linger);
     apply_common_internal_opts (mesh_pub, linger);
     apply_common_internal_opts (mesh_xsub, linger);
+    apply_common_internal_opts (peer_ctrl_pub, linger);
+    apply_common_internal_opts (peer_ctrl_sub, linger);
     apply_common_internal_opts (ingress, linger);
     apply_common_internal_opts (fanout, linger);
-    apply_common_internal_opts (probe_pub, linger);
 
     if (mesh_pub_affinity != 0 && mesh_xsub_affinity != 0) {
         mesh_pub->setsockopt (ZLINK_AFFINITY, &mesh_pub_affinity,
@@ -614,21 +704,24 @@ void spot_data_plane_t::run (spot_node_t *node_)
     fanout->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
     fanout->setsockopt (ZLINK_RCVHWM, &zero, sizeof (zero));
     fanout->setsockopt (ZLINK_XPUB_NODROP, &one, sizeof (one));
-    mesh_pub->setsockopt (ZLINK_XPUB_VERBOSER, &one, sizeof (one));
-    mesh_pub->setsockopt (xpub_t::send_all_data_option, &one, sizeof (one));
     mesh_pub->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
     mesh_xsub->setsockopt (ZLINK_RCVHWM, &zero, sizeof (zero));
     mesh_xsub->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
-    probe_pub->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
+    peer_ctrl_pub->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
+    peer_ctrl_sub->setsockopt (ZLINK_RCVHWM, &zero, sizeof (zero));
+    peer_ctrl_sub->setsockopt (ZLINK_SUBSCRIBE,
+                               spot_control_protocol::ctrl_prefix,
+                               strlen (spot_control_protocol::ctrl_prefix));
 
-    if (ingress->bind (runtime->pub_ingress_endpoint.c_str ()) != 0
-        || fanout->bind (runtime->sub_fanout_endpoint.c_str ()) != 0
-        || probe_pub->connect (runtime->pub_ingress_endpoint.c_str ()) != 0) {
+    if (send_subscription_update (mesh_xsub, "", true) != 0
+        || ingress->bind (runtime->pub_ingress_endpoint.c_str ()) != 0
+        || fanout->bind (runtime->sub_fanout_endpoint.c_str ()) != 0) {
         const int err = errno;
         send_errno_reply (ctrl, err);
-        close_socket_ptr (node_, probe_pub);
         close_socket_ptr (node_, fanout);
         close_socket_ptr (node_, ingress);
+        close_socket_ptr (node_, peer_ctrl_sub);
+        close_socket_ptr (node_, peer_ctrl_pub);
         close_socket_ptr (node_, mesh_xsub);
         close_socket_ptr (node_, mesh_pub);
         close_socket_ptr (node_, ctrl);
@@ -637,6 +730,8 @@ void spot_data_plane_t::run (spot_node_t *node_)
             runtime->data_ctrl_back = NULL;
             runtime->mesh_pub = NULL;
             runtime->mesh_xsub = NULL;
+            runtime->peer_ctrl_pub = NULL;
+            runtime->peer_ctrl_sub = NULL;
             runtime->local_pub_ingress_sub = NULL;
             runtime->local_fanout_xpub = NULL;
             runtime->mark_fault (err);
@@ -648,6 +743,8 @@ void spot_data_plane_t::run (spot_node_t *node_)
         const int err = errno;
         close_socket_ptr (node_, fanout);
         close_socket_ptr (node_, ingress);
+        close_socket_ptr (node_, peer_ctrl_sub);
+        close_socket_ptr (node_, peer_ctrl_pub);
         close_socket_ptr (node_, mesh_xsub);
         close_socket_ptr (node_, mesh_pub);
         close_socket_ptr (node_, ctrl);
@@ -656,6 +753,8 @@ void spot_data_plane_t::run (spot_node_t *node_)
             runtime->data_ctrl_back = NULL;
             runtime->mesh_pub = NULL;
             runtime->mesh_xsub = NULL;
+            runtime->peer_ctrl_pub = NULL;
+            runtime->peer_ctrl_sub = NULL;
             runtime->local_pub_ingress_sub = NULL;
             runtime->local_fanout_xpub = NULL;
             runtime->mark_fault (err);
@@ -667,19 +766,16 @@ void spot_data_plane_t::run (spot_node_t *node_)
     poller.add (ctrl, NULL, ZLINK_POLLIN);
     poller.add (ingress, NULL, ZLINK_POLLIN);
     poller.add (mesh_xsub, NULL, ZLINK_POLLIN);
-    poller.add (fanout, NULL, ZLINK_POLLIN);
-    poller.add (mesh_pub, NULL, ZLINK_POLLIN);
+    poller.add (peer_ctrl_sub, NULL, ZLINK_POLLIN);
 
     bool running = true;
     int fatal_errno = 0;
-    std::map<std::string, ready_probe_state_t> pending_ready_probes;
-    std::map<std::string, std::set<std::string> > ready_ack_sources;
-    std::map<std::string, uint32_t> remote_data_subscription_counts;
-    uint32_t remote_data_subscription_count = 0;
+    uint64_t next_bootstrap_ms = 0;
+    std::map<std::string, std::string> peer_ctrl_endpoints;
+    std::map<std::string, std::set<std::string> > peer_ready_filters;
     while (running) {
-        socket_poller_t::event_t events[5];
-        const int wait_timeout = pending_ready_probes.empty () ? -1 : 20;
-        const int rc = poller.wait (events, 5, wait_timeout);
+        socket_poller_t::event_t events[4];
+        const int rc = poller.wait (events, 4, 20);
         if (rc < 0) {
             if (errno == EAGAIN || errno == EINTR)
                 continue;
@@ -698,6 +794,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
                     running = false;
                     break;
                 }
+
                 const std::string verb = frames.empty () ? std::string () : frames[0];
                 const std::string arg = frames.size () > 1 ? frames[1] : std::string ();
 
@@ -713,17 +810,31 @@ void spot_data_plane_t::run (spot_node_t *node_)
                         cert = node_->_tls_cert;
                         key = node_->_tls_key;
                     }
+
+                    std::string ctrl_bind_endpoint;
+                    if (!spot_control_protocol::derive_peer_ctrl_bind_endpoint (
+                          arg, runtime->node_id, &ctrl_bind_endpoint)) {
+                        send_errno_reply (ctrl, EINVAL);
+                        continue;
+                    }
+
                     if (spot_node_t::apply_tls_server (mesh_pub, cert, key) != 0
-                        || mesh_pub->bind (arg.c_str ()) != 0) {
-                        send_errno_reply (ctrl, errno);
+                        || spot_node_t::apply_tls_server (peer_ctrl_sub, cert, key)
+                             != 0
+                        || mesh_pub->bind (arg.c_str ()) != 0
+                        || peer_ctrl_sub->bind (ctrl_bind_endpoint.c_str ()) != 0) {
+                        send_errno_reply (ctrl, errno != 0 ? errno : EIO);
                     } else {
+                        runtime->peer_ctrl_endpoint = ctrl_bind_endpoint;
                         scoped_lock_t lock (node_->_sync);
+                        runtime->bound_endpoint = arg;
                         node_->_server_tls_locked = true;
                         send_ok_reply (ctrl);
                     }
                 } else if (verb == "connect_peer_pub") {
                     std::string ca;
                     std::string host;
+                    std::string peer_ctrl_endpoint;
                     int trust = 0;
                     {
                         scoped_lock_t lock (node_->_sync);
@@ -731,85 +842,75 @@ void spot_data_plane_t::run (spot_node_t *node_)
                         host = node_->_tls_hostname;
                         trust = node_->_tls_trust_system;
                     }
+                    if (!spot_control_protocol::derive_peer_ctrl_bind_endpoint (
+                          arg, runtime->node_id, &peer_ctrl_endpoint)) {
+                        send_errno_reply (ctrl, EINVAL);
+                        continue;
+                    }
                     if (spot_node_t::apply_tls_client (mesh_xsub, ca, host, trust)
                           != 0
-                        || mesh_xsub->connect (arg.c_str ()) != 0) {
+                        || spot_node_t::apply_tls_client (peer_ctrl_pub, ca, host,
+                                                          trust)
+                             != 0
+                        || mesh_xsub->connect (arg.c_str ()) != 0
+                        || peer_ctrl_pub->connect (peer_ctrl_endpoint.c_str ()) != 0
+                        || send_subscription_update (mesh_xsub, "", true) != 0) {
+                        if (!peer_ctrl_endpoint.empty ())
+                            (void) peer_ctrl_pub->term_endpoint (
+                              peer_ctrl_endpoint.c_str ());
+                        (void) mesh_xsub->term_endpoint (arg.c_str ());
                         send_errno_reply (ctrl, errno);
                     } else {
+                        peer_ctrl_endpoints[arg] = peer_ctrl_endpoint;
+                        if (send_snapshot_to_target (peer_ctrl_pub, node_, arg)
+                            != 0) {
+                            (void) peer_ctrl_pub->term_endpoint (
+                              peer_ctrl_endpoint.c_str ());
+                            peer_ctrl_endpoints.erase (arg);
+                            (void) mesh_xsub->term_endpoint (arg.c_str ());
+                            send_errno_reply (ctrl, errno);
+                            continue;
+                        }
                         scoped_lock_t lock (node_->_sync);
                         node_->_mesh_client_tls_locked = true;
                         send_ok_reply (ctrl);
                     }
-                } else if (verb == "replay_subscriptions") {
-                    std::set<std::string> raw_filters;
-                    node_->snapshot_raw_subscription_filters (&raw_filters);
-                    if (getenv ("ZLINK_DEBUG_SPOT_REPLAY")) {
-                        fprintf (stderr,
-                                 "[spot-replay] data-plane replay count=%zu\n",
-                                 raw_filters.size ());
-                    }
-                    bool replay_failed = false;
-                    int replay_error = 0;
-                    for (std::set<std::string>::const_iterator it =
-                           raw_filters.begin ();
-                         it != raw_filters.end (); ++it) {
-                        if (getenv ("ZLINK_DEBUG_SPOT_REPLAY")) {
-                            fprintf (stderr, "[spot-replay] replay raw=%s\n",
-                                     it->c_str ());
-                        }
-                        if (send_subscription_update (mesh_xsub, *it, true)
-                                 != 0) {
-                            replay_failed = true;
-                            replay_error = errno != 0 ? errno : EIO;
-                            break;
-                        }
-                        node_->notify_subscription_forwarded (*it);
-                    }
-                    if (replay_failed)
-                        send_errno_reply (ctrl, replay_error);
+                } else if (verb == "replay_subscriptions"
+                           || verb == "subscription_subscribe"
+                           || verb == "subscription_unsubscribe") {
+                    if (send_snapshot_to_peers (peer_ctrl_pub, node_,
+                                                peer_ctrl_endpoints)
+                        != 0)
+                        send_errno_reply (ctrl, errno);
                     else
                         send_ok_reply (ctrl);
-                } else if (verb == "subscription_subscribe"
-                           || verb == "subscription_unsubscribe") {
-                    if (arg.empty ()) {
-                        send_errno_reply (ctrl, EINVAL);
-                    } else if (send_subscription_update (
-                                 mesh_xsub, arg,
-                                 verb == "subscription_subscribe")
-                               != 0) {
-                        send_errno_reply (ctrl, errno);
-                    } else {
-                        if (verb == "subscription_subscribe")
-                            node_->notify_subscription_forwarded (arg);
-                        send_ok_reply (ctrl);
-                    }
                 } else if (verb == "ready_ack_subscribe"
                            || verb == "ready_ack_unsubscribe") {
-                    std::string target_endpoint;
-                    std::string raw_filter;
-                    std::string ack_source_id;
-                    if (!parse_ready_ack_arg (arg, &target_endpoint,
-                                              &raw_filter, &ack_source_id)
-                        || raw_filter.empty ()
-                        || target_endpoint.empty ()
-                        || ack_source_id.empty ()) {
-                        send_errno_reply (ctrl, EINVAL);
-                    } else if (send_subscription_update (
-                                 mesh_xsub,
-                                 ready_ack_filter (target_endpoint, raw_filter,
-                                                   ack_source_id),
-                                 verb == "ready_ack_subscribe")
-                               != 0) {
-                        send_errno_reply (ctrl, errno);
-                    } else {
-                        send_ok_reply (ctrl);
-                    }
+                    send_ok_reply (ctrl);
                 } else if (verb == "unbind_pub") {
+                    clear_snapshot_sources (node_, &peer_ready_filters);
+                    if (!runtime->peer_ctrl_endpoint.empty ())
+                        (void) peer_ctrl_sub->term_endpoint (
+                          runtime->peer_ctrl_endpoint.c_str ());
+                    runtime->peer_ctrl_endpoint.clear ();
+                    runtime->bound_endpoint.clear ();
                     if (mesh_pub->term_endpoint (arg.c_str ()) != 0)
                         send_errno_reply (ctrl, errno);
                     else
                         send_ok_reply (ctrl);
                 } else if (verb == "disconnect_peer_pub") {
+                    const std::map<std::string, std::string>::iterator it =
+                      peer_ctrl_endpoints.find (arg);
+                    if (it != peer_ctrl_endpoints.end ()) {
+                        std::set<std::string> empty_filters;
+                        (void) send_control_snapshot (
+                          peer_ctrl_pub, arg,
+                          spot_control_protocol::node_id_string (
+                            runtime->node_id),
+                          empty_filters);
+                        (void) peer_ctrl_pub->term_endpoint (it->second.c_str ());
+                        peer_ctrl_endpoints.erase (it);
+                    }
                     if (mesh_xsub->term_endpoint (arg.c_str ()) != 0)
                         send_errno_reply (ctrl, errno);
                     else
@@ -821,10 +922,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
             }
 
             if (events[i].socket == ingress) {
-                if (recv_and_forward_ingress (ingress, mesh_pub, fanout,
-                                              node_,
-                                              remote_data_subscription_count
-                                                != 0)
+                if (recv_and_forward_ingress (ingress, mesh_pub, fanout, node_)
                     != 0) {
                     fatal_errno = errno;
                     running = false;
@@ -834,16 +932,8 @@ void spot_data_plane_t::run (spot_node_t *node_)
             }
 
             if (events[i].socket == mesh_xsub) {
-                if (recv_and_forward (mesh_xsub, fanout, NULL) != 0) {
-                    fatal_errno = errno;
-                    running = false;
-                    break;
-                }
-                continue;
-            }
-
-            if (events[i].socket == fanout) {
-                if (recv_and_forward_subscription_updates (fanout, NULL, NULL)
+                if (recv_and_dispatch_mesh_xsub (mesh_xsub, fanout, peer_ctrl_pub,
+                                                 node_, &peer_ctrl_endpoints)
                     != 0) {
                     fatal_errno = errno;
                     running = false;
@@ -852,101 +942,14 @@ void spot_data_plane_t::run (spot_node_t *node_)
                 continue;
             }
 
-            if (events[i].socket == mesh_pub) {
-                std::vector<subscription_update_t> updates;
-                if (recv_and_forward_subscription_updates (mesh_pub, NULL,
-                                                           &updates)
+            if (events[i].socket == peer_ctrl_sub) {
+                if (recv_and_process_ctrl_messages (peer_ctrl_sub, node_,
+                                                    &peer_ready_filters)
                     != 0) {
                     fatal_errno = errno;
                     running = false;
                     break;
                 }
-                for (size_t j = 0; j < updates.size (); ++j)
-                    apply_remote_data_subscription_update (
-                      updates[j], &remote_data_subscription_counts,
-                      &remote_data_subscription_count);
-                for (size_t j = 0; j < updates.size (); ++j)
-                    if (!is_ready_probe_filter (updates[j].subject)) {
-                        std::string target_endpoint;
-                        std::string raw_filter;
-                        std::string ack_source_id;
-                        if (parse_ready_ack_filter (updates[j].subject,
-                                                    &target_endpoint,
-                                                    &raw_filter,
-                                                    &ack_source_id)) {
-                            uint32_t ready_count = 0;
-                            std::set<std::string> &ready_sources =
-                              ready_ack_sources[raw_filter];
-                            if (updates[j].subscribe) {
-                                ready_sources.insert (ack_source_id);
-                                ready_count =
-                                  static_cast<uint32_t> (ready_sources.size ());
-                            } else {
-                                ready_sources.erase (ack_source_id);
-                                ready_count =
-                                  static_cast<uint32_t> (ready_sources.size ());
-                                if (ready_sources.empty ()) {
-                                    ready_ack_sources.erase (raw_filter);
-                                    pending_ready_probes.erase (raw_filter);
-                                }
-                            }
-                            node_->notify_pub_delivery_ready_ack (
-                              target_endpoint, raw_filter, ack_source_id,
-                              updates[j].subscribe);
-                            continue;
-                        }
-                        if (getenv ("ZLINK_DEBUG_SPOT_REPLAY")) {
-                            fprintf (stderr,
-                                     "[spot-replay] mesh_pub update "
-                                     "subscribe=%d subject=%s\n",
-                                     updates[j].subscribe ? 1 : 0,
-                                     updates[j].subject.c_str ());
-                        }
-                        if (updates[j].subscribe) {
-                            const uint32_t current_ack = static_cast<uint32_t> (
-                              ready_ack_sources[updates[j].subject].size ());
-                            const uint32_t expected_ready_count =
-                              socket_peer_count (mesh_pub);
-                            if (expected_ready_count > 0
-                                && current_ack >= expected_ready_count) {
-                                pending_ready_probes.erase (
-                                  updates[j].subject);
-                                continue;
-                            }
-                            ready_probe_state_t &state =
-                              pending_ready_probes[updates[j].subject];
-                            const bool was_idle = state.attempts_remaining == 0;
-                            if (was_idle) {
-                                if (getenv ("ZLINK_DEBUG_SPOT_READY_PROBE")) {
-                                    fprintf (stderr,
-                                             "[spot-ready-probe] start raw=%s "
-                                             "ack=%u\n",
-                                             updates[j].subject.c_str (),
-                                             static_cast<unsigned int> (
-                                               current_ack));
-                                }
-                            }
-                            state.attempts_remaining =
-                              ready_probe_attempt_count;
-                            if (was_idle
-                                && state.holdoff_ticks
-                                     < ready_probe_holdoff_after_subscribe) {
-                                state.holdoff_ticks =
-                                  ready_probe_holdoff_after_subscribe;
-                            }
-                            if (current_ack > state.ack_count_observed)
-                                state.ack_count_observed = current_ack;
-                        } else {
-                            const std::map<std::string, std::set<std::string> >::const_iterator
-                              ready_it =
-                                ready_ack_sources.find (updates[j].subject);
-                            if (ready_it == ready_ack_sources.end ()
-                                || ready_it->second.empty ())
-                                pending_ready_probes.erase (updates[j].subject);
-                        }
-                    }
-                if (!running)
-                    break;
                 continue;
             }
         }
@@ -954,94 +957,35 @@ void spot_data_plane_t::run (spot_node_t *node_)
         if (!running)
             break;
 
-        if (getenv ("ZLINK_DEBUG_SPOT_READY_PROBE"))
-            fprintf (stderr,
-                     "[spot-ready-probe] pending=%zu\n",
-                     pending_ready_probes.size ());
-        if (!pending_ready_probes.empty ()) {
-            std::string probe_endpoint;
-            {
-                scoped_lock_t lock (node_->_sync);
-                probe_endpoint =
-                  node_->_advertise_endpoint.empty ()
-                    ? node_->_bound_endpoint
-                    : node_->_advertise_endpoint;
+        const uint64_t now_ms = clock_t ().now_ms ();
+        if (now_ms >= next_bootstrap_ms) {
+            if (publish_bootstrap_descriptor (mesh_pub, node_, runtime) != 0) {
+                fatal_errno = errno;
+                running = false;
+                break;
             }
-            for (std::map<std::string, ready_probe_state_t>::iterator it =
-                   pending_ready_probes.begin ();
-                 it != pending_ready_probes.end () && running;) {
-                ready_probe_state_t &state = it->second;
-                if (state.holdoff_ticks > 0) {
-                    --state.holdoff_ticks;
-                    ++it;
-                    continue;
-                }
-
-                const uint32_t current_ack = static_cast<uint32_t> (
-                  ready_ack_sources[it->first].size ());
-                const uint32_t expected_ready_count =
-                  socket_peer_count (mesh_pub);
-                if (expected_ready_count > 0
-                    && current_ack >= expected_ready_count) {
-                    if (getenv ("ZLINK_DEBUG_SPOT_READY_PROBE")) {
-                        fprintf (stderr,
-                                 "[spot-ready-probe] settled raw=%s ack=%u "
-                                 "expected=%u\n",
-                                 it->first.c_str (),
-                                 static_cast<unsigned int> (current_ack),
-                                 static_cast<unsigned int> (
-                                   expected_ready_count));
-                    }
-                    node_->notify_pub_first_delivery_ready_settled (
-                      it->first, current_ack);
-                    pending_ready_probes.erase (it++);
-                    continue;
-                }
-                if (current_ack > state.ack_count_observed) {
-                    state.ack_count_observed = current_ack;
-                    state.holdoff_ticks = ready_probe_holdoff_after_subscribe;
-                    ++it;
-                    continue;
-                }
-
-                if (publish_ready_probe (probe_pub, it->first, probe_endpoint)
-                    != 0) {
-                    fatal_errno = errno;
-                    running = false;
-                    break;
-                }
-                if (state.attempts_remaining > 0)
-                    --state.attempts_remaining;
-                state.ack_count_observed = current_ack;
-                state.holdoff_ticks = ready_probe_holdoff_after_subscribe;
-                if (state.attempts_remaining == 0) {
-                    if (getenv ("ZLINK_DEBUG_SPOT_READY_PROBE")) {
-                        fprintf (stderr,
-                                 "[spot-ready-probe] settled raw=%s ack=%u\n",
-                                 it->first.c_str (),
-                                 static_cast<unsigned int> (current_ack));
-                    }
-                    node_->notify_pub_first_delivery_ready_settled (
-                      it->first, current_ack);
-                    pending_ready_probes.erase (it++);
-                } else {
-                    ++it;
-                }
-            }
+            next_bootstrap_ms = now_ms + bootstrap_broadcast_interval_ms;
         }
     }
+
+    clear_snapshot_sources (node_, &peer_ready_filters);
 
     {
         scoped_lock_t lock (node_->_sync);
         runtime->data_ctrl_back = NULL;
         runtime->mesh_pub = NULL;
         runtime->mesh_xsub = NULL;
+        runtime->peer_ctrl_pub = NULL;
+        runtime->peer_ctrl_sub = NULL;
         runtime->local_pub_ingress_sub = NULL;
         runtime->local_fanout_xpub = NULL;
+        runtime->peer_ctrl_endpoint.clear ();
+        runtime->bound_endpoint.clear ();
     }
     close_socket_ptr (node_, fanout);
     close_socket_ptr (node_, ingress);
-    close_socket_ptr (node_, probe_pub);
+    close_socket_ptr (node_, peer_ctrl_sub);
+    close_socket_ptr (node_, peer_ctrl_pub);
     close_socket_ptr (node_, mesh_xsub);
     close_socket_ptr (node_, mesh_pub);
     close_socket_ptr (node_, ctrl);

@@ -776,16 +776,21 @@ static void test_spot_pub_sub_options_and_routing_ids ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    TEST_ASSERT_NULL (zlink_spot_node_new (ctx, "spot-null-handler", NULL));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    void *null_handler_node =
+      zlink_spot_node_new (ctx, "spot-null-handler", NULL);
+    TEST_ASSERT_NOT_NULL (null_handler_node);
+    TEST_ASSERT_EQUAL_INT (0, zlink_spot_node_destroy (&null_handler_node));
+    TEST_ASSERT_NULL (null_handler_node);
 
     step_log ("pub_sub_options: create nodes");
     void *pub_node = create_spot_node (ctx, "spot-test");
     void *sub_node = create_spot_node (ctx, "spot-test");
     TEST_ASSERT_NOT_NULL (pub_node);
     TEST_ASSERT_NOT_NULL (sub_node);
-    TEST_ASSERT_NULL (zlink_spot_new (pub_node, NULL));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    void *null_handler_spot = zlink_spot_new (pub_node, NULL);
+    TEST_ASSERT_NOT_NULL (null_handler_spot);
+    TEST_ASSERT_EQUAL_INT (0, zlink_spot_destroy (&null_handler_spot));
+    TEST_ASSERT_NULL (null_handler_spot);
 
     step_log ("pub_sub_options: create handles");
     void *pub = create_spot_pub_handle (pub_node);

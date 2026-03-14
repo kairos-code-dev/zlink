@@ -5,6 +5,7 @@
 #include "services/spot/spot_sub.hpp"
 #include "services/common/monitor_decode.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
+#include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
 
@@ -290,8 +291,11 @@ bool spot_sub_t::is_valid_topic (const char *topic_, std::string *out_)
     const size_t len = strlen (topic_);
     if (len == 0 || len > 255)
         return false;
+    const std::string value (topic_, len);
+    if (spot_control_protocol::is_reserved_subject (value))
+        return false;
     if (out_)
-        *out_ = std::string (topic_, len);
+        *out_ = value;
     return true;
 }
 
@@ -305,8 +309,11 @@ bool spot_sub_t::is_valid_pattern (const char *pattern_, std::string *prefix_out
     const char *star = strchr (pattern_, '*');
     if (star != pattern_ + len - 1)
         return false;
+    const std::string prefix (pattern_, len - 1);
+    if (spot_control_protocol::is_reserved_subject (prefix))
+        return false;
     if (prefix_out_)
-        *prefix_out_ = std::string (pattern_, len - 1);
+        *prefix_out_ = prefix;
     return true;
 }
 
@@ -349,6 +356,8 @@ int spot_sub_t::subscribe (const char *topic_)
                                    ZLINK_SERVICE_EVENT_SUBJECT_TOPIC);
         if (_node->send_subscription_update (topic, true) != 0)
             return -1;
+        if (_node->has_active_peers ())
+            _node->notify_subscription_forwarded (topic);
         _node->schedule_subscription_replay ();
         if (_node->replay_subscriptions_if_active_peers () != 0)
             return -1;
@@ -392,6 +401,8 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
                                    ZLINK_SERVICE_EVENT_SUBJECT_PATTERN);
         if (_node->send_subscription_update (prefix, true) != 0)
             return -1;
+        if (_node->has_active_peers ())
+            _node->notify_subscription_forwarded (prefix);
         _node->schedule_subscription_replay ();
         if (_node->replay_subscriptions_if_active_peers () != 0)
             return -1;
@@ -693,7 +704,7 @@ void spot_sub_t::mark_subject_subscription_ready (
 
     emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
                                    subject_.subject_kind);
-    backfill_subject_ready_endpoint (subject_, endpoint_);
+    mark_subject_ready (subject_, endpoint_);
 }
 
 std::string spot_sub_t::first_ready_peer_endpoint () const
@@ -1397,6 +1408,12 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     socket_base_t *socket = this->socket ();
     int first_error = 0;
     std::vector<std::pair<std::string, std::string> > ready_ack_updates;
+    bool had_filters = false;
+
+    {
+        scoped_lock_t lock (_sync);
+        had_filters = !_topics.empty () || !_patterns.empty ();
+    }
 
     release_all_ready_ack_endpoints (&ready_ack_updates);
     if (_node) {
@@ -1412,6 +1429,11 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         _node->remove_spot_sub (this);
     if (notify_node_ && _node)
         _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
+    if (notify_node_ && _node && had_filters) {
+        _node->schedule_subscription_replay ();
+        preserve_first_error (_node->replay_subscriptions_if_active_peers (),
+                              &first_error);
+    }
 
     bool has_handler = false;
     {

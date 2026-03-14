@@ -93,6 +93,7 @@ class spot_node_t : public discovery_observer_t
     spot_runtime_t *runtime () const { return _runtime; }
     const std::string &pub_ingress_endpoint () const;
     const std::string &sub_fanout_endpoint () const;
+    std::string public_endpoint () const;
     bool has_active_peers () const;
     bool has_local_filtered_subs () const;
     void note_local_sub_filters_changed (bool had_filters_,
@@ -103,6 +104,11 @@ class spot_node_t : public discovery_observer_t
     int ensure_healthy () const;
     void debug_mark_fault (int err_);
     void untrack_owned_socket (const socket_base_t *socket_);
+    void snapshot_raw_subscription_filters (std::set<std::string> *out_) const;
+    void notify_pub_delivery_ready_ack (const std::string &target_endpoint_,
+                                        const std::string &subject_,
+                                        const std::string &ack_source_id_,
+                                        bool subscribe_);
 
   private:
     static void control_task (void *arg_);
@@ -148,8 +154,6 @@ class spot_node_t : public discovery_observer_t
     void refresh_existing_summaries ();
     void refresh_sub_peer_summaries (bool has_active_peers,
                                      bool lost_transition);
-    void snapshot_raw_subscription_filters (
-      std::set<std::string> *out_) const;
     void schedule_subscription_ready_refresh ();
     void schedule_pub_delivery_ready_refresh ();
     void queue_all_subscription_ready_filters ();
@@ -158,10 +162,6 @@ class spot_node_t : public discovery_observer_t
     void emit_pending_pub_delivery_ready_events ();
     std::string first_connected_peer_endpoint () const;
     void notify_subscription_forwarded (const std::string &raw_filter_);
-    void notify_pub_delivery_ready_ack (const std::string &target_endpoint_,
-                                        const std::string &subject_,
-                                        const std::string &ack_source_id_,
-                                        bool subscribe_);
     void notify_pub_first_delivery_ready_settled (const std::string &subject_,
                                                   uint32_t ready_count_);
     int send_subscription_update (const std::string &raw_filter_,

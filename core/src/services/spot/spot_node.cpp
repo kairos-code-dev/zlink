@@ -198,6 +198,8 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     data_ctrl_back (NULL),
     mesh_pub (NULL),
     mesh_xsub (NULL),
+    peer_ctrl_pub (NULL),
+    peer_ctrl_sub (NULL),
     local_pub_ingress_sub (NULL),
     local_fanout_xpub (NULL),
     stop (0),
@@ -345,6 +347,8 @@ void spot_runtime_t::stop_sockets ()
     socket_base_t *ctrl_back = NULL;
     socket_base_t *mesh_pub_local = NULL;
     socket_base_t *mesh_xsub_local = NULL;
+    socket_base_t *peer_ctrl_pub_local = NULL;
+    socket_base_t *peer_ctrl_sub_local = NULL;
     socket_base_t *ingress = NULL;
     socket_base_t *fanout = NULL;
 
@@ -354,6 +358,8 @@ void spot_runtime_t::stop_sockets ()
         ctrl_back = data_ctrl_back;
         mesh_pub_local = mesh_pub;
         mesh_xsub_local = mesh_xsub;
+        peer_ctrl_pub_local = peer_ctrl_pub;
+        peer_ctrl_sub_local = peer_ctrl_sub;
         ingress = local_pub_ingress_sub;
         fanout = local_fanout_xpub;
     }
@@ -454,6 +460,8 @@ size_t spot_runtime_t::live_socket_slot_count () const
     count += data_ctrl_back != NULL ? 1 : 0;
     count += mesh_pub != NULL ? 1 : 0;
     count += mesh_xsub != NULL ? 1 : 0;
+    count += peer_ctrl_pub != NULL ? 1 : 0;
+    count += peer_ctrl_sub != NULL ? 1 : 0;
     count += local_pub_ingress_sub != NULL ? 1 : 0;
     count += local_fanout_xpub != NULL ? 1 : 0;
     return count;
@@ -474,6 +482,8 @@ int spot_runtime_t::abortive_stop ()
     socket_base_t *ctrl_back = NULL;
     socket_base_t *mesh_pub_local = NULL;
     socket_base_t *mesh_xsub_local = NULL;
+    socket_base_t *peer_ctrl_pub_local = NULL;
+    socket_base_t *peer_ctrl_sub_local = NULL;
     socket_base_t *ingress = NULL;
     socket_base_t *fanout = NULL;
     {
@@ -482,12 +492,16 @@ int spot_runtime_t::abortive_stop ()
         ctrl_back = data_ctrl_back;
         mesh_pub_local = mesh_pub;
         mesh_xsub_local = mesh_xsub;
+        peer_ctrl_pub_local = peer_ctrl_pub;
+        peer_ctrl_sub_local = peer_ctrl_sub;
         ingress = local_pub_ingress_sub;
         fanout = local_fanout_xpub;
         data_ctrl_front = NULL;
         data_ctrl_back = NULL;
         mesh_pub = NULL;
         mesh_xsub = NULL;
+        peer_ctrl_pub = NULL;
+        peer_ctrl_sub = NULL;
         local_pub_ingress_sub = NULL;
         local_fanout_xpub = NULL;
     }
@@ -509,6 +523,8 @@ int spot_runtime_t::abortive_stop ()
         (void) owner->_lifecycle.close_socket (ctrl_back, 1000);
         (void) owner->_lifecycle.close_socket (mesh_pub_local, 1000);
         (void) owner->_lifecycle.close_socket (mesh_xsub_local, 1000);
+        (void) owner->_lifecycle.close_socket (peer_ctrl_pub_local, 1000);
+        (void) owner->_lifecycle.close_socket (peer_ctrl_sub_local, 1000);
         (void) owner->_lifecycle.close_socket (ingress, 1000);
         (void) owner->_lifecycle.close_socket (fanout, 1000);
         for (size_t i = 0; i < attachment_sockets.size (); ++i) {
@@ -520,6 +536,8 @@ int spot_runtime_t::abortive_stop ()
         close_socket_ptr (&ctrl_back);
         close_socket_ptr (&mesh_pub_local);
         close_socket_ptr (&mesh_xsub_local);
+        close_socket_ptr (&peer_ctrl_pub_local);
+        close_socket_ptr (&peer_ctrl_sub_local);
         close_socket_ptr (&ingress);
         close_socket_ptr (&fanout);
         for (size_t i = 0; i < attachment_sockets.size (); ++i) {
@@ -700,6 +718,12 @@ const std::string &spot_node_t::pub_ingress_endpoint () const
 const std::string &spot_node_t::sub_fanout_endpoint () const
 {
     return _runtime->sub_fanout_endpoint;
+}
+
+std::string spot_node_t::public_endpoint () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    return _advertise_endpoint.empty () ? _bound_endpoint : _advertise_endpoint;
 }
 
 bool spot_node_t::has_active_peers () const
@@ -964,6 +988,7 @@ void spot_node_t::refresh_discovery_peers ()
 
     if (old_active_count == 0 && new_active_count > 0) {
         if (has_local_filtered_subs ()) {
+            queue_all_subscription_ready_filters ();
             schedule_subscription_replay ();
             if (replay_subscriptions_if_active_peers () != 0) {
                 debug_mark_fault (errno);
@@ -973,6 +998,7 @@ void spot_node_t::refresh_discovery_peers ()
         refresh_sub_peer_summaries (true, false);
     } else if (!to_connect.empty () && new_active_count > 0) {
         if (has_local_filtered_subs ()) {
+            queue_all_subscription_ready_filters ();
             schedule_subscription_replay ();
             if (replay_subscriptions_if_active_peers () != 0) {
                 debug_mark_fault (errno);
@@ -1168,11 +1194,12 @@ void spot_node_t::emit_pending_subscription_ready_events ()
     std::vector<spot_sub_t *> subs;
     std::set<std::string> raw_filters;
     std::string ready_endpoint;
+    std::set<std::string> active_endpoints;
     {
         scoped_lock_t lock (_sync);
         if (!_subscription_ready_refresh_pending)
             return;
-        if (_connected_peer_endpoints.empty ()) {
+        if (_connected_peer_endpoints.empty () && _active_peer_endpoints.empty ()) {
             _subscription_ready_refresh_pending = false;
             _subscription_ready_refresh_holdoff_ticks = 0;
             _pending_subscription_ready_filters.clear ();
@@ -1187,7 +1214,13 @@ void spot_node_t::emit_pending_subscription_ready_events ()
             _subscription_ready_refresh_holdoff_ticks = 0;
             return;
         }
-        ready_endpoint = *_connected_peer_endpoints.begin ();
+        if (!_connected_peer_endpoints.empty ())
+            ready_endpoint = *_connected_peer_endpoints.begin ();
+        else {
+            active_endpoints = _active_peer_endpoints;
+            if (!active_endpoints.empty ())
+                ready_endpoint = *active_endpoints.begin ();
+        }
         subs.assign (_subs.begin (), _subs.end ());
         raw_filters.swap (_pending_subscription_ready_filters);
         _subscription_ready_refresh_pending = false;
@@ -1302,11 +1335,9 @@ void spot_node_t::notify_pub_delivery_ready_ack (
         pubs[i]->emit_delivery_ready_changed_event (
           subject_.c_str (), false, ZLINK_SERVICE_EVENT_SUBJECT_NONE,
           ready_count);
-        if (!subscribe_) {
-            pubs[i]->emit_first_delivery_ready_changed_event (
-              subject_.c_str (), false, ZLINK_SERVICE_EVENT_SUBJECT_NONE,
-              ready_count);
-        }
+        pubs[i]->emit_first_delivery_ready_changed_event (
+          subject_.c_str (), false, ZLINK_SERVICE_EVENT_SUBJECT_NONE,
+          ready_count);
     }
 
 }
@@ -1668,6 +1699,7 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
     }
     if (has_active_peers) {
         if (has_local_filtered_subs ()) {
+            queue_all_subscription_ready_filters ();
             schedule_subscription_replay ();
             if (replay_subscriptions_if_active_peers () != 0)
                 return -1;

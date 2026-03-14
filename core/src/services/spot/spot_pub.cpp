@@ -5,6 +5,7 @@
 #include "services/spot/spot_pub.hpp"
 #include "services/common/monitor_decode.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
+#include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
 
@@ -218,6 +219,11 @@ int spot_pub_t::publish (const char *topic_,
         errno = EINVAL;
         return -1;
     }
+    const size_t topic_size = strlen (topic_);
+    if (spot_control_protocol::is_reserved_subject (topic_, topic_size)) {
+        errno = EINVAL;
+        return -1;
+    }
     if (part_count_ > 0 && !parts_) {
         errno = EINVAL;
         return -1;
@@ -231,9 +237,9 @@ int spot_pub_t::publish (const char *topic_,
         lock_routing_id ();
 
         msg_t topic_msg;
-        if (topic_msg.init_size (strlen (topic_)) != 0)
+        if (topic_msg.init_size (topic_size) != 0)
             return -1;
-        memcpy (topic_msg.data (), topic_, strlen (topic_));
+        memcpy (topic_msg.data (), topic_, topic_size);
         if (socket->send (
               &topic_msg,
               part_count_ > 0 ? ZLINK_SNDMORE : (flags_ & ZLINK_DONTWAIT))

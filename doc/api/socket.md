@@ -237,7 +237,6 @@ Short-form aliases (e.g. `ZLINK_LINGER`) are also available.
 | `ZLINK_SOCKOPT_IPV6` | Enable IPv6 on the socket (`int`; 0 or 1) |
 | `ZLINK_SOCKOPT_IMMEDIATE` | Queue messages only to completed connections (`int`; 0 or 1) |
 | `ZLINK_SOCKOPT_BLOCKY` | Legacy option: block on context termination (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_USE_FD` | Use a pre-created file descriptor instead of creating a new one (`int`) |
 | `ZLINK_SOCKOPT_BINDTODEVICE` | Bind socket to a specific network interface (`string`) |
 | `ZLINK_SOCKOPT_CONNECT_ROUTING_ID` | Set routing identity for the next outgoing connection (`binary`) |
 | `ZLINK_SOCKOPT_STREAM_NOTIFY` | Enable STREAM connect/disconnect notifications (`int`; 0 or 1) |

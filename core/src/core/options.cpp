@@ -148,7 +148,6 @@ zlink::options_t::options_t () :
     heartbeat_ttl (0),
     heartbeat_interval (0),
     heartbeat_timeout (-1),
-    use_fd (-1),
     in_batch_size (default_batch_size),
     out_batch_size (default_batch_size),
     zero_copy (true),
@@ -396,13 +395,6 @@ int zlink::options_t::setsockopt (int option_,
         case ZLINK_HEARTBEAT_TIMEOUT:
             if (is_int && value >= 0) {
                 heartbeat_timeout = value;
-                return 0;
-            }
-            break;
-
-        case ZLINK_USE_FD:
-            if (is_int && value >= -1) {
-                use_fd = value;
                 return 0;
             }
             break;
@@ -716,13 +708,6 @@ int zlink::options_t::getsockopt (int option_,
         case ZLINK_HEARTBEAT_TIMEOUT:
             if (is_int) {
                 *value = heartbeat_timeout;
-                return 0;
-            }
-            break;
-
-        case ZLINK_USE_FD:
-            if (is_int) {
-                *value = use_fd;
                 return 0;
             }
             break;

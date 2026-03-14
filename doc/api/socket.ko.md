@@ -236,7 +236,6 @@ typedef uint32_t zlink_send_flags_t;
 | `ZLINK_SOCKOPT_IPV6` | 소켓에서 IPv6 활성화 (`int`; 0 또는 1) |
 | `ZLINK_SOCKOPT_IMMEDIATE` | 완료된 연결에만 메시지 대기열 사용 (`int`; 0 또는 1) |
 | `ZLINK_SOCKOPT_BLOCKY` | 레거시 옵션: context 종료 시 블로킹 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_USE_FD` | 새로 생성하는 대신 미리 생성된 파일 디스크립터 사용 (`int`) |
 | `ZLINK_SOCKOPT_BINDTODEVICE` | 소켓을 특정 네트워크 인터페이스에 바인딩 (`string`) |
 | `ZLINK_SOCKOPT_CONNECT_ROUTING_ID` | 다음 발신 연결의 라우팅 아이덴티티 설정 (`binary`) |
 | `ZLINK_SOCKOPT_STREAM_NOTIFY` | STREAM 연결/해제 알림 활성화 (`int`; 0 또는 1) |

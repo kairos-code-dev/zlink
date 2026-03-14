@@ -46,7 +46,6 @@ not from examples:
 | `ZLINK_TCP_KEEPALIVE_IDLE` | `-1` | OS default |
 | `ZLINK_TCP_KEEPALIVE_INTVL` | `-1` | OS default |
 | `ZLINK_TCP_NODELAY` | `1` | Enabled by default |
-| `ZLINK_USE_FD` | `-1` | Disabled |
 | `ZLINK_BINDTODEVICE` | empty string | No device binding |
 | `ZLINK_ZMP_METADATA` | `0` | Disabled |
 

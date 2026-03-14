@@ -956,7 +956,6 @@ set(UNREGISTERED_TEST_ALLOWLIST
     test_sub_forward
     test_system
     test_timeo
-    test_use_fd
     test_shutdown_stress
     test_xpub_manual
     test_xpub_nodrop

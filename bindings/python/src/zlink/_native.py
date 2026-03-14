@@ -529,16 +529,6 @@ def _load_lib():
     ]
     _lib.zlink_spot_sub_set_handler.restype = ctypes.c_int
 
-    _lib.zlink_spot_recv.argtypes = [
-        ctypes.c_void_p,
-        ctypes.POINTER(ctypes.POINTER(ZlinkMsg)),
-        ctypes.POINTER(ctypes.c_size_t),
-        ctypes.c_int,
-        ctypes.c_char_p,
-        ctypes.POINTER(ctypes.c_size_t),
-    ]
-    _lib.zlink_spot_recv.restype = ctypes.c_int
-
     return _lib
 
 

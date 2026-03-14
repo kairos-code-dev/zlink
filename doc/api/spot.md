@@ -84,12 +84,6 @@ int zlink_spot_unsubscribe(void *spot,
 int zlink_spot_set_send_ready_handler(
   void *spot,
   zlink_send_ready_handler_fn handler);
-int zlink_spot_recv(void *spot,
-                    zlink_msg_t **parts,
-                    size_t *part_count,
-                    int flags,
-                    char *topic_out,
-                    size_t *topic_len);
 
 int zlink_spot_set_pub_option(void *spot,
                               zlink_spot_pub_option_t option,
@@ -105,12 +99,6 @@ int zlink_spot_set_sub_option(void *spot,
 behavior. There is no separate public publish-only or subscribe-only child
 handle.
 
-`zlink_spot_recv()` provides synchronous polling receive on the unified
-facade. The caller provides a `topic_out` buffer and `topic_len` for the
-received topic. On success, `parts` and `part_count` are filled with the
-received multipart payload. The caller is responsible for closing all
-received parts.
-
 Use `zlink_spot_monitor_open()` plus `zlink_monitor_snapshot()` for aggregate
 ready-peer and queue inspection.
 
@@ -125,11 +113,9 @@ typedef void (*zlink_spot_handler_fn)(const zlink_routing_id_t *source_rid,
 ```
 
 - `zlink_spot_node_new(..., handler)` and `zlink_spot_new(..., handler)` accept
-  a handler callback. Pass `NULL` when callback dispatch is not needed and
-  `zlink_spot_recv()` will be used instead.
+  a handler callback. Pass `NULL` when callback dispatch is not needed.
 - The callback is fixed at construction time and cannot be replaced later.
 - The callback consumes ownership of `parts`.
-- `zlink_spot_recv()` provides synchronous polling receive on unified facades.
 
 ## Option summary
 

@@ -591,9 +591,14 @@ runtime 계층을 먼저 정의해야 한다.
      하드웨어 수준에서 보장한다.
    - 이미 in-flight인 callback thread의 same-handle send/publish는 callback scope
      metadata로 별도 판정하여 허용한다.
-   - 구현은 packed state word 외에 cacheline 분리, 필요 시 sharded counter 등
-     alternative implementation을 선택할 수 있다. 문서는 admission state의
-     의미를 고정하되 자료구조를 강제하지 않는다.
+   - 이 프로토콜의 핵심은 **close 수락/거절 판정과 새 API admission 차단이
+     단일 CAS 선형화 지점으로 묶인다는 점**이다.
+   - 따라서 packed `uint32_t`, packed `uint64_t`처럼 **closing bit과 inflight
+     count를 같은 atomic word에 담는 구현만** 이 문서의 canonical contract에
+     포함된다.
+   - cacheline 분리, bit 배치, 보조 debug field 추가는 구현 자유도에 포함되지만,
+     `sharded counter`처럼 close 판정에 여러 atomic read/merge가 필요한 구조는
+     이 문서의 `EBUSY` / no-latch 계약을 그대로 만족시키지 못하므로 제외한다.
 
    참고 pseudocode:
    ```
@@ -980,8 +985,8 @@ fast path 최적화 방향:
 - 현재 코드는 child 생성이 lazy다. 이 상태에서는 facade lock으로 child ref를
   보호해야 하므로 steady-state publish에서도 facade lock + child lock = lock 2회가 필요하다.
 - child를 eager 생성하고 ref를 불변으로 만들면 steady-state publish에서
-  facade lock을 제거할 수 있다. child의 validity는 child 자체의 admission state
-  CAS가 보장한다.
+  facade lock을 제거할 수 있다. child의 validity는
+  `spot_node`/facade registry + child-local state 조합으로 보장한다.
 - 따라서 facade admission state CAS → child admission state CAS → child op_state_mutex
   → xsend의 경로에서 facade lock을 뺄 수 있다.
 - 추가로 child를 internal-only 전용 객체로 취급한다면, facade admission이 이미
@@ -1222,13 +1227,19 @@ parent subject(`spot_node`, 또는 monitor의 parent)를 종료할 때
 - internal child의 teardown은 parent/facade teardown 경로 안에서
   내부적으로 수행한다.
 - parent admission gate가 inflight == 0을 확인한 시점은 internal child
-  teardown의 필요조건이다. 그러나 이것만으로 즉시 free가 가능하다는 뜻은
-  아니다. 실제 teardown 전에는 child-local callback/dispatch/runtime state가
-  parent/facade shutdown 경로 안에서 quiesced 되었음을 추가로 확인해야 한다.
-  이 invariant는 다음으로 보장한다:
-  - public API(`zlink_spot_publish()` 등)의 admission CAS가 parent/facade
-    수준에서 수행되므로, parent inflight == 0이면 internal child를 사용하는
-    public API가 없다.
+  teardown의 **필요조건 중 하나**다. 그러나 이것만으로 즉시 free가 가능하다는
+  뜻은 아니다.
+- 실제 teardown 전에는 아래 조건이 함께 성립해야 한다:
+  - caller-visible child registry가 비어 있어야 한다. 즉 unified `spot`,
+    monitor 같은 child가 남아 있으면 parent destroy는 여전히 `EBUSY`다.
+  - parent와 연결된 facade가 따로 admission gate를 가지는 경우,
+    **그 facade 쪽 in-flight public API도 0이어야 한다.**
+  - child-local callback/dispatch/runtime state가 parent/facade shutdown 경로
+    안에서 quiesced 되었음을 추가로 확인해야 한다.
+- 이 invariant는 다음으로 보장한다:
+  - public API(`zlink_spot_publish()` 등)의 admission CAS가 parent 또는 facade
+    수준에서 수행되므로, internal child teardown의 안전 조건은
+    "관련 parent/facade gate가 모두 quiesced"일 때만 성립한다.
   - internal child의 callback dispatch는 parent dispatch lane에서
     실행되므로, parent callback이 완료되면 internal child callback도
     완료된 상태다.
@@ -1402,7 +1413,7 @@ callback inflight가 0이 될 때까지 **blocking CV wait**(wait-to-drain)하�
 - global lock 금지
 - handle 간 공유 mutex 금지
 - blocking `send` / poll wait 동안 mutex 보유 금지 (public `recv()`는 이미 제거됨)
-- thread-safety를 위해 per-call heap allocation 추가 금지
+- thread-safety를 위해 **steady-state hot path**에 per-call heap allocation 추가 금지
 - thread-safety를 위해 per-message memcpy 추가 금지
 - control-plane mutation과 steady-state send/publish를 같은 mutex로 장시간 직렬화 금지
 - callback dispatch 직전/직후의 snapshot 외에는 callback 동안 lock 보유 금지
@@ -1477,7 +1488,7 @@ compare_exchange_weak와 fetch_sub는 각각 약 5~15ns이므로, 총 추가 비
 
 snapshot 메커니즘 분류:
 
-"snapshot 후 lock 밖 dispatch"와 "per-call heap allocation 금지"를 동시에
+"snapshot 후 lock 밖 dispatch"와 "steady-state hot path per-call heap allocation 금지"를 동시에
 만족하려면 snapshot의 lifetime/cost model을 subject별로 명시해야 한다.
 
 | Subject | snapshot 대상 | 예상 크기 | 권장 메커니즘 |
@@ -1494,7 +1505,8 @@ snapshot 메커니즘 분류:
   fanout 상한이 필요하다.
 - **stack small-buffer + overflow heap snapshot**: 고정 상한(예: 64)까지는
   stack array에 pointer를 복사한다. 상한을 초과하는 경우에만 heap 할당
-  snapshot으로 fallback한다. 1차 구현에서는 이 방식으로 충분하다.
+  snapshot으로 fallback한다. 이 fallback은 steady-state fast path가 아니라
+  large-fanout slow path로 취급한다. 1차 구현에서는 이 방식으로 충분하다.
 - **epoch-based reclamation / RCU** (향후 최적화 후보): 가변 크기 다수 대상.
   writer가 새 목록을 할당하고 atomic swap한 뒤 이전 목록을 epoch retire
   queue에 넣는다. reader는 epoch enter → atomic load(list_ptr) → 순회 →
@@ -1526,8 +1538,9 @@ inflight == 0) 시점에도 retire queue에 회수 대기 중인 이전 snapshot
 - retire queue drain은 teardown의 일부이며, 이 단계를 건너뛰면 안 된다.
 
 1차 구현에서는 stack small-buffer + overflow heap snapshot으로 충분하며,
-subscriber fanout이 큰 경우에도 read path alloc을 반드시 없애야 한다는
-제약은 1차 acceptance가 아니다.
+subscriber fanout이 큰 경우의 overflow alloc은 허용한다. 다만 이 예외는
+large-fanout slow path에 한정된다. steady-state read path alloc을 기본값으로
+도입하는 것은 여전히 acceptance 실패다.
 
 즉 서비스 계층의 목표는 "thread-safe한 관리 plane"과
 "빠른 data plane"을 구조적으로 분리하는 것이다.

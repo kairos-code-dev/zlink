@@ -757,8 +757,9 @@ int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_,
         _handler_state.store (handler_active, std::memory_order_release);
     }
 
-    if (socket->sub_dispatch_start (&spot_sub_t::dispatch_from_io, this) == 0)
+    if (socket->sub_dispatch_start (&spot_sub_t::dispatch_from_io, this) == 0) {
         return 0;
+    }
 
     {
         scoped_lock_t lock (_sync);

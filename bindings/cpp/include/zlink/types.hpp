@@ -95,7 +95,6 @@ enum class socket_option : int
     connect_timeout = ZLINK_CONNECT_TIMEOUT,
     tcp_maxrt = ZLINK_TCP_MAXRT,
     multicast_maxtpdu = ZLINK_MULTICAST_MAXTPDU,
-    use_fd = ZLINK_USE_FD,
     bindtodevice = ZLINK_BINDTODEVICE,
     tls_cert = ZLINK_TLS_CERT,
     tls_key = ZLINK_TLS_KEY,
@@ -214,7 +213,6 @@ static const socket_option_key_t<int> connect_timeout (
 static const socket_option_key_t<int> tcp_maxrt (socket_option::tcp_maxrt);
 static const socket_option_key_t<int> multicast_maxtpdu (
   socket_option::multicast_maxtpdu);
-static const socket_option_key_t<int> use_fd (socket_option::use_fd);
 static const socket_option_key_t<std::string> bindtodevice (
   socket_option::bindtodevice);
 static const socket_option_key_t<std::string> tls_cert (

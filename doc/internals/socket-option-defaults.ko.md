@@ -45,7 +45,6 @@
 | `ZLINK_TCP_KEEPALIVE_IDLE` | `-1` | OS 기본값 |
 | `ZLINK_TCP_KEEPALIVE_INTVL` | `-1` | OS 기본값 |
 | `ZLINK_TCP_NODELAY` | `1` | 기본 활성 |
-| `ZLINK_USE_FD` | `-1` | 비활성 |
 | `ZLINK_BINDTODEVICE` | 빈 문자열 | 디바이스 바인딩 없음 |
 | `ZLINK_ZMP_METADATA` | `0` | 비활성 |
 

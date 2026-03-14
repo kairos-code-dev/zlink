@@ -125,14 +125,12 @@ int zlink::asio_ipc_listener_t::set_local_address (const char *addr_)
 
     std::string addr (addr_);
 
-    if (options.use_fd == -1 && !addr.empty () && addr[0] == '*') {
+    if (!addr.empty () && addr[0] == '*') {
         if (create_ipc_wildcard_address (_tmp_socket_dirname, addr) < 0)
             return -1;
     }
 
-    if (options.use_fd == -1) {
-        ::unlink (addr.c_str ());
-    }
+    ::unlink (addr.c_str ());
     _filename.clear ();
 
     ipc_address_t address;
@@ -148,46 +146,35 @@ int zlink::asio_ipc_listener_t::set_local_address (const char *addr_)
     address.to_string (resolved_endpoint);
 
     boost::system::error_code ec;
-    if (options.use_fd != -1) {
-        _acceptor.assign (boost::asio::local::stream_protocol (),
-                          options.use_fd, ec);
-        if (ec) {
-            const int tmp_errno = ec.value ();
-            cleanup_tmp_dir (_tmp_socket_dirname);
-            errno = tmp_errno;
-            return -1;
-        }
-    } else {
-        _acceptor.open (boost::asio::local::stream_protocol (), ec);
-        if (ec) {
-            const int tmp_errno = ec.value ();
-            cleanup_tmp_dir (_tmp_socket_dirname);
-            errno = tmp_errno;
-            return -1;
-        }
+    _acceptor.open (boost::asio::local::stream_protocol (), ec);
+    if (ec) {
+        const int tmp_errno = ec.value ();
+        cleanup_tmp_dir (_tmp_socket_dirname);
+        errno = tmp_errno;
+        return -1;
+    }
 
-        boost::asio::local::stream_protocol::endpoint bind_endpoint =
-          make_ipc_endpoint (address);
+    boost::asio::local::stream_protocol::endpoint bind_endpoint =
+      make_ipc_endpoint (address);
 
-        _acceptor.bind (bind_endpoint, ec);
-        if (ec) {
-            const int tmp_errno = ec.value ();
-            _acceptor.close (ec);
-            cleanup_tmp_dir (_tmp_socket_dirname);
-            errno = tmp_errno;
-            return -1;
-        }
+    _acceptor.bind (bind_endpoint, ec);
+    if (ec) {
+        const int tmp_errno = ec.value ();
+        _acceptor.close (ec);
+        cleanup_tmp_dir (_tmp_socket_dirname);
+        errno = tmp_errno;
+        return -1;
+    }
 
-        _filename = addr;
-        _has_file = true;
+    _filename = addr;
+    _has_file = true;
 
-        _acceptor.listen (options.backlog, ec);
-        if (ec) {
-            const int tmp_errno = ec.value ();
-            close ();
-            errno = tmp_errno;
-            return -1;
-        }
+    _acceptor.listen (options.backlog, ec);
+    if (ec) {
+        const int tmp_errno = ec.value ();
+        close ();
+        errno = tmp_errno;
+        return -1;
     }
 
     if (_filename.empty ()) {
@@ -350,7 +337,7 @@ void zlink::asio_ipc_listener_t::close ()
     boost::system::error_code ec;
     _acceptor.close (ec);
 
-    if (_has_file && options.use_fd == -1) {
+    if (_has_file) {
         int rc = 0;
         if (!_tmp_socket_dirname.empty ()) {
             rc = ::unlink (_filename.c_str ());

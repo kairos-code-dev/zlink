@@ -1199,8 +1199,6 @@ static int legacy_socket_option (int option_)
             return ZLINK_TCP_MAXRT;
         case ZLINK_SOCKOPT_MULTICAST_MAXTPDU:
             return ZLINK_MULTICAST_MAXTPDU;
-        case ZLINK_SOCKOPT_USE_FD:
-            return ZLINK_USE_FD;
         case ZLINK_SOCKOPT_BINDTODEVICE:
             return ZLINK_BINDTODEVICE;
         case ZLINK_SOCKOPT_TLS_CERT:
@@ -2960,14 +2958,14 @@ int zlink_spot_publish (void *spot_,
     return pub->publish (topic_id_, parts_, part_count_, flags_);
 }
 
-int zlink_spot_recv (void *spot_,
-                     zlink_msg_t **parts_,
-                     size_t *part_count_,
-                     int flags_,
-                     char *topic_out_,
-                     size_t *topic_len_)
+int zlink_spot_sub_recv (void *sub_,
+                         zlink_msg_t **parts_,
+                         size_t *part_count_,
+                         int flags_,
+                         char *topic_id_out_,
+                         size_t *topic_id_len_)
 {
-    spot_handle_t *spot = as_spot_handle (spot_);
+    spot_handle_t *spot = as_spot_handle (sub_);
     if (!spot)
         return -1;
     zlink::spot_sub_t *sub = ensure_spot_sub (spot);
@@ -2975,7 +2973,8 @@ int zlink_spot_recv (void *spot_,
         errno = ENOTSUP;
         return -1;
     }
-    return sub->recv (parts_, part_count_, flags_, topic_out_, topic_len_);
+    return sub->recv (parts_, part_count_, flags_, topic_id_out_,
+                      topic_id_len_);
 }
 
 int zlink_spot_subscribe (void *spot_, const char *topic_id_)

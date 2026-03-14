@@ -603,6 +603,7 @@ static int recv_and_dispatch_mesh_xsub (
             return -1;
 
         (*peer_ctrl_endpoints_)[peer_data_endpoint] = peer_ctrl_endpoint;
+
         spot_ctrl_debugf ("connect peer ctrl data=%s ctrl=%s",
                           peer_data_endpoint.c_str (),
                           peer_ctrl_endpoint.c_str ());

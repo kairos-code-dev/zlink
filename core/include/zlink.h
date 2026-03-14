@@ -382,7 +382,6 @@ typedef enum zlink_socket_option_t
     ZLINK_SOCKOPT_CONNECT_TIMEOUT = 0x1130,
     ZLINK_SOCKOPT_TCP_MAXRT = 0x1131,
     ZLINK_SOCKOPT_MULTICAST_MAXTPDU = 0x1132,
-    ZLINK_SOCKOPT_USE_FD = 0x1133,
     ZLINK_SOCKOPT_BINDTODEVICE = 0x1134,
     ZLINK_SOCKOPT_TLS_CERT = 0x1135,
     ZLINK_SOCKOPT_TLS_KEY = 0x1136,
@@ -455,7 +454,6 @@ typedef enum zlink_socket_option_t
 #define ZLINK_CONNECT_TIMEOUT ((zlink_socket_option_t) 79)
 #define ZLINK_TCP_MAXRT ((zlink_socket_option_t) 80)
 #define ZLINK_MULTICAST_MAXTPDU ((zlink_socket_option_t) 84)
-#define ZLINK_USE_FD ((zlink_socket_option_t) 89)
 #define ZLINK_BINDTODEVICE ((zlink_socket_option_t) 92)
 #define ZLINK_TLS_CERT ((zlink_socket_option_t) 95)
 #define ZLINK_TLS_KEY ((zlink_socket_option_t) 96)
@@ -526,7 +524,6 @@ typedef enum zlink_socket_option_t
 #define ZLINK_CONNECT_TIMEOUT ZLINK_SOCKOPT_CONNECT_TIMEOUT
 #define ZLINK_TCP_MAXRT ZLINK_SOCKOPT_TCP_MAXRT
 #define ZLINK_MULTICAST_MAXTPDU ZLINK_SOCKOPT_MULTICAST_MAXTPDU
-#define ZLINK_USE_FD ZLINK_SOCKOPT_USE_FD
 #define ZLINK_BINDTODEVICE ZLINK_SOCKOPT_BINDTODEVICE
 #define ZLINK_TLS_CERT ZLINK_SOCKOPT_TLS_CERT
 #define ZLINK_TLS_KEY ZLINK_SOCKOPT_TLS_KEY
@@ -1302,12 +1299,12 @@ ZLINK_EXPORT int zlink_spot_publish (void *spot,
                                      zlink_msg_t *parts,
                                      size_t part_count,
                                      zlink_send_flags_t flags);
-ZLINK_EXPORT int zlink_spot_recv (void *spot,
-                                  zlink_msg_t **parts,
-                                  size_t *part_count,
-                                  int flags,
-                                  char *topic_out,
-                                  size_t *topic_len);
+ZLINK_EXPORT int zlink_spot_sub_recv (void *sub,
+                                      zlink_msg_t **parts,
+                                      size_t *part_count,
+                                      int flags,
+                                      char *topic_id_out,
+                                      size_t *topic_id_len);
 ZLINK_EXPORT int zlink_spot_subscribe (void *spot, const char *topic_id);
 ZLINK_EXPORT int zlink_spot_subscribe_pattern (void *spot, const char *pattern);
 ZLINK_EXPORT int zlink_spot_unsubscribe (void *spot,

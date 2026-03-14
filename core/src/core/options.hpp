@@ -176,11 +176,6 @@ struct options_t
     //  Time in milliseconds to wait for a PING response before disconnecting
     int heartbeat_timeout;
 
-    //  When creating a new ZLINK socket, if this option is set the value
-    //  will be used as the File Descriptor instead of allocating a new
-    //  one via the socket () system call.
-    int use_fd;
-
     // Device to bind the underlying socket to, eg. VRF or interface
     std::string bound_device;
 

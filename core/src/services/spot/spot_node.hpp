@@ -192,6 +192,7 @@ class spot_node_t : public discovery_observer_t
     mutable mutex_t _default_sub_sync;
 
     spot_runtime_t *_runtime;
+    uint64_t _connected_peer_version_seen;
 
     std::string _bound_endpoint;
     std::set<std::string> _manual_peer_endpoints;

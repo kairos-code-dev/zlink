@@ -7,6 +7,8 @@
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
 
+#include "services/common/monitor_decode.hpp"
+#include "services/common/socket_monitor_bridge.hpp"
 #include "core/socket_poller.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
@@ -85,6 +87,42 @@ static int send_errno_reply (socket_base_t *socket_, int error_)
 static int send_ok_reply (socket_base_t *socket_)
 {
     return send_ascii_frame (socket_, "ok", 0);
+}
+
+static void sync_mesh_xsub_connected_endpoint (spot_runtime_t *runtime_,
+                                               const zlink_monitor_event_t &raw_,
+                                               bool connected_)
+{
+    if (!runtime_ || raw_.remote_addr[0] == '\0')
+        return;
+
+    scoped_lock_t lock (runtime_->connected_peer_sync);
+    bool changed = false;
+    if (connected_) {
+        changed =
+          runtime_->connected_peer_endpoints.insert (raw_.remote_addr).second;
+    } else {
+        changed =
+          runtime_->connected_peer_endpoints.erase (raw_.remote_addr) != 0;
+    }
+    if (changed)
+        runtime_->connected_peer_version.fetch_add (1,
+                                                    std::memory_order_acq_rel);
+}
+
+static void clear_mesh_xsub_connected_endpoints (spot_runtime_t *runtime_)
+{
+    if (!runtime_)
+        return;
+
+    scoped_lock_t lock (runtime_->connected_peer_sync);
+    if (!runtime_->connected_peer_endpoints.empty ()) {
+        runtime_->connected_peer_endpoints.clear ();
+        runtime_->connected_peer_version.fetch_add (1,
+                                                    std::memory_order_acq_rel);
+        return;
+    }
+    runtime_->connected_peer_endpoints.clear ();
 }
 
 static int recv_ascii_command (socket_base_t *socket_,
@@ -632,6 +670,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
     socket_base_t *ctrl = node_->_ctx->create_socket (ZLINK_PAIR);
     socket_base_t *mesh_pub = node_->_ctx->create_socket (ZLINK_PUB);
     socket_base_t *mesh_xsub = node_->_ctx->create_socket (ZLINK_XSUB);
+    socket_base_t *mesh_xsub_monitor = NULL;
     socket_base_t *peer_ctrl_pub = node_->_ctx->create_socket (ZLINK_PUB);
     socket_base_t *peer_ctrl_sub = node_->_ctx->create_socket (ZLINK_SUB);
     socket_base_t *ingress = node_->_ctx->create_socket (ZLINK_SUB);
@@ -646,6 +685,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
         close_socket_ptr (node_, ingress);
         close_socket_ptr (node_, peer_ctrl_sub);
         close_socket_ptr (node_, peer_ctrl_pub);
+        close_socket_ptr (node_, mesh_xsub_monitor);
         close_socket_ptr (node_, mesh_xsub);
         close_socket_ptr (node_, mesh_pub);
         close_socket_ptr (node_, ctrl);
@@ -713,6 +753,35 @@ void spot_data_plane_t::run (spot_node_t *node_)
                                spot_control_protocol::ctrl_prefix,
                                strlen (spot_control_protocol::ctrl_prefix));
 
+    mesh_xsub_monitor = static_cast<socket_base_t *> (open_socket_monitor_bridge (
+      mesh_xsub, ZLINK_EVENT_CONNECTED | ZLINK_EVENT_ACCEPTED
+                   | ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED));
+    if (!mesh_xsub_monitor) {
+        const int err = errno != 0 ? errno : EIO;
+        send_errno_reply (ctrl, err);
+        close_socket_ptr (node_, fanout);
+        close_socket_ptr (node_, ingress);
+        close_socket_ptr (node_, peer_ctrl_sub);
+        close_socket_ptr (node_, peer_ctrl_pub);
+        close_socket_ptr (node_, mesh_xsub_monitor);
+        close_socket_ptr (node_, mesh_xsub);
+        close_socket_ptr (node_, mesh_pub);
+        close_socket_ptr (node_, ctrl);
+        {
+            scoped_lock_t lock (node_->_sync);
+            runtime->data_ctrl_back = NULL;
+            runtime->mesh_pub = NULL;
+            runtime->mesh_xsub = NULL;
+            runtime->peer_ctrl_pub = NULL;
+            runtime->peer_ctrl_sub = NULL;
+            runtime->local_pub_ingress_sub = NULL;
+            runtime->local_fanout_xpub = NULL;
+            runtime->mark_fault (err);
+        }
+        clear_mesh_xsub_connected_endpoints (runtime);
+        return;
+    }
+
     if (send_subscription_update (mesh_xsub, "", true) != 0
         || ingress->bind (runtime->pub_ingress_endpoint.c_str ()) != 0
         || fanout->bind (runtime->sub_fanout_endpoint.c_str ()) != 0) {
@@ -722,6 +791,8 @@ void spot_data_plane_t::run (spot_node_t *node_)
         close_socket_ptr (node_, ingress);
         close_socket_ptr (node_, peer_ctrl_sub);
         close_socket_ptr (node_, peer_ctrl_pub);
+        (void) mesh_xsub->monitor (NULL, 0, 3, ZLINK_PAIR);
+        close_socket_ptr (node_, mesh_xsub_monitor);
         close_socket_ptr (node_, mesh_xsub);
         close_socket_ptr (node_, mesh_pub);
         close_socket_ptr (node_, ctrl);
@@ -736,6 +807,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
             runtime->local_fanout_xpub = NULL;
             runtime->mark_fault (err);
         }
+        clear_mesh_xsub_connected_endpoints (runtime);
         return;
     }
 
@@ -745,6 +817,8 @@ void spot_data_plane_t::run (spot_node_t *node_)
         close_socket_ptr (node_, ingress);
         close_socket_ptr (node_, peer_ctrl_sub);
         close_socket_ptr (node_, peer_ctrl_pub);
+        (void) mesh_xsub->monitor (NULL, 0, 3, ZLINK_PAIR);
+        close_socket_ptr (node_, mesh_xsub_monitor);
         close_socket_ptr (node_, mesh_xsub);
         close_socket_ptr (node_, mesh_pub);
         close_socket_ptr (node_, ctrl);
@@ -759,6 +833,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
             runtime->local_fanout_xpub = NULL;
             runtime->mark_fault (err);
         }
+        clear_mesh_xsub_connected_endpoints (runtime);
         return;
     }
 
@@ -767,6 +842,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
     poller.add (ingress, NULL, ZLINK_POLLIN);
     poller.add (mesh_xsub, NULL, ZLINK_POLLIN);
     poller.add (peer_ctrl_sub, NULL, ZLINK_POLLIN);
+    poller.add (mesh_xsub_monitor, NULL, ZLINK_POLLIN);
 
     bool running = true;
     int fatal_errno = 0;
@@ -774,8 +850,8 @@ void spot_data_plane_t::run (spot_node_t *node_)
     std::map<std::string, std::string> peer_ctrl_endpoints;
     std::map<std::string, std::set<std::string> > peer_ready_filters;
     while (running) {
-        socket_poller_t::event_t events[4];
-        const int rc = poller.wait (events, 4, 20);
+        socket_poller_t::event_t events[5];
+        const int rc = poller.wait (events, 5, 20);
         if (rc < 0) {
             if (errno == EAGAIN || errno == EINTR)
                 continue;
@@ -913,8 +989,13 @@ void spot_data_plane_t::run (spot_node_t *node_)
                     }
                     if (mesh_xsub->term_endpoint (arg.c_str ()) != 0)
                         send_errno_reply (ctrl, errno);
-                    else
+                    else {
+                        {
+                            scoped_lock_t lock (runtime->connected_peer_sync);
+                            runtime->connected_peer_endpoints.erase (arg);
+                        }
                         send_ok_reply (ctrl);
+                    }
                 } else {
                     send_errno_reply (ctrl, EINVAL);
                 }
@@ -939,6 +1020,41 @@ void spot_data_plane_t::run (spot_node_t *node_)
                     running = false;
                     break;
                 }
+                continue;
+            }
+
+            if (events[i].socket == mesh_xsub_monitor) {
+                while (running) {
+                    zlink_monitor_event_t raw;
+                    if (recv_socket_monitor_event (mesh_xsub_monitor, &raw,
+                                                   ZLINK_DONTWAIT)
+                        != 0) {
+                        if (errno == EAGAIN || errno == EINTR)
+                            break;
+                        fatal_errno = errno;
+                        running = false;
+                        break;
+                    }
+
+                    switch (raw.event) {
+                        case ZLINK_EVENT_CONNECTED:
+                        case ZLINK_EVENT_ACCEPTED:
+                        case ZLINK_EVENT_CONNECTION_READY:
+                            sync_mesh_xsub_connected_endpoint (runtime, raw,
+                                                               true);
+                            break;
+
+                        case ZLINK_EVENT_DISCONNECTED:
+                            sync_mesh_xsub_connected_endpoint (runtime, raw,
+                                                               false);
+                            break;
+
+                        default:
+                            break;
+                    }
+                }
+                if (!running)
+                    break;
                 continue;
             }
 
@@ -982,10 +1098,13 @@ void spot_data_plane_t::run (spot_node_t *node_)
         runtime->peer_ctrl_endpoint.clear ();
         runtime->bound_endpoint.clear ();
     }
+    clear_mesh_xsub_connected_endpoints (runtime);
     close_socket_ptr (node_, fanout);
     close_socket_ptr (node_, ingress);
     close_socket_ptr (node_, peer_ctrl_sub);
     close_socket_ptr (node_, peer_ctrl_pub);
+    (void) mesh_xsub->monitor (NULL, 0, 3, ZLINK_PAIR);
+    close_socket_ptr (node_, mesh_xsub_monitor);
     close_socket_ptr (node_, mesh_xsub);
     close_socket_ptr (node_, mesh_pub);
     close_socket_ptr (node_, ctrl);

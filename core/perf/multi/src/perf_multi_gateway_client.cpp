@@ -471,29 +471,21 @@ send_status_t send_gateway_request_locked(gateway_client_slot_t *slot)
 
     const size_t payload_size =
       std::max(slot->msg_size, perf_multi_metric::header_size());
-    if (slot->payload.size() < payload_size)
-        return send_fatal;
 
+    zlink_msg_t part;
+    if (zlink_msg_init_size(&part, payload_size) != 0) {
+        return send_fatal;
+    }
     if (!perf_multi_metric::stamp_payload(
-          slot->payload.data(),
+          zlink_msg_data(&part),
           payload_size,
           slot->run_id,
           slot->phase,
           slot->msg_size,
           (static_cast<uint64_t>(slot->slot_index) << 48) | slot->next_seq,
           perf_multi_metric::now_us())) {
+        zlink_msg_close(&part);
         return send_fatal;
-    }
-
-    zlink_msg_t part;
-    if (zlink_msg_init_size(&part, payload_size) != 0) {
-        return send_fatal;
-    }
-    if (payload_size > 0) {
-        std::memcpy(
-          zlink_msg_data(&part),
-          static_cast<const void *>(slot->payload.data()),
-          payload_size);
     }
 
     const int rc = zlink_gateway_send(slot->gateway, &part, 1, ZLINK_DONTWAIT);

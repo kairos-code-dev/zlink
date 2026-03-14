@@ -274,36 +274,29 @@ send_status_t try_send_gateway_reply(void *gateway,
     if (payload_index < 0)
         return send_status_fatal;
 
-    for (int attempt = 0; attempt < 256; ++attempt) {
-        zlink_msg_t reply_part;
-        if (!init_owned_part_copy(
-              &reply_part,
-              parts,
-              static_cast<size_t>(payload_index))) {
-            return send_status_fatal;
-        }
-
-        const int rc =
-          zlink_gateway_send_rid(gateway, routing_id, &reply_part, 1, 0);
-        if (rc == 0)
-            return send_status_ok;
-
-        const int saved_errno = errno;
+    zlink_msg_t reply_part;
+    if (zlink_msg_init(&reply_part) != 0)
+        return send_status_fatal;
+    if (zlink_msg_move(&reply_part, &parts[static_cast<size_t>(payload_index)])
+        != 0) {
         zlink_msg_close(&reply_part);
-        if (saved_errno != EAGAIN && saved_errno != EINTR
-            && saved_errno != EHOSTUNREACH && saved_errno != ENOTCONN) {
-            errno = saved_errno;
-            return send_status_fatal;
-        }
-        if (attempt + 1 == 256) {
-            errno = saved_errno;
-            return send_status_blocked;
-        }
-        std::this_thread::yield();
+        return send_status_fatal;
     }
 
-    errno = EAGAIN;
-    return send_status_blocked;
+    const int rc = zlink_gateway_send_rid(gateway, routing_id, &reply_part, 1, 0);
+    if (rc == 0)
+        return send_status_ok;
+
+    const int saved_errno = errno;
+    zlink_msg_close(&reply_part);
+    if (saved_errno == EAGAIN || saved_errno == EINTR
+        || saved_errno == EHOSTUNREACH || saved_errno == ENOTCONN) {
+        errno = saved_errno;
+        return send_status_blocked;
+    }
+
+    errno = saved_errno;
+    return send_status_fatal;
 }
 
 pending_gateway_echo_t make_pending_reply(const zlink_routing_id_t *routing_id,

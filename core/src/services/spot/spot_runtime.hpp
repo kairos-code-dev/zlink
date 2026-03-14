@@ -8,7 +8,9 @@
 #include "utils/mutex.hpp"
 #include "utils/stdint.hpp"
 
+#include <atomic>
 #include <map>
+#include <set>
 #include <string>
 
 namespace zlink
@@ -79,8 +81,11 @@ struct spot_runtime_t
     int fault_errno;
     bool abortive_shutdown;
     mutable mutex_t attachment_sync;
+    mutable mutex_t connected_peer_sync;
+    std::atomic<uint64_t> connected_peer_version;
     uint64_t next_attachment_id;
     std::map<uint64_t, spot_attachment_t> attachments;
+    std::set<std::string> connected_peer_endpoints;
 };
 }
 

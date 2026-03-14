@@ -245,14 +245,13 @@ struct spot_server_state_t
 
     void *node;
     void *pub;
-    std::mutex mutex;
     std::vector<char> payload;
     size_t msg_size;
     perf_multi_metric::phase_t phase;
     uint64_t next_seq;
-    bool send_enabled;
-    bool send_pending;
-    int fatal_errno;
+    std::atomic<bool> send_enabled;
+    std::atomic<bool> send_pending;
+    std::atomic<int> fatal_errno;
 };
 
 spot_server_state_t *g_server_state = NULL;
@@ -448,13 +447,10 @@ bool wait_for_spot_queue_drain(spot_server_state_t *state,
     while (!g_stop_requested.load(std::memory_order_acquire)) {
         emit_requested_queue_probe(lib_name, transport);
 
-        bool send_pending = false;
-        {
-            std::lock_guard<std::mutex> lock(state->mutex);
-            if (state->fatal_errno != 0)
-                return false;
-            send_pending = state->send_pending;
-        }
+        if (state->fatal_errno.load(std::memory_order_acquire) != 0)
+            return false;
+        const bool send_pending =
+          state->send_pending.load(std::memory_order_acquire);
 
         const server_queue_stats_t queue_stats =
           sample_spot_queue_stats(state->pub, send_pending);
@@ -489,11 +485,8 @@ void emit_requested_queue_probe(const std::string &lib_name,
     if (msg_size == 0 || !state || !state->pub)
         return;
 
-    bool send_pending = false;
-    {
-        std::lock_guard<std::mutex> lock(state->mutex);
-        send_pending = state->send_pending;
-    }
+    const bool send_pending =
+      state->send_pending.load(std::memory_order_acquire);
     const server_queue_stats_t queue_stats =
       sample_spot_queue_stats(state->pub, send_pending);
     print_server_queue_metrics(lib_name, k_pattern, transport, msg_size,
@@ -509,7 +502,8 @@ enum send_status_t
 
 send_status_t try_publish_locked(spot_server_state_t *state)
 {
-    if (!state || !state->pub || state->msg_size == 0 || !state->send_enabled)
+    if (!state || !state->pub || state->msg_size == 0
+        || !state->send_enabled.load(std::memory_order_acquire))
         return send_status_fatal;
 
     const size_t payload_size =
@@ -549,7 +543,7 @@ send_status_t try_publish_locked(spot_server_state_t *state)
                       << state->msg_size << " phase="
                       << static_cast<int> (state->phase) << std::endl;
         }
-        state->send_pending = false;
+        state->send_pending.store(false, std::memory_order_release);
         ++state->next_seq;
         return send_status_ok;
     }
@@ -561,38 +555,13 @@ send_status_t try_publish_locked(spot_server_state_t *state)
                       << static_cast<int> (state->phase)
                       << " errno=" << saved_errno << std::endl;
         }
-        state->send_pending = true;
+        state->send_pending.store(true, std::memory_order_release);
         errno = saved_errno;
         return send_status_blocked;
     }
 
     errno = saved_errno;
     return send_status_fatal;
-}
-
-void spot_server_send_ready(void *subject)
-{
-    spot_server_state_t *state = g_server_state;
-    if (!state || subject != state->pub)
-        return;
-
-    std::lock_guard<std::mutex> lock(state->mutex);
-    if (!state->send_pending) {
-        return;
-    }
-    if (!state->send_enabled) {
-        state->send_pending = false;
-        return;
-    }
-
-    const send_status_t rc = try_publish_locked(state);
-    if (rc == send_status_fatal) {
-        if (bench_debug_enabled ()) {
-            std::cerr << "[multi-spot-server] send-ready fatal errno=" << errno
-                      << std::endl;
-        }
-        state->fatal_errno = errno != 0 ? errno : EIO;
-    }
 }
 
 void print_server_metrics(const std::string &lib_name,
@@ -630,14 +599,11 @@ bool run_phase(spot_server_state_t *state,
     if (duration_seconds <= 0.0)
         return true;
 
-    {
-        std::lock_guard<std::mutex> lock(state->mutex);
-        state->msg_size = msg_size;
-        state->phase = phase;
-        state->next_seq = 1;
-        state->send_enabled = send_enabled;
-        state->send_pending = false;
-    }
+    state->msg_size = msg_size;
+    state->phase = phase;
+    state->next_seq = 1;
+    state->send_enabled.store(send_enabled, std::memory_order_release);
+    state->send_pending.store(false, std::memory_order_release);
 
     const auto deadline =
       std::chrono::steady_clock::now()
@@ -649,22 +615,20 @@ bool run_phase(spot_server_state_t *state,
         emit_requested_queue_probe(lib_name, transport);
 
         bool progressed = false;
-        {
-            std::lock_guard<std::mutex> lock(state->mutex);
-            if (state->fatal_errno != 0)
-                return false;
-            if (state->send_enabled) {
-                const send_status_t rc = try_publish_locked(state);
-                if (rc == send_status_fatal) {
-                    if (bench_debug_enabled ()) {
-                        std::cerr << "[multi-spot-server] publish fatal errno="
-                                  << errno << std::endl;
-                    }
-                    state->fatal_errno = errno != 0 ? errno : EIO;
-                    return false;
+        if (state->fatal_errno.load(std::memory_order_acquire) != 0)
+            return false;
+        if (state->send_enabled.load(std::memory_order_acquire)) {
+            const send_status_t rc = try_publish_locked(state);
+            if (rc == send_status_fatal) {
+                if (bench_debug_enabled ()) {
+                    std::cerr << "[multi-spot-server] publish fatal errno="
+                              << errno << std::endl;
                 }
-                progressed = rc == send_status_ok;
+                state->fatal_errno.store(errno != 0 ? errno : EIO,
+                                         std::memory_order_release);
+                return false;
             }
+            progressed = rc == send_status_ok;
         }
 
         if (!progressed) {
@@ -675,19 +639,18 @@ bool run_phase(spot_server_state_t *state,
         }
     }
 
-    {
-        std::lock_guard<std::mutex> lock(state->mutex);
-        state->send_enabled = false;
-        state->send_pending = false;
-        if (bench_debug_enabled ()) {
-            std::cerr << "[multi-spot-server] phase done size=" << msg_size
-                      << " phase=" << static_cast<int> (phase)
-                      << " sent=" << (state->next_seq > 0 ? state->next_seq - 1 : 0)
-                      << " fatal_errno=" << state->fatal_errno << std::endl;
-        }
-        if (state->fatal_errno != 0)
-            return false;
+    state->send_enabled.store(false, std::memory_order_release);
+    state->send_pending.store(false, std::memory_order_release);
+    if (bench_debug_enabled ()) {
+        std::cerr << "[multi-spot-server] phase done size=" << msg_size
+                  << " phase=" << static_cast<int> (phase)
+                  << " sent=" << (state->next_seq > 0 ? state->next_seq - 1 : 0)
+                  << " fatal_errno="
+                  << state->fatal_errno.load(std::memory_order_acquire)
+                  << std::endl;
     }
+    if (state->fatal_errno.load(std::memory_order_acquire) != 0)
+        return false;
 
     return !g_stop_requested.load(std::memory_order_acquire);
 }
@@ -787,9 +750,7 @@ int run_server_benchmark(const std::string &lib_name,
     void *pub = zlink_spot_new(node, &discard_spot_parts);
     spot_server_ready_monitor_t pub_monitor;
     if (!pub || !apply_spot_server_options(pub, settings)
-        || !open_spot_server_ready_monitor(pub, &pub_monitor)
-        || zlink_spot_set_send_ready_handler(pub, &spot_server_send_ready)
-             != 0) {
+        || !open_spot_server_ready_monitor(pub, &pub_monitor)) {
         close_spot_server_ready_monitor(&pub_monitor);
         if (pub)
             zlink_spot_destroy(&pub);
@@ -849,11 +810,8 @@ int run_server_benchmark(const std::string &lib_name,
     const bool ok =
       run_server_loop(&state, settings, lib_name, transport, msg_sizes);
 
-    bool send_pending = false;
-    {
-        std::lock_guard<std::mutex> lock(state.mutex);
-        send_pending = state.send_pending;
-    }
+    const bool send_pending =
+      state.send_pending.load(std::memory_order_acquire);
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe(sample_start);
     const server_queue_stats_t queue_stats =

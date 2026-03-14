@@ -566,7 +566,9 @@ inline size_t connect_ready_count(const connect_monitor_state_t *state_)
 {
     if (!state_)
         return 0;
-    return std::max(state_->connection_ready_count, state_->accepted_count);
+    return std::max(std::max(state_->connection_ready_count,
+                             state_->accepted_count),
+                    state_->connected_count);
 }
 
 inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
@@ -654,6 +656,13 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
           return monitor_.state->error_code != 0
                  || connect_ready_count(monitor_.state) >= expected_ready_;
       });
+    if (!signaled && bench_debug_enabled()) {
+        std::cerr << "[perf-multi] connect ready timeout connected="
+                  << monitor_.state->connected_count
+                  << " accepted=" << monitor_.state->accepted_count
+                  << " ready=" << monitor_.state->connection_ready_count
+                  << " expected=" << expected_ready_ << std::endl;
+    }
     return signaled && monitor_.state->error_code == 0
            && connect_ready_count(monitor_.state) >= expected_ready_;
 }

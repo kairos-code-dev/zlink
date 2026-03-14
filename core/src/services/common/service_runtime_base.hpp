@@ -133,6 +133,7 @@ class service_runtime_base_t
     {
         if (!socket_)
             return 0;
+
         socket_base_t *socket = socket_;
         const int socket_id = socket->socket_id ();
         {

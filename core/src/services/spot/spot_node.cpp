@@ -91,19 +91,16 @@ static int send_ascii_frame (socket_base_t *socket_,
     return rc;
 }
 
-static void snapshot_connected_mesh_peer_endpoints (socket_base_t *mesh_xsub_,
+static void snapshot_connected_mesh_peer_endpoints (const spot_runtime_t *runtime_,
                                                     std::set<std::string> *out_)
 {
     if (!out_)
         return;
     out_->clear ();
-    if (!mesh_xsub_)
+    if (!runtime_)
         return;
-
-    std::vector<std::string> peers;
-    mesh_xsub_->socket_peer_remote_endpoints (&peers);
-    for (size_t i = 0; i < peers.size (); ++i)
-        out_->insert (peers[i]);
+    scoped_lock_t lock (const_cast<mutex_t &> (runtime_->connected_peer_sync));
+    *out_ = runtime_->connected_peer_endpoints;
 }
 
 static unsigned int subscription_ready_holdoff_ticks (
@@ -208,6 +205,7 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     faulted (false),
     fault_errno (0),
     abortive_shutdown (false),
+    connected_peer_version (0),
     next_attachment_id (0)
 {
     if (node_id == 0)
@@ -554,6 +552,7 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _tag (spot_node_tag_value),
     _lifecycle (ctx_),
     _runtime (NULL),
+    _connected_peer_version_seen (0),
     _subscription_ready_refresh_pending (false),
     _subscription_ready_refresh_holdoff_ticks (0),
     _subscription_replay_pending (false),
@@ -1012,13 +1011,20 @@ void spot_node_t::refresh_discovery_peers ()
 void spot_node_t::refresh_connected_peer_endpoints ()
 {
     std::set<std::string> connected;
+    spot_runtime_t *runtime = NULL;
+    uint64_t connected_peer_version = 0;
     {
         scoped_lock_t lock (_sync);
-        if (!_runtime || !_runtime->mesh_xsub)
+        runtime = _runtime;
+        if (!runtime)
             return;
-        snapshot_connected_mesh_peer_endpoints (_runtime->mesh_xsub,
-                                                &connected);
+        connected_peer_version =
+          runtime->connected_peer_version.load (std::memory_order_acquire);
+        if (connected_peer_version == _connected_peer_version_seen)
+            return;
+        _connected_peer_version_seen = connected_peer_version;
     }
+    snapshot_connected_mesh_peer_endpoints (runtime, &connected);
 
     bool changed = false;
     std::vector<spot_sub_t *> subs;

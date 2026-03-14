@@ -1936,6 +1936,51 @@ def run_sizes_test_split(
     pattern_name,
     result_line_callback=None,
 ):
+    if pattern_name == "SPOT" and len(sizes) > 1:
+        combined_parsed = {}
+        combined_warnings = []
+        cpu_values = []
+        mem_values = []
+        progress_meta = {}
+
+        for size in sizes:
+            outcome = run_sizes_test_split(
+                server_binary_name,
+                client_binary_name,
+                lib_name,
+                transport,
+                [size],
+                pattern_name,
+                result_line_callback=result_line_callback,
+            )
+            combined_parsed.update(outcome.get("parsed", {}) or {})
+            combined_warnings.extend(outcome.get("warnings", []) or [])
+            if outcome.get("cpu_pct") is not None:
+                cpu_values.append(float(outcome["cpu_pct"]))
+            if outcome.get("mem_mb") is not None:
+                mem_values.append(float(outcome["mem_mb"]))
+            for key in ("server_endpoint", "client_stderr"):
+                value = outcome.get(key)
+                if value:
+                    progress_meta[key] = value
+            if outcome.get("status") != "success":
+                failure = dict(outcome)
+                failure["parsed"] = combined_parsed
+                failure["warnings"] = combined_warnings
+                return failure
+
+        return {
+            "status": "success",
+            "parsed": combined_parsed,
+            "timed_out": False,
+            "returncode": 0,
+            "cpu_pct": statistics.median(cpu_values) if cpu_values else None,
+            "mem_mb": statistics.median(mem_values) if mem_values else None,
+            "reason": "",
+            "warnings": combined_warnings,
+            **progress_meta,
+        }
+
     server_binary_path = os.path.join(BUILD_DIR, server_binary_name + EXE_SUFFIX)
     client_binary_path = os.path.join(BUILD_DIR, client_binary_name + EXE_SUFFIX)
     fallback_size = sizes[0] if sizes else 64

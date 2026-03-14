@@ -109,6 +109,8 @@ class gateway_t : public discovery_observer_t
     bool find_provider_index (gateway_service_pool_t *pool_,
                               const zlink_routing_id_t *rid_,
                               size_t *index_out_);
+    int ensure_refresh_task_running ();
+    bool can_suspend_refresh_task () const;
     int send_request_frames (gateway_service_pool_t *pool_,
                              size_t provider_index_,
                              zlink_msg_t *parts_,

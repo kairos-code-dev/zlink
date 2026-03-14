@@ -322,12 +322,8 @@ gateway_t::gateway_t (ctx_t *ctx_,
     }
     if (init_router_socket () != 0)
         _tag = 0xdeadbeef;
-    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
-    if (runtime && _tag == gateway_tag_value) {
-        _runtime->refresh_task_id =
-          runtime->add_periodic_task (refresh_task, this, _refresh_interval_ms,
-                                      true);
-        if (_runtime->refresh_task_id == 0)
+    if (_tag == gateway_tag_value) {
+        if (ensure_refresh_task_running () != 0)
             _tag = 0xdeadbeef;
     } else {
         _tag = 0xdeadbeef;
@@ -397,6 +393,11 @@ int gateway_t::attach_discovery (discovery_t *discovery_)
     }
 
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    {
+        scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+        if (ensure_refresh_task_running () != 0)
+            return -1;
+    }
     if (runtime && _runtime->refresh_task_id != 0)
         runtime->wakeup_task (_runtime->refresh_task_id);
     return 0;
@@ -441,6 +442,8 @@ int gateway_t::connect (const char *endpoint_,
             return -1;
         pool->dirty = true;
         _runtime->pending_updates.insert (_service_name);
+        if (ensure_refresh_task_running () != 0)
+            return -1;
         changed = true;
     }
 
@@ -480,6 +483,8 @@ int gateway_t::disconnect (const char *endpoint_)
             return -1;
         pool->dirty = true;
         _runtime->pending_updates.insert (_service_name);
+        if (ensure_refresh_task_running () != 0)
+            return -1;
         changed = true;
     }
 
@@ -502,6 +507,7 @@ void gateway_t::refresh_tick ()
     if (_runtime->stop.get () != 0)
         return;
 
+    const uint64_t refresh_task_id = _runtime->refresh_task_id;
     std::vector<std::string> services_to_refresh;
     uint64_t now_ms = 0;
     {
@@ -561,8 +567,22 @@ void gateway_t::refresh_tick ()
         }
     }
 
-    scoped_lock_t lock (_sync);
-    sync_gateway_peer_reports (now_ms);
+    bool stop_refresh_task = false;
+    {
+        scoped_lock_t lock (_sync);
+        sync_gateway_peer_reports (now_ms);
+        stop_refresh_task =
+          refresh_task_id != 0 && _runtime->refresh_task_id == refresh_task_id
+          && can_suspend_refresh_task ();
+        if (stop_refresh_task)
+            _runtime->refresh_task_id = 0;
+    }
+
+    if (stop_refresh_task) {
+        service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+        if (runtime)
+            (void) runtime->remove_task (refresh_task_id);
+    }
 }
 
 int gateway_t::init_router_socket ()
@@ -638,6 +658,44 @@ int gateway_t::init_router_socket ()
 int gateway_t::ensure_router_socket ()
 {
     return _runtime->router_socket ? 0 : -1;
+}
+
+int gateway_t::ensure_refresh_task_running ()
+{
+    if (!_runtime) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (_runtime->refresh_task_id != 0)
+        return 0;
+
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (!runtime) {
+        errno = ETERM;
+        return -1;
+    }
+
+    _runtime->refresh_task_id =
+      runtime->add_periodic_task (refresh_task, this, _refresh_interval_ms,
+                                  true);
+    if (_runtime->refresh_task_id == 0)
+        return -1;
+    return 0;
+}
+
+bool gateway_t::can_suspend_refresh_task () const
+{
+    if (_discovery)
+        return false;
+    if (_monitor.has_watchers ())
+        return false;
+    if (_runtime->force_refresh_all || !_runtime->pending_updates.empty ())
+        return false;
+    if (!_runtime->down_until_ms.empty () || !_runtime->down_endpoints.empty ())
+        return false;
+    if (!_runtime->inflight_endpoints.empty ())
+        return false;
+    return true;
 }
 
 gateway_service_pool_t *gateway_t::get_or_create_pool (
@@ -1262,6 +1320,22 @@ int gateway_t::send_rid (const zlink_routing_id_t *routing_id_,
         return -1;
     }
 
+    if (_runtime->stop.get () == 0 && _runtime->router_socket
+        == socket_base_t::current_socket_msg_dispatch_socket ()) {
+        pipe_t *dispatch_pipe =
+          socket_base_t::current_socket_msg_dispatch_pipe ();
+        zlink_routing_id_t dispatch_source_rid;
+        if (dispatch_pipe
+            && socket_base_t::current_socket_msg_dispatch_source_rid (
+              &dispatch_source_rid)
+            && routing_id_equals (dispatch_source_rid, *routing_id_))
+            return send_parts_via_dispatch_pipe (dispatch_pipe, parts_,
+                                                 part_count_);
+        if (pipe_routing_id_equals (dispatch_pipe, routing_id_))
+            return send_parts_via_dispatch_pipe (dispatch_pipe, parts_,
+                                                 part_count_);
+    }
+
     scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
     if (ensure_facade_mode () != 0)
         return -1;
@@ -1279,17 +1353,6 @@ int gateway_t::send_rid (const zlink_routing_id_t *routing_id_,
         if (pipe_routing_id_equals (dispatch_pipe, routing_id_))
             return send_parts_via_dispatch_pipe (dispatch_pipe, parts_,
                                                  part_count_);
-    }
-    gateway_service_pool_t *pool = get_or_create_pool_cached ();
-    if (!pool) {
-        errno = ENOMEM;
-        return -1;
-    }
-
-    size_t provider_index = 0;
-    if (find_provider_index (pool, routing_id_, &provider_index)) {
-        return send_request_frames (pool, provider_index, parts_, part_count_,
-                                    flags_);
     }
     if (!_runtime->router_socket) {
         errno = ENOTSUP;
@@ -1605,6 +1668,9 @@ int gateway_t::set_tls_server (const char *cert_, const char *key_)
 
 void *gateway_t::monitor_open (int events_)
 {
+    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_refresh_task_running () != 0)
+        return NULL;
     return _monitor.open (events_);
 }
 

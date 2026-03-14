@@ -15,6 +15,7 @@
 #include "utils/err.hpp"
 
 #include <errno.h>
+#include <limits.h>
 #include <map>
 #include <set>
 #include <stdarg.h>
@@ -33,6 +34,28 @@ static const unsigned int ingress_forward_batch_limit = 4096;
 static const unsigned int ctrl_poll_batch_limit = 128;
 static const uint64_t bootstrap_broadcast_interval_ms = 100;
 
+static int resolve_internal_hwm_override (const char *env_name_,
+                                          int default_value_)
+{
+    if (!env_name_ || env_name_[0] == '\0')
+        return default_value_;
+
+    const char *value = getenv (env_name_);
+    if (!value || value[0] == '\0')
+        return default_value_;
+
+    char *end = NULL;
+    errno = 0;
+    const long parsed = strtol (value, &end, 10);
+    if (errno != 0 || end == value)
+        return default_value_;
+    if (parsed < 0)
+        return 0;
+    if (parsed > INT_MAX)
+        return INT_MAX;
+    return static_cast<int> (parsed);
+}
+
 static void spot_ctrl_debugf (const char *fmt_, ...)
 {
     if (!getenv ("ZLINK_SPOT_CTRL_DEBUG"))
@@ -44,21 +67,6 @@ static void spot_ctrl_debugf (const char *fmt_, ...)
     vfprintf (stderr, fmt_, args);
     fprintf (stderr, "\n");
     va_end (args);
-}
-
-static uint64_t make_affinity_mask (int io_threads_, int parity_)
-{
-    if (io_threads_ <= 1)
-        return 0;
-
-    uint64_t mask = 0;
-    const int capped_threads = io_threads_ < 64 ? io_threads_ : 64;
-    for (int i = 0; i < capped_threads; ++i) {
-        if ((i & 1) != parity_)
-            continue;
-        mask |= (uint64_t (1) << i);
-    }
-    return mask;
 }
 
 static int send_ascii_frame (socket_base_t *socket_,
@@ -105,9 +113,12 @@ static void sync_mesh_xsub_connected_endpoint (spot_runtime_t *runtime_,
         changed =
           runtime_->connected_peer_endpoints.erase (raw_.remote_addr) != 0;
     }
-    if (changed)
+    if (changed) {
         runtime_->connected_peer_version.fetch_add (1,
                                                     std::memory_order_acq_rel);
+        if (runtime_->owner)
+            runtime_->owner->wake_control_task ();
+    }
 }
 
 static void clear_mesh_xsub_connected_endpoints (spot_runtime_t *runtime_)
@@ -120,6 +131,8 @@ static void clear_mesh_xsub_connected_endpoints (spot_runtime_t *runtime_)
         runtime_->connected_peer_endpoints.clear ();
         runtime_->connected_peer_version.fetch_add (1,
                                                     std::memory_order_acq_rel);
+        if (runtime_->owner)
+            runtime_->owner->wake_control_task ();
         return;
     }
     runtime_->connected_peer_endpoints.clear ();
@@ -716,10 +729,10 @@ void spot_data_plane_t::run (spot_node_t *node_)
     const int zero = 0;
     const int neg_one = -1;
     const int one = 1;
-    const int io_threads = node_->_ctx->get (ZLINK_IO_THREADS);
-    const uint64_t mesh_pub_affinity = make_affinity_mask (io_threads, 0);
-    const uint64_t mesh_xsub_affinity = make_affinity_mask (io_threads, 1);
-    const int fanout_sndhwm = static_cast<int> (spot_sub_queue_hwm_default);
+    const int fanout_sndhwm =
+      resolve_internal_hwm_override ("ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM",
+                                     static_cast<int> (
+                                       spot_sub_queue_hwm_default));
     apply_common_internal_opts (ctrl, linger);
     apply_common_internal_opts (mesh_pub, linger);
     apply_common_internal_opts (mesh_xsub, linger);
@@ -727,13 +740,6 @@ void spot_data_plane_t::run (spot_node_t *node_)
     apply_common_internal_opts (peer_ctrl_sub, linger);
     apply_common_internal_opts (ingress, linger);
     apply_common_internal_opts (fanout, linger);
-
-    if (mesh_pub_affinity != 0 && mesh_xsub_affinity != 0) {
-        mesh_pub->setsockopt (ZLINK_AFFINITY, &mesh_pub_affinity,
-                              sizeof (mesh_pub_affinity));
-        mesh_xsub->setsockopt (ZLINK_AFFINITY, &mesh_xsub_affinity,
-                               sizeof (mesh_xsub_affinity));
-    }
 
     ctrl->connect (runtime->data_ctrl_endpoint.c_str ());
     ingress->setsockopt (ZLINK_RCVHWM, &zero, sizeof (zero));

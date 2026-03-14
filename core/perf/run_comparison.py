@@ -1264,6 +1264,21 @@ def _resolve_server_timeouts(pattern_name, transport, ready_timeout_ms, shutdown
     return ready_timeout_ms, shutdown_timeout_ms
 
 
+def _resolve_server_natural_stop_wait_seconds(
+    pattern_name, transport, timeout_sec, shutdown_timeout_ms
+):
+    wait_sec = shutdown_timeout_ms / 1000.0
+    if wait_sec <= 0:
+        wait_sec = 0.1
+
+    natural_wait_sec = min(max(wait_sec, 3.0), max(3.0, timeout_sec))
+    if pattern_name == "SPOT":
+        natural_wait_sec = min(max(natural_wait_sec, 30.0), max(30.0, timeout_sec))
+    elif pattern_name == "GATEWAY":
+        natural_wait_sec = min(max(natural_wait_sec, 10.0), max(10.0, timeout_sec))
+    return wait_sec, natural_wait_sec
+
+
 def _resolve_io_threads(env, io_key, pattern_name):
     io_value = env_pair_value(env, io_key)
     if not io_value and pattern_name in STREAM_VARIANT_PATTERNS:
@@ -1437,6 +1452,15 @@ def run_sizes_test_stream_shared(
         if not server_proc:
             return
         if server_proc.poll() is None:
+            wait_sec, natural_wait_sec = _resolve_server_natural_stop_wait_seconds(
+                pattern_name, transport, timeout_sec, shutdown_timeout_ms
+            )
+            natural_deadline = time.monotonic() + natural_wait_sec
+            while server_proc.poll() is None and time.monotonic() < natural_deadline:
+                pump_server_output_nonblocking()
+                time.sleep(0.05)
+            pump_server_output_nonblocking()
+        if server_proc.poll() is None:
             try:
                 if server_proc.stdin:
                     try:
@@ -1450,9 +1474,6 @@ def run_sizes_test_stream_shared(
                         pass
             except Exception:
                 pass
-            wait_sec = shutdown_timeout_ms / 1000.0
-            if wait_sec <= 0:
-                wait_sec = 0.1
             try:
                 server_proc.wait(timeout=wait_sec)
             except subprocess.TimeoutExpired:
@@ -2009,6 +2030,15 @@ def run_sizes_test_split(
         if not server_proc:
             return
         if server_proc.poll() is None:
+            wait_sec, natural_wait_sec = _resolve_server_natural_stop_wait_seconds(
+                pattern_name, transport, timeout_sec, shutdown_timeout_ms
+            )
+            natural_deadline = time.monotonic() + natural_wait_sec
+            while server_proc.poll() is None and time.monotonic() < natural_deadline:
+                pump_server_output_nonblocking()
+                time.sleep(0.05)
+            pump_server_output_nonblocking()
+        if server_proc.poll() is None:
             try:
                 if server_proc.stdin:
                     try:
@@ -2022,9 +2052,6 @@ def run_sizes_test_split(
                         pass
             except Exception:
                 pass
-            wait_sec = shutdown_timeout_ms / 1000.0
-            if wait_sec <= 0:
-                wait_sec = 0.1
             try:
                 server_proc.wait(timeout=wait_sec)
             except subprocess.TimeoutExpired:

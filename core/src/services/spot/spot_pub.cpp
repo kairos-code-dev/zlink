@@ -125,6 +125,7 @@ spot_pub_t::spot_pub_t (spot_node_t *node_,
     _routing_id_locked (false),
     _send_ready_handler (NULL),
     _send_ready_subject (NULL),
+    _destroying (false),
     _monitor (node_ ? node_->ctx () : NULL),
     _monitor_event_queue (),
     _monitor_event_draining (false),
@@ -154,6 +155,9 @@ bool spot_pub_t::is_node_owned_default () const
 
 void spot_pub_t::emit_monitor_event (const zlink_service_event_t &event_)
 {
+    if (_destroying.load (std::memory_order_acquire))
+        return;
+
     _monitor_event_queue.enqueue (event_);
     _monitor_event_pending.fetch_add (1, std::memory_order_release);
 
@@ -436,6 +440,10 @@ int spot_pub_t::ensure_monitor_bridge_started ()
     scoped_lock_t lock (_sync);
     if (_raw_monitor_socket)
         return 0;
+    if (_destroying.load (std::memory_order_acquire)) {
+        errno = EFSM;
+        return -1;
+    }
     if (!socket) {
         errno = EFAULT;
         return -1;
@@ -580,6 +588,8 @@ int spot_pub_t::destroy_internal (bool allow_embedded_default_,
         errno = EINVAL;
         return -1;
     }
+
+    _destroying.store (true, std::memory_order_release);
 
     socket_base_t *socket = this->socket ();
     int first_error = 0;

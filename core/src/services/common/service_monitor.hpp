@@ -24,6 +24,7 @@ class service_monitor_hub_t
     void *open (int events_);
     void emit (const zlink_service_event_t &event_);
     void close_all (const zlink_service_event_t *terminal_event_ = NULL);
+    bool has_watchers () const;
 
   private:
     struct watcher_t

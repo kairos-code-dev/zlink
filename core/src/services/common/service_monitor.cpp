@@ -253,4 +253,10 @@ void service_monitor_hub_t::close_all (const zlink_service_event_t *terminal_eve
         }
     }
 }
+
+bool service_monitor_hub_t::has_watchers () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    return !_watchers.empty ();
+}
 }

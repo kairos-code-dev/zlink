@@ -100,6 +100,11 @@ int service_control_runtime_t::remove_task (uint64_t task_id_)
         return 0;
 
     scoped_lock_t lock (_sync);
+    if (_thread.get_started () && _thread.is_current_thread ()
+        && _active_task_id == task_id_) {
+        _tasks.erase (task_id_);
+        return 0;
+    }
     _tasks.erase (task_id_);
     while (_active_task_id == task_id_)
         _cv.wait (&_sync, -1);

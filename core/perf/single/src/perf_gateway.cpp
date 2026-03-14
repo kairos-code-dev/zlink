@@ -691,6 +691,7 @@ int run_case (const std::string &lib_name_,
         cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);
         return 1;
     }
+    close_gateway_ready_monitor (&client_monitor);
 
     server_state.run_id = static_cast<uint32_t> (current_process_id ());
     server_state.msg_size = msg_size_;

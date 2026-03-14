@@ -216,6 +216,7 @@ spot_sub_t::spot_sub_t (spot_node_t *node_,
     _active_direct_handler (NULL),
     _handler_state (handler_none),
     _callback_inflight (0),
+    _destroying (false),
     _monitor (node_ ? node_->ctx () : NULL),
     _monitor_event_queue (),
     _monitor_event_draining (false),
@@ -245,6 +246,9 @@ bool spot_sub_t::is_node_owned_default () const
 
 void spot_sub_t::emit_monitor_event (const zlink_service_event_t &event_)
 {
+    if (_destroying.load (std::memory_order_acquire))
+        return;
+
     _monitor_event_queue.enqueue (event_);
     _monitor_event_pending.fetch_add (1, std::memory_order_release);
 
@@ -1153,6 +1157,10 @@ void spot_sub_t::handle_ready_probe (const std::string &raw_filter_,
 {
     if (raw_filter_.empty ())
         return;
+    if (_destroying.load (std::memory_order_acquire))
+        return;
+    if (_node && _node->is_shutting_down ())
+        return;
 
     if (getenv ("ZLINK_DEBUG_SPOT_READY_PROBE")) {
         fprintf (stderr, "[spot-ready-probe] recv raw=%s endpoint=%s\n",
@@ -1249,6 +1257,10 @@ int spot_sub_t::ensure_monitor_bridge_started ()
     scoped_lock_t lock (_sync);
     if (_raw_monitor_socket)
         return 0;
+    if (_destroying.load (std::memory_order_acquire)) {
+        errno = EFSM;
+        return -1;
+    }
     if (!socket) {
         errno = EFAULT;
         return -1;
@@ -1405,34 +1417,17 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         return -1;
     }
 
+    _destroying.store (true, std::memory_order_release);
+
     socket_base_t *socket = this->socket ();
     int first_error = 0;
     std::vector<std::pair<std::string, std::string> > ready_ack_updates;
     bool had_filters = false;
+    const bool node_shutting_down = _node && _node->is_shutting_down ();
 
     {
         scoped_lock_t lock (_sync);
         had_filters = !_topics.empty () || !_patterns.empty ();
-    }
-
-    release_all_ready_ack_endpoints (&ready_ack_updates);
-    if (_node) {
-        const std::string ack_source_id = ready_ack_source_id ();
-        for (size_t i = 0; i < ready_ack_updates.size (); ++i) {
-            (void) _node->send_ready_ack_update (ready_ack_updates[i].second,
-                                                 ready_ack_updates[i].first,
-                                                 ack_source_id, false);
-        }
-    }
-
-    if (notify_node_ && _node)
-        _node->remove_spot_sub (this);
-    if (notify_node_ && _node)
-        _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
-    if (notify_node_ && _node && had_filters) {
-        _node->schedule_subscription_replay ();
-        preserve_first_error (_node->replay_subscriptions_if_active_peers (),
-                              &first_error);
     }
 
     bool has_handler = false;
@@ -1466,11 +1461,6 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         scoped_lock_t lock (_sync);
         while (_callback_inflight.get () > 0)
             (void) _callback_cv.wait (&_sync, 1000);
-        _topics.clear ();
-        _patterns.clear ();
-        _ready_peer_endpoints.clear ();
-        _ready_subject_endpoints.clear ();
-        _ready_ack_endpoints.clear ();
         _active_direct_handler.store (NULL, std::memory_order_release);
         _handler_state.store (handler_none, std::memory_order_release);
         _callback_cv.broadcast ();
@@ -1478,6 +1468,35 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     spot_sub_diag_log ("destroy.before-stop-monitor-bridge");
     preserve_first_error (stop_monitor_bridge (), &first_error);
     spot_sub_diag_log ("destroy.after-stop-monitor-bridge");
+
+    release_all_ready_ack_endpoints (&ready_ack_updates);
+    if (_node && !node_shutting_down) {
+        const std::string ack_source_id = ready_ack_source_id ();
+        for (size_t i = 0; i < ready_ack_updates.size (); ++i) {
+            (void) _node->send_ready_ack_update (ready_ack_updates[i].second,
+                                                 ready_ack_updates[i].first,
+                                                 ack_source_id, false);
+        }
+    }
+
+    if (notify_node_ && _node)
+        _node->remove_spot_sub (this);
+    if (notify_node_ && _node)
+        _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
+    if (notify_node_ && _node && had_filters && !node_shutting_down) {
+        _node->schedule_subscription_replay ();
+        preserve_first_error (_node->replay_subscriptions_if_active_peers (),
+                              &first_error);
+    }
+    {
+        scoped_lock_t lock (_sync);
+        _topics.clear ();
+        _patterns.clear ();
+        _delivery_ready_raw_filters.clear ();
+        _ready_peer_endpoints.clear ();
+        _ready_subject_endpoints.clear ();
+        _ready_ack_endpoints.clear ();
+    }
 
     zlink_service_event_t terminal;
     fill_terminal_monitor_event (&terminal, ZLINK_MONITOR_EVENT_CLOSED,

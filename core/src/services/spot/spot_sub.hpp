@@ -163,6 +163,7 @@ class spot_sub_t
     std::atomic<handler_state_t> _handler_state;
     atomic_counter_t _callback_inflight;
     condition_variable_t _callback_cv;
+    std::atomic<bool> _destroying;
     service_monitor_hub_t _monitor;
     moodycamel::ConcurrentQueue<zlink_service_event_t> _monitor_event_queue;
     std::atomic<bool> _monitor_event_draining;

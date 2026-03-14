@@ -57,6 +57,15 @@ raw socket / `gateway` / `spot` / `discovery` / monitor handle의 공개 동시�
 2. callback-only recv, ownership, deferred teardown 규칙은 rewrite spec을 따른다.
 3. 이 문서는 위 인터페이스 위에서 thread-safe public contract를 추가 정의한다.
 
+recv scope 고정:
+
+- public sync recv API는 이미 제거되었다 (proxy 등 내부 경로 제외).
+- 이 문서의 thread-safe 설계 scope에 public recv()는 존재하지 않는다.
+- callback-only recv 모델만 전제하며, blocking recv와 `EBUSY` close 정책의
+  충돌, blocked thread cancel story는 이 문서의 범위 밖이다.
+- 이 문서에서 data-plane이란 `send` / `publish` / callback dispatch를 뜻하며,
+  public `recv()`는 여기에 포함되지 않는다.
+
 자주 쓰는 용어:
 
 - same-handle:
@@ -148,7 +157,7 @@ public contract다.
 
 기본 전략은 global lock이 아니라 handle 단위 직렬화다.
 
-- 각 handle은 자기 상태를 스스로 보호한다.
+- 각 handle은 자기 상태를 자체적으로 보호한다.
 - 서로 다른 handle 사이에는 불필요한 전역 락을 두지 않는다.
 - parent-child coordination은 공유 상태 경계에서만 명시적으로 잡는다.
 
@@ -165,6 +174,10 @@ thread-safe contract가 있다고 해서 종료 API까지 아무 때나 병행 �
 - same-handle public API가 하나라도 in-flight면 cross-thread
   `close` / `destroy`는 성공하지 않는다.
 - 이 경우 라이브러리는 `EBUSY`를 반환한다.
+- 이 `EBUSY`는 정상 종료 절차의 일부가 아니라,
+  호출자가 사전에 quiesce/join을 끝내지 못했다는 fail-fast 신호다.
+- cross-thread `close` / `destroy`가 `EBUSY`를 반환한 경우 handle은 계속 live 상태로
+  남아야 하며, 그 실패만으로 `closing_requested`가 latch되면 안 된다.
 - callback 안의 self-close는 허용하지만 실제 teardown은 callback return 뒤로
   미룬다.
 
@@ -232,7 +245,7 @@ canonical public shape는 그대로 유지하고, 그 위에 thread-safe contrac
 
 | Subject | Canonical 생성/open API | 계획 방향 |
 |---|---|---|
-| raw socket | `zlink_socket(ctx, type, handler)` | recv-capable socket은 생성 즉시 thread-safe recv/send subject로 본다. raw `PUB`만 `handler == NULL` 경로를 유지한다. |
+| raw socket | `zlink_socket(ctx, type, handler)` | recv-capable socket은 생성 즉시 thread-safe send subject로 본다. public recv()는 제거 완료. raw `PUB`만 `handler == NULL` 경로를 유지한다. |
 | `discovery` | `zlink_discovery_new(ctx, service_type)` | topology cache, observer, query, monitor 경로를 thread-safe subject로 정리한다. |
 | `gateway` | `zlink_gateway_new(ctx, service_name, routing_id, handler)` | existing `_sync` 기반 구조를 재사용하되 공개 계약은 unconditional thread-safe로 올린다. |
 | `spot_node` | `zlink_spot_node_new(ctx, service_name, handler)` | publish, subscribe, discovery attach, TLS, peer connect, child registry를 thread-safe subject로 본다. |
@@ -350,10 +363,9 @@ subscription mutation:
 권장 구현은 아래 조합이다.
 
 - per-handle mutex 또는 동등한 직렬화 primitive
-- atomic send-ready handler pointer 또는 동일 효과의 lock-minimized snapshot
-- public API in-flight counter
-- callback depth
-- `closing_requested` / `closed` 상태 플래그
+- send-ready `(handler, subject)` 쌍의 원자적 publication (seqlock 또는 동등 메커니즘)
+- admission state (closing bit + inflight count를 단일 원자적 단위로 관리)
+- callback scope metadata (thread id + depth)
 - parent-child reference guard
 
 핵심은 "모든 것을 lock-free로 만들자"가 아니라
@@ -374,17 +386,36 @@ callback 안 send를 허용하려면 callback 호출 시 send path와 동일한 
 즉 "classification은 락 안에서 짧게, callback 실행은 가능한 한 락 밖에서"가
 원칙이다.
 
-### 7.3 send-ready handler pointer
+### 7.3 send-ready handler publication
 
 recv handler는 생성 시 고정이므로 atomic 보호가 필요 없다.
 
-send-ready handler는 런타임에 교체 가능하므로 가능한 경우 atomic으로 다룬다.
+send-ready handler는 런타임에 교체 가능하며, 실제 callback ABI는
+`(handler_fn, subject)` 쌍이다. 이 두 값을 분리된 atomic store/load로
+다루면 교체 중 "새 handler + 옛 subject" 조합이 보일 수 있다.
 
-- 교체는 store-release
-- writable transition read는 load-acquire
+publication 단위는 `(handler, subject)` 쌍 전체이며, 권장 메커니즘은
+seqlock이다.
 
-이렇게 하면 writable transition fast path의 lock hold 시간을 줄이고
-visibility semantics를 구현하기 쉬워진다.
+- setter (rare path):
+  1. sequence counter를 홀수로 올린다 (writing 진입)
+  2. handler와 subject를 store한다
+  3. sequence counter를 짝수로 올린다 (writing 완료)
+- dispatcher (hot path, writable transition):
+  1. sequence를 load한다 (s1)
+  2. handler와 subject를 load한다
+  3. sequence를 다시 load한다 (s2)
+  4. s1 != s2이거나 s1이 홀수면 retry한다 (setter와 정확히 겹칠 때만 발생)
+- sequence counter는 `atomic<uint32_t>`, acquire/release ordering
+
+이 방식의 성능 특성:
+- dispatch hot path는 lock-free이며 retry 확률은 극히 낮다 (setter는 rare)
+- setter에 mutex가 필요 없다
+- 추가 heap allocation이 없다
+- `op_state_mutex`와 독립적으로 동작하므로 send path lock과 간섭하지 않는다
+
+대안으로 128-bit atomic(CMPXCHG16B), RCU-style slot swap도 가능하지만,
+seqlock이 이 용도에서 복잡도 대비 성능이 가장 좋다.
 
 ### 7.4 내부 구현 세부사항은 공개 계약과 분리한다
 
@@ -396,18 +427,268 @@ visibility semantics를 구현하기 쉬워진다.
 - 기존 lock이 없다면 raw socket / discovery / monitor 쪽에 공통 수명 보호와
   직렬화 계층을 추가한다.
 
+### 7.5 현재 구현 기준 현실 점검
+
+현재 구현은 "일부 subject는 operational path가 lock으로 보호되지만, 전체 public
+surface가 같은 계약으로 정리된 상태는 아니다"라고 보는 것이 정확하다.
+
+| Subject | 현재 상태 | 핵심 갭 |
+|---|---|---|
+| raw socket (`PAIR`/`DEALER`/`ROUTER`/`PUB`/`SUB`/`XSUB`/`XPUB`) | `socket_base_t` 공통 API 직렬화 계층이 없다 | same-handle concurrent `send` / option setter / close를 전면 보장하지 못한다 |
+| raw `STREAM` | `_api_mutex`가 있어 일부 API는 보호된다 | 전체 raw socket 모델로 일반화되지 않았다 |
+| `XSUB` / `XPUB` direct-dispatch | dispatch inflight / stop 대기는 있다 | public API 전체를 덮는 lifetime guard가 아니다 |
+| `gateway` | `_sync` 기반으로 send path는 상당 부분 직렬화돼 있다 | close/destroy/in-flight 정책이 문서 수준의 공통 프로토콜로 정리되지 않았다 |
+| `spot_pub` / `spot_sub` / `spot_node` | `_sync`와 callback inflight가 일부 있다 | parent-child close ordering, 공통 lifetime gate, raw socket 기반 API와의 일관성이 부족하다 |
+| `discovery` / `registry` | `_sync`가 있고 observer/task state를 일부 보호한다 | bootstrap, bind, destroy, observer callback과 운영 API를 하나의 thread-safe contract로 고정하지 못했다 |
+| monitor handle | callback depth / self-close defer가 구현돼 있다 | parent close 정책과 raw/service 공통 정책이 완전히 일치하지 않는다 |
+
+구현 기준 주요 관찰:
+
+- raw socket의 핵심 hot path인
+  [`socket_base_t::setsockopt()`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp),
+  [`socket_base_t::send()`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp)
+  에는 공통 per-handle serialization 계층이 없다.
+  (public `recv()`는 이미 제거되었으므로 thread-safe 설계 대상이 아니다.)
+- `STREAM`만
+  [`stream_t::_api_mutex`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/stream.cpp)
+  를 통해 별도 보호를 제공한다. 즉 raw socket 전반의 완성된 모델이 아니라
+  예외 구현이다.
+- `gateway`, `spot_pub`, `spot_sub`, `spot_node`는 각각 `_sync`를 이용한
+  subject-local serialization을 이미 사용 중이므로 raw socket보다 출발점이 좋다.
+- 최근 SPOT shutdown race는
+  [`core/src/core/object.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/core/object.cpp),
+  [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/core/pipe.cpp),
+  [`core/src/core/mailbox.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/core/mailbox.cpp),
+  [`core/src/core/yqueue.hpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/core/yqueue.hpp),
+  [`core/src/engine/asio/asio_engine.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/engine/asio/asio_engine.cpp)
+  축에서 터졌다. 따라서 thread-safe 확장은 "API lock 추가"만으로 끝나지 않고
+  lifetime ordering까지 함께 닫아야 한다.
+
+이 절의 결론은 단순하다.
+
+- 목표 계약은 유지한다.
+- 다만 "문서 선언 -> 구현 추정" 순서가 아니라 "공통 lifetime gate 구현 ->
+  subject별 이식 -> 문서/테스트 고정" 순서로 진행해야 한다.
+
+### 7.6 공통 thread-safe runtime 계층
+
+thread-safe only 계약을 타협 없이 밀려면 subject별 lock 추가가 아니라 공통
+runtime 계층을 먼저 정의해야 한다.
+
+권장 구조:
+
+1. admission state word (CAS 기반 단일 atomic)
+   - `closing_requested`(1 bit)와 `inflight count`(나머지 bits)를 하나의
+     `atomic<uint32_t>` 또는 동등한 단일 word로 합친다.
+   - API 진입은 CAS로 inflight를 1 증가시키되, closing bit이 켜져 있으면
+     즉시 실패한다. 이 두 판정이 같은 CAS 연산에서 원자적으로 처리된다.
+   - API 이탈은 `fetch_sub(1, release)`로 inflight를 감소시킨다.
+   - close는 CAS로 closing bit을 설정하되, inflight > 0이면 실패(`EBUSY`)한다.
+   - 이 방식은 별도 `close_admission_mutex` 없이 admission과 close의 선형화를
+     하드웨어 수준에서 보장한다.
+   - 이미 in-flight인 callback thread의 same-handle send/publish는 callback scope
+     metadata로 별도 판정하여 허용한다.
+   - 구현은 packed state word 외에 cacheline 분리, 필요 시 sharded counter 등
+     alternative implementation을 선택할 수 있다. 문서는 admission state의
+     의미를 고정하되 자료구조를 강제하지 않는다.
+
+   참고 pseudocode:
+   ```
+   // enter_public_api
+   uint32_t old = state.load(acquire);
+   do {
+       if (old & CLOSING_BIT) return ESHUTDOWN;
+   } while (!state.compare_exchange_weak(old, old + 1, acq_rel));
+
+   // leave_public_api
+   state.fetch_sub(1, release);
+
+   // begin_close_or_fail_busy (external)
+   uint32_t old = state.load(acquire);
+   do {
+       if (old & ~CLOSING_BIT) return EBUSY;  // inflight > 0
+   } while (!state.compare_exchange_weak(old, old | CLOSING_BIT, acq_rel));
+   // 성공: closing accepted, 새 API 진입 차단됨
+
+   // self-close (callback 내)
+   // closing bit + close_deferred 설정, inflight는 callback epilogue에서 감소
+   ```
+
+2. operation/state lock (`op_state_mutex`)
+   - 상태 mutation과 snapshot 생성, 짧은 operation fast path 보호는 이 lock으로
+     직렬화한다.
+   - 단, user callback 실행 동안에는 이 lock을 들고 있으면 안 된다.
+   - public `recv()`는 이미 제거되었으므로 이 lock 아래에서의 blocking wait 시나리오는
+     존재하지 않는다. send의 `EAGAIN` 후 wait도 반드시 lock 밖에서 수행한다.
+3. callback scope metadata
+   - callback depth만으로는 부족하다.
+   - callback thread 식별 정보와 self-close defer 플래그를 같이 기록해야 한다.
+   - close가 수락된 뒤에는 새 callback scope 진입도 같은 gate 아래에서 막아야 한다.
+   - 중요 invariant: **한 handle에는 동시에 최대 하나의 callback thread만 활성화된다.**
+     recv callback 실행 중 같은 handle의 send-ready callback은 발생하지 않으며,
+     그 역도 마찬가지다. monitor는 별도 handle이므로 이 invariant에 해당하지 않는다.
+   - 이 invariant가 성립하므로 per-handle `callback_thread_id + callback_depth`는
+     단일 슬롯으로 관리할 수 있으며, self-close 판정과 callback-중-send 허용 판정이
+     신뢰할 수 있다.
+   - 이 invariant가 architecture 변경으로 깨질 경우 per-callback token/guard 방식으로
+     전환해야 한다.
+
+중요한 구현 원칙:
+
+- "큰 recursive mutex 하나로 send 전체를 감싼다"는 방식은 raw socket에 그대로
+  적용하면 안 된다.
+- 따라서 raw socket 계층은
+  "CAS 기반 admission gate"와 "짧은 state serialization"을 분리해야 한다.
+- thread-safe는 타협하지 않되, operational hot path는 가능한 한
+  "atomic admission + 짧은 lane-local critical section"으로 끝나야 한다.
+- close/destroy/config/handler 교체 같은 control-plane과,
+  `send` / `publish` / callback dispatch 같은 data-plane은 같은 큰 mutex 하나로
+  묶지 않는다.
+- **`process_commands()`를 `op_state_mutex` 아래에서 full drain으로 수행하는 것은
+  금지한다.** 현재 `process_commands()`는 mailbox를 전부 drain하는 가변 비용
+  작업이며, heavy command(pipe_term 등) 하나가 lock hold time을 spike시켜
+  same-handle concurrent send 전체의 tail latency를 찌를 수 있다.
+  허용되는 구현:
+  - `process_commands`를 `op_state_mutex` 밖에서 수행하고, 결과 상태만
+    짧게 lock 안에서 반영하는 방식
+  - `op_state_mutex` 안에서 수행하더라도 one-pass bounded budget으로 제한하되,
+    heavy command를 만나면 lock을 풀고 defer하는 방식
+  - 금지되는 구현: unbounded mailbox drain을 `op_state_mutex` hold 중 수행
+- thread-safety 구현 때문에 새 heap allocation, message copy, condition wait를
+  hot path에 추가해서는 안 된다.
+- lock은 상태 snapshot과 transition 보호에만 쓰고, callback 실행은
+  항상 lock 밖에서 수행한다.
+- 즉 "thread-safe니까 느려도 된다"는 접근은 금지한다.
+
+raw socket에 필요한 최소 helper는 다음과 같다.
+
+- `socket_public_api_state_t` 또는 동등한 구조를
+  [`socket_base_t`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.hpp)
+  에 둔다.
+- 필드:
+  - `admission_state` — 단일 atomic word. closing bit + inflight count를 합친다.
+    구현은 packed `uint32_t`, cacheline-isolated counter, 또는 sharded counter 중
+    적합한 방식을 선택할 수 있다. 문서는 의미만 고정한다.
+  - `callback_thread_id` — 현재 활성 callback의 thread ID (단일 슬롯,
+    "한 handle 당 동시 callback thread 최대 1개" invariant 전제)
+  - `callback_depth` — 중첩 callback 깊이
+  - `op_state_mutex` — 상태 mutation / snapshot 보호용 짧은 lock
+  - `close_deferred` — self-close 시 epilogue teardown 예약 flag
+- helper:
+  - `enter_public_api(kind, allow_from_callback)` — admission state CAS
+  - `leave_public_api()` — admission state fetch_sub
+  - `try_enter_callback_scope()` — callback_thread_id 설정 + depth 증가
+  - `leave_callback_scope()` — depth 감소 + deferred close 확인
+  - `begin_close_or_fail_busy()` — admission state CAS로 closing bit 설정 시도
+  - `finish_close()` — teardown 진행
+
+서비스 계열은 다음 방향이 적합하다.
+
+- `gateway`, `spot_node`, `spot_pub`, `spot_sub`, `discovery`, `registry`는
+  각자 `_sync`를 유지하되, public contract 경계는
+  [`services/common`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/common)
+  에 공통 helper를 만들어 맞춘다.
+- 즉 `_sync`는 상태 보호용, 공통 helper는 API admission / close policy용으로
+  역할을 분리한다.
+- callback self-close 판별은 `thread-local depth only`가 아니라,
+  per-handle `callback_thread_id + callback_depth`를 canonical source of truth로
+  삼는다.
+- thread-local depth는 진단/assert 또는 fast reject 보조 신호로만 사용할 수 있고,
+  correctness 판정에 단독으로 쓰면 안 된다.
+
+### 7.7 실제 적용 순서
+
+이 문서를 구현으로 옮길 때의 권장 순서는 다음이다.
+
+1. raw socket 공통 lifetime gate를 먼저 넣는다.
+   - 이유: 모든 서비스가 결국 raw socket 위에 올라가기 때문이다.
+   - 대상 파일:
+     [`socket_base.hpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.hpp),
+     [`socket_base.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp),
+     [`zlink.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/api/zlink.cpp)
+2. monitor path를 raw socket close policy와 맞춘다.
+   - 현재 monitor는 별도 callback depth를 갖고 있으므로 공통 gate에 가장 먼저
+     이식하기 좋다.
+3. `gateway`를 공통 service API guard 위로 옮긴다.
+   - send path가 이미 `_sync`를 쓰므로 적용 난이도가 가장 낮다.
+4. `spot_pub` / `spot_sub` / `spot_node`를 공통 guard 위로 옮긴다.
+   - parent-child ordering, callback inflight, direct handler path를 함께 정리한다.
+5. `discovery` / `registry`를 마지막에 올린다.
+   - observer callback, bootstrap/bind, background task와의 ordering을 같이
+     정리해야 하므로 가장 어렵다.
+6. 마지막에 문서와 테스트를 계약으로 고정한다.
+
+이 순서를 뒤집지 않는 이유:
+
+- raw socket이 먼저 안정되지 않으면 서비스 layer lock이 raw core race를 가릴 뿐
+  해결하지 못한다.
+- `discovery` / `registry`를 먼저 건드리면 observer/task ordering까지 한 번에
+  터져 디버깅 난이도가 급격히 오른다.
+
 ## 8. subject별 상세 계획
+
+### 8.0 공통 기반 작업
+
+subject별 구현 전에 아래 공통 작업을 먼저 끝내야 한다.
+
+- raw/socket 계층용 공통 API admission helper 추가
+- service 계층용 공통 API guard helper 추가
+- close/destroy 공통 `EBUSY` 프로토콜 추가
+- callback scope metadata의 공통 표현 추가
+- self-close deferred teardown의 공통 helper 추가
+
+후보 위치:
+
+- raw socket 공통 계층:
+  [`core/src/sockets/socket_base.hpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.hpp),
+  [`core/src/sockets/socket_base.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp)
+- service 공통 계층:
+  [`core/src/services/common`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/common)
+- public API 진입점:
+  [`core/src/api/zlink.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/api/zlink.cpp)
 
 ### 8.1 raw socket
 
 구현 목표:
 
-- recv-capable raw socket의 same-handle concurrent `send` 지원
+- raw socket의 same-handle concurrent `send` 지원 (public `recv()`는 이미 제거됨)
 - `zlink_socket_set_send_ready_handler()` 교체와 writable transition dispatch의
-  동시성 보호
+  동시성 보호 (`(handler, subject)` 쌍 seqlock)
 - `zlink_stream_attach_raw()` / `zlink_stream_attach_len32be()` 같은 attach 교체와
   dispatch race 정의
 - `zlink_close()`에 공통 `EBUSY` / self-close deferred teardown 정책 적용
+
+현재 구현 관찰:
+
+- `socket_base_t::send/setsockopt/getsockopt/close`는 같은 subject에서
+  공통 API guard를 공유하지 않는다.
+- `STREAM`만 `_api_mutex`가 있고 나머지 raw socket은 없다.
+- `XSUB` / `XPUB`의 dispatch inflight는 callback stop 용도이지,
+  same-handle public API 직렬화 계층이 아니다.
+
+실제 작업 항목:
+
+- [`socket_base_t`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.hpp)
+  에 공통 admission state (CAS state word)를 추가한다.
+- `send()`는 아래 순서로 재구성한다.
+  1. admission state CAS로 진입 허용 여부 검사
+  2. `process_commands`는 `op_state_mutex` 밖에서 수행하거나,
+     `op_state_mutex` 안이라면 one-pass bounded budget으로 제한한다.
+     **unbounded mailbox drain을 `op_state_mutex` hold 중 수행하는 것은 금지한다.**
+     heavy command(pipe_term 등)를 만나면 lock을 풀고 defer해야 한다.
+  3. 짧은 `op_state_mutex` 안에서 `xsend` 한 번 수행
+  4. `EAGAIN`이면 state lock을 풀고 wait (lock 밖)
+  5. 재진입 시 다시 2로 복귀
+- admission state CAS와 `op_state_mutex`는 역할이 분리된다.
+  admission state는 closing/inflight 원자성을 보장하고,
+  `op_state_mutex`는 짧은 state mutation만 보호한다.
+- `setsockopt/getsockopt/bind/connect/monitor_open/send_ready_handler_setter`도
+  같은 admission state CAS 아래 넣는다.
+- `close()`는 admission state CAS로 closing bit 설정을 시도한다.
+  inflight > 0이면 closing bit을 건드리지 않고 `EBUSY`를 반환한다.
+  handle은 계속 live 상태로 남는다.
+- `STREAM`의 `_api_mutex`는 raw 공통 gate가 올라온 뒤 `STREAM` 특수화가 정말
+  필요한 부분만 남기고 정리한다.
 
 ### 8.2 discovery
 
@@ -419,6 +700,24 @@ visibility semantics를 구현하기 쉬워진다.
 - topology ownership 규칙과 lifetime ordering을 검증
   (manual peer가 있으면 attach `EBUSY`, attach 후 manual connect/disconnect 금지)
 
+현재 구현 관찰:
+
+- `_sync`는 이미 넓게 쓰고 있다.
+- 그러나 bootstrap/connect, observer callback, task wakeup, destroy가 공통
+  close protocol 아래 있지는 않다.
+- observer callback은 inflight count를 갖지만 raw/service 공통 표현과는 분리돼
+  있다.
+
+실제 작업 항목:
+
+- `_sync`는 유지하되 public API admission helper를 추가한다.
+- observer callback 실행은 `_sync` 안에서 대상 목록 snapshot만 만들고,
+  실제 callback 호출은 락 밖에서 수행한다.
+- destroy는 observer inflight와 public API inflight를 함께 본다.
+- `connect_registry()` / bootstrap path는 "초기화 단계 API"로 분리하지 말고,
+  문서 계약대로 thread-safe operational API로 승격한다. 단, raw socket lock을
+  오래 쥔 채 bootstrap reply를 기다리면 안 된다.
+
 ### 8.3 gateway
 
 구현 목표:
@@ -427,6 +726,26 @@ visibility semantics를 구현하기 쉬워진다.
 - `send`, `send_rid`, send-ready handler 교체, monitor 경로를 동일 계약 아래 정리
 - recv callback 안 `zlink_gateway_send_rid()` reply를 공식 허용 패턴으로 문서화
 
+현재 구현 관찰:
+
+- `_sync`를 통한 직렬화가 이미 넓게 들어가 있다.
+- `_use_lock` 분기가 있지만 공개 계약은 unconditional thread-safe이므로
+  이 분기를 contract 해석에 사용하면 안 된다.
+- `destroy()`는 문서가 요구한 공통 close protocol보다 더 ad-hoc한 teardown
+  순서를 가진다.
+
+실제 작업 항목:
+
+- `_use_lock`는 internal migration switch로만 두고, public contract 측면에서는
+  항상 lock-enabled subject로 간주한다.
+- send/send_rid/send-ready setter/monitor open을 공통 service API guard 아래
+  묶는다.
+- `destroy()`는 external 호출이면 먼저 inflight를 검사하고, in-flight > 0이면
+  `EBUSY`로 거절한다. in-flight == 0일 때만 `closing_requested`를 설정하고
+  teardown으로 진행한다.
+- callback 안 `send_rid()`는 허용하되 `_sync`를 callback 호출 중 오래 쥐지
+  않도록 dispatch path를 점검한다.
+
 ### 8.4 spot_node
 
 구현 목표:
@@ -434,6 +753,23 @@ visibility semantics를 구현하기 쉬워진다.
 - publish, subscribe, unsubscribe, discovery attach, TLS 설정, peer connect/disconnect,
   child registry를 thread-safe subject로 정리
 - node direct API와 child facade coordination을 같은 수명 보호 체계 아래 둔다
+
+현재 구현 관찰:
+
+- `_sync`가 매우 넓게 쓰이고 있어 상태 정합성 자체는 비교적 좋다.
+- 반면 shutdown은 data-plane, control socket, discovery observer, child handle,
+  runtime stop/join이 순차적으로 얽혀 있다.
+- 최근 SPOT race는 child/runtime/core lifetime 경계가 아직 완전히 닫히지
+  않았다는 뜻이다.
+
+실제 작업 항목:
+
+- `spot_node` 자체에 public API admission / close gate를 둔다.
+- child registry(`spot`, `spot_pub`, `spot_sub`)와 parent destroy ordering을
+  문서 정책대로 `EBUSY`로 강제한다.
+- direct publish/subscribe path는 `_sync` snapshot 후 락 밖에서 callback 또는
+  blocking 작업을 수행하도록 정리한다.
+- data-plane stop/join 전후에 raw socket close gate가 이미 적용돼 있어야 한다.
 
 ### 8.5 unified `spot`
 
@@ -451,6 +787,40 @@ visibility semantics를 구현하기 쉬워진다.
 - 따라서 `spot`과 `spot_node`는 연결되어 있지만 같은 public handle 경쟁으로
   설명하지 않는 편이 정확하다.
 
+현재 구현 관찰:
+
+- unified facade는 child pub/sub를 합성한 형태라서 "한 handle의 thread-safe"와
+  "child 두 개의 lifetime coordination"이 동시에 필요하다.
+- facade-level contract를 지키려면 내부 child 두 개가 separate object라는
+  사실을 외부에서 느끼지 않게 해야 한다.
+
+실제 작업 항목:
+
+- unified `spot` handle에도 별도 public API admission state를 둔다.
+- facade API가 child pub/sub를 호출할 때 facade lock 안에서는 child ref snapshot과
+  liveness 확인만 수행하고, 실제 child API 호출은 facade lock을 푼 뒤 시작한다.
+- steady-state facade path에서는 facade lock과 child lock을 동시에 들지 않는다.
+- lifecycle wiring이 필요한 경로의 lock ordering은
+  `parent/facade registry -> child registry -> child local state -> raw socket op state`
+  순서로 고정하고, 역순 획득은 금지한다.
+- child destroy race는 parent-child registry로 막되, child callback/user callback은
+  어떤 parent/child lock도 들지 않은 상태에서 실행한다.
+- callback 안 publish는 facade guard가 허용하고, 실제 child pub send는 child의
+  state lock으로 처리한다.
+
+fast path 최적화 방향:
+
+- 현재 코드는 child 생성이 lazy다. 이 상태에서는 facade lock으로 child ref를
+  보호해야 하므로 steady-state publish에서도 facade lock + child lock = lock 2회가 필요하다.
+- child를 eager 생성하고 ref를 불변으로 만들면 steady-state publish에서
+  facade lock을 제거할 수 있다. child의 validity는 child 자체의 admission state
+  CAS가 보장한다.
+- 따라서 facade admission state CAS → child admission state CAS → child op_state_mutex
+  → xsend의 경로에서 facade lock을 뺄 수 있다.
+- 단, facade-level admission/liveness (facade 자체의 closing 판정)는 여전히 필요하며,
+  이것은 facade의 admission state CAS로 처리한다 (lock이 아닌 atomic).
+- eager child creation으로 전환 여부는 구현 시 확정하되, 문서는 이 방향을 열어둔다.
+
 ### 8.6 standalone `spot_pub` / `spot_sub`
 
 구현 목표:
@@ -460,6 +830,22 @@ visibility semantics를 구현하기 쉬워진다.
   내부 send semantics로 분리
 - `SpotSub`의 subscription mutation visibility를 unified `spot`과 같은
   수준으로 고정
+
+현재 구현 관찰:
+
+- `spot_pub`는 publish path가 `_sync`로 감싸져 있어 출발점이 좋다.
+- `spot_sub`는 `_sync`, direct-handler state, callback inflight가 이미 있다.
+- 하지만 `destroy()`와 public API 공통 admission은 아직 한 체계로 묶이지 않았다.
+
+실제 작업 항목:
+
+- `spot_pub`는 publish/set_option/send-ready setter를 공통 service API guard
+  아래 둔다.
+- `spot_sub`는 subscribe/unsubscribe/set_option을
+  공통 service API guard 아래 둔다. (public `recv()`는 이미 제거됨)
+- `spot_sub`의 callback inflight는 service 공통 callback scope 표현으로
+  승격한다.
+- direct callback path는 공통 visibility 규칙을 따른다.
 
 ### 8.7 monitor handle
 
@@ -478,6 +864,21 @@ visibility semantics를 구현하기 쉬워진다.
   API가 없다.
 - monitor callback과 parent subject API 사이에도 동일한 close/teardown 정책을
   적용한다.
+
+현재 구현 관찰:
+
+- monitor registry, worker thread, callback depth, self-close defer는 이미 상당 부분
+  구현돼 있다.
+- 그러나 raw socket/service parent의 close gate와 같은 구조는 아니다.
+
+실제 작업 항목:
+
+- monitor handle의 close policy를 raw/service 공통 close gate와 동일한 규칙으로
+  맞춘다.
+- parent가 살아 있는 동안 child monitor가 parent snapshot subject를 안전하게
+  참조하도록 reference guard를 추가한다.
+- `monitor_open()` 시점의 thread-safe contract와 parent `destroy`의 `EBUSY`
+  정책을 테스트로 고정한다.
 
 ## 9. `close` / `destroy` 정책
 
@@ -498,6 +899,14 @@ visibility semantics를 구현하기 쉬워진다.
 - thread A가 `send()` 중일 때 thread B가 `zlink_close()` 호출 -> `EBUSY`
 - callback 실행 중 다른 thread가 `zlink_spot_destroy()` 호출 -> `EBUSY`
 - monitor callback 실행 중 다른 thread가 `zlink_service_monitor_close()` 호출 -> `EBUSY`
+
+중요한 의미:
+
+- 이 `EBUSY`는 "잠시 후 다시 자동 재시도하라"는 신호가 아니다.
+- 정상 종료 경로는 caller가 ingress를 끊고 worker/callback source를 quiesce한 뒤
+  단일 `close` / `destroy` 호출로 끝나야 한다.
+- `EBUSY`가 반환된 경우 handle은 poison되지 않으며, in-flight 작업이 끝난 뒤에도
+  계속 live subject로 남아 있어야 한다.
 
 ### 9.2 self-close
 
@@ -524,33 +933,63 @@ visibility semantics를 구현하기 쉬워진다.
 
 ### 9.3 close 진입 원자성 프로토콜
 
-`close` / `destroy`와 운영 API 사이의 race를 방지하기 위해 다음 순서를 따른다.
+`close` / `destroy`와 운영 API 사이의 race를 방지하기 위해 **CAS 기반 단일
+admission state word**를 사용한다. 이 프로토콜은 별도 `close_admission_mutex`
+없이 admission과 close의 선형화를 하드웨어 수준에서 보장한다.
 
-1. `close` / `destroy` 진입 시 per-handle lock을 잡고 `closing_requested`를
-   atomic하게 설정한다.
-2. `closing_requested`가 설정되면 이후 **외부 thread에서의** 새 운영 API 진입은
-   즉시 에러로 반환한다 (`ETERM` 또는 동등한 에러).
-3. in-flight counter를 확인한다.
-   - in-flight > 0이면 lock을 풀고 `EBUSY`를 반환한다. `closing_requested`는
-     유지되므로 새 외부 API 진입은 이미 차단된 상태다.
-   - in-flight == 0이면 teardown을 진행한다.
-4. `EBUSY`를 받은 호출자는 in-flight 작업의 완료를 보장한 뒤 재시도한다.
-   두 번째 시도에서는 in-flight == 0이 보장되므로 teardown이 진행된다.
+admission state word 구조: `[closing bit | inflight count]`
+
+1. external `close` / `destroy`:
+   - admission state word를 CAS로 읽는다.
+   - inflight count > 0이면 closing bit을 건드리지 않고 `EBUSY`를 반환한다.
+     handle은 live 상태로 남으며, 새 운영 API 진입도 계속 허용된다.
+   - inflight count == 0이면 CAS로 closing bit을 설정한다.
+     CAS가 성공하면 close 수락이며, 이 시점부터 새 API 진입의 CAS가 실패한다.
+     CAS가 실패하면 (다른 thread가 사이에 끼어들었으면) retry한다.
+   - closing bit은 한 번 설정되면 취소되지 않는다.
+2. self-close (callback 내):
+   - callback epilogue가 teardown completion을 책임지므로
+     closing bit과 `close_deferred`를 설정하고 즉시 성공 처리한다.
+   - inflight는 callback epilogue에서 감소한다.
+3. close가 수락된 뒤에는 teardown을 진행한다.
+
+이 프로토콜이 해결하는 race:
+
+- 별도 mutex + atomic counter 조합에서 발생하는 "closing 체크와 inflight 증가
+  사이의 gap" 문제가 단일 CAS로 원자적으로 해결된다.
+- 구현자가 hot-path mutex로 회귀하거나 shutdown race를 남길 여지가 없다.
+
+핵심 정책:
+
+- `EBUSY` 반환은 "close 요청 거절"이며, close intent를 latch하지 않는다.
+- 따라서 외부 caller가 retry loop를 돌 필요가 없도록 설계한다.
+- 정상 경로는 "quiesce -> 단일 close 성공"이다.
+- `EBUSY`는 호출자가 shutdown precondition을 어겼다는 사실을 빠르게 드러내는
+  용도다.
+
+호출자 동기화 책임:
+
+- 이 설계는 close-ready callback이나 별도 completion notification API를
+  전제하지 않는다.
+- in-flight 완료 확인은 caller가 소유한 worker join, callback source stop,
+  event/semaphore/condition variable 같은 상위 구조에서 보장해야 한다.
+- 향후 waitable asynchronous shutdown이 필요하면 별도
+  `*_shutdown_begin()` / `*_wait_closed()` 류 API로 분리하는 것이 맞고,
+  현재 `close` / `destroy` semantics에 retry를 내장하지 않는다.
 
 callback 중 send 보호:
 
 - `closing_requested` 상태에서도 이미 in-flight인 callback 안에서의
   same-handle `send` / `publish`는 허용한다.
-- 판별 기준은 현재 thread가 callback thread인지 여부다. per-handle에 기록된
-  callback thread ID와 현재 thread ID를 비교하거나, thread-local callback
-  depth를 사용한다. per-handle callback depth 카운터만으로는 외부 thread가
-  잘못 우회할 수 있으므로 thread 식별이 반드시 필요하다.
+- 판별 기준은 per-handle `callback_thread_id + callback_depth`다.
+- thread-local callback depth는 다른 handle의 callback과 구분할 수 없으므로
+  correctness 판정의 단독 근거로 사용하면 안 된다.
+- 필요하다면 thread-local depth는 debug assert나 fast-path 힌트로만 사용한다.
 - 이 규칙이 없으면 3.6절의 "callback 중 send 허용" 패턴이 close race에서
   깨진다.
 
-이 프로토콜의 핵심은 `closing_requested` 설정과 in-flight 확인 사이에
-외부 thread의 새 운영 API가 진입할 수 없도록 하되,
-이미 in-flight인 callback의 정상 동작은 보장하는 것이다.
+이 프로토콜의 핵심은 `close 수락`과 `운영 API 진입 차단`을 같은 CAS 연산에서
+원자적으로 처리하되, `거절된 close`가 handle을 좀비 상태로 만들지 않게 하는 것이다.
 
 ### 9.4 parent-child 종료 순서
 
@@ -571,6 +1010,8 @@ child의 수명은 호출자가 명시적으로 관리한다.
   호출하면:
   - in-flight > 0이면 `EBUSY`를 반환한다 (첫 번째 시도와 동일).
   - in-flight == 0이면 teardown을 진행한다.
+- external `close`가 `EBUSY`로 거절된 경우에는 `closing_requested`가 설정되지
+  않았으므로, 이후 호출은 "double close"가 아니라 새로운 종료 시도다.
 - 이미 teardown이 완료된 handle에 대한 `close` / `destroy`는 정의하지 않는다
   (dangling handle 사용과 동일).
 - self-close 후 같은 callback 내에서 다시 close를 호출하는 것은 정의하지 않는다.
@@ -578,26 +1019,170 @@ child의 수명은 호출자가 명시적으로 관리한다.
 ### 9.6 호출자 권장 패턴
 
 - 외부 thread에서 종료가 필요하면 먼저 worker와 callback source를 quiesce한다.
-- 그 다음 `close` / `destroy`를 호출한다.
-- `EBUSY`를 받으면 in-flight 작업이 끝났음을 보장한 뒤 재시도한다.
-  `closing_requested`는 이미 설정되어 있으므로 외부 thread의 새 운영 API
-  진입은 차단된 상태이며, 재시도 시 teardown이 진행된다.
-  단, in-flight callback 안에서의 same-handle send/publish는 callback이
-  끝날 때까지 계속 허용된다.
-- `while (close() == EBUSY) sleep(...)` 같은 busy-wait retry는 권장하지 않는다.
+- 그 다음 `close` / `destroy`를 한 번 호출한다.
+- 정상 설계에서는 application retry loop가 필요 없어야 한다.
+- `EBUSY`를 받았다면 종료 절차를 너무 일찍 시작한 것이므로, busy-wait나
+  blind retry 대신 caller 쪽 quiesce/join 순서를 바로잡아야 한다.
+- 정말 예외적으로 다시 종료를 시도해야 한다면, 그것은 "looping retry"가 아니라
+  in-flight source 정리가 끝난 뒤의 새로운 단일 종료 시도여야 한다.
+- `while (close() == EBUSY) sleep(...)` 같은 busy-wait retry는 금지에 가깝게
+  본다.
 - child가 있는 parent를 종료할 때는 child를 먼저 종료한다.
 
 ## 10. 성능 관점
 
-이 설계는 공개 계약을 단순하게 만드는 대신,
-unconditional thread-safe이므로 lock 비활성화 옵션을 public API로 드러내지 않는다.
+이 설계는 unconditional thread-safe를 전제로 하지만,
+"정합성을 위해 성능 저하를 기본값으로 받아들인다"는 뜻은 아니다.
 
 의미는 다음과 같다.
 
-- per-handle serialization 비용은 받아들인다.
-- 대신 recv callback-only 구조, lock hold 최소화, snapshot 기반 dispatch로
-  실효 비용을 낮춘다.
-- 최적화 포인트는 "lock을 끄는 선택지"가 아니라 "lock을 짧게 잡는 구현"이다.
+- thread-safe는 타협하지 않는다.
+- 동시에 hot path에서는 불필요한 lock, allocation, copy, wakeup을 넣지 않는다.
+- 최적화 포인트는 "lock을 끄는 선택지"가 아니라
+  "admission을 싸게 만들고, lock scope를 짧게 만들고, control-plane과
+  data-plane을 분리하는 구현"이다.
+
+### 10.1 성능 비타협 원칙
+
+다음 항목은 설계 원칙이 아니라 사실상 구현 제약이다.
+
+- global lock 금지
+- handle 간 공유 mutex 금지
+- blocking `send` / poll wait 동안 mutex 보유 금지 (public `recv()`는 이미 제거됨)
+- thread-safety를 위해 per-call heap allocation 추가 금지
+- thread-safety를 위해 per-message memcpy 추가 금지
+- control-plane mutation과 steady-state send/publish를 같은 mutex로 장시간 직렬화 금지
+- callback dispatch 직전/직후의 snapshot 외에는 callback 동안 lock 보유 금지
+
+즉 운영 중 steady-state throughput은 가능한 한 기존 hot path 구조를 유지하고,
+thread-safe 구현 비용은 admission / close / mutation 경계로 밀어내야 한다.
+
+### 10.2 raw socket fast path 원칙
+
+raw socket은 성능 민감도가 가장 높으므로 다음 순서를 기준으로 설계한다.
+
+1. API admission은 CAS 기반 state word로 처리한다. uncontended CAS 1회로 끝나야 한다.
+2. `send`의 steady-state fast path에는 heap allocation이 없어야 한다.
+3. `process_commands`는 `op_state_mutex` 밖에서 수행하거나, 안에서 수행하더라도
+   bounded budget + heavy command defer로 lock hold time을 제한해야 한다.
+   **unbounded mailbox drain을 send lock 아래에서 수행하는 것은 금지한다.**
+4. state mutex가 필요하더라도 `xsend`의 짧은 구간만 보호해야 한다.
+5. `EAGAIN` 후 wait는 반드시 lock 밖에서 수행한다.
+6. option setter, bind/connect, monitor open/close는 hot path와 분리된
+   control-plane 경로로 취급한다.
+
+핵심은 same-handle concurrent 사용을 허용하되,
+steady-state send가 lifecycle/config 변경이나 command backlog 때문에
+장시간 막히지 않게 하는 것이다.
+
+### 10.3 service hot path 원칙
+
+`gateway`, `spot_pub`, unified `spot`, `spot_node` direct publish 경로는
+기존 `_sync`가 있더라도 그대로 "큰 mutex 하나"가 되면 안 된다.
+
+- `_sync`는 ownership, lifecycle, registry 보호에 사용한다.
+- callback handler publication은 seqlock(7.3절)으로 `_sync`와 분리한다.
+- steady-state send/publish는 가능하면 snapshot 이후 락 밖에서 진행한다.
+- fanout 목록, peer 목록은 락 안에서 snapshot을 만들고,
+  실제 전송/dispatch는 락 밖에서 수행한다.
+- destroy/config mutation은 느려도 되지만 send/publish는 느려지면 안 된다.
+
+snapshot 메커니즘 분류:
+
+"snapshot 후 lock 밖 dispatch"와 "per-call heap allocation 금지"를 동시에
+만족하려면 snapshot의 lifetime/cost model을 subject별로 명시해야 한다.
+
+| Subject | snapshot 대상 | 예상 크기 | 권장 메커니즘 |
+|---|---|---|---|
+| raw socket | send target pipe(s) | 1-2개 | stack buffer (pointer 복사) |
+| `gateway` | routing table lookup 결과 | 1개 | stack buffer |
+| `spot_pub` | subscriber pipe list | 가변 (수십~수백) | epoch-based reclamation 또는 RCU |
+| `spot_node` | child registry | 수 개~수십 | stack buffer (cap) 또는 epoch |
+| `discovery` | observer list | 수 개 | stack buffer |
+| unified `spot` | child pub/sub ref | 2개 (고정) | eager creation + immutable ref |
+
+- **stack buffer**: 고정 크기 소수 대상. lock 안에서 pointer를 stack array에 복사하고
+  lock을 풀고 사용한다. alloc 없음, copy 비용 = pointer 복사 수 개.
+  fanout 상한이 필요하다.
+- **epoch-based reclamation / RCU**: 가변 크기 다수 대상. writer가 새 목록을
+  할당하고 atomic swap한 뒤 이전 목록을 epoch retire queue에 넣는다.
+  reader는 epoch enter → atomic load(list_ptr) → 순회 → epoch exit.
+  read path에 alloc 없음. write는 rare(control-plane mutation)이므로
+  write 시 alloc은 허용된다.
+- **immutable ref**: 생성 후 불변인 대상. lock 없이 직접 접근 가능.
+  unified `spot`의 child ref가 eager creation으로 전환되면 이 범주에 해당한다.
+
+이 메커니즘이 비어 있으면 구현은 hot-path heap copy 또는 long lock hold로
+미끄러진다. 따라서 subject별 snapshot 방식을 구현 전에 확정해야 한다.
+
+즉 서비스 계층의 목표는 "thread-safe한 관리 plane"과
+"빠른 data plane"을 구조적으로 분리하는 것이다.
+
+### 10.4 현재 계획에 대한 성능 리뷰
+
+현재 문서 기준으로 특히 주의할 부분은 다음이다.
+
+- raw socket에 공통 gate를 넣을 때 `send` 전체를 mutex로 감싸면 안 된다.
+- `gateway` / `spot_*`에 기존 `_sync`만 재사용하면 control-plane lock이
+  hot path lock으로 비대해질 수 있다.
+- callback inflight 보호를 이유로 dispatch 전체를 락 아래 넣으면 tail latency가
+  급격히 악화될 수 있다.
+- close/destroy 정책은 보수적으로 가되, 그 비용을 steady-state send/publish에
+  전파하면 안 된다.
+
+추가 주의 사항:
+
+- `process_commands()`의 full drain을 `op_state_mutex` 안에서 수행하면
+  heavy command 하나가 same-handle concurrent send 전체의 tail latency를
+  spike시킨다. 이것은 이 문서에서 **금지 수준**으로 다룬다. (7.6절, 10.2절 참조)
+- query-heavy 경로(getsockopt, peer_query)를 write 경로와 분리하고 싶으면
+  rwlock보다 **read-mostly immutable snapshot 또는 COW publication**을 우선
+  후보로 둔다. `pthread_rwlock_t`는 writer starvation, 플랫폼 차이,
+  uncontended cost 때문에 범용 기본값으로 두기엔 거칠다.
+  rwlock은 profiling으로 read contention이 확인된 후 마지막 선택지로 남긴다.
+
+그래서 구현 우선순위도 "락 추가"가 아니라 다음 순서가 맞다.
+
+1. CAS 기반 admission state word (7.6절 프로토콜)
+2. 짧은 상태 snapshot lock + subject별 snapshot 메커니즘 (10.3절 분류)
+3. 락 밖 dispatch / callback
+4. 마지막에 close/destroy slow path 정리
+
+### 10.5 성능 수용 기준
+
+thread-safe 구현이 끝났다고 해서 성능 검증이 끝난 것은 아니다.
+아래 항목을 perf acceptance로 같이 본다.
+
+same-handle 기준 (정확성 + low fixed overhead 목표):
+
+- single-thread uncontended `send` / `publish` throughput이
+  thread-safe 적용 전 대비 측정 가능한 정량 기준 이내여야 한다.
+  reference host 기준 uncontended hot-loop send의 추가 비용이
+  **절대값 50 ns 이하 또는 상대값 5% 이하** 중 하나를 만족해야 한다.
+  이 수치는 초기 구현 후 baseline 측정으로 확정하되, 구조적 무너짐을 방지하는
+  hard limit으로 사용한다.
+- same-handle concurrent send는 scaling 목표가 아니라 정확성 + low overhead 목표다.
+  `op_state_mutex`가 `xsend`를 직렬화하므로 sender 수를 올려도 same-handle
+  throughput은 증가하지 않는다. 이것은 의도된 동작이다.
+- same-handle concurrent send에서 sender 수 증가 시 throughput의 단조 감소는
+  허용한다. 단, uncontended 대비 contended overhead가 과도하면 (예: lock 구현
+  문제, false sharing) lock 설계를 다시 본다.
+
+different-handle 기준 (scaling 목표):
+
+- 서로 다른 handle의 concurrent send는 per-handle 직렬화이므로
+  sender 수에 비례하여 total throughput이 증가해야 한다.
+- global lock, handle 간 공유 mutex, 공유 atomic counter가 이 scaling을
+  방해하면 실패로 본다.
+
+공통 기준:
+
+- `gateway` / `spot_pub` / unified `spot` / raw socket의 small message 경로에서
+  lock contention으로 tail latency가 급증하면 실패로 본다
+- close/destroy 보호를 넣은 뒤 steady-state benchmark에 추가 wakeup이나
+  retry-like wait가 생기면 실패로 본다
+- thread-safety 때문에 새 copy/alloc이 늘어난 경우, 그 이유가 lifecycle safety가
+  아니라면 롤백 대상이다
 
 권장 앱 패턴:
 
@@ -608,13 +1193,24 @@ unconditional thread-safe이므로 lock 비활성화 옵션을 public API로 드
 
 성능 측정 계획:
 
-- thread-safe 적용 전후의 single-thread send/recv throughput을 perf benchmark로
-  비교한다. per-handle lock의 uncontended 비용을 정량화한다.
-- concurrent send thread 수를 1, 2, 4, 8로 변경하며 throughput 변화를 측정한다.
-  `zlink_spot_pub_publish()`, `zlink_gateway_send()`, raw `zlink_send()` 경로를
-  각각 대상으로 한다.
-- recv callback 안 send 경로의 lock 재진입 오버헤드를 측정한다.
-- 기존 perf benchmark 인프라를 재사용하되, concurrent sender 시나리오를 추가한다.
+- thread-safe 적용 전후의 single-thread send/publish throughput을 perf benchmark로
+  비교한다. admission state CAS의 uncontended 비용을 정량화한다.
+  (reference host 기준 절대값/상대값 기록)
+- same-handle concurrent send: thread 수를 1, 2, 4, 8로 변경하며 throughput과
+  tail latency를 측정한다. `zlink_spot_pub_publish()`, `zlink_gateway_send()`,
+  raw `zlink_send()` 경로를 각각 대상으로 한다. scaling은 기대하지 않되,
+  uncontended 대비 contended overhead를 정량화한다.
+- different-handle concurrent send: handle 수 × sender 수를 변경하며
+  total throughput scaling을 측정한다. 선형에 가까운 scaling을 기대한다.
+- recv callback 안 send 경로의 admission CAS + lock 재진입 오버헤드를 측정한다.
+- `close` / `destroy` 가드가 들어간 뒤에도 steady-state run에서 extra allocation,
+  extra copy, extra wait가 없는지 profiler/trace로 확인한다.
+- service 계열은 control-plane mutation이 없는 steady-state 구간과,
+  handler 교체/monitor open 같은 mutation이 섞인 구간을 분리 측정한다.
+- `process_commands`가 `op_state_mutex` 아래에서 수행되는 경우
+  command backlog 크기별 lock hold time을 측정한다.
+- 기존 perf benchmark 인프라를 재사용하되, same-handle concurrent sender와
+  different-handle scaling 시나리오를 추가한다.
 
 ## 11. 구현 항목
 
@@ -629,6 +1225,28 @@ unconditional thread-safe이므로 lock 비활성화 옵션을 public API로 드
    공통 정책으로 구현한다.
 6. 선택적 동시성 모드를 전제한 기존 설계 문구와 테스트 항목을 걷어낸다.
 7. 공개 문서와 header comment를 "thread-safe only contract" 기준으로 다시 쓴다.
+
+실행 순서 고정:
+
+1. `socket_base` 공통 gate 추가
+2. `zlink.cpp` raw API 진입점과 monitor close path 이식
+3. `gateway`
+4. `spot_pub` / `spot_sub` / `spot_node` / unified `spot`
+5. `discovery` / `registry`
+6. 문서 / 테스트 / perf 회귀 검증
+
+추가 원칙:
+
+- mailbox를 다른 queue로 교체하는 것은 1차 해법이 아니다.
+- 먼저 public contract에 필요한 lifetime / ordering / inflight semantics를
+  구현해야 한다.
+- queue 구현 교체는 그 이후 병목이 명확할 때만 별도 작업으로 분리한다.
+- 공통 helper를 넣을 때도 hot path가 heap allocation이나 global contention을
+  새로 만들면 안 된다.
+- `_sync`가 이미 있는 subject는 무조건 재사용하는 것이 아니라,
+  hot path와 control-plane을 분리할 수 있는지 먼저 검토한다.
+- raw socket은 성능 기준선이므로, 첫 구현부터 uncontended fast path를 atomic
+  중심으로 설계한다.
 
 ## 12. 테스트 계획
 
@@ -683,14 +1301,27 @@ unconditional thread-safe이므로 lock 비활성화 옵션을 public API로 드
 
 - in-flight callback 중 다른 thread에서 `close` / `destroy` -> `EBUSY`
 - in-flight `send`, subscribe, option setter 중 다른 thread에서 종료 -> `EBUSY`
-- `EBUSY` 반환 후 `closing_requested` 상태에서 외부 thread의 새 운영 API 진입이 에러로 차단됨
-- `EBUSY` 반환 후 in-flight callback 안 same-handle `send` / `publish`는 정상 동작
-- `EBUSY` 반환 후 in-flight 완료 뒤 재시도하면 teardown 성공
+- external `EBUSY` 반환 후 `closing_requested`가 latch되지 않고 handle이 계속 live 상태로 유지됨
+- external `EBUSY` 반환 뒤 in-flight 완료 후에도 새 운영 API 진입이 계속 가능함
+- self-close 수락 후에는 `closing_requested` 상태에서 외부 thread의 새 운영 API 진입이 에러로 차단됨
+- self-close 수락 후 in-flight callback 안 same-handle `send` / `publish`는 정상 동작
 - self-close 요청은 즉시 성공하고 callback return 뒤 teardown 수행
 - teardown 뒤 handle 재사용이 실패함을 확인
 - child handle이 열려 있는 상태에서 parent `destroy` -> `EBUSY`
 - child를 먼저 종료한 뒤 parent `destroy` 성공
 - `closing_requested` 상태에서 double close 시 in-flight에 따라 `EBUSY` 또는 teardown
+
+### 12.7 stress / sanitizer / fuzz
+
+- ThreadSanitizer 빌드에서 unittest/integration/e2e와 thread-safe 관련 시나리오를
+  전체 실행한다.
+- same-handle concurrent `send` + cross-thread `close` 거절 경로를 수천~수만 회
+  반복하는 stress test를 추가한다.
+- send-ready handler 교체, subscribe/unsubscribe, monitor open/close,
+  attach/query/destroy를 랜덤 순서로 섞는 deterministic-seed fuzz test를 추가한다.
+- raw socket, `gateway`, `spot_pub`, `spot_sub`, unified `spot`, `discovery` 각각에
+  대해 "callback 중 send + 외부 destroy 시도" race를 반복 실행한다.
+- sanitizer/stress/fuzz는 hard timeout과 fail-fast 원칙을 유지한다.
 
 테스트 구현 원칙:
 
@@ -742,17 +1373,33 @@ unconditional thread-safe이므로 lock 비활성화 옵션을 public API로 드
 3. thread-safe 범위는 public contract로 문서에 먼저 고정하고, 구현은 그
    계약을 만족하는 메커니즘만 선택한다.
 4. recv handler는 생성 시 고정이며 런타임 교체 API를 두지 않는다.
+   public sync recv API는 이미 제거되었으며 이 문서의 scope에 포함하지 않는다.
 5. `*_set_send_ready_handler()`는 유일한 런타임 교체 가능 callback setter이며,
-   동시성 계약 범위에 포함한다.
+   `(handler, subject)` 쌍을 seqlock 또는 동등한 메커니즘으로 원자적으로
+   publish한다.
 6. raw socket, `discovery`, `gateway`, `spot` 계열, monitor handle을 모두
    thread-safe contract로 통일한다.
-7. 구현은 per-handle serialization과 공통 lifetime guard를 중심으로 정리한다.
-8. `close` / `destroy`는 `closing_requested` 원자 설정, `EBUSY`,
-   deferred teardown, parent-child 순서, double close 규칙으로 보수적으로 묶는다.
+7. 구현은 CAS 기반 admission state word와 per-handle operation lock을 중심으로
+   정리한다. admission과 close의 선형화는 단일 atomic word CAS로 처리하며,
+   별도 close_admission_mutex는 불필요하다.
+8. `close` / `destroy`는 CAS로 closing bit 설정을 시도하되 inflight > 0이면
+   `EBUSY`로 거절(closing bit 미설정, handle live 유지), accepted close에서만
+   closing bit 설정, self-close deferred teardown, parent-child 순서,
+   double close 규칙으로 보수적으로 묶는다.
 9. `attach_discovery()`는 topology ownership 규칙(manual peer 존재 시 `EBUSY`,
    attach 후 manual connect/disconnect 금지)을 유지한다.
-10. 성능 최적화는 no-lock 분기가 아니라 lock scope 축소와 dispatch snapshot으로
-   해결하며, 적용 전후 throughput을 perf benchmark로 검증한다.
+10. `process_commands()` full drain을 `op_state_mutex` 아래에서 수행하는 것은
+    금지한다. command processing은 lock 밖에서 수행하거나, bounded budget +
+    heavy command defer로 lock hold time을 제한한다.
+11. same-handle concurrent send는 scaling 목표가 아니라 정확성 + low overhead
+    목표다. 성능 수용 기준은 uncontended overhead budget(절대값/상대값)과
+    different-handle scaling으로 정의한다.
+12. snapshot 메커니즘은 subject별로 명시한다 (stack buffer / epoch-RCU /
+    immutable ref). "snapshot 후 lock 밖 dispatch"와 "per-call alloc 금지"를
+    동시에 만족하는 구체적 방식을 구현 전에 확정해야 한다.
+13. 한 handle에는 동시에 최대 하나의 callback thread만 활성화된다는 invariant를
+    유지한다. 이 invariant 위에서 per-handle `callback_thread_id + callback_depth`가
+    self-close 판정과 callback-중-send 허용의 canonical source of truth로 동작한다.
 
 한 줄 요약:
 

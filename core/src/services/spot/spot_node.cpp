@@ -391,7 +391,8 @@ int spot_runtime_t::close_control_sockets ()
     }
     if (ctrl_front) {
         if (owner && owner->_ctx)
-            preserve_first_error (owner->_lifecycle.close_socket (data_ctrl_front, 2000),
+            preserve_first_error (
+              owner->_lifecycle.close_socket (data_ctrl_front, 2000),
                                   &first_error);
         else {
             ctrl_front->stop ();
@@ -601,8 +602,7 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
         _tag = 0xdeadbeef;
         return;
     }
-    _runtime->task_id = runtime->add_periodic_task (control_task, this, 10, true);
-    if (_runtime->task_id == 0) {
+    if (ensure_control_task_running () != 0) {
         _lifecycle.mark_faulted (errno);
         _tag = 0xdeadbeef;
     } else {
@@ -756,6 +756,8 @@ void spot_node_t::note_local_sub_filters_changed (bool had_filters_,
 
 int spot_node_t::replay_subscriptions_if_active_peers ()
 {
+    if (is_shutting_down ())
+        return 0;
     if (ensure_healthy () != 0)
         return -1;
     if (!has_active_peers ())
@@ -770,8 +772,9 @@ int spot_node_t::replay_subscriptions_if_active_peers ()
 
 void spot_node_t::schedule_subscription_replay ()
 {
-    service_control_runtime_t *runtime = NULL;
-    uint64_t task_id = 0;
+    if (is_shutting_down ())
+        return;
+
     unsigned int attempts = 0;
     {
         scoped_lock_t lock (_sync);
@@ -782,16 +785,11 @@ void spot_node_t::schedule_subscription_replay ()
             _subscription_replay_attempts = target_attempts;
         _subscription_replay_holdoff_ticks = 0;
         attempts = _subscription_replay_attempts;
-        if (_runtime) {
-            task_id = _runtime->task_id;
-            runtime = _ctx ? _ctx->service_control_runtime () : NULL;
-        }
     }
     if (std::getenv ("ZLINK_DEBUG_SPOT_REPLAY"))
         std::fprintf (stderr, "[spot-replay] scheduled attempts=%u\n",
                       attempts);
-    if (runtime && task_id != 0)
-        runtime->wakeup_task (task_id);
+    wake_control_task ();
 }
 
 std::string spot_node_t::first_active_peer_endpoint () const
@@ -815,6 +813,16 @@ int spot_node_t::ensure_healthy () const
         return -1;
     }
     return _runtime->ensure_healthy ();
+}
+
+bool spot_node_t::is_shutting_down () const
+{
+    const service_lifecycle_state_t state = _lifecycle.state ();
+    if (state == service_state_stopping || state == service_state_stopped)
+        return true;
+
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    return _runtime && _runtime->stop.get () != 0;
 }
 
 void spot_node_t::debug_mark_fault (int err_)
@@ -843,6 +851,80 @@ void spot_node_t::control_task (void *arg_)
     static_cast<spot_node_t *> (arg_)->control_tick ();
 }
 
+int spot_node_t::ensure_control_task_running ()
+{
+    if (!_runtime) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    {
+        scoped_lock_t lock (_sync);
+        if (_runtime->task_id != 0)
+            return 0;
+    }
+
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (!runtime) {
+        errno = ETERM;
+        return -1;
+    }
+
+    const uint64_t task_id =
+      runtime->add_periodic_task (control_task, this, 10, true);
+    if (task_id == 0)
+        return -1;
+
+    bool remove_duplicate = false;
+    {
+        scoped_lock_t lock (_sync);
+        if (_runtime->task_id == 0)
+            _runtime->task_id = task_id;
+        else
+            remove_duplicate = true;
+    }
+
+    if (remove_duplicate)
+        (void) runtime->remove_task (task_id);
+    return 0;
+}
+
+void spot_node_t::wake_control_task ()
+{
+    if (!_runtime || _runtime->stop.get () != 0)
+        return;
+
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (!runtime)
+        return;
+    if (ensure_control_task_running () != 0)
+        return;
+
+    uint64_t task_id = 0;
+    {
+        scoped_lock_t lock (_sync);
+        task_id = _runtime ? _runtime->task_id : 0;
+    }
+    if (task_id != 0)
+        runtime->wakeup_task (task_id);
+}
+
+bool spot_node_t::can_suspend_control_task () const
+{
+    if (_discovery != NULL)
+        return false;
+    if (!_pending_service_updates.empty ())
+        return false;
+    if (_subscription_replay_pending || _subscription_ready_refresh_pending
+        || _pub_delivery_ready_refresh_pending) {
+        return false;
+    }
+    if (!_runtime)
+        return false;
+    return _runtime->connected_peer_version.load (std::memory_order_acquire)
+           == _connected_peer_version_seen;
+}
+
 void spot_node_t::control_tick ()
 {
     if (!_runtime || _runtime->stop.get () != 0)
@@ -851,26 +933,51 @@ void spot_node_t::control_tick ()
         return;
 
     refresh_discovery_peers ();
-    if (std::getenv ("ZLINK_DEBUG_SPOT_SKIP_CONTROL_EXTRA")) {
-        bool skip_extra = false;
-        {
-            scoped_lock_t lock (_sync);
-            skip_extra = _discovery == NULL
-                         && !_connected_peer_endpoints.empty ()
-                         && !_subscription_replay_pending
-                         && !_subscription_ready_refresh_pending
-                         && !_pub_delivery_ready_refresh_pending;
-        }
-        if (skip_extra)
-            return;
+    bool skip_extra = false;
+    {
+        scoped_lock_t lock (_sync);
+        const uint64_t connected_peer_version =
+          _runtime->connected_peer_version.load (std::memory_order_acquire);
+        skip_extra = _discovery == NULL
+                     && connected_peer_version == _connected_peer_version_seen
+                     && !_subscription_replay_pending
+                     && !_subscription_ready_refresh_pending
+                     && !_pub_delivery_ready_refresh_pending;
     }
-    refresh_connected_peer_endpoints ();
-    emit_pending_subscription_replays ();
-    emit_pending_subscription_ready_events ();
+    if (skip_extra)
+        ;
+    else {
+        refresh_connected_peer_endpoints ();
+        emit_pending_subscription_replays ();
+        emit_pending_subscription_ready_events ();
+    }
+
+    uint64_t task_id = 0;
+    {
+        scoped_lock_t lock (_sync);
+        if (_runtime && _runtime->task_id != 0 && can_suspend_control_task ()) {
+            task_id = _runtime->task_id;
+            _runtime->task_id = 0;
+        }
+    }
+
+    if (task_id != 0) {
+        service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+        if (runtime)
+            (void) runtime->remove_task (task_id);
+    }
 }
 
 void spot_node_t::emit_pending_subscription_replays ()
 {
+    if (is_shutting_down ()) {
+        scoped_lock_t lock (_sync);
+        _subscription_replay_pending = false;
+        _subscription_replay_holdoff_ticks = 0;
+        _subscription_replay_attempts = 0;
+        return;
+    }
+
     bool should_replay = false;
     {
         scoped_lock_t lock (_sync);
@@ -1010,6 +1117,9 @@ void spot_node_t::refresh_discovery_peers ()
 
 void spot_node_t::refresh_connected_peer_endpoints ()
 {
+    if (is_shutting_down ())
+        return;
+
     std::set<std::string> connected;
     spot_runtime_t *runtime = NULL;
     uint64_t connected_peer_version = 0;
@@ -1122,8 +1232,9 @@ std::string spot_node_t::first_connected_peer_endpoint () const
 
 void spot_node_t::schedule_subscription_ready_refresh ()
 {
-    service_control_runtime_t *runtime = NULL;
-    uint64_t task_id = 0;
+    if (is_shutting_down ())
+        return;
+
     unsigned int holdoff_ticks = 20;
     {
         scoped_lock_t lock (_sync);
@@ -1131,19 +1242,15 @@ void spot_node_t::schedule_subscription_ready_refresh ()
         holdoff_ticks =
           subscription_ready_holdoff_ticks (_connected_peer_endpoints);
         _subscription_ready_refresh_holdoff_ticks = holdoff_ticks;
-        if (_runtime) {
-            task_id = _runtime->task_id;
-            runtime = _ctx ? _ctx->service_control_runtime () : NULL;
-        }
     }
-    if (runtime && task_id != 0)
-        runtime->wakeup_task (task_id);
+    wake_control_task ();
 }
 
 void spot_node_t::schedule_pub_delivery_ready_refresh ()
 {
-    service_control_runtime_t *runtime = NULL;
-    uint64_t task_id = 0;
+    if (is_shutting_down ())
+        return;
+
     unsigned int holdoff_ticks = 20;
     {
         scoped_lock_t lock (_sync);
@@ -1151,17 +1258,15 @@ void spot_node_t::schedule_pub_delivery_ready_refresh ()
         holdoff_ticks =
           pub_delivery_ready_holdoff_ticks (_active_peer_endpoints);
         _pub_delivery_ready_refresh_holdoff_ticks = holdoff_ticks;
-        if (_runtime) {
-            task_id = _runtime->task_id;
-            runtime = _ctx ? _ctx->service_control_runtime () : NULL;
-        }
     }
-    if (runtime && task_id != 0)
-        runtime->wakeup_task (task_id);
+    wake_control_task ();
 }
 
 void spot_node_t::queue_all_subscription_ready_filters ()
 {
+    if (is_shutting_down ())
+        return;
+
     std::vector<spot_sub_t *> subs;
     {
         scoped_lock_t lock (_sync);
@@ -1187,6 +1292,8 @@ void spot_node_t::queue_subscription_ready_filter (const std::string &raw_filter
 {
     if (raw_filter_.empty ())
         return;
+    if (is_shutting_down ())
+        return;
 
     {
         scoped_lock_t lock (_sync);
@@ -1197,6 +1304,14 @@ void spot_node_t::queue_subscription_ready_filter (const std::string &raw_filter
 
 void spot_node_t::emit_pending_subscription_ready_events ()
 {
+    if (is_shutting_down ()) {
+        scoped_lock_t lock (_sync);
+        _subscription_ready_refresh_pending = false;
+        _subscription_ready_refresh_holdoff_ticks = 0;
+        _pending_subscription_ready_filters.clear ();
+        return;
+    }
+
     std::vector<spot_sub_t *> subs;
     std::set<std::string> raw_filters;
     std::string ready_endpoint;
@@ -1248,6 +1363,14 @@ void spot_node_t::emit_pending_subscription_ready_events ()
 
 void spot_node_t::emit_pending_pub_delivery_ready_events ()
 {
+    if (is_shutting_down ()) {
+        scoped_lock_t lock (_sync);
+        _pub_delivery_ready_refresh_pending = false;
+        _pub_delivery_ready_refresh_holdoff_ticks = 0;
+        _pending_pub_delivery_ready_counts.clear ();
+        return;
+    }
+
     std::vector<spot_pub_t *> pubs;
     std::vector<std::pair<std::string, uint32_t> > updates;
     {
@@ -1297,6 +1420,8 @@ void spot_node_t::notify_pub_delivery_ready_ack (
   bool subscribe_)
 {
     if (target_endpoint_.empty () || subject_.empty () || ack_source_id_.empty ())
+        return;
+    if (is_shutting_down ())
         return;
 
     std::string self_endpoint;
@@ -1393,6 +1518,8 @@ int spot_node_t::send_ready_ack_update (const std::string &target_endpoint_,
         errno = EINVAL;
         return -1;
     }
+    if (is_shutting_down ())
+        return 0;
 
     const std::string arg =
       make_ready_ack_arg (target_endpoint_, raw_filter_, ack_source_id_);
@@ -1917,22 +2044,22 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
         return -1;
     }
     refresh_existing_summaries ();
-
-    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
-    if (runtime && _runtime && _runtime->task_id != 0)
-        runtime->wakeup_task (_runtime->task_id);
+    wake_control_task ();
     return 0;
 }
 
 void spot_node_t::on_service_update (const std::string &service_name_)
 {
-    scoped_lock_t lock (_sync);
-    if (_discovery_service.empty () || service_name_ != _discovery_service)
-        return;
-    _pending_service_updates.insert (service_name_);
-    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
-    if (runtime && _runtime && _runtime->task_id != 0)
-        runtime->wakeup_task (_runtime->task_id);
+    bool should_wake = false;
+    {
+        scoped_lock_t lock (_sync);
+        if (_discovery_service.empty () || service_name_ != _discovery_service)
+            return;
+        _pending_service_updates.insert (service_name_);
+        should_wake = true;
+    }
+    if (should_wake)
+        wake_control_task ();
 }
 
 void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)

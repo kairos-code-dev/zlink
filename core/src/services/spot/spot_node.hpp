@@ -98,6 +98,7 @@ class spot_node_t : public discovery_observer_t
     bool has_local_filtered_subs () const;
     void note_local_sub_filters_changed (bool had_filters_,
                                          bool has_filters_);
+    void wake_control_task ();
     int replay_subscriptions_if_active_peers ();
     void schedule_subscription_replay ();
     std::string first_active_peer_endpoint () const;
@@ -114,6 +115,8 @@ class spot_node_t : public discovery_observer_t
     static void control_task (void *arg_);
 
     void control_tick ();
+    int ensure_control_task_running ();
+    bool can_suspend_control_task () const;
     int destroy_handles ();
     void close_control_sockets ();
     void stop_data_plane_sockets ();
@@ -123,6 +126,7 @@ class spot_node_t : public discovery_observer_t
     int wait_facade_peer (socket_base_t *socket_) const;
     void track_owned_socket (socket_base_t *socket_);
     int wait_owned_socket_removals (int timeout_ms_);
+    bool is_shutting_down () const;
     spot_pub_t *create_spot_pub_with_defaults (const pub_defaults_t &defaults_,
                                                bool node_owned_default_);
     spot_sub_t *create_spot_sub_with_defaults (const sub_defaults_t &defaults_,

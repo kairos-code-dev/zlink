@@ -231,16 +231,15 @@ public:
       _count(0),
       _sum_us(0.0),
       _rng_state(0x9e3779b97f4a7c15ULL)
-    {}
+    {
+        _samples.reserve(_sample_cap);
+    }
 
     void add(double latency_us_)
     {
         const double sample = latency_us_ >= 0.0 ? latency_us_ : 0.0;
         ++_count;
         _sum_us += sample;
-
-        if (_samples.capacity() == 0)
-            _samples.reserve(_sample_cap);
 
         if (_samples.size() < _sample_cap) {
             _samples.push_back(sample);
@@ -252,7 +251,42 @@ public:
             _samples[static_cast<size_t>(slot)] = sample;
     }
 
+    void reset()
+    {
+        _count = 0;
+        _sum_us = 0.0;
+        _rng_state = 0x9e3779b97f4a7c15ULL;
+        _samples.clear();
+    }
+
+    void merge_from(const bench_latency_sampler_t &other_)
+    {
+        if (other_._count == 0)
+            return;
+
+        _count += other_._count;
+        _sum_us += other_._sum_us;
+        for (size_t i = 0; i < other_._samples.size(); ++i) {
+            if (_samples.size() < _sample_cap) {
+                _samples.push_back(other_._samples[i]);
+                continue;
+            }
+
+            const unsigned long long slot = next_rand_u64() % _count;
+            if (slot < static_cast<unsigned long long>(_sample_cap))
+                _samples[static_cast<size_t>(slot)] = other_._samples[i];
+        }
+    }
+
     unsigned long long count() const { return _count; }
+    double sum_us() const { return _sum_us; }
+
+    void append_samples(std::vector<double> *out_) const
+    {
+        if (!out_ || _samples.empty())
+            return;
+        out_->insert(out_->end(), _samples.begin(), _samples.end());
+    }
 
     bench_latency_stats_t snapshot()
     {

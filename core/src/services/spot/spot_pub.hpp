@@ -81,6 +81,7 @@ class spot_pub_t
     bool _routing_id_locked;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
     std::atomic<void *> _send_ready_subject;
+    std::atomic<bool> _destroying;
     service_monitor_hub_t _monitor;
     moodycamel::ConcurrentQueue<zlink_service_event_t> _monitor_event_queue;
     std::atomic<bool> _monitor_event_draining;

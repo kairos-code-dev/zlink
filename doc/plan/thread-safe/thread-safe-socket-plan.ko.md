@@ -29,9 +29,9 @@ raw socket / `gateway` / `spot` / `discovery` / monitor handle의 공개 동시�
 
 - 모든 주요 public handle을 thread-safe contract로 통일한다.
 - 생성자에 동시성 관련 추가 인자를 받지 않는다.
-- raw socket, `gateway`, `spot_node`, unified `spot`, `spot_pub`,
-  `spot_sub`, `discovery`, monitor handle을 같은 계층의 concurrency
-  subject로 본다.
+- raw socket, `gateway`, `spot_node`, unified `spot`, `discovery`,
+  monitor handle을 같은 계층의 public concurrency subject로 본다.
+  internal child(`spot_pub`, `spot_sub`)는 이들의 내부 구현 단위로 취급한다.
 - same-handle concurrent `send` / `publish`, send-ready handler 교체,
   subscription mutation, query, lifecycle API의 경계를 명확히 한다.
 - callback-only recv 모델과 충돌하지 않는 범위에서 callback 중 send를
@@ -84,9 +84,9 @@ recv scope 고정:
 - self-close:
   callback 안에서 자기 자신이 소유한 handle의 종료를 요청하는 경우.
 - child handle:
-  parent subject에 attach되어 열린 subordinate handle. monitor,
-  standalone `spot_pub`, standalone `spot_sub`, unified `spot`이 여기에
-  해당한다.
+  parent subject에 attach되어 열린 subordinate handle.
+  caller-visible child: unified `spot`, monitor handle.
+  internal child: `spot` 내부 pub/sub (public 생성/종료 API 없음).
 
 ## 3. 핵심 결정
 
@@ -115,9 +115,12 @@ recv scope 고정:
 - `gateway`
 - `spot_node`
 - unified `spot`
-- standalone `spot_pub`
-- standalone `spot_sub`
 - socket/service monitor handle
+
+참고: `spot_pub`/`spot_sub`는 public 생성/조작 API가 없는 internal child이며,
+unified `spot` 또는 `spot_node`의 내부 구현 단위로 동작한다.
+public contract는 `zlink_spot_*` / `zlink_spot_node_*` 수준에서 정의하며,
+internal child는 이를 만족시키기 위한 구현으로 취급한다 (8.6절 참조).
 
 이 대상들은 모두 same-handle concurrent `send`, `publish`, send-ready handler
 교체, subscription mutation, query, option setter, attach 계열 호출에 대해
@@ -129,7 +132,7 @@ data race가 없도록 **정의한다** (목표 계약).
   concurrent `send`는 보호되지 않는다.
 - `STREAM`: `_api_mutex`로 부분적으로 직렬화된다. raw socket 중 유일한 예외.
 - `gateway`: `_sync` 기반 직렬화가 넓게 있으나 `_use_lock` 분기로 조건부.
-- `spot_pub` / `spot_sub` / `spot_node`: `_sync`와 callback inflight가 부분적으로 있다.
+- `spot_node` (+ internal `spot_pub`/`spot_sub`): `_sync`와 callback inflight가 부분적으로 있다.
 - `discovery`: `_sync` + observer inflight 추적이 있다.
 - monitor: `callback_depth` + `close_requested` 기반 deferred self-close가 구현돼 있다.
 
@@ -193,8 +196,13 @@ thread-safe contract가 있다고 해서 종료 API까지 아무 때나 병행 �
   호출자가 사전에 quiesce/join을 끝내지 못했다는 fail-fast 신호다.
 - cross-thread `close` / `destroy`가 `EBUSY`를 반환한 경우 handle은 계속 live 상태로
   남아야 하며, 그 실패만으로 `closing_requested`가 latch되면 안 된다.
-- callback 안의 self-close는 허용하지만 실제 teardown은 callback return 뒤로
-  미룬다.
+- self-close는 callback 종류별로 다르게 정의한다.
+  - service recv callback, service monitor callback, send-ready callback 안
+    self-close는 허용하며 실제 teardown은 callback return 뒤로 미룬다.
+  - raw socket은 canonical `zlink.h`를 따른다. send-ready/monitor callback
+    안 self-close만 허용한다.
+  - raw recv callback(STREAM direct callback 포함) 안 `zlink_close()`는
+    허용하지 않으며 `errno=EBUSY`다.
 
 현재 구현과의 차이:
 
@@ -214,7 +222,10 @@ thread-safe contract가 있다고 해서 종료 API까지 아무 때나 병행 �
 callback 안 send는 중요한 사용 패턴이므로 유지한다.
 
 - recv callback 안 same-handle `send` / `publish` 허용
-- monitor callback 안 parent subject send 계열 API 허용
+- monitor callback 안에서는 parent subject의 data-plane API만 허용한다.
+  허용 예: `send`, `publish`, `send_rid`.
+  비허용 예: `close` / `destroy`, `monitor_open` / `monitor_close`,
+  `attach_discovery`, subscribe / unsubscribe, option setter, topology mutation
 - send-ready handler 교체는 "다음 writable transition"부터 visible
 - subscribe / unsubscribe는 "다음 match 또는 dispatch 진입 시점"부터 visible
 
@@ -224,10 +235,11 @@ callback 안 send는 중요한 사용 패턴이므로 유지한다.
 |---|---|
 | worker 두 개가 같은 handle로 `send` | 허용, per-handle 기준 직렬화 |
 | callback thread와 worker thread가 동시에 `publish` | 허용 |
-| `set_send_ready_handler()` 도중 writable transition 발생 | 기존 또는 새 handler 중 하나로 완결 처리 |
+| `set_send_ready_handler()` 도중 writable transition 발생 | 교체와 정확히 겹친 writable transition에 한해 기존 또는 새 handler 중 하나로 1회 완결 처리 |
 | `unsubscribe()` 반환 후 새 메시지 유입 | 새 subscription 상태 적용 |
 | 다른 thread가 in-flight API 중 `close` 호출 | `EBUSY` |
-| callback 안 self-close | 성공 처리 후 epilogue teardown |
+| callback 안 self-close (허용 대상 callback, 9.2절) | 성공 처리 후 epilogue teardown |
+| raw recv callback 안 `zlink_close()` | `EBUSY` (self-close 비허용) |
 
 ## 4. 한눈에 보는 구조
 
@@ -243,7 +255,7 @@ create/open(...)
           +-- callback 중 send 허용
           +-- send-ready handler / subscription visibility는 다음 transition/match 기준
           +-- cross-thread close/destroy는 in-flight가 있으면 EBUSY
-          +-- self-close는 deferred teardown
+          +-- self-close는 callback 종류별 허용 (9.2절), 허용 시 deferred teardown
 ```
 
 `spot_node`와 child facade의 관계는 아래처럼 본다.
@@ -252,18 +264,16 @@ create/open(...)
 spot_node
    |
    +-- zlink_spot_new()
-   |      -> child pub/sub를 별도 생성
+   |      -> child pub/sub를 내부적으로 생성
    |      -> node 내부 data-plane endpoint에 attach
-   |
-   +-- zlink_spot_pub_new()
-   +-- zlink_spot_sub_new()
    |
    +-- child와 parent는 모두 thread-safe contract를 가짐
 ```
 
-즉 unified `spot`, standalone `spot_pub`, standalone `spot_sub`, monitor handle은
-parent와 연결된 child지만, thread-safety를 더 약하게 해석하는 별도 등급으로
-보지 않는다.
+즉 unified `spot`과 monitor handle은 caller-visible child로서 parent와
+연결되지만, thread-safety를 더 약하게 해석하는 별도 등급으로 보지 않는다.
+internal child(`spot` 내부 pub/sub)는 parent/facade의 thread-safe contract를
+내부에서 이행하는 구현 단위다.
 
 ## 5. 공개 API 방향
 
@@ -278,8 +288,7 @@ canonical public shape는 그대로 유지하고, 그 위에 thread-safe contrac
 | `gateway` | `zlink_gateway_new(ctx, service_name, routing_id, handler)` | existing `_sync` 기반 구조를 재사용하되 공개 계약은 unconditional thread-safe로 올린다. |
 | `spot_node` | `zlink_spot_node_new(ctx, service_name, handler)` | publish, subscribe, discovery attach, TLS, peer connect, child registry를 thread-safe subject로 본다. |
 | unified `spot` | `zlink_spot_new(spot_node, handler)` | facade-level publish/subscribe/peer query를 thread-safe contract로 유지한다. |
-| standalone `spot_pub` | `zlink_spot_pub_new(node)` | 이미 thread-safe로 설명되던 성격을 공통 계약 일부로 흡수한다. |
-| standalone `spot_sub` | `zlink_spot_sub_new(node, handler)` | subscription mutation, peer query를 thread-safe subject로 정리한다. |
+| internal `spot_pub` / `spot_sub` | (public 생성/조작 API 없음) | unified `spot` 또는 `spot_node`의 내부 구현 단위. public contract는 parent/facade API 수준에서 정의한다 (8.6절). |
 | monitor handle | `*_monitor_open(..., handler)` | 모든 monitor를 독립 thread-safe child handle로 본다. |
 
 추가 방향:
@@ -290,7 +299,7 @@ canonical public shape는 그대로 유지하고, 그 위에 thread-safe contrac
   - attach 이후에는 manual `connect` / `disconnect`가 금지된다
   - topology 변화는 discovery-driven convergence로만 반영된다
   - attach 시점에는 위 ownership 전제와 lifetime / in-flight state를 함께 검증한다.
-- `zlink_spot_pub_new()`의 "default thread-safe" 같은 문구는 공통 규칙에 맞춰
+- internal `spot_pub`의 "default thread-safe" 같은 기존 문구는 공통 규칙에 맞춰
   일반화한다. 이제 특별취급된 예외가 아니라 전체 모델의 일부다.
 - public header에는 `_use_lock`나 internal sync field를 노출하지 않는다.
 
@@ -307,8 +316,11 @@ canonical public shape는 그대로 유지하고, 그 위에 thread-safe contrac
 - same-handle concurrent `zlink_gateway_send_rid()`
 - same-handle concurrent `zlink_spot_node_publish()`
 - same-handle concurrent `zlink_spot_publish()`
-- same-handle concurrent `zlink_spot_pub_publish()`
 - callback thread와 worker thread의 동시 send/publish/reply
+
+참고: internal child(`spot_pub`, `spot_sub`)는 public 생성/조작 API가 없으므로
+이 절의 직접 대상이 아니다. 위 public API의 내부 구현으로서 thread-safety를
+만족하지만, 공개 계약은 `zlink_spot_*` / `zlink_spot_node_*` 수준에서 정의한다.
 
 보장:
 
@@ -327,7 +339,6 @@ canonical public shape는 그대로 유지하고, 그 위에 thread-safe contrac
 - `zlink_gateway_set_send_ready_handler()`
 - `zlink_spot_node_set_send_ready_handler()`
 - `zlink_spot_set_send_ready_handler()`
-- `zlink_spot_pub_set_send_ready_handler()`
 
 동시성 계약:
 
@@ -433,6 +444,8 @@ send-ready handler는 런타임에 교체 가능하며, 실제 callback ABI는
 - spot_pub: 동일 패턴 (`spot_pub.hpp`)
 - gateway: `handler(this)`로 subject가 handle 자체이므로 pair 문제가 없다.
   단, subject를 별도로 받는 API로 전환하면 같은 문제가 발생한다.
+  이 문장은 현재 public API 계약이 아니라, 향후 gateway setter가 explicit
+  subject 인자를 받는 형태로 바뀔 경우의 구현상 주의사항이다.
 - dispatch는 I/O thread(`write_activated` → `notify_send_ready_if_armed`)에서만
   발생하므로 concurrent dispatch는 없다. 경합은 setter thread vs I/O dispatch
   thread 사이에서만 발생한다.
@@ -470,8 +483,15 @@ mutex를 추가하여 writer 직렬화를 보장한다.
 - 기본 계약은 **caller-owned subject**다. caller는 새 handler/subject 교체가
   성공한 뒤에도, 교체 시점과 겹친 in-flight send-ready callback이 모두 끝날 때까지
   이전 `subject`를 유효하게 유지해야 한다.
-- 가장 보수적이고 권장되는 규칙은 subject의 수명을 handle 수명에 맞추는 것이다.
-  즉 handle이 닫힐 때까지 모든 subject가 유효해야 한다.
+- public contract로서 send-ready handler의 `subject`는 해당 handle 수명 이상
+  유효해야 한다. 더 짧은 수명의 객체를 `subject`로 넘기는 것은 정의하지 않는다.
+- handler 교체로 이전 `subject`를 해제해도 되는 시점을 라이브러리는 알려주지
+  않는다. 따라서 stack object, temporary heap object, callback-local object를
+  `subject`로 넘기는 사용은 금지한다.
+- 허용되는 `subject`:
+  - handle 자체 (`void *` 캐스팅)
+  - handle owner object (handle보다 오래 사는 상위 구조체)
+  - process/service-lifetime object
 - 라이브러리는 `(handler, subject)` pair의 일관된 관측만 보장한다. caller-owned
   `subject`에 대한 refcount나 RCU 보호를 제공하지 않는다.
 - 향후 library-managed slot lifetime(refcount/RCU)을 도입할 수는 있지만, 그 경우는
@@ -515,7 +535,7 @@ surface가 같은 계약으로 정리된 상태는 아니다"라고 보는 것�
 | raw `STREAM` | `_api_mutex`가 있어 일부 API는 보호된다 | 전체 raw socket 모델로 일반화되지 않았다 |
 | `XSUB` / `XPUB` direct-dispatch | dispatch inflight / stop 대기는 있다 | public API 전체를 덮는 lifetime guard가 아니다 |
 | `gateway` | `_sync` 기반으로 send path는 상당 부분 직렬화돼 있다 | close/destroy/in-flight 정책이 문서 수준의 공통 프로토콜로 정리되지 않았다 |
-| `spot_pub` / `spot_sub` / `spot_node` | `_sync`와 callback inflight가 일부 있다 | parent-child close ordering, 공통 lifetime gate, raw socket 기반 API와의 일관성이 부족하다 |
+| `spot_node` / unified `spot` (+ internal pub/sub) | `_sync`와 callback inflight가 일부 있다 | parent-child close ordering, 공통 lifetime gate, raw socket 기반 API와의 일관성이 부족하다 |
 | `discovery` / `registry` | `_sync`가 있고 observer/task state를 일부 보호한다 | bootstrap, bind, destroy, observer callback과 운영 API를 하나의 thread-safe contract로 고정하지 못했다 |
 | monitor handle | callback depth / self-close defer가 구현돼 있다 | parent close 정책과 raw/service 공통 정책이 완전히 일치하지 않는다 |
 
@@ -532,8 +552,9 @@ surface가 같은 계약으로 정리된 상태는 아니다"라고 보는 것�
   [`stream_t::_api_mutex`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/stream.cpp)
   (recursive_mutex)와 sharded `route_shard_t::sync`(fast_mutex)를 통해 별도 보호를
   제공한다. 즉 raw socket 전반의 완성된 모델이 아니라 예외 구현이다.
-- `gateway`, `spot_pub`, `spot_sub`, `spot_node`는 각각 `_sync`를 이용한
-  subject-local serialization을 이미 사용 중이므로 raw socket보다 출발점이 좋다.
+- `gateway`, `spot_node` (및 internal `spot_pub`, `spot_sub`)는 각각 `_sync`를
+  이용한 subject-local serialization을 이미 사용 중이므로 raw socket보다
+  출발점이 좋다.
 - `socket_base_t`에는 `_mailbox_refcnt`(atomic_counter)가 있어 mailbox 참조에
   대한 기본 lifetime guard 역할을 하지만, 이것은 public API admission gate가
   아니라 async I/O thread 간 mailbox 수명 보호용이다.
@@ -610,11 +631,23 @@ runtime 계층을 먼저 정의해야 한다.
    - 중요 invariant: **한 handle에는 동시에 최대 하나의 callback thread만 활성화된다.**
      recv callback 실행 중 같은 handle의 send-ready callback은 발생하지 않으며,
      그 역도 마찬가지다. monitor는 별도 handle이므로 이 invariant에 해당하지 않는다.
+   - 이 invariant의 근거:
+     - 현재 아키텍처에서 same-handle callback dispatch는 handle별 단일
+       dispatch lane(I/O thread 또는 내부 worker)에서 실행된다.
+     - recv callback과 send-ready callback은 같은 handle에서 동시에 병렬
+       실행되지 않도록 dispatch loop가 serialize한다.
+     - raw socket은 `process_commands` → callback dispatch가 단일
+       I/O thread에서 순차 실행된다.
+     - 서비스 계열은 내부 dispatch 구조가 handle별 단일 callback lane을
+       유지한다.
+     - monitor는 별도 child handle이므로 parent handle invariant와 독립이다.
+   - 이 invariant는 현재 single-dispatch-lane architecture를 전제로 한다.
+     향후 한 handle에 대해 복수 dispatch thread를 허용하는 구조로 바뀌면,
+     `callback_thread_id + callback_depth` 단일 슬롯 모델은 더 이상
+     충분하지 않고, per-callback token/guard 모델로 재설계해야 한다.
    - 이 invariant가 성립하므로 per-handle `callback_thread_id + callback_depth`는
      단일 슬롯으로 관리할 수 있으며, self-close 판정과 callback-중-send 허용 판정이
      신뢰할 수 있다.
-   - 이 invariant가 architecture 변경으로 깨질 경우 per-callback token/guard 방식으로
-     전환해야 한다.
 
    현재 구현과의 차이:
 
@@ -686,11 +719,35 @@ raw socket에 필요한 최소 helper는 다음과 같다.
   - `leave_callback_scope()` — depth 감소 + deferred close 확인
   - `begin_close_or_fail_busy()` — admission state CAS로 closing bit 설정 시도
   - `finish_close()` — teardown 진행
+  - `try_drain_commands(budget)` — command drain 시도 (아래 참조)
+
+`process_commands` 기본 구현안 — single drainer token + lock 밖 bounded drain:
+
+현재 `socket_base_t::send()`는 공통 API lock 없이
+`process_commands(0, true)`로 unbounded drain을 수행한다.
+공통 gate 도입 후에는 이 경로를 아래 기본안으로 재구성한다.
+
+- 추가 필드:
+  - `command_drain_owner` (`atomic<thread_id_t>` 또는 `atomic<bool>`)
+    — drain 중인 thread를 식별하는 단일 토큰
+- 규칙:
+  - send path 진입 thread는 `command_drain_owner`를 CAS로 획득한 경우에만
+    `process_commands_one_pass(budget)`를 수행한다.
+  - 이미 다른 drainer가 있으면 현재 thread는 drain을 건너뛰고
+    다음 state check로 진행한다. 이 경우에도 `xsend`는 정상 수행한다.
+  - heavy command(pipe_term 등)는 defer queue/flag로 남기고,
+    다음 drainer pass에서 재시도한다.
+  - `xsend` 전제 조건이 command 반영에 의존하는 경우,
+    bounded drain 후 짧은 state recheck를 수행한다.
+  - drain 완료 후 `command_drain_owner`를 atomic release store로 해제한다.
+- 금지:
+  - 다중 thread 동시 mailbox drain
+  - full drain under `op_state_mutex`
 
 서비스 계열은 다음 방향이 적합하다.
 
-- `gateway`, `spot_node`, `spot_pub`, `spot_sub`, `discovery`, `registry`는
-  각자 `_sync`를 유지하되, public contract 경계는
+- `gateway`, `spot_node` (+ internal `spot_pub`/`spot_sub`), `discovery`,
+  `registry`는 각자 `_sync`를 유지하되, public contract 경계는
   [`services/common`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/common)
   에 공통 helper를 만들어 맞춘다.
 - 즉 `_sync`는 상태 보호용, 공통 helper는 API admission / close policy용으로
@@ -716,7 +773,8 @@ raw socket에 필요한 최소 helper는 다음과 같다.
      이식하기 좋다.
 3. `gateway`를 공통 service API guard 위로 옮긴다.
    - send path가 이미 `_sync`를 쓰므로 적용 난이도가 가장 낮다.
-4. `spot_pub` / `spot_sub` / `spot_node`를 공통 guard 위로 옮긴다.
+4. `spot_node` / unified `spot` (+ internal `spot_pub`/`spot_sub`)를 공통 guard
+   위로 옮긴다.
    - parent-child ordering, callback inflight, direct handler path를 함께 정리한다.
 5. `discovery` / `registry`를 마지막에 올린다.
    - observer callback, bootstrap/bind, background task와의 ordering을 같이
@@ -870,8 +928,10 @@ subject별 구현 전에 아래 공통 작업을 먼저 끝내야 한다.
 실제 작업 항목:
 
 - `spot_node` 자체에 public API admission / close gate를 둔다.
-- child registry(`spot`, `spot_pub`, `spot_sub`)와 parent destroy ordering을
-  문서 정책대로 `EBUSY`로 강제한다.
+- child registry(caller-visible: unified `spot`; internal: `spot_pub`,
+  `spot_sub`)와 parent destroy ordering을 문서 정책대로 처리한다.
+  caller-visible child가 열려 있으면 `EBUSY`, internal child는 parent
+  teardown에서 내부적으로 정리한다 (9.4절).
 - direct publish/subscribe path는 `_sync` snapshot 후 락 밖에서 callback 또는
   blocking 작업을 수행하도록 정리한다.
 - data-plane stop/join 전후에 raw socket close gate가 이미 적용돼 있어야 한다.
@@ -935,11 +995,16 @@ fast path 최적화 방향:
   구현 착수 전에 확정해야 한다. 이 결정이 steady-state fast path 비용을
   바로 바꾸기 때문이다.
 
-### 8.6 standalone `spot_pub` / `spot_sub`
+### 8.6 internal `spot_pub` / `spot_sub` 구현
+
+`spot_pub`와 `spot_sub`는 public 생성/조작 API가 없는 **internal child**다.
+caller가 직접 만들거나 닫을 수 없으며, unified `spot` 또는 `spot_node`의
+내부 구현 단위로만 존재한다. 이 절은 public contract가 아니라 구현 계획이다.
 
 구현 목표:
 
-- 두 handle 모두 공통 thread-safe contract 대상에 포함
+- 두 internal child가 parent(`spot_node`)와 facade(unified `spot`)의
+  공개 thread-safe contract를 만족시키기 위한 내부 직렬화를 갖춘다.
 - `SpotPub`의 sync/async publish 실행 방식은 thread-safety 등급이 아니라
   내부 send semantics로 분리
 - `SpotSub`의 subscription mutation visibility를 unified `spot`과 같은
@@ -949,17 +1014,22 @@ fast path 최적화 방향:
 
 - `spot_pub`는 publish path가 `_sync`로 감싸져 있어 출발점이 좋다.
 - `spot_sub`는 `_sync`, direct-handler state, callback inflight가 이미 있다.
-- 하지만 `destroy()`와 public API 공통 admission은 아직 한 체계로 묶이지 않았다.
+- 하지만 내부 teardown과 parent admission의 연동이 아직 한 체계로 묶이지
+  않았다.
 
 실제 작업 항목:
 
 - `spot_pub`는 publish/set_option/send-ready setter를 공통 service API guard
-  아래 둔다.
+  아래 둔다. 이 guard는 parent/facade의 public admission gate 아래에서
+  동작하므로, internal child 자체의 public admission CAS는 불필요할 수 있다
+  (8.5절 fast path 최적화 참조).
 - `spot_sub`는 subscribe/unsubscribe/set_option을
   공통 service API guard 아래 둔다. (public `recv()`는 이미 제거됨)
 - `spot_sub`의 callback inflight는 service 공통 callback scope 표현으로
   승격한다.
 - direct callback path는 공통 visibility 규칙을 따른다.
+- internal child의 teardown은 parent/facade teardown 경로 안에서 내부적으로
+  수행하며, caller-managed close 대상이 아니다 (9.4절 참조).
 
 ### 8.7 monitor handle
 
@@ -968,11 +1038,15 @@ fast path 최적화 방향:
 - `zlink_socket_monitor_open()`
 - `zlink_discovery_monitor_open()`
 - `zlink_gateway_monitor_open()`
+- `zlink_spot_node_monitor_open()`
 - `zlink_spot_monitor_open()`
-- `zlink_spot_sub_monitor_open()`
-- `zlink_spot_pub_monitor_open()`
 
 위 handle들을 모두 독립 thread-safe child handle로 정리한다.
+
+참고: `zlink_spot_node_monitor_open()`과 `zlink_spot_monitor_open()`은
+`zlink_spot_role_t role` 파라미터로 PUB/SUB 측을 선택한다. 별도의
+`zlink_spot_pub_monitor_open()` / `zlink_spot_sub_monitor_open()` API는
+존재하지 않는다.
 
 - monitor handle의 recv handler도 생성 시(`*_monitor_open()`) 고정이며 교체
   API가 없다.
@@ -1024,9 +1098,18 @@ fast path 최적화 방향:
 
 ### 9.2 self-close
 
-허용:
+허용 범위:
 
-- callback 안에서 자기 자신의 handle 종료 요청
+self-close는 callback 종류에 따라 허용 여부가 다르다. canonical `zlink.h`를
+기준으로 다음과 같이 정의한다.
+
+- 허용:
+  - service recv callback 안 `*_destroy(&handle_slot)` — deferred teardown
+  - service monitor callback 안 `zlink_service_monitor_close(&handle_slot)` — deferred teardown
+  - send-ready callback 안 `zlink_close(handle)` 또는 `*_destroy(&handle_slot)` — deferred teardown
+  - raw monitor callback 안 `zlink_close(handle)` — deferred teardown
+- 금지:
+  - raw recv callback(STREAM direct callback 포함) 안 `zlink_close(handle)` — `errno=EBUSY`
 
 의미:
 
@@ -1036,15 +1119,19 @@ fast path 최적화 방향:
 
 호출 형태:
 
-- raw socket / raw monitor: `zlink_close(handle)`
+- raw socket (send-ready/monitor callback 안에서만): `zlink_close(handle)`
 - service object: `*_destroy(&handle_slot)`
 - service monitor: `zlink_service_monitor_close(&handle_slot)`
 
 추가 규칙:
 
 - **self-close는 callback의 마지막 API 호출이어야 한다.**
-- self-close 이후 같은 callback에서 same-handle API(`send`, `publish`,
-  `set_send_ready_handler` 등)를 호출하면 `ESHUTDOWN`을 반환한다.
+- self-close 이후 같은 callback에서의 same-handle operational API는 모두
+  shutdown-admission 실패로 처리하며 `errno=ESHUTDOWN`을 반환한다.
+  대상: data-plane API, send-ready setter, query, option setter,
+  subscribe/unsubscribe, monitor open/close.
+  예외: 중복 self-close는 `ESHUTDOWN`이 아니라 9.5절의 double-close 규칙
+  (`EALREADY` 또는 undefined)으로 처리한다.
 - callback 중 send가 필요하면 self-close 전에 완료해야 한다.
 - 이 규칙은 구현 분기를 최소화하고 shutdown race의 tail risk를 줄이기 위한
   의도적 제약이다.
@@ -1116,15 +1203,78 @@ callback 중 send 보호:
 ### 9.4 parent-child 종료 순서
 
 parent subject(`spot_node`, 또는 monitor의 parent)를 종료할 때
-살아있는 child handle이 있는 경우의 정책:
+살아있는 child handle이 있는 경우의 정책은 child의 종류에 따라 다르다.
 
-- child handle(unified `spot`, standalone `spot_pub`, standalone `spot_sub`,
-  monitor handle)이 하나라도 열려 있으면 parent `destroy`는 `EBUSY`를 반환한다.
-- 호출자는 child를 먼저 종료한 뒤 parent를 종료해야 한다.
+**caller-visible child** (unified `spot`, monitor handle):
+
+- caller-visible child handle이 하나라도 열려 있으면 parent `destroy`는
+  `EBUSY`를 반환한다.
+- 호출자는 caller-visible child를 먼저 종료한 뒤 parent를 종료해야 한다.
 - child callback 안에서 parent를 종료하는 것은 허용하지 않는다.
 
-이 정책은 parent가 child를 암묵적으로 강제 teardown하는 것을 방지한다.
-child의 수명은 호출자가 명시적으로 관리한다.
+이 정책은 parent가 caller-visible child를 암묵적으로 강제 teardown하는 것을
+방지한다. caller-visible child의 수명은 호출자가 명시적으로 관리한다.
+
+**internal child** (`spot` 내부 pub/sub, `spot_node` 내부 helper child):
+
+- internal child는 public 생성/조작/종료 API가 없으므로
+  caller-managed close 대상이 아니다.
+- internal child의 teardown은 parent/facade teardown 경로 안에서
+  내부적으로 수행한다.
+- parent admission gate가 inflight == 0을 확인한 시점은 internal child
+  teardown의 필요조건이다. 그러나 이것만으로 즉시 free가 가능하다는 뜻은
+  아니다. 실제 teardown 전에는 child-local callback/dispatch/runtime state가
+  parent/facade shutdown 경로 안에서 quiesced 되었음을 추가로 확인해야 한다.
+  이 invariant는 다음으로 보장한다:
+  - public API(`zlink_spot_publish()` 등)의 admission CAS가 parent/facade
+    수준에서 수행되므로, parent inflight == 0이면 internal child를 사용하는
+    public API가 없다.
+  - internal child의 callback dispatch는 parent dispatch lane에서
+    실행되므로, parent callback이 완료되면 internal child callback도
+    완료된 상태다.
+- internal child는 caller-visible close 대상이 아니지만, parent/facade teardown
+  안에서 child-local inflight와 raw socket/runtime stop ordering을 명시적으로
+  정리해야 한다.
+- 따라서 shutdown 순서는 `parent close accepted -> child-local quiesce ->
+  internal child teardown`으로 고정한다. parent close accepted 직후의 즉시 free를
+  의미하지는 않는다.
+
+parent-child 종료 규칙 요약:
+
+| 상황 | 결과 |
+|---|---|
+| caller-visible child가 열린 상태에서 parent destroy | `EBUSY` |
+| child callback 안 parent data-plane API (`send`/`publish`/`send_rid`) | 허용 |
+| child callback 안 parent lifecycle/control-plane API | 금지 (`EBUSY` 또는 해당 에러) |
+| child callback 안 parent destroy | 금지 (`EBUSY`) |
+| parent close accepted 후 internal child teardown | parent 내부에서 수행 |
+| external close가 `EBUSY`로 거절된 직후 parent 재사용 | 계속 live |
+
+### 9.4-a child open vs parent destroy 선형화
+
+`*_monitor_open()`과 parent `destroy`는 같은 parent admission/child-registry
+경계에서 선형화한다.
+
+규칙:
+
+- parent `destroy`가 먼저 close accepted를 얻으면, 그 뒤 시작한
+  `*_monitor_open()`은 실패해야 하며 새 child를 registry에 등록하면 안 된다.
+- `*_monitor_open()`이 먼저 parent admission을 통과하고 child registry 등록까지
+  완료하면, 그 시점 이후 parent `destroy`는 `errno=EBUSY`다.
+- `*_monitor_open()` 도중 parent가 closing 상태로 전환된 것을 감지하면,
+  open 경로는 부분 초기화된 child를 내부에서 정리하고 호출자에게 실패를
+  반환한다.
+- 실패한 `*_monitor_open()`은 caller-visible child를 남기지 않아야 한다.
+
+권장 에러 코드:
+
+- parent가 closing/closed 진입 중이면 `*_monitor_open()`은 `errno=ESHUTDOWN`
+- child가 이미 열린 상태라 parent `destroy`가 거절되면 `errno=EBUSY`
+
+이 규칙은 `zlink_spot_new()` 등 caller-visible child 생성 API에도
+동일하게 적용한다. open/create가 완료되면 child가 열린 것이므로 parent
+destroy는 `EBUSY`이고, parent가 먼저 closing이면 open/create는
+`ESHUTDOWN`이다.
 
 ### 9.5 double close / double destroy
 
@@ -1151,6 +1301,72 @@ child의 수명은 호출자가 명시적으로 관리한다.
 - `while (close() == EBUSY) sleep(...)` 같은 busy-wait retry는 금지에 가깝게
   본다.
 - child가 있는 parent를 종료할 때는 child를 먼저 종료한다.
+
+### 9.x canonical errno map
+
+이 절은 문서 전체에 흩어진 에러 코드를 한 곳에 모은다. 구현과 테스트의
+기준이 되는 canonical 참조 테이블이다.
+
+| 상황 | errno |
+|---|---|
+| in-flight external `close` / `destroy` | `EBUSY` |
+| caller-visible child가 열린 상태에서 parent `destroy` | `EBUSY` |
+| raw recv callback(STREAM 포함) 안 `zlink_close()` | `EBUSY` |
+| child callback 안 parent `destroy` | `EBUSY` |
+| manual peer/route가 있는 상태에서 `attach_discovery()` | `EBUSY` |
+| send-ready callback 안 `*_set_send_ready_handler()` 재진입 | `EDEADLK` |
+| self-close accepted 후 같은 callback에서 same-handle operational API | `ESHUTDOWN` |
+| parent closing 이후 child/monitor open 시도 (`*_monitor_open()`, `zlink_spot_new()` 등) | `ESHUTDOWN` |
+| `closing_requested`가 이미 설정된 뒤 external `close` / `destroy` | `EALREADY` |
+| replace-only setter에 `NULL` 전달 | `EINVAL` |
+| recv-capable raw socket + `NULL` handler 생성 | `EINVAL` |
+| `*_monitor_open(..., NULL)` 또는 service 생성에 `NULL` handler | `EINVAL` |
+
+참고:
+- `EBUSY`와 `ESHUTDOWN`은 구분이 중요하다. `EBUSY`는 "handle이 아직 live이며
+  나중에 재시도 가능하다"는 뜻이고, `ESHUTDOWN`은 "handle이 closing에 진입했으며
+  복구 불가"라는 뜻이다.
+- 이 테이블에 없는 에러 코드가 추가되면 이 절을 동시에 갱신한다.
+
+### 9.7 wait-to-drain → fail-fast `EBUSY` 마이그레이션
+
+현재 서비스 계열 subject 중 `spot_sub`, `discovery`, monitor(일부)는 destroy 시
+callback inflight가 0이 될 때까지 **blocking CV wait**(wait-to-drain)하는 모델을
+사용한다. 이 문서의 목표 계약은 fail-fast `EBUSY`이므로, 기존 사용자 코드에
+영향을 주는 breaking change가 발생한다. 전환은 아래 단계로 진행한다.
+
+1단계 — 계측:
+- 기존 wait-to-drain subject에 계측을 넣는다.
+- destroy/close가 callback inflight를 기다린 횟수와 최대 대기 시간을
+  테스트/로그로 수집한다.
+- 이 데이터로 실제로 wait-to-drain에 의존하는 호출 패턴이 어디에 있는지
+  파악한다.
+
+2단계 — 문서 경고:
+- header/doc에 close/destroy는 quiesce 이후 호출해야 하며, wait-to-drain
+  semantics에 의존하면 안 된다는 경고를 명시한다.
+- 기존 코드가 wait-to-drain에 의존하고 있다면 이 시점에서 호출자 쪽
+  종료 순서를 정리하도록 안내한다.
+
+3단계 — subject별 `EBUSY` 전환:
+- 서비스별로 `EBUSY` 거절 정책을 도입하되, 전환 대상과 순서를 고정한다.
+  1. monitor (이미 `EBUSY`에 가장 가까움)
+  2. `gateway`
+  3. `spot_sub` / `spot_node`
+  4. `discovery`
+- 각 전환은 해당 subject의 regression test를 `EBUSY` 기준으로 동시에
+  변경한다.
+
+4단계 — wait-to-drain 제거:
+- blocking CV wait 코드를 제거한다.
+- 모든 close/destroy regression test가 `EBUSY` 기준으로 고정되었는지
+  확인한다.
+
+호출자 마이그레이션 규칙:
+- 이전: `destroy()`가 내부 drain을 기다릴 수 있음
+- 이후: ingress stop → worker join → callback source quiesce → 단일
+  `destroy()`
+- `while (destroy() == EBUSY) sleep(...)` 패턴은 금지한다 (9.6절 참조).
 
 ## 10. 성능 관점
 
@@ -1248,7 +1464,7 @@ compare_exchange_weak와 fetch_sub는 각각 약 5~15ns이므로, 총 추가 비
 
 ### 10.3 service hot path 원칙
 
-`gateway`, `spot_pub`, unified `spot`, `spot_node` direct publish 경로는
+`gateway`, unified `spot`, `spot_node` direct publish 경로는
 기존 `_sync`가 있더라도 그대로 "큰 mutex 하나"가 되면 안 된다.
 
 - `_sync`는 ownership, lifecycle, registry 보호에 사용한다.
@@ -1267,7 +1483,7 @@ snapshot 메커니즘 분류:
 |---|---|---|---|
 | raw socket | send target pipe(s) | 1-2개 | stack buffer (pointer 복사) |
 | `gateway` | routing table lookup 결과 | 1개 | stack buffer |
-| `spot_pub` | subscriber pipe list | 가변 (수십~수백) | epoch-based reclamation 또는 RCU |
+| `spot_pub` | subscriber pipe list | 가변 (수십~수백) | stack small-buffer + overflow heap snapshot |
 | `spot_node` | child registry | 수 개~수십 | stack buffer (cap) 또는 epoch |
 | `discovery` | observer list | 수 개 | stack buffer |
 | unified `spot` | child pub/sub ref | 2개 (고정) | eager creation + immutable ref |
@@ -1275,24 +1491,29 @@ snapshot 메커니즘 분류:
 - **stack buffer**: 고정 크기 소수 대상. lock 안에서 pointer를 stack array에 복사하고
   lock을 풀고 사용한다. alloc 없음, copy 비용 = pointer 복사 수 개.
   fanout 상한이 필요하다.
-- **epoch-based reclamation / RCU**: 가변 크기 다수 대상. writer가 새 목록을
-  할당하고 atomic swap한 뒤 이전 목록을 epoch retire queue에 넣는다.
-  reader는 epoch enter → atomic load(list_ptr) → 순회 → epoch exit.
-  read path에 alloc 없음. write는 rare(control-plane mutation)이므로
-  write 시 alloc은 허용된다.
+- **stack small-buffer + overflow heap snapshot**: 고정 상한(예: 64)까지는
+  stack array에 pointer를 복사한다. 상한을 초과하는 경우에만 heap 할당
+  snapshot으로 fallback한다. 1차 구현에서는 이 방식으로 충분하다.
+- **epoch-based reclamation / RCU** (향후 최적화 후보): 가변 크기 다수 대상.
+  writer가 새 목록을 할당하고 atomic swap한 뒤 이전 목록을 epoch retire
+  queue에 넣는다. reader는 epoch enter → atomic load(list_ptr) → 순회 →
+  epoch exit. read path에 alloc 없음. write는 rare(control-plane mutation)
+  이므로 write 시 alloc은 허용된다. 단, handle-local quiescent state 관리와
+  retire queue drain 등 구현 복잡도가 높으므로 **1차 구현 범위에는 포함하지
+  않는다**. 실제 perf에서 heap snapshot 비용이 병목으로 확인될 때만 검토한다.
 - **immutable ref**: 생성 후 불변인 대상. lock 없이 직접 접근 가능.
   unified `spot`의 child ref가 eager creation으로 전환되면 이 범주에 해당한다.
 
 이 메커니즘이 비어 있으면 구현은 hot-path heap copy 또는 long lock hold로
 미끄러진다. 따라서 subject별 snapshot 방식을 구현 전에 확정해야 한다.
 
-epoch/RCU와 close/destroy의 결합 규칙:
+epoch/RCU와 close/destroy의 결합 규칙 (향후 epoch/RCU 도입 시 적용):
 
 epoch-based reclamation을 사용하는 subject에서는 close accepted(admission
 inflight == 0) 시점에도 retire queue에 회수 대기 중인 이전 snapshot이 남을
 수 있다. 이 상태에서 handle을 즉시 해제하면 UAF, 회수하지 않으면 leak이다.
 
-따라서 다음 규칙을 적용한다:
+향후 epoch/RCU를 도입할 때는 다음 규칙을 적용한다:
 
 - epoch은 handle-local quiescent state로 관리한다. global epoch에 의존하지
   않는다. 이렇게 해야 한 handle의 close가 다른 handle의 epoch 진행에 의존하지
@@ -1302,6 +1523,10 @@ inflight == 0) 시점에도 retire queue에 회수 대기 중인 이전 snapshot
 - destroy는 closing bit 설정 → inflight drain 대기(self-close 시
   callback epilogue) → **retire queue drain** → handle 해제 순서로 수행한다.
 - retire queue drain은 teardown의 일부이며, 이 단계를 건너뛰면 안 된다.
+
+1차 구현에서는 stack small-buffer + overflow heap snapshot으로 충분하며,
+subscriber fanout이 큰 경우에도 read path alloc을 반드시 없애야 한다는
+제약은 1차 acceptance가 아니다.
 
 즉 서비스 계층의 목표는 "thread-safe한 관리 plane"과
 "빠른 data plane"을 구조적으로 분리하는 것이다.
@@ -1365,7 +1590,7 @@ different-handle 기준 (scaling 목표):
 
 공통 기준:
 
-- `gateway` / `spot_pub` / unified `spot` / raw socket의 small message 경로에서
+- `gateway` / unified `spot` / `spot_node` / raw socket의 small message 경로에서
   lock contention으로 tail latency가 급증하면 실패로 본다
 - close/destroy 보호를 넣은 뒤 steady-state benchmark에 추가 wakeup이나
   retry-like wait가 생기면 실패로 본다
@@ -1396,7 +1621,7 @@ different-handle 기준 (scaling 목표):
   비교한다. admission state CAS의 uncontended 비용을 정량화한다.
   (reference host 기준 절대값/상대값 기록)
 - same-handle concurrent send: thread 수를 1, 2, 4, 8로 변경하며 throughput과
-  tail latency를 측정한다. `zlink_spot_pub_publish()`, `zlink_gateway_send()`,
+  tail latency를 측정한다. `zlink_spot_publish()`, `zlink_gateway_send()`,
   raw `zlink_send()` 경로를 각각 대상으로 한다. scaling은 기대하지 않되,
   uncontended 대비 contended overhead를 정량화한다.
 - different-handle concurrent send: handle 수 × sender 수를 변경하며
@@ -1418,7 +1643,7 @@ different-handle 기준 (scaling 목표):
 2. 기존 `_sync`가 있는 subject는 재사용하고, 없는 subject는 공통 보호 계층을
    추가한다.
 3. send-ready handler 교체 visibility를 전 subject에 같은 규칙으로 맞춘다.
-4. subscribe / unsubscribe visibility를 unified `spot`, `spot_sub`,
+4. subscribe / unsubscribe visibility를 unified `spot`과
    `spot_node` direct API에 일관되게 맞춘다.
 5. cross-thread `close` / `destroy`의 `EBUSY` 판단과 self-close deferred teardown을
    공통 정책으로 구현한다.
@@ -1430,9 +1655,18 @@ different-handle 기준 (scaling 목표):
 1. `socket_base` 공통 gate 추가
 2. `zlink.cpp` raw API 진입점과 monitor close path 이식
 3. `gateway`
-4. `spot_pub` / `spot_sub` / `spot_node` / unified `spot`
+4. `spot_node` / unified `spot` (+ internal `spot_pub`/`spot_sub`)
 5. `discovery` / `registry`
 6. 문서 / 테스트 / perf 회귀 검증
+7. canonical contract 반영 후 즉시 `doc/api/*`, `doc/bindings/*`, guide 문서의
+   thread-safety 문구를 같은 커밋 또는 같은 작업 묶음에서 동기화한다.
+   특히 아래 문서가 현재 새 계약과 충돌하므로 우선 대상이다:
+   - `doc/api/gateway.md` — `zlink_gateway_destroy`를 "Not thread-safe"로 기술
+   - `doc/api/discovery.ko.md` — `zlink_discovery_destroy`를 "스레드 안전하지 않음"으로 기술
+   - `doc/bindings/overview.md`, `doc/bindings/overview.ko.md` — Socket을
+     "non-thread-safe"로 기술
+   이 문서들의 non-thread-safe 서술을 새 계약에 맞게 제거하거나 migration
+   note로 치환한다.
 
 추가 원칙:
 
@@ -1478,7 +1712,7 @@ different-handle 기준 (scaling 목표):
   - `zlink_socket(ctx, ZLINK_SOCKET_PUB, NULL)`은 성공하고 non-`NULL` handle을 반환해야 한다.
   - recv-capable raw socket + `NULL` handler는 `NULL`을 반환하고 `errno=EINVAL`이어야 한다.
   - `zlink_gateway_new(..., NULL)`, `zlink_spot_node_new(..., NULL)`,
-    `zlink_spot_new(..., NULL)`, `zlink_spot_sub_new(node, NULL)`,
+    `zlink_spot_new(..., NULL)`,
     `*_monitor_open(..., NULL)`은 실패하고 `errno=EINVAL`이어야 한다.
 - 금지 결과: partially initialized handle 반환, 다른 `errno`, 프로세스 hang
 - hard timeout: 2000 ms
@@ -1493,7 +1727,7 @@ different-handle 기준 (scaling 목표):
   - callback 안에서 same-handle `send`/`publish`를 호출하고, 동시에 worker thread도
     같은 handle을 사용한다.
   - `zlink_gateway_send_rid()`, `zlink_spot_node_publish()`,
-    `zlink_spot_publish()`, `zlink_spot_pub_publish()`에 대해 동일한 패턴을 반복한다.
+    `zlink_spot_publish()`에 대해 동일한 패턴을 반복한다.
 - 관측값: 각 호출의 반환값/`errno`, 수신 측 message count와 payload checksum,
   thread join 완료 여부
 - 허용 결과:
@@ -1535,27 +1769,51 @@ different-handle 기준 (scaling 목표):
 - 금지 결과: mixed pair 관측, hang, double callback, 허용 집합 밖 `errno`
 - hard timeout: 2000 ms
 
-### 12.4 visibility
+### 12.4 deterministic visibility
+
+결정적으로 재현 가능한 visibility 시나리오를 검증한다.
 
 - 사전 조건: message id를 포함한 publish fixture와 writable transition을 단계적으로
   만들 수 있는 fixture를 준비한다.
 - 동기화 방법: barrier로 mutation return 시점과 publish 시점을 분리한다.
+  setter 완료와 writable transition을 시간적으로 분리하여 겹침을 제거한다.
 - 수행 절차:
-  - handler A 설치 후 비writable 상태를 만든다.
-  - handler B로 교체한 뒤 writable transition을 2회 발생시킨다.
-  - `unsubscribe()` 직전 batch A, 반환 직후 batch B를 publish한다.
-  - `subscribe()` 직전 batch C, 반환 직후 batch D를 publish한다.
+  - handler A 설치 → handler B로 교체 성공 확인 → writable transition 발생
   - 실패하도록 만든 setter 호출 후 다시 writable transition을 발생시킨다.
+  - `unsubscribe()` 반환 확인 후 batch B를 publish한다.
+  - `subscribe()` 반환 확인 후 batch D를 publish한다.
 - 관측값: 각 transition에서 호출된 handler id, 각 batch의 수신한 message id 집합
 - 허용 결과:
-  - 교체와 겹친 첫 writable transition은 A 또는 B 중 하나로 1회만 완료될 수 있다.
   - 교체 성공 후 다음 writable transition부터는 B만 호출되어야 한다.
   - 실패한 setter 이후에는 기존 handler가 계속 호출되어야 한다.
   - `unsubscribe()` 반환 후 batch B의 message id는 수신되면 안 된다.
   - `subscribe()` 반환 후 batch D의 message id는 수신 가능해야 한다.
-  - 반환 전 batch A/C는 이미 match/dispatch에 진입한 경우에 한해 기존 상태로 처리될 수 있다.
 - 금지 결과: 1회 transition에서 handler 2개 동시 호출, batch 경계 위반, lost update
 - hard timeout: 2000 ms
+
+### 12.4-b race visibility stress
+
+setter-vs-dispatch 겹침 시나리오는 타이밍에 의존하므로 stress lane에서
+반복 실행으로 검증한다.
+
+- 사전 조건: 12.4절과 동일한 fixture에 handler A/B, subject A/B를 구분 가능한
+  토큰으로 설정한다.
+- 동기화 방법: barrier와 event flag로 setter와 writable transition의 겹침을 만든다.
+- 수행 절차:
+  - handler A 설치 후 비writable 상태를 만든다.
+  - handler B로 교체하면서 동시에 writable transition을 발생시킨다.
+  - `unsubscribe()` 직전 batch A, 반환 직후 batch B를 publish한다.
+  - `subscribe()` 직전 batch C, 반환 직후 batch D를 publish한다.
+- 관측값: 각 transition에서 호출된 `(handler id, subject id)` 쌍,
+  각 batch의 수신한 message id 집합
+- 허용 결과:
+  - 교체와 정확히 겹친 writable transition에서는 `(A,A)` 또는 `(B,B)` 쌍만
+    관측되어야 한다. `(A,B)` 또는 `(B,A)` 혼합 쌍은 실패다.
+  - 교체와 겹친 첫 writable transition은 A 또는 B 중 하나로 1회만 완료될 수 있다.
+  - 반환 전 batch A/C는 이미 match/dispatch에 진입한 경우에 한해 기존 상태로
+    처리될 수 있다.
+- 반복 횟수: 최소 5000회
+- hard timeout: 10000 ms (stress lane 기준)
 
 ### 12.5 attach / query / monitor
 
@@ -1565,15 +1823,27 @@ different-handle 기준 (scaling 목표):
   - `attach_discovery()`와 query / option setter / peer query를 동시에 호출한다.
   - manual peer/route가 있는 상태에서 `attach_discovery()`를 호출한다.
   - `attach_discovery()` 성공 후 manual `connect` / `disconnect`를 호출한다.
-  - monitor callback 안에서 parent API를 호출한다.
+  - monitor callback 안에서 parent data-plane API(`send`/`publish`/`send_rid`)를
+    호출한다.
+  - monitor callback 안에서 parent lifecycle/control-plane API(`destroy`,
+    `monitor_open`, `attach_discovery`, subscribe/unsubscribe, option setter)를
+    호출해 금지 규칙도 확인한다.
   - monitor callback 실행 중 parent `close`/`destroy`와 monitor close를 외부 thread에서 호출한다.
-- 관측값: 각 API 반환값/`errno`, monitor callback 진입/복귀 여부, thread join 여부
+  - `*_monitor_open()`과 parent `destroy`를 barrier로 정확히 겹치게 호출한다.
+- 관측값: 각 API 반환값/`errno`, monitor callback 진입/복귀 여부, thread join 여부,
+  child open 성공/실패 여부
 - 허용 결과:
   - manual peer/route가 있는 상태의 `attach_discovery()`는 `errno=EBUSY`
   - attach 성공 후 manual `connect` / `disconnect`는 문서에 정한 에러 코드로 실패해야 한다
-  - monitor callback 안 parent API 호출은 timeout 내 return해야 한다
+  - monitor callback 안 parent data-plane API 호출은 timeout 내 return해야 한다
+  - monitor callback 안 parent lifecycle/control-plane API는 문서에 정의한 에러
+    (`EBUSY` 또는 `ESHUTDOWN`)로 실패해야 한다
   - monitor open/close와 parent lifecycle API는 공통 `EBUSY` 정책을 따라야 한다
-- 금지 결과: hang, partial attach state 노출, callback 중 프로세스 abort
+  - `*_monitor_open()` vs parent `destroy` 경합: open이 승리한 경우 parent
+    `destroy`는 `EBUSY`여야 한다. destroy가 승리한 경우 `*_monitor_open()`은
+    `ESHUTDOWN`이어야 하며 partially initialized child가 남으면 실패다 (9.4-a절).
+- 금지 결과: hang, partial attach state 노출, callback 중 프로세스 abort,
+  monitor open 실패 후 orphaned child
 - hard timeout: 2000 ms
 
 ### 12.6 close / destroy
@@ -1586,6 +1856,8 @@ different-handle 기준 (scaling 목표):
   - callback 또는 `send`/subscribe/option setter가 in-flight인 동안 외부 thread에서
     `close`/`destroy`를 호출한다.
   - `EBUSY` 실패 직후 같은 handle에 후속 운영 API를 호출한다.
+  - `EBUSY` 실패 후 in-flight source를 quiesce하고, 단일 재시도로 `close`/`destroy`가
+    성공하는지 확인한다 (closing latch 미잔류 검증).
   - self-close를 callback 안에서 요청한 뒤, callback return 전후의 운영 API 진입을
     각각 시도한다.
   - child가 열린 parent에 대해 `destroy`를 호출하고, child를 먼저 닫은 뒤 다시 시도한다.
@@ -1602,7 +1874,10 @@ different-handle 기준 (scaling 목표):
     self-close 전에 send/publish를 완료해야 한다.
   - child open 상태의 parent destroy는 `errno=EBUSY`, child close 뒤에는 성공
   - teardown 완료 후 동일 handle 재사용은 실패해야 한다.
-- 금지 결과: failed close 후 zombie state, callback return 전 teardown, child 무시 destroy
+- 금지 결과: failed close 후 zombie state, callback return 전 teardown, child 무시 destroy,
+  `EBUSY` 반환 후 library 내부에 closing latch가 남는 상태
+- 추가 제약: 테스트 fixture에서 `while (close()==EBUSY) sleep(...)` 형태의 busy
+  retry를 사용하지 않는다. quiesce 후 단일 재시도만 허용한다.
 - hard timeout: 2000 ms
 
 ### 12.7 stress / sanitizer / fuzz
@@ -1613,7 +1888,7 @@ different-handle 기준 (scaling 목표):
 - stress lane:
   - same-handle concurrent `send` + cross-thread `close` 거절 시나리오를
     최소 10000회 반복한다.
-  - raw socket, `gateway`, `spot_pub`, `spot_sub`, unified `spot`, `discovery`
+  - raw socket, `gateway`, `spot_node`, unified `spot`, `discovery`
     각각에 대해 "callback 중 send + 외부 destroy 시도" race를 최소 5000회 반복한다.
   - 각 반복은 10000 ms timeout을 가지며 timeout 초과는 즉시 실패다.
 - deterministic fuzz lane:
@@ -1670,15 +1945,15 @@ different-handle 기준 (scaling 목표):
 ### 13.2 런타임 계약 검증
 
 - 검사 방법: 12절의 대표 시나리오를 subject별 smoke matrix로 축약해 반복 실행한다.
-- 최소 matrix:
+- 최소 matrix (public contract subject):
   - raw socket
   - `gateway`
   - `spot_node`
   - unified `spot`
-  - `spot_pub`
-  - `spot_sub`
   - `discovery`
   - raw/service monitor
+  - (internal `spot_pub`/`spot_sub`는 위 subject의 테스트에서 내부적으로
+    경유되므로 별도 matrix 항목으로 두지 않는다)
 - pass 조건:
   - same-handle concurrent send / mutation에서 허용 집합 밖 `errno`가 없어야 한다.
   - close / destroy는 문서에 정의한 공통 `EBUSY` 정책을 유지해야 한다.
@@ -1699,7 +1974,9 @@ different-handle 기준 (scaling 목표):
   - thread safety 섹션을 unconditional public contract 기준으로 정리
   - deferred teardown과 visibility 규칙을 본 문서와 맞춤
 - [`zlink.h`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/include/zlink.h)
-  - `spot_pub`의 "default thread-safe" 문구를 공통 규칙에 맞게 일반화
+  - `spot` / `spot_node` 관련 header comment를 공통 thread-safe 규칙에 맞게 일반화
+  - internal child(`spot_pub`/`spot_sub`)는 public header 반영 대상이 아니며,
+    parent/facade contract 설명에 흡수한다
   - raw socket / gateway / spot / monitor 계열의 동시성 계약을 header comment에 반영
   - self-close 이후 same-handle API가 `ESHUTDOWN`이라는 규칙을 header comment에 반영
   - send-ready `(handler, subject)` pair의 caller-owned `subject` lifetime contract를
@@ -1728,8 +2005,12 @@ different-handle 기준 (scaling 목표):
 8. `close` / `destroy`는 CAS로 closing bit 설정을 시도하되 inflight > 0이면
    `EBUSY`로 거절(closing bit 미설정, handle live 유지), accepted close에서만
    closing bit 설정, self-close deferred teardown, parent-child 순서,
-   double close 규칙으로 보수적으로 묶는다. self-close는 callback의 마지막
-   API 호출이어야 하며, self-close 이후 same-handle API는 `ESHUTDOWN`이다.
+   child open vs parent destroy 선형화(9.4-a절), double close 규칙으로
+   보수적으로 묶는다. self-close는 callback 종류별로 허용 범위가 다르며
+   (service recv/monitor/send-ready callback 허용, raw recv callback 금지,
+   9.2절), 허용된 self-close는 callback의 마지막 API 호출이어야 하고,
+   self-close 이후 same-handle API는 `ESHUTDOWN`이다.
+   모든 에러 코드는 9.x절 canonical errno map을 따른다.
 9. `attach_discovery()`는 topology ownership 규칙(manual peer 존재 시 `EBUSY`,
    attach 후 manual connect/disconnect 금지)을 유지한다.
 10. `process_commands()` full drain을 `op_state_mutex` 아래에서 수행하는 것은
@@ -1738,11 +2019,11 @@ different-handle 기준 (scaling 목표):
 11. same-handle concurrent send는 scaling 목표가 아니라 정확성 + low overhead
     목표다. 성능 수용 기준은 uncontended overhead budget(절대값/상대값)과
     different-handle scaling으로 정의한다.
-12. snapshot 메커니즘은 subject별로 명시한다 (stack buffer / epoch-RCU /
-    immutable ref). "snapshot 후 lock 밖 dispatch"와 "per-call alloc 금지"를
-    동시에 만족하는 구체적 방식을 구현 전에 확정해야 한다. epoch-based
-    reclamation을 사용하는 subject는 destroy 시 retire queue drain을
-    teardown의 일부로 포함해야 한다.
+12. snapshot 메커니즘은 subject별로 명시한다 (stack buffer / stack small-buffer
+    + overflow heap / immutable ref). 1차 구현은 stack buffer 기반으로 하고,
+    epoch-RCU는 perf 병목 확인 후 향후 최적화 후보로 검토한다.
+    "snapshot 후 lock 밖 dispatch"를 만족하는 구체적 방식을 구현 전에
+    확정해야 한다.
 13. 한 handle에는 동시에 최대 하나의 callback thread만 활성화된다는 invariant를
     유지한다. 이 invariant 위에서 per-handle `callback_thread_id + callback_depth`가
     self-close 판정과 callback-중-send 허용의 canonical source of truth로 동작한다.

@@ -3,70 +3,181 @@
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
 
-SETUP_TEARDOWN_TESTCONTEXT
+#include <mutex>
+#include <string.h>
 
-void test_reconnect_ivl_against_pair_socket (const char *my_endpoint_,
-                                             void *sb_)
+namespace
 {
-    void *sc = test_context_socket (ZLINK_PAIR);
-    int interval = -1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sc, ZLINK_RECONNECT_IVL, &interval, sizeof (int)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, my_endpoint_));
+struct monitor_probe_t
+{
+    monitor_probe_t () : count (0)
+    {
+        memset (events, 0, sizeof (events));
+    }
 
-    bounce (sb_, sc);
+    std::mutex sync;
+    int count;
+    uint64_t events[16];
+};
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_unbind (sb_, my_endpoint_));
+monitor_probe_t *g_monitor_probe = NULL;
 
-    expect_bounce_fail (sb_, sc);
+void record_monitor_event (const zlink_monitor_event_t *event_)
+{
+    if (!g_monitor_probe || !event_)
+        return;
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (sb_, my_endpoint_));
-
-    expect_bounce_fail (sb_, sc);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, my_endpoint_));
-
-    bounce (sb_, sc);
-
-    test_context_socket_close (sc);
+    std::lock_guard<std::mutex> lock (g_monitor_probe->sync);
+    if (g_monitor_probe->count
+        < static_cast<int> (sizeof (g_monitor_probe->events)
+                            / sizeof (g_monitor_probe->events[0]))) {
+        g_monitor_probe->events[g_monitor_probe->count] = event_->event;
+    }
+    ++g_monitor_probe->count;
 }
+
+int monitor_event_count (monitor_probe_t *probe_)
+{
+    std::lock_guard<std::mutex> lock (probe_->sync);
+    return probe_->count;
+}
+
+uint64_t monitor_event_at (monitor_probe_t *probe_, int index_)
+{
+    std::lock_guard<std::mutex> lock (probe_->sync);
+    return probe_->events[index_];
+}
+
+bool wait_for_monitor_event_count (monitor_probe_t *probe_,
+                                   int expected_,
+                                   int timeout_ms_)
+{
+    const int step_ms = 10;
+    const int attempts = timeout_ms_ / step_ms;
+
+    for (int i = 0; i < attempts; ++i) {
+        if (monitor_event_count (probe_) >= expected_)
+            return true;
+        msleep (step_ms);
+    }
+    return monitor_event_count (probe_) >= expected_;
+}
+
+void expect_monitor_sequence (monitor_probe_t *probe_,
+                              const uint64_t *expected_,
+                              int count_,
+                              int timeout_ms_)
+{
+    TEST_ASSERT_TRUE (wait_for_monitor_event_count (probe_, count_, timeout_ms_));
+    for (int i = 0; i < count_; ++i)
+        TEST_ASSERT_EQUAL_UINT64 (expected_[i], monitor_event_at (probe_, i));
+}
+
+void close_monitor_handle (void **monitor_p_)
+{
+    if (!monitor_p_ || !*monitor_p_)
+        return;
+
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (*monitor_p_, ZLINK_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (*monitor_p_));
+    *monitor_p_ = NULL;
+}
+
+void *open_monitor (void *socket_, monitor_probe_t *probe_)
+{
+    g_monitor_probe = probe_;
+    void *monitor =
+      zlink_socket_monitor_open (socket_, ZLINK_EVENT_ALL, &record_monitor_event);
+    TEST_ASSERT_NOT_NULL (monitor);
+    return monitor;
+}
+
+void run_reconnect_ivl_case (const char *bind_endpoint_,
+                             const char *connect_endpoint_)
+{
+    void *server = test_context_socket (ZLINK_PAIR);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, bind_endpoint_));
+
+    void *client = test_context_socket (ZLINK_PAIR);
+    monitor_probe_t probe;
+    void *monitor = open_monitor (client, &probe);
+
+    int interval = 100;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (client, ZLINK_RECONNECT_IVL, &interval, sizeof (interval)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, connect_endpoint_));
+
+    const uint64_t initial_events[] = {ZLINK_EVENT_CONNECT_DELAYED,
+                                       ZLINK_EVENT_CONNECTED,
+                                       ZLINK_EVENT_CONNECTION_READY};
+    expect_monitor_sequence (&probe, initial_events,
+                             sizeof (initial_events) / sizeof (initial_events[0]),
+                             3000);
+
+    test_context_socket_close_zero_linger (server);
+
+    const uint64_t reconnect_wait_events[] = {
+      ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
+      ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_DISCONNECTED,
+      ZLINK_EVENT_CONNECT_RETRIED};
+    expect_monitor_sequence (
+      &probe, reconnect_wait_events,
+      sizeof (reconnect_wait_events) / sizeof (reconnect_wait_events[0]), 3000);
+
+    server = test_context_socket (ZLINK_PAIR);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, connect_endpoint_));
+
+    const uint64_t reconnect_success_events[] = {
+      ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
+      ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_DISCONNECTED,
+      ZLINK_EVENT_CONNECT_RETRIED,  ZLINK_EVENT_CONNECT_DELAYED,
+      ZLINK_EVENT_CONNECTED,        ZLINK_EVENT_CONNECTION_READY};
+    expect_monitor_sequence (
+      &probe, reconnect_success_events,
+      sizeof (reconnect_success_events)
+        / sizeof (reconnect_success_events[0]),
+      5000);
+
+    close_monitor_handle (&monitor);
+    test_context_socket_close_zero_linger (client);
+    test_context_socket_close_zero_linger (server);
+}
+}
+
+SETUP_TEARDOWN_TESTCONTEXT
 
 #if defined(ZLINK_HAVE_IPC) && !defined(ZLINK_HAVE_GNU)
 void test_reconnect_ivl_ipc (void)
 {
     char my_endpoint[256];
     make_random_ipc_endpoint (my_endpoint);
-
-    void *sb = test_context_socket (ZLINK_PAIR);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (sb, my_endpoint));
-
-    test_reconnect_ivl_against_pair_socket (my_endpoint, sb);
-    test_context_socket_close (sb);
+    run_reconnect_ivl_case (my_endpoint, my_endpoint);
 }
 #endif
 
-void test_reconnect_ivl_tcp (bind_function_t bind_function_)
-{
-    char my_endpoint[MAX_SOCKET_STRING];
-
-    void *sb = test_context_socket (ZLINK_PAIR);
-    bind_function_ (sb, my_endpoint, sizeof my_endpoint);
-
-    test_reconnect_ivl_against_pair_socket (my_endpoint, sb);
-    test_context_socket_close (sb);
-}
-
 void test_reconnect_ivl_tcp_ipv4 ()
 {
-    test_reconnect_ivl_tcp (bind_loopback_ipv4);
+    char endpoint[MAX_SOCKET_STRING];
+    void *server = test_context_socket (ZLINK_PAIR);
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+    test_context_socket_close_zero_linger (server);
+    run_reconnect_ivl_case (endpoint, endpoint);
 }
 
 void test_reconnect_ivl_tcp_ipv6 ()
 {
-    if (is_ipv6_available ()) {
-        zlink_ctx_set (get_test_context (), ZLINK_IPV6, 1);
-        test_reconnect_ivl_tcp (bind_loopback_ipv6);
-    }
+    if (!is_ipv6_available ())
+        TEST_FAIL_MESSAGE ("IPv6 must be available in this environment");
+
+    zlink_ctx_set (get_test_context (),
+                   static_cast<zlink_ctx_option_t> (ZLINK_IPV6), 1);
+    char endpoint[MAX_SOCKET_STRING];
+    void *server = test_context_socket (ZLINK_PAIR);
+    bind_loopback_ipv6 (server, endpoint, sizeof (endpoint));
+    test_context_socket_close_zero_linger (server);
+    run_reconnect_ivl_case (endpoint, endpoint);
 }
 
 int main (void)

@@ -109,7 +109,28 @@ void test_spot_node_direct_local_and_child_interop ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_unsubscribe (child_sub, "mix:child"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_unsubscribe (child_sub, "mix:visibility"));
-    msleep (50);
+
+    step_log ("node_child_interop: verify final unsubscribe quiescence");
+    TEST_ASSERT_SUCCESS_ERRNO (publish_text (
+      &zlink_spot_publish, child_pub, "mix:direct", "after-final-unsub", 0));
+    TEST_ASSERT_FALSE (wait_for_node_message (
+      node, "mix:direct", "after-final-unsub", 17, 200));
+    TEST_ASSERT_FALSE (wait_for_spot_message (
+      child_sub, "mix:direct", "after-final-unsub", 17, 200));
+
+    TEST_ASSERT_SUCCESS_ERRNO (publish_text (
+      &zlink_spot_publish, child_pub, "mix:child", "after-final-unsub", 0));
+    TEST_ASSERT_FALSE (wait_for_node_message (
+      node, "mix:child", "after-final-unsub", 17, 200));
+    TEST_ASSERT_FALSE (wait_for_spot_message (
+      child_sub, "mix:child", "after-final-unsub", 17, 200));
+
+    TEST_ASSERT_SUCCESS_ERRNO (publish_text (
+      &zlink_spot_publish, child_pub, "mix:visibility", "after-final-unsub", 0));
+    TEST_ASSERT_FALSE (wait_for_node_message (
+      node, "mix:visibility", "after-final-unsub", 17, 200));
+    TEST_ASSERT_FALSE (wait_for_spot_message (
+      child_sub, "mix:visibility", "after-final-unsub", 17, 200));
 
     step_log ("node_child_interop: destroy child_sub");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&child_sub));

@@ -442,16 +442,20 @@ zlink_close(mon_b);
 
 ### 모니터 스레드 안전성
 
-모니터 설정은 **소켓 소유 스레드에서만** 호출해야 한다.
+`zlink_socket_monitor_open()`과 monitor handle close는 raw/service handle의
+저빈도 control-path 계약에 속한다. 즉 애플리케이션 스레드에서 호출할 수 있고,
+같은 handle과 섞여도 correctness가 유지된다. 다만 monitor callback은 I/O 경로
+에서 실행되므로 callback 내부의 느린 작업은 사용자 큐로 넘기는 편이 좋다.
 
 ```c
-/* 올바른 사용: 소켓 생성 스레드에서 모니터 설정 */
+/* 애플리케이션 스레드에서 monitor open */
 void *socket = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 void *mon = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL,
                                        on_monitor_event);
 
-/* 잘못된 사용: 다른 스레드에서 모니터 설정 */
-/* → 정의되지 않은 동작 */
+/* 이후 다른 작업 스레드에서 snapshot 조회 가능 */
+zlink_monitor_snapshot_t snapshot;
+zlink_monitor_snapshot(mon, &snapshot);
 ```
 
 ### 동시 모니터 제한

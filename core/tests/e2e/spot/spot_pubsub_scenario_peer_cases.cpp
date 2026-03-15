@@ -215,6 +215,16 @@ void test_spot_multi_publisher ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&parts_b[0], 6));
     memcpy (zlink_msg_data (&parts_b[0]), "from-b", 6);
 
+    step_log ("multi_publisher: warmup publish");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      publish_text (&zlink_spot_publish, spot_a_pub, "multi:topic", "warm-a", 0));
+    TEST_ASSERT_TRUE (
+      wait_for_spot_message (spot_c_sub, "multi:topic", "warm-a", 6, 5000));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      publish_text (&zlink_spot_publish, spot_b_pub, "multi:topic", "warm-b", 0));
+    TEST_ASSERT_TRUE (
+      wait_for_spot_message (spot_c_sub, "multi:topic", "warm-b", 6, 5000));
+
     step_log ("multi_publisher: publish");
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_publish (spot_a_pub, "multi:topic", parts_a, 1, 0));

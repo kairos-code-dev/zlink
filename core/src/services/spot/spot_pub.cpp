@@ -192,7 +192,7 @@ int spot_pub_t::initialize_routing_id (zlink_routing_id_t *out_)
 
 void spot_pub_t::lock_routing_id ()
 {
-    _routing_id_locked = true;
+    _routing_id_locked.store (true, std::memory_order_release);
 }
 
 void spot_pub_t::submit_error_summary (int error_code_)
@@ -229,31 +229,28 @@ int spot_pub_t::publish (const char *topic_,
         return -1;
 
     int saved_errno = 0;
-    {
-        scoped_lock_t lock (_sync);
-        lock_routing_id ();
+    lock_routing_id ();
 
-        msg_t topic_msg;
-        if (topic_msg.init_size (topic_size) != 0)
-            return -1;
-        memcpy (topic_msg.data (), topic_, topic_size);
-        if (socket->send (
-              &topic_msg,
-              part_count_ > 0 ? ZLINK_SNDMORE : (flags_ & ZLINK_DONTWAIT))
-            != 0) {
+    msg_t topic_msg;
+    if (topic_msg.init_size (topic_size) != 0)
+        return -1;
+    memcpy (topic_msg.data (), topic_, topic_size);
+    if (socket->send (&topic_msg,
+                      part_count_ > 0 ? ZLINK_SNDMORE
+                                      : (flags_ & ZLINK_DONTWAIT))
+        != 0) {
+        saved_errno = errno;
+        topic_msg.close ();
+    } else {
+        topic_msg.close ();
+    }
+
+    for (size_t i = 0; saved_errno == 0 && i < part_count_; ++i) {
+        const int send_flags =
+          (i + 1 < part_count_ ? ZLINK_SNDMORE : 0) | (flags_ & ZLINK_DONTWAIT);
+        msg_t *part = reinterpret_cast<msg_t *> (&parts_[i]);
+        if (socket->send (part, send_flags) != 0)
             saved_errno = errno;
-            topic_msg.close ();
-        } else {
-            topic_msg.close ();
-        }
-
-        for (size_t i = 0; saved_errno == 0 && i < part_count_; ++i) {
-            const int send_flags = (i + 1 < part_count_ ? ZLINK_SNDMORE : 0)
-                                   | (flags_ & ZLINK_DONTWAIT);
-            msg_t *part = reinterpret_cast<msg_t *> (&parts_[i]);
-            if (socket->send (part, send_flags) != 0)
-                saved_errno = errno;
-        }
     }
 
     if (saved_errno != 0) {

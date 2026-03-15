@@ -7,6 +7,22 @@ Gateway는 서비스 바인딩된 로드 밸런싱 요청/응답 핸들입니다
 사용하여 연결된 피어에 메시지를 분배합니다. 모든 수신은 생성 시 등록된 핸들러
 콜백을 통해 디스패치됩니다. `recv()` 함수는 없습니다.
 
+## 스레드 안전성 요약
+
+공개 Gateway handle API는 기본적으로 same-handle operational use 기준
+thread-safe합니다.
+
+- `zlink_gateway_send()` / `zlink_gateway_send_rid()`는 hot path이며 동시 호출을
+  허용합니다.
+- attach, bind/connect/disconnect, option, query, monitor는 runtime control
+  path입니다. correctness는 보장되지만 실행 순서는 내부 직렬화에 따라
+  결정될 수 있습니다.
+- `zlink_gateway_destroy()`는 fail-fast lifecycle gate를 사용합니다. admitted
+  API나 callback이 있으면 `EBUSY`, destroy가 accepted된 뒤 새 API 진입은
+  `ESHUTDOWN`입니다.
+- init-only 성격의 설정과 callback context 제한은 일반 운영 API와 별도로
+  봐야 합니다.
+
 ## 현재 권장 API 방향
 
 - `zlink_gateway_new()`로 서비스 이름, 라우팅 ID, 핸들러를 고정하여 생성합니다.
@@ -375,9 +391,12 @@ int zlink_gateway_destroy (void **gateway_p);
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** Gateway handle은 same-handle operational API 기준
-thread-safe합니다. 다만 `zlink_gateway_destroy()`는 더 보수적이며, 같은
-handle에서 다른 스레드가 콜백 또는 운영 API를 실행 중이면 `errno=EBUSY`로
-실패합니다. destroy가 성공한 경우에만 `*gateway_p`가 `NULL`로 정리됩니다.
+**스레드 안전성:** Gateway는 3계층 계약을 따릅니다. hot path
+`send`/`send_rid`는 same-handle 병행 사용을 허용하고, attach/option/monitor는
+serialized control path로 동작하며, `zlink_gateway_destroy()`는 stricter
+lifecycle gate를 사용합니다. 다른 스레드가 같은 handle에서 callback 또는
+admitted API를 실행 중이면 `errno=EBUSY`로 실패하고, destroy가 accepted된 뒤
+새 API 진입은 `errno=ESHUTDOWN`로 실패합니다. destroy가 성공한 경우에만
+`*gateway_p`가 `NULL`로 정리됩니다.
 
 **참고:** `zlink_gateway_new`

@@ -62,7 +62,10 @@ Application Thread              I/O Thread
 - Set count with zlink_ctx_set(ctx, ZLINK_IO_THREADS, n)
 
 ## 4. Concurrency Rules
-- Public socket/service handles: thread-safe for same-handle operational APIs
+- Public socket/service handles use a tiered contract: hot-path
+  `send`/`publish`/`send_rid` allow same-handle concurrency, low-frequency
+  control paths serialize for correctness, and `close`/`destroy` use a
+  stricter lifecycle gate
 - Context: Thread-safe (sockets can be created from multiple threads)
 - pipe_t: Lock-free (CAS-based YPipe)
 - Cache line optimization, visibility guaranteed through memory barriers

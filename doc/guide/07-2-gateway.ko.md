@@ -13,9 +13,11 @@ Gateway는 Discovery 기반으로 서비스를 자동 발견하고, 로드밸런
 > 인증·rate limiting·프로토콜 변환을 포함하는 개념이 아니라, 서비스 접근 +
 > 로드밸런싱에 집중하는 경량 게이트웨이를 의미한다.
 
-**Gateway는 thread-safe하다.** 일반 zlink 소켓(PAIR, DEALER, ROUTER 등)은
-단일 스레드에서만 사용해야 하지만, Gateway는 내부 mutex 보호를 통해 여러
-스레드에서 안전하게 동시 사용할 수 있다.
+**Gateway는 thread-safe하다.** 공개 Gateway handle API는 기본적으로
+same-handle operational use 기준 thread-safe다. `send` / `send_rid`는
+동시 호출을 허용하는 hot path이고, attach/option/monitor/query 계열은
+runtime에 호출 가능한 control path이며, `destroy`는 fail-fast lifecycle gate를
+가진다.
 
 ## 2. Gateway 생성
 
@@ -127,22 +129,37 @@ zlink_gateway_update_peer_weight(server, &peer_rid, 5);
 
 ### 일반 소켓 vs Gateway
 
-| | 일반 소켓 (PAIR, DEALER, ROUTER 등) | Gateway |
+| | 일반 공개 socket handle | Gateway |
 |---|---|---|
-| **스레드 안전성** | 단일 스레드에서만 사용 | **Thread-safe** — 여러 스레드에서 동시 사용 |
-| **외부 동기화** | 멀티스레드 시 애플리케이션이 직접 동기화 필요 | 불필요 — 내부 mutex 보호 |
-| **백그라운드 작업** | 없음 | Discovery 갱신을 백그라운드 워커가 처리 |
+| **스레드 안전성** | 기본적으로 thread-safe | **Thread-safe** — same-handle operational use 허용 |
+| **고빈도 경로** | `send`가 hot path | `send` / `send_rid`가 hot path |
+| **저빈도 경로** | bind/connect/monitor/query는 correctness 우선 직렬화 | attach/option/monitor/query는 correctness 우선 직렬화 |
+| **종료** | `close`는 fail-fast lifecycle gate | `destroy`는 fail-fast lifecycle gate |
 
 ### Thread-safe API
 
-Gateway의 모든 공개 API는 내부 mutex로 보호된다. 여러 스레드에서 동시에 호출해도 안전하다.
+Gateway는 "모든 API가 같은 비용 모델"인 것은 아니지만, 공개 handle API는
+기본적으로 thread-safe다.
 
 - `zlink_gateway_send()`
 - `zlink_gateway_send_rid()`
 - `zlink_gateway_set_lb_strategy()`
 - `zlink_gateway_set_option()`
+- `zlink_gateway_attach_discovery()`
+- `zlink_gateway_bind()`
+- `zlink_gateway_connect()` / `zlink_gateway_disconnect()`
 - `zlink_gateway_set_tls_client()`
+- `zlink_gateway_last_endpoint()`
 - open한 gateway monitor에 대한 `zlink_monitor_snapshot()`
+- `zlink_gateway_destroy()`
+
+사용자가 외우면 되는 규칙은 네 가지다.
+
+1. Gateway handle은 여러 스레드에서 공유해도 된다.
+2. `send` / `send_rid`는 same-handle concurrent 호출이 가능하다.
+3. control-path API도 runtime에 호출할 수 있다.
+4. `destroy`는 fail-fast이며 admitted API가 있으면 `EBUSY`, accepted 이후 새
+   진입은 `ESHUTDOWN`이다.
 
 ### 멀티스레드 사용 예제
 
@@ -169,16 +186,15 @@ for (int i = 0; i < 4; i++)
 
 ### 장점
 
-**1. Send 전용 설계로 낮은 경합**
+**1. Hot path 중심의 낮은 경합**
 
-Gateway의 send는 내부 mutex로 보호되어 thread-safe하며, lock 오버헤드를
-최소화하도록 설계되어 있다.
+Gateway의 `send` / `send_rid`는 고빈도 경로를 기준으로 설계되어 있어, control
+path와 다른 비용 모델을 사용한다.
 
 **2. 애플리케이션 아키텍처 단순화**
 
-일반 소켓은 단일 스레드 소유 원칙을 지켜야 하므로, 멀티스레드 환경에서 별도의
-메시지 큐나 프록시 패턴이 필요하다. Gateway는 이런 추가 구성 없이 여러 스레드가
-직접 send를 호출할 수 있다.
+Gateway는 추가 프록시 계층 없이 여러 스레드가 같은 handle에 직접 send를
+호출할 수 있다.
 
 ```
 일반 소켓 (멀티스레드):
@@ -188,7 +204,7 @@ Gateway의 send는 내부 mutex로 보호되어 thread-safe하며, lock 오버�
 
 Gateway (멀티스레드):
   Thread A ──┐
-  Thread B ──┼── Gateway (내부 mutex 보호) ── send ──→ Server
+  Thread B ──┼── Gateway ── send ──→ Server
   Thread C ──┘
 ```
 

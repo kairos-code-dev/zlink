@@ -16,7 +16,7 @@ SPOT is a location-transparent, topic-based publish/subscribe system. It automat
 | Term | Description |
 |------|-------------|
 | **SPOT Node** | PUB/SUB Mesh participant agent (one per node) |
-| **SPOT Pub** | Topic publishing handle (thread-safe by default) |
+| **SPOT Pub** | Topic publishing path (the hot path of `spot` / `spot_node`) |
 | **SPOT Sub** | Topic subscription/receive handle |
 | **Topic** | String key-based message channel |
 | **Pattern** | Prefix + `*` wildcard subscription |
@@ -154,9 +154,11 @@ void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
 void *spot = zlink_spot_new(node, on_message);
 ```
 
-**Important:** A unified `spot` handle is thread-safe for same-handle
-operational APIs. Callbacks still run on the I/O path, so slow work should be
-offloaded to an application queue or worker thread.
+**Important:** Public `spot` / `spot_node` handles are thread-safe for
+same-handle operational APIs. `publish` is the concurrent hot path, while
+subscribe/unsubscribe/attach/peer-connect/monitor calls remain valid runtime
+control-path operations. Callbacks still run on the I/O path, so slow work
+should be offloaded to an application queue or worker thread.
 
 **Constraints:**
 
@@ -165,6 +167,8 @@ offloaded to an application queue or worker thread.
 - Callbacks are invoked on the socket dispatch / I/O path
 - Blocking work in the callback can delay other I/O
 - For slow processing, enqueue from the callback and handle it on your own thread
+- `destroy` uses a fail-fast lifecycle gate, so the simplest pattern is to
+  stop external use first and then tear down the handle
 
 ## 5. Topic Rules
 

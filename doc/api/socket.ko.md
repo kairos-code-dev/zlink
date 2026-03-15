@@ -7,6 +7,22 @@
 처리됩니다. `recv()` 함수는 없습니다. 소켓은 게시/구독, 요청/응답, raw stream을
 포함한 여러 메시징 패턴을 지원합니다.
 
+## 스레드 안전성 요약
+
+공개 socket handle API는 기본적으로 thread-safe합니다. 다만 모든 API가 같은
+비용 모델을 갖는 것은 아닙니다.
+
+- `send`는 same-handle concurrent 호출을 허용하는 hot path입니다.
+- `bind/connect/disconnect`, subscribe/unsubscribe, option/query, monitor는
+  runtime에 호출 가능한 control path입니다. correctness는 보장되지만 실행
+  순서는 내부 직렬화에 따라 결정될 수 있습니다.
+- `close`는 fail-fast lifecycle gate를 사용합니다. 다른 스레드가 같은 handle에서
+  admitted API나 callback을 실행 중이면 `EBUSY`, close가 accepted된 뒤 새 API
+  진입은 `ESHUTDOWN`입니다.
+- 예외는 소수만 남깁니다. init-only 설정, callback context에서 금지된 일부
+  reentrant API, 같은 `zlink_msg_t` 인스턴스의 동시 공유는 기본 허용 범위
+  밖입니다.
+
 ## 콜백 타입
 
 ### zlink_socket_msg_handler_fn

@@ -7,6 +7,20 @@ maintains a local service directory. Applications use Discovery to look up
 available Receivers or SPOT Nodes by service name without contacting the
 Registry directly.
 
+## Thread-Safety Summary
+
+Public Discovery handle APIs are thread-safe for same-handle operational use.
+Not every call has the same timing constraints, though.
+
+- `zlink_discovery_connect_registry()`, monitor operations, and query-style
+  reads are valid at runtime.
+- `zlink_discovery_set_routing_id()` is init-only in practice and only matters
+  before the first subscribe/query/connect.
+- `zlink_discovery_destroy()` uses a fail-fast lifecycle gate. If another
+  thread is running a callback or admitted API on the same handle, destroy
+  fails with `EBUSY`. Once destroy is accepted, new API entry fails with
+  `ESHUTDOWN`.
+
 ## Current API Direction
 
 - Use `zlink_discovery_set_routing_id()` / `zlink_discovery_routing_id()` for
@@ -79,9 +93,10 @@ starts receiving periodic service list broadcasts.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Discovery handles are thread-safe for same-handle
-operational APIs. This call may run concurrently with other Discovery
-operations, subject to normal lifecycle/state preconditions.
+**Thread safety:** Discovery is a control-plane subject in the tiered
+contract. Same-handle calls remain thread-safe for correctness, but concurrent
+control-path calls serialize internally rather than inheriting the hot-path
+cost model.
 
 **See also:** `zlink_discovery_destroy`
 
@@ -151,10 +166,9 @@ destruction.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Discovery handles are thread-safe for same-handle
-operational APIs. `zlink_discovery_destroy()` is more restrictive: if another
-thread is executing a Discovery callback or operational API on the same
-handle, destroy fails with `errno=EBUSY`. A successful destroy clears
-`*discovery_p`.
+**Thread safety:** Discovery destroy uses the lifecycle gate. If another
+thread is executing a Discovery callback or admitted API on the same handle,
+destroy fails with `errno=EBUSY`. After destroy is accepted, new API entry
+fails with `errno=ESHUTDOWN`. A successful destroy clears `*discovery_p`.
 
 **See also:** `zlink_discovery_new`

@@ -6,6 +6,7 @@
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
 #include "core/thread.hpp"
+#include "services/common/service_public_api.hpp"
 #include "services/common/service_runtime_base.hpp"
 #include "services/discovery/discovery.hpp"
 #include "utils/atomic_counter.hpp"
@@ -59,6 +60,7 @@ class spot_node_t : public discovery_observer_t
     ~spot_node_t ();
 
     bool check_tag () const;
+    service_public_api_guard_t &public_api_guard () { return _public_api; }
 
     int bind (const char *endpoint_);
     int connect_peer_pub (const char *peer_pub_endpoint_);
@@ -233,6 +235,7 @@ class spot_node_t : public discovery_observer_t
     bool _mesh_client_tls_locked;
     bool _registration_tls_locked;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
+    service_public_api_guard_t _public_api;
 
     int _local_pub_ingress_rcvhwm_cfg;
     int _local_fanout_sndhwm_cfg;

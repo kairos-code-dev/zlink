@@ -53,6 +53,13 @@ class service_public_api_guard_t
         }
     }
 
+    void cancel_close ()
+    {
+        const uint32_t old =
+          _state.fetch_and (~closing_bit, std::memory_order_acq_rel);
+        zlink_assert ((old & closing_bit) != 0);
+    }
+
   private:
     static const uint32_t closing_bit = 0x80000000u;
     static const uint32_t inflight_mask = ~closing_bit;

@@ -423,6 +423,21 @@ void test_spot_recv_callback_isolated_by_service_with_discovery ()
     TEST_ASSERT_FALSE (
       wait_for_spot_message (sub_a, "iso:service", "from-b", 6, 200));
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_unsubscribe (sub_a, "iso:service"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_unsubscribe (sub_b, "iso:service"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      publish_text (&zlink_spot_publish, pub_a, "iso:service", "after-unsub-a", 0));
+    TEST_ASSERT_FALSE (
+      wait_for_spot_message (sub_a, "iso:service", "after-unsub-a", 13, 200));
+    TEST_ASSERT_FALSE (
+      wait_for_spot_message (sub_b, "iso:service", "after-unsub-a", 13, 200));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      publish_text (&zlink_spot_publish, pub_b, "iso:service", "after-unsub-b", 0));
+    TEST_ASSERT_FALSE (
+      wait_for_spot_message (sub_a, "iso:service", "after-unsub-b", 13, 200));
+    TEST_ASSERT_FALSE (
+      wait_for_spot_message (sub_b, "iso:service", "after-unsub-b", 13, 200));
+
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub_b));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub_b));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub_a));

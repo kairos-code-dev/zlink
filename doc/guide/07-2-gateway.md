@@ -15,10 +15,10 @@ client (sender) and a server (receiver).
 > translation, Gateway is a lightweight gateway focused on service access
 > and load balancing.
 
-**Gateway is thread-safe.** While regular zlink sockets (PAIR, DEALER,
-ROUTER, etc.) must be used from a single thread only, Gateway can be
-safely used concurrently from multiple threads through internal mutex
-protection.
+**Gateway is thread-safe.** Public Gateway handle APIs are thread-safe for
+same-handle operational use. `send` / `send_rid` are concurrent hot-path
+operations, attach/option/monitor/query operations are runtime control-path
+operations, and `destroy` uses a fail-fast lifecycle gate.
 
 ## 2. Creating a Gateway
 
@@ -132,23 +132,37 @@ zlink_gateway_update_peer_weight(server, &peer_rid, 5);
 
 ### Regular Sockets vs Gateway
 
-| | Regular Sockets (PAIR, DEALER, ROUTER, etc.) | Gateway |
+| | General public socket handles | Gateway |
 |---|---|---|
-| **Thread safety** | Single-thread use only | **Thread-safe** -- concurrent use from multiple threads |
-| **External synchronization** | Application must synchronize in multi-threaded use | Not needed -- internal mutex protection |
-| **Background work** | None | Background worker handles Discovery updates |
+| **Thread safety** | Thread-safe by default | **Thread-safe** -- same-handle operational use is allowed |
+| **Hot path** | `send` is the hot path | `send` / `send_rid` are the hot path |
+| **Low-frequency path** | bind/connect/monitor/query are correctness-first serialized operations | attach/option/monitor/query are correctness-first serialized operations |
+| **Shutdown** | `close` uses a fail-fast lifecycle gate | `destroy` uses a fail-fast lifecycle gate |
 
 ### Thread-safe API
 
-All public Gateway APIs are protected by internal mutexes. They are safe
-to call concurrently from multiple threads.
+Gateway is not "every API has the same cost model," but public handle APIs
+are thread-safe by default.
 
 - `zlink_gateway_send()`
 - `zlink_gateway_send_rid()`
 - `zlink_gateway_set_lb_strategy()`
 - `zlink_gateway_set_option()`
+- `zlink_gateway_attach_discovery()`
+- `zlink_gateway_bind()`
+- `zlink_gateway_connect()` / `zlink_gateway_disconnect()`
 - `zlink_gateway_set_tls_client()`
+- `zlink_gateway_last_endpoint()`
 - `zlink_monitor_snapshot()` on an open gateway monitor
+- `zlink_gateway_destroy()`
+
+The rules users need to remember are short:
+
+1. A Gateway handle may be shared across threads.
+2. `send` / `send_rid` allow same-handle concurrent calls.
+3. Control-path APIs may still be called at runtime.
+4. `destroy` is fail-fast: `EBUSY` when another admitted API exists,
+   `ESHUTDOWN` for new entry after destroy is accepted.
 
 ### Multi-threaded Usage Example
 
@@ -175,17 +189,15 @@ for (int i = 0; i < 4; i++)
 
 ### Advantages
 
-**1. Low contention through send-only design**
+**1. Low contention around the hot path**
 
-Gateway's send is protected by internal mutexes for thread-safety, and the
-design minimizes lock overhead.
+Gateway's `send` / `send_rid` are designed as the high-frequency path and use
+a different cost model from the control path.
 
 **2. Simplified application architecture**
 
-Regular sockets require single-thread ownership, so multi-threaded
-environments need separate message queues or proxy patterns. Gateway
-eliminates this extra complexity by allowing multiple threads to call send
-directly.
+Gateway removes the need for an extra proxy layer when multiple application
+threads need to send through the same logical handle.
 
 ```
 Regular sockets (multi-threaded):
@@ -195,7 +207,7 @@ Regular sockets (multi-threaded):
 
 Gateway (multi-threaded):
   Thread A ──┐
-  Thread B ──┼── Gateway (internal mutex protection) ── send ──→ Server
+  Thread B ──┼── Gateway ── send ──→ Server
   Thread C ──┘
 ```
 

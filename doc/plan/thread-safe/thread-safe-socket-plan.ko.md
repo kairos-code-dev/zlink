@@ -24,9 +24,19 @@
 - `send` / `publish` / `send_rid` hot path에 대해 same-handle concurrent 사용을
   외부 직렬화 없이 허용한다.
 - `bind/connect/disconnect`, option 변경, `attach_discovery`, monitor open/close,
-  query 계열은 문서 범위에 남기되 `low-frequency serialized contract`로 내린다.
+  heavy `query/snapshot` 계열은 문서 범위에 남기되 `low-frequency serialized
+  contract`로 내린다. lightweight runtime read는 이 계층의 비용 모델을 강제하지
+  않는다.
 - `close` / `destroy`는 별도 `lifecycle strict` 규칙으로 fail-fast errno와 진입
   경계를 고정한다.
+
+추가 설계 원칙:
+
+- hot path를 오염시키지 않고 큰 비용 없이 thread-safe하게 만들 수 있는
+  low-frequency handle / query / monitor / utility API는 가능한 한 기본
+  thread-safe 범위로 끌어올린다.
+- 최종적으로 남기는 비-thread-safe 예외는 비용 대비 이득이 낮거나 실행 모델이
+  본질적으로 다른 surface로 제한한다.
 
 이 문서가 만들고자 하는 결과는 하나로 요약된다.
 
@@ -51,6 +61,8 @@
 - `close` / `destroy`의 fail-fast 규칙과 `ESHUTDOWN` 진입 경계가 분명할 것
 - 성능 acceptance가 문서 전반의 기준으로 연결되어 있을 것
 
+operational 수준 검토 체크리스트는 14절에서 별도로 정의한다.
+
 이번 문서가 하지 않는 일도 초반에 고정한다.
 
 - public API를 삭제하거나, runtime API를 초기화 단계 전용으로 재정의하지 않는다.
@@ -60,6 +72,20 @@
 이 문서는 구현 설명서가 아니라 목표 공개 계약 설계안이다. 구현은 이 문서가
 정한 계약을 만족해야 하고, 현재 구현의 달성 여부는 후속 구현/검증 단계에서
 측정한다.
+
+### 1.1 사용자 관점 한 줄 계약
+
+이 문서가 최종적으로 만들고자 하는 사용자 관점 계약은 복잡한 예외표가 아니라
+아래 세 문장이다.
+
+- 공개 `socket` / `service` handle API는 기본적으로 thread-safe다.
+- 사용자는 같은 handle을 여러 thread에서 공유해도 되며, `send` / `publish`는
+  same-handle concurrent 사용을 허용한다.
+- 예외는 소수만 남긴다. 초기 설정 전용 API, callback context에서 금지된 일부
+  API, same-message object 공유, proxy 실행 모델은 기본 허용 범위 밖이다.
+
+즉 외부에 전달할 기본 메시지는 "thread-safe인가 아닌가를 API마다 새로 추측하게
+하지 않는다"다. 문서는 기본 허용을 먼저 말하고, 예외만 명시해야 한다.
 
 ## 2. 기준 문서와 용어
 
@@ -87,14 +113,21 @@
   steady-state `send` / `publish` / `send_rid`와 허용된 callback 중 same-handle
   `send` / `publish` 경로.
 - control path:
-  option 변경, `bind/connect/disconnect`, `attach_discovery`, `query/snapshot`,
-  `monitor_open/close`, `set_send_ready_handler` 같은 저빈도 운영 경로.
+  option 변경, `bind/connect/disconnect`, `attach_discovery`, heavy
+  `query/snapshot`, `monitor_open/close`, `set_send_ready_handler` 같은 저빈도
+  운영 경로. lightweight runtime read(`RCVMORE`, `EVENTS`, `LAST_ENDPOINT` 등)는
+  이 경로의 lightweight subset이다(6.3절 참조).
 - lifecycle:
   `close` / `destroy`와 그 admission/종료 의미를 정의하는 경로.
-- in-flight API:
-  public API 호출이 시작됐고 아직 return하지 않은 상태.
 - admitted call:
   lifecycle gate를 통과해 실행이 시작된 호출.
+- no-latch:
+  failed close(`EBUSY`)가 handle 상태를 closing으로 영구 전이시키지 않는 속성.
+  즉 `EBUSY` 반환 후 handle은 이전 operational state로 완전히 복귀한다.
+- in-flight API:
+  admission gate를 통과하여 실행이 시작됐고 아직 return하지 않은 호출.
+  gate 진입 직전 대기 중인 호출이나 send queue에 enqueue만 된 메시지는
+  in-flight에 해당하지 않는다.
 - callback thread:
   recv callback, send-ready callback, monitor callback이 실제로 실행되는 thread.
 - worker thread:
@@ -114,20 +147,47 @@
 - stronger/weaker mode 조합 매트릭스를 두지 않는다.
 - thread-safety는 선택 옵션이 아니라 기본 공개 계약이다.
 
-즉 사용자가 기억해야 할 것은 "이 handle이 thread-safe인가"가 아니라,
-"이 API가 어느 계약 계층에 속하는가"다.
+즉 내부 설계는 계약 계층으로 정리하되, 사용자에게는 "기본적으로
+thread-safe, 예외만 명시" 형태로 보여야 한다. 계층 분류는 구현/문서 작성자가
+일관성을 유지하기 위한 내부 정리 수단이지, 사용자가 API마다 별도 분류를
+외우게 만드는 목적이 아니다.
 
 ### 3.2 canonical contract는 3계층이다
 
 | 계층 | 대상 API | ordering semantics | 성능 목표 | 핵심 errno / lifecycle |
 | --- | --- | --- | --- | --- |
-| `Hot path guaranteed` | `send`, `publish`, `send_rid`, 허용된 callback 중 same-handle `send/publish` | 외부 직렬화 없이 concurrent 허용 | 최우선 | close accepted 이후 새 진입은 `ESHUTDOWN` |
-| `Control path serialized / low-frequency` | `bind/connect/disconnect`, option 변경, `attach_discovery`, `query/snapshot`, `monitor_open/close`, `set_send_ready_handler` | same-handle concurrent control-path 호출은 correctness를 보장하되, 실행 순서는 내부 직렬화에 따라 결정될 수 있다 | correctness 우선, hot path 저해 금지 | close accepted 이후 새 진입은 `ESHUTDOWN` |
+| `Hot path guaranteed` | `send`, `publish`, `send_rid`, 허용된 callback 중 same-handle `send/publish` | 외부 직렬화 없이 concurrent 허용. 단일 thread 내 sequential send는 호출 순서가 보장된다. 서로 다른 thread 간 concurrent send의 message ordering은 내부 직렬화 순서를 따르며, thread 간 호출 시작 순서를 보장하지 않는다 | 최우선 | close accepted 이후 새 진입은 `ESHUTDOWN` |
+| `Control path serialized / low-frequency` | `bind/connect/disconnect`, option 변경, `attach_discovery`, heavy `query/snapshot`, `monitor_open/close`, `set_send_ready_handler` | same-handle concurrent control-path 호출은 correctness를 보장하되, 실행 순서는 내부 직렬화에 따라 결정될 수 있다 | correctness 우선, hot path 저해 금지 | close accepted 이후 새 진입은 `ESHUTDOWN` |
 | `Lifecycle strict` | `close`, `destroy` | admission gate 중심으로 선형화 | steady-state hot path 오염 금지 | in-flight external close/destroy는 `EBUSY`, accepted close 이후 새 진입은 `ESHUTDOWN`, failed close는 no-latch, double close는 `EALREADY` |
 
 이 문서에서 `thread-safe`는 단일 강도 용어가 아니다. 각 public API는 반드시
 위 세 계층 중 하나에 속해야 하며, 문서와 테스트는 그 계층을 기준으로 계약을
-검증한다.
+검증한다. lightweight runtime read는 별도 계층이 아니라 control path의
+lightweight subset으로 취급하되, heavy query/snapshot과 같은 직렬화 비용
+모델을 강제하지 않는다(6.3절 참조).
+
+사용자에게는 이 3계층을 다음처럼 축약해서 설명한다.
+
+- 기본값:
+  공개 handle API는 thread-safe다.
+- 고빈도 운영 경로:
+  `send` / `publish` / `send_rid`는 same-handle concurrent 사용을 허용한다.
+- 저빈도 운영 경로:
+  connect, subscribe, monitor, heavy query, option 변경은 thread-safe하되
+  correctness 우선 직렬화 계층으로 다룬다.
+- 종료 경로:
+  `close` / `destroy`는 fail-fast lifecycle gate를 가진다.
+
+추가 메모:
+
+- `RCVMORE`, `EVENTS`, `LAST_ENDPOINT`, 일부 `routing_id`처럼 자주 읽히는
+  lightweight runtime read는 heavy `query/snapshot`과 같은 비용 모델로 묶지
+  않는다.
+- 즉 사용자에게는 "runtime read도 기본 허용 범위 안"으로 설명하고, 내부적으로만
+  lightweight read와 heavy query를 구분한다.
+
+즉 3계층은 내부 정리 방식이지, 사용자에게 API별 금지 목록을 길게 외우게 만드는
+도구가 아니다.
 
 ### 3.3 범위는 유지하고 강도만 재배치한다
 
@@ -168,7 +228,13 @@ control-plane 중심 subject로 취급한다.
 
 - same-handle concurrent `send` / `publish` / `send_rid`를 외부 직렬화 없이
   허용한다.
+- 단일 thread 내 sequential send는 호출 순서가 보장된다. 서로 다른 thread 간
+  concurrent send의 message ordering은 내부 직렬화 순서를 따르며, thread 간
+  호출 시작 순서를 보장하지 않는다.
 - 허용된 callback 안 same-handle `send` / `publish`를 공식 패턴으로 유지한다.
+- callback thread에서의 same-handle send와 worker thread에서의 concurrent
+  send가 동시에 발생하는 경우도 same-handle concurrent send로 취급하며,
+  동일한 hot path 계약이 적용된다.
 - 가능한 경우 hot path thread-safety는 shared broad lock이 아니라 기존
   send queue를 재사용하거나 동등한 low-overhead publication 경로를 통해
   달성한다.
@@ -176,6 +242,9 @@ control-plane 중심 subject로 취급한다.
   저비용 메커니즘만 허용한다.
 - hot path에 broad lock, retry wait, per-call allocation, 불필요한 wakeup을
   끌어들이지 않는다.
+- concurrent send가 내부 backpressure에 도달한 경우의 errno와 blocking 의미는
+  각 subject의 기존 send 계약(rewrite spec)을 따른다. 이 문서는 backpressure
+  정책 자체를 재정의하지 않는다.
 
 이 계층은 성능 우선 subject다. correctness만 맞추는 수준이 아니라,
 single-thread small message 비용과 multi-thread contention 비용을 함께
@@ -188,6 +257,9 @@ single-thread small message 비용과 multi-thread contention 비용을 함께
 - runtime 사용 가능하다.
 - same-handle concurrent control-path 호출은 correctness를 보장하되, 실행
   순서는 내부 직렬화에 따라 결정될 수 있다.
+- heavy query/snapshot과 mutation성 setter는 이 계층의 대표 대상이다.
+- lightweight runtime read는 기본 허용 범위 안에 남기되, 반드시 이 계층의
+  가장 무거운 직렬화 비용 모델을 따를 필요는 없다.
 - 성공 반환한 control-path 호출의 효과는 그 이후 admission된 호출에서 관측
   가능해야 한다.
 - 동시에 들어온 control-path 호출의 linearization order는 내부 직렬화 순서로
@@ -220,11 +292,21 @@ single-thread small message 비용과 multi-thread contention 비용을 함께
 
 ### 5.1 문서가 보장하는 것
 
+- 공개 `socket` / `service` handle API는 기본적으로 thread-safe다.
 - same-handle concurrent `send` / `publish` / `send_rid`
 - 허용된 callback 안 same-handle `send` / `publish`
 - same-handle concurrent control-path 호출에 대한 correctness
+- lightweight runtime read (`RCVMORE`, `EVENTS`, `LAST_ENDPOINT`, 일부
+  `routing_id`)의 기본 허용
 - data-plane과 control-path가 섞인 경우의 canonical lifecycle/ordering 의미
 - external `close` / `destroy`의 fail-fast 규칙
+
+사용자 안내 문구는 위 항목을 다시 다음 네 줄로 압축한다.
+
+1. handle은 여러 thread에서 공유해도 된다.
+2. `send` / `publish`는 same-handle concurrent 사용이 가능하다.
+3. connect, subscribe, option 변경, monitor 같은 운영 API도 runtime에 호출할 수 있다.
+4. 종료는 fail-fast이며 accepted 이후 새 진입은 `ESHUTDOWN`이다.
 
 ### 5.2 문서가 보장하지 않는 것
 
@@ -233,6 +315,33 @@ single-thread small message 비용과 multi-thread contention 비용을 함께
 - 서로 다른 handle 사이의 전역 fairness 또는 ordering
 - 사용자 callback 내부 상태까지 라이브러리가 대신 동기화하는 것
 - lock-free 자체를 공개 계약으로 보장하는 것
+
+아래 항목은 기본 thread-safe 허용 범위 밖의 소수 예외로 명시한다.
+
+- 초기 설정 시점 제약이 있는 API
+  예: first bind/connect/query 전에만 의미가 있는 routing id 설정, registry
+  초기 설정 계열
+- callback context에서만 금지되는 reentrant API
+  일반적인 handle thread-safe 예외라기보다, 특정 callback 실행 맥락 안에서만
+  추가 제약이 붙는 규칙이다. 예: raw STREAM callback 안 `close`, send-ready
+  callback 안 handler 교체
+- same-message object 공유
+  handle thread-safety와 별도로, 동일한 `zlink_msg_t` 인스턴스를 여러 thread가
+  동시에 조작하는 사용은 기본 계약이 아니다
+- proxy 실행 모델
+  `zlink_proxy` / `zlink_proxy_steerable`는 일반 handle API처럼 "같은 소켓에 여러
+  스레드가 operational API를 섞어 호출"하는 모델이 아니다. proxy가 실행되는
+  동안 `frontend` / `backend` / `capture` / `control` 소켓은 proxy forwarding
+  loop가 사실상 전용으로 점유하며, 다른 스레드가 그 소켓들에 일반 operational
+  API를 섞어 호출하는 사용은 기본 계약으로 보지 않는다
+
+다만 위 예외 목록은 가능한 한 작게 유지한다.
+
+- `registry query client`, monitor handle처럼 hot path가 아니고 큰 비용 없이
+  thread-safe하게 만들 수 있는 저빈도 surface는 최종 예외 목록에 남기지 않는
+  방향을 기본 원칙으로 둔다.
+- 즉 "예외를 상세 분류로 오래 유지"하는 것보다, "싸게 올릴 수 있는 것은 기본
+  thread-safe 범위로 편입하고 진짜 예외만 남긴다"를 우선한다.
 
 ### 5.3 recv/direct/send-ready handler 정책
 
@@ -263,19 +372,49 @@ single-thread small message 비용과 multi-thread contention 비용을 함께
 - `spot_node`를 통해 노출되는 steady-state publish/send 경로
 - 허용된 recv/direct/send-ready callback 중 same-handle `send` / `publish`
 
+### 6.1.1 Recv/callback delivery
+
+recv/direct/send-ready callback의 delivery 경로 자체는 hot path guaranteed의
+핵심 subject가 아니다. callback delivery는 라이브러리 내부 thread 모델에 의해
+구동되며, public contract 관점에서의 분류는 다음과 같다.
+
+- callback 안에서의 same-handle `send` / `publish`는 hot path guaranteed(6.1절)
+- `set_send_ready_handler()` 같은 handler 교체는 control path serialized(6.2절)
+- recv/direct handler의 등록·교체 정책은 rewrite spec을 따르며, 이 문서는
+  handler 정책 자체를 재정의하지 않는다(5.3절 참조)
+- callback thread에서의 control-path API 호출(`bind/disconnect`, option 변경,
+  `attach_discovery` 등)은 기본적으로 허용하되, control path serialized 계층의
+  직렬화 규칙을 그대로 따른다. 단 callback context에서 금지되는 소수 API(5.2절
+  예외 목록: raw STREAM callback 안 `close`, send-ready callback 안 handler
+  교체 등)는 callback thread에서도 동일하게 금지된다
+
 ### 6.2 Control path serialized / low-frequency
 
 - raw socket `bind/connect/disconnect`
-- raw socket option 변경 / query
+- raw socket option 변경 / heavy query
 - `gateway` route mutation, option 변경, monitor open/close, attach 계열
-- `spot` / `spot_node` option 변경, peer mutation, attach/query 계열
+- `spot` / `spot_node` option 변경, peer mutation, attach/heavy query 계열
 - `attach_discovery`
 - `registry` query/update 계열
-- `query/snapshot`
+- `registry query client`, monitor handle 같은 저빈도 operational surface도
+  가능하면 이 계층의 thread-safe 기본 범위 안으로 정리한다
+- heavy `query/snapshot`
 - `monitor_open/close`
 - `set_send_ready_handler`
 
-### 6.3 Lifecycle strict
+### 6.3 Runtime read (control path lightweight subset)
+
+- raw socket `RCVMORE`
+- raw socket `EVENTS`
+- raw socket `LAST_ENDPOINT`
+- raw/service `routing_id` 계열 조회
+- lightweight readiness/state read
+
+이 항목들은 별도 4번째 계층이 아니라, `Control path serialized / low-frequency`
+계층의 lightweight subset이다. 기본 thread-safe 허용 범위에 남기되, heavy
+query/snapshot과 같은 직렬화 비용 모델을 강제하지 않는다.
+
+### 6.4 Lifecycle strict
 
 - raw socket `close`
 - service facade `destroy`
@@ -323,6 +462,8 @@ control-plane은 correctness 우선 계층이다.
 
 - close/destroy는 hot path queue나 control-plane 직렬화와 별개 admission gate를
   둔다.
+- no-latch를 유지하려면 close/destroy admission은 partial teardown을 시작하기
+  전에 단일 gate 단계에서 판정되어야 한다.
 - accepted close 이후 새 진입은 빠르게 `ESHUTDOWN`으로 종료한다.
 - `EBUSY` close 실패는 상태를 오염시키지 않아야 한다.
 - 이미 admission된 호출의 완료/종료 의미는 API별 canonical errno로 수렴해야
@@ -342,6 +483,9 @@ raw socket은 최우선 subject다.
 
 raw socket에서 문서 중심은 `send` hot path와 fail-fast close다. runtime
 control-plane API도 범위에 남지만, 비용 목표는 hot path와 분리한다.
+다만 raw socket send의 실제 달성 난이도는 하위 socket family 구현이 제공하는
+send thread-safety 수준에 영향을 받는다. 이 문서는 공개 계약을 고정하지만,
+subject별 구현 난이도 평가는 하위 socket 구현 상태를 함께 본다.
 
 ### 8.2 discovery
 
@@ -355,9 +499,9 @@ control-plane API도 범위에 남지만, 비용 목표는 hot path와 분리한
 `discovery`는 성능 우선 thread-safe 문서에서 주변부가 아니라, control-plane
 계층을 대표하는 subject로 다룬다.
 
-### 8.2.1 registry
+### 8.3 registry
 
-`registry` 역시 범위 밖이 아니라 `control-plane 중심 subject`다.
+`registry`는 `discovery`와 함께 움직이는 `control-plane 중심 subject`다.
 
 - `discovery`와 함께 topology/query/update 의미를 형성하는 control-plane
   구현 단위다.
@@ -365,7 +509,7 @@ control-plane API도 범위에 남지만, 비용 목표는 hot path와 분리한
 - `registry` 직렬화는 correctness와 visibility를 우선하되, parent data-plane
   성능을 오염시키면 안 된다.
 
-### 8.3 gateway
+### 8.4 gateway
 
 `gateway`는 data-plane과 control-plane이 함께 존재하는 mixed subject다.
 
@@ -376,7 +520,7 @@ control-plane API도 범위에 남지만, 비용 목표는 hot path와 분리한
 핵심 원칙은 `gateway`의 steady-state send path에 control-plane lock을 섞지 않는
 것이다.
 
-### 8.4 spot_node
+### 8.5 spot_node
 
 `spot_node`는 service 계층의 data-plane subject다.
 
@@ -384,7 +528,7 @@ control-plane API도 범위에 남지만, 비용 목표는 hot path와 분리한
 - peer mutation, attach/query, option 변경은 control path다.
 - destroy는 lifecycle strict를 따른다.
 
-### 8.5 unified spot
+### 8.6 unified spot
 
 unified `spot` 역시 mixed subject다.
 
@@ -392,7 +536,7 @@ unified `spot` 역시 mixed subject다.
 - discovery attach, peer mutation, option/query는 control path다.
 - close/destroy는 strict gate로 다룬다.
 
-### 8.6 internal child
+### 8.7 internal child
 
 internal child는 public contract의 직접 대상이 아니다.
 
@@ -401,7 +545,7 @@ internal child는 public contract의 직접 대상이 아니다.
 - child ordering이나 open/destroy 세부 선형화는 확장 규칙으로 다룬다.
 - public 문서의 중심은 parent/facade가 어떤 계약을 제공하느냐다.
 
-### 8.7 monitor
+### 8.8 monitor
 
 monitor는 범위 밖이 아니라 `control-plane 중심 subject`다.
 
@@ -414,17 +558,31 @@ monitor는 범위 밖이 아니라 `control-plane 중심 subject`다.
 
 ### 9.1 close/destroy admission
 
-- external `close` / `destroy`는 in-flight API가 있으면 `EBUSY`
+- external `close` / `destroy`는 in-flight API(admission gate를 통과하여
+  return하지 않은 호출)가 있으면 `EBUSY`
+- gate 진입 직전 대기 중인 호출이나 send queue에 enqueue만 된 메시지는
+  in-flight에 해당하지 않는다
 - `EBUSY`는 fail-fast다
-- `EBUSY` 반환만으로 closing state를 latch하지 않는다
-- accepted close는 단일 lifecycle gate 또는 동등한 최소 상태로 표시한다
+- `EBUSY` 반환만으로 closing state를 latch하지 않는다(no-latch: handle은
+  이전 operational state로 완전히 복귀한다)
+- accepted close는 partial teardown 이전의 단일 lifecycle gate 또는 동등한 최소
+  상태로 표시한다
 
 ### 9.2 accepted close 이후의 의미
 
 - 새 진입:
   data-plane/control-plane 구분 없이 `ESHUTDOWN`
 - 이미 admission된 호출:
-  각 API 계약에 따라 완료 또는 canonical errno로 종료
+  각 API 계약에 따라 정상 완료 또는 canonical errno로 종료한다.
+  계층별 대표 종료 errno는 다음과 같다.
+  - hot path: 이미 enqueue된 send는 정상 완료(drain-then-close), admission
+    직후이나 아직 enqueue되지 않은 호출은 `ESHUTDOWN`. 단 drain은 best-effort가
+    아니라, accepted close 시점의 enqueued message를 모두 소진한 뒤 teardown을
+    진행함을 뜻한다
+  - control path: 진행 중인 mutation은 정상 완료 또는 `ESHUTDOWN`으로 수렴
+  - lifecycle: double close는 `EALREADY`
+  이 문서의 canonical errno 집합은 `EBUSY`, `ESHUTDOWN`, `EALREADY`다.
+  이 밖의 errno가 필요한 경우 후속 구현/검증 단계에서 명시적으로 추가한다.
 
 이 구분은 문서 초반 표, 공통 계약, 테스트 계획에 모두 동일하게 반영한다.
 
@@ -524,11 +682,18 @@ send queue / publication path 후보는 문서에서 구현 선택지로만 남�
 - same-handle concurrent `publish`
 - same-handle concurrent `send_rid`
 - 허용된 callback 중 same-handle `send/publish`
-- different-handle scaling
+- different-handle scaling:
+  handle 수를 단계적으로 증가시키며(예: 1, 4, 16, 64) 각 handle에 동일한
+  send workload를 부여한 뒤, handle 수 증가에 따른 per-handle throughput이
+  유의미하게 저하되지 않음을 확인한다. 측정 대상은 per-handle throughput과
+  총 aggregate throughput이다. single-handle baseline 대비 per-handle
+  throughput 저하율이 20% 이내여야 한다(64 handle 기준). 이 수치는 초기
+  acceptance 하한이며, subject별 세부 계획 문서에서 더 엄격하게 조정할 수 있다
 - 합격 기준:
   corruption 없음, hang/abort 없음, 문서가 허용한 errno 집합 밖의 오류 없음
 - stress 기준:
-  반복 실행과 경쟁 창 확대를 포함한 다회 반복으로 검증한다
+  반복 실행과 경쟁 창 확대를 포함한 다회 반복으로 검증한다. 최소 반복 하한은
+  10^3회 이상으로 하되, subject별 세부 계획 문서에서 상향할 수 있다
 - timeout 기준:
   hard timeout을 두고 timeout은 즉시 실패로 처리한다
 - sanitizer 기준:
@@ -536,7 +701,7 @@ send queue / publication path 후보는 문서에서 구현 선택지로만 남�
 
 ### 12.2 Control path serialized 필수 회귀
 
-- `bind/connect/disconnect`, option 변경, attach/query가 직렬화된 의미를
+- `bind/connect/disconnect`, option 변경, attach/heavy query가 직렬화된 의미를
   유지하는지
 - `monitor_open/close`와 `set_send_ready_handler()`가 low-frequency serialized
   contract를 만족하는지
@@ -551,6 +716,19 @@ send queue / publication path 후보는 문서에서 구현 선택지로만 남�
 - sanitizer 기준:
   가능한 lane에서는 data race warning 0건을 목표 acceptance로 둔다
 
+### 12.2.1 Runtime read 필수 회귀
+
+- `RCVMORE`, `EVENTS`, `LAST_ENDPOINT`, `routing_id` 계열 조회가 문서가 의도한
+  기본 thread-safe read 계약을 만족하는지
+- lightweight runtime read가 heavy query/snapshot과 같은 직렬화 비용 모델로
+  강제되지 않는지
+- read와 data-plane/control-path가 경합할 때 문서가 허용한 범위 밖의 errno나
+  hang이 없는지
+- 합격 기준:
+  correctness 유지, hang 없음, hot path를 불필요하게 직렬화하지 않을 것
+- timeout 기준:
+  hard timeout을 두고 hang은 즉시 실패로 처리한다
+
 ### 12.3 Lifecycle strict 필수 회귀
 
 - external `close` / `destroy` -> `EBUSY`
@@ -563,7 +741,38 @@ send queue / publication path 후보는 문서에서 구현 선택지로만 남�
 - timeout 기준:
   hard timeout을 두고 wait-to-drain regressions를 즉시 검출한다
 
-### 12.4 후속 확장 회귀
+### 12.4 Cross-tier 경합 필수 회귀
+
+계층 간 경합은 단일 계층 테스트로 검증할 수 없는 버그의 주요 원인이다.
+
+- hot path send + lifecycle close 경합:
+  close가 accepted되기 직전/직후에 send가 진입하는 경합 창 검증
+- hot path send + control path bind/disconnect 경합:
+  steady-state send 중 connect/disconnect가 동시에 일어나는 경우의
+  correctness 유지
+- control path option 변경 + lifecycle close 경합:
+  option setter 진행 중 close가 들어오는 경우 `EBUSY` 또는 setter 완료 후
+  close accepted 순서가 유지되는지
+- callback thread send + worker thread close 경합:
+  callback 안 send가 진행 중일 때 외부 thread에서 close를 시도하는 경우.
+  callback 경로의 send도 inflight/admission 보호 범위 안에 남아 있는지 검증
+- 합격 기준:
+  canonical errno 이외 오류 없음, hang/abort 없음, no-latch 위반 없음
+- timeout 기준:
+  hard timeout을 두고 hang은 즉시 실패로 처리한다
+- sanitizer 기준:
+  가능한 lane에서는 TSan 경고 0건을 목표 acceptance로 둔다
+
+### 12.5 최소 테스트 acceptance 공통 규칙
+
+- 모든 회귀는 hard timeout을 사용한다.
+- retry 기반 통과를 금지한다.
+- corruption, abort, hang은 단일 실패로 즉시 처리한다.
+- 문서가 허용하지 않은 errno는 실패다.
+- stress 반복 수와 sanitizer lane은 subject별 세부 계획 문서에서 더 강화할 수
+  있지만, 이 문서에서는 최소 acceptance로 유지한다.
+
+### 12.6 후속 확장 회귀
 
 - send-ready visibility 세부 규칙
 - parent-child open/destroy 선형화
@@ -573,15 +782,6 @@ send queue / publication path 후보는 문서에서 구현 선택지로만 남�
 기존 public API를 흔드는 테스트 삭제는 하지 않는다. 테스트는 삭제가 아니라
 계층 기준 재분류를 원칙으로 한다.
 
-## 12.5 최소 테스트 acceptance 공통 규칙
-
-- 모든 회귀는 hard timeout을 사용한다.
-- retry 기반 통과를 금지한다.
-- corruption, abort, hang은 단일 실패로 즉시 처리한다.
-- 문서가 허용하지 않은 errno는 실패다.
-- stress 반복 수와 sanitizer lane은 subject별 세부 계획 문서에서 더 강화할 수
-  있지만, 이 문서에서는 최소 acceptance로 유지한다.
-
 ## 13. ABI / header / 문서 정합성
 
 - public header에는 thread mode 선택 API를 추가하지 않는다.
@@ -590,6 +790,13 @@ send queue / publication path 후보는 문서에서 구현 선택지로만 남�
 - `discovery`와 `monitor`는 문서상 `control-plane 중심 subject`로 명시한다.
 - "모든 operational API 동일 강도 thread-safe" 같은 문구는 header comment와
   문서 어디에도 남기지 않는다.
+- "기본적으로 thread-safe, 예외만 명시" 문구가 문서 초반과 요약에 존재해야
+  한다.
+- 예외 목록은 init-only, callback-context 제한, same-message object 공유,
+  proxy 실행 모델로 압축되어 있어야 한다.
+- `registry query client` 같은 저빈도 handle은 큰 비용 없이 올릴 수 있다면
+  예외 목록보다 기본 thread-safe 범위로 편입하는 방향이 문서에 명시돼 있어야
+  한다.
 
 ## 14. 문서 재작성 검토 체크리스트
 
@@ -597,6 +804,7 @@ send queue / publication path 후보는 문서에서 구현 선택지로만 남�
 
 - `all operational API 동일 강도 thread-safe` 문구가 남아 있지 않을 것
 - 문서 초반에 3계층 계약 표가 있을 것
+- runtime read가 control-path heavy query와 구분되어 있을 것
 - control-path 정의에 ordering semantics가 포함될 것
 - `control-plane = 초기화 단계 전용` 같은 과도한 축소 문구가 없을 것
 - `send-ready setter 제거`, `handler 생성 시 고정화` 같은 API 철학 변경이
@@ -604,7 +812,8 @@ send queue / publication path 후보는 문서에서 구현 선택지로만 남�
 - `discovery`와 `monitor`가 `control-plane 중심 subject`로 명시될 것
 - `accepted close 이후 새 진입`과 `이미 admission된 호출`이 구분되어 있을 것
 - `ESHUTDOWN` 적용 범위가 data/control 모두로 명시될 것
-- 테스트 계획이 `hot path / control path / lifecycle`로 재분류될 것
+- 테스트 계획이 `hot path / control path / runtime read / lifecycle / cross-tier`
+  기준으로 재분류될 것
 - 성능 acceptance가 hot path 중심 목표와 직접 연결될 것
 
 ## 15. 기본 가정
@@ -618,6 +827,8 @@ send queue / publication path 후보는 문서에서 구현 선택지로만 남�
   lifecycle strict`의 3계층이다.
 - 이번 재작성은 구현 단순화를 위한 요구사항 재정렬이지, API 삭제나 초기화 전용
   강제 같은 철학 변경이 아니다.
+- low-frequency handle 중 큰 비용 없이 thread-safe하게 만들 수 있는 것은
+  가능한 한 예외 목록에 남기지 않는 방향을 기본 가정으로 둔다.
 
 ## 부록 A. 현재 구현 대비 상태 메모
 
@@ -626,10 +837,22 @@ send queue / publication path 후보는 문서에서 구현 선택지로만 남�
 
 - raw socket admission gate, send-ready pair 관측 일관성, 일부 deferred close
   계열은 이미 구현 기반이 존재한다.
-- `gateway` / `spot_node` / unified `spot`의 hot path 일관화와 control-plane
-  정리는 후속 구현의 중심 대상이다.
+- `gateway` / `spot_node` / unified `spot`의 class-level admission, lifecycle
+  gate, hot path 정렬은 이미 반영되었고, 현재 문서의 중심은 그 공개 계약을
+  유지·정리하는 것이다.
 - `discovery` / `registry` / `monitor`는 control-plane subject로서 correctness와
-  visibility 규칙 정리가 남아 있다.
+  visibility 규칙이 문서와 테스트에 계속 일치하는지 추적하는 대상이다.
+
+현재 구현의 service public API guard(`service_public_api.hpp`)는 이 문서의
+lifecycle strict 계층(admission gate, `ESHUTDOWN` 진입 차단)과 control path
+serialized 계층(API 진입 직렬화)을 실현하는 핵심 메커니즘이다. guard가 어떤
+계층의 어떤 계약을 담당하는지는 아래와 같다.
+
+- admission gate → lifecycle strict의 in-flight 판정과 `EBUSY` / `ESHUTDOWN`
+  반환
+- API 진입 직렬화 → control path serialized의 same-handle concurrent
+  control-path 호출 correctness 보장
+- hot path send는 guard의 broad lock 경로를 우회하여 최소 비용 경로를 사용한다
 
 세부 달성도 표나 구현별 갭 분석은 별도 상태 문서 또는 구현 리뷰 문서에서
 갱신한다.

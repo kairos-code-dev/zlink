@@ -31,6 +31,22 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 
 ## 2. Socket API
 
+### 2.0 Thread-Safety Quick Summary
+
+Public socket handle APIs are thread-safe by default. Not every API has the
+same cost model, though.
+
+- `zlink_send()` is a hot-path API and allows same-handle concurrent calls.
+- `bind/connect/disconnect`, subscribe/unsubscribe, monitor, and option/query
+  calls remain valid at runtime and belong to the correctness-first serialized
+  control path.
+- `zlink_close()` uses a fail-fast lifecycle gate. If another thread is
+  running an admitted API or callback on the same handle, close fails with
+  `EBUSY`. Once close is accepted, new API entry fails with `ESHUTDOWN`.
+- Only a small set of exceptions remain outside the default allowance:
+  init-only configuration, callback-context restrictions on specific
+  reentrant APIs, and concurrent sharing of the same `zlink_msg_t` object.
+
 ### 2.1 Socket Creation and Closing
 
 ```c
@@ -91,6 +107,11 @@ Key options:
 | `ZLINK_ROUTING_ID` | binary | auto | Socket routing ID |
 | `ZLINK_SUBSCRIBE` | binary | - | Subscription filter (SUB only) |
 
+Options and queries such as `ZLINK_SUBSCRIBE` / `ZLINK_UNSUBSCRIBE`,
+`ZLINK_EVENTS`, `ZLINK_LAST_ENDPOINT`, and `ZLINK_RCVMORE` are meaningful
+during normal runtime use. By contrast, most tuning knobs such as HWM,
+timeouts, and TLS settings are usually closer to initial configuration.
+
 ## 3. Sending and Receiving Messages
 
 ### 3.1 Sending
@@ -146,7 +167,9 @@ Each socket type accepts a specific handler kind at creation time:
 | XPUB | `ZLINK_SOCKET_HANDLER_XPUB` | `void fn(int subscribed, const uint8_t *topic, size_t topic_len)` |
 | PUB, XSUB | N/A (NULL) | Send-only sockets |
 
-Callbacks are invoked on the I/O thread. Avoid blocking work inside callbacks — if slow processing is needed, enqueue to a user queue and handle on a separate thread.
+Callbacks are invoked on the I/O thread. Avoid blocking work inside callbacks.
+If slow processing is needed, enqueue to a user queue and handle it on a
+separate thread.
 
 ## 5. Error Handling
 

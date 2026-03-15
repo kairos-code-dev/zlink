@@ -8,6 +8,22 @@ messages across connected peers using a configurable load-balancing strategy.
 All receives are dispatched through a handler callback registered at creation
 time. There is no `recv()` function.
 
+## Thread-Safety Summary
+
+Public Gateway handle APIs are thread-safe for same-handle operational use by
+default.
+
+- `zlink_gateway_send()` / `zlink_gateway_send_rid()` are concurrent hot-path
+  operations.
+- attach, bind/connect/disconnect, option, query, and monitor operations are
+  runtime control-path operations. Correctness is preserved, but execution
+  order may follow internal serialization.
+- `zlink_gateway_destroy()` uses a fail-fast lifecycle gate. If another
+  admitted API or callback is running, destroy fails with `EBUSY`. Once
+  destroy is accepted, new API entry fails with `ESHUTDOWN`.
+- Init-only settings and callback-context restrictions should be treated
+  separately from normal operational APIs.
+
 ## Current API Direction
 
 - Use `zlink_gateway_new()` with a fixed service name, routing id, and handler.

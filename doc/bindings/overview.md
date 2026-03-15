@@ -45,8 +45,10 @@ zlink provides language bindings for 5 languages based on the C API. All binding
 
 ## 6. Thread Safety
 
-- Public socket/service handles: **thread-safe** for same-handle operational
-  APIs; `close`/`destroy` remain more restrictive and may fail with `EBUSY`
+- Public socket/service handles use a **tiered contract**: hot-path
+  `send`/`publish`/`send_rid` allow same-handle concurrent use, low-frequency
+  control paths serialize for correctness, and `close`/`destroy` use a stricter
+  lifecycle gate with `EBUSY`/`ESHUTDOWN`
 - Context: **thread-safe** (sockets can be created from multiple threads)
 
 ## 7. Version Policy

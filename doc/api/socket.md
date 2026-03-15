@@ -8,6 +8,22 @@ handled through handler callbacks registered at socket creation time. There is
 no `recv()` function. Sockets support several messaging patterns including
 publish/subscribe, request/reply, and raw stream.
 
+## Thread-Safety Summary
+
+Public socket handle APIs are thread-safe by default. Not every API has the
+same cost model, though.
+
+- `send` is a hot-path API and allows same-handle concurrent calls.
+- `bind/connect/disconnect`, subscribe/unsubscribe, option/query, and monitor
+  operations are valid runtime control-path calls. Correctness is preserved,
+  but execution order may follow internal serialization.
+- `close` uses a fail-fast lifecycle gate. If another thread is running an
+  admitted API or callback on the same handle, close fails with `EBUSY`. Once
+  close is accepted, new API entry fails with `ESHUTDOWN`.
+- Only a small set of exceptions remain outside the default allowance:
+  init-only configuration, callback-context restrictions on specific
+  reentrant APIs, and concurrent sharing of the same `zlink_msg_t` instance.
+
 ## Callback Types
 
 ### zlink_socket_msg_handler_fn
@@ -290,9 +306,13 @@ int zlink_close (void *s_);
 
 Closes the socket and releases all associated resources. Any outstanding
 messages in the send queue are discarded or sent depending on the
-`ZLINK_LINGER` setting. If another thread has an in-flight callback or
-operational API on the same handle, close fails with `errno=EBUSY`. Self-close
-from a send-ready or monitor callback is deferred until callback epilogue.
+`ZLINK_LINGER` setting. Public handles follow a tiered contract: hot-path send
+operations allow same-handle concurrency, low-frequency control paths
+serialize for correctness, and close/destroy uses a stricter lifecycle gate.
+If another thread has an in-flight callback or admitted API on the same
+handle, close fails with `errno=EBUSY`. After close is accepted, new API entry
+fails with `errno=ESHUTDOWN`. Self-close from a send-ready or monitor callback
+is deferred until callback epilogue.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 

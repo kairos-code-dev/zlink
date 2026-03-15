@@ -51,9 +51,9 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템. Receiver가 R
 
 ### 3.2 Gateway — 위치투명 요청/응답
 
-Discovery 기반으로 서비스 Receiver를 자동 발견하고, 로드밸런싱된 메시지 전송을 처리한다. send 전용으로 설계되어 **thread-safe**하며, 여러 스레드에서 동시에 전송할 수 있다.
+Discovery 기반으로 서비스 Receiver를 자동 발견하고, 로드밸런싱된 메시지 전송을 처리한다. Gateway handle은 기본적으로 thread-safe하며, `send`는 same-handle concurrent 호출을 허용한다.
 
-- **Thread-safe** — send 전용 설계로 경합이 적고, 여러 스레드에서 동시 전송 가능
+- **Thread-safe** — `send` hot path는 여러 스레드에서 동시 전송 가능
 - Round Robin / Weighted 로드밸런싱
 - 자동 연결/해제 (Discovery 이벤트 기반)
 
@@ -66,6 +66,7 @@ Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여 클러스터 전체�
 - 토픽 기반 발행/구독
 - 패턴(와일드카드) 구독
 - Discovery 기반 자동 Mesh 구성
+- public `spot` / `spot_node` handle은 same-handle operational API 기준 thread-safe
 
 자세한 내용은 [SPOT 가이드](07-3-spot.ko.md)를 참고.
 

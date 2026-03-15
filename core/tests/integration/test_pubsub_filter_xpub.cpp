@@ -2,6 +2,7 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
+#include "../../src/core/ctx.hpp"
 
 #include <unity.h>
 #include <cstring>
@@ -16,10 +17,26 @@ void tearDown ()
     teardown_test_context ();
 }
 
+namespace
+{
+void *create_sync_socket (int type_)
+{
+    void *socket =
+      static_cast<zlink::ctx_t *> (get_test_context ())->create_socket (type_);
+    TEST_ASSERT_NOT_NULL (socket);
+    return socket;
+}
+
+void close_sync_socket (void *socket_)
+{
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket_));
+}
+}
+
 static void test_pubsub_filter_transport (const char *endpoint_)
 {
-    void *pub = test_context_socket (ZLINK_PUB);
-    void *sub = test_context_socket (ZLINK_SUB);
+    void *pub = create_sync_socket (ZLINK_PUB);
+    void *sub = create_sync_socket (ZLINK_SUB);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, endpoint_));
 
@@ -50,8 +67,8 @@ static void test_pubsub_filter_transport (const char *endpoint_)
     recv_string_expect_success (sub, "topicA hello", 0);
     recv_string_expect_success (sub, "topicA test", 0);
 
-    test_context_socket_close (sub);
-    test_context_socket_close (pub);
+    close_sync_socket (sub);
+    close_sync_socket (pub);
 }
 
 void test_pubsub_filter_tcp ()
@@ -75,8 +92,8 @@ void test_pubsub_filter_inproc ()
 
 void test_pubsub_xpub_xsub_tcp ()
 {
-    void *xpub = test_context_socket (ZLINK_XPUB);
-    void *xsub = test_context_socket (ZLINK_XSUB);
+    void *xpub = create_sync_socket (ZLINK_XPUB);
+    void *xsub = create_sync_socket (ZLINK_XSUB);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (xpub, "tcp://127.0.0.1:*"));
 
@@ -93,7 +110,10 @@ void test_pubsub_xpub_xsub_tcp ()
 
     // Wait for subscription to propagate
     char sub_recv[16];
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (xpub, sub_recv, sizeof (sub_recv), 0));
+    const int sub_size = TEST_ASSERT_SUCCESS_ERRNO (
+      zlink::recv_buffer_internal (xpub, sub_recv, sizeof (sub_recv), 0));
+    TEST_ASSERT_TRUE (sub_size >= 1);
+    TEST_ASSERT_EQUAL_HEX8 (0x01, (unsigned char) sub_recv[0]);
 
     msleep (SETTLE_TIME);
 
@@ -102,15 +122,15 @@ void test_pubsub_xpub_xsub_tcp ()
     send_string_expect_success (xpub, msg, 0);
     recv_string_expect_success (xsub, msg, 0);
 
-    test_context_socket_close (xsub);
-    test_context_socket_close (xpub);
+    close_sync_socket (xsub);
+    close_sync_socket (xpub);
 }
 
 void test_pubsub_xpub_xsub_ipc ()
 {
 #if defined(ZLINK_HAVE_IPC)
-    void *xpub = test_context_socket (ZLINK_XPUB);
-    void *xsub = test_context_socket (ZLINK_XSUB);
+    void *xpub = create_sync_socket (ZLINK_XPUB);
+    void *xsub = create_sync_socket (ZLINK_XSUB);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (xpub, "ipc://*"));
 
@@ -127,7 +147,10 @@ void test_pubsub_xpub_xsub_ipc ()
 
     // Wait for subscription to propagate
     char sub_recv[16];
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (xpub, sub_recv, sizeof (sub_recv), 0));
+    const int sub_size = TEST_ASSERT_SUCCESS_ERRNO (
+      zlink::recv_buffer_internal (xpub, sub_recv, sizeof (sub_recv), 0));
+    TEST_ASSERT_TRUE (sub_size >= 1);
+    TEST_ASSERT_EQUAL_HEX8 (0x01, (unsigned char) sub_recv[0]);
 
     msleep (SETTLE_TIME);
 
@@ -136,8 +159,8 @@ void test_pubsub_xpub_xsub_ipc ()
     send_string_expect_success (xpub, msg, 0);
     recv_string_expect_success (xsub, msg, 0);
 
-    test_context_socket_close (xsub);
-    test_context_socket_close (xpub);
+    close_sync_socket (xsub);
+    close_sync_socket (xpub);
 #else
     TEST_IGNORE_MESSAGE ("IPC not supported on this platform");
 #endif
@@ -145,8 +168,8 @@ void test_pubsub_xpub_xsub_ipc ()
 
 void test_pubsub_xpub_xsub_inproc ()
 {
-    void *xpub = test_context_socket (ZLINK_XPUB);
-    void *xsub = test_context_socket (ZLINK_XSUB);
+    void *xpub = create_sync_socket (ZLINK_XPUB);
+    void *xsub = create_sync_socket (ZLINK_XSUB);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (xpub, "inproc://test_xpub_xsub"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (xsub, "inproc://test_xpub_xsub"));
@@ -157,15 +180,18 @@ void test_pubsub_xpub_xsub_inproc ()
 
     // Wait for subscription to propagate
     char sub_recv[16];
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (xpub, sub_recv, sizeof (sub_recv), 0));
+    const int sub_size = TEST_ASSERT_SUCCESS_ERRNO (
+      zlink::recv_buffer_internal (xpub, sub_recv, sizeof (sub_recv), 0));
+    TEST_ASSERT_TRUE (sub_size >= 1);
+    TEST_ASSERT_EQUAL_HEX8 (0x01, (unsigned char) sub_recv[0]);
 
     // Test message flow
     const char *msg = "xpub_xsub_test";
     send_string_expect_success (xpub, msg, 0);
     recv_string_expect_success (xsub, msg, 0);
 
-    test_context_socket_close (xsub);
-    test_context_socket_close (xpub);
+    close_sync_socket (xsub);
+    close_sync_socket (xpub);
 }
 
 int main ()

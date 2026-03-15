@@ -2,15 +2,35 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
+#include "../../../src/core/ctx.hpp"
 
 #include <string.h>
 
 SETUP_TEARDOWN_TESTCONTEXT
 
+namespace
+{
+void *create_sync_socket (int type_)
+{
+    void *socket =
+      static_cast<zlink::ctx_t *> (get_test_context ())->create_socket (type_);
+    TEST_ASSERT_NOT_NULL (socket);
+    return socket;
+}
+
+void close_sync_socket_zero_linger (void *socket_)
+{
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (socket_, ZLINK_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket_));
+}
+}
+
 void test_router_auto_id_format ()
 {
-    void *server = test_context_socket (ZLINK_ROUTER);
-    void *client = test_context_socket (ZLINK_DEALER);
+    void *server = create_sync_socket (ZLINK_ROUTER);
+    void *client = create_sync_socket (ZLINK_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -24,20 +44,24 @@ void test_router_auto_id_format ()
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
+    unsigned char auto_routing_id[255];
+    size_t auto_routing_id_size = sizeof (auto_routing_id);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (
+      client, ZLINK_ROUTING_ID, auto_routing_id, &auto_routing_id_size));
+    TEST_ASSERT_EQUAL_UINT (16u, auto_routing_id_size);
+
     const char payload[] = "hello";
     send_string_expect_success (client, payload, 0);
 
     unsigned char routing_id[255];
-    int rid_len = zlink_recv (server, routing_id, sizeof routing_id, 0);
-    TEST_ASSERT_EQUAL_INT (16, rid_len);
+    const int rid_size = TEST_ASSERT_SUCCESS_ERRNO (
+      zlink::recv_buffer_internal (server, routing_id, sizeof (routing_id), 0));
+    TEST_ASSERT_EQUAL_INT (16, rid_size);
+    TEST_ASSERT_EQUAL_MEMORY (auto_routing_id, routing_id, auto_routing_id_size);
+    recv_string_expect_success (server, payload, 0);
 
-    char recv_buf[sizeof payload];
-    int rc = zlink_recv (server, recv_buf, sizeof recv_buf, 0);
-    TEST_ASSERT_EQUAL_INT ((int) sizeof (payload) - 1, rc);
-    TEST_ASSERT_EQUAL_STRING_LEN (payload, recv_buf, sizeof (payload) - 1);
-
-    test_context_socket_close_zero_linger (client);
-    test_context_socket_close_zero_linger (server);
+    close_sync_socket_zero_linger (client);
+    close_sync_socket_zero_linger (server);
 }
 
 int main ()

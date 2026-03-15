@@ -2,10 +2,27 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
+#include "../../src/core/ctx.hpp"
 
 #include <cstring>
 
 SETUP_TEARDOWN_TESTCONTEXT
+
+namespace
+{
+void *create_sync_socket (int type_)
+{
+    void *socket =
+      static_cast<zlink::ctx_t *> (get_test_context ())->create_socket (type_);
+    TEST_ASSERT_NOT_NULL (socket);
+    return socket;
+}
+
+void close_sync_socket (void *socket_)
+{
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket_));
+}
+}
 
 static bool is_transport_available (const char *transport_)
 {
@@ -95,8 +112,8 @@ static void run_pair (const char *transport_)
     if (!is_transport_available (transport_))
         TEST_IGNORE_MESSAGE ("transport not available");
 
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = create_sync_socket (ZLINK_PAIR);
+    void *client = create_sync_socket (ZLINK_PAIR);
 
     tls_test_files_t tls_files;
     if (is_tls_transport (transport_)) {
@@ -115,8 +132,8 @@ static void run_pair (const char *transport_)
     send_string_expect_success (server, "pair-ack", 0);
     recv_string_expect_success (client, "pair-ack", 0);
 
-    test_context_socket_close (client);
-    test_context_socket_close (server);
+    close_sync_socket (client);
+    close_sync_socket (server);
     if (is_tls_transport (transport_))
         cleanup_tls_test_files (tls_files);
 }
@@ -126,8 +143,8 @@ static void run_pubsub (const char *transport_)
     if (!is_transport_available (transport_))
         TEST_IGNORE_MESSAGE ("transport not available");
 
-    void *pub = test_context_socket (ZLINK_PUB);
-    void *sub = test_context_socket (ZLINK_SUB);
+    void *pub = create_sync_socket (ZLINK_PUB);
+    void *sub = create_sync_socket (ZLINK_SUB);
 
     tls_test_files_t tls_files;
     if (is_tls_transport (transport_)) {
@@ -142,11 +159,15 @@ static void run_pubsub (const char *transport_)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0));
     msleep (SETTLE_TIME);
 
+    // Prime subscription propagation before checking the real payload.
+    send_string_expect_success (pub, "warmup", 0);
+    msleep (SETTLE_TIME);
+    recv_string_expect_success (sub, "warmup", 0);
     send_string_expect_success (pub, "pubsub-hello", 0);
     recv_string_expect_success (sub, "pubsub-hello", 0);
 
-    test_context_socket_close (sub);
-    test_context_socket_close (pub);
+    close_sync_socket (sub);
+    close_sync_socket (pub);
     if (is_tls_transport (transport_))
         cleanup_tls_test_files (tls_files);
 }
@@ -156,8 +177,8 @@ static void run_router_dealer (const char *transport_)
     if (!is_transport_available (transport_))
         TEST_IGNORE_MESSAGE ("transport not available");
 
-    void *router = test_context_socket (ZLINK_ROUTER);
-    void *dealer = test_context_socket (ZLINK_DEALER);
+    void *router = create_sync_socket (ZLINK_ROUTER);
+    void *dealer = create_sync_socket (ZLINK_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (dealer, ZLINK_ROUTING_ID, "DEALER1", 7));
@@ -177,19 +198,15 @@ static void run_router_dealer (const char *transport_)
 
     send_string_expect_success (dealer, "dealer-msg", 0);
 
-    char identity[32];
-    int id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, identity, sizeof (identity), 0));
-    TEST_ASSERT_EQUAL_INT (7, id_size);
-    TEST_ASSERT_EQUAL_STRING_LEN ("DEALER1", identity, 7);
+    recv_string_expect_success (router, "DEALER1", 0);
     recv_string_expect_success (router, "dealer-msg", 0);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (router, "DEALER1", 7, ZLINK_SNDMORE));
     send_string_expect_success (router, "router-reply", 0);
     recv_string_expect_success (dealer, "router-reply", 0);
 
-    test_context_socket_close (dealer);
-    test_context_socket_close (router);
+    close_sync_socket (dealer);
+    close_sync_socket (router);
     if (is_tls_transport (transport_))
         cleanup_tls_test_files (tls_files);
 }
@@ -199,8 +216,8 @@ static void run_router_router (const char *transport_)
     if (!is_transport_available (transport_))
         TEST_IGNORE_MESSAGE ("transport not available");
 
-    void *server = test_context_socket (ZLINK_ROUTER);
-    void *client = test_context_socket (ZLINK_ROUTER);
+    void *server = create_sync_socket (ZLINK_ROUTER);
+    void *client = create_sync_socket (ZLINK_ROUTER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (server, ZLINK_ROUTING_ID, "SERVER", 6));
@@ -223,24 +240,17 @@ static void run_router_router (const char *transport_)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (client, "SERVER", 6, ZLINK_SNDMORE));
     send_string_expect_success (client, "router-msg", 0);
 
-    char identity[32];
-    int id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (server, identity, sizeof (identity), 0));
-    TEST_ASSERT_EQUAL_INT (6, id_size);
-    TEST_ASSERT_EQUAL_STRING_LEN ("CLIENT", identity, 6);
+    recv_string_expect_success (server, "CLIENT", 0);
     recv_string_expect_success (server, "router-msg", 0);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (server, "CLIENT", 6, ZLINK_SNDMORE));
     send_string_expect_success (server, "router-reply", 0);
 
-    id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (client, identity, sizeof (identity), 0));
-    TEST_ASSERT_EQUAL_INT (6, id_size);
-    TEST_ASSERT_EQUAL_STRING_LEN ("SERVER", identity, 6);
+    recv_string_expect_success (client, "SERVER", 0);
     recv_string_expect_success (client, "router-reply", 0);
 
-    test_context_socket_close (client);
-    test_context_socket_close (server);
+    close_sync_socket (client);
+    close_sync_socket (server);
     if (is_tls_transport (transport_))
         cleanup_tls_test_files (tls_files);
 }

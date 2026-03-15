@@ -345,6 +345,10 @@ bool gateway_t::check_tag () const
 
 int gateway_t::attach_discovery (discovery_t *discovery_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!discovery_
         || discovery_->service_type ()
              != discovery_protocol::service_type_gateway_receiver) {
@@ -418,6 +422,10 @@ int gateway_t::attach_discovery (discovery_t *discovery_)
 int gateway_t::connect (const char *endpoint_,
                         const zlink_routing_id_t *routing_id_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!endpoint_ || endpoint_[0] == '\0' || !routing_id_
         || routing_id_->size == 0) {
         errno = EINVAL;
@@ -469,6 +477,10 @@ int gateway_t::connect (const char *endpoint_,
 
 int gateway_t::disconnect (const char *endpoint_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!endpoint_ || endpoint_[0] == '\0') {
         errno = EINVAL;
         return -1;
@@ -1084,6 +1096,10 @@ int gateway_t::send_request_frames (gateway_service_pool_t *pool_,
 
 int gateway_t::send (zlink_msg_t *parts_, size_t part_count_, int flags_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!parts_ || part_count_ == 0) {
         errno = EINVAL;
         return -1;
@@ -1093,29 +1109,72 @@ int gateway_t::send (zlink_msg_t *parts_, size_t part_count_, int flags_)
         return -1;
     }
 
-    scoped_lock_t lock (_sync);
-    if (ensure_facade_mode () != 0)
-        return -1;
-    lock_routing_id ();
-    gateway_service_pool_t *pool = get_or_create_pool_cached ();
-    if (!pool) {
-        errno = ENOMEM;
-        return -1;
+    socket_base_t *router_socket = NULL;
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    {
+        scoped_lock_t lock (_sync);
+        if (ensure_facade_mode () != 0)
+            return -1;
+        lock_routing_id ();
+        gateway_service_pool_t *pool = get_or_create_pool_cached ();
+        if (!pool) {
+            errno = ENOMEM;
+            return -1;
+        }
+        if (pool->routing_ids.empty ()) {
+            errno = EHOSTUNREACH;
+            return -1;
+        }
+
+        size_t provider_index = 0;
+        if (pool->routing_ids.size () > 1
+            && !select_provider (pool, &provider_index)) {
+            errno = EHOSTUNREACH;
+            return -1;
+        }
+        if (provider_index >= pool->routing_ids.size () || !_runtime->router_socket) {
+            errno = ENOTSUP;
+            return -1;
+        }
+
+        rid = pool->routing_ids[provider_index];
+        router_socket = _runtime->router_socket;
     }
 
-    // Fast-path for the common single-provider case.
-    if (pool->routing_ids.size () == 1) {
-        return send_request_frames (pool, 0, parts_, part_count_, flags_);
+    if ((flags_ & ZLINK_DONTWAIT) != 0) {
+        const int peer_state = router_socket->get_peer_state (rid.data, rid.size);
+        if (peer_state < 0 || (peer_state & ZLINK_POLLOUT) == 0) {
+            errno = EAGAIN;
+            return -1;
+        }
     }
 
-    size_t provider_index = 0;
-    if (!select_provider (pool, &provider_index)) {
-        errno = EHOSTUNREACH;
+    zlink_msg_t rid_msg;
+    if (zlink_msg_init_data (&rid_msg,
+                             rid.size > 0 ? const_cast<uint8_t *> (rid.data)
+                                          : NULL,
+                             rid.size, NULL, NULL)
+        != 0)
+        return -1;
+
+    int send_flags =
+      (part_count_ > 0 ? ZLINK_SNDMORE : 0) | (flags_ & ZLINK_DONTWAIT);
+    if (zlink_msg_send (&rid_msg, router_socket, send_flags) < 0) {
+        zlink_msg_close (&rid_msg);
         return -1;
     }
+    zlink_msg_close (&rid_msg);
 
-    return send_request_frames (pool, provider_index, parts_, part_count_,
-                                flags_);
+    for (size_t i = 0; i < part_count_; ++i) {
+        send_flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
+        send_flags |= (flags_ & ZLINK_DONTWAIT);
+        if (zlink_msg_send (&parts_[i], router_socket, send_flags) < 0)
+            return -1;
+        zlink_msg_close (&parts_[i]);
+    }
+
+    return 0;
 }
 
 std::string gateway_t::resolve_advertise (const char *advertise_endpoint_) const
@@ -1126,6 +1185,10 @@ std::string gateway_t::resolve_advertise (const char *advertise_endpoint_) const
 
 int gateway_t::bind (const char *endpoint_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!endpoint_ || endpoint_[0] == '\0') {
         errno = EINVAL;
         return -1;
@@ -1325,6 +1388,10 @@ int gateway_t::send_rid (const zlink_routing_id_t *routing_id_,
                          size_t part_count_,
                          int flags_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!routing_id_ || !parts_ || part_count_ == 0) {
         errno = EINVAL;
         return -1;
@@ -1350,31 +1417,35 @@ int gateway_t::send_rid (const zlink_routing_id_t *routing_id_,
                                                  part_count_);
     }
 
-    scoped_lock_t lock (_sync);
-    if (ensure_facade_mode () != 0)
-        return -1;
-    if (_runtime->router_socket
-        == socket_base_t::current_socket_msg_dispatch_socket ()) {
-        pipe_t *dispatch_pipe =
-          socket_base_t::current_socket_msg_dispatch_pipe ();
-        zlink_routing_id_t dispatch_source_rid;
-        if (dispatch_pipe
-            && socket_base_t::current_socket_msg_dispatch_source_rid (
-              &dispatch_source_rid)
-            && routing_id_equals (dispatch_source_rid, *routing_id_))
-            return send_parts_via_dispatch_pipe (dispatch_pipe, parts_,
-                                                 part_count_);
-        if (pipe_routing_id_equals (dispatch_pipe, routing_id_))
-            return send_parts_via_dispatch_pipe (dispatch_pipe, parts_,
-                                                 part_count_);
-    }
-    if (!_runtime->router_socket) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    if (routing_id_->size == 0) {
-        errno = EINVAL;
-        return -1;
+    socket_base_t *router_socket = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        if (ensure_facade_mode () != 0)
+            return -1;
+        if (_runtime->router_socket
+            == socket_base_t::current_socket_msg_dispatch_socket ()) {
+            pipe_t *dispatch_pipe =
+              socket_base_t::current_socket_msg_dispatch_pipe ();
+            zlink_routing_id_t dispatch_source_rid;
+            if (dispatch_pipe
+                && socket_base_t::current_socket_msg_dispatch_source_rid (
+                  &dispatch_source_rid)
+                && routing_id_equals (dispatch_source_rid, *routing_id_))
+                return send_parts_via_dispatch_pipe (dispatch_pipe, parts_,
+                                                     part_count_);
+            if (pipe_routing_id_equals (dispatch_pipe, routing_id_))
+                return send_parts_via_dispatch_pipe (dispatch_pipe, parts_,
+                                                     part_count_);
+        }
+        if (!_runtime->router_socket) {
+            errno = ENOTSUP;
+            return -1;
+        }
+        if (routing_id_->size == 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        router_socket = _runtime->router_socket;
     }
 
     zlink_msg_t rid_msg;
@@ -1384,7 +1455,7 @@ int gateway_t::send_rid (const zlink_routing_id_t *routing_id_,
         return -1;
     int send_flags =
       (part_count_ > 0 ? ZLINK_SNDMORE : 0) | (flags_ & ZLINK_DONTWAIT);
-    if (zlink_msg_send (&rid_msg, _runtime->router_socket, send_flags) < 0) {
+    if (zlink_msg_send (&rid_msg, router_socket, send_flags) < 0) {
         zlink_msg_close (&rid_msg);
         return -1;
     }
@@ -1393,7 +1464,7 @@ int gateway_t::send_rid (const zlink_routing_id_t *routing_id_,
     for (size_t i = 0; i < part_count_; ++i) {
         send_flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
         send_flags |= (flags_ & ZLINK_DONTWAIT);
-        if (zlink_msg_send (&parts_[i], _runtime->router_socket, send_flags) < 0)
+        if (zlink_msg_send (&parts_[i], router_socket, send_flags) < 0)
             return -1;
         zlink_msg_close (&parts_[i]);
     }
@@ -1402,6 +1473,10 @@ int gateway_t::send_rid (const zlink_routing_id_t *routing_id_,
 
 int gateway_t::set_lb_strategy (int strategy_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (_service_name.empty ()) {
         errno = EINVAL;
         return -1;
@@ -1424,6 +1499,10 @@ int gateway_t::set_lb_strategy (int strategy_)
 
 int gateway_t::set_routing_id (const void *data_, size_t size_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!data_ || size_ == 0 || size_ > sizeof (_routing_id.data)) {
         errno = EINVAL;
         return -1;
@@ -1446,6 +1525,10 @@ int gateway_t::set_routing_id (const void *data_, size_t size_)
 
 int gateway_t::routing_id (zlink_routing_id_t *out_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!out_) {
         errno = EINVAL;
         return -1;
@@ -1468,6 +1551,11 @@ int gateway_t::routing_id (zlink_routing_id_t *out_)
 
 int gateway_t::last_endpoint (char *endpoint_out_, size_t *size_out_) const
 {
+    service_public_api_scope_t admission (
+      const_cast<service_public_api_guard_t &> (_public_api));
+    if (!admission.acquired ())
+        return -1;
+
     if (!endpoint_out_ || !size_out_) {
         errno = EINVAL;
         return -1;
@@ -1555,6 +1643,10 @@ void gateway_t::sync_gateway_peer_reports (uint64_t now_ms_)
 int gateway_t::update_peer_weight (const zlink_routing_id_t *routing_id_,
                                    uint32_t weight_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!routing_id_ || routing_id_->size == 0) {
         errno = EINVAL;
         return -1;
@@ -1631,6 +1723,10 @@ int gateway_t::set_option (int option_,
                            const void *optval_,
                            size_t optvallen_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     switch (option_) {
         case ZLINK_GATEWAY_OPT_SNDHWM:
             return set_socket_option (ZLINK_SNDHWM, optval_, optvallen_);
@@ -1652,6 +1748,10 @@ int gateway_t::set_option (int option_,
 
 int gateway_t::set_tls_server (const char *cert_, const char *key_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!cert_ || !key_) {
         errno = EINVAL;
         return -1;
@@ -1682,6 +1782,10 @@ int gateway_t::set_tls_server (const char *cert_, const char *key_)
 
 void *gateway_t::monitor_open (int events_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return NULL;
+
     scoped_lock_t lock (_sync);
     if (ensure_refresh_task_running () != 0)
         return NULL;
@@ -1879,6 +1983,10 @@ void gateway_t::on_discovery_destroyed (discovery_t *discovery_)
 
 int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!out_ || _service_name.empty ()) {
         errno = EINVAL;
         return -1;
@@ -1914,6 +2022,10 @@ int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
 
 int gateway_t::set_handler (zlink_socket_msg_handler_fn handler_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!handler_) {
         errno = EINVAL;
         return -1;
@@ -1935,6 +2047,10 @@ int gateway_t::set_handler (zlink_socket_msg_handler_fn handler_)
 
 int gateway_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!handler_) {
         errno = EINVAL;
         return -1;
@@ -1955,6 +2071,10 @@ int gateway_t::set_tls_client (const char *ca_cert_,
                                const char *hostname_,
                                int trust_system_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!ca_cert_ || !hostname_) {
         errno = EINVAL;
         return -1;

@@ -2,6 +2,7 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
+#include "../../src/core/ctx.hpp"
 
 #include <unity.h>
 #include <cstring>
@@ -16,11 +17,27 @@ void tearDown ()
     teardown_test_context ();
 }
 
+namespace
+{
+void *create_sync_socket (int type_)
+{
+    void *socket =
+      static_cast<zlink::ctx_t *> (get_test_context ())->create_socket (type_);
+    TEST_ASSERT_NOT_NULL (socket);
+    return socket;
+}
+
+void close_sync_socket (void *socket_)
+{
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket_));
+}
+}
+
 void test_router_multiple_dealers_tcp ()
 {
-    void *router = test_context_socket (ZLINK_ROUTER);
-    void *dealer1 = test_context_socket (ZLINK_DEALER);
-    void *dealer2 = test_context_socket (ZLINK_DEALER);
+    void *router = create_sync_socket (ZLINK_ROUTER);
+    void *dealer1 = create_sync_socket (ZLINK_DEALER);
+    void *dealer2 = create_sync_socket (ZLINK_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (dealer1, ZLINK_ROUTING_ID, "D1", 2));
@@ -41,25 +58,11 @@ void test_router_multiple_dealers_tcp ()
 
     // Both dealers send messages
     send_string_expect_success (dealer1, "from_dealer1", 0);
+    recv_string_expect_success (router, "D1", 0);
+    recv_string_expect_success (router, "from_dealer1", 0);
     send_string_expect_success (dealer2, "from_dealer2", 0);
-
-    // Router receives both messages with their identities
-    char identity[32];
-    char msg[64];
-
-    // First message
-    int id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, identity, sizeof (identity), 0));
-    int msg_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, msg, sizeof (msg), 0));
-    msg[msg_size] = 0;
-
-    // Second message
-    id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, identity, sizeof (identity), 0));
-    msg_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, msg, sizeof (msg), 0));
-    msg[msg_size] = 0;
+    recv_string_expect_success (router, "D2", 0);
+    recv_string_expect_success (router, "from_dealer2", 0);
 
     // Router can reply to specific dealer
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (router, "D1", 2, ZLINK_SNDMORE));
@@ -72,17 +75,17 @@ void test_router_multiple_dealers_tcp ()
     recv_string_expect_success (dealer1, "reply_to_d1", 0);
     recv_string_expect_success (dealer2, "reply_to_d2", 0);
 
-    test_context_socket_close (dealer2);
-    test_context_socket_close (dealer1);
-    test_context_socket_close (router);
+    close_sync_socket (dealer2);
+    close_sync_socket (dealer1);
+    close_sync_socket (router);
 }
 
 void test_router_multiple_dealers_ipc ()
 {
 #if defined(ZLINK_HAVE_IPC)
-    void *router = test_context_socket (ZLINK_ROUTER);
-    void *dealer1 = test_context_socket (ZLINK_DEALER);
-    void *dealer2 = test_context_socket (ZLINK_DEALER);
+    void *router = create_sync_socket (ZLINK_ROUTER);
+    void *dealer1 = create_sync_socket (ZLINK_DEALER);
+    void *dealer2 = create_sync_socket (ZLINK_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (dealer1, ZLINK_ROUTING_ID, "D1", 2));
@@ -103,24 +106,11 @@ void test_router_multiple_dealers_ipc ()
 
     // Both dealers send messages
     send_string_expect_success (dealer1, "from_dealer1", 0);
+    recv_string_expect_success (router, "D1", 0);
+    recv_string_expect_success (router, "from_dealer1", 0);
     send_string_expect_success (dealer2, "from_dealer2", 0);
-
-    // Router receives both
-    char identity[32];
-    char msg[64];
-    int id_size, msg_size;
-
-    id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, identity, sizeof (identity), 0));
-    msg_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, msg, sizeof (msg), 0));
-
-    id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, identity, sizeof (identity), 0));
-    msg_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, msg, sizeof (msg), 0));
-    (void) id_size;
-    (void) msg_size;
+    recv_string_expect_success (router, "D2", 0);
+    recv_string_expect_success (router, "from_dealer2", 0);
 
     // Router replies to specific dealers
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (router, "D1", 2, ZLINK_SNDMORE));
@@ -132,9 +122,9 @@ void test_router_multiple_dealers_ipc ()
     recv_string_expect_success (dealer1, "reply_to_d1", 0);
     recv_string_expect_success (dealer2, "reply_to_d2", 0);
 
-    test_context_socket_close (dealer2);
-    test_context_socket_close (dealer1);
-    test_context_socket_close (router);
+    close_sync_socket (dealer2);
+    close_sync_socket (dealer1);
+    close_sync_socket (router);
 #else
     TEST_IGNORE_MESSAGE ("IPC not supported on this platform");
 #endif
@@ -142,9 +132,9 @@ void test_router_multiple_dealers_ipc ()
 
 void test_router_multiple_dealers_inproc ()
 {
-    void *router = test_context_socket (ZLINK_ROUTER);
-    void *dealer1 = test_context_socket (ZLINK_DEALER);
-    void *dealer2 = test_context_socket (ZLINK_DEALER);
+    void *router = create_sync_socket (ZLINK_ROUTER);
+    void *dealer1 = create_sync_socket (ZLINK_DEALER);
+    void *dealer2 = create_sync_socket (ZLINK_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (dealer1, ZLINK_ROUTING_ID, "D1", 2));
@@ -160,24 +150,11 @@ void test_router_multiple_dealers_inproc ()
 
     // Both dealers send messages
     send_string_expect_success (dealer1, "from_dealer1", 0);
+    recv_string_expect_success (router, "D1", 0);
+    recv_string_expect_success (router, "from_dealer1", 0);
     send_string_expect_success (dealer2, "from_dealer2", 0);
-
-    // Router receives both
-    char identity[32];
-    char msg[64];
-    int id_size, msg_size;
-
-    id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, identity, sizeof (identity), 0));
-    msg_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, msg, sizeof (msg), 0));
-
-    id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, identity, sizeof (identity), 0));
-    msg_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, msg, sizeof (msg), 0));
-    (void) id_size;
-    (void) msg_size;
+    recv_string_expect_success (router, "D2", 0);
+    recv_string_expect_success (router, "from_dealer2", 0);
 
     // Router replies to specific dealers
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (router, "D1", 2, ZLINK_SNDMORE));
@@ -189,9 +166,9 @@ void test_router_multiple_dealers_inproc ()
     recv_string_expect_success (dealer1, "reply_to_d1", 0);
     recv_string_expect_success (dealer2, "reply_to_d2", 0);
 
-    test_context_socket_close (dealer2);
-    test_context_socket_close (dealer1);
-    test_context_socket_close (router);
+    close_sync_socket (dealer2);
+    close_sync_socket (dealer1);
+    close_sync_socket (router);
 }
 
 int main ()

@@ -1767,6 +1767,10 @@ int spot_node_t::resolve_advertise_endpoint (const char *advertise_endpoint_,
 
 int spot_node_t::bind (const char *endpoint_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!endpoint_ || endpoint_[0] == '\0') {
         errno = EINVAL;
         return -1;
@@ -1803,6 +1807,10 @@ int spot_node_t::bind (const char *endpoint_)
 
 int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!peer_pub_endpoint_ || peer_pub_endpoint_[0] == '\0') {
         errno = EINVAL;
         return -1;
@@ -1857,6 +1865,10 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
 
 int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!peer_pub_endpoint_ || peer_pub_endpoint_[0] == '\0') {
         errno = EINVAL;
         return -1;
@@ -2023,6 +2035,10 @@ int spot_node_t::unregister_registered ()
 
 int spot_node_t::attach_discovery (discovery_t *discovery_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!discovery_ || discovery_->service_type ()
                           != discovery_protocol::service_type_spot_node) {
         errno = EINVAL;
@@ -2092,6 +2108,10 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
 
 int spot_node_t::set_tls_server (const char *cert_, const char *key_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!cert_ || !key_ || cert_[0] == '\0' || key_[0] == '\0') {
         errno = EINVAL;
         return -1;
@@ -2111,6 +2131,10 @@ int spot_node_t::set_tls_client (const char *ca_cert_,
                                  const char *hostname_,
                                  int trust_system_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (trust_system_ < 0) {
         errno = EINVAL;
         return -1;
@@ -2129,6 +2153,10 @@ int spot_node_t::set_tls_client (const char *ca_cert_,
 
 int spot_node_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!handler_) {
         errno = EINVAL;
         return -1;
@@ -2259,6 +2287,10 @@ int spot_node_t::set_pub_option (int option_,
                                  const void *optval_,
                                  size_t optvallen_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (validate_pub_option (option_, optval_, optvallen_) != 0)
         return -1;
 
@@ -2283,6 +2315,10 @@ int spot_node_t::set_sub_option (int option_,
                                  const void *optval_,
                                  size_t optvallen_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (validate_sub_option (option_, optval_, optvallen_) != 0)
         return -1;
 

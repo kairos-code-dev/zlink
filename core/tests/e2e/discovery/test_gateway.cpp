@@ -1650,6 +1650,58 @@ static void test_gateway_concurrent_send_and_updates ()
     g_probe_a = NULL;
 }
 
+static void test_gateway_public_api_lifecycle_contract ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *gateway =
+      zlink_gateway_new (ctx, "svc-lifecycle", "gw-lifecycle",
+                         &discard_gateway_message);
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    zlink::gateway_t *gateway_impl =
+      static_cast<zlink::gateway_t *> (gateway);
+    {
+        zlink::service_public_api_scope_t inflight (
+          gateway_impl->public_api_guard ());
+        TEST_ASSERT_TRUE (inflight.acquired ());
+
+        TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_destroy (&gateway));
+        TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+        TEST_ASSERT_NOT_NULL (gateway);
+
+        zlink_routing_id_t rid;
+        memset (&rid, 0, sizeof (rid));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (gateway, &rid));
+    }
+
+    TEST_ASSERT_TRUE (gateway_impl->public_api_guard ().begin_close_or_fail_busy ());
+
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_routing_id (gateway, &rid));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, errno);
+
+    TEST_ASSERT_EQUAL_INT (
+      -1,
+      zlink_gateway_set_send_ready_handler (gateway, &gateway_ready_handler));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, errno);
+
+    zlink_msg_t part;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
+    memcpy (zlink_msg_data (&part), "life", 4);
+    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_send (gateway, &part, 1, 0));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, errno);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&part));
+
+    TEST_ASSERT_FALSE (gateway_impl->public_api_guard ().begin_close_or_fail_busy ());
+    TEST_ASSERT_EQUAL_INT (EALREADY, errno);
+
+    TEST_ASSERT_SUCCESS_ERRNO (gateway_impl->destroy ());
+    delete gateway_impl;
+}
+
 int main (void)
 {
     UNITY_BEGIN ();
@@ -1675,6 +1727,7 @@ int main (void)
     RUN_GATEWAY_TEST (test_gateway_weighted_load_balancing);
     RUN_GATEWAY_TEST (test_gateway_manual_connect_disconnect_topology_ownership);
     RUN_GATEWAY_TEST (test_gateway_local_weight_zero_is_preserved);
+    RUN_GATEWAY_TEST (test_gateway_public_api_lifecycle_contract);
 #undef RUN_GATEWAY_TEST
     if (should_run_gateway_concurrent_stress ()
         && should_run_named_test ("test_gateway_concurrent_send_and_updates"))

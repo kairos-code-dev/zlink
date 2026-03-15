@@ -442,16 +442,21 @@ zlink_close(mon_b);
 
 ### Monitor Thread Safety
 
-Monitor setup must be called **only from the socket's owning thread**.
+`zlink_socket_monitor_open()` and monitor-handle close belong to the
+low-frequency control-path contract of raw and service handles. That means
+they may be called from application threads and remain correct when mixed with
+other same-handle operations. The monitor callback itself still runs on the
+I/O path, so slow callback work should be offloaded to a user queue.
 
 ```c
-/* Correct usage: set up monitor from the socket creation thread */
+/* Open a monitor from an application thread */
 void *socket = zlink_socket(ctx, ZLINK_ROUTER, NULL);
 void *mon = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL,
                                        on_monitor_event);
 
-/* Incorrect usage: set up monitor from a different thread */
-/* → Undefined behavior */
+/* Snapshot reads may happen later from another worker thread */
+zlink_monitor_snapshot_t snapshot;
+zlink_monitor_snapshot(mon, &snapshot);
 ```
 
 ### Concurrent Monitor Limitation

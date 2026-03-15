@@ -40,6 +40,7 @@ struct iovec
 #include "services/discovery/registry.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/discovery/discovery.hpp"
+#include "services/common/service_public_api.hpp"
 #include "services/gateway/gateway.hpp"
 #include "services/spot/spot_dispatch_internal.hpp"
 #include "services/spot/spot_node.hpp"
@@ -294,6 +295,7 @@ struct spot_handle_t
     bool check_tag () const { return tag == 0x1e6700dc; }
 
     uint32_t tag;
+    zlink::service_public_api_guard_t public_api;
     zlink::spot_node_t *node;
     zlink::spot_pub_t *pub;
     zlink::spot_sub_t *sub;
@@ -762,6 +764,8 @@ static int spot_sub_monitor_snapshot_provider (void *subject_,
 struct registry_query_client_t
 {
     zlink::ctx_t *ctx;
+    zlink::mutex_t sync;
+    zlink::service_public_api_guard_t public_api;
     zlink::socket_base_t *dealer;
     uint32_t tag;
 
@@ -776,7 +780,7 @@ struct registry_query_client_t
 
     bool check_tag () const { return tag == 0x1e6700f1; }
 
-    int connect (const char *endpoint_)
+    int connect_locked (const char *endpoint_)
     {
         if (!endpoint_ || !*endpoint_) {
             errno = EINVAL;
@@ -815,7 +819,7 @@ struct registry_query_client_t
         return 0;
     }
 
-    int destroy ()
+    int destroy_locked ()
     {
         tag = 0xdeadbeef;
         if (dealer) {
@@ -2110,7 +2114,13 @@ int zlink_registry_query_client_connect (void *client_,
         errno = EFAULT;
         return -1;
     }
-    return client->connect (endpoint_);
+
+    zlink::service_public_api_scope_t admission (client->public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    zlink::scoped_lock_t lock (client->sync);
+    return client->connect_locked (endpoint_);
 }
 
 int zlink_registry_query_snapshot (
@@ -2126,6 +2136,16 @@ int zlink_registry_query_snapshot (
     registry_query_client_t *client =
       static_cast<registry_query_client_t *> (client_);
     if (!client->check_tag () || !client->dealer) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink::service_public_api_scope_t admission (client->public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    zlink::scoped_lock_t lock (client->sync);
+    if (!client->dealer) {
         errno = EFAULT;
         return -1;
     }
@@ -2166,6 +2186,16 @@ int zlink_registry_query_gateway_peers_snapshot (
         return -1;
     }
 
+    zlink::service_public_api_scope_t admission (client->public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    zlink::scoped_lock_t lock (client->sync);
+    if (!client->dealer) {
+        errno = EFAULT;
+        return -1;
+    }
+
     if (zlink::discovery_protocol::send_u16 (
           static_cast<void *> (client->dealer),
           zlink::discovery_protocol::msg_gateway_peer_query, ZLINK_SNDMORE)
@@ -2195,12 +2225,17 @@ int zlink_registry_query_destroy (void **client_p_)
     }
     registry_query_client_t *client =
       static_cast<registry_query_client_t *> (*client_p_);
-    *client_p_ = NULL;
     if (!client->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    client->destroy ();
+
+    if (!client->public_api.begin_close_or_fail_busy ())
+        return -1;
+
+    zlink::scoped_lock_t lock (client->sync);
+    client->destroy_locked ();
+    *client_p_ = NULL;
     delete client;
     return 0;
 }
@@ -2646,12 +2681,17 @@ int zlink_gateway_destroy (void **gateway_p_)
         errno = EFAULT;
         return -1;
     }
+    if (!gateway->public_api_guard ().begin_close_or_fail_busy ())
+        return -1;
     if (has_open_service_monitor_for_subject (gateway)) {
+        gateway->public_api_guard ().cancel_close ();
         errno = EBUSY;
         return -1;
     }
-    if (gateway->destroy () != 0)
+    if (gateway->destroy () != 0) {
+        gateway->public_api_guard ().cancel_close ();
         return -1;
+    }
     delete gateway;
     *gateway_p_ = NULL;
     return 0;
@@ -2702,7 +2742,10 @@ int zlink_spot_node_destroy (void **node_p_)
         errno = EFAULT;
         return -1;
     }
+    if (!node->public_api_guard ().begin_close_or_fail_busy ())
+        return -1;
     if (has_open_service_monitor_for_subject (node)) {
+        node->public_api_guard ().cancel_close ();
         errno = EBUSY;
         return -1;
     }
@@ -2711,8 +2754,10 @@ int zlink_spot_node_destroy (void **node_p_)
         zlink::scoped_lock_t lock (registry.sync);
         registry.handlers.erase (node);
     }
-    if (node->destroy () != 0)
+    if (node->destroy () != 0) {
+        node->public_api_guard ().cancel_close ();
         return -1;
+    }
     delete node;
     *node_p_ = NULL;
     return 0;
@@ -2815,6 +2860,9 @@ int zlink_spot_node_publish (void *node_,
         errno = EFAULT;
         return -1;
     }
+    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+    if (!admission.acquired ())
+        return -1;
     zlink::spot_pub_t *pub = node->ensure_default_pub ();
     if (!pub)
         return -1;
@@ -2830,6 +2878,9 @@ int zlink_spot_node_subscribe (void *node_, const char *topic_id_)
         errno = EFAULT;
         return -1;
     }
+    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+    if (!admission.acquired ())
+        return -1;
     zlink::spot_sub_t *sub = node->ensure_default_sub ();
     if (!sub)
         return -1;
@@ -2845,6 +2896,9 @@ int zlink_spot_node_subscribe_pattern (void *node_, const char *pattern_)
         errno = EFAULT;
         return -1;
     }
+    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+    if (!admission.acquired ())
+        return -1;
     zlink::spot_sub_t *sub = node->ensure_default_sub ();
     if (!sub)
         return -1;
@@ -2861,6 +2915,9 @@ int zlink_spot_node_unsubscribe (void *node_,
         errno = EFAULT;
         return -1;
     }
+    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+    if (!admission.acquired ())
+        return -1;
     zlink::spot_sub_t *sub = node->ensure_default_sub ();
     if (!sub)
         return -1;
@@ -2900,6 +2957,9 @@ void *zlink_spot_node_monitor_open (void *node_,
         errno = EFAULT;
         return NULL;
     }
+    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+    if (!admission.acquired ())
+        return NULL;
 
     if (role_ == ZLINK_SPOT_ROLE_PUB) {
         zlink::spot_pub_t *pub = node->ensure_default_pub ();
@@ -2960,8 +3020,11 @@ int zlink_spot_destroy (void **spot_p_)
     spot_handle_t *spot = as_spot_handle (*spot_p_);
     if (!spot)
         return -1;
+    if (!spot->public_api.begin_close_or_fail_busy ())
+        return -1;
     if ((spot->pub && has_open_service_monitor_for_subject (spot->pub))
         || (spot->sub && has_open_service_monitor_for_subject (spot->sub))) {
+        spot->public_api.cancel_close ();
         errno = EBUSY;
         return -1;
     }
@@ -2977,8 +3040,10 @@ int zlink_spot_destroy (void **spot_p_)
         if (rc == 0)
             delete spot->pub;
     }
-    if (rc != 0)
+    if (rc != 0) {
+        spot->public_api.cancel_close ();
         return -1;
+    }
 
     spot->tag = 0xdeadbeef;
     delete spot;
@@ -2994,6 +3059,9 @@ int zlink_spot_publish (void *spot_,
 {
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
+        return -1;
+    zlink::service_public_api_scope_t admission (spot->public_api);
+    if (!admission.acquired ())
         return -1;
     zlink::spot_pub_t *pub = ensure_spot_pub (spot);
     if (!pub) {
@@ -3013,6 +3081,9 @@ int zlink_spot_sub_recv (void *sub_,
     spot_handle_t *spot = as_spot_handle (sub_);
     if (!spot)
         return -1;
+    zlink::service_public_api_scope_t admission (spot->public_api);
+    if (!admission.acquired ())
+        return -1;
     zlink::spot_sub_t *sub = ensure_spot_sub (spot);
     if (!sub) {
         errno = ENOTSUP;
@@ -3027,6 +3098,9 @@ int zlink_spot_subscribe (void *spot_, const char *topic_id_)
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return -1;
+    zlink::service_public_api_scope_t admission (spot->public_api);
+    if (!admission.acquired ())
+        return -1;
     zlink::spot_sub_t *sub = ensure_spot_sub (spot);
     if (!sub) {
         errno = ENOTSUP;
@@ -3039,6 +3113,9 @@ int zlink_spot_subscribe_pattern (void *spot_, const char *pattern_)
 {
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
+        return -1;
+    zlink::service_public_api_scope_t admission (spot->public_api);
+    if (!admission.acquired ())
         return -1;
     zlink::spot_sub_t *sub = ensure_spot_sub (spot);
     if (!sub) {
@@ -3053,6 +3130,9 @@ int zlink_spot_unsubscribe (void *spot_, const char *topic_id_or_pattern_)
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return -1;
+    zlink::service_public_api_scope_t admission (spot->public_api);
+    if (!admission.acquired ())
+        return -1;
     zlink::spot_sub_t *sub = ensure_spot_sub (spot);
     if (!sub) {
         errno = ENOTSUP;
@@ -3066,6 +3146,9 @@ int zlink_spot_set_send_ready_handler (void *spot_,
 {
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
+        return -1;
+    zlink::service_public_api_scope_t admission (spot->public_api);
+    if (!admission.acquired ())
         return -1;
     zlink::spot_pub_t *pub = ensure_spot_pub (spot);
     if (!pub) {
@@ -3083,6 +3166,9 @@ int zlink_spot_set_pub_option (void *spot_,
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return -1;
+    zlink::service_public_api_scope_t admission (spot->public_api);
+    if (!admission.acquired ())
+        return -1;
     zlink::spot_pub_t *pub = ensure_spot_pub (spot);
     if (!pub) {
         errno = ENOTSUP;
@@ -3098,6 +3184,9 @@ int zlink_spot_set_sub_option (void *spot_,
 {
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
+        return -1;
+    zlink::service_public_api_scope_t admission (spot->public_api);
+    if (!admission.acquired ())
         return -1;
     zlink::spot_sub_t *sub = ensure_spot_sub (spot);
     if (!sub) {
@@ -3153,6 +3242,9 @@ void *zlink_spot_monitor_open (void *spot_,
         errno = EINVAL;
         return NULL;
     }
+    zlink::service_public_api_scope_t admission (spot->public_api);
+    if (!admission.acquired ())
+        return NULL;
 
     if (role_ == ZLINK_SPOT_ROLE_PUB) {
         zlink::spot_pub_t *pub = ensure_spot_pub (spot);

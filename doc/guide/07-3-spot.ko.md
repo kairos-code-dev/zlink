@@ -16,7 +16,7 @@ SPOT은 위치 투명한 토픽 기반 발행/구독 시스템이다. Discovery 
 | 용어 | 설명 |
 |------|------|
 | **SPOT Node** | PUB/SUB Mesh 참여 에이전트 (노드별 1개) |
-| **SPOT Pub** | 토픽 발행 핸들 (thread-safe) |
+| **SPOT Pub** | 토픽 발행 경로 (`spot` / `spot_node`의 hot path) |
 | **SPOT Sub** | 토픽 구독/수신 핸들 |
 | **Topic** | 문자열 키 기반 메시지 채널 |
 | **Pattern** | 접두어 + `*` 와일드카드 구독 |
@@ -152,9 +152,11 @@ void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
 void *spot = zlink_spot_new(node, on_message);
 ```
 
-**중요:** unified `spot` handle은 same-handle operational API 기준 thread-safe다.
-다만 callback은 I/O 경로에서 직접 호출되므로, 느린 처리는 사용자 queue로
-넘겨 별도 thread에서 처리하는 편이 안전하다.
+**중요:** public `spot` / `spot_node` handle은 same-handle operational API
+기준 thread-safe다. `publish`는 hot path로서 동시 호출을 허용하고,
+subscribe/unsubscribe/attach/peer connect/monitor는 runtime control path로
+호출할 수 있다. 다만 callback은 I/O 경로에서 직접 호출되므로, 느린 처리는
+사용자 queue로 넘겨 별도 thread에서 처리하는 편이 안전하다.
 
 **제약 사항:**
 
@@ -163,6 +165,8 @@ void *spot = zlink_spot_new(node, on_message);
 - 콜백은 소켓 dispatch / I/O 경로에서 직접 호출된다
 - 콜백에서 블로킹 작업을 수행하면 다른 I/O 진행에 영향을 줄 수 있다
 - 느린 처리가 필요하면 콜백 안에서 사용자 queue로 넘기고 별도 thread에서 처리한다
+- `destroy`는 fail-fast lifecycle gate를 가지므로, 외부 사용을 중단한 뒤
+  정리하는 것이 가장 단순하다
 
 ## 5. 토픽 규칙
 

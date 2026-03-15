@@ -31,23 +31,18 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_capabilities
   ${INTEGRATION_TEST_ROOT}/test_socket_null
   ${INTEGRATION_TEST_ROOT}/test_heartbeats
-  # TODO: test_reconnect_ivl needs rewrite (uses removed sync recv / bounce)
-  #test_reconnect_ivl
+  ${INTEGRATION_TEST_ROOT}/test_reconnect_ivl
   ${INTEGRATION_TEST_ROOT}/test_reconnect_options
-  # TODO: test_pubsub_filter_xpub needs rewrite (uses removed sync recv)
-  #test_pubsub_filter_xpub
-  # TODO: test_router_multiple_dealers needs rewrite (uses removed sync recv)
-  #test_router_multiple_dealers
+  ${INTEGRATION_TEST_ROOT}/test_pubsub_filter_xpub
+  ${INTEGRATION_TEST_ROOT}/test_router_multiple_dealers
   # TODO: test_stream_socket needs rewrite (uses removed zlink_poll / zlink_monitor_recv)
   #test_stream_socket
   ${INTEGRATION_TEST_ROOT}/test_stream_threadsafe
   ${INTEGRATION_TEST_ROOT}/test_stream_send_blocking_wakeup
   # TODO: test_stream_fastpath needs rewrite (uses removed zlink_poll / zlink_monitor_recv)
   #test_stream_fastpath
-  # TODO: test_transport_matrix needs rewrite (uses removed sync recv)
-  #test_transport_matrix
-  # TODO: test_router_auto_id_format needs rewrite (uses removed sync recv)
-  #routing-id/test_router_auto_id_format
+  ${INTEGRATION_TEST_ROOT}/test_transport_matrix
+  ${INTEGRATION_TEST_ROOT}/routing-id/test_router_auto_id_format
   ${INTEGRATION_TEST_ROOT}/routing-id/test_stream_routing_id_size
   ${E2E_TEST_ROOT}/discovery/test_service_discovery
   ${E2E_TEST_ROOT}/discovery/test_service_introspection
@@ -300,7 +295,9 @@ endforeach()
 if(TARGET test_thread_safe_contract_policy)
   target_compile_definitions(
     test_thread_safe_contract_policy
-    PRIVATE TEST_ZLINK_HEADER_PATH="${CMAKE_SOURCE_DIR}/core/include/zlink.h")
+    PRIVATE
+      TEST_ZLINK_HEADER_PATH="${CMAKE_SOURCE_DIR}/core/include/zlink.h"
+      TEST_REPO_ROOT="${CMAKE_SOURCE_DIR}")
 endif()
 
 target_sources(
@@ -362,7 +359,6 @@ if(TARGET test_monitor_service_contract)
   set_tests_properties(
     test_monitor_service_contract
     PROPERTIES
-      DISABLED TRUE
       TIMEOUT 30
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
@@ -404,7 +400,6 @@ if(TARGET test_service_introspection)
   set_tests_properties(
     test_service_introspection
     PROPERTIES
-      DISABLED TRUE
       TIMEOUT 180
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
@@ -563,7 +558,8 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_tls_settings_lock_after_bind_connect_and_register
     test_spot_late_connect_replays_existing_subscription
     test_spot_faulted_node_apis_fail_with_efsm
-    test_spot_node_destroy_rejects_open_child_handle)
+    test_spot_node_destroy_rejects_open_child_handle
+    test_spot_node_public_api_lifecycle_contract)
 
 set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_pub_sub_options=test_spot_pub_sub_options_and_routing_ids
@@ -575,7 +571,8 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_tls_lock=test_spot_tls_settings_lock_after_bind_connect_and_register
     test_spot_service_introspection_late_connect=test_spot_late_connect_replays_existing_subscription
     test_spot_service_introspection_faulted=test_spot_faulted_node_apis_fail_with_efsm
-    test_spot_service_introspection_child_destroy_order=test_spot_node_destroy_rejects_open_child_handle)
+    test_spot_service_introspection_child_destroy_order=test_spot_node_destroy_rejects_open_child_handle
+    test_spot_service_introspection_lifecycle_contract=test_spot_node_public_api_lifecycle_contract)
 
 set(SPOT_PUBSUB_CASES
     test_spot_peer_ipc
@@ -630,7 +627,8 @@ set(GATEWAY_CASES
     test_gateway_load_balancing
     test_gateway_weighted_load_balancing
     test_gateway_manual_connect_disconnect_topology_ownership
-    test_gateway_local_weight_zero_is_preserved)
+    test_gateway_local_weight_zero_is_preserved
+    test_gateway_public_api_lifecycle_contract)
 
 set(GATEWAY_TEST_SPECS
     test_gateway_provider_options=test_gateway_provider_setsockopt
@@ -647,7 +645,8 @@ set(GATEWAY_TEST_SPECS
     test_gateway_round_robin=test_gateway_load_balancing
     test_gateway_weighted=test_gateway_weighted_load_balancing
     test_gateway_manual_topology_ownership=test_gateway_manual_connect_disconnect_topology_ownership
-    test_gateway_local_weight_zero=test_gateway_local_weight_zero_is_preserved)
+    test_gateway_local_weight_zero=test_gateway_local_weight_zero_is_preserved
+    test_gateway_lifecycle_contract=test_gateway_public_api_lifecycle_contract)
 
 set(SERVICE_INTROSPECTION_CASES
     test_discovery_monitor_and_routing_id
@@ -717,7 +716,6 @@ if(TARGET test_service_discovery)
   set_tests_properties(
     test_service_discovery
     PROPERTIES
-      DISABLED TRUE
       TIMEOUT 120
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"

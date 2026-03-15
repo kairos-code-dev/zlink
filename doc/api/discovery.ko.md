@@ -6,6 +6,19 @@ Discovery는 Registry 브로드캐스트를 구독하고 로컬 서비스 디렉
 클라이언트 측 캐시입니다. 애플리케이션은 Discovery를 사용하여 Registry에 직접
 연락하지 않고도 서비스 이름으로 사용 가능한 피어를 조회합니다.
 
+## 스레드 안전성 요약
+
+공개 Discovery handle API는 same-handle operational use 기준 thread-safe합니다.
+다만 모든 호출이 같은 시점 제약을 갖는 것은 아닙니다.
+
+- `zlink_discovery_connect_registry()`, monitor, query성 조회는 runtime에 호출할 수
+  있습니다.
+- `zlink_discovery_set_routing_id()`는 first subscribe/query/connect 전에만
+  의미가 있는 init-only 성격의 API입니다.
+- `zlink_discovery_destroy()`는 fail-fast lifecycle gate를 사용합니다. 다른
+  스레드가 같은 handle에서 callback이나 admitted API를 실행 중이면 `EBUSY`,
+  destroy가 accepted된 뒤 새 API 진입은 `ESHUTDOWN`입니다.
+
 ## 현재 권장 API 방향
 
 - Discovery identity는 `zlink_discovery_set_routing_id()` /

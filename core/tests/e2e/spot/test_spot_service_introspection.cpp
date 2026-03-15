@@ -1435,14 +1435,14 @@ static void test_spot_tls_settings_lock_after_bind_connect_and_register ()
                                           "localhost", 0));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
+    step_log ("tls_lock: destroy discovery");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     step_log ("tls_lock: destroy reg node");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&reg_node));
     step_log ("tls_lock: destroy client node");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&client_node));
     step_log ("tls_lock: destroy server node");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&server_node));
-    step_log ("tls_lock: destroy discovery");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     step_log ("tls_lock: destroy registry");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
     step_log ("tls_lock: cleanup tls");
@@ -1578,6 +1578,48 @@ static void test_spot_node_destroy_rejects_open_child_handle ()
     destroy_test_ctx (ctx);
 }
 
+static void test_spot_node_public_api_lifecycle_contract ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = create_spot_node (ctx, "spot-lifecycle");
+    TEST_ASSERT_NOT_NULL (node);
+
+    zlink::spot_node_t *node_impl = static_cast<zlink::spot_node_t *> (node);
+    {
+        zlink::service_public_api_scope_t inflight (
+          node_impl->public_api_guard ());
+        TEST_ASSERT_TRUE (inflight.acquired ());
+
+        TEST_ASSERT_EQUAL_INT (-1, zlink_spot_node_destroy (&node));
+        TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+        TEST_ASSERT_NOT_NULL (node);
+
+        void *spot = zlink_spot_new (node, &ignore_spot_handler);
+        TEST_ASSERT_NOT_NULL (spot);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    }
+
+    TEST_ASSERT_TRUE (node_impl->public_api_guard ().begin_close_or_fail_busy ());
+
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_spot_node_bind (node, "tcp://127.0.0.1:9"));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
+    TEST_ASSERT_EQUAL_INT (
+      -1,
+      zlink_spot_node_set_send_ready_handler (node, &spot_counting_ready_handler));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
+    TEST_ASSERT_FALSE (node_impl->public_api_guard ().begin_close_or_fail_busy ());
+    TEST_ASSERT_EQUAL_INT (EALREADY, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (node_impl->destroy ());
+    delete node_impl;
+    destroy_test_ctx (ctx);
+}
+
 int main (int, char **)
 {
     setup_test_environment (300);
@@ -1598,6 +1640,7 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_late_connect_replays_existing_subscription);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_faulted_node_apis_fail_with_efsm);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_destroy_rejects_open_child_handle);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_node_public_api_lifecycle_contract);
 #undef RUN_SPOT_INTROSPECTION_TEST
     return UNITY_END ();
 }

@@ -31,6 +31,21 @@ zlink_ctx_term(ctx);  /* 모든 소켓이 닫힌 후 반환 */
 
 ## 2. Socket API
 
+### 2.0 스레드 안전성 빠른 요약
+
+공개 socket handle API는 기본적으로 thread-safe다. 다만 모든 API가 같은 비용
+모델을 갖는 것은 아니다.
+
+- `zlink_send()`는 same-handle concurrent 호출을 허용하는 hot path다.
+- `bind/connect/disconnect`, subscribe/unsubscribe, monitor, option/query는
+  runtime에 호출할 수 있으며 correctness 우선 직렬화 계층이다.
+- `zlink_close()`는 fail-fast lifecycle gate를 사용한다. 다른 스레드가 같은
+  handle에서 admitted API나 callback을 실행 중이면 `EBUSY`, close가 accepted된
+  뒤 새 API 진입은 `ESHUTDOWN`이다.
+- 예외는 소수만 남긴다. init-only 성격의 설정, callback context에서 금지된
+  일부 reentrant API, 같은 `zlink_msg_t` 객체의 동시 공유는 기본 허용 범위
+  밖이다.
+
 ### 2.1 소켓 생성 및 닫기
 
 ```c
@@ -91,6 +106,11 @@ zlink_getsockopt(socket, ZLINK_SNDHWM, &value, &len);
 | `ZLINK_ROUTING_ID` | binary | 자동 | 소켓 라우팅 ID |
 | `ZLINK_SUBSCRIBE` | binary | - | 구독 필터 (SUB 전용) |
 
+`ZLINK_SUBSCRIBE` / `ZLINK_UNSUBSCRIBE`, `ZLINK_EVENTS`,
+`ZLINK_LAST_ENDPOINT`, `ZLINK_RCVMORE` 같은 옵션과 조회는 runtime 중간에도
+의미가 있다. 반면 HWM, 타임아웃, TLS 같은 대부분의 튜닝 옵션은 보통 초기
+설정에 가깝다.
+
 ## 3. 메시지 송수신
 
 ### 3.1 송신
@@ -146,7 +166,8 @@ void *socket = zlink_socket(ctx, ZLINK_PAIR, &handler);
 | XPUB | `ZLINK_SOCKET_HANDLER_XPUB` | `void fn(int subscribed, const uint8_t *topic, size_t topic_len)` |
 | PUB, XSUB | N/A (NULL) | 송신 전용 소켓 |
 
-콜백은 I/O 스레드에서 호출된다. 콜백 내부에서 블로킹 작업을 피해야 한다 — 느린 처리가 필요하면 사용자 큐에 넣고 별도 스레드에서 처리한다.
+콜백은 I/O 스레드에서 호출된다. 콜백 내부에서 블로킹 작업을 피해야 한다.
+느린 처리가 필요하면 사용자 큐에 넣고 별도 스레드에서 처리한다.
 
 ## 5. 에러 처리
 

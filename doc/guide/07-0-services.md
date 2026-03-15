@@ -51,9 +51,11 @@ See the [Service Discovery Guide](07-1-discovery.md) for details.
 
 ### 3.2 Gateway -- Location-Transparent Request/Reply
 
-Automatically discovers service Receivers based on Discovery and handles load-balanced message delivery. Designed as send-only, it is **thread-safe** and allows concurrent sends from multiple threads.
+Automatically discovers service Receivers based on Discovery and handles
+load-balanced message delivery. Gateway handles are thread-safe by default,
+and `send` allows same-handle concurrent calls.
 
-- **Thread-safe** -- send-only design minimizes contention, enabling concurrent sends from multiple threads
+- **Thread-safe** -- the `send` hot path allows concurrent sends from multiple threads
 - Round Robin / Weighted load balancing
 - Automatic connect/disconnect (based on Discovery events)
 
@@ -66,6 +68,7 @@ Automatically constructs a PUB/SUB Mesh based on Discovery to publish/subscribe 
 - Topic-based publish/subscribe
 - Pattern (wildcard) subscriptions
 - Discovery-based automatic Mesh construction
+- public `spot` / `spot_node` handles are thread-safe for same-handle operational use
 
 See the [SPOT Guide](07-3-spot.md) for details.
 

@@ -705,12 +705,14 @@ ZLINK_EXPORT int zlink_socket_set_send_ready_handler (
 /**
  * @brief Close a socket and release its resources.
  *
- * Public socket handles are thread-safe for same-handle operational APIs.
- * close/destroy is more restrictive: if another thread has an in-flight
- * callback or operational API on the same handle, close fails with errno=EBUSY.
- * Self-close from a send-ready or monitor callback is deferred until callback
- * epilogue. For STREAM raw callbacks, close from inside the raw callback is not
- * supported and fails with errno=EBUSY.
+ * Public handles use a tiered concurrency contract: send/publish hot paths
+ * allow same-handle concurrent use, low-frequency control paths serialize for
+ * correctness, and close/destroy uses a stricter lifecycle gate. If another
+ * thread has an in-flight callback or admitted API on the same handle, close
+ * fails with errno=EBUSY. Once close is accepted, new API entry fails with
+ * errno=ESHUTDOWN. Self-close from a send-ready or monitor callback is
+ * deferred until callback epilogue. For STREAM raw callbacks, close from
+ * inside the raw callback is not supported and fails with errno=EBUSY.
  */
 ZLINK_EXPORT int zlink_close (void *s_);
 
@@ -1488,8 +1490,9 @@ ZLINK_EXPORT void zlink_service_monitor_ignore_handler (
 /**
  * @brief Open a service monitor handle with a fixed callback.
  *
- * Monitor handles are thread-safe child handles. The callback is fixed at
- * open time and cannot be replaced later.
+ * Monitor handles participate in the same tiered contract: open/close are
+ * serialized control-path operations, while callback replacement is not
+ * supported after open.
  */
 ZLINK_EXPORT void *zlink_discovery_monitor_open (
   void *discovery,

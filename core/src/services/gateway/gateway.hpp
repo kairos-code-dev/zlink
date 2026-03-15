@@ -7,6 +7,7 @@
 
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
+#include "services/common/service_public_api.hpp"
 #include "services/common/service_monitor.hpp"
 #include "services/discovery/discovery.hpp"
 #include "utils/clock.hpp"
@@ -51,6 +52,7 @@ class gateway_t : public discovery_observer_t
     ~gateway_t ();
 
     bool check_tag () const;
+    service_public_api_guard_t &public_api_guard () { return _public_api; }
 
     int send (zlink_msg_t *parts_, size_t part_count_, int flags_);
     int attach_discovery (discovery_t *discovery_);
@@ -173,6 +175,7 @@ class gateway_t : public discovery_observer_t
     std::string _tls_server_key;
     std::atomic<zlink_socket_msg_handler_fn> _handler;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
+    service_public_api_guard_t _public_api;
     service_monitor_hub_t _monitor;
 
     friend struct gateway_runtime_t;

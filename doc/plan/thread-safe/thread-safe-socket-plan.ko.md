@@ -275,6 +275,23 @@ spot_node
 internal child(`spot` 내부 pub/sub)는 parent/facade의 thread-safe contract를
 내부에서 이행하는 구현 단위다.
 
+### 4.1 빠른 참조: subject × 계약 매트릭스
+
+| Subject | concurrent send | send-ready setter | self-close 허용 callback | cross-thread close | 현재 달성도 | 상세 절 |
+|---|---|---|---|---|---|---|
+| raw socket (STREAM 제외) | 목표 | 목표 (seqlock) | send-ready, monitor | EBUSY (목표) | 낮음 — 공통 gate 없음 | 8.1 |
+| raw STREAM | 목표 (`_api_mutex` 부분 존재) | 목표 (seqlock) | send-ready, monitor | EBUSY (목표) | 중간 | 8.1 |
+| `gateway` | 기존 `_sync` 재사용 | 목표 (seqlock) | recv, monitor, send-ready | EBUSY (목표) | 중간 | 8.3 |
+| `spot_node` | 기존 `_sync` 재사용 | 목표 (seqlock) | recv, monitor, send-ready | EBUSY (목표) | 중간 | 8.4 |
+| unified `spot` | facade admission + child lock | 목표 (seqlock) | recv, monitor, send-ready | EBUSY (목표) | 중간 | 8.5 |
+| `discovery` | 기존 `_sync` 재사용 | N/A | monitor | EBUSY (목표) | 중간 — observer inflight 분리 필요 | 8.2 |
+| monitor handle | 독립 child handle | N/A | self-close 허용 (deferred) | EBUSY (구현 근접) | 높음 | 8.7 |
+| internal `spot_pub`/`spot_sub` | parent/facade contract 내부 | parent/facade 경유 | parent/facade 경유 | parent teardown 내부 | 중간 | 8.6 |
+
+- "목표"는 공통 gate 구현 후 도달 예정을 뜻한다.
+- self-close 열의 "recv"는 service recv callback을, "monitor"는 monitor callback을, "send-ready"는 send-ready callback을 의미한다.
+- raw recv callback(STREAM 포함) 안 `zlink_close()`는 모든 raw socket에서 금지(`EBUSY`)다.
+
 ## 5. 공개 API 방향
 
 이 문서의 방향은 "생성자 시그니처에 동시성 옵션을 추가하는 것"이 아니다.
@@ -705,8 +722,10 @@ raw socket에 필요한 최소 helper는 다음과 같다.
   에 둔다.
 - 필드:
   - `admission_state` — 단일 atomic word. closing bit + inflight count를 합친다.
-    구현은 packed `uint32_t`, cacheline-isolated counter, 또는 sharded counter 중
-    적합한 방식을 선택할 수 있다. 문서는 의미만 고정한다.
+    구현은 packed `uint32_t` 또는 packed `uint64_t`처럼 close 판정과
+    admission 차단을 같은 CAS 선형화 지점에 둘 수 있는 single-word 형태만
+    허용한다. cacheline 분리와 bit 배치는 구현 자유도에 포함되지만,
+    `sharded counter` 같은 multi-word 구조는 허용하지 않는다.
   - `callback_thread_id` — 현재 활성 callback의 thread ID (단일 슬롯,
     "한 handle 당 동시 callback thread 최대 1개" invariant 전제)
   - `callback_depth` — 중첩 callback 깊이
@@ -745,6 +764,18 @@ raw socket에 필요한 최소 helper는 다음과 같다.
   - `xsend` 전제 조건이 command 반영에 의존하는 경우,
     bounded drain 후 짧은 state recheck를 수행한다.
   - drain 완료 후 `command_drain_owner`를 atomic release store로 해제한다.
+- deferred command 재처리 규칙:
+  - defer queue에 pending command가 남아 있으면, 다음 drainer 획득 thread가
+    일반 mailbox drain 전에 defer queue를 먼저 소비한다.
+  - defer queue가 비어 있지 않은 상태에서 `xsend`를 수행하는 thread는,
+    `xsend` 직전에 defer queue의 pending 여부를 확인한다. pipe_term 등
+    pipe lifecycle command가 pending이면 해당 pipe로의 `xsend`는
+    `EHOSTUNREACH` 또는 해당 pipe의 정의된 에러로 즉시 실패해야 한다.
+    이미 종료된 pipe에 silent write하는 것은 금지한다.
+  - deferred command의 최대 체류 시간 bound는 정의하지 않는다. 다만,
+    send path 진입이 있는 한 drainer 기회가 보장되므로 무한 체류는
+    발생하지 않는다. send path 진입이 없는 idle handle에서는
+    I/O thread의 기존 command processing 경로가 drain을 담당한다.
 - 금지:
   - 다중 thread 동시 mailbox drain
   - full drain under `op_state_mutex`
@@ -762,6 +793,47 @@ raw socket에 필요한 최소 helper는 다음과 같다.
   삼는다.
 - thread-local depth는 진단/assert 또는 fast reject 보조 신호로만 사용할 수 있고,
   correctness 판정에 단독으로 쓰면 안 된다.
+
+### 7.6-a 전체 lock / atomic ordering
+
+이 문서에서 정의하는 모든 lock과 atomic gate의 획득 순서를 하나의 DAG로
+정리한다. **역순 획득은 deadlock 원인이 되므로 금지한다.**
+
+```text
+admission_state CAS (atomic, per-handle)
+   │
+   ├── parent/facade registry lock
+   │       │
+   │       └── child registry lock
+   │               │
+   │               └── child local state lock (_sync 또는 op_state_mutex)
+   │                       │
+   │                       └── raw socket op_state_mutex
+   │
+   └── op_state_mutex (same-handle, 직접 진입 시)
+           │
+           └── (xsend / xrecv 내부)
+
+별도 경로 (위 DAG에 포함되지 않으며 동시 보유 금지):
+   send_ready_writer_mutex — setter path 전용, op_state_mutex와 동시에 보유 금지
+   command_drain_owner    — drain token 전용, op_state_mutex와 동시에 보유 금지
+```
+
+규칙:
+
+- `admission_state` CAS는 DAG 최상위이며 모든 lock 획득 전에 통과해야 한다.
+- `send_ready_writer_mutex`는 setter 간 직렬화 전용이며, 위 DAG의 어떤
+  lock과도 동시에 보유하면 안 된다. dispatcher(reader)는 이 mutex를
+  획득하지 않는다 (7.3절).
+- `command_drain_owner`는 lock이 아니라 단일 drainer token이며,
+  `op_state_mutex`와 동시에 보유하면 안 된다.
+- callback 실행(user callback, send-ready callback, monitor callback)은
+  어떤 lock도 들지 않은 상태에서 수행한다.
+- 서비스 계열의 `_sync`는 위 DAG에서 `child local state lock` 또는
+  `op_state_mutex`에 해당하는 위치에 놓인다. `_sync`를 들고 parent
+  registry lock을 획득하는 것은 역순이므로 금지한다.
+
+이 DAG는 구현 진행 중 새 lock/atomic이 추가되면 같이 갱신한다.
 
 ### 7.7 실제 적용 순서
 
@@ -1000,6 +1072,19 @@ fast path 최적화 방향:
   구현 착수 전에 확정해야 한다. 이 결정이 steady-state fast path 비용을
   바로 바꾸기 때문이다.
 
+권장 결정:
+
+- **1차 구현은 eager child creation + internal-only child를 기본으로 한다.**
+  이유: (1) child ref가 불변이 되어 steady-state publish에서 facade lock을
+  제거할 수 있고, (2) internal-only child라면 child admission CAS도 private
+  fast path에서 생략 가능하여 steady-state 경로가 facade admission CAS →
+  child op_state_mutex → xsend로 최소화된다. (3) 현재 lazy creation의
+  실제 이점(생성 비용 지연)은 unified `spot`의 사용 패턴에서 유의미하지
+  않다 — 대부분의 경우 생성 직후 publish/subscribe를 시작하기 때문이다.
+- 만약 향후 child를 public 경로로 노출해야 하는 요구가 생기면,
+  child admission CAS를 추가하는 방식으로 확장한다. 이때 이 절의
+  fast path 비용 모델을 다시 검토한다.
+
 ### 8.6 internal `spot_pub` / `spot_sub` 구현
 
 `spot_pub`와 `spot_sub`는 public 생성/조작 API가 없는 **internal child**다.
@@ -1115,6 +1200,9 @@ self-close는 callback 종류에 따라 허용 여부가 다르다. canonical `z
   - raw monitor callback 안 `zlink_close(handle)` — deferred teardown
 - 금지:
   - raw recv callback(STREAM direct callback 포함) 안 `zlink_close(handle)` — `errno=EBUSY`
+    이 `EBUSY`는 "inflight 때문에 잠시 후 재시도 가능"이 아니라
+    "이 callback 종류에서는 self-close가 구조적으로 금지"라는 뜻이다.
+    quiesce 후 재시도가 아닌 **호출자 설계 오류 신호**로 취급한다.
 
 의미:
 
@@ -1322,9 +1410,10 @@ destroy는 `EBUSY`이고, parent가 먼저 closing이면 open/create는
 |---|---|
 | in-flight external `close` / `destroy` | `EBUSY` |
 | caller-visible child가 열린 상태에서 parent `destroy` | `EBUSY` |
-| raw recv callback(STREAM 포함) 안 `zlink_close()` | `EBUSY` |
+| raw recv callback(STREAM 포함) 안 `zlink_close()` | `EBUSY` (구조적 금지, 재시도 불가 — 설계 오류 신호) |
 | child callback 안 parent `destroy` | `EBUSY` |
 | manual peer/route가 있는 상태에서 `attach_discovery()` | `EBUSY` |
+| `attach_discovery()` 성공 후 manual `connect` / `disconnect` | `EBUSY` |
 | send-ready callback 안 `*_set_send_ready_handler()` 재진입 | `EDEADLK` |
 | self-close accepted 후 같은 callback에서 same-handle operational API | `ESHUTDOWN` |
 | parent closing 이후 child/monitor open 시도 (`*_monitor_open()`, `zlink_spot_new()` 등) | `ESHUTDOWN` |
@@ -1353,26 +1442,35 @@ callback inflight가 0이 될 때까지 **blocking CV wait**(wait-to-drain)하�
   테스트/로그로 수집한다.
 - 이 데이터로 실제로 wait-to-drain에 의존하는 호출 패턴이 어디에 있는지
   파악한다.
+- exit criteria: 모든 subject에 계측이 들어가고, 기존 test suite에서
+  wait-to-drain 발생 빈도가 수집된다.
 
 2단계 — 문서 경고:
 - header/doc에 close/destroy는 quiesce 이후 호출해야 하며, wait-to-drain
   semantics에 의존하면 안 된다는 경고를 명시한다.
 - 기존 코드가 wait-to-drain에 의존하고 있다면 이 시점에서 호출자 쪽
   종료 순서를 정리하도록 안내한다.
+- exit criteria: 관련 header/doc 경고가 반영되고, 1단계 계측에서
+  wait-to-drain 의존 호출 패턴이 모두 식별되어 호출자별 마이그레이션
+  방안이 문서화된다.
 
 3단계 — subject별 `EBUSY` 전환:
 - 서비스별로 `EBUSY` 거절 정책을 도입하되, 전환 대상과 순서를 고정한다.
   1. monitor (이미 `EBUSY`에 가장 가까움)
   2. `gateway`
-  3. `spot_sub` / `spot_node`
+  3. `spot_sub` / `spot_node` / unified `spot`
   4. `discovery`
 - 각 전환은 해당 subject의 regression test를 `EBUSY` 기준으로 동시에
   변경한다.
+- exit criteria: 해당 subject의 모든 close/destroy regression test가
+  `EBUSY` 기준으로 통과하고, TSAN lane에서 warning 0건이다.
 
 4단계 — wait-to-drain 제거:
 - blocking CV wait 코드를 제거한다.
 - 모든 close/destroy regression test가 `EBUSY` 기준으로 고정되었는지
   확인한다.
+- exit criteria: blocking CV wait 코드가 전체 codebase에서 제거되고,
+  전체 test suite(unittest + integration + e2e + stress)가 통과한다.
 
 호출자 마이그레이션 규칙:
 - 이전: `destroy()`가 내부 drain을 기다릴 수 있음
@@ -1588,6 +1686,11 @@ same-handle 기준 (정확성 + low fixed overhead 목표):
   **절대값 50 ns 이하 그리고 상대값 5% 이하**를 모두 만족해야 한다.
   이 수치는 초기 구현 후 baseline 측정으로 확정하되, 구조적 무너짐을 방지하는
   hard limit으로 사용한다.
+  reference host 정의: x86-64 아키텍처, 최소 4 core, performance CPU governor,
+  turbo boost 비활성화 상태를 기본 조건으로 한다. ARM 등 다른 아키텍처에서는
+  uncontended CAS 비용이 다를 수 있으므로 해당 아키텍처에서 별도 baseline을
+  측정하고 budget을 조정한다. 모든 측정 결과에는 아키텍처, CPU 모델,
+  커널 버전, 컴파일러 버전을 함께 기록한다.
 - same-handle concurrent send는 scaling 목표가 아니라 정확성 + low overhead 목표다.
   `op_state_mutex`가 `xsend`를 직렬화하므로 sender 수를 올려도 same-handle
   throughput은 증가하지 않는다. 이것은 의도된 동작이다.
@@ -1754,6 +1857,30 @@ different-handle 기준 (scaling 목표):
 - 금지 결과: hang, abort, silent drop, checksum mismatch, 허용 집합 밖 `errno`
 - hard timeout: 2000 ms
 
+### 12.2-b deferred command fail-fast
+
+- 사전 조건: raw socket send path에서 `pipe_term` 또는 동등한 pipe lifecycle command를
+  bounded drain 중 defer시키는 fixture를 준비한다. target pipe를 식별 가능한 message id와
+  peer 상태로 구분한다.
+- 동기화 방법: event flag로 (1) heavy command defer 시점, (2) 후속 `xsend` 시점을
+  분리한다.
+- 수행 절차:
+  - send thread A가 bounded drain 중 heavy command를 만나 defer queue에 올리게 만든다.
+  - defer queue pending 상태에서 thread B가 같은 handle로 `send()`를 호출한다.
+  - idle handle 경로도 별도로 검증한다: send path 진입 없이 I/O thread command
+    processing만으로 defer queue가 drain되게 한 뒤, 후속 send 결과를 관측한다.
+- 관측값: defer queue pending 여부, 후속 `send()` 반환값/`errno`, target pipe로의
+  실제 deliver 여부, idle drain 후 send 결과
+- 허용 결과:
+  - defer queue에 pending pipe lifecycle command가 있는 상태에서 해당 pipe로의
+    `send()`는 `0`으로 성공하면 안 된다.
+  - 이 경우 `send()`는 `EHOSTUNREACH` 또는 해당 pipe에 대해 문서/구현이 정의한
+    canonical errno로 즉시 실패해야 한다. silent write는 실패다.
+  - idle handle 경로에서는 I/O thread drain 이후 defer queue가 비워지고, 후속 send는
+    정리된 pipe 상태에 맞는 결과(성공 금지 또는 정의된 errno)로 일관되게 끝나야 한다.
+- 금지 결과: deferred command 무시, silent delivery, hang, deferred 상태 영구 잔류
+- hard timeout: 2000 ms
+
 ### 12.3 send-ready handler
 
 - 사전 조건: send-ready callback 호출을 강제할 수 있는 writable/non-writable fixture를
@@ -1848,7 +1975,7 @@ setter-vs-dispatch 겹침 시나리오는 타이밍에 의존하므로 stress la
   child open 성공/실패 여부
 - 허용 결과:
   - manual peer/route가 있는 상태의 `attach_discovery()`는 `errno=EBUSY`
-  - attach 성공 후 manual `connect` / `disconnect`는 문서에 정한 에러 코드로 실패해야 한다
+  - attach 성공 후 manual `connect` / `disconnect`는 `errno=EBUSY`로 실패해야 한다
   - monitor callback 안 parent data-plane API 호출은 timeout 내 return해야 한다
   - monitor callback 안 parent lifecycle/control-plane API는 문서에 정의한 에러
     (`EBUSY` 또는 `ESHUTDOWN`)로 실패해야 한다
@@ -2040,6 +2167,11 @@ setter-vs-dispatch 겹침 시나리오는 타이밍에 의존하므로 stress la
 13. 한 handle에는 동시에 최대 하나의 callback thread만 활성화된다는 invariant를
     유지한다. 이 invariant 위에서 per-handle `callback_thread_id + callback_depth`가
     self-close 판정과 callback-중-send 허용의 canonical source of truth로 동작한다.
+14. unified `spot`의 internal child(pub/sub)는 1차 구현에서 eager creation +
+    internal-only로 한다. 이를 통해 steady-state publish 경로를 facade admission
+    CAS → child op_state_mutex → xsend로 최소화한다 (8.5절).
+15. lock / atomic ordering은 7.6-a절의 DAG를 따른다. 역순 획득은 금지하며,
+    새 lock/atomic 추가 시 DAG를 동시에 갱신한다.
 
 한 줄 요약:
 

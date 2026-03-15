@@ -1169,6 +1169,121 @@ static void test_spot_node_direct_apis_and_explicit_handles_interop ()
     destroy_test_ctx (ctx);
 }
 
+static void test_spot_runtime_reads_are_safe_during_concurrent_publish ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *pub_node = create_spot_node (ctx, "spot-runtime-read");
+    void *sub_node = create_spot_node (ctx, "spot-runtime-read");
+    TEST_ASSERT_NOT_NULL (pub_node);
+    TEST_ASSERT_NOT_NULL (sub_node);
+
+    void *pub = create_spot_pub_handle (pub_node);
+    void *sub = create_spot_sub_handle (sub_node);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub);
+
+    char endpoint[MAX_SOCKET_STRING];
+    int endpoint_seed = 22792;
+    TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+      pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
+      sizeof (endpoint)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer_pub (sub_node, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_subscribe (sub_node, "svc-runtime"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "svc-runtime"));
+
+    spot_probe_t *sub_probe = new spot_probe_t;
+    TEST_ASSERT_SUCCESS_ERRNO (attach_spot_probe (sub, sub_probe));
+    msleep (100);
+
+    const int publisher_count = 4;
+    const int messages_per_publisher = 32;
+    std::vector<int> worker_errno (publisher_count, 0);
+    std::vector<int> worker_progress (publisher_count, 0);
+    std::vector<std::thread> workers;
+    std::atomic<int> stop_reads (0);
+    std::atomic<int> read_failures (0);
+    std::atomic<int> read_iterations (0);
+    std::mutex start_mutex;
+    std::condition_variable start_cv;
+    int ready_threads = 0;
+    bool start = false;
+
+    std::thread reader ([&] () {
+        while (stop_reads.load () == 0) {
+            zlink_monitor_snapshot_t snapshot;
+            memset (&snapshot, 0, sizeof (snapshot));
+            if (!read_spot_snapshot (pub, ZLINK_SPOT_ROLE_PUB, &snapshot)) {
+                read_failures.fetch_add (1);
+                break;
+            }
+            read_iterations.fetch_add (1);
+            msleep (1);
+        }
+    });
+
+    for (int i = 0; i < publisher_count; ++i) {
+        workers.push_back (std::thread ([&, i] () {
+            {
+                std::unique_lock<std::mutex> lock (start_mutex);
+                ++ready_threads;
+                start_cv.notify_all ();
+                start_cv.wait (lock, [&start] () { return start; });
+            }
+
+            for (int seq = 0; seq < messages_per_publisher; ++seq) {
+                char payload[32];
+                snprintf (payload, sizeof (payload), "pub-%d-%02d", i, seq);
+                if (publish_text (&zlink_spot_publish, pub, "svc-runtime",
+                                  payload, 0)
+                    != 0) {
+                    worker_errno[i] = zlink_errno ();
+                    return;
+                }
+                worker_progress[i] += 1;
+            }
+        }));
+    }
+
+    {
+        std::unique_lock<std::mutex> lock (start_mutex);
+        TEST_ASSERT_TRUE (start_cv.wait_for (
+          lock, std::chrono::seconds (5),
+          [&ready_threads, publisher_count] () {
+              return ready_threads == publisher_count;
+          }));
+        start = true;
+        start_cv.notify_all ();
+    }
+
+    for (size_t i = 0; i < workers.size (); ++i)
+        workers[i].join ();
+
+    stop_reads.store (1);
+    reader.join ();
+
+    for (int i = 0; i < publisher_count; ++i) {
+        TEST_ASSERT_EQUAL_INT (messages_per_publisher, worker_progress[i]);
+        TEST_ASSERT_EQUAL_INT (0, worker_errno[i]);
+    }
+    TEST_ASSERT_EQUAL_INT (0, read_failures.load ());
+    TEST_ASSERT_GREATER_THAN_INT (0, read_iterations.load ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      publish_text (&zlink_spot_publish, pub, "svc-runtime", "done", 0));
+    TEST_ASSERT_TRUE (
+      wait_for_spot_message_bytes (sub_probe, "svc-runtime", "done", 4, 1000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    destroy_test_ctx (ctx);
+}
+
 static void test_spot_node_send_ready_handler_isolated_by_service ()
 {
     void *ctx = zlink_ctx_new ();
@@ -1680,6 +1795,7 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_pub_sub_options_and_routing_ids);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_monitors_and_monitor_poller);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_direct_apis_and_explicit_handles_interop);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_runtime_reads_are_safe_during_concurrent_publish);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_send_ready_handler_isolated_by_service);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_topology_summary_lifecycle);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_register_null_derivation_and_wildcard_rejection);

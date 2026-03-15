@@ -1448,15 +1448,12 @@ int main (int, char **)
     RUN_SERVICE_INTROSPECTION_TEST (test_gateway_receiver_routing_ids_and_options);
     RUN_SERVICE_INTROSPECTION_TEST (test_gateway_receiver_monitors_and_monitor_poller);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_topology_snapshot_and_remote_query);
-    RUN_SERVICE_INTROSPECTION_TEST (
-      test_registry_gateway_peer_snapshot_and_remote_query);
+    RUN_SERVICE_INTROSPECTION_TEST (test_registry_gateway_peer_snapshot_and_remote_query);
     RUN_SERVICE_INTROSPECTION_TEST (test_monitor_closed_event_on_service_destroy);
-    RUN_SERVICE_INTROSPECTION_TEST (
-      test_discovery_destroy_busy_observer_is_no_latch);
+    RUN_SERVICE_INTROSPECTION_TEST (test_discovery_destroy_busy_observer_is_no_latch);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_public_api_lifecycle_contract);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_public_api_lifecycle_contract);
-    RUN_SERVICE_INTROSPECTION_TEST (
-      test_registry_query_client_public_api_lifecycle_contract);
+    RUN_SERVICE_INTROSPECTION_TEST (test_registry_query_client_public_api_lifecycle_contract);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_restriction);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_allowed_ws);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_allowed_tls);

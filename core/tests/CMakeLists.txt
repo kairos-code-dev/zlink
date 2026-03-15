@@ -552,6 +552,7 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_pub_sub_options_and_routing_ids
     test_spot_monitors_and_monitor_poller
     test_spot_node_direct_apis_and_explicit_handles_interop
+    test_spot_runtime_reads_are_safe_during_concurrent_publish
     test_spot_node_send_ready_handler_isolated_by_service
     test_spot_topology_summary_lifecycle
     test_spot_register_null_derivation_and_wildcard_rejection
@@ -559,12 +560,14 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_late_connect_replays_existing_subscription
     test_spot_faulted_node_apis_fail_with_efsm
     test_spot_node_destroy_rejects_open_child_handle
-    test_spot_node_public_api_lifecycle_contract)
+    test_spot_node_public_api_lifecycle_contract
+    test_spot_public_api_lifecycle_contract)
 
 set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_pub_sub_options=test_spot_pub_sub_options_and_routing_ids
     test_spot_service_introspection_monitors=test_spot_monitors_and_monitor_poller
     test_spot_service_introspection_explicit_handles=test_spot_node_direct_apis_and_explicit_handles_interop
+    test_spot_service_introspection_runtime_reads=test_spot_runtime_reads_are_safe_during_concurrent_publish
     test_spot_service_introspection_send_ready_isolation=test_spot_node_send_ready_handler_isolated_by_service
     test_spot_service_introspection_topology_summary=test_spot_topology_summary_lifecycle
     test_spot_service_introspection_register_null=test_spot_register_null_derivation_and_wildcard_rejection
@@ -572,7 +575,8 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_late_connect=test_spot_late_connect_replays_existing_subscription
     test_spot_service_introspection_faulted=test_spot_faulted_node_apis_fail_with_efsm
     test_spot_service_introspection_child_destroy_order=test_spot_node_destroy_rejects_open_child_handle
-    test_spot_service_introspection_lifecycle_contract=test_spot_node_public_api_lifecycle_contract)
+    test_spot_service_introspection_lifecycle_contract=test_spot_node_public_api_lifecycle_contract
+    test_spot_service_introspection_handle_lifecycle=test_spot_public_api_lifecycle_contract)
 
 set(SPOT_PUBSUB_CASES
     test_spot_peer_ipc
@@ -582,6 +586,7 @@ set(SPOT_PUBSUB_CASES
     test_spot_peer_wss
     test_spot_unified_wss_subscription_ready_first_delivery
     test_spot_multi_publisher
+    test_spot_same_handle_concurrent_publish
     test_spot_node_direct_local_and_child_interop
     test_spot_node_direct_remote_peer_mesh
     test_spot_node_direct_sub_option_inheritance_and_handler_conflict
@@ -603,6 +608,7 @@ set(SPOT_PUBSUB_PEER_TEST_SPECS
 
 set(SPOT_PUBSUB_LOCAL_TEST_SPECS
     test_spot_pubsub_scenario_multi_publisher=test_spot_multi_publisher
+    test_spot_pubsub_scenario_concurrent_publish=test_spot_same_handle_concurrent_publish
     test_spot_pubsub_scenario_node_child_interop=test_spot_node_direct_local_and_child_interop
     test_spot_pubsub_scenario_node_remote_mesh=test_spot_node_direct_remote_peer_mesh
     test_spot_pubsub_scenario_sub_option_inheritance=test_spot_node_direct_sub_option_inheritance_and_handler_conflict
@@ -628,6 +634,7 @@ set(GATEWAY_CASES
     test_gateway_weighted_load_balancing
     test_gateway_manual_connect_disconnect_topology_ownership
     test_gateway_local_weight_zero_is_preserved
+    test_gateway_runtime_reads_are_safe_during_concurrent_send
     test_gateway_public_api_lifecycle_contract)
 
 set(GATEWAY_TEST_SPECS
@@ -646,6 +653,7 @@ set(GATEWAY_TEST_SPECS
     test_gateway_weighted=test_gateway_weighted_load_balancing
     test_gateway_manual_topology_ownership=test_gateway_manual_connect_disconnect_topology_ownership
     test_gateway_local_weight_zero=test_gateway_local_weight_zero_is_preserved
+    test_gateway_runtime_reads=test_gateway_runtime_reads_are_safe_during_concurrent_send
     test_gateway_lifecycle_contract=test_gateway_public_api_lifecycle_contract)
 
 set(SERVICE_INTROSPECTION_CASES
@@ -653,7 +661,12 @@ set(SERVICE_INTROSPECTION_CASES
     test_gateway_receiver_routing_ids_and_options
     test_gateway_receiver_monitors_and_monitor_poller
     test_registry_topology_snapshot_and_remote_query
+    test_registry_gateway_peer_snapshot_and_remote_query
     test_monitor_closed_event_on_service_destroy
+    test_discovery_destroy_busy_observer_is_no_latch
+    test_discovery_public_api_lifecycle_contract
+    test_registry_public_api_lifecycle_contract
+    test_registry_query_client_public_api_lifecycle_contract
     test_discovery_registry_transport_restriction
     test_discovery_registry_transport_allowed_ws
     test_discovery_registry_transport_allowed_tls
@@ -666,7 +679,12 @@ set(SERVICE_INTROSPECTION_TEST_SPECS
     test_service_introspection_gateway_options=test_gateway_receiver_routing_ids_and_options
     test_service_introspection_gateway_monitors=test_gateway_receiver_monitors_and_monitor_poller
     test_service_introspection_topology_snapshot=test_registry_topology_snapshot_and_remote_query
+    test_service_introspection_gateway_peer_snapshot=test_registry_gateway_peer_snapshot_and_remote_query
     test_service_introspection_closed_event=test_monitor_closed_event_on_service_destroy
+    test_service_introspection_discovery_no_latch=test_discovery_destroy_busy_observer_is_no_latch
+    test_service_introspection_discovery_lifecycle=test_discovery_public_api_lifecycle_contract
+    test_service_introspection_registry_lifecycle=test_registry_public_api_lifecycle_contract
+    test_service_introspection_registry_query_lifecycle=test_registry_query_client_public_api_lifecycle_contract
     test_service_introspection_transport_restriction=test_discovery_registry_transport_restriction
     test_service_introspection_transport_ws=test_discovery_registry_transport_allowed_ws
     test_service_introspection_transport_tls=test_discovery_registry_transport_allowed_tls

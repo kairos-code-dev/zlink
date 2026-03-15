@@ -88,6 +88,14 @@ class discovery_t
     uint64_t service_update_seq (const std::string &service_name_);
     void add_observer (discovery_observer_t *observer_);
     int remove_observer (discovery_observer_t *observer_);
+    service_public_api_guard_t &public_api_guard_for_testing ()
+    {
+        return _public_api;
+    }
+    void notify_observers_for_testing (const std::set<std::string> &services_)
+    {
+        notify_observers (services_);
+    }
     void upsert_service_summary (const zlink_registry_topology_entry_t &entry_);
     void upsert_gateway_peer_summary (
       const zlink_registry_gateway_peer_entry_t &entry_);

@@ -32,6 +32,7 @@ struct gateway_probe_t
         expected_reply_size (4)
     {
         memset (&request_rid, 0, sizeof (request_rid));
+        memset (&reply_target_rid, 0, sizeof (reply_target_rid));
         memset (request_payload, 0, sizeof (request_payload));
         memset (reply_payload, 0, sizeof (reply_payload));
     }
@@ -52,6 +53,7 @@ struct gateway_probe_t
     std::mutex mutex;
     std::condition_variable cv;
     zlink_routing_id_t request_rid;
+    zlink_routing_id_t reply_target_rid;
     char request_payload[64];
     char reply_payload[64];
 };
@@ -146,6 +148,19 @@ bool wait_for_gateway_connections (void *gateway_,
     memset (&snapshot, 0, sizeof (snapshot));
     return read_gateway_snapshot (gateway_, &snapshot)
            && static_cast<int> (snapshot.ready_peer_count) >= expected_;
+}
+
+bool wait_for_reply_target_rid (gateway_probe_t *probe_, int timeout_ms_)
+{
+    if (!probe_)
+        return false;
+
+    std::unique_lock<std::mutex> lock (probe_->mutex);
+    if (probe_->reply_target_rid.size > 0)
+        return true;
+    return probe_->cv.wait_for (
+      lock, std::chrono::milliseconds (timeout_ms_),
+      [probe_]() { return probe_->reply_target_rid.size > 0; });
 }
 
 void gateway_server_handler (const zlink_routing_id_t *source_rid_,
@@ -259,6 +274,25 @@ void gateway_client_handler (const zlink_routing_id_t *source_rid_,
     probe->reply_calls.fetch_add (1);
     probe->cv.notify_all ();
 
+    close_parts (probe, parts_, part_count_);
+}
+
+void gateway_capture_only_handler (const zlink_routing_id_t *source_rid_,
+                                   zlink_msg_t *parts_,
+                                   size_t part_count_)
+{
+    gateway_probe_t *probe = g_probe;
+    if (!probe) {
+        close_parts (probe, parts_, part_count_);
+        return;
+    }
+
+    if (source_rid_) {
+        std::lock_guard<std::mutex> lock (probe->mutex);
+        probe->reply_target_rid = *source_rid_;
+    }
+    probe->request_calls.fetch_add (1);
+    probe->cv.notify_all ();
     close_parts (probe, parts_, part_count_);
 }
 
@@ -542,6 +576,134 @@ void test_gateway_handler_reply_stress_multi_client_manual_connect ()
     g_probe = NULL;
 }
 
+void test_gateway_send_rid_same_handle_concurrent_send_is_thread_safe ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *server = zlink_gateway_new (ctx, "svc-handler-rid",
+                                      "gw-server-rid",
+                                      &gateway_capture_only_handler);
+    TEST_ASSERT_NOT_NULL (server);
+    void *client = zlink_gateway_new (ctx, "svc-handler-rid",
+                                      "gw-client-rid",
+                                      &gateway_client_handler);
+    TEST_ASSERT_NOT_NULL (client);
+
+    zlink_routing_id_t server_rid;
+    memset (&server_rid, 0, sizeof (server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22680;
+    bool bound = false;
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
+                  test_port (bind_seed));
+        if (zlink_gateway_bind (server, endpoint) == 0) {
+            bound = true;
+            break;
+        }
+        if (errno != EADDRINUSE)
+            TEST_FAIL_MESSAGE ("gateway rid bind failed");
+        bind_seed += 1;
+    }
+    TEST_ASSERT_TRUE (bound);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_connect (client, endpoint, &server_rid));
+
+    gateway_probe_t probe;
+    g_probe = &probe;
+
+    TEST_ASSERT_TRUE (wait_for_gateway_connections (client, 1, 5000));
+    {
+        const auto deadline = std::chrono::steady_clock::now ()
+                              + std::chrono::seconds (5);
+        int rc = -1;
+        do {
+            zlink_msg_t part;
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
+            memcpy (zlink_msg_data (&part), "init", 4);
+            rc = zlink_gateway_send_rid (client, &server_rid, &part, 1, 0);
+            if (rc == 0)
+                break;
+            zlink_msg_close (&part);
+            msleep (1);
+        } while (std::chrono::steady_clock::now () < deadline);
+        TEST_ASSERT_EQUAL_INT (0, rc);
+    }
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.request_calls, 1, 5000));
+
+    const int sender_count = 4;
+    const int messages_per_sender = 32;
+    std::vector<int> worker_errno (sender_count, 0);
+    std::vector<int> worker_progress (sender_count, 0);
+    std::vector<std::thread> workers;
+    std::mutex start_mutex;
+    std::condition_variable start_cv;
+    int ready_threads = 0;
+    bool start = false;
+
+    for (int i = 0; i < sender_count; ++i) {
+        workers.push_back (std::thread ([&, i]() {
+            {
+                std::unique_lock<std::mutex> lock (start_mutex);
+                ++ready_threads;
+                start_cv.notify_all ();
+                start_cv.wait (lock, [&start]() { return start; });
+            }
+
+            for (int seq = 0; seq < messages_per_sender; ++seq) {
+                char payload[32];
+                const int len = snprintf (payload, sizeof (payload),
+                                          "rid-%d-%02d", i, seq);
+                zlink_msg_t part;
+                if (zlink_msg_init_size (&part, static_cast<size_t> (len))
+                    != 0) {
+                    worker_errno[i] = errno;
+                    return;
+                }
+                memcpy (zlink_msg_data (&part), payload,
+                        static_cast<size_t> (len));
+                if (zlink_gateway_send_rid (client, &server_rid,
+                                            &part, 1, 0)
+                    != 0) {
+                    worker_errno[i] = errno;
+                    zlink_msg_close (&part);
+                    return;
+                }
+                worker_progress[i] += 1;
+            }
+        }));
+    }
+
+    {
+        std::unique_lock<std::mutex> lock (start_mutex);
+        TEST_ASSERT_TRUE (start_cv.wait_for (
+          lock, std::chrono::seconds (5),
+          [&ready_threads, sender_count] () { return ready_threads == sender_count; }));
+        start = true;
+        start_cv.notify_all ();
+    }
+
+    for (size_t i = 0; i < workers.size (); ++i)
+        workers[i].join ();
+
+    for (int i = 0; i < sender_count; ++i) {
+        TEST_ASSERT_EQUAL_INT (0, worker_errno[i]);
+        TEST_ASSERT_EQUAL_INT (messages_per_sender, worker_progress[i]);
+    }
+    const int expected_requests = 1 + sender_count * messages_per_sender;
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.request_calls, expected_requests, 30000));
+    TEST_ASSERT_EQUAL_INT (0, probe.close_failures.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe.send_failures.load ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server));
+    g_probe = NULL;
+}
+
 int main (int, char **)
 {
     setup_test_environment ();
@@ -549,5 +711,6 @@ int main (int, char **)
     UNITY_BEGIN ();
     RUN_TEST (test_gateway_handler_dispatches_request_and_reply);
     RUN_TEST (test_gateway_handler_reply_stress_multi_client_manual_connect);
+    RUN_TEST (test_gateway_send_rid_same_handle_concurrent_send_is_thread_safe);
     return UNITY_END ();
 }

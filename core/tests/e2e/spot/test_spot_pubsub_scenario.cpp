@@ -48,6 +48,7 @@ int main (int, char **)
     RUN_SPOT_TEST (test_spot_peer_wss);
     RUN_SPOT_TEST (test_spot_unified_wss_subscription_ready_first_delivery);
     RUN_SPOT_TEST (test_spot_multi_publisher);
+    RUN_SPOT_TEST (test_spot_same_handle_concurrent_publish);
     RUN_SPOT_TEST (test_spot_node_direct_local_and_child_interop);
     RUN_SPOT_TEST (test_spot_node_direct_remote_peer_mesh);
     RUN_SPOT_TEST (test_spot_node_direct_sub_option_inheritance_and_handler_conflict);

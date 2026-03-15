@@ -231,6 +231,8 @@ int spot_pub_t::publish (const char *topic_,
     int saved_errno = 0;
     lock_routing_id ();
 
+    scoped_lock_t publish_lock (_publish_sync);
+
     msg_t topic_msg;
     if (topic_msg.init_size (topic_size) != 0)
         return -1;

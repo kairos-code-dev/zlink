@@ -7,6 +7,7 @@
 #include "../../../src/services/spot/spot_dispatch_internal.hpp"
 #include "../../../src/services/spot/spot_pub.hpp"
 #include "../../../src/sockets/socket_base.hpp"
+#include "../../../src/api/zlink_testing.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/discovery/discovery.hpp"
 
@@ -1620,6 +1621,52 @@ static void test_spot_node_public_api_lifecycle_contract ()
     destroy_test_ctx (ctx);
 }
 
+static void test_spot_public_api_lifecycle_contract ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = create_spot_node (ctx, "spot-handle-lifecycle");
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *spot = zlink_spot_new (node, &ignore_spot_handler);
+    TEST_ASSERT_NOT_NULL (spot);
+
+    zlink::service_public_api_guard_t *guard =
+      zlink::spot_public_api_guard_for_testing (spot);
+    TEST_ASSERT_NOT_NULL (guard);
+
+    {
+        zlink::service_public_api_scope_t inflight (*guard);
+        TEST_ASSERT_TRUE (inflight.acquired ());
+
+        TEST_ASSERT_EQUAL_INT (-1, zlink_spot_destroy (&spot));
+        TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+        TEST_ASSERT_NOT_NULL (spot);
+
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (spot, "life"));
+    }
+
+    TEST_ASSERT_TRUE (guard->begin_close_or_fail_busy ());
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_subscribe (spot, "after-close"));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_spot_set_send_ready_handler (spot, &spot_counting_ready_handler));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_destroy (&spot));
+    TEST_ASSERT_EQUAL_INT (EALREADY, zlink_errno ());
+    TEST_ASSERT_NOT_NULL (spot);
+
+    zlink::destroy_spot_handle_for_testing (spot);
+    spot = NULL;
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    destroy_test_ctx (ctx);
+}
+
 int main (int, char **)
 {
     setup_test_environment (300);
@@ -1641,6 +1688,7 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_faulted_node_apis_fail_with_efsm);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_destroy_rejects_open_child_handle);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_public_api_lifecycle_contract);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_public_api_lifecycle_contract);
 #undef RUN_SPOT_INTROSPECTION_TEST
     return UNITY_END ();
 }

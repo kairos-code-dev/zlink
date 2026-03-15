@@ -565,22 +565,32 @@ int zlink::socket_base_t::setsockopt (int option_,
                                     const void *optval_,
                                     size_t optvallen_)
 {
+    if (!enter_public_api ())
+        return -1;
+
     if (unlikely (_ctx_terminated)) {
+        leave_public_api ();
         errno = ETERM;
         return -1;
     }
 
     //  First, check whether specific socket type overloads the option.
+    lock_public_api_sync ();
     int rc = xsetsockopt (option_, optval_, optvallen_);
+    unlock_public_api_sync ();
     if (rc == 0 || errno != EINVAL) {
+        leave_public_api ();
         return rc;
     }
 
     //  If the socket type doesn't support the option, pass it to
     //  the generic option parser.
+    lock_public_api_sync ();
     rc = options.setsockopt (option_, optval_, optvallen_);
     update_pipe_options (option_);
+    unlock_public_api_sync ();
 
+    leave_public_api ();
     return rc;
 }
 
@@ -588,53 +598,84 @@ int zlink::socket_base_t::getsockopt (int option_,
                                     void *optval_,
                                     size_t *optvallen_)
 {
+    if (!enter_public_api ())
+        return -1;
+
     if (unlikely (_ctx_terminated)) {
+        leave_public_api ();
         errno = ETERM;
         return -1;
     }
 
     //  First, check whether specific socket type overloads the option.
+    lock_public_api_sync ();
     int rc = xgetsockopt (option_, optval_, optvallen_);
+    unlock_public_api_sync ();
     if (rc == 0 || errno != EINVAL) {
+        leave_public_api ();
         return rc;
     }
 
     if (option_ == ZLINK_RCVMORE) {
-        return do_getsockopt<int> (optval_, optvallen_, _rcvmore ? 1 : 0);
+        rc = do_getsockopt<int> (optval_, optvallen_, _rcvmore ? 1 : 0);
+        leave_public_api ();
+        return rc;
     }
 
     if (option_ == ZLINK_SOCKOPT_FD) {
-        return do_getsockopt<fd_t> (
+        rc = do_getsockopt<fd_t> (
           optval_, optvallen_, static_cast<mailbox_t *> (_mailbox)->get_fd ());
+        leave_public_api ();
+        return rc;
     }
 
     if (option_ == ZLINK_SOCKOPT_EVENTS) {
+        lock_public_api_sync ();
         const int rc = process_commands (0, false);
         if (rc != 0 && (errno == EINTR || errno == ETERM)) {
+            unlock_public_api_sync ();
+            leave_public_api ();
             return -1;
         }
         errno_assert (rc == 0);
-
-        return do_getsockopt<int> (optval_, optvallen_,
-                                   has_out () ? ZLINK_POLLOUT : 0);
+        const int out_rc = do_getsockopt<int> (optval_, optvallen_,
+                                               has_out () ? ZLINK_POLLOUT : 0);
+        unlock_public_api_sync ();
+        leave_public_api ();
+        return out_rc;
     }
 
     if (option_ == ZLINK_SOCKOPT_LAST_ENDPOINT) {
-        return do_getsockopt (optval_, optvallen_, _last_endpoint);
+        lock_public_api_sync ();
+        const int out_rc = do_getsockopt (optval_, optvallen_, _last_endpoint);
+        unlock_public_api_sync ();
+        leave_public_api ();
+        return out_rc;
     }
 
-    return options.getsockopt (option_, optval_, optvallen_);
+    lock_public_api_sync ();
+    rc = options.getsockopt (option_, optval_, optvallen_);
+    unlock_public_api_sync ();
+    leave_public_api ();
+    return rc;
 }
 
 int zlink::socket_base_t::get_events (int events_, uint32_t *out_)
 {
+    if (!enter_public_api ())
+        return -1;
+
     if (!out_) {
+        leave_public_api ();
         errno = EINVAL;
         return -1;
     }
 
+    lock_public_api_sync ();
     const int rc = process_commands (0, false);
     if (rc != 0 && (errno == EINTR || errno == ETERM)) {
+        unlock_public_api_sync ();
+        leave_public_api ();
         return -1;
     }
     errno_assert (rc == 0);
@@ -646,6 +687,8 @@ int zlink::socket_base_t::get_events (int events_, uint32_t *out_)
     }
 
     *out_ = events;
+    unlock_public_api_sync ();
+    leave_public_api ();
     return 0;
 }
 
@@ -1183,15 +1226,15 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
 
     //  Check whether the context hasn't been shut down yet.
     if (unlikely (_ctx_terminated)) {
-        leave_public_api ();
         errno = ETERM;
+        leave_public_api ();
         return -1;
     }
 
     //  Check whether endpoint address passed to the function is valid.
     if (unlikely (!endpoint_uri_)) {
-        leave_public_api ();
         errno = EINVAL;
+        leave_public_api ();
         return -1;
     }
 
@@ -1236,8 +1279,8 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
     const std::pair<endpoints_t::iterator, endpoints_t::iterator> range =
       _endpoints.equal_range (resolved_endpoint_uri);
     if (range.first == range.second) {
-        leave_public_api ();
         errno = ENOENT;
+        leave_public_api ();
         return -1;
     }
 

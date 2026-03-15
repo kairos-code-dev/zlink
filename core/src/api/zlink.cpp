@@ -46,6 +46,7 @@ struct iovec
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_sub.hpp"
+#include "api/zlink_testing.hpp"
 #include "utils/mutex.hpp"
 #include "utils/stdint.hpp"
 #include "utils/config.hpp"
@@ -776,7 +777,7 @@ struct registry_query_client_t
     {
     }
 
-    ~registry_query_client_t () { destroy (); }
+    ~registry_query_client_t () { destroy_locked (); }
 
     bool check_tag () const { return tag == 0x1e6700f1; }
 
@@ -904,6 +905,58 @@ static zlink::spot_sub_t *ensure_spot_sub (spot_handle_t *spot_)
 
     spot_->sub = sub;
     return spot_->sub;
+}
+
+zlink::service_public_api_guard_t *
+zlink::registry_query_public_api_guard_for_testing (void *client_)
+{
+    registry_query_client_t *client =
+      static_cast<registry_query_client_t *> (client_);
+    if (!client || !client->check_tag ())
+        return NULL;
+    return &client->public_api;
+}
+
+void zlink::destroy_registry_query_client_for_testing (void *client_)
+{
+    registry_query_client_t *client =
+      static_cast<registry_query_client_t *> (client_);
+    if (!client || !client->check_tag ())
+        return;
+    client->destroy_locked ();
+    delete client;
+}
+
+zlink::service_public_api_guard_t *
+zlink::spot_public_api_guard_for_testing (void *spot_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return NULL;
+    return &spot->public_api;
+}
+
+void zlink::destroy_spot_handle_for_testing (void *spot_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return;
+
+    if (spot->sub) {
+        const int rc = spot->sub->destroy ();
+        zlink_assert (rc == 0);
+        delete spot->sub;
+        spot->sub = NULL;
+    }
+    if (spot->pub) {
+        const int rc = spot->pub->destroy ();
+        zlink_assert (rc == 0);
+        delete spot->pub;
+        spot->pub = NULL;
+    }
+
+    spot->tag = 0xdeadbeef;
+    delete spot;
 }
 
 static int recv_registry_reply_frames (void *socket_,
@@ -2233,8 +2286,10 @@ int zlink_registry_query_destroy (void **client_p_)
     if (!client->public_api.begin_close_or_fail_busy ())
         return -1;
 
-    zlink::scoped_lock_t lock (client->sync);
-    client->destroy_locked ();
+    {
+        zlink::scoped_lock_t lock (client->sync);
+        client->destroy_locked ();
+    }
     *client_p_ = NULL;
     delete client;
     return 0;

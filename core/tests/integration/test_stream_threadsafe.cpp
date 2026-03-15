@@ -357,6 +357,45 @@ bool recv_exact_bytes (int fd_, unsigned char *buf_, size_t size_)
     return true;
 }
 
+void read_last_endpoint_loop (void *socket_,
+                              const char *expected_,
+                              std::atomic<int> *stop_,
+                              std::atomic<int> *errors_)
+{
+    char endpoint[MAX_SOCKET_STRING];
+    while (stop_->load (std::memory_order_acquire) == 0) {
+        size_t size = sizeof (endpoint);
+        memset (endpoint, 0, sizeof (endpoint));
+        if (zlink_getsockopt (socket_, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint,
+                              &size)
+            != 0) {
+            errors_->fetch_add (1, std::memory_order_release);
+            return;
+        }
+        if (!expected_ || expected_[0] == '\0')
+            continue;
+        if (strncmp (endpoint, expected_, size) != 0) {
+            errors_->fetch_add (1, std::memory_order_release);
+            return;
+        }
+    }
+}
+
+void read_events_loop (void *socket_,
+                       std::atomic<int> *stop_,
+                       std::atomic<int> *errors_)
+{
+    while (stop_->load (std::memory_order_acquire) == 0) {
+        int events = 0;
+        size_t size = sizeof (events);
+        if (zlink_getsockopt (socket_, ZLINK_SOCKOPT_EVENTS, &events, &size)
+            != 0) {
+            errors_->fetch_add (1, std::memory_order_release);
+            return;
+        }
+    }
+}
+
 void sender_thread_run (void *server_,
                         const zlink_routing_id_t rid_,
                         unsigned char fill_,
@@ -790,6 +829,105 @@ void test_stream_send_msg_is_thread_safe ()
 #endif
 }
 
+void test_stream_runtime_reads_are_safe_during_send ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+#else
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_socket (server);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    const int raw_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT (0, raw_fd);
+    set_raw_timeout (raw_fd, 500);
+
+    zlink_routing_id_t rid;
+    establish_route (server, raw_fd, &rid, false);
+
+    std::atomic<int> stop_reads (0);
+    std::atomic<int> read_errors (0);
+    std::thread endpoint_reader (
+      read_last_endpoint_loop, server, endpoint, &stop_reads, &read_errors);
+    std::thread events_reader (
+      read_events_loop, server, &stop_reads, &read_errors);
+
+    std::atomic<size_t> received_bytes (0);
+    std::atomic<int> recv_errors (0);
+    const size_t expected_bytes =
+      kConcurrentSenders * kMessagesPerSender * kPayloadSize;
+    std::thread reader (drain_exact_bytes, raw_fd, expected_bytes,
+                        &received_bytes, &recv_errors);
+
+    std::atomic<int> send_errors (0);
+    std::vector<std::thread> senders;
+    for (int i = 0; i < kConcurrentSenders; ++i) {
+        senders.push_back (std::thread (
+          sender_thread_run, server, rid, static_cast<unsigned char> (0x61 + i),
+          kMessagesPerSender, &send_errors));
+    }
+
+    for (size_t i = 0; i < senders.size (); ++i)
+        senders[i].join ();
+    reader.join ();
+
+    stop_reads.store (1, std::memory_order_release);
+    endpoint_reader.join ();
+    events_reader.join ();
+
+    TEST_ASSERT_EQUAL_INT (0, send_errors.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (0, recv_errors.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (0, read_errors.load (std::memory_order_acquire));
+
+    close_raw_fd (raw_fd);
+    test_context_socket_close_zero_linger (server);
+#endif
+}
+
+void test_socket_runtime_reads_are_safe_during_connect_disconnect ()
+{
+    void *server = test_context_socket (ZLINK_ROUTER);
+    void *client = test_context_socket (ZLINK_DEALER);
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+    configure_stream_socket (server);
+    configure_stream_socket (client);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
+
+    std::atomic<int> stop_reads (0);
+    std::atomic<int> read_errors (0);
+    std::thread endpoint_reader (
+      read_last_endpoint_loop, client, static_cast<const char *> (NULL),
+      &stop_reads, &read_errors);
+
+    std::atomic<int> control_errors (0);
+    std::thread mutator ([&] () {
+        for (int i = 0; i < 64; ++i) {
+            if (zlink_disconnect (client, endpoint) != 0)
+                control_errors.fetch_add (1, std::memory_order_release);
+            if (zlink_connect (client, endpoint) != 0)
+                control_errors.fetch_add (1, std::memory_order_release);
+        }
+    });
+
+    mutator.join ();
+    stop_reads.store (1, std::memory_order_release);
+    endpoint_reader.join ();
+
+    TEST_ASSERT_EQUAL_INT (0, control_errors.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (0, read_errors.load (std::memory_order_acquire));
+
+    test_context_socket_close_zero_linger (client);
+    test_context_socket_close_zero_linger (server);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // Regression: many rapid client connect/disconnect during active sends
 ///////////////////////////////////////////////////////////////////////////////
@@ -970,6 +1108,8 @@ int main ()
     RUN_TEST (test_stream_callback_handoff_to_worker_thread_send_msg_is_safe);
     RUN_TEST (test_stream_reattach_after_detach);
     RUN_TEST (test_stream_send_msg_is_thread_safe);
+    RUN_TEST (test_stream_runtime_reads_are_safe_during_send);
+    RUN_TEST (test_socket_runtime_reads_are_safe_during_connect_disconnect);
     RUN_TEST (test_stream_rapid_client_churn_during_send);
     RUN_TEST (test_stream_double_detach_returns_error);
     RUN_TEST (test_stream_send_to_stale_rid_after_disconnect);

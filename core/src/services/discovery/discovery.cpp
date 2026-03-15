@@ -853,6 +853,7 @@ int discovery_t::destroy ()
     {
         scoped_lock_t lock (_sync);
         if (_observer_callbacks_inflight > 0) {
+            _public_api.cancel_close ();
             errno = EBUSY;
             return -1;
         }

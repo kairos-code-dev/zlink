@@ -217,6 +217,57 @@ static int send_parts_via_dispatch_pipe (pipe_t *pipe_,
     return 0;
 }
 
+static int send_parts_via_router_with_retry (socket_base_t *router_socket_,
+                                             const zlink_routing_id_t *routing_id_,
+                                             zlink_msg_t *parts_,
+                                             size_t part_count_,
+                                             int flags_)
+{
+    if (!router_socket_ || !routing_id_ || !parts_ || part_count_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const bool dontwait = (flags_ & ZLINK_DONTWAIT) != 0;
+    const uint64_t deadline_ms =
+      dontwait ? 0 : (clock_t ().now_ms () + 1000);
+
+    while (true) {
+        zlink_msg_t rid_msg;
+        if (zlink_msg_init_data (&rid_msg,
+                                 routing_id_->size > 0
+                                   ? const_cast<uint8_t *> (routing_id_->data)
+                                   : NULL,
+                                 routing_id_->size, NULL, NULL)
+            != 0)
+            return -1;
+
+        int send_flags =
+          (part_count_ > 0 ? ZLINK_SNDMORE : 0) | (flags_ & ZLINK_DONTWAIT);
+        if (zlink_msg_send (&rid_msg, router_socket_, send_flags) < 0) {
+            const int err = errno;
+            zlink_msg_close (&rid_msg);
+            if (!dontwait && (err == EHOSTUNREACH || err == ENOTCONN)
+                && clock_t ().now_ms () < deadline_ms) {
+                usleep (1000);
+                continue;
+            }
+            errno = err;
+            return -1;
+        }
+        zlink_msg_close (&rid_msg);
+
+        for (size_t i = 0; i < part_count_; ++i) {
+            send_flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
+            send_flags |= (flags_ & ZLINK_DONTWAIT);
+            if (zlink_msg_send (&parts_[i], router_socket_, send_flags) < 0)
+                return -1;
+            zlink_msg_close (&parts_[i]);
+        }
+        return 0;
+    }
+}
+
 static uint64_t rid_handover_guard_ms ()
 {
     return 50;
@@ -1150,31 +1201,10 @@ int gateway_t::send (zlink_msg_t *parts_, size_t part_count_, int flags_)
         }
     }
 
-    zlink_msg_t rid_msg;
-    if (zlink_msg_init_data (&rid_msg,
-                             rid.size > 0 ? const_cast<uint8_t *> (rid.data)
-                                          : NULL,
-                             rid.size, NULL, NULL)
-        != 0)
-        return -1;
+    scoped_lock_t send_lock (_send_sync);
 
-    int send_flags =
-      (part_count_ > 0 ? ZLINK_SNDMORE : 0) | (flags_ & ZLINK_DONTWAIT);
-    if (zlink_msg_send (&rid_msg, router_socket, send_flags) < 0) {
-        zlink_msg_close (&rid_msg);
-        return -1;
-    }
-    zlink_msg_close (&rid_msg);
-
-    for (size_t i = 0; i < part_count_; ++i) {
-        send_flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
-        send_flags |= (flags_ & ZLINK_DONTWAIT);
-        if (zlink_msg_send (&parts_[i], router_socket, send_flags) < 0)
-            return -1;
-        zlink_msg_close (&parts_[i]);
-    }
-
-    return 0;
+    return send_parts_via_router_with_retry (router_socket, &rid, parts_,
+                                             part_count_, flags_);
 }
 
 std::string gateway_t::resolve_advertise (const char *advertise_endpoint_) const
@@ -1448,27 +1478,19 @@ int gateway_t::send_rid (const zlink_routing_id_t *routing_id_,
         router_socket = _runtime->router_socket;
     }
 
-    zlink_msg_t rid_msg;
-    if (zlink_msg_init_data (&rid_msg, const_cast<uint8_t *> (routing_id_->data),
-                             routing_id_->size, NULL, NULL)
-        != 0)
-        return -1;
-    int send_flags =
-      (part_count_ > 0 ? ZLINK_SNDMORE : 0) | (flags_ & ZLINK_DONTWAIT);
-    if (zlink_msg_send (&rid_msg, router_socket, send_flags) < 0) {
-        zlink_msg_close (&rid_msg);
-        return -1;
-    }
-    zlink_msg_close (&rid_msg);
-
-    for (size_t i = 0; i < part_count_; ++i) {
-        send_flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
-        send_flags |= (flags_ & ZLINK_DONTWAIT);
-        if (zlink_msg_send (&parts_[i], router_socket, send_flags) < 0)
+    if ((flags_ & ZLINK_DONTWAIT) != 0) {
+        const int peer_state =
+          router_socket->get_peer_state (routing_id_->data, routing_id_->size);
+        if (peer_state < 0 || (peer_state & ZLINK_POLLOUT) == 0) {
+            errno = EAGAIN;
             return -1;
-        zlink_msg_close (&parts_[i]);
+        }
     }
-    return 0;
+
+    scoped_lock_t send_lock (_send_sync);
+
+    return send_parts_via_router_with_retry (router_socket, routing_id_, parts_,
+                                             part_count_, flags_);
 }
 
 int gateway_t::set_lb_strategy (int strategy_)

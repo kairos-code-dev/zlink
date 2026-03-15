@@ -171,6 +171,7 @@ void test_spot_peer_tls ();
 void test_spot_peer_wss ();
 void test_spot_unified_wss_subscription_ready_first_delivery ();
 void test_spot_multi_publisher ();
+void test_spot_same_handle_concurrent_publish ();
 void test_spot_sub_handler_basic ();
 void test_spot_recv_callback_isolated_by_handle ();
 void test_spot_facade_handler_receives_source_rid ();

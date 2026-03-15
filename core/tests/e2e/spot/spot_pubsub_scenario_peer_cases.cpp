@@ -3,6 +3,7 @@
 #include "spot_pubsub_scenario_shared.hpp"
 
 #include <string.h>
+#include <thread>
 
 void test_spot_peer_ipc ()
 {
@@ -254,5 +255,76 @@ void test_spot_multi_publisher ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_b));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_c));
     step_log ("multi_publisher: term ctx");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_spot_same_handle_concurrent_publish ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = create_spot_node (ctx, "spot-concurrent");
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *sub = create_spot_handle (node, &ignore_spot_handler);
+    TEST_ASSERT_NOT_NULL (sub);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "concurrent:topic"));
+
+    const int publisher_count = 4;
+    const int messages_per_publisher = 32;
+    std::vector<int> worker_errno (publisher_count, 0);
+    std::vector<int> worker_progress (publisher_count, 0);
+    std::vector<std::thread> workers;
+    std::mutex start_mutex;
+    std::condition_variable start_cv;
+    int ready_threads = 0;
+    bool start = false;
+
+    for (int i = 0; i < publisher_count; ++i) {
+        workers.push_back (std::thread ([&, i] () {
+            {
+                std::unique_lock<std::mutex> lock (start_mutex);
+                ++ready_threads;
+                start_cv.notify_all ();
+                start_cv.wait (lock, [&start] () { return start; });
+            }
+
+            for (int seq = 0; seq < messages_per_publisher; ++seq) {
+                char payload[32];
+                snprintf (payload, sizeof (payload), "pub-%d-%02d", i, seq);
+                if (publish_text (&zlink_spot_node_publish, node,
+                                  "concurrent:topic",
+                                  payload, 0)
+                    != 0) {
+                    worker_errno[i] = errno;
+                    return;
+                }
+                worker_progress[i] += 1;
+            }
+        }));
+    }
+
+    {
+        std::unique_lock<std::mutex> lock (start_mutex);
+        TEST_ASSERT_TRUE (start_cv.wait_for (
+          lock, std::chrono::seconds (5),
+          [&ready_threads, publisher_count] () {
+              return ready_threads == publisher_count;
+          }));
+        start = true;
+        start_cv.notify_all ();
+    }
+
+    for (size_t i = 0; i < workers.size (); ++i)
+        workers[i].join ();
+
+    for (int i = 0; i < publisher_count; ++i) {
+        TEST_ASSERT_EQUAL_INT (messages_per_publisher, worker_progress[i]);
+        TEST_ASSERT_EQUAL_INT (0, worker_errno[i]);
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }

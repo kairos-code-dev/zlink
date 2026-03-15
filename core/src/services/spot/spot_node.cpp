@@ -382,26 +382,63 @@ int spot_runtime_t::close_control_sockets ()
 {
     int first_error = 0;
     socket_base_t *ctrl_front = NULL;
+    socket_base_t *ctrl_back = NULL;
+    socket_base_t *mesh_pub_local = NULL;
+    socket_base_t *mesh_xsub_local = NULL;
+    socket_base_t *peer_ctrl_pub_local = NULL;
+    socket_base_t *peer_ctrl_sub_local = NULL;
+    socket_base_t *ingress = NULL;
+    socket_base_t *fanout = NULL;
     {
         scoped_lock_t lock (owner->_sync);
         ctrl_front = data_ctrl_front;
+        ctrl_back = data_ctrl_back;
+        mesh_pub_local = mesh_pub;
+        mesh_xsub_local = mesh_xsub;
+        peer_ctrl_pub_local = peer_ctrl_pub;
+        peer_ctrl_sub_local = peer_ctrl_sub;
+        ingress = local_pub_ingress_sub;
+        fanout = local_fanout_xpub;
+        data_ctrl_front = NULL;
         data_ctrl_back = NULL;
         mesh_pub = NULL;
         mesh_xsub = NULL;
+        peer_ctrl_pub = NULL;
+        peer_ctrl_sub = NULL;
         local_pub_ingress_sub = NULL;
         local_fanout_xpub = NULL;
     }
-    if (ctrl_front) {
-        if (owner && owner->_ctx)
-            preserve_first_error (
-              owner->_lifecycle.close_socket (data_ctrl_front, 2000),
-                                  &first_error);
-        else {
-            ctrl_front->stop ();
-            ctrl_front->close ();
-            data_ctrl_front = NULL;
-        }
+
+    if (owner && owner->_ctx) {
+        preserve_first_error (
+          owner->_lifecycle.close_socket (ctrl_front, 2000), &first_error);
+        preserve_first_error (
+          owner->_lifecycle.close_socket (ctrl_back, 2000), &first_error);
+        preserve_first_error (
+          owner->_lifecycle.close_socket (mesh_pub_local, 2000), &first_error);
+        preserve_first_error (
+          owner->_lifecycle.close_socket (mesh_xsub_local, 2000), &first_error);
+        preserve_first_error (
+          owner->_lifecycle.close_socket (peer_ctrl_pub_local, 2000),
+          &first_error);
+        preserve_first_error (
+          owner->_lifecycle.close_socket (peer_ctrl_sub_local, 2000),
+          &first_error);
+        preserve_first_error (
+          owner->_lifecycle.close_socket (ingress, 2000), &first_error);
+        preserve_first_error (
+          owner->_lifecycle.close_socket (fanout, 2000), &first_error);
+    } else {
+        close_socket_ptr (&ctrl_front);
+        close_socket_ptr (&ctrl_back);
+        close_socket_ptr (&mesh_pub_local);
+        close_socket_ptr (&mesh_xsub_local);
+        close_socket_ptr (&peer_ctrl_pub_local);
+        close_socket_ptr (&peer_ctrl_sub_local);
+        close_socket_ptr (&ingress);
+        close_socket_ptr (&fanout);
     }
+
     if (first_error != 0) {
         errno = first_error;
         return -1;
@@ -445,7 +482,7 @@ int spot_runtime_t::stop_and_join ()
         scoped_lock_t lock (ctrl_sync);
         if (send_ascii_frame (data_ctrl_front, "terminate", 0) != 0) {
             const int err = errno != 0 ? errno : EIO;
-            if (err != ETIMEDOUT && err != EFSM && err != ETERM
+            if (err != EAGAIN && err != ETIMEDOUT && err != EFSM && err != ETERM
                 && err != EPIPE && err != ENOTSOCK)
                 preserve_first_error (err, &first_error);
         }

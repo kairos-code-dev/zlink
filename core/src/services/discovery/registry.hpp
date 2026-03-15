@@ -47,6 +47,10 @@ class registry_t
       size_t *count_);
     int start ();
     int destroy ();
+    service_public_api_guard_t &public_api_guard_for_testing ()
+    {
+        return _public_api;
+    }
 
   private:
     struct service_key_t

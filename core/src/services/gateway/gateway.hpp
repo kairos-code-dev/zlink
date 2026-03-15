@@ -159,6 +159,7 @@ class gateway_t : public discovery_observer_t
     bool _service_ready_emitted;
     uint32_t _refresh_interval_ms;
     mutex_t _sync;
+    mutex_t _send_sync;
 
     std::string _tls_ca;
     std::string _tls_hostname;

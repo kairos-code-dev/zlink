@@ -77,6 +77,7 @@ class spot_pub_t
     uint32_t _tag;
     bool _node_owned_default;
     mutable mutex_t _sync;
+    mutex_t _publish_sync;
     zlink_routing_id_t _routing_id;
     std::atomic<bool> _routing_id_locked;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;

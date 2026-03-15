@@ -5,8 +5,15 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <string.h>
+#include <thread>
 #include <vector>
+
+#include "../../../src/services/discovery/discovery.hpp"
+#include "../../../src/services/discovery/registry.hpp"
+#include "../../../src/api/zlink_testing.hpp"
 
 static bool should_run_named_test (const char *name_)
 {
@@ -35,6 +42,51 @@ struct gateway_server_t
 
     void *discovery;
     void *gateway;
+};
+
+struct blocking_discovery_observer_t : public zlink::discovery_observer_t
+{
+    blocking_discovery_observer_t () :
+        entered (false),
+        release (false),
+        destroyed_calls (0)
+    {
+    }
+
+    void on_service_update (const std::string &)
+    {
+        std::unique_lock<std::mutex> lock (sync);
+        entered = true;
+        cv.notify_all ();
+        while (!release)
+            cv.wait (lock);
+    }
+
+    void on_discovery_destroyed (zlink::discovery_t *)
+    {
+        ++destroyed_calls;
+    }
+
+    bool wait_entered (int timeout_ms_)
+    {
+        std::unique_lock<std::mutex> lock (sync);
+        return cv.wait_for (
+          lock, std::chrono::milliseconds (timeout_ms_),
+          [this] () { return entered; });
+    }
+
+    void unblock ()
+    {
+        std::lock_guard<std::mutex> lock (sync);
+        release = true;
+        cv.notify_all ();
+    }
+
+    std::mutex sync;
+    std::condition_variable cv;
+    bool entered;
+    bool release;
+    int destroyed_calls;
 };
 
 monitor_probe_t *g_monitor_a = NULL;
@@ -861,6 +913,184 @@ static void test_monitor_closed_event_on_service_destroy ()
     g_monitor_a = NULL;
 }
 
+static void test_discovery_destroy_busy_observer_is_no_latch ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_set_routing_id (discovery, "disc-observer", 13));
+
+    zlink::discovery_t *discovery_impl =
+      static_cast<zlink::discovery_t *> (discovery);
+    blocking_discovery_observer_t observer;
+    discovery_impl->add_observer (&observer);
+
+    std::set<std::string> services;
+    services.insert ("svc-observer");
+    std::thread notify_thread (
+      [&] () { discovery_impl->notify_observers_for_testing (services); });
+
+    TEST_ASSERT_TRUE (observer.wait_entered (2000));
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_NOT_NULL (discovery);
+
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_routing_id (discovery, &rid));
+    assert_routing_id_bytes (&rid, "disc-observer");
+
+    observer.unblock ();
+    notify_thread.join ();
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_EQUAL_INT (1, observer.destroyed_calls);
+}
+
+static void test_discovery_public_api_lifecycle_contract ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+
+    zlink::discovery_t *discovery_impl =
+      static_cast<zlink::discovery_t *> (discovery);
+    {
+        zlink::service_public_api_scope_t inflight (
+          discovery_impl->public_api_guard_for_testing ());
+        TEST_ASSERT_TRUE (inflight.acquired ());
+
+        TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_destroy (&discovery));
+        TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+        TEST_ASSERT_NOT_NULL (discovery);
+
+        zlink_routing_id_t rid;
+        memset (&rid, 0, sizeof (rid));
+        TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_routing_id (discovery, &rid));
+    }
+
+    TEST_ASSERT_TRUE (
+      discovery_impl->public_api_guard_for_testing ().begin_close_or_fail_busy ());
+
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_routing_id (discovery, &rid));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_discovery_connect_registry (discovery, "tcp://127.0.0.1:29999"));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
+    TEST_ASSERT_EQUAL_PTR (
+      NULL, zlink_discovery_monitor_open (discovery, ZLINK_MONITOR_EVENT_CLOSED,
+                                          &service_monitor_handler_a));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
+    TEST_ASSERT_FALSE (
+      discovery_impl->public_api_guard_for_testing ().begin_close_or_fail_busy ());
+    TEST_ASSERT_EQUAL_INT (EALREADY, zlink_errno ());
+
+    delete discovery_impl;
+}
+
+static void test_registry_public_api_lifecycle_contract ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+
+    zlink::registry_t *registry_impl = static_cast<zlink::registry_t *> (registry);
+    {
+        zlink::service_public_api_scope_t inflight (
+          registry_impl->public_api_guard_for_testing ());
+        TEST_ASSERT_TRUE (inflight.acquired ());
+
+        TEST_ASSERT_EQUAL_INT (-1, zlink_registry_destroy (&registry));
+        TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+        TEST_ASSERT_NOT_NULL (registry);
+
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_id (registry, 42));
+    }
+
+    TEST_ASSERT_TRUE (
+      registry_impl->public_api_guard_for_testing ().begin_close_or_fail_busy ());
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_registry_set_id (registry, 7));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
+    size_t count = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_registry_topology_snapshot (registry, NULL,
+                                                                 &count));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
+    TEST_ASSERT_FALSE (
+      registry_impl->public_api_guard_for_testing ().begin_close_or_fail_busy ());
+    TEST_ASSERT_EQUAL_INT (EALREADY, zlink_errno ());
+
+    delete registry_impl;
+}
+
+static void test_registry_query_client_public_api_lifecycle_contract ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    int registry_seed = 22673;
+    void *registry = create_started_registry_with_port_seed_transport (
+      ctx, "tcp", &registry_seed, registry_pub, sizeof (registry_pub),
+      registry_router, sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
+
+    void *client = zlink_registry_query_client_new (ctx);
+    TEST_ASSERT_NOT_NULL (client);
+
+    zlink::service_public_api_guard_t *guard =
+      zlink::registry_query_public_api_guard_for_testing (client);
+    TEST_ASSERT_NOT_NULL (guard);
+
+    {
+        zlink::service_public_api_scope_t inflight (*guard);
+        TEST_ASSERT_TRUE (inflight.acquired ());
+
+        TEST_ASSERT_EQUAL_INT (-1, zlink_registry_query_destroy (&client));
+        TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+        TEST_ASSERT_NOT_NULL (client);
+
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_registry_query_client_connect (client, registry_router));
+    }
+
+    TEST_ASSERT_TRUE (guard->begin_close_or_fail_busy ());
+
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_registry_query_client_connect (client, registry_router));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
+    size_t count = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_registry_query_snapshot (client, NULL, NULL, &count));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_registry_query_destroy (&client));
+    TEST_ASSERT_EQUAL_INT (EALREADY, zlink_errno ());
+    TEST_ASSERT_NOT_NULL (client);
+
+    zlink::destroy_registry_query_client_for_testing (client);
+    client = NULL;
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+}
+
 static void test_discovery_registry_transport_restriction ()
 {
     void *ctx = get_test_context ();
@@ -1221,6 +1451,12 @@ int main (int, char **)
     RUN_SERVICE_INTROSPECTION_TEST (
       test_registry_gateway_peer_snapshot_and_remote_query);
     RUN_SERVICE_INTROSPECTION_TEST (test_monitor_closed_event_on_service_destroy);
+    RUN_SERVICE_INTROSPECTION_TEST (
+      test_discovery_destroy_busy_observer_is_no_latch);
+    RUN_SERVICE_INTROSPECTION_TEST (test_discovery_public_api_lifecycle_contract);
+    RUN_SERVICE_INTROSPECTION_TEST (test_registry_public_api_lifecycle_contract);
+    RUN_SERVICE_INTROSPECTION_TEST (
+      test_registry_query_client_public_api_lifecycle_contract);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_restriction);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_allowed_ws);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_allowed_tls);

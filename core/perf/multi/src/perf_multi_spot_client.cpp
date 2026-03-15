@@ -591,6 +591,12 @@ void destroy_spot_slots(spot_client_state_t *state,
     if (!slots)
         return;
 
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-client] destroy start ts_us="
+                  << perf_multi_metric::now_us()
+                  << " slots=" << slots->size() << std::endl;
+    }
+
     if (state)
         state->recv_workers_stop.store(true, std::memory_order_release);
 
@@ -603,6 +609,10 @@ void destroy_spot_slots(spot_client_state_t *state,
 
     if (state)
         join_spot_recv_workers(state);
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-client] destroy after worker join ts_us="
+                  << perf_multi_metric::now_us() << std::endl;
+    }
 
     for (size_t i = 0; i < slots->size(); ++i) {
         spot_client_slot_t *slot = (*slots)[i];
@@ -611,20 +621,46 @@ void destroy_spot_slots(spot_client_state_t *state,
         if (slot->recv_thread.joinable())
             slot->recv_thread.join();
     }
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-client] destroy after recv join ts_us="
+                  << perf_multi_metric::now_us() << std::endl;
+    }
 
     for (size_t i = 0; i < slots->size(); ++i) {
         spot_client_slot_t *slot = (*slots)[i];
         if (!slot)
             continue;
+        if (bench_transition_debug_enabled() && i < 4) {
+            std::cerr << "[multi-spot-client] destroy slot begin index=" << i
+                      << " ts_us=" << perf_multi_metric::now_us()
+                      << " sub=" << (slot->sub ? 1 : 0)
+                      << " node=" << (slot->node ? 1 : 0) << std::endl;
+        }
         close_spot_ready_monitor(slot);
-        if (slot->sub)
+        if (slot->sub) {
             zlink_spot_destroy(&slot->sub);
-        if (slot->node)
+            if (bench_transition_debug_enabled() && i < 4) {
+                std::cerr << "[multi-spot-client] destroy slot after sub index="
+                          << i << " ts_us=" << perf_multi_metric::now_us()
+                          << std::endl;
+            }
+        }
+        if (slot->node) {
             zlink_spot_node_destroy(&slot->node);
+            if (bench_transition_debug_enabled() && i < 4) {
+                std::cerr << "[multi-spot-client] destroy slot after node index="
+                          << i << " ts_us=" << perf_multi_metric::now_us()
+                          << std::endl;
+            }
+        }
         delete slot;
     }
 
     slots->clear();
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-client] destroy done ts_us="
+                  << perf_multi_metric::now_us() << std::endl;
+    }
 }
 
 void handle_spot_client_parts(const char *topic,
@@ -657,6 +693,15 @@ void handle_spot_client_parts(const char *topic,
     if (phase_changed) {
         state->seen_msg_size.store(header.msg_size, std::memory_order_release);
         state->seen_phase.store(header.phase, std::memory_order_release);
+        if (bench_transition_debug_enabled()
+            && previous_msg_size != header.msg_size) {
+            std::cerr << "[multi-spot-client] transition recv ts_us="
+                      << perf_multi_metric::now_us()
+                      << " size=" << header.msg_size
+                      << " phase=" << header.phase
+                      << " prev_size=" << previous_msg_size
+                      << " prev_phase=" << previous_phase << std::endl;
+        }
     }
     const bool collect_active =
       state->collect_active.load(std::memory_order_acquire);
@@ -995,6 +1040,13 @@ bool run_single_size_case(spot_client_state_t *state,
     const int phase_timeout_ms =
       resolve_spot_phase_timeout_ms(settings, msg_size);
 
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-client] size wait start ts_us="
+                  << perf_multi_metric::now_us()
+                  << " size=" << msg_size
+                  << " timeout_ms=" << phase_timeout_ms << std::endl;
+    }
+
     reset_metrics(state, msg_size);
     if (!wait_msg_size_start(state, msg_size, phase_timeout_ms)) {
         if (bench_debug_enabled()) {
@@ -1007,6 +1059,11 @@ bool run_single_size_case(spot_client_state_t *state,
     if (bench_debug_enabled()) {
         std::cerr << "[multi-spot-client] collect start size=" << msg_size
                   << " any-phase=1" << std::endl;
+    }
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-client] collect start ts_us="
+                  << perf_multi_metric::now_us()
+                  << " size=" << msg_size << std::endl;
     }
 
     state->collect_active.store(true, std::memory_order_release);
@@ -1021,6 +1078,11 @@ bool run_single_size_case(spot_client_state_t *state,
         return false;
     }
     state->collect_active.store(false, std::memory_order_release);
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-client] collect done ts_us="
+                  << perf_multi_metric::now_us()
+                  << " size=" << msg_size << std::endl;
+    }
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe(sample_start);
@@ -1028,7 +1090,18 @@ bool run_single_size_case(spot_client_state_t *state,
     double throughput = 0.0;
 
     unsigned long long active_received = 0;
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-client] metrics merge start ts_us="
+                  << perf_multi_metric::now_us()
+                  << " size=" << msg_size << std::endl;
+    }
     collect_spot_thread_metrics(state, &active_received, &latency);
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-client] metrics merge done ts_us="
+                  << perf_multi_metric::now_us()
+                  << " size=" << msg_size
+                  << " received=" << active_received << std::endl;
+    }
     if (state->fatal.load(std::memory_order_acquire)
         || active_received == 0 || latency.mean_us <= 0.0) {
         if (bench_debug_enabled()) {

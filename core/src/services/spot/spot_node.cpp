@@ -441,8 +441,16 @@ int spot_runtime_t::stop_and_join ()
     int first_error = 0;
 
     stop.set (1);
-    if (data_ctrl_front)
-        preserve_first_error (send_command ("terminate", NULL), &first_error);
+    if (data_ctrl_front) {
+        scoped_lock_t lock (ctrl_sync);
+        if (send_ascii_frame (data_ctrl_front, "terminate", 0) != 0) {
+            const int err = errno != 0 ? errno : EIO;
+            if (err != ETIMEDOUT && err != EFSM && err != ETERM
+                && err != EPIPE && err != ENOTSOCK)
+                preserve_first_error (err, &first_error);
+        }
+    }
+    stop_sockets ();
     if (data_plane_thread.get_started ())
         data_plane_thread.stop ();
     preserve_first_error (close_control_sockets (), &first_error);
@@ -1423,7 +1431,8 @@ void spot_node_t::notify_pub_delivery_ready_ack (
 {
     if (target_endpoint_.empty () || subject_.empty () || ack_source_id_.empty ())
         return;
-    if (is_shutting_down ())
+    if (is_shutting_down () || !_runtime || _runtime->stop.get () != 0
+        || _runtime->faulted)
         return;
 
     std::string self_endpoint;
@@ -1520,7 +1529,8 @@ int spot_node_t::send_ready_ack_update (const std::string &target_endpoint_,
         errno = EINVAL;
         return -1;
     }
-    if (is_shutting_down ())
+    if (is_shutting_down () || !_runtime || _runtime->stop.get () != 0
+        || _runtime->faulted)
         return 0;
 
     const std::string arg =

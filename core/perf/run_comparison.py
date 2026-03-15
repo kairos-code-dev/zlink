@@ -1264,21 +1264,6 @@ def _resolve_server_timeouts(pattern_name, transport, ready_timeout_ms, shutdown
     return ready_timeout_ms, shutdown_timeout_ms
 
 
-def _resolve_server_natural_stop_wait_seconds(
-    pattern_name, transport, timeout_sec, shutdown_timeout_ms
-):
-    wait_sec = shutdown_timeout_ms / 1000.0
-    if wait_sec <= 0:
-        wait_sec = 0.1
-
-    natural_wait_sec = min(max(wait_sec, 3.0), max(3.0, timeout_sec))
-    if pattern_name == "SPOT":
-        natural_wait_sec = min(max(natural_wait_sec, 30.0), max(30.0, timeout_sec))
-    elif pattern_name == "GATEWAY":
-        natural_wait_sec = min(max(natural_wait_sec, 10.0), max(10.0, timeout_sec))
-    return wait_sec, natural_wait_sec
-
-
 def _resolve_io_threads(env, io_key, pattern_name):
     io_value = env_pair_value(env, io_key)
     if not io_value and pattern_name in STREAM_VARIANT_PATTERNS:
@@ -1440,6 +1425,7 @@ def run_sizes_test_stream_shared(
     server_stderr_buffer = BoundedTextBuffer(capture_limit)
     out_queue = queue.Queue()
     reader_threads = []
+    debug_transitions = os.getenv("PERF_DEBUG_TRANSITIONS") is not None
 
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
@@ -1451,15 +1437,6 @@ def run_sizes_test_stream_shared(
         nonlocal server_proc
         if not server_proc:
             return
-        if server_proc.poll() is None:
-            wait_sec, natural_wait_sec = _resolve_server_natural_stop_wait_seconds(
-                pattern_name, transport, timeout_sec, shutdown_timeout_ms
-            )
-            natural_deadline = time.monotonic() + natural_wait_sec
-            while server_proc.poll() is None and time.monotonic() < natural_deadline:
-                pump_server_output_nonblocking()
-                time.sleep(0.05)
-            pump_server_output_nonblocking()
         if server_proc.poll() is None:
             try:
                 if server_proc.stdin:
@@ -1474,6 +1451,9 @@ def run_sizes_test_stream_shared(
                         pass
             except Exception:
                 pass
+            wait_sec = shutdown_timeout_ms / 1000.0
+            if wait_sec <= 0:
+                wait_sec = 0.1
             try:
                 server_proc.wait(timeout=wait_sec)
             except subprocess.TimeoutExpired:
@@ -1511,6 +1491,8 @@ def run_sizes_test_stream_shared(
                 append_server_stdout_line(line)
             else:
                 server_stderr_buffer.append(line)
+                if debug_transitions:
+                    sys.stderr.write(f"[server] {line}")
 
     def pump_server_output_nonblocking():
         while True:
@@ -1524,6 +1506,8 @@ def run_sizes_test_stream_shared(
                 append_server_stdout_line(line)
             else:
                 server_stderr_buffer.append(line)
+                if debug_transitions:
+                    sys.stderr.write(f"[server] {line}")
 
     try:
         server_proc = subprocess.Popen(
@@ -1772,6 +1756,8 @@ def run_sizes_test_stream_shared(
         emit_live_client_metrics(None, None, force=True)
         client_stdout = sampled.get("stdout", "") or ""
         client_stderr = sampled.get("stderr", "") or ""
+        if debug_transitions and client_stderr:
+            sys.stderr.write(client_stderr)
         progress_meta = {
             "server_endpoint": endpoint,
             "client_stderr": client_stderr,
@@ -2018,6 +2004,7 @@ def run_sizes_test_split(
     server_stderr_buffer = BoundedTextBuffer(capture_limit)
     out_queue = queue.Queue()
     reader_threads = []
+    debug_transitions = os.getenv("PERF_DEBUG_TRANSITIONS") is not None
 
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
@@ -2029,15 +2016,6 @@ def run_sizes_test_split(
         nonlocal server_proc
         if not server_proc:
             return
-        if server_proc.poll() is None:
-            wait_sec, natural_wait_sec = _resolve_server_natural_stop_wait_seconds(
-                pattern_name, transport, timeout_sec, shutdown_timeout_ms
-            )
-            natural_deadline = time.monotonic() + natural_wait_sec
-            while server_proc.poll() is None and time.monotonic() < natural_deadline:
-                pump_server_output_nonblocking()
-                time.sleep(0.05)
-            pump_server_output_nonblocking()
         if server_proc.poll() is None:
             try:
                 if server_proc.stdin:
@@ -2052,6 +2030,9 @@ def run_sizes_test_split(
                         pass
             except Exception:
                 pass
+            wait_sec = shutdown_timeout_ms / 1000.0
+            if wait_sec <= 0:
+                wait_sec = 0.1
             try:
                 server_proc.wait(timeout=wait_sec)
             except subprocess.TimeoutExpired:
@@ -2089,6 +2070,8 @@ def run_sizes_test_split(
                 append_server_stdout_line(line)
             else:
                 server_stderr_buffer.append(line)
+                if debug_transitions:
+                    sys.stderr.write(f"[server] {line}")
 
     def pump_server_output_nonblocking():
         while True:
@@ -2102,6 +2085,8 @@ def run_sizes_test_split(
                 append_server_stdout_line(line)
             else:
                 server_stderr_buffer.append(line)
+                if debug_transitions:
+                    sys.stderr.write(f"[server] {line}")
 
     try:
         server_proc = subprocess.Popen(
@@ -2310,6 +2295,8 @@ def run_sizes_test_split(
         emit_live_server_metrics(force=True)
         client_stdout = sampled.get("stdout", "") or ""
         client_stderr = sampled.get("stderr", "") or ""
+        if debug_transitions and client_stderr:
+            sys.stderr.write(client_stderr)
         progress_meta = {
             "server_endpoint": endpoint,
             "client_stderr": client_stderr,

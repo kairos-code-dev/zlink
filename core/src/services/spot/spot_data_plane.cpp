@@ -30,8 +30,12 @@ namespace zlink
 namespace
 {
 static const size_t spot_sub_queue_hwm_default = 1000;
-static const unsigned int ingress_forward_batch_limit = 4096;
-static const unsigned int ctrl_poll_batch_limit = 128;
+static const int spot_internal_ingress_rcvhwm_default = 8192;
+static const int spot_internal_mesh_xsub_rcvhwm_default = 8192;
+static const int spot_internal_peer_ctrl_rcvhwm_default = 1024;
+static const unsigned int ingress_forward_batch_limit = 512;
+static const unsigned int mesh_xsub_forward_batch_limit = 256;
+static const unsigned int ctrl_poll_batch_limit = 32;
 static uint64_t default_bootstrap_broadcast_interval_ms (
   const spot_runtime_t *runtime_)
 {
@@ -545,6 +549,7 @@ static int recv_and_dispatch_mesh_xsub (
         return -1;
     }
 
+    unsigned int processed = 0;
     for (;;) {
         msg_t topic_msg;
         if (topic_msg.init () != 0)
@@ -569,6 +574,9 @@ static int recv_and_dispatch_mesh_xsub (
                 return -1;
             }
             topic_msg.close ();
+            ++processed;
+            if (processed >= mesh_xsub_forward_batch_limit)
+                return 0;
             continue;
         }
 
@@ -612,6 +620,9 @@ static int recv_and_dispatch_mesh_xsub (
             return -1;
         }
         node_->schedule_subscription_replay ();
+        ++processed;
+        if (processed >= mesh_xsub_forward_batch_limit)
+            return 0;
     }
 }
 
@@ -773,6 +784,15 @@ void spot_data_plane_t::run (spot_node_t *node_)
     const int zero = 0;
     const int neg_one = -1;
     const int one = 1;
+    const int ingress_rcvhwm =
+      resolve_internal_hwm_override ("ZLINK_SPOT_INTERNAL_INGRESS_RCVHWM",
+                                     spot_internal_ingress_rcvhwm_default);
+    const int mesh_xsub_rcvhwm =
+      resolve_internal_hwm_override ("ZLINK_SPOT_INTERNAL_MESH_XSUB_RCVHWM",
+                                     spot_internal_mesh_xsub_rcvhwm_default);
+    const int peer_ctrl_rcvhwm =
+      resolve_internal_hwm_override ("ZLINK_SPOT_INTERNAL_PEER_CTRL_RCVHWM",
+                                     spot_internal_peer_ctrl_rcvhwm_default);
     const int fanout_sndhwm =
       resolve_internal_hwm_override ("ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM",
                                      static_cast<int> (
@@ -786,7 +806,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
     apply_common_internal_opts (fanout, linger);
 
     ctrl->connect (runtime->data_ctrl_endpoint.c_str ());
-    ingress->setsockopt (ZLINK_RCVHWM, &zero, sizeof (zero));
+    ingress->setsockopt (ZLINK_RCVHWM, &ingress_rcvhwm, sizeof (ingress_rcvhwm));
     ingress->setsockopt (ZLINK_RCVTIMEO, &neg_one, sizeof (neg_one));
     ingress->setsockopt (ZLINK_SUBSCRIBE, "", 0);
     fanout->setsockopt (ZLINK_SNDHWM, &fanout_sndhwm,
@@ -795,10 +815,12 @@ void spot_data_plane_t::run (spot_node_t *node_)
     fanout->setsockopt (ZLINK_RCVHWM, &zero, sizeof (zero));
     fanout->setsockopt (ZLINK_XPUB_NODROP, &one, sizeof (one));
     mesh_pub->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
-    mesh_xsub->setsockopt (ZLINK_RCVHWM, &zero, sizeof (zero));
+    mesh_xsub->setsockopt (ZLINK_RCVHWM, &mesh_xsub_rcvhwm,
+                           sizeof (mesh_xsub_rcvhwm));
     mesh_xsub->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
     peer_ctrl_pub->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
-    peer_ctrl_sub->setsockopt (ZLINK_RCVHWM, &zero, sizeof (zero));
+    peer_ctrl_sub->setsockopt (ZLINK_RCVHWM, &peer_ctrl_rcvhwm,
+                               sizeof (peer_ctrl_rcvhwm));
     peer_ctrl_sub->setsockopt (ZLINK_SUBSCRIBE,
                                spot_control_protocol::ctrl_prefix,
                                strlen (spot_control_protocol::ctrl_prefix));
@@ -908,11 +930,24 @@ void spot_data_plane_t::run (spot_node_t *node_)
             break;
         }
 
-        for (int i = 0; i < rc; ++i) {
-            if ((events[i].events & ZLINK_POLLIN) == 0)
-                continue;
+        for (int pass = 0; pass < 3 && running; ++pass) {
+            for (int i = 0; i < rc; ++i) {
+                if ((events[i].events & ZLINK_POLLIN) == 0)
+                    continue;
 
-            if (events[i].socket == ctrl) {
+                const bool is_ctrl_event =
+                  events[i].socket == ctrl || events[i].socket == peer_ctrl_sub
+                  || events[i].socket == mesh_xsub_monitor;
+                const bool is_mesh_event = events[i].socket == mesh_xsub;
+                const bool is_ingress_event = events[i].socket == ingress;
+
+                if ((pass == 0 && !is_ctrl_event)
+                    || (pass == 1 && !is_mesh_event)
+                    || (pass == 2 && !is_ingress_event)) {
+                    continue;
+                }
+
+                if (events[i].socket == ctrl) {
                 std::vector<std::string> frames;
                 if (recv_ascii_command (ctrl, &frames) != 0) {
                     fatal_errno = errno;
@@ -1049,71 +1084,74 @@ void spot_data_plane_t::run (spot_node_t *node_)
                     send_errno_reply (ctrl, EINVAL);
                 }
                 continue;
-            }
-
-            if (events[i].socket == ingress) {
-                if (recv_and_forward_ingress (ingress, mesh_pub, fanout, node_)
-                    != 0) {
-                    fatal_errno = errno;
-                    running = false;
-                    break;
                 }
-                continue;
-            }
 
-            if (events[i].socket == mesh_xsub) {
-                if (recv_and_dispatch_mesh_xsub (mesh_xsub, fanout, peer_ctrl_pub,
-                                                 node_, &peer_ctrl_endpoints)
-                    != 0) {
-                    fatal_errno = errno;
-                    running = false;
-                    break;
-                }
-                continue;
-            }
-
-            if (events[i].socket == mesh_xsub_monitor) {
-                while (running) {
-                    zlink_monitor_event_t raw;
-                    if (recv_socket_monitor_event (mesh_xsub_monitor, &raw,
-                                                   ZLINK_DONTWAIT)
+                if (events[i].socket == peer_ctrl_sub) {
+                    if (recv_and_process_ctrl_messages (peer_ctrl_sub, node_,
+                                                        &peer_ready_filters)
                         != 0) {
-                        if (errno == EAGAIN || errno == EINTR)
-                            break;
                         fatal_errno = errno;
                         running = false;
                         break;
                     }
+                    continue;
+                }
 
-                    switch (raw.event) {
-                        case ZLINK_EVENT_CONNECTION_READY:
-                            sync_mesh_xsub_connected_endpoint (runtime, raw,
-                                                               true);
+                if (events[i].socket == mesh_xsub_monitor) {
+                    while (running) {
+                        zlink_monitor_event_t raw;
+                        if (recv_socket_monitor_event (mesh_xsub_monitor, &raw,
+                                                       ZLINK_DONTWAIT)
+                            != 0) {
+                            if (errno == EAGAIN || errno == EINTR)
+                                break;
+                            fatal_errno = errno;
+                            running = false;
                             break;
+                        }
 
-                        case ZLINK_EVENT_DISCONNECTED:
-                            sync_mesh_xsub_connected_endpoint (runtime, raw,
-                                                               false);
-                            break;
+                        switch (raw.event) {
+                            case ZLINK_EVENT_CONNECTION_READY:
+                                sync_mesh_xsub_connected_endpoint (runtime, raw,
+                                                                   true);
+                                break;
 
-                        default:
-                            break;
+                            case ZLINK_EVENT_DISCONNECTED:
+                                sync_mesh_xsub_connected_endpoint (runtime, raw,
+                                                                   false);
+                                break;
+
+                            default:
+                                break;
+                        }
                     }
+                    if (!running)
+                        break;
+                    continue;
                 }
-                if (!running)
-                    break;
-                continue;
-            }
 
-            if (events[i].socket == peer_ctrl_sub) {
-                if (recv_and_process_ctrl_messages (peer_ctrl_sub, node_,
-                                                    &peer_ready_filters)
-                    != 0) {
-                    fatal_errno = errno;
-                    running = false;
-                    break;
+                if (events[i].socket == mesh_xsub) {
+                    if (recv_and_dispatch_mesh_xsub (
+                          mesh_xsub, fanout, peer_ctrl_pub, node_,
+                          &peer_ctrl_endpoints)
+                        != 0) {
+                        fatal_errno = errno;
+                        running = false;
+                        break;
+                    }
+                    continue;
                 }
-                continue;
+
+                if (events[i].socket == ingress) {
+                    if (recv_and_forward_ingress (ingress, mesh_pub, fanout,
+                                                  node_)
+                        != 0) {
+                        fatal_errno = errno;
+                        running = false;
+                        break;
+                    }
+                    continue;
+                }
             }
         }
 

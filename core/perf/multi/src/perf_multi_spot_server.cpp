@@ -294,24 +294,6 @@ void discard_spot_parts(const zlink_routing_id_t *,
         zlink_msg_close(&parts[i]);
 }
 
-void notify_spot_server_send_progress(spot_server_state_t *state)
-{
-    if (!state)
-        return;
-
-    state->send_wake_epoch.fetch_add(1, std::memory_order_acq_rel);
-    state->send_wait_cv.notify_all();
-}
-
-void spot_server_send_ready(void *subject)
-{
-    spot_server_state_t *state = g_server_state;
-    if (!state || subject != state->pub)
-        return;
-
-    notify_spot_server_send_progress(state);
-}
-
 bool is_supported_transport(const std::string &transport)
 {
     return transport == "tcp" || transport == "tls" || transport == "ws"
@@ -496,6 +478,24 @@ void emit_requested_queue_probe(const std::string &lib_name,
 }
 
 
+void notify_spot_server_send_progress(spot_server_state_t *state)
+{
+    if (!state)
+        return;
+
+    state->send_wake_epoch.fetch_add(1, std::memory_order_acq_rel);
+    state->send_wait_cv.notify_all();
+}
+
+void spot_server_send_ready(void *subject)
+{
+    spot_server_state_t *state = g_server_state;
+    if (!state || subject != state->pub)
+        return;
+
+    notify_spot_server_send_progress(state);
+}
+
 bool wait_for_spot_send_progress(spot_server_state_t *state,
                                  uint64_t observed_epoch,
                                  bool send_enabled)
@@ -553,23 +553,12 @@ send_status_t try_publish_locked(spot_server_state_t *state)
     (void) zlink_msg_close(&part);
 
     if (rc == 0) {
-        if (bench_debug_enabled () && state->next_seq == 1) {
-            std::cerr << "[multi-spot-server] first send ok size="
-                      << state->msg_size << " phase="
-                      << static_cast<int> (state->phase) << std::endl;
-        }
         state->send_pending.store(false, std::memory_order_release);
         ++state->next_seq;
         return send_status_ok;
     }
     if (saved_errno == EAGAIN || saved_errno == EHOSTUNREACH
         || saved_errno == ENOTCONN || saved_errno == ETIMEDOUT) {
-        if (bench_debug_enabled () && state->next_seq == 1) {
-            std::cerr << "[multi-spot-server] first send blocked size="
-                      << state->msg_size << " phase="
-                      << static_cast<int> (state->phase)
-                      << " errno=" << saved_errno << std::endl;
-        }
         state->send_pending.store(true, std::memory_order_release);
         errno = saved_errno;
         return send_status_blocked;
@@ -577,6 +566,80 @@ send_status_t try_publish_locked(spot_server_state_t *state)
 
     errno = saved_errno;
     return send_status_fatal;
+}
+
+bool run_phase(spot_server_state_t *state,
+               const std::string &lib_name,
+               const std::string &transport,
+               size_t msg_size,
+               perf_multi_metric::phase_t phase,
+               double duration_seconds,
+               bool send_enabled)
+{
+    if (duration_seconds <= 0.0)
+        return true;
+
+    state->msg_size = msg_size;
+    state->phase = phase;
+    state->next_seq = 1;
+    state->send_enabled.store(send_enabled, std::memory_order_release);
+    state->send_pending.store(false, std::memory_order_release);
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-server] phase start ts_us="
+                  << perf_multi_metric::now_us()
+                  << " size=" << msg_size
+                  << " phase=" << static_cast<int>(phase)
+                  << " send=" << (send_enabled ? 1 : 0) << std::endl;
+    }
+
+    const auto deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+          std::chrono::duration<double>(duration_seconds));
+
+    while (!g_stop_requested.load(std::memory_order_acquire)
+           && std::chrono::steady_clock::now() < deadline) {
+        emit_requested_queue_probe(lib_name, transport);
+
+        bool progressed = false;
+        if (state->fatal_errno.load(std::memory_order_acquire) != 0)
+            return false;
+        if (state->send_enabled.load(std::memory_order_acquire)) {
+            const send_status_t rc = try_publish_locked(state);
+            if (rc == send_status_fatal) {
+                state->fatal_errno.store(errno != 0 ? errno : EIO,
+                                         std::memory_order_release);
+                return false;
+            }
+            progressed = rc == send_status_ok;
+        }
+
+        if (!progressed) {
+            const uint64_t wake_epoch =
+              state->send_wake_epoch.load(std::memory_order_acquire);
+            wait_for_spot_send_progress(state, wake_epoch, send_enabled);
+        }
+    }
+
+    state->send_enabled.store(false, std::memory_order_release);
+    state->send_pending.store(false, std::memory_order_release);
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-server] phase done ts_us="
+                  << perf_multi_metric::now_us()
+                  << " size=" << msg_size
+                  << " phase=" << static_cast<int>(phase)
+                  << " sent="
+                  << (state->next_seq > 0 ? state->next_seq - 1 : 0)
+                  << " stop="
+                  << (g_stop_requested.load(std::memory_order_acquire) ? 1 : 0)
+                  << " fatal_errno="
+                  << state->fatal_errno.load(std::memory_order_acquire)
+                  << std::endl;
+    }
+    if (state->fatal_errno.load(std::memory_order_acquire) != 0)
+        return false;
+
+    return !g_stop_requested.load(std::memory_order_acquire);
 }
 
 void print_server_metrics(const std::string &lib_name,
@@ -603,72 +666,6 @@ void print_server_metrics(const std::string &lib_name,
     }
 }
 
-bool run_phase(spot_server_state_t *state,
-               const std::string &lib_name,
-               const std::string &transport,
-               size_t msg_size,
-               perf_multi_metric::phase_t phase,
-               double duration_seconds,
-               bool send_enabled)
-{
-    if (duration_seconds <= 0.0)
-        return true;
-
-    state->msg_size = msg_size;
-    state->phase = phase;
-    state->next_seq = 1;
-    state->send_enabled.store(send_enabled, std::memory_order_release);
-    state->send_pending.store(false, std::memory_order_release);
-
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-          std::chrono::duration<double>(duration_seconds));
-
-    while (!g_stop_requested.load(std::memory_order_acquire)
-           && std::chrono::steady_clock::now() < deadline) {
-        emit_requested_queue_probe(lib_name, transport);
-
-        bool progressed = false;
-        if (state->fatal_errno.load(std::memory_order_acquire) != 0)
-            return false;
-        if (state->send_enabled.load(std::memory_order_acquire)) {
-            const send_status_t rc = try_publish_locked(state);
-            if (rc == send_status_fatal) {
-                if (bench_debug_enabled ()) {
-                    std::cerr << "[multi-spot-server] publish fatal errno="
-                              << errno << std::endl;
-                }
-                state->fatal_errno.store(errno != 0 ? errno : EIO,
-                                         std::memory_order_release);
-                return false;
-            }
-            progressed = rc == send_status_ok;
-        }
-
-        if (!progressed) {
-            const uint64_t wake_epoch =
-              state->send_wake_epoch.load(std::memory_order_acquire);
-            wait_for_spot_send_progress(state, wake_epoch, send_enabled);
-        }
-    }
-
-    state->send_enabled.store(false, std::memory_order_release);
-    state->send_pending.store(false, std::memory_order_release);
-    if (bench_debug_enabled ()) {
-        std::cerr << "[multi-spot-server] phase done size=" << msg_size
-                  << " phase=" << static_cast<int> (phase)
-                  << " sent=" << (state->next_seq > 0 ? state->next_seq - 1 : 0)
-                  << " fatal_errno="
-                  << state->fatal_errno.load(std::memory_order_acquire)
-                  << std::endl;
-    }
-    if (state->fatal_errno.load(std::memory_order_acquire) != 0)
-        return false;
-
-    return !g_stop_requested.load(std::memory_order_acquire);
-}
-
 bool run_server_loop(spot_server_state_t *state,
                      const multi_bench_settings_t &settings,
                      const std::string &lib_name,
@@ -683,8 +680,13 @@ bool run_server_loop(spot_server_state_t *state,
       static_cast<double>(std::max(1, settings.duration_seconds));
 
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
-        if (g_stop_requested.load(std::memory_order_acquire))
+        if (g_stop_requested.load(std::memory_order_acquire)) {
+            if (bench_transition_debug_enabled()) {
+                std::cerr << "[multi-spot-server] loop stop before size="
+                          << msg_sizes[i] << std::endl;
+            }
             return false;
+        }
 
         if (!run_phase(state, lib_name, transport, msg_sizes[i],
                        perf_multi_metric::phase_warmup, warmup_seconds, true)
@@ -693,7 +695,19 @@ bool run_server_loop(spot_server_state_t *state,
                               perf_multi_metric::phase_drain, settle_seconds,
                               false))
             || !run_phase(state, lib_name, transport, msg_sizes[i],
-                          perf_multi_metric::phase_active, active_seconds, true)) {
+                          perf_multi_metric::phase_active, active_seconds,
+                          true)) {
+            if (bench_transition_debug_enabled()) {
+                std::cerr << "[multi-spot-server] loop abort size="
+                          << msg_sizes[i]
+                          << " stop="
+                          << (g_stop_requested.load(std::memory_order_acquire)
+                                ? 1
+                                : 0)
+                          << " fatal_errno="
+                          << state->fatal_errno.load(std::memory_order_acquire)
+                          << std::endl;
+            }
             return false;
         }
     }
@@ -804,6 +818,14 @@ int run_server_benchmark(const std::string &lib_name,
 
     const bool ok =
       run_server_loop(&state, settings, lib_name, transport, msg_sizes);
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-server] benchmark done ok=" << (ok ? 1 : 0)
+                  << " stop="
+                  << (g_stop_requested.load(std::memory_order_acquire) ? 1 : 0)
+                  << " fatal_errno="
+                  << state.fatal_errno.load(std::memory_order_acquire)
+                  << std::endl;
+    }
 
     const bool send_pending =
       state.send_pending.load(std::memory_order_acquire);

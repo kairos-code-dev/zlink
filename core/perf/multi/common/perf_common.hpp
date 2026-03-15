@@ -895,6 +895,12 @@ inline bool bench_debug_enabled() {
     return enabled;
 }
 
+inline bool bench_transition_debug_enabled() {
+    static const bool enabled =
+      std::getenv("PERF_DEBUG_TRANSITIONS") != nullptr;
+    return enabled;
+}
+
 inline bool set_sockopt_int(void *socket_, zlink_socket_option_t option_,
                             int value_, const char *name_) {
     const int rc = zlink_setsockopt(socket_, option_, &value_, sizeof(value_));

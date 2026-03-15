@@ -3,21 +3,19 @@
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
-#include "../../../src/core/monitor_dispatch_internal.hpp"
-
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
-#include <condition_variable>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
-#include <map>
+#include <condition_variable>
 #include <mutex>
 #include <new>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -43,213 +41,33 @@ static std::atomic<bool> g_stop_requested(false);
 static std::atomic<bool> g_queue_probe_pending(false);
 static std::atomic<size_t> g_queue_probe_size(0);
 
-struct spot_server_ready_monitor_state_t
-{
-    spot_server_ready_monitor_state_t() :
-        ready_count(0),
-        error_code(0)
-    {
-    }
-
-    std::mutex mutex;
-    std::condition_variable cv;
-    size_t ready_count;
-    int error_code;
-};
-
-struct spot_server_ready_monitor_t
-{
-    spot_server_ready_monitor_t() : monitor(NULL), state(NULL) {}
-
-    void *monitor;
-    spot_server_ready_monitor_state_t *state;
-};
-
-struct spot_server_ready_monitor_registry_t
-{
-    std::mutex mutex;
-    std::map<void *, spot_server_ready_monitor_state_t *> states;
-};
-
-spot_server_ready_monitor_registry_t &spot_server_ready_monitor_registry()
-{
-    static spot_server_ready_monitor_registry_t registry;
-    return registry;
-}
-
-void register_spot_server_ready_monitor(
-  void *monitor,
-  spot_server_ready_monitor_state_t *state)
-{
-    if (!monitor || !state)
-        return;
-
-    spot_server_ready_monitor_registry_t &registry =
-      spot_server_ready_monitor_registry();
-    std::lock_guard<std::mutex> lock(registry.mutex);
-    registry.states[monitor] = state;
-}
-
-void unregister_spot_server_ready_monitor(void *monitor)
-{
-    if (!monitor)
-        return;
-
-    spot_server_ready_monitor_registry_t &registry =
-      spot_server_ready_monitor_registry();
-    std::lock_guard<std::mutex> lock(registry.mutex);
-    registry.states.erase(monitor);
-}
-
-spot_server_ready_monitor_state_t *find_spot_server_ready_monitor_state()
-{
-    void *monitor = zlink::current_monitor_dispatch_handle();
-    if (!monitor)
-        return NULL;
-
-    spot_server_ready_monitor_registry_t &registry =
-      spot_server_ready_monitor_registry();
-    std::lock_guard<std::mutex> lock(registry.mutex);
-    std::map<void *, spot_server_ready_monitor_state_t *>::iterator it =
-      registry.states.find(monitor);
-    return it != registry.states.end() ? it->second : NULL;
-}
-
-void spot_server_ready_monitor_handler(const zlink_service_event_t *event)
-{
-    spot_server_ready_monitor_state_t *state =
-      find_spot_server_ready_monitor_state();
-    if (!state || !event)
-        return;
-
-    {
-        std::lock_guard<std::mutex> lock(state->mutex);
-        switch (event->event_type) {
-            case ZLINK_MONITOR_EVENT_PEER_UP:
-            case ZLINK_MONITOR_EVENT_READY: {
-                zlink_monitor_snapshot_t snapshot;
-                std::memset(&snapshot, 0, sizeof(snapshot));
-                void *monitor = zlink::current_monitor_dispatch_handle();
-                if (monitor && zlink_monitor_snapshot(monitor, &snapshot) == 0)
-                    state->ready_count = snapshot.ready_peer_count;
-                break;
-            }
-
-            case ZLINK_MONITOR_EVENT_ERROR:
-                if (state->error_code == 0)
-                    state->error_code =
-                      event->error_code != 0 ? event->error_code : EIO;
-                break;
-
-            default:
-                break;
-        }
-    }
-
-    state->cv.notify_all();
-}
-
-bool open_spot_server_ready_monitor(void *pub,
-                                    spot_server_ready_monitor_t *out)
-{
-    if (!pub || !out)
-        return false;
-
-    spot_server_ready_monitor_state_t *state =
-      new (std::nothrow) spot_server_ready_monitor_state_t();
-    if (!state)
-        return false;
-
-    void *monitor = zlink_spot_monitor_open(
-      pub,
-      ZLINK_SPOT_ROLE_PUB,
-      ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_READY
-        | ZLINK_MONITOR_EVENT_ERROR,
-      &spot_server_ready_monitor_handler);
-    if (!monitor) {
-        delete state;
-        return false;
-    }
-
-    const int monitor_hwm = bench_hwm_from_env("PERF_MONITOR_HWM", 1000);
-    set_sockopt_int(monitor, ZLINK_LINGER, 0, "ZLINK_LINGER");
-    if (monitor_hwm > 0) {
-        set_sockopt_int(monitor, ZLINK_SNDHWM, monitor_hwm, "ZLINK_SNDHWM");
-        set_sockopt_int(monitor, ZLINK_RCVHWM, monitor_hwm, "ZLINK_RCVHWM");
-    }
-
-    register_spot_server_ready_monitor(monitor, state);
-    out->monitor = monitor;
-    out->state = state;
-    zlink_monitor_snapshot_t snapshot;
-    std::memset(&snapshot, 0, sizeof(snapshot));
-    if (zlink_monitor_snapshot(monitor, &snapshot) == 0)
-        state->ready_count = snapshot.ready_peer_count;
-    return true;
-}
-
-bool wait_for_spot_ready(spot_server_ready_monitor_t *monitor,
-                         size_t expected_count,
-                         int timeout_ms)
+bool wait_for_pub_peers(void *pub, size_t expected_count, int timeout_ms)
 {
     if (expected_count == 0)
         return true;
-    if (!monitor || !monitor->state)
+    if (!pub)
         return false;
-
-    auto snapshot_ready = [monitor, expected_count]() {
-        if (!monitor->monitor)
-            return false;
-        zlink_monitor_snapshot_t snapshot;
-        std::memset(&snapshot, 0, sizeof(snapshot));
-        return zlink_monitor_snapshot(monitor->monitor, &snapshot) == 0
-               && snapshot.ready_peer_count >= expected_count;
-    };
-
-    std::unique_lock<std::mutex> lock(monitor->state->mutex);
-    if (monitor->state->error_code != 0)
-        return false;
-    if (monitor->state->ready_count >= expected_count || snapshot_ready()) {
-        monitor->state->ready_count = expected_count;
-        return true;
-    }
 
     const auto deadline =
       std::chrono::steady_clock::now()
       + std::chrono::milliseconds(std::max(1, timeout_ms));
-    while (monitor->state->error_code == 0) {
-        if (monitor->state->ready_count >= expected_count || snapshot_ready()) {
-            monitor->state->ready_count = expected_count;
+
+    while (!g_stop_requested.load(std::memory_order_acquire)
+           && std::chrono::steady_clock::now() < deadline) {
+        zlink_monitor_snapshot_t snapshot;
+        std::memset(&snapshot, 0, sizeof(snapshot));
+        if (read_spot_snapshot_once(pub, ZLINK_SPOT_ROLE_PUB, &snapshot)
+            && snapshot.ready_peer_count >= expected_count) {
             return true;
         }
-        if (monitor->state->cv.wait_until(lock, deadline)
-            == std::cv_status::timeout) {
-            break;
-        }
+        if (perf_socket_poll(NULL, 0, 5) < 0 && zlink_errno() != EINTR)
+            return false;
     }
-    return monitor->state->error_code == 0
-           && monitor->state->ready_count >= expected_count;
-}
 
-void close_spot_server_ready_monitor(spot_server_ready_monitor_t *monitor)
-{
-    if (!monitor)
-        return;
-
-    spot_server_ready_monitor_state_t *state = monitor->state;
-    void *handle = monitor->monitor;
-    void *handle_id = handle;
-    monitor->state = NULL;
-    monitor->monitor = NULL;
-
-    if (!handle && !state)
-        return;
-
-    if (handle && zlink_service_monitor_close(&handle) == 0) {
-        unregister_spot_server_ready_monitor(handle_id);
-        delete state;
-        return;
-    }
+    zlink_monitor_snapshot_t snapshot;
+    std::memset(&snapshot, 0, sizeof(snapshot));
+    return read_spot_snapshot_once(pub, ZLINK_SPOT_ROLE_PUB, &snapshot)
+           && snapshot.ready_peer_count >= expected_count;
 }
 
 struct spot_server_state_t
@@ -278,6 +96,9 @@ struct spot_server_state_t
     std::atomic<bool> send_pending;
     std::atomic<int> fatal_errno;
     std::atomic<uint64_t> send_wake_epoch;
+    std::mutex start_wait_mutex;
+    std::condition_variable start_wait_cv;
+    std::set<size_t> pending_start_sizes;
 };
 
 spot_server_state_t *g_server_state = NULL;
@@ -326,6 +147,24 @@ void request_queue_probe(size_t msg_size)
         return;
     g_queue_probe_size.store(msg_size, std::memory_order_release);
     g_queue_probe_pending.store(true, std::memory_order_release);
+}
+
+bool parse_start_command(const std::string &line, size_t *msg_size_out)
+{
+    static const char prefix[] = "START,";
+    if (!msg_size_out
+        || line.compare(0, sizeof(prefix) - 1, prefix) != 0) {
+        return false;
+    }
+
+    const char *value = line.c_str() + (sizeof(prefix) - 1);
+    char *end = NULL;
+    const unsigned long long parsed = std::strtoull(value, &end, 10);
+    if (!end || *end != '\0' || parsed == 0)
+        return false;
+
+    *msg_size_out = static_cast<size_t>(parsed);
+    return true;
 }
 
 void emit_requested_queue_probe(const std::string &lib_name,
@@ -475,6 +314,40 @@ void emit_requested_queue_probe(const std::string &lib_name,
       sample_spot_queue_stats(state->pub, send_pending);
     print_server_queue_metrics(lib_name, k_pattern, transport, msg_size,
                                queue_stats);
+}
+
+void notify_size_start(spot_server_state_t *state, size_t msg_size)
+{
+    if (!state || msg_size == 0)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock(state->start_wait_mutex);
+        state->pending_start_sizes.insert(msg_size);
+    }
+    state->start_wait_cv.notify_all();
+}
+
+bool wait_for_size_start(spot_server_state_t *state,
+                         size_t msg_size,
+                         int timeout_ms)
+{
+    if (!state || msg_size == 0)
+        return false;
+
+    std::unique_lock<std::mutex> lock(state->start_wait_mutex);
+    if (state->pending_start_sizes.erase(msg_size) != 0)
+        return true;
+
+    const bool signaled = state->start_wait_cv.wait_for(
+      lock,
+      std::chrono::milliseconds(std::max(1, timeout_ms)),
+      [state, msg_size]() {
+          return g_stop_requested.load(std::memory_order_acquire)
+                 || state->fatal_errno.load(std::memory_order_acquire) != 0
+                 || state->pending_start_sizes.count(msg_size) != 0;
+      });
+    return signaled && state->pending_start_sizes.erase(msg_size) != 0;
 }
 
 
@@ -678,6 +551,9 @@ bool run_server_loop(spot_server_state_t *state,
       static_cast<double>(std::max(0, settings.settle_ms)) / 1000.0;
     const double active_seconds =
       static_cast<double>(std::max(1, settings.duration_seconds));
+    const int start_timeout_ms =
+      std::max(settings.connect_ready_timeout_ms,
+               std::max(1000, settings.connect_ready_timeout_ms * 6));
 
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
         if (g_stop_requested.load(std::memory_order_acquire)) {
@@ -686,6 +562,26 @@ bool run_server_loop(spot_server_state_t *state,
                           << msg_sizes[i] << std::endl;
             }
             return false;
+        }
+
+        if (bench_transition_debug_enabled()) {
+            std::cerr << "[multi-spot-server] start wait begin ts_us="
+                      << perf_multi_metric::now_us()
+                      << " size=" << msg_sizes[i]
+                      << " timeout_ms=" << start_timeout_ms << std::endl;
+        }
+        if (!wait_for_size_start(state, msg_sizes[i], start_timeout_ms)) {
+            if (bench_transition_debug_enabled()) {
+                std::cerr << "[multi-spot-server] start wait timeout ts_us="
+                          << perf_multi_metric::now_us()
+                          << " size=" << msg_sizes[i] << std::endl;
+            }
+            return false;
+        }
+        if (bench_transition_debug_enabled()) {
+            std::cerr << "[multi-spot-server] start wait done ts_us="
+                      << perf_multi_metric::now_us()
+                      << " size=" << msg_sizes[i] << std::endl;
         }
 
         if (!run_phase(state, lib_name, transport, msg_sizes[i],
@@ -763,11 +659,8 @@ int run_server_benchmark(const std::string &lib_name,
     }
 
     void *pub = zlink_spot_new(node, &discard_spot_parts);
-    spot_server_ready_monitor_t pub_monitor;
     if (!pub || !apply_spot_server_options(pub, settings)
-        || zlink_spot_set_send_ready_handler(pub, &spot_server_send_ready) != 0
-        || !open_spot_server_ready_monitor(pub, &pub_monitor)) {
-        close_spot_server_ready_monitor(&pub_monitor);
+        || zlink_spot_set_send_ready_handler(pub, &spot_server_send_ready) != 0) {
         if (pub)
             zlink_spot_destroy(&pub);
         zlink_spot_node_destroy(&node);
@@ -788,8 +681,13 @@ int run_server_benchmark(const std::string &lib_name,
         std::string line;
         while (std::getline(std::cin, line)) {
             size_t queue_size = 0;
+            size_t start_size = 0;
             if (parse_queue_probe_command(line, &queue_size)) {
                 request_queue_probe(queue_size);
+                continue;
+            }
+            if (parse_start_command(line, &start_size)) {
+                notify_size_start(g_server_state, start_size);
                 continue;
             }
             if (line == "STOP" || line == "QUIT") {
@@ -803,18 +701,12 @@ int run_server_benchmark(const std::string &lib_name,
     const bench_multi_cpu_sample_t sample_start =
       bench_multi_capture_cpu_sample();
 
-    const size_t service_clients =
-      resolve_multi_service_clients(settings.clients);
-    const int peer_wait_ms =
-      std::max(5000, settings.connect_ready_timeout_ms * 3);
     std::cout << "READY," << endpoint << std::endl;
-    if (!wait_for_spot_ready(&pub_monitor, service_clients, peer_wait_ms)
-        && bench_debug_enabled()) {
-        std::cerr << "[multi-spot-server] ready wait timeout transport="
-                  << transport << " expected=" << service_clients
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-server] phase gate open ts_us="
+                  << perf_multi_metric::now_us()
                   << std::endl;
     }
-    close_spot_server_ready_monitor(&pub_monitor);
 
     const bool ok =
       run_server_loop(&state, settings, lib_name, transport, msg_sizes);

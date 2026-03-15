@@ -1203,6 +1203,20 @@ def parse_ready_endpoint(line):
     return parts[1].strip()
 
 
+def parse_client_ready_size(line):
+    stripped = line.strip()
+    if not stripped.startswith("CLIENT_READY,"):
+        return None
+    parts = stripped.split(",", 1)
+    if len(parts) != 2:
+        return None
+    try:
+        size_value = int(parts[1].strip())
+    except (TypeError, ValueError):
+        return None
+    return size_value if size_value > 0 else None
+
+
 def summarize_server_startup_detail(stdout_text, stderr_text, max_len=180):
     def pick_detail(text):
         if not text:
@@ -1725,6 +1739,15 @@ def run_sizes_test_stream_shared(
 
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
+            ready_size = parse_client_ready_size(line)
+            if ready_size is not None:
+                try:
+                    if server_proc.stdin:
+                        server_proc.stdin.write(f"START,{ready_size}\n")
+                        server_proc.stdin.flush()
+                except Exception:
+                    pass
+                return
             update_live_size_from_line(line)
             emit_result_metrics_from_line(
                 line, transport, expected_sizes, result_line_callback
@@ -2267,6 +2290,15 @@ def run_sizes_test_split(
 
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
+            ready_size = parse_client_ready_size(line)
+            if ready_size is not None:
+                try:
+                    if server_proc.stdin:
+                        server_proc.stdin.write(f"START,{ready_size}\n")
+                        server_proc.stdin.flush()
+                except Exception:
+                    pass
+                return
             update_live_size_from_line(line)
             emit_result_metrics_from_line(
                 line, transport, expected_sizes, result_line_callback

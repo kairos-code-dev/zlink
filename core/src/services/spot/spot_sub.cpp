@@ -91,6 +91,14 @@ static bool is_ready_probe_message (const char *topic_,
     return true;
 }
 
+static bool may_be_ready_probe_topic (const char *topic_, size_t topic_len_)
+{
+    return topic_ && topic_len_ >= sizeof (spot_ready_probe_prefix) - 1
+           && memcmp (topic_, spot_ready_probe_prefix,
+                      sizeof (spot_ready_probe_prefix) - 1)
+                == 0;
+}
+
 static void spot_sub_diag_log (const char *stage_)
 {
     if (!getenv ("ZLINK_SPOT_SUB_DIAG_LOG"))
@@ -904,17 +912,19 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
           static_cast<const char *> (zlink_msg_data (&topic));
         const size_t topic_size = zlink_msg_size (&topic);
 
-        std::string raw_filter;
-        std::string peer_endpoint;
-        if (is_ready_probe_message (topic_data,
-                                    topic_size,
-                                    frames.size () > 1 ? &frames[1] : NULL,
-                                    frames.size () - 1,
-                                    &raw_filter,
-                                    &peer_endpoint)) {
-            close_msgv (&frames);
-            handle_ready_probe (raw_filter, peer_endpoint);
-            continue;
+        if (may_be_ready_probe_topic (topic_data, topic_size)) {
+            std::string raw_filter;
+            std::string peer_endpoint;
+            if (is_ready_probe_message (topic_data,
+                                        topic_size,
+                                        frames.size () > 1 ? &frames[1] : NULL,
+                                        frames.size () - 1,
+                                        &raw_filter,
+                                        &peer_endpoint)) {
+                close_msgv (&frames);
+                handle_ready_probe (raw_filter, peer_endpoint);
+                continue;
+            }
         }
 
         if (topic_out_ && topic_len_) {
@@ -1109,13 +1119,15 @@ void spot_sub_t::dispatch_from_io (const zlink_routing_id_t *source_rid_,
         return;
     }
 
-    std::string raw_filter;
-    std::string peer_endpoint;
-    if (is_ready_probe_message (topic_, topic_len_, parts_, part_count_,
-                                &raw_filter, &peer_endpoint)) {
-        self->handle_ready_probe (raw_filter, peer_endpoint);
-        close_parts (parts_, part_count_);
-        return;
+    if (may_be_ready_probe_topic (topic_, topic_len_)) {
+        std::string raw_filter;
+        std::string peer_endpoint;
+        if (is_ready_probe_message (topic_, topic_len_, parts_, part_count_,
+                                    &raw_filter, &peer_endpoint)) {
+            self->handle_ready_probe (raw_filter, peer_endpoint);
+            close_parts (parts_, part_count_);
+            return;
+        }
     }
 
     direct_handler_binding_t *binding =
@@ -1127,20 +1139,6 @@ void spot_sub_t::dispatch_from_io (const zlink_routing_id_t *source_rid_,
     }
 
     self->_callback_inflight.add (1);
-    binding = self->_active_direct_handler.load (std::memory_order_acquire);
-    if (self->_handler_state.load (std::memory_order_acquire) != handler_active
-        || !binding || !binding->handler) {
-        const bool callbacks_remaining = self->_callback_inflight.sub (1);
-        if (!callbacks_remaining
-            && self->_handler_state.load (std::memory_order_acquire)
-                 != handler_active) {
-            scoped_lock_t lock (self->_sync);
-            self->_callback_cv.broadcast ();
-        }
-        close_parts (parts_, part_count_);
-        return;
-    }
-
     binding->handler (source_rid_, topic_, topic_len_, parts_, part_count_,
                       binding->userdata);
 

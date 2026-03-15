@@ -1815,6 +1815,12 @@ int zlink_service_monitor_close (void **monitor_p_)
         monitor_state->service_handler.store (NULL,
                                               std::memory_order_release);
     }
+    if (monitor_state && g_current_monitor_handler_state == monitor_state) {
+        const int rc = zlink_close (monitor);
+        if (rc == 0)
+            *monitor_p_ = NULL;
+        return rc;
+    }
     if (no_dispatch_monitor) {
         // Ignore-handler/direct-poll monitors do not run a dispatch worker.
         socket->stop ();

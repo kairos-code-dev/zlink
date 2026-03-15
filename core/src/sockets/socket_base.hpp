@@ -397,10 +397,10 @@ class socket_base_t : public own_t,
 
     // Bitmask of events being monitored
     int64_t _monitor_events;
+    std::atomic<int64_t> _monitor_events_atomic;
 
     // Last socket endpoint resolved URI
     std::string _last_endpoint;
-
 
     atomic_counter_t _mailbox_refcnt;
     bool _destroy_pending;

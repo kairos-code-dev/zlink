@@ -13,6 +13,7 @@ namespace zlink
 {
 service_monitor_hub_t::service_monitor_hub_t (ctx_t *ctx_) :
     _ctx (ctx_),
+    _watcher_count (0),
     _next_id (generate_random ())
 {
 }
@@ -131,6 +132,7 @@ void *service_monitor_hub_t::open (int events_)
 
     scoped_lock_t lock (_sync);
     _watchers.push_back (watcher);
+    _watcher_count.store (_watchers.size (), std::memory_order_release);
     return static_cast<void *> (client);
 }
 
@@ -177,6 +179,9 @@ uint32_t service_monitor_hub_t::event_delivery_mask (
 
 void service_monitor_hub_t::emit (const zlink_service_event_t &event_)
 {
+    if (_watcher_count.load (std::memory_order_acquire) == 0)
+        return;
+
     scoped_lock_t lock (_sync);
     const uint32_t delivery_mask = event_delivery_mask (event_);
 
@@ -184,6 +189,7 @@ void service_monitor_hub_t::emit (const zlink_service_event_t &event_)
          it != _watchers.end ();) {
         if (!it->server) {
             it = _watchers.erase (it);
+            _watcher_count.store (_watchers.size (), std::memory_order_release);
             continue;
         }
         if ((it->events & delivery_mask) == 0) {
@@ -201,6 +207,7 @@ void service_monitor_hub_t::emit (const zlink_service_event_t &event_)
             msg.close ();
             it->server->close ();
             it = _watchers.erase (it);
+            _watcher_count.store (_watchers.size (), std::memory_order_release);
             continue;
         }
         msg.close ();
@@ -239,6 +246,7 @@ void service_monitor_hub_t::close_all (const zlink_service_event_t *terminal_eve
                 servers.push_back (_watchers[i].server);
         }
         _watchers.clear ();
+        _watcher_count.store (0, std::memory_order_release);
     }
 
     for (size_t i = 0; i < servers.size (); ++i) {
@@ -256,7 +264,6 @@ void service_monitor_hub_t::close_all (const zlink_service_event_t *terminal_eve
 
 bool service_monitor_hub_t::has_watchers () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    return !_watchers.empty ();
+    return _watcher_count.load (std::memory_order_acquire) != 0;
 }
 }

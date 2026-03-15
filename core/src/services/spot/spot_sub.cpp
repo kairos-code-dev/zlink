@@ -264,11 +264,16 @@ void spot_sub_t::emit_monitor_event (const zlink_service_event_t &event_)
         return;
 
     for (;;) {
+        size_t drained = 0;
         zlink_service_event_t next_event;
         while (_monitor_event_queue.try_dequeue (next_event)) {
             _monitor.emit (next_event);
-            _monitor_event_pending.fetch_sub (1, std::memory_order_acq_rel);
+            ++drained;
         }
+
+        if (drained > 0)
+            _monitor_event_pending.fetch_sub (drained,
+                                              std::memory_order_acq_rel);
 
         _monitor_event_draining.store (false, std::memory_order_release);
         if (_monitor_event_pending.load (std::memory_order_acquire) == 0)

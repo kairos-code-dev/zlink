@@ -197,6 +197,7 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _rcvmore (false),
     _monitor_socket (NULL),
     _monitor_events (0),
+    _monitor_events_atomic (0),
     _mailbox_refcnt (0),
     _destroy_pending (false),
     _async_mailbox_active (false),
@@ -2228,6 +2229,9 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
     rc = zlink_bind (_monitor_socket, endpoint_);
     if (rc == -1)
         stop_monitor (false);
+    else
+        _monitor_events_atomic.store (_monitor_events,
+                                      std::memory_order_release);
     return rc;
 }
 
@@ -2362,6 +2366,9 @@ void zlink::socket_base_t::event (const endpoint_uri_pair_t &endpoint_uri_pair_,
                                 uint64_t values_count_,
                                 uint64_t type_)
 {
+    if (_monitor_events_atomic.load (std::memory_order_acquire) == 0)
+        return;
+
     scoped_lock_t lock (_monitor_sync);
     if (_monitor_events & type_) {
         monitor_event (type_, values_, values_count_, routing_id_,
@@ -2463,6 +2470,7 @@ void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
     // contexts where the _monitor_sync mutex has been locked before
 
     if (_monitor_socket) {
+        _monitor_events_atomic.store (0, std::memory_order_release);
         socket_base_t *monitor_socket =
           static_cast<socket_base_t *> (_monitor_socket);
         bool can_emit_monitor_stopped = false;

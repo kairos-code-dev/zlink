@@ -10,6 +10,7 @@
 #include "utils/macros.hpp"
 #include "utils/mutex.hpp"
 
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,7 @@ class service_monitor_hub_t
     ctx_t *_ctx;
     mutex_t _sync;
     std::vector<watcher_t> _watchers;
+    std::atomic<size_t> _watcher_count;
     uint32_t _next_id;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (service_monitor_hub_t)

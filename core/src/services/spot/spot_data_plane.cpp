@@ -33,9 +33,9 @@ static const size_t spot_sub_queue_hwm_default = 1000;
 static const int spot_internal_ingress_rcvhwm_default = 8192;
 static const int spot_internal_mesh_xsub_rcvhwm_default = 8192;
 static const int spot_internal_peer_ctrl_rcvhwm_default = 1024;
-static const unsigned int ingress_forward_batch_limit = 512;
-static const unsigned int mesh_xsub_forward_batch_limit = 256;
-static const unsigned int ctrl_poll_batch_limit = 32;
+static const unsigned int ingress_forward_batch_limit = 2048;
+static const unsigned int mesh_xsub_forward_batch_limit = 1024;
+static const unsigned int ctrl_poll_batch_limit = 64;
 static uint64_t default_bootstrap_broadcast_interval_ms (
   const spot_runtime_t *runtime_)
 {

@@ -9,6 +9,8 @@
 #include "utils/mutex.hpp"
 
 #include <map>
+#include <stdio.h>
+#include <stdlib.h>
 #include <vector>
 
 #ifndef ZLINK_HAVE_WINDOWS
@@ -188,15 +190,27 @@ class service_runtime_base_t
 
             if (owned_count == 0 && sockets.empty ())
                 return 0;
-
-            int remaining_ms = -1;
             if (timeout_ms_ >= 0) {
                 const uint64_t now_ms = zlink::clock_t ().now_ms ();
                 if (now_ms >= deadline_ms) {
+                    if (getenv ("ZLINK_DEBUG_SERVICE_RUNTIME_DRAIN")) {
+                        scoped_lock_t lock (_sync);
+                        std::fprintf (stderr, "[service-drain] timeout owned=");
+                        for (std::map<int, const socket_base_t *>::const_iterator it =
+                               _owned_sockets.begin ();
+                             it != _owned_sockets.end (); ++it)
+                            std::fprintf (stderr, "%d,", it->first);
+                        std::fprintf (stderr, " closing=");
+                        for (std::map<int, const socket_base_t *>::const_iterator it =
+                               _closing_sockets.begin ();
+                             it != _closing_sockets.end (); ++it)
+                            std::fprintf (stderr, "%d,", it->first);
+                        std::fprintf (stderr, "\n");
+                        std::fflush (stderr);
+                    }
                     errno = ETIMEDOUT;
                     return -1;
                 }
-                remaining_ms = static_cast<int> (deadline_ms - now_ms);
             }
 
             if (sockets.empty ()) {
@@ -208,23 +222,26 @@ class service_runtime_base_t
                 continue;
             }
 
+            bool progressed = false;
             for (std::map<int, const socket_base_t *>::const_iterator it =
                    sockets.begin ();
                  it != sockets.end (); ++it) {
-                int socket_timeout_ms = remaining_ms;
-                if (_ctx->wait_for_socket_removal (it->second, socket_timeout_ms)
-                    != 0)
-                    return -1;
-                erase_closing_socket (it->first);
-                if (timeout_ms_ >= 0) {
-                    const uint64_t now_ms = zlink::clock_t ().now_ms ();
-                    if (now_ms >= deadline_ms) {
-                        errno = ETIMEDOUT;
-                        return -1;
-                    }
-                    remaining_ms = static_cast<int> (deadline_ms - now_ms);
+                if (_ctx->wait_for_socket_removal (
+                      const_cast<socket_base_t *> (it->second), 0)
+                    == 0) {
+                    erase_closing_socket (it->first);
+                    progressed = true;
                 }
             }
+
+            if (progressed)
+                continue;
+
+#ifdef ZLINK_HAVE_WINDOWS
+            Sleep (1);
+#else
+            usleep (1000);
+#endif
         }
     }
 
@@ -253,15 +270,27 @@ class service_runtime_base_t
 
             if (owned.empty () && closing.empty ())
                 return 0;
-
-            int remaining_ms = -1;
             if (timeout_ms_ >= 0) {
                 const uint64_t now_ms = zlink::clock_t ().now_ms ();
                 if (now_ms >= deadline_ms) {
+                    if (getenv ("ZLINK_DEBUG_SERVICE_RUNTIME_DRAIN")) {
+                        scoped_lock_t lock (_sync);
+                        std::fprintf (stderr, "[service-force-drain] timeout owned=");
+                        for (std::map<int, const socket_base_t *>::const_iterator it =
+                               _owned_sockets.begin ();
+                             it != _owned_sockets.end (); ++it)
+                            std::fprintf (stderr, "%d,", it->first);
+                        std::fprintf (stderr, " closing=");
+                        for (std::map<int, const socket_base_t *>::const_iterator it =
+                               _closing_sockets.begin ();
+                             it != _closing_sockets.end (); ++it)
+                            std::fprintf (stderr, "%d,", it->first);
+                        std::fprintf (stderr, "\n");
+                        std::fflush (stderr);
+                    }
                     errno = ETIMEDOUT;
                     return -1;
                 }
-                remaining_ms = static_cast<int> (deadline_ms - now_ms);
             }
 
             for (std::map<int, const socket_base_t *>::const_iterator it =
@@ -273,37 +302,28 @@ class service_runtime_base_t
                     continue;
                 socket->stop ();
                 socket->close ();
-                if (_ctx->wait_for_socket_removal (socket, remaining_ms) != 0)
-                    return -1;
-                erase_closing_socket (it->first);
-                if (timeout_ms_ >= 0) {
-                    const uint64_t now_ms = zlink::clock_t ().now_ms ();
-                    if (now_ms >= deadline_ms) {
-                        errno = ETIMEDOUT;
-                        return -1;
-                    }
-                    remaining_ms = static_cast<int> (deadline_ms - now_ms);
-                }
             }
 
+            bool progressed = false;
             for (std::map<int, const socket_base_t *>::const_iterator it =
                    closing.begin ();
                  it != closing.end (); ++it) {
-                if (owned.find (it->first) != owned.end ())
-                    continue;
-                if (_ctx->wait_for_socket_removal (it->second, remaining_ms)
-                    != 0)
-                    return -1;
-                erase_closing_socket (it->first);
-                if (timeout_ms_ >= 0) {
-                    const uint64_t now_ms = zlink::clock_t ().now_ms ();
-                    if (now_ms >= deadline_ms) {
-                        errno = ETIMEDOUT;
-                        return -1;
-                    }
-                    remaining_ms = static_cast<int> (deadline_ms - now_ms);
+                if (_ctx->wait_for_socket_removal (
+                      const_cast<socket_base_t *> (it->second), 0)
+                    == 0) {
+                    erase_closing_socket (it->first);
+                    progressed = true;
                 }
             }
+
+            if (progressed)
+                continue;
+
+#ifdef ZLINK_HAVE_WINDOWS
+            Sleep (1);
+#else
+            usleep (1000);
+#endif
         }
     }
 

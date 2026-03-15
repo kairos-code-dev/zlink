@@ -18,6 +18,7 @@ endif()
 set(tests
   ${INTEGRATION_TEST_ROOT}/test_ancillaries
   ${INTEGRATION_TEST_ROOT}/test_thread_safe_contract_policy
+  ${INTEGRATION_TEST_ROOT}/test_thread_safe_scaling_contract
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_enhanced
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_perf_contract
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_service_contract
@@ -436,6 +437,31 @@ if(TARGET test_service_introspection)
             ZLINK_TEST_CASE=test_monitor_closed_event_on_service_destroy
             $<TARGET_FILE:test_service_introspection>)
   add_test(
+    NAME test_service_introspection_discovery_no_latch
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_discovery_destroy_busy_observer_is_no_latch
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
+    NAME test_service_introspection_discovery_lifecycle
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_discovery_public_api_lifecycle_contract
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
+    NAME test_service_introspection_registry_lifecycle
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_registry_public_api_lifecycle_contract
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
+    NAME test_service_introspection_registry_query_lifecycle
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_registry_query_client_public_api_lifecycle_contract
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
+    NAME test_service_introspection_registry_control_path
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_registry_control_path_queries_are_safe_during_concurrent_updates
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
     NAME test_service_introspection_transport_restriction
     COMMAND ${CMAKE_COMMAND} -E env
             ZLINK_TEST_CASE=test_discovery_registry_transport_restriction
@@ -471,7 +497,13 @@ if(TARGET test_service_introspection)
     test_service_introspection_gateway_options
     test_service_introspection_gateway_monitors
     test_service_introspection_topology_snapshot
+    test_service_introspection_gateway_peer_snapshot
     test_service_introspection_closed_event
+    test_service_introspection_discovery_no_latch
+    test_service_introspection_discovery_lifecycle
+    test_service_introspection_registry_lifecycle
+    test_service_introspection_registry_query_lifecycle
+    test_service_introspection_registry_control_path
     test_service_introspection_transport_restriction
     test_service_introspection_transport_ws
     test_service_introspection_transport_tls
@@ -481,6 +513,41 @@ if(TARGET test_service_introspection)
     PROPERTIES
       TIMEOUT 30
       SKIP_RETURN_CODE 77)
+endif()
+if(TARGET test_thread_safe_scaling_contract)
+  set_tests_properties(
+    test_thread_safe_scaling_contract
+    PROPERTIES
+      TIMEOUT 240
+      SKIP_RETURN_CODE 77
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+
+  add_test(
+    NAME test_thread_safe_scaling_raw
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_raw_handle_scaling_contract
+            $<TARGET_FILE:test_thread_safe_scaling_contract>)
+  add_test(
+    NAME test_thread_safe_scaling_gateway
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_gateway_handle_scaling_contract
+            $<TARGET_FILE:test_thread_safe_scaling_contract>)
+  add_test(
+    NAME test_thread_safe_scaling_spot
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_spot_handle_scaling_contract
+            $<TARGET_FILE:test_thread_safe_scaling_contract>)
+
+  set_tests_properties(
+    test_thread_safe_scaling_raw
+    test_thread_safe_scaling_gateway
+    test_thread_safe_scaling_spot
+    PROPERTIES
+      TIMEOUT 240
+      SKIP_RETURN_CODE 77
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 
 function(add_env_case_test test_name target_name test_case)
@@ -667,6 +734,7 @@ set(SERVICE_INTROSPECTION_CASES
     test_discovery_public_api_lifecycle_contract
     test_registry_public_api_lifecycle_contract
     test_registry_query_client_public_api_lifecycle_contract
+    test_registry_control_path_queries_are_safe_during_concurrent_updates
     test_discovery_registry_transport_restriction
     test_discovery_registry_transport_allowed_ws
     test_discovery_registry_transport_allowed_tls
@@ -685,6 +753,7 @@ set(SERVICE_INTROSPECTION_TEST_SPECS
     test_service_introspection_discovery_lifecycle=test_discovery_public_api_lifecycle_contract
     test_service_introspection_registry_lifecycle=test_registry_public_api_lifecycle_contract
     test_service_introspection_registry_query_lifecycle=test_registry_query_client_public_api_lifecycle_contract
+    test_service_introspection_registry_control_path=test_registry_control_path_queries_are_safe_during_concurrent_updates
     test_service_introspection_transport_restriction=test_discovery_registry_transport_restriction
     test_service_introspection_transport_ws=test_discovery_registry_transport_allowed_ws
     test_service_introspection_transport_tls=test_discovery_registry_transport_allowed_tls

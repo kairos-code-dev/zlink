@@ -43,6 +43,11 @@ static void spot_node_debugf (const char *fmt_, ...)
     va_end (args);
 }
 
+static bool spot_shutdown_debug_enabled ()
+{
+    return std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN") != NULL;
+}
+
 static void spot_shutdown_logf (bool always_, const char *fmt_, ...)
 {
     if (!always_ && !std::getenv ("ZLINK_SPOT_SHUTDOWN_LOG"))
@@ -254,6 +259,7 @@ int spot_runtime_t::create_attachment (int kind_,
             attachment.id = ++next_attachment_id;
         attachment.kind = kind_;
         attachment.socket = socket;
+        attachment.endpoint = endpoint_;
         attachments[attachment.id] = attachment;
     }
     *out_id_ = attachment.id;
@@ -276,19 +282,24 @@ int spot_runtime_t::destroy_attachment (uint64_t id_)
         return 0;
 
     socket_base_t *socket = NULL;
+    std::string endpoint;
     {
         scoped_lock_t lock (attachment_sync);
         std::map<uint64_t, spot_attachment_t>::iterator it = attachments.find (id_);
         if (it == attachments.end ())
             return 0;
         socket = it->second.socket;
+        endpoint = it->second.endpoint;
         attachments.erase (it);
     }
 
     if (!socket)
         return 0;
+    if (!endpoint.empty ())
+        (void) socket->term_endpoint (endpoint.c_str ());
+    socket->set_all_pipes_nodelay ();
     if (owner && owner->_ctx)
-        return owner->_lifecycle.close_socket (socket, 2000);
+        return owner->_lifecycle.close_socket_and_wait (socket, 10000);
 
     socket->stop ();
     socket->close ();
@@ -409,7 +420,26 @@ int spot_runtime_t::close_control_sockets ()
         local_fanout_xpub = NULL;
     }
 
+    if (spot_shutdown_debug_enabled ()) {
+        std::fprintf (
+          stderr,
+          "[spot-close] ctrl_front=%d ctrl_back=%d mesh_pub=%d mesh_xsub=%d peer_ctrl_pub=%d peer_ctrl_sub=%d ingress=%d fanout=%d\n",
+          ctrl_front ? ctrl_front->socket_id () : -1,
+          ctrl_back ? ctrl_back->socket_id () : -1,
+          mesh_pub_local ? mesh_pub_local->socket_id () : -1,
+          mesh_xsub_local ? mesh_xsub_local->socket_id () : -1,
+          peer_ctrl_pub_local ? peer_ctrl_pub_local->socket_id () : -1,
+          peer_ctrl_sub_local ? peer_ctrl_sub_local->socket_id () : -1,
+          ingress ? ingress->socket_id () : -1,
+          fanout ? fanout->socket_id () : -1);
+        std::fflush (stderr);
+    }
+
     if (owner && owner->_ctx) {
+        if (ctrl_front && !data_ctrl_endpoint.empty ())
+            (void) ctrl_front->term_endpoint (data_ctrl_endpoint.c_str ());
+        if (ctrl_back && !data_ctrl_endpoint.empty ())
+            (void) ctrl_back->term_endpoint (data_ctrl_endpoint.c_str ());
         preserve_first_error (
           owner->_lifecycle.close_socket (ctrl_front, 2000), &first_error);
         preserve_first_error (
@@ -425,9 +455,11 @@ int spot_runtime_t::close_control_sockets ()
           owner->_lifecycle.close_socket (peer_ctrl_sub_local, 2000),
           &first_error);
         preserve_first_error (
-          owner->_lifecycle.close_socket (ingress, 2000), &first_error);
+          owner->_lifecycle.close_socket_and_wait (ingress, 2000),
+          &first_error);
         preserve_first_error (
-          owner->_lifecycle.close_socket (fanout, 2000), &first_error);
+          owner->_lifecycle.close_socket_and_wait (fanout, 2000),
+          &first_error);
     } else {
         close_socket_ptr (&ctrl_front);
         close_socket_ptr (&ctrl_back);
@@ -565,6 +597,10 @@ int spot_runtime_t::abortive_stop ()
     }
 
     if (owner && owner->_ctx) {
+        if (ctrl_front && !data_ctrl_endpoint.empty ())
+            (void) ctrl_front->term_endpoint (data_ctrl_endpoint.c_str ());
+        if (ctrl_back && !data_ctrl_endpoint.empty ())
+            (void) ctrl_back->term_endpoint (data_ctrl_endpoint.c_str ());
         (void) owner->_lifecycle.close_socket (ctrl_front, 1000);
         (void) owner->_lifecycle.close_socket (ctrl_back, 1000);
         (void) owner->_lifecycle.close_socket (mesh_pub_local, 1000);

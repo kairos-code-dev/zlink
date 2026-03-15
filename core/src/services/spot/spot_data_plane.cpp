@@ -36,6 +36,23 @@ static const int spot_internal_peer_ctrl_rcvhwm_default = 1024;
 static const unsigned int ingress_forward_batch_limit = 2048;
 static const unsigned int mesh_xsub_forward_batch_limit = 1024;
 static const unsigned int ctrl_poll_batch_limit = 64;
+
+static void pump_socket_commands (socket_base_t *socket_)
+{
+    if (!socket_)
+        return;
+
+    uint32_t ignored = 0;
+    const int rc = socket_->get_events_internal (0, &ignored);
+    if (rc == 0)
+        return;
+
+    if (errno == EINTR || errno == ETERM)
+        return;
+
+    errno_assert (false);
+}
+
 static uint64_t default_bootstrap_broadcast_interval_ms (
   const spot_runtime_t *runtime_)
 {
@@ -921,6 +938,20 @@ void spot_data_plane_t::run (spot_node_t *node_)
     std::map<std::string, std::string> peer_ctrl_endpoints;
     std::map<std::string, std::set<std::string> > peer_ready_filters;
     while (running) {
+        pump_socket_commands (mesh_pub);
+        pump_socket_commands (peer_ctrl_sub);
+        pump_socket_commands (ingress);
+        pump_socket_commands (fanout);
+        peer_ctrl_sub->set_all_pipes_nodelay ();
+        ingress->set_all_pipes_nodelay ();
+        fanout->set_all_pipes_nodelay ();
+        if (recv_and_process_ctrl_messages (peer_ctrl_sub, node_,
+                                            &peer_ready_filters)
+            != 0) {
+            fatal_errno = errno;
+            break;
+        }
+
         socket_poller_t::event_t events[5];
         const int rc = poller.wait (events, 5, 20);
         if (rc < 0) {
@@ -994,7 +1025,6 @@ void spot_data_plane_t::run (spot_node_t *node_)
                 } else if (verb == "connect_peer_pub") {
                     std::string ca;
                     std::string host;
-                    std::string peer_ctrl_endpoint;
                     int trust = 0;
                     {
                         scoped_lock_t lock (node_->_sync);
@@ -1002,35 +1032,16 @@ void spot_data_plane_t::run (spot_node_t *node_)
                         host = node_->_tls_hostname;
                         trust = node_->_tls_trust_system;
                     }
-                    if (!spot_control_protocol::derive_peer_ctrl_bind_endpoint (
-                          arg, runtime->node_id, &peer_ctrl_endpoint)) {
-                        send_errno_reply (ctrl, EINVAL);
-                        continue;
-                    }
                     if (spot_node_t::apply_tls_client (mesh_xsub, ca, host, trust)
                           != 0
                         || spot_node_t::apply_tls_client (peer_ctrl_pub, ca, host,
                                                           trust)
                              != 0
                         || mesh_xsub->connect (arg.c_str ()) != 0
-                        || peer_ctrl_pub->connect (peer_ctrl_endpoint.c_str ()) != 0
                         || send_subscription_update (mesh_xsub, "", true) != 0) {
-                        if (!peer_ctrl_endpoint.empty ())
-                            (void) peer_ctrl_pub->term_endpoint (
-                              peer_ctrl_endpoint.c_str ());
                         (void) mesh_xsub->term_endpoint (arg.c_str ());
                         send_errno_reply (ctrl, errno);
                     } else {
-                        peer_ctrl_endpoints[arg] = peer_ctrl_endpoint;
-                        if (send_snapshot_to_target (peer_ctrl_pub, node_, arg)
-                            != 0) {
-                            (void) peer_ctrl_pub->term_endpoint (
-                              peer_ctrl_endpoint.c_str ());
-                            peer_ctrl_endpoints.erase (arg);
-                            (void) mesh_xsub->term_endpoint (arg.c_str ());
-                            send_errno_reply (ctrl, errno);
-                            continue;
-                        }
                         scoped_lock_t lock (node_->_sync);
                         node_->_mesh_client_tls_locked = true;
                         send_ok_reply (ctrl);
@@ -1172,29 +1183,24 @@ void spot_data_plane_t::run (spot_node_t *node_)
     }
 
     clear_snapshot_sources (node_, &peer_ready_filters);
+    for (std::map<std::string, std::string>::const_iterator it =
+           peer_ctrl_endpoints.begin ();
+         it != peer_ctrl_endpoints.end (); ++it) {
+        if (!it->second.empty ())
+            (void) peer_ctrl_pub->term_endpoint (it->second.c_str ());
+        if (!it->first.empty ())
+            (void) mesh_xsub->term_endpoint (it->first.c_str ());
+    }
+    peer_ctrl_endpoints.clear ();
+    (void) mesh_xsub->monitor (NULL, 0, 3, ZLINK_PAIR);
+    close_socket_ptr (node_, mesh_xsub_monitor);
 
     {
         scoped_lock_t lock (node_->_sync);
-        runtime->data_ctrl_back = NULL;
-        runtime->mesh_pub = NULL;
-        runtime->mesh_xsub = NULL;
-        runtime->peer_ctrl_pub = NULL;
-        runtime->peer_ctrl_sub = NULL;
-        runtime->local_pub_ingress_sub = NULL;
-        runtime->local_fanout_xpub = NULL;
         runtime->peer_ctrl_endpoint.clear ();
         runtime->bound_endpoint.clear ();
     }
     clear_mesh_xsub_connected_endpoints (runtime);
-    close_socket_ptr (node_, fanout);
-    close_socket_ptr (node_, ingress);
-    close_socket_ptr (node_, peer_ctrl_sub);
-    close_socket_ptr (node_, peer_ctrl_pub);
-    (void) mesh_xsub->monitor (NULL, 0, 3, ZLINK_PAIR);
-    close_socket_ptr (node_, mesh_xsub_monitor);
-    close_socket_ptr (node_, mesh_xsub);
-    close_socket_ptr (node_, mesh_pub);
-    close_socket_ptr (node_, ctrl);
 
     if (fatal_errno != 0 && runtime->stop.get () == 0) {
         scoped_lock_t lock (node_->_sync);

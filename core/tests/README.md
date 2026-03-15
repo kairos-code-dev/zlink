@@ -58,6 +58,27 @@ Sequential lane runner:
 ./core/tests/run_test_lanes.sh --include-e2e
 ```
 
+Thread-safe contract stress runner:
+
+```bash
+./core/tests/run_thread_safe_contract_stress.sh
+./core/tests/run_thread_safe_contract_stress.sh --count 100
+```
+
+Thread-safe contract perf runner:
+
+```bash
+./core/tests/run_thread_safe_contract_perf.sh
+./core/tests/run_thread_safe_contract_perf.sh --min-ratio 0.85
+```
+
+Thread-safe contract TSan runner:
+
+```bash
+./core/tests/run_thread_safe_contract_tsan.sh
+./core/tests/run_thread_safe_contract_tsan.sh --build-dir core/build-tsan-clang
+```
+
 Default runner behavior:
 
 - `unittest` in parallel
@@ -99,4 +120,11 @@ ctest --test-dir core/build \
   of the default split integration lane. Both still expose flaky
   discovery-driven SPOT behavior and should be run only while working on those
   core bugs.
+- `run_thread_safe_contract_stress.sh` repeats the selected thread-safe
+  contract cases at the CTest layer. It does not add retry logic inside the
+  tests themselves.
+- `run_thread_safe_contract_perf.sh` executes the raw/gateway/spot 1/4/16/64
+  handle scaling contract cases with a configurable acceptance ratio.
+- `run_thread_safe_contract_tsan.sh` configures a dedicated TSan build and
+  runs the thread-safe regression lane against that build tree.
 - CURVE/libsodium and GSSAPI are not supported in zlink.

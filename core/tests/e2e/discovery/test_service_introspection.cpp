@@ -1091,6 +1091,86 @@ static void test_registry_query_client_public_api_lifecycle_contract ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
+static void test_registry_control_path_queries_are_safe_during_concurrent_updates ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    int registry_seed = 22743;
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &registry_seed, registry_pub, sizeof (registry_pub),
+      registry_router, sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
+
+    gateway_server_t server;
+    int bind_seed = 22843;
+    char bind_endpoint[MAX_SOCKET_STRING];
+    init_gateway_server_with_port_seed (
+      &server, ctx, registry_router, "svc-registry-ctrl", "gw-registry-ctrl",
+      "tcp", &bind_seed, bind_endpoint, sizeof (bind_endpoint),
+      &discard_gateway_message);
+
+    TEST_ASSERT_TRUE (wait_for_topology_state (
+      registry, ZLINK_SERVICE_KIND_GATEWAY, "svc-registry-ctrl", NULL,
+      ZLINK_TOPOLOGY_STATE_READY, 3000));
+
+    std::atomic<int> update_failures (0);
+    std::atomic<int> query_failures (0);
+    std::atomic<int> query_iterations (0);
+
+    std::thread updater ([&] () {
+        for (uint32_t i = 0; i < 128; ++i) {
+            if (zlink_registry_set_id (registry, 1000u + i) != 0) {
+                update_failures.fetch_add (1);
+                return;
+            }
+            msleep (1);
+        }
+    });
+
+    std::thread reader ([&] () {
+        zlink_registry_topology_filter_t filter;
+        memset (&filter, 0, sizeof (filter));
+        filter.service_kind = ZLINK_SERVICE_KIND_GATEWAY;
+        strncpy (filter.service_name, "svc-registry-ctrl",
+                 sizeof (filter.service_name) - 1);
+
+        for (int i = 0; i < 128; ++i) {
+            size_t count = 0;
+            if (zlink_registry_topology_query (registry, &filter, NULL, &count)
+                != 0) {
+                query_failures.fetch_add (1);
+                return;
+            }
+
+            if (count > 0) {
+                std::vector<zlink_registry_topology_entry_t> entries (count);
+                if (zlink_registry_topology_query (registry, &filter,
+                                                   &entries[0], &count)
+                    != 0) {
+                    query_failures.fetch_add (1);
+                    return;
+                }
+            }
+
+            query_iterations.fetch_add (1);
+            msleep (1);
+        }
+    });
+
+    updater.join ();
+    reader.join ();
+
+    TEST_ASSERT_EQUAL_INT (0, update_failures.load ());
+    TEST_ASSERT_EQUAL_INT (0, query_failures.load ());
+    TEST_ASSERT_GREATER_THAN_INT (0, query_iterations.load ());
+
+    destroy_gateway_server (&server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+}
+
 static void test_discovery_registry_transport_restriction ()
 {
     void *ctx = get_test_context ();
@@ -1454,6 +1534,7 @@ int main (int, char **)
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_public_api_lifecycle_contract);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_public_api_lifecycle_contract);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_query_client_public_api_lifecycle_contract);
+    RUN_SERVICE_INTROSPECTION_TEST (test_registry_control_path_queries_are_safe_during_concurrent_updates);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_restriction);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_allowed_ws);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_allowed_tls);

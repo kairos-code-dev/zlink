@@ -36,6 +36,7 @@ struct spot_attachment_t
     uint64_t id;
     int kind;
     socket_base_t *socket;
+    std::string endpoint;
 };
 
 struct spot_runtime_t

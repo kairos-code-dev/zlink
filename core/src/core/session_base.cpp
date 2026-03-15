@@ -128,6 +128,15 @@ void zlink::session_base_t::attach_pipe (pipe_t *pipe_)
     zlink_assert (!is_terminating ());
     zlink_assert (!_pipe);
     zlink_assert (pipe_);
+    if (getenv ("ZLINK_DEBUG_SOCKET_TERM")) {
+        fprintf (stderr,
+                 "[session-term] attach session=%p socket=%p socket_id=%d pipe=%p peer=%p active=%d\n",
+                 static_cast<void *> (this), static_cast<void *> (_socket),
+                 _socket ? _socket->socket_id () : -1,
+                 static_cast<void *> (pipe_),
+                 static_cast<void *> (pipe_->get_peer ()), _active ? 1 : 0);
+        fflush (stderr);
+    }
     _pipe = pipe_;
     _pipe->set_event_sink (this);
 }

@@ -69,6 +69,7 @@ class socket_base_t : public own_t,
     int getsockopt (int option_, void *optval_, size_t *optvallen_);
     int get_events (int events_, uint32_t *out_);
     int get_events_internal (int events_, uint32_t *out_);
+    void set_all_pipes_nodelay ();
     int bind (const char *endpoint_uri_);
     int connect (const char *endpoint_uri_);
     int term_endpoint (const char *endpoint_uri_);

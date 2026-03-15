@@ -127,7 +127,9 @@ int zlink::socket_base_t::inprocs_t::erase_pipes (
 
     for (map_t::iterator it = range.first; it != range.second; ++it) {
         it->second->send_disconnect_msg ();
-        it->second->terminate (true);
+        // Explicit endpoint disconnect should not defer pipe teardown.
+        // The non-inproc term_endpoint path also uses terminate(false).
+        it->second->terminate (false);
     }
     _inprocs.erase (range.first, range.second);
     return 0;
@@ -543,6 +545,16 @@ void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
                                       bool subscribe_to_all_,
                                       bool locally_initiated_)
 {
+    if (getenv ("ZLINK_DEBUG_SOCKET_TERM")) {
+        fprintf (stderr,
+                 "[socket-term] attach socket=%p id=%d type=%d pipe=%p peer=%p local=%d\n",
+                 static_cast<void *> (this), options.socket_id, options.type,
+                 static_cast<void *> (pipe_),
+                 static_cast<void *> (pipe_ ? pipe_->get_peer () : NULL),
+                 locally_initiated_ ? 1 : 0);
+        fflush (stderr);
+    }
+
     //  First, register the pipe so that we can terminate it later on.
     pipe_->set_event_sink (this);
     _pipes.push_back (pipe_);
@@ -2127,6 +2139,22 @@ void zlink::socket_base_t::process_bind (pipe_t *pipe_)
 
 void zlink::socket_base_t::process_term (int linger_)
 {
+    if (getenv ("ZLINK_DEBUG_SOCKET_TERM")) {
+        fprintf (stderr,
+                 "[socket-term] begin socket=%p id=%d type=%d pipes=%zu linger=%d\n",
+                 static_cast<void *> (this), options.socket_id, options.type,
+                 static_cast<size_t> (_pipes.size ()), linger_);
+        for (pipes_t::size_type i = 0, size = _pipes.size (); i != size; ++i) {
+            fprintf (stderr,
+                     "[socket-term]   pipe socket=%d ptr=%p endpoint=%s\n",
+                     options.socket_id, static_cast<void *> (_pipes[i]),
+                     _pipes[i]
+                       ? _pipes[i]->get_endpoint_pair ().identifier ().c_str ()
+                       : "<null>");
+        }
+        fflush (stderr);
+    }
+
     //  Unregister all inproc endpoints associated with this socket.
     //  Doing this we make sure that no new pipes from other sockets (inproc)
     //  will be initiated.
@@ -2154,6 +2182,14 @@ void zlink::socket_base_t::process_term_endpoint (std::string *endpoint_)
     delete endpoint_;
 }
 
+void zlink::socket_base_t::set_all_pipes_nodelay ()
+{
+    for (pipes_t::size_type i = 0, size = _pipes.size (); i != size; ++i) {
+        if (_pipes[i])
+            _pipes[i]->set_nodelay ();
+    }
+}
+
 
 void zlink::socket_base_t::update_pipe_options (int option_)
 {
@@ -2167,6 +2203,13 @@ void zlink::socket_base_t::update_pipe_options (int option_)
 
 void zlink::socket_base_t::process_destroy ()
 {
+    if (getenv ("ZLINK_DEBUG_SOCKET_TERM")) {
+        fprintf (stderr,
+                 "[socket-term] destroy socket=%p id=%d type=%d destroyed=%d\n",
+                 static_cast<void *> (this), options.socket_id, options.type,
+                 _destroyed ? 1 : 0);
+        fflush (stderr);
+    }
 #ifndef NDEBUG
     if (_term_pipe_acks_registered != _term_pipe_acks_received) {
         fprintf (stderr,
@@ -2382,6 +2425,14 @@ void zlink::socket_base_t::hiccuped (pipe_t *pipe_)
 
 void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
 {
+    if (getenv ("ZLINK_DEBUG_SOCKET_TERM")) {
+        fprintf (stderr,
+                 "[socket-term] pipe-terminated socket=%p id=%d type=%d pipe=%p terminating=%d\n",
+                 static_cast<void *> (this), options.socket_id, options.type,
+                 static_cast<void *> (pipe_), is_terminating () ? 1 : 0);
+        fflush (stderr);
+    }
+
     //  Notify the specific socket type about the pipe termination.
     xpipe_terminated (pipe_);
 

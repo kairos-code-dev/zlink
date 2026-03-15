@@ -1,12 +1,33 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
+#include <stdio.h>
 #include <new>
 #include <stddef.h>
 
 #include "utils/macros.hpp"
 #include "core/pipe.hpp"
 #include "utils/err.hpp"
+
+namespace
+{
+void pipe_debug_log (const zlink::pipe_t *pipe_,
+                     const char *phase_,
+                     int state_,
+                     bool delay_,
+                     const char *identifier_)
+{
+    if (!getenv ("ZLINK_DEBUG_PIPE_TERM"))
+        return;
+
+    fprintf (stderr,
+             "[pipe-term] pipe=%p phase=%s state=%d delay=%d endpoint=%s\n",
+             static_cast<const void *> (pipe_), phase_ ? phase_ : "?",
+             state_, delay_ ? 1 : 0,
+             identifier_ && *identifier_ ? identifier_ : "<none>");
+    fflush (stderr);
+}
+}
 #include <ctime>
 
 #include "core/ypipe.hpp"
@@ -438,6 +459,8 @@ void zlink::pipe_t::process_hiccup (void *pipe_)
 void zlink::pipe_t::process_pipe_term ()
 {
     scoped_fast_lock_t lock (_out_sync);
+    pipe_debug_log (this, "process_pipe_term", _state, _delay,
+                    _endpoint_pair.identifier ().c_str ());
     zlink_assert (_state == active || _state == delimiter_received
                   || _state == term_req_sent1);
 
@@ -447,7 +470,15 @@ void zlink::pipe_t::process_pipe_term ()
     //  Otherwise we'll hang up in waiting_for_delimiter state till all
     //  pending messages are read.
     if (_state == active) {
-        if (_delay)
+        bool pending_to_read = _in_pipe && _in_pipe->check_read ();
+        if (pending_to_read && _in_pipe->probe (is_delimiter)) {
+            msg_t msg;
+            const bool ok = _in_pipe->read (&msg);
+            zlink_assert (ok);
+            pending_to_read = false;
+        }
+
+        if (_delay && pending_to_read)
             _state = waiting_for_delimiter;
         else {
             _state = term_ack_sent;
@@ -476,6 +507,8 @@ void zlink::pipe_t::process_pipe_term ()
 
 void zlink::pipe_t::process_pipe_term_ack ()
 {
+    pipe_debug_log (this, "process_pipe_term_ack", _state, _delay,
+                    _endpoint_pair.identifier ().c_str ());
     bool ack_peer = false;
     {
         scoped_fast_lock_t lock (_out_sync);
@@ -526,12 +559,22 @@ void zlink::pipe_t::process_pipe_hwm (int inhwm_, int outhwm_)
 
 void zlink::pipe_t::set_nodelay ()
 {
-    this->_delay = false;
+    scoped_fast_lock_t lock (_out_sync);
+    _delay = false;
+
+    if (_state == waiting_for_delimiter) {
+        rollback ();
+        _out_pipe = NULL;
+        send_pipe_term_ack (_peer);
+        _state = term_ack_sent;
+    }
 }
 
 void zlink::pipe_t::terminate (bool delay_)
 {
     scoped_fast_lock_t lock (_out_sync);
+    pipe_debug_log (this, "terminate-begin", _state, delay_,
+                    _endpoint_pair.identifier ().c_str ());
 
     //  Overload the value specified at pipe creation.
     _delay = delay_;
@@ -589,6 +632,8 @@ void zlink::pipe_t::terminate (bool delay_)
         _out_pipe->write (msg, false);
         flush ();
     }
+    pipe_debug_log (this, "terminate-end", _state, _delay,
+                    _endpoint_pair.identifier ().c_str ());
 }
 
 bool zlink::pipe_t::is_delimiter (const msg_t &msg_)
@@ -622,6 +667,8 @@ int zlink::pipe_t::compute_lwm (int hwm_)
 void zlink::pipe_t::process_delimiter ()
 {
     scoped_fast_lock_t lock (_out_sync);
+    pipe_debug_log (this, "process_delimiter", _state, _delay,
+                    _endpoint_pair.identifier ().c_str ());
     zlink_assert (_state == active || _state == waiting_for_delimiter);
 
     if (_state == active)

@@ -7,6 +7,7 @@
 #include <map>
 #include <stdarg.h>
 #include <atomic>
+#include <deque>
 #include <mutex>
 #include <vector>
 
@@ -17,6 +18,7 @@
 #include "core/poller.hpp"
 #include "core/i_poll_events.hpp"
 #include "core/i_mailbox.hpp"
+#include "core/thread.hpp"
 #include "utils/clock.hpp"
 #include "core/pipe.hpp"
 #include "core/endpoint.hpp"
@@ -264,6 +266,23 @@ class socket_base_t : public own_t,
     void notify_send_ready_if_armed ();
 
   private:
+    enum
+    {
+        monitor_queue_hwm = 4096,
+        monitor_max_values = 4
+    };
+
+    struct monitor_event_record_t
+    {
+        monitor_event_record_t ();
+
+        uint64_t event;
+        uint64_t values[monitor_max_values];
+        uint64_t values_count;
+        zlink_routing_id_t routing_id;
+        endpoint_uri_pair_t endpoint_uri_pair;
+    };
+
     // test if event should be sent and then dispatch it
     void event (const endpoint_uri_pair_t &endpoint_uri_pair_,
                 const unsigned char *routing_id_,
@@ -273,12 +292,20 @@ class socket_base_t : public own_t,
                 uint64_t type_);
 
     // Socket event data dispatch
-    void monitor_event (uint64_t event_,
-                        const uint64_t values_[],
-                        uint64_t values_count_,
-                        const unsigned char *routing_id_,
-                        size_t routing_id_size_,
-                        const endpoint_uri_pair_t &endpoint_uri_pair_) const;
+    static void monitor_thread_main (void *arg_);
+    void monitor_loop ();
+    void enqueue_monitor_event (const monitor_event_record_t &record_);
+    bool build_monitor_event_record (
+      monitor_event_record_t *out_,
+      uint64_t event_,
+      const uint64_t values_[],
+      uint64_t values_count_,
+      const unsigned char *routing_id_,
+      size_t routing_id_size_,
+      const endpoint_uri_pair_t &endpoint_uri_pair_) const;
+    bool dispatch_monitor_event (void *monitor_socket_,
+                                 const monitor_event_record_t &record_) const;
+    void stop_monitor_thread ();
 
     // Monitor socket cleanup
     void stop_monitor (bool send_monitor_stopped_event_ = true);
@@ -398,6 +425,7 @@ class socket_base_t : public own_t,
     // Bitmask of events being monitored
     int64_t _monitor_events;
     std::atomic<int64_t> _monitor_events_atomic;
+    bool _monitor_lossy;
 
     // Last socket endpoint resolved URI
     std::string _last_endpoint;
@@ -420,6 +448,12 @@ class socket_base_t : public own_t,
 
     // Mutex to synchronize access to the monitor Pair socket
     mutex_t _monitor_sync;
+    mutex_t _monitor_queue_sync;
+    condition_variable_t _monitor_queue_cv;
+    std::deque<monitor_event_record_t> _monitor_queue;
+    bool _monitor_queue_stop;
+    thread_t _monitor_thread;
+    bool _monitor_thread_started;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
 

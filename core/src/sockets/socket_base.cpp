@@ -98,6 +98,14 @@ static void generate_default_routing_id (unsigned char out_[16])
 }
 }
 
+zlink::socket_base_t::monitor_event_record_t::monitor_event_record_t () :
+    event (0),
+    values_count (0)
+{
+    memset (values, 0, sizeof (values));
+    memset (&routing_id, 0, sizeof (routing_id));
+}
+
 void zlink::socket_base_t::inprocs_t::emplace (const char *endpoint_uri_,
                                              pipe_t *pipe_)
 {
@@ -198,6 +206,7 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _monitor_socket (NULL),
     _monitor_events (0),
     _monitor_events_atomic (0),
+    _monitor_lossy (true),
     _mailbox_refcnt (0),
     _destroy_pending (false),
     _async_mailbox_active (false),
@@ -211,6 +220,8 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _send_ready_handler_subject (NULL),
     _send_ready_armed (false),
     _monitor_sync (),
+    _monitor_queue_stop (false),
+    _monitor_thread_started (false),
     _disconnected (false)
 {
 #ifndef NDEBUG
@@ -2175,8 +2186,6 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
         return -1;
     }
 
-    LIBZLINK_UNUSED (event_version_);
-
     //  Support deregistering monitoring endpoints as well
     if (endpoint_ == NULL) {
         stop_monitor ();
@@ -2213,6 +2222,7 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
 
     //  Register events to monitor
     _monitor_events = events_;
+    _monitor_lossy = event_version_ <= 3;
     //  Create a monitor socket of the specified type.
     _monitor_socket = static_cast<void *> (get_ctx ()->create_socket (type_));
     if (_monitor_socket == NULL)
@@ -2229,9 +2239,17 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
     rc = zlink_bind (_monitor_socket, endpoint_);
     if (rc == -1)
         stop_monitor (false);
-    else
+    else {
+        _monitor_queue_sync.lock ();
+        _monitor_queue.clear ();
+        _monitor_queue_stop = false;
+        _monitor_queue_sync.unlock ();
+        _monitor_thread.start (&socket_base_t::monitor_thread_main, this,
+                               "sock-monitor");
+        _monitor_thread_started = true;
         _monitor_events_atomic.store (_monitor_events,
                                       std::memory_order_release);
+    }
     return rc;
 }
 
@@ -2371,13 +2389,63 @@ void zlink::socket_base_t::event (const endpoint_uri_pair_t &endpoint_uri_pair_,
 
     scoped_lock_t lock (_monitor_sync);
     if (_monitor_events & type_) {
-        monitor_event (type_, values_, values_count_, routing_id_,
-                       routing_id_size_, endpoint_uri_pair_);
+        monitor_event_record_t record;
+        if (build_monitor_event_record (&record, type_, values_, values_count_,
+                                        routing_id_, routing_id_size_,
+                                        endpoint_uri_pair_))
+            enqueue_monitor_event (record);
     }
 }
 
-//  Send a monitor event
-void zlink::socket_base_t::monitor_event (
+void zlink::socket_base_t::monitor_thread_main (void *arg_)
+{
+    static_cast<socket_base_t *> (arg_)->monitor_loop ();
+}
+
+void zlink::socket_base_t::monitor_loop ()
+{
+    void *monitor_socket = _monitor_socket;
+    _monitor_queue_sync.lock ();
+    while (true) {
+        if (_monitor_queue_stop)
+            break;
+        if (_monitor_queue.empty ()) {
+            (void) _monitor_queue_cv.wait (&_monitor_queue_sync, -1);
+            continue;
+        }
+
+        monitor_event_record_t record = _monitor_queue.front ();
+        _monitor_queue.pop_front ();
+        _monitor_queue_sync.unlock ();
+        bool delivered = true;
+        if (monitor_socket)
+            delivered = dispatch_monitor_event (monitor_socket, record);
+        if (!delivered && !_monitor_lossy) {
+            _monitor_queue_sync.lock ();
+            _monitor_queue.push_front (record);
+            _monitor_queue_sync.unlock ();
+            usleep (1000);
+        }
+        _monitor_queue_sync.lock ();
+    }
+    _monitor_queue_sync.unlock ();
+}
+
+void zlink::socket_base_t::enqueue_monitor_event (
+  const monitor_event_record_t &record_)
+{
+    _monitor_queue_sync.lock ();
+    if (!_monitor_queue_stop
+        && (_monitor_queue.size () < static_cast<size_t> (monitor_queue_hwm)
+            || !_monitor_lossy)) {
+        _monitor_queue.push_back (record_);
+        _monitor_queue_cv.broadcast ();
+    }
+    _monitor_queue_sync.unlock ();
+}
+
+bool zlink::socket_base_t::build_monitor_event_record (
+  monitor_event_record_t *out_,
   uint64_t event_,
   const uint64_t values_[],
   uint64_t values_count_,
@@ -2385,83 +2453,66 @@ void zlink::socket_base_t::monitor_event (
   size_t routing_id_size_,
   const endpoint_uri_pair_t &endpoint_uri_pair_) const
 {
-    // this is a private method which is only called from
-    // contexts where the _monitor_sync mutex has been locked before
+    if (!out_ || values_count_ > monitor_max_values
+        || routing_id_size_ > sizeof (out_->routing_id.data))
+        return false;
 
-    if (_monitor_socket) {
-        zlink_msg_t msg;
-        bool ok = true;
+    out_->event = event_;
+    out_->values_count = values_count_;
+    memset (out_->values, 0, sizeof (out_->values));
+    for (uint64_t i = 0; i < values_count_; ++i)
+        out_->values[i] = values_[i];
+    memset (&out_->routing_id, 0, sizeof (out_->routing_id));
+    out_->routing_id.size = static_cast<uint8_t> (routing_id_size_);
+    if (routing_id_size_ > 0 && routing_id_)
+        memcpy (out_->routing_id.data, routing_id_, routing_id_size_);
+    out_->endpoint_uri_pair = endpoint_uri_pair_;
+    return true;
+}
 
-        //  Send event in first frame (64bit unsigned)
-        zlink_msg_init_size (&msg, sizeof (event_));
-        memcpy (zlink_msg_data (&msg), &event_, sizeof (event_));
-        if (zlink_msg_send (&msg, _monitor_socket, ZLINK_SNDMORE) == -1) {
-            zlink_msg_close (&msg);
-            ok = false;
-        }
+bool zlink::socket_base_t::dispatch_monitor_event (
+  void *monitor_socket_,
+  const monitor_event_record_t &record_) const
+{
+    if (!monitor_socket_)
+        return false;
 
-        if (ok) {
-            //  Send number of values that will follow in second frame
-            zlink_msg_init_size (&msg, sizeof (values_count_));
-            memcpy (zlink_msg_data (&msg), &values_count_,
-                    sizeof (values_count_));
-            if (zlink_msg_send (&msg, _monitor_socket, ZLINK_SNDMORE) == -1) {
-                zlink_msg_close (&msg);
-                ok = false;
-            }
-        }
+    zlink_monitor_event_t wire_event;
+    memset (&wire_event, 0, sizeof (wire_event));
+    wire_event.event = record_.event;
+    if (record_.values_count > 0)
+        wire_event.value = record_.values[0];
+    wire_event.routing_id = record_.routing_id;
 
-        if (ok) {
-            //  Send values in third-Nth frames (64bit unsigned)
-            for (uint64_t i = 0; i < values_count_; ++i) {
-                zlink_msg_init_size (&msg, sizeof (values_[i]));
-                memcpy (zlink_msg_data (&msg), &values_[i], sizeof (values_[i]));
-                if (zlink_msg_send (&msg, _monitor_socket, ZLINK_SNDMORE) == -1) {
-                    zlink_msg_close (&msg);
-                    ok = false;
-                    break;
-                }
-            }
-        }
-
-        if (ok) {
-            //  Send routing_id frame (0~255 bytes)
-            zlink_msg_init_size (&msg, routing_id_size_);
-            if (routing_id_size_ > 0 && routing_id_)
-                memcpy (zlink_msg_data (&msg), routing_id_, routing_id_size_);
-            if (zlink_msg_send (&msg, _monitor_socket, ZLINK_SNDMORE) == -1) {
-                zlink_msg_close (&msg);
-                ok = false;
-            }
-        }
-
-        if (ok) {
-            //  Send local endpoint URI (string)
-            zlink_msg_init_size (&msg, endpoint_uri_pair_.local.size ());
-            if (!endpoint_uri_pair_.local.empty ()) {
-                memcpy (zlink_msg_data (&msg), endpoint_uri_pair_.local.c_str (),
-                        endpoint_uri_pair_.local.size ());
-            }
-            if (zlink_msg_send (&msg, _monitor_socket, ZLINK_SNDMORE) == -1) {
-                zlink_msg_close (&msg);
-                ok = false;
-            }
-        }
-
-        if (ok) {
-            //  Send remote endpoint URI (string)
-            zlink_msg_init_size (&msg, endpoint_uri_pair_.remote.size ());
-            if (!endpoint_uri_pair_.remote.empty ()) {
-                memcpy (zlink_msg_data (&msg), endpoint_uri_pair_.remote.c_str (),
-                        endpoint_uri_pair_.remote.size ());
-            }
-            if (zlink_msg_send (&msg, _monitor_socket, 0) == -1) {
-                zlink_msg_close (&msg);
-                ok = false;
-            }
-        }
-
+    const size_t local_copy =
+      record_.endpoint_uri_pair.local.size () < sizeof (wire_event.local_addr) - 1
+        ? record_.endpoint_uri_pair.local.size ()
+        : sizeof (wire_event.local_addr) - 1;
+    if (local_copy > 0) {
+        memcpy (wire_event.local_addr, record_.endpoint_uri_pair.local.data (),
+                local_copy);
+        wire_event.local_addr[local_copy] = '\0';
     }
+
+    const size_t remote_copy =
+      record_.endpoint_uri_pair.remote.size () < sizeof (wire_event.remote_addr) - 1
+        ? record_.endpoint_uri_pair.remote.size ()
+        : sizeof (wire_event.remote_addr) - 1;
+    if (remote_copy > 0) {
+        memcpy (wire_event.remote_addr, record_.endpoint_uri_pair.remote.data (),
+                remote_copy);
+        wire_event.remote_addr[remote_copy] = '\0';
+    }
+
+    zlink_msg_t msg;
+    zlink_msg_init_size (&msg, sizeof (wire_event));
+    memcpy (zlink_msg_data (&msg), &wire_event, sizeof (wire_event));
+    const int send_flags = _monitor_lossy ? ZLINK_DONTWAIT : 0;
+    if (zlink_msg_send (&msg, monitor_socket_, send_flags) == -1) {
+        zlink_msg_close (&msg);
+        return false;
+    }
+    return true;
 }
 
 void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
@@ -2481,14 +2532,34 @@ void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
             can_emit_monitor_stopped = !monitor_socket->_pipes.empty ();
         }
 
+        stop_monitor_thread ();
+
         if (can_emit_monitor_stopped) {
             uint64_t values[1] = {0};
-            monitor_event (ZLINK_EVENT_MONITOR_STOPPED, values, 1, NULL, 0,
-                           endpoint_uri_pair_t ());
+            monitor_event_record_t record;
+            if (build_monitor_event_record (&record, ZLINK_EVENT_MONITOR_STOPPED,
+                                            values, 1, NULL, 0,
+                                            endpoint_uri_pair_t ()))
+                dispatch_monitor_event (_monitor_socket, record);
         }
         zlink_close (_monitor_socket);
         _monitor_socket = NULL;
         _monitor_events = 0;
+        _monitor_lossy = true;
+    }
+}
+
+void zlink::socket_base_t::stop_monitor_thread ()
+{
+    _monitor_queue_sync.lock ();
+    _monitor_queue_stop = true;
+    _monitor_queue.clear ();
+    _monitor_queue_cv.broadcast ();
+    _monitor_queue_sync.unlock ();
+
+    if (_monitor_thread_started) {
+        _monitor_thread.stop ();
+        _monitor_thread_started = false;
     }
 }
 

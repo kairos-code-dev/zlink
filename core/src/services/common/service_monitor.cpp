@@ -14,12 +14,15 @@ namespace zlink
 service_monitor_hub_t::service_monitor_hub_t (ctx_t *ctx_) :
     _ctx (ctx_),
     _watcher_count (0),
-    _next_id (generate_random ())
+    _next_id (generate_random ()),
+    _dispatch_stop (false),
+    _dispatch_thread_started (false)
 {
 }
 
 service_monitor_hub_t::~service_monitor_hub_t ()
 {
+    stop_dispatch_thread ();
     close_all ();
 }
 
@@ -130,6 +133,8 @@ void *service_monitor_hub_t::open (int events_)
     watcher.events = static_cast<uint32_t> (events_);
     watcher.endpoint = endpoint;
 
+    ensure_dispatch_thread_started ();
+
     scoped_lock_t lock (_sync);
     _watchers.push_back (watcher);
     _watcher_count.store (_watchers.size (), std::memory_order_release);
@@ -179,44 +184,30 @@ uint32_t service_monitor_hub_t::event_delivery_mask (
 
 void service_monitor_hub_t::emit (const zlink_service_event_t &event_)
 {
+    emit_batch (&event_, 1);
+}
+
+void service_monitor_hub_t::emit_batch (const zlink_service_event_t *events_,
+                                        size_t count_)
+{
+    if (!events_ || count_ == 0)
+        return;
     if (_watcher_count.load (std::memory_order_acquire) == 0)
         return;
 
-    scoped_lock_t lock (_sync);
-    const uint32_t delivery_mask = event_delivery_mask (event_);
+    ensure_dispatch_thread_started ();
 
-    for (std::vector<watcher_t>::iterator it = _watchers.begin ();
-         it != _watchers.end ();) {
-        if (!it->server) {
-            it = _watchers.erase (it);
-            _watcher_count.store (_watchers.size (), std::memory_order_release);
-            continue;
-        }
-        if ((it->events & delivery_mask) == 0) {
-            ++it;
-            continue;
-        }
-
-        msg_t msg;
-        if (msg.init_size (sizeof (event_)) != 0) {
-            ++it;
-            continue;
-        }
-        memcpy (msg.data (), &event_, sizeof (event_));
-        if (it->server->send (&msg, ZLINK_DONTWAIT) != 0) {
-            msg.close ();
-            it->server->close ();
-            it = _watchers.erase (it);
-            _watcher_count.store (_watchers.size (), std::memory_order_release);
-            continue;
-        }
-        msg.close ();
-        ++it;
-    }
+    scoped_lock_t lock (_dispatch_sync);
+    if (_dispatch_stop)
+        return;
+    for (size_t i = 0; i < count_; ++i)
+        _dispatch_queue.push_back (events_[i]);
+    _dispatch_cv.broadcast ();
 }
 
 void service_monitor_hub_t::close_all (const zlink_service_event_t *terminal_event_)
 {
+    stop_dispatch_thread ();
     std::vector<socket_base_t *> servers;
     {
         scoped_lock_t lock (_sync);
@@ -259,6 +250,102 @@ void service_monitor_hub_t::close_all (const zlink_service_event_t *terminal_eve
             server->stop ();
             server->close ();
         }
+    }
+}
+
+void service_monitor_hub_t::dispatch_thread_main (void *arg_)
+{
+    static_cast<service_monitor_hub_t *> (arg_)->dispatch_loop ();
+}
+
+void service_monitor_hub_t::ensure_dispatch_thread_started ()
+{
+    scoped_lock_t lock (_dispatch_sync);
+    if (_dispatch_thread_started)
+        return;
+    _dispatch_stop = false;
+    _dispatch_thread.start (&service_monitor_hub_t::dispatch_thread_main, this,
+                            "svc-monitor");
+    _dispatch_thread_started = true;
+}
+
+void service_monitor_hub_t::dispatch_loop ()
+{
+    _dispatch_sync.lock ();
+    while (true) {
+        if (_dispatch_stop)
+            break;
+        if (_dispatch_queue.empty ()) {
+            (void) _dispatch_cv.wait (&_dispatch_sync, -1);
+            continue;
+        }
+
+        zlink_service_event_t event = _dispatch_queue.front ();
+        _dispatch_queue.pop_front ();
+        _dispatch_sync.unlock ();
+        dispatch_event (event);
+        _dispatch_sync.lock ();
+    }
+    _dispatch_sync.unlock ();
+}
+
+void service_monitor_hub_t::dispatch_event (const zlink_service_event_t &event_)
+{
+    scoped_lock_t lock (_sync);
+    const uint32_t delivery_mask = event_delivery_mask (event_);
+    msg_t payload;
+    const bool payload_ready = payload.init_size (sizeof (event_)) == 0;
+
+    if (payload_ready)
+        memcpy (payload.data (), &event_, sizeof (event_));
+
+    for (std::vector<watcher_t>::iterator it = _watchers.begin ();
+         it != _watchers.end ();) {
+        if (!it->server) {
+            it = _watchers.erase (it);
+            _watcher_count.store (_watchers.size (), std::memory_order_release);
+            continue;
+        }
+        if ((it->events & delivery_mask) == 0 || !payload_ready) {
+            ++it;
+            continue;
+        }
+
+        msg_t msg;
+        if (msg.init () != 0 || msg.copy (payload) != 0) {
+            msg.close ();
+            ++it;
+            continue;
+        }
+
+        if (it->server->send (&msg, ZLINK_DONTWAIT) != 0) {
+            msg.close ();
+            it->server->close ();
+            it = _watchers.erase (it);
+            _watcher_count.store (_watchers.size (), std::memory_order_release);
+            continue;
+        }
+
+        msg.close ();
+        ++it;
+    }
+
+    if (payload_ready)
+        payload.close ();
+}
+
+void service_monitor_hub_t::stop_dispatch_thread ()
+{
+    {
+        scoped_lock_t lock (_dispatch_sync);
+        _dispatch_stop = true;
+        _dispatch_queue.clear ();
+        _dispatch_cv.broadcast ();
+    }
+
+    if (_dispatch_thread_started) {
+        _dispatch_thread.stop ();
+        _dispatch_thread_started = false;
     }
 }
 

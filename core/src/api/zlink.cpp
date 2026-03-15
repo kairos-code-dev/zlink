@@ -1669,6 +1669,12 @@ static int recv_socket_monitor_event_unchecked (void *monitor_socket_,
 
     memset (event_, 0, sizeof (*event_));
 
+    if (zlink_msg_size (&msg) == sizeof (*event_)) {
+        memcpy (event_, zlink_msg_data (&msg), sizeof (*event_));
+        zlink_msg_close (&msg);
+        return 0;
+    }
+
     if (zlink_msg_size (&msg) < sizeof (uint64_t)) {
         zlink_msg_close (&msg);
         errno = EPROTO;

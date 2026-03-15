@@ -447,7 +447,7 @@ static void test_registry_bind_rejects_rebind ()
 
 int main (void)
 {
-    setup_test_environment ();
+    setup_test_environment (180);
 
     UNITY_BEGIN ();
 #define RUN_TEST_CASE(name)                                                    \

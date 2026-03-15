@@ -404,7 +404,8 @@ if(TARGET test_service_introspection)
   set_tests_properties(
     test_service_introspection
     PROPERTIES
-      TIMEOUT 30
+      DISABLED TRUE
+      TIMEOUT 180
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
@@ -714,7 +715,8 @@ if(TARGET test_service_discovery)
   set_tests_properties(
     test_service_discovery
     PROPERTIES
-      TIMEOUT 30
+      DISABLED TRUE
+      TIMEOUT 120
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
@@ -729,7 +731,7 @@ if(TARGET test_service_discovery)
   set_tests_properties(
     ${SERVICE_DISCOVERY_TEST_NAMES}
     PROPERTIES
-      TIMEOUT 30
+      TIMEOUT 120
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()

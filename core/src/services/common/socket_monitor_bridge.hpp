@@ -22,19 +22,19 @@ static inline void *open_socket_monitor_bridge (socket_base_t *socket_,
     snprintf (endpoint, sizeof endpoint, "inproc://monitor-%p-%u",
               static_cast<void *> (socket_), generate_random ());
 
-    if (socket_->monitor (endpoint, events_, 3, ZLINK_PAIR) != 0)
+    if (socket_->monitor (endpoint, events_, 4, ZLINK_PAIR) != 0)
         return NULL;
 
     socket_base_t *monitor_socket = socket_->get_ctx ()->create_socket (ZLINK_PAIR);
     if (!monitor_socket) {
-        socket_->monitor (NULL, 0, 3, ZLINK_PAIR);
+        socket_->monitor (NULL, 0, 4, ZLINK_PAIR);
         errno = ENOMEM;
         return NULL;
     }
 
     if (monitor_socket->connect (endpoint) != 0) {
         monitor_socket->close ();
-        socket_->monitor (NULL, 0, 3, ZLINK_PAIR);
+        socket_->monitor (NULL, 0, 4, ZLINK_PAIR);
         return NULL;
     }
 

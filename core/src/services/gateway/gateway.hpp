@@ -118,6 +118,14 @@ class gateway_t : public discovery_observer_t
                              int flags_);
 
     void process_monitor_events ();
+    void emit_events (const zlink_service_event_t *events_, size_t count_);
+    void fill_event (zlink_service_event_t *out_,
+                     uint32_t event_type_,
+                     const std::string &service_name_,
+                     const std::string &endpoint_,
+                     const zlink_routing_id_t *routing_id_,
+                     uint32_t value_,
+                     int32_t error_code_) const;
     void emit_event (uint32_t event_type_,
                      const std::string &service_name_,
                      const std::string &endpoint_,

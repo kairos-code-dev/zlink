@@ -26,6 +26,18 @@ static void preserve_first_error (int rc_, int *first_error_)
         return;
     *first_error_ = errno != 0 ? errno : EIO;
 }
+
+namespace
+{
+static void emit_monitor_event_batch (service_monitor_hub_t *monitor_,
+                                      zlink_service_event_t *events_,
+                                      size_t count_)
+{
+    if (!monitor_ || !events_ || count_ == 0)
+        return;
+    monitor_->emit_batch (events_, count_);
+}
+}
 }
 
 namespace
@@ -157,31 +169,7 @@ void spot_pub_t::emit_monitor_event (const zlink_service_event_t &event_)
 {
     if (_destroying.load (std::memory_order_acquire))
         return;
-
-    _monitor_event_queue.enqueue (event_);
-    _monitor_event_pending.fetch_add (1, std::memory_order_release);
-
-    if (_monitor_event_draining.exchange (true, std::memory_order_acq_rel))
-        return;
-
-    for (;;) {
-        size_t drained = 0;
-        zlink_service_event_t next_event;
-        while (_monitor_event_queue.try_dequeue (next_event)) {
-            _monitor.emit (next_event);
-            ++drained;
-        }
-
-        if (drained > 0)
-            _monitor_event_pending.fetch_sub (drained,
-                                              std::memory_order_acq_rel);
-
-        _monitor_event_draining.store (false, std::memory_order_release);
-        if (_monitor_event_pending.load (std::memory_order_acquire) == 0)
-            break;
-        if (_monitor_event_draining.exchange (true, std::memory_order_acq_rel))
-            break;
-    }
+    _monitor.emit (event_);
 }
 
 socket_base_t *spot_pub_t::socket () const
@@ -541,6 +529,7 @@ void spot_pub_t::monitor_loop ()
         }
 
         zlink_service_event_t event;
+        zlink_service_event_t batch[2];
         switch (raw.event) {
             case ZLINK_EVENT_CONNECTED:
             case ZLINK_EVENT_ACCEPTED:
@@ -550,21 +539,19 @@ void spot_pub_t::monitor_loop ()
                 break;
 
             case ZLINK_EVENT_CONNECTION_READY:
-                fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_READY,
+                fill_socket_monitor_event (&batch[0], ZLINK_MONITOR_EVENT_READY,
                                            raw);
-                emit_monitor_event (event);
-                fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_PEER_UP,
+                fill_socket_monitor_event (&batch[1], ZLINK_MONITOR_EVENT_PEER_UP,
                                            raw);
-                emit_monitor_event (event);
+                emit_monitor_event_batch (&_monitor, batch, 2);
                 break;
 
             case ZLINK_EVENT_DISCONNECTED:
-                fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_LOST,
+                fill_socket_monitor_event (&batch[0], ZLINK_MONITOR_EVENT_LOST,
                                            raw);
-                emit_monitor_event (event);
-                fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_PEER_DOWN,
+                fill_socket_monitor_event (&batch[1], ZLINK_MONITOR_EVENT_PEER_DOWN,
                                            raw);
-                emit_monitor_event (event);
+                emit_monitor_event_batch (&_monitor, batch, 2);
                 break;
 
             case ZLINK_EVENT_BIND_FAILED:

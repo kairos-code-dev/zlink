@@ -44,6 +44,12 @@ int recv_monitor_event_from_socket (void *monitor_,
         ++part_count;
     }
 
+    if (part_count == 1 && zlink_msg_size (&parts[0]) == sizeof (*event_)) {
+        memcpy (event_, zlink_msg_data (&parts[0]), sizeof (*event_));
+        zlink_msg_close (&parts[0]);
+        return 0;
+    }
+
     if (more || part_count < 5) {
         for (size_t i = 0; i < part_count; ++i)
             zlink_msg_close (&parts[i]);

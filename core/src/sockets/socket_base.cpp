@@ -96,6 +96,9 @@ static void generate_default_routing_id (unsigned char out_[16])
     if (all_zero)
         out_[15] = 1;
 }
+
+static const uint32_t public_api_closing_bit = 0x80000000u;
+static const uint32_t public_api_inflight_mask = ~public_api_closing_bit;
 }
 
 zlink::socket_base_t::monitor_event_record_t::monitor_event_record_t () :
@@ -216,8 +219,14 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _socket_msg_handler_subject (NULL),
     _spot_handler (NULL),
     _xpub_handler (NULL),
+    _public_api_state (0),
+    _public_api_sync (),
+    _callback_api_depth (0),
+    _close_deferred (false),
     _send_ready_handler (NULL),
     _send_ready_handler_subject (NULL),
+    _send_ready_seq (0),
+    _send_ready_writer_sync (),
     _send_ready_armed (false),
     _monitor_sync (),
     _monitor_queue_stop (false),
@@ -242,6 +251,138 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     mailbox_t *m = new (std::nothrow) mailbox_t ();
     zlink_assert (m);
     _mailbox = m;
+}
+
+bool zlink::socket_base_t::enter_public_api ()
+{
+    const uint32_t old =
+      _public_api_state.fetch_add (1, std::memory_order_acq_rel);
+    if ((old & public_api_closing_bit) == 0)
+        return true;
+
+    const uint32_t reverted =
+      _public_api_state.fetch_sub (1, std::memory_order_acq_rel);
+    zlink_assert ((reverted & public_api_inflight_mask) > 0);
+    errno = ESHUTDOWN;
+    return false;
+}
+
+void zlink::socket_base_t::leave_public_api ()
+{
+    const uint32_t old =
+      _public_api_state.fetch_sub (1, std::memory_order_acq_rel);
+    zlink_assert ((old & public_api_inflight_mask) > 0);
+}
+
+bool zlink::socket_base_t::enter_callback_api ()
+{
+    if (!enter_public_api ())
+        return false;
+
+    _callback_api_depth.fetch_add (1, std::memory_order_acq_rel);
+    return true;
+}
+
+void zlink::socket_base_t::leave_callback_api ()
+{
+    const uint32_t depth =
+      _callback_api_depth.fetch_sub (1, std::memory_order_acq_rel) - 1;
+    leave_public_api ();
+
+    if (depth == 0
+        && _close_deferred.load (std::memory_order_acquire)
+        && public_close_requested ()) {
+        finish_close_handoff ();
+    }
+}
+
+bool zlink::socket_base_t::begin_close_or_fail_busy (bool from_self_callback_)
+{
+    uint32_t old = _public_api_state.load (std::memory_order_acquire);
+    while (true) {
+        if ((old & public_api_closing_bit) != 0) {
+            errno = EALREADY;
+            return false;
+        }
+
+        if (!from_self_callback_ && (old & public_api_inflight_mask) != 0) {
+            errno = EBUSY;
+            return false;
+        }
+
+        const uint32_t desired = old | public_api_closing_bit;
+        if (_public_api_state.compare_exchange_weak (
+              old, desired, std::memory_order_acq_rel,
+              std::memory_order_acquire)) {
+            if (from_self_callback_)
+                _close_deferred.store (true, std::memory_order_release);
+            return true;
+        }
+    }
+}
+
+bool zlink::socket_base_t::public_close_requested () const
+{
+    return (_public_api_state.load (std::memory_order_acquire)
+            & public_api_closing_bit)
+           != 0;
+}
+
+void zlink::socket_base_t::lock_public_api_sync ()
+{
+    bool expected = false;
+    while (!_public_api_sync.compare_exchange_weak (
+      expected, true, std::memory_order_acquire, std::memory_order_relaxed)) {
+        expected = false;
+    }
+}
+
+void zlink::socket_base_t::unlock_public_api_sync ()
+{
+    _public_api_sync.store (false, std::memory_order_release);
+}
+
+bool zlink::socket_base_t::send_ready_slot (
+  zlink_send_ready_handler_fn *handler_out_, void **subject_out_) const
+{
+    if (!handler_out_ || !subject_out_)
+        return false;
+
+    while (true) {
+        const uint32_t s1 = _send_ready_seq.load (std::memory_order_acquire);
+        if ((s1 & 1u) != 0)
+            continue;
+
+        zlink_send_ready_handler_fn handler =
+          _send_ready_handler.load (std::memory_order_acquire);
+        void *subject =
+          _send_ready_handler_subject.load (std::memory_order_acquire);
+        const uint32_t s2 = _send_ready_seq.load (std::memory_order_acquire);
+        if (s1 != s2 || (s2 & 1u) != 0)
+            continue;
+
+        *handler_out_ = handler;
+        *subject_out_ = subject;
+        return handler != NULL;
+    }
+}
+
+void zlink::socket_base_t::finish_close_handoff ()
+{
+    _close_deferred.store (false, std::memory_order_release);
+
+    if (_async_mailbox_active.load (std::memory_order_acquire)) {
+        stop_async_mailbox_processing ();
+        wait_async_quiesced (2000);
+    } else if (_async_quiesce_pending.load (std::memory_order_acquire)) {
+        wait_async_quiesced (2000);
+    }
+
+    if (_mailbox)
+        static_cast<mailbox_t *> (_mailbox)->clear_signalers ();
+
+    _tag = 0xdeadbeef;
+    send_reap (this);
 }
 
 int zlink::socket_base_t::get_peer_state (const void *routing_id_,
@@ -1037,15 +1178,19 @@ void zlink::socket_base_t::add_endpoint (
 
 int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
 {
+    if (!enter_public_api ())
+        return -1;
 
     //  Check whether the context hasn't been shut down yet.
     if (unlikely (_ctx_terminated)) {
+        leave_public_api ();
         errno = ETERM;
         return -1;
     }
 
     //  Check whether endpoint address passed to the function is valid.
     if (unlikely (!endpoint_uri_)) {
+        leave_public_api ();
         errno = EINVAL;
         return -1;
     }
@@ -1054,6 +1199,7 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
     //  (from launch_child() for example) we're asked to terminate now.
     const int rc = process_commands (0, false);
     if (unlikely (rc != 0)) {
+        leave_public_api ();
         return -1;
     }
 
@@ -1062,6 +1208,7 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
     std::string uri_path;
     if (parse_uri (endpoint_uri_, uri_protocol, uri_path)
         || check_protocol (uri_protocol)) {
+        leave_public_api ();
         return -1;
     }
 
@@ -1069,9 +1216,11 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
 
     // Disconnect an inproc socket
     if (uri_protocol == protocol_name::inproc) {
-        return unregister_endpoint (endpoint_uri_str, this) == 0
-                 ? 0
-                 : _inprocs.erase_pipes (endpoint_uri_str);
+        const int inproc_rc = unregister_endpoint (endpoint_uri_str, this) == 0
+                                ? 0
+                                : _inprocs.erase_pipes (endpoint_uri_str);
+        leave_public_api ();
+        return inproc_rc;
     }
 
     const std::string resolved_endpoint_uri =
@@ -1087,6 +1236,7 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
     const std::pair<endpoints_t::iterator, endpoints_t::iterator> range =
       _endpoints.equal_range (resolved_endpoint_uri);
     if (range.first == range.second) {
+        leave_public_api ();
         errno = ENOENT;
         return -1;
     }
@@ -1108,21 +1258,25 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
             pipe->terminate (false);
     }
     _endpoints.erase (range.first, range.second);
-
+    leave_public_api ();
     return 0;
 }
 
 int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 {
+    if (!enter_public_api ())
+        return -1;
 
     //  Check whether the context hasn't been shut down yet.
     if (unlikely (_ctx_terminated)) {
+        leave_public_api ();
         errno = ETERM;
         return -1;
     }
 
     //  Check whether message passed to the function is valid.
     if (unlikely (!msg_ || !msg_->check ())) {
+        leave_public_api ();
         errno = EFAULT;
         return -1;
     }
@@ -1130,6 +1284,7 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
     //  Process pending commands, if any.
     int rc = process_commands (0, true);
     if (unlikely (rc != 0)) {
+        leave_public_api ();
         return -1;
     }
 
@@ -1143,8 +1298,13 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
     msg_->reset_metadata ();
 
     //  Try to send the message using method in each socket class
-    rc = xsend (msg_);
+    {
+        lock_public_api_sync ();
+        rc = xsend (msg_);
+        unlock_public_api_sync ();
+    }
     if (rc == 0) {
+        leave_public_api ();
         return 0;
     }
     //  Special case: -2 means pipe is dead while a
@@ -1156,6 +1316,7 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
             errno_assert (rc == 0);
             rc = msg_->init ();
             errno_assert (rc == 0);
+            leave_public_api ();
             return 0;
         }
     }
@@ -1166,6 +1327,7 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
                 arm_send_ready_notification ();
             }
         }
+        leave_public_api ();
         return -1;
     }
 
@@ -1173,6 +1335,7 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
     //  the error - including EAGAIN - up the stack.
     if ((flags_ & ZLINK_DONTWAIT) || options.sndtimeo == 0) {
         arm_send_ready_notification ();
+        leave_public_api ();
         return -1;
     }
 
@@ -1185,25 +1348,34 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
     //  command, process it and try to send the message again.
     //  If timeout is reached in the meantime, return EAGAIN.
     while (true) {
-        if (unlikely (process_commands (timeout, false) != 0)) {
+        rc = process_commands (timeout, false);
+        if (unlikely (rc != 0)) {
+            leave_public_api ();
             return -1;
         }
-        rc = xsend (msg_);
+        {
+            lock_public_api_sync ();
+            rc = xsend (msg_);
+            unlock_public_api_sync ();
+        }
         if (rc == 0) {
             break;
         }
         if (unlikely (errno != EAGAIN)) {
+            leave_public_api ();
             return -1;
         }
         if (timeout > 0) {
             timeout = static_cast<int> (end - _clock.now_ms ());
             if (timeout <= 0) {
                 errno = EAGAIN;
+                leave_public_api ();
                 return -1;
             }
         }
     }
 
+    leave_public_api ();
     return 0;
 }
 
@@ -1331,45 +1503,63 @@ int zlink::socket_base_t::socket_set_msg_handler (
 int zlink::socket_base_t::socket_set_msg_handler_ex (
   zlink_socket_msg_handler_fn handler_, void *subject_)
 {
+    if (!enter_public_api ())
+        return -1;
     if (!handler_) {
+        leave_public_api ();
         errno = EINVAL;
         return -1;
     }
 
     _socket_msg_handler.store (handler_, std::memory_order_release);
     _socket_msg_handler_subject.store (subject_, std::memory_order_release);
+    leave_public_api ();
     return 0;
 }
 
 int zlink::socket_base_t::socket_set_spot_handler (
   zlink_spot_handler_fn handler_)
 {
+    if (!enter_public_api ())
+        return -1;
     if (!handler_) {
+        leave_public_api ();
         errno = EINVAL;
         return -1;
     }
 
     _spot_handler.store (handler_, std::memory_order_release);
-    if (sub_dispatch_active ())
+    if (sub_dispatch_active ()) {
+        leave_public_api ();
         return 0;
+    }
 
-    return sub_dispatch_start (&socket_base_t::dispatch_spot_handler_from_io,
-                               this);
+    const int rc =
+      sub_dispatch_start (&socket_base_t::dispatch_spot_handler_from_io, this);
+    leave_public_api ();
+    return rc;
 }
 
 int zlink::socket_base_t::socket_set_xpub_handler (
   zlink_xpub_handler_fn handler_)
 {
+    if (!enter_public_api ())
+        return -1;
     if (!handler_) {
+        leave_public_api ();
         errno = EINVAL;
         return -1;
     }
 
     _xpub_handler.store (handler_, std::memory_order_release);
-    if (xpub_dispatch_active ())
+    if (xpub_dispatch_active ()) {
+        leave_public_api ();
         return 0;
+    }
 
-    return xpub_dispatch_start ();
+    const int rc = xpub_dispatch_start ();
+    leave_public_api ();
+    return rc;
 }
 
 int zlink::socket_base_t::socket_set_send_ready_handler (
@@ -1381,17 +1571,25 @@ int zlink::socket_base_t::socket_set_send_ready_handler (
 int zlink::socket_base_t::socket_set_send_ready_handler_ex (
   zlink_send_ready_handler_fn handler_, void *subject_)
 {
+    if (!enter_public_api ())
+        return -1;
     if (!handler_) {
+        leave_public_api ();
         errno = EINVAL;
         return -1;
     }
     if (send_ready_dispatch_in_callback ()) {
+        leave_public_api ();
         errno = EDEADLK;
         return -1;
     }
 
+    scoped_lock_t writer_lock (_send_ready_writer_sync);
+    _send_ready_seq.fetch_add (1, std::memory_order_acq_rel);
     _send_ready_handler.store (handler_, std::memory_order_release);
     _send_ready_handler_subject.store (subject_, std::memory_order_release);
+    _send_ready_seq.fetch_add (1, std::memory_order_acq_rel);
+    leave_public_api ();
     return 0;
 }
 
@@ -1438,15 +1636,19 @@ bool zlink::socket_base_t::send_ready_dispatch_in_callback () const
 
 void zlink::socket_base_t::invoke_send_ready_handler_for_testing ()
 {
-    zlink_send_ready_handler_fn handler = socket_send_ready_handler ();
-    if (!handler)
+    zlink_send_ready_handler_fn handler = NULL;
+    void *subject = NULL;
+    if (!send_ready_slot (&handler, &subject))
+        return;
+
+    if (!enter_callback_api ())
         return;
 
     socket_base_t *previous = g_current_send_ready_dispatch_socket;
     g_current_send_ready_dispatch_socket = this;
-    void *subject = socket_send_ready_handler_subject ();
     handler (subject ? subject : this);
     g_current_send_ready_dispatch_socket = previous;
+    leave_callback_api ();
 }
 
 zlink_socket_msg_handler_fn zlink::socket_base_t::socket_msg_handler () const
@@ -1467,7 +1669,11 @@ zlink_xpub_handler_fn zlink::socket_base_t::socket_xpub_handler () const
 zlink_send_ready_handler_fn
 zlink::socket_base_t::socket_send_ready_handler () const
 {
-    return _send_ready_handler.load (std::memory_order_acquire);
+    zlink_send_ready_handler_fn handler = NULL;
+    void *subject = NULL;
+    if (!send_ready_slot (&handler, &subject))
+        return NULL;
+    return handler;
 }
 
 void *zlink::socket_base_t::socket_msg_handler_subject () const
@@ -1477,7 +1683,11 @@ void *zlink::socket_base_t::socket_msg_handler_subject () const
 
 void *zlink::socket_base_t::socket_send_ready_handler_subject () const
 {
-    return _send_ready_handler_subject.load (std::memory_order_acquire);
+    zlink_send_ready_handler_fn handler = NULL;
+    void *subject = NULL;
+    if (!send_ready_slot (&handler, &subject))
+        return NULL;
+    return subject;
 }
 
 void zlink::socket_base_t::invoke_socket_msg_handler (
@@ -1486,6 +1696,13 @@ void zlink::socket_base_t::invoke_socket_msg_handler (
   zlink_msg_t *parts_,
   size_t part_count_)
 {
+    if (!enter_callback_api ()) {
+        for (size_t i = 0; i < part_count_; ++i) {
+            const int rc = reinterpret_cast<msg_t *> (&parts_[i])->close ();
+            errno_assert (rc == 0);
+        }
+        return;
+    }
     socket_base_t *previous = g_current_socket_msg_dispatch_socket;
     void *previous_subject = g_current_socket_msg_dispatch_subject;
     zlink_routing_id_t previous_source_rid;
@@ -1514,6 +1731,7 @@ void zlink::socket_base_t::invoke_socket_msg_handler (
                 sizeof (g_current_socket_msg_dispatch_source_rid));
         g_current_socket_msg_dispatch_source_rid_valid = false;
     }
+    leave_callback_api ();
 }
 
 void zlink::socket_base_t::close_socket_msg_parts (
@@ -1574,7 +1792,16 @@ void zlink::socket_base_t::dispatch_spot_handler_from_io (
         return;
     }
 
+    if (!self->enter_callback_api ()) {
+        for (size_t i = 0; i < part_count_; ++i) {
+            const int rc = reinterpret_cast<msg_t *> (&parts_[i])->close ();
+            errno_assert (rc == 0);
+        }
+        return;
+    }
+
     handler (source_rid_, topic_, topic_len_, parts_, part_count_);
+    self->leave_callback_api ();
 }
 
 void zlink::socket_base_t::arm_send_ready_notification ()
@@ -1679,33 +1906,13 @@ std::recursive_mutex *zlink::socket_base_t::api_sync_mutex ()
 
 int zlink::socket_base_t::close ()
 {
-    //  If async mailbox is active, quiesce it before handing off to
-    //  the reaper.  This prevents data races between the I/O thread
-    //  (process_async_mailbox -> process_commands -> pipe state) and
-    //  the reaper thread (start_reaping -> terminate -> pipe state).
-    //
-    //  Two cases:
-    //  (a) async mailbox still active — stop it and wait.
-    //  (b) sub_dispatch_stop() already called but I/O thread hasn't
-    //      finished yet — _async_quiesce_pending is true.
-    if (_async_mailbox_active.load (std::memory_order_acquire)) {
-        stop_async_mailbox_processing ();
-        wait_async_quiesced (2000);
-    } else if (_async_quiesce_pending.load (std::memory_order_acquire)) {
-        wait_async_quiesced (2000);
-    }
+    const bool from_self_callback = send_ready_dispatch_in_callback ();
+    if (!begin_close_or_fail_busy (from_self_callback))
+        return -1;
+    if (from_self_callback)
+        return 0;
 
-    if (_mailbox)
-        static_cast<mailbox_t *> (_mailbox)->clear_signalers ();
-
-    //  Mark the socket as dead
-    _tag = 0xdeadbeef;
-
-    //  Transfer the ownership of the socket from this application thread
-    //  to the reaper thread which will take care of the rest of shutdown
-    //  process.
-    send_reap (this);
-
+    finish_close_handoff ();
     return 0;
 }
 

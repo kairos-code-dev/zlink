@@ -154,6 +154,7 @@ class gateway_t : public discovery_observer_t
     bool _use_lock;
     bool _pollable_mode;
     bool _routing_id_locked;
+    bool _service_ready_emitted;
     uint32_t _refresh_interval_ms;
     mutex_t _sync;
 

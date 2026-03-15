@@ -5,10 +5,12 @@
 
 #include "../../../src/core/monitor_dispatch_internal.hpp"
 #include "../../../src/core/recv_internal.hpp"
+#include "../../../src/sockets/socket_base.hpp"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <climits>
 #include <condition_variable>
 #include <map>
 #include <mutex>
@@ -21,6 +23,10 @@ SETUP_TEARDOWN_TESTCONTEXT
 namespace
 {
 std::atomic<unsigned int> g_inproc_endpoint_counter (0);
+std::atomic<int> g_send_ready_self_close_rc (0);
+std::atomic<int> g_send_ready_self_close_errno (0);
+std::atomic<int> g_send_ready_post_close_send_rc (0);
+std::atomic<int> g_send_ready_post_close_send_errno (0);
 
 struct connect_monitor_state_t
 {
@@ -342,6 +348,24 @@ void make_unique_inproc_endpoint (char *endpoint_, size_t size_)
       g_inproc_endpoint_counter.fetch_add (1, std::memory_order_acq_rel) + 1;
     snprintf (endpoint_, size_, "inproc://monitor-perf-pair-%u", endpoint_id);
 }
+
+void send_ready_self_close_handler (void *subject_)
+{
+    void *socket = subject_;
+    g_send_ready_self_close_rc.store (zlink_close (socket),
+                                      std::memory_order_release);
+    g_send_ready_self_close_errno.store (errno, std::memory_order_release);
+
+    static const char payload[] = "post-close-send";
+    zlink::msg_t msg;
+    TEST_ASSERT_EQUAL_INT (0, msg.init_buffer (payload, sizeof (payload)));
+    zlink::socket_base_t *raw_socket =
+      static_cast<zlink::socket_base_t *> (socket);
+    const int send_rc = raw_socket->send (&msg, 0);
+    g_send_ready_post_close_send_rc.store (send_rc, std::memory_order_release);
+    g_send_ready_post_close_send_errno.store (errno,
+                                              std::memory_order_release);
+}
 }
 
 void run_pair_perf_like_monitor_sampling_case (bool sample_send_,
@@ -483,6 +507,51 @@ void test_pair_inproc_perf_like_monitor_ready_implies_bidirectional_delivery ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_send_ready_self_close_blocks_followup_operational_api ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *server = zlink_socket (ctx, ZLINK_PAIR);
+    void *client = zlink_socket (ctx, ZLINK_PAIR);
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+
+    configure_bounded_pair_socket (server, 200);
+    configure_bounded_pair_socket (client, 200);
+
+    char endpoint[128];
+    make_unique_inproc_endpoint (endpoint, sizeof (endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
+
+    g_send_ready_self_close_rc.store (INT_MIN, std::memory_order_release);
+    g_send_ready_self_close_errno.store (0, std::memory_order_release);
+    g_send_ready_post_close_send_rc.store (INT_MIN, std::memory_order_release);
+    g_send_ready_post_close_send_errno.store (0, std::memory_order_release);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_set_send_ready_handler (client, &send_ready_self_close_handler));
+
+    zlink::socket_base_t *raw_client =
+      static_cast<zlink::socket_base_t *> (client);
+    raw_client->invoke_send_ready_handler_for_testing ();
+
+    TEST_ASSERT_EQUAL_INT (0,
+                           g_send_ready_self_close_rc.load (
+                             std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (-1,
+                           g_send_ready_post_close_send_rc.load (
+                             std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN,
+                           g_send_ready_post_close_send_errno.load (
+                             std::memory_order_acquire));
+
+    close_socket_zero_linger (server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -493,5 +562,6 @@ int main ()
     RUN_TEST (test_pair_perf_like_bidirectional_sampling_preserves_oneway_delivery);
     RUN_TEST (
       test_pair_inproc_perf_like_monitor_ready_implies_bidirectional_delivery);
+    RUN_TEST (test_send_ready_self_close_blocks_followup_operational_api);
     return UNITY_END ();
 }

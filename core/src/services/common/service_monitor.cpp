@@ -253,6 +253,50 @@ void service_monitor_hub_t::close_all (const zlink_service_event_t *terminal_eve
     }
 }
 
+size_t service_monitor_hub_t::watcher_count () const
+{
+    return _watcher_count.load (std::memory_order_acquire);
+}
+
+void service_monitor_hub_t::prune_closed_watchers ()
+{
+    std::vector<socket_base_t *> stale_servers;
+    {
+        scoped_lock_t lock (_sync);
+        for (std::vector<watcher_t>::iterator it = _watchers.begin ();
+             it != _watchers.end ();) {
+            if (!it->server) {
+                it = _watchers.erase (it);
+                continue;
+            }
+
+            zlink_monitor_snapshot_t snapshot;
+            memset (&snapshot, 0, sizeof (snapshot));
+            if (it->server->monitor_snapshot (&snapshot) == 0
+                && snapshot.ready_peer_count == 0) {
+                stale_servers.push_back (it->server);
+                it = _watchers.erase (it);
+                continue;
+            }
+
+            ++it;
+        }
+        _watcher_count.store (_watchers.size (), std::memory_order_release);
+    }
+
+    for (size_t i = 0; i < stale_servers.size (); ++i) {
+        socket_base_t *server = stale_servers[i];
+        if (!server)
+            continue;
+        if (_ctx)
+            (void) _ctx->close_socket_and_wait (server, 2000);
+        else {
+            server->stop ();
+            server->close ();
+        }
+    }
+}
+
 void service_monitor_hub_t::dispatch_thread_main (void *arg_)
 {
     static_cast<service_monitor_hub_t *> (arg_)->dispatch_loop ();

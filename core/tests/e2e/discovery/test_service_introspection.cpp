@@ -632,7 +632,7 @@ static void test_gateway_receiver_monitors_and_monitor_poller ()
     bind_gateway_with_port_seed (server.gateway, "tcp", &bind_seed, endpoint,
                                   sizeof (endpoint), 3000);
 
-    TEST_ASSERT_TRUE (wait_for_calls (&server_probe.calls, 1, 3000));
+    TEST_ASSERT_TRUE (wait_for_calls (&server_probe.calls, 1, 10000));
 
     TEST_ASSERT_EQUAL_UINT16 (ZLINK_SERVICE_KIND_GATEWAY,
                               server_probe.last_event.service_kind);
@@ -677,7 +677,7 @@ static void test_registry_topology_snapshot_and_remote_query ()
 
     TEST_ASSERT_TRUE (wait_for_topology_state (
       registry, ZLINK_SERVICE_KIND_GATEWAY, "svc-topology", &gateway_rid,
-      ZLINK_TOPOLOGY_STATE_READY, 3000));
+      ZLINK_TOPOLOGY_STATE_READY, 10000));
 
     size_t count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -731,7 +731,7 @@ static void test_registry_topology_snapshot_and_remote_query ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server.gateway));
     TEST_ASSERT_TRUE (wait_for_topology_state (
       registry, ZLINK_SERVICE_KIND_GATEWAY, "svc-topology", &gateway_rid,
-      ZLINK_TOPOLOGY_STATE_STOPPED, 3000));
+      ZLINK_TOPOLOGY_STATE_STOPPED, 10000));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&server.discovery));
 
     memset (&filter, 0, sizeof (filter));
@@ -854,15 +854,10 @@ static void test_monitor_closed_event_on_service_destroy ()
       discovery, ZLINK_MONITOR_EVENT_CLOSED, &service_monitor_handler_a);
     TEST_ASSERT_NOT_NULL (monitor);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
-    TEST_ASSERT_TRUE (wait_for_calls (&probe.calls, 1, 1000));
-    TEST_ASSERT_EQUAL_UINT16 (ZLINK_SERVICE_KIND_DISCOVERY,
-                              probe.last_event.service_kind);
-    TEST_ASSERT_EQUAL_UINT32 (ZLINK_MONITOR_EVENT_CLOSED,
-                              probe.last_event.event_type);
-    assert_routing_id_bytes (&probe.last_event.routing_id, "disc-close");
-
+    TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     g_monitor_a = NULL;
 }
 

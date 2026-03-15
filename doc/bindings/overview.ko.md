@@ -45,7 +45,8 @@ zlink는 C API를 기반으로 5개 언어 바인딩을 제공한다. 모든 바
 
 ## 6. 스레드 안전성
 
-- Socket: **non-thread-safe** (단일 스레드 접근)
+- Public socket/service handle: **thread-safe** (same-handle operational API
+  병행 허용, 단 `close`/`destroy`는 더 보수적이며 `EBUSY` 가능)
 - Context: **thread-safe** (여러 스레드에서 소켓 생성 가능)
 
 ## 7. 버전 정책

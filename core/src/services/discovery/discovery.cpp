@@ -280,6 +280,7 @@ discovery_t::discovery_t (ctx_t *ctx_, uint16_t service_type_) :
     _sub_socket (NULL),
     _update_seq (0),
     _observer_callbacks_inflight (0),
+    _destroying (false),
     _service_type (service_type_),
     _discovery_summary_enabled (true),
     _routing_id_locked (false),
@@ -309,6 +310,9 @@ void discovery_t::set_discovery_summary_enabled (bool enabled_)
 
 int discovery_t::connect_registry (const char *registry_endpoint_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     if (!registry_endpoint_) {
         errno = EINVAL;
         return -1;
@@ -365,6 +369,9 @@ int discovery_t::connect_registry (const char *registry_endpoint_)
 
 int discovery_t::set_routing_id (const void *data_, size_t size_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     if (!data_ || size_ == 0 || size_ > sizeof (_routing_id.data)) {
         errno = EINVAL;
         return -1;
@@ -385,6 +392,10 @@ int discovery_t::set_routing_id (const void *data_, size_t size_)
 
 int discovery_t::routing_id (zlink_routing_id_t *out_) const
 {
+    service_public_api_scope_t admission (
+      const_cast<service_public_api_guard_t &> (_public_api));
+    if (!admission.acquired ())
+        return -1;
     if (!out_) {
         errno = EINVAL;
         return -1;
@@ -400,6 +411,9 @@ int discovery_t::set_socket_option (int socket_role_,
                                     const void *optval_,
                                     size_t optvallen_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     if (!optval_ || optvallen_ == 0) {
         errno = EINVAL;
         return -1;
@@ -478,6 +492,9 @@ void discovery_t::apply_socket_options_to_existing_locked (int option_,
 
 void *discovery_t::monitor_open (int events_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return NULL;
     return _monitor.open (events_);
 }
 
@@ -718,20 +735,29 @@ uint64_t discovery_t::service_update_seq (const std::string &service_name_)
 
 void discovery_t::add_observer (discovery_observer_t *observer_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return;
     if (!observer_)
         return;
     scoped_lock_t lock (_sync);
     _observers.insert (observer_);
 }
 
-void discovery_t::remove_observer (discovery_observer_t *observer_)
+int discovery_t::remove_observer (discovery_observer_t *observer_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     if (!observer_)
-        return;
+        return 0;
     scoped_lock_t lock (_sync);
+    if (_observer_callbacks_inflight > 0) {
+        errno = EBUSY;
+        return -1;
+    }
     _observers.erase (observer_);
-    while (_observer_callbacks_inflight > 0)
-        (void) _observer_cv.wait (&_sync, 1000);
+    return 0;
 }
 
 void discovery_t::upsert_service_summary (
@@ -822,6 +848,16 @@ void discovery_t::erase_service_summary (uint16_t service_kind_,
 
 int discovery_t::destroy ()
 {
+    if (!_public_api.begin_close_or_fail_busy ())
+        return -1;
+    {
+        scoped_lock_t lock (_sync);
+        if (_observer_callbacks_inflight > 0) {
+            errno = EBUSY;
+            return -1;
+        }
+        _destroying = true;
+    }
     _stop.set (1);
     zlink_service_event_t terminal;
     memset (&terminal, 0, sizeof (terminal));
@@ -842,8 +878,6 @@ int discovery_t::destroy ()
     std::vector<discovery_observer_t *> observers;
     {
         scoped_lock_t lock (_sync);
-        while (_observer_callbacks_inflight > 0)
-            (void) _observer_cv.wait (&_sync, 1000);
         sub_socket = _sub_socket;
         connected_endpoints = _connected_endpoints;
         bootstrap_states = _bootstrap_states;

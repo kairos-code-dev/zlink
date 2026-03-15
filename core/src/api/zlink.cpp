@@ -503,6 +503,27 @@ static bool monitor_handler_active (zlink::socket_base_t *socket_)
     return find_monitor_handler_state (socket_) != NULL;
 }
 
+static bool has_open_service_monitor_for_subject (void *snapshot_subject_)
+{
+    if (!snapshot_subject_)
+        return false;
+
+    monitor_handler_registry_t &registry = monitor_handler_registry ();
+    zlink::scoped_lock_t lock (registry.sync);
+    for (std::map<zlink::socket_base_t *, monitor_handler_state_t *>::iterator it =
+           registry.handlers.begin ();
+         it != registry.handlers.end (); ++it) {
+        monitor_handler_state_t *state = it->second;
+        if (!state || !state->service)
+            continue;
+        if (state->snapshot_subject.load (std::memory_order_acquire)
+            == snapshot_subject_) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static zlink::socket_base_t *
 raw_monitor_snapshot_subject (monitor_handler_state_t *state_)
 {
@@ -1830,20 +1851,11 @@ int zlink_service_monitor_close (void **monitor_p_)
     if (no_dispatch_monitor) {
         // Ignore-handler/direct-poll monitors do not run a dispatch worker.
         socket->stop ();
-    } else if (monitor_state) {
-        const uint64_t deadline_ms = zlink::clock_t ().now_ms () + 2000;
-        while (monitor_state->callback_depth.load (std::memory_order_acquire)
-               > 0) {
-            if (zlink::clock_t ().now_ms () >= deadline_ms) {
-                errno = EBUSY;
-                return -1;
-            }
-#ifdef ZLINK_HAVE_WINDOWS
-            Sleep (1);
-#else
-            usleep (1000);
-#endif
-        }
+    } else if (monitor_state
+               && monitor_state->callback_depth.load (std::memory_order_acquire)
+                    > 0) {
+        errno = EBUSY;
+        return -1;
     }
     const int rc = zlink_close (monitor);
     if (rc == 0) {
@@ -1997,13 +2009,14 @@ int zlink_registry_destroy (void **registry_p_)
         return -1;
     }
     zlink::registry_t *registry = static_cast<zlink::registry_t *> (*registry_p_);
-    *registry_p_ = NULL;
     if (!registry->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    registry->destroy ();
+    if (registry->destroy () != 0)
+        return -1;
     delete registry;
+    *registry_p_ = NULL;
     return 0;
 }
 
@@ -2307,7 +2320,7 @@ void *zlink_discovery_monitor_open (
     if (!handle.socket
         || set_monitor_handler_state (handle.socket, NULL, effective_handler,
                                       true, NULL,
-                                      NULL)
+                                      discovery)
              != 0) {
         const int err = errno;
         zlink_service_monitor_close (&monitor);
@@ -2328,7 +2341,12 @@ int zlink_discovery_destroy (void **discovery_p_)
         errno = EFAULT;
         return -1;
     }
-    discovery->destroy ();
+    if (has_open_service_monitor_for_subject (discovery)) {
+        errno = EBUSY;
+        return -1;
+    }
+    if (discovery->destroy () != 0)
+        return -1;
     delete discovery;
     *discovery_p_ = NULL;
     return 0;
@@ -2628,7 +2646,12 @@ int zlink_gateway_destroy (void **gateway_p_)
         errno = EFAULT;
         return -1;
     }
-    gateway->destroy ();
+    if (has_open_service_monitor_for_subject (gateway)) {
+        errno = EBUSY;
+        return -1;
+    }
+    if (gateway->destroy () != 0)
+        return -1;
     delete gateway;
     *gateway_p_ = NULL;
     return 0;
@@ -2679,12 +2702,17 @@ int zlink_spot_node_destroy (void **node_p_)
         errno = EFAULT;
         return -1;
     }
+    if (has_open_service_monitor_for_subject (node)) {
+        errno = EBUSY;
+        return -1;
+    }
     {
         spot_node_handler_registry_t &registry = spot_node_handler_registry ();
         zlink::scoped_lock_t lock (registry.sync);
         registry.handlers.erase (node);
     }
-    node->destroy ();
+    if (node->destroy () != 0)
+        return -1;
     delete node;
     *node_p_ = NULL;
     return 0;
@@ -2932,6 +2960,11 @@ int zlink_spot_destroy (void **spot_p_)
     spot_handle_t *spot = as_spot_handle (*spot_p_);
     if (!spot)
         return -1;
+    if ((spot->pub && has_open_service_monitor_for_subject (spot->pub))
+        || (spot->sub && has_open_service_monitor_for_subject (spot->sub))) {
+        errno = EBUSY;
+        return -1;
+    }
 
     int rc = 0;
     if (spot->sub) {

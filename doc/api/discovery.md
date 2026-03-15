@@ -79,7 +79,9 @@ starts receiving periodic service list broadcasts.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Not thread-safe. Call before concurrent access begins.
+**Thread safety:** Discovery handles are thread-safe for same-handle
+operational APIs. This call may run concurrently with other Discovery
+operations, subject to normal lifecycle/state preconditions.
 
 **See also:** `zlink_discovery_destroy`
 
@@ -149,7 +151,10 @@ destruction.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Not thread-safe. Must not be called concurrently with other
-Discovery operations.
+**Thread safety:** Discovery handles are thread-safe for same-handle
+operational APIs. `zlink_discovery_destroy()` is more restrictive: if another
+thread is executing a Discovery callback or operational API on the same
+handle, destroy fails with `errno=EBUSY`. A successful destroy clears
+`*discovery_p`.
 
 **See also:** `zlink_discovery_new`

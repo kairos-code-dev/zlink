@@ -390,6 +390,18 @@ class socket_base_t : public own_t,
 
     std::string resolve_tcp_addr (std::string endpoint_uri_,
                                   const char *tcp_address_);
+    bool enter_public_api ();
+    void leave_public_api ();
+    bool enter_callback_api ();
+    void leave_callback_api ();
+    bool begin_close_or_fail_busy (bool from_self_callback_);
+    void finish_close_handoff ();
+    bool public_close_requested () const;
+    void lock_public_api_sync ();
+    void unlock_public_api_sync ();
+    bool send_ready_slot (
+      zlink_send_ready_handler_fn *handler_out_,
+      void **subject_out_) const;
 
     //  Socket's mailbox object.
     i_mailbox *_mailbox;
@@ -441,8 +453,14 @@ class socket_base_t : public own_t,
     std::atomic<void *> _socket_msg_handler_subject;
     std::atomic<zlink_spot_handler_fn> _spot_handler;
     std::atomic<zlink_xpub_handler_fn> _xpub_handler;
+    std::atomic<uint32_t> _public_api_state;
+    std::atomic<bool> _public_api_sync;
+    std::atomic<uint32_t> _callback_api_depth;
+    std::atomic<bool> _close_deferred;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
     std::atomic<void *> _send_ready_handler_subject;
+    std::atomic<uint32_t> _send_ready_seq;
+    mutex_t _send_ready_writer_sync;
     std::atomic<bool> _send_ready_armed;
     std::recursive_mutex _socket_msg_dispatch_sync;
 

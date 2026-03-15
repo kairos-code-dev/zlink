@@ -72,7 +72,9 @@ PUB 엔드포인트는 Discovery 인스턴스에 서비스 목록을 브로드�
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음. Registry당 한 번만 호출해야 합니다.
+**스레드 안전성:** Registry handle은 same-handle operational API 기준
+thread-safe합니다. 다만 이 호출은 lifecycle 제약상 Registry당 한 번만
+호출해야 합니다.
 
 **참고:** `zlink_registry_new`, `zlink_registry_destroy`
 
@@ -92,7 +94,9 @@ int zlink_registry_set_id(void *registry, uint32_t registry_id);
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_bind` 호출 전에 설정해야 합니다.
+**스레드 안전성:** Registry handle은 same-handle operational API 기준
+thread-safe합니다. 다만 이 호출은 여전히 `zlink_registry_bind` 전에만
+허용됩니다.
 
 **참고:** `zlink_registry_add_peer`
 
@@ -113,7 +117,9 @@ int zlink_registry_add_peer(void *registry,
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_bind` 호출 전에 설정해야 합니다.
+**스레드 안전성:** Registry handle은 same-handle operational API 기준
+thread-safe합니다. 다만 이 호출은 여전히 `zlink_registry_bind` 전에만
+허용됩니다.
 
 **참고:** `zlink_registry_set_id`
 
@@ -135,7 +141,9 @@ Registry가 등록된 서비스로부터 하트비트 메시지를 기대하는 
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_bind` 호출 전에 설정해야 합니다.
+**스레드 안전성:** Registry handle은 same-handle operational API 기준
+thread-safe합니다. 다만 이 호출은 여전히 `zlink_registry_bind` 전에만
+허용됩니다.
 
 **참고:** `zlink_registry_set_broadcast_interval`
 
@@ -156,7 +164,9 @@ PUB 엔드포인트를 구독하는 Discovery 인스턴스는 이 간격으로 �
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_bind` 호출 전에 설정해야 합니다.
+**스레드 안전성:** Registry handle은 same-handle operational API 기준
+thread-safe합니다. 다만 이 호출은 여전히 `zlink_registry_bind` 전에만
+허용됩니다.
 
 **참고:** `zlink_registry_set_heartbeat`
 
@@ -183,7 +193,9 @@ int zlink_registry_setsockopt(void *registry,
 **에러:**
 - `EINVAL` -- 잘못된 소켓 역할 또는 알 수 없는 옵션.
 
-**스레드 안전성:** 스레드 안전하지 않음. `zlink_registry_bind` 호출 전에 설정해야 합니다.
+**스레드 안전성:** Registry handle은 same-handle operational API 기준
+thread-safe합니다. 다만 이 호출은 여전히 `zlink_registry_bind` 전에만
+허용됩니다.
 
 **참고:** `zlink_registry_bind`
 
@@ -203,7 +215,10 @@ int zlink_registry_destroy(void **registry_p);
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음. 다른 Registry 작업과 동시에 호출해서는 안 됩니다.
+**스레드 안전성:** Registry handle은 same-handle operational API 기준
+thread-safe합니다. 다만 `zlink_registry_destroy()`는 더 보수적이며, 같은
+handle에서 다른 스레드가 운영 API를 실행 중이면 `errno=EBUSY`로
+실패합니다. destroy가 성공한 경우에만 `*registry_p`가 `NULL`로 정리됩니다.
 
 **참고:** `zlink_registry_new`, `zlink_registry_bind`
 

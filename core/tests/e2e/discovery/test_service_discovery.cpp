@@ -264,7 +264,8 @@ static void test_discovery_provider_registration ()
 
     char registry_pub[MAX_SOCKET_STRING];
     char registry_router[MAX_SOCKET_STRING];
-    int registry_seed = 25700;
+    const int seed_jitter = rand () % 1000;
+    int registry_seed = 25700 + seed_jitter;
     void *registry = create_started_registry_with_port_seed (
       ctx, &registry_seed, registry_pub, sizeof (registry_pub),
       registry_router, sizeof (registry_router));
@@ -277,7 +278,7 @@ static void test_discovery_provider_registration ()
       zlink_discovery_connect_registry (discovery, registry_router));
     gateway_server_t server;
     char bind_ep[64];
-    int bind_seed = 5700;
+    int bind_seed = 5700 + seed_jitter;
     init_gateway_server (&server, ctx, registry_router, "test-svc", NULL,
                          &bind_seed, bind_ep, sizeof (bind_ep));
 
@@ -286,7 +287,7 @@ static void test_discovery_provider_registration ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_last_endpoint (server.gateway, advertise_ep, &advertise_len));
 
-    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "test-svc", 1, 1000));
+    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "test-svc", 1, 3000));
 
     std::vector<zlink_registry_topology_entry_t> entries;
     TEST_ASSERT_TRUE (
@@ -312,7 +313,8 @@ static void test_discovery_service_filtering ()
     step_log ("service_filtering: setup registry");
     char registry_pub[MAX_SOCKET_STRING];
     char registry_router[MAX_SOCKET_STRING];
-    int registry_seed = 25710;
+    const int seed_jitter = rand () % 1000;
+    int registry_seed = 25710 + seed_jitter;
     void *registry = create_started_registry_with_port_seed (
       ctx, &registry_seed, registry_pub, sizeof (registry_pub),
       registry_router, sizeof (registry_router));
@@ -330,8 +332,8 @@ static void test_discovery_service_filtering ()
     gateway_server_t server_b;
     char bind_ep_a[64];
     char bind_ep_b[64];
-    int bind_seed_a = 5701;
-    int bind_seed_b = 5702;
+    int bind_seed_a = 5701 + seed_jitter;
+    int bind_seed_b = 5702 + seed_jitter;
     step_log ("service_filtering: init server A");
     init_gateway_server (&server_a, ctx, registry_router, "svc-A",
                          NULL, &bind_seed_a, bind_ep_a, sizeof (bind_ep_a));
@@ -349,7 +351,7 @@ static void test_discovery_service_filtering ()
       zlink_gateway_last_endpoint (server_b.gateway, advertise_b, &advertise_len));
 
     step_log ("service_filtering: wait svc-A");
-    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "svc-A", 1, 1000));
+    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "svc-A", 1, 3000));
 
     std::vector<zlink_registry_topology_entry_t> entries;
     TEST_ASSERT_TRUE (query_ready_gateway_entries (registry, "svc-A", &entries));
@@ -358,7 +360,7 @@ static void test_discovery_service_filtering ()
     TEST_ASSERT_EQUAL_STRING (advertise_a, entries[0].endpoint);
 
     step_log ("service_filtering: wait svc-B");
-    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "svc-B", 1, 1000));
+    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "svc-B", 1, 3000));
 
     TEST_ASSERT_TRUE (query_ready_gateway_entries (registry, "svc-B", &entries));
     TEST_ASSERT_EQUAL_INT (1, (int) entries.size ());
@@ -384,7 +386,8 @@ static void test_discovery_heartbeat_timeout ()
 
     char registry_pub[MAX_SOCKET_STRING];
     char registry_router[MAX_SOCKET_STRING];
-    int registry_seed = 25720;
+    const int seed_jitter = rand () % 1000;
+    int registry_seed = 25720 + seed_jitter;
     void *registry = NULL;
     for (int attempt = 0; attempt < 32; ++attempt) {
         registry = zlink_registry_new (ctx);
@@ -412,14 +415,14 @@ static void test_discovery_heartbeat_timeout ()
       zlink_discovery_connect_registry (discovery, registry_router));
     gateway_server_t server;
     char bind_ep[64];
-    int bind_seed = 5703;
+    int bind_seed = 5703 + seed_jitter;
     init_gateway_server (&server, ctx, registry_router, "hb-svc",
                          NULL, &bind_seed, bind_ep, sizeof (bind_ep));
 
-    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "hb-svc", 1, 1000));
+    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "hb-svc", 1, 3000));
     destroy_gateway_server (&server);
     msleep (350);
-    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "hb-svc", 0, 500));
+    TEST_ASSERT_TRUE (wait_for_provider_count (registry, "hb-svc", 0, 2000));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));

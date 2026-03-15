@@ -380,7 +380,9 @@ separately.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Not thread-safe. Must not be called concurrently with other
-Gateway operations.
+**Thread safety:** Gateway handles are thread-safe for same-handle operational
+APIs. `zlink_gateway_destroy()` is more restrictive: if another thread is
+executing a Gateway callback or operational API on the same handle, destroy
+fails with `errno=EBUSY`. A successful destroy clears `*gateway_p`.
 
 **See also:** `zlink_gateway_new`

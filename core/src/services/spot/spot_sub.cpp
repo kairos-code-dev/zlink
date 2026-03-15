@@ -1447,8 +1447,10 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         spot_sub_diag_log ("destroy.after-sub-dispatch-stop");
     {
         scoped_lock_t lock (_sync);
-        while (_callback_inflight.get () > 0)
-            (void) _callback_cv.wait (&_sync, 1000);
+        if (_callback_inflight.get () > 0) {
+            errno = EBUSY;
+            return -1;
+        }
         _active_direct_handler.store (NULL, std::memory_order_release);
         _handler_state.store (handler_none, std::memory_order_release);
         _callback_cv.broadcast ();

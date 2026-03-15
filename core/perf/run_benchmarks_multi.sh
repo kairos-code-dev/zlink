@@ -233,9 +233,9 @@ Options:
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
   --io-threads N         Legacy alias that sets both server/client io-threads.
   --server-io-threads N  Set PERF_SERVER_IO_THREADS
-                         (default: non-stream=2, stream=4).
+                         (default: 2, stream=4).
   --client-io-threads N  Set PERF_CLIENT_IO_THREADS
-                         (default: non-stream=2, stream=4).
+                         (default: 2, stream=4).
   --msg-sizes LIST       Comma-separated message sizes.
   --transports LIST      Comma-separated transports.
   --warmup N             Optional override for multi warmup seconds (default 2).
@@ -375,7 +375,7 @@ EFFECTIVE_DEFAULT_CLIENTS="${PERF_DEFAULT_CLIENTS:-100}"
 EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_DEFAULT_STREAM_CLIENTS:-10000}"
 EFFECTIVE_DEFAULT_HWM="${PERF_DEFAULT_HWM:-100}"
 EFFECTIVE_DEFAULT_STREAM_HWM="${PERF_DEFAULT_STREAM_HWM:-10}"
-EFFECTIVE_DEFAULT_IO_THREADS="$(env_or_default "" PERF_DEFAULT_IO_THREADS PERF_MULTI_DEFAULT_IO_THREADS)"
+EFFECTIVE_DEFAULT_IO_THREADS="$(env_or_default "2" PERF_DEFAULT_IO_THREADS PERF_MULTI_DEFAULT_IO_THREADS)"
 EFFECTIVE_DEFAULT_STREAM_IO_THREADS="$(env_or_default "4" PERF_DEFAULT_STREAM_IO_THREADS PERF_MULTI_STREAM_DEFAULT_IO_THREADS)"
 SERVER_IO_THREADS="$(env_or_default "" PERF_SERVER_IO_THREADS PERF_MULTI_SERVER_IO_THREADS)"
 CLIENT_IO_THREADS="$(env_or_default "" PERF_CLIENT_IO_THREADS PERF_MULTI_CLIENT_IO_THREADS)"

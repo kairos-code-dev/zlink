@@ -2614,6 +2614,23 @@ void spot_node_t::close_control_sockets ()
 
 int spot_node_t::destroy ()
 {
+    {
+        scoped_lock_t lock (_sync);
+        for (std::set<spot_pub_t *>::const_iterator it = _pubs.begin ();
+             it != _pubs.end (); ++it) {
+            if (*it && !(*it)->is_node_owned_default ()) {
+                errno = EBUSY;
+                return -1;
+            }
+        }
+        for (std::set<spot_sub_t *>::const_iterator it = _subs.begin ();
+             it != _subs.end (); ++it) {
+            if (*it && !(*it)->is_node_owned_default ()) {
+                errno = EBUSY;
+                return -1;
+            }
+        }
+    }
     _lifecycle.transition_to (service_state_stopping);
     discovery_t *discovery = NULL;
     std::vector<std::string> active_peer_endpoints;
@@ -2678,7 +2695,7 @@ int spot_node_t::destroy ()
     }
 
     if (discovery)
-        discovery->remove_observer (this);
+        preserve_first_error (discovery->remove_observer (this), &first_error);
     spot_shutdown_logf (false,
                         "step=observer_removed node=%p",
                         static_cast<void *> (this));

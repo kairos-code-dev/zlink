@@ -63,6 +63,7 @@ Options:
   -ResultsDir PATH             Override result root directory.
   -ResultsTag NAME             Optional tag appended to result filename.
   -IoThreads N                 Set PERF_IO_THREADS.
+                               Default multi io-threads are 2, stream=4.
   -MsgSizes LIST               Comma-separated sizes.
   -Transports LIST             Comma-separated transports.
   -PinCpu                      Enable PERF_TASKSET=1.
@@ -208,6 +209,8 @@ if ($Build.IsPresent) { $RunArgs += "-Build" }
 $RunEnv = @{}
 $RunEnv["PERF_ALLOW_MULTI"] = "1"
 $RunEnv["PERF_POLICY"] = "1"
+$RunEnv["PERF_DEFAULT_IO_THREADS"] = "2"
+$RunEnv["PERF_DEFAULT_STREAM_IO_THREADS"] = "4"
 $RunEnv["PERF_WARMUP_SECONDS"] = $Warmup.ToString()
 $RunEnv["PERF_DURATION_SECONDS"] = $Duration.ToString()
 $RunEnv["PERF_SNDTIMEO_MS"] = $SendTimeoutMs

@@ -298,6 +298,7 @@ gateway_t::gateway_t (ctx_t *ctx_,
     _use_lock (true),
     _pollable_mode (false),
     _routing_id_locked (false),
+    _service_ready_emitted (false),
     _refresh_interval_ms (
       static_cast<uint32_t> (resolve_gateway_refresh_sleep_ms ())),
     _server_weight (0),
@@ -352,10 +353,11 @@ int gateway_t::attach_discovery (discovery_t *discovery_)
     }
 
     bool should_register = false;
+    bool should_emit_ready = false;
     std::string bind_endpoint;
     uint32_t server_weight = 0;
     {
-        scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+        scoped_lock_t lock (_sync);
         if (ensure_facade_mode () != 0)
             return -1;
         if (_discovery == discovery_)
@@ -378,13 +380,14 @@ int gateway_t::attach_discovery (discovery_t *discovery_)
             _runtime->pending_updates.insert (_service_name);
         if (!_bind_endpoint.empty ()) {
             should_register = true;
+            should_emit_ready = !_service_ready_emitted;
             bind_endpoint = _bind_endpoint;
             server_weight = _server_weight;
         }
     }
 
     if (should_register && register_service (bind_endpoint.c_str (), server_weight) != 0) {
-        scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+        scoped_lock_t lock (_sync);
         if (_discovery == discovery_) {
             _discovery->remove_observer (this);
             _discovery = NULL;
@@ -392,9 +395,18 @@ int gateway_t::attach_discovery (discovery_t *discovery_)
         return -1;
     }
 
+    if (should_register && should_emit_ready) {
+        {
+            scoped_lock_t lock (_sync);
+            _service_ready_emitted = true;
+        }
+        emit_event (ZLINK_GATEWAY_SERVICE_READY, _service_name, bind_endpoint,
+                    NULL, 1, 0);
+    }
+
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
     {
-        scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+        scoped_lock_t lock (_sync);
         if (ensure_refresh_task_running () != 0)
             return -1;
     }
@@ -414,7 +426,7 @@ int gateway_t::connect (const char *endpoint_,
 
     bool changed = false;
     {
-        scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+        scoped_lock_t lock (_sync);
         if (ensure_facade_mode () != 0)
             return -1;
         if (_discovery) {
@@ -464,7 +476,7 @@ int gateway_t::disconnect (const char *endpoint_)
 
     bool changed = false;
     {
-        scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+        scoped_lock_t lock (_sync);
         if (ensure_facade_mode () != 0)
             return -1;
         if (_discovery) {
@@ -1081,7 +1093,7 @@ int gateway_t::send (zlink_msg_t *parts_, size_t part_count_, int flags_)
         return -1;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (ensure_facade_mode () != 0)
         return -1;
     lock_routing_id ();
@@ -1123,9 +1135,9 @@ int gateway_t::bind (const char *endpoint_)
     bool should_register = false;
     uint32_t server_weight = 0;
     bool needs_bind = false;
-    bool was_bound_ready = false;
+    bool should_emit_ready = false;
     {
-        scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+        scoped_lock_t lock (_sync);
         if (ensure_facade_mode () != 0)
             return -1;
         lock_routing_id ();
@@ -1147,7 +1159,6 @@ int gateway_t::bind (const char *endpoint_)
                 return -1;
         }
 
-        was_bound_ready = !_bind_endpoint.empty ();
         const bool already_bound_same_endpoint =
           !_bind_endpoint.empty () && _bind_endpoint == endpoint_;
 
@@ -1158,10 +1169,11 @@ int gateway_t::bind (const char *endpoint_)
 
         should_register = _discovery != NULL;
         server_weight = _server_weight;
+        should_emit_ready = !_service_ready_emitted;
     }
 
     if (needs_bind && router_socket->bind (endpoint_) != 0) {
-        scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+        scoped_lock_t lock (_sync);
         if (_bind_endpoint == endpoint_)
             _bind_endpoint.clear ();
         return -1;
@@ -1170,10 +1182,11 @@ int gateway_t::bind (const char *endpoint_)
     if (should_register && register_service (endpoint_, server_weight) != 0)
         return -1;
 
-    if (!was_bound_ready) {
+    if (should_emit_ready) {
         std::string ready_endpoint;
         {
-            scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+            scoped_lock_t lock (_sync);
+            _service_ready_emitted = true;
             ready_endpoint =
               !_advertise_endpoint.empty () ? _advertise_endpoint : _bind_endpoint;
         }
@@ -1192,7 +1205,7 @@ int gateway_t::register_service (const char *advertise_endpoint_,
         return -1;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (ensure_facade_mode () != 0)
         return -1;
     if (!_discovery) {
@@ -1244,7 +1257,7 @@ int gateway_t::update_weight (uint32_t weight_)
         return -1;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (ensure_facade_mode () != 0)
         return -1;
     if (!_discovery) {
@@ -1273,7 +1286,7 @@ int gateway_t::unregister_service ()
         return -1;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (ensure_facade_mode () != 0)
         return -1;
     if (!_discovery) {
@@ -1300,6 +1313,7 @@ int gateway_t::unregister_service ()
     _server_service_name.clear ();
     _advertise_endpoint.clear ();
     _last_register_error.clear ();
+    _service_ready_emitted = false;
 
     emit_event (ZLINK_GATEWAY_SERVICE_LOST, service_name, endpoint, NULL, 0, 0);
     report_topology (service_name, endpoint, ZLINK_TOPOLOGY_STATE_STOPPED, 0, 0);
@@ -1336,7 +1350,7 @@ int gateway_t::send_rid (const zlink_routing_id_t *routing_id_,
                                                  part_count_);
     }
 
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (ensure_facade_mode () != 0)
         return -1;
     if (_runtime->router_socket
@@ -1398,7 +1412,7 @@ int gateway_t::set_lb_strategy (int strategy_)
         return -1;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (ensure_facade_mode () != 0)
         return -1;
     gateway_service_pool_t *pool = get_or_create_pool (_service_name);
@@ -1415,7 +1429,7 @@ int gateway_t::set_routing_id (const void *data_, size_t size_)
         return -1;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (!_runtime->pools.empty () || _routing_id_locked) {
         errno = EFSM;
         return -1;
@@ -1437,7 +1451,7 @@ int gateway_t::routing_id (zlink_routing_id_t *out_)
         return -1;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (_routing_id.size == 0) {
         if (ensure_router_socket () != 0)
             return -1;
@@ -1459,7 +1473,7 @@ int gateway_t::last_endpoint (char *endpoint_out_, size_t *size_out_) const
         return -1;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? const_cast<mutex_t *> (&_sync) : NULL);
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
     if (!_runtime->router_socket) {
         errno = ENOTSUP;
         return -1;
@@ -1550,7 +1564,7 @@ int gateway_t::update_peer_weight (const zlink_routing_id_t *routing_id_,
         return -1;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (ensure_facade_mode () != 0)
         return -1;
     if (!_discovery) {
@@ -1643,7 +1657,7 @@ int gateway_t::set_tls_server (const char *cert_, const char *key_)
         return -1;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (ensure_facade_mode () != 0)
         return -1;
     if (cert_[0] == '\0' || key_[0] == '\0') {
@@ -1668,7 +1682,7 @@ int gateway_t::set_tls_server (const char *cert_, const char *key_)
 
 void *gateway_t::monitor_open (int events_)
 {
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (ensure_refresh_task_running () != 0)
         return NULL;
     return _monitor.open (events_);
@@ -1683,7 +1697,7 @@ int gateway_t::set_socket_option (int option_,
         return -1;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (ensure_facade_mode () != 0)
         return -1;
     if (!_runtime->router_socket) {
@@ -1695,7 +1709,7 @@ int gateway_t::set_socket_option (int option_,
 
 void *gateway_t::router ()
 {
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     lock_routing_id ();
     if (!enter_pollable_mode ())
         return NULL;
@@ -1870,7 +1884,7 @@ int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
         return -1;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (ensure_facade_mode () != 0)
         return -1;
     lock_routing_id ();
@@ -1905,7 +1919,7 @@ int gateway_t::set_handler (zlink_socket_msg_handler_fn handler_)
         return -1;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (ensure_facade_mode () != 0)
         return -1;
     _handler.store (handler_, std::memory_order_release);
@@ -1946,7 +1960,7 @@ int gateway_t::set_tls_client (const char *ca_cert_,
         return -1;
     }
 
-    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    scoped_lock_t lock (_sync);
     if (ensure_facade_mode () != 0)
         return -1;
     _tls_ca.assign (ca_cert_);

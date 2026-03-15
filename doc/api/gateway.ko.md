@@ -375,6 +375,9 @@ int zlink_gateway_destroy (void **gateway_p);
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음. 다른 Gateway 작업과 동시에 호출해서는 안 됩니다.
+**스레드 안전성:** Gateway handle은 same-handle operational API 기준
+thread-safe합니다. 다만 `zlink_gateway_destroy()`는 더 보수적이며, 같은
+handle에서 다른 스레드가 콜백 또는 운영 API를 실행 중이면 `errno=EBUSY`로
+실패합니다. destroy가 성공한 경우에만 `*gateway_p`가 `NULL`로 정리됩니다.
 
 **참고:** `zlink_gateway_new`

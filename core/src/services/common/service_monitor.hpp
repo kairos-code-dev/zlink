@@ -30,6 +30,8 @@ class service_monitor_hub_t
     void emit_batch (const zlink_service_event_t *events_, size_t count_);
     void close_all (const zlink_service_event_t *terminal_event_ = NULL);
     bool has_watchers () const;
+    size_t watcher_count () const;
+    void prune_closed_watchers ();
 
   private:
     struct watcher_t

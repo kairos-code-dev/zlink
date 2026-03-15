@@ -1103,16 +1103,16 @@ static void test_spot_monitors_and_monitor_poller ()
     TEST_ASSERT_EQUAL_UINT32 (0u, sub_lost_event.value);
 
     step_log ("monitors: destroy handles");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
-    TEST_ASSERT_TRUE (wait_for_service_event (
-      &sub_monitor_probe, ZLINK_MONITOR_EVENT_CLOSED, NULL, 3000));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
-    TEST_ASSERT_TRUE (wait_for_service_event (
-      &pub_monitor_probe, ZLINK_MONITOR_EVENT_CLOSED, NULL, 3000));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_destroy (&sub));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_destroy (&pub));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     step_log ("monitors: close monitors");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&sub_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&pub_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
     step_log ("monitors: destroy nodes");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
@@ -1557,6 +1557,27 @@ static void test_spot_faulted_node_apis_fail_with_efsm ()
     destroy_test_ctx (ctx);
 }
 
+static void test_spot_node_destroy_rejects_open_child_handle ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = create_spot_node (ctx, "spot-child-open");
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *spot = zlink_spot_new (node, &ignore_spot_handler);
+    TEST_ASSERT_NOT_NULL (spot);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (spot, "child-open"));
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_NOT_NULL (node);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    destroy_test_ctx (ctx);
+}
+
 int main (int, char **)
 {
     setup_test_environment (300);
@@ -1576,6 +1597,7 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_tls_settings_lock_after_bind_connect_and_register);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_late_connect_replays_existing_subscription);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_faulted_node_apis_fail_with_efsm);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_node_destroy_rejects_open_child_handle);
 #undef RUN_SPOT_INTROSPECTION_TEST
     return UNITY_END ();
 }

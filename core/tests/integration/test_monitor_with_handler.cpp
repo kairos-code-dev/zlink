@@ -775,13 +775,10 @@ void test_service_monitor_open_dispatches_events ()
                               probe.primary_event.event_type);
     TEST_ASSERT_EQUAL_STRING ("svc-handler", probe.primary_event.service_name);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
-
-    TEST_ASSERT_TRUE (wait_for_calls (&probe.primary_calls, 2, 3000));
-    TEST_ASSERT_EQUAL_UINT32 (ZLINK_MONITOR_EVENT_CLOSED,
-                              probe.primary_event.event_type);
-
+    TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&server_discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
@@ -1097,6 +1094,40 @@ void test_service_monitor_callback_can_query_parent_without_deadlock ()
     g_service_monitor_query_probe = NULL;
 }
 
+void test_service_parent_destroy_rejects_open_monitor_children ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    void *discovery_monitor = zlink_discovery_monitor_open (
+      discovery, ZLINK_DISCOVERY_SERVICE_UP, &zlink_service_monitor_ignore_handler);
+    TEST_ASSERT_NOT_NULL (discovery_monitor);
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+    TEST_ASSERT_NOT_NULL (discovery);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&discovery_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+
+    void *gateway =
+      zlink_gateway_new (ctx, "svc-monitor-destroy", "gw-monitor-destroy",
+                         &discard_gateway_message);
+    TEST_ASSERT_NOT_NULL (gateway);
+    void *gateway_monitor = zlink_gateway_monitor_open (
+      gateway, ZLINK_GATEWAY_SERVICE_READY, &zlink_service_monitor_ignore_handler);
+    TEST_ASSERT_NOT_NULL (gateway_monitor);
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_destroy (&gateway));
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&gateway_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+}
+
 int main (int, char **)
 {
     setup_test_environment ();
@@ -1119,5 +1150,6 @@ int main (int, char **)
     RUN_TEST (test_service_monitor_self_close_defers_until_callback_return);
     RUN_TEST (test_service_monitor_close_during_callback_returns_ebusy);
     RUN_TEST (test_service_monitor_callback_can_query_parent_without_deadlock);
+    RUN_TEST (test_service_parent_destroy_rejects_open_monitor_children);
     return UNITY_END ();
 }

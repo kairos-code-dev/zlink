@@ -562,7 +562,8 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_register_null_derivation_and_wildcard_rejection
     test_spot_tls_settings_lock_after_bind_connect_and_register
     test_spot_late_connect_replays_existing_subscription
-    test_spot_faulted_node_apis_fail_with_efsm)
+    test_spot_faulted_node_apis_fail_with_efsm
+    test_spot_node_destroy_rejects_open_child_handle)
 
 set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_pub_sub_options=test_spot_pub_sub_options_and_routing_ids
@@ -573,7 +574,8 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_register_null=test_spot_register_null_derivation_and_wildcard_rejection
     test_spot_service_introspection_tls_lock=test_spot_tls_settings_lock_after_bind_connect_and_register
     test_spot_service_introspection_late_connect=test_spot_late_connect_replays_existing_subscription
-    test_spot_service_introspection_faulted=test_spot_faulted_node_apis_fail_with_efsm)
+    test_spot_service_introspection_faulted=test_spot_faulted_node_apis_fail_with_efsm
+    test_spot_service_introspection_child_destroy_order=test_spot_node_destroy_rejects_open_child_handle)
 
 set(SPOT_PUBSUB_CASES
     test_spot_peer_ipc

@@ -4,6 +4,7 @@
 #define __ZLINK_DISCOVERY_DISCOVERY_HPP_INCLUDED__
 
 #include "core/ctx.hpp"
+#include "services/common/service_public_api.hpp"
 #include "services/common/service_runtime_base.hpp"
 #include "services/common/service_monitor.hpp"
 #include "utils/atomic_counter.hpp"
@@ -86,7 +87,7 @@ class discovery_t
     uint64_t update_seq ();
     uint64_t service_update_seq (const std::string &service_name_);
     void add_observer (discovery_observer_t *observer_);
-    void remove_observer (discovery_observer_t *observer_);
+    int remove_observer (discovery_observer_t *observer_);
     void upsert_service_summary (const zlink_registry_topology_entry_t &entry_);
     void upsert_gateway_peer_summary (
       const zlink_registry_gateway_peer_entry_t &entry_);
@@ -219,6 +220,7 @@ class discovery_t
     ctx_t *_ctx;
     uint32_t _tag;
     service_runtime_base_t _lifecycle;
+    service_public_api_guard_t _public_api;
 
     atomic_counter_t _stop;
     uint64_t _task_id;
@@ -240,6 +242,7 @@ class discovery_t
     std::set<discovery_observer_t *> _observers;
     condition_variable_t _observer_cv;
     size_t _observer_callbacks_inflight;
+    bool _destroying;
     uint64_t _update_seq;
     std::map<std::string, uint64_t> _service_seq;
     struct socket_opt_t

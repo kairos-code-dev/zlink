@@ -62,7 +62,7 @@ Application Thread              I/O Thread
 - Set count with zlink_ctx_set(ctx, ZLINK_IO_THREADS, n)
 
 ## 4. Concurrency Rules
-- Socket: Single-thread access recommended (non-thread-safe)
+- Public socket/service handles: thread-safe for same-handle operational APIs
 - Context: Thread-safe (sockets can be created from multiple threads)
 - pipe_t: Lock-free (CAS-based YPipe)
 - Cache line optimization, visibility guaranteed through memory barriers

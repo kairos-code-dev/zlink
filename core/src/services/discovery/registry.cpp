@@ -167,6 +167,9 @@ bool registry_t::check_tag () const
 int registry_t::bind (const char *pub_endpoint_,
                       const char *router_endpoint_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     if (!pub_endpoint_ || !router_endpoint_ || pub_endpoint_[0] == '\0'
         || router_endpoint_[0] == '\0') {
         errno = EINVAL;
@@ -188,6 +191,9 @@ int registry_t::bind (const char *pub_endpoint_,
 
 int registry_t::set_id (uint32_t registry_id_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     scoped_lock_t lock (_sync);
     _registry_id = registry_id_;
     _registry_id_set = true;
@@ -196,6 +202,9 @@ int registry_t::set_id (uint32_t registry_id_)
 
 int registry_t::add_peer (const char *peer_pub_endpoint_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     if (!peer_pub_endpoint_) {
         errno = EINVAL;
         return -1;
@@ -211,6 +220,9 @@ int registry_t::add_peer (const char *peer_pub_endpoint_)
 
 int registry_t::set_heartbeat (uint32_t interval_ms_, uint32_t timeout_ms_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     if (interval_ms_ == 0 || timeout_ms_ == 0) {
         errno = EINVAL;
         return -1;
@@ -223,6 +235,9 @@ int registry_t::set_heartbeat (uint32_t interval_ms_, uint32_t timeout_ms_)
 
 int registry_t::set_broadcast_interval (uint32_t interval_ms_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     if (interval_ms_ == 0) {
         errno = EINVAL;
         return -1;
@@ -237,6 +252,9 @@ int registry_t::set_socket_option (int socket_role_,
                                    const void *optval_,
                                    size_t optvallen_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     if (!optval_ || optvallen_ == 0) {
         errno = EINVAL;
         return -1;
@@ -290,6 +308,9 @@ int registry_t::set_socket_option (int socket_role_,
 int registry_t::topology_snapshot (zlink_registry_topology_entry_t *entries_,
                                    size_t *count_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     return topology_query (NULL, entries_, count_);
 }
 
@@ -297,6 +318,9 @@ int registry_t::topology_query (const zlink_registry_topology_filter_t *filter_,
                                 zlink_registry_topology_entry_t *entries_,
                                 size_t *count_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     if (!count_) {
         errno = EINVAL;
         return -1;
@@ -332,6 +356,9 @@ int registry_t::gateway_peers_snapshot (
   zlink_registry_gateway_peer_entry_t *entries_,
   size_t *count_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     return gateway_peers_query (NULL, entries_, count_);
 }
 
@@ -340,6 +367,9 @@ int registry_t::gateway_peers_query (
   zlink_registry_gateway_peer_entry_t *entries_,
   size_t *count_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     if (!count_) {
         errno = EINVAL;
         return -1;
@@ -373,6 +403,9 @@ int registry_t::gateway_peers_query (
 
 int registry_t::start ()
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
     {
         scoped_lock_t lock (_sync);
         if (_pub_endpoint.empty () || _router_endpoint.empty ()) {
@@ -419,6 +452,8 @@ int registry_t::start ()
 
 int registry_t::destroy ()
 {
+    if (!_public_api.begin_close_or_fail_busy ())
+        return -1;
     _stop.set (1);
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
     if (runtime && _task_id != 0)

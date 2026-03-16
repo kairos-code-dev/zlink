@@ -166,28 +166,6 @@ static void spot_ready_ack_ctrl_debugf (const char *fmt_, ...)
     va_end (args);
 }
 
-static const char ready_ack_source_prefix[] = "ack:";
-
-static std::string encode_ready_ack_source_id (const std::string &source_id_)
-{
-    return std::string (ready_ack_source_prefix) + source_id_;
-}
-
-static bool decode_ready_ack_source_id (const std::string &source_key_,
-                                        std::string *out_)
-{
-    if (!out_)
-        return false;
-    if (source_key_.compare (0, strlen (ready_ack_source_prefix),
-                             ready_ack_source_prefix)
-        != 0) {
-        return false;
-    }
-
-    *out_ = source_key_.substr (strlen (ready_ack_source_prefix));
-    return !out_->empty ();
-}
-
 static int send_ascii_frame (socket_base_t *socket_,
                              const std::string &value_,
                              int flags_)
@@ -310,11 +288,13 @@ static int send_subscription_update (socket_base_t *socket_,
 }
 
 static int send_control_snapshot (socket_base_t *socket_,
+                                  const char *topic_,
                                   const std::string &target_endpoint_,
                                   const std::string &source_node_id_,
                                   const std::set<std::string> &filters_)
 {
-    if (!socket_ || target_endpoint_.empty () || source_node_id_.empty ()) {
+    if (!socket_ || !topic_ || target_endpoint_.empty ()
+        || source_node_id_.empty ()) {
         errno = EINVAL;
         return -1;
     }
@@ -323,8 +303,7 @@ static int send_control_snapshot (socket_base_t *socket_,
       spot_control_protocol::node_id_string (
         static_cast<uint32_t> (spot_control_protocol::protocol_version));
 
-    if (send_ascii_frame (socket_, spot_control_protocol::ctrl_snapshot_topic,
-                          ZLINK_SNDMORE)
+    if (send_ascii_frame (socket_, topic_, ZLINK_SNDMORE)
         != 0
         || send_ascii_frame (socket_, target_endpoint_, ZLINK_SNDMORE) != 0
         || send_ascii_frame (socket_, source_node_id_, ZLINK_SNDMORE) != 0) {
@@ -367,7 +346,7 @@ static int send_snapshot_to_target (socket_base_t *socket_,
     std::set<std::string> filters;
     node_->snapshot_raw_subscription_filters (&filters);
     return send_control_snapshot (
-      socket_, target_endpoint_,
+      socket_, spot_control_protocol::ctrl_snapshot_topic, target_endpoint_,
       spot_control_protocol::node_id_string (node_->runtime ()->node_id),
       filters);
 }
@@ -390,7 +369,9 @@ static int send_snapshot_to_peers (
          it != peer_ctrl_endpoints_.end (); ++it) {
         if (it->first.empty ())
             continue;
-        if (send_control_snapshot (socket_, it->first, source_node_id, filters)
+        if (send_control_snapshot (socket_,
+                                   spot_control_protocol::ctrl_snapshot_topic,
+                                   it->first, source_node_id, filters)
             != 0) {
             return -1;
         }
@@ -419,8 +400,9 @@ static int send_ready_ack_snapshots_to_target (
          it != target_it->second.end (); ++it) {
         if (it->first.empty ())
             continue;
-        if (send_control_snapshot (socket_, target_endpoint_,
-                                   encode_ready_ack_source_id (it->first),
+        if (send_control_snapshot (socket_,
+                                   spot_control_protocol::ctrl_ready_ack_topic,
+                                   target_endpoint_, it->first,
                                    it->second)
             != 0)
             return -1;
@@ -506,15 +488,11 @@ static void clear_snapshot_sources (
     for (std::map<std::string, std::set<std::string> >::iterator it =
            peer_ready_filters_->begin ();
          it != peer_ready_filters_->end (); ++it) {
-        std::string ack_source_id;
-        const bool ready_ack_source =
-          decode_ready_ack_source_id (it->first, &ack_source_id);
         for (std::set<std::string>::const_iterator filter_it =
                it->second.begin ();
              filter_it != it->second.end (); ++filter_it) {
-            if (ready_ack_source)
-                node_->notify_pub_delivery_ready_ack (self_endpoint, *filter_it,
-                                                      ack_source_id, false);
+            node_->notify_pub_delivery_ready_ack (self_endpoint, *filter_it,
+                                                  it->first, false);
         }
     }
     peer_ready_filters_->clear ();
@@ -794,7 +772,11 @@ static int recv_and_process_ctrl_messages (
         topic_msg.close ();
         ++processed;
 
-        if (!spot_control_protocol::is_ctrl_snapshot_topic (topic)
+        const bool is_subscription_snapshot =
+          spot_control_protocol::is_ctrl_snapshot_topic (topic);
+        const bool is_ready_ack_snapshot =
+          spot_control_protocol::is_ctrl_ready_ack_topic (topic);
+        if ((!is_subscription_snapshot && !is_ready_ack_snapshot)
             || frames.size () < 3) {
             continue;
         }
@@ -803,15 +785,15 @@ static int recv_and_process_ctrl_messages (
         const std::string &source_key = frames[1];
         if (target_endpoint.empty () || source_key.empty ())
             continue;
-        std::string ack_source_id;
-        const bool ready_ack_source =
-          decode_ready_ack_source_id (source_key, &ack_source_id);
 
         std::set<std::string> new_filters;
         for (size_t i = 3; i < frames.size (); ++i) {
             if (!frames[i].empty ())
                 new_filters.insert (frames[i]);
         }
+
+        if (!is_ready_ack_snapshot)
+            continue;
 
         std::set<std::string> &previous_filters =
           (*peer_ready_filters_)[source_key];
@@ -821,18 +803,16 @@ static int recv_and_process_ctrl_messages (
              it != previous_filters.end (); ++it) {
             if (new_filters.count (*it) != 0)
                 continue;
-            if (ready_ack_source)
-                node_->notify_pub_delivery_ready_ack (target_endpoint, *it,
-                                                      ack_source_id, false);
+            node_->notify_pub_delivery_ready_ack (target_endpoint, *it,
+                                                  source_key, false);
         }
 
         for (std::set<std::string>::const_iterator it = new_filters.begin ();
              it != new_filters.end (); ++it) {
             if (previous_filters.count (*it) != 0)
                 continue;
-            if (ready_ack_source)
-                node_->notify_pub_delivery_ready_ack (target_endpoint, *it,
-                                                      ack_source_id, true);
+            node_->notify_pub_delivery_ready_ack (target_endpoint, *it,
+                                                  source_key, true);
         }
 
         spot_ctrl_debugf ("recv snapshot target=%s source=%s filters=%zu",
@@ -1251,8 +1231,9 @@ void spot_data_plane_t::run (spot_node_t *node_)
                     }
 
                     if (send_control_snapshot (
-                          peer_ctrl_pub, target_endpoint,
-                          encode_ready_ack_source_id (ack_source_id), filters)
+                          peer_ctrl_pub,
+                          spot_control_protocol::ctrl_ready_ack_topic,
+                          target_endpoint, ack_source_id, filters)
                         != 0)
                         send_errno_reply (ctrl, errno);
                     else
@@ -1283,16 +1264,18 @@ void spot_data_plane_t::run (spot_node_t *node_)
                                           std::set<std::string> >::const_iterator
                                    source_it = ready_it->second.begin ();
                                  source_it != ready_it->second.end ();
-                                 ++source_it) {
+                                ++source_it) {
                                 (void) send_control_snapshot (
-                                  peer_ctrl_pub, arg,
-                                  encode_ready_ack_source_id (source_it->first),
+                                  peer_ctrl_pub,
+                                  spot_control_protocol::ctrl_ready_ack_topic,
+                                  arg, source_it->first,
                                   empty_filters);
                             }
                         }
                         std::set<std::string> empty_filters;
                         (void) send_control_snapshot (
-                          peer_ctrl_pub, arg,
+                          peer_ctrl_pub,
+                          spot_control_protocol::ctrl_snapshot_topic, arg,
                           spot_control_protocol::node_id_string (
                             runtime->node_id),
                           empty_filters);

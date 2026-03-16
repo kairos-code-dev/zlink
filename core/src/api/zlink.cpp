@@ -789,6 +789,19 @@ static int spot_sub_monitor_snapshot_provider (void *subject_,
     return sub->fill_monitor_snapshot (out_);
 }
 
+static int spot_internal_receiver_monitor_snapshot_provider (
+  void *subject_,
+  zlink_monitor_snapshot_t *out_)
+{
+    zlink::spot_internal_receiver_t *receiver =
+      static_cast<zlink::spot_internal_receiver_t *> (subject_);
+    if (!receiver || !out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    return receiver->fill_monitor_snapshot (out_);
+}
+
 struct registry_query_client_t
 {
     zlink::ctx_t *ctx;
@@ -1569,8 +1582,9 @@ static int install_spot_node_handler (zlink::spot_node_t *node_,
         return -1;
     }
 
-    zlink::spot_sub_t *sub = node_->ensure_default_sub ();
-    if (!sub)
+    zlink::spot_internal_receiver_t *receiver =
+      node_->ensure_internal_receiver ();
+    if (!receiver)
         return -1;
 
     zlink_spot_handler_fn previous = NULL;
@@ -1587,7 +1601,8 @@ static int install_spot_node_handler (zlink::spot_node_t *node_,
         registry.handlers[node_] = handler_;
     }
 
-    if (sub->set_direct_handler (&spot_node_sub_handler_adapter, node_) == 0)
+    if (receiver->set_direct_handler (&spot_node_sub_handler_adapter, node_)
+        == 0)
         return 0;
 
     {
@@ -3070,10 +3085,11 @@ int zlink_spot_node_subscribe (void *node_, const char *topic_id_)
     zlink::service_public_api_scope_t admission (node->public_api_guard ());
     if (!admission.acquired ())
         return -1;
-    zlink::spot_sub_t *sub = node->ensure_default_sub ();
-    if (!sub)
+    zlink::spot_internal_receiver_t *receiver =
+      node->ensure_internal_receiver ();
+    if (!receiver)
         return -1;
-    return sub->subscribe (topic_id_);
+    return receiver->subscribe (topic_id_);
 }
 
 int zlink_spot_node_subscribe_pattern (void *node_, const char *pattern_)
@@ -3088,10 +3104,11 @@ int zlink_spot_node_subscribe_pattern (void *node_, const char *pattern_)
     zlink::service_public_api_scope_t admission (node->public_api_guard ());
     if (!admission.acquired ())
         return -1;
-    zlink::spot_sub_t *sub = node->ensure_default_sub ();
-    if (!sub)
+    zlink::spot_internal_receiver_t *receiver =
+      node->ensure_internal_receiver ();
+    if (!receiver)
         return -1;
-    return sub->subscribe_pattern (pattern_);
+    return receiver->subscribe_pattern (pattern_);
 }
 
 int zlink_spot_node_unsubscribe (void *node_,
@@ -3107,10 +3124,11 @@ int zlink_spot_node_unsubscribe (void *node_,
     zlink::service_public_api_scope_t admission (node->public_api_guard ());
     if (!admission.acquired ())
         return -1;
-    zlink::spot_sub_t *sub = node->ensure_default_sub ();
-    if (!sub)
+    zlink::spot_internal_receiver_t *receiver =
+      node->ensure_internal_receiver ();
+    if (!receiver)
         return -1;
-    return sub->unsubscribe (topic_id_or_pattern_);
+    return receiver->unsubscribe (topic_id_or_pattern_);
 }
 
 int zlink_spot_node_set_send_ready_handler (
@@ -3160,13 +3178,14 @@ void *zlink_spot_node_monitor_open (void *node_,
           static_cast<void *> (pub));
     }
     if (role_ == ZLINK_SPOT_ROLE_SUB) {
-        zlink::spot_sub_t *sub = node->ensure_default_sub ();
-        if (!sub)
+        zlink::spot_internal_receiver_t *receiver =
+          node->ensure_internal_receiver ();
+        if (!receiver)
             return NULL;
         return open_spot_service_monitor (
-          sub->monitor_open (events_), handler_,
-          &spot_sub_monitor_snapshot_provider,
-          static_cast<void *> (sub));
+          receiver->monitor_open (events_), handler_,
+          &spot_internal_receiver_monitor_snapshot_provider,
+          static_cast<void *> (receiver));
     }
 
     errno = EINVAL;

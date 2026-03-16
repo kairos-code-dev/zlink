@@ -16,6 +16,7 @@
 
 #include <atomic>
 #include <map>
+#include <memory>
 #include <set>
 #include <stdint.h>
 #include <string>
@@ -28,14 +29,52 @@ class socket_base_t;
 struct gateway_runtime_t;
 struct gateway_service_pool_t
 {
+    struct send_snapshot_t
+    {
+        std::vector<zlink_routing_id_t> routing_ids;
+        std::vector<uint32_t> weights;
+        std::vector<std::string> endpoints;
+    };
+
+    struct control_route_t
+    {
+        zlink_routing_id_t routing_id;
+        uint32_t weight;
+
+        control_route_t () : weight (0) { routing_id.size = 0; }
+    };
+
+    struct control_snapshot_t
+    {
+        std::map<std::string, control_route_t> routes_by_endpoint;
+        uint64_t last_seen_seq;
+
+        control_snapshot_t () : last_seen_seq (0) {}
+    };
+
     std::string service_name;
-    std::vector<zlink_routing_id_t> routing_ids;
-    std::vector<uint32_t> weights;
-    std::vector<std::string> endpoints;
-    size_t rr_index;
+    std::shared_ptr<const send_snapshot_t> send_snapshot;
+    std::shared_ptr<control_snapshot_t> control_snapshot;
+    size_t rr_cursor;
     int lb_strategy;
-    uint64_t last_seen_seq;
     bool dirty;
+
+    gateway_service_pool_t ();
+};
+
+struct gateway_route_delta_t
+{
+    uint32_t event_type;
+    std::string service_name;
+    std::string endpoint;
+    zlink_routing_id_t routing_id;
+    uint32_t ready_count;
+    int32_t error_code;
+
+    gateway_route_delta_t () : event_type (0), ready_count (0), error_code (0)
+    {
+        routing_id.size = 0;
+    }
 };
 
 struct gateway_manual_route_t
@@ -120,6 +159,7 @@ class gateway_t : public discovery_observer_t
                              int flags_);
 
     void process_monitor_events ();
+    void emit_route_deltas (const std::vector<gateway_route_delta_t> &deltas_);
     void emit_events (const zlink_service_event_t *events_, size_t count_);
     void fill_event (zlink_service_event_t *out_,
                      uint32_t event_type_,

@@ -14,12 +14,14 @@
 >
 > - 이 문서의 1차 채택안인 `data PUB/XSUB + peer control PUB/SUB` 구조는
 >   현재 코드에 이미 반영되어 있다.
-> - 그러나 문서 3.1, 5.2, 5.3의 핵심 원칙 일부는 구현에서 다시 흐려졌다.
-> - 특히 `hidden default sub 비의존`, `public handle과 node internal
->   receiver 분리`, `ready source 단일화`, `destroy ownership 단일화`는
->   아직 완료되지 않았다.
-> - 현재 남아 있는 `spot` thread-safe/scaling teardown bug는
->   이 미완료 지점과 직접 연결되어 있다.
+> - 이후 2차 단순화 리팩터로 `hidden default sub 비의존`,
+>   `public handle과 node internal receiver 분리`,
+>   `ready source 단일화`, `destroy ownership 단일화`까지
+>   구현이 반영되었다.
+> - node-level subscribe/monitor/handler 경로는 전용 internal receiver 타입으로
+>   수렴했고, ready-ack snapshot은 별도 control topic으로 분리됐다.
+> - 관련 `spot` thread-safe/scaling teardown 회귀도 현재 검증 범위에서는
+>   재현되지 않는다.
 > - 따라서 이 문서는 더 이상 “새 구조 제안”만이 아니라,
 >   이미 반영된 1차 구조 위에서 2차 단순화 리팩터를 진행하기 위한
 >   기준 문서로 함께 사용한다.
@@ -274,16 +276,13 @@ close를 호출할 수 있는 주체가 정확히 하나뿐이면, close 중복�
 
 ### 3.3 현재 문서의 2차 구조 부채 핵심
 
-현재 1차 구조는 이미 코드에 상당 부분 반영됐지만,
-아래 네 가지는 여전히 2차 리팩터의 핵심 부채다.
+현재 1차 구조 위에 남아 있던 아래 네 가지 2차 부채는
+현재 코드 기준으로 정리되었다.
 
-- hidden default sub 비의존 원칙 미완료
-- public handle과 node internal receiver의 lifecycle 분리 미완료
-- readiness source / snapshot / ack bookkeeping 단일화 미완료
-- destroy ownership 단일화 미완료
-
-특히 hidden default sub와 destroy ownership 문제는
-최근 `spot` thread-safe/scaling teardown bug와 직접 연결돼 있다.
+- hidden default sub 비의존 원칙 반영
+- public handle과 node internal receiver lifecycle 분리 반영
+- readiness source / snapshot / ack bookkeeping 단일화 반영
+- destroy ownership 단일화 반영
 
 ## 4. 현재 구조가 느린 이유
 
@@ -1819,26 +1818,26 @@ API 변경은 허용된다. 단 변경 후에도 설명은 더 짧아져야 한�
 
 | 항목 | 상태 | 메모 |
 | --- | --- | --- |
-| 18.1 destroy ownership 단일화 | 부분 | teardown 안정화는 일부 반영됐지만 data plane close 경로와 runtime 단일 owner 모델은 아직 완결되지 않음 |
-| 18.2 internal receiver 타입 분리 | 미완료 | `ensure_default_sub()`와 hidden public sub 의존이 그대로 남아 있음 |
-| 18.3 attachment ownership 분리 | 미완료 | public/internal attachment가 구조적으로 분리되지 않음 |
-| 18.4 readiness state machine 정리 | 미완료 | `ack:` prefix 기반 typing과 public sub receive path의 ready probe 처리가 남아 있음 |
+| 18.1 destroy ownership 단일화 | 완료 | node destroy가 public handle 정리와 internal receiver 정리를 분리하고, internal receiver는 node-owned shutdown 경로로 정리된다 |
+| 18.2 internal receiver 타입 분리 | 완료 | node API와 node handler install 경로가 더 이상 `ensure_default_sub()`에 의존하지 않고 dedicated internal receiver를 사용한다 |
+| 18.3 attachment ownership 분리 | 완료 | public default sub와 node internal receiver의 owner slot이 분리됐고 node destroy가 internal receiver attachment를 별도 회수한다 |
+| 18.4 readiness state machine 정리 | 완료 | ready-ack snapshot은 별도 control topic으로 분리되어 `ack:` prefix typing 없이 적용된다 |
 
 ### 24.2 수용 기준 상태
 
 | 항목 | 상태 | 메모 |
 | --- | --- | --- |
-| hidden default sub 비의존 | 미완료 | node API가 여전히 implicit default sub 생성에 의존 |
-| scaling teardown timeout 구조 제거 | 부분 | 테스트 안정화는 개선됐지만 ownership 모델 자체는 아직 단순화되지 않음 |
-| readiness/source bookkeeping 단순화 | 미완료 | source namespace와 책임 경계가 아직 분산 |
-| 테스트 계약 유지 | 부분 | 현재 회귀 테스트는 통과 가능하지만 구조 설명은 아직 문서 목표와 불일치 |
+| hidden default sub 비의존 | 완료 | node-level subscribe/monitor/handler 경로는 internal receiver로 수렴하고 public default sub는 child handle 경로로만 남는다 |
+| scaling teardown timeout 구조 제거 | 완료 | multi-publisher teardown 회귀를 포함한 e2e 검증이 다시 녹색으로 돌아왔다 |
+| readiness/source bookkeeping 단순화 | 완료 | subscription snapshot과 ready-ack snapshot이 topic 수준에서 분리되어 source namespace가 명시화됐다 |
+| 테스트 계약 유지 | 완료 | `test_spot_pubsub_scenario`, `test_spot_service_introspection` 재검증으로 기존 계약 유지가 확인됐다 |
 
 ### 24.3 다음 우선순위
 
-1. internal receiver 도입으로 hidden default sub 의존 제거
-2. public/internal attachment 경계 분리
-3. readiness source 자료구조 정규화
-4. destroy ownership을 runtime 단일 owner 모델로 수렴
+1. peer state sync protocol에 snapshot/delta generation 메타데이터를 추가할 필요가 생기면 control codec 확장만 검토
+2. internal receiver diagnostics가 필요해지면 public contract가 아닌 internal trace surface로 한정
+3. perf 기준 재측정은 구조 검증 이후 별도 수행
+4. service 공통 lifecycle 설명은 `gateway` 문서와 용어만 정렬
 
 ---
 

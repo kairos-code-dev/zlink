@@ -9,6 +9,7 @@
 #include "services/common/service_public_api.hpp"
 #include "services/common/service_runtime_base.hpp"
 #include "services/discovery/discovery.hpp"
+#include "services/spot/spot_internal_receiver.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 
@@ -80,8 +81,10 @@ class spot_node_t : public discovery_observer_t
 
     spot_pub_t *create_spot_pub ();
     spot_sub_t *create_spot_sub ();
+    spot_internal_receiver_t *ensure_internal_receiver ();
     spot_pub_t *ensure_default_pub ();
     spot_sub_t *ensure_default_sub ();
+    spot_internal_receiver_t *internal_receiver () const;
     spot_pub_t *default_pub () const;
     spot_sub_t *default_sub () const;
     void remove_spot_pub (spot_pub_t *pub_);
@@ -122,6 +125,7 @@ class spot_node_t : public discovery_observer_t
     int ensure_control_task_running ();
     bool can_suspend_control_task () const;
     int destroy_handles ();
+    int destroy_internal_receiver ();
     void close_control_sockets ();
     void stop_data_plane_sockets ();
     int start_data_plane ();
@@ -248,6 +252,7 @@ class spot_node_t : public discovery_observer_t
 
     spot_pub_t *_default_pub;
     spot_sub_t *_default_sub;
+    spot_internal_receiver_t *_internal_receiver;
     pub_defaults_t _pub_defaults;
     sub_defaults_t _sub_defaults;
     std::set<spot_pub_t *> _pubs;

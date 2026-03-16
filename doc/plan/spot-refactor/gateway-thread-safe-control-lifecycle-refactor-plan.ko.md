@@ -290,10 +290,10 @@ ownership 흐름 요약:
 - same-handle runtime read, send-ready self-close, 일부 attach/query ordering 회귀
 - discovery attach 이후 refresh 기반 route 반영 모델
 
-아직 목표만 있고 구조적으로 완전히 분리되지 않은 점:
+이후 2차 구조 정리로 반영된 점:
 
 - send snapshot과 control/topology snapshot의 명시적 이원화
-- attach / refresh / detach의 독립 상태 전이
+- attach / refresh / detach의 독립 상태 전이 명확화
 - monitor pipeline의 route mutation 코드로부터의 분리
 - destroy 단계의 authoritative ownership 단일화
 
@@ -389,10 +389,10 @@ thread-safe race나 callback-self-close 같은 경계 상황에서
 | 핵심 부채 | hidden default sub가 public sub lifecycle을 공유 | send path가 control metadata를 직접 해석 |
 | control plane 의미 | transport-level socket pair (`peer_ctrl_pub`/`peer_ctrl_sub`) | 단일 router 위의 logical state layer |
 | 리팩터 핵심 | internal receiver 분리 + destroy ownership 단일화 | state ownership 분리 + lifecycle 단계화 |
-| 추가 socket | transport-level 추가 socket 설계는 완료, internal lifecycle 분리는 미완료 | 없음 (현재 구조 유지) |
-| hidden child 문제 | 있음 — `ensure_default_sub()`가 public sub를 암묵 생성 | 없음 |
-| destroy 중복 | data plane / default sub / node의 3-way close | discovery detach / monitor / socket close가 한 메서드에 혼합 |
-| readiness source | peer control protocol 기반이지만 bookkeeping 분산 | send-ready callback + connection count 기반 |
+| 추가 socket | transport-level 추가 socket 설계와 internal receiver lifecycle 분리까지 반영 | 없음 (현재 구조 유지) |
+| hidden child 문제 | 정리됨 — node path는 dedicated internal receiver로 수렴 | 없음 |
+| destroy 중복 | runtime single-owner shutdown 모델로 정리됨 | discovery detach / monitor / socket close가 phase로 분리됨 |
+| readiness source | peer control protocol의 subscription snapshot / ready-ack snapshot으로 분리됨 | send-ready callback + connection count 기반 |
 
 `gateway`는 `spot`처럼 hidden child를 제거하는 것이 아니라,
 다음 두 가지를 달성하는 것이 핵심이다.
@@ -1045,26 +1045,26 @@ API 변경은 허용된다. 단 변경 결과가 더 깊은 모듈을 만들어�
 
 | 항목 | 상태 | 메모 |
 | --- | --- | --- |
-| 9.1 state ownership 문서화 | 부분 | 문서 기준 owner 구분은 생겼지만 코드 구조는 아직 단일 runtime state에 많이 의존 |
-| 9.2 send snapshot 분리 | 부분 | `refresh_pool()` 단계 분해는 진행됐지만 hot-path snapshot / control snapshot 실체 분리는 미완료 |
-| 9.3 attach / refresh / detach 전이 분리 | 부분 | 단계 의도는 코드에 일부 드러나지만 독립 state owner 구조는 아직 부족 |
-| 9.4 monitor pipeline 분리 | 미완료 | monitor emit이 여전히 route mutation 경로와 가까움 |
-| 9.5 destroy 선형화 정리 | 부분 | destroy phase가 코드상 읽히도록 정리됐지만 authoritative owner 분리는 아직 더 필요 |
-| 9.6 thread-safe / perf 검증 재정렬 | 부분 | 회귀 테스트는 유지되지만 새 구조 모델과 검증의 1:1 대응은 아직 미완료 |
+| 9.1 state ownership 문서화 | 완료 | service pool이 send snapshot / control snapshot owner 구조로 재정리돼 hot-path와 control-path의 읽기/쓰기 경계가 코드에 드러난다 |
+| 9.2 send snapshot 분리 | 완료 | `gateway_service_pool_t`가 immutable send snapshot과 mutable control snapshot을 별도 보유한다 |
+| 9.3 attach / refresh / detach 전이 분리 | 완료 | refresh는 control snapshot rebuild → send snapshot publish 순서로 정리되고 detach는 destroy detach phase에 집중된다 |
+| 9.4 monitor pipeline 분리 | 완료 | monitor fanout은 normalized `gateway_route_delta_t`를 소비하는 별도 helper로 분리됐다 |
+| 9.5 destroy 선형화 정리 | 완료 | destroy는 detach / monitor / socket / drain phase owner를 유지한 채 snapshot owner와 충돌하지 않도록 정리됐다 |
+| 9.6 thread-safe / perf 검증 재정렬 | 완료 | gateway 관련 integration/e2e 검증을 새 구조에서 다시 통과시켰다 |
 
 ### 18.2 수용 기준 상태
 
 | 항목 | 상태 | 메모 |
 | --- | --- | --- |
-| send path가 control metadata 없이 설명 가능 | 부분 | 의도는 반영됐지만 자료구조 분리 자체는 아직 미완료 |
-| attach/detach/refresh ordering 선형화 | 부분 | 설명은 쉬워졌으나 코드 owner 분리는 더 필요 |
-| monitor fanout 분리 | 미완료 | normalized event pipeline이 독립 계층으로 완성되지 않음 |
-| destroy lifecycle 단계화 | 부분 | 단계 이름은 생겼지만 세부 ownership을 더 좁혀야 함 |
-| thread-safe/scaling 구조 설명 가능성 | 부분 | 테스트는 유지되나 구조 모델과 정확히 대응되지는 않음 |
+| send path가 control metadata 없이 설명 가능 | 완료 | send path는 published send snapshot만 읽고 control metadata는 control snapshot에 남긴다 |
+| attach/detach/refresh ordering 선형화 | 완료 | control snapshot rebuild와 destroy detach phase로 상태 전이 경계가 고정됐다 |
+| monitor fanout 분리 | 완료 | route delta 정규화 이후 monitor emit이 mutation 코드의 직접 부산물이 아니게 됐다 |
+| destroy lifecycle 단계화 | 완료 | destroy phase별 owner와 정리 대상이 현재 코드 경로와 일치한다 |
+| thread-safe/scaling 구조 설명 가능성 | 완료 | `test_gateway`, `test_gateway_with_handler`, `test_gateway_handover` 재검증으로 설명 가능한 구조와 동작이 맞춰졌다 |
 
 ### 18.3 다음 우선순위
 
-1. hot-path send snapshot과 control snapshot 실체 분리
-2. snapshot publish/reclamation 모델 확정
-3. monitor normalized event pipeline 독립화
-4. destroy phase별 authoritative owner를 코드 구조로 고정
+1. snapshot publish/reclamation을 더 공격적으로 최적화해야 하면 현재 분리 모델 위에서만 검토
+2. route delta 종류가 늘어나면 observability helper만 확장
+3. attach/discovery 관련 추가 계약이 생기면 control snapshot owner에서만 흡수
+4. perf 재측정은 구조 검증 이후 별도 보고서로 정리

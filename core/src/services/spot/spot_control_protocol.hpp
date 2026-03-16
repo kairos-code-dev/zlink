@@ -17,6 +17,7 @@ static const int protocol_version = 1;
 static const char ctrl_prefix[] = "__zlink.spot.ctrl.";
 static const char bootstrap_prefix[] = "__zlink.spot.bootstrap.";
 static const char ctrl_snapshot_topic[] = "__zlink.spot.ctrl.snapshot";
+static const char ctrl_ready_ack_topic[] = "__zlink.spot.ctrl.ready_ack";
 static const char bootstrap_ctrl_descriptor_topic[] =
   "__zlink.spot.bootstrap.ctrl_descriptor";
 
@@ -69,6 +70,16 @@ inline bool is_ctrl_snapshot_topic (const std::string &value_)
 inline bool is_ctrl_snapshot_topic (const char *value_, size_t value_size_)
 {
     return equals_literal (value_, value_size_, ctrl_snapshot_topic);
+}
+
+inline bool is_ctrl_ready_ack_topic (const std::string &value_)
+{
+    return value_ == ctrl_ready_ack_topic;
+}
+
+inline bool is_ctrl_ready_ack_topic (const char *value_, size_t value_size_)
+{
+    return equals_literal (value_, value_size_, ctrl_ready_ack_topic);
 }
 
 inline bool is_bootstrap_ctrl_descriptor_topic (const std::string &value_)

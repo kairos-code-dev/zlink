@@ -738,7 +738,8 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _local_filtered_sub_count (0),
     _active_peer_count (0),
     _default_pub (NULL),
-    _default_sub (NULL)
+    _default_sub (NULL),
+    _internal_receiver (NULL)
 {
     _lifecycle.transition_to (service_state_starting);
     _service_name = service_name_ ? service_name_ : "";
@@ -2502,12 +2503,18 @@ int spot_node_t::set_sub_option (int option_,
 
     scoped_lock_t init_lock (_default_sub_sync);
     spot_sub_t *default_sub = NULL;
+    spot_internal_receiver_t *internal_receiver = NULL;
     {
         scoped_lock_t lock (_sync);
         default_sub = _default_sub;
+        internal_receiver = _internal_receiver;
     }
 
     if (default_sub && default_sub->set_option (option_, optval_, optvallen_) != 0)
+        return -1;
+    if (internal_receiver
+        && internal_receiver->impl () != default_sub
+        && internal_receiver->set_option (option_, optval_, optvallen_) != 0)
         return -1;
 
     {
@@ -2728,6 +2735,56 @@ spot_sub_t *spot_node_t::create_spot_sub ()
     return create_spot_sub_with_defaults (defaults, false);
 }
 
+spot_internal_receiver_t *spot_node_t::ensure_internal_receiver ()
+{
+    spot_sub_t *previous_default_sub = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        if (_internal_receiver)
+            return _internal_receiver;
+        previous_default_sub = _default_sub;
+    }
+
+    sub_defaults_t defaults;
+    scoped_lock_t init_lock (_default_sub_sync);
+    {
+        scoped_lock_t lock (_sync);
+        if (_internal_receiver)
+            return _internal_receiver;
+        defaults = _sub_defaults;
+    }
+
+    spot_sub_t *sub = create_spot_sub_with_defaults (defaults, true);
+    if (!sub)
+        return NULL;
+    spot_internal_receiver_t *receiver =
+      new (std::nothrow) spot_internal_receiver_t (sub);
+    if (!receiver) {
+        (void) sub->abort_create ();
+        delete sub;
+        errno = ENOMEM;
+        return NULL;
+    }
+
+    {
+        scoped_lock_t lock (_sync);
+        if (_default_sub == sub)
+            _default_sub = previous_default_sub;
+        if (_internal_receiver && _internal_receiver != receiver) {
+            // Another thread published the receiver first. Preserve single
+            // owner and tear the duplicate down immediately.
+            _subs.erase (sub);
+            (void) receiver->abort_create ();
+            delete receiver;
+            delete sub;
+            return _internal_receiver;
+        }
+        _internal_receiver = receiver;
+    }
+
+    return receiver;
+}
+
 spot_pub_t *spot_node_t::ensure_default_pub ()
 {
     {
@@ -2772,6 +2829,12 @@ spot_pub_t *spot_node_t::default_pub () const
     return _default_pub;
 }
 
+spot_internal_receiver_t *spot_node_t::internal_receiver () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    return _internal_receiver;
+}
+
 spot_sub_t *spot_node_t::default_sub () const
 {
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
@@ -2791,6 +2854,8 @@ void spot_node_t::remove_spot_sub (spot_sub_t *sub_)
     scoped_lock_t lock (_sync);
     if (_default_sub == sub_)
         _default_sub = NULL;
+    if (_internal_receiver && _internal_receiver->impl () == sub_)
+        _internal_receiver = NULL;
     _subs.erase (sub_);
     if (sub_ && sub_->has_filters ())
         note_local_sub_filters_changed (true, false);
@@ -2804,11 +2869,18 @@ int spot_node_t::destroy_handles ()
     {
         scoped_lock_t lock (_sync);
         pubs.assign (_pubs.begin (), _pubs.end ());
-        subs.assign (_subs.begin (), _subs.end ());
+        for (std::set<spot_sub_t *>::const_iterator it = _subs.begin ();
+             it != _subs.end (); ++it) {
+            if (_internal_receiver && *it == _internal_receiver->impl ())
+                continue;
+            subs.push_back (*it);
+        }
         _default_pub = NULL;
         _default_sub = NULL;
-        _pubs.clear ();
-        _subs.clear ();
+        for (size_t i = 0; i < pubs.size (); ++i)
+            _pubs.erase (pubs[i]);
+        for (size_t i = 0; i < subs.size (); ++i)
+            _subs.erase (subs[i]);
     }
 
     for (size_t i = 0; i < pubs.size (); ++i) {
@@ -2824,6 +2896,30 @@ int spot_node_t::destroy_handles ()
         return -1;
     }
     return 0;
+}
+
+int spot_node_t::destroy_internal_receiver ()
+{
+    spot_internal_receiver_t *receiver = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        receiver = _internal_receiver;
+        _internal_receiver = NULL;
+        if (receiver)
+            _subs.erase (receiver->impl ());
+    }
+
+    if (!receiver)
+        return 0;
+
+    const bool had_filters = receiver->has_filters ();
+    const int rc = receiver->abort_create ();
+    spot_sub_t *sub = receiver->impl ();
+    delete receiver;
+    delete sub;
+    if (had_filters)
+        note_local_sub_filters_changed (true, false);
+    return rc;
 }
 
 void spot_node_t::stop_data_plane_sockets ()
@@ -2851,6 +2947,8 @@ int spot_node_t::destroy ()
         }
         for (std::set<spot_sub_t *>::const_iterator it = _subs.begin ();
              it != _subs.end (); ++it) {
+            if (_internal_receiver && *it == _internal_receiver->impl ())
+                continue;
             if (*it && !(*it)->is_node_owned_default ()) {
                 errno = EBUSY;
                 return -1;
@@ -2932,6 +3030,7 @@ int spot_node_t::destroy ()
                         "step=data_plane_stopped node=%p error=%d",
                         static_cast<void *> (this), first_error);
     preserve_first_error (destroy_handles (), &first_error);
+    preserve_first_error (destroy_internal_receiver (), &first_error);
     if (_runtime)
         preserve_first_error (_runtime->close_control_sockets (), &first_error);
     spot_shutdown_logf (false,
@@ -2958,6 +3057,11 @@ int spot_node_t::destroy ()
         preserve_first_error (_lifecycle.force_wait_remaining (5000),
                               &final_error);
         preserve_first_error (wait_owned_socket_removals (5000), &final_error);
+        if (_runtime->live_socket_slot_count () == 0
+            && _runtime->attachment_count () == 0
+            && _lifecycle.owned_socket_count () == 0) {
+            final_error = 0;
+        }
     }
 
     if (!used_abortive)

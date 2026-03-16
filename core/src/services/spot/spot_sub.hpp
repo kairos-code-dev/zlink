@@ -100,6 +100,7 @@ class spot_sub_t
                             const char *endpoint_);
     void mark_all_subjects_lost (const char *endpoint_);
     std::string first_ready_peer_endpoint () const;
+    void send_ready_ack_lost_for_endpoint (const char *endpoint_);
 
     void emit_ready_event ();
     int destroy ();

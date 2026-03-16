@@ -2217,6 +2217,9 @@ void gateway_t::dispatch_message (const zlink_routing_id_t *source_rid_,
 
 void gateway_t::dispatch_send_ready ()
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return;
     zlink_send_ready_handler_fn handler =
       _send_ready_handler.load (std::memory_order_acquire);
     if (handler)

@@ -301,6 +301,8 @@ struct spot_handle_t
     zlink::spot_pub_t *pub;
     zlink::spot_sub_t *sub;
     zlink_spot_handler_fn handler;
+    zlink::spot_node_t::pub_defaults_t pending_pub_defaults;
+    zlink::spot_node_t::sub_defaults_t pending_sub_defaults;
 };
 
 static thread_local void *g_current_spot_dispatch_handle = NULL;
@@ -525,6 +527,31 @@ static bool has_open_service_monitor_for_subject (void *snapshot_subject_)
         }
     }
     return false;
+}
+
+static bool has_open_spot_node_monitor_child (zlink::spot_node_t *node_)
+{
+    if (!node_)
+        return false;
+    if (has_open_service_monitor_for_subject (node_))
+        return true;
+
+    zlink::spot_pub_t *pub = node_->default_pub ();
+    return pub && has_open_service_monitor_for_subject (pub);
+}
+
+static bool in_spot_node_send_ready_callback (zlink::spot_node_t *node_)
+{
+    if (!node_)
+        return false;
+
+    zlink::socket_base_t *dispatch_socket =
+      zlink::socket_base_t::current_send_ready_dispatch_socket ();
+    if (!dispatch_socket)
+        return false;
+
+    zlink::spot_pub_t *pub = node_->default_pub ();
+    return pub && pub->owns_socket (dispatch_socket);
 }
 
 static zlink::socket_base_t *
@@ -903,8 +930,107 @@ static zlink::spot_sub_t *ensure_spot_sub (spot_handle_t *spot_)
         return NULL;
     }
 
+    const zlink::spot_node_t::sub_defaults_t &defaults =
+      spot_->pending_sub_defaults;
+    if ((defaults.rcvhwm.enabled
+         && sub->set_option (ZLINK_SPOT_SUB_OPT_RCVHWM, &defaults.rcvhwm.value,
+                             defaults.rcvhwm.size)
+              != 0)
+        || (defaults.linger.enabled
+            && sub->set_option (ZLINK_SPOT_SUB_OPT_LINGER,
+                                &defaults.linger.value,
+                                defaults.linger.size)
+                 != 0)
+        || (defaults.sndbuf.enabled
+            && sub->set_option (ZLINK_SPOT_SUB_OPT_SNDBUF,
+                                &defaults.sndbuf.value,
+                                defaults.sndbuf.size)
+                 != 0)
+        || (defaults.rcvbuf.enabled
+            && sub->set_option (ZLINK_SPOT_SUB_OPT_RCVBUF,
+                                &defaults.rcvbuf.value,
+                                defaults.rcvbuf.size)
+                 != 0)
+        || (defaults.rcvtimeo.enabled
+            && sub->set_option (ZLINK_SPOT_SUB_OPT_RCVTIMEO,
+                                &defaults.rcvtimeo.value,
+                                defaults.rcvtimeo.size)
+                 != 0)) {
+        const int err = errno;
+        (void) sub->destroy ();
+        delete sub;
+        errno = err;
+        return NULL;
+    }
+
     spot_->sub = sub;
     return spot_->sub;
+}
+
+static int validate_spot_sub_option (int option_,
+                                     const void *optval_,
+                                     size_t optvallen_)
+{
+    if (!optval_ || optvallen_ == 0 || optvallen_ > sizeof (int)) {
+        errno = EINVAL;
+        return -1;
+    }
+    switch (option_) {
+        case ZLINK_SPOT_SUB_OPT_RCVHWM:
+        case ZLINK_SPOT_SUB_OPT_LINGER:
+        case ZLINK_SPOT_SUB_OPT_SNDBUF:
+        case ZLINK_SPOT_SUB_OPT_RCVBUF:
+        case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
+            return 0;
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+}
+
+static void copy_spot_option_setting (zlink::spot_node_t::option_setting_t *dst_,
+                                      const void *optval_,
+                                      size_t optvallen_)
+{
+    if (!dst_)
+        return;
+    dst_->enabled = true;
+    dst_->value = 0;
+    dst_->size = optvallen_;
+    memcpy (&dst_->value, optval_, optvallen_);
+}
+
+static void store_spot_pending_sub_option (spot_handle_t *spot_,
+                                           int option_,
+                                           const void *optval_,
+                                           size_t optvallen_)
+{
+    if (!spot_)
+        return;
+    switch (option_) {
+        case ZLINK_SPOT_SUB_OPT_RCVHWM:
+            copy_spot_option_setting (&spot_->pending_sub_defaults.rcvhwm,
+                                      optval_, optvallen_);
+            return;
+        case ZLINK_SPOT_SUB_OPT_LINGER:
+            copy_spot_option_setting (&spot_->pending_sub_defaults.linger,
+                                      optval_, optvallen_);
+            return;
+        case ZLINK_SPOT_SUB_OPT_SNDBUF:
+            copy_spot_option_setting (&spot_->pending_sub_defaults.sndbuf,
+                                      optval_, optvallen_);
+            return;
+        case ZLINK_SPOT_SUB_OPT_RCVBUF:
+            copy_spot_option_setting (&spot_->pending_sub_defaults.rcvbuf,
+                                      optval_, optvallen_);
+            return;
+        case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
+            copy_spot_option_setting (&spot_->pending_sub_defaults.rcvtimeo,
+                                      optval_, optvallen_);
+            return;
+        default:
+            return;
+    }
 }
 
 zlink::service_public_api_guard_t *
@@ -2797,9 +2923,13 @@ int zlink_spot_node_destroy (void **node_p_)
         errno = EFAULT;
         return -1;
     }
+    if (in_spot_node_send_ready_callback (node)) {
+        errno = EBUSY;
+        return -1;
+    }
     if (!node->public_api_guard ().begin_close_or_fail_busy ())
         return -1;
-    if (has_open_service_monitor_for_subject (node)) {
+    if (has_open_spot_node_monitor_child (node)) {
         node->public_api_guard ().cancel_close ();
         errno = EBUSY;
         return -1;
@@ -3099,7 +3229,6 @@ int zlink_spot_destroy (void **spot_p_)
         spot->public_api.cancel_close ();
         return -1;
     }
-
     spot->tag = 0xdeadbeef;
     delete spot;
     *spot_p_ = NULL;
@@ -3243,12 +3372,12 @@ int zlink_spot_set_sub_option (void *spot_,
     zlink::service_public_api_scope_t admission (spot->public_api);
     if (!admission.acquired ())
         return -1;
-    zlink::spot_sub_t *sub = ensure_spot_sub (spot);
-    if (!sub) {
-        errno = ENOTSUP;
+    if (spot->sub)
+        return spot->sub->set_option (option_, optval_, optvallen_);
+    if (validate_spot_sub_option (option_, optval_, optvallen_) != 0)
         return -1;
-    }
-    return sub->set_option (option_, optval_, optvallen_);
+    store_spot_pending_sub_option (spot, option_, optval_, optvallen_);
+    return 0;
 }
 
 static void *open_spot_service_monitor (void *monitor_,

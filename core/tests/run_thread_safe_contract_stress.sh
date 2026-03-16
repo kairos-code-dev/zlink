@@ -8,8 +8,13 @@ BUILD_DIR="${ROOT_DIR}/core/build"
 REPEAT_COUNT=1000
 
 TEST_NAMES=(
+  test_service_introspection_discovery_control_path
   test_gateway_runtime_reads
+  test_gateway_attach_query_ordering
+  test_gateway_send_ready_self_close
   test_spot_service_introspection_runtime_reads
+  test_spot_service_introspection_monitor_child_destroy
+  test_spot_service_introspection_send_ready_self_close
   test_gateway_lifecycle_contract
   test_spot_service_introspection_lifecycle_contract
   test_spot_service_introspection_handle_lifecycle

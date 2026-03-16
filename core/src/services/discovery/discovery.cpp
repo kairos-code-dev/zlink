@@ -906,7 +906,8 @@ int discovery_t::destroy ()
              it != connected_endpoints.end (); ++it)
             zlink_disconnect (sub_socket, it->c_str ());
         socket_base_t *sub = static_cast<socket_base_t *> (sub_socket);
-        (void) _lifecycle.close_socket (sub);
+        sub->set_all_pipes_nodelay ();
+        (void) _lifecycle.close_socket_and_wait (sub, 1000);
     }
 
     for (std::map<std::string, bootstrap_state_t>::iterator it =
@@ -916,7 +917,8 @@ int discovery_t::destroy ()
             continue;
         if (!it->first.empty ())
             zlink_disconnect (it->second.dealer, it->first.c_str ());
-        (void) _lifecycle.close_socket (it->second.dealer);
+        it->second.dealer->set_all_pipes_nodelay ();
+        (void) _lifecycle.close_socket_and_wait (it->second.dealer, 1000);
         it->second.dealer = NULL;
     }
     for (std::map<std::string, socket_base_t *>::iterator it =
@@ -926,7 +928,8 @@ int discovery_t::destroy ()
             continue;
         if (!it->first.empty ())
             zlink_disconnect (it->second, it->first.c_str ());
-        (void) _lifecycle.close_socket (it->second);
+        it->second->set_all_pipes_nodelay ();
+        (void) _lifecycle.close_socket_and_wait (it->second, 1000);
     }
     for (std::map<std::string, socket_base_t *>::iterator it =
            control_dealers.begin ();
@@ -935,7 +938,8 @@ int discovery_t::destroy ()
             continue;
         if (!it->first.empty ())
             zlink_disconnect (it->second, it->first.c_str ());
-        (void) _lifecycle.close_socket (it->second);
+        it->second->set_all_pipes_nodelay ();
+        (void) _lifecycle.close_socket_and_wait (it->second, 1000);
     }
     (void) _lifecycle.wait_drained (10000);
 

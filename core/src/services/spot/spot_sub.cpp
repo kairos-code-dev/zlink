@@ -71,6 +71,7 @@ static void close_msgv (std::vector<zlink_msg_t> *parts_)
     parts_->clear ();
 }
 
+
 static bool is_ready_probe_message (const char *topic_,
                                     size_t topic_len_,
                                     zlink_msg_t *parts_,
@@ -707,6 +708,40 @@ void spot_sub_t::mark_subject_subscription_ready (
     emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
                                    subject_.subject_kind);
     mark_subject_ready (subject_, endpoint_);
+
+    if (!endpoint_ || endpoint_[0] == '\0' || !_node)
+        return;
+
+    std::string raw_filter = subject_.subject;
+    if (subject_.subject_kind == ZLINK_SERVICE_EVENT_SUBJECT_PATTERN
+        && !raw_filter.empty ()
+        && raw_filter[raw_filter.size () - 1] == '*') {
+        raw_filter.erase (raw_filter.size () - 1);
+    }
+    if (raw_filter.empty ())
+        return;
+
+    bool already_acked = false;
+    {
+        scoped_lock_t lock (_sync);
+        std::map<std::string, std::set<std::string> >::const_iterator it =
+          _ready_ack_endpoints.find (raw_filter);
+        already_acked =
+          it != _ready_ack_endpoints.end ()
+          && it->second.count (endpoint_) != 0;
+    }
+    if (already_acked)
+        return;
+
+    if (_node->send_ready_ack_update (endpoint_, raw_filter,
+                                      ready_ack_source_id (), true)
+        != 0)
+        return;
+
+    {
+        scoped_lock_t lock (_sync);
+        _ready_ack_endpoints[raw_filter].insert (endpoint_);
+    }
 }
 
 std::string spot_sub_t::first_ready_peer_endpoint () const
@@ -715,6 +750,32 @@ std::string spot_sub_t::first_ready_peer_endpoint () const
     if (_ready_peer_endpoints.empty ())
         return std::string ();
     return *_ready_peer_endpoints.begin ();
+}
+
+void spot_sub_t::send_ready_ack_lost_for_endpoint (const char *endpoint_)
+{
+    if (!endpoint_ || endpoint_[0] == '\0' || !_node)
+        return;
+
+    const std::string endpoint (endpoint_);
+    std::vector<std::string> raw_filters;
+    {
+        scoped_lock_t lock (_sync);
+        for (std::map<std::string, std::set<std::string> >::const_iterator it =
+               _ready_ack_endpoints.begin ();
+             it != _ready_ack_endpoints.end (); ++it) {
+            if (it->second.count (endpoint) != 0)
+                raw_filters.push_back (it->first);
+        }
+    }
+
+    if (raw_filters.empty ())
+        return;
+
+    const std::string ack_source_id = ready_ack_source_id ();
+    for (size_t i = 0; i < raw_filters.size (); ++i)
+        (void) _node->send_ready_ack_update (endpoint, raw_filters[i],
+                                             ack_source_id, false);
 }
 
 int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_,
@@ -1155,6 +1216,13 @@ void spot_sub_t::handle_ready_probe (const std::string &raw_filter_,
         fprintf (stderr, "[spot-ready-probe] recv raw=%s endpoint=%s\n",
                  raw_filter_.c_str (),
                  peer_endpoint_.empty () ? "-" : peer_endpoint_.c_str ());
+        fflush (stderr);
+        FILE *fp = fopen ("/tmp/zlink_spot_ready_ack.log", "a");
+        if (fp) {
+            fprintf (fp, "probe raw=%s endpoint=%s\n", raw_filter_.c_str (),
+                     peer_endpoint_.empty () ? "-" : peer_endpoint_.c_str ());
+            fclose (fp);
+        }
     }
 
     std::vector<subject_descriptor_t> subjects;
@@ -1497,9 +1565,16 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     if (socket) {
         if (_node && _node->_runtime)
             spot_sub_diag_log ("destroy.before-destroy-attachment");
-        if (socket && _node && _node->_runtime)
-            preserve_first_error (
-              _node->_runtime->destroy_attachment (_attachment_id), &first_error);
+        if (socket && _node && _node->_runtime) {
+            if (node_shutting_down && _node_owned_default)
+                preserve_first_error (
+                  _node->_runtime->destroy_attachment_async (_attachment_id),
+                  &first_error);
+            else
+                preserve_first_error (
+                  _node->_runtime->destroy_attachment (_attachment_id),
+                  &first_error);
+        }
         if (socket && _node && _node->_runtime)
             spot_sub_diag_log ("destroy.after-destroy-attachment");
         else {

@@ -1171,6 +1171,56 @@ static void test_registry_control_path_queries_are_safe_during_concurrent_update
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
+static void test_discovery_control_path_reads_are_safe_during_concurrent_updates ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+
+    std::atomic<int> update_failures (0);
+    std::atomic<int> read_failures (0);
+    std::atomic<int> read_iterations (0);
+    const int iterations = 16;
+
+    std::thread updater ([&] () {
+        char routing_id[32];
+        for (int i = 0; i < iterations; ++i) {
+            snprintf (routing_id, sizeof (routing_id), "disc-%03d", i);
+            if (zlink_discovery_set_routing_id (discovery, routing_id,
+                                                strlen (routing_id))
+                != 0) {
+                update_failures.fetch_add (1);
+                return;
+            }
+        }
+    });
+
+    std::thread reader ([&] () {
+        for (int i = 0; i < iterations; ++i) {
+            zlink_routing_id_t rid;
+            memset (&rid, 0, sizeof (rid));
+            errno = 0;
+            const int rc = zlink_discovery_routing_id (discovery, &rid);
+            const int err = zlink_errno ();
+            if (rc != 0 && err != EAGAIN && err != 0) {
+                read_failures.fetch_add (1);
+                return;
+            }
+            read_iterations.fetch_add (1);
+        }
+    });
+
+    updater.join ();
+    reader.join ();
+
+    TEST_ASSERT_EQUAL_INT (0, update_failures.load ());
+    TEST_ASSERT_EQUAL_INT (0, read_failures.load ());
+    TEST_ASSERT_GREATER_THAN_INT (0, read_iterations.load ());
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+}
+
 static void test_discovery_registry_transport_restriction ()
 {
     void *ctx = get_test_context ();
@@ -1535,6 +1585,7 @@ int main (int, char **)
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_public_api_lifecycle_contract);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_query_client_public_api_lifecycle_contract);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_control_path_queries_are_safe_during_concurrent_updates);
+    RUN_SERVICE_INTROSPECTION_TEST (test_discovery_control_path_reads_are_safe_during_concurrent_updates);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_restriction);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_allowed_ws);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_allowed_tls);

@@ -42,6 +42,7 @@ class spot_pub_t
     int routing_id (zlink_routing_id_t *out_) const;
     int fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const;
     void *monitor_open (int events_);
+    bool owns_socket (const socket_base_t *socket_) const;
     void invoke_send_ready_for_testing ();
     void emit_delivery_ready_changed_event (const char *subject_,
                                             bool include_subject_kind_,

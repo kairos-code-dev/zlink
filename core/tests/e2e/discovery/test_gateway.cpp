@@ -41,6 +41,8 @@ void *g_reentrant_gateway = NULL;
 std::atomic<int> *g_reentrant_ready_calls = NULL;
 int g_reentrant_ready_rc = 0;
 int g_reentrant_ready_errno = 0;
+int g_gateway_self_close_rc = 0;
+int g_gateway_self_close_errno = 0;
 
 zlink_socket_handler_t make_msg_handler (zlink_socket_msg_handler_fn fn_)
 {
@@ -67,6 +69,14 @@ void gateway_reentrant_ready_handler (void *subject_)
     g_reentrant_ready_rc = zlink_gateway_set_send_ready_handler (
       subject_, &gateway_reentrant_ready_handler);
     g_reentrant_ready_errno = errno;
+}
+
+void gateway_self_close_handler (void *subject_)
+{
+    void *gateway = subject_;
+    errno = 0;
+    g_gateway_self_close_rc = zlink_gateway_destroy (&gateway);
+    g_gateway_self_close_errno = errno;
 }
 
 bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
@@ -755,6 +765,38 @@ static void test_gateway_send_ready_handler_reentrant_replace_returns_edeadlk ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
     g_reentrant_ready_calls = NULL;
     g_reentrant_gateway = NULL;
+}
+
+static void test_gateway_send_ready_handler_self_close_is_safe ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    g_gateway_self_close_rc = 0;
+    g_gateway_self_close_errno = 0;
+
+    void *gateway = zlink_gateway_new (ctx, "ready-self-close", "gw-self-close",
+                                       &discard_gateway_message);
+    TEST_ASSERT_NOT_NULL (gateway);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_send_ready_handler (
+      gateway, &gateway_self_close_handler));
+
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22411;
+    bind_gateway_with_port_seed (gateway, "tcp", &bind_seed, endpoint,
+                                 sizeof (endpoint), 2000);
+
+    zlink::gateway_t *gateway_impl = static_cast<zlink::gateway_t *> (gateway);
+    zlink::socket_base_t *router =
+      static_cast<zlink::socket_base_t *> (gateway_impl->router ());
+    TEST_ASSERT_NOT_NULL (router);
+    router->invoke_send_ready_handler_for_testing ();
+
+    TEST_ASSERT_EQUAL_INT (-1, g_gateway_self_close_rc);
+    TEST_ASSERT_EQUAL_INT (EBUSY, g_gateway_self_close_errno);
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
 }
 
 static void test_gateway_refreshes_existing_service_on_first_connection_count ()
@@ -1743,6 +1785,75 @@ static void test_gateway_runtime_reads_are_safe_during_concurrent_send ()
     g_probe_a = NULL;
 }
 
+static void test_gateway_attach_and_monitor_queries_are_safe_same_handle ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    int registry_seed = 25984;
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &registry_seed, registry_pub, sizeof (registry_pub),
+      registry_router, sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
+
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
+      discovery, registry_router));
+
+    for (int round = 0; round < 32; ++round) {
+        void *gateway =
+          zlink_gateway_new (ctx, "svc-attach-query", NULL,
+                             &discard_gateway_message);
+        TEST_ASSERT_NOT_NULL (gateway);
+
+        std::atomic<int> attach_started (0);
+        std::atomic<int> attach_done (0);
+        std::atomic<int> query_fail (0);
+
+        std::thread reader ([&] () {
+            while (attach_started.load () == 0) {
+            }
+
+            while (attach_done.load () == 0) {
+                zlink_routing_id_t rid;
+                memset (&rid, 0, sizeof (rid));
+                if (zlink_gateway_routing_id (gateway, &rid) != 0) {
+                    query_fail.fetch_add (1);
+                    return;
+                }
+
+                void *monitor = zlink_gateway_monitor_open (
+                  gateway, ZLINK_GATEWAY_SERVICE_READY,
+                  &zlink_service_monitor_ignore_handler);
+                if (!monitor) {
+                    query_fail.fetch_add (1);
+                    return;
+                }
+                if (zlink_service_monitor_close (&monitor) != 0) {
+                    query_fail.fetch_add (1);
+                    return;
+                }
+            }
+        });
+
+        attach_started.store (1);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_gateway_attach_discovery (gateway, discovery));
+        attach_done.store (1);
+        reader.join ();
+
+        TEST_ASSERT_EQUAL_INT (0, query_fail.load ());
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+}
+
 static void test_gateway_public_api_lifecycle_contract ()
 {
     void *ctx = get_test_context ();
@@ -1807,6 +1918,7 @@ int main (void)
     RUN_GATEWAY_TEST (test_gateway_can_be_polled_via_service_instance);
     RUN_GATEWAY_TEST (
       test_gateway_send_ready_handler_reentrant_replace_returns_edeadlk);
+    RUN_GATEWAY_TEST (test_gateway_send_ready_handler_self_close_is_safe);
     RUN_GATEWAY_TEST (test_gateway_refreshes_existing_service_on_first_connection_count);
     RUN_GATEWAY_TEST (test_gateway_router_peers_do_not_enter_pollable_mode);
     RUN_GATEWAY_TEST (test_gateway_single_service_tcp);
@@ -1821,6 +1933,7 @@ int main (void)
     RUN_GATEWAY_TEST (test_gateway_manual_connect_disconnect_topology_ownership);
     RUN_GATEWAY_TEST (test_gateway_local_weight_zero_is_preserved);
     RUN_GATEWAY_TEST (test_gateway_runtime_reads_are_safe_during_concurrent_send);
+    RUN_GATEWAY_TEST (test_gateway_attach_and_monitor_queries_are_safe_same_handle);
     RUN_GATEWAY_TEST (test_gateway_public_api_lifecycle_contract);
 #undef RUN_GATEWAY_TEST
     if (should_run_gateway_concurrent_stress ()

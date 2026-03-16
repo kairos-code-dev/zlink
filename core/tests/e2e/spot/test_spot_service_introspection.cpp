@@ -56,6 +56,8 @@ static void *g_spot_ready_subject = NULL;
 static std::atomic<int> *g_spot_ready_calls = NULL;
 static int g_spot_ready_publish_rc = 0;
 static int g_spot_ready_publish_errno = 0;
+static int g_spot_ready_self_close_rc = 0;
+static int g_spot_ready_self_close_errno = 0;
 struct service_monitor_probe_t;
 static service_monitor_probe_t *g_service_monitor_probe_a = NULL;
 static service_monitor_probe_t *g_service_monitor_probe_b = NULL;
@@ -270,6 +272,17 @@ static void spot_publish_from_ready_handler (void *subject_)
         zlink_msg_close (&part);
         errno = err;
     }
+}
+
+static void spot_self_close_from_ready_handler (void *subject_)
+{
+    g_spot_ready_subject = subject_;
+    if (g_spot_ready_calls)
+        g_spot_ready_calls->fetch_add (1);
+    void *node = subject_;
+    errno = 0;
+    g_spot_ready_self_close_rc = zlink_spot_node_destroy (&node);
+    g_spot_ready_self_close_errno = errno;
 }
 
 static void destroy_test_ctx (void *ctx_)
@@ -1694,6 +1707,73 @@ static void test_spot_node_destroy_rejects_open_child_handle ()
     destroy_test_ctx (ctx);
 }
 
+static void test_spot_node_destroy_rejects_open_monitor_child ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = create_spot_node (ctx, "spot-monitor-open");
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *monitor = zlink_spot_node_monitor_open (
+      node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_CLOSED,
+      &zlink_service_monitor_ignore_handler);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_NOT_NULL (node);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    destroy_test_ctx (ctx);
+}
+
+static void test_spot_send_ready_handler_self_close_returns_ebusy ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *pub_node = create_spot_node (ctx, "spot-self-close");
+    void *sub_node = create_spot_node (ctx, "spot-self-close");
+    TEST_ASSERT_NOT_NULL (pub_node);
+    TEST_ASSERT_NOT_NULL (sub_node);
+
+    char endpoint[MAX_SOCKET_STRING];
+    int endpoint_seed = 22680;
+    TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+      pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
+      sizeof (endpoint)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer_pub (sub_node, endpoint));
+
+    std::atomic<int> ready_calls (0);
+    g_spot_ready_calls = &ready_calls;
+    g_spot_ready_subject = NULL;
+    g_spot_ready_self_close_rc = 0;
+    g_spot_ready_self_close_errno = 0;
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
+      pub_node, &spot_self_close_from_ready_handler));
+
+    zlink::spot_node_t *pub_node_impl =
+      static_cast<zlink::spot_node_t *> (pub_node);
+    zlink::spot_pub_t *pub_impl = pub_node_impl->ensure_default_pub ();
+    TEST_ASSERT_NOT_NULL (pub_impl);
+    pub_impl->invoke_send_ready_for_testing ();
+
+    TEST_ASSERT_EQUAL_INT (1, ready_calls.load ());
+    TEST_ASSERT_EQUAL_PTR (pub_node, g_spot_ready_subject);
+    TEST_ASSERT_EQUAL_INT (-1, g_spot_ready_self_close_rc);
+    TEST_ASSERT_EQUAL_INT (EBUSY, g_spot_ready_self_close_errno);
+
+    g_spot_ready_calls = NULL;
+    g_spot_ready_subject = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    destroy_test_ctx (ctx);
+}
+
 static void test_spot_node_public_api_lifecycle_contract ()
 {
     void *ctx = zlink_ctx_new ();
@@ -1803,6 +1883,8 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_late_connect_replays_existing_subscription);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_faulted_node_apis_fail_with_efsm);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_destroy_rejects_open_child_handle);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_node_destroy_rejects_open_monitor_child);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_send_ready_handler_self_close_returns_ebusy);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_public_api_lifecycle_contract);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_public_api_lifecycle_contract);
 #undef RUN_SPOT_INTROSPECTION_TEST

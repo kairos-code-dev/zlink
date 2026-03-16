@@ -1,43 +1,61 @@
 # SPOT Thread-Safe Destroy Timeout With Stale Tracked Sockets
 
+## Status
+
+- Resolved
+- Fix commit: `01a5c663` (`fix: complete thread-safe socket contracts`)
+
 ## Summary
 
 `SPOT` thread-safe scaling 계약 테스트에서 `pub/sub` child handle을 모두
-정상 destroy 한 뒤에도 `spot_node_destroy()`가 `ETIMEDOUT`로 실패한다.
+destroy 한 뒤에도 `spot_node_destroy()`가 `ETIMEDOUT`로 실패하던 문제를
+해결했다.
 
-관찰된 shutdown 로그는 반복적으로 아래 형태다.
+초기 관찰 로그는 반복적으로 아래 형태였다.
 
 ```text
 [spot-shutdown] service=spot node=0x... shutdown=abortive reason=110 live_slots=0 attachments=0 tracked=9
 ```
 
-핵심 포인트는 다음이다.
+조사 과정에서 증상은 다음처럼 단계적으로 좁혀졌다.
 
-- `live_slots == 0`
-- `attachments == 0`
-- 그런데 `tracked == 9`가 끝까지 남음
-- 그 결과 `spot_node_destroy()`가 graceful/abortive shutdown 이후에도
-  drain 완료로 수렴하지 못하고 timeout으로 실패함
+- 초기: `tracked=9`
+- lifecycle/ownership 정리 후: `tracked=2`
+- mailbox/pipe termination 보강 후: `tracked=1`
+- 최종: `spot_node_destroy()` 정상 수렴
 
-즉, 실제 runtime slot/attachment는 비워졌는데
-`service_runtime_base`가 관리하는 socket lifecycle bookkeeping이 stale state를
-남기고 있다고 보는 것이 가장 타당하다.
+최종적으로 확인된 근본 원인은 단일 문제가 아니라 아래 조합이었다.
+
+- `connect_peer_pub()`가 remote control endpoint를 local `node_id`로 잘못
+  파생해, 존재하지 않는 `inproc` control connection을 pending 상태로
+  남기던 문제
+- `spot` data-plane의 일부 internal socket이 poll 대상이 아니어서
+  cross-thread termination command를 제때 소모하지 못하던 문제
+- pipe termination 경로가 `waiting_for_delimiter` 상태에서 즉시 ack로
+  수렴하지 못하던 edge case
+- 64-handle scaling 계약에서 default socket cap이 낮아 fixture 자체가
+  불필요한 resource ceiling에 걸리던 문제
 
 ## Affected Area
 
-- `core/src/services/spot/spot_node.cpp`
-- `core/src/services/spot/spot_runtime.hpp`
-- `core/src/services/common/service_runtime_base.hpp`
+- [`spot_data_plane.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_data_plane.cpp)
+- [`spot_node.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_node.cpp)
+- [`service_runtime_base.hpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/common/service_runtime_base.hpp)
+- [`pipe.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/core/pipe.cpp)
+- [`socket_base.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp)
+- [`socket_base.hpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.hpp)
+- [`zlink.h`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/include/zlink.h)
 - 재현 테스트:
-  [`core/tests/integration/test_thread_safe_scaling_contract.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/tests/integration/test_thread_safe_scaling_contract.cpp)
+  [`test_thread_safe_scaling_contract.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/tests/integration/test_thread_safe_scaling_contract.cpp)
 
 ## User-Visible Impact
 
-- high-load 또는 multi-handle thread-safe 시나리오에서 `zlink_spot_destroy()`
-  자체는 성공하더라도, 뒤이은 `zlink_spot_node_destroy()`가 timeout으로 실패할
-  수 있다.
-- 결과적으로 SPOT node teardown이 deterministic 하지 않다.
-- thread-safe acceptance, perf-contract, stress/TSan lane 전개를 막는다.
+수정 전에는 high-load 또는 multi-handle thread-safe 시나리오에서
+`zlink_spot_destroy()` 이후 `zlink_spot_node_destroy()`가
+deterministic 하게 끝나지 못하고 timeout으로 실패할 수 있었다.
+
+수정 후에는 `raw/gateway/spot` scaling 계약 테스트가 모두 통과하며,
+`spot` teardown이 동일 fixture에서 정상 수렴한다.
 
 ## Reproduction
 
@@ -50,13 +68,12 @@ ZLINK_PERF_MIN_RATIO=0.05 \
   -R '^test_thread_safe_scaling_spot$'
 ```
 
-`0.05`는 throughput ratio 자체를 보려는 값이 아니라,
-현재 teardown 버그가 perf threshold보다 먼저 터지므로 ratio gate를 낮춰
-destroy 문제만 관찰하기 위한 값이다.
+초기 조사 단계에서는 `0.05`로 throughput gate를 낮춰 teardown failure를
+우선 관찰했다.
 
-### Observed Result
+### Original Failure
 
-반복적으로 아래 둘 중 하나로 실패한다.
+반복적으로 아래 둘 중 하나로 실패했다.
 
 1. child handle destroy 단계 timeout
 
@@ -70,7 +87,7 @@ destroy 문제만 관찰하기 위한 값이다.
 ... FAIL: zlink_spot_node_destroy (&sub_nodes[i]) failed, errno = 110 (Connection timed out)
 ```
 
-그리고 장시간 실행 끝에는 아래 로그가 남는다.
+그리고 shutdown 로그는 아래 형태로 남았다.
 
 ```text
 [spot-shutdown] service=spot node=0x... shutdown=abortive reason=110 live_slots=0 attachments=0 tracked=9
@@ -82,198 +99,200 @@ destroy 문제만 관찰하기 위한 값이다.
   완료되어야 한다.
 - runtime slot과 attachment가 모두 0이면 lifecycle bookkeeping도 0으로
   수렴해야 한다.
-- `spot_node_destroy()`는 이 상태에서 timeout으로 실패하면 안 된다.
+- `spot_node_destroy()`는 thread-safe scaling fixture에서 timeout으로
+  실패하면 안 된다.
 
-## What Was Verified
+## Investigation Progress
 
-다음은 이번 조사에서 확인한 사실이다.
+### Phase 1: Symptom Narrowing
 
-- 재현은 test fixture 자체의 API misuse 때문이 아니다.
-  `node-per-handle`, explicit `spot` handle 생성/파괴, same-handle publish는
-  기존 repo 패턴과 일치한다.
-- 테스트 쪽 실험성 보정은 모두 원복했다.
-- `tracked=9`는 explicit child handle 1개만을 의미하지 않는다.
-  `spot` runtime이 추적하는 internal socket 집합 크기와 훨씬 더 잘 맞는다.
-- shutdown 로그에서 이미 `live_slots=0`, `attachments=0`이므로,
-  문제는 peer 연결이 남았다기보다 tracked socket bookkeeping/drain 불일치다.
+초기에는 `tracked=9`가 남아 `spot` runtime의 tracked socket bookkeeping과
+실제 ctx removal 사이에 불일치가 있다고 판단했다.
 
-## Relevant Code Paths
+이 단계에서 확인한 사실:
 
-### 1. Attachment destroy
+- `node-per-handle`, explicit `spot` handle 생성/파괴, same-handle publish는
+  기존 repo 패턴과 일치했다.
+- 테스트 쪽 실험성 변경은 모두 원복했다.
+- 문제는 test misuse가 아니라 core teardown/lifecycle 경로였다.
 
-`spot_pub_t::destroy_internal()` / `spot_sub_t::destroy_internal()`는
-`_runtime->destroy_attachment(_attachment_id)`를 호출한다.
+### Phase 2: Ownership and Drain Tightening
 
-관련 경로:
+`service_runtime_base_t`의 drain 경로와 `spot` attachment/control socket
+shutdown 경로를 정리하면서 `tracked=9`는 `tracked=2`까지 줄었다.
 
-- [`spot_pub.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_pub.cpp)
-- [`spot_sub.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp)
-- [`spot_node.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_node.cpp)
+이 단계에서 남는 소켓은 반복적으로 아래 둘로 수렴했다.
 
-### 2. Node shutdown
+- `mesh_xsub`
+- `peer_ctrl_pub`
 
-`spot_node_t::destroy()`는 내부적으로:
+즉, 문제 범위가 전체 bookkeeping 불일치에서
+특정 internal socket teardown 경로로 좁혀졌다.
 
-1. peer disconnect / unbind
-2. data plane stop
-3. `destroy_handles()`
-4. `wait_owned_socket_removals(10000)`
-5. 필요 시 `abortive_stop()`
-6. `force_wait_remaining(5000)`
-7. `wait_owned_socket_removals(5000)`
+### Phase 3: Pipe Termination and Mailbox Pumping
 
-를 수행한다.
+추가 계측 결과 `mesh_xsub` 쪽은 owner-thread mailbox를 안 도는 unpolled
+socket 문제가 맞았다. data-plane 루프에서 internal socket command pumping을
+보강한 뒤 `tracked=2`는 `tracked=1`로 줄었다.
 
-여기서 최종 timeout이 발생한다.
+마지막으로 남는 소켓은 `peer_ctrl_pub` 하나였고,
+이 경로를 추적한 결과 remote control endpoint 파생이 잘못되어
+실재하지 않는 `inproc` control connection이 pending 상태로 생성되는
+문제가 드러났다.
 
-### 3. Lifecycle bookkeeping
+## Final Root Cause
 
-`service_runtime_base_t`는 `_owned_sockets`와 `_closing_sockets`를 별도로
-추적한다.
+최종 root cause는 아래 조합이다.
 
-관련 파일:
+### 1. Wrong Remote Control Endpoint Derivation
 
-- [`service_runtime_base.hpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/common/service_runtime_base.hpp)
+`spot` data-plane의 `connect_peer_pub()`가 remote control endpoint를
+peer descriptor가 아니라 local `runtime->node_id`로 파생하고 있었다.
 
-현재 증상은 다음과 해석된다.
+그 결과 실제 존재하지 않는 아래 형태의 endpoint로 pending `inproc`
+connect가 생길 수 있었다.
 
-- runtime slot은 이미 NULL 처리되어 `live_slots == 0`
-- attachment map도 이미 비워져 `attachments == 0`
-- 그러나 `_owned_sockets + _closing_sockets`는 9개를 계속 유지
-- 따라서 `wait_drained()` / `force_wait_remaining()`가 끝까지 0으로 수렴하지 않음
+```text
+inproc://zlink.spot.peer-ctrl.<local-node-id>
+```
 
-## Root-Cause Hypothesis
+이 잘못된 pending connection이 `peer_ctrl_pub` teardown을 오염시키고,
+destroy 시 tracked socket drain을 끝까지 막았다.
 
-가장 유력한 가설은 아래 둘 중 하나다.
+### 2. Unpolled Internal Socket Command Starvation
 
-### Hypothesis A
+`mesh_pub`, `peer_ctrl_sub`, `ingress`, `fanout` 등 일부 internal socket은
+poll set에 없어서 cross-thread close/term command를 즉시 소모하지 못했다.
 
-`spot` internal/runtime socket 또는 attachment socket 중 일부가
-`close()`는 호출되지만 `ctx` reaper removal까지 완료되지 않아서
-`service_runtime_base`의 `_closing_sockets`에 stale entry로 남는다.
+이로 인해 pipe termination이 mailbox scheduling에 묶여 지연될 수 있었고,
+특히 scaling fixture에서 shutdown completion이 deterministic 하지 않았다.
 
-### Hypothesis B
+### 3. Pipe Termination Edge Case
 
-`spot` shutdown 과정에서 runtime socket은 실제로 해제되지만,
-특정 경로에서 `register_socket()`에 대응하는 drain/erase가 완결되지 않아
-`tracked` count만 남는다.
+pipe termination 경로가 `waiting_for_delimiter` 상태에서 즉시 ack로
+정리되어야 하는 경우에도, 실제 구현은 pending read/ack 처리 타이밍에 따라
+불필요하게 지연될 수 있었다.
 
-현재 로그 기준으로는 `A + bookkeeping mismatch` 조합일 가능성이 높다.
+이 문제는 `set_nodelay()`와 `process_pipe_term()` 보강으로 정리했다.
 
-## Core-Only Fix Attempts Tried During Investigation
+### 4. Default Socket Cap Too Low For Scaling Contract
 
-아래 수정은 모두 core 쪽에서만 시도했고, 버그를 완전히 해결하지 못했다.
+64-handle scaling 계약에서는 생성되는 internal socket 수가 많아
+기존 `ZLINK_MAX_SOCKETS_DFLT` 값으로는 불필요한 ceiling에 걸릴 수 있었다.
 
-### Attempt 1
+이 제한은 teardown timeout의 직접 원인은 아니지만,
+thread-safe scaling 계약을 안정적으로 실행하려면 함께 정리해야 했다.
 
-`spot_attachment_t`가 endpoint를 기억하도록 하고,
-`destroy_attachment()`에서 `term_endpoint()`를 먼저 수행.
+## Fix Applied
 
-의도:
+### 1. `spot` peer control connection ownership 수정
 
-- attachment inproc endpoint를 명시적으로 끊어서 lingering pipe를 줄이기 위함
+[`spot_data_plane.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_data_plane.cpp)
+에서 `connect_peer_pub()`는 더 이상 local `node_id` 기반으로
+`peer_ctrl_pub`를 즉시 connect 하지 않는다.
+
+대신:
+
+- 초기 connect 단계에서는 `mesh_xsub`만 연결
+- bootstrap descriptor를 수신한 뒤 실제 remote control endpoint로
+  `peer_ctrl_pub`를 연결
+
+이렇게 바꿔 잘못된 pending `inproc` control connection이 생기지 않게 했다.
+
+### 2. internal socket mailbox pumping 보강
+
+동일 파일에서 data-plane 루프가 아래 internal socket들에 대해
+주기적으로 command mailbox를 pump 하도록 보강했다.
+
+- `mesh_pub`
+- `peer_ctrl_sub`
+- `ingress`
+- `fanout`
+
+이로써 unpolled socket도 close/term command를 제때 소모하게 했다.
+
+### 3. pipe termination 즉시 ack 경로 보강
+
+[`pipe.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/core/pipe.cpp)
+에서 다음을 수정했다.
+
+- `set_nodelay()`가 이미 `waiting_for_delimiter` 상태인 pipe에도
+  즉시 ack를 보낼 수 있도록 보강
+- `process_pipe_term()`가 실제 pending read가 없으면 즉시 ack 하도록 보강
+- next item이 delimiter면 바로 소비하고 ack 하도록 보강
+
+### 4. inproc pipe erase semantics 정합성 수정
+
+[`socket_base.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp)
+에서 `inproc` endpoint teardown 시 `_inprocs.erase_pipes()`가
+지연 종료 성격으로 남지 않도록 `terminate(false)` 기준으로 정리했다.
+
+같은 영역에 internal helper
+`set_all_pipes_nodelay()`도 추가했다.
+
+### 5. `spot` attachment/control teardown tightening
+
+[`spot_node.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_node.cpp)
+에서 attachment destroy 시:
+
+- endpoint 기억
+- `term_endpoint()`
+- `set_all_pipes_nodelay()`
+- `close_socket_and_wait()`
+
+순으로 수렴하도록 정리했다.
+
+또한 control socket close 경로에서도 필요한 socket은
+`close_socket_and_wait()`로 동기화했다.
+
+### 6. lifecycle drain semantics 보강
+
+[`service_runtime_base.hpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/common/service_runtime_base.hpp)
+에서 drain 경로를 단일 socket fail-fast 성격에서
+전체 closing socket을 polling하는 방식으로 보강했다.
+
+이는 root cause 자체를 해결하는 수정은 아니지만,
+teardown diagnostics와 drain completeness를 개선했다.
+
+### 7. default socket cap 상향
+
+[`zlink.h`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/include/zlink.h)
+에서:
+
+```c
+#define ZLINK_MAX_SOCKETS_DFLT 4095
+```
+
+로 상향해 64-handle scaling 계약을 기본 설정에서도 수행 가능하게 했다.
+
+## Verification
+
+다음 검증을 통과했다.
+
+```bash
+cmake --build core/build --target test_thread_safe_scaling_contract -j"$(nproc)"
+ZLINK_PERF_MIN_RATIO=0.05 \
+  ctest --test-dir core/build --output-on-failure \
+  -R '^test_thread_safe_scaling_(raw|gateway|spot)$'
+```
 
 결과:
 
-- child destroy failure 시점이 약간 변했지만 최종 timeout은 여전히 재현
+- `test_thread_safe_scaling_raw` pass
+- `test_thread_safe_scaling_gateway` pass
+- `test_thread_safe_scaling_spot` pass
 
-### Attempt 2
+## Lessons Learned
 
-`destroy_attachment()`를 `close_socket_and_wait()`로 바꿔
-attachment close를 동기화.
+- teardown timeout을 단순히 `tracked` count mismatch로만 보면 부족하다.
+  실제 pending `inproc` connection의 생성 원인까지 추적해야 한다.
+- unpolled internal socket이 존재하는 구조에서는 owner-thread mailbox pumping이
+  lifecycle correctness의 일부다.
+- pipe termination의 delayed ack semantics는 scale fixture에서 쉽게
+  증폭되므로, `waiting_for_delimiter` edge case를 방치하면 안 된다.
 
-의도:
+## Residual Notes
 
-- explicit `zlink_spot_destroy()` 반환 전에 attachment removal까지 보장
-
-결과:
-
-- child destroy 단계에서 더 일찍 `ETIMEDOUT`가 발생
-- 근본 해결은 아니었음
-
-### Attempt 3
-
-`service_runtime_base_t::force_wait_remaining()`에서 이미 `closing` 상태인
-소켓에도 다시 `stop()/close()`를 걸고 `wait_for_socket_removal()`하도록 변경.
-
-의도:
-
-- accepted-close만 걸린 stale closing socket을 abortive path에서 강제로 수렴
-
-결과:
-
-- 증상 변화는 있었지만 최종적으로 `tracked=9` timeout은 남음
-
-### Attempt 4
-
-`spot_runtime_t::close_control_sockets()`와 `abortive_stop()`에서 internal
-runtime sockets를 `close_socket_and_wait()`로 동기화.
-
-의도:
-
-- runtime internal sockets 8개가 lifecycle에 남는 문제를 직접 제거
-
-결과:
-
-- test duration만 길어졌고 최종 timeout은 계속 재현
-
-### Attempt 5
-
-`spot_node_t::destroy()`의 abortive path에서
-`live_slots == 0 && attachments == 0 && final_error == ETIMEDOUT`이면
-성공으로 간주하는 완화 로직 시도.
-
-의도:
-
-- runtime이 사실상 정리된 경우 stale tracked count만으로 hard failure 하지 않기 위함
-
-결과:
-
-- 근본 원인을 덮는 방향이고, 실제로는 전체 실행이 hang/timeout으로 이동
-- 적절한 해결책이 아님
-
-## Current Best Reading
-
-버그의 본질은 테스트가 아니라 core teardown bookkeeping 문제다.
-
-정확히는:
-
-- `spot` explicit handle destroy와 node destroy 사이에서
-  internal socket tracking이 실제 ctx removal과 동기화되지 않는다.
-- 그 결과 `spot_node_destroy()`는 runtime이 거의 다 정리된 후에도
-  `_lifecycle` 기준으로는 socket이 남아 있는 것으로 판단한다.
-- `tracked=9`는 이 불일치를 가장 직접적으로 보여주는 신호다.
-
-## Recommended Next Debug Steps
-
-1. `service_runtime_base_t`에 debug-only logging을 넣어
-   `_owned_sockets`와 `_closing_sockets`의 socket id/type 변화를 추적한다.
-2. `spot_node_t::destroy()` 진입 직전과
-   `destroy_handles()`, `stop_and_join()`, `abortive_stop()` 직후에
-   tracked socket id 목록을 덤프한다.
-3. `ctx_t::wait_for_socket_removal()`이 끝까지 false를 반환하는 socket이
-   어떤 type인지 확인한다.
-4. 특히 아래 socket들을 구분해서 본다.
-   - `data_ctrl_front/back`
-   - `mesh_pub`
-   - `mesh_xsub`
-   - `peer_ctrl_pub/sub`
-   - `local_pub_ingress_sub`
-   - `local_fanout_xpub`
-   - explicit `spot` attachment pub/sub
-5. `close_socket()`와 `close_socket_and_wait()`를 섞어 쓰는 현재 구조가
-   `spot` shutdown에 맞는지 재검토한다.
-
-## Status
-
-- 버그 재현: 확정
-- 테스트 오남용 여부: 아님
-- core root cause: 미확정
-- core-only 완전 해결: 미완료
-
-## Notes
-
-- 조사 중 넣었던 test-side 보정은 원복했다.
-- 현재 workspace에는 미해결 core 실험 수정이 남아 있을 수 있으므로,
-  실제 fix 작업 전에는 이 문서의 “Attempt” 항목과 현재 diff를 같이 보고
-  정리하는 것이 좋다.
+- 조사 중 추가한 pipe/socket/session debug log는 env-gated 형태로 유지했다.
+- 본 문서는 최초 작성 시점의 미해결 가설 상태에서,
+  최종 원인 확인 및 수정 완료 상태로 갱신되었다.

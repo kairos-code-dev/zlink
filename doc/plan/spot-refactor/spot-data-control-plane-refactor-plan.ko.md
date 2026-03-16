@@ -9,6 +9,20 @@
 > `tcp/262144`는 `14.324 Kmsg/s` 수준이며,
 > 같은 구간의 main 기준은 각각 `46.204 Kmsg/s`, `25.550 Kmsg/s`다.
 > 즉 현재 rewrite는 main 대비 대략 `0.68x`, `0.56x` 수준이다.
+>
+> 2026-03-16 업데이트 메모:
+>
+> - 이 문서의 1차 채택안인 `data PUB/XSUB + peer control PUB/SUB` 구조는
+>   현재 코드에 이미 반영되어 있다.
+> - 그러나 문서 3.1, 5.2, 5.3의 핵심 원칙 일부는 구현에서 다시 흐려졌다.
+> - 특히 `hidden default sub 비의존`, `public handle과 node internal
+>   receiver 분리`, `ready source 단일화`, `destroy ownership 단일화`는
+>   아직 완료되지 않았다.
+> - 현재 남아 있는 `spot` thread-safe/scaling teardown bug는
+>   이 미완료 지점과 직접 연결되어 있다.
+> - 따라서 이 문서는 더 이상 “새 구조 제안”만이 아니라,
+>   이미 반영된 1차 구조 위에서 2차 단순화 리팩터를 진행하기 위한
+>   기준 문서로 함께 사용한다.
 
 ## 1. 목적
 
@@ -17,6 +31,37 @@
 
 - SPOT single 성능을 먼저 `main` 근사치까지 회복한다.
 - monitor/readiness 계약을 perf 전용 우회 없이 유지한다.
+
+### 1.1 이번 문서가 바꾸지 않는 것
+
+이번 리팩터는 아래를 바꾸지 않는다.
+
+- public `spot` API / ABI의 기본 외형
+- thread-safe public contract의 의미
+- monitor / readiness public semantics의 강도
+- `spot_node` 중심 public 모델
+- perf 전용 shortcut이나 harness 특화 코드 허용 정책
+
+즉 이 문서는 성능을 위해 계약을 약하게 만드는 문서가 아니라,
+현재 계약을 더 단순한 내부 구조 위에 다시 올리는 문서다.
+
+### 1.2 관련 문서
+
+- [`gateway-thread-safe-control-lifecycle-refactor-plan.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/spot-refactor/gateway-thread-safe-control-lifecycle-refactor-plan.ko.md)
+
+`spot` 문서는 transport-level data/control plane 분리가 핵심이고,
+`gateway` 문서는 single-router 기반 state/control/lifecycle ownership 분리가 핵심이다.
+
+### 1.3 공통 용어 정리
+
+이 문서에서 `control plane`은 실제 peer 간 transport-level control socket과
+typed protocol을 뜻한다.
+
+- `spot`: transport-level peer control plane
+- `gateway`: logical control/state plane
+
+같은 `control plane`이라는 단어를 쓰더라도
+두 문서가 가리키는 구조 수준은 다르다.
 
 핵심 방향은 한 줄로 요약된다.
 
@@ -51,16 +96,20 @@ SPOT의 data plane과 peer control plane을 분리한다.
 - `mesh_xsub = XSUB`
 - `fanout = XPUB`
 
-반면 current rewrite는 `mesh_pub`에 control 책임이 섞여 있다.
+현재 rewrite는 socket 타입 자체는 이미 분리되어 있다.
 
-- `mesh_pub = XPUB`
-- remote subscription 수집
-- `ready_probe`
-- `ready_ack`
-- `FIRST_DELIVERY_READY_CHANGED` 계산 보조
+- `mesh_pub = PUB` (data 전용)
+- `mesh_xsub = XSUB`
+- `peer_ctrl_pub = PUB` (control 전용)
+- `peer_ctrl_sub = SUB` (control 전용)
 
-이 결과, 현재 rewrite는 remote data sender가 steady-state에서도
-`XPUB` 경로 비용을 계속 짊어진다.
+그러나 **socket 타입은 분리되었지만 경로 책임은 여전히 혼합**되어 있다.
+
+- `ready_probe` / `ready_ack` 처리가 data plane sub receive path에 남아 있음
+- `ensure_default_sub()`가 data plane attachment lifecycle을 암묵적으로 관리
+- `outbound_ready_filters`가 `"ack:" + source_id` 문자열로 readiness source를 혼합
+
+즉 socket 분리만으로는 해결되지 않는 **경로 수준 책임 혼합**이 핵심 부채다.
 
 ### 2.2 현재까지 유효한 개선과 한계
 
@@ -92,21 +141,36 @@ SPOT의 data plane과 peer control plane을 분리한다.
 - child handle마다 peer socket을 추가하는 것
 - 첫 단계에서 public API를 무리하게 크게 바꾸는 것
 
+### 3.3 현재 문서의 2차 구조 부채 핵심
+
+현재 1차 구조는 이미 코드에 상당 부분 반영됐지만,
+아래 네 가지는 여전히 2차 리팩터의 핵심 부채다.
+
+- hidden default sub 비의존 원칙 미완료
+- public handle과 node internal receiver의 lifecycle 분리 미완료
+- readiness source / snapshot / ack bookkeeping 단일화 미완료
+- destroy ownership 단일화 미완료
+
+특히 hidden default sub와 destroy ownership 문제는
+최근 `spot` thread-safe/scaling teardown bug와 직접 연결돼 있다.
+
 ## 4. 현재 구조가 느린 이유
 
 현재 rewrite의 문제는 단순히 `XPUB`가 느리다는 차원이 아니다.
 더 정확한 문제는 다음과 같다.
 
-### 4.1 data socket이 control 상태를 함께 운반한다
+### 4.1 data path가 여전히 control bookkeeping을 함께 떠안는다
 
-현재 `mesh_pub`는 remote peer로 payload를 보내는 socket인 동시에,
-아래 상태를 반영하는 관측점이기도 하다.
+현재 문제는 더 이상 socket 타입 자체가 섞여 있다는 뜻이 아니다.
+문제는 이미 분리된 data/control socket 위에서,
+실제 처리 경로의 책임이 아직 분리되지 않았다는 점이다.
 
-- remote peer subscription 유무
-- ready probe 대상
-- ready ack 집계
+- payload forwarding 경로가 ready probe / ready ack 결과를 함께 고려한다.
+- remote peer readiness bookkeeping이 data plane receive path에 남아 있다.
+- hidden default sub lifecycle이 data plane attachment 흐름과 간접 결합돼 있다.
 
-이 구조에서는 data socket을 data-only로 최적화할 수 없다.
+즉 `mesh_pub = PUB`, `peer_ctrl_pub/sub` 분리 자체는 끝났지만,
+data fast path가 아직 control bookkeeping에서 완전히 자유롭지 않다.
 
 ### 4.2 readiness 계약이 socket side-effect에 묶여 있다
 
@@ -145,8 +209,9 @@ SPOT는 아래 두 plane으로 나눈다.
 
 ### 5.3 monitor 의미는 유지하되, 근거는 socket 부수효과가 아니라 명시적 protocol로 바꾼다
 
-현재는 `XPUB` subscription 흐름을 해석해 monitor 상태를 만든다.
-개편 후에는 peer control message를 기준으로
+현재도 transport-level로는 peer control protocol이 존재하지만,
+monitor 의미의 authoritative source가 아직 한 곳으로 완전히 수렴하지 않았다.
+개편 후에는 peer control message와 정규화된 readiness state를 기준으로
 subscription 적용/ready ack/peer loss를 판단한다.
 
 ### 5.4 data fast path는 payload forwarding만 남긴다
@@ -159,9 +224,28 @@ subscription 적용/ready ack/peer loss를 판단한다.
 
 control 관련 bookkeeping은 fast path 밖으로 뺀다.
 
+### 5.5 `gateway`와 병행 진행할 때의 원칙
+
+`spot`과 `gateway`는 같은 service 계층이지만,
+실제 구조 부채는 다르다.
+
+- `spot`의 핵심 부채:
+  hidden internal receiver, readiness source 중복, destroy ownership 분산
+- `gateway`의 핵심 부채:
+  state ownership 혼합, attach/refresh ordering 혼합, monitor pipeline 결합
+
+권장 순서는 아래와 같다.
+
+1. `spot`에서 internal receiver / attachment / destroy ownership 정리를 먼저 수행
+2. 그 다음 `gateway`에서 state ownership과 lifecycle 단계화를 정리
+3. 마지막에 공통 service runtime / lifecycle 설명을 맞춤
+
+즉 두 문서는 같은 철학을 공유하지만,
+실제 코드 변경은 동일한 속도로 병렬 진행하지 않는다.
+
 ## 6. 대안 검토
 
-### 6.1 대안 A: 현재 `mesh_pub = XPUB` 유지 후 미세 최적화 계속
+### 6.1 대안 A: 1차 리팩터 이전 구조를 사실상 유지한 채 미세 최적화 계속
 
 장점:
 
@@ -169,13 +253,14 @@ control 관련 bookkeeping은 fast path 밖으로 뺀다.
 
 단점:
 
-- data/control 혼합이 그대로 남는다.
-- steady-state data socket이 계속 `XPUB` 경로를 탄다.
+- 경로 수준 data/control 혼합이 그대로 남는다.
+- hidden internal receiver / readiness bookkeeping / destroy ownership 부채가 그대로 남는다.
 - 이미 여러 차례의 미세 최적화로도 main 근사치 복구에 실패했다.
 
 결론:
 
-- 기각한다.
+- 1차 리팩터 이전 시점에는 기각 대상이었고,
+  2차 리팩터 기준에서도 구조 부채를 해소하지 못하므로 다시 채택하지 않는다.
 
 ### 6.2 대안 B: data `PUB/XSUB` + control `XPUB/XSUB`
 
@@ -858,6 +943,17 @@ SPOT payload 경로는 다시 main과 같은 성격의 단순한 fast path를 �
 하지만 최종 완료는 core 구조 개선으로 설명 가능해야 하며,
 기본 동작이 아닌 perf-only 설정값에 기대서는 안 된다.
 
+### 15.4 실행 전 체크리스트
+
+실제 코드 변경 전후에 아래를 반드시 점검한다.
+
+- hidden internal receiver가 public child lifecycle에 섞여 있지 않은가
+- readiness source / snapshot / ack ownership이 한 곳으로 수렴하는가
+- payload forwarding 함수가 control bookkeeping을 다시 떠안지 않는가
+- destroy ownership이 handle, node, runtime, data-plane 사이에서 중복되지 않는가
+- manual bootstrap과 discovery path가 같은 control-plane 규칙으로 수렴하는가
+- thread-safe acceptance와 perf-contract가 같은 구조 설명으로 이어지는가
+
 ### 15.5 실행 순서
 
 항상 아래 순서로 진행한다.
@@ -1003,3 +1099,431 @@ single SPOT가 여전히 크게 낮으면 아래 순서로 본다.
 
 위 조건을 만족하면 구현하고 측정한다.
 만족하지 않으면 버리고 다음 가설로 바로 넘어간다.
+
+## 16. 2026-03-16 현재 구현 상태 점검
+
+이 절은 문서 작성 이후 실제 코드가 어디까지 왔는지,
+그리고 어디서 다시 복잡도가 생겼는지를 정리한다.
+
+### 16.1 현재 구현에서 이미 유지되고 있는 항목
+
+다음 항목은 이 문서의 1차 채택안과 현재 코드가 대체로 일치한다.
+
+- data plane과 peer control plane은 분리돼 있다.
+  - 현재 runtime은 `mesh_pub(PUB)`, `mesh_xsub(XSUB)`,
+    `peer_ctrl_pub(PUB)`, `peer_ctrl_sub(SUB)`를 사용한다.
+- peer control plane은 별도 socket pair로 subscription/readiness를 운반한다.
+- bootstrap/control descriptor 기반 peer control endpoint 연결이 구현돼 있다.
+- runtime 내부 command 채널(`data_ctrl_front/back`)은 유지되며,
+  data/control 처리는 단일 worker thread poll loop에서 budget 기반으로 소화한다.
+- `SPOT_PUB_DELIVERY_READY_CHANGED`,
+  `SPOT_SUB_DELIVERY_READY_CHANGED` 같은 monitor 계약은
+  control message 기반으로 계산하는 방향으로 이미 이동했다.
+
+즉 “plane 분리 자체가 아직 안 됐다”가 현재 문제는 아니다.
+현재 문제는 1차 구조 위에 남은 hidden coupling과
+수명/책임 경계의 불명확성이다.
+
+### 16.2 현재 구현이 문서 원칙과 어긋난 지점
+
+다음 항목은 현재 코드가 이 문서의 중요한 원칙을 충분히 만족하지 못하는 부분이다.
+
+#### 16.2.1 hidden default sub 의존이 아직 남아 있다
+
+문서 3.1의 핵심 원칙은
+`hidden default child/default sub 같은 내부 전제에 기대지 않는다`였다.
+
+그러나 현재 `zlink_spot_node_new(..., handler)` 경로는
+node-level inbound handler를 설치하기 위해
+암묵적으로 `ensure_default_sub()`를 호출해 hidden default sub를 만든다.
+
+이 hidden default sub는 다음 특성을 가진다.
+
+- user-visible child handle이 아니다.
+- 그러나 실제 구현에서는 일반 `spot_sub_t` attachment/lifecycle을 공유한다.
+- node destroy, child destroy, runtime drain과 얽혀 teardown bug를 만들 수 있다.
+
+즉 “node 내부 수신기”가 독립된 internal receiver 타입이 아니라
+public sub 구현체의 숨은 인스턴스로 남아 있는 것이 현재 구조 부채다.
+
+#### 16.2.2 public handle과 node internal receiver가 같은 attachment 경로를 공유한다
+
+현재 `spot_pub_t`, `spot_sub_t`, hidden default sub 모두
+같은 attachment 생성/삭제 경로를 공유한다.
+
+이 구조의 문제는 다음과 같다.
+
+- user-visible handle은 explicit destroy semantics를 가진다.
+- node internal receiver는 node lifecycle에 종속돼야 한다.
+- 그런데 현재는 둘이 같은 `destroy_attachment()`/`destroy_attachment_async()`
+  경로를 써서 close timing과 drain 책임이 섞인다.
+
+지금 남아 있는 `spot scaling teardown timeout`도
+이 공유 경로 때문에 hidden default sub attachment와 `fanout`이
+동시에 drain되지 못하는 케이스로 수렴한다.
+
+#### 16.2.3 readiness source가 아직 완전히 단일화되지 않았다
+
+문서 5.3과 8.6은 readiness를 명시적 protocol로 옮기되,
+그 의미를 명확한 state machine으로 유지하는 것을 목표로 했다.
+
+현재는 방향은 맞지만 bookkeeping이 여전히 여러 레이어에 퍼져 있다.
+
+- `spot_sub_t`는 local raw filter, ready endpoint, ready ack endpoint를 가진다.
+- `spot_node_t`는 pub-side ready source aggregate를 가진다.
+- `spot_data_plane_t`는 peer snapshot과 ready ack snapshot을 동시에 중계한다.
+
+이 상태에서는 같은 의미의 변화가
+subscription snapshot, ready ack snapshot, peer loss cleanup으로
+중복 전달될 수 있다.
+
+즉 현재 readiness contract는 “대체로 맞는 값”을 만드는 수준이지,
+완전히 단일한 semantic source를 가진 상태는 아니다.
+
+#### 16.2.4 destroy ownership이 아직 한 곳으로 모이지 않았다
+
+문서 전체의 방향은
+data plane은 payload/control processing만 하고,
+lifecycle close ownership은 명확한 단일 경로로 모으는 것이었다.
+
+현재는 다음 책임이 여전히 나뉘어 있다.
+
+- handle destroy
+- node destroy
+- runtime close
+- data-plane stop
+- attachment async/sync close
+
+이 중 일부는 이미 정리됐지만,
+특히 `spot` shutdown에서는 여전히
+“누가 어떤 socket/attachment를 언제까지 drain 책임지는가”가
+완전히 단일화되지 않았다.
+
+### 16.3 teardown bug 해결과 남은 구조 부채
+
+`spot` thread-safe scaling teardown timeout은 core 수정으로 해결되었다.
+(상세:
+[`2026-03-16-spot-threadsafe-destroy-timeout-tracked-sockets.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/bug/threadsafe/2026-03-16-spot-threadsafe-destroy-timeout-tracked-sockets.md))
+
+실제 root cause는 단일 문제가 아니라 아래 4건의 조합이었다.
+
+1. `connect_peer_pub()`가 remote control endpoint를 local `node_id`로
+   잘못 파생해 pending `inproc` connection을 남김
+2. 일부 internal socket이 poll 대상이 아니어서
+   cross-thread termination command를 제때 소모하지 못함
+3. pipe termination이 `waiting_for_delimiter` 상태에서
+   즉시 ack로 수렴하지 못하는 edge case
+4. 64-handle scaling 계약에서 default socket cap이 낮아
+   fixture 자체가 resource ceiling에 걸림
+
+이 4건은 모두 core 수정으로 닫혔고,
+`raw/gateway/spot` scaling 계약 테스트가 통과한다.
+
+그러나 이 bug가 드러낸 구조 부채는 여전히 유효하다.
+
+- hidden default sub가 일반 public sub와 같은 attachment destroy path를 쓰는 구조는
+  이런 종류의 teardown 불일치를 발생시키기 쉬운 토양이다.
+- data plane thread, default sub destroy, node destroy가
+  같은 socket/attachment에 대해 중복 close를 시도할 수 있는 3-way close 위험이
+  구조적으로 남아 있다.
+- 현재 fix는 개별 원인을 각각 막았지만,
+  close ownership 분리 없이는 유사 패턴의 재발 가능성이 존재한다.
+
+따라서 2차 리팩터(17-18절)의 동기는 이 bug 자체가 아니라,
+이 bug가 쉽게 발생할 수 있었던 구조적 토양을 제거하는 것이다.
+
+## 17. 2차 리팩터 목표
+
+이 절은 1차 `plane 분리` 이후 남은 2차 단순화 리팩터 목표를 정의한다.
+
+2차 리팩터는 15절의 perf 복구 종료 조건과 독립적으로 진행한다.
+15절은 1차 plane 분리 + perf 복구를 위한 실행 지침이고,
+17-18절은 1차 구조 위에 남은 구조 부채를 정리하는 별도 작업이다.
+다만 2차 리팩터가 1차에서 달성한 perf 수준을 후퇴시키지 않는 것은
+필수 조건이다(19.2절 참조).
+
+### 17.1 핵심 문제 정의: hidden default sub 의존
+
+2차 리팩터의 중심 문제는 hidden default sub 의존이다.
+
+현재 남아 있는 hidden default sub 의존은 내부 구현 세부가 아니라
+public/node API 경로의 구조 문제다.
+node-level handler install, node subscribe/unsubscribe, node monitor open이
+모두 `ensure_default_sub()`를 통해 implicit sub 생성을 유발하므로,
+2차 리팩터의 목표는 "default sub를 없앤다"가 아니라
+"명시적 node-internal receiver와 user-visible handle을 분리하고,
+API helper가 implicit default handle 생성에 기대지 않게 만든다"이다.
+
+이 hidden default sub는:
+
+- node-level inbound dispatch의 유일한 수단이다.
+- 일반 public sub와 같은 `spot_attachment_t` lifecycle을 공유한다.
+- teardown 시 data plane / default sub / node가 같은 socket/attachment를
+  중복 close하는 3-way close 위험의 직접적 원인이다.
+- readiness bookkeeping이 여러 레이어에 분산되는 근본 원인이기도 하다.
+
+즉 hidden default sub 의존이 나머지 세 가지 부채
+(destroy ownership 분산, attachment 경로 공유, readiness source 중복)의
+공통 토양이다. 이 의존을 제거하면 나머지 문제는
+자연스럽게 해소 가능한 범위로 축소된다.
+
+### 17.2 목표 요약
+
+위 핵심 문제를 포함해 2차 리팩터는 아래 네 줄을 달성한다.
+
+- hidden default sub를 일반 public sub lifecycle에서 분리한다.
+- node internal receiver를 별도 internal runtime component로 격리한다.
+- readiness source를 단일 semantic source 기준으로 재정렬한다.
+- destroy ownership을 `node destroy -> runtime drain` 중심으로 단일화한다.
+
+### 17.3 구체 목표
+
+#### 17.3.1 node internal receiver 분리
+
+현재 hidden default sub가 담당하는 node-level inbound dispatch를
+별도 internal receiver 타입으로 옮긴다.
+
+이 internal receiver는 다음 성질을 가져야 한다.
+
+- public `zlink_spot_t`가 아니다.
+- `spot_sub_t` destroy semantics를 재사용하지 않는다.
+- `spot_node_t` 또는 `spot_runtime_t` 수명에 완전히 종속된다.
+- monitor child, callback self-close, public child busy 규칙의 대상이 아니다.
+
+internal receiver 도입 시 기존 public sub attachment와 lifecycle을 공유하지 않아야 하며,
+implicit default sub 생성 경로의 대체물로만 사용돼야 한다.
+user-visible sub handle 생성/파괴와 node internal receiver는
+서로 독립적으로 선형화돼야 한다.
+
+#### 17.3.2 attachment 클래스 분리
+
+attachment를 최소 두 클래스로 나눈다.
+
+- public child attachment
+- node-owned internal attachment
+
+두 클래스는 생성 API, destroy ownership, drain 전략을 분리한다.
+
+핵심 원칙:
+
+- public child attachment는 explicit handle destroy semantics를 따른다.
+- internal attachment는 node/runtime destroy semantics를 따른다.
+- 두 경로가 같은 helper를 쓰더라도
+  ownership과 wait policy를 공유해서는 안 된다.
+
+#### 17.3.3 readiness aggregate source 정규화
+
+pub-side delivery ready aggregate는
+오직 explicit ready-ack semantic source만을 기반으로 계산한다.
+
+subscription snapshot과 ready snapshot의 역할은 분리한다.
+
+- subscription snapshot:
+  peer가 어떤 raw filter를 mirror하고 있는지 동기화
+- ready ack snapshot:
+  peer가 실제로 delivery-ready임을 선언
+- pub aggregate:
+  ready ack source set의 cardinality만을 반영
+
+즉 “subscription mirror”와 “publisher-visible ready source”는
+같은 map이나 같은 source key namespace를 공유하지 않게 한다.
+
+#### 17.3.4 destroy ownership 단일화
+
+현재 구조에도 graceful shutdown과 abortive fallback이 이미 존재한다.
+따라서 2차 리팩터의 목표는 destroy 순서를 새로 발명하는 것이 아니라,
+control task state, handle teardown, runtime socket teardown의
+authoritative owner를 더 명확히 하고
+각 단계의 terminal condition을 구조적으로 설명 가능하게 만드는 것이다.
+
+최종 구조의 destroy ownership은 아래 규칙으로 고정한다.
+
+- data plane thread:
+  stop signal과 worker loop 종료만 담당
+- runtime:
+  internal socket close/drain만 담당
+- public handle destroy:
+  public attachment close만 담당
+- node destroy:
+  public child 정리 -> internal receiver 정지 -> runtime close/drain 순서만 담당
+
+즉 같은 socket/attachment를 둘 이상의 레이어가 close하려고 시도하지 않게 한다.
+
+## 18. 2차 리팩터 구현 단계
+
+구현 순서의 핵심 원칙:
+destroy ownership 단일화를 가장 먼저 수행한다.
+close ownership이 정리되지 않은 상태에서 다른 리팩터를 진행하면,
+새 타입이나 새 경로가 또 다른 close 중복을 만들 위험이 있다.
+따라서 close ownership 정리가 나머지 모든 단계의 안전망이 된다.
+
+### 18.1 1단계: destroy ownership 단일화
+
+현재 data plane thread, default sub destroy, node destroy가
+같은 socket/attachment에 대해 중복 close를 시도하는 3-way close 구조를 제거한다.
+
+구체적으로:
+
+- data plane thread의 `close_socket_ptr()` 호출을 제거한다.
+  data plane은 `terminate` 시 event loop 종료와 endpoint `term_endpoint()`만 수행하고,
+  소켓 자체를 close하지 않는다.
+- runtime이 data plane thread join 이후 모든 internal socket을
+  `close_socket_and_wait()`로 close하는 단일 경로를 확보한다.
+- public handle destroy는 public attachment close만 담당한다.
+- node destroy는 `public child 정리 → runtime close/drain` 순서만 담당하며,
+  직접 socket close를 호출하지 않는다.
+
+순서 보장:
+
+```text
+data plane terminate command
+  → data plane thread: event loop 종료, endpoint term (close 안 함)
+  → thread join 완료
+  → runtime: internal socket close_socket_and_wait() (단일 소유자)
+```
+
+data plane thread가 internal socket을 생성하더라도,
+생성 직후 runtime slot에 publish된 시점부터
+close ownership은 runtime shutdown contract로 귀속된다.
+terminate 이후에는 data plane이 직접 socket close를 수행하지 않고,
+join 완료 후 runtime이 단일 close owner로 정리한다.
+join 자체가 happens-before를 보장하므로 포인터 접근은 안전하지만,
+"어느 시점에 runtime slot에 publish되는가"를 코드에서 명시해야 한다.
+
+완료 기준:
+
+- 같은 socket/attachment를 둘 이상의 레이어가 close하려고 시도하는 경로가 없다.
+- `spot` scaling teardown이 추가 타이밍 완화 없이 안정적으로 통과한다.
+- abortive shutdown fallback은 “예외 상황”으로만 남고 정상 경로에서 의존하지 않는다.
+- 기존 테스트(`test_spot_pubsub_scenario`, `test_spot_service_introspection`,
+  `test_monitor_service_contract`, `test_thread_safe_scaling_spot`)가 유지된다.
+
+### 18.2 2단계: internal receiver 모델링 및 타입 분리
+
+hidden default sub의 역할을 분석하고 별도 internal receiver 타입으로 분리한다.
+1단계에서 close ownership이 정리된 상태이므로,
+새 타입이 기존 close 중복 문제를 재도입할 위험이 없다.
+
+구체적으로:
+
+- hidden default sub가 실제로 담당하는 책임을 목록화한다.
+  (node-level inbound dispatch, fanout connect, handler 등록)
+- `spot_node_inbound_receiver_t` 또는 동등한 내부 전용 타입을 도입한다.
+- 이 타입은 `spot_sub_t` destroy semantics를 재사용하지 않으며,
+  `spot_node_t` 또는 `spot_runtime_t` 수명에 완전히 종속된다.
+- `install_spot_node_handler()`가 `ensure_default_sub()`를 통해
+  암묵적으로 public child를 만드는 경로를 제거한다.
+- internal receiver는 attachment map이 아니라
+  runtime의 internal socket과 같은 레벨에 배치한다.
+  이로써 close ownership이 1단계에서 확립한 runtime 단일 경로와 자연스럽게 합류한다.
+- 현재 sub receive path 내부에서 수행되는 ready probe 판별을
+  user-visible sub callback path에서 제거하고,
+  node-internal receiver 또는 동등한 internal ingress 계층으로 이동시킨다.
+
+완료 기준:
+
+- `zlink_spot_node_new(..., handler)`가 hidden public sub를 만들지 않는다.
+- node inbound dispatch가 public sub lifecycle과 완전히 분리된다.
+- internal receiver attachment는 node/runtime teardown에서만 정리된다.
+- public sub/pub destroy는 internal socket/fanout/ingress drain과 직접 얽히지 않는다.
+
+### 18.3 3단계: attachment ownership 분리
+
+public attachment와 internal attachment의 생성/삭제 경로를 분리한다.
+
+- `destroy_attachment()`/`destroy_attachment_async()`의 호출 주체를
+  public/internal로 구분한다.
+- `spot_attachment_t`에 ownership 구분을 추가하거나,
+  internal attachment를 attachment map에서 완전히 제거한다
+  (2단계에서 internal receiver가 runtime 레벨로 이동했다면 후자가 자연스럽다).
+- 두 경로가 같은 helper를 쓰더라도
+  ownership과 wait policy를 공유해서는 안 된다.
+
+완료 기준:
+
+- attachment map에는 public child attachment만 남는다.
+- internal receiver의 소켓은 runtime internal socket으로 관리된다.
+
+### 18.4 4단계: readiness state machine 정리
+
+subscription snapshot source와 ready-ack source를 완전히 분리한다.
+
+현재 `spot_data_plane.cpp`의 `outbound_ready_filters`는 ready ack source를
+`”ack:” + source_id` string prefix로 인코딩하고,
+수신 측에서 `decode_ready_ack_source_id()`로 런타임 파싱한다.
+이 implicit typing을 제거하고, 별도 자료구조로 분리한다.
+
+구체적으로:
+
+- subscription source와 ready ack source를 별도 map/struct로 분리한다.
+- pub aggregate source set은 ready-ack namespace만 사용하도록 정리한다.
+- disconnect/loss/ctrl-desync 시 aggregate reset 규칙을 단일화한다.
+- string prefix 기반 런타임 타입 판별을 명시적 타입 구분으로 교체한다.
+
+완료 기준:
+
+- `PUB_DELIVERY_READY_CHANGED`의 증가/감소가
+  하나의 명시적 source set 변화로만 설명된다.
+- subscription mirror와 publisher-visible ready source가
+  같은 map이나 같은 source key namespace를 공유하지 않는다.
+- monitor/late-connect/disconnect 회귀가 semantic duplication 없이 통과한다.
+
+## 19. 리팩터 수용 기준
+
+2차 리팩터는 아래를 모두 만족해야 완료로 본다.
+
+### 19.1 기능 수용 기준
+
+- hidden default sub에 대한 암묵 의존이 제거되거나,
+  최소한 public sub lifecycle과 완전히 격리된다.
+- `spot` scaling teardown timeout이 구조적으로 사라진다.
+- `test_spot_service_introspection`
+  `test_spot_pubsub_scenario`
+  `test_monitor_service_contract`
+  `test_thread_safe_scaling_spot`
+  이 안정적으로 통과한다.
+- readiness/monitor 계약을 유지하면서도
+  source bookkeeping 설명이 문서 한 절로 요약 가능할 정도로 단순해진다.
+
+### 19.2 성능 비후퇴 기준
+
+2차 리팩터는 구조 단순화가 목적이지만,
+1차에서 달성한 성능 수준을 후퇴시키면 안 된다.
+
+- 2차 리팩터 각 단계(18.1-18.4) 완료 후,
+  focused single run으로 SPOT tcp/131072, tcp/262144를 확인한다.
+- 1차 달성 수치 대비 5% 이상 후퇴하면 해당 단계를 재검토한다.
+- 최종적으로 15절의 perf gate(main 대비 90% 이상)를 계속 만족해야 한다.
+
+즉 2차 리팩터는 “성능을 올리는 작업”이 아니라
+“성능을 유지하면서 구조를 단순화하는 작업”이다.
+성능 후퇴가 감지되면 구조 변경의 hot path 영향을 먼저 분석한다.
+
+### 19.3 최종 목표
+
+최종 목표는 단순한 “성능 회복”이 아니라,
+SPOT의 data/control/lifecycle 구조가
+문서와 실제 코드에서 같은 모델로 설명되는 상태다.
+
+### 19.4 리팩터 후 유지해야 하는 회귀 테스트 계약
+
+리팩터 전후로 아래 계약이 깨지면 안 된다.
+
+- **node send-ready isolation**: pub/sub 각각의 send-ready/delivery-ready 이벤트가
+  다른 handle의 lifecycle 변화에 오염되지 않아야 한다.
+- **self-close `EBUSY` contract**: callback 내부에서 handle destroy 시
+  `EBUSY`를 반환하며, callback 완료 후에만 실제 close가 진행된다.
+- **node API의 implicit default sub/pub 비의존**:
+  `zlink_spot_node_new()`, subscribe/unsubscribe, monitor open 등
+  node-level API가 hidden default handle 생성에 기대지 않는다.
+
+## 20. 실행 전 체크리스트
+
+실제 코드 변경 전후에 아래를 반드시 점검한다.
+
+- hidden/internal resource가 public lifecycle에 새지 않는가
+- close ownership이 한 레이어에 모여 있는가
+- runtime read / control snapshot / event emission source가 분리돼 있는가
+- destroy accepted 이후 errno/latch 규칙이 유지되는가
+- data plane fast path에 control bookkeeping이 직접 끼어들지 않는가
+- readiness source가 단일 semantic source로 설명 가능한가

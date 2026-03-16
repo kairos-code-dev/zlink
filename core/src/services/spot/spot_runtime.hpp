@@ -49,6 +49,7 @@ struct spot_runtime_t
                            uint64_t *out_id_);
     socket_base_t *attachment_socket (uint64_t id_) const;
     int destroy_attachment (uint64_t id_);
+    int destroy_attachment_async (uint64_t id_);
     int ensure_healthy () const;
     void stop_sockets ();
     int close_control_sockets ();

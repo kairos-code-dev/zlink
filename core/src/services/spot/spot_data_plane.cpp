@@ -130,7 +130,62 @@ static void spot_ctrl_debugf (const char *fmt_, ...)
     fprintf (stderr, "[spot-ctrl] ");
     vfprintf (stderr, fmt_, args);
     fprintf (stderr, "\n");
+    fflush (stderr);
+    FILE *fp = fopen ("/tmp/zlink_spot_ctrl.log", "a");
+    if (fp) {
+        va_list file_args;
+        va_start (file_args, fmt_);
+        vfprintf (fp, fmt_, file_args);
+        fprintf (fp, "\n");
+        va_end (file_args);
+        fclose (fp);
+    }
     va_end (args);
+}
+
+static void spot_ready_ack_ctrl_debugf (const char *fmt_, ...)
+{
+    if (!getenv ("ZLINK_DEBUG_SPOT_READY_ACK"))
+        return;
+
+    va_list args;
+    va_start (args, fmt_);
+    fprintf (stderr, "[spot-ready-ack-ctrl] ");
+    vfprintf (stderr, fmt_, args);
+    fprintf (stderr, "\n");
+    fflush (stderr);
+    FILE *fp = fopen ("/tmp/zlink_spot_ready_ack.log", "a");
+    if (fp) {
+        va_list file_args;
+        va_start (file_args, fmt_);
+        vfprintf (fp, fmt_, file_args);
+        fprintf (fp, "\n");
+        va_end (file_args);
+        fclose (fp);
+    }
+    va_end (args);
+}
+
+static const char ready_ack_source_prefix[] = "ack:";
+
+static std::string encode_ready_ack_source_id (const std::string &source_id_)
+{
+    return std::string (ready_ack_source_prefix) + source_id_;
+}
+
+static bool decode_ready_ack_source_id (const std::string &source_key_,
+                                        std::string *out_)
+{
+    if (!out_)
+        return false;
+    if (source_key_.compare (0, strlen (ready_ack_source_prefix),
+                             ready_ack_source_prefix)
+        != 0) {
+        return false;
+    }
+
+    *out_ = source_key_.substr (strlen (ready_ack_source_prefix));
+    return !out_->empty ();
 }
 
 static int send_ascii_frame (socket_base_t *socket_,
@@ -344,6 +399,58 @@ static int send_snapshot_to_peers (
     return 0;
 }
 
+static int send_ready_ack_snapshots_to_target (
+  socket_base_t *socket_,
+  const std::string &target_endpoint_,
+  const std::map<std::string, std::map<std::string, std::set<std::string> > > &
+    outbound_ready_filters_)
+{
+    if (!socket_ || target_endpoint_.empty ())
+        return 0;
+
+    const std::map<std::string,
+                   std::map<std::string, std::set<std::string> > >::const_iterator
+      target_it = outbound_ready_filters_.find (target_endpoint_);
+    if (target_it == outbound_ready_filters_.end ())
+        return 0;
+
+    for (std::map<std::string, std::set<std::string> >::const_iterator it =
+           target_it->second.begin ();
+         it != target_it->second.end (); ++it) {
+        if (it->first.empty ())
+            continue;
+        if (send_control_snapshot (socket_, target_endpoint_,
+                                   encode_ready_ack_source_id (it->first),
+                                   it->second)
+            != 0)
+            return -1;
+    }
+
+    return 0;
+}
+
+static bool parse_ready_ack_arg (const std::string &arg_,
+                                 std::string *target_endpoint_out_,
+                                 std::string *raw_filter_out_,
+                                 std::string *ack_source_id_out_)
+{
+    if (!target_endpoint_out_ || !raw_filter_out_ || !ack_source_id_out_)
+        return false;
+
+    const size_t first = arg_.find ('\n');
+    if (first == std::string::npos)
+        return false;
+    const size_t second = arg_.find ('\n', first + 1);
+    if (second == std::string::npos)
+        return false;
+
+    *target_endpoint_out_ = arg_.substr (0, first);
+    *raw_filter_out_ = arg_.substr (first + 1, second - first - 1);
+    *ack_source_id_out_ = arg_.substr (second + 1);
+    return !target_endpoint_out_->empty () && !raw_filter_out_->empty ()
+           && !ack_source_id_out_->empty ();
+}
+
 static int publish_bootstrap_descriptor (socket_base_t *mesh_pub_,
                                          spot_node_t *node_,
                                          spot_runtime_t *runtime_)
@@ -399,11 +506,15 @@ static void clear_snapshot_sources (
     for (std::map<std::string, std::set<std::string> >::iterator it =
            peer_ready_filters_->begin ();
          it != peer_ready_filters_->end (); ++it) {
+        std::string ack_source_id;
+        const bool ready_ack_source =
+          decode_ready_ack_source_id (it->first, &ack_source_id);
         for (std::set<std::string>::const_iterator filter_it =
                it->second.begin ();
              filter_it != it->second.end (); ++filter_it) {
-            node_->notify_pub_delivery_ready_ack (self_endpoint, *filter_it,
-                                                  it->first, false);
+            if (ready_ack_source)
+                node_->notify_pub_delivery_ready_ack (self_endpoint, *filter_it,
+                                                      ack_source_id, false);
         }
     }
     peer_ready_filters_->clear ();
@@ -558,10 +669,12 @@ static int recv_and_dispatch_mesh_xsub (
   socket_base_t *fanout_,
   socket_base_t *peer_ctrl_pub_,
   spot_node_t *node_,
-  std::map<std::string, std::string> *peer_ctrl_endpoints_)
+  std::map<std::string, std::string> *peer_ctrl_endpoints_,
+  const std::map<std::string, std::map<std::string, std::set<std::string> > > *
+    outbound_ready_filters_)
 {
     if (!mesh_xsub_ || !fanout_ || !peer_ctrl_pub_ || !node_
-        || !peer_ctrl_endpoints_) {
+        || !peer_ctrl_endpoints_ || !outbound_ready_filters_) {
         errno = EFAULT;
         return -1;
     }
@@ -636,6 +749,11 @@ static int recv_and_dispatch_mesh_xsub (
             != 0) {
             return -1;
         }
+        if (send_ready_ack_snapshots_to_target (peer_ctrl_pub_, peer_data_endpoint,
+                                                *outbound_ready_filters_)
+            != 0) {
+            return -1;
+        }
         node_->schedule_subscription_replay ();
         ++processed;
         if (processed >= mesh_xsub_forward_batch_limit)
@@ -682,9 +800,12 @@ static int recv_and_process_ctrl_messages (
         }
 
         const std::string &target_endpoint = frames[0];
-        const std::string &source_node_id = frames[1];
-        if (target_endpoint.empty () || source_node_id.empty ())
+        const std::string &source_key = frames[1];
+        if (target_endpoint.empty () || source_key.empty ())
             continue;
+        std::string ack_source_id;
+        const bool ready_ack_source =
+          decode_ready_ack_source_id (source_key, &ack_source_id);
 
         std::set<std::string> new_filters;
         for (size_t i = 3; i < frames.size (); ++i) {
@@ -693,32 +814,34 @@ static int recv_and_process_ctrl_messages (
         }
 
         std::set<std::string> &previous_filters =
-          (*peer_ready_filters_)[source_node_id];
+          (*peer_ready_filters_)[source_key];
 
         for (std::set<std::string>::const_iterator it =
                previous_filters.begin ();
              it != previous_filters.end (); ++it) {
             if (new_filters.count (*it) != 0)
                 continue;
-            node_->notify_pub_delivery_ready_ack (target_endpoint, *it,
-                                                  source_node_id, false);
+            if (ready_ack_source)
+                node_->notify_pub_delivery_ready_ack (target_endpoint, *it,
+                                                      ack_source_id, false);
         }
 
         for (std::set<std::string>::const_iterator it = new_filters.begin ();
              it != new_filters.end (); ++it) {
             if (previous_filters.count (*it) != 0)
                 continue;
-            node_->notify_pub_delivery_ready_ack (target_endpoint, *it,
-                                                  source_node_id, true);
+            if (ready_ack_source)
+                node_->notify_pub_delivery_ready_ack (target_endpoint, *it,
+                                                      ack_source_id, true);
         }
 
         spot_ctrl_debugf ("recv snapshot target=%s source=%s filters=%zu",
-                          target_endpoint.c_str (), source_node_id.c_str (),
+                          target_endpoint.c_str (), source_key.c_str (),
                           static_cast<size_t> (new_filters.size ()));
 
         previous_filters.swap (new_filters);
         if (previous_filters.empty ())
-            peer_ready_filters_->erase (source_node_id);
+            peer_ready_filters_->erase (source_key);
     }
 
     return 0;
@@ -937,11 +1060,17 @@ void spot_data_plane_t::run (spot_node_t *node_)
     uint64_t next_bootstrap_ms = 0;
     std::map<std::string, std::string> peer_ctrl_endpoints;
     std::map<std::string, std::set<std::string> > peer_ready_filters;
+    std::map<std::string, std::map<std::string, std::set<std::string> > >
+      outbound_ready_filters;
     while (running) {
         pump_socket_commands (mesh_pub);
+        pump_socket_commands (mesh_xsub);
+        pump_socket_commands (peer_ctrl_pub);
         pump_socket_commands (peer_ctrl_sub);
         pump_socket_commands (ingress);
         pump_socket_commands (fanout);
+        mesh_pub->set_all_pipes_nodelay ();
+        peer_ctrl_pub->set_all_pipes_nodelay ();
         peer_ctrl_sub->set_all_pipes_nodelay ();
         ingress->set_all_pipes_nodelay ();
         fanout->set_all_pipes_nodelay ();
@@ -1042,6 +1171,38 @@ void spot_data_plane_t::run (spot_node_t *node_)
                         (void) mesh_xsub->term_endpoint (arg.c_str ());
                         send_errno_reply (ctrl, errno);
                     } else {
+                        std::string peer_ctrl_endpoint;
+                        if (spot_control_protocol::derive_peer_ctrl_bind_endpoint (
+                              arg, runtime->node_id, &peer_ctrl_endpoint)
+                            && peer_ctrl_endpoint.compare (0, 9, "inproc://")
+                                 != 0) {
+                            const std::map<std::string, std::string>::iterator it =
+                              peer_ctrl_endpoints.find (arg);
+                            if (it == peer_ctrl_endpoints.end ()
+                                || it->second != peer_ctrl_endpoint) {
+                                if (it != peer_ctrl_endpoints.end ()
+                                    && !it->second.empty ()) {
+                                    (void) peer_ctrl_pub->term_endpoint (
+                                      it->second.c_str ());
+                                }
+                                if (peer_ctrl_pub->connect (
+                                      peer_ctrl_endpoint.c_str ())
+                                    != 0
+                                    || send_snapshot_to_target (
+                                         peer_ctrl_pub, node_, arg)
+                                         != 0
+                                    || send_ready_ack_snapshots_to_target (
+                                         peer_ctrl_pub, arg,
+                                         outbound_ready_filters)
+                                         != 0) {
+                                    (void) mesh_xsub->term_endpoint (arg.c_str ());
+                                    send_errno_reply (ctrl,
+                                                      errno != 0 ? errno : EIO);
+                                    continue;
+                                }
+                                peer_ctrl_endpoints[arg] = peer_ctrl_endpoint;
+                            }
+                        }
                         scoped_lock_t lock (node_->_sync);
                         node_->_mesh_client_tls_locked = true;
                         send_ok_reply (ctrl);
@@ -1057,9 +1218,48 @@ void spot_data_plane_t::run (spot_node_t *node_)
                         send_ok_reply (ctrl);
                 } else if (verb == "ready_ack_subscribe"
                            || verb == "ready_ack_unsubscribe") {
-                    send_ok_reply (ctrl);
+                    std::string target_endpoint;
+                    std::string raw_filter;
+                    std::string ack_source_id;
+                    if (!parse_ready_ack_arg (arg, &target_endpoint, &raw_filter,
+                                              &ack_source_id)) {
+                        send_errno_reply (ctrl, EINVAL);
+                        continue;
+                    }
+
+                    spot_ready_ack_ctrl_debugf (
+                      "command verb=%s target=%s filter=%s source=%s",
+                      verb.c_str (), target_endpoint.c_str (),
+                      raw_filter.c_str (), ack_source_id.c_str ());
+
+                    std::set<std::string> filters;
+                    {
+                        std::set<std::string> &source_filters =
+                          outbound_ready_filters[target_endpoint][ack_source_id];
+                        if (verb == "ready_ack_subscribe")
+                            source_filters.insert (raw_filter);
+                        else
+                            source_filters.erase (raw_filter);
+
+                        if (source_filters.empty ())
+                            outbound_ready_filters[target_endpoint].erase (
+                              ack_source_id);
+                        if (outbound_ready_filters[target_endpoint].empty ())
+                            outbound_ready_filters.erase (target_endpoint);
+                        else
+                            filters = source_filters;
+                    }
+
+                    if (send_control_snapshot (
+                          peer_ctrl_pub, target_endpoint,
+                          encode_ready_ack_source_id (ack_source_id), filters)
+                        != 0)
+                        send_errno_reply (ctrl, errno);
+                    else
+                        send_ok_reply (ctrl);
                 } else if (verb == "unbind_pub") {
                     clear_snapshot_sources (node_, &peer_ready_filters);
+                    outbound_ready_filters.clear ();
                     if (!runtime->peer_ctrl_endpoint.empty ())
                         (void) peer_ctrl_sub->term_endpoint (
                           runtime->peer_ctrl_endpoint.c_str ());
@@ -1073,12 +1273,30 @@ void spot_data_plane_t::run (spot_node_t *node_)
                     const std::map<std::string, std::string>::iterator it =
                       peer_ctrl_endpoints.find (arg);
                     if (it != peer_ctrl_endpoints.end ()) {
+                        const std::map<std::string,
+                                       std::map<std::string,
+                                                std::set<std::string> > >::iterator
+                          ready_it = outbound_ready_filters.find (arg);
+                        if (ready_it != outbound_ready_filters.end ()) {
+                            std::set<std::string> empty_filters;
+                            for (std::map<std::string,
+                                          std::set<std::string> >::const_iterator
+                                   source_it = ready_it->second.begin ();
+                                 source_it != ready_it->second.end ();
+                                 ++source_it) {
+                                (void) send_control_snapshot (
+                                  peer_ctrl_pub, arg,
+                                  encode_ready_ack_source_id (source_it->first),
+                                  empty_filters);
+                            }
+                        }
                         std::set<std::string> empty_filters;
                         (void) send_control_snapshot (
                           peer_ctrl_pub, arg,
                           spot_control_protocol::node_id_string (
                             runtime->node_id),
                           empty_filters);
+                        outbound_ready_filters.erase (arg);
                         (void) peer_ctrl_pub->term_endpoint (it->second.c_str ());
                         peer_ctrl_endpoints.erase (it);
                     }
@@ -1144,7 +1362,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
                 if (events[i].socket == mesh_xsub) {
                     if (recv_and_dispatch_mesh_xsub (
                           mesh_xsub, fanout, peer_ctrl_pub, node_,
-                          &peer_ctrl_endpoints)
+                          &peer_ctrl_endpoints, &outbound_ready_filters)
                         != 0) {
                         fatal_errno = errno;
                         running = false;
@@ -1183,6 +1401,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
     }
 
     clear_snapshot_sources (node_, &peer_ready_filters);
+    outbound_ready_filters.clear ();
     for (std::map<std::string, std::string>::const_iterator it =
            peer_ctrl_endpoints.begin ();
          it != peer_ctrl_endpoints.end (); ++it) {

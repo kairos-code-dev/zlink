@@ -123,8 +123,14 @@ ctest --test-dir core/build \
 - `run_thread_safe_contract_stress.sh` repeats the selected thread-safe
   contract cases at the CTest layer. It does not add retry logic inside the
   tests themselves.
+- The stress lane currently covers discovery control-path teardown, gateway
+  runtime read and attach/query ordering, gateway send-ready self-close,
+  spot runtime read, spot monitor-child destroy, and spot send-ready
+  self-close lifecycle cases.
 - `run_thread_safe_contract_perf.sh` executes the raw/gateway/spot 1/4/16/64
   handle scaling contract cases with a configurable acceptance ratio.
 - `run_thread_safe_contract_tsan.sh` configures a dedicated TSan build and
-  runs the thread-safe regression lane against that build tree.
+  runs the thread-safe regression lane against that build tree, including the
+  discovery control-path, gateway attach/query, gateway self-close, and spot
+  monitor-child/self-close regressions.
 - CURVE/libsodium and GSSAPI are not supported in zlink.

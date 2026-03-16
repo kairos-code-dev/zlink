@@ -366,6 +366,11 @@ void *spot_pub_t::monitor_open (int events_)
     return _monitor.open (events_);
 }
 
+bool spot_pub_t::owns_socket (const socket_base_t *socket_) const
+{
+    return socket_ && socket_ == socket ();
+}
+
 void spot_pub_t::invoke_send_ready_for_testing ()
 {
     socket_base_t *pub_socket = socket ();
@@ -414,6 +419,11 @@ void spot_pub_t::emit_ready_event ()
 
 void spot_pub_t::dispatch_send_ready ()
 {
+    if (_node) {
+        service_public_api_scope_t admission (_node->public_api_guard ());
+        if (!admission.acquired ())
+            return;
+    }
     zlink_send_ready_handler_fn handler =
       _send_ready_handler.load (std::memory_order_acquire);
     void *subject = _send_ready_subject.load (std::memory_order_acquire);
@@ -600,7 +610,8 @@ int spot_pub_t::destroy_internal (bool allow_embedded_default_,
     if (socket) {
         if (_node && _node->_runtime)
             preserve_first_error (
-              _node->_runtime->destroy_attachment (_attachment_id), &first_error);
+              _node->_runtime->destroy_attachment_async (_attachment_id),
+              &first_error);
         else {
             socket->stop ();
             socket->close ();

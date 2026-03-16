@@ -462,6 +462,11 @@ if(TARGET test_service_introspection)
             ZLINK_TEST_CASE=test_registry_control_path_queries_are_safe_during_concurrent_updates
             $<TARGET_FILE:test_service_introspection>)
   add_test(
+    NAME test_service_introspection_discovery_control_path
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_discovery_control_path_reads_are_safe_during_concurrent_updates
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
     NAME test_service_introspection_transport_restriction
     COMMAND ${CMAKE_COMMAND} -E env
             ZLINK_TEST_CASE=test_discovery_registry_transport_restriction
@@ -504,6 +509,7 @@ if(TARGET test_service_introspection)
     test_service_introspection_registry_lifecycle
     test_service_introspection_registry_query_lifecycle
     test_service_introspection_registry_control_path
+    test_service_introspection_discovery_control_path
     test_service_introspection_transport_restriction
     test_service_introspection_transport_ws
     test_service_introspection_transport_tls
@@ -627,6 +633,8 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_late_connect_replays_existing_subscription
     test_spot_faulted_node_apis_fail_with_efsm
     test_spot_node_destroy_rejects_open_child_handle
+    test_spot_node_destroy_rejects_open_monitor_child
+    test_spot_send_ready_handler_self_close_returns_ebusy
     test_spot_node_public_api_lifecycle_contract
     test_spot_public_api_lifecycle_contract)
 
@@ -642,6 +650,8 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_late_connect=test_spot_late_connect_replays_existing_subscription
     test_spot_service_introspection_faulted=test_spot_faulted_node_apis_fail_with_efsm
     test_spot_service_introspection_child_destroy_order=test_spot_node_destroy_rejects_open_child_handle
+    test_spot_service_introspection_monitor_child_destroy=test_spot_node_destroy_rejects_open_monitor_child
+    test_spot_service_introspection_send_ready_self_close=test_spot_send_ready_handler_self_close_returns_ebusy
     test_spot_service_introspection_lifecycle_contract=test_spot_node_public_api_lifecycle_contract
     test_spot_service_introspection_handle_lifecycle=test_spot_public_api_lifecycle_contract)
 
@@ -688,6 +698,7 @@ set(SPOT_PUBSUB_LOCAL_TEST_SPECS
 set(GATEWAY_CASES
     test_gateway_provider_setsockopt
     test_gateway_can_be_polled_via_service_instance
+    test_gateway_send_ready_handler_self_close_is_safe
     test_gateway_refreshes_existing_service_on_first_connection_count
     test_gateway_router_peers_do_not_enter_pollable_mode
     test_gateway_single_service_tcp
@@ -702,6 +713,7 @@ set(GATEWAY_CASES
     test_gateway_manual_connect_disconnect_topology_ownership
     test_gateway_local_weight_zero_is_preserved
     test_gateway_runtime_reads_are_safe_during_concurrent_send
+    test_gateway_attach_and_monitor_queries_are_safe_same_handle
     test_gateway_public_api_lifecycle_contract)
 
 set(GATEWAY_TEST_SPECS
@@ -721,6 +733,8 @@ set(GATEWAY_TEST_SPECS
     test_gateway_manual_topology_ownership=test_gateway_manual_connect_disconnect_topology_ownership
     test_gateway_local_weight_zero=test_gateway_local_weight_zero_is_preserved
     test_gateway_runtime_reads=test_gateway_runtime_reads_are_safe_during_concurrent_send
+    test_gateway_attach_query_ordering=test_gateway_attach_and_monitor_queries_are_safe_same_handle
+    test_gateway_send_ready_self_close=test_gateway_send_ready_handler_self_close_is_safe
     test_gateway_lifecycle_contract=test_gateway_public_api_lifecycle_contract)
 
 set(SERVICE_INTROSPECTION_CASES
@@ -735,6 +749,7 @@ set(SERVICE_INTROSPECTION_CASES
     test_registry_public_api_lifecycle_contract
     test_registry_query_client_public_api_lifecycle_contract
     test_registry_control_path_queries_are_safe_during_concurrent_updates
+    test_discovery_control_path_reads_are_safe_during_concurrent_updates
     test_discovery_registry_transport_restriction
     test_discovery_registry_transport_allowed_ws
     test_discovery_registry_transport_allowed_tls
@@ -754,6 +769,7 @@ set(SERVICE_INTROSPECTION_TEST_SPECS
     test_service_introspection_registry_lifecycle=test_registry_public_api_lifecycle_contract
     test_service_introspection_registry_query_lifecycle=test_registry_query_client_public_api_lifecycle_contract
     test_service_introspection_registry_control_path=test_registry_control_path_queries_are_safe_during_concurrent_updates
+    test_service_introspection_discovery_control_path=test_discovery_control_path_reads_are_safe_during_concurrent_updates
     test_service_introspection_transport_restriction=test_discovery_registry_transport_restriction
     test_service_introspection_transport_ws=test_discovery_registry_transport_allowed_ws
     test_service_introspection_transport_tls=test_discovery_registry_transport_allowed_tls

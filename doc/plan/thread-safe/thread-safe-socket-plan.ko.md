@@ -842,6 +842,16 @@ send queue / publication path 후보는 문서에서 구현 선택지로만 남�
   유지·정리하는 것이다.
 - `discovery` / `registry` / `monitor`는 control-plane subject로서 correctness와
   visibility 규칙이 문서와 테스트에 계속 일치하는지 추적하는 대상이다.
+- raw / `gateway` / unified `spot`에 대한 1/4/16/64 handle scaling perf-contract
+  테스트와 stress/TSan runner는 추가되었고, 현재 남은 과제는 장비별 acceptance
+  기준선 축적과 대상 케이스 확장이다.
+- raw runtime read, `gateway` runtime read, `spot` monitor snapshot read,
+  registry control-path 경합에 대한 회귀는 이미 추가되었고, discovery-side full
+  ordering matrix와 parent-child / self-close 세부 matrix가 후속 공백으로 남아
+  있다.
+- `spot` thread-safe destroy timeout은 core 수정으로 해결되었으며, 이 수정은
+  internal control connection 파생, mailbox command pumping, pipe termination,
+  teardown drain 정합성 보강을 포함한다.
 
 현재 구현의 service public API guard(`service_public_api.hpp`)는 이 문서의
 lifecycle strict 계층(admission gate, `ESHUTDOWN` 진입 차단)과 control path

@@ -75,6 +75,29 @@ static void spot_shutdown_logf (bool always_, const char *fmt_, ...)
     std::fclose (fp);
 }
 
+static void spot_ready_ack_debugf (const char *fmt_, ...)
+{
+    if (!std::getenv ("ZLINK_DEBUG_SPOT_READY_ACK"))
+        return;
+
+    va_list args;
+    va_start (args, fmt_);
+    std::fprintf (stderr, "[spot-ready-ack] ");
+    std::vfprintf (stderr, fmt_, args);
+    std::fprintf (stderr, "\n");
+    std::fflush (stderr);
+    FILE *fp = std::fopen ("/tmp/zlink_spot_ready_ack.log", "a");
+    if (fp) {
+        va_list file_args;
+        va_start (file_args, fmt_);
+        std::vfprintf (fp, fmt_, file_args);
+        std::fprintf (fp, "\n");
+        va_end (file_args);
+        std::fclose (fp);
+    }
+    va_end (args);
+}
+
 static void preserve_first_error (int rc_, int *first_error_)
 {
     if (rc_ == 0 || !first_error_ || *first_error_ != 0)
@@ -295,11 +318,72 @@ int spot_runtime_t::destroy_attachment (uint64_t id_)
 
     if (!socket)
         return 0;
-    if (!endpoint.empty ())
+    if (!endpoint.empty ()) {
         (void) socket->term_endpoint (endpoint.c_str ());
+        if (owner) {
+            socket_base_t *peer_socket = NULL;
+            {
+                scoped_lock_t lock (owner->_sync);
+                if (endpoint == sub_fanout_endpoint)
+                    peer_socket = local_fanout_xpub;
+                else if (endpoint == pub_ingress_endpoint)
+                    peer_socket = local_pub_ingress_sub;
+            }
+            if (peer_socket) {
+                peer_socket->set_all_pipes_nodelay ();
+                (void) peer_socket->term_endpoint (endpoint.c_str ());
+            }
+        }
+    }
+    socket->set_all_pipes_nodelay ();
+    if (owner && owner->_ctx) {
+        return owner->_lifecycle.close_socket_and_wait (socket, 10000);
+    }
+
+    socket->stop ();
+    socket->close ();
+    return 0;
+}
+
+int spot_runtime_t::destroy_attachment_async (uint64_t id_)
+{
+    if (id_ == 0)
+        return 0;
+
+    socket_base_t *socket = NULL;
+    std::string endpoint;
+    {
+        scoped_lock_t lock (attachment_sync);
+        std::map<uint64_t, spot_attachment_t>::iterator it = attachments.find (id_);
+        if (it == attachments.end ())
+            return 0;
+        socket = it->second.socket;
+        endpoint = it->second.endpoint;
+        attachments.erase (it);
+    }
+
+    if (!socket)
+        return 0;
+    if (!endpoint.empty ()) {
+        (void) socket->term_endpoint (endpoint.c_str ());
+        if (owner) {
+            socket_base_t *peer_socket = NULL;
+            {
+                scoped_lock_t lock (owner->_sync);
+                if (endpoint == sub_fanout_endpoint)
+                    peer_socket = local_fanout_xpub;
+                else if (endpoint == pub_ingress_endpoint)
+                    peer_socket = local_pub_ingress_sub;
+            }
+            if (peer_socket) {
+                peer_socket->set_all_pipes_nodelay ();
+                (void) peer_socket->term_endpoint (endpoint.c_str ());
+            }
+        }
+    }
     socket->set_all_pipes_nodelay ();
     if (owner && owner->_ctx)
-        return owner->_lifecycle.close_socket_and_wait (socket, 10000);
+        return owner->_lifecycle.close_socket (socket, 10000);
 
     socket->stop ();
     socket->close ();
@@ -440,6 +524,10 @@ int spot_runtime_t::close_control_sockets ()
             (void) ctrl_front->term_endpoint (data_ctrl_endpoint.c_str ());
         if (ctrl_back && !data_ctrl_endpoint.empty ())
             (void) ctrl_back->term_endpoint (data_ctrl_endpoint.c_str ());
+        if (ingress && !pub_ingress_endpoint.empty ())
+            (void) ingress->term_endpoint (pub_ingress_endpoint.c_str ());
+        if (fanout && !sub_fanout_endpoint.empty ())
+            (void) fanout->term_endpoint (sub_fanout_endpoint.c_str ());
         preserve_first_error (
           owner->_lifecycle.close_socket (ctrl_front, 2000), &first_error);
         preserve_first_error (
@@ -507,26 +595,21 @@ void spot_runtime_t::mark_fault (int err_)
 
 int spot_runtime_t::stop_and_join ()
 {
-    int first_error = 0;
-
     stop.set (1);
     if (data_ctrl_front) {
         scoped_lock_t lock (ctrl_sync);
         if (send_ascii_frame (data_ctrl_front, "terminate", 0) != 0) {
             const int err = errno != 0 ? errno : EIO;
             if (err != EAGAIN && err != ETIMEDOUT && err != EFSM && err != ETERM
-                && err != EPIPE && err != ENOTSOCK)
-                preserve_first_error (err, &first_error);
+                && err != EPIPE && err != ENOTSOCK) {
+                errno = err;
+                return -1;
+            }
         }
     }
     stop_sockets ();
     if (data_plane_thread.get_started ())
         data_plane_thread.stop ();
-    preserve_first_error (close_control_sockets (), &first_error);
-    if (first_error != 0) {
-        errno = first_error;
-        return -1;
-    }
     return 0;
 }
 
@@ -1517,6 +1600,11 @@ void spot_node_t::notify_pub_delivery_ready_ack (
     if (self_endpoint.empty () || self_endpoint != target_endpoint_)
         return;
 
+    spot_ready_ack_debugf ("apply self=%s target=%s subject=%s source=%s subscribe=%d",
+                           self_endpoint.c_str (), target_endpoint_.c_str (),
+                           subject_.c_str (), ack_source_id_.c_str (),
+                           subscribe_ ? 1 : 0);
+
     std::vector<spot_pub_t *> pubs;
     uint32_t ready_count = 0;
     {
@@ -1605,6 +1693,10 @@ int spot_node_t::send_ready_ack_update (const std::string &target_endpoint_,
     if (is_shutting_down () || !_runtime || _runtime->stop.get () != 0
         || _runtime->faulted)
         return 0;
+
+    spot_ready_ack_debugf ("queue target=%s filter=%s source=%s subscribe=%d",
+                           target_endpoint_.c_str (), raw_filter_.c_str (),
+                           ack_source_id_.c_str (), subscribe_ ? 1 : 0);
 
     const std::string arg =
       make_ready_ack_arg (target_endpoint_, raw_filter_, ack_source_id_);
@@ -1809,7 +1901,7 @@ void spot_node_t::snapshot_raw_subscription_filters (
     }
 
     for (size_t i = 0; i < subs.size (); ++i)
-        subs[i]->append_replay_raw_filters (out_);
+        subs[i]->append_raw_filters (out_);
 }
 
 int spot_node_t::resolve_advertise_endpoint (const char *advertise_endpoint_,
@@ -1951,6 +2043,7 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
 
     bool need_disconnect = false;
     bool had_active_peers = false;
+    bool disconnecting_last_active_peer = false;
     {
         scoped_lock_t lock (_sync);
         if (_discovery) {
@@ -1960,8 +2053,20 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
         had_active_peers = !_active_peer_endpoints.empty ();
         _manual_peer_endpoints.erase (peer_pub_endpoint_);
         if (_discovery_peer_endpoints.count (peer_pub_endpoint_) == 0
-            && _active_peer_endpoints.count (peer_pub_endpoint_) != 0)
+            && _active_peer_endpoints.count (peer_pub_endpoint_) != 0) {
             need_disconnect = true;
+            disconnecting_last_active_peer = _active_peer_endpoints.size () == 1;
+        }
+    }
+
+    if (need_disconnect && disconnecting_last_active_peer) {
+        std::vector<spot_sub_t *> subs;
+        {
+            scoped_lock_t lock (_sync);
+            subs.assign (_subs.begin (), _subs.end ());
+        }
+        for (size_t i = 0; i < subs.size (); ++i)
+            subs[i]->send_ready_ack_lost_for_endpoint (peer_pub_endpoint_);
     }
 
     if (need_disconnect
@@ -2661,6 +2766,18 @@ spot_sub_t *spot_node_t::ensure_default_sub ()
     return create_spot_sub_with_defaults (defaults, true);
 }
 
+spot_pub_t *spot_node_t::default_pub () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    return _default_pub;
+}
+
+spot_sub_t *spot_node_t::default_sub () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    return _default_sub;
+}
+
 void spot_node_t::remove_spot_pub (spot_pub_t *pub_)
 {
     scoped_lock_t lock (_sync);
@@ -2815,6 +2932,8 @@ int spot_node_t::destroy ()
                         "step=data_plane_stopped node=%p error=%d",
                         static_cast<void *> (this), first_error);
     preserve_first_error (destroy_handles (), &first_error);
+    if (_runtime)
+        preserve_first_error (_runtime->close_control_sockets (), &first_error);
     spot_shutdown_logf (false,
                         "step=handles_destroyed node=%p error=%d tracked=%zu",
                         static_cast<void *> (this), first_error,
@@ -2857,4 +2976,5 @@ int spot_node_t::destroy ()
     }
     return 0;
 }
+
 }

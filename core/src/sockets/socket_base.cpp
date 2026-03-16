@@ -24,7 +24,9 @@
 #include "sockets/socket_base.hpp"
 #include "protocol/wire.hpp"
 #include "zlink.h"
+#include "utils/err.hpp"
 #include "utils/random.hpp"
+#include "utils/sleep.hpp"
 
 // ASIO-only build: Transport listeners are always included
 #include "transports/tcp/asio_tcp_listener.hpp"
@@ -2738,7 +2740,7 @@ void zlink::socket_base_t::monitor_loop ()
             _monitor_queue_sync.lock ();
             _monitor_queue.push_front (record);
             _monitor_queue_sync.unlock ();
-            usleep (1000);
+            zlink::sleep_ms (1);
         }
         _monitor_queue_sync.lock ();
     }

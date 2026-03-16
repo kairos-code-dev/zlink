@@ -55,6 +55,9 @@
 #ifndef ZLINK_HAVE_POLLER
 #define ZLINK_HAVE_POLLER 1
 #endif
+#ifndef ESHUTDOWN
+#define ESHUTDOWN ENOTCONN
+#endif
 
 // TODO: expand pch implementation to non-windows builds.
 #ifdef _MSC_VER

@@ -7,10 +7,10 @@
 #include "core/msg.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
+#include "utils/sleep.hpp"
 
 #include <climits>
 #include <string.h>
-#include <unistd.h>
 
 int zlink::recv_msg_internal (void *socket_, zlink_msg_t *msg_, int flags_)
 {
@@ -98,6 +98,6 @@ int zlink::wait_socket_events_internal (void *socket_,
         if (timeout_ms_ > 0 && clock.now_ms () >= deadline)
             return 0;
 
-        usleep (1000);
+        zlink::sleep_ms (1);
     }
 }

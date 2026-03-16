@@ -15,13 +15,13 @@
 #include "utils/clock.hpp"
 #include "utils/err.hpp"
 #include "utils/random.hpp"
+#include "utils/sleep.hpp"
 
 #include <algorithm>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
-#include <unistd.h>
 #include <vector>
 
 namespace zlink
@@ -1745,7 +1745,7 @@ int spot_node_t::wait_facade_peer (socket_base_t *socket_) const
         if (socket_ && socket_->monitor_snapshot (&snapshot) == 0
             && snapshot.ready_peer_count > 0)
             return 0;
-        usleep (1000);
+        zlink::sleep_ms (1);
     }
     errno = ETIMEDOUT;
     return -1;

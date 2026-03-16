@@ -15,6 +15,7 @@
 #include "services/gateway/routing_id_utils.hpp"
 #include "services/control/service_control_runtime.hpp"
 #include "services/discovery/discovery_protocol.hpp"
+#include "utils/sleep.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -250,7 +251,7 @@ static int send_parts_via_router_with_retry (socket_base_t *router_socket_,
             zlink_msg_close (&rid_msg);
             if (!dontwait && (err == EHOSTUNREACH || err == ENOTCONN)
                 && clock_t ().now_ms () < deadline_ms) {
-                usleep (1000);
+                zlink::sleep_ms (1);
                 continue;
             }
             errno = err;

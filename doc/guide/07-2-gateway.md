@@ -41,7 +41,7 @@ void *gateway = zlink_gateway_new(ctx, "payment-service",
                                    "gateway-1", on_message);
 ```
 
-## 3. Server (Receiver) Setup
+## 3. Server Setup
 
 To act as a server, bind an endpoint on the Gateway and register via
 Discovery.

@@ -51,7 +51,7 @@ napi_value discovery_provider_count(napi_env env, napi_callback_info info);
 napi_value discovery_service_available(napi_env env, napi_callback_info info);
 napi_value discovery_get_providers(napi_env env, napi_callback_info info);
 napi_value discovery_destroy(napi_env env, napi_callback_info info);
-napi_value discovery_setsockopt(napi_env env, napi_callback_info info);
+napi_value discovery_set_tls_client(napi_env env, napi_callback_info info);
 
 napi_value gateway_new(napi_env env, napi_callback_info info);
 napi_value gateway_send(napi_env env, napi_callback_info info);

@@ -13,7 +13,7 @@
 
 The Registry is the central service directory for the zlink service layer. It
 accepts service registration, deregistration, and heartbeat requests from
-Receivers and SPOT Nodes, and periodically broadcasts the aggregated service
+Gateways and SPOT Nodes, and periodically broadcasts the aggregated service
 list to all connected Discovery instances.
 
 ## Constants
@@ -69,7 +69,7 @@ Binds the Registry's PUB and ROUTER endpoints, verifies the bind succeeds,
 starts the internal control task, and begins accepting registrations and
 broadcasting the service list. The PUB endpoint is used for broadcasting to
 Discovery instances. The ROUTER endpoint is used for receiving registration,
-deregistration, and heartbeat messages from Receivers and SPOT Nodes.
+deregistration, and heartbeat messages from Gateways and SPOT Nodes.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 

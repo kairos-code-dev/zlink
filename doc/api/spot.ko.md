@@ -75,6 +75,12 @@ int zlink_spot_publish(void *spot,
                        zlink_msg_t *parts,
                        size_t part_count,
                        zlink_send_flags_t flags);
+int zlink_spot_sub_recv(void *sub,
+                       zlink_msg_t **parts,
+                       size_t *part_count,
+                       int flags,
+                       char *topic_id_out,
+                       size_t *topic_id_len);
 int zlink_spot_subscribe(void *spot, const char *topic_id);
 int zlink_spot_subscribe_pattern(void *spot, const char *pattern);
 int zlink_spot_unsubscribe(void *spot,
@@ -96,6 +102,11 @@ int zlink_spot_set_sub_option(void *spot,
 
 `zlink_spot_new()`는 항상 pub/sub가 합쳐진 facade를 생성합니다.
 publish-only 혹은 subscribe-only public child handle은 더 이상 제공하지 않습니다.
+
+`zlink_spot_sub_recv()`는 callback 모델 대신 동기식 pull 방식의 수신을
+제공합니다. 다음 메시지와 topic을 반환합니다. 성공 시 `parts`와
+`topic_id_out`이 채워집니다. non-blocking 동작은 `flags`에
+`ZLINK_DONTWAIT`를 전달합니다.
 
 aggregate ready-peer / queue 조회는 `zlink_spot_monitor_open()`과
 `zlink_monitor_snapshot()` 조합을 사용합니다.
@@ -130,16 +141,23 @@ typedef void (*zlink_spot_handler_fn)(const zlink_routing_id_t *source_rid,
 
 ## 모니터링
 
-SPOT monitor는 unified facade entrypoint만 public입니다.
+SPOT monitor는 Spot과 SpotNode 모두에 대해 unified entrypoint를 제공합니다.
 
 ```c
 void *zlink_spot_monitor_open(void *spot,
                               zlink_spot_role_t role,
                               zlink_spot_monitor_event_mask_t events,
                               zlink_service_monitor_handler_fn handler);
+
+void *zlink_spot_node_monitor_open(void *node,
+                                   zlink_spot_role_t role,
+                                   zlink_spot_monitor_event_mask_t events,
+                                   zlink_service_monitor_handler_fn handler);
 ```
 
 - `role`은 `ZLINK_SPOT_ROLE_PUB` 또는 `ZLINK_SPOT_ROLE_SUB`입니다.
+- `zlink_spot_monitor_open()`은 unified Spot facade를 모니터합니다.
+- `zlink_spot_node_monitor_open()`은 node-owned default pub/sub를 모니터합니다.
 - split `zlink_spot_pub_monitor_open()` / `zlink_spot_sub_monitor_open()`는
   public API가 아닙니다.
 - 상세 event 정의와 readiness 의미는 [events.ko.md](events.ko.md)를 참고합니다.

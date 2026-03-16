@@ -34,14 +34,14 @@ zlink의 서비스 계층은 7종 소켓(PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER
 | **Registry** | 서비스 등록소 | 서비스 엔트리를 등록·관리하는 중앙 저장소 |
 | **Discovery** | 서비스 발견 | Registry를 구독하여 서비스 목록을 로컬 캐시로 유지 |
 | **Gateway** | 서비스 게이트웨이 | 서비스에 대한 접근점 + 클라이언트 사이드 로드밸런서. API Gateway(인증, rate limiting 등)와는 다른 개념 |
-| **Receiver** | 서비스 수신자 | Gateway로부터 요청을 받아 처리하는 백엔드 |
+| **Gateway (Server)** | 서비스 게이트웨이 | bind 시 원격 Gateway로부터 요청을 받아 처리하는 백엔드 역할 수행 |
 | **SPOT** | 위치(spot) 투명 pub/sub | 객체 단위의 위치투명한 토픽 기반 발행/구독 메시 |
 
 ## 3. 서비스 구성 요소
 
 ### 3.1 Service Discovery — 기반 인프라
 
-Registry 클러스터 기반의 서비스 등록/발견 시스템. Receiver가 Registry에 등록하면 Discovery가 이를 구독하여 서비스 목록을 관리한다.
+Registry 클러스터 기반의 서비스 등록/발견 시스템. Gateway가 Registry에 등록하면 Discovery가 이를 구독하여 서비스 목록을 관리한다.
 
 - Registry 클러스터 HA (flooding 동기화)
 - Heartbeat 기반 생존 확인
@@ -51,7 +51,7 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템. Receiver가 R
 
 ### 3.2 Gateway — 위치투명 요청/응답
 
-Discovery 기반으로 서비스 Receiver를 자동 발견하고, 로드밸런싱된 메시지 전송을 처리한다. Gateway handle은 기본적으로 thread-safe하며, `send`는 same-handle concurrent 호출을 허용한다.
+Discovery 기반으로 서비스 피어를 자동 발견하고, 로드밸런싱된 메시지 전송을 처리한다. Gateway handle은 기본적으로 thread-safe하며, `send`는 same-handle concurrent 호출을 허용한다.
 
 - **Thread-safe** — `send` hot path는 여러 스레드에서 동시 전송 가능
 - Round Robin / Weighted 로드밸런싱

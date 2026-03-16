@@ -103,57 +103,18 @@ class discovery_t
     }
 
     /**
-     * @brief Set socket option on discovery internal socket.
-     * @param role_ Internal socket role.
-     * @param option_ Socket option key.
-     * @param value_ Option value buffer.
-     * @param len_ Buffer length in bytes.
+     * @brief Configure TLS settings for discovery registry links.
+     * @param ca_cert_ PEM CA bundle path or contents, depending on platform.
+     * @param hostname_ Expected remote hostname.
+     * @param trust_system_ Whether to use system trust roots.
      * @return 0 on success, -1 on failure.
      */
-    ZLINK_CPP_NODISCARD int
-    set_sockopt (discovery_socket_role role_,
-                 socket_option option_,
-                 const void *value_,
-                 size_t len_)
+    ZLINK_CPP_NODISCARD int set_tls_client (const std::string &ca_cert_,
+                                            const std::string &hostname_,
+                                            int trust_system_)
     {
-        (void) role_;
-        (void) option_;
-        (void) value_;
-        (void) len_;
-        errno = ENOTSUP;
-        return -1;
-    }
-
-    /**
-     * @brief Set typed non-string socket option on discovery internal socket.
-     * @param role_ Internal socket role.
-     * @param key_ Typed socket option key.
-     * @param value_ Typed option value.
-     * @return 0 on success, -1 on failure.
-     */
-    template<typename T>
-    ZLINK_CPP_NODISCARD
-    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
-    set_sockopt (discovery_socket_role role_,
-                 socket_option_key_t<T> key_,
-                 const T &value_)
-    {
-        return set_sockopt (role_, key_.option, &value_, sizeof (value_));
-    }
-
-    /**
-     * @brief Set typed string socket option on discovery internal socket.
-     * @param role_ Internal socket role.
-     * @param key_ Typed socket option key.
-     * @param value_ Option value bytes.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    set_sockopt (discovery_socket_role role_,
-                 socket_option_key_t<std::string> key_,
-                 const std::string &value_)
-    {
-        return set_sockopt (role_, key_.option, value_.data (), value_.size ());
+        return zlink_discovery_set_tls_client (
+          _disc, ca_cert_.c_str (), hostname_.c_str (), trust_system_);
     }
 
     /**

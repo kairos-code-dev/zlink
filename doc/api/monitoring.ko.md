@@ -4,9 +4,6 @@
 
 canonical 이벤트 카탈로그는 이제 [events.ko.md](events.ko.md)에 정리합니다.
 이 문서는 monitor API, callback, monitor snapshot 중심으로 봅니다.
-패밀리별 control contract와 회귀 테스트 기준은
-[socket-family-monitor-contract-spec.ko.md](../plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md)를
-참조합니다.
 
 ## 현재 권장 API 방향
 
@@ -120,26 +117,6 @@ typedef struct zlink_monitor_snapshot_t
 
 ## 함수
 
-### zlink_socket_monitor
-
-inproc 주소를 통해 소켓 모니터를 시작합니다. 이벤트를 수신하기 위해 별도의 SUB 소켓을 생성해야 하는 레거시 방식입니다.
-
-```c
-int zlink_socket_monitor(void *s_, const char *addr_, int events_);
-```
-
-소켓 `s_`에 모니터를 등록하여 inproc 엔드포인트 `addr_`에 이벤트를 발행합니다. `events_` 비트마스크와 일치하는 이벤트만 발행됩니다. `ZLINK_PAIR` 소켓을 생성하여 `addr_`에 연결하고 모니터 이벤트 프레임을 수동으로 수신해야 합니다.
-
-새 코드에서는 바로 사용 가능한 모니터 핸들을 반환하는 `zlink_socket_monitor_open()`을 사용하세요.
-
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
-
-**스레드 안전성:** 소켓을 소유한 스레드에서 호출해야 합니다.
-
-**참고:** `zlink_socket_monitor_open`
-
----
-
 ### zlink_socket_monitor_open
 
 소켓 모니터 핸들을 직접 열고 반환합니다. 소켓 이벤트를 모니터링하는 데 권장되는 방식입니다.
@@ -192,15 +169,17 @@ SPOT 필터 적용 등의 상위 수준 이벤트를 보고합니다. 모든 이
 ```c
 typedef struct zlink_service_event_t
 {
-    uint16_t service_kind;
+    zlink_service_kind_t service_kind;
     uint32_t event_type;
     int32_t status;
     int32_t error_code;
     uint32_t value;
-    uint32_t detail_flags;
+    zlink_service_event_detail_mask_t detail_flags;
     char service_name[256];
     char endpoint[256];
     zlink_routing_id_t routing_id;
+    char subject[256];
+    uint32_t subject_kind;
 } zlink_service_event_t;
 ```
 
@@ -215,6 +194,8 @@ typedef struct zlink_service_event_t
 | `service_name` | null 종료 서비스 이름. `ZLINK_EVENT_DETAIL_SERVICE_NAME`이 설정될 때 유효. |
 | `endpoint` | null 종료 엔드포인트. `ZLINK_EVENT_DETAIL_ENDPOINT`가 설정될 때 유효. |
 | `routing_id` | 주체 또는 피어의 라우팅 아이덴티티. 해당 detail 플래그가 설정될 때 유효. |
+| `subject` | null 종료 subject 문자열. `ZLINK_EVENT_DETAIL_SUBJECT`가 설정될 때 유효. |
+| `subject_kind` | subject 종류. `ZLINK_EVENT_DETAIL_SUBJECT_KIND`가 설정될 때 유효. |
 
 ### 서비스 종류 상수
 
@@ -236,7 +217,7 @@ typedef struct zlink_service_event_t
 | `ZLINK_MONITOR_EVENT_PEER_UP` | `1 << 2` | 피어 연결됨 |
 | `ZLINK_MONITOR_EVENT_PEER_DOWN` | `1 << 3` | 피어 연결 해제됨 |
 | `ZLINK_MONITOR_EVENT_ERROR` | `1 << 4` | 에러 발생 |
-| `ZLINK_MONITOR_EVENT_CLOSED` | `1 << 21` | 모니터 닫힘 |
+| `ZLINK_MONITOR_EVENT_CLOSED` | `1 << 17` | 모니터 닫힘 |
 
 #### Discovery 이벤트
 
@@ -253,8 +234,8 @@ typedef struct zlink_service_event_t
 | `ZLINK_GATEWAY_SERVICE_READY` | `1 << 8` | 로컬 Gateway service bind/register 준비 완료 |
 | `ZLINK_GATEWAY_SERVICE_LOST` | `1 << 9` | 로컬 Gateway service publication 제거됨 |
 | `ZLINK_GATEWAY_SEND_READY_CHANGED` | `1 << 10` | aggregate send readiness 변화, `value`는 `0` 또는 `1` |
-| `ZLINK_GATEWAY_ROUTE_UP` | `1 << 11` | Receiver로의 경로 활성화됨, `value`는 현재 ready route 수 |
-| `ZLINK_GATEWAY_ROUTE_DOWN` | `1 << 12` | Receiver로의 경로 비활성화됨, `value`는 현재 ready route 수 |
+| `ZLINK_GATEWAY_ROUTE_UP` | `1 << 11` | 피어로의 경로 활성화됨, `value`는 현재 ready route 수 |
+| `ZLINK_GATEWAY_ROUTE_DOWN` | `1 << 12` | 피어로의 경로 비활성화됨, `value`는 현재 ready route 수 |
 
 #### SPOT 이벤트
 
@@ -262,6 +243,8 @@ typedef struct zlink_service_event_t
 |------|-----|------|
 | `ZLINK_SPOT_SUB_FILTER_APPLIED` | `1 << 13` | 구독 필터 적용됨 |
 | `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | `1 << 14` | 구독 수신 준비 완료 |
+| `ZLINK_SPOT_PUB_QUEUE_FULL` | `1 << 15` | PUB 큐가 가득 참 |
+| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | `1 << 16` | PUB 큐가 비워짐 |
 | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | subject별 remote delivery-ready 카운트 변화 |
 | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | `1 << 19` | subject별 delivery-ready 상태 변화 |
 | `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | `1 << 20` | publisher 기준 first-delivery-safe ready 카운트 변화 |
@@ -274,6 +257,8 @@ typedef struct zlink_service_event_t
 | `ZLINK_EVENT_DETAIL_ENDPOINT` | `0x0002` | `endpoint` 필드가 채워짐 |
 | `ZLINK_EVENT_DETAIL_SUBJECT_RID` | `0x0004` | `routing_id`에 주체 아이덴티티 포함 |
 | `ZLINK_EVENT_DETAIL_PEER_RID` | `0x0008` | `routing_id`에 피어 아이덴티티 포함 |
+| `ZLINK_EVENT_DETAIL_SUBJECT` | `0x0010` | `subject` 필드가 채워짐 |
+| `ZLINK_EVENT_DETAIL_SUBJECT_KIND` | `0x0020` | `subject_kind` 필드가 채워짐 |
 
 ---
 
@@ -282,16 +267,19 @@ typedef struct zlink_service_event_t
 Discovery 인스턴스의 서비스 모니터를 엽니다.
 
 ```c
-void *zlink_discovery_monitor_open(void *discovery, int events);
+void *zlink_discovery_monitor_open (
+  void *discovery,
+  zlink_discovery_monitor_event_mask_t events,
+  zlink_service_monitor_handler_fn handler);
 ```
 
-`events` 비트마스크와 일치하는 이벤트를 전달하는 서비스 모니터를 생성합니다.
-`ZLINK_DISCOVERY_SERVICE_UP`, `ZLINK_DISCOVERY_SERVICE_DOWN`,
-`ZLINK_DISCOVERY_PROVIDERS_CHANGED` 및 공통 이벤트 상수를 사용합니다.
+`events` 비트마스크와 일치하는 이벤트를 `handler` 콜백을 통해 전달하는
+서비스 모니터를 생성합니다. 콜백은 open 시점에 고정되며 이후 교체할 수
+없습니다.
 
 **반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음.
+**스레드 안전성:** 모니터 handle 자체는 thread-safe child handle입니다.
 
 **참고:** `zlink_service_monitor_close`
 
@@ -302,17 +290,18 @@ void *zlink_discovery_monitor_open(void *discovery, int events);
 Gateway 인스턴스의 서비스 모니터를 엽니다.
 
 ```c
-void *zlink_gateway_monitor_open(void *gateway, int events);
+void *zlink_gateway_monitor_open (
+  void *gateway,
+  zlink_gateway_monitor_event_mask_t events,
+  zlink_service_monitor_handler_fn handler);
 ```
 
-`events` 비트마스크와 일치하는 Gateway 이벤트를 전달하는 서비스 모니터를
-생성합니다. `ZLINK_GATEWAY_SERVICE_READY`, `ZLINK_GATEWAY_SERVICE_LOST`,
-`ZLINK_GATEWAY_ROUTE_UP`, `ZLINK_GATEWAY_ROUTE_DOWN`,
-`ZLINK_GATEWAY_SEND_READY_CHANGED` 및 공통 이벤트 상수를 사용합니다.
+Gateway 이벤트를 `handler` 콜백을 통해 전달하는 서비스 모니터를
+생성합니다.
 
 **반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음.
+**스레드 안전성:** 모니터 handle 자체는 thread-safe child handle입니다.
 
 **참고:** `zlink_service_monitor_close`
 
@@ -345,20 +334,69 @@ void *zlink_spot_monitor_open(void *spot,
 
 ---
 
+### zlink_spot_node_monitor_open
+
+SpotNode의 role-specific 서비스 모니터를 엽니다.
+
+```c
+void *zlink_spot_node_monitor_open (
+  void *node,
+  zlink_spot_role_t role,
+  zlink_spot_monitor_event_mask_t events,
+  zlink_service_monitor_handler_fn handler);
+```
+
+`role`은 `ZLINK_SPOT_ROLE_PUB` 또는 `ZLINK_SPOT_ROLE_SUB`입니다.
+node-owned default pub/sub facade에 대한 모니터를 엽니다.
+
+**반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
+
+**스레드 안전성:** 모니터 handle 자체는 thread-safe child handle입니다.
+
+**참고:** `zlink_service_monitor_close`
+
+---
+
+### zlink_monitor_ignore_handler
+
+소켓 모니터 이벤트를 무시하는 no-op 핸들러입니다.
+
+```c
+void zlink_monitor_ignore_handler (const zlink_monitor_event_t *event_);
+```
+
+monitor handle에서 snapshot이나 직접 polling만 사용하고 콜백 dispatch가
+불필요할 때 `zlink_socket_monitor_open()`에 전달합니다.
+
+---
+
+### zlink_service_monitor_ignore_handler
+
+서비스 모니터 이벤트를 무시하는 no-op 핸들러입니다.
+
+```c
+void zlink_service_monitor_ignore_handler (
+  const zlink_service_event_t *event_);
+```
+
+monitor handle에서 snapshot이나 직접 polling만 사용하고 콜백 dispatch가
+불필요할 때 `zlink_*_monitor_open()`에 전달합니다.
+
+---
+
 ### zlink_service_monitor_close
 
 서비스 모니터 핸들을 닫고 리소스를 해제합니다.
 
 ```c
-int zlink_service_monitor_close(void **monitor_p);
+int zlink_service_monitor_close (void **monitor_p);
 ```
 
-모니터를 닫고 `*monitor_p`를 `NULL`로 설정합니다. 닫은 후에는 이 모니터를
-통해 더 이상 이벤트가 전달되지 않습니다.
+모니터를 닫고 `*monitor_p`를 `NULL`로 설정합니다. 다른 스레드가 모니터
+콜백을 실행 중이면 `errno=EBUSY`로 실패합니다. 콜백 내에서의 self-close는
+성공하며, 콜백 반환 후까지 지연됩니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전하지 않음.
-
 **참고:** `zlink_discovery_monitor_open`, `zlink_gateway_monitor_open`,
-`zlink_spot_monitor_open`
+`zlink_spot_monitor_open`, `zlink_spot_node_monitor_open`

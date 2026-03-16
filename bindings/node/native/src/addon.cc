@@ -39,7 +39,7 @@ static napi_value init(napi_env env, napi_value exports)
         {"discoveryProviderCount", 0, discovery_provider_count, 0, 0, 0, napi_default, 0},
         {"discoveryServiceAvailable", 0, discovery_service_available, 0, 0, 0, napi_default, 0},
         {"discoveryGetProviders", 0, discovery_get_providers, 0, 0, 0, napi_default, 0},
-        {"discoverySetSockOpt", 0, discovery_setsockopt, 0, 0, 0, napi_default, 0},
+        {"discoverySetTlsClient", 0, discovery_set_tls_client, 0, 0, 0, napi_default, 0},
         {"discoveryDestroy", 0, discovery_destroy, 0, 0, 0, napi_default, 0},
 
         {"gatewayNew", 0, gateway_new, 0, 0, 0, napi_default, 0},

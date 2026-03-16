@@ -34,14 +34,14 @@ The zlink service layer is a set of **high-level distributed service features** 
 | **Registry** | Service registry | Central store that registers and manages service entries |
 | **Discovery** | Service discovery | Subscribes to the Registry and maintains a local cache of the service list |
 | **Gateway** | Service gateway | Entry point to services + client-side load balancer. Unlike API Gateways (authentication, rate limiting, etc.), this is a different concept |
-| **Receiver** | Service receiver | Backend that receives and processes requests from the Gateway |
+| **Gateway (Server)** | Service gateway | When bound, acts as the backend that receives and processes requests from remote Gateways |
 | **SPOT** | Location (spot) transparent pub/sub | Object-level, location-transparent, topic-based publish/subscribe mesh |
 
 ## 3. Service Components
 
 ### 3.1 Service Discovery -- Foundation Infrastructure
 
-A service registration/discovery system based on a Registry cluster. When a Receiver registers with the Registry, Discovery subscribes to it and manages the service list.
+A service registration/discovery system based on a Registry cluster. When a Gateway registers with the Registry, Discovery subscribes to it and manages the service list.
 
 - Registry cluster HA (flooding synchronization)
 - Heartbeat-based liveness checking
@@ -51,7 +51,7 @@ See the [Service Discovery Guide](07-1-discovery.md) for details.
 
 ### 3.2 Gateway -- Location-Transparent Request/Reply
 
-Automatically discovers service Receivers based on Discovery and handles
+Automatically discovers service peers based on Discovery and handles
 load-balanced message delivery. Gateway handles are thread-safe by default,
 and `send` allows same-handle concurrent calls.
 

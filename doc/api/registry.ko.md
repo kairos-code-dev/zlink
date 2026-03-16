@@ -11,7 +11,7 @@
 - Registry topology는 global summary 전용입니다. 자세한 로컬 상태 전이는
   각 service monitor API를 사용합니다.
 
-레지스트리는 zlink 서비스 계층의 중앙 서비스 디렉터리입니다. Receiver 및
+레지스트리는 zlink 서비스 계층의 중앙 서비스 디렉터리입니다. Gateway 및
 SPOT 노드로부터 서비스 등록, 등록 해제, 하트비트 요청을 수신하고, 집계된
 서비스 목록을 연결된 모든 Discovery 인스턴스에 주기적으로 브로드캐스트합니다.
 
@@ -67,7 +67,7 @@ int zlink_registry_bind(void *registry,
 Registry의 PUB 및 ROUTER 엔드포인트를 바인딩하고, 바인드 성공을 확인한 뒤,
 내부 control task를 시작하며 서비스 등록 수신과 브로드캐스트를 시작합니다.
 PUB 엔드포인트는 Discovery 인스턴스에 서비스 목록을 브로드캐스트하는 데
-사용됩니다. ROUTER 엔드포인트는 Receiver 및 SPOT 노드로부터 등록, 등록 해제,
+사용됩니다. ROUTER 엔드포인트는 Gateway 및 SPOT 노드로부터 등록, 등록 해제,
 하트비트 메시지를 수신하는 데 사용됩니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).

@@ -1,10 +1,13 @@
 [English](polling.md) | [한국어](polling.ko.md)
 
-# 폴링 & 프록시
+# 프록시 & 유틸리티
 
-여러 소켓에 걸쳐 I/O를 다중화하고 메시지 전달 프록시를 구축하기 위한
-함수입니다. 폴링 API를 사용하면 단일 호출에서 zlink 소켓과 네이티브 파일
-디스크립터의 모든 조합에 대한 이벤트를 대기할 수 있습니다.
+메시지 전달 프록시를 구축하고 라이브러리 기능을 조회하기 위한 함수입니다.
+
+callback-only receive 모델로 전환됨에 따라 polling API(`zlink_poll`,
+`zlink_pollitem_t`, `ZLINK_POLLIN`)는 제거되었습니다. 모든 메시지 수신은
+이제 handler callback을 통해 처리됩니다. 프록시 및 기능 확인 함수는 그대로
+유지됩니다.
 
 ## 타입
 
@@ -18,80 +21,18 @@ typedef unsigned int zlink_fd_t;
 #else
 typedef int zlink_fd_t;
 #endif
-
-typedef struct zlink_pollitem_t
-{
-    void *socket;
-    zlink_fd_t fd;
-    short events;
-    short revents;
-} zlink_pollitem_t;
 ```
 
-`zlink_fd_t`는 플랫폼 의존적 파일 디스크립터 타입입니다: 64비트 Windows에서는
-`unsigned __int64`, 32비트 Windows에서는 `unsigned int`, POSIX 시스템에서는
-`int`입니다.
-
-`zlink_pollitem_t`는 폴링할 하나의 항목을 설명합니다. `socket`을 zlink 소켓
-핸들로 설정하거나 (`socket`이 `NULL`인 경우) `fd`를 네이티브 파일 디스크립터로
-설정합니다. `events`는 감시할 이벤트를 지정하고 `revents`는 `zlink_poll`이
-실제로 발생한 이벤트로 채웁니다.
-
-## 상수
-
-```c
-#define ZLINK_POLLIN   1
-#define ZLINK_POLLOUT  2
-#define ZLINK_POLLERR  4
-#define ZLINK_POLLPRI  8
-
-#define ZLINK_POLLITEMS_DFLT  16
-```
-
-| 상수 | 값 | 설명 |
-|------|-----|------|
-| `ZLINK_POLLIN` | 1 | 블록 없이 최소 하나의 메시지를 수신할 수 있음 |
-| `ZLINK_POLLOUT` | 2 | 블록 없이 최소 하나의 메시지를 전송할 수 있음 |
-| `ZLINK_POLLERR` | 4 | 에러 상태가 존재함 |
-| `ZLINK_POLLPRI` | 8 | 높은 우선순위 데이터가 사용 가능함 (원시 파일 디스크립터용) |
-| `ZLINK_POLLITEMS_DFLT` | 16 | 폴 항목 배열에 권장되는 기본 할당 크기 |
+`zlink_fd_t`는 플랫폼 의존적 파일 디스크립터 타입입니다.
 
 ## 함수
-
-### zlink_poll
-
-소켓 및/또는 파일 디스크립터 집합에 대한 이벤트를 폴링합니다.
-
-```c
-int zlink_poll(zlink_pollitem_t *items_, int nitems_, long timeout_);
-```
-
-최소 하나의 항목이 요청된 이벤트를 신호하거나 타임아웃이 만료될 때까지
-대기합니다. `timeout_`을 무한 블로킹에는 `-1`, 즉시 비블로킹 확인에는 `0`,
-최대 대기 밀리초에는 양수 값으로 설정합니다. 반환 시 각 항목의 `revents`
-필드가 발생한 이벤트를 나타냅니다.
-
-**반환값:** 이벤트가 신호된 항목 수, 이벤트 없이 타임아웃이 만료되면 `0`,
-실패 시 `-1` (errno가 설정됨).
-
-**에러:**
-- `ETERM` -- 소켓 중 하나와 연결된 컨텍스트가 종료되었습니다.
-- `EFAULT` -- `nitems_`가 0이 아닌데 `items_`가 `NULL`입니다.
-- `EINTR` -- 시그널에 의해 호출이 중단되었습니다.
-
-**스레드 안전성:** 각 폴 항목은 호출 중 다른 스레드와 공유해서는 안 됩니다.
-서로 다른 스레드가 서로 다른 항목 집합을 동시에 폴링할 수 있습니다.
-
-**참고:** `zlink_proxy`, `zlink_proxy_steerable`
-
----
 
 ### zlink_proxy
 
 프론트엔드와 백엔드 소켓 간의 내장 프록시를 시작합니다.
 
 ```c
-int zlink_proxy(void *frontend_, void *backend_, void *capture_);
+int zlink_proxy (void *frontend_, void *backend_, void *capture_);
 ```
 
 프론트엔드 소켓을 백엔드 소켓에 연결하여 양방향으로 메시지를 전달합니다.
@@ -107,7 +48,7 @@ int zlink_proxy(void *frontend_, void *backend_, void *capture_);
 **스레드 안전성:** 프록시가 실행 중인 동안 세 소켓 핸들은 다른 스레드에서
 사용해서는 안 됩니다.
 
-**참고:** `zlink_proxy_steerable`, `zlink_poll`
+**참고:** `zlink_proxy_steerable`
 
 ---
 
@@ -116,10 +57,10 @@ int zlink_proxy(void *frontend_, void *backend_, void *capture_);
 추가 제어 소켓이 있는 제어 가능 프록시를 시작합니다.
 
 ```c
-int zlink_proxy_steerable(void *frontend_,
-                          void *backend_,
-                          void *capture_,
-                          void *control_);
+int zlink_proxy_steerable (void *frontend_,
+                           void *backend_,
+                           void *capture_,
+                           void *control_);
 ```
 
 `zlink_proxy`처럼 동작하지만 `control_`에서 명령을 수신합니다. 메시지 전달을
@@ -129,99 +70,10 @@ int zlink_proxy_steerable(void *frontend_,
 
 **반환값:** 제어 소켓을 통해 종료 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**에러:**
-- `ETERM` -- 컨텍스트가 종료되었습니다.
-
 **스레드 안전성:** 프록시가 실행 중인 동안 네 소켓 핸들은 다른 스레드에서
 사용해서는 안 됩니다. 제어 소켓은 모든 스레드에서 쓸 수 있습니다.
 
-**참고:** `zlink_proxy`, `zlink_poll`
-
----
-
-## 서비스 폴링
-
-raw 소켓 및 파일 디스크립터 외에도, poller는 서비스 인스턴스를 직접 감시할 수
-있습니다. 내부 소켓 핸들은 poller 내부에서만 참조되며 호출자에게 노출되지
-않습니다. poller가 readiness를 시그널한 후에는 기존 서비스 API를 사용하여
-메시지를 송수신합니다.
-
-지원 서비스: `spot_sub`, `spot_pub`, `gateway`, `receiver`.
-
-### zlink_poller_add_spot_sub / zlink_poller_add_spot_pub
-
-SPOT 서비스 인스턴스를 poller에 등록합니다.
-
-```c
-int zlink_poller_add_spot_sub(void *poller, void *sub,
-                              void *userdata, short events);
-int zlink_poller_add_spot_pub(void *poller, void *pub,
-                              void *userdata, short events);
-```
-
-서비스 인스턴스를 poller 감시 집합에 추가합니다. `events`는 `ZLINK_POLLIN` /
-`ZLINK_POLLOUT`의 비트마스크입니다. `userdata`는 이 항목이 발생했을 때 이벤트
-구조체에 반환됩니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**참고:** `zlink_poller_modify_spot_sub`, `zlink_poller_remove_spot_sub`
-
----
-
-### zlink_poller_add_gateway / zlink_poller_add_receiver
-
-Gateway 또는 Receiver 서비스 인스턴스를 poller에 등록합니다.
-
-```c
-int zlink_poller_add_gateway(void *poller, void *gateway,
-                             void *userdata, short events);
-int zlink_poller_add_receiver(void *poller, void *receiver,
-                              void *userdata, short events);
-```
-
-spot 서비스 등록 API와 동일한 의미이지만, gateway 및 receiver 서비스 대상입니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**참고:** `zlink_poller_modify_gateway`, `zlink_poller_remove_gateway`
-
----
-
-### zlink_poller_modify_* / zlink_poller_remove_*
-
-등록된 서비스 인스턴스를 수정하거나 제거합니다.
-
-```c
-int zlink_poller_modify_spot_sub(void *poller, void *sub, short events);
-int zlink_poller_modify_spot_pub(void *poller, void *pub, short events);
-int zlink_poller_modify_gateway(void *poller, void *gateway, short events);
-int zlink_poller_modify_receiver(void *poller, void *receiver, short events);
-
-int zlink_poller_remove_spot_sub(void *poller, void *sub);
-int zlink_poller_remove_spot_pub(void *poller, void *pub);
-int zlink_poller_remove_gateway(void *poller, void *gateway);
-int zlink_poller_remove_receiver(void *poller, void *receiver);
-```
-
-`modify`는 감시 이벤트 마스크를 변경합니다. `remove`는 서비스를 poller에서
-등록 해제합니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
----
-
-### 서비스 폴링 사용 패턴
-
-```text
-1. 서비스 인스턴스 생성 (spot_sub, spot_pub, gateway, receiver)
-2. poller에 서비스 인스턴스 등록
-3. zlink_poller_wait로 readiness 대기
-4. 기존 서비스 API로 send/recv
-```
-
-**중요:** 동일 서비스 인스턴스를 여러 스레드에서 동시에 사용하는 것은
-지원하지 않습니다.
+**참고:** `zlink_proxy`
 
 ---
 
@@ -230,7 +82,7 @@ int zlink_poller_remove_receiver(void *poller, void *receiver);
 라이브러리가 지정된 기능을 지원하는지 확인합니다.
 
 ```c
-int zlink_has(const char *capability_);
+int zlink_has (const char *capability_);
 ```
 
 라이브러리에 명명된 기능에 대한 컴파일 타임 또는 런타임 지원을 쿼리합니다.

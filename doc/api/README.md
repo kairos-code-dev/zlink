@@ -18,7 +18,7 @@ public function, type, and constant exported by `<zlink.h>`.
 | Monitoring | [monitoring.md](monitoring.md) | Socket monitors, service monitors, and peer inspection |
 | Events | [events.md](events.md) | Canonical event catalog and readiness semantics |
 | Registry | [registry.md](registry.md) | Service registry creation, configuration, topology, and clustering |
-| Discovery | [discovery.md](discovery.md) | Service discovery, subscription, and receiver lookup |
+| Discovery | [discovery.md](discovery.md) | Service discovery, subscription, and peer lookup |
 | Gateway | [gateway.md](gateway.md) | Service-bound load-balanced request/reply |
 | SPOT | [spot.md](spot.md) | Topic-based PUB/SUB nodes and unified spot facades |
 | Proxy & Utilities | [polling.md](polling.md) | Proxy helpers and capability query |
@@ -34,7 +34,7 @@ public function, type, and constant exported by `<zlink.h>`.
 | [`zlink_monitor_event_t`](monitoring.md) | monitoring.md | Monitor event structure (event, value, addresses) |
 | [`zlink_monitor_snapshot_t`](monitoring.md) | monitoring.md | Aggregate monitor snapshot (state, ready-peer count, queue depth) |
 | [`zlink_service_event_t`](events.md) | events.md | Service monitor event structure and subject-aware payload |
-| [`zlink_pollitem_t`](polling.md) | polling.md | Poll item for I/O multiplexing (socket or fd) |
+| [`zlink_fd_t`](polling.md) | polling.md | Platform-dependent file descriptor type |
 
 ## Callback Types
 

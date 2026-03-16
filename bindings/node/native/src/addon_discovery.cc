@@ -2,6 +2,8 @@
 
 #include "addon_api.h"
 
+#include <string>
+
 namespace {
 
 bool parse_routing_id_buffer(napi_env env,
@@ -860,26 +862,27 @@ napi_value registry_setsockopt(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value discovery_setsockopt(napi_env env, napi_callback_info info)
+napi_value discovery_set_tls_client(napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
     size_t argc = 4;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *d = NULL;
     napi_get_value_external(env, argv[0], &d);
-    int32_t role = 0;
-    napi_get_value_int32(env, argv[1], &role);
-    int32_t opt = 0;
-    napi_get_value_int32(env, argv[2], &opt);
-    void *data = NULL;
-    size_t len = 0;
-    if (napi_get_buffer_info(env, argv[3], &data, &len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "option value must be Buffer");
-        return NULL;
-    }
-    int rc = zlink_discovery_setsockopt(d, role, opt, data, len);
+    size_t ca_len = 0;
+    napi_get_value_string_utf8(env, argv[1], NULL, 0, &ca_len);
+    std::string ca_cert(ca_len + 1, '\0');
+    napi_get_value_string_utf8(env, argv[1], &ca_cert[0], ca_cert.size(), &ca_len);
+    size_t host_len = 0;
+    napi_get_value_string_utf8(env, argv[2], NULL, 0, &host_len);
+    std::string hostname(host_len + 1, '\0');
+    napi_get_value_string_utf8(env, argv[2], &hostname[0], hostname.size(), &host_len);
+    int32_t trust_system = 0;
+    napi_get_value_int32(env, argv[3], &trust_system);
+    int rc = zlink_discovery_set_tls_client(
+      d, ca_cert.c_str (), hostname.c_str (), trust_system);
     if (rc != 0)
-        return throw_last_error(env, "discovery_setsockopt failed");
+        return throw_last_error(env, "discovery_set_tls_client failed");
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;

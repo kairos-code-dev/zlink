@@ -174,10 +174,13 @@ class _Lib:
                                                 ctypes.c_int, ctypes.c_void_p,
                                                 ctypes.c_size_t]
         L.zlink_registry_setsockopt.restype = ctypes.c_int
-        L.zlink_discovery_setsockopt.argtypes = [ctypes.c_void_p, ctypes.c_int,
-                                                 ctypes.c_int, ctypes.c_void_p,
-                                                 ctypes.c_size_t]
-        L.zlink_discovery_setsockopt.restype = ctypes.c_int
+        L.zlink_discovery_set_tls_client.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_char_p,
+            ctypes.c_char_p,
+            ctypes.c_int,
+        ]
+        L.zlink_discovery_set_tls_client.restype = ctypes.c_int
         L.zlink_receiver_bind.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         L.zlink_receiver_bind.restype = ctypes.c_int
         L.zlink_receiver_connect_registry.argtypes = [ctypes.c_void_p, ctypes.c_char_p]

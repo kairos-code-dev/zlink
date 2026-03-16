@@ -157,6 +157,7 @@ Short-form aliases (e.g. `ZLINK_LINGER`) are also available.
 |---|---|
 | `ZLINK_SOCKOPT_AFFINITY` | I/O thread affinity bitmask (`uint64_t`) |
 | `ZLINK_SOCKOPT_ROUTING_ID` | Socket identity for ROUTER addressing (`binary`, max 255 bytes) |
+| `ZLINK_SOCKOPT_RCVMORE` | True if more message parts follow (read-only, `int`) |
 | `ZLINK_SOCKOPT_TYPE` | Socket type (read-only, `int`) |
 | `ZLINK_SOCKOPT_LINGER` | Linger period for socket shutdown in milliseconds (`int`; -1 = infinite, 0 = discard immediately) |
 | `ZLINK_SOCKOPT_BACKLOG` | Maximum length of the pending connections queue (`int`) |
@@ -184,6 +185,7 @@ Short-form aliases (e.g. `ZLINK_LINGER`) are also available.
 | Constant | Description |
 |---|---|
 | `ZLINK_SOCKOPT_SNDTIMEO` | Send timeout in milliseconds (`int`; -1 = infinite) |
+| `ZLINK_SOCKOPT_RCVTIMEO` | Receive timeout in milliseconds (`int`; -1 = infinite) |
 | `ZLINK_SOCKOPT_RECONNECT_IVL` | Initial reconnection interval in milliseconds (`int`) |
 | `ZLINK_SOCKOPT_RECONNECT_IVL_MAX` | Maximum reconnection interval in milliseconds (`int`; 0 = use `RECONNECT_IVL` only) |
 | `ZLINK_SOCKOPT_CONNECT_TIMEOUT` | Connection timeout in milliseconds (`int`) |

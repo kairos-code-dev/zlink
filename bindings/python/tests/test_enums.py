@@ -79,9 +79,6 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.RegistrySocketRole.ROUTER), 2)
         self.assertEqual(int(zlink.RegistrySocketRole.PEER_SUB), 3)
 
-    def test_discovery_socket_role_values(self):
-        self.assertEqual(int(zlink.DiscoverySocketRole.SUB), 1)
-
     def test_gateway_socket_role_values(self):
         self.assertEqual(int(zlink.GatewaySocketRole.ROUTER), 1)
 

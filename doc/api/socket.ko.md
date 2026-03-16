@@ -156,6 +156,7 @@ typedef uint32_t zlink_send_flags_t;
 |---|---|
 | `ZLINK_SOCKOPT_AFFINITY` | I/O 스레드 어피니티 비트마스크 (`uint64_t`) |
 | `ZLINK_SOCKOPT_ROUTING_ID` | ROUTER 주소 지정을 위한 소켓 아이덴티티 (`binary`, 최대 255바이트) |
+| `ZLINK_SOCKOPT_RCVMORE` | 멀티파트 메시지에서 추가 파트가 뒤따르는지 여부 (읽기 전용, `int`) |
 | `ZLINK_SOCKOPT_TYPE` | 소켓 타입 (읽기 전용, `int`) |
 | `ZLINK_SOCKOPT_LINGER` | 소켓 종료 시 대기 기간 (밀리초, `int`; -1 = 무한, 0 = 즉시 폐기) |
 | `ZLINK_SOCKOPT_BACKLOG` | 대기 중인 연결 큐의 최대 길이 (`int`) |
@@ -183,6 +184,7 @@ typedef uint32_t zlink_send_flags_t;
 | 상수 | 설명 |
 |---|---|
 | `ZLINK_SOCKOPT_SNDTIMEO` | 송신 타임아웃 (밀리초, `int`; -1 = 무한) |
+| `ZLINK_SOCKOPT_RCVTIMEO` | 수신 타임아웃 (밀리초, `int`; -1 = 무한) |
 | `ZLINK_SOCKOPT_RECONNECT_IVL` | 초기 재연결 간격 (밀리초, `int`) |
 | `ZLINK_SOCKOPT_RECONNECT_IVL_MAX` | 최대 재연결 간격 (밀리초, `int`; 0 = `RECONNECT_IVL`만 사용) |
 | `ZLINK_SOCKOPT_CONNECT_TIMEOUT` | 연결 타임아웃 (밀리초, `int`) |

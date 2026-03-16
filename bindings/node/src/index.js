@@ -362,9 +362,9 @@ class Discovery {
   receiverCount(service) { return requireNative().discoveryProviderCount(this._native, service); }
   serviceAvailable(service) { return requireNative().discoveryServiceAvailable(this._native, service); }
   getReceivers(service) { return requireNative().discoveryGetProviders(this._native, service); }
-  setSockOpt(role, option, value) {
-    const b = Buffer.isBuffer(value) ? value : Buffer.from(value);
-    requireNative().discoverySetSockOpt(this._native, role, option, b);
+  setTlsClient(caCert, hostname, trustSystem = 0) {
+    requireNative().discoverySetTlsClient(
+      this._native, caCert || "", hostname || "", trustSystem);
   }
   close() { if (!this._native) return; requireNative().discoveryDestroy(this._native); this._native = null; }
 }

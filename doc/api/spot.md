@@ -76,6 +76,12 @@ int zlink_spot_publish(void *spot,
                        zlink_msg_t *parts,
                        size_t part_count,
                        zlink_send_flags_t flags);
+int zlink_spot_sub_recv(void *sub,
+                       zlink_msg_t **parts,
+                       size_t *part_count,
+                       int flags,
+                       char *topic_id_out,
+                       size_t *topic_id_len);
 int zlink_spot_subscribe(void *spot, const char *topic_id);
 int zlink_spot_subscribe_pattern(void *spot, const char *pattern);
 int zlink_spot_unsubscribe(void *spot,
@@ -98,6 +104,11 @@ int zlink_spot_set_sub_option(void *spot,
 `zlink_spot_new()` always returns a unified facade with both pub and sub
 behavior. There is no separate public publish-only or subscribe-only child
 handle.
+
+`zlink_spot_sub_recv()` provides a synchronous pull-style receive alternative
+to the callback model. It returns the next available message with its topic.
+`parts` and `topic_id_out` are filled on success. Pass `ZLINK_DONTWAIT` in
+`flags` for non-blocking operation.
 
 Use `zlink_spot_monitor_open()` plus `zlink_monitor_snapshot()` for aggregate
 ready-peer and queue inspection.
@@ -132,16 +143,23 @@ runtime and return `ENOTSUP`.
 
 ## Monitoring
 
-SPOT monitoring uses a single unified public entrypoint:
+SPOT monitoring uses unified public entrypoints for both Spot and SpotNode:
 
 ```c
 void *zlink_spot_monitor_open(void *spot,
                               zlink_spot_role_t role,
                               zlink_spot_monitor_event_mask_t events,
                               zlink_service_monitor_handler_fn handler);
+
+void *zlink_spot_node_monitor_open(void *node,
+                                   zlink_spot_role_t role,
+                                   zlink_spot_monitor_event_mask_t events,
+                                   zlink_service_monitor_handler_fn handler);
 ```
 
 - `role` is `ZLINK_SPOT_ROLE_PUB` or `ZLINK_SPOT_ROLE_SUB`.
+- `zlink_spot_monitor_open()` monitors a unified Spot facade.
+- `zlink_spot_node_monitor_open()` monitors the node-owned default pub/sub.
 - Split `zlink_spot_pub_monitor_open()` and `zlink_spot_sub_monitor_open()` are
   not public APIs.
 - See [events.md](events.md) for the event catalog and readiness semantics.

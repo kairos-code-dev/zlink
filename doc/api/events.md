@@ -127,6 +127,8 @@ Disconnect reasons:
 |---|---|---|
 | `ZLINK_SPOT_SUB_FILTER_APPLIED` | Spot sub / node-sub monitor | Local filter installed |
 | `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | Spot sub / node-sub monitor | Legacy subscription-ready transition |
+| `ZLINK_SPOT_PUB_QUEUE_FULL` | Spot pub / node-pub monitor | PUB queue is full |
+| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | Spot pub / node-pub monitor | PUB queue has been drained |
 | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | Spot sub / node-sub monitor | Subject-specific delivery-ready state changed; `value` is `0` or `1` |
 | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | Subject-specific remote delivery-ready count changed; `value` is the current ready subscriber count |
 | `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | First-delivery-safe remote ready count changed; use this as the publisher control gate |

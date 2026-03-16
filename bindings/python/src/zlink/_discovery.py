@@ -159,9 +159,12 @@ class Discovery:
             })
         return result
 
-    def set_sockopt(self, role, option, value: bytes):
-        buf = ctypes.create_string_buffer(value)
-        rc = lib().zlink_discovery_setsockopt(self._handle, role, option, buf, len(value))
+    def set_tls_client(self, ca_cert: str, hostname: str, trust_system: int = 0):
+        ca_buf = ca_cert.encode() if ca_cert is not None else None
+        hostname_buf = hostname.encode() if hostname is not None else None
+        rc = lib().zlink_discovery_set_tls_client(
+            self._handle, ca_buf, hostname_buf, int(trust_system)
+        )
         if rc != 0:
             _raise_last_error()
 

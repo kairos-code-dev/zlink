@@ -4,7 +4,7 @@
 
 Discovery is a client-side cache that subscribes to Registry broadcasts and
 maintains a local service directory. Applications use Discovery to look up
-available Receivers or SPOT Nodes by service name without contacting the
+available Gateway peers or SPOT Nodes by service name without contacting the
 Registry directly.
 
 ## Thread-Safety Summary
@@ -40,18 +40,12 @@ typedef enum zlink_service_type_t
     ZLINK_SERVICE_TYPE_GATEWAY = 0x3001,
     ZLINK_SERVICE_TYPE_SPOT    = 0x3002
 } zlink_service_type_t;
-
-typedef enum zlink_discovery_socket_role_t
-{
-    ZLINK_DISCOVERY_SOCKET_SUB = 1
-} zlink_discovery_socket_role_t;
 ```
 
 | Constant | Description |
 |----------|-------------|
 | `ZLINK_SERVICE_TYPE_GATEWAY` | Discovery type for Gateway services |
 | `ZLINK_SERVICE_TYPE_SPOT` | Discovery type for SPOT Node services |
-| `ZLINK_DISCOVERY_SOCKET_SUB` | SUB socket used for receiving Registry broadcasts |
 
 ## Functions
 
@@ -102,22 +96,29 @@ cost model.
 
 ---
 
-### zlink_discovery_setsockopt
+### zlink_discovery_set_tls_client
 
-Set a socket option on an internal Discovery socket.
+Configure TLS settings for Discovery registry links.
 
 ```c
-int zlink_discovery_setsockopt (
-  void *discovery,
-  zlink_discovery_socket_role_t socket_role,
-  zlink_socket_option_t option,
-  const void *optval,
-  size_t optvallen);
+int zlink_discovery_set_tls_client (void *discovery,
+                                    const char *ca_cert,
+                                    const char *hostname,
+                                    int trust_system);
 ```
 
-Applies a low-level socket option to one of the Discovery's internal sockets.
+Applies TLS client configuration to the registry bootstrap and uplink
+connections managed internally by the Discovery service. Must be called
+before `zlink_discovery_connect_registry()`.
+
+**Parameters:**
+- `ca_cert` -- Path to PEM-encoded CA certificate bundle.
+- `hostname` -- Expected hostname for TLS SNI and certificate verification.
+- `trust_system` -- If non-zero, trust the system CA certificate store.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**See also:** `zlink_discovery_connect_registry`
 
 ---
 

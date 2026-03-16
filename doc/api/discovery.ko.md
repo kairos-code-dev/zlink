@@ -39,18 +39,12 @@ typedef enum zlink_service_type_t
     ZLINK_SERVICE_TYPE_GATEWAY = 0x3001,
     ZLINK_SERVICE_TYPE_SPOT    = 0x3002
 } zlink_service_type_t;
-
-typedef enum zlink_discovery_socket_role_t
-{
-    ZLINK_DISCOVERY_SOCKET_SUB = 1
-} zlink_discovery_socket_role_t;
 ```
 
 | 상수 | 설명 |
 |------|------|
 | `ZLINK_SERVICE_TYPE_GATEWAY` | Gateway 서비스를 위한 Discovery 타입 |
 | `ZLINK_SERVICE_TYPE_SPOT` | SPOT 노드 서비스를 위한 Discovery 타입 |
-| `ZLINK_DISCOVERY_SOCKET_SUB` | Registry 브로드캐스트 수신에 사용되는 SUB 소켓 |
 
 ## 함수
 
@@ -98,22 +92,29 @@ Discovery 작업과 병행할 수 있습니다.
 
 ---
 
-### zlink_discovery_setsockopt
+### zlink_discovery_set_tls_client
 
-Discovery 내부 소켓에 소켓 옵션을 설정합니다.
+Discovery registry 연결에 TLS 설정을 구성합니다.
 
 ```c
-int zlink_discovery_setsockopt (
-  void *discovery,
-  zlink_discovery_socket_role_t socket_role,
-  zlink_socket_option_t option,
-  const void *optval,
-  size_t optvallen);
+int zlink_discovery_set_tls_client (void *discovery,
+                                    const char *ca_cert,
+                                    const char *hostname,
+                                    int trust_system);
 ```
 
-Discovery의 내부 소켓 중 하나에 저수준 소켓 옵션을 적용합니다.
+Discovery 서비스가 내부적으로 관리하는 registry bootstrap 및 uplink 연결에
+TLS 클라이언트 설정을 적용합니다. `zlink_discovery_connect_registry()` 전에
+호출해야 합니다.
+
+**매개변수:**
+- `ca_cert` -- PEM 인코딩된 CA 인증서 번들 경로.
+- `hostname` -- TLS SNI 및 인증서 검증에 사용할 호스트명.
+- `trust_system` -- 0이 아니면 시스템 CA 인증서 저장소를 신뢰합니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**참고:** `zlink_discovery_connect_registry`
 
 ---
 

@@ -82,6 +82,35 @@ typedef struct zlink_monitor_snapshot_t
 
 ## Constants
 
+### Monitor Source Kind
+
+```c
+typedef enum zlink_monitor_source_kind_t
+{
+    ZLINK_MONITOR_SOURCE_SOCKET   = 1,
+    ZLINK_MONITOR_SOURCE_GATEWAY  = 2,
+    ZLINK_MONITOR_SOURCE_SPOT_PUB = 3,
+    ZLINK_MONITOR_SOURCE_SPOT_SUB = 4
+} zlink_monitor_source_kind_t;
+```
+
+### Monitor State Mask
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_MONITOR_STATE_READY` | `1 << 0` | The source is ready (at least one connection). |
+| `ZLINK_MONITOR_STATE_BOUND_READY` | `1 << 1` | The source has a successful bind. |
+| `ZLINK_MONITOR_STATE_SEND_READY` | `1 << 2` | The source can accept send operations. |
+| `ZLINK_MONITOR_STATE_CLOSED` | `1 << 3` | The source has been closed. |
+
+### Monitor Snapshot Detail Mask
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT` | `1 << 0` | `ready_peer_count` field is populated. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` field is populated. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` field is populated. |
+
 ### Event Flags
 
 Bitmask constants passed to `zlink_socket_monitor_open()` to select which
@@ -263,6 +292,8 @@ Callback for service monitor events, invoked on the I/O thread.
 |----------|-----|-------------|
 | `ZLINK_SPOT_SUB_FILTER_APPLIED` | `1 << 13` | Subscription filter applied |
 | `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | `1 << 14` | Subscription is ready to receive |
+| `ZLINK_SPOT_PUB_QUEUE_FULL` | `1 << 15` | PUB queue is full |
+| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | `1 << 16` | PUB queue has been drained |
 | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | Subject-specific remote delivery-ready count changed |
 | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | `1 << 19` | Subject-specific delivery-ready state changed |
 | `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | `1 << 20` | Publisher-side first-delivery-safe ready count changed |
@@ -275,6 +306,8 @@ Callback for service monitor events, invoked on the I/O thread.
 | `ZLINK_EVENT_DETAIL_ENDPOINT` | `0x0002` | `endpoint` field is populated |
 | `ZLINK_EVENT_DETAIL_SUBJECT_RID` | `0x0004` | `routing_id` contains the subject identity |
 | `ZLINK_EVENT_DETAIL_PEER_RID` | `0x0008` | `routing_id` contains a peer identity |
+| `ZLINK_EVENT_DETAIL_SUBJECT` | `0x0010` | `subject` field is populated |
+| `ZLINK_EVENT_DETAIL_SUBJECT_KIND` | `0x0020` | `subject_kind` field is populated |
 
 ---
 
@@ -345,6 +378,56 @@ dispatched through the `handler` callback.
 
 ---
 
+### zlink_spot_node_monitor_open
+
+Open a role-specific service monitor for a SpotNode.
+
+```c
+void *zlink_spot_node_monitor_open (
+  void *node,
+  zlink_spot_role_t role,
+  zlink_spot_monitor_event_mask_t events,
+  zlink_service_monitor_handler_fn handler);
+```
+
+`role` is `ZLINK_SPOT_ROLE_PUB` or `ZLINK_SPOT_ROLE_SUB`. Opens a monitor
+on the node-owned default pub/sub facade.
+
+**Returns:** Monitor handle on success, or `NULL` on failure (errno is set).
+
+**Thread safety:** The monitor handle itself is a thread-safe child handle.
+
+**See also:** `zlink_service_monitor_close`
+
+---
+
+### zlink_monitor_ignore_handler
+
+No-op handler for ignoring socket monitor events.
+
+```c
+void zlink_monitor_ignore_handler (const zlink_monitor_event_t *event_);
+```
+
+Pass this to `zlink_socket_monitor_open()` when you want snapshot or direct
+polling on the returned monitor handle without automatic callback dispatch.
+
+---
+
+### zlink_service_monitor_ignore_handler
+
+No-op handler for ignoring service monitor events.
+
+```c
+void zlink_service_monitor_ignore_handler (
+  const zlink_service_event_t *event_);
+```
+
+Pass this to `zlink_*_monitor_open()` when you want snapshot or direct
+polling on the returned monitor handle without automatic callback dispatch.
+
+---
+
 ### zlink_service_monitor_close
 
 Close a service monitor handle and release its resources.
@@ -361,4 +444,4 @@ returns.
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
 **See also:** `zlink_discovery_monitor_open`, `zlink_gateway_monitor_open`,
-`zlink_spot_monitor_open`
+`zlink_spot_monitor_open`, `zlink_spot_node_monitor_open`

@@ -4,6 +4,7 @@
 
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_data_plane.hpp"
+#include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
 
@@ -214,7 +215,7 @@ static void sync_mesh_xsub_connected_endpoint (spot_runtime_t *runtime_,
         runtime_->connected_peer_version.fetch_add (1,
                                                     std::memory_order_acq_rel);
         if (runtime_->owner)
-            runtime_->owner->wake_control_task ();
+            spot_node_access_t::wake_control_task (runtime_->owner);
     }
 }
 
@@ -229,7 +230,7 @@ static void clear_mesh_xsub_connected_endpoints (spot_runtime_t *runtime_)
         runtime_->connected_peer_version.fetch_add (1,
                                                     std::memory_order_acq_rel);
         if (runtime_->owner)
-            runtime_->owner->wake_control_task ();
+            spot_node_access_t::wake_control_task (runtime_->owner);
         return;
     }
     runtime_->connected_peer_endpoints.clear ();
@@ -347,7 +348,8 @@ static int send_snapshot_to_target (socket_base_t *socket_,
     node_->snapshot_raw_subscription_filters (&filters);
     return send_control_snapshot (
       socket_, spot_control_protocol::ctrl_snapshot_topic, target_endpoint_,
-      spot_control_protocol::node_id_string (node_->runtime ()->node_id),
+      spot_control_protocol::node_id_string (
+        spot_node_access_t::runtime (node_)->node_id),
       filters);
 }
 
@@ -362,7 +364,8 @@ static int send_snapshot_to_peers (
     std::set<std::string> filters;
     node_->snapshot_raw_subscription_filters (&filters);
     const std::string source_node_id =
-      spot_control_protocol::node_id_string (node_->runtime ()->node_id);
+      spot_control_protocol::node_id_string (
+        spot_node_access_t::runtime (node_)->node_id);
 
     for (std::map<std::string, std::string>::const_iterator it =
            peer_ctrl_endpoints_.begin ();
@@ -732,7 +735,7 @@ static int recv_and_dispatch_mesh_xsub (
             != 0) {
             return -1;
         }
-        node_->schedule_subscription_replay ();
+        spot_node_access_t::schedule_subscription_replay (node_);
         ++processed;
         if (processed >= mesh_xsub_forward_batch_limit)
             return 0;

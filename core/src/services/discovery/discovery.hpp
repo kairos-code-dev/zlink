@@ -20,6 +20,9 @@ namespace zlink
 {
 class socket_base_t;
 class discovery_t;
+class gateway_t;
+class spot_node_t;
+struct discovery_access_t;
 
 enum discovery_socket_role_t
 {
@@ -57,14 +60,12 @@ class discovery_t
     int connect_registry (const char *registry_endpoint_);
     int set_routing_id (const void *data_, size_t size_);
     int routing_id (zlink_routing_id_t *out_) const;
-    int set_socket_option (int socket_role_,
-                           int option_,
-                           const void *optval_,
-                           size_t optvallen_);
+    int set_tls_client (const char *ca_cert_,
+                        const char *hostname_,
+                        int trust_system_);
     void *monitor_open (int events_);
 
     int destroy ();
-    void set_discovery_summary_enabled (bool enabled_);
     int register_service (uint16_t service_type_,
                           const char *service_name_,
                           const char *endpoint_,
@@ -86,8 +87,6 @@ class discovery_t
     bool latest_registry_uplink (std::string *out_);
     uint64_t update_seq ();
     uint64_t service_update_seq (const std::string &service_name_);
-    void add_observer (discovery_observer_t *observer_);
-    int remove_observer (discovery_observer_t *observer_);
     service_public_api_guard_t &public_api_guard_for_testing ()
     {
         return _public_api;
@@ -96,15 +95,12 @@ class discovery_t
     {
         notify_observers (services_);
     }
-    void upsert_service_summary (const zlink_registry_topology_entry_t &entry_);
-    void upsert_gateway_peer_summary (
-      const zlink_registry_gateway_peer_entry_t &entry_);
-    void erase_service_summary (uint16_t service_kind_,
-                                const zlink_routing_id_t &routing_id_,
-                                const std::string &service_name_,
-                                bool stopped_);
 
   private:
+    friend class gateway_t;
+    friend class spot_node_t;
+    friend struct discovery_access_t;
+
     struct service_state_t
     {
         std::vector<provider_info_t> providers;
@@ -112,6 +108,16 @@ class discovery_t
 
     static void control_task (void *arg_);
     void tick ();
+    void set_discovery_summary_enabled (bool enabled_);
+    void add_observer (discovery_observer_t *observer_);
+    int remove_observer (discovery_observer_t *observer_);
+    void upsert_service_summary (const zlink_registry_topology_entry_t &entry_);
+    void upsert_gateway_peer_summary (
+      const zlink_registry_gateway_peer_entry_t &entry_);
+    void erase_service_summary (uint16_t service_kind_,
+                                const zlink_routing_id_t &routing_id_,
+                                const std::string &service_name_,
+                                bool stopped_);
     int ensure_sub_socket ();
     void close_sub_socket ();
     void apply_socket_options_locked (socket_base_t *socket_);

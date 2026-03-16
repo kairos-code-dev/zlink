@@ -258,108 +258,156 @@ class asio_engine_t : public i_engine
         }
     };
 
-    //  Pointer to io_context (set during plug())
-    boost::asio::io_context *_io_context;
-
-    //  Transport abstraction (TCP/SSL/etc)
-    std::unique_ptr<i_asio_transport> _transport;
-
-    //  Timers for handshake and heartbeat (allocated during plug())
-    std::unique_ptr<boost::asio::steady_timer> _timer;
-
-    //  Current timer ID
-    int _current_timer_id;
-
-    //  Internal read buffer for async operations
     static const size_t read_buffer_size = 8192;
-    std::vector<unsigned char> _read_buffer;
-
-    //  Internal write buffer for async operations
-    std::vector<unsigned char> _write_buffer;
-
-    //  True Proactor Pattern: Pending buffers for backpressure handling.
-    //  When _input_stopped is true, incoming data is stored here instead of
-    //  being processed. This allows async_read to continue without blocking,
-    //  eliminating unnecessary recvfrom() calls and EAGAIN errors.
-    std::deque<std::vector<unsigned char>> _pending_buffers;
-
-    //  STREAM RX slab chunks (optional fast path, gated by env toggle).
-    std::deque<stream_rx_chunk_t> _pending_stream_rx_chunks;
-
-    //  Backpressure read buffers (avoid extra copy into _pending_buffers).
-    std::vector<std::vector<unsigned char> > _pending_buffer_pool;
-    std::vector<stream_rx_chunk_t> _pending_stream_rx_chunk_pool;
-    std::vector<unsigned char> _pending_read_buffer;
-    bool _read_from_pending_pool;
     enum { pending_buffer_pool_max = 4 };
-
-    //  Last synchronous read result (used by STREAM read-drain budgeting).
-    size_t _last_speculative_read_bytes;
-
-    //  Total bytes in _pending_buffers (O(1) tracking instead of O(n) iteration)
-    size_t _total_pending_bytes;
 
     //  Maximum total size of pending buffers (10MB default)
     static const size_t max_pending_buffer_size = 10 * 1024 * 1024;
-
-    fd_t _fd;
-
-    bool _plugged;
-
-    //  When true, we are still trying to determine whether
-    //  the peer is using versioned protocol, and if so, which
-    //  version. When false, normal message flow has started.
-    bool _handshaking;
-
-    msg_t _tx_msg;
-
-    bool _io_error;
-
-    //  True if async read is in progress
-    bool _read_pending;
-
-    //  True if async write is in progress
-    bool _write_pending;
-
-    //  True if transport handshake is in progress
-    bool _handshake_pending;
-    bool _async_zero_copy;
-    bool _async_gather;
-
-    //  Guard against nested drain recursion from speculative_read callbacks.
-    bool _in_read_drain;
 
     //  STREAM-only custom allocator slots for high-frequency callbacks.
     handler_allocator _stream_read_handler_allocator;
     handler_allocator _stream_write_handler_allocator;
     handler_allocator _stream_handshake_handler_allocator;
 
-    unsigned char _gather_header[64];
-    size_t _gather_header_size;
-    const unsigned char *_gather_body;
-    size_t _gather_body_size;
+    struct transport_adapter_t
+    {
+        transport_adapter_t () : io_context (NULL), current_timer_id (-1), fd (retired_fd) {}
 
-    //  True if engine is being terminated (prevents callback processing)
-    bool _terminating;
-    std::shared_ptr<void> _callback_guard;
+        boost::asio::io_context *io_context;
+        std::unique_ptr<i_asio_transport> transport;
+        std::unique_ptr<boost::asio::steady_timer> timer;
+        int current_timer_id;
+        fd_t fd;
+    };
 
-    //  Buffer pointer for current async read (points to where data was read)
-    unsigned char *_read_buffer_ptr;
-    size_t _last_read_request_size;
-    bool _last_read_had_partial_prefix;
-    size_t _stream_decoder_read_target_size;
-    size_t _stream_decoder_read_target_max;
-    size_t _stream_decoder_read_target_full_hits;
-    size_t _stream_encoder_write_target_size;
-    size_t _stream_encoder_write_target_max;
-    size_t _stream_encoder_write_target_full_hits;
-    size_t _stream_encoder_pending_resize_size;
+    struct engine_pipeline_t
+    {
+        engine_pipeline_t () :
+            read_from_pending_pool (false),
+            last_speculative_read_bytes (0),
+            total_pending_bytes (0),
+            io_error (false),
+            read_pending (false),
+            write_pending (false),
+            handshake_pending (false),
+            async_zero_copy (false),
+            async_gather (false),
+            in_read_drain (false),
+            gather_header_size (0),
+            gather_body (NULL),
+            gather_body_size (0),
+            read_buffer_ptr (NULL),
+            last_read_request_size (0),
+            last_read_had_partial_prefix (false),
+            stream_decoder_read_target_size (0),
+            stream_decoder_read_target_max (0),
+            stream_decoder_read_target_full_hits (0),
+            stream_encoder_write_target_size (0),
+            stream_encoder_write_target_max (0),
+            stream_encoder_write_target_full_hits (0),
+            stream_encoder_pending_resize_size (0)
+        {
+        }
 
-    //  The session this engine is attached to.
-    zlink::session_base_t *_session;
+        std::vector<unsigned char> read_buffer;
+        std::vector<unsigned char> write_buffer;
+        std::deque<std::vector<unsigned char> > pending_buffers;
+        std::deque<stream_rx_chunk_t> pending_stream_rx_chunks;
+        std::vector<std::vector<unsigned char> > pending_buffer_pool;
+        std::vector<stream_rx_chunk_t> pending_stream_rx_chunk_pool;
+        std::vector<unsigned char> pending_read_buffer;
+        bool read_from_pending_pool;
+        size_t last_speculative_read_bytes;
+        size_t total_pending_bytes;
+        msg_t tx_msg;
+        bool io_error;
+        bool read_pending;
+        bool write_pending;
+        bool handshake_pending;
+        bool async_zero_copy;
+        bool async_gather;
+        bool in_read_drain;
+        unsigned char gather_header[64];
+        size_t gather_header_size;
+        const unsigned char *gather_body;
+        size_t gather_body_size;
+        unsigned char *read_buffer_ptr;
+        size_t last_read_request_size;
+        bool last_read_had_partial_prefix;
+        size_t stream_decoder_read_target_size;
+        size_t stream_decoder_read_target_max;
+        size_t stream_decoder_read_target_full_hits;
+        size_t stream_encoder_write_target_size;
+        size_t stream_encoder_write_target_max;
+        size_t stream_encoder_write_target_full_hits;
+        size_t stream_encoder_pending_resize_size;
+    };
 
-    //  Socket
-    zlink::socket_base_t *_socket;
+    struct connection_facade_t
+    {
+        connection_facade_t () :
+            plugged (false),
+            handshaking (true),
+            terminating (false),
+            session (NULL),
+            socket (NULL)
+        {
+        }
+
+        bool plugged;
+        bool handshaking;
+        bool terminating;
+        std::shared_ptr<void> callback_guard;
+        zlink::session_base_t *session;
+        zlink::socket_base_t *socket;
+    };
+
+    transport_adapter_t _transport_adapter;
+    engine_pipeline_t _pipeline;
+    connection_facade_t _connection_facade;
+    boost::asio::io_context *&_io_context;
+    std::unique_ptr<i_asio_transport> &_transport;
+    std::unique_ptr<boost::asio::steady_timer> &_timer;
+    int &_current_timer_id;
+    std::vector<unsigned char> &_read_buffer;
+    std::vector<unsigned char> &_write_buffer;
+    std::deque<std::vector<unsigned char> > &_pending_buffers;
+    std::deque<stream_rx_chunk_t> &_pending_stream_rx_chunks;
+    std::vector<std::vector<unsigned char> > &_pending_buffer_pool;
+    std::vector<stream_rx_chunk_t> &_pending_stream_rx_chunk_pool;
+    std::vector<unsigned char> &_pending_read_buffer;
+    bool &_read_from_pending_pool;
+    size_t &_last_speculative_read_bytes;
+    size_t &_total_pending_bytes;
+    fd_t &_fd;
+    bool &_plugged;
+    bool &_handshaking;
+    msg_t &_tx_msg;
+    bool &_io_error;
+    bool &_read_pending;
+    bool &_write_pending;
+    bool &_handshake_pending;
+    bool &_async_zero_copy;
+    bool &_async_gather;
+    bool &_in_read_drain;
+    unsigned char (&_gather_header)[64];
+    size_t &_gather_header_size;
+    const unsigned char *&_gather_body;
+    size_t &_gather_body_size;
+    bool &_terminating;
+    std::shared_ptr<void> &_callback_guard;
+    unsigned char *&_read_buffer_ptr;
+    size_t &_last_read_request_size;
+    bool &_last_read_had_partial_prefix;
+    size_t &_stream_decoder_read_target_size;
+    size_t &_stream_decoder_read_target_max;
+    size_t &_stream_decoder_read_target_full_hits;
+    size_t &_stream_encoder_write_target_size;
+    size_t &_stream_encoder_write_target_max;
+    size_t &_stream_encoder_write_target_full_hits;
+    size_t &_stream_encoder_pending_resize_size;
+    zlink::session_base_t *&_session;
+    zlink::socket_base_t *&_socket;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_engine_t)
 };

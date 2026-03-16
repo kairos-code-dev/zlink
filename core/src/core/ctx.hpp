@@ -15,6 +15,7 @@
 #include "utils/stdint.hpp"
 #include "core/options.hpp"
 #include "utils/atomic_counter.hpp"
+#include "utils/condition_variable.hpp"
 #include "core/thread.hpp"
 
 namespace zlink
@@ -179,6 +180,7 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     //  access to zombie sockets as such (as opposed to slots) and provides
     //  a memory barrier to ensure that all CPU cores see the same data.
     mutex_t _slot_sync;
+    condition_variable_t _socket_state_cv;
 
     //  The reaper thread.
     zlink::reaper_t *_reaper;

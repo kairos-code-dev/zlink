@@ -270,7 +270,7 @@ int spot_runtime_t::create_attachment (int kind_,
 
     owner->track_owned_socket (socket);
     if (socket->connect (endpoint_) != 0) {
-        (void) owner->_lifecycle.close_socket_and_wait (socket, 1000);
+        (void) close_runtime_socket (socket, 1000);
         return -1;
     }
 
@@ -286,6 +286,34 @@ int spot_runtime_t::create_attachment (int kind_,
         attachments[attachment.id] = attachment;
     }
     *out_id_ = attachment.id;
+    return 0;
+}
+
+int spot_runtime_t::close_runtime_socket (socket_base_t *&socket_,
+                                          int timeout_ms_)
+{
+    if (!socket_)
+        return 0;
+    if (owner && owner->_ctx)
+        return owner->_lifecycle.close_socket_and_wait (socket_, timeout_ms_);
+
+    socket_->stop ();
+    socket_->close ();
+    socket_ = NULL;
+    return 0;
+}
+
+int spot_runtime_t::close_runtime_socket_async (socket_base_t *&socket_,
+                                                int timeout_ms_)
+{
+    if (!socket_)
+        return 0;
+    if (owner && owner->_ctx)
+        return owner->_lifecycle.close_socket (socket_, timeout_ms_);
+
+    socket_->stop ();
+    socket_->close ();
+    socket_ = NULL;
     return 0;
 }
 
@@ -336,13 +364,7 @@ int spot_runtime_t::destroy_attachment (uint64_t id_)
         }
     }
     socket->set_all_pipes_nodelay ();
-    if (owner && owner->_ctx) {
-        return owner->_lifecycle.close_socket_and_wait (socket, 10000);
-    }
-
-    socket->stop ();
-    socket->close ();
-    return 0;
+    return close_runtime_socket (socket, 10000);
 }
 
 int spot_runtime_t::destroy_attachment_async (uint64_t id_)
@@ -382,12 +404,7 @@ int spot_runtime_t::destroy_attachment_async (uint64_t id_)
         }
     }
     socket->set_all_pipes_nodelay ();
-    if (owner && owner->_ctx)
-        return owner->_lifecycle.close_socket (socket, 10000);
-
-    socket->stop ();
-    socket->close ();
-    return 0;
+    return close_runtime_socket_async (socket, 10000);
 }
 
 int spot_runtime_t::start ()
@@ -529,28 +546,28 @@ int spot_runtime_t::close_control_sockets ()
         if (fanout && !sub_fanout_endpoint.empty ())
             (void) fanout->term_endpoint (sub_fanout_endpoint.c_str ());
         preserve_first_error (
-          owner->_lifecycle.close_socket_and_wait (ctrl_front, 2000),
+          close_runtime_socket (ctrl_front, 2000),
           &first_error);
         preserve_first_error (
-          owner->_lifecycle.close_socket_and_wait (ctrl_back, 2000),
+          close_runtime_socket (ctrl_back, 2000),
           &first_error);
         preserve_first_error (
-          owner->_lifecycle.close_socket_and_wait (mesh_pub_local, 2000),
+          close_runtime_socket (mesh_pub_local, 2000),
           &first_error);
         preserve_first_error (
-          owner->_lifecycle.close_socket_and_wait (mesh_xsub_local, 2000),
+          close_runtime_socket (mesh_xsub_local, 2000),
           &first_error);
         preserve_first_error (
-          owner->_lifecycle.close_socket_and_wait (peer_ctrl_pub_local, 2000),
+          close_runtime_socket (peer_ctrl_pub_local, 2000),
           &first_error);
         preserve_first_error (
-          owner->_lifecycle.close_socket_and_wait (peer_ctrl_sub_local, 2000),
+          close_runtime_socket (peer_ctrl_sub_local, 2000),
           &first_error);
         preserve_first_error (
-          owner->_lifecycle.close_socket_and_wait (ingress, 2000),
+          close_runtime_socket (ingress, 2000),
           &first_error);
         preserve_first_error (
-          owner->_lifecycle.close_socket_and_wait (fanout, 2000),
+          close_runtime_socket (fanout, 2000),
           &first_error);
     } else {
         close_socket_ptr (&ctrl_front);
@@ -688,19 +705,17 @@ int spot_runtime_t::abortive_stop ()
             (void) ctrl_front->term_endpoint (data_ctrl_endpoint.c_str ());
         if (ctrl_back && !data_ctrl_endpoint.empty ())
             (void) ctrl_back->term_endpoint (data_ctrl_endpoint.c_str ());
-        (void) owner->_lifecycle.close_socket_and_wait (ctrl_front, 1000);
-        (void) owner->_lifecycle.close_socket_and_wait (ctrl_back, 1000);
-        (void) owner->_lifecycle.close_socket_and_wait (mesh_pub_local, 1000);
-        (void) owner->_lifecycle.close_socket_and_wait (mesh_xsub_local, 1000);
-        (void) owner->_lifecycle.close_socket_and_wait (peer_ctrl_pub_local,
-                                                        1000);
-        (void) owner->_lifecycle.close_socket_and_wait (peer_ctrl_sub_local,
-                                                        1000);
-        (void) owner->_lifecycle.close_socket_and_wait (ingress, 1000);
-        (void) owner->_lifecycle.close_socket_and_wait (fanout, 1000);
+        (void) close_runtime_socket (ctrl_front, 1000);
+        (void) close_runtime_socket (ctrl_back, 1000);
+        (void) close_runtime_socket (mesh_pub_local, 1000);
+        (void) close_runtime_socket (mesh_xsub_local, 1000);
+        (void) close_runtime_socket (peer_ctrl_pub_local, 1000);
+        (void) close_runtime_socket (peer_ctrl_sub_local, 1000);
+        (void) close_runtime_socket (ingress, 1000);
+        (void) close_runtime_socket (fanout, 1000);
         for (size_t i = 0; i < attachment_sockets.size (); ++i) {
             socket_base_t *socket = attachment_sockets[i];
-            (void) owner->_lifecycle.close_socket_and_wait (socket, 1000);
+            (void) close_runtime_socket (socket, 1000);
         }
     } else {
         close_socket_ptr (&ctrl_front);
@@ -1749,6 +1764,13 @@ void spot_node_t::untrack_owned_socket (const socket_base_t *socket_)
 int spot_node_t::wait_owned_socket_removals (int timeout_ms_)
 {
     return _lifecycle.wait_drained (timeout_ms_);
+}
+
+int spot_node_t::destroy_attachment (uint64_t attachment_id_)
+{
+    if (!_runtime)
+        return 0;
+    return _runtime->destroy_attachment (attachment_id_);
 }
 
 std::string spot_node_t::summary_service_name () const

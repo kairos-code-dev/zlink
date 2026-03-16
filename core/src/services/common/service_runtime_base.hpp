@@ -5,6 +5,7 @@
 
 #include "core/ctx.hpp"
 #include "sockets/socket_base.hpp"
+#include "sockets/socket_close_ops.hpp"
 #include "utils/clock.hpp"
 #include "utils/mutex.hpp"
 
@@ -12,10 +13,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
-
-#ifndef ZLINK_HAVE_WINDOWS
-#include <unistd.h>
-#endif
 
 namespace zlink
 {
@@ -143,17 +140,12 @@ class service_runtime_base_t
             _owned_sockets.erase (socket_id);
             _closing_sockets[socket_id] = socket;
         }
-        socket->stop ();
-        socket->close ();
-        socket_ = NULL;
         LIBZLINK_UNUSED (timeout_ms_);
-        return 0;
+        return socket_close_ops_t::request_close (socket_);
     }
 
     int close_socket_and_wait (socket_base_t *&socket_, int timeout_ms_ = 10000)
     {
-        if (!_ctx)
-            return close_socket (socket_, timeout_ms_);
         if (!socket_)
             return 0;
 
@@ -164,8 +156,8 @@ class service_runtime_base_t
             _owned_sockets.erase (socket_id);
             _closing_sockets[socket_id] = socket;
         }
-        socket_ = NULL;
-        const int rc = _ctx->close_socket_and_wait (socket, timeout_ms_);
+        const int rc =
+          socket_close_ops_t::request_close_and_wait (_ctx, socket_, timeout_ms_);
         if (rc == 0)
             erase_closing_socket (socket_id);
         return rc;
@@ -213,35 +205,19 @@ class service_runtime_base_t
                 }
             }
 
-            if (sockets.empty ()) {
-#ifdef ZLINK_HAVE_WINDOWS
-                Sleep (1);
-#else
-                usleep (1000);
-#endif
-                continue;
-            }
-
-            bool progressed = false;
             for (std::map<int, const socket_base_t *>::const_iterator it =
                    sockets.begin ();
                  it != sockets.end (); ++it) {
-                if (_ctx->wait_for_socket_removal (
-                      const_cast<socket_base_t *> (it->second), 0)
-                    == 0) {
-                    erase_closing_socket (it->first);
-                    progressed = true;
-                }
+                const uint64_t now_ms = zlink::clock_t ().now_ms ();
+                const int remaining_ms =
+                  timeout_ms_ < 0 ? -1
+                                  : static_cast<int> (deadline_ms - now_ms);
+                if (socket_close_ops_t::wait_until_closed (
+                      _ctx, it->second, remaining_ms)
+                    != 0)
+                    return -1;
+                erase_closing_socket (it->first);
             }
-
-            if (progressed)
-                continue;
-
-#ifdef ZLINK_HAVE_WINDOWS
-            Sleep (1);
-#else
-            usleep (1000);
-#endif
         }
     }
 
@@ -300,30 +276,22 @@ class service_runtime_base_t
                   const_cast<socket_base_t *> (it->second);
                 if (!socket)
                     continue;
-                socket->stop ();
-                socket->close ();
+                socket_close_ops_t::request_close (socket);
             }
 
-            bool progressed = false;
             for (std::map<int, const socket_base_t *>::const_iterator it =
                    closing.begin ();
                  it != closing.end (); ++it) {
-                if (_ctx->wait_for_socket_removal (
-                      const_cast<socket_base_t *> (it->second), 0)
-                    == 0) {
-                    erase_closing_socket (it->first);
-                    progressed = true;
-                }
+                const uint64_t now_ms = zlink::clock_t ().now_ms ();
+                const int remaining_ms =
+                  timeout_ms_ < 0 ? -1
+                                  : static_cast<int> (deadline_ms - now_ms);
+                if (socket_close_ops_t::wait_until_closed (
+                      _ctx, it->second, remaining_ms)
+                    != 0)
+                    return -1;
+                erase_closing_socket (it->first);
             }
-
-            if (progressed)
-                continue;
-
-#ifdef ZLINK_HAVE_WINDOWS
-            Sleep (1);
-#else
-            usleep (1000);
-#endif
         }
     }
 

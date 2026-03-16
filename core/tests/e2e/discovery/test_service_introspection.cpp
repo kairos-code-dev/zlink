@@ -11,6 +11,7 @@
 #include <thread>
 #include <vector>
 
+#include "../../../src/services/discovery/discovery_access.hpp"
 #include "../../../src/services/discovery/discovery.hpp"
 #include "../../../src/services/discovery/registry.hpp"
 #include "../../../src/api/zlink_testing.hpp"
@@ -369,15 +370,8 @@ void set_discovery_tls_client_opts (void *discovery_,
                                     const tls_test_files_t &files_)
 {
     const int trust_system = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_setsockopt (
-      discovery_, ZLINK_DISCOVERY_SOCKET_SUB, ZLINK_SOCKOPT_TLS_CA,
-      files_.ca_cert.c_str (), files_.ca_cert.size () + 1));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_setsockopt (
-      discovery_, ZLINK_DISCOVERY_SOCKET_SUB, ZLINK_SOCKOPT_TLS_HOSTNAME,
-      "localhost", sizeof ("localhost")));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_setsockopt (
-      discovery_, ZLINK_DISCOVERY_SOCKET_SUB, ZLINK_SOCKOPT_TLS_TRUST_SYSTEM,
-      &trust_system, sizeof (trust_system)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_set_tls_client (
+      discovery_, files_.ca_cert.c_str (), "localhost", trust_system));
 }
 
 int connect_discovery_registry_with_retry (void *discovery_,
@@ -1099,7 +1093,7 @@ static void test_discovery_destroy_busy_observer_is_no_latch ()
     zlink::discovery_t *discovery_impl =
       static_cast<zlink::discovery_t *> (discovery);
     blocking_discovery_observer_t observer;
-    discovery_impl->add_observer (&observer);
+    zlink::discovery_access_t::add_observer (discovery_impl, &observer);
 
     std::set<std::string> services;
     services.insert ("svc-observer");

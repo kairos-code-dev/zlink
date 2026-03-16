@@ -21,6 +21,7 @@
 #include "core/pipe.hpp"
 #include "services/control/service_control_runtime.hpp"
 #include "utils/err.hpp"
+#include "utils/clock.hpp"
 #include "core/msg.hpp"
 #include "utils/random.hpp"
 
@@ -579,6 +580,7 @@ void zlink::ctx_t::destroy_socket (class socket_base_t *socket_)
     //  Remove the socket from the list of sockets.
     _sockets.erase (socket_);
     debug_dump_sockets_locked ("destroy-socket");
+    _socket_state_cv.broadcast ();
 
     //  If zlink_ctx_term() was already called and there are no more socket
     //  we can ask reaper thread to terminate.
@@ -592,35 +594,39 @@ int zlink::ctx_t::wait_for_socket_removal (const socket_base_t *socket_,
     if (!socket_)
         return 0;
 
-    int remaining_ms = timeout_ms_ >= 0 ? timeout_ms_ : 0;
+    const uint64_t deadline_ms =
+      timeout_ms_ >= 0 ? zlink::clock_t ().now_ms () + timeout_ms_ : 0;
+    scoped_lock_t locker (_slot_sync);
     while (true) {
         bool present = false;
-        {
-            scoped_lock_t locker (_slot_sync);
-            sockets_t::size_type i = 0;
-            const sockets_t::size_type size = _sockets.size ();
-            for (; i != size; ++i) {
-                if (_sockets[i] == socket_) {
-                    present = true;
-                    break;
-                }
+        sockets_t::size_type i = 0;
+        const sockets_t::size_type size = _sockets.size ();
+        for (; i != size; ++i) {
+            if (_sockets[i] == socket_) {
+                present = true;
+                break;
             }
         }
 
         if (!present)
             return 0;
-        if (remaining_ms == 0) {
+        if (timeout_ms_ == 0) {
             errno = ETIMEDOUT;
             return -1;
         }
-
-#ifdef ZLINK_HAVE_WINDOWS
-        Sleep (1);
-#else
-        usleep (1000);
-#endif
-        if (remaining_ms > 0)
-            --remaining_ms;
+        const int wait_ms =
+          timeout_ms_ < 0
+            ? -1
+            : static_cast<int> (deadline_ms - zlink::clock_t ().now_ms ());
+        if (wait_ms <= 0) {
+            errno = ETIMEDOUT;
+            return -1;
+        }
+        const int rc = _socket_state_cv.wait (&_slot_sync, wait_ms);
+        if (rc != 0 && errno == EAGAIN) {
+            errno = ETIMEDOUT;
+            return -1;
+        }
     }
 }
 
@@ -647,21 +653,29 @@ size_t zlink::ctx_t::socket_count () const
 int zlink::ctx_t::wait_for_socket_count_at_most (size_t max_count_,
                                                  int timeout_ms_)
 {
-    int remaining_ms = timeout_ms_ >= 0 ? timeout_ms_ : 0;
+    const uint64_t deadline_ms =
+      timeout_ms_ >= 0 ? zlink::clock_t ().now_ms () + timeout_ms_ : 0;
+    scoped_lock_t locker (_slot_sync);
     while (true) {
-        if (socket_count () <= max_count_)
+        if (static_cast<size_t> (_sockets.size ()) <= max_count_)
             return 0;
-        if (remaining_ms == 0) {
+        if (timeout_ms_ == 0) {
             errno = ETIMEDOUT;
             return -1;
         }
-#ifdef ZLINK_HAVE_WINDOWS
-        Sleep (1);
-#else
-        usleep (1000);
-#endif
-        if (remaining_ms > 0)
-            --remaining_ms;
+        const int wait_ms =
+          timeout_ms_ < 0
+            ? -1
+            : static_cast<int> (deadline_ms - zlink::clock_t ().now_ms ());
+        if (wait_ms <= 0) {
+            errno = ETIMEDOUT;
+            return -1;
+        }
+        const int rc = _socket_state_cv.wait (&_slot_sync, wait_ms);
+        if (rc != 0 && errno == EAGAIN) {
+            errno = ETIMEDOUT;
+            return -1;
+        }
     }
 }
 

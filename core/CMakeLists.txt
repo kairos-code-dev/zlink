@@ -986,6 +986,7 @@ set(spot-sources
     src/services/spot/spot_sub.cpp)
 
 set(socket-sources
+    src/sockets/socket_close_ops.cpp
     src/sockets/socket_base.cpp
     src/sockets/dealer.cpp
     src/sockets/router.cpp

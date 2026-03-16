@@ -10,6 +10,7 @@
 #include "services/common/advertise_endpoint.hpp"
 #include "services/common/monitor_decode.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
+#include "services/gateway/gateway_access.hpp"
 #include "services/gateway/gateway_runtime.hpp"
 #include "services/gateway/routing_id_utils.hpp"
 #include "services/control/service_control_runtime.hpp"
@@ -41,7 +42,7 @@ static void gateway_router_msg_handler (const zlink_routing_id_t *source_rid_,
         return;
     }
 
-    gateway->dispatch_message (source_rid_, parts_, part_count_);
+    gateway_access_t::dispatch_message (gateway, source_rid_, parts_, part_count_);
 }
 
 static void gateway_send_ready_handler (void *subject_)
@@ -49,7 +50,7 @@ static void gateway_send_ready_handler (void *subject_)
     gateway_t *gateway = static_cast<gateway_t *> (subject_);
     if (!gateway)
         return;
-    gateway->dispatch_send_ready ();
+    gateway_access_t::dispatch_send_ready (gateway);
 }
 
 // Ensure the ROUTER socket has a routing id so peers can reply.

@@ -27,6 +27,7 @@ namespace zlink
 class clock_t;
 class socket_base_t;
 struct gateway_runtime_t;
+struct gateway_access_t;
 struct gateway_service_pool_t
 {
     struct send_snapshot_t
@@ -121,10 +122,7 @@ class gateway_t : public discovery_observer_t
                            size_t optvallen_);
     int set_tls_server (const char *cert_, const char *key_);
     void *monitor_open (int events_);
-    void *router ();
-    bool enter_pollable_mode ();
     void lock_routing_id ();
-    int ensure_facade_mode () const;
     int fill_monitor_snapshot (zlink_monitor_snapshot_t *out_);
     int set_handler (zlink_socket_msg_handler_fn handler_);
     int set_send_ready_handler (zlink_send_ready_handler_fn handler_);
@@ -133,14 +131,12 @@ class gateway_t : public discovery_observer_t
                         int trust_system_);
     void on_service_update (const std::string &service_name_);
     void on_discovery_destroyed (discovery_t *discovery_) ZLINK_OVERRIDE;
-    void dispatch_message (const zlink_routing_id_t *source_rid_,
-                           zlink_msg_t *parts_,
-                           size_t part_count_);
-    void dispatch_send_ready ();
 
     int destroy ();
 
   private:
+    friend struct gateway_access_t;
+
     gateway_service_pool_t *get_or_create_pool (const std::string &service_name_);
     gateway_service_pool_t *get_or_create_pool_cached ();
     int init_router_socket ();
@@ -163,6 +159,13 @@ class gateway_t : public discovery_observer_t
                              zlink_msg_t *parts_,
                              size_t part_count_,
                              int flags_);
+    void *router ();
+    int ensure_facade_mode () const;
+    bool enter_pollable_mode ();
+    void dispatch_message (const zlink_routing_id_t *source_rid_,
+                           zlink_msg_t *parts_,
+                           size_t part_count_);
+    void dispatch_send_ready ();
 
     void process_monitor_events ();
     void emit_route_deltas (const std::vector<gateway_route_delta_t> &deltas_);

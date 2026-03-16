@@ -53,6 +53,8 @@ struct spot_runtime_t
     int ensure_healthy () const;
     void stop_sockets ();
     int close_control_sockets ();
+    int close_runtime_socket (socket_base_t *&socket_, int timeout_ms_);
+    int close_runtime_socket_async (socket_base_t *&socket_, int timeout_ms_);
     int send_command (const char *verb_, const char *arg_) const;
     void mark_fault (int err_);
     int stop_and_join ();

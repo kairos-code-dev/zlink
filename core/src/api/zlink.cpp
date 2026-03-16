@@ -40,10 +40,13 @@ struct iovec
 #include "services/discovery/registry.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/discovery/discovery.hpp"
+#include "services/discovery/discovery_access.hpp"
 #include "services/common/service_public_api.hpp"
 #include "services/gateway/gateway.hpp"
+#include "services/gateway/gateway_access.hpp"
 #include "services/spot/spot_dispatch_internal.hpp"
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_sub.hpp"
 #include "api/zlink_testing.hpp"
@@ -536,7 +539,8 @@ static bool has_open_spot_node_monitor_child (zlink::spot_node_t *node_)
     if (has_open_service_monitor_for_subject (node_))
         return true;
 
-    zlink::spot_internal_receiver_t *receiver = node_->internal_receiver ();
+    zlink::spot_internal_receiver_t *receiver =
+      zlink::spot_node_access_t::internal_receiver (node_);
     if (receiver && has_open_service_monitor_for_subject (receiver))
         return true;
 
@@ -573,7 +577,8 @@ static bool in_spot_node_monitor_callback (zlink::spot_node_t *node_)
     if (subject == node_)
         return true;
 
-    zlink::spot_internal_receiver_t *receiver = node_->internal_receiver ();
+    zlink::spot_internal_receiver_t *receiver =
+      zlink::spot_node_access_t::internal_receiver (node_);
     if (receiver && subject == receiver)
         return true;
 
@@ -1610,7 +1615,7 @@ static int install_spot_node_handler (zlink::spot_node_t *node_,
     }
 
     zlink::spot_internal_receiver_t *receiver =
-      node_->ensure_internal_receiver ();
+      zlink::spot_node_access_t::ensure_internal_receiver (node_);
     if (!receiver)
         return -1;
 
@@ -2508,11 +2513,10 @@ int zlink_discovery_connect_registry (void *discovery_,
     return discovery->connect_registry (registry_endpoint_);
 }
 
-int zlink_discovery_setsockopt (void *discovery_,
-                                zlink_discovery_socket_role_t socket_role_,
-                                zlink_socket_option_t option_,
-                                const void *optval_,
-                                size_t optvallen_)
+int zlink_discovery_set_tls_client (void *discovery_,
+                                    const char *ca_cert_,
+                                    const char *hostname_,
+                                    int trust_system_)
 {
     if (!discovery_)
         return -1;
@@ -2522,8 +2526,7 @@ int zlink_discovery_setsockopt (void *discovery_,
         errno = EFAULT;
         return -1;
     }
-    return discovery->set_socket_option (socket_role_, option_, optval_,
-                                         optvallen_);
+    return discovery->set_tls_client (ca_cert_, hostname_, trust_system_);
 }
 
 int zlink_discovery_set_routing_id (void *discovery_,
@@ -3109,7 +3112,7 @@ int zlink_spot_node_subscribe (void *node_, const char *topic_id_)
     if (!admission.acquired ())
         return -1;
     zlink::spot_internal_receiver_t *receiver =
-      node->ensure_internal_receiver ();
+      zlink::spot_node_access_t::ensure_internal_receiver (node);
     if (!receiver)
         return -1;
     return receiver->subscribe (topic_id_);
@@ -3128,7 +3131,7 @@ int zlink_spot_node_subscribe_pattern (void *node_, const char *pattern_)
     if (!admission.acquired ())
         return -1;
     zlink::spot_internal_receiver_t *receiver =
-      node->ensure_internal_receiver ();
+      zlink::spot_node_access_t::ensure_internal_receiver (node);
     if (!receiver)
         return -1;
     return receiver->subscribe_pattern (pattern_);
@@ -3148,7 +3151,7 @@ int zlink_spot_node_unsubscribe (void *node_,
     if (!admission.acquired ())
         return -1;
     zlink::spot_internal_receiver_t *receiver =
-      node->ensure_internal_receiver ();
+      zlink::spot_node_access_t::ensure_internal_receiver (node);
     if (!receiver)
         return -1;
     return receiver->unsubscribe (topic_id_or_pattern_);
@@ -3202,7 +3205,7 @@ void *zlink_spot_node_monitor_open (void *node_,
     }
     if (role_ == ZLINK_SPOT_ROLE_SUB) {
         zlink::spot_internal_receiver_t *receiver =
-          node->ensure_internal_receiver ();
+          zlink::spot_node_access_t::ensure_internal_receiver (node);
         if (!receiver)
             return NULL;
         return open_spot_service_monitor (

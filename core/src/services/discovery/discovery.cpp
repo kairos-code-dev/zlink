@@ -406,44 +406,54 @@ int discovery_t::routing_id (zlink_routing_id_t *out_) const
     return out_->size > 0 ? 0 : -1;
 }
 
-int discovery_t::set_socket_option (int socket_role_,
-                                    int option_,
-                                    const void *optval_,
-                                    size_t optvallen_)
+int discovery_t::set_tls_client (const char *ca_cert_,
+                                 const char *hostname_,
+                                 int trust_system_)
 {
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
-    if (!optval_ || optvallen_ == 0) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (socket_role_ != discovery_socket_sub) {
-        errno = EINVAL;
-        return -1;
-    }
 
     scoped_lock_t lock (_sync);
-    bool updated = false;
-    for (size_t i = 0; i < _sub_opts.size (); ++i) {
-        if (_sub_opts[i].option == option_) {
-            _sub_opts[i].value.assign (
-              static_cast<const unsigned char *> (optval_),
-              static_cast<const unsigned char *> (optval_) + optvallen_);
-            updated = true;
-            break;
+    const char *tls_ca = ca_cert_ ? ca_cert_ : "";
+    const char *tls_hostname = hostname_ ? hostname_ : "";
+    const size_t tls_ca_len = strlen (tls_ca) + 1;
+    const size_t tls_hostname_len = strlen (tls_hostname) + 1;
+
+    const struct discovery_tls_option_t
+    {
+        int option;
+        const void *value;
+        size_t size;
+    } options[] = {{ZLINK_SOCKOPT_TLS_CA, tls_ca, tls_ca_len},
+                   {ZLINK_SOCKOPT_TLS_HOSTNAME, tls_hostname, tls_hostname_len},
+                   {ZLINK_SOCKOPT_TLS_TRUST_SYSTEM, &trust_system_,
+                    sizeof (trust_system_)}};
+
+    for (size_t i = 0; i < sizeof (options) / sizeof (options[0]); ++i) {
+        bool updated = false;
+        for (size_t j = 0; j < _sub_opts.size (); ++j) {
+            if (_sub_opts[j].option == options[i].option) {
+                _sub_opts[j].value.assign (
+                  static_cast<const unsigned char *> (options[i].value),
+                  static_cast<const unsigned char *> (options[i].value)
+                    + options[i].size);
+                updated = true;
+                break;
+            }
         }
+        if (!updated) {
+            socket_opt_t opt;
+            opt.option = options[i].option;
+            opt.value.assign (
+              static_cast<const unsigned char *> (options[i].value),
+              static_cast<const unsigned char *> (options[i].value)
+                + options[i].size);
+            _sub_opts.push_back (opt);
+        }
+        apply_socket_options_to_existing_locked (
+          options[i].option, options[i].value, options[i].size);
     }
-    if (!updated) {
-        socket_opt_t opt;
-        opt.option = option_;
-        opt.value.assign (static_cast<const unsigned char *> (optval_),
-                          static_cast<const unsigned char *> (optval_)
-                            + optvallen_);
-        _sub_opts.push_back (opt);
-    }
-    apply_socket_options_to_existing_locked (option_, optval_, optvallen_);
     return 0;
 }
 

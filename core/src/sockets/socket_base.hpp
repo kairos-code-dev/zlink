@@ -319,7 +319,6 @@ class socket_base_t : public own_t,
     //  Map of open endpoints.
     typedef std::pair<own_t *, pipe_t *> endpoint_pipe_t;
     typedef std::multimap<std::string, endpoint_pipe_t> endpoints_t;
-    endpoints_t _endpoints;
 
     //  Map of open inproc endpoints.
     class inprocs_t
@@ -333,7 +332,99 @@ class socket_base_t : public own_t,
         typedef std::multimap<std::string, pipe_t *> map_t;
         map_t _inprocs;
     };
-    inprocs_t _inprocs;
+
+    struct endpoint_registry_t
+    {
+        endpoints_t endpoints;
+        inprocs_t inprocs;
+    };
+
+    struct monitor_bridge_t
+    {
+        monitor_bridge_t () :
+            socket (NULL),
+            events (0),
+            events_atomic (0),
+            lossy (true),
+            queue_stop (false),
+            thread_started (false)
+        {
+        }
+
+        void *socket;
+        int64_t events;
+        std::atomic<int64_t> events_atomic;
+        bool lossy;
+        mutex_t sync;
+        mutex_t queue_sync;
+        condition_variable_t queue_cv;
+        std::deque<monitor_event_record_t> queue;
+        bool queue_stop;
+        thread_t thread;
+        bool thread_started;
+    };
+
+    struct dispatch_bridge_t
+    {
+        dispatch_bridge_t () :
+            socket_msg_handler (NULL),
+            socket_msg_handler_subject (NULL),
+            spot_handler (NULL),
+            xpub_handler (NULL),
+            public_api_state (0),
+            public_api_sync (),
+            callback_api_depth (0),
+            close_deferred (false),
+            send_ready_handler (NULL),
+            send_ready_handler_subject (NULL),
+            send_ready_seq (0),
+            send_ready_armed (false)
+        {
+        }
+
+        std::atomic<zlink_socket_msg_handler_fn> socket_msg_handler;
+        std::atomic<void *> socket_msg_handler_subject;
+        std::atomic<zlink_spot_handler_fn> spot_handler;
+        std::atomic<zlink_xpub_handler_fn> xpub_handler;
+        std::atomic<uint32_t> public_api_state;
+        std::atomic<bool> public_api_sync;
+        std::atomic<uint32_t> callback_api_depth;
+        std::atomic<bool> close_deferred;
+        std::atomic<zlink_send_ready_handler_fn> send_ready_handler;
+        std::atomic<void *> send_ready_handler_subject;
+        std::atomic<uint32_t> send_ready_seq;
+        mutex_t send_ready_writer_sync;
+        std::atomic<bool> send_ready_armed;
+        std::recursive_mutex socket_msg_dispatch_sync;
+    };
+
+    struct lifecycle_hooks_t
+    {
+        lifecycle_hooks_t () :
+            mailbox_refcnt (0),
+            destroy_pending (false),
+            async_mailbox_active (false),
+            async_quiesce_pending (false),
+            async_processing_done (true)
+        {
+        }
+
+        atomic_counter_t mailbox_refcnt;
+        bool destroy_pending;
+        std::atomic<bool> async_mailbox_active;
+        std::atomic<bool> async_quiesce_pending;
+        std::atomic<bool> async_processing_done;
+        mutex_t async_done_mu;
+        condition_variable_t async_done_cv;
+    };
+
+    struct socket_runtime_t
+    {
+        endpoint_registry_t endpoint_registry;
+        monitor_bridge_t monitor_bridge;
+        dispatch_bridge_t dispatch_bridge;
+        lifecycle_hooks_t lifecycle_hooks;
+    };
 
     //  To be called after processing commands or invoking any command
     //  handlers explicitly. If required, it will deallocate the socket.
@@ -432,47 +523,43 @@ class socket_base_t : public own_t,
     //  Improves efficiency of time measurement.
     clock_t _clock;
 
-    // Monitor socket;
-    void *_monitor_socket;
-
-    // Bitmask of events being monitored
-    int64_t _monitor_events;
-    std::atomic<int64_t> _monitor_events_atomic;
-    bool _monitor_lossy;
-
     // Last socket endpoint resolved URI
     std::string _last_endpoint;
-
-    atomic_counter_t _mailbox_refcnt;
-    bool _destroy_pending;
-    std::atomic<bool> _async_mailbox_active;
-    std::atomic<bool> _async_quiesce_pending;
-    std::atomic<bool> _async_processing_done;
-    mutex_t _async_done_mu;
-    condition_variable_t _async_done_cv;
-    std::atomic<zlink_socket_msg_handler_fn> _socket_msg_handler;
-    std::atomic<void *> _socket_msg_handler_subject;
-    std::atomic<zlink_spot_handler_fn> _spot_handler;
-    std::atomic<zlink_xpub_handler_fn> _xpub_handler;
-    std::atomic<uint32_t> _public_api_state;
-    std::atomic<bool> _public_api_sync;
-    std::atomic<uint32_t> _callback_api_depth;
-    std::atomic<bool> _close_deferred;
-    std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
-    std::atomic<void *> _send_ready_handler_subject;
-    std::atomic<uint32_t> _send_ready_seq;
-    mutex_t _send_ready_writer_sync;
-    std::atomic<bool> _send_ready_armed;
-    std::recursive_mutex _socket_msg_dispatch_sync;
-
-    // Mutex to synchronize access to the monitor Pair socket
-    mutex_t _monitor_sync;
-    mutex_t _monitor_queue_sync;
-    condition_variable_t _monitor_queue_cv;
-    std::deque<monitor_event_record_t> _monitor_queue;
-    bool _monitor_queue_stop;
-    thread_t _monitor_thread;
-    bool _monitor_thread_started;
+    socket_runtime_t _runtime;
+    endpoints_t &_endpoints;
+    inprocs_t &_inprocs;
+    void *&_monitor_socket;
+    int64_t &_monitor_events;
+    std::atomic<int64_t> &_monitor_events_atomic;
+    bool &_monitor_lossy;
+    atomic_counter_t &_mailbox_refcnt;
+    bool &_destroy_pending;
+    std::atomic<bool> &_async_mailbox_active;
+    std::atomic<bool> &_async_quiesce_pending;
+    std::atomic<bool> &_async_processing_done;
+    mutex_t &_async_done_mu;
+    condition_variable_t &_async_done_cv;
+    std::atomic<zlink_socket_msg_handler_fn> &_socket_msg_handler;
+    std::atomic<void *> &_socket_msg_handler_subject;
+    std::atomic<zlink_spot_handler_fn> &_spot_handler;
+    std::atomic<zlink_xpub_handler_fn> &_xpub_handler;
+    std::atomic<uint32_t> &_public_api_state;
+    std::atomic<bool> &_public_api_sync;
+    std::atomic<uint32_t> &_callback_api_depth;
+    std::atomic<bool> &_close_deferred;
+    std::atomic<zlink_send_ready_handler_fn> &_send_ready_handler;
+    std::atomic<void *> &_send_ready_handler_subject;
+    std::atomic<uint32_t> &_send_ready_seq;
+    mutex_t &_send_ready_writer_sync;
+    std::atomic<bool> &_send_ready_armed;
+    std::recursive_mutex &_socket_msg_dispatch_sync;
+    mutex_t &_monitor_sync;
+    mutex_t &_monitor_queue_sync;
+    condition_variable_t &_monitor_queue_cv;
+    std::deque<monitor_event_record_t> &_monitor_queue;
+    bool &_monitor_queue_stop;
+    thread_t &_monitor_thread;
+    bool &_monitor_thread_started;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
 

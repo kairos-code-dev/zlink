@@ -258,44 +258,69 @@ zlink::asio_engine_t::asio_engine_t (
     _has_heartbeat_timer (false),
     _peer_address (get_peer_address (fd_)),
     _has_handshake_stage (true),
-    _io_context (NULL),
-    _transport (std::move (transport_)),
-    _current_timer_id (-1),
-    _read_buffer (read_buffer_size),
-    _read_from_pending_pool (false),
-    _last_speculative_read_bytes (0),
-    _total_pending_bytes (0),
-    _fd (fd_),
-    _plugged (false),
-    _handshaking (true),
-    _io_error (false),
-    _read_pending (false),
-    _write_pending (false),
-    _handshake_pending (false),
-    _async_zero_copy (false),
-    _async_gather (false),
-    _in_read_drain (false),
-    _gather_header_size (0),
-    _gather_body (NULL),
-    _gather_body_size (0),
-    _terminating (false),
-    _callback_guard (new int (0)),
-    _read_buffer_ptr (NULL),
-    _last_read_request_size (0),
-    _last_read_had_partial_prefix (false),
-    _stream_decoder_read_target_size (
-      stream_decoder_initial_read_target (options_)),
-    _stream_decoder_read_target_max (stream_decoder_max_read_target (options_)),
-    _stream_decoder_read_target_full_hits (0),
-    _stream_encoder_write_target_size (
-      stream_encoder_initial_write_target (options_)),
-    _stream_encoder_write_target_max (stream_encoder_max_write_target (options_)),
-    _stream_encoder_write_target_full_hits (0),
-    _stream_encoder_pending_resize_size (0),
-    _session (NULL),
-    _socket (NULL)
+    _transport_adapter (),
+    _pipeline (),
+    _connection_facade (),
+    _io_context (_transport_adapter.io_context),
+    _transport (_transport_adapter.transport),
+    _timer (_transport_adapter.timer),
+    _current_timer_id (_transport_adapter.current_timer_id),
+    _read_buffer (_pipeline.read_buffer),
+    _write_buffer (_pipeline.write_buffer),
+    _pending_buffers (_pipeline.pending_buffers),
+    _pending_stream_rx_chunks (_pipeline.pending_stream_rx_chunks),
+    _pending_buffer_pool (_pipeline.pending_buffer_pool),
+    _pending_stream_rx_chunk_pool (_pipeline.pending_stream_rx_chunk_pool),
+    _pending_read_buffer (_pipeline.pending_read_buffer),
+    _read_from_pending_pool (_pipeline.read_from_pending_pool),
+    _last_speculative_read_bytes (_pipeline.last_speculative_read_bytes),
+    _total_pending_bytes (_pipeline.total_pending_bytes),
+    _fd (_transport_adapter.fd),
+    _plugged (_connection_facade.plugged),
+    _handshaking (_connection_facade.handshaking),
+    _tx_msg (_pipeline.tx_msg),
+    _io_error (_pipeline.io_error),
+    _read_pending (_pipeline.read_pending),
+    _write_pending (_pipeline.write_pending),
+    _handshake_pending (_pipeline.handshake_pending),
+    _async_zero_copy (_pipeline.async_zero_copy),
+    _async_gather (_pipeline.async_gather),
+    _in_read_drain (_pipeline.in_read_drain),
+    _gather_header (_pipeline.gather_header),
+    _gather_header_size (_pipeline.gather_header_size),
+    _gather_body (_pipeline.gather_body),
+    _gather_body_size (_pipeline.gather_body_size),
+    _terminating (_connection_facade.terminating),
+    _callback_guard (_connection_facade.callback_guard),
+    _read_buffer_ptr (_pipeline.read_buffer_ptr),
+    _last_read_request_size (_pipeline.last_read_request_size),
+    _last_read_had_partial_prefix (_pipeline.last_read_had_partial_prefix),
+    _stream_decoder_read_target_size (_pipeline.stream_decoder_read_target_size),
+    _stream_decoder_read_target_max (_pipeline.stream_decoder_read_target_max),
+    _stream_decoder_read_target_full_hits (
+      _pipeline.stream_decoder_read_target_full_hits),
+    _stream_encoder_write_target_size (_pipeline.stream_encoder_write_target_size),
+    _stream_encoder_write_target_max (_pipeline.stream_encoder_write_target_max),
+    _stream_encoder_write_target_full_hits (
+      _pipeline.stream_encoder_write_target_full_hits),
+    _stream_encoder_pending_resize_size (
+      _pipeline.stream_encoder_pending_resize_size),
+    _session (_connection_facade.session),
+    _socket (_connection_facade.socket)
 {
     ENGINE_DBG ("Constructor called, fd=%d", fd_);
+
+    _transport = std::move (transport_);
+    _read_buffer.resize (read_buffer_size);
+    _fd = fd_;
+    _callback_guard = std::shared_ptr<void> (new int (0));
+    _stream_decoder_read_target_size =
+      stream_decoder_initial_read_target (options_);
+    _stream_decoder_read_target_max = stream_decoder_max_read_target (options_);
+    _stream_encoder_write_target_size =
+      stream_encoder_initial_write_target (options_);
+    _stream_encoder_write_target_max =
+      stream_encoder_max_write_target (options_);
 
     const int rc = _tx_msg.init ();
     errno_assert (rc == 0);

@@ -2,6 +2,7 @@
 
 #include "../../testutil.hpp"
 #include "../../testutil_unity.hpp"
+#include "../../../src/services/gateway/gateway_access.hpp"
 #include "../../../src/services/gateway/gateway.hpp"
 #include "../../../src/sockets/socket_base.hpp"
 
@@ -770,7 +771,7 @@ static void test_gateway_can_be_polled_via_service_instance ()
                                  sizeof (endpoint), 2000);
     step_log ("gateway bound");
     zlink::gateway_t *gateway_impl = static_cast<zlink::gateway_t *> (gateway);
-    gateway_impl->dispatch_send_ready ();
+    zlink::gateway_access_t::dispatch_send_ready (gateway_impl);
     TEST_ASSERT_EQUAL_INT (1, ready_calls.load ());
     TEST_ASSERT_EQUAL_PTR (gateway, g_ready_subject);
 
@@ -804,7 +805,7 @@ static void test_gateway_send_ready_handler_reentrant_replace_returns_edeadlk ()
 
     zlink::gateway_t *gateway_impl = static_cast<zlink::gateway_t *> (gateway);
     zlink::socket_base_t *router =
-      static_cast<zlink::socket_base_t *> (gateway_impl->router ());
+      zlink::gateway_access_t::router_socket (gateway_impl);
     TEST_ASSERT_NOT_NULL (router);
     router->invoke_send_ready_handler_for_testing ();
 
@@ -839,7 +840,7 @@ static void test_gateway_send_ready_handler_self_close_is_safe ()
 
     zlink::gateway_t *gateway_impl = static_cast<zlink::gateway_t *> (gateway);
     zlink::socket_base_t *router =
-      static_cast<zlink::socket_base_t *> (gateway_impl->router ());
+      zlink::gateway_access_t::router_socket (gateway_impl);
     TEST_ASSERT_NOT_NULL (router);
     router->invoke_send_ready_handler_for_testing ();
 

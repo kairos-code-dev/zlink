@@ -1563,14 +1563,13 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     spot_sub_diag_log ("destroy.after-monitor-close-all");
 
     if (socket) {
-        if (_node && _node->_runtime)
+        if (_node)
             spot_sub_diag_log ("destroy.before-destroy-attachment");
-        if (socket && _node && _node->_runtime) {
+        if (socket && _node) {
             preserve_first_error (
-              _node->_runtime->destroy_attachment (_attachment_id),
-              &first_error);
+              _node->destroy_attachment (_attachment_id), &first_error);
         }
-        if (socket && _node && _node->_runtime)
+        if (socket && _node)
             spot_sub_diag_log ("destroy.after-destroy-attachment");
         else {
             socket->stop ();

@@ -1003,11 +1003,6 @@ typedef enum zlink_service_type_t
 } zlink_service_type_t;
 /** @} */
 
-typedef enum zlink_discovery_socket_role_t
-{
-    ZLINK_DISCOVERY_SOCKET_SUB = 1
-} zlink_discovery_socket_role_t;
-
 /**
  * @brief Create a Discovery instance with a fixed service family.
  *
@@ -1030,12 +1025,16 @@ ZLINK_EXPORT void *zlink_discovery_new (void *ctx,
 ZLINK_EXPORT int zlink_discovery_connect_registry (
   void *discovery, const char *registry_endpoint);
 
-ZLINK_EXPORT int zlink_discovery_setsockopt (
-  void *discovery,
-  zlink_discovery_socket_role_t socket_role,
-  zlink_socket_option_t option,
-  const void *optval,
-  size_t optvallen);
+/**
+ * @brief Configure TLS settings for discovery registry links.
+ *
+ * The configuration applies to the registry bootstrap and uplink connections
+ * managed internally by the discovery service.
+ */
+ZLINK_EXPORT int zlink_discovery_set_tls_client (void *discovery,
+                                                 const char *ca_cert,
+                                                 const char *hostname,
+                                                 int trust_system);
 
 /**
  * @brief Override the representative routing id before first query/connect.

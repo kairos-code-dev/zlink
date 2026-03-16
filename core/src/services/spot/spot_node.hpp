@@ -24,7 +24,9 @@ class socket_base_t;
 class spot_pub_t;
 class spot_sub_t;
 class spot_data_plane_t;
+class spot_internal_receiver_t;
 struct spot_runtime_t;
+struct spot_node_access_t;
 
 class spot_node_t : public discovery_observer_t
 {
@@ -81,10 +83,8 @@ class spot_node_t : public discovery_observer_t
 
     spot_pub_t *create_spot_pub ();
     spot_sub_t *create_spot_sub ();
-    spot_internal_receiver_t *ensure_internal_receiver ();
     spot_pub_t *ensure_default_pub ();
     spot_sub_t *ensure_default_sub ();
-    spot_internal_receiver_t *internal_receiver () const;
     spot_pub_t *default_pub () const;
     spot_sub_t *default_sub () const;
     void remove_spot_pub (spot_pub_t *pub_);
@@ -96,18 +96,9 @@ class spot_node_t : public discovery_observer_t
     void on_service_update (const std::string &service_name_) ZLINK_OVERRIDE;
     void on_discovery_destroyed (discovery_t *discovery_) ZLINK_OVERRIDE;
 
-    ctx_t *ctx () const { return _ctx; }
-    spot_runtime_t *runtime () const { return _runtime; }
-    const std::string &pub_ingress_endpoint () const;
-    const std::string &sub_fanout_endpoint () const;
     std::string public_endpoint () const;
-    bool has_active_peers () const;
     bool has_local_filtered_subs () const;
-    void note_local_sub_filters_changed (bool had_filters_,
-                                         bool has_filters_);
-    void wake_control_task ();
     int replay_subscriptions_if_active_peers ();
-    void schedule_subscription_replay ();
     std::string first_active_peer_endpoint () const;
     int ensure_healthy () const;
     void debug_mark_fault (int err_);
@@ -119,8 +110,24 @@ class spot_node_t : public discovery_observer_t
                                         bool subscribe_);
 
   private:
+    friend class spot_pub_t;
+    friend class spot_sub_t;
+    friend class spot_data_plane_t;
+    friend struct spot_node_access_t;
+
     static void control_task (void *arg_);
 
+    ctx_t *ctx () const { return _ctx; }
+    spot_runtime_t *runtime () const { return _runtime; }
+    spot_internal_receiver_t *ensure_internal_receiver ();
+    spot_internal_receiver_t *internal_receiver () const;
+    const std::string &pub_ingress_endpoint () const;
+    const std::string &sub_fanout_endpoint () const;
+    bool has_active_peers () const;
+    void note_local_sub_filters_changed (bool had_filters_,
+                                         bool has_filters_);
+    void wake_control_task ();
+    void schedule_subscription_replay ();
     void control_tick ();
     int ensure_control_task_running ();
     bool can_suspend_control_task () const;
@@ -135,6 +142,7 @@ class spot_node_t : public discovery_observer_t
     void track_owned_socket (socket_base_t *socket_);
     int wait_owned_socket_removals (int timeout_ms_);
     bool is_shutting_down () const;
+    int destroy_attachment (uint64_t attachment_id_);
     spot_pub_t *create_spot_pub_with_defaults (const pub_defaults_t &defaults_,
                                                bool node_owned_default_);
     spot_sub_t *create_spot_sub_with_defaults (const sub_defaults_t &defaults_,

@@ -9,7 +9,7 @@
 | 이전 | [01 Phase 0 Baseline](01-core-system-phase0-baseline.ko.md) |
 | 다음 | [03 Phase 1 Resource Inventory](03-core-system-phase1-resource-inventory.ko.md) |
 | 관련 | [00 상위 계획](00-core-system-posd-refactor-plan.ko.md) |
-| thread-safe 규약 | [thread-safe-socket-plan](../plan/thread-safe/thread-safe-socket-plan.ko.md) — lifecycle strict 계층 (close/destroy fail-fast). 현재 구현 수준을 유지한다. |
+| thread-safe 규약 | [thread-safe-socket-plan](../thread-safe/thread-safe-socket-plan.ko.md) — lifecycle strict 계층 (close/destroy fail-fast). 현재 구현 수준을 유지한다. |
 
 ## 1. 목적
 

@@ -56,7 +56,7 @@ single/multi perf 기준은 후퇴시키지 않는다.
 - transport/protocol/socket별 특수 케이스 확산
 - thread-safe 계약 수준 후퇴 — 현재 보장하는 3계층 계약(hot path concurrent,
   control path serialized, lifecycle strict)을 깨뜨리는 구조 변경.
-  규약 문서: [`thread-safe-socket-plan.ko.md`](../plan/thread-safe/thread-safe-socket-plan.ko.md)
+  규약 문서: [`thread-safe-socket-plan.ko.md`](../thread-safe/thread-safe-socket-plan.ko.md)
 
 반대로 local micro-optimization 하나가 빨라져도
 전체 구조 설명이 더 어려워지면 채택하지 않는다.

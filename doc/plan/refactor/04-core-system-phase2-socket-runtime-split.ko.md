@@ -9,7 +9,7 @@
 | 이전 | [03 Phase 1 Resource Inventory](03-core-system-phase1-resource-inventory.ko.md) |
 | 다음 | [05 Phase 3 Engine/Transport/Service](05-core-system-phase3-engine-transport-service-plan.ko.md) |
 | 관련 | [02 Phase 1 Ownership Map](02-core-system-phase1-ownership-map.ko.md), [01 Baseline](01-core-system-phase0-baseline.ko.md) |
-| thread-safe 규약 | [thread-safe-socket-plan](../plan/thread-safe/thread-safe-socket-plan.ko.md) — hot path + control path 계층. 현재 구현 수준을 유지한다. |
+| thread-safe 규약 | [thread-safe-socket-plan](../thread-safe/thread-safe-socket-plan.ko.md) — hot path + control path 계층. 현재 구현 수준을 유지한다. |
 
 ## 1. 목적
 

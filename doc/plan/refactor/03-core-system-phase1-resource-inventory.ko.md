@@ -9,7 +9,7 @@
 | 이전 | [02 Phase 1 Ownership Map](02-core-system-phase1-ownership-map.ko.md) |
 | 다음 | [04 Phase 2 Socket Runtime Split](04-core-system-phase2-socket-runtime-split.ko.md) |
 | 관련 | [01 Phase 0 Baseline](01-core-system-phase0-baseline.ko.md) |
-| thread-safe 규약 | [thread-safe-socket-plan](../plan/thread-safe/thread-safe-socket-plan.ko.md) — lifecycle strict 계층. 현재 구현 수준을 유지한다. |
+| thread-safe 규약 | [thread-safe-socket-plan](../thread-safe/thread-safe-socket-plan.ko.md) — lifecycle strict 계층. 현재 구현 수준을 유지한다. |
 
 ## 1. 목적
 

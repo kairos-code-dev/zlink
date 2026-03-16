@@ -11,7 +11,7 @@
 | 이전 | [04 Phase 2 Socket Runtime Split](04-core-system-phase2-socket-runtime-split.ko.md) |
 | 다음 | [06 Review Log](06-core-system-review-log.ko.md) |
 | 관련 | [00 상위 계획](00-core-system-posd-refactor-plan.ko.md), [01 Baseline](01-core-system-phase0-baseline.ko.md) |
-| thread-safe 규약 | [thread-safe-socket-plan](../plan/thread-safe/thread-safe-socket-plan.ko.md) — 3계층 전체 (API 처리 시 hot path/control path/lifecycle 모두 확인). 현재 구현 수준을 유지한다. |
+| thread-safe 규약 | [thread-safe-socket-plan](../thread-safe/thread-safe-socket-plan.ko.md) — 3계층 전체 (API 처리 시 hot path/control path/lifecycle 모두 확인). 현재 구현 수준을 유지한다. |
 
 ## 1. 목적
 

@@ -437,6 +437,16 @@ if(TARGET test_service_introspection)
             ZLINK_TEST_CASE=test_monitor_closed_event_on_service_destroy
             $<TARGET_FILE:test_service_introspection>)
   add_test(
+    NAME test_service_introspection_discovery_ordering
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_discovery_monitor_reports_service_up_then_down_in_order
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
+    NAME test_service_introspection_discovery_self_close
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_discovery_monitor_callback_parent_destroy_returns_ebusy
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
     NAME test_service_introspection_discovery_no_latch
     COMMAND ${CMAKE_COMMAND} -E env
             ZLINK_TEST_CASE=test_discovery_destroy_busy_observer_is_no_latch
@@ -504,6 +514,8 @@ if(TARGET test_service_introspection)
     test_service_introspection_topology_snapshot
     test_service_introspection_gateway_peer_snapshot
     test_service_introspection_closed_event
+    test_service_introspection_discovery_ordering
+    test_service_introspection_discovery_self_close
     test_service_introspection_discovery_no_latch
     test_service_introspection_discovery_lifecycle
     test_service_introspection_registry_lifecycle
@@ -633,8 +645,11 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_late_connect_replays_existing_subscription
     test_spot_faulted_node_apis_fail_with_efsm
     test_spot_node_destroy_rejects_open_child_handle
-    test_spot_node_destroy_rejects_open_monitor_child
+    test_spot_node_destroy_closes_open_monitor_child
     test_spot_send_ready_handler_self_close_returns_ebusy
+    test_spot_monitor_callback_parent_destroy_returns_ebusy
+    test_spot_node_monitor_callback_parent_destroy_returns_ebusy
+    test_spot_node_rejects_child_open_after_close_accept
     test_spot_node_public_api_lifecycle_contract
     test_spot_public_api_lifecycle_contract)
 
@@ -650,8 +665,11 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_late_connect=test_spot_late_connect_replays_existing_subscription
     test_spot_service_introspection_faulted=test_spot_faulted_node_apis_fail_with_efsm
     test_spot_service_introspection_child_destroy_order=test_spot_node_destroy_rejects_open_child_handle
-    test_spot_service_introspection_monitor_child_destroy=test_spot_node_destroy_rejects_open_monitor_child
+    test_spot_service_introspection_monitor_child_destroy=test_spot_node_destroy_closes_open_monitor_child
     test_spot_service_introspection_send_ready_self_close=test_spot_send_ready_handler_self_close_returns_ebusy
+    test_spot_service_introspection_monitor_self_close=test_spot_monitor_callback_parent_destroy_returns_ebusy
+    test_spot_service_introspection_node_monitor_self_close=test_spot_node_monitor_callback_parent_destroy_returns_ebusy
+    test_spot_service_introspection_child_open_after_close=test_spot_node_rejects_child_open_after_close_accept
     test_spot_service_introspection_lifecycle_contract=test_spot_node_public_api_lifecycle_contract
     test_spot_service_introspection_handle_lifecycle=test_spot_public_api_lifecycle_contract)
 
@@ -699,6 +717,7 @@ set(GATEWAY_CASES
     test_gateway_provider_setsockopt
     test_gateway_can_be_polled_via_service_instance
     test_gateway_send_ready_handler_self_close_is_safe
+    test_gateway_monitor_callback_parent_destroy_returns_ebusy
     test_gateway_refreshes_existing_service_on_first_connection_count
     test_gateway_router_peers_do_not_enter_pollable_mode
     test_gateway_single_service_tcp
@@ -713,6 +732,7 @@ set(GATEWAY_CASES
     test_gateway_manual_connect_disconnect_topology_ownership
     test_gateway_local_weight_zero_is_preserved
     test_gateway_runtime_reads_are_safe_during_concurrent_send
+    test_gateway_concurrent_send_and_send_rid_and_updates
     test_gateway_attach_and_monitor_queries_are_safe_same_handle
     test_gateway_public_api_lifecycle_contract)
 
@@ -733,8 +753,10 @@ set(GATEWAY_TEST_SPECS
     test_gateway_manual_topology_ownership=test_gateway_manual_connect_disconnect_topology_ownership
     test_gateway_local_weight_zero=test_gateway_local_weight_zero_is_preserved
     test_gateway_runtime_reads=test_gateway_runtime_reads_are_safe_during_concurrent_send
+    test_gateway_send_plane_updates=test_gateway_concurrent_send_and_send_rid_and_updates
     test_gateway_attach_query_ordering=test_gateway_attach_and_monitor_queries_are_safe_same_handle
     test_gateway_send_ready_self_close=test_gateway_send_ready_handler_self_close_is_safe
+    test_gateway_monitor_self_close=test_gateway_monitor_callback_parent_destroy_returns_ebusy
     test_gateway_lifecycle_contract=test_gateway_public_api_lifecycle_contract)
 
 set(SERVICE_INTROSPECTION_CASES
@@ -744,6 +766,8 @@ set(SERVICE_INTROSPECTION_CASES
     test_registry_topology_snapshot_and_remote_query
     test_registry_gateway_peer_snapshot_and_remote_query
     test_monitor_closed_event_on_service_destroy
+    test_discovery_monitor_reports_service_up_then_down_in_order
+    test_discovery_monitor_callback_parent_destroy_returns_ebusy
     test_discovery_destroy_busy_observer_is_no_latch
     test_discovery_public_api_lifecycle_contract
     test_registry_public_api_lifecycle_contract
@@ -764,6 +788,8 @@ set(SERVICE_INTROSPECTION_TEST_SPECS
     test_service_introspection_topology_snapshot=test_registry_topology_snapshot_and_remote_query
     test_service_introspection_gateway_peer_snapshot=test_registry_gateway_peer_snapshot_and_remote_query
     test_service_introspection_closed_event=test_monitor_closed_event_on_service_destroy
+    test_service_introspection_discovery_ordering=test_discovery_monitor_reports_service_up_then_down_in_order
+    test_service_introspection_discovery_self_close=test_discovery_monitor_callback_parent_destroy_returns_ebusy
     test_service_introspection_discovery_no_latch=test_discovery_destroy_busy_observer_is_no_latch
     test_service_introspection_discovery_lifecycle=test_discovery_public_api_lifecycle_contract
     test_service_introspection_registry_lifecycle=test_registry_public_api_lifecycle_contract

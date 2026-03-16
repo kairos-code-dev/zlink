@@ -9,12 +9,19 @@ GENERATOR_ARGS=()
 
 TEST_NAMES=(
   test_service_introspection_discovery_control_path
+  test_service_introspection_discovery_ordering
+  test_service_introspection_discovery_self_close
   test_gateway_runtime_reads
+  test_gateway_send_plane_updates
   test_gateway_attach_query_ordering
   test_gateway_send_ready_self_close
+  test_gateway_monitor_self_close
   test_spot_service_introspection_runtime_reads
   test_spot_service_introspection_monitor_child_destroy
   test_spot_service_introspection_send_ready_self_close
+  test_spot_service_introspection_monitor_self_close
+  test_spot_service_introspection_node_monitor_self_close
+  test_spot_service_introspection_child_open_after_close
   test_service_introspection_registry_control_path
   test_gateway_lifecycle_contract
   test_spot_service_introspection_lifecycle_contract

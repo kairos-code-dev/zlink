@@ -167,7 +167,7 @@ ZLINK_EXPORT void zlink_version (int *major_, int *minor_, int *patch_);
 /******************************************************************************/
 /*  0MQ infrastructure (a.k.a. context) initialisation & termination.         */
 /******************************************************************************/
-#define ZLINK_IO_THREADS_DFLT 2
+#define ZLINK_IO_THREADS_DFLT 1
 #define ZLINK_MAX_SOCKETS_DFLT 4095
 #define ZLINK_THREAD_PRIORITY_DFLT -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT -1

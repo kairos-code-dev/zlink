@@ -529,18 +529,22 @@ int spot_runtime_t::close_control_sockets ()
         if (fanout && !sub_fanout_endpoint.empty ())
             (void) fanout->term_endpoint (sub_fanout_endpoint.c_str ());
         preserve_first_error (
-          owner->_lifecycle.close_socket (ctrl_front, 2000), &first_error);
-        preserve_first_error (
-          owner->_lifecycle.close_socket (ctrl_back, 2000), &first_error);
-        preserve_first_error (
-          owner->_lifecycle.close_socket (mesh_pub_local, 2000), &first_error);
-        preserve_first_error (
-          owner->_lifecycle.close_socket (mesh_xsub_local, 2000), &first_error);
-        preserve_first_error (
-          owner->_lifecycle.close_socket (peer_ctrl_pub_local, 2000),
+          owner->_lifecycle.close_socket_and_wait (ctrl_front, 2000),
           &first_error);
         preserve_first_error (
-          owner->_lifecycle.close_socket (peer_ctrl_sub_local, 2000),
+          owner->_lifecycle.close_socket_and_wait (ctrl_back, 2000),
+          &first_error);
+        preserve_first_error (
+          owner->_lifecycle.close_socket_and_wait (mesh_pub_local, 2000),
+          &first_error);
+        preserve_first_error (
+          owner->_lifecycle.close_socket_and_wait (mesh_xsub_local, 2000),
+          &first_error);
+        preserve_first_error (
+          owner->_lifecycle.close_socket_and_wait (peer_ctrl_pub_local, 2000),
+          &first_error);
+        preserve_first_error (
+          owner->_lifecycle.close_socket_and_wait (peer_ctrl_sub_local, 2000),
           &first_error);
         preserve_first_error (
           owner->_lifecycle.close_socket_and_wait (ingress, 2000),
@@ -684,17 +688,19 @@ int spot_runtime_t::abortive_stop ()
             (void) ctrl_front->term_endpoint (data_ctrl_endpoint.c_str ());
         if (ctrl_back && !data_ctrl_endpoint.empty ())
             (void) ctrl_back->term_endpoint (data_ctrl_endpoint.c_str ());
-        (void) owner->_lifecycle.close_socket (ctrl_front, 1000);
-        (void) owner->_lifecycle.close_socket (ctrl_back, 1000);
-        (void) owner->_lifecycle.close_socket (mesh_pub_local, 1000);
-        (void) owner->_lifecycle.close_socket (mesh_xsub_local, 1000);
-        (void) owner->_lifecycle.close_socket (peer_ctrl_pub_local, 1000);
-        (void) owner->_lifecycle.close_socket (peer_ctrl_sub_local, 1000);
-        (void) owner->_lifecycle.close_socket (ingress, 1000);
-        (void) owner->_lifecycle.close_socket (fanout, 1000);
+        (void) owner->_lifecycle.close_socket_and_wait (ctrl_front, 1000);
+        (void) owner->_lifecycle.close_socket_and_wait (ctrl_back, 1000);
+        (void) owner->_lifecycle.close_socket_and_wait (mesh_pub_local, 1000);
+        (void) owner->_lifecycle.close_socket_and_wait (mesh_xsub_local, 1000);
+        (void) owner->_lifecycle.close_socket_and_wait (peer_ctrl_pub_local,
+                                                        1000);
+        (void) owner->_lifecycle.close_socket_and_wait (peer_ctrl_sub_local,
+                                                        1000);
+        (void) owner->_lifecycle.close_socket_and_wait (ingress, 1000);
+        (void) owner->_lifecycle.close_socket_and_wait (fanout, 1000);
         for (size_t i = 0; i < attachment_sockets.size (); ++i) {
             socket_base_t *socket = attachment_sockets[i];
-            (void) owner->_lifecycle.close_socket (socket, 1000);
+            (void) owner->_lifecycle.close_socket_and_wait (socket, 1000);
         }
     } else {
         close_socket_ptr (&ctrl_front);
@@ -3048,6 +3054,13 @@ int spot_node_t::destroy ()
         const size_t live_slots = _runtime->live_socket_slot_count ();
         const size_t live_attachments = _runtime->attachment_count ();
         const size_t tracked_sockets = _lifecycle.owned_socket_count ();
+        size_t ctx_socket_baseline = 0;
+        if (_ctx) {
+            const size_t ctx_socket_count = _ctx->socket_count ();
+            ctx_socket_baseline =
+              ctx_socket_count > tracked_sockets ? ctx_socket_count - tracked_sockets
+                                                 : 0;
+        }
         used_abortive = true;
         spot_shutdown_logf (true,
                             "service=spot node=%p shutdown=abortive reason=%d live_slots=%zu attachments=%zu tracked=%zu",
@@ -3060,6 +3073,18 @@ int spot_node_t::destroy ()
         if (_runtime->live_socket_slot_count () == 0
             && _runtime->attachment_count () == 0
             && _lifecycle.owned_socket_count () == 0) {
+            final_error = 0;
+        } else if (_runtime->live_socket_slot_count () == 0
+                   && _runtime->attachment_count () == 0 && _ctx
+                   && _ctx->wait_for_socket_count_at_most (
+                        ctx_socket_baseline, 5000)
+                        == 0) {
+            _lifecycle.clear_tracked_sockets ();
+            final_error = 0;
+        } else if (_runtime->live_socket_slot_count () == 0
+                   && _runtime->attachment_count () == 0 && _ctx
+                   && _ctx->socket_count () == 0) {
+            _lifecycle.clear_tracked_sockets ();
             final_error = 0;
         }
     }

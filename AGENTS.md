@@ -33,6 +33,14 @@
 - Keep style consistent with existing `core/src/` patterns; use minimal C++11 unless required.
 - Use existing naming patterns; new tests should match `test_*.cpp` or `unittest_*.cpp`.
 
+## Software Design Philosophy
+- This repository adopts John Ousterhout's *A Philosophy of Software Design* as a core development philosophy for software system design and evolution.
+- All design, implementation, and refactoring work should aim to reduce overall system complexity, not just move code around or preserve incidental structure.
+- Prefer deep modules, clear ownership boundaries, information hiding, and interfaces that let users know less about internal machinery.
+- Treat change amplification, hidden coupling, temporal decomposition, and shallow wrappers as design smells that should be removed during design and refactoring.
+- When changing public APIs or internal structures, prefer solutions that make lifecycle, ownership, and invariants easier to explain in a few sentences.
+- If a change improves local performance or convenience but increases global complexity, default to rejecting it unless there is a compelling, documented reason.
+
 ## Testing Guidelines
 - Tests use the Unity framework; add coverage in `tests/` for behavior changes and `unittests/` for internal logic.
 - Some suites are platform-specific (IPC/TIPC, fuzzers); note skips in PRs.
@@ -46,6 +54,7 @@ The following rules apply to **all** test categories: unit tests (`unittests/`),
 - **Fail on first error.** A single test failure must fail the entire test executable. Do not catch, suppress, or continue past assertion failures. The goal is to stop early and preserve the failure context for diagnosis.
 - **No sleep-based synchronization.** Do not use `sleep()` or fixed delays to wait for asynchronous state. Use deterministic synchronization (semaphore, condition variable, event flag) with a hard timeout that fails the test if exceeded.
 - **Hard timeouts, not soft retries.** If a test must wait for an external condition (connection, message arrival), use a single bounded wait with `TEST_ASSERT` on timeout. Never loop back and retry the same operation.
+- **No bug-hiding test edits.** If a test is incorrect, outdated, or violates the contract, fix the test to express the right behavior. Do not weaken, relax, or rewrite a test only to hide an implementation bug or make a failing case appear to pass.
 
 ## Commit and Pull Request Guidelines
 - Commit messages typically use conventional prefixes like `feat:`, `fix:`, `docs:` with a short summary.
@@ -70,6 +79,7 @@ The following rules apply to **all** test categories: unit tests (`unittests/`),
 - Agents must address the user as `팀장님`.
 - If any agent-specific files are added in the future, they must reference `AGENTS.md` and instruct contributors to update `AGENTS.md` when guidelines change.
 - When the user says `posd` in the context of design or refactoring, interpret it as John Ousterhout's *A Philosophy of Software Design* and apply that book's principles.
+- Even when `posd` is not explicitly mentioned, agents should follow the repository's POSD-based design philosophy when reviewing, designing, implementing, or refactoring code and APIs.
 
 ## External References
 - Upstream reference project: `https://github.com/zeromq/libzmq`

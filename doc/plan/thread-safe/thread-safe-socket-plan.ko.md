@@ -846,9 +846,12 @@ send queue / publication path 후보는 문서에서 구현 선택지로만 남�
   테스트와 stress/TSan runner는 추가되었고, 현재 남은 과제는 장비별 acceptance
   기준선 축적과 대상 케이스 확장이다.
 - raw runtime read, `gateway` runtime read, `spot` monitor snapshot read,
-  registry control-path 경합에 대한 회귀는 이미 추가되었고, discovery-side full
-  ordering matrix와 parent-child / self-close 세부 matrix가 후속 공백으로 남아
-  있다.
+  registry control-path 경합에 대한 회귀는 이미 추가되었고, discovery monitor
+  `service up/down` ordering, monitor callback 안 parent self-destroy 금지,
+  parent accepted close 이후 child open 거부, `spot` send-ready/monitor
+  callback 안 parent destroy 금지, `spot node`/`gateway` monitor callback 안
+  parent destroy 금지, accepted-close 이후 monitor open 거부 회귀도 반영되었다.
+  현재 남은 과제는 대상 케이스 확장과 장비별 perf-contract 운영 기준 정리다.
 - `spot` thread-safe destroy timeout은 core 수정으로 해결되었으며, 이 수정은
   internal control connection 파생, mailbox command pumping, pipe termination,
   teardown drain 정합성 보강을 포함한다.

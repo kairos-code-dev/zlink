@@ -512,7 +512,9 @@ bool run_phase(spot_server_state_t *state,
     if (state->fatal_errno.load(std::memory_order_acquire) != 0)
         return false;
 
-    return !g_stop_requested.load(std::memory_order_acquire);
+    // The multi runner stops the server after the client completes a size case.
+    // Treat that external stop as graceful so the next size can run.
+    return true;
 }
 
 void print_server_metrics(const std::string &lib_name,
@@ -561,7 +563,7 @@ bool run_server_loop(spot_server_state_t *state,
                 std::cerr << "[multi-spot-server] loop stop before size="
                           << msg_sizes[i] << std::endl;
             }
-            return false;
+            return state->fatal_errno.load(std::memory_order_acquire) == 0;
         }
 
         if (bench_transition_debug_enabled()) {

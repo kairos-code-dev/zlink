@@ -43,6 +43,10 @@ int g_reentrant_ready_rc = 0;
 int g_reentrant_ready_errno = 0;
 int g_gateway_self_close_rc = 0;
 int g_gateway_self_close_errno = 0;
+void *g_gateway_monitor_self_close_subject = NULL;
+std::atomic<int> *g_gateway_monitor_self_close_calls = NULL;
+int g_gateway_monitor_self_close_rc = 0;
+int g_gateway_monitor_self_close_errno = 0;
 
 zlink_socket_handler_t make_msg_handler (zlink_socket_msg_handler_fn fn_)
 {
@@ -77,6 +81,16 @@ void gateway_self_close_handler (void *subject_)
     errno = 0;
     g_gateway_self_close_rc = zlink_gateway_destroy (&gateway);
     g_gateway_self_close_errno = errno;
+}
+
+void gateway_monitor_parent_self_close_handler (const zlink_service_event_t *)
+{
+    if (g_gateway_monitor_self_close_calls)
+        g_gateway_monitor_self_close_calls->fetch_add (1);
+    void *gateway = g_gateway_monitor_self_close_subject;
+    errno = 0;
+    g_gateway_monitor_self_close_rc = zlink_gateway_destroy (&gateway);
+    g_gateway_monitor_self_close_errno = errno;
 }
 
 bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
@@ -610,6 +624,15 @@ struct send_worker_args_t
     std::atomic<int> *fail;
 };
 
+struct send_rid_worker_args_t
+{
+    void *gateway;
+    zlink_routing_id_t routing_id;
+    int count;
+    std::atomic<int> *ok;
+    std::atomic<int> *fail;
+};
+
 void send_worker (void *arg_)
 {
     send_worker_args_t *args = static_cast<send_worker_args_t *> (arg_);
@@ -622,6 +645,34 @@ void send_worker (void *arg_)
                 break;
             memcpy (zlink_msg_data (&part), payload, 4);
             rc = zlink_gateway_send (args->gateway, &part, 1, ZLINK_DONTWAIT);
+            if (rc != 0)
+                (void) zlink_msg_close (&part);
+            if (rc == 0)
+                break;
+            if (errno != EAGAIN && errno != EHOSTUNREACH)
+                break;
+            msleep (1);
+        }
+        if (rc == 0)
+            ++(*args->ok);
+        else
+            ++(*args->fail);
+    }
+}
+
+void send_rid_worker (void *arg_)
+{
+    send_rid_worker_args_t *args = static_cast<send_rid_worker_args_t *> (arg_);
+    for (int i = 0; i < args->count; ++i) {
+        const char *payload = "srid";
+        int rc = -1;
+        for (int attempt = 0; attempt < 50; ++attempt) {
+            zlink_msg_t part;
+            if (zlink_msg_init_size (&part, 4) != 0)
+                break;
+            memcpy (zlink_msg_data (&part), payload, 4);
+            rc = zlink_gateway_send_rid (
+              args->gateway, &args->routing_id, &part, 1, ZLINK_DONTWAIT);
             if (rc != 0)
                 (void) zlink_msg_close (&part);
             if (rc == 0)
@@ -797,6 +848,48 @@ static void test_gateway_send_ready_handler_self_close_is_safe ()
     TEST_ASSERT_NOT_NULL (gateway);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+}
+
+static void test_gateway_monitor_callback_parent_destroy_returns_ebusy ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *gateway = zlink_gateway_new (ctx, "svc-monitor-self-close",
+                                       "gw-monitor-self-close",
+                                       &discard_gateway_message);
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    std::atomic<int> callback_calls (0);
+    g_gateway_monitor_self_close_subject = gateway;
+    g_gateway_monitor_self_close_calls = &callback_calls;
+    g_gateway_monitor_self_close_rc = 0;
+    g_gateway_monitor_self_close_errno = 0;
+
+    void *monitor = zlink_gateway_monitor_open (
+      gateway, ZLINK_GATEWAY_SERVICE_READY,
+      &gateway_monitor_parent_self_close_handler);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22422;
+    bind_gateway_with_port_seed (gateway, "tcp", &bind_seed, endpoint,
+                                 sizeof (endpoint), 3000);
+
+    TEST_ASSERT_TRUE (wait_for_calls (&callback_calls, 1, 5000));
+    TEST_ASSERT_EQUAL_INT (-1, g_gateway_monitor_self_close_rc);
+    TEST_ASSERT_EQUAL_INT (EBUSY, g_gateway_monitor_self_close_errno);
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (gateway, &rid));
+    TEST_ASSERT_TRUE (rid.size > 0);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    g_gateway_monitor_self_close_subject = NULL;
+    g_gateway_monitor_self_close_calls = NULL;
 }
 
 static void test_gateway_refreshes_existing_service_on_first_connection_count ()
@@ -1785,6 +1878,115 @@ static void test_gateway_runtime_reads_are_safe_during_concurrent_send ()
     g_probe_a = NULL;
 }
 
+static void test_gateway_concurrent_send_and_send_rid_and_updates ()
+{
+    step_log ("test_gateway_concurrent_send_and_send_rid_and_updates");
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    int registry_seed = 25966;
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &registry_seed, registry_pub, sizeof (registry_pub),
+      registry_router, sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
+
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
+      discovery, registry_router));
+    void *client =
+      create_gateway_attached (ctx, discovery, "svc-send-plane", NULL,
+                               &discard_gateway_message);
+    TEST_ASSERT_NOT_NULL (client);
+
+    gateway_probe_t probe;
+    g_probe_a = &probe;
+    gateway_server_t server;
+    create_server_gateway (&server, ctx, registry_router, "svc-send-plane",
+                           "RID-MIX", &gateway_handler_a);
+    char endpoint[256];
+    int bind_seed = 22548;
+    bind_gateway_with_port_seed (server.gateway, "tcp", &bind_seed, endpoint,
+                                 sizeof (endpoint), 3000);
+
+    step_log ("test_gateway_concurrent_send_and_send_rid_and_updates: waiting ready");
+    wait_gateway_ready (client, 3000);
+
+    zlink_routing_id_t server_rid;
+    memset (&server_rid, 0, sizeof (server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_routing_id (server.gateway, &server_rid));
+
+    const int send_threads = 2;
+    const int send_rid_threads = 2;
+    const int send_per_thread = 40;
+    std::atomic<int> send_ok (0);
+    std::atomic<int> send_fail (0);
+    std::atomic<int> send_rid_ok (0);
+    std::atomic<int> send_rid_fail (0);
+    std::atomic<int> update_fail (0);
+    std::vector<std::thread> threads;
+    std::vector<send_worker_args_t> send_args (send_threads);
+    std::vector<send_rid_worker_args_t> send_rid_args (send_rid_threads);
+
+    for (int i = 0; i < send_threads; ++i) {
+        send_args[i].gateway = client;
+        send_args[i].count = send_per_thread;
+        send_args[i].ok = &send_ok;
+        send_args[i].fail = &send_fail;
+        threads.push_back (std::thread (&send_worker, &send_args[i]));
+    }
+    step_log ("test_gateway_concurrent_send_and_send_rid_and_updates: send workers started");
+
+    for (int i = 0; i < send_rid_threads; ++i) {
+        send_rid_args[i].gateway = client;
+        send_rid_args[i].routing_id = server_rid;
+        send_rid_args[i].count = send_per_thread;
+        send_rid_args[i].ok = &send_rid_ok;
+        send_rid_args[i].fail = &send_rid_fail;
+        threads.push_back (std::thread (&send_rid_worker, &send_rid_args[i]));
+    }
+    step_log ("test_gateway_concurrent_send_and_send_rid_and_updates: send_rid workers started");
+
+    std::thread updater ([&] () {
+        for (int i = 0; i < 10; ++i) {
+            if (i == 0 || i == 9)
+                step_log ("test_gateway_concurrent_send_and_send_rid_and_updates: updater tick");
+            if (!try_update_gateway_weight_with_timeout (
+                  server.gateway, (i % 3) + 1, 100))
+                ++update_fail;
+            msleep (1);
+        }
+    });
+    step_log ("test_gateway_concurrent_send_and_send_rid_and_updates: updater started");
+
+    for (size_t i = 0; i < threads.size (); ++i)
+        threads[i].join ();
+    step_log ("test_gateway_concurrent_send_and_send_rid_and_updates: workers joined");
+    updater.join ();
+    step_log ("test_gateway_concurrent_send_and_send_rid_and_updates: updater joined");
+
+    TEST_ASSERT_EQUAL_INT (0, send_fail.load ());
+    TEST_ASSERT_EQUAL_INT (0, send_rid_fail.load ());
+    TEST_ASSERT_EQUAL_INT (0, update_fail.load ());
+    step_log ("test_gateway_concurrent_send_and_send_rid_and_updates: waiting probe");
+    TEST_ASSERT_TRUE (wait_for_calls (
+      &probe.requests, send_ok.load () + send_rid_ok.load (), 5000));
+
+    step_log ("test_gateway_concurrent_send_and_send_rid_and_updates: destroy server");
+    destroy_server_gateway (&server);
+    step_log ("test_gateway_concurrent_send_and_send_rid_and_updates: destroy client");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
+    step_log ("test_gateway_concurrent_send_and_send_rid_and_updates: destroy discovery");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    step_log ("test_gateway_concurrent_send_and_send_rid_and_updates: destroy registry");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    g_probe_a = NULL;
+}
+
 static void test_gateway_attach_and_monitor_queries_are_safe_same_handle ()
 {
     void *ctx = get_test_context ();
@@ -1892,6 +2094,11 @@ static void test_gateway_public_api_lifecycle_contract ()
       zlink_gateway_set_send_ready_handler (gateway, &gateway_ready_handler));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, errno);
 
+    TEST_ASSERT_EQUAL_PTR (
+      NULL, zlink_gateway_monitor_open (gateway, ZLINK_MONITOR_EVENT_CLOSED,
+                                        &zlink_service_monitor_ignore_handler));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, errno);
+
     zlink_msg_t part;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
     memcpy (zlink_msg_data (&part), "life", 4);
@@ -1919,6 +2126,7 @@ int main (void)
     RUN_GATEWAY_TEST (
       test_gateway_send_ready_handler_reentrant_replace_returns_edeadlk);
     RUN_GATEWAY_TEST (test_gateway_send_ready_handler_self_close_is_safe);
+    RUN_GATEWAY_TEST (test_gateway_monitor_callback_parent_destroy_returns_ebusy);
     RUN_GATEWAY_TEST (test_gateway_refreshes_existing_service_on_first_connection_count);
     RUN_GATEWAY_TEST (test_gateway_router_peers_do_not_enter_pollable_mode);
     RUN_GATEWAY_TEST (test_gateway_single_service_tcp);
@@ -1933,6 +2141,7 @@ int main (void)
     RUN_GATEWAY_TEST (test_gateway_manual_connect_disconnect_topology_ownership);
     RUN_GATEWAY_TEST (test_gateway_local_weight_zero_is_preserved);
     RUN_GATEWAY_TEST (test_gateway_runtime_reads_are_safe_during_concurrent_send);
+    RUN_GATEWAY_TEST (test_gateway_concurrent_send_and_send_rid_and_updates);
     RUN_GATEWAY_TEST (test_gateway_attach_and_monitor_queries_are_safe_same_handle);
     RUN_GATEWAY_TEST (test_gateway_public_api_lifecycle_contract);
 #undef RUN_GATEWAY_TEST

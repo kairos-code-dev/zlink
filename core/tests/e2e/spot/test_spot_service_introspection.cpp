@@ -58,6 +58,10 @@ static int g_spot_ready_publish_rc = 0;
 static int g_spot_ready_publish_errno = 0;
 static int g_spot_ready_self_close_rc = 0;
 static int g_spot_ready_self_close_errno = 0;
+static void *g_spot_monitor_self_close_subject = NULL;
+static std::atomic<int> *g_spot_monitor_self_close_calls = NULL;
+static int g_spot_monitor_self_close_rc = 0;
+static int g_spot_monitor_self_close_errno = 0;
 struct service_monitor_probe_t;
 static service_monitor_probe_t *g_service_monitor_probe_a = NULL;
 static service_monitor_probe_t *g_service_monitor_probe_b = NULL;
@@ -104,6 +108,8 @@ void tearDown ()
     g_send_ready_probe_a = NULL;
     g_send_ready_probe_b = NULL;
     g_send_ready_probe_replace = NULL;
+    g_spot_monitor_self_close_subject = NULL;
+    g_spot_monitor_self_close_calls = NULL;
 }
 
 static bool wait_for_registry_uplink (void *discovery_, int timeout_ms_)
@@ -405,6 +411,24 @@ static bool wait_for_provider_count (void *registry_,
     return count >= static_cast<size_t> (expected_count_);
 }
 
+static bool wait_for_atomic_count (std::atomic<int> *counter_,
+                                   int expected_count_,
+                                   int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (counter_ && counter_->load (std::memory_order_acquire)
+                           >= expected_count_) {
+            return true;
+        }
+        msleep (10);
+    }
+    return counter_
+           && counter_->load (std::memory_order_acquire) >= expected_count_;
+}
+
 struct spot_probe_message_t
 {
     std::string topic;
@@ -532,6 +556,30 @@ static void queued_service_monitor_handler_b (
         probe->events.push_back (*event_);
     }
     probe->cv.notify_all ();
+}
+
+static void spot_monitor_parent_self_close_handler (
+  const zlink_service_event_t *)
+{
+    if (g_spot_monitor_self_close_calls)
+        g_spot_monitor_self_close_calls->fetch_add (1);
+
+    void *spot = g_spot_monitor_self_close_subject;
+    errno = 0;
+    g_spot_monitor_self_close_rc = zlink_spot_destroy (&spot);
+    g_spot_monitor_self_close_errno = errno;
+}
+
+static void spot_node_monitor_parent_self_close_handler (
+  const zlink_service_event_t *)
+{
+    if (g_spot_monitor_self_close_calls)
+        g_spot_monitor_self_close_calls->fetch_add (1);
+
+    void *node = g_spot_monitor_self_close_subject;
+    errno = 0;
+    g_spot_monitor_self_close_rc = zlink_spot_node_destroy (&node);
+    g_spot_monitor_self_close_errno = errno;
 }
 
 static bool consume_matching_service_event_locked (
@@ -1707,7 +1755,7 @@ static void test_spot_node_destroy_rejects_open_child_handle ()
     destroy_test_ctx (ctx);
 }
 
-static void test_spot_node_destroy_rejects_open_monitor_child ()
+static void test_spot_node_destroy_closes_open_monitor_child ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -1715,17 +1763,18 @@ static void test_spot_node_destroy_rejects_open_monitor_child ()
     void *node = create_spot_node (ctx, "spot-monitor-open");
     TEST_ASSERT_NOT_NULL (node);
 
+    service_monitor_probe_t probe;
+    g_service_monitor_probe_a = &probe;
     void *monitor = zlink_spot_node_monitor_open (
       node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_CLOSED,
-      &zlink_service_monitor_ignore_handler);
+      &queued_service_monitor_handler_a);
     TEST_ASSERT_NOT_NULL (monitor);
 
-    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_node_destroy (&node));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_NOT_NULL (node);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_TRUE (wait_for_service_event (
+      &probe, ZLINK_MONITOR_EVENT_CLOSED, NULL, 3000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    g_service_monitor_probe_a = NULL;
     destroy_test_ctx (ctx);
 }
 
@@ -1774,6 +1823,126 @@ static void test_spot_send_ready_handler_self_close_returns_ebusy ()
     destroy_test_ctx (ctx);
 }
 
+static void test_spot_monitor_callback_parent_destroy_returns_ebusy ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *pub_node = create_spot_node (ctx, "spot-monitor-self-close");
+    void *sub_node = create_spot_node (ctx, "spot-monitor-self-close");
+    TEST_ASSERT_NOT_NULL (pub_node);
+    TEST_ASSERT_NOT_NULL (sub_node);
+
+    void *pub = create_spot_pub_handle (pub_node);
+    void *sub = create_spot_sub_handle (sub_node);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub);
+
+    char endpoint[MAX_SOCKET_STRING];
+    int endpoint_seed = 22682;
+    TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+      pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
+      sizeof (endpoint)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer_pub (sub_node, endpoint));
+
+    std::atomic<int> callback_calls (0);
+    g_spot_monitor_self_close_subject = sub;
+    g_spot_monitor_self_close_calls = &callback_calls;
+    g_spot_monitor_self_close_rc = 0;
+    g_spot_monitor_self_close_errno = 0;
+
+    void *monitor = zlink_spot_monitor_open (
+      sub, ZLINK_SPOT_ROLE_SUB, ZLINK_SPOT_SUB_FILTER_APPLIED,
+      &spot_monitor_parent_self_close_handler);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "monitor-close"));
+    TEST_ASSERT_TRUE (wait_for_atomic_count (&callback_calls, 1, 5000));
+    TEST_ASSERT_EQUAL_INT (-1, g_spot_monitor_self_close_rc);
+    TEST_ASSERT_EQUAL_INT (EBUSY, g_spot_monitor_self_close_errno);
+    TEST_ASSERT_NOT_NULL (sub);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    destroy_test_ctx (ctx);
+}
+
+static void test_spot_node_monitor_callback_parent_destroy_returns_ebusy ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *pub_node = create_spot_node (ctx, "spot-node-monitor-self-close");
+    void *sub_node = create_spot_node (ctx, "spot-node-monitor-self-close");
+    TEST_ASSERT_NOT_NULL (pub_node);
+    TEST_ASSERT_NOT_NULL (sub_node);
+
+    char endpoint[MAX_SOCKET_STRING];
+    int endpoint_seed = 22684;
+    TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+      pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
+      sizeof (endpoint)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer_pub (sub_node, endpoint));
+
+    std::atomic<int> callback_calls (0);
+    g_spot_monitor_self_close_subject = sub_node;
+    g_spot_monitor_self_close_calls = &callback_calls;
+    g_spot_monitor_self_close_rc = 0;
+    g_spot_monitor_self_close_errno = 0;
+
+    void *monitor = zlink_spot_node_monitor_open (
+      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_SPOT_SUB_FILTER_APPLIED,
+      &spot_node_monitor_parent_self_close_handler);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_subscribe (sub_node, "node-monitor-close"));
+
+    TEST_ASSERT_TRUE (wait_for_atomic_count (&callback_calls, 1, 5000));
+    TEST_ASSERT_EQUAL_INT (-1, g_spot_monitor_self_close_rc);
+    TEST_ASSERT_EQUAL_INT (EBUSY, g_spot_monitor_self_close_errno);
+    TEST_ASSERT_NOT_NULL (sub_node);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    destroy_test_ctx (ctx);
+}
+
+static void test_spot_node_rejects_child_open_after_close_accept ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = create_spot_node (ctx, "spot-child-after-close");
+    TEST_ASSERT_NOT_NULL (node);
+
+    zlink::spot_node_t *node_impl = static_cast<zlink::spot_node_t *> (node);
+    TEST_ASSERT_TRUE (node_impl->public_api_guard ().begin_close_or_fail_busy ());
+
+    TEST_ASSERT_EQUAL_PTR (NULL, zlink_spot_new (node, &ignore_spot_handler));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
+    TEST_ASSERT_EQUAL_PTR (
+      NULL, zlink_spot_node_monitor_open (node, ZLINK_SPOT_ROLE_PUB,
+                                          ZLINK_MONITOR_EVENT_CLOSED,
+                                          &zlink_service_monitor_ignore_handler));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (EALREADY, zlink_errno ());
+    TEST_ASSERT_NOT_NULL (node);
+
+    TEST_ASSERT_SUCCESS_ERRNO (node_impl->destroy ());
+    delete node_impl;
+    destroy_test_ctx (ctx);
+}
+
 static void test_spot_node_public_api_lifecycle_contract ()
 {
     void *ctx = zlink_ctx_new ();
@@ -1806,6 +1975,12 @@ static void test_spot_node_public_api_lifecycle_contract ()
     TEST_ASSERT_EQUAL_INT (
       -1,
       zlink_spot_node_set_send_ready_handler (node, &spot_counting_ready_handler));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
+    TEST_ASSERT_EQUAL_PTR (
+      NULL, zlink_spot_node_monitor_open (node, ZLINK_SPOT_ROLE_PUB,
+                                          ZLINK_MONITOR_EVENT_CLOSED,
+                                          &zlink_service_monitor_ignore_handler));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
 
     TEST_ASSERT_FALSE (node_impl->public_api_guard ().begin_close_or_fail_busy ());
@@ -1851,6 +2026,12 @@ static void test_spot_public_api_lifecycle_contract ()
       -1, zlink_spot_set_send_ready_handler (spot, &spot_counting_ready_handler));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
 
+    TEST_ASSERT_EQUAL_PTR (
+      NULL, zlink_spot_monitor_open (spot, ZLINK_SPOT_ROLE_SUB,
+                                     ZLINK_MONITOR_EVENT_CLOSED,
+                                     &zlink_service_monitor_ignore_handler));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
+
     TEST_ASSERT_EQUAL_INT (-1, zlink_spot_destroy (&spot));
     TEST_ASSERT_EQUAL_INT (EALREADY, zlink_errno ());
     TEST_ASSERT_NOT_NULL (spot);
@@ -1883,8 +2064,11 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_late_connect_replays_existing_subscription);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_faulted_node_apis_fail_with_efsm);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_destroy_rejects_open_child_handle);
-    RUN_SPOT_INTROSPECTION_TEST (test_spot_node_destroy_rejects_open_monitor_child);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_node_destroy_closes_open_monitor_child);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_send_ready_handler_self_close_returns_ebusy);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_monitor_callback_parent_destroy_returns_ebusy);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_node_monitor_callback_parent_destroy_returns_ebusy);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_node_rejects_child_open_after_close_accept);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_public_api_lifecycle_contract);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_public_api_lifecycle_contract);
 #undef RUN_SPOT_INTROSPECTION_TEST

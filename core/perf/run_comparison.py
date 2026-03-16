@@ -1153,8 +1153,8 @@ def pattern_default_io_threads(pattern_name):
     if pattern_name in STREAM_VARIANT_PATTERNS:
         return max(1, parse_env_int("PERF_DEFAULT_STREAM_IO_THREADS", 4))
     if pattern_name in ("GATEWAY", "SPOT"):
-        return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 1))
-    return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 2))
+        return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 4))
+    return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 4))
 
 
 def resolve_pattern_connect_concurrency(clients):
@@ -1430,7 +1430,6 @@ def run_sizes_test_stream_shared(
     client_env = env.copy()
     set_env_pair(server_env, "PERF_IO_THREADS", server_io_threads_int)
     set_env_pair(client_env, "PERF_IO_THREADS", client_io_threads_int)
-
     server_proc = None
     close_server_sampler = None
     sample_server_metrics = None

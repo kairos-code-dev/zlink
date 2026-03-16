@@ -36,6 +36,13 @@ struct monitor_probe_t
     zlink_service_event_t last_event;
 };
 
+struct event_sequence_probe_t
+{
+    std::mutex sync;
+    std::condition_variable cv;
+    std::vector<zlink_service_event_t> events;
+};
+
 struct gateway_server_t
 {
     gateway_server_t () : discovery (NULL), gateway (NULL) {}
@@ -92,6 +99,11 @@ struct blocking_discovery_observer_t : public zlink::discovery_observer_t
 monitor_probe_t *g_monitor_a = NULL;
 monitor_probe_t *g_monitor_b = NULL;
 monitor_probe_t *g_monitor_c = NULL;
+event_sequence_probe_t *g_event_sequence_probe = NULL;
+void *g_discovery_self_close_subject = NULL;
+std::atomic<int> *g_discovery_self_close_calls = NULL;
+int g_discovery_self_close_rc = 0;
+int g_discovery_self_close_errno = 0;
 
 void assert_routing_id_bytes (const zlink_routing_id_t *rid_,
                               const char *expected_)
@@ -133,6 +145,27 @@ void service_monitor_handler_c (const zlink_service_event_t *event_)
         return;
     g_monitor_c->last_event = *event_;
     g_monitor_c->calls.fetch_add (1);
+}
+
+void service_monitor_sequence_handler (const zlink_service_event_t *event_)
+{
+    if (!g_event_sequence_probe || !event_)
+        return;
+
+    std::lock_guard<std::mutex> lock (g_event_sequence_probe->sync);
+    g_event_sequence_probe->events.push_back (*event_);
+    g_event_sequence_probe->cv.notify_all ();
+}
+
+void discovery_monitor_parent_self_close_handler (const zlink_service_event_t *)
+{
+    if (g_discovery_self_close_calls)
+        g_discovery_self_close_calls->fetch_add (1);
+
+    void *discovery = g_discovery_self_close_subject;
+    errno = 0;
+    g_discovery_self_close_rc = zlink_discovery_destroy (&discovery);
+    g_discovery_self_close_errno = errno;
 }
 
 bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
@@ -183,6 +216,19 @@ bool wait_for_calls (std::atomic<int> *counter_, int expected_, int timeout_ms_)
         msleep (step_ms);
     }
     return counter_->load () >= expected_;
+}
+
+bool wait_for_event_sequence_count (event_sequence_probe_t *probe_,
+                                    size_t expected_,
+                                    int timeout_ms_)
+{
+    if (!probe_)
+        return false;
+
+    std::unique_lock<std::mutex> lock (probe_->sync);
+    return probe_->cv.wait_for (
+      lock, std::chrono::milliseconds (timeout_ms_),
+      [probe_, expected_] () { return probe_->events.size () >= expected_; });
 }
 
 bool wait_gateway_connection_count (void *gateway_,
@@ -913,6 +959,133 @@ static void test_monitor_closed_event_on_service_destroy ()
     g_monitor_a = NULL;
 }
 
+static void test_discovery_monitor_reports_service_up_then_down_in_order ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    int registry_seed = 22668;
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &registry_seed, registry_pub, sizeof (registry_pub),
+      registry_router, sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
+
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_set_routing_id (discovery, "disc-order", 10));
+
+    event_sequence_probe_t probe;
+    g_event_sequence_probe = &probe;
+    void *monitor = zlink_discovery_monitor_open (
+      discovery, ZLINK_DISCOVERY_SERVICE_UP | ZLINK_DISCOVERY_SERVICE_DOWN,
+      &service_monitor_sequence_handler);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      connect_discovery_registry_with_retry (discovery, registry_router, 2000));
+
+    gateway_server_t server;
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22624;
+    init_gateway_server_with_port_seed (&server, ctx, registry_router,
+                                        "svc-ordering", "gw-ordering", "tcp",
+                                        &bind_seed, endpoint,
+                                        sizeof (endpoint),
+                                        &discard_gateway_message);
+
+    TEST_ASSERT_TRUE (wait_for_event_sequence_count (&probe, 1, 5000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server.gateway));
+    TEST_ASSERT_TRUE (wait_for_event_sequence_count (&probe, 2, 10000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&server.discovery));
+
+    {
+        std::lock_guard<std::mutex> lock (probe.sync);
+        TEST_ASSERT_GREATER_OR_EQUAL_UINT (2, probe.events.size ());
+
+        bool saw_up = false;
+        bool saw_down_after_up = false;
+        for (size_t i = 0; i < probe.events.size (); ++i) {
+            if (strcmp (probe.events[i].service_name, "svc-ordering") != 0)
+                continue;
+            if (probe.events[i].event_type == ZLINK_DISCOVERY_SERVICE_UP)
+                saw_up = true;
+            if (saw_up
+                && probe.events[i].event_type == ZLINK_DISCOVERY_SERVICE_DOWN) {
+                saw_down_after_up = true;
+                break;
+            }
+        }
+        TEST_ASSERT_TRUE (saw_up);
+        TEST_ASSERT_TRUE (saw_down_after_up);
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    g_event_sequence_probe = NULL;
+}
+
+static void test_discovery_monitor_callback_parent_destroy_returns_ebusy ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    int registry_seed = 22670;
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &registry_seed, registry_pub, sizeof (registry_pub),
+      registry_router, sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
+
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_set_routing_id (discovery, "disc-self-destroy", 17));
+
+    std::atomic<int> callback_calls (0);
+    g_discovery_self_close_subject = discovery;
+    g_discovery_self_close_calls = &callback_calls;
+    g_discovery_self_close_rc = 0;
+    g_discovery_self_close_errno = 0;
+
+    void *monitor = zlink_discovery_monitor_open (
+      discovery, ZLINK_DISCOVERY_SERVICE_UP,
+      &discovery_monitor_parent_self_close_handler);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      connect_discovery_registry_with_retry (discovery, registry_router, 2000));
+
+    gateway_server_t server;
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22626;
+    init_gateway_server_with_port_seed (&server, ctx, registry_router,
+                                        "svc-self-destroy",
+                                        "gw-self-destroy", "tcp", &bind_seed,
+                                        endpoint, sizeof (endpoint),
+                                        &discard_gateway_message);
+
+    TEST_ASSERT_TRUE (wait_for_calls (&callback_calls, 1, 5000));
+    TEST_ASSERT_EQUAL_INT (-1, g_discovery_self_close_rc);
+    TEST_ASSERT_EQUAL_INT (EBUSY, g_discovery_self_close_errno);
+
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_routing_id (discovery, &rid));
+    assert_routing_id_bytes (&rid, "disc-self-destroy");
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    destroy_gateway_server (&server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    g_discovery_self_close_subject = NULL;
+    g_discovery_self_close_calls = NULL;
+}
+
 static void test_discovery_destroy_busy_observer_is_no_latch ()
 {
     void *ctx = get_test_context ();
@@ -1580,6 +1753,8 @@ int main (int, char **)
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_topology_snapshot_and_remote_query);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_gateway_peer_snapshot_and_remote_query);
     RUN_SERVICE_INTROSPECTION_TEST (test_monitor_closed_event_on_service_destroy);
+    RUN_SERVICE_INTROSPECTION_TEST (test_discovery_monitor_reports_service_up_then_down_in_order);
+    RUN_SERVICE_INTROSPECTION_TEST (test_discovery_monitor_callback_parent_destroy_returns_ebusy);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_destroy_busy_observer_is_no_latch);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_public_api_lifecycle_contract);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_public_api_lifecycle_contract);

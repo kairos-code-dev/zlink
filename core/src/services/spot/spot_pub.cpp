@@ -610,7 +610,7 @@ int spot_pub_t::destroy_internal (bool allow_embedded_default_,
     if (socket) {
         if (_node && _node->_runtime)
             preserve_first_error (
-              _node->_runtime->destroy_attachment_async (_attachment_id),
+              _node->_runtime->destroy_attachment (_attachment_id),
               &first_error);
         else {
             socket->stop ();

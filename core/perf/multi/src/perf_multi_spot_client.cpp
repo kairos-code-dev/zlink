@@ -613,12 +613,11 @@ void spot_client_recv_loop(spot_client_slot_t *slot)
         return;
 
     while (!slot->stop.load(std::memory_order_acquire)) {
-        bool received = false;
-        if (!recv_one_spot_message(slot, 0, &received))
-            break;
-        if (!received)
-            continue;
-        if (!drain_spot_client_slot(slot, NULL))
+        bool progressed = false;
+        if (!drain_spot_client_slot(slot, &progressed))
+            return;
+        if (!progressed && perf_socket_poll(NULL, 0, 1) < 0
+            && zlink_errno() != EINTR)
             return;
     }
 }
@@ -976,7 +975,6 @@ int run_client_benchmark(const std::string &lib_name,
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
     const std::vector<size_t> msg_sizes = resolve_case_msg_sizes(fallback_size);
-
     ctx_guard_t ctx;
     if (!ctx.valid())
         return 1;
@@ -992,28 +990,20 @@ int run_client_benchmark(const std::string &lib_name,
                       << " mode=" << spot_recv_mode_name(recv_mode)
                       << std::endl;
         }
-        destroy_spot_slots(&state, &state.slots);
-        g_client_state = NULL;
-        return 1;
+        fast_exit_process(1);
     }
 
     if (!start_spot_recv_workers(&state, recv_mode)) {
-        destroy_spot_slots(&state, &state.slots);
-        g_client_state = NULL;
-        return 1;
+        fast_exit_process(1);
     }
 
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
         if (!run_single_size_case(&state, settings, lib_name, transport,
                                   msg_sizes[i])) {
-            destroy_spot_slots(&state, &state.slots);
-            g_client_state = NULL;
             fast_exit_process(1);
         }
     }
 
-    destroy_spot_slots(&state, &state.slots);
-    g_client_state = NULL;
     fast_exit_process(0);
     return 0;
 }

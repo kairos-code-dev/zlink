@@ -45,8 +45,7 @@ struct gateway_runtime_t
     uint64_t refresh_task_id;
     std::map<std::string, gateway_service_pool_t> pools;
     std::map<std::string, gateway_manual_route_t> manual_routes;
-    std::string last_service_name;
-    gateway_service_pool_t *last_pool;
+    gateway_service_pool_t *primary_pool;
     std::map<std::string, std::string> endpoint_to_service;
     std::map<std::string, std::string> routing_id_to_service;
     std::set<std::string> ready_endpoints;

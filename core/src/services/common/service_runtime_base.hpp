@@ -333,6 +333,13 @@ class service_runtime_base_t
         return _owned_sockets.size () + _closing_sockets.size ();
     }
 
+    void clear_tracked_sockets ()
+    {
+        scoped_lock_t lock (_sync);
+        _owned_sockets.clear ();
+        _closing_sockets.clear ();
+    }
+
   private:
     void erase_closing_socket (int socket_id_)
     {

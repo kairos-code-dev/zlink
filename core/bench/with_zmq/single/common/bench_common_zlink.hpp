@@ -225,7 +225,7 @@ private:
 
 inline int bench_io_threads()
 {
-    return parse_positive_env("PERF_IO_THREADS", 0);
+    return parse_positive_env("PERF_IO_THREADS", 1);
 }
 
 inline int bench_max_sockets()

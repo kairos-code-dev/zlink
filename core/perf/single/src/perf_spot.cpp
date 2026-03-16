@@ -744,22 +744,24 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
     void *pub = zlink_spot_new (pub_node, NULL);
-    void *sub = NULL;
+    void *sub = zlink_spot_new (sub_node, &spot_client_handler);
     void *sub_monitor = NULL;
     void *pub_monitor = NULL;
     service_monitor_probe_t monitor_probe;
     service_monitor_probe_t pub_monitor_probe;
-    if (!pub) {
+    if (!pub || !sub) {
         if (bench_debug_enabled ())
-            std::cerr << "[perf-spot] pub create failed err=" << zlink_errno ()
+            std::cerr << "[perf-spot] handle create failed pub="
+                      << (pub != NULL) << " sub=" << (sub != NULL)
+                      << " err=" << zlink_errno ()
                       << std::endl;
         cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
                            &pub_node);
         return 1;
     }
 
-    sub_monitor = zlink_spot_node_monitor_open (
-      sub_node,
+    sub_monitor = zlink_spot_monitor_open (
+      sub,
       ZLINK_SPOT_ROLE_SUB,
       ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
         | ZLINK_MONITOR_EVENT_ERROR,
@@ -802,7 +804,7 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    if (zlink_spot_node_subscribe (sub_node, k_topic) != 0) {
+    if (zlink_spot_subscribe (sub, k_topic) != 0) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] subscribe failed err=" << zlink_errno ()
                       << std::endl;

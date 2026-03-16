@@ -290,6 +290,7 @@ int zlink::xsub_t::sub_dispatch_stop ()
         wait_for_callbacks = g_xsub_dispatch_tls.socket != this;
     }
     stop_async_mailbox_processing ();
+    wait_async_quiesced (10000);
 
     if (!wait_for_callbacks)
         return 0;

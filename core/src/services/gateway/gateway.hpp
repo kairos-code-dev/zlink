@@ -34,6 +34,9 @@ struct gateway_service_pool_t
         std::vector<zlink_routing_id_t> routing_ids;
         std::vector<uint32_t> weights;
         std::vector<std::string> endpoints;
+        socket_base_t *router_socket;
+
+        send_snapshot_t () : router_socket (NULL) {}
     };
 
     struct control_route_t
@@ -146,7 +149,10 @@ class gateway_t : public discovery_observer_t
     void refresh_pool (gateway_service_pool_t *pool_,
                        const std::vector<provider_info_t> &providers_,
                        uint64_t seq_);
-    bool select_provider (gateway_service_pool_t *pool_, size_t *index_out_);
+    bool select_provider (
+      gateway_service_pool_t *pool_,
+      const gateway_service_pool_t::send_snapshot_t *snapshot_,
+      size_t *index_out_);
     bool find_provider_index (gateway_service_pool_t *pool_,
                               const zlink_routing_id_t *rid_,
                               size_t *index_out_);

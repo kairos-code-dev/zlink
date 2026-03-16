@@ -343,7 +343,7 @@ gateway_runtime_t::gateway_runtime_t (gateway_t *owner_) :
     router_socket (NULL),
     stop (0),
     refresh_task_id (0),
-    last_pool (NULL),
+    primary_pool (NULL),
     next_gateway_peer_report_ms (0),
     force_refresh_all (false)
 {
@@ -384,10 +384,7 @@ gateway_t::gateway_t (ctx_t *ctx_,
     }
     if (init_router_socket () != 0)
         _tag = 0xdeadbeef;
-    if (_tag == gateway_tag_value) {
-        if (ensure_refresh_task_running () != 0)
-            _tag = 0xdeadbeef;
-    } else {
+    if (_tag != gateway_tag_value) {
         _tag = 0xdeadbeef;
     }
 }
@@ -786,6 +783,9 @@ bool gateway_t::can_suspend_refresh_task () const
 gateway_service_pool_t *gateway_t::get_or_create_pool (
   const std::string &service_name_)
 {
+    if (_runtime->primary_pool && service_name_ == _service_name)
+        return _runtime->primary_pool;
+
     std::map<std::string, gateway_service_pool_t>::iterator it =
       _runtime->pools.find (service_name_);
     if (it != _runtime->pools.end ())
@@ -806,23 +806,15 @@ gateway_service_pool_t *gateway_t::get_or_create_pool (
         if (runtime && _runtime->refresh_task_id != 0)
             runtime->wakeup_task (_runtime->refresh_task_id);
     }
-    return &_runtime->pools.find (service_name_)->second;
+    gateway_service_pool_t *created = &_runtime->pools.find (service_name_)->second;
+    if (service_name_ == _service_name)
+        _runtime->primary_pool = created;
+    return created;
 }
 
 gateway_service_pool_t *gateway_t::get_or_create_pool_cached ()
 {
-    if (_service_name.empty ())
-        return NULL;
-    if (_runtime->last_pool && !_runtime->last_service_name.empty ()
-        && _runtime->last_service_name == _service_name) {
-        return _runtime->last_pool;
-    }
-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
-    if (pool) {
-        _runtime->last_service_name = _service_name;
-        _runtime->last_pool = pool;
-    }
-    return pool;
+    return _service_name.empty () ? NULL : get_or_create_pool (_service_name);
 }
 
 void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
@@ -841,6 +833,7 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
       new gateway_service_pool_t::send_snapshot_t);
     std::shared_ptr<gateway_service_pool_t::control_snapshot_t>
       next_control_snapshot (new gateway_service_pool_t::control_snapshot_t);
+    next_send_snapshot->router_socket = _runtime->router_socket;
 
     const auto resolve_provider_sources = [&]() {
         if (_discovery) {
@@ -893,9 +886,10 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
             // calls with the same CONNECT_ROUTING_ID while handshake/monitor
             // updates are still pending.
             const bool connected =
-              std::find (published->endpoints.begin (),
-                         published->endpoints.end (), endpoint)
-              != published->endpoints.end ();
+              published
+                && std::find (published->endpoints.begin (),
+                              published->endpoints.end (), endpoint)
+                     != published->endpoints.end ();
             bool inflight =
               _runtime->inflight_endpoints.find (endpoint)
               != _runtime->inflight_endpoints.end ();
@@ -910,7 +904,7 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
 
                 bool rid_conflict_connected = false;
                 for (size_t pi = 0;
-                     pi < published->routing_ids.size ()
+                     published && pi < published->routing_ids.size ()
                           && pi < published->endpoints.size ();
                      ++pi) {
                     if (published->endpoints[pi] != endpoint
@@ -974,6 +968,8 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
     const auto detach_stale_routes = [&]() {
         const gateway_service_pool_t::send_snapshot_t *published =
           pool_->send_snapshot.get ();
+        if (!published)
+            return;
         for (size_t i = 0; i < published->endpoints.size (); ++i) {
             const std::string &endpoint = published->endpoints[i];
             if (next_control_snapshot->routes_by_endpoint.find (endpoint)
@@ -1013,22 +1009,28 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
     const auto commit_refresh = [&]() {
         const gateway_service_pool_t::send_snapshot_t *published =
           pool_->send_snapshot.get ();
-        for (size_t i = 0; i < published->endpoints.size (); ++i)
-            _runtime->endpoint_to_service.erase (published->endpoints[i]);
-        for (size_t i = 0; i < published->routing_ids.size (); ++i) {
-            const std::string key = routing_id_key (published->routing_ids[i]);
-            if (!key.empty ())
-                _runtime->routing_id_to_service.erase (key);
+        if (published) {
+            for (size_t i = 0; i < published->endpoints.size (); ++i)
+                _runtime->endpoint_to_service.erase (published->endpoints[i]);
+            for (size_t i = 0; i < published->routing_ids.size (); ++i) {
+                const std::string key =
+                  routing_id_key (published->routing_ids[i]);
+                if (!key.empty ())
+                    _runtime->routing_id_to_service.erase (key);
+            }
         }
 
         next_control_snapshot->last_seen_seq = seq_;
         pool_->control_snapshot = next_control_snapshot;
-        pool_->send_snapshot =
-          std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> (
-            next_send_snapshot);
+        {
+            scoped_lock_t send_lock (_send_sync);
+            pool_->send_snapshot =
+              std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> (
+                next_send_snapshot);
+        }
         const gateway_service_pool_t::send_snapshot_t *current =
           pool_->send_snapshot.get ();
-        for (size_t i = 0; i < current->routing_ids.size (); ++i) {
+        for (size_t i = 0; current && i < current->routing_ids.size (); ++i) {
             const std::string key =
               routing_id_key (current->routing_ids[i]);
             if (!key.empty ())
@@ -1041,12 +1043,13 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
              it != pool_->control_snapshot->routes_by_endpoint.end (); ++it) {
             _runtime->endpoint_to_service[it->first] = pool_->service_name;
         }
-        for (size_t i = 0; i < current->endpoints.size (); ++i)
+        for (size_t i = 0; current && i < current->endpoints.size (); ++i)
             _runtime->endpoint_to_service[current->endpoints[i]] =
               pool_->service_name;
 
         for (size_t i = 0;
-             i < current->routing_ids.size () && i < current->endpoints.size ();
+             current && i < current->routing_ids.size ()
+               && i < current->endpoints.size ();
              ++i) {
             const std::string peer_key =
               gateway_peer_key (pool_->service_name, current->routing_ids[i]);
@@ -1072,25 +1075,28 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
     pool_->dirty = keep_dirty;
 }
 
-bool gateway_t::select_provider (gateway_service_pool_t *pool_, size_t *index_out_)
+bool gateway_t::select_provider (
+  gateway_service_pool_t *pool_,
+  const gateway_service_pool_t::send_snapshot_t *snapshot_,
+  size_t *index_out_)
 {
-    const gateway_service_pool_t::send_snapshot_t *snapshot =
-      pool_ ? pool_->send_snapshot.get () : NULL;
-    if (!snapshot || snapshot->routing_ids.empty () || !index_out_)
+    if (!pool_ || !snapshot_ || snapshot_->routing_ids.empty () || !index_out_)
         return false;
 
-    if (pool_->lb_strategy == ZLINK_GATEWAY_LB_STRATEGY_WEIGHTED
-        && !snapshot->weights.empty ()
-        && snapshot->weights.size () == snapshot->routing_ids.size ()) {
+    const size_t cursor = pool_->rr_cursor++;
+    const int lb_strategy = pool_->lb_strategy;
+
+    if (lb_strategy == ZLINK_GATEWAY_LB_STRATEGY_WEIGHTED
+        && !snapshot_->weights.empty ()
+        && snapshot_->weights.size () == snapshot_->routing_ids.size ()) {
         size_t total_weight = 0;
-        for (size_t i = 0; i < snapshot->weights.size (); ++i)
-            total_weight += snapshot->weights[i];
+        for (size_t i = 0; i < snapshot_->weights.size (); ++i)
+            total_weight += snapshot_->weights[i];
 
         if (total_weight > 0) {
-            size_t slot = pool_->rr_cursor % total_weight;
-            pool_->rr_cursor++;
-            for (size_t i = 0; i < snapshot->weights.size (); ++i) {
-                const size_t weight = snapshot->weights[i];
+            size_t slot = static_cast<size_t> (cursor % total_weight);
+            for (size_t i = 0; i < snapshot_->weights.size (); ++i) {
+                const size_t weight = snapshot_->weights[i];
                 if (slot < weight) {
                     *index_out_ = i;
                     return true;
@@ -1100,8 +1106,8 @@ bool gateway_t::select_provider (gateway_service_pool_t *pool_, size_t *index_ou
         }
     }
 
-    const size_t index = pool_->rr_cursor % snapshot->routing_ids.size ();
-    pool_->rr_cursor++;
+    const size_t index =
+      static_cast<size_t> (cursor % snapshot_->routing_ids.size ());
     *index_out_ = index;
     return true;
 }
@@ -1157,14 +1163,6 @@ int gateway_t::send_request_frames (gateway_service_pool_t *pool_,
     }
 
     const zlink_routing_id_t &rid = snapshot->routing_ids[provider_index_];
-    if ((flags_ & ZLINK_DONTWAIT) != 0) {
-        const int peer_state =
-          _runtime->router_socket->get_peer_state (rid.data, rid.size);
-        if (peer_state < 0 || (peer_state & ZLINK_POLLOUT) == 0) {
-            errno = EAGAIN;
-            return -1;
-        }
-    }
     zlink_msg_t rid_msg;
     if (zlink_msg_init_data (
           &rid_msg,
@@ -1210,51 +1208,44 @@ int gateway_t::send (zlink_msg_t *parts_, size_t part_count_, int flags_)
         return -1;
     }
 
-    socket_base_t *router_socket = NULL;
-    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
-    zlink_routing_id_t rid;
-    memset (&rid, 0, sizeof (rid));
-    {
+    if (ensure_facade_mode () != 0)
+        return -1;
+
+    gateway_service_pool_t *pool = _runtime->primary_pool;
+    if (!pool) {
         scoped_lock_t lock (_sync);
         if (ensure_facade_mode () != 0)
             return -1;
-        lock_routing_id ();
-        gateway_service_pool_t *pool = get_or_create_pool_cached ();
+        pool = get_or_create_pool_cached ();
         if (!pool) {
             errno = ENOMEM;
-            return -1;
-        }
-        snapshot = pool->send_snapshot;
-        if (!snapshot || snapshot->routing_ids.empty ()) {
-            errno = EHOSTUNREACH;
-            return -1;
-        }
-
-        size_t provider_index = 0;
-        if (snapshot->routing_ids.size () > 1
-            && !select_provider (pool, &provider_index)) {
-            errno = EHOSTUNREACH;
-            return -1;
-        }
-        if (provider_index >= snapshot->routing_ids.size ()
-            || !_runtime->router_socket) {
-            errno = ENOTSUP;
-            return -1;
-        }
-
-        rid = snapshot->routing_ids[provider_index];
-        router_socket = _runtime->router_socket;
-    }
-
-    if ((flags_ & ZLINK_DONTWAIT) != 0) {
-        const int peer_state = router_socket->get_peer_state (rid.data, rid.size);
-        if (peer_state < 0 || (peer_state & ZLINK_POLLOUT) == 0) {
-            errno = EAGAIN;
             return -1;
         }
     }
 
     scoped_lock_t send_lock (_send_sync);
+    const gateway_service_pool_t::send_snapshot_t *snapshot =
+      pool->send_snapshot.get ();
+    if (!snapshot || snapshot->routing_ids.empty () || !snapshot->router_socket) {
+        errno = EHOSTUNREACH;
+        return -1;
+    }
+
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    size_t provider_index = 0;
+    if (snapshot->routing_ids.size () > 1
+        && !select_provider (pool, snapshot, &provider_index)) {
+        errno = EHOSTUNREACH;
+        return -1;
+    }
+    if (provider_index >= snapshot->routing_ids.size ()) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    rid = snapshot->routing_ids[provider_index];
+    socket_base_t *router_socket = snapshot->router_socket;
 
     return send_parts_via_router_with_retry (router_socket, &rid, parts_,
                                              part_count_, flags_);
@@ -1500,44 +1491,31 @@ int gateway_t::send_rid (const zlink_routing_id_t *routing_id_,
                                                  part_count_);
     }
 
-    socket_base_t *router_socket = NULL;
-    {
-        scoped_lock_t lock (_sync);
-        if (ensure_facade_mode () != 0)
-            return -1;
-        if (_runtime->router_socket
-            == socket_base_t::current_socket_msg_dispatch_socket ()) {
-            pipe_t *dispatch_pipe =
-              socket_base_t::current_socket_msg_dispatch_pipe ();
-            zlink_routing_id_t dispatch_source_rid;
-            if (dispatch_pipe
-                && socket_base_t::current_socket_msg_dispatch_source_rid (
-                  &dispatch_source_rid)
-                && routing_id_equals (dispatch_source_rid, *routing_id_))
-                return send_parts_via_dispatch_pipe (dispatch_pipe, parts_,
-                                                     part_count_);
-            if (pipe_routing_id_equals (dispatch_pipe, routing_id_))
-                return send_parts_via_dispatch_pipe (dispatch_pipe, parts_,
-                                                     part_count_);
-        }
-        if (!_runtime->router_socket) {
-            errno = ENOTSUP;
-            return -1;
-        }
-        if (routing_id_->size == 0) {
-            errno = EINVAL;
-            return -1;
-        }
-        router_socket = _runtime->router_socket;
+    if (ensure_facade_mode () != 0)
+        return -1;
+    if (routing_id_->size == 0) {
+        errno = EINVAL;
+        return -1;
     }
 
-    if ((flags_ & ZLINK_DONTWAIT) != 0) {
-        const int peer_state =
-          router_socket->get_peer_state (routing_id_->data, routing_id_->size);
-        if (peer_state < 0 || (peer_state & ZLINK_POLLOUT) == 0) {
-            errno = EAGAIN;
-            return -1;
-        }
+    socket_base_t *router_socket = _runtime->router_socket;
+    if (router_socket == socket_base_t::current_socket_msg_dispatch_socket ()) {
+        pipe_t *dispatch_pipe =
+          socket_base_t::current_socket_msg_dispatch_pipe ();
+        zlink_routing_id_t dispatch_source_rid;
+        if (dispatch_pipe
+            && socket_base_t::current_socket_msg_dispatch_source_rid (
+              &dispatch_source_rid)
+            && routing_id_equals (dispatch_source_rid, *routing_id_))
+            return send_parts_via_dispatch_pipe (dispatch_pipe, parts_,
+                                                 part_count_);
+        if (pipe_routing_id_equals (dispatch_pipe, routing_id_))
+            return send_parts_via_dispatch_pipe (dispatch_pipe, parts_,
+                                                 part_count_);
+    }
+    if (!router_socket) {
+        errno = ENOTSUP;
+        return -1;
     }
 
     scoped_lock_t send_lock (_send_sync);
@@ -1766,6 +1744,7 @@ int gateway_t::update_peer_weight (const zlink_routing_id_t *routing_id_,
 
     gateway_service_pool_t *pool = get_or_create_pool (_service_name);
     if (pool) {
+        scoped_lock_t send_lock (_send_sync);
         std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> published =
           pool->send_snapshot;
         if (published) {
@@ -1779,6 +1758,7 @@ int gateway_t::update_peer_weight (const zlink_routing_id_t *routing_id_,
                     break;
                 }
             }
+            updated->router_socket = _runtime->router_socket;
             pool->send_snapshot =
               std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> (
                 updated);
@@ -2099,10 +2079,11 @@ int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
     out_->state_flags =
       _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
     gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+    scoped_lock_t send_lock (_send_sync);
+    const gateway_service_pool_t::send_snapshot_t *snapshot =
+      pool ? pool->send_snapshot.get () : NULL;
     out_->ready_peer_count =
-      pool && pool->send_snapshot
-        ? static_cast<uint32_t> (pool->send_snapshot->endpoints.size ())
-        : 0;
+      snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
     if (out_->ready_peer_count > 0)
         out_->state_flags |=
           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
@@ -2238,8 +2219,7 @@ int gateway_t::destroy ()
                                  it->second.connected_since_ms);
         }
         _runtime->pools.clear ();
-        _runtime->last_service_name.clear ();
-        _runtime->last_pool = NULL;
+        _runtime->primary_pool = NULL;
         _runtime->endpoint_to_service.clear ();
         _runtime->routing_id_to_service.clear ();
         _runtime->ready_endpoints.clear ();
@@ -2405,9 +2385,12 @@ void gateway_t::process_monitor_events ()
                     report.weight = 0;
                     std::map<std::string, gateway_service_pool_t>::iterator pit =
                       _runtime->pools.find (service_name);
-                    if (pit != _runtime->pools.end () && pit->second.send_snapshot) {
+                    if (pit != _runtime->pools.end ()) {
+                        scoped_lock_t send_lock (_send_sync);
                         const gateway_service_pool_t::send_snapshot_t *snapshot =
                           pit->second.send_snapshot.get ();
+                        if (!snapshot)
+                            continue;
                         for (size_t i = 0;
                              i < snapshot->routing_ids.size ();
                              ++i) {

@@ -1566,14 +1566,9 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         if (_node && _node->_runtime)
             spot_sub_diag_log ("destroy.before-destroy-attachment");
         if (socket && _node && _node->_runtime) {
-            if (node_shutting_down && _node_owned_default)
-                preserve_first_error (
-                  _node->_runtime->destroy_attachment_async (_attachment_id),
-                  &first_error);
-            else
-                preserve_first_error (
-                  _node->_runtime->destroy_attachment (_attachment_id),
-                  &first_error);
+            preserve_first_error (
+              _node->_runtime->destroy_attachment (_attachment_id),
+              &first_error);
         }
         if (socket && _node && _node->_runtime)
             spot_sub_diag_log ("destroy.after-destroy-attachment");

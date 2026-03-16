@@ -33,37 +33,31 @@ Phase 0의 목적은 단순하다.
 single과 multi는 **반드시 같은 기준 commit**을 사용한다.
 commit이 다르면 baseline으로 승인하지 않는다.
 
-입력 예정 항목:
-
-- baseline commit:
-- tree 상태: (clean / dirty — clean만 승인)
-- 실행 옵션 요약: (build type, compiler, OS, CPU)
-- 측정 일시:
+- baseline commit: `1901fef8`
+- tree 상태: clean
+- 실행 옵션 요약: Release, Linux 6.6.87.2-microsoft-standard-WSL2, Intel Core Ultra 7 265K (20 cores)
+- 측정 일시: 2026-03-16
 - 승인 메모:
 
 ### 2.2 single 실측 baseline
 
-입력 예정 항목:
-
-- 보고서 파일 경로:
-- runs:
-- duration_seconds:
-- io_threads:
-- patterns:
-- transports:
-- msg_sizes:
+- 보고서 파일 경로: [perf_linux_20260316_163947.txt](perf_linux_20260316_163947.txt)
+- runs: 1
+- duration_seconds: 5
+- io_threads: 2
+- patterns: PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, SPOT
+- transports: inproc, ipc, tcp, tls, ws, wss
+- msg_sizes: 64, 256, 1024, 65536, 131072, 262144
 
 ### 2.3 multi 실측 baseline
 
-입력 예정 항목:
-
-- 보고서 파일 경로:
-- build:
-- clients:
-- runs:
-- patterns:
-- transports:
-- msg_sizes:
+- 보고서 파일 경로: [perf_linux_20260316_170306.txt](perf_linux_20260316_170306.txt)
+- build: Release
+- clients: 100
+- runs: 1
+- patterns: DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, PUBSUB, GATEWAY, SPOT, STREAM_CALLBACK
+- transports: tcp, tls, ws, wss
+- msg_sizes: 64, 256, 1024, 65536, 131072, 262144
 - 승인 메모:
 
 ### 2.4 입력 규칙

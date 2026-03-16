@@ -969,6 +969,7 @@ if(TARGET test_gateway_with_handler)
   set_tests_properties(
     test_gateway_with_handler
     PROPERTIES
+      TIMEOUT 180
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_gateway_handover)

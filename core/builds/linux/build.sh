@@ -150,27 +150,10 @@ cd "$REPO_ROOT"
 if [ "$RUN_TESTS" = "ON" ]; then
     echo ""
     echo "Step 5: Running tests..."
-    cd "$BUILD_DIR"
-
-    # Build test executables
-    make -j$(nproc)
-
-    # Run tests with ctest
-    # Note: Some tests may be skipped based on platform capabilities
     TEST_DIR="$BUILD_DIR/core"
-    ctest --output-on-failure --test-dir "$TEST_DIR" -j$(nproc) || {
-        echo ""
-        echo "Some tests failed. Checking results..."
-        # Allow some tests to fail (TIPC, fuzzer tests may not work in all environments)
-        FAILED_TESTS=$(ctest --rerun-failed --output-on-failure --test-dir "$TEST_DIR" 2>&1 | grep -c "Failed" || true)
-        if [ "$FAILED_TESTS" -gt 20 ]; then
-            echo "Too many test failures ($FAILED_TESTS). Build may be broken."
-            exit 1
-        fi
-        echo "Acceptable number of test failures. Continuing..."
-    }
-
-    cd "$REPO_ROOT"
+    bash "$REPO_ROOT/core/tests/run_test_lanes.sh" \
+        --build-dir "$TEST_DIR" \
+        --include-e2e
 fi
 
 # Step 6: Verify build

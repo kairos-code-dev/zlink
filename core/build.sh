@@ -24,6 +24,8 @@ echo "=== Build ==="
 cmake --build "${BUILD_DIR}" -j"$(nproc)"
 
 echo "=== Run Tests ==="
-ctest --output-on-failure -j"$(nproc)" --test-dir "${BUILD_DIR}"
+bash "${SCRIPT_DIR}/tests/run_test_lanes.sh" \
+  --build-dir "${BUILD_DIR}" \
+  --include-e2e
 
 echo "=== Done ==="

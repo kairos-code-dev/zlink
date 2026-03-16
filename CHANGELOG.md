@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.4] - 2026-03-16
+
+### Added
+
+**Registry-Backed Topology And Monitor Coverage**
+- Added registry-backed gateway peer snapshot/query APIs and aligned topology snapshots with the current monitor lifecycle so SPOT and gateway services expose a more stable introspection surface.
+- Added delivery-ready and pair monitor readiness coverage, plus deterministic monitor teardown paths for SPOT workflows that previously depended on timing-sensitive cleanup.
+
+### Changed
+
+**Service Lifecycle Simplification**
+- Completed the SpotNode and Gateway control-plane refactor so public service operations follow tighter thread-safe socket contracts with fewer lifecycle edge cases exposed to callers.
+- Unified the direct callback receive model across the runtime, tests, and perf suites to keep the public data path consistent with the callback-only contract.
+
+### Fixed
+
+**SPOT Runtime Stability**
+- Restored multi-client benchmark and shutdown semantics, tightened WSS subscription readiness, and fixed delivery-ready synchronization gaps that could leave SPOT workloads in inconsistent startup or teardown states.
+- Preserved raw monitor teardown tracking across timeout paths and removed stale API/cleanup behavior that could interfere with repeated service bring-up/tear-down cycles.
+
 ## [5.0.3] - 2026-03-12
 
 ### Fixed

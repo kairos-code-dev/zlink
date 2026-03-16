@@ -140,6 +140,9 @@ void run_reconnect_ivl_case (const char *bind_endpoint_,
         / sizeof (reconnect_success_events[0]),
       5000);
 
+    // Ignore teardown events from the completed case before the next case
+    // reuses the global monitor callback target.
+    g_monitor_probe = NULL;
     close_monitor_handle (&monitor);
     test_context_socket_close_zero_linger (client);
     test_context_socket_close_zero_linger (server);

@@ -1069,13 +1069,17 @@ void zlink::destroy_spot_handle_for_testing (void *spot_)
         return;
 
     if (spot->sub) {
-        const int rc = spot->sub->destroy ();
+        int rc = spot->sub->destroy ();
+        if (rc != 0)
+            rc = spot->sub->destroy_from_node ();
         zlink_assert (rc == 0);
         delete spot->sub;
         spot->sub = NULL;
     }
     if (spot->pub) {
-        const int rc = spot->pub->destroy ();
+        int rc = spot->pub->destroy ();
+        if (rc != 0)
+            rc = spot->pub->destroy_from_node ();
         zlink_assert (rc == 0);
         delete spot->pub;
         spot->pub = NULL;

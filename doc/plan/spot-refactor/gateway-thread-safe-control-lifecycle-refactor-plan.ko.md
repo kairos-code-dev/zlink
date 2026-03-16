@@ -7,7 +7,7 @@
 > - 현재 `gateway`는 public API 계약과 기본 기능은 대체로 안정적이지만,
 >   control-path, monitor path, discovery attach, destroy lifecycle이
 >   같은 객체 내부에서 강하게 얽혀 있다.
-> - 현재 목표는 public API를 바꾸지 않고,
+> - 현재 목표는 필요하면 public C API도 조정하면서,
 >   `gateway`의 steady-state send path와 control/lifecycle path를
 >   더 단순하고 견고하게 정리하는 것이다.
 > - 이 문서는
@@ -46,23 +46,40 @@ gateway의 data-plane 의사결정과 control/lifecycle bookkeeping을 분리한
 
 이 문서의 범위 밖인 항목:
 
-- public `gateway` API 시그니처 변경
 - `gateway`를 multi-socket peer control architecture로 바꾸는 작업
 - discovery / registry public contract 자체의 재설계
 - perf 전용 shortcut 추가
+- 구조 단순화와 무관한 public C API 재설계
 
 ### 2.1 이번 문서가 바꾸지 않는 것
 
-이번 리팩터는 아래를 바꾸지 않는다.
+이번 리팩터는 아래를 유지한다.
 
-- public `gateway` API / ABI
 - thread-safe public contract의 의미
 - lifecycle strict errno contract의 의미
 - single router 중심 transport topology
 - discovery / registry의 공개 개념 모델
 
-즉 이 문서는 `gateway` 외형을 바꾸는 문서가 아니라,
+즉 이 문서는 `gateway` 외형을 무조건 고정하는 문서가 아니라,
 현재 public surface를 더 작은 내부 구조 위에 다시 올리는 문서다.
+
+### 2.1.1 API 변경 정책
+
+public `gateway` C API / ABI는 이번 리팩터의 절대 불변 조건은 아니다.
+state ownership 분리, lifecycle 단계화, monitor/control 경계 명확화를 위해 필요하면
+public C API도 변경할 수 있다.
+
+API 변경 허용 범위는 아래처럼 제한한다.
+
+- 허용:
+  attach/destroy/send-ready contract를 더 짧게 설명하게 만드는 정리
+- 조건부 허용:
+  runtime read API가 send snapshot/control snapshot 경계를 더 명확히 드러내는 조정
+- 금지:
+  lifecycle errno 의미 약화, thread-safe 계약 약화, topology/discovery 개념 모델 변경
+
+즉 API 변경은 "새 구조를 숨기기 위한 단순화"일 때만 허용하며,
+내부 snapshot/control 메커니즘을 public으로 노출하는 방향은 금지한다.
 
 ### 2.2 관련 문서
 
@@ -84,6 +101,146 @@ gateway의 data-plane 의사결정과 control/lifecycle bookkeeping을 분리한
 즉 실제 transport socket은 하나여도,
 hot path와 control/state bookkeeping의 ownership을 분리해 설명하기 위해
 `logical control/state plane`이라는 표현을 쓴다.
+
+### 2.4 POSD 관점에서 다시 정의한 이번 리팩터의 목적
+
+John Ousterhout의 *A Philosophy of Software Design* 관점에서 보면,
+`gateway` 리팩터의 핵심은 기능 추가가 아니라
+`gateway_t`가 떠안고 있는 복잡성을 더 작은 깊은 모듈로 재배치하는 것이다.
+
+현재 `gateway`의 복잡성은 아래 증상으로 드러난다.
+
+- **변경 증폭**: send path, discovery refresh, monitor fanout, topology report가
+  같은 runtime state를 공유해 작은 변경이 여러 경로로 번진다.
+- **인지적 부하**: `refresh_pool()` 하나를 이해하려 해도
+  connection admission, stale cleanup, peer report, monitor ordering을
+  함께 알아야 한다.
+- **미지의 미지**: destroy busy/no-latch/self-close 경계에서
+  어느 단계가 authoritative owner인지 즉시 드러나지 않는다.
+
+따라서 이번 문서의 우선순위는 다음과 같이 고정한다.
+
+1. hot path가 읽는 상태와 control path가 유지하는 상태를 분리한다.
+2. attach/refresh/detach/destroy를 시간 순서가 아니라 책임 경계로 나눈다.
+3. monitor는 route mutation의 부산물이 아니라 별도 관측 pipeline으로 취급한다.
+4. public API 사용자가 내부 state 재구성 규칙을 알 필요가 없게 만든다.
+   필요하면 이를 위해 public C API도 단순화한다.
+
+즉 `gateway`는 "한 객체에 모든 의미가 들어 있는 얕은 구조"에서
+"단순한 인터페이스 뒤에 상태 전이가 숨겨진 깊은 구조"로 이동해야 한다.
+
+### 2.5 POSD 위반 매핑으로 본 현재 `gateway` 구조 부채
+
+이 절은 현재 구조 부채를 Ousterhout의 위험 신호에 직접 매핑한다.
+
+| 위반 원칙 | 현재 구조 | 왜 문제인가 |
+| --- | --- | --- |
+| 다른 계층, 같은 추상화 | `gateway_service_pool_t`가 send target과 control metadata를 함께 담당 | send layer와 control layer가 같은 구조를 공유한다 |
+| 정보 누출 | send path가 discovery churn, weight, peer report 정보에 간접 의존 | control 결정이 send 인터페이스에 새어 나온다 |
+| 얕은 모듈 | `refresh_pool()`이 provider merge, admission, readiness, stale cleanup, commit, report를 함께 수행 | 인터페이스는 간단해 보여도 내부 복잡성이 숨겨지지 않는다 |
+| 함께 vs 분리 판단 오류 | route mutation과 monitor emit이 같은 경로에 결합 | monitor는 mutation 로직이 아니라 state delta만 알면 된다 |
+| 오류를 정의에서 제거하지 못함 | destroy가 detach, monitor close, socket close, drain wait를 한 메서드에서 섞어 처리 | busy/no-latch/terminal ordering 판단이 호출 순서 추적에 의존한다 |
+
+핵심 해석은 다음과 같다.
+
+- `send snapshot`과 `control snapshot` 분리는 단순 최적화가 아니라
+  서로 다른 계층에 서로 다른 추상화를 주는 작업이다.
+- `refresh_pool()` 분해의 핵심은 함수 길이를 줄이는 것이 아니라
+  변경 시 알아야 할 정보의 범위를 줄이는 것이다.
+- monitor pipeline 분리는 성능 최적화보다 정보 은닉 회복의 의미가 더 크다.
+
+### 2.6 핵심 깊은 모듈 선언
+
+이번 리팩터가 도입하거나 강화하는 깊은 모듈은 아래 3개다.
+각 모듈은 **무엇을 숨기는가**를 기준으로 정의한다.
+
+Ousterhout의 "깊은 모듈"은 인터페이스(폭)는 좁고 내부(깊이)는 풍부한 모듈이다.
+`gateway`의 현재 문제는 `gateway_t` 하나가 모든 의미를 직접 노출하는
+"넓고 얕은" 구조라는 점이다.
+리팩터 후에는 아래 3개의 좁고 깊은 모듈 뒤에 복잡성을 숨긴다.
+
+| 깊은 모듈 | 숨기는 것 (깊이) | 드러내는 인터페이스 (폭) |
+| --- | --- | --- |
+| **send snapshot (immutable published view)** | provider merge, weight 계산, handover gate, connection admission | immutable provider list + routing_id + weight read-only |
+| **control snapshot owner (mutable builder)** | discovery/manual route merge, topology diff | rebuild → publish 단일 경로 |
+| **report/observability pipeline** | normalized route delta 해석, monitor fanout, topology report sync | delta consume → monitor/report 반영 |
+| **destroy phase machine** | detach/monitor/socket/drain 단계 순서와 errno 결정 | `destroy()` 단일 호출 + phase별 errno 반환 |
+
+```text
+Gateway 깊은 모듈 구조 (리팩터 후)
+
+┌─ public API surface ─────────────────────────────────────┐
+│  send / send_rid / attach_discovery / destroy / ...      │ ← 좁은 인터페이스
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│  ┌─ send path ──────────────────────────────────┐        │
+│  │  read-only                                   │        │
+│  │  ┌─ send snapshot (immutable) ─────────┐     │        │
+│  │  │  provider list, routing_id, weight  │     │        │
+│  │  └──────────────────────▲──────────────┘     │        │
+│  │   + per-strategy cursor │ (별도 상태)        │        │
+│  └─────────────────────────┼────────────────────┘        │
+│                            │ publish (atomic swap)        │
+│  ┌─ control snapshot owner─┼────────────────────┐        │
+│  │  mutable builder        │                    │        │
+│  │  discovery/manual merge, weight, admission   │        │
+│  │  rebuild → send snapshot publish             │        │
+│  └──────────────────────────────────────────────┘        │
+│                            │ route delta emit            │
+│  ┌─ report/observability pipeline ──────────────┐        │
+│  │  normalized route delta consume              │        │
+│  │  monitor event bounded emit                  │        │
+│  │  topology report / peer report sync          │        │
+│  └──────────────────────────────────────────────┘        │
+│                                                          │
+│  ┌─ destroy phase machine ──────────────────────┐        │
+│  │  admission → busy check → detach → monitor   │        │
+│  │  → socket close → drain                      │        │
+│  │  각 phase: 단일 owner, 단일 errno            │        │
+│  └──────────────────────────────────────────────┘        │
+│                                                          │
+│  ┌─ router socket ──────────────────────────────┐        │
+│  │  단일 transport socket (변경 없음)           │        │
+│  └──────────────────────────────────────────────┘        │
+└──────────────────────────────────────────────────────────┘
+```
+
+### 2.7 ownership 표
+
+리팩터 완료 후 아래 ownership이 성립해야 한다.
+이 표는 "같은 리소스를 두 owner가 쓰는 경로"를 구조적으로 방지하기 위한 것이다.
+"닫지/쓰지 않는 주체" 열에 해당하는 코드 경로가 해당 리소스를 수정하면
+ownership 위반이다.
+
+```text
+ownership 흐름 요약:
+
+  control path (쓰기)          send path (읽기만)
+       │                            │
+       ▼                            │
+  ┌─ control snapshot ─┐            │
+  │  mutable builder   │            │
+  │  merge/admit/build │            │
+  └────────┬───────────┘            │
+           │ publish (atomic swap)  │
+           ▼                        ▼
+  ┌─ send snapshot ─────────────────┐
+  │  immutable published view       │
+  │  provider list, rid, weight     │
+  └─────────────────────────────────┘
+```
+
+| 리소스 / 상태 | authoritative owner | 읽기만 하는 주체 | 닫지/쓰지 않는 주체 |
+| --- | --- | --- | --- |
+| send snapshot | control snapshot owner (publish) | send path (read-only) | report/observability pipeline |
+| control/topology snapshot | control snapshot owner (mutable) | — | send path |
+| selection cursor | send path (per-strategy state) | — | control path |
+| normalized route delta | state mutation / control snapshot owner (emit) | report/observability pipeline | send path |
+| monitor event / topology report sync | report/observability pipeline (delta consume) | 사용자 monitor callback, registry | state mutation, send path |
+| destroy phase 진행 | destroy phase machine | — | send path, control path (개별 close 금지) |
+| router socket close | destroy phase machine (socket-drain phase) | — | send path, control path |
+
+"같은 리소스를 두 owner가 쓰는 경로"가 남아 있으면 리팩터가 완료된 것이 아니다.
 
 ## 3. 현재 구현 상태 점검
 
@@ -120,8 +277,9 @@ hot path와 control/state bookkeeping의 ownership을 분리해 설명하기 위
 - send-ready callback의 explicit public contract
 - lifecycle strict errno 규칙
 
-즉 이번 리팩터는 `gateway` 공개 API를 다시 설계하는 작업이 아니라,
-현재 API를 더 작은 내부 구조 위에 다시 올리는 작업이다.
+즉 이번 리팩터는 `gateway` 공개 API를 무분별하게 다시 설계하는 작업이 아니라,
+현재 API를 더 작은 내부 구조 위에 다시 올리되,
+필요한 범위에서는 public C API도 구조에 맞게 정리하는 작업이다.
 
 ### 3.3 현재 코드에 이미 반영된 점과 아직 목표만 있는 점
 
@@ -343,12 +501,70 @@ monitor는 state mutation 코드에 직접 매달린 콜백 체인이 아니라,
 provider selection, `_send_sync` 기반 실제 송신만 수행한다.
 attach/refresh/detach는 새 snapshot publish 경로로만 hot path에 반영된다.
 
+**snapshot lifecycle contract**:
+
+- `control snapshot`은 **mutable builder**다.
+  control path만 쓰기 권한을 가지며, discovery/manual route merge,
+  weight 변경, stale endpoint 정리를 수행한다.
+- `send snapshot`은 **immutable published view**다.
+  control path가 rebuild 완료 후 publish하며,
+  send path는 read-only로만 참조한다.
+- **publish 경계**: control path가 새 send snapshot을 atomic하게 교체한다.
+  교체 전 snapshot은 send path가 아직 읽고 있을 수 있으므로,
+  교체는 pointer swap 또는 동등한 visibility rule로 보장한다.
+- **visibility rule**: send path는 publish된 snapshot만 본다.
+  control path의 중간 빌드 상태는 send path에 노출되지 않는다.
+- **reclamation rule**: old snapshot의 해제는 publish와 분리한다.
+  send path가 old snapshot을 더 이상 읽지 않는 것이 보장된 뒤에만 해제한다.
+  이를 위해 refcount, epoch, shared ownership 중 하나를 설계 단계에서 고정해야 하며,
+  "교체 직후 즉시 free"는 금지한다.
+
+결정 시점은 아래처럼 고정한다.
+
+- 9.1 단계 종료 전:
+  `refcount`, `epoch`, `shared ownership` 세 대안을 아래 비교 축으로 문서화한다.
+  - (a) send hot path latency 영향: publish/read 경로에 추가되는 연산 비용
+  - (b) control path 구현 복잡성: rebuild/publish/reclaim 경로의 코드 인지 부하
+  - (c) ABA/use-after-free 구조적 방지 강도: 설계 수준에서 오용 가능성이 제거되는 정도
+  owner: control snapshot owner 초안 작성, send path owner 검토
+- 9.2 단계 시작 전:
+  reclaim 전략 하나를 확정하고 나머지는 폐기한다.
+  owner: service runtime maintainer 또는 동등한 구조 owner
+- 9.2 완료 기준:
+  old snapshot reclamation owner와 free 시점이 코드/주석/테스트에서 한 모델로 설명된다.
+
 **selection cursor 분리**: send snapshot 자체는 immutable이므로,
 RR/weighted selection에 사용되는 `rr_index` 같은 cursor 상태는
 snapshot 내부에 둘 수 없다. cursor는 send path 전용 atomic 상태이거나
 `_send_sync` 보호 하에 별도 per-strategy state로 분리한다.
 snapshot은 provider 목록·weight·routing_id만 담고,
 cursor 증가는 snapshot 교체와 독립적으로 진행된다.
+
+cursor 설계는 최소 두 대안을 비교하고 선택한다.
+
+- 대안 A:
+  `_send_sync` 보호 하의 per-strategy cursor
+- 대안 B:
+  atomic 기반 cursor 외부화
+
+권장 방향:
+
+- RR은 대안 B를 우선 검토한다.
+- weighted는 modulo/weight 합산 규칙 때문에 대안 A가 더 자연스러울 수 있다.
+
+즉 cursor는 "하나의 구현으로 통일"이 목표가 아니라,
+strategy별 복잡성을 가장 낮게 만드는 것이 목표다.
+
+결정 시점은 아래처럼 고정한다.
+
+- 9.1 단계 종료 전:
+  RR cursor와 weighted cursor를 같은 구조로 둘지 분리할지 결정한다.
+  owner: send path owner
+- 9.2 단계 시작 전:
+  strategy별 cursor owner와 synchronization 규칙을 확정한다.
+  owner: send path owner + control snapshot owner 공동 승인
+- 9.2 완료 기준:
+  snapshot 교체와 cursor 증가가 서로 독립이라는 점을 코드와 주석에서 바로 읽을 수 있다.
 
 ### 8.2 attach_discovery 선형화 명확화
 
@@ -385,23 +601,98 @@ registry topology/gateway-peer report 갱신이 같은 경로에 결합돼 있�
 2. **observability fanout**: monitor event 정규화 및 bounded emit
 3. **registry/report side-effect**: topology report sync, peer report 갱신
 
-이 구조로 바꾸면
-route churn과 event fanout 비용을 별도로 다룰 수 있고,
-report side-effect가 hot path에 간접 영향을 주는 것을 방지한다.
+**계층 간 연결 모델: normalized route delta**
+
+세 계층을 연결하는 단일 입력 모델로 `gateway_route_delta_t`
+(또는 동등한 normalized event 타입)를 도입한다.
+이 타입은 mutation의 원시 세부가 아니라 정규화된 변경 의미만 담는다.
+
+```text
+monitor pipeline 정보 흐름 (리팩터 후)
+
+  ┌─ state mutation ──────────┐
+  │  provider add/remove      │
+  │  weight change            │  mutation 코드에는
+  │  stale cleanup            │  monitor emit 호출 없음
+  └───────────┬───────────────┘
+              │ gateway_route_delta_t (정규화된 변경 의미)
+              │
+       ┌──────┴──────┐
+       ▼             ▼
+  ┌─ observability ┐  ┌─ report sync ──┐
+  │  fanout        │  │  topology diff │
+  │  monitor event │  │  peer report   │
+  │  bounded emit  │  │  갱신          │
+  └────────────────┘  └────────────────┘
+       │                    │
+       ▼                    ▼
+  사용자 monitor         registry
+  callback              갱신
+```
+
+- state mutation 계층은 route 변경 시 이 delta만 발행한다.
+- observability fanout과 report sync는 이 delta를 **소비만** 한다.
+- mutation 코드에 monitor emit이나 report sync 호출이 직접 들어가지 않는다.
+
+이 모델이 성립하면:
+- 새 monitor event 추가 시 mutation 코드 수정이 필요 없다.
+- report sync 규칙 변경 시 fanout 계층에 영향이 없다.
+- route churn과 event fanout 비용을 별도로 다룰 수 있다.
+- 수용 기준: "새 monitor event 추가 시 state mutation 코드 수정 없음"으로 판단한다.
 
 ### 8.4 destroy 단계 정규화
 
-destroy는 아래 순서로 고정한다.
+destroy는 아래 순서로 고정하며, 각 phase의 **authoritative owner**를 명시한다.
 
-1. close admission 시작
-2. busy children / callback inflight 검사
-3. discovery/control detach
-4. monitor terminal close
-5. internal socket close
-6. tracked drain wait
+| # | phase | owner | 정리 대상 리소스 (§2.7 매핑) | 입력 상태 | 출력 상태 | 실패 errno |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | admission gate | `service_public_api_guard_t` | — (gate만 설정) | open | closing_bit set | `EBUSY` (inflight 존재 시) |
+| 2 | busy check | admission owner | — (확인만 수행) | closing_bit set | inflight == 0 확인 | `EBUSY` (callback inflight) |
+| 3 | control detach | control snapshot owner | control/topology snapshot, normalized route delta | attached | detached | — |
+| 4 | monitor terminal | observability fanout | monitor event / topology report sync | active | terminal event emitted, closed | — |
+| 5 | socket close | destroy phase machine | router socket close | sockets open | sockets closed | — |
+| 6 | drain wait | destroy phase machine | destroy phase 진행 (terminal) | tracked pending | tracked == 0 | timeout (abortive) |
 
-각 단계는 실패 의미가 달라야 하며,
-같은 리소스를 여러 단계가 중복 close하지 않게 해야 한다.
+```text
+destroy phase 흐름 (리팩터 후)
+
+  destroy() 호출
+       │
+       ▼
+  ┌─ 1. admission gate ────────────┐
+  │  closing_bit set               │──→ EBUSY (inflight 존재)
+  └────────────┬───────────────────┘
+               ▼
+  ┌─ 2. busy check ────────────────┐
+  │  inflight == 0 확인            │──→ EBUSY (callback inflight)
+  └────────────┬───────────────────┘
+               ▼
+  ┌─ 3. control detach ────────────┐
+  │  owner: control snapshot owner │
+  │  discovery/manual route 정리   │
+  └────────────┬───────────────────┘
+               ▼
+  ┌─ 4. monitor terminal ──────────┐
+  │  owner: observability fanout   │
+  │  terminal event emit + close   │
+  └────────────┬───────────────────┘
+               ▼
+  ┌─ 5. socket close ──────────────┐
+  │  owner: destroy phase machine  │
+  │  internal socket close         │
+  └────────────┬───────────────────┘
+               ▼
+  ┌─ 6. drain wait ────────────────┐
+  │  owner: destroy phase machine  │
+  │  tracked == 0 대기             │──→ timeout (abortive)
+  └────────────────────────────────┘
+```
+
+핵심 규칙:
+
+- 같은 리소스를 두 phase가 close하지 않는다.
+- 각 phase는 자기 owner 범위의 리소스만 정리한다.
+- "누가 정리했고 무엇이 남았는가"를 phase 이름만으로 설명할 수 있어야 한다.
 
 destroy 단계화는 cleanup 순서 정리만이 아니라
 public API admission contract를 보존해야 한다.
@@ -440,6 +731,13 @@ callback 내부 self-close 역시 동일 계약을 따라야 한다.
 - 각 상태의 authoritative owner가 문서와 코드에서 1:1로 대응된다.
 - send path가 실제로 어떤 상태에 의존하는지 식별돼 있다.
 
+POSD 판단 기준:
+
+- 각 state의 인터페이스 주석을 다른 state에 대한 지식 없이 3문장으로 쓸 수 있어야 한다.
+- state 간 의존 관계를 그렸을 때 순환이 있으면 ownership이 분리되지 않은 것이다.
+- "이 state는 누가 쓰고 누가 읽는가"를 한 문장으로 답할 수 없으면
+  아직 ownership이 명확하지 않은 것이다.
+
 ### 9.2 2단계: send snapshot 분리
 
 `gateway_service_pool_t` 또는 동등한 구조를
@@ -450,6 +748,14 @@ hot-path snapshot과 control snapshot으로 분리한다.
 - `send()` / `send_rid()`가 읽는 자료구조가 control metadata 없이 설명된다.
 - discovery churn과 weight update가 send path와 분리된 refresh 경로를 가진다.
 
+POSD 판단 기준:
+
+- send path를 설명할 때 discovery/report/monitor 규칙을 같이 설명해야 하면 실패다.
+- hot path 자료구조는 작고 깊어야 하며,
+  "무엇을 보지 않아도 되는가"가 분명해야 한다.
+- selection cursor 분리는 "두 번 설계하라" 원칙을 적용할 대표 지점이다.
+  RR과 weighted가 같은 cursor 구조를 반드시 공유할 필요는 없다.
+
 ### 9.3 3단계: attach / refresh / detach 전이 분리
 
 attach, refresh, detach를 서로 다른 전이로 나눈다.
@@ -457,20 +763,47 @@ attach, refresh, detach를 서로 다른 전이로 나눈다.
 현재 `refresh_pool()`은 ~200줄에 달하는 메서드로,
 monitor drain, provider source merge, connect admission, readiness 확인,
 stale endpoint 정리, snapshot commit, peer report 갱신을 함께 수행한다.
-리팩터 후에는 최소한 다음 단계로 분해한다.
 
-1. provider source resolve (discovery + manual merge)
-2. connection admission / handover gate 판단
-3. send snapshot build (hot path에 publish할 immutable snapshot)
-4. control snapshot / report diff 적용
+리팩터의 핵심은 "큰 함수를 작은 함수 4개로 나누는 것"이 아니라,
+**각 owner가 자기 상태만 갱신하는 구조**로 바꾸는 것이다.
+
+분해 후 각 단계와 소유 경계:
+
+| # | 단계 | authoritative owner | 쓰는 상태 | 읽기만 하는 상태 |
+| --- | --- | --- | --- | --- |
+| 1 | control snapshot rebuild | control snapshot owner | discovery/manual route, weight, stale cleanup | — |
+| 2 | connection admission | control snapshot owner | handover gate, connect decision | rebuild 결과 |
+| 3 | send snapshot publish | control snapshot owner → send snapshot | immutable send view 교체 | rebuild 결과 |
+| 4 | report/observability diff | report/observability pipeline | topology report, monitor fanout | 이전/이후 snapshot diff, normalized route delta |
+
+핵심은 단계 순서가 아니라 **소유 경계**다.
+1-3은 control snapshot owner가 수행하고,
+4는 report/observability pipeline이 delta를 소비만 한다.
+send path는 이 과정에 전혀 참여하지 않으며,
+publish된 새 snapshot을 다음 send에서 read-only로 볼 뿐이다.
 
 완료 기준:
 
 - `attach_discovery()` ordering을 별도 상태도 없이 문장으로 설명할 수 있다.
 - discovery destroyed callback이 send path를 직접 오염시키지 않는다.
-- `refresh_pool()`이 위 4단계로 분해되어 각 단계를 독립적으로 설명할 수 있다.
+- `refresh_pool()`이 위 ownership 경계로 분해되어
+  각 owner의 책임을 독립적으로 설명할 수 있다.
+
+POSD 판단 기준:
+
+- 시간적 분해(절차 순서)가 아니라 정보 경계(누가 무엇을 독점 소유하는가)
+  기준으로 나뉘어야 한다.
+- 분해 후에도 4개 함수가 같은 shared mutable state를 만지면
+  변경 증폭은 그대로 남는다.
+- 각 owner 이름만으로 책임을 말할 수 있어야 한다.
 
 ### 9.4 4단계: monitor pipeline 분리
+
+`gateway_route_delta_t`(또는 동등한 normalized event 타입)를
+이 단계에서 정의하고 도입한다.
+9.3에서 이미 report/observability diff 단계가 delta를 소비하는 구조를 준비했으므로,
+이 단계에서는 delta 타입의 실체를 확정하고
+mutation 코드에서 monitor emit을 제거하여 delta 소비 pipeline으로 대체한다.
 
 route up/down, send-ready changed, service ready/lost, closed/error를
 직접 emit하지 말고
@@ -482,6 +815,12 @@ route up/down, send-ready changed, service ready/lost, closed/error를
 - `monitor_service_contract`와 gateway monitor 회귀가
   더 단순한 state change 설명으로 통과한다.
 
+POSD 판단 기준:
+
+- monitor는 "관측 결과"여야 하며 state mutation의 부수효과가 아니어야 한다.
+- event ordering 설명이 route mutation 코드 주석에 숨어 있으면 실패다.
+- monitor 계층은 route mutation helper에 대한 패스스루 wrapper가 되어서는 안 된다.
+
 ### 9.5 5단계: destroy 선형화 정리
 
 destroy를 단계화하고, 각 단계의 errno 의미를 고정한다.
@@ -492,6 +831,12 @@ destroy를 단계화하고, 각 단계의 errno 의미를 고정한다.
   코드에서 직접 읽을 수 있다.
 - `gateway` destroy가 “한 메서드에서 여러 cleanup을 순차 호출하는 코드”가 아니라
   의도된 단계 전이처럼 보인다.
+
+POSD 판단 기준:
+
+- destroy의 의미를 이해하기 위해 cleanup call sequence를 추적해야 하면 안 된다.
+- 단계 이름만으로 책임을 말할 수 있어야 한다.
+- "누가 정리했고 무엇이 남았는가"를 한 단계 이름으로 설명할 수 있어야 한다.
 
 ### 9.6 6단계: thread-safe / perf 검증 재정렬
 
@@ -508,6 +853,15 @@ destroy를 단계화하고, 각 단계의 errno 의미를 고정한다.
 - correctness 회귀와 perf-contract 측정이
   같은 구조 모델로 설명된다.
 - “테스트는 통과하지만 구조 설명이 안 되는 상태”를 남기지 않는다.
+
+POSD 판단 기준:
+
+- 테스트가 통과하는 이유를 구조 모델로 설명할 수 있어야 한다.
+  “왜 통과하는지 모르지만 통과한다”는 미지의 미지를 남긴 것이다.
+- perf 회귀가 있을 때 “어느 추상화 경계에서 비용이 발생하는가”를
+  구조 용어로 지목할 수 있어야 한다.
+- 검증 항목을 나열할 때 send/control/monitor/lifecycle 중
+  어느 계층의 검증인지 분류되지 않으면 구조 분리가 부족한 것이다.
 
 ## 10. 검증 항목
 
@@ -564,6 +918,7 @@ destroy를 단계화하고, 각 단계의 errno 의미를 고정한다.
 2. attach/destroy ordering을 더 명시적으로 만드는가
 3. monitor 의미를 더 단순하게 설명하게 만드는가
 4. public API 계약을 약화하지 않는가
+   필요하면 계약을 더 단순하게 만드는 방향으로 public C API를 조정할 수는 있다.
 
 위 네 조건을 동시에 만족하지 못하면
 구조 변경보다 증상 이동일 가능성이 크다.
@@ -577,6 +932,8 @@ destroy를 단계화하고, 각 단계의 errno 의미를 고정한다.
 - monitor fanout이 route mutation의 직접 부산물이 아니라 별도 pipeline으로 보인다.
 - destroy lifecycle이 단계별로 나뉘고,
   busy/no-latch/terminal event 규칙이 선형화돼 있다.
+- 필요 시 public C API 변경이 있더라도,
+  attach/destroy/send-ready 계약이 더 짧고 명확하게 설명된다.
 - 현재 thread-safe 회귀와 scaling 회귀가 모두 안정적으로 통과한다.
 
 ### 12.2 성능 비후퇴 기준
@@ -618,3 +975,96 @@ destroy를 단계화하고, 각 단계의 errno 의미를 고정한다.
 - **send-ready reentrant/self-close contract**: send-ready callback 내부에서
   handle destroy 시 `EBUSY`를 반환하며, callback이 완료될 때까지
   실제 close가 지연되어야 한다.
+
+## 15. POSD 기반 최종 판단 질문
+
+구현이나 코드 리뷰에서 판단이 애매하면 아래 질문으로 되돌아간다.
+
+1. `gateway_t`가 여전히 너무 많은 의미를 직접 소유하고 있지 않은가?
+2. send path를 이해하기 위해 control/topology/report 상태를 알아야 하는가?
+3. attach/refresh/detach/destroy를 각각 독립된 추상화로 설명할 수 있는가?
+4. monitor가 route mutation의 부산물처럼 보인다면
+   구조는 아직 충분히 깊어지지 않은 것이다.
+
+위 질문에 하나라도 "아니오"가 나오면
+이번 리팩터는 아직 POSD 관점에서 완료된 것이 아니다.
+
+## 16. API/계약 고정점
+
+리팩터 중에도 아래 contract는 유지하거나, 변경 시 문서에서 명시적으로 재정의해야 한다.
+
+- `send()` / `send_rid()`는 control snapshot 내부 구조를 직접 노출하지 않아야 한다.
+- attach/destroy/send-ready errno 계약은 더 짧게 설명 가능해져야지,
+  더 많은 내부 상태 설명을 요구해서는 안 된다.
+- runtime read API는 "published snapshot read"라는 성격이 분명해야 한다.
+
+이 셋 중 하나라도 현재 public C API가 방해한다면,
+API 변경은 허용된다. 단 변경 결과가 더 깊은 모듈을 만들어야 한다.
+
+## 17. POSD 기반 완료 판정법
+
+### 17.1 3문장 인터페이스 테스트
+
+리팩터 완료 후 아래 대상은 각각 3문장 이내로 설명 가능해야 한다.
+
+- send snapshot:
+  immutable provider selection view다.
+  control path가 publish하고 send path는 read만 한다.
+  topology/report/discovery 세부는 포함하지 않는다.
+- control snapshot:
+  discovery/manual route/weight/report를 담는 control plane state다.
+  send path가 직접 해석하지 않는다.
+  send snapshot을 재생성하는 근거 역할만 한다.
+- destroy:
+  detach phase, monitor phase, socket-drain phase로 나뉜다.
+  각 phase는 한 종류의 ownership만 행사한다.
+  busy/no-latch/terminal closed 규칙은 phase 경계로 설명된다.
+
+3문장으로 설명이 길어지거나 예외 설명이 주가 되면
+추상화가 아직 얕은 것이다.
+
+### 17.2 변경 증폭 리트머스 테스트
+
+아래 변경이 한 곳 또는 한 계층에서 끝나야 한다.
+
+| 변경 시나리오 | 리팩터 후 기대 영향 범위 |
+| --- | --- |
+| 새 LB strategy 추가 | send snapshot + strategy별 cursor 계층 |
+| monitor event 종류 추가 | normalized event fanout 계층 |
+| attach ordering 규칙 수정 | attach/refresh/detach transition 계층 |
+| topology/report 규칙 수정 | control snapshot / report diff 계층 |
+
+이 테스트를 통과하지 못하면 구조 분리가 아직 충분하지 않은 것이다.
+
+## 18. 현재 코드 기준 상태표
+
+이 표는 현재 workspace 코드 기준 평가이며,
+문서 목표 달성 여부를 `완료 / 부분 / 미완료`로 표시한다.
+
+### 18.1 단계별 상태
+
+| 항목 | 상태 | 메모 |
+| --- | --- | --- |
+| 9.1 state ownership 문서화 | 부분 | 문서 기준 owner 구분은 생겼지만 코드 구조는 아직 단일 runtime state에 많이 의존 |
+| 9.2 send snapshot 분리 | 부분 | `refresh_pool()` 단계 분해는 진행됐지만 hot-path snapshot / control snapshot 실체 분리는 미완료 |
+| 9.3 attach / refresh / detach 전이 분리 | 부분 | 단계 의도는 코드에 일부 드러나지만 독립 state owner 구조는 아직 부족 |
+| 9.4 monitor pipeline 분리 | 미완료 | monitor emit이 여전히 route mutation 경로와 가까움 |
+| 9.5 destroy 선형화 정리 | 부분 | destroy phase가 코드상 읽히도록 정리됐지만 authoritative owner 분리는 아직 더 필요 |
+| 9.6 thread-safe / perf 검증 재정렬 | 부분 | 회귀 테스트는 유지되지만 새 구조 모델과 검증의 1:1 대응은 아직 미완료 |
+
+### 18.2 수용 기준 상태
+
+| 항목 | 상태 | 메모 |
+| --- | --- | --- |
+| send path가 control metadata 없이 설명 가능 | 부분 | 의도는 반영됐지만 자료구조 분리 자체는 아직 미완료 |
+| attach/detach/refresh ordering 선형화 | 부분 | 설명은 쉬워졌으나 코드 owner 분리는 더 필요 |
+| monitor fanout 분리 | 미완료 | normalized event pipeline이 독립 계층으로 완성되지 않음 |
+| destroy lifecycle 단계화 | 부분 | 단계 이름은 생겼지만 세부 ownership을 더 좁혀야 함 |
+| thread-safe/scaling 구조 설명 가능성 | 부분 | 테스트는 유지되나 구조 모델과 정확히 대응되지는 않음 |
+
+### 18.3 다음 우선순위
+
+1. hot-path send snapshot과 control snapshot 실체 분리
+2. snapshot publish/reclamation 모델 확정
+3. monitor normalized event pipeline 독립화
+4. destroy phase별 authoritative owner를 코드 구조로 고정

@@ -828,8 +828,6 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
 
     process_monitor_events ();
     bool keep_dirty = false;
-
-    // 2) Build routing_id map by endpoint for this service.
     std::vector<std::string> next_endpoints;
     std::vector<zlink_routing_id_t> next_routing_ids;
     std::vector<uint32_t> next_weights;
@@ -840,25 +838,31 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
     };
     std::map<std::string, provider_route_t> routing_map;
 
-    if (_discovery) {
-        for (size_t i = 0; i < providers.size (); ++i) {
-            const provider_info_t &entry = providers[i];
-            provider_route_t route = {entry.routing_id, entry.weight};
-            routing_map[entry.endpoint] = route;
+    const auto resolve_provider_sources = [&]() {
+        if (_discovery) {
+            for (size_t i = 0; i < providers.size (); ++i) {
+                const provider_info_t &entry = providers[i];
+                provider_route_t route = {entry.routing_id, entry.weight};
+                routing_map[entry.endpoint] = route;
+            }
+            return;
         }
-    } else if (pool_->service_name == _service_name) {
+
+        if (pool_->service_name != _service_name)
+            return;
+
         for (std::map<std::string, gateway_manual_route_t>::const_iterator it =
                _runtime->manual_routes.begin ();
              it != _runtime->manual_routes.end (); ++it) {
             provider_route_t route = {it->second.routing_id, it->second.weight};
             routing_map[it->first] = route;
         }
-    }
+    };
 
-    // 3) Connect and keep only peers that are actually ready (POLLOUT).
-    for (std::map<std::string, provider_route_t>::const_iterator it =
-           routing_map.begin ();
-         it != routing_map.end (); ++it) {
+    const auto build_send_snapshot = [&]() {
+        for (std::map<std::string, provider_route_t>::const_iterator it =
+               routing_map.begin ();
+             it != routing_map.end (); ++it) {
         const std::string &endpoint = it->first;
         const zlink_routing_id_t &rid = it->second.rid;
         const std::string rid_key = routing_id_key (rid);
@@ -950,13 +954,15 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
         next_endpoints.push_back (endpoint);
         next_routing_ids.push_back (rid);
         next_weights.push_back (weight);
-    }
+        }
+    };
 
-    // 4) Disconnect endpoints that disappeared from the active route source.
-    //    Readiness is transient; do not term on temporary not-ready.
-    for (size_t i = 0; i < pool_->endpoints.size (); ++i) {
-        const std::string &endpoint = pool_->endpoints[i];
-        if (routing_map.find (endpoint) == routing_map.end ()) {
+    const auto detach_stale_routes = [&]() {
+        for (size_t i = 0; i < pool_->endpoints.size (); ++i) {
+            const std::string &endpoint = pool_->endpoints[i];
+            if (routing_map.find (endpoint) != routing_map.end ())
+                continue;
+
             if (i < pool_->routing_ids.size ()) {
                 const zlink_routing_id_t &removed_rid = pool_->routing_ids[i];
                 const std::string peer_key =
@@ -984,49 +990,57 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
             _runtime->inflight_rid_by_endpoint.erase (endpoint);
             _runtime->ready_endpoints.erase (endpoint);
         }
-    }
+    };
 
-    // 5) Commit refreshed pool.
-    for (size_t i = 0; i < pool_->endpoints.size (); ++i) {
-        _runtime->endpoint_to_service.erase (pool_->endpoints[i]);
-    }
-    for (size_t i = 0; i < pool_->routing_ids.size (); ++i) {
-        const std::string key = routing_id_key (pool_->routing_ids[i]);
-        if (!key.empty ())
-            _runtime->routing_id_to_service.erase (key);
-    }
-    pool_->endpoints.swap (next_endpoints);
-    pool_->routing_ids.swap (next_routing_ids);
-    pool_->weights.swap (next_weights);
-    for (size_t i = 0; i < pool_->routing_ids.size (); ++i) {
-        const std::string key = routing_id_key (pool_->routing_ids[i]);
-        if (!key.empty ())
-            _runtime->routing_id_to_service[key] = pool_->service_name;
-    }
-    // Track endpoint->service for monitor event routing.
-    for (std::map<std::string, provider_route_t>::const_iterator it =
-           routing_map.begin ();
-         it != routing_map.end (); ++it) {
-        _runtime->endpoint_to_service[it->first] = pool_->service_name;
-    }
-    for (size_t i = 0; i < pool_->endpoints.size (); ++i) {
-        _runtime->endpoint_to_service[pool_->endpoints[i]] = pool_->service_name;
-    }
-    for (size_t i = 0; i < pool_->routing_ids.size () && i < pool_->endpoints.size ();
-         ++i) {
-        const std::string peer_key =
-          gateway_peer_key (pool_->service_name, pool_->routing_ids[i]);
-        if (peer_key.empty ())
-            continue;
-        gateway_runtime_t::gateway_peer_report_t &report =
-          _runtime->ready_peer_reports[peer_key];
-        if (report.connected_since_ms == 0)
-            report.connected_since_ms = _runtime->clock.now_ms ();
-        report.service_name = pool_->service_name;
-        report.peer_endpoint = pool_->endpoints[i];
-        report.peer_routing_id = pool_->routing_ids[i];
-        report.weight = i < pool_->weights.size () ? pool_->weights[i] : 0;
-    }
+    const auto commit_refresh = [&]() {
+        for (size_t i = 0; i < pool_->endpoints.size (); ++i)
+            _runtime->endpoint_to_service.erase (pool_->endpoints[i]);
+        for (size_t i = 0; i < pool_->routing_ids.size (); ++i) {
+            const std::string key = routing_id_key (pool_->routing_ids[i]);
+            if (!key.empty ())
+                _runtime->routing_id_to_service.erase (key);
+        }
+
+        pool_->endpoints.swap (next_endpoints);
+        pool_->routing_ids.swap (next_routing_ids);
+        pool_->weights.swap (next_weights);
+        for (size_t i = 0; i < pool_->routing_ids.size (); ++i) {
+            const std::string key = routing_id_key (pool_->routing_ids[i]);
+            if (!key.empty ())
+                _runtime->routing_id_to_service[key] = pool_->service_name;
+        }
+
+        for (std::map<std::string, provider_route_t>::const_iterator it =
+               routing_map.begin ();
+             it != routing_map.end (); ++it) {
+            _runtime->endpoint_to_service[it->first] = pool_->service_name;
+        }
+        for (size_t i = 0; i < pool_->endpoints.size (); ++i)
+            _runtime->endpoint_to_service[pool_->endpoints[i]] =
+              pool_->service_name;
+
+        for (size_t i = 0;
+             i < pool_->routing_ids.size () && i < pool_->endpoints.size ();
+             ++i) {
+            const std::string peer_key =
+              gateway_peer_key (pool_->service_name, pool_->routing_ids[i]);
+            if (peer_key.empty ())
+                continue;
+            gateway_runtime_t::gateway_peer_report_t &report =
+              _runtime->ready_peer_reports[peer_key];
+            if (report.connected_since_ms == 0)
+                report.connected_since_ms = _runtime->clock.now_ms ();
+            report.service_name = pool_->service_name;
+            report.peer_endpoint = pool_->endpoints[i];
+            report.peer_routing_id = pool_->routing_ids[i];
+            report.weight = i < pool_->weights.size () ? pool_->weights[i] : 0;
+        }
+    };
+
+    resolve_provider_sources ();
+    build_send_snapshot ();
+    detach_stale_routes ();
+    commit_refresh ();
     pool_->dirty = keep_dirty;
     pool_->last_seen_seq = seq_;
 }
@@ -2130,70 +2144,87 @@ int gateway_t::destroy ()
         runtime->remove_task (_runtime->refresh_task_id);
     gateway_diag_log ("destroy.after-remove-task");
     _runtime->refresh_task_id = 0;
-    if (_discovery)
-        _discovery->remove_observer (this);
-    if (_discovery && !_server_service_name.empty () && !_advertise_endpoint.empty ()) {
-        const std::string service_name (_server_service_name);
-        const std::string endpoint (_advertise_endpoint);
-        (void) _discovery->unregister_service (
-          discovery_protocol::service_type_gateway_receiver,
-          _server_service_name.c_str (), _advertise_endpoint.c_str ());
-        report_topology (service_name, endpoint, ZLINK_TOPOLOGY_STATE_STOPPED, 0,
-                         0);
-    }
-    if (!_bind_endpoint.empty ())
-        endpoints_to_term.insert (_bind_endpoint);
-    endpoints_to_term.insert (_runtime->ready_endpoints.begin (),
-                              _runtime->ready_endpoints.end ());
-    endpoints_to_term.insert (_runtime->inflight_endpoints.begin (),
-                              _runtime->inflight_endpoints.end ());
-    endpoints_to_term.insert (_runtime->down_endpoints.begin (),
-                              _runtime->down_endpoints.end ());
-    for (std::map<std::string, gateway_runtime_t::gateway_peer_report_t>::const_iterator
-           it = _runtime->ready_peer_reports.begin ();
-         it != _runtime->ready_peer_reports.end (); ++it) {
-        report_gateway_peer (it->second.service_name, it->second.peer_endpoint,
-                             it->second.peer_routing_id, it->second.weight,
-                             ZLINK_TOPOLOGY_STATE_STOPPED,
-                             it->second.connected_since_ms);
-    }
-    _runtime->pools.clear ();
-    _runtime->last_service_name.clear ();
-    _runtime->last_pool = NULL;
-    _runtime->endpoint_to_service.clear ();
-    _runtime->routing_id_to_service.clear ();
-    _runtime->ready_endpoints.clear ();
-    _runtime->inflight_endpoints.clear ();
-    _runtime->inflight_rid_by_endpoint.clear ();
-    _runtime->rid_connect_not_before_ms.clear ();
-    _runtime->down_endpoints.clear ();
-    _runtime->down_until_ms.clear ();
-    _runtime->ready_peer_reports.clear ();
-    _runtime->next_gateway_peer_report_ms = 0;
-    _runtime->force_refresh_all = false;
-    _runtime->pending_updates.clear ();
-    zlink_service_event_t terminal;
-    memset (&terminal, 0, sizeof (terminal));
-    terminal.service_kind = ZLINK_SERVICE_KIND_GATEWAY;
-    terminal.event_type = ZLINK_MONITOR_EVENT_CLOSED;
-    terminal.detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
-    terminal.routing_id = _routing_id;
-    _monitor.close_all (&terminal);
+    const auto destroy_detach_phase = [&]() {
+        if (_discovery)
+            _discovery->remove_observer (this);
+        if (_discovery && !_server_service_name.empty ()
+            && !_advertise_endpoint.empty ()) {
+            const std::string service_name (_server_service_name);
+            const std::string endpoint (_advertise_endpoint);
+            (void) _discovery->unregister_service (
+              discovery_protocol::service_type_gateway_receiver,
+              _server_service_name.c_str (), _advertise_endpoint.c_str ());
+            report_topology (service_name, endpoint,
+                             ZLINK_TOPOLOGY_STATE_STOPPED, 0, 0);
+        }
+        if (!_bind_endpoint.empty ())
+            endpoints_to_term.insert (_bind_endpoint);
+        endpoints_to_term.insert (_runtime->ready_endpoints.begin (),
+                                  _runtime->ready_endpoints.end ());
+        endpoints_to_term.insert (_runtime->inflight_endpoints.begin (),
+                                  _runtime->inflight_endpoints.end ());
+        endpoints_to_term.insert (_runtime->down_endpoints.begin (),
+                                  _runtime->down_endpoints.end ());
+        for (std::map<std::string,
+                      gateway_runtime_t::gateway_peer_report_t>::const_iterator
+               it = _runtime->ready_peer_reports.begin ();
+             it != _runtime->ready_peer_reports.end (); ++it) {
+            report_gateway_peer (it->second.service_name,
+                                 it->second.peer_endpoint,
+                                 it->second.peer_routing_id, it->second.weight,
+                                 ZLINK_TOPOLOGY_STATE_STOPPED,
+                                 it->second.connected_since_ms);
+        }
+        _runtime->pools.clear ();
+        _runtime->last_service_name.clear ();
+        _runtime->last_pool = NULL;
+        _runtime->endpoint_to_service.clear ();
+        _runtime->routing_id_to_service.clear ();
+        _runtime->ready_endpoints.clear ();
+        _runtime->inflight_endpoints.clear ();
+        _runtime->inflight_rid_by_endpoint.clear ();
+        _runtime->rid_connect_not_before_ms.clear ();
+        _runtime->down_endpoints.clear ();
+        _runtime->down_until_ms.clear ();
+        _runtime->ready_peer_reports.clear ();
+        _runtime->next_gateway_peer_report_ms = 0;
+        _runtime->force_refresh_all = false;
+        _runtime->pending_updates.clear ();
+    };
+
+    const auto destroy_monitor_phase = [&]() {
+        zlink_service_event_t terminal;
+        memset (&terminal, 0, sizeof (terminal));
+        terminal.service_kind = ZLINK_SERVICE_KIND_GATEWAY;
+        terminal.event_type = ZLINK_MONITOR_EVENT_CLOSED;
+        terminal.detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
+        terminal.routing_id = _routing_id;
+        _monitor.close_all (&terminal);
+    };
+
+    const auto destroy_socket_phase = [&]() {
+        if (_runtime->monitor_socket) {
+            socket_base_t *monitor_socket =
+              static_cast<socket_base_t *> (_runtime->monitor_socket);
+            _runtime->lifecycle.close_socket (monitor_socket);
+            _runtime->monitor_socket = NULL;
+        }
+        if (_runtime->router_socket) {
+            for (std::set<std::string>::const_iterator it =
+                   endpoints_to_term.begin (),
+                   end = endpoints_to_term.end ();
+                 it != end; ++it) {
+                (void) _runtime->router_socket->term_endpoint (it->c_str ());
+            }
+            (void) _runtime->lifecycle.close_socket (_runtime->router_socket);
+        }
+    };
+
+    destroy_detach_phase ();
+    destroy_monitor_phase ();
     gateway_diag_log ("destroy.after-monitor-close-all");
-    if (_runtime->monitor_socket) {
-        socket_base_t *monitor_socket =
-          static_cast<socket_base_t *> (_runtime->monitor_socket);
-        _runtime->lifecycle.close_socket (monitor_socket);
-        _runtime->monitor_socket = NULL;
-    }
+    destroy_socket_phase ();
     gateway_diag_log ("destroy.after-monitor-socket-close");
-    if (_runtime->router_socket) {
-        for (std::set<std::string>::const_iterator it = endpoints_to_term.begin (),
-                                                   end = endpoints_to_term.end ();
-             it != end; ++it)
-            (void) _runtime->router_socket->term_endpoint (it->c_str ());
-        (void) _runtime->lifecycle.close_socket (_runtime->router_socket);
-    }
     gateway_diag_log ("destroy.before-wait-drained");
     (void) _runtime->lifecycle.wait_drained (10000);
     gateway_diag_log ("destroy.after-wait-drained");

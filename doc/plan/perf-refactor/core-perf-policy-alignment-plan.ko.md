@@ -277,7 +277,20 @@
   - 누가 drain completion을 판정하는가
   - 어떤 경로가 hot path이고 어떤 경로가 setup/teardown인가
 
-### 4.6 메트릭/출력 공통화 원칙
+### 4.6 handshake / start gate 계약
+
+- 연결 준비와 benchmark start gate는 socket/service monitor 기반 readiness를
+  사용해야 한다.
+- monitor-ready 이전에는 warmup, active, drain 어떤 측정 phase도 시작하지
+  않는다.
+- sleep 기반 handshake, retry loop 기반 handshake, 첫 송수신 성공 여부를
+  readiness 대용으로 사용하는 ad-hoc handshake는 금지한다.
+- monitor-ready 이후 protocol self-check가 꼭 필요하면 bounded validation
+  1회만 허용하고, 측정 구간으로 끌고 들어가지 않는다.
+- single/multi 공통 엔진과 pattern 구현은 handshake를 자체 루프로 우회하지
+  말고 monitor event를 공식 start signal로 사용해야 한다.
+
+### 4.7 메트릭/출력 공통화 원칙
 
 - throughput, bandwidth, latency, p95/p99, resource metric 계산과 보정 로직은
   가능한 한 공통 함수로 모은다.
@@ -291,7 +304,7 @@
   처리도 공통 모듈로 올릴 수 있다.
 - 패턴별 파일은 topology, pattern config, role wiring 위주로 얇아져도 된다.
 
-### 4.7 패턴별 지원 매트릭스
+### 4.8 패턴별 지원 매트릭스
 
 - 현재 코드 기준 지원 상태는 아래와 같이 분류한다.
 
@@ -319,7 +332,7 @@
 - 만약 blocking recv loop 수준이면 "recv만 구현"이 아니라
   "`recv` 모드로 리팩토링 필요"로 재분류한다.
 
-### 4.8 최종 목표 매트릭스
+### 4.9 최종 목표 매트릭스
 
 이 작업의 최종 결과물은 "일부 패턴에 `--recv` 옵션이 추가됨"이 아니다.
 최종 목표는 아래 매트릭스를 전부 `지원` 상태로 만드는 것이다.
@@ -348,7 +361,7 @@
 - `STREAM_CALLBACK`도 이름과 무관하게 최종적으로는 `recv` / `callback` 두 모드를
   모두 지원 대상으로 본다. 필요하면 패턴명과 구현명을 재정렬한다.
 
-### 4.9 전달 보장 수준
+### 4.10 전달 보장 수준
 
 - 완료 기준은 "CLI가 옵션을 받는다"가 아니다.
 - 완료 기준은 아래를 모두 만족하는 것이다.
@@ -363,7 +376,7 @@
 - 특정 size에서만 실패하거나 mode별로 부분 성공이면 문서상 완료 판정을 하지
   않는다.
 
-### 4.10 단계별 실행 순서
+### 4.11 단계별 실행 순서
 
 - 1단계: 작업 트리 오염원 제거와 무시 규칙 정리
 - 2a단계: 모드 전달 경로 확정 + CLI/runner 인프라
@@ -375,7 +388,7 @@
 - 5단계: 결과 저장/보존 규칙 점검
 - 6단계: 실제 실행 검증
 
-### 4.11 완료 판정
+### 4.12 완료 판정
 
 - `--recv` 옵션이 공식 실행 surface에 존재하고 동작할 것
 - 문서 설명이 `doc/perf`와 모순되지 않을 것
@@ -384,6 +397,9 @@
 - single/multi 공식 실행기가 동일 결과 의미를 유지할 것
 - single/multi의 모든 패턴이 `recv` / `callback` 두 모드 모두를 지원할 것
 - 각 패턴은 정책 기본 size 전부에서 `success` 결과를 낼 것
+- handshake/start gate는 monitor 기반 readiness로 구현되어 있을 것
+- 진행 중 발견된 core 라이브러리 버그는 우회하지 않고 회귀 테스트 추가 +
+  버그 수정으로 해결되었을 것
 
 ## 5. 구현 인벤토리
 
@@ -426,6 +442,7 @@
 
 - single/multi 공통 메트릭 계산 함수
 - single/multi 공통 출력 함수
+- single/multi 공통 monitor handshake / start gate helper
 - `recv` 모드 공통 엔진
   - `POLLIN` readiness
   - recv drain
@@ -441,6 +458,7 @@
   - settle
   - active
   - drain/teardown
+- monitor-ready 이후에만 phase transition이 일어나도록 gate 관리
 
 ### 5.3 single pattern 구현
 
@@ -524,6 +542,14 @@
 - `.gitignore`
 - 결과 저장 규칙 문구 정렬
 - 결과 파일명에 `<recv_mode>` 반영
+
+### 5.6 core 버그 대응
+
+- perf 작업 중 core 라이브러리 버그를 발견하면 우회하지 않는다.
+- 버그를 재현하는 회귀 테스트를 먼저 추가한다.
+- 그 다음 core 버그를 수정한다.
+- 수정 후 관련 테스트와 perf 경로를 다시 실행한다.
+- 버그 발견 사실, 추가한 테스트, 수정 파일, 재검증 결과를 Phase Review에 남긴다.
 
 ## 6. 단계별 상세 작업 계획
 
@@ -613,6 +639,8 @@
 - 소스 트리 내부 산출물 디렉터리를 인벤토리화한다.
 - multi의 `recv만 구현` 패턴이 실제로 `POLLIN drain + POLLOUT backpressure`
   구조인지 확인한다.
+- 현재 single/multi handshake가 monitor 기반 readiness인지, ad-hoc loop인지
+  패턴별로 확인한다.
 - single warmup 모델(count 기반 vs seconds 기반)을 이번 scope에서 해결할지,
   별도 후속 scope로 넘길지 명시한다.
 
@@ -633,7 +661,9 @@
 - 구현해야 할 파일/패턴/모드가 하나도 빠지지 않았는가
 - 검증 범위가 모든 패턴/기본 size를 덮는가
 - multi recv 패턴의 현재 구현 수준을 과대평가하지 않았는가
+- handshake 구현 수준을 monitor 기반 readiness로 정확히 분류했는가
 - warmup 모델 갭의 처리 scope가 명시됐는가
+- core 버그 대응 규칙이 구현 인벤토리에 포함되어 있는가
 
 ## Phase 1. surface / 문서 / 작업 트리 정비
 
@@ -675,6 +705,7 @@
 - `recv` 모드: `POLLIN` 기반 recv drain + `POLLOUT` 기반 send backpressure
 - `callback` 모드: recv callback + send-ready callback 기반 backpressure
 - 두 모드는 같은 측정 구간에서 혼용하지 않는다.
+- handshake/start gate는 socket/service monitor 기반 readiness를 사용한다.
 
 작업:
 - 바이너리 모드 전달 방식을 확정한다.
@@ -696,6 +727,8 @@
 - 모든 패턴을 `recv` / `callback` 둘 다 지원하도록 구현 범위를 고정한다.
 - single/multi 공통 메트릭 계산 함수와 출력 함수를 식별하고, 중복 로직을
   공통 모듈로 수렴시키는 계획을 함께 수립한다.
+- single/multi 각 pattern이 monitor-ready 이후에만 측정을 시작하도록 start gate
+  전달 경로를 정리한다.
 - single/multi 각각에 대해 mode별 backpressure owner를 문서화한다.
   - recv 모드: poller readiness owner, pending state owner, drain completion owner
   - callback 모드: recv callback owner, send_ready callback owner, pending state owner
@@ -710,6 +743,7 @@
 - pattern별 callback 지원 범위를 문서에서 즉시 알 수 있음
 - `recv` 모드에서 `POLLIN` drain + `POLLOUT` backpressure가 구조로 드러남
 - `callback` 모드에서 recv callback + send-ready callback 조합이 구조로 드러남
+- handshake/start gate가 monitor event 기반으로 고정됨
 - single/multi 모든 패턴이 최종적으로 두 모드를 모두 갖도록 갭이 관리됨
 - 바이너리가 모드를 어떻게 아는지가 모호하지 않음
 
@@ -730,6 +764,8 @@
 - effective options / 결과 파일 / stdout table이 동일한 recv mode를 보여주는가
 - mode default가 모든 경로에서 `recv`로 일관적인가
 - 바이너리 전달 경로가 CMake/runner/spawn 로직과 충돌하지 않는가
+- monitor-ready 이전 측정 시작 경로가 남아 있지 않은가
+- core 버그를 runner/workaround로 숨기는 경로가 없는가
 
 ## Phase 2b. single callback-only 패턴에 recv 모드 추가
 
@@ -751,6 +787,7 @@
 - single recv 모드에서 send path 아키텍처가 명확히 결정됐는가
 - mode contract가 모든 single 패턴에서 동일한가
 - callback regression 없이 recv 모드가 추가됐는가
+- core 결함이 발견되면 회귀 테스트 추가 후 수정하는 흐름으로 처리됐는가
 
 ## Phase 2c. multi recv-only 패턴에 callback 모드 추가
 
@@ -769,6 +806,7 @@
 - echo/server/client별 pending 모델이 정책 계약과 일치하는가
 - callback 경로가 send-ready handler 기반 backpressure를 실제로 사용하는가
 - partial/특수 케이스가 남지 않았는가
+- core 결함이 발견되면 회귀 테스트 추가 후 수정하는 흐름으로 처리됐는가
 
 ## Phase 2d. full matrix 점검
 
@@ -795,6 +833,7 @@
 작업:
 - 메트릭 계산 공통화
 - 출력 포맷 공통화
+- monitor handshake / start gate 공통화
 - `recv` 모드 공통 엔진 구현
 - `callback` 모드 공통 엔진 구현
 - phase state machine 공통화
@@ -805,7 +844,9 @@
 리뷰 게이트:
 - 공통화가 복잡도 감소로 이어지는가
 - mode contract가 helper 안에서 깨지지 않는가
+- handshake가 helper 안에서 sleep/retry loop로 변질되지 않았는가
 - hot path에 retry/sleep/log/alloc가 새로 들어오지 않았는가
+- core 버그를 helper 우회로 감추지 않았는가
 
 ## Phase 4. single full-matrix 확인 및 누락 정리
 
@@ -925,6 +966,9 @@ cmake --build core/build
 - 결과 파일명 규칙이 정책/README/runner 구현에 일관되게 반영됐는가
 - 남은 TODO, 임시 분기, 임시 env, 부분 지원 패턴이 없는가
 - 바이너리 전달 경로 결정이 코드/문서/빌드 설정 전부에 일관되게 반영됐는가
+- handshake/start gate가 monitor 기반 readiness로 구현됐는가
+- 진행 중 발견된 core 버그마다 회귀 테스트가 추가되었고, 우회 없이 수정으로
+  해결되었는가
 
 ## 9. 반복 리뷰 방식
 
@@ -944,6 +988,7 @@ cmake --build core/build
 - 남은 갭 목록
 - 실행한 검증 명령
 - 실패/partial 항목
+- 발견한 core 버그와 추가한 회귀 테스트
 - 다음 phase 진입 조건 충족 여부
 
 ### 9.1 phase review 기록 템플릿
@@ -990,6 +1035,12 @@ cmake --build core/build
 - chosen:
 - in-scope or follow-up:
 - affected docs/files:
+
+### D-004 core bug handling
+- bug summary:
+- regression test added:
+- fix summary:
+- affected files:
 ```
 
 ## 10. 변경 대상과 비대상

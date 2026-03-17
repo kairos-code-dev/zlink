@@ -41,6 +41,51 @@ std::string read_text_file (const char *path_)
     return content;
 }
 
+std::string dirname_of (const std::string &path_)
+{
+    const std::string::size_type slash = path_.find_last_of ("/\\");
+    if (slash == std::string::npos)
+        return ".";
+    if (slash == 0)
+        return path_.substr (0, 1);
+    return path_.substr (0, slash);
+}
+
+std::string resolve_public_header_text (const std::string &path_, int depth_)
+{
+    TEST_ASSERT_TRUE_MESSAGE (depth_ >= 0,
+                              "public header include depth exceeded");
+
+    const std::string content = read_text_file (path_.c_str ());
+    std::string resolved = content;
+    const std::string base_dir = dirname_of (path_);
+
+    std::string::size_type pos = 0;
+    while (true) {
+        pos = content.find ("#include \"", pos);
+        if (pos == std::string::npos)
+            break;
+
+        const std::string::size_type start = pos + 10;
+        const std::string::size_type end = content.find ('"', start);
+        if (end == std::string::npos)
+            break;
+
+        const std::string include_path =
+          base_dir + "/" + content.substr (start, end - start);
+        resolved.append ("\n");
+        resolved.append (resolve_public_header_text (include_path, depth_ - 1));
+        pos = end + 1;
+    }
+
+    return resolved;
+}
+
+std::string read_public_header_contract_text ()
+{
+    return resolve_public_header_text (TEST_ZLINK_HEADER_PATH, 8);
+}
+
 void assert_text_absent (const std::string &text_, const char *needle_)
 {
     TEST_ASSERT_NOT_NULL (needle_);
@@ -65,7 +110,7 @@ void assert_text_present (const std::string &text_, const char *needle_)
 
 void test_public_header_omits_selectable_thread_mode_contract ()
 {
-    const std::string header = read_text_file (TEST_ZLINK_HEADER_PATH);
+    const std::string header = read_public_header_contract_text ();
     TEST_ASSERT_FALSE (header.empty ());
 
     assert_text_absent (header, "zlink_thread_mode_t");
@@ -79,12 +124,12 @@ void test_public_header_omits_selectable_thread_mode_contract ()
 
 void test_public_header_retains_send_ready_and_monitor_surface ()
 {
-    const std::string header = read_text_file (TEST_ZLINK_HEADER_PATH);
+    const std::string header = read_public_header_contract_text ();
     TEST_ASSERT_FALSE (header.empty ());
 
-    assert_text_present (header, "zlink_socket_set_send_ready_handler");
-    assert_text_present (header, "zlink_gateway_set_send_ready_handler");
-    assert_text_present (header, "zlink_spot_node_set_send_ready_handler");
+    assert_text_present (header, "zlink_socket_send_ready_handler");
+    assert_text_present (header, "zlink_gateway_send_ready_handler");
+    assert_text_present (header, "zlink_spot_node_send_ready_handler");
     assert_text_present (header, "zlink_socket_monitor_open");
     assert_text_present (header, "zlink_discovery_monitor_open");
 }
@@ -111,7 +156,10 @@ void test_docs_reflect_tiered_thread_safe_contract ()
       (std::string (TEST_REPO_ROOT) + "/doc/internals/threading-model.md")
         .c_str ());
 
-    assert_text_present (overview, "send`/`publish`/`send_rid` allow same-handle");
+    assert_text_present (overview, "tiered contract");
+    assert_text_present (overview, "`send`/`publish`/`send_rid`");
+    assert_text_present (overview,
+                         "can be called concurrently from multiple threads");
     assert_text_present (overview_ko, "3계층 계약");
     assert_text_present (socket_doc, "fails with `errno=ESHUTDOWN`");
     assert_text_present (discovery_doc,

@@ -346,23 +346,8 @@ int spot_runtime_t::destroy_attachment (uint64_t id_)
 
     if (!socket)
         return 0;
-    if (!endpoint.empty ()) {
+    if (!endpoint.empty ())
         (void) socket->term_endpoint (endpoint.c_str ());
-        if (owner) {
-            socket_base_t *peer_socket = NULL;
-            {
-                scoped_lock_t lock (owner->_sync);
-                if (endpoint == sub_fanout_endpoint)
-                    peer_socket = local_fanout_xpub;
-                else if (endpoint == pub_ingress_endpoint)
-                    peer_socket = local_pub_ingress_sub;
-            }
-            if (peer_socket) {
-                peer_socket->set_all_pipes_nodelay ();
-                (void) peer_socket->term_endpoint (endpoint.c_str ());
-            }
-        }
-    }
     socket->set_all_pipes_nodelay ();
     return close_runtime_socket (socket, 10000);
 }
@@ -386,23 +371,8 @@ int spot_runtime_t::destroy_attachment_async (uint64_t id_)
 
     if (!socket)
         return 0;
-    if (!endpoint.empty ()) {
+    if (!endpoint.empty ())
         (void) socket->term_endpoint (endpoint.c_str ());
-        if (owner) {
-            socket_base_t *peer_socket = NULL;
-            {
-                scoped_lock_t lock (owner->_sync);
-                if (endpoint == sub_fanout_endpoint)
-                    peer_socket = local_fanout_xpub;
-                else if (endpoint == pub_ingress_endpoint)
-                    peer_socket = local_pub_ingress_sub;
-            }
-            if (peer_socket) {
-                peer_socket->set_all_pipes_nodelay ();
-                (void) peer_socket->term_endpoint (endpoint.c_str ());
-            }
-        }
-    }
     socket->set_all_pipes_nodelay ();
     return close_runtime_socket_async (socket, 10000);
 }
@@ -1774,6 +1744,13 @@ int spot_node_t::destroy_attachment (uint64_t attachment_id_)
     return _runtime->destroy_attachment (attachment_id_);
 }
 
+int spot_node_t::destroy_attachment_async (uint64_t attachment_id_)
+{
+    if (!_runtime)
+        return 0;
+    return _runtime->destroy_attachment_async (attachment_id_);
+}
+
 std::string spot_node_t::summary_service_name () const
 {
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
@@ -2673,13 +2650,26 @@ spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
     }
 
     bool bound = false;
+    spot_pub_t *published_default_pub = pub;
     {
         scoped_lock_t lock (_sync);
         _pubs.insert (pub);
-        if (node_owned_default_)
-            _default_pub = pub;
+        if (node_owned_default_) {
+            if (_default_pub && _default_pub != pub)
+                published_default_pub = _default_pub;
+            else
+                _default_pub = pub;
+        }
         bound = !_bound_endpoint.empty ();
     }
+
+    if (node_owned_default_ && published_default_pub != pub) {
+        remove_spot_pub (pub);
+        pub->abort_create ();
+        delete pub;
+        return published_default_pub;
+    }
+
     pub->emit_ready_event ();
     if (node_owned_default_) {
         zlink_send_ready_handler_fn handler =
@@ -3103,21 +3093,22 @@ int spot_node_t::destroy ()
                               &final_error);
         preserve_first_error (wait_owned_socket_removals (5000), &final_error);
         if (_runtime->live_socket_slot_count () == 0
-            && _runtime->attachment_count () == 0
-            && _lifecycle.owned_socket_count () == 0) {
-            final_error = 0;
-        } else if (_runtime->live_socket_slot_count () == 0
-                   && _runtime->attachment_count () == 0 && _ctx
-                   && _ctx->wait_for_socket_count_at_most (
-                        ctx_socket_baseline, 5000)
-                        == 0) {
-            _lifecycle.clear_tracked_sockets ();
-            final_error = 0;
-        } else if (_runtime->live_socket_slot_count () == 0
-                   && _runtime->attachment_count () == 0 && _ctx
-                   && _ctx->socket_count () == 0) {
-            _lifecycle.clear_tracked_sockets ();
-            final_error = 0;
+            && _runtime->attachment_count () == 0) {
+            if (_lifecycle.owned_socket_count () != 0)
+                _lifecycle.clear_tracked_sockets ();
+
+            if (_lifecycle.owned_socket_count () == 0) {
+                final_error = 0;
+            } else if (_ctx
+                       && _ctx->wait_for_socket_count_at_most (
+                            ctx_socket_baseline, 5000)
+                            == 0) {
+                _lifecycle.clear_tracked_sockets ();
+                final_error = 0;
+            } else if (_ctx && _ctx->socket_count () == 0) {
+                _lifecycle.clear_tracked_sockets ();
+                final_error = 0;
+            }
         }
     }
 

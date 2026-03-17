@@ -144,6 +144,7 @@ class spot_node_t : public discovery_observer_t
     int wait_owned_socket_removals (int timeout_ms_);
     bool is_shutting_down () const;
     int destroy_attachment (uint64_t attachment_id_);
+    int destroy_attachment_async (uint64_t attachment_id_);
     spot_pub_t *create_spot_pub_with_defaults (const pub_defaults_t &defaults_,
                                                bool node_owned_default_);
     spot_sub_t *create_spot_sub_with_defaults (const sub_defaults_t &defaults_,

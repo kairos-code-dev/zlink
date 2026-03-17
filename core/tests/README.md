@@ -8,7 +8,7 @@
 | --- | --- |
 | `core/tests/unittest/` | small internal tests labeled `unittest` |
 | `core/tests/integration/` | focused functional tests labeled `integration` |
-| `core/tests/e2e/` | umbrella and smoke-style tests labeled `e2e` |
+| `core/tests/e2e/` | executable-level smoke tests labeled `e2e` |
 | `core/tests/testutil*` | shared test helpers |
 | `core/tests/run_test_lanes.sh` | sequential lane runner |
 
@@ -16,7 +16,7 @@
 
 Tests are classified along two axes:
 
-- category: `unittest`, `integration`, `e2e`
+- category: `unittest`, `integration`, `e2e`, `regression`
 - execution mode: `parallel-safe`, `serial`
 
 Current policy is intentionally conservative:
@@ -24,6 +24,7 @@ Current policy is intentionally conservative:
 - `unittest` => `parallel-safe`
 - `integration` => `serial`
 - `e2e` => `serial`
+- `regression` => `serial`
 
 `RESOURCE_LOCK` only coordinates tests inside one `ctest` process. Do not run
 multiple `ctest` commands concurrently for serial lanes.
@@ -39,7 +40,7 @@ Quick start:
 Manual configure/build:
 
 ```bash
-cmake -S . -B core/build -DBUILD_TESTS=ON -DBUILD_STATIC=ON -DBUILD_SHARED=ON
+cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON
 cmake --build core/build -j"$(nproc)"
 ```
 
@@ -49,6 +50,7 @@ Lane execution:
 ctest --test-dir core/build --output-on-failure -L unittest -j"$(nproc)"
 ctest --test-dir core/build --output-on-failure -L integration -j1
 ctest --test-dir core/build --output-on-failure -L e2e -j1
+ctest --test-dir core/build --output-on-failure -L regression -j1
 ```
 
 Sequential lane runner:
@@ -56,6 +58,7 @@ Sequential lane runner:
 ```bash
 ./core/tests/run_test_lanes.sh
 ./core/tests/run_test_lanes.sh --include-e2e
+./core/tests/run_test_lanes.sh --include-e2e --include-regression
 ```
 
 Thread-safe contract stress runner:
@@ -84,6 +87,7 @@ Default runner behavior:
 - `unittest` in parallel
 - `integration` serially
 - `e2e` only when `--include-e2e` is specified
+- `regression` only when `--include-regression` is specified
 
 SPOT WSS first-delivery note:
 
@@ -103,7 +107,9 @@ ctest --test-dir core/build \
 
 - Add new internal logic tests under `core/tests/unittest/`.
 - Add new focused behavior tests under `core/tests/integration/`.
-- Add new umbrella or executable-level smoke tests under `core/tests/e2e/`.
+- Add new representative executable-level smoke tests under `core/tests/e2e/`.
+- Add long-running or historical flake coverage under the `regression` lane
+  unless it must remain in the default integration path.
 - Start new tests in the safest lane first. Only promote to `parallel-safe`
   after confirming the test does not depend on live socket timing, discovery
   state, global env mutation, or teardown ordering.
@@ -114,6 +120,14 @@ ctest --test-dir core/build \
 
 - Some scenario-style e2e tests still live outside `core/tests/` because they
   are tied to benchmark/source-stack fixtures under `core/bench/`.
+- `test_gateway` remains available as a manual umbrella/debug executable, but it
+  is intentionally excluded from the default `integration`, `e2e`, and
+  `regression` lanes. Gateway lane coverage comes from split case tests, with
+  `test_gateway_single_service` serving as the e2e smoke case.
+- `test_thread_safe_scaling_contract` is a split-case wrapper executable only.
+  Its top-level CTest entry is intentionally not registered; use the
+  `test_thread_safe_scaling_raw`, `test_thread_safe_scaling_gateway`, and
+  `test_thread_safe_scaling_spot` cases instead.
 - `test_spot_node_discovery_direct_and_child_interop` and
   `test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery` remain in
   `core/tests/e2e/spot/test_spot_pubsub_scenario.cpp`, but they are not part

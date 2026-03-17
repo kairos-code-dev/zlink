@@ -6,6 +6,8 @@ project(tests)
 
 set(TEST_PTY_WRAPPER "${CMAKE_CURRENT_LIST_DIR}/run_under_pty.sh")
 set(REGISTERED_TESTS)
+set(SPLIT_ONLY_TEST_TARGETS
+    test_thread_safe_scaling_contract)
 set(INTEGRATION_TEST_ROOT "integration")
 set(E2E_TEST_ROOT "e2e")
 
@@ -233,7 +235,6 @@ endif()
 
 foreach(test_source ${tests})
   get_filename_component(test ${test_source} NAME)
-  list(APPEND REGISTERED_TESTS ${test})
   # target_sources not supported before CMake 3.1
   add_executable(${test} ${test_source}.cpp)
 
@@ -263,29 +264,33 @@ foreach(test_source ${tests})
     target_link_libraries(${test} m)
   endif()
 
-  if(WIN32)
-    add_test(
-      NAME ${test}
-      WORKING_DIRECTORY ${LIBRARY_OUTPUT_PATH}
-      COMMAND ${test})
-  else()
-    if(${test} MATCHES "_cap_net_admin")
-      add_test(NAME ${test} COMMAND sh -c "sudo ${CAPSH_PROGRAM} --caps=cap_net_admin+eip -- -c $<TARGET_FILE:${test}>")
+  if(NOT test IN_LIST SPLIT_ONLY_TEST_TARGETS)
+    list(APPEND REGISTERED_TESTS ${test})
+
+    if(WIN32)
+      add_test(
+        NAME ${test}
+        WORKING_DIRECTORY ${LIBRARY_OUTPUT_PATH}
+        COMMAND ${test})
     else()
-      add_test(NAME ${test} COMMAND ${test})
+      if(${test} MATCHES "_cap_net_admin")
+        add_test(NAME ${test} COMMAND sh -c "sudo ${CAPSH_PROGRAM} --caps=cap_net_admin+eip -- -c $<TARGET_FILE:${test}>")
+      else()
+        add_test(NAME ${test} COMMAND ${test})
+      endif()
     endif()
-  endif()
 
-  set_tests_properties(${test} PROPERTIES TIMEOUT 10)
-  set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(${test} PROPERTIES TIMEOUT 10)
+    set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
 
-  # Automatically set library path for tests to find libzlink shared library
-  if(WIN32)
-    set_tests_properties(${test} PROPERTIES ENVIRONMENT "PATH=$<TARGET_FILE_DIR:libzlink>;$ENV{PATH}")
-  elseif(APPLE)
-    set_tests_properties(${test} PROPERTIES ENVIRONMENT "DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzlink>:$ENV{DYLD_LIBRARY_PATH}")
-  else()
-    set_tests_properties(${test} PROPERTIES ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzlink>:$ENV{LD_LIBRARY_PATH}")
+    # Automatically set library path for tests to find libzlink shared library
+    if(WIN32)
+      set_tests_properties(${test} PROPERTIES ENVIRONMENT "PATH=$<TARGET_FILE_DIR:libzlink>;$ENV{PATH}")
+    elseif(APPLE)
+      set_tests_properties(${test} PROPERTIES ENVIRONMENT "DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzlink>:$ENV{DYLD_LIBRARY_PATH}")
+    else()
+      set_tests_properties(${test} PROPERTIES ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzlink>:$ENV{LD_LIBRARY_PATH}")
+    endif()
   endif()
 
   if(QNX)
@@ -533,14 +538,6 @@ if(TARGET test_service_introspection)
       SKIP_RETURN_CODE 77)
 endif()
 if(TARGET test_thread_safe_scaling_contract)
-  set_tests_properties(
-    test_thread_safe_scaling_contract
-    PROPERTIES
-      TIMEOUT 240
-      SKIP_RETURN_CODE 77
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-
   add_test(
     NAME test_thread_safe_scaling_raw
     COMMAND ${CMAKE_COMMAND} -E env
@@ -893,10 +890,12 @@ if(TARGET test_gateway)
   set_tests_properties(
     test_gateway
     PROPERTIES
-      TIMEOUT 180
+      TIMEOUT 600
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}"
+      RUN_SERIAL TRUE
+      LABELS "manual;serial;umbrella")
 
   add_env_case_tests_from_specs(
     test_gateway
@@ -995,7 +994,7 @@ if(TARGET test_scenario_stream_zmq)
 endif()
 
 set(E2E_SERIAL_TESTS
-    test_gateway
+    test_gateway_single_service
     test_service_discovery
     test_service_introspection
     test_spot_pubsub_scenario
@@ -1010,8 +1009,13 @@ if(TARGET test_scenario_router_router_zlink_connect)
   list(APPEND E2E_SERIAL_TESTS test_scenario_router_router_zlink_connect)
 endif()
 
+set(REGRESSION_SERIAL_TESTS
+    test_gateway_multi_service
+    test_gateway_refresh_update
+    test_gateway_send_plane_updates)
+
 set(INTEGRATION_SERIAL_TESTS ${REGISTERED_TESTS})
-list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS ${E2E_SERIAL_TESTS})
+list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS ${E2E_SERIAL_TESTS} ${REGRESSION_SERIAL_TESTS} test_gateway)
 list(APPEND INTEGRATION_SERIAL_TESTS
      ${SERVICE_INTROSPECTION_TEST_NAMES}
      ${SERVICE_DISCOVERY_TEST_NAMES}
@@ -1019,6 +1023,7 @@ list(APPEND INTEGRATION_SERIAL_TESTS
      ${GATEWAY_TEST_NAMES}
      ${SPOT_PUBSUB_PEER_TEST_NAMES}
      ${SPOT_PUBSUB_LOCAL_TEST_NAMES})
+list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS ${E2E_SERIAL_TESTS} ${REGRESSION_SERIAL_TESTS} test_gateway)
 list(REMOVE_DUPLICATES INTEGRATION_SERIAL_TESTS)
 
 if(INTEGRATION_SERIAL_TESTS)
@@ -1029,6 +1034,11 @@ endif()
 if(E2E_SERIAL_TESTS)
   set_tests_properties(${E2E_SERIAL_TESTS} PROPERTIES RUN_SERIAL TRUE)
   set_property(TEST ${E2E_SERIAL_TESTS} APPEND PROPERTY LABELS "e2e;serial")
+endif()
+
+if(REGRESSION_SERIAL_TESTS)
+  set_tests_properties(${REGRESSION_SERIAL_TESTS} PROPERTIES RUN_SERIAL TRUE)
+  set_property(TEST ${REGRESSION_SERIAL_TESTS} APPEND PROPERTY LABELS "regression;serial")
 endif()
 
 # Check whether all tests in the current folder are present

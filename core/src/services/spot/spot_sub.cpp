@@ -1461,7 +1461,7 @@ void spot_sub_t::monitor_loop ()
             default:
                 break;
         }
-    }
+}
 }
 
 int spot_sub_t::destroy_internal (bool allow_embedded_default_,
@@ -1565,10 +1565,11 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     if (socket) {
         if (_node)
             spot_sub_diag_log ("destroy.before-destroy-attachment");
-        if (socket && _node) {
+        if (socket && _node)
             preserve_first_error (
-              _node->destroy_attachment (_attachment_id), &first_error);
-        }
+              node_shutting_down ? _node->destroy_attachment_async (_attachment_id)
+                                 : _node->destroy_attachment (_attachment_id),
+              &first_error);
         if (socket && _node)
             spot_sub_diag_log ("destroy.after-destroy-attachment");
         else {

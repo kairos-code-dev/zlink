@@ -598,6 +598,7 @@ int spot_pub_t::destroy_internal (bool allow_embedded_default_,
 
     socket_base_t *socket = this->socket ();
     int first_error = 0;
+    const bool node_shutting_down = _node && _node->is_shutting_down ();
 
     if (notify_node_ && _node)
         _node->remove_spot_pub (this);
@@ -614,7 +615,9 @@ int spot_pub_t::destroy_internal (bool allow_embedded_default_,
     if (socket) {
         if (_node)
             preserve_first_error (
-              _node->destroy_attachment (_attachment_id), &first_error);
+              node_shutting_down ? _node->destroy_attachment_async (_attachment_id)
+                                 : _node->destroy_attachment (_attachment_id),
+              &first_error);
         else {
             socket->stop ();
             socket->close ();

@@ -461,6 +461,16 @@ void zlink::pipe_t::process_pipe_term ()
     scoped_fast_lock_t lock (_out_sync);
     pipe_debug_log (this, "process_pipe_term", _state, _delay,
                     _endpoint_pair.identifier ().c_str ());
+
+    //  Peer-induced termination is logically one-shot. During cascading
+    //  service/socket teardown we can observe a duplicate term command after
+    //  we've already transitioned into a peer-terminated state; treat that as
+    //  an idempotent no-op instead of asserting.
+    if (_state == waiting_for_delimiter || _state == term_ack_sent
+        || _state == term_req_sent2) {
+        return;
+    }
+
     zlink_assert (_state == active || _state == delimiter_received
                   || _state == term_req_sent1);
 

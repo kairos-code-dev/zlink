@@ -178,11 +178,7 @@ void test_stream_auto_routing_id_size ()
       zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
 
     g_stream_probe = &probe;
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = &on_stream_handler;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &handler));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (server, &on_stream_handler, NULL));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);

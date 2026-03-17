@@ -13,9 +13,9 @@ Gateway는 Discovery 기반으로 서비스를 자동 발견하고, 로드밸런
 > 인증·rate limiting·프로토콜 변환을 포함하는 개념이 아니라, 서비스 접근 +
 > 로드밸런싱에 집중하는 경량 게이트웨이를 의미한다.
 
-**Gateway는 thread-safe하다.** 공개 Gateway handle API는 기본적으로
-same-handle operational use 기준 thread-safe다. `send` / `send_rid`는
-동시 호출을 허용하는 hot path이고, attach/option/monitor/query 계열은
+**Gateway는 thread-safe하다.** 하나의 Gateway handle을 여러 스레드에서
+동시에 사용할 수 있다. `send` / `send_rid`는 여러 스레드에서 동시 호출을
+허용하는 hot path이고, attach/option/monitor/query 계열은
 runtime에 호출 가능한 control path이며, `destroy`는 fail-fast lifecycle gate를
 가진다.
 
@@ -133,7 +133,7 @@ zlink_gateway_update_peer_weight(server, &peer_rid, 5);
 
 | | 일반 공개 socket handle | Gateway |
 |---|---|---|
-| **스레드 안전성** | 기본적으로 thread-safe | **Thread-safe** — same-handle operational use 허용 |
+| **스레드 안전성** | 기본적으로 thread-safe | **Thread-safe** — 하나의 handle을 여러 스레드에서 동시 사용 가능 |
 | **고빈도 경로** | `send`가 hot path | `send` / `send_rid`가 hot path |
 | **저빈도 경로** | bind/connect/monitor/query는 correctness 우선 직렬화 | attach/option/monitor/query는 correctness 우선 직렬화 |
 | **종료** | `close`는 fail-fast lifecycle gate | `destroy`는 fail-fast lifecycle gate |
@@ -158,7 +158,7 @@ Gateway는 "모든 API가 같은 비용 모델"인 것은 아니지만, 공개 h
 사용자가 외우면 되는 규칙은 네 가지다.
 
 1. Gateway handle은 여러 스레드에서 공유해도 된다.
-2. `send` / `send_rid`는 same-handle concurrent 호출이 가능하다.
+2. `send` / `send_rid`는 여러 스레드에서 동시 호출이 가능하다.
 3. control-path API도 runtime에 호출할 수 있다.
 4. `destroy`는 fail-fast이며 admitted API가 있으면 `EBUSY`, accepted 이후 새
    진입은 `ESHUTDOWN`이다.

@@ -11,6 +11,7 @@
 #include <vector>
 
 namespace {
+static const char *k_pubsub_topic = "bench";
 
 inline int resolve_pubsub_xpub_nodrop_opt ()
 {
@@ -71,14 +72,20 @@ private:
 };
 
 inline void pubsub_recv_handler (const zlink_routing_id_t *,
-                                  zlink_msg_t *parts_,
-                                  size_t part_count_,
-                                  void *userdata_)
+                                 const char *topic_,
+                                 size_t topic_len_,
+                                 zlink_msg_t *parts_,
+                                 size_t part_count_,
+                                 void *userdata_)
 {
     recv_state_t *state = static_cast<recv_state_t *> (userdata_);
 
+    const bool topic_ok =
+      topic_ != NULL && topic_len_ == std::strlen (k_pubsub_topic)
+      && std::memcmp (topic_, k_pubsub_topic, topic_len_) == 0;
+
     // Validate: expect exactly one part
-    if (part_count_ != 1) {
+    if (!topic_ok || part_count_ != 1) {
         for (size_t i = 0; i < part_count_; ++i)
             zlink_msg_close (&parts_[i]);
         state->recv_failed.store (true, std::memory_order_release);
@@ -138,6 +145,54 @@ inline void pubsub_recv_handler (const zlink_routing_id_t *,
     }
 }
 
+inline bool send_pubsub_sample (void *pub_socket_,
+                                std::vector<char> *payload_,
+                                size_t payload_size_,
+                                size_t msg_size_,
+                                uint32_t run_id_,
+                                uint64_t *seq_,
+                                perf_single_metric::phase_t phase_)
+{
+    if (!pub_socket_ || !payload_ || !seq_)
+        return false;
+
+    const uint64_t sent_ts = perf_single_metric::now_us ();
+    if (!perf_single_metric::stamp_payload (payload_->data (),
+                                            payload_size_,
+                                            run_id_,
+                                            phase_,
+                                            msg_size_,
+                                            (*seq_)++,
+                                            sent_ts)) {
+        return false;
+    }
+
+    zlink_msg_t topic_part;
+    zlink_msg_t payload_part;
+    if (zlink_msg_init_size (&topic_part, std::strlen (k_pubsub_topic)) != 0)
+        return false;
+    if (zlink_msg_init_size (&payload_part, payload_size_) != 0) {
+        zlink_msg_close (&topic_part);
+        return false;
+    }
+
+    std::memcpy (zlink_msg_data (&topic_part), k_pubsub_topic,
+                 std::strlen (k_pubsub_topic));
+    std::memcpy (zlink_msg_data (&payload_part), payload_->data (), payload_size_);
+
+    if (zlink_msg_send (&topic_part, pub_socket_, ZLINK_SNDMORE) < 0) {
+        zlink_msg_close (&topic_part);
+        zlink_msg_close (&payload_part);
+        return false;
+    }
+    if (zlink_msg_send (&payload_part, pub_socket_, 0) < 0) {
+        zlink_msg_close (&payload_part);
+        return false;
+    }
+
+    return true;
+}
+
 inline bool run_oneway_phase (void *pub_socket,
                               recv_state_t *state,
                               std::vector<char> *payload,
@@ -183,15 +238,8 @@ inline bool run_oneway_phase (void *pub_socket,
         queue_probe->force_sample_send ();
 
     while (std::chrono::steady_clock::now () < deadline) {
-        const uint64_t sent_ts = perf_single_metric::now_us ();
-        if (!perf_single_metric::stamp_payload (payload->data (),
-                                                payload_size,
-                                                run_id,
-                                                phase,
-                                                msg_size,
-                                                (*seq)++,
-                                                sent_ts)
-            || !send_exact (pub_socket, payload->data (), payload_size, 0)) {
+        if (!send_pubsub_sample (pub_socket, payload, payload_size, msg_size,
+                                 run_id, seq, phase)) {
             send_failed = true;
             break;
         }
@@ -276,15 +324,14 @@ void run_pubsub (const std::string &transport,
 
     recv_state_t recv_state;
 
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = &pubsub_recv_handler;
-    handler.userdata = &recv_state;
-
     socket_guard_t pub (ctx.get (), ZLINK_PUB);
-    socket_guard_t sub (ctx.get (), ZLINK_SUB, &handler);
+    socket_guard_t sub (ctx.get (), ZLINK_SUB);
     if (!pub.valid () || !sub.valid ()) {
+        print_fail_no_queue ();
+        return;
+    }
+    if (sub.valid ()
+        && zlink_recv_spot_handler (sub, &pubsub_recv_handler, &recv_state) != 0) {
         print_fail_no_queue ();
         return;
     }

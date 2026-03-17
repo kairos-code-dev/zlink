@@ -10,6 +10,12 @@
 
 namespace {
 
+inline void debug_router_router (const char *message_)
+{
+    if (bench_debug_enabled ())
+        std::cerr << "[perf-router-router] " << message_ << std::endl;
+}
+
 // State for the receiver socket (router1) which handles both handshake
 // and data-phase messages.
 struct recv_state_t {
@@ -57,19 +63,6 @@ private:
     recv_state_t &operator= (const recv_state_t &);
 };
 
-// State for the sender socket (router2) which only receives during handshake.
-struct sender_handshake_state_t {
-    sender_handshake_state_t () : handshake_received (false) {}
-
-    std::mutex mutex;
-    std::condition_variable cv;
-    bool handshake_received;
-
-private:
-    sender_handshake_state_t (const sender_handshake_state_t &);
-    sender_handshake_state_t &operator= (const sender_handshake_state_t &);
-};
-
 // Handler for router1 (receiver): processes handshake and data messages.
 inline void router1_recv_handler (const zlink_routing_id_t *,
                                    zlink_msg_t *parts_,
@@ -77,16 +70,6 @@ inline void router1_recv_handler (const zlink_routing_id_t *,
                                    void *userdata_)
 {
     recv_state_t *state = static_cast<recv_state_t *> (userdata_);
-
-    // Handshake mode: just signal that we received a message
-    if (state->handshake_mode.load (std::memory_order_acquire)) {
-        for (size_t i = 0; i < part_count_; ++i)
-            zlink_msg_close (&parts_[i]);
-        std::lock_guard<std::mutex> lock (state->done_mutex);
-        state->handshake_received = true;
-        state->done_cv.notify_one ();
-        return;
-    }
 
     // Data mode: expect exactly one payload part (routing id is separate)
     if (part_count_ != 1) {
@@ -113,6 +96,7 @@ inline void router1_recv_handler (const zlink_routing_id_t *,
     zlink_msg_close (&parts_[0]);
 
     if (!size_ok) {
+        debug_router_router ("router1 data payload size mismatch");
         state->recv_failed.store (true, std::memory_order_release);
         if (state->sender_done.load (std::memory_order_acquire)) {
             std::lock_guard<std::mutex> lock (state->done_mutex);
@@ -149,91 +133,60 @@ inline void router1_recv_handler (const zlink_routing_id_t *,
     }
 }
 
-// Handler for router2 (sender): only receives during handshake.
-inline void router2_recv_handler (const zlink_routing_id_t *,
-                                   zlink_msg_t *parts_,
-                                   size_t part_count_,
-                                   void *userdata_)
+inline bool recv_router_frame_equals (void *socket_,
+                                      const char *expected_,
+                                      size_t expected_size_,
+                                      bool expect_more_)
 {
-    sender_handshake_state_t *state =
-      static_cast<sender_handshake_state_t *> (userdata_);
+    zlink_msg_t msg;
+    if (zlink_msg_init (&msg) != 0)
+        return false;
 
-    for (size_t i = 0; i < part_count_; ++i)
-        zlink_msg_close (&parts_[i]);
+    const int rc = zlink_msg_recv (&msg, socket_, 0);
+    if (rc < 0) {
+        zlink_msg_close (&msg);
+        return false;
+    }
 
-    std::lock_guard<std::mutex> lock (state->mutex);
-    state->handshake_received = true;
-    state->cv.notify_one ();
+    const bool size_ok = zlink_msg_size (&msg) == expected_size_;
+    const bool data_ok =
+      size_ok
+      && std::memcmp (zlink_msg_data (&msg), expected_, expected_size_) == 0;
+    const bool more_ok = (zlink_msg_more (&msg) != 0) == expect_more_;
+
+    zlink_msg_close (&msg);
+    return data_ok && more_ok;
 }
 
-inline bool perform_router_router_handshake (void *router1,
-                                              void *router2,
-                                              recv_state_t *r1_state,
-                                              sender_handshake_state_t *r2_state)
+inline bool perform_router_router_handshake (void *router1, void *router2)
 {
     const int handshake_timeout_ms =
       resolve_bench_count ("PERF_ROUTER_HANDSHAKE_TIMEOUT_MS", 3000);
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (
-        handshake_timeout_ms > 0 ? handshake_timeout_ms : 3000);
+    const int bounded_timeout_ms =
+      handshake_timeout_ms > 0 ? handshake_timeout_ms : 3000;
+    zlink_setsockopt (
+      router1, ZLINK_SNDTIMEO, &bounded_timeout_ms, sizeof (bounded_timeout_ms));
+    zlink_setsockopt (
+      router2, ZLINK_SNDTIMEO, &bounded_timeout_ms, sizeof (bounded_timeout_ms));
+    zlink_setsockopt (
+      router1, ZLINK_RCVTIMEO, &bounded_timeout_ms, sizeof (bounded_timeout_ms));
+    zlink_setsockopt (
+      router2, ZLINK_RCVTIMEO, &bounded_timeout_ms, sizeof (bounded_timeout_ms));
 
-    // Phase 1: router2 sends PING to router1
-    // The handler on router1 will signal when the message arrives.
-    bool ping_sent = false;
-    while (!ping_sent && std::chrono::steady_clock::now () < deadline) {
-        const bool id_sent =
-          send_exact (router2, "ROUTER1", 7, ZLINK_SNDMORE | ZLINK_DONTWAIT);
-        if (!id_sent) {
-            const int err = zlink_errno ();
-            if (err != EAGAIN && err != EINTR)
-                return false;
-            std::this_thread::sleep_for (std::chrono::milliseconds (10));
-            continue;
-        }
-
-        const int rc = zlink_send (router2, "PING", 4, ZLINK_DONTWAIT);
-        if (rc == 4) {
-            ping_sent = true;
-        } else if (rc < 0) {
-            const int err = zlink_errno ();
-            if (err != EAGAIN && err != EINTR)
-                return false;
-            std::this_thread::sleep_for (std::chrono::milliseconds (10));
-        }
-    }
-
-    if (!ping_sent)
+    if (!send_exact (router2, "ROUTER1", 7, ZLINK_SNDMORE)
+        || !send_exact (router2, "PING", 4, 0)
+        || !recv_router_frame_equals (router1, "ROUTER2", 7, true)
+        || !recv_router_frame_equals (router1, "PING", 4, false)) {
+        debug_router_router ("router2 -> router1 route validation failed");
         return false;
-
-    // Wait for router1 handler to receive the PING
-    {
-        std::unique_lock<std::mutex> lock (r1_state->done_mutex);
-        if (!r1_state->handshake_received) {
-            r1_state->done_cv.wait_until (lock, deadline, [&] () {
-                return r1_state->handshake_received;
-            });
-        }
-        if (!r1_state->handshake_received)
-            return false;
     }
 
-    // Phase 2: router1 sends PONG back to router2
     if (!send_exact (router1, "ROUTER2", 7, ZLINK_SNDMORE)
-        || !send_exact (router1, "PONG", 4, 0)) {
+        || !send_exact (router1, "PONG", 4, 0)
+        || !recv_router_frame_equals (router2, "ROUTER1", 7, true)
+        || !recv_router_frame_equals (router2, "PONG", 4, false)) {
+        debug_router_router ("router1 -> router2 route validation failed");
         return false;
-    }
-
-    // Wait for router2 handler to receive the PONG
-    {
-        std::unique_lock<std::mutex> lock (r2_state->mutex);
-        if (!r2_state->handshake_received) {
-            r2_state->cv.wait_until (lock, deadline, [&] () {
-                return r2_state->handshake_received;
-            });
-        }
-        if (!r2_state->handshake_received)
-            return false;
     }
 
     return true;
@@ -241,8 +194,6 @@ inline bool perform_router_router_handshake (void *router1,
 
 inline bool setup_router_router_session (void *router1,
                                          void *router2,
-                                         recv_state_t *r1_state,
-                                         sender_handshake_state_t *r2_state,
                                          const std::string &transport,
                                          const std::string &pair_id)
 {
@@ -251,16 +202,18 @@ inline bool setup_router_router_session (void *router1,
 
     zlink_setsockopt (router1, ZLINK_ROUTING_ID, "ROUTER1", 7);
     zlink_setsockopt (router2, ZLINK_ROUTING_ID, "ROUTER2", 7);
+    const int mandatory = 1;
+    zlink_setsockopt (
+      router1, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof (mandatory));
+    zlink_setsockopt (
+      router2, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof (mandatory));
 
-    int mandatory = 1;
-    zlink_setsockopt (router1, ZLINK_ROUTER_MANDATORY, &mandatory,
-                      sizeof (mandatory));
-    zlink_setsockopt (router2, ZLINK_ROUTER_MANDATORY, &mandatory,
-                      sizeof (mandatory));
+    if (!setup_connected_pair (router1, router2, transport, pair_id)) {
+        return false;
+    }
 
-    if (!setup_connected_pair (router1, router2, transport, pair_id)
-        || !perform_router_router_handshake (
-          router1, router2, r1_state, r2_state)) {
+    if (transport != "inproc"
+        && !perform_router_router_handshake (router1, router2)) {
         return false;
     }
 
@@ -322,6 +275,7 @@ inline bool run_oneway_phase (recv_state_t *state,
                                                 sent_ts)
             || !send_exact (sender, "ROUTER1", 7, ZLINK_SNDMORE)
             || !send_exact (sender, payload->data (), payload_size, 0)) {
+            debug_router_router ("active/warmup send failed");
             send_failed = true;
             break;
         }
@@ -369,7 +323,10 @@ inline bool run_oneway_phase (recv_state_t *state,
         queue_probe->force_sample_recv ();
 
     if (send_failed || state->recv_failed.load (std::memory_order_acquire))
+    {
+        debug_router_router ("phase failed before metrics were collected");
         return false;
+    }
 
     *out_received = state->received;
 
@@ -394,59 +351,52 @@ void run_router_router (const std::string &transport,
     if (!transport_available (transport))
         return;
 
-    auto print_fail_no_queue = [&] () {
-        print_fail_result (lib_name, "ROUTER_ROUTER", transport, msg_size);
-    };
-
     ctx_guard_t ctx;
     if (!ctx.valid ()) {
-        print_fail_no_queue ();
+        print_fail_result (lib_name, "ROUTER_ROUTER", transport, msg_size);
         return;
     }
 
     recv_state_t recv_state;
-    sender_handshake_state_t sender_hs_state;
 
-    zlink_socket_handler_t r1_handler;
-    memset (&r1_handler, 0, sizeof (r1_handler));
-    r1_handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    r1_handler.fn.msg = &router1_recv_handler;
-    r1_handler.userdata = &recv_state;
-
-    zlink_socket_handler_t r2_handler;
-    memset (&r2_handler, 0, sizeof (r2_handler));
-    r2_handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    r2_handler.fn.msg = &router2_recv_handler;
-    r2_handler.userdata = &sender_hs_state;
-
-    socket_guard_t router1 (ctx.get (), ZLINK_ROUTER, &r1_handler);
-    socket_guard_t router2 (ctx.get (), ZLINK_ROUTER, &r2_handler);
-    if (!router1.valid () || !router2.valid ()) {
-        print_fail_no_queue ();
+    socket_guard_t router1_plain (ctx.get (), ZLINK_ROUTER);
+    socket_guard_t router1_with_handler (
+      ctx.get (), ZLINK_ROUTER, &router1_recv_handler, &recv_state);
+    socket_guard_t router2 (ctx.get (), ZLINK_ROUTER);
+    void *router1_socket =
+      transport == "inproc" ? router1_with_handler.get () : router1_plain.get ();
+    queue_probe_t queue_probe (router2.get (), router1_socket);
+    auto print_fail_with_queue = [&] () {
+        print_fail_result (
+          lib_name, "ROUTER_ROUTER", transport, msg_size, &queue_probe);
+    };
+    if (!router1_socket || !router2.valid ()) {
+        print_fail_with_queue ();
         return;
     }
 
     if (!setup_router_router_session (
-          router1.get (), router2.get (),
-          &recv_state, &sender_hs_state,
-          transport, lib_name + "_router_router")) {
-        print_fail_no_queue ();
+          router1_socket, router2.get (), transport,
+          lib_name + "_router_router")) {
+        debug_router_router ("session setup failed");
+        print_fail_with_queue ();
         return;
     }
 
-    // Switch router1 from handshake mode to data mode
+    if (transport != "inproc"
+        && zlink_recv_handler (
+          router1_socket, &router1_recv_handler, &recv_state)
+        != 0) {
+        debug_router_router ("failed to install router1 recv handler");
+        print_fail_with_queue ();
+        return;
+    }
     recv_state.handshake_mode.store (false, std::memory_order_release);
 
     const int recv_timeout_ms = resolve_single_recv_timeout_ms ();
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
-    queue_probe_t queue_probe (router2.get (), router1.get ());
-
-    auto print_fail_with_queue = [&] () {
-        print_fail_result (
-          lib_name, "ROUTER_ROUTER", transport, msg_size, &queue_probe);
-    };
 
     const uint32_t run_id = static_cast<uint32_t> (perf_single_metric::now_us ());
     uint64_t seq = 1;
@@ -466,6 +416,7 @@ void run_router_router (const std::string &transport,
                            NULL,
                            &warmup_received,
                            NULL)) {
+        debug_router_router ("warmup phase failed");
         print_fail_with_queue ();
         return;
     }
@@ -486,6 +437,7 @@ void run_router_router (const std::string &transport,
                            &queue_probe,
                            &received,
                            &latency_stats)) {
+        debug_router_router ("active phase failed");
         print_fail_with_queue ();
         return;
     }

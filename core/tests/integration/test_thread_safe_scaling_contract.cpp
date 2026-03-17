@@ -136,15 +136,6 @@ void scaling_spot_handler (const zlink_routing_id_t *,
     notify_probe (g_spot_probe);
 }
 
-zlink_socket_handler_t make_msg_handler (zlink_socket_msg_handler_fn fn_)
-{
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = fn_;
-    return handler;
-}
-
 void make_unique_inproc_endpoint (char *endpoint_out_, size_t size_)
 {
     const unsigned int id =
@@ -261,10 +252,6 @@ double measure_raw_handle_scaling_once (int handle_count_, int messages_per_hand
 
     count_probe_t probe;
     g_raw_probe = &probe;
-    const zlink_socket_handler_t msg_handler =
-      make_msg_handler (&scaling_raw_handler);
-    const zlink_socket_handler_t discard_handler =
-      make_msg_handler (&discard_socket_parts);
     const char payload[] = "raw-perf-payload";
     const int payload_size = static_cast<int> (sizeof (payload) - 1);
 
@@ -276,9 +263,9 @@ double measure_raw_handle_scaling_once (int handle_count_, int messages_per_hand
         TEST_ASSERT_NOT_NULL (servers[i]);
         TEST_ASSERT_NOT_NULL (clients[i]);
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_socket_attach_handler (servers[i], &msg_handler));
+          zlink_recv_handler (servers[i], &scaling_raw_handler, NULL));
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_socket_attach_handler (clients[i], &discard_handler));
+          zlink_recv_handler (clients[i], &discard_socket_parts, NULL));
         char endpoint[MAX_SOCKET_STRING];
         bind_loopback_ipv4 (servers[i], endpoint, sizeof (endpoint));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (clients[i], endpoint));

@@ -73,11 +73,15 @@ zlink는 8종의 소켓 타입을 제공한다. 각 소켓은 고유한 메시�
 | 스레드 간 시그널링 | PAIR + inproc | 가장 빠른 1:1 통신 |
 | 이벤트 브로드캐스트 | PUB/SUB | 토픽 기반 필터링 |
 | 메시지 브로커/프록시 | XPUB/XSUB | 구독 메시지 접근 및 변환 |
-| 비동기 요청-응답 서버 | DEALER/ROUTER | 다중 클라이언트 처리 |
+| 비동기 요청-응답 서버 | DEALER↔DEALER | 비동기 양방향 통신 |
 | 로드밸런싱 | 다중 DEALER → ROUTER | Round-robin 분배 |
 | 특정 피어 전송 | ROUTER | routing_id로 대상 지정 |
 | 웹 클라이언트 연동 | STREAM + ws/wss | WebSocket RAW 통신 |
 | 외부 TCP 클라이언트 | STREAM + tcp/tls | Length-Prefix RAW 통신 |
+
+> 위치 투명성이 필요한 경우(자동 연결 · 로드밸런싱 · 토픽 메시)에는
+> 소켓 대신 서비스 레이어(Gateway, SPOT)를 사용한다.
+> 상세는 [서비스 개요](07-0-services.ko.md)를 참고.
 
 ## 6. 하위 문서
 
@@ -110,13 +114,8 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 /* 3. 소켓 생성 (수신용 핸들러 등록) */
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message,
-    .userdata = NULL
-};
 void *socket = zlink_socket(ctx, ZLINK_<TYPE>);
-zlink_socket_attach_handler(socket, &handler);
+zlink_recv_handler(socket, on_message, NULL);
 
 /* 4. 소켓 옵션 설정 (bind/connect 전) */
 zlink_setsockopt(socket, ZLINK_<OPTION>, &value, sizeof(value));
@@ -134,7 +133,23 @@ zlink_close(socket);
 zlink_ctx_term(ctx);
 ```
 
-> 소켓 옵션은 반드시 `zlink_bind()`/`zlink_connect()` **이전에** 설정해야 한다.
+> 다음 옵션은 핸드셰이크/연결 과정에서 사용되므로 `zlink_bind()`/`zlink_connect()` **이전에** 설정해야 한다:
+> `ZLINK_ROUTING_ID`, `ZLINK_CONNECT_ROUTING_ID`, `ZLINK_PROBE_ROUTER`, `ZLINK_TLS_*`.
+> 그 외 옵션(`SNDHWM`, `RCVHWM`, `LINGER`, `SNDTIMEO` 등)은 bind/connect 이후에도 변경 가능하다.
+
+> 위는 callback 수신 모드 예제다. `zlink_recv()`를 사용한 pull 방식 수신도
+> 가능하다. 두 모드의 비교는
+> [Core API](02-core-api.ko.md) 섹션 3.2를 참고.
+
+> **Callback 모드 제약:** `zlink_recv_handler()` 설치 후 `zlink_recv()`는
+> `EBUSY`를 반환한다 (비가역 전환). 수신 관련 옵션 중 다음이 무효화된다:
+>
+> | 옵션 | 이유 |
+> |------|------|
+> | `ZLINK_RCVTIMEO` | `recv()`를 호출하지 않으므로 타임아웃 무효 |
+> | `ZLINK_RCVMORE` | 멀티파트 전체가 `parts[]` 배열로 원자적 전달 |
+>
+> `ZLINK_RCVHWM`은 callback 모드에서도 유효하다 (I/O 스레드 내부 큐에 적용).
 
 ---
 [← Core API](02-core-api.ko.md) | [PAIR →](03-1-pair.ko.md)

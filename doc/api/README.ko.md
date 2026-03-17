@@ -30,7 +30,7 @@ zlink C 라이브러리는 경량 I/O 스레드와 락프리 큐를 기반으로
 |------|-----------|------|
 | [`zlink_msg_t`](message.ko.md) | message.ko.md | 불투명 메시지 컨테이너 (64바이트, 스택 할당 가능) |
 | [`zlink_routing_id_t`](message.ko.md) | message.ko.md | 피어 라우팅 아이덴티티 (1바이트 크기 + 255바이트 데이터) |
-| [`zlink_socket_handler_t`](socket.ko.md) | socket.ko.md | 소켓 receive handler 디스크립터 |
+| `zlink_socket_msg_handler_fn` | socket.ko.md | 소켓 메시지 수신 콜백 (아래 [콜백 타입](#콜백-타입) 참조) |
 | [`zlink_monitor_event_t`](monitoring.ko.md) | monitoring.ko.md | 모니터 이벤트 구조체 (이벤트, 값, 주소) |
 | [`zlink_monitor_snapshot_t`](monitoring.ko.md) | monitoring.ko.md | aggregate monitor snapshot (상태, ready-peer 수, queue depth) |
 | [`zlink_service_event_t`](events.ko.md) | events.ko.md | 서비스 모니터 이벤트 구조체와 subject-aware payload |

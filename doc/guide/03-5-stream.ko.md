@@ -116,6 +116,10 @@ zlink_stream_detach(stream);
 | 프레이밍 | transport에서 수신된 raw 바이트 |
 | 전송 | `zlink_stream_send()` / `zlink_stream_send_msg()` |
 
+> 송신 큐가 가득 차면(HWM) `zlink_stream_send()`는 블록(기본) 또는
+> `ZLINK_DONTWAIT`로 `EAGAIN`을 반환한다. 고급 backpressure 패턴은
+> [성능 가이드](10-performance.ko.md)를 참고.
+
 - 한 번에 하나의 콜백만 등록 가능하며, 이미 등록된 상태에서 attach를
   호출하면 `errno=EBUSY`와 함께 `-1`을 반환한다.
 - attach/detach는 애플리케이션 스레드에서 호출할 수 있으며 STREAM

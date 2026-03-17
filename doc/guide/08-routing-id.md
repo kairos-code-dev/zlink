@@ -122,13 +122,8 @@ void on_request(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-zlink_socket_handler_t router_handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_request,
-    .userdata = NULL
-};
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_socket_attach_handler(router, &router_handler);
+zlink_recv_handler(router, on_request, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];

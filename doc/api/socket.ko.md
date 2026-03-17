@@ -3,17 +3,17 @@
 # 소켓 API 레퍼런스
 
 소켓 API는 zlink 소켓의 생성, 구성, 바인딩, 연결, I/O 수행을 위한 함수를
-제공합니다. 모든 메시지 수신은 핸들러 콜백을 통해 처리됩니다. 소켓은 recv 모드로
-시작하며, 핸들러를 부착하면 콜백 모드로 전환됩니다. 동기식 `zlink_recv()`도
-pull-style로 사용 가능합니다. 소켓은 게시/구독, 요청/응답, raw stream을
-포함한 여러 메시징 패턴을 지원합니다.
+제공합니다. 메시지 수신은 두 가지 모드를 지원합니다: 부착된 핸들러를 통한
+콜백 dispatch와 `zlink_recv()`를 통한 동기식 pull. 소켓은 recv 모드로
+시작하며, 핸들러를 부착하면 콜백 모드로 전환됩니다. 소켓은 게시/구독,
+요청/응답, raw stream을 포함한 여러 메시징 패턴을 지원합니다.
 
 ## 스레드 안전성 요약
 
 공개 socket handle API는 기본적으로 thread-safe합니다. 다만 모든 API가 같은
 비용 모델을 갖는 것은 아닙니다.
 
-- `send`는 same-handle concurrent 호출을 허용하는 hot path입니다.
+- `send`는 여러 스레드에서 동시 호출을 허용하는 hot path입니다.
 - `bind/connect/disconnect`, subscribe/unsubscribe, option/query, monitor는
   runtime에 호출 가능한 control path입니다. correctness는 보장되지만 실행
   순서는 내부 직렬화에 따라 결정될 수 있습니다.
@@ -36,9 +36,10 @@ typedef void (*zlink_socket_msg_handler_fn) (
   void *userdata_);
 ```
 
-PAIR, DEALER, ROUTER 소켓에서 멀티파트 메시지 dispatch 콜백.
+PAIR, DEALER, ROUTER, STREAM 소켓에서 멀티파트 메시지 dispatch 콜백.
 소유 I/O 스레드에서 호출됩니다. 모든 메시지 파트의 소유권이 콜백으로
 이전되며, 각 파트는 정확히 한 번 close하거나 소비해야 합니다.
+`zlink_recv_handler()`와 함께 사용합니다.
 
 ### zlink_spot_handler_fn
 
@@ -53,6 +54,7 @@ typedef void (*zlink_spot_handler_fn) (const zlink_routing_id_t *source_rid_,
 
 SUB, XSUB 소켓에서 토픽 기반 메시지 dispatch 콜백.
 소유 I/O 스레드에서 호출되며, 파트의 소유권이 이전됩니다.
+`zlink_recv_spot_handler()`와 함께 사용합니다.
 
 ### zlink_xpub_handler_fn
 
@@ -64,40 +66,16 @@ typedef void (*zlink_xpub_handler_fn) (int subscribed_,
 ```
 
 XPUB 소켓에서 구독 알림 콜백.
+`zlink_recv_xpub_handler()`와 함께 사용합니다.
 
-### zlink_socket_handler_t
+각 콜백 타입은 전용 함수를 통해 등록합니다. 소켓 타입별 등록 함수 매핑:
 
-```c
-typedef enum zlink_socket_handler_kind_t
-{
-    ZLINK_SOCKET_HANDLER_MSG  = 0x1201,
-    ZLINK_SOCKET_HANDLER_SPOT = 0x1202,
-    ZLINK_SOCKET_HANDLER_XPUB = 0x1203
-} zlink_socket_handler_kind_t;
-
-typedef struct zlink_socket_handler_t
-{
-    zlink_socket_handler_kind_t kind;
-    union
-    {
-        zlink_socket_msg_handler_fn msg;
-        zlink_spot_handler_fn spot;
-        zlink_xpub_handler_fn xpub;
-    } fn;
-    void *userdata;
-} zlink_socket_handler_t;
-```
-
-`zlink_socket_attach_handler()`에 전달하는 핸들러 디스크립터. `kind` 필드로 콜백 변형을
-선택합니다. 소켓 타입별 핸들러 kind 매핑:
-
-| 소켓 타입 | 핸들러 Kind | 콜백 |
+| 소켓 타입 | 등록 함수 | 콜백 |
 |---|---|---|
-| PAIR, DEALER, ROUTER | `ZLINK_SOCKET_HANDLER_MSG` | `zlink_socket_msg_handler_fn` |
-| SUB, XSUB | `ZLINK_SOCKET_HANDLER_SPOT` | `zlink_spot_handler_fn` |
-| XPUB | `ZLINK_SOCKET_HANDLER_XPUB` | `zlink_xpub_handler_fn` |
-| PUB | N/A | 송신 전용; `NULL` 핸들러 전달 |
-| STREAM | `ZLINK_SOCKET_HANDLER_MSG` | 아래 STREAM 콜백 API 참고 |
+| PAIR, DEALER, ROUTER, STREAM | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
+| SUB, XSUB | `zlink_recv_spot_handler` | `zlink_spot_handler_fn` |
+| XPUB | `zlink_recv_xpub_handler` | `zlink_xpub_handler_fn` |
+| PUB | N/A | 송신 전용; 핸들러 불필요 |
 
 ### zlink_send_ready_handler_fn
 
@@ -280,7 +258,7 @@ void *zlink_socket (void *context_, zlink_socket_type_t type_);
 ```
 
 지정된 context 내에서 새 소켓을 생성합니다. `type_` 매개변수는 메시징 패턴을
-선택합니다. 소켓은 recv 모드로 시작합니다. `zlink_socket_attach_handler()`로
+선택합니다. 소켓은 recv 모드로 시작합니다. `zlink_recv_handler()`로
 콜백 모드로 전환할 수 있습니다. 소켓은 context가 종료되기 전에
 `zlink_close()`로 닫아야 합니다.
 
@@ -291,28 +269,80 @@ void *zlink_socket (void *context_, zlink_socket_type_t type_);
 
 **스레드 안전성:** Context에 대해 스레드 안전합니다.
 
-**참고:** `zlink_close`, `zlink_ctx_new`, `zlink_socket_attach_handler`
+**참고:** `zlink_close`, `zlink_ctx_new`, `zlink_recv_handler`
 
 ---
 
-### zlink_socket_attach_handler
+### zlink_recv_handler
 
-소켓에 직접 수신 핸들러를 부착합니다.
+소켓에 메시지 수신 핸들러를 부착합니다.
 
 ```c
-int zlink_socket_attach_handler (void *s_, const zlink_socket_handler_t *handler_);
+int zlink_recv_handler (void *s_,
+                        zlink_socket_msg_handler_fn handler_,
+                        void *userdata_);
 ```
 
-소켓에 직접 수신 핸들러를 부착합니다. 소켓은 recv 모드로 시작합니다. 이 호출은
-핸들을 콜백 모드로 전환하며, 소켓의 수명 동안 되돌릴 수 없습니다. 동일 핸들에
-대한 두 번째 attach는 `errno=EBUSY`로 실패합니다.
+PAIR, DEALER, ROUTER, STREAM 소켓에 메시지 수신 핸들러를 부착합니다. 소켓은
+recv 모드로 시작합니다. 이 호출은 핸들을 콜백 모드로 전환하며, 소켓의 수명 동안
+되돌릴 수 없습니다. 동일 핸들에 대한 두 번째 attach는 `errno=EBUSY`로
+실패합니다.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
-**에러:** 핸들러가 NULL이거나 kind가 소켓 타입과 일치하지 않으면 `EINVAL`.
-핸들러가 이미 부착된 경우 `EBUSY`.
+**에러:** 핸들러가 NULL이거나 소켓 타입이 메시지 핸들러를 허용하지 않으면
+`EINVAL`. 핸들러가 이미 부착된 경우 `EBUSY`.
 
-**참고:** `zlink_socket`, `zlink_close`
+**참고:** `zlink_recv_spot_handler`, `zlink_recv_xpub_handler`,
+`zlink_socket`, `zlink_close`
+
+---
+
+### zlink_recv_spot_handler
+
+소켓에 토픽 기반 수신 핸들러를 부착합니다.
+
+```c
+int zlink_recv_spot_handler (void *s_,
+                             zlink_spot_handler_fn handler_,
+                             void *userdata_);
+```
+
+SUB 또는 XSUB 소켓에 토픽 기반 수신 핸들러를 부착합니다. 소켓은 recv 모드로
+시작합니다. 이 호출은 핸들을 콜백 모드로 전환하며, 소켓의 수명 동안 되돌릴 수
+없습니다. 동일 핸들에 대한 두 번째 attach는 `errno=EBUSY`로 실패합니다.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**에러:** 핸들러가 NULL이거나 소켓 타입이 spot 핸들러를 허용하지 않으면
+`EINVAL`. 핸들러가 이미 부착된 경우 `EBUSY`.
+
+**참고:** `zlink_recv_handler`, `zlink_recv_xpub_handler`,
+`zlink_socket`, `zlink_close`
+
+---
+
+### zlink_recv_xpub_handler
+
+XPUB 소켓에 구독 알림 핸들러를 부착합니다.
+
+```c
+int zlink_recv_xpub_handler (void *s_,
+                             zlink_xpub_handler_fn handler_,
+                             void *userdata_);
+```
+
+XPUB 소켓에 구독 알림 핸들러를 부착합니다. 소켓은 recv 모드로 시작합니다. 이
+호출은 핸들을 콜백 모드로 전환하며, 소켓의 수명 동안 되돌릴 수 없습니다. 동일
+핸들에 대한 두 번째 attach는 `errno=EBUSY`로 실패합니다.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**에러:** 핸들러가 NULL이거나 소켓이 XPUB가 아니면 `EINVAL`. 핸들러가 이미
+부착된 경우 `EBUSY`.
+
+**참고:** `zlink_recv_handler`, `zlink_recv_spot_handler`,
+`zlink_socket`, `zlink_close`
 
 ---
 
@@ -484,16 +514,66 @@ int zlink_send (void *s_,
 **에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우 `EAGAIN`. Context가
 종료된 경우 `ETERM`.
 
-**참고:** `zlink_msg_send`
+**참고:** `zlink_msg_send`, `zlink_recv`
 
 ---
 
-### zlink_socket_set_send_ready_handler
+### zlink_recv
+
+소켓에서 버퍼 데이터를 수신합니다.
+
+```c
+int zlink_recv (void *s_,
+                void *buf_,
+                size_t len_,
+                zlink_send_flags_t flags_);
+```
+
+소켓 `s_`에서 최대 `len_` 바이트를 `buf_`로 수신합니다. 소켓이 recv 모드여야
+합니다 (핸들러 미부착). `zlink_recv_handler()`로 직접 수신 핸들러가
+부착된 경우 `errno=EBUSY`로 실패합니다. 메시지가 없을 때 즉시 반환하려면
+`ZLINK_DONTWAIT`를 전달하세요.
+
+**반환값:** 성공 시 수신된 바이트 수, 실패 시 -1 (errno가 설정됨).
+
+**에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우, 또는
+`ZLINK_RCVTIMEO`가 만료된 경우 `EAGAIN`. 수신 핸들러가 부착된 경우 `EBUSY`.
+Context가 종료된 경우 `ETERM`.
+
+**참고:** `zlink_msg_recv`, `zlink_send`, `zlink_recv_handler`
+
+---
+
+### zlink_msg_recv
+
+소켓에서 메시지를 수신합니다.
+
+```c
+int zlink_msg_recv (zlink_msg_t *msg_,
+                    void *s_,
+                    zlink_send_flags_t flags_);
+```
+
+소켓 `s_`에서 메시지를 `msg_`로 수신합니다. `msg_`는 호출 전에 초기화되어야
+합니다. 소켓이 recv 모드여야 합니다 (핸들러 미부착). 멀티파트 메시지의 경우
+각 호출 후 `ZLINK_RCVMORE`를 확인하여 후속 프레임 여부를 판별합니다.
+
+**반환값:** 성공 시 수신된 메시지의 바이트 수, 실패 시 -1 (errno가 설정됨).
+
+**에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우, 또는
+`ZLINK_RCVTIMEO`가 만료된 경우 `EAGAIN`. 수신 핸들러가 부착된 경우 `EBUSY`.
+Context가 종료된 경우 `ETERM`.
+
+**참고:** `zlink_recv`, `zlink_msg_send`, `zlink_recv_handler`
+
+---
+
+### zlink_socket_send_ready_handler
 
 send-ready 콜백을 설정하거나 교체합니다.
 
 ```c
-int zlink_socket_set_send_ready_handler (
+int zlink_socket_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 

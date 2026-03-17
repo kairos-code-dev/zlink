@@ -59,13 +59,8 @@ void on_topic(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_SPOT,
-    .fn.spot = on_topic,
-    .userdata = NULL
-};
 void *sub = zlink_socket(ctx, ZLINK_SUB);
-zlink_socket_attach_handler(sub, &handler);
+zlink_recv_spot_handler(sub, on_topic, NULL);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 
 /* Subscribe to topic -- set after connect */
@@ -75,6 +70,27 @@ zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "weather", 7);
 ```
 
 > Reference: `core/tests/test_pubsub.cpp` -- empty subscription ("") → receives all messages
+
+### Sending and Receiving Summary
+
+| Socket | Direction | Registration Call | Notes |
+|--------|-----------|-------------------|-------|
+| PUB | Send only | N/A | Cannot receive; does not accept a handler |
+| SUB | Receive only | `zlink_recv_spot_handler()` | `topic` + `parts[]` — topic extracted by prefix match |
+| XPUB | Bidirectional | `zlink_recv_xpub_handler()` | Receives subscription events, not data |
+| XSUB | Bidirectional | `zlink_recv_spot_handler()` | Sends subscription frames; receives data via fair-queue |
+
+SUB uses `zlink_recv_spot_handler()` instead of `zlink_recv_handler()`
+because the I/O thread separates the matched topic from the payload before
+invoking the callback — the handler receives `topic` and `parts[]` as
+distinct parameters.
+
+**Pull mode** is also available for SUB: call `zlink_recv()` without
+attaching a handler. The raw frame is received without topic separation.
+
+> When PUB's send queue is full (HWM), messages are **dropped** rather
+> than blocking. For details, see
+> [Performance Guide](10-performance.md).
 
 ## 3. Topic Filtering
 
@@ -165,13 +181,8 @@ void *pub = zlink_socket(ctx, ZLINK_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
 /* SUB -- receive all messages */
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_SPOT,
-    .fn.spot = on_topic,
-    .userdata = NULL
-};
 void *sub = zlink_socket(ctx, ZLINK_SUB);
-zlink_socket_attach_handler(sub, &handler);
+zlink_recv_spot_handler(sub, on_topic, NULL);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
 
@@ -296,13 +307,8 @@ void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len,
         printf("Unsubscribe: %.*s\n", (int)topic_len, (const char *)topic);
 }
 
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_XPUB,
-    .fn.xpub = on_subscription,
-    .userdata = NULL
-};
 void *xpub = zlink_socket(ctx, ZLINK_XPUB);
-zlink_socket_attach_handler(xpub, &handler);
+zlink_recv_xpub_handler(xpub, on_subscription, NULL);
 ```
 
 > Reference: `core/tests/test_xpub_manual.cpp` -- `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
@@ -404,13 +410,8 @@ void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len,
         printf("Unsubscription: %.*s\n", (int)topic_len, (const char *)topic);
 }
 
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_XPUB,
-    .fn.xpub = on_subscription,
-    .userdata = NULL
-};
 void *xpub = zlink_socket(ctx, ZLINK_XPUB);
-zlink_socket_attach_handler(xpub, &handler);
+zlink_recv_xpub_handler(xpub, on_subscription, NULL);
 zlink_bind(xpub, "tcp://*:5557");
 
 /* Subscription events are dispatched to on_subscription callback */

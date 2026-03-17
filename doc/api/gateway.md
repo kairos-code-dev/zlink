@@ -10,8 +10,8 @@ time. There is no `recv()` function.
 
 ## Thread-Safety Summary
 
-Public Gateway handle APIs are thread-safe for same-handle operational use by
-default.
+A single Gateway handle can be used concurrently from multiple threads
+(thread-safe).
 
 - `zlink_gateway_send()` / `zlink_gateway_send_rid()` are concurrent hot-path
   operations.
@@ -32,7 +32,7 @@ default.
 - Use `zlink_gateway_connect()` / `zlink_gateway_disconnect()` for manual
   peer management (before discovery attachment only).
 - Use `zlink_gateway_set_option()` for service-level tuning.
-- Use `zlink_gateway_set_send_ready_handler()` for send-side backpressure.
+- Use `zlink_gateway_send_ready_handler()` for send-side backpressure.
 - Use `zlink_gateway_monitor_open()` for edge transitions such as
   `ZLINK_GATEWAY_SEND_READY_CHANGED` and `ZLINK_GATEWAY_ROUTE_UP`.
 - Use `zlink_monitor_snapshot()` on the monitor handle to read current local
@@ -230,12 +230,12 @@ Bypasses load balancing and sends to the peer identified by `routing_id`.
 
 ---
 
-### zlink_gateway_set_send_ready_handler
+### zlink_gateway_send_ready_handler
 
 Install or replace the send-ready callback.
 
 ```c
-int zlink_gateway_set_send_ready_handler (
+int zlink_gateway_send_ready_handler (
   void *gateway, zlink_send_ready_handler_fn handler, void *userdata);
 ```
 
@@ -397,8 +397,8 @@ separately.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Gateway handles are thread-safe for same-handle operational
-APIs. `zlink_gateway_destroy()` is more restrictive: if another thread is
+**Thread safety:** A single Gateway handle can be used concurrently from
+multiple threads. `zlink_gateway_destroy()` is more restrictive: if another thread is
 executing a Gateway callback or operational API on the same handle, destroy
 fails with `errno=EBUSY`. A successful destroy clears `*gateway_p`.
 

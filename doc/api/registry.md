@@ -73,8 +73,8 @@ deregistration, and heartbeat messages from Gateways and SPOT Nodes.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Registry handles are thread-safe for same-handle
-operational APIs. This call remains lifecycle-constrained and may be called at
+**Thread safety:** A single Registry handle can be used concurrently from
+multiple threads (thread-safe). This call remains lifecycle-constrained and may be called at
 most once per Registry.
 
 **See also:** `zlink_registry_new`, `zlink_registry_destroy`
@@ -95,8 +95,8 @@ via peer connections. Must be called before `zlink_registry_bind`.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Registry handles are thread-safe for same-handle
-operational APIs. This call must still be made before `zlink_registry_bind`.
+**Thread safety:** A single Registry handle can be used concurrently from
+multiple threads (thread-safe). This call must still be made before `zlink_registry_bind`.
 
 **See also:** `zlink_registry_add_peer`
 
@@ -117,8 +117,8 @@ Must be called before `zlink_registry_bind`.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Registry handles are thread-safe for same-handle
-operational APIs. This call must still be made before `zlink_registry_bind`.
+**Thread safety:** A single Registry handle can be used concurrently from
+multiple threads (thread-safe). This call must still be made before `zlink_registry_bind`.
 
 **See also:** `zlink_registry_set_id`
 
@@ -141,8 +141,8 @@ removes it from the service list.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Registry handles are thread-safe for same-handle
-operational APIs. This call must still be made before `zlink_registry_bind`.
+**Thread safety:** A single Registry handle can be used concurrently from
+multiple threads (thread-safe). This call must still be made before `zlink_registry_bind`.
 
 **See also:** `zlink_registry_set_broadcast_interval`
 
@@ -163,8 +163,8 @@ updates at this interval.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Registry handles are thread-safe for same-handle
-operational APIs. This call must still be made before `zlink_registry_bind`.
+**Thread safety:** A single Registry handle can be used concurrently from
+multiple threads (thread-safe). This call must still be made before `zlink_registry_bind`.
 
 **See also:** `zlink_registry_set_heartbeat`
 
@@ -191,8 +191,8 @@ select the target socket. Must be called before `zlink_registry_bind`.
 **Errors:**
 - `EINVAL` -- invalid socket role or unknown option.
 
-**Thread safety:** Registry handles are thread-safe for same-handle
-operational APIs. This call must still be made before `zlink_registry_bind`.
+**Thread safety:** A single Registry handle can be used concurrently from
+multiple threads (thread-safe). This call must still be made before `zlink_registry_bind`.
 
 **See also:** `zlink_registry_bind`
 
@@ -212,8 +212,8 @@ was started, this function blocks until the internal thread exits.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Registry handles are thread-safe for same-handle
-operational APIs. `zlink_registry_destroy()` is more restrictive: if another
+**Thread safety:** A single Registry handle can be used concurrently from
+multiple threads (thread-safe). `zlink_registry_destroy()` is more restrictive: if another
 thread is executing an operational API on the same handle, destroy fails with
 `errno=EBUSY`. A successful destroy clears `*registry_p`.
 

@@ -9,7 +9,7 @@ Registry directly.
 
 ## Thread-Safety Summary
 
-Public Discovery handle APIs are thread-safe for same-handle operational use.
+A single Discovery handle can be used concurrently from multiple threads (thread-safe).
 Not every call has the same timing constraints, though.
 
 - `zlink_discovery_connect_registry()`, monitor operations, and query-style

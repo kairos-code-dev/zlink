@@ -2,69 +2,7 @@
 
 # Performance Characteristics and Tuning Guide
 
-## 1. Benchmark Results
-
-### Small Message (64B) Throughput
-
-| Pattern | TCP | IPC | inproc |
-|------|-----|-----|--------|
-| DEALER↔DEALER | 6.03 M/s | 5.96 M/s | 5.96 M/s |
-| PAIR | 5.78 M/s | 5.65 M/s | 6.09 M/s |
-| PUB/SUB | 5.76 M/s | 5.70 M/s | 5.71 M/s |
-| DEALER↔ROUTER | 5.40 M/s | 5.55 M/s | 5.40 M/s |
-| ROUTER↔ROUTER | 5.03 M/s | 5.12 M/s | 4.71 M/s |
-
-> **~99% throughput parity** compared to standard libzmq.
-
-## 2. WS/WSS Optimization Results
-
-| Message Size | WS Improvement | WSS Improvement |
-|------------|-----------|-----------|
-| 64B | +11% | +13% |
-| 1KB | +50% | +37% |
-| 64KB | +97% | +54% |
-| 262KB | +139% | +62% |
-
-### Compared to Beast Library Standalone
-
-| Transport | Beast | zlink | Ratio |
-|-----------|-------|-------|------|
-| tcp | 1416 MB/s | 1493 MB/s | 105% |
-| ws | 540 MB/s | 696 MB/s | 129% |
-
-> For details on WS/WSS internal optimizations (copy elimination, gather write), see [STREAM Socket Optimization](../internals/stream-socket.md).
-
-### STREAM Benchmark Policy
-
-- `libzmq STREAM` comparison is **tcp-only**.
-- For `tls/ws/wss`, use zlink-to-zlink baseline comparison (previous zlink baseline vs current build).
-- For current STREAM default runtime values and remaining tuning knobs, see [03-5-stream.md](03-5-stream.md).
-
-## 3. Throughput Guidelines by Message Size
-
-| Message Size | Characteristics | Recommendation |
-|------------|------|-----------|
-| ≤33B | VSM (inline) | No memory allocation. Maximum throughput |
-| 34B~1KB | LMSG (small) | Normal performance. Negligible copy overhead |
-| 1KB~64KB | LMSG (medium) | Consider zero-copy (`zlink_msg_init_data`) |
-| >64KB | LMSG (large) | Zero-copy essential. WS/WSS leverages gather write |
-
-### Leveraging VSM
-
-Messages of 33 bytes or less are stored directly inside the `msg_t` structure, processed **without malloc**.
-
-```c
-/* VSM: ≤33B → inline storage, maximum efficiency */
-zlink_send(socket, "small msg", 9, 0);
-
-/* LMSG: ≥34B → heap allocation */
-char large[1024];
-zlink_send(socket, large, sizeof(large), 0);
-```
-
-When designing protocols, keeping frequently exchanged messages within 33B maximizes throughput.
-
-## 4. Performance Characteristics by Transport
+## 1. Performance Characteristics by Transport
 
 | Transport | Relative Performance | Latency | Overhead | Recommended Use |
 |-----------|-----------|---------|----------|-----------|
@@ -84,7 +22,7 @@ ws:      tcp + WebSocket framing (2~14B header). Binary mode.
 wss/tls: ws/tcp + TLS encryption. Handshake + record overhead.
 ```
 
-## 5. I/O Thread Count Configuration Guide
+## 2. I/O Thread Count Configuration Guide
 
 ```c
 void *ctx = zlink_ctx_new();
@@ -110,28 +48,57 @@ zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);
 - inproc transport does not use I/O threads (direct pipe connection)
 - Excessively increasing I/O threads causes context switching overhead
 
-## 6. HWM (High Water Mark) Configuration Guide
+## 3. HWM (High Water Mark) Configuration Guide
+
+HWM limits the **per-connection queue size**. In zlink, each connection (pipe) has its own independent send and receive queue; HWM sets the maximum number of messages each queue can hold.
 
 ```c
-int hwm = 10000;
+int hwm = 100;
 zlink_setsockopt(socket, ZLINK_SNDHWM, &hwm, sizeof(hwm));
 zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 ```
 
 | Setting | Default | Description |
 |------|--------|------|
-| `ZLINK_SNDHWM` | 1000 | Maximum messages in the send queue |
-| `ZLINK_RCVHWM` | 1000 | Maximum messages in the receive queue |
+| `ZLINK_SNDHWM` | 1000 | Maximum messages in each connection's send queue |
+| `ZLINK_RCVHWM` | 1000 | Maximum messages in each connection's receive queue |
 
-### Memory vs Throughput Trade-off
+### Backpressure Behavior
 
-| HWM Value | Memory Usage | Throughput | Message Loss |
-|--------|-----------|--------|:----------:|
-| 100 | Low | Low (frequent blocking) | PUB: frequent drops |
-| 1000 | Low | Low | Balanced |
-| 10000 | Moderate | Moderate (absorbs bursts) | PUB: fewer drops |
-| 100000 | High | High | Watch memory usage |
-| 1000 (default) | Low | Low | Balanced |
+When HWM is reached, behavior depends on the socket type and send flags:
+
+- **Blocking send** (`flags=0`): `zlink_send()` blocks until space becomes available. Use `ZLINK_SNDTIMEO` to limit the wait.
+- **Non-blocking send** (`ZLINK_DONTWAIT`): Returns `EAGAIN` immediately. The application decides whether to retry, drop, or buffer externally.
+
+> For detailed flow control patterns (DONTWAIT + send-ready handler), see
+> [Send and Receive Flow Control](#4-send-and-receive-flow-control) below.
+
+### Recovery Mechanism (LWM)
+
+When the send queue reaches HWM, the connection's pipe becomes non-writable. Once the receiver consumes enough messages to drain the queue to or below the **Low Water Mark (LWM)**, an `activate_write` signal fires and the pipe becomes writable again.
+
+LWM formula: **`(HWM + 1) / 2`**
+
+At this point:
+- Blocking `zlink_send()` calls resume.
+- The send-ready handler fires (if installed).
+
+This hysteresis prevents rapid oscillation between writable and non-writable states.
+
+```
+Example: HWM = 100
+    → LWM = (100 + 1) / 2 = 50
+    → Queue blocks when it reaches 100
+    → Receiver consumes messages, queue drops to ≤50 → resumes
+```
+
+### Practical HWM Recommendations
+
+| Scenario | Recommended HWM | Rationale |
+|----------|-----------------|-----------|
+| Regular sockets/services | ~100 | Limits per-connection memory while absorbing bursts |
+| STREAM (1000+ CCU) | ~10 | Caps total memory proportional to connection count |
+| Default | 1000 | Sufficient for small-scale connections; adjust as connections grow |
 
 ### HWM Behavior by Socket Type
 
@@ -144,14 +111,237 @@ zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 
 ### Memory Calculation
 
+Since HWM is per-connection, total memory is HWM × message size × connection count.
+
 ```
 Estimated memory = SNDHWM × average_message_size × connection_count
 
-Example: HWM=10000, message=1KB, connections=100
-    = 10000 × 1KB × 100 = ~1GB
+Example 1: Regular service — HWM=100, message=1KB, connections=1000
+           = 100 × 1KB × 1000 = ~100MB
+
+Example 2: STREAM at scale — HWM=10, message=1KB, connections=10000
+           = 10 × 1KB × 10000 = ~100MB
 ```
 
-## 7. Socket Option Tuning Checklist
+## 4. Send and Receive Flow Control
+
+### 4.1 Send Backpressure
+
+When a sender produces messages faster than the receiver can consume them,
+messages accumulate in the send queue. The High Water Mark (HWM) limits
+queue depth. What happens when HWM is reached depends on the socket type
+and send flags (see [HWM Behavior by Socket Type](#hwm-behavior-by-socket-type) above).
+
+#### Blocking Send (Default)
+
+With `flags=0`, `zlink_send()` blocks until space becomes available in the
+send queue. Use `ZLINK_SNDTIMEO` to limit how long the call blocks.
+
+| SNDTIMEO | Behavior |
+|---|---|
+| -1 (default) | Block indefinitely |
+| 0 | Return `EAGAIN` immediately (same as `ZLINK_DONTWAIT`) |
+| N (ms) | Block up to N milliseconds, then return `EAGAIN` |
+
+```c
+/* Block for at most 1 second */
+int timeout = 1000;
+zlink_setsockopt(socket, ZLINK_SNDTIMEO, &timeout, sizeof(timeout));
+
+int rc = zlink_send(socket, data, size, 0);
+if (rc == -1 && zlink_errno() == EAGAIN) {
+    /* Timed out — queue is still full */
+}
+```
+
+#### Non-Blocking Send (DONTWAIT)
+
+Pass `ZLINK_DONTWAIT` to return immediately with `EAGAIN` when the HWM is
+reached. The application decides whether to retry, drop, or buffer
+externally.
+
+```c
+int rc = zlink_send(socket, data, size, ZLINK_DONTWAIT);
+if (rc == -1 && zlink_errno() == EAGAIN) {
+    /* HWM reached — handle backpressure */
+}
+```
+
+#### Send-Ready Handler (Event-Driven Backpressure)
+
+`zlink_socket_send_ready_handler()` installs a callback that fires
+when the socket transitions from non-writable to writable. Combined with
+`ZLINK_DONTWAIT`, this enables reactive flow control:
+
+1. Send with `ZLINK_DONTWAIT`.
+2. On `EAGAIN`, pause sending.
+3. When the send-ready callback fires, resume sending.
+
+The same API is available on Gateway, SPOT, and SPOT Node handles.
+
+**Constraints:**
+- Replace-only: passing `NULL` is invalid.
+- Cannot be replaced from within its own callback (`EDEADLK`).
+
+```c
+typedef struct {
+    void *socket;
+    const char *pending_data;
+    size_t pending_size;
+} app_state_t;
+
+void on_send_ready(void *subject, void *userdata)
+{
+    app_state_t *state = (app_state_t *)userdata;
+    if (state->pending_data) {
+        int rc = zlink_send(state->socket, state->pending_data,
+                            state->pending_size, ZLINK_DONTWAIT);
+        if (rc >= 0)
+            state->pending_data = NULL;
+        /* If still EAGAIN, callback will fire again on next transition */
+    }
+}
+
+/* Install the handler */
+app_state_t state = { .socket = socket };
+zlink_socket_send_ready_handler(socket, on_send_ready, &state);
+
+/* Send loop */
+int rc = zlink_send(socket, data, size, ZLINK_DONTWAIT);
+if (rc == -1 && zlink_errno() == EAGAIN) {
+    /* Buffer for retry when send-ready fires */
+    state.pending_data = data;
+    state.pending_size = size;
+}
+```
+
+### 4.2 Low Water Mark and Wake-Up
+
+When the send queue reaches HWM, the socket becomes non-writable. It
+transitions back to writable when the queue drains to the **low water
+mark**, which is `(HWM + 1) / 2`. At this point:
+
+- Blocking `zlink_send()` calls resume.
+- The send-ready handler fires (if installed and armed).
+
+This hysteresis prevents rapid oscillation between writable and
+non-writable states.
+
+### 4.3 Receive-Side Flow Control
+
+The receive queue holds at most `ZLINK_RCVHWM` messages. When the
+receiver's queue is full, pipe-level backpressure is applied to the
+sender.
+
+```c
+int hwm = 500;
+zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+```
+
+In callback mode, a slow callback blocks the I/O thread, which causes the
+receive queue to fill up. To avoid this, offload heavy work to a separate
+thread:
+
+```c
+void on_message(const zlink_routing_id_t *rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    /* BAD: slow processing blocks I/O thread */
+    // heavy_computation(parts);
+
+    /* GOOD: enqueue and return quickly */
+    work_queue_push(userdata, parts, part_count);
+}
+```
+
+> For thread-safe work queue patterns, see
+> [Thread-Safety Guide](11-thread-safety.md) section 6.
+
+### 4.4 Callback vs Pull Mode
+
+zlink sockets support two receive modes. The choice affects threading
+and flow control behavior.
+
+| | Callback Mode | Pull Mode |
+|---|---|---|
+| Trigger | Automatic on message arrival | Explicit `zlink_recv()` call |
+| Execution thread | I/O thread | Application thread |
+| Transition | One-way (permanent) | Default; unavailable after handler attach |
+| DONTWAIT | N/A (always async) | Returns `EAGAIN` if no message |
+| Multipart | All parts delivered as `parts[]` array | Frame-by-frame recv + `ZLINK_RCVMORE` check |
+
+### 4.5 Complete Backpressure Example
+
+A full example combining `ZLINK_DONTWAIT`, a send-ready handler, and an
+application-level buffer:
+
+```c
+#include <zlink.h>
+#include <string.h>
+#include <stdio.h>
+
+#define MAX_PENDING 1024
+
+typedef struct {
+    void *socket;
+    char *queue[MAX_PENDING];
+    size_t sizes[MAX_PENDING];
+    int head, tail, count;
+} sender_t;
+
+static void flush_queue(sender_t *s)
+{
+    while (s->count > 0) {
+        int rc = zlink_send(s->socket, s->queue[s->head],
+                            s->sizes[s->head], ZLINK_DONTWAIT);
+        if (rc == -1)
+            break; /* Still full — wait for next send-ready */
+        free(s->queue[s->head]);
+        s->head = (s->head + 1) % MAX_PENDING;
+        s->count--;
+    }
+}
+
+static void on_send_ready(void *subject, void *userdata)
+{
+    flush_queue((sender_t *)userdata);
+}
+
+int main(void)
+{
+    void *ctx = zlink_ctx_new();
+    void *socket = zlink_socket(ctx, ZLINK_DEALER);
+    zlink_connect(socket, "tcp://127.0.0.1:5555");
+
+    sender_t sender = { .socket = socket };
+    zlink_socket_send_ready_handler(socket, on_send_ready, &sender);
+
+    for (int i = 0; i < 100000; i++) {
+        char msg[64];
+        int len = snprintf(msg, sizeof(msg), "msg-%d", i);
+
+        int rc = zlink_send(socket, msg, len, ZLINK_DONTWAIT);
+        if (rc == -1 && zlink_errno() == EAGAIN) {
+            /* Enqueue for later delivery */
+            if (sender.count < MAX_PENDING) {
+                int idx = (sender.head + sender.count) % MAX_PENDING;
+                sender.queue[idx] = strdup(msg);
+                sender.sizes[idx] = len;
+                sender.count++;
+            } else {
+                printf("Application buffer full — dropping message\n");
+            }
+        }
+    }
+
+    zlink_close(socket);
+    zlink_ctx_term(ctx);
+    return 0;
+}
+```
+
+## 5. Socket Option Tuning Checklist
 
 | Option | Default | Tuning Point |
 |------|--------|-------------|
@@ -186,7 +376,7 @@ int timeout = 500;
 zlink_setsockopt(socket, ZLINK_RCVTIMEO, &timeout, sizeof(timeout));
 ```
 
-## 8. How to Measure Performance
+## 6. How to Measure Performance
 
 ### Basic Throughput Measurement
 
@@ -229,7 +419,7 @@ void on_pong(const zlink_routing_id_t *source_rid,
 }
 ```
 
-## 9. Performance Checklist
+## 7. Performance Checklist
 
 ### Basic Configuration
 

@@ -48,6 +48,29 @@ zlink_send(dealer, "request-3", 9, 0);
 /* Responses are dispatched to the handler callback registered at creation */
 ```
 
+### Receive Modes
+
+DEALER registers a handler via `zlink_recv_handler()`. The callback
+receives `source_rid` (always empty — DEALER strips the routing_id
+frame) and a `parts[]` array.
+
+**Callback mode** (recommended): attach a handler at socket creation.
+Messages from all peers arrive via fair-queue and are dispatched
+asynchronously.
+
+**Pull mode**: without attaching a handler, call `zlink_recv()` to
+receive synchronously. In pull mode, multipart messages are received
+frame-by-frame.
+
+```c
+char buf[256];
+int nbytes = zlink_recv(dealer, buf, sizeof(buf), 0);
+```
+
+> When HWM is reached, `zlink_send()` blocks (default) or returns
+> `EAGAIN` with `ZLINK_DONTWAIT`. For advanced backpressure patterns,
+> see [Performance Guide](10-performance.md).
+
 ## 3. Message Format
 
 The DEALER socket does not automatically add a routing_id frame. The frames sent by the application are delivered as-is.
@@ -121,23 +144,13 @@ void on_request(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-zlink_socket_handler_t router_handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_request,
-    .userdata = NULL
-};
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_socket_attach_handler(router, &router_handler);
+zlink_recv_handler(router, on_request, NULL);
 zlink_bind(router, "tcp://*:5558");
 
 /* Client: DEALER */
-zlink_socket_handler_t dealer_handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_reply,
-    .userdata = NULL
-};
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-zlink_socket_attach_handler(dealer, &dealer_handler);
+zlink_recv_handler(dealer, on_reply, NULL);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
@@ -168,13 +181,8 @@ void on_message(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-zlink_socket_handler_t router_handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message,
-    .userdata = NULL
-};
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_socket_attach_handler(router, &router_handler);
+zlink_recv_handler(router, on_message, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -230,13 +238,8 @@ void worker_thread(void *arg) {
         }
     }
 
-    zlink_socket_handler_t handler = {
-        .kind = ZLINK_SOCKET_HANDLER_MSG,
-        .fn.msg = on_work,
-        .userdata = NULL
-    };
     void *worker = zlink_socket(ctx, ZLINK_DEALER);
-    zlink_socket_attach_handler(worker, &handler);
+    zlink_recv_handler(worker, on_work, NULL);
     zlink_connect(worker, "inproc://backend");
 
     /* Worker stays alive until socket is closed */
@@ -250,22 +253,12 @@ void worker_thread(void *arg) {
 Both sides use DEALER for fully asynchronous P2P communication.
 
 ```c
-zlink_socket_handler_t handler_a = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message_a,
-    .userdata = NULL
-};
 void *a = zlink_socket(ctx, ZLINK_DEALER);
-zlink_socket_attach_handler(a, &handler_a);
+zlink_recv_handler(a, on_message_a, NULL);
 zlink_bind(a, "tcp://*:5558");
 
-zlink_socket_handler_t handler_b = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message_b,
-    .userdata = NULL
-};
 void *b = zlink_socket(ctx, ZLINK_DEALER);
-zlink_socket_attach_handler(b, &handler_b);
+zlink_recv_handler(b, on_message_b, NULL);
 zlink_connect(b, "tcp://127.0.0.1:5558");
 
 /* Bidirectional free send */

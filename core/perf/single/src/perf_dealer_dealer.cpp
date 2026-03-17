@@ -255,13 +255,7 @@ void run_dealer_dealer (const std::string &transport,
 
     recv_state_t recv_state;
 
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = &dealer_recv_handler;
-    handler.userdata = &recv_state;
-
-    socket_guard_t s1 (ctx.get (), ZLINK_DEALER, &handler);
+    socket_guard_t s1 (ctx.get (), ZLINK_DEALER, &dealer_recv_handler, &recv_state);
     socket_guard_t s2 (ctx.get (), ZLINK_DEALER);
     if (!s1.valid () || !s2.valid ()) {
         print_fail_no_queue ();

@@ -51,13 +51,8 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 /* 서버 (핸들러 등록) */
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message,
-    .userdata = NULL
-};
 void *server = zlink_socket(ctx, ZLINK_PAIR);
-zlink_socket_attach_handler(server, &handler);
+zlink_recv_handler(server, on_message, NULL);
 
 /* 클라이언트 (송신 전용) */
 void *client = zlink_socket(ctx, ZLINK_PAIR);
@@ -86,6 +81,32 @@ zlink_send(server, "foobar", 6, 0);
 ```
 
 > 참고: `core/tests/test_pair_inproc.cpp` — `test_zlink_send_multipart()` 테스트
+
+### 수신 모드
+
+PAIR는 `zlink_recv_handler()`로 핸들러를 등록한다. 콜백은
+`source_rid` (PAIR는 단일 피어이므로 항상 비어 있음)와 완전한
+멀티파트 메시지의 모든 프레임을 포함하는 `parts[]` 배열을 수신한다.
+
+**Callback 모드** (권장): 위의 메시지 교환 예제처럼 핸들러를 부착한다.
+메시지는 I/O 스레드에서 비동기로 dispatch된다.
+
+**Pull 모드**: 핸들러를 부착하지 않으면 `zlink_recv()`로 동기 수신한다.
+
+```c
+void *pair = zlink_socket(ctx, ZLINK_PAIR);
+zlink_bind(pair, "tcp://*:5556");
+
+char buf[256];
+int nbytes = zlink_recv(pair, buf, sizeof(buf), 0);
+```
+
+Pull 모드에서 멀티파트 메시지는 프레임별로 수신된다. 각 recv 후
+`ZLINK_RCVMORE`를 확인하여 후속 프레임 여부를 판별한다.
+
+> HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
+> `EAGAIN`을 반환한다. 고급 backpressure 패턴은
+> [성능 가이드](10-performance.ko.md)를 참고.
 
 ## 3. 메시지 형식
 
@@ -129,13 +150,8 @@ zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
 
 ```c
 /* 메인 스레드 */
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_signal,
-    .userdata = NULL
-};
 void *signal = zlink_socket(ctx, ZLINK_PAIR);
-zlink_socket_attach_handler(signal, &handler);
+zlink_recv_handler(signal, on_signal, NULL);
 zlink_bind(signal, "inproc://signal");
 
 /* 워커 스레드 */

@@ -244,7 +244,7 @@ static void spot_reentrant_ready_handler (void *subject_, void *)
     if (g_spot_reentrant_ready_calls)
         g_spot_reentrant_ready_calls->fetch_add (1);
     errno = 0;
-    g_spot_reentrant_ready_rc = zlink_spot_node_set_send_ready_handler (
+    g_spot_reentrant_ready_rc = zlink_spot_node_send_ready_handler (
       subject_, &spot_reentrant_ready_handler, NULL);
     g_spot_reentrant_ready_errno = errno;
 }
@@ -863,9 +863,9 @@ static void test_spot_pub_sub_options_and_routing_ids ()
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_node_set_send_ready_handler (pub_node, NULL, NULL));
+      -1, zlink_spot_node_send_ready_handler (pub_node, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_set_send_ready_handler (pub, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_send_ready_handler (pub, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     const int pub_sndhwm = 222;
@@ -926,10 +926,10 @@ static void test_spot_pub_sub_options_and_routing_ids ()
     g_spot_ready_publish_rc = -999;
     g_spot_ready_publish_errno = 0;
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_send_ready_handler (
       pub_node, &spot_counting_ready_handler, NULL));
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_node_set_send_ready_handler (pub_node, NULL, NULL));
+      -1, zlink_spot_node_send_ready_handler (pub_node, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     zlink::spot_node_t *pub_node_impl =
@@ -941,7 +941,7 @@ static void test_spot_pub_sub_options_and_routing_ids ()
     TEST_ASSERT_EQUAL_INT (1, ready_calls.load ());
     TEST_ASSERT_EQUAL_PTR (pub_node, g_spot_ready_subject);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_send_ready_handler (
       pub_node, &spot_publish_from_ready_handler, NULL));
     pub_impl->invoke_send_ready_for_testing ();
 
@@ -957,7 +957,7 @@ static void test_spot_pub_sub_options_and_routing_ids ()
     g_spot_reentrant_ready_rc = 0;
     g_spot_reentrant_ready_errno = 0;
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_send_ready_handler (
       pub_node, &spot_reentrant_ready_handler, NULL));
     pub_impl->invoke_send_ready_for_testing ();
 
@@ -1365,9 +1365,9 @@ static void test_spot_node_send_ready_handler_isolated_by_service ()
     g_send_ready_probe_b = &probe_b;
     g_send_ready_probe_replace = &probe_replace;
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_send_ready_handler (
       node_a, &send_ready_probe_handler_a, NULL));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_send_ready_handler (
       node_b, &send_ready_probe_handler_b, NULL));
 
     zlink::spot_node_t *node_a_impl =
@@ -1389,7 +1389,7 @@ static void test_spot_node_send_ready_handler_isolated_by_service ()
     TEST_ASSERT_EQUAL_INT (1, probe_b.calls.load ());
     TEST_ASSERT_EQUAL_PTR (node_b, probe_b.last_subject);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_send_ready_handler (
       node_a, &send_ready_probe_handler_replace, NULL));
 
     pub_b->invoke_send_ready_for_testing ();
@@ -1805,7 +1805,7 @@ static void test_spot_send_ready_handler_self_close_returns_ebusy ()
     g_spot_ready_self_close_rc = 0;
     g_spot_ready_self_close_errno = 0;
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_send_ready_handler (
       pub_node, &spot_self_close_from_ready_handler, NULL));
 
     zlink::spot_node_t *pub_node_impl =
@@ -1977,7 +1977,7 @@ static void test_spot_node_public_api_lifecycle_contract ()
 
     TEST_ASSERT_EQUAL_INT (
       -1,
-      zlink_spot_node_set_send_ready_handler (node, &spot_counting_ready_handler, NULL));
+      zlink_spot_node_send_ready_handler (node, &spot_counting_ready_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
 
     TEST_ASSERT_EQUAL_PTR (
@@ -2026,7 +2026,7 @@ static void test_spot_public_api_lifecycle_contract ()
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
 
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_set_send_ready_handler (spot, &spot_counting_ready_handler, NULL));
+      -1, zlink_spot_send_ready_handler (spot, &spot_counting_ready_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
 
     TEST_ASSERT_EQUAL_PTR (

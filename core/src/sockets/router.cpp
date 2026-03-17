@@ -112,9 +112,13 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_,
     }
 
     const bool routing_id_ok = identify_peer (pipe_, locally_initiated_);
-    if (routing_id_ok)
+    if (routing_id_ok) {
         _fq.attach (pipe_);
-    else
+        if (socket_msg_dispatch_active ()) {
+            pipe_->check_read ();
+            _fq.deactivate (pipe_);
+        }
+    } else
         _anonymous_pipes.insert (pipe_);
 }
 
@@ -181,6 +185,23 @@ void zlink::router_t::xread_activated (pipe_t *pipe_)
             _fq.attach (pipe_);
         }
     }
+
+    if (!socket_msg_dispatch_active ())
+        return;
+
+    msg_t msg;
+    const int init_rc = msg.init ();
+    errno_assert (init_rc == 0);
+
+    pipe_t *dispatch_pipe = NULL;
+    while (_fq.recvpipe (&msg, &dispatch_pipe) == 0) {
+        const int dispatch_rc = xsocket_msg_dispatch (&msg, dispatch_pipe);
+        if (dispatch_rc <= 0)
+            break;
+    }
+
+    const int close_rc = msg.close ();
+    errno_assert (close_rc == 0);
 }
 
 int zlink::router_t::xsend (msg_t *msg_)

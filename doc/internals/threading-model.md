@@ -63,7 +63,7 @@ Application Thread              I/O Thread
 
 ## 4. Concurrency Rules
 - Public socket/service handles use a tiered contract: hot-path
-  `send`/`publish`/`send_rid` allow same-handle concurrency, low-frequency
+  `send`/`publish`/`send_rid` can be called concurrently from multiple threads, low-frequency
   control paths serialize for correctness, and `close`/`destroy` use a
   stricter lifecycle gate
 - Context: Thread-safe (sockets can be created from multiple threads)

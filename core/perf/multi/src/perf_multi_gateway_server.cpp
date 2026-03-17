@@ -492,7 +492,7 @@ int run_server_benchmark(const std::string &lib_name,
         return 1;
 
     if (!apply_gateway_options(gateway, settings)
-        || zlink_gateway_set_send_ready_handler(gateway,
+        || zlink_gateway_send_ready_handler(gateway,
                                                 &gateway_server_send_ready,
                                                 NULL)
              != 0

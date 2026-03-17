@@ -61,7 +61,7 @@ Application Thread              I/O Thread
 - zlink_ctx_set(ctx, ZLINK_IO_THREADS, n)으로 수량 설정
 
 ## 4. 동시성 규칙
-- Public socket/service handle: same-handle operational API 기준 thread-safe
+- Public socket/service handle: 하나의 handle을 여러 스레드에서 동시 사용 가능 (thread-safe)
 - Context: thread-safe (여러 스레드에서 소켓 생성 가능)
 - pipe_t: Lock-free (CAS 기반 YPipe)
 - 캐시 라인 최적화, 메모리 배리어 가시성 보장

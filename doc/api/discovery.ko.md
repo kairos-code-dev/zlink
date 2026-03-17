@@ -8,7 +8,7 @@ Discovery는 Registry 브로드캐스트를 구독하고 로컬 서비스 디렉
 
 ## 스레드 안전성 요약
 
-공개 Discovery handle API는 same-handle operational use 기준 thread-safe합니다.
+하나의 Discovery handle을 여러 스레드에서 동시에 사용할 수 있습니다 (thread-safe).
 다만 모든 호출이 같은 시점 제약을 갖는 것은 아닙니다.
 
 - `zlink_discovery_connect_registry()`, monitor, query성 조회는 runtime에 호출할 수
@@ -84,8 +84,8 @@ Registry 응답에서 내부 broadcast/uplink 엔드포인트를 학습하고, D
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** Discovery handle은 same-handle operational API 기준
-thread-safe합니다. 이 호출도 일반 lifecycle/state 제약을 지키는 한 다른
+**스레드 안전성:** 하나의 Discovery handle을 여러 스레드에서 동시에 사용할 수
+있습니다 (thread-safe). 이 호출도 일반 lifecycle/state 제약을 지키는 한 다른
 Discovery 작업과 병행할 수 있습니다.
 
 **참고:** `zlink_discovery_destroy`
@@ -162,8 +162,8 @@ int zlink_discovery_destroy (void **discovery_p);
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** Discovery handle은 same-handle operational API 기준
-thread-safe합니다. 다만 `zlink_discovery_destroy()`는 더 보수적이며, 같은
+**스레드 안전성:** 하나의 Discovery handle을 여러 스레드에서 동시에 사용할 수
+있습니다 (thread-safe). 다만 `zlink_discovery_destroy()`는 더 보수적이며, 같은
 handle에서 다른 스레드가 콜백 또는 운영 API를 실행 중이면 `errno=EBUSY`로
 실패합니다. destroy가 성공한 경우에만 `*discovery_p`가 `NULL`로 정리됩니다.
 

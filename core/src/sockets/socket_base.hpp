@@ -82,6 +82,7 @@ class socket_base_t : public own_t,
                                    void *subject_);
     int socket_set_msg_handler_with_userdata (
       zlink_socket_msg_handler_fn handler_, void *subject_, void *userdata_);
+    int socket_msg_dispatch_stop ();
     int socket_set_spot_handler (zlink_spot_handler_fn handler_);
     int socket_set_spot_handler_with_userdata (zlink_spot_handler_fn handler_,
                                                void *userdata_);

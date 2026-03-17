@@ -46,7 +46,7 @@ zlink는 C API를 기반으로 5개 언어 바인딩을 제공한다. 모든 바
 ## 6. 스레드 안전성
 
 - Public socket/service handle은 **3계층 계약**을 따른다: hot path
-  `send`/`publish`/`send_rid`는 same-handle 병행 사용을 허용하고,
+  `send`/`publish`/`send_rid`는 여러 스레드에서 동시 호출을 허용하고,
   low-frequency control path는 correctness 중심으로 직렬화되며,
   `close`/`destroy`는 `EBUSY`/`ESHUTDOWN`를 갖는 stricter lifecycle gate를
   사용한다

@@ -49,15 +49,6 @@ std::atomic<int> *g_gateway_monitor_self_close_calls = NULL;
 int g_gateway_monitor_self_close_rc = 0;
 int g_gateway_monitor_self_close_errno = 0;
 
-zlink_socket_handler_t make_msg_handler (zlink_socket_msg_handler_fn fn_)
-{
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = fn_;
-    return handler;
-}
-
 void gateway_ready_handler (void *subject_, void *)
 {
     g_ready_subject = subject_;
@@ -71,7 +62,7 @@ void gateway_reentrant_ready_handler (void *subject_, void *)
         g_reentrant_ready_calls->fetch_add (1);
     g_reentrant_gateway = subject_;
     errno = 0;
-    g_reentrant_ready_rc = zlink_gateway_set_send_ready_handler (
+    g_reentrant_ready_rc = zlink_gateway_send_ready_handler (
       subject_, &gateway_reentrant_ready_handler, NULL);
     g_reentrant_ready_errno = errno;
 }
@@ -761,11 +752,11 @@ static void test_gateway_can_be_polled_via_service_instance ()
       &zlink_service_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
-    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_set_send_ready_handler (gateway, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_send_ready_handler (gateway, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_set_send_ready_handler (gateway, &gateway_ready_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_set_send_ready_handler (gateway, NULL, NULL));
+      zlink_gateway_send_ready_handler (gateway, &gateway_ready_handler, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_send_ready_handler (gateway, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     step_log ("gateway ready handler installed");
 
@@ -799,7 +790,7 @@ static void test_gateway_send_ready_handler_reentrant_replace_returns_edeadlk ()
     void *gateway = zlink_gateway_new (ctx, "ready-reentrant", "gw-reentrant",
                                        &discard_gateway_message, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_send_ready_handler (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_send_ready_handler (
       gateway, &gateway_reentrant_ready_handler, NULL));
 
     char endpoint[MAX_SOCKET_STRING];
@@ -834,7 +825,7 @@ static void test_gateway_send_ready_handler_self_close_is_safe ()
     void *gateway = zlink_gateway_new (ctx, "ready-self-close", "gw-self-close",
                                        &discard_gateway_message, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_send_ready_handler (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_send_ready_handler (
       gateway, &gateway_self_close_handler, NULL));
 
     char endpoint[MAX_SOCKET_STRING];
@@ -2096,7 +2087,7 @@ static void test_gateway_public_api_lifecycle_contract ()
 
     TEST_ASSERT_EQUAL_INT (
       -1,
-      zlink_gateway_set_send_ready_handler (gateway, &gateway_ready_handler, NULL));
+      zlink_gateway_send_ready_handler (gateway, &gateway_ready_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, errno);
 
     TEST_ASSERT_EQUAL_PTR (

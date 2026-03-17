@@ -52,13 +52,8 @@ void on_message(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message,
-    .userdata = NULL
-};
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_socket_attach_handler(router, &handler);
+zlink_recv_handler(router, on_message, NULL);
 ```
 
 ### Sending Messages
@@ -70,6 +65,33 @@ When replying, send `source_rid` as the first frame to specify the target.
 zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
 zlink_send(router, "World", 5, 0);
 ```
+
+### Receive Modes
+
+ROUTER registers a handler via `zlink_recv_handler()`. The callback
+receives `source_rid` identifying the sending peer, and `parts[]`
+containing the application data frames (routing_id is separated
+automatically by the I/O thread).
+
+**Callback mode** (recommended): attach a handler at socket creation.
+Use `source_rid` to reply to the correct peer.
+
+**Pull mode**: without attaching a handler, call `zlink_recv()` to
+receive synchronously. In pull mode, the first frame is the routing_id
+and subsequent frames are application data.
+
+```c
+char rid_buf[256];
+int rid_len = zlink_recv(router, rid_buf, sizeof(rid_buf), 0);
+
+char data_buf[256];
+int data_len = zlink_recv(router, data_buf, sizeof(data_buf), 0);
+```
+
+> When the per-peer send queue is full (HWM), ROUTER returns
+> `EHOSTUNREACH` with `ROUTER_MANDATORY` enabled, or silently drops
+> the message otherwise. For advanced backpressure patterns, see
+> [Performance Guide](10-performance.md).
 
 ## 3. Message Format
 
@@ -155,13 +177,8 @@ void on_request(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-zlink_socket_handler_t router_handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_request,
-    .userdata = NULL
-};
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_socket_attach_handler(router, &router_handler);
+zlink_recv_handler(router, on_request, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -169,24 +186,14 @@ size_t len = sizeof(endpoint);
 zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
 /* Client 1 */
-zlink_socket_handler_t d1_handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_reply,
-    .userdata = NULL
-};
 void *d1 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_socket_attach_handler(d1, &d1_handler);
+zlink_recv_handler(d1, on_reply, NULL);
 zlink_setsockopt(d1, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* Client 2 */
-zlink_socket_handler_t d2_handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_reply,
-    .userdata = NULL
-};
 void *d2 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_socket_attach_handler(d2, &d2_handler);
+zlink_recv_handler(d2, on_reply, NULL);
 zlink_setsockopt(d2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(d2, endpoint);
 

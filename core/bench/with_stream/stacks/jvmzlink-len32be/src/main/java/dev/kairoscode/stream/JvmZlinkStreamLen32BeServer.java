@@ -13,7 +13,6 @@ import dev.kairoscode.zlink.internal.NativeMsg;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
-import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
@@ -25,7 +24,6 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public final class JvmZlinkStreamLen32BeServer {
     private static final int ZLINK_TCP_NODELAY = 118;
-    private static final int ZLINK_SOCKET_HANDLER_MSG = 0x1201;
     private static final int ROUTING_ID_STRUCT_SIZE = 256;
     private static final int ROUTING_ID_SIZE_OFFSET = 0;
     private static final int ROUTING_ID_DATA_OFFSET = 1;
@@ -35,19 +33,13 @@ public final class JvmZlinkStreamLen32BeServer {
 
     private static final Linker LINKER = Linker.nativeLinker();
     private static final SymbolLookup LOOKUP = LibraryLoader.lookup();
-    private static final MemoryLayout SOCKET_HANDLER_LAYOUT =
-      MemoryLayout.structLayout(
-        ValueLayout.JAVA_INT.withName("kind"),
-        MemoryLayout.paddingLayout(32),
-        ValueLayout.ADDRESS.withName("fn"),
-        ValueLayout.ADDRESS.withName("userdata"));
     private static final FunctionDescriptor FD_SOCKET_MSG_HANDLER =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
     private static final MethodHandle MH_SOCKET_ATTACH_HANDLER =
-      downcall("zlink_socket_attach_handler",
+      downcall("zlink_recv_handler",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS));
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_CTX_SET = downcall("zlink_ctx_set",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
@@ -145,7 +137,6 @@ public final class JvmZlinkStreamLen32BeServer {
         private final Metrics metrics;
         private final Arena callbackArena;
         private final MemorySegment callbackStub;
-        private final MemorySegment handlerConfig;
         private boolean attached;
 
         StreamCallbackEcho(Socket socket, Metrics metrics) {
@@ -164,16 +155,12 @@ public final class JvmZlinkStreamLen32BeServer {
             } catch (NoSuchMethodException | IllegalAccessException ex) {
                 throw new RuntimeException(ex);
             }
-            this.handlerConfig = callbackArena.allocate(SOCKET_HANDLER_LAYOUT);
-            this.handlerConfig.set(ValueLayout.JAVA_INT, 0, ZLINK_SOCKET_HANDLER_MSG);
-            this.handlerConfig.set(ValueLayout.ADDRESS, 8, callbackStub);
-            this.handlerConfig.set(ValueLayout.ADDRESS, 16, MemorySegment.NULL);
         }
 
         void attach() {
-            int rc = socketAttachHandler(socket.handle(), handlerConfig);
+            int rc = socketAttachHandler(socket.handle(), callbackStub, MemorySegment.NULL);
             if (rc != 0)
-                throw new RuntimeException("zlink_socket_attach_handler failed");
+                throw new RuntimeException("zlink_recv_handler failed");
             attached = true;
         }
 
@@ -252,11 +239,12 @@ public final class JvmZlinkStreamLen32BeServer {
     }
 
     private static int socketAttachHandler(MemorySegment socket,
-                                           MemorySegment handler) {
+                                           MemorySegment handler,
+                                           MemorySegment userdata) {
         try {
-            return (int) MH_SOCKET_ATTACH_HANDLER.invokeExact(socket, handler);
+            return (int) MH_SOCKET_ATTACH_HANDLER.invokeExact(socket, handler, userdata);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_socket_attach_handler failed", t);
+            throw new RuntimeException("zlink_recv_handler failed", t);
         }
     }
 

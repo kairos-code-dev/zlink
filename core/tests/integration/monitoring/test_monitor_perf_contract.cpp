@@ -531,7 +531,7 @@ void test_send_ready_self_close_blocks_followup_operational_api ()
     g_send_ready_post_close_send_errno.store (0, std::memory_order_release);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_socket_set_send_ready_handler (client, &send_ready_self_close_handler, NULL));
+      zlink_socket_send_ready_handler (client, &send_ready_self_close_handler, NULL));
 
     zlink::socket_base_t *raw_client =
       static_cast<zlink::socket_base_t *> (client);

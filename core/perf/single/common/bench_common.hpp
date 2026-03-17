@@ -318,11 +318,11 @@ public:
         _socket(zlink_socket(ctx_, static_cast<zlink_socket_type_t>(type_)))
     {}
     socket_guard_t(void *ctx_, int type_,
-                   const zlink_socket_handler_t *handler_) :
+                   zlink_socket_msg_handler_fn handler_, void *userdata_ = NULL) :
         _socket(zlink_socket(ctx_, static_cast<zlink_socket_type_t>(type_)))
     {
         if (_socket && handler_
-            && zlink_socket_attach_handler(_socket, handler_) != 0) {
+            && zlink_recv_handler(_socket, handler_, userdata_) != 0) {
             zlink_close(_socket);
             _socket = NULL;
         }
@@ -651,6 +651,58 @@ inline bool read_socket_snapshot_once(void *socket_,
     return rc == 0;
 }
 
+inline bool socket_snapshot_ready(const zlink_monitor_snapshot_t &snapshot_,
+                                  bool require_send_ready_,
+                                  uint32_t min_ready_peer_count_)
+{
+    const bool peer_ready =
+      (snapshot_.detail_flags & ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT)
+      != 0
+      && snapshot_.ready_peer_count >= min_ready_peer_count_;
+    if (!peer_ready)
+        return false;
+    if (!require_send_ready_)
+        return true;
+    return (snapshot_.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0;
+}
+
+inline bool wait_socket_monitor_ready(void *socket_,
+                                      bool require_send_ready_,
+                                      uint32_t min_ready_peer_count_,
+                                      int timeout_ms_)
+{
+    if (!socket_)
+        return false;
+
+    const auto deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(timeout_ms_ > 0 ? timeout_ms_ : 1);
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        zlink_monitor_snapshot_t snapshot;
+        if (read_socket_snapshot_once(socket_, &snapshot)
+            && socket_snapshot_ready(snapshot, require_send_ready_,
+                                     min_ready_peer_count_)) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    zlink_monitor_snapshot_t snapshot;
+    const bool ready =
+      read_socket_snapshot_once(socket_, &snapshot)
+      && socket_snapshot_ready(snapshot, require_send_ready_,
+                               min_ready_peer_count_);
+    if (!ready && bench_debug_enabled()) {
+        std::cerr << "[perf-single] monitor ready wait failed:"
+                  << " require_send_ready=" << (require_send_ready_ ? 1 : 0)
+                  << " ready_peer_count=" << snapshot.ready_peer_count
+                  << " state_flags=" << snapshot.state_flags
+                  << " detail_flags=" << snapshot.detail_flags << std::endl;
+    }
+    return ready;
+}
+
 class queue_probe_t {
 public:
     queue_probe_t(void *send_socket_, void *recv_socket_) :
@@ -673,7 +725,6 @@ public:
     void sample_recv_if_due() { maybe_sample_recv(false); }
     void force_sample_send() { maybe_sample_send(true); }
     void force_sample_recv() { maybe_sample_recv(true); }
-
     queue_stats_t snapshot() const
     {
         queue_stats_t out;
@@ -963,10 +1014,25 @@ inline bool setup_connected_pair(void *bind_socket_,
       wait_connect_ready_count(bind_monitor, 1, timeout_ms);
     const bool connect_ready =
       wait_connect_ready_count(connect_monitor, 1, timeout_ms);
+    const bool bind_send_ready =
+      bind_ready
+      && wait_socket_monitor_ready(bind_socket_, false, 1, timeout_ms);
+    const bool connect_send_ready =
+      connect_ready
+      && wait_socket_monitor_ready(connect_socket_, false, 1, timeout_ms);
 
     close_connect_monitor(connect_monitor);
     close_connect_monitor(bind_monitor);
-    return bind_ready && connect_ready;
+    if (bench_debug_enabled() && !(bind_ready && connect_ready && bind_send_ready
+                                   && connect_send_ready)) {
+        std::cerr << "[perf-single] setup_connected_pair failed:"
+                  << " bind_ready=" << (bind_ready ? 1 : 0)
+                  << " connect_ready=" << (connect_ready ? 1 : 0)
+                  << " bind_send_ready=" << (bind_send_ready ? 1 : 0)
+                  << " connect_send_ready=" << (connect_send_ready ? 1 : 0)
+                  << std::endl;
+    }
+    return bind_ready && connect_ready && bind_send_ready && connect_send_ready;
 }
 
 template <typename RunFn>

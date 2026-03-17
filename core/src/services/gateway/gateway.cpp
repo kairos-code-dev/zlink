@@ -175,6 +175,7 @@ static void rollback_gateway_runtime_socket_init (gateway_runtime_t *runtime_)
     if (runtime_->monitor_socket) {
         socket_base_t *monitor_socket =
           static_cast<socket_base_t *> (runtime_->monitor_socket);
+        close_socket_monitor_bridge (runtime_->router_socket, monitor_socket);
         (void) runtime_->lifecycle.close_socket_and_wait (monitor_socket, 2000);
         runtime_->monitor_socket = NULL;
     }
@@ -2257,7 +2258,9 @@ int gateway_t::destroy ()
         if (_runtime->monitor_socket) {
             socket_base_t *monitor_socket =
               static_cast<socket_base_t *> (_runtime->monitor_socket);
-            _runtime->lifecycle.close_socket (monitor_socket);
+            close_socket_monitor_bridge (_runtime->router_socket, monitor_socket);
+            (void) _runtime->lifecycle.close_socket_and_wait (monitor_socket,
+                                                              2000);
             _runtime->monitor_socket = NULL;
         }
         if (_runtime->router_socket) {
@@ -2267,7 +2270,8 @@ int gateway_t::destroy ()
                  it != end; ++it) {
                 (void) _runtime->router_socket->term_endpoint (it->c_str ());
             }
-            (void) _runtime->lifecycle.close_socket (_runtime->router_socket);
+            (void) _runtime->lifecycle.close_socket_and_wait (
+              _runtime->router_socket, 2000);
         }
     };
 

@@ -162,6 +162,10 @@ void recv_array_expect_success (void *socket_,
     TEST_ASSERT_EQUAL_UINT8_ARRAY (array_, buffer, SIZE);
 }
 
+// Attaches a discard handler appropriate for the given socket type.
+// Returns 0 on success, -1 on failure.
+int test_attach_discard_handler_for_type (void *socket_, int type_);
+
 /////////////////////////////////////////////////////////////////////////////
 // Utility function for handling a test libzlink context, that is set up and
 // torn down for each Unity test case, such that a clean context is available

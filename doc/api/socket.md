@@ -3,19 +3,18 @@
 # Socket API Reference
 
 The Socket API provides functions for creating, configuring, binding,
-connecting, and performing I/O on zlink sockets. All message receiving is
-handled through handler callbacks. Sockets start in recv mode; attaching a
-handler transitions to callback mode. Sockets also support a synchronous
-`zlink_recv()` for pull-style use. Sockets support several messaging patterns
-including
-publish/subscribe, request/reply, and raw stream.
+connecting, and performing I/O on zlink sockets. Message receiving supports
+two modes: callback dispatch via an attached handler, and synchronous pull
+via `zlink_recv()`. Sockets start in recv mode; attaching a handler
+transitions to callback mode. Sockets support several messaging patterns
+including publish/subscribe, request/reply, and raw stream.
 
 ## Thread-Safety Summary
 
 Public socket handle APIs are thread-safe by default. Not every API has the
 same cost model, though.
 
-- `send` is a hot-path API and allows same-handle concurrent calls.
+- `send` is a hot-path API and can be called concurrently from multiple threads.
 - `bind/connect/disconnect`, subscribe/unsubscribe, option/query, and monitor
   operations are valid runtime control-path calls. Correctness is preserved,
   but execution order may follow internal serialization.
@@ -38,9 +37,10 @@ typedef void (*zlink_socket_msg_handler_fn) (
   void *userdata_);
 ```
 
-Callback for multipart message dispatch on PAIR, DEALER, ROUTER sockets.
-Invoked on the owning I/O thread. Ownership of all message parts is
+Callback for multipart message dispatch on PAIR, DEALER, ROUTER, and STREAM
+sockets. Invoked on the owning I/O thread. Ownership of all message parts is
 transferred to the callback; each part must be closed or consumed exactly once.
+Used with `zlink_recv_handler()`.
 
 ### zlink_spot_handler_fn
 
@@ -55,6 +55,7 @@ typedef void (*zlink_spot_handler_fn) (const zlink_routing_id_t *source_rid_,
 
 Callback for topic-based message dispatch on SUB and XSUB sockets.
 Invoked on the owning I/O thread. Ownership of parts is transferred.
+Used with `zlink_recv_spot_handler()`.
 
 ### zlink_xpub_handler_fn
 
@@ -66,40 +67,17 @@ typedef void (*zlink_xpub_handler_fn) (int subscribed_,
 ```
 
 Callback for subscription notifications on XPUB sockets.
+Used with `zlink_recv_xpub_handler()`.
 
-### zlink_socket_handler_t
+Each callback type is registered through a dedicated function. The mapping
+of socket types to registration functions:
 
-```c
-typedef enum zlink_socket_handler_kind_t
-{
-    ZLINK_SOCKET_HANDLER_MSG  = 0x1201,
-    ZLINK_SOCKET_HANDLER_SPOT = 0x1202,
-    ZLINK_SOCKET_HANDLER_XPUB = 0x1203
-} zlink_socket_handler_kind_t;
-
-typedef struct zlink_socket_handler_t
-{
-    zlink_socket_handler_kind_t kind;
-    union
-    {
-        zlink_socket_msg_handler_fn msg;
-        zlink_spot_handler_fn spot;
-        zlink_xpub_handler_fn xpub;
-    } fn;
-    void *userdata;
-} zlink_socket_handler_t;
-```
-
-Handler descriptor passed to `zlink_socket_attach_handler()`. The `kind` field selects the
-callback variant. The mapping of socket types to handler kinds:
-
-| Socket Type | Handler Kind | Callback |
+| Socket Type | Registration Function | Callback |
 |---|---|---|
-| PAIR, DEALER, ROUTER | `ZLINK_SOCKET_HANDLER_MSG` | `zlink_socket_msg_handler_fn` |
-| SUB, XSUB | `ZLINK_SOCKET_HANDLER_SPOT` | `zlink_spot_handler_fn` |
-| XPUB | `ZLINK_SOCKET_HANDLER_XPUB` | `zlink_xpub_handler_fn` |
-| PUB | N/A | Send-only; pass `NULL` handler |
-| STREAM | `ZLINK_SOCKET_HANDLER_MSG` | See STREAM callback API below |
+| PAIR, DEALER, ROUTER, STREAM | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
+| SUB, XSUB | `zlink_recv_spot_handler` | `zlink_spot_handler_fn` |
+| XPUB | `zlink_recv_xpub_handler` | `zlink_xpub_handler_fn` |
+| PUB | N/A | Send-only; no handler needed |
 
 ### zlink_send_ready_handler_fn
 
@@ -283,7 +261,7 @@ void *zlink_socket (void *context_, zlink_socket_type_t type_);
 
 Creates a new socket within the given context. The `type_` parameter selects
 the messaging pattern. The socket starts in recv mode. Use
-`zlink_socket_attach_handler()` to transition to callback mode. The socket
+`zlink_recv_handler()` to transition to callback mode. The socket
 must be closed with `zlink_close()` before the context is terminated.
 
 **Returns:** Socket handle on success, `NULL` on failure (errno is set).
@@ -293,29 +271,82 @@ number of sockets has been reached. `ETERM` if the context was terminated.
 
 **Thread safety:** Thread-safe with respect to the context.
 
-**See also:** `zlink_close`, `zlink_ctx_new`, `zlink_socket_attach_handler`
+**See also:** `zlink_close`, `zlink_ctx_new`, `zlink_recv_handler`
 
 ---
 
-### zlink_socket_attach_handler
+### zlink_recv_handler
 
-Attach a direct receive handler to a socket.
+Attach a message receive handler to a socket.
 
 ```c
-int zlink_socket_attach_handler (void *s_, const zlink_socket_handler_t *handler_);
+int zlink_recv_handler (void *s_,
+                        zlink_socket_msg_handler_fn handler_,
+                        void *userdata_);
 ```
 
-Attach a direct receive handler to a socket. Sockets start in recv mode.
-This call transitions the handle to callback mode and cannot be undone for
-the lifetime of the socket. A second attach on the same handle fails with
-`errno=EBUSY`.
+Attach a message receive handler to a PAIR, DEALER, ROUTER, or STREAM
+socket. Sockets start in recv mode. This call transitions the handle to
+callback mode and cannot be undone for the lifetime of the socket. A second
+attach on the same handle fails with `errno=EBUSY`.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
-**Errors:** `EINVAL` if the handler is NULL or kind does not match the socket
-type. `EBUSY` if a handler is already attached.
+**Errors:** `EINVAL` if the handler is NULL or the socket type does not
+accept a message handler. `EBUSY` if a handler is already attached.
 
-**See also:** `zlink_socket`, `zlink_close`
+**See also:** `zlink_recv_spot_handler`, `zlink_recv_xpub_handler`,
+`zlink_socket`, `zlink_close`
+
+---
+
+### zlink_recv_spot_handler
+
+Attach a topic-based receive handler to a socket.
+
+```c
+int zlink_recv_spot_handler (void *s_,
+                             zlink_spot_handler_fn handler_,
+                             void *userdata_);
+```
+
+Attach a topic-based receive handler to a SUB or XSUB socket. Sockets
+start in recv mode. This call transitions the handle to callback mode and
+cannot be undone for the lifetime of the socket. A second attach on the
+same handle fails with `errno=EBUSY`.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**Errors:** `EINVAL` if the handler is NULL or the socket type does not
+accept a spot handler. `EBUSY` if a handler is already attached.
+
+**See also:** `zlink_recv_handler`, `zlink_recv_xpub_handler`,
+`zlink_socket`, `zlink_close`
+
+---
+
+### zlink_recv_xpub_handler
+
+Attach a subscription notification handler to an XPUB socket.
+
+```c
+int zlink_recv_xpub_handler (void *s_,
+                             zlink_xpub_handler_fn handler_,
+                             void *userdata_);
+```
+
+Attach a subscription notification handler to an XPUB socket. Sockets
+start in recv mode. This call transitions the handle to callback mode and
+cannot be undone for the lifetime of the socket. A second attach on the
+same handle fails with `errno=EBUSY`.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**Errors:** `EINVAL` if the handler is NULL or the socket is not XPUB.
+`EBUSY` if a handler is already attached.
+
+**See also:** `zlink_recv_handler`, `zlink_recv_spot_handler`,
+`zlink_socket`, `zlink_close`
 
 ---
 
@@ -330,7 +361,7 @@ int zlink_close (void *s_);
 Closes the socket and releases all associated resources. Any outstanding
 messages in the send queue are discarded or sent depending on the
 `ZLINK_LINGER` setting. Public handles follow a tiered contract: hot-path send
-operations allow same-handle concurrency, low-frequency control paths
+operations can be called concurrently from multiple threads, low-frequency control paths
 serialize for correctness, and close/destroy uses a stricter lifecycle gate.
 If another thread has an in-flight callback or admitted API on the same
 handle, close fails with `errno=EBUSY`. After close is accepted, new API entry
@@ -494,16 +525,69 @@ this flag.
 **Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was set.
 `ETERM` if the context was terminated.
 
-**See also:** `zlink_msg_send`
+**See also:** `zlink_msg_send`, `zlink_recv`
 
 ---
 
-### zlink_socket_set_send_ready_handler
+### zlink_recv
+
+Receive buffer data from a socket.
+
+```c
+int zlink_recv (void *s_,
+                void *buf_,
+                size_t len_,
+                zlink_send_flags_t flags_);
+```
+
+Receives up to `len_` bytes into `buf_` from socket `s_`. The socket must
+be in recv mode (no handler attached). If a direct receive handler has been
+attached via `zlink_recv_handler()`, this call fails with
+`errno=EBUSY`. Pass `ZLINK_DONTWAIT` to return immediately when no message
+is available.
+
+**Returns:** Number of bytes received on success, -1 on failure (errno is set).
+
+**Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was
+set, or if `ZLINK_RCVTIMEO` expired. `EBUSY` if a receive handler is
+attached. `ETERM` if the context was terminated.
+
+**See also:** `zlink_msg_recv`, `zlink_send`, `zlink_recv_handler`
+
+---
+
+### zlink_msg_recv
+
+Receive a message from a socket.
+
+```c
+int zlink_msg_recv (zlink_msg_t *msg_,
+                    void *s_,
+                    zlink_send_flags_t flags_);
+```
+
+Receives a message into `msg_` from socket `s_`. The message `msg_` must
+be initialized before calling. The socket must be in recv mode (no handler
+attached). For multipart messages, check `ZLINK_RCVMORE` after each call
+to determine if more frames follow.
+
+**Returns:** Number of bytes in the received message on success, -1 on
+failure (errno is set).
+
+**Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was
+set, or if `ZLINK_RCVTIMEO` expired. `EBUSY` if a receive handler is
+attached. `ETERM` if the context was terminated.
+
+**See also:** `zlink_recv`, `zlink_msg_send`, `zlink_recv_handler`
+
+---
+
+### zlink_socket_send_ready_handler
 
 Install or replace the send-ready callback.
 
 ```c
-int zlink_socket_set_send_ready_handler (
+int zlink_socket_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 

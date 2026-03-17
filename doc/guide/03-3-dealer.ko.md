@@ -48,6 +48,27 @@ zlink_send(dealer, "request-3", 9, 0);
 /* 응답은 생성 시 등록한 핸들러 콜백으로 디스패치됨 */
 ```
 
+### 수신 모드
+
+DEALER는 `zlink_recv_handler()`로 핸들러를 등록한다. 콜백은
+`source_rid` (항상 비어 있음 — DEALER는 routing_id 프레임을 제거)와
+`parts[]` 배열을 수신한다.
+
+**Callback 모드** (권장): 소켓 생성 시 핸들러를 부착한다. 모든 피어의
+메시지가 fair-queue로 도착하며 비동기로 dispatch된다.
+
+**Pull 모드**: 핸들러를 부착하지 않으면 `zlink_recv()`로 동기 수신한다.
+Pull 모드에서 멀티파트 메시지는 프레임별로 수신된다.
+
+```c
+char buf[256];
+int nbytes = zlink_recv(dealer, buf, sizeof(buf), 0);
+```
+
+> HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
+> `EAGAIN`을 반환한다. 고급 backpressure 패턴은
+> [성능 가이드](10-performance.ko.md)를 참고.
+
 ## 3. 메시지 형식
 
 DEALER 소켓은 routing_id 프레임을 자동으로 추가하지 않는다. 애플리케이션이 전송하는 프레임이 그대로 전달된다.
@@ -121,23 +142,13 @@ void on_request(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-zlink_socket_handler_t router_handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_request,
-    .userdata = NULL
-};
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_socket_attach_handler(router, &router_handler);
+zlink_recv_handler(router, on_request, NULL);
 zlink_bind(router, "tcp://*:5558");
 
 /* 클라이언트: DEALER */
-zlink_socket_handler_t dealer_handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_reply,
-    .userdata = NULL
-};
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-zlink_socket_attach_handler(dealer, &dealer_handler);
+zlink_recv_handler(dealer, on_reply, NULL);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
@@ -168,13 +179,8 @@ void on_message(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-zlink_socket_handler_t router_handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message,
-    .userdata = NULL
-};
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_socket_attach_handler(router, &router_handler);
+zlink_recv_handler(router, on_message, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -230,13 +236,8 @@ void worker_thread(void *arg) {
         }
     }
 
-    zlink_socket_handler_t handler = {
-        .kind = ZLINK_SOCKET_HANDLER_MSG,
-        .fn.msg = on_work,
-        .userdata = NULL
-    };
     void *worker = zlink_socket(ctx, ZLINK_DEALER);
-    zlink_socket_attach_handler(worker, &handler);
+    zlink_recv_handler(worker, on_work, NULL);
     zlink_connect(worker, "inproc://backend");
 
     /* 소켓이 닫힐 때까지 워커 유지 */
@@ -250,22 +251,12 @@ void worker_thread(void *arg) {
 양쪽 모두 DEALER를 사용하여 완전 비동기 P2P 통신.
 
 ```c
-zlink_socket_handler_t handler_a = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message_a,
-    .userdata = NULL
-};
 void *a = zlink_socket(ctx, ZLINK_DEALER);
-zlink_socket_attach_handler(a, &handler_a);
+zlink_recv_handler(a, on_message_a, NULL);
 zlink_bind(a, "tcp://*:5558");
 
-zlink_socket_handler_t handler_b = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message_b,
-    .userdata = NULL
-};
 void *b = zlink_socket(ctx, ZLINK_DEALER);
-zlink_socket_attach_handler(b, &handler_b);
+zlink_recv_handler(b, on_message_b, NULL);
 zlink_connect(b, "tcp://127.0.0.1:5558");
 
 /* 양방향 자유 전송 */

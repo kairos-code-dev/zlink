@@ -40,6 +40,14 @@ static inline void *open_socket_monitor_bridge (socket_base_t *socket_,
 
     return static_cast<void *> (monitor_socket);
 }
+
+static inline void close_socket_monitor_bridge (socket_base_t *socket_,
+                                                socket_base_t *monitor_socket_)
+{
+    if (socket_)
+        (void) socket_->monitor (NULL, 0, 4, ZLINK_PAIR);
+    LIBZLINK_UNUSED (monitor_socket_);
+}
 }
 
 #endif

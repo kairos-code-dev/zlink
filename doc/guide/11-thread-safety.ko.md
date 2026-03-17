@@ -103,7 +103,7 @@ int main(void)
 - `zlink_spot_subscribe()` / `zlink_spot_unsubscribe()`
 - `zlink_gateway_attach_discovery()` / `zlink_spot_node_attach_discovery()`
 - `zlink_*_monitor_open()`
-- `zlink_socket_set_send_ready_handler()`
+- `zlink_socket_send_ready_handler()`
 - `zlink_gateway_set_option()` / `zlink_gateway_set_lb_strategy()`
 - `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
 - 조회/스냅샷 함수

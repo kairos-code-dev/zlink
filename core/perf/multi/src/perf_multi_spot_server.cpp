@@ -642,7 +642,7 @@ int run_server_benchmark(const std::string &lib_name,
 
     void *pub = zlink_spot_new(node, &discard_spot_parts, NULL);
     if (!pub || !apply_spot_server_options(pub, settings)
-        || zlink_spot_set_send_ready_handler(pub, &spot_server_send_ready, NULL) != 0) {
+        || zlink_spot_send_ready_handler(pub, &spot_server_send_ready, NULL) != 0) {
         if (pub)
             zlink_spot_destroy(&pub);
         zlink_spot_node_destroy(&node);

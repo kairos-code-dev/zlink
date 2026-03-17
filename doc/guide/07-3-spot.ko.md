@@ -24,44 +24,60 @@ SPOT은 위치 투명한 토픽 기반 발행/구독 시스템이다. Discovery 
 
 ## 2. 아키텍처
 
-### 단일 서버
+### 로컬 publish — 같은 노드 안에서 전달
 
 ```
-┌─────────────────────────────────────────────┐
-│                 SPOT Node                    │
-│  ┌──────────┐         ┌──────────┐          │
-│  │ SpotPub  │         │ SpotSub  │          │
-│  │ pub:chat │         │ sub:chat │          │
-│  └────┬─────┘         └────▲─────┘          │
-│       │    inproc          │    inproc       │
-│       v                    │                 │
-│  [ data plane worker (proxy forwarding) ]    │
-└─────────────────────────────────────────────┘
+  SpotPub           SPOT Node            SpotSub
+    │               (worker)               │
+    │  ── publish ──►  │                   │
+    │    (inproc)      │                   │
+    │                  │ ── callback ─────► │
+    │                  │    (inproc)        │
 ```
 
-- `SpotPub`는 내부 `PUB` facade socket을 통해 data plane으로 publish한다
-- `SpotSub`는 내부 `SUB` facade socket을 통해 data plane에서 메시지를 받는다
-- data plane worker가 local fanout과 remote mesh forwarding을 proxy 방식으로 수행한다
+SpotPub이 publish하면 SPOT Node 내부 worker가 받아서 같은 노드의 SpotSub에게
+callback으로 바로 전달한다.
 
-### 클러스터 (PUB/SUB Mesh)
+### 원격 전파 — 클러스터 노드 간 전달
 
 ```
-┌──────────┐     PUB/SUB      ┌──────────┐
-│  Node 1  │◄───────────────►│  Node 2  │
-│  PUB+SUB │                  │  PUB+SUB │
-└──────────┘                  └──────────┘
-      ▲                            ▲
-      │         PUB/SUB            │
-      └────────────────────────────┘
-
-┌──────────┐
-│  Node 3  │
-│  PUB+SUB │
-└──────────┘
+  SpotPub          Node 1              Node 2           SpotSub
+  (Node 1)        (worker)            (worker)          (Node 2)
+    │                │                   │                  │
+    │ ── publish ──► │                   │                  │
+    │   (inproc)     │                   │                  │
+    │                │ ── PUB ─────────► │                  │
+    │                │   (tcp mesh)      │                  │
+    │                │                   │ ── callback ───► │
+    │                │                   │    (inproc)      │
 ```
 
-각 Node의 data plane worker가 local publish를 remote mesh로,
-remote mesh 수신을 local subscriber로 proxy-style forwarding한다.
+로컬 publish는 worker가 두 갈래로 분기한다:
+1. 같은 노드의 SpotSub에게 전달 (위의 로컬 경로)
+2. mesh PUB 소켓으로 원격 노드에 송출
+
+원격 노드의 worker는 mesh에서 수신한 메시지를 자기 SpotSub에게만 전달하고,
+**다시 mesh로 재발행하지 않는다** (루프 방지).
+
+### 전체 구조 요약
+
+```
+┌─────────── Node 1 ───────────┐     ┌─────────── Node 2 ───────────┐
+│                               │     │                               │
+│  SpotPub ──► worker ──► SpotSub │     │  SpotPub ──► worker ──► SpotSub │
+│                 │             │     │                 ▲             │
+│                 │ PUB         │     │            SUB  │             │
+│                 └──── tcp ────┼────►┼─────────────────┘             │
+│                 ▲             │     │                 │             │
+│            SUB  │             │     │                 │ PUB         │
+│                 └──── tcp ────┼◄────┼─────────────────┘             │
+│                               │     │                               │
+└───────────────────────────────┘     └───────────────────────────────┘
+```
+
+- 각 Node의 worker는 **PUB 소켓**으로 송출하고, 다른 노드의 **SUB 소켓**으로 수신한다
+- 로컬 publish만 mesh로 나가고, 원격 수신은 재발행하지 않는다 (루프 방지)
+- Discovery 연결 시 이 mesh 토폴로지가 자동 구성된다
 
 ## 3. SPOT Node 설정
 
@@ -153,8 +169,8 @@ void *node = zlink_spot_node_new(ctx, "spot-node", on_message, NULL);
 void *spot = zlink_spot_new(node, on_message, NULL);
 ```
 
-**중요:** public `spot` / `spot_node` handle은 same-handle operational API
-기준 thread-safe다. `publish`는 hot path로서 동시 호출을 허용하고,
+**중요:** 하나의 `spot` / `spot_node` handle을 여러 스레드에서 동시에
+사용할 수 있다 (thread-safe). `publish`는 hot path로서 여러 스레드에서 동시 호출을 허용하고,
 subscribe/unsubscribe/attach/peer connect/monitor는 runtime control path로
 호출할 수 있다. 다만 callback은 I/O 경로에서 직접 호출되므로, 느린 처리는
 사용자 queue로 넘겨 별도 thread에서 처리하는 편이 안전하다.
@@ -215,4 +231,4 @@ zlink_discovery_destroy(&discovery);
 중단해야 한다.
 
 ---
-[← Gateway](07-2-gateway.ko.md) | [Routing ID →](08-routing-id.ko.md)
+[← Gateway](07-2-gateway.ko.md) | [Registry →](07-4-registry.ko.md) | [Routing ID →](08-routing-id.ko.md)

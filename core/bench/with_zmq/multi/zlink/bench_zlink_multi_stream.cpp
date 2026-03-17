@@ -186,11 +186,7 @@ int stream_attach_compat (void *socket_,
         return zlink_stream_attach_len32be (socket_, callback);
 
     g_stream_attach_bridge_callback = callback;
-    zlink_socket_handler_t handler;
-    std::memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = &on_stream_attach_bridge;
-    const int rc = zlink_socket_attach_handler (socket_, &handler);
+    const int rc = zlink_recv_handler (socket_, &on_stream_attach_bridge, NULL);
     if (rc != 0)
         g_stream_attach_bridge_callback = NULL;
     return rc;

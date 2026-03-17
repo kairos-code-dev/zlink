@@ -270,13 +270,7 @@ void run_dealer_router (const std::string &transport,
 
     recv_state_t recv_state;
 
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = &router_recv_handler;
-    handler.userdata = &recv_state;
-
-    socket_guard_t router (ctx.get (), ZLINK_ROUTER, &handler);
+    socket_guard_t router (ctx.get (), ZLINK_ROUTER, &router_recv_handler, &recv_state);
     socket_guard_t dealer (ctx.get (), ZLINK_DEALER);
     if (!router.valid () || !dealer.valid ()) {
         print_fail_no_queue ();

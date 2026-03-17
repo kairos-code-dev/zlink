@@ -116,6 +116,10 @@ zlink_stream_detach(stream);
 | Framing | Raw bytes as received from the transport |
 | Send | `zlink_stream_send()` / `zlink_stream_send_msg()` |
 
+> When the send queue is full (HWM), `zlink_stream_send()` blocks
+> (default) or returns `EAGAIN` with `ZLINK_DONTWAIT`. For advanced
+> backpressure patterns, see [Performance Guide](10-performance.md).
+
 - Only one callback can be attached at a time; calling attach while a
   callback is already attached returns `-1` with `errno=EBUSY`.
 - Attach/detach are safe to call from application threads and serialized

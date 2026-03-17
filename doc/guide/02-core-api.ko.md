@@ -10,9 +10,8 @@ Context는 zlink의 최상위 객체로, I/O 스레드 풀과 소켓을 관리�
 /* 생성 */
 void *ctx = zlink_ctx_new();
 
-/* 설정 */
-zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* I/O 스레드 수 (기본 1) */
-zlink_ctx_set(ctx, ZLINK_MAX_SOCKETS, 2048); /* 최대 소켓 수 (기본 4095) */
+/* 설정 — 다중 연결 서버에서는 I/O 스레드를 늘린다 */
+zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* 기본 1; 연결이 많으면 4가 최적 */
 
 /* 조회 */
 int io_threads = zlink_ctx_get(ctx, ZLINK_IO_THREADS);
@@ -31,22 +30,10 @@ zlink_ctx_term(ctx);  /* 모든 소켓이 닫힌 후 반환 */
 
 ## 2. Socket API
 
-### 2.0 스레드 안전성 빠른 요약
+공개 socket handle API는 기본적으로 thread-safe다. 여러 스레드에서
+같은 소켓 핸들을 공유하여 send/recv/bind/connect 등을 호출할 수 있다.
 
-공개 socket handle API는 기본적으로 thread-safe다. 다만 모든 API가 같은 비용
-모델을 갖는 것은 아니다.
-
-- `zlink_send()`는 same-handle concurrent 호출을 허용하는 hot path다.
-- `bind/connect/disconnect`, subscribe/unsubscribe, monitor, option/query는
-  runtime에 호출할 수 있으며 correctness 우선 직렬화 계층이다.
-- `zlink_close()`는 fail-fast lifecycle gate를 사용한다. 다른 스레드가 같은
-  handle에서 admitted API나 callback을 실행 중이면 `EBUSY`, close가 accepted된
-  뒤 새 API 진입은 `ESHUTDOWN`이다.
-- 예외는 소수만 남긴다. init-only 성격의 설정, callback context에서 금지된
-  일부 reentrant API, 같은 `zlink_msg_t` 객체의 동시 공유는 기본 허용 범위
-  밖이다.
-
-> 전체 스레딩 계약은 [스레드 안전성 가이드](11-thread-safety.ko.md)를 참고.
+> 세부 스레딩 규칙은 [스레드 안전성 가이드](11-thread-safety.ko.md)를 참고.
 
 ### 2.1 소켓 생성 및 닫기
 
@@ -109,9 +96,9 @@ zlink_getsockopt(socket, ZLINK_SNDHWM, &value, &len);
 | `ZLINK_SUBSCRIBE` | binary | - | 구독 필터 (SUB 전용) |
 
 `ZLINK_SUBSCRIBE` / `ZLINK_UNSUBSCRIBE`, `ZLINK_EVENTS`,
-`ZLINK_LAST_ENDPOINT`, `ZLINK_RCVMORE` 같은 옵션과 조회는 runtime 중간에도
-의미가 있다. 반면 HWM, 타임아웃, TLS 같은 대부분의 튜닝 옵션은 보통 초기
-설정에 가깝다.
+`ZLINK_LAST_ENDPOINT`, `ZLINK_RCVMORE` 같은 옵션은 runtime 중간에도
+보통 사용한다. 반면 HWM, 타임아웃, TLS 같은 대부분의 튜닝 옵션은
+초기 설정 단계에서 사용한다.
 
 ## 3. 메시지 송수신
 
@@ -126,10 +113,40 @@ zlink_send(socket, "header", 6, ZLINK_SNDMORE);
 zlink_send(socket, "body", 4, 0);
 ```
 
-### 3.2 수신 (콜백 핸들러)
+기본적으로 `zlink_send()`는 전송 큐가 가득 차면(HWM 도달) 블로킹한다.
+`ZLINK_DONTWAIT` 플래그를 사용하면 블로킹 대신 즉시 `EAGAIN`을 반환한다.
+고급 backpressure 패턴은
+[성능 가이드](10-performance.ko.md)를 참고.
 
-모든 수신은 소켓 생성 후 부착한 핸들러 콜백을 통해 디스패치할 수 있다.
-`recv()` 함수는 없으며, 메시지가 도착하면 콜백이 비동기로 호출된다.
+### 3.2 수신
+
+zlink 소켓은 두 가지 수신 모드를 지원한다:
+
+#### Pull 모드 (동기식)
+
+핸들러를 부착하지 않으면 `zlink_recv()`로 직접 메시지를 받을 수 있다.
+소켓은 기본적으로 pull 모드로 시작한다.
+
+```c
+void *socket = zlink_socket(ctx, ZLINK_PAIR);
+zlink_bind(socket, "tcp://*:5556");
+
+/* 블로킹 수신 */
+char buf[256];
+int nbytes = zlink_recv(socket, buf, sizeof(buf), 0);
+
+/* 논블로킹 수신 */
+nbytes = zlink_recv(socket, buf, sizeof(buf), ZLINK_DONTWAIT);
+if (nbytes == -1 && zlink_errno() == EAGAIN) {
+    /* 현재 사용 가능한 메시지 없음 */
+}
+```
+
+#### Callback 모드
+
+소켓 생성 후 핸들러 콜백을 부착하면 메시지 도착 시 I/O 스레드에서
+비동기로 호출된다. 한번 부착하면 소켓 수명 동안 해제할 수 없다.
+핸들러가 부착된 상태에서 `zlink_recv()` 호출 시 `EBUSY`를 반환한다.
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
@@ -144,32 +161,30 @@ void on_message(const zlink_routing_id_t *source_rid,
     }
 }
 
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message,
-    .userdata = NULL
-};
 void *socket = zlink_socket(ctx, ZLINK_PAIR);
-zlink_socket_attach_handler(socket, &handler);
+zlink_recv_handler(socket, on_message, NULL);
 ```
+
+> 두 모드의 비교와 고급 패턴은
+> [성능 가이드](10-performance.ko.md)를 참고.
 
 ### 3.3 송신 플래그
 
 | 플래그 | 설명 |
 |--------|------|
-| `ZLINK_DONTWAIT` | 논블로킹 모드 (송신 불가 시 즉시 EAGAIN 반환) |
+| `ZLINK_DONTWAIT` | 논블로킹 모드 (송수신 불가 시 즉시 EAGAIN 반환) |
 | `ZLINK_SNDMORE` | 멀티파트 메시지의 중간 프레임 |
 
 ## 4. 핸들러 타입
 
-각 소켓 타입은 특정 핸들러 종류를 받는다:
+각 소켓 타입은 전용 등록 함수를 사용한다:
 
-| 소켓 타입 | 핸들러 종류 | 콜백 시그니처 |
+| 소켓 타입 | 등록 호출 | 콜백 시그니처 |
 |---|---|---|
-| PAIR, DEALER, ROUTER | `ZLINK_SOCKET_HANDLER_MSG` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)` |
-| SUB | `ZLINK_SOCKET_HANDLER_SPOT` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)` |
-| XPUB | `ZLINK_SOCKET_HANDLER_XPUB` | `void fn(int subscribed, const uint8_t *topic, size_t topic_len, void *userdata)` |
-| PUB, XSUB | N/A (NULL) | 송신 전용 소켓 |
+| PAIR, DEALER, ROUTER, STREAM | `zlink_recv_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)` |
+| SUB, XSUB | `zlink_recv_spot_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)` |
+| XPUB | `zlink_recv_xpub_handler(socket, fn, userdata)` | `void fn(int subscribed, const uint8_t *topic, size_t topic_len, void *userdata)` |
+| PUB | N/A | 송신 전용 소켓 |
 
 콜백은 I/O 스레드에서 호출된다. 콜백 내부에서 블로킹 작업을 피해야 한다.
 느린 처리가 필요하면 사용자 큐에 넣고 별도 스레드에서 처리한다.
@@ -229,23 +244,13 @@ int main(void) {
     void *ctx = zlink_ctx_new();
 
     /* ROUTER (서버) */
-    zlink_socket_handler_t router_handler = {
-        .kind = ZLINK_SOCKET_HANDLER_MSG,
-        .fn.msg = on_router_message,
-        .userdata = NULL
-    };
     void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    zlink_socket_attach_handler(router, &router_handler);
+    zlink_recv_handler(router, on_router_message, NULL);
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (클라이언트) */
-    zlink_socket_handler_t dealer_handler = {
-        .kind = ZLINK_SOCKET_HANDLER_MSG,
-        .fn.msg = on_dealer_message,
-        .userdata = NULL
-    };
     void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-    zlink_socket_attach_handler(dealer, &dealer_handler);
+    zlink_recv_handler(dealer, on_dealer_message, NULL);
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */

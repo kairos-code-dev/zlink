@@ -294,12 +294,8 @@ int lifecycle_reject_callback (const zlink_routing_id_t *, zlink_msg_t *msg_,
 
     probe->hits.fetch_add (1, std::memory_order_release);
 
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = &capture_route_handler;
     errno = 0;
-    const int detach_rc = zlink_socket_attach_handler (probe->socket, &handler);
+    const int detach_rc = zlink_recv_handler (probe->socket, &capture_route_handler, NULL);
     probe->detach_rc.store (detach_rc, std::memory_order_release);
     probe->detach_errno.store (errno, std::memory_order_release);
 
@@ -326,12 +322,8 @@ void establish_route (void *server_, int raw_fd_, zlink_routing_id_t *rid_,
 {
     route_probe_t probe;
     g_route_probe = &probe;
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = &capture_route_handler;
     errno = 0;
-    const int attach_rc = zlink_socket_attach_handler (server_, &handler);
+    const int attach_rc = zlink_recv_handler (server_, &capture_route_handler, NULL);
     TEST_ASSERT_TRUE (attach_rc == 0 || errno == EBUSY);
 
     const unsigned char payload = 0xA5;
@@ -533,11 +525,7 @@ void test_stream_callback_rejects_detach_and_close ()
     lifecycle_probe_t probe;
     probe.socket = server;
     g_lifecycle_probe = &probe;
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = &lifecycle_reject_handler;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &handler));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (server, &lifecycle_reject_handler, NULL));
 
     const unsigned char payload = 0x41;
     TEST_ASSERT_EQUAL_INT (0, send_all (raw_fd, &payload, sizeof (payload)));
@@ -680,11 +668,7 @@ void test_stream_callback_handoff_to_worker_thread_send_msg_is_safe ()
     worker_probe_t probe;
     probe.socket = server;
     g_worker_probe = &probe;
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = &handoff_to_worker_handler;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &handler));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (server, &handoff_to_worker_handler, NULL));
 
     std::thread worker (worker_send_msg_run, &probe);
 

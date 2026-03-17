@@ -59,13 +59,8 @@ void on_topic(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_SPOT,
-    .fn.spot = on_topic,
-    .userdata = NULL
-};
 void *sub = zlink_socket(ctx, ZLINK_SUB);
-zlink_socket_attach_handler(sub, &handler);
+zlink_recv_spot_handler(sub, on_topic, NULL);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 
 /* 토픽 구독 — connect 후 설정 */
@@ -75,6 +70,26 @@ zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "weather", 7);
 ```
 
 > 참고: `core/tests/test_pubsub.cpp` — 빈 구독("") → 모든 메시지 수신
+
+### 송수신 요약
+
+| 소켓 | 방향 | 등록 호출 | 비고 |
+|------|------|----------|------|
+| PUB | 송신 전용 | N/A | 수신 불가; 핸들러를 받지 않음 |
+| SUB | 수신 전용 | `zlink_recv_spot_handler()` | `topic` + `parts[]` — prefix match로 토픽 추출 |
+| XPUB | 양방향 | `zlink_recv_xpub_handler()` | 데이터가 아닌 구독 이벤트 수신 |
+| XSUB | 양방향 | `zlink_recv_spot_handler()` | 구독 프레임 송신; fair-queue로 데이터 수신 |
+
+SUB가 `zlink_recv_handler()` 대신 `zlink_recv_spot_handler()`를
+사용하는 이유는, I/O 스레드가 매칭된 토픽을 페이로드에서 분리한 뒤
+콜백을 호출하기 때문이다 — 핸들러는 `topic`과 `parts[]`를 별도
+파라미터로 수신한다.
+
+**Pull 모드**도 SUB에서 사용 가능하다: 핸들러를 부착하지 않고
+`zlink_recv()`를 호출하면 토픽 분리 없이 raw 프레임을 수신한다.
+
+> PUB의 송신 큐가 가득 차면(HWM) 블로킹 대신 메시지를 **드롭**한다.
+> 상세는 [성능 가이드](10-performance.ko.md)를 참고.
 
 ## 3. 토픽 필터링
 
@@ -165,13 +180,8 @@ void *pub = zlink_socket(ctx, ZLINK_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
 /* SUB — 모든 메시지 수신 */
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_SPOT,
-    .fn.spot = on_topic,
-    .userdata = NULL
-};
 void *sub = zlink_socket(ctx, ZLINK_SUB);
-zlink_socket_attach_handler(sub, &handler);
+zlink_recv_spot_handler(sub, on_topic, NULL);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
 
@@ -296,13 +306,8 @@ void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len,
         printf("구독 해제: %.*s\n", (int)topic_len, (const char *)topic);
 }
 
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_XPUB,
-    .fn.xpub = on_subscription,
-    .userdata = NULL
-};
 void *xpub = zlink_socket(ctx, ZLINK_XPUB);
-zlink_socket_attach_handler(xpub, &handler);
+zlink_recv_xpub_handler(xpub, on_subscription, NULL);
 ```
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
@@ -404,13 +409,8 @@ void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len,
         printf("구독 해제: %.*s\n", (int)topic_len, (const char *)topic);
 }
 
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_XPUB,
-    .fn.xpub = on_subscription,
-    .userdata = NULL
-};
 void *xpub = zlink_socket(ctx, ZLINK_XPUB);
-zlink_socket_attach_handler(xpub, &handler);
+zlink_recv_xpub_handler(xpub, on_subscription, NULL);
 zlink_bind(xpub, "tcp://*:5557");
 
 /* 구독 이벤트가 on_subscription 콜백으로 dispatch됨 */

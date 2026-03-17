@@ -20,6 +20,22 @@ void store_dispatch_part (std::vector<zlink_msg_t> *parts_, zlink::msg_t *msg_)
     errno_assert (move_rc == 0);
     parts_->push_back (stored);
 }
+
+void drain_pair_dispatch (zlink::pair_t *self_, zlink::pipe_t *pipe_)
+{
+    zlink::msg_t msg;
+    const int init_rc = msg.init ();
+    errno_assert (init_rc == 0);
+
+    while (pipe_ && pipe_->read (&msg)) {
+        const int dispatch_rc = self_->xsocket_msg_dispatch (&msg, pipe_);
+        if (dispatch_rc <= 0)
+            break;
+    }
+
+    const int close_rc = msg.close ();
+    errno_assert (close_rc == 0);
+}
 }
 
 zlink::pair_t::pair_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
@@ -45,9 +61,11 @@ void zlink::pair_t::xattach_pipe (pipe_t *pipe_,
 
     //  ZLINK_PAIR socket can only be connected to a single peer.
     //  The socket rejects any further connection requests.
-    if (_pipe == NULL)
+    if (_pipe == NULL) {
         _pipe = pipe_;
-    else
+        if (socket_msg_dispatch_active ())
+            _pipe->check_read ();
+    } else
         pipe_->terminate (false);
 }
 
@@ -60,8 +78,10 @@ void zlink::pair_t::xpipe_terminated (pipe_t *pipe_)
 
 void zlink::pair_t::xread_activated (pipe_t *)
 {
-    //  There's just one pipe. No lists of active and inactive pipes.
-    //  There's nothing to do here.
+    //  There's just one pipe. Drain it immediately when dispatch mode is
+    //  active so inproc callback consumers don't leave local pipes backed up.
+    if (socket_msg_dispatch_active () && _pipe)
+        drain_pair_dispatch (this, _pipe);
 }
 
 void zlink::pair_t::xwrite_activated (pipe_t *)

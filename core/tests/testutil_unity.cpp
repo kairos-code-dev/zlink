@@ -36,47 +36,27 @@ void discard_test_spot_parts (const zlink_routing_id_t *,
 void discard_test_xpub_event (int, const uint8_t *, size_t, void *)
 {
 }
+}
 
-const zlink_socket_handler_t *test_socket_handler_for_type (int type_)
+int test_attach_discard_handler_for_type (void *socket_, int type_)
 {
-    static zlink_socket_handler_t msg_handler;
-    static zlink_socket_handler_t spot_handler;
-    static zlink_socket_handler_t xpub_handler;
-    static bool initialized = false;
-
-    if (!initialized) {
-        memset (&msg_handler, 0, sizeof (msg_handler));
-        msg_handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-        msg_handler.fn.msg = &discard_test_socket_parts;
-
-        memset (&spot_handler, 0, sizeof (spot_handler));
-        spot_handler.kind = ZLINK_SOCKET_HANDLER_SPOT;
-        spot_handler.fn.spot = &discard_test_spot_parts;
-
-        memset (&xpub_handler, 0, sizeof (xpub_handler));
-        xpub_handler.kind = ZLINK_SOCKET_HANDLER_XPUB;
-        xpub_handler.fn.xpub = &discard_test_xpub_event;
-
-        initialized = true;
-    }
-
     switch (static_cast<zlink_socket_type_t> (type_)) {
         case ZLINK_PAIR:
         case ZLINK_DEALER:
         case ZLINK_ROUTER:
         case ZLINK_STREAM:
-            return &msg_handler;
+            return zlink_recv_handler (socket_, &discard_test_socket_parts, NULL);
         case ZLINK_SUB:
         case ZLINK_XSUB:
-            return &spot_handler;
+            return zlink_recv_spot_handler (socket_, &discard_test_spot_parts, NULL);
         case ZLINK_XPUB:
-            return &xpub_handler;
+            return zlink_recv_xpub_handler (socket_, &discard_test_xpub_event, NULL);
         case ZLINK_PUB:
-            return NULL;
+            return 0;
         default:
-            return NULL;
+            errno = EINVAL;
+            return -1;
     }
-}
 }
 
 int test_assert_success_message_errno_helper (int rc_,

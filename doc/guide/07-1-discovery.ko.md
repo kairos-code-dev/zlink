@@ -41,21 +41,23 @@ zlink Service Discovery는 마이크로서비스 환경에서 서비스 인스�
 void *ctx = zlink_ctx_new();
 void *registry = zlink_registry_new(ctx);
 
-/* bind + start */
-zlink_registry_bind(registry,
-    "tcp://*:5550",    /* PUB (브로드캐스트) */
-    "tcp://*:5551"     /* ROUTER (등록/Heartbeat) */
-);
-
-/* 클러스터 피어 추가 (선택) */
+/* 클러스터 피어 추가 (선택, bind 전에 호출) */
 zlink_registry_add_peer(registry, "tcp://registry2:5550");
 zlink_registry_add_peer(registry, "tcp://registry3:5550");
 
-/* Heartbeat 설정 (선택) */
+/* Heartbeat 설정 (선택, bind 전에 호출) */
 zlink_registry_set_heartbeat(registry, 5000, 15000);
 
 /* 브로드캐스트 주기 (선택, 기본 30초) */
 zlink_registry_set_broadcast_interval(registry, 30000);
+
+/* bind + start
+   첫 번째 인자: PUB endpoint — 서비스 목록 브로드캐스트 (Discovery SUB가 구독)
+   두 번째 인자: ROUTER endpoint — 등록/하트비트/쿼리 수신 (Discovery가 bootstrap 연결) */
+zlink_registry_bind(registry,
+    "tcp://*:5550",    /* PUB (서비스 목록 브로드캐스트) */
+    "tcp://*:5551"     /* ROUTER (등록/하트비트/쿼리) */
+);
 
 /* ... 애플리케이션 로직 ... */
 
@@ -117,6 +119,12 @@ Gateway/SpotNode            Discovery               Registry
 - Eventually Consistent: 모든 Registry가 동일 상태 수렴
 - `registry_id` + `list_seq`로 중복/역전 업데이트 무시
 
+**서비스 가시성:** Registry 클러스터에서 서비스 목록은 flooding으로 전파된다.
+Discovery가 하나의 Registry에만 연결해도 피어 Registry에 등록된 서비스가
+브로드캐스트에 포함되어 전체 클러스터의 서비스를 볼 수 있다. 여러 Registry에
+`connect_registry()`하는 것은 서비스 가시성이 아닌 **HA(장애 대응)**를 위한
+것이다.
+
 ### Discovery Failover
 
 - Discovery는 하나 이상의 Registry control endpoint에 bootstrap 연결합니다.
@@ -128,6 +136,7 @@ Gateway/SpotNode            Discovery               Registry
 
 - [Gateway 서비스](07-2-gateway.ko.md) — Discovery 기반 위치투명 요청/응답
 - [SPOT PUB/SUB](07-3-spot.ko.md) — Discovery 기반 위치투명 발행/구독
+- [Registry 가이드](07-4-registry.ko.md) — 클러스터 구성, 토폴로지 조회, 운영 패턴
 
 ---
 [← 서비스 개요](07-0-services.ko.md) | [Gateway →](07-2-gateway.ko.md)

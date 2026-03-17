@@ -115,6 +115,10 @@ void zlink::xsub_t::xattach_pipe (pipe_t *pipe_,
 
     zlink_assert (pipe_);
     _fq.attach (pipe_);
+    if (_dispatch_active.load (std::memory_order_acquire)) {
+        pipe_->check_read ();
+        _fq.deactivate (pipe_);
+    }
     _dist.attach (pipe_);
 
     //  Send all the cached subscriptions to the new upstream peer.

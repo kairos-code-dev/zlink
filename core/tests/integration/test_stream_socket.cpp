@@ -940,11 +940,7 @@ static void stream_raw_load_msg_handler (const zlink_routing_id_t *rid_,
 static int attach_stream_msg_handler (void *socket_,
                                       zlink_socket_msg_handler_fn handler_)
 {
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = handler_;
-    return zlink_socket_attach_handler (socket_, &handler);
+    return zlink_recv_handler (socket_, handler_, NULL);
 }
 
 void test_stream_callback_lifecycle ()

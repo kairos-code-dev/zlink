@@ -131,11 +131,7 @@ class zlink_stream_echo_server_t
         }
 
         g_server_instance = this;
-        zlink_socket_handler_t handler;
-        std::memset (&handler, 0, sizeof (handler));
-        handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-        handler.fn.msg = &zlink_stream_echo_server_t::on_packet_static;
-        if (zlink_socket_attach_handler (server, &handler) != 0) {
+        if (zlink_recv_handler (server, &zlink_stream_echo_server_t::on_packet_static, NULL) != 0) {
             std::fprintf (stderr, "zlink stream: dispatch attach failed: %s\n",
                           zlink_strerror (zlink_errno ()));
             return 2;

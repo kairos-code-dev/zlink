@@ -243,7 +243,7 @@ routing / LB            set_lb_strategy(), set_routing_id(),       zlink_gateway
                         lock_routing_id()                          _update_peer_weight
 option                  set_option(), set_socket_option()          zlink_gateway_set_option
 TLS                     set_tls_client(), set_tls_server()         zlink_gateway_set_tls_client, _set_tls_server
-handler                 set_handler(), set_send_ready_handler(),   zlink_gateway_set_send_ready_handler
+handler                 set_handler(), set_send_ready_handler(),   zlink_gateway_send_ready_handler
                         dispatch_message(), dispatch_send_ready()
 monitor                 monitor_open(), fill_monitor_snapshot()    zlink_gateway_monitor_open
 endpoint                last_endpoint()                            zlink_gateway_last_endpoint
@@ -276,7 +276,7 @@ connection              bind(), connect_peer_pub(),                 zlink_spot_n
 discovery               attach_discovery()                          zlink_spot_node_attach_discovery
 option                  set_pub_option(), set_sub_option()          zlink_spot_node_set_pub_option, _set_sub_option
 TLS                     set_tls_client(), set_tls_server()          zlink_spot_node_set_tls_server, _set_tls_client
-handler                 set_send_ready_handler()                    zlink_spot_node_set_send_ready_handler
+handler                 set_send_ready_handler()                    zlink_spot_node_send_ready_handler
 pub API                 spot_pub_t::publish(), set_option(),        zlink_spot_publish, _set_pub_option,
                         set_send_ready_handler(), routing_id(),     _set_send_ready_handler
                         monitor_open(), destroy()

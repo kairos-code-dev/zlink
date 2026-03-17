@@ -46,7 +46,7 @@ int zlink_spot_node_subscribe_pattern(void *node, const char *pattern);
 int zlink_spot_node_unsubscribe(void *node,
                                        const char *topic_id_or_pattern);
 
-int zlink_spot_node_set_send_ready_handler(
+int zlink_spot_node_send_ready_handler(
   void *node,
   zlink_send_ready_handler_fn handler,
   void *userdata);
@@ -89,7 +89,7 @@ int zlink_spot_subscribe_pattern(void *spot, const char *pattern);
 int zlink_spot_unsubscribe(void *spot,
                            const char *topic_id_or_pattern);
 
-int zlink_spot_set_send_ready_handler(
+int zlink_spot_send_ready_handler(
   void *spot,
   zlink_send_ready_handler_fn handler,
   void *userdata);

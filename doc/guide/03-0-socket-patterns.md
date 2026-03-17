@@ -73,11 +73,15 @@ Is the communication peer an external client (browser, game)?
 | Inter-thread signaling | PAIR + inproc | Fastest 1:1 communication |
 | Event broadcast | PUB/SUB | Topic-based filtering |
 | Message broker/proxy | XPUB/XSUB | Subscription message access and transformation |
-| Async request-reply server | DEALER/ROUTER | Multi-client handling |
+| Async request-reply server | DEALER↔DEALER | Async bidirectional communication |
 | Load balancing | Multiple DEALERs → ROUTER | Round-robin distribution |
 | Targeted peer delivery | ROUTER | Specify target via routing_id |
 | Web client integration | STREAM + ws/wss | WebSocket RAW communication |
 | External TCP client | STREAM + tcp/tls | Length-prefix RAW communication |
+
+> For location transparency (auto-connect, load balancing, topic mesh),
+> use the service layer (Gateway, SPOT) instead of raw sockets.
+> See [Services Overview](07-0-services.md) for details.
 
 ## 6. Sub-Documents
 
@@ -110,13 +114,8 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 /* 3. Create Socket (with handler for receiving) */
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message,
-    .userdata = NULL
-};
 void *socket = zlink_socket(ctx, ZLINK_<TYPE>);
-zlink_socket_attach_handler(socket, &handler);
+zlink_recv_handler(socket, on_message, NULL);
 
 /* 4. Set socket options (before bind/connect) */
 zlink_setsockopt(socket, ZLINK_<OPTION>, &value, sizeof(value));
@@ -134,7 +133,25 @@ zlink_close(socket);
 zlink_ctx_term(ctx);
 ```
 
-> Socket options must be set **before** calling `zlink_bind()`/`zlink_connect()`.
+> The following options must be set **before** `zlink_bind()`/`zlink_connect()`
+> as they are used during handshake or connection:
+> `ZLINK_ROUTING_ID`, `ZLINK_CONNECT_ROUTING_ID`, `ZLINK_PROBE_ROUTER`, `ZLINK_TLS_*`.
+> Other options (`SNDHWM`, `RCVHWM`, `LINGER`, `SNDTIMEO`, etc.) can be changed after bind/connect.
+
+> The example above uses callback receive mode. Pull-style receive via
+> `zlink_recv()` is also supported. For a comparison of the two modes,
+> see [Core API](02-core-api.md) section 3.2.
+
+> **Callback mode constraints:** After installing `zlink_recv_handler()`,
+> `zlink_recv()` returns `EBUSY` (irreversible transition). The following
+> recv-related options become ineffective:
+>
+> | Option | Reason |
+> |--------|--------|
+> | `ZLINK_RCVTIMEO` | No `recv()` calls, so timeout has no effect |
+> | `ZLINK_RCVMORE` | Complete multipart delivered atomically as `parts[]` |
+>
+> `ZLINK_RCVHWM` remains effective in callback mode (applies to the I/O thread's internal queue).
 
 ---
 [← Core API](02-core-api.md) | [PAIR →](03-1-pair.md)

@@ -481,7 +481,7 @@ bool create_gateway_slots(gateway_client_state_t *state,
                                           &gateway_client_recv_handler, slot);
         if (!slot->gateway || !apply_gateway_options(slot->gateway, settings)
             || !configure_gateway_tls_client(slot->gateway, transport)
-            || zlink_gateway_set_send_ready_handler(
+            || zlink_gateway_send_ready_handler(
                  slot->gateway, &gateway_client_send_ready, slot)
                  != 0
             || !open_gateway_ready_monitor(slot)

@@ -333,11 +333,7 @@ int main (int argc, char **argv)
     std::unique_ptr<send_queue_t> send_queue (new send_queue_t (queue_capacity));
     g_send_queue = send_queue.get ();
 
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = &on_stream_handler;
-    if (zlink_socket_attach_handler (server, &handler) != 0) {
+    if (zlink_recv_handler (server, &on_stream_handler, NULL) != 0) {
         g_send_queue = NULL;
         g_server_socket = NULL;
         zlink_close (server);

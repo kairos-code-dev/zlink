@@ -250,12 +250,8 @@ void establish_stream_route (void *server_, int raw_fd_, zlink_routing_id_t *rid
 {
     stream_route_probe_t probe;
     g_stream_route_probe = &probe;
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = &capture_stream_route_handler;
     errno = 0;
-    const int attach_rc = zlink_socket_attach_handler (server_, &handler);
+    const int attach_rc = zlink_recv_handler (server_, &capture_stream_route_handler, NULL);
     TEST_ASSERT_TRUE (attach_rc == 0 || errno == EBUSY);
 
     const unsigned char request = 0xA5;

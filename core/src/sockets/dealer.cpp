@@ -19,6 +19,7 @@ void store_dispatch_part (std::vector<zlink_msg_t> *parts_, zlink::msg_t *msg_)
     errno_assert (move_rc == 0);
     parts_->push_back (stored);
 }
+
 }
 
 zlink::dealer_t::dealer_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
@@ -59,6 +60,10 @@ void zlink::dealer_t::xattach_pipe (pipe_t *pipe_,
     }
 
     _fq.attach (pipe_);
+    if (socket_msg_dispatch_active ()) {
+        pipe_->check_read ();
+        _fq.deactivate (pipe_);
+    }
     _lb.attach (pipe_);
 }
 
@@ -110,6 +115,22 @@ bool zlink::dealer_t::xhas_out ()
 void zlink::dealer_t::xread_activated (pipe_t *pipe_)
 {
     _fq.activated (pipe_);
+    if (!socket_msg_dispatch_active ())
+        return;
+
+    msg_t msg;
+    const int init_rc = msg.init ();
+    errno_assert (init_rc == 0);
+
+    pipe_t *dispatch_pipe = NULL;
+    while (recvpipe (&msg, &dispatch_pipe) == 0) {
+        const int dispatch_rc = xsocket_msg_dispatch (&msg, dispatch_pipe);
+        if (dispatch_rc <= 0)
+            break;
+    }
+
+    const int close_rc = msg.close ();
+    errno_assert (close_rc == 0);
 }
 
 void zlink::dealer_t::xwrite_activated (pipe_t *pipe_)

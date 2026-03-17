@@ -22,6 +22,18 @@ void zlink::fq_t::attach (pipe_t *pipe_)
     _active++;
 }
 
+void zlink::fq_t::deactivate (pipe_t *pipe_)
+{
+    const pipes_t::size_type index = _pipes.index (pipe_);
+    if (index >= _active)
+        return;
+
+    _active--;
+    _pipes.swap (index, _active);
+    if (_current == _active)
+        _current = 0;
+}
+
 void zlink::fq_t::pipe_terminated (pipe_t *pipe_)
 {
     const pipes_t::size_type index = _pipes.index (pipe_);

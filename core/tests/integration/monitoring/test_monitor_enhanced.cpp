@@ -39,15 +39,6 @@ struct raw_delivery_probe_t
 raw_delivery_probe_t *g_raw_delivery_probe_a = NULL;
 raw_delivery_probe_t *g_raw_delivery_probe_b = NULL;
 
-zlink_socket_handler_t make_msg_handler (zlink_socket_msg_handler_fn fn_)
-{
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = fn_;
-    return handler;
-}
-
 void close_raw_delivery_parts (raw_delivery_probe_t *probe_,
                                zlink_msg_t *parts_,
                                size_t part_count_)

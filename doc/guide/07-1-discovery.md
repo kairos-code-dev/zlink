@@ -41,21 +41,23 @@ zlink Service Discovery provides the infrastructure to dynamically discover and 
 void *ctx = zlink_ctx_new();
 void *registry = zlink_registry_new(ctx);
 
-/* Bind and start */
-zlink_registry_bind(registry,
-    "tcp://*:5550",    /* PUB (broadcast) */
-    "tcp://*:5551"     /* ROUTER (registration/heartbeat) */
-);
-
-/* Add cluster peers (optional) */
+/* Add cluster peers (optional, must be called before bind) */
 zlink_registry_add_peer(registry, "tcp://registry2:5550");
 zlink_registry_add_peer(registry, "tcp://registry3:5550");
 
-/* Heartbeat configuration (optional) */
+/* Heartbeat configuration (optional, must be called before bind) */
 zlink_registry_set_heartbeat(registry, 5000, 15000);
 
 /* Broadcast interval (optional, default 30 seconds) */
 zlink_registry_set_broadcast_interval(registry, 30000);
+
+/* Bind and start
+   First arg:  PUB endpoint — broadcasts service list (Discovery SUB subscribes)
+   Second arg: ROUTER endpoint — receives registration/heartbeat/queries (Discovery bootstraps here) */
+zlink_registry_bind(registry,
+    "tcp://*:5550",    /* PUB (service list broadcast) */
+    "tcp://*:5551"     /* ROUTER (registration/heartbeat/queries) */
+);
 
 /* ... application logic ... */
 
@@ -117,6 +119,12 @@ Gateway/SpotNode            Discovery               Registry
 - Eventually Consistent: all Registries converge to the same state
 - Duplicate/out-of-order updates ignored via `registry_id` + `list_seq`
 
+**Service Visibility:** In a Registry cluster, the service list is propagated
+via flooding. Even if a Discovery connects to only one Registry, services
+registered on peer Registries are included in that Registry's broadcast,
+so the full cluster's services are visible. Connecting to multiple Registries
+via `connect_registry()` is for **HA (failover)**, not for service visibility.
+
 ### Discovery Failover
 
 - Discovery bootstraps against one or more Registry control endpoints
@@ -128,6 +136,7 @@ Gateway/SpotNode            Discovery               Registry
 
 - [Gateway Service](07-2-gateway.md) -- Discovery-based location-transparent request/reply
 - [SPOT PUB/SUB](07-3-spot.md) -- Discovery-based location-transparent publish/subscribe
+- [Registry Guide](07-4-registry.md) -- Cluster setup, topology introspection, and operational patterns
 
 ---
 [← Services Overview](07-0-services.md) | [Gateway →](07-2-gateway.md)

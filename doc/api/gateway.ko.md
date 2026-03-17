@@ -9,8 +9,8 @@ Gateway는 서비스 바인딩된 로드 밸런싱 요청/응답 핸들입니다
 
 ## 스레드 안전성 요약
 
-공개 Gateway handle API는 기본적으로 same-handle operational use 기준
-thread-safe합니다.
+하나의 Gateway handle을 여러 스레드에서 동시에 사용할 수 있습니다
+(thread-safe).
 
 - `zlink_gateway_send()` / `zlink_gateway_send_rid()`는 hot path이며 동시 호출을
   허용합니다.
@@ -31,7 +31,7 @@ thread-safe합니다.
 - `zlink_gateway_connect()` / `zlink_gateway_disconnect()`로 수동 피어 관리를
   합니다 (discovery 연결 전에만 허용).
 - `zlink_gateway_set_option()`으로 서비스 레벨 튜닝을 합니다.
-- `zlink_gateway_set_send_ready_handler()`로 송신 측 백프레셔를 처리합니다.
+- `zlink_gateway_send_ready_handler()`로 송신 측 백프레셔를 처리합니다.
 - `zlink_gateway_monitor_open()`으로 `ZLINK_GATEWAY_SEND_READY_CHANGED`,
   `ZLINK_GATEWAY_ROUTE_UP` 같은 edge 전이를 관찰합니다.
 - monitor handle에 대해 `zlink_monitor_snapshot()`으로 현재 로컬 제어 상태와
@@ -225,12 +225,12 @@ int zlink_gateway_send_rid (void *gateway,
 
 ---
 
-### zlink_gateway_set_send_ready_handler
+### zlink_gateway_send_ready_handler
 
 send-ready 콜백을 설치하거나 교체합니다.
 
 ```c
-int zlink_gateway_set_send_ready_handler (
+int zlink_gateway_send_ready_handler (
   void *gateway, zlink_send_ready_handler_fn handler, void *userdata);
 ```
 
@@ -393,7 +393,7 @@ int zlink_gateway_destroy (void **gateway_p);
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
 **스레드 안전성:** Gateway는 3계층 계약을 따릅니다. hot path
-`send`/`send_rid`는 same-handle 병행 사용을 허용하고, attach/option/monitor는
+`send`/`send_rid`는 여러 스레드에서 동시 호출을 허용하고, attach/option/monitor는
 serialized control path로 동작하며, `zlink_gateway_destroy()`는 stricter
 lifecycle gate를 사용합니다. 다른 스레드가 같은 handle에서 callback 또는
 admitted API를 실행 중이면 `errno=EBUSY`로 실패하고, destroy가 accepted된 뒤

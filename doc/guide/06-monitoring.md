@@ -434,7 +434,7 @@ zlink_close(mon_b);
 `zlink_socket_monitor_open()` and monitor-handle close belong to the
 low-frequency control-path contract of raw and service handles. That means
 they may be called from application threads and remain correct when mixed with
-other same-handle operations. The monitor callback itself still runs on the
+other concurrent operations on the same handle. The monitor callback itself still runs on the
 I/O path, so slow callback work should be offloaded to a user queue.
 
 ```c

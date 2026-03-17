@@ -51,13 +51,8 @@ void on_message(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message,
-    .userdata = NULL
-};
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_socket_attach_handler(router, &handler);
+zlink_recv_handler(router, on_message, NULL);
 ```
 
 ### 메시지 송신
@@ -69,6 +64,31 @@ zlink_socket_attach_handler(router, &handler);
 zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
 zlink_send(router, "World", 5, 0);
 ```
+
+### 수신 모드
+
+ROUTER는 `zlink_recv_handler()`로 핸들러를 등록한다. 콜백은
+송신 피어를 식별하는 `source_rid`와 애플리케이션 데이터 프레임을
+포함하는 `parts[]`를 수신한다 (routing_id는 I/O 스레드가 자동 분리).
+
+**Callback 모드** (권장): 소켓 생성 시 핸들러를 부착한다. `source_rid`를
+사용하여 올바른 피어에게 응답한다.
+
+**Pull 모드**: 핸들러를 부착하지 않으면 `zlink_recv()`로 동기 수신한다.
+Pull 모드에서 첫 프레임이 routing_id이고 이후 프레임이 애플리케이션
+데이터다.
+
+```c
+char rid_buf[256];
+int rid_len = zlink_recv(router, rid_buf, sizeof(rid_buf), 0);
+
+char data_buf[256];
+int data_len = zlink_recv(router, data_buf, sizeof(data_buf), 0);
+```
+
+> 피어별 송신 큐가 가득 차면(HWM) `ROUTER_MANDATORY` 활성 시
+> `EHOSTUNREACH`를 반환하고, 그렇지 않으면 메시지를 조용히 드롭한다.
+> 고급 backpressure 패턴은 [성능 가이드](10-performance.ko.md)를 참고.
 
 ## 3. 메시지 형식
 
@@ -154,13 +174,8 @@ void on_request(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-zlink_socket_handler_t router_handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_request,
-    .userdata = NULL
-};
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_socket_attach_handler(router, &router_handler);
+zlink_recv_handler(router, on_request, NULL);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -168,24 +183,14 @@ size_t len = sizeof(endpoint);
 zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
 /* 클라이언트 1 */
-zlink_socket_handler_t d1_handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_reply,
-    .userdata = NULL
-};
 void *d1 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_socket_attach_handler(d1, &d1_handler);
+zlink_recv_handler(d1, on_reply, NULL);
 zlink_setsockopt(d1, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* 클라이언트 2 */
-zlink_socket_handler_t d2_handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_reply,
-    .userdata = NULL
-};
 void *d2 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_socket_attach_handler(d2, &d2_handler);
+zlink_recv_handler(d2, on_reply, NULL);
 zlink_setsockopt(d2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(d2, endpoint);
 

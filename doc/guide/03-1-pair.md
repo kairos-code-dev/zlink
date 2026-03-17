@@ -51,13 +51,8 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 /* Server with handler */
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message,
-    .userdata = NULL
-};
 void *server = zlink_socket(ctx, ZLINK_PAIR);
-zlink_socket_attach_handler(server, &handler);
+zlink_recv_handler(server, on_message, NULL);
 
 /* Client (send only) */
 void *client = zlink_socket(ctx, ZLINK_PAIR);
@@ -86,6 +81,35 @@ zlink_send(server, "foobar", 6, 0);
 ```
 
 > Reference: `core/tests/test_pair_inproc.cpp` -- `test_zlink_send_multipart()` test
+
+### Receive Modes
+
+PAIR registers a handler via `zlink_recv_handler()`. The callback
+receives `source_rid` (always empty for PAIR since there is only one
+peer) and a `parts[]` array containing all frames of a complete
+multipart message.
+
+**Callback mode** (recommended): attach a handler as shown in the
+Message Exchange example above. Messages are dispatched asynchronously
+on the I/O thread.
+
+**Pull mode**: without attaching a handler, call `zlink_recv()` to
+receive synchronously.
+
+```c
+void *pair = zlink_socket(ctx, ZLINK_PAIR);
+zlink_bind(pair, "tcp://*:5556");
+
+char buf[256];
+int nbytes = zlink_recv(pair, buf, sizeof(buf), 0);
+```
+
+In pull mode, multipart messages are received frame-by-frame. Check
+`ZLINK_RCVMORE` after each recv to determine if more frames follow.
+
+> When HWM is reached, `zlink_send()` blocks (default) or returns
+> `EAGAIN` with `ZLINK_DONTWAIT`. For advanced backpressure patterns,
+> see [Performance Guide](10-performance.md).
 
 ## 3. Message Format
 
@@ -129,13 +153,8 @@ The most common PAIR use case. Zero-copy communication between threads via the i
 
 ```c
 /* Main thread */
-zlink_socket_handler_t handler = {
-    .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_signal,
-    .userdata = NULL
-};
 void *signal = zlink_socket(ctx, ZLINK_PAIR);
-zlink_socket_attach_handler(signal, &handler);
+zlink_recv_handler(signal, on_signal, NULL);
 zlink_bind(signal, "inproc://signal");
 
 /* Worker thread */

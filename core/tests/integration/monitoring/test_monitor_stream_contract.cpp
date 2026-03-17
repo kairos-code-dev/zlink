@@ -401,11 +401,7 @@ void test_stream_monitor_ready_implies_first_payload_contract ()
     probe.expected_payload = client_payload;
     probe.expected_size = sizeof (client_payload) - 1;
     g_stream_contract_probe = &probe;
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = &stream_contract_echo_handler;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &handler));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (server, &stream_contract_echo_handler, NULL));
 
     const int client_fd = connect_raw_tcp (endpoint);
     TEST_ASSERT_TRUE (client_fd >= 0);

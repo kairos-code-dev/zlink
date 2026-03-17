@@ -2,69 +2,7 @@
 
 # 성능 특성 및 튜닝 가이드
 
-## 1. 벤치마크 결과
-
-### 소형 메시지 (64B) 처리량
-
-| 패턴 | TCP | IPC | inproc |
-|------|-----|-----|--------|
-| DEALER↔DEALER | 6.03 M/s | 5.96 M/s | 5.96 M/s |
-| PAIR | 5.78 M/s | 5.65 M/s | 6.09 M/s |
-| PUB/SUB | 5.76 M/s | 5.70 M/s | 5.71 M/s |
-| DEALER↔ROUTER | 5.40 M/s | 5.55 M/s | 5.40 M/s |
-| ROUTER↔ROUTER | 5.03 M/s | 5.12 M/s | 4.71 M/s |
-
-> 표준 libzmq 대비 **~99% 처리량 동등성**.
-
-## 2. WS/WSS 최적화 결과
-
-| 메시지 크기 | WS 개선율 | WSS 개선율 |
-|------------|-----------|-----------|
-| 64B | +11% | +13% |
-| 1KB | +50% | +37% |
-| 64KB | +97% | +54% |
-| 262KB | +139% | +62% |
-
-### Beast 라이브러리 단독 대비
-
-| Transport | Beast | zlink | 비율 |
-|-----------|-------|-------|------|
-| tcp | 1416 MB/s | 1493 MB/s | 105% |
-| ws | 540 MB/s | 696 MB/s | 129% |
-
-> WS/WSS 내부 최적화 상세(Copy elimination, Gather write)는 [STREAM 소켓 최적화](../internals/stream-socket.ko.md)를 참고.
-
-### STREAM 벤치 정책
-
-- `libzmq STREAM` 비교는 **tcp만** 수행한다.
-- `tls/ws/wss`는 zlink-to-zlink baseline 비교(이전 zlink baseline vs 현재 빌드)로 측정한다.
-- 현재 STREAM 기본 런타임 값/잔여 튜닝 포인트는 [03-5-stream.ko.md](03-5-stream.ko.md)를 참고한다.
-
-## 3. 메시지 크기별 처리량 가이드라인
-
-| 메시지 크기 | 특성 | 권장 사항 |
-|------------|------|-----------|
-| ≤33B | VSM (inline) | 메모리 할당 없음. 최고 처리량 |
-| 34B~1KB | LMSG (소형) | 일반적 성능. 복사 오버헤드 미미 |
-| 1KB~64KB | LMSG (중형) | zero-copy (`zlink_msg_init_data`) 고려 |
-| >64KB | LMSG (대형) | zero-copy 필수. WS/WSS는 Gather write 활용 |
-
-### VSM 활용
-
-33바이트 이하 메시지는 `msg_t` 구조체 내부에 직접 저장되어 **malloc 없이** 처리된다.
-
-```c
-/* VSM: 33B 이하 → 인라인 저장, 최고 효율 */
-zlink_send(socket, "small msg", 9, 0);
-
-/* LMSG: 34B 이상 → heap 할당 */
-char large[1024];
-zlink_send(socket, large, sizeof(large), 0);
-```
-
-프로토콜 설계 시 자주 교환되는 메시지는 33B 이내로 유지하면 처리량이 극대화된다.
-
-## 4. Transport별 성능 특성
+## 1. Transport별 성능 특성
 
 | Transport | 상대 성능 | 지연시간 | 오버헤드 | 추천 용도 |
 |-----------|-----------|---------|----------|-----------|
@@ -84,7 +22,7 @@ ws:      tcp + WebSocket 프레이밍(2~14B 헤더). Binary mode.
 wss/tls: ws/tcp + TLS 암호화. 핸드셰이크 + 레코드 오버헤드.
 ```
 
-## 5. I/O 스레드 수 설정 가이드
+## 2. I/O 스레드 수 설정 가이드
 
 ```c
 void *ctx = zlink_ctx_new();
@@ -110,28 +48,57 @@ zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);
 - inproc transport는 I/O 스레드를 사용하지 않음 (직접 파이프 연결)
 - I/O 스레드를 과도하게 늘리면 컨텍스트 스위칭 오버헤드 발생
 
-## 6. HWM (High Water Mark) 설정 가이드
+## 3. HWM (High Water Mark) 설정 가이드
+
+HWM은 **연결별(per-connection) 큐 크기** 제한이다. zlink에서 각 연결(pipe)은 독립적인 송수신 큐를 가지며, HWM은 각 큐가 보관할 수 있는 최대 메시지 수를 설정한다.
 
 ```c
-int hwm = 10000;
+int hwm = 100;
 zlink_setsockopt(socket, ZLINK_SNDHWM, &hwm, sizeof(hwm));
 zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 ```
 
 | 설정 | 기본값 | 설명 |
 |------|--------|------|
-| `ZLINK_SNDHWM` | 1000 | 송신 큐 최대 메시지 수 |
-| `ZLINK_RCVHWM` | 1000 | 수신 큐 최대 메시지 수 |
+| `ZLINK_SNDHWM` | 1000 | 각 연결의 송신 큐 최대 메시지 수 |
+| `ZLINK_RCVHWM` | 1000 | 각 연결의 수신 큐 최대 메시지 수 |
 
-### 메모리 vs 처리량 트레이드오프
+### Backpressure 동작
 
-| HWM 값 | 메모리 사용 | 처리량 | 메시지 유실 |
-|--------|-----------|--------|:----------:|
-| 100 | 낮음 | 낮음 (빈번한 블록) | PUB: 빈번한 드롭 |
-| 1000 | 낮음 | 낮음 | 균형 |
-| 10000 | 보통 | 보통 (버스트 흡수) | PUB: 드롭 감소 |
-| 100000 | 높음 | 높음 | 메모리 주의 |
-| 1000 (기본) | 낮음 | 낮음 | 균형 |
+HWM에 도달하면 소켓 타입과 송신 플래그에 따라 동작이 달라진다:
+
+- **블로킹 송신** (`flags=0`): `zlink_send()`가 큐에 공간이 생길 때까지 블로킹한다. `ZLINK_SNDTIMEO`로 대기 시간을 제한할 수 있다.
+- **논블로킹 송신** (`ZLINK_DONTWAIT`): 즉시 `EAGAIN`을 반환한다. 애플리케이션이 재시도, 드롭, 외부 버퍼링을 결정한다.
+
+> 상세한 흐름 제어 패턴(DONTWAIT + send-ready handler)은
+> 아래 [Send/Recv 흐름 제어](#4-sendrecv-흐름-제어) 섹션을 참고.
+
+### 복구 메커니즘 (LWM)
+
+전송 큐가 HWM에 도달하면 해당 연결의 pipe가 non-writable이 된다. 수신 측이 메시지를 소비하여 큐가 **Low Water Mark (LWM)** 이하로 drain되면 `activate_write` 시그널이 발생하여 다시 writable로 전환된다.
+
+LWM 공식: **`(HWM + 1) / 2`**
+
+이 시점에:
+- 블로킹 `zlink_send()` 호출이 재개된다.
+- send-ready 핸들러가 호출된다 (설치된 경우).
+
+이 히스테리시스(hysteresis)는 writable/non-writable 상태 간의 빠른 진동을 방지한다.
+
+```
+예: HWM = 100
+    → LWM = (100 + 1) / 2 = 50
+    → 큐가 100에 도달하면 블로킹
+    → 수신 측이 소비하여 큐가 50 이하가 되면 재개
+```
+
+### 실전 HWM 권장값
+
+| 시나리오 | 권장 HWM | 근거 |
+|----------|----------|------|
+| 일반 소켓/서비스 | ~100 | 연결당 메모리 사용량을 제한하면서 버스트 흡수 |
+| STREAM (1000+ CCU) | ~10 | 대규모 동시 접속 시 총 메모리를 연결 수에 비례하여 제한 |
+| 기본값 | 1000 | 소규모 연결에서는 충분하지만, 연결 수 증가 시 조정 필요 |
 
 ### HWM 동작 패턴
 
@@ -144,14 +111,231 @@ zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 
 ### 메모리 계산
 
+HWM은 연결별(per-connection)이므로, 총 메모리는 HWM × 메시지 크기 × 연결 수이다.
+
 ```
 예상 메모리 = SNDHWM × 평균_메시지_크기 × 연결_수
 
-예: HWM=10000, 메시지=1KB, 연결=100
-    = 10000 × 1KB × 100 = ~1GB
+예 1: 일반 서비스 — HWM=100, 메시지=1KB, 연결=1000
+      = 100 × 1KB × 1000 = ~100MB
+
+예 2: STREAM 대규모 — HWM=10, 메시지=1KB, 연결=10000
+      = 10 × 1KB × 10000 = ~100MB
 ```
 
-## 7. 소켓 옵션 튜닝 체크리스트
+## 4. Send/Recv 흐름 제어
+
+### 4.1 Send Backpressure
+
+sender가 receiver보다 빠르면 메시지가 전송 큐에 누적된다. High Water
+Mark(HWM)이 큐 깊이를 제한하며, HWM 도달 시 동작은 소켓 타입과 송신
+플래그에 따라 다르다 (위 [HWM 동작 패턴](#hwm-동작-패턴) 참고).
+
+#### 블로킹 송신 (기본)
+
+`flags=0`이면 `zlink_send()`는 전송 큐에 공간이 생길 때까지 블로킹한다.
+`ZLINK_SNDTIMEO`로 블로킹 시간을 제한할 수 있다.
+
+| SNDTIMEO | 동작 |
+|---|---|
+| -1 (기본) | 무한 블로킹 |
+| 0 | 즉시 `EAGAIN` 반환 (`ZLINK_DONTWAIT`와 동일) |
+| N (ms) | 최대 N밀리초 블로킹 후 `EAGAIN` |
+
+```c
+/* 최대 1초 블로킹 */
+int timeout = 1000;
+zlink_setsockopt(socket, ZLINK_SNDTIMEO, &timeout, sizeof(timeout));
+
+int rc = zlink_send(socket, data, size, 0);
+if (rc == -1 && zlink_errno() == EAGAIN) {
+    /* 타임아웃 — 큐가 아직 가득 참 */
+}
+```
+
+#### 논블로킹 송신 (DONTWAIT)
+
+`ZLINK_DONTWAIT`를 전달하면 HWM 도달 시 즉시 `EAGAIN`을 반환한다.
+애플리케이션이 재시도, 드롭, 외부 버퍼링을 결정한다.
+
+```c
+int rc = zlink_send(socket, data, size, ZLINK_DONTWAIT);
+if (rc == -1 && zlink_errno() == EAGAIN) {
+    /* HWM 도달 — backpressure 처리 */
+}
+```
+
+#### Send-Ready 핸들러 (이벤트 기반 Backpressure)
+
+`zlink_socket_send_ready_handler()`는 소켓이 non-writable에서
+writable로 전환될 때 호출되는 콜백을 설치한다. `ZLINK_DONTWAIT`와
+조합하면 반응형 흐름 제어가 가능하다:
+
+1. `ZLINK_DONTWAIT`로 전송.
+2. `EAGAIN` 시 전송 중단.
+3. send-ready 콜백이 호출되면 전송 재개.
+
+Gateway, SPOT, SPOT Node 핸들에도 동일한 API가 존재한다.
+
+**제약:**
+- 교체 전용: `NULL` 전달은 유효하지 않다.
+- 자기 콜백 내에서 교체 불가 (`EDEADLK`).
+
+```c
+typedef struct {
+    void *socket;
+    const char *pending_data;
+    size_t pending_size;
+} app_state_t;
+
+void on_send_ready(void *subject, void *userdata)
+{
+    app_state_t *state = (app_state_t *)userdata;
+    if (state->pending_data) {
+        int rc = zlink_send(state->socket, state->pending_data,
+                            state->pending_size, ZLINK_DONTWAIT);
+        if (rc >= 0)
+            state->pending_data = NULL;
+        /* 여전히 EAGAIN이면 다음 전환 시 콜백이 다시 호출됨 */
+    }
+}
+
+/* 핸들러 설치 */
+app_state_t state = { .socket = socket };
+zlink_socket_send_ready_handler(socket, on_send_ready, &state);
+
+/* 송신 루프 */
+int rc = zlink_send(socket, data, size, ZLINK_DONTWAIT);
+if (rc == -1 && zlink_errno() == EAGAIN) {
+    /* send-ready 호출 시 재전송하도록 버퍼링 */
+    state.pending_data = data;
+    state.pending_size = size;
+}
+```
+
+### 4.2 Low Water Mark과 Wake-Up
+
+전송 큐가 HWM에 도달하면 소켓이 non-writable이 된다. 큐가 **low water
+mark** `(HWM + 1) / 2`까지 drain되면 다시 writable로 전환된다. 이 시점에:
+
+- 블로킹 `zlink_send()` 호출이 재개된다.
+- send-ready 핸들러가 호출된다 (설치되고 armed 상태인 경우).
+
+이 히스테리시스는 writable/non-writable 상태 간의 빠른 진동을 방지한다.
+
+### 4.3 수신 측 흐름 제어
+
+수신 큐는 최대 `ZLINK_RCVHWM` 메시지를 보관한다. 수신 큐가 가득 차면
+sender에 pipe 레벨 backpressure가 적용된다.
+
+```c
+int hwm = 500;
+zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+```
+
+Callback 모드에서 느린 콜백은 I/O 스레드를 블로킹하여 수신 큐가
+누적되게 한다. 무거운 작업은 별도 스레드로 오프로드해야 한다:
+
+```c
+void on_message(const zlink_routing_id_t *rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    /* 나쁜 예: 느린 처리가 I/O 스레드 블로킹 */
+    // heavy_computation(parts);
+
+    /* 좋은 예: 큐에 넣고 빠르게 반환 */
+    work_queue_push(userdata, parts, part_count);
+}
+```
+
+> 스레드 안전 작업 큐 패턴은
+> [스레드 안전성 가이드](11-thread-safety.ko.md) 섹션 6을 참고.
+
+### 4.4 Callback vs Pull 모드
+
+zlink 소켓은 두 가지 수신 모드를 지원한다. 선택에 따라 스레딩과
+흐름 제어 동작이 달라진다.
+
+| | Callback 모드 | Pull 모드 |
+|---|---|---|
+| 트리거 | 메시지 도착 시 자동 | `zlink_recv()` 호출 |
+| 실행 스레드 | I/O 스레드 | 애플리케이션 스레드 |
+| 전환 | 한방향 (영구) | 기본; handler attach 후 불가 |
+| DONTWAIT | N/A (항상 비동기) | 메시지 없으면 `EAGAIN` |
+| Multipart | `parts[]` 배열로 한번에 | 프레임별 recv + `ZLINK_RCVMORE` 확인 |
+
+### 4.5 완전한 Backpressure 예제
+
+`ZLINK_DONTWAIT`, send-ready 핸들러, 애플리케이션 레벨 버퍼를 조합한
+전체 예제:
+
+```c
+#include <zlink.h>
+#include <string.h>
+#include <stdio.h>
+
+#define MAX_PENDING 1024
+
+typedef struct {
+    void *socket;
+    char *queue[MAX_PENDING];
+    size_t sizes[MAX_PENDING];
+    int head, tail, count;
+} sender_t;
+
+static void flush_queue(sender_t *s)
+{
+    while (s->count > 0) {
+        int rc = zlink_send(s->socket, s->queue[s->head],
+                            s->sizes[s->head], ZLINK_DONTWAIT);
+        if (rc == -1)
+            break; /* 아직 가득 참 — 다음 send-ready 대기 */
+        free(s->queue[s->head]);
+        s->head = (s->head + 1) % MAX_PENDING;
+        s->count--;
+    }
+}
+
+static void on_send_ready(void *subject, void *userdata)
+{
+    flush_queue((sender_t *)userdata);
+}
+
+int main(void)
+{
+    void *ctx = zlink_ctx_new();
+    void *socket = zlink_socket(ctx, ZLINK_DEALER);
+    zlink_connect(socket, "tcp://127.0.0.1:5555");
+
+    sender_t sender = { .socket = socket };
+    zlink_socket_send_ready_handler(socket, on_send_ready, &sender);
+
+    for (int i = 0; i < 100000; i++) {
+        char msg[64];
+        int len = snprintf(msg, sizeof(msg), "msg-%d", i);
+
+        int rc = zlink_send(socket, msg, len, ZLINK_DONTWAIT);
+        if (rc == -1 && zlink_errno() == EAGAIN) {
+            /* send-ready 호출 시 전달하도록 대기열에 추가 */
+            if (sender.count < MAX_PENDING) {
+                int idx = (sender.head + sender.count) % MAX_PENDING;
+                sender.queue[idx] = strdup(msg);
+                sender.sizes[idx] = len;
+                sender.count++;
+            } else {
+                printf("애플리케이션 버퍼 가득 참 — 메시지 드롭\n");
+            }
+        }
+    }
+
+    zlink_close(socket);
+    zlink_ctx_term(ctx);
+    return 0;
+}
+```
+
+## 5. 소켓 옵션 튜닝 체크리스트
 
 | 옵션 | 기본값 | 튜닝 포인트 |
 |------|--------|-------------|
@@ -186,7 +370,7 @@ int timeout = 500;
 zlink_setsockopt(socket, ZLINK_RCVTIMEO, &timeout, sizeof(timeout));
 ```
 
-## 8. 성능 측정 방법
+## 6. 성능 측정 방법
 
 ### 기본 처리량 측정
 
@@ -229,7 +413,7 @@ void on_pong(const zlink_routing_id_t *source_rid,
 }
 ```
 
-## 9. 성능 체크리스트
+## 7. 성능 체크리스트
 
 ### 기본 설정
 

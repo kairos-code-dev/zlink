@@ -15,8 +15,8 @@ client (sender) and a server (receiver).
 > translation, Gateway is a lightweight gateway focused on service access
 > and load balancing.
 
-**Gateway is thread-safe.** Public Gateway handle APIs are thread-safe for
-same-handle operational use. `send` / `send_rid` are concurrent hot-path
+**Gateway is thread-safe.** A single Gateway handle can be used concurrently
+from multiple threads. `send` / `send_rid` are concurrent hot-path
 operations, attach/option/monitor/query operations are runtime control-path
 operations, and `destroy` uses a fail-fast lifecycle gate.
 
@@ -136,7 +136,7 @@ zlink_gateway_update_peer_weight(server, &peer_rid, 5);
 
 | | General public socket handles | Gateway |
 |---|---|---|
-| **Thread safety** | Thread-safe by default | **Thread-safe** -- same-handle operational use is allowed |
+| **Thread safety** | Thread-safe by default | **Thread-safe** -- a single handle can be used concurrently from multiple threads |
 | **Hot path** | `send` is the hot path | `send` / `send_rid` are the hot path |
 | **Low-frequency path** | bind/connect/monitor/query are correctness-first serialized operations | attach/option/monitor/query are correctness-first serialized operations |
 | **Shutdown** | `close` uses a fail-fast lifecycle gate | `destroy` uses a fail-fast lifecycle gate |
@@ -161,7 +161,7 @@ are thread-safe by default.
 The rules users need to remember are short:
 
 1. A Gateway handle may be shared across threads.
-2. `send` / `send_rid` allow same-handle concurrent calls.
+2. `send` / `send_rid` can be called concurrently from multiple threads.
 3. Control-path APIs may still be called at runtime.
 4. `destroy` is fail-fast: `EBUSY` when another admitted API exists,
    `ESHUTDOWN` for new entry after destroy is accepted.

@@ -22,6 +22,7 @@ class fq_t
     ~fq_t ();
 
     void attach (pipe_t *pipe_);
+    void deactivate (pipe_t *pipe_);
     void activated (pipe_t *pipe_);
     void pipe_terminated (pipe_t *pipe_);
 

@@ -14,24 +14,6 @@
 
 namespace
 {
-zlink_socket_handler_t make_msg_handler (zlink_socket_msg_handler_fn fn_)
-{
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
-    handler.fn.msg = fn_;
-    return handler;
-}
-
-zlink_socket_handler_t make_spot_handler (zlink_spot_handler_fn fn_)
-{
-    zlink_socket_handler_t handler;
-    memset (&handler, 0, sizeof (handler));
-    handler.kind = ZLINK_SOCKET_HANDLER_SPOT;
-    handler.fn.spot = fn_;
-    return handler;
-}
-
 void discard_socket_message (const zlink_routing_id_t *,
                              zlink_msg_t *parts_,
                              size_t part_count_,
@@ -342,7 +324,7 @@ void raw_send_ready_reentrant_handler (void *subject_, void *)
     if (g_raw_send_ready_calls)
         g_raw_send_ready_calls->fetch_add (1);
     errno = 0;
-    g_raw_send_ready_rc = zlink_socket_set_send_ready_handler (
+    g_raw_send_ready_rc = zlink_socket_send_ready_handler (
       subject_, &raw_send_ready_reentrant_handler, NULL);
     g_raw_send_ready_errno = errno;
 }
@@ -451,14 +433,14 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test_socket_monitor_open_dispatches_events ()
 {
     void *ctx = get_test_context ();
-    const zlink_socket_handler_t msg_handler =
-      make_msg_handler (&discard_socket_message);
     void *server = zlink_socket (ctx, ZLINK_ROUTER);
     void *client = zlink_socket (ctx, ZLINK_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &msg_handler));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (client, &msg_handler));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (server, &discard_socket_message, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (client, &discard_socket_message, NULL));
 
     raw_monitor_probe_t probe;
     g_raw_monitor_probe = &probe;
@@ -494,11 +476,10 @@ void test_socket_monitor_open_dispatches_events ()
 void test_socket_send_ready_handler_reentrant_replace_returns_edeadlk ()
 {
     void *ctx = get_test_context ();
-    const zlink_socket_handler_t msg_handler =
-      make_msg_handler (&discard_socket_message);
     void *socket = zlink_socket (ctx, ZLINK_ROUTER);
     TEST_ASSERT_NOT_NULL (socket);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (socket, &msg_handler));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (socket, &discard_socket_message, NULL));
 
     std::atomic<int> ready_calls (0);
     g_raw_send_ready_subject = NULL;
@@ -506,7 +487,7 @@ void test_socket_send_ready_handler_reentrant_replace_returns_edeadlk ()
     g_raw_send_ready_rc = 0;
     g_raw_send_ready_errno = 0;
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_set_send_ready_handler (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_send_ready_handler (
       socket, &raw_send_ready_reentrant_handler, NULL));
 
     zlink::socket_base_t *socket_base =
@@ -526,13 +507,12 @@ void test_socket_send_ready_handler_reentrant_replace_returns_edeadlk ()
 void test_socket_send_ready_handler_requires_handler ()
 {
     void *ctx = get_test_context ();
-    const zlink_socket_handler_t msg_handler =
-      make_msg_handler (&discard_socket_message);
     void *socket = zlink_socket (ctx, ZLINK_ROUTER);
     TEST_ASSERT_NOT_NULL (socket);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (socket, &msg_handler));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (socket, &discard_socket_message, NULL));
 
-    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_set_send_ready_handler (socket, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_send_ready_handler (socket, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     close_socket_zero_linger (socket);
@@ -541,19 +521,18 @@ void test_socket_send_ready_handler_requires_handler ()
 void test_socket_send_ready_handler_failed_replace_keeps_previous_handler ()
 {
     void *ctx = get_test_context ();
-    const zlink_socket_handler_t msg_handler =
-      make_msg_handler (&discard_socket_message);
     void *socket = zlink_socket (ctx, ZLINK_ROUTER);
     TEST_ASSERT_NOT_NULL (socket);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (socket, &msg_handler));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (socket, &discard_socket_message, NULL));
 
     std::atomic<int> ready_calls (0);
     g_raw_send_ready_subject = NULL;
     g_raw_send_ready_calls = &ready_calls;
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_set_send_ready_handler (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_send_ready_handler (
       socket, &raw_send_ready_counting_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_set_send_ready_handler (socket, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_send_ready_handler (socket, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     zlink::socket_base_t *socket_base =
@@ -571,21 +550,21 @@ void test_socket_send_ready_handler_failed_replace_keeps_previous_handler ()
 void test_socket_send_ready_handler_rejects_sub_and_xsub ()
 {
     void *ctx = get_test_context ();
-    const zlink_socket_handler_t spot_handler =
-      make_spot_handler (&discard_spot_message);
     void *sub = zlink_socket (ctx, ZLINK_SUB);
     void *xsub = zlink_socket (ctx, ZLINK_XSUB);
     TEST_ASSERT_NOT_NULL (sub);
     TEST_ASSERT_NOT_NULL (xsub);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (sub, &spot_handler));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (xsub, &spot_handler));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_spot_handler (sub, &discard_spot_message, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_spot_handler (xsub, &discard_spot_message, NULL));
 
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_socket_set_send_ready_handler (sub, &raw_send_ready_counting_handler, NULL));
+      -1, zlink_socket_send_ready_handler (sub, &raw_send_ready_counting_handler, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_EQUAL_INT (
       -1,
-      zlink_socket_set_send_ready_handler (xsub, &raw_send_ready_counting_handler, NULL));
+      zlink_socket_send_ready_handler (xsub, &raw_send_ready_counting_handler, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     close_socket_zero_linger (sub);
@@ -595,11 +574,10 @@ void test_socket_send_ready_handler_rejects_sub_and_xsub ()
 void test_socket_monitor_open_requires_handler ()
 {
     void *ctx = get_test_context ();
-    const zlink_socket_handler_t msg_handler =
-      make_msg_handler (&discard_socket_message);
     void *server = zlink_socket (ctx, ZLINK_ROUTER);
     TEST_ASSERT_NOT_NULL (server);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &msg_handler));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (server, &discard_socket_message, NULL));
 
     errno = 0;
     void *monitor =
@@ -613,11 +591,10 @@ void test_socket_monitor_open_requires_handler ()
 void test_socket_monitor_open_accepts_ignore_handler ()
 {
     void *ctx = get_test_context ();
-    const zlink_socket_handler_t msg_handler =
-      make_msg_handler (&discard_socket_message);
     void *server = zlink_socket (ctx, ZLINK_ROUTER);
     TEST_ASSERT_NOT_NULL (server);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &msg_handler));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (server, &discard_socket_message, NULL));
 
     void *monitor = zlink_socket_monitor_open (
       server, ZLINK_EVENT_CONNECTION_READY, &zlink_monitor_ignore_handler, NULL);
@@ -796,14 +773,14 @@ void test_service_monitor_open_dispatches_events ()
 void test_socket_monitor_self_close_defers_until_callback_return ()
 {
     void *ctx = get_test_context ();
-    const zlink_socket_handler_t msg_handler =
-      make_msg_handler (&discard_socket_message);
     void *server = zlink_socket (ctx, ZLINK_ROUTER);
     void *client = zlink_socket (ctx, ZLINK_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &msg_handler));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (client, &msg_handler));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (server, &discard_socket_message, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (client, &discard_socket_message, NULL));
 
     callback_close_probe_t probe;
     void *monitor = zlink_socket_monitor_open (
@@ -831,14 +808,14 @@ void test_socket_monitor_self_close_defers_until_callback_return ()
 void test_socket_monitor_close_during_callback_returns_ebusy ()
 {
     void *ctx = get_test_context ();
-    const zlink_socket_handler_t msg_handler =
-      make_msg_handler (&discard_socket_message);
     void *server = zlink_socket (ctx, ZLINK_ROUTER);
     void *client = zlink_socket (ctx, ZLINK_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &msg_handler));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (client, &msg_handler));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (server, &discard_socket_message, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (client, &discard_socket_message, NULL));
 
     callback_close_probe_t probe;
     void *monitor = zlink_socket_monitor_open (

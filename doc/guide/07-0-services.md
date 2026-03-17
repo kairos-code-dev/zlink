@@ -47,15 +47,14 @@ A service registration/discovery system based on a Registry cluster. When a Gate
 - Heartbeat-based liveness checking
 - Client-side service list caching
 
-See the [Service Discovery Guide](07-1-discovery.md) for details.
+See the [Service Discovery Guide](07-1-discovery.md) and the [Registry Guide](07-4-registry.md) for details.
 
 ### 3.2 Gateway -- Location-Transparent Request/Reply
 
 Automatically discovers service peers based on Discovery and handles
-load-balanced message delivery. Gateway handles are thread-safe by default,
-and `send` allows same-handle concurrent calls.
+load-balanced message delivery.
 
-- **Thread-safe** -- the `send` hot path allows concurrent sends from multiple threads
+- **Thread-safe** -- a single Gateway handle allows concurrent `send` calls from multiple threads
 - Round Robin / Weighted load balancing
 - Automatic connect/disconnect (based on Discovery events)
 
@@ -68,7 +67,7 @@ Automatically constructs a PUB/SUB Mesh based on Discovery to publish/subscribe 
 - Topic-based publish/subscribe
 - Pattern (wildcard) subscriptions
 - Discovery-based automatic Mesh construction
-- public `spot` / `spot_node` handles are thread-safe for same-handle operational use
+- **Thread-safe** -- a single `spot` / `spot_node` handle allows concurrent operational API calls from multiple threads
 
 See the [SPOT Guide](07-3-spot.md) for details.
 

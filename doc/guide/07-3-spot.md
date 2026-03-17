@@ -24,44 +24,60 @@ SPOT is a location-transparent, topic-based publish/subscribe system. It automat
 
 ## 2. Architecture
 
-### Single Server
+### Local publish — delivery within the same node
 
 ```
-┌─────────────────────────────────────────────┐
-│                 SPOT Node                    │
-│  ┌──────────┐         ┌──────────┐          │
-│  │ SpotPub  │         │ SpotSub  │          │
-│  │ pub:chat │         │ sub:chat │          │
-│  └────┬─────┘         └────▲─────┘          │
-│       │    inproc          │    inproc       │
-│       v                    │                 │
-│  [ data plane worker (proxy forwarding) ]    │
-└─────────────────────────────────────────────┘
+  SpotPub           SPOT Node            SpotSub
+    |               (worker)               |
+    |  -- publish -->  |                   |
+    |    (inproc)      |                   |
+    |                  | -- callback -----> |
+    |                  |    (inproc)        |
 ```
 
-- `SpotPub` publishes via an internal `PUB` facade socket into the data plane
-- `SpotSub` receives via an internal `SUB` facade socket from the data plane
-- The data plane worker performs local fanout and remote mesh forwarding in proxy style
+When SpotPub publishes, the SPOT Node's internal worker receives it and
+delivers directly to SpotSub on the same node via callback.
 
-### Cluster (PUB/SUB Mesh)
+### Remote propagation — delivery across cluster nodes
 
 ```
-┌──────────┐     PUB/SUB      ┌──────────┐
-│  Node 1  │◄───────────────►│  Node 2  │
-│  PUB+SUB │                  │  PUB+SUB │
-└──────────┘                  └──────────┘
-      ▲                            ▲
-      │         PUB/SUB            │
-      └────────────────────────────┘
-
-┌──────────┐
-│  Node 3  │
-│  PUB+SUB │
-└──────────┘
+  SpotPub          Node 1              Node 2           SpotSub
+  (Node 1)        (worker)            (worker)          (Node 2)
+    |                |                   |                  |
+    | -- publish --> |                   |                  |
+    |   (inproc)     |                   |                  |
+    |                | -- PUB ---------> |                  |
+    |                |   (tcp mesh)      |                  |
+    |                |                   | -- callback ---> |
+    |                |                   |    (inproc)      |
 ```
 
-Each Node's data plane worker performs proxy-style forwarding:
-local publishes to the remote mesh, and remote mesh receives to local subscribers.
+The worker forks a local publish into two paths:
+1. Delivers to SpotSub on the same node (local path above)
+2. Sends to remote nodes via mesh PUB socket
+
+The remote node's worker delivers mesh-received messages to its own SpotSub only;
+it **never re-publishes to the mesh** (loop prevention).
+
+### Full topology overview
+
+```
++------------- Node 1 -------------+     +------------- Node 2 -------------+
+|                                   |     |                                   |
+|  SpotPub --> worker --> SpotSub   |     |  SpotPub --> worker --> SpotSub   |
+|                 |                 |     |                 ^                 |
+|                 | PUB             |     |            SUB  |                 |
+|                 +---- tcp --------+---->+------------------                 |
+|                 ^                 |     |                 |                 |
+|            SUB  |                 |     |                 | PUB             |
+|                 +---- tcp --------+<----+------------------                 |
+|                                   |     |                                   |
++-----------------------------------+     +-----------------------------------+
+```
+
+- Each node's worker sends via **PUB socket** and receives from other nodes via **SUB socket**
+- Only local publishes enter the mesh; remote receives are never re-published (loop prevention)
+- When Discovery is attached, this mesh topology is configured automatically
 
 ## 3. SPOT Node Setup
 
@@ -155,8 +171,8 @@ void *node = zlink_spot_node_new(ctx, "spot-node", on_message, NULL);
 void *spot = zlink_spot_new(node, on_message, NULL);
 ```
 
-**Important:** Public `spot` / `spot_node` handles are thread-safe for
-same-handle operational APIs. `publish` is the concurrent hot path, while
+**Important:** A single `spot` / `spot_node` handle can be used concurrently
+from multiple threads (thread-safe). `publish` is the concurrent hot path, while
 subscribe/unsubscribe/attach/peer-connect/monitor calls remain valid runtime
 control-path operations. Callbacks still run on the I/O path, so slow work
 should be offloaded to an application queue or worker thread.
@@ -218,4 +234,4 @@ zlink_discovery_destroy(&discovery);
 `SpotNode` destroy.
 
 ---
-[← Gateway](07-2-gateway.md) | [Routing ID →](08-routing-id.md)
+[← Gateway](07-2-gateway.md) | [Registry →](07-4-registry.md) | [Routing ID →](08-routing-id.md)

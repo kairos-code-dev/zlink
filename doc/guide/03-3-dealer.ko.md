@@ -28,7 +28,7 @@ DEALER 소켓은 비동기 요청 소켓이다. 여러 피어에 **Round-robin**
 ### 생성 및 연결
 
 ```c
-void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 
 /* routing_id 설정 (선택, ROUTER에서 식별용) */
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "client-1", 8);
@@ -76,8 +76,8 @@ zlink_send(dealer, "body", 4, 0);
 |------|------|--------|------|
 | `ZLINK_ROUTING_ID` | binary | 자동(UUID) | ROUTER에서 식별할 ID |
 | `ZLINK_PROBE_ROUTER` | int | 0 | 연결 시 빈 메시지 전송 (연결 알림) |
-| `ZLINK_SNDHWM` | int | 300000 | 송신 큐 최대 메시지 수 |
-| `ZLINK_RCVHWM` | int | 300000 | 수신 큐 최대 메시지 수 |
+| `ZLINK_SNDHWM` | int | 1000 | 송신 큐 최대 메시지 수 |
+| `ZLINK_RCVHWM` | int | 1000 | 수신 큐 최대 메시지 수 |
 | `ZLINK_LINGER` | int | -1 | close 시 대기 시간 (ms) |
 | `ZLINK_SNDTIMEO` | int | -1 | 송신 타임아웃 (ms) |
 | `ZLINK_RCVTIMEO` | int | -1 | 수신 타임아웃 (ms) |
@@ -104,7 +104,8 @@ zlink_connect(dealer, "tcp://127.0.0.1:5558");
 ```c
 /* 서버: 핸들러가 있는 ROUTER */
 void on_request(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* source_rid에 DEALER의 routing_id가 포함됨 */
     printf("수신 [%.*s]: %.*s\n",
@@ -122,17 +123,21 @@ void on_request(const zlink_routing_id_t *source_rid,
 
 zlink_socket_handler_t router_handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_request
+    .fn.msg = on_request,
+    .userdata = NULL
 };
-void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_socket_attach_handler(router, &router_handler);
 zlink_bind(router, "tcp://*:5558");
 
 /* 클라이언트: DEALER */
 zlink_socket_handler_t dealer_handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_reply
+    .fn.msg = on_reply,
+    .userdata = NULL
 };
-void *dealer = zlink_socket(ctx, ZLINK_DEALER, &dealer_handler);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+zlink_socket_attach_handler(dealer, &dealer_handler);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
@@ -152,7 +157,8 @@ zlink_send(dealer, "Hello", 5, 0);
 ```c
 /* ROUTER는 핸들러 콜백으로 수신하며 source_rid로 각 DEALER를 구분 */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* source_rid->data = "D1" 또는 "D2" */
     /* 특정 DEALER에게 응답 */
@@ -164,20 +170,22 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 zlink_socket_handler_t router_handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message
+    .fn.msg = on_message,
+    .userdata = NULL
 };
-void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_socket_attach_handler(router, &router_handler);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
 zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
-void *dealer1 = zlink_socket(ctx, ZLINK_DEALER, NULL);
+void *dealer1 = zlink_socket(ctx, ZLINK_DEALER);
 zlink_setsockopt(dealer1, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer1, endpoint);
 
-void *dealer2 = zlink_socket(ctx, ZLINK_DEALER, NULL);
+void *dealer2 = zlink_socket(ctx, ZLINK_DEALER);
 zlink_setsockopt(dealer2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
@@ -196,11 +204,11 @@ ROUTER(프론트엔드) + DEALER(백엔드)로 멀티스레드 서버 구축.
 
 ```c
 /* 프론트엔드: 클라이언트가 연결 */
-void *frontend = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_bind(frontend, "tcp://*:5558");
 
 /* 백엔드: 워커 스레드가 연결 */
-void *backend = zlink_socket(ctx, ZLINK_DEALER, NULL);
+void *backend = zlink_socket(ctx, ZLINK_DEALER);
 zlink_bind(backend, "inproc://backend");
 
 /* 워커 스레드 시작 후 프록시 실행 */
@@ -211,7 +219,8 @@ zlink_proxy(frontend, backend, NULL);
 /* 워커 스레드 */
 void worker_thread(void *arg) {
     void on_work(const zlink_routing_id_t *source_rid,
-                 zlink_msg_t *parts, size_t part_count)
+                 zlink_msg_t *parts, size_t part_count,
+                 void *userdata)
     {
         /* 처리 후 동일 routing_id로 응답 */
         zlink_send(worker, source_rid->data, source_rid->size, ZLINK_SNDMORE);
@@ -223,9 +232,11 @@ void worker_thread(void *arg) {
 
     zlink_socket_handler_t handler = {
         .kind = ZLINK_SOCKET_HANDLER_MSG,
-        .fn.msg = on_work
+        .fn.msg = on_work,
+        .userdata = NULL
     };
-    void *worker = zlink_socket(ctx, ZLINK_DEALER, &handler);
+    void *worker = zlink_socket(ctx, ZLINK_DEALER);
+    zlink_socket_attach_handler(worker, &handler);
     zlink_connect(worker, "inproc://backend");
 
     /* 소켓이 닫힐 때까지 워커 유지 */
@@ -241,16 +252,20 @@ void worker_thread(void *arg) {
 ```c
 zlink_socket_handler_t handler_a = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message_a
+    .fn.msg = on_message_a,
+    .userdata = NULL
 };
-void *a = zlink_socket(ctx, ZLINK_DEALER, &handler_a);
+void *a = zlink_socket(ctx, ZLINK_DEALER);
+zlink_socket_attach_handler(a, &handler_a);
 zlink_bind(a, "tcp://*:5558");
 
 zlink_socket_handler_t handler_b = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message_b
+    .fn.msg = on_message_b,
+    .userdata = NULL
 };
-void *b = zlink_socket(ctx, ZLINK_DEALER, &handler_b);
+void *b = zlink_socket(ctx, ZLINK_DEALER);
+zlink_socket_attach_handler(b, &handler_b);
 zlink_connect(b, "tcp://127.0.0.1:5558");
 
 /* 양방향 자유 전송 */

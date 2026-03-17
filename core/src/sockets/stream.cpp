@@ -142,7 +142,8 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _more_out (false),
     _next_integral_routing_id (1),
     _dispatch_active (false),
-    _dispatch_raw_callback (NULL)
+    _dispatch_msg_handler (NULL),
+    _dispatch_msg_handler_userdata (NULL)
 {
     options.type = ZLINK_STREAM;
     options.backlog = 65536;
@@ -281,25 +282,25 @@ int zlink::stream_t::xsend (msg_t *msg_)
     _more_out = false;
 
     if (_current_out) {
-        if (msg_->size () == 0) {
-            _current_out->terminate (false);
-            int rc = msg_->close ();
-            errno_assert (rc == 0);
-            rc = msg_->init ();
+            if (msg_->size () == 0) {
+                _current_out->terminate (false);
+                int rc = msg_->close ();
+                errno_assert (rc == 0);
+                rc = msg_->init ();
             errno_assert (rc == 0);
             _current_out = NULL;
             return 0;
-        }
+            }
 
-        const bool ok = _current_out->write (msg_);
-        if (likely (ok)) {
-            _current_out->flush ();
-        } else {
-            _current_out = NULL;
-            const int rc = msg_->close ();
-            errno_assert (rc == 0);
-            errno = EAGAIN;
-            return -1;
+            const bool ok = _current_out->write (msg_);
+            if (likely (ok)) {
+                _current_out->flush ();
+            } else {
+                _current_out = NULL;
+                const int rc = msg_->close ();
+                errno_assert (rc == 0);
+                errno = EAGAIN;
+                return -1;
         }
         _current_out = NULL;
     } else {
@@ -329,6 +330,13 @@ bool zlink::stream_t::xhas_out ()
     return true;
 }
 
+int zlink::stream_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
+{
+    LIBZLINK_UNUSED (msg_);
+    LIBZLINK_UNUSED (pipe_);
+    return 0;
+}
+
 int zlink::stream_t::xsetsockopt (int option_,
                                   const void *optval_,
                                   size_t optvallen_)
@@ -343,39 +351,38 @@ int zlink::stream_t::xsetsockopt (int option_,
     return routing_socket_base_t::xsetsockopt (option_, optval_, optvallen_);
 }
 
-int zlink::stream_t::stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_)
+int zlink::stream_t::stream_set_msg_handler_with_userdata (
+  zlink_socket_msg_handler_fn handler_, void *userdata_)
 {
-    if (!callback_) {
+    std::lock_guard<std::recursive_mutex> lock (_api_mutex);
+
+    if (!handler_) {
         errno = EINVAL;
         return -1;
     }
-
-    std::lock_guard<std::recursive_mutex> lk (_api_mutex);
     if (_dispatch_active.load (std::memory_order_acquire)) {
         errno = EBUSY;
         return -1;
     }
 
-    _dispatch_raw_callback.store (callback_, std::memory_order_release);
+    _dispatch_msg_handler.store (handler_, std::memory_order_release);
+    _dispatch_msg_handler_userdata.store (userdata_, std::memory_order_release);
     _dispatch_active.store (true, std::memory_order_release);
     return 0;
 }
 
 int zlink::stream_t::stream_dispatch_stop ()
 {
+    std::lock_guard<std::recursive_mutex> lock (_api_mutex);
+
     if (stream_dispatch_in_callback ()) {
         errno = EBUSY;
         return -1;
     }
 
-    std::lock_guard<std::recursive_mutex> lk (_api_mutex);
-    if (!_dispatch_active.load (std::memory_order_acquire)) {
-        errno = EINVAL;
-        return -1;
-    }
-
     _dispatch_active.store (false, std::memory_order_release);
-    _dispatch_raw_callback.store (NULL, std::memory_order_release);
+    _dispatch_msg_handler.store (NULL, std::memory_order_release);
+    _dispatch_msg_handler_userdata.store (NULL, std::memory_order_release);
     return 0;
 }
 
@@ -386,7 +393,7 @@ bool zlink::stream_t::stream_dispatch_active () const
 
 bool zlink::stream_t::stream_dispatch_in_callback () const
 {
-    return g_stream_dispatch_tls.socket == this;
+    return stream_dispatch_owns_tls ();
 }
 
 int zlink::stream_t::stream_dispatch_send_from_io (
@@ -550,13 +557,6 @@ std::recursive_mutex *zlink::stream_t::api_sync_mutex ()
     return &_api_mutex;
 }
 
-void zlink::stream_t::stop_dispatch_from_callback ()
-{
-    std::lock_guard<std::recursive_mutex> lk (_api_mutex);
-    _dispatch_active.store (false, std::memory_order_release);
-    _dispatch_raw_callback.store (NULL, std::memory_order_release);
-}
-
 uint32_t zlink::stream_t::resolve_dispatch_routing_id_fast (const msg_t *msg_,
                                                             pipe_t *pipe_)
 {
@@ -579,12 +579,12 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
 {
     if (!_dispatch_active.load (std::memory_order_acquire))
         return 0;
-    if (!msg_ || !pipe_)
-        return 1;
 
-    zlink_stream_on_raw_fn callback =
-      _dispatch_raw_callback.load (std::memory_order_acquire);
-    if (!callback)
+    zlink_socket_msg_handler_fn handler =
+      _dispatch_msg_handler.load (std::memory_order_acquire);
+    if (!handler)
+        return 0;
+    if (!msg_ || !pipe_)
         return 1;
 
     const unsigned char *payload =
@@ -593,21 +593,24 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
     if (is_stream_control_event (payload, payload_size))
         return 1;
 
-    uint32_t routing_id_value = resolve_dispatch_routing_id_fast (msg_, pipe_);
+    uint32_t routing_id_value = pipe_->get_server_socket_routing_id ();
+    const bool steady_state_pipe_route = routing_id_value != 0;
+    if (!steady_state_pipe_route)
+        routing_id_value = resolve_dispatch_routing_id_fast (msg_, pipe_);
     if (routing_id_value == 0)
         routing_id_value = ensure_dispatch_routing_id (pipe_);
     if (routing_id_value == 0)
         return 1;
 
-    pipe_t *dispatch_out = pipe_->get_peer () ? pipe_->get_peer () : pipe_;
-    {
+    if (!steady_state_pipe_route) {
+        pipe_t *dispatch_out = pipe_->get_peer () ? pipe_->get_peer () : pipe_;
         route_shard_t &shard = route_shard_for (routing_id_value);
         scoped_fast_lock_t shard_lock (shard.sync);
         if (shard.routes.find (routing_id_value) == shard.routes.end ())
             shard.routes[routing_id_value] = dispatch_out;
-    }
 
-    maybe_emit_connect_event (pipe_, routing_id_value);
+        maybe_emit_connect_event (pipe_, routing_id_value);
+    }
 
     unsigned char rid_buf[4];
     put_uint32 (rid_buf, routing_id_value);
@@ -625,12 +628,14 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
     const int src_init_rc = msg_->init ();
     errno_assert (src_init_rc == 0);
 
-    const int cb_rc = callback (&rid,
-                                reinterpret_cast<zlink_msg_t *> (&callback_msg));
-    if (cb_rc != 0)
-        stop_dispatch_from_callback ();
-
+    handler (&rid, reinterpret_cast<zlink_msg_t *> (&callback_msg), 1,
+             _dispatch_msg_handler_userdata.load (std::memory_order_acquire));
     return 1;
+}
+
+bool zlink::stream_t::stream_dispatch_owns_tls () const
+{
+    return g_stream_dispatch_tls.socket == this;
 }
 
 uint32_t zlink::stream_t::ensure_dispatch_routing_id (pipe_t *pipe_)

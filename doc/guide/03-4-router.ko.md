@@ -29,18 +29,19 @@ ROUTER 소켓은 **routing_id 기반 라우팅** 소켓이다. 수신 메시지�
 ### 생성 및 바인드
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 ```
 
 ### 메시지 수신
 
-ROUTER는 생성 시 등록한 핸들러 콜백으로 메시지를 수신한다. `source_rid` 파라미터에 송신자의 routing_id가 포함된다.
+ROUTER는 소켓 생성 후 부착한 핸들러 콜백으로 메시지를 수신한다. `source_rid` 파라미터에 송신자의 routing_id가 포함된다.
 
 ```c
 /* DEALER가 "Hello" 전송 → 핸들러가 source_rid + parts를 수신 */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     printf("[%.*s]로부터: %.*s\n",
            (int)source_rid->size, source_rid->data,
@@ -52,9 +53,11 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 zlink_socket_handler_t handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message
+    .fn.msg = on_message,
+    .userdata = NULL
 };
-void *router = zlink_socket(ctx, ZLINK_ROUTER, &handler);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_socket_attach_handler(router, &handler);
 ```
 
 ### 메시지 송신
@@ -94,7 +97,8 @@ DEALER 수신:  [프레임1][프레임2]   ← routing_id 제거됨
 ```c
 /* 수신: 핸들러 콜백이 routing_id와 데이터를 제공 */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* 응답: routing_id 프레임을 보낸 후 데이터 전송 */
     zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
@@ -112,8 +116,8 @@ void on_message(const zlink_routing_id_t *source_rid,
 | `ZLINK_ROUTER_MANDATORY` | int | 0 | 미도달 메시지 시 EHOSTUNREACH 에러 반환 |
 | `ZLINK_ROUTER_HANDOVER` | int | 0 | routing_id 충돌 시 기존 연결 대체 |
 | `ZLINK_ROUTING_ID` | binary | 자동(UUID) | ROUTER 자신의 routing_id |
-| `ZLINK_SNDHWM` | int | 300000 | 송신 HWM |
-| `ZLINK_RCVHWM` | int | 300000 | 수신 HWM |
+| `ZLINK_SNDHWM` | int | 1000 | 송신 HWM |
+| `ZLINK_RCVHWM` | int | 1000 | 수신 HWM |
 | `ZLINK_LINGER` | int | -1 | close 시 대기 시간 (ms) |
 
 ### ROUTER_MANDATORY
@@ -140,7 +144,8 @@ int rc = zlink_send(router, "UNKNOWN", 7, ZLINK_SNDMORE);
 ```c
 /* 서버: 핸들러가 있는 ROUTER */
 void on_request(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* 송신자에게 응답 */
     zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
@@ -151,9 +156,11 @@ void on_request(const zlink_routing_id_t *source_rid,
 
 zlink_socket_handler_t router_handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_request
+    .fn.msg = on_request,
+    .userdata = NULL
 };
-void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_socket_attach_handler(router, &router_handler);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -163,18 +170,22 @@ zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
 /* 클라이언트 1 */
 zlink_socket_handler_t d1_handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_reply
+    .fn.msg = on_reply,
+    .userdata = NULL
 };
-void *d1 = zlink_socket(ctx, ZLINK_DEALER, &d1_handler);
+void *d1 = zlink_socket(ctx, ZLINK_DEALER);
+zlink_socket_attach_handler(d1, &d1_handler);
 zlink_setsockopt(d1, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* 클라이언트 2 */
 zlink_socket_handler_t d2_handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_reply
+    .fn.msg = on_reply,
+    .userdata = NULL
 };
-void *d2 = zlink_socket(ctx, ZLINK_DEALER, &d2_handler);
+void *d2 = zlink_socket(ctx, ZLINK_DEALER);
+zlink_socket_attach_handler(d2, &d2_handler);
 zlink_setsockopt(d2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(d2, endpoint);
 
@@ -190,7 +201,7 @@ zlink_send(d2, "from_d2", 7, 0);
 ### 패턴 2: ROUTER_MANDATORY로 전송 실패 감지
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 
 /* 기본 동작: 미도달 메시지 조용히 드롭 */
@@ -218,7 +229,8 @@ DEALER가 먼저 메시지를 전송하여 ROUTER에 연결을 알린 후, ROUTE
 ```c
 /* ROUTER 핸들러: DEALER의 초기 메시지로 연결 확인 */
 void on_connect(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* source_rid->data = "X" — 이제 "X"로 안전하게 전송 가능 */
     zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
@@ -228,7 +240,7 @@ void on_connect(const zlink_routing_id_t *source_rid,
 }
 
 /* DEALER 연결 및 초기 메시지 전송 */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "X", 1);
 zlink_connect(dealer, endpoint);
 zlink_send(dealer, "Hello", 5, 0);
@@ -244,7 +256,7 @@ zlink_send(dealer, "Hello", 5, 0);
 같은 ROUTER에 다양한 transport로 DEALER를 연결 가능.
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
 
 /* TCP */
 zlink_bind(router, "tcp://127.0.0.1:5558");

@@ -70,7 +70,7 @@ bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
       ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
         | ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
         | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     if (!monitor)
         return false;
 
@@ -96,7 +96,7 @@ void *create_gateway_attached (void *ctx_,
                                zlink_socket_msg_handler_fn handler_)
 {
     void *gateway =
-      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_);
+      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_, NULL);
     if (!gateway)
         return NULL;
     if (zlink_gateway_attach_discovery (gateway, discovery_) != 0) {
@@ -165,7 +165,8 @@ bool wait_for_reply_target_rid (gateway_probe_t *probe_, int timeout_ms_)
 
 void gateway_server_handler (const zlink_routing_id_t *source_rid_,
                              zlink_msg_t *parts_,
-                             size_t part_count_)
+                             size_t part_count_,
+                          void *)
 {
     gateway_probe_t *probe = g_probe;
     if (!probe) {
@@ -242,7 +243,8 @@ void gateway_server_handler (const zlink_routing_id_t *source_rid_,
 
 void gateway_client_handler (const zlink_routing_id_t *source_rid_,
                              zlink_msg_t *parts_,
-                             size_t part_count_)
+                             size_t part_count_,
+                          void *)
 {
     LIBZLINK_UNUSED (source_rid_);
 
@@ -279,7 +281,8 @@ void gateway_client_handler (const zlink_routing_id_t *source_rid_,
 
 void gateway_capture_only_handler (const zlink_routing_id_t *source_rid_,
                                    zlink_msg_t *parts_,
-                                   size_t part_count_)
+                                   size_t part_count_,
+                          void *)
 {
     gateway_probe_t *probe = g_probe;
     if (!probe) {
@@ -494,7 +497,7 @@ void test_gateway_handler_reply_stress_multi_client_manual_connect ()
 
     void *server = zlink_gateway_new (ctx, "svc-handler-stress",
                                       "gw-server-stress",
-                                      &gateway_server_handler);
+                                      &gateway_server_handler, NULL);
     TEST_ASSERT_NOT_NULL (server);
 
     char endpoint[MAX_SOCKET_STRING];
@@ -530,7 +533,7 @@ void test_gateway_handler_reply_stress_multi_client_manual_connect ()
         snprintf (routing_id, sizeof (routing_id), "gw-client-%zu", i);
         clients[i] = zlink_gateway_new (ctx, "svc-handler-stress",
                                         routing_id,
-                                        &gateway_client_handler);
+                                        &gateway_client_handler, NULL);
         TEST_ASSERT_NOT_NULL (clients[i]);
         TEST_ASSERT_SUCCESS_ERRNO (
           zlink_gateway_connect (clients[i], endpoint, &server_rid));
@@ -583,11 +586,11 @@ void test_gateway_send_rid_same_handle_concurrent_send_is_thread_safe ()
 
     void *server = zlink_gateway_new (ctx, "svc-handler-rid",
                                       "gw-server-rid",
-                                      &gateway_capture_only_handler);
+                                      &gateway_capture_only_handler, NULL);
     TEST_ASSERT_NOT_NULL (server);
     void *client = zlink_gateway_new (ctx, "svc-handler-rid",
                                       "gw-client-rid",
-                                      &gateway_client_handler);
+                                      &gateway_client_handler, NULL);
     TEST_ASSERT_NOT_NULL (client);
 
     zlink_routing_id_t server_rid;

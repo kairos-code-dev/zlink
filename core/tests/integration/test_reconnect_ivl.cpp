@@ -22,7 +22,7 @@ struct monitor_probe_t
 
 monitor_probe_t *g_monitor_probe = NULL;
 
-void record_monitor_event (const zlink_monitor_event_t *event_)
+void record_monitor_event (const zlink_monitor_event_t *event_, void *)
 {
     if (!g_monitor_probe || !event_)
         return;
@@ -89,7 +89,7 @@ void *open_monitor (void *socket_, monitor_probe_t *probe_)
 {
     g_monitor_probe = probe_;
     void *monitor =
-      zlink_socket_monitor_open (socket_, ZLINK_EVENT_ALL, &record_monitor_event);
+      zlink_socket_monitor_open (socket_, ZLINK_EVENT_ALL, &record_monitor_event, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
     return monitor;
 }

@@ -36,7 +36,7 @@
 ### 발행자 (PUB)
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_PUB, NULL);
+void *pub = zlink_socket(ctx, ZLINK_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
 /* 메시지 발행 — 구독자가 없으면 드롭 */
@@ -48,7 +48,8 @@ zlink_send(pub, "weather: sunny", 14, 0);
 ```c
 void on_topic(const zlink_routing_id_t *source_rid,
               const char *topic, size_t topic_len,
-              zlink_msg_t *parts, size_t part_count)
+              zlink_msg_t *parts, size_t part_count,
+              void *userdata)
 {
     printf("Topic: %.*s, Data: %.*s\n",
            (int)topic_len, topic,
@@ -60,9 +61,11 @@ void on_topic(const zlink_routing_id_t *source_rid,
 
 zlink_socket_handler_t handler = {
     .kind = ZLINK_SOCKET_HANDLER_SPOT,
-    .fn.spot = on_topic
+    .fn.spot = on_topic,
+    .userdata = NULL
 };
-void *sub = zlink_socket(ctx, ZLINK_SUB, &handler);
+void *sub = zlink_socket(ctx, ZLINK_SUB);
+zlink_socket_attach_handler(sub, &handler);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 
 /* 토픽 구독 — connect 후 설정 */
@@ -148,8 +151,8 @@ zlink_send(pub, "sunny", 5, 0);
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_SNDHWM` | int | 300000 | 송신 HWM (PUB) |
-| `ZLINK_RCVHWM` | int | 300000 | 수신 HWM (SUB) |
+| `ZLINK_SNDHWM` | int | 1000 | 송신 HWM (PUB) |
+| `ZLINK_RCVHWM` | int | 1000 | 수신 HWM (SUB) |
 | `ZLINK_LINGER` | int | -1 | close 시 대기 시간 (ms) |
 
 ## 6. PUB/SUB 사용 패턴
@@ -158,15 +161,17 @@ zlink_send(pub, "sunny", 5, 0);
 
 ```c
 /* PUB */
-void *pub = zlink_socket(ctx, ZLINK_PUB, NULL);
+void *pub = zlink_socket(ctx, ZLINK_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
 /* SUB — 모든 메시지 수신 */
 zlink_socket_handler_t handler = {
     .kind = ZLINK_SOCKET_HANDLER_SPOT,
-    .fn.spot = on_topic
+    .fn.spot = on_topic,
+    .userdata = NULL
 };
-void *sub = zlink_socket(ctx, ZLINK_SUB, &handler);
+void *sub = zlink_socket(ctx, ZLINK_SUB);
+zlink_socket_attach_handler(sub, &handler);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
 
@@ -184,14 +189,14 @@ zlink_send(pub, "test", 4, 0);
 하나의 PUB에 여러 SUB가 연결. 각 SUB는 자신의 토픽만 수신.
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_PUB, NULL);
+void *pub = zlink_socket(ctx, ZLINK_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
-void *sub_weather = zlink_socket(ctx, ZLINK_SUB, NULL);
+void *sub_weather = zlink_socket(ctx, ZLINK_SUB);
 zlink_connect(sub_weather, "tcp://127.0.0.1:5556");
 zlink_setsockopt(sub_weather, ZLINK_SUBSCRIBE, "weather", 7);
 
-void *sub_sports = zlink_socket(ctx, ZLINK_SUB, NULL);
+void *sub_sports = zlink_socket(ctx, ZLINK_SUB);
 zlink_connect(sub_sports, "tcp://127.0.0.1:5556");
 zlink_setsockopt(sub_sports, ZLINK_SUBSCRIBE, "sports", 6);
 
@@ -203,7 +208,7 @@ zlink_setsockopt(sub_sports, ZLINK_SUBSCRIBE, "sports", 6);
 SUB는 여러 PUB에 connect 가능. Fair-queue로 모든 PUB의 메시지를 수신.
 
 ```c
-void *sub = zlink_socket(ctx, ZLINK_SUB, NULL);
+void *sub = zlink_socket(ctx, ZLINK_SUB);
 zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
 zlink_connect(sub, "tcp://pub1:5556");
 zlink_connect(sub, "tcp://pub2:5557");
@@ -282,7 +287,8 @@ zlink_send(xsub, unsubscribe, 2, 0);
 XPUB는 구독 프레임을 콜백 핸들러로 수신한다:
 
 ```c
-void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len)
+void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len,
+                     void *userdata)
 {
     if (subscribed)
         printf("새 구독: %.*s\n", (int)topic_len, (const char *)topic);
@@ -292,9 +298,11 @@ void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len)
 
 zlink_socket_handler_t handler = {
     .kind = ZLINK_SOCKET_HANDLER_XPUB,
-    .fn.xpub = on_subscription
+    .fn.xpub = on_subscription,
+    .userdata = NULL
 };
-void *xpub = zlink_socket(ctx, ZLINK_XPUB, &handler);
+void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+zlink_socket_attach_handler(xpub, &handler);
 ```
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
@@ -336,11 +344,11 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
 
 ```c
 /* 프록시 프론트엔드: PUB들이 연결 */
-void *xsub = zlink_socket(ctx, ZLINK_XSUB, NULL);
+void *xsub = zlink_socket(ctx, ZLINK_XSUB);
 zlink_bind(xsub, "tcp://*:5556");
 
 /* 프록시 백엔드: SUB들이 연결 */
-void *xpub = zlink_socket(ctx, ZLINK_XPUB, NULL);
+void *xpub = zlink_socket(ctx, ZLINK_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
 /* 프록시 실행 (메시지와 구독을 양방향으로 전달) */
@@ -356,7 +364,8 @@ int manual = 1;
 zlink_setsockopt(xpub, ZLINK_XPUB_MANUAL, &manual, sizeof(manual));
 
 /* on_subscription 콜백이 구독 요청을 처리 */
-void on_sub(int subscribed, const uint8_t *topic, size_t topic_len)
+void on_sub(int subscribed, const uint8_t *topic, size_t topic_len,
+            void *userdata)
 {
     if (subscribed) {
         /* 구독 등록 */
@@ -386,7 +395,8 @@ void on_sub(int subscribed, const uint8_t *topic, size_t topic_len)
 XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
 
 ```c
-void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len)
+void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len,
+                     void *userdata)
 {
     if (subscribed)
         printf("새 구독: %.*s\n", (int)topic_len, (const char *)topic);
@@ -396,9 +406,11 @@ void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len)
 
 zlink_socket_handler_t handler = {
     .kind = ZLINK_SOCKET_HANDLER_XPUB,
-    .fn.xpub = on_subscription
+    .fn.xpub = on_subscription,
+    .userdata = NULL
 };
-void *xpub = zlink_socket(ctx, ZLINK_XPUB, &handler);
+void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+zlink_socket_attach_handler(xpub, &handler);
 zlink_bind(xpub, "tcp://*:5557");
 
 /* 구독 이벤트가 on_subscription 콜백으로 dispatch됨 */

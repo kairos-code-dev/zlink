@@ -303,7 +303,8 @@ static void release_stream_callback_msg (zlink_msg_t *msg_)
 }
 
 static int stream_contract_echo_callback (const zlink_routing_id_t *rid_,
-                                          zlink_msg_t *msg_)
+                                          zlink_msg_t *msg_,
+                                   void *)
 {
     stream_contract_probe_t *probe = g_stream_contract_probe;
     if (!probe || !rid_ || !msg_) {
@@ -346,6 +347,17 @@ static int stream_contract_echo_callback (const zlink_routing_id_t *rid_,
     return 0;
 }
 
+static void stream_contract_echo_handler (const zlink_routing_id_t *rid_,
+                                          zlink_msg_t *parts_,
+                                          size_t part_count_,
+                                          void *userdata_)
+{
+    if (part_count_ > 0)
+        (void) stream_contract_echo_callback (rid_, &parts_[0], userdata_);
+    for (size_t i = 1; i < part_count_; ++i)
+        (void) zlink_msg_close (&parts_[i]);
+}
+
 static bool wait_stream_probe_ready (stream_contract_probe_t *probe_,
                                      int timeout_ms_)
 {
@@ -376,7 +388,7 @@ void test_stream_monitor_ready_implies_first_payload_contract ()
 
     void *monitor = zlink_socket_monitor_open (
       server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-      &zlink_monitor_ignore_handler);
+      &zlink_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
 
     const int zero = 0;
@@ -389,8 +401,11 @@ void test_stream_monitor_ready_implies_first_payload_contract ()
     probe.expected_payload = client_payload;
     probe.expected_size = sizeof (client_payload) - 1;
     g_stream_contract_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_attach_raw (server, stream_contract_echo_callback));
+    zlink_socket_handler_t handler;
+    memset (&handler, 0, sizeof (handler));
+    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
+    handler.fn.msg = &stream_contract_echo_handler;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &handler));
 
     const int client_fd = connect_raw_tcp (endpoint);
     TEST_ASSERT_TRUE (client_fd >= 0);
@@ -437,7 +452,6 @@ void test_stream_monitor_ready_implies_first_payload_contract ()
       ready_routing_id, disconnected_routing_id,
       static_cast<unsigned int> (stream_routing_id_size));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_contract_probe = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     test_context_socket_close_zero_linger (server);

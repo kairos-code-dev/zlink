@@ -10,12 +10,14 @@ internal static class NativeMethods
     internal delegate int ZlinkStreamOnPacketsDelegate(
         IntPtr routingId,
         IntPtr messages,
-        nuint messageCount);
+        nuint messageCount,
+        IntPtr userdata);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int ZlinkStreamOnRawDelegate(
         IntPtr routingId,
-        IntPtr message);
+        IntPtr message,
+        IntPtr userdata);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal unsafe delegate void ZlinkSpotSubHandlerDelegate(
@@ -54,7 +56,8 @@ internal static class NativeMethods
     internal static extern int zlink_ctx_get(IntPtr context, int option);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_socket(IntPtr context, int type);
+    internal static extern IntPtr zlink_socket(IntPtr context, int type,
+        IntPtr handler);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_close(IntPtr socket);
@@ -101,7 +104,7 @@ internal static class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_stream_attach_raw(IntPtr socket,
-        ZlinkStreamOnRawDelegate onRaw);
+        ZlinkStreamOnRawDelegate onRaw, IntPtr userdata);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_stream_attach_len32be(IntPtr socket,
@@ -210,7 +213,7 @@ internal static class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_socket_monitor_open(IntPtr socket,
-        int events);
+        int events, IntPtr handler, IntPtr userdata);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_monitor_recv(IntPtr monitorSocket,
@@ -385,7 +388,13 @@ internal static class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_gateway_new(IntPtr ctx,
-        IntPtr discovery, [MarshalAs(UnmanagedType.LPUTF8Str)] string? routingId);
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string? serviceName,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string? routingId,
+        IntPtr handler, IntPtr userdata);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_gateway_attach_discovery(IntPtr gateway,
+        IntPtr discovery);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_gateway_send(IntPtr gateway,
@@ -563,7 +572,9 @@ internal static class NativeMethods
     internal static extern int zlink_receiver_destroy(ref IntPtr receiver);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_node_new(IntPtr ctx);
+    internal static extern IntPtr zlink_spot_node_new(IntPtr ctx,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string? serviceName,
+        IntPtr handler, IntPtr userdata);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_destroy(ref IntPtr node);

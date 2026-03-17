@@ -1,4 +1,3 @@
-#include "../common/perf_multi_entry.hpp"
 #include "../common/perf_multi_client_helpers.hpp"
 
 #include <cstdlib>

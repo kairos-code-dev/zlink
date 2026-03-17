@@ -1,11 +1,8 @@
-#include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_client_helpers.hpp"
 #include "../common/perf_multi_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
-#include "../../../src/services/gateway/gateway.hpp"
-#include "../../../src/sockets/socket_base.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -15,7 +12,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <map>
 #include <mutex>
 #include <new>
 #include <string>
@@ -39,7 +35,6 @@ struct gateway_client_slot_t
 {
     gateway_client_slot_t() :
         gateway(NULL),
-        gateway_impl(NULL),
         monitor(NULL),
         monitor_state(NULL),
         slot_index(0),
@@ -57,7 +52,6 @@ struct gateway_client_slot_t
     }
 
     void *gateway;
-    zlink::gateway_t *gateway_impl;
     void *monitor;
     struct gateway_ready_monitor_state_t *monitor_state;
     size_t slot_index;
@@ -89,7 +83,6 @@ struct gateway_client_state_t
     }
 
     std::vector<gateway_client_slot_t *> slots;
-    std::map<void *, gateway_client_slot_t *> slots_by_gateway;
     std::mutex metrics_mutex;
     std::condition_variable metrics_cv;
     std::atomic<bool> collect_active;
@@ -118,56 +111,6 @@ struct gateway_ready_monitor_state_t
     int error_code;
 };
 
-struct gateway_ready_monitor_registry_t
-{
-    std::mutex sync;
-    std::map<void *, gateway_ready_monitor_state_t *> states;
-};
-
-gateway_ready_monitor_registry_t &gateway_ready_monitor_registry()
-{
-    static gateway_ready_monitor_registry_t registry;
-    return registry;
-}
-
-void register_gateway_ready_monitor(
-  void *monitor,
-  gateway_ready_monitor_state_t *state)
-{
-    if (!monitor || !state)
-        return;
-
-    gateway_ready_monitor_registry_t &registry =
-      gateway_ready_monitor_registry();
-    std::lock_guard<std::mutex> lock(registry.sync);
-    registry.states[monitor] = state;
-}
-
-void unregister_gateway_ready_monitor(void *monitor)
-{
-    if (!monitor)
-        return;
-
-    gateway_ready_monitor_registry_t &registry =
-      gateway_ready_monitor_registry();
-    std::lock_guard<std::mutex> lock(registry.sync);
-    registry.states.erase(monitor);
-}
-
-gateway_ready_monitor_state_t *find_gateway_ready_monitor_state()
-{
-    void *monitor = zlink::current_monitor_dispatch_handle();
-    if (!monitor)
-        return NULL;
-
-    gateway_ready_monitor_registry_t &registry =
-      gateway_ready_monitor_registry();
-    std::lock_guard<std::mutex> lock(registry.sync);
-    std::map<void *, gateway_ready_monitor_state_t *>::iterator it =
-      registry.states.find(monitor);
-    return it != registry.states.end() ? it->second : NULL;
-}
-
 size_t gateway_ready_count(const gateway_ready_monitor_state_t *state)
 {
     if (!state)
@@ -175,9 +118,11 @@ size_t gateway_ready_count(const gateway_ready_monitor_state_t *state)
     return std::max(state->ready_peer_count, state->send_ready ? size_t(1) : 0);
 }
 
-void gateway_ready_monitor_handler(const zlink_service_event_t *event)
+void gateway_ready_monitor_handler(const zlink_service_event_t *event,
+                                   void *userdata)
 {
-    gateway_ready_monitor_state_t *state = find_gateway_ready_monitor_state();
+    gateway_ready_monitor_state_t *state =
+      static_cast<gateway_ready_monitor_state_t *>(userdata);
     if (!state || !event)
         return;
 
@@ -223,7 +168,7 @@ bool open_gateway_ready_monitor(gateway_client_slot_t *slot)
       ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
         | ZLINK_GATEWAY_ROUTE_DOWN
         | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &gateway_ready_monitor_handler);
+      &gateway_ready_monitor_handler, state);
     if (!monitor) {
         delete state;
         return false;
@@ -244,7 +189,6 @@ bool open_gateway_ready_monitor(gateway_client_slot_t *slot)
           (snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0;
     }
 
-    register_gateway_ready_monitor(monitor, state);
     slot->monitor = monitor;
     slot->monitor_state = state;
     return true;
@@ -294,7 +238,6 @@ void close_gateway_ready_monitor(gateway_client_slot_t *slot)
         return;
 
     if (monitor && zlink_service_monitor_close(&monitor) == 0) {
-        unregister_gateway_ready_monitor(monitor);
         delete state;
         return;
     }
@@ -307,22 +250,17 @@ void close_gateway_ready_monitor(gateway_client_slot_t *slot)
     }
 }
 
-void gateway_client_send_ready(void *subject);
+void gateway_client_send_ready(void *subject, void *);
 void gateway_client_recv_handler(const zlink_routing_id_t *,
                                  zlink_msg_t *parts,
-                                 size_t part_count);
+                                 size_t part_count,
+                                 void *);
 bool wait_all_gateway_ready(const std::vector<gateway_client_slot_t *> &slots,
                             int timeout_ms);
 bool prime_gateway_slot(gateway_client_state_t *state,
                         gateway_client_slot_t *slot,
                         size_t msg_size,
                         int timeout_ms);
-
-bool is_supported_transport(const std::string &transport)
-{
-    return transport == "tcp" || transport == "tls" || transport == "ws"
-           || transport == "wss";
-}
 
 void close_parts(zlink_msg_t *parts, size_t part_count)
 {
@@ -408,9 +346,6 @@ void destroy_gateway_slots(gateway_client_state_t *state,
         gateway_client_slot_t *slot = (*slots)[i];
         if (!slot)
             continue;
-        if (state) {
-            state->slots_by_gateway.erase(slot->gateway);
-        }
         close_gateway_ready_monitor(slot);
         if (slot->gateway)
             zlink_gateway_destroy(&slot->gateway);
@@ -418,9 +353,6 @@ void destroy_gateway_slots(gateway_client_state_t *state,
     }
 
     slots->clear();
-    if (state) {
-        state->slots_by_gateway.clear();
-    }
 }
 
 bool make_routing_id(const char *text, zlink_routing_id_t *routing_id)
@@ -436,33 +368,6 @@ bool make_routing_id(const char *text, zlink_routing_id_t *routing_id)
     std::memcpy(routing_id->data, text, size);
     routing_id->size = static_cast<uint8_t>(size);
     return true;
-}
-
-gateway_client_slot_t *find_slot_for_send_ready(void *gateway)
-{
-    gateway_client_state_t *state = g_client_state;
-    if (!state)
-        return NULL;
-
-    std::map<void *, gateway_client_slot_t *>::iterator it =
-      state->slots_by_gateway.find(gateway);
-    return it != state->slots_by_gateway.end() ? it->second : NULL;
-}
-
-gateway_client_slot_t *find_slot_for_recv_dispatch()
-{
-    gateway_client_state_t *state = g_client_state;
-    if (!state)
-        return NULL;
-
-    void *gateway =
-      zlink::socket_base_t::current_socket_msg_dispatch_subject();
-    if (!gateway)
-        return NULL;
-
-    std::map<void *, gateway_client_slot_t *>::iterator it =
-      state->slots_by_gateway.find(gateway);
-    return it != state->slots_by_gateway.end() ? it->second : NULL;
 }
 
 gateway_client_slot_t *find_slot_for_seq(uint64_t seq)
@@ -573,11 +478,11 @@ bool create_gateway_slots(gateway_client_state_t *state,
 
         slot->gateway = zlink_gateway_new(ctx.get(), k_service_name,
                                           routing_id,
-                                          &gateway_client_recv_handler);
+                                          &gateway_client_recv_handler, slot);
         if (!slot->gateway || !apply_gateway_options(slot->gateway, settings)
             || !configure_gateway_tls_client(slot->gateway, transport)
             || zlink_gateway_set_send_ready_handler(
-                 slot->gateway, &gateway_client_send_ready)
+                 slot->gateway, &gateway_client_send_ready, slot)
                  != 0
             || !open_gateway_ready_monitor(slot)
             || zlink_gateway_connect(slot->gateway, endpoint.c_str(),
@@ -595,14 +500,12 @@ bool create_gateway_slots(gateway_client_state_t *state,
             return false;
         }
 
-        slot->gateway_impl = static_cast<zlink::gateway_t *>(slot->gateway);
         slot->slot_index = i;
         slot->target_routing_id = server_routing_id;
         slot->payload.assign(std::max<size_t>(
                                max_payload_size,
                                perf_multi_metric::header_size()),
                              'g');
-        state->slots_by_gateway[slot->gateway] = slot;
         slots_out->push_back(slot);
 
         std::vector<gateway_client_slot_t *> ready_slots(1, slot);
@@ -859,9 +762,10 @@ bool wait_phase_duration(gateway_client_state_t *state, double seconds)
     return !state->fatal.load(std::memory_order_acquire);
 }
 
-void gateway_client_send_ready(void *subject)
+void gateway_client_send_ready(void *, void *userdata)
 {
-    gateway_client_slot_t *slot = find_slot_for_send_ready(subject);
+    gateway_client_slot_t *slot =
+      static_cast<gateway_client_slot_t *>(userdata);
     gateway_client_state_t *state = g_client_state;
     if (!slot || !state)
         return;
@@ -885,7 +789,8 @@ void gateway_client_send_ready(void *subject)
 
 void gateway_client_recv_handler(const zlink_routing_id_t *,
                                  zlink_msg_t *parts,
-                                 size_t part_count)
+                                 size_t part_count,
+                                 void *userdata)
 {
     gateway_client_state_t *state = g_client_state;
     if (!state || part_count == 0) {
@@ -899,7 +804,8 @@ void gateway_client_recv_handler(const zlink_routing_id_t *,
                                                zlink_msg_size(&parts[0]),
                                                &header);
     gateway_client_slot_t *slot =
-      header_ok ? find_slot_for_seq(header.seq) : find_slot_for_recv_dispatch();
+      header_ok ? find_slot_for_seq(header.seq)
+                : static_cast<gateway_client_slot_t *>(userdata);
     if (!slot) {
         if (bench_debug_enabled ())
             std::cerr << "[multi-gateway-client] recv slot lookup failed"

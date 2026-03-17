@@ -26,7 +26,8 @@ Gateway는 생성 시점에 서비스 이름, 라우팅 ID, 수신 핸들러를 
 ```c
 /* 수신 핸들러 정의 */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* 수신 메시지 처리 */
     printf("수신: %.*s\n",
@@ -36,7 +37,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 void *gateway = zlink_gateway_new(ctx, "payment-service",
-                                   "gateway-1", on_message);
+                                   "gateway-1", on_message, NULL);
 ```
 
 ## 3. 서버 (수신) 측 설정
@@ -53,7 +54,7 @@ zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Gateway 생성 (수신 핸들러 등록) */
 void *server = zlink_gateway_new(ctx, "payment-service",
-                                  "payment-server-1", on_request);
+                                  "payment-server-1", on_request, NULL);
 
 /* Discovery 연결 */
 zlink_gateway_attach_discovery(server, discovery);
@@ -71,7 +72,7 @@ zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Gateway 생성 */
 void *client = zlink_gateway_new(ctx, "payment-service",
-                                  "client-1", on_reply);
+                                  "client-1", on_reply, NULL);
 
 /* Discovery 연결 */
 zlink_gateway_attach_discovery(client, discovery);
@@ -105,7 +106,8 @@ zlink_gateway_send_rid(client, &target_rid, &part, 1, 0);
 
 ```c
 void on_reply(const zlink_routing_id_t *source_rid,
-              zlink_msg_t *parts, size_t part_count)
+              zlink_msg_t *parts, size_t part_count,
+              void *userdata)
 {
     /* 응답 처리 */
 }
@@ -165,7 +167,7 @@ Gateway는 "모든 API가 같은 비용 모델"인 것은 아니지만, 공개 h
 
 ```c
 /* Gateway는 thread-safe하므로 여러 스레드에서 공유 가능 */
-void *gateway = zlink_gateway_new(ctx, "my-service", "gw-1", on_reply);
+void *gateway = zlink_gateway_new(ctx, "my-service", "gw-1", on_reply, NULL);
 zlink_gateway_attach_discovery(gateway, discovery);
 
 /* 워커 스레드 함수 */
@@ -221,6 +223,8 @@ Gateway (멀티스레드):
 
 > 참고: `core/tests/discovery/test_gateway.cpp` — `test_gateway_concurrent_send_and_updates()`: 다중 스레드 동시 전송 + 가중치 갱신 검증
 
+> 전체 three-tier 계약과 추가 패턴은 [스레드 안전성 가이드](11-thread-safety.ko.md)를 참고.
+
 ## 8. 자동 연결/해제
 
 Gateway는 Discovery 이벤트를 받아 자동으로 피어를 연결/해제한다.
@@ -242,7 +246,7 @@ void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
 
 void *server = zlink_gateway_new(ctx, "echo-service",
-                                  "echo-server-1", on_request);
+                                  "echo-server-1", on_request, NULL);
 zlink_gateway_attach_discovery(server, server_discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
@@ -251,7 +255,7 @@ void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
 
 void *client = zlink_gateway_new(ctx, "echo-service",
-                                  "client-1", on_reply);
+                                  "client-1", on_reply, NULL);
 zlink_gateway_attach_discovery(client, client_discovery);
 
 /* gateway monitor로 route readiness 대기 */
@@ -278,7 +282,7 @@ zlink_ctx_term(ctx);
 
 | 함수 | 설명 |
 |------|------|
-| `zlink_gateway_new(ctx, service_name, routing_id, handler)` | Gateway 생성 |
+| `zlink_gateway_new(ctx, service_name, routing_id, handler, userdata)` | Gateway 생성 |
 | `zlink_gateway_attach_discovery(gateway, discovery)` | Discovery 연결 |
 | `zlink_gateway_bind(gateway, endpoint)` | 수신 endpoint bind (서버 역할) |
 | `zlink_gateway_send(gateway, parts, count, flags)` | 멀티파트 메시지 전송 (LB 적용) |

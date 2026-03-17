@@ -19,14 +19,16 @@
 ## Build, Test, and Development Commands
 - `./core/build.sh`: clean CMake build in `core/build/` and runs tests (Linux-style `nproc`).
 - `./core/build-scripts/linux/build.sh x64 ON`: Linux build with tests (macOS and Windows have equivalent scripts).
-- `cmake -B build -DZLINK_BUILD_TESTS=ON`: configure; `cmake --build build` to compile.
-- `ctest --output-on-failure`: run all registered tests from a build dir; prefer lane-based commands below for real verification.
-- `ctest --output-on-failure -L unittest -j$(nproc)`: run unit tests in parallel.
-- `ctest --output-on-failure -L integration -j1`: run integration tests serially.
-- `ctest --output-on-failure -L e2e -j1`: run e2e umbrella/scenario tests serially.
+- `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`: configure into the only supported build directory.
+- `cmake --build core/build`: compile from the fixed `core/build/` directory.
+- `ctest --test-dir core/build --output-on-failure`: run all registered tests from `core/build/`; prefer lane-based commands below for real verification.
+- `ctest --test-dir core/build --output-on-failure -L unittest -j$(nproc)`: run unit tests in parallel.
+- `ctest --test-dir core/build --output-on-failure -L integration -j1`: run integration tests serially.
+- `ctest --test-dir core/build --output-on-failure -L e2e -j1`: run e2e umbrella/scenario tests serially.
 - `./core/tests/run_test_lanes.sh`: run the default sequential lane pipeline (`unittest` then `integration`).
 - `./core/tests/run_test_lanes.sh --include-e2e`: run the full sequential lane pipeline (`unittest`, `integration`, `e2e`).
 - Optional flags: `-DZLINK_CXX_STANDARD=17` (see `CXX_BUILD_EXAMPLES.md`).
+- Do not configure or build into a top-level `build/` directory for this repository. Use `core/build/` only.
 
 ## Coding Style and Naming Conventions
 - Follow `.clang-format`: 4-space indent, no tabs, 80-column limit, C++03 mode.
@@ -77,6 +79,7 @@ The following rules apply to **all** test categories: unit tests (`unittests/`),
 ## Agent Instructions
 - `AGENTS.md` is the single source of truth for repo guidelines.
 - Agents must address the user as `팀장님`.
+- Agents must use `core/build/` as the only build directory for configure, build, test, perf, and bench commands in this repository.
 - If any agent-specific files are added in the future, they must reference `AGENTS.md` and instruct contributors to update `AGENTS.md` when guidelines change.
 - When the user says `posd` in the context of design or refactoring, interpret it as John Ousterhout's *A Philosophy of Software Design* and apply that book's principles.
 - Even when `posd` is not explicitly mentioned, agents should follow the repository's POSD-based design philosophy when reviewing, designing, implementing, or refactoring code and APIs.

@@ -75,7 +75,7 @@ typedef struct zlink_monitor_snapshot_t
 
 ### 이벤트 플래그
 
-관찰할 이벤트를 선택하기 위해 `zlink_socket_monitor()` 또는 `zlink_socket_monitor_open()`에 전달되는 비트마스크 상수입니다. 여러 플래그를 비트 OR로 결합할 수 있습니다.
+관찰할 이벤트를 선택하기 위해 `zlink_socket_monitor_open()`에 전달되는 비트마스크 상수입니다. 여러 플래그를 비트 OR로 결합할 수 있습니다.
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
@@ -124,7 +124,8 @@ typedef struct zlink_monitor_snapshot_t
 ```c
 void *zlink_socket_monitor_open(void *s_,
                                 zlink_socket_monitor_event_mask_t events_,
-                                zlink_monitor_handler_fn handler_);
+                                zlink_monitor_handler_fn handler_,
+                                void *userdata_);
 ```
 
 소켓 `s_`에 모니터를 생성하고 불투명 모니터 핸들을 반환합니다. `events_` 비트마스크와 일치하는 이벤트가 `handler_` 콜백을 통해 I/O 스레드에서 전달됩니다. 완료 후 모니터 핸들은 `zlink_close()`로 닫으세요.
@@ -270,7 +271,8 @@ Discovery 인스턴스의 서비스 모니터를 엽니다.
 void *zlink_discovery_monitor_open (
   void *discovery,
   zlink_discovery_monitor_event_mask_t events,
-  zlink_service_monitor_handler_fn handler);
+  zlink_service_monitor_handler_fn handler,
+  void *userdata);
 ```
 
 `events` 비트마스크와 일치하는 이벤트를 `handler` 콜백을 통해 전달하는
@@ -293,7 +295,8 @@ Gateway 인스턴스의 서비스 모니터를 엽니다.
 void *zlink_gateway_monitor_open (
   void *gateway,
   zlink_gateway_monitor_event_mask_t events,
-  zlink_service_monitor_handler_fn handler);
+  zlink_service_monitor_handler_fn handler,
+  void *userdata);
 ```
 
 Gateway 이벤트를 `handler` 콜백을 통해 전달하는 서비스 모니터를
@@ -315,7 +318,8 @@ unified SPOT handle의 role-specific 서비스 모니터를 엽니다.
 void *zlink_spot_monitor_open(void *spot,
                               zlink_spot_role_t role,
                               zlink_spot_monitor_event_mask_t events,
-                              zlink_service_monitor_handler_fn handler);
+                              zlink_service_monitor_handler_fn handler,
+                              void *userdata);
 ```
 
 `role`은 `ZLINK_SPOT_ROLE_PUB` 또는 `ZLINK_SPOT_ROLE_SUB`입니다.
@@ -343,7 +347,8 @@ void *zlink_spot_node_monitor_open (
   void *node,
   zlink_spot_role_t role,
   zlink_spot_monitor_event_mask_t events,
-  zlink_service_monitor_handler_fn handler);
+  zlink_service_monitor_handler_fn handler,
+  void *userdata);
 ```
 
 `role`은 `ZLINK_SPOT_ROLE_PUB` 또는 `ZLINK_SPOT_ROLE_SUB`입니다.
@@ -362,7 +367,7 @@ node-owned default pub/sub facade에 대한 모니터를 엽니다.
 소켓 모니터 이벤트를 무시하는 no-op 핸들러입니다.
 
 ```c
-void zlink_monitor_ignore_handler (const zlink_monitor_event_t *event_);
+void zlink_monitor_ignore_handler (const zlink_monitor_event_t *event_, void *userdata_);
 ```
 
 monitor handle에서 snapshot이나 직접 polling만 사용하고 콜백 dispatch가
@@ -376,7 +381,7 @@ monitor handle에서 snapshot이나 직접 polling만 사용하고 콜백 dispat
 
 ```c
 void zlink_service_monitor_ignore_handler (
-  const zlink_service_event_t *event_);
+  const zlink_service_event_t *event_, void *userdata_);
 ```
 
 monitor handle에서 snapshot이나 직접 polling만 사용하고 콜백 dispatch가

@@ -9,8 +9,9 @@ static void test_gateway_lifecycle_smoke()
       zlink_discovery_new_typed (ctx.handle (), ZLINK_SERVICE_TYPE_GATEWAY);
     assert (discovery != NULL);
 
-    void *gateway = zlink_gateway_new (ctx.handle (), discovery, NULL);
+    void *gateway = zlink_gateway_new (ctx.handle (), NULL, NULL, NULL, NULL);
     assert (gateway != NULL);
+    assert (zlink_gateway_attach_discovery (gateway, discovery) == 0);
 
     assert (zlink_gateway_destroy (&gateway) == 0);
     assert (zlink_discovery_destroy (&discovery) == 0);
@@ -19,7 +20,7 @@ static void test_gateway_lifecycle_smoke()
 static void test_spot_node_default_facades_created()
 {
     zlink::context_t ctx;
-    void *node = zlink_spot_node_new (ctx.handle ());
+    void *node = zlink_spot_node_new (ctx.handle (), NULL, NULL, NULL);
     assert (node != NULL);
 
     assert (zlink_spot_node_default_pub (node) != NULL);

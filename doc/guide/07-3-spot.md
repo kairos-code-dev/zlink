@@ -75,7 +75,7 @@ void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_SPOT);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* SPOT Node setup (service_name and handler are fixed at creation time) */
-void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
+void *node = zlink_spot_node_new(ctx, "spot-node", on_message, NULL);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* Attach Discovery */
@@ -89,7 +89,7 @@ connected through the Registry.
 ### 3.2 Manual Mesh
 
 ```c
-void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
+void *node = zlink_spot_node_new(ctx, "spot-node", on_message, NULL);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* Directly connect to other nodes' PUB */
@@ -105,7 +105,7 @@ topology visibility. This is an intended limitation.
 ### 4.1 Create a unified handle
 
 ```c
-void *spot = zlink_spot_new(node, on_message);
+void *spot = zlink_spot_new(node, on_message, NULL);
 ```
 
 `zlink_spot_new()` returns a unified facade with both publish and subscribe
@@ -142,16 +142,17 @@ Incoming messages are then dispatched automatically through that callback.
 /* Define callback function */
 void on_message(const zlink_routing_id_t *source_rid,
                 const char *topic, size_t topic_len,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     printf("Topic: %.*s, Parts: %zu\n", (int)topic_len, topic, part_count);
 }
 
 /* Register handler at spot_node creation */
-void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
+void *node = zlink_spot_node_new(ctx, "spot-node", on_message, NULL);
 
 /* Or register handler at unified spot creation */
-void *spot = zlink_spot_new(node, on_message);
+void *spot = zlink_spot_new(node, on_message, NULL);
 ```
 
 **Important:** Public `spot` / `spot_node` handles are thread-safe for
@@ -169,6 +170,8 @@ should be offloaded to an application queue or worker thread.
 - For slow processing, enqueue from the callback and handle it on your own thread
 - `destroy` uses a fail-fast lifecycle gate, so the simplest pattern is to
   stop external use first and then tear down the handle
+
+> See [Thread-Safety Guide](11-thread-safety.md) for the full three-tier contract and additional patterns.
 
 ## 5. Topic Rules
 

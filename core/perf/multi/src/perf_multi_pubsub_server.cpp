@@ -1,4 +1,3 @@
-#include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_metric_header.hpp"
@@ -25,23 +24,9 @@ static const bool k_server_has_routing_id = false;
 static const char *k_server_routing_id = "SERVER";
 static const uint32_t k_metric_run_id = 1U;
 
-static std::atomic<bool> g_stop_requested (false);
 static std::atomic<bool> g_queue_probe_pending (false);
 static std::atomic<size_t> g_queue_probe_size (0);
 static std::atomic<int> g_debug_pub_logs (0);
-
-inline void on_signal (int)
-{
-    g_stop_requested.store (true, std::memory_order_release);
-}
-
-inline void install_signal_handlers ()
-{
-    std::signal (SIGINT, on_signal);
-#if defined(SIGTERM)
-    std::signal (SIGTERM, on_signal);
-#endif
-}
 
 inline void request_queue_probe (size_t msg_size)
 {
@@ -67,73 +52,6 @@ inline void emit_requested_queue_probe (const std::string &lib_name,
       sample_server_queue_stats (send_socket, recv_socket);
     print_server_queue_metrics (
       lib_name, k_pattern, transport, msg_size, queue_stats);
-}
-
-inline bool is_supported_transport (const std::string &transport)
-{
-    if (transport == "tcp" || transport == "tls" || transport == "ws"
-        || transport == "wss")
-        return true;
-#if !defined(_WIN32)
-    if (transport == "ipc")
-        return true;
-#endif
-    return false;
-}
-
-inline std::string bind_server_endpoint (void *server,
-                                         const std::string &transport,
-                                         const std::string &token)
-{
-    const int bind_port =
-      resolve_multi_int_env ("PERF_MULTI_SERVER_BIND_PORT", 0, 0);
-    if (bind_port <= 0) {
-        std::string endpoint_any = make_endpoint (transport, token);
-        if (endpoint_any.empty ()) {
-            std::cerr << "No endpoint available for transport " << transport
-                      << std::endl;
-            return std::string ();
-        }
-        if (zlink_bind (server, endpoint_any.c_str ()) != 0) {
-            std::cerr << "bind failed for " << endpoint_any << ": "
-                      << zlink_strerror (zlink_errno ()) << std::endl;
-            return std::string ();
-        }
-
-        char last_endpoint[MAX_SOCKET_STRING] = "";
-        size_t size = sizeof (last_endpoint);
-        if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size)
-            == 0) {
-            endpoint_any.assign (last_endpoint);
-            const std::string any_v4 = "://0.0.0.0:";
-            const std::string any_v6 = "://[::]:";
-            size_t pos = endpoint_any.find (any_v4);
-            if (pos != std::string::npos) {
-                endpoint_any.replace (pos, any_v4.size (), "://127.0.0.1:");
-            } else {
-                pos = endpoint_any.find (any_v6);
-                if (pos != std::string::npos)
-                    endpoint_any.replace (pos, any_v6.size (), "://127.0.0.1:");
-            }
-        }
-
-        apply_debug_timeouts (server, transport);
-        return endpoint_any;
-    }
-
-    std::string endpoint = make_fixed_endpoint (transport, bind_port);
-    if (zlink_bind (server, endpoint.c_str ()) != 0) {
-        std::cerr << "bind failed for " << endpoint << ": "
-                  << zlink_strerror (zlink_errno ()) << std::endl;
-        return std::string ();
-    }
-
-    char last_endpoint[MAX_SOCKET_STRING] = "";
-    size_t size = sizeof (last_endpoint);
-    if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size) == 0)
-        endpoint.assign (last_endpoint);
-    apply_debug_timeouts (server, transport);
-    return endpoint;
 }
 
 inline bool publish_once (void *server,
@@ -188,7 +106,7 @@ inline bool publish_once (void *server,
         return true;
     }
 
-    return g_stop_requested.load (std::memory_order_acquire);
+    return perf_stop_requested ().load (std::memory_order_acquire);
 }
 
 inline bool wait_for_subscriptions(void *server,
@@ -205,7 +123,7 @@ inline bool wait_for_subscriptions(void *server,
     std::vector<char> frame(256, '\0');
 
     while (std::chrono::steady_clock::now() < deadline
-           && !g_stop_requested.load(std::memory_order_acquire)) {
+           && !perf_stop_requested ().load(std::memory_order_acquire)) {
         const int rc =
           zlink_recv(server, frame.data(), frame.size(), ZLINK_DONTWAIT);
         if (rc < 0) {
@@ -352,7 +270,7 @@ inline bool run_server_loop (void *server,
     if (!phases.empty ())
         phase_deadline += phases[0].duration;
 
-    while (!g_stop_requested.load (std::memory_order_acquire)) {
+    while (!perf_stop_requested ().load (std::memory_order_acquire)) {
         emit_requested_queue_probe (lib_name, transport, server, server);
 
         if (!phases.empty ()) {
@@ -483,10 +401,10 @@ inline int run_server_benchmark (const std::string &lib_name,
         return 1;
     }
 
-    g_stop_requested.store (false, std::memory_order_release);
+    perf_stop_requested ().store (false, std::memory_order_release);
     g_queue_probe_pending.store (false, std::memory_order_release);
     g_queue_probe_size.store (0, std::memory_order_release);
-    install_signal_handlers ();
+    install_perf_signal_handlers ();
 
     std::thread stdin_watcher ([] () {
         std::string line;
@@ -497,11 +415,11 @@ inline int run_server_benchmark (const std::string &lib_name,
                 continue;
             }
             if (line == "STOP" || line == "QUIT") {
-                g_stop_requested.store (true, std::memory_order_release);
+                perf_stop_requested ().store (true, std::memory_order_release);
                 return;
             }
         }
-        g_stop_requested.store (true, std::memory_order_release);
+        perf_stop_requested ().store (true, std::memory_order_release);
     });
     stdin_watcher.detach ();
 

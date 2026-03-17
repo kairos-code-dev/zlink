@@ -73,7 +73,8 @@ class spot_node_t : public discovery_observer_t
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
                         int trust_system_);
-    int set_send_ready_handler (zlink_send_ready_handler_fn handler_);
+    int set_send_ready_handler (zlink_send_ready_handler_fn handler_,
+                                void *userdata_);
     int set_pub_option (int option_,
                         const void *optval_,
                         size_t optvallen_);
@@ -249,6 +250,7 @@ class spot_node_t : public discovery_observer_t
     bool _mesh_client_tls_locked;
     bool _registration_tls_locked;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
+    std::atomic<void *> _send_ready_handler_userdata;
     service_public_api_guard_t _public_api;
 
     int _local_pub_ingress_rcvhwm_cfg;

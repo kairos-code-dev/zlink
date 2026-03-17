@@ -33,7 +33,7 @@ class socket_t
      * @param type_ Socket type.
      */
     socket_t (context_t &ctx_, socket_type type_)
-        : _socket (zlink_socket (ctx_.handle (), static_cast<int> (type_))),
+        : _socket (zlink_socket (ctx_.handle (), static_cast<int> (type_), NULL)),
           _own (true)
     {
     }
@@ -272,7 +272,7 @@ class socket_t
      */
     ZLINK_CPP_NODISCARD int stream_attach (zlink_stream_on_raw_fn on_raw_)
     {
-        return zlink_stream_attach_raw (_socket, on_raw_);
+        return zlink_stream_attach_raw (_socket, on_raw_, NULL);
     }
 
     /**
@@ -807,7 +807,7 @@ class socket_t
      */
     ZLINK_CPP_NODISCARD socket_t monitor_open (monitor_event events_)
     {
-        void *m = zlink_socket_monitor_open (_socket, static_cast<int> (events_));
+        void *m = zlink_socket_monitor_open (_socket, static_cast<int> (events_), NULL, NULL);
         return socket_t::adopt (m);
     }
 

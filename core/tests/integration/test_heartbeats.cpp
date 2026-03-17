@@ -29,7 +29,7 @@ struct monitor_probe_t
 
 monitor_probe_t *g_monitor_probe = NULL;
 
-void record_monitor_event (const zlink_monitor_event_t *event_)
+void record_monitor_event (const zlink_monitor_event_t *event_, void *)
 {
     if (!g_monitor_probe || !event_)
         return;
@@ -113,7 +113,7 @@ void test_handshake_timeout ()
 
     void *monitor = zlink_socket_monitor_open (
       server, ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_DISCONNECTED,
-      &record_monitor_event);
+      &record_monitor_event, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
 
     // Connect a raw socket but don't send ZMTP greeting

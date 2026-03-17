@@ -58,25 +58,25 @@ zlink_socket_handler_t make_msg_handler (zlink_socket_msg_handler_fn fn_)
     return handler;
 }
 
-void gateway_ready_handler (void *subject_)
+void gateway_ready_handler (void *subject_, void *)
 {
     g_ready_subject = subject_;
     if (g_ready_calls)
         g_ready_calls->fetch_add (1);
 }
 
-void gateway_reentrant_ready_handler (void *subject_)
+void gateway_reentrant_ready_handler (void *subject_, void *)
 {
     if (g_reentrant_ready_calls)
         g_reentrant_ready_calls->fetch_add (1);
     g_reentrant_gateway = subject_;
     errno = 0;
     g_reentrant_ready_rc = zlink_gateway_set_send_ready_handler (
-      subject_, &gateway_reentrant_ready_handler);
+      subject_, &gateway_reentrant_ready_handler, NULL);
     g_reentrant_ready_errno = errno;
 }
 
-void gateway_self_close_handler (void *subject_)
+void gateway_self_close_handler (void *subject_, void *)
 {
     void *gateway = subject_;
     errno = 0;
@@ -84,7 +84,7 @@ void gateway_self_close_handler (void *subject_)
     g_gateway_self_close_errno = errno;
 }
 
-void gateway_monitor_parent_self_close_handler (const zlink_service_event_t *)
+void gateway_monitor_parent_self_close_handler (const zlink_service_event_t *, void *)
 {
     if (g_gateway_monitor_self_close_calls)
         g_gateway_monitor_self_close_calls->fetch_add (1);
@@ -104,7 +104,7 @@ bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
       ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
         | ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
         | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     if (!monitor)
         return false;
 
@@ -129,7 +129,8 @@ void close_parts (zlink_msg_t *parts_, size_t part_count_)
 
 void discard_gateway_message (const zlink_routing_id_t *,
                               zlink_msg_t *parts_,
-                              size_t part_count_)
+                              size_t part_count_,
+                          void *)
 {
     close_parts (parts_, part_count_);
 }
@@ -141,7 +142,7 @@ void *create_gateway_attached (void *ctx_,
                                zlink_socket_msg_handler_fn handler_)
 {
     void *gateway =
-      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_);
+      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_, NULL);
     if (!gateway)
         return NULL;
     const int linger = 0;
@@ -165,10 +166,11 @@ void *create_gateway_attached (void *ctx_,
 void record_gateway_message (gateway_probe_t *probe_,
                              const zlink_routing_id_t *,
                              zlink_msg_t *parts_,
-                             size_t part_count_)
+                             size_t part_count_,
+                          void *)
 {
     if (!probe_) {
-        discard_gateway_message (NULL, parts_, part_count_);
+        discard_gateway_message (NULL, parts_, part_count_, NULL);
         return;
     }
     if (part_count_ > 0) {
@@ -185,16 +187,18 @@ void record_gateway_message (gateway_probe_t *probe_,
 
 void gateway_handler_a (const zlink_routing_id_t *source_rid_,
                         zlink_msg_t *parts_,
-                        size_t part_count_)
+                        size_t part_count_,
+                          void *)
 {
-    record_gateway_message (g_probe_a, source_rid_, parts_, part_count_);
+    record_gateway_message (g_probe_a, source_rid_, parts_, part_count_, NULL);
 }
 
 void gateway_handler_b (const zlink_routing_id_t *source_rid_,
                         zlink_msg_t *parts_,
-                        size_t part_count_)
+                        size_t part_count_,
+                          void *)
 {
-    record_gateway_message (g_probe_b, source_rid_, parts_, part_count_);
+    record_gateway_message (g_probe_b, source_rid_, parts_, part_count_, NULL);
 }
 
 bool wait_for_calls (std::atomic<int> *counter_, int expected_, int timeout_ms_)
@@ -738,7 +742,7 @@ static void test_gateway_can_be_polled_via_service_instance ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     TEST_ASSERT_NULL (
-      zlink_gateway_new (ctx, "gw-null-handler", "gw-null-handler", NULL));
+      zlink_gateway_new (ctx, "gw-null-handler", "gw-null-handler", NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     std::atomic<int> ready_calls (0);
@@ -746,7 +750,7 @@ static void test_gateway_can_be_polled_via_service_instance ()
     g_ready_subject = NULL;
 
     void *gateway = zlink_gateway_new (ctx, "ready-svc", "gw-ready",
-                                       &discard_gateway_message);
+                                       &discard_gateway_message, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
 
     const int hwm = 2;
@@ -754,14 +758,14 @@ static void test_gateway_can_be_polled_via_service_instance ()
       gateway, ZLINK_GATEWAY_OPT_SNDHWM, &hwm, sizeof (hwm)));
     void *monitor = zlink_gateway_monitor_open (
       gateway, ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
-    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_set_send_ready_handler (gateway, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_set_send_ready_handler (gateway, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_set_send_ready_handler (gateway, &gateway_ready_handler));
-    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_set_send_ready_handler (gateway, NULL));
+      zlink_gateway_set_send_ready_handler (gateway, &gateway_ready_handler, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_set_send_ready_handler (gateway, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     step_log ("gateway ready handler installed");
 
@@ -793,10 +797,10 @@ static void test_gateway_send_ready_handler_reentrant_replace_returns_edeadlk ()
     g_reentrant_ready_errno = 0;
 
     void *gateway = zlink_gateway_new (ctx, "ready-reentrant", "gw-reentrant",
-                                       &discard_gateway_message);
+                                       &discard_gateway_message, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_send_ready_handler (
-      gateway, &gateway_reentrant_ready_handler));
+      gateway, &gateway_reentrant_ready_handler, NULL));
 
     char endpoint[MAX_SOCKET_STRING];
     int bind_seed = 22401;
@@ -828,10 +832,10 @@ static void test_gateway_send_ready_handler_self_close_is_safe ()
     g_gateway_self_close_errno = 0;
 
     void *gateway = zlink_gateway_new (ctx, "ready-self-close", "gw-self-close",
-                                       &discard_gateway_message);
+                                       &discard_gateway_message, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_send_ready_handler (
-      gateway, &gateway_self_close_handler));
+      gateway, &gateway_self_close_handler, NULL));
 
     char endpoint[MAX_SOCKET_STRING];
     int bind_seed = 22411;
@@ -858,7 +862,7 @@ static void test_gateway_monitor_callback_parent_destroy_returns_ebusy ()
 
     void *gateway = zlink_gateway_new (ctx, "svc-monitor-self-close",
                                        "gw-monitor-self-close",
-                                       &discard_gateway_message);
+                                       &discard_gateway_message, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
 
     std::atomic<int> callback_calls (0);
@@ -869,7 +873,7 @@ static void test_gateway_monitor_callback_parent_destroy_returns_ebusy ()
 
     void *monitor = zlink_gateway_monitor_open (
       gateway, ZLINK_GATEWAY_SERVICE_READY,
-      &gateway_monitor_parent_self_close_handler);
+      &gateway_monitor_parent_self_close_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
 
     char endpoint[MAX_SOCKET_STRING];
@@ -1569,10 +1573,10 @@ static void test_gateway_manual_connect_disconnect_topology_ownership ()
     g_probe_a = &probe;
 
     void *server = zlink_gateway_new (ctx, "manual-svc", "manual-server",
-                                      &gateway_handler_a);
+                                      &gateway_handler_a, NULL);
     TEST_ASSERT_NOT_NULL (server);
     void *client = zlink_gateway_new (ctx, "manual-svc", "manual-client",
-                                      &discard_gateway_message);
+                                      &discard_gateway_message, NULL);
     TEST_ASSERT_NOT_NULL (client);
 
     const int zero = 0;
@@ -2010,7 +2014,7 @@ static void test_gateway_attach_and_monitor_queries_are_safe_same_handle ()
     for (int round = 0; round < 32; ++round) {
         void *gateway =
           zlink_gateway_new (ctx, "svc-attach-query", NULL,
-                             &discard_gateway_message);
+                             &discard_gateway_message, NULL);
         TEST_ASSERT_NOT_NULL (gateway);
 
         std::atomic<int> attach_started (0);
@@ -2031,7 +2035,7 @@ static void test_gateway_attach_and_monitor_queries_are_safe_same_handle ()
 
                 void *monitor = zlink_gateway_monitor_open (
                   gateway, ZLINK_GATEWAY_SERVICE_READY,
-                  &zlink_service_monitor_ignore_handler);
+                  &zlink_service_monitor_ignore_handler, NULL);
                 if (!monitor) {
                     query_fail.fetch_add (1);
                     return;
@@ -2064,7 +2068,7 @@ static void test_gateway_public_api_lifecycle_contract ()
 
     void *gateway =
       zlink_gateway_new (ctx, "svc-lifecycle", "gw-lifecycle",
-                         &discard_gateway_message);
+                         &discard_gateway_message, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
 
     zlink::gateway_t *gateway_impl =
@@ -2092,12 +2096,12 @@ static void test_gateway_public_api_lifecycle_contract ()
 
     TEST_ASSERT_EQUAL_INT (
       -1,
-      zlink_gateway_set_send_ready_handler (gateway, &gateway_ready_handler));
+      zlink_gateway_set_send_ready_handler (gateway, &gateway_ready_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, errno);
 
     TEST_ASSERT_EQUAL_PTR (
       NULL, zlink_gateway_monitor_open (gateway, ZLINK_MONITOR_EVENT_CLOSED,
-                                        &zlink_service_monitor_ignore_handler));
+                                        &zlink_service_monitor_ignore_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, errno);
 
     zlink_msg_t part;

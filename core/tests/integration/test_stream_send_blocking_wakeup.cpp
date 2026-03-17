@@ -219,7 +219,8 @@ bool wait_stream_route_ready (stream_route_probe_t *probe_, int timeout_ms_)
 }
 
 int capture_stream_route_callback (const zlink_routing_id_t *rid_,
-                                   zlink_msg_t *msg_)
+                                   zlink_msg_t *msg_,
+                                   void *)
 {
     if (msg_) {
         if (g_stream_route_probe && rid_
@@ -234,12 +235,28 @@ int capture_stream_route_callback (const zlink_routing_id_t *rid_,
     return 0;
 }
 
+void capture_stream_route_handler (const zlink_routing_id_t *rid_,
+                                   zlink_msg_t *parts_,
+                                   size_t part_count_,
+                                   void *userdata_)
+{
+    if (part_count_ > 0)
+        (void) capture_stream_route_callback (rid_, &parts_[0], userdata_);
+    for (size_t i = 1; i < part_count_; ++i)
+        (void) zlink_msg_close (&parts_[i]);
+}
+
 void establish_stream_route (void *server_, int raw_fd_, zlink_routing_id_t *rid_)
 {
     stream_route_probe_t probe;
     g_stream_route_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_attach_raw (server_, capture_stream_route_callback));
+    zlink_socket_handler_t handler;
+    memset (&handler, 0, sizeof (handler));
+    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
+    handler.fn.msg = &capture_stream_route_handler;
+    errno = 0;
+    const int attach_rc = zlink_socket_attach_handler (server_, &handler);
+    TEST_ASSERT_TRUE (attach_rc == 0 || errno == EBUSY);
 
     const unsigned char request = 0xA5;
     TEST_ASSERT_EQUAL_INT (0, send_all (raw_fd_, &request, sizeof (request)));
@@ -346,7 +363,6 @@ void test_stream_queue_reopens_after_peer_reads ()
     }
     TEST_ASSERT_TRUE (reopened);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     close_raw_fd (raw_fd);
     test_context_socket_close (server);
 #endif
@@ -383,7 +399,6 @@ void test_stream_blocking_send_times_out_without_peer_reads ()
     TEST_ASSERT_TRUE (
       elapsed_ms >= static_cast<unsigned int> (kSendTimeoutMs - 150));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     close_raw_fd (raw_fd);
     test_context_socket_close (server);
 #endif

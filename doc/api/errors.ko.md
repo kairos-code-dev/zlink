@@ -58,9 +58,9 @@ zlink가 `ZLINK_HAUSNUMERO`를 기준으로 해당 코드를 정의합니다. PO
 `<zlink.h>`에 정의된 다음 매크로를 통해 컴파일 시점 버전 감지가 가능합니다:
 
 ```c
-#define ZLINK_VERSION_MAJOR 1
+#define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 0
+#define ZLINK_VERSION_PATCH 4
 
 #define ZLINK_MAKE_VERSION(major, minor, patch) \
     ((major) * 10000 + (minor) * 100 + (patch))
@@ -72,8 +72,8 @@ zlink가 `ZLINK_HAUSNUMERO`를 기준으로 해당 코드를 정의합니다. PO
 컴파일 시점 버전 가드에 `ZLINK_VERSION`과 `ZLINK_MAKE_VERSION`을 사용합니다:
 
 ```c
-#if ZLINK_VERSION >= ZLINK_MAKE_VERSION(1, 1, 0)
-    /* use features introduced in 1.1.0 */
+#if ZLINK_VERSION >= ZLINK_MAKE_VERSION(5, 1, 0)
+    /* use features introduced in 5.1.0 */
 #endif
 ```
 

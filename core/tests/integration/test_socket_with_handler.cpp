@@ -155,7 +155,8 @@ void close_parts (raw_handler_probe_t *probe_,
 void capture_raw_message_into (raw_handler_probe_t *probe_,
                                const zlink_routing_id_t *source_rid_,
                                zlink_msg_t *parts_,
-                               size_t part_count_)
+                               size_t part_count_,
+                          void *)
 {
     if (!probe_) {
         close_parts (probe_, parts_, part_count_);
@@ -184,24 +185,27 @@ void capture_raw_message_into (raw_handler_probe_t *probe_,
 
 void capture_raw_message (const zlink_routing_id_t *source_rid_,
                           zlink_msg_t *parts_,
-                          size_t part_count_)
+                          size_t part_count_,
+                          void *)
 {
-    capture_raw_message_into (g_probe, source_rid_, parts_, part_count_);
+    capture_raw_message_into (g_probe, source_rid_, parts_, part_count_, NULL);
 }
 
 void capture_replacement_raw_message (const zlink_routing_id_t *source_rid_,
                                       zlink_msg_t *parts_,
-                                      size_t part_count_)
+                                      size_t part_count_,
+                          void *)
 {
     capture_raw_message_into (g_replacement_probe, source_rid_, parts_,
-                              part_count_);
+                              part_count_, NULL);
 }
 
 void capture_spot_message (const zlink_routing_id_t *source_rid_,
                            const char *topic_,
                            size_t topic_len_,
                            zlink_msg_t *parts_,
-                           size_t part_count_)
+                           size_t part_count_,
+                          void *)
 {
     if (!g_spot_probe) {
         close_parts (NULL, parts_, part_count_);
@@ -237,7 +241,7 @@ void capture_spot_message (const zlink_routing_id_t *source_rid_,
 
 void capture_xpub_event (int subscribed_,
                          const uint8_t *topic_,
-                         size_t topic_len_)
+                         size_t topic_len_, void *)
 {
     if (!g_xpub_probe)
         return;
@@ -254,14 +258,16 @@ void capture_xpub_event (int subscribed_,
 
 void discard_raw_message (const zlink_routing_id_t *,
                           zlink_msg_t *parts_,
-                          size_t part_count_)
+                          size_t part_count_,
+                          void *)
 {
     close_parts (NULL, parts_, part_count_);
 }
 
 void count_concurrent_raw_message (const zlink_routing_id_t *,
                                    zlink_msg_t *parts_,
-                                   size_t part_count_)
+                                   size_t part_count_,
+                          void *)
 {
     concurrent_send_probe_t *probe = g_concurrent_send_probe;
     for (size_t i = 0; i < part_count_; ++i) {
@@ -293,7 +299,7 @@ bool wait_for_concurrent_calls (concurrent_send_probe_t *probe_,
       [probe_, expected_]() { return probe_->calls.load () >= expected_; });
 }
 
-void raw_monitor_ready_handler (const zlink_monitor_event_t *event_)
+void raw_monitor_ready_handler (const zlink_monitor_event_t *event_, void *)
 {
     raw_monitor_probe_t *probe = g_raw_monitor_probe;
     if (!probe || !event_)
@@ -335,22 +341,71 @@ void test_socket_handler_family_validation_on_create ()
     const zlink_socket_handler_t xpub_handler =
       make_xpub_handler (&capture_xpub_event);
 
-    TEST_ASSERT_NULL (zlink_socket (ctx, ZLINK_PAIR, NULL));
+    void *pair = zlink_socket (ctx, ZLINK_PAIR);
+    TEST_ASSERT_NOT_NULL (pair);
+    void *pub = zlink_socket (ctx, ZLINK_PUB);
+    TEST_ASSERT_NOT_NULL (pub);
+    void *xpub = zlink_socket (ctx, ZLINK_XPUB);
+    TEST_ASSERT_NOT_NULL (xpub);
+    void *sub = zlink_socket (ctx, ZLINK_SUB);
+    TEST_ASSERT_NOT_NULL (sub);
+    void *stream = zlink_socket (ctx, ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_attach_handler (pub, &msg_handler));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_NULL (zlink_socket (ctx, ZLINK_PUB, &msg_handler));
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_attach_handler (xpub, &msg_handler));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_NULL (zlink_socket (ctx, ZLINK_XPUB, &msg_handler));
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_attach_handler (pair, &spot_handler));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_NULL (zlink_socket (ctx, ZLINK_PAIR, &spot_handler));
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_attach_handler (sub, &msg_handler));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_NULL (zlink_socket (ctx, ZLINK_SUB, &msg_handler));
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_attach_handler (xpub, &spot_handler));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_NULL (zlink_socket (ctx, ZLINK_XPUB, &spot_handler));
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_attach_handler (stream, &xpub_handler));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_NULL (zlink_socket (ctx, ZLINK_STREAM, &xpub_handler));
-    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+    close_zero_linger (pair);
+    close_zero_linger (pub);
+    close_zero_linger (xpub);
+    close_zero_linger (sub);
+    close_zero_linger (stream);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_socket_attach_handler_is_one_way ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    raw_handler_probe_t probe;
+    g_probe = &probe;
+
+    const zlink_socket_handler_t msg_handler =
+      make_msg_handler (&capture_raw_message);
+
+    void *server = zlink_socket (ctx, ZLINK_PAIR);
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &msg_handler));
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_attach_handler (server, &msg_handler));
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+
+    unsigned char recv_buf[8];
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_recv (server, recv_buf, sizeof (recv_buf),
+                                           ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+
+    close_zero_linger (server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+    g_probe = NULL;
 }
 
 void test_pair_socket_with_handler_dispatches_multipart ()
@@ -366,11 +421,13 @@ void test_pair_socket_with_handler_dispatches_multipart ()
     const zlink_socket_handler_t discard_handler =
       make_msg_handler (&discard_raw_message);
 
-    void *server = zlink_socket (ctx, ZLINK_PAIR, &msg_handler);
+    void *server = zlink_socket (ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &msg_handler));
 
-    void *client = zlink_socket (ctx, ZLINK_PAIR, &discard_handler);
+    void *client = zlink_socket (ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (client);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (client, &discard_handler));
 
     const unsigned char client_rid[] = {'p', 'a', 'i', 'r', 'A'};
     TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
@@ -410,11 +467,13 @@ void test_router_socket_with_handler_strips_routing_frame ()
     const zlink_socket_handler_t discard_handler =
       make_msg_handler (&discard_raw_message);
 
-    void *server = zlink_socket (ctx, ZLINK_ROUTER, &msg_handler);
+    void *server = zlink_socket (ctx, ZLINK_ROUTER);
     TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &msg_handler));
 
-    void *client = zlink_socket (ctx, ZLINK_DEALER, &discard_handler);
+    void *client = zlink_socket (ctx, ZLINK_DEALER);
     TEST_ASSERT_NOT_NULL (client);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (client, &discard_handler));
 
     const unsigned char client_rid[] = {'d', 'e', 'a', 'l', 'e', 'r'};
     TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
@@ -451,10 +510,11 @@ void test_sub_socket_with_handler_applies_filter_before_dispatch ()
     const zlink_socket_handler_t spot_handler =
       make_spot_handler (&capture_spot_message);
 
-    void *sub = zlink_socket (ctx, ZLINK_SUB, &spot_handler);
+    void *sub = zlink_socket (ctx, ZLINK_SUB);
     TEST_ASSERT_NOT_NULL (sub);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (sub, &spot_handler));
 
-    void *pub = zlink_socket (ctx, ZLINK_PUB, NULL);
+    void *pub = zlink_socket (ctx, ZLINK_PUB);
     TEST_ASSERT_NOT_NULL (pub);
 
     const unsigned char pub_rid[] = {'p', 'u', 'b', 'A'};
@@ -498,10 +558,12 @@ void test_xpub_socket_with_handler_receives_subscription_events ()
     const zlink_socket_handler_t spot_handler =
       make_spot_handler (&capture_spot_message);
 
-    void *xpub = zlink_socket (ctx, ZLINK_XPUB, &xpub_handler);
+    void *xpub = zlink_socket (ctx, ZLINK_XPUB);
     TEST_ASSERT_NOT_NULL (xpub);
-    void *sub = zlink_socket (ctx, ZLINK_SUB, &spot_handler);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (xpub, &xpub_handler));
+    void *sub = zlink_socket (ctx, ZLINK_SUB);
     TEST_ASSERT_NOT_NULL (sub);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (sub, &spot_handler));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (xpub, endpoint, sizeof endpoint);
@@ -534,16 +596,18 @@ void test_pair_socket_same_handle_concurrent_send_is_thread_safe ()
     const zlink_socket_handler_t discard_handler =
       make_msg_handler (&discard_raw_message);
 
-    void *server = zlink_socket (ctx, ZLINK_PAIR, &msg_handler);
+    void *server = zlink_socket (ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &msg_handler));
 
-    void *client = zlink_socket (ctx, ZLINK_PAIR, &discard_handler);
+    void *client = zlink_socket (ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (client);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (client, &discard_handler));
 
     raw_monitor_probe_t monitor_probe;
     g_raw_monitor_probe = &monitor_probe;
     void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY, &raw_monitor_ready_handler);
+      server, ZLINK_EVENT_CONNECTION_READY, &raw_monitor_ready_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
 
     char endpoint[MAX_SOCKET_STRING];
@@ -628,6 +692,7 @@ int main ()
 
     UNITY_BEGIN ();
     RUN_TEST (test_socket_handler_family_validation_on_create);
+    RUN_TEST (test_socket_attach_handler_is_one_way);
     RUN_TEST (test_pair_socket_with_handler_dispatches_multipart);
     RUN_TEST (test_router_socket_with_handler_strips_routing_frame);
     RUN_TEST (test_sub_socket_with_handler_applies_filter_before_dispatch);

@@ -16,7 +16,7 @@ This guide focuses on which events may be used as gates in real code.
 
 ```c
 /* Define event handler */
-void on_monitor_event(const zlink_monitor_event_t *ev)
+void on_monitor_event(const zlink_monitor_event_t *ev, void *userdata)
 {
     printf("Event: 0x%llx\n", (unsigned long long)ev->event);
     printf("Local: %s\n", ev->local_addr);
@@ -30,24 +30,15 @@ void on_monitor_event(const zlink_monitor_event_t *ev)
     }
 }
 
-void *server = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+void *server = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_bind(server, "tcp://*:5555");
 
 /* Create monitor (register handler) */
 void *mon = zlink_socket_monitor_open(server, ZLINK_EVENT_ALL,
-                                       on_monitor_event);
+                                       on_monitor_event, NULL);
 ```
 
 Events are dispatched automatically through the `on_monitor_event` callback.
-
-### 2.2 Manual Setup (Legacy)
-
-```c
-zlink_socket_monitor(server, "inproc://monitor", ZLINK_EVENT_ALL);
-
-void *mon = zlink_socket(ctx, ZLINK_PAIR, NULL);
-zlink_connect(mon, "inproc://monitor");
-```
 
 ### Event Structure
 
@@ -229,7 +220,7 @@ The handshake failed due to authentication or security mechanism failure.
 
 #### MONITOR_STOPPED (`0x0400`)
 
-Fired when the monitor is stopped by calling `zlink_socket_monitor(socket, NULL, 0)`. After this event, the monitor will produce no more events.
+Fired when the monitor is stopped by calling `zlink_close(mon)`. After this event, the monitor will produce no more events.
 
 - **`value`**: Not used.
 - **`routing_id`**: Not available (empty).
@@ -294,7 +285,7 @@ The `value` field of the `DISCONNECTED` event contains the reason for disconnect
 ### Reason Code Handling Example
 
 ```c
-void on_monitor(const zlink_monitor_event_t *ev)
+void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 {
     if (ev->event == ZLINK_EVENT_DISCONNECTED) {
         switch (ev->value) {
@@ -326,7 +317,7 @@ void on_monitor(const zlink_monitor_event_t *ev)
 /* Connection/disconnection events only */
 void *mon = zlink_socket_monitor_open(server,
     ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-    on_monitor_event);
+    on_monitor_event, NULL);
 ```
 
 ### Recommended Subscription Presets
@@ -358,7 +349,7 @@ void *mon = zlink_socket_monitor_open(server,
      ZLINK_EVENT_HANDSHAKE_FAILED_AUTH)
 
 void *mon = zlink_socket_monitor_open(server, MONITOR_PRESET_SECURITY,
-                                      on_monitor_event);
+                                      on_monitor_event, NULL);
 ```
 
 ## 8. Monitor Snapshots
@@ -367,7 +358,7 @@ void *mon = zlink_socket_monitor_open(server, MONITOR_PRESET_SECURITY,
 
 ```c
 void *monitor = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL,
-                                          zlink_monitor_ignore_handler);
+                                          zlink_monitor_ignore_handler, NULL);
 zlink_monitor_snapshot_t snapshot;
 zlink_monitor_snapshot(monitor, &snapshot);
 printf("Ready peers: %u, sndq=%llu, rcvq=%llu\n",
@@ -379,7 +370,7 @@ printf("Ready peers: %u, sndq=%llu, rcvq=%llu\n",
 ### Combining Snapshots with Monitoring
 
 ```c
-void on_monitor(const zlink_monitor_event_t *ev)
+void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 {
     if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
         zlink_monitor_snapshot_t snapshot;
@@ -416,24 +407,22 @@ level, but must not be reinterpreted as a stronger gate".
 Handle events from multiple sockets with individual callback handlers.
 
 ```c
-void on_event_a(const zlink_monitor_event_t *ev)
+void on_event_a(const zlink_monitor_event_t *ev, void *userdata)
 {
     printf("Socket A event: 0x%llx\n", (unsigned long long)ev->event);
 }
 
-void on_event_b(const zlink_monitor_event_t *ev)
+void on_event_b(const zlink_monitor_event_t *ev, void *userdata)
 {
     printf("Socket B event: 0x%llx\n", (unsigned long long)ev->event);
 }
 
-void *mon_a = zlink_socket_monitor_open(sock_a, ZLINK_EVENT_ALL, on_event_a);
-void *mon_b = zlink_socket_monitor_open(sock_b, ZLINK_EVENT_ALL, on_event_b);
+void *mon_a = zlink_socket_monitor_open(sock_a, ZLINK_EVENT_ALL, on_event_a, NULL);
+void *mon_b = zlink_socket_monitor_open(sock_b, ZLINK_EVENT_ALL, on_event_b, NULL);
 
 /* ... application logic ... */
 
 /* Cleanup */
-zlink_socket_monitor(sock_a, NULL, 0);
-zlink_socket_monitor(sock_b, NULL, 0);
 zlink_close(mon_a);
 zlink_close(mon_b);
 ```
@@ -450,9 +439,9 @@ I/O path, so slow callback work should be offloaded to a user queue.
 
 ```c
 /* Open a monitor from an application thread */
-void *socket = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+void *socket = zlink_socket(ctx, ZLINK_ROUTER);
 void *mon = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL,
-                                       on_monitor_event);
+                                       on_monitor_event, NULL);
 
 /* Snapshot reads may happen later from another worker thread */
 zlink_monitor_snapshot_t snapshot;
@@ -471,14 +460,9 @@ processing, enqueue from the callback and handle it on your own thread.
 ### Monitor Shutdown Procedure
 
 ```c
-/* 1. Stop monitoring */
-zlink_socket_monitor(socket, NULL, 0);
-
-/* 2. Close monitor socket */
+/* Close the monitor handle */
 zlink_close(mon);
 ```
-
-Both steps must be performed. Calling only `zlink_close(mon)` may leave internal resources uncleared.
 
 ## 11. Family Gate Rules
 

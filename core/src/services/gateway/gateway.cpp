@@ -33,7 +33,8 @@ static const uint32_t gateway_tag_value = 0x1e6700d7;
 
 static void gateway_router_msg_handler (const zlink_routing_id_t *source_rid_,
                                         zlink_msg_t *parts_,
-                                        size_t part_count_)
+                                        size_t part_count_,
+                                        void *)
 {
     gateway_t *gateway = static_cast<gateway_t *> (
       socket_base_t::current_socket_msg_dispatch_subject ());
@@ -46,7 +47,7 @@ static void gateway_router_msg_handler (const zlink_routing_id_t *source_rid_,
     gateway_access_t::dispatch_message (gateway, source_rid_, parts_, part_count_);
 }
 
-static void gateway_send_ready_handler (void *subject_)
+static void gateway_send_ready_handler (void *subject_, void *)
 {
     gateway_t *gateway = static_cast<gateway_t *> (subject_);
     if (!gateway)
@@ -369,7 +370,9 @@ gateway_t::gateway_t (ctx_t *ctx_,
     _service_name (service_name_ ? service_name_ : ""),
     _routing_id_override (routing_id_ ? routing_id_ : ""),
     _handler (NULL),
+    _handler_userdata (NULL),
     _send_ready_handler (NULL),
+    _send_ready_handler_userdata (NULL),
     _monitor (ctx_)
 {
     zlink_assert (_ctx);
@@ -2101,7 +2104,8 @@ int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
     return 0;
 }
 
-int gateway_t::set_handler (zlink_socket_msg_handler_fn handler_)
+int gateway_t::set_handler (zlink_socket_msg_handler_fn handler_,
+                            void *userdata_)
 {
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
@@ -2115,6 +2119,7 @@ int gateway_t::set_handler (zlink_socket_msg_handler_fn handler_)
     scoped_lock_t lock (_sync);
     if (ensure_facade_mode () != 0)
         return -1;
+    _handler_userdata.store (userdata_, std::memory_order_release);
     _handler.store (handler_, std::memory_order_release);
     if (_runtime->router_socket) {
         if (_runtime->router_socket->socket_set_msg_handler_ex (
@@ -2126,7 +2131,8 @@ int gateway_t::set_handler (zlink_socket_msg_handler_fn handler_)
     return 0;
 }
 
-int gateway_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_)
+int gateway_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_,
+                                      void *userdata_)
 {
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
@@ -2144,6 +2150,7 @@ int gateway_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_)
             return -1;
         }
     }
+    _send_ready_handler_userdata.store (userdata_, std::memory_order_release);
     _send_ready_handler.store (handler_, std::memory_order_release);
     return 0;
 }
@@ -2287,7 +2294,8 @@ void gateway_t::dispatch_message (const zlink_routing_id_t *source_rid_,
         return;
     }
 
-    handler (source_rid_, parts_, part_count_);
+    handler (source_rid_, parts_, part_count_,
+             _handler_userdata.load (std::memory_order_acquire));
 }
 
 void gateway_t::dispatch_send_ready ()
@@ -2298,7 +2306,8 @@ void gateway_t::dispatch_send_ready ()
     zlink_send_ready_handler_fn handler =
       _send_ready_handler.load (std::memory_order_acquire);
     if (handler)
-        handler (this);
+        handler (this,
+                 _send_ready_handler_userdata.load (std::memory_order_acquire));
 }
 
 void gateway_t::emit_route_deltas (

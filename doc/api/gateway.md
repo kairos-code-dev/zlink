@@ -89,7 +89,8 @@ Create a Gateway.
 void *zlink_gateway_new (void *ctx,
                          const char *service_name,
                          const char *routing_id,
-                         zlink_socket_msg_handler_fn handler);
+                         zlink_socket_msg_handler_fn handler,
+                         void *userdata);
 ```
 
 Allocates and initializes a new Gateway instance. The `service_name` is the
@@ -235,7 +236,7 @@ Install or replace the send-ready callback.
 
 ```c
 int zlink_gateway_set_send_ready_handler (
-  void *gateway, zlink_send_ready_handler_fn handler);
+  void *gateway, zlink_send_ready_handler_fn handler, void *userdata);
 ```
 
 The handler is invoked when the Gateway transitions to writable.

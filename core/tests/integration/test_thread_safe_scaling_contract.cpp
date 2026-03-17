@@ -82,7 +82,8 @@ bool wait_for_probe_count (count_probe_t *probe_,
 
 void discard_socket_parts (const zlink_routing_id_t *,
                            zlink_msg_t *parts_,
-                           size_t part_count_)
+                           size_t part_count_,
+                          void *)
 {
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_close (&parts_[i]);
@@ -90,43 +91,48 @@ void discard_socket_parts (const zlink_routing_id_t *,
 
 void scaling_raw_handler (const zlink_routing_id_t *,
                           zlink_msg_t *parts_,
-                          size_t part_count_)
+                          size_t part_count_,
+                          void *)
 {
-    discard_socket_parts (NULL, parts_, part_count_);
+    discard_socket_parts (NULL, parts_, part_count_, NULL);
     notify_probe (g_raw_probe);
 }
 
 void scaling_gateway_handler (const zlink_routing_id_t *,
                               zlink_msg_t *parts_,
-                              size_t part_count_)
+                              size_t part_count_,
+                          void *)
 {
-    discard_socket_parts (NULL, parts_, part_count_);
+    discard_socket_parts (NULL, parts_, part_count_, NULL);
     notify_probe (g_gateway_probe);
 }
 
 void discard_gateway_message (const zlink_routing_id_t *,
                               zlink_msg_t *parts_,
-                              size_t part_count_)
+                              size_t part_count_,
+                          void *)
 {
-    discard_socket_parts (NULL, parts_, part_count_);
+    discard_socket_parts (NULL, parts_, part_count_, NULL);
 }
 
 void ignore_spot_handler (const zlink_routing_id_t *,
                           const char *,
                           size_t,
                           zlink_msg_t *parts_,
-                          size_t part_count_)
+                          size_t part_count_,
+                          void *)
 {
-    discard_socket_parts (NULL, parts_, part_count_);
+    discard_socket_parts (NULL, parts_, part_count_, NULL);
 }
 
 void scaling_spot_handler (const zlink_routing_id_t *,
                            const char *,
                            size_t,
                            zlink_msg_t *parts_,
-                           size_t part_count_)
+                           size_t part_count_,
+                          void *)
 {
-    discard_socket_parts (NULL, parts_, part_count_);
+    discard_socket_parts (NULL, parts_, part_count_, NULL);
     notify_probe (g_spot_probe);
 }
 
@@ -165,7 +171,7 @@ bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
       ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
         | ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
         | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     if (!monitor)
         return false;
 
@@ -265,10 +271,14 @@ double measure_raw_handle_scaling_once (int handle_count_, int messages_per_hand
     std::vector<void *> servers (handle_count_, NULL);
     std::vector<void *> clients (handle_count_, NULL);
     for (int i = 0; i < handle_count_; ++i) {
-        servers[i] = zlink_socket (ctx, ZLINK_PAIR, &msg_handler);
-        clients[i] = zlink_socket (ctx, ZLINK_PAIR, &discard_handler);
+        servers[i] = zlink_socket (ctx, ZLINK_PAIR);
+        clients[i] = zlink_socket (ctx, ZLINK_PAIR);
         TEST_ASSERT_NOT_NULL (servers[i]);
         TEST_ASSERT_NOT_NULL (clients[i]);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_socket_attach_handler (servers[i], &msg_handler));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_socket_attach_handler (clients[i], &discard_handler));
         char endpoint[MAX_SOCKET_STRING];
         bind_loopback_ipv4 (servers[i], endpoint, sizeof (endpoint));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (clients[i], endpoint));
@@ -372,9 +382,9 @@ double measure_gateway_handle_scaling_once (int handle_count_,
         snprintf (client_rid_name, sizeof (client_rid_name), "gw-cli-%d", i);
 
         servers[i] = zlink_gateway_new (ctx, service_name, server_rid_name,
-                                        &scaling_gateway_handler);
+                                        &scaling_gateway_handler, NULL);
         clients[i] = zlink_gateway_new (ctx, service_name, client_rid_name,
-                                        &discard_gateway_message);
+                                        &discard_gateway_message, NULL);
         TEST_ASSERT_NOT_NULL (servers[i]);
         TEST_ASSERT_NOT_NULL (clients[i]);
         configure_gateway_linger_zero (servers[i]);
@@ -483,14 +493,14 @@ double measure_spot_handle_scaling_once (int handle_count_,
         snprintf (topic, sizeof (topic), "perf-topic-%d", i);
 
         pub_nodes[i] = zlink_spot_node_new (ctx, service_name,
-                                            &ignore_spot_handler);
+                                            &ignore_spot_handler, NULL);
         sub_nodes[i] = zlink_spot_node_new (ctx, service_name,
-                                            &ignore_spot_handler);
+                                            &ignore_spot_handler, NULL);
         TEST_ASSERT_NOT_NULL (pub_nodes[i]);
         TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 
-        pubs[i] = zlink_spot_new (pub_nodes[i], &ignore_spot_handler);
-        subs[i] = zlink_spot_new (sub_nodes[i], &scaling_spot_handler);
+        pubs[i] = zlink_spot_new (pub_nodes[i], &ignore_spot_handler, NULL);
+        subs[i] = zlink_spot_new (sub_nodes[i], &scaling_spot_handler, NULL);
         TEST_ASSERT_NOT_NULL (pubs[i]);
         TEST_ASSERT_NOT_NULL (subs[i]);
         configure_spot_linger_zero (pub_nodes[i], pubs[i]);

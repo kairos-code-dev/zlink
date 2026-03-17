@@ -45,7 +45,8 @@ void step_log (const char *msg_)
 
 void discard_gateway_message (const zlink_routing_id_t *,
                               zlink_msg_t *parts_,
-                              size_t part_count_)
+                              size_t part_count_,
+                          void *)
 {
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_close (&parts_[i]);
@@ -77,7 +78,7 @@ void *create_gateway_attached (void *ctx_,
                                zlink_socket_msg_handler_fn handler_)
 {
     void *gateway =
-      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_);
+      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_, NULL);
     if (!gateway)
         return NULL;
     if (zlink_gateway_attach_discovery (gateway, discovery_) != 0) {

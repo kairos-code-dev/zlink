@@ -14,7 +14,7 @@ void tearDown ()
 
 namespace
 {
-void discard_monitor_event (const zlink_monitor_event_t *)
+void discard_monitor_event (const zlink_monitor_event_t *, void *)
 {
 }
 }
@@ -22,7 +22,7 @@ void discard_monitor_event (const zlink_monitor_event_t *)
 //  tests all socket-related functions with a NULL socket argument
 void test_zlink_socket_null_context ()
 {
-    TEST_ASSERT_NULL (zlink_socket (NULL, ZLINK_PAIR, NULL));
+    TEST_ASSERT_NULL (zlink_socket (NULL, ZLINK_PAIR));
     TEST_ASSERT_EQUAL_INT (EFAULT, errno); // TODO use EINVAL instead?
 }
 
@@ -54,7 +54,7 @@ void test_zlink_getsockopt_null_socket ()
 void test_zlink_socket_monitor_open_null_socket ()
 {
     void *monitor = zlink_socket_monitor_open (
-      NULL, ZLINK_EVENT_ALL, &discard_monitor_event);
+      NULL, ZLINK_EVENT_ALL, &discard_monitor_event, NULL);
     TEST_ASSERT_NULL (monitor);
     TEST_ASSERT_EQUAL_INT (ENOTSOCK, errno); // TODO use EINVAL instead?
 }

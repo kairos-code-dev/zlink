@@ -26,7 +26,7 @@ external raw client  <---- RAW(4B length + body) ---->  STREAM(server)
 ## 2. Server Create/Bind
 
 ```c
-void *stream = zlink_socket(ctx, ZLINK_STREAM, NULL);
+void *stream = zlink_socket(ctx, ZLINK_STREAM);
 int linger = 0;
 zlink_setsockopt(stream, ZLINK_LINGER, &linger, sizeof(linger));
 zlink_bind(stream, "tcp://0.0.0.0:8080");

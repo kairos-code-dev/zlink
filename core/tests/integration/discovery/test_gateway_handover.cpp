@@ -43,7 +43,7 @@ bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
       ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
         | ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
         | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     if (!monitor)
         return false;
 
@@ -62,7 +62,8 @@ void step_log (const char *msg_)
 
 void discard_gateway_message (const zlink_routing_id_t *,
                               zlink_msg_t *parts_,
-                              size_t part_count_)
+                              size_t part_count_,
+                          void *)
 {
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_close (&parts_[i]);
@@ -75,7 +76,7 @@ void *create_gateway_attached (void *ctx_,
                                zlink_socket_msg_handler_fn handler_)
 {
     void *gateway =
-      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_);
+      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_, NULL);
     if (!gateway)
         return NULL;
     const int linger = 0;
@@ -99,7 +100,8 @@ void *create_gateway_attached (void *ctx_,
 void record_gateway_event (gateway_probe_t *probe_,
                            const zlink_routing_id_t *,
                            zlink_msg_t *parts_,
-                           size_t part_count_)
+                           size_t part_count_,
+                          void *)
 {
     if (!probe_) {
         for (size_t i = 0; i < part_count_; ++i)
@@ -121,16 +123,18 @@ void record_gateway_event (gateway_probe_t *probe_,
 
 void gateway_handler_a (const zlink_routing_id_t *source_rid_,
                         zlink_msg_t *parts_,
-                        size_t part_count_)
+                        size_t part_count_,
+                          void *)
 {
-    record_gateway_event (g_probe_a, source_rid_, parts_, part_count_);
+    record_gateway_event (g_probe_a, source_rid_, parts_, part_count_, NULL);
 }
 
 void gateway_handler_b (const zlink_routing_id_t *source_rid_,
                         zlink_msg_t *parts_,
-                        size_t part_count_)
+                        size_t part_count_,
+                          void *)
 {
-    record_gateway_event (g_probe_b, source_rid_, parts_, part_count_);
+    record_gateway_event (g_probe_b, source_rid_, parts_, part_count_, NULL);
 }
 
 bool wait_for_calls (std::atomic<int> *counter_, int expected_, int timeout_ms_)

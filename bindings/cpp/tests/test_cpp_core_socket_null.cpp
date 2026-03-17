@@ -5,7 +5,7 @@
 
 int main ()
 {
-    assert (zlink_socket (NULL, ZLINK_PAIR) == NULL);
+    assert (zlink_socket (NULL, ZLINK_PAIR, NULL) == NULL);
     assert (zlink_errno () == EFAULT);
 
     assert (zlink_close (NULL) == -1);

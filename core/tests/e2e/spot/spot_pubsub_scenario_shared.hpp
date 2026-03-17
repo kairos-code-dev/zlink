@@ -50,12 +50,14 @@ void ignore_spot_handler (const zlink_routing_id_t *,
                           const char *,
                           size_t,
                           zlink_msg_t *parts_,
-                          size_t part_count_);
+                          size_t part_count_,
+                          void *);
 void queued_spot_handler (const zlink_routing_id_t *,
                           const char *topic_,
                           size_t topic_len_,
                           zlink_msg_t *parts_,
-                          size_t part_count_);
+                          size_t part_count_,
+                          void *);
 
 void *create_spot_node (void *ctx_, const char *service_name_);
 void *create_spot_handle (void *node_, zlink_spot_handler_fn handler_);

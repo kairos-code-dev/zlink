@@ -27,9 +27,14 @@ ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
 | `--results-tag NAME` | — | 결과 파일명 태그 |
 | `--runs N` | `1` | pattern/transport/size별 반복 횟수 |
 | `--duration N` | `5` | active 측정 시간(초) |
+| `--warmup N` | `2` | warmup 시간(초) |
 | `--hwm N` | — | `PERF_SINGLE_HWM` fallback 설정 |
 | `--send-hwm N` | — | `PERF_SINGLE_SNDHWM` 설정 |
 | `--recv-hwm N` | — | `PERF_SINGLE_RCVHWM` 설정 |
+| `--sndbuf SIZE` | — | `PERF_SINGLE_SNDBUF` 설정 (예: `64b`, `1k`, `64k`) |
+| `--rcvbuf SIZE` | — | `PERF_SINGLE_RCVBUF` 설정 (예: `64b`, `1k`, `64k`) |
+| `--sndtimeo N` | `200` | `PERF_SINGLE_SNDTIMEO_MS` 설정 (밀리초) |
+| `--rcvtimeo N` | `200` | `PERF_SINGLE_RCVTIMEO_MS` 설정 (밀리초) |
 | `--pin-cpu` | 비활성 | CPU 고정(Linux taskset) |
 | `--io-threads N` | — | `PERF_IO_THREADS` 설정 |
 | `--msg-sizes LIST` | — | 메시지 크기 목록(쉼표 구분) |
@@ -40,7 +45,7 @@ ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
 ### 실행 모델(single)
 
 - `pattern/transport/size/run` 조합마다 바이너리를 별도 프로세스로 실행
-- 바이너리 phase: `warmup(count) -> active(duration)`
+- 바이너리 phase: `warmup(duration) -> active(duration)`
 - active 구간에서 throughput + latency를 **동시에** 측정
 - 집계는 payload header 검증 성공 데이터만 사용(header 기반 집계)
 - 재시도/드레인 단계 없음
@@ -172,3 +177,78 @@ multi STREAM callback-only 실행:
   --duration 10 \
   --transports tcp
 ```
+
+---
+
+## 리팩토링 원칙
+
+> 참조: [Core System POSD 리팩토링 계획](../../doc/plan/refactor/00-core-system-posd-refactor-plan.ko.md),
+> [AGENTS.md — Software Design Philosophy](../../AGENTS.md)
+
+perf 벤치마크 코드 및 인프라 리팩토링 시 아래 원칙을 적용한다.
+프로젝트 전체 POSD(A Philosophy of Software Design) 리팩토링 계획과
+저장소 설계 철학에서 파생된다.
+
+### 1. 성능 비회귀 (최우선)
+
+- 구조 변경이 single/multi 벤치마크 기준선을 절대 저하시키지 않아야 한다.
+- 모든 리팩토링 단계는 기록된 기준선 대비 전체 perf 실행
+  (`run_benchmarks.sh`, `run_benchmarks_multi.sh`)을 통과해야 다음 단계로 진행한다.
+- 코드 품질이 향상되더라도 throughput/latency가 회귀하면 해당 변경을 거부한다.
+
+### 2. 복잡도 감소 — 코드 이동이 아닌 제거
+
+- 리팩토링은 전체 시스템 복잡도를 줄여야 하며, 단순히 다른 곳으로 옮기지 않는다.
+- 추상화를 추가하지 않는 얕은 래퍼, pass-through 계층, config 플래그 기반
+  분기를 제거한다.
+- 각 계층은 단순 위임이 아닌 **서로 다른 추상화**를 제공해야 한다.
+
+### 3. 깊은 모듈, 명확한 소유권
+
+- 많은 작은 함수와 넓은 호출 표면 대신, 좁은 인터페이스와 풍부한 내부를 가진
+  모듈을 선호한다.
+- 모든 리소스(소켓, 컨텍스트, 타이머, 파일 디스크립터)는 정확히
+  **하나의 권위 있는 close 소유자**를 가져야 한다 — 관례가 아닌 구조(RAII,
+  unique ownership)로 강제한다.
+- 모든 컴포넌트의 생명주기, 소유권, 불변량은 몇 문장으로 설명 가능해야 한다.
+
+### 4. 정보 은닉
+
+- 벤치마크 바이너리는 라이브러리 내부 구조에 의존하지 않아야 한다.
+- **의미적** 관심사(패턴별 측정 의미)와 **메커니즘** 관심사(프로세스 관리,
+  결과 포맷팅, 파일 I/O)를 분리한다.
+- phase 기계나 transport 내부를 패턴 수준 측정 코드에 노출하지 않는다.
+
+### 5. 재시도 금지 / 우회 금지 / 인위적 흐름 제어 금지
+
+- 스크립트 및 바이너리에 retry 로직 금지 ([PERF_POLICY.md § 8.1](PERF_POLICY.md)).
+- inflight/outstanding 제한 옵션 금지 ([PERF_POLICY.md § 8.2](PERF_POLICY.md)).
+- 실패를 `UNSUPPORTED`로 위장하는 것 금지 ([PERF_POLICY.md § 8.4](PERF_POLICY.md)).
+- 실패는 실제 신호다 — 근본 원인을 수정하며, 절대 숨기지 않는다.
+
+### 6. 죽은 코드 정리
+
+- 미사용 코드, 레거시 환경 변수(`PERF_MULTI_ATTEMPTS`, retry 관련 변수,
+  inflight 변수), 고아 헬퍼를 리팩토링의 일부로 제거한다.
+- 호환성 shim, `_unused` 리네이밍, `// removed` 주석을 남기지 않는다.
+
+### 7. 구조에 의한 오류 방지
+
+- 런타임 검사나 정책 문서만으로가 아닌, 타입 시스템과 API 설계로 오용을 방지한다.
+- 예시: RAII 컨텍스트 가드(`ctx_guard_t`), enum 타입 phase 상태,
+  가능한 경우 컴파일 타임 패턴/transport 검증.
+
+### 8. 변경 증폭 리트머스 테스트
+
+- 리팩토링 후, 새 패턴 추가는 새 소스 파일과 transport 매트릭스 항목만
+  필요해야 하며 — 공유 인프라 전반의 변경이 아니어야 한다.
+- 새 transport 추가는 패턴 수준 코드를 건드리지 않아야 한다.
+- 한 곳의 변경이 여러 곳의 변경을 강제하면 추상화 경계가 잘못된 것이다.
+
+### 9. 단계별 게이트 진행
+
+- 리팩토링은 단계별로 진행하며, 각 단계는 다음을 통과해야 한다:
+  1. 기능 게이트 — `run_test_lanes.sh` (모든 테스트 레인 통과)
+  2. 성능 게이트 — single + multi 전체 perf 실행, 회귀 없음
+  3. 핫패스 게이트 — 측정 경로에 새로운 lock/동적할당/로깅 없음
+- 현재 단계 게이트를 통과하기 전에 다음 단계를 시작하지 않는다.

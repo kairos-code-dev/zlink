@@ -101,7 +101,8 @@ void *ctx = zlink_ctx_new();
 
 /* 2. 핸들러 콜백 정의 */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* 수신 메시지 처리 */
     for (size_t i = 0; i < part_count; i++)
@@ -111,9 +112,11 @@ void on_message(const zlink_routing_id_t *source_rid,
 /* 3. 소켓 생성 (수신용 핸들러 등록) */
 zlink_socket_handler_t handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message
+    .fn.msg = on_message,
+    .userdata = NULL
 };
-void *socket = zlink_socket(ctx, ZLINK_<TYPE>, &handler);
+void *socket = zlink_socket(ctx, ZLINK_<TYPE>);
+zlink_socket_attach_handler(socket, &handler);
 
 /* 4. 소켓 옵션 설정 (bind/connect 전) */
 zlink_setsockopt(socket, ZLINK_<OPTION>, &value, sizeof(value));

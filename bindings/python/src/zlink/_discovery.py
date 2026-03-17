@@ -178,9 +178,16 @@ class Discovery:
 class Gateway:
     def __init__(self, ctx, discovery, routing_id=None):
         rid = routing_id.encode() if routing_id else None
-        self._handle = lib().zlink_gateway_new(ctx._handle, discovery._handle, rid)
+        self._handle = lib().zlink_gateway_new(ctx._handle, None, rid, None, None)
         if not self._handle:
             _raise_last_error()
+        if discovery is not None:
+            rc = lib().zlink_gateway_attach_discovery(self._handle, discovery._handle)
+            if rc != 0:
+                handle = ctypes.c_void_p(self._handle)
+                lib().zlink_gateway_destroy(ctypes.byref(handle))
+                self._handle = None
+                _raise_last_error()
 
     def send(self, service, payload_or_parts, flags=0):
         if isinstance(payload_or_parts, (list, tuple)):

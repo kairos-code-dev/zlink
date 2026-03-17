@@ -169,12 +169,12 @@ void record_service_event (service_event_probe_t *probe_,
     probe_->cv.notify_all ();
 }
 
-void service_monitor_handler_a (const zlink_service_event_t *event_)
+void service_monitor_handler_a (const zlink_service_event_t *event_, void *)
 {
     record_service_event (g_service_probe_a, event_);
 }
 
-void service_monitor_handler_b (const zlink_service_event_t *event_)
+void service_monitor_handler_b (const zlink_service_event_t *event_, void *)
 {
     record_service_event (g_service_probe_b, event_);
 }
@@ -396,7 +396,7 @@ service_event_probe_t *find_service_monitor_probe_for_current_dispatch ()
     return it != g_registered_service_monitor_probes.end () ? it->second : NULL;
 }
 
-void service_monitor_handler_registered (const zlink_service_event_t *event_)
+void service_monitor_handler_registered (const zlink_service_event_t *event_, void *)
 {
     record_service_event (find_service_monitor_probe_for_current_dispatch (),
                           event_);
@@ -487,7 +487,8 @@ void close_parts (gateway_delivery_probe_t *probe_,
 
 void gateway_server_handler (const zlink_routing_id_t *source_rid_,
                              zlink_msg_t *parts_,
-                             size_t part_count_)
+                             size_t part_count_,
+                          void *)
 {
     gateway_delivery_probe_t *probe = g_gateway_probe;
     if (!probe || !source_rid_ || part_count_ == 0) {
@@ -531,7 +532,8 @@ void gateway_server_handler (const zlink_routing_id_t *source_rid_,
 
 void gateway_client_handler (const zlink_routing_id_t *,
                              zlink_msg_t *parts_,
-                             size_t part_count_)
+                             size_t part_count_,
+                          void *)
 {
     gateway_delivery_probe_t *probe = g_gateway_probe;
     if (!probe || part_count_ == 0) {
@@ -583,7 +585,8 @@ void ignore_spot_handler (const zlink_routing_id_t *,
                           const char *,
                           size_t,
                           zlink_msg_t *parts_,
-                          size_t part_count_)
+                          size_t part_count_,
+                          void *)
 {
     close_spot_parts (NULL, parts_, part_count_);
 }
@@ -592,7 +595,8 @@ void capture_spot_delivery (const zlink_routing_id_t *,
                             const char *topic_,
                             size_t topic_len_,
                             zlink_msg_t *parts_,
-                            size_t part_count_)
+                            size_t part_count_,
+                          void *)
 {
     spot_delivery_probe_t *probe = g_spot_probe;
     if (!probe || !topic_ || part_count_ == 0) {
@@ -678,7 +682,8 @@ void capture_registered_spot_delivery (const zlink_routing_id_t *,
                                        const char *topic_,
                                        size_t topic_len_,
                                        zlink_msg_t *parts_,
-                                       size_t part_count_)
+                                       size_t part_count_,
+                          void *)
 {
     registered_spot_delivery_probe_t *probe =
       find_registered_spot_delivery_probe ();
@@ -824,7 +829,7 @@ void *create_gateway_attached (void *ctx_,
                                zlink_socket_msg_handler_fn handler_)
 {
     void *gateway =
-      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_);
+      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_attach_discovery (gateway, discovery_));
@@ -926,11 +931,11 @@ void test_gateway_send_ready_changed_implies_first_request_reply ()
     void *server_monitor = zlink_gateway_monitor_open (
       server, ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_ROUTE_UP
                 | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &service_monitor_handler_a);
+      &service_monitor_handler_a, NULL);
     void *client_monitor = zlink_gateway_monitor_open (
       client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
                 | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &service_monitor_handler_b);
+      &service_monitor_handler_b, NULL);
     TEST_ASSERT_NOT_NULL (server_monitor);
     TEST_ASSERT_NOT_NULL (client_monitor);
 
@@ -995,14 +1000,14 @@ void test_spot_delivery_ready_changed_implies_first_publish_delivery ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *pub_node =
-      zlink_spot_node_new (ctx, "spot-monitor-contract", &ignore_spot_handler);
+      zlink_spot_node_new (ctx, "spot-monitor-contract", &ignore_spot_handler, NULL);
     void *sub_node =
-      zlink_spot_node_new (ctx, "spot-monitor-contract", &ignore_spot_handler);
+      zlink_spot_node_new (ctx, "spot-monitor-contract", &ignore_spot_handler, NULL);
     TEST_ASSERT_NOT_NULL (pub_node);
     TEST_ASSERT_NOT_NULL (sub_node);
 
-    void *pub = zlink_spot_new (pub_node, &ignore_spot_handler);
-    void *sub = zlink_spot_new (sub_node, &capture_spot_delivery);
+    void *pub = zlink_spot_new (pub_node, &ignore_spot_handler, NULL);
+    void *sub = zlink_spot_new (sub_node, &capture_spot_delivery, NULL);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
 
@@ -1015,13 +1020,13 @@ void test_spot_delivery_ready_changed_implies_first_publish_delivery ()
       sub, ZLINK_SPOT_ROLE_SUB,
       ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_SUBSCRIPTION_READY
         | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR,
-      &service_monitor_handler_a);
+      &service_monitor_handler_a, NULL);
     void *pub_monitor = zlink_spot_monitor_open (
       pub, ZLINK_SPOT_ROLE_PUB,
       ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
         | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
         | ZLINK_MONITOR_EVENT_ERROR,
-      &service_monitor_handler_b);
+      &service_monitor_handler_b, NULL);
     TEST_ASSERT_NOT_NULL (sub_monitor);
     TEST_ASSERT_NOT_NULL (pub_monitor);
 
@@ -1118,10 +1123,10 @@ void test_spot_multi_delivery_ready_changed_implies_first_publish_delivery ()
 
     void *pub_node =
       zlink_spot_node_new (server_ctx, "spot-monitor-contract-pub",
-                           &ignore_spot_handler);
+                           &ignore_spot_handler, NULL);
     TEST_ASSERT_NOT_NULL (pub_node);
 
-    void *pub = zlink_spot_new (pub_node, &ignore_spot_handler);
+    void *pub = zlink_spot_new (pub_node, &ignore_spot_handler, NULL);
     TEST_ASSERT_NOT_NULL (pub);
 
     service_event_probe_t pub_monitor_probe;
@@ -1130,7 +1135,7 @@ void test_spot_multi_delivery_ready_changed_implies_first_publish_delivery ()
       ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
         | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
         | ZLINK_MONITOR_EVENT_ERROR,
-      &service_monitor_handler_registered);
+      &service_monitor_handler_registered, NULL);
     TEST_ASSERT_NOT_NULL (pub_monitor);
     register_service_monitor_probe (pub_monitor, &pub_monitor_probe);
 
@@ -1144,11 +1149,11 @@ void test_spot_multi_delivery_ready_changed_implies_first_publish_delivery ()
         char name[64];
         snprintf (name, sizeof (name), "spot-monitor-contract-sub-%zu", i);
         slots[i].node =
-          zlink_spot_node_new (client_ctx, name, &ignore_spot_handler);
+          zlink_spot_node_new (client_ctx, name, &ignore_spot_handler, NULL);
         TEST_ASSERT_NOT_NULL (slots[i].node);
 
         slots[i].sub =
-          zlink_spot_new (slots[i].node, &capture_registered_spot_delivery);
+          zlink_spot_new (slots[i].node, &capture_registered_spot_delivery, NULL);
         TEST_ASSERT_NOT_NULL (slots[i].sub);
         register_spot_delivery_probe (slots[i].sub, &slots[i].delivery_probe);
 
@@ -1156,7 +1161,7 @@ void test_spot_multi_delivery_ready_changed_implies_first_publish_delivery ()
           slots[i].sub, ZLINK_SPOT_ROLE_SUB,
           ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
             | ZLINK_MONITOR_EVENT_ERROR,
-          &service_monitor_handler_registered);
+          &service_monitor_handler_registered, NULL);
         TEST_ASSERT_NOT_NULL (slots[i].monitor);
         register_service_monitor_probe (slots[i].monitor,
                                         &slots[i].monitor_probe);

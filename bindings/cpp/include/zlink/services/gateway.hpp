@@ -80,11 +80,18 @@ class gateway_t
      * @param disc_ Discovery instance.
      */
     gateway_t (context_t &ctx_, discovery_t &disc_)
-        : _gw (zlink_gateway_new (ctx_.handle (), disc_.handle (), NULL)),
+        : _gw (zlink_gateway_new (ctx_.handle (), NULL, NULL, NULL, NULL)),
           _last_error (0)
     {
-        if (!_gw)
+        if (!_gw) {
             _last_error = errno != 0 ? errno : EFAULT;
+        } else {
+            if (zlink_gateway_attach_discovery (_gw, disc_.handle ()) != 0) {
+                _last_error = errno != 0 ? errno : EFAULT;
+                zlink_gateway_destroy (&_gw);
+                _gw = NULL;
+            }
+        }
     }
 
     /**
@@ -97,11 +104,18 @@ class gateway_t
                discovery_t &disc_,
                const std::string &routing_id_)
         : _gw (zlink_gateway_new (
-            ctx_.handle (), disc_.handle (), routing_id_.c_str ())),
+            ctx_.handle (), NULL, routing_id_.c_str (), NULL, NULL)),
           _last_error (0)
     {
-        if (!_gw)
+        if (!_gw) {
             _last_error = errno != 0 ? errno : EFAULT;
+        } else {
+            if (zlink_gateway_attach_discovery (_gw, disc_.handle ()) != 0) {
+                _last_error = errno != 0 ? errno : EFAULT;
+                zlink_gateway_destroy (&_gw);
+                _gw = NULL;
+            }
+        }
     }
 
     /**

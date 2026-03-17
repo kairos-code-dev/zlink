@@ -109,7 +109,8 @@ ROUTER sockets automatically prepend a routing_id frame to received messages. Wh
 ```c
 /* ROUTER server (with handler) */
 void on_request(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* source_rid = "D1" (2 bytes), parts[0] = "Hello" (5 bytes) */
 
@@ -123,9 +124,11 @@ void on_request(const zlink_routing_id_t *source_rid,
 
 zlink_socket_handler_t router_handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_request
+    .fn.msg = on_request,
+    .userdata = NULL
 };
-void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_socket_attach_handler(router, &router_handler);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -133,7 +136,7 @@ size_t len = sizeof(endpoint);
 zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
 /* DEALER client (explicit routing_id) */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer, endpoint);
 
@@ -156,7 +159,8 @@ zlink_connect(dealer2, endpoint);
 
 /* ROUTER handler distinguishes clients by source_rid */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* source_rid->data contains "D1" or "D2" */
     /* Reply to specific client */
@@ -174,7 +178,8 @@ void on_message(const zlink_routing_id_t *source_rid,
 ```c
 /* Handler callback provides routing_id and data directly */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* Check routing_id size and content */
     printf("routing_id: %zu bytes\n", source_rid->size);
@@ -267,7 +272,8 @@ void print_routing_id(const void *data, size_t size) {
 
 /* In handler callback */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     print_routing_id(source_rid->data, source_rid->size);
     for (size_t i = 0; i < part_count; i++)
@@ -284,7 +290,8 @@ zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 
 /* In ROUTER handler callback */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     char rid[256];
     memcpy(rid, source_rid->data, source_rid->size);

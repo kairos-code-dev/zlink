@@ -161,12 +161,16 @@ bool stream_dispatch_supported ()
     return true;
 }
 
-int on_stream_attach_bridge (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
+void on_stream_attach_bridge (const zlink_routing_id_t *rid_,
+                              zlink_msg_t *parts_,
+                              size_t part_count_,
+                              void *)
 {
     zlink_stream_on_packets_fn callback = g_stream_attach_bridge_callback;
-    if (!callback || !rid_ || !msg_)
-        return 0;
-    return callback (rid_, msg_, 1);
+    if (callback && rid_ && parts_ && part_count_ > 0)
+        (void) callback (rid_, &parts_[0], 1);
+    for (size_t i = 1; i < part_count_; ++i)
+        (void) zlink_msg_close (&parts_[i]);
 }
 
 int stream_attach_compat (void *socket_,
@@ -182,7 +186,11 @@ int stream_attach_compat (void *socket_,
         return zlink_stream_attach_len32be (socket_, callback);
 
     g_stream_attach_bridge_callback = callback;
-    const int rc = zlink_stream_attach_raw (socket_, on_stream_attach_bridge);
+    zlink_socket_handler_t handler;
+    std::memset (&handler, 0, sizeof (handler));
+    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
+    handler.fn.msg = &on_stream_attach_bridge;
+    const int rc = zlink_socket_attach_handler (socket_, &handler);
     if (rc != 0)
         g_stream_attach_bridge_callback = NULL;
     return rc;
@@ -190,8 +198,9 @@ int stream_attach_compat (void *socket_,
 
 int stream_detach_compat (void *socket_)
 {
+    LIBZLINK_UNUSED (socket_);
     g_stream_attach_bridge_callback = NULL;
-    return zlink_stream_detach (socket_);
+    return 0;
 }
 
 enum recv_sender_frame_status_t

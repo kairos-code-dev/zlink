@@ -35,10 +35,10 @@ public final class Socket implements AutoCloseable {
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_STREAM_CALLBACK =
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
+        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
     private static final FunctionDescriptor FD_STREAM_CALLBACK_RAW =
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS);
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS);
 
     private MemorySegment handle;
     private final boolean own;
@@ -1094,7 +1094,7 @@ public final class Socket implements AutoCloseable {
     }
 
     private int onStreamPackets(MemorySegment rid, MemorySegment msgs,
-                                long msgCount) {
+                                long msgCount, MemorySegment userdata) {
         if (msgs == null || msgs.address() == 0 || msgCount <= 0)
             return 0;
         StreamPacketBatchHandler handler = streamBatchHandler;
@@ -1139,7 +1139,7 @@ public final class Socket implements AutoCloseable {
         }
     }
 
-    private int onStreamRaw(MemorySegment rid, MemorySegment msg) {
+    private int onStreamRaw(MemorySegment rid, MemorySegment msg, MemorySegment userdata) {
         if (msg == null || msg.address() == 0)
             return 0;
         StreamPacketHandler handler = streamRawHandler;

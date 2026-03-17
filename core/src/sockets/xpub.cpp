@@ -540,7 +540,7 @@ int zlink::xpub_t::dispatch_message (zlink::msg_t *msg_)
     const size_t topic_len = size > 0 ? size - 1 : 0;
 
     _dispatch_inflight.fetch_add (1, std::memory_order_acq_rel);
-    handler (subscribed, topic, topic_len);
+    handler (subscribed, topic, topic_len, socket_xpub_handler_userdata ());
     notify_dispatch_stopped ();
     return 0;
 }

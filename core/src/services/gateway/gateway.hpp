@@ -124,8 +124,9 @@ class gateway_t : public discovery_observer_t
     void *monitor_open (int events_);
     void lock_routing_id ();
     int fill_monitor_snapshot (zlink_monitor_snapshot_t *out_);
-    int set_handler (zlink_socket_msg_handler_fn handler_);
-    int set_send_ready_handler (zlink_send_ready_handler_fn handler_);
+    int set_handler (zlink_socket_msg_handler_fn handler_, void *userdata_);
+    int set_send_ready_handler (zlink_send_ready_handler_fn handler_,
+                                void *userdata_);
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
                         int trust_system_);
@@ -224,7 +225,9 @@ class gateway_t : public discovery_observer_t
     std::string _tls_server_cert;
     std::string _tls_server_key;
     std::atomic<zlink_socket_msg_handler_fn> _handler;
+    std::atomic<void *> _handler_userdata;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
+    std::atomic<void *> _send_ready_handler_userdata;
     service_public_api_guard_t _public_api;
     service_monitor_hub_t _monitor;
 

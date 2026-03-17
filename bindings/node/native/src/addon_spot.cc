@@ -62,7 +62,7 @@ napi_value spot_node_new(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
     napi_get_value_external(env, argv[0], &ctx);
-    void *node = zlink_spot_node_new(ctx);
+    void *node = zlink_spot_node_new(ctx, NULL, NULL, NULL);
     if (!node)
         return throw_last_error(env, "spot_node_new failed");
     napi_value ext;

@@ -29,19 +29,20 @@ The ROUTER socket is a **routing_id-based routing** socket. It automatically pre
 ### Creation and Bind
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 ```
 
 ### Receiving Messages
 
-ROUTER receives messages via a handler callback registered at creation time.
+ROUTER receives messages via a handler callback attached after socket creation.
 The callback's `source_rid` parameter contains the sender's routing_id.
 
 ```c
 /* DEALER sends "Hello" → handler receives source_rid + parts */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     printf("From [%.*s]: %.*s\n",
            (int)source_rid->size, source_rid->data,
@@ -53,9 +54,11 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 zlink_socket_handler_t handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message
+    .fn.msg = on_message,
+    .userdata = NULL
 };
-void *router = zlink_socket(ctx, ZLINK_ROUTER, &handler);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_socket_attach_handler(router, &handler);
 ```
 
 ### Sending Messages
@@ -95,7 +98,8 @@ DEALER receives: [frame1][frame2]   ← routing_id stripped
 ```c
 /* Receive: handler callback provides routing_id and data */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* Reply: send routing_id frame then data */
     zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
@@ -113,8 +117,8 @@ void on_message(const zlink_routing_id_t *source_rid,
 | `ZLINK_ROUTER_MANDATORY` | int | 0 | Return EHOSTUNREACH error for undeliverable messages |
 | `ZLINK_ROUTER_HANDOVER` | int | 0 | Replace existing connection on routing_id conflict |
 | `ZLINK_ROUTING_ID` | binary | Auto (UUID) | The ROUTER's own routing_id |
-| `ZLINK_SNDHWM` | int | 300000 | Send HWM |
-| `ZLINK_RCVHWM` | int | 300000 | Receive HWM |
+| `ZLINK_SNDHWM` | int | 1000 | Send HWM |
+| `ZLINK_RCVHWM` | int | 1000 | Receive HWM |
 | `ZLINK_LINGER` | int | -1 | Wait time on close (ms) |
 
 ### ROUTER_MANDATORY
@@ -141,7 +145,8 @@ The most basic ROUTER pattern. Distinguishes multiple DEALER clients by routing_
 ```c
 /* Server: ROUTER with handler */
 void on_request(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* Reply to the sender */
     zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
@@ -152,9 +157,11 @@ void on_request(const zlink_routing_id_t *source_rid,
 
 zlink_socket_handler_t router_handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_request
+    .fn.msg = on_request,
+    .userdata = NULL
 };
-void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_socket_attach_handler(router, &router_handler);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -164,18 +171,22 @@ zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
 /* Client 1 */
 zlink_socket_handler_t d1_handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_reply
+    .fn.msg = on_reply,
+    .userdata = NULL
 };
-void *d1 = zlink_socket(ctx, ZLINK_DEALER, &d1_handler);
+void *d1 = zlink_socket(ctx, ZLINK_DEALER);
+zlink_socket_attach_handler(d1, &d1_handler);
 zlink_setsockopt(d1, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* Client 2 */
 zlink_socket_handler_t d2_handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_reply
+    .fn.msg = on_reply,
+    .userdata = NULL
 };
-void *d2 = zlink_socket(ctx, ZLINK_DEALER, &d2_handler);
+void *d2 = zlink_socket(ctx, ZLINK_DEALER);
+zlink_socket_attach_handler(d2, &d2_handler);
 zlink_setsockopt(d2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(d2, endpoint);
 
@@ -191,7 +202,7 @@ zlink_send(d2, "from_d2", 7, 0);
 ### Pattern 2: Detecting Send Failures with ROUTER_MANDATORY
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 
 /* Default behavior: silently drops undeliverable messages */
@@ -219,7 +230,8 @@ DEALER sends a message first to notify ROUTER of its connection, then ROUTER rep
 ```c
 /* ROUTER handler: DEALER's initial message confirms connection */
 void on_connect(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* source_rid->data = "X" -- now it is safe to send to "X" */
     zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
@@ -229,7 +241,7 @@ void on_connect(const zlink_routing_id_t *source_rid,
 }
 
 /* DEALER connects and sends initial message */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "X", 1);
 zlink_connect(dealer, endpoint);
 zlink_send(dealer, "Hello", 5, 0);
@@ -245,7 +257,7 @@ zlink_send(dealer, "Hello", 5, 0);
 Multiple transports can be used to connect DEALERs to the same ROUTER.
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
 
 /* TCP */
 zlink_bind(router, "tcp://127.0.0.1:5558");

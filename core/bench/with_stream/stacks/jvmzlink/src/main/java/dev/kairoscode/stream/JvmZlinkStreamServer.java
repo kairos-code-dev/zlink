@@ -8,10 +8,12 @@ import dev.kairoscode.zlink.SocketOption;
 import dev.kairoscode.zlink.SocketType;
 import dev.kairoscode.zlink.internal.LibraryLoader;
 import dev.kairoscode.zlink.internal.Native;
+import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
+import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
@@ -28,21 +30,27 @@ public final class JvmZlinkStreamServer {
     private static final int ROUTING_ID_DATA_OFFSET = 1;
     private static final int MIN_PAYLOAD_SIZE = 16;
     private static final int MAX_PAYLOAD_SIZE = 4 * 1024 * 1024;
+    private static final int ZLINK_SOCKET_HANDLER_MSG = 0x1201;
+    private static final long MSG_SIZE = NativeLayouts.MSG_LAYOUT.byteSize();
 
     private static final Linker LINKER = Linker.nativeLinker();
     private static final SymbolLookup LOOKUP = LibraryLoader.lookup();
-    private static final FunctionDescriptor FD_STREAM_CALLBACK_RAW =
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS);
-    private static final MethodHandle MH_STREAM_ATTACH_RAW =
-      downcall("zlink_stream_attach_raw",
+    private static final MemoryLayout SOCKET_HANDLER_LAYOUT =
+      MemoryLayout.structLayout(
+        ValueLayout.JAVA_INT.withName("kind"),
+        MemoryLayout.paddingLayout(32),
+        ValueLayout.ADDRESS.withName("fn"),
+        ValueLayout.ADDRESS.withName("userdata"));
+    private static final FunctionDescriptor FD_SOCKET_MSG_HANDLER =
+      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+        ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
+    private static final MethodHandle MH_SOCKET_ATTACH_HANDLER =
+      downcall("zlink_socket_attach_handler",
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
           ValueLayout.ADDRESS));
     private static final MethodHandle MH_CTX_SET = downcall("zlink_ctx_set",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_STREAM_DETACH = downcall("zlink_stream_detach",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
 
     private JvmZlinkStreamServer() {
     }
@@ -139,6 +147,7 @@ public final class JvmZlinkStreamServer {
         private final Metrics metrics;
         private final Arena callbackArena;
         private final MemorySegment callbackStub;
+        private final MemorySegment handlerConfig;
         private boolean attached;
 
         StreamCallbackEcho(Socket socket, Metrics metrics) {
@@ -148,43 +157,59 @@ public final class JvmZlinkStreamServer {
             try {
                 MethodHandle cb = MethodHandles.lookup().findVirtual(
                   StreamCallbackEcho.class,
-                  "onPacket",
-                  MethodType.methodType(int.class, MemorySegment.class,
+                  "onMessages",
+                  MethodType.methodType(void.class, MemorySegment.class,
+                    MemorySegment.class, long.class,
                     MemorySegment.class)).bindTo(this);
                 this.callbackStub =
-                  LINKER.upcallStub(cb, FD_STREAM_CALLBACK_RAW, callbackArena);
+                  LINKER.upcallStub(cb, FD_SOCKET_MSG_HANDLER, callbackArena);
             } catch (NoSuchMethodException | IllegalAccessException ex) {
                 throw new RuntimeException(ex);
             }
+            this.handlerConfig = callbackArena.allocate(SOCKET_HANDLER_LAYOUT);
+            this.handlerConfig.set(ValueLayout.JAVA_INT, 0, ZLINK_SOCKET_HANDLER_MSG);
+            this.handlerConfig.set(ValueLayout.ADDRESS, 8, callbackStub);
+            this.handlerConfig.set(ValueLayout.ADDRESS, 16, MemorySegment.NULL);
         }
 
         void attach() {
-            int rc = streamAttachRaw(socket.handle(), callbackStub);
+            int rc = socketAttachHandler(socket.handle(), handlerConfig);
             if (rc != 0)
-                throw new RuntimeException("zlink_stream_attach_raw failed");
+                throw new RuntimeException("zlink_socket_attach_handler failed");
             attached = true;
         }
 
-        private int onPacket(MemorySegment rid, MemorySegment msg) {
+        private void onMessages(MemorySegment rid,
+                                MemorySegment parts,
+                                long partCount,
+                                MemorySegment userdata) {
+            if (parts == null || parts.address() == 0 || partCount <= 0)
+                return;
+            MemorySegment partArray = parts.reinterpret(MSG_SIZE * partCount);
+            for (long i = 0; i < partCount; ++i)
+                onPacket(rid, partArray.asSlice(i * MSG_SIZE, MSG_SIZE));
+        }
+
+        private void onPacket(MemorySegment rid, MemorySegment msg) {
             try {
                 int ridKey = routingKey(rid);
                 if (ridKey < 0) {
                     metrics.addParseError();
                     metrics.addProtocolError();
-                    return 0;
+                    return;
                 }
 
                 if (msg == null || msg.address() == 0)
-                    return 0;
+                    return;
 
                 long payloadSize = NativeMsg.msgSize(msg);
                 if (payloadSize <= 0)
-                    return 0;
+                    return;
 
                 if (payloadSize > Integer.MAX_VALUE) {
                     metrics.addParseError();
                     metrics.addProtocolError();
-                    return 0;
+                    return;
                 }
 
                 boolean consumed = false;
@@ -193,7 +218,7 @@ public final class JvmZlinkStreamServer {
                     if (payload == null || payload.address() == 0) {
                         metrics.addParseError();
                         metrics.addProtocolError();
-                        return 0;
+                        return;
                     }
 
                     int chunkLen = (int) payloadSize;
@@ -203,7 +228,7 @@ public final class JvmZlinkStreamServer {
                           & 0xFF;
                         if (ev == (STREAM_EVENT_CONNECT & 0xFF)
                             || ev == (STREAM_EVENT_DISCONNECT & 0xFF)) {
-                            return 0;
+                            return;
                         }
                     }
 
@@ -225,14 +250,11 @@ public final class JvmZlinkStreamServer {
             } catch (Throwable t) {
                 metrics.addSendError();
             }
-            return 0;
         }
 
         @Override
         public void close() {
             try {
-                if (attached)
-                    streamDetach(socket.handle());
                 attached = false;
             } finally {
                 if (callbackArena.scope().isAlive())
@@ -245,12 +267,12 @@ public final class JvmZlinkStreamServer {
         return LINKER.downcallHandle(LOOKUP.find(name).orElseThrow(), fd);
     }
 
-    private static int streamAttachRaw(MemorySegment socket,
-                                       MemorySegment callback) {
+    private static int socketAttachHandler(MemorySegment socket,
+                                           MemorySegment handler) {
         try {
-            return (int) MH_STREAM_ATTACH_RAW.invokeExact(socket, callback);
+            return (int) MH_SOCKET_ATTACH_HANDLER.invokeExact(socket, handler);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_stream_attach_raw failed", t);
+            throw new RuntimeException("zlink_socket_attach_handler failed", t);
         }
     }
 
@@ -259,14 +281,6 @@ public final class JvmZlinkStreamServer {
             return (int) MH_CTX_SET.invokeExact(ctx, option, value);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_ctx_set failed", t);
-        }
-    }
-
-    private static int streamDetach(MemorySegment socket) {
-        try {
-            return (int) MH_STREAM_DETACH.invokeExact(socket);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_stream_detach failed", t);
         }
     }
 

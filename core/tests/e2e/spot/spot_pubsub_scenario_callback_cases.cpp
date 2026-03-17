@@ -32,7 +32,8 @@ static void direct_spot_handler (const zlink_routing_id_t *source_rid_,
                                  const char *topic_,
                                  size_t topic_len_,
                                  zlink_msg_t *parts_,
-                                 size_t part_count_)
+                                 size_t part_count_,
+                          void *)
 {
     if (!g_direct_spot_probe || part_count_ != 1) {
         close_spot_parts (parts_, part_count_);
@@ -55,7 +56,8 @@ static void spot_sub_probe_handler (const zlink_routing_id_t *,
                                     const char *topic_,
                                     size_t topic_len_,
                                     zlink_msg_t *parts_,
-                                    size_t part_count_)
+                                    size_t part_count_,
+                          void *)
 {
     callback_probe_t *probe = find_callback_probe_for_current_dispatch ();
     if (!probe) {
@@ -77,10 +79,11 @@ static void spot_sub_replacement_handler (const zlink_routing_id_t *source_rid_,
                                           const char *topic_,
                                           size_t topic_len_,
                                           zlink_msg_t *parts_,
-                                          size_t part_count_)
+                                          size_t part_count_,
+                          void *)
 {
     spot_sub_probe_handler (source_rid_, topic_, topic_len_, parts_,
-                            part_count_);
+                            part_count_, NULL);
 
     callback_probe_t *probe = find_callback_probe_for_current_dispatch ();
     if (probe)
@@ -91,7 +94,8 @@ static void spot_sub_replace_inside_handler (const zlink_routing_id_t *,
                                              const char *topic_,
                                              size_t topic_len_,
                                              zlink_msg_t *parts_,
-                                             size_t part_count_)
+                                             size_t part_count_,
+                          void *)
 {
     (void) topic_;
     (void) topic_len_;

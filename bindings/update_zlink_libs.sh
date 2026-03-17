@@ -8,7 +8,7 @@ SYNC_SCRIPT="${REPO_ROOT}/core/tools/fetch_release_binaries.sh"
 usage() {
   cat <<'USAGE'
 Usage:
-  bindings/update_zlink_libs.sh <release-url-or-tag> [--repo owner/repo] [--expect-version X.Y.Z]
+  bindings/update_zlink_libs.sh <release-url-or-tag> [--repo owner/repo] [--expect-version X.Y.Z] [--skip-tests]
 
 Examples:
   bindings/update_zlink_libs.sh core/v1.3.0-hotfix1
@@ -21,6 +21,7 @@ Description:
   - Updates binding package/test version markers to expected version.
   - Verifies linux-x64 native libraries are major-version compatible with expected version.
   - Runs binding tests (cpp/dotnet/java/node/python) after update.
+    Use `--skip-tests` when only native library refresh is required.
 
 Notes:
   - Requires GitHub CLI (`gh`) authentication.
@@ -36,6 +37,7 @@ USAGE
 release_ref=""
 repo_override="${ZLINK_RELEASE_REPO:-}"
 expect_version=""
+skip_tests=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -58,6 +60,9 @@ while [[ $# -gt 0 ]]; do
       fi
       expect_version="$2"
       shift
+      ;;
+    --skip-tests)
+      skip_tests=1
       ;;
     --*)
       echo "Error: unknown option: $1" >&2
@@ -432,6 +437,12 @@ for name, path in libs.items():
 if failed:
     sys.exit(1)
 PY
+
+if [[ "${skip_tests}" == "1" ]]; then
+  echo "[4/4] Skipping binding tests (--skip-tests)"
+  echo "Done: bindings native libraries/version markers updated without binding test execution (target=${expect_version})."
+  exit 0
+fi
 
 echo "[4/4] Running binding tests"
 echo "  - C++ bindings tests"

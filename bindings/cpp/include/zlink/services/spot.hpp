@@ -72,7 +72,7 @@ class spot_node_t
      * @param ctx_ Context wrapper.
      */
     explicit spot_node_t (context_t &ctx_)
-        : _node (zlink_spot_node_new (ctx_.handle ()))
+        : _node (zlink_spot_node_new (ctx_.handle (), NULL, NULL, NULL))
     {
     }
 

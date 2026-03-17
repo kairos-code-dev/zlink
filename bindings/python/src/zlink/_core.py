@@ -71,10 +71,12 @@ _STREAM_PACKETS_CB_T = ctypes.CFUNCTYPE(
     ctypes.c_void_p,
     ctypes.c_void_p,
     ctypes.c_size_t,
+    ctypes.c_void_p,
 )
 
 _STREAM_RAW_CB_T = ctypes.CFUNCTYPE(
     ctypes.c_int,
+    ctypes.c_void_p,
     ctypes.c_void_p,
     ctypes.c_void_p,
 )
@@ -110,7 +112,7 @@ class Context:
 
 class Socket:
     def __init__(self, context, sock_type):
-        self._handle = lib().zlink_socket(context._handle, int(sock_type))
+        self._handle = lib().zlink_socket(context._handle, int(sock_type), None)
         if not self._handle:
             _raise_last_error()
         self._own = True
@@ -189,7 +191,7 @@ class Socket:
             rc = lib().zlink_stream_attach_len32be(self._handle, callback)
         elif mode == 0:
             callback = self._build_stream_raw_callback(handler)
-            rc = lib().zlink_stream_attach_raw(self._handle, callback)
+            rc = lib().zlink_stream_attach_raw(self._handle, callback, None)
         else:
             raise ValueError("mode must be 0 (raw) or 1 (len32be)")
         if rc != 0:
@@ -279,7 +281,7 @@ class Socket:
 
     def _build_stream_packets_callback(self, handler):
         @_STREAM_PACKETS_CB_T
-        def _on_packets(rid_ptr, msgs_ptr, msg_count):
+        def _on_packets(rid_ptr, msgs_ptr, msg_count, userdata_):
             if rid_ptr is None or msgs_ptr is None:
                 return 0
 
@@ -321,7 +323,7 @@ class Socket:
 
     def _build_stream_raw_callback(self, handler):
         @_STREAM_RAW_CB_T
-        def _on_raw(rid_ptr, msg_ptr):
+        def _on_raw(rid_ptr, msg_ptr, userdata_):
             if rid_ptr is None or msg_ptr is None:
                 return 0
 

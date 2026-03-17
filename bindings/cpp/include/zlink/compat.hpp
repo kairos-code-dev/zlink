@@ -114,7 +114,7 @@ inline int ctx_set (void *ctx_, int option_, int value_)
 inline int ctx_shutdown (void *ctx_) { return zlink_ctx_shutdown (ctx_); }
 inline int ctx_term (void *ctx_) { return zlink_ctx_term (ctx_); }
 
-inline void *socket (void *ctx_, int type_) { return zlink_socket (ctx_, type_); }
+inline void *socket (void *ctx_, int type_) { return zlink_socket (ctx_, type_, NULL); }
 inline int close (void *socket_) { return zlink_close (socket_); }
 inline int bind (void *socket_, const char *endpoint_)
 {
@@ -194,7 +194,7 @@ inline int multipart_close (zlink_msg_t *parts_, size_t count_)
 
 inline void *socket_monitor_open (void *socket_, int events_)
 {
-    return zlink_socket_monitor_open (socket_, events_);
+    return zlink_socket_monitor_open (socket_, events_, NULL, NULL);
 }
 inline int socket_monitor (void *socket_, const char *addr_, int events_)
 {
@@ -313,7 +313,14 @@ inline void *receiver_router_socket_unsafe (void *receiver_)
 
 inline void *gateway_new (void *ctx_, void *discovery_, const char *routing_id_)
 {
-    return zlink_gateway_new (ctx_, discovery_, routing_id_);
+    void *gw = zlink_gateway_new (ctx_, NULL, routing_id_, NULL, NULL);
+    if (gw && discovery_) {
+        if (zlink_gateway_attach_discovery (gw, discovery_) != 0) {
+            zlink_gateway_destroy (&gw);
+            return NULL;
+        }
+    }
+    return gw;
 }
 inline int gateway_destroy (void **gateway_) { return zlink_gateway_destroy (gateway_); }
 inline int gateway_send (void *gateway_,
@@ -375,7 +382,7 @@ inline void *gateway_router_socket (void *gateway_)
     return NULL;
 }
 
-inline void *spot_node_new (void *ctx_) { return zlink_spot_node_new (ctx_); }
+inline void *spot_node_new (void *ctx_) { return zlink_spot_node_new (ctx_, NULL, NULL, NULL); }
 inline int spot_node_destroy (void **node_) { return zlink_spot_node_destroy (node_); }
 inline int spot_node_bind (void *node_, const char *endpoint_)
 {
@@ -498,7 +505,7 @@ inline int spot_sub_recv (void *spot_sub_,
 
 inline int stream_attach_raw (void *socket_, zlink_stream_on_raw_fn on_raw_)
 {
-    return zlink_stream_attach_raw (socket_, on_raw_);
+    return zlink_stream_attach_raw (socket_, on_raw_, NULL);
 }
 inline int stream_attach_len32be (void *socket_,
                                   zlink_stream_on_packets_fn on_packets_)

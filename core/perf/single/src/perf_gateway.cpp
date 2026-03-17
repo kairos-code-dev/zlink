@@ -1,11 +1,9 @@
 #include "../common/bench_common.hpp"
 #include "../common/perf_single_metric_header.hpp"
-#include "../../../src/core/monitor_dispatch_internal.hpp"
 
 #include <atomic>
 #include <condition_variable>
 #include <cstring>
-#include <map>
 #include <mutex>
 #include <new>
 #include <thread>
@@ -153,56 +151,6 @@ struct gateway_ready_monitor_t
     gateway_ready_monitor_state_t *state;
 };
 
-struct gateway_ready_monitor_registry_t
-{
-    std::mutex mutex;
-    std::map<void *, gateway_ready_monitor_state_t *> states;
-};
-
-gateway_ready_monitor_registry_t &gateway_ready_monitor_registry ()
-{
-    static gateway_ready_monitor_registry_t registry;
-    return registry;
-}
-
-void register_gateway_ready_monitor (
-  void *monitor_,
-  gateway_ready_monitor_state_t *state_)
-{
-    if (!monitor_ || !state_)
-        return;
-
-    gateway_ready_monitor_registry_t &registry =
-      gateway_ready_monitor_registry ();
-    std::lock_guard<std::mutex> lock (registry.mutex);
-    registry.states[monitor_] = state_;
-}
-
-void unregister_gateway_ready_monitor (void *monitor_)
-{
-    if (!monitor_)
-        return;
-
-    gateway_ready_monitor_registry_t &registry =
-      gateway_ready_monitor_registry ();
-    std::lock_guard<std::mutex> lock (registry.mutex);
-    registry.states.erase (monitor_);
-}
-
-gateway_ready_monitor_state_t *find_gateway_ready_monitor_state ()
-{
-    void *monitor = zlink::current_monitor_dispatch_handle ();
-    if (!monitor)
-        return NULL;
-
-    gateway_ready_monitor_registry_t &registry =
-      gateway_ready_monitor_registry ();
-    std::lock_guard<std::mutex> lock (registry.mutex);
-    std::map<void *, gateway_ready_monitor_state_t *>::iterator it =
-      registry.states.find (monitor);
-    return it != registry.states.end () ? it->second : NULL;
-}
-
 size_t gateway_ready_count (const gateway_ready_monitor_state_t *state_)
 {
     if (!state_)
@@ -212,10 +160,11 @@ size_t gateway_ready_count (const gateway_ready_monitor_state_t *state_)
                      state_->send_ready ? size_t (1) : 0);
 }
 
-void gateway_ready_monitor_handler (const zlink_service_event_t *event_)
+void gateway_ready_monitor_handler (const zlink_service_event_t *event_,
+                                    void *userdata_)
 {
     gateway_ready_monitor_state_t *state =
-      find_gateway_ready_monitor_state ();
+      static_cast<gateway_ready_monitor_state_t *> (userdata_);
     if (!state || !event_)
         return;
 
@@ -262,7 +211,7 @@ bool open_gateway_ready_monitor (void *gateway_,
       ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
         | ZLINK_GATEWAY_ROUTE_DOWN
         | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &gateway_ready_monitor_handler);
+      &gateway_ready_monitor_handler, state);
     if (!monitor) {
         delete state;
         return false;
@@ -283,7 +232,6 @@ bool open_gateway_ready_monitor (void *gateway_,
           (snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0;
     }
 
-    register_gateway_ready_monitor (monitor, state);
     out_->monitor = monitor;
     out_->state = state;
     return true;
@@ -329,7 +277,6 @@ void close_gateway_ready_monitor (gateway_ready_monitor_t *monitor_)
         return;
 
     if (monitor && zlink_service_monitor_close (&monitor) == 0) {
-        unregister_gateway_ready_monitor (monitor);
         delete state;
         return;
     }
@@ -450,7 +397,8 @@ bool send_payload (void *gateway_,
 
 void server_handler (const zlink_routing_id_t *source_rid_,
                      zlink_msg_t *parts_,
-                     size_t part_count_)
+                     size_t part_count_,
+                     void *)
 {
     gateway_server_state_t *state = g_server_state;
     if (!state || !source_rid_ || part_count_ == 0) {
@@ -492,7 +440,8 @@ void server_handler (const zlink_routing_id_t *source_rid_,
 
 void client_handler (const zlink_routing_id_t *,
                      zlink_msg_t *parts_,
-                     size_t part_count_)
+                     size_t part_count_,
+                     void *)
 {
     close_parts (parts_, part_count_);
 }
@@ -503,8 +452,11 @@ bool run_warmup (void *gateway_,
                  std::vector<char> &payload_,
                  size_t msg_size_)
 {
-    const int warmup_count = resolve_bench_count ("PERF_WARMUP_COUNT", 200);
-    const int wait_timeout_ms = std::max (1000, resolve_single_recv_timeout_ms () * 10);
+    const int warmup_s = resolve_single_warmup_seconds ();
+    const auto deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (warmup_s);
+    uint64_t seq = 1;
+
     {
         std::lock_guard<std::mutex> lock (server_state_.mutex);
         server_state_.warmup_received = 0;
@@ -513,23 +465,34 @@ bool run_warmup (void *gateway_,
         server_state_.latency = latency_stats_builder_t ();
     }
 
-    for (int i = 0; i < warmup_count; ++i) {
+    while (std::chrono::steady_clock::now () < deadline) {
         probe_.sample_send_if_due ();
         if (!send_payload (gateway_,
                            payload_,
                            msg_size_,
                            server_state_.run_id,
                            perf_single_metric::phase_warmup,
-                           static_cast<uint64_t> (i + 1))) {
+                           seq++)) {
             return false;
         }
     }
 
-    return wait_for_counter (server_state_.cv,
-                             server_state_.mutex,
-                             &server_state_.warmup_received,
-                             static_cast<unsigned long long> (warmup_count),
-                             wait_timeout_ms);
+    // idle-wait: no new warmup messages for idle_timeout → warmup receive done
+    {
+        std::unique_lock<std::mutex> lock (server_state_.mutex);
+        const std::chrono::milliseconds idle_timeout (
+          std::max (500, resolve_single_recv_timeout_ms () * 5));
+        while (true) {
+            const unsigned long long observed = server_state_.warmup_received;
+            const bool changed = server_state_.cv.wait_for (
+              lock, idle_timeout, [&server_state_, observed] () {
+                  return server_state_.warmup_received != observed;
+              });
+            if (!changed)
+                break;
+        }
+    }
+    return server_state_.warmup_received > 0;
 }
 
 bool run_active (void *gateway_,
@@ -624,10 +587,10 @@ int run_case (const std::string &lib_name_,
 
     void *server_gateway =
       zlink_gateway_new (ctx.get (), "perf-gateway", k_server_routing_id,
-                         &server_handler);
+                         &server_handler, NULL);
     void *client_gateway =
       zlink_gateway_new (ctx.get (), "perf-gateway", "perf-gateway-client",
-                         &client_handler);
+                         &client_handler, NULL);
     if (!server_gateway || !client_gateway) {
         cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);
         return 1;

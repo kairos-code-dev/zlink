@@ -120,8 +120,8 @@ zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 
 | 설정 | 기본값 | 설명 |
 |------|--------|------|
-| `ZLINK_SNDHWM` | 300000 | 송신 큐 최대 메시지 수 |
-| `ZLINK_RCVHWM` | 300000 | 수신 큐 최대 메시지 수 |
+| `ZLINK_SNDHWM` | 1000 | 송신 큐 최대 메시지 수 |
+| `ZLINK_RCVHWM` | 1000 | 수신 큐 최대 메시지 수 |
 
 ### 메모리 vs 처리량 트레이드오프
 
@@ -131,7 +131,7 @@ zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 | 1000 | 낮음 | 낮음 | 균형 |
 | 10000 | 보통 | 보통 (버스트 흡수) | PUB: 드롭 감소 |
 | 100000 | 높음 | 높음 | 메모리 주의 |
-| 300000 (기본) | 매우 높음 | 최대 | 메모리 주의 |
+| 1000 (기본) | 낮음 | 낮음 | 균형 |
 
 ### HWM 동작 패턴
 
@@ -158,8 +158,8 @@ zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 | `ZLINK_LINGER` | -1 (무한) | 테스트: 0, 프로덕션: 1000~5000ms |
 | `ZLINK_SNDTIMEO` | -1 (무한) | 응답 시간 요구사항에 맞춰 설정 |
 | `ZLINK_RCVTIMEO` | -1 (무한) | 폴링 루프에서 사용 시 설정 |
-| `ZLINK_SNDHWM` | 300000 | 처리량에 맞춰 조정 |
-| `ZLINK_RCVHWM` | 300000 | 처리량에 맞춰 조정 |
+| `ZLINK_SNDHWM` | 1000 | 처리량에 맞춰 조정 |
+| `ZLINK_RCVHWM` | 1000 | 처리량에 맞춰 조정 |
 | `ZLINK_MAXMSGSIZE` | -1 (무제한) | STREAM 소켓에서 보안 설정 |
 
 ### LINGER 설정
@@ -259,4 +259,4 @@ void on_pong(const zlink_routing_id_t *source_rid,
 > Speculative I/O, Gather Write 등 내부 최적화 메커니즘의 상세는 [architecture.md](../internals/architecture.ko.md)를 참고.
 
 ---
-[← Message API](09-message-api.ko.md)
+[← Message API](09-message-api.ko.md) | [스레드 안전성 →](11-thread-safety.ko.md)

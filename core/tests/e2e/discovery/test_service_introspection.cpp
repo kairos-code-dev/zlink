@@ -118,13 +118,14 @@ void assert_routing_id_bytes (const zlink_routing_id_t *rid_,
 
 void discard_gateway_message (const zlink_routing_id_t *,
                               zlink_msg_t *parts_,
-                              size_t part_count_)
+                              size_t part_count_,
+                          void *)
 {
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_close (&parts_[i]);
 }
 
-void service_monitor_handler_a (const zlink_service_event_t *event_)
+void service_monitor_handler_a (const zlink_service_event_t *event_, void *)
 {
     if (!g_monitor_a || !event_)
         return;
@@ -132,7 +133,7 @@ void service_monitor_handler_a (const zlink_service_event_t *event_)
     g_monitor_a->calls.fetch_add (1);
 }
 
-void service_monitor_handler_b (const zlink_service_event_t *event_)
+void service_monitor_handler_b (const zlink_service_event_t *event_, void *)
 {
     if (!g_monitor_b || !event_)
         return;
@@ -140,7 +141,7 @@ void service_monitor_handler_b (const zlink_service_event_t *event_)
     g_monitor_b->calls.fetch_add (1);
 }
 
-void service_monitor_handler_c (const zlink_service_event_t *event_)
+void service_monitor_handler_c (const zlink_service_event_t *event_, void *)
 {
     if (!g_monitor_c || !event_)
         return;
@@ -148,7 +149,7 @@ void service_monitor_handler_c (const zlink_service_event_t *event_)
     g_monitor_c->calls.fetch_add (1);
 }
 
-void service_monitor_sequence_handler (const zlink_service_event_t *event_)
+void service_monitor_sequence_handler (const zlink_service_event_t *event_, void *)
 {
     if (!g_event_sequence_probe || !event_)
         return;
@@ -158,7 +159,7 @@ void service_monitor_sequence_handler (const zlink_service_event_t *event_)
     g_event_sequence_probe->cv.notify_all ();
 }
 
-void discovery_monitor_parent_self_close_handler (const zlink_service_event_t *)
+void discovery_monitor_parent_self_close_handler (const zlink_service_event_t *, void *)
 {
     if (g_discovery_self_close_calls)
         g_discovery_self_close_calls->fetch_add (1);
@@ -179,7 +180,7 @@ bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
       ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
         | ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
         | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     if (!monitor)
         return false;
 
@@ -195,7 +196,7 @@ void *create_gateway_attached (void *ctx_,
                                zlink_socket_msg_handler_fn handler_)
 {
     void *gateway =
-      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_);
+      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_, NULL);
     if (!gateway)
         return NULL;
     if (zlink_gateway_attach_discovery (gateway, discovery_) != 0) {
@@ -574,7 +575,7 @@ static void test_discovery_monitor_and_routing_id ()
     g_monitor_a = &probe;
     void *monitor =
       zlink_discovery_monitor_open (discovery, ZLINK_DISCOVERY_SERVICE_UP,
-                                    &service_monitor_handler_a);
+                                    &service_monitor_handler_a, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
 
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -715,10 +716,10 @@ static void test_gateway_receiver_monitors_and_monitor_poller ()
     g_monitor_b = &server_probe;
     void *client_monitor = zlink_gateway_monitor_open (
       client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP,
-      &service_monitor_handler_a);
+      &service_monitor_handler_a, NULL);
     void *server_monitor = zlink_gateway_monitor_open (
       server.gateway, ZLINK_GATEWAY_SERVICE_READY,
-      &service_monitor_handler_b);
+      &service_monitor_handler_b, NULL);
     TEST_ASSERT_NOT_NULL (client_monitor);
     TEST_ASSERT_NOT_NULL (server_monitor);
     bind_gateway_with_port_seed (server.gateway, "tcp", &bind_seed, endpoint,
@@ -943,7 +944,7 @@ static void test_monitor_closed_event_on_service_destroy ()
     monitor_probe_t probe;
     g_monitor_a = &probe;
     void *monitor = zlink_discovery_monitor_open (
-      discovery, ZLINK_MONITOR_EVENT_CLOSED, &service_monitor_handler_a);
+      discovery, ZLINK_MONITOR_EVENT_CLOSED, &service_monitor_handler_a, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
 
     TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_destroy (&discovery));
@@ -975,7 +976,7 @@ static void test_discovery_monitor_reports_service_up_then_down_in_order ()
     g_event_sequence_probe = &probe;
     void *monitor = zlink_discovery_monitor_open (
       discovery, ZLINK_DISCOVERY_SERVICE_UP | ZLINK_DISCOVERY_SERVICE_DOWN,
-      &service_monitor_sequence_handler);
+      &service_monitor_sequence_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
 
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1048,7 +1049,7 @@ static void test_discovery_monitor_callback_parent_destroy_returns_ebusy ()
 
     void *monitor = zlink_discovery_monitor_open (
       discovery, ZLINK_DISCOVERY_SERVICE_UP,
-      &discovery_monitor_parent_self_close_handler);
+      &discovery_monitor_parent_self_close_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
 
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1156,7 +1157,7 @@ static void test_discovery_public_api_lifecycle_contract ()
 
     TEST_ASSERT_EQUAL_PTR (
       NULL, zlink_discovery_monitor_open (discovery, ZLINK_MONITOR_EVENT_CLOSED,
-                                          &service_monitor_handler_a));
+                                          &service_monitor_handler_a, NULL));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
 
     TEST_ASSERT_FALSE (
@@ -1539,7 +1540,7 @@ static void test_registry_peer_transport_restriction_and_tcp_sync ()
     g_monitor_a = &probe;
     void *monitor =
       zlink_discovery_monitor_open (discovery_a, ZLINK_DISCOVERY_SERVICE_UP,
-                                    &service_monitor_handler_a);
+                                    &service_monitor_handler_a, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
       discovery_a, registry_a_router, 2000));
@@ -1626,7 +1627,7 @@ static void test_registry_peer_transport_mixed_ws_sync ()
     g_monitor_a = &probe;
     void *monitor =
       zlink_discovery_monitor_open (discovery_a, ZLINK_DISCOVERY_SERVICE_UP,
-                                    &service_monitor_handler_a);
+                                    &service_monitor_handler_a, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
       discovery_a, registry_a_router, 2000));

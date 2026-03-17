@@ -3,8 +3,9 @@
 # 소켓 API 레퍼런스
 
 소켓 API는 zlink 소켓의 생성, 구성, 바인딩, 연결, I/O 수행을 위한 함수를
-제공합니다. 모든 메시지 수신은 소켓 생성 시점에 등록하는 핸들러 콜백을 통해
-처리됩니다. `recv()` 함수는 없습니다. 소켓은 게시/구독, 요청/응답, raw stream을
+제공합니다. 모든 메시지 수신은 핸들러 콜백을 통해 처리됩니다. 소켓은 recv 모드로
+시작하며, 핸들러를 부착하면 콜백 모드로 전환됩니다. 동기식 `zlink_recv()`도
+pull-style로 사용 가능합니다. 소켓은 게시/구독, 요청/응답, raw stream을
 포함한 여러 메시징 패턴을 지원합니다.
 
 ## 스레드 안전성 요약
@@ -31,7 +32,8 @@
 typedef void (*zlink_socket_msg_handler_fn) (
   const zlink_routing_id_t *source_rid_,
   zlink_msg_t *parts_,
-  size_t part_count_);
+  size_t part_count_,
+  void *userdata_);
 ```
 
 PAIR, DEALER, ROUTER 소켓에서 멀티파트 메시지 dispatch 콜백.
@@ -45,7 +47,8 @@ typedef void (*zlink_spot_handler_fn) (const zlink_routing_id_t *source_rid_,
                                        const char *topic_,
                                        size_t topic_len_,
                                        zlink_msg_t *parts_,
-                                       size_t part_count_);
+                                       size_t part_count_,
+                                       void *userdata_);
 ```
 
 SUB, XSUB 소켓에서 토픽 기반 메시지 dispatch 콜백.
@@ -56,7 +59,8 @@ SUB, XSUB 소켓에서 토픽 기반 메시지 dispatch 콜백.
 ```c
 typedef void (*zlink_xpub_handler_fn) (int subscribed_,
                                        const uint8_t *topic_,
-                                       size_t topic_len_);
+                                       size_t topic_len_,
+                                       void *userdata_);
 ```
 
 XPUB 소켓에서 구독 알림 콜백.
@@ -80,10 +84,11 @@ typedef struct zlink_socket_handler_t
         zlink_spot_handler_fn spot;
         zlink_xpub_handler_fn xpub;
     } fn;
+    void *userdata;
 } zlink_socket_handler_t;
 ```
 
-`zlink_socket()`에 전달하는 핸들러 디스크립터. `kind` 필드로 콜백 변형을
+`zlink_socket_attach_handler()`에 전달하는 핸들러 디스크립터. `kind` 필드로 콜백 변형을
 선택합니다. 소켓 타입별 핸들러 kind 매핑:
 
 | 소켓 타입 | 핸들러 Kind | 콜백 |
@@ -97,7 +102,7 @@ typedef struct zlink_socket_handler_t
 ### zlink_send_ready_handler_fn
 
 ```c
-typedef void (*zlink_send_ready_handler_fn) (void *subject_);
+typedef void (*zlink_send_ready_handler_fn) (void *subject_, void *userdata_);
 ```
 
 송신 가능한 핸들이 쓰기 가능 상태로 전환될 때 호출되는 콜백.
@@ -268,30 +273,46 @@ typedef uint32_t zlink_send_flags_t;
 
 ### zlink_socket
 
-수신 핸들러와 함께 소켓을 생성합니다.
+소켓을 생성합니다.
 
 ```c
-void *zlink_socket (void *context_,
-                    zlink_socket_type_t type_,
-                    const zlink_socket_handler_t *handler_);
+void *zlink_socket (void *context_, zlink_socket_type_t type_);
 ```
 
 지정된 context 내에서 새 소켓을 생성합니다. `type_` 매개변수는 메시징 패턴을
-선택합니다. `handler_` 매개변수는 메시지 도착 시 I/O 스레드에서 호출되는 수신
-콜백을 지정합니다. 송신 전용 소켓(PUB)의 경우 `NULL`을 전달합니다. 수신 가능한
-모든 타입에서 핸들러는 non-NULL이어야 합니다.
-
-콜백은 생성 시점에 고정되며 교체할 수 없습니다. 소켓은 context가 종료되기 전에
+선택합니다. 소켓은 recv 모드로 시작합니다. `zlink_socket_attach_handler()`로
+콜백 모드로 전환할 수 있습니다. 소켓은 context가 종료되기 전에
 `zlink_close()`로 닫아야 합니다.
 
 **반환값:** 성공 시 소켓 핸들, 실패 시 `NULL` (errno가 설정됨).
 
-**에러:** 소켓 타입이 유효하지 않거나 수신 가능한 타입에서 핸들러가 NULL이면
-`EINVAL`. 최대 소켓 수에 도달하면 `EMFILE`. Context가 종료된 경우 `ETERM`.
+**에러:** 소켓 타입이 유효하지 않으면 `EINVAL`. 최대 소켓 수에 도달하면
+`EMFILE`. Context가 종료된 경우 `ETERM`.
 
 **스레드 안전성:** Context에 대해 스레드 안전합니다.
 
-**참고:** `zlink_close`, `zlink_ctx_new`
+**참고:** `zlink_close`, `zlink_ctx_new`, `zlink_socket_attach_handler`
+
+---
+
+### zlink_socket_attach_handler
+
+소켓에 직접 수신 핸들러를 부착합니다.
+
+```c
+int zlink_socket_attach_handler (void *s_, const zlink_socket_handler_t *handler_);
+```
+
+소켓에 직접 수신 핸들러를 부착합니다. 소켓은 recv 모드로 시작합니다. 이 호출은
+핸들을 콜백 모드로 전환하며, 소켓의 수명 동안 되돌릴 수 없습니다. 동일 핸들에
+대한 두 번째 attach는 `errno=EBUSY`로 실패합니다.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**에러:** 핸들러가 NULL이거나 kind가 소켓 타입과 일치하지 않으면 `EINVAL`.
+핸들러가 이미 부착된 경우 `EBUSY`.
+
+**참고:** `zlink_socket`, `zlink_close`
 
 ---
 
@@ -473,7 +494,7 @@ send-ready 콜백을 설정하거나 교체합니다.
 
 ```c
 int zlink_socket_set_send_ready_handler (
-  void *s_, zlink_send_ready_handler_fn handler_);
+  void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
 핸들러는 교체 전용입니다. NULL 전달은 유효하지 않습니다. 교체 성공 시 다음 쓰기
@@ -619,7 +640,8 @@ int zlink_stream_send_msg (void *s_,
 ```c
 void *zlink_socket_monitor_open (void *s_,
                                  zlink_socket_monitor_event_mask_t events_,
-                                 zlink_monitor_handler_fn handler_);
+                                 zlink_monitor_handler_fn handler_,
+                                 void *userdata_);
 ```
 
 소켓 `s_`에 대한 모니터를 생성하고 핸들을 반환합니다. `events_` 비트마스크에

@@ -27,9 +27,14 @@ DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, SPOT).
 | `--results-tag NAME` | — | Optional filename tag |
 | `--runs N` | `1` | Iterations per pattern/transport/size |
 | `--duration N` | `5` | Active measurement duration (seconds) |
+| `--warmup N` | `2` | Warmup duration (seconds) |
 | `--hwm N` | — | Set `PERF_SINGLE_HWM` fallback |
 | `--send-hwm N` | — | Set `PERF_SINGLE_SNDHWM` |
 | `--recv-hwm N` | — | Set `PERF_SINGLE_RCVHWM` |
+| `--sndbuf SIZE` | — | Set `PERF_SINGLE_SNDBUF` (e.g. `64b`, `1k`, `64k`) |
+| `--rcvbuf SIZE` | — | Set `PERF_SINGLE_RCVBUF` (e.g. `64b`, `1k`, `64k`) |
+| `--sndtimeo N` | `200` | Set `PERF_SINGLE_SNDTIMEO_MS` (milliseconds) |
+| `--rcvtimeo N` | `200` | Set `PERF_SINGLE_RCVTIMEO_MS` (milliseconds) |
 | `--pin-cpu` | off | Pin CPU core (Linux taskset) |
 | `--io-threads N` | — | Set `PERF_IO_THREADS` |
 | `--msg-sizes LIST` | — | Comma-separated sizes |
@@ -40,7 +45,7 @@ Note: `pgm`/`epgm` are currently disabled in single perf.
 ### Execution model (single)
 
 - One binary process per `pattern/transport/size/run`
-- Binary phase: `warmup(count) -> active(duration)`
+- Binary phase: `warmup(duration) -> active(duration)`
 - Throughput and latency are measured **simultaneously** in active
 - Active aggregation uses payload header validation (header-based only)
 - No retry/drain phase
@@ -175,3 +180,85 @@ Multi STREAM callback-only:
   --duration 10 \
   --transports tcp
 ```
+
+---
+
+## Refactoring Principles
+
+> Reference: [Core System POSD Refactor Plan](../../doc/plan/refactor/00-core-system-posd-refactor-plan.ko.md),
+> [AGENTS.md — Software Design Philosophy](../../AGENTS.md)
+
+The following principles apply when refactoring perf benchmark code and
+infrastructure. They derive from the project-wide POSD (A Philosophy of
+Software Design) refactoring plan and the repository design philosophy.
+
+### 1. Performance Non-Regression (Priority #1)
+
+- Structural change must never degrade single or multi benchmark baselines.
+- Every refactoring phase is gated by a full perf run (`run_benchmarks.sh`,
+  `run_benchmarks_multi.sh`) against the recorded baseline before proceeding.
+- If a change improves local code quality but regresses throughput/latency,
+  reject it.
+
+### 2. Reduce Complexity, Not Just Move Code
+
+- Refactoring must reduce overall system complexity, not relocate it.
+- Eliminate shallow wrappers, pass-through layers, and config-flag-driven
+  branching that add indirection without adding abstraction.
+- Each layer must provide a **different abstraction**, not a thin delegation.
+
+### 3. Deep Modules, Clear Ownership
+
+- Prefer modules with narrow interfaces and rich internals over many small
+  functions with wide call surfaces.
+- Every resource (socket, context, timer, file descriptor) must have exactly
+  **one authoritative close owner** — enforced by structure (RAII, unique
+  ownership), not by convention.
+- Lifecycle, ownership, and invariants of any component should be
+  explainable in a few sentences.
+
+### 4. Information Hiding
+
+- Benchmark binaries should not depend on internal library structure.
+- Separate **semantic** concerns (pattern-specific measurement meaning) from
+  **mechanism** concerns (process management, result formatting, file I/O).
+- Do not expose phase machinery or transport internals to the pattern-level
+  measurement code.
+
+### 5. No Retry / No Workaround / No Artificial Flow Control
+
+- No retry logic in scripts or binaries ([PERF_POLICY.md § 8.1](PERF_POLICY.md)).
+- No inflight/outstanding limiting options ([PERF_POLICY.md § 8.2](PERF_POLICY.md)).
+- No `UNSUPPORTED` misuse to hide failures ([PERF_POLICY.md § 8.4](PERF_POLICY.md)).
+- A failure is a real signal — fix the root cause, never mask it.
+
+### 6. Dead Code Cleanup
+
+- Remove unused code, legacy env vars (`PERF_MULTI_ATTEMPTS`, retry-related
+  variables, inflight variables), and orphan helpers as part of refactoring.
+- Do not leave compatibility shims, `_unused` renames, or `// removed`
+  comments.
+
+### 7. Error Prevention by Structure
+
+- Use type system and API design to prevent misuse, not runtime checks or
+  policy documentation alone.
+- Examples: RAII context guards (`ctx_guard_t`), enum-typed phase states,
+  compile-time pattern/transport validation where possible.
+
+### 8. Change Amplification Litmus Test
+
+- After refactoring, adding a new pattern should require only a new source
+  file and a transport matrix entry — not changes across shared
+  infrastructure.
+- Adding a new transport should not require touching pattern-level code.
+- If a change in one place forces changes in many others, the abstraction
+  boundary is wrong.
+
+### 9. Phase-Gated Progression
+
+- Refactoring proceeds in phases; each phase must pass:
+  1. Functional gate — `run_test_lanes.sh` (all test lanes green)
+  2. Performance gate — full single + multi perf run, no regression
+  3. Hot-path gate — no new lock/alloc/log in measurement path
+- Do not begin a new phase until the current phase gates are cleared.

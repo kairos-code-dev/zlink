@@ -1,4 +1,3 @@
-#include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_resource.hpp"
@@ -26,8 +25,9 @@
 namespace {
 
 static const char *k_pattern = "STREAM_CALLBACK";
+static const char k_stop_token[] = "__zlink_perf_stop__";
 
-static std::atomic<bool> g_stop_requested (false);
+// Uses perf_stop_requested() from perf_common.hpp
 static std::atomic<bool> g_callback_failed (false);
 static void *g_server_socket = NULL;
 static std::atomic<bool> g_queue_probe_pending (false);
@@ -88,19 +88,6 @@ typedef moodycamel::ConcurrentQueue<queued_stream_message_t> send_queue_t;
 
 static send_queue_t *g_send_queue = NULL;
 
-inline void on_signal (int)
-{
-    g_stop_requested.store (true, std::memory_order_release);
-}
-
-inline void install_signal_handlers ()
-{
-    std::signal (SIGINT, on_signal);
-#if defined(SIGTERM)
-    std::signal (SIGTERM, on_signal);
-#endif
-}
-
 inline void request_queue_probe (size_t msg_size)
 {
     if (msg_size == 0)
@@ -134,65 +121,24 @@ inline bool is_stream_event_payload (const unsigned char *data, size_t size)
     return data && size == 1 && (data[0] == 0x00 || data[0] == 0x01);
 }
 
-inline bool is_supported_transport (const std::string &transport)
+inline bool is_stop_token_payload (const unsigned char *data, size_t size)
 {
-    return transport == "tcp" || transport == "tls" || transport == "ws"
-           || transport == "wss";
-}
+    if (!data)
+        return false;
 
-inline std::string bind_server_endpoint (void *server,
-                                         const std::string &transport,
-                                         const std::string &token)
-{
-    const int bind_port =
-      resolve_int_env ("PERF_SERVER_BIND_PORT", 0, 0);
-    if (bind_port <= 0) {
-        std::string endpoint_any = make_endpoint (transport, token);
-        if (endpoint_any.empty ()) {
-            std::cerr << "No endpoint available for transport " << transport
-                      << std::endl;
-            return std::string ();
-        }
-        if (zlink_bind (server, endpoint_any.c_str ()) != 0) {
-            std::cerr << "bind failed for " << endpoint_any << ": "
-                      << zlink_strerror (zlink_errno ()) << std::endl;
-            return std::string ();
-        }
+    if (size == (sizeof (k_stop_token) - 1))
+        return std::memcmp (data, k_stop_token, sizeof (k_stop_token) - 1) == 0;
 
-        char last_endpoint[MAX_SOCKET_STRING] = "";
-        size_t size = sizeof (last_endpoint);
-        if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size)
-            == 0) {
-            endpoint_any.assign (last_endpoint);
-            const std::string any_v4 = "://0.0.0.0:";
-            const std::string any_v6 = "://[::]:";
-            size_t pos = endpoint_any.find (any_v4);
-            if (pos != std::string::npos) {
-                endpoint_any.replace (pos, any_v4.size (), "://127.0.0.1:");
-            } else {
-                pos = endpoint_any.find (any_v6);
-                if (pos != std::string::npos)
-                    endpoint_any.replace (pos, any_v6.size (), "://127.0.0.1:");
-            }
-        }
+    if (size != (sizeof (k_stop_token) - 1 + 4))
+        return false;
 
-        apply_debug_timeouts (server, transport);
-        return endpoint_any;
-    }
-
-    std::string endpoint = make_fixed_endpoint (transport, bind_port);
-    if (zlink_bind (server, endpoint.c_str ()) != 0) {
-        std::cerr << "bind failed for " << endpoint << ": "
-                  << zlink_strerror (zlink_errno ()) << std::endl;
-        return std::string ();
-    }
-
-    char last_endpoint[MAX_SOCKET_STRING] = "";
-    size_t size = sizeof (last_endpoint);
-    if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size) == 0)
-        endpoint.assign (last_endpoint);
-    apply_debug_timeouts (server, transport);
-    return endpoint;
+    const uint32_t declared = (static_cast<uint32_t> (data[0]) << 24)
+                              | (static_cast<uint32_t> (data[1]) << 16)
+                              | (static_cast<uint32_t> (data[2]) << 8)
+                              | static_cast<uint32_t> (data[3]);
+    return declared == (sizeof (k_stop_token) - 1)
+           && std::memcmp (data + 4, k_stop_token, sizeof (k_stop_token) - 1)
+                == 0;
 }
 
 inline void print_server_metrics (
@@ -254,7 +200,7 @@ void send_thread_main ()
 
             if (!send_stream_message_blocking (queued_msg)) {
                 g_callback_failed.store (true, std::memory_order_release);
-                g_stop_requested.store (true, std::memory_order_release);
+                perf_stop_requested ().store (true, std::memory_order_release);
                 g_sender_stop_requested.store (true, std::memory_order_release);
                 return;
             }
@@ -270,7 +216,7 @@ void send_thread_main ()
     }
 }
 
-int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg)
+int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg, void *)
 {
     if (!rid || !msg || !g_server_socket || !g_send_queue)
         return 0;
@@ -279,6 +225,11 @@ int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg)
       static_cast<const unsigned char *> (zlink_msg_data (msg));
     const size_t payload_size = zlink_msg_size (msg);
     if (is_stream_event_payload (payload, payload_size)) {
+        (void) zlink_msg_close (msg);
+        return 0;
+    }
+    if (is_stop_token_payload (payload, payload_size)) {
+        perf_stop_requested ().store (true, std::memory_order_release);
         (void) zlink_msg_close (msg);
         return 0;
     }
@@ -300,6 +251,17 @@ int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg)
 
     (void) zlink_msg_close (msg);
     return 0;
+}
+
+void on_stream_handler (const zlink_routing_id_t *rid,
+                        zlink_msg_t *parts,
+                        size_t part_count,
+                        void *userdata)
+{
+    if (part_count > 0)
+        (void) on_stream_packet (rid, &parts[0], userdata);
+    for (size_t i = 1; i < part_count; ++i)
+        (void) zlink_msg_close (&parts[i]);
 }
 
 } // namespace
@@ -357,21 +319,25 @@ int main (int argc, char **argv)
         return 1;
     }
 
-    g_stop_requested.store (false, std::memory_order_release);
+    perf_stop_requested ().store (false, std::memory_order_release);
     g_callback_failed.store (false, std::memory_order_release);
     g_queue_probe_pending.store (false, std::memory_order_release);
     g_queue_probe_size.store (0, std::memory_order_release);
     g_sender_stop_requested.store (false, std::memory_order_release);
     g_pending_send_count.store (0, std::memory_order_release);
     g_server_socket = server;
-    install_signal_handlers ();
+    install_perf_signal_handlers ();
 
     const size_t queue_capacity =
       std::max<size_t> (static_cast<size_t> (1024), settings.clients * 2);
     std::unique_ptr<send_queue_t> send_queue (new send_queue_t (queue_capacity));
     g_send_queue = send_queue.get ();
 
-    if (zlink_stream_attach_raw (server, on_stream_packet) != 0) {
+    zlink_socket_handler_t handler;
+    memset (&handler, 0, sizeof (handler));
+    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
+    handler.fn.msg = &on_stream_handler;
+    if (zlink_socket_attach_handler (server, &handler) != 0) {
         g_send_queue = NULL;
         g_server_socket = NULL;
         zlink_close (server);
@@ -389,18 +355,18 @@ int main (int argc, char **argv)
                 continue;
             }
             if (line == "STOP" || line == "QUIT") {
-                g_stop_requested.store (true, std::memory_order_release);
+                perf_stop_requested ().store (true, std::memory_order_release);
                 return;
             }
         }
-        g_stop_requested.store (true, std::memory_order_release);
+        perf_stop_requested ().store (true, std::memory_order_release);
     });
     stdin_watcher.detach ();
 
     std::cout << "READY," << endpoint << std::endl;
 
     int rc = 0;
-    while (!g_stop_requested.load (std::memory_order_acquire)) {
+    while (!perf_stop_requested ().load (std::memory_order_acquire)) {
         emit_requested_queue_probe (lib_name, transport, server, server);
         if (g_callback_failed.load (std::memory_order_acquire)) {
             rc = 1;
@@ -412,7 +378,6 @@ int main (int argc, char **argv)
     if (g_callback_failed.load (std::memory_order_acquire))
         rc = 1;
 
-    (void) zlink_stream_detach (server);
     g_sender_stop_requested.store (true, std::memory_order_release);
     send_thread.join ();
     g_send_queue = NULL;

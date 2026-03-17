@@ -134,7 +134,8 @@ static void close_raw_fd (int fd_)
 #endif
 
 static int on_stream_packet (const zlink_routing_id_t *rid_,
-                             zlink_msg_t *msg_)
+                             zlink_msg_t *msg_,
+                                   void *)
 {
     stream_probe_t *p = g_stream_probe;
     if (!p || !rid_ || !msg_)
@@ -154,6 +155,17 @@ static int on_stream_packet (const zlink_routing_id_t *rid_,
     return 0;
 }
 
+static void on_stream_handler (const zlink_routing_id_t *rid_,
+                               zlink_msg_t *parts_,
+                               size_t part_count_,
+                               void *userdata_)
+{
+    if (part_count_ > 0)
+        (void) on_stream_packet (rid_, &parts_[0], userdata_);
+    for (size_t i = 1; i < part_count_; ++i)
+        (void) zlink_msg_close (&parts_[i]);
+}
+
 void test_stream_auto_routing_id_size ()
 {
     stream_probe_t probe;
@@ -166,8 +178,11 @@ void test_stream_auto_routing_id_size ()
       zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
 
     g_stream_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_attach_raw (server, on_stream_packet));
+    zlink_socket_handler_t handler;
+    memset (&handler, 0, sizeof (handler));
+    handler.kind = ZLINK_SOCKET_HANDLER_MSG;
+    handler.fn.msg = &on_stream_handler;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &handler));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);

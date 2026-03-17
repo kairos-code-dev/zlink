@@ -74,9 +74,9 @@ void test_spot_unified_wss_subscription_ready_first_delivery ()
         TEST_ASSERT_NOT_NULL (ctx);
 
         void *pub_node =
-          zlink_spot_node_new (ctx, "perf-spot", &ignore_spot_handler);
+          zlink_spot_node_new (ctx, "perf-spot", &ignore_spot_handler, NULL);
         void *sub_node =
-          zlink_spot_node_new (ctx, "perf-spot-client", &ignore_spot_handler);
+          zlink_spot_node_new (ctx, "perf-spot-client", &ignore_spot_handler, NULL);
         TEST_ASSERT_NOT_NULL (pub_node);
         TEST_ASSERT_NOT_NULL (sub_node);
 

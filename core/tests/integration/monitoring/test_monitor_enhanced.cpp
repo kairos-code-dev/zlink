@@ -64,7 +64,8 @@ void close_raw_delivery_parts (raw_delivery_probe_t *probe_,
 void capture_raw_delivery_into (raw_delivery_probe_t *probe_,
                                 const zlink_routing_id_t *source_rid_,
                                 zlink_msg_t *parts_,
-                                size_t part_count_)
+                                size_t part_count_,
+                          void *)
 {
     if (!probe_) {
         close_raw_delivery_parts (NULL, parts_, part_count_);
@@ -100,18 +101,20 @@ void capture_raw_delivery_into (raw_delivery_probe_t *probe_,
 
 void capture_raw_delivery_a (const zlink_routing_id_t *source_rid_,
                              zlink_msg_t *parts_,
-                             size_t part_count_)
+                             size_t part_count_,
+                          void *)
 {
     capture_raw_delivery_into (g_raw_delivery_probe_a, source_rid_, parts_,
-                               part_count_);
+                               part_count_, NULL);
 }
 
 void capture_raw_delivery_b (const zlink_routing_id_t *source_rid_,
                              zlink_msg_t *parts_,
-                             size_t part_count_)
+                             size_t part_count_,
+                          void *)
 {
     capture_raw_delivery_into (g_raw_delivery_probe_b, source_rid_, parts_,
-                               part_count_);
+                               part_count_, NULL);
 }
 
 bool wait_for_probe_calls (raw_delivery_probe_t *probe_,
@@ -187,7 +190,7 @@ static void assert_ready_snapshot (void *monitor_)
 static void *open_raw_monitor (void *socket_, uint64_t events_)
 {
     void *monitor = zlink_socket_monitor_open (socket_, events_,
-                                               &zlink_monitor_ignore_handler);
+                                               &zlink_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
     set_zero_linger (monitor);
     return monitor;
@@ -332,7 +335,7 @@ static void run_client_monitor_ready_disconnected_test (int client_type_,
 
     void *mon = zlink_socket_monitor_open (
       client, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-      &zlink_monitor_ignore_handler);
+      &zlink_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (mon);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (mon, ZLINK_LINGER, &zero, sizeof (zero)));
@@ -386,7 +389,7 @@ void test_monitor_open_and_connection_ready ()
     void *mon = zlink_socket_monitor_open (server,
                                          ZLINK_EVENT_CONNECTION_READY
                                            | ZLINK_EVENT_DISCONNECTED,
-                                         &zlink_monitor_ignore_handler);
+                                         &zlink_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (mon);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
@@ -610,7 +613,7 @@ void test_peer_enumeration ()
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
 
     void *mon = zlink_socket_monitor_open (server, ZLINK_EVENT_CONNECTION_READY,
-                                           &zlink_monitor_ignore_handler);
+                                           &zlink_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (mon);
 
     zlink_monitor_event_t ready;
@@ -654,7 +657,7 @@ void test_router_monitor_event_sequence_timing ()
     void *mon = zlink_socket_monitor_open (
       server, ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_CONNECTION_READY
                 | ZLINK_EVENT_DISCONNECTED,
-      &zlink_monitor_ignore_handler);
+      &zlink_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (mon);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (mon, ZLINK_LINGER, &zero, sizeof (zero)));

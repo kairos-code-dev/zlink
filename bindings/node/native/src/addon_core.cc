@@ -137,7 +137,8 @@ void stream_tsfn_call_js(napi_env env,
 template <size_t Slot>
 int stream_on_packets_slot(const zlink_routing_id_t *rid_,
                            zlink_msg_t *msgs_,
-                           size_t msg_count_)
+                           size_t msg_count_,
+                           void *userdata_)
 {
     if (!rid_ || !msgs_ || msg_count_ == 0)
         return 0;
@@ -190,7 +191,7 @@ int stream_on_packets_slot(const zlink_routing_id_t *rid_,
 }
 
 template <size_t Slot>
-int stream_on_raw_slot(const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
+int stream_on_raw_slot(const zlink_routing_id_t *rid_, zlink_msg_t *msg_, void *userdata_)
 {
     if (!rid_ || !msg_)
         return 0;
@@ -238,9 +239,11 @@ int stream_on_raw_slot(const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
 
 typedef int (*stream_slot_packets_callback_t)(const zlink_routing_id_t *,
                                               zlink_msg_t *,
-                                              size_t);
+                                              size_t,
+                                              void *);
 typedef int (*stream_slot_raw_callback_t)(const zlink_routing_id_t *,
-                                          zlink_msg_t *);
+                                          zlink_msg_t *,
+                                          void *);
 
 #define STREAM_SLOT_PACKETS_CALLBACK(N) &stream_on_packets_slot<N>
 static stream_slot_packets_callback_t
@@ -408,7 +411,7 @@ napi_value socket_new(napi_env env, napi_callback_info info)
     int32_t type = 0;
     napi_get_value_external(env, argv[0], &ctx);
     napi_get_value_int32(env, argv[1], &type);
-    void *sock = zlink_socket(ctx, type);
+    void *sock = zlink_socket(ctx, type, NULL);
     if (!sock)
         return throw_last_error(env, "socket failed");
     napi_value ext;
@@ -699,7 +702,7 @@ napi_value socket_stream_attach(napi_env env, napi_callback_info info)
         rc = zlink_stream_attach_len32be(
           sock, g_stream_slot_packet_callbacks[slot_index]);
     } else {
-        rc = zlink_stream_attach_raw(sock, g_stream_slot_raw_callbacks[slot_index]);
+        rc = zlink_stream_attach_raw(sock, g_stream_slot_raw_callbacks[slot_index], NULL);
     }
     if (rc != 0) {
         stream_release_slot(sock);
@@ -871,7 +874,7 @@ napi_value monitor_open(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &sock);
     int32_t events = 0;
     napi_get_value_int32(env, argv[1], &events);
-    void *mon = zlink_socket_monitor_open(sock, events);
+    void *mon = zlink_socket_monitor_open(sock, events, NULL, NULL);
     if (!mon)
         return throw_last_error(env, "monitor_open failed");
     napi_value ext;

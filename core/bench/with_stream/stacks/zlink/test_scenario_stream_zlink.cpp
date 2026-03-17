@@ -131,9 +131,11 @@ class zlink_stream_echo_server_t
         }
 
         g_server_instance = this;
-        if (zlink_stream_attach_raw (
-              server, &zlink_stream_echo_server_t::on_raw_packet_static)
-            != 0) {
+        zlink_socket_handler_t handler;
+        std::memset (&handler, 0, sizeof (handler));
+        handler.kind = ZLINK_SOCKET_HANDLER_MSG;
+        handler.fn.msg = &zlink_stream_echo_server_t::on_packet_static;
+        if (zlink_socket_attach_handler (server, &handler) != 0) {
             std::fprintf (stderr, "zlink stream: dispatch attach failed: %s\n",
                           zlink_strerror (zlink_errno ()));
             return 2;
@@ -158,15 +160,16 @@ class zlink_stream_echo_server_t
     }
 
   private:
-    static int on_raw_packet_static (const zlink_routing_id_t *rid_,
-                                     zlink_msg_t *msg_)
+    static void on_packet_static (const zlink_routing_id_t *rid_,
+                                  zlink_msg_t *parts_,
+                                  size_t part_count_,
+                                  void *)
     {
         zlink_stream_echo_server_t *self = g_server_instance;
-        if (!self || !rid_ || !msg_)
-            return 0;
-        const int rc = self->on_packet (rid_, msg_);
-        (void) zlink_msg_close (msg_);
-        return rc;
+        if (self && rid_ && parts_ && part_count_ > 0)
+            (void) self->on_packet (rid_, &parts_[0]);
+        for (size_t i = 0; i < part_count_; ++i)
+            (void) zlink_msg_close (&parts_[i]);
     }
 
     void mark_parse_error ()

@@ -1,4 +1,3 @@
-#include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_metric_header.hpp"

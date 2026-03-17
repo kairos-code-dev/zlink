@@ -40,7 +40,7 @@ public final class Native {
     private static final MethodHandle MH_CTX_SHUTDOWN = downcall("zlink_ctx_shutdown",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SOCKET = downcall("zlink_socket",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_CLOSE = downcall("zlink_close",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_BIND = downcall("zlink_bind",
@@ -58,7 +58,7 @@ public final class Native {
     private static final MethodHandle MH_STREAM_ATTACH = downcall("zlink_stream_attach",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_STREAM_ATTACH_RAW = downcall("zlink_stream_attach_raw",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_STREAM_ATTACH_LEN32BE = downcall("zlink_stream_attach_len32be",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_STREAM_DETACH = downcall("zlink_stream_detach",
@@ -162,7 +162,7 @@ public final class Native {
                     ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG));
 
     private static final MethodHandle MH_MONITOR_OPEN = downcall("zlink_socket_monitor_open",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MONITOR = downcall("zlink_socket_monitor",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_MONITOR_RECV = downcall("zlink_monitor_recv",
@@ -208,7 +208,9 @@ public final class Native {
 
     private static final MethodHandle MH_GATEWAY_NEW = downcall("zlink_gateway_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_GATEWAY_ATTACH_DISC = downcall("zlink_gateway_attach_discovery",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_GATEWAY_SEND = downcall("zlink_gateway_send",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_GATEWAY_SEND_BYTES = downcall("zlink_gateway_send_bytes",
@@ -271,7 +273,7 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
 
     private static final MethodHandle MH_SPOT_NODE_NEW = downcall("zlink_spot_node_new",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_DESTROY = downcall("zlink_spot_node_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_BIND = downcall("zlink_spot_node_bind",
@@ -383,7 +385,7 @@ public final class Native {
 
     public static MemorySegment socket(MemorySegment ctx, int type) {
         try {
-            return (MemorySegment) MH_SOCKET.invokeExact(ctx, type);
+            return (MemorySegment) MH_SOCKET.invokeExact(ctx, type, MemorySegment.NULL);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_socket failed", t);
         }
@@ -457,7 +459,7 @@ public final class Native {
     public static int streamAttachRaw(MemorySegment socket,
                                       MemorySegment callback) {
         try {
-            return (int) MH_STREAM_ATTACH_RAW.invokeExact(socket, callback);
+            return (int) MH_STREAM_ATTACH_RAW.invokeExact(socket, callback, MemorySegment.NULL);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_stream_attach_raw failed", t);
         }
@@ -544,7 +546,7 @@ public final class Native {
 
     public static MemorySegment monitorOpen(MemorySegment socket, int events) {
         try {
-            return (MemorySegment) MH_MONITOR_OPEN.invokeExact(socket, events);
+            return (MemorySegment) MH_MONITOR_OPEN.invokeExact(socket, events, MemorySegment.NULL, MemorySegment.NULL);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_socket_monitor_open failed", t);
         }
@@ -974,7 +976,21 @@ public final class Native {
 
     public static MemorySegment gatewayNew(MemorySegment ctx, MemorySegment disc, MemorySegment routingId) {
         try {
-            return (MemorySegment) MH_GATEWAY_NEW.invokeExact(ctx, disc, routingId);
+            MemorySegment gw = (MemorySegment) MH_GATEWAY_NEW.invokeExact(ctx, MemorySegment.NULL, routingId, MemorySegment.NULL, MemorySegment.NULL);
+            if (gw.equals(MemorySegment.NULL))
+                return gw;
+            if (!disc.equals(MemorySegment.NULL)) {
+                int rc = (int) MH_GATEWAY_ATTACH_DISC.invokeExact(gw, disc);
+                if (rc != 0) {
+                    Arena arena = Arena.ofConfined();
+                    MemorySegment p = arena.allocate(ValueLayout.ADDRESS);
+                    p.set(ValueLayout.ADDRESS, 0, gw);
+                    MH_GATEWAY_DESTROY.invokeExact(p);
+                    arena.close();
+                    return MemorySegment.NULL;
+                }
+            }
+            return gw;
         } catch (Throwable t) {
             throw new RuntimeException("zlink_gateway_new failed", t);
         }
@@ -1231,7 +1247,7 @@ public final class Native {
 
     public static MemorySegment spotNodeNew(MemorySegment ctx) {
         try {
-            return (MemorySegment) MH_SPOT_NODE_NEW.invokeExact(ctx);
+            return (MemorySegment) MH_SPOT_NODE_NEW.invokeExact(ctx, MemorySegment.NULL, MemorySegment.NULL, MemorySegment.NULL);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_new failed", t);
         }

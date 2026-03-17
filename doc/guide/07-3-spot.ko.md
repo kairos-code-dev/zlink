@@ -75,7 +75,7 @@ void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_SPOT);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* SPOT Node 설정 (service_name과 handler를 생성 시점에 고정) */
-void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
+void *node = zlink_spot_node_new(ctx, "spot-node", on_message, NULL);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* Discovery 연결 */
@@ -88,7 +88,7 @@ Discovery가 attach되면 Registry를 통해 자동으로 peer를 발견하고 �
 ### 3.2 수동 Mesh
 
 ```c
-void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
+void *node = zlink_spot_node_new(ctx, "spot-node", on_message, NULL);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* 다른 노드의 PUB에 직접 연결 */
@@ -104,7 +104,7 @@ zlink_spot_node_connect_peer_pub(node, "tcp://node3:9000");
 ### 4.1 생성
 
 ```c
-void *spot = zlink_spot_new(node, on_message);
+void *spot = zlink_spot_new(node, on_message, NULL);
 ```
 
 `zlink_spot_new()`는 publish와 subscribe를 함께 가진 unified facade를
@@ -140,16 +140,17 @@ zlink_spot_unsubscribe(spot, "chat:room1:*");
 /* 콜백 함수 정의 */
 void on_message(const zlink_routing_id_t *source_rid,
                 const char *topic, size_t topic_len,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     printf("토픽: %.*s, 파트: %zu\n", (int)topic_len, topic, part_count);
 }
 
 /* spot_node 생성 시 handler 등록 */
-void *node = zlink_spot_node_new(ctx, "spot-node", on_message);
+void *node = zlink_spot_node_new(ctx, "spot-node", on_message, NULL);
 
 /* 또는 unified spot 생성 시 handler 등록 */
-void *spot = zlink_spot_new(node, on_message);
+void *spot = zlink_spot_new(node, on_message, NULL);
 ```
 
 **중요:** public `spot` / `spot_node` handle은 same-handle operational API
@@ -167,6 +168,8 @@ subscribe/unsubscribe/attach/peer connect/monitor는 runtime control path로
 - 느린 처리가 필요하면 콜백 안에서 사용자 queue로 넘기고 별도 thread에서 처리한다
 - `destroy`는 fail-fast lifecycle gate를 가지므로, 외부 사용을 중단한 뒤
   정리하는 것이 가장 단순하다
+
+> 전체 three-tier 계약과 추가 패턴은 [스레드 안전성 가이드](11-thread-safety.ko.md)를 참고.
 
 ## 5. 토픽 규칙
 

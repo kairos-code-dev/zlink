@@ -38,7 +38,7 @@ public sealed class Socket : IDisposable
     {
         if (context == null)
             throw new ArgumentNullException(nameof(context));
-        _handle = NativeMethods.zlink_socket(context.Handle, (int)type);
+        _handle = NativeMethods.zlink_socket(context.Handle, (int)type, IntPtr.Zero);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         _own = true;
@@ -157,7 +157,7 @@ public sealed class Socket : IDisposable
         _streamPacketHandler = handler;
         _streamBatchHandler = null;
         _streamRawCallback = OnStreamRaw;
-        int rc = NativeMethods.zlink_stream_attach_raw(_handle, _streamRawCallback);
+        int rc = NativeMethods.zlink_stream_attach_raw(_handle, _streamRawCallback, IntPtr.Zero);
         if (rc != 0)
         {
             _streamPacketHandler = null;
@@ -713,7 +713,7 @@ public sealed class Socket : IDisposable
     {
         EnsureNotDisposed();
         IntPtr handle = NativeMethods.zlink_socket_monitor_open(_handle,
-            (int)events);
+            (int)events, IntPtr.Zero, IntPtr.Zero);
         if (handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         return new MonitorSocket(Socket.Adopt(handle, true));
@@ -740,7 +740,7 @@ public sealed class Socket : IDisposable
     }
 
     private unsafe int OnStreamPackets(IntPtr routingId, IntPtr messages,
-        nuint messageCount)
+        nuint messageCount, IntPtr userdata)
     {
         StreamBatchHandler? batchHandler = _streamBatchHandler;
         if (batchHandler == null
@@ -803,7 +803,7 @@ public sealed class Socket : IDisposable
         return rc;
     }
 
-    private unsafe int OnStreamRaw(IntPtr routingId, IntPtr message)
+    private unsafe int OnStreamRaw(IntPtr routingId, IntPtr message, IntPtr userdata)
     {
         StreamPacketHandler? handler = _streamPacketHandler;
         if (handler == null || routingId == IntPtr.Zero || message == IntPtr.Zero)

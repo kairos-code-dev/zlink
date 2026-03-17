@@ -38,7 +38,8 @@ class spot_pub_t
                  int flags_);
     int set_option (int option_, const void *optval_, size_t optvallen_);
     int set_send_ready_handler (zlink_send_ready_handler_fn handler_,
-                                void *subject_);
+                                void *subject_,
+                                void *userdata_);
     int routing_id (zlink_routing_id_t *out_) const;
     int fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const;
     void *monitor_open (int events_);
@@ -83,6 +84,7 @@ class spot_pub_t
     std::atomic<bool> _routing_id_locked;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
     std::atomic<void *> _send_ready_subject;
+    std::atomic<void *> _send_ready_userdata;
     std::atomic<bool> _destroying;
     service_monitor_hub_t _monitor;
     moodycamel::ConcurrentQueue<zlink_service_event_t> _monitor_event_queue;

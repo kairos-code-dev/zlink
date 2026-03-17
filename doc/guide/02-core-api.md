@@ -11,8 +11,8 @@ A Context is the top-level object in zlink that manages the I/O thread pool and 
 void *ctx = zlink_ctx_new();
 
 /* Configure */
-zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* Number of I/O threads (default 2) */
-zlink_ctx_set(ctx, ZLINK_MAX_SOCKETS, 2048); /* Max sockets (default 1023) */
+zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* Number of I/O threads (default 1) */
+zlink_ctx_set(ctx, ZLINK_MAX_SOCKETS, 2048); /* Max sockets (default 4095) */
 
 /* Query */
 int io_threads = zlink_ctx_get(ctx, ZLINK_IO_THREADS);
@@ -25,8 +25,8 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `ZLINK_IO_THREADS` | 2 | Number of I/O threads |
-| `ZLINK_MAX_SOCKETS` | 1023 | Maximum number of sockets |
+| `ZLINK_IO_THREADS` | 1 | Number of I/O threads |
+| `ZLINK_MAX_SOCKETS` | 4095 | Maximum number of sockets |
 | `ZLINK_MAX_MSGSZ` | -1 | Maximum message size (-1: unlimited) |
 
 ## 2. Socket API
@@ -47,10 +47,12 @@ same cost model, though.
   init-only configuration, callback-context restrictions on specific
   reentrant APIs, and concurrent sharing of the same `zlink_msg_t` object.
 
+> For the complete threading contract, see [Thread-Safety Guide](11-thread-safety.md).
+
 ### 2.1 Socket Creation and Closing
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_DEALER, NULL);
+void *socket = zlink_socket(ctx, ZLINK_DEALER);
 /* ... use ... */
 zlink_close(socket);
 ```
@@ -59,14 +61,14 @@ zlink_close(socket);
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `ZLINK_PAIR` | 0 | 1:1 Bidirectional |
-| `ZLINK_PUB` | 1 | Publisher |
-| `ZLINK_SUB` | 2 | Subscriber |
-| `ZLINK_DEALER` | 5 | Asynchronous request |
-| `ZLINK_ROUTER` | 6 | Routing |
-| `ZLINK_XPUB` | 9 | Advanced publisher |
-| `ZLINK_XSUB` | 10 | Advanced subscriber |
-| `ZLINK_STREAM` | 11 | RAW communication |
+| `ZLINK_PAIR` | 0x1001 | 1:1 Bidirectional |
+| `ZLINK_PUB` | 0x1002 | Publisher |
+| `ZLINK_SUB` | 0x1003 | Subscriber |
+| `ZLINK_DEALER` | 0x1004 | Asynchronous request |
+| `ZLINK_ROUTER` | 0x1005 | Routing |
+| `ZLINK_XPUB` | 0x1006 | Advanced publisher |
+| `ZLINK_XSUB` | 0x1007 | Advanced subscriber |
+| `ZLINK_STREAM` | 0x1008 | RAW communication |
 
 ### 2.3 Connection Management
 
@@ -99,8 +101,8 @@ Key options:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `ZLINK_SNDHWM` | int | 300000 | Send High Water Mark |
-| `ZLINK_RCVHWM` | int | 300000 | Receive High Water Mark |
+| `ZLINK_SNDHWM` | int | 1000 | Send High Water Mark |
+| `ZLINK_RCVHWM` | int | 1000 | Receive High Water Mark |
 | `ZLINK_SNDTIMEO` | int | -1 | Send timeout (ms, -1: unlimited) |
 | `ZLINK_RCVTIMEO` | int | -1 | Receive timeout (ms, -1: unlimited) |
 | `ZLINK_LINGER` | int | -1 | Wait time on socket close (ms) |
@@ -127,12 +129,13 @@ zlink_send(socket, "body", 4, 0);
 
 ### 3.2 Receiving (Callback Handler)
 
-All receives are dispatched through a handler callback registered at socket creation time.
+All receives can be dispatched through a handler callback attached after socket creation.
 There is no `recv()` function — the callback is invoked asynchronously when a message arrives.
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     for (size_t i = 0; i < part_count; i++) {
         printf("Frame %zu: %.*s\n", i,
@@ -144,9 +147,11 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 zlink_socket_handler_t handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message
+    .fn.msg = on_message,
+    .userdata = NULL
 };
-void *socket = zlink_socket(ctx, ZLINK_PAIR, &handler);
+void *socket = zlink_socket(ctx, ZLINK_PAIR);
+zlink_socket_attach_handler(socket, &handler);
 ```
 
 ### 3.3 Send Flags
@@ -158,13 +163,13 @@ void *socket = zlink_socket(ctx, ZLINK_PAIR, &handler);
 
 ## 4. Handler Types
 
-Each socket type accepts a specific handler kind at creation time:
+Each socket type accepts a specific handler kind:
 
 | Socket Type | Handler Kind | Callback Signature |
 |---|---|---|
-| PAIR, DEALER, ROUTER | `ZLINK_SOCKET_HANDLER_MSG` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count)` |
-| SUB | `ZLINK_SOCKET_HANDLER_SPOT` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count)` |
-| XPUB | `ZLINK_SOCKET_HANDLER_XPUB` | `void fn(int subscribed, const uint8_t *topic, size_t topic_len)` |
+| PAIR, DEALER, ROUTER | `ZLINK_SOCKET_HANDLER_MSG` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)` |
+| SUB | `ZLINK_SOCKET_HANDLER_SPOT` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)` |
+| XPUB | `ZLINK_SOCKET_HANDLER_XPUB` | `void fn(int subscribed, const uint8_t *topic, size_t topic_len, void *userdata)` |
 | PUB, XSUB | N/A (NULL) | Send-only sockets |
 
 Callbacks are invoked on the I/O thread. Avoid blocking work inside callbacks.
@@ -200,7 +205,8 @@ Key error codes:
 #include <stdio.h>
 
 void on_router_message(const zlink_routing_id_t *source_rid,
-                       zlink_msg_t *parts, size_t part_count)
+                       zlink_msg_t *parts, size_t part_count,
+                       void *userdata)
 {
     printf("Received from [%.*s]: %.*s\n",
            (int)source_rid->size, source_rid->data,
@@ -211,7 +217,8 @@ void on_router_message(const zlink_routing_id_t *source_rid,
 }
 
 void on_dealer_message(const zlink_routing_id_t *source_rid,
-                       zlink_msg_t *parts, size_t part_count)
+                       zlink_msg_t *parts, size_t part_count,
+                       void *userdata)
 {
     printf("Reply: %.*s\n",
            (int)zlink_msg_size(&parts[0]),
@@ -226,17 +233,21 @@ int main(void) {
     /* ROUTER (server) */
     zlink_socket_handler_t router_handler = {
         .kind = ZLINK_SOCKET_HANDLER_MSG,
-        .fn.msg = on_router_message
+        .fn.msg = on_router_message,
+        .userdata = NULL
     };
-    void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
+    void *router = zlink_socket(ctx, ZLINK_ROUTER);
+    zlink_socket_attach_handler(router, &router_handler);
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (client) */
     zlink_socket_handler_t dealer_handler = {
         .kind = ZLINK_SOCKET_HANDLER_MSG,
-        .fn.msg = on_dealer_message
+        .fn.msg = on_dealer_message,
+        .userdata = NULL
     };
-    void *dealer = zlink_socket(ctx, ZLINK_DEALER, &dealer_handler);
+    void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+    zlink_socket_attach_handler(dealer, &dealer_handler);
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */

@@ -1,6 +1,6 @@
-#include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
+#include "../common/perf_multi_client_helpers.hpp"
 #include "../common/perf_multi_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
@@ -23,88 +23,7 @@ static const char *k_pattern = "MULTI_DEALER_DEALER";
 static const char *k_token = "dealer_dealer";
 static const zlink_socket_type_t k_server_socket_type = ZLINK_DEALER;
 
-static std::atomic<bool> g_stop_requested (false);
-
-inline void on_signal (int)
-{
-    g_stop_requested.store (true, std::memory_order_release);
-}
-
-inline void install_signal_handlers ()
-{
-    std::signal (SIGINT, on_signal);
-#if defined(SIGTERM)
-    std::signal (SIGTERM, on_signal);
-#endif
-}
-
-inline bool is_supported_transport (const std::string &transport)
-{
-    if (transport == "tcp" || transport == "tls" || transport == "ws"
-        || transport == "wss")
-        return true;
-#if !defined(_WIN32)
-    if (transport == "ipc")
-        return true;
-#endif
-    return false;
-}
-
-inline std::string bind_server_endpoint (void *server,
-                                         const std::string &transport,
-                                         const std::string &token)
-{
-    const int bind_port =
-      resolve_multi_int_env ("PERF_MULTI_SERVER_BIND_PORT", 0, 0);
-    if (bind_port <= 0) {
-        std::string endpoint_any = make_endpoint (transport, token);
-        if (endpoint_any.empty ()) {
-            std::cerr << "No endpoint available for transport " << transport
-                      << std::endl;
-            return std::string ();
-        }
-        if (zlink_bind (server, endpoint_any.c_str ()) != 0) {
-            std::cerr << "bind failed for " << endpoint_any << ": "
-                      << zlink_strerror (zlink_errno ()) << std::endl;
-            return std::string ();
-        }
-
-        char last_endpoint[MAX_SOCKET_STRING] = "";
-        size_t size = sizeof (last_endpoint);
-        if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size)
-            == 0) {
-            endpoint_any.assign (last_endpoint);
-            const std::string any_v4 = "://0.0.0.0:";
-            const std::string any_v6 = "://[::]:";
-            size_t pos = endpoint_any.find (any_v4);
-            if (pos != std::string::npos) {
-                endpoint_any.replace (pos, any_v4.size (), "://127.0.0.1:");
-            } else {
-                pos = endpoint_any.find (any_v6);
-                if (pos != std::string::npos)
-                    endpoint_any.replace (
-                      pos, any_v6.size (), "://127.0.0.1:");
-            }
-        }
-
-        apply_debug_timeouts (server, transport);
-        return endpoint_any;
-    }
-
-    std::string endpoint = make_fixed_endpoint (transport, bind_port);
-    if (zlink_bind (server, endpoint.c_str ()) != 0) {
-        std::cerr << "bind failed for " << endpoint << ": "
-                  << zlink_strerror (zlink_errno ()) << std::endl;
-        return std::string ();
-    }
-
-    char last_endpoint[MAX_SOCKET_STRING] = "";
-    size_t size = sizeof (last_endpoint);
-    if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size) == 0)
-        endpoint.assign (last_endpoint);
-    apply_debug_timeouts (server, transport);
-    return endpoint;
-}
+using perf_multi_client::normalize_latency_stats;
 
 enum recv_result_t
 {
@@ -202,7 +121,7 @@ inline bool drain_non_blocking_messages (
   long *lat_count,
   bench_latency_sampler_t *lat_samples)
 {
-    while (!g_stop_requested.load (std::memory_order_acquire)) {
+    while (!perf_stop_requested ().load (std::memory_order_acquire)) {
         const recv_result_t status = receive_one_message (
           server,
           ZLINK_DONTWAIT,
@@ -246,7 +165,7 @@ inline bool run_receive_window (
       + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
         std::chrono::duration<double> (duration_seconds));
 
-    while (!g_stop_requested.load (std::memory_order_acquire)
+    while (!perf_stop_requested ().load (std::memory_order_acquire)
            && std::chrono::steady_clock::now () < deadline) {
         const recv_result_t status = receive_one_message (
           server,
@@ -281,32 +200,6 @@ inline bool run_receive_window (
     }
 
     return true;
-}
-
-inline void normalize_latency_stats (double lat_sum,
-                                     long lat_count,
-                                     bench_latency_sampler_t *samples,
-                                     bench_latency_stats_t *latency_out)
-{
-    if (!latency_out)
-        return;
-    if (lat_count <= 0) {
-        *latency_out = bench_latency_stats_t ();
-        return;
-    }
-
-    bench_latency_stats_t stats = samples ? samples->snapshot () : bench_latency_stats_t ();
-    if (stats.mean_us <= 0.0)
-        stats.mean_us = lat_sum / static_cast<double> (lat_count);
-    if (stats.p95_us <= 0.0)
-        stats.p95_us = stats.mean_us;
-    if (stats.p99_us <= 0.0)
-        stats.p99_us = stats.p95_us;
-    if (stats.p95_us < stats.mean_us)
-        stats.p95_us = stats.mean_us;
-    if (stats.p99_us < stats.p95_us)
-        stats.p99_us = stats.p95_us;
-    *latency_out = stats;
 }
 
 inline bool run_one_size_benchmark (
@@ -476,18 +369,18 @@ inline int run_server_benchmark (const std::string &lib_name,
         return 1;
     }
 
-    g_stop_requested.store (false, std::memory_order_release);
-    install_signal_handlers ();
+    perf_stop_requested ().store (false, std::memory_order_release);
+    install_perf_signal_handlers ();
 
     std::thread stdin_watcher ([] () {
         std::string line;
         while (std::getline (std::cin, line)) {
             if (line == "STOP" || line == "QUIT") {
-                g_stop_requested.store (true, std::memory_order_release);
+                perf_stop_requested ().store (true, std::memory_order_release);
                 return;
             }
         }
-        g_stop_requested.store (true, std::memory_order_release);
+        perf_stop_requested ().store (true, std::memory_order_release);
     });
     stdin_watcher.detach ();
 
@@ -510,7 +403,7 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     bool ok = true;
     for (size_t si = 0; si < sizes.size (); ++si) {
-        if (g_stop_requested.load (std::memory_order_acquire)) {
+        if (perf_stop_requested ().load (std::memory_order_acquire)) {
             ok = false;
             break;
         }

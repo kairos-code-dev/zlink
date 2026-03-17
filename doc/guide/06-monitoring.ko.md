@@ -17,7 +17,7 @@ zlink 모니터링 API는 소켓의 연결/해제/핸드셰이크 등 이벤트�
 
 ```c
 /* 이벤트 핸들러 정의 */
-void on_monitor_event(const zlink_monitor_event_t *ev)
+void on_monitor_event(const zlink_monitor_event_t *ev, void *userdata)
 {
     printf("이벤트: 0x%llx\n", (unsigned long long)ev->event);
     printf("로컬: %s\n", ev->local_addr);
@@ -31,24 +31,15 @@ void on_monitor_event(const zlink_monitor_event_t *ev)
     }
 }
 
-void *server = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+void *server = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_bind(server, "tcp://*:5555");
 
 /* 모니터 생성 (핸들러 등록) */
 void *mon = zlink_socket_monitor_open(server, ZLINK_EVENT_ALL,
-                                       on_monitor_event);
+                                       on_monitor_event, NULL);
 ```
 
 이벤트 발생 시 `on_monitor_event` 콜백이 자동으로 호출된다.
-
-### 2.2 수동 설정 (레거시)
-
-```c
-zlink_socket_monitor(server, "inproc://monitor", ZLINK_EVENT_ALL);
-
-void *mon = zlink_socket(ctx, ZLINK_PAIR, NULL);
-zlink_connect(mon, "inproc://monitor");
-```
 
 ### 이벤트 구조체
 
@@ -230,7 +221,7 @@ ZMP 또는 WebSocket 프로토콜 오류로 핸드셰이크가 실패. `value` �
 
 #### MONITOR_STOPPED (`0x0400`)
 
-`zlink_socket_monitor(socket, NULL, 0)` 호출로 모니터가 중지될 때 발생한다. 이 이벤트 이후에는 더 이상 이벤트가 발생하지 않는다.
+`zlink_close(mon)` 호출로 모니터가 중지될 때 발생한다. 이 이벤트 이후에는 더 이상 이벤트가 발생하지 않는다.
 
 - **`value`**: 사용되지 않음.
 - **`routing_id`**: 사용 불가 (비어 있음).
@@ -295,7 +286,7 @@ CONNECT_DELAYED → CONNECT_RETRIED → CONNECTED → CONNECTION_READY
 ### reason 코드 처리 예제
 
 ```c
-void on_monitor(const zlink_monitor_event_t *ev)
+void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 {
     if (ev->event == ZLINK_EVENT_DISCONNECTED) {
         switch (ev->value) {
@@ -327,7 +318,7 @@ void on_monitor(const zlink_monitor_event_t *ev)
 /* 연결/해제 이벤트만 */
 void *mon = zlink_socket_monitor_open(server,
     ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-    on_monitor_event);
+    on_monitor_event, NULL);
 ```
 
 ### 권장 구독 프리셋
@@ -359,7 +350,7 @@ void *mon = zlink_socket_monitor_open(server,
      ZLINK_EVENT_HANDSHAKE_FAILED_AUTH)
 
 void *mon = zlink_socket_monitor_open(server, MONITOR_PRESET_SECURITY,
-                                      on_monitor_event);
+                                      on_monitor_event, NULL);
 ```
 
 ## 8. Monitor Snapshot
@@ -368,7 +359,7 @@ void *mon = zlink_socket_monitor_open(server, MONITOR_PRESET_SECURITY,
 
 ```c
 void *monitor = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL,
-                                          zlink_monitor_ignore_handler);
+                                          zlink_monitor_ignore_handler, NULL);
 zlink_monitor_snapshot_t snapshot;
 zlink_monitor_snapshot(monitor, &snapshot);
 printf("ready peers: %u, sndq=%llu, rcvq=%llu\n",
@@ -380,7 +371,7 @@ printf("ready peers: %u, sndq=%llu, rcvq=%llu\n",
 ### monitor event와 snapshot 결합
 
 ```c
-void on_monitor(const zlink_monitor_event_t *ev)
+void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 {
     if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
         zlink_monitor_snapshot_t snapshot;
@@ -416,24 +407,22 @@ service overlay는 raw socket보다 한 단계 높은 의미를 가진다. 그�
 여러 소켓의 이벤트를 각각의 콜백 핸들러로 처리.
 
 ```c
-void on_event_a(const zlink_monitor_event_t *ev)
+void on_event_a(const zlink_monitor_event_t *ev, void *userdata)
 {
     printf("소켓 A 이벤트: 0x%llx\n", (unsigned long long)ev->event);
 }
 
-void on_event_b(const zlink_monitor_event_t *ev)
+void on_event_b(const zlink_monitor_event_t *ev, void *userdata)
 {
     printf("소켓 B 이벤트: 0x%llx\n", (unsigned long long)ev->event);
 }
 
-void *mon_a = zlink_socket_monitor_open(sock_a, ZLINK_EVENT_ALL, on_event_a);
-void *mon_b = zlink_socket_monitor_open(sock_b, ZLINK_EVENT_ALL, on_event_b);
+void *mon_a = zlink_socket_monitor_open(sock_a, ZLINK_EVENT_ALL, on_event_a, NULL);
+void *mon_b = zlink_socket_monitor_open(sock_b, ZLINK_EVENT_ALL, on_event_b, NULL);
 
 /* ... 애플리케이션 로직 ... */
 
 /* 정리 */
-zlink_socket_monitor(sock_a, NULL, 0);
-zlink_socket_monitor(sock_b, NULL, 0);
 zlink_close(mon_a);
 zlink_close(mon_b);
 ```
@@ -449,9 +438,9 @@ zlink_close(mon_b);
 
 ```c
 /* 애플리케이션 스레드에서 monitor open */
-void *socket = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+void *socket = zlink_socket(ctx, ZLINK_ROUTER);
 void *mon = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL,
-                                       on_monitor_event);
+                                       on_monitor_event, NULL);
 
 /* 이후 다른 작업 스레드에서 snapshot 조회 가능 */
 zlink_monitor_snapshot_t snapshot;
@@ -470,14 +459,9 @@ zlink_monitor_snapshot(mon, &snapshot);
 ### 모니터 종료 절차
 
 ```c
-/* 1. 모니터링 중지 */
-zlink_socket_monitor(socket, NULL, 0);
-
-/* 2. 모니터 소켓 닫기 */
+/* 모니터 핸들 닫기 */
 zlink_close(mon);
 ```
-
-반드시 두 단계를 모두 수행해야 한다. `zlink_close(mon)`만 호출하면 내부 리소스가 정리되지 않을 수 있다.
 
 ## 11. 패밀리별 제어 Gate
 

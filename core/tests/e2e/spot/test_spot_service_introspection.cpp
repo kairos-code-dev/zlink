@@ -47,7 +47,8 @@ static void spot_probe_handler (const zlink_routing_id_t *,
                                 const char *topic_,
                                 size_t topic_len_,
                                 zlink_msg_t *parts_,
-                                size_t part_count_);
+                                size_t part_count_,
+                          void *);
 static void *g_spot_reentrant_ready_subject = NULL;
 static std::atomic<int> *g_spot_reentrant_ready_calls = NULL;
 static int g_spot_reentrant_ready_rc = 0;
@@ -82,7 +83,7 @@ static bool read_spot_snapshot (void *spot_,
       ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
         | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
         | ZLINK_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     if (!monitor)
         return false;
 
@@ -228,7 +229,8 @@ static void ignore_spot_handler (const zlink_routing_id_t *,
                                  const char *,
                                  size_t,
                                  zlink_msg_t *parts_,
-                                 size_t part_count_)
+                                 size_t part_count_,
+                          void *)
 {
     if (!parts_)
         return;
@@ -236,25 +238,25 @@ static void ignore_spot_handler (const zlink_routing_id_t *,
         zlink_msg_close (&parts_[i]);
 }
 
-static void spot_reentrant_ready_handler (void *subject_)
+static void spot_reentrant_ready_handler (void *subject_, void *)
 {
     g_spot_reentrant_ready_subject = subject_;
     if (g_spot_reentrant_ready_calls)
         g_spot_reentrant_ready_calls->fetch_add (1);
     errno = 0;
     g_spot_reentrant_ready_rc = zlink_spot_node_set_send_ready_handler (
-      subject_, &spot_reentrant_ready_handler);
+      subject_, &spot_reentrant_ready_handler, NULL);
     g_spot_reentrant_ready_errno = errno;
 }
 
-static void spot_counting_ready_handler (void *subject_)
+static void spot_counting_ready_handler (void *subject_, void *)
 {
     g_spot_ready_subject = subject_;
     if (g_spot_ready_calls)
         g_spot_ready_calls->fetch_add (1);
 }
 
-static void spot_publish_from_ready_handler (void *subject_)
+static void spot_publish_from_ready_handler (void *subject_, void *)
 {
     g_spot_ready_subject = subject_;
     if (g_spot_ready_calls)
@@ -280,7 +282,7 @@ static void spot_publish_from_ready_handler (void *subject_)
     }
 }
 
-static void spot_self_close_from_ready_handler (void *subject_)
+static void spot_self_close_from_ready_handler (void *subject_, void *)
 {
     g_spot_ready_subject = subject_;
     if (g_spot_ready_calls)
@@ -307,7 +309,7 @@ static void destroy_test_ctx (void *ctx_)
 
 static void *create_spot_node (void *ctx_, const char *service_name_)
 {
-    void *node = zlink_spot_node_new (ctx_, service_name_, &ignore_spot_handler);
+    void *node = zlink_spot_node_new (ctx_, service_name_, &ignore_spot_handler, NULL);
     if (!node)
         return NULL;
 
@@ -323,7 +325,7 @@ static void *create_spot_node (void *ctx_, const char *service_name_)
 
 static void *create_spot_handle (void *node_, zlink_spot_handler_fn handler_)
 {
-    void *spot = zlink_spot_new (node_, handler_);
+    void *spot = zlink_spot_new (node_, handler_, NULL);
     if (!spot)
         return NULL;
 
@@ -488,7 +490,7 @@ static int attach_spot_probe (void *spot_, spot_probe_t *probe_)
     return 0;
 }
 
-static void send_ready_probe_handler_a (void *subject_)
+static void send_ready_probe_handler_a (void *subject_, void *)
 {
     if (!g_send_ready_probe_a)
         return;
@@ -496,7 +498,7 @@ static void send_ready_probe_handler_a (void *subject_)
     g_send_ready_probe_a->calls.fetch_add (1);
 }
 
-static void send_ready_probe_handler_b (void *subject_)
+static void send_ready_probe_handler_b (void *subject_, void *)
 {
     if (!g_send_ready_probe_b)
         return;
@@ -504,7 +506,7 @@ static void send_ready_probe_handler_b (void *subject_)
     g_send_ready_probe_b->calls.fetch_add (1);
 }
 
-static void send_ready_probe_handler_replace (void *subject_)
+static void send_ready_probe_handler_replace (void *subject_, void *)
 {
     if (!g_send_ready_probe_replace)
         return;
@@ -513,7 +515,7 @@ static void send_ready_probe_handler_replace (void *subject_)
 }
 
 static void queued_service_monitor_handler_a (
-  const zlink_service_event_t *event_)
+  const zlink_service_event_t *event_, void *)
 {
     service_monitor_probe_t *probe = g_service_monitor_probe_a;
     if (!probe || !event_)
@@ -536,7 +538,7 @@ static void queued_service_monitor_handler_a (
 }
 
 static void queued_service_monitor_handler_b (
-  const zlink_service_event_t *event_)
+  const zlink_service_event_t *event_, void *)
 {
     service_monitor_probe_t *probe = g_service_monitor_probe_b;
     if (!probe || !event_)
@@ -559,7 +561,7 @@ static void queued_service_monitor_handler_b (
 }
 
 static void spot_monitor_parent_self_close_handler (
-  const zlink_service_event_t *)
+  const zlink_service_event_t *, void *)
 {
     if (g_spot_monitor_self_close_calls)
         g_spot_monitor_self_close_calls->fetch_add (1);
@@ -571,7 +573,7 @@ static void spot_monitor_parent_self_close_handler (
 }
 
 static void spot_node_monitor_parent_self_close_handler (
-  const zlink_service_event_t *)
+  const zlink_service_event_t *, void *)
 {
     if (g_spot_monitor_self_close_calls)
         g_spot_monitor_self_close_calls->fetch_add (1);
@@ -735,7 +737,8 @@ static void spot_probe_handler (const zlink_routing_id_t *,
                                 const char *topic_,
                                 size_t topic_len_,
                                 zlink_msg_t *parts_,
-                                size_t part_count_)
+                                size_t part_count_,
+                          void *)
 {
     spot_probe_t *probe = find_spot_probe_for_current_dispatch ();
     if (!probe) {
@@ -790,7 +793,7 @@ static bool wait_for_spot_message_bytes (spot_probe_t *probe_,
     return false;
 }
 
-static void ignore_service_monitor_event (const zlink_service_event_t *)
+static void ignore_service_monitor_event (const zlink_service_event_t *, void *)
 {
 }
 
@@ -839,7 +842,7 @@ static void test_spot_pub_sub_options_and_routing_ids ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *null_handler_node =
-      zlink_spot_node_new (ctx, "spot-null-handler", NULL);
+      zlink_spot_node_new (ctx, "spot-null-handler", NULL, NULL);
     TEST_ASSERT_NOT_NULL (null_handler_node);
     TEST_ASSERT_EQUAL_INT (0, zlink_spot_node_destroy (&null_handler_node));
     TEST_ASSERT_NULL (null_handler_node);
@@ -849,7 +852,7 @@ static void test_spot_pub_sub_options_and_routing_ids ()
     void *sub_node = create_spot_node (ctx, "spot-test");
     TEST_ASSERT_NOT_NULL (pub_node);
     TEST_ASSERT_NOT_NULL (sub_node);
-    void *null_handler_spot = zlink_spot_new (pub_node, NULL);
+    void *null_handler_spot = zlink_spot_new (pub_node, NULL, NULL);
     TEST_ASSERT_NOT_NULL (null_handler_spot);
     TEST_ASSERT_EQUAL_INT (0, zlink_spot_destroy (&null_handler_spot));
     TEST_ASSERT_NULL (null_handler_spot);
@@ -860,9 +863,9 @@ static void test_spot_pub_sub_options_and_routing_ids ()
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_node_set_send_ready_handler (pub_node, NULL));
+      -1, zlink_spot_node_set_send_ready_handler (pub_node, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_set_send_ready_handler (pub, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_spot_set_send_ready_handler (pub, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     const int pub_sndhwm = 222;
@@ -924,9 +927,9 @@ static void test_spot_pub_sub_options_and_routing_ids ()
     g_spot_ready_publish_errno = 0;
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
-      pub_node, &spot_counting_ready_handler));
+      pub_node, &spot_counting_ready_handler, NULL));
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_node_set_send_ready_handler (pub_node, NULL));
+      -1, zlink_spot_node_set_send_ready_handler (pub_node, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     zlink::spot_node_t *pub_node_impl =
@@ -939,7 +942,7 @@ static void test_spot_pub_sub_options_and_routing_ids ()
     TEST_ASSERT_EQUAL_PTR (pub_node, g_spot_ready_subject);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
-      pub_node, &spot_publish_from_ready_handler));
+      pub_node, &spot_publish_from_ready_handler, NULL));
     pub_impl->invoke_send_ready_for_testing ();
 
     TEST_ASSERT_EQUAL_INT (2, ready_calls.load ());
@@ -955,7 +958,7 @@ static void test_spot_pub_sub_options_and_routing_ids ()
     g_spot_reentrant_ready_errno = 0;
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
-      pub_node, &spot_reentrant_ready_handler));
+      pub_node, &spot_reentrant_ready_handler, NULL));
     pub_impl->invoke_send_ready_for_testing ();
 
     TEST_ASSERT_EQUAL_INT (1, reentrant_ready_calls.load ());
@@ -1013,46 +1016,46 @@ static void test_spot_monitors_and_monitor_poller ()
     TEST_ASSERT_NOT_NULL (sub);
     errno = 0;
     void *sub_null_monitor = zlink_spot_monitor_open (
-      sub, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_READY, NULL);
+      sub, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_READY, NULL, NULL);
     TEST_ASSERT_NULL (sub_null_monitor);
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     errno = 0;
     void *pub_null_monitor = zlink_spot_monitor_open (
-      pub, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_READY, NULL);
+      pub, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_READY, NULL, NULL);
     TEST_ASSERT_NULL (pub_null_monitor);
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     errno = 0;
     void *sub_node_null_monitor = zlink_spot_node_monitor_open (
-      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_READY, NULL);
+      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_READY, NULL, NULL);
     TEST_ASSERT_NULL (sub_node_null_monitor);
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     errno = 0;
     void *pub_node_null_monitor = zlink_spot_node_monitor_open (
-      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_READY, NULL);
+      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_READY, NULL, NULL);
     TEST_ASSERT_NULL (pub_node_null_monitor);
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     void *sub_ignore_monitor = zlink_spot_monitor_open (
       sub, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_READY,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (sub_ignore_monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_service_monitor_close (&sub_ignore_monitor));
     void *pub_ignore_monitor = zlink_spot_monitor_open (
       pub, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_READY,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (pub_ignore_monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_service_monitor_close (&pub_ignore_monitor));
     void *sub_node_ignore_monitor = zlink_spot_node_monitor_open (
       sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_READY,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (sub_node_ignore_monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_service_monitor_close (&sub_node_ignore_monitor));
     void *pub_node_ignore_monitor = zlink_spot_node_monitor_open (
       pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_READY,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (pub_node_ignore_monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_service_monitor_close (&pub_node_ignore_monitor));
@@ -1076,7 +1079,7 @@ static void test_spot_monitors_and_monitor_poller ()
                                  | ZLINK_SPOT_SUB_FILTER_APPLIED
                                  | ZLINK_SPOT_SUB_SUBSCRIPTION_READY
                                  | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED,
-                               queued_service_monitor_handler_a);
+                               queued_service_monitor_handler_a, NULL);
     void *pub_monitor =
       zlink_spot_monitor_open (pub, ZLINK_SPOT_ROLE_PUB,
                                ZLINK_MONITOR_EVENT_READY
@@ -1086,7 +1089,7 @@ static void test_spot_monitors_and_monitor_poller ()
                                  | ZLINK_MONITOR_EVENT_CLOSED
                                  | ZLINK_MONITOR_EVENT_ERROR
                                  | ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED,
-                               queued_service_monitor_handler_b);
+                               queued_service_monitor_handler_b, NULL);
     TEST_ASSERT_NOT_NULL (sub_monitor);
     TEST_ASSERT_NOT_NULL (pub_monitor);
 
@@ -1363,9 +1366,9 @@ static void test_spot_node_send_ready_handler_isolated_by_service ()
     g_send_ready_probe_replace = &probe_replace;
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
-      node_a, &send_ready_probe_handler_a));
+      node_a, &send_ready_probe_handler_a, NULL));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
-      node_b, &send_ready_probe_handler_b));
+      node_b, &send_ready_probe_handler_b, NULL));
 
     zlink::spot_node_t *node_a_impl =
       static_cast<zlink::spot_node_t *> (node_a);
@@ -1387,7 +1390,7 @@ static void test_spot_node_send_ready_handler_isolated_by_service ()
     TEST_ASSERT_EQUAL_PTR (node_b, probe_b.last_subject);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
-      node_a, &send_ready_probe_handler_replace));
+      node_a, &send_ready_probe_handler_replace, NULL));
 
     pub_b->invoke_send_ready_for_testing ();
     TEST_ASSERT_EQUAL_INT (0, probe_replace.calls.load ());
@@ -1664,12 +1667,12 @@ static void test_spot_late_connect_replays_existing_subscription ()
                                ZLINK_SPOT_SUB_FILTER_APPLIED
                                  | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
                                  | ZLINK_MONITOR_EVENT_ERROR,
-                               queued_service_monitor_handler_a);
+                               queued_service_monitor_handler_a, NULL);
     void *pub_monitor =
       zlink_spot_monitor_open (pub, ZLINK_SPOT_ROLE_PUB,
                                ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
                                  | ZLINK_MONITOR_EVENT_ERROR,
-                               queued_service_monitor_handler_b);
+                               queued_service_monitor_handler_b, NULL);
     TEST_ASSERT_NOT_NULL (sub_monitor);
     TEST_ASSERT_NOT_NULL (pub_monitor);
 
@@ -1721,10 +1724,10 @@ static void test_spot_faulted_node_apis_fail_with_efsm ()
       -1, zlink_spot_node_bind (node_handle, "tcp://127.0.0.1:9"));
     TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
     TEST_ASSERT_EQUAL_PTR (
-      NULL, zlink_spot_new (node_handle, &ignore_spot_handler));
+      NULL, zlink_spot_new (node_handle, &ignore_spot_handler, NULL));
     TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
     TEST_ASSERT_EQUAL_PTR (
-      NULL, zlink_spot_new (node_handle, &spot_probe_handler));
+      NULL, zlink_spot_new (node_handle, &spot_probe_handler, NULL));
     TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_spot_node_connect_peer_pub (node_handle, "tcp://127.0.0.1:9"));
@@ -1742,7 +1745,7 @@ static void test_spot_node_destroy_rejects_open_child_handle ()
     void *node = create_spot_node (ctx, "spot-child-open");
     TEST_ASSERT_NOT_NULL (node);
 
-    void *spot = zlink_spot_new (node, &ignore_spot_handler);
+    void *spot = zlink_spot_new (node, &ignore_spot_handler, NULL);
     TEST_ASSERT_NOT_NULL (spot);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (spot, "child-open"));
 
@@ -1767,7 +1770,7 @@ static void test_spot_node_destroy_closes_open_monitor_child ()
     g_service_monitor_probe_a = &probe;
     void *monitor = zlink_spot_node_monitor_open (
       node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_EVENT_CLOSED,
-      &queued_service_monitor_handler_a);
+      &queued_service_monitor_handler_a, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
@@ -1803,7 +1806,7 @@ static void test_spot_send_ready_handler_self_close_returns_ebusy ()
     g_spot_ready_self_close_errno = 0;
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_send_ready_handler (
-      pub_node, &spot_self_close_from_ready_handler));
+      pub_node, &spot_self_close_from_ready_handler, NULL));
 
     zlink::spot_node_t *pub_node_impl =
       static_cast<zlink::spot_node_t *> (pub_node);
@@ -1854,7 +1857,7 @@ static void test_spot_monitor_callback_parent_destroy_returns_ebusy ()
 
     void *monitor = zlink_spot_monitor_open (
       sub, ZLINK_SPOT_ROLE_SUB, ZLINK_SPOT_SUB_FILTER_APPLIED,
-      &spot_monitor_parent_self_close_handler);
+      &spot_monitor_parent_self_close_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "monitor-close"));
@@ -1897,7 +1900,7 @@ static void test_spot_node_monitor_callback_parent_destroy_returns_ebusy ()
 
     void *monitor = zlink_spot_node_monitor_open (
       sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_SPOT_SUB_FILTER_APPLIED,
-      &spot_node_monitor_parent_self_close_handler);
+      &spot_node_monitor_parent_self_close_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
 
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1925,13 +1928,13 @@ static void test_spot_node_rejects_child_open_after_close_accept ()
     zlink::spot_node_t *node_impl = static_cast<zlink::spot_node_t *> (node);
     TEST_ASSERT_TRUE (node_impl->public_api_guard ().begin_close_or_fail_busy ());
 
-    TEST_ASSERT_EQUAL_PTR (NULL, zlink_spot_new (node, &ignore_spot_handler));
+    TEST_ASSERT_EQUAL_PTR (NULL, zlink_spot_new (node, &ignore_spot_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
 
     TEST_ASSERT_EQUAL_PTR (
       NULL, zlink_spot_node_monitor_open (node, ZLINK_SPOT_ROLE_PUB,
                                           ZLINK_MONITOR_EVENT_CLOSED,
-                                          &zlink_service_monitor_ignore_handler));
+                                          &zlink_service_monitor_ignore_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
 
     TEST_ASSERT_EQUAL_INT (-1, zlink_spot_node_destroy (&node));
@@ -1961,7 +1964,7 @@ static void test_spot_node_public_api_lifecycle_contract ()
         TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
         TEST_ASSERT_NOT_NULL (node);
 
-        void *spot = zlink_spot_new (node, &ignore_spot_handler);
+        void *spot = zlink_spot_new (node, &ignore_spot_handler, NULL);
         TEST_ASSERT_NOT_NULL (spot);
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     }
@@ -1974,13 +1977,13 @@ static void test_spot_node_public_api_lifecycle_contract ()
 
     TEST_ASSERT_EQUAL_INT (
       -1,
-      zlink_spot_node_set_send_ready_handler (node, &spot_counting_ready_handler));
+      zlink_spot_node_set_send_ready_handler (node, &spot_counting_ready_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
 
     TEST_ASSERT_EQUAL_PTR (
       NULL, zlink_spot_node_monitor_open (node, ZLINK_SPOT_ROLE_PUB,
                                           ZLINK_MONITOR_EVENT_CLOSED,
-                                          &zlink_service_monitor_ignore_handler));
+                                          &zlink_service_monitor_ignore_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
 
     TEST_ASSERT_FALSE (node_impl->public_api_guard ().begin_close_or_fail_busy ());
@@ -1999,7 +2002,7 @@ static void test_spot_public_api_lifecycle_contract ()
     void *node = create_spot_node (ctx, "spot-handle-lifecycle");
     TEST_ASSERT_NOT_NULL (node);
 
-    void *spot = zlink_spot_new (node, &ignore_spot_handler);
+    void *spot = zlink_spot_new (node, &ignore_spot_handler, NULL);
     TEST_ASSERT_NOT_NULL (spot);
 
     zlink::service_public_api_guard_t *guard =
@@ -2023,13 +2026,13 @@ static void test_spot_public_api_lifecycle_contract ()
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
 
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_set_send_ready_handler (spot, &spot_counting_ready_handler));
+      -1, zlink_spot_set_send_ready_handler (spot, &spot_counting_ready_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
 
     TEST_ASSERT_EQUAL_PTR (
       NULL, zlink_spot_monitor_open (spot, ZLINK_SPOT_ROLE_SUB,
                                      ZLINK_MONITOR_EVENT_CLOSED,
-                                     &zlink_service_monitor_ignore_handler));
+                                     &zlink_service_monitor_ignore_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
 
     TEST_ASSERT_EQUAL_INT (-1, zlink_spot_destroy (&spot));

@@ -10,7 +10,7 @@ int main ()
     assert (ctx1 != NULL);
     assert (ctx2 != NULL);
 
-    void *router = zlink_socket (ctx1, ZLINK_ROUTER);
+    void *router = zlink_socket (ctx1, ZLINK_ROUTER, NULL);
     assert (router != NULL);
 
     int on = 1;
@@ -21,7 +21,7 @@ int main ()
     assert (zlink_bind (router, endpoint.c_str ()) == 0);
 
     for (int cycle = 0; cycle < 100; ++cycle) {
-        void *dealer = zlink_socket (ctx2, ZLINK_DEALER);
+        void *dealer = zlink_socket (ctx2, ZLINK_DEALER, NULL);
         assert (dealer != NULL);
 
         char routing_id[11];

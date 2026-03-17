@@ -34,7 +34,8 @@ zlink_socket_handler_t make_spot_handler (zlink_spot_handler_fn fn_)
 
 void discard_socket_message (const zlink_routing_id_t *,
                              zlink_msg_t *parts_,
-                             size_t part_count_)
+                             size_t part_count_,
+                          void *)
 {
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_close (&parts_[i]);
@@ -42,7 +43,8 @@ void discard_socket_message (const zlink_routing_id_t *,
 
 void discard_gateway_message (const zlink_routing_id_t *,
                               zlink_msg_t *parts_,
-                              size_t part_count_)
+                              size_t part_count_,
+                          void *)
 {
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_close (&parts_[i]);
@@ -52,7 +54,8 @@ void discard_spot_message (const zlink_routing_id_t *,
                            const char *,
                            size_t,
                            zlink_msg_t *parts_,
-                           size_t part_count_)
+                           size_t part_count_,
+                          void *)
 {
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_close (&parts_[i]);
@@ -182,7 +185,7 @@ void *create_gateway_attached (void *ctx_,
                                zlink_socket_msg_handler_fn handler_)
 {
     void *gateway =
-      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_);
+      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_, NULL);
     if (!gateway)
         return NULL;
     if (zlink_gateway_attach_discovery (gateway, discovery_) != 0) {
@@ -194,7 +197,7 @@ void *create_gateway_attached (void *ctx_,
     return gateway;
 }
 
-void raw_monitor_primary_handler (const zlink_monitor_event_t *event_)
+void raw_monitor_primary_handler (const zlink_monitor_event_t *event_, void *)
 {
     if (!g_raw_monitor_probe || !event_)
         return;
@@ -202,7 +205,7 @@ void raw_monitor_primary_handler (const zlink_monitor_event_t *event_)
     g_raw_monitor_probe->primary_calls.fetch_add (1);
 }
 
-void raw_monitor_replacement_handler (const zlink_monitor_event_t *event_)
+void raw_monitor_replacement_handler (const zlink_monitor_event_t *event_, void *)
 {
     if (!g_raw_monitor_probe || !event_)
         return;
@@ -210,7 +213,7 @@ void raw_monitor_replacement_handler (const zlink_monitor_event_t *event_)
     g_raw_monitor_probe->replacement_calls.fetch_add (1);
 }
 
-void service_monitor_primary_handler (const zlink_service_event_t *event_)
+void service_monitor_primary_handler (const zlink_service_event_t *event_, void *)
 {
     if (!g_service_monitor_probe || !event_)
         return;
@@ -218,7 +221,7 @@ void service_monitor_primary_handler (const zlink_service_event_t *event_)
     g_service_monitor_probe->primary_calls.fetch_add (1);
 }
 
-void service_monitor_replacement_handler (const zlink_service_event_t *event_)
+void service_monitor_replacement_handler (const zlink_service_event_t *event_, void *)
 {
     if (!g_service_monitor_probe || !event_)
         return;
@@ -226,7 +229,7 @@ void service_monitor_replacement_handler (const zlink_service_event_t *event_)
     g_service_monitor_probe->replacement_calls.fetch_add (1);
 }
 
-void service_monitor_parent_query_handler (const zlink_service_event_t *event_)
+void service_monitor_parent_query_handler (const zlink_service_event_t *event_, void *)
 {
     monitor_parent_query_probe_t *probe = g_service_monitor_query_probe;
     if (!probe || !event_)
@@ -251,7 +254,7 @@ void service_monitor_parent_query_handler (const zlink_service_event_t *event_)
     probe->cv.notify_all ();
 }
 
-void raw_monitor_self_close_handler (const zlink_monitor_event_t *)
+void raw_monitor_self_close_handler (const zlink_monitor_event_t *, void *)
 {
     callback_close_probe_t *probe = g_raw_monitor_self_close_probe;
     if (!probe)
@@ -278,7 +281,7 @@ void raw_monitor_self_close_handler (const zlink_monitor_event_t *)
     }
 }
 
-void raw_monitor_blocking_handler (const zlink_monitor_event_t *)
+void raw_monitor_blocking_handler (const zlink_monitor_event_t *, void *)
 {
     callback_close_probe_t *probe = g_raw_monitor_blocking_probe;
     if (!probe)
@@ -293,7 +296,7 @@ void raw_monitor_blocking_handler (const zlink_monitor_event_t *)
     probe->cv.notify_all ();
 }
 
-void service_monitor_self_close_handler (const zlink_service_event_t *)
+void service_monitor_self_close_handler (const zlink_service_event_t *, void *)
 {
     callback_close_probe_t *probe = g_service_monitor_self_close_probe;
     if (!probe)
@@ -318,7 +321,7 @@ void service_monitor_self_close_handler (const zlink_service_event_t *)
     }
 }
 
-void service_monitor_blocking_handler (const zlink_service_event_t *)
+void service_monitor_blocking_handler (const zlink_service_event_t *, void *)
 {
     callback_close_probe_t *probe = g_service_monitor_blocking_probe;
     if (!probe)
@@ -333,18 +336,18 @@ void service_monitor_blocking_handler (const zlink_service_event_t *)
     probe->cv.notify_all ();
 }
 
-void raw_send_ready_reentrant_handler (void *subject_)
+void raw_send_ready_reentrant_handler (void *subject_, void *)
 {
     g_raw_send_ready_subject = subject_;
     if (g_raw_send_ready_calls)
         g_raw_send_ready_calls->fetch_add (1);
     errno = 0;
     g_raw_send_ready_rc = zlink_socket_set_send_ready_handler (
-      subject_, &raw_send_ready_reentrant_handler);
+      subject_, &raw_send_ready_reentrant_handler, NULL);
     g_raw_send_ready_errno = errno;
 }
 
-void raw_send_ready_counting_handler (void *subject_)
+void raw_send_ready_counting_handler (void *subject_, void *)
 {
     g_raw_send_ready_subject = subject_;
     if (g_raw_send_ready_calls)
@@ -450,12 +453,12 @@ void test_socket_monitor_open_dispatches_events ()
     void *ctx = get_test_context ();
     const zlink_socket_handler_t msg_handler =
       make_msg_handler (&discard_socket_message);
-    void *server =
-      zlink_socket (ctx, ZLINK_ROUTER, &msg_handler);
-    void *client =
-      zlink_socket (ctx, ZLINK_DEALER, &msg_handler);
+    void *server = zlink_socket (ctx, ZLINK_ROUTER);
+    void *client = zlink_socket (ctx, ZLINK_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &msg_handler));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (client, &msg_handler));
 
     raw_monitor_probe_t probe;
     g_raw_monitor_probe = &probe;
@@ -465,7 +468,7 @@ void test_socket_monitor_open_dispatches_events ()
 
     void *monitor = zlink_socket_monitor_open (
       server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-      &raw_monitor_primary_handler);
+      &raw_monitor_primary_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
@@ -493,8 +496,9 @@ void test_socket_send_ready_handler_reentrant_replace_returns_edeadlk ()
     void *ctx = get_test_context ();
     const zlink_socket_handler_t msg_handler =
       make_msg_handler (&discard_socket_message);
-    void *socket = zlink_socket (ctx, ZLINK_ROUTER, &msg_handler);
+    void *socket = zlink_socket (ctx, ZLINK_ROUTER);
     TEST_ASSERT_NOT_NULL (socket);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (socket, &msg_handler));
 
     std::atomic<int> ready_calls (0);
     g_raw_send_ready_subject = NULL;
@@ -503,7 +507,7 @@ void test_socket_send_ready_handler_reentrant_replace_returns_edeadlk ()
     g_raw_send_ready_errno = 0;
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_set_send_ready_handler (
-      socket, &raw_send_ready_reentrant_handler));
+      socket, &raw_send_ready_reentrant_handler, NULL));
 
     zlink::socket_base_t *socket_base =
       static_cast<zlink::socket_base_t *> (socket);
@@ -524,10 +528,11 @@ void test_socket_send_ready_handler_requires_handler ()
     void *ctx = get_test_context ();
     const zlink_socket_handler_t msg_handler =
       make_msg_handler (&discard_socket_message);
-    void *socket = zlink_socket (ctx, ZLINK_ROUTER, &msg_handler);
+    void *socket = zlink_socket (ctx, ZLINK_ROUTER);
     TEST_ASSERT_NOT_NULL (socket);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (socket, &msg_handler));
 
-    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_set_send_ready_handler (socket, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_set_send_ready_handler (socket, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     close_socket_zero_linger (socket);
@@ -538,16 +543,17 @@ void test_socket_send_ready_handler_failed_replace_keeps_previous_handler ()
     void *ctx = get_test_context ();
     const zlink_socket_handler_t msg_handler =
       make_msg_handler (&discard_socket_message);
-    void *socket = zlink_socket (ctx, ZLINK_ROUTER, &msg_handler);
+    void *socket = zlink_socket (ctx, ZLINK_ROUTER);
     TEST_ASSERT_NOT_NULL (socket);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (socket, &msg_handler));
 
     std::atomic<int> ready_calls (0);
     g_raw_send_ready_subject = NULL;
     g_raw_send_ready_calls = &ready_calls;
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_set_send_ready_handler (
-      socket, &raw_send_ready_counting_handler));
-    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_set_send_ready_handler (socket, NULL));
+      socket, &raw_send_ready_counting_handler, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_set_send_ready_handler (socket, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     zlink::socket_base_t *socket_base =
@@ -567,17 +573,19 @@ void test_socket_send_ready_handler_rejects_sub_and_xsub ()
     void *ctx = get_test_context ();
     const zlink_socket_handler_t spot_handler =
       make_spot_handler (&discard_spot_message);
-    void *sub = zlink_socket (ctx, ZLINK_SUB, &spot_handler);
-    void *xsub = zlink_socket (ctx, ZLINK_XSUB, &spot_handler);
+    void *sub = zlink_socket (ctx, ZLINK_SUB);
+    void *xsub = zlink_socket (ctx, ZLINK_XSUB);
     TEST_ASSERT_NOT_NULL (sub);
     TEST_ASSERT_NOT_NULL (xsub);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (sub, &spot_handler));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (xsub, &spot_handler));
 
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_socket_set_send_ready_handler (sub, &raw_send_ready_counting_handler));
+      -1, zlink_socket_set_send_ready_handler (sub, &raw_send_ready_counting_handler, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_EQUAL_INT (
       -1,
-      zlink_socket_set_send_ready_handler (xsub, &raw_send_ready_counting_handler));
+      zlink_socket_set_send_ready_handler (xsub, &raw_send_ready_counting_handler, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     close_socket_zero_linger (sub);
@@ -589,13 +597,13 @@ void test_socket_monitor_open_requires_handler ()
     void *ctx = get_test_context ();
     const zlink_socket_handler_t msg_handler =
       make_msg_handler (&discard_socket_message);
-    void *server =
-      zlink_socket (ctx, ZLINK_ROUTER, &msg_handler);
+    void *server = zlink_socket (ctx, ZLINK_ROUTER);
     TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &msg_handler));
 
     errno = 0;
     void *monitor =
-      zlink_socket_monitor_open (server, ZLINK_EVENT_CONNECTION_READY, NULL);
+      zlink_socket_monitor_open (server, ZLINK_EVENT_CONNECTION_READY, NULL, NULL);
     TEST_ASSERT_NULL (monitor);
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
@@ -607,12 +615,12 @@ void test_socket_monitor_open_accepts_ignore_handler ()
     void *ctx = get_test_context ();
     const zlink_socket_handler_t msg_handler =
       make_msg_handler (&discard_socket_message);
-    void *server =
-      zlink_socket (ctx, ZLINK_ROUTER, &msg_handler);
+    void *server = zlink_socket (ctx, ZLINK_ROUTER);
     TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &msg_handler));
 
     void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY, &zlink_monitor_ignore_handler);
+      server, ZLINK_EVENT_CONNECTION_READY, &zlink_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
     close_socket_zero_linger (monitor);
 
@@ -629,7 +637,7 @@ void test_discovery_monitor_open_requires_handler ()
 
     errno = 0;
     void *monitor =
-      zlink_discovery_monitor_open (discovery, ZLINK_DISCOVERY_SERVICE_UP, NULL);
+      zlink_discovery_monitor_open (discovery, ZLINK_DISCOVERY_SERVICE_UP, NULL, NULL);
     TEST_ASSERT_NULL (monitor);
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
@@ -646,7 +654,7 @@ void test_discovery_monitor_open_accepts_ignore_handler ()
 
     void *monitor = zlink_discovery_monitor_open (
       discovery, ZLINK_DISCOVERY_SERVICE_UP,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
 
@@ -660,12 +668,12 @@ void test_gateway_monitor_open_requires_handler ()
 
     void *gateway =
       zlink_gateway_new (ctx, "gw-monitor-null", "gw-monitor-null",
-                         &discard_gateway_message);
+                         &discard_gateway_message, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
 
     errno = 0;
     void *monitor = zlink_gateway_monitor_open (
-      gateway, ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY, NULL);
+      gateway, ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY, NULL, NULL);
     TEST_ASSERT_NULL (monitor);
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
@@ -679,12 +687,12 @@ void test_gateway_monitor_open_accepts_ignore_handler ()
 
     void *gateway =
       zlink_gateway_new (ctx, "gw-monitor-ignore", "gw-monitor-ignore",
-                         &discard_gateway_message);
+                         &discard_gateway_message, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
 
     void *monitor = zlink_gateway_monitor_open (
       gateway, ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
 
@@ -731,7 +739,7 @@ void test_service_monitor_open_dispatches_events ()
     void *monitor =
       zlink_discovery_monitor_open (discovery, ZLINK_DISCOVERY_SERVICE_UP
                                                | ZLINK_MONITOR_EVENT_CLOSED,
-                                    &service_monitor_primary_handler);
+                                    &service_monitor_primary_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
 
     connect_discovery_registry_with_retry (discovery, registry_router, 3000);
@@ -790,14 +798,16 @@ void test_socket_monitor_self_close_defers_until_callback_return ()
     void *ctx = get_test_context ();
     const zlink_socket_handler_t msg_handler =
       make_msg_handler (&discard_socket_message);
-    void *server = zlink_socket (ctx, ZLINK_ROUTER, &msg_handler);
-    void *client = zlink_socket (ctx, ZLINK_DEALER, &msg_handler);
+    void *server = zlink_socket (ctx, ZLINK_ROUTER);
+    void *client = zlink_socket (ctx, ZLINK_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &msg_handler));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (client, &msg_handler));
 
     callback_close_probe_t probe;
     void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY, &raw_monitor_self_close_handler);
+      server, ZLINK_EVENT_CONNECTION_READY, &raw_monitor_self_close_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
     probe.monitor = monitor;
     g_raw_monitor_self_close_probe = &probe;
@@ -823,14 +833,16 @@ void test_socket_monitor_close_during_callback_returns_ebusy ()
     void *ctx = get_test_context ();
     const zlink_socket_handler_t msg_handler =
       make_msg_handler (&discard_socket_message);
-    void *server = zlink_socket (ctx, ZLINK_ROUTER, &msg_handler);
-    void *client = zlink_socket (ctx, ZLINK_DEALER, &msg_handler);
+    void *server = zlink_socket (ctx, ZLINK_ROUTER);
+    void *client = zlink_socket (ctx, ZLINK_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (server, &msg_handler));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_handler (client, &msg_handler));
 
     callback_close_probe_t probe;
     void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY, &raw_monitor_blocking_handler);
+      server, ZLINK_EVENT_CONNECTION_READY, &raw_monitor_blocking_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
     probe.monitor = monitor;
     g_raw_monitor_blocking_probe = &probe;
@@ -895,7 +907,7 @@ void test_service_monitor_self_close_defers_until_callback_return ()
     callback_close_probe_t probe;
     probe.monitor = zlink_discovery_monitor_open (
       discovery, ZLINK_DISCOVERY_SERVICE_UP,
-      &service_monitor_self_close_handler);
+      &service_monitor_self_close_handler, NULL);
     TEST_ASSERT_NOT_NULL (probe.monitor);
     g_service_monitor_self_close_probe = &probe;
 
@@ -961,7 +973,7 @@ void test_service_monitor_close_during_callback_returns_ebusy ()
 
     callback_close_probe_t probe;
     probe.monitor = zlink_discovery_monitor_open (
-      discovery, ZLINK_DISCOVERY_SERVICE_UP, &service_monitor_blocking_handler);
+      discovery, ZLINK_DISCOVERY_SERVICE_UP, &service_monitor_blocking_handler, NULL);
     TEST_ASSERT_NOT_NULL (probe.monitor);
     g_service_monitor_blocking_probe = &probe;
 
@@ -1047,7 +1059,7 @@ void test_service_monitor_callback_can_query_parent_without_deadlock ()
 
     void *monitor =
       zlink_discovery_monitor_open (discovery, ZLINK_DISCOVERY_SERVICE_UP,
-                                    &service_monitor_parent_query_handler);
+                                    &service_monitor_parent_query_handler, NULL);
     TEST_ASSERT_NOT_NULL (monitor);
 
     connect_discovery_registry_with_retry (discovery, registry_router, 3000);
@@ -1102,7 +1114,7 @@ void test_service_parent_destroy_rejects_open_monitor_children ()
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     void *discovery_monitor = zlink_discovery_monitor_open (
-      discovery, ZLINK_DISCOVERY_SERVICE_UP, &zlink_service_monitor_ignore_handler);
+      discovery, ZLINK_DISCOVERY_SERVICE_UP, &zlink_service_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (discovery_monitor);
 
     TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_destroy (&discovery));
@@ -1114,10 +1126,10 @@ void test_service_parent_destroy_rejects_open_monitor_children ()
 
     void *gateway =
       zlink_gateway_new (ctx, "svc-monitor-destroy", "gw-monitor-destroy",
-                         &discard_gateway_message);
+                         &discard_gateway_message, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
     void *gateway_monitor = zlink_gateway_monitor_open (
-      gateway, ZLINK_GATEWAY_SERVICE_READY, &zlink_service_monitor_ignore_handler);
+      gateway, ZLINK_GATEWAY_SERVICE_READY, &zlink_service_monitor_ignore_handler, NULL);
     TEST_ASSERT_NOT_NULL (gateway_monitor);
 
     TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_destroy (&gateway));

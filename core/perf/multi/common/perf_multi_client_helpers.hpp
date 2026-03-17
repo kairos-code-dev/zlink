@@ -3,7 +3,6 @@
 
 #include "perf_common.hpp"
 #include "perf_common_multi.hpp"
-#include "perf_multi_entry.hpp"
 #include "perf_multi_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 

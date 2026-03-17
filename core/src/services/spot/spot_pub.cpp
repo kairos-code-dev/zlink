@@ -42,7 +42,7 @@ static void emit_monitor_event_batch (service_monitor_hub_t *monitor_,
 
 namespace
 {
-static void spot_pub_send_ready_adapter (void *subject_)
+static void spot_pub_send_ready_adapter (void *subject_, void *)
 {
     spot_pub_t *pub = static_cast<spot_pub_t *> (subject_);
     if (pub)
@@ -137,6 +137,7 @@ spot_pub_t::spot_pub_t (spot_node_t *node_,
     _routing_id_locked (false),
     _send_ready_handler (NULL),
     _send_ready_subject (NULL),
+    _send_ready_userdata (NULL),
     _destroying (false),
     _monitor (node_ ? node_->ctx () : NULL),
     _monitor_event_queue (),
@@ -309,7 +310,8 @@ int spot_pub_t::set_option (int option_,
 }
 
 int spot_pub_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_,
-                                        void *subject_)
+                                        void *subject_,
+                                        void *userdata_)
 {
     socket_base_t *socket = this->socket ();
     if (!socket || !handler_ || !subject_) {
@@ -322,6 +324,7 @@ int spot_pub_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_,
         != 0)
         return -1;
 
+    _send_ready_userdata.store (userdata_, std::memory_order_release);
     _send_ready_subject.store (subject_, std::memory_order_release);
     _send_ready_handler.store (handler_, std::memory_order_release);
     return 0;
@@ -428,7 +431,8 @@ void spot_pub_t::dispatch_send_ready ()
       _send_ready_handler.load (std::memory_order_acquire);
     void *subject = _send_ready_subject.load (std::memory_order_acquire);
     if (handler && subject)
-        handler (subject);
+        handler (subject,
+                 _send_ready_userdata.load (std::memory_order_acquire));
 }
 
 void spot_pub_t::monitor_thread_main (void *arg_)

@@ -79,7 +79,7 @@ void *mon = zlink_discovery_monitor_open(
     discovery,
     ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
       | ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED,
-    on_discovery_event);
+    on_discovery_event, NULL);
 
 /* ... Discovery가 콜백을 통해 이벤트 전달 ... */
 

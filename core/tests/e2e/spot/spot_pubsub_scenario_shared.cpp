@@ -54,7 +54,7 @@ bool read_spot_snapshot (void *spot_,
       ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
         | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
         | ZLINK_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     if (!monitor)
         return false;
 
@@ -81,7 +81,8 @@ void ignore_spot_handler (const zlink_routing_id_t *,
                           const char *,
                           size_t,
                           zlink_msg_t *parts_,
-                          size_t part_count_)
+                          size_t part_count_,
+                          void *)
 {
     if (!parts_)
         return;
@@ -92,7 +93,7 @@ void ignore_spot_handler (const zlink_routing_id_t *,
 void *create_spot_node (void *ctx_, const char *service_name_)
 {
     void *node =
-      zlink_spot_node_new (ctx_, service_name_, &queued_spot_handler);
+      zlink_spot_node_new (ctx_, service_name_, &queued_spot_handler, NULL);
     if (!node)
         return NULL;
 
@@ -140,7 +141,7 @@ static void cleanup_ipc_endpoint (const char *endpoint_)
 
 void *create_spot_handle (void *node_, zlink_spot_handler_fn handler_)
 {
-    void *spot = zlink_spot_new (node_, handler_);
+    void *spot = zlink_spot_new (node_, handler_, NULL);
     if (!spot)
         return NULL;
 
@@ -283,7 +284,8 @@ void queued_spot_handler (const zlink_routing_id_t *,
                           const char *topic_,
                           size_t topic_len_,
                           zlink_msg_t *parts_,
-                          size_t part_count_)
+                          size_t part_count_,
+                          void *)
 {
     queued_spot_probe_t *probe = find_queued_spot_probe_for_current_dispatch ();
     if (!probe) {
@@ -322,7 +324,7 @@ static service_monitor_probe_t *find_service_monitor_probe_for_dispatch ()
 }
 
 static void queued_service_monitor_handler (
-  const zlink_service_event_t *event_)
+  const zlink_service_event_t *event_, void *)
 {
     service_monitor_probe_t *probe = find_service_monitor_probe_for_dispatch ();
     if (!probe || !event_)
@@ -579,7 +581,7 @@ void *open_spot_monitor_with_probe (void *spot_,
     }
 
     void *monitor = zlink_spot_monitor_open (spot_, role_, events_,
-                                             &queued_service_monitor_handler);
+                                             &queued_service_monitor_handler, NULL);
     if (!monitor)
         return NULL;
 
@@ -606,7 +608,7 @@ void *open_spot_node_monitor_with_probe (
     }
 
     void *monitor = zlink_spot_node_monitor_open (node_, role_, events_,
-                                                  &queued_service_monitor_handler);
+                                                  &queued_service_monitor_handler, NULL);
     if (!monitor)
         return NULL;
 

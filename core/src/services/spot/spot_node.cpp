@@ -756,6 +756,7 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _mesh_client_tls_locked (false),
     _registration_tls_locked (false),
     _send_ready_handler (NULL),
+    _send_ready_handler_userdata (NULL),
     _local_filtered_sub_count (0),
     _active_peer_count (0),
     _default_pub (NULL),
@@ -2358,7 +2359,8 @@ int spot_node_t::set_tls_client (const char *ca_cert_,
     return 0;
 }
 
-int spot_node_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_)
+int spot_node_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_,
+                                        void *userdata_)
 {
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
@@ -2373,9 +2375,12 @@ int spot_node_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_)
     if (!pub)
         return -1;
 
-    const int rc = pub->set_send_ready_handler (handler_, this);
-    if (rc == 0)
+    const int rc = pub->set_send_ready_handler (handler_, this, userdata_);
+    if (rc == 0) {
+        _send_ready_handler_userdata.store (userdata_,
+                                            std::memory_order_release);
         _send_ready_handler.store (handler_, std::memory_order_release);
+    }
     return rc;
 }
 
@@ -2679,7 +2684,12 @@ spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
     if (node_owned_default_) {
         zlink_send_ready_handler_fn handler =
           _send_ready_handler.load (std::memory_order_acquire);
-        if (handler && pub->set_send_ready_handler (handler, this) != 0) {
+        if (handler
+            && pub->set_send_ready_handler (
+                 handler, this,
+                 _send_ready_handler_userdata.load (
+                   std::memory_order_acquire))
+                 != 0) {
             const int err = errno;
             remove_spot_pub (pub);
             pub->abort_create ();

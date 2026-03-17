@@ -27,11 +27,11 @@ The PAIR socket forms an exclusive 1:1 bidirectional connection with exactly one
 void *ctx = zlink_ctx_new();
 
 /* Server side */
-void *server = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *server = zlink_socket(ctx, ZLINK_PAIR);
 zlink_bind(server, "tcp://*:5555");
 
 /* Client side */
-void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *client = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(client, "tcp://127.0.0.1:5555");
 ```
 
@@ -40,7 +40,8 @@ zlink_connect(client, "tcp://127.0.0.1:5555");
 ```c
 /* Define receive handler */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     printf("Received: %.*s\n",
            (int)zlink_msg_size(&parts[0]),
@@ -52,12 +53,14 @@ void on_message(const zlink_routing_id_t *source_rid,
 /* Server with handler */
 zlink_socket_handler_t handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message
+    .fn.msg = on_message,
+    .userdata = NULL
 };
-void *server = zlink_socket(ctx, ZLINK_PAIR, &handler);
+void *server = zlink_socket(ctx, ZLINK_PAIR);
+zlink_socket_attach_handler(server, &handler);
 
 /* Client (send only) */
-void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *client = zlink_socket(ctx, ZLINK_PAIR);
 
 /* ... bind/connect ... */
 
@@ -104,8 +107,8 @@ zlink_send(server, "body", 4, 0);  /* last frame */
 
 | Option | Type | Default | Description |
 |------|------|--------|------|
-| `ZLINK_SNDHWM` | int | 300000 | Maximum number of messages in the send queue |
-| `ZLINK_RCVHWM` | int | 300000 | Maximum number of messages in the receive queue |
+| `ZLINK_SNDHWM` | int | 1000 | Maximum number of messages in the send queue |
+| `ZLINK_RCVHWM` | int | 1000 | Maximum number of messages in the receive queue |
 | `ZLINK_LINGER` | int | -1 | Wait time for unsent messages on close (ms), -1=infinite |
 | `ZLINK_SNDTIMEO` | int | -1 | Send timeout (ms), -1=infinite |
 | `ZLINK_RCVTIMEO` | int | -1 | Receive timeout (ms), -1=infinite |
@@ -128,13 +131,15 @@ The most common PAIR use case. Zero-copy communication between threads via the i
 /* Main thread */
 zlink_socket_handler_t handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_signal
+    .fn.msg = on_signal,
+    .userdata = NULL
 };
-void *signal = zlink_socket(ctx, ZLINK_PAIR, &handler);
+void *signal = zlink_socket(ctx, ZLINK_PAIR);
+zlink_socket_attach_handler(signal, &handler);
 zlink_bind(signal, "inproc://signal");
 
 /* Worker thread */
-void *worker_signal = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *worker_signal = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(worker_signal, "inproc://signal");
 
 /* Worker → Main: task completion signal */
@@ -151,7 +156,7 @@ zlink_send(worker_signal, "DONE", 4, 0);
 
 ```c
 /* Server: wildcard port */
-void *server = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *server = zlink_socket(ctx, ZLINK_PAIR);
 zlink_bind(server, "tcp://127.0.0.1:*");
 
 /* Query the assigned endpoint */
@@ -160,7 +165,7 @@ size_t len = sizeof(endpoint);
 zlink_getsockopt(server, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
 /* Client: connect using the queried endpoint */
-void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *client = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(client, endpoint);
 ```
 
@@ -171,7 +176,7 @@ zlink_connect(client, endpoint);
 You can also connect using a hostname.
 
 ```c
-void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *client = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(client, "tcp://localhost:5555");
 ```
 
@@ -182,10 +187,10 @@ zlink_connect(client, "tcp://localhost:5555");
 Inter-process communication on the same machine (Linux/macOS).
 
 ```c
-void *server = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *server = zlink_socket(ctx, ZLINK_PAIR);
 zlink_bind(server, "ipc:///tmp/myapp.ipc");
 
-void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *client = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(client, "ipc:///tmp/myapp.ipc");
 ```
 

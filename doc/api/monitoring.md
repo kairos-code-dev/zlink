@@ -52,7 +52,7 @@ typedef struct {
 
 ```c
 typedef void (*zlink_monitor_handler_fn) (
-  const zlink_monitor_event_t *event_);
+  const zlink_monitor_event_t *event_, void *userdata_);
 ```
 
 Callback for socket monitor events, invoked on the I/O thread.
@@ -163,7 +163,8 @@ Open and return a socket monitor handle with a fixed callback.
 ```c
 void *zlink_socket_monitor_open (void *s_,
                                  zlink_socket_monitor_event_mask_t events_,
-                                 zlink_monitor_handler_fn handler_);
+                                 zlink_monitor_handler_fn handler_,
+                                 void *userdata_);
 ```
 
 Creates a monitor on socket `s_` and returns a handle. Events matching the
@@ -222,6 +223,8 @@ typedef struct zlink_service_event_t
     char service_name[256];
     char endpoint[256];
     zlink_routing_id_t routing_id;
+    char subject[256];
+    uint32_t subject_kind;
 } zlink_service_event_t;
 ```
 
@@ -236,12 +239,14 @@ typedef struct zlink_service_event_t
 | `service_name` | Null-terminated service name, valid when `ZLINK_EVENT_DETAIL_SERVICE_NAME` is set. |
 | `endpoint` | Null-terminated endpoint, valid when `ZLINK_EVENT_DETAIL_ENDPOINT` is set. |
 | `routing_id` | Routing identity, valid when the corresponding detail flag is set. |
+| `subject` | Null-terminated subject string, valid when `ZLINK_EVENT_DETAIL_SUBJECT` is set. |
+| `subject_kind` | Subject kind, valid when `ZLINK_EVENT_DETAIL_SUBJECT_KIND` is set. |
 
 ### zlink_service_monitor_handler_fn
 
 ```c
 typedef void (*zlink_service_monitor_handler_fn) (
-  const zlink_service_event_t *event_);
+  const zlink_service_event_t *event_, void *userdata_);
 ```
 
 Callback for service monitor events, invoked on the I/O thread.
@@ -319,7 +324,8 @@ Open a service monitor for a Discovery instance.
 void *zlink_discovery_monitor_open (
   void *discovery,
   zlink_discovery_monitor_event_mask_t events,
-  zlink_service_monitor_handler_fn handler);
+  zlink_service_monitor_handler_fn handler,
+  void *userdata);
 ```
 
 Creates a service monitor that dispatches events matching the `events`
@@ -342,7 +348,8 @@ Open a service monitor for a Gateway instance.
 void *zlink_gateway_monitor_open (
   void *gateway,
   zlink_gateway_monitor_event_mask_t events,
-  zlink_service_monitor_handler_fn handler);
+  zlink_service_monitor_handler_fn handler,
+  void *userdata);
 ```
 
 Creates a service monitor that dispatches Gateway events through the
@@ -364,7 +371,8 @@ Open a role-specific service monitor for a unified SPOT handle.
 void *zlink_spot_monitor_open (void *spot,
                                zlink_spot_role_t role,
                                zlink_spot_monitor_event_mask_t events,
-                               zlink_service_monitor_handler_fn handler);
+                               zlink_service_monitor_handler_fn handler,
+                               void *userdata);
 ```
 
 `role` is `ZLINK_SPOT_ROLE_PUB` or `ZLINK_SPOT_ROLE_SUB`. Events are
@@ -387,7 +395,8 @@ void *zlink_spot_node_monitor_open (
   void *node,
   zlink_spot_role_t role,
   zlink_spot_monitor_event_mask_t events,
-  zlink_service_monitor_handler_fn handler);
+  zlink_service_monitor_handler_fn handler,
+  void *userdata);
 ```
 
 `role` is `ZLINK_SPOT_ROLE_PUB` or `ZLINK_SPOT_ROLE_SUB`. Opens a monitor
@@ -406,7 +415,7 @@ on the node-owned default pub/sub facade.
 No-op handler for ignoring socket monitor events.
 
 ```c
-void zlink_monitor_ignore_handler (const zlink_monitor_event_t *event_);
+void zlink_monitor_ignore_handler (const zlink_monitor_event_t *event_, void *userdata_);
 ```
 
 Pass this to `zlink_socket_monitor_open()` when you want snapshot or direct
@@ -420,7 +429,7 @@ No-op handler for ignoring service monitor events.
 
 ```c
 void zlink_service_monitor_ignore_handler (
-  const zlink_service_event_t *event_);
+  const zlink_service_event_t *event_, void *userdata_);
 ```
 
 Pass this to `zlink_*_monitor_open()` when you want snapshot or direct

@@ -14,8 +14,8 @@
 |---|---:|---|
 | `ZLINK_AFFINITY` | `0` | I/O 스레드 어피니티 미설정 |
 | `ZLINK_ROUTING_ID` | 자동 | 소켓별 16바이트 랜덤 ID |
-| `ZLINK_SNDHWM` | `300000` | 송신 큐 HWM |
-| `ZLINK_RCVHWM` | `300000` | 수신 큐 HWM |
+| `ZLINK_SNDHWM` | `1000` | 송신 큐 HWM |
+| `ZLINK_RCVHWM` | `1000` | 수신 큐 HWM |
 | `ZLINK_RATE` | `100` | 멀티캐스트 rate (kb/s) |
 | `ZLINK_RECOVERY_IVL` | `10000` | 멀티캐스트 recovery interval (ms) |
 | `ZLINK_SNDBUF` | `-1` | `SO_SNDBUF` 강제 설정 안 함 |

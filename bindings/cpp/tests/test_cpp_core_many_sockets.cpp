@@ -41,7 +41,7 @@ void test_system_max ()
 
     std::vector<void *> sockets;
     while (true) {
-        void *socket = zlink_socket (ctx, ZLINK_PAIR);
+        void *socket = zlink_socket (ctx, ZLINK_PAIR, NULL);
         if (!socket)
             break;
         sockets.push_back (socket);
@@ -50,7 +50,7 @@ void test_system_max ()
     assert (no_of_sockets <= static_cast<int> (sockets.size ()));
 
     for (int i = 0; i < 10; ++i)
-        assert (zlink_socket (ctx, ZLINK_PAIR) == NULL);
+        assert (zlink_socket (ctx, ZLINK_PAIR, NULL) == NULL);
 
     for (size_t i = 0; i < sockets.size (); ++i)
         assert (zlink_close (sockets[i]) == 0);
@@ -65,7 +65,7 @@ void test_default_max ()
 
     std::vector<void *> sockets;
     while (true) {
-        void *socket = zlink_socket (ctx, ZLINK_PAIR);
+        void *socket = zlink_socket (ctx, ZLINK_PAIR, NULL);
         if (!socket)
             break;
         sockets.push_back (socket);
@@ -74,7 +74,7 @@ void test_default_max ()
     assert (static_cast<size_t> (ZLINK_MAX_SOCKETS_DFLT) <= sockets.size ());
 
     for (int i = 0; i < 10; ++i)
-        assert (zlink_socket (ctx, ZLINK_PAIR) == NULL);
+        assert (zlink_socket (ctx, ZLINK_PAIR, NULL) == NULL);
 
     for (size_t i = 0; i < sockets.size (); ++i)
         assert (zlink_close (sockets[i]) == 0);

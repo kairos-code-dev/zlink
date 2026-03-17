@@ -28,7 +28,8 @@ creation time.
 ```c
 /* Define receive handler */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* Process incoming message */
     printf("Received: %.*s\n",
@@ -38,7 +39,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 void *gateway = zlink_gateway_new(ctx, "payment-service",
-                                   "gateway-1", on_message);
+                                   "gateway-1", on_message, NULL);
 ```
 
 ## 3. Server Setup
@@ -55,7 +56,7 @@ zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Create Gateway (register receive handler) */
 void *server = zlink_gateway_new(ctx, "payment-service",
-                                  "payment-server-1", on_request);
+                                  "payment-server-1", on_request, NULL);
 
 /* Attach Discovery */
 zlink_gateway_attach_discovery(server, discovery);
@@ -73,7 +74,7 @@ zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Create Gateway */
 void *client = zlink_gateway_new(ctx, "payment-service",
-                                  "client-1", on_reply);
+                                  "client-1", on_reply, NULL);
 
 /* Attach Discovery */
 zlink_gateway_attach_discovery(client, discovery);
@@ -108,7 +109,8 @@ registered at creation time. There is no separate `recv()` call.
 
 ```c
 void on_reply(const zlink_routing_id_t *source_rid,
-              zlink_msg_t *parts, size_t part_count)
+              zlink_msg_t *parts, size_t part_count,
+              void *userdata)
 {
     /* Process reply */
 }
@@ -168,7 +170,7 @@ The rules users need to remember are short:
 
 ```c
 /* Gateway is thread-safe, so it can be shared across threads */
-void *gateway = zlink_gateway_new(ctx, "my-service", "gw-1", on_reply);
+void *gateway = zlink_gateway_new(ctx, "my-service", "gw-1", on_reply, NULL);
 zlink_gateway_attach_discovery(gateway, discovery);
 
 /* Worker thread function */
@@ -227,6 +229,8 @@ all without data races.
 > `test_gateway_concurrent_send_and_updates()`: verifies concurrent
 > multi-thread sends + weight updates
 
+> See [Thread-Safety Guide](11-thread-safety.md) for the full three-tier contract and additional patterns.
+
 ## 8. Automatic Connect/Disconnect
 
 Gateway automatically connects to and disconnects from peers based on
@@ -249,7 +253,7 @@ void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
 
 void *server = zlink_gateway_new(ctx, "echo-service",
-                                  "echo-server-1", on_request);
+                                  "echo-server-1", on_request, NULL);
 zlink_gateway_attach_discovery(server, server_discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
@@ -258,7 +262,7 @@ void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
 
 void *client = zlink_gateway_new(ctx, "echo-service",
-                                  "client-1", on_reply);
+                                  "client-1", on_reply, NULL);
 zlink_gateway_attach_discovery(client, client_discovery);
 
 /* Wait for route readiness via gateway monitor */
@@ -285,7 +289,7 @@ zlink_ctx_term(ctx);
 
 | Function | Description |
 |----------|-------------|
-| `zlink_gateway_new(ctx, service_name, routing_id, handler)` | Create Gateway |
+| `zlink_gateway_new(ctx, service_name, routing_id, handler, userdata)` | Create Gateway |
 | `zlink_gateway_attach_discovery(gateway, discovery)` | Attach Discovery |
 | `zlink_gateway_bind(gateway, endpoint)` | Bind receive endpoint (server role) |
 | `zlink_gateway_send(gateway, parts, count, flags)` | Send multipart message (with LB) |

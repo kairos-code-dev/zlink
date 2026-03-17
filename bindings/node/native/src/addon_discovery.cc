@@ -347,9 +347,17 @@ napi_value gateway_new(napi_env env, napi_callback_info info)
             routing_id = routing_id_str.c_str();
         }
     }
-    void *gw = zlink_gateway_new(ctx, disc, routing_id);
+    void *gw = zlink_gateway_new(ctx, NULL, routing_id, NULL, NULL);
     if (!gw)
         return throw_last_error(env, "gateway_new failed");
+    if (disc) {
+        int rc = zlink_gateway_attach_discovery(gw, disc);
+        if (rc != 0) {
+            void *tmp = gw;
+            zlink_gateway_destroy(&tmp);
+            return throw_last_error(env, "gateway_attach_discovery failed");
+        }
+    }
     napi_value ext;
     napi_create_external(env, gw, NULL, NULL, &ext);
     return ext;

@@ -65,3 +65,4 @@ Application Thread              I/O Thread
 - Context: thread-safe (여러 스레드에서 소켓 생성 가능)
 - pipe_t: Lock-free (CAS 기반 YPipe)
 - 캐시 라인 최적화, 메모리 배리어 가시성 보장
+- 전체 동시성 계약 구현은 [Thread-Safety 구현 상세](thread-safety.ko.md) 참고

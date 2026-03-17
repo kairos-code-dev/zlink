@@ -160,8 +160,8 @@ int zlink::session_base_t::push_msg (msg_t *msg_)
         && !msg_->is_cancel ())
         return 0;
 
-    if (_socket) {
-        const int dispatch_rc = _socket->socket_msg_dispatch_from_io (msg_, _pipe);
+    if (options.type == ZLINK_STREAM && _socket && _pipe) {
+        const int dispatch_rc = _socket->stream_dispatch_msg_from_io (msg_, _pipe);
         if (dispatch_rc < 0)
             return -1;
         if (dispatch_rc > 0) {
@@ -171,8 +171,8 @@ int zlink::session_base_t::push_msg (msg_t *msg_)
         }
     }
 
-    if (options.type == ZLINK_STREAM && _socket && _pipe) {
-        const int dispatch_rc = _socket->stream_dispatch_msg_from_io (msg_, _pipe);
+    if (_socket) {
+        const int dispatch_rc = _socket->socket_msg_dispatch_from_io (msg_, _pipe);
         if (dispatch_rc < 0)
             return -1;
         if (dispatch_rc > 0) {

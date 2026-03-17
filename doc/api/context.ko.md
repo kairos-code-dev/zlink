@@ -39,16 +39,16 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 ## 기본값
 
 ```c
-#define ZLINK_IO_THREADS_DFLT           2
-#define ZLINK_MAX_SOCKETS_DFLT          1023
+#define ZLINK_IO_THREADS_DFLT           1
+#define ZLINK_MAX_SOCKETS_DFLT          4095
 #define ZLINK_THREAD_PRIORITY_DFLT      -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT  -1
 ```
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_IO_THREADS_DFLT` | 2 | 기본 I/O 스레드 수 |
-| `ZLINK_MAX_SOCKETS_DFLT` | 1023 | 기본 최대 소켓 수 |
+| `ZLINK_IO_THREADS_DFLT` | 1 | 기본 I/O 스레드 수 |
+| `ZLINK_MAX_SOCKETS_DFLT` | 4095 | 기본 최대 소켓 수 |
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | 기본 스레드 우선순위 (OS 기본값) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | 기본 스케줄링 정책 (OS 기본값) |
 

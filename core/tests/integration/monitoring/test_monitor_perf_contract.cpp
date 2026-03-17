@@ -127,7 +127,7 @@ struct queue_probe_t
             return false;
 
         void *monitor = zlink_socket_monitor_open (
-          socket_, ZLINK_EVENT_ALL, &zlink_monitor_ignore_handler);
+          socket_, ZLINK_EVENT_ALL, &zlink_monitor_ignore_handler, NULL);
         if (!monitor)
             return false;
 
@@ -217,7 +217,7 @@ connect_monitor_state_t *find_connect_monitor_state_for_dispatch ()
     return it != g_connect_monitor_registry.end () ? it->second : NULL;
 }
 
-void perf_like_connect_monitor_handler (const zlink_monitor_event_t *event_)
+void perf_like_connect_monitor_handler (const zlink_monitor_event_t *event_, void *)
 {
     connect_monitor_state_t *state = find_connect_monitor_state_for_dispatch ();
     if (!state || !event_)
@@ -282,7 +282,7 @@ bool open_perf_like_connect_monitor (void *socket_, connect_monitor_t *out_)
         | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
         | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
         | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
-      &perf_like_connect_monitor_handler);
+      &perf_like_connect_monitor_handler, NULL);
     if (!monitor) {
         delete state;
         return false;
@@ -349,7 +349,7 @@ void make_unique_inproc_endpoint (char *endpoint_, size_t size_)
     snprintf (endpoint_, size_, "inproc://monitor-perf-pair-%u", endpoint_id);
 }
 
-void send_ready_self_close_handler (void *subject_)
+void send_ready_self_close_handler (void *subject_, void *)
 {
     void *socket = subject_;
     g_send_ready_self_close_rc.store (zlink_close (socket),
@@ -531,7 +531,7 @@ void test_send_ready_self_close_blocks_followup_operational_api ()
     g_send_ready_post_close_send_errno.store (0, std::memory_order_release);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_socket_set_send_ready_handler (client, &send_ready_self_close_handler));
+      zlink_socket_set_send_ready_handler (client, &send_ready_self_close_handler, NULL));
 
     zlink::socket_base_t *raw_client =
       static_cast<zlink::socket_base_t *> (client);

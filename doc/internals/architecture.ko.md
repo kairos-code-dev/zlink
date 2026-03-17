@@ -19,6 +19,7 @@
 7. [핵심 컴포넌트](#7-핵심-컴포넌트)
 8. [데이터 흐름](#8-데이터-흐름)
 9. [소스 트리 구조](#9-소스-트리-구조)
+10. [구조 설계 철학](#10-구조-설계-철학)
 
 ---
 
@@ -1274,6 +1275,155 @@ core/
 ├── tests/                           # 기능 테스트
 └── unittests/                       # 내부 단위 테스트
 ```
+
+---
+
+## 10. 구조 설계 철학
+
+앞선 절들은 zlink 아키텍처가 **어떻게** 구성되어 있는지 — 계층 구조, 컴포넌트,
+데이터 흐름, 소스 트리를 설명했다. 이 절은 **왜** 시스템을 이렇게 구성하는지를
+설명한다: 구조 결정을 안내하고 복잡도의 무질서한 성장을 막는 설계 원칙들이다.
+
+### 10.1 깊은 모듈 — 좁은 인터페이스, 숨겨진 복잡성
+
+좋은 모듈은 좁은 인터페이스 뒤에 많은 복잡성을 숨긴다.
+호출자가 모듈을 사용하기 위해 알아야 할 개념이 적을수록 좋다.
+
+zlink에서 이 원칙은 여러 수준에서 적용된다:
+
+- **Socket runtime**은 endpoint registry, peer state 추적, monitor bridge,
+  dispatch bridge, lifecycle quiesce를 흡수하여 — `send`/`recv` 기능,
+  `bind`/`connect`/`term` 의미, readiness hook만 노출한다.
+- **Engine pipeline**은 speculative I/O, gather write, buffer growth 전략,
+  handshake 상태 머신, heartbeat를 흡수하여 — ingress frame delivery,
+  egress frame submission, connection state transition만 노출한다.
+- **Transport adapter**는 URI 파싱, connect/listen 전략,
+  TLS/WS/WSS handshake 상세를 흡수하여 — `client_endpoint`,
+  `server_endpoint`, `async_transport_channel`만 노출한다.
+
+**안티패턴: 얕은 분해.** 큰 타입을 작은 helper 여러 개로 쪼개는 것만으로는
+호출자가 알아야 할 개념 수가 줄지 않는다. 새 타입이 소비자로부터 복잡성을 숨기지
+않는다면 추출은 표면적만 늘릴 뿐이다. 새 타입은 호출자가 알아야 할 개념 수를
+줄이거나, hot-path 정책을 한곳에 가둘 때만 정당화된다.
+
+### 10.2 정보 은닉과 소유권 명확성
+
+각 모듈은 내부 구현을 숨기고, 상위 계층은 하위 계층의 세부를 몰라야 한다.
+
+**리소스마다 단일 authoritative close owner 원칙.** 모든 리소스는 수명주기를
+책임지는 단일 소유자를 가진다:
+
+| 역할 | 책임 |
+| --- | --- |
+| Service runtime | Lifecycle coordinator — 시작/종료 순서 조율 |
+| Socket runtime | Concrete close owner — 소켓 리소스 보유 및 해제 |
+| Reaper | Finalization executor — quiesce 후 지연 정리 수행 |
+
+같은 리소스를 여러 주체가 닫을 수 있으면 shutdown 레이스와 double-free
+버그가 발생한다. 목표는 권한 없는 close를 문서로 금지하는 것이 아니라
+구조적으로 불가능하게 만드는 것이다.
+
+**정보 누출의 원인.** 내부 구현 세부가 외부로 유출되는 경로는 두 가지다:
+
+1. *설계 시점 추상화 오류* — 인터페이스가 처음부터 내부 구조를 반영
+2. *점진적 인터페이스 팽창* — 새 요구사항마다 내부 세부를 하나씩 노출하여
+   인터페이스가 결국 구현을 그대로 비추게 됨
+
+어떤 원인에 해당하는지 파악해야 대응이 달라진다: (1)이면 인터페이스 재설계가
+필요하고, (2)이면 내부 재구성을 하되 이미 내부 개념을 노출한 API 부분도
+선택적으로 정리한다.
+
+### 10.3 의미(semantic)와 메커니즘(mechanism) 분리
+
+소켓 계층 안에서 두 관심사는 명확히 분리된다:
+
+- **Socket family** (PAIR, PUB/SUB, DEALER, ROUTER, STREAM)는 메시지
+  의미와 라우팅 정책을 소유한다 — 메시지가 무엇을 뜻하고 어디로 가는지.
+- **Socket runtime**은 공통 메커니즘을 소유한다 — endpoint registry,
+  peer state, monitor bridge, dispatch bridge, lifecycle quiesce — 모든
+  소켓이 family와 무관하게 수행하는 기계적 기반 작업.
+
+경계 검증은 양방향이다:
+
+- family 구현이 mechanism 내부에 의존해서는 안 된다.
+- mechanism 변경이 family 코드 수정을 요구해서는 안 된다.
+
+이 분리가 유지되면, 새 socket family 추가 시 runtime을 건드리지 않고,
+runtime 진화(예: monitor 인코딩 변경) 시 어떤 family 구현도 건드리지 않는다.
+
+### 10.4 계층마다 다른 추상화
+
+각 계층은 단순 위임(pass-through)이 아니라 고유한 추상화를 제공해야 한다.
+추상화를 추가하지 않는 위임 전용 계층은 제거 대상이다.
+
+| 계층 | 제공하는 추상화 |
+| --- | --- |
+| Service facade | 서비스 의미 (create / attach / destroy / monitor) |
+| Service runtime | Lifecycle 상태 머신과 readiness — socket open/close 순서와 drain을 숨김 |
+| Engine facade | 연결 수명주기 (start / stop / state) — handshake와 timer를 숨김 |
+| Engine pipeline | 비동기 I/O 최적화 — speculative I/O와 buffer 정책을 숨김 |
+| Transport adapter | Endpoint open — URI/address/scheme 선택과 TLS/WS/WSS layering을 숨김 |
+| Protocol codec | Frame 경계 — wire encoding과 version을 숨김 |
+
+계층화의 목적은 계층을 더 늘리는 것이 아니다. 각 계층이 상위로부터 더 많은
+복잡성을 숨기게 만드는 것이다. 계층이 추상화를 변환하지 않고 단순히 호출을
+전달하기만 한다면 축소해야 한다.
+
+### 10.5 구조로 오류를 제거한다
+
+정책보다 구조적 보장을 우선한다.
+
+오류를 런타임에 잡는 것이 아니라, 타입 시스템이나 API 설계로 특정 부류의
+오류 자체가 발생 불가능하게 만든다:
+
+```
+정책 기반:  "이 리소스는 A만 닫아야 한다" (문서에 적음, 코드는 위반 가능)
+구조 기반:  close 권한이 타입에 묶여서 다른 주체가 호출 자체를 못 함
+```
+
+구체적 전략:
+
+- `unique_ptr` + move-only 의미론 — 이중 소유가 컴파일 에러가 된다.
+- Close guard(sentinel 패턴) — 이중 close가 no-op이 된다.
+- RAII wrapper — 수동 close 호출이 구조적으로 불가능하다.
+
+목표는 비용이 합리적인 곳에서 불변 조건을 문서가 아닌 타입 시스템으로
+이동하는 것이다.
+
+### 10.6 점진적 복잡도 축적 방어
+
+복잡도는 한 번에 오지 않는다. 개별적으로는 합리적인 작은 변경이 누적되면서
+쌓인다 — 하나하나는 정당하지만 종합하면 구조적 명확성을 무너뜨린다.
+
+아키텍처가 방어해야 할 성장 패턴:
+
+- **새 transport 추가** → engine이나 socket 코드에 새 분기가 늘지 않음
+- **새 service 추가** → service runtime base에 특수 경로가 늘지 않음
+- **새 socket family 추가** → `socket_base_t`를 수정하지 않음
+
+설계 목표: *같은 종류의 기능 추가가 허브 타입을 건드리지 않는 구조.*
+
+이 속성이 유지되면 transport, service, socket family 수가 늘어도 구조의
+복잡도는 제한된다. 유지되지 않으면 각 추가가 허브 타입을 이해하기 어렵고
+수정하기 취약하게 만든다.
+
+### 10.7 성능은 구조적 제약이다
+
+성능은 아키텍처 설계 후에 덧붙이는 것이 아니다.
+처음부터 구조 결정을 제약한다.
+
+**Hot-path 정책은 깊은 모듈 안에 둔다.** Speculative I/O, gather write,
+buffer growth, zero-copy 경로 같은 최적화는 engine pipeline이나
+transport adapter 안에 캡슐화한다. 계층 경계를 넘어 흩뿌리지 않는다.
+
+**성능은 gate이지 trade-off가 아니다.** 구조 변경이 steady-state throughput,
+tail latency, CPU 사용률을 악화시키면 채택하지 않는다 — 구조가 객관적으로 더
+깔끔해도 마찬가지다. 반대로 성능을 위해 public contract를 약하게 만드는
+우회 경로도 금지한다.
+
+두 제약은 서로를 강화한다: 좋은 구조는 hot-path 정책을 격리하여 상위 계층에
+누출시키지 않고 최적화할 수 있게 하고, 성능 규율은 구조가 현실과 동떨어진
+이론적 연습이 되는 것을 방지한다.
 
 ---
 

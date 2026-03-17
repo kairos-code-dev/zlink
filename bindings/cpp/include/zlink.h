@@ -6,7 +6,7 @@
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 3
+#define ZLINK_VERSION_PATCH 4
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -167,21 +167,26 @@ ZLINK_EXPORT void zlink_version (int *major_, int *minor_, int *patch_);
 /******************************************************************************/
 /*  0MQ infrastructure (a.k.a. context) initialisation & termination.         */
 /******************************************************************************/
-#define ZLINK_IO_THREADS 1
-#define ZLINK_MAX_SOCKETS 2
-#define ZLINK_SOCKET_LIMIT 3
-#define ZLINK_THREAD_PRIORITY 3
-#define ZLINK_THREAD_SCHED_POLICY 4
-#define ZLINK_MAX_MSGSZ 5
-#define ZLINK_MSG_T_SIZE 6
-#define ZLINK_THREAD_AFFINITY_CPU_ADD 7
-#define ZLINK_THREAD_AFFINITY_CPU_REMOVE 8
-#define ZLINK_THREAD_NAME_PREFIX 9
-
-#define ZLINK_IO_THREADS_DFLT 2
-#define ZLINK_MAX_SOCKETS_DFLT 1023
+#define ZLINK_IO_THREADS_DFLT 1
+#define ZLINK_MAX_SOCKETS_DFLT 4095
 #define ZLINK_THREAD_PRIORITY_DFLT -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT -1
+
+typedef enum zlink_ctx_option_t
+{
+    ZLINK_IO_THREADS = 1,
+    ZLINK_MAX_SOCKETS = 2,
+    ZLINK_SOCKET_LIMIT = 3,
+    ZLINK_THREAD_PRIORITY = 3,
+    ZLINK_THREAD_SCHED_POLICY = 4,
+    ZLINK_MAX_MSGSZ = 5,
+    ZLINK_MSG_T_SIZE = 6,
+    ZLINK_THREAD_AFFINITY_CPU_ADD = 7,
+    ZLINK_THREAD_AFFINITY_CPU_REMOVE = 8,
+    ZLINK_THREAD_NAME_PREFIX = 9
+} zlink_ctx_option_t;
+
+typedef uint32_t zlink_send_flags_t;
 
 /**
  * @brief Create a new zlink context.
@@ -221,7 +226,9 @@ ZLINK_EXPORT int zlink_ctx_shutdown (void *context_);
  * @param optval_   Option value.
  * @return 0 on success, -1 on failure (errno is set).
  */
-ZLINK_EXPORT int zlink_ctx_set (void *context_, int option_, int optval_);
+ZLINK_EXPORT int zlink_ctx_set (void *context_,
+                                zlink_ctx_option_t option_,
+                                int optval_);
 
 /**
  * @brief Get a context option.
@@ -229,7 +236,7 @@ ZLINK_EXPORT int zlink_ctx_set (void *context_, int option_, int optval_);
  * @param option_   Option name.
  * @return Option value, or -1 on failure (errno is set).
  */
-ZLINK_EXPORT int zlink_ctx_get (void *context_, int option_);
+ZLINK_EXPORT int zlink_ctx_get (void *context_, zlink_ctx_option_t option_);
 
 /******************************************************************************/
 /*  0MQ message definition.                                                   */
@@ -276,10 +283,14 @@ ZLINK_EXPORT int zlink_msg_init_data (
   zlink_msg_t *msg_, void *data_, size_t size_, zlink_free_fn *ffn_, void *hint_);
 
 /** @brief Send a message on a socket. On success, ownership is transferred. */
-ZLINK_EXPORT int zlink_msg_send (zlink_msg_t *msg_, void *s_, int flags_);
+ZLINK_EXPORT int zlink_msg_send (zlink_msg_t *msg_,
+                                 void *s_,
+                                 zlink_send_flags_t flags_);
 
 /** @brief Receive a message from a socket. */
-ZLINK_EXPORT int zlink_msg_recv (zlink_msg_t *msg_, void *s_, int flags_);
+ZLINK_EXPORT int zlink_msg_recv (zlink_msg_t *msg_,
+                                 void *s_,
+                                 zlink_send_flags_t flags_);
 
 /** @brief Release message resources. Must be called after init. */
 ZLINK_EXPORT int zlink_msg_close (zlink_msg_t *msg_);
@@ -312,87 +323,243 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 /******************************************************************************/
 /*  0MQ socket definition.                                                    */
 /******************************************************************************/
-#define ZLINK_PAIR 0
-#define ZLINK_PUB 1
-#define ZLINK_SUB 2
-#define ZLINK_DEALER 5
-#define ZLINK_ROUTER 6
-#define ZLINK_XPUB 9
-#define ZLINK_XSUB 10
-#define ZLINK_STREAM 11
+typedef enum zlink_socket_type_t
+{
+    ZLINK_SOCKET_PAIR = 0x1001,
+    ZLINK_SOCKET_PUB = 0x1002,
+    ZLINK_SOCKET_SUB = 0x1003,
+    ZLINK_SOCKET_DEALER = 0x1004,
+    ZLINK_SOCKET_ROUTER = 0x1005,
+    ZLINK_SOCKET_XPUB = 0x1006,
+    ZLINK_SOCKET_XSUB = 0x1007,
+    ZLINK_SOCKET_STREAM = 0x1008
+} zlink_socket_type_t;
 
-#define ZLINK_AFFINITY 4
-#define ZLINK_ROUTING_ID 5
-#define ZLINK_SUBSCRIBE 6
-#define ZLINK_UNSUBSCRIBE 7
-#define ZLINK_RATE 8
-#define ZLINK_RECOVERY_IVL 9
-#define ZLINK_SNDBUF 11
-#define ZLINK_RCVBUF 12
-#define ZLINK_RCVMORE 13
-#define ZLINK_FD 14
-#define ZLINK_EVENTS 15
-#define ZLINK_TYPE 16
-#define ZLINK_LINGER 17
-#define ZLINK_RECONNECT_IVL 18
-#define ZLINK_BACKLOG 19
-#define ZLINK_RECONNECT_IVL_MAX 21
-#define ZLINK_MAXMSGSIZE 22
-#define ZLINK_SNDHWM 23
-#define ZLINK_RCVHWM 24
-#define ZLINK_MULTICAST_HOPS 25
-#define ZLINK_RCVTIMEO 27
-#define ZLINK_SNDTIMEO 28
-#define ZLINK_LAST_ENDPOINT 32
-#define ZLINK_ROUTER_MANDATORY 33
-#define ZLINK_TCP_KEEPALIVE 34
-#define ZLINK_TCP_KEEPALIVE_CNT 35
-#define ZLINK_TCP_KEEPALIVE_IDLE 36
-#define ZLINK_TCP_KEEPALIVE_INTVL 37
-#define ZLINK_TCP_NODELAY 118
-#define ZLINK_IMMEDIATE 39
-#define ZLINK_XPUB_VERBOSE 40
-#define ZLINK_IPV6 42
-#define ZLINK_PROBE_ROUTER 51
-#define ZLINK_CONFLATE 54
-#define ZLINK_ROUTER_HANDOVER 56
-#define ZLINK_TOS 57
-#define ZLINK_CONNECT_ROUTING_ID 61
-#define ZLINK_HANDSHAKE_IVL 66
-#define ZLINK_XPUB_NODROP 69
-#define ZLINK_BLOCKY 70
-#define ZLINK_XPUB_MANUAL 71
-#define ZLINK_XPUB_WELCOME_MSG 72
-#define ZLINK_STREAM_NOTIFY 73
-#define ZLINK_INVERT_MATCHING 74
-#define ZLINK_HEARTBEAT_IVL 75
-#define ZLINK_HEARTBEAT_TTL 76
-#define ZLINK_HEARTBEAT_TIMEOUT 77
-#define ZLINK_XPUB_VERBOSER 78
-#define ZLINK_CONNECT_TIMEOUT 79
-#define ZLINK_TCP_MAXRT 80
-#define ZLINK_MULTICAST_MAXTPDU 84
-#define ZLINK_BINDTODEVICE 92
-#define ZLINK_XPUB_MANUAL_LAST_VALUE 98
-#define ZLINK_ONLY_FIRST_SUBSCRIBE 108
-#define ZLINK_TOPICS_COUNT 116
-#define ZLINK_ZMP_METADATA 117
+typedef enum zlink_socket_option_t
+{
+    ZLINK_SOCKOPT_AFFINITY = 0x1101,
+    ZLINK_SOCKOPT_ROUTING_ID = 0x1102,
+    ZLINK_SOCKOPT_SUBSCRIBE = 0x1103,
+    ZLINK_SOCKOPT_UNSUBSCRIBE = 0x1104,
+    ZLINK_SOCKOPT_RATE = 0x1105,
+    ZLINK_SOCKOPT_RECOVERY_IVL = 0x1106,
+    ZLINK_SOCKOPT_SNDBUF = 0x1107,
+    ZLINK_SOCKOPT_RCVBUF = 0x1108,
+    ZLINK_SOCKOPT_RCVMORE = 0x1109,
+    ZLINK_SOCKOPT_FD = 0x110A,
+    ZLINK_SOCKOPT_EVENTS = 0x110B,
+    ZLINK_SOCKOPT_TYPE = 0x110C,
+    ZLINK_SOCKOPT_LINGER = 0x110D,
+    ZLINK_SOCKOPT_RECONNECT_IVL = 0x110E,
+    ZLINK_SOCKOPT_BACKLOG = 0x110F,
+    ZLINK_SOCKOPT_RECONNECT_IVL_MAX = 0x1110,
+    ZLINK_SOCKOPT_MAXMSGSIZE = 0x1111,
+    ZLINK_SOCKOPT_SNDHWM = 0x1112,
+    ZLINK_SOCKOPT_RCVHWM = 0x1113,
+    ZLINK_SOCKOPT_MULTICAST_HOPS = 0x1114,
+    ZLINK_SOCKOPT_RCVTIMEO = 0x1115,
+    ZLINK_SOCKOPT_SNDTIMEO = 0x1116,
+    ZLINK_SOCKOPT_LAST_ENDPOINT = 0x1117,
+    ZLINK_SOCKOPT_ROUTER_MANDATORY = 0x1118,
+    ZLINK_SOCKOPT_TCP_KEEPALIVE = 0x1119,
+    ZLINK_SOCKOPT_TCP_KEEPALIVE_CNT = 0x111A,
+    ZLINK_SOCKOPT_TCP_KEEPALIVE_IDLE = 0x111B,
+    ZLINK_SOCKOPT_TCP_KEEPALIVE_INTVL = 0x111C,
+    ZLINK_SOCKOPT_IMMEDIATE = 0x111D,
+    ZLINK_SOCKOPT_XPUB_VERBOSE = 0x111E,
+    ZLINK_SOCKOPT_IPV6 = 0x111F,
+    ZLINK_SOCKOPT_PROBE_ROUTER = 0x1120,
+    ZLINK_SOCKOPT_CONFLATE = 0x1121,
+    ZLINK_SOCKOPT_ROUTER_HANDOVER = 0x1122,
+    ZLINK_SOCKOPT_TOS = 0x1123,
+    ZLINK_SOCKOPT_CONNECT_ROUTING_ID = 0x1124,
+    ZLINK_SOCKOPT_HANDSHAKE_IVL = 0x1125,
+    ZLINK_SOCKOPT_XPUB_NODROP = 0x1126,
+    ZLINK_SOCKOPT_BLOCKY = 0x1127,
+    ZLINK_SOCKOPT_XPUB_MANUAL = 0x1128,
+    ZLINK_SOCKOPT_XPUB_WELCOME_MSG = 0x1129,
+    ZLINK_SOCKOPT_STREAM_NOTIFY = 0x112A,
+    ZLINK_SOCKOPT_INVERT_MATCHING = 0x112B,
+    ZLINK_SOCKOPT_HEARTBEAT_IVL = 0x112C,
+    ZLINK_SOCKOPT_HEARTBEAT_TTL = 0x112D,
+    ZLINK_SOCKOPT_HEARTBEAT_TIMEOUT = 0x112E,
+    ZLINK_SOCKOPT_XPUB_VERBOSER = 0x112F,
+    ZLINK_SOCKOPT_CONNECT_TIMEOUT = 0x1130,
+    ZLINK_SOCKOPT_TCP_MAXRT = 0x1131,
+    ZLINK_SOCKOPT_MULTICAST_MAXTPDU = 0x1132,
+    ZLINK_SOCKOPT_BINDTODEVICE = 0x1134,
+    ZLINK_SOCKOPT_TLS_CERT = 0x1135,
+    ZLINK_SOCKOPT_TLS_KEY = 0x1136,
+    ZLINK_SOCKOPT_TLS_CA = 0x1137,
+    ZLINK_SOCKOPT_TLS_VERIFY = 0x1138,
+    ZLINK_SOCKOPT_XPUB_MANUAL_LAST_VALUE = 0x1139,
+    ZLINK_SOCKOPT_TLS_REQUIRE_CLIENT_CERT = 0x113A,
+    ZLINK_SOCKOPT_TLS_HOSTNAME = 0x113B,
+    ZLINK_SOCKOPT_TLS_TRUST_SYSTEM = 0x113C,
+    ZLINK_SOCKOPT_TLS_PASSWORD = 0x113D,
+    ZLINK_SOCKOPT_ONLY_FIRST_SUBSCRIBE = 0x113E,
+    ZLINK_SOCKOPT_TOPICS_COUNT = 0x113F,
+    ZLINK_SOCKOPT_ZMP_METADATA = 0x1140,
+    ZLINK_SOCKOPT_TCP_NODELAY = 0x1141
+} zlink_socket_option_t;
 
-//  TLS protocol options
-#define ZLINK_TLS_CERT 95
-#define ZLINK_TLS_KEY 96
-#define ZLINK_TLS_CA 97
-#define ZLINK_TLS_VERIFY 98
-#define ZLINK_TLS_REQUIRE_CLIENT_CERT 99
-#define ZLINK_TLS_HOSTNAME 100
-#define ZLINK_TLS_TRUST_SYSTEM 101
-#define ZLINK_TLS_PASSWORD 102
+#ifdef ZLINK_INTERNAL_BUILD
+#define ZLINK_PAIR ((zlink_socket_type_t) 0)
+#define ZLINK_PUB ((zlink_socket_type_t) 1)
+#define ZLINK_SUB ((zlink_socket_type_t) 2)
+#define ZLINK_DEALER ((zlink_socket_type_t) 5)
+#define ZLINK_ROUTER ((zlink_socket_type_t) 6)
+#define ZLINK_XPUB ((zlink_socket_type_t) 9)
+#define ZLINK_XSUB ((zlink_socket_type_t) 10)
+#define ZLINK_STREAM ((zlink_socket_type_t) 11)
 
-#define ZLINK_MORE 1
-#define ZLINK_SHARED 3
+#define ZLINK_AFFINITY ((zlink_socket_option_t) 4)
+#define ZLINK_ROUTING_ID ((zlink_socket_option_t) 5)
+#define ZLINK_SUBSCRIBE ((zlink_socket_option_t) 6)
+#define ZLINK_UNSUBSCRIBE ((zlink_socket_option_t) 7)
+#define ZLINK_RATE ((zlink_socket_option_t) 8)
+#define ZLINK_RECOVERY_IVL ((zlink_socket_option_t) 9)
+#define ZLINK_SNDBUF ((zlink_socket_option_t) 11)
+#define ZLINK_RCVBUF ((zlink_socket_option_t) 12)
+#define ZLINK_RCVMORE ((zlink_socket_option_t) 13)
+#define ZLINK_LINGER ((zlink_socket_option_t) 17)
+#define ZLINK_RECONNECT_IVL ((zlink_socket_option_t) 18)
+#define ZLINK_BACKLOG ((zlink_socket_option_t) 19)
+#define ZLINK_RECONNECT_IVL_MAX ((zlink_socket_option_t) 21)
+#define ZLINK_MAXMSGSIZE ((zlink_socket_option_t) 22)
+#define ZLINK_SNDHWM ((zlink_socket_option_t) 23)
+#define ZLINK_RCVHWM ((zlink_socket_option_t) 24)
+#define ZLINK_MULTICAST_HOPS ((zlink_socket_option_t) 25)
+#define ZLINK_RCVTIMEO ((zlink_socket_option_t) 27)
+#define ZLINK_SNDTIMEO ((zlink_socket_option_t) 28)
+#define ZLINK_ROUTER_MANDATORY ((zlink_socket_option_t) 33)
+#define ZLINK_TCP_KEEPALIVE ((zlink_socket_option_t) 34)
+#define ZLINK_TCP_KEEPALIVE_CNT ((zlink_socket_option_t) 35)
+#define ZLINK_TCP_KEEPALIVE_IDLE ((zlink_socket_option_t) 36)
+#define ZLINK_TCP_KEEPALIVE_INTVL ((zlink_socket_option_t) 37)
+#define ZLINK_IMMEDIATE ((zlink_socket_option_t) 39)
+#define ZLINK_XPUB_VERBOSE ((zlink_socket_option_t) 40)
+#define ZLINK_IPV6 ((zlink_socket_option_t) 42)
+#define ZLINK_PROBE_ROUTER ((zlink_socket_option_t) 51)
+#define ZLINK_CONFLATE ((zlink_socket_option_t) 54)
+#define ZLINK_ROUTER_HANDOVER ((zlink_socket_option_t) 56)
+#define ZLINK_TOS ((zlink_socket_option_t) 57)
+#define ZLINK_CONNECT_ROUTING_ID ((zlink_socket_option_t) 61)
+#define ZLINK_HANDSHAKE_IVL ((zlink_socket_option_t) 66)
+#define ZLINK_XPUB_NODROP ((zlink_socket_option_t) 69)
+#define ZLINK_BLOCKY ((zlink_socket_option_t) 70)
+#define ZLINK_XPUB_MANUAL ((zlink_socket_option_t) 71)
+#define ZLINK_XPUB_WELCOME_MSG ((zlink_socket_option_t) 72)
+#define ZLINK_STREAM_NOTIFY ((zlink_socket_option_t) 73)
+#define ZLINK_INVERT_MATCHING ((zlink_socket_option_t) 74)
+#define ZLINK_HEARTBEAT_IVL ((zlink_socket_option_t) 75)
+#define ZLINK_HEARTBEAT_TTL ((zlink_socket_option_t) 76)
+#define ZLINK_HEARTBEAT_TIMEOUT ((zlink_socket_option_t) 77)
+#define ZLINK_XPUB_VERBOSER ((zlink_socket_option_t) 78)
+#define ZLINK_CONNECT_TIMEOUT ((zlink_socket_option_t) 79)
+#define ZLINK_TCP_MAXRT ((zlink_socket_option_t) 80)
+#define ZLINK_MULTICAST_MAXTPDU ((zlink_socket_option_t) 84)
+#define ZLINK_BINDTODEVICE ((zlink_socket_option_t) 92)
+#define ZLINK_TLS_CERT ((zlink_socket_option_t) 95)
+#define ZLINK_TLS_KEY ((zlink_socket_option_t) 96)
+#define ZLINK_TLS_CA ((zlink_socket_option_t) 97)
+#define ZLINK_TLS_VERIFY ((zlink_socket_option_t) 98)
+#define ZLINK_XPUB_MANUAL_LAST_VALUE ((zlink_socket_option_t) 98)
+#define ZLINK_TLS_REQUIRE_CLIENT_CERT ((zlink_socket_option_t) 99)
+#define ZLINK_TLS_HOSTNAME ((zlink_socket_option_t) 100)
+#define ZLINK_TLS_TRUST_SYSTEM ((zlink_socket_option_t) 101)
+#define ZLINK_TLS_PASSWORD ((zlink_socket_option_t) 102)
+#define ZLINK_ONLY_FIRST_SUBSCRIBE ((zlink_socket_option_t) 108)
+#define ZLINK_TOPICS_COUNT ((zlink_socket_option_t) 116)
+#define ZLINK_ZMP_METADATA ((zlink_socket_option_t) 117)
+#define ZLINK_TCP_NODELAY ((zlink_socket_option_t) 118)
+#else
+#define ZLINK_PAIR ZLINK_SOCKET_PAIR
+#define ZLINK_PUB ZLINK_SOCKET_PUB
+#define ZLINK_SUB ZLINK_SOCKET_SUB
+#define ZLINK_DEALER ZLINK_SOCKET_DEALER
+#define ZLINK_ROUTER ZLINK_SOCKET_ROUTER
+#define ZLINK_XPUB ZLINK_SOCKET_XPUB
+#define ZLINK_XSUB ZLINK_SOCKET_XSUB
+#define ZLINK_STREAM ZLINK_SOCKET_STREAM
 
-#define ZLINK_DONTWAIT 1
-#define ZLINK_SNDMORE 2
+#define ZLINK_AFFINITY ZLINK_SOCKOPT_AFFINITY
+#define ZLINK_ROUTING_ID ZLINK_SOCKOPT_ROUTING_ID
+#define ZLINK_SUBSCRIBE ZLINK_SOCKOPT_SUBSCRIBE
+#define ZLINK_UNSUBSCRIBE ZLINK_SOCKOPT_UNSUBSCRIBE
+#define ZLINK_RATE ZLINK_SOCKOPT_RATE
+#define ZLINK_RECOVERY_IVL ZLINK_SOCKOPT_RECOVERY_IVL
+#define ZLINK_SNDBUF ZLINK_SOCKOPT_SNDBUF
+#define ZLINK_RCVBUF ZLINK_SOCKOPT_RCVBUF
+#define ZLINK_RCVMORE ZLINK_SOCKOPT_RCVMORE
+#define ZLINK_LINGER ZLINK_SOCKOPT_LINGER
+#define ZLINK_RECONNECT_IVL ZLINK_SOCKOPT_RECONNECT_IVL
+#define ZLINK_BACKLOG ZLINK_SOCKOPT_BACKLOG
+#define ZLINK_RECONNECT_IVL_MAX ZLINK_SOCKOPT_RECONNECT_IVL_MAX
+#define ZLINK_MAXMSGSIZE ZLINK_SOCKOPT_MAXMSGSIZE
+#define ZLINK_SNDHWM ZLINK_SOCKOPT_SNDHWM
+#define ZLINK_RCVHWM ZLINK_SOCKOPT_RCVHWM
+#define ZLINK_MULTICAST_HOPS ZLINK_SOCKOPT_MULTICAST_HOPS
+#define ZLINK_RCVTIMEO ZLINK_SOCKOPT_RCVTIMEO
+#define ZLINK_SNDTIMEO ZLINK_SOCKOPT_SNDTIMEO
+#define ZLINK_ROUTER_MANDATORY ZLINK_SOCKOPT_ROUTER_MANDATORY
+#define ZLINK_TCP_KEEPALIVE ZLINK_SOCKOPT_TCP_KEEPALIVE
+#define ZLINK_TCP_KEEPALIVE_CNT ZLINK_SOCKOPT_TCP_KEEPALIVE_CNT
+#define ZLINK_TCP_KEEPALIVE_IDLE ZLINK_SOCKOPT_TCP_KEEPALIVE_IDLE
+#define ZLINK_TCP_KEEPALIVE_INTVL ZLINK_SOCKOPT_TCP_KEEPALIVE_INTVL
+#define ZLINK_IMMEDIATE ZLINK_SOCKOPT_IMMEDIATE
+#define ZLINK_XPUB_VERBOSE ZLINK_SOCKOPT_XPUB_VERBOSE
+#define ZLINK_IPV6 ZLINK_SOCKOPT_IPV6
+#define ZLINK_PROBE_ROUTER ZLINK_SOCKOPT_PROBE_ROUTER
+#define ZLINK_CONFLATE ZLINK_SOCKOPT_CONFLATE
+#define ZLINK_ROUTER_HANDOVER ZLINK_SOCKOPT_ROUTER_HANDOVER
+#define ZLINK_TOS ZLINK_SOCKOPT_TOS
+#define ZLINK_CONNECT_ROUTING_ID ZLINK_SOCKOPT_CONNECT_ROUTING_ID
+#define ZLINK_HANDSHAKE_IVL ZLINK_SOCKOPT_HANDSHAKE_IVL
+#define ZLINK_XPUB_NODROP ZLINK_SOCKOPT_XPUB_NODROP
+#define ZLINK_BLOCKY ZLINK_SOCKOPT_BLOCKY
+#define ZLINK_XPUB_MANUAL ZLINK_SOCKOPT_XPUB_MANUAL
+#define ZLINK_XPUB_WELCOME_MSG ZLINK_SOCKOPT_XPUB_WELCOME_MSG
+#define ZLINK_STREAM_NOTIFY ZLINK_SOCKOPT_STREAM_NOTIFY
+#define ZLINK_INVERT_MATCHING ZLINK_SOCKOPT_INVERT_MATCHING
+#define ZLINK_HEARTBEAT_IVL ZLINK_SOCKOPT_HEARTBEAT_IVL
+#define ZLINK_HEARTBEAT_TTL ZLINK_SOCKOPT_HEARTBEAT_TTL
+#define ZLINK_HEARTBEAT_TIMEOUT ZLINK_SOCKOPT_HEARTBEAT_TIMEOUT
+#define ZLINK_XPUB_VERBOSER ZLINK_SOCKOPT_XPUB_VERBOSER
+#define ZLINK_CONNECT_TIMEOUT ZLINK_SOCKOPT_CONNECT_TIMEOUT
+#define ZLINK_TCP_MAXRT ZLINK_SOCKOPT_TCP_MAXRT
+#define ZLINK_MULTICAST_MAXTPDU ZLINK_SOCKOPT_MULTICAST_MAXTPDU
+#define ZLINK_BINDTODEVICE ZLINK_SOCKOPT_BINDTODEVICE
+#define ZLINK_TLS_CERT ZLINK_SOCKOPT_TLS_CERT
+#define ZLINK_TLS_KEY ZLINK_SOCKOPT_TLS_KEY
+#define ZLINK_TLS_CA ZLINK_SOCKOPT_TLS_CA
+#define ZLINK_TLS_VERIFY ZLINK_SOCKOPT_TLS_VERIFY
+#define ZLINK_XPUB_MANUAL_LAST_VALUE ZLINK_SOCKOPT_XPUB_MANUAL_LAST_VALUE
+#define ZLINK_TLS_REQUIRE_CLIENT_CERT ZLINK_SOCKOPT_TLS_REQUIRE_CLIENT_CERT
+#define ZLINK_TLS_HOSTNAME ZLINK_SOCKOPT_TLS_HOSTNAME
+#define ZLINK_TLS_TRUST_SYSTEM ZLINK_SOCKOPT_TLS_TRUST_SYSTEM
+#define ZLINK_TLS_PASSWORD ZLINK_SOCKOPT_TLS_PASSWORD
+#define ZLINK_ONLY_FIRST_SUBSCRIBE ZLINK_SOCKOPT_ONLY_FIRST_SUBSCRIBE
+#define ZLINK_TOPICS_COUNT ZLINK_SOCKOPT_TOPICS_COUNT
+#define ZLINK_ZMP_METADATA ZLINK_SOCKOPT_ZMP_METADATA
+#define ZLINK_TCP_NODELAY ZLINK_SOCKOPT_TCP_NODELAY
+#endif
+
+#define ZLINK_FD ZLINK_SOCKOPT_FD
+#define ZLINK_EVENTS ZLINK_SOCKOPT_EVENTS
+#define ZLINK_TYPE ZLINK_SOCKOPT_TYPE
+#define ZLINK_LAST_ENDPOINT ZLINK_SOCKOPT_LAST_ENDPOINT
+
+typedef enum zlink_msg_property_t
+{
+    ZLINK_MORE = 1,
+    ZLINK_SHARED = 3
+} zlink_msg_property_t;
+
+#define ZLINK_DONTWAIT ((zlink_send_flags_t) 0x0001u)
+#define ZLINK_SNDMORE ((zlink_send_flags_t) 0x0002u)
+#define ZLINK_SEND_FLAG_DONTWAIT ZLINK_DONTWAIT
+#define ZLINK_SEND_FLAG_SNDMORE ZLINK_SNDMORE
 
 #define ZLINK_NULL 0
 #define ZLINK_PLAIN 1
@@ -400,39 +567,169 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 /******************************************************************************/
 /*  0MQ socket events and monitoring                                          */
 /******************************************************************************/
-#define ZLINK_EVENT_CONNECTED 0x0001
-#define ZLINK_EVENT_CONNECT_DELAYED 0x0002
-#define ZLINK_EVENT_CONNECT_RETRIED 0x0004
-#define ZLINK_EVENT_LISTENING 0x0008
-#define ZLINK_EVENT_BIND_FAILED 0x0010
-#define ZLINK_EVENT_ACCEPTED 0x0020
-#define ZLINK_EVENT_ACCEPT_FAILED 0x0040
-#define ZLINK_EVENT_CLOSED 0x0080
-#define ZLINK_EVENT_CLOSE_FAILED 0x0100
-#define ZLINK_EVENT_DISCONNECTED 0x0200
-#define ZLINK_EVENT_MONITOR_STOPPED 0x0400
-#define ZLINK_EVENT_ALL 0xFFFF
-#define ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL 0x0800
-#define ZLINK_EVENT_CONNECTION_READY 0x1000
-#define ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL 0x2000
-#define ZLINK_EVENT_HANDSHAKE_FAILED_AUTH 0x4000
+typedef uint32_t zlink_socket_monitor_event_mask_t;
 
-#define ZLINK_DISCONNECT_UNKNOWN 0
-#define ZLINK_DISCONNECT_HANDSHAKE_FAILED 3
-#define ZLINK_DISCONNECT_TRANSPORT_ERROR 4
-#define ZLINK_DISCONNECT_CTX_TERM 5
+#define ZLINK_SOCKET_MONITOR_EVENT_CONNECTED                                 \
+    ((zlink_socket_monitor_event_mask_t) 0x0001u)
+#define ZLINK_SOCKET_MONITOR_EVENT_CONNECT_DELAYED                           \
+    ((zlink_socket_monitor_event_mask_t) 0x0002u)
+#define ZLINK_SOCKET_MONITOR_EVENT_CONNECT_RETRIED                           \
+    ((zlink_socket_monitor_event_mask_t) 0x0004u)
+#define ZLINK_SOCKET_MONITOR_EVENT_LISTENING                                 \
+    ((zlink_socket_monitor_event_mask_t) 0x0008u)
+#define ZLINK_SOCKET_MONITOR_EVENT_BIND_FAILED                               \
+    ((zlink_socket_monitor_event_mask_t) 0x0010u)
+#define ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED                                  \
+    ((zlink_socket_monitor_event_mask_t) 0x0020u)
+#define ZLINK_SOCKET_MONITOR_EVENT_ACCEPT_FAILED                             \
+    ((zlink_socket_monitor_event_mask_t) 0x0040u)
+#define ZLINK_SOCKET_MONITOR_EVENT_CLOSED                                    \
+    ((zlink_socket_monitor_event_mask_t) 0x0080u)
+#define ZLINK_SOCKET_MONITOR_EVENT_CLOSE_FAILED                              \
+    ((zlink_socket_monitor_event_mask_t) 0x0100u)
+#define ZLINK_SOCKET_MONITOR_EVENT_DISCONNECTED                              \
+    ((zlink_socket_monitor_event_mask_t) 0x0200u)
+#define ZLINK_SOCKET_MONITOR_EVENT_MONITOR_STOPPED                           \
+    ((zlink_socket_monitor_event_mask_t) 0x0400u)
+#define ZLINK_SOCKET_MONITOR_EVENT_ALL                                       \
+    ((zlink_socket_monitor_event_mask_t) 0xFFFFu)
+#define ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_NO_DETAIL                \
+    ((zlink_socket_monitor_event_mask_t) 0x0800u)
+#define ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY                          \
+    ((zlink_socket_monitor_event_mask_t) 0x1000u)
+#define ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_PROTOCOL                 \
+    ((zlink_socket_monitor_event_mask_t) 0x2000u)
+#define ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_AUTH                     \
+    ((zlink_socket_monitor_event_mask_t) 0x4000u)
 
-#define ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO 0x10000013
+#define ZLINK_EVENT_CONNECTED ZLINK_SOCKET_MONITOR_EVENT_CONNECTED
+#define ZLINK_EVENT_CONNECT_DELAYED ZLINK_SOCKET_MONITOR_EVENT_CONNECT_DELAYED
+#define ZLINK_EVENT_CONNECT_RETRIED ZLINK_SOCKET_MONITOR_EVENT_CONNECT_RETRIED
+#define ZLINK_EVENT_LISTENING ZLINK_SOCKET_MONITOR_EVENT_LISTENING
+#define ZLINK_EVENT_BIND_FAILED ZLINK_SOCKET_MONITOR_EVENT_BIND_FAILED
+#define ZLINK_EVENT_ACCEPTED ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED
+#define ZLINK_EVENT_ACCEPT_FAILED ZLINK_SOCKET_MONITOR_EVENT_ACCEPT_FAILED
+#define ZLINK_EVENT_CLOSED ZLINK_SOCKET_MONITOR_EVENT_CLOSED
+#define ZLINK_EVENT_CLOSE_FAILED ZLINK_SOCKET_MONITOR_EVENT_CLOSE_FAILED
+#define ZLINK_EVENT_DISCONNECTED ZLINK_SOCKET_MONITOR_EVENT_DISCONNECTED
+#define ZLINK_EVENT_MONITOR_STOPPED ZLINK_SOCKET_MONITOR_EVENT_MONITOR_STOPPED
+#define ZLINK_EVENT_ALL ZLINK_SOCKET_MONITOR_EVENT_ALL
+#define ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL                               \
+    ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+#define ZLINK_EVENT_CONNECTION_READY ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY
+#define ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL                                \
+    ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_PROTOCOL
+#define ZLINK_EVENT_HANDSHAKE_FAILED_AUTH                                    \
+    ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_AUTH
+
+typedef enum zlink_disconnect_reason_t
+{
+    ZLINK_DISCONNECT_REASON_UNKNOWN = 0,
+    ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED = 3,
+    ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR = 4,
+    ZLINK_DISCONNECT_REASON_CTX_TERM = 5
+} zlink_disconnect_reason_t;
+
+#define ZLINK_DISCONNECT_UNKNOWN ZLINK_DISCONNECT_REASON_UNKNOWN
+#define ZLINK_DISCONNECT_HANDSHAKE_FAILED ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED
+#define ZLINK_DISCONNECT_TRANSPORT_ERROR ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR
+#define ZLINK_DISCONNECT_CTX_TERM ZLINK_DISCONNECT_REASON_CTX_TERM
+
+typedef enum zlink_protocol_error_t
+{
+    ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO = 0x10000013
+} zlink_protocol_error_t;
+
+/**
+ * @brief Callback type for direct multipart socket dispatch.
+ *
+ * Callback is invoked on the owning socket I/O thread.
+ * Ownership of all message parts is transferred to the callback.
+ * Each part must be closed or otherwise consumed exactly once before return.
+ *
+ * @param source_rid_ Sender routing id for the received message.
+ * @param parts_ Received multipart payload frames.
+ * @param part_count_ Number of entries in @p parts_.
+ */
+typedef void (*zlink_socket_msg_handler_fn) (
+  const zlink_routing_id_t *source_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
+
+typedef void (*zlink_spot_handler_fn) (const zlink_routing_id_t *source_rid_,
+                                       const char *topic_,
+                                       size_t topic_len_,
+                                       zlink_msg_t *parts_,
+                                       size_t part_count_,
+                                       void *userdata_);
+
+typedef void (*zlink_xpub_handler_fn) (int subscribed_,
+                                       const uint8_t *topic_,
+                                       size_t topic_len_,
+                                       void *userdata_);
+
+typedef enum zlink_socket_handler_kind_t
+{
+    ZLINK_SOCKET_HANDLER_MSG = 0x1201,
+    ZLINK_SOCKET_HANDLER_SPOT = 0x1202,
+    ZLINK_SOCKET_HANDLER_XPUB = 0x1203
+} zlink_socket_handler_kind_t;
+
+typedef struct zlink_socket_handler_t
+{
+    zlink_socket_handler_kind_t kind;
+    union
+    {
+        zlink_socket_msg_handler_fn msg;
+        zlink_spot_handler_fn spot;
+        zlink_xpub_handler_fn xpub;
+    } fn;
+    void *userdata;
+} zlink_socket_handler_t;
+
+typedef void (*zlink_send_ready_handler_fn) (void *subject_, void *userdata_);
 
 /**
  * @brief Create a socket.
  * @param context_  Context handle (return value of zlink_ctx_new()).
- * @param type_     Socket type (ZLINK_PAIR, ZLINK_PUB, ZLINK_SUB, etc.).
+ * @param type_     Socket type.
  * @return Socket handle, or NULL on failure (errno is set).
  */
-ZLINK_EXPORT void *zlink_socket (void *, int type_);
+ZLINK_EXPORT void *zlink_socket (void *, zlink_socket_type_t type_);
 
-/** @brief Close a socket and release its resources. */
+/**
+ * @brief Attach a direct receive handler to a socket.
+ *
+ * Sockets start in recv mode. This call transitions the handle to callback
+ * mode and cannot be undone for the lifetime of the socket. A second attach
+ * on the same handle fails with errno=EBUSY.
+ */
+ZLINK_EXPORT int zlink_socket_attach_handler (
+  void *s_, const zlink_socket_handler_t *handler_);
+
+/**
+ * @brief Install or replace the send-ready callback for a send-capable handle.
+ *
+ * The handler is replace-only. Passing NULL is invalid. A successful replace is
+ * visible from the next writable transition. If called reentrantly from the
+ * same handle's send-ready callback, the call fails with errno=EDEADLK.
+ */
+ZLINK_EXPORT int zlink_socket_set_send_ready_handler (
+  void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
+
+/**
+ * @brief Close a socket and release its resources.
+ *
+ * Public handles use a tiered concurrency contract: send/publish hot paths
+ * allow same-handle concurrent use, low-frequency control paths serialize for
+ * correctness, and close/destroy uses a stricter lifecycle gate. If another
+ * thread has an in-flight callback or admitted API on the same handle, close
+ * fails with errno=EBUSY. Once close is accepted, new API entry fails with
+ * errno=ESHUTDOWN. Self-close from a send-ready or monitor callback is
+ * deferred until callback epilogue. For STREAM raw callbacks, close from
+ * inside the raw callback is not supported and fails with errno=EBUSY.
+ */
 ZLINK_EXPORT int zlink_close (void *s_);
 
 /**
@@ -443,11 +740,17 @@ ZLINK_EXPORT int zlink_close (void *s_);
  * @param optvallen_ Option value size in bytes.
  */
 ZLINK_EXPORT int
-zlink_setsockopt (void *s_, int option_, const void *optval_, size_t optvallen_);
+zlink_setsockopt (void *s_,
+                  zlink_socket_option_t option_,
+                  const void *optval_,
+                  size_t optvallen_);
 
 /** @brief Get a socket option. */
 ZLINK_EXPORT int
-zlink_getsockopt (void *s_, int option_, void *optval_, size_t *optvallen_);
+zlink_getsockopt (void *s_,
+                  zlink_socket_option_t option_,
+                  void *optval_,
+                  size_t *optvallen_);
 
 /**
  * @brief Bind a socket to an address.
@@ -469,112 +772,28 @@ ZLINK_EXPORT int zlink_disconnect (void *s_, const char *addr_);
  * @param flags_  0, ZLINK_DONTWAIT, ZLINK_SNDMORE, or a combination.
  * @return Number of bytes sent, or -1 on failure (errno is set).
  */
-ZLINK_EXPORT int zlink_send (void *s_, const void *buf_, size_t len_, int flags_);
+ZLINK_EXPORT int zlink_send (void *s_,
+                             const void *buf_,
+                             size_t len_,
+                             zlink_send_flags_t flags_);
 
 /**
- * @brief Receive data from a socket.
- * @param buf_   Receive buffer.
- * @param len_   Maximum buffer size.
- * @param flags_ 0 or ZLINK_DONTWAIT.
- * @return Number of bytes received, or -1 on failure (errno is set).
+ * @brief Receive buffer data from a socket.
+ *
+ * If a direct receive handler has been attached to the same handle, this call
+ * fails with errno=EBUSY.
  */
-ZLINK_EXPORT int zlink_recv (void *s_, void *buf_, size_t len_, int flags_);
-
-/**
- * @brief Callback type for raw STREAM chunk dispatch.
- *
- * Callback is invoked on the owning STREAM I/O thread.
- * Returning non-zero requests dispatcher shutdown.
- *
- * @param rid_ Routing id for the peer that produced this chunk.
- * @param msg_ Raw stream chunk. Ownership is transferred to the callback.
- *             The callback must release it exactly once
- *             (e.g. zlink_msg_close() or consume via zlink_stream_send_msg())
- *             before return, and must not retain this pointer after return.
- * @return 0 to continue dispatch, non-zero to stop.
- */
-typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *rid_,
-                                       zlink_msg_t *msg_);
-
-/**
- * @brief Callback type for LEN32BE STREAM packet dispatch.
- *
- * Callback is invoked on the owning STREAM I/O thread.
- * Returning non-zero requests dispatcher shutdown.
- *
- * @param rid_ Routing id for the peer that produced these packets.
- * @param msgs_ Message payload array. Each item is one complete LEN32BE packet.
- *              Ownership is transferred to the callback. The callback must
- *              release each item exactly once (e.g. zlink_msg_close() or
- *              consume via zlink_stream_send_msg()) before return, and must
- *              not retain pointers to message structs after callback return.
- * @param msg_count_ Number of entries in @p msgs_.
- * @return 0 to continue dispatch, non-zero to stop.
- */
-typedef int (*zlink_stream_on_packets_fn) (const zlink_routing_id_t *rid_,
-                                           zlink_msg_t *msgs_,
-                                           size_t msg_count_);
-
-/** @brief zlink_stream_attach() flag: decode LEN32BE frames before callback. */
-#define ZLINK_STREAM_DISPATCH_LEN32BE 0x0001
-
-/**
- * @brief Attach raw STREAM callback dispatch.
- *
- * Valid only for ZLINK_STREAM sockets.
- * If a callback is already attached for the socket, returns -1 with
- * errno=EBUSY.
- *
- * @param s_ STREAM socket.
- * @param on_raw_ Callback for raw stream chunks.
- * @return 0 on success, -1 on failure (errno is set).
- */
-ZLINK_EXPORT int zlink_stream_attach_raw (void *s_,
-                                          zlink_stream_on_raw_fn on_raw_);
-
-/**
- * @brief Attach LEN32BE STREAM callback dispatch.
- *
- * Valid only for ZLINK_STREAM sockets.
- * If a callback is already attached for the socket, returns -1 with
- * errno=EBUSY.
- *
- * @param s_ STREAM socket.
- * @param on_packets_ Callback for decoded LEN32BE packets.
- * @return 0 on success, -1 on failure (errno is set).
- */
-ZLINK_EXPORT int zlink_stream_attach_len32be (
-  void *s_, zlink_stream_on_packets_fn on_packets_);
-
-/**
- * @brief Attach STREAM callback dispatch (legacy wrapper).
- *
- * This wrapper now registers LEN32BE packet dispatch. `flags_` must be 0 or
- * include only `ZLINK_STREAM_DISPATCH_LEN32BE`.
- *
- * @param s_ STREAM socket.
- * @param on_packets_ Callback for decoded LEN32BE packets.
- * @param flags_ Legacy flags value.
- * @return 0 on success, -1 on failure (errno is set).
- */
-ZLINK_EXPORT int zlink_stream_attach (void *s_,
-                                      zlink_stream_on_packets_fn on_packets_,
-                                      int flags_);
-
-/**
- * @brief Detach STREAM callback dispatch from a socket.
- *
- * @param s_ STREAM socket.
- * @return 0 on success, -1 on failure (errno is set).
- */
-ZLINK_EXPORT int zlink_stream_detach (void *s_);
+ZLINK_EXPORT int zlink_recv (void *s_,
+                             void *buf_,
+                             size_t len_,
+                             zlink_send_flags_t flags_);
 
 /**
  * @brief Send STREAM payload to a specific peer by routing id.
  *
  * Sends routing id as the first STREAM frame and payload as the second frame.
- * If dispatcher was attached in LEN32BE mode for this socket, payload is framed
- * as 4-byte big-endian length + payload before sending.
+ * STREAM send APIs are safe to call from application threads and STREAM
+ * dispatch callbacks; internally the socket serializes outgoing state.
  *
  * @param s_    STREAM socket.
  * @param rid_  Target peer routing id.
@@ -587,14 +806,14 @@ ZLINK_EXPORT int zlink_stream_send (void *s_,
                                     const zlink_routing_id_t *rid_,
                                     const void *data_,
                                     size_t size_,
-                                    int flags_);
+                                    zlink_send_flags_t flags_);
 
 /**
  * @brief Send STREAM payload message to a specific peer by routing id.
  *
  * This API consumes @p msg_ and reinitializes it before returning.
- * If dispatcher was attached in LEN32BE mode for this socket, payload is framed
- * as 4-byte big-endian length + payload before sending.
+ * STREAM send APIs are safe to call from application threads and STREAM
+ * dispatch callbacks; internally the socket serializes outgoing state.
  *
  * @param s_    STREAM socket.
  * @param rid_  Target peer routing id.
@@ -605,21 +824,7 @@ ZLINK_EXPORT int zlink_stream_send (void *s_,
 ZLINK_EXPORT int zlink_stream_send_msg (void *s_,
                                         const zlink_routing_id_t *rid_,
                                         zlink_msg_t *msg_,
-                                        int flags_);
-
-/**
- * @brief Start a socket monitor via an inproc address (legacy).
- * @param addr_    Monitor inproc endpoint.
- * @param events_  Event bitmask (combination of ZLINK_EVENT_* flags).
- */
-ZLINK_EXPORT int zlink_socket_monitor (void *s_, const char *addr_, int events_);
-
-/**
- * @brief Open and return a socket monitor handle directly.
- * @param events_  Event bitmask.
- * @return Monitor handle, or NULL on failure.
- */
-ZLINK_EXPORT void *zlink_socket_monitor_open (void *s_, int events_);
+                                        zlink_send_flags_t flags_);
 
 typedef struct {
     uint64_t event;
@@ -629,45 +834,66 @@ typedef struct {
     char remote_addr[256];
 } zlink_monitor_event_t;
 
+typedef void (*zlink_monitor_handler_fn) (
+  const zlink_monitor_event_t *event_, void *userdata_);
+
 /**
- * @brief Receive an event from a monitor handle.
- * @param monitor_socket_  Monitor handle (from zlink_socket_monitor_open()).
- * @param[out] event_      Event structure.
- * @param flags_           0 or ZLINK_DONTWAIT.
+ * @brief Ignore socket monitor events while keeping a valid handler symbol.
+ *
+ * Pass this when you want snapshot or direct polling on the returned monitor
+ * handle without automatic callback dispatch.
  */
-ZLINK_EXPORT int zlink_monitor_recv (void *monitor_socket_,
-                                 zlink_monitor_event_t *event_,
-                                 int flags_);
+ZLINK_EXPORT void zlink_monitor_ignore_handler (
+  const zlink_monitor_event_t *event_, void *userdata_);
 
-typedef struct {
-    zlink_routing_id_t routing_id;
-    char remote_addr[256];
-    uint64_t connected_time;
-    uint64_t msgs_sent;
-    uint64_t msgs_received;
-    /* Local outbound queue backlog (messages not yet consumed by peer). */
+typedef enum zlink_monitor_source_kind_t
+{
+    ZLINK_MONITOR_SOURCE_SOCKET = 1,
+    ZLINK_MONITOR_SOURCE_GATEWAY = 2,
+    ZLINK_MONITOR_SOURCE_SPOT_PUB = 3,
+    ZLINK_MONITOR_SOURCE_SPOT_SUB = 4
+} zlink_monitor_source_kind_t;
+
+typedef uint32_t zlink_monitor_state_mask_t;
+typedef uint32_t zlink_monitor_snapshot_detail_mask_t;
+
+#define ZLINK_MONITOR_STATE_READY ((zlink_monitor_state_mask_t) (1u << 0))
+#define ZLINK_MONITOR_STATE_BOUND_READY                                   \
+    ((zlink_monitor_state_mask_t) (1u << 1))
+#define ZLINK_MONITOR_STATE_SEND_READY                                    \
+    ((zlink_monitor_state_mask_t) (1u << 2))
+#define ZLINK_MONITOR_STATE_CLOSED ((zlink_monitor_state_mask_t) (1u << 3))
+
+#define ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT                    \
+    ((zlink_monitor_snapshot_detail_mask_t) (1u << 0))
+#define ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS                    \
+    ((zlink_monitor_snapshot_detail_mask_t) (1u << 1))
+#define ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS                    \
+    ((zlink_monitor_snapshot_detail_mask_t) (1u << 2))
+
+typedef struct zlink_monitor_snapshot_t
+{
+    zlink_monitor_source_kind_t source_kind;
+    zlink_monitor_state_mask_t state_flags;
+    zlink_monitor_snapshot_detail_mask_t detail_flags;
+    uint32_t ready_peer_count;
     uint64_t snd_pending_msgs;
-    /* Approximate local inbound backlog snapshot (peer-written - local-read). */
     uint64_t rcv_pending_msgs;
-} zlink_peer_info_t;
+} zlink_monitor_snapshot_t;
 
-/** @brief Get peer info by routing_id. */
-ZLINK_EXPORT int zlink_socket_peer_info (void *socket_,
-                                     const zlink_routing_id_t *routing_id_,
-                                     zlink_peer_info_t *info_);
+/**
+ * @brief Open and return a socket monitor handle directly.
+ * @param events_  Event bitmask.
+ * @return Monitor handle, or NULL on failure.
+ */
+ZLINK_EXPORT void *zlink_socket_monitor_open (void *s_,
+                                              zlink_socket_monitor_event_mask_t events_,
+                                              zlink_monitor_handler_fn handler_,
+                                              void *userdata_);
 
-/** @brief Get a peer's routing_id by index. */
-ZLINK_EXPORT int zlink_socket_peer_routing_id (void *socket_,
-                                           int index_,
-                                           zlink_routing_id_t *out_);
-
-/** @brief Return the number of connected peers. */
-ZLINK_EXPORT int zlink_socket_peer_count (void *socket_);
-
-/** @brief Get info for all connected peers as an array. */
-ZLINK_EXPORT int zlink_socket_peers (void *socket_,
-                                 zlink_peer_info_t *peers_,
-                                 size_t *count_);
+/** @brief Read the current snapshot for a socket or service monitor handle. */
+ZLINK_EXPORT int zlink_monitor_snapshot (void *monitor_,
+                                         zlink_monitor_snapshot_t *out_);
 
 /** @brief Close all parts in a multipart message array. */
 ZLINK_EXPORT void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
@@ -675,14 +901,6 @@ ZLINK_EXPORT void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 /******************************************************************************/
 /*  Service Discovery API                                                     */
 /******************************************************************************/
-
-typedef struct {
-    char service_name[256];
-    char endpoint[256];
-    zlink_routing_id_t routing_id;
-    uint32_t weight;
-    uint64_t registered_at;
-} zlink_receiver_info_t;
 
 /* Registry ----------------------------------------------------------------- */
 
@@ -698,13 +916,13 @@ typedef struct {
 ZLINK_EXPORT void *zlink_registry_new (void *ctx);
 
 /**
- * @brief Set the registry PUB and ROUTER endpoints.
+ * @brief Bind the registry PUB and ROUTER endpoints and start the registry.
  * @param pub_endpoint     PUB endpoint for broadcasting.
  * @param router_endpoint  ROUTER endpoint for receiving registrations.
  */
-ZLINK_EXPORT int zlink_registry_set_endpoints (void *registry,
-                                           const char *pub_endpoint,
-                                           const char *router_endpoint);
+ZLINK_EXPORT int zlink_registry_bind (void *registry,
+                                      const char *pub_endpoint,
+                                      const char *router_endpoint);
 
 /** @brief Set the registry unique ID (used for cluster configuration). */
 ZLINK_EXPORT int zlink_registry_set_id (void *registry, uint32_t registry_id);
@@ -715,31 +933,44 @@ ZLINK_EXPORT int zlink_registry_add_peer (void *registry,
 
 /**
  * @brief Set heartbeat interval and timeout.
+ * Defaults are 5000 ms for the heartbeat interval and 15000 ms for
+ * the timeout.
  * @param interval_ms  Heartbeat send interval in milliseconds.
- * @param timeout_ms   Expiry time when no heartbeat is received, in milliseconds.
+ * @param timeout_ms   Expiry time when no heartbeat is received, in
+ *                     milliseconds.
  */
 ZLINK_EXPORT int zlink_registry_set_heartbeat (void *registry,
                                            uint32_t interval_ms,
                                            uint32_t timeout_ms);
 
-/** @brief Set the service list broadcast interval in milliseconds. */
+/**
+ * @brief Set the service list broadcast interval in milliseconds.
+ * Default is 30000 ms.
+ */
 ZLINK_EXPORT int zlink_registry_set_broadcast_interval (void *registry,
                                                     uint32_t interval_ms);
 
 /* Registry socket roles */
-#define ZLINK_REGISTRY_SOCKET_PUB 1
-#define ZLINK_REGISTRY_SOCKET_ROUTER 2
-#define ZLINK_REGISTRY_SOCKET_PEER_SUB 3
+typedef enum zlink_registry_socket_role_t
+{
+    ZLINK_REGISTRY_SOCKET_PUB = 1,
+    ZLINK_REGISTRY_SOCKET_ROUTER = 2,
+    ZLINK_REGISTRY_SOCKET_PEER_SUB = 3
+} zlink_registry_socket_role_t;
 
-/** @brief Set a socket option on an internal registry socket. */
+/**
+ * @brief Set a socket option on an internal registry socket.
+ *
+ * Internal registry socket options already applied:
+ * - PUB: `ZLINK_XPUB_VERBOSE=1`
+ * - ROUTER: `ZLINK_ROUTER_MANDATORY=1` by default
+ * - PEER_SUB: `ZLINK_SUBSCRIBE=""` (subscribe to all topics)
+ */
 ZLINK_EXPORT int zlink_registry_setsockopt (void *registry,
-                                        int socket_role,
-                                        int option,
-                                        const void *optval,
-                                        size_t optvallen);
-
-/** @brief Start the registry. Spawns an internal thread. */
-ZLINK_EXPORT int zlink_registry_start (void *registry);
+                                            zlink_registry_socket_role_t socket_role,
+                                            zlink_socket_option_t option,
+                                            const void *optval,
+                                            size_t optvallen);
 
 /** @brief Destroy the registry and release all resources. */
 ZLINK_EXPORT int zlink_registry_destroy (void **registry_p);
@@ -748,21 +979,25 @@ ZLINK_EXPORT int zlink_registry_destroy (void **registry_p);
 
 /** @name Service registration types */
 /** @{ */
-#define ZLINK_SERVICE_TYPE_GATEWAY 1  /**< For Gateway/Receiver */
-#define ZLINK_SERVICE_TYPE_SPOT 2     /**< For SPOT Node */
+typedef enum zlink_service_type_t
+{
+    ZLINK_SERVICE_TYPE_GATEWAY = 0x3001,
+    ZLINK_SERVICE_TYPE_SPOT = 0x3002
+} zlink_service_type_t;
 /** @} */
 
 /**
- * @brief Create a typed Discovery instance.
+ * @brief Create a Discovery instance with a fixed service family.
  *
- * The type is fixed at creation time and cannot be changed.
+ * The service type is fixed at creation time and cannot be changed.
  * All subscribe/get/count queries operate within the given service_type scope.
  *
  * @param ctx           Context handle.
- * @param service_type  ZLINK_SERVICE_TYPE_GATEWAY or ZLINK_SERVICE_TYPE_SPOT.
+ * @param service_type  Service family for this handle.
  * @return Discovery handle, or NULL on failure.
  */
-ZLINK_EXPORT void *zlink_discovery_new_typed (void *ctx, uint16_t service_type);
+ZLINK_EXPORT void *zlink_discovery_new (void *ctx,
+                                        zlink_service_type_t service_type);
 
 /**
  * @brief Connect Discovery to a Registry bootstrap/control endpoint.
@@ -773,7 +1008,20 @@ ZLINK_EXPORT void *zlink_discovery_new_typed (void *ctx, uint16_t service_type);
 ZLINK_EXPORT int zlink_discovery_connect_registry (
   void *discovery, const char *registry_endpoint);
 
-/** @brief Override the representative routing id before first use. */
+/**
+ * @brief Configure TLS settings for discovery registry links.
+ *
+ * The configuration applies to the registry bootstrap and uplink connections
+ * managed internally by the discovery service.
+ */
+ZLINK_EXPORT int zlink_discovery_set_tls_client (void *discovery,
+                                                 const char *ca_cert,
+                                                 const char *hostname,
+                                                 int trust_system);
+
+/**
+ * @brief Override the representative routing id before first query/connect.
+ */
 ZLINK_EXPORT int zlink_discovery_set_routing_id (void *discovery,
                                                  const void *data,
                                                  size_t size);
@@ -781,16 +1029,6 @@ ZLINK_EXPORT int zlink_discovery_set_routing_id (void *discovery,
 /** @brief Return the representative routing id for this Discovery. */
 ZLINK_EXPORT int zlink_discovery_routing_id (void *discovery,
                                              zlink_routing_id_t *out);
-
-/**
- * @brief Get the list of receivers for a service.
- * @param[out] providers  Array to receive results.
- * @param[in,out] count   On input, array capacity; on output, actual count.
- */
-ZLINK_EXPORT int zlink_discovery_get_receivers (void *discovery,
-                                            const char *service_name,
-                                            zlink_receiver_info_t *providers,
-                                            size_t *count);
 
 /** @brief Destroy the discovery instance and release all resources. */
 ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
@@ -804,101 +1042,106 @@ ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
  * load-balanced request/reply communication.
  *
  * @param ctx         Context handle.
- * @param discovery   Discovery handle (ZLINK_SERVICE_TYPE_GATEWAY type).
+ * @param service_name Service identity fixed at handle creation.
  * @param routing_id  Unique identifier for this Gateway.
+ * @param handler     Direct receive callback fixed at handle creation.
  * @return Gateway handle, or NULL on failure.
  */
 ZLINK_EXPORT void *zlink_gateway_new (void *ctx,
-                                      void *discovery,
-                                      const char *routing_id);
+                                      const char *service_name,
+                                      const char *routing_id,
+                                      zlink_socket_msg_handler_fn handler,
+                                      void *userdata);
+
+ZLINK_EXPORT int zlink_gateway_attach_discovery (void *gateway,
+                                                 void *discovery);
+
+ZLINK_EXPORT int zlink_gateway_set_send_ready_handler (
+  void *gateway,
+  zlink_send_ready_handler_fn handler,
+  void *userdata);
+
+ZLINK_EXPORT int zlink_gateway_bind (void *gateway,
+                                     const char *bind_endpoint);
 
 /**
- * @brief Send a message to a service (load-balanced).
- * @param service_name  Target service name.
+ * @brief Connect the Gateway to a manually managed remote peer route.
+ *
+ * The remote routing id identifies the peer for request dispatch.
+ * Returns EFSM if discovery is already attached.
+ */
+ZLINK_EXPORT int zlink_gateway_connect (void *gateway,
+                                        const char *endpoint,
+                                        const zlink_routing_id_t *routing_id);
+
+/**
+ * @brief Disconnect a manually managed remote peer route.
+ *
+ * Returns EFSM if discovery is already attached.
+ */
+ZLINK_EXPORT int zlink_gateway_disconnect (void *gateway,
+                                           const char *endpoint);
+
+/**
+ * @brief Send a message to the bound service (load-balanced).
  * @param parts         Multipart message array.
  * @param part_count    Number of parts.
  * @param flags         Send flags (0 or ZLINK_DONTWAIT).
  */
 ZLINK_EXPORT int zlink_gateway_send (void *gateway,
-                                     const char *service_name,
                                      zlink_msg_t *parts,
                                      size_t part_count,
-                                     int flags);
-
-/**
- * @brief Send a single-part byte buffer to a service (load-balanced).
- * @param data          Payload buffer.
- * @param size          Payload size in bytes.
- * @param flags         Send flags (0 or ZLINK_DONTWAIT).
- */
-ZLINK_EXPORT int zlink_gateway_send_bytes (void *gateway,
-                                           const char *service_name,
-                                           const void *data,
-                                           size_t size,
-                                           int flags);
-
-/**
- * @brief Receive a message.
- * @param[out] parts             Received multipart message (caller must free).
- * @param[out] part_count        Number of parts.
- * @param flags                  0 or ZLINK_DONTWAIT.
- * @param[out] service_name_out  Originating service name (256-byte buffer).
- */
-ZLINK_EXPORT int zlink_gateway_recv (void *gateway,
-                                     zlink_msg_t **parts,
-                                     size_t *part_count,
-                                     int flags,
-                                     char *service_name_out);
+                                     zlink_send_flags_t flags);
 
 /** @brief Send a message directly to a specific Receiver by routing_id. */
 ZLINK_EXPORT int zlink_gateway_send_rid (void *gateway,
-                                         const char *service_name,
                                          const zlink_routing_id_t *routing_id,
                                          zlink_msg_t *parts,
                                          size_t part_count,
-                                     int flags);
+                                         zlink_send_flags_t flags);
+
+typedef enum zlink_gateway_lb_strategy_t
+{
+    ZLINK_GATEWAY_LB_STRATEGY_ROUND_ROBIN = 0,
+    ZLINK_GATEWAY_LB_STRATEGY_WEIGHTED = 1
+} zlink_gateway_lb_strategy_t;
+
+#define ZLINK_GATEWAY_LB_ROUND_ROBIN ZLINK_GATEWAY_LB_STRATEGY_ROUND_ROBIN
+#define ZLINK_GATEWAY_LB_WEIGHTED ZLINK_GATEWAY_LB_STRATEGY_WEIGHTED
+
+/** @brief Set the load-balancing strategy for the bound service. */
+ZLINK_EXPORT int zlink_gateway_set_lb_strategy (
+  void *gateway, zlink_gateway_lb_strategy_t strategy);
+
+typedef enum zlink_gateway_option_t
+{
+    ZLINK_GATEWAY_OPT_SNDHWM = 0x2101,   /**< Send high water mark (int, default: 1000) */
+    ZLINK_GATEWAY_OPT_RCVHWM = 0x2102,   /**< Recv high water mark (int, default: 1000) */
+    ZLINK_GATEWAY_OPT_SNDTIMEO = 0x2103,  /**< Send timeout in ms (int, default: -1 = blocking) */
+    ZLINK_GATEWAY_OPT_LINGER = 0x2104,    /**< Linger time in ms (int, default: -1, internally forced to 0) */
+    ZLINK_GATEWAY_OPT_SNDBUF = 0x2105,    /**< Kernel SO_SNDBUF in bytes (int, default: -1 = OS default) */
+    ZLINK_GATEWAY_OPT_RCVBUF = 0x2106     /**< Kernel SO_RCVBUF in bytes (int, default: -1 = OS default) */
+} zlink_gateway_option_t;
 
 /**
- * @brief Send a single-part byte buffer directly to a specific Receiver.
- * @param data          Payload buffer.
- * @param size          Payload size in bytes.
- * @param flags         Send flags (0 or ZLINK_DONTWAIT).
+ * @brief Set a Gateway service option.
+ *
+ * Internally the ROUTER socket is also configured with:
+ *   - ROUTER_MANDATORY = 1  (unknown routing id causes error, not silent drop)
+ *   - ROUTER_HANDOVER  = 1  (reconnect with same routing id replaces old peer)
+ *   - LINGER           = 0  (pending messages discarded on close)
+ *
+ * Note: LINGER is forced to 0 at socket creation. To override, call
+ * set_option with ZLINK_GATEWAY_OPT_LINGER after bind/connect.
  */
-ZLINK_EXPORT int zlink_gateway_send_rid_bytes (
-  void *gateway,
-  const char *service_name,
-  const zlink_routing_id_t *routing_id,
-  const void *data,
-  size_t size,
-  int flags);
-
-/** @name Load-balancing strategies */
-/** @{ */
-#define ZLINK_GATEWAY_LB_ROUND_ROBIN 0  /**< Round-robin (default) */
-#define ZLINK_GATEWAY_LB_WEIGHTED 1     /**< Weighted */
-/** @} */
-
-/** @brief Set the load-balancing strategy for a service. */
-ZLINK_EXPORT int zlink_gateway_set_lb_strategy (void *gateway,
-                                                const char *service_name,
-                                                int strategy);
-
-/* Gateway service options */
-#define ZLINK_GATEWAY_OPT_SNDHWM 1
-#define ZLINK_GATEWAY_OPT_RCVHWM 2
-#define ZLINK_GATEWAY_OPT_SNDTIMEO 3
-#define ZLINK_GATEWAY_OPT_RCVTIMEO 4
-#define ZLINK_GATEWAY_OPT_LINGER 5
-#define ZLINK_GATEWAY_OPT_SNDBUF 6
-#define ZLINK_GATEWAY_OPT_RCVBUF 7
-
-/** @brief Set a Gateway service option. */
 ZLINK_EXPORT int zlink_gateway_set_option (void *gateway,
-                                           int option,
+                                           zlink_gateway_option_t option,
                                            const void *optval,
                                            size_t optvallen);
 
-/** @brief Override the representative routing id before first use. */
+/**
+ * @brief Override the representative routing id before first bind/connect.
+ */
 ZLINK_EXPORT int zlink_gateway_set_routing_id (void *gateway,
                                                const void *data,
                                                size_t size);
@@ -913,124 +1156,24 @@ ZLINK_EXPORT int zlink_gateway_set_tls_client (void *gateway,
                                            const char *hostname,
                                            int trust_system);
 
-/** @brief Enumerate peer queue info from the Gateway ROUTER socket. */
-ZLINK_EXPORT int zlink_gateway_router_peers (void *gateway,
-                                             zlink_peer_info_t *peers,
-                                             size_t *count);
+/** @brief Configure TLS server settings for the Gateway. */
+ZLINK_EXPORT int zlink_gateway_set_tls_server (void *gateway,
+                                               const char *cert,
+                                               const char *key);
 
-/** @brief Return the number of receivers connected for a service. */
-ZLINK_EXPORT int zlink_gateway_connection_count (void *gateway,
-                                             const char *service_name);
+/** @brief Resolve the bound endpoint for this Gateway. */
+ZLINK_EXPORT int zlink_gateway_last_endpoint (void *gateway,
+                                              char *endpoint,
+                                              size_t *size);
+
+/** @brief Update the authoritative weight for a specific service peer. */
+ZLINK_EXPORT int zlink_gateway_update_peer_weight (
+  void *gateway,
+  const zlink_routing_id_t *routing_id,
+  uint32_t weight);
 
 /** @brief Destroy the Gateway and release all resources. */
 ZLINK_EXPORT int zlink_gateway_destroy (void **gateway_p);
-
-/* Receiver ----------------------------------------------------------------- */
-
-/**
- * @brief Create a Receiver.
- *
- * Server-side role that receives requests from Gateways and sends replies.
- * Registers services with the Registry for automatic discovery by Gateways.
- *
- * @param ctx         Context handle.
- * @param routing_id  Unique identifier for this Receiver.
- */
-ZLINK_EXPORT void *zlink_receiver_new (void *ctx, const char *routing_id);
-
-/** @brief Bind the ROUTER socket to an endpoint. */
-ZLINK_EXPORT int zlink_receiver_bind (void *receiver,
-                                  const char *bind_endpoint);
-
-/** @brief Connect to a Registry ROUTER endpoint (for registration/heartbeat). */
-ZLINK_EXPORT int zlink_receiver_connect_registry (void *receiver,
-                                              const char *registry_endpoint);
-
-/**
- * @brief Register a service with the Registry.
- * @param service_name        Service name.
- * @param advertise_endpoint  Endpoint that Gateways will connect to.
- * @param weight              Load-balancing weight.
- */
-ZLINK_EXPORT int zlink_receiver_register (void *receiver,
-                                      const char *service_name,
-                                      const char *advertise_endpoint,
-                                      uint32_t weight);
-
-/** @brief Update the weight of a registered service. */
-ZLINK_EXPORT int zlink_receiver_update_weight (void *receiver,
-                                           const char *service_name,
-                                           uint32_t weight);
-
-/** @brief Unregister a service. */
-ZLINK_EXPORT int zlink_receiver_unregister (void *receiver,
-                                        const char *service_name);
-
-/**
- * @brief Query the registration result (async registration confirmation).
- * @param[out] status             Registration status code.
- * @param[out] resolved_endpoint  Endpoint resolved by the Registry (256-byte buffer).
- * @param[out] error_message      Error message (256-byte buffer).
- */
-ZLINK_EXPORT int zlink_receiver_register_result (void *receiver,
-                                             const char *service_name,
-                                             int *status,
-                                             char *resolved_endpoint,
-                                             char *error_message);
-
-/** @brief Set TLS server certificate. */
-ZLINK_EXPORT int zlink_receiver_set_tls_server (void *receiver,
-                                            const char *cert,
-                                            const char *key);
-
-/** @brief Receive one multipart request from the Receiver ROUTER socket. */
-ZLINK_EXPORT int zlink_receiver_recv (void *receiver,
-                                      zlink_msg_t **parts,
-                                      size_t *part_count,
-                                      int flags,
-                                      zlink_routing_id_t *routing_id_out);
-
-/** @brief Resolve the bound endpoint for this Receiver. */
-ZLINK_EXPORT int zlink_receiver_last_endpoint (void *receiver,
-                                               char *endpoint,
-                                               size_t *size);
-
-/** @brief Return queue/peer info for a specific Receiver ROUTER peer. */
-ZLINK_EXPORT int zlink_receiver_peer_info (void *receiver,
-                                           const zlink_routing_id_t *routing_id,
-                                           zlink_peer_info_t *info);
-
-/* Receiver service options */
-#define ZLINK_RECEIVER_OPT_SNDHWM 1
-#define ZLINK_RECEIVER_OPT_RCVHWM 2
-#define ZLINK_RECEIVER_OPT_SNDTIMEO 3
-#define ZLINK_RECEIVER_OPT_RCVTIMEO 4
-#define ZLINK_RECEIVER_OPT_LINGER 5
-#define ZLINK_RECEIVER_OPT_SNDBUF 6
-#define ZLINK_RECEIVER_OPT_RCVBUF 7
-
-/** @brief Set a Receiver service option. */
-ZLINK_EXPORT int zlink_receiver_set_option (void *receiver,
-                                            int option,
-                                            const void *optval,
-                                            size_t optvallen);
-
-/** @brief Override the representative routing id before first use. */
-ZLINK_EXPORT int zlink_receiver_set_routing_id (void *receiver,
-                                                const void *data,
-                                                size_t size);
-
-/** @brief Return the representative routing id for this Receiver. */
-ZLINK_EXPORT int zlink_receiver_routing_id (void *receiver,
-                                            zlink_routing_id_t *out);
-
-/** @brief Enumerate peer queue info from the Receiver ROUTER socket. */
-ZLINK_EXPORT int zlink_receiver_router_peers (void *receiver,
-                                              zlink_peer_info_t *peers,
-                                              size_t *count);
-
-/** @brief Destroy the Receiver and release all resources. */
-ZLINK_EXPORT int zlink_receiver_destroy (void **receiver_p);
 
 /******************************************************************************/
 /*  SPOT PUB/SUB API                                                          */
@@ -1038,8 +1181,15 @@ ZLINK_EXPORT int zlink_receiver_destroy (void **receiver_p);
 
 /* SPOT Node --------------------------------------------------------------- */
 
-/** @brief Create a SPOT node. Manages PUB/SUB/DEALER sockets for topic messaging. */
-ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+/**
+ * @brief Create a service-bound SPOT node.
+ *
+ * Pass `NULL` for `handler` when node-level callback dispatch is not needed.
+ */
+ZLINK_EXPORT void *zlink_spot_node_new (void *ctx,
+                                        const char *service_name,
+                                        zlink_spot_handler_fn handler,
+                                        void *userdata);
 
 /** @brief Destroy a SPOT node and release all resources. */
 ZLINK_EXPORT int zlink_spot_node_destroy (void **node_p);
@@ -1047,35 +1197,27 @@ ZLINK_EXPORT int zlink_spot_node_destroy (void **node_p);
 /** @brief Bind the SPOT node to an endpoint. */
 ZLINK_EXPORT int zlink_spot_node_bind (void *node, const char *endpoint);
 
-/** @brief Connect to a peer node's PUB endpoint (mesh topology). */
+/**
+ * @brief Connect to a peer node's PUB endpoint (mesh topology).
+ *
+ * Returns EFSM if discovery is already attached.
+ */
 ZLINK_EXPORT int zlink_spot_node_connect_peer_pub (void *node,
                                                const char *peer_pub_endpoint);
 
-/** @brief Disconnect from a peer node's PUB endpoint. */
+/**
+ * @brief Disconnect from a peer node's PUB endpoint.
+ *
+ * Returns EFSM if discovery is already attached.
+ */
 ZLINK_EXPORT int zlink_spot_node_disconnect_peer_pub (
   void *node, const char *peer_pub_endpoint);
 
 /**
- * @brief Register this node as a SPOT service with the Registry.
- * @param service_name        Service (group) name.
- * @param advertise_endpoint  Endpoint peers will connect to.
- */
-ZLINK_EXPORT int zlink_spot_node_register (void *node,
-                                       const char *service_name,
-                                       const char *advertise_endpoint);
-
-/** @brief Unregister this node from the Registry. */
-ZLINK_EXPORT int zlink_spot_node_unregister (void *node,
-                                         const char *service_name);
-
-/**
  * @brief Attach a Discovery instance for automatic peer connection.
- * @param discovery     Discovery handle (must be ZLINK_SERVICE_TYPE_SPOT).
- * @param service_name  Service name to watch for peer discovery.
  */
-ZLINK_EXPORT int zlink_spot_node_set_discovery (void *node,
-                                            void *discovery,
-                                            const char *service_name);
+ZLINK_EXPORT int zlink_spot_node_attach_discovery (void *node,
+                                                   void *discovery);
 
 /** @brief Set TLS server certificate for the node. */
 ZLINK_EXPORT int zlink_spot_node_set_tls_server (void *node,
@@ -1088,38 +1230,38 @@ ZLINK_EXPORT int zlink_spot_node_set_tls_client (void *node,
                                              const char *hostname,
                                              int trust_system);
 
-/**
- * @brief Callback function type for SPOT subscriber handler dispatch.
- *
- * When set via zlink_spot_sub_set_handler() or zlink_spot_node_set_handler(),
- * incoming messages are automatically delivered through this callback instead
- * of recv()-based consumption.
- *
- * @param topic       Topic string.
- * @param topic_len   Topic string length.
- * @param parts       Multipart message array (read-only).
- * @param part_count  Number of parts.
- * @param userdata    User-provided context pointer.
- */
-typedef void (*zlink_spot_sub_handler_fn) (const char *topic,
-                                           size_t topic_len,
-                                           const zlink_msg_t *parts,
-                                           size_t part_count,
-                                           void *userdata);
+typedef enum zlink_spot_role_t
+{
+    ZLINK_SPOT_ROLE_PUB = 1,
+    ZLINK_SPOT_ROLE_SUB = 2
+} zlink_spot_role_t;
+
+typedef enum zlink_spot_pub_option_t
+{
+    ZLINK_SPOT_PUB_OPT_SNDHWM = 0x2201,
+    ZLINK_SPOT_PUB_OPT_SNDTIMEO = 0x2202,
+    ZLINK_SPOT_PUB_OPT_LINGER = 0x2203,
+    ZLINK_SPOT_PUB_OPT_NODROP = 0x2204,
+    ZLINK_SPOT_PUB_OPT_SNDBUF = 0x2208,
+    ZLINK_SPOT_PUB_OPT_RCVBUF = 0x2209
+} zlink_spot_pub_option_t;
+
+typedef enum zlink_spot_sub_option_t
+{
+    ZLINK_SPOT_SUB_OPT_RCVHWM = 0x2301,
+    ZLINK_SPOT_SUB_OPT_LINGER = 0x2302,
+    ZLINK_SPOT_SUB_OPT_SNDBUF = 0x2303,
+    ZLINK_SPOT_SUB_OPT_RCVBUF = 0x2304,
+    ZLINK_SPOT_SUB_OPT_RCVTIMEO = 0x2305
+} zlink_spot_sub_option_t;
+
 
 /** @brief Publish via the node-owned default SpotPub facade. */
 ZLINK_EXPORT int zlink_spot_node_publish (void *node,
                                           const char *topic_id,
                                           zlink_msg_t *parts,
                                           size_t part_count,
-                                          int flags);
-
-/** @brief Publish a single-part payload via the node-owned default SpotPub. */
-ZLINK_EXPORT int zlink_spot_node_publish_bytes (void *node,
-                                                const char *topic_id,
-                                                const void *data,
-                                                size_t size,
-                                                int flags);
+                                          zlink_send_flags_t flags);
 
 /** @brief Subscribe via the node-owned default SpotSub facade. */
 ZLINK_EXPORT int zlink_spot_node_subscribe (void *node, const char *topic_id);
@@ -1132,273 +1274,271 @@ ZLINK_EXPORT int zlink_spot_node_subscribe_pattern (void *node,
 ZLINK_EXPORT int zlink_spot_node_unsubscribe (
   void *node, const char *topic_id_or_pattern);
 
-/**
- * @brief Set or clear a callback handler on the node-owned default SpotSub.
- *
- * This follows zlink_spot_sub_set_handler() semantics.
- */
-ZLINK_EXPORT int zlink_spot_node_set_handler (
-  void *node, zlink_spot_sub_handler_fn handler, void *userdata);
+ZLINK_EXPORT int zlink_spot_node_set_send_ready_handler (
+  void *node,
+  zlink_send_ready_handler_fn handler,
+  void *userdata);
 
-/**
- * @brief Receive through the node-owned default SpotSub.
- *
- * This follows zlink_spot_sub_recv() semantics and is not thread-safe.
- */
-ZLINK_EXPORT int zlink_spot_node_recv (void *node,
-                                       zlink_msg_t **parts,
-                                       size_t *part_count,
-                                       int flags,
-                                       char *topic_id_out,
-                                       size_t *topic_id_len);
-
-/** @brief Return the node-owned default SpotPub handle, creating it lazily. */
-ZLINK_EXPORT void *zlink_spot_node_default_pub (void *node);
-
-/** @brief Return the node-owned default SpotSub handle, creating it lazily. */
-ZLINK_EXPORT void *zlink_spot_node_default_sub (void *node);
-
-/** @brief Set a default SpotPub option for the node and future child pubs. */
-ZLINK_EXPORT int zlink_spot_node_set_pub_option (void *node,
-                                                 int option,
-                                                 const void *optval,
-                                                 size_t optvallen);
-
-/** @brief Set a default SpotSub option for the node and future child subs. */
-ZLINK_EXPORT int zlink_spot_node_set_sub_option (void *node,
-                                                 int option,
-                                                 const void *optval,
-                                                 size_t optvallen);
-
-/* SPOT Pub (default thread-safe) ------------------------------------------ */
-
-/* SpotPub service options */
-#define ZLINK_SPOT_PUB_OPT_SNDHWM 1
-#define ZLINK_SPOT_PUB_OPT_SNDTIMEO 2
-#define ZLINK_SPOT_PUB_OPT_LINGER 3
-#define ZLINK_SPOT_PUB_OPT_NODROP 4
-#define ZLINK_SPOT_PUB_OPT_SNDBUF 8
-#define ZLINK_SPOT_PUB_OPT_RCVBUF 9
-
-/** @brief Create a thread-safe SPOT publisher attached to the given node. */
-ZLINK_EXPORT void *zlink_spot_pub_new (void *node);
-
-/** @brief Destroy a SPOT publisher. */
-ZLINK_EXPORT int zlink_spot_pub_destroy (void **pub_p);
-
-/** @brief Set a SpotPub service option. */
-ZLINK_EXPORT int zlink_spot_pub_set_option (void *pub,
-                                            int option,
-                                            const void *optval,
-                                            size_t optvallen);
-
-/** @brief Override the representative routing id before first use. */
-ZLINK_EXPORT int zlink_spot_pub_set_routing_id (void *pub,
-                                                const void *data,
-                                                size_t size);
-
-/** @brief Return the representative routing id for this SpotPub. */
-ZLINK_EXPORT int zlink_spot_pub_routing_id (void *pub,
-                                            zlink_routing_id_t *out);
-
-/** @brief Enumerate SpotPub peer queue stats. */
-ZLINK_EXPORT int zlink_spot_pub_peers (void *pub,
-                                       zlink_peer_info_t *peers,
-                                       size_t *count);
-
-/**
- * @brief Publish a multipart message under a topic.
- *
- * @param topic_id    Topic identifier string.
- * @param parts       Multipart message array.
- * @param part_count  Number of parts.
- * @param flags       Send flags (typically 0).
- */
-ZLINK_EXPORT int zlink_spot_pub_publish (void *pub,
-                                         const char *topic_id,
-                                         zlink_msg_t *parts,
-                                         size_t part_count,
-                                         int flags);
-
-/**
- * @brief Publish a single-part byte buffer under a topic.
- * @param data          Payload buffer.
- * @param size          Payload size in bytes.
- * @param flags         Send flags (typically 0).
- */
-ZLINK_EXPORT int zlink_spot_pub_publish_bytes (void *pub,
-                                               const char *topic_id,
-                                               const void *data,
-                                               size_t size,
-                                               int flags);
-
-/* SPOT Sub ---------------------------------------------------------------- */
-
-/* SpotSub service options */
-#define ZLINK_SPOT_SUB_OPT_RCVHWM 1
-#define ZLINK_SPOT_SUB_OPT_RCVTIMEO 2
-#define ZLINK_SPOT_SUB_OPT_LINGER 3
-#define ZLINK_SPOT_SUB_OPT_QUEUE_NODROP 4
-#define ZLINK_SPOT_SUB_OPT_QUEUE_FULL_POLICY 5
-#define ZLINK_SPOT_SUB_OPT_SNDBUF 6
-#define ZLINK_SPOT_SUB_OPT_RCVBUF 7
-
-/** @brief Create a SPOT subscriber attached to the given node. */
-ZLINK_EXPORT void *zlink_spot_sub_new (void *node);
-
-/** @brief Destroy a SPOT subscriber. */
-ZLINK_EXPORT int zlink_spot_sub_destroy (void **sub_p);
-
-/** @brief Set a SpotSub service option. */
-ZLINK_EXPORT int zlink_spot_sub_set_option (void *sub,
-                                            int option,
-                                            const void *optval,
-                                            size_t optvallen);
-
-/** @brief Override the representative routing id before first use. */
-ZLINK_EXPORT int zlink_spot_sub_set_routing_id (void *sub,
-                                                const void *data,
-                                                size_t size);
-
-/** @brief Return the representative routing id for this SpotSub. */
-ZLINK_EXPORT int zlink_spot_sub_routing_id (void *sub,
-                                            zlink_routing_id_t *out);
-
-/** @brief Enumerate SpotSub peer queue stats. */
-ZLINK_EXPORT int zlink_spot_sub_peers (void *sub,
-                                       zlink_peer_info_t *peers,
-                                       size_t *count);
-
-/** @brief Subscribe to an exact topic. */
-ZLINK_EXPORT int zlink_spot_sub_subscribe (void *sub, const char *topic_id);
-
-/** @brief Subscribe to a topic pattern (prefix match). */
-ZLINK_EXPORT int zlink_spot_sub_subscribe_pattern (void *sub, const char *pattern);
-
-/** @brief Unsubscribe from a topic or pattern. */
-ZLINK_EXPORT int zlink_spot_sub_unsubscribe (void *sub,
-                                             const char *topic_id_or_pattern);
-
-/**
- * @brief Set a callback handler for automatic message dispatch.
- *
- * When a handler is set, messages are delivered via the callback
- * and zlink_spot_sub_recv() must not be used concurrently.
- * Pass NULL to clear the handler and revert to recv()-based consumption.
- * Returns EBUSY if recv() is currently in progress on the same subscriber.
- *
- * @param handler   Callback function, or NULL to clear.
- * @param userdata  User-provided context pointer passed to the callback.
- */
-ZLINK_EXPORT int zlink_spot_sub_set_handler (void *sub,
-                                             zlink_spot_sub_handler_fn handler,
-                                             void *userdata);
-
-/**
- * @brief Receive a message from the subscriber (polling mode).
- * @param[out] parts         Received multipart message (caller must free).
- * @param[out] part_count    Number of parts.
- * @param flags              0 or ZLINK_DONTWAIT.
- * @param[out] topic_id_out  Topic string buffer.
- * @param[in,out] topic_id_len  On input, buffer size; on output, actual length.
- *
- * Concurrent calls on the same subscriber are rejected with EBUSY.
- * Blocking recv (flags=0) honors `ZLINK_SPOT_SUB_OPT_RCVTIMEO` configured
- * through `zlink_spot_sub_set_option()`.
- */
+ZLINK_EXPORT void *zlink_spot_new (void *spot_node,
+                                   zlink_spot_handler_fn handler,
+                                   void *userdata);
+ZLINK_EXPORT int zlink_spot_destroy (void **spot_p);
+ZLINK_EXPORT int zlink_spot_publish (void *spot,
+                                     const char *topic_id,
+                                     zlink_msg_t *parts,
+                                     size_t part_count,
+                                     zlink_send_flags_t flags);
 ZLINK_EXPORT int zlink_spot_sub_recv (void *sub,
                                       zlink_msg_t **parts,
                                       size_t *part_count,
                                       int flags,
                                       char *topic_id_out,
                                       size_t *topic_id_len);
+ZLINK_EXPORT int zlink_spot_subscribe (void *spot, const char *topic_id);
+ZLINK_EXPORT int zlink_spot_subscribe_pattern (void *spot, const char *pattern);
+ZLINK_EXPORT int zlink_spot_unsubscribe (void *spot,
+                                         const char *topic_id_or_pattern);
+ZLINK_EXPORT int zlink_spot_set_send_ready_handler (
+  void *spot,
+  zlink_send_ready_handler_fn handler,
+  void *userdata);
+ZLINK_EXPORT int zlink_spot_set_pub_option (void *spot,
+                                            zlink_spot_pub_option_t option,
+                                            const void *optval,
+                                            size_t optvallen);
+ZLINK_EXPORT int zlink_spot_set_sub_option (void *spot,
+                                            zlink_spot_sub_option_t option,
+                                            const void *optval,
+                                            size_t optvallen);
+
+/** @brief Set a default SpotPub option for the node and future child pubs. */
+ZLINK_EXPORT int zlink_spot_node_set_pub_option (void *node,
+                                                 zlink_spot_pub_option_t option,
+                                                 const void *optval,
+                                                 size_t optvallen);
+
+/** @brief Set a default SpotSub option for the node and future child subs. */
+ZLINK_EXPORT int zlink_spot_node_set_sub_option (void *node,
+                                                 zlink_spot_sub_option_t option,
+                                                 const void *optval,
+                                                 size_t optvallen);
 
 /******************************************************************************/
 /*  Service Monitor / Topology API                                            */
 /******************************************************************************/
 
-#define ZLINK_SERVICE_KIND_DISCOVERY 1
-#define ZLINK_SERVICE_KIND_GATEWAY 2
-#define ZLINK_SERVICE_KIND_RECEIVER 3
-#define ZLINK_SERVICE_KIND_SPOT_SUB 4
-#define ZLINK_SERVICE_KIND_SPOT_PUB 5
+typedef enum zlink_service_kind_t
+{
+    ZLINK_SERVICE_KIND_DISCOVERY = 1,
+    ZLINK_SERVICE_KIND_GATEWAY = 2,
+    ZLINK_SERVICE_KIND_SPOT_SUB = 3,
+    ZLINK_SERVICE_KIND_SPOT_PUB = 4
+} zlink_service_kind_t;
 
-#define ZLINK_MONITOR_EVENT_READY (1u << 0)
-#define ZLINK_MONITOR_EVENT_LOST (1u << 1)
-#define ZLINK_MONITOR_EVENT_PEER_UP (1u << 2)
-#define ZLINK_MONITOR_EVENT_PEER_DOWN (1u << 3)
-#define ZLINK_MONITOR_EVENT_ERROR (1u << 4)
+typedef uint32_t zlink_discovery_monitor_event_mask_t;
+typedef uint32_t zlink_gateway_monitor_event_mask_t;
+typedef uint32_t zlink_spot_monitor_event_mask_t;
+typedef uint32_t zlink_service_event_detail_mask_t;
 
-#define ZLINK_DISCOVERY_SERVICE_UP (1u << 5)
-#define ZLINK_DISCOVERY_SERVICE_DOWN (1u << 6)
-#define ZLINK_DISCOVERY_PROVIDERS_CHANGED (1u << 7)
+#define ZLINK_DISCOVERY_MONITOR_EVENT_READY                                  \
+    ((zlink_discovery_monitor_event_mask_t) (1u << 0))
+#define ZLINK_DISCOVERY_MONITOR_EVENT_LOST                                   \
+    ((zlink_discovery_monitor_event_mask_t) (1u << 1))
+#define ZLINK_DISCOVERY_MONITOR_EVENT_ERROR                                  \
+    ((zlink_discovery_monitor_event_mask_t) (1u << 4))
+#define ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP                             \
+    ((zlink_discovery_monitor_event_mask_t) (1u << 5))
+#define ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_DOWN                           \
+    ((zlink_discovery_monitor_event_mask_t) (1u << 6))
+#define ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED                      \
+    ((zlink_discovery_monitor_event_mask_t) (1u << 7))
+#define ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED                                 \
+    ((zlink_discovery_monitor_event_mask_t) (1u << 17))
 
-#define ZLINK_GATEWAY_SERVICE_READY (1u << 8)
-#define ZLINK_GATEWAY_SERVICE_LOST (1u << 9)
-#define ZLINK_GATEWAY_CONNECTION_COUNT_CHANGED (1u << 10)
-#define ZLINK_GATEWAY_ROUTE_UP (1u << 11)
-#define ZLINK_GATEWAY_ROUTE_DOWN (1u << 12)
+#define ZLINK_GATEWAY_MONITOR_EVENT_ERROR                                    \
+    ((zlink_gateway_monitor_event_mask_t) (1u << 4))
+#define ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY                            \
+    ((zlink_gateway_monitor_event_mask_t) (1u << 8))
+#define ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_LOST                             \
+    ((zlink_gateway_monitor_event_mask_t) (1u << 9))
+#define ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED                       \
+    ((zlink_gateway_monitor_event_mask_t) (1u << 10))
+#define ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP                                 \
+    ((zlink_gateway_monitor_event_mask_t) (1u << 11))
+#define ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_DOWN                               \
+    ((zlink_gateway_monitor_event_mask_t) (1u << 12))
+#define ZLINK_GATEWAY_MONITOR_EVENT_CLOSED                                   \
+    ((zlink_gateway_monitor_event_mask_t) (1u << 17))
 
-#define ZLINK_RECEIVER_REGISTER_OK (1u << 13)
-#define ZLINK_RECEIVER_REGISTER_FAILED (1u << 14)
-#define ZLINK_RECEIVER_UNREGISTER_OK (1u << 15)
-#define ZLINK_RECEIVER_UNREGISTER_FAILED (1u << 16)
+#define ZLINK_SPOT_MONITOR_EVENT_READY                                       \
+    ((zlink_spot_monitor_event_mask_t) (1u << 0))
+#define ZLINK_SPOT_MONITOR_EVENT_LOST                                        \
+    ((zlink_spot_monitor_event_mask_t) (1u << 1))
+#define ZLINK_SPOT_MONITOR_EVENT_PEER_UP                                     \
+    ((zlink_spot_monitor_event_mask_t) (1u << 2))
+#define ZLINK_SPOT_MONITOR_EVENT_PEER_DOWN                                   \
+    ((zlink_spot_monitor_event_mask_t) (1u << 3))
+#define ZLINK_SPOT_MONITOR_EVENT_ERROR                                       \
+    ((zlink_spot_monitor_event_mask_t) (1u << 4))
+#define ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED                          \
+    ((zlink_spot_monitor_event_mask_t) (1u << 13))
+#define ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY                          \
+    ((zlink_spot_monitor_event_mask_t) (1u << 14))
+#define ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_FULL                              \
+    ((zlink_spot_monitor_event_mask_t) (1u << 15))
+#define ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_DRAINED                           \
+    ((zlink_spot_monitor_event_mask_t) (1u << 16))
+#define ZLINK_SPOT_MONITOR_EVENT_CLOSED                                      \
+    ((zlink_spot_monitor_event_mask_t) (1u << 17))
+#define ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED                  \
+    ((zlink_spot_monitor_event_mask_t) (1u << 18))
+#define ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED                  \
+    ((zlink_spot_monitor_event_mask_t) (1u << 19))
+#define ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED            \
+    ((zlink_spot_monitor_event_mask_t) (1u << 20))
 
-#define ZLINK_SPOT_SUB_FILTER_APPLIED (1u << 17)
-#define ZLINK_SPOT_SUB_SUBSCRIPTION_READY (1u << 18)
+#define ZLINK_MONITOR_EVENT_READY ZLINK_DISCOVERY_MONITOR_EVENT_READY
+#define ZLINK_MONITOR_EVENT_LOST ZLINK_DISCOVERY_MONITOR_EVENT_LOST
+#define ZLINK_MONITOR_EVENT_PEER_UP ZLINK_SPOT_MONITOR_EVENT_PEER_UP
+#define ZLINK_MONITOR_EVENT_PEER_DOWN ZLINK_SPOT_MONITOR_EVENT_PEER_DOWN
+#define ZLINK_MONITOR_EVENT_ERROR ZLINK_DISCOVERY_MONITOR_EVENT_ERROR
+#define ZLINK_DISCOVERY_SERVICE_UP ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
+#define ZLINK_DISCOVERY_SERVICE_DOWN ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_DOWN
+#define ZLINK_DISCOVERY_PROVIDERS_CHANGED ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED
+#define ZLINK_GATEWAY_SERVICE_READY ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY
+#define ZLINK_GATEWAY_SERVICE_LOST ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_LOST
+#define ZLINK_GATEWAY_SEND_READY_CHANGED ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
+#define ZLINK_GATEWAY_ROUTE_UP ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP
+#define ZLINK_GATEWAY_ROUTE_DOWN ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_DOWN
+#define ZLINK_SPOT_SUB_FILTER_APPLIED ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED
+#define ZLINK_SPOT_SUB_SUBSCRIPTION_READY ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY
+#define ZLINK_SPOT_PUB_QUEUE_FULL ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_FULL
+#define ZLINK_SPOT_PUB_QUEUE_DRAINED ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_DRAINED
+#define ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED                                \
+    ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
+#define ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED                                \
+    ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
+#define ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED                          \
+    ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
+#define ZLINK_MONITOR_EVENT_CLOSED ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED
+#define ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME                              \
+    ((zlink_service_event_detail_mask_t) 0x0001u)
+#define ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT                                  \
+    ((zlink_service_event_detail_mask_t) 0x0002u)
+#define ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_RID                               \
+    ((zlink_service_event_detail_mask_t) 0x0004u)
+#define ZLINK_SERVICE_EVENT_DETAIL_PEER_RID                                  \
+    ((zlink_service_event_detail_mask_t) 0x0008u)
+#define ZLINK_SERVICE_EVENT_DETAIL_SUBJECT                                   \
+    ((zlink_service_event_detail_mask_t) 0x0010u)
+#define ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_KIND                              \
+    ((zlink_service_event_detail_mask_t) 0x0020u)
 
-#define ZLINK_SPOT_PUB_QUEUE_FULL (1u << 19)
-#define ZLINK_SPOT_PUB_QUEUE_DRAINED (1u << 20)
-#define ZLINK_MONITOR_EVENT_CLOSED (1u << 21)
+#define ZLINK_EVENT_DETAIL_SERVICE_NAME ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME
+#define ZLINK_EVENT_DETAIL_ENDPOINT ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT
+#define ZLINK_EVENT_DETAIL_SUBJECT_RID ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_RID
+#define ZLINK_EVENT_DETAIL_PEER_RID ZLINK_SERVICE_EVENT_DETAIL_PEER_RID
+#define ZLINK_EVENT_DETAIL_SUBJECT ZLINK_SERVICE_EVENT_DETAIL_SUBJECT
+#define ZLINK_EVENT_DETAIL_SUBJECT_KIND ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_KIND
 
-#define ZLINK_EVENT_DETAIL_SERVICE_NAME 0x0001u
-#define ZLINK_EVENT_DETAIL_ENDPOINT 0x0002u
-#define ZLINK_EVENT_DETAIL_SUBJECT_RID 0x0004u
-#define ZLINK_EVENT_DETAIL_PEER_RID 0x0008u
+typedef enum zlink_service_event_subject_kind_t
+{
+    ZLINK_SERVICE_EVENT_SUBJECT_NONE = 0,
+    ZLINK_SERVICE_EVENT_SUBJECT_TOPIC = 1,
+    ZLINK_SERVICE_EVENT_SUBJECT_PATTERN = 2
+} zlink_service_event_subject_kind_t;
 
 typedef struct zlink_service_event_t
 {
-    uint16_t service_kind;
+    zlink_service_kind_t service_kind;
     uint32_t event_type;
     int32_t status;
     int32_t error_code;
     uint32_t value;
-    uint32_t detail_flags;
+    zlink_service_event_detail_mask_t detail_flags;
     char service_name[256];
     char endpoint[256];
     zlink_routing_id_t routing_id;
+    char subject[256];
+    uint32_t subject_kind;
 } zlink_service_event_t;
 
-ZLINK_EXPORT void *zlink_discovery_monitor_open (void *discovery, int events);
-ZLINK_EXPORT void *zlink_gateway_monitor_open (void *gateway, int events);
-ZLINK_EXPORT void *zlink_receiver_monitor_open (void *receiver, int events);
-ZLINK_EXPORT void *zlink_spot_sub_monitor_open (void *sub, int events);
-ZLINK_EXPORT void *zlink_spot_pub_monitor_open (void *pub, int events);
+typedef void (*zlink_service_monitor_handler_fn) (
+  const zlink_service_event_t *event_, void *userdata_);
 
-ZLINK_EXPORT int zlink_service_monitor_recv (void *monitor,
-                                             zlink_service_event_t *event,
-                                             int flags);
+/**
+ * @brief Ignore service monitor events while keeping a valid handler symbol.
+ *
+ * Pass this when you want snapshot or direct polling on the returned monitor
+ * handle without automatic callback dispatch.
+ */
+ZLINK_EXPORT void zlink_service_monitor_ignore_handler (
+  const zlink_service_event_t *event_, void *userdata_);
+
+/**
+ * @brief Open a service monitor handle with a fixed callback.
+ *
+ * Monitor handles participate in the same tiered contract: open/close are
+ * serialized control-path operations, while callback replacement is not
+ * supported after open.
+ */
+ZLINK_EXPORT void *zlink_discovery_monitor_open (
+  void *discovery,
+  zlink_discovery_monitor_event_mask_t events,
+  zlink_service_monitor_handler_fn handler,
+  void *userdata);
+ZLINK_EXPORT void *zlink_gateway_monitor_open (
+  void *gateway,
+  zlink_gateway_monitor_event_mask_t events,
+  zlink_service_monitor_handler_fn handler,
+  void *userdata);
+ZLINK_EXPORT void *zlink_spot_node_monitor_open (
+  void *node,
+  zlink_spot_role_t role,
+  zlink_spot_monitor_event_mask_t events,
+  zlink_service_monitor_handler_fn handler,
+  void *userdata);
+ZLINK_EXPORT void *zlink_spot_monitor_open (
+  void *spot,
+  zlink_spot_role_t role,
+  zlink_spot_monitor_event_mask_t events,
+  zlink_service_monitor_handler_fn handler,
+  void *userdata);
+
+/**
+ * @brief Close a service monitor handle.
+ *
+ * If another thread is executing the monitor callback, the close fails with
+ * errno=EBUSY. Self-close from the callback succeeds and is deferred until the
+ * callback returns.
+ */
 ZLINK_EXPORT int zlink_service_monitor_close (void **monitor_p);
 
-#define ZLINK_TOPOLOGY_SOURCE_MANUAL 1
-#define ZLINK_TOPOLOGY_SOURCE_DISCOVERY 2
-#define ZLINK_TOPOLOGY_SOURCE_REGISTRY 3
+typedef enum zlink_topology_source_t
+{
+    ZLINK_TOPOLOGY_SOURCE_MANUAL = 1,
+    ZLINK_TOPOLOGY_SOURCE_DISCOVERY = 2,
+    ZLINK_TOPOLOGY_SOURCE_REGISTRY = 3
+} zlink_topology_source_t;
 
-#define ZLINK_TOPOLOGY_STATE_DISCOVERED 1
-#define ZLINK_TOPOLOGY_STATE_CONNECTING 2
-#define ZLINK_TOPOLOGY_STATE_READY 3
-#define ZLINK_TOPOLOGY_STATE_LOST 4
-#define ZLINK_TOPOLOGY_STATE_ERROR 5
-#define ZLINK_TOPOLOGY_STATE_STOPPED 6
+typedef enum zlink_topology_state_t
+{
+    ZLINK_TOPOLOGY_STATE_DISCOVERED = 1,
+    ZLINK_TOPOLOGY_STATE_CONNECTING = 2,
+    ZLINK_TOPOLOGY_STATE_READY = 3,
+    ZLINK_TOPOLOGY_STATE_LOST = 4,
+    ZLINK_TOPOLOGY_STATE_ERROR = 5,
+    ZLINK_TOPOLOGY_STATE_STOPPED = 6
+} zlink_topology_state_t;
 
 typedef struct zlink_registry_topology_entry_t
 {
     zlink_routing_id_t routing_id;
-    uint16_t service_kind;
+    zlink_service_kind_t service_kind;
     char service_name[256];
     char endpoint[256];
-    uint16_t source;
-    uint16_t state;
+    zlink_topology_source_t source;
+    zlink_topology_state_t state;
     uint32_t desired_count;
     uint32_t ready_count;
     uint32_t error_code;
@@ -1407,11 +1547,11 @@ typedef struct zlink_registry_topology_entry_t
 
 typedef struct zlink_registry_topology_filter_t
 {
-    uint16_t service_kind;
+    zlink_service_kind_t service_kind;
     char service_name[256];
     zlink_routing_id_t routing_id;
-    uint16_t state;
-    uint16_t source;
+    zlink_topology_state_t state;
+    zlink_topology_source_t source;
 } zlink_registry_topology_filter_t;
 
 ZLINK_EXPORT int zlink_registry_topology_snapshot (
@@ -1432,6 +1572,42 @@ ZLINK_EXPORT int zlink_registry_query_snapshot (
   const zlink_registry_topology_filter_t *filter,
   zlink_registry_topology_entry_t *entries,
   size_t *count);
+
+typedef struct zlink_registry_gateway_peer_entry_t
+{
+    zlink_routing_id_t gateway_routing_id;
+    char gateway_endpoint[256];
+    char service_name[256];
+    zlink_routing_id_t peer_routing_id;
+    char peer_endpoint[256];
+    zlink_topology_state_t state;
+    uint32_t weight;
+    uint64_t connected_since_ms;
+    uint64_t last_reported_ms;
+} zlink_registry_gateway_peer_entry_t;
+
+typedef struct zlink_registry_gateway_peer_filter_t
+{
+    zlink_routing_id_t gateway_routing_id;
+    char service_name[256];
+    zlink_routing_id_t peer_routing_id;
+    zlink_topology_state_t state;
+} zlink_registry_gateway_peer_filter_t;
+
+ZLINK_EXPORT int zlink_registry_gateway_peers_snapshot (
+  void *registry,
+  zlink_registry_gateway_peer_entry_t *entries,
+  size_t *count);
+ZLINK_EXPORT int zlink_registry_gateway_peers_query (
+  void *registry,
+  const zlink_registry_gateway_peer_filter_t *filter,
+  zlink_registry_gateway_peer_entry_t *entries,
+  size_t *count);
+ZLINK_EXPORT int zlink_registry_query_gateway_peers_snapshot (
+  void *client,
+  const zlink_registry_gateway_peer_filter_t *filter,
+  zlink_registry_gateway_peer_entry_t *entries,
+  size_t *count);
 ZLINK_EXPORT int zlink_registry_query_destroy (void **client_p);
 
 #if defined _WIN32
@@ -1443,120 +1619,6 @@ typedef unsigned int zlink_fd_t;
 #else
 typedef int zlink_fd_t;
 #endif
-
-#define ZLINK_POLLIN 1
-#define ZLINK_POLLOUT 2
-#define ZLINK_POLLERR 4
-#define ZLINK_POLLPRI 8
-#define ZLINK_HAVE_POLLER 1
-
-typedef struct zlink_pollitem_t
-{
-    void *socket;
-    zlink_fd_t fd;
-    short events;
-    short revents;
-} zlink_pollitem_t;
-
-typedef struct zlink_poller_event_t
-{
-    void *socket;
-    zlink_fd_t fd;
-    void *user_data;
-    short events;
-} zlink_poller_event_t;
-
-#define ZLINK_POLLITEMS_DFLT 16
-
-/**
- * @brief Poll for events on a set of sockets and/or file descriptors.
- * @param items_    Array of poll items.
- * @param nitems_   Number of items.
- * @param timeout_  Timeout in milliseconds (-1 = infinite, 0 = immediate).
- * @return Number of items with events, or -1 on failure.
- */
-ZLINK_EXPORT int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_);
-
-/** @brief Create a stateful poller instance. */
-ZLINK_EXPORT void *zlink_poller_new (void);
-
-/** @brief Destroy a poller instance and clear the caller's handle. */
-ZLINK_EXPORT int zlink_poller_destroy (void **poller_p);
-
-/** @brief Return the number of registered poll items. */
-ZLINK_EXPORT int zlink_poller_size (void *poller_);
-
-/** @brief Register a socket with the poller. */
-ZLINK_EXPORT int
-zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_);
-
-ZLINK_EXPORT int zlink_poller_add_spot_sub (void *poller_,
-                                            void *spot_sub_,
-                                            void *user_data_,
-                                            short events_);
-ZLINK_EXPORT int zlink_poller_add_spot_pub (void *poller_,
-                                            void *spot_pub_,
-                                            void *user_data_,
-                                            short events_);
-ZLINK_EXPORT int zlink_poller_add_gateway (void *poller_,
-                                           void *gateway_,
-                                           void *user_data_,
-                                           short events_);
-ZLINK_EXPORT int zlink_poller_add_receiver (void *poller_,
-                                            void *receiver_,
-                                            void *user_data_,
-                                            short events_);
-ZLINK_EXPORT int zlink_poller_add_monitor (void *poller_,
-                                           void *monitor_,
-                                           void *user_data_,
-                                           short events_);
-
-/** @brief Register a raw file descriptor with the poller. */
-ZLINK_EXPORT int zlink_poller_add_fd (void *poller_,
-                                      zlink_fd_t fd_,
-                                      void *user_data_,
-                                      short events_);
-
-/** @brief Update the event mask for a registered socket. */
-ZLINK_EXPORT int
-zlink_poller_modify (void *poller_, void *socket_, short events_);
-
-ZLINK_EXPORT int
-zlink_poller_modify_spot_sub (void *poller_, void *spot_sub_, short events_);
-ZLINK_EXPORT int
-zlink_poller_modify_spot_pub (void *poller_, void *spot_pub_, short events_);
-ZLINK_EXPORT int
-zlink_poller_modify_gateway (void *poller_, void *gateway_, short events_);
-ZLINK_EXPORT int
-zlink_poller_modify_receiver (void *poller_, void *receiver_, short events_);
-ZLINK_EXPORT int
-zlink_poller_modify_monitor (void *poller_, void *monitor_, short events_);
-
-/** @brief Update the event mask for a registered file descriptor. */
-ZLINK_EXPORT int
-zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, short events_);
-
-/** @brief Remove a registered socket. */
-ZLINK_EXPORT int zlink_poller_remove (void *poller_, void *socket_);
-
-ZLINK_EXPORT int zlink_poller_remove_spot_sub (void *poller_, void *spot_sub_);
-ZLINK_EXPORT int zlink_poller_remove_spot_pub (void *poller_, void *spot_pub_);
-ZLINK_EXPORT int zlink_poller_remove_gateway (void *poller_, void *gateway_);
-ZLINK_EXPORT int zlink_poller_remove_receiver (void *poller_, void *receiver_);
-ZLINK_EXPORT int zlink_poller_remove_monitor (void *poller_, void *monitor_);
-
-/** @brief Remove a registered file descriptor. */
-ZLINK_EXPORT int zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
-
-/** @brief Wait for one ready event. */
-ZLINK_EXPORT int
-zlink_poller_wait (void *poller_, zlink_poller_event_t *event_, long timeout_);
-
-/** @brief Wait for up to `n_events_` ready events. */
-ZLINK_EXPORT int zlink_poller_wait_all (void *poller_,
-                                        zlink_poller_event_t *events_,
-                                        int n_events_,
-                                        long timeout_);
 
 /** @brief Start a built-in proxy between frontend and backend sockets. */
 ZLINK_EXPORT int zlink_proxy (void *frontend_, void *backend_, void *capture_);

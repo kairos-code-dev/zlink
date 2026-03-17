@@ -250,7 +250,7 @@ std::string bind_node (void *node_, const std::string &transport_, int base_port
     return std::string ();
 }
 
-void spot_monitor_handler (const zlink_service_event_t *event_)
+void spot_monitor_handler (const zlink_service_event_t *event_, void *)
 {
     service_monitor_probe_t *probe = g_service_monitor_probe;
     if (!probe || !event_)
@@ -263,7 +263,7 @@ void spot_monitor_handler (const zlink_service_event_t *event_)
     probe->cv.notify_all ();
 }
 
-void spot_pub_monitor_handler (const zlink_service_event_t *event_)
+void spot_pub_monitor_handler (const zlink_service_event_t *event_, void *)
 {
     service_monitor_probe_t *probe = g_pub_service_monitor_probe;
     if (!probe || !event_)
@@ -348,23 +348,6 @@ int resolve_spot_subscription_ready_timeout_ms (
     if (transport_ == "tls" || transport_ == "wss")
         return 10000;
     return 3000;
-}
-
-bool wait_for_warmup_counter (spot_client_state_t &state_,
-                              unsigned long long expected_,
-                              int timeout_ms_)
-{
-    std::unique_lock<std::mutex> lock (state_.mutex);
-    const bool ok = state_.cv.wait_for (
-      lock,
-      std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1),
-      [&state_, expected_] () {
-          return state_.warmup_received.load (std::memory_order_acquire)
-                   >= expected_
-                 || state_.fatal.load (std::memory_order_acquire);
-      });
-    state_.warmup_target.store (0, std::memory_order_release);
-    return ok && !state_.fatal.load (std::memory_order_acquire);
 }
 
 bool wait_for_receive_quiet (spot_client_state_t &state_,
@@ -468,7 +451,8 @@ void spot_client_handler (const zlink_routing_id_t *,
                           const char *topic_,
                           size_t topic_len_,
                           zlink_msg_t *parts_,
-                          size_t part_count_)
+                          size_t part_count_,
+                          void *)
 {
     handle_spot_client_parts (
       g_spot_client_state.load (std::memory_order_acquire), topic_, topic_len_,
@@ -564,14 +548,14 @@ bool run_warmup (void *pub_,
                  std::vector<char> &payload_,
                  size_t msg_size_)
 {
-    const int default_warmup = msg_size_ >= 65536 ? 20 : 200;
-    const int warmup_count =
-      resolve_bench_count ("PERF_WARMUP_COUNT", default_warmup);
-    const int wait_timeout_ms = std::max (
-      1000, resolve_single_recv_timeout_ms () * 10);
+    const int warmup_s = resolve_single_warmup_seconds ();
+    const auto deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (warmup_s);
+
+    // reset state
     client_state_.fatal.store (false, std::memory_order_release);
     client_state_.warmup_received.store (0, std::memory_order_release);
-    client_state_.warmup_target.store (warmup_count, std::memory_order_release);
+    client_state_.warmup_target.store (0, std::memory_order_release);
     client_state_.active_received.store (0, std::memory_order_release);
     client_state_.recv_activity.store (0, std::memory_order_release);
     client_state_.active_deadline_us.store (0, std::memory_order_release);
@@ -580,7 +564,8 @@ bool run_warmup (void *pub_,
         client_state_.latency = latency_stats_builder_t ();
     }
 
-    for (int i = 0; i < warmup_count; ++i) {
+    uint64_t seq = 1;
+    while (std::chrono::steady_clock::now () < deadline) {
         probe_.sample_send_if_due ();
         for (;;) {
             const int rc = try_publish_payload (
@@ -589,19 +574,20 @@ bool run_warmup (void *pub_,
               msg_size_,
               client_state_.run_id,
               perf_single_metric::phase_warmup,
-              static_cast<uint64_t> (i + 1));
-            if (rc > 0)
-                break;
-            if (rc < 0)
-                return false;
+              seq);
+            if (rc > 0) { ++seq; break; }
+            if (rc < 0) return false;
             std::this_thread::yield ();
         }
     }
 
-    return wait_for_warmup_counter (
-             client_state_,
-             static_cast<unsigned long long> (warmup_count),
-             wait_timeout_ms);
+    // idle-wait for in-flight warmup messages
+    const int idle_timeout_ms = std::max (10, resolve_single_recv_timeout_ms ());
+    const int total_timeout_ms = std::max (100, idle_timeout_ms * 2);
+    (void) wait_for_receive_quiet (client_state_, idle_timeout_ms, total_timeout_ms);
+
+    return !client_state_.fatal.load (std::memory_order_acquire)
+           && client_state_.warmup_received.load (std::memory_order_acquire) > 0;
 }
 
 bool run_active (void *pub_,
@@ -698,9 +684,9 @@ int run_case (const std::string &lib_name_,
     if (!ctx.valid ())
         return 1;
 
-    void *pub_node = zlink_spot_node_new (ctx.get (), "perf-spot", NULL);
+    void *pub_node = zlink_spot_node_new (ctx.get (), "perf-spot", NULL, NULL);
     void *sub_node =
-      zlink_spot_node_new (ctx.get (), "perf-spot-client", NULL);
+      zlink_spot_node_new (ctx.get (), "perf-spot-client", NULL, NULL);
     if (!pub_node || !sub_node) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] node create failed err=" << zlink_errno ()
@@ -743,8 +729,8 @@ int run_case (const std::string &lib_name_,
         zlink_spot_node_destroy (&pub_node);
         return 1;
     }
-    void *pub = zlink_spot_new (pub_node, NULL);
-    void *sub = zlink_spot_new (sub_node, &spot_client_handler);
+    void *pub = zlink_spot_new (pub_node, NULL, NULL);
+    void *sub = zlink_spot_new (sub_node, &spot_client_handler, NULL);
     void *sub_monitor = NULL;
     void *pub_monitor = NULL;
     service_monitor_probe_t monitor_probe;
@@ -765,12 +751,12 @@ int run_case (const std::string &lib_name_,
       ZLINK_SPOT_ROLE_SUB,
       ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
         | ZLINK_MONITOR_EVENT_ERROR,
-      &spot_monitor_handler);
+      &spot_monitor_handler, NULL);
     pub_monitor = zlink_spot_monitor_open (
       pub,
       ZLINK_SPOT_ROLE_PUB,
       ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR,
-      &spot_pub_monitor_handler);
+      &spot_pub_monitor_handler, NULL);
     if (!sub_monitor || !pub_monitor) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] monitor open failed sub="

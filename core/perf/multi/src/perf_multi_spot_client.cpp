@@ -1,10 +1,8 @@
-#include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_client_helpers.hpp"
 #include "../common/perf_multi_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
-#include "../../../src/core/monitor_dispatch_internal.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -114,12 +112,6 @@ void close_parts(zlink_msg_t *parts, size_t part_count)
         return;
     for (size_t i = 0; i < part_count; ++i)
         zlink_msg_close(&parts[i]);
-}
-
-bool is_supported_transport(const std::string &transport)
-{
-    return transport == "tcp" || transport == "tls" || transport == "ws"
-           || transport == "wss";
 }
 
 void fast_exit_process(int exit_code)
@@ -342,7 +334,7 @@ bool open_spot_ready_monitor(spot_client_slot_t *slot)
       slot->sub,
       ZLINK_SPOT_ROLE_SUB,
       ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_READY,
-      &zlink_service_monitor_ignore_handler);
+      &zlink_service_monitor_ignore_handler, NULL);
     if (!monitor)
         return false;
 
@@ -547,7 +539,8 @@ void spot_client_sub_handler(const zlink_routing_id_t *,
                              const char *topic,
                              size_t topic_len,
                              zlink_msg_t *parts,
-                             size_t part_count)
+                             size_t part_count,
+                             void *)
 {
     handle_spot_client_parts(topic, topic_len, parts, part_count);
 }
@@ -672,7 +665,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
 
         char service_name[64];
         std::snprintf(service_name, sizeof(service_name), "perf-spot-c%zu", i);
-        slot->node = zlink_spot_node_new(ctx.get(), service_name, NULL);
+        slot->node = zlink_spot_node_new(ctx.get(), service_name, NULL, NULL);
         if (!slot->node || !configure_spot_tls_client(slot->node, transport)) {
             if (bench_debug_enabled())
                 std::cerr << "[multi-spot-client] node create/tls failed slot="
@@ -687,7 +680,8 @@ bool create_spot_slots(ctx_guard_t &ctx,
           zlink_spot_new(slot->node,
                          recv_mode == spot_recv_callback
                            ? &spot_client_sub_handler
-                           : NULL);
+                           : NULL,
+                         NULL);
         if (!slot->sub || !apply_spot_sub_options(slot->sub, settings)
             || !open_spot_ready_monitor(slot)
             || zlink_spot_node_connect_peer_pub(slot->node, endpoint.c_str()) != 0

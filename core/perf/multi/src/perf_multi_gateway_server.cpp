@@ -1,4 +1,3 @@
-#include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_metric_header.hpp"
@@ -24,7 +23,6 @@ static const char *k_pattern = "GATEWAY";
 static const char *k_service_name = "perf-gateway";
 static const char *k_server_routing_id = "perf-gateway-server";
 
-static std::atomic<bool> g_stop_requested(false);
 static std::atomic<bool> g_queue_probe_pending(false);
 static std::atomic<size_t> g_queue_probe_size(0);
 static std::atomic<int> g_debug_recv_logs(0);
@@ -69,25 +67,6 @@ void close_parts(zlink_msg_t *parts, size_t part_count)
         return;
     for (size_t i = 0; i < part_count; ++i)
         zlink_msg_close(&parts[i]);
-}
-
-bool is_supported_transport(const std::string &transport)
-{
-    return transport == "tcp" || transport == "tls" || transport == "ws"
-           || transport == "wss";
-}
-
-void on_signal(int)
-{
-    g_stop_requested.store(true, std::memory_order_release);
-}
-
-void install_signal_handlers()
-{
-    std::signal(SIGINT, on_signal);
-#if defined(SIGTERM)
-    std::signal(SIGTERM, on_signal);
-#endif
 }
 
 void request_queue_probe(size_t msg_size)
@@ -318,7 +297,8 @@ send_status_t try_send_pending_reply(void *gateway,
 
 void gateway_server_handler(const zlink_routing_id_t *source_rid,
                             zlink_msg_t *parts,
-                            size_t part_count)
+                            size_t part_count,
+                            void *)
 {
     gateway_server_state_t *state = g_server_state;
     if (!state || !state->gateway || !source_rid || part_count == 0) {
@@ -400,13 +380,13 @@ void gateway_server_handler(const zlink_routing_id_t *source_rid,
     }
 }
 
-void gateway_server_send_ready(void *subject)
+void gateway_server_send_ready(void *subject, void *)
 {
     gateway_server_state_t *state = g_server_state;
     if (!state || subject != state->gateway)
         return;
 
-    while (!g_stop_requested.load(std::memory_order_acquire)) {
+    while (!perf_stop_requested ().load(std::memory_order_acquire)) {
         pending_gateway_echo_t pending;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
@@ -471,9 +451,9 @@ void print_server_metrics(const std::string &lib_name,
 bool run_server_loop(const std::string &lib_name,
                      const std::string &transport)
 {
-    while (!g_stop_requested.load(std::memory_order_acquire)) {
+    while (!perf_stop_requested ().load(std::memory_order_acquire)) {
         if (g_server_state && g_server_state->gateway)
-            gateway_server_send_ready(g_server_state->gateway);
+            gateway_server_send_ready(g_server_state->gateway, NULL);
         emit_requested_queue_probe(lib_name, transport);
         if (g_server_state
             && g_server_state->send_failures.load(std::memory_order_acquire) > 0)
@@ -507,13 +487,14 @@ int run_server_benchmark(const std::string &lib_name,
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
     void *gateway = zlink_gateway_new(ctx.get(), k_service_name,
                                       k_server_routing_id,
-                                      &gateway_server_handler);
+                                      &gateway_server_handler, NULL);
     if (!gateway)
         return 1;
 
     if (!apply_gateway_options(gateway, settings)
         || zlink_gateway_set_send_ready_handler(gateway,
-                                                &gateway_server_send_ready)
+                                                &gateway_server_send_ready,
+                                                NULL)
              != 0
         || !configure_gateway_tls_server(gateway, transport)) {
         zlink_gateway_destroy(&gateway);
@@ -532,10 +513,10 @@ int run_server_benchmark(const std::string &lib_name,
     state.gateway = gateway;
     g_server_state = &state;
 
-    g_stop_requested.store(false, std::memory_order_release);
+    perf_stop_requested ().store(false, std::memory_order_release);
     g_queue_probe_pending.store(false, std::memory_order_release);
     g_queue_probe_size.store(0, std::memory_order_release);
-    install_signal_handlers();
+    install_perf_signal_handlers();
 
     std::thread stdin_watcher([]() {
         std::string line;
@@ -546,11 +527,11 @@ int run_server_benchmark(const std::string &lib_name,
                 continue;
             }
             if (line == "STOP" || line == "QUIT") {
-                g_stop_requested.store(true, std::memory_order_release);
+                perf_stop_requested ().store(true, std::memory_order_release);
                 return;
             }
         }
-        g_stop_requested.store(true, std::memory_order_release);
+        perf_stop_requested ().store(true, std::memory_order_release);
     });
     stdin_watcher.detach();
 

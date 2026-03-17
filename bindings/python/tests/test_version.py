@@ -13,7 +13,7 @@ class VersionTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
         self.assertEqual(major, 5)
         self.assertEqual(minor, 0)
-        self.assertEqual(patch, 3)
+        self.assertEqual(patch, 4)
 
     def test_pair_send_recv(self):
         try:

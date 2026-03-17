@@ -25,7 +25,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, my_endpoint));
 
     fd_t server_accept =
-      TEST_ASSERT_SUCCESS_RAW_ERRNO (accept (server, NULL, NULL));
+      TEST_ASSERT_SUCCESS_RAW_ERRNO (accept (server, NULL));
 
     //  If there is not enough data for a full greeting, just send what we can
     //  Otherwise send greeting first, as expected by the protocol

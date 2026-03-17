@@ -59,9 +59,9 @@ Compile-time version detection is available through the following macros
 defined in `<zlink.h>`:
 
 ```c
-#define ZLINK_VERSION_MAJOR 1
+#define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 0
+#define ZLINK_VERSION_PATCH 4
 
 #define ZLINK_MAKE_VERSION(major, minor, patch) \
     ((major) * 10000 + (minor) * 100 + (patch))
@@ -73,8 +73,8 @@ defined in `<zlink.h>`:
 Use `ZLINK_VERSION` and `ZLINK_MAKE_VERSION` for compile-time version guards:
 
 ```c
-#if ZLINK_VERSION >= ZLINK_MAKE_VERSION(1, 1, 0)
-    /* use features introduced in 1.1.0 */
+#if ZLINK_VERSION >= ZLINK_MAKE_VERSION(5, 1, 0)
+    /* use features introduced in 5.1.0 */
 #endif
 ```
 

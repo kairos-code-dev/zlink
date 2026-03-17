@@ -15,8 +15,8 @@ not from examples:
 |---|---:|---|
 | `ZLINK_AFFINITY` | `0` | No I/O thread affinity mask |
 | `ZLINK_ROUTING_ID` | auto | 16-byte random ID per socket |
-| `ZLINK_SNDHWM` | `300000` | Send queue HWM |
-| `ZLINK_RCVHWM` | `300000` | Receive queue HWM |
+| `ZLINK_SNDHWM` | `1000` | Send queue HWM |
+| `ZLINK_RCVHWM` | `1000` | Receive queue HWM |
 | `ZLINK_RATE` | `100` | Multicast rate (kb/s) |
 | `ZLINK_RECOVERY_IVL` | `10000` | Multicast recovery interval (ms) |
 | `ZLINK_SNDBUF` | `-1` | Do not force `SO_SNDBUF` |

@@ -28,8 +28,8 @@ void connect_with_retry (void *socket_, const std::string &endpoint_)
     if (!ctx)
         _exit (2);
 
-    void *frontend = zlink_socket (ctx, ZLINK_ROUTER);
-    void *backend = zlink_socket (ctx, ZLINK_DEALER);
+    void *frontend = zlink_socket (ctx, ZLINK_ROUTER, NULL);
+    void *backend = zlink_socket (ctx, ZLINK_DEALER, NULL);
     if (!frontend || !backend)
         _exit (3);
 
@@ -62,8 +62,8 @@ void test_proxy_router_dealer_roundtrip ()
     void *ctx = zlink_ctx_new ();
     assert (ctx != NULL);
 
-    void *client = zlink_socket (ctx, ZLINK_DEALER);
-    void *worker = zlink_socket (ctx, ZLINK_DEALER);
+    void *client = zlink_socket (ctx, ZLINK_DEALER, NULL);
+    void *worker = zlink_socket (ctx, ZLINK_DEALER, NULL);
     assert (client != NULL);
     assert (worker != NULL);
 

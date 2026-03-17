@@ -9,7 +9,7 @@ const int kThreadCount = 100;
 
 void worker_connect_and_close (void *ctx_, const std::string endpoint_)
 {
-    void *socket = zlink_socket (ctx_, ZLINK_SUB);
+    void *socket = zlink_socket (ctx_, ZLINK_SUB, NULL);
     if (!socket)
         return;
     (void) zlink_connect (socket, endpoint_.c_str ());
@@ -23,7 +23,7 @@ void test_shutdown_stress ()
         assert (ctx != NULL);
         assert (zlink_ctx_set (ctx, ZLINK_IO_THREADS, 7) == 0);
 
-        void *pub = zlink_socket (ctx, ZLINK_PUB);
+        void *pub = zlink_socket (ctx, ZLINK_PUB, NULL);
         assert (pub != NULL);
 
         assert (zlink_bind (pub, "tcp://127.0.0.1:*") == 0);

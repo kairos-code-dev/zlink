@@ -40,9 +40,16 @@ public sealed class Gateway : IDisposable
         if (discovery == null)
             throw new ArgumentNullException(nameof(discovery));
         _handle = NativeMethods.zlink_gateway_new(context.Handle,
-            discovery.Handle, null);
+            null, null, IntPtr.Zero, IntPtr.Zero);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
+        int attachRc = NativeMethods.zlink_gateway_attach_discovery(_handle,
+            discovery.Handle);
+        if (attachRc != 0)
+        {
+            NativeMethods.zlink_gateway_destroy(ref _handle);
+            throw ZlinkException.FromLastError();
+        }
     }
 
     public Gateway(Context context, Discovery discovery, string routingId)
@@ -63,9 +70,16 @@ public sealed class Gateway : IDisposable
                 "routingId UTF-8 length must be between 1 and 255 bytes.");
         }
         _handle = NativeMethods.zlink_gateway_new(context.Handle,
-            discovery.Handle, routingId);
+            null, routingId, IntPtr.Zero, IntPtr.Zero);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
+        int attachRc = NativeMethods.zlink_gateway_attach_discovery(_handle,
+            discovery.Handle);
+        if (attachRc != 0)
+        {
+            NativeMethods.zlink_gateway_destroy(ref _handle);
+            throw ZlinkException.FromLastError();
+        }
     }
 
     /// <summary>

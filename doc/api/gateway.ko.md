@@ -88,7 +88,8 @@ Gateway를 생성합니다.
 void *zlink_gateway_new (void *ctx,
                          const char *service_name,
                          const char *routing_id,
-                         zlink_socket_msg_handler_fn handler);
+                         zlink_socket_msg_handler_fn handler,
+                         void *userdata);
 ```
 
 새 Gateway 인스턴스를 할당하고 초기화합니다. `service_name`은 생성 시 고정되는
@@ -230,7 +231,7 @@ send-ready 콜백을 설치하거나 교체합니다.
 
 ```c
 int zlink_gateway_set_send_ready_handler (
-  void *gateway, zlink_send_ready_handler_fn handler);
+  void *gateway, zlink_send_ready_handler_fn handler, void *userdata);
 ```
 
 Gateway가 쓰기 가능 상태로 전이할 때 핸들러가 호출됩니다. 시작 후에 핸들러를

@@ -10,7 +10,7 @@ void test_ctx_destroy_basic ()
     void *ctx = zlink_ctx_new ();
     assert (ctx != NULL);
 
-    void *socket = zlink_socket (ctx, ZLINK_DEALER);
+    void *socket = zlink_socket (ctx, ZLINK_DEALER, NULL);
     assert (socket != NULL);
 
     assert (zlink_close (socket) == 0);
@@ -22,13 +22,13 @@ void test_ctx_shutdown_disallows_new_socket ()
     void *ctx = zlink_ctx_new ();
     assert (ctx != NULL);
 
-    void *socket = zlink_socket (ctx, ZLINK_DEALER);
+    void *socket = zlink_socket (ctx, ZLINK_DEALER, NULL);
     assert (socket != NULL);
     assert (zlink_close (socket) == 0);
 
     assert (zlink_ctx_shutdown (ctx) == 0);
 
-    void *after = zlink_socket (ctx, ZLINK_DEALER);
+    void *after = zlink_socket (ctx, ZLINK_DEALER, NULL);
     assert (after == NULL);
     assert (zlink_errno () == ETERM);
 
@@ -42,7 +42,7 @@ void test_ctx_shutdown_without_socket_disallows_new_socket ()
 
     assert (zlink_ctx_shutdown (ctx) == 0);
 
-    void *after = zlink_socket (ctx, ZLINK_DEALER);
+    void *after = zlink_socket (ctx, ZLINK_DEALER, NULL);
     assert (after == NULL);
     assert (zlink_errno () == ETERM);
 
@@ -70,7 +70,7 @@ void poller_thread (void *arg_)
 {
     poller_args_t *args = static_cast<poller_args_t *> (arg_);
 
-    void *socket = zlink_socket (args->ctx, ZLINK_DEALER);
+    void *socket = zlink_socket (args->ctx, ZLINK_DEALER, NULL);
     if (!socket)
         return;
 

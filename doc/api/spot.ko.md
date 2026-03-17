@@ -18,7 +18,8 @@ SPOT public API는 두 계층으로 정리됩니다.
 ```c
 void *zlink_spot_node_new(void *ctx,
                           const char *service_name,
-                          zlink_spot_handler_fn handler);
+                          zlink_spot_handler_fn handler,
+                          void *userdata);
 int zlink_spot_node_destroy(void **node_p);
 
 int zlink_spot_node_bind(void *node, const char *endpoint);
@@ -47,7 +48,8 @@ int zlink_spot_node_unsubscribe(void *node,
 
 int zlink_spot_node_set_send_ready_handler(
   void *node,
-  zlink_send_ready_handler_fn handler);
+  zlink_send_ready_handler_fn handler,
+  void *userdata);
 int zlink_spot_node_set_pub_option(void *node,
                                    zlink_spot_pub_option_t option,
                                    const void *optval,
@@ -67,7 +69,8 @@ int zlink_spot_node_set_sub_option(void *node,
 
 ```c
 void *zlink_spot_new(void *spot_node,
-                     zlink_spot_handler_fn handler);
+                     zlink_spot_handler_fn handler,
+                     void *userdata);
 int zlink_spot_destroy(void **spot_p);
 
 int zlink_spot_publish(void *spot,
@@ -88,7 +91,8 @@ int zlink_spot_unsubscribe(void *spot,
 
 int zlink_spot_set_send_ready_handler(
   void *spot,
-  zlink_send_ready_handler_fn handler);
+  zlink_send_ready_handler_fn handler,
+  void *userdata);
 
 int zlink_spot_set_pub_option(void *spot,
                               zlink_spot_pub_option_t option,
@@ -118,7 +122,8 @@ typedef void (*zlink_spot_handler_fn)(const zlink_routing_id_t *source_rid,
                                       const char *topic,
                                       size_t topic_len,
                                       zlink_msg_t *parts,
-                                      size_t part_count);
+                                      size_t part_count,
+                                      void *userdata);
 ```
 
 - `zlink_spot_node_new(..., handler)`와 `zlink_spot_new(..., handler)`는
@@ -147,12 +152,14 @@ SPOT monitor는 Spot과 SpotNode 모두에 대해 unified entrypoint를 제공�
 void *zlink_spot_monitor_open(void *spot,
                               zlink_spot_role_t role,
                               zlink_spot_monitor_event_mask_t events,
-                              zlink_service_monitor_handler_fn handler);
+                              zlink_service_monitor_handler_fn handler,
+                              void *userdata);
 
 void *zlink_spot_node_monitor_open(void *node,
                                    zlink_spot_role_t role,
                                    zlink_spot_monitor_event_mask_t events,
-                                   zlink_service_monitor_handler_fn handler);
+                                   zlink_service_monitor_handler_fn handler,
+                                   void *userdata);
 ```
 
 - `role`은 `ZLINK_SPOT_ROLE_PUB` 또는 `ZLINK_SPOT_ROLE_SUB`입니다.
@@ -181,12 +188,13 @@ void on_spot_message(const zlink_routing_id_t *source_rid,
                      const char *topic,
                      size_t topic_len,
                      zlink_msg_t *parts,
-                     size_t part_count);
+                     size_t part_count,
+                     void *userdata);
 
-void *node = zlink_spot_node_new(ctx, "svc-chat", on_spot_message);
+void *node = zlink_spot_node_new(ctx, "svc-chat", on_spot_message, NULL);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
-void *spot = zlink_spot_new(node, on_spot_message);
+void *spot = zlink_spot_new(node, on_spot_message, NULL);
 zlink_spot_subscribe(spot, "room:lobby");
 
 zlink_msg_t part;

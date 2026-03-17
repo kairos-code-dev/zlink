@@ -30,6 +30,16 @@ int zlink::recv_msg_internal (void *socket_, zlink_msg_t *msg_, int flags_)
     if (socket->getsockopt (ZLINK_SOCKOPT_TYPE, &type, &type_len) != 0)
         return -1;
 
+    if ((type == ZLINK_SUB || type == ZLINK_XSUB) && socket->sub_dispatch_active ()) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    if (type == ZLINK_XPUB && socket->xpub_dispatch_active ()) {
+        errno = EBUSY;
+        return -1;
+    }
+
     if (type == ZLINK_STREAM && socket->stream_dispatch_active ()) {
         errno = EBUSY;
         return -1;

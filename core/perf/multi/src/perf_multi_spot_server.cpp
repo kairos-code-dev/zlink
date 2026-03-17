@@ -1,4 +1,3 @@
-#include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_metric_header.hpp"
@@ -37,7 +36,6 @@ static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
 static const uint32_t k_metric_run_id = 1U;
 
-static std::atomic<bool> g_stop_requested(false);
 static std::atomic<bool> g_queue_probe_pending(false);
 static std::atomic<size_t> g_queue_probe_size(0);
 
@@ -52,7 +50,7 @@ bool wait_for_pub_peers(void *pub, size_t expected_count, int timeout_ms)
       std::chrono::steady_clock::now()
       + std::chrono::milliseconds(std::max(1, timeout_ms));
 
-    while (!g_stop_requested.load(std::memory_order_acquire)
+    while (!perf_stop_requested ().load(std::memory_order_acquire)
            && std::chrono::steady_clock::now() < deadline) {
         zlink_monitor_snapshot_t snapshot;
         std::memset(&snapshot, 0, sizeof(snapshot));
@@ -107,7 +105,8 @@ void discard_spot_parts(const zlink_routing_id_t *,
                         const char *,
                         size_t,
                         zlink_msg_t *parts,
-                        size_t part_count)
+                        size_t part_count,
+                        void *)
 {
     if (!parts)
         return;
@@ -115,30 +114,11 @@ void discard_spot_parts(const zlink_routing_id_t *,
         zlink_msg_close(&parts[i]);
 }
 
-bool is_supported_transport(const std::string &transport)
-{
-    return transport == "tcp" || transport == "tls" || transport == "ws"
-           || transport == "wss";
-}
-
 void fast_exit_process(int exit_code)
 {
     std::cout.flush();
     std::cerr.flush();
     std::_Exit(exit_code);
-}
-
-void on_signal(int)
-{
-    g_stop_requested.store(true, std::memory_order_release);
-}
-
-void install_signal_handlers()
-{
-    std::signal(SIGINT, on_signal);
-#if defined(SIGTERM)
-    std::signal(SIGTERM, on_signal);
-#endif
 }
 
 void request_queue_probe(size_t msg_size)
@@ -343,7 +323,7 @@ bool wait_for_size_start(spot_server_state_t *state,
       lock,
       std::chrono::milliseconds(std::max(1, timeout_ms)),
       [state, msg_size]() {
-          return g_stop_requested.load(std::memory_order_acquire)
+          return perf_stop_requested ().load(std::memory_order_acquire)
                  || state->fatal_errno.load(std::memory_order_acquire) != 0
                  || state->pending_start_sizes.count(msg_size) != 0;
       });
@@ -360,7 +340,7 @@ void notify_spot_server_send_progress(spot_server_state_t *state)
     state->send_wait_cv.notify_all();
 }
 
-void spot_server_send_ready(void *subject)
+void spot_server_send_ready(void *subject, void *)
 {
     spot_server_state_t *state = g_server_state;
     if (!state || subject != state->pub)
@@ -381,7 +361,7 @@ bool wait_for_spot_send_progress(spot_server_state_t *state,
       lock,
       std::chrono::milliseconds(send_enabled ? 2 : 1),
       [state, observed_epoch]() {
-          return g_stop_requested.load(std::memory_order_acquire)
+          return perf_stop_requested ().load(std::memory_order_acquire)
                  || state->fatal_errno.load(std::memory_order_acquire) != 0
                  || state->send_wake_epoch.load(std::memory_order_acquire)
                       != observed_epoch;
@@ -470,7 +450,7 @@ bool run_phase(spot_server_state_t *state,
       + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           std::chrono::duration<double>(duration_seconds));
 
-    while (!g_stop_requested.load(std::memory_order_acquire)
+    while (!perf_stop_requested ().load(std::memory_order_acquire)
            && std::chrono::steady_clock::now() < deadline) {
         emit_requested_queue_probe(lib_name, transport);
 
@@ -504,7 +484,7 @@ bool run_phase(spot_server_state_t *state,
                   << " sent="
                   << (state->next_seq > 0 ? state->next_seq - 1 : 0)
                   << " stop="
-                  << (g_stop_requested.load(std::memory_order_acquire) ? 1 : 0)
+                  << (perf_stop_requested ().load(std::memory_order_acquire) ? 1 : 0)
                   << " fatal_errno="
                   << state->fatal_errno.load(std::memory_order_acquire)
                   << std::endl;
@@ -558,7 +538,7 @@ bool run_server_loop(spot_server_state_t *state,
                std::max(1000, settings.connect_ready_timeout_ms * 6));
 
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
-        if (g_stop_requested.load(std::memory_order_acquire)) {
+        if (perf_stop_requested ().load(std::memory_order_acquire)) {
             if (bench_transition_debug_enabled()) {
                 std::cerr << "[multi-spot-server] loop stop before size="
                           << msg_sizes[i] << std::endl;
@@ -599,7 +579,7 @@ bool run_server_loop(spot_server_state_t *state,
                 std::cerr << "[multi-spot-server] loop abort size="
                           << msg_sizes[i]
                           << " stop="
-                          << (g_stop_requested.load(std::memory_order_acquire)
+                          << (perf_stop_requested ().load(std::memory_order_acquire)
                                 ? 1
                                 : 0)
                           << " fatal_errno="
@@ -643,7 +623,7 @@ int run_server_benchmark(const std::string &lib_name,
             max_msg_size = msg_sizes[i];
     }
 
-    void *node = zlink_spot_node_new(ctx.get(), k_service_name, NULL);
+    void *node = zlink_spot_node_new(ctx.get(), k_service_name, NULL, NULL);
     if (!node)
         return 1;
 
@@ -660,9 +640,9 @@ int run_server_benchmark(const std::string &lib_name,
         return 1;
     }
 
-    void *pub = zlink_spot_new(node, &discard_spot_parts);
+    void *pub = zlink_spot_new(node, &discard_spot_parts, NULL);
     if (!pub || !apply_spot_server_options(pub, settings)
-        || zlink_spot_set_send_ready_handler(pub, &spot_server_send_ready) != 0) {
+        || zlink_spot_set_send_ready_handler(pub, &spot_server_send_ready, NULL) != 0) {
         if (pub)
             zlink_spot_destroy(&pub);
         zlink_spot_node_destroy(&node);
@@ -674,10 +654,10 @@ int run_server_benchmark(const std::string &lib_name,
     state.pub = pub;
     g_server_state = &state;
 
-    g_stop_requested.store(false, std::memory_order_release);
+    perf_stop_requested ().store(false, std::memory_order_release);
     g_queue_probe_pending.store(false, std::memory_order_release);
     g_queue_probe_size.store(0, std::memory_order_release);
-    install_signal_handlers();
+    install_perf_signal_handlers();
 
     std::thread stdin_watcher([]() {
         std::string line;
@@ -693,7 +673,7 @@ int run_server_benchmark(const std::string &lib_name,
                 continue;
             }
             if (line == "STOP" || line == "QUIT") {
-                g_stop_requested.store(true, std::memory_order_release);
+                perf_stop_requested ().store(true, std::memory_order_release);
                 return;
             }
         }
@@ -715,7 +695,7 @@ int run_server_benchmark(const std::string &lib_name,
     if (bench_transition_debug_enabled()) {
         std::cerr << "[multi-spot-server] benchmark done ok=" << (ok ? 1 : 0)
                   << " stop="
-                  << (g_stop_requested.load(std::memory_order_acquire) ? 1 : 0)
+                  << (perf_stop_requested ().load(std::memory_order_acquire) ? 1 : 0)
                   << " fatal_errno="
                   << state.fatal_errno.load(std::memory_order_acquire)
                   << std::endl;

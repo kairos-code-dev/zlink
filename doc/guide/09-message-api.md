@@ -92,7 +92,8 @@ Messages are received via handler callbacks registered at socket creation time. 
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     printf("Received: %.*s\n",
            (int)zlink_msg_size(&parts[0]),
@@ -224,7 +225,8 @@ zlink_send(dealer, "request", 7, 0);
 
 /* ROUTER handler callback receives: source_rid + parts */
 void on_request(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* parts[0] = "request", source_rid = DEALER's routing_id */
 
@@ -249,7 +251,8 @@ zlink_send(pub, "sunny", 5, 0);
 /* SUB handler callback receives topic and payload separately */
 void on_spot(const zlink_routing_id_t *source_rid,
              const char *topic, size_t topic_len,
-             zlink_msg_t *parts, size_t part_count)
+             zlink_msg_t *parts, size_t part_count,
+             void *userdata)
 {
     /* topic = "weather", parts[0] = "sunny" */
     for (size_t i = 0; i < part_count; i++)
@@ -262,7 +265,8 @@ void on_spot(const zlink_routing_id_t *source_rid,
 ```c
 /* Handler callback receives all frames as parts array */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     for (size_t i = 0; i < part_count; i++) {
         printf("Frame[%zu bytes]: %.*s\n",

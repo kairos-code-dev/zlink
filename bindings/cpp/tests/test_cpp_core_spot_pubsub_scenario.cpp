@@ -8,8 +8,8 @@ int main ()
     // scenario passes in core C tests. Treat as a binding-stack bug candidate.
     zlink::context_t ctx;
 
-    void *pub_node = zlink_spot_node_new (ctx.handle ());
-    void *sub_node = zlink_spot_node_new (ctx.handle ());
+    void *pub_node = zlink_spot_node_new (ctx.handle (), NULL, NULL, NULL);
+    void *sub_node = zlink_spot_node_new (ctx.handle (), NULL, NULL, NULL);
     assert (pub_node != NULL);
     assert (sub_node != NULL);
 

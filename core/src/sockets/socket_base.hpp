@@ -80,11 +80,19 @@ class socket_base_t : public own_t,
     int socket_set_msg_handler (zlink_socket_msg_handler_fn handler_);
     int socket_set_msg_handler_ex (zlink_socket_msg_handler_fn handler_,
                                    void *subject_);
+    int socket_set_msg_handler_with_userdata (
+      zlink_socket_msg_handler_fn handler_, void *subject_, void *userdata_);
     int socket_set_spot_handler (zlink_spot_handler_fn handler_);
+    int socket_set_spot_handler_with_userdata (zlink_spot_handler_fn handler_,
+                                               void *userdata_);
     int socket_set_xpub_handler (zlink_xpub_handler_fn handler_);
+    int socket_set_xpub_handler_with_userdata (zlink_xpub_handler_fn handler_,
+                                               void *userdata_);
     int socket_set_send_ready_handler (zlink_send_ready_handler_fn handler_);
     int socket_set_send_ready_handler_ex (zlink_send_ready_handler_fn handler_,
                                           void *subject_);
+    int socket_set_send_ready_handler_with_userdata (
+      zlink_send_ready_handler_fn handler_, void *subject_, void *userdata_);
     bool socket_msg_dispatch_active () const;
     static socket_base_t *current_socket_msg_dispatch_socket ();
     static socket_base_t *current_send_ready_dispatch_socket ();
@@ -101,7 +109,8 @@ class socket_base_t : public own_t,
     virtual bool sub_dispatch_active () const;
     virtual int xpub_dispatch_start ();
     virtual bool xpub_dispatch_active () const;
-    virtual int stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_);
+    virtual int stream_set_msg_handler_with_userdata (
+      zlink_socket_msg_handler_fn handler_, void *userdata_);
     virtual int stream_dispatch_stop ();
     virtual bool stream_dispatch_active () const;
     virtual bool stream_dispatch_in_callback () const;
@@ -252,7 +261,11 @@ class socket_base_t : public own_t,
     zlink_xpub_handler_fn socket_xpub_handler () const;
     zlink_send_ready_handler_fn socket_send_ready_handler () const;
     void *socket_msg_handler_subject () const;
+    void *socket_msg_handler_userdata () const;
+    void *socket_spot_handler_userdata () const;
+    void *socket_xpub_handler_userdata () const;
     void *socket_send_ready_handler_subject () const;
+    void *socket_send_ready_handler_userdata () const;
     static void close_socket_msg_parts (std::vector<zlink_msg_t> *parts_);
     static void resolve_socket_msg_source_rid (pipe_t *pipe_,
                                                zlink_routing_id_t *out_);
@@ -369,14 +382,18 @@ class socket_base_t : public own_t,
         dispatch_bridge_t () :
             socket_msg_handler (NULL),
             socket_msg_handler_subject (NULL),
+            socket_msg_handler_userdata (NULL),
             spot_handler (NULL),
+            spot_handler_userdata (NULL),
             xpub_handler (NULL),
+            xpub_handler_userdata (NULL),
             public_api_state (0),
             public_api_sync (),
             callback_api_depth (0),
             close_deferred (false),
             send_ready_handler (NULL),
             send_ready_handler_subject (NULL),
+            send_ready_handler_userdata (NULL),
             send_ready_seq (0),
             send_ready_armed (false)
         {
@@ -384,14 +401,18 @@ class socket_base_t : public own_t,
 
         std::atomic<zlink_socket_msg_handler_fn> socket_msg_handler;
         std::atomic<void *> socket_msg_handler_subject;
+        std::atomic<void *> socket_msg_handler_userdata;
         std::atomic<zlink_spot_handler_fn> spot_handler;
+        std::atomic<void *> spot_handler_userdata;
         std::atomic<zlink_xpub_handler_fn> xpub_handler;
+        std::atomic<void *> xpub_handler_userdata;
         std::atomic<uint32_t> public_api_state;
         std::atomic<bool> public_api_sync;
         std::atomic<uint32_t> callback_api_depth;
         std::atomic<bool> close_deferred;
         std::atomic<zlink_send_ready_handler_fn> send_ready_handler;
         std::atomic<void *> send_ready_handler_subject;
+        std::atomic<void *> send_ready_handler_userdata;
         std::atomic<uint32_t> send_ready_seq;
         mutex_t send_ready_writer_sync;
         std::atomic<bool> send_ready_armed;
@@ -541,14 +562,18 @@ class socket_base_t : public own_t,
     condition_variable_t &_async_done_cv;
     std::atomic<zlink_socket_msg_handler_fn> &_socket_msg_handler;
     std::atomic<void *> &_socket_msg_handler_subject;
+    std::atomic<void *> &_socket_msg_handler_userdata;
     std::atomic<zlink_spot_handler_fn> &_spot_handler;
+    std::atomic<void *> &_spot_handler_userdata;
     std::atomic<zlink_xpub_handler_fn> &_xpub_handler;
+    std::atomic<void *> &_xpub_handler_userdata;
     std::atomic<uint32_t> &_public_api_state;
     std::atomic<bool> &_public_api_sync;
     std::atomic<uint32_t> &_callback_api_depth;
     std::atomic<bool> &_close_deferred;
     std::atomic<zlink_send_ready_handler_fn> &_send_ready_handler;
     std::atomic<void *> &_send_ready_handler_subject;
+    std::atomic<void *> &_send_ready_handler_userdata;
     std::atomic<uint32_t> &_send_ready_seq;
     mutex_t &_send_ready_writer_sync;
     std::atomic<bool> &_send_ready_armed;

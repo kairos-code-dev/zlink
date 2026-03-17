@@ -27,11 +27,11 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
 void *ctx = zlink_ctx_new();
 
 /* 서버 측 */
-void *server = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *server = zlink_socket(ctx, ZLINK_PAIR);
 zlink_bind(server, "tcp://*:5555");
 
 /* 클라이언트 측 */
-void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *client = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(client, "tcp://127.0.0.1:5555");
 ```
 
@@ -40,7 +40,8 @@ zlink_connect(client, "tcp://127.0.0.1:5555");
 ```c
 /* 수신 핸들러 정의 */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     printf("Received: %.*s\n",
            (int)zlink_msg_size(&parts[0]),
@@ -52,12 +53,14 @@ void on_message(const zlink_routing_id_t *source_rid,
 /* 서버 (핸들러 등록) */
 zlink_socket_handler_t handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message
+    .fn.msg = on_message,
+    .userdata = NULL
 };
-void *server = zlink_socket(ctx, ZLINK_PAIR, &handler);
+void *server = zlink_socket(ctx, ZLINK_PAIR);
+zlink_socket_attach_handler(server, &handler);
 
 /* 클라이언트 (송신 전용) */
-void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *client = zlink_socket(ctx, ZLINK_PAIR);
 
 /* ... bind/connect ... */
 
@@ -104,8 +107,8 @@ zlink_send(server, "body", 4, 0);  /* 마지막 프레임 */
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_SNDHWM` | int | 300000 | 송신 큐 최대 메시지 수 |
-| `ZLINK_RCVHWM` | int | 300000 | 수신 큐 최대 메시지 수 |
+| `ZLINK_SNDHWM` | int | 1000 | 송신 큐 최대 메시지 수 |
+| `ZLINK_RCVHWM` | int | 1000 | 수신 큐 최대 메시지 수 |
 | `ZLINK_LINGER` | int | -1 | close 시 미전송 메시지 대기 시간 (ms), -1=무한 |
 | `ZLINK_SNDTIMEO` | int | -1 | 송신 타임아웃 (ms), -1=무한 |
 | `ZLINK_RCVTIMEO` | int | -1 | 수신 타임아웃 (ms), -1=무한 |
@@ -128,13 +131,15 @@ zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
 /* 메인 스레드 */
 zlink_socket_handler_t handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_signal
+    .fn.msg = on_signal,
+    .userdata = NULL
 };
-void *signal = zlink_socket(ctx, ZLINK_PAIR, &handler);
+void *signal = zlink_socket(ctx, ZLINK_PAIR);
+zlink_socket_attach_handler(signal, &handler);
 zlink_bind(signal, "inproc://signal");
 
 /* 워커 스레드 */
-void *worker_signal = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *worker_signal = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(worker_signal, "inproc://signal");
 
 /* 워커 → 메인: 작업 완료 시그널 */
@@ -151,7 +156,7 @@ zlink_send(worker_signal, "DONE", 4, 0);
 
 ```c
 /* 서버: 와일드카드 포트 */
-void *server = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *server = zlink_socket(ctx, ZLINK_PAIR);
 zlink_bind(server, "tcp://127.0.0.1:*");
 
 /* 할당된 엔드포인트 조회 */
@@ -160,7 +165,7 @@ size_t len = sizeof(endpoint);
 zlink_getsockopt(server, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
 /* 클라이언트: 조회된 엔드포인트로 연결 */
-void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *client = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(client, endpoint);
 ```
 
@@ -171,7 +176,7 @@ zlink_connect(client, endpoint);
 호스트명으로도 연결 가능하다.
 
 ```c
-void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *client = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(client, "tcp://localhost:5555");
 ```
 
@@ -182,10 +187,10 @@ zlink_connect(client, "tcp://localhost:5555");
 같은 머신의 프로세스 간 통신 (Linux/macOS).
 
 ```c
-void *server = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *server = zlink_socket(ctx, ZLINK_PAIR);
 zlink_bind(server, "ipc:///tmp/myapp.ipc");
 
-void *client = zlink_socket(ctx, ZLINK_PAIR, NULL);
+void *client = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(client, "ipc:///tmp/myapp.ipc");
 ```
 

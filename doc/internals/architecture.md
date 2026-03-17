@@ -19,6 +19,7 @@ and it comprehensively covers the system's layer structure, core components, dat
 7. [Core Components](#7-core-components)
 8. [Data Flow](#8-data-flow)
 9. [Source Tree Structure](#9-source-tree-structure)
+10. [Structural Design Philosophy](#10-structural-design-philosophy)
 
 ---
 
@@ -1280,6 +1281,167 @@ core/
 ├── tests/                           # Functional tests
 └── unittests/                       # Internal unit tests
 ```
+
+---
+
+## 10. Structural Design Philosophy
+
+The preceding sections describe **what** zlink's architecture looks like — its layers,
+components, data flow, and source tree. This section explains **why** the system is
+structured this way: the design principles that guide structural decisions and protect
+the codebase from uncontrolled complexity growth.
+
+### 10.1 Deep Modules — Narrow Interfaces, Hidden Complexity
+
+A good module hides a large amount of complexity behind a narrow interface.
+The fewer concepts a caller must understand to use a module, the better.
+
+In zlink this principle manifests at several levels:
+
+- **Socket runtime** absorbs endpoint registry, peer state tracking, monitor bridge,
+  dispatch bridge, and lifecycle quiesce — exposing only `send`/`recv` capability,
+  `bind`/`connect`/`term` semantics, and readiness hooks.
+- **Engine pipeline** absorbs speculative I/O, gather write, buffer growth strategy,
+  handshake state machine, and heartbeat — exposing only ingress frame delivery,
+  egress frame submission, and connection state transitions.
+- **Transport adapter** absorbs URI parsing, connect/listen strategy, and
+  TLS/WS/WSS handshake details — exposing only `client_endpoint`,
+  `server_endpoint`, and `async_transport_channel`.
+
+**Anti-pattern: shallow decomposition.** Splitting a large type into many small
+helpers does not reduce the number of concepts the caller must know. Unless a new
+type hides complexity from its consumer, extracting it only increases surface area.
+A new type is justified only when it reduces the concepts the caller must understand
+or when it encapsulates a hot-path policy in one place.
+
+### 10.2 Information Hiding and Ownership Clarity
+
+Each module hides its internal implementation. Higher layers must not depend on
+lower-layer details.
+
+**Single authoritative close owner.** Every resource has exactly one owner
+responsible for its lifecycle:
+
+| Role | Responsibility |
+| --- | --- |
+| Service runtime | Lifecycle coordinator — orchestrates startup/shutdown order |
+| Socket runtime | Concrete close owner — holds and releases socket resources |
+| Reaper | Finalization executor — performs deferred cleanup after quiesce |
+
+When multiple entities can close the same resource, shutdown races and
+double-free bugs follow. The goal is to make unauthorized close structurally
+impossible, not merely documented as forbidden.
+
+**Causes of information leakage.** Internal implementation details leak outward
+through two mechanisms:
+
+1. *Design-time abstraction errors* — the interface reflects internal structure
+   from the start.
+2. *Incremental interface bloat* — each new requirement exposes one more internal
+   detail until the interface mirrors the implementation.
+
+Recognizing which cause applies determines the fix: (1) requires interface
+redesign, (2) requires internal reorganization while selectively cleaning up
+the parts of the API that already expose internal concepts.
+
+### 10.3 Separating Semantics from Mechanism
+
+Two concerns are cleanly split within the socket layer:
+
+- **Socket family** (PAIR, PUB/SUB, DEALER, ROUTER, STREAM) owns message
+  semantics and routing policy — what messages mean and where they go.
+- **Socket runtime** owns common mechanism — endpoint registry, peer state,
+  monitor bridge, dispatch bridge, and lifecycle quiesce — how every socket
+  operates regardless of its family.
+
+The boundary test is bidirectional:
+
+- A family implementation must not depend on mechanism internals.
+- A mechanism change must not require modifications to family code.
+
+When this separation holds, adding a new socket family does not touch the
+runtime, and evolving the runtime (e.g., changing monitor encoding) does not
+touch any family implementation.
+
+### 10.4 Different Layer, Different Abstraction
+
+Each layer must provide its own distinct abstraction, not merely delegate calls
+to the layer below. A pass-through layer that adds no abstraction is a candidate
+for removal.
+
+| Layer | Abstraction Provided |
+| --- | --- |
+| Service facade | Service semantics (create / attach / destroy / monitor) |
+| Service runtime | Lifecycle state machine and readiness — hides socket open/close order and drain |
+| Engine facade | Connection lifecycle (start / stop / state) — hides handshake and timer |
+| Engine pipeline | Async I/O optimization — hides speculative I/O and buffer policy |
+| Transport adapter | Endpoint open — hides URI/address/scheme selection and TLS/WS/WSS layering |
+| Protocol codec | Frame boundary — hides wire encoding and version |
+
+The purpose of layering is not to add more layers. It is to ensure that each
+layer hides more complexity from the one above it. If a layer merely forwards
+calls without transforming the abstraction, it should be collapsed.
+
+### 10.5 Eliminating Errors Through Structure
+
+Structural guarantees are preferred over policy-based rules.
+
+Rather than catching errors at runtime, the type system and API design should
+make certain classes of errors impossible to express:
+
+```
+Policy-based:   "Only A should close this resource" (written in docs, code can violate)
+Structure-based: Close authority is bound to a type — other actors cannot call close at all
+```
+
+Practical strategies include:
+
+- `unique_ptr` with move-only semantics — dual ownership becomes a compile error.
+- Close guards (sentinel pattern) — double close becomes a no-op.
+- RAII wrappers — manual close calls are structurally impossible.
+
+The goal is to move invariants from documentation into the type system wherever
+the cost is reasonable.
+
+### 10.6 Defending Against Incremental Complexity
+
+Complexity rarely arrives all at once. It accumulates through individually
+reasonable small changes — each one justified, but collectively eroding
+structural clarity.
+
+The architecture must defend against these growth patterns:
+
+- **New transport added** → no new branches in engine or socket code.
+- **New service added** → no special-case paths in the service runtime base.
+- **New socket family added** → no modifications to `socket_base_t`.
+
+The design goal is: *adding another instance of the same kind of feature does
+not touch the hub type.*
+
+When this property holds, the structure's complexity stays bounded regardless
+of how many transports, services, or socket families exist. When it does not,
+each addition makes the hub type harder to understand and more fragile to
+modify.
+
+### 10.7 Performance as a Structural Constraint
+
+Performance is not something bolted on after the architecture is designed.
+It constrains structural decisions from the start.
+
+**Hot-path policies stay inside deep modules.** Optimizations such as
+speculative I/O, gather write, buffer growth, and zero-copy paths are
+encapsulated within the engine pipeline or transport adapter. They are not
+spread across layer boundaries.
+
+**Performance is a gate, not a trade-off.** If a structural change degrades
+steady-state throughput, tail latency, or CPU utilization, it is not adopted —
+even if the structure is objectively cleaner. Conversely, performance-motivated
+shortcuts that weaken the public contract are also rejected.
+
+The two constraints reinforce each other: good structure isolates hot-path
+policies so they can be optimized without leaking into upper layers, and
+performance discipline prevents structure from becoming an academic exercise
+divorced from production reality.
 
 ---
 

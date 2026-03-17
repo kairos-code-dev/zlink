@@ -28,7 +28,7 @@ The DEALER socket is an asynchronous request socket. It sends to multiple peers 
 ### Creation and Connection
 
 ```c
-void *dealer = zlink_socket(ctx, ZLINK_DEALER, NULL);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 
 /* Set routing_id (optional, used for identification by ROUTER) */
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "client-1", 8);
@@ -76,8 +76,8 @@ zlink_send(dealer, "body", 4, 0);
 |------|------|--------|------|
 | `ZLINK_ROUTING_ID` | binary | Auto (UUID) | ID for identification by ROUTER |
 | `ZLINK_PROBE_ROUTER` | int | 0 | Send empty message on connect (connection notification) |
-| `ZLINK_SNDHWM` | int | 300000 | Maximum number of messages in the send queue |
-| `ZLINK_RCVHWM` | int | 300000 | Maximum number of messages in the receive queue |
+| `ZLINK_SNDHWM` | int | 1000 | Maximum number of messages in the send queue |
+| `ZLINK_RCVHWM` | int | 1000 | Maximum number of messages in the receive queue |
 | `ZLINK_LINGER` | int | -1 | Wait time on close (ms) |
 | `ZLINK_SNDTIMEO` | int | -1 | Send timeout (ms) |
 | `ZLINK_RCVTIMEO` | int | -1 | Receive timeout (ms) |
@@ -104,7 +104,8 @@ The most basic pattern. DEALER sends requests, ROUTER replies.
 ```c
 /* Server: ROUTER with handler */
 void on_request(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* source_rid contains the DEALER's routing_id */
     printf("Received from [%.*s]: %.*s\n",
@@ -122,17 +123,21 @@ void on_request(const zlink_routing_id_t *source_rid,
 
 zlink_socket_handler_t router_handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_request
+    .fn.msg = on_request,
+    .userdata = NULL
 };
-void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_socket_attach_handler(router, &router_handler);
 zlink_bind(router, "tcp://*:5558");
 
 /* Client: DEALER */
 zlink_socket_handler_t dealer_handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_reply
+    .fn.msg = on_reply,
+    .userdata = NULL
 };
-void *dealer = zlink_socket(ctx, ZLINK_DEALER, &dealer_handler);
+void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+zlink_socket_attach_handler(dealer, &dealer_handler);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
@@ -152,7 +157,8 @@ Multiple DEALERs connect to a single ROUTER. ROUTER distinguishes each DEALER by
 ```c
 /* ROUTER receives via handler callback and distinguishes each DEALER by source_rid */
 void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count)
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
     /* source_rid->data = "D1" or "D2" */
     /* Reply to specific DEALER */
@@ -164,20 +170,22 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 zlink_socket_handler_t router_handler = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message
+    .fn.msg = on_message,
+    .userdata = NULL
 };
-void *router = zlink_socket(ctx, ZLINK_ROUTER, &router_handler);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_socket_attach_handler(router, &router_handler);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
 zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
-void *dealer1 = zlink_socket(ctx, ZLINK_DEALER, NULL);
+void *dealer1 = zlink_socket(ctx, ZLINK_DEALER);
 zlink_setsockopt(dealer1, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer1, endpoint);
 
-void *dealer2 = zlink_socket(ctx, ZLINK_DEALER, NULL);
+void *dealer2 = zlink_socket(ctx, ZLINK_DEALER);
 zlink_setsockopt(dealer2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
@@ -196,11 +204,11 @@ Build a multi-threaded server using ROUTER (frontend) + DEALER (backend).
 
 ```c
 /* Frontend: clients connect here */
-void *frontend = zlink_socket(ctx, ZLINK_ROUTER, NULL);
+void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_bind(frontend, "tcp://*:5558");
 
 /* Backend: worker threads connect here */
-void *backend = zlink_socket(ctx, ZLINK_DEALER, NULL);
+void *backend = zlink_socket(ctx, ZLINK_DEALER);
 zlink_bind(backend, "inproc://backend");
 
 /* Start worker threads then run proxy */
@@ -211,7 +219,8 @@ zlink_proxy(frontend, backend, NULL);
 /* Worker thread */
 void worker_thread(void *arg) {
     void on_work(const zlink_routing_id_t *source_rid,
-                 zlink_msg_t *parts, size_t part_count)
+                 zlink_msg_t *parts, size_t part_count,
+                 void *userdata)
     {
         /* Process and reply with the same routing_id */
         zlink_send(worker, source_rid->data, source_rid->size, ZLINK_SNDMORE);
@@ -223,9 +232,11 @@ void worker_thread(void *arg) {
 
     zlink_socket_handler_t handler = {
         .kind = ZLINK_SOCKET_HANDLER_MSG,
-        .fn.msg = on_work
+        .fn.msg = on_work,
+        .userdata = NULL
     };
-    void *worker = zlink_socket(ctx, ZLINK_DEALER, &handler);
+    void *worker = zlink_socket(ctx, ZLINK_DEALER);
+    zlink_socket_attach_handler(worker, &handler);
     zlink_connect(worker, "inproc://backend");
 
     /* Worker stays alive until socket is closed */
@@ -241,16 +252,20 @@ Both sides use DEALER for fully asynchronous P2P communication.
 ```c
 zlink_socket_handler_t handler_a = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message_a
+    .fn.msg = on_message_a,
+    .userdata = NULL
 };
-void *a = zlink_socket(ctx, ZLINK_DEALER, &handler_a);
+void *a = zlink_socket(ctx, ZLINK_DEALER);
+zlink_socket_attach_handler(a, &handler_a);
 zlink_bind(a, "tcp://*:5558");
 
 zlink_socket_handler_t handler_b = {
     .kind = ZLINK_SOCKET_HANDLER_MSG,
-    .fn.msg = on_message_b
+    .fn.msg = on_message_b,
+    .userdata = NULL
 };
-void *b = zlink_socket(ctx, ZLINK_DEALER, &handler_b);
+void *b = zlink_socket(ctx, ZLINK_DEALER);
+zlink_socket_attach_handler(b, &handler_b);
 zlink_connect(b, "tcp://127.0.0.1:5558");
 
 /* Bidirectional free send */

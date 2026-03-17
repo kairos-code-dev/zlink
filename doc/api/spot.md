@@ -9,8 +9,23 @@ The public SPOT API is organized into two layers:
 
 There are no public standalone `zlink_spot_pub_*` or `zlink_spot_sub_*`
 constructors, destroy functions, option setters, or monitor entrypoints.
-Direct receive uses a fixed-at-construction callback model rather than a
-polling recv API.
+
+## I/O Model
+
+Both `SpotNode` and unified `Spot` handles start in **recv model** and use
+`zlink_recv_spot_handler()` for a **one-way transition** to callback model.
+The two models are mutually exclusive for the lifetime of the handle.
+
+| | Recv Model (default) | Callback Model |
+|---|---|---|
+| **SpotNode receive** | `zlink_spot_node_recv()` | `zlink_recv_spot_handler()` callback |
+| **Spot receive** | `zlink_spot_sub_recv()` | `zlink_recv_spot_handler()` callback |
+| **Send-ready** | not available (`EBUSY`) | `zlink_spot_node_send_ready_handler()` / `zlink_spot_send_ready_handler()` |
+| **Transition** | call `zlink_recv_spot_handler()` to switch | permanent, cannot revert |
+
+- In recv model, `send_ready_handler()` fails with `EBUSY`.
+- In callback model, `recv()` fails with `EBUSY`.
+- `publish()` works in both models.
 
 ## Current public surface
 
@@ -18,9 +33,7 @@ polling recv API.
 
 ```c
 void *zlink_spot_node_new(void *ctx,
-                          const char *service_name,
-                          zlink_spot_handler_fn handler,
-                          void *userdata);
+                          const char *service_name);
 int zlink_spot_node_destroy(void **node_p);
 
 int zlink_spot_node_bind(void *node, const char *endpoint);
@@ -59,19 +72,28 @@ int zlink_spot_node_set_sub_option(void *node,
                                    zlink_spot_sub_option_t option,
                                    const void *optval,
                                    size_t optvallen);
+
+int zlink_spot_node_recv(void *node,
+                         zlink_msg_t **parts,
+                         size_t *part_count,
+                         int flags,
+                         char *topic_id_out,
+                         size_t *topic_id_len);
 ```
 
-`SpotNode` is the service-bound owner. Its `service_name` and receive callback
-are fixed at construction time. Node-direct APIs publish and subscribe through
-node-owned default facades, but those child handles are not part of the public
-API.
+`SpotNode` is the service-bound owner. Its `service_name` is fixed at
+construction time. Use `zlink_spot_node_recv()` in recv model, or
+`zlink_recv_spot_handler()` to transition to callback model.
+
+`zlink_spot_node_recv()` returns the next message and its topic in recv
+model. `parts` and `topic_id_out` are filled on success. Pass
+`ZLINK_DONTWAIT` in `flags` for non-blocking operation. Returns `EBUSY`
+in callback model.
 
 ### Unified Spot
 
 ```c
-void *zlink_spot_new(void *spot_node,
-                     zlink_spot_handler_fn handler,
-                     void *userdata);
+void *zlink_spot_new(void *spot_node);
 int zlink_spot_destroy(void **spot_p);
 
 int zlink_spot_publish(void *spot,
@@ -109,10 +131,10 @@ int zlink_spot_set_sub_option(void *spot,
 behavior. There is no separate public publish-only or subscribe-only child
 handle.
 
-`zlink_spot_sub_recv()` provides a synchronous pull-style receive alternative
-to the callback model. It returns the next available message with its topic.
-`parts` and `topic_id_out` are filled on success. Pass `ZLINK_DONTWAIT` in
-`flags` for non-blocking operation.
+`zlink_spot_sub_recv()` provides synchronous pull-style receive in recv
+model. It returns the next available message with its topic. `parts` and
+`topic_id_out` are filled on success. Pass `ZLINK_DONTWAIT` in `flags`
+for non-blocking operation. Returns `EBUSY` in callback model.
 
 Use `zlink_spot_monitor_open()` plus `zlink_monitor_snapshot()` for aggregate
 ready-peer and queue inspection.
@@ -128,9 +150,10 @@ typedef void (*zlink_spot_handler_fn)(const zlink_routing_id_t *source_rid,
                                       void *userdata);
 ```
 
-- `zlink_spot_node_new(..., handler)` and `zlink_spot_new(..., handler)` accept
-  a handler callback. Pass `NULL` when callback dispatch is not needed.
-- The callback is fixed at construction time and cannot be replaced later.
+- Install the callback with `zlink_recv_spot_handler(node_or_spot, handler, userdata)`.
+- Handles start in recv model and switch one-way to callback model.
+- Once in callback model, `zlink_spot_node_recv()` / `zlink_spot_sub_recv()`
+  fail with `EBUSY`.
 - The callback consumes ownership of `parts`.
 
 ## Option summary
@@ -185,6 +208,8 @@ The following families are not part of the current public SPOT surface:
 
 ## Example
 
+### Callback model
+
 ```c
 void on_spot_message(const zlink_routing_id_t *source_rid,
                      const char *topic,
@@ -193,16 +218,50 @@ void on_spot_message(const zlink_routing_id_t *source_rid,
                      size_t part_count,
                      void *userdata);
 
-void *node = zlink_spot_node_new(ctx, "svc-chat", on_spot_message, NULL);
+void *node = zlink_spot_node_new(ctx, "svc-chat");
+zlink_recv_spot_handler(node, on_spot_message, NULL);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
-void *spot = zlink_spot_new(node, on_spot_message, NULL);
+void *spot = zlink_spot_new(node);
+zlink_recv_spot_handler(spot, on_spot_message, NULL);
 zlink_spot_subscribe(spot, "room:lobby");
 
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "hello", 5);
 zlink_spot_publish(spot, "room:lobby", &part, 1, 0);
+
+zlink_spot_destroy(&spot);
+zlink_spot_node_destroy(&node);
+```
+
+### Recv model
+
+```c
+void *node = zlink_spot_node_new(ctx, "svc-chat");
+zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
+
+void *spot = zlink_spot_new(node);
+zlink_spot_subscribe(spot, "room:lobby");
+
+/* publish */
+zlink_msg_t part;
+zlink_msg_init_size(&part, 5);
+memcpy(zlink_msg_data(&part), "hello", 5);
+zlink_spot_publish(spot, "room:lobby", &part, 1, 0);
+
+/* recv on unified spot */
+zlink_msg_t *recv_parts = NULL;
+size_t recv_count = 0;
+char topic_buf[256];
+size_t topic_len = sizeof(topic_buf);
+int rc = zlink_spot_sub_recv(spot, &recv_parts, &recv_count, 0,
+                             topic_buf, &topic_len);
+if (rc == 0) {
+    printf("Topic: %.*s\n", (int)topic_len, topic_buf);
+    for (size_t i = 0; i < recv_count; i++)
+        zlink_msg_close(&recv_parts[i]);
+}
 
 zlink_spot_destroy(&spot);
 zlink_spot_node_destroy(&node);

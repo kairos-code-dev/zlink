@@ -330,26 +330,44 @@ napi_value discovery_destroy(napi_env env, napi_callback_info info)
 
 napi_value gateway_new(napi_env env, napi_callback_info info)
 {
-    napi_value argv[3];
-    size_t argc = 3;
+    napi_value argv[4];
+    size_t argc = 4;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
     void *disc = NULL;
     napi_get_value_external(env, argv[0], &ctx);
     napi_get_value_external(env, argv[1], &disc);
-    const char *routing_id = NULL;
-    std::string routing_id_str;
+    std::string service_name;
     if (argc >= 3) {
         napi_valuetype type;
         napi_typeof(env, argv[2], &type);
+        if (type != napi_undefined && type != napi_null)
+            service_name = get_string(env, argv[2]);
+    }
+    const char *routing_id = NULL;
+    std::string routing_id_str;
+    if (argc >= 4) {
+        napi_valuetype type;
+        napi_typeof(env, argv[3], &type);
         if (type != napi_undefined && type != napi_null) {
-            routing_id_str = get_string(env, argv[2]);
+            routing_id_str = get_string(env, argv[3]);
             routing_id = routing_id_str.c_str();
         }
     }
-    void *gw = zlink_gateway_new(ctx, NULL, routing_id, NULL, NULL);
+    void *gw = zlink_gateway_new(ctx,
+                                 service_name.empty() ? NULL
+                                                      : service_name.c_str());
     if (!gw)
         return throw_last_error(env, "gateway_new failed");
+    if (routing_id) {
+        int rc = zlink_gateway_set_routing_id(gw, routing_id,
+                                              routing_id_str.size());
+        if (rc != 0) {
+            void *tmp = gw;
+            zlink_gateway_destroy(&tmp);
+            return throw_last_error(env, "gateway_set_routing_id failed");
+        }
+    }
     if (disc) {
         int rc = zlink_gateway_attach_discovery(gw, disc);
         if (rc != 0) {
@@ -470,8 +488,9 @@ napi_value gateway_recv(napi_env env, napi_callback_info info)
     napi_get_value_int32(env, argv[1], &flags);
     zlink_msg_t *parts = NULL;
     size_t count = 0;
-    char service[256] = {0};
-    int rc = zlink_gateway_recv(gw, &parts, &count, flags, service);
+    zlink_routing_id_t source_rid;
+    memset(&source_rid, 0, sizeof(source_rid));
+    int rc = zlink_gateway_recv(gw, &source_rid, &parts, &count, flags);
     if (rc != 0)
         return throw_last_error(env, "gateway_recv failed");
     napi_value arr;
@@ -486,9 +505,9 @@ napi_value gateway_recv(napi_env env, napi_callback_info info)
     zlink_multipart_close(parts, count);
     napi_value obj;
     napi_create_object(env, &obj);
-    napi_value svc;
-    napi_create_string_utf8(env, service, NAPI_AUTO_LENGTH, &svc);
-    napi_set_named_property(env, obj, "service", svc);
+    napi_value rid;
+    napi_create_buffer_copy(env, source_rid.size, source_rid.data, NULL, &rid);
+    napi_set_named_property(env, obj, "routingId", rid);
     napi_set_named_property(env, obj, "parts", arr);
     return obj;
 }

@@ -56,7 +56,7 @@ ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
 results/
   single/
     report/
-      perf_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt
+      perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt
 ```
 
 ---
@@ -112,7 +112,7 @@ multi 패턴 래퍼 스크립트다. multi 옵션을 정규화한 뒤 `PERF_ALLO
 results/
   multi/
     report/
-      perf_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt
+      perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt
 ```
 
 ### 사전 검사

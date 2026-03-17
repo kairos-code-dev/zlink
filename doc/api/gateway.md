@@ -5,8 +5,24 @@
 The Gateway is a service-bound load-balanced request/reply handle. It resolves
 service locations automatically via Discovery (when attached) and distributes
 messages across connected peers using a configurable load-balancing strategy.
-All receives are dispatched through a handler callback registered at creation
-time. There is no `recv()` function.
+Gateway supports two exclusive I/O models for receiving messages.
+
+## I/O Model
+
+A Gateway handle starts in **recv model** and stays there unless
+`zlink_recv_handler()` is called, which makes a **one-way transition** to
+callback model. The two models are mutually exclusive for the lifetime of
+the handle.
+
+| | Recv Model (default) | Callback Model |
+|---|---|---|
+| **Receive** | `zlink_gateway_recv()` | `zlink_recv_handler()` callback |
+| **Send-ready** | not available (`EBUSY`) | `zlink_gateway_send_ready_handler()` |
+| **Transition** | call `zlink_recv_handler()` to switch | permanent, cannot revert |
+
+- In recv model, `zlink_gateway_send_ready_handler()` fails with `EBUSY`.
+- In callback model, `zlink_gateway_recv()` fails with `EBUSY`.
+- `zlink_gateway_send()` / `zlink_gateway_send_rid()` work in both models.
 
 ## Thread-Safety Summary
 
@@ -26,7 +42,12 @@ A single Gateway handle can be used concurrently from multiple threads
 
 ## Current API Direction
 
-- Use `zlink_gateway_new()` with a fixed service name, routing id, and handler.
+- Use `zlink_gateway_new()` with a fixed service name.
+- Use `zlink_gateway_set_routing_id()` before the first bind/connect when a
+  stable routing id is required.
+- **Recv model (default):** Use `zlink_gateway_recv()` to pull messages.
+- **Callback model:** Call `zlink_recv_handler()` once to transition; messages
+  are then dispatched through the installed callback.
 - Use `zlink_gateway_attach_discovery()` for automatic peer management.
 - Use `zlink_gateway_bind()` for server-side operation.
 - Use `zlink_gateway_connect()` / `zlink_gateway_disconnect()` for manual
@@ -83,26 +104,49 @@ typedef enum zlink_gateway_option_t
 
 ### zlink_gateway_new
 
-Create a Gateway.
+Create a Gateway in recv model.
 
 ```c
 void *zlink_gateway_new (void *ctx,
-                         const char *service_name,
-                         const char *routing_id,
-                         zlink_socket_msg_handler_fn handler,
-                         void *userdata);
+                         const char *service_name);
 ```
 
 Allocates and initializes a new Gateway instance. The `service_name` is the
-service identity fixed at creation time. The `routing_id` uniquely identifies
-this Gateway. The `handler` callback is invoked on the I/O thread when
-messages arrive.
+service identity fixed at creation time. Configure a representative routing id
+later with `zlink_gateway_set_routing_id()` if needed.
 
 **Returns:** A Gateway handle on success, or `NULL` on failure.
 
 **Thread safety:** Safe to call from any thread.
 
 **See also:** `zlink_gateway_send`, `zlink_gateway_destroy`
+
+### zlink_gateway_recv
+
+Receive a message in recv model.
+
+```c
+int zlink_gateway_recv (void *gateway,
+                        zlink_routing_id_t *source_rid_out,
+                        zlink_msg_t **parts,
+                        size_t *part_count,
+                        int flags);
+```
+
+Returns the same semantic message unit that callback mode would deliver.
+`source_rid_out` receives the sender's routing ID. `parts` and `part_count`
+are filled with the multipart message on success. The caller owns the
+returned parts and must release them with `zlink_msg_close()`.
+
+Pass `ZLINK_DONTWAIT` in `flags` for non-blocking operation.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Errors:**
+- `EBUSY` -- handle is in callback model.
+- `EAGAIN` -- `ZLINK_DONTWAIT` was set and no message is available.
+
+**Thread safety:** Safe to call from any thread in recv model.
 
 ---
 
@@ -232,7 +276,7 @@ Bypasses load balancing and sends to the peer identified by `routing_id`.
 
 ### zlink_gateway_send_ready_handler
 
-Install or replace the send-ready callback.
+Install or replace the send-ready callback. **Callback model only.**
 
 ```c
 int zlink_gateway_send_ready_handler (
@@ -244,6 +288,9 @@ Use `zlink_monitor_snapshot()` on an open Gateway monitor to seed initial
 state when the handler is installed after startup.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Errors:**
+- `EBUSY` -- handle is in recv model (transition to callback model first).
 
 ---
 

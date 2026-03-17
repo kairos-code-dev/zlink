@@ -166,10 +166,24 @@ void *create_gateway_attached (void *ctx_,
                                const char *routing_id_,
                                zlink_socket_msg_handler_fn handler_)
 {
-    void *gateway =
-      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_, NULL);
+    void *gateway = zlink_gateway_new (ctx_, service_name_);
     if (!gateway)
         return NULL;
+    if (routing_id_
+        && zlink_gateway_set_routing_id (gateway, routing_id_,
+                                         strlen (routing_id_))
+             != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
+    if (handler_ && zlink_recv_handler (gateway, handler_, NULL) != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
     if (zlink_gateway_attach_discovery (gateway, discovery_) != 0) {
         const int err = errno;
         zlink_gateway_destroy (&gateway);
@@ -643,9 +657,7 @@ void test_gateway_monitor_open_requires_handler ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *gateway =
-      zlink_gateway_new (ctx, "gw-monitor-null", "gw-monitor-null",
-                         &discard_gateway_message, NULL);
+    void *gateway = zlink_gateway_new (ctx, "gw-monitor-null");
     TEST_ASSERT_NOT_NULL (gateway);
 
     errno = 0;
@@ -662,9 +674,7 @@ void test_gateway_monitor_open_accepts_ignore_handler ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *gateway =
-      zlink_gateway_new (ctx, "gw-monitor-ignore", "gw-monitor-ignore",
-                         &discard_gateway_message, NULL);
+    void *gateway = zlink_gateway_new (ctx, "gw-monitor-ignore");
     TEST_ASSERT_NOT_NULL (gateway);
 
     void *monitor = zlink_gateway_monitor_open (
@@ -1101,9 +1111,7 @@ void test_service_parent_destroy_rejects_open_monitor_children ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&discovery_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
 
-    void *gateway =
-      zlink_gateway_new (ctx, "svc-monitor-destroy", "gw-monitor-destroy",
-                         &discard_gateway_message, NULL);
+    void *gateway = zlink_gateway_new (ctx, "svc-monitor-destroy");
     TEST_ASSERT_NOT_NULL (gateway);
     void *gateway_monitor = zlink_gateway_monitor_open (
       gateway, ZLINK_GATEWAY_SERVICE_READY, &zlink_service_monitor_ignore_handler, NULL);

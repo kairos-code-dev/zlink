@@ -60,6 +60,7 @@ typedef int zlink_fd_t;
 #define ZLINK_POLLPRI 8
 #endif
 
+#ifndef ZLINK_HAVE_POLLER
 typedef struct zlink_pollitem_t
 {
     void *socket;
@@ -67,6 +68,7 @@ typedef struct zlink_pollitem_t
     short events;
     short revents;
 } zlink_pollitem_t;
+#endif
 
 typedef std::chrono::steady_clock steady_clock_t;
 typedef std::chrono::milliseconds milliseconds_t;

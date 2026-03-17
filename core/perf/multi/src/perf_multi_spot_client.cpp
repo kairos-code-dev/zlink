@@ -665,7 +665,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
 
         char service_name[64];
         std::snprintf(service_name, sizeof(service_name), "perf-spot-c%zu", i);
-        slot->node = zlink_spot_node_new(ctx.get(), service_name, NULL, NULL);
+        slot->node = zlink_spot_node_new(ctx.get(), service_name);
         if (!slot->node || !configure_spot_tls_client(slot->node, transport)) {
             if (bench_debug_enabled())
                 std::cerr << "[multi-spot-client] node create/tls failed slot="
@@ -676,12 +676,14 @@ bool create_spot_slots(ctx_guard_t &ctx,
             return false;
         }
 
-        slot->sub =
-          zlink_spot_new(slot->node,
-                         recv_mode == spot_recv_callback
-                           ? &spot_client_sub_handler
-                           : NULL,
-                         NULL);
+        slot->sub = zlink_spot_new(slot->node);
+        if (slot->sub && recv_mode == spot_recv_callback
+            && zlink_recv_spot_handler(slot->sub, &spot_client_sub_handler,
+                                       NULL)
+                 != 0) {
+            zlink_spot_destroy(&slot->sub);
+            slot->sub = NULL;
+        }
         if (!slot->sub || !apply_spot_sub_options(slot->sub, settings)
             || !open_spot_ready_monitor(slot)
             || zlink_spot_node_connect_peer_pub(slot->node, endpoint.c_str()) != 0

@@ -684,9 +684,8 @@ int run_case (const std::string &lib_name_,
     if (!ctx.valid ())
         return 1;
 
-    void *pub_node = zlink_spot_node_new (ctx.get (), "perf-spot", NULL, NULL);
-    void *sub_node =
-      zlink_spot_node_new (ctx.get (), "perf-spot-client", NULL, NULL);
+    void *pub_node = zlink_spot_node_new (ctx.get (), "perf-spot");
+    void *sub_node = zlink_spot_node_new (ctx.get (), "perf-spot-client");
     if (!pub_node || !sub_node) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] node create failed err=" << zlink_errno ()
@@ -729,8 +728,12 @@ int run_case (const std::string &lib_name_,
         zlink_spot_node_destroy (&pub_node);
         return 1;
     }
-    void *pub = zlink_spot_new (pub_node, NULL, NULL);
-    void *sub = zlink_spot_new (sub_node, &spot_client_handler, NULL);
+    void *pub = zlink_spot_new (pub_node);
+    void *sub = zlink_spot_new (sub_node);
+    if (sub && zlink_recv_spot_handler (sub, &spot_client_handler, NULL) != 0) {
+        zlink_spot_destroy (&sub);
+        sub = NULL;
+    }
     void *sub_monitor = NULL;
     void *pub_monitor = NULL;
     service_monitor_probe_t monitor_probe;

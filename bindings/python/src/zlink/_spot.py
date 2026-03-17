@@ -17,8 +17,9 @@ _SPOT_SUB_HANDLER = ctypes.CFUNCTYPE(
 
 
 class SpotNode:
-    def __init__(self, ctx):
-        self._handle = lib().zlink_spot_node_new(ctx._handle, None, None, None)
+    def __init__(self, ctx, service_name=None):
+        service = service_name.encode() if service_name else None
+        self._handle = lib().zlink_spot_node_new(ctx._handle, service)
         if not self._handle:
             _raise_last_error()
 

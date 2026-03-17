@@ -92,10 +92,15 @@ void ignore_spot_handler (const zlink_routing_id_t *,
 
 void *create_spot_node (void *ctx_, const char *service_name_)
 {
-    void *node =
-      zlink_spot_node_new (ctx_, service_name_, &queued_spot_handler, NULL);
+    void *node = zlink_spot_node_new (ctx_, service_name_);
     if (!node)
         return NULL;
+    if (zlink_recv_spot_handler (node, &queued_spot_handler, NULL) != 0) {
+        const int err = errno;
+        zlink_spot_node_destroy (&node);
+        errno = err;
+        return NULL;
+    }
 
     const int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -141,9 +146,15 @@ static void cleanup_ipc_endpoint (const char *endpoint_)
 
 void *create_spot_handle (void *node_, zlink_spot_handler_fn handler_)
 {
-    void *spot = zlink_spot_new (node_, handler_, NULL);
+    void *spot = zlink_spot_new (node_);
     if (!spot)
         return NULL;
+    if (handler_ && zlink_recv_spot_handler (spot, handler_, NULL) != 0) {
+        const int err = errno;
+        zlink_spot_destroy (&spot);
+        errno = err;
+        return NULL;
+    }
 
     const int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (

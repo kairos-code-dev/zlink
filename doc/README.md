@@ -62,7 +62,6 @@ English | [한국어](README.ko.md)
 | [registry.md](api/registry.md) | Registry API |
 | [discovery.md](api/discovery.md) | Discovery API |
 | [gateway.md](api/gateway.md) | Gateway API |
-| [receiver.md](api/receiver.md) | Receiver API |
 | [spot.md](api/spot.md) | SPOT PUB/SUB API |
 | [polling.md](api/polling.md) | Polling and Proxy |
 | [utilities.md](api/utilities.md) | Utilities (timer, thread, etc.) |

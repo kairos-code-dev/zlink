@@ -623,7 +623,7 @@ int run_server_benchmark(const std::string &lib_name,
             max_msg_size = msg_sizes[i];
     }
 
-    void *node = zlink_spot_node_new(ctx.get(), k_service_name, NULL, NULL);
+    void *node = zlink_spot_node_new(ctx.get(), k_service_name);
     if (!node)
         return 1;
 
@@ -640,7 +640,11 @@ int run_server_benchmark(const std::string &lib_name,
         return 1;
     }
 
-    void *pub = zlink_spot_new(node, &discard_spot_parts, NULL);
+    void *pub = zlink_spot_new(node);
+    if (pub && zlink_recv_spot_handler(pub, &discard_spot_parts, NULL) != 0) {
+        zlink_spot_destroy(&pub);
+        pub = NULL;
+    }
     if (!pub || !apply_spot_server_options(pub, settings)
         || zlink_spot_send_ready_handler(pub, &spot_server_send_ready, NULL) != 0) {
         if (pub)

@@ -37,22 +37,36 @@
 - 목적
   - 단일 소켓 경로에서 **자연 backpressure를 유지한 채 가능한 최대 throughput**을 측정한다.
   - 같은 active 구간에서 동일 메시지 집합으로 latency도 함께 집계한다.
-- send
-  - sender는 active 구간 동안 blocking send를 연속 수행한다.
+- 두 가지 I/O 모델 지원 (`--recv` 옵션)
+  - **recv 모델** (기본, `--recv recv`):
+    - recv: poller `POLLIN` readiness 감지 → `zlink_recv()` / `zlink_msg_recv()`
+      비동기 drain 루프 (react 방식). poller가 readable을 알려주면 수신 가능한
+      만큼 drain한다.
+    - send: sender는 active 구간 동안 nonblocking send를 수행한다.
+      `EAGAIN` 발생 시 poller `POLLOUT`으로 writable readiness를 대기한 뒤
+      재개한다.
+    - send backpressure: poller `POLLOUT` 기반.
+    - active 종료 후에는 bounded idle drain으로 잔여 in-flight를 정리할 수 있다.
+  - **callback 모델** (`--recv callback`):
+    - recv: `zlink_recv_handler()` 등록 → 라이브러리가 I/O thread에서 callback
+      dispatch. `zlink_recv()` / `zlink_msg_recv()` 동기 recv API는 측정 경로에
+      사용하지 않는다.
+    - send: sender는 active 구간 동안 blocking send를 연속 수행한다.
+    - send backpressure: `zlink_socket_send_ready_handler()` 등록 → writable
+      transition 시 callback으로 통지.
+    - active 종료 후에는 callback dispatch 기준의 bounded idle drain으로
+      잔여 in-flight를 정리할 수 있다.
+  - 한 측정 구간에서 두 모델의 recv/send 메커니즘을 섞지 않는다.
+- poller
+  - recv 모델에서는 `POLLIN` / `POLLOUT` 양쪽의 readiness 제어를 담당하는
+    핵심 메커니즘이다.
+  - callback 모델에서는 사용하지 않는다.
+  - `ROUTER_ROUTER_POLL`도 선택된 recv 모델에 맞게 동작한다.
+- 공통
   - 실패 시 즉시 `fail` 처리한다.
   - retry는 없다.
-- recv
-  - receiver는 callback-only recv 경로를 사용한다.
-  - `zlink_recv()` / `zlink_msg_recv()` 같은 동기 recv API는 active/warmup
-    측정 경로에
-    사용하지 않는다.
-  - active 종료 후에는 callback dispatch 기준의 bounded idle drain으로
-    잔여 in-flight를 정리할 수 있다.
-- poller
-  - single의 기본 메커니즘이 아니다.
-  - `ROUTER_ROUTER_POLL`도 이름만 유지하고 동일 정책을 적용한다.
 - 한 줄 요약
-  - `single = active sender + concurrent receiver + nonblocking drain`
+  - `single = active sender + concurrent receiver (recv+poller or callback+send_ready_handler) + nonblocking drain`
 
 ---
 
@@ -176,13 +190,15 @@ runner는 RESULT line과 함께 pattern/transport별 markdown table을 stdout에
 perf/results/
 └── single/
     └── report/
-        ├── perf_linux_YYYYMMDD_HHMMSS.txt
-        ├── perf_linux_YYYYMMDD_HHMMSS_<tag>.txt
+        ├── perf_linux_recv_YYYYMMDD_HHMMSS.txt
+        ├── perf_linux_callback_YYYYMMDD_HHMMSS.txt
+        ├── perf_linux_recv_YYYYMMDD_HHMMSS_<tag>.txt
         └── ...
 ```
 
 - `tmp/`, `baseline/` 디렉터리는 single 정책에서 사용하지 않는다.
-- 파일명 형식: `perf_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt`
+- 파일명 형식: `perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt`
+- `<recv_mode>`는 실제 실행에 사용된 `--recv` 값이며 `recv` 또는 `callback`이다.
 - `--results-tag` 지정 시 `<tag>`가 파일명에 추가된다.
 
 ### 5.2 저장 내용
@@ -193,6 +209,9 @@ perf/results/
 2. 패턴/트랜스포트별 실행 로그 및 테이블
 3. `## Effective Options (result)` — 불릿 목록 형식
 4. Completion (`status`, `expected_result_lines`, `actual_result_lines`)
+
+- `Effective Options`에는 `recv_mode` 항목이 반드시 포함되어야 하며, 실제 실행에
+  사용된 `--recv` 값(`recv` 또는 `callback`)을 기록해야 한다.
 
 ### 5.3 보존 정책
 
@@ -227,6 +246,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 | `--io-threads N` | context I/O threads | 환경/기본값 |
 | `--msg-sizes LIST` | 메시지 크기 목록 | 정책 기본값 |
 | `--transports LIST` | transport 목록 | 패턴 기본값 |
+| `--recv MODE` | recv 모델 선택: `recv` (기본) 또는 `callback` | `recv` |
 | `--hwm N` | 송수신 HWM 공통 fallback | 1000 |
 | `--send-hwm N` | 송신 HWM 우선값 | `--hwm` |
 | `--recv-hwm N` | 수신 HWM 우선값 | `--hwm` |

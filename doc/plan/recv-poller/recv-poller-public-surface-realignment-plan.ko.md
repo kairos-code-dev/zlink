@@ -79,13 +79,25 @@ surface를 느슨하게 조합하는 방식에서, 사용자가 이해해야 할
 
 새 세션에서는 아래 상태를 먼저 갱신한 뒤 진행한다.
 
-- [ ] Phase 1. Header surface lock
-- [ ] Phase 2. API guard and mode enforcement
-- [ ] Phase 3. Gateway recv path
-- [ ] Phase 4. Spot / SpotNode recv path
-- [ ] Phase 5. Poller restoration
-- [ ] Phase 6. Docs / bindings / examples sync
-- [ ] Phase 7. Regression closure
+- [x] Phase 1. Header surface lock
+- [x] Phase 2. API guard and mode enforcement
+- [x] Phase 3. Gateway recv path
+- [x] Phase 4. Spot / SpotNode recv path
+- [x] Phase 5. Poller restoration
+- [x] Phase 6. Docs / bindings / examples sync
+- [x] Phase 7. Regression closure
+
+Current Session Status
+
+- 현재 진행 중: 완료
+- 마지막 기준 점검: `Start Here`, `Decision Lock`, `Execution Rules`,
+  `Non-Goals`, `Implementation Sequence`, `Session Handoff Checklist`
+  재확인 완료
+- 이번 세션 완료:
+  `gateway` / `spot` / `spot_node` two-model policy, recv-first constructor,
+  `zlink_gateway_recv()`, `zlink_spot_node_recv()`, public poller C API,
+  helper 복원, callback/recv 분리 회귀 테스트, docs/bindings/examples 동기화,
+  `Regression Gate` 및 관련 e2e 검증 통과
 
 표시 규칙:
 
@@ -269,6 +281,30 @@ facade다.
   이번 문서의 직접 변경 대상은 우선 service/public facade와 public docs다.
 - raw socket 쪽은 service/public facade와 모순되지 않도록 문서/계약을
   정렬하되, 구체적인 API 삭제/이름 변경은 이 작업의 1차 범위로 두지 않는다.
+
+### Basic / Raw socket treatment
+
+기본 소켓(raw/basic socket)도 이 문서의 두-model 철학에 포함된다.
+
+정리:
+
+- 기본 소켓은 이미 existing `recv` surface를 가진 recv-capable subject로 본다.
+- 이번 작업에서 기본 소켓에 새로운 recv API를 추가하는 것은 아니다.
+- 대신 existing raw/basic socket `recv`를 canonical `recv model`의 기준
+  surface로 해석한다.
+- callback receive를 사용하는 raw/basic socket은 같은 handle에서 direct recv,
+  data-plane poller, `send_ready_handler`와 느슨하게 섞는 사용법을 더 이상
+  권장하지 않는다.
+- recv를 사용하는 raw/basic socket은 direct recv 중심으로 사용하고,
+  readiness가 필요할 때만 poller를 선택적으로 결합하는 모델로 설명한다.
+
+범위:
+
+- 이번 작업의 직접 구현 범위는 service/public facade를 우선한다.
+- raw/basic socket은 기존 API를 최대한 유지한 채 문서와 계약을 service
+  facade와 같은 철학으로 정렬한다.
+- 따라서 기본 소켓은 "recv 항목에 포함된다"가 맞지만, 의미는 새 recv API
+  추가가 아니라 existing recv를 canonical recv model로 재정렬하는 것이다.
 
 ### 1. Callback model
 

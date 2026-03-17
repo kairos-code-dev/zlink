@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.10)
 set(unittests
     unittest_ypipe
     unittest_poller
+    unittest_service_mode_policy
     unittest_mtrie
     unittest_ip_resolver
     unittest_radix_tree

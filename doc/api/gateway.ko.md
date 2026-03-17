@@ -4,8 +4,23 @@
 
 Gateway는 서비스 바인딩된 로드 밸런싱 요청/응답 핸들입니다. Discovery가
 연결된 경우 서비스 위치를 자동으로 확인하고, 구성 가능한 로드 밸런싱 전략을
-사용하여 연결된 피어에 메시지를 분배합니다. 모든 수신은 생성 시 등록된 핸들러
-콜백을 통해 디스패치됩니다. `recv()` 함수는 없습니다.
+사용하여 연결된 피어에 메시지를 분배합니다. Gateway는 메시지 수신을 위한 두 가지 배타적 I/O 모델을 지원합니다.
+
+## I/O 모델
+
+Gateway handle은 **recv 모드**로 시작하며, `zlink_recv_handler()`를
+호출하면 callback 모드로 **일방 전환**됩니다. 두 모델은 handle 수명 동안
+상호 배타적입니다.
+
+| | Recv 모드 (기본) | Callback 모드 |
+|---|---|---|
+| **수신** | `zlink_gateway_recv()` | `zlink_recv_handler()` 콜백 |
+| **Send-ready** | 사용 불가 (`EBUSY`) | `zlink_gateway_send_ready_handler()` |
+| **전환** | `zlink_recv_handler()` 호출로 전환 | 영구, 되돌릴 수 없음 |
+
+- recv 모드에서 `zlink_gateway_send_ready_handler()`는 `EBUSY`로 실패합니다.
+- callback 모드에서 `zlink_gateway_recv()`는 `EBUSY`로 실패합니다.
+- `zlink_gateway_send()` / `zlink_gateway_send_rid()`는 두 모드 모두에서 동작합니다.
 
 ## 스레드 안전성 요약
 
@@ -25,7 +40,12 @@ Gateway는 서비스 바인딩된 로드 밸런싱 요청/응답 핸들입니다
 
 ## 현재 권장 API 방향
 
-- `zlink_gateway_new()`로 서비스 이름, 라우팅 ID, 핸들러를 고정하여 생성합니다.
+- `zlink_gateway_new()`로 서비스 이름만 고정하여 생성합니다.
+- 대표 routing id가 필요하면 첫 bind/connect 전에
+  `zlink_gateway_set_routing_id()`를 호출합니다.
+- **Recv 모드 (기본):** `zlink_gateway_recv()`로 메시지를 직접 수신합니다.
+- **Callback 모드:** `zlink_recv_handler()`를 한 번 호출하여 전환하면,
+  이후 메시지가 설치된 콜백으로 자동 dispatch됩니다.
 - `zlink_gateway_attach_discovery()`로 자동 피어 관리를 연결합니다.
 - `zlink_gateway_bind()`로 서버 측 동작을 설정합니다.
 - `zlink_gateway_connect()` / `zlink_gateway_disconnect()`로 수동 피어 관리를
@@ -82,25 +102,49 @@ typedef enum zlink_gateway_option_t
 
 ### zlink_gateway_new
 
-Gateway를 생성합니다.
+recv 모드의 Gateway를 생성합니다.
 
 ```c
 void *zlink_gateway_new (void *ctx,
-                         const char *service_name,
-                         const char *routing_id,
-                         zlink_socket_msg_handler_fn handler,
-                         void *userdata);
+                         const char *service_name);
 ```
 
 새 Gateway 인스턴스를 할당하고 초기화합니다. `service_name`은 생성 시 고정되는
-서비스 아이덴티티입니다. `routing_id`는 이 Gateway를 고유하게 식별합니다.
-`handler` 콜백은 메시지가 도착하면 I/O 스레드에서 호출됩니다.
+서비스 아이덴티티입니다. 필요하면 이후 `zlink_gateway_set_routing_id()`로
+routing id를 설정합니다.
 
 **반환값:** 성공 시 Gateway 핸들, 실패 시 `NULL`.
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
 **참고:** `zlink_gateway_send`, `zlink_gateway_destroy`
+
+### zlink_gateway_recv
+
+recv 모드에서 메시지를 수신합니다.
+
+```c
+int zlink_gateway_recv (void *gateway,
+                        zlink_routing_id_t *source_rid_out,
+                        zlink_msg_t **parts,
+                        size_t *part_count,
+                        int flags);
+```
+
+callback 모드가 전달하던 것과 같은 semantic unit을 반환합니다.
+`source_rid_out`에 송신자의 routing ID가 채워집니다. `parts`와
+`part_count`에 멀티파트 메시지가 채워지며, 호출자가 반환된 parts의
+소유권을 가지고 `zlink_msg_close()`로 해제해야 합니다.
+
+non-blocking 동작은 `flags`에 `ZLINK_DONTWAIT`를 전달합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**에러:**
+- `EBUSY` -- handle이 callback 모드입니다.
+- `EAGAIN` -- `ZLINK_DONTWAIT`가 설정되었으며 수신할 메시지가 없습니다.
+
+**스레드 안전성:** recv 모드에서 모든 스레드에서 호출할 수 있습니다.
 
 ---
 
@@ -227,7 +271,7 @@ int zlink_gateway_send_rid (void *gateway,
 
 ### zlink_gateway_send_ready_handler
 
-send-ready 콜백을 설치하거나 교체합니다.
+send-ready 콜백을 설치하거나 교체합니다. **Callback 모드 전용.**
 
 ```c
 int zlink_gateway_send_ready_handler (
@@ -239,6 +283,9 @@ Gateway가 쓰기 가능 상태로 전이할 때 핸들러가 호출됩니다. �
 상태를 seed하세요.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**에러:**
+- `EBUSY` -- handle이 recv 모드입니다 (callback 모드로 먼저 전환하세요).
 
 ---
 

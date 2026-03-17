@@ -1897,8 +1897,6 @@ void *gateway_t::router ()
 {
     scoped_lock_t lock (_sync);
     lock_routing_id ();
-    if (!enter_pollable_mode ())
-        return NULL;
     if (ensure_router_socket () != 0)
         return NULL;
     return static_cast<void *> (_runtime->router_socket);
@@ -1917,10 +1915,6 @@ void gateway_t::lock_routing_id ()
 
 int gateway_t::ensure_facade_mode () const
 {
-    if (_pollable_mode) {
-        errno = EFSM;
-        return -1;
-    }
     return 0;
 }
 

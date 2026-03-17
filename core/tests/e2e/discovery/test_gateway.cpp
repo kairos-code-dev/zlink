@@ -7,6 +7,7 @@
 #include "../../../src/sockets/socket_base.hpp"
 
 #include <atomic>
+#include <stdlib.h>
 #include <string.h>
 #include <thread>
 #include <vector>
@@ -132,10 +133,24 @@ void *create_gateway_attached (void *ctx_,
                                const char *routing_id_,
                                zlink_socket_msg_handler_fn handler_)
 {
-    void *gateway =
-      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_, NULL);
+    void *gateway = zlink_gateway_new (ctx_, service_name_);
     if (!gateway)
         return NULL;
+    if (routing_id_
+        && zlink_gateway_set_routing_id (gateway, routing_id_,
+                                         strlen (routing_id_))
+             != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
+    if (handler_ && zlink_recv_handler (gateway, handler_, NULL) != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
     const int linger = 0;
     if (zlink_gateway_set_option (gateway, ZLINK_GATEWAY_OPT_LINGER, &linger,
                                   sizeof (linger))
@@ -146,6 +161,41 @@ void *create_gateway_attached (void *ctx_,
         return NULL;
     }
     if (zlink_gateway_attach_discovery (gateway, discovery_) != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
+    return gateway;
+}
+
+void *create_gateway (void *ctx_,
+                      const char *service_name_,
+                      const char *routing_id_,
+                      zlink_socket_msg_handler_fn handler_)
+{
+    void *gateway = zlink_gateway_new (ctx_, service_name_);
+    if (!gateway)
+        return NULL;
+    if (routing_id_
+        && zlink_gateway_set_routing_id (gateway, routing_id_,
+                                         strlen (routing_id_))
+             != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
+    if (handler_ && zlink_recv_handler (gateway, handler_, NULL) != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
+    const int linger = 0;
+    if (zlink_gateway_set_option (gateway, ZLINK_GATEWAY_OPT_LINGER, &linger,
+                                  sizeof (linger))
+        != 0) {
         const int err = errno;
         zlink_gateway_destroy (&gateway);
         errno = err;
@@ -420,6 +470,71 @@ void send_gateway_with_timeout (void *gateway_,
         msleep (step_ms);
     }
     TEST_FAIL_MESSAGE ("gateway send timeout");
+}
+
+bool wait_gateway_recv_payload (void *gateway_,
+                                const char *expected_payload_,
+                                zlink_routing_id_t *source_rid_out_,
+                                int timeout_ms_)
+{
+    const size_t expected_size =
+      expected_payload_ ? strlen (expected_payload_) : 0;
+    const int step_ms = 10;
+    const int attempts = timeout_ms_ / step_ms;
+    int last_errno = EAGAIN;
+    for (int i = 0; i < attempts; ++i) {
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        zlink_routing_id_t source_rid;
+        memset (&source_rid, 0, sizeof (source_rid));
+        if (zlink_gateway_recv (gateway_, &source_rid, &parts, &part_count,
+                                ZLINK_DONTWAIT)
+            == 0) {
+            const bool matched =
+              part_count >= 1
+              && zlink_msg_size (&parts[part_count - 1]) == expected_size
+              && memcmp (zlink_msg_data (&parts[part_count - 1]), expected_payload_,
+                         expected_size)
+                   == 0;
+            close_parts (parts, part_count);
+            free (parts);
+            if (matched) {
+                if (source_rid_out_)
+                    *source_rid_out_ = source_rid;
+                return true;
+            }
+            if (getenv ("ZLINK_TEST_DEBUG")) {
+                char buffer[128];
+                snprintf (buffer, sizeof (buffer),
+                          "gateway recv mismatch parts=%zu last_size=%zu",
+                          part_count,
+                          part_count > 0 ? zlink_msg_size (&parts[part_count - 1])
+                                         : 0u);
+                step_log (buffer);
+            }
+            errno = EPROTO;
+            return false;
+        }
+        last_errno = errno;
+        if (errno != EAGAIN) {
+            if (getenv ("ZLINK_TEST_DEBUG")) {
+                char buffer[128];
+                snprintf (buffer, sizeof (buffer),
+                          "gateway recv failed errno=%d", errno);
+                step_log (buffer);
+            }
+            return false;
+        }
+        msleep (step_ms);
+    }
+    if (getenv ("ZLINK_TEST_DEBUG")) {
+        char buffer[128];
+        snprintf (buffer, sizeof (buffer),
+                  "gateway recv wait timed out errno=%d", last_errno);
+        step_log (buffer);
+    }
+    errno = last_errno;
+    return false;
 }
 
 void send_gateway_rid_with_timeout (void *gateway_,
@@ -732,16 +847,16 @@ static void test_gateway_can_be_polled_via_service_instance ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    TEST_ASSERT_NULL (
-      zlink_gateway_new (ctx, "gw-null-handler", "gw-null-handler", NULL, NULL));
-    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+    void *recv_gateway = zlink_gateway_new (ctx, "gw-null-handler");
+    TEST_ASSERT_NOT_NULL (recv_gateway);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&recv_gateway));
 
     std::atomic<int> ready_calls (0);
     g_ready_calls = &ready_calls;
     g_ready_subject = NULL;
 
-    void *gateway = zlink_gateway_new (ctx, "ready-svc", "gw-ready",
-                                       &discard_gateway_message, NULL);
+    void *gateway =
+      create_gateway (ctx, "ready-svc", "gw-ready", &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (gateway);
 
     const int hwm = 2;
@@ -787,8 +902,8 @@ static void test_gateway_send_ready_handler_reentrant_replace_returns_edeadlk ()
     g_reentrant_ready_rc = 0;
     g_reentrant_ready_errno = 0;
 
-    void *gateway = zlink_gateway_new (ctx, "ready-reentrant", "gw-reentrant",
-                                       &discard_gateway_message, NULL);
+    void *gateway = create_gateway (ctx, "ready-reentrant", "gw-reentrant",
+                                    &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (gateway);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_send_ready_handler (
       gateway, &gateway_reentrant_ready_handler, NULL));
@@ -822,8 +937,9 @@ static void test_gateway_send_ready_handler_self_close_is_safe ()
     g_gateway_self_close_rc = 0;
     g_gateway_self_close_errno = 0;
 
-    void *gateway = zlink_gateway_new (ctx, "ready-self-close", "gw-self-close",
-                                       &discard_gateway_message, NULL);
+    void *gateway =
+      create_gateway (ctx, "ready-self-close", "gw-self-close",
+                      &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (gateway);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_send_ready_handler (
       gateway, &gateway_self_close_handler, NULL));
@@ -851,9 +967,9 @@ static void test_gateway_monitor_callback_parent_destroy_returns_ebusy ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *gateway = zlink_gateway_new (ctx, "svc-monitor-self-close",
-                                       "gw-monitor-self-close",
-                                       &discard_gateway_message, NULL);
+    void *gateway = create_gateway (
+      ctx, "svc-monitor-self-close", "gw-monitor-self-close",
+      &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (gateway);
 
     std::atomic<int> callback_calls (0);
@@ -1563,11 +1679,12 @@ static void test_gateway_manual_connect_disconnect_topology_ownership ()
     gateway_probe_t probe;
     g_probe_a = &probe;
 
-    void *server = zlink_gateway_new (ctx, "manual-svc", "manual-server",
-                                      &gateway_handler_a, NULL);
+    void *server =
+      create_gateway (ctx, "manual-svc", "manual-server", &gateway_handler_a);
     TEST_ASSERT_NOT_NULL (server);
-    void *client = zlink_gateway_new (ctx, "manual-svc", "manual-client",
-                                      &discard_gateway_message, NULL);
+    void *client =
+      create_gateway (ctx, "manual-svc", "manual-client",
+                      &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (client);
 
     const int zero = 0;
@@ -1628,6 +1745,135 @@ static void test_gateway_manual_connect_disconnect_topology_ownership ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server));
     g_probe_a = NULL;
+}
+
+static void test_gateway_callback_model_receive_regression ()
+{
+    step_log ("gateway callback regression: create ctx");
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    gateway_probe_t probe;
+    g_probe_a = &probe;
+
+    void *server = create_gateway (ctx, "svc-gateway-callback-regression",
+                                   "gw-callback-server", &gateway_handler_a);
+    void *client =
+      zlink_gateway_new (ctx, "svc-gateway-callback-regression");
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+    const int linger = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
+      client, ZLINK_GATEWAY_OPT_LINGER, &linger, sizeof (linger)));
+
+    step_log ("gateway callback regression: bind/connect");
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22560;
+    bind_gateway_with_port_seed (server, "tcp", &bind_seed, endpoint,
+                                 sizeof (endpoint), 3000);
+
+    zlink_routing_id_t server_rid;
+    memset (&server_rid, 0, sizeof (server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_connect (client, endpoint, &server_rid));
+    wait_gateway_ready (client, 3000);
+
+    step_log ("gateway callback regression: send");
+    send_gateway_with_timeout (client, "callback-path", 2000);
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.requests, 1, 3000));
+    TEST_ASSERT_EQUAL_STRING ("callback-path", probe.payload);
+
+    step_log ("gateway callback regression: reject recv");
+    zlink_routing_id_t source_rid;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    memset (&source_rid, 0, sizeof (source_rid));
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_gateway_recv (server, &source_rid, &parts, &part_count, 0));
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+
+    step_log ("gateway callback regression: destroy");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server));
+    g_probe_a = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_gateway_recv_model_receive_regression ()
+{
+    step_log ("gateway recv regression: create ctx");
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *server = zlink_gateway_new (ctx, "svc-gateway-recv-regression");
+    void *client = zlink_gateway_new (ctx, "svc-gateway-recv-regression");
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+    const int linger = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
+      server, ZLINK_GATEWAY_OPT_LINGER, &linger, sizeof (linger)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
+      client, ZLINK_GATEWAY_OPT_LINGER, &linger, sizeof (linger)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_set_routing_id (server, "gw-recv-server", 14));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_set_routing_id (client, "gw-recv-client", 14));
+
+    step_log ("gateway recv regression: bind/connect");
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22562;
+    bind_gateway_with_port_seed (server, "tcp", &bind_seed, endpoint,
+                                 sizeof (endpoint), 3000);
+
+    zlink_routing_id_t server_rid;
+    memset (&server_rid, 0, sizeof (server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_connect (client, endpoint, &server_rid));
+    wait_gateway_ready (client, 3000);
+
+    step_log ("gateway recv regression: send");
+    send_gateway_with_timeout (client, "recv-path", 2000);
+
+    step_log ("gateway recv regression: direct recv");
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add_gateway (poller, server, server, ZLINK_POLLIN));
+    zlink_poller_event_t event;
+    memset (&event, 0, sizeof (event));
+    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, 3000));
+    TEST_ASSERT_EQUAL_PTR (server, event.user_data);
+    TEST_ASSERT_TRUE ((event.events & ZLINK_POLLIN) != 0);
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    zlink_routing_id_t source_rid;
+    memset (&source_rid, 0, sizeof (source_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_recv (server, &source_rid, &parts, &part_count, 0));
+    TEST_ASSERT_TRUE (source_rid.size > 0);
+    TEST_ASSERT_TRUE (part_count >= 1);
+    const std::string payload (
+      static_cast<const char *> (zlink_msg_data (&parts[part_count - 1])),
+      zlink_msg_size (&parts[part_count - 1]));
+    close_parts (parts, part_count);
+    free (parts);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    TEST_ASSERT_EQUAL_STRING ("recv-path", payload.c_str ());
+
+    TEST_ASSERT_EQUAL_INT (
+      -1,
+      zlink_gateway_send_ready_handler (server, &gateway_ready_handler, NULL));
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+
+    step_log ("gateway recv regression: destroy");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
 static void test_gateway_local_weight_zero_is_preserved ()
@@ -2004,8 +2250,8 @@ static void test_gateway_attach_and_monitor_queries_are_safe_same_handle ()
 
     for (int round = 0; round < 32; ++round) {
         void *gateway =
-          zlink_gateway_new (ctx, "svc-attach-query", NULL,
-                             &discard_gateway_message, NULL);
+          create_gateway (ctx, "svc-attach-query", NULL,
+                          &discard_gateway_message);
         TEST_ASSERT_NOT_NULL (gateway);
 
         std::atomic<int> attach_started (0);
@@ -2058,8 +2304,8 @@ static void test_gateway_public_api_lifecycle_contract ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *gateway =
-      zlink_gateway_new (ctx, "svc-lifecycle", "gw-lifecycle",
-                         &discard_gateway_message, NULL);
+      create_gateway (ctx, "svc-lifecycle", "gw-lifecycle",
+                      &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (gateway);
 
     zlink::gateway_t *gateway_impl =
@@ -2134,6 +2380,8 @@ int main (void)
     RUN_GATEWAY_TEST (test_gateway_protocol_wss);
     RUN_GATEWAY_TEST (test_gateway_load_balancing);
     RUN_GATEWAY_TEST (test_gateway_weighted_load_balancing);
+    RUN_GATEWAY_TEST (test_gateway_callback_model_receive_regression);
+    RUN_GATEWAY_TEST (test_gateway_recv_model_receive_regression);
     RUN_GATEWAY_TEST (test_gateway_manual_connect_disconnect_topology_ownership);
     RUN_GATEWAY_TEST (test_gateway_local_weight_zero_is_preserved);
     RUN_GATEWAY_TEST (test_gateway_runtime_reads_are_safe_during_concurrent_send);

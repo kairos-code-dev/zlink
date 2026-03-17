@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "testutil.hpp"
+#include "testutil_monitoring.hpp"
 #include "testutil_unity.hpp"
 
 #include "utils/config.hpp"
@@ -50,7 +51,8 @@ static bool wait_monitor_event (void *monitor_,
 
         for (;;) {
             zlink_monitor_event_t event;
-            if (zlink_monitor_recv (monitor_, &event, ZLINK_DONTWAIT) != 0)
+            if (recv_monitor_event_from_socket (monitor_, &event, ZLINK_DONTWAIT)
+                != 0)
                 break;
             if (event.event != expected_event_)
                 continue;
@@ -77,6 +79,45 @@ static void send_stream_msg (void *socket_,
     TEST_ASSERT_EQUAL_INT ((int) size_,
                            TEST_ASSERT_SUCCESS_ERRNO (
                              zlink_send (socket_, data_, size_, 0)));
+}
+
+static bool recv_stream_routing_id_and_payload (void *socket_,
+                                                zlink_routing_id_t *rid_out_,
+                                                zlink_msg_t *payload_out_,
+                                                int flags_)
+{
+    if (!socket_ || !rid_out_ || !payload_out_) {
+        errno = EINVAL;
+        return false;
+    }
+
+    zlink_msg_t rid_msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&rid_msg));
+    const int rid_rc = zlink_msg_recv (&rid_msg, socket_, flags_);
+    if (rid_rc < 0) {
+        zlink_msg_close (&rid_msg);
+        return false;
+    }
+
+    if (zlink_msg_size (&rid_msg) != stream_routing_id_size) {
+        zlink_msg_close (&rid_msg);
+        errno = EPROTO;
+        return false;
+    }
+
+    rid_out_->size = static_cast<uint8_t> (stream_routing_id_size);
+    memcpy (rid_out_->data, zlink_msg_data (&rid_msg), stream_routing_id_size);
+    zlink_msg_close (&rid_msg);
+
+    int more = 0;
+    size_t more_size = sizeof (more);
+    if (zlink_getsockopt (socket_, ZLINK_RCVMORE, &more, &more_size) != 0
+        || !more) {
+        errno = EPROTO;
+        return false;
+    }
+
+    return zlink_msg_recv (payload_out_, socket_, flags_) >= 0;
 }
 
 static bool parse_tcp_endpoint (const char *endpoint_,
@@ -459,7 +500,8 @@ static void collect_stream_monitor_events (void *monitor_,
 
     for (;;) {
         zlink_monitor_event_t event;
-        if (zlink_monitor_recv (monitor_, &event, ZLINK_DONTWAIT) != 0)
+        if (recv_monitor_event_from_socket (monitor_, &event, ZLINK_DONTWAIT)
+            != 0)
             break;
         record_stream_monitor_event (probe_, &event);
     }
@@ -562,7 +604,8 @@ static void collect_stream_ordering_monitor_events (
 
     for (;;) {
         zlink_monitor_event_t event;
-        if (zlink_monitor_recv (monitor_, &event, ZLINK_DONTWAIT) != 0)
+        if (recv_monitor_event_from_socket (monitor_, &event, ZLINK_DONTWAIT)
+            != 0)
             break;
 
         if (event.routing_id.size != stream_routing_id_size)
@@ -684,6 +727,33 @@ static bool wait_stream_ordering_sets_with_monitor (void *monitor_,
                 >= expected_disconnected_;
 }
 
+static bool wait_stream_ready_for_routing_id (void *monitor_,
+                                              stream_ordering_probe_t *probe_,
+                                              const zlink_routing_id_t *rid_,
+                                              int timeout_ms_)
+{
+    if (!monitor_ || !probe_ || !rid_ || rid_->size != stream_routing_id_size)
+        return false;
+
+    const std::string key = make_routing_id_key (rid_->data, rid_->size);
+    const int slice_ms = 20;
+    const int loops = timeout_ms_ > 0 ? timeout_ms_ / slice_ms + 1 : 1;
+    for (int i = 0; i < loops; ++i) {
+        collect_stream_ordering_monitor_events (monitor_, probe_, slice_ms);
+        {
+            std::lock_guard<std::mutex> lk (probe_->mu);
+            if (probe_->ready_routing_ids.find (key)
+                != probe_->ready_routing_ids.end ()) {
+                return true;
+            }
+        }
+    }
+
+    collect_stream_ordering_monitor_events (monitor_, probe_, 0);
+    std::lock_guard<std::mutex> lk (probe_->mu);
+    return probe_->ready_routing_ids.find (key) != probe_->ready_routing_ids.end ();
+}
+
 static void configure_stream_regression_socket (void *socket_, int backlog_)
 {
     TEST_ASSERT_NOT_NULL (socket_);
@@ -730,12 +800,15 @@ static int stream_raw_ordering_echo_callback (const zlink_routing_id_t *rid_,
     }
 
     probe->callback_payloads.fetch_add (1, std::memory_order_release);
+    bool ready = !probe->strict_gate;
     if (probe->monitor) {
         std::lock_guard<std::mutex> lk (probe->monitor_mu);
-        collect_stream_ordering_monitor_events (probe->monitor, probe->ordering, 0);
+        ready = wait_stream_ready_for_routing_id (probe->monitor, probe->ordering,
+                                                  rid_, 5000);
     }
-    const bool ready =
+    const bool marked_ready =
       mark_stream_payload_begin (probe->ordering, rid_, probe->strict_gate);
+    ready = ready && marked_ready;
 
     if (!probe->strict_gate || ready) {
         const int send_rc =
@@ -916,7 +989,8 @@ static void stream_raw_ordering_msg_handler (const zlink_routing_id_t *rid_,
                                              void *userdata_)
 {
     LIBZLINK_UNUSED (userdata_);
-    stream_raw_ordering_echo_callback (rid_, parts_, part_count_, NULL);
+    for (size_t i = 0; i < part_count_; ++i)
+        stream_raw_ordering_echo_callback (rid_, &parts_[i], NULL);
 }
 
 static void stream_echo_msg_handler (const zlink_routing_id_t *rid_,
@@ -980,13 +1054,13 @@ void test_stream_recv_api_dispatch_conflict ()
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1, zlink_recv (stream, buf, sizeof (buf),
                                            ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
 
     zlink_msg_t msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, stream, ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -994,11 +1068,11 @@ void test_stream_recv_api_dispatch_conflict ()
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1, zlink_recv (stream, buf, sizeof (buf),
                                            ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, stream, ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
     test_context_socket_close_zero_linger (stream);
@@ -1047,7 +1121,7 @@ void test_stream_callback_echo_raw ()
 
     const int client_fd = connect_raw_tcp (endpoint);
     TEST_ASSERT_TRUE (client_fd >= 0);
-    TEST_ASSERT_EQUAL_INT (0, set_raw_fd_timeout (client_fd, 3000));
+    TEST_ASSERT_EQUAL_INT (0, set_raw_fd_timeout (client_fd, 10000));
 
     const unsigned char payload[] = "stream-callback-raw";
     stream_callback_probe_t probe;
@@ -1109,7 +1183,7 @@ void test_stream_callback_echo_single_zero_byte ()
 
     const int client_fd = connect_raw_tcp (endpoint);
     TEST_ASSERT_TRUE (client_fd >= 0);
-    TEST_ASSERT_EQUAL_INT (0, set_raw_fd_timeout (client_fd, 3000));
+    TEST_ASSERT_EQUAL_INT (0, set_raw_fd_timeout (client_fd, 10000));
 
     const unsigned char payload[1] = {0x00};
     stream_callback_probe_t probe;
@@ -1141,8 +1215,75 @@ void test_stream_callback_echo_single_zero_byte ()
 
 void test_stream_recv_ready_precedes_first_payload_contract ()
 {
-    TEST_IGNORE_MESSAGE (
-      "STREAM recv API removed; callback ready-ordering tests cover this contract");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 8));
+
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_regression_socket (server, 256);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    void *monitor = zlink_socket_monitor_open (
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
+      &zlink_monitor_ignore_handler, NULL);
+    TEST_ASSERT_NOT_NULL (monitor);
+    const int monitor_linger = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &monitor_linger,
+                        sizeof (monitor_linger)));
+
+    const int client_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_TRUE (client_fd >= 0);
+    TEST_ASSERT_EQUAL_INT (0, set_raw_fd_timeout (client_fd, 3000));
+
+    const unsigned char payload[] = "stream-recv-ready-contract";
+    TEST_ASSERT_EQUAL_INT (
+      0, send_stream_packet (client_fd, payload, sizeof (payload) - 1));
+
+    zlink_routing_id_t rid;
+    zlink_msg_t payload_msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&payload_msg));
+    TEST_ASSERT_TRUE (
+      recv_stream_routing_id_and_payload (server, &rid, &payload_msg, 0));
+
+    stream_ordering_probe_t ordering_probe;
+    TEST_ASSERT_TRUE (
+      wait_stream_ready_for_routing_id (monitor, &ordering_probe, &rid, 5000));
+    TEST_ASSERT_TRUE (mark_stream_payload_begin (&ordering_probe, &rid, true));
+
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (sizeof (payload) - 1),
+      TEST_ASSERT_SUCCESS_ERRNO (
+        zlink_stream_send_msg (server, &rid, &payload_msg, 0)));
+    mark_stream_payload_end (&ordering_probe, &rid);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
+
+    unsigned char echoed[sizeof (payload)];
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (sizeof (payload) - 1),
+      recv_stream_packet (client_fd, echoed, sizeof (echoed)));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (
+      payload, echoed, static_cast<unsigned int> (sizeof (payload) - 1));
+
+    close_raw_fd (client_fd);
+
+    TEST_ASSERT_TRUE (
+      wait_stream_ordering_sets_with_monitor (monitor, &ordering_probe, 1, 1,
+                                              5000));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.payload_before_ready.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.disconnect_during_payload.load (
+           std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      1, ordering_probe.strict_accept_count.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.strict_drop_count.load (std::memory_order_acquire));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    test_context_socket_close_zero_linger (server);
 }
 
 void test_stream_raw_callback_ready_precedes_first_payload_contract ()
@@ -1354,8 +1495,82 @@ void test_stream_raw_multiclient_strict_ready_gating_regression ()
 
 void test_stream_recv_multiclient_strict_ready_gating_regression ()
 {
-    TEST_IGNORE_MESSAGE (
-      "STREAM recv API removed; callback multiclient gating tests cover this contract");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 8));
+
+    const int client_count = 64;
+    const size_t payload_size = 32;
+
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_regression_socket (server, 2048);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    void *monitor = zlink_socket_monitor_open (
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
+      &zlink_monitor_ignore_handler, NULL);
+    TEST_ASSERT_NOT_NULL (monitor);
+    const int monitor_linger = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &monitor_linger,
+                        sizeof (monitor_linger)));
+
+    std::atomic<int> client_failures (0);
+    std::vector<std::thread> clients;
+    clients.reserve (client_count);
+    for (int i = 0; i < client_count; ++i) {
+        clients.push_back (
+          std::thread (run_stream_raw_client_once, endpoint,
+                       static_cast<uint32_t> (i), payload_size,
+                       &client_failures));
+    }
+
+    stream_ordering_probe_t ordering_probe;
+    int received = 0;
+    int send_fail = 0;
+    while (received < client_count) {
+        zlink_routing_id_t rid;
+        zlink_msg_t payload_msg;
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&payload_msg));
+        TEST_ASSERT_TRUE (
+          recv_stream_routing_id_and_payload (server, &rid, &payload_msg, 0));
+
+        TEST_ASSERT_TRUE (wait_stream_ready_for_routing_id (
+          monitor, &ordering_probe, &rid, 5000));
+        TEST_ASSERT_TRUE (mark_stream_payload_begin (&ordering_probe, &rid, true));
+
+        if (zlink_stream_send_msg (server, &rid, &payload_msg, 0) < 0) {
+            ++send_fail;
+        }
+        mark_stream_payload_end (&ordering_probe, &rid);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
+        ++received;
+    }
+
+    for (size_t i = 0; i < clients.size (); ++i)
+        clients[i].join ();
+
+    TEST_ASSERT_TRUE (
+      wait_stream_ordering_sets_with_monitor (monitor, &ordering_probe,
+                                              client_count, client_count,
+                                              10000));
+    TEST_ASSERT_EQUAL_INT (0, client_failures.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.payload_before_ready.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.disconnect_during_payload.load (
+           std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, ordering_probe.strict_drop_count.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      client_count,
+      ordering_probe.strict_accept_count.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (0, send_fail);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    test_context_socket_close_zero_linger (server);
 }
 
 void test_stream_raw_multiclient_load_integrity ()

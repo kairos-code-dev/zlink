@@ -176,11 +176,19 @@ class Discovery:
 
 
 class Gateway:
-    def __init__(self, ctx, discovery, routing_id=None):
+    def __init__(self, ctx, service_name=None, discovery=None, routing_id=None):
         rid = routing_id.encode() if routing_id else None
-        self._handle = lib().zlink_gateway_new(ctx._handle, None, rid, None, None)
+        service = service_name.encode() if service_name else None
+        self._handle = lib().zlink_gateway_new(ctx._handle, service)
         if not self._handle:
             _raise_last_error()
+        if rid is not None:
+            rc = lib().zlink_gateway_set_routing_id(self._handle, rid, len(rid))
+            if rc != 0:
+                handle = ctypes.c_void_p(self._handle)
+                lib().zlink_gateway_destroy(ctypes.byref(handle))
+                self._handle = None
+                _raise_last_error()
         if discovery is not None:
             rc = lib().zlink_gateway_attach_discovery(self._handle, discovery._handle)
             if rc != 0:
@@ -246,15 +254,21 @@ class Gateway:
         _ = keepalive
 
     def recv(self, flags=0):
+        routing_id = ctypes.create_string_buffer(256)
+        routing_len = ctypes.c_size_t(256)
         parts = ctypes.c_void_p()
         count = ctypes.c_size_t()
-        name_buf = ctypes.create_string_buffer(256)
-        rc = lib().zlink_gateway_recv(self._handle, ctypes.byref(parts), ctypes.byref(count), flags, name_buf)
+        rc = lib().zlink_gateway_recv(
+            self._handle,
+            routing_id,
+            ctypes.byref(parts),
+            ctypes.byref(count),
+            flags,
+        )
         if rc != 0:
             _raise_last_error()
-        service = name_buf.value.decode()
         messages = _parts_to_bytes(parts, count.value)
-        return service, messages
+        return bytes(routing_id[:]), messages
 
     def set_lb_strategy(self, service, strategy):
         rc = lib().zlink_gateway_set_lb_strategy(self._handle, service.encode(), strategy)

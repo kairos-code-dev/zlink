@@ -476,10 +476,14 @@ bool create_gateway_slots(gateway_client_state_t *state,
         if (!slot)
             return false;
 
-        slot->gateway = zlink_gateway_new(ctx.get(), k_service_name,
-                                          routing_id,
-                                          &gateway_client_recv_handler, slot);
+        slot->gateway = zlink_gateway_new(ctx.get(), k_service_name);
         if (!slot->gateway || !apply_gateway_options(slot->gateway, settings)
+            || zlink_gateway_set_routing_id(slot->gateway, routing_id,
+                                            std::strlen(routing_id))
+                 != 0
+            || zlink_recv_handler(slot->gateway, &gateway_client_recv_handler,
+                                  slot)
+                 != 0
             || !configure_gateway_tls_client(slot->gateway, transport)
             || zlink_gateway_send_ready_handler(
                  slot->gateway, &gateway_client_send_ready, slot)

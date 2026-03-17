@@ -165,11 +165,51 @@ void *create_gateway_attached (void *ctx_,
                                const char *routing_id_,
                                zlink_socket_msg_handler_fn handler_)
 {
-    void *gateway =
-      zlink_gateway_new (ctx_, service_name_, routing_id_, handler_, NULL);
+    void *gateway = zlink_gateway_new (ctx_, service_name_);
     if (!gateway)
         return NULL;
+    if (routing_id_
+        && zlink_gateway_set_routing_id (gateway, routing_id_,
+                                         strlen (routing_id_))
+             != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
+    if (handler_ && zlink_recv_handler (gateway, handler_, NULL) != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
     if (zlink_gateway_attach_discovery (gateway, discovery_) != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
+    return gateway;
+}
+
+void *create_gateway (void *ctx_,
+                      const char *service_name_,
+                      const char *routing_id_,
+                      zlink_socket_msg_handler_fn handler_)
+{
+    void *gateway = zlink_gateway_new (ctx_, service_name_);
+    if (!gateway)
+        return NULL;
+    if (routing_id_
+        && zlink_gateway_set_routing_id (gateway, routing_id_,
+                                         strlen (routing_id_))
+             != 0) {
+        const int err = errno;
+        zlink_gateway_destroy (&gateway);
+        errno = err;
+        return NULL;
+    }
+    if (handler_ && zlink_recv_handler (gateway, handler_, NULL) != 0) {
         const int err = errno;
         zlink_gateway_destroy (&gateway);
         errno = err;
@@ -589,9 +629,9 @@ void test_gateway_handler_reply_stress_multi_client_manual_connect ()
     const size_t payload_size = 1024;
     const int timeout_ms = 10000;
 
-    void *server = zlink_gateway_new (ctx, "svc-handler-stress",
-                                      "gw-server-stress",
-                                      &gateway_server_handler, NULL);
+    void *server = create_gateway (ctx, "svc-handler-stress",
+                                   "gw-server-stress",
+                                   &gateway_server_handler);
     TEST_ASSERT_NOT_NULL (server);
 
     char endpoint[MAX_SOCKET_STRING];
@@ -625,9 +665,8 @@ void test_gateway_handler_reply_stress_multi_client_manual_connect ()
     for (size_t i = 0; i < client_count; ++i) {
         char routing_id[32];
         snprintf (routing_id, sizeof (routing_id), "gw-client-%zu", i);
-        clients[i] = zlink_gateway_new (ctx, "svc-handler-stress",
-                                        routing_id,
-                                        &gateway_client_handler, NULL);
+        clients[i] = create_gateway (ctx, "svc-handler-stress", routing_id,
+                                     &gateway_client_handler);
         TEST_ASSERT_NOT_NULL (clients[i]);
         TEST_ASSERT_SUCCESS_ERRNO (
           zlink_gateway_connect (clients[i], endpoint, &server_rid));
@@ -678,13 +717,11 @@ void test_gateway_send_rid_same_handle_concurrent_send_is_thread_safe ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_gateway_new (ctx, "svc-handler-rid",
-                                      "gw-server-rid",
-                                      &gateway_capture_only_handler, NULL);
+    void *server = create_gateway (ctx, "svc-handler-rid", "gw-server-rid",
+                                   &gateway_capture_only_handler);
     TEST_ASSERT_NOT_NULL (server);
-    void *client = zlink_gateway_new (ctx, "svc-handler-rid",
-                                      "gw-client-rid",
-                                      &gateway_client_handler, NULL);
+    void *client = create_gateway (ctx, "svc-handler-rid", "gw-client-rid",
+                                   &gateway_client_handler);
     TEST_ASSERT_NOT_NULL (client);
 
     zlink_routing_id_t server_rid;
@@ -806,12 +843,12 @@ void test_gateway_send_after_ready_monitor_close_keeps_working ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_gateway_new (ctx, "svc-handler-monitor-close",
-                                      "gw-server-monitor-close",
-                                      &gateway_server_handler, NULL);
-    void *client = zlink_gateway_new (ctx, "svc-handler-monitor-close",
-                                      "gw-client-monitor-close",
-                                      &gateway_client_handler, NULL);
+    void *server = create_gateway (ctx, "svc-handler-monitor-close",
+                                   "gw-server-monitor-close",
+                                   &gateway_server_handler);
+    void *client = create_gateway (ctx, "svc-handler-monitor-close",
+                                   "gw-client-monitor-close",
+                                   &gateway_client_handler);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -898,12 +935,12 @@ void run_gateway_monitor_close_destroy_cycle (void *ctx_,
 {
     TEST_ASSERT_NOT_NULL (ctx_);
 
-    void *server = zlink_gateway_new (ctx_, "svc-handler-monitor-loop",
-                                      "gw-server-monitor-loop",
-                                      &gateway_server_handler, NULL);
-    void *client = zlink_gateway_new (ctx_, "svc-handler-monitor-loop",
-                                      "gw-client-monitor-loop",
-                                      &gateway_client_handler, NULL);
+    void *server = create_gateway (ctx_, "svc-handler-monitor-loop",
+                                   "gw-server-monitor-loop",
+                                   &gateway_server_handler);
+    void *client = create_gateway (ctx_, "svc-handler-monitor-loop",
+                                   "gw-client-monitor-loop",
+                                   &gateway_client_handler);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -997,12 +1034,12 @@ void test_gateway_destroy_after_ready_monitor_close_completes_promptly ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_gateway_new (ctx, "svc-handler-monitor-destroy",
-                                      "gw-server-monitor-destroy",
-                                      &gateway_server_handler, NULL);
-    void *client = zlink_gateway_new (ctx, "svc-handler-monitor-destroy",
-                                      "gw-client-monitor-destroy",
-                                      &gateway_client_handler, NULL);
+    void *server = create_gateway (ctx, "svc-handler-monitor-destroy",
+                                   "gw-server-monitor-destroy",
+                                   &gateway_server_handler);
+    void *client = create_gateway (ctx, "svc-handler-monitor-destroy",
+                                   "gw-client-monitor-destroy",
+                                   &gateway_client_handler);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -1102,12 +1139,12 @@ void test_gateway_monitor_send_ready_drives_backpressure_progress ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_gateway_new (ctx, "svc-handler-send-ready",
-                                      "gw-server-send-ready",
-                                      &gateway_server_handler, NULL);
-    void *client = zlink_gateway_new (ctx, "svc-handler-send-ready",
-                                      "gw-client-send-ready",
-                                      &gateway_client_handler, NULL);
+    void *server = create_gateway (ctx, "svc-handler-send-ready",
+                                   "gw-server-send-ready",
+                                   &gateway_server_handler);
+    void *client = create_gateway (ctx, "svc-handler-send-ready",
+                                   "gw-client-send-ready",
+                                   &gateway_client_handler);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 

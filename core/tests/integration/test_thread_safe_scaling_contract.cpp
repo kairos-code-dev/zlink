@@ -368,12 +368,18 @@ double measure_gateway_handle_scaling_once (int handle_count_,
         snprintf (server_rid_name, sizeof (server_rid_name), "gw-srv-%d", i);
         snprintf (client_rid_name, sizeof (client_rid_name), "gw-cli-%d", i);
 
-        servers[i] = zlink_gateway_new (ctx, service_name, server_rid_name,
-                                        &scaling_gateway_handler, NULL);
-        clients[i] = zlink_gateway_new (ctx, service_name, client_rid_name,
-                                        &discard_gateway_message, NULL);
+        servers[i] = zlink_gateway_new (ctx, service_name);
+        clients[i] = zlink_gateway_new (ctx, service_name);
         TEST_ASSERT_NOT_NULL (servers[i]);
         TEST_ASSERT_NOT_NULL (clients[i]);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_routing_id (
+          servers[i], server_rid_name, strlen (server_rid_name)));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_routing_id (
+          clients[i], client_rid_name, strlen (client_rid_name)));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (
+          servers[i], &scaling_gateway_handler, NULL));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (
+          clients[i], &discard_gateway_message, NULL));
         configure_gateway_linger_zero (servers[i]);
         configure_gateway_linger_zero (clients[i]);
 
@@ -479,17 +485,23 @@ double measure_spot_handle_scaling_once (int handle_count_,
         snprintf (service_name, sizeof (service_name), "perf-spot-%d", i);
         snprintf (topic, sizeof (topic), "perf-topic-%d", i);
 
-        pub_nodes[i] = zlink_spot_node_new (ctx, service_name,
-                                            &ignore_spot_handler, NULL);
-        sub_nodes[i] = zlink_spot_node_new (ctx, service_name,
-                                            &ignore_spot_handler, NULL);
+        pub_nodes[i] = zlink_spot_node_new (ctx, service_name);
+        sub_nodes[i] = zlink_spot_node_new (ctx, service_name);
         TEST_ASSERT_NOT_NULL (pub_nodes[i]);
         TEST_ASSERT_NOT_NULL (sub_nodes[i]);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_spot_handler (
+          pub_nodes[i], &ignore_spot_handler, NULL));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_spot_handler (
+          sub_nodes[i], &ignore_spot_handler, NULL));
 
-        pubs[i] = zlink_spot_new (pub_nodes[i], &ignore_spot_handler, NULL);
-        subs[i] = zlink_spot_new (sub_nodes[i], &scaling_spot_handler, NULL);
+        pubs[i] = zlink_spot_new (pub_nodes[i]);
+        subs[i] = zlink_spot_new (sub_nodes[i]);
         TEST_ASSERT_NOT_NULL (pubs[i]);
         TEST_ASSERT_NOT_NULL (subs[i]);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_spot_handler (
+          pubs[i], &ignore_spot_handler, NULL));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_spot_handler (
+          subs[i], &scaling_spot_handler, NULL));
         configure_spot_linger_zero (pub_nodes[i], pubs[i]);
         configure_spot_linger_zero (sub_nodes[i], subs[i]);
 

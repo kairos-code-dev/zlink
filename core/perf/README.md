@@ -56,7 +56,7 @@ Note: `pgm`/`epgm` are currently disabled in single perf.
 results/
   single/
     report/
-      perf_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt
+      perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt
 ```
 
 ---
@@ -112,7 +112,7 @@ and delegates execution to `run_benchmarks.sh`.
 results/
   multi/
     report/
-      perf_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt
+      perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt
 ```
 
 ### Preflight

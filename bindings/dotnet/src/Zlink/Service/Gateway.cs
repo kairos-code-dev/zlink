@@ -39,8 +39,7 @@ public sealed class Gateway : IDisposable
             throw new ArgumentNullException(nameof(context));
         if (discovery == null)
             throw new ArgumentNullException(nameof(discovery));
-        _handle = NativeMethods.zlink_gateway_new(context.Handle,
-            null, null, IntPtr.Zero, IntPtr.Zero);
+        _handle = NativeMethods.zlink_gateway_new(context.Handle, null);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         int attachRc = NativeMethods.zlink_gateway_attach_discovery(_handle,
@@ -69,10 +68,16 @@ public sealed class Gateway : IDisposable
             throw new ArgumentOutOfRangeException(nameof(routingId),
                 "routingId UTF-8 length must be between 1 and 255 bytes.");
         }
-        _handle = NativeMethods.zlink_gateway_new(context.Handle,
-            null, routingId, IntPtr.Zero, IntPtr.Zero);
+        _handle = NativeMethods.zlink_gateway_new(context.Handle, null);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
+        int ridRc = NativeMethods.zlink_gateway_set_routing_id(_handle,
+            routingId, (nuint)byteCount);
+        if (ridRc != 0)
+        {
+            NativeMethods.zlink_gateway_destroy(ref _handle);
+            throw ZlinkException.FromLastError();
+        }
         int attachRc = NativeMethods.zlink_gateway_attach_discovery(_handle,
             discovery.Handle);
         if (attachRc != 0)
@@ -276,14 +281,13 @@ public sealed class Gateway : IDisposable
         EnsureNotDisposed();
         unsafe
         {
-            byte* nameBuf = stackalloc byte[256];
-            int rc = NativeMethods.zlink_gateway_recv(_handle, out var parts,
-                out var count, (int)flags, nameBuf);
+            int rc = NativeMethods.zlink_gateway_recv(_handle, out var routingId,
+                out var parts, out var count, (int)flags);
             if (rc != 0)
                 throw ZlinkException.FromLastError();
-            string service = NativeHelpers.ReadString(nameBuf, 256);
             Message[] messages = Message.FromNativeVector(parts, count);
-            return new GatewayMessage(service, messages);
+            return new GatewayMessage(Convert.ToBase64String(
+                NativeHelpers.ReadRoutingId(ref routingId)), messages);
         }
     }
 
@@ -291,9 +295,8 @@ public sealed class Gateway : IDisposable
         ReceiveFlags flags = ReceiveFlags.None)
     {
         EnsureNotDisposed();
-        byte* nameBuf = stackalloc byte[256];
-        int rc = NativeMethods.zlink_gateway_recv(_handle, out var parts,
-            out var count, (int)flags, nameBuf);
+        int rc = NativeMethods.zlink_gateway_recv(_handle, out _,
+            out var parts, out var count, (int)flags);
         if (rc != 0)
             throw ZlinkException.FromLastError();
         try

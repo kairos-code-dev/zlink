@@ -57,12 +57,21 @@ napi_value build_peer_array(napi_env env,
 
 napi_value spot_node_new(napi_env env, napi_callback_info info)
 {
-    napi_value argv[1];
-    size_t argc = 1;
+    napi_value argv[2];
+    size_t argc = 2;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
     napi_get_value_external(env, argv[0], &ctx);
-    void *node = zlink_spot_node_new(ctx, NULL, NULL, NULL);
+    std::string service_name;
+    if (argc >= 2) {
+        napi_valuetype type;
+        napi_typeof(env, argv[1], &type);
+        if (type != napi_undefined && type != napi_null)
+            service_name = get_string(env, argv[1]);
+    }
+    void *node = zlink_spot_node_new(ctx,
+                                     service_name.empty() ? NULL
+                                                          : service_name.c_str());
     if (!node)
         return throw_last_error(env, "spot_node_new failed");
     napi_value ext;

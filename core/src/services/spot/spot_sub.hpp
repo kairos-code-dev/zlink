@@ -67,6 +67,7 @@ class spot_sub_t
     int routing_id (zlink_routing_id_t *out_) const;
     int fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const;
     void *monitor_open (int events_);
+    socket_base_t *poller_socket () const { return socket (); }
     int set_direct_handler (spot_sub_direct_handler_fn handler_,
                             void *userdata_);
     int recv (zlink_msg_t **parts_,

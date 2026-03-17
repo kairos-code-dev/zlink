@@ -18,7 +18,7 @@ public sealed class SpotNode : IDisposable
     {
         if (context == null)
             throw new ArgumentNullException(nameof(context));
-        _handle = NativeMethods.zlink_spot_node_new(context.Handle, null, IntPtr.Zero, IntPtr.Zero);
+        _handle = NativeMethods.zlink_spot_node_new(context.Handle, null);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
     }

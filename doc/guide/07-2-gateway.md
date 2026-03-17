@@ -5,8 +5,8 @@
 ## 1. Overview
 
 Gateway is a unified service handle that automatically discovers services
-based on Discovery, supports load-balanced message sending, and direct
-callback-based receiving. A single Gateway handle can act as both a
+based on Discovery, supports load-balanced message sending, and both recv-mode
+and callback-mode receiving. A single Gateway handle can act as both a
 client (sender) and a server (receiver).
 
 > **About the name**: Gateway serves as an entry point and client-side load
@@ -22,8 +22,14 @@ operations, and `destroy` uses a fail-fast lifecycle gate.
 
 ## 2. Creating a Gateway
 
-A Gateway fixes its service name, routing ID, and receive handler at
-creation time.
+A Gateway fixes its service name at creation time. Routing ID and I/O
+model setup are explicit follow-up steps.
+
+A Gateway starts in **recv model**. You can either stay in recv model
+(pull messages with `zlink_gateway_recv()`) or switch once to **callback
+model** (`zlink_recv_handler()`). The transition is one-way and permanent.
+
+### Callback model
 
 ```c
 /* Define receive handler */
@@ -38,14 +44,25 @@ void on_message(const zlink_routing_id_t *source_rid,
     /* parts are cleaned up automatically after handler returns */
 }
 
-void *gateway = zlink_gateway_new(ctx, "payment-service",
-                                   "gateway-1", on_message, NULL);
+void *gateway = zlink_gateway_new(ctx, "payment-service");
+zlink_gateway_set_routing_id(gateway, "gateway-1", 9);
+zlink_recv_handler(gateway, on_message, NULL);
+```
+
+### Recv model
+
+```c
+void *gateway = zlink_gateway_new(ctx, "payment-service");
+zlink_gateway_set_routing_id(gateway, "gateway-1", 9);
+/* No callback -- stay in recv model, pull with zlink_gateway_recv() */
 ```
 
 ## 3. Server Setup
 
 To act as a server, bind an endpoint on the Gateway and register via
-Discovery.
+Discovery. Either I/O model works for server-side receive.
+
+### Callback model server
 
 ```c
 void *ctx = zlink_ctx_new();
@@ -55,8 +72,9 @@ void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Create Gateway (register receive handler) */
-void *server = zlink_gateway_new(ctx, "payment-service",
-                                  "payment-server-1", on_request, NULL);
+void *server = zlink_gateway_new(ctx, "payment-service");
+zlink_gateway_set_routing_id(server, "payment-server-1", 16);
+zlink_recv_handler(server, on_request, NULL);
 
 /* Attach Discovery */
 zlink_gateway_attach_discovery(server, discovery);
@@ -65,7 +83,34 @@ zlink_gateway_attach_discovery(server, discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 ```
 
+### Recv model server
+
+```c
+void *ctx = zlink_ctx_new();
+
+void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
+
+void *server = zlink_gateway_new(ctx, "payment-service");
+zlink_gateway_set_routing_id(server, "payment-server-1", 16);
+/* Stay in recv model -- no zlink_recv_handler() call */
+
+zlink_gateway_attach_discovery(server, discovery);
+zlink_gateway_bind(server, "tcp://*:5555");
+
+/* Application loop pulls messages */
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+while (zlink_gateway_recv(server, &source_rid, &parts, &part_count, 0) == 0) {
+    /* Process request, then reply */
+    zlink_gateway_send_rid(server, &source_rid, parts, part_count, 0);
+}
+```
+
 ## 4. Client (Sender) Setup
+
+### Callback model client
 
 ```c
 /* Discovery setup */
@@ -73,13 +118,28 @@ void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Create Gateway */
-void *client = zlink_gateway_new(ctx, "payment-service",
-                                  "client-1", on_reply, NULL);
+void *client = zlink_gateway_new(ctx, "payment-service");
+zlink_gateway_set_routing_id(client, "client-1", 8);
+zlink_recv_handler(client, on_reply, NULL);
 
 /* Attach Discovery */
 zlink_gateway_attach_discovery(client, discovery);
 
 /* Load balancing configuration */
+zlink_gateway_set_lb_strategy(client, ZLINK_GATEWAY_LB_ROUND_ROBIN);
+```
+
+### Recv model client
+
+```c
+void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
+
+void *client = zlink_gateway_new(ctx, "payment-service");
+zlink_gateway_set_routing_id(client, "client-1", 8);
+/* Stay in recv model */
+
+zlink_gateway_attach_discovery(client, discovery);
 zlink_gateway_set_lb_strategy(client, ZLINK_GATEWAY_LB_ROUND_ROBIN);
 ```
 
@@ -104,16 +164,38 @@ zlink_gateway_send_rid(client, &target_rid, &part, 1, 0);
 
 ### 5.3 Receiving Messages
 
-Receives are dispatched automatically through the handler callback
-registered at creation time. There is no separate `recv()` call.
+Gateway starts in recv model. You can either pull with `zlink_gateway_recv()`
+or switch once to callback mode with `zlink_recv_handler()`. The two
+models are mutually exclusive for the lifetime of the handle.
+
+#### Recv model (default)
+
+```c
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+int rc = zlink_gateway_recv(client, &source_rid, &parts, &part_count, 0);
+if (rc == 0) {
+    printf("Reply: %.*s\n",
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+```
+
+#### Callback model
 
 ```c
 void on_reply(const zlink_routing_id_t *source_rid,
               zlink_msg_t *parts, size_t part_count,
               void *userdata)
 {
-    /* Process reply */
+    /* Process reply -- parts ownership is consumed by the callback */
 }
+
+/* One-way transition from recv model to callback model */
+zlink_recv_handler(client, on_reply, NULL);
 ```
 
 ## 6. Load Balancing
@@ -170,7 +252,9 @@ The rules users need to remember are short:
 
 ```c
 /* Gateway is thread-safe, so it can be shared across threads */
-void *gateway = zlink_gateway_new(ctx, "my-service", "gw-1", on_reply, NULL);
+void *gateway = zlink_gateway_new(ctx, "my-service");
+zlink_gateway_set_routing_id(gateway, "gw-1", 4);
+zlink_recv_handler(gateway, on_reply, NULL);
 zlink_gateway_attach_discovery(gateway, discovery);
 
 /* Worker thread function */
@@ -241,6 +325,8 @@ Discovery events.
 
 ## 9. End-to-End Example
 
+### Callback model
+
 ```c
 void *ctx = zlink_ctx_new();
 
@@ -252,8 +338,9 @@ zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
 
-void *server = zlink_gateway_new(ctx, "echo-service",
-                                  "echo-server-1", on_request, NULL);
+void *server = zlink_gateway_new(ctx, "echo-service");
+zlink_gateway_set_routing_id(server, "echo-server-1", 13);
+zlink_recv_handler(server, on_request, NULL);
 zlink_gateway_attach_discovery(server, server_discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
@@ -261,8 +348,9 @@ zlink_gateway_bind(server, "tcp://*:5555");
 void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
 
-void *client = zlink_gateway_new(ctx, "echo-service",
-                                  "client-1", on_reply, NULL);
+void *client = zlink_gateway_new(ctx, "echo-service");
+zlink_gateway_set_routing_id(client, "client-1", 8);
+zlink_recv_handler(client, on_reply, NULL);
 zlink_gateway_attach_discovery(client, client_discovery);
 
 /* Wait for route readiness via gateway monitor */
@@ -285,11 +373,63 @@ zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
 ```
 
+### Recv model
+
+```c
+void *ctx = zlink_ctx_new();
+
+/* === Registry === */
+void *registry = zlink_registry_new(ctx);
+zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
+
+/* === Server (recv model) === */
+void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
+
+void *server = zlink_gateway_new(ctx, "echo-service");
+zlink_gateway_set_routing_id(server, "echo-server-1", 13);
+zlink_gateway_attach_discovery(server, server_discovery);
+zlink_gateway_bind(server, "tcp://*:5555");
+
+/* === Client (recv model) === */
+void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
+
+void *client = zlink_gateway_new(ctx, "echo-service");
+zlink_gateway_set_routing_id(client, "client-1", 8);
+zlink_gateway_attach_discovery(client, client_discovery);
+
+/* Wait for route readiness via gateway monitor */
+
+/* Send request */
+zlink_msg_t part;
+zlink_msg_init_size(&part, 5);
+memcpy(zlink_msg_data(&part), "hello", 5);
+zlink_gateway_send(client, &part, 1, 0);
+
+/* Pull reply */
+zlink_routing_id_t source_rid;
+zlink_msg_t *reply_parts = NULL;
+size_t reply_count = 0;
+zlink_gateway_recv(client, &source_rid, &reply_parts, &reply_count, 0);
+
+/* Cleanup */
+zlink_gateway_destroy(&client);
+zlink_discovery_destroy(&client_discovery);
+zlink_gateway_destroy(&server);
+zlink_discovery_destroy(&server_discovery);
+zlink_registry_destroy(&registry);
+zlink_ctx_term(ctx);
+```
+
 ## 10. API Summary
 
 | Function | Description |
 |----------|-------------|
-| `zlink_gateway_new(ctx, service_name, routing_id, handler, userdata)` | Create Gateway |
+| `zlink_gateway_new(ctx, service_name)` | Create Gateway in recv model |
+| `zlink_gateway_set_routing_id(gateway, data, size)` | Set routing ID before first bind/connect |
+| `zlink_recv_handler(gateway, fn, userdata)` | One-way transition to callback model |
+| `zlink_gateway_recv(gateway, &rid, &parts, &count, flags)` | Pull message in recv model (`EBUSY` in callback model) |
 | `zlink_gateway_attach_discovery(gateway, discovery)` | Attach Discovery |
 | `zlink_gateway_bind(gateway, endpoint)` | Bind receive endpoint (server role) |
 | `zlink_gateway_send(gateway, parts, count, flags)` | Send multipart message (with LB) |

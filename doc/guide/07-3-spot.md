@@ -2,8 +2,9 @@
 
 # SPOT Topic PUB/SUB (Location-Transparent Publish/Subscribe)
 
-> This guide reflects the callback-only direct-dispatch surface.
-> All receives are dispatched through the handler callback registered at creation time.
+> This guide reflects the recv-first public surface.
+> `SpotNode` and unified `Spot` start in recv model and use
+> `zlink_recv_spot_handler()` for the one-way transition to callback model.
 
 ## 1. Overview
 
@@ -90,8 +91,8 @@ void *ctx = zlink_ctx_new();
 void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_SPOT);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
-/* SPOT Node setup (service_name and handler are fixed at creation time) */
-void *node = zlink_spot_node_new(ctx, "spot-node", on_message, NULL);
+/* SPOT Node setup */
+void *node = zlink_spot_node_new(ctx, "spot-node");
 zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* Attach Discovery */
@@ -105,7 +106,7 @@ connected through the Registry.
 ### 3.2 Manual Mesh
 
 ```c
-void *node = zlink_spot_node_new(ctx, "spot-node", on_message, NULL);
+void *node = zlink_spot_node_new(ctx, "spot-node");
 zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* Directly connect to other nodes' PUB */
@@ -121,7 +122,7 @@ topology visibility. This is an intended limitation.
 ### 4.1 Create a unified handle
 
 ```c
-void *spot = zlink_spot_new(node, on_message, NULL);
+void *spot = zlink_spot_new(node);
 ```
 
 `zlink_spot_new()` returns a unified facade with both publish and subscribe
@@ -146,13 +147,41 @@ zlink_spot_unsubscribe(spot, "chat:room1:message");
 zlink_spot_unsubscribe(spot, "chat:room1:*");
 ```
 
-Receives are dispatched automatically through the `on_message` callback
-(see [4.4 Callback Handler](#44-callback-handler) below).
+### 4.4 Receiving Messages
 
-### 4.4 Callback Handler
+Both `SpotNode` and unified `Spot` start in **recv model**. You can either
+pull messages directly or switch once to **callback model**. The two models
+are mutually exclusive for the lifetime of the handle.
 
-Provide the callback when creating a `spot_node` or unified `spot` handle.
-Incoming messages are then dispatched automatically through that callback.
+#### Recv model (default)
+
+In recv model, pull messages with `zlink_spot_sub_recv()` (unified Spot)
+or `zlink_spot_node_recv()` (SpotNode).
+
+```c
+void *spot = zlink_spot_new(node);
+zlink_spot_subscribe(spot, "chat:room1:message");
+
+/* Pull next message */
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+char topic_buf[256];
+size_t topic_len = sizeof(topic_buf);
+int rc = zlink_spot_sub_recv(spot, &parts, &part_count, 0,
+                             topic_buf, &topic_len);
+if (rc == 0) {
+    printf("Topic: %.*s, Parts: %zu\n",
+           (int)topic_len, topic_buf, part_count);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+```
+
+#### Callback model
+
+Install the callback with `zlink_recv_spot_handler()` to make a one-way
+transition from recv model to callback model. Incoming messages are then
+dispatched automatically through that callback.
 
 ```c
 /* Define callback function */
@@ -165,10 +194,12 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 /* Register handler at spot_node creation */
-void *node = zlink_spot_node_new(ctx, "spot-node", on_message, NULL);
+void *node = zlink_spot_node_new(ctx, "spot-node");
+zlink_recv_spot_handler(node, on_message, NULL);
 
 /* Or register handler at unified spot creation */
-void *spot = zlink_spot_new(node, on_message, NULL);
+void *spot = zlink_spot_new(node);
+zlink_recv_spot_handler(spot, on_message, NULL);
 ```
 
 **Important:** A single `spot` / `spot_node` handle can be used concurrently
@@ -179,8 +210,11 @@ should be offloaded to an application queue or worker thread.
 
 **Constraints:**
 
-- The callback must be provided at `zlink_spot_node_new()` or `zlink_spot_new()` time
-- Replacing or clearing the callback after creation is not supported
+- In recv model, use `zlink_spot_node_recv()` / `zlink_spot_sub_recv()`
+- Call `zlink_recv_spot_handler()` to transition once to callback model
+- In callback model, `recv()` calls fail with `EBUSY`
+- In recv model, `send_ready_handler()` fails with `EBUSY`
+- Replacing or clearing the callback after transition is not supported
 - Callbacks are invoked on the socket dispatch / I/O path
 - Blocking work in the callback can delay other I/O
 - For slow processing, enqueue from the callback and handle it on your own thread

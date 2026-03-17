@@ -25,7 +25,9 @@ Gateway와 SPOT 노드의 서비스 등록(Discovery를 통해)을 수락하고,
 
 ## 2. Quick Start
 
-Registry를 실행하고 Discovery를 통해 Gateway를 연결하는 최소 예제:
+Registry를 실행하고 Discovery를 통해 Gateway를 연결하는 최소 예제.
+Gateway는 메시지 수신에 callback과 recv 두 모델을 지원한다
+(상세 내용은 [Gateway 가이드](07-2-gateway.ko.md)의 I/O 모델 참조).
 
 ```c
 void *ctx = zlink_ctx_new();
@@ -39,9 +41,10 @@ zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
-/* === Gateway (서버) === */
-void *server = zlink_gateway_new(ctx, "my-service",
-                                  "server-1", on_request, NULL);
+/* === Gateway (서버, callback 모드) === */
+void *server = zlink_gateway_new(ctx, "my-service");
+zlink_gateway_set_routing_id(server, "server-1", 8);
+zlink_recv_handler(server, on_request, NULL);   /* callback 모드 */
 zlink_gateway_attach_discovery(server, discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
@@ -162,18 +165,20 @@ zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
-/* 서버 Gateway */
-void *server = zlink_gateway_new(ctx, "echo-service",
-                                  "echo-server-1", on_request, NULL);
+/* 서버 Gateway (callback 모드) */
+void *server = zlink_gateway_new(ctx, "echo-service");
+zlink_gateway_set_routing_id(server, "echo-server-1", 13);
+zlink_recv_handler(server, on_request, NULL);   /* callback 모드 */
 zlink_gateway_attach_discovery(server, discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
-/* 클라이언트 Gateway (같은 프로세스) */
+/* 클라이언트 Gateway (같은 프로세스, recv 모드) */
 void *client_disc = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(client_disc, "tcp://127.0.0.1:5551");
 
-void *client = zlink_gateway_new(ctx, "echo-service",
-                                  "client-1", on_reply, NULL);
+void *client = zlink_gateway_new(ctx, "echo-service");
+zlink_gateway_set_routing_id(client, "client-1", 8);
+/* recv 모드 -- zlink_recv_handler() 호출 없음 */
 zlink_gateway_attach_discovery(client, client_disc);
 
 /* 요청 전송 */
@@ -181,6 +186,12 @@ zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "hello", 5);
 zlink_gateway_send(client, &part, 1, 0);
+
+/* 응답 수신 (recv 모드) */
+zlink_routing_id_t source_rid;
+zlink_msg_t *reply_parts = NULL;
+size_t reply_count = 0;
+zlink_gateway_recv(client, &source_rid, &reply_parts, &reply_count, 0);
 
 /* 정리 (역순) */
 zlink_gateway_destroy(&client);

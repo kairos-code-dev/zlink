@@ -54,6 +54,7 @@ typedef int zlink_fd_t;
 #define ZLINK_POLLPRI 8
 #endif
 
+#ifndef ZLINK_HAVE_POLLER
 typedef struct zlink_pollitem_t
 {
     void *socket;
@@ -61,6 +62,7 @@ typedef struct zlink_pollitem_t
     short events;
     short revents;
 } zlink_pollitem_t;
+#endif
 
 inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_)
 {

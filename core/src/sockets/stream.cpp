@@ -138,6 +138,10 @@ zlink::pipe_t *resolve_connect_event_owner (zlink::pipe_t *pipe_)
 
 zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     routing_socket_base_t (parent_, tid_, sid_),
+    _prefetched (false),
+    _routing_id_sent (false),
+    _current_in (NULL),
+    _more_in (false),
     _current_out (NULL),
     _more_out (false),
     _next_integral_routing_id (1),
@@ -157,10 +161,15 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
       apply_headroom (stream_batch_size, stream_batch_read_headroom);
     options.in_batch_size = stream_read_batch_size;
     options.out_batch_size = stream_batch_size;
+
+    _prefetched_id.init ();
+    _prefetched_msg.init ();
 }
 
 zlink::stream_t::~stream_t ()
 {
+    _prefetched_id.close ();
+    _prefetched_msg.close ();
 }
 
 zlink::stream_t::route_shard_t &
@@ -315,14 +324,57 @@ int zlink::stream_t::xsend (msg_t *msg_)
 
 int zlink::stream_t::xrecv (msg_t *msg_)
 {
-    LIBZLINK_UNUSED (msg_);
-    errno = ENOTSUP;
-    return -1;
+    if (_prefetched) {
+        if (!_routing_id_sent) {
+            const int rc = msg_->move (_prefetched_id);
+            errno_assert (rc == 0);
+            _routing_id_sent = true;
+        } else {
+            const int rc = msg_->move (_prefetched_msg);
+            errno_assert (rc == 0);
+            _prefetched = false;
+        }
+
+        _more_in = (msg_->flags () & msg_t::more) != 0;
+        if (!_more_in)
+            _current_in = NULL;
+        return 0;
+    }
+
+    pipe_t *pipe = NULL;
+    const int rc = _fq.recvpipe (msg_, &pipe);
+    if (rc != 0)
+        return -1;
+
+    zlink_assert (pipe != NULL);
+
+    if (_more_in) {
+        _more_in = (msg_->flags () & msg_t::more) != 0;
+        if (!_more_in)
+            _current_in = NULL;
+        return 0;
+    }
+
+    const int stash_rc = _prefetched_msg.move (*msg_);
+    errno_assert (stash_rc == 0);
+    _prefetched = true;
+    _routing_id_sent = true;
+    _current_in = pipe;
+
+    const blob_t &routing_id = pipe->get_routing_id ();
+    const int init_rc = msg_->init_size (routing_id.size ());
+    errno_assert (init_rc == 0);
+    if (routing_id.size () > 0)
+        memcpy (msg_->data (), routing_id.data (), routing_id.size ());
+    msg_->set_flags (msg_t::more);
+    if (_prefetched_msg.metadata ())
+        msg_->set_metadata (_prefetched_msg.metadata ());
+    return 0;
 }
 
 bool zlink::stream_t::xhas_in ()
 {
-    return false;
+    return _prefetched || _fq.has_in ();
 }
 
 bool zlink::stream_t::xhas_out ()

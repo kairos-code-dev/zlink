@@ -27,7 +27,8 @@ thread at any time after bind.
 ## 2. Quick Start
 
 Minimal setup to get a Registry running and a Gateway connected through
-Discovery:
+Discovery. Gateway supports both callback and recv models for receiving
+messages (see [Gateway Guide](07-2-gateway.md) for details on I/O models).
 
 ```c
 void *ctx = zlink_ctx_new();
@@ -41,9 +42,10 @@ zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
-/* === Gateway (server) === */
-void *server = zlink_gateway_new(ctx, "my-service",
-                                  "server-1", on_request, NULL);
+/* === Gateway (server, callback model) === */
+void *server = zlink_gateway_new(ctx, "my-service");
+zlink_gateway_set_routing_id(server, "server-1", 8);
+zlink_recv_handler(server, on_request, NULL);   /* callback model */
 zlink_gateway_attach_discovery(server, discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
@@ -164,18 +166,20 @@ zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
-/* Server Gateway */
-void *server = zlink_gateway_new(ctx, "echo-service",
-                                  "echo-server-1", on_request, NULL);
+/* Server Gateway (callback model) */
+void *server = zlink_gateway_new(ctx, "echo-service");
+zlink_gateway_set_routing_id(server, "echo-server-1", 13);
+zlink_recv_handler(server, on_request, NULL);   /* callback model */
 zlink_gateway_attach_discovery(server, discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
-/* Client Gateway (same process) */
+/* Client Gateway (same process, recv model) */
 void *client_disc = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(client_disc, "tcp://127.0.0.1:5551");
 
-void *client = zlink_gateway_new(ctx, "echo-service",
-                                  "client-1", on_reply, NULL);
+void *client = zlink_gateway_new(ctx, "echo-service");
+zlink_gateway_set_routing_id(client, "client-1", 8);
+/* recv model -- no zlink_recv_handler() call */
 zlink_gateway_attach_discovery(client, client_disc);
 
 /* Send request */
@@ -183,6 +187,12 @@ zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "hello", 5);
 zlink_gateway_send(client, &part, 1, 0);
+
+/* Pull reply (recv model) */
+zlink_routing_id_t source_rid;
+zlink_msg_t *reply_parts = NULL;
+size_t reply_count = 0;
+zlink_gateway_recv(client, &source_rid, &reply_parts, &reply_count, 0);
 
 /* Cleanup (reverse order) */
 zlink_gateway_destroy(&client);

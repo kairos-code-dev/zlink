@@ -685,15 +685,22 @@ int run_case (const std::string &lib_name_,
     const std::string server_routing_id = "perf-gateway-server-" + run_token;
     const std::string client_routing_id = "perf-gateway-client-" + run_token;
 
-    void *server_gateway =
-      zlink_gateway_new (ctx.get (), service_name.c_str (),
-                         server_routing_id.c_str (),
-                         &server_handler, NULL);
-    void *client_gateway =
-      zlink_gateway_new (ctx.get (), service_name.c_str (),
-                         client_routing_id.c_str (),
-                         &client_handler, NULL);
+    void *server_gateway = zlink_gateway_new (ctx.get (), service_name.c_str ());
+    void *client_gateway = zlink_gateway_new (ctx.get (), service_name.c_str ());
     if (!server_gateway || !client_gateway) {
+        print_fail ();
+        close_probe ();
+        cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);
+        return 1;
+    }
+    if (zlink_gateway_set_routing_id (server_gateway, server_routing_id.c_str (),
+                                      server_routing_id.size ())
+          != 0
+        || zlink_gateway_set_routing_id (client_gateway, client_routing_id.c_str (),
+                                         client_routing_id.size ())
+             != 0
+        || zlink_recv_handler (server_gateway, &server_handler, NULL) != 0
+        || zlink_recv_handler (client_gateway, &client_handler, NULL) != 0) {
         print_fail ();
         close_probe ();
         cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);

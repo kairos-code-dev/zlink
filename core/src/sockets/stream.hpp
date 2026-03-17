@@ -78,6 +78,13 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     bool stream_dispatch_owns_tls () const;
     fq_t _fq;
 
+    bool _prefetched;
+    bool _routing_id_sent;
+    zlink::msg_t _prefetched_id;
+    zlink::msg_t _prefetched_msg;
+    zlink::pipe_t *_current_in;
+    bool _more_in;
+
     zlink::pipe_t *_current_out;
     bool _more_out;
 

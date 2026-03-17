@@ -388,9 +388,11 @@ internal static class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_gateway_new(IntPtr ctx,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string? serviceName,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string? routingId,
-        IntPtr handler, IntPtr userdata);
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string? serviceName);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_gateway_set_routing_id(IntPtr gateway,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string routingId, nuint size);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_gateway_attach_discovery(IntPtr gateway,
@@ -453,7 +455,8 @@ internal static class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static unsafe extern int zlink_gateway_recv(IntPtr gateway,
-        out IntPtr parts, out nuint partCount, int flags, byte* serviceName);
+        out ZlinkRoutingId routingId, out IntPtr parts, out nuint partCount,
+        int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_gateway_set_lb_strategy(IntPtr gateway,
@@ -573,8 +576,7 @@ internal static class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_spot_node_new(IntPtr ctx,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string? serviceName,
-        IntPtr handler, IntPtr userdata);
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string? serviceName);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_destroy(ref IntPtr node);

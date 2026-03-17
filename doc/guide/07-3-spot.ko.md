@@ -2,8 +2,9 @@
 
 # SPOT 토픽 PUB/SUB (위치투명 발행/구독)
 
-> 이 가이드는 callback-only direct-dispatch surface 기준으로 작성되었다.
-> 모든 수신은 생성 시 등록한 handler callback으로 dispatch된다.
+> 이 가이드는 recv-first public surface 기준으로 작성되었다.
+> `SpotNode`와 unified `Spot`은 recv 모드로 시작하고,
+> `zlink_recv_spot_handler()`로 callback 모드로 일방 전환된다.
 
 ## 1. 개요
 
@@ -90,8 +91,8 @@ void *ctx = zlink_ctx_new();
 void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_SPOT);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
-/* SPOT Node 설정 (service_name과 handler를 생성 시점에 고정) */
-void *node = zlink_spot_node_new(ctx, "spot-node", on_message, NULL);
+/* SPOT Node 설정 */
+void *node = zlink_spot_node_new(ctx, "spot-node");
 zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* Discovery 연결 */
@@ -104,7 +105,7 @@ Discovery가 attach되면 Registry를 통해 자동으로 peer를 발견하고 �
 ### 3.2 수동 Mesh
 
 ```c
-void *node = zlink_spot_node_new(ctx, "spot-node", on_message, NULL);
+void *node = zlink_spot_node_new(ctx, "spot-node");
 zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* 다른 노드의 PUB에 직접 연결 */
@@ -120,7 +121,7 @@ zlink_spot_node_connect_peer_pub(node, "tcp://node3:9000");
 ### 4.1 생성
 
 ```c
-void *spot = zlink_spot_new(node, on_message, NULL);
+void *spot = zlink_spot_new(node);
 ```
 
 `zlink_spot_new()`는 publish와 subscribe를 함께 가진 unified facade를
@@ -145,12 +146,40 @@ zlink_spot_unsubscribe(spot, "chat:room1:message");
 zlink_spot_unsubscribe(spot, "chat:room1:*");
 ```
 
-수신은 `on_message` callback으로 자동 dispatch된다 (아래 [4.4 콜백 핸들러](#44-콜백-핸들러-handler) 참조).
+### 4.4 메시지 수신
 
-### 4.4 콜백 핸들러 (Handler)
+`SpotNode`와 unified `Spot` 모두 **recv 모드**로 시작한다. 메시지를 직접
+수신하거나, **callback 모드**로 한 번 전환할 수 있다. 두 모델은 handle 수명
+동안 상호 배타적이다.
 
-`spot` 또는 `spot_node`를 생성할 때 callback을 함께 넘기면, 이후 수신
-메시지는 그 callback으로 자동 dispatch된다.
+#### Recv 모드 (기본)
+
+recv 모드에서는 `zlink_spot_sub_recv()` (unified Spot) 또는
+`zlink_spot_node_recv()` (SpotNode)로 메시지를 직접 수신한다.
+
+```c
+void *spot = zlink_spot_new(node);
+zlink_spot_subscribe(spot, "chat:room1:message");
+
+/* 다음 메시지 수신 */
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+char topic_buf[256];
+size_t topic_len = sizeof(topic_buf);
+int rc = zlink_spot_sub_recv(spot, &parts, &part_count, 0,
+                             topic_buf, &topic_len);
+if (rc == 0) {
+    printf("토픽: %.*s, 파트: %zu\n",
+           (int)topic_len, topic_buf, part_count);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+```
+
+#### Callback 모드
+
+`zlink_recv_spot_handler()`를 호출하면 recv 모드에서 callback 모드로
+일방 전환된다. 이후 수신 메시지는 설치된 callback으로 자동 dispatch된다.
 
 ```c
 /* 콜백 함수 정의 */
@@ -163,10 +192,12 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 /* spot_node 생성 시 handler 등록 */
-void *node = zlink_spot_node_new(ctx, "spot-node", on_message, NULL);
+void *node = zlink_spot_node_new(ctx, "spot-node");
+zlink_recv_spot_handler(node, on_message, NULL);
 
 /* 또는 unified spot 생성 시 handler 등록 */
-void *spot = zlink_spot_new(node, on_message, NULL);
+void *spot = zlink_spot_new(node);
+zlink_recv_spot_handler(spot, on_message, NULL);
 ```
 
 **중요:** 하나의 `spot` / `spot_node` handle을 여러 스레드에서 동시에
@@ -177,8 +208,11 @@ subscribe/unsubscribe/attach/peer connect/monitor는 runtime control path로
 
 **제약 사항:**
 
-- callback은 `zlink_spot_node_new()` 또는 `zlink_spot_new()` 호출 시점에 제공해야 한다
-- 생성 후 callback 교체나 해제는 지원하지 않는다
+- recv 모드에서는 `zlink_spot_node_recv()` / `zlink_spot_sub_recv()`를 사용한다
+- callback 모드 전환은 `zlink_recv_spot_handler()`로 한 번만 수행한다
+- callback 모드에서 `recv()` 호출은 `EBUSY`로 실패한다
+- recv 모드에서 `send_ready_handler()`는 `EBUSY`로 실패한다
+- 전환 후 callback 교체나 해제는 지원하지 않는다
 - 콜백은 소켓 dispatch / I/O 경로에서 직접 호출된다
 - 콜백에서 블로킹 작업을 수행하면 다른 I/O 진행에 영향을 줄 수 있다
 - 느린 처리가 필요하면 콜백 안에서 사용자 queue로 넘기고 별도 thread에서 처리한다

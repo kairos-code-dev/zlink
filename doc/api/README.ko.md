@@ -19,7 +19,6 @@ zlink C 라이브러리는 경량 I/O 스레드와 락프리 큐를 기반으로
 | Registry | [registry.ko.md](registry.ko.md) | 서비스 레지스트리 생성, 구성, 클러스터링 | 9 |
 | Discovery | [discovery.ko.md](discovery.ko.md) | 서비스 디스커버리, Registry 연결, TLS, 라우팅 ID | 6 |
 | Gateway | [gateway.ko.md](gateway.ko.md) | 서비스 바인딩 로드밸런싱 요청/응답 | 17 |
-| Receiver (제거됨) | [receiver.ko.md](receiver.ko.md) | Gateway로 통합됨 — 마이그레이션 가이드 참조 | - |
 | SPOT | [spot.ko.md](spot.ko.md) | 토픽 기반 PUB/SUB 노드, 퍼블리셔, 서브스크라이버 | 27 |
 | 프록시 & 유틸리티 | [polling.ko.md](polling.ko.md) | 프록시 헬퍼 및 기능 조회 | 3 |
 | Utilities | [utilities.ko.md](utilities.ko.md) | 타이머, 스레드, 스톱워치, 아토믹, 기능 조회 | ~20 |

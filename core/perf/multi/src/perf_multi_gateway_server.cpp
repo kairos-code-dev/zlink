@@ -485,11 +485,15 @@ int run_server_benchmark(const std::string &lib_name,
         return 1;
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
-    void *gateway = zlink_gateway_new(ctx.get(), k_service_name,
-                                      k_server_routing_id,
-                                      &gateway_server_handler, NULL);
+    void *gateway = zlink_gateway_new(ctx.get(), k_service_name);
     if (!gateway)
         return 1;
+    if (zlink_gateway_set_routing_id(gateway, k_server_routing_id,
+                                     std::strlen(k_server_routing_id)) != 0
+        || zlink_recv_handler(gateway, &gateway_server_handler, NULL) != 0) {
+        zlink_gateway_destroy(&gateway);
+        return 1;
+    }
 
     if (!apply_gateway_options(gateway, settings)
         || zlink_gateway_send_ready_handler(gateway,

@@ -31,9 +31,23 @@
   - 실패 의미
 - 실제 오류는 즉시 `fail` 처리한다.
 - `EAGAIN`은 오류가 아니라 flow-control 상태로 취급한다.
-- perf 측정용 recv 경로는 callback-only를 원칙으로 한다.
-- active/warmup 등 실제 측정 recv 경로에서는 `zlink_recv()` /
-  `zlink_msg_recv()` 같은 동기 recv API를 사용하지 않는다.
+- perf 측정용 I/O 경로는 두 가지 모델을 지원한다.
+  - **recv 모델** (기본, `--recv recv`):
+    - recv: poller `POLLIN` readiness 감지 → 비동기 `zlink_recv()` /
+      `zlink_msg_recv()` drain 루프 (react 방식).
+    - send backpressure: poller `POLLOUT` readiness 감지 → writable 상태에서만
+      send 수행.
+    - poller가 recv/send 양쪽의 readiness 제어를 담당한다.
+  - **callback 모델** (`--recv callback`):
+    - recv: `zlink_recv_handler()` / `zlink_recv_spot_handler()` 등록 →
+      라이브러리가 I/O thread에서 callback dispatch.
+    - send backpressure: `zlink_socket_send_ready_handler()` /
+      `zlink_spot_send_ready_handler()` 등록 → writable transition 시
+      callback으로 통지.
+    - poller는 사용하지 않는다.
+- 실행 스크립트의 `--recv` 옵션으로 모델을 선택한다 (기본: `recv`,
+  `--recv callback` 지정 시 callback 모델).
+- 같은 측정 구간에서 두 모델의 recv/send 메커니즘을 섞지 않는다.
 - setup/handshake 단계의 bounded validation 1회는 허용하되, 측정 구간으로
   들어가기 전에 종료되어야 한다.
 - hot loop 안에서는 아래를 금지한다.
@@ -184,9 +198,10 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 
 | 항목 | 규칙 |
 |------|------|
-| 파일명 형식 | `perf_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt` |
+| 파일명 형식 | `perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt` |
 | 날짜 디렉터리 | 사용하지 않음 (파일명에 날짜/시간 포함) |
 | `<platform>` | `linux`, `windows`, `macos` |
+| `<recv_mode>` | `recv`, `callback` |
 | `<tag>` | `--results-tag` 옵션으로 지정 (선택) |
 
 ### 2.2 보존 정책
@@ -267,6 +282,9 @@ core/perf/run_benchmarks_multi.sh --pattern ALL
 # core: 특정 패턴만
 core/perf/run_benchmarks.sh --pattern PAIR,PUBSUB
 
+# core: callback 모델로 실행
+core/perf/run_benchmarks.sh --pattern PAIR --recv callback
+
 # core: 태그 추가
 core/perf/run_benchmarks.sh --results-tag v1.5.0
 
@@ -290,7 +308,10 @@ bindings/python/perf/multi/run_benchmarks.sh --pattern ALL
 | `--results-tag NAME` | 결과 파일명 태그 | 없음 |
 | `--msg-sizes LIST` | 메시지 크기 목록 | suite별 기본값 |
 | `--transports LIST` | transport 목록 | suite별 기본값 |
+| `--recv MODE` | recv 모델 선택: `recv` (기본) 또는 `callback` | `recv` |
 
+- `--recv` 옵션은 측정 구간의 수신 경로를 결정한다. `recv`는 동기 recv +
+  poller 기반, `callback`은 recv handler callback 기반이다.
 - suite별 고유 옵션(`--clients` 등)은 개별 스크립트 호출 시 전달한다.
 
 ---
@@ -309,6 +330,7 @@ bindings/python/perf/multi/run_benchmarks.sh --pattern ALL
 - patterns: PAIR, GATEWAY
 - transports: tcp, tls, ws, wss
 - msg_sizes: 64, 256, 1024, 65536, 131072, 262144
+- recv_mode: recv
 - pin_cpu: off
 
 ===============================================================================
@@ -324,6 +346,7 @@ bindings/python/perf/multi/run_benchmarks.sh --pattern ALL
 
 - **실행 옵션 헤더 + TABLE**을 저장한다.
 - `## Effective Options (start)` / `## Effective Options (result)` 섹션은 실행 시 사용된 옵션을 불릿 목록으로 출력한다. report/ 파일과 stdout 모두에 포함해야 한다.
+- `recv_mode` 항목은 필수이며, 실제 실행에 사용된 `--recv` 값(`recv` 또는 `callback`)을 그대로 기록해야 한다.
 
 ### 4.2 RESULT line 형식
 
@@ -360,7 +383,8 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 결과는 항상 `<suite>/report/`에 저장된다 (complete/partial 무관).
 
-- 파일명 형식: `perf_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt`
+- 파일명 형식: `perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt`
+- `<recv_mode>`는 실제 실행에 사용된 `--recv` 값이며 `recv` 또는 `callback`이다.
 - 완료 판정 기준: `expected == actual` (throughput + bandwidth + latency + latency_p95 + latency_p99 RESULT line 기준, 조합당 5줄).
 
 ---
@@ -377,6 +401,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 - patterns: PAIR, GATEWAY
 - transports: tcp, tls, ws, wss
 - msg_sizes: 64, 256, 1024, 65536, 131072, 262144
+- recv_mode: recv
 - pin_cpu: off
 
 ===============================================================================
@@ -555,13 +580,15 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 - **stderr 기반 자동 분류**: 바이너리 stderr에 `protocol not supported` 문자열이 포함되면 multi 실행 엔진(`run_comparison.py`)이 해당 조합을 `unsupported`로 자동 분류한다. single 엔진(`single/run_comparison.py`)은 stderr 문자열 기반 분류를 수행하지 않으며 stdout `UNSUPPORTED` 토큰만 인식한다.
 - 실패를 `UNSUPPORTED`로 위장하면 회귀(regression)가 감지되지 않으므로 엄격히 금지한다.
 
-### 8.5 코어 로직 인라인 원칙
+### 8.5 공통화 경계 원칙
 
-각 벤치마크 소스 파일은 해당 패턴의 **zlink API 사용법을 명시적으로 보여주는 샘플** 역할을 해야 한다. 테스트 파일 하나만 열면 해당 패턴의 소켓 사용 흐름을 이해할 수 있어야 한다.
+perf 구현은 측정 의미와 정책 계약을 유지하는 범위에서 공통화를 적극 허용한다.
+기존의 "패턴별 흐름이 반드시 각 파일에 인라인으로 보여야 한다" 제약은 두지
+않는다.
 
-#### 공유 허용 (유틸리티/인프라)
+#### 공통화 권장 대상
 
-아래 항목은 공통 헤더로 분리하여 공유할 수 있다.
+아래 항목은 공통 헤더/공통 소스/공통 runner helper로 수렴하는 것을 권장한다.
 
 | 항목 | 설명 |
 |------|------|
@@ -569,11 +596,22 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | 환경 변수 해석 | `resolve_bench_msg_sizes`, `resolve_multi_bench_settings` 등 |
 | RESULT line 포맷팅/출력 | `RESULT,<lib>,<pattern>,...` 형식 출력 |
 | 메트릭 수집/보고 | CPU%, 메모리 측정 및 RESULT line 출력 |
+| 메트릭 계산/보정 | throughput, bandwidth, latency triplet 보정 |
+| 표 출력 포맷 | markdown table, `Effective Options`, failure summary |
 | TLS 설정 | `setup_tls_client`, `setup_tls_server` |
 | Context RAII | `ctx_guard_t` 등 리소스 관리 wrapper |
 | 타이머/스톱워치 | `stopwatch_t`, 시간 측정 유틸리티 |
 | Monitor 유틸리티 | connect-ready 감지, `wait_connect_ready_count` |
 | transport 가용성 검사 | `transport_available()` |
+| mode별 공통 엔진 | `recv`/`callback` 모드의 공통 backpressure 및 drain helper |
+
+#### 공통화 허용 기준
+
+- 공통화의 목적은 코드 이동이 아니라 복잡도 감소여야 한다.
+- single/multi가 같은 메트릭/출력 계약을 쓰도록 runner surface를 공통화한다.
+- mode별 계약(`recv + poller`, `recv_handler + send_ready_handler`)이 보존되면
+  측정 코어 로직도 공통 helper/module로 올릴 수 있다.
+- pattern별 차이는 config, topology, role wiring 정도로 축소하는 방향을 허용한다.
 
 #### STREAM client 예외 (검증 인프라)
 
@@ -581,75 +619,84 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 **벤치마크 대상 라이브러리 자체가 아니라 검증 인프라**로 간주한다.
 
 - STREAM client 공통 구현은 `common/streamclient/`에 모아둘 수 있다.
-- 각 pattern 소스(`multi/src`)는 해당 client를 호출하는
-  엔트리/실행 흐름을 유지해야 한다.
 - 이 예외는 STREAM 계열 client 인프라에만 적용한다.
 - STREAM 계열은 multi suite에서만 테스트하므로 single suite에는 해당 없다.
 
-#### 인라인 필수 (코어 로직) — server 바이너리
+---
 
-아래 항목은 **server 바이너리의 각 소스 파일 내에 명시적으로 존재**해야 한다. 공통 헤더/공통 소스의 함수 한 줄로 위임하여 코어 로직을 숨기는 것을 금지한다.
+## 8.6 리팩토링 원칙 (공통)
 
-| 항목 | 설명 |
-|------|------|
-| 소켓 생성 | 어떤 소켓 타입을 몇 개 생성하는지 명시 |
-| 소켓 옵션 설정 | `ROUTING_ID`, `SUBSCRIBE` 등 패턴 고유 옵션 |
-| bind / connect | 서버의 bind, 클라이언트의 connect 호출 |
-| send / recv 루프 | 메시지 교환 흐름 (echo, relay, one-way 등) |
-| phase 제어 | warmup → settle(optional) → active 시퀀스 |
+> 참조:
+> [`doc/plan/refactor/00-core-system-posd-refactor-plan.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/refactor/00-core-system-posd-refactor-plan.ko.md),
+> [`AGENTS.md`](/home/hep7/project/kairos/zlink/AGENTS.md)
 
-#### multi client 헬퍼 위임 허용
+perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 원칙을 공통으로
+적용한다. `core/perf/README*.md`는 사용 방법만 설명하며, 설계/리팩토링 기준은
+본 정책 문서가 source of truth다.
 
-multi client 바이너리는 공통 헬퍼(`perf_multi_client_helpers.hpp`)의 `run_multi_echo_client_benchmark` / `run_multi_oneway_client_benchmark` 함수로 위임하는 것을 허용한다. client 측 소켓 연결/측정 로직은 패턴 간 구조적 차이가 적어 공통화가 실질적이며, 각 client 소스는 패턴 상수(소켓 타입, routing id, echo/oneway 모드)를 명시하여 호출한다.
+### 8.6.1 성능 비회귀 우선
 
-#### 동일 파일 Extract Method 허용
+- 구조 변경은 single/multi 기준 성능을 저하시켜서는 안 된다.
+- 각 리팩토링 단계는 full single + multi perf 실행으로 기준선 비회귀를 확인한 뒤
+  다음 단계로 진행한다.
+- 코드 품질이 개선되더라도 throughput/latency가 회귀하면 해당 변경을 수용하지
+  않는다.
 
-- 가독성과 유지보수를 위해 **동일 파일 안에서 함수 분리(extract method)** 를 수행하는 것은 허용되며 권장한다.
-- 예: `run_client_benchmark()`, `run_single_size_case()`, `run_echo_duration()`처럼 의미 단위로 분리.
-- 단, 파일을 열었을 때 패턴별 코어 흐름(소켓 생성/연결/송수신/phase)이 추적 가능해야 하며 외부 공용 함수 한 줄 호출로 숨기면 안 된다.
+### 8.6.2 복잡도 감소가 목적이다
 
-#### 위반 예시
+- 리팩토링은 코드를 옮기는 작업이 아니라 전체 복잡도를 줄이는 작업이어야 한다.
+- 얕은 wrapper, pass-through 계층, config flag 기반 분기로 간접비만 늘리는
+  구조를 제거한다.
+- 각 계층은 단순 위임이 아니라 서로 다른 추상화를 제공해야 한다.
 
-```cpp
-// 금지: 9줄 stub — 코어 로직이 전혀 보이지 않음
-int main (int argc, char **argv)
-{
-    const auto cfg = multi_pattern_config_for_name ("MULTI_DEALER_DEALER");
-    return run_multi_client_main (argc, argv, cfg);  // 모든 로직이 숨어있음
-}
-```
+### 8.6.3 깊은 모듈과 명확한 ownership
 
-#### 준수 예시 (구조)
+- 넓은 호출 표면의 작은 함수 다발보다, 좁은 인터페이스와 풍부한 내부를 가진
+  모듈을 선호한다.
+- 소켓, 컨텍스트, 타이머, 파일 디스크립터 등 모든 리소스는 정확히 하나의
+  authoritative close owner를 가져야 한다.
+- lifecycle, ownership, invariant는 몇 문장으로 설명 가능해야 한다.
 
-```cpp
-// 권장: 소켓 생성, 연결, send/recv 루프가 파일 내에 명시적으로 존재
-int main (int argc, char **argv)
-{
-    // ... CLI 파싱 (공유 유틸 사용 가능) ...
+### 8.6.4 정보 은닉
 
-    // 소켓 생성 — DEALER 타입 명시
-    void *socket = zlink_socket (ctx, ZLINK_DEALER);
-    zlink_setsockopt (socket, ZLINK_ROUTING_ID, id, id_len);
-    zlink_connect (socket, endpoint);
+- benchmark 바이너리는 라이브러리 내부 구조에 의존하지 않아야 한다.
+- 패턴별 측정 의미와 프로세스 관리, 결과 포맷팅, 파일 I/O 같은 메커니즘을
+  분리한다.
+- phase machinery나 transport 내부를 패턴 수준 측정 코드에 노출하지 않는다.
 
-    // warmup phase
-    for (...) { zlink_send (...); zlink_recv (...); }
+### 8.6.5 retry / workaround / 인위적 흐름 제어 금지
 
-    // measure phase — throughput 측정
-    stopwatch.start ();
-    for (...) { zlink_send (...); zlink_recv (...); count++; }
-    double throughput = count / elapsed;
+- 스크립트와 바이너리에 retry 로직을 넣지 않는다.
+- inflight/outstanding 제한 옵션으로 측정 의미를 왜곡하지 않는다.
+- 실패를 `UNSUPPORTED`나 우회 로직으로 숨기지 않는다.
+- 실패는 실제 신호로 취급하고 근본 원인을 수정한다.
 
-    // post-active cleanup / process teardown
+### 8.6.6 죽은 코드와 레거시 옵션 정리
 
-    // 결과 출력 (공유 유틸 사용 가능)
-    print_result (lib, pattern, transport, size, throughput, latency);
-}
-```
+- 미사용 코드, retry 관련 변수, inflight 관련 변수, orphan helper는
+  리팩토링 과정에서 제거한다.
+- compatibility shim, `_unused` 류의 이름 변경, `// removed` 주석으로
+  잔존물을 남기지 않는다.
 
-- **이유**: 벤치마크 소스 파일은 zlink API의 패턴별 사용법을 보여주는 레퍼런스 샘플 역할을 한다. 코어 로직이 공통 헤더에 숨어있으면 파일을 열어도 해당 패턴의 동작 방식을 이해할 수 없다.
-- config 플래그 기반 분기로 모든 패턴을 하나의 공통 함수에서 처리하는 방식을 금지한다.
-- 패턴 간 코드 중복이 발생하더라도 각 파일의 **가독성과 독립성**을 우선한다.
+### 8.6.7 구조로 오용을 방지한다
+
+- 정책 문서나 런타임 검사에만 의존하지 말고 타입과 API 설계로 오용을 막는다.
+- 예: RAII guard, enum-typed phase state, compile-time pattern/transport
+  validation.
+
+### 8.6.8 변경 증폭을 줄인다
+
+- 새 pattern 추가는 새 소스 파일과 transport matrix entry 정도로 끝나야 한다.
+- 새 transport 추가가 pattern-level 코드를 건드리게 만들면 경계가 잘못된 것이다.
+- 한 곳의 변경이 여러 곳을 강제로 수정하게 만들면 추상화를 다시 설계해야 한다.
+
+### 8.6.9 단계별 게이트
+
+- 각 리팩토링 단계는 아래 게이트를 통과해야 한다.
+  1. 기능 게이트: `run_test_lanes.sh`
+  2. 성능 게이트: full single + multi perf 실행, 회귀 없음
+  3. hot-path 게이트: 측정 경로에 새 lock/alloc/log 없음
+- 현재 단계 게이트를 통과하기 전에는 다음 단계를 시작하지 않는다.
 
 ---
 

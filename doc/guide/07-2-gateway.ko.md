@@ -5,7 +5,7 @@
 ## 1. 개요
 
 Gateway는 Discovery 기반으로 서비스를 자동 발견하고, 로드밸런싱된 메시지
-전송과 직접 콜백 수신을 지원하는 통합 서비스 핸들이다. 하나의 Gateway 핸들이
+전송과 recv/callback 두 모델의 수신을 지원하는 통합 서비스 핸들이다. 하나의 Gateway 핸들이
 클라이언트(송신)와 서버(수신) 역할을 모두 수행할 수 있다.
 
 > **명칭에 대하여**: Gateway는 특정 서비스에 대한 접근점(entry point)이자
@@ -21,7 +21,14 @@ runtime에 호출 가능한 control path이며, `destroy`는 fail-fast lifecycle
 
 ## 2. Gateway 생성
 
-Gateway는 생성 시점에 서비스 이름, 라우팅 ID, 수신 핸들러를 고정한다.
+Gateway는 생성 시점에 서비스 이름만 고정한다. routing id와 I/O 모델 설정은
+후속 단계로 분리된다.
+
+Gateway는 **recv 모드**로 시작한다. `zlink_gateway_recv()`로 메시지를
+직접 수신하거나, `zlink_recv_handler()`를 호출해서 **callback 모드**로
+일방 전환할 수 있다. 전환은 되돌릴 수 없다.
+
+### Callback 모드
 
 ```c
 /* 수신 핸들러 정의 */
@@ -36,14 +43,25 @@ void on_message(const zlink_routing_id_t *source_rid,
     /* parts는 핸들러 반환 후 자동 정리됨 */
 }
 
-void *gateway = zlink_gateway_new(ctx, "payment-service",
-                                   "gateway-1", on_message, NULL);
+void *gateway = zlink_gateway_new(ctx, "payment-service");
+zlink_gateway_set_routing_id(gateway, "gateway-1", 9);
+zlink_recv_handler(gateway, on_message, NULL);
+```
+
+### Recv 모드
+
+```c
+void *gateway = zlink_gateway_new(ctx, "payment-service");
+zlink_gateway_set_routing_id(gateway, "gateway-1", 9);
+/* 콜백 없음 -- recv 모드 유지, zlink_gateway_recv()로 수신 */
 ```
 
 ## 3. 서버 (수신) 측 설정
 
 서버 역할을 하려면 Gateway에 endpoint를 bind하고, Discovery를 통해
-Registry에 등록한다.
+Registry에 등록한다. 어떤 I/O 모델이든 서버 측 수신에 사용할 수 있다.
+
+### Callback 모드 서버
 
 ```c
 void *ctx = zlink_ctx_new();
@@ -53,8 +71,9 @@ void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Gateway 생성 (수신 핸들러 등록) */
-void *server = zlink_gateway_new(ctx, "payment-service",
-                                  "payment-server-1", on_request, NULL);
+void *server = zlink_gateway_new(ctx, "payment-service");
+zlink_gateway_set_routing_id(server, "payment-server-1", 16);
+zlink_recv_handler(server, on_request, NULL);
 
 /* Discovery 연결 */
 zlink_gateway_attach_discovery(server, discovery);
@@ -63,7 +82,34 @@ zlink_gateway_attach_discovery(server, discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 ```
 
+### Recv 모드 서버
+
+```c
+void *ctx = zlink_ctx_new();
+
+void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
+
+void *server = zlink_gateway_new(ctx, "payment-service");
+zlink_gateway_set_routing_id(server, "payment-server-1", 16);
+/* recv 모드 유지 -- zlink_recv_handler() 호출 없음 */
+
+zlink_gateway_attach_discovery(server, discovery);
+zlink_gateway_bind(server, "tcp://*:5555");
+
+/* 애플리케이션 루프에서 메시지를 직접 수신 */
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+while (zlink_gateway_recv(server, &source_rid, &parts, &part_count, 0) == 0) {
+    /* 요청 처리 후 응답 */
+    zlink_gateway_send_rid(server, &source_rid, parts, part_count, 0);
+}
+```
+
 ## 4. 클라이언트 (송신) 측 설정
+
+### Callback 모드 클라이언트
 
 ```c
 /* Discovery 설정 */
@@ -71,13 +117,28 @@ void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Gateway 생성 */
-void *client = zlink_gateway_new(ctx, "payment-service",
-                                  "client-1", on_reply, NULL);
+void *client = zlink_gateway_new(ctx, "payment-service");
+zlink_gateway_set_routing_id(client, "client-1", 8);
+zlink_recv_handler(client, on_reply, NULL);
 
 /* Discovery 연결 */
 zlink_gateway_attach_discovery(client, discovery);
 
 /* 로드밸런싱 설정 */
+zlink_gateway_set_lb_strategy(client, ZLINK_GATEWAY_LB_ROUND_ROBIN);
+```
+
+### Recv 모드 클라이언트
+
+```c
+void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
+
+void *client = zlink_gateway_new(ctx, "payment-service");
+zlink_gateway_set_routing_id(client, "client-1", 8);
+/* recv 모드 유지 */
+
+zlink_gateway_attach_discovery(client, discovery);
 zlink_gateway_set_lb_strategy(client, ZLINK_GATEWAY_LB_ROUND_ROBIN);
 ```
 
@@ -102,15 +163,38 @@ zlink_gateway_send_rid(client, &target_rid, &part, 1, 0);
 
 ### 5.3 메시지 수신
 
-수신은 생성 시 등록한 핸들러 콜백으로 자동 dispatch된다. 별도의 `recv()` 호출은 없다.
+Gateway는 recv 모드로 시작한다. `zlink_gateway_recv()`로 직접 수신하거나,
+`zlink_recv_handler()`를 설치해서 callback 모드로 한 번 전환할 수 있다.
+두 모델은 handle 수명 동안 상호 배타적이다.
+
+#### Recv 모드 (기본)
+
+```c
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+int rc = zlink_gateway_recv(client, &source_rid, &parts, &part_count, 0);
+if (rc == 0) {
+    printf("응답: %.*s\n",
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+```
+
+#### Callback 모드
 
 ```c
 void on_reply(const zlink_routing_id_t *source_rid,
               zlink_msg_t *parts, size_t part_count,
               void *userdata)
 {
-    /* 응답 처리 */
+    /* 응답 처리 -- parts ownership은 콜백이 소비 */
 }
+
+/* recv 모드에서 callback 모드로 일방 전환 */
+zlink_recv_handler(client, on_reply, NULL);
 ```
 
 ## 6. 로드밸런싱
@@ -167,7 +251,9 @@ Gateway는 "모든 API가 같은 비용 모델"인 것은 아니지만, 공개 h
 
 ```c
 /* Gateway는 thread-safe하므로 여러 스레드에서 공유 가능 */
-void *gateway = zlink_gateway_new(ctx, "my-service", "gw-1", on_reply, NULL);
+void *gateway = zlink_gateway_new(ctx, "my-service");
+zlink_gateway_set_routing_id(gateway, "gw-1", 4);
+zlink_recv_handler(gateway, on_reply, NULL);
 zlink_gateway_attach_discovery(gateway, discovery);
 
 /* 워커 스레드 함수 */
@@ -234,6 +320,8 @@ Gateway는 Discovery 이벤트를 받아 자동으로 피어를 연결/해제한
 
 ## 9. End-to-End 예제
 
+### Callback 모드
+
 ```c
 void *ctx = zlink_ctx_new();
 
@@ -245,8 +333,9 @@ zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
 
-void *server = zlink_gateway_new(ctx, "echo-service",
-                                  "echo-server-1", on_request, NULL);
+void *server = zlink_gateway_new(ctx, "echo-service");
+zlink_gateway_set_routing_id(server, "echo-server-1", 13);
+zlink_recv_handler(server, on_request, NULL);
 zlink_gateway_attach_discovery(server, server_discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
@@ -254,8 +343,9 @@ zlink_gateway_bind(server, "tcp://*:5555");
 void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
 
-void *client = zlink_gateway_new(ctx, "echo-service",
-                                  "client-1", on_reply, NULL);
+void *client = zlink_gateway_new(ctx, "echo-service");
+zlink_gateway_set_routing_id(client, "client-1", 8);
+zlink_recv_handler(client, on_reply, NULL);
 zlink_gateway_attach_discovery(client, client_discovery);
 
 /* gateway monitor로 route readiness 대기 */
@@ -278,11 +368,63 @@ zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
 ```
 
+### Recv 모드
+
+```c
+void *ctx = zlink_ctx_new();
+
+/* === Registry === */
+void *registry = zlink_registry_new(ctx);
+zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
+
+/* === Server (recv 모드) === */
+void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
+
+void *server = zlink_gateway_new(ctx, "echo-service");
+zlink_gateway_set_routing_id(server, "echo-server-1", 13);
+zlink_gateway_attach_discovery(server, server_discovery);
+zlink_gateway_bind(server, "tcp://*:5555");
+
+/* === Client (recv 모드) === */
+void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
+
+void *client = zlink_gateway_new(ctx, "echo-service");
+zlink_gateway_set_routing_id(client, "client-1", 8);
+zlink_gateway_attach_discovery(client, client_discovery);
+
+/* gateway monitor로 route readiness 대기 */
+
+/* 요청 전송 */
+zlink_msg_t part;
+zlink_msg_init_size(&part, 5);
+memcpy(zlink_msg_data(&part), "hello", 5);
+zlink_gateway_send(client, &part, 1, 0);
+
+/* 응답 수신 */
+zlink_routing_id_t source_rid;
+zlink_msg_t *reply_parts = NULL;
+size_t reply_count = 0;
+zlink_gateway_recv(client, &source_rid, &reply_parts, &reply_count, 0);
+
+/* 정리 */
+zlink_gateway_destroy(&client);
+zlink_discovery_destroy(&client_discovery);
+zlink_gateway_destroy(&server);
+zlink_discovery_destroy(&server_discovery);
+zlink_registry_destroy(&registry);
+zlink_ctx_term(ctx);
+```
+
 ## 10. API 요약
 
 | 함수 | 설명 |
 |------|------|
-| `zlink_gateway_new(ctx, service_name, routing_id, handler, userdata)` | Gateway 생성 |
+| `zlink_gateway_new(ctx, service_name)` | recv 모드 Gateway 생성 |
+| `zlink_gateway_set_routing_id(gateway, data, size)` | 첫 bind/connect 전 routing id 설정 |
+| `zlink_recv_handler(gateway, fn, userdata)` | callback 모드로 일방 전환 |
+| `zlink_gateway_recv(gateway, &rid, &parts, &count, flags)` | recv 모드에서 메시지 수신 (callback 모드에서 `EBUSY`) |
 | `zlink_gateway_attach_discovery(gateway, discovery)` | Discovery 연결 |
 | `zlink_gateway_bind(gateway, endpoint)` | 수신 endpoint bind (서버 역할) |
 | `zlink_gateway_send(gateway, parts, count, flags)` | 멀티파트 메시지 전송 (LB 적용) |

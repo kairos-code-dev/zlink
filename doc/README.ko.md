@@ -62,7 +62,6 @@
 | [registry.ko.md](api/registry.ko.md) | Registry API |
 | [discovery.ko.md](api/discovery.ko.md) | Discovery API |
 | [gateway.ko.md](api/gateway.ko.md) | Gateway API |
-| [receiver.ko.md](api/receiver.ko.md) | Receiver API |
 | [spot.ko.md](api/spot.ko.md) | SPOT PUB/SUB API |
 | [polling.ko.md](api/polling.ko.md) | Polling 및 Proxy |
 | [utilities.ko.md](api/utilities.ko.md) | 유틸리티 (타이머, 스레드 등) |

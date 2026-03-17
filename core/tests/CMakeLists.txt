@@ -38,12 +38,10 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_reconnect_options
   ${INTEGRATION_TEST_ROOT}/test_pubsub_filter_xpub
   ${INTEGRATION_TEST_ROOT}/test_router_multiple_dealers
-  # TODO: test_stream_socket needs rewrite (uses removed zlink_poll / zlink_monitor_recv)
-  #test_stream_socket
+  ${INTEGRATION_TEST_ROOT}/test_stream_socket
   ${INTEGRATION_TEST_ROOT}/test_stream_threadsafe
   ${INTEGRATION_TEST_ROOT}/test_stream_send_blocking_wakeup
-  # TODO: test_stream_fastpath needs rewrite (uses removed zlink_poll / zlink_monitor_recv)
-  #test_stream_fastpath
+  ${INTEGRATION_TEST_ROOT}/test_stream_fastpath
   ${INTEGRATION_TEST_ROOT}/test_transport_matrix
   ${INTEGRATION_TEST_ROOT}/routing-id/test_router_auto_id_format
   ${INTEGRATION_TEST_ROOT}/routing-id/test_stream_routing_id_size
@@ -402,6 +400,12 @@ endif()
 if(TARGET test_monitor_perf_contract)
   set_tests_properties(test_monitor_perf_contract PROPERTIES TIMEOUT 30)
 endif()
+if(TARGET test_stream_socket)
+  set_tests_properties(test_stream_socket PROPERTIES TIMEOUT 60)
+endif()
+if(TARGET test_stream_fastpath)
+  set_tests_properties(test_stream_fastpath PROPERTIES TIMEOUT 30)
+endif()
 if(TARGET test_service_introspection)
   set_tests_properties(
     test_service_introspection
@@ -640,6 +644,10 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_register_null_derivation_and_wildcard_rejection
     test_spot_tls_settings_lock_after_bind_connect_and_register
     test_spot_late_connect_replays_existing_subscription
+    test_spot_callback_model_receive_regression
+    test_spot_recv_model_receive_regression
+    test_spot_node_callback_model_receive_regression
+    test_spot_node_recv_model_receive_regression
     test_spot_faulted_node_apis_fail_with_efsm
     test_spot_node_destroy_rejects_open_child_handle
     test_spot_node_destroy_closes_open_monitor_child
@@ -660,6 +668,10 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_register_null=test_spot_register_null_derivation_and_wildcard_rejection
     test_spot_service_introspection_tls_lock=test_spot_tls_settings_lock_after_bind_connect_and_register
     test_spot_service_introspection_late_connect=test_spot_late_connect_replays_existing_subscription
+    test_spot_service_introspection_callback_recv_regression=test_spot_callback_model_receive_regression
+    test_spot_service_introspection_recv_model_regression=test_spot_recv_model_receive_regression
+    test_spot_service_introspection_node_callback_recv_regression=test_spot_node_callback_model_receive_regression
+    test_spot_service_introspection_node_recv_model_regression=test_spot_node_recv_model_receive_regression
     test_spot_service_introspection_faulted=test_spot_faulted_node_apis_fail_with_efsm
     test_spot_service_introspection_child_destroy_order=test_spot_node_destroy_rejects_open_child_handle
     test_spot_service_introspection_monitor_child_destroy=test_spot_node_destroy_closes_open_monitor_child
@@ -726,6 +738,8 @@ set(GATEWAY_CASES
     test_gateway_protocol_wss
     test_gateway_load_balancing
     test_gateway_weighted_load_balancing
+    test_gateway_callback_model_receive_regression
+    test_gateway_recv_model_receive_regression
     test_gateway_manual_connect_disconnect_topology_ownership
     test_gateway_local_weight_zero_is_preserved
     test_gateway_runtime_reads_are_safe_during_concurrent_send
@@ -747,6 +761,8 @@ set(GATEWAY_TEST_SPECS
     test_gateway_wss=test_gateway_protocol_wss
     test_gateway_round_robin=test_gateway_load_balancing
     test_gateway_weighted=test_gateway_weighted_load_balancing
+    test_gateway_callback_recv_regression=test_gateway_callback_model_receive_regression
+    test_gateway_recv_model_regression=test_gateway_recv_model_receive_regression
     test_gateway_manual_topology_ownership=test_gateway_manual_connect_disconnect_topology_ownership
     test_gateway_local_weight_zero=test_gateway_local_weight_zero_is_preserved
     test_gateway_runtime_reads=test_gateway_runtime_reads_are_safe_during_concurrent_send

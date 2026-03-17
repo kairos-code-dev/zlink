@@ -1023,22 +1023,19 @@ ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
 /* Gateway ------------------------------------------------------------------ */
 
 /**
- * @brief Create a Gateway.
+ * @brief Create a Gateway in recv model.
  *
- * Resolves service locations automatically via Discovery and provides
- * load-balanced request/reply communication.
+ * Gateway handles start in recv model. Install `zlink_recv_handler()` to make
+ * a one-way transition to callback model. In callback model, direct recv and
+ * data-plane poller registration fail with errno=EBUSY. In recv model,
+ * `zlink_gateway_send_ready_handler()` fails with errno=EBUSY.
  *
- * @param ctx         Context handle.
- * @param service_name Service identity fixed at handle creation.
- * @param routing_id  Unique identifier for this Gateway.
- * @param handler     Direct receive callback fixed at handle creation.
- * @return Gateway handle, or NULL on failure.
+ * Representative routing id is configured separately via
+ * `zlink_gateway_set_routing_id()` before the first bind/connect. If not set
+ * explicitly, the internal ROUTER auto routing id is used.
  */
 ZLINK_EXPORT void *zlink_gateway_new (void *ctx,
-                                      const char *service_name,
-                                      const char *routing_id,
-                                      zlink_socket_msg_handler_fn handler,
-                                      void *userdata);
+                                      const char *service_name);
 
 ZLINK_EXPORT int zlink_gateway_attach_discovery (void *gateway,
                                                  void *discovery);
@@ -1086,6 +1083,12 @@ ZLINK_EXPORT int zlink_gateway_send_rid (void *gateway,
                                          zlink_msg_t *parts,
                                          size_t part_count,
                                          zlink_send_flags_t flags);
+
+ZLINK_EXPORT int zlink_gateway_recv (void *gateway,
+                                     zlink_routing_id_t *source_rid_out,
+                                     zlink_msg_t **parts,
+                                     size_t *part_count,
+                                     int flags);
 
 typedef enum zlink_gateway_lb_strategy_t
 {
@@ -1169,14 +1172,15 @@ ZLINK_EXPORT int zlink_gateway_destroy (void **gateway_p);
 /* SPOT Node --------------------------------------------------------------- */
 
 /**
- * @brief Create a service-bound SPOT node.
+ * @brief Create a service-bound SPOT node in recv model.
  *
- * Pass `NULL` for `handler` when node-level callback dispatch is not needed.
+ * SpotNode handles start in recv model. Install `zlink_recv_spot_handler()`
+ * to make a one-way transition to callback model. In callback model, direct
+ * recv and data-plane poller registration fail with errno=EBUSY. In recv
+ * model, `zlink_spot_node_send_ready_handler()` fails with errno=EBUSY.
  */
 ZLINK_EXPORT void *zlink_spot_node_new (void *ctx,
-                                        const char *service_name,
-                                        zlink_spot_handler_fn handler,
-                                        void *userdata);
+                                        const char *service_name);
 
 /** @brief Destroy a SPOT node and release all resources. */
 ZLINK_EXPORT int zlink_spot_node_destroy (void **node_p);
@@ -1261,14 +1265,27 @@ ZLINK_EXPORT int zlink_spot_node_subscribe_pattern (void *node,
 ZLINK_EXPORT int zlink_spot_node_unsubscribe (
   void *node, const char *topic_id_or_pattern);
 
+ZLINK_EXPORT int zlink_spot_node_recv (void *node,
+                                       zlink_msg_t **parts,
+                                       size_t *part_count,
+                                       int flags,
+                                       char *topic_id_out,
+                                       size_t *topic_id_len);
+
 ZLINK_EXPORT int zlink_spot_node_send_ready_handler (
   void *node,
   zlink_send_ready_handler_fn handler,
   void *userdata);
 
-ZLINK_EXPORT void *zlink_spot_new (void *spot_node,
-                                   zlink_spot_handler_fn handler,
-                                   void *userdata);
+/**
+ * @brief Create a unified Spot facade in recv model.
+ *
+ * Spot handles start in recv model. Install `zlink_recv_spot_handler()` to
+ * make a one-way transition to callback model. In callback model, direct recv
+ * and data-plane poller registration fail with errno=EBUSY. In recv model,
+ * `zlink_spot_send_ready_handler()` fails with errno=EBUSY.
+ */
+ZLINK_EXPORT void *zlink_spot_new (void *spot_node);
 ZLINK_EXPORT int zlink_spot_destroy (void **spot_p);
 ZLINK_EXPORT int zlink_spot_publish (void *spot,
                                      const char *topic_id,
@@ -1492,6 +1509,43 @@ ZLINK_EXPORT void *zlink_spot_monitor_open (
   zlink_service_monitor_handler_fn handler,
   void *userdata);
 
+ZLINK_EXPORT int zlink_poller_add_gateway (void *poller_,
+                                           void *gateway_,
+                                           void *user_data_,
+                                           short events_);
+ZLINK_EXPORT int zlink_poller_modify_gateway (void *poller_,
+                                              void *gateway_,
+                                              short events_);
+ZLINK_EXPORT int zlink_poller_remove_gateway (void *poller_,
+                                              void *gateway_);
+ZLINK_EXPORT int zlink_poller_add_spot_pub (void *poller_,
+                                            void *spot_or_node_,
+                                            void *user_data_,
+                                            short events_);
+ZLINK_EXPORT int zlink_poller_modify_spot_pub (void *poller_,
+                                               void *spot_or_node_,
+                                               short events_);
+ZLINK_EXPORT int zlink_poller_remove_spot_pub (void *poller_,
+                                               void *spot_or_node_);
+ZLINK_EXPORT int zlink_poller_add_spot_sub (void *poller_,
+                                            void *spot_or_node_,
+                                            void *user_data_,
+                                            short events_);
+ZLINK_EXPORT int zlink_poller_modify_spot_sub (void *poller_,
+                                               void *spot_or_node_,
+                                               short events_);
+ZLINK_EXPORT int zlink_poller_remove_spot_sub (void *poller_,
+                                               void *spot_or_node_);
+ZLINK_EXPORT int zlink_poller_add_monitor (void *poller_,
+                                           void *monitor_,
+                                           void *user_data_,
+                                           short events_);
+ZLINK_EXPORT int zlink_poller_modify_monitor (void *poller_,
+                                              void *monitor_,
+                                              short events_);
+ZLINK_EXPORT int zlink_poller_remove_monitor (void *poller_,
+                                              void *monitor_);
+
 /**
  * @brief Close a service monitor handle.
  *
@@ -1606,6 +1660,74 @@ typedef unsigned int zlink_fd_t;
 #else
 typedef int zlink_fd_t;
 #endif
+
+typedef short zlink_poller_event_mask_t;
+
+typedef struct zlink_pollitem_t
+{
+    void *socket;
+    zlink_fd_t fd;
+    short events;
+    short revents;
+} zlink_pollitem_t;
+
+typedef struct zlink_poller_event_t
+{
+    void *socket;
+    zlink_fd_t fd;
+    void *user_data;
+    short events;
+} zlink_poller_event_t;
+
+#ifndef ZLINK_POLLIN
+#define ZLINK_POLLIN 1
+#endif
+#ifndef ZLINK_POLLOUT
+#define ZLINK_POLLOUT 2
+#endif
+#ifndef ZLINK_POLLERR
+#define ZLINK_POLLERR 4
+#endif
+#ifndef ZLINK_POLLPRI
+#define ZLINK_POLLPRI 8
+#endif
+#ifndef ZLINK_POLLITEMS_DFLT
+#define ZLINK_POLLITEMS_DFLT 16
+#endif
+#ifndef ZLINK_HAVE_POLLER
+#define ZLINK_HAVE_POLLER 1
+#endif
+
+ZLINK_EXPORT int zlink_poll (zlink_pollitem_t *items_,
+                             int nitems_,
+                             long timeout_);
+
+ZLINK_EXPORT void *zlink_poller_new (void);
+ZLINK_EXPORT int zlink_poller_destroy (void **poller_p_);
+ZLINK_EXPORT int zlink_poller_size (void *poller_);
+ZLINK_EXPORT int zlink_poller_add (void *poller_,
+                                   void *socket_,
+                                   void *user_data_,
+                                   short events_);
+ZLINK_EXPORT int zlink_poller_modify (void *poller_,
+                                      void *socket_,
+                                      short events_);
+ZLINK_EXPORT int zlink_poller_remove (void *poller_, void *socket_);
+ZLINK_EXPORT int zlink_poller_add_fd (void *poller_,
+                                      zlink_fd_t fd_,
+                                      void *user_data_,
+                                      short events_);
+ZLINK_EXPORT int zlink_poller_modify_fd (void *poller_,
+                                         zlink_fd_t fd_,
+                                         short events_);
+ZLINK_EXPORT int zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
+ZLINK_EXPORT int zlink_poller_wait (void *poller_,
+                                    zlink_poller_event_t *event_,
+                                    long timeout_);
+ZLINK_EXPORT int zlink_poller_wait_all (void *poller_,
+                                        zlink_poller_event_t *events_,
+                                        int n_events_,
+                                        long timeout_);
 
 /** @brief Start a built-in proxy between frontend and backend sockets. */
 ZLINK_EXPORT int zlink_proxy (void *frontend_, void *backend_, void *capture_);

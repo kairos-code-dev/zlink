@@ -61,15 +61,7 @@ case "$(uname -m)" in
     ;;
 esac
 
-if [[ "${IS_WINDOWS}" -eq 1 ]]; then
-  BUILD_DIR="${ROOT_DIR}/core/build/windows-x64"
-else
-  if [[ -d "${ROOT_DIR}/core/build/bin" ]]; then
-    BUILD_DIR="${ROOT_DIR}/core/build"
-  else
-    BUILD_DIR="${ROOT_DIR}/core/build/${PLATFORM}-${ARCH}"
-  fi
-fi
+BUILD_DIR="${ROOT_DIR}/core/build"
 
 STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,GATEWAY,SPOT"
 MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM_CALLBACK"
@@ -86,6 +78,7 @@ PIN_CPU=0
 PERF_IO_THREADS="${PERF_IO_THREADS:-}"
 PERF_MSG_SIZES="${PERF_MSG_SIZES:-}"
 PERF_TRANSPORTS="${PERF_TRANSPORTS:-}"
+RECV_MODE="${PERF_RECV_MODE:-recv}"
 SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
 SINGLE_WARMUP_SECONDS="${PERF_SINGLE_WARMUP_SECONDS:-2}"
 SINGLE_HWM="${PERF_SINGLE_HWM:-}"
@@ -112,15 +105,16 @@ Options:
   -h, --help                  Show this help.
   --pattern NAME              Pattern list (comma-separated) or ALL.
                               In multi mode, STREAM/STREAMS map to STREAM_CALLBACK.
-  --build-dir PATH            Build directory (default: core/build/<platform>-<arch>).
+  --build-dir PATH            Build directory (default: core/build).
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
   --clean-build               Remove build directory and do a clean build.
   --output PATH               Tee console logs to a file.
   --results-dir PATH          Override result root directory.
   --results-tag NAME          Optional tag in saved result filename.
   --runs N                    Iterations per pattern/transport/size (default: 1).
+  --recv MODE                 Receive model: recv|callback (default: recv).
   --duration N                Override single duration seconds (default: 5).
-  --warmup N                  Override single warmup seconds (default: 2).
+  --warmup N                  Override single warmup env value.
   --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
   --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
   --recv-hwm N                Override PERF_SINGLE_RCVHWM (fallback: --hwm).
@@ -136,7 +130,8 @@ Options:
   --transports LIST           Comma-separated transports.
 
 Notes:
-  - result is saved under results/<single|multi>/report/.
+  - result is saved under results/<single|multi>/report/ as
+    perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt.
   - default build mode is incremental (configure/build without deleting build dir).
   - --output and result save can be used together.
   - single mode rejects multi patterns; run_benchmarks_multi.sh enables multi mode.
@@ -204,6 +199,10 @@ while [[ $# -gt 0 ]]; do
     --runs)
       RUNS="${2:-}"
       RUNS_EXPLICIT=1
+      shift
+      ;;
+    --recv)
+      RECV_MODE="${2:-}"
       shift
       ;;
     --duration)
@@ -395,6 +394,10 @@ if [[ -z "${RUNS}" || ! "${RUNS}" =~ ^[0-9]+$ || "${RUNS}" -lt 1 ]]; then
   echo "Runs must be a positive integer." >&2
   exit 1
 fi
+if [[ "${RECV_MODE}" != "recv" && "${RECV_MODE}" != "callback" ]]; then
+  echo "recv mode must be 'recv' or 'callback'." >&2
+  exit 1
+fi
 
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
 ROOT_DIR="$(realpath -m "${ROOT_DIR}")"
@@ -413,7 +416,7 @@ if [[ -n "${RESULTS_DIR}" ]]; then
 fi
 
 TS="$(date +%Y%m%d_%H%M%S)"
-NAME="perf_${PLATFORM}_${TS}"
+NAME="perf_${PLATFORM}_${RECV_MODE}_${TS}"
 if [[ -n "${RESULTS_TAG}" ]]; then
   NAME="${NAME}_${RESULTS_TAG}"
 fi
@@ -568,6 +571,7 @@ fi
 
 PATTERN_CSV="$(IFS=,; echo "${PATTERN_LIST[*]}")"
 RUN_CMD=("${PYTHON_BIN[@]}" "${PERF_COMPARISON_SCRIPT}" "${PATTERN_CSV}" "--build-dir" "${BUILD_DIR}" "--runs" "${RUNS}")
+RUN_CMD+=("--recv" "${RECV_MODE}")
 if [[ "${PIN_CPU}" -eq 1 ]]; then
   RUN_CMD+=("--pin-cpu")
 fi
@@ -585,6 +589,7 @@ RUN_CMD+=("--result-file" "${RESULT_FILE}")
 
 RUN_ENV=()
 RUN_ENV+=(PYTHONUNBUFFERED=1)
+RUN_ENV+=(PERF_RECV_MODE="${RECV_MODE}")
 if [[ -n "${PERF_IO_THREADS}" ]]; then
   RUN_ENV+=(PERF_IO_THREADS="${PERF_IO_THREADS}")
 fi
@@ -660,6 +665,7 @@ print_effective_option "build_mode" "${BUILD_MODE}"
 print_effective_option "reuse_build" "$( [[ "${BUILD_MODE}" == "reuse" ]] && echo 1 || echo 0 )"
 print_effective_option "clean_build" "$( [[ "${BUILD_MODE}" == "clean" ]] && echo 1 || echo 0 )"
 print_effective_option "runs" "${RUNS}"
+print_effective_option "recv_mode" "${RECV_MODE}"
 print_effective_option "duration_seconds" "${SINGLE_DURATION_SECONDS}"
 print_effective_option "warmup_seconds" "${SINGLE_WARMUP_SECONDS}"
 print_effective_option "hwm" "$(value_or_default "${SINGLE_HWM}" "default(binary)")"

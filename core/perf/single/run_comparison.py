@@ -44,6 +44,14 @@ PATTERN_TO_BINARY = {
     "SPOT": "perf_spot",
 }
 
+RECV_MODE_BINARY_OVERRIDES = {
+    "PAIR": "perf_pair_recv",
+    "PUBSUB": "perf_pubsub_recv",
+    "DEALER_DEALER": "perf_dealer_dealer_recv",
+    "DEALER_ROUTER": "perf_dealer_router_recv",
+    "ROUTER_ROUTER": "perf_router_router_recv",
+}
+
 DEFAULT_MSG_SIZES_STANDARD = [64, 256, 1024, 65536, 131072, 262144]
 DEFAULT_MSG_SIZES_STREAM = [64, 256, 1024, 65536]
 DEFAULT_SOCKET_TRANSPORTS = ["tcp", "tls", "ws", "wss", "inproc"]
@@ -486,9 +494,16 @@ def sanitize_suffix(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]+", "_", value.strip())
 
 
-def build_result_filename(tag: str = "") -> str:
+def resolve_recv_mode(value: str) -> str:
+    recv_mode = (value or "recv").strip().lower()
+    if recv_mode not in ("recv", "callback"):
+        raise ValueError(f"invalid recv mode: {value}")
+    return recv_mode
+
+
+def build_result_filename(recv_mode: str, tag: str = "") -> str:
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    name = f"perf_{platform_tag()}_{stamp}"
+    name = f"perf_{platform_tag()}_{resolve_recv_mode(recv_mode)}_{stamp}"
     clean_tag = sanitize_suffix(tag)
     if clean_tag:
         name = f"{name}_{clean_tag}"
@@ -530,26 +545,12 @@ def enforce_file_retention(
 
 
 def resolve_linux_paths() -> Tuple[str, str]:
-    sys_name = platform.system().lower()
-    platform_tag = "macos" if "darwin" in sys_name else "linux"
-    machine = platform.machine().lower()
-    if machine in ("x86_64", "amd64"):
-        arch_tag = "x64"
-    elif machine in ("aarch64", "arm64"):
-        arch_tag = "arm64"
-    else:
-        arch_tag = machine
-
-    possible_paths = [
-        os.path.join(ROOT_DIR, "core", "build", f"{platform_tag}-{arch_tag}", "bin"),
-        os.path.join(
-            ROOT_DIR, "core", "build", f"{platform_tag}-{arch_tag}", "bin", "Release"
-        ),
-        os.path.join(ROOT_DIR, "core", "build", "bin"),
-    ]
-
-    build_dir = next((p for p in possible_paths if os.path.exists(p)), possible_paths[0])
-    build_root = build_dir
+    build_root = os.path.join(ROOT_DIR, "core", "build")
+    build_dir = os.path.join(build_root, "bin")
+    if IS_WINDOWS:
+        release_dir = os.path.join(build_dir, "Release")
+        if os.path.isdir(release_dir):
+            build_dir = release_dir
     base = os.path.basename(build_root)
     if base in BUILD_CONFIG_DIRS:
         bin_root = os.path.dirname(build_root)
@@ -1016,20 +1017,32 @@ def parse_pattern_arg(pattern_arg: str) -> List[str]:
     return ordered
 
 
-def collect_missing_patterns(build_dir: str, patterns: Iterable[str]) -> List[str]:
+def resolve_binary_name(pattern: str, recv_mode: str) -> str:
+    if recv_mode == "recv":
+        override = RECV_MODE_BINARY_OVERRIDES.get(pattern)
+        if override:
+            return override
+    return PATTERN_TO_BINARY[pattern]
+
+
+def collect_missing_patterns(
+    build_dir: str, patterns: Iterable[str], recv_mode: str
+) -> List[str]:
     missing = []
     for pattern in patterns:
-        binary_name = PATTERN_TO_BINARY[pattern]
+        binary_name = resolve_binary_name(pattern, recv_mode)
         binary_path = os.path.join(build_dir, binary_name + EXE_SUFFIX)
         if not os.path.exists(binary_path):
             missing.append(pattern)
     return sorted(set(missing))
 
 
-def collect_missing_build_targets(build_dir: str, patterns: Iterable[str]) -> List[str]:
+def collect_missing_build_targets(
+    build_dir: str, patterns: Iterable[str], recv_mode: str
+) -> List[str]:
     targets = []
     for pattern in patterns:
-        binary_name = PATTERN_TO_BINARY[pattern]
+        binary_name = resolve_binary_name(pattern, recv_mode)
         binary_path = os.path.join(build_dir, binary_name + EXE_SUFFIX)
         if not os.path.exists(binary_path):
             targets.append(binary_name)
@@ -1131,6 +1144,7 @@ def build_single_option_items(
     io_threads = max(1, parse_env_int("PERF_IO_THREADS", 2))
     items: List[Tuple[str, str]] = [
         ("runs", str(args.runs)),
+        ("recv_mode", args.recv),
         ("duration_seconds", str(parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5))),
         ("timeout_seconds", str(timeout_sec)),
         ("io_threads", str(io_threads)),
@@ -1154,7 +1168,7 @@ def print_effective_options(label: str, items: List[Tuple[str, str]]) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Measure current zlink single-pattern benchmarks."
+        description="Measure current zlink single-pattern benchmarks from core/build."
     )
     parser.add_argument("pattern", nargs="?", default="ALL")
     parser.add_argument("--runs", type=int, default=None)
@@ -1164,6 +1178,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--results-dir", default=DEFAULT_RESULTS_DIR)
     parser.add_argument("--results-tag", default="")
     parser.add_argument("--result-file", default="")
+    parser.add_argument("--recv", default=env_get("PERF_RECV_MODE") or "recv")
     return parser.parse_args()
 
 
@@ -1181,6 +1196,12 @@ def main() -> int:
     if args.duration is not None and args.duration < 1:
         print("Error: --duration must be >= 1.", file=sys.stderr)
         return 1
+    try:
+        args.recv = resolve_recv_mode(args.recv)
+    except ValueError:
+        print("Error: --recv must be 'recv' or 'callback'.", file=sys.stderr)
+        return 1
+    os.environ["PERF_RECV_MODE"] = args.recv
     if args.duration is not None:
         os.environ["PERF_SINGLE_DURATION_SECONDS"] = str(args.duration)
 
@@ -1193,7 +1214,7 @@ def main() -> int:
     if IS_WINDOWS:
         build_dir = normalize_build_dir(
             args.build_dir
-            or os.path.join(ROOT_DIR, "core", "build", "windows-x64", "bin", "Release")
+            or os.path.join(ROOT_DIR, "core", "build")
         )
     else:
         auto_build_dir, _ = resolve_linux_paths()
@@ -1216,7 +1237,7 @@ def main() -> int:
         or env_flag_enabled("PERF_SKIP_AUTO_BUILD")
     )
 
-    missing_patterns = collect_missing_patterns(build_dir, patterns)
+    missing_patterns = collect_missing_patterns(build_dir, patterns, args.recv)
     if missing_patterns:
         if no_autobuild:
             print(
@@ -1235,13 +1256,13 @@ def main() -> int:
             print("  missing: " + ", ".join(missing_patterns), file=sys.stderr)
             return 1
 
-        targets = collect_missing_build_targets(build_dir, patterns)
+        targets = collect_missing_build_targets(build_dir, patterns, args.recv)
         build_rc = run_cmake_build(cmake_build_dir, targets)
         if build_rc != 0:
             print(f"Error: auto-build failed with exit code {build_rc}", file=sys.stderr)
             return build_rc
 
-    missing_patterns = collect_missing_patterns(build_dir, patterns)
+    missing_patterns = collect_missing_patterns(build_dir, patterns, args.recv)
     if missing_patterns:
         print(
             "Error: current benchmark binaries are missing for patterns: "
@@ -1254,7 +1275,9 @@ def main() -> int:
     result_dir = single_result_dir(results_root)
     result_file = args.result_file
     if not result_file:
-        result_file = os.path.join(result_dir, build_result_filename(args.results_tag))
+        result_file = os.path.join(
+            result_dir, build_result_filename(args.recv, args.results_tag)
+        )
     result_parent = os.path.dirname(result_file)
     if result_parent:
         os.makedirs(result_parent, exist_ok=True)
@@ -1289,7 +1312,7 @@ def main() -> int:
     table_lines: List[str] = []
 
     for pattern in patterns:
-        binary_name = PATTERN_TO_BINARY[pattern]
+        binary_name = resolve_binary_name(pattern, args.recv)
         transports = pattern_transports.get(pattern, [])
         sizes = pattern_sizes.get(pattern, [])
 

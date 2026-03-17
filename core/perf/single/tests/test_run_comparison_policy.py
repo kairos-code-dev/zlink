@@ -80,6 +80,28 @@ class RunComparisonPolicyTests(unittest.TestCase):
             os.path.join(root, "single", "report"),
         )
 
+    def test_result_filename_includes_recv_mode(self):
+        self.assertRegex(
+            RC.build_result_filename("recv", "tag"),
+            r"^perf_[a-z]+_recv_\d{8}_\d{6}_tag\.txt$",
+        )
+        self.assertRegex(
+            RC.build_result_filename("callback"),
+            r"^perf_[a-z]+_callback_\d{8}_\d{6}\.txt$",
+        )
+
+    def test_resolve_recv_mode_rejects_invalid_value(self):
+        self.assertEqual(RC.resolve_recv_mode("recv"), "recv")
+        self.assertEqual(RC.resolve_recv_mode("CALLBACK"), "callback")
+        with self.assertRaises(ValueError):
+            RC.resolve_recv_mode("bogus")
+
+    def test_recv_mode_binary_override_uses_recv_targets(self):
+        self.assertEqual(RC.resolve_binary_name("PAIR", "recv"), "perf_pair_recv")
+        self.assertEqual(RC.resolve_binary_name("PUBSUB", "recv"), "perf_pubsub_recv")
+        self.assertEqual(RC.resolve_binary_name("PAIR", "callback"), "perf_pair")
+        self.assertEqual(RC.resolve_binary_name("GATEWAY", "recv"), "perf_gateway")
+
 
 if __name__ == "__main__":
     unittest.main()

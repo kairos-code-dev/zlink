@@ -8,6 +8,7 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cerrno>
@@ -601,6 +602,24 @@ inline bool send_exact(void *socket_,
     if (!socket_)
         return false;
     return zlink_send(socket_, data_, size_, flags_) == static_cast<int>(size_);
+}
+
+inline std::string resolve_single_perf_recv_mode()
+{
+    const char *env = std::getenv("PERF_RECV_MODE");
+    if (!env || !*env)
+        return "recv";
+
+    std::string mode(env);
+    std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
+    if (mode != "recv" && mode != "callback")
+        return "recv";
+    return mode;
+}
+
+inline bool single_perf_callback_mode()
+{
+    return resolve_single_perf_recv_mode() == "callback";
 }
 
 inline int resolve_single_send_timeout_ms()

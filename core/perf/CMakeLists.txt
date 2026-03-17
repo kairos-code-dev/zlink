@@ -1,9 +1,10 @@
 # core/perf - current zlink benchmark targets
 #
 # Build with:
-#   cmake -B build -DBUILD_BENCHMARKS=ON && cmake --build build
+#   cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON
+#   cmake --build core/build
 # Run with:
-#   ./core/perf/run_benchmarks.sh ALL
+#   ./core/perf/run_benchmarks.sh --build-dir /home/hep7/project/kairos/zlink/core/build
 
 # Resolve current zlink include path (supports root-level and core-level builds)
 set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
@@ -31,6 +32,29 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
             target_link_libraries(${name} PRIVATE dl)
         endif()
         target_include_directories(${name} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/single/common
+            ${PERF_EXTERNAL_INCLUDE_DIR})
+        target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})
+        target_compile_features(${name} PRIVATE cxx_std_11)
+
+        if(WIN32)
+            target_link_libraries(${name} PRIVATE Psapi)
+            add_custom_command(TARGET ${name} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:libzlink>"
+                "$<TARGET_FILE_DIR:${name}>/zlink.dll"
+            )
+        endif()
+    endfunction()
+
+    function(add_current_bench_single_recv name source)
+        add_executable(${name} ${source})
+        target_link_libraries(${name} PRIVATE libzlink Threads::Threads)
+        if(NOT WIN32)
+            target_link_libraries(${name} PRIVATE dl)
+        endif()
+        target_include_directories(${name} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../bench/with_zmq/single/common
             ${CMAKE_CURRENT_SOURCE_DIR}/single/common
             ${PERF_EXTERNAL_INCLUDE_DIR})
         target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})
@@ -74,6 +98,16 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     add_current_bench_single(perf_router_router single/src/perf_router_router.cpp)
     add_current_bench_single(perf_gateway single/src/perf_gateway.cpp)
     add_current_bench_single(perf_spot single/src/perf_spot.cpp)
+    add_current_bench_single_recv(perf_pair_recv
+                                  ../bench/with_zmq/single/zlink/bench_zlink_pair.cpp)
+    add_current_bench_single_recv(perf_pubsub_recv
+                                  ../bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp)
+    add_current_bench_single_recv(perf_dealer_dealer_recv
+                                  ../bench/with_zmq/single/zlink/bench_zlink_dealer_dealer.cpp)
+    add_current_bench_single_recv(perf_dealer_router_recv
+                                  ../bench/with_zmq/single/zlink/bench_zlink_dealer_router.cpp)
+    add_current_bench_single_recv(perf_router_router_recv
+                                  ../bench/with_zmq/single/zlink/bench_zlink_router_router.cpp)
 
     # Standalone STREAM client (multi-only).
     add_executable(

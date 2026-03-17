@@ -1016,32 +1016,241 @@ cmake --build core/build
 새 컨텍스트에서 의사결정이 흩어지지 않도록, 아래 형식으로 문서 안에 바로
 결정 로그를 남긴다.
 
-```md
 ## Decision Log
 
 ### D-001 mode delivery
-- chosen:
+- chosen: env var (`PERF_RECV_MODE`) + 공식 runner/comparison layer의 `--recv`
+  surface
 - alternatives considered:
+  - same binary + CLI arg
+  - split binary
 - reason:
+  - single/multi 전 패턴 바이너리 인자 파서를 한 번에 재작성하지 않고도
+    공식 surface에서 mode를 손실 없이 전달할 수 있다.
+  - shell wrapper, Python runner, 결과 파일명, Effective Options를 먼저
+    정렬해 정책 surface를 고정하는 데 가장 작은 변경 증폭으로 대응된다.
 - affected files:
+  - [`core/perf/run_benchmarks.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks.sh)
+  - [`core/perf/run_benchmarks_multi.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks_multi.sh)
+  - [`core/perf/single/run_comparison.py`](/home/hep7/project/kairos/zlink/core/perf/single/run_comparison.py)
+  - [`core/perf/run_comparison.py`](/home/hep7/project/kairos/zlink/core/perf/run_comparison.py)
+  - [`core/perf/CMakeLists.txt`](/home/hep7/project/kairos/zlink/core/perf/CMakeLists.txt)
 
 ### D-002 single recv send-path
-- chosen:
+- chosen: follow-up required
 - alternatives considered:
+  - sender/receiver 통합 poller event loop
+  - sender thread 유지 + nonblocking send + `POLLOUT`
 - reason:
+  - single 전 패턴을 공통 recv engine으로 옮기기 전에 현재 callback-only 구현과
+    `core/bench/with_zmq/single/zlink`의 recv-path를 비교 검증해야 한다.
+  - 이번 턴에서는 runner/documentation/surface 정렬까지만 반영했고, phase 2b의
+    실제 엔진 선택과 패턴 적용은 미완료다.
 - affected files:
+  - 아직 미구현. phase 2b에서 single pattern 소스와 공통 helper를 함께 수정해야
+    한다.
 
 ### D-003 warmup scope
-- chosen:
+- chosen: follow-up
 - in-scope or follow-up:
+  - single warmup count-vs-seconds 갭은 이번 턴에서 해결하지 못했다.
+  - 공식 runner/help에는 "env override"로만 축소 표기하고, 정책 기준은 계속
+    [`doc/perf/PERF_SINGLE_TEST_POLICY.md`](/home/hep7/project/kairos/zlink/doc/perf/PERF_SINGLE_TEST_POLICY.md)
+    로 유지한다.
 - affected docs/files:
+  - [`core/perf/README.md`](/home/hep7/project/kairos/zlink/core/perf/README.md)
+  - [`core/perf/README_KO.md`](/home/hep7/project/kairos/zlink/core/perf/README_KO.md)
+  - [`core/perf/run_benchmarks.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks.sh)
 
 ### D-004 core bug handling
-- bug summary:
-- regression test added:
-- fix summary:
-- affected files:
-```
+- bug summary: 없음
+- regression test added: 없음
+- fix summary: 없음
+- affected files: 없음
+
+## Phase Review
+
+### Phase 0 Review
+
+- phase: 0
+- date: 2026-03-18
+- owner: Codex
+- mode delivery decision: env var + `--recv` surface로 확정 (D-001)
+- implemented patterns: 없음
+- validated modes: 현재 구현 기준 확인만 수행
+- validated sizes: `PAIR/tcp/64`, `DEALER_DEALER/tcp/64`
+- changed files:
+  - [`doc/plan/perf-refactor/core-perf-policy-alignment-plan.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/perf-refactor/core-perf-policy-alignment-plan.ko.md)
+- commands run:
+  - `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+  - `cmake --build core/build -j$(nproc)`
+  - `./core/perf/run_benchmarks.sh --reuse-build --build-dir /home/hep7/project/kairos/zlink/core/build --pattern PAIR --transports tcp --msg-sizes 64 --runs 1 --duration 1`
+  - `./core/perf/run_benchmarks_multi.sh --reuse-build --build-dir /home/hep7/project/kairos/zlink/core/build --pattern DEALER_DEALER --transports tcp --msg-sizes 64 --runs 1 --duration 1 --clients 10`
+- results:
+  - single/multi baseline 실행과 현재 surface/output 갭을 재확인했다.
+  - multi `recv만 구현` 경로는 정책이 요구한 reactor recv / callback dual-mode로
+    닫혀 있지 않다.
+- failures/partial:
+  - full matrix 미검증
+  - single warmup 정책 갭 미해결
+- remaining gaps:
+  - phase 2b~5 전부
+  - monitor 기반 common engine 미구현
+- next phase ready: yes
+
+### Phase 1 Review
+
+- phase: 1
+- date: 2026-03-18
+- owner: Codex
+- mode delivery decision: 유지
+- implemented patterns: 없음
+- validated modes: N/A
+- validated sizes: N/A
+- changed files:
+  - [`core/perf/.gitignore`](/home/hep7/project/kairos/zlink/core/perf/.gitignore)
+  - [`core/perf/README.md`](/home/hep7/project/kairos/zlink/core/perf/README.md)
+  - [`core/perf/README_KO.md`](/home/hep7/project/kairos/zlink/core/perf/README_KO.md)
+- commands run:
+  - `python3 -m unittest core/perf/single/tests/test_run_comparison_policy.py core/perf/single/tests/test_multi_run_comparison_policy.py`
+- results:
+  - perf tree ignore 규칙을 강화했다.
+  - README를 policy 링크 중심의 얇은 surface로 축소했다.
+- failures/partial:
+  - 기존 캐시/임시 디렉터리 자체는 작업 환경 정책 때문에 제거하지 못했다.
+- remaining gaps:
+  - 실제 binary dual-mode 미구현
+- next phase ready: yes
+
+### Phase 2a Review
+
+- phase: 2a
+- date: 2026-03-18
+- owner: Codex
+- mode delivery decision: env var (`PERF_RECV_MODE`)
+- implemented patterns:
+  - runner/comparison layer only
+- validated modes:
+  - single `PAIR`: `recv`, `callback`
+  - multi `DEALER_DEALER`: `recv`, `callback`
+- validated sizes: `64`
+- changed files:
+  - [`core/perf/run_benchmarks.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks.sh)
+  - [`core/perf/run_benchmarks_multi.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks_multi.sh)
+  - [`core/perf/single/run_comparison.py`](/home/hep7/project/kairos/zlink/core/perf/single/run_comparison.py)
+  - [`core/perf/run_comparison.py`](/home/hep7/project/kairos/zlink/core/perf/run_comparison.py)
+  - [`core/perf/single/tests/test_run_comparison_policy.py`](/home/hep7/project/kairos/zlink/core/perf/single/tests/test_run_comparison_policy.py)
+  - [`core/perf/single/tests/test_multi_run_comparison_policy.py`](/home/hep7/project/kairos/zlink/core/perf/single/tests/test_multi_run_comparison_policy.py)
+- commands run:
+  - `python3 -m unittest core/perf/single/tests/test_run_comparison_policy.py core/perf/single/tests/test_multi_run_comparison_policy.py`
+  - `./core/perf/run_benchmarks.sh --reuse-build --build-dir /home/hep7/project/kairos/zlink/core/build --pattern PAIR --transports tcp --msg-sizes 64 --runs 1 --duration 1 --recv callback`
+  - `./core/perf/run_benchmarks_multi.sh --reuse-build --build-dir /home/hep7/project/kairos/zlink/core/build --pattern DEALER_DEALER --transports tcp --msg-sizes 64 --runs 1 --duration 1 --clients 10 --recv recv`
+  - `./core/perf/run_benchmarks_multi.sh --reuse-build --build-dir /home/hep7/project/kairos/zlink/core/build --pattern DEALER_DEALER --transports tcp --msg-sizes 64 --runs 1 --duration 1 --clients 10 --recv callback`
+- results:
+  - 공식 runner, comparison layer, 결과 파일명, Effective Options start/result에
+    `recv_mode`가 반영된다.
+  - 결과 파일명 규칙은 `perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt`
+    로 정렬됐다.
+- failures/partial:
+  - binary는 아직 `PERF_RECV_MODE`를 실제 측정 엔진 선택에 사용하지 않는다.
+  - full matrix validation 미완료.
+- remaining gaps:
+  - phase 2b~5 핵심 구현
+  - mode별 backpressure/common engine 정렬
+- next phase ready: no
+
+### Phase 6 Review
+
+- phase: 6
+- date: 2026-03-18
+- owner: Codex
+- mode delivery decision: 유지
+- implemented patterns: N/A
+- validated modes: surface only
+- validated sizes: N/A
+- changed files:
+  - [`core/perf/CMakeLists.txt`](/home/hep7/project/kairos/zlink/core/perf/CMakeLists.txt)
+  - [`core/perf/README.md`](/home/hep7/project/kairos/zlink/core/perf/README.md)
+  - [`core/perf/README_KO.md`](/home/hep7/project/kairos/zlink/core/perf/README_KO.md)
+- commands run:
+  - `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+  - `cmake --build core/build -j$(nproc)`
+- results:
+  - 공식 문서 예시와 CMake 주석을 `core/build` 기준으로 정렬했다.
+- failures/partial:
+  - 일부 Python helper 내부의 레거시 build-dir fallback은 호환 목적으로 남아 있다.
+- remaining gaps:
+  - README/help와 실제 mode engine semantics 불일치
+- next phase ready: yes
+
+### Phase 2b Review
+
+- phase: 2b
+- date: 2026-03-18
+- owner: Codex
+- mode delivery decision: 유지. runner/comparison layer는 `PERF_RECV_MODE`를 기준으로
+  recv 전용 바이너리 선택까지 수행한다.
+- implemented patterns:
+  - single `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`
+    recv 전용 바이너리 추가
+  - single `GATEWAY`, `SPOT`는 아직 기존 callback 경로 유지
+- validated modes:
+  - single `PAIR`: `recv`
+  - single `ALL/tcp`: `recv`
+- validated sizes:
+  - `PAIR/tcp/64`
+  - single `ALL/tcp`: `64, 256, 1024, 65536, 131072, 262144`
+- changed files:
+  - [`core/perf/CMakeLists.txt`](/home/hep7/project/kairos/zlink/core/perf/CMakeLists.txt)
+  - [`core/perf/single/run_comparison.py`](/home/hep7/project/kairos/zlink/core/perf/single/run_comparison.py)
+  - [`core/perf/single/tests/test_run_comparison_policy.py`](/home/hep7/project/kairos/zlink/core/perf/single/tests/test_run_comparison_policy.py)
+  - [`core/bench/with_zmq/single/common/bench_common_zlink.hpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/common/bench_common_zlink.hpp)
+- commands run:
+  - `cmake --build core/build -j$(nproc)`
+  - `python3 -m unittest core/perf/single/tests/test_run_comparison_policy.py core/perf/single/tests/test_multi_run_comparison_policy.py`
+  - `./core/perf/run_benchmarks.sh --reuse-build --build-dir /home/hep7/project/kairos/zlink/core/build --pattern PAIR --transports tcp --msg-sizes 64 --runs 1 --duration 1 --recv recv`
+  - `./core/perf/run_benchmarks.sh --reuse-build --build-dir /home/hep7/project/kairos/zlink/core/build --pattern ALL --transports tcp --runs 1 --duration 1 --recv recv`
+- results:
+  - single socket 패턴의 `recv` 모드는 기존 callback 전용 바이너리 대신 recv 전용
+    바이너리를 사용하도록 연결됐다.
+  - single `ALL/tcp` 기본 size 전부가 `recv`로 complete를 기록했다.
+- failures/partial:
+  - `GATEWAY`, `SPOT` recv 모드는 여전히 callback 구현에 의존한다.
+  - transport matrix 전체와 callback full matrix는 아직 닫지 못했다.
+- remaining gaps:
+  - single service pattern recv 엔진
+  - multi dual-mode 실엔진
+  - phase 2c~5, phase 8
+- next phase ready: no
+
+### Phase 7 Review
+
+- phase: 7
+- date: 2026-03-18
+- owner: Codex
+- mode delivery decision: 유지
+- implemented patterns: N/A
+- validated modes:
+  - single `PAIR`: callback filename/options 확인
+  - multi `DEALER_DEALER`: recv/callback filename/options 확인
+- validated sizes: `64`
+- changed files:
+  - [`core/perf/run_benchmarks.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks.sh)
+  - [`core/perf/run_benchmarks_multi.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks_multi.sh)
+  - [`core/perf/single/run_comparison.py`](/home/hep7/project/kairos/zlink/core/perf/single/run_comparison.py)
+  - [`core/perf/run_comparison.py`](/home/hep7/project/kairos/zlink/core/perf/run_comparison.py)
+- commands run:
+  - `./core/perf/run_benchmarks.sh --reuse-build --build-dir /home/hep7/project/kairos/zlink/core/build --pattern PAIR --transports tcp --msg-sizes 64 --runs 1 --duration 1 --recv callback`
+  - `./core/perf/run_benchmarks_multi.sh --reuse-build --build-dir /home/hep7/project/kairos/zlink/core/build --pattern DEALER_DEALER --transports tcp --msg-sizes 64 --runs 1 --duration 1 --clients 10 --recv recv`
+  - `./core/perf/run_benchmarks_multi.sh --reuse-build --build-dir /home/hep7/project/kairos/zlink/core/build --pattern DEALER_DEALER --transports tcp --msg-sizes 64 --runs 1 --duration 1 --clients 10 --recv callback`
+- results:
+  - result filename / Effective Options start/result / runner output에
+    `recv_mode`가 노출된다.
+- failures/partial:
+  - 실제 dual-mode 엔진 검증은 되지 않았다.
+- remaining gaps:
+  - phase 2b~5, phase 8 종료 기준 전부
+- next phase ready: no
 
 ## 10. 변경 대상과 비대상
 

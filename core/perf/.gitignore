@@ -1,3 +1,9 @@
 baseline/lib/
 tmp/
 baseline_cache.json
+__pycache__/
+single/__pycache__/
+multi/__pycache__/
+single/tests/__pycache__/
+single/tmp/
+common/streamclient/build/

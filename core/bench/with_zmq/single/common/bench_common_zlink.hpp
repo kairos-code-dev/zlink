@@ -16,6 +16,21 @@
 #include <climits>
 #include <zlink.h>
 
+typedef struct zlink_peer_info_t
+{
+    uint64_t connected_time;
+    uint64_t msgs_sent;
+    uint64_t msgs_received;
+    uint64_t snd_pending_msgs;
+    uint64_t rcv_pending_msgs;
+} zlink_peer_info_t;
+
+inline int zlink_socket_peers(void *, zlink_peer_info_t *, size_t *)
+{
+    errno = ENOTSUP;
+    return -1;
+}
+
 #if !defined(_WIN32)
 #include <arpa/inet.h>
 #include <ifaddrs.h>
@@ -292,7 +307,8 @@ private:
 class socket_guard_t {
 public:
     socket_guard_t() : _socket(NULL) {}
-    socket_guard_t(void *ctx_, int type_) : _socket(zlink_socket(ctx_, type_)) {}
+    socket_guard_t(void *ctx_, int type_) :
+        _socket(zlink_socket(ctx_, static_cast<zlink_socket_type_t>(type_))) {}
     ~socket_guard_t() {
         if (_socket)
             zlink_close(_socket);
@@ -525,7 +541,9 @@ inline bool bench_debug_enabled() {
 
 inline bool set_sockopt_int(void *socket_, int option_, int value_,
                             const char *name_) {
-    const int rc = zlink_setsockopt(socket_, option_, &value_, sizeof(value_));
+    const int rc = zlink_setsockopt(
+      socket_, static_cast<zlink_socket_option_t>(option_), &value_,
+      sizeof(value_));
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "setsockopt(" << name_ << ") failed: "
                   << zlink_strerror(zlink_errno()) << std::endl;
@@ -533,7 +551,8 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
     if (bench_debug_enabled()) {
         int out = 0;
         size_t out_size = sizeof(out);
-        const int grc = zlink_getsockopt(socket_, option_, &out, &out_size);
+        const int grc = zlink_getsockopt(
+          socket_, static_cast<zlink_socket_option_t>(option_), &out, &out_size);
         if (grc == 0) {
             std::cerr << "setsockopt(" << name_ << ") = " << out << std::endl;
         }

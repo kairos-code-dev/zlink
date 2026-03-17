@@ -5,7 +5,8 @@ zlink perf는 아래 두 개의 진입 스크립트로 실행한다.
 - `run_benchmarks.sh`: single 패턴 실행기
 - `run_benchmarks_multi.sh`: multi 패턴 래퍼
 
-공식 결과 파일은 항상 `core/perf/results/.../report/` 아래에 저장된다.
+정책 source of truth는 `doc/perf/*.md`이며, 공식 결과 파일은 항상
+`core/perf/results/.../report/` 아래에 저장된다.
 
 ---
 
@@ -21,13 +22,14 @@ ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
 | `--pattern NAME` | `ALL` | 패턴 목록(쉼표 구분) 또는 `ALL` |
 | `--reuse-build` | 비활성 | 기존 빌드 디렉터리 재사용(configure/build 생략) |
 | `--clean-build` | 비활성 | 빌드 디렉터리 삭제 후 클린 빌드 |
-| `--build-dir PATH` | 자동 | 빌드 디렉터리 지정 |
+| `--build-dir PATH` | `core/build` | 빌드 디렉터리 지정 |
 | `--output PATH` | — | 콘솔 출력을 파일로 tee |
 | `--results-dir PATH` | `core/perf/results` | 결과 루트 경로 지정 |
 | `--results-tag NAME` | — | 결과 파일명 태그 |
 | `--runs N` | `1` | pattern/transport/size별 반복 횟수 |
+| `--recv MODE` | `recv` | 수신 모델(`recv` 또는 `callback`) |
 | `--duration N` | `5` | active 측정 시간(초) |
-| `--warmup N` | `2` | warmup 시간(초) |
+| `--warmup N` | env override | single warmup env 브리지 |
 | `--hwm N` | — | `PERF_SINGLE_HWM` fallback 설정 |
 | `--send-hwm N` | — | `PERF_SINGLE_SNDHWM` 설정 |
 | `--recv-hwm N` | — | `PERF_SINGLE_RCVHWM` 설정 |
@@ -42,13 +44,8 @@ ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
 
 참고: `pgm`/`epgm`은 single perf에서 현재 비활성화 상태다.
 
-### 실행 모델(single)
-
-- `pattern/transport/size/run` 조합마다 바이너리를 별도 프로세스로 실행
-- 바이너리 phase: `warmup(duration) -> active(duration)`
-- active 구간에서 throughput + latency를 **동시에** 측정
-- 집계는 payload header 검증 성공 데이터만 사용(header 기반 집계)
-- 재시도/드레인 단계 없음
+상세 phase 의미, handshake 규칙, mode 계약은
+`doc/perf/PERF_SINGLE_TEST_POLICY.md`를 기준으로 본다.
 
 ### 결과 저장
 
@@ -80,9 +77,10 @@ multi 패턴 래퍼 스크립트다. multi 옵션을 정규화한 뒤 `PERF_ALLO
 | `--clean-build` | 비활성 | 클린 빌드 |
 | `--results-dir PATH` | `core/perf/results` | 결과 루트 경로 |
 | `--results-tag NAME` | — | 파일명 태그 |
-| `--build-dir PATH` | 자동 | 빌드 디렉터리 지정 |
+| `--build-dir PATH` | `core/build` | 빌드 디렉터리 지정 |
 | `--output PATH` | — | 출력을 파일로 tee |
 | `--runs N` | `1` | 설정별 반복 횟수 |
+| `--recv MODE` | `recv` | 수신 모델(`recv` 또는 `callback`) |
 | `--pin-cpu` | 비활성 | CPU 고정 |
 | `--io-threads N` | — | 서버/클라이언트 io thread 동시 설정 |
 | `--server-io-threads N` | non-stream=`2`, stream=`4` | 서버 io threads |
@@ -148,7 +146,7 @@ multi 상세 제약/정책은 `PERF_MULTI_TEST_POLICY.md`를 따른다.
 single 전체 실행:
 
 ```bash
-./core/perf/run_benchmarks.sh
+./core/perf/run_benchmarks.sh --build-dir /home/hep7/project/kairos/zlink/core/build
 ```
 
 single 제한 실행:
@@ -156,16 +154,18 @@ single 제한 실행:
 ```bash
 ./core/perf/run_benchmarks.sh \
   --pattern PAIR \
+  --build-dir /home/hep7/project/kairos/zlink/core/build \
   --transports tcp \
   --msg-sizes 64,1024 \
   --runs 3 \
-  --duration 5
+  --duration 5 \
+  --recv recv
 ```
 
 multi 전체 실행:
 
 ```bash
-./core/perf/run_benchmarks_multi.sh
+./core/perf/run_benchmarks_multi.sh --build-dir /home/hep7/project/kairos/zlink/core/build
 ```
 
 multi STREAM callback-only 실행:
@@ -173,8 +173,10 @@ multi STREAM callback-only 실행:
 ```bash
 ./core/perf/run_benchmarks_multi.sh \
   --pattern STREAM_CALLBACK \
+  --build-dir /home/hep7/project/kairos/zlink/core/build \
   --clients 5000 \
   --duration 10 \
+  --recv callback \
   --transports tcp
 ```
 

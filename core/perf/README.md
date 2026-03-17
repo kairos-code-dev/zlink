@@ -5,7 +5,8 @@ zlink perf is driven by two shell entrypoints:
 - `run_benchmarks.sh`: single-pattern runner
 - `run_benchmarks_multi.sh`: multi-pattern wrapper
 
-Both scripts write official results under `core/perf/results/.../report/`.
+Both scripts use `doc/perf/*.md` as the policy source of truth and write
+official results under `core/perf/results/.../report/`.
 
 ---
 
@@ -21,13 +22,14 @@ DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, SPOT).
 | `--pattern NAME` | `ALL` | Pattern list (comma-separated) or `ALL` |
 | `--reuse-build` | off | Reuse existing build directory (skip configure/build) |
 | `--clean-build` | off | Remove build directory then clean configure/build |
-| `--build-dir PATH` | auto | Override build directory |
+| `--build-dir PATH` | `core/build` | Override build directory |
 | `--output PATH` | — | Tee console output to a file |
 | `--results-dir PATH` | `core/perf/results` | Override result root |
 | `--results-tag NAME` | — | Optional filename tag |
 | `--runs N` | `1` | Iterations per pattern/transport/size |
+| `--recv MODE` | `recv` | Receive model (`recv` or `callback`) |
 | `--duration N` | `5` | Active measurement duration (seconds) |
-| `--warmup N` | `2` | Warmup duration (seconds) |
+| `--warmup N` | env override | Single warmup env bridge |
 | `--hwm N` | — | Set `PERF_SINGLE_HWM` fallback |
 | `--send-hwm N` | — | Set `PERF_SINGLE_SNDHWM` |
 | `--recv-hwm N` | — | Set `PERF_SINGLE_RCVHWM` |
@@ -42,13 +44,8 @@ DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, SPOT).
 
 Note: `pgm`/`epgm` are currently disabled in single perf.
 
-### Execution model (single)
-
-- One binary process per `pattern/transport/size/run`
-- Binary phase: `warmup(duration) -> active(duration)`
-- Throughput and latency are measured **simultaneously** in active
-- Active aggregation uses payload header validation (header-based only)
-- No retry/drain phase
+Detailed phase semantics, handshake rules, and mode contracts are defined in
+`doc/perf/PERF_SINGLE_TEST_POLICY.md`.
 
 ### Result storage
 
@@ -80,9 +77,10 @@ and delegates execution to `run_benchmarks.sh`.
 | `--clean-build` | off | Clean build directory first |
 | `--results-dir PATH` | `core/perf/results` | Override result root |
 | `--results-tag NAME` | — | Optional filename tag |
-| `--build-dir PATH` | auto | Override build directory |
+| `--build-dir PATH` | `core/build` | Override build directory |
 | `--output PATH` | — | Tee output to file |
 | `--runs N` | `1` | Iterations per configuration |
+| `--recv MODE` | `recv` | Receive model (`recv` or `callback`) |
 | `--pin-cpu` | off | Pin CPU core |
 | `--io-threads N` | — | Set both server/client io threads |
 | `--server-io-threads N` | non-stream=`2`, stream=`4` | Set server io threads |
@@ -151,7 +149,7 @@ Multi-specific variables and full constraints are documented in
 Single full run:
 
 ```bash
-./core/perf/run_benchmarks.sh
+./core/perf/run_benchmarks.sh --build-dir /home/hep7/project/kairos/zlink/core/build
 ```
 
 Single limited run:
@@ -159,16 +157,18 @@ Single limited run:
 ```bash
 ./core/perf/run_benchmarks.sh \
   --pattern PAIR \
+  --build-dir /home/hep7/project/kairos/zlink/core/build \
   --transports tcp \
   --msg-sizes 64,1024 \
   --runs 3 \
-  --duration 5
+  --duration 5 \
+  --recv recv
 ```
 
 Multi full run:
 
 ```bash
-./core/perf/run_benchmarks_multi.sh
+./core/perf/run_benchmarks_multi.sh --build-dir /home/hep7/project/kairos/zlink/core/build
 ```
 
 Multi STREAM callback-only:
@@ -176,8 +176,10 @@ Multi STREAM callback-only:
 ```bash
 ./core/perf/run_benchmarks_multi.sh \
   --pattern STREAM_CALLBACK \
+  --build-dir /home/hep7/project/kairos/zlink/core/build \
   --clients 5000 \
   --duration 10 \
+  --recv callback \
   --transports tcp
 ```
 

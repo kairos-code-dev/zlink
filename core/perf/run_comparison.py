@@ -127,6 +127,23 @@ def expand_pattern_aliases(requested_patterns):
     return expanded
 
 
+def expand_pattern_aliases_ordered(requested_patterns):
+    expanded = []
+    seen = set()
+    for pattern in requested_patterns:
+        normalized = (pattern or "").strip().upper()
+        if not normalized:
+            continue
+        alias_members = PATTERN_ALIASES.get(normalized)
+        members = alias_members if alias_members else (normalized,)
+        for member in members:
+            if member in seen:
+                continue
+            seen.add(member)
+            expanded.append(member)
+    return expanded
+
+
 def resolve_stream_server_binary(pattern_name):
     pattern = (pattern_name or "").strip().upper()
     return STREAM_SERVER_BINARY_BY_PATTERN.get(pattern, "")
@@ -178,34 +195,13 @@ def resolve_latency_triplet(latency, latency_p95, latency_p99):
 
 
 def resolve_linux_paths():
-    """Return build/library paths for Linux/macOS environments."""
-    sys_name = platform.system().lower()
-    if "darwin" in sys_name:
-        platform_tag = "macos"
-    else:
-        platform_tag = "linux"
-    machine = platform.machine().lower()
-    if machine in ("x86_64", "amd64"):
-        arch_tag = "x64"
-    elif machine in ("aarch64", "arm64"):
-        arch_tag = "arm64"
-    else:
-        arch_tag = machine
-
-    possible_paths = [
-        os.path.join(ROOT_DIR, "core", "build", "bin"),
-        os.path.join(ROOT_DIR, "core", "build", f"{platform_tag}-{arch_tag}", "bin"),
-        os.path.join(
-            ROOT_DIR,
-            "core",
-            "build",
-            f"{platform_tag}-{arch_tag}",
-            "bin",
-            "Release",
-        ),
-    ]
-    build_dir = next((p for p in possible_paths if os.path.exists(p)), possible_paths[0])
-    build_root = build_dir
+    """Return build/library paths rooted at the official core/build directory."""
+    build_root = os.path.join(ROOT_DIR, "core", "build")
+    build_dir = os.path.join(build_root, "bin")
+    if IS_WINDOWS:
+        release_dir = os.path.join(build_dir, "Release")
+        if os.path.isdir(release_dir):
+            build_dir = release_dir
     base = os.path.basename(build_root)
     if base in BUILD_CONFIG_DIRS:
         bin_root = os.path.dirname(build_root)
@@ -288,10 +284,8 @@ def derive_cmake_build_dir(runtime_build_dir):
 
 
 if IS_WINDOWS:
-    BUILD_DIR = os.path.join(ROOT_DIR, "core", "build", "windows-x64", "bin", "Release")
-    CURRENT_LIB_DIR = os.path.join(
-        ROOT_DIR, "core", "build", "windows-x64", "bin", "Release"
-    )
+    BUILD_DIR = normalize_build_dir(os.path.join(ROOT_DIR, "core", "build"))
+    CURRENT_LIB_DIR = derive_current_lib_dir(BUILD_DIR)
 else:
     BUILD_DIR, CURRENT_LIB_DIR = resolve_linux_paths()
 
@@ -1336,6 +1330,15 @@ def _prepare_case_env(
         spot_idle_sleep_ms = max(1, parse_env_int("PERF_SPOT_IDLE_SLEEP_MS", 1))
         set_env_pair(env, "ZLINK_SPOT_IDLE_SLEEP_MS", spot_idle_sleep_ms)
 
+    if pattern_name in STREAM_VARIANT_PATTERNS:
+        stream_timeout_ms = parse_env_int("PERF_STREAM_TIMEOUT_MS", 0)
+        if stream_timeout_ms <= 0:
+            if transport in ("ws", "wss"):
+                stream_timeout_ms = 20000
+            else:
+                stream_timeout_ms = 5000
+        set_env_pair(env, "PERF_STREAM_TIMEOUT_MS", stream_timeout_ms)
+
     server_io_threads_int = _resolve_io_threads(
         env, "PERF_SERVER_IO_THREADS", pattern_name
     )
@@ -1353,6 +1356,55 @@ def run_sizes_test_stream_shared(
     pattern_name,
     result_line_callback=None,
 ):
+    if len(sizes) > 1:
+        size_transition_ms = max(
+            0, parse_env_int("PERF_STREAM_SIZE_TRANSITION_MS", 3000)
+        )
+        merged = {
+            "status": "success",
+            "parsed": {},
+            "timed_out": False,
+            "returncode": 0,
+            "cpu_pct": None,
+            "mem_mb": None,
+            "reason": "",
+            "warnings": [],
+        }
+        failure_reasons = []
+        for size in sizes:
+            outcome = run_sizes_test_stream_shared(
+                server_binary_name,
+                lib_name,
+                transport,
+                [size],
+                pattern_name,
+                result_line_callback=result_line_callback,
+            )
+            merged["parsed"].update(outcome.get("parsed", {}) or {})
+            merged["warnings"].extend(outcome.get("warnings", []) or [])
+            if outcome.get("cpu_pct") is not None:
+                merged["cpu_pct"] = outcome.get("cpu_pct")
+            if outcome.get("mem_mb") is not None:
+                merged["mem_mb"] = outcome.get("mem_mb")
+            merged["returncode"] = max(
+                int(merged.get("returncode", 0) or 0),
+                int(outcome.get("returncode", 0) or 0),
+            )
+            merged["timed_out"] = bool(merged["timed_out"] or outcome.get("timed_out"))
+
+            status = outcome.get("status", "fail")
+            if status != "success":
+                merged["status"] = "fail"
+                reason = (outcome.get("reason", "") or "").strip() or f"size_{size}_failed"
+                failure_reasons.append(f"{size}:{reason}")
+
+            if size_transition_ms > 0 and size != sizes[-1]:
+                time.sleep(size_transition_ms / 1000.0)
+
+        if failure_reasons:
+            merged["reason"] = ";".join(failure_reasons)
+        return merged
+
     server_binary_path = os.path.join(BUILD_DIR, server_binary_name + EXE_SUFFIX)
     shared_client_path = os.path.join(BUILD_DIR, STREAM_SHARED_CLIENT_BINARY + EXE_SUFFIX)
     if not os.path.exists(server_binary_path) or not os.path.exists(shared_client_path):
@@ -3728,6 +3780,7 @@ def build_effective_option_items(args, selected_patterns):
 
     items = [
         ("runs", str(num_runs)),
+        ("recv_mode", args["recv_mode"]),
         ("patterns", ",".join(selected_patterns) if selected_patterns else "none"),
         ("transports", ",".join(unique_transports) if unique_transports else "none"),
         ("msg_sizes", ",".join(str(sz) for sz in unique_sizes) if unique_sizes else "none"),
@@ -4020,7 +4073,10 @@ def build_result_filename(tag=""):
         platform_tag = "windows"
     elif platform_tag.startswith("linux"):
         platform_tag = "linux"
-    name = f"perf_{platform_tag}_{ts}"
+    recv_mode = (os.environ.get("PERF_RECV_MODE", "recv") or "recv").strip().lower()
+    if recv_mode not in ("recv", "callback"):
+        recv_mode = "recv"
+    name = f"perf_{platform_tag}_{recv_mode}_{ts}"
     clean_tag = re.sub(r"[^A-Za-z0-9._-]+", "_", (tag or "").strip())
     if clean_tag:
         name = f"{name}_{clean_tag}"
@@ -4043,11 +4099,12 @@ def parse_args():
         "Options:\n"
         "  --runs N                     Iterations per configuration (default: 1)\n"
         "  --duration N                 Override PERF_SINGLE_DURATION_SECONDS (single patterns)\n"
-        "  --build-dir PATH             Build directory (default: core/build/<platform>-<arch>)\n"
+        "  --build-dir PATH             Build directory (default: core/build)\n"
         "  --pin-cpu                    Pin CPU core during benchmarks (Linux taskset)\n"
         "  --results-dir PATH           Results root directory (default: core/perf/results)\n"
         "  --results-tag NAME           Optional suffix tag for saved filenames\n"
         "  --result-file PATH           Explicit result file path\n"
+        "  --recv MODE                  Receive model: recv|callback (default: recv)\n"
         "  --multi-transport-transition-ms N  Transport transition cooldown (ms)\n"
         "  --multi-pattern-transition-ms N    Pattern transition cooldown (ms)\n"
         "  --multi-server-ready-timeout-ms N  Server READY wait timeout (ms)\n"
@@ -4065,11 +4122,12 @@ def parse_args():
     results_dir = os.environ.get("PERF_RESULTS_DIR", "").strip()
     results_tag = os.environ.get("PERF_RESULTS_TAG", "").strip()
     result_file = ""
+    recv_mode = (os.environ.get("PERF_RECV_MODE", "recv") or "recv").strip().lower()
     transport_transition_ms = max(
         0, parse_env_int("PERF_TRANSPORT_TRANSITION_MS", 3000)
     )
     pattern_transition_ms = max(
-        0, parse_env_int("PERF_PATTERN_TRANSITION_MS", 3000)
+        0, parse_env_int("PERF_PATTERN_TRANSITION_MS", 5000)
     )
     server_ready_timeout_ms = max(
         0, parse_env_int("PERF_SERVER_READY_TIMEOUT_MS", 10000)
@@ -4145,6 +4203,14 @@ def parse_args():
                 sys.exit(1)
             result_file = sys.argv[i + 1].strip()
             i += 1
+        elif arg == "--recv":
+            if i + 1 >= len(sys.argv):
+                print("Error: --recv requires a value.", file=sys.stderr)
+                sys.exit(1)
+            recv_mode = sys.argv[i + 1].strip().lower()
+            i += 1
+        elif arg.startswith("--recv="):
+            recv_mode = arg.split("=", 1)[1].strip().lower()
         elif arg == "--multi-transport-transition-ms":
             if i + 1 >= len(sys.argv):
                 print(
@@ -4243,6 +4309,9 @@ def parse_args():
     if single_duration_seconds is not None and single_duration_seconds < 1:
         print("Error: --duration must be >= 1.", file=sys.stderr)
         sys.exit(1)
+    if recv_mode not in ("recv", "callback"):
+        print("Error: --recv must be 'recv' or 'callback'.", file=sys.stderr)
+        sys.exit(1)
     for key, value in (
         ("multi-transport-transition-ms", transport_transition_ms),
         ("multi-pattern-transition-ms", pattern_transition_ms),
@@ -4265,6 +4334,7 @@ def parse_args():
         "results_dir": results_dir,
         "results_tag": results_tag,
         "result_file": result_file,
+        "recv_mode": recv_mode,
         "transport_transition_ms": transport_transition_ms,
         "pattern_transition_ms": pattern_transition_ms,
         "server_ready_timeout_ms": server_ready_timeout_ms,
@@ -4277,6 +4347,7 @@ def main():
     global BUILD_DIR, CURRENT_LIB_DIR, base_env
 
     args = parse_args()
+    os.environ["PERF_RECV_MODE"] = args["recv_mode"]
     p_req = args["pattern_request"]
     num_runs = args["num_runs"]
     build_dir = args["build_dir"]
@@ -4311,12 +4382,14 @@ def main():
 
     if p_req == "ALL":
         requested = None
+        requested_order = None
     else:
-        requested = {p.strip().upper() for p in p_req.split(",") if p.strip()}
-        if not requested:
+        requested_tokens = [p.strip().upper() for p in p_req.split(",") if p.strip()]
+        if not requested_tokens:
             print("Error: --pattern requires at least one value.", file=sys.stderr)
             sys.exit(1)
-        requested = expand_pattern_aliases(requested)
+        requested_order = expand_pattern_aliases_ordered(requested_tokens)
+        requested = set(requested_order)
 
     known_patterns = {p_name for _, p_name in comparisons}
     if requested is not None:
@@ -4328,9 +4401,10 @@ def main():
             )
             sys.exit(1)
 
-    selected_patterns = [
-        p_name for _, p_name in comparisons if requested is None or p_name in requested
-    ]
+    if requested_order is None:
+        selected_patterns = [p_name for _, p_name in comparisons]
+    else:
+        selected_patterns = list(requested_order)
     only_run = bool(selected_patterns) and all(is_pattern(p) for p in selected_patterns)
 
     results_root = resolve_results_root(args["results_dir"])
@@ -4353,7 +4427,7 @@ def main():
                 file=sys.stderr,
             )
             print(
-                "Hint: pass --build-dir as a CMake build root or its bin(/Release) directory.",
+                "Hint: pass --build-dir as the CMake build root core/build or its bin(/Release) directory.",
                 file=sys.stderr,
             )
             if missing_current:
@@ -4407,10 +4481,9 @@ def main():
     current_results = {}
     expected_result_lines = 0
     actual_result_lines = 0
+    comparison_by_pattern = {p_name: current_bin for current_bin, p_name in comparisons}
     selected_comparisons = [
-        (current_bin, p_name)
-        for current_bin, p_name in comparisons
-        if requested is None or p_name in requested
+        (comparison_by_pattern[p_name], p_name) for p_name in selected_patterns
     ]
     pattern_transition_ms = args["pattern_transition_ms"] if only_run else 0
 

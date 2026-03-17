@@ -34,6 +34,7 @@ static std::atomic<bool> g_queue_probe_pending (false);
 static std::atomic<size_t> g_queue_probe_size (0);
 static std::atomic<bool> g_sender_stop_requested (false);
 static std::atomic<size_t> g_pending_send_count (0);
+static std::atomic<int> g_send_poll_timeout_ms (5000);
 
 struct queued_stream_message_t
 {
@@ -121,6 +122,15 @@ inline bool is_stream_event_payload (const unsigned char *data, size_t size)
     return data && size == 1 && (data[0] == 0x00 || data[0] == 0x01);
 }
 
+inline bool is_stream_control_payload (const unsigned char *data, size_t size)
+{
+    (void) data;
+    // WS/WSS peer teardown can surface short control payloads that are not
+    // benchmark data frames. Real len32be benchmark payloads are at least 4
+    // bytes of frame prefix plus payload body.
+    return size > 0 && size < 4;
+}
+
 inline bool is_stop_token_payload (const unsigned char *data, size_t size)
 {
     if (!data)
@@ -170,15 +180,63 @@ inline void print_server_metrics (
     }
 }
 
-inline bool send_stream_message_blocking (queued_stream_message_t &queued_)
+inline bool wait_for_stream_send_ready (int timeout_ms)
+{
+    if (!g_server_socket)
+        return false;
+
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms : 1);
+
+    while (!perf_stop_requested ().load (std::memory_order_acquire)) {
+        const auto now = std::chrono::steady_clock::now ();
+        const long remain_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now)
+            .count ();
+        if (remain_ms < 0)
+            return false;
+
+        zlink_pollitem_t item;
+        std::memset (&item, 0, sizeof (item));
+        item.socket = g_server_socket;
+        item.fd = 0;
+        item.events = ZLINK_POLLOUT;
+        item.revents = 0;
+
+        const int rc = zlink_poll (&item, 1, remain_ms > 0 ? remain_ms : 0);
+        if (rc > 0 && (item.revents & ZLINK_POLLOUT) != 0)
+            return true;
+        if (rc < 0 && zlink_errno () != EINTR)
+            return false;
+    }
+
+    return false;
+}
+
+inline bool send_stream_message_nonblocking (queued_stream_message_t &queued_)
 {
     if (!g_server_socket)
         return false;
 
     const size_t payload_size = zlink_msg_size (&queued_.msg);
-    const int rc =
-      zlink_stream_send_msg (g_server_socket, &queued_.routing_id, &queued_.msg, 0);
-    return rc == static_cast<int> (payload_size);
+    const int send_timeout_ms =
+      g_send_poll_timeout_ms.load (std::memory_order_acquire);
+
+    while (!perf_stop_requested ().load (std::memory_order_acquire)) {
+        const int rc = zlink_stream_send_msg (
+          g_server_socket, &queued_.routing_id, &queued_.msg, ZLINK_DONTWAIT);
+        if (rc == static_cast<int> (payload_size))
+            return true;
+
+        const int err = zlink_errno ();
+        if (err != EAGAIN && err != EINTR)
+            return false;
+        if (!wait_for_stream_send_ready (send_timeout_ms))
+            return false;
+    }
+
+    return false;
 }
 
 void send_thread_main ()
@@ -198,7 +256,7 @@ void send_thread_main ()
             if (before == 0)
                 g_pending_send_count.store (0, std::memory_order_release);
 
-            if (!send_stream_message_blocking (queued_msg)) {
+            if (!send_stream_message_nonblocking (queued_msg)) {
                 g_callback_failed.store (true, std::memory_order_release);
                 perf_stop_requested ().store (true, std::memory_order_release);
                 g_sender_stop_requested.store (true, std::memory_order_release);
@@ -225,6 +283,10 @@ int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg, void *)
       static_cast<const unsigned char *> (zlink_msg_data (msg));
     const size_t payload_size = zlink_msg_size (msg);
     if (is_stream_event_payload (payload, payload_size)) {
+        (void) zlink_msg_close (msg);
+        return 0;
+    }
+    if (is_stream_control_payload (payload, payload_size)) {
         (void) zlink_msg_close (msg);
         return 0;
     }
@@ -325,6 +387,7 @@ int main (int argc, char **argv)
     g_queue_probe_size.store (0, std::memory_order_release);
     g_sender_stop_requested.store (false, std::memory_order_release);
     g_pending_send_count.store (0, std::memory_order_release);
+    g_send_poll_timeout_ms.store (io_timeout_ms, std::memory_order_release);
     g_server_socket = server;
     install_perf_signal_handlers ();
 

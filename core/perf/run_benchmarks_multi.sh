@@ -230,6 +230,7 @@ Options:
   --build-dir PATH       Override build directory.
   --output PATH          Tee results to a file.
   --runs N               Iterations per configuration (default: 1).
+  --recv MODE            Receive model: recv|callback (default: recv).
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
   --io-threads N         Legacy alias that sets both server/client io-threads.
   --server-io-threads N  Set PERF_SERVER_IO_THREADS
@@ -253,9 +254,9 @@ Options:
   --connect-concurrency N
                          Override concurrent connect count.
   --transport-transition-ms N
-                         Override PERF_TRANSPORT_TRANSITION_MS (default: 3000).
+                         Override PERF_TRANSPORT_TRANSITION_MS (default: 5000).
   --pattern-transition-ms N
-                         Override PERF_PATTERN_TRANSITION_MS (default: 3000).
+                         Override PERF_PATTERN_TRANSITION_MS (default: 5000).
   --server-ready-timeout-ms N
                          Override PERF_SERVER_READY_TIMEOUT_MS (default: 10000).
   --connect-ready-timeout-ms N
@@ -276,7 +277,8 @@ Environment:
   PERF_MEMORY_PER_CLIENT_KB=1024
                             Estimated memory per client socket for guard
 Notes:
-  - result is saved under results/multi/report/.
+  - result is saved under results/multi/report/ as
+    perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt.
   - default build mode is incremental (configure/build without deleting build dir).
 USAGE
 }
@@ -341,6 +343,7 @@ BUILD_MODE="incremental"
 BUILD_MODE_EXPLICIT=0
 WARMUP_SECONDS="$(env_or_default "2" PERF_WARMUP_SECONDS PERF_MULTI_WARMUP_SECONDS)"
 DURATION_SECONDS="$(env_or_default "5" PERF_DURATION_SECONDS PERF_MULTI_DURATION_SECONDS)"
+RECV_MODE="$(env_or_default "recv" PERF_RECV_MODE PERF_MULTI_RECV_MODE)"
 CLIENTS="$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)"
 HWM="$(env_or_default "" PERF_HWM PERF_MULTI_HWM)"
 SNDHWM="$(env_or_default "" PERF_SNDHWM PERF_MULTI_SNDHWM)"
@@ -360,8 +363,8 @@ STREAM_MSG_SIZES="$(env_or_default "" PERF_STREAM_MSG_SIZES PERF_MULTI_STREAM_MS
 PUBSUB_XPUB_NODROP="$(env_or_default "" PERF_PUBSUB_XPUB_NODROP PERF_MULTI_PUBSUB_XPUB_NODROP)"
 SPOT_XPUB_NODROP="$(env_or_default "" PERF_SPOT_XPUB_NODROP PERF_MULTI_SPOT_XPUB_NODROP)"
 RUN_COOLDOWN_MS="$(env_or_default "3000" PERF_RUN_COOLDOWN_MS PERF_MULTI_RUN_COOLDOWN_MS)"
-TRANSPORT_TRANSITION_MS="$(env_or_default "3000" PERF_TRANSPORT_TRANSITION_MS PERF_MULTI_TRANSPORT_TRANSITION_MS)"
-PATTERN_TRANSITION_MS="$(env_or_default "3000" PERF_PATTERN_TRANSITION_MS PERF_MULTI_PATTERN_TRANSITION_MS)"
+TRANSPORT_TRANSITION_MS="$(env_or_default "5000" PERF_TRANSPORT_TRANSITION_MS PERF_MULTI_TRANSPORT_TRANSITION_MS)"
+PATTERN_TRANSITION_MS="$(env_or_default "5000" PERF_PATTERN_TRANSITION_MS PERF_MULTI_PATTERN_TRANSITION_MS)"
 SERVER_READY_TIMEOUT_MS="$(env_or_default "10000" PERF_SERVER_READY_TIMEOUT_MS PERF_MULTI_SERVER_READY_TIMEOUT_MS)"
 CONNECT_READY_TIMEOUT_MS="$(env_or_default "5000" PERF_CONNECT_READY_TIMEOUT_MS PERF_MULTI_CONNECT_READY_TIMEOUT_MS)"
 MONITOR_HWM="$(env_or_default "1000" PERF_MONITOR_HWM PERF_MULTI_MONITOR_HWM)"
@@ -467,6 +470,15 @@ while [[ $# -gt 0 ]]; do
       HAS_EXPLICIT_RUNS=1
       SCRIPT_ARGS+=( "$1" )
       shift
+      ;;
+    --recv)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      RECV_MODE="${2}"
+      SCRIPT_ARGS+=( "$1" "$2" )
+      shift 2
       ;;
     --warmup)
       if [[ $# -lt 2 ]]; then
@@ -732,6 +744,10 @@ if ! is_uint "${SERVER_BIND_PORT}" || (( SERVER_BIND_PORT > 65535 )); then
   echo "Error: --server-bind-port must be an integer in range 0..65535." >&2
   exit 1
 fi
+if [[ "${RECV_MODE}" != "recv" && "${RECV_MODE}" != "callback" ]]; then
+  echo "Error: --recv must be 'recv' or 'callback'." >&2
+  exit 1
+fi
 
 if [[ -z "${CLIENTS}" && -z "$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)" ]]; then
   memory_max_clients="$(resolve_memory_max_clients)"
@@ -790,6 +806,7 @@ fi
 RUN_ENV=()
 RUN_ENV+=(PERF_ALLOW_MULTI="1")
 RUN_ENV+=(PERF_POLICY="1")
+RUN_ENV+=(PERF_RECV_MODE="${RECV_MODE}")
 RUN_ENV+=(PERF_RESULTS_DIR="${RESULTS_DIR_OVERRIDE}")
 RUN_ENV+=(PERF_WARMUP_SECONDS="${WARMUP_SECONDS}")
 RUN_ENV+=(PERF_DURATION_SECONDS="${DURATION_SECONDS}")
@@ -935,6 +952,18 @@ if [[ "${#RUN_PATTERNS[@]}" -eq 0 ]]; then
   exit 0
 fi
 
+if [[ "${RECV_MODE}" == "callback" && "${#RUN_PATTERNS[@]}" -gt 1 ]]; then
+  reordered_patterns=()
+  for pattern in "${RUN_PATTERNS[@]}"; do
+    if [[ "${pattern}" == "STREAM_CALLBACK" ]]; then
+      reordered_patterns=("${pattern}" "${reordered_patterns[@]}")
+    else
+      reordered_patterns+=("${pattern}")
+    fi
+  done
+  RUN_PATTERNS=("${reordered_patterns[@]}")
+fi
+
 if [[ -n "${CONNECT_CONCURRENCY}" ]]; then
   RUN_ENV+=(PERF_CONNECT_CONCURRENCY="${CONNECT_CONCURRENCY}")
 fi
@@ -942,6 +971,7 @@ fi
 PATTERN_CSV="$(IFS=,; echo "${RUN_PATTERNS[*]}")"
 echo "=== Running multi benchmark: ${PATTERN_CSV} ==="
 echo "    warmup=${WARMUP_SECONDS}s duration=${DURATION_SECONDS}s"
+echo "    recv_mode=${RECV_MODE}"
 RUN_EXIT_CODE=0
 if PERF_ALLOW_MULTI=1 \
   PERF_SUPPRESS_TOTAL_TIME=1 \

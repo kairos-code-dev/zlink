@@ -4,6 +4,7 @@
 #include "../../testutil_unity.hpp"
 
 #include <atomic>
+#include <climits>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -59,6 +60,75 @@ struct gateway_probe_t
 };
 
 gateway_probe_t *g_probe = NULL;
+
+struct gateway_ready_monitor_state_t
+{
+    gateway_ready_monitor_state_t () :
+        ready_peer_count (0),
+        send_ready (false),
+        error_code (0)
+    {
+    }
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    size_t ready_peer_count;
+    bool send_ready;
+    int error_code;
+};
+
+void gateway_ready_monitor_handler (const zlink_service_event_t *event_,
+                                    void *userdata_)
+{
+    gateway_ready_monitor_state_t *state =
+      static_cast<gateway_ready_monitor_state_t *> (userdata_);
+    if (!state || !event_)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        switch (event_->event_type) {
+            case ZLINK_GATEWAY_ROUTE_UP:
+            case ZLINK_GATEWAY_ROUTE_DOWN:
+                state->ready_peer_count =
+                  static_cast<size_t> (event_->value);
+                break;
+            case ZLINK_GATEWAY_SEND_READY_CHANGED:
+                state->send_ready = event_->value > 0;
+                break;
+            case ZLINK_GATEWAY_MONITOR_EVENT_ERROR:
+                state->error_code =
+                  event_->error_code != 0 ? event_->error_code : EIO;
+                break;
+            default:
+                break;
+        }
+    }
+
+    state->cv.notify_all ();
+}
+
+bool wait_for_gateway_send_ready (gateway_ready_monitor_state_t *state_,
+                                  size_t expected_,
+                                  int timeout_ms_)
+{
+    if (!state_)
+        return false;
+
+    std::unique_lock<std::mutex> lock (state_->mutex);
+    if (state_->error_code != 0)
+        return false;
+    if (state_->ready_peer_count >= expected_ && state_->send_ready)
+        return true;
+
+    return state_->cv.wait_for (
+      lock, std::chrono::milliseconds (timeout_ms_),
+      [state_, expected_] () {
+          return state_->error_code != 0
+                 || (state_->ready_peer_count >= expected_
+                     && state_->send_ready);
+      });
+}
 
 bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
 {
@@ -459,6 +529,30 @@ struct gateway_stress_worker_t
     std::atomic<int> failures;
 };
 
+struct gateway_destroy_probe_t
+{
+    gateway_destroy_probe_t () :
+        client (NULL),
+        server (NULL),
+        client_rc (INT_MIN),
+        server_rc (INT_MIN),
+        client_errno (0),
+        server_errno (0),
+        done (false)
+    {
+    }
+
+    void *client;
+    void *server;
+    int client_rc;
+    int server_rc;
+    int client_errno;
+    int server_errno;
+    bool done;
+    std::mutex mutex;
+    std::condition_variable cv;
+};
+
 void gateway_stress_send_worker (gateway_stress_worker_t *worker_)
 {
     if (!worker_ || !worker_->gateway || worker_->payload_size == 0)
@@ -707,6 +801,418 @@ void test_gateway_send_rid_same_handle_concurrent_send_is_thread_safe ()
     g_probe = NULL;
 }
 
+void test_gateway_send_after_ready_monitor_close_keeps_working ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *server = zlink_gateway_new (ctx, "svc-handler-monitor-close",
+                                      "gw-server-monitor-close",
+                                      &gateway_server_handler, NULL);
+    void *client = zlink_gateway_new (ctx, "svc-handler-monitor-close",
+                                      "gw-client-monitor-close",
+                                      &gateway_client_handler, NULL);
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+
+    gateway_probe_t probe;
+    probe.server = server;
+    g_probe = &probe;
+
+    void *monitor = zlink_gateway_monitor_open (
+      client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+                | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
+      &zlink_service_monitor_ignore_handler, NULL);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    zlink_routing_id_t server_rid;
+    memset (&server_rid, 0, sizeof (server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22720;
+    bool bound = false;
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
+                  test_port (bind_seed));
+        if (zlink_gateway_bind (server, endpoint) == 0) {
+            bound = true;
+            break;
+        }
+        if (errno != EADDRINUSE)
+            TEST_FAIL_MESSAGE ("gateway monitor-close bind failed");
+        bind_seed += 1;
+    }
+    TEST_ASSERT_TRUE (bound);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_connect (client, endpoint, &server_rid));
+    TEST_ASSERT_TRUE (wait_for_gateway_connections (client, 1, 5000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+
+    zlink_msg_t request_part;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&request_part, 4));
+    memcpy (zlink_msg_data (&request_part), "ping", 4);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_send (client, &request_part, 1, 0));
+
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.request_calls, 1, 5000));
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.reply_calls, 1, 5000));
+    TEST_ASSERT_EQUAL_STRING ("ping", probe.request_payload);
+    TEST_ASSERT_EQUAL_STRING ("pong", probe.reply_payload);
+    TEST_ASSERT_EQUAL_INT (0, probe.close_failures.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe.send_failures.load ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server));
+    g_probe = NULL;
+}
+
+void destroy_gateway_pair_async (gateway_destroy_probe_t *probe_)
+{
+    if (!probe_)
+        return;
+
+    errno = 0;
+    const int client_rc = zlink_gateway_destroy (&probe_->client);
+    const int client_errno = client_rc == 0 ? 0 : errno;
+    errno = 0;
+    const int server_rc = zlink_gateway_destroy (&probe_->server);
+    const int server_errno = server_rc == 0 ? 0 : errno;
+
+    {
+        std::lock_guard<std::mutex> lock (probe_->mutex);
+        probe_->client_rc = client_rc;
+        probe_->server_rc = server_rc;
+        probe_->client_errno = client_errno;
+        probe_->server_errno = server_errno;
+        probe_->done = true;
+    }
+    probe_->cv.notify_all ();
+}
+
+void run_gateway_monitor_close_destroy_cycle (void *ctx_,
+                                              int bind_seed_,
+                                              size_t payload_size_,
+                                              int send_count_)
+{
+    TEST_ASSERT_NOT_NULL (ctx_);
+
+    void *server = zlink_gateway_new (ctx_, "svc-handler-monitor-loop",
+                                      "gw-server-monitor-loop",
+                                      &gateway_server_handler, NULL);
+    void *client = zlink_gateway_new (ctx_, "svc-handler-monitor-loop",
+                                      "gw-client-monitor-loop",
+                                      &gateway_client_handler, NULL);
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+
+    gateway_probe_t probe;
+    probe.server = server;
+    probe.echo_request_back = true;
+    probe.expected_request_size = payload_size_;
+    probe.expected_reply_size = payload_size_;
+    g_probe = &probe;
+
+    void *monitor = zlink_gateway_monitor_open (
+      client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+                | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
+      &zlink_service_monitor_ignore_handler, NULL);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    zlink_routing_id_t server_rid;
+    memset (&server_rid, 0, sizeof (server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bool bound = false;
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
+                  test_port (bind_seed_ + attempt));
+        if (zlink_gateway_bind (server, endpoint) == 0) {
+            bound = true;
+            break;
+        }
+        if (errno != EADDRINUSE)
+            TEST_FAIL_MESSAGE ("gateway monitor-loop bind failed");
+    }
+    TEST_ASSERT_TRUE (bound);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_connect (client, endpoint, &server_rid));
+    TEST_ASSERT_TRUE (wait_for_gateway_connections (client, 1, 5000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+
+    std::vector<unsigned char> payload (payload_size_);
+    for (size_t i = 0; i < payload.size (); ++i)
+        payload[i] = static_cast<unsigned char> (i & 0xff);
+
+    for (int i = 0; i < send_count_; ++i) {
+        zlink_msg_t request_part;
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_msg_init_size (&request_part, payload_size_));
+        if (!payload.empty ()) {
+            memcpy (zlink_msg_data (&request_part), &payload[0],
+                    payload.size ());
+        }
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_gateway_send (client, &request_part, 1, 0));
+    }
+
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.request_calls, send_count_, 10000));
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.reply_calls, send_count_, 10000));
+    TEST_ASSERT_EQUAL_INT (0, probe.close_failures.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe.send_failures.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe.request_part_count_failures.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe.reply_part_count_failures.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe.request_size_failures.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe.reply_size_failures.load ());
+
+    gateway_destroy_probe_t destroy_probe;
+    destroy_probe.client = client;
+    destroy_probe.server = server;
+    std::thread destroy_thread (
+      &destroy_gateway_pair_async, &destroy_probe);
+
+    {
+        std::unique_lock<std::mutex> lock (destroy_probe.mutex);
+        const bool completed = destroy_probe.cv.wait_for (
+          lock, std::chrono::seconds (15),
+          [&destroy_probe] () { return destroy_probe.done; });
+        TEST_ASSERT_TRUE_MESSAGE (
+          completed,
+          "gateway destroy exceeded timeout during repeated monitor-close loop");
+    }
+
+    destroy_thread.join ();
+    TEST_ASSERT_EQUAL_INT (0, destroy_probe.client_rc);
+    TEST_ASSERT_EQUAL_INT (0, destroy_probe.server_rc);
+    TEST_ASSERT_EQUAL_INT (0, destroy_probe.client_errno);
+    TEST_ASSERT_EQUAL_INT (0, destroy_probe.server_errno);
+    g_probe = NULL;
+}
+
+void test_gateway_destroy_after_ready_monitor_close_completes_promptly ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *server = zlink_gateway_new (ctx, "svc-handler-monitor-destroy",
+                                      "gw-server-monitor-destroy",
+                                      &gateway_server_handler, NULL);
+    void *client = zlink_gateway_new (ctx, "svc-handler-monitor-destroy",
+                                      "gw-client-monitor-destroy",
+                                      &gateway_client_handler, NULL);
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+
+    gateway_probe_t probe;
+    probe.server = server;
+    probe.echo_request_back = true;
+    probe.expected_request_size = 1024;
+    probe.expected_reply_size = 1024;
+    g_probe = &probe;
+
+    void *monitor = zlink_gateway_monitor_open (
+      client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+                | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
+      &zlink_service_monitor_ignore_handler, NULL);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    zlink_routing_id_t server_rid;
+    memset (&server_rid, 0, sizeof (server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22740;
+    bool bound = false;
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
+                  test_port (bind_seed));
+        if (zlink_gateway_bind (server, endpoint) == 0) {
+            bound = true;
+            break;
+        }
+        if (errno != EADDRINUSE)
+            TEST_FAIL_MESSAGE ("gateway destroy-after-monitor-close bind failed");
+        bind_seed += 1;
+    }
+    TEST_ASSERT_TRUE (bound);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_connect (client, endpoint, &server_rid));
+    TEST_ASSERT_TRUE (wait_for_gateway_connections (client, 1, 5000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+
+    for (int i = 0; i < 32; ++i) {
+        zlink_msg_t request_part;
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&request_part, 1024));
+        memset (zlink_msg_data (&request_part), 'a' + (i % 26), 1024);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_gateway_send (client, &request_part, 1, 0));
+    }
+
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.request_calls, 32, 5000));
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.reply_calls, 32, 5000));
+
+    gateway_destroy_probe_t destroy_probe;
+    destroy_probe.client = client;
+    destroy_probe.server = server;
+    std::thread destroy_thread (
+      &destroy_gateway_pair_async, &destroy_probe);
+
+    {
+        std::unique_lock<std::mutex> lock (destroy_probe.mutex);
+        const bool completed = destroy_probe.cv.wait_for (
+          lock, std::chrono::seconds (15),
+          [&destroy_probe] () { return destroy_probe.done; });
+        TEST_ASSERT_TRUE_MESSAGE (
+          completed, "gateway destroy exceeded service drain timeout after monitor close");
+    }
+
+    destroy_thread.join ();
+    TEST_ASSERT_EQUAL_INT (0, destroy_probe.client_rc);
+    TEST_ASSERT_EQUAL_INT (0, destroy_probe.server_rc);
+    TEST_ASSERT_EQUAL_INT (0, destroy_probe.client_errno);
+    TEST_ASSERT_EQUAL_INT (0, destroy_probe.server_errno);
+    client = destroy_probe.client;
+    server = destroy_probe.server;
+    g_probe = NULL;
+}
+
+void test_gateway_repeated_monitor_close_destroy_cycles_remain_stable ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    const int iterations = 20;
+    const size_t payload_size = 1024;
+    const int send_count = 16;
+    int bind_seed = 22800;
+
+    for (int i = 0; i < iterations; ++i) {
+        run_gateway_monitor_close_destroy_cycle (
+          ctx, bind_seed, payload_size, send_count);
+        bind_seed += 8;
+    }
+}
+
+void test_gateway_monitor_send_ready_drives_backpressure_progress ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *server = zlink_gateway_new (ctx, "svc-handler-send-ready",
+                                      "gw-server-send-ready",
+                                      &gateway_server_handler, NULL);
+    void *client = zlink_gateway_new (ctx, "svc-handler-send-ready",
+                                      "gw-client-send-ready",
+                                      &gateway_client_handler, NULL);
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+
+    const int linger = 0;
+    const int low_hwm = 8;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
+      server, ZLINK_GATEWAY_OPT_LINGER, &linger, sizeof (linger)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
+      server, ZLINK_GATEWAY_OPT_SNDHWM, &low_hwm, sizeof (low_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
+      server, ZLINK_GATEWAY_OPT_RCVHWM, &low_hwm, sizeof (low_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
+      client, ZLINK_GATEWAY_OPT_LINGER, &linger, sizeof (linger)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
+      client, ZLINK_GATEWAY_OPT_SNDHWM, &low_hwm, sizeof (low_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
+      client, ZLINK_GATEWAY_OPT_RCVHWM, &low_hwm, sizeof (low_hwm)));
+
+    gateway_probe_t probe;
+    probe.server = server;
+    probe.echo_request_back = true;
+    probe.expected_request_size = 1024;
+    probe.expected_reply_size = 1024;
+    g_probe = &probe;
+
+    gateway_ready_monitor_state_t monitor_state;
+    void *monitor = zlink_gateway_monitor_open (
+      client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+                | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
+      &gateway_ready_monitor_handler, &monitor_state);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    zlink_monitor_snapshot_t snapshot;
+    memset (&snapshot, 0, sizeof (snapshot));
+    if (zlink_monitor_snapshot (monitor, &snapshot) == 0) {
+        std::lock_guard<std::mutex> lock (monitor_state.mutex);
+        monitor_state.ready_peer_count = snapshot.ready_peer_count;
+        monitor_state.send_ready =
+          (snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0;
+    }
+
+    zlink_routing_id_t server_rid;
+    memset (&server_rid, 0, sizeof (server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22880;
+    bool bound = false;
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        snprintf (endpoint, sizeof (endpoint), "tcp://127.0.0.1:%d",
+                  test_port (bind_seed));
+        if (zlink_gateway_bind (server, endpoint) == 0) {
+            bound = true;
+            break;
+        }
+        if (errno != EADDRINUSE)
+            TEST_FAIL_MESSAGE ("gateway send-ready bind failed");
+        bind_seed += 1;
+    }
+    TEST_ASSERT_TRUE (bound);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_connect (client, endpoint, &server_rid));
+    TEST_ASSERT_TRUE (wait_for_gateway_send_ready (&monitor_state, 1, 5000));
+
+    const int message_count = 256;
+    int blocked_count = 0;
+    std::vector<unsigned char> payload (1024, 's');
+    for (int i = 0; i < message_count; ++i) {
+        while (true) {
+            zlink_msg_t request_part;
+            TEST_ASSERT_SUCCESS_ERRNO (
+              zlink_msg_init_size (&request_part, payload.size ()));
+            memcpy (zlink_msg_data (&request_part), &payload[0], payload.size ());
+            const int rc =
+              zlink_gateway_send_rid (client, &server_rid, &request_part, 1,
+                                      ZLINK_DONTWAIT);
+            if (rc == 0)
+                break;
+
+            const int send_errno = errno;
+            zlink_msg_close (&request_part);
+            TEST_ASSERT_TRUE (send_errno == EAGAIN || send_errno == ENOTCONN
+                              || send_errno == EHOSTUNREACH);
+            ++blocked_count;
+            TEST_ASSERT_TRUE (wait_for_gateway_send_ready (&monitor_state, 1, 5000));
+        }
+    }
+
+    TEST_ASSERT_TRUE (blocked_count > 0);
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.request_calls, message_count, 10000));
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.reply_calls, message_count, 10000));
+    TEST_ASSERT_EQUAL_INT (0, probe.close_failures.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe.send_failures.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe.request_part_count_failures.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe.reply_part_count_failures.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe.request_size_failures.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe.reply_size_failures.load ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server));
+    g_probe = NULL;
+}
+
 int main (int, char **)
 {
     setup_test_environment ();
@@ -715,5 +1221,9 @@ int main (int, char **)
     RUN_TEST (test_gateway_handler_dispatches_request_and_reply);
     RUN_TEST (test_gateway_handler_reply_stress_multi_client_manual_connect);
     RUN_TEST (test_gateway_send_rid_same_handle_concurrent_send_is_thread_safe);
+    RUN_TEST (test_gateway_send_after_ready_monitor_close_keeps_working);
+    RUN_TEST (test_gateway_destroy_after_ready_monitor_close_completes_promptly);
+    RUN_TEST (test_gateway_repeated_monitor_close_destroy_cycles_remain_stable);
+    RUN_TEST (test_gateway_monitor_send_ready_drives_backpressure_progress);
     return UNITY_END ();
 }

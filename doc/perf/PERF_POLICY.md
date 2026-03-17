@@ -31,6 +31,11 @@
   - 실패 의미
 - 실제 오류는 즉시 `fail` 처리한다.
 - `EAGAIN`은 오류가 아니라 flow-control 상태로 취급한다.
+- perf 측정용 recv 경로는 callback-only를 원칙으로 한다.
+- active/warmup 등 실제 측정 recv 경로에서는 `zlink_recv()` /
+  `zlink_msg_recv()` 같은 동기 recv API를 사용하지 않는다.
+- setup/handshake 단계의 bounded validation 1회는 허용하되, 측정 구간으로
+  들어가기 전에 종료되어야 한다.
 - hot loop 안에서는 아래를 금지한다.
   - retry budget
   - sleep / yield
@@ -46,6 +51,12 @@
 - registry summary는 eventually consistent view이므로 benchmark의 final strict
   start gate로 사용하지 않는다.
 - strict start readiness가 필요하면 local service monitor를 사용한다.
+- perf 연결 준비/handshake는 socket/service monitoring 기반 readiness를
+  우선 사용한다.
+- perf 바이너리는 monitor-ready 이후에만 측정을 시작해야 하며, 별도의
+  ad-hoc retry loop/sleep 기반 handshake를 구현하지 않는다.
+- routing 검증이 필요한 패턴(예: ROUTER, GATEWAY)은 monitor-ready 이후
+  단발성 self-check 1회만 수행하고, 실패 시 즉시 fail 처리한다.
 - registry/bootstrap/query/summary 조회는 measurement phase 밖에서만 수행한다.
 
 ## 1.2 패턴 해석 규칙

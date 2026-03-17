@@ -33,11 +33,11 @@
   - 소켓 생성 시 recv handler를 등록하면, 메시지 도착 시 I/O thread에서 콜백이 호출된다.
   - poller(`PollIn`)는 사용하지 않는다.
 - send
-  - `send(..., DONTWAIT)` nonblocking send를 사용한다.
+- `send(..., DONTWAIT)` nonblocking send를 사용한다.
   - recv callback 안에서 직접 `send(DONTWAIT)`를 호출한다.
     - callback 중 same-handle send는 thread-safe socket plan에 의해 공식 허용된다.
   - `EAGAIN` 시 역할별 backpressure 전략을 적용한다 (아래 참조).
-  - `zlink_socket_set_send_ready_handler()`로 writable transition 콜백을 등록한다.
+  - `zlink_socket_send_ready_handler()`로 writable transition 콜백을 등록한다.
   - `while (send 실패)` 식의 즉시 재시도는 금지한다.
 - backpressure 전략 (역할별)
   - **echo 서버** (소켓 1개 × 클라이언트 N개):
@@ -60,8 +60,12 @@
   - perf 환경(HWM 100, inflight 1/peer)에서 EAGAIN은 사실상 발생하지 않는다.
   - deque/플래그는 정확성을 위한 safety net이며, hot path에서는 `empty()` / `bool` 체크만 수행된다.
 - 한 줄 요약
-  - `multi = callback recv + direct nonblocking send in callback`
-  - `backpressure = echo 서버: deque, echo 클라이언트/one-way sender: bool 플래그`
+- `multi = callback recv + direct nonblocking send in callback`
+- `backpressure = echo 서버: deque, echo 클라이언트/one-way sender: bool 플래그`
+- 연결 준비와 benchmark start gate는 socket/service monitoring 기반
+  readiness를 사용한다.
+- multi perf는 monitor-ready 이전에 측정을 시작하지 않으며, ad-hoc
+  sleep/retry handshake loop를 추가하지 않는다.
 
 ### 1.2 프로세스 모델
 

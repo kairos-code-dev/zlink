@@ -28,6 +28,9 @@
 - size 변경 시마다 별도 프로세스로 실행하여 케이스 간 메트릭 오염을 방지한다.
 - 명시적 drain phase는 두지 않지만, active 종료 후 receiver는 짧은 idle drain으로 in-flight 메시지를 정리할 수 있다.
 - 재시도 로직은 두지 않는다.
+- 연결 준비/handshake는 monitor 기반 readiness를 사용한다.
+- monitor-ready 이후 필요한 protocol self-check는 단발성 검증 1회만
+  허용하며, retry loop나 sleep 기반 보정은 금지한다.
 
 ### 1.1 Single 핵심 정책
 
@@ -39,9 +42,12 @@
   - 실패 시 즉시 `fail` 처리한다.
   - retry는 없다.
 - recv
-  - receiver는 sender와 분리된 수신 경로에서 blocking recv를 사용한다.
-  - 수신 후 즉시 `recv(..., DONTWAIT)`로 추가 프레임을 drain한다.
-  - active 종료 후에는 recv timeout 기준의 idle drain으로 잔여 in-flight를 정리할 수 있다.
+  - receiver는 callback-only recv 경로를 사용한다.
+  - `zlink_recv()` / `zlink_msg_recv()` 같은 동기 recv API는 active/warmup
+    측정 경로에
+    사용하지 않는다.
+  - active 종료 후에는 callback dispatch 기준의 bounded idle drain으로
+    잔여 in-flight를 정리할 수 있다.
 - poller
   - single의 기본 메커니즘이 아니다.
   - `ROUTER_ROUTER_POLL`도 이름만 유지하고 동일 정책을 적용한다.
@@ -65,6 +71,9 @@
 
 - warmup 데이터는 최종 집계에서 제외한다.
 - settle은 소켓 설정 완료 후 안정화 대기이며, 환경 변수로 변경할 수 없다. **GATEWAY, SPOT 등 서비스 패턴에만 적용된다.** 소켓 패턴(PAIR, PUBSUB, DEALER_*, ROUTER_*)은 `setup_connected_pair()` 내부에서 연결 안정화를 처리하므로 별도 settle을 호출하지 않는다.
+- `setup_connected_pair()` 및 service monitor readiness는 single 측정의
+  공식 start gate다. benchmark 시작 전 준비 판정은 monitoring을 통해
+  해결하고, perf 파일 안의 커스텀 handshake loop로 대체하지 않는다.
 - active에서만 throughput/latency를 계산한다.
 - idle drain은 active 종료 전에 이미 송신된 in-flight 메시지를 정리하기 위한 receiver 측 정리 단계다.
 - 다음 size는 별도 프로세스로 다시 시작한다.

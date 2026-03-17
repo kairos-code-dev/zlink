@@ -72,12 +72,19 @@ int zlink::mailbox_t::recv (command_t *cmd_, int timeout_)
                 errno_assert (errno == EAGAIN || errno == EINTR);
                 return -1;
             }
-            _signaler.recv ();
+            const int recv_rc = _signaler.recv_failable ();
+            if (recv_rc == -1) {
+                errno_assert (errno == EAGAIN);
+                return -1;
+            }
         }
         _active = true;
     }
 
-    if (_cpipe.read (cmd_))
+    _sync.lock ();
+    const bool has_command = _cpipe.read (cmd_);
+    _sync.unlock ();
+    if (has_command)
         return 0;
 
     _active = false;
@@ -119,7 +126,9 @@ void zlink::mailbox_t::schedule_if_needed ()
 bool zlink::mailbox_t::reschedule_if_needed ()
 {
     _scheduled.store (false, std::memory_order_release);
+    _sync.lock ();
     const bool has_data = _cpipe.check_read ();
+    _sync.unlock ();
 
     if (!has_data)
         return false;

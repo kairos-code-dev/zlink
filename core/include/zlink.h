@@ -645,19 +645,23 @@ typedef void (*zlink_socket_msg_handler_fn) (
   size_t part_count_,
   void *userdata_);
 
-typedef void (*zlink_spot_handler_fn) (const zlink_routing_id_t *source_rid_,
-                                       const char *topic_,
-                                       size_t topic_len_,
-                                       zlink_msg_t *parts_,
-                                       size_t part_count_,
-                                       void *userdata_);
+typedef void (*zlink_subscribe_handler_fn) (
+  const zlink_routing_id_t *source_rid_,
+  const char *topic_,
+  size_t topic_len_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
 
-typedef void (*zlink_xpub_handler_fn) (
-                                       const zlink_routing_id_t *source_rid_,
-                                       int subscribed_,
-                                       const char *topic_,
-                                       size_t topic_len_,
-                                       void *userdata_);
+typedef void (*zlink_subscription_event_handler_fn) (
+  const zlink_routing_id_t *source_rid_,
+  int subscribed_,
+  const char *topic_,
+  size_t topic_len_,
+  void *userdata_);
+
+typedef zlink_subscribe_handler_fn zlink_spot_handler_fn;
+typedef zlink_subscription_event_handler_fn zlink_xpub_handler_fn;
 
 typedef void (*zlink_send_ready_handler_fn) (void *subject_, void *userdata_);
 
@@ -679,11 +683,11 @@ ZLINK_EXPORT void *zlink_socket (void *, zlink_socket_type_t type_);
 ZLINK_EXPORT int zlink_recv_handler (
   void *s_, zlink_socket_msg_handler_fn handler_, void *userdata_);
 
-ZLINK_EXPORT int zlink_recv_spot_handler (
-  void *s_, zlink_spot_handler_fn handler_, void *userdata_);
+ZLINK_EXPORT int zlink_subscribe_handler (
+  void *s_, zlink_subscribe_handler_fn handler_, void *userdata_);
 
-ZLINK_EXPORT int zlink_recv_xpub_handler (
-  void *s_, zlink_xpub_handler_fn handler_, void *userdata_);
+ZLINK_EXPORT int zlink_subscription_event_handler (
+  void *s_, zlink_subscription_event_handler_fn handler_, void *userdata_);
 
 /**
  * @brief Install or replace the send-ready callback for a send-capable handle.
@@ -790,6 +794,31 @@ ZLINK_EXPORT int zlink_recv (void *s_,
                              zlink_msg_t **parts_out_,
                              size_t *part_count_out_,
                              zlink_send_flags_t flags_);
+
+ZLINK_EXPORT int zlink_publish (void *subject_,
+                                const char *topic_id_,
+                                zlink_msg_t *parts_,
+                                size_t part_count_,
+                                zlink_send_flags_t flags_);
+
+ZLINK_EXPORT int zlink_subscribe (void *subject_, const char *filter_);
+ZLINK_EXPORT int zlink_unsubscribe (void *subject_, const char *filter_);
+
+ZLINK_EXPORT int zlink_subscribe_recv (void *subject_,
+                                       zlink_routing_id_t *source_rid_out_,
+                                       zlink_msg_t **parts_out_,
+                                       size_t *part_count_out_,
+                                       char *topic_id_out_,
+                                       size_t *topic_id_len_out_,
+                                       zlink_send_flags_t flags_);
+
+ZLINK_EXPORT int zlink_subscription_event_recv (
+  void *subject_,
+  zlink_routing_id_t *source_rid_out_,
+  int *subscribed_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_,
+  zlink_send_flags_t flags_);
 
 typedef struct {
     uint64_t event;
@@ -1128,7 +1157,7 @@ ZLINK_EXPORT int zlink_gateway_destroy (void **gateway_p);
 /**
  * @brief Create a service-bound SPOT node in recv model.
  *
- * SpotNode handles start in recv model. Install `zlink_recv_spot_handler()`
+ * SpotNode handles start in recv model. Install `zlink_subscribe_handler()`
  * to make a one-way transition to callback model. In callback model, direct
  * recv and data-plane poller registration fail with errno=EBUSY. In recv
  * model, `zlink_spot_node_send_ready_handler()` fails with errno=EBUSY.
@@ -1201,32 +1230,6 @@ typedef enum zlink_spot_sub_option_t
 } zlink_spot_sub_option_t;
 
 
-/** @brief Publish via the node-owned default SpotPub facade. */
-ZLINK_EXPORT int zlink_spot_node_publish (void *node,
-                                          const char *topic_id,
-                                          zlink_msg_t *parts,
-                                          size_t part_count,
-                                          zlink_send_flags_t flags);
-
-/** @brief Subscribe via the node-owned default SpotSub facade. */
-ZLINK_EXPORT int zlink_spot_node_subscribe (void *node, const char *topic_id);
-
-/** @brief Subscribe to a prefix pattern via the node-owned default SpotSub. */
-ZLINK_EXPORT int zlink_spot_node_subscribe_pattern (void *node,
-                                                    const char *pattern);
-
-/** @brief Unsubscribe a topic or pattern via the node-owned default SpotSub. */
-ZLINK_EXPORT int zlink_spot_node_unsubscribe (
-  void *node, const char *topic_id_or_pattern);
-
-ZLINK_EXPORT int zlink_spot_node_recv (void *node,
-                                       zlink_routing_id_t *source_rid_out,
-                                       zlink_msg_t **parts,
-                                       size_t *part_count,
-                                       char *topic_id_out,
-                                       size_t *topic_id_len,
-                                       zlink_send_flags_t flags);
-
 ZLINK_EXPORT int zlink_spot_node_send_ready_handler (
   void *node,
   zlink_send_ready_handler_fn handler,
@@ -1235,35 +1238,13 @@ ZLINK_EXPORT int zlink_spot_node_send_ready_handler (
 /**
  * @brief Create a unified Spot facade in recv model.
  *
- * Spot handles start in recv model. Install `zlink_recv_spot_handler()` to
+ * Spot handles start in recv model. Install `zlink_subscribe_handler()` to
  * make a one-way transition to callback model. In callback model, direct recv
  * and data-plane poller registration fail with errno=EBUSY. In recv model,
  * `zlink_spot_send_ready_handler()` fails with errno=EBUSY.
  */
 ZLINK_EXPORT void *zlink_spot_new (void *spot_node);
 ZLINK_EXPORT int zlink_spot_destroy (void **spot_p);
-ZLINK_EXPORT int zlink_spot_publish (void *spot,
-                                     const char *topic_id,
-                                     zlink_msg_t *parts,
-                                     size_t part_count,
-                                     zlink_send_flags_t flags);
-ZLINK_EXPORT int zlink_spot_sub_recv (void *sub,
-                                      zlink_routing_id_t *source_rid_out,
-                                      zlink_msg_t **parts,
-                                      size_t *part_count,
-                                      char *topic_id_out,
-                                      size_t *topic_id_len,
-                                      zlink_send_flags_t flags);
-ZLINK_EXPORT int zlink_xpub_recv (void *s_,
-                                  zlink_routing_id_t *source_rid_out_,
-                                  int *subscribed_out_,
-                                  char *topic_id_out_,
-                                  size_t *topic_id_len_,
-                                  zlink_send_flags_t flags_);
-ZLINK_EXPORT int zlink_spot_subscribe (void *spot, const char *topic_id);
-ZLINK_EXPORT int zlink_spot_subscribe_pattern (void *spot, const char *pattern);
-ZLINK_EXPORT int zlink_spot_unsubscribe (void *spot,
-                                         const char *topic_id_or_pattern);
 ZLINK_EXPORT int zlink_spot_send_ready_handler (
   void *spot,
   zlink_send_ready_handler_fn handler,

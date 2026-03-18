@@ -95,7 +95,7 @@ void *create_spot_node (void *ctx_, const char *service_name_)
     void *node = zlink_spot_node_new (ctx_, service_name_);
     if (!node)
         return NULL;
-    if (zlink_recv_spot_handler (node, &queued_spot_handler, NULL) != 0) {
+    if (zlink_subscribe_handler (node, &queued_spot_handler, NULL) != 0) {
         const int err = errno;
         zlink_spot_node_destroy (&node);
         errno = err;
@@ -144,12 +144,12 @@ static void cleanup_ipc_endpoint (const char *endpoint_)
 #endif
 }
 
-void *create_spot_handle (void *node_, zlink_spot_handler_fn handler_)
+void *create_spot_handle (void *node_, zlink_subscribe_handler_fn handler_)
 {
     void *spot = zlink_spot_new (node_);
     if (!spot)
         return NULL;
-    if (handler_ && zlink_recv_spot_handler (spot, handler_, NULL) != 0) {
+    if (handler_ && zlink_subscribe_handler (spot, handler_, NULL) != 0) {
         const int err = errno;
         zlink_spot_destroy (&spot);
         errno = err;
@@ -907,7 +907,7 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
 
     step_log ("spot peer transport: warm node_a default pub");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_publish (node_a, "__warmup__", NULL, 0, 0));
+      zlink_publish (node_a, "__warmup__", NULL, 0, 0));
 
     step_log ("spot peer transport: connect node_b -> node_a");
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -915,7 +915,7 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
 
     step_log ("spot peer transport: subscribe node_b");
     TEST_ASSERT_NOT_NULL (ensure_queued_spot_probe (node_b, true));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_subscribe (node_b, topic));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (node_b, topic));
     TEST_ASSERT_TRUE (wait_for_service_event (
       &node_b_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
     TEST_ASSERT_TRUE (wait_for_service_event (
@@ -929,7 +929,7 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
 
     step_log ("spot peer transport: publish");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_publish (node_a, topic, parts, 1, 0));
+      zlink_publish (node_a, topic, parts, 1, 0));
 
     step_log ("spot peer transport: wait delivery");
     TEST_ASSERT_TRUE (
@@ -940,7 +940,7 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
       zlink_spot_node_disconnect_peer_pub (node_b, endpoint_a));
 
     step_log ("spot peer transport: detach subscriber");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_unsubscribe (node_b, topic));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_unsubscribe (node_b, topic));
 
     if (use_tls)
         msleep (200);

@@ -401,7 +401,7 @@ send_status_t try_publish_locked(spot_server_state_t *state)
     }
 
     const int rc =
-      zlink_spot_publish(state->pub, k_topic, &part, 1, ZLINK_DONTWAIT);
+      zlink_publish(state->pub, k_topic, &part, 1, ZLINK_DONTWAIT);
     const int saved_errno = rc == 0 ? 0 : errno;
     (void) zlink_msg_close(&part);
 
@@ -641,7 +641,7 @@ int run_server_benchmark(const std::string &lib_name,
     }
 
     void *pub = zlink_spot_new(node);
-    if (pub && zlink_recv_spot_handler(pub, &discard_spot_parts, NULL) != 0) {
+    if (pub && zlink_subscribe_handler(pub, &discard_spot_parts, NULL) != 0) {
         zlink_spot_destroy(&pub);
         pub = NULL;
     }

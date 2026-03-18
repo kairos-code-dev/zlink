@@ -557,7 +557,7 @@ bool recv_one_spot_message(spot_client_slot_t *slot, int flags, bool *received)
     size_t part_count = 0;
     char topic[256];
     size_t topic_len = sizeof(topic) - 1;
-    const int rc = zlink_spot_sub_recv(
+    const int rc = zlink_subscribe_recv(
       slot->sub, &parts, &part_count, flags, topic, &topic_len);
     if (rc != 0) {
         const int err = errno;
@@ -678,7 +678,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
 
         slot->sub = zlink_spot_new(slot->node);
         if (slot->sub && recv_mode == spot_recv_callback
-            && zlink_recv_spot_handler(slot->sub, &spot_client_sub_handler,
+            && zlink_subscribe_handler(slot->sub, &spot_client_sub_handler,
                                        NULL)
                  != 0) {
             zlink_spot_destroy(&slot->sub);
@@ -687,7 +687,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
         if (!slot->sub || !apply_spot_sub_options(slot->sub, settings)
             || !open_spot_ready_monitor(slot)
             || zlink_spot_node_connect_peer_pub(slot->node, endpoint.c_str()) != 0
-            || zlink_spot_subscribe(slot->sub, k_topic) != 0) {
+            || zlink_subscribe(slot->sub, k_topic) != 0) {
             if (bench_debug_enabled())
                 std::cerr << "[multi-spot-client] slot create failed slot=" << i
                           << " sub=" << (slot->sub != NULL)

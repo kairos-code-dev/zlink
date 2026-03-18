@@ -1012,18 +1012,18 @@ void test_spot_delivery_ready_changed_implies_first_publish_delivery ()
     TEST_ASSERT_NOT_NULL (pub_node);
     TEST_ASSERT_NOT_NULL (sub_node);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_spot_handler (pub_node, &ignore_spot_handler, NULL));
+      zlink_subscribe_handler (pub_node, &ignore_spot_handler, NULL));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_spot_handler (sub_node, &ignore_spot_handler, NULL));
+      zlink_subscribe_handler (sub_node, &ignore_spot_handler, NULL));
 
     void *pub = zlink_spot_new (pub_node);
     void *sub = zlink_spot_new (sub_node);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_spot_handler (pub, &ignore_spot_handler, NULL));
+      zlink_subscribe_handler (pub, &ignore_spot_handler, NULL));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_spot_handler (sub, &capture_spot_delivery, NULL));
+      zlink_subscribe_handler (sub, &capture_spot_delivery, NULL));
 
     service_event_probe_t sub_monitor_probe;
     service_event_probe_t pub_monitor_probe;
@@ -1050,7 +1050,7 @@ void test_spot_delivery_ready_changed_implies_first_publish_delivery ()
                                    sizeof (endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer_pub (sub_node, endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "svc-contract"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (sub, "svc-contract"));
 
     size_t sub_cursor = 0;
     size_t pub_cursor = 0;
@@ -1104,7 +1104,7 @@ void test_spot_delivery_ready_changed_implies_first_publish_delivery ()
     zlink_msg_t payload;
     init_text_part (&payload, "payload");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_publish (pub, "svc-contract", &payload, 1, 0));
+      zlink_publish (pub, "svc-contract", &payload, 1, 0));
     TEST_ASSERT_TRUE (wait_for_spot_delivery (&delivery_probe, "svc-contract",
                                               "payload", 3000));
     TEST_ASSERT_EQUAL_INT (0, delivery_probe.close_failures);
@@ -1139,12 +1139,12 @@ void test_spot_multi_delivery_ready_changed_implies_first_publish_delivery ()
       zlink_spot_node_new (server_ctx, "spot-monitor-contract-pub");
     TEST_ASSERT_NOT_NULL (pub_node);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_spot_handler (pub_node, &ignore_spot_handler, NULL));
+      zlink_subscribe_handler (pub_node, &ignore_spot_handler, NULL));
 
     void *pub = zlink_spot_new (pub_node);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_spot_handler (pub, &ignore_spot_handler, NULL));
+      zlink_subscribe_handler (pub, &ignore_spot_handler, NULL));
 
     service_event_probe_t pub_monitor_probe;
     void *pub_monitor = zlink_spot_monitor_open (
@@ -1167,12 +1167,12 @@ void test_spot_multi_delivery_ready_changed_implies_first_publish_delivery ()
         snprintf (name, sizeof (name), "spot-monitor-contract-sub-%zu", i);
         slots[i].node = zlink_spot_node_new (client_ctx, name);
         TEST_ASSERT_NOT_NULL (slots[i].node);
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_spot_handler (
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
           slots[i].node, &ignore_spot_handler, NULL));
 
         slots[i].sub = zlink_spot_new (slots[i].node);
         TEST_ASSERT_NOT_NULL (slots[i].sub);
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_spot_handler (
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
           slots[i].sub, &capture_registered_spot_delivery, NULL));
         register_spot_delivery_probe (slots[i].sub, &slots[i].delivery_probe);
 
@@ -1185,8 +1185,8 @@ void test_spot_multi_delivery_ready_changed_implies_first_publish_delivery ()
         register_service_monitor_probe (slots[i].monitor,
                                         &slots[i].monitor_probe);
 
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (slots[i].sub,
-                                                         "svc-contract"));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (slots[i].sub,
+                                                    "svc-contract"));
         TEST_ASSERT_SUCCESS_ERRNO (
           zlink_spot_node_connect_peer_pub (slots[i].node, endpoint));
     }
@@ -1233,7 +1233,7 @@ void test_spot_multi_delivery_ready_changed_implies_first_publish_delivery ()
     zlink_msg_t payload;
     init_text_part (&payload, "payload");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_publish (pub, "svc-contract", &payload, 1, 0));
+      zlink_publish (pub, "svc-contract", &payload, 1, 0));
 
     const std::chrono::steady_clock::time_point delivery_deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (10);

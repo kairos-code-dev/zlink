@@ -42,10 +42,10 @@ sockets. Invoked on the owning I/O thread. Ownership of all message parts is
 transferred to the callback; each part must be closed or consumed exactly once.
 Used with `zlink_recv_handler()`.
 
-### zlink_spot_handler_fn
+### zlink_subscribe_handler_fn
 
 ```c
-typedef void (*zlink_spot_handler_fn) (const zlink_routing_id_t *source_rid_,
+typedef void (*zlink_subscribe_handler_fn) (const zlink_routing_id_t *source_rid_,
                                        const char *topic_,
                                        size_t topic_len_,
                                        zlink_msg_t *parts_,
@@ -55,19 +55,19 @@ typedef void (*zlink_spot_handler_fn) (const zlink_routing_id_t *source_rid_,
 
 Callback for topic-based message dispatch on SUB and XSUB sockets.
 Invoked on the owning I/O thread. Ownership of parts is transferred.
-Used with `zlink_recv_spot_handler()`.
+Used with `zlink_subscribe_handler()`.
 
-### zlink_xpub_handler_fn
+### zlink_subscription_event_handler_fn
 
 ```c
-typedef void (*zlink_xpub_handler_fn) (int subscribed_,
+typedef void (*zlink_subscription_event_handler_fn) (int subscribed_,
                                        const uint8_t *topic_,
                                        size_t topic_len_,
                                        void *userdata_);
 ```
 
 Callback for subscription notifications on XPUB sockets.
-Used with `zlink_recv_xpub_handler()`.
+Used with `zlink_subscription_event_handler()`.
 
 Each callback type is registered through a dedicated function. The mapping
 of socket types to registration functions:
@@ -75,8 +75,8 @@ of socket types to registration functions:
 | Socket Type | Registration Function | Callback |
 |---|---|---|
 | PAIR, DEALER, ROUTER, STREAM | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
-| SUB, XSUB | `zlink_recv_spot_handler` | `zlink_spot_handler_fn` |
-| XPUB | `zlink_recv_xpub_handler` | `zlink_xpub_handler_fn` |
+| SUB, XSUB | `zlink_subscribe_handler` | `zlink_subscribe_handler_fn` |
+| XPUB | `zlink_subscription_event_handler` | `zlink_subscription_event_handler_fn` |
 | PUB | N/A | Send-only; no handler needed |
 
 ### zlink_send_ready_handler_fn
@@ -295,18 +295,18 @@ attach on the same handle fails with `errno=EBUSY`.
 **Errors:** `EINVAL` if the handler is NULL or the socket type does not
 accept a message handler. `EBUSY` if a handler is already attached.
 
-**See also:** `zlink_recv_spot_handler`, `zlink_recv_xpub_handler`,
+**See also:** `zlink_subscribe_handler`, `zlink_subscription_event_handler`,
 `zlink_socket`, `zlink_close`
 
 ---
 
-### zlink_recv_spot_handler
+### zlink_subscribe_handler
 
 Attach a topic-based receive handler to a socket.
 
 ```c
-int zlink_recv_spot_handler (void *s_,
-                             zlink_spot_handler_fn handler_,
+int zlink_subscribe_handler (void *s_,
+                             zlink_subscribe_handler_fn handler_,
                              void *userdata_);
 ```
 
@@ -320,18 +320,18 @@ same handle fails with `errno=EBUSY`.
 **Errors:** `EINVAL` if the handler is NULL or the socket type does not
 accept a spot handler. `EBUSY` if a handler is already attached.
 
-**See also:** `zlink_recv_handler`, `zlink_recv_xpub_handler`,
+**See also:** `zlink_recv_handler`, `zlink_subscription_event_handler`,
 `zlink_socket`, `zlink_close`
 
 ---
 
-### zlink_recv_xpub_handler
+### zlink_subscription_event_handler
 
 Attach a subscription notification handler to an XPUB socket.
 
 ```c
-int zlink_recv_xpub_handler (void *s_,
-                             zlink_xpub_handler_fn handler_,
+int zlink_subscription_event_handler (void *s_,
+                             zlink_subscription_event_handler_fn handler_,
                              void *userdata_);
 ```
 
@@ -345,7 +345,7 @@ same handle fails with `errno=EBUSY`.
 **Errors:** `EINVAL` if the handler is NULL or the socket is not XPUB.
 `EBUSY` if a handler is already attached.
 
-**See also:** `zlink_recv_handler`, `zlink_recv_spot_handler`,
+**See also:** `zlink_recv_handler`, `zlink_subscribe_handler`,
 `zlink_socket`, `zlink_close`
 
 ---

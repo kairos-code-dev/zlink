@@ -126,21 +126,21 @@ static void test_spot_mode_policy ()
       zlink_poller_add (poller, spot, spot, ZLINK_POLLIN));
 
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_spot_handler (spot, &noop_spot_handler, NULL));
+      -1, zlink_subscribe_handler (spot, &noop_spot_handler, NULL));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, spot));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_spot_handler (spot, &noop_spot_handler, NULL));
+      zlink_subscribe_handler (spot, &noop_spot_handler, NULL));
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     char topic[64];
     size_t topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_sub_recv (spot, &parts, &part_count, ZLINK_DONTWAIT,
-                               topic, &topic_len));
+      -1, zlink_subscribe_recv (spot, &parts, &part_count, ZLINK_DONTWAIT,
+                                topic, &topic_len));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_EQUAL_INT (
@@ -172,20 +172,20 @@ static void test_spot_node_mode_policy_and_monitor_polling_independence ()
       zlink_poller_add (poller, node, node, ZLINK_POLLIN));
 
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_spot_handler (node, &noop_spot_handler, NULL));
+      -1, zlink_subscribe_handler (node, &noop_spot_handler, NULL));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, node));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_spot_handler (node, &noop_spot_handler, NULL));
+      zlink_subscribe_handler (node, &noop_spot_handler, NULL));
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     char topic[64];
     size_t topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_spot_node_recv (node, &parts, &part_count, ZLINK_DONTWAIT,
+      -1, zlink_subscribe_recv (node, &parts, &part_count, ZLINK_DONTWAIT,
                                 topic, &topic_len));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 

@@ -60,7 +60,7 @@ void queued_spot_handler (const zlink_routing_id_t *,
                           void *);
 
 void *create_spot_node (void *ctx_, const char *service_name_);
-void *create_spot_handle (void *node_, zlink_spot_handler_fn handler_);
+void *create_spot_handle (void *node_, zlink_subscribe_handler_fn handler_);
 typedef int (*spot_publish_fn_t) (void *,
                                   const char *,
                                   zlink_msg_t *,

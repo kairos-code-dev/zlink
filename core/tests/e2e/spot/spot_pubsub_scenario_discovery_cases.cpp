@@ -48,7 +48,7 @@ void test_spot_node_discovery_direct_and_child_interop ()
       sub_node, "tcp://127.0.0.1:", &port_seed, sub_endpoint));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_publish (pub_node, "__warmup__", NULL, 0, 0));
+      zlink_publish (pub_node, "__warmup__", NULL, 0, 0));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_attach_discovery (pub_node, discovery));
@@ -69,7 +69,7 @@ void test_spot_node_discovery_direct_and_child_interop ()
     TEST_ASSERT_NOT_NULL (node_sub_monitor);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_subscribe (sub_node, "interop:node"));
+      zlink_subscribe (sub_node, "interop:node"));
     TEST_ASSERT_TRUE (wait_for_service_event (
       &node_sub_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
     TEST_ASSERT_TRUE (wait_for_service_event (
@@ -77,7 +77,7 @@ void test_spot_node_discovery_direct_and_child_interop ()
       3000));
 
     TEST_ASSERT_SUCCESS_ERRNO (publish_text (
-      &zlink_spot_node_publish, pub_node, "interop:node", "node-hop", 0));
+      &zlink_publish, pub_node, "interop:node", "node-hop", 0));
     TEST_ASSERT_TRUE (wait_for_node_message (
       sub_node, "interop:node", "node-hop", 8, 5000));
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -97,7 +97,7 @@ void test_spot_node_discovery_direct_and_child_interop ()
       &child_sub_monitor_probe);
     TEST_ASSERT_NOT_NULL (child_sub_monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_subscribe (child_sub, "interop:child"));
+      zlink_subscribe (child_sub, "interop:child"));
     TEST_ASSERT_TRUE (wait_for_service_event (
       &child_sub_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
     TEST_ASSERT_TRUE (wait_for_service_event (
@@ -105,16 +105,16 @@ void test_spot_node_discovery_direct_and_child_interop ()
       sub_endpoint, 3000));
 
     TEST_ASSERT_SUCCESS_ERRNO (publish_text (
-      &zlink_spot_publish, child_pub, "interop:child", "child-hop", 0));
+      &zlink_publish, child_pub, "interop:child", "child-hop", 0));
     TEST_ASSERT_TRUE (wait_for_spot_message (
       child_sub, "interop:child", "child-hop", 9, 5000));
     TEST_ASSERT_SUCCESS_ERRNO (
       close_service_monitor_with_probe (&child_sub_monitor));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_unsubscribe (sub_node, "interop:node"));
+      zlink_unsubscribe (sub_node, "interop:node"));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_unsubscribe (child_sub, "interop:child"));
+      zlink_unsubscribe (child_sub, "interop:child"));
     msleep (50);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&child_sub));
@@ -231,7 +231,7 @@ void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
                         continue;
 
                     const int src_idx = zone_idx (src_x, src_y, field_width);
-                    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (
+                    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (
                       spot_subs[dst_idx], topics[src_idx].c_str ()));
                 }
             }
@@ -272,7 +272,7 @@ void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
         TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, sizeof (int)));
         memcpy (zlink_msg_data (&part), &src_idx, sizeof (int));
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_spot_publish (spot_pubs[src_idx], topics[src_idx].c_str (),
+          zlink_publish (spot_pubs[src_idx], topics[src_idx].c_str (),
                               &part, 1, 0));
 
         for (int oy = -1; oy <= 1; ++oy) {

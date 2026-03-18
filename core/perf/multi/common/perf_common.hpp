@@ -490,15 +490,15 @@ inline int zlink_stream_send_msg(void *socket_,
              : -1;
 }
 
-inline int zlink_spot_sub_recv(void *sub_,
-                               zlink_msg_t **parts_,
-                               size_t *part_count_,
-                               int flags_,
-                               char *topic_id_out_,
-                               size_t *topic_id_len_)
+inline int zlink_subscribe_recv(void *sub_,
+                                zlink_msg_t **parts_,
+                                size_t *part_count_,
+                                int flags_,
+                                char *topic_id_out_,
+                                size_t *topic_id_len_)
 {
-    return ::zlink_spot_sub_recv(sub_, NULL, parts_, part_count_, topic_id_out_,
-                                 topic_id_len_, flags_);
+    return ::zlink_subscribe_recv(sub_, NULL, parts_, part_count_,
+                                  topic_id_out_, topic_id_len_, flags_);
 }
 
 inline int bench_hwm_from_env(const char *name_, int default_hwm_);

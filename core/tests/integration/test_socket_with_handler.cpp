@@ -334,16 +334,16 @@ void test_socket_handler_family_validation_on_create ()
     TEST_ASSERT_EQUAL_INT (-1, zlink_recv_handler (xpub, &capture_raw_message, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_recv_spot_handler (pair, &capture_spot_message, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_subscribe_handler (pair, &capture_spot_message, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1, zlink_recv_handler (sub, &capture_raw_message, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_recv_spot_handler (xpub, &capture_spot_message, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_subscribe_handler (xpub, &capture_spot_message, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_recv_xpub_handler (stream, &capture_xpub_event, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_subscription_event_handler (stream, &capture_xpub_event, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     close_zero_linger (pair);
@@ -593,7 +593,8 @@ void test_sub_socket_with_handler_applies_filter_before_dispatch ()
 
     void *sub = zlink_socket (ctx, ZLINK_SUB);
     TEST_ASSERT_NOT_NULL (sub);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_spot_handler (sub, &capture_spot_message, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_subscribe_handler (sub, &capture_spot_message, NULL));
 
     void *pub = zlink_socket (ctx, ZLINK_PUB);
     TEST_ASSERT_NOT_NULL (pub);
@@ -637,7 +638,8 @@ void test_sub_socket_with_handler_applies_filter_before_dispatch_over_inproc ()
 
     void *sub = zlink_socket (ctx, ZLINK_SUB);
     TEST_ASSERT_NOT_NULL (sub);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_spot_handler (sub, &capture_spot_message, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_subscribe_handler (sub, &capture_spot_message, NULL));
 
     void *pub = zlink_socket (ctx, ZLINK_PUB);
     TEST_ASSERT_NOT_NULL (pub);
@@ -666,6 +668,91 @@ void test_sub_socket_with_handler_applies_filter_before_dispatch_over_inproc ()
     g_spot_probe = NULL;
 }
 
+void test_raw_subscribe_recv_returns_topic_and_payload ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *sub = zlink_socket (ctx, ZLINK_SUB);
+    TEST_ASSERT_NOT_NULL (sub);
+    void *pub = zlink_socket (ctx, ZLINK_PUB);
+    TEST_ASSERT_NOT_NULL (pub);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (sub, "topic"));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (pub, endpoint, sizeof endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
+    msleep (SETTLE_TIME);
+
+    s_send_seq (pub, "topic", "payload", SEQ_END);
+
+    zlink_routing_id_t source_rid;
+    memset (&source_rid, 0, sizeof (source_rid));
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic[32];
+    memset (topic, 0, sizeof (topic));
+    size_t topic_len = sizeof (topic);
+    TEST_ASSERT_SUCCESS_ERRNO (::zlink_subscribe_recv (
+      sub, &source_rid, &parts, &part_count, topic, &topic_len, 0));
+    TEST_ASSERT_EQUAL_UINT (0, source_rid.size);
+    TEST_ASSERT_TRUE (topic_len >= 5);
+    TEST_ASSERT_EQUAL_MEMORY ("topic", topic, 5);
+    TEST_ASSERT_EQUAL_UINT (1, part_count);
+    TEST_ASSERT_EQUAL_STRING ("payload",
+                              static_cast<const char *> (
+                                zlink_msg_data (&parts[0])));
+    zlink_multipart_close (parts, part_count);
+
+    close_zero_linger (sub);
+    close_zero_linger (pub);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_pubsub_generic_surface_validates_filters_and_raw_publish ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *sub = zlink_socket (ctx, ZLINK_SUB);
+    TEST_ASSERT_NOT_NULL (sub);
+    void *pub = zlink_socket (ctx, ZLINK_PUB);
+    TEST_ASSERT_NOT_NULL (pub);
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_subscribe (sub, "*"));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_subscribe (sub, "bad*mid"));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (pub, endpoint, sizeof endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
+    msleep (SETTLE_TIME);
+
+    zlink_msg_t part;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 7));
+    memcpy (zlink_msg_data (&part), "payload", 7);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_publish (pub, NULL, &part, 1, 0));
+
+    char buffer[32];
+    memset (buffer, 0, sizeof (buffer));
+    TEST_ASSERT_EQUAL_INT (7, zlink_recv (sub, buffer, sizeof (buffer), 0));
+    TEST_ASSERT_EQUAL_STRING ("payload", buffer);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
+    memcpy (zlink_msg_data (&part), "drop", 4);
+    TEST_ASSERT_EQUAL_INT (-1, zlink_publish (pub, "topic", &part, 1, 0));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&part));
+
+    close_zero_linger (sub);
+    close_zero_linger (pub);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_xpub_socket_with_handler_receives_subscription_events ()
 {
     void *ctx = zlink_ctx_new ();
@@ -679,10 +766,12 @@ void test_xpub_socket_with_handler_receives_subscription_events ()
     int verbose = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (xpub, ZLINK_XPUB_VERBOSE, &verbose, sizeof (verbose)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_xpub_handler (xpub, &capture_xpub_event, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_subscription_event_handler (xpub, &capture_xpub_event, NULL));
     void *sub = zlink_socket (ctx, ZLINK_SUB);
     TEST_ASSERT_NOT_NULL (sub);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_spot_handler (sub, &capture_spot_message, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_subscribe_handler (sub, &capture_spot_message, NULL));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (xpub, endpoint, sizeof endpoint);
@@ -731,7 +820,8 @@ void test_xpub_direct_recv_returns_source_rid_and_topic ()
     memset (topic, 0, sizeof (topic));
     size_t topic_len = sizeof (topic);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_xpub_recv (xpub, &source_rid, &subscribed, topic, &topic_len, 0));
+      zlink_subscription_event_recv (
+        xpub, &source_rid, &subscribed, topic, &topic_len, 0));
     TEST_ASSERT_EQUAL_INT (1, subscribed);
     TEST_ASSERT_TRUE (source_rid.size > 0);
     TEST_ASSERT_EQUAL_UINT (5, topic_len);
@@ -770,7 +860,8 @@ void test_xpub_direct_recv_reports_emsgsize_and_required_topic_length ()
     memset (topic, 0, sizeof (topic));
     size_t topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_xpub_recv (xpub, &source_rid, &subscribed, topic, &topic_len, 0));
+      -1, zlink_subscription_event_recv (
+            xpub, &source_rid, &subscribed, topic, &topic_len, 0));
     TEST_ASSERT_EQUAL_INT (EMSGSIZE, zlink_errno ());
     TEST_ASSERT_EQUAL_UINT (5, topic_len);
     TEST_ASSERT_EQUAL_INT (1, subscribed);
@@ -894,6 +985,8 @@ int main ()
     RUN_TEST (test_sub_socket_with_handler_applies_filter_before_dispatch);
     RUN_TEST (
       test_sub_socket_with_handler_applies_filter_before_dispatch_over_inproc);
+    RUN_TEST (test_raw_subscribe_recv_returns_topic_and_payload);
+    RUN_TEST (test_pubsub_generic_surface_validates_filters_and_raw_publish);
     RUN_TEST (test_xpub_socket_with_handler_receives_subscription_events);
     RUN_TEST (test_xpub_direct_recv_returns_source_rid_and_topic);
     RUN_TEST (test_xpub_direct_recv_reports_emsgsize_and_required_topic_length);

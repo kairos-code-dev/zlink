@@ -569,9 +569,9 @@ void test_socket_send_ready_handler_rejects_sub_and_xsub ()
     TEST_ASSERT_NOT_NULL (sub);
     TEST_ASSERT_NOT_NULL (xsub);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_spot_handler (sub, &discard_spot_message, NULL));
+      zlink_subscribe_handler (sub, &discard_spot_message, NULL));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_spot_handler (xsub, &discard_spot_message, NULL));
+      zlink_subscribe_handler (xsub, &discard_spot_message, NULL));
 
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_socket_send_ready_handler (sub, &raw_send_ready_counting_handler, NULL));

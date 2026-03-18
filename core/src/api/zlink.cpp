@@ -79,6 +79,49 @@ typedef char
 //  Forward declarations for internal API functions
 int zlink_msg_init_buffer (zlink_msg_t *msg_, const void *buf_, size_t size_);
 int zlink_ctx_set_ext (void *ctx_, int option_, const void *optval_, size_t optvallen_);
+int zlink_recv_spot_handler (void *s_,
+                             zlink_spot_handler_fn handler_,
+                             void *userdata_);
+int zlink_recv_xpub_handler (void *s_,
+                             zlink_xpub_handler_fn handler_,
+                             void *userdata_);
+int zlink_spot_node_publish (void *node_,
+                             const char *topic_id_,
+                             zlink_msg_t *parts_,
+                             size_t part_count_,
+                             zlink_send_flags_t flags_);
+int zlink_spot_node_subscribe (void *node_, const char *topic_id_);
+int zlink_spot_node_subscribe_pattern (void *node_, const char *pattern_);
+int zlink_spot_node_unsubscribe (void *node_,
+                                 const char *topic_id_or_pattern_);
+int zlink_spot_publish (void *spot_,
+                        const char *topic_id_,
+                        zlink_msg_t *parts_,
+                        size_t part_count_,
+                        zlink_send_flags_t flags_);
+int zlink_spot_sub_recv (void *sub_,
+                         zlink_routing_id_t *source_rid_out_,
+                         zlink_msg_t **parts_,
+                         size_t *part_count_,
+                         char *topic_id_out_,
+                         size_t *topic_id_len_,
+                         zlink_send_flags_t flags_);
+int zlink_spot_node_recv (void *node_,
+                          zlink_routing_id_t *source_rid_out_,
+                          zlink_msg_t **parts_,
+                          size_t *part_count_,
+                          char *topic_id_out_,
+                          size_t *topic_id_len_,
+                          zlink_send_flags_t flags_);
+int zlink_xpub_recv (void *s_,
+                     zlink_routing_id_t *source_rid_out_,
+                     int *subscribed_out_,
+                     char *topic_id_out_,
+                     size_t *topic_id_len_,
+                     zlink_send_flags_t flags_);
+int zlink_spot_subscribe (void *spot_, const char *topic_id_);
+int zlink_spot_subscribe_pattern (void *spot_, const char *pattern_);
+int zlink_spot_unsubscribe (void *spot_, const char *topic_id_or_pattern_);
 
 //  Default discard handlers – used as sentinels so that sockets created
 //  without an explicit handler silently drop incoming messages.
@@ -106,6 +149,66 @@ static void discard_xpub_event (const zlink_routing_id_t *,
                                 size_t,
                                 void *)
 {
+}
+
+static bool is_valid_pubsub_filter (const char *filter_,
+                                    std::string *raw_filter_out_,
+                                    bool *is_pattern_out_)
+{
+    if (!filter_ || filter_[0] == '\0')
+        return false;
+
+    const size_t len = strlen (filter_);
+    if (len == 0 || len > 255)
+        return false;
+
+    const char *star = strchr (filter_, '*');
+    if (!star) {
+        if (raw_filter_out_)
+            *raw_filter_out_ = std::string (filter_, len);
+        if (is_pattern_out_)
+            *is_pattern_out_ = false;
+        return true;
+    }
+
+    if (star != filter_ + len - 1 || len < 2)
+        return false;
+
+    if (strchr (star + 1, '*'))
+        return false;
+
+    if (raw_filter_out_)
+        *raw_filter_out_ = std::string (filter_, len - 1);
+    if (is_pattern_out_)
+        *is_pattern_out_ = true;
+    return true;
+}
+
+static int copy_topic_to_output (const char *topic_data_,
+                                 size_t topic_size_,
+                                 char *topic_id_out_,
+                                 size_t *topic_id_len_out_)
+{
+    if (!topic_id_len_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (!topic_id_out_ && *topic_id_len_out_ != 0) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (*topic_id_len_out_ < topic_size_) {
+        *topic_id_len_out_ = topic_size_;
+        errno = EMSGSIZE;
+        return -1;
+    }
+
+    if (topic_id_out_ && topic_size_ > 0)
+        memcpy (topic_id_out_, topic_data_, topic_size_);
+    *topic_id_len_out_ = topic_size_;
+    return 0;
 }
 
 void zlink_version (int *major_, int *minor_, int *patch_)
@@ -2273,6 +2376,13 @@ int zlink_recv_handler (void *s_,
     }
 }
 
+int zlink_subscribe_handler (void *s_,
+                             zlink_subscribe_handler_fn handler_,
+                             void *userdata_)
+{
+    return zlink_recv_spot_handler (s_, handler_, userdata_);
+}
+
 int zlink_recv_spot_handler (void *s_,
                              zlink_spot_handler_fn handler_,
                              void *userdata_)
@@ -2349,6 +2459,14 @@ int zlink_recv_spot_handler (void *s_,
 
     return handle.socket->socket_set_spot_handler_with_userdata (
       handler_, userdata_);
+}
+
+int zlink_subscription_event_handler (
+  void *s_,
+  zlink_subscription_event_handler_fn handler_,
+  void *userdata_)
+{
+    return zlink_recv_xpub_handler (s_, handler_, userdata_);
 }
 
 int zlink_recv_xpub_handler (void *s_,
@@ -5026,6 +5144,168 @@ static int send_socket_parts (socket_handle_t handle_,
     return 0;
 }
 
+static int publish_socket_parts (socket_handle_t handle_,
+                                 const char *topic_id_,
+                                 zlink_msg_t *parts_,
+                                 size_t part_count_,
+                                 zlink_send_flags_t flags_)
+{
+    if (!handle_.socket) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (validate_send_flags (flags_) != 0)
+        return -1;
+    if ((!parts_ && part_count_ > 0) || part_count_ == 0) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const int type = legacy_socket_type (socket_type (handle_));
+    if (type != ZLINK_PUB && type != ZLINK_XPUB) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    if (topic_id_ != NULL) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    const int base_flags = flags_ & ZLINK_DONTWAIT;
+    for (size_t i = 0; i < part_count_; ++i) {
+        const bool more = i + 1 < part_count_;
+        if (s_sendmsg (handle_, &parts_[i], base_flags | (more ? ZLINK_SNDMORE : 0))
+            < 0) {
+            return -1;
+        }
+    }
+
+    errno = 0;
+    return 0;
+}
+
+static int recv_socket_subscribe_parts (socket_handle_t handle_,
+                                        zlink_routing_id_t *source_rid_out_,
+                                        zlink_msg_t **parts_out_,
+                                        size_t *part_count_out_,
+                                        char *topic_id_out_,
+                                        size_t *topic_id_len_out_,
+                                        zlink_send_flags_t flags_)
+{
+    if (!handle_.socket) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (!parts_out_ || !part_count_out_ || !topic_id_len_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (validate_recv_flags (flags_) != 0)
+        return -1;
+
+    *parts_out_ = NULL;
+    *part_count_out_ = 0;
+    if (source_rid_out_)
+        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
+
+    const int type = legacy_socket_type (socket_type (handle_));
+    if (type != ZLINK_SUB && type != ZLINK_XSUB) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    std::vector<zlink_msg_t> frames;
+    zlink_msg_t first;
+    zlink_msg_init (&first);
+    if (zlink::recv_msg_internal (handle_.socket, &first, flags_) < 0) {
+        zlink_msg_close (&first);
+        return -1;
+    }
+    frames.push_back (first);
+
+    while (zlink_msg_more (&frames.back ())) {
+        zlink_msg_t frame;
+        zlink_msg_init (&frame);
+        if (zlink::recv_msg_internal (handle_.socket, &frame, 0) < 0) {
+            zlink_msg_close (&frame);
+            close_spot_parts (frames.data (), frames.size ());
+            return -1;
+        }
+        frames.push_back (frame);
+    }
+
+    if (copy_topic_to_output (
+          static_cast<const char *> (zlink_msg_data (&frames[0])),
+          zlink_msg_size (&frames[0]), topic_id_out_, topic_id_len_out_)
+        != 0) {
+        close_spot_parts (frames.data (), frames.size ());
+        return -1;
+    }
+
+    const size_t payload_count = frames.size () - 1;
+    if (payload_count == 0) {
+        close_spot_parts (frames.data (), frames.size ());
+        errno = 0;
+        return 0;
+    }
+
+    zlink_msg_t *parts = static_cast<zlink_msg_t *> (
+      malloc (payload_count * sizeof (zlink_msg_t)));
+    if (!parts) {
+        close_spot_parts (frames.data (), frames.size ());
+        errno = ENOMEM;
+        return -1;
+    }
+    memset (parts, 0, payload_count * sizeof (zlink_msg_t));
+
+    for (size_t i = 0; i < payload_count; ++i) {
+        zlink::msg_t *dst = reinterpret_cast<zlink::msg_t *> (&parts[i]);
+        if (dst->init () != 0
+            || dst->move (*reinterpret_cast<zlink::msg_t *> (&frames[i + 1]))
+                 != 0) {
+            for (size_t j = 0; j <= i; ++j)
+                zlink_msg_close (&parts[j]);
+            free (parts);
+            close_spot_parts (frames.data (), frames.size ());
+            errno = EFAULT;
+            return -1;
+        }
+    }
+
+    zlink_msg_close (&frames[0]);
+    *parts_out_ = parts;
+    *part_count_out_ = payload_count;
+    errno = 0;
+    return 0;
+}
+
+static int subscribe_socket_filter (socket_handle_t handle_,
+                                    int option_,
+                                    const char *filter_)
+{
+    if (!handle_.socket) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const int type = legacy_socket_type (socket_type (handle_));
+    if (type != ZLINK_SUB && type != ZLINK_XSUB) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    std::string raw_filter;
+    bool is_pattern = false;
+    if (!is_valid_pubsub_filter (filter_, &raw_filter, &is_pattern)
+        || raw_filter.empty ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    return handle_.socket->setsockopt (option_, raw_filter.data (),
+                                       raw_filter.size ());
+}
+
 static int recv_socket_parts (socket_handle_t handle_,
                               zlink_routing_id_t *source_rid_out_,
                               zlink_msg_t **parts_out_,
@@ -5150,6 +5430,102 @@ int zlink_send (void *s_,
     return send_socket_parts (handle, NULL, parts_, part_count_, flags_);
 }
 
+int zlink_publish (void *subject_,
+                   const char *topic_id_,
+                   zlink_msg_t *parts_,
+                   size_t part_count_,
+                   zlink_send_flags_t flags_)
+{
+    if (!subject_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (is_registered_spot_handle (subject_)) {
+        if (!topic_id_) {
+            errno = EINVAL;
+            return -1;
+        }
+        return zlink_spot_publish (subject_, topic_id_, parts_, part_count_,
+                                   flags_);
+    }
+
+    if (is_registered_spot_node_handle (subject_)) {
+        if (!topic_id_) {
+            errno = EINVAL;
+            return -1;
+        }
+        return zlink_spot_node_publish (subject_, topic_id_, parts_, part_count_,
+                                        flags_);
+    }
+
+    socket_handle_t handle = as_socket_handle (subject_);
+    if (!handle.socket)
+        return -1;
+
+    return publish_socket_parts (handle, topic_id_, parts_, part_count_, flags_);
+}
+
+int zlink_subscribe (void *subject_, const char *filter_)
+{
+    if (!subject_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    std::string raw_filter;
+    bool is_pattern = false;
+    if (!is_valid_pubsub_filter (filter_, &raw_filter, &is_pattern)
+        || raw_filter.empty ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (is_registered_spot_handle (subject_)) {
+        return is_pattern ? zlink_spot_subscribe_pattern (subject_, filter_)
+                          : zlink_spot_subscribe (subject_, filter_);
+    }
+
+    if (is_registered_spot_node_handle (subject_)) {
+        return is_pattern ? zlink_spot_node_subscribe_pattern (subject_, filter_)
+                          : zlink_spot_node_subscribe (subject_, filter_);
+    }
+
+    socket_handle_t handle = as_socket_handle (subject_);
+    if (!handle.socket)
+        return -1;
+
+    return subscribe_socket_filter (handle, ZLINK_SUBSCRIBE, filter_);
+}
+
+int zlink_unsubscribe (void *subject_, const char *filter_)
+{
+    if (!subject_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    std::string raw_filter;
+    bool is_pattern = false;
+    if (!is_valid_pubsub_filter (filter_, &raw_filter, &is_pattern)
+        || raw_filter.empty ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (is_registered_spot_handle (subject_))
+        return zlink_spot_unsubscribe (subject_, filter_);
+
+    if (is_registered_spot_node_handle (subject_))
+        return zlink_spot_node_unsubscribe (subject_, filter_);
+
+    socket_handle_t handle = as_socket_handle (subject_);
+    if (!handle.socket)
+        return -1;
+
+    return subscribe_socket_filter (handle, ZLINK_UNSUBSCRIBE, filter_);
+}
+
 int zlink_send_rid (void *s_,
                     const zlink_routing_id_t *target_rid_,
                     zlink_msg_t *parts_,
@@ -5219,6 +5595,49 @@ int zlink_recv (void *s_,
 
     return recv_socket_parts (handle, source_rid_out_, parts_out_,
                               part_count_out_, flags_);
+}
+
+int zlink_subscribe_recv (void *subject_,
+                          zlink_routing_id_t *source_rid_out_,
+                          zlink_msg_t **parts_out_,
+                          size_t *part_count_out_,
+                          char *topic_id_out_,
+                          size_t *topic_id_len_out_,
+                          zlink_send_flags_t flags_)
+{
+    if (!subject_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (is_registered_spot_handle (subject_))
+        return zlink_spot_sub_recv (subject_, source_rid_out_, parts_out_,
+                                    part_count_out_, topic_id_out_,
+                                    topic_id_len_out_, flags_);
+
+    if (is_registered_spot_node_handle (subject_))
+        return zlink_spot_node_recv (subject_, source_rid_out_, parts_out_,
+                                     part_count_out_, topic_id_out_,
+                                     topic_id_len_out_, flags_);
+
+    socket_handle_t handle = as_socket_handle (subject_);
+    if (!handle.socket)
+        return -1;
+
+    return recv_socket_subscribe_parts (handle, source_rid_out_, parts_out_,
+                                        part_count_out_, topic_id_out_,
+                                        topic_id_len_out_, flags_);
+}
+
+int zlink_subscription_event_recv (void *subject_,
+                                   zlink_routing_id_t *source_rid_out_,
+                                   int *subscribed_out_,
+                                   char *topic_id_out_,
+                                   size_t *topic_id_len_out_,
+                                   zlink_send_flags_t flags_)
+{
+    return zlink_xpub_recv (subject_, source_rid_out_, subscribed_out_,
+                            topic_id_out_, topic_id_len_out_, flags_);
 }
 
 int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_)

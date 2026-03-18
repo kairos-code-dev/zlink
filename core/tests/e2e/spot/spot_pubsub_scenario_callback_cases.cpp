@@ -139,7 +139,7 @@ void test_spot_sub_handler_basic ()
     void *sub = create_spot_handle (node, &spot_sub_probe_handler);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "zone:auto:test"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (sub, "zone:auto:test"));
     msleep (50);
 
     callback_probe_t probe;
@@ -156,7 +156,7 @@ void test_spot_sub_handler_basic ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
     memcpy (zlink_msg_data (&part), "ping", 4);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_publish (pub, "zone:auto:test", &part, 1, 0));
+      zlink_publish (pub, "zone:auto:test", &part, 1, 0));
 
     TEST_ASSERT_TRUE (wait_until_counter_at_least (&probe.calls, 1, 1000));
     TEST_ASSERT_EQUAL_INT (1, probe.payload_ok.load ());
@@ -210,7 +210,7 @@ void test_spot_recv_callback_isolated_by_handle ()
         | ZLINK_MONITOR_EVENT_ERROR,
       &sub_a_monitor_probe);
     TEST_ASSERT_NOT_NULL (sub_a_monitor);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub_a, "iso:handle"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (sub_a, "iso:handle"));
     TEST_ASSERT_TRUE (wait_for_service_event (
       &sub_a_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
     TEST_ASSERT_TRUE (wait_for_service_event (
@@ -226,14 +226,14 @@ void test_spot_recv_callback_isolated_by_handle ()
         | ZLINK_MONITOR_EVENT_ERROR,
       &sub_b_monitor_probe);
     TEST_ASSERT_NOT_NULL (sub_b_monitor);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub_b, "iso:handle"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (sub_b, "iso:handle"));
     TEST_ASSERT_TRUE (wait_for_service_event (
       &sub_b_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
     TEST_ASSERT_SUCCESS_ERRNO (
       close_service_monitor_with_probe (&sub_b_monitor));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_spot_publish, pub, "iso:handle", "fanout", 0));
+      publish_text (&zlink_publish, pub, "iso:handle", "fanout", 0));
 
     TEST_ASSERT_TRUE (
       wait_for_spot_message (sub_a, "iso:handle", "fanout", 6, 1000));
@@ -280,11 +280,11 @@ void test_spot_facade_handler_receives_source_rid ()
       pub_node, "tcp://127.0.0.1:", &port_seed, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer_pub (sub_node, endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "rid:test"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (sub, "rid:test"));
     msleep (200);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_spot_publish, pub, "rid:test", "pong", 0));
+      publish_text (&zlink_publish, pub, "rid:test", "pong", 0));
 
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (1000);
@@ -307,7 +307,7 @@ void test_spot_facade_handler_receives_source_rid ()
     }
 
     g_direct_spot_probe = NULL;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_unsubscribe (sub, "rid:test"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_unsubscribe (sub, "rid:test"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_disconnect_peer_pub (sub_node, endpoint));
     msleep (50);
@@ -388,7 +388,7 @@ void test_spot_recv_callback_isolated_by_service_with_discovery ()
         | ZLINK_MONITOR_EVENT_ERROR,
       &sub_a_monitor_probe);
     TEST_ASSERT_NOT_NULL (sub_a_monitor);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub_a, "iso:service"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (sub_a, "iso:service"));
     TEST_ASSERT_TRUE (wait_for_service_event (
       &sub_a_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
     TEST_ASSERT_TRUE (wait_for_service_event (
@@ -404,7 +404,7 @@ void test_spot_recv_callback_isolated_by_service_with_discovery ()
         | ZLINK_MONITOR_EVENT_ERROR,
       &sub_b_monitor_probe);
     TEST_ASSERT_NOT_NULL (sub_b_monitor);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub_b, "iso:service"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (sub_b, "iso:service"));
     TEST_ASSERT_TRUE (wait_for_service_event (
       &sub_b_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
     TEST_ASSERT_TRUE (wait_for_service_event (
@@ -414,29 +414,29 @@ void test_spot_recv_callback_isolated_by_service_with_discovery ()
       close_service_monitor_with_probe (&sub_b_monitor));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_spot_publish, pub_a, "iso:service", "from-a", 0));
+      publish_text (&zlink_publish, pub_a, "iso:service", "from-a", 0));
     TEST_ASSERT_TRUE (
       wait_for_spot_message (sub_a, "iso:service", "from-a", 6, 5000));
     TEST_ASSERT_FALSE (
       wait_for_spot_message (sub_b, "iso:service", "from-a", 6, 200));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_spot_publish, pub_b, "iso:service", "from-b", 0));
+      publish_text (&zlink_publish, pub_b, "iso:service", "from-b", 0));
     TEST_ASSERT_TRUE (
       wait_for_spot_message (sub_b, "iso:service", "from-b", 6, 5000));
     TEST_ASSERT_FALSE (
       wait_for_spot_message (sub_a, "iso:service", "from-b", 6, 200));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_unsubscribe (sub_a, "iso:service"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_unsubscribe (sub_b, "iso:service"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_unsubscribe (sub_a, "iso:service"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_unsubscribe (sub_b, "iso:service"));
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_spot_publish, pub_a, "iso:service", "after-unsub-a", 0));
+      publish_text (&zlink_publish, pub_a, "iso:service", "after-unsub-a", 0));
     TEST_ASSERT_FALSE (
       wait_for_spot_message (sub_a, "iso:service", "after-unsub-a", 13, 200));
     TEST_ASSERT_FALSE (
       wait_for_spot_message (sub_b, "iso:service", "after-unsub-a", 13, 200));
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_spot_publish, pub_b, "iso:service", "after-unsub-b", 0));
+      publish_text (&zlink_publish, pub_b, "iso:service", "after-unsub-b", 0));
     TEST_ASSERT_FALSE (
       wait_for_spot_message (sub_a, "iso:service", "after-unsub-b", 13, 200));
     TEST_ASSERT_FALSE (

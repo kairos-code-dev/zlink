@@ -13,15 +13,15 @@ SPOT public API는 두 계층으로 정리됩니다.
 ## I/O 모델
 
 `SpotNode`와 unified `Spot` 모두 **recv 모드**로 시작하고,
-`zlink_recv_spot_handler()`로 callback 모드로 **일방 전환**됩니다. 두 모델은
+`zlink_subscribe_handler()`로 callback 모드로 **일방 전환**됩니다. 두 모델은
 handle 수명 동안 상호 배타적입니다.
 
 | | Recv 모드 (기본) | Callback 모드 |
 |---|---|---|
-| **SpotNode 수신** | `zlink_spot_node_recv()` | `zlink_recv_spot_handler()` 콜백 |
-| **Spot 수신** | `zlink_spot_sub_recv()` | `zlink_recv_spot_handler()` 콜백 |
+| **SpotNode 수신** | `zlink_subscribe_recv()` | `zlink_subscribe_handler()` 콜백 |
+| **Spot 수신** | `zlink_subscribe_recv()` | `zlink_subscribe_handler()` 콜백 |
 | **Send-ready** | 사용 불가 (`EBUSY`) | `zlink_spot_node_send_ready_handler()` / `zlink_spot_send_ready_handler()` |
-| **전환** | `zlink_recv_spot_handler()` 호출로 전환 | 영구, 되돌릴 수 없음 |
+| **전환** | `zlink_subscribe_handler()` 호출로 전환 | 영구, 되돌릴 수 없음 |
 
 - recv 모드에서 `send_ready_handler()`는 `EBUSY`로 실패합니다.
 - callback 모드에서 `recv()`는 `EBUSY`로 실패합니다.
@@ -50,14 +50,14 @@ int zlink_spot_node_set_tls_client(void *node,
                                    const char *hostname,
                                    int trust_system);
 
-int zlink_spot_node_publish(void *node,
-                            const char *topic_id,
-                            zlink_msg_t *parts,
-                            size_t part_count,
-                            zlink_send_flags_t flags);
-int zlink_spot_node_subscribe(void *node, const char *topic_id);
-int zlink_spot_node_subscribe_pattern(void *node, const char *pattern);
-int zlink_spot_node_unsubscribe(void *node,
+int zlink_publish(void *node,
+                  const char *topic_id,
+                  zlink_msg_t *parts,
+                  size_t part_count,
+                  zlink_send_flags_t flags);
+int zlink_subscribe (void *node, const char *topic_id);
+int zlink_subscribe (void *node, const char *pattern);
+int zlink_unsubscribe (void *node,
                                        const char *topic_id_or_pattern);
 
 int zlink_spot_node_send_ready_handler(
@@ -73,7 +73,7 @@ int zlink_spot_node_set_sub_option(void *node,
                                    const void *optval,
                                    size_t optvallen);
 
-int zlink_spot_node_recv(void *node,
+int zlink_subscribe_recv(void *node,
                          zlink_msg_t **parts,
                          size_t *part_count,
                          int flags,
@@ -82,10 +82,10 @@ int zlink_spot_node_recv(void *node,
 ```
 
 `SpotNode`는 service-bound owner입니다. `service_name`은 생성 시점에
-고정됩니다. recv 모드에서는 `zlink_spot_node_recv()`, callback 모드에서는
-`zlink_recv_spot_handler()`를 사용합니다.
+고정됩니다. recv 모드에서는 `zlink_subscribe_recv()`, callback 모드에서는
+`zlink_subscribe_handler()`를 사용합니다.
 
-`zlink_spot_node_recv()`는 recv 모드에서 다음 메시지와 topic을 반환합니다.
+`zlink_subscribe_recv()`는 recv 모드에서 다음 메시지와 topic을 반환합니다.
 성공 시 `parts`와 `topic_id_out`이 채워집니다. non-blocking 동작은 `flags`에
 `ZLINK_DONTWAIT`를 전달합니다. callback 모드에서는 `EBUSY`로 실패합니다.
 
@@ -95,20 +95,20 @@ int zlink_spot_node_recv(void *node,
 void *zlink_spot_new(void *spot_node);
 int zlink_spot_destroy(void **spot_p);
 
-int zlink_spot_publish(void *spot,
-                       const char *topic_id,
-                       zlink_msg_t *parts,
-                       size_t part_count,
-                       zlink_send_flags_t flags);
-int zlink_spot_sub_recv(void *sub,
-                       zlink_msg_t **parts,
-                       size_t *part_count,
-                       int flags,
-                       char *topic_id_out,
-                       size_t *topic_id_len);
-int zlink_spot_subscribe(void *spot, const char *topic_id);
-int zlink_spot_subscribe_pattern(void *spot, const char *pattern);
-int zlink_spot_unsubscribe(void *spot,
+int zlink_publish(void *spot,
+                  const char *topic_id,
+                  zlink_msg_t *parts,
+                  size_t part_count,
+                  zlink_send_flags_t flags);
+int zlink_subscribe_recv(void *sub,
+                         zlink_msg_t **parts,
+                         size_t *part_count,
+                         int flags,
+                         char *topic_id_out,
+                         size_t *topic_id_len);
+int zlink_subscribe (void *spot, const char *topic_id);
+int zlink_subscribe (void *spot, const char *pattern);
+int zlink_unsubscribe (void *spot,
                            const char *topic_id_or_pattern);
 
 int zlink_spot_send_ready_handler(
@@ -129,7 +129,7 @@ int zlink_spot_set_sub_option(void *spot,
 `zlink_spot_new()`는 항상 pub/sub가 합쳐진 facade를 생성합니다.
 publish-only 혹은 subscribe-only public child handle은 더 이상 제공하지 않습니다.
 
-`zlink_spot_sub_recv()`는 recv 모드에서 동기식 pull 방식의 수신을 제공합니다.
+`zlink_subscribe_recv()`는 recv 모드에서 동기식 pull 방식의 수신을 제공합니다.
 다음 메시지와 topic을 반환합니다. 성공 시 `parts`와 `topic_id_out`이
 채워집니다. non-blocking 동작은 `flags`에 `ZLINK_DONTWAIT`를 전달합니다.
 callback 모드에서는 `EBUSY`로 실패합니다.
@@ -140,18 +140,18 @@ aggregate ready-peer / queue 조회는 `zlink_spot_monitor_open()`과
 ## callback 계약
 
 ```c
-typedef void (*zlink_spot_handler_fn)(const zlink_routing_id_t *source_rid,
-                                      const char *topic,
-                                      size_t topic_len,
-                                      zlink_msg_t *parts,
-                                      size_t part_count,
-                                      void *userdata);
+typedef void (*zlink_subscribe_handler_fn)(const zlink_routing_id_t *source_rid,
+                                           const char *topic,
+                                           size_t topic_len,
+                                           zlink_msg_t *parts,
+                                           size_t part_count,
+                                           void *userdata);
 ```
 
-- callback은 `zlink_recv_spot_handler(node_or_spot, handler, userdata)`로
+- callback은 `zlink_subscribe_handler(node_or_spot, handler, userdata)`로
   설치합니다.
 - handle은 recv 모드로 시작하고 callback 모드로 한 번만 전환됩니다.
-- callback 모드 전환 후 `zlink_spot_node_recv()` / `zlink_spot_sub_recv()`는
+- callback 모드 전환 후 `zlink_subscribe_recv()`는
   `EBUSY`로 실패합니다.
 - callback은 전달받은 `parts`의 ownership을 소비해야 합니다.
 
@@ -218,17 +218,17 @@ void on_spot_message(const zlink_routing_id_t *source_rid,
                      void *userdata);
 
 void *node = zlink_spot_node_new(ctx, "svc-chat");
-zlink_recv_spot_handler(node, on_spot_message, NULL);
+zlink_subscribe_handler(node, on_spot_message, NULL);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
 void *spot = zlink_spot_new(node);
-zlink_recv_spot_handler(spot, on_spot_message, NULL);
-zlink_spot_subscribe(spot, "room:lobby");
+zlink_subscribe_handler(spot, on_spot_message, NULL);
+zlink_subscribe (spot, "room:lobby");
 
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "hello", 5);
-zlink_spot_publish(spot, "room:lobby", &part, 1, 0);
+zlink_publish(spot, "room:lobby", &part, 1, 0);
 
 zlink_spot_destroy(&spot);
 zlink_spot_node_destroy(&node);
@@ -241,21 +241,21 @@ void *node = zlink_spot_node_new(ctx, "svc-chat");
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
 void *spot = zlink_spot_new(node);
-zlink_spot_subscribe(spot, "room:lobby");
+zlink_subscribe (spot, "room:lobby");
 
 /* 발행 */
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "hello", 5);
-zlink_spot_publish(spot, "room:lobby", &part, 1, 0);
+zlink_publish(spot, "room:lobby", &part, 1, 0);
 
 /* unified spot에서 수신 */
 zlink_msg_t *recv_parts = NULL;
 size_t recv_count = 0;
 char topic_buf[256];
 size_t topic_len = sizeof(topic_buf);
-int rc = zlink_spot_sub_recv(spot, &recv_parts, &recv_count, 0,
-                             topic_buf, &topic_len);
+int rc = zlink_subscribe_recv(spot, &recv_parts, &recv_count, 0,
+                              topic_buf, &topic_len);
 if (rc == 0) {
     printf("토픽: %.*s\n", (int)topic_len, topic_buf);
     for (size_t i = 0; i < recv_count; i++)

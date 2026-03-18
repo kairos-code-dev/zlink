@@ -78,9 +78,9 @@ void test_spot_unified_wss_subscription_ready_first_delivery ()
         TEST_ASSERT_NOT_NULL (pub_node);
         TEST_ASSERT_NOT_NULL (sub_node);
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_recv_spot_handler (pub_node, &ignore_spot_handler, NULL));
+          zlink_subscribe_handler (pub_node, &ignore_spot_handler, NULL));
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_recv_spot_handler (sub_node, &ignore_spot_handler, NULL));
+          zlink_subscribe_handler (sub_node, &ignore_spot_handler, NULL));
 
         const int linger = 0;
         const int sndhwm = 1000;
@@ -133,7 +133,7 @@ void test_spot_unified_wss_subscription_ready_first_delivery ()
           zlink_spot_node_connect_peer_pub (sub_node, endpoint));
 
         step_log ("spot unified wss ready delivery: subscribe and wait");
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, topic));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (sub, topic));
         TEST_ASSERT_TRUE (wait_for_spot_pub_peers (pub, 5000));
         TEST_ASSERT_TRUE (wait_for_spot_sub_peers (sub, 5000));
         TEST_ASSERT_TRUE (wait_for_service_event_match (
@@ -145,7 +145,7 @@ void test_spot_unified_wss_subscription_ready_first_delivery ()
 
         step_log ("spot unified wss ready delivery: publish immediately");
         TEST_ASSERT_SUCCESS_ERRNO (
-          publish_text (&zlink_spot_publish, pub, topic, payload, 0));
+          publish_text (&zlink_publish, pub, topic, payload, 0));
         TEST_ASSERT_TRUE (
           wait_for_spot_message (sub, topic, payload, strlen (payload), 3000));
 
@@ -193,7 +193,7 @@ void test_spot_multi_publisher ()
     step_log ("multi_publisher: create node_c child handles");
     TEST_ASSERT_SUCCESS_ERRNO (
       create_spot_pub_sub (node_c, &spot_c_pub, &spot_c_sub));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (spot_c_sub, "multi:topic"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (spot_c_sub, "multi:topic"));
     TEST_ASSERT_NOT_NULL (ensure_queued_spot_probe (spot_c_sub, false));
 
     msleep (250);
@@ -220,19 +220,19 @@ void test_spot_multi_publisher ()
 
     step_log ("multi_publisher: warmup publish");
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_spot_publish, spot_a_pub, "multi:topic", "warm-a", 0));
+      publish_text (&zlink_publish, spot_a_pub, "multi:topic", "warm-a", 0));
     TEST_ASSERT_TRUE (
       wait_for_spot_message (spot_c_sub, "multi:topic", "warm-a", 6, 5000));
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_spot_publish, spot_b_pub, "multi:topic", "warm-b", 0));
+      publish_text (&zlink_publish, spot_b_pub, "multi:topic", "warm-b", 0));
     TEST_ASSERT_TRUE (
       wait_for_spot_message (spot_c_sub, "multi:topic", "warm-b", 6, 5000));
 
     step_log ("multi_publisher: publish");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_publish (spot_a_pub, "multi:topic", parts_a, 1, 0));
+      zlink_publish (spot_a_pub, "multi:topic", parts_a, 1, 0));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_publish (spot_b_pub, "multi:topic", parts_b, 1, 0));
+      zlink_publish (spot_b_pub, "multi:topic", parts_b, 1, 0));
 
     step_log ("multi_publisher: wait receives");
     TEST_ASSERT_TRUE (
@@ -241,7 +241,7 @@ void test_spot_multi_publisher ()
       wait_for_spot_message (spot_c_sub, "multi:topic", "from-b", 6, 2000));
 
     step_log ("multi_publisher: disconnect peers");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_unsubscribe (spot_c_sub, "multi:topic"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_unsubscribe (spot_c_sub, "multi:topic"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_disconnect_peer_pub (node_c, "inproc://pub-a"));
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -270,7 +270,7 @@ void test_spot_same_handle_concurrent_publish ()
 
     void *sub = create_spot_handle (node, &ignore_spot_handler);
     TEST_ASSERT_NOT_NULL (sub);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "concurrent:topic"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (sub, "concurrent:topic"));
 
     const int publisher_count = 4;
     const int messages_per_publisher = 32;
@@ -294,7 +294,7 @@ void test_spot_same_handle_concurrent_publish ()
             for (int seq = 0; seq < messages_per_publisher; ++seq) {
                 char payload[32];
                 snprintf (payload, sizeof (payload), "pub-%d-%02d", i, seq);
-                if (publish_text (&zlink_spot_node_publish, node,
+                if (publish_text (&zlink_publish, node,
                                   "concurrent:topic",
                                   payload, 0)
                     != 0) {

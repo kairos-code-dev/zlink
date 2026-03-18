@@ -52,9 +52,11 @@ int test_attach_discard_handler_for_type (void *socket_, int type_)
             return zlink_recv_handler (socket_, &discard_test_socket_parts, NULL);
         case ZLINK_SUB:
         case ZLINK_XSUB:
-            return zlink_recv_spot_handler (socket_, &discard_test_spot_parts, NULL);
+            return zlink_subscribe_handler (socket_, &discard_test_spot_parts,
+                                            NULL);
         case ZLINK_XPUB:
-            return zlink_recv_xpub_handler (socket_, &discard_test_xpub_event, NULL);
+            return zlink_subscription_event_handler (
+              socket_, &discard_test_xpub_event, NULL);
         case ZLINK_PUB:
             return 0;
         default:

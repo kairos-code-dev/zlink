@@ -13,15 +13,15 @@ constructors, destroy functions, option setters, or monitor entrypoints.
 ## I/O Model
 
 Both `SpotNode` and unified `Spot` handles start in **recv model** and use
-`zlink_recv_spot_handler()` for a **one-way transition** to callback model.
+`zlink_subscribe_handler()` for a **one-way transition** to callback model.
 The two models are mutually exclusive for the lifetime of the handle.
 
 | | Recv Model (default) | Callback Model |
 |---|---|---|
-| **SpotNode receive** | `zlink_spot_node_recv()` | `zlink_recv_spot_handler()` callback |
-| **Spot receive** | `zlink_spot_sub_recv()` | `zlink_recv_spot_handler()` callback |
+| **SpotNode receive** | `zlink_subscribe_recv()` | `zlink_subscribe_handler()` callback |
+| **Spot receive** | `zlink_subscribe_recv()` | `zlink_subscribe_handler()` callback |
 | **Send-ready** | not available (`EBUSY`) | `zlink_spot_node_send_ready_handler()` / `zlink_spot_send_ready_handler()` |
-| **Transition** | call `zlink_recv_spot_handler()` to switch | permanent, cannot revert |
+| **Transition** | call `zlink_subscribe_handler()` to switch | permanent, cannot revert |
 
 - In recv model, `send_ready_handler()` fails with `EBUSY`.
 - In callback model, `recv()` fails with `EBUSY`.
@@ -50,14 +50,14 @@ int zlink_spot_node_set_tls_client(void *node,
                                    const char *hostname,
                                    int trust_system);
 
-int zlink_spot_node_publish(void *node,
+int zlink_publish(void *node,
                             const char *topic_id,
                             zlink_msg_t *parts,
                             size_t part_count,
                             zlink_send_flags_t flags);
-int zlink_spot_node_subscribe(void *node, const char *topic_id);
-int zlink_spot_node_subscribe_pattern(void *node, const char *pattern);
-int zlink_spot_node_unsubscribe(void *node,
+int zlink_subscribe (void *node, const char *topic_id);
+int zlink_subscribe (void *node, const char *pattern);
+int zlink_unsubscribe (void *node,
                                        const char *topic_id_or_pattern);
 
 int zlink_spot_node_send_ready_handler(
@@ -73,7 +73,7 @@ int zlink_spot_node_set_sub_option(void *node,
                                    const void *optval,
                                    size_t optvallen);
 
-int zlink_spot_node_recv(void *node,
+int zlink_subscribe_recv(void *node,
                          zlink_msg_t **parts,
                          size_t *part_count,
                          int flags,
@@ -82,10 +82,10 @@ int zlink_spot_node_recv(void *node,
 ```
 
 `SpotNode` is the service-bound owner. Its `service_name` is fixed at
-construction time. Use `zlink_spot_node_recv()` in recv model, or
-`zlink_recv_spot_handler()` to transition to callback model.
+construction time. Use `zlink_subscribe_recv()` in recv model, or
+`zlink_subscribe_handler()` to transition to callback model.
 
-`zlink_spot_node_recv()` returns the next message and its topic in recv
+`zlink_subscribe_recv()` returns the next message and its topic in recv
 model. `parts` and `topic_id_out` are filled on success. Pass
 `ZLINK_DONTWAIT` in `flags` for non-blocking operation. Returns `EBUSY`
 in callback model.
@@ -96,20 +96,20 @@ in callback model.
 void *zlink_spot_new(void *spot_node);
 int zlink_spot_destroy(void **spot_p);
 
-int zlink_spot_publish(void *spot,
+int zlink_publish(void *spot,
                        const char *topic_id,
                        zlink_msg_t *parts,
                        size_t part_count,
                        zlink_send_flags_t flags);
-int zlink_spot_sub_recv(void *sub,
+int zlink_subscribe_recv(void *sub,
                        zlink_msg_t **parts,
                        size_t *part_count,
                        int flags,
                        char *topic_id_out,
                        size_t *topic_id_len);
-int zlink_spot_subscribe(void *spot, const char *topic_id);
-int zlink_spot_subscribe_pattern(void *spot, const char *pattern);
-int zlink_spot_unsubscribe(void *spot,
+int zlink_subscribe (void *spot, const char *topic_id);
+int zlink_subscribe (void *spot, const char *pattern);
+int zlink_unsubscribe (void *spot,
                            const char *topic_id_or_pattern);
 
 int zlink_spot_send_ready_handler(
@@ -131,7 +131,7 @@ int zlink_spot_set_sub_option(void *spot,
 behavior. There is no separate public publish-only or subscribe-only child
 handle.
 
-`zlink_spot_sub_recv()` provides synchronous pull-style receive in recv
+`zlink_subscribe_recv()` provides synchronous pull-style receive in recv
 model. It returns the next available message with its topic. `parts` and
 `topic_id_out` are filled on success. Pass `ZLINK_DONTWAIT` in `flags`
 for non-blocking operation. Returns `EBUSY` in callback model.
@@ -142,7 +142,7 @@ ready-peer and queue inspection.
 ## Callback contract
 
 ```c
-typedef void (*zlink_spot_handler_fn)(const zlink_routing_id_t *source_rid,
+typedef void (*zlink_subscribe_handler_fn)(const zlink_routing_id_t *source_rid,
                                       const char *topic,
                                       size_t topic_len,
                                       zlink_msg_t *parts,
@@ -150,9 +150,9 @@ typedef void (*zlink_spot_handler_fn)(const zlink_routing_id_t *source_rid,
                                       void *userdata);
 ```
 
-- Install the callback with `zlink_recv_spot_handler(node_or_spot, handler, userdata)`.
+- Install the callback with `zlink_subscribe_handler(node_or_spot, handler, userdata)`.
 - Handles start in recv model and switch one-way to callback model.
-- Once in callback model, `zlink_spot_node_recv()` / `zlink_spot_sub_recv()`
+- Once in callback model, `zlink_subscribe_recv()` / `zlink_subscribe_recv()`
   fail with `EBUSY`.
 - The callback consumes ownership of `parts`.
 
@@ -219,17 +219,17 @@ void on_spot_message(const zlink_routing_id_t *source_rid,
                      void *userdata);
 
 void *node = zlink_spot_node_new(ctx, "svc-chat");
-zlink_recv_spot_handler(node, on_spot_message, NULL);
+zlink_subscribe_handler(node, on_spot_message, NULL);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
 void *spot = zlink_spot_new(node);
-zlink_recv_spot_handler(spot, on_spot_message, NULL);
-zlink_spot_subscribe(spot, "room:lobby");
+zlink_subscribe_handler(spot, on_spot_message, NULL);
+zlink_subscribe (spot, "room:lobby");
 
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "hello", 5);
-zlink_spot_publish(spot, "room:lobby", &part, 1, 0);
+zlink_publish(spot, "room:lobby", &part, 1, 0);
 
 zlink_spot_destroy(&spot);
 zlink_spot_node_destroy(&node);
@@ -242,20 +242,20 @@ void *node = zlink_spot_node_new(ctx, "svc-chat");
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
 void *spot = zlink_spot_new(node);
-zlink_spot_subscribe(spot, "room:lobby");
+zlink_subscribe (spot, "room:lobby");
 
 /* publish */
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "hello", 5);
-zlink_spot_publish(spot, "room:lobby", &part, 1, 0);
+zlink_publish(spot, "room:lobby", &part, 1, 0);
 
 /* recv on unified spot */
 zlink_msg_t *recv_parts = NULL;
 size_t recv_count = 0;
 char topic_buf[256];
 size_t topic_len = sizeof(topic_buf);
-int rc = zlink_spot_sub_recv(spot, &recv_parts, &recv_count, 0,
+int rc = zlink_subscribe_recv(spot, &recv_parts, &recv_count, 0,
                              topic_buf, &topic_len);
 if (rc == 0) {
     printf("Topic: %.*s\n", (int)topic_len, topic_buf);

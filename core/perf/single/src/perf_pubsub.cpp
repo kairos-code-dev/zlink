@@ -331,7 +331,7 @@ void run_pubsub (const std::string &transport,
         return;
     }
     if (sub.valid ()
-        && zlink_recv_spot_handler (sub, &pubsub_recv_handler, &recv_state) != 0) {
+        && zlink_subscribe_handler (sub, &pubsub_recv_handler, &recv_state) != 0) {
         print_fail_no_queue ();
         return;
     }

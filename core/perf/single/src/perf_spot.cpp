@@ -509,7 +509,7 @@ bool publish_payload (void *pub_,
     if (zlink_msg_init_size (&part, payload_.size ()) != 0)
         return false;
     std::memcpy (zlink_msg_data (&part), payload_.data (), payload_.size ());
-    if (zlink_spot_publish (pub_, k_topic, &part, 1, flags_) != 0) {
+    if (zlink_publish (pub_, k_topic, &part, 1, flags_) != 0) {
         const int err = errno;
         zlink_msg_close (&part);
         errno = err;
@@ -730,7 +730,7 @@ int run_case (const std::string &lib_name_,
     }
     void *pub = zlink_spot_new (pub_node);
     void *sub = zlink_spot_new (sub_node);
-    if (sub && zlink_recv_spot_handler (sub, &spot_client_handler, NULL) != 0) {
+    if (sub && zlink_subscribe_handler (sub, &spot_client_handler, NULL) != 0) {
         zlink_spot_destroy (&sub);
         sub = NULL;
     }
@@ -793,7 +793,7 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    if (zlink_spot_subscribe (sub, k_topic) != 0) {
+    if (zlink_subscribe (sub, k_topic) != 0) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] subscribe failed err=" << zlink_errno ()
                       << std::endl;

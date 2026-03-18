@@ -40,8 +40,8 @@ zlink C 라이브러리는 경량 I/O 스레드와 락프리 큐를 기반으로
 | 타입 | 정의 위치 | 설명 |
 |------|-----------|------|
 | [`zlink_socket_msg_handler_fn`](socket.ko.md) | socket.ko.md | 소켓 멀티파트 메시지 dispatch 콜백 |
-| [`zlink_spot_handler_fn`](socket.ko.md) | socket.ko.md | 토픽 기반 메시지 dispatch 콜백 |
-| [`zlink_xpub_handler_fn`](socket.ko.md) | socket.ko.md | XPUB 구독 알림 콜백 |
+| [`zlink_subscribe_handler_fn`](socket.ko.md) | socket.ko.md | 토픽 기반 메시지 dispatch 콜백 |
+| [`zlink_subscription_event_handler_fn`](socket.ko.md) | socket.ko.md | XPUB 구독 알림 콜백 |
 | [`zlink_stream_on_raw_fn`](socket.ko.md) | socket.ko.md | STREAM raw chunk dispatch 콜백 |
 | [`zlink_monitor_handler_fn`](monitoring.ko.md) | monitoring.ko.md | 소켓 모니터 이벤트 콜백 |
 | [`zlink_service_monitor_handler_fn`](monitoring.ko.md) | monitoring.ko.md | 서비스 모니터 이벤트 콜백 |

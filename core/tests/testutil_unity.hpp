@@ -131,26 +131,15 @@ inline int zlink_gateway_recv (void *gateway_,
     return ::zlink_recv (gateway_, source_rid_out_, parts_, part_count_, flags_);
 }
 
-inline int zlink_spot_node_recv (void *node_,
+inline int zlink_subscribe_recv (void *subject_,
                                  zlink_msg_t **parts_,
                                  size_t *part_count_,
                                  int flags_,
                                  char *topic_id_out_,
                                  size_t *topic_id_len_)
 {
-    return ::zlink_spot_node_recv (node_, NULL, parts_, part_count_, topic_id_out_,
-                                   topic_id_len_, flags_);
-}
-
-inline int zlink_spot_sub_recv (void *sub_,
-                                zlink_msg_t **parts_,
-                                size_t *part_count_,
-                                int flags_,
-                                char *topic_id_out_,
-                                size_t *topic_id_len_)
-{
-    return ::zlink_spot_sub_recv (sub_, NULL, parts_, part_count_, topic_id_out_,
-                                  topic_id_len_, flags_);
+    return ::zlink_subscribe_recv (subject_, NULL, parts_, part_count_,
+                                   topic_id_out_, topic_id_len_, flags_);
 }
 #endif
 

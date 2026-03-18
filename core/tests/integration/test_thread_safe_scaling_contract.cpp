@@ -208,7 +208,7 @@ int spot_publish_text (void *spot_, const char *topic_, const char *payload_)
     if (zlink_msg_init_size (&part, size) != 0)
         return -1;
     memcpy (zlink_msg_data (&part), payload_, size);
-    const int rc = zlink_spot_publish (spot_, topic_, &part, 1, 0);
+    const int rc = zlink_publish (spot_, topic_, &part, 1, 0);
     if (rc != 0) {
         const int err = errno;
         zlink_msg_close (&part);
@@ -489,18 +489,18 @@ double measure_spot_handle_scaling_once (int handle_count_,
         sub_nodes[i] = zlink_spot_node_new (ctx, service_name);
         TEST_ASSERT_NOT_NULL (pub_nodes[i]);
         TEST_ASSERT_NOT_NULL (sub_nodes[i]);
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_spot_handler (
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
           pub_nodes[i], &ignore_spot_handler, NULL));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_spot_handler (
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
           sub_nodes[i], &ignore_spot_handler, NULL));
 
         pubs[i] = zlink_spot_new (pub_nodes[i]);
         subs[i] = zlink_spot_new (sub_nodes[i]);
         TEST_ASSERT_NOT_NULL (pubs[i]);
         TEST_ASSERT_NOT_NULL (subs[i]);
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_spot_handler (
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
           pubs[i], &ignore_spot_handler, NULL));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_spot_handler (
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
           subs[i], &scaling_spot_handler, NULL));
         configure_spot_linger_zero (pub_nodes[i], pubs[i]);
         configure_spot_linger_zero (sub_nodes[i], subs[i]);
@@ -512,7 +512,7 @@ double measure_spot_handle_scaling_once (int handle_count_,
           zlink_spot_node_bind (pub_nodes[i], endpoints[i].c_str ()));
         TEST_ASSERT_SUCCESS_ERRNO (
           zlink_spot_node_connect_peer_pub (sub_nodes[i], endpoints[i].c_str ()));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (subs[i], topic));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (subs[i], topic));
         msleep (20);
 
         const int before = probe.calls.load (std::memory_order_acquire);

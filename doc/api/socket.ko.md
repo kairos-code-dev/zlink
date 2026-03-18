@@ -41,10 +41,10 @@ PAIR, DEALER, ROUTER, STREAM 소켓에서 멀티파트 메시지 dispatch 콜백
 이전되며, 각 파트는 정확히 한 번 close하거나 소비해야 합니다.
 `zlink_recv_handler()`와 함께 사용합니다.
 
-### zlink_spot_handler_fn
+### zlink_subscribe_handler_fn
 
 ```c
-typedef void (*zlink_spot_handler_fn) (const zlink_routing_id_t *source_rid_,
+typedef void (*zlink_subscribe_handler_fn) (const zlink_routing_id_t *source_rid_,
                                        const char *topic_,
                                        size_t topic_len_,
                                        zlink_msg_t *parts_,
@@ -54,27 +54,27 @@ typedef void (*zlink_spot_handler_fn) (const zlink_routing_id_t *source_rid_,
 
 SUB, XSUB 소켓에서 토픽 기반 메시지 dispatch 콜백.
 소유 I/O 스레드에서 호출되며, 파트의 소유권이 이전됩니다.
-`zlink_recv_spot_handler()`와 함께 사용합니다.
+`zlink_subscribe_handler()`와 함께 사용합니다.
 
-### zlink_xpub_handler_fn
+### zlink_subscription_event_handler_fn
 
 ```c
-typedef void (*zlink_xpub_handler_fn) (int subscribed_,
+typedef void (*zlink_subscription_event_handler_fn) (int subscribed_,
                                        const uint8_t *topic_,
                                        size_t topic_len_,
                                        void *userdata_);
 ```
 
 XPUB 소켓에서 구독 알림 콜백.
-`zlink_recv_xpub_handler()`와 함께 사용합니다.
+`zlink_subscription_event_handler()`와 함께 사용합니다.
 
 각 콜백 타입은 전용 함수를 통해 등록합니다. 소켓 타입별 등록 함수 매핑:
 
 | 소켓 타입 | 등록 함수 | 콜백 |
 |---|---|---|
 | PAIR, DEALER, ROUTER, STREAM | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
-| SUB, XSUB | `zlink_recv_spot_handler` | `zlink_spot_handler_fn` |
-| XPUB | `zlink_recv_xpub_handler` | `zlink_xpub_handler_fn` |
+| SUB, XSUB | `zlink_subscribe_handler` | `zlink_subscribe_handler_fn` |
+| XPUB | `zlink_subscription_event_handler` | `zlink_subscription_event_handler_fn` |
 | PUB | N/A | 송신 전용; 핸들러 불필요 |
 
 ### zlink_send_ready_handler_fn
@@ -293,18 +293,18 @@ recv 모드로 시작합니다. 이 호출은 핸들을 콜백 모드로 전환�
 **에러:** 핸들러가 NULL이거나 소켓 타입이 메시지 핸들러를 허용하지 않으면
 `EINVAL`. 핸들러가 이미 부착된 경우 `EBUSY`.
 
-**참고:** `zlink_recv_spot_handler`, `zlink_recv_xpub_handler`,
+**참고:** `zlink_subscribe_handler`, `zlink_subscription_event_handler`,
 `zlink_socket`, `zlink_close`
 
 ---
 
-### zlink_recv_spot_handler
+### zlink_subscribe_handler
 
 소켓에 토픽 기반 수신 핸들러를 부착합니다.
 
 ```c
-int zlink_recv_spot_handler (void *s_,
-                             zlink_spot_handler_fn handler_,
+int zlink_subscribe_handler (void *s_,
+                             zlink_subscribe_handler_fn handler_,
                              void *userdata_);
 ```
 
@@ -317,18 +317,18 @@ SUB 또는 XSUB 소켓에 토픽 기반 수신 핸들러를 부착합니다. 소
 **에러:** 핸들러가 NULL이거나 소켓 타입이 spot 핸들러를 허용하지 않으면
 `EINVAL`. 핸들러가 이미 부착된 경우 `EBUSY`.
 
-**참고:** `zlink_recv_handler`, `zlink_recv_xpub_handler`,
+**참고:** `zlink_recv_handler`, `zlink_subscription_event_handler`,
 `zlink_socket`, `zlink_close`
 
 ---
 
-### zlink_recv_xpub_handler
+### zlink_subscription_event_handler
 
 XPUB 소켓에 구독 알림 핸들러를 부착합니다.
 
 ```c
-int zlink_recv_xpub_handler (void *s_,
-                             zlink_xpub_handler_fn handler_,
+int zlink_subscription_event_handler (void *s_,
+                             zlink_subscription_event_handler_fn handler_,
                              void *userdata_);
 ```
 
@@ -341,7 +341,7 @@ XPUB 소켓에 구독 알림 핸들러를 부착합니다. 소켓은 recv 모드
 **에러:** 핸들러가 NULL이거나 소켓이 XPUB가 아니면 `EINVAL`. 핸들러가 이미
 부착된 경우 `EBUSY`.
 
-**참고:** `zlink_recv_handler`, `zlink_recv_spot_handler`,
+**참고:** `zlink_recv_handler`, `zlink_subscribe_handler`,
 `zlink_socket`, `zlink_close`
 
 ---

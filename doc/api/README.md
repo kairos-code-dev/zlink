@@ -41,8 +41,8 @@ public function, type, and constant exported by `<zlink.h>`.
 | Type | Defined in | Description |
 |------|-----------|-------------|
 | [`zlink_socket_msg_handler_fn`](socket.md) | socket.md | Socket multipart message dispatch callback |
-| [`zlink_spot_handler_fn`](socket.md) | socket.md | Topic-based message dispatch callback |
-| [`zlink_xpub_handler_fn`](socket.md) | socket.md | XPUB subscription notification callback |
+| [`zlink_subscribe_handler_fn`](socket.md) | socket.md | Topic-based message dispatch callback |
+| [`zlink_subscription_event_handler_fn`](socket.md) | socket.md | XPUB subscription notification callback |
 | [`zlink_stream_on_raw_fn`](socket.md) | socket.md | STREAM raw chunk dispatch callback |
 | [`zlink_monitor_handler_fn`](monitoring.md) | monitoring.md | Socket monitor event callback |
 | [`zlink_service_monitor_handler_fn`](monitoring.md) | monitoring.md | Service monitor event callback |

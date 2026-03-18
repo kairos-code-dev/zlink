@@ -80,10 +80,10 @@ typedef char
 int zlink_msg_init_buffer (zlink_msg_t *msg_, const void *buf_, size_t size_);
 int zlink_ctx_set_ext (void *ctx_, int option_, const void *optval_, size_t optvallen_);
 int zlink_recv_spot_handler (void *s_,
-                             zlink_spot_handler_fn handler_,
+                             zlink_subscribe_handler_fn handler_,
                              void *userdata_);
 int zlink_recv_xpub_handler (void *s_,
-                             zlink_xpub_handler_fn handler_,
+                             zlink_subscription_event_handler_fn handler_,
                              void *userdata_);
 int zlink_spot_node_publish (void *node_,
                              const char *topic_id_,
@@ -106,6 +106,12 @@ int zlink_spot_sub_recv (void *sub_,
                          char *topic_id_out_,
                          size_t *topic_id_len_,
                          zlink_send_flags_t flags_);
+static bool frame_has_more (const zlink_msg_t &msg_)
+{
+    return (reinterpret_cast<const zlink::msg_t *> (&msg_)->flags ()
+            & zlink::msg_t::more)
+           != 0;
+}
 int zlink_spot_node_recv (void *node_,
                           zlink_routing_id_t *source_rid_out_,
                           zlink_msg_t **parts_,
@@ -361,7 +367,7 @@ struct monitor_handler_registry_t
 
 struct spot_node_handler_entry_t
 {
-    zlink_spot_handler_fn handler;
+    zlink_subscribe_handler_fn handler;
     void *userdata;
 };
 
@@ -390,7 +396,7 @@ struct spot_handle_t
     zlink::spot_node_t *node;
     zlink::spot_pub_t *pub;
     zlink::spot_sub_t *sub;
-    zlink_spot_handler_fn handler;
+    zlink_subscribe_handler_fn handler;
     void *handler_userdata;
     zlink::spot_node_t::pub_defaults_t pending_pub_defaults;
     zlink::spot_node_t::sub_defaults_t pending_sub_defaults;
@@ -959,7 +965,7 @@ static int recv_gateway_parts (zlink::socket_base_t *socket_,
     }
     frames.push_back (rid_frame);
 
-    while (zlink_msg_more (&frames.back ())) {
+    while (frame_has_more (frames.back ())) {
         zlink_msg_t frame;
         zlink_msg_init (&frame);
         if (socket_->recv (reinterpret_cast<zlink::msg_t *> (&frame), 0) < 0) {
@@ -2046,8 +2052,6 @@ static int legacy_socket_option (int option_)
             return ZLINK_SNDBUF;
         case ZLINK_SOCKOPT_RCVBUF:
             return ZLINK_RCVBUF;
-        case ZLINK_SOCKOPT_RCVMORE:
-            return ZLINK_RCVMORE;
         case ZLINK_SOCKOPT_FD:
             return ZLINK_SOCKOPT_FD;
         case ZLINK_SOCKOPT_EVENTS:
@@ -2210,7 +2214,7 @@ static void discard_xpub_handler (int, const uint8_t *, size_t, void *)
 }
 
 static int install_spot_node_handler (zlink::spot_node_t *node_,
-                                      zlink_spot_handler_fn handler_,
+                                      zlink_subscribe_handler_fn handler_,
                                       void *userdata_)
 {
     if (!node_ || !handler_) {
@@ -2384,7 +2388,7 @@ int zlink_subscribe_handler (void *s_,
 }
 
 int zlink_recv_spot_handler (void *s_,
-                             zlink_spot_handler_fn handler_,
+                             zlink_subscribe_handler_fn handler_,
                              void *userdata_)
 {
     if (is_registered_spot_handle (s_)) {
@@ -2470,7 +2474,7 @@ int zlink_subscription_event_handler (
 }
 
 int zlink_recv_xpub_handler (void *s_,
-                             zlink_xpub_handler_fn handler_,
+                             zlink_subscription_event_handler_fn handler_,
                              void *userdata_)
 {
     socket_handle_t handle = as_socket_handle (s_);
@@ -4461,7 +4465,7 @@ static void spot_node_sub_handler_adapter (
         return;
     }
 
-    zlink_spot_handler_fn handler = NULL;
+    zlink_subscribe_handler_fn handler = NULL;
     void *userdata = NULL;
     {
         spot_node_handler_registry_t &registry = spot_node_handler_registry ();
@@ -5223,7 +5227,7 @@ static int recv_socket_subscribe_parts (socket_handle_t handle_,
     }
     frames.push_back (first);
 
-    while (zlink_msg_more (&frames.back ())) {
+    while (frame_has_more (frames.back ())) {
         zlink_msg_t frame;
         zlink_msg_init (&frame);
         if (zlink::recv_msg_internal (handle_.socket, &frame, 0) < 0) {
@@ -5349,7 +5353,7 @@ static int recv_socket_parts (socket_handle_t handle_,
     if (source_rid_out_)
         handle_.socket->copy_last_recv_source_rid (source_rid_out_);
 
-    while (zlink_msg_more (&frames.back ())) {
+    while (frame_has_more (frames.back ())) {
         zlink_msg_t frame;
         zlink_msg_init (&frame);
         if (zlink::recv_msg_internal (handle_.socket, &frame, 0) < 0) {
@@ -5863,31 +5867,10 @@ size_t zlink_msg_size (const zlink_msg_t *msg_)
     return ((zlink::msg_t *) msg_)->size ();
 }
 
-int zlink_msg_more (const zlink_msg_t *msg_)
+int zlink_msg_is_shared (const zlink_msg_t *msg_)
 {
-    return (((zlink::msg_t *) msg_)->flags () & zlink::msg_t::more) ? 1 : 0;
-}
-
-int zlink_msg_get (const zlink_msg_t *msg_, int property_)
-{
-    switch (property_) {
-        case ZLINK_MORE:
-            return (((zlink::msg_t *) msg_)->flags () & zlink::msg_t::more) ? 1 : 0;
-        case ZLINK_SHARED:
-            return (((zlink::msg_t *) msg_)->is_cmsg ())
-                       || (((zlink::msg_t *) msg_)->flags () & zlink::msg_t::shared)
-                     ? 1
-                     : 0;
-        default:
-            errno = EINVAL;
-            return -1;
-    }
-}
-
-int zlink_msg_set (zlink_msg_t *, int, int)
-{
-    errno = EINVAL;
-    return -1;
+    const zlink::msg_t *msg = reinterpret_cast<const zlink::msg_t *> (msg_);
+    return (msg->is_cmsg () || (msg->flags () & zlink::msg_t::shared)) ? 1 : 0;
 }
 
 const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_)

@@ -536,7 +536,7 @@ int zlink::xpub_t::dispatch_message (zlink::msg_t *msg_)
     if (!_dispatch_active.load (std::memory_order_acquire))
         return 0;
 
-    zlink_xpub_handler_fn handler = socket_xpub_handler ();
+    zlink_subscription_event_handler_fn handler = socket_xpub_handler ();
     if (!handler)
         return 0;
 

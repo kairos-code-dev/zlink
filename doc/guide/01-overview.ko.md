@@ -105,14 +105,22 @@ int main(void) {
     zlink_connect(client, "tcp://127.0.0.1:5555");
 
     /* 송신 */
-    const char *msg = "Hello zlink!";
-    zlink_send(client, msg, strlen(msg), 0);
+    zlink_msg_t part;
+    zlink_msg_init_size(&part, 12);
+    memcpy(zlink_msg_data(&part), "Hello zlink!", 12);
+    zlink_send(client, &part, 1, 0);
 
     /* 수신 */
-    char buf[256];
-    int nbytes = zlink_recv(server, buf, sizeof(buf), 0);
-    if (nbytes >= 0)
-        printf("수신: %.*s\n", nbytes, buf);
+    zlink_routing_id_t source_rid;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    int rc = zlink_recv(server, &source_rid, &parts, &part_count, 0);
+    if (rc == 0)
+        printf("수신: %.*s\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
 
     zlink_close(client);
     zlink_close(server);

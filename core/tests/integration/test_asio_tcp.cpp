@@ -76,22 +76,24 @@ void test_multipart_message ()
     send_string_expect_success (server, part3, 0);
 
     //  Receive and verify all parts
-    recv_string_expect_success (client, part1, 0);
-    int more;
-    size_t more_size = sizeof (more);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (client, ZLINK_RCVMORE, &more, &more_size));
-    TEST_ASSERT_TRUE (more);
+    zlink_msg_t msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, client, 0));
+    TEST_ASSERT_EQUAL_STRING (part1, static_cast<const char *> (zlink_msg_data (&msg)));
+    TEST_ASSERT_TRUE (test_msg_has_more (&msg));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
-    recv_string_expect_success (client, part2, 0);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (client, ZLINK_RCVMORE, &more, &more_size));
-    TEST_ASSERT_TRUE (more);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, client, 0));
+    TEST_ASSERT_EQUAL_STRING (part2, static_cast<const char *> (zlink_msg_data (&msg)));
+    TEST_ASSERT_TRUE (test_msg_has_more (&msg));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
-    recv_string_expect_success (client, part3, 0);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (client, ZLINK_RCVMORE, &more, &more_size));
-    TEST_ASSERT_FALSE (more);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, client, 0));
+    TEST_ASSERT_EQUAL_STRING (part3, static_cast<const char *> (zlink_msg_data (&msg)));
+    TEST_ASSERT_FALSE (test_msg_has_more (&msg));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
     test_context_socket_close (client);
     test_context_socket_close (server);

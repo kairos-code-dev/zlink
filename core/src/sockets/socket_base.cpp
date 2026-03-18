@@ -642,12 +642,6 @@ int zlink::socket_base_t::getsockopt (int option_,
         return rc;
     }
 
-    if (option_ == ZLINK_RCVMORE) {
-        rc = do_getsockopt<int> (optval_, optvallen_, _rcvmore ? 1 : 0);
-        leave_public_api ();
-        return rc;
-    }
-
     if (option_ == ZLINK_SOCKOPT_FD) {
         rc = do_getsockopt<fd_t> (
           optval_, optvallen_, static_cast<mailbox_t *> (_mailbox)->get_fd ());
@@ -1643,13 +1637,13 @@ int zlink::socket_base_t::socket_msg_dispatch_stop ()
 }
 
 int zlink::socket_base_t::socket_set_spot_handler (
-  zlink_spot_handler_fn handler_)
+  zlink_subscribe_handler_fn handler_)
 {
     return socket_set_spot_handler_with_userdata (handler_, NULL);
 }
 
 int zlink::socket_base_t::socket_set_spot_handler_with_userdata (
-  zlink_spot_handler_fn handler_, void *userdata_)
+  zlink_subscribe_handler_fn handler_, void *userdata_)
 {
     if (!enter_public_api ())
         return -1;
@@ -1674,13 +1668,13 @@ int zlink::socket_base_t::socket_set_spot_handler_with_userdata (
 }
 
 int zlink::socket_base_t::socket_set_xpub_handler (
-  zlink_xpub_handler_fn handler_)
+  zlink_subscription_event_handler_fn handler_)
 {
     return socket_set_xpub_handler_with_userdata (handler_, NULL);
 }
 
 int zlink::socket_base_t::socket_set_xpub_handler_with_userdata (
-  zlink_xpub_handler_fn handler_, void *userdata_)
+  zlink_subscription_event_handler_fn handler_, void *userdata_)
 {
     if (!enter_public_api ())
         return -1;
@@ -1807,12 +1801,13 @@ zlink_socket_msg_handler_fn zlink::socket_base_t::socket_msg_handler () const
     return _socket_msg_handler.load (std::memory_order_acquire);
 }
 
-zlink_spot_handler_fn zlink::socket_base_t::socket_spot_handler () const
+zlink_subscribe_handler_fn zlink::socket_base_t::socket_spot_handler () const
 {
     return _spot_handler.load (std::memory_order_acquire);
 }
 
-zlink_xpub_handler_fn zlink::socket_base_t::socket_xpub_handler () const
+zlink_subscription_event_handler_fn
+zlink::socket_base_t::socket_xpub_handler () const
 {
     return _xpub_handler.load (std::memory_order_acquire);
 }
@@ -1998,7 +1993,7 @@ void zlink::socket_base_t::dispatch_spot_handler_from_io (
         return;
     }
 
-    zlink_spot_handler_fn handler = self->socket_spot_handler ();
+    zlink_subscribe_handler_fn handler = self->socket_spot_handler ();
     if (!handler) {
         for (size_t i = 0; i < part_count_; ++i) {
             const int rc = reinterpret_cast<msg_t *> (&parts_[i])->close ();

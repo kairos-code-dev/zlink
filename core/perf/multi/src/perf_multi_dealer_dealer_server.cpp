@@ -70,22 +70,31 @@ inline recv_result_t receive_one_message (
     if (!server)
         return recv_fatal;
 
-    zlink_msg_t msg;
-    if (zlink_msg_init (&msg) != 0)
-        return recv_fatal;
-
-    const int rc = zlink_msg_recv (&msg, server, flags);
+    zlink_routing_id_t source_rid;
+    source_rid.size = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc = ::zlink_recv (
+      server, &source_rid, &parts, &part_count,
+      static_cast<zlink_send_flags_t> (flags));
     if (rc < 0) {
         const int err = zlink_errno ();
-        zlink_msg_close (&msg);
         if (err == EAGAIN || err == EINTR || err == ETIMEDOUT)
             return recv_none;
         return recv_fatal;
     }
 
+    if (source_rid.size != 0 || part_count != 1) {
+        if (parts) {
+            zlink_multipart_close (parts, part_count);
+            free (parts);
+        }
+        return recv_fatal;
+    }
+
     perf_multi_metric::header_t header;
     const bool matched = decode_and_match_header (
-      &msg,
+      &parts[0],
       expected_msg_size,
       expected_run_id,
       expected_phase,
@@ -105,7 +114,8 @@ inline recv_result_t receive_one_message (
         }
     }
 
-    zlink_msg_close (&msg);
+    zlink_multipart_close (parts, part_count);
+    free (parts);
     return recv_ok;
 }
 

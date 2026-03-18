@@ -58,12 +58,14 @@ zlink_recv_handler(router, on_message, NULL);
 
 ### Sending Messages
 
-When replying, send `source_rid` as the first frame to specify the target.
+When replying, use `zlink_send_rid` with the `source_rid` to specify the target.
 
 ```c
 /* Reply using source_rid from the callback */
-zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-zlink_send(router, "World", 5, 0);
+zlink_msg_t reply;
+zlink_msg_init_size(&reply, 5);
+memcpy(zlink_msg_data(&reply), "World", 5);
+zlink_send_rid(router, source_rid, &reply, 1, 0);
 ```
 
 ### Receive Modes
@@ -77,15 +79,20 @@ automatically by the I/O thread).
 Use `source_rid` to reply to the correct peer.
 
 **Pull mode**: without attaching a handler, call `zlink_recv()` to
-receive synchronously. In pull mode, the first frame is the routing_id
-and subsequent frames are application data.
+receive synchronously. The `source_rid_out` parameter receives the
+sender's routing_id, and `parts_out` receives the application data.
 
 ```c
-char rid_buf[256];
-int rid_len = zlink_recv(router, rid_buf, sizeof(rid_buf), 0);
-
-char data_buf[256];
-int data_len = zlink_recv(router, data_buf, sizeof(data_buf), 0);
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+int rc = zlink_recv(router, &source_rid, &parts, &part_count, 0);
+if (rc == 0) {
+    /* source_rid identifies the sender */
+    /* process parts[0..part_count-1] */
+    zlink_multipart_close(parts, part_count);
+    free(parts);
+}
 ```
 
 > When the per-peer send queue is full (HWM), ROUTER returns
@@ -123,9 +130,11 @@ void on_message(const zlink_routing_id_t *source_rid,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* Reply: send routing_id frame then data */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "reply", 5, 0);
+    /* Reply: send to the source peer using zlink_send_rid */
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "reply", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
 
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
@@ -152,7 +161,11 @@ int mandatory = 1;
 zlink_setsockopt(router, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
 
 /* Attempt to send to a non-existent target */
-int rc = zlink_send(router, "UNKNOWN", 7, ZLINK_SNDMORE);
+zlink_routing_id_t target_rid = { .data = "UNKNOWN", .size = 7 };
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "data", 4);
+int rc = zlink_send_rid(router, &target_rid, &msg, 1, 0);
 /* rc == -1, errno == EHOSTUNREACH */
 ```
 
@@ -171,8 +184,10 @@ void on_request(const zlink_routing_id_t *source_rid,
                 void *userdata)
 {
     /* Reply to the sender */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "reply", 5, 0);
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "reply", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
 }
@@ -198,8 +213,15 @@ zlink_setsockopt(d2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(d2, endpoint);
 
 /* Each client sends a message -- on_request receives with source_rid */
-zlink_send(d1, "from_d1", 7, 0);
-zlink_send(d2, "from_d2", 7, 0);
+zlink_msg_t m1;
+zlink_msg_init_size(&m1, 7);
+memcpy(zlink_msg_data(&m1), "from_d1", 7);
+zlink_send(d1, &m1, 1, 0);
+
+zlink_msg_t m2;
+zlink_msg_init_size(&m2, 7);
+memcpy(zlink_msg_data(&m2), "from_d2", 7);
+zlink_send(d2, &m2, 1, 0);
 
 /* on_reply receives the reply for each DEALER */
 ```
@@ -213,8 +235,11 @@ void *router = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 
 /* Default behavior: silently drops undeliverable messages */
-zlink_send(router, "UNKNOWN", 7, ZLINK_SNDMORE);
-zlink_send(router, "DATA", 4, 0);
+zlink_routing_id_t bad_rid = { .data = "UNKNOWN", .size = 7 };
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "DATA", 4);
+zlink_send_rid(router, &bad_rid, &msg, 1, 0);
 /* No error, message lost */
 
 /* Enable MANDATORY mode */
@@ -222,7 +247,10 @@ int mandatory = 1;
 zlink_setsockopt(router, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
 
 /* Now returns error on undeliverable message */
-int rc = zlink_send(router, "UNKNOWN", 7, ZLINK_SNDMORE);
+zlink_msg_t msg2;
+zlink_msg_init_size(&msg2, 4);
+memcpy(zlink_msg_data(&msg2), "DATA", 4);
+int rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
 if (rc == -1 && errno == EHOSTUNREACH) {
     /* Target "UNKNOWN" not found */
 }
@@ -241,8 +269,10 @@ void on_connect(const zlink_routing_id_t *source_rid,
                 void *userdata)
 {
     /* source_rid->data = "X" -- now it is safe to send to "X" */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "Welcome", 7, 0);
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 7);
+    memcpy(zlink_msg_data(&reply), "Welcome", 7);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
 }
@@ -251,7 +281,10 @@ void on_connect(const zlink_routing_id_t *source_rid,
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "X", 1);
 zlink_connect(dealer, endpoint);
-zlink_send(dealer, "Hello", 5, 0);
+zlink_msg_t hello;
+zlink_msg_init_size(&hello, 5);
+memcpy(zlink_msg_data(&hello), "Hello", 5);
+zlink_send(dealer, &hello, 1, 0);
 
 /* on_connect receives: source_rid = "X", parts[0] = "Hello"
    and replies with "Welcome" */
@@ -301,15 +334,22 @@ If two DEALERs with the same routing_id connect simultaneously, the second conne
 
 ### Multipart Message Integrity
 
-When sending from ROUTER, the routing_id frame and data frames must be linked with `ZLINK_SNDMORE`. Sending only the routing_id without data frames causes unexpected behavior.
+When sending from ROUTER, use `zlink_send_rid` which handles routing_id and data parts atomically. Always provide at least one data part.
 
 ```c
 /* Correct send */
-zlink_send(router, identity, id_size, ZLINK_SNDMORE);  /* SNDMORE is required */
-zlink_send(router, data, data_size, 0);
+zlink_msg_t data_part;
+zlink_msg_init_size(&data_part, data_size);
+memcpy(zlink_msg_data(&data_part), data, data_size);
+zlink_send_rid(router, &target_rid, &data_part, 1, 0);
 
-/* Incorrect send -- must not send identity alone */
-zlink_send(router, identity, id_size, 0);  /* no SNDMORE! */
+/* Multipart send */
+zlink_msg_t parts[2];
+zlink_msg_init_size(&parts[0], header_size);
+memcpy(zlink_msg_data(&parts[0]), header, header_size);
+zlink_msg_init_size(&parts[1], body_size);
+memcpy(zlink_msg_data(&parts[1]), body, body_size);
+zlink_send_rid(router, &target_rid, parts, 2, 0);
 ```
 
 > For a detailed explanation of routing_id concepts, see [08-routing-id.md](08-routing-id.md).

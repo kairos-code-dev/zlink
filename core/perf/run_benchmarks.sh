@@ -105,7 +105,7 @@ Options:
   -h, --help                  Show this help.
   --pattern NAME              Pattern list (comma-separated) or ALL.
                               In multi mode, STREAM/STREAMS map to STREAM_CALLBACK.
-  --build-dir PATH            Build directory (default: core/build).
+  --build-dir PATH            Official build directory (must be core/build).
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
   --clean-build               Remove build directory and do a clean build.
   --output PATH               Tee console logs to a file.
@@ -114,7 +114,7 @@ Options:
   --runs N                    Iterations per pattern/transport/size (default: 1).
   --recv MODE                 Receive model: recv|callback (default: recv).
   --duration N                Override single duration seconds (default: 5).
-  --warmup N                  Override single warmup env value.
+  --warmup N                  Override single warmup seconds (default: 2).
   --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
   --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
   --recv-hwm N                Override PERF_SINGLE_RCVHWM (fallback: --hwm).
@@ -402,9 +402,10 @@ fi
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
 ROOT_DIR="$(realpath -m "${ROOT_DIR}")"
 PERF_COMPARISON_SCRIPT="$(realpath -m "${PERF_COMPARISON_SCRIPT}")"
+OFFICIAL_BUILD_DIR="${ROOT_DIR}/core/build"
 
-if [[ "${BUILD_DIR}" != "${ROOT_DIR}/"* ]]; then
-  echo "Build directory must be inside repo root: ${ROOT_DIR}" >&2
+if [[ "${BUILD_DIR}" != "${OFFICIAL_BUILD_DIR}" ]]; then
+  echo "Build directory must be exactly: ${OFFICIAL_BUILD_DIR}" >&2
   exit 1
 fi
 

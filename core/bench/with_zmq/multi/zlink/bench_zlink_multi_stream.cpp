@@ -1545,8 +1545,10 @@ int recv_sender_stream_chunk_nonblocking (stream_sender_state_t &sender,
         return -1;
 
     unsigned char routing_frame[255];
-    const int routing_len = zlink_recv (
-      sender.socket, routing_frame, sizeof (routing_frame), ZLINK_DONTWAIT);
+    bool more = false;
+    const int routing_len = zlink_recv_with_more (
+      sender.socket, routing_frame, sizeof (routing_frame), ZLINK_DONTWAIT,
+      &more);
     if (routing_len < 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
@@ -1554,16 +1556,14 @@ int recv_sender_stream_chunk_nonblocking (stream_sender_state_t &sender,
         return -1;
     }
 
-    int more = 0;
-    size_t more_size = sizeof (more);
-    if (zlink_getsockopt (sender.socket, ZLINK_RCVMORE, &more, &more_size) != 0
-        || !more) {
+    if (!more) {
         return -1;
     }
 
     std::vector<char> payload_buf (512 * 1024, 0);
-    const int payload_len = zlink_recv (
-      sender.socket, payload_buf.data (), payload_buf.size (), ZLINK_DONTWAIT);
+    const int payload_len = zlink_recv_with_more (
+      sender.socket, payload_buf.data (), payload_buf.size (), ZLINK_DONTWAIT,
+      &more);
     if (payload_len < 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)

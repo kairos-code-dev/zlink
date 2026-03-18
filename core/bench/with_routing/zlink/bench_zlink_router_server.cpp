@@ -39,16 +39,53 @@ void apply_socket_options(void *socket)
 bool handle_router_once(void *server, char *id_buf, size_t id_cap,
                         char *payload_buf, size_t payload_cap)
 {
-    const int id_len = zlink_recv(server, id_buf, id_cap, ZLINK_DONTWAIT);
-    if (id_len < 0)
-        return false;
-    const int rc = zlink_recv(server, payload_buf, payload_cap, 0);
+    zlink_routing_id_t source_rid;
+    source_rid.size = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc =
+      ::zlink_recv(server, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
     if (rc < 0)
         return false;
 
-    if (zlink_send(server, id_buf, id_len, ZLINK_SNDMORE) < 0)
+    if (source_rid.size == 0 || part_count == 0) {
+        if (parts) {
+            zlink_multipart_close(parts, part_count);
+            free(parts);
+        }
         return false;
-    return zlink_send(server, payload_buf, rc, 0) >= 0;
+    }
+
+    const size_t id_len = std::min(id_cap, static_cast<size_t>(source_rid.size));
+    std::memcpy(id_buf, source_rid.data, id_len);
+
+    const size_t payload_size = zlink_msg_size(&parts[part_count - 1]);
+    const size_t payload_len = std::min(payload_cap, payload_size);
+    if (payload_len > 0) {
+        std::memcpy(payload_buf, zlink_msg_data(&parts[part_count - 1]),
+                    payload_len);
+    }
+
+    zlink_multipart_close(parts, part_count);
+    free(parts);
+
+    zlink_msg_t reply_parts[2];
+    if (zlink_msg_init_size (&reply_parts[0], id_len) != 0)
+        return false;
+    if (zlink_msg_init_size (&reply_parts[1], payload_len) != 0) {
+        zlink_msg_close (&reply_parts[0]);
+        return false;
+    }
+    if (id_len > 0)
+        std::memcpy (zlink_msg_data (&reply_parts[0]), id_buf, id_len);
+    if (payload_len > 0)
+        std::memcpy (zlink_msg_data (&reply_parts[1]), payload_buf, payload_len);
+    if (::zlink_send (server, reply_parts, 2, 0) < 0) {
+        zlink_msg_close (&reply_parts[0]);
+        zlink_msg_close (&reply_parts[1]);
+        return false;
+    }
+    return true;
 }
 
 static const long k_poll_timeout_ms = 1000;

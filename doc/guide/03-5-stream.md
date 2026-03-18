@@ -76,56 +76,58 @@ Frame 1: payload (N bytes)
 
 STREAM uses callback-only dispatch for all receive operations.
 `recv()` / `zlink_msg_recv()` are not supported on STREAM sockets.
-Register a raw callback via `zlink_stream_attach_raw()` and remove it
-with `zlink_stream_detach()`.
+Register a callback via `zlink_recv_handler()`. The handler is permanent
+once attached and cannot be detached.
 
-### Raw Callback Dispatch
+### Callback Dispatch
 
 ```c
-int on_raw(const zlink_routing_id_t *rid, zlink_msg_t *msg)
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
-    void *data = zlink_msg_data(msg);
-    size_t size = zlink_msg_size(msg);
+    for (size_t i = 0; i < part_count; i++) {
+        void *data = zlink_msg_data(&parts[i]);
+        size_t size = zlink_msg_size(&parts[i]);
 
-    if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
-        /* new client connected */
-    } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
-        /* client disconnected */
-    } else {
-        /* echo reply */
-        zlink_stream_send(stream, rid, data, size, 0);
+        if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
+            /* new client connected */
+        } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
+            /* client disconnected */
+        } else {
+            /* echo reply */
+            zlink_msg_t reply;
+            zlink_msg_init_size(&reply, size);
+            memcpy(zlink_msg_data(&reply), data, size);
+            zlink_send_rid(stream, source_rid, &reply, 1, 0);
+        }
+        zlink_msg_close(&parts[i]);
     }
-    zlink_msg_close(msg);
-    return 0;  /* 0 = continue, non-zero = stop */
 }
 
-/* Attach raw callback dispatch */
-zlink_stream_attach_raw(stream, on_raw);
-
-/* Detach when done */
-zlink_stream_detach(stream);
+/* Attach callback dispatch (permanent, cannot be undone) */
+zlink_recv_handler(stream, on_message, NULL);
 ```
 
 ### Key Points
 
 | Item | Description |
 |---|---|
-| Attach API | `zlink_stream_attach_raw()` |
-| Detach API | `zlink_stream_detach()` |
-| Callback | `zlink_stream_on_raw_fn` |
+| Attach API | `zlink_recv_handler()` |
+| Callback | `zlink_socket_msg_handler_fn` |
+| Lifetime | Permanent once attached (no detach) |
 | Framing | Raw bytes as received from the transport |
-| Send | `zlink_stream_send()` / `zlink_stream_send_msg()` |
+| Send | `zlink_send_rid()` |
 
-> When the send queue is full (HWM), `zlink_stream_send()` blocks
+> When the send queue is full (HWM), `zlink_send_rid()` blocks
 > (default) or returns `EAGAIN` with `ZLINK_DONTWAIT`. For advanced
 > backpressure patterns, see [Performance Guide](10-performance.md).
 
 - Only one callback can be attached at a time; calling attach while a
   callback is already attached returns `-1` with `errno=EBUSY`.
-- Attach/detach are safe to call from application threads and serialized
-  with STREAM send/close.
-- Calling attach/detach from inside the raw callback is not supported.
-- Close from inside the raw callback is not supported (fails with `EBUSY`).
+- The handler is permanent and cannot be detached for the lifetime of
+  the socket.
+- Close from inside the callback is not supported (fails with `EBUSY`).
 
 ---
 

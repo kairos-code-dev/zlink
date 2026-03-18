@@ -51,6 +51,15 @@ RECV_MODE_BINARY_OVERRIDES = {
     "DEALER_ROUTER": "perf_dealer_router_recv",
     "ROUTER_ROUTER": "perf_router_router_recv",
 }
+SUPPORTED_RECV_MODES = {
+    "PAIR": ("recv", "callback"),
+    "PUBSUB": ("recv", "callback"),
+    "DEALER_DEALER": ("recv", "callback"),
+    "DEALER_ROUTER": ("recv", "callback"),
+    "ROUTER_ROUTER": ("recv", "callback"),
+    "GATEWAY": ("recv", "callback"),
+    "SPOT": ("recv", "callback"),
+}
 
 DEFAULT_MSG_SIZES_STANDARD = [64, 256, 1024, 65536, 131072, 262144]
 DEFAULT_MSG_SIZES_STREAM = [64, 256, 1024, 65536]
@@ -1018,11 +1027,26 @@ def parse_pattern_arg(pattern_arg: str) -> List[str]:
 
 
 def resolve_binary_name(pattern: str, recv_mode: str) -> str:
+    supported = SUPPORTED_RECV_MODES.get(pattern, ())
+    if recv_mode not in supported:
+        raise ValueError(
+            f"pattern {pattern} does not support --recv {recv_mode}"
+        )
     if recv_mode == "recv":
         override = RECV_MODE_BINARY_OVERRIDES.get(pattern)
         if override:
             return override
     return PATTERN_TO_BINARY[pattern]
+
+
+def collect_unsupported_patterns(
+    patterns: Iterable[str], recv_mode: str
+) -> List[str]:
+    unsupported = []
+    for pattern in patterns:
+        if recv_mode not in SUPPORTED_RECV_MODES.get(pattern, ()):
+            unsupported.append(pattern)
+    return unsupported
 
 
 def collect_missing_patterns(
@@ -1209,6 +1233,15 @@ def main() -> int:
         patterns = parse_pattern_arg(args.pattern)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    unsupported_patterns = collect_unsupported_patterns(patterns, args.recv)
+    if unsupported_patterns:
+        print(
+            "Error: unsupported --recv mode for single patterns: "
+            + ", ".join(sorted(set(unsupported_patterns))),
+            file=sys.stderr,
+        )
         return 1
 
     if IS_WINDOWS:

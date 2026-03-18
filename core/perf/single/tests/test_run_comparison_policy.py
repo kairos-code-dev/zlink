@@ -101,6 +101,17 @@ class RunComparisonPolicyTests(unittest.TestCase):
         self.assertEqual(RC.resolve_binary_name("PUBSUB", "recv"), "perf_pubsub_recv")
         self.assertEqual(RC.resolve_binary_name("PAIR", "callback"), "perf_pair")
         self.assertEqual(RC.resolve_binary_name("GATEWAY", "recv"), "perf_gateway")
+        self.assertEqual(RC.resolve_binary_name("SPOT", "recv"), "perf_spot")
+
+    def test_collect_unsupported_patterns_matches_current_single_matrix(self):
+        self.assertEqual(
+            RC.collect_unsupported_patterns(["PAIR", "GATEWAY", "SPOT"], "recv"),
+            [],
+        )
+        self.assertEqual(
+            RC.collect_unsupported_patterns(["PAIR", "GATEWAY", "SPOT"], "callback"),
+            [],
+        )
 
 
 if __name__ == "__main__":

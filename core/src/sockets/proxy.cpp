@@ -95,9 +95,6 @@ static int forward (class zlink::socket_base_t *from_,
 {
     // Forward a burst of messages
     for (unsigned int i = 0; i < zlink::proxy_burst_size; i++) {
-        int more;
-        size_t moresz;
-
         // Forward all the parts of one message
         while (true) {
             int rc = from_->recv (msg_, ZLINK_DONTWAIT);
@@ -112,10 +109,7 @@ static int forward (class zlink::socket_base_t *from_,
             recving.count += 1;
             recving.bytes += nbytes;
 
-            moresz = sizeof more;
-            rc = from_->getsockopt (ZLINK_RCVMORE, &more, &moresz);
-            if (unlikely (rc < 0))
-                return -1;
+            const bool more = (msg_->flags () & zlink::msg_t::more) != 0;
 
             //  Copy message to capture socket if any
             rc = capture (capture_, msg_, more);

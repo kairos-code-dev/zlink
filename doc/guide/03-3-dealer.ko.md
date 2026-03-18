@@ -41,9 +41,18 @@ zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
 ```c
 /* 요청 전송 — 순서 제약 없이 연속 전송 가능 */
-zlink_send(dealer, "request-1", 9, 0);
-zlink_send(dealer, "request-2", 9, 0);
-zlink_send(dealer, "request-3", 9, 0);
+zlink_msg_t msg1, msg2, msg3;
+zlink_msg_init_size(&msg1, 9);
+memcpy(zlink_msg_data(&msg1), "request-1", 9);
+zlink_send(dealer, &msg1, 1, 0);
+
+zlink_msg_init_size(&msg2, 9);
+memcpy(zlink_msg_data(&msg2), "request-2", 9);
+zlink_send(dealer, &msg2, 1, 0);
+
+zlink_msg_init_size(&msg3, 9);
+memcpy(zlink_msg_data(&msg3), "request-3", 9);
+zlink_send(dealer, &msg3, 1, 0);
 
 /* 응답은 생성 시 등록한 핸들러 콜백으로 디스패치됨 */
 ```
@@ -58,11 +67,17 @@ DEALER는 `zlink_recv_handler()`로 핸들러를 등록한다. 콜백은
 메시지가 fair-queue로 도착하며 비동기로 dispatch된다.
 
 **Pull 모드**: 핸들러를 부착하지 않으면 `zlink_recv()`로 동기 수신한다.
-Pull 모드에서 멀티파트 메시지는 프레임별로 수신된다.
 
 ```c
-char buf[256];
-int nbytes = zlink_recv(dealer, buf, sizeof(buf), 0);
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+int rc = zlink_recv(dealer, &source_rid, &parts, &part_count, 0);
+if (rc == 0) {
+    /* parts[0..part_count-1] 처리 */
+    zlink_multipart_close(parts, part_count);
+    free(parts);
+}
 ```
 
 > HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
@@ -85,8 +100,12 @@ DEALER 수신: [데이터]              ← routing_id 프레임 제거됨
 
 ```c
 /* DEALER → ROUTER: 멀티파트 전송 */
-zlink_send(dealer, "header", 6, ZLINK_SNDMORE);
-zlink_send(dealer, "body", 4, 0);
+zlink_msg_t parts[2];
+zlink_msg_init_size(&parts[0], 6);
+memcpy(zlink_msg_data(&parts[0]), "header", 6);
+zlink_msg_init_size(&parts[1], 4);
+memcpy(zlink_msg_data(&parts[1]), "body", 4);
+zlink_send(dealer, parts, 2, 0);
 
 /* ROUTER 수신: [routing_id] + [header] + [body] */
 ```
@@ -134,9 +153,11 @@ void on_request(const zlink_routing_id_t *source_rid,
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
 
-    /* 응답: routing_id를 앞에 붙여 전송 */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "World", 5, 0);
+    /* 응답: zlink_send_rid로 원본 피어에게 전송 */
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "World", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
 
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
@@ -153,7 +174,10 @@ zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
 /* 클라이언트 요청 */
-zlink_send(dealer, "Hello", 5, 0);
+zlink_msg_t req;
+zlink_msg_init_size(&req, 5);
+memcpy(zlink_msg_data(&req), "Hello", 5);
+zlink_send(dealer, &req, 1, 0);
 
 /* on_request가 메시지를 수신하여 "World"로 응답
    on_reply가 응답을 수신 */
@@ -173,8 +197,10 @@ void on_message(const zlink_routing_id_t *source_rid,
 {
     /* source_rid->data = "D1" 또는 "D2" */
     /* 특정 DEALER에게 응답 */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "reply", 5, 0);
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "reply", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
 }
@@ -196,8 +222,15 @@ zlink_setsockopt(dealer2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
 /* 각 DEALER가 메시지 전송 */
-zlink_send(dealer1, "from_dealer1", 12, 0);
-zlink_send(dealer2, "from_dealer2", 12, 0);
+zlink_msg_t m1;
+zlink_msg_init_size(&m1, 12);
+memcpy(zlink_msg_data(&m1), "from_dealer1", 12);
+zlink_send(dealer1, &m1, 1, 0);
+
+zlink_msg_t m2;
+zlink_msg_init_size(&m2, 12);
+memcpy(zlink_msg_data(&m2), "from_dealer2", 12);
+zlink_send(dealer2, &m2, 1, 0);
 
 /* on_message가 각 DEALER의 메시지를 routing_id와 함께 수신 */
 ```
@@ -229,11 +262,7 @@ void worker_thread(void *arg) {
                  void *userdata)
     {
         /* 처리 후 동일 routing_id로 응답 */
-        zlink_send(worker, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-        for (size_t i = 0; i < part_count; i++) {
-            int more = (i < part_count - 1) ? ZLINK_SNDMORE : 0;
-            zlink_msg_send(&parts[i], worker, more);
-        }
+        zlink_send_rid(worker, source_rid, parts, part_count, 0);
     }
 
     void *worker = zlink_socket(ctx, ZLINK_DEALER);
@@ -260,8 +289,15 @@ zlink_recv_handler(b, on_message_b, NULL);
 zlink_connect(b, "tcp://127.0.0.1:5558");
 
 /* 양방향 자유 전송 */
-zlink_send(a, "ping", 4, 0);
-zlink_send(b, "pong", 4, 0);
+zlink_msg_t ping;
+zlink_msg_init_size(&ping, 4);
+memcpy(zlink_msg_data(&ping), "ping", 4);
+zlink_send(a, &ping, 1, 0);
+
+zlink_msg_t pong;
+zlink_msg_init_size(&pong, 4);
+memcpy(zlink_msg_data(&pong), "pong", 4);
+zlink_send(b, &pong, 1, 0);
 
 /* on_message_b가 "ping" 수신, on_message_a가 "pong" 수신 */
 ```
@@ -274,7 +310,10 @@ zlink_send(b, "pong", 4, 0);
 
 ```c
 /* 피어가 없는 상태에서 전송 */
-int rc = zlink_send(dealer, "data", 4, ZLINK_DONTWAIT);
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "data", 4);
+int rc = zlink_send(dealer, &msg, 1, ZLINK_DONTWAIT);
 if (rc == -1 && errno == EAGAIN) {
     /* HWM 초과 또는 피어 없음 */
 }

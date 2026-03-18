@@ -3,8 +3,11 @@
 # zlink API 레퍼런스
 
 zlink C 라이브러리는 경량 I/O 스레드와 락프리 큐를 기반으로 구축된 메시징 및
-서비스 디스커버리 툴킷을 제공합니다. 이 레퍼런스는 `<zlink.h>`에서 제공하는
-모든 공개 함수, 타입, 상수를 다룹니다.
+서비스 디스커버리 툴킷을 제공합니다. 메시지 수신은 두 가지 모드를 지원합니다:
+핸들러를 attach하여 콜백으로 dispatch하는 모드와, `zlink_recv()`로 동기적으로
+pull하는 모드입니다. 소켓은 recv 모드로 시작하며, 핸들러를 attach하면 callback
+모드로 전환됩니다. 이 레퍼런스는 `<zlink.h>`에서 제공하는 모든 공개 함수, 타입,
+상수를 다룹니다.
 
 ## API 그룹
 
@@ -13,7 +16,7 @@ zlink C 라이브러리는 경량 I/O 스레드와 락프리 큐를 기반으로
 | 에러 처리 & 버전 | [errors.ko.md](errors.ko.md) | 에러 코드, 에러 문자열, 버전 조회 | 3 |
 | Context | [context.ko.md](context.ko.md) | Context 생성, 종료, 옵션 설정 | 5 |
 | Message | [message.ko.md](message.ko.md) | 메시지 생명주기, 데이터 접근, 속성 | 16 |
-| Socket | [socket.ko.md](socket.ko.md) | 소켓 생성, 옵션, bind/connect, 송수신 | 13 |
+| Socket | [socket.ko.md](socket.ko.md) | 소켓 생성, 핸들러, 옵션, bind/connect, 송수신, pub/sub 데이터 플레인, STREAM API | 19 |
 | Monitoring | [monitoring.ko.md](monitoring.ko.md) | 소켓 모니터, 이벤트, 피어 검사 | 7 |
 | Events | [events.ko.md](events.ko.md) | canonical 이벤트 카탈로그와 readiness 의미 | - |
 | Registry | [registry.ko.md](registry.ko.md) | 서비스 레지스트리 생성, 구성, 클러스터링 | 9 |
@@ -42,7 +45,6 @@ zlink C 라이브러리는 경량 I/O 스레드와 락프리 큐를 기반으로
 | [`zlink_socket_msg_handler_fn`](socket.ko.md) | socket.ko.md | 소켓 멀티파트 메시지 dispatch 콜백 |
 | [`zlink_subscribe_handler_fn`](socket.ko.md) | socket.ko.md | 토픽 기반 메시지 dispatch 콜백 |
 | [`zlink_subscription_event_handler_fn`](socket.ko.md) | socket.ko.md | XPUB 구독 알림 콜백 |
-| [`zlink_stream_on_raw_fn`](socket.ko.md) | socket.ko.md | STREAM raw chunk dispatch 콜백 |
 | [`zlink_monitor_handler_fn`](monitoring.ko.md) | monitoring.ko.md | 소켓 모니터 이벤트 콜백 |
 | [`zlink_service_monitor_handler_fn`](monitoring.ko.md) | monitoring.ko.md | 서비스 모니터 이벤트 콜백 |
 | [`zlink_send_ready_handler_fn`](socket.ko.md) | socket.ko.md | send-ready 전환 콜백 |

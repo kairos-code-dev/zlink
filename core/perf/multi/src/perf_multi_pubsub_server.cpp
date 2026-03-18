@@ -80,7 +80,11 @@ inline bool publish_once (void *server,
         return false;
     }
 
-    if (zlink_send (server, payload.data (), send_size, 0) >= 0) {
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, send_size) != 0)
+        return false;
+    std::memcpy (zlink_msg_data (&part), payload.data (), send_size);
+    if (::zlink_send (server, &part, 1, 0) >= 0) {
         if (bench_debug_enabled ()
             && g_debug_pub_logs.fetch_add (1, std::memory_order_acq_rel) < 12) {
             std::cerr << "[multi-pubsub-server] send ok phase="
@@ -124,8 +128,12 @@ inline bool wait_for_subscriptions(void *server,
 
     while (std::chrono::steady_clock::now() < deadline
            && !perf_stop_requested ().load(std::memory_order_acquire)) {
-        const int rc =
-          zlink_recv(server, frame.data(), frame.size(), ZLINK_DONTWAIT);
+        zlink_routing_id_t source_rid;
+        source_rid.size = 0;
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        const int rc = ::zlink_recv (
+          server, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
         if (rc < 0) {
             const int err = zlink_errno();
             if (err == EAGAIN || err == EINTR) {
@@ -133,6 +141,17 @@ inline bool wait_for_subscriptions(void *server,
                 continue;
             }
             return false;
+        }
+
+        if (part_count > 0) {
+            const size_t copy_len =
+              std::min (frame.size (), zlink_msg_size (&parts[0]));
+            if (copy_len > 0)
+                std::memcpy (frame.data (), zlink_msg_data (&parts[0]), copy_len);
+        }
+        if (parts) {
+            zlink_multipart_close (parts, part_count);
+            free (parts);
         }
 
         if (rc > 0 && static_cast<unsigned char>(frame[0]) == 1)

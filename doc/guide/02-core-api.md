@@ -96,7 +96,7 @@ Key options:
 | `ZLINK_SUBSCRIBE` | binary | - | Subscription filter (SUB only) |
 
 Options and queries such as `ZLINK_SUBSCRIBE` / `ZLINK_UNSUBSCRIBE`,
-`ZLINK_EVENTS`, `ZLINK_LAST_ENDPOINT`, and `ZLINK_RCVMORE` are meaningful
+`ZLINK_EVENTS`, and `ZLINK_LAST_ENDPOINT` are meaningful
 during normal runtime use. By contrast, most tuning knobs such as HWM,
 timeouts, and TLS settings are usually closer to initial configuration.
 
@@ -106,11 +106,18 @@ timeouts, and TLS settings are usually closer to initial configuration.
 
 ```c
 /* Simple send */
-zlink_send(socket, "Hello", 5, 0);
+zlink_msg_t part;
+zlink_msg_init_size(&part, 5);
+memcpy(zlink_msg_data(&part), "Hello", 5);
+zlink_send(socket, &part, 1, 0);
 
 /* Multipart send */
-zlink_send(socket, "header", 6, ZLINK_SNDMORE);
-zlink_send(socket, "body", 4, 0);
+zlink_msg_t parts[2];
+zlink_msg_init_size(&parts[0], 6);
+memcpy(zlink_msg_data(&parts[0]), "header", 6);
+zlink_msg_init_size(&parts[1], 4);
+memcpy(zlink_msg_data(&parts[1]), "body", 4);
+zlink_send(socket, parts, 2, 0);
 ```
 
 By default `zlink_send()` blocks when the send queue is full (HWM reached).
@@ -132,12 +139,23 @@ void *socket = zlink_socket(ctx, ZLINK_PAIR);
 zlink_bind(socket, "tcp://*:5556");
 
 /* Blocking recv */
-char buf[256];
-int nbytes = zlink_recv(socket, buf, sizeof(buf), 0);
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+int rc = zlink_recv(socket, &source_rid, &parts, &part_count, 0);
+if (rc == 0) {
+    for (size_t i = 0; i < part_count; i++) {
+        printf("Frame %zu: %.*s\n", i,
+               (int)zlink_msg_size(&parts[i]),
+               (char *)zlink_msg_data(&parts[i]));
+        zlink_msg_close(&parts[i]);
+    }
+    free(parts);
+}
 
 /* Non-blocking recv */
-nbytes = zlink_recv(socket, buf, sizeof(buf), ZLINK_DONTWAIT);
-if (nbytes == -1 && zlink_errno() == EAGAIN) {
+rc = zlink_recv(socket, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
+if (rc == -1 && zlink_errno() == EAGAIN) {
     /* No message available right now */
 }
 ```
@@ -174,7 +192,6 @@ zlink_recv_handler(socket, on_message, NULL);
 | Flag | Description |
 |------|-------------|
 | `ZLINK_DONTWAIT` | Non-blocking mode (returns EAGAIN immediately if cannot send/recv) |
-| `ZLINK_SNDMORE` | Intermediate frame of a multipart message |
 
 ## 4. Handler Types
 
@@ -183,8 +200,8 @@ Each socket type uses a dedicated registration function:
 | Socket Type | Registration Call | Callback Signature |
 |---|---|---|
 | PAIR, DEALER, ROUTER, STREAM | `zlink_recv_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)` |
-| SUB, XSUB | `zlink_recv_spot_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)` |
-| XPUB | `zlink_recv_xpub_handler(socket, fn, userdata)` | `void fn(int subscribed, const uint8_t *topic, size_t topic_len, void *userdata)` |
+| SUB, XSUB | `zlink_subscribe_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)` |
+| XPUB | `zlink_subscription_event_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *source_rid, int subscribed, const char *topic, size_t topic_len, void *userdata)` |
 | PUB | N/A | Send-only socket |
 
 Callbacks are invoked on the I/O thread. Avoid blocking work inside callbacks.
@@ -194,7 +211,10 @@ separate thread.
 ## 5. Error Handling
 
 ```c
-int rc = zlink_send(socket, data, size, 0);
+zlink_msg_t part;
+zlink_msg_init_size(&part, size);
+memcpy(zlink_msg_data(&part), data, size);
+int rc = zlink_send(socket, &part, 1, 0);
 if (rc == -1) {
     int err = zlink_errno();
     printf("Error: %s\n", zlink_strerror(err));
@@ -256,7 +276,10 @@ int main(void) {
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */
-    zlink_send(dealer, "request", 7, 0);
+    zlink_msg_t req;
+    zlink_msg_init_size(&req, 7);
+    memcpy(zlink_msg_data(&req), "request", 7);
+    zlink_send(dealer, &req, 1, 0);
 
     /* Handler callbacks process messages asynchronously */
     msleep(100);

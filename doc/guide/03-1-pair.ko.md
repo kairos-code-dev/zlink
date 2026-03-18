@@ -60,21 +60,30 @@ void *client = zlink_socket(ctx, ZLINK_PAIR);
 /* ... bind/connect ... */
 
 /* 클라이언트 → 서버 */
-zlink_send(client, "Hello", 5, 0);
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 5);
+memcpy(zlink_msg_data(&msg), "Hello", 5);
+zlink_send(client, &msg, 1, 0);
 /* on_message 콜백이 "Hello"를 비동기로 수신 */
 
 /* 서버 → 클라이언트 (양방향이지만 클라이언트도 수신하려면 핸들러 필요) */
-zlink_send(server, "World", 5, 0);
+zlink_msg_t reply;
+zlink_msg_init_size(&reply, 5);
+memcpy(zlink_msg_data(&reply), "World", 5);
+zlink_send(server, &reply, 1, 0);
 ```
 
 ### 멀티파트 데이터 전송
 
-마지막 프레임을 제외한 모든 프레임에 `ZLINK_SNDMORE`를 설정해 멀티파트 데이터를
-보낼 수 있다.
+멀티파트 데이터는 단일 `zlink_send` 호출로 parts 배열을 전송한다.
 
 ```c
-zlink_send(server, "foo", 3, ZLINK_SNDMORE);
-zlink_send(server, "foobar", 6, 0);
+zlink_msg_t parts[2];
+zlink_msg_init_size(&parts[0], 3);
+memcpy(zlink_msg_data(&parts[0]), "foo", 3);
+zlink_msg_init_size(&parts[1], 6);
+memcpy(zlink_msg_data(&parts[1]), "foobar", 6);
+zlink_send(server, parts, 2, 0);
 
 /* 수신 측 on_message 콜백이 두 프레임을 다음과 같이 수신:
    parts[0] = "foo", parts[1] = "foobar", part_count = 2 */
@@ -97,12 +106,16 @@ PAIR는 `zlink_recv_handler()`로 핸들러를 등록한다. 콜백은
 void *pair = zlink_socket(ctx, ZLINK_PAIR);
 zlink_bind(pair, "tcp://*:5556");
 
-char buf[256];
-int nbytes = zlink_recv(pair, buf, sizeof(buf), 0);
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+int rc = zlink_recv(pair, &source_rid, &parts, &part_count, 0);
+if (rc == 0) {
+    /* parts[0..part_count-1] 처리 */
+    zlink_multipart_close(parts, part_count);
+    free(parts);
+}
 ```
-
-Pull 모드에서 멀티파트 메시지는 프레임별로 수신된다. 각 recv 후
-`ZLINK_RCVMORE`를 확인하여 후속 프레임 여부를 판별한다.
 
 > HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
 > `EAGAIN`을 반환한다. 고급 backpressure 패턴은
@@ -120,8 +133,12 @@ PAIR 소켓은 routing_id 프레임이나 envelope 없이 **애플리케이션 �
 멀티파트 전송:
 
 ```c
-zlink_send(server, "header", 6, ZLINK_SNDMORE);
-zlink_send(server, "body", 4, 0);  /* 마지막 프레임 */
+zlink_msg_t parts[2];
+zlink_msg_init_size(&parts[0], 6);
+memcpy(zlink_msg_data(&parts[0]), "header", 6);
+zlink_msg_init_size(&parts[1], 4);
+memcpy(zlink_msg_data(&parts[1]), "body", 4);
+zlink_send(server, parts, 2, 0);
 ```
 
 ## 4. 소켓 옵션
@@ -159,7 +176,10 @@ void *worker_signal = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(worker_signal, "inproc://signal");
 
 /* 워커 → 메인: 작업 완료 시그널 */
-zlink_send(worker_signal, "DONE", 4, 0);
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "DONE", 4);
+zlink_send(worker_signal, &msg, 1, 0);
 
 /* 메인: on_signal 콜백이 "DONE"을 비동기로 수신 */
 ```

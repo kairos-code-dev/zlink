@@ -125,13 +125,17 @@
 
 ### 3.2 정책과 충돌하는 부분
 
-#### 빌드 디렉터리 규칙 충돌
+#### `--recv` surface와 실제 지원 매트릭스의 갭
 
-- [`core/perf/CMakeLists.txt`](/home/hep7/project/kairos/zlink/core/perf/CMakeLists.txt)
-  상단 주석은 `cmake -B build` 예시를 남기고 있다.
-- [`core/perf/run_benchmarks.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks.sh)
-  는 `core/build/` 외에 `core/build/<platform>-<arch>`도 탐색한다.
-- 이는 저장소 규칙의 "`core/build/`만 사용" 원칙과 충돌한다.
+- 공식 runner와 comparison layer는 `--recv recv|callback` surface를 이미 노출한다.
+- 하지만 실제 binary/engine 지원은 아직 full matrix가 아니다.
+  - single `recv`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
+    `ROUTER_ROUTER`, `SPOT` 지원
+  - single `callback`: 전 패턴 지원
+  - multi `recv`: `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`
+  - multi `callback`: `GATEWAY`, `SPOT`, `STREAM_CALLBACK`
+- 현재 코드는 지원하지 않는 조합을 묵시적으로 fallback하지 않고 fail-fast로
+  중단하도록 정렬됐지만, 문서가 요구한 dual-mode full matrix는 아직 미완료다.
 
 #### README와 정책 문서의 의미 불일치
 
@@ -139,10 +143,12 @@
   single warmup을 시간 기반 옵션처럼 설명한다.
 - 정책 문서는 single/multi 모두 `--recv`로 `recv` / `callback` 모델을 선택하는
   surface를 요구하지만, 현재 공식 스크립트 설명에는 이 옵션이 드러나지 않는다.
-- single 정책은 warmup을 count 기반으로 정의하고, active 이후 bounded idle
-  drain 허용 여부도 명시한다. 그런데 현재 README만이 아니라 스크립트와
-  single 구현도 `PERF_SINGLE_WARMUP_SECONDS` 기반 시간 모델을 사용하고 있어,
-  이 항목은 문서 불일치가 아니라 구현-정책 갭이다.
+- single warmup은 이제 multi와 동일하게 `PERF_SINGLE_WARMUP_SECONDS` 기반
+  시간 모델로 정렬돼야 한다. README, 스크립트, single 구현은 이 방향과
+  일치해야 하고, 정책 문서도 같은 의미로 유지돼야 한다.
+- 정책 문서는 inflight/outstanding 제한 제거를 요구하지만, single bench 경로에는
+  `PERF_SINGLE_MAX_INFLIGHT` 기반 제한이 남아 있었다. 현재 코드는 이 제한을
+  제거했고, 문서는 이를 완료 항목으로 반영해야 한다.
 - README의 single execution model에는 `No retry/drain phase`가 적혀 있는데,
   정책은 active 이후 receiver 측 idle drain을 허용한다.
 - README의 multi 설명은 wrapper 관점에 치우쳐 있고, 정책 문서가 요구하는
@@ -310,13 +316,13 @@
 
 | Suite | Pattern | 현재 `recv` 모드 | 현재 `callback` 모드 | 분류 | 근거/비고 |
 |------|---------|------------------|----------------------|------|-----------|
-| single | `PAIR` | 없음 | 있음 | callback만 구현 | [`perf_pair.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_pair.cpp)에서 handler 기반 수신만 사용 |
-| single | `PUBSUB` | 없음 | 있음 | callback만 구현 | [`perf_pubsub.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_pubsub.cpp)에서 `zlink_recv_spot_handler()` 사용 |
-| single | `DEALER_DEALER` | 없음 | 있음 | callback만 구현 | [`perf_dealer_dealer.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_dealer_dealer.cpp)에서 handler 기반 수신 |
-| single | `DEALER_ROUTER` | 없음 | 있음 | callback만 구현 | [`perf_dealer_router.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_dealer_router.cpp)에서 router recv handler 사용 |
-| single | `ROUTER_ROUTER` | 없음 | 있음 | callback만 구현 | [`perf_router_router.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_router_router.cpp)에서 recv handler 설치 |
-| single | `GATEWAY` | 없음 | 있음 | callback만 구현 | [`perf_gateway.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_gateway.cpp)에서 client/server 모두 `zlink_recv_handler()` 사용 |
-| single | `SPOT` | 없음 | 있음 | callback만 구현 | [`perf_spot.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_spot.cpp)에서 `zlink_recv_spot_handler()` 사용 |
+| single | `PAIR` | 있음 | 있음 | dual-mode 구현 | recv 전용 bench 바이너리 + 기존 callback 바이너리 |
+| single | `PUBSUB` | 있음 | 있음 | dual-mode 구현 | recv 전용 bench 바이너리 + 기존 callback 바이너리 |
+| single | `DEALER_DEALER` | 있음 | 있음 | dual-mode 구현 | recv 전용 bench 바이너리 + 기존 callback 바이너리 |
+| single | `DEALER_ROUTER` | 있음 | 있음 | dual-mode 구현 | recv 전용 bench 바이너리 + 기존 callback 바이너리 |
+| single | `ROUTER_ROUTER` | 있음 | 있음 | dual-mode 구현 | recv 전용 bench 바이너리 + 기존 callback 바이너리 |
+| single | `GATEWAY` | 없음 | 있음 | callback만 공식 지원 | recv 분기 실험은 있으나 공식 wrapper 기준으로 아직 stable하지 않음 |
+| single | `SPOT` | 있음 | 있음 | dual-mode 구현 | [`perf_spot.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_spot.cpp)에서 `PERF_RECV_MODE`에 따라 `zlink_subscribe_recv()` loop / handler 분기 |
 | multi | `DEALER_DEALER` | 있음 | 없음 | recv만 구현 | client/helper가 recv/poll 기반이며 callback 수신 경로 없음 |
 | multi | `DEALER_ROUTER` | 있음 | 없음 | recv만 구현 | client/helper와 server 구현이 recv 기반 |
 | multi | `ROUTER_ROUTER` | 있음 | 없음 | recv만 구현 | client/helper와 server 구현이 recv 기반 |
@@ -1051,9 +1057,9 @@ cmake --build core/build
     한다.
 
 ### D-003 warmup scope
-- chosen: follow-up
+- chosen: single/multi 모두 duration warmup
 - in-scope or follow-up:
-  - single warmup count-vs-seconds 갭은 이번 턴에서 해결하지 못했다.
+  - single warmup은 `PERF_SINGLE_WARMUP_SECONDS` 기반 duration 모델로 정렬한다.
   - 공식 runner/help에는 "env override"로만 축소 표기하고, 정책 기준은 계속
     [`doc/perf/PERF_SINGLE_TEST_POLICY.md`](/home/hep7/project/kairos/zlink/doc/perf/PERF_SINGLE_TEST_POLICY.md)
     로 유지한다.
@@ -1092,7 +1098,6 @@ cmake --build core/build
     닫혀 있지 않다.
 - failures/partial:
   - full matrix 미검증
-  - single warmup 정책 갭 미해결
 - remaining gaps:
   - phase 2b~5 전부
   - monitor 기반 common engine 미구현
@@ -1178,7 +1183,8 @@ cmake --build core/build
 - results:
   - 공식 문서 예시와 CMake 주석을 `core/build` 기준으로 정렬했다.
 - failures/partial:
-  - 일부 Python helper 내부의 레거시 build-dir fallback은 호환 목적으로 남아 있다.
+  - Python comparison helper는 여전히 `bin`/config 하위 경로를 입력 정규화한다.
+    다만 공식 shell surface는 이제 `core/build`만 허용한다.
 - remaining gaps:
   - README/help와 실제 mode engine semantics 불일치
 - next phase ready: yes
@@ -1193,7 +1199,7 @@ cmake --build core/build
 - implemented patterns:
   - single `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`
     recv 전용 바이너리 추가
-  - single `GATEWAY`, `SPOT`는 아직 기존 callback 경로 유지
+  - single `SPOT` recv 엔진 추가
 - validated modes:
   - single `PAIR`: `recv`
   - single `ALL/tcp`: `recv`
@@ -1215,10 +1221,10 @@ cmake --build core/build
     바이너리를 사용하도록 연결됐다.
   - single `ALL/tcp` 기본 size 전부가 `recv`로 complete를 기록했다.
 - failures/partial:
-  - `GATEWAY`, `SPOT` recv 모드는 여전히 callback 구현에 의존한다.
+  - `GATEWAY` recv 모드는 공식 wrapper 기준으로 아직 stable하지 않다.
   - transport matrix 전체와 callback full matrix는 아직 닫지 못했다.
 - remaining gaps:
-  - single service pattern recv 엔진
+  - single `GATEWAY` recv 엔진 안정화
   - multi dual-mode 실엔진
   - phase 2c~5, phase 8
 - next phase ready: no
@@ -1251,6 +1257,68 @@ cmake --build core/build
 - remaining gaps:
   - phase 2b~5, phase 8 종료 기준 전부
 - next phase ready: no
+
+### Policy Alignment Delta Review
+
+- phase: delta
+- date: 2026-03-18
+- owner: Codex
+- mode delivery decision: 유지 (`PERF_RECV_MODE` + 공식 `--recv` surface)
+- implemented patterns:
+  - unsupported recv-mode 조합 fail-fast 정렬
+  - single inflight 제한 제거
+- validated modes:
+  - single support matrix validation
+  - multi support matrix validation
+- validated sizes: N/A
+- changed files:
+  - [`core/perf/single/run_comparison.py`](/home/hep7/project/kairos/zlink/core/perf/single/run_comparison.py)
+  - [`core/perf/run_comparison.py`](/home/hep7/project/kairos/zlink/core/perf/run_comparison.py)
+  - [`core/perf/run_benchmarks.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks.sh)
+  - [`core/perf/run_benchmarks_multi.sh`](/home/hep7/project/kairos/zlink/core/perf/run_benchmarks_multi.sh)
+  - [`core/perf/README.md`](/home/hep7/project/kairos/zlink/core/perf/README.md)
+  - [`core/perf/README_KO.md`](/home/hep7/project/kairos/zlink/core/perf/README_KO.md)
+  - [`core/bench/with_zmq/single/zlink/bench_zlink_pair.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zlink/bench_zlink_pair.cpp)
+  - [`core/bench/with_zmq/single/zlink/bench_zlink_dealer_dealer.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zlink/bench_zlink_dealer_dealer.cpp)
+  - [`core/bench/with_zmq/single/zlink/bench_zlink_dealer_router.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zlink/bench_zlink_dealer_router.cpp)
+  - [`core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp)
+  - [`core/bench/with_zmq/single/zlink/bench_zlink_router_router.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zlink/bench_zlink_router_router.cpp)
+  - [`core/bench/with_zmq/single/zlink/bench_zlink_router_router_poll.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zlink/bench_zlink_router_router_poll.cpp)
+  - [`core/bench/with_zmq/single/zmq/bench_zmq_pair.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zmq/bench_zmq_pair.cpp)
+  - [`core/bench/with_zmq/single/zmq/bench_zmq_dealer_dealer.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zmq/bench_zmq_dealer_dealer.cpp)
+  - [`core/bench/with_zmq/single/zmq/bench_zmq_dealer_router.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zmq/bench_zmq_dealer_router.cpp)
+  - [`core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp)
+  - [`core/bench/with_zmq/single/zmq/bench_zmq_router_router.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zmq/bench_zmq_router_router.cpp)
+  - [`core/bench/with_zmq/single/zmq/bench_zmq_router_router_poll.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zmq/bench_zmq_router_router_poll.cpp)
+  - [`core/perf/single/common/bench_common.hpp`](/home/hep7/project/kairos/zlink/core/perf/single/common/bench_common.hpp)
+  - [`core/bench/with_zmq/single/common/bench_common.hpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/common/bench_common.hpp)
+  - [`core/bench/with_zmq/single/common/bench_common_zlink.hpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/common/bench_common_zlink.hpp)
+  - [`core/perf/single/src/perf_gateway.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_gateway.cpp)
+  - [`doc/perf/PERF_SINGLE_TEST_POLICY.md`](/home/hep7/project/kairos/zlink/doc/perf/PERF_SINGLE_TEST_POLICY.md)
+  - [`core/perf/single/tests/test_run_comparison_policy.py`](/home/hep7/project/kairos/zlink/core/perf/single/tests/test_run_comparison_policy.py)
+  - [`core/perf/single/tests/test_multi_run_comparison_policy.py`](/home/hep7/project/kairos/zlink/core/perf/single/tests/test_multi_run_comparison_policy.py)
+- commands run:
+  - `python3 -m unittest core/perf/single/tests/test_run_comparison_policy.py core/perf/single/tests/test_multi_run_comparison_policy.py`
+  - `rg -n "PERF_SINGLE_MAX_INFLIGHT|resolve_bench_count \\(\\\"PERF_SINGLE_MAX_INFLIGHT\\\"|sent_active|max_inflight" core/bench/with_zmq/single core/perf -g '!core/build/**'`
+  - `rg -n "PERF_WARMUP_COUNT|warmup\\(count\\)|count-based|warmup_count" core/perf core/bench doc/perf doc/plan/perf-refactor -g '!core/build/**'`
+  - `bash -n core/perf/run_benchmarks.sh && bash -n core/perf/run_benchmarks_multi.sh`
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R "test_socket_with_handler|test_monitor_service_contract|test_spot_pubsub_scenario|test_spot_service_introspection|unittest_service_mode_policy" -j1`
+- results:
+  - unsupported `--recv` 조합이 fail-fast로 고정됐다.
+  - single inflight 제한 코드가 제거됐다.
+  - 공식 shell surface는 `core/build`만 허용한다.
+  - single warmup은 policy, runner, single perf/bench 구현 전반에서
+    `PERF_SINGLE_WARMUP_SECONDS` 기반 duration 모델로 정렬됐다.
+  - single `SPOT` recv 엔진이 추가되어 single service pattern dual-mode 정렬이
+    부분 진전됐다.
+- failures/partial:
+  - single `GATEWAY` recv 엔진 미구현
+  - multi dual-mode full matrix 미구현
+- remaining gaps:
+  - phase 2b~5 핵심 엔진 구현
+  - phase 8 full matrix 검증
+- next phase ready: yes
 
 ## 10. 변경 대상과 비대상
 

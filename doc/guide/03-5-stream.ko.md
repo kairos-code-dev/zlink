@@ -76,56 +76,57 @@ Frame 1: payload (N bytes)
 
 STREAM은 모든 수신 작업에 콜백 전용 dispatch를 사용한다.
 `recv()` / `zlink_msg_recv()`는 STREAM 소켓에서 지원하지 않는다.
-`zlink_stream_attach_raw()`로 raw 콜백을 등록하고,
-`zlink_stream_detach()`로 해제한다.
+`zlink_recv_handler()`로 콜백을 등록한다. 핸들러는 한 번 등록하면
+영구적이며 해제할 수 없다.
 
-### Raw 콜백 Dispatch
+### 콜백 Dispatch
 
 ```c
-int on_raw(const zlink_routing_id_t *rid, zlink_msg_t *msg)
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
-    void *data = zlink_msg_data(msg);
-    size_t size = zlink_msg_size(msg);
+    for (size_t i = 0; i < part_count; i++) {
+        void *data = zlink_msg_data(&parts[i]);
+        size_t size = zlink_msg_size(&parts[i]);
 
-    if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
-        /* 새 클라이언트 연결 */
-    } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
-        /* 클라이언트 연결 해제 */
-    } else {
-        /* 에코 응답 */
-        zlink_stream_send(stream, rid, data, size, 0);
+        if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
+            /* 새 클라이언트 연결 */
+        } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
+            /* 클라이언트 연결 해제 */
+        } else {
+            /* 에코 응답 */
+            zlink_msg_t reply;
+            zlink_msg_init_size(&reply, size);
+            memcpy(zlink_msg_data(&reply), data, size);
+            zlink_send_rid(stream, source_rid, &reply, 1, 0);
+        }
+        zlink_msg_close(&parts[i]);
     }
-    zlink_msg_close(msg);
-    return 0;  /* 0 = 계속, 0이 아니면 = 중지 */
 }
 
-/* raw 콜백 dispatch attach */
-zlink_stream_attach_raw(stream, on_raw);
-
-/* 완료 시 detach */
-zlink_stream_detach(stream);
+/* 콜백 dispatch attach (영구, 해제 불가) */
+zlink_recv_handler(stream, on_message, NULL);
 ```
 
 ### 주요 사항
 
 | 항목 | 설명 |
 |---|---|
-| Attach API | `zlink_stream_attach_raw()` |
-| Detach API | `zlink_stream_detach()` |
-| 콜백 | `zlink_stream_on_raw_fn` |
+| Attach API | `zlink_recv_handler()` |
+| 콜백 | `zlink_socket_msg_handler_fn` |
+| 수명 | 한 번 등록하면 영구 (detach 없음) |
 | 프레이밍 | transport에서 수신된 raw 바이트 |
-| 전송 | `zlink_stream_send()` / `zlink_stream_send_msg()` |
+| 전송 | `zlink_send_rid()` |
 
-> 송신 큐가 가득 차면(HWM) `zlink_stream_send()`는 블록(기본) 또는
+> 송신 큐가 가득 차면(HWM) `zlink_send_rid()`는 블록(기본) 또는
 > `ZLINK_DONTWAIT`로 `EAGAIN`을 반환한다. 고급 backpressure 패턴은
 > [성능 가이드](10-performance.ko.md)를 참고.
 
 - 한 번에 하나의 콜백만 등록 가능하며, 이미 등록된 상태에서 attach를
   호출하면 `errno=EBUSY`와 함께 `-1`을 반환한다.
-- attach/detach는 애플리케이션 스레드에서 호출할 수 있으며 STREAM
-  send/close와 직렬화된다.
-- raw 콜백 내부에서 attach/detach를 호출하는 것은 지원되지 않는다.
-- raw 콜백 내부에서 close를 호출하는 것은 지원되지 않는다 (`EBUSY` 실패).
+- 핸들러는 소켓 수명 동안 영구적이며 해제할 수 없다.
+- 콜백 내부에서 close를 호출하는 것은 지원되지 않는다 (`EBUSY` 실패).
 
 ---
 

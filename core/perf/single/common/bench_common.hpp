@@ -21,58 +21,6 @@
 #include <fstream>
 #include <climits>
 #include <zlink.h>
-#include "../../../src/core/recv_internal.hpp"
-
-#ifndef ZLINK_SNDMORE
-#define ZLINK_SNDMORE ((zlink_send_flags_t) 0x0002u)
-#endif
-
-int zlink_compat_msg_send (zlink_msg_t *msg_,
-                           void *s_,
-                           zlink_send_flags_t flags_);
-int zlink_compat_msg_recv (zlink_msg_t *msg_,
-                           void *s_,
-                           zlink_send_flags_t flags_);
-
-#ifdef __cplusplus
-inline int zlink_msg_send (zlink_msg_t *msg_,
-                           void *s_,
-                           zlink_send_flags_t flags_)
-{
-    return zlink_compat_msg_send (msg_, s_, flags_);
-}
-
-inline int zlink_msg_recv (zlink_msg_t *msg_,
-                           void *s_,
-                           zlink_send_flags_t flags_)
-{
-    return zlink_compat_msg_recv (msg_, s_, flags_);
-}
-
-inline int zlink_send (void *socket_,
-                       const void *data_,
-                       size_t size_,
-                       int flags_)
-{
-    zlink_msg_t msg;
-    if (zlink_msg_init_size (&msg, size_) != 0)
-        return -1;
-    if (size_ > 0 && data_)
-        memcpy (zlink_msg_data (&msg), data_, size_);
-    const int rc = zlink_msg_send (&msg, socket_, flags_);
-    if (rc < 0) {
-        const int err = errno;
-        zlink_msg_close (&msg);
-        errno = err;
-        return -1;
-    }
-    return static_cast<int> (size_);
-}
-
-inline int zlink_recv (void *socket_, void *buf_, size_t len_, int flags_)
-{
-    return zlink::recv_buffer_internal (socket_, buf_, len_, flags_);
-}
 
 inline int zlink_gateway_send_rid (void *gateway_,
                                    const zlink_routing_id_t *routing_id_,
@@ -82,7 +30,6 @@ inline int zlink_gateway_send_rid (void *gateway_,
 {
     return ::zlink_send_rid (gateway_, routing_id_, parts_, part_count_, flags_);
 }
-#endif
 
 #if !defined(_WIN32)
 #include <arpa/inet.h>
@@ -654,16 +601,6 @@ inline void close_connect_monitor(connect_monitor_t &monitor_)
             std::cerr << ": " << zlink_strerror(zlink_errno());
         std::cerr << std::endl;
     }
-}
-
-inline bool send_exact(void *socket_,
-                       const void *data_,
-                       size_t size_,
-                       int flags_ = 0)
-{
-    if (!socket_)
-        return false;
-    return zlink_send(socket_, data_, size_, flags_) == static_cast<int>(size_);
 }
 
 inline std::string resolve_single_perf_recv_mode()

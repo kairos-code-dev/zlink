@@ -22,7 +22,7 @@ ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
 | `--pattern NAME` | `ALL` | 패턴 목록(쉼표 구분) 또는 `ALL` |
 | `--reuse-build` | 비활성 | 기존 빌드 디렉터리 재사용(configure/build 생략) |
 | `--clean-build` | 비활성 | 빌드 디렉터리 삭제 후 클린 빌드 |
-| `--build-dir PATH` | `core/build` | 빌드 디렉터리 지정 |
+| `--build-dir PATH` | `core/build` | 공식 빌드 디렉터리만 허용 |
 | `--output PATH` | — | 콘솔 출력을 파일로 tee |
 | `--results-dir PATH` | `core/perf/results` | 결과 루트 경로 지정 |
 | `--results-tag NAME` | — | 결과 파일명 태그 |
@@ -46,6 +46,15 @@ ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
 
 상세 phase 의미, handshake 규칙, mode 계약은
 `doc/perf/PERF_SINGLE_TEST_POLICY.md`를 기준으로 본다.
+
+현재 single recv 모드 지원 범위:
+
+- `recv`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
+  `ROUTER_ROUTER`, `SPOT`
+- `callback`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
+  `ROUTER_ROUTER`, `GATEWAY`, `SPOT`
+
+지원하지 않는 조합은 묵시적 fallback 없이 fail-fast로 종료한다.
 
 ### 결과 저장
 
@@ -77,7 +86,7 @@ multi 패턴 래퍼 스크립트다. multi 옵션을 정규화한 뒤 `PERF_ALLO
 | `--clean-build` | 비활성 | 클린 빌드 |
 | `--results-dir PATH` | `core/perf/results` | 결과 루트 경로 |
 | `--results-tag NAME` | — | 파일명 태그 |
-| `--build-dir PATH` | `core/build` | 빌드 디렉터리 지정 |
+| `--build-dir PATH` | `core/build` | 공식 빌드 디렉터리만 허용 |
 | `--output PATH` | — | 출력을 파일로 tee |
 | `--runs N` | `1` | 설정별 반복 횟수 |
 | `--recv MODE` | `recv` | 수신 모델(`recv` 또는 `callback`) |
@@ -112,6 +121,14 @@ results/
     report/
       perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt
 ```
+
+현재 multi recv 모드 지원 범위:
+
+- `recv`: `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`
+- `callback`: `GATEWAY`, `SPOT`, `STREAM_CALLBACK`
+- `recv`: `GATEWAY`, `SPOT`
+
+지원하지 않는 조합은 묵시적 fallback 없이 fail-fast로 종료한다.
 
 ### 사전 검사
 

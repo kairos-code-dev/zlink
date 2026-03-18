@@ -145,54 +145,50 @@ inline bool relay_router_once (void *server,
     if (prc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
         return true;
 
-    const int id_len = zlink_recv (server, id_buf.data (), id_buf.size (), 0);
-    if (id_len < 0)
+    zlink_routing_id_t source_rid;
+    source_rid.size = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc =
+      recv_message_parts (server, &source_rid, &parts, &part_count, 0);
+    if (rc < 0)
         return zlink_errno () == EINTR;
 
-    int payload_len = 0;
-    bool has_payload = false;
-    while (true) {
-        int more = 0;
-        size_t more_size = sizeof (more);
-        if (zlink_getsockopt (server, ZLINK_RCVMORE, &more, &more_size) != 0)
-            break;
-        if (!more)
-            break;
+    const size_t id_len = source_rid.size;
+    if (id_len > 0)
+        std::memcpy (id_buf.data (), source_rid.data,
+                     std::min (id_buf.size (), id_len));
 
-        const int len =
-          zlink_recv (server, payload_buf.data (), payload_buf.size (), 0);
-        if (len < 0) {
-            if (zlink_errno () == EINTR)
-                continue;
-            return false;
-        }
-        payload_len = len;
-        has_payload = true;
+    size_t payload_len = 0;
+    if (part_count > 0) {
+        payload_len = std::min (payload_buf.size (), zlink_msg_size (&parts[0]));
+        if (payload_len > 0)
+            std::memcpy (
+              payload_buf.data (), zlink_msg_data (&parts[0]), payload_len);
     }
 
-    if (zlink_send (
-          server,
-          id_buf.data (),
-          static_cast<size_t> (id_len),
-          ZLINK_SNDMORE)
-        < 0)
-        return zlink_errno () == EINTR || zlink_errno () == EAGAIN;
-
-    if (!has_payload) {
-        if (zlink_send (server, "", 0, 0) < 0)
-            return zlink_errno () == EINTR || zlink_errno () == EAGAIN;
-        return true;
+    if (parts) {
+        zlink_multipart_close (parts, part_count);
+        free (parts);
     }
 
-    if (zlink_send (
-          server,
-          payload_buf.data (),
-          static_cast<size_t> (payload_len),
-          0)
-        < 0)
-        return zlink_errno () == EINTR || zlink_errno () == EAGAIN;
+    if (id_len == 0)
+        return false;
 
-    return true;
+    zlink_msg_t reply_parts[2];
+    if (zlink_msg_init_size (&reply_parts[0], id_len) != 0)
+        return false;
+    if (zlink_msg_init_size (&reply_parts[1], payload_len) != 0) {
+        zlink_msg_close (&reply_parts[0]);
+        return false;
+    }
+    if (id_len > 0)
+        std::memcpy (zlink_msg_data (&reply_parts[0]), id_buf.data (), id_len);
+    if (payload_len > 0)
+        std::memcpy (
+          zlink_msg_data (&reply_parts[1]), payload_buf.data (), payload_len);
+    const int send_rc = ::zlink_send (server, reply_parts, 2, 0);
+    return send_rc >= 0 || zlink_errno () == EINTR || zlink_errno () == EAGAIN;
 }
 
 inline bool relay_dealer_once (void *server,
@@ -207,18 +203,21 @@ inline bool relay_dealer_once (void *server,
     if (prc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
         return true;
 
-    const int len = zlink_recv (server, payload.data (), payload.size (), 0);
+    const int len =
+      recv_single_part_message (server, payload.data (), payload.size (), 0);
     if (len < 0)
         return zlink_errno () == EINTR;
     if (stats)
         ++stats->dealer_recv;
 
-    if (zlink_send (
-          server,
-          payload.data (),
-          static_cast<size_t> (len),
-          0)
-        < 0) {
+    zlink_msg_t reply_part;
+    if (zlink_msg_init_size (&reply_part, static_cast<size_t> (len)) != 0)
+        return false;
+    if (len > 0)
+        std::memcpy (
+          zlink_msg_data (&reply_part), payload.data (), static_cast<size_t> (len));
+    if (::zlink_send (server, &reply_part, 1, 0) < 0) {
+        zlink_msg_close (&reply_part);
         const int err = zlink_errno ();
         if (stats) {
             if (err == EAGAIN)
@@ -245,10 +244,15 @@ inline bool publish_once (void *server,
         std::memcpy (payload.data (), &now_us, sizeof (now_us));
     }
 
-    if (zlink_send (server, payload.data (), payload.size (), ZLINK_DONTWAIT)
-        >= 0) {
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, payload.size ()) != 0)
+        return false;
+    if (!payload.empty ())
+        std::memcpy (zlink_msg_data (&part), payload.data (), payload.size ());
+    if (::zlink_send (server, &part, 1, ZLINK_DONTWAIT) >= 0) {
         return true;
     }
+    zlink_msg_close (&part);
 
     const int err = zlink_errno ();
     if (err == EAGAIN || err == EINTR) {

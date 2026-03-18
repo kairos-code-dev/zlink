@@ -1086,7 +1086,6 @@ set(UNREGISTERED_TEST_ALLOWLIST
     test_abstract_ipc
     test_hwm_pubsub
     test_heartbeats
-    test_getsockopt_memset
     test_monitor_enhanced
     test_msg_ffn
     test_msg_flags

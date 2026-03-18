@@ -26,9 +26,6 @@ void test_disconnect_inproc ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_bind (pub_socket, "inproc://someInProcDescriptor"));
 
-    int more;
-    size_t more_size = sizeof (more);
-
     for (int iteration = 0;; ++iteration) {
         zlink_pollitem_t items[] = {
           {sub_socket, 0, ZLINK_POLLIN, 0}, // read publications
@@ -37,37 +34,35 @@ void test_disconnect_inproc ()
         int rc = zlink_poll (items, 2, 100);
 
         if (items[1].revents & ZLINK_POLLIN) {
-            for (more = 1; more;) {
-                zlink_msg_t msg;
-                zlink_msg_init (&msg);
-                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, pub_socket, 0));
-                const char *const buffer =
-                  static_cast<const char *> (zlink_msg_data (&msg));
-
-                if (buffer[0] == 0) {
-                    TEST_ASSERT_TRUE (isSubscribed);
-                    isSubscribed = false;
-                } else {
-                    TEST_ASSERT_FALSE (isSubscribed);
-                    isSubscribed = true;
-                }
-
-                TEST_ASSERT_SUCCESS_ERRNO (
-                  zlink_getsockopt (pub_socket, ZLINK_RCVMORE, &more, &more_size));
-                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
+            int subscribed = 0;
+            char topic[16];
+            size_t topic_len = sizeof (topic);
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_subscription_event_recv (
+              pub_socket, NULL, &subscribed, topic, &topic_len, 0));
+            TEST_ASSERT_EQUAL_UINT (3, topic_len);
+            TEST_ASSERT_EQUAL_MEMORY ("foo", topic, 3);
+            if (!subscribed) {
+                TEST_ASSERT_TRUE (isSubscribed);
+                isSubscribed = false;
+            } else {
+                TEST_ASSERT_FALSE (isSubscribed);
+                isSubscribed = true;
             }
         }
 
         if (items[0].revents & ZLINK_POLLIN) {
-            more = 1;
-            for (more = 1; more;) {
-                zlink_msg_t msg;
-                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
-                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, sub_socket, 0));
-                TEST_ASSERT_SUCCESS_ERRNO (
-                  zlink_getsockopt (sub_socket, ZLINK_RCVMORE, &more, &more_size));
-                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
-            }
+            zlink_msg_t *parts = NULL;
+            size_t part_count = 0;
+            char topic[16];
+            size_t topic_len = sizeof (topic);
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_recv (
+              sub_socket, &parts, &part_count, 0, topic, &topic_len));
+            TEST_ASSERT_EQUAL_UINT (3, topic_len);
+            TEST_ASSERT_EQUAL_MEMORY ("foo", topic, 3);
+            TEST_ASSERT_EQUAL_UINT (1, part_count);
+            TEST_ASSERT_EQUAL_STRING (
+              "this is foo!", static_cast<const char *> (zlink_msg_data (&parts[0])));
+            zlink_multipart_close (parts, part_count);
             publicationsReceived++;
         }
         if (iteration == 1) {

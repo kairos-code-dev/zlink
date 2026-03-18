@@ -149,7 +149,7 @@ zlink_ctx_term(ctx);
 > | Option | Reason |
 > |--------|--------|
 > | `ZLINK_RCVTIMEO` | No `recv()` calls, so timeout has no effect |
-> | `ZLINK_RCVMORE` | Complete multipart delivered atomically as `parts[]` |
+> | `ZLINK_RCVMORE` (removed) | Complete multipart delivered atomically as `parts[]` |
 >
 > `ZLINK_RCVHWM` remains effective in callback mode (applies to the I/O thread's internal queue).
 

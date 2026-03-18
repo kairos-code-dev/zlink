@@ -4,7 +4,7 @@
 
 > This guide reflects the recv-first public surface.
 > `SpotNode` and unified `Spot` start in recv model and use
-> `zlink_recv_spot_handler()` for the one-way transition to callback model.
+> `zlink_subscribe_handler()` for the one-way transition to callback model.
 
 ## 1. Overview
 
@@ -134,17 +134,17 @@ behavior. There are no public standalone `spot_pub` / `spot_sub` constructors.
 zlink_msg_t part;
 zlink_msg_init_size(&part, 11);
 memcpy(zlink_msg_data(&part), "hello world", 11);
-zlink_spot_publish(spot, "chat:room1:message", &part, 1, 0);
+zlink_publish(spot, "chat:room1:message", &part, 1, 0);
 ```
 
 ### 4.3 Subscribing and unsubscribing
 
 ```c
-zlink_spot_subscribe(spot, "chat:room1:message");
-zlink_spot_subscribe_pattern(spot, "chat:room1:*");
+zlink_subscribe(spot, "chat:room1:message");
+zlink_subscribe(spot, "chat:room1:*");
 
-zlink_spot_unsubscribe(spot, "chat:room1:message");
-zlink_spot_unsubscribe(spot, "chat:room1:*");
+zlink_unsubscribe(spot, "chat:room1:message");
+zlink_unsubscribe(spot, "chat:room1:*");
 ```
 
 ### 4.4 Receiving Messages
@@ -155,20 +155,20 @@ are mutually exclusive for the lifetime of the handle.
 
 #### Recv model (default)
 
-In recv model, pull messages with `zlink_spot_sub_recv()` (unified Spot)
-or `zlink_spot_node_recv()` (SpotNode).
+In recv model, pull messages with `zlink_subscribe_recv()`.
 
 ```c
 void *spot = zlink_spot_new(node);
-zlink_spot_subscribe(spot, "chat:room1:message");
+zlink_subscribe(spot, "chat:room1:message");
 
 /* Pull next message */
+zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
 char topic_buf[256];
 size_t topic_len = sizeof(topic_buf);
-int rc = zlink_spot_sub_recv(spot, &parts, &part_count, 0,
-                             topic_buf, &topic_len);
+int rc = zlink_subscribe_recv(spot, &source_rid, &parts, &part_count,
+                              topic_buf, &topic_len, 0);
 if (rc == 0) {
     printf("Topic: %.*s, Parts: %zu\n",
            (int)topic_len, topic_buf, part_count);
@@ -179,7 +179,7 @@ if (rc == 0) {
 
 #### Callback model
 
-Install the callback with `zlink_recv_spot_handler()` to make a one-way
+Install the callback with `zlink_subscribe_handler()` to make a one-way
 transition from recv model to callback model. Incoming messages are then
 dispatched automatically through that callback.
 
@@ -195,11 +195,11 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 /* Register handler at spot_node creation */
 void *node = zlink_spot_node_new(ctx, "spot-node");
-zlink_recv_spot_handler(node, on_message, NULL);
+zlink_subscribe_handler(node, on_message, NULL);
 
 /* Or register handler at unified spot creation */
 void *spot = zlink_spot_new(node);
-zlink_recv_spot_handler(spot, on_message, NULL);
+zlink_subscribe_handler(spot, on_message, NULL);
 ```
 
 **Important:** A single `spot` / `spot_node` handle can be used concurrently
@@ -210,8 +210,8 @@ should be offloaded to an application queue or worker thread.
 
 **Constraints:**
 
-- In recv model, use `zlink_spot_node_recv()` / `zlink_spot_sub_recv()`
-- Call `zlink_recv_spot_handler()` to transition once to callback model
+- In recv model, use `zlink_subscribe_recv()`
+- Call `zlink_subscribe_handler()` to transition once to callback model
 - In callback model, `recv()` calls fail with `EBUSY`
 - In recv model, `send_ready_handler()` fails with `EBUSY`
 - Replacing or clearing the callback after transition is not supported

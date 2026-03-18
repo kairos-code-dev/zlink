@@ -60,21 +60,30 @@ void *client = zlink_socket(ctx, ZLINK_PAIR);
 /* ... bind/connect ... */
 
 /* Client → Server */
-zlink_send(client, "Hello", 5, 0);
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 5);
+memcpy(zlink_msg_data(&msg), "Hello", 5);
+zlink_send(client, &msg, 1, 0);
 /* on_message callback receives "Hello" asynchronously */
 
 /* Server → Client (bidirectional, but client needs handler too for receiving) */
-zlink_send(server, "World", 5, 0);
+zlink_msg_t reply;
+zlink_msg_init_size(&reply, 5);
+memcpy(zlink_msg_data(&reply), "World", 5);
+zlink_send(server, &reply, 1, 0);
 ```
 
 ### Sending Multipart Data
 
-Multipart data can be sent by setting `ZLINK_SNDMORE` on all but the final
-frame.
+Multipart data is sent as a parts array in a single `zlink_send` call.
 
 ```c
-zlink_send(server, "foo", 3, ZLINK_SNDMORE);
-zlink_send(server, "foobar", 6, 0);
+zlink_msg_t parts[2];
+zlink_msg_init_size(&parts[0], 3);
+memcpy(zlink_msg_data(&parts[0]), "foo", 3);
+zlink_msg_init_size(&parts[1], 6);
+memcpy(zlink_msg_data(&parts[1]), "foobar", 6);
+zlink_send(server, parts, 2, 0);
 
 /* Receiver's on_message callback receives both frames as:
    parts[0] = "foo", parts[1] = "foobar", part_count = 2 */
@@ -100,12 +109,16 @@ receive synchronously.
 void *pair = zlink_socket(ctx, ZLINK_PAIR);
 zlink_bind(pair, "tcp://*:5556");
 
-char buf[256];
-int nbytes = zlink_recv(pair, buf, sizeof(buf), 0);
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+int rc = zlink_recv(pair, &source_rid, &parts, &part_count, 0);
+if (rc == 0) {
+    /* process parts[0..part_count-1] */
+    zlink_multipart_close(parts, part_count);
+    free(parts);
+}
 ```
-
-In pull mode, multipart messages are received frame-by-frame. Check
-`ZLINK_RCVMORE` after each recv to determine if more frames follow.
 
 > When HWM is reached, `zlink_send()` blocks (default) or returns
 > `EAGAIN` with `ZLINK_DONTWAIT`. For advanced backpressure patterns,
@@ -123,8 +136,12 @@ Multipart frame:  [frame1][frame2]...[frameN]
 Multipart send:
 
 ```c
-zlink_send(server, "header", 6, ZLINK_SNDMORE);
-zlink_send(server, "body", 4, 0);  /* last frame */
+zlink_msg_t parts[2];
+zlink_msg_init_size(&parts[0], 6);
+memcpy(zlink_msg_data(&parts[0]), "header", 6);
+zlink_msg_init_size(&parts[1], 4);
+memcpy(zlink_msg_data(&parts[1]), "body", 4);
+zlink_send(server, parts, 2, 0);
 ```
 
 ## 4. Socket Options
@@ -162,7 +179,10 @@ void *worker_signal = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(worker_signal, "inproc://signal");
 
 /* Worker → Main: task completion signal */
-zlink_send(worker_signal, "DONE", 4, 0);
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "DONE", 4);
+zlink_send(worker_signal, &msg, 1, 0);
 
 /* Main: on_signal callback receives "DONE" asynchronously */
 ```

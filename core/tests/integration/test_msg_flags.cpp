@@ -22,17 +22,17 @@ void test_more ()
     zlink_msg_t msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, sb, 0));
-    TEST_ASSERT_EQUAL_INT (1, TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_more (&msg)));
+    TEST_ASSERT_TRUE (test_msg_has_more (&msg));
 
     //  Then the first part of the message body.
     TEST_ASSERT_EQUAL_INT (
       1, TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, sb, 0)));
-    TEST_ASSERT_EQUAL_INT (1, TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_more (&msg)));
+    TEST_ASSERT_TRUE (test_msg_has_more (&msg));
 
     //  And finally, the second part of the message body.
     TEST_ASSERT_EQUAL_INT (
       1, TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, sb, 0)));
-    TEST_ASSERT_EQUAL_INT (0, TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_more (&msg)));
+    TEST_ASSERT_FALSE (test_msg_has_more (&msg));
 
     //  Deallocate the infrastructure.
     test_context_socket_close (sc);
@@ -41,13 +41,13 @@ void test_more ()
 
 void test_shared_refcounted ()
 {
-    // Test ZLINK_SHARED property (case 1, refcounted messages)
+    // Test shared storage query (case 1, refcounted messages)
     zlink_msg_t msg_a;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_msg_init_size (&msg_a, 1024)); // large enough to be a type_lmsg
 
     // Message is not shared
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_get (&msg_a, ZLINK_SHARED));
+    TEST_ASSERT_FALSE (zlink_msg_is_shared (&msg_a));
 
     zlink_msg_t msg_b;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg_b));
@@ -56,7 +56,7 @@ void test_shared_refcounted ()
 
     // Message is now shared
     TEST_ASSERT_EQUAL_INT (
-      1, TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_get (&msg_b, ZLINK_SHARED)));
+      1, zlink_msg_is_shared (&msg_b));
 
     // cleanup
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg_a));
@@ -66,13 +66,13 @@ void test_shared_refcounted ()
 void test_shared_const ()
 {
     zlink_msg_t msg_a;
-    // Test ZLINK_SHARED property (case 2, constant data messages)
+    // Test shared storage query (case 2, constant data messages)
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_msg_init_data (&msg_a, (void *) "TEST", 5, 0, 0));
 
     // Message reports as shared
     TEST_ASSERT_EQUAL_INT (
-      1, TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_get (&msg_a, ZLINK_SHARED)));
+      1, zlink_msg_is_shared (&msg_a));
 
     // cleanup
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg_a));

@@ -114,9 +114,11 @@ void on_request(const zlink_routing_id_t *source_rid,
 {
     /* source_rid = "D1" (2 bytes), parts[0] = "Hello" (5 bytes) */
 
-    /* 응답: routing_id를 첫 프레임으로 전송 */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "World", 5, 0);
+    /* 응답: zlink_send_rid로 directed send */
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "World", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
 
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
@@ -136,7 +138,10 @@ zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer, endpoint);
 
 /* DEALER 전송 */
-zlink_send(dealer, "Hello", 5, 0);
+zlink_msg_t req;
+zlink_msg_init_size(&req, 5);
+memcpy(zlink_msg_data(&req), "Hello", 5);
+zlink_send(dealer, &req, 1, 0);
 
 /* on_request 콜백이 메시지를 수신하고 응답 */
 ```
@@ -159,8 +164,10 @@ void on_message(const zlink_routing_id_t *source_rid,
 {
     /* source_rid->data에 "D1" 또는 "D2" 포함 */
     /* 특정 클라이언트에게 응답 */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "reply", 5, 0);
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "reply", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
 }
@@ -180,8 +187,10 @@ void on_message(const zlink_routing_id_t *source_rid,
     printf("routing_id: %zu bytes\n", source_rid->size);
 
     /* 응답: source_rid 사용 */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "reply", 5, 0);
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "reply", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
 
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
@@ -195,47 +204,50 @@ STREAM 소켓은 4B uint32 peer routing_id로 외부 클라이언트를 식별�
 ### 기본 사용
 
 ```c
-/* LEN32BE 콜백 dispatch */
-int on_packets(const zlink_routing_id_t *rid,
-               zlink_msg_t *msgs, size_t count)
+/* 콜백 dispatch */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
-    for (size_t i = 0; i < count; ++i) {
-        void *data = zlink_msg_data(&msgs[i]);
-        size_t size = zlink_msg_size(&msgs[i]);
+    for (size_t i = 0; i < part_count; ++i) {
+        void *data = zlink_msg_data(&parts[i]);
+        size_t size = zlink_msg_size(&parts[i]);
 
         /* 응답: 동일 routing_id 사용 */
-        zlink_stream_send(stream, rid, data, size, 0);
-        zlink_msg_close(&msgs[i]);
+        zlink_msg_t reply;
+        zlink_msg_init_size(&reply, size);
+        memcpy(zlink_msg_data(&reply), data, size);
+        zlink_send_rid(stream, source_rid, &reply, 1, 0);
+        zlink_msg_close(&parts[i]);
     }
-    return 0;
 }
 
-zlink_stream_attach_len32be(stream, on_packets);
+zlink_recv_handler(stream, on_message, NULL);
 ```
 
 ### 연결/해제 이벤트의 routing_id
 
 ```c
-int on_packets(const zlink_routing_id_t *rid,
-               zlink_msg_t *msgs, size_t count)
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
-    for (size_t i = 0; i < count; ++i) {
-        uint8_t *data = (uint8_t *)zlink_msg_data(&msgs[i]);
-        size_t size = zlink_msg_size(&msgs[i]);
+    for (size_t i = 0; i < part_count; ++i) {
+        uint8_t *data = (uint8_t *)zlink_msg_data(&parts[i]);
+        size_t size = zlink_msg_size(&parts[i]);
 
         if (size == 1 && data[0] == 0x01) {
-            /* 새 클라이언트 연결: rid로 식별 */
+            /* 새 클라이언트 연결: source_rid로 식별 */
             printf("연결: ");
-            for (size_t j = 0; j < rid->size; j++)
-                printf("%02x", rid->data[j]);
+            for (size_t j = 0; j < source_rid->size; j++)
+                printf("%02x", source_rid->data[j]);
             printf("\n");
         } else if (size == 1 && data[0] == 0x00) {
-            /* 클라이언트 해제: rid로 식별하여 정리 */
+            /* 클라이언트 해제: source_rid로 식별하여 정리 */
             printf("해제\n");
         }
-        zlink_msg_close(&msgs[i]);
+        zlink_msg_close(&parts[i]);
     }
-    return 0;
 }
 ```
 

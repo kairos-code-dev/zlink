@@ -73,21 +73,23 @@ int zlink_spot_node_set_sub_option(void *node,
                                    const void *optval,
                                    size_t optvallen);
 
-int zlink_subscribe_recv(void *node,
-                         zlink_msg_t **parts,
-                         size_t *part_count,
-                         int flags,
-                         char *topic_id_out,
-                         size_t *topic_id_len);
+int zlink_subscribe_recv(void *subject_,
+                         zlink_routing_id_t *source_rid_out_,
+                         zlink_msg_t **parts_out_,
+                         size_t *part_count_out_,
+                         char *topic_id_out_,
+                         size_t *topic_id_len_out_,
+                         zlink_send_flags_t flags_);
 ```
 
 `SpotNode`는 service-bound owner입니다. `service_name`은 생성 시점에
 고정됩니다. recv 모드에서는 `zlink_subscribe_recv()`, callback 모드에서는
 `zlink_subscribe_handler()`를 사용합니다.
 
-`zlink_subscribe_recv()`는 recv 모드에서 다음 메시지와 topic을 반환합니다.
-성공 시 `parts`와 `topic_id_out`이 채워집니다. non-blocking 동작은 `flags`에
-`ZLINK_DONTWAIT`를 전달합니다. callback 모드에서는 `EBUSY`로 실패합니다.
+`zlink_subscribe_recv()`는 recv 모드에서 다음 메시지, source routing ID, topic을
+반환합니다. 성공 시 `source_rid_out_`, `parts_out_`, `topic_id_out_`이
+채워집니다. non-blocking 동작은 `flags_`에 `ZLINK_DONTWAIT`를 전달합니다.
+callback 모드에서는 `EBUSY`로 실패합니다.
 
 ### Unified Spot
 
@@ -100,12 +102,13 @@ int zlink_publish(void *spot,
                   zlink_msg_t *parts,
                   size_t part_count,
                   zlink_send_flags_t flags);
-int zlink_subscribe_recv(void *sub,
-                         zlink_msg_t **parts,
-                         size_t *part_count,
-                         int flags,
-                         char *topic_id_out,
-                         size_t *topic_id_len);
+int zlink_subscribe_recv(void *subject_,
+                         zlink_routing_id_t *source_rid_out_,
+                         zlink_msg_t **parts_out_,
+                         size_t *part_count_out_,
+                         char *topic_id_out_,
+                         size_t *topic_id_len_out_,
+                         zlink_send_flags_t flags_);
 int zlink_subscribe (void *spot, const char *topic_id);
 int zlink_subscribe (void *spot, const char *pattern);
 int zlink_unsubscribe (void *spot,
@@ -130,9 +133,9 @@ int zlink_spot_set_sub_option(void *spot,
 publish-only 혹은 subscribe-only public child handle은 더 이상 제공하지 않습니다.
 
 `zlink_subscribe_recv()`는 recv 모드에서 동기식 pull 방식의 수신을 제공합니다.
-다음 메시지와 topic을 반환합니다. 성공 시 `parts`와 `topic_id_out`이
-채워집니다. non-blocking 동작은 `flags`에 `ZLINK_DONTWAIT`를 전달합니다.
-callback 모드에서는 `EBUSY`로 실패합니다.
+다음 메시지와 source routing ID, topic을 반환합니다. 성공 시 `source_rid_out_`,
+`parts_out_`, `topic_id_out_`이 채워집니다. non-blocking 동작은 `flags_`에
+`ZLINK_DONTWAIT`를 전달합니다. callback 모드에서는 `EBUSY`로 실패합니다.
 
 aggregate ready-peer / queue 조회는 `zlink_spot_monitor_open()`과
 `zlink_monitor_snapshot()` 조합을 사용합니다.
@@ -250,12 +253,13 @@ memcpy(zlink_msg_data(&part), "hello", 5);
 zlink_publish(spot, "room:lobby", &part, 1, 0);
 
 /* unified spot에서 수신 */
+zlink_routing_id_t source_rid;
 zlink_msg_t *recv_parts = NULL;
 size_t recv_count = 0;
 char topic_buf[256];
 size_t topic_len = sizeof(topic_buf);
-int rc = zlink_subscribe_recv(spot, &recv_parts, &recv_count, 0,
-                              topic_buf, &topic_len);
+int rc = zlink_subscribe_recv(spot, &source_rid, &recv_parts, &recv_count,
+                              topic_buf, &topic_len, 0);
 if (rc == 0) {
     printf("토픽: %.*s\n", (int)topic_len, topic_buf);
     for (size_t i = 0; i < recv_count; i++)

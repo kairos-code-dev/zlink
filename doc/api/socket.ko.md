@@ -36,7 +36,7 @@ typedef void (*zlink_socket_msg_handler_fn) (
   void *userdata_);
 ```
 
-PAIR, DEALER, ROUTER, STREAM 소켓에서 멀티파트 메시지 dispatch 콜백.
+PAIR, DEALER, ROUTER 소켓에서 멀티파트 메시지 dispatch 콜백.
 소유 I/O 스레드에서 호출됩니다. 모든 메시지 파트의 소유권이 콜백으로
 이전되며, 각 파트는 정확히 한 번 close하거나 소비해야 합니다.
 `zlink_recv_handler()`와 함께 사용합니다.
@@ -59,20 +59,23 @@ SUB, XSUB 소켓에서 토픽 기반 메시지 dispatch 콜백.
 ### zlink_subscription_event_handler_fn
 
 ```c
-typedef void (*zlink_subscription_event_handler_fn) (int subscribed_,
-                                       const uint8_t *topic_,
-                                       size_t topic_len_,
-                                       void *userdata_);
+typedef void (*zlink_subscription_event_handler_fn) (
+  const zlink_routing_id_t *source_rid_,
+  int subscribed_,
+  const char *topic_,
+  size_t topic_len_,
+  void *userdata_);
 ```
 
-XPUB 소켓에서 구독 알림 콜백.
+XPUB 소켓에서 구독 알림 콜백. `source_rid_`는 구독하는 피어를 식별합니다.
+`subscribed_`는 구독 시 0이 아닌 값, 구독 해제 시 0입니다.
 `zlink_subscription_event_handler()`와 함께 사용합니다.
 
 각 콜백 타입은 전용 함수를 통해 등록합니다. 소켓 타입별 등록 함수 매핑:
 
 | 소켓 타입 | 등록 함수 | 콜백 |
 |---|---|---|
-| PAIR, DEALER, ROUTER, STREAM | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
+| PAIR, DEALER, ROUTER | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
 | SUB, XSUB | `zlink_subscribe_handler` | `zlink_subscribe_handler_fn` |
 | XPUB | `zlink_subscription_event_handler` | `zlink_subscription_event_handler_fn` |
 | PUB | N/A | 송신 전용; 핸들러 불필요 |
@@ -112,13 +115,11 @@ typedef enum zlink_socket_type_t
 typedef uint32_t zlink_send_flags_t;
 
 #define ZLINK_DONTWAIT  ((zlink_send_flags_t) 0x0001u)
-#define ZLINK_SNDMORE   ((zlink_send_flags_t) 0x0002u)
 ```
 
 | 상수 | 설명 |
 |---|---|
 | `ZLINK_DONTWAIT` | 논블로킹 작업; 작업이 블로킹될 경우 즉시 `EAGAIN`과 함께 반환 |
-| `ZLINK_SNDMORE` | 멀티파트 메시지에서 더 많은 파트가 뒤따를 것임을 나타냄 |
 
 ### 보안 메커니즘
 
@@ -139,7 +140,6 @@ typedef uint32_t zlink_send_flags_t;
 |---|---|
 | `ZLINK_SOCKOPT_AFFINITY` | I/O 스레드 어피니티 비트마스크 (`uint64_t`) |
 | `ZLINK_SOCKOPT_ROUTING_ID` | ROUTER 주소 지정을 위한 소켓 아이덴티티 (`binary`, 최대 255바이트) |
-| `ZLINK_SOCKOPT_RCVMORE` | 멀티파트 메시지에서 추가 파트가 뒤따르는지 여부 (읽기 전용, `int`) |
 | `ZLINK_SOCKOPT_TYPE` | 소켓 타입 (읽기 전용, `int`) |
 | `ZLINK_SOCKOPT_LINGER` | 소켓 종료 시 대기 기간 (밀리초, `int`; -1 = 무한, 0 = 즉시 폐기) |
 | `ZLINK_SOCKOPT_BACKLOG` | 대기 중인 연결 큐의 최대 길이 (`int`) |
@@ -283,7 +283,7 @@ int zlink_recv_handler (void *s_,
                         void *userdata_);
 ```
 
-PAIR, DEALER, ROUTER, STREAM 소켓에 메시지 수신 핸들러를 부착합니다. 소켓은
+PAIR, DEALER, ROUTER 소켓에 메시지 수신 핸들러를 부착합니다. 소켓은
 recv 모드로 시작합니다. 이 호출은 핸들을 콜백 모드로 전환하며, 소켓의 수명 동안
 되돌릴 수 없습니다. 동일 핸들에 대한 두 번째 attach는 `errno=EBUSY`로
 실패합니다.
@@ -332,9 +332,11 @@ int zlink_subscription_event_handler (void *s_,
                              void *userdata_);
 ```
 
-XPUB 소켓에 구독 알림 핸들러를 부착합니다. 소켓은 recv 모드로 시작합니다. 이
-호출은 핸들을 콜백 모드로 전환하며, 소켓의 수명 동안 되돌릴 수 없습니다. 동일
-핸들에 대한 두 번째 attach는 `errno=EBUSY`로 실패합니다.
+XPUB 소켓에 구독 알림 핸들러를 부착합니다. 콜백은 구독하는 피어를 식별하는
+`source_rid_`, `subscribed_` 플래그, 토픽 바이트를 수신합니다. 소켓은 recv
+모드로 시작합니다. 이 호출은 핸들을 콜백 모드로 전환하며, 소켓의 수명 동안
+되돌릴 수 없습니다. 동일 핸들에 대한 두 번째 attach는 `errno=EBUSY`로
+실패합니다.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
@@ -495,76 +497,235 @@ int zlink_disconnect (void *s_, const char *addr_);
 
 ### zlink_send
 
-소켓에서 버퍼 데이터를 송신합니다.
+소켓에서 멀티파트 메시지를 송신합니다.
 
 ```c
 int zlink_send (void *s_,
-                const void *buf_,
-                size_t len_,
+                zlink_msg_t *parts_,
+                size_t part_count_,
                 zlink_send_flags_t flags_);
 ```
 
-소켓 `s_`에서 `buf_`의 `len_` 바이트를 송신합니다. 데이터는 전송 전에 내부
-메시지로 복사됩니다. `flags_` 매개변수는 0, `ZLINK_DONTWAIT`, `ZLINK_SNDMORE`,
-또는 이들의 비트 조합일 수 있습니다. 멀티파트 메시지를 보내려면
-`ZLINK_SNDMORE`를 사용하세요. 마지막 파트에서만 이 플래그를 생략합니다.
+소켓 `s_`에서 `parts_` 배열의 `part_count_`개 파트로 구성된 멀티파트 메시지를
+송신합니다. 성공 시 배열 내 모든 파트의 소유권이 라이브러리로 이전되며, 호출자는
+이후 접근할 수 없습니다. 실패 시 소유권은 호출자에게 유지됩니다. `flags_`
+매개변수는 0 또는 `ZLINK_DONTWAIT`일 수 있습니다.
 
-**반환값:** 성공 시 송신된 바이트 수, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
 **에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우 `EAGAIN`. Context가
 종료된 경우 `ETERM`.
 
-**참고:** `zlink_msg_send`, `zlink_recv`
+**참고:** `zlink_recv`
 
 ---
 
 ### zlink_recv
 
-소켓에서 버퍼 데이터를 수신합니다.
+소켓에서 멀티파트 메시지를 수신합니다.
 
 ```c
 int zlink_recv (void *s_,
-                void *buf_,
-                size_t len_,
+                zlink_routing_id_t *source_rid_out_,
+                zlink_msg_t **parts_out_,
+                size_t *part_count_out_,
                 zlink_send_flags_t flags_);
 ```
 
-소켓 `s_`에서 최대 `len_` 바이트를 `buf_`로 수신합니다. 소켓이 recv 모드여야
-합니다 (핸들러 미부착). `zlink_recv_handler()`로 직접 수신 핸들러가
+소켓 `s_`에서 완전한 멀티파트 메시지를 수신합니다. 성공 시 `*parts_out_`는
+라이브러리가 할당한 `*part_count_out_`개 메시지 파트 배열을 가리키며,
+`*source_rid_out_`는 송신자의 routing id로 설정됩니다 (해당하는 경우). 파트
+배열과 각 파트의 소유권이 호출자에게 이전되며, 호출자는 모든 파트를 close하거나
+`zlink_multipart_close()`를 호출하고 배열을 해제해야 합니다. 소켓이 recv
+모드여야 합니다 (핸들러 미부착). `zlink_recv_handler()`로 수신 핸들러가
 부착된 경우 `errno=EBUSY`로 실패합니다. 메시지가 없을 때 즉시 반환하려면
 `ZLINK_DONTWAIT`를 전달하세요.
 
-**반환값:** 성공 시 수신된 바이트 수, 실패 시 -1 (errno가 설정됨).
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
 **에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우, 또는
 `ZLINK_RCVTIMEO`가 만료된 경우 `EAGAIN`. 수신 핸들러가 부착된 경우 `EBUSY`.
 Context가 종료된 경우 `ETERM`.
 
-**참고:** `zlink_msg_recv`, `zlink_send`, `zlink_recv_handler`
+**참고:** `zlink_send`, `zlink_recv_handler`, `zlink_multipart_close`
 
 ---
 
-### zlink_msg_recv
+### zlink_send_rid
 
-소켓에서 메시지를 수신합니다.
+routing id로 특정 피어에게 멀티파트 메시지를 송신합니다.
 
 ```c
-int zlink_msg_recv (zlink_msg_t *msg_,
-                    void *s_,
+int zlink_send_rid (void *s_,
+                    const zlink_routing_id_t *target_rid_,
+                    zlink_msg_t *parts_,
+                    size_t part_count_,
                     zlink_send_flags_t flags_);
 ```
 
-소켓 `s_`에서 메시지를 `msg_`로 수신합니다. `msg_`는 호출 전에 초기화되어야
-합니다. 소켓이 recv 모드여야 합니다 (핸들러 미부착). 멀티파트 메시지의 경우
-각 호출 후 `ZLINK_RCVMORE`를 확인하여 후속 프레임 여부를 판별합니다.
+`target_rid_`로 식별되는 피어에게 멀티파트 메시지를 송신합니다. 성공 시
+모든 파트의 소유권이 라이브러리로 이전됩니다. 실패 시 소유권은 호출자에게
+유지됩니다.
 
-**반환값:** 성공 시 수신된 메시지의 바이트 수, 실패 시 -1 (errno가 설정됨).
+적용 대상: ROUTER (directed reply), STREAM (피어 지정 send), Gateway
+(directed request/reply).
 
-**에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우, 또는
-`ZLINK_RCVTIMEO`가 만료된 경우 `EAGAIN`. 수신 핸들러가 부착된 경우 `EBUSY`.
-Context가 종료된 경우 `ETERM`.
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
-**참고:** `zlink_recv`, `zlink_msg_send`, `zlink_recv_handler`
+**에러:** `subject_`가 NULL이면 `EFAULT`. 작업이 블로킹되고
+`ZLINK_DONTWAIT`가 설정된 경우 `EAGAIN`. 대상 피어가 연결되지 않은 경우
+(`ROUTER_MANDATORY` 활성 시) `EHOSTUNREACH`. Context가 종료된 경우 `ETERM`.
+
+**참고:** `zlink_send`, `zlink_recv`
+
+---
+
+## Pub/Sub 데이터 플레인 API
+
+다음 함수들은 raw PUB, SUB, XSUB, XPUB 소켓을 위한 canonical pub/sub
+데이터 플레인을 제공합니다. 동일한 함수가 `spot` 및 `spot_node` 서비스
+핸들에도 적용됩니다 ([spot.ko.md](spot.ko.md) 참고).
+
+### zlink_publish
+
+멀티파트 메시지를 발행합니다.
+
+```c
+int zlink_publish (void *subject_,
+                   const char *topic_id_,
+                   zlink_msg_t *parts_,
+                   size_t part_count_,
+                   zlink_send_flags_t flags_);
+```
+
+지정된 subject에서 멀티파트 메시지를 발행합니다. 성공 시 모든 파트의
+소유권이 라이브러리로 이전됩니다.
+
+- `spot` / `spot_node`: `topic_id_`는 non-NULL이어야 합니다 (topic-bearing
+  publish). NULL이면 `EINVAL`.
+- raw `PUB` / `XPUB`: `topic_id_`는 NULL이어야 합니다 (raw pub publish).
+  토픽 매칭은 wire first-frame prefix 규칙을 따릅니다.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**에러:** `subject_`가 NULL이면 `EFAULT`. `topic_id_`가 spot/spot_node에서
+NULL이거나 지원하지 않는 타입이면 `EINVAL`. subject 타입이 publish를
+지원하지 않으면 `ENOTSUP`.
+
+**참고:** `zlink_subscribe`, `zlink_subscribe_recv`
+
+---
+
+### zlink_subscribe
+
+토픽 필터를 구독합니다.
+
+```c
+int zlink_subscribe (void *subject_, const char *filter_);
+```
+
+`filter_`에 매칭되는 메시지를 구독합니다. 필터 해석: `filter_`가 `*`로
+끝나면 prefix-match 패턴이고, 그 외는 exact topic입니다.
+
+적용 대상: raw SUB, raw XSUB, `spot`, `spot_node`.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**에러:** `subject_`가 NULL이면 `EFAULT`. `filter_`가 NULL이거나 비어있거나
+유효하지 않은 패턴 구문(복수 `*`, 중간 `*`)이면 `EINVAL`. subject 타입이
+구독을 지원하지 않으면 `ENOTSUP`.
+
+**참고:** `zlink_unsubscribe`, `zlink_subscribe_recv`
+
+---
+
+### zlink_unsubscribe
+
+토픽 필터 구독을 해제합니다.
+
+```c
+int zlink_unsubscribe (void *subject_, const char *filter_);
+```
+
+이전에 등록된 구독을 제거합니다. `zlink_subscribe()`와 동일한 문자열 해석
+규칙이 적용됩니다: trailing `*`는 패턴 해제, 그 외는 exact topic 해제.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**에러:** `subject_`가 NULL이면 `EFAULT`. `filter_`가 NULL이거나 비어있으면
+`EINVAL`. subject 타입이 구독 해제를 지원하지 않으면 `ENOTSUP`.
+
+**참고:** `zlink_subscribe`
+
+---
+
+### zlink_subscribe_recv
+
+토픽 기반 멀티파트 메시지를 수신합니다.
+
+```c
+int zlink_subscribe_recv (void *subject_,
+                          zlink_routing_id_t *source_rid_out_,
+                          zlink_msg_t **parts_out_,
+                          size_t *part_count_out_,
+                          char *topic_id_out_,
+                          size_t *topic_id_len_out_,
+                          zlink_send_flags_t flags_);
+```
+
+recv 모드에서 다음 토픽 기반 메시지를 수신합니다. 성공 시
+`*source_rid_out_`는 송신자의 routing id (transport가 identity를 전달하지
+않으면 zeroed), `*topic_id_out_` / `*topic_id_len_out_`는 토픽 바이트
+(binary-safe), `*parts_out_` / `*part_count_out_`는 페이로드 프레임을
+받습니다. 파트 배열의 소유권은 호출자에게 이전됩니다.
+
+subject가 recv 모드여야 합니다 (핸들러 미부착). subscribe handler가 부착된
+경우 `EBUSY`로 실패합니다.
+
+적용 대상: raw SUB, raw XSUB, `spot`, `spot_node`.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**에러:** `subject_`가 NULL이면 `EFAULT`. `ZLINK_DONTWAIT`가 설정되고
+메시지가 없으면 `EAGAIN`. subscribe handler가 부착된 경우 `EBUSY`. 토픽
+버퍼가 작으면 `EMSGSIZE`. subject 타입이 subscribe recv를 지원하지 않으면
+`ENOTSUP`.
+
+**참고:** `zlink_subscribe_handler`, `zlink_subscribe`
+
+---
+
+### zlink_subscription_event_recv
+
+XPUB 소켓에서 구독 이벤트를 수신합니다.
+
+```c
+int zlink_subscription_event_recv (void *subject_,
+                                   zlink_routing_id_t *source_rid_out_,
+                                   int *subscribed_out_,
+                                   char *topic_id_out_,
+                                   size_t *topic_id_len_out_,
+                                   zlink_send_flags_t flags_);
+```
+
+recv 모드에서 다음 구독 이벤트를 수신합니다. 성공 시
+`*source_rid_out_`는 구독하는 피어를 식별하고, `*subscribed_out_`는
+subscribe이면 1, unsubscribe이면 0이며, `*topic_id_out_` /
+`*topic_id_len_out_`는 토픽 바이트를 받습니다 (`zlink_subscribe_recv()`와
+동일한 binary-safe buffer 계약).
+
+subject가 recv 모드여야 합니다. subscription event handler가 부착된 경우
+`EBUSY`로 실패합니다.
+
+적용 대상: raw XPUB만.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**에러:** `subject_`가 NULL이면 `EFAULT`. `ZLINK_DONTWAIT`가 설정되고
+이벤트가 없으면 `EAGAIN`. subscription event handler가 부착된 경우
+`EBUSY`. subject가 XPUB가 아니면 `ENOTSUP`.
+
+**참고:** `zlink_subscription_event_handler`, `zlink_publish`
 
 ---
 
@@ -598,116 +759,6 @@ void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 각 원소에 대해 `zlink_msg_close()`를 호출하는 편의 함수입니다.
 
 **참고:** `zlink_msg_close`
-
----
-
-## STREAM 콜백 Dispatch API
-
-다음 함수들은 STREAM 소켓을 위한 콜백 기반 인터페이스를 제공합니다.
-STREAM 수신은 콜백 전용이며, `recv()`는 지원되지 않습니다. 애플리케이션이
-raw 콜백을 등록하면 I/O 스레드에서 데이터 도착 시 직접 호출됩니다.
-
-### zlink_stream_on_raw_fn
-
-```c
-typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *rid_,
-                                       zlink_msg_t *msg_);
-```
-
-STREAM I/O 스레드에서 데이터 도착 시 호출되는 콜백. `rid_`는 피어를 식별합니다.
-`msg_`는 raw 스트림 청크이며, 소유권이 콜백으로 이전됩니다. 콜백은 반환 전에
-정확히 1회 해제해야 합니다 (예: `zlink_msg_close()` 또는
-`zlink_stream_send_msg()`로 소비). 반환 후 포인터를 유지하면 안 됩니다.
-0을 반환하면 dispatch 계속, 0이 아니면 종료를 요청합니다.
-
----
-
-### zlink_stream_attach_raw
-
-STREAM 소켓에 raw 콜백 dispatch를 등록합니다.
-
-```c
-int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_);
-```
-
-STREAM 소켓 `s_`에 `on_raw_`를 dispatch 콜백으로 등록합니다. 한 번에 하나의
-콜백만 등록 가능하며, 이미 등록된 상태에서 호출하면 `errno=EBUSY`와 함께
--1을 반환합니다. attach/detach는 애플리케이션 스레드에서 호출할 수 있으며
-STREAM send/close와 직렬화됩니다. raw 콜백 내부에서 attach/detach를 호출하는
-것은 지원되지 않습니다.
-
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
-
-**에러:** `s_`가 STREAM 소켓이 아니거나 `on_raw_`가 NULL이면 `EINVAL`.
-이미 콜백이 등록된 경우 `EBUSY`.
-
-**참고:** `zlink_stream_detach`, `zlink_stream_send`
-
----
-
-### zlink_stream_detach
-
-STREAM 소켓에서 콜백 dispatch를 해제합니다.
-
-```c
-int zlink_stream_detach (void *s_);
-```
-
-이전에 등록된 dispatch 콜백을 제거합니다. 애플리케이션 스레드에서 호출할 수
-있으며 STREAM send/close와 직렬화됩니다. raw 콜백 내부에서 detach를 호출하는
-것은 지원되지 않습니다.
-
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
-
-**에러:** `s_`가 STREAM 소켓이 아니면 `EINVAL`.
-
-**참고:** `zlink_stream_attach_raw`
-
----
-
-### zlink_stream_send
-
-routing id로 특정 STREAM 피어에게 페이로드를 전송합니다.
-
-```c
-int zlink_stream_send (void *s_,
-                       const zlink_routing_id_t *rid_,
-                       const void *data_,
-                       size_t size_,
-                       zlink_send_flags_t flags_);
-```
-
-`rid_`로 식별되는 피어에게 `data_`의 `size_` 바이트를 전송합니다. 내부적으로
-routing id를 첫 번째 프레임으로, 페이로드를 두 번째 프레임으로 전송합니다.
-STREAM send API는 애플리케이션 스레드와 STREAM dispatch 콜백에서 호출할 수
-있으며, 내부적으로 발신 상태가 직렬화됩니다.
-
-**반환값:** 수락된 페이로드 바이트 수(`size_`), 또는 실패 시 -1.
-
-**에러:** `s_`가 STREAM 소켓이 아니거나 `rid_`가 유효하지 않으면 `EINVAL`.
-작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우 `EAGAIN`.
-
-**참고:** `zlink_stream_send_msg`, `zlink_stream_attach_raw`
-
----
-
-### zlink_stream_send_msg
-
-routing id로 특정 STREAM 피어에게 메시지를 전송합니다.
-
-```c
-int zlink_stream_send_msg (void *s_,
-                           const zlink_routing_id_t *rid_,
-                           zlink_msg_t *msg_,
-                           zlink_send_flags_t flags_);
-```
-
-`zlink_stream_send()`와 동일하지만 raw 버퍼 대신 `zlink_msg_t`를 받습니다.
-메시지 `msg_`는 이 호출에 의해 소비(move)되며 반환 전에 재초기화됩니다.
-
-**반환값:** 수락된 페이로드 바이트 수, 또는 실패 시 -1.
-
-**참고:** `zlink_stream_send`, `zlink_stream_attach_raw`
 
 ---
 

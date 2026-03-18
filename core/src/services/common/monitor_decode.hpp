@@ -11,6 +11,13 @@
 
 namespace zlink
 {
+static inline bool monitor_part_has_more (const zlink_msg_t *part_)
+{
+    return part_
+           && (reinterpret_cast<const msg_t *> (part_)->flags () & msg_t::more)
+                != 0;
+}
+
 static inline bool read_monitor_u64_part (const zlink_msg_t *part_,
                                           uint64_t *value_out_)
 {
@@ -45,7 +52,7 @@ static inline int recv_socket_monitor_event (void *monitor_socket_,
                 zlink_msg_close (&parts[i]);
             return -1;
         }
-        more = zlink_msg_more (&parts[part_count]) != 0;
+        more = monitor_part_has_more (&parts[part_count]);
         ++part_count;
     }
 

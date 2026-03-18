@@ -39,23 +39,59 @@ bool send_rtt_message(void *socket,
     store_u64_be(payload.data(), send_ts);
     store_u64_be(payload.data() + 8, send_ts ^ 0x5a5a5a5a5a5a5a5aULL);
 
-    if (zlink_send(socket, k_server_routing_id, std::strlen(k_server_routing_id),
-                   ZLINK_SNDMORE)
-        < 0) {
+    zlink_msg_t parts[2];
+    const size_t server_id_size = std::strlen (k_server_routing_id);
+    if (zlink_msg_init_size (&parts[0], server_id_size) != 0)
+        return false;
+    if (zlink_msg_init_size (&parts[1], payload.size ()) != 0) {
+        zlink_msg_close (&parts[0]);
         return false;
     }
-    return zlink_send(socket, payload.data(), payload.size(), 0) >= 0;
+    std::memcpy (zlink_msg_data (&parts[0]), k_server_routing_id, server_id_size);
+    if (!payload.empty ())
+        std::memcpy (zlink_msg_data (&parts[1]), payload.data (), payload.size ());
+    if (::zlink_send (socket, parts, 2, 0) < 0) {
+        zlink_msg_close (&parts[0]);
+        zlink_msg_close (&parts[1]);
+        return false;
+    }
+    return true;
 }
 
 bool recv_rtt_message(void *socket, char *id_buf, size_t id_cap,
                       unsigned char *payload_buf, size_t payload_cap,
                       uint64_t &wire_send_ts)
 {
-    const int id_len = zlink_recv(socket, id_buf, id_cap, ZLINK_DONTWAIT);
-    if (id_len < 0)
+    zlink_routing_id_t source_rid;
+    source_rid.size = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc =
+      ::zlink_recv(socket, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
+    if (rc < 0)
         return false;
-    const int rc = zlink_recv(socket, payload_buf, payload_cap, 0);
-    if (rc < 16)
+
+    if (source_rid.size == 0 || part_count == 0) {
+        if (parts) {
+            zlink_multipart_close(parts, part_count);
+            free(parts);
+        }
+        return false;
+    }
+
+    const size_t id_len = std::min(id_cap, static_cast<size_t>(source_rid.size));
+    std::memcpy(id_buf, source_rid.data, id_len);
+
+    const size_t payload_size = zlink_msg_size(&parts[part_count - 1]);
+    const size_t payload_len = std::min(payload_cap, payload_size);
+    if (payload_len > 0) {
+        std::memcpy(payload_buf, zlink_msg_data(&parts[part_count - 1]),
+                    payload_len);
+    }
+    zlink_multipart_close(parts, part_count);
+    free(parts);
+
+    if (payload_len < 16)
         return false;
     wire_send_ts = load_u64_be(payload_buf);
     return true;

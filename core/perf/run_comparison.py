@@ -89,6 +89,15 @@ MULTI_COMPARISONS = [
     ("perf_stream_client", "STREAM_CALLBACK"),
 ]
 MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
+SUPPORTED_MULTI_RECV_MODES = {
+    "DEALER_DEALER": ("recv",),
+    "DEALER_ROUTER": ("recv",),
+    "ROUTER_ROUTER": ("recv",),
+    "PUBSUB": ("recv",),
+    "GATEWAY": ("callback",),
+    "SPOT": ("callback",),
+    "STREAM_CALLBACK": ("callback",),
+}
 
 
 class TeeStream:
@@ -161,6 +170,15 @@ def resolve_required_binaries(current_bin, pattern_name):
         if bins:
             return bins
     return [current_bin]
+
+
+def collect_unsupported_patterns(pattern_names, recv_mode):
+    unsupported = []
+    for pattern in pattern_names:
+        supported_modes = SUPPORTED_MULTI_RECV_MODES.get(pattern, ())
+        if recv_mode not in supported_modes:
+            unsupported.append(pattern)
+    return unsupported
 
 
 def resolve_split_required_binaries(pattern_name):
@@ -4405,6 +4423,16 @@ def main():
         selected_patterns = [p_name for _, p_name in comparisons]
     else:
         selected_patterns = list(requested_order)
+    unsupported_patterns = collect_unsupported_patterns(
+        selected_patterns, args["recv_mode"]
+    )
+    if unsupported_patterns:
+        print(
+            "Error: unsupported --recv mode for patterns: "
+            + ", ".join(sorted(set(unsupported_patterns))),
+            file=sys.stderr,
+        )
+        sys.exit(1)
     only_run = bool(selected_patterns) and all(is_pattern(p) for p in selected_patterns)
 
     results_root = resolve_results_root(args["results_dir"])

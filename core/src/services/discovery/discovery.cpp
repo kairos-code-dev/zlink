@@ -20,6 +20,12 @@
 
 namespace zlink
 {
+static bool discovery_frame_has_more (const zlink_msg_t &frame_)
+{
+    return (reinterpret_cast<const msg_t *> (&frame_)->flags () & msg_t::more)
+           != 0;
+}
+
 static void discovery_sleep_1ms ()
 {
 #if defined _WIN32
@@ -130,7 +136,7 @@ static bool recv_dealer_frames (socket_base_t *socket_,
             return false;
         }
         frames_->push_back (frame);
-        if (!zlink_msg_more (&frame))
+        if (!discovery_frame_has_more (frame))
             break;
         if (!wait_socket_event (static_cast<void *> (socket_), ZLINK_POLLIN,
                                 500)) {
@@ -1451,7 +1457,7 @@ void discovery_t::tick ()
                 break;
             }
             frames.push_back (frame);
-            if (!zlink_msg_more (&frame))
+            if (!discovery_frame_has_more (frame))
                 break;
         }
         if (!frames.empty ())

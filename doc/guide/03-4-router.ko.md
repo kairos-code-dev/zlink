@@ -57,12 +57,14 @@ zlink_recv_handler(router, on_message, NULL);
 
 ### 메시지 송신
 
-응답 시 콜백의 `source_rid`를 첫 프레임으로 전송하여 대상을 지정한다.
+응답 시 `zlink_send_rid`에 콜백의 `source_rid`를 전달하여 대상을 지정한다.
 
 ```c
 /* 콜백의 source_rid를 사용하여 응답 */
-zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-zlink_send(router, "World", 5, 0);
+zlink_msg_t reply;
+zlink_msg_init_size(&reply, 5);
+memcpy(zlink_msg_data(&reply), "World", 5);
+zlink_send_rid(router, source_rid, &reply, 1, 0);
 ```
 
 ### 수신 모드
@@ -75,15 +77,20 @@ ROUTER는 `zlink_recv_handler()`로 핸들러를 등록한다. 콜백은
 사용하여 올바른 피어에게 응답한다.
 
 **Pull 모드**: 핸들러를 부착하지 않으면 `zlink_recv()`로 동기 수신한다.
-Pull 모드에서 첫 프레임이 routing_id이고 이후 프레임이 애플리케이션
-데이터다.
+`source_rid_out` 파라미터에 송신자의 routing_id가, `parts_out`에
+애플리케이션 데이터가 수신된다.
 
 ```c
-char rid_buf[256];
-int rid_len = zlink_recv(router, rid_buf, sizeof(rid_buf), 0);
-
-char data_buf[256];
-int data_len = zlink_recv(router, data_buf, sizeof(data_buf), 0);
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+int rc = zlink_recv(router, &source_rid, &parts, &part_count, 0);
+if (rc == 0) {
+    /* source_rid로 송신자 식별 */
+    /* parts[0..part_count-1] 처리 */
+    zlink_multipart_close(parts, part_count);
+    free(parts);
+}
 ```
 
 > 피어별 송신 큐가 가득 차면(HWM) `ROUTER_MANDATORY` 활성 시
@@ -120,9 +127,11 @@ void on_message(const zlink_routing_id_t *source_rid,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* 응답: routing_id 프레임을 보낸 후 데이터 전송 */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "reply", 5, 0);
+    /* 응답: zlink_send_rid로 원본 피어에게 전송 */
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "reply", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
 
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
@@ -149,7 +158,11 @@ int mandatory = 1;
 zlink_setsockopt(router, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
 
 /* 존재하지 않는 대상에게 전송 시도 */
-int rc = zlink_send(router, "UNKNOWN", 7, ZLINK_SNDMORE);
+zlink_routing_id_t target_rid = { .data = "UNKNOWN", .size = 7 };
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "data", 4);
+int rc = zlink_send_rid(router, &target_rid, &msg, 1, 0);
 /* rc == -1, errno == EHOSTUNREACH */
 ```
 
@@ -168,8 +181,10 @@ void on_request(const zlink_routing_id_t *source_rid,
                 void *userdata)
 {
     /* 송신자에게 응답 */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "reply", 5, 0);
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "reply", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
 }
@@ -195,8 +210,15 @@ zlink_setsockopt(d2, ZLINK_ROUTING_ID, "D2", 2);
 zlink_connect(d2, endpoint);
 
 /* 각 클라이언트가 메시지 전송 — on_request가 source_rid와 함께 수신 */
-zlink_send(d1, "from_d1", 7, 0);
-zlink_send(d2, "from_d2", 7, 0);
+zlink_msg_t m1;
+zlink_msg_init_size(&m1, 7);
+memcpy(zlink_msg_data(&m1), "from_d1", 7);
+zlink_send(d1, &m1, 1, 0);
+
+zlink_msg_t m2;
+zlink_msg_init_size(&m2, 7);
+memcpy(zlink_msg_data(&m2), "from_d2", 7);
+zlink_send(d2, &m2, 1, 0);
 
 /* on_reply가 각 DEALER의 응답을 수신 */
 ```
@@ -210,8 +232,11 @@ void *router = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 
 /* 기본 동작: 미도달 메시지 조용히 드롭 */
-zlink_send(router, "UNKNOWN", 7, ZLINK_SNDMORE);
-zlink_send(router, "DATA", 4, 0);
+zlink_routing_id_t bad_rid = { .data = "UNKNOWN", .size = 7 };
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "DATA", 4);
+zlink_send_rid(router, &bad_rid, &msg, 1, 0);
 /* 에러 없음, 메시지 소실 */
 
 /* MANDATORY 모드 활성화 */
@@ -219,7 +244,10 @@ int mandatory = 1;
 zlink_setsockopt(router, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
 
 /* 이제 미도달 시 에러 반환 */
-int rc = zlink_send(router, "UNKNOWN", 7, ZLINK_SNDMORE);
+zlink_msg_t msg2;
+zlink_msg_init_size(&msg2, 4);
+memcpy(zlink_msg_data(&msg2), "DATA", 4);
+int rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
 if (rc == -1 && errno == EHOSTUNREACH) {
     /* 대상 "UNKNOWN"을 찾을 수 없음 */
 }
@@ -238,8 +266,10 @@ void on_connect(const zlink_routing_id_t *source_rid,
                 void *userdata)
 {
     /* source_rid->data = "X" — 이제 "X"로 안전하게 전송 가능 */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "Welcome", 7, 0);
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 7);
+    memcpy(zlink_msg_data(&reply), "Welcome", 7);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
 }
@@ -248,7 +278,10 @@ void on_connect(const zlink_routing_id_t *source_rid,
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "X", 1);
 zlink_connect(dealer, endpoint);
-zlink_send(dealer, "Hello", 5, 0);
+zlink_msg_t hello;
+zlink_msg_init_size(&hello, 5);
+memcpy(zlink_msg_data(&hello), "Hello", 5);
+zlink_send(dealer, &hello, 1, 0);
 
 /* on_connect 수신: source_rid = "X", parts[0] = "Hello"
    "Welcome"으로 응답 */
@@ -298,15 +331,22 @@ zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "stable-id", 9);
 
 ### 멀티파트 메시지 완전성
 
-ROUTER에서 송신할 때 routing_id 프레임과 데이터 프레임을 반드시 `ZLINK_SNDMORE`로 연결해야 한다. routing_id만 전송하고 데이터를 빠뜨리면 예기치 않은 동작이 발생한다.
+ROUTER에서 송신할 때는 `zlink_send_rid`를 사용하여 routing_id와 데이터 파트를 원자적으로 처리한다. 항상 최소 하나의 데이터 파트를 제공해야 한다.
 
 ```c
 /* 올바른 전송 */
-zlink_send(router, identity, id_size, ZLINK_SNDMORE);  /* 반드시 SNDMORE */
-zlink_send(router, data, data_size, 0);
+zlink_msg_t data_part;
+zlink_msg_init_size(&data_part, data_size);
+memcpy(zlink_msg_data(&data_part), data, data_size);
+zlink_send_rid(router, &target_rid, &data_part, 1, 0);
 
-/* 잘못된 전송 — identity만 전송하면 안 됨 */
-zlink_send(router, identity, id_size, 0);  /* SNDMORE 없음! */
+/* 멀티파트 전송 */
+zlink_msg_t parts[2];
+zlink_msg_init_size(&parts[0], header_size);
+memcpy(zlink_msg_data(&parts[0]), header, header_size);
+zlink_msg_init_size(&parts[1], body_size);
+memcpy(zlink_msg_data(&parts[1]), body, body_size);
+zlink_send_rid(router, &target_rid, parts, 2, 0);
 ```
 
 > routing_id의 상세 개념은 [08-routing-id.ko.md](08-routing-id.ko.md)를 참고.

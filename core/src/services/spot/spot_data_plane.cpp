@@ -524,12 +524,7 @@ static int recv_and_forward_ingress (socket_base_t *src_,
             return -1;
         }
 
-        int more = 0;
-        size_t more_sz = sizeof (more);
-        if (src_->getsockopt (ZLINK_RCVMORE, &more, &more_sz) != 0) {
-            msg.close ();
-            return -1;
-        }
+        const bool more = (msg.flags () & msg_t::more) != 0;
 
         if (!receiving_multipart)
             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
@@ -567,7 +562,7 @@ static int recv_and_forward_ingress (socket_base_t *src_,
             }
         }
 
-        receiving_multipart = more != 0;
+        receiving_multipart = more;
         if (!receiving_multipart) {
             forward_to_fanout = false;
             ++forwarded_messages;
@@ -614,10 +609,7 @@ static int forward_topic_and_remaining (socket_base_t *fanout_,
         return -1;
     }
 
-    int more = 0;
-    size_t more_sz = sizeof (more);
-    if (src_->getsockopt (ZLINK_RCVMORE, &more, &more_sz) != 0)
-        return -1;
+    bool more = (topic_msg_->flags () & msg_t::more) != 0;
 
     if (fanout_->send (topic_msg_, more ? ZLINK_SNDMORE : 0) != 0)
         return -1;
@@ -630,11 +622,7 @@ static int forward_topic_and_remaining (socket_base_t *fanout_,
             msg.close ();
             return -1;
         }
-        more_sz = sizeof (more);
-        if (src_->getsockopt (ZLINK_RCVMORE, &more, &more_sz) != 0) {
-            msg.close ();
-            return -1;
-        }
+        more = (msg.flags () & msg_t::more) != 0;
         if (fanout_->send (&msg, more ? ZLINK_SNDMORE : 0) != 0) {
             msg.close ();
             return -1;

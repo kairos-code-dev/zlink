@@ -66,14 +66,14 @@ static void recv_bounce_msg (void *socket_)
     TEST_ASSERT_SUCCESS_ERRNO (zlink::recv_msg_internal (socket_, &msg, 0));
     TEST_ASSERT_EQUAL_STRING (bounce_content,
                               static_cast<const char *> (zlink_msg_data (&msg)));
-    TEST_ASSERT_TRUE (zlink_msg_more (&msg) != 0);
+    TEST_ASSERT_TRUE (test_msg_has_more (&msg));
     zlink_msg_close (&msg);
 
     zlink_msg_init (&msg);
     TEST_ASSERT_SUCCESS_ERRNO (zlink::recv_msg_internal (socket_, &msg, 0));
     TEST_ASSERT_EQUAL_STRING (bounce_content,
                               static_cast<const char *> (zlink_msg_data (&msg)));
-    TEST_ASSERT_FALSE (zlink_msg_more (&msg) != 0);
+    TEST_ASSERT_FALSE (test_msg_has_more (&msg));
     zlink_msg_close (&msg);
 }
 
@@ -185,7 +185,7 @@ void s_recv_seq (void *socket_, ...)
         data = va_arg (ap, const char *);
         bool end = data == SEQ_END;
 
-        more = zlink_msg_more (&msg);
+        more = test_msg_has_more (&msg) ? 1 : 0;
 
         TEST_ASSERT_TRUE (!more == end);
         if (end)

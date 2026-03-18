@@ -52,11 +52,6 @@ int zlink_stream_attach_raw (void *s_,
 int zlink_stream_detach (void *s_);
 }
 
-// Internal core code still uses these recv-side constants even though they are
-// no longer part of the public callback-only API surface.
-#ifndef ZLINK_RCVMORE
-#define ZLINK_RCVMORE 13
-#endif
 #ifndef ZLINK_SNDMORE
 #define ZLINK_SNDMORE ((zlink_send_flags_t) 0x0002u)
 #endif

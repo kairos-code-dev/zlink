@@ -180,13 +180,23 @@ inline bool send_pubsub_sample (void *pub_socket_,
                  std::strlen (k_pubsub_topic));
     std::memcpy (zlink_msg_data (&payload_part), payload_->data (), payload_size_);
 
-    if (zlink_msg_send (&topic_part, pub_socket_, ZLINK_SNDMORE) < 0) {
+    zlink_msg_t parts[2];
+    if (zlink_msg_init_size (&parts[0], std::strlen (k_pubsub_topic)) != 0) {
         zlink_msg_close (&topic_part);
         zlink_msg_close (&payload_part);
         return false;
     }
-    if (zlink_msg_send (&payload_part, pub_socket_, 0) < 0) {
+    if (zlink_msg_init_size (&parts[1], payload_size_) != 0) {
+        zlink_msg_close (&topic_part);
         zlink_msg_close (&payload_part);
+        zlink_msg_close (&parts[0]);
+        return false;
+    }
+    zlink_msg_move (&parts[0], &topic_part);
+    zlink_msg_move (&parts[1], &payload_part);
+    if (::zlink_send (pub_socket_, parts, 2, 0) < 0) {
+        zlink_msg_close (&parts[0]);
+        zlink_msg_close (&parts[1]);
         return false;
     }
 

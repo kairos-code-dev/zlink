@@ -18,7 +18,7 @@
 
 | 항목 | 기준 |
 |------|------|
-| 측정 모델 | warmup(count) + active(duration) |
+| 측정 모델 | warmup(duration) + active(duration) |
 | throughput | `active 수신 건수 / active 시간(초)` |
 | latency | active 구간 수신 payload header timestamp 기반 |
 | 대표값 | runs > 1일 때 metric별 median |
@@ -78,7 +78,7 @@
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
-| warmup | count-based | 패턴별 기본값 (표준: 1000, GATEWAY/SPOT: 200, SPOT msg_size≥65536: 20) | `PERF_WARMUP_COUNT` |
+| warmup | time-based | 2s | `PERF_SINGLE_WARMUP_SECONDS` |
 | settle | time-based | 100ms | — (코드 상수 `SETTLE_TIME_MS`) |
 | active | time-based | 5s | `PERF_SINGLE_DURATION_SECONDS` |
 | idle drain | idle-based | recv timeout (기본 200ms) 동안 무수신 시 종료 | `PERF_SINGLE_RCVTIMEO_MS` |
@@ -315,7 +315,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `PERF_WARMUP_COUNT` | warmup 메시지 개수 | 패턴별 기본값 (표준: 1000, GATEWAY/SPOT: 200) |
+| `PERF_SINGLE_WARMUP_SECONDS` | warmup 시간(초) | 2 |
 | `PERF_SINGLE_DURATION_SECONDS` | active 구간 시간(초) | 5 |
 | `PERF_SINGLE_TIMEOUT_SECONDS` | 프로세스 timeout(초) | `max(30, duration*6+15)` |
 

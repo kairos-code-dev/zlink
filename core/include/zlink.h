@@ -276,19 +276,42 @@ ZLINK_EXPORT int zlink_msg_init_size (zlink_msg_t *msg_, size_t size_);
  * @param msg_   Message object.
  * @param data_  External data buffer.
  * @param size_  Data size in bytes.
- * @param ffn_   Callback invoked when the message is released. May be NULL.
+ * @param ffn_   Callback invoked when the last owning message releases the
+ *               buffer. May be NULL.
  * @param hint_  User data passed to @p ffn_.
+ *
+ * If @p ffn_ is NULL, the message keeps a borrowed reference to @p data_ and
+ * never frees it. Such messages report as shared because the storage is not
+ * uniquely owned by the message object.
  */
 ZLINK_EXPORT int zlink_msg_init_data (
   zlink_msg_t *msg_, void *data_, size_t size_, zlink_free_fn *ffn_, void *hint_);
 
-/** @brief Release message resources. Must be called after init. */
+/**
+ * @brief Release this message object's ownership of its content.
+ *
+ * The message becomes invalid after this call. For reference-counted message
+ * storage, the underlying buffer is released only when the last owning message
+ * is closed or consumed by send.
+ */
 ZLINK_EXPORT int zlink_msg_close (zlink_msg_t *msg_);
 
-/** @brief Move message content from src_ to dest_. src_ becomes empty. */
+/**
+ * @brief Move message content from src_ to dest_ without copying payload.
+ *
+ * Ownership is transferred to @p dest_. The source becomes an empty message.
+ * Existing shared/reference-counted state moves with the message; move does
+ * not increment any reference count.
+ */
 ZLINK_EXPORT int zlink_msg_move (zlink_msg_t *dest_, zlink_msg_t *src_);
 
-/** @brief Copy a message from src_ to dest_. */
+/**
+ * @brief Copy a message from src_ to dest_.
+ *
+ * Small inline messages are copied by value. Large or externally stored
+ * messages share the same underlying storage and are tracked internally by
+ * reference count rather than duplicating the payload buffer.
+ */
 ZLINK_EXPORT int zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_);
 
 /** @brief Return a pointer to the message data buffer. */
@@ -297,14 +320,14 @@ ZLINK_EXPORT void *zlink_msg_data (zlink_msg_t *msg_);
 /** @brief Return the message data size in bytes. */
 ZLINK_EXPORT size_t zlink_msg_size (const zlink_msg_t *msg_);
 
-/** @brief Return 1 if more parts follow in a multipart message. */
-ZLINK_EXPORT int zlink_msg_more (const zlink_msg_t *msg_);
-
-/** @brief Get an integer message property. */
-ZLINK_EXPORT int zlink_msg_get (const zlink_msg_t *msg_, int property_);
-
-/** @brief Set an integer message property. */
-ZLINK_EXPORT int zlink_msg_set (zlink_msg_t *msg_, int property_, int optval_);
+/**
+ * @brief Return 1 if the message storage is not uniquely owned.
+ *
+ * This returns shared-state information, not the numeric reference count.
+ * It may return 1 for reference-counted shared storage and for messages that
+ * borrow constant/external storage without owning it uniquely.
+ */
+ZLINK_EXPORT int zlink_msg_is_shared (const zlink_msg_t *msg_);
 
 /** @brief Get a string message property (e.g. metadata). */
 ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
@@ -335,7 +358,6 @@ typedef enum zlink_socket_option_t
     ZLINK_SOCKOPT_RECOVERY_IVL = 0x1106,
     ZLINK_SOCKOPT_SNDBUF = 0x1107,
     ZLINK_SOCKOPT_RCVBUF = 0x1108,
-    ZLINK_SOCKOPT_RCVMORE = 0x1109,
     ZLINK_SOCKOPT_FD = 0x110A,
     ZLINK_SOCKOPT_EVENTS = 0x110B,
     ZLINK_SOCKOPT_TYPE = 0x110C,
@@ -411,7 +433,6 @@ typedef enum zlink_socket_option_t
 #define ZLINK_RECOVERY_IVL ((zlink_socket_option_t) 9)
 #define ZLINK_SNDBUF ((zlink_socket_option_t) 11)
 #define ZLINK_RCVBUF ((zlink_socket_option_t) 12)
-#define ZLINK_RCVMORE ((zlink_socket_option_t) 13)
 #define ZLINK_LINGER ((zlink_socket_option_t) 17)
 #define ZLINK_RECONNECT_IVL ((zlink_socket_option_t) 18)
 #define ZLINK_BACKLOG ((zlink_socket_option_t) 19)
@@ -481,7 +502,6 @@ typedef enum zlink_socket_option_t
 #define ZLINK_RECOVERY_IVL ZLINK_SOCKOPT_RECOVERY_IVL
 #define ZLINK_SNDBUF ZLINK_SOCKOPT_SNDBUF
 #define ZLINK_RCVBUF ZLINK_SOCKOPT_RCVBUF
-#define ZLINK_RCVMORE ZLINK_SOCKOPT_RCVMORE
 #define ZLINK_LINGER ZLINK_SOCKOPT_LINGER
 #define ZLINK_RECONNECT_IVL ZLINK_SOCKOPT_RECONNECT_IVL
 #define ZLINK_BACKLOG ZLINK_SOCKOPT_BACKLOG
@@ -539,12 +559,6 @@ typedef enum zlink_socket_option_t
 #define ZLINK_EVENTS ZLINK_SOCKOPT_EVENTS
 #define ZLINK_TYPE ZLINK_SOCKOPT_TYPE
 #define ZLINK_LAST_ENDPOINT ZLINK_SOCKOPT_LAST_ENDPOINT
-
-typedef enum zlink_msg_property_t
-{
-    ZLINK_MORE = 1,
-    ZLINK_SHARED = 3
-} zlink_msg_property_t;
 
 #define ZLINK_DONTWAIT ((zlink_send_flags_t) 0x0001u)
 #define ZLINK_SEND_FLAG_DONTWAIT ZLINK_DONTWAIT
@@ -659,9 +673,6 @@ typedef void (*zlink_subscription_event_handler_fn) (
   const char *topic_,
   size_t topic_len_,
   void *userdata_);
-
-typedef zlink_subscribe_handler_fn zlink_spot_handler_fn;
-typedef zlink_subscription_event_handler_fn zlink_xpub_handler_fn;
 
 typedef void (*zlink_send_ready_handler_fn) (void *subject_, void *userdata_);
 

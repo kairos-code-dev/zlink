@@ -114,9 +114,11 @@ void on_request(const zlink_routing_id_t *source_rid,
 {
     /* source_rid = "D1" (2 bytes), parts[0] = "Hello" (5 bytes) */
 
-    /* Reply: send routing_id as the first frame */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "World", 5, 0);
+    /* Reply: use zlink_send_rid for directed send */
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "World", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
 
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
@@ -136,7 +138,10 @@ zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer, endpoint);
 
 /* DEALER send */
-zlink_send(dealer, "Hello", 5, 0);
+zlink_msg_t req;
+zlink_msg_init_size(&req, 5);
+memcpy(zlink_msg_data(&req), "Hello", 5);
+zlink_send(dealer, &req, 1, 0);
 
 /* on_request callback receives the message and replies */
 ```
@@ -159,8 +164,10 @@ void on_message(const zlink_routing_id_t *source_rid,
 {
     /* source_rid->data contains "D1" or "D2" */
     /* Reply to specific client */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "reply", 5, 0);
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "reply", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
 }
@@ -180,8 +187,10 @@ void on_message(const zlink_routing_id_t *source_rid,
     printf("routing_id: %zu bytes\n", source_rid->size);
 
     /* Reply: use source_rid */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "reply", 5, 0);
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "reply", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
 
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
@@ -195,47 +204,50 @@ STREAM sockets identify external clients using a 4B uint32 peer routing_id.
 ### Basic Usage
 
 ```c
-/* Callback dispatch with LEN32BE */
-int on_packets(const zlink_routing_id_t *rid,
-               zlink_msg_t *msgs, size_t count)
+/* Callback dispatch */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
-    for (size_t i = 0; i < count; ++i) {
-        void *data = zlink_msg_data(&msgs[i]);
-        size_t size = zlink_msg_size(&msgs[i]);
+    for (size_t i = 0; i < part_count; ++i) {
+        void *data = zlink_msg_data(&parts[i]);
+        size_t size = zlink_msg_size(&parts[i]);
 
         /* Reply: use the same routing_id */
-        zlink_stream_send(stream, rid, data, size, 0);
-        zlink_msg_close(&msgs[i]);
+        zlink_msg_t reply;
+        zlink_msg_init_size(&reply, size);
+        memcpy(zlink_msg_data(&reply), data, size);
+        zlink_send_rid(stream, source_rid, &reply, 1, 0);
+        zlink_msg_close(&parts[i]);
     }
-    return 0;
 }
 
-zlink_stream_attach_len32be(stream, on_packets);
+zlink_recv_handler(stream, on_message, NULL);
 ```
 
 ### routing_id in Connect/Disconnect Events
 
 ```c
-int on_packets(const zlink_routing_id_t *rid,
-               zlink_msg_t *msgs, size_t count)
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
 {
-    for (size_t i = 0; i < count; ++i) {
-        uint8_t *data = (uint8_t *)zlink_msg_data(&msgs[i]);
-        size_t size = zlink_msg_size(&msgs[i]);
+    for (size_t i = 0; i < part_count; ++i) {
+        uint8_t *data = (uint8_t *)zlink_msg_data(&parts[i]);
+        size_t size = zlink_msg_size(&parts[i]);
 
         if (size == 1 && data[0] == 0x01) {
-            /* New client connected: identify by rid */
+            /* New client connected: identify by source_rid */
             printf("Connected: ");
-            for (size_t j = 0; j < rid->size; j++)
-                printf("%02x", rid->data[j]);
+            for (size_t j = 0; j < source_rid->size; j++)
+                printf("%02x", source_rid->data[j]);
             printf("\n");
         } else if (size == 1 && data[0] == 0x00) {
-            /* Client disconnected: identify by rid and clean up */
+            /* Client disconnected: identify by source_rid and clean up */
             printf("Disconnected\n");
         }
-        zlink_msg_close(&msgs[i]);
+        zlink_msg_close(&parts[i]);
     }
-    return 0;
 }
 ```
 

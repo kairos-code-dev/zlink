@@ -84,7 +84,13 @@ inline bool send_one_message (void *socket,
         return false;
     }
 
-    const int rc = zlink_send (socket, payload.data (), payload_size, 0);
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, payload_size) != 0)
+        return false;
+    std::memcpy (zlink_msg_data (&part), payload.data (), payload_size);
+    const int rc = ::zlink_send (socket, &part, 1, 0);
+    if (rc < 0)
+        zlink_msg_close (&part);
     if (rc >= 0)
         return true;
 

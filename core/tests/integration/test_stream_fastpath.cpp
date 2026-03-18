@@ -78,17 +78,34 @@ static int recv_stream_msg (void *socket_,
                             void *buf_,
                             size_t buf_size_)
 {
-    int rc = zlink_recv (socket_, routing_id_, stream_routing_id_size, 0);
-    if (rc != static_cast<int> (stream_routing_id_size))
+    zlink_msg_t rid_msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&rid_msg));
+    int rc = zlink_msg_recv (&rid_msg, socket_, 0);
+    if (rc != static_cast<int> (stream_routing_id_size)) {
+        zlink_msg_close (&rid_msg);
         return -1;
-
-    int more = 0;
-    size_t more_size = sizeof (more);
-    zlink_getsockopt (socket_, ZLINK_RCVMORE, &more, &more_size);
-    if (!more)
+    }
+    memcpy (routing_id_, zlink_msg_data (&rid_msg), stream_routing_id_size);
+    if (!test_msg_has_more (&rid_msg)) {
+        zlink_msg_close (&rid_msg);
         return -1;
+    }
+    zlink_msg_close (&rid_msg);
 
-    return zlink_recv (socket_, buf_, buf_size_, 0);
+    zlink_msg_t payload_msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&payload_msg));
+    rc = zlink_msg_recv (&payload_msg, socket_, 0);
+    if (rc < 0) {
+        zlink_msg_close (&payload_msg);
+        return -1;
+    }
+    const size_t copy_size =
+      std::min (buf_size_, zlink_msg_size (&payload_msg));
+    if (buf_ && copy_size > 0)
+        memcpy (buf_, zlink_msg_data (&payload_msg), copy_size);
+    const int result = static_cast<int> (zlink_msg_size (&payload_msg));
+    zlink_msg_close (&payload_msg);
+    return result;
 }
 
 static bool parse_tcp_endpoint (const char *endpoint_,

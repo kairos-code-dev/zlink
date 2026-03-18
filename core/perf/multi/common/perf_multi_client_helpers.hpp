@@ -75,24 +75,35 @@ inline send_status_t send_echo_message (void *socket,
                                         size_t payload_size,
                                         bool router_send)
 {
-    const int base_flags = 0;
+    const zlink_send_flags_t base_flags = 0;
 
     if (router_send) {
-        const int id_rc = zlink_send (
-          socket,
-          server_id.c_str (),
-          server_id.size (),
-          ZLINK_SNDMORE | base_flags);
+        zlink_msg_t parts[2];
+        if (zlink_msg_init_size (&parts[0], server_id.size ()) != 0)
+            return send_error;
+        if (zlink_msg_init_size (&parts[1], payload_size) != 0) {
+            zlink_msg_close (&parts[0]);
+            return send_error;
+        }
+        if (!server_id.empty ())
+            std::memcpy (
+              zlink_msg_data (&parts[0]), server_id.data (), server_id.size ());
+        if (payload_size > 0)
+            std::memcpy (
+              zlink_msg_data (&parts[1]), payload.data (), payload_size);
+        const int id_rc = ::zlink_send (socket, parts, 2, base_flags);
         const send_status_t id_status = classify_send_result (id_rc);
         if (id_status != send_ok)
             return id_status;
+        return id_status;
     }
 
-    const int payload_rc = zlink_send (
-      socket,
-      payload.data (),
-      payload_size,
-      base_flags);
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, payload_size) != 0)
+        return send_error;
+    if (payload_size > 0)
+        std::memcpy (zlink_msg_data (&part), payload.data (), payload_size);
+    const int payload_rc = ::zlink_send (socket, &part, 1, base_flags);
     return classify_send_result (payload_rc);
 }
 
@@ -104,14 +115,15 @@ inline int recv_one_message (void *socket,
     if (!socket)
         return -1;
 
-    zlink_msg_t frame;
-    if (zlink_msg_init (&frame) != 0)
-        return -1;
-
-    const int rc = zlink_msg_recv (&frame, socket, flags);
+    zlink_routing_id_t source_rid;
+    source_rid.size = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc = ::zlink_recv (
+      socket, &source_rid, &parts, &part_count,
+      static_cast<zlink_send_flags_t> (flags));
     if (rc < 0) {
         const int err = zlink_errno ();
-        zlink_msg_close (&frame);
         if (err == EAGAIN || err == EINTR)
             return 0;
         return -1;
@@ -121,37 +133,39 @@ inline int recv_one_message (void *socket,
         std::fill (scratch.begin (), scratch.end (), '\0');
 
     size_t write_offset = 0;
-    while (true) {
+    if (source_rid.size > 0 && capture_bytes > 0 && !scratch.empty ()
+        && write_offset < scratch.size ()) {
+        const size_t remaining =
+          std::min (capture_bytes, scratch.size ()) - write_offset;
+        const size_t copy_size = std::min (
+          remaining, static_cast<size_t> (source_rid.size));
+        if (copy_size > 0) {
+            std::memcpy (
+              scratch.data () + write_offset, source_rid.data, copy_size);
+            write_offset += copy_size;
+        }
+    }
+
+    for (size_t i = 0; i < part_count; ++i) {
         if (capture_bytes > 0 && !scratch.empty ()
             && write_offset < scratch.size ()) {
             const size_t remaining =
               std::min (capture_bytes, scratch.size ()) - write_offset;
             const size_t copy_size =
-              std::min (remaining, zlink_msg_size (&frame));
+              std::min (remaining, zlink_msg_size (&parts[i]));
             if (copy_size > 0) {
                 std::memcpy (
                   scratch.data () + write_offset,
-                  zlink_msg_data (&frame),
+                  zlink_msg_data (&parts[i]),
                   copy_size);
                 write_offset += copy_size;
             }
         }
+    }
 
-        const int more = zlink_msg_more (&frame);
-        zlink_msg_close (&frame);
-        if (!more)
-            break;
-
-        if (zlink_msg_init (&frame) != 0)
-            return -1;
-        const int next_rc = zlink_msg_recv (&frame, socket, 0);
-        if (next_rc < 0) {
-            const int err = zlink_errno ();
-            zlink_msg_close (&frame);
-            if (err == EAGAIN || err == EINTR)
-                return 0;
-            return -1;
-        }
+    if (parts) {
+        zlink_multipart_close (parts, part_count);
+        free (parts);
     }
 
     return 1;

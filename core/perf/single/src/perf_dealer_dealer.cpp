@@ -169,8 +169,22 @@ inline bool run_oneway_phase (void *sender,
                                                 phase,
                                                 msg_size,
                                                 (*seq)++,
-                                                sent_ts)
-            || !send_exact (sender, payload->data (), payload_size, 0)) {
+                                                sent_ts)) {
+            send_failed = true;
+            break;
+        }
+
+        zlink_msg_t part;
+        if (::zlink_msg_init_size (&part, payload_size) != 0) {
+            send_failed = true;
+            break;
+        }
+        if (payload_size > 0)
+            memcpy (::zlink_msg_data (&part), payload->data (), payload_size);
+        if (::zlink_send (
+              sender, &part, 1, static_cast<zlink_send_flags_t> (0))
+            < 0) {
+            ::zlink_msg_close (&part);
             send_failed = true;
             break;
         }

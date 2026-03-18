@@ -1002,6 +1002,95 @@ void test_gateway_send_ready_changed_implies_first_request_reply ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
+void test_gateway_monitor_snapshot_send_ready_implies_first_recv_delivery ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *server = zlink_gateway_new (ctx, "svc-monitor-recv-contract");
+    void *client = zlink_gateway_new (ctx, "svc-monitor-recv-contract");
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_set_routing_id (server, "gw-server-recv-contract",
+                                    strlen ("gw-server-recv-contract")));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_set_routing_id (client, "gw-client-recv-contract",
+                                    strlen ("gw-client-recv-contract")));
+
+    const int timeout_ms = 3000;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
+      server, ZLINK_GATEWAY_OPT_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
+      client, ZLINK_GATEWAY_OPT_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
+
+    void *client_monitor = zlink_gateway_monitor_open (
+      client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+                | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
+      &zlink_service_monitor_ignore_handler, NULL);
+    TEST_ASSERT_NOT_NULL (client_monitor);
+
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22930;
+    bind_gateway_with_port_seed (server, &bind_seed, endpoint,
+                                 sizeof (endpoint));
+
+    zlink_routing_id_t server_rid;
+    memset (&server_rid, 0, sizeof (server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+    zlink_routing_id_t client_rid;
+    memset (&client_rid, 0, sizeof (client_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (client, &client_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_connect (client, endpoint, &server_rid));
+
+    zlink_monitor_snapshot_t snapshot;
+    TEST_ASSERT_TRUE (wait_for_monitor_snapshot_state (
+      client_monitor, ZLINK_MONITOR_SOURCE_GATEWAY,
+      ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY, 1, &snapshot,
+      3000));
+    TEST_ASSERT_TRUE (snapshot.ready_peer_count >= 1);
+
+    zlink_msg_t request;
+    init_text_part (&request, "ping");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_send_rid (client, &server_rid, &request, 1, 0));
+
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, server, server, ZLINK_POLLIN));
+    zlink_poller_event_t event;
+    memset (&event, 0, sizeof (event));
+    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, timeout_ms));
+    TEST_ASSERT_EQUAL_PTR (server, event.user_data);
+    TEST_ASSERT_TRUE ((event.events & ZLINK_POLLIN) != 0);
+
+    zlink_routing_id_t source_rid;
+    memset (&source_rid, 0, sizeof (source_rid));
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv (server, &source_rid, &parts, &part_count, 0));
+    TEST_ASSERT_EQUAL_UINT8 (client_rid.size, source_rid.size);
+    TEST_ASSERT_EQUAL_INT (0, memcmp (client_rid.data, source_rid.data,
+                                      client_rid.size));
+    TEST_ASSERT_EQUAL_INT (1, static_cast<int> (part_count));
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen ("ping")),
+                           static_cast<int> (zlink_msg_size (&parts[0])));
+    TEST_ASSERT_EQUAL_MEMORY ("ping", zlink_msg_data (&parts[0]),
+                              strlen ("ping"));
+
+    close_parts (NULL, parts, part_count);
+    free (parts);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&client_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server));
+}
+
 void test_spot_delivery_ready_changed_implies_first_publish_delivery ()
 {
     void *ctx = get_test_context ();
@@ -1289,6 +1378,8 @@ int main (int, char **)
     } while (0)
     RUN_MONITOR_SERVICE_CONTRACT_TEST (
       test_gateway_send_ready_changed_implies_first_request_reply);
+    RUN_MONITOR_SERVICE_CONTRACT_TEST (
+      test_gateway_monitor_snapshot_send_ready_implies_first_recv_delivery);
     RUN_MONITOR_SERVICE_CONTRACT_TEST (
       test_spot_delivery_ready_changed_implies_first_publish_delivery);
     RUN_MONITOR_SERVICE_CONTRACT_TEST (

@@ -40,23 +40,15 @@ typedef void (zlink_free_fn) (void *data_, void *hint_);
 
 ## 상수
 
-### 메시지 플래그
+### 문자열 메타데이터 속성
 
-| 상수 | 값 | 설명 |
-|------|-----|------|
-| `ZLINK_MORE` | 1 | 멀티파트 메시지에서 더 많은 파트가 뒤따름을 나타냄 |
-| `ZLINK_SHARED` | 3 | 메시지 데이터가 공유됨 (참조 카운팅) |
+다음 문자열 메타데이터 키는 `zlink_msg_gets()`로 조회할 수 있습니다:
 
-### 메시지 속성
-
-다음 속성 식별자는 `zlink_msg_get()`, `zlink_msg_set()`, `zlink_msg_gets()`에서
-사용됩니다:
-
-| 함수 | 속성 | 설명 |
-|------|------|------|
-| `zlink_msg_more()` / `zlink_msg_get()` | `ZLINK_MORE` | 더 많은 파트가 뒤따르는지 여부 |
-| `zlink_msg_get()` | `ZLINK_SHARED` | 메시지가 공유되었는지 여부 |
-| `zlink_msg_gets()` | 문자열 키 | 키 이름으로 메타데이터 조회 (예: `"Socket-Type"`, `"Identity"`, `"Peer-Address"`) |
+| 키 | 설명 |
+|------|------|
+| `"Socket-Type"` | 피어의 소켓 타입 |
+| `"Identity"` | 피어 아이덴티티 |
+| `"Peer-Address"` | 피어 네트워크 주소 |
 
 ## 함수
 
@@ -126,34 +118,6 @@ int zlink_msg_init_data (
 **스레드 안전성:** 스레드 안전하지 않습니다.
 
 **참고:** `zlink_free_fn`, `zlink_msg_data`
-
----
-
-### zlink_msg_send
-
-소켓에서 메시지를 송신합니다.
-
-```c
-int zlink_msg_send (zlink_msg_t *msg_, void *s_, int flags_);
-```
-
-소켓 `s_`에서 메시지 `msg_`를 송신합니다. 성공 시 메시지의 소유권이
-라이브러리로 이전되고 `msg_`는 빈 메시지가 됩니다(`zlink_msg_init()`이 호출된
-것과 같은 상태). 호출자는 성공적인 송신 후 원래 메시지 데이터에 접근해서는
-안 됩니다. 실패 시 메시지는 변경되지 않으며 호출자가 소유권을 유지합니다.
-
-`flags_`는 0, `ZLINK_DONTWAIT`, `ZLINK_SNDMORE`, 또는 이들의 비트 OR 조합일 수
-있습니다. `ZLINK_SNDMORE`는 멀티파트 메시지에서 더 많은 파트가 뒤따를 것임을
-나타냅니다.
-
-**반환값:** 성공 시 메시지의 바이트 수, 실패 시 -1 (errno가 설정됨).
-
-**에러:** 소켓이 즉시 송신할 수 없고 `ZLINK_DONTWAIT`가 설정된 경우 `EAGAIN`.
-Context가 종료된 경우 `ETERM`.
-
-**스레드 안전성:** 동일 소켓에서 스레드 안전하지 않습니다.
-
-**참고:** `zlink_send`
 
 ---
 
@@ -256,66 +220,22 @@ size_t zlink_msg_size (const zlink_msg_t *msg_);
 
 ---
 
-### zlink_msg_more
+### zlink_msg_is_shared
 
-멀티파트 메시지에서 더 많은 파트가 뒤따르는지 확인합니다.
+메시지 스토리지가 공유 상태인지 반환합니다.
 
 ```c
-int zlink_msg_more (const zlink_msg_t *msg_);
+int zlink_msg_is_shared (const zlink_msg_t *msg_);
 ```
 
-메시지의 `ZLINK_MORE` 플래그를 조회합니다. 메시지가 멀티파트 시퀀스의 일부이고
-더 많은 파트가 뒤따르면 1을, 그렇지 않으면 0을 반환합니다. 일반적으로
-수신 콜백 내에서 추가 파트가 있는지 확인하기 위해 호출합니다.
+`zlink_msg_copy()`를 통해 여러 `zlink_msg_t` 인스턴스가 동일한 스토리지를
+참조하고 있으면 1을 반환하고, 그렇지 않으면 0을 반환합니다.
 
-**반환값:** 더 많은 파트가 뒤따르면 1, 그렇지 않으면 0.
+**반환값:** 공유 상태이면 1, 아니면 0.
 
 **스레드 안전성:** 스레드 안전하지 않습니다.
 
-**참고:** `zlink_msg_get`, `ZLINK_MORE`
-
----
-
-### zlink_msg_get
-
-정수형 메시지 속성을 가져옵니다.
-
-```c
-int zlink_msg_get (const zlink_msg_t *msg_, int property_);
-```
-
-메시지에서 정수형 속성 값을 가져옵니다. 유효한 속성에는 `ZLINK_MORE`와
-`ZLINK_SHARED`가 포함됩니다.
-
-**반환값:** 성공 시 속성 값, 실패 시 -1 (알 수 없는 속성의 경우 errno가
-`EINVAL`로 설정됨).
-
-**에러:** 속성이 인식되지 않으면 `EINVAL`.
-
-**스레드 안전성:** 스레드 안전하지 않습니다.
-
-**참고:** `zlink_msg_set`, `zlink_msg_gets`
-
----
-
-### zlink_msg_set
-
-정수형 메시지 속성을 설정합니다.
-
-```c
-int zlink_msg_set (zlink_msg_t *msg_, int property_, int optval_);
-```
-
-메시지의 정수형 속성 값을 설정합니다. 쓰기 가능한 속성의 집합은 구현에 따라
-정의됩니다.
-
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
-
-**에러:** 속성이 인식되지 않거나 쓰기 불가능한 경우 `EINVAL`.
-
-**스레드 안전성:** 스레드 안전하지 않습니다.
-
-**참고:** `zlink_msg_get`
+**참고:** `zlink_msg_copy`
 
 ---
 
@@ -338,7 +258,7 @@ const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_);
 
 **스레드 안전성:** 스레드 안전하지 않습니다.
 
-**참고:** `zlink_msg_get`
+**참고:** `zlink_msg_is_shared`
 
 ---
 

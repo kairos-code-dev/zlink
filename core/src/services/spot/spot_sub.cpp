@@ -18,6 +18,12 @@
 
 namespace zlink
 {
+static bool spot_frame_has_more (const zlink_msg_t &msg_)
+{
+    return (reinterpret_cast<const msg_t *> (&msg_)->flags () & msg_t::more)
+           != 0;
+}
+
 static const uint32_t spot_sub_tag_value = 0x1e6700da;
 static const char spot_ready_probe_prefix[] = "__zlink.ready__/";
 static const char spot_ready_probe_marker[] =
@@ -876,7 +882,7 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
         }
         frames.push_back (topic_frame);
 
-        if (zlink_msg_more (&topic_frame)) {
+        if (spot_frame_has_more (topic_frame)) {
             zlink_msg_t first_payload_frame;
             zlink_msg_init (&first_payload_frame);
             rc = socket->recv (reinterpret_cast<msg_t *> (&first_payload_frame), 0);
@@ -886,7 +892,7 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
                 return -1;
             }
 
-            if (!zlink_msg_more (&first_payload_frame)) {
+            if (!spot_frame_has_more (first_payload_frame)) {
                 const char *topic_data = static_cast<const char *> (
                   zlink_msg_data (&frames[0]));
                 const size_t topic_size = zlink_msg_size (&frames[0]);
@@ -956,7 +962,7 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
                     return -1;
                 }
                 frames.push_back (frame);
-                if (!zlink_msg_more (&frame))
+                if (!spot_frame_has_more (frame))
                     break;
             }
         }

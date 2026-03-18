@@ -39,7 +39,7 @@ Allocates a buffer of the specified size, then fills it directly via `zlink_msg_
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 1024);
 memcpy(zlink_msg_data(&msg), source_data, 1024);
-zlink_msg_send(&msg, socket, 0);
+zlink_send(socket, &msg, 1, 0);
 ```
 
 **When to use:** When creating a message from data in your own buffer. Safe to free the original buffer immediately.
@@ -59,7 +59,7 @@ memcpy(buf, source_data, 4096);
 zlink_msg_t msg;
 zlink_msg_init_data(&msg, buf, 4096, my_free, NULL);
 /* buf is now owned by the message. Do not free it directly */
-zlink_msg_send(&msg, socket, 0);
+zlink_send(socket, &msg, 1, 0);
 /* my_free(buf, NULL) is called automatically after sending completes */
 ```
 
@@ -72,19 +72,32 @@ zlink_msg_send(&msg, socket, 0);
 ```c
 void *data = zlink_msg_data(&msg);
 size_t size = zlink_msg_size(&msg);
-int more = zlink_msg_more(&msg);  /* Whether the next frame exists */
 ```
+
+> **Removed:** `zlink_msg_more()` and `ZLINK_MORE` have been removed from the header.
+> With the multipart parts-array API, the `more` flag is no longer needed in
+> application code.
 
 ### 3.3 Sending
 
 ```c
-/* On success, msg ownership transfers to the library */
-int rc = zlink_msg_send(&msg, socket, 0);
+/* Multipart send: pass an array of msg parts */
+zlink_msg_t parts[2];
+zlink_msg_init_size(&parts[0], 6);
+memcpy(zlink_msg_data(&parts[0]), "header", 6);
+zlink_msg_init_size(&parts[1], 4);
+memcpy(zlink_msg_data(&parts[1]), "body", 4);
+
+int rc = zlink_send(socket, parts, 2, 0);
 if (rc == -1) {
-    /* Failure: caller still owns msg */
-    zlink_msg_close(&msg);
+    /* Failure: caller still owns parts */
+    for (size_t i = 0; i < 2; i++)
+        zlink_msg_close(&parts[i]);
 }
 ```
+
+> **Legacy:** `zlink_msg_send()` is still present in the header but planned for
+> removal. Use `zlink_send()` with a parts array instead.
 
 ### 3.4 Receiving
 
@@ -114,33 +127,36 @@ zlink_msg_close(&msg);
 
 | Situation | Ownership | Subsequent Action |
 |-----------|-----------|-------------------|
-| `zlink_msg_send` succeeds | Transferred to library | msg is empty, must not be accessed |
-| `zlink_msg_send` fails | Caller still owns | Must call `zlink_msg_close()` |
+| `zlink_send` succeeds | Transferred to library | msg parts are empty, must not be accessed |
+| `zlink_send` fails | Caller still owns | Must call `zlink_msg_close()` per part |
 | Handler callback delivers msg | Library provides msg parts | Must call `zlink_msg_close()` per part |
 | `zlink_msg_close` | Resources freed | msg can be reused (re-initialization required) |
 
 ### Ownership Rules in Practice
 
 ```c
-/* Pattern 1: Send succeeds → msg automatically cleaned up */
-zlink_msg_t msg;
-zlink_msg_init_size(&msg, 5);
-memcpy(zlink_msg_data(&msg), "Hello", 5);
-int rc = zlink_msg_send(&msg, socket, 0);
+/* Pattern 1: Send succeeds → msg parts automatically cleaned up */
+zlink_msg_t part;
+zlink_msg_init_size(&part, 5);
+memcpy(zlink_msg_data(&part), "Hello", 5);
+int rc = zlink_send(socket, &part, 1, 0);
 if (rc != -1) {
-    /* Success: msg is now empty. Calling close is safe but unnecessary */
+    /* Success: part is now empty. Calling close is safe but unnecessary */
 }
 
 /* Pattern 2: Send fails → manual cleanup required */
-rc = zlink_msg_send(&msg, socket, ZLINK_DONTWAIT);
+zlink_msg_t part2;
+zlink_msg_init_size(&part2, 5);
+memcpy(zlink_msg_data(&part2), "Hello", 5);
+rc = zlink_send(socket, &part2, 1, ZLINK_DONTWAIT);
 if (rc == -1) {
-    /* Failure: msg is still valid. Must close */
-    zlink_msg_close(&msg);
+    /* Failure: part2 is still valid. Must close */
+    zlink_msg_close(&part2);
 }
 
 /* Pattern 3: Accessing msg data after send — dangerous! */
-zlink_msg_send(&msg, socket, 0);
-/* zlink_msg_data(&msg);  ← undefined behavior! */
+zlink_send(socket, &part, 1, 0);
+/* zlink_msg_data(&part);  ← undefined behavior! */
 ```
 
 ## 5. Zero-Copy Pattern Details
@@ -179,7 +195,7 @@ zlink_msg_close(&msg);  /* → my_free(buf, NULL) called */
 
 /* 2. Called after sending completes */
 zlink_msg_init_data(&msg, buf, size, my_free, NULL);
-zlink_msg_send(&msg, socket, 0);
+zlink_send(socket, &msg, 1, 0);
 /* my_free(buf, NULL) called when sending completes */
 
 /* 3. Called when original is freed after copy */
@@ -201,27 +217,29 @@ Constant (literal, static) data can be sent without copying by using
 /* Single frame */
 zlink_msg_t msg;
 zlink_msg_init_data(&msg, (void *)"Hello", 5, NULL, NULL);
-zlink_msg_send(&msg, socket, 0);
+zlink_send(socket, &msg, 1, 0);
 
-/* Multipart */
-zlink_msg_t part1, part2;
-zlink_msg_init_data(&part1, (void *)"foo", 3, NULL, NULL);
-zlink_msg_send(&part1, socket, ZLINK_SNDMORE);
-zlink_msg_init_data(&part2, (void *)"foobar", 6, NULL, NULL);
-zlink_msg_send(&part2, socket, 0);
+/* Multipart — parts array */
+zlink_msg_t parts[2];
+zlink_msg_init_data(&parts[0], (void *)"foo", 3, NULL, NULL);
+zlink_msg_init_data(&parts[1], (void *)"foobar", 6, NULL, NULL);
+zlink_send(socket, parts, 2, 0);
 ```
 
 > Reference: `core/tests/test_msg_flags.cpp` — `test_shared_const()`
 
 ## 6. Multipart Message Patterns in Practice
 
-Multipart messages send consecutive frames using the `ZLINK_SNDMORE` flag. The receiving side checks whether the next frame exists using `zlink_msg_more()`.
+Multipart messages are sent as a parts array in a single `zlink_send()` call.
 
 ### Pattern 1: Request-Reply (DEALER/ROUTER)
 
 ```c
 /* DEALER → ROUTER: send single frame */
-zlink_send(dealer, "request", 7, 0);
+zlink_msg_t req;
+zlink_msg_init_size(&req, 7);
+memcpy(zlink_msg_data(&req), "request", 7);
+zlink_send(dealer, &req, 1, 0);
 
 /* ROUTER handler callback receives: source_rid + parts */
 void on_request(const zlink_routing_id_t *source_rid,
@@ -230,9 +248,11 @@ void on_request(const zlink_routing_id_t *source_rid,
 {
     /* parts[0] = "request", source_rid = DEALER's routing_id */
 
-    /* ROUTER reply: routing_id + data */
-    zlink_send(router, source_rid->data, source_rid->size, ZLINK_SNDMORE);
-    zlink_send(router, "reply", 5, 0);
+    /* ROUTER reply: directed send via zlink_send_rid */
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "reply", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
 
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
@@ -244,9 +264,13 @@ void on_request(const zlink_routing_id_t *source_rid,
 ### Pattern 2: Topic + Data (PUB/SUB)
 
 ```c
-/* PUB: [topic][payload] */
-zlink_send(pub, "weather", 7, ZLINK_SNDMORE);
-zlink_send(pub, "sunny", 5, 0);
+/* PUB: [topic][payload] as parts array */
+zlink_msg_t pub_parts[2];
+zlink_msg_init_size(&pub_parts[0], 7);
+memcpy(zlink_msg_data(&pub_parts[0]), "weather", 7);
+zlink_msg_init_size(&pub_parts[1], 5);
+memcpy(zlink_msg_data(&pub_parts[1]), "sunny", 5);
+zlink_send(pub, pub_parts, 2, 0);
 
 /* SUB handler callback receives topic and payload separately */
 void on_spot(const zlink_routing_id_t *source_rid,
@@ -293,47 +317,47 @@ zlink_msg_init(&copy);
 zlink_msg_copy(&copy, &original);
 
 /* Both original and copy reference the same data */
-/* ZLINK_SHARED property is set to 1 */
-int shared = zlink_msg_get(&copy, ZLINK_SHARED);
+/* shared property is set to 1 */
+int shared = zlink_msg_is_shared(&copy);
 /* shared == 1 */
 
 zlink_msg_close(&original);
 zlink_msg_close(&copy);  /* Actual memory freed when last reference is released */
 ```
 
-> Reference: `core/tests/test_msg_flags.cpp` — `test_shared_refcounted()`: Verifying SHARED property after copy
+> Reference: `core/tests/test_msg_flags.cpp` — `test_shared_refcounted()`: Verifying shared property after copy
 
-### ZLINK_SHARED Property
+### Shared Property — zlink_msg_is_shared
 
 ```c
 /* Reference-counted message */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 1024);
-int shared = zlink_msg_get(&msg, ZLINK_SHARED);  /* 0: single owner */
+int shared = zlink_msg_is_shared(&msg);  /* 0: single owner */
 
 zlink_msg_t copy;
 zlink_msg_init(&copy);
 zlink_msg_copy(&copy, &msg);
-shared = zlink_msg_get(&copy, ZLINK_SHARED);  /* 1: shared */
+shared = zlink_msg_is_shared(&copy);  /* 1: shared */
 
 /* Constant data message */
 zlink_msg_t const_msg;
 zlink_msg_init_data(&const_msg, (void *)"TEST", 5, NULL, NULL);
-shared = zlink_msg_get(&const_msg, ZLINK_SHARED);  /* 1: always shared */
+shared = zlink_msg_is_shared(&const_msg);  /* 1: always shared */
 ```
 
-> Reference: `core/tests/test_msg_flags.cpp` — `test_shared_const()`: SHARED property of constant messages
+> Reference: `core/tests/test_msg_flags.cpp` — `test_shared_const()`: shared property of constant messages
 
 ## 8. Error Handling
 
 ### Send Failure
 
 ```c
-zlink_msg_t msg;
-zlink_msg_init_size(&msg, 100);
-memcpy(zlink_msg_data(&msg), data, 100);
+zlink_msg_t part;
+zlink_msg_init_size(&part, 100);
+memcpy(zlink_msg_data(&part), data, 100);
 
-int rc = zlink_msg_send(&msg, socket, ZLINK_DONTWAIT);
+int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
 if (rc == -1) {
     if (errno == EAGAIN) {
         /* HWM exceeded: retry later */
@@ -342,44 +366,48 @@ if (rc == -1) {
     } else if (errno == ETERM) {
         /* Context terminated */
     }
-    /* On failure, msg is still valid → must close */
-    zlink_msg_close(&msg);
+    /* On failure, part is still valid -> must close */
+    zlink_msg_close(&part);
 }
 ```
 
-### Partial Send (Multipart)
+## 9. zlink_send (Multipart Msg-Based)
 
-If sending a middle frame of a multipart message fails, the previously sent frames are already in the queue. Since sending is not atomic, the receiving side must be prepared to handle incomplete multipart messages.
+`zlink_send()` now takes a `zlink_msg_t` parts array and a part count:
 
 ```c
-/* Frame 1 sent successfully */
-zlink_send(socket, "header", 6, ZLINK_SNDMORE);
-
-/* Frame 2 send fails (HWM, etc.) */
-int rc = zlink_send(socket, "body", 4, ZLINK_DONTWAIT);
-if (rc == -1) {
-    /* header is already in the queue — incomplete message delivered to receiver */
-}
+int zlink_send(void *s_, zlink_msg_t *parts_, size_t part_count_, zlink_send_flags_t flags_);
 ```
 
-## 9. zlink_send vs zlink_msg_send
-
-| | `zlink_send` | `zlink_msg_send` |
-|---|---|---|
-| **Input** | Buffer pointer + size | zlink_msg_t |
-| **Copy** | Creates msg internally + copies | Zero-copy possible |
-| **Ownership** | Original buffer retained | msg ownership transferred |
-| **When to use** | Small data, simple sends | Large data, zero-copy |
-
 ```c
-/* Simple send */
-zlink_send(socket, "Hello", 5, 0);
+/* Single-part send */
+zlink_msg_t part;
+zlink_msg_init_size(&part, 5);
+memcpy(zlink_msg_data(&part), "Hello", 5);
+zlink_send(socket, &part, 1, 0);
 
 /* Zero-copy send */
-zlink_msg_t msg;
-zlink_msg_init_data(&msg, large_buf, large_size, my_free, NULL);
-zlink_msg_send(&msg, socket, 0);
+zlink_msg_t zcmsg;
+zlink_msg_init_data(&zcmsg, large_buf, large_size, my_free, NULL);
+zlink_send(socket, &zcmsg, 1, 0);
+
+/* Multipart send */
+zlink_msg_t parts[2];
+zlink_msg_init_size(&parts[0], 6);
+memcpy(zlink_msg_data(&parts[0]), "header", 6);
+zlink_msg_init_size(&parts[1], 4);
+memcpy(zlink_msg_data(&parts[1]), "body", 4);
+zlink_send(socket, parts, 2, 0);
 ```
+
+For ROUTER directed sends, use `zlink_send_rid()`:
+
+```c
+zlink_send_rid(router, &target_rid, parts, part_count, 0);
+```
+
+> **Legacy:** `zlink_msg_send()` is still present in the header but planned for
+> removal. Migrate all call sites to `zlink_send()` with a parts array.
 
 ---
 [← Routing ID](08-routing-id.md) | [Performance →](10-performance.md)

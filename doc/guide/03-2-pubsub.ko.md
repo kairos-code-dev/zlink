@@ -40,7 +40,10 @@ void *pub = zlink_socket(ctx, ZLINK_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
 /* 메시지 발행 — 구독자가 없으면 드롭 */
-zlink_send(pub, "weather: sunny", 14, 0);
+zlink_msg_t part;
+zlink_msg_init_size(&part, 14);
+memcpy(zlink_msg_data(&part), "weather: sunny", 14);
+zlink_publish(pub, NULL, &part, 1, 0);
 ```
 
 ### 구독자 (SUB)
@@ -60,7 +63,7 @@ void on_topic(const zlink_routing_id_t *source_rid,
 }
 
 void *sub = zlink_socket(ctx, ZLINK_SUB);
-zlink_recv_spot_handler(sub, on_topic, NULL);
+zlink_subscribe_handler(sub, on_topic, NULL);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 
 /* 토픽 구독 — connect 후 설정 */
@@ -76,17 +79,17 @@ zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "weather", 7);
 | 소켓 | 방향 | 등록 호출 | 비고 |
 |------|------|----------|------|
 | PUB | 송신 전용 | N/A | 수신 불가; 핸들러를 받지 않음 |
-| SUB | 수신 전용 | `zlink_recv_spot_handler()` | `topic` + `parts[]` — prefix match로 토픽 추출 |
-| XPUB | 양방향 | `zlink_recv_xpub_handler()` | 데이터가 아닌 구독 이벤트 수신 |
-| XSUB | 양방향 | `zlink_recv_spot_handler()` | 구독 프레임 송신; fair-queue로 데이터 수신 |
+| SUB | 수신 전용 | `zlink_subscribe_handler()` | `topic` + `parts[]` — prefix match로 토픽 추출 |
+| XPUB | 양방향 | `zlink_subscription_event_handler()` | 데이터가 아닌 구독 이벤트 수신 |
+| XSUB | 양방향 | `zlink_subscribe_handler()` | 구독 프레임 송신; fair-queue로 데이터 수신 |
 
-SUB가 `zlink_recv_handler()` 대신 `zlink_recv_spot_handler()`를
+SUB가 `zlink_recv_handler()` 대신 `zlink_subscribe_handler()`를
 사용하는 이유는, I/O 스레드가 매칭된 토픽을 페이로드에서 분리한 뒤
 콜백을 호출하기 때문이다 — 핸들러는 `topic`과 `parts[]`를 별도
 파라미터로 수신한다.
 
 **Pull 모드**도 SUB에서 사용 가능하다: 핸들러를 부착하지 않고
-`zlink_recv()`를 호출하면 토픽 분리 없이 raw 프레임을 수신한다.
+`zlink_recv()`를 호출하면 토픽 분리 없이 멀티파트 메시지를 수신한다.
 
 > PUB의 송신 큐가 가득 차면(HWM) 블로킹 대신 메시지를 **드롭**한다.
 > 상세는 [성능 가이드](10-performance.ko.md)를 참고.
@@ -132,7 +135,10 @@ PUB/SUB 메시지는 두 가지 형식을 사용할 수 있다.
 
 ```c
 /* 발행 */
-zlink_send(pub, "weather: sunny", 14, 0);
+zlink_msg_t part;
+zlink_msg_init_size(&part, 14);
+memcpy(zlink_msg_data(&part), "weather: sunny", 14);
+zlink_publish(pub, NULL, &part, 1, 0);
 
 /* SUB 핸들러 콜백 수신:
    topic = "weather: sunny" (전체 매치 prefix)
@@ -145,8 +151,12 @@ zlink_send(pub, "weather: sunny", 14, 0);
 
 ```c
 /* 발행: [topic][payload] */
-zlink_send(pub, "weather", 7, ZLINK_SNDMORE);
-zlink_send(pub, "sunny", 5, 0);
+zlink_msg_t parts[2];
+zlink_msg_init_size(&parts[0], 7);
+memcpy(zlink_msg_data(&parts[0]), "weather", 7);
+zlink_msg_init_size(&parts[1], 5);
+memcpy(zlink_msg_data(&parts[1]), "sunny", 5);
+zlink_publish(pub, NULL, parts, 2, 0);
 
 /* SUB 핸들러 콜백 수신:
    topic = "weather"
@@ -181,13 +191,16 @@ zlink_bind(pub, "tcp://*:5556");
 
 /* SUB — 모든 메시지 수신 */
 void *sub = zlink_socket(ctx, ZLINK_SUB);
-zlink_recv_spot_handler(sub, on_topic, NULL);
+zlink_subscribe_handler(sub, on_topic, NULL);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
 
 msleep(100);  /* 구독이 PUB에 도달할 시간 */
 
-zlink_send(pub, "test", 4, 0);
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "test", 4);
+zlink_publish(pub, NULL, &msg, 1, 0);
 
 /* on_topic 콜백이 비동기로 수신 */
 ```
@@ -226,15 +239,48 @@ zlink_connect(sub, "tcp://pub2:5557");
 
 ## 7. PUB/SUB 주의사항
 
-### Slow Subscriber (HWM 초과 시 드롭)
+### Slow Subscriber (HWM 초과 시 drop)
 
-PUB은 느린 구독자에게 메시지를 드롭한다. 수신 속도가 발행 속도보다 느리면 HWM 도달 후 메시지 유실.
+PUB/XPUB는 기본적으로 **lossy mode**로 동작한다. 느린 subscriber의
+send queue가 HWM에 도달하면 해당 subscriber에게 보내는 message를
+**silent drop**한다 (error 반환 없음).
 
 ```c
-/* HWM 조정으로 버퍼 확대 */
+/* 대응 1: HWM 조정으로 buffer 확대 */
 int hwm = 100000;
 zlink_setsockopt(pub, ZLINK_SNDHWM, &hwm, sizeof(hwm));
 ```
+
+#### XPUB_NODROP — drop 대신 backpressure
+
+`ZLINK_XPUB_NODROP`을 활성화하면 lossy mode가 꺼진다. HWM 도달 시
+message를 drop하지 않고 `EAGAIN`을 반환하여 caller가 직접
+backpressure를 제어할 수 있다.
+
+```c
+/* XPUB에서 NODROP 활성화 */
+void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+int nodrop = 1;
+zlink_setsockopt(xpub, ZLINK_XPUB_NODROP, &nodrop, sizeof(nodrop));
+
+/* send 시 HWM 도달하면 EAGAIN 반환 (drop 아님) */
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 5);
+memcpy(zlink_msg_data(&msg), "hello", 5);
+int rc = zlink_publish(xpub, NULL, &msg, 1, ZLINK_DONTWAIT);
+if (rc == -1 && zlink_errno() == EAGAIN) {
+    /* HWM 도달 — retry 또는 backpressure 로직 */
+    zlink_msg_close(&msg);
+}
+```
+
+| Mode | HWM 도달 시 동작 | 사용 시점 |
+|------|------------------|-----------|
+| 기본 (lossy) | Silent drop — error 없이 message 유실 | 최신 data만 중요한 경우 (sensor, tick) |
+| `XPUB_NODROP=1` | `EAGAIN` 반환 — caller가 제어 | Message 유실이 허용되지 않는 경우 |
+
+> `ZLINK_XPUB_NODROP`은 XPUB socket 전용 option이다.
+> 일반 PUB에서는 사용할 수 없다.
 
 ### Late Joiner (구독 전 메시지 유실)
 
@@ -250,12 +296,21 @@ msleep(100);  /* 구독 전파 대기 */
 
 ### 방향 제약
 
-```c
-/* PUB은 수신 불가 → ENOTSUP */
-/* PUB 소켓은 생성 시 핸들러를 받지 않음 */
+PUB/SUB는 각각 전용 API만 사용 가능하다:
 
-/* SUB는 send 불가 → ENOTSUP */
-zlink_send(sub, "data", 4, 0);  /* errno = ENOTSUP */
+```c
+/* PUB: zlink_publish()로 송신. recv handler 부착 불가 */
+zlink_msg_t part;
+zlink_msg_init_size(&part, 5);
+memcpy(zlink_msg_data(&part), "sunny", 5);
+zlink_publish(pub, "weather", &part, 1, 0);  /* OK */
+
+/* PUB에 zlink_send() 사용 → ENOTSUP */
+zlink_send(pub, &part, 1, 0);  /* errno = ENOTSUP */
+
+/* SUB: zlink_subscribe_handler()로 수신. send/publish 불가 */
+zlink_publish(sub, "weather", &part, 1, 0);  /* errno = ENOTSUP */
+zlink_send(sub, &part, 1, 0);               /* errno = ENOTSUP */
 ```
 
 ---
@@ -264,15 +319,117 @@ zlink_send(sub, "data", 4, 0);  /* errno = ENOTSUP */
 
 ## 8. XPUB/XSUB 개요
 
-XPUB/XSUB는 구독 프레임을 애플리케이션에서 직접 다룰 수 있는 고급 발행-구독 소켓이다. 프록시/브로커 구축, 구독 모니터링, Last-Value Caching에 사용된다.
+XPUB/XSUB는 subscription frame을 application에서 직접 다룰 수 있는
+고급 publish-subscribe socket이다. Proxy/broker 구축, subscription
+monitoring, Last-Value Caching에 사용된다.
+
+### SUB vs XSUB — 핵심 차이
+
+| | SUB | XSUB |
+|---|-----|------|
+| **Subscribe** | `setsockopt(ZLINK_SUBSCRIBE)` (내부 자동 전송) | `zlink_subscribe()` 또는 직접 send |
+| **Send** | 불가 (`ENOTSUP`) | 가능 — subscription frame을 upstream으로 전달 |
+| **Recv** | topic + payload 분리 수신 | 동일 |
+| **구현** | `xsub_t` subclass, `xsend()` 차단 | base class |
+
+SUB는 send가 불가능하므로, downstream SUB에서 올라온 subscription
+request를 upstream PUB로 **forward할 수 없다**. 이것이 XSUB가 필요한
+이유이다.
+
+### PUB vs XPUB — 핵심 차이
+
+| | PUB | XPUB |
+|---|-----|------|
+| **Recv** | 불가 | Subscription event를 callback으로 수신 |
+| **Send** | 동일 (topic broadcast) | 동일 |
+| **Handler** | N/A | `zlink_subscription_event_handler()` |
+
+XPUB는 어떤 client가 어떤 topic을 구독/해지했는지 알 수 있다.
+
+### Proxy에서의 XSUB/XPUB 역할
 
 ```
-┌─────┐     ┌──────────────┐     ┌─────┐
-│ PUB │────►│ XSUB ── XPUB │────►│ SUB │
-└─────┘     │   (Proxy)    │     └─────┘
-┌─────┐     │              │     ┌─────┐
-│ PUB │────►│              │────►│ SUB │
-└─────┘     └──────────────┘     └─────┘
+          data flow ───────────────────────►
+          subscription flow ◄──────────────
+
+┌─────┐              Proxy               ┌─────┐
+│ PUB │──connect──►┌──────┐◄──connect──  │ SUB │
+│     │            │ XSUB │   ┌──────┐   │     │
+└─────┘            │  │   │   │ XPUB │   └─────┘
+┌─────┐            │  │   │   │      │   ┌─────┐
+│ PUB │──connect──►│  ▼   │   │      │◄──│ SUB │
+│     │            │ data ├──►│ data │   │     │
+└─────┘            │      │   │      │   └─────┘
+                   └──────┘   └──┬───┘
+                      ▲          │
+                      │          ▼
+                   subscribe  on_subscription
+                   forward    callback 수신
+```
+
+**Subscription 전파 흐름:**
+
+1. SUB가 `"weather"` topic 구독
+2. XPUB의 `subscription_event_handler` callback이
+   `(subscribed=1, topic="weather")` 수신
+3. Proxy가 XSUB에 `zlink_subscribe(xsub, "weather")` 호출 →
+   upstream PUB에 subscription frame `[0x01 "weather"]` 전달
+4. PUB가 `"weather"` data를 publish
+5. XSUB가 data recv → XPUB가 matching SUB에게 전달
+
+**일반 SUB로는 3번이 불가능하다** — SUB는 send가 차단되어 있어
+subscription을 upstream으로 forward할 수 없다. 이것이 proxy의
+frontend에 반드시 XSUB를 사용하는 이유이다.
+
+### Proxy가 필요한 이유
+
+PUB/SUB를 직접 연결하면 구조적 한계가 있다:
+
+```
+직접 연결 (proxy 없음)               proxy 사용
+─────────────────────               ──────────────
+
+┌─────┐     ┌─────┐                 ┌─────┐     ┌───────────┐     ┌─────┐
+│PUB 1│────►│SUB 1│                 │PUB 1│──►  │           │  ──►│SUB 1│
+└─────┘     └─────┘                 └─────┘     │   XSUB    │     └─────┘
+┌─────┐     ┌─────┐                 ┌─────┐     │     │     │     ┌─────┐
+│PUB 2│────►│SUB 2│                 │PUB 2│──►  │     ▼     │  ──►│SUB 2│
+└─────┘     └─────┘                 └─────┘     │   XPUB    │     └─────┘
+                                                │  (Proxy)  │
+ N PUB × M SUB = N×M 연결                       └───────────┘
+ PUB/SUB가 서로의 주소를 알아야 함
+                                                 N + M 연결
+                                                 PUB/SUB는 proxy 주소만 알면 됨
+```
+
+**Proxy의 주요 용도:**
+
+| 용도 | 설명 |
+|------|------|
+| **연결 수 감소** | N×M 직접 연결 → N+M (PUB→proxy, proxy→SUB) |
+| **주소 decoupling** | PUB와 SUB가 서로의 endpoint를 알 필요 없음. Proxy 주소만 알면 됨 |
+| **동적 확장** | PUB/SUB가 독립적으로 추가·제거 가능. 상대방에 영향 없음 |
+| **Subscription 변환** | XPUB MANUAL mode로 topic remapping, filtering 가능 |
+| **Network bridging** | 서로 다른 network segment 간 PUB/SUB 연결 (예: inproc ↔ tcp) |
+| **Monitoring** | Capture socket으로 통과하는 message를 기록 |
+
+`zlink_proxy()`는 XSUB↔XPUB 간 message와 subscription을
+양방향으로 자동 전달하는 built-in proxy이다:
+
+```c
+/* frontend: PUB들이 connect */
+void *xsub = zlink_socket(ctx, ZLINK_XSUB);
+zlink_bind(xsub, "tcp://*:5556");
+
+/* backend: SUB들이 connect */
+void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+zlink_bind(xpub, "tcp://*:5557");
+
+/* capture (optional): 통과하는 모든 message를 기록 */
+void *capture = zlink_socket(ctx, ZLINK_PUB);
+zlink_bind(capture, "tcp://*:5558");
+
+zlink_proxy(xsub, xpub, capture);  /* blocking — 별도 thread에서 실행 */
 ```
 
 ## 9. 구독 프레임 형식
@@ -285,29 +442,28 @@ XPUB/XSUB 간의 구독/해제 프레임은 다음 형식을 따른다:
 | `0x00` + topic | 구독 해제 |
 
 ```c
-/* XSUB에서 구독 전송 */
-const uint8_t subscribe[] = {0x01, 'A'};    /* "A" 토픽 구독 */
-zlink_send(xsub, subscribe, 2, 0);
+/* XSUB에서 구독 */
+zlink_subscribe(xsub, "A");
 
 /* XSUB에서 구독 해제 */
-const uint8_t unsubscribe[] = {0x00, 'A'};  /* "A" 토픽 해제 */
-zlink_send(xsub, unsubscribe, 2, 0);
+zlink_unsubscribe(xsub, "A");
 ```
 
 XPUB는 구독 프레임을 콜백 핸들러로 수신한다:
 
 ```c
-void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len,
+void on_subscription(const zlink_routing_id_t *source_rid,
+                     int subscribed, const char *topic, size_t topic_len,
                      void *userdata)
 {
     if (subscribed)
-        printf("새 구독: %.*s\n", (int)topic_len, (const char *)topic);
+        printf("새 구독: %.*s\n", (int)topic_len, topic);
     else
-        printf("구독 해제: %.*s\n", (int)topic_len, (const char *)topic);
+        printf("구독 해제: %.*s\n", (int)topic_len, topic);
 }
 
 void *xpub = zlink_socket(ctx, ZLINK_XPUB);
-zlink_recv_xpub_handler(xpub, on_subscription, NULL);
+zlink_subscription_event_handler(xpub, on_subscription, NULL);
 ```
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
@@ -335,8 +491,15 @@ zlink_setsockopt(xpub, ZLINK_XPUB_MANUAL, &manual, sizeof(manual));
 zlink_setsockopt(xpub, ZLINK_SUBSCRIBE, "XA", 2);
 
 /* 발행 */
-zlink_send(xpub, "A", 1, 0);   /* 구독자에게 도달하지 않음 */
-zlink_send(xpub, "XA", 2, 0);  /* 구독자가 수신 */
+zlink_msg_t msg_a;
+zlink_msg_init_size(&msg_a, 1);
+memcpy(zlink_msg_data(&msg_a), "A", 1);
+zlink_publish(xpub, NULL, &msg_a, 1, 0);   /* 구독자에게 도달하지 않음 */
+
+zlink_msg_t msg_xa;
+zlink_msg_init_size(&msg_xa, 2);
+memcpy(zlink_msg_data(&msg_xa), "XA", 2);
+zlink_publish(xpub, NULL, &msg_xa, 1, 0);  /* 구독자가 수신 */
 ```
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `test_basic()`: A 구독 요청 → B로 변환
@@ -369,7 +532,8 @@ int manual = 1;
 zlink_setsockopt(xpub, ZLINK_XPUB_MANUAL, &manual, sizeof(manual));
 
 /* on_subscription 콜백이 구독 요청을 처리 */
-void on_sub(int subscribed, const uint8_t *topic, size_t topic_len,
+void on_sub(const zlink_routing_id_t *source_rid,
+            int subscribed, const char *topic, size_t topic_len,
             void *userdata)
 {
     if (subscribed) {
@@ -377,18 +541,12 @@ void on_sub(int subscribed, const uint8_t *topic, size_t topic_len,
         zlink_setsockopt(xpub, ZLINK_SUBSCRIBE, topic, topic_len);
 
         /* 업스트림에 구독 전파 (XSUB) */
-        uint8_t sub_frame[256];
-        sub_frame[0] = 0x01;
-        memcpy(sub_frame + 1, topic, topic_len);
-        zlink_send(xsub, sub_frame, 1 + topic_len, 0);
+        zlink_subscribe(xsub, topic);
     } else {
         /* 구독 해제 */
         zlink_setsockopt(xpub, ZLINK_UNSUBSCRIBE, topic, topic_len);
 
-        uint8_t unsub_frame[256];
-        unsub_frame[0] = 0x00;
-        memcpy(unsub_frame + 1, topic, topic_len);
-        zlink_send(xsub, unsub_frame, 1 + topic_len, 0);
+        zlink_unsubscribe(xsub, topic);
     }
 }
 ```
@@ -400,17 +558,18 @@ void on_sub(int subscribed, const uint8_t *topic, size_t topic_len,
 XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
 
 ```c
-void on_subscription(int subscribed, const uint8_t *topic, size_t topic_len,
+void on_subscription(const zlink_routing_id_t *source_rid,
+                     int subscribed, const char *topic, size_t topic_len,
                      void *userdata)
 {
     if (subscribed)
-        printf("새 구독: %.*s\n", (int)topic_len, (const char *)topic);
+        printf("새 구독: %.*s\n", (int)topic_len, topic);
     else
-        printf("구독 해제: %.*s\n", (int)topic_len, (const char *)topic);
+        printf("구독 해제: %.*s\n", (int)topic_len, topic);
 }
 
 void *xpub = zlink_socket(ctx, ZLINK_XPUB);
-zlink_recv_xpub_handler(xpub, on_subscription, NULL);
+zlink_subscription_event_handler(xpub, on_subscription, NULL);
 zlink_bind(xpub, "tcp://*:5557");
 
 /* 구독 이벤트가 on_subscription 콜백으로 dispatch됨 */

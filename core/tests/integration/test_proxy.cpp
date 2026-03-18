@@ -93,20 +93,22 @@ static void client_task (void *db_)
         for (centitick = 0; centitick < 20; centitick++) {
             zlink_poll (items, 2, 10);
             if (items[0].revents & ZLINK_POLLIN) {
-                int rcvmore;
-                size_t sz = sizeof (rcvmore);
-                int rc = TEST_ASSERT_SUCCESS_ERRNO (
-                  zlink_recv (client, content, CONTENT_SIZE_MAX, 0));
+                zlink_msg_t msg;
+                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
+                int rc =
+                  TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, client, 0));
                 TEST_ASSERT_EQUAL_INT (CONTENT_SIZE, rc);
+                memcpy (content, zlink_msg_data (&msg),
+                        static_cast<size_t> (CONTENT_SIZE));
+                content[CONTENT_SIZE] = '\0';
                 if (is_verbose)
                     printf (
                       "client receive - routing_id = %s    content = %s\n",
                       routing_id, content);
                 //  Check that message is still the same
                 TEST_ASSERT_EQUAL_STRING_LEN ("request #", content, 9);
-                TEST_ASSERT_SUCCESS_ERRNO (
-                  zlink_getsockopt (client, ZLINK_RCVMORE, &rcvmore, &sz));
-                TEST_ASSERT_FALSE (rcvmore);
+                TEST_ASSERT_FALSE (test_msg_has_more (&msg));
+                TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
             }
             if (items[1].revents & ZLINK_POLLIN) {
                 int rc = zlink_recv (control, content, CONTENT_SIZE_MAX, 0);

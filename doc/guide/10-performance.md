@@ -67,7 +67,7 @@ zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 
 When HWM is reached, behavior depends on the socket type and send flags:
 
-- **Blocking send** (`flags=0`): `zlink_send()` blocks until space becomes available. Use `ZLINK_SNDTIMEO` to limit the wait.
+- **Blocking send** (`flags=0`): `zlink_send()` blocks until space becomes available in the send queue. Use `ZLINK_SNDTIMEO` to limit the wait.
 - **Non-blocking send** (`ZLINK_DONTWAIT`): Returns `EAGAIN` immediately. The application decides whether to retry, drop, or buffer externally.
 
 > For detailed flow control patterns (DONTWAIT + send-ready handler), see
@@ -148,9 +148,13 @@ send queue. Use `ZLINK_SNDTIMEO` to limit how long the call blocks.
 int timeout = 1000;
 zlink_setsockopt(socket, ZLINK_SNDTIMEO, &timeout, sizeof(timeout));
 
-int rc = zlink_send(socket, data, size, 0);
+zlink_msg_t part;
+zlink_msg_init_size(&part, size);
+memcpy(zlink_msg_data(&part), data, size);
+int rc = zlink_send(socket, &part, 1, 0);
 if (rc == -1 && zlink_errno() == EAGAIN) {
     /* Timed out — queue is still full */
+    zlink_msg_close(&part);
 }
 ```
 
@@ -161,9 +165,13 @@ reached. The application decides whether to retry, drop, or buffer
 externally.
 
 ```c
-int rc = zlink_send(socket, data, size, ZLINK_DONTWAIT);
+zlink_msg_t part;
+zlink_msg_init_size(&part, size);
+memcpy(zlink_msg_data(&part), data, size);
+int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
 if (rc == -1 && zlink_errno() == EAGAIN) {
     /* HWM reached — handle backpressure */
+    zlink_msg_close(&part);
 }
 ```
 
@@ -194,10 +202,14 @@ void on_send_ready(void *subject, void *userdata)
 {
     app_state_t *state = (app_state_t *)userdata;
     if (state->pending_data) {
-        int rc = zlink_send(state->socket, state->pending_data,
-                            state->pending_size, ZLINK_DONTWAIT);
+        zlink_msg_t part;
+        zlink_msg_init_size(&part, state->pending_size);
+        memcpy(zlink_msg_data(&part), state->pending_data, state->pending_size);
+        int rc = zlink_send(state->socket, &part, 1, ZLINK_DONTWAIT);
         if (rc >= 0)
             state->pending_data = NULL;
+        else
+            zlink_msg_close(&part);
         /* If still EAGAIN, callback will fire again on next transition */
     }
 }
@@ -207,8 +219,12 @@ app_state_t state = { .socket = socket };
 zlink_socket_send_ready_handler(socket, on_send_ready, &state);
 
 /* Send loop */
-int rc = zlink_send(socket, data, size, ZLINK_DONTWAIT);
+zlink_msg_t part;
+zlink_msg_init_size(&part, size);
+memcpy(zlink_msg_data(&part), data, size);
+int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
 if (rc == -1 && zlink_errno() == EAGAIN) {
+    zlink_msg_close(&part);
     /* Buffer for retry when send-ready fires */
     state.pending_data = data;
     state.pending_size = size;
@@ -269,7 +285,7 @@ and flow control behavior.
 | Execution thread | I/O thread | Application thread |
 | Transition | One-way (permanent) | Default; unavailable after handler attach |
 | DONTWAIT | N/A (always async) | Returns `EAGAIN` if no message |
-| Multipart | All parts delivered as `parts[]` array | Frame-by-frame recv + `ZLINK_RCVMORE` check |
+| Multipart | All parts delivered as `parts[]` array | All parts returned via `parts_out` + `part_count_out` |
 
 ### 4.5 Complete Backpressure Example
 
@@ -293,10 +309,14 @@ typedef struct {
 static void flush_queue(sender_t *s)
 {
     while (s->count > 0) {
-        int rc = zlink_send(s->socket, s->queue[s->head],
-                            s->sizes[s->head], ZLINK_DONTWAIT);
-        if (rc == -1)
+        zlink_msg_t part;
+        zlink_msg_init_size(&part, s->sizes[s->head]);
+        memcpy(zlink_msg_data(&part), s->queue[s->head], s->sizes[s->head]);
+        int rc = zlink_send(s->socket, &part, 1, ZLINK_DONTWAIT);
+        if (rc == -1) {
+            zlink_msg_close(&part);
             break; /* Still full — wait for next send-ready */
+        }
         free(s->queue[s->head]);
         s->head = (s->head + 1) % MAX_PENDING;
         s->count--;
@@ -321,8 +341,12 @@ int main(void)
         char msg[64];
         int len = snprintf(msg, sizeof(msg), "msg-%d", i);
 
-        int rc = zlink_send(socket, msg, len, ZLINK_DONTWAIT);
+        zlink_msg_t part;
+        zlink_msg_init_size(&part, len);
+        memcpy(zlink_msg_data(&part), msg, len);
+        int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
         if (rc == -1 && zlink_errno() == EAGAIN) {
+            zlink_msg_close(&part);
             /* Enqueue for later delivery */
             if (sender.count < MAX_PENDING) {
                 int idx = (sender.head + sender.count) % MAX_PENDING;
@@ -388,7 +412,10 @@ struct timespec start, end;
 clock_gettime(CLOCK_MONOTONIC, &start);
 
 for (int i = 0; i < count; i++) {
-    zlink_send(socket, data, size, 0);
+    zlink_msg_t part;
+    zlink_msg_init_size(&part, size);
+    memcpy(zlink_msg_data(&part), data, size);
+    zlink_send(socket, &part, 1, 0);
 }
 
 clock_gettime(CLOCK_MONOTONIC, &end);
@@ -404,7 +431,10 @@ printf("Throughput: %.2f MB/s\n", (count * size) / elapsed / 1e6);
 ```c
 /* Client: send ping, measure until pong arrives in callback */
 clock_gettime(CLOCK_MONOTONIC, &start);
-zlink_send(socket, "ping", 4, 0);
+zlink_msg_t ping;
+zlink_msg_init_size(&ping, 4);
+memcpy(zlink_msg_data(&ping), "ping", 4);
+zlink_send(socket, &ping, 1, 0);
 
 /* Handler callback receives "pong" reply and records end time */
 void on_pong(const zlink_routing_id_t *source_rid,

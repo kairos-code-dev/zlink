@@ -80,28 +80,22 @@ inline int recv_one_message (void *socket,
                              std::vector<char> &scratch,
                              int flags)
 {
-    const int rc = zlink_recv (socket, scratch.data (), scratch.size (), flags);
+    zlink_routing_id_t source_rid;
+    source_rid.size = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc = recv_message_parts (
+      socket, &source_rid, &parts, &part_count,
+      static_cast<zlink_send_flags_t> (flags));
     if (rc < 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
             return 0;
         return -1;
     }
-
-    while (true) {
-        int more = 0;
-        size_t more_size = sizeof (more);
-        if (zlink_getsockopt (socket, ZLINK_RCVMORE, &more, &more_size) != 0)
-            break;
-        if (!more)
-            break;
-
-        const int next_rc = zlink_recv (socket, scratch.data (), scratch.size (), 0);
-        if (next_rc < 0) {
-            if (zlink_errno () == EINTR)
-                continue;
-            return -1;
-        }
+    if (parts) {
+        zlink_multipart_close (parts, part_count);
+        free (parts);
     }
 
     return 1;
@@ -114,24 +108,36 @@ inline multi_send_result_t send_echo_message (void *socket,
                                               size_t payload_size,
                                               bool blocking)
 {
-    const int base_flags = blocking ? 0 : ZLINK_DONTWAIT;
+    const zlink_send_flags_t base_flags =
+      blocking ? 0 : static_cast<zlink_send_flags_t> (ZLINK_DONTWAIT);
 
     if (cfg.client_router_send) {
-        const int id_rc = zlink_send (
-          socket,
-          server_id.c_str (),
-          server_id.size (),
-          ZLINK_SNDMORE | base_flags);
+        zlink_msg_t parts[2];
+        if (zlink_msg_init_size (&parts[0], server_id.size ()) != 0)
+            return multi_send_error;
+        if (zlink_msg_init_size (&parts[1], payload_size) != 0) {
+            zlink_msg_close (&parts[0]);
+            return multi_send_error;
+        }
+        if (!server_id.empty ())
+            std::memcpy (
+              zlink_msg_data (&parts[0]), server_id.data (), server_id.size ());
+        if (payload_size > 0)
+            std::memcpy (
+              zlink_msg_data (&parts[1]), payload.data (), payload_size);
+        const int id_rc = ::zlink_send (socket, parts, 2, base_flags);
         const multi_send_result_t id_status = classify_send_result (id_rc);
         if (id_status != multi_send_ok)
             return id_status;
+        return id_status;
     }
 
-    const int payload_rc = zlink_send (
-      socket,
-      payload.data (),
-      payload_size,
-      base_flags);
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, payload_size) != 0)
+        return multi_send_error;
+    if (payload_size > 0)
+        std::memcpy (zlink_msg_data (&part), payload.data (), payload_size);
+    const int payload_rc = ::zlink_send (socket, &part, 1, base_flags);
     return classify_send_result (payload_rc);
 }
 

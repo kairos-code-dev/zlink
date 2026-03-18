@@ -147,7 +147,7 @@ zlink_ctx_term(ctx);
 > | 옵션 | 이유 |
 > |------|------|
 > | `ZLINK_RCVTIMEO` | `recv()`를 호출하지 않으므로 타임아웃 무효 |
-> | `ZLINK_RCVMORE` | 멀티파트 전체가 `parts[]` 배열로 원자적 전달 |
+> | `ZLINK_RCVMORE` (제거됨) | 멀티파트 전체가 `parts[]` 배열로 원자적 전달 |
 >
 > `ZLINK_RCVHWM`은 callback 모드에서도 유효하다 (I/O 스레드 내부 큐에 적용).
 

@@ -2,6 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+OFFICIAL_BUILD_DIR="${ROOT_DIR}/core/build"
 PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM_CALLBACK"
 TRANSPORTS="tcp,tls,ws,wss"
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
@@ -227,7 +229,7 @@ Options:
   --clean-build          Remove build directory and do a clean build.
   --results-dir PATH     Override results root directory.
   --results-tag NAME     Optional tag appended to the results filename.
-  --build-dir PATH       Override build directory.
+  --build-dir PATH       Official build directory (must be core/build).
   --output PATH          Tee results to a file.
   --runs N               Iterations per configuration (default: 1).
   --recv MODE            Receive model: recv|callback (default: recv).
@@ -748,6 +750,21 @@ if [[ "${RECV_MODE}" != "recv" && "${RECV_MODE}" != "callback" ]]; then
   echo "Error: --recv must be 'recv' or 'callback'." >&2
   exit 1
 fi
+
+for (( idx=0; idx<${#SCRIPT_ARGS[@]}; ++idx )); do
+  if [[ "${SCRIPT_ARGS[idx]}" != "--build-dir" ]]; then
+    continue
+  fi
+  if (( idx + 1 >= ${#SCRIPT_ARGS[@]} )); then
+    echo "Error: --build-dir requires a value." >&2
+    exit 1
+  fi
+  requested_build_dir="$(realpath -m "${SCRIPT_ARGS[idx + 1]}")"
+  if [[ "${requested_build_dir}" != "$(realpath -m "${OFFICIAL_BUILD_DIR}")" ]]; then
+    echo "Error: build directory must be exactly $(realpath -m "${OFFICIAL_BUILD_DIR}")." >&2
+    exit 1
+  fi
+done
 
 if [[ -z "${CLIENTS}" && -z "$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)" ]]; then
   memory_max_clients="$(resolve_memory_max_clients)"

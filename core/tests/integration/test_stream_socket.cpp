@@ -109,10 +109,8 @@ static bool recv_stream_routing_id_and_payload (void *socket_,
     memcpy (rid_out_->data, zlink_msg_data (&rid_msg), stream_routing_id_size);
     zlink_msg_close (&rid_msg);
 
-    int more = 0;
-    size_t more_size = sizeof (more);
-    if (zlink_getsockopt (socket_, ZLINK_RCVMORE, &more, &more_size) != 0
-        || !more) {
+    const bool more = test_msg_has_more (&rid_msg);
+    if (!more) {
         errno = EPROTO;
         return false;
     }

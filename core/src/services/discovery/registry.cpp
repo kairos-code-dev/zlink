@@ -18,6 +18,12 @@
 
 namespace zlink
 {
+static bool registry_frame_has_more (const zlink_msg_t &frame_)
+{
+    return (reinterpret_cast<const msg_t *> (&frame_)->flags () & msg_t::more)
+           != 0;
+}
+
 static const uint32_t registry_tag_value = 0x1e6700d5;
 
 static void registry_debug (const char *msg_)
@@ -758,7 +764,7 @@ void registry_t::handle_router (void *router_)
             break;
         }
         frames.push_back (frame);
-        if (!zlink_msg_more (&frame))
+        if (!registry_frame_has_more (frame))
             break;
     }
 
@@ -838,7 +844,7 @@ void registry_t::handle_peer (void *sub_)
             break;
         }
         frames.push_back (frame);
-        if (!zlink_msg_more (&frame))
+        if (!registry_frame_has_more (frame))
             break;
     }
 

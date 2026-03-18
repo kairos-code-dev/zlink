@@ -3,9 +3,11 @@
 # zlink API Reference
 
 The zlink C library provides a messaging and service-discovery toolkit built
-on top of lightweight I/O threads. All message receiving is handled through
-handler callbacks registered at creation time. This reference covers every
-public function, type, and constant exported by `<zlink.h>`.
+on top of lightweight I/O threads. Message receiving supports two modes:
+callback dispatch via an attached handler and synchronous pull via
+`zlink_recv()`. Sockets start in recv mode; attaching a handler transitions
+to callback mode. This reference covers every public function, type, and
+constant exported by `<zlink.h>`.
 
 ## API Groups
 
@@ -14,7 +16,7 @@ public function, type, and constant exported by `<zlink.h>`.
 | Error Handling & Version | [errors.md](errors.md) | Error codes, error strings, and version query |
 | Context | [context.md](context.md) | Context creation, termination, and option tuning |
 | Message | [message.md](message.md) | Message lifecycle, data access, and properties |
-| Socket | [socket.md](socket.md) | Socket creation with handler, options, bind/connect, send, and STREAM API |
+| Socket | [socket.md](socket.md) | Socket creation, handler, options, bind/connect, send/recv, pub/sub data-plane, and STREAM API |
 | Monitoring | [monitoring.md](monitoring.md) | Socket monitors, service monitors, and peer inspection |
 | Events | [events.md](events.md) | Canonical event catalog and readiness semantics |
 | Registry | [registry.md](registry.md) | Service registry creation, configuration, topology, and clustering |
@@ -43,7 +45,6 @@ public function, type, and constant exported by `<zlink.h>`.
 | [`zlink_socket_msg_handler_fn`](socket.md) | socket.md | Socket multipart message dispatch callback |
 | [`zlink_subscribe_handler_fn`](socket.md) | socket.md | Topic-based message dispatch callback |
 | [`zlink_subscription_event_handler_fn`](socket.md) | socket.md | XPUB subscription notification callback |
-| [`zlink_stream_on_raw_fn`](socket.md) | socket.md | STREAM raw chunk dispatch callback |
 | [`zlink_monitor_handler_fn`](monitoring.md) | monitoring.md | Socket monitor event callback |
 | [`zlink_service_monitor_handler_fn`](monitoring.md) | monitoring.md | Service monitor event callback |
 | [`zlink_send_ready_handler_fn`](socket.md) | socket.md | Send-ready transition callback |

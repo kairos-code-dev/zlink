@@ -21,36 +21,45 @@ inline int recv_single_part_header_flags (
     if (header_ok_out)
         *header_ok_out = false;
 
-    zlink_msg_t msg;
-    if (zlink_msg_init (&msg) != 0)
-        return -1;
-
-    const int rc = zlink_msg_recv (&msg, socket, flags);
+    zlink_routing_id_t source_rid;
+    source_rid.size = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc = ::zlink_recv (
+      socket, &source_rid, &parts, &part_count,
+      static_cast<zlink_send_flags_t> (flags));
     if (rc < 0) {
         const int err = zlink_errno ();
-        zlink_msg_close (&msg);
         if (err == EAGAIN || err == EINTR)
             return 0;
         return -1;
     }
 
-    const size_t actual_size = zlink_msg_size (&msg);
+    if (source_rid.size != 0 || part_count != 1) {
+        if (parts) {
+            zlink_multipart_close (parts, part_count);
+            free (parts);
+        }
+        return -1;
+    }
+
+    const size_t actual_size = zlink_msg_size (&parts[0]);
     const bool size_ok = actual_size == expected_size;
-    const bool has_more = zlink_msg_more (&msg) != 0;
     bool header_ok = false;
 
-    if (size_ok && !has_more) {
+    if (size_ok) {
         if (header_out) {
             header_ok = perf_single_metric::decode_payload_header (
-              zlink_msg_data (&msg), actual_size, header_out);
+              zlink_msg_data (&parts[0]), actual_size, header_out);
         } else {
             header_ok = true;
         }
     }
 
-    zlink_msg_close (&msg);
+    zlink_multipart_close (parts, part_count);
+    free (parts);
 
-    if (!size_ok || has_more)
+    if (!size_ok)
         return -1;
 
     if (header_ok_out)
@@ -67,7 +76,7 @@ inline bool run_oneway_phase (void *sender,
                               uint32_t run_id,
                               uint64_t *seq,
                               perf_single_metric::phase_t phase,
-                              int warmup_count,
+                              int warmup_s,
                               int duration_s,
                               int recv_timeout_ms,
                               queue_probe_t *queue_probe,
@@ -79,10 +88,10 @@ inline bool run_oneway_phase (void *sender,
 
     const bool active_phase = phase == perf_single_metric::phase_active;
     const auto deadline =
-      active_phase
-        ? std::chrono::steady_clock::now ()
-            + std::chrono::seconds (duration_s > 0 ? duration_s : 1)
-        : std::chrono::steady_clock::time_point ();
+      std::chrono::steady_clock::now ()
+      + std::chrono::seconds (
+        active_phase ? (duration_s > 0 ? duration_s : 1)
+                     : (warmup_s > 0 ? warmup_s : 1));
     const auto drain_idle_limit = std::chrono::milliseconds (
       recv_timeout_ms > 0 ? recv_timeout_ms : 200);
 
@@ -184,17 +193,7 @@ inline bool run_oneway_phase (void *sender,
         queue_probe->force_sample_send ();
 
     if (active_phase) {
-        const int max_inflight =
-          resolve_bench_count ("PERF_SINGLE_MAX_INFLIGHT", 256);
-        unsigned long long sent_active = 0;
         while (std::chrono::steady_clock::now () < deadline) {
-            while (max_inflight > 0
-                   && sent_active
-                        >= received.load (std::memory_order_relaxed)
-                             + static_cast<unsigned long long> (max_inflight)
-                   && std::chrono::steady_clock::now () < deadline) {
-                std::this_thread::yield ();
-            }
             const uint64_t sent_ts = perf_single_metric::now_us ();
             if (!perf_single_metric::stamp_payload (payload->data (),
                                                     payload_size,
@@ -202,17 +201,31 @@ inline bool run_oneway_phase (void *sender,
                                                     phase,
                                                     msg_size,
                                                     (*seq)++,
-                                                    sent_ts)
-                || !send_exact (sender, payload->data (), payload_size, 0)) {
+                                                    sent_ts)) {
                 send_failed = true;
                 break;
             }
-            ++sent_active;
+
+            zlink_msg_t part;
+            if (::zlink_msg_init_size (&part, payload_size) != 0) {
+                send_failed = true;
+                break;
+            }
+            if (payload_size > 0)
+                memcpy (::zlink_msg_data (&part), payload->data (),
+                        payload_size);
+            if (::zlink_send (
+                  sender, &part, 1, static_cast<zlink_send_flags_t> (0))
+                < 0) {
+                ::zlink_msg_close (&part);
+                send_failed = true;
+                break;
+            }
             if (queue_probe)
                 queue_probe->sample_send_if_due ();
         }
     } else {
-        for (int i = 0; i < warmup_count; ++i) {
+        while (std::chrono::steady_clock::now () < deadline) {
             if (!perf_single_metric::stamp_payload (
                   payload->data (),
                   payload_size,
@@ -220,8 +233,23 @@ inline bool run_oneway_phase (void *sender,
                   phase,
                   msg_size,
                   (*seq)++,
-                  perf_single_metric::now_us ())
-                || !send_exact (sender, payload->data (), payload_size, 0)) {
+                  perf_single_metric::now_us ())) {
+                send_failed = true;
+                break;
+            }
+
+            zlink_msg_t part;
+            if (::zlink_msg_init_size (&part, payload_size) != 0) {
+                send_failed = true;
+                break;
+            }
+            if (payload_size > 0)
+                memcpy (::zlink_msg_data (&part), payload->data (),
+                        payload_size);
+            if (::zlink_send (
+                  sender, &part, 1, static_cast<zlink_send_flags_t> (0))
+                < 0) {
+                ::zlink_msg_close (&part);
                 send_failed = true;
                 break;
             }
@@ -244,8 +272,7 @@ inline bool run_oneway_phase (void *sender,
             || latency_builder.count () == 0 || !out_latency)
             return false;
         *out_latency = latency_builder.snapshot ();
-    } else if (received.load (std::memory_order_relaxed)
-               < static_cast<unsigned long long> (warmup_count)) {
+    } else if (received.load (std::memory_order_relaxed) == 0) {
         return false;
     }
 
@@ -304,7 +331,7 @@ void run_dealer_dealer (const std::string &transport,
     uint64_t seq = 1;
 
     unsigned long long warmup_received = 0;
-    const int warmup_count = resolve_bench_count ("PERF_WARMUP_COUNT", 1000);
+    const int warmup_s = resolve_single_warmup_seconds ();
     if (!run_oneway_phase (s2.get (),
                            s1.get (),
                            &payload,
@@ -313,7 +340,7 @@ void run_dealer_dealer (const std::string &transport,
                            run_id,
                            &seq,
                            perf_single_metric::phase_warmup,
-                           warmup_count,
+                           warmup_s,
                            0,
                            recv_timeout_ms,
                            NULL,

@@ -23,20 +23,7 @@
 #include <mutex>
 #include <new>
 #include <zlink.h>
-
-#include "../../../src/core/recv_internal.hpp"
 #include "perf_common_multi.hpp"
-
-#ifndef ZLINK_SNDMORE
-#define ZLINK_SNDMORE ((zlink_send_flags_t) 0x0002u)
-#endif
-
-int zlink_compat_msg_send (zlink_msg_t *msg_,
-                           void *s_,
-                           zlink_send_flags_t flags_);
-int zlink_compat_msg_recv (zlink_msg_t *msg_,
-                           void *s_,
-                           zlink_send_flags_t flags_);
 
 #if !defined(_WIN32)
 #include <arpa/inet.h>
@@ -437,38 +424,6 @@ private:
 
     void *_socket;
 };
-
-inline int zlink_msg_send(zlink_msg_t *msg_, void *socket_, int flags_)
-{
-    return zlink_compat_msg_send(msg_, socket_, flags_);
-}
-
-inline int zlink_msg_recv(zlink_msg_t *msg_, void *socket_, int flags_)
-{
-    return zlink_compat_msg_recv(msg_, socket_, flags_);
-}
-
-inline int zlink_send(void *socket_, const void *buf_, size_t len_, int flags_)
-{
-    zlink_msg_t msg;
-    if (zlink_msg_init_size(&msg, len_) != 0)
-        return -1;
-    if (len_ > 0 && buf_)
-        memcpy(zlink_msg_data(&msg), buf_, len_);
-    const int rc = zlink_msg_send(&msg, socket_, flags_);
-    if (rc < 0) {
-        const int err = errno;
-        zlink_msg_close(&msg);
-        errno = err;
-        return -1;
-    }
-    return static_cast<int>(len_);
-}
-
-inline int zlink_recv(void *socket_, void *buf_, size_t len_, int flags_)
-{
-    return zlink::recv_buffer_internal(socket_, buf_, len_, flags_);
-}
 
 inline int zlink_gateway_send_rid(void *gateway_,
                                   const zlink_routing_id_t *routing_id_,

@@ -42,7 +42,7 @@
 
 - `zlink_send()` — 원시 소켓
 - `zlink_gateway_send()` / `zlink_gateway_send_rid()` — Gateway
-- `zlink_spot_publish()` / `zlink_spot_node_publish()` — SPOT
+- `zlink_publish()` — SPOT
 - 콜백 내에서 `send` / `publish` 호출도 안전
 
 **순서:**
@@ -100,7 +100,7 @@ int main(void)
 포함:
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_setsockopt()` / `zlink_getsockopt()`
-- `zlink_spot_subscribe()` / `zlink_spot_unsubscribe()`
+- `zlink_subscribe()` / `zlink_unsubscribe()`
 - `zlink_gateway_attach_discovery()` / `zlink_spot_node_attach_discovery()`
 - `zlink_*_monitor_open()`
 - `zlink_socket_send_ready_handler()`
@@ -117,7 +117,10 @@ void *send_thread(void *arg)
     void *socket = arg;
     char buf[] = "data";
     for (int i = 0; i < 100000; i++)
-        zlink_send(socket, buf, sizeof(buf) - 1, 0);  /* 빠른 경로 */
+        zlink_msg_t part;
+        zlink_msg_init_size(&part, sizeof(buf) - 1);
+        memcpy(zlink_msg_data(&part), buf, sizeof(buf) - 1);
+        zlink_send(socket, &part, 1, 0);  /* 빠른 경로 */
     return NULL;
 }
 
@@ -134,9 +137,8 @@ void *setup_thread(void *arg)
 }
 ```
 
-`ZLINK_EVENTS`, `ZLINK_RCVMORE`, `ZLINK_LAST_ENDPOINT` 같은
-경량 읽기도 이 카테고리에 속하지만, 무거운 조회/스냅샷 호출보다
-오버헤드가 적습니다.
+`ZLINK_EVENTS`, `ZLINK_LAST_ENDPOINT` 같은 경량 읽기도 이 카테고리에
+속하지만, 무거운 조회/스냅샷 호출보다 오버헤드가 적습니다.
 
 ## 3. 핸들별 요약표
 
@@ -146,8 +148,8 @@ void *setup_thread(void *arg)
 |---|---|---|---|
 | Socket (PAIR/DEALER/ROUTER/...) | `zlink_send` | bind, connect, disconnect, setsockopt, subscribe, monitor_open | `zlink_close` |
 | Gateway | `zlink_gateway_send`, `send_rid` | bind, connect, attach_discovery, set_option, set_lb_strategy, monitor_open | `zlink_gateway_destroy` |
-| SPOT | `zlink_spot_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option, monitor_open | `zlink_spot_destroy` |
-| SPOT Node | `zlink_spot_node_publish` | bind, connect_peer_pub, disconnect_peer_pub, attach_discovery, subscribe, unsubscribe, monitor_open | `zlink_spot_node_destroy` |
+| SPOT | `zlink_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option, monitor_open | `zlink_spot_destroy` |
+| SPOT Node | `zlink_publish` | bind, connect_peer_pub, disconnect_peer_pub, attach_discovery, subscribe, unsubscribe, monitor_open | `zlink_spot_node_destroy` |
 | Discovery | *(전송 없음 — 설정 전용)* | connect_registry, set_routing_id, monitor_open | `zlink_discovery_destroy` |
 | Registry | *(전송 없음 — 설정 전용)* | bind, add_peer, set_heartbeat, set_broadcast_interval, topology_query | `zlink_registry_destroy` |
 
@@ -245,8 +247,6 @@ zlink_send_msg(socket, &msg_a, 0);   zlink_send_msg(socket, &msg_b, 0);  /* 안�
 **콜백에서 하면 안 되는 것:**
 - **블로킹** (sleep, lock, 무거운 연산) — 해당 스레드의 모든 I/O가
   멈춥니다. 작업을 큐에 넣고 워커 스레드에서 처리하세요.
-- **STREAM raw 콜백에서 `close`** — `EBUSY`를 반환합니다. 콜백
-  바깥에서 닫으세요.
 - **send-ready 콜백 안에서 자기 핸들러 교체** — `EDEADLK`를
   반환합니다.
 
@@ -314,7 +314,7 @@ void *publisher(void *arg)
     for (int i = 0; i < 100000; i++) {
         zlink_msg_t part;
         zlink_msg_init_size(&part, 16);
-        zlink_spot_publish(spot, "prices", &part, 1, 0);
+        zlink_publish(spot, "prices", &part, 1, 0);
     }
     return NULL;
 }
@@ -324,9 +324,9 @@ void *control(void *arg)
 {
     void *spot = arg;
     msleep(100);
-    zlink_spot_subscribe(spot, "audit.*");      /* 발행 중에도 안전 */
+    zlink_subscribe(spot, "audit.*");      /* 발행 중에도 안전 */
     msleep(200);
-    zlink_spot_unsubscribe(spot, "audit.*");    /* 역시 안전 */
+    zlink_unsubscribe(spot, "audit.*");    /* 역시 안전 */
     return NULL;
 }
 ```
@@ -338,7 +338,6 @@ void *control(void *arg)
 | 두 스레드가 같은 `zlink_msg_t`에 쓰기 | 메시지 객체는 thread-safe가 아님 | 각 스레드에서 별도 `zlink_msg_t` 생성 |
 | 콜백에서 무거운 작업 → 처리량 저하 | 콜백은 I/O 스레드에서 실행 — 블로킹하면 모든 I/O가 멈춤 | 큐에 넣고 워커 스레드에서 처리 |
 | `close`/`destroy` 후 API 호출 | `ESHUTDOWN` 반환 또는 정의되지 않은 동작 | 종료를 조율하고 반환 코드 확인 |
-| STREAM raw 콜백에서 `zlink_close()` 호출 | `EBUSY` 반환 — 콜백이 아직 실행 중 | 콜백 바깥에서 닫기 |
 | 메시지마다 `connect`/`setsockopt` 호출 | 설정 API는 순차 처리 — 불필요한 오버헤드 추가 | 설정이 실제로 변경될 때만 호출 |
 
 ## 9. 에러 코드 요약표

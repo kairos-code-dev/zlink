@@ -67,7 +67,7 @@ zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 
 HWM에 도달하면 소켓 타입과 송신 플래그에 따라 동작이 달라진다:
 
-- **블로킹 송신** (`flags=0`): `zlink_send()`가 큐에 공간이 생길 때까지 블로킹한다. `ZLINK_SNDTIMEO`로 대기 시간을 제한할 수 있다.
+- **블로킹 송신** (`flags=0`): `zlink_send()`가 전송 큐에 공간이 생길 때까지 블로킹한다. `ZLINK_SNDTIMEO`로 대기 시간을 제한할 수 있다.
 - **논블로킹 송신** (`ZLINK_DONTWAIT`): 즉시 `EAGAIN`을 반환한다. 애플리케이션이 재시도, 드롭, 외부 버퍼링을 결정한다.
 
 > 상세한 흐름 제어 패턴(DONTWAIT + send-ready handler)은
@@ -147,9 +147,13 @@ Mark(HWM)이 큐 깊이를 제한하며, HWM 도달 시 동작은 소켓 타입�
 int timeout = 1000;
 zlink_setsockopt(socket, ZLINK_SNDTIMEO, &timeout, sizeof(timeout));
 
-int rc = zlink_send(socket, data, size, 0);
+zlink_msg_t part;
+zlink_msg_init_size(&part, size);
+memcpy(zlink_msg_data(&part), data, size);
+int rc = zlink_send(socket, &part, 1, 0);
 if (rc == -1 && zlink_errno() == EAGAIN) {
     /* 타임아웃 — 큐가 아직 가득 참 */
+    zlink_msg_close(&part);
 }
 ```
 
@@ -159,9 +163,13 @@ if (rc == -1 && zlink_errno() == EAGAIN) {
 애플리케이션이 재시도, 드롭, 외부 버퍼링을 결정한다.
 
 ```c
-int rc = zlink_send(socket, data, size, ZLINK_DONTWAIT);
+zlink_msg_t part;
+zlink_msg_init_size(&part, size);
+memcpy(zlink_msg_data(&part), data, size);
+int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
 if (rc == -1 && zlink_errno() == EAGAIN) {
     /* HWM 도달 — backpressure 처리 */
+    zlink_msg_close(&part);
 }
 ```
 
@@ -192,10 +200,14 @@ void on_send_ready(void *subject, void *userdata)
 {
     app_state_t *state = (app_state_t *)userdata;
     if (state->pending_data) {
-        int rc = zlink_send(state->socket, state->pending_data,
-                            state->pending_size, ZLINK_DONTWAIT);
+        zlink_msg_t part;
+        zlink_msg_init_size(&part, state->pending_size);
+        memcpy(zlink_msg_data(&part), state->pending_data, state->pending_size);
+        int rc = zlink_send(state->socket, &part, 1, ZLINK_DONTWAIT);
         if (rc >= 0)
             state->pending_data = NULL;
+        else
+            zlink_msg_close(&part);
         /* 여전히 EAGAIN이면 다음 전환 시 콜백이 다시 호출됨 */
     }
 }
@@ -205,8 +217,12 @@ app_state_t state = { .socket = socket };
 zlink_socket_send_ready_handler(socket, on_send_ready, &state);
 
 /* 송신 루프 */
-int rc = zlink_send(socket, data, size, ZLINK_DONTWAIT);
+zlink_msg_t part;
+zlink_msg_init_size(&part, size);
+memcpy(zlink_msg_data(&part), data, size);
+int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
 if (rc == -1 && zlink_errno() == EAGAIN) {
+    zlink_msg_close(&part);
     /* send-ready 호출 시 재전송하도록 버퍼링 */
     state.pending_data = data;
     state.pending_size = size;
@@ -263,7 +279,7 @@ zlink 소켓은 두 가지 수신 모드를 지원한다. 선택에 따라 스�
 | 실행 스레드 | I/O 스레드 | 애플리케이션 스레드 |
 | 전환 | 한방향 (영구) | 기본; handler attach 후 불가 |
 | DONTWAIT | N/A (항상 비동기) | 메시지 없으면 `EAGAIN` |
-| Multipart | `parts[]` 배열로 한번에 | 프레임별 recv + `ZLINK_RCVMORE` 확인 |
+| Multipart | `parts[]` 배열로 한번에 | `parts_out` + `part_count_out`으로 전체 반환 |
 
 ### 4.5 완전한 Backpressure 예제
 
@@ -287,10 +303,14 @@ typedef struct {
 static void flush_queue(sender_t *s)
 {
     while (s->count > 0) {
-        int rc = zlink_send(s->socket, s->queue[s->head],
-                            s->sizes[s->head], ZLINK_DONTWAIT);
-        if (rc == -1)
+        zlink_msg_t part;
+        zlink_msg_init_size(&part, s->sizes[s->head]);
+        memcpy(zlink_msg_data(&part), s->queue[s->head], s->sizes[s->head]);
+        int rc = zlink_send(s->socket, &part, 1, ZLINK_DONTWAIT);
+        if (rc == -1) {
+            zlink_msg_close(&part);
             break; /* 아직 가득 참 — 다음 send-ready 대기 */
+        }
         free(s->queue[s->head]);
         s->head = (s->head + 1) % MAX_PENDING;
         s->count--;
@@ -315,8 +335,12 @@ int main(void)
         char msg[64];
         int len = snprintf(msg, sizeof(msg), "msg-%d", i);
 
-        int rc = zlink_send(socket, msg, len, ZLINK_DONTWAIT);
+        zlink_msg_t part;
+        zlink_msg_init_size(&part, len);
+        memcpy(zlink_msg_data(&part), msg, len);
+        int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
         if (rc == -1 && zlink_errno() == EAGAIN) {
+            zlink_msg_close(&part);
             /* send-ready 호출 시 전달하도록 대기열에 추가 */
             if (sender.count < MAX_PENDING) {
                 int idx = (sender.head + sender.count) % MAX_PENDING;
@@ -382,7 +406,10 @@ struct timespec start, end;
 clock_gettime(CLOCK_MONOTONIC, &start);
 
 for (int i = 0; i < count; i++) {
-    zlink_send(socket, data, size, 0);
+    zlink_msg_t part;
+    zlink_msg_init_size(&part, size);
+    memcpy(zlink_msg_data(&part), data, size);
+    zlink_send(socket, &part, 1, 0);
 }
 
 clock_gettime(CLOCK_MONOTONIC, &end);
@@ -398,7 +425,10 @@ printf("처리량: %.2f MB/s\n", (count * size) / elapsed / 1e6);
 ```c
 /* 클라이언트: ping 전송, 콜백에서 pong 수신 시 종료 시간 기록 */
 clock_gettime(CLOCK_MONOTONIC, &start);
-zlink_send(socket, "ping", 4, 0);
+zlink_msg_t ping;
+zlink_msg_init_size(&ping, 4);
+memcpy(zlink_msg_data(&ping), "ping", 4);
+zlink_send(socket, &ping, 1, 0);
 
 /* 핸들러 콜백이 "pong" 응답을 수신하여 종료 시간 기록 */
 void on_pong(const zlink_routing_id_t *source_rid,

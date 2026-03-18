@@ -207,6 +207,12 @@ inline int resolve_single_duration_seconds()
                                    "PERF_SINGLE_DURATION_SECONDS", 2);
 }
 
+inline int resolve_single_warmup_seconds()
+{
+    return parse_positive_env_pair("PERF_SINGLE_WARMUP_SECONDS",
+                                   "PERF_SINGLE_WARMUP_SECONDS", 2);
+}
+
 inline int resolve_single_latency_duration_seconds()
 {
     const int base = resolve_single_duration_seconds();
@@ -486,144 +492,6 @@ inline void print_result(const std::string& lib_type,
                          double latency) {
     print_result(
       lib_type, pattern, transport, size, throughput, latency, latency, latency);
-}
-
-inline bool send_exact(void *socket_,
-                       const void *data_,
-                       size_t size_,
-                       int flags_ = 0)
-{
-    if (!socket_)
-        return false;
-    return zlink_send(socket_, data_, size_, flags_) == static_cast<int>(size_);
-}
-
-inline bool recv_exact(void *socket_,
-                       void *data_,
-                       size_t size_,
-                       int flags_ = 0)
-{
-    if (!socket_)
-        return false;
-    return zlink_recv(socket_, data_, size_, flags_) == static_cast<int>(size_);
-}
-
-inline int recv_single_part_msg_flags(void *socket_,
-                                      size_t expected_size_,
-                                      int flags_)
-{
-    if (!socket_)
-        return -1;
-
-    zlink_msg_t msg;
-    if (zlink_msg_init(&msg) != 0)
-        return -1;
-
-    const int rc = zlink_msg_recv(&msg, socket_, flags_);
-    if (rc < 0) {
-        const int err = zlink_errno();
-        zlink_msg_close(&msg);
-        if (err == EAGAIN || err == EINTR)
-            return 0;
-        return -1;
-    }
-
-    const bool size_ok = zlink_msg_size(&msg) == expected_size_;
-    const bool has_more = zlink_msg_more(&msg) != 0;
-    zlink_msg_close(&msg);
-    if (!size_ok || has_more)
-        return -1;
-    return 1;
-}
-
-inline int recv_two_part_msg_flags(void *socket_,
-                                   size_t payload_size_,
-                                   std::vector<char> *routing_id_out_,
-                                   int flags_)
-{
-    if (!socket_)
-        return -1;
-
-    zlink_msg_t routing_id;
-    if (zlink_msg_init(&routing_id) != 0)
-        return -1;
-
-    const int id_rc = zlink_msg_recv(&routing_id, socket_, flags_);
-    if (id_rc < 0) {
-        const int err = zlink_errno();
-        zlink_msg_close(&routing_id);
-        if (err == EAGAIN || err == EINTR)
-            return 0;
-        return -1;
-    }
-
-    if (zlink_msg_more(&routing_id) == 0) {
-        zlink_msg_close(&routing_id);
-        return -1;
-    }
-
-    if (routing_id_out_) {
-        const size_t id_size = zlink_msg_size(&routing_id);
-        routing_id_out_->clear();
-        if (id_size > 0) {
-            const char *id_data =
-              static_cast<const char *>(zlink_msg_data(&routing_id));
-            routing_id_out_->assign(id_data, id_data + id_size);
-        }
-    }
-
-    zlink_msg_close(&routing_id);
-
-    zlink_msg_t payload;
-    if (zlink_msg_init(&payload) != 0)
-        return -1;
-
-    if (zlink_msg_recv(&payload, socket_, 0) < 0) {
-        zlink_msg_close(&payload);
-        return -1;
-    }
-
-    const bool payload_ok = zlink_msg_size(&payload) == payload_size_;
-    const bool payload_has_more = zlink_msg_more(&payload) != 0;
-    zlink_msg_close(&payload);
-    if (!payload_ok || payload_has_more)
-        return -1;
-    return 1;
-}
-
-inline bool drain_socket_nonblocking(void *socket_)
-{
-    if (!socket_)
-        return true;
-
-    char discard[256];
-    int frame_guard = 0;
-    const int frame_limit = 65536;
-    while (frame_guard < frame_limit) {
-        const int rc = zlink_recv(
-          socket_, discard, sizeof(discard), ZLINK_DONTWAIT);
-        if (rc < 0) {
-            const int err = zlink_errno();
-            return err == EAGAIN || err == EINTR;
-        }
-
-        ++frame_guard;
-        int more = 0;
-        size_t more_size = sizeof(more);
-        if (zlink_getsockopt(socket_, ZLINK_RCVMORE, &more, &more_size) != 0)
-            return false;
-        while (more != 0 && frame_guard < frame_limit) {
-            if (zlink_recv(socket_, discard, sizeof(discard), 0) < 0)
-                return false;
-            ++frame_guard;
-            more_size = sizeof(more);
-            if (zlink_getsockopt(socket_, ZLINK_RCVMORE, &more, &more_size)
-                != 0) {
-                return false;
-            }
-        }
-    }
-    return false;
 }
 
 inline bool bench_debug_enabled() {

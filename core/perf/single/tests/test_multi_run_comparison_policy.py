@@ -36,6 +36,20 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             ["STREAM_CALLBACK", "DEALER_DEALER"],
         )
 
+    def test_collect_unsupported_patterns_matches_current_multi_matrix(self):
+        self.assertEqual(
+            RC.collect_unsupported_patterns(
+                ["DEALER_DEALER", "GATEWAY", "STREAM_CALLBACK"], "recv"
+            ),
+            ["GATEWAY", "STREAM_CALLBACK"],
+        )
+        self.assertEqual(
+            RC.collect_unsupported_patterns(
+                ["DEALER_DEALER", "GATEWAY", "STREAM_CALLBACK"], "callback"
+            ),
+            ["DEALER_DEALER"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

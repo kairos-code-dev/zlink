@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <thread>
@@ -459,6 +460,60 @@ void spot_client_handler (const zlink_routing_id_t *,
       parts_, part_count_);
 }
 
+struct spot_recv_loop_t
+{
+    spot_recv_loop_t () : sub (NULL), state (NULL), stop (false) {}
+
+    void *sub;
+    spot_client_state_t *state;
+    std::atomic<bool> stop;
+    std::thread thread;
+};
+
+void start_spot_recv_loop (spot_recv_loop_t *loop_)
+{
+    if (!loop_ || !loop_->sub || !loop_->state)
+        return;
+
+    loop_->stop.store (false, std::memory_order_release);
+    loop_->thread = std::thread ([loop_] () {
+        while (!loop_->stop.load (std::memory_order_acquire)) {
+            zlink_msg_t *parts = NULL;
+            size_t part_count = 0;
+            char topic[256];
+            size_t topic_len = sizeof (topic);
+            const int rc = zlink_subscribe_recv (
+              loop_->sub, NULL, &parts, &part_count, topic, &topic_len,
+              ZLINK_DONTWAIT);
+            if (rc == 0) {
+                handle_spot_client_parts (
+                  loop_->state, topic, topic_len, parts, part_count);
+                free (parts);
+                continue;
+            }
+
+            const int err = zlink_errno ();
+            if (err == EAGAIN || err == EINTR) {
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                continue;
+            }
+
+            loop_->state->fatal.store (true, std::memory_order_release);
+            loop_->state->cv.notify_all ();
+            break;
+        }
+    });
+}
+
+void stop_spot_recv_loop (spot_recv_loop_t *loop_)
+{
+    if (!loop_)
+        return;
+    loop_->stop.store (true, std::memory_order_release);
+    if (loop_->thread.joinable ())
+        loop_->thread.join ();
+}
+
 void cleanup_spot_case (void **sub_monitor_,
                         void **pub_monitor_,
                         void **sub_,
@@ -730,12 +785,15 @@ int run_case (const std::string &lib_name_,
     }
     void *pub = zlink_spot_new (pub_node);
     void *sub = zlink_spot_new (sub_node);
-    if (sub && zlink_subscribe_handler (sub, &spot_client_handler, NULL) != 0) {
+    const bool callback_mode = single_perf_callback_mode ();
+    if (callback_mode && sub
+        && zlink_subscribe_handler (sub, &spot_client_handler, NULL) != 0) {
         zlink_spot_destroy (&sub);
         sub = NULL;
     }
     void *sub_monitor = NULL;
     void *pub_monitor = NULL;
+    spot_recv_loop_t recv_loop;
     service_monitor_probe_t monitor_probe;
     service_monitor_probe_t pub_monitor_probe;
     if (!pub || !sub) {
@@ -808,6 +866,11 @@ int run_case (const std::string &lib_name_,
     spot_client_state_scope_t client_state_scope (&client_state);
     spot_queue_probe_t probe (pub_monitor, sub_monitor);
     client_state.probe = &probe;
+    if (!callback_mode) {
+        recv_loop.sub = sub;
+        recv_loop.state = &client_state;
+        start_spot_recv_loop (&recv_loop);
+    }
 
     if (!wait_for_service_event (
           &monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, k_topic, -1,
@@ -828,6 +891,7 @@ int run_case (const std::string &lib_name_,
                                       transport_))) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] ready wait failed" << std::endl;
+        stop_spot_recv_loop (&recv_loop);
         cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
                            &pub_node);
         return 1;
@@ -845,6 +909,7 @@ int run_case (const std::string &lib_name_,
                       0.0,
                       0.0,
                       queue_stats);
+        stop_spot_recv_loop (&recv_loop);
         cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
                            &pub_node);
         return 1;
@@ -866,6 +931,7 @@ int run_case (const std::string &lib_name_,
                   active_ok ? latency.p99_us : 0.0,
                   queue_stats);
 
+    stop_spot_recv_loop (&recv_loop);
     cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
                        &pub_node);
     return active_ok ? 0 : 1;

@@ -73,22 +73,23 @@ int zlink_spot_node_set_sub_option(void *node,
                                    const void *optval,
                                    size_t optvallen);
 
-int zlink_subscribe_recv(void *node,
-                         zlink_msg_t **parts,
-                         size_t *part_count,
-                         int flags,
-                         char *topic_id_out,
-                         size_t *topic_id_len);
+int zlink_subscribe_recv(void *subject_,
+                         zlink_routing_id_t *source_rid_out_,
+                         zlink_msg_t **parts_out_,
+                         size_t *part_count_out_,
+                         char *topic_id_out_,
+                         size_t *topic_id_len_out_,
+                         zlink_send_flags_t flags_);
 ```
 
 `SpotNode` is the service-bound owner. Its `service_name` is fixed at
 construction time. Use `zlink_subscribe_recv()` in recv model, or
 `zlink_subscribe_handler()` to transition to callback model.
 
-`zlink_subscribe_recv()` returns the next message and its topic in recv
-model. `parts` and `topic_id_out` are filled on success. Pass
-`ZLINK_DONTWAIT` in `flags` for non-blocking operation. Returns `EBUSY`
-in callback model.
+`zlink_subscribe_recv()` returns the next message, its source routing ID, and
+its topic in recv model. `source_rid_out_`, `parts_out_`, and `topic_id_out_`
+are filled on success. Pass `ZLINK_DONTWAIT` in `flags_` for non-blocking
+operation. Returns `EBUSY` in callback model.
 
 ### Unified Spot
 
@@ -101,12 +102,13 @@ int zlink_publish(void *spot,
                        zlink_msg_t *parts,
                        size_t part_count,
                        zlink_send_flags_t flags);
-int zlink_subscribe_recv(void *sub,
-                       zlink_msg_t **parts,
-                       size_t *part_count,
-                       int flags,
-                       char *topic_id_out,
-                       size_t *topic_id_len);
+int zlink_subscribe_recv(void *subject_,
+                         zlink_routing_id_t *source_rid_out_,
+                         zlink_msg_t **parts_out_,
+                         size_t *part_count_out_,
+                         char *topic_id_out_,
+                         size_t *topic_id_len_out_,
+                         zlink_send_flags_t flags_);
 int zlink_subscribe (void *spot, const char *topic_id);
 int zlink_subscribe (void *spot, const char *pattern);
 int zlink_unsubscribe (void *spot,
@@ -132,9 +134,10 @@ behavior. There is no separate public publish-only or subscribe-only child
 handle.
 
 `zlink_subscribe_recv()` provides synchronous pull-style receive in recv
-model. It returns the next available message with its topic. `parts` and
-`topic_id_out` are filled on success. Pass `ZLINK_DONTWAIT` in `flags`
-for non-blocking operation. Returns `EBUSY` in callback model.
+model. It returns the next available message with its source routing ID and
+topic. `source_rid_out_`, `parts_out_`, and `topic_id_out_` are filled on
+success. Pass `ZLINK_DONTWAIT` in `flags_` for non-blocking operation.
+Returns `EBUSY` in callback model.
 
 Use `zlink_spot_monitor_open()` plus `zlink_monitor_snapshot()` for aggregate
 ready-peer and queue inspection.
@@ -251,12 +254,13 @@ memcpy(zlink_msg_data(&part), "hello", 5);
 zlink_publish(spot, "room:lobby", &part, 1, 0);
 
 /* recv on unified spot */
+zlink_routing_id_t source_rid;
 zlink_msg_t *recv_parts = NULL;
 size_t recv_count = 0;
 char topic_buf[256];
 size_t topic_len = sizeof(topic_buf);
-int rc = zlink_subscribe_recv(spot, &recv_parts, &recv_count, 0,
-                             topic_buf, &topic_len);
+int rc = zlink_subscribe_recv(spot, &source_rid, &recv_parts, &recv_count,
+                              topic_buf, &topic_len, 0);
 if (rc == 0) {
     printf("Topic: %.*s\n", (int)topic_len, topic_buf);
     for (size_t i = 0; i < recv_count; i++)

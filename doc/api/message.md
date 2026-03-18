@@ -41,23 +41,15 @@ data buffer is no longer needed.
 
 ## Constants
 
-### Message Flags
+### String Metadata Properties
 
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_MORE` | 1 | Indicates more parts follow in a multipart message |
-| `ZLINK_SHARED` | 3 | Message data is shared (reference-counted) |
+The following string metadata keys can be retrieved with `zlink_msg_gets()`:
 
-### Message Properties
-
-The following property identifiers are used with `zlink_msg_get()`,
-`zlink_msg_set()`, and `zlink_msg_gets()`:
-
-| Function | Property | Description |
-|---|---|---|
-| `zlink_msg_more()` / `zlink_msg_get()` | `ZLINK_MORE` | Whether more parts follow |
-| `zlink_msg_get()` | `ZLINK_SHARED` | Whether the message is shared |
-| `zlink_msg_gets()` | String key | Retrieve metadata by key name (e.g. `"Socket-Type"`, `"Identity"`, `"Peer-Address"`) |
+| Key | Description |
+|---|---|
+| `"Socket-Type"` | Socket type of the peer |
+| `"Identity"` | Peer identity |
+| `"Peer-Address"` | Peer network address |
 
 ## Functions
 
@@ -128,36 +120,6 @@ modify or free `data_` until `ffn_` has been called.
 **Thread safety:** Not thread-safe.
 
 **See also:** `zlink_free_fn`, `zlink_msg_data`
-
----
-
-### zlink_msg_send
-
-Send a message on a socket.
-
-```c
-int zlink_msg_send (zlink_msg_t *msg_, void *s_, zlink_send_flags_t flags_);
-```
-
-Sends the message `msg_` on socket `s_`. On success, ownership of the message
-transfers to the library and `msg_` becomes an empty message (as if
-`zlink_msg_init()` had been called on it). The caller must not access the
-original message data after a successful send. On failure the message is
-unchanged and the caller retains ownership.
-
-`flags_` may be 0, `ZLINK_DONTWAIT`, `ZLINK_SNDMORE`, or a bitwise OR of
-these values. `ZLINK_SNDMORE` indicates that more parts will follow in a
-multipart message.
-
-**Returns:** Number of bytes in the message on success, -1 on failure (errno
-is set).
-
-**Errors:** `EAGAIN` if the socket cannot send immediately and
-`ZLINK_DONTWAIT` was set. `ETERM` if the context was terminated.
-
-**Thread safety:** Not thread-safe on the same socket.
-
-**See also:** `zlink_send`
 
 ---
 
@@ -261,66 +223,22 @@ returns 0.
 
 ---
 
-### zlink_msg_more
+### zlink_msg_is_shared
 
-Check if more parts follow in a multipart message.
+Return whether the message storage is shared.
 
 ```c
-int zlink_msg_more (const zlink_msg_t *msg_);
+int zlink_msg_is_shared (const zlink_msg_t *msg_);
 ```
 
-Queries the `ZLINK_MORE` flag on the message. Returns 1 if the message is part
-of a multipart sequence and more parts follow, 0 otherwise. Typically checked inside a receive callback to determine if additional parts
-follow.
+Returns 1 if the underlying message storage is shared (referenced by
+multiple `zlink_msg_t` instances via `zlink_msg_copy()`), 0 otherwise.
 
-**Returns:** 1 if more parts follow, 0 otherwise.
+**Returns:** 1 if shared, 0 if not shared.
 
 **Thread safety:** Not thread-safe.
 
-**See also:** `zlink_msg_get`, `ZLINK_MORE`
-
----
-
-### zlink_msg_get
-
-Get an integer message property.
-
-```c
-int zlink_msg_get (const zlink_msg_t *msg_, int property_);
-```
-
-Retrieves the value of an integer property from the message. Valid properties
-include `ZLINK_MORE` and `ZLINK_SHARED`.
-
-**Returns:** Property value on success, -1 on failure (errno is set to
-`EINVAL` for an unknown property).
-
-**Errors:** `EINVAL` if the property is not recognized.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_msg_set`, `zlink_msg_gets`
-
----
-
-### zlink_msg_set
-
-Set an integer message property.
-
-```c
-int zlink_msg_set (zlink_msg_t *msg_, int property_, int optval_);
-```
-
-Sets the value of an integer property on the message. The set of writable
-properties is implementation-defined.
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `EINVAL` if the property is not recognized or not writable.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_msg_get`
+**See also:** `zlink_msg_copy`
 
 ---
 
@@ -345,7 +263,7 @@ metadata.
 
 **Thread safety:** Not thread-safe.
 
-**See also:** `zlink_msg_get`
+**See also:** `zlink_msg_is_shared`
 
 ---
 

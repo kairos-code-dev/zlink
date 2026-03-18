@@ -37,7 +37,7 @@ typedef void (*zlink_socket_msg_handler_fn) (
   void *userdata_);
 ```
 
-Callback for multipart message dispatch on PAIR, DEALER, ROUTER, and STREAM
+Callback for multipart message dispatch on PAIR, DEALER, and ROUTER
 sockets. Invoked on the owning I/O thread. Ownership of all message parts is
 transferred to the callback; each part must be closed or consumed exactly once.
 Used with `zlink_recv_handler()`.
@@ -60,13 +60,17 @@ Used with `zlink_subscribe_handler()`.
 ### zlink_subscription_event_handler_fn
 
 ```c
-typedef void (*zlink_subscription_event_handler_fn) (int subscribed_,
-                                       const uint8_t *topic_,
-                                       size_t topic_len_,
-                                       void *userdata_);
+typedef void (*zlink_subscription_event_handler_fn) (
+  const zlink_routing_id_t *source_rid_,
+  int subscribed_,
+  const char *topic_,
+  size_t topic_len_,
+  void *userdata_);
 ```
 
-Callback for subscription notifications on XPUB sockets.
+Callback for subscription notifications on XPUB sockets. `source_rid_`
+identifies the subscribing peer. `subscribed_` is non-zero for subscribe,
+zero for unsubscribe.
 Used with `zlink_subscription_event_handler()`.
 
 Each callback type is registered through a dedicated function. The mapping
@@ -74,7 +78,7 @@ of socket types to registration functions:
 
 | Socket Type | Registration Function | Callback |
 |---|---|---|
-| PAIR, DEALER, ROUTER, STREAM | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
+| PAIR, DEALER, ROUTER | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
 | SUB, XSUB | `zlink_subscribe_handler` | `zlink_subscribe_handler_fn` |
 | XPUB | `zlink_subscription_event_handler` | `zlink_subscription_event_handler_fn` |
 | PUB | N/A | Send-only; no handler needed |
@@ -114,13 +118,11 @@ Short-form aliases are also available: `ZLINK_PAIR`, `ZLINK_PUB`, `ZLINK_SUB`,
 typedef uint32_t zlink_send_flags_t;
 
 #define ZLINK_DONTWAIT  ((zlink_send_flags_t) 0x0001u)
-#define ZLINK_SNDMORE   ((zlink_send_flags_t) 0x0002u)
 ```
 
 | Constant | Description |
 |---|---|
 | `ZLINK_DONTWAIT` | Non-blocking operation; return immediately with `EAGAIN` if the operation would block |
-| `ZLINK_SNDMORE` | Indicates that more message parts will follow in a multipart message |
 
 ### Security Mechanisms
 
@@ -141,7 +143,6 @@ Short-form aliases (e.g. `ZLINK_LINGER`) are also available.
 |---|---|
 | `ZLINK_SOCKOPT_AFFINITY` | I/O thread affinity bitmask (`uint64_t`) |
 | `ZLINK_SOCKOPT_ROUTING_ID` | Socket identity for ROUTER addressing (`binary`, max 255 bytes) |
-| `ZLINK_SOCKOPT_RCVMORE` | True if more message parts follow (read-only, `int`) |
 | `ZLINK_SOCKOPT_TYPE` | Socket type (read-only, `int`) |
 | `ZLINK_SOCKOPT_LINGER` | Linger period for socket shutdown in milliseconds (`int`; -1 = infinite, 0 = discard immediately) |
 | `ZLINK_SOCKOPT_BACKLOG` | Maximum length of the pending connections queue (`int`) |
@@ -285,7 +286,7 @@ int zlink_recv_handler (void *s_,
                         void *userdata_);
 ```
 
-Attach a message receive handler to a PAIR, DEALER, ROUTER, or STREAM
+Attach a message receive handler to a PAIR, DEALER, or ROUTER
 socket. Sockets start in recv mode. This call transitions the handle to
 callback mode and cannot be undone for the lifetime of the socket. A second
 attach on the same handle fails with `errno=EBUSY`.
@@ -335,10 +336,11 @@ int zlink_subscription_event_handler (void *s_,
                              void *userdata_);
 ```
 
-Attach a subscription notification handler to an XPUB socket. Sockets
-start in recv mode. This call transitions the handle to callback mode and
-cannot be undone for the lifetime of the socket. A second attach on the
-same handle fails with `errno=EBUSY`.
+Attach a subscription notification handler to an XPUB socket. The callback
+receives a `source_rid_` identifying the subscribing peer, a `subscribed_`
+flag, and the topic bytes. Sockets start in recv mode. This call transitions
+the handle to callback mode and cannot be undone for the lifetime of the
+socket. A second attach on the same handle fails with `errno=EBUSY`.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
@@ -505,80 +507,241 @@ Removes a previously established connection.
 
 ### zlink_send
 
-Send buffer data on a socket.
+Send a multipart message on a socket.
 
 ```c
 int zlink_send (void *s_,
-                const void *buf_,
-                size_t len_,
+                zlink_msg_t *parts_,
+                size_t part_count_,
                 zlink_send_flags_t flags_);
 ```
 
-Sends `len_` bytes from `buf_` on socket `s_`. The data is copied into an
-internal message before transmission. The `flags_` parameter may be 0,
-`ZLINK_DONTWAIT`, `ZLINK_SNDMORE`, or a bitwise combination. Use
-`ZLINK_SNDMORE` to send multipart messages; only the final part should omit
-this flag.
+Sends a multipart message consisting of `part_count_` parts from the
+`parts_` array on socket `s_`. On success, ownership of every part in the
+array is transferred to the library and the caller must not access them
+afterwards. On failure, ownership remains with the caller. The `flags_`
+parameter may be 0 or `ZLINK_DONTWAIT`.
 
-**Returns:** Number of bytes sent on success, -1 on failure (errno is set).
+**Returns:** 0 on success, -1 on failure (errno is set).
 
 **Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was set.
 `ETERM` if the context was terminated.
 
-**See also:** `zlink_msg_send`, `zlink_recv`
+**See also:** `zlink_recv`
 
 ---
 
 ### zlink_recv
 
-Receive buffer data from a socket.
+Receive a multipart message from a socket.
 
 ```c
 int zlink_recv (void *s_,
-                void *buf_,
-                size_t len_,
+                zlink_routing_id_t *source_rid_out_,
+                zlink_msg_t **parts_out_,
+                size_t *part_count_out_,
                 zlink_send_flags_t flags_);
 ```
 
-Receives up to `len_` bytes into `buf_` from socket `s_`. The socket must
-be in recv mode (no handler attached). If a direct receive handler has been
-attached via `zlink_recv_handler()`, this call fails with
-`errno=EBUSY`. Pass `ZLINK_DONTWAIT` to return immediately when no message
-is available.
+Receives a complete multipart message from socket `s_`. On success,
+`*parts_out_` points to a library-allocated array of `*part_count_out_`
+message parts, and `*source_rid_out_` is set to the routing id of the
+sender (where applicable). Ownership of the parts array and each part is
+transferred to the caller, who must close every part (or call
+`zlink_multipart_close()`) and free the array. The socket must be in recv
+mode (no handler attached). If a receive handler has been attached via
+`zlink_recv_handler()`, this call fails with `errno=EBUSY`. Pass
+`ZLINK_DONTWAIT` to return immediately when no message is available.
 
-**Returns:** Number of bytes received on success, -1 on failure (errno is set).
+**Returns:** 0 on success, -1 on failure (errno is set).
 
 **Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was
 set, or if `ZLINK_RCVTIMEO` expired. `EBUSY` if a receive handler is
 attached. `ETERM` if the context was terminated.
 
-**See also:** `zlink_msg_recv`, `zlink_send`, `zlink_recv_handler`
+**See also:** `zlink_send`, `zlink_recv_handler`, `zlink_multipart_close`
 
 ---
 
-### zlink_msg_recv
+### zlink_send_rid
 
-Receive a message from a socket.
+Send a multipart message to a specific peer by routing id.
 
 ```c
-int zlink_msg_recv (zlink_msg_t *msg_,
-                    void *s_,
+int zlink_send_rid (void *s_,
+                    const zlink_routing_id_t *target_rid_,
+                    zlink_msg_t *parts_,
+                    size_t part_count_,
                     zlink_send_flags_t flags_);
 ```
 
-Receives a message into `msg_` from socket `s_`. The message `msg_` must
-be initialized before calling. The socket must be in recv mode (no handler
-attached). For multipart messages, check `ZLINK_RCVMORE` after each call
-to determine if more frames follow.
+Sends a multipart message to the peer identified by `target_rid_`. On
+success, ownership of every part is transferred to the library. On failure,
+ownership remains with the caller.
 
-**Returns:** Number of bytes in the received message on success, -1 on
-failure (errno is set).
+Applicable handle types: ROUTER (directed reply), STREAM (peer-addressed
+send), Gateway (directed request/reply).
 
-**Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was
-set, or if `ZLINK_RCVTIMEO` expired. `EBUSY` if a receive handler is
-attached. `ETERM` if the context was terminated.
+**Returns:** 0 on success, -1 on failure (errno is set).
 
-**See also:** `zlink_recv`, `zlink_msg_send`, `zlink_recv_handler`
+**Errors:** `EFAULT` if `s_` is NULL. `EAGAIN` if the operation would block
+and `ZLINK_DONTWAIT` was set. `EHOSTUNREACH` if the target peer is not
+connected (ROUTER with `ROUTER_MANDATORY`). `ETERM` if the context was
+terminated.
+
+**See also:** `zlink_send`, `zlink_recv`
+
+---
+
+## Pub/Sub Data-Plane API
+
+The following functions provide the canonical pub/sub data-plane for raw
+PUB, SUB, XSUB, and XPUB sockets. The same functions also apply to
+`spot` and `spot_node` service handles (see [spot.md](spot.md)).
+
+### zlink_publish
+
+Publish a multipart message.
+
+```c
+int zlink_publish (void *subject_,
+                   const char *topic_id_,
+                   zlink_msg_t *parts_,
+                   size_t part_count_,
+                   zlink_send_flags_t flags_);
+```
+
+Publishes a multipart message on the given subject. On success, ownership
+of all parts is transferred to the library.
+
+- For `spot` / `spot_node`: `topic_id_` must be non-NULL (topic-bearing
+  publish). `EINVAL` if NULL.
+- For raw `PUB` / `XPUB`: `topic_id_` must be NULL (raw pub publish).
+  Topic matching uses the wire first-frame prefix convention.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**Errors:** `EFAULT` if `subject_` is NULL. `EINVAL` if `topic_id_` is
+NULL for spot/spot_node, or non-NULL for unsupported types. `ENOTSUP` if
+the subject type does not support publish.
+
+**See also:** `zlink_subscribe`, `zlink_subscribe_recv`
+
+---
+
+### zlink_subscribe
+
+Subscribe to a topic filter.
+
+```c
+int zlink_subscribe (void *subject_, const char *filter_);
+```
+
+Subscribes the subject to messages matching `filter_`. Filter
+interpretation: if `filter_` ends with `*`, it is a prefix-match pattern;
+otherwise it is an exact topic.
+
+Applicable types: raw SUB, raw XSUB, `spot`, `spot_node`.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**Errors:** `EFAULT` if `subject_` is NULL. `EINVAL` if `filter_` is NULL,
+empty, or contains invalid pattern syntax (multiple `*` or mid-string `*`).
+`ENOTSUP` if the subject type does not support subscribe.
+
+**See also:** `zlink_unsubscribe`, `zlink_subscribe_recv`
+
+---
+
+### zlink_unsubscribe
+
+Unsubscribe from a topic filter.
+
+```c
+int zlink_unsubscribe (void *subject_, const char *filter_);
+```
+
+Removes a previously registered subscription. The same string
+interpretation rules as `zlink_subscribe()` apply: trailing `*` means
+pattern unsubscribe, otherwise exact topic unsubscribe.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**Errors:** `EFAULT` if `subject_` is NULL. `EINVAL` if `filter_` is NULL
+or empty. `ENOTSUP` if the subject type does not support unsubscribe.
+
+**See also:** `zlink_subscribe`
+
+---
+
+### zlink_subscribe_recv
+
+Receive a topic-bearing multipart message.
+
+```c
+int zlink_subscribe_recv (void *subject_,
+                          zlink_routing_id_t *source_rid_out_,
+                          zlink_msg_t **parts_out_,
+                          size_t *part_count_out_,
+                          char *topic_id_out_,
+                          size_t *topic_id_len_out_,
+                          zlink_send_flags_t flags_);
+```
+
+Receives the next topic-bearing message in recv mode. On success,
+`*source_rid_out_` is set to the sender's routing id (zeroed if the
+underlying transport does not carry identity), `*topic_id_out_` /
+`*topic_id_len_out_` receive the topic bytes (binary-safe), and
+`*parts_out_` / `*part_count_out_` receive the payload frames. Ownership
+of the parts array is transferred to the caller.
+
+The subject must be in recv mode (no handler attached). If a subscribe
+handler has been attached, this call fails with `EBUSY`.
+
+Applicable types: raw SUB, raw XSUB, `spot`, `spot_node`.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**Errors:** `EFAULT` if `subject_` is NULL. `EAGAIN` if `ZLINK_DONTWAIT`
+was set and no message is available. `EBUSY` if a subscribe handler is
+attached. `EMSGSIZE` if the topic buffer is too small. `ENOTSUP` if the
+subject type does not support subscribe recv.
+
+**See also:** `zlink_subscribe_handler`, `zlink_subscribe`
+
+---
+
+### zlink_subscription_event_recv
+
+Receive a subscription event from an XPUB socket.
+
+```c
+int zlink_subscription_event_recv (void *subject_,
+                                   zlink_routing_id_t *source_rid_out_,
+                                   int *subscribed_out_,
+                                   char *topic_id_out_,
+                                   size_t *topic_id_len_out_,
+                                   zlink_send_flags_t flags_);
+```
+
+Receives the next subscription event in recv mode. On success,
+`*source_rid_out_` identifies the subscribing peer, `*subscribed_out_` is
+1 for subscribe or 0 for unsubscribe, and `*topic_id_out_` /
+`*topic_id_len_out_` receive the topic bytes (binary-safe, same buffer
+contract as `zlink_subscribe_recv()`).
+
+The subject must be in recv mode. If a subscription event handler has been
+attached, this call fails with `EBUSY`.
+
+Applicable types: raw XPUB only.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**Errors:** `EFAULT` if `subject_` is NULL. `EAGAIN` if `ZLINK_DONTWAIT`
+was set and no event is available. `EBUSY` if a subscription event handler
+is attached. `ENOTSUP` if the subject is not XPUB.
+
+**See also:** `zlink_subscription_event_handler`, `zlink_publish`
 
 ---
 
@@ -612,119 +775,6 @@ void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 Convenience function that calls `zlink_msg_close()` on each element.
 
 **See also:** `zlink_msg_close`
-
----
-
-## STREAM Callback Dispatch API
-
-The following functions provide a callback-based interface for STREAM sockets.
-STREAM receive is callback-only; `recv()` is not supported. The application
-attaches a raw callback that is invoked directly on the I/O thread when data
-arrives.
-
-### zlink_stream_on_raw_fn
-
-```c
-typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *rid_,
-                                       zlink_msg_t *msg_);
-```
-
-Callback invoked on the STREAM I/O thread when data arrives. `rid_` identifies
-the peer. `msg_` is a raw stream chunk; ownership is transferred to the
-callback. The callback must release it exactly once (e.g. `zlink_msg_close()`
-or consume via `zlink_stream_send_msg()`) before return, and must not retain
-this pointer after return. Return 0 to continue dispatch, non-zero to request
-shutdown.
-
----
-
-### zlink_stream_attach_raw
-
-Attach raw STREAM callback dispatch.
-
-```c
-int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_);
-```
-
-Registers `on_raw_` as the dispatch callback for STREAM socket `s_`. Only one
-callback can be attached at a time; calling this while a callback is already
-attached returns -1 with `errno=EBUSY`. Attach/detach are safe to call from
-application threads and serialized with STREAM send/close. Calling
-attach/detach from the raw callback is not supported.
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `EINVAL` if `s_` is not a STREAM socket or `on_raw_` is NULL.
-`EBUSY` if a callback is already attached.
-
-**See also:** `zlink_stream_detach`, `zlink_stream_send`
-
----
-
-### zlink_stream_detach
-
-Detach STREAM callback dispatch from a socket.
-
-```c
-int zlink_stream_detach (void *s_);
-```
-
-Removes the previously attached dispatch callback. Safe to call from
-application threads and serialized with STREAM send/close. Calling detach
-from the raw callback is not supported.
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `EINVAL` if `s_` is not a STREAM socket.
-
-**See also:** `zlink_stream_attach_raw`
-
----
-
-### zlink_stream_send
-
-Send payload to a specific STREAM peer by routing id.
-
-```c
-int zlink_stream_send (void *s_,
-                       const zlink_routing_id_t *rid_,
-                       const void *data_,
-                       size_t size_,
-                       zlink_send_flags_t flags_);
-```
-
-Sends `size_` bytes from `data_` to the peer identified by `rid_`. Internally
-sends the routing id as the first frame and the payload as the second frame.
-STREAM send APIs are safe to call from application threads and STREAM dispatch
-callbacks; internally the socket serializes outgoing state.
-
-**Returns:** Number of payload bytes accepted (`size_`), or -1 on failure.
-
-**Errors:** `EINVAL` if `s_` is not a STREAM socket or `rid_` is invalid.
-`EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was set.
-
-**See also:** `zlink_stream_send_msg`, `zlink_stream_attach_raw`
-
----
-
-### zlink_stream_send_msg
-
-Send a message to a specific STREAM peer by routing id.
-
-```c
-int zlink_stream_send_msg (void *s_,
-                           const zlink_routing_id_t *rid_,
-                           zlink_msg_t *msg_,
-                           zlink_send_flags_t flags_);
-```
-
-Behaves like `zlink_stream_send()` but takes a `zlink_msg_t` instead of a raw
-buffer. The message `msg_` is consumed (moved) by this call and reinitialized
-before returning.
-
-**Returns:** Number of payload bytes accepted, or -1 on failure.
-
-**See also:** `zlink_stream_send`, `zlink_stream_attach_raw`
 
 ---
 

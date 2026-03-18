@@ -40,7 +40,7 @@ int recv_monitor_event_from_socket (void *monitor_,
                 zlink_msg_close (&parts[i]);
             return -1;
         }
-        more = zlink_msg_more (&parts[part_count]) != 0;
+        more = test_msg_has_more (&parts[part_count]);
         ++part_count;
     }
 

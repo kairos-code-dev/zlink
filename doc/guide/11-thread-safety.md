@@ -42,7 +42,7 @@ These functions allow fully concurrent calls on the same handle:
 
 - `zlink_send()` — raw sockets
 - `zlink_gateway_send()` / `zlink_gateway_send_rid()` — Gateway
-- `zlink_spot_publish()` / `zlink_spot_node_publish()` — SPOT
+- `zlink_publish()` / `zlink_publish()` — SPOT
 - Calling `send` / `publish` from inside a callback is also safe
 
 **Ordering:**
@@ -102,7 +102,7 @@ call them in a per-message loop.
 Includes:
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_setsockopt()` / `zlink_getsockopt()`
-- `zlink_spot_subscribe()` / `zlink_spot_unsubscribe()`
+- `zlink_subscribe()` / `zlink_unsubscribe()`
 - `zlink_gateway_attach_discovery()` / `zlink_spot_node_attach_discovery()`
 - `zlink_*_monitor_open()`
 - `zlink_socket_send_ready_handler()`
@@ -119,7 +119,10 @@ void *send_thread(void *arg)
     void *socket = arg;
     char buf[] = "data";
     for (int i = 0; i < 100000; i++)
-        zlink_send(socket, buf, sizeof(buf) - 1, 0);  /* hot path */
+        zlink_msg_t part;
+        zlink_msg_init_size(&part, sizeof(buf) - 1);
+        memcpy(zlink_msg_data(&part), buf, sizeof(buf) - 1);
+        zlink_send(socket, &part, 1, 0);  /* hot path */
     return NULL;
 }
 
@@ -136,9 +139,8 @@ void *setup_thread(void *arg)
 }
 ```
 
-Lightweight reads like `ZLINK_EVENTS`, `ZLINK_RCVMORE`, and
-`ZLINK_LAST_ENDPOINT` are also in this category but carry less overhead
-than heavier query/snapshot calls.
+Lightweight reads like `ZLINK_EVENTS` and `ZLINK_LAST_ENDPOINT` are also
+in this category but carry less overhead than heavier query/snapshot calls.
 
 ## 3. Per-Handle Quick Reference
 
@@ -148,8 +150,8 @@ Every handle type follows the same three-category model:
 |---|---|---|---|
 | Socket (PAIR/DEALER/ROUTER/...) | `zlink_send` | bind, connect, disconnect, setsockopt, subscribe, monitor_open | `zlink_close` |
 | Gateway | `zlink_gateway_send`, `send_rid` | bind, connect, attach_discovery, set_option, set_lb_strategy, monitor_open | `zlink_gateway_destroy` |
-| SPOT | `zlink_spot_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option, monitor_open | `zlink_spot_destroy` |
-| SPOT Node | `zlink_spot_node_publish` | bind, connect_peer_pub, disconnect_peer_pub, attach_discovery, subscribe, unsubscribe, monitor_open | `zlink_spot_node_destroy` |
+| SPOT | `zlink_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option, monitor_open | `zlink_spot_destroy` |
+| SPOT Node | `zlink_publish` | bind, connect_peer_pub, disconnect_peer_pub, attach_discovery, subscribe, unsubscribe, monitor_open | `zlink_spot_node_destroy` |
 | Discovery | *(no sending — config only)* | connect_registry, set_routing_id, monitor_open | `zlink_discovery_destroy` |
 | Registry | *(no sending — config only)* | bind, add_peer, set_heartbeat, set_broadcast_interval, topology_query | `zlink_registry_destroy` |
 
@@ -247,8 +249,6 @@ thread. Here's what you need to know:
 **What you should NOT do in a callback:**
 - **Block** (sleep, lock, heavy computation) — this stalls all I/O on that
   thread. Push work to a queue and process it on a worker thread.
-- **Close from a STREAM raw callback** — returns `EBUSY`. Close from
-  outside the callback instead.
 - **Replace the send-ready handler from inside its own callback** — returns
   `EDEADLK`.
 
@@ -316,7 +316,7 @@ void *publisher(void *arg)
     for (int i = 0; i < 100000; i++) {
         zlink_msg_t part;
         zlink_msg_init_size(&part, 16);
-        zlink_spot_publish(spot, "prices", &part, 1, 0);
+        zlink_publish(spot, "prices", &part, 1, 0);
     }
     return NULL;
 }
@@ -326,9 +326,9 @@ void *control(void *arg)
 {
     void *spot = arg;
     msleep(100);
-    zlink_spot_subscribe(spot, "audit.*");      /* safe while publishing */
+    zlink_subscribe(spot, "audit.*");      /* safe while publishing */
     msleep(200);
-    zlink_spot_unsubscribe(spot, "audit.*");    /* also safe */
+    zlink_unsubscribe(spot, "audit.*");    /* also safe */
     return NULL;
 }
 ```
@@ -340,7 +340,6 @@ void *control(void *arg)
 | Two threads writing to the same `zlink_msg_t` | Message objects are not thread-safe | Create a separate `zlink_msg_t` in each thread |
 | Callback does heavy work and throughput drops | Callbacks run on the I/O thread — blocking stalls everything | Push to a queue, process on a worker thread |
 | Calling APIs after `close`/`destroy` | Returns `ESHUTDOWN` or undefined behavior | Coordinate shutdown; check return codes |
-| Calling `zlink_close()` inside a STREAM raw callback | Returns `EBUSY` — the callback is still running | Close from outside the callback |
 | Calling `connect`/`setsockopt` in a per-message loop | Configuration APIs are serialized — adds unnecessary overhead | Call them only when configuration actually changes |
 
 ## 9. Error Code Quick Reference

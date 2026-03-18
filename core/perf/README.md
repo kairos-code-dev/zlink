@@ -22,7 +22,7 @@ DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, SPOT).
 | `--pattern NAME` | `ALL` | Pattern list (comma-separated) or `ALL` |
 | `--reuse-build` | off | Reuse existing build directory (skip configure/build) |
 | `--clean-build` | off | Remove build directory then clean configure/build |
-| `--build-dir PATH` | `core/build` | Override build directory |
+| `--build-dir PATH` | `core/build` | Official build directory only |
 | `--output PATH` | — | Tee console output to a file |
 | `--results-dir PATH` | `core/perf/results` | Override result root |
 | `--results-tag NAME` | — | Optional filename tag |
@@ -46,6 +46,15 @@ Note: `pgm`/`epgm` are currently disabled in single perf.
 
 Detailed phase semantics, handshake rules, and mode contracts are defined in
 `doc/perf/PERF_SINGLE_TEST_POLICY.md`.
+
+Current single recv-mode support:
+
+- `recv`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
+  `ROUTER_ROUTER`, `SPOT`
+- `callback`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
+  `ROUTER_ROUTER`, `GATEWAY`, `SPOT`
+
+Unsupported combinations fail fast instead of silently falling back.
 
 ### Result storage
 
@@ -77,7 +86,7 @@ and delegates execution to `run_benchmarks.sh`.
 | `--clean-build` | off | Clean build directory first |
 | `--results-dir PATH` | `core/perf/results` | Override result root |
 | `--results-tag NAME` | — | Optional filename tag |
-| `--build-dir PATH` | `core/build` | Override build directory |
+| `--build-dir PATH` | `core/build` | Official build directory only |
 | `--output PATH` | — | Tee output to file |
 | `--runs N` | `1` | Iterations per configuration |
 | `--recv MODE` | `recv` | Receive model (`recv` or `callback`) |
@@ -112,6 +121,14 @@ results/
     report/
       perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt
 ```
+
+Current multi recv-mode support:
+
+- `recv`: `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`
+- `callback`: `GATEWAY`, `SPOT`, `STREAM_CALLBACK`
+- `recv`: `GATEWAY`, `SPOT`
+
+Unsupported combinations fail fast instead of silently falling back.
 
 ### Preflight
 

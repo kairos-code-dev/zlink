@@ -141,6 +141,23 @@ inline int zlink_subscribe_recv (void *subject_,
     return ::zlink_subscribe_recv (subject_, NULL, parts_, part_count_,
                                    topic_id_out_, topic_id_len_, flags_);
 }
+
+inline bool test_msg_has_more (const zlink_msg_t *msg_)
+{
+    return msg_
+           && (reinterpret_cast<const zlink::msg_t *> (msg_)->flags ()
+               & zlink::msg_t::more)
+                != 0;
+}
+
+inline bool test_msg_is_shared (const zlink_msg_t *msg_)
+{
+    if (!msg_)
+        return false;
+    const zlink::msg_t *internal =
+      reinterpret_cast<const zlink::msg_t *> (msg_);
+    return internal->is_cmsg () || (internal->flags () & zlink::msg_t::shared);
+}
 #endif
 
 // Internal helper functions that are not intended to be directly called from

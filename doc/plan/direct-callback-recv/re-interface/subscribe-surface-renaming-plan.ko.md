@@ -582,7 +582,270 @@ nm -D core/build/lib/libzlink.so | grep -w -E 'zlink_set_subscribe|zlink_unset_s
 - 문서가 새 이름과 일치한다.
 - `core/` 외부(bindings)는 이번 범위에서 변경하지 않는다.
 
-## 14. 현재 판단 요약
+## 14. 실행 참조: 변경 대상 정확한 위치
+
+이 섹션은 새 컨텍스트에서 작업을 시작할 때 코드를 탐색하지 않고도
+바로 변경할 수 있도록 모든 변경 대상의 정확한 파일과 라인 번호를 기록한다.
+
+### 14.1 core/include/zlink.h — header 변경
+
+함수 선언 이름 변경:
+
+| 라인 | 현재 | 변경 후 |
+| --- | --- | --- |
+| 815 | `zlink_subscribe (void *subject_, const char *filter_)` | `zlink_set_subscribe` |
+| 816 | `zlink_unsubscribe (void *subject_, const char *filter_)` | `zlink_unset_subscribe` |
+| 818 | `zlink_subscribe_recv (void *subject_, ...)` | `zlink_subscribe` |
+| 826 | `zlink_subscription_event_recv (...)` | `zlink_subscription_event` |
+
+옵션 상수 제거:
+
+| 라인 | 제거 대상 |
+| --- | --- |
+| 355 | `ZLINK_SOCKOPT_SUBSCRIBE = 0x1103,` (enum 멤버) |
+| 356 | `ZLINK_SOCKOPT_UNSUBSCRIBE = 0x1104,` (enum 멤버) |
+| 430 | `#define ZLINK_SUBSCRIBE ((zlink_socket_option_t) 6)` (`ZLINK_INTERNAL_BUILD` 블록) |
+| 431 | `#define ZLINK_UNSUBSCRIBE ((zlink_socket_option_t) 7)` (`ZLINK_INTERNAL_BUILD` 블록) |
+| 499 | `#define ZLINK_SUBSCRIBE ZLINK_SOCKOPT_SUBSCRIBE` (`#else` 블록) |
+| 500 | `#define ZLINK_UNSUBSCRIBE ZLINK_SOCKOPT_UNSUBSCRIBE` (`#else` 블록) |
+
+변경하지 않는 항목 (확인용):
+
+| 라인 | 이름 | 유지 |
+| --- | --- | --- |
+| 662-668 | `zlink_subscribe_handler_fn` typedef | 유지 |
+| 670-675 | `zlink_subscription_event_handler_fn` typedef | 유지 |
+| 697-698 | `zlink_subscribe_handler` 선언 | 유지 |
+| 700-701 | `zlink_subscription_event_handler` 선언 | 유지 |
+
+### 14.2 core/src/api/zlink.cpp — 함수 정의 이름 변경
+
+| 라인 | 현재 | 변경 후 |
+| --- | --- | --- |
+| 5473 | `int zlink_subscribe (void *subject_, const char *filter_)` | `int zlink_set_subscribe` |
+| 5505 | `int zlink_unsubscribe (void *subject_, const char *filter_)` | `int zlink_unset_subscribe` |
+| 5604 | `int zlink_subscribe_recv (void *subject_, ...)` | `int zlink_subscribe` |
+| 5636 | `int zlink_subscription_event_recv (void *subject_, ...)` | `int zlink_subscription_event` |
+
+내부 옵션 상수 참조 (internal 상수로 치환):
+
+| 라인 | 현재 코드 |
+| --- | --- |
+| 5502 | `subscribe_socket_filter (handle, ZLINK_SUBSCRIBE, filter_)` |
+| 5530 | `subscribe_socket_filter (handle, ZLINK_UNSUBSCRIBE, filter_)` |
+
+### 14.3 core/src/sockets/ — 내부 옵션 상수 치환
+
+**sub.cpp:**
+
+| 라인 | 현재 코드 |
+| --- | --- |
+| 25 | `if (option_ != ZLINK_SUBSCRIBE && option_ != ZLINK_UNSUBSCRIBE)` |
+| 34 | `if (option_ == ZLINK_SUBSCRIBE)` |
+
+**xpub.cpp:**
+
+| 라인 | 현재 코드 |
+| --- | --- |
+| 231 | `else if (option_ == ZLINK_SUBSCRIBE && _manual)` |
+| 238 | `else if (option_ == ZLINK_UNSUBSCRIBE && _manual)` |
+
+**xsub.cpp:**
+
+| 라인 | 내용 |
+| --- | --- |
+| 573 | 주석만: `//  zlink_setsockopt(ZLINK_SUBSCRIBE, ...), which also drops subscriptions` |
+
+코드 참조 없음. 주석만 갱신.
+
+### 14.4 core/src/services/spot/spot_sub.cpp — 내부 setsockopt 호출
+
+| 라인 | 현재 코드 |
+| --- | --- |
+| 355 | `socket->setsockopt (ZLINK_SUBSCRIBE, topic.data (), topic.size ())` |
+| 399 | `socket->setsockopt (ZLINK_SUBSCRIBE, prefix.data (), prefix.size ())` |
+| 454 | `socket->setsockopt (ZLINK_UNSUBSCRIBE, filter.data (), filter.size ())` |
+| 1524 | `socket->setsockopt (ZLINK_UNSUBSCRIBE, it->c_str (), ...)` |
+| 1529 | `socket->setsockopt (ZLINK_UNSUBSCRIBE, it->c_str (), ...)` |
+
+### 14.5 internal 상수 전략
+
+public `ZLINK_SOCKOPT_SUBSCRIBE` / `ZLINK_SOCKOPT_UNSUBSCRIBE`를 enum에서
+제거한 뒤, 내부 코드가 참조할 상수가 필요하다.
+
+방법: `ZLINK_INTERNAL_BUILD` 블록에 internal-only define을 유지한다.
+
+```c
+/* internal-only subscribe option values — not part of public API */
+#define ZLINK_INTERNAL_OPT_SUBSCRIBE   ((zlink_socket_option_t) 6)
+#define ZLINK_INTERNAL_OPT_UNSUBSCRIBE ((zlink_socket_option_t) 7)
+```
+
+이 define은 기존 `ZLINK_SUBSCRIBE` / `ZLINK_UNSUBSCRIBE`의 값(6, 7)을
+그대로 사용한다. wire protocol이나 내부 option dispatch 로직에 영향이 없다.
+
+치환 규칙:
+
+- `sub.cpp`, `xpub.cpp` 내부: `ZLINK_SUBSCRIBE` → `ZLINK_INTERNAL_OPT_SUBSCRIBE`
+- `sub.cpp`, `xpub.cpp` 내부: `ZLINK_UNSUBSCRIBE` → `ZLINK_INTERNAL_OPT_UNSUBSCRIBE`
+- `spot_sub.cpp` 내부: `ZLINK_SUBSCRIBE` → `ZLINK_INTERNAL_OPT_SUBSCRIBE`
+- `spot_sub.cpp` 내부: `ZLINK_UNSUBSCRIBE` → `ZLINK_INTERNAL_OPT_UNSUBSCRIBE`
+- `zlink.cpp` 내부: `ZLINK_SUBSCRIBE` → `ZLINK_INTERNAL_OPT_SUBSCRIBE`
+- `zlink.cpp` 내부: `ZLINK_UNSUBSCRIBE` → `ZLINK_INTERNAL_OPT_UNSUBSCRIBE`
+
+### 14.6 core/tests/ — 호출부 변경 목록
+
+#### 14.6.1 `zlink_setsockopt(s, ZLINK_SUBSCRIBE, ...)` → `zlink_set_subscribe(s, ...)`
+
+| 파일 | 라인 |
+| --- | --- |
+| `test_pubsub.cpp` | 23 |
+| `test_xpub_verbose.cpp` | 25, 31, 37, 47, 80, 87, 101, 112, 144, 150, 156, 163, 168, 178, 188, 200, 207, 226, 233, 247, 251, 267, 274, 281 |
+| `test_socket_with_handler.cpp` | 606, 648, 728, 782, 814, 854 |
+| `test_asio_tcp.cpp` | 156 |
+| `test_proxy.cpp` | 67, 232 |
+| `test_disconnect_inproc.cpp` | 24 |
+| `test_connect_null_fuzzer.cpp` | 24 |
+| `test_bind_null_fuzzer.cpp` | 27 |
+| `test_pub_invert_matching.cpp` | 29, 31 |
+| `test_xpub_welcome_msg.cpp` | 22 |
+| `test_pubsub_inproc_alternating.cpp` | 57 |
+| `test_sub_forward.cpp` | 29 |
+| `test_asio_ws.cpp` | 609 |
+| `test_asio_poller.cpp` | 117 |
+| `test_pubsub_filter_xpub.cpp` | 57 |
+| `test_xpub_topic.cpp` | 34, 48 |
+| `test_xpub_manual.cpp` | 29, 71, 77, 87, 108, 144, 153, 160, 168, 208, 214, 271, 280, 286, 294, 360, 383, 395 |
+| `test_hwm_pubsub.cpp` | 49, 123, 198 |
+| `test_xpub_nodrop.cpp` | 27 |
+| `test_transport_matrix.cpp` | 159 |
+| `monitoring/test_monitor_enhanced.cpp` | 196 |
+| `pgm/test_pgm_smoke.cpp` | 95 |
+
+변환 예시:
+
+```c
+/* 현재 */
+zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0);
+/* 변환 */
+zlink_set_subscribe (sub, "");
+```
+
+#### 14.6.2 `zlink_subscribe(s, filter)` → `zlink_set_subscribe(s, filter)`
+
+| 파일 | 라인 |
+| --- | --- |
+| `test_socket_with_handler.cpp` | 681, 723, 725 |
+| `monitoring/test_monitor_service_contract.cpp` | 1142 |
+| `e2e/spot/spot_pubsub_scenario_callback_cases.cpp` | 142, 213, 229, 283, 391, 407 |
+| `e2e/spot/spot_pubsub_scenario_node_cases.cpp` | 44, 45, 46, 47, 64, 66, 90, 92, 166, 167, 235 |
+| `e2e/spot/spot_pubsub_scenario_peer_cases.cpp` | 196, 273 |
+| `e2e/spot/spot_pubsub_scenario_discovery_cases.cpp` | 72, 100 |
+| `e2e/spot/test_spot_service_introspection.cpp` | 1065, 1270, 1302, 1383, 1384, 1425, 1426, 1627, 1845, 1905, 1964, 2017, 2085, 2144, 2198, 2277, 2390, 2434, 2547, 2552 |
+
+#### 14.6.3 `zlink_unsubscribe(s, filter)` → `zlink_unset_subscribe(s, filter)`
+
+| 파일 | 라인 |
+| --- | --- |
+| `e2e/spot/spot_pubsub_scenario_callback_cases.cpp` | 310, 430, 431 |
+| `e2e/spot/spot_pubsub_scenario_node_cases.cpp` | 78, 80, 103, 105, 107, 108, 109, 111 |
+| `e2e/spot/spot_pubsub_scenario_shared.cpp` | 943 |
+| `e2e/spot/spot_pubsub_scenario_peer_cases.cpp` | 244 |
+| `e2e/spot/spot_pubsub_scenario_discovery_cases.cpp` | 115, 117 |
+| `e2e/spot/test_spot_service_introspection.cpp` | 1142 |
+
+#### 14.6.4 `zlink_subscribe_recv(...)` → `zlink_subscribe(...)`
+
+| 파일 | 라인 |
+| --- | --- |
+| `testutil_unity.hpp` | 134, 141 (inline wrapper — 함수 이름과 내부 호출 모두) |
+| `unittest_service_mode_policy.cpp` | 142, 188 |
+| `test_disconnect_inproc.cpp` | 58 |
+| `test_socket_with_handler.cpp` | 697 |
+| `e2e/spot/test_spot_service_introspection.cpp` | 878, 920, 1930, 2043, 2111, 2224 |
+
+#### 14.6.5 `zlink_subscription_event_recv(...)` → `zlink_subscription_event(...)`
+
+| 파일 | 라인 |
+| --- | --- |
+| `test_disconnect_inproc.cpp` | 40 |
+| `test_socket_with_handler.cpp` | 823, 863 |
+
+### 14.7 core/perf/ — 호출부 변경 목록
+
+| 파일 | 라인 | 변경 내용 |
+| --- | --- | --- |
+| `perf_common.hpp` | 448, 455 | inline wrapper `zlink_subscribe_recv` → `zlink_subscribe` |
+| `perf_pubsub.cpp` | 353 | `zlink_setsockopt(sub, ZLINK_SUBSCRIBE, ...)` → `zlink_set_subscribe(sub, ...)` |
+| `perf_spot.cpp` | 485 | `zlink_subscribe_recv(...)` → `zlink_subscribe(...)` |
+| `perf_spot.cpp` | 854 | `zlink_subscribe(sub, k_topic)` → `zlink_set_subscribe(sub, k_topic)` |
+| `perf_multi_spot_client.cpp` | 560 | `zlink_subscribe_recv(...)` → `zlink_subscribe(...)` |
+| `perf_multi_spot_client.cpp` | 690 | `zlink_subscribe(slot->sub, k_topic)` → `zlink_set_subscribe(slot->sub, k_topic)` |
+
+### 14.8 core/bench/ — 호출부 변경 목록
+
+| 파일 | 라인 | 변경 내용 |
+| --- | --- | --- |
+| `bench_zlink_pubsub.cpp` | 333 | `zlink_setsockopt(sub, ZLINK_SUBSCRIBE, ...)` → `zlink_set_subscribe(sub, ...)` |
+| `bench_multi_client.hpp` | 550 | `zlink_setsockopt(sock, ZLINK_SUBSCRIBE, ...)` → `zlink_set_subscribe(sock, ...)` |
+| `bench_zlink_multi_pubsub.cpp` | 297, 436 | `zlink_setsockopt(sub, ZLINK_SUBSCRIBE, ...)` → `zlink_set_subscribe(sub, ...)` |
+
+libzmq 측 bench (변경하지 않음):
+
+| 파일 | 라인 | 비고 |
+| --- | --- | --- |
+| `bench_zmq_pubsub.cpp` | 293 | `zmq_setsockopt(sub, ZMQ_SUBSCRIBE, ...)` — libzmq API, 변경 대상 아님 |
+
+bench compat shim:
+
+| 파일 | 라인 | 현재 | 처리 |
+| --- | --- | --- | --- |
+| `bench_common.hpp` | (ZLINK_SUBSCRIBE define) | `#define ZLINK_SUBSCRIBE ZMQ_SUBSCRIBE` fallback | zlink 측 bench가 `zlink_set_subscribe`로 변환되면 이 shim은 불필요 — 제거 가능 |
+
+### 14.9 doc/ — 문서 변경 목록
+
+다음 문서에서 `zlink_subscribe(`, `zlink_unsubscribe(`, `zlink_subscribe_recv`,
+`zlink_subscription_event_recv`, `setsockopt(ZLINK_SUBSCRIBE` 등의 이름을 새 이름으로 갱신:
+
+| 파일 |
+| --- |
+| `doc/api/socket.md` |
+| `doc/api/socket.ko.md` |
+| `doc/api/spot.md` |
+| `doc/api/spot.ko.md` |
+| `doc/guide/03-2-pubsub.md` |
+| `doc/guide/03-2-pubsub.ko.md` |
+| `doc/guide/07-3-spot.md` |
+| `doc/guide/07-3-spot.ko.md` |
+| `doc/guide/11-thread-safety.md` |
+| `doc/guide/11-thread-safety.ko.md` |
+
+선행 계획 문서 (`pubsub-public-surface-renaming-plan.ko.md`)는 이 문서가
+후속 재편임을 상단에 기술했으므로, 선행 문서 본문은 수정하지 않는다.
+
+### 14.10 변경하지 않는 호출부 (확인용)
+
+`zlink_subscribe_handler()` 호출은 이름 변경 대상이 아니다.
+다음 파일에서 사용 중이며, 그대로 유지한다:
+
+| 파일 | 라인 |
+| --- | --- |
+| `zlink.cpp` (정의) | 2383 |
+| `testutil_unity.cpp` | 55 |
+| `unittest_service_mode_policy.cpp` | 129, 135, 175, 181 |
+| `test_socket_with_handler.cpp` | 337, 343, 597, 642, 774 |
+| `test_monitor_with_handler.cpp` | 572, 574 |
+| `test_thread_safe_scaling_contract.cpp` | 492, 494, 501, 503 |
+| `monitoring/test_monitor_service_contract.cpp` | 1104, 1106, 1113, 1115, 1231, 1236, 1259, 1264 |
+| `e2e/spot/spot_pubsub_scenario_peer_cases.cpp` | 81, 83 |
+| `e2e/spot/spot_pubsub_scenario_shared.cpp` | 98, 152 |
+| `e2e/spot/test_spot_service_introspection.cpp` | 354, 376, 1893, 2069 |
+| `perf_pubsub.cpp` | 344 |
+| `perf_spot.cpp` | 790 |
+| `perf_multi_spot_client.cpp` | 681 |
+| `perf_multi_spot_server.cpp` | 644 |
+
+## 15. 현재 판단 요약
 
 - 이번 작업의 본질은 public C API 이름 변경이다.
 - 내부 구현 구조 변경은 포함하지 않는다.

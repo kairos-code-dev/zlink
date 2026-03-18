@@ -119,8 +119,6 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
                     _manual_subscriptions.rm (data, size, pipe_);
                 else
                     _manual_subscriptions.add (data, size, pipe_);
-
-                _pending_pipes.push_back (pipe_);
             } else {
                 if (!subscribe) {
                     const mtrie_t::rm_result rm_result =
@@ -167,6 +165,7 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
                     metadata->add_ref ();
                 _pending_metadata.push_back (metadata);
                 _pending_flags.push_back (0);
+                _pending_pipes.push_back (pipe_);
             }
         } else if (options.type != ZLINK_PUB) {
             //  Process user message coming upstream from xsub socket,
@@ -177,10 +176,14 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
                 metadata->add_ref ();
             _pending_metadata.push_back (metadata);
             _pending_flags.push_back (msg.flags ());
+            _pending_pipes.push_back (pipe_);
         }
 
         msg.close ();
     }
+
+    if (_dispatch_active.load (std::memory_order_acquire))
+        dispatch_ready_messages ();
 }
 
 void zlink::xpub_t::xwrite_activated (pipe_t *pipe_)
@@ -424,7 +427,7 @@ int zlink::xpub_t::xrecv (msg_t *msg_)
     }
 
     // User is reading a message, set last_pipe and remove it from the deque
-    if (_manual && !_pending_pipes.empty ()) {
+    if (!_pending_pipes.empty ()) {
         _last_pipe = _pending_pipes.front ();
         _pending_pipes.pop_front ();
 
@@ -434,6 +437,10 @@ int zlink::xpub_t::xrecv (msg_t *msg_)
             _last_pipe = NULL;
         }
     }
+    if (_last_pipe != NULL)
+        store_last_recv_source_rid (_last_pipe);
+    else
+        clear_last_recv_source_rid ();
 
     int rc = msg_->close ();
     errno_assert (rc == 0);
@@ -536,11 +543,19 @@ int zlink::xpub_t::dispatch_message (zlink::msg_t *msg_)
     const uint8_t *data = static_cast<const uint8_t *> (msg_->data ());
     const size_t size = msg_->size ();
     const int subscribed = size > 0 && data[0] != 0 ? 1 : 0;
-    const uint8_t *topic = size > 0 ? data + 1 : NULL;
+    const char *topic =
+      size > 0 ? reinterpret_cast<const char *> (data + 1) : NULL;
     const size_t topic_len = size > 0 ? size - 1 : 0;
+    zlink_routing_id_t source_rid;
+    zlink_routing_id_t *source_rid_ptr = NULL;
+    if (_last_pipe != NULL) {
+        resolve_socket_msg_source_rid (_last_pipe, &source_rid);
+        source_rid_ptr = &source_rid;
+    }
 
     _dispatch_inflight.fetch_add (1, std::memory_order_acq_rel);
-    handler (subscribed, topic, topic_len, socket_xpub_handler_userdata ());
+    handler (source_rid_ptr, subscribed, topic, topic_len,
+             socket_xpub_handler_userdata ());
     notify_dispatch_stopped ();
     return 0;
 }
@@ -570,9 +585,7 @@ void zlink::xpub_t::send_unsubscription (zlink::mtrie_t::prefix_t data_,
         self_->_pending_metadata.push_back (NULL);
         self_->_pending_flags.push_back (0);
 
-        if (self_->_manual) {
-            self_->_last_pipe = NULL;
-            self_->_pending_pipes.push_back (NULL);
-        }
+        self_->_last_pipe = NULL;
+        self_->_pending_pipes.push_back (NULL);
     }
 }

@@ -121,6 +121,7 @@ int zlink::pair_t::xrecv (msg_t *msg_)
         errno = EAGAIN;
         return -1;
     }
+    store_last_recv_source_rid (_pipe);
     return 0;
 }
 

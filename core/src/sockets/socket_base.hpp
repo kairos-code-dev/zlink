@@ -30,6 +30,9 @@ extern "C" {
 void zlink_free_event (void *data_, void *hint_);
 }
 
+typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *rid_,
+                                       zlink_msg_t *msg_);
+
 namespace zlink
 {
 class ctx_t;
@@ -110,11 +113,13 @@ class socket_base_t : public own_t,
     virtual bool sub_dispatch_active () const;
     virtual int xpub_dispatch_start ();
     virtual bool xpub_dispatch_active () const;
+    virtual int stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_);
     virtual int stream_set_msg_handler_with_userdata (
       zlink_socket_msg_handler_fn handler_, void *userdata_);
     virtual int stream_dispatch_stop ();
     virtual bool stream_dispatch_active () const;
     virtual bool stream_dispatch_in_callback () const;
+    virtual uint32_t stream_dispatch_inflight () const;
     virtual int stream_dispatch_send_from_io (const zlink_routing_id_t *rid_,
                                               const void *data_,
                                               size_t size_,
@@ -270,6 +275,12 @@ class socket_base_t : public own_t,
     static void close_socket_msg_parts (std::vector<zlink_msg_t> *parts_);
     static void resolve_socket_msg_source_rid (pipe_t *pipe_,
                                                zlink_routing_id_t *out_);
+  public:
+    void store_last_recv_source_rid (pipe_t *pipe_);
+    void store_last_recv_source_rid (const zlink_routing_id_t *source_rid_);
+    void clear_last_recv_source_rid ();
+    bool copy_last_recv_source_rid (zlink_routing_id_t *out_) const;
+  protected:
     static void dispatch_spot_handler_from_io (
       const zlink_routing_id_t *source_rid_,
       const char *topic_,
@@ -396,7 +407,9 @@ class socket_base_t : public own_t,
             send_ready_handler_subject (NULL),
             send_ready_handler_userdata (NULL),
             send_ready_seq (0),
-            send_ready_armed (false)
+            send_ready_armed (false),
+            last_recv_source_rid (),
+            last_recv_source_rid_valid (false)
         {
         }
 
@@ -418,6 +431,8 @@ class socket_base_t : public own_t,
         mutex_t send_ready_writer_sync;
         std::atomic<bool> send_ready_armed;
         std::recursive_mutex socket_msg_dispatch_sync;
+        zlink_routing_id_t last_recv_source_rid;
+        bool last_recv_source_rid_valid;
     };
 
     struct lifecycle_hooks_t
@@ -586,6 +601,8 @@ class socket_base_t : public own_t,
     bool &_monitor_queue_stop;
     thread_t &_monitor_thread;
     bool &_monitor_thread_started;
+    zlink_routing_id_t &_last_recv_source_rid;
+    bool &_last_recv_source_rid_valid;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
 

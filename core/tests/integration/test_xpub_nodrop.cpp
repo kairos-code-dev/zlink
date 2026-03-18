@@ -35,7 +35,8 @@ void test ()
 
     //  Send an empty message
     for (int i = 0; i < hwmlimit; i++) {
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_send (pub, NULL, 0, 0));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_send (pub, static_cast<const void *> (NULL), 0, 0));
         send_count++;
     }
 

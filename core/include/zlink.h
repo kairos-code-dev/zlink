@@ -282,16 +282,6 @@ ZLINK_EXPORT int zlink_msg_init_size (zlink_msg_t *msg_, size_t size_);
 ZLINK_EXPORT int zlink_msg_init_data (
   zlink_msg_t *msg_, void *data_, size_t size_, zlink_free_fn *ffn_, void *hint_);
 
-/** @brief Send a message on a socket. On success, ownership is transferred. */
-ZLINK_EXPORT int zlink_msg_send (zlink_msg_t *msg_,
-                                 void *s_,
-                                 zlink_send_flags_t flags_);
-
-/** @brief Receive a message from a socket. */
-ZLINK_EXPORT int zlink_msg_recv (zlink_msg_t *msg_,
-                                 void *s_,
-                                 zlink_send_flags_t flags_);
-
 /** @brief Release message resources. Must be called after init. */
 ZLINK_EXPORT int zlink_msg_close (zlink_msg_t *msg_);
 
@@ -557,9 +547,7 @@ typedef enum zlink_msg_property_t
 } zlink_msg_property_t;
 
 #define ZLINK_DONTWAIT ((zlink_send_flags_t) 0x0001u)
-#define ZLINK_SNDMORE ((zlink_send_flags_t) 0x0002u)
 #define ZLINK_SEND_FLAG_DONTWAIT ZLINK_DONTWAIT
-#define ZLINK_SEND_FLAG_SNDMORE ZLINK_SNDMORE
 
 #define ZLINK_NULL 0
 #define ZLINK_PLAIN 1
@@ -664,8 +652,10 @@ typedef void (*zlink_spot_handler_fn) (const zlink_routing_id_t *source_rid_,
                                        size_t part_count_,
                                        void *userdata_);
 
-typedef void (*zlink_xpub_handler_fn) (int subscribed_,
-                                       const uint8_t *topic_,
+typedef void (*zlink_xpub_handler_fn) (
+                                       const zlink_routing_id_t *source_rid_,
+                                       int subscribed_,
+                                       const char *topic_,
                                        size_t topic_len_,
                                        void *userdata_);
 
@@ -755,63 +745,51 @@ ZLINK_EXPORT int zlink_unbind (void *s_, const char *addr_);
 ZLINK_EXPORT int zlink_disconnect (void *s_, const char *addr_);
 
 /**
- * @brief Send buffer data on a socket.
- * @param flags_  0, ZLINK_DONTWAIT, ZLINK_SNDMORE, or a combination.
- * @return Number of bytes sent, or -1 on failure (errno is set).
+ * @brief Send a multipart message on a socket or handle.
+ *
+ * Ownership of all parts is transferred to the callee on success.
+ * On failure, ownership remains with the caller unless a narrower contract is
+ * documented for a specific handle family.
+ *
+ * This is the canonical public send API for non-directed sends.
+ * Public multipart send does not use ZLINK_SNDMORE; part boundaries are
+ * defined only by @p parts_ and @p part_count_.
  */
 ZLINK_EXPORT int zlink_send (void *s_,
-                             const void *buf_,
-                             size_t len_,
+                             zlink_msg_t *parts_,
+                             size_t part_count_,
                              zlink_send_flags_t flags_);
 
 /**
- * @brief Receive buffer data from a socket.
+ * @brief Send a multipart message to a specific peer routing id.
  *
- * If a direct receive handler has been attached to the same handle, this call
- * fails with errno=EBUSY.
+ * Ownership of all parts is transferred to the callee on success.
+ * On failure, ownership remains with the caller unless a narrower contract is
+ * documented for a specific handle family.
+ */
+ZLINK_EXPORT int zlink_send_rid (void *s_,
+                                 const zlink_routing_id_t *target_rid_,
+                                 zlink_msg_t *parts_,
+                                 size_t part_count_,
+                                 zlink_send_flags_t flags_);
+
+/**
+ * @brief Receive a multipart message from a socket or handle.
+ *
+ * Direct recv is the synchronous counterpart of direct callback dispatch.
+ * The returned payload shape must match the callback payload shape for the
+ * same socket or handle family.
+ *
+ * On success, ownership of the returned parts array and all contained
+ * `zlink_msg_t` instances is transferred to the caller. The caller must close
+ * each part with `zlink_msg_close()` and then free the array itself with
+ * `free()`.
  */
 ZLINK_EXPORT int zlink_recv (void *s_,
-                             void *buf_,
-                             size_t len_,
+                             zlink_routing_id_t *source_rid_out_,
+                             zlink_msg_t **parts_out_,
+                             size_t *part_count_out_,
                              zlink_send_flags_t flags_);
-
-/**
- * @brief Send STREAM payload to a specific peer by routing id.
- *
- * Sends routing id as the first STREAM frame and payload as the second frame.
- * STREAM send APIs are safe to call from application threads and STREAM
- * dispatch callbacks; internally the socket serializes outgoing state.
- *
- * @param s_    STREAM socket.
- * @param rid_  Target peer routing id.
- * @param data_ Payload data buffer (may be NULL when size_ == 0).
- * @param size_ Payload size in bytes.
- * @param flags_ Send flags (0 or ZLINK_DONTWAIT).
- * @return Number of payload bytes accepted (size_), or -1 on failure.
- */
-ZLINK_EXPORT int zlink_stream_send (void *s_,
-                                    const zlink_routing_id_t *rid_,
-                                    const void *data_,
-                                    size_t size_,
-                                    zlink_send_flags_t flags_);
-
-/**
- * @brief Send STREAM payload message to a specific peer by routing id.
- *
- * This API consumes @p msg_ and reinitializes it before returning.
- * STREAM send APIs are safe to call from application threads and STREAM
- * dispatch callbacks; internally the socket serializes outgoing state.
- *
- * @param s_    STREAM socket.
- * @param rid_  Target peer routing id.
- * @param msg_  Payload message to send (consumed by this call).
- * @param flags_ Send flags (0 or ZLINK_DONTWAIT).
- * @return Number of payload bytes accepted, or -1 on failure.
- */
-ZLINK_EXPORT int zlink_stream_send_msg (void *s_,
-                                        const zlink_routing_id_t *rid_,
-                                        zlink_msg_t *msg_,
-                                        zlink_send_flags_t flags_);
 
 typedef struct {
     uint64_t event;
@@ -1066,30 +1044,6 @@ ZLINK_EXPORT int zlink_gateway_connect (void *gateway,
 ZLINK_EXPORT int zlink_gateway_disconnect (void *gateway,
                                            const char *endpoint);
 
-/**
- * @brief Send a message to the bound service (load-balanced).
- * @param parts         Multipart message array.
- * @param part_count    Number of parts.
- * @param flags         Send flags (0 or ZLINK_DONTWAIT).
- */
-ZLINK_EXPORT int zlink_gateway_send (void *gateway,
-                                     zlink_msg_t *parts,
-                                     size_t part_count,
-                                     zlink_send_flags_t flags);
-
-/** @brief Send a message directly to a specific Receiver by routing_id. */
-ZLINK_EXPORT int zlink_gateway_send_rid (void *gateway,
-                                         const zlink_routing_id_t *routing_id,
-                                         zlink_msg_t *parts,
-                                         size_t part_count,
-                                         zlink_send_flags_t flags);
-
-ZLINK_EXPORT int zlink_gateway_recv (void *gateway,
-                                     zlink_routing_id_t *source_rid_out,
-                                     zlink_msg_t **parts,
-                                     size_t *part_count,
-                                     int flags);
-
 typedef enum zlink_gateway_lb_strategy_t
 {
     ZLINK_GATEWAY_LB_STRATEGY_ROUND_ROBIN = 0,
@@ -1266,11 +1220,12 @@ ZLINK_EXPORT int zlink_spot_node_unsubscribe (
   void *node, const char *topic_id_or_pattern);
 
 ZLINK_EXPORT int zlink_spot_node_recv (void *node,
+                                       zlink_routing_id_t *source_rid_out,
                                        zlink_msg_t **parts,
                                        size_t *part_count,
-                                       int flags,
                                        char *topic_id_out,
-                                       size_t *topic_id_len);
+                                       size_t *topic_id_len,
+                                       zlink_send_flags_t flags);
 
 ZLINK_EXPORT int zlink_spot_node_send_ready_handler (
   void *node,
@@ -1293,11 +1248,18 @@ ZLINK_EXPORT int zlink_spot_publish (void *spot,
                                      size_t part_count,
                                      zlink_send_flags_t flags);
 ZLINK_EXPORT int zlink_spot_sub_recv (void *sub,
+                                      zlink_routing_id_t *source_rid_out,
                                       zlink_msg_t **parts,
                                       size_t *part_count,
-                                      int flags,
                                       char *topic_id_out,
-                                      size_t *topic_id_len);
+                                      size_t *topic_id_len,
+                                      zlink_send_flags_t flags);
+ZLINK_EXPORT int zlink_xpub_recv (void *s_,
+                                  zlink_routing_id_t *source_rid_out_,
+                                  int *subscribed_out_,
+                                  char *topic_id_out_,
+                                  size_t *topic_id_len_,
+                                  zlink_send_flags_t flags_);
 ZLINK_EXPORT int zlink_spot_subscribe (void *spot, const char *topic_id);
 ZLINK_EXPORT int zlink_spot_subscribe_pattern (void *spot, const char *pattern);
 ZLINK_EXPORT int zlink_spot_unsubscribe (void *spot,
@@ -1508,43 +1470,6 @@ ZLINK_EXPORT void *zlink_spot_monitor_open (
   zlink_spot_monitor_event_mask_t events,
   zlink_service_monitor_handler_fn handler,
   void *userdata);
-
-ZLINK_EXPORT int zlink_poller_add_gateway (void *poller_,
-                                           void *gateway_,
-                                           void *user_data_,
-                                           short events_);
-ZLINK_EXPORT int zlink_poller_modify_gateway (void *poller_,
-                                              void *gateway_,
-                                              short events_);
-ZLINK_EXPORT int zlink_poller_remove_gateway (void *poller_,
-                                              void *gateway_);
-ZLINK_EXPORT int zlink_poller_add_spot_pub (void *poller_,
-                                            void *spot_or_node_,
-                                            void *user_data_,
-                                            short events_);
-ZLINK_EXPORT int zlink_poller_modify_spot_pub (void *poller_,
-                                               void *spot_or_node_,
-                                               short events_);
-ZLINK_EXPORT int zlink_poller_remove_spot_pub (void *poller_,
-                                               void *spot_or_node_);
-ZLINK_EXPORT int zlink_poller_add_spot_sub (void *poller_,
-                                            void *spot_or_node_,
-                                            void *user_data_,
-                                            short events_);
-ZLINK_EXPORT int zlink_poller_modify_spot_sub (void *poller_,
-                                               void *spot_or_node_,
-                                               short events_);
-ZLINK_EXPORT int zlink_poller_remove_spot_sub (void *poller_,
-                                               void *spot_or_node_);
-ZLINK_EXPORT int zlink_poller_add_monitor (void *poller_,
-                                           void *monitor_,
-                                           void *user_data_,
-                                           short events_);
-ZLINK_EXPORT int zlink_poller_modify_monitor (void *poller_,
-                                              void *monitor_,
-                                              short events_);
-ZLINK_EXPORT int zlink_poller_remove_monitor (void *poller_,
-                                              void *monitor_);
 
 /**
  * @brief Close a service monitor handle.

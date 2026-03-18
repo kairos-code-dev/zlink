@@ -258,8 +258,7 @@ bool wait_flag (std::atomic<int> *flag_, int timeout_ms_)
     return flag_->load (std::memory_order_acquire) != 0;
 }
 
-int capture_route_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg_,
-                                   void *)
+int capture_route_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
 {
     if (g_route_probe && rid_ && msg_ && rid_->size == kRouteIdSize
         && zlink_msg_size (msg_) > 0
@@ -274,19 +273,7 @@ int capture_route_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg_,
     return 0;
 }
 
-void capture_route_handler (const zlink_routing_id_t *rid_,
-                            zlink_msg_t *parts_,
-                            size_t part_count_,
-                            void *userdata_)
-{
-    if (part_count_ > 0)
-        (void) capture_route_callback (rid_, &parts_[0], userdata_);
-    for (size_t i = 1; i < part_count_; ++i)
-        (void) zlink_msg_close (&parts_[i]);
-}
-
-int lifecycle_reject_callback (const zlink_routing_id_t *, zlink_msg_t *msg_,
-                                   void *)
+int lifecycle_reject_callback (const zlink_routing_id_t *, zlink_msg_t *msg_)
 {
     lifecycle_probe_t *probe = g_lifecycle_probe;
     if (!probe || !probe->socket || !msg_)
@@ -295,26 +282,17 @@ int lifecycle_reject_callback (const zlink_routing_id_t *, zlink_msg_t *msg_,
     probe->hits.fetch_add (1, std::memory_order_release);
 
     errno = 0;
-    const int detach_rc = zlink_recv_handler (probe->socket, &capture_route_handler, NULL);
+    const int detach_rc = zlink_stream_detach (probe->socket);
     probe->detach_rc.store (detach_rc, std::memory_order_release);
     probe->detach_errno.store (errno, std::memory_order_release);
 
-    probe->close_rc.store (-1, std::memory_order_release);
-    probe->close_errno.store (EBUSY, std::memory_order_release);
+    errno = 0;
+    const int close_rc = zlink_close (probe->socket);
+    probe->close_rc.store (close_rc, std::memory_order_release);
+    probe->close_errno.store (errno, std::memory_order_release);
 
     (void) zlink_msg_close (msg_);
     return 0;
-}
-
-void lifecycle_reject_handler (const zlink_routing_id_t *rid_,
-                               zlink_msg_t *parts_,
-                               size_t part_count_,
-                               void *userdata_)
-{
-    if (part_count_ > 0)
-        (void) lifecycle_reject_callback (rid_, &parts_[0], userdata_);
-    for (size_t i = 1; i < part_count_; ++i)
-        (void) zlink_msg_close (&parts_[i]);
 }
 
 void establish_route (void *server_, int raw_fd_, zlink_routing_id_t *rid_,
@@ -322,9 +300,8 @@ void establish_route (void *server_, int raw_fd_, zlink_routing_id_t *rid_,
 {
     route_probe_t probe;
     g_route_probe = &probe;
-    errno = 0;
-    const int attach_rc = zlink_recv_handler (server_, &capture_route_handler, NULL);
-    TEST_ASSERT_TRUE (attach_rc == 0 || errno == EBUSY);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_raw (server_, capture_route_callback));
 
     const unsigned char payload = 0xA5;
     TEST_ASSERT_EQUAL_INT (0, send_all (raw_fd_, &payload, sizeof (payload)));
@@ -333,7 +310,8 @@ void establish_route (void *server_, int raw_fd_, zlink_routing_id_t *rid_,
     *rid_ = probe.rid;
     g_route_probe = NULL;
 
-    LIBZLINK_UNUSED (keep_attached_);
+    if (!keep_attached_)
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server_));
 }
 
 void drain_exact_bytes (int fd_,
@@ -435,8 +413,7 @@ void sender_thread_run (void *server_,
     }
 }
 
-int handoff_to_worker_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg_,
-                                   void *)
+int handoff_to_worker_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
 {
     worker_probe_t *probe = g_worker_probe;
     if (!probe || !rid_ || !msg_)
@@ -465,17 +442,6 @@ int handoff_to_worker_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg
     return 0;
 }
 
-void handoff_to_worker_handler (const zlink_routing_id_t *rid_,
-                                zlink_msg_t *parts_,
-                                size_t part_count_,
-                                void *userdata_)
-{
-    if (part_count_ > 0)
-        (void) handoff_to_worker_callback (rid_, &parts_[0], userdata_);
-    for (size_t i = 1; i < part_count_; ++i)
-        (void) zlink_msg_close (&parts_[i]);
-}
-
 void worker_send_msg_run (worker_probe_t *probe_)
 {
     std::unique_lock<std::mutex> lk (probe_->mutex);
@@ -494,7 +460,7 @@ void worker_send_msg_run (worker_probe_t *probe_)
     lk.unlock ();
 
     errno = 0;
-    const int rc = zlink_stream_send_msg (probe_->socket, &rid, &probe_->msg, 0);
+    const int rc = ::zlink_stream_send_msg (probe_->socket, &rid, &probe_->msg, 0);
     const int err = errno;
 
     lk.lock ();
@@ -525,7 +491,8 @@ void test_stream_callback_rejects_detach_and_close ()
     lifecycle_probe_t probe;
     probe.socket = server;
     g_lifecycle_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (server, &lifecycle_reject_handler, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_raw (server, lifecycle_reject_callback));
 
     const unsigned char payload = 0x41;
     TEST_ASSERT_EQUAL_INT (0, send_all (raw_fd, &payload, sizeof (payload)));
@@ -538,6 +505,7 @@ void test_stream_callback_rejects_detach_and_close ()
     TEST_ASSERT_EQUAL_INT (EBUSY,
                            probe.close_errno.load (std::memory_order_acquire));
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_lifecycle_probe = NULL;
     close_raw_fd (raw_fd);
     test_context_socket_close_zero_linger (server);
@@ -668,7 +636,8 @@ void test_stream_callback_handoff_to_worker_thread_send_msg_is_safe ()
     worker_probe_t probe;
     probe.socket = server;
     g_worker_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (server, &handoff_to_worker_handler, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_raw (server, handoff_to_worker_callback));
 
     std::thread worker (worker_send_msg_run, &probe);
 
@@ -692,6 +661,7 @@ void test_stream_callback_handoff_to_worker_thread_send_msg_is_safe ()
     TEST_ASSERT_EQUAL_INT (static_cast<int> (payload.size ()), probe.send_rc);
     TEST_ASSERT_EQUAL_INT (0, probe.send_errno);
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_worker_probe = NULL;
     close_raw_fd (raw_fd);
     test_context_socket_close_zero_linger (server);

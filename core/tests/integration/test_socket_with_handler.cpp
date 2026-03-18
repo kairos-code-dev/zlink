@@ -62,13 +62,16 @@ struct spot_handler_probe_t
 
 struct xpub_handler_probe_t
 {
-    xpub_handler_probe_t () : calls (0), subscribed (0), topic_len (0)
+    xpub_handler_probe_t () : calls (0), subscribed (0), rid_size (0), topic_len (0)
     {
+        memset (rid, 0, sizeof (rid));
         memset (topic, 0, sizeof (topic));
     }
 
     std::atomic<int> calls;
     std::atomic<int> subscribed;
+    unsigned char rid[255];
+    size_t rid_size;
     char topic[64];
     size_t topic_len;
 };
@@ -212,14 +215,19 @@ void capture_spot_message (const zlink_routing_id_t *source_rid_,
     g_spot_probe->calls.fetch_add (1);
 }
 
-void capture_xpub_event (int subscribed_,
-                         const uint8_t *topic_,
-                         size_t topic_len_, void *)
+void capture_xpub_event (const zlink_routing_id_t *source_rid_,
+                         int subscribed_,
+                         const char *topic_,
+                         size_t topic_len_,
+                         void *)
 {
     if (!g_xpub_probe)
         return;
 
     g_xpub_probe->subscribed.store (subscribed_);
+    g_xpub_probe->rid_size = source_rid_ ? source_rid_->size : 0;
+    if (source_rid_ && source_rid_->size > 0)
+        memcpy (g_xpub_probe->rid, source_rid_->data, source_rid_->size);
     const size_t copy_size =
       std::min (topic_len_, sizeof (g_xpub_probe->topic) - 1);
     if (copy_size > 0)
@@ -668,6 +676,9 @@ void test_xpub_socket_with_handler_receives_subscription_events ()
 
     void *xpub = zlink_socket (ctx, ZLINK_XPUB);
     TEST_ASSERT_NOT_NULL (xpub);
+    int verbose = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (xpub, ZLINK_XPUB_VERBOSE, &verbose, sizeof (verbose)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_xpub_handler (xpub, &capture_xpub_event, NULL));
     void *sub = zlink_socket (ctx, ZLINK_SUB);
     TEST_ASSERT_NOT_NULL (sub);
@@ -683,12 +694,91 @@ void test_xpub_socket_with_handler_receives_subscription_events ()
 
     TEST_ASSERT_TRUE (wait_for_calls (&probe.calls, 1, 2000));
     TEST_ASSERT_EQUAL_INT (1, probe.subscribed.load ());
+    TEST_ASSERT_TRUE (probe.rid_size > 0);
     TEST_ASSERT_EQUAL_STRING ("topic", probe.topic);
 
     close_zero_linger (sub);
     close_zero_linger (xpub);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
     g_xpub_probe = NULL;
+}
+
+void test_xpub_direct_recv_returns_source_rid_and_topic ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *xpub = zlink_socket (ctx, ZLINK_XPUB);
+    TEST_ASSERT_NOT_NULL (xpub);
+    int verbose = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (xpub, ZLINK_XPUB_VERBOSE, &verbose, sizeof (verbose)));
+    void *sub = zlink_socket (ctx, ZLINK_SUB);
+    TEST_ASSERT_NOT_NULL (sub);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (xpub, endpoint, sizeof endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
+    msleep (SETTLE_TIME);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "topic", 5));
+
+    zlink_routing_id_t source_rid;
+    memset (&source_rid, 0, sizeof (source_rid));
+    int subscribed = 0;
+    char topic[32];
+    memset (topic, 0, sizeof (topic));
+    size_t topic_len = sizeof (topic);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_xpub_recv (xpub, &source_rid, &subscribed, topic, &topic_len, 0));
+    TEST_ASSERT_EQUAL_INT (1, subscribed);
+    TEST_ASSERT_TRUE (source_rid.size > 0);
+    TEST_ASSERT_EQUAL_UINT (5, topic_len);
+    TEST_ASSERT_EQUAL_STRING ("topic", topic);
+
+    close_zero_linger (sub);
+    close_zero_linger (xpub);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_xpub_direct_recv_reports_emsgsize_and_required_topic_length ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *xpub = zlink_socket (ctx, ZLINK_XPUB);
+    TEST_ASSERT_NOT_NULL (xpub);
+    int verbose = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (xpub, ZLINK_XPUB_VERBOSE, &verbose, sizeof (verbose)));
+    void *sub = zlink_socket (ctx, ZLINK_SUB);
+    TEST_ASSERT_NOT_NULL (sub);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (xpub, endpoint, sizeof endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
+    msleep (SETTLE_TIME);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "topic", 5));
+
+    zlink_routing_id_t source_rid;
+    memset (&source_rid, 0, sizeof (source_rid));
+    int subscribed = 0;
+    char topic[4];
+    memset (topic, 0, sizeof (topic));
+    size_t topic_len = sizeof (topic);
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_xpub_recv (xpub, &source_rid, &subscribed, topic, &topic_len, 0));
+    TEST_ASSERT_EQUAL_INT (EMSGSIZE, zlink_errno ());
+    TEST_ASSERT_EQUAL_UINT (5, topic_len);
+    TEST_ASSERT_EQUAL_INT (1, subscribed);
+    TEST_ASSERT_TRUE (source_rid.size > 0);
+
+    close_zero_linger (sub);
+    close_zero_linger (xpub);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
 void test_pair_socket_same_handle_concurrent_send_is_thread_safe ()
@@ -805,6 +895,8 @@ int main ()
     RUN_TEST (
       test_sub_socket_with_handler_applies_filter_before_dispatch_over_inproc);
     RUN_TEST (test_xpub_socket_with_handler_receives_subscription_events);
+    RUN_TEST (test_xpub_direct_recv_returns_source_rid_and_topic);
+    RUN_TEST (test_xpub_direct_recv_reports_emsgsize_and_required_topic_length);
     RUN_TEST (test_pair_socket_same_handle_concurrent_send_is_thread_safe);
     return UNITY_END ();
 }

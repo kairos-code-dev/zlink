@@ -134,7 +134,8 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *endpoint_)
     int blocked_count = 0;
     int is_termination = 0;
     while (send_count < msg_cnt_) {
-        const int rc = zlink_send (pub_socket, NULL, 0, ZLINK_DONTWAIT);
+        const int rc = zlink_send (pub_socket, static_cast<const void *> (NULL),
+                                   0, ZLINK_DONTWAIT);
         if (rc == 0) {
             ++send_count;
         } else if (-1 == rc) {
@@ -201,7 +202,8 @@ void test_reset_hwm ()
     // Send messages
     int send_count = 0;
     while (send_count < first_count
-           && zlink_send (pub_socket, NULL, 0, ZLINK_DONTWAIT) == 0)
+           && zlink_send (pub_socket, static_cast<const void *> (NULL), 0,
+                          ZLINK_DONTWAIT) == 0)
         ++send_count;
     TEST_ASSERT_EQUAL_INT (first_count, send_count);
 
@@ -219,7 +221,8 @@ void test_reset_hwm ()
     // Send messages
     send_count = 0;
     while (send_count < second_count
-           && zlink_send (pub_socket, NULL, 0, ZLINK_DONTWAIT) == 0)
+           && zlink_send (pub_socket, static_cast<const void *> (NULL), 0,
+                          ZLINK_DONTWAIT) == 0)
         ++send_count;
     TEST_ASSERT_EQUAL_INT (second_count, send_count);
 

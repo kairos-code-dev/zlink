@@ -44,6 +44,7 @@ struct spot_probe_t;
 
 static std::mutex g_spot_probe_registry_mutex;
 static std::map<void *, spot_probe_t *> g_spot_handle_probes;
+static std::atomic<int> g_spot_test_port_seed (22618);
 static void spot_probe_handler (const zlink_routing_id_t *,
                                 const char *topic_,
                                 size_t topic_len_,
@@ -72,6 +73,12 @@ static send_ready_probe_t *g_send_ready_probe_a = NULL;
 static send_ready_probe_t *g_send_ready_probe_b = NULL;
 static send_ready_probe_t *g_send_ready_probe_replace = NULL;
 
+static int reserve_spot_test_port_seed (int count_)
+{
+    const int span = count_ > 0 ? count_ : 1;
+    return g_spot_test_port_seed.fetch_add (span, std::memory_order_acq_rel);
+}
+
 static bool read_spot_snapshot (void *spot_,
                                 zlink_spot_role_t role_,
                                 zlink_monitor_snapshot_t *out_)
@@ -97,6 +104,25 @@ void setUp ()
 {
     std::lock_guard<std::mutex> lock (g_spot_probe_registry_mutex);
     g_spot_handle_probes.clear ();
+    g_service_monitor_probe_a = NULL;
+    g_service_monitor_probe_b = NULL;
+    g_send_ready_probe_a = NULL;
+    g_send_ready_probe_b = NULL;
+    g_send_ready_probe_replace = NULL;
+    g_spot_reentrant_ready_subject = NULL;
+    g_spot_reentrant_ready_calls = NULL;
+    g_spot_reentrant_ready_rc = 0;
+    g_spot_reentrant_ready_errno = 0;
+    g_spot_ready_subject = NULL;
+    g_spot_ready_calls = NULL;
+    g_spot_ready_publish_rc = 0;
+    g_spot_ready_publish_errno = 0;
+    g_spot_ready_self_close_rc = 0;
+    g_spot_ready_self_close_errno = 0;
+    g_spot_monitor_self_close_subject = NULL;
+    g_spot_monitor_self_close_calls = NULL;
+    g_spot_monitor_self_close_rc = 0;
+    g_spot_monitor_self_close_errno = 0;
 }
 
 void tearDown ()
@@ -110,8 +136,20 @@ void tearDown ()
     g_send_ready_probe_a = NULL;
     g_send_ready_probe_b = NULL;
     g_send_ready_probe_replace = NULL;
+    g_spot_reentrant_ready_subject = NULL;
+    g_spot_reentrant_ready_calls = NULL;
+    g_spot_reentrant_ready_rc = 0;
+    g_spot_reentrant_ready_errno = 0;
+    g_spot_ready_subject = NULL;
+    g_spot_ready_calls = NULL;
+    g_spot_ready_publish_rc = 0;
+    g_spot_ready_publish_errno = 0;
+    g_spot_ready_self_close_rc = 0;
+    g_spot_ready_self_close_errno = 0;
     g_spot_monitor_self_close_subject = NULL;
     g_spot_monitor_self_close_calls = NULL;
+    g_spot_monitor_self_close_rc = 0;
+    g_spot_monitor_self_close_errno = 0;
 }
 
 static bool wait_for_registry_uplink (void *discovery_, int timeout_ms_)
@@ -1018,7 +1056,7 @@ static void test_spot_pub_sub_options_and_routing_ids ()
 
     step_log ("pub_sub_options: bind/connect");
     char endpoint[MAX_SOCKET_STRING];
-    int endpoint_seed = 22760;
+    int endpoint_seed = reserve_spot_test_port_seed (1);
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
       pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
       sizeof (endpoint)));
@@ -1223,7 +1261,7 @@ static void test_spot_monitors_and_monitor_poller ()
 
     step_log ("monitors: bind/connect");
     char endpoint[MAX_SOCKET_STRING];
-    int endpoint_seed = 22761;
+    int endpoint_seed = reserve_spot_test_port_seed (1);
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
       pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
       sizeof (endpoint)));
@@ -1335,7 +1373,7 @@ static void test_spot_node_direct_apis_and_explicit_handles_interop ()
     TEST_ASSERT_NOT_NULL (sub);
 
     char endpoint[MAX_SOCKET_STRING];
-    int endpoint_seed = 22762;
+    int endpoint_seed = reserve_spot_test_port_seed (1);
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
       pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
       sizeof (endpoint)));
@@ -1377,7 +1415,7 @@ static void test_spot_runtime_reads_are_safe_during_concurrent_publish ()
     TEST_ASSERT_NOT_NULL (sub);
 
     char endpoint[MAX_SOCKET_STRING];
-    int endpoint_seed = 22792;
+    int endpoint_seed = reserve_spot_test_port_seed (1);
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
       pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
       sizeof (endpoint)));
@@ -1542,7 +1580,7 @@ static void test_spot_topology_summary_lifecycle ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     step_log ("topology_summary: create registry");
-    int registry_seed = 22670;
+    int registry_seed = reserve_spot_test_port_seed (2);
     char registry_pub[MAX_SOCKET_STRING];
     char registry_router[MAX_SOCKET_STRING];
     void *registry = create_started_registry_with_port_seed (
@@ -1568,7 +1606,7 @@ static void test_spot_topology_summary_lifecycle ()
 
     step_log ("topology_summary: bind node");
     char endpoint[MAX_SOCKET_STRING];
-    int endpoint_seed = 22672;
+    int endpoint_seed = reserve_spot_test_port_seed (1);
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
       node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
       sizeof (endpoint)));
@@ -1619,7 +1657,7 @@ static void test_spot_register_null_derivation_and_wildcard_rejection ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    int registry_seed = 22618;
+    int registry_seed = reserve_spot_test_port_seed (2);
     char registry_pub[MAX_SOCKET_STRING];
     char registry_router[MAX_SOCKET_STRING];
     void *registry = create_started_registry_with_port_seed (
@@ -1640,13 +1678,13 @@ static void test_spot_register_null_derivation_and_wildcard_rejection ()
     TEST_ASSERT_NOT_NULL (wild_node);
 
     char concrete_endpoint[MAX_SOCKET_STRING];
-    int concrete_seed = 22620;
+    int concrete_seed = reserve_spot_test_port_seed (1);
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
       ok_node, "tcp://127.0.0.1:", &concrete_seed, concrete_endpoint,
       sizeof (concrete_endpoint)));
     char wildcard_endpoint[MAX_SOCKET_STRING];
     snprintf (wildcard_endpoint, sizeof (wildcard_endpoint), "tcp://*:%d",
-              test_port (22621));
+              test_port (reserve_spot_test_port_seed (1)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (wild_node, wildcard_endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_attach_discovery (ok_node, discovery));
@@ -1677,7 +1715,7 @@ static void test_spot_tls_settings_lock_after_bind_connect_and_register ()
     tls_test_files_t files = make_tls_test_files ();
 
     step_log ("tls_lock: create registry");
-    int registry_seed = 22625;
+    int registry_seed = reserve_spot_test_port_seed (2);
     char registry_pub[MAX_SOCKET_STRING];
     char registry_router[MAX_SOCKET_STRING];
     void *registry = create_started_registry_with_port_seed (
@@ -1702,9 +1740,9 @@ static void test_spot_tls_settings_lock_after_bind_connect_and_register ()
     TEST_ASSERT_NOT_NULL (reg_node);
 
     char tls_endpoint[MAX_SOCKET_STRING];
-    int tls_seed = 22622;
+    int tls_seed = reserve_spot_test_port_seed (1);
     char reg_endpoint[MAX_SOCKET_STRING];
-    int reg_seed = 22623;
+    int reg_seed = reserve_spot_test_port_seed (1);
 
     step_log ("tls_lock: bind server tls");
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1774,7 +1812,7 @@ static void test_spot_late_connect_replays_existing_subscription ()
     TEST_ASSERT_NOT_NULL (sub_node);
 
     char endpoint[MAX_SOCKET_STRING];
-    int endpoint_seed = 22624;
+    int endpoint_seed = reserve_spot_test_port_seed (1);
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
       pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
       sizeof (endpoint)));
@@ -1858,22 +1896,24 @@ static void test_spot_callback_model_receive_regression ()
     TEST_ASSERT_SUCCESS_ERRNO (attach_spot_probe (sub, &probe));
 
     char endpoint[MAX_SOCKET_STRING];
-    int endpoint_seed = 22626;
+    int endpoint_seed = reserve_spot_test_port_seed (1);
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
       pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
       sizeof (endpoint)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer_pub (sub_node, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "svc-callback"));
+    service_monitor_probe_t sub_monitor_probe;
+    g_service_monitor_probe_a = &sub_monitor_probe;
     void *sub_monitor = zlink_spot_monitor_open (
       sub, ZLINK_SPOT_ROLE_SUB,
       ZLINK_MONITOR_EVENT_READY | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
         | ZLINK_MONITOR_EVENT_ERROR,
-      &ignore_service_monitor_event, NULL);
+      queued_service_monitor_handler_a, NULL);
     TEST_ASSERT_NOT_NULL (sub_monitor);
-    TEST_ASSERT_TRUE (wait_for_monitor_ready (
-      sub_monitor, ZLINK_MONITOR_SOURCE_SPOT_SUB, ZLINK_MONITOR_STATE_READY, 1,
-      3000));
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &sub_monitor_probe, ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED, endpoint,
+      "svc-callback", 1, NULL, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       publish_text (&zlink_spot_publish, pub, "svc-callback", "callback", 0));
@@ -1890,6 +1930,7 @@ static void test_spot_callback_model_receive_regression ()
       zlink_spot_sub_recv (sub, &parts, &part_count, 0, topic, &topic_len));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
+    g_service_monitor_probe_a = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&sub_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
@@ -1914,22 +1955,24 @@ static void test_spot_recv_model_receive_regression ()
     TEST_ASSERT_NOT_NULL (sub);
 
     char endpoint[MAX_SOCKET_STRING];
-    int endpoint_seed = 22628;
+    int endpoint_seed = reserve_spot_test_port_seed (1);
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
       pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
       sizeof (endpoint)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer_pub (sub_node, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "svc-recv"));
+    service_monitor_probe_t sub_monitor_probe;
+    g_service_monitor_probe_a = &sub_monitor_probe;
     void *sub_monitor = zlink_spot_monitor_open (
       sub, ZLINK_SPOT_ROLE_SUB,
       ZLINK_MONITOR_EVENT_READY | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
         | ZLINK_MONITOR_EVENT_ERROR,
-      &ignore_service_monitor_event, NULL);
+      queued_service_monitor_handler_a, NULL);
     TEST_ASSERT_NOT_NULL (sub_monitor);
-    TEST_ASSERT_TRUE (wait_for_monitor_ready (
-      sub_monitor, ZLINK_MONITOR_SOURCE_SPOT_SUB, ZLINK_MONITOR_STATE_READY, 1,
-      3000));
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &sub_monitor_probe, ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED, endpoint,
+      "svc-recv", 1, NULL, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       publish_text (&zlink_spot_publish, pub, "svc-recv", "recv", 0));
@@ -1940,6 +1983,71 @@ static void test_spot_recv_model_receive_regression ()
       -1, zlink_spot_send_ready_handler (sub, &spot_counting_ready_handler, NULL));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
+    g_service_monitor_probe_a = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&sub_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    destroy_test_ctx (ctx);
+}
+
+static void test_spot_sub_recv_reports_emsgsize_required_topic_length_and_source_rid ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *pub_node = create_spot_node (ctx, "spot-sub-emsgsize");
+    void *sub_node = zlink_spot_node_new (ctx, "spot-sub-emsgsize");
+    TEST_ASSERT_NOT_NULL (pub_node);
+    TEST_ASSERT_NOT_NULL (sub_node);
+
+    void *pub = create_spot_pub_handle (pub_node);
+    void *sub = zlink_spot_new (sub_node);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub);
+
+    char endpoint[MAX_SOCKET_STRING];
+    int endpoint_seed = reserve_spot_test_port_seed (1);
+    TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+      pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
+      sizeof (endpoint)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer_pub (sub_node, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (sub, "svc-topic-emsgsize"));
+
+    service_monitor_probe_t sub_monitor_probe;
+    g_service_monitor_probe_a = &sub_monitor_probe;
+    void *sub_monitor = zlink_spot_monitor_open (
+      sub, ZLINK_SPOT_ROLE_SUB,
+      ZLINK_MONITOR_EVENT_READY | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
+        | ZLINK_MONITOR_EVENT_ERROR,
+      queued_service_monitor_handler_a, NULL);
+    TEST_ASSERT_NOT_NULL (sub_monitor);
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &sub_monitor_probe, ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED, endpoint,
+      "svc-topic-emsgsize", 1, NULL, 5000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (publish_text (&zlink_spot_publish, pub,
+                                             "svc-topic-emsgsize", "payload",
+                                             0));
+
+    zlink_routing_id_t source_rid;
+    memset (&source_rid, 0, sizeof (source_rid));
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic[4];
+    memset (topic, 0, sizeof (topic));
+    size_t topic_len = sizeof (topic);
+    TEST_ASSERT_EQUAL_INT (
+      -1, ::zlink_spot_sub_recv (sub, &source_rid, &parts, &part_count, topic,
+                                 &topic_len, 0));
+    TEST_ASSERT_EQUAL_INT (EMSGSIZE, zlink_errno ());
+    TEST_ASSERT_EQUAL_UINT (sizeof ("svc-topic-emsgsize") - 1, topic_len);
+    TEST_ASSERT_TRUE (source_rid.size > 0);
+    close_recv_parts (parts, part_count);
+
+    g_service_monitor_probe_a = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&sub_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
@@ -1967,7 +2075,7 @@ static void test_spot_node_callback_model_receive_regression ()
     TEST_ASSERT_NOT_NULL (pub);
 
     char endpoint[MAX_SOCKET_STRING];
-    int endpoint_seed = 22630;
+    int endpoint_seed = reserve_spot_test_port_seed (1);
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
       pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
       sizeof (endpoint)));
@@ -1975,15 +2083,17 @@ static void test_spot_node_callback_model_receive_regression ()
       zlink_spot_node_connect_peer_pub (sub_node, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_subscribe (sub_node, "svc-node-callback"));
+    service_monitor_probe_t sub_monitor_probe;
+    g_service_monitor_probe_a = &sub_monitor_probe;
     void *sub_monitor = zlink_spot_node_monitor_open (
       sub_node, ZLINK_SPOT_ROLE_SUB,
       ZLINK_MONITOR_EVENT_READY | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
         | ZLINK_MONITOR_EVENT_ERROR,
-      &ignore_service_monitor_event, NULL);
+      queued_service_monitor_handler_a, NULL);
     TEST_ASSERT_NOT_NULL (sub_monitor);
-    TEST_ASSERT_TRUE (wait_for_monitor_ready (
-      sub_monitor, ZLINK_MONITOR_SOURCE_SPOT_SUB, ZLINK_MONITOR_STATE_READY, 1,
-      3000));
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &sub_monitor_probe, ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED, endpoint,
+      "svc-node-callback", 1, NULL, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (publish_text (&zlink_spot_publish, pub,
                                              "svc-node-callback", "nodecb",
@@ -2002,6 +2112,7 @@ static void test_spot_node_callback_model_receive_regression ()
                             &topic_len));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
+    g_service_monitor_probe_a = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&sub_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
@@ -2023,7 +2134,7 @@ static void test_spot_node_recv_model_receive_regression ()
     TEST_ASSERT_NOT_NULL (pub);
 
     char endpoint[MAX_SOCKET_STRING];
-    int endpoint_seed = 22632;
+    int endpoint_seed = reserve_spot_test_port_seed (1);
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
       pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
       sizeof (endpoint)));
@@ -2031,15 +2142,17 @@ static void test_spot_node_recv_model_receive_regression ()
       zlink_spot_node_connect_peer_pub (sub_node, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_subscribe (sub_node, "svc-node-recv"));
+    service_monitor_probe_t sub_monitor_probe;
+    g_service_monitor_probe_a = &sub_monitor_probe;
     void *sub_monitor = zlink_spot_node_monitor_open (
       sub_node, ZLINK_SPOT_ROLE_SUB,
       ZLINK_MONITOR_EVENT_READY | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
         | ZLINK_MONITOR_EVENT_ERROR,
-      &ignore_service_monitor_event, NULL);
+      queued_service_monitor_handler_a, NULL);
     TEST_ASSERT_NOT_NULL (sub_monitor);
-    TEST_ASSERT_TRUE (wait_for_monitor_ready (
-      sub_monitor, ZLINK_MONITOR_SOURCE_SPOT_SUB, ZLINK_MONITOR_STATE_READY, 1,
-      3000));
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &sub_monitor_probe, ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED, endpoint,
+      "svc-node-recv", 1, NULL, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (publish_text (&zlink_spot_publish, pub,
                                              "svc-node-recv", "noderecv",
@@ -2053,6 +2166,69 @@ static void test_spot_node_recv_model_receive_regression ()
                                           NULL));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
+    g_service_monitor_probe_a = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&sub_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    destroy_test_ctx (ctx);
+}
+
+static void test_spot_node_recv_reports_emsgsize_required_topic_length_and_source_rid ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *pub_node = create_spot_node (ctx, "spot-node-emsgsize");
+    void *sub_node = zlink_spot_node_new (ctx, "spot-node-emsgsize");
+    TEST_ASSERT_NOT_NULL (pub_node);
+    TEST_ASSERT_NOT_NULL (sub_node);
+
+    void *pub = create_spot_pub_handle (pub_node);
+    TEST_ASSERT_NOT_NULL (pub);
+
+    char endpoint[MAX_SOCKET_STRING];
+    int endpoint_seed = reserve_spot_test_port_seed (1);
+    TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+      pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
+      sizeof (endpoint)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer_pub (sub_node, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_subscribe (sub_node, "svc-node-emsgsize"));
+
+    service_monitor_probe_t sub_monitor_probe;
+    g_service_monitor_probe_a = &sub_monitor_probe;
+    void *sub_monitor = zlink_spot_node_monitor_open (
+      sub_node, ZLINK_SPOT_ROLE_SUB,
+      ZLINK_MONITOR_EVENT_READY | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
+        | ZLINK_MONITOR_EVENT_ERROR,
+      queued_service_monitor_handler_a, NULL);
+    TEST_ASSERT_NOT_NULL (sub_monitor);
+    TEST_ASSERT_TRUE (wait_for_service_event_match (
+      &sub_monitor_probe, ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED, endpoint,
+      "svc-node-emsgsize", 1, NULL, 5000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (publish_text (&zlink_spot_publish, pub,
+                                             "svc-node-emsgsize", "payload",
+                                             0));
+
+    zlink_routing_id_t source_rid;
+    memset (&source_rid, 0, sizeof (source_rid));
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic[4];
+    memset (topic, 0, sizeof (topic));
+    size_t topic_len = sizeof (topic);
+    TEST_ASSERT_EQUAL_INT (
+      -1, ::zlink_spot_node_recv (sub_node, &source_rid, &parts, &part_count,
+                                  topic, &topic_len, 0));
+    TEST_ASSERT_EQUAL_INT (EMSGSIZE, zlink_errno ());
+    TEST_ASSERT_EQUAL_UINT (sizeof ("svc-node-emsgsize") - 1, topic_len);
+    TEST_ASSERT_TRUE (source_rid.size > 0);
+    close_recv_parts (parts, part_count);
+
+    g_service_monitor_probe_a = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&sub_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
@@ -2143,7 +2319,7 @@ static void test_spot_send_ready_handler_self_close_returns_ebusy ()
     TEST_ASSERT_NOT_NULL (sub_node);
 
     char endpoint[MAX_SOCKET_STRING];
-    int endpoint_seed = 22680;
+    int endpoint_seed = reserve_spot_test_port_seed (1);
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
       pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
       sizeof (endpoint)));
@@ -2193,7 +2369,7 @@ static void test_spot_monitor_callback_parent_destroy_returns_ebusy ()
     TEST_ASSERT_NOT_NULL (sub);
 
     char endpoint[MAX_SOCKET_STRING];
-    int endpoint_seed = 22682;
+    int endpoint_seed = reserve_spot_test_port_seed (1);
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
       pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
       sizeof (endpoint)));
@@ -2236,7 +2412,7 @@ static void test_spot_node_monitor_callback_parent_destroy_returns_ebusy ()
     TEST_ASSERT_NOT_NULL (sub_node);
 
     char endpoint[MAX_SOCKET_STRING];
-    int endpoint_seed = 22684;
+    int endpoint_seed = reserve_spot_test_port_seed (1);
     TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
       pub_node, "tcp://127.0.0.1:", &endpoint_seed, endpoint,
       sizeof (endpoint)));
@@ -2418,8 +2594,12 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_late_connect_replays_existing_subscription);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_callback_model_receive_regression);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_recv_model_receive_regression);
+    RUN_SPOT_INTROSPECTION_TEST (
+      test_spot_sub_recv_reports_emsgsize_required_topic_length_and_source_rid);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_callback_model_receive_regression);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_recv_model_receive_regression);
+    RUN_SPOT_INTROSPECTION_TEST (
+      test_spot_node_recv_reports_emsgsize_required_topic_length_and_source_rid);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_faulted_node_apis_fail_with_efsm);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_destroy_rejects_open_child_handle);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_destroy_closes_open_monitor_child);

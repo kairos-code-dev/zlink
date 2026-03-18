@@ -38,11 +38,14 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     int xsetsockopt (int option_, const void *optval_, size_t optvallen_)
       ZLINK_FINAL;
+    int stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_)
+      ZLINK_OVERRIDE;
     int stream_set_msg_handler_with_userdata (
       zlink_socket_msg_handler_fn handler_, void *userdata_) ZLINK_OVERRIDE;
     int stream_dispatch_stop () ZLINK_OVERRIDE;
     bool stream_dispatch_active () const ZLINK_OVERRIDE;
     bool stream_dispatch_in_callback () const ZLINK_OVERRIDE;
+    uint32_t stream_dispatch_inflight () const ZLINK_OVERRIDE;
     int stream_dispatch_send_from_io (const zlink_routing_id_t *rid_,
                                       const void *data_,
                                       size_t size_,
@@ -75,6 +78,7 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
       ZLINK_OVERRIDE;
     uint32_t resolve_dispatch_routing_id_fast (const zlink::msg_t *msg_,
                                                zlink::pipe_t *pipe_);
+    void stop_dispatch_from_callback ();
     bool stream_dispatch_owns_tls () const;
     fq_t _fq;
 
@@ -92,6 +96,8 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     route_shard_t _route_shards[route_shard_count];
 
     std::atomic<bool> _dispatch_active;
+    std::atomic<uint32_t> _dispatch_inflight;
+    std::atomic<zlink_stream_on_raw_fn> _dispatch_raw_callback;
     std::atomic<zlink_socket_msg_handler_fn> _dispatch_msg_handler;
     std::atomic<void *> _dispatch_msg_handler_userdata;
     mutable std::recursive_mutex _api_mutex;

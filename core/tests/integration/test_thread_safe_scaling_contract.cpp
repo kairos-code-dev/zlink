@@ -58,11 +58,8 @@ void notify_probe (count_probe_t *probe_)
     if (!probe_)
         return;
 
-    {
-        std::lock_guard<std::mutex> lock (probe_->sync);
-        probe_->calls.fetch_add (1);
-    }
-    probe_->cv.notify_all ();
+    probe_->calls.fetch_add (1, std::memory_order_release);
+    probe_->cv.notify_one ();
 }
 
 bool wait_for_probe_count (count_probe_t *probe_,
@@ -359,7 +356,10 @@ double measure_gateway_handle_scaling_once (int handle_count_,
     std::vector<void *> clients (handle_count_, NULL);
     std::vector<std::string> endpoints (handle_count_);
 
-    int port_seed = 24000;
+    int port_seed = 24000
+                    + static_cast<int> (g_perf_endpoint_counter.fetch_add (
+                      static_cast<unsigned int> (handle_count_ + 2),
+                      std::memory_order_acq_rel));
     for (int i = 0; i < handle_count_; ++i) {
         char service_name[32];
         char server_rid_name[32];
@@ -655,7 +655,7 @@ void test_spot_handle_scaling_contract ()
 
 int main ()
 {
-    setup_test_environment ();
+    setup_test_environment (300);
 
     const char *selected = getenv ("ZLINK_TEST_CASE");
     if (!selected || !*selected)

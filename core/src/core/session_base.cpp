@@ -128,15 +128,6 @@ void zlink::session_base_t::attach_pipe (pipe_t *pipe_)
     zlink_assert (!is_terminating ());
     zlink_assert (!_pipe);
     zlink_assert (pipe_);
-    if (getenv ("ZLINK_DEBUG_SOCKET_TERM")) {
-        fprintf (stderr,
-                 "[session-term] attach session=%p socket=%p socket_id=%d pipe=%p peer=%p active=%d\n",
-                 static_cast<void *> (this), static_cast<void *> (_socket),
-                 _socket ? _socket->socket_id () : -1,
-                 static_cast<void *> (pipe_),
-                 static_cast<void *> (pipe_->get_peer ()), _active ? 1 : 0);
-        fflush (stderr);
-    }
     _pipe = pipe_;
     _pipe->set_event_sink (this);
 }
@@ -160,8 +151,8 @@ int zlink::session_base_t::push_msg (msg_t *msg_)
         && !msg_->is_cancel ())
         return 0;
 
-    if (options.type == ZLINK_STREAM && _socket && _pipe) {
-        const int dispatch_rc = _socket->stream_dispatch_msg_from_io (msg_, _pipe);
+    if (_socket) {
+        const int dispatch_rc = _socket->socket_msg_dispatch_from_io (msg_, _pipe);
         if (dispatch_rc < 0)
             return -1;
         if (dispatch_rc > 0) {
@@ -171,8 +162,8 @@ int zlink::session_base_t::push_msg (msg_t *msg_)
         }
     }
 
-    if (_socket) {
-        const int dispatch_rc = _socket->socket_msg_dispatch_from_io (msg_, _pipe);
+    if (options.type == ZLINK_STREAM && _socket && _pipe) {
+        const int dispatch_rc = _socket->stream_dispatch_msg_from_io (msg_, _pipe);
         if (dispatch_rc < 0)
             return -1;
         if (dispatch_rc > 0) {

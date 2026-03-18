@@ -150,15 +150,6 @@ void zlink::own_t::register_term_acks (int count_)
 
 void zlink::own_t::unregister_term_ack ()
 {
-#ifndef NDEBUG
-    if (_term_acks <= 0) {
-        fprintf (stderr,
-                 "[term-diag] UNDERFLOW: unregister_term_ack at %p "
-                 "_term_acks=%d _terminating=%d\n",
-                 static_cast<void *> (this), _term_acks,
-                 _terminating ? 1 : 0);
-    }
-#endif
     zlink_assert (_term_acks > 0);
     _term_acks--;
 

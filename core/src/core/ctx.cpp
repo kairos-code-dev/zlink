@@ -175,38 +175,7 @@ zlink::service_control_runtime_t *zlink::ctx_t::service_control_runtime ()
 
 void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const
 {
-    if (!getenv ("ZLINK_CTX_DEBUG"))
-        return;
-
-    sockets_t &sockets = const_cast<sockets_t &> (_sockets);
-
-    fprintf (stderr, "[ctx] %s sockets=%zu\n", phase_ ? phase_ : "?",
-             static_cast<size_t> (sockets.size ()));
-
-    for (sockets_t::size_type i = 0, size = sockets.size (); i != size; ++i) {
-        socket_base_t *socket = sockets[i];
-        if (!socket)
-            continue;
-
-        int type = -1;
-        size_t type_size = sizeof (type);
-        char endpoint[256];
-        size_t endpoint_size = sizeof (endpoint);
-        endpoint[0] = '\0';
-
-        if (socket->getsockopt (ZLINK_TYPE, &type, &type_size) != 0)
-            type = -1;
-        if (socket->getsockopt (ZLINK_LAST_ENDPOINT, endpoint, &endpoint_size)
-            != 0)
-            endpoint[0] = '\0';
-
-        fprintf (stderr,
-                 "[ctx]   socket[%zu] ptr=%p tid=%u type=%d endpoint=%s\n",
-                 static_cast<size_t> (i), static_cast<void *> (socket),
-                 static_cast<unsigned int> (socket->get_tid ()), type,
-                 endpoint[0] ? endpoint : "<none>");
-    }
-    fflush (stderr);
+    LIBZLINK_UNUSED (phase_);
 }
 
 int zlink::ctx_t::terminate ()

@@ -151,7 +151,8 @@ void s_send_seq (void *socket_, ...)
 
         if (!prev) {
             TEST_ASSERT_SUCCESS_ERRNO (
-              zlink_send (socket_, 0, 0, end ? 0 : ZLINK_SNDMORE));
+              zlink_send (socket_, static_cast<const void *> (NULL), 0,
+                          end ? 0 : ZLINK_SNDMORE));
         } else {
             TEST_ASSERT_SUCCESS_ERRNO (zlink_send (
               socket_, prev, strlen (prev) + 1, end ? 0 : ZLINK_SNDMORE));

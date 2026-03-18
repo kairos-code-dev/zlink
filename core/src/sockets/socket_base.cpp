@@ -247,6 +247,9 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _send_ready_armed (_runtime.dispatch_bridge.send_ready_armed),
     _socket_msg_dispatch_sync (
       _runtime.dispatch_bridge.socket_msg_dispatch_sync),
+    _last_recv_source_rid (_runtime.dispatch_bridge.last_recv_source_rid),
+    _last_recv_source_rid_valid (
+      _runtime.dispatch_bridge.last_recv_source_rid_valid),
     _monitor_sync (_runtime.monitor_bridge.sync),
     _monitor_queue_sync (_runtime.monitor_bridge.queue_sync),
     _monitor_queue_cv (_runtime.monitor_bridge.queue_cv),
@@ -566,16 +569,6 @@ void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
                                       bool subscribe_to_all_,
                                       bool locally_initiated_)
 {
-    if (getenv ("ZLINK_DEBUG_SOCKET_TERM")) {
-        fprintf (stderr,
-                 "[socket-term] attach socket=%p id=%d type=%d pipe=%p peer=%p local=%d\n",
-                 static_cast<void *> (this), options.socket_id, options.type,
-                 static_cast<void *> (pipe_),
-                 static_cast<void *> (pipe_ ? pipe_->get_peer () : NULL),
-                 locally_initiated_ ? 1 : 0);
-        fflush (stderr);
-    }
-
     //  First, register the pipe so that we can terminate it later on.
     pipe_->set_event_sink (this);
     _pipes.push_back (pipe_);
@@ -1934,15 +1927,58 @@ void zlink::socket_base_t::resolve_socket_msg_source_rid (
         return;
 
     memset (out_, 0, sizeof (*out_));
-
-    pipe_t *routing_pipe = pipe_;
-    if (routing_pipe && routing_pipe->get_peer ())
-        routing_pipe = routing_pipe->get_peer ();
-
-    if (!routing_pipe)
+    if (!pipe_)
         return;
 
-    copy_routing_id (out_, routing_pipe->get_routing_id ());
+    const blob_t &pipe_routing_id = pipe_->get_routing_id ();
+    if (pipe_routing_id.size () > 0) {
+        copy_routing_id (out_, pipe_routing_id);
+        return;
+    }
+
+    pipe_t *peer = pipe_->get_peer ();
+    if (!peer)
+        return;
+
+    copy_routing_id (out_, peer->get_routing_id ());
+}
+
+void zlink::socket_base_t::store_last_recv_source_rid (pipe_t *pipe_)
+{
+    zlink_routing_id_t rid;
+    resolve_socket_msg_source_rid (pipe_, &rid);
+    store_last_recv_source_rid (&rid);
+}
+
+void zlink::socket_base_t::store_last_recv_source_rid (
+  const zlink_routing_id_t *source_rid_)
+{
+    if (!source_rid_) {
+        clear_last_recv_source_rid ();
+        return;
+    }
+
+    _last_recv_source_rid = *source_rid_;
+    _last_recv_source_rid_valid = true;
+}
+
+void zlink::socket_base_t::clear_last_recv_source_rid ()
+{
+    memset (&_last_recv_source_rid, 0, sizeof (_last_recv_source_rid));
+    _last_recv_source_rid_valid = false;
+}
+
+bool zlink::socket_base_t::copy_last_recv_source_rid (
+  zlink_routing_id_t *out_) const
+{
+    if (out_)
+        memset (out_, 0, sizeof (*out_));
+
+    if (!_last_recv_source_rid_valid || !out_)
+        return false;
+
+    *out_ = _last_recv_source_rid;
+    return true;
 }
 
 void zlink::socket_base_t::dispatch_spot_handler_from_io (
@@ -2038,6 +2074,12 @@ bool zlink::socket_base_t::xpub_dispatch_active () const
     return false;
 }
 
+int zlink::socket_base_t::stream_dispatch_start_raw (zlink_stream_on_raw_fn)
+{
+    errno = ENOTSUP;
+    return -1;
+}
+
 int zlink::socket_base_t::stream_set_msg_handler_with_userdata (
   zlink_socket_msg_handler_fn,
   void *)
@@ -2059,6 +2101,11 @@ bool zlink::socket_base_t::stream_dispatch_active () const
 bool zlink::socket_base_t::stream_dispatch_in_callback () const
 {
     return false;
+}
+
+uint32_t zlink::socket_base_t::stream_dispatch_inflight () const
+{
+    return 0;
 }
 
 int zlink::socket_base_t::stream_dispatch_send_from_io (
@@ -2263,22 +2310,6 @@ void zlink::socket_base_t::process_bind (pipe_t *pipe_)
 
 void zlink::socket_base_t::process_term (int linger_)
 {
-    if (getenv ("ZLINK_DEBUG_SOCKET_TERM")) {
-        fprintf (stderr,
-                 "[socket-term] begin socket=%p id=%d type=%d pipes=%zu linger=%d\n",
-                 static_cast<void *> (this), options.socket_id, options.type,
-                 static_cast<size_t> (_pipes.size ()), linger_);
-        for (pipes_t::size_type i = 0, size = _pipes.size (); i != size; ++i) {
-            fprintf (stderr,
-                     "[socket-term]   pipe socket=%d ptr=%p endpoint=%s\n",
-                     options.socket_id, static_cast<void *> (_pipes[i]),
-                     _pipes[i]
-                       ? _pipes[i]->get_endpoint_pair ().identifier ().c_str ()
-                       : "<null>");
-        }
-        fflush (stderr);
-    }
-
     //  Unregister all inproc endpoints associated with this socket.
     //  Doing this we make sure that no new pipes from other sockets (inproc)
     //  will be initiated.
@@ -2327,22 +2358,6 @@ void zlink::socket_base_t::update_pipe_options (int option_)
 
 void zlink::socket_base_t::process_destroy ()
 {
-    if (getenv ("ZLINK_DEBUG_SOCKET_TERM")) {
-        fprintf (stderr,
-                 "[socket-term] destroy socket=%p id=%d type=%d destroyed=%d\n",
-                 static_cast<void *> (this), options.socket_id, options.type,
-                 _destroyed ? 1 : 0);
-        fflush (stderr);
-    }
-#ifndef NDEBUG
-    if (_term_pipe_acks_registered != _term_pipe_acks_received) {
-        fprintf (stderr,
-                 "[term-diag] socket %p id=%d type=%d pipe_acks: "
-                 "registered=%d received=%d\n",
-                 static_cast<void *> (this), options.socket_id, options.type,
-                 _term_pipe_acks_registered, _term_pipe_acks_received);
-    }
-#endif
     _destroyed = true;
 }
 
@@ -2549,14 +2564,6 @@ void zlink::socket_base_t::hiccuped (pipe_t *pipe_)
 
 void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
 {
-    if (getenv ("ZLINK_DEBUG_SOCKET_TERM")) {
-        fprintf (stderr,
-                 "[socket-term] pipe-terminated socket=%p id=%d type=%d pipe=%p terminating=%d\n",
-                 static_cast<void *> (this), options.socket_id, options.type,
-                 static_cast<void *> (pipe_), is_terminating () ? 1 : 0);
-        fflush (stderr);
-    }
-
     //  Notify the specific socket type about the pipe termination.
     xpipe_terminated (pipe_);
 
@@ -2933,7 +2940,7 @@ bool zlink::socket_base_t::dispatch_monitor_event (
     zlink_msg_init_size (&msg, sizeof (wire_event));
     memcpy (zlink_msg_data (&msg), &wire_event, sizeof (wire_event));
     const int send_flags = _monitor_lossy ? ZLINK_DONTWAIT : 0;
-    if (zlink_msg_send (&msg, monitor_socket_, send_flags) == -1) {
+    if (zlink_compat_msg_send (&msg, monitor_socket_, send_flags) == -1) {
         zlink_msg_close (&msg);
         return false;
     }

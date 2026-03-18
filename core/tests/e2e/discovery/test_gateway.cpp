@@ -1841,7 +1841,7 @@ static void test_gateway_recv_model_receive_regression ()
     void *poller = zlink_poller_new ();
     TEST_ASSERT_NOT_NULL (poller);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add_gateway (poller, server, server, ZLINK_POLLIN));
+      zlink_poller_add (poller, server, server, ZLINK_POLLIN));
     zlink_poller_event_t event;
     memset (&event, 0, sizeof (event));
     TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, 3000));

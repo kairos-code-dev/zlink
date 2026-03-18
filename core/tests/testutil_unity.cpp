@@ -33,7 +33,11 @@ void discard_test_spot_parts (const zlink_routing_id_t *,
     zlink_multipart_close (parts_, part_count_);
 }
 
-void discard_test_xpub_event (int, const uint8_t *, size_t, void *)
+void discard_test_xpub_event (const zlink_routing_id_t *,
+                              int,
+                              const char *,
+                              size_t,
+                              void *)
 {
 }
 }

@@ -146,6 +146,8 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _more_out (false),
     _next_integral_routing_id (1),
     _dispatch_active (false),
+    _dispatch_inflight (0),
+    _dispatch_raw_callback (NULL),
     _dispatch_msg_handler (NULL),
     _dispatch_msg_handler_userdata (NULL)
 {
@@ -403,6 +405,26 @@ int zlink::stream_t::xsetsockopt (int option_,
     return routing_socket_base_t::xsetsockopt (option_, optval_, optvallen_);
 }
 
+int zlink::stream_t::stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_)
+{
+    if (!callback_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::lock_guard<std::recursive_mutex> lock (_api_mutex);
+    if (_dispatch_active.load (std::memory_order_acquire)) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    _dispatch_raw_callback.store (callback_, std::memory_order_release);
+    _dispatch_msg_handler.store (NULL, std::memory_order_release);
+    _dispatch_msg_handler_userdata.store (NULL, std::memory_order_release);
+    _dispatch_active.store (true, std::memory_order_release);
+    return 0;
+}
+
 int zlink::stream_t::stream_set_msg_handler_with_userdata (
   zlink_socket_msg_handler_fn handler_, void *userdata_)
 {
@@ -433,6 +455,7 @@ int zlink::stream_t::stream_dispatch_stop ()
     }
 
     _dispatch_active.store (false, std::memory_order_release);
+    _dispatch_raw_callback.store (NULL, std::memory_order_release);
     _dispatch_msg_handler.store (NULL, std::memory_order_release);
     _dispatch_msg_handler_userdata.store (NULL, std::memory_order_release);
     return 0;
@@ -446,6 +469,11 @@ bool zlink::stream_t::stream_dispatch_active () const
 bool zlink::stream_t::stream_dispatch_in_callback () const
 {
     return stream_dispatch_owns_tls ();
+}
+
+uint32_t zlink::stream_t::stream_dispatch_inflight () const
+{
+    return _dispatch_inflight.load (std::memory_order_acquire);
 }
 
 int zlink::stream_t::stream_dispatch_send_from_io (
@@ -609,6 +637,15 @@ std::recursive_mutex *zlink::stream_t::api_sync_mutex ()
     return &_api_mutex;
 }
 
+void zlink::stream_t::stop_dispatch_from_callback ()
+{
+    std::lock_guard<std::recursive_mutex> lk (_api_mutex);
+    _dispatch_active.store (false, std::memory_order_release);
+    _dispatch_raw_callback.store (NULL, std::memory_order_release);
+    _dispatch_msg_handler.store (NULL, std::memory_order_release);
+    _dispatch_msg_handler_userdata.store (NULL, std::memory_order_release);
+}
+
 uint32_t zlink::stream_t::resolve_dispatch_routing_id_fast (const msg_t *msg_,
                                                             pipe_t *pipe_)
 {
@@ -631,12 +668,14 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
 {
     if (!_dispatch_active.load (std::memory_order_acquire))
         return 0;
+    if (!msg_ || !pipe_)
+        return 1;
 
+    zlink_stream_on_raw_fn raw_callback =
+      _dispatch_raw_callback.load (std::memory_order_acquire);
     zlink_socket_msg_handler_fn handler =
       _dispatch_msg_handler.load (std::memory_order_acquire);
-    if (!handler)
-        return 0;
-    if (!msg_ || !pipe_)
+    if (!raw_callback && !handler)
         return 1;
 
     const unsigned char *payload =
@@ -671,6 +710,7 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
     memcpy (rid.data, rid_buf, 4);
 
     const stream_dispatch_tls_scope_t tls_scope (this, pipe_, routing_id_value);
+    _dispatch_inflight.fetch_add (1, std::memory_order_acq_rel);
 
     msg_t callback_msg;
     const int init_rc = callback_msg.init ();
@@ -680,8 +720,18 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
     const int src_init_rc = msg_->init ();
     errno_assert (src_init_rc == 0);
 
+    if (raw_callback) {
+        const int cb_rc =
+          raw_callback (&rid, reinterpret_cast<zlink_msg_t *> (&callback_msg));
+        _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel);
+        if (cb_rc != 0)
+            stop_dispatch_from_callback ();
+        return 1;
+    }
+
     handler (&rid, reinterpret_cast<zlink_msg_t *> (&callback_msg), 1,
              _dispatch_msg_handler_userdata.load (std::memory_order_acquire));
+    _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel);
     return 1;
 }
 

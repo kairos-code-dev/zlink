@@ -248,7 +248,7 @@ static int send_parts_via_router_with_retry (socket_base_t *router_socket_,
 
         int send_flags =
           (part_count_ > 0 ? ZLINK_SNDMORE : 0) | (flags_ & ZLINK_DONTWAIT);
-        if (zlink_msg_send (&rid_msg, router_socket_, send_flags) < 0) {
+        if (zlink_compat_msg_send (&rid_msg, router_socket_, send_flags) < 0) {
             const int err = errno;
             zlink_msg_close (&rid_msg);
             if (!dontwait && (err == EHOSTUNREACH || err == ENOTCONN)
@@ -264,7 +264,8 @@ static int send_parts_via_router_with_retry (socket_base_t *router_socket_,
         for (size_t i = 0; i < part_count_; ++i) {
             send_flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
             send_flags |= (flags_ & ZLINK_DONTWAIT);
-            if (zlink_msg_send (&parts_[i], router_socket_, send_flags) < 0)
+            if (zlink_compat_msg_send (&parts_[i], router_socket_, send_flags)
+                < 0)
                 return -1;
             zlink_msg_close (&parts_[i]);
         }
@@ -1180,7 +1181,8 @@ int gateway_t::send_request_frames (gateway_service_pool_t *pool_,
         return -1;
     int send_flags =
       (part_count_ > 0 ? ZLINK_SNDMORE : 0) | (flags_ & ZLINK_DONTWAIT);
-    if (zlink_msg_send (&rid_msg, _runtime->router_socket, send_flags) < 0) {
+    if (zlink_compat_msg_send (&rid_msg, _runtime->router_socket, send_flags)
+        < 0) {
         zlink_msg_close (&rid_msg);
         return -1;
     }
@@ -1190,7 +1192,9 @@ int gateway_t::send_request_frames (gateway_service_pool_t *pool_,
         send_flags =
           (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
         send_flags |= (flags_ & ZLINK_DONTWAIT);
-        if (zlink_msg_send (&parts_[i], _runtime->router_socket, send_flags) < 0) {
+        if (zlink_compat_msg_send (&parts_[i], _runtime->router_socket,
+                                   send_flags)
+            < 0) {
             return -1;
         }
         zlink_msg_close (&parts_[i]);

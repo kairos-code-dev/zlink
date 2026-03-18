@@ -327,7 +327,8 @@ int zlink::xsub_t::xrecv (msg_t *msg_)
     //  semantics.
     while (true) {
         //  Get a message using fair queueing algorithm.
-        int rc = _fq.recv (msg_);
+        pipe_t *pipe = NULL;
+        int rc = _fq.recvpipe (msg_, &pipe);
 
         //  If there's no message available, return immediately.
         //  The same when error occurs.
@@ -338,13 +339,14 @@ int zlink::xsub_t::xrecv (msg_t *msg_)
         //  Non-initial parts of the message are passed
         if (_more_recv || !options.filter || match (msg_)) {
             _more_recv = (msg_->flags () & msg_t::more) != 0;
+            store_last_recv_source_rid (pipe);
             return 0;
         }
 
         //  Message doesn't match. Pop any remaining parts of the message
         //  from the pipe.
         while (msg_->flags () & msg_t::more) {
-            rc = _fq.recv (msg_);
+            rc = _fq.recvpipe (msg_, &pipe);
             errno_assert (rc == 0);
         }
     }

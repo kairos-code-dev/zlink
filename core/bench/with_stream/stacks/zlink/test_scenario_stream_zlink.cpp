@@ -17,6 +17,17 @@ static const size_t k_max_payload_size = 4 * 1024 * 1024;
 static const unsigned char k_stream_event_connect = 0x01;
 static const unsigned char k_stream_event_disconnect = 0x00;
 
+int zlink_stream_send_msg (void *socket_,
+                           const zlink_routing_id_t *rid_,
+                           zlink_msg_t *msg_,
+                           int flags_)
+{
+    const size_t size = zlink_msg_size (msg_);
+    return ::zlink_send_rid (socket_, rid_, msg_, 1, flags_) == 0
+             ? static_cast<int> (size)
+             : -1;
+}
+
 bool try_load_routing_id_u32 (const zlink_routing_id_t *rid_, uint32_t *value_out_)
 {
     if (!rid_ || !value_out_ || rid_->size != 4)

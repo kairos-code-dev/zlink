@@ -30,7 +30,7 @@ void test_zlink_close_null_socket ()
 {
     int rc = zlink_close (NULL);
     TEST_ASSERT_EQUAL_INT (-1, rc);
-    TEST_ASSERT_EQUAL_INT (ENOTSOCK, errno); // TODO use EINVAL instead?
+    TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_setsockopt_null_socket ()
@@ -39,7 +39,7 @@ void test_zlink_setsockopt_null_socket ()
     size_t hwm_size = sizeof hwm;
     int rc = zlink_setsockopt (NULL, ZLINK_SNDHWM, &hwm, hwm_size);
     TEST_ASSERT_EQUAL_INT (-1, rc);
-    TEST_ASSERT_EQUAL_INT (ENOTSOCK, errno); // TODO use EINVAL instead?
+    TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_getsockopt_null_socket ()
@@ -48,7 +48,7 @@ void test_zlink_getsockopt_null_socket ()
     size_t hwm_size = sizeof hwm;
     int rc = zlink_getsockopt (NULL, ZLINK_SNDHWM, &hwm, &hwm_size);
     TEST_ASSERT_EQUAL_INT (-1, rc);
-    TEST_ASSERT_EQUAL_INT (ENOTSOCK, errno); // TODO use EINVAL instead?
+    TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_socket_monitor_open_null_socket ()
@@ -56,7 +56,7 @@ void test_zlink_socket_monitor_open_null_socket ()
     void *monitor = zlink_socket_monitor_open (
       NULL, ZLINK_EVENT_ALL, &discard_monitor_event, NULL);
     TEST_ASSERT_NULL (monitor);
-    TEST_ASSERT_EQUAL_INT (ENOTSOCK, errno); // TODO use EINVAL instead?
+    TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 
@@ -65,28 +65,28 @@ void test_zlink_bind_null_socket ()
 {
     int rc = zlink_bind (NULL, "inproc://socket");
     TEST_ASSERT_EQUAL_INT (-1, rc);
-    TEST_ASSERT_EQUAL_INT (ENOTSOCK, errno); // TODO use EINVAL instead?
+    TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_connect_null_socket ()
 {
     int rc = zlink_connect (NULL, "inproc://socket");
     TEST_ASSERT_EQUAL_INT (-1, rc);
-    TEST_ASSERT_EQUAL_INT (ENOTSOCK, errno); // TODO use EINVAL instead?
+    TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_unbind_null_socket ()
 {
     int rc = zlink_unbind (NULL, "inproc://socket");
     TEST_ASSERT_EQUAL_INT (-1, rc);
-    TEST_ASSERT_EQUAL_INT (ENOTSOCK, errno); // TODO use EINVAL instead?
+    TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_disconnect_null_socket ()
 {
     int rc = zlink_disconnect (NULL, "inproc://socket");
     TEST_ASSERT_EQUAL_INT (-1, rc);
-    TEST_ASSERT_EQUAL_INT (ENOTSOCK, errno); // TODO use EINVAL instead?
+    TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 int main (void)

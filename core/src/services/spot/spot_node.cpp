@@ -50,8 +50,14 @@ static bool spot_shutdown_debug_enabled ()
 
 static void spot_shutdown_logf (bool always_, const char *fmt_, ...)
 {
-    if (!always_ && !std::getenv ("ZLINK_SPOT_SHUTDOWN_LOG"))
+    LIBZLINK_UNUSED (always_);
+    LIBZLINK_UNUSED (fmt_);
+    return;
+#if 0
+    if (!std::getenv ("ZLINK_SPOT_SHUTDOWN_LOG")) {
+        LIBZLINK_UNUSED (always_);
         return;
+    }
     va_list stderr_args;
     va_start (stderr_args, fmt_);
     std::fprintf (stderr, "[spot-shutdown] ");
@@ -73,6 +79,7 @@ static void spot_shutdown_logf (bool always_, const char *fmt_, ...)
     std::fprintf (fp, "\n");
     va_end (file_args);
     std::fclose (fp);
+#endif
 }
 
 static void spot_ready_ack_debugf (const char *fmt_, ...)

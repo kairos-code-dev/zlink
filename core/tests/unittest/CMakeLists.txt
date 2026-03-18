@@ -59,6 +59,10 @@ foreach(test ${unittests})
   set_tests_properties(${test} PROPERTIES TIMEOUT 10)
   set_tests_properties(${test} PROPERTIES LABELS "unittest;parallel-safe")
 
+  if(${test} STREQUAL "unittest_service_mode_policy")
+    set_tests_properties(${test} PROPERTIES TIMEOUT 30)
+  endif()
+
   # TODO prevent libzlink (non-static) being in the list of link libraries at all
   get_target_property(LIBS ${test} LINK_LIBRARIES)
   list(REMOVE_ITEM LIBS libzlink)

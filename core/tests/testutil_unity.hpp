@@ -3,11 +3,156 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "../include/zlink.h"
+#include "../src/utils/precompiled.hpp"
 #include "../src/core/recv_internal.hpp"
+#include "../src/sockets/stream.hpp"
 
 #include "testutil.hpp"
 
+#include <algorithm>
+#include <chrono>
+#include <cstring>
+#include <thread>
 #include <unity.h>
+
+#ifndef ZLINK_SNDMORE
+#define ZLINK_SNDMORE ((zlink_send_flags_t) 0x0002u)
+#endif
+
+#ifdef __cplusplus
+inline int zlink_msg_send (zlink_msg_t *msg_,
+                           void *s_,
+                           zlink_send_flags_t flags_)
+{
+    return zlink_compat_msg_send (msg_, s_, flags_);
+}
+
+inline int zlink_msg_recv (zlink_msg_t *msg_,
+                           void *s_,
+                           zlink_send_flags_t flags_)
+{
+    return zlink_compat_msg_recv (msg_, s_, flags_);
+}
+
+inline int zlink_stream_send (void *s_,
+                              const zlink_routing_id_t *rid_,
+                              const void *data_,
+                              size_t size_,
+                              zlink_send_flags_t flags_)
+{
+    return zlink_compat_stream_send (s_, rid_, data_, size_, flags_);
+}
+
+inline int zlink_stream_send_msg (void *s_,
+                                  const zlink_routing_id_t *rid_,
+                                  zlink_msg_t *msg_,
+                                  zlink_send_flags_t flags_)
+{
+    return zlink_compat_stream_send_msg (s_, rid_, msg_, flags_);
+}
+
+inline int zlink_send (void *s_,
+                       const void *buf_,
+                       size_t len_,
+                       zlink_send_flags_t flags_)
+{
+    zlink_msg_t msg;
+    if (zlink_msg_init_size (&msg, len_) != 0)
+        return -1;
+    if (len_ > 0 && buf_)
+        memcpy (zlink_msg_data (&msg), buf_, len_);
+
+    int type = 0;
+    size_t type_size = sizeof (type);
+    int rc = 0;
+    if (zlink_getsockopt (s_, ZLINK_TYPE, &type, &type_size) == 0)
+        rc = zlink_compat_msg_send (&msg, s_, flags_);
+    else
+        rc = ::zlink_send (s_, &msg, 1, flags_ & ZLINK_DONTWAIT);
+
+    if (rc < 0) {
+        const int err = errno;
+        zlink_msg_close (&msg);
+        errno = err;
+        return -1;
+    }
+    return static_cast<int> (len_);
+}
+
+inline int zlink_recv (void *s_,
+                       void *buf_,
+                       size_t len_,
+                       zlink_send_flags_t flags_)
+{
+    int type = 0;
+    size_t type_size = sizeof (type);
+    if (zlink_getsockopt (s_, ZLINK_TYPE, &type, &type_size) == 0)
+        return zlink::recv_buffer_internal (s_, buf_, len_, flags_);
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc = ::zlink_recv (s_, NULL, &parts, &part_count, flags_);
+    if (rc != 0)
+        return -1;
+
+    const size_t copy_len =
+      part_count > 0 ? std::min (len_, zlink_msg_size (&parts[0])) : 0;
+    if (buf_ && copy_len > 0)
+        memcpy (buf_, zlink_msg_data (&parts[0]), copy_len);
+    const int result =
+      part_count > 0 ? static_cast<int> (zlink_msg_size (&parts[0])) : 0;
+    zlink_multipart_close (parts, part_count);
+    return result;
+}
+
+inline int zlink_gateway_send (void *gateway_,
+                               zlink_msg_t *parts_,
+                               size_t part_count_,
+                               zlink_send_flags_t flags_)
+{
+    return ::zlink_send (gateway_, parts_, part_count_, flags_);
+}
+
+inline int zlink_gateway_send_rid (void *gateway_,
+                                   const zlink_routing_id_t *routing_id_,
+                                   zlink_msg_t *parts_,
+                                   size_t part_count_,
+                                   zlink_send_flags_t flags_)
+{
+    return ::zlink_send_rid (gateway_, routing_id_, parts_, part_count_, flags_);
+}
+
+inline int zlink_gateway_recv (void *gateway_,
+                               zlink_routing_id_t *source_rid_out_,
+                               zlink_msg_t **parts_,
+                               size_t *part_count_,
+                               int flags_)
+{
+    return ::zlink_recv (gateway_, source_rid_out_, parts_, part_count_, flags_);
+}
+
+inline int zlink_spot_node_recv (void *node_,
+                                 zlink_msg_t **parts_,
+                                 size_t *part_count_,
+                                 int flags_,
+                                 char *topic_id_out_,
+                                 size_t *topic_id_len_)
+{
+    return ::zlink_spot_node_recv (node_, NULL, parts_, part_count_, topic_id_out_,
+                                   topic_id_len_, flags_);
+}
+
+inline int zlink_spot_sub_recv (void *sub_,
+                                zlink_msg_t **parts_,
+                                size_t *part_count_,
+                                int flags_,
+                                char *topic_id_out_,
+                                size_t *topic_id_len_)
+{
+    return ::zlink_spot_sub_recv (sub_, NULL, parts_, part_count_, topic_id_out_,
+                                  topic_id_len_, flags_);
+}
+#endif
 
 // Internal helper functions that are not intended to be directly called from
 // tests. They must be declared in the header since they are used by macros.

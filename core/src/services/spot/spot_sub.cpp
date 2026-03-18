@@ -828,7 +828,8 @@ int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_,
     return -1;
 }
 
-int spot_sub_t::recv (zlink_msg_t **parts_,
+int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
+                      zlink_msg_t **parts_,
                       size_t *part_count_,
                       int flags_,
                       char *topic_out_,
@@ -845,6 +846,9 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
     }
     if (!_runtime || _runtime->ensure_healthy () != 0)
         return -1;
+
+    if (source_rid_out_)
+        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
 
     {
         scoped_lock_t lock (_sync);
@@ -887,22 +891,26 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
                   zlink_msg_data (&frames[0]));
                 const size_t topic_size = zlink_msg_size (&frames[0]);
 
-                if (topic_out_ && topic_len_) {
-                    if (*topic_len_ < topic_size) {
+                if (topic_len_) {
+                    const size_t capacity = *topic_len_;
+                    *topic_len_ = topic_size;
+                    if (topic_out_ && capacity < topic_size) {
+                        if (source_rid_out_)
+                            socket->copy_last_recv_source_rid (source_rid_out_);
                         zlink_msg_close (&first_payload_frame);
                         close_msgv (&frames);
+                        *topic_len_ = topic_size;
                         errno = EMSGSIZE;
                         return -1;
                     }
-                    if (topic_size > 0)
+                    if (topic_out_ && topic_size > 0)
                         memcpy (topic_out_, topic_data, topic_size);
-                    *topic_len_ = topic_size;
+                    if (topic_out_ && capacity > topic_size)
+                        topic_out_[topic_size] = '\0';
                 } else if (topic_out_) {
                     if (topic_size > 0)
                         memcpy (topic_out_, topic_data, topic_size);
                     topic_out_[topic_size] = '\0';
-                } else if (topic_len_) {
-                    *topic_len_ = topic_size;
                 }
 
                 zlink_msg_t *payload =
@@ -930,6 +938,8 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
 
                 zlink_msg_close (&frames[0]);
                 zlink_msg_close (&first_payload_frame);
+                if (source_rid_out_)
+                    socket->copy_last_recv_source_rid (source_rid_out_);
                 *parts_ = payload;
                 *part_count_ = 1;
                 return 0;
@@ -978,21 +988,25 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
             }
         }
 
-        if (topic_out_ && topic_len_) {
-            if (*topic_len_ < topic_size) {
+        if (topic_len_) {
+            const size_t capacity = *topic_len_;
+            *topic_len_ = topic_size;
+            if (topic_out_ && capacity < topic_size) {
+                if (source_rid_out_)
+                    socket->copy_last_recv_source_rid (source_rid_out_);
                 close_msgv (&frames);
+                *topic_len_ = topic_size;
                 errno = EMSGSIZE;
                 return -1;
             }
-            if (topic_size > 0)
+            if (topic_out_ && topic_size > 0)
                 memcpy (topic_out_, topic_data, topic_size);
-            *topic_len_ = topic_size;
+            if (topic_out_ && capacity > topic_size)
+                topic_out_[topic_size] = '\0';
         } else if (topic_out_) {
             if (topic_size > 0)
                 memcpy (topic_out_, topic_data, topic_size);
             topic_out_[topic_size] = '\0';
-        } else if (topic_len_) {
-            *topic_len_ = topic_size;
         }
 
         const size_t payload_count = frames.size () - 1;
@@ -1024,6 +1038,8 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
         }
 
         zlink_msg_close (&frames[0]);
+        if (source_rid_out_)
+            socket->copy_last_recv_source_rid (source_rid_out_);
         *parts_ = payload;
         *part_count_ = payload_count;
         return 0;

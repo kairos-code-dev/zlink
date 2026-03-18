@@ -1362,7 +1362,7 @@ void registry_t::send_register_ack (void *router_,
     if (sender_id_.size > 0)
         memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
 
-    const int rc_id = zlink_msg_send (&id_frame, router_, ZLINK_SNDMORE);
+    const int rc_id = zlink_compat_msg_send (&id_frame, router_, ZLINK_SNDMORE);
     log_rc ("send ack id", rc_id);
     if (rc_id == -1) {
         zlink_msg_close (&id_frame);
@@ -1402,7 +1402,7 @@ void registry_t::send_unregister_ack (void *router_,
     if (sender_id_.size > 0)
         memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
 
-    const int rc_id = zlink_msg_send (&id_frame, router_, ZLINK_SNDMORE);
+    const int rc_id = zlink_compat_msg_send (&id_frame, router_, ZLINK_SNDMORE);
     log_rc ("send unreg ack id", rc_id);
     if (rc_id == -1) {
         zlink_msg_close (&id_frame);
@@ -1430,7 +1430,7 @@ void registry_t::send_topology_reply (
     zlink_msg_init_size (&id_frame, sender_id_.size);
     if (sender_id_.size > 0)
         memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
-    if (zlink_msg_send (&id_frame, router_, ZLINK_SNDMORE) == -1) {
+    if (zlink_compat_msg_send (&id_frame, router_, ZLINK_SNDMORE) == -1) {
         zlink_msg_close (&id_frame);
         return;
     }
@@ -1456,7 +1456,7 @@ void registry_t::send_gateway_peer_reply (
     zlink_msg_init_size (&id_frame, sender_id_.size);
     if (sender_id_.size > 0)
         memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
-    if (zlink_msg_send (&id_frame, router_, ZLINK_SNDMORE) == -1) {
+    if (zlink_compat_msg_send (&id_frame, router_, ZLINK_SNDMORE) == -1) {
         zlink_msg_close (&id_frame);
         return;
     }
@@ -1480,7 +1480,7 @@ void registry_t::send_bootstrap_reply (void *router_,
     zlink_msg_init_size (&id_frame, sender_id_.size);
     if (sender_id_.size > 0)
         memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
-    const int rc_id = zlink_msg_send (&id_frame, router_, ZLINK_SNDMORE);
+    const int rc_id = zlink_compat_msg_send (&id_frame, router_, ZLINK_SNDMORE);
     if (std::getenv ("ZLINK_REGISTRY_DEBUG")) {
         std::fprintf (stderr,
                       "[registry] bootstrap reply id rc=%d rid_size=%u errno=%d\n",

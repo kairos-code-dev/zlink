@@ -57,6 +57,7 @@ The following rules apply to **all** test categories: unit tests (`unittests/`),
 - **No sleep-based synchronization.** Do not use `sleep()` or fixed delays to wait for asynchronous state. Use deterministic synchronization (semaphore, condition variable, event flag) with a hard timeout that fails the test if exceeded.
 - **Hard timeouts, not soft retries.** If a test must wait for an external condition (connection, message arrival), use a single bounded wait with `TEST_ASSERT` on timeout. Never loop back and retry the same operation.
 - **No bug-hiding test edits.** If a test is incorrect, outdated, or violates the contract, fix the test to express the right behavior. Do not weaken, relax, or rewrite a test only to hide an implementation bug or make a failing case appear to pass.
+- **Do not solve product bugs by changing tests.** Test edits are forbidden as a way to make failures disappear, except when the test's meaning has intentionally changed or the test itself is provably wrong. In all other cases, fix the code or the environment root cause instead.
 
 ## Commit and Pull Request Guidelines
 - Commit messages typically use conventional prefixes like `feat:`, `fix:`, `docs:` with a short summary.

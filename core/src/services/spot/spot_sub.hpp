@@ -70,7 +70,8 @@ class spot_sub_t
     socket_base_t *poller_socket () const { return socket (); }
     int set_direct_handler (spot_sub_direct_handler_fn handler_,
                             void *userdata_);
-    int recv (zlink_msg_t **parts_,
+    int recv (zlink_routing_id_t *source_rid_out_,
+              zlink_msg_t **parts_,
               size_t *part_count_,
               int flags_,
               char *topic_out_,

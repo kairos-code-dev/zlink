@@ -99,16 +99,19 @@ void close_monitor_handle (void **monitor_p_)
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (*monitor_p_, ZLINK_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (*monitor_p_));
-    *monitor_p_ = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (monitor_p_));
 }
 
 void *open_monitor (void *socket_, monitor_probe_t *probe_)
 {
     g_monitor_probe = probe_;
-    void *monitor =
-      zlink_socket_monitor_open (socket_, ZLINK_EVENT_ALL, &record_monitor_event, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_ALL;
+    void *monitor = zlink_socket_monitor_open (socket_, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_monitor_handler (monitor, &record_monitor_event, NULL));
     return monitor;
 }
 }

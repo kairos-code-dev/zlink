@@ -328,11 +328,10 @@ bool open_spot_ready_monitor(spot_client_slot_t *slot)
     if (!slot || !slot->node)
         return false;
 
-    void *monitor = zlink_spot_node_monitor_open(
-      slot->node,
-      ZLINK_SPOT_ROLE_SUB,
-      ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_READY,
-      &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset(&opts, 0, sizeof(opts));
+    opts.events = ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_READY;
+    void *monitor = zlink_service_monitor_open(slot->node, &opts);
     if (!monitor)
         return false;
 
@@ -369,7 +368,7 @@ void close_spot_ready_monitor(spot_client_slot_t *slot)
     if (!monitor)
         return;
 
-    (void) zlink_service_monitor_close(&monitor);
+    (void) zlink_monitor_close(&monitor);
 }
 
 void join_spot_recv_workers(spot_client_state_t *state)

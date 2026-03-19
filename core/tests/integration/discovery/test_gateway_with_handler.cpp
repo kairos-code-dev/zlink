@@ -135,17 +135,18 @@ bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
     if (!gateway_ || !out_)
         return false;
 
-    void *monitor = zlink_gateway_monitor_open (
-      gateway_,
-      ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
-        | ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
-        | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
+                  | ZLINK_GATEWAY_SEND_READY_CHANGED
+                  | ZLINK_GATEWAY_ROUTE_UP | ZLINK_GATEWAY_ROUTE_DOWN
+                  | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
+    void *monitor = zlink_service_monitor_open (gateway_, &opts);
     if (!monitor)
         return false;
 
     const int rc = zlink_monitor_snapshot (monitor, out_);
-    zlink_service_monitor_close (&monitor);
+    zlink_monitor_close (&monitor);
     return rc == 0;
 }
 
@@ -856,10 +857,12 @@ void test_gateway_send_after_ready_monitor_close_keeps_working ()
     probe.server = server;
     g_probe = &probe;
 
-    void *monitor = zlink_gateway_monitor_open (
-      client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
-                | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+                  | ZLINK_GATEWAY_ROUTE_DOWN
+                  | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
+    void *monitor = zlink_service_monitor_open (client, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
 
     zlink_routing_id_t server_rid;
@@ -885,7 +888,7 @@ void test_gateway_send_after_ready_monitor_close_keeps_working ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_connect (client, endpoint, &server_rid));
     TEST_ASSERT_TRUE (wait_for_gateway_connections (client, 1, 5000));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
 
     zlink_msg_t request_part;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&request_part, 4));
@@ -951,10 +954,12 @@ void run_gateway_monitor_close_destroy_cycle (void *ctx_,
     probe.expected_reply_size = payload_size_;
     g_probe = &probe;
 
-    void *monitor = zlink_gateway_monitor_open (
-      client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
-                | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+                  | ZLINK_GATEWAY_ROUTE_DOWN
+                  | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
+    void *monitor = zlink_service_monitor_open (client, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
 
     zlink_routing_id_t server_rid;
@@ -978,7 +983,7 @@ void run_gateway_monitor_close_destroy_cycle (void *ctx_,
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_connect (client, endpoint, &server_rid));
     TEST_ASSERT_TRUE (wait_for_gateway_connections (client, 1, 5000));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
 
     std::vector<unsigned char> payload (payload_size_);
     for (size_t i = 0; i < payload.size (); ++i)
@@ -1050,10 +1055,12 @@ void test_gateway_destroy_after_ready_monitor_close_completes_promptly ()
     probe.expected_reply_size = 1024;
     g_probe = &probe;
 
-    void *monitor = zlink_gateway_monitor_open (
-      client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
-                | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+                  | ZLINK_GATEWAY_ROUTE_DOWN
+                  | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
+    void *monitor = zlink_service_monitor_open (client, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
 
     zlink_routing_id_t server_rid;
@@ -1079,7 +1086,7 @@ void test_gateway_destroy_after_ready_monitor_close_completes_promptly ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_connect (client, endpoint, &server_rid));
     TEST_ASSERT_TRUE (wait_for_gateway_connections (client, 1, 5000));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
 
     for (int i = 0; i < 32; ++i) {
         zlink_msg_t request_part;
@@ -1171,11 +1178,15 @@ void test_gateway_monitor_send_ready_drives_backpressure_progress ()
     g_probe = &probe;
 
     gateway_ready_monitor_state_t monitor_state;
-    void *monitor = zlink_gateway_monitor_open (
-      client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
-                | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &gateway_ready_monitor_handler, &monitor_state);
+    zlink_service_monitor_open_options_t monitor_opts;
+    memset (&monitor_opts, 0, sizeof (monitor_opts));
+    monitor_opts.events =
+      ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+      | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
+    void *monitor = zlink_service_monitor_open (client, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_handler (
+      monitor, &gateway_ready_monitor_handler, &monitor_state));
 
     zlink_monitor_snapshot_t snapshot;
     memset (&snapshot, 0, sizeof (snapshot));
@@ -1244,7 +1255,7 @@ void test_gateway_monitor_send_ready_drives_backpressure_progress ()
     TEST_ASSERT_EQUAL_INT (0, probe.request_size_failures.load ());
     TEST_ASSERT_EQUAL_INT (0, probe.reply_size_failures.load ());
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server));
     g_probe = NULL;

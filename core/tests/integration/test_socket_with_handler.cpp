@@ -710,7 +710,7 @@ void test_raw_subscribe_recv_returns_topic_and_payload ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_pubsub_generic_surface_validates_filters_and_raw_publish ()
+void test_pubsub_generic_surface_accepts_raw_prefix_filters_and_raw_publish ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -720,10 +720,8 @@ void test_pubsub_generic_surface_validates_filters_and_raw_publish ()
     void *pub = zlink_socket (ctx, ZLINK_PUB);
     TEST_ASSERT_NOT_NULL (pub);
 
-    TEST_ASSERT_EQUAL_INT (-1, zlink_set_subscription (sub, "*"));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (-1, zlink_set_subscription (sub, "bad*mid"));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "*"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "bad*mid"));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0));
 
@@ -890,9 +888,14 @@ void test_pair_socket_same_handle_concurrent_send_is_thread_safe ()
 
     raw_monitor_probe_t monitor_probe;
     g_raw_monitor_probe = &monitor_probe;
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY, &raw_monitor_ready_handler, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_CONNECTION_READY;
+    void *monitor = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_monitor_handler (monitor, &raw_monitor_ready_handler,
+                                    NULL));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
@@ -962,7 +965,10 @@ void test_pair_socket_same_handle_concurrent_send_is_thread_safe ()
     TEST_ASSERT_EQUAL_INT (0, probe.close_failures.load ());
 
     close_zero_linger (client);
-    close_zero_linger (monitor);
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     close_zero_linger (server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
     g_concurrent_send_probe = NULL;
@@ -986,7 +992,7 @@ int main ()
     RUN_TEST (
       test_sub_socket_with_handler_applies_filter_before_dispatch_over_inproc);
     RUN_TEST (test_raw_subscribe_recv_returns_topic_and_payload);
-    RUN_TEST (test_pubsub_generic_surface_validates_filters_and_raw_publish);
+    RUN_TEST (test_pubsub_generic_surface_accepts_raw_prefix_filters_and_raw_publish);
     RUN_TEST (test_xpub_socket_with_handler_receives_subscription_events);
     RUN_TEST (test_xpub_direct_recv_returns_source_rid_and_topic);
     RUN_TEST (test_xpub_direct_recv_reports_emsgsize_and_required_topic_length);

@@ -792,6 +792,14 @@ typedef struct {
 typedef void (*zlink_monitor_handler_fn) (
   const zlink_monitor_event_t *event_, void *userdata_);
 
+typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
+typedef zlink_monitor_handler_fn zlink_socket_monitor_handler_fn;
+
+typedef struct zlink_socket_monitor_open_options_t
+{
+    zlink_socket_monitor_event_mask_t events;
+} zlink_socket_monitor_open_options_t;
+
 /**
  * @brief Ignore socket monitor events while keeping a valid handler symbol.
  *
@@ -841,14 +849,22 @@ typedef struct zlink_monitor_snapshot_t
  * @param events_  Event bitmask.
  * @return Monitor handle, or NULL on failure.
  */
-ZLINK_EXPORT void *zlink_socket_monitor_open (void *s_,
-                                              zlink_socket_monitor_event_mask_t events_,
-                                              zlink_monitor_handler_fn handler_,
-                                              void *userdata_);
+ZLINK_EXPORT void *zlink_socket_monitor_open (
+  void *s_, const zlink_socket_monitor_open_options_t *options_);
+
+ZLINK_EXPORT int zlink_socket_monitor_handler (
+  void *monitor_,
+  zlink_socket_monitor_handler_fn handler_,
+  void *userdata_);
+
+ZLINK_EXPORT int zlink_socket_monitor_recv (
+  void *monitor_, zlink_socket_monitor_event_t *out_);
 
 /** @brief Read the current snapshot for a socket or service monitor handle. */
 ZLINK_EXPORT int zlink_monitor_snapshot (void *monitor_,
                                          zlink_monitor_snapshot_t *out_);
+
+ZLINK_EXPORT int zlink_monitor_close (void **monitor_p_);
 
 /** @brief Close all parts in a multipart message array. */
 ZLINK_EXPORT void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
@@ -1086,6 +1102,7 @@ typedef uint32_t zlink_discovery_monitor_event_mask_t;
 typedef uint32_t zlink_gateway_monitor_event_mask_t;
 typedef uint32_t zlink_spot_monitor_event_mask_t;
 typedef uint32_t zlink_service_event_detail_mask_t;
+typedef uint32_t zlink_service_monitor_event_mask_t;
 
 #define ZLINK_DISCOVERY_MONITOR_EVENT_READY                                  \
     ((zlink_discovery_monitor_event_mask_t) (1u << 0))
@@ -1213,54 +1230,72 @@ typedef struct zlink_service_event_t
 typedef void (*zlink_service_monitor_handler_fn) (
   const zlink_service_event_t *event_, void *userdata_);
 
-ZLINK_EXPORT void *zlink_spot_node_monitor_open (
-  void *node,
-  zlink_spot_role_t role,
-  zlink_spot_monitor_event_mask_t events,
-  zlink_service_monitor_handler_fn handler,
-  void *userdata);
-ZLINK_EXPORT void *zlink_spot_monitor_open (
-  void *spot,
-  zlink_spot_role_t role,
-  zlink_spot_monitor_event_mask_t events,
-  zlink_service_monitor_handler_fn handler,
-  void *userdata);
+typedef zlink_service_event_t zlink_service_monitor_event_t;
+typedef zlink_service_event_detail_mask_t
+  zlink_service_monitor_event_detail_mask_t;
 
-/**
- * @brief Ignore service monitor events while keeping a valid handler symbol.
- *
- * Pass this when you want snapshot or direct polling on the returned monitor
- * handle without automatic callback dispatch.
- */
-ZLINK_EXPORT void zlink_service_monitor_ignore_handler (
-  const zlink_service_event_t *event_, void *userdata_);
+typedef struct zlink_service_monitor_open_options_t
+{
+    zlink_service_monitor_event_mask_t events;
+} zlink_service_monitor_open_options_t;
 
-/**
- * @brief Open a service monitor handle with a fixed callback.
- *
- * Monitor handles participate in the same tiered contract: open/close are
- * serialized control-path operations, while callback replacement is not
- * supported after open.
- */
-ZLINK_EXPORT void *zlink_discovery_monitor_open (
-  void *discovery,
-  zlink_discovery_monitor_event_mask_t events,
-  zlink_service_monitor_handler_fn handler,
-  void *userdata);
-ZLINK_EXPORT void *zlink_gateway_monitor_open (
-  void *gateway,
-  zlink_gateway_monitor_event_mask_t events,
-  zlink_service_monitor_handler_fn handler,
-  void *userdata);
+typedef enum zlink_monitor_target_kind_t
+{
+    ZLINK_MONITOR_TARGET_SOCKET = 1,
+    ZLINK_MONITOR_TARGET_DISCOVERY = 2,
+    ZLINK_MONITOR_TARGET_GATEWAY = 3,
+    ZLINK_MONITOR_TARGET_SPOT = 4,
+    ZLINK_MONITOR_TARGET_SPOT_NODE = 5
+} zlink_monitor_target_kind_t;
 
-/**
- * @brief Close a service monitor handle.
- *
- * If another thread is executing the monitor callback, the close fails with
- * errno=EBUSY. Self-close from the callback succeeds and is deferred until the
- * callback returns.
- */
-ZLINK_EXPORT int zlink_service_monitor_close (void **monitor_p);
+#define ZLINK_SERVICE_MONITOR_EVENT_ERROR ZLINK_DISCOVERY_MONITOR_EVENT_ERROR
+#define ZLINK_SERVICE_MONITOR_EVENT_CLOSED ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED
+#define ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP                      \
+    ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
+#define ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN                    \
+    ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_DOWN
+#define ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_SERVICE_READY                     \
+    ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY
+#define ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_SEND_READY_CHANGED                \
+    ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
+#define ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_UP                          \
+    ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP
+#define ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_DOWN                        \
+    ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_DOWN
+#define ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED                       \
+    ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED
+#define ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY                   \
+    ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY
+#define ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUB_DELIVERY_READY_CHANGED           \
+    ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
+#define ZLINK_SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED         \
+    ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
+#define ZLINK_SERVICE_MONITOR_EVENT_ALL                                       \
+    ((zlink_service_monitor_event_mask_t)                                     \
+      (ZLINK_SERVICE_MONITOR_EVENT_ERROR                                      \
+       | ZLINK_SERVICE_MONITOR_EVENT_CLOSED                                   \
+       | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP                     \
+       | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN                   \
+       | ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_SERVICE_READY                    \
+       | ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_SEND_READY_CHANGED               \
+       | ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_UP                         \
+       | ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_DOWN                       \
+       | ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED                      \
+       | ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY                  \
+       | ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUB_DELIVERY_READY_CHANGED          \
+       | ZLINK_SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED))
+
+ZLINK_EXPORT void *zlink_service_monitor_open (
+  void *target_,
+  const zlink_service_monitor_open_options_t *options_);
+
+ZLINK_EXPORT int zlink_service_monitor_handler (
+  void *monitor_,
+  zlink_service_monitor_handler_fn handler_,
+  void *userdata_);
+
+ZLINK_EXPORT int zlink_service_monitor_recv (
+  void *monitor_, zlink_service_monitor_event_t *out_);
 
 typedef enum zlink_topology_source_t
 {

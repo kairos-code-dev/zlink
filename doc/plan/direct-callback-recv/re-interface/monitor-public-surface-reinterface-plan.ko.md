@@ -13,7 +13,8 @@ public API 관점에서는 다음 문제가 남아 있다.
 - monitor를 여는 함수 이름이 대상마다 제각각이다.
 - event payload는 service 계열에서 이미 상당히 통일돼 있는데,
   호출자가 그 사실을 API shape만 보고 바로 이해하기 어렵다.
-- `spot` monitor는 `role` 인자를 통해 내부 구조를 알아야만 사용할 수 있다.
+- `spot` / `spot_node` monitor는 `role` 인자를 통해 내부 구조를 알아야만
+  사용할 수 있다.
 - `zlink_service_monitor_handler_fn`과 `zlink_service_event_t`는
   실제 적용 범위에 비해 naming이 좁고, socket monitor와의 관계도 흐리다.
 
@@ -102,17 +103,20 @@ public struct에 socket-specific field와 service-specific field가 같이 섞�
 
 ### 3.3 naming이 service 범위를 정확히 표현하지 못한다
 
-`zlink_service_monitor_handler_fn`은 discovery/gateway/spot 계열 전체에 쓰인다.
+`zlink_service_monitor_handler_fn`은
+discovery/gateway/spot/spot_node 계열 전체에 쓰인다.
 이 문서의 최종 방향은 `service` 분류를 유지하는 것이다.
 다만 현재 public surface에서는 그 범위가 충분히 선명하게 드러나지 않는다.
 
 - socket monitor와 병치되는 public 분류라는 점이 약하다.
-- discovery/gateway/spot pub/sub facet을 함께 포괄한다는 점이 덜 보인다.
+- discovery/gateway/spot/spot_node facet을 함께 포괄한다는 점이 덜 보인다.
 - topology/query/readiness와의 관계를 설명하는 문맥이 더 필요하다.
 
 ### 3.4 event mask 타입이 불필요하게 분절돼 있다
 
 현재는 discovery/gateway/spot별 마스크 타입이 따로 있다.
+`spot_node`는 별도 open 함수로 드러나지만 event namespace는 사실상
+같은 service monitor 문맥에 있다.
 이 자체가 잘못은 아니지만,
 사용자 입장에서는 "어차피 bitmask인데 왜 타입만 나뉘는가"라는 의문을 만든다.
 
@@ -135,7 +139,7 @@ public monitor class는 다음 둘만 둔다.
   - raw socket family를 대상으로 한다.
   - connection/bind/accept/disconnect/handshake 등 socket-level event를 다룬다.
 - service monitor
-  - discovery/gateway/spot facade를 대상으로 한다.
+  - discovery/gateway/spot/spot_node service family를 대상으로 한다.
   - readiness, peer topology, route, provider, subscription state 같은
     service-level event를 다룬다.
 
@@ -143,6 +147,13 @@ public monitor class는 다음 둘만 둔다.
 
 - 소켓 상태를 보고 싶다: socket monitor
 - 서비스 동작 상태를 보고 싶다: service monitor
+
+추가 원칙:
+
+- handshake 진행/성공/실패 관찰은 반드시 socket monitor 책임으로 둔다.
+- handshake 정보는 service monitor나 snapshot으로 승격해서 대체하지 않는다.
+- TLS/ZMTP handshake 진단은 service-level 의미 상태가 아니라
+  socket-level 사실로 본다.
 
 
 ## 5. Canonical Public API
@@ -220,7 +231,7 @@ ZLINK_EXPORT int zlink_monitor_close (void **monitor_p_);
 open은 두 개만 기억하면 된다는 점이다.
 
 - raw socket이면 `zlink_socket_monitor_open()`
-- discovery/gateway/spot이면 `zlink_service_monitor_open()`
+- discovery/gateway/spot/spot_node면 `zlink_service_monitor_open()`
 - open 직후 monitor는 기본적으로 recv model이다
 - callback을 붙이면 callback-only로 단방향 전환된다
 
@@ -237,7 +248,7 @@ open은 두 개만 기억하면 된다는 점이다.
 
 - `target_`는 monitor를 걸 대상 instance다.
 - 대상 kind는 `target_`의 runtime tag에서 결정한다.
-- 허용 대상은 `DISCOVERY`, `GATEWAY`, `SPOT`이다.
+- 허용 대상은 `DISCOVERY`, `GATEWAY`, `SPOT`, `SPOT_NODE`다.
 - 기본 delivery model은 recv model이다.
 - open 직후 `zlink_service_monitor_recv()`가 가능하다.
 - open 직후 callback은 설치되지 않는다.
@@ -255,7 +266,8 @@ open은 두 개만 기억하면 된다는 점이다.
 구현 단순성을 위해 다음 규칙을 명시한다.
 
 - `service monitor open`은 `target_kind`를 인자로 다시 받지 않는다.
-  discovery/gateway/spot 구분은 이미 handle tag에서 결정 가능하기 때문이다.
+  discovery/gateway/spot/spot_node 구분은 이미 handle tag에서
+  결정 가능하기 때문이다.
 - monitor handle은 별도 opaque object를 새로 만드는 대신,
   monitor event stream을 읽는 socket-backed handle로 유지한다.
 - typed recv API는 thin wrapper여야 한다.
@@ -364,6 +376,9 @@ event는 다음 기준으로 다시 걸러야 한다.
 socket event는 기존 socket monitor event를 계승한다.
 이 계층은 raw socket 수준 사실만 전달한다.
 
+특히 handshake 계열은 반드시 이 계층에 남긴다.
+TLS/ZMTP handshake 성공/실패와 원인 코드는 service event로 끌어올리지 않는다.
+
 예:
 
 - listening
@@ -393,7 +408,9 @@ typedef uint32_t zlink_socket_monitor_event_mask_t;
 
 ### 7.2 service event
 
-service event는 discovery/gateway/spot facade의 service-level state를 전달한다.
+service event는
+discovery/gateway/spot/spot_node service family의 service-level state를
+전달한다.
 
 예:
 
@@ -465,7 +482,8 @@ optional extension 예:
 
 service event struct는 다음 요구를 동시에 만족해야 한다.
 
-- discovery/gateway/spot을 하나의 handler 타입으로 처리할 수 있어야 한다.
+- discovery/gateway/spot/spot_node를 하나의 handler 타입으로 처리할 수
+  있어야 한다.
 - 그러나 `spot pub/sub` 같은 내부 구성 지식은 노출하지 않아야 한다.
 - event 유효 필드 규칙이 설명 가능해야 한다.
 
@@ -477,7 +495,8 @@ typedef enum zlink_monitor_target_kind_t
     ZLINK_MONITOR_TARGET_SOCKET = 1,
     ZLINK_MONITOR_TARGET_DISCOVERY = 2,
     ZLINK_MONITOR_TARGET_GATEWAY = 3,
-    ZLINK_MONITOR_TARGET_SPOT = 4
+    ZLINK_MONITOR_TARGET_SPOT = 4,
+    ZLINK_MONITOR_TARGET_SPOT_NODE = 5
 } zlink_monitor_target_kind_t;
 ```
 
@@ -511,7 +530,7 @@ typedef struct zlink_service_monitor_event_t
 ### 8.3 field 해석 원칙
 
 - `target_kind`
-  - discovery/gateway/spot 중 어느 facade인지 나타낸다.
+  - discovery/gateway/spot/spot_node 중 어느 service target인지 나타낸다.
 - `event_type`
   - service event bit와 같은 namespace를 공유한다.
 - `status`
@@ -529,7 +548,7 @@ typedef struct zlink_service_monitor_event_t
 service event가 그 이상 복잡한 subject taxonomy를 드러낼 필요는 없다.
 
 
-## 9. `spot` 재설계 원칙
+## 9. `spot` / `spot_node` 재설계 원칙
 
 ### 9.1 `role` 제거
 
@@ -539,6 +558,7 @@ service event가 그 이상 복잡한 subject taxonomy를 드러낼 필요는 �
 - `zlink_spot_node_monitor_open(... role ...)`
 
 canonical service target은 `spot` 하나다.
+`spot_node`도 별도 service target으로 포함한다.
 
 ```c
 zlink_service_monitor_open_options_t opts;
@@ -546,6 +566,7 @@ memset(&opts, 0, sizeof(opts));
 opts.events = ...;
 
 monitor = zlink_service_monitor_open(spot, &opts);
+monitor = zlink_service_monitor_open(node, &opts);
 ```
 
 ### 9.2 내부 facet 분리는 event로만 드러낸다
@@ -561,11 +582,11 @@ open 시점에 pub/sub 중 어느 내부 객체에 붙어야 하는가가 아니
 - detail field
 - snapshot state
 
-open contract는 facade 수준으로 고정한다.
+open contract는 facade/service 수준으로 고정한다.
 
 ### 9.3 필요하면 snapshot에서 facet별 상태를 확장한다
 
-`spot`이 pub/sub 양쪽 상태를 모두 가질 필요가 있다면,
+`spot` 또는 `spot_node`가 pub/sub 양쪽 상태를 모두 가질 필요가 있다면,
 그 복잡성은 open 인자 대신 snapshot struct에서 받아야 한다.
 
 예:
@@ -740,6 +761,30 @@ void *mon = zlink_service_monitor_open(spot, &opts);
 zlink_service_monitor_handler(mon, &on_spot, NULL);
 ```
 
+### 12.4 spot_node service callback model
+
+```c
+static void on_spot_node (
+  const zlink_service_monitor_event_t *event_,
+  void *userdata_)
+{
+    (void) userdata_;
+    if (event_->target_kind == ZLINK_MONITOR_TARGET_SPOT_NODE
+        && event_->event_type
+             == ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY) {
+        /* node-owned sub became ready */
+    }
+}
+
+zlink_service_monitor_open_options_t opts;
+memset(&opts, 0, sizeof(opts));
+opts.events = ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY
+              | ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUB_DELIVERY_READY_CHANGED;
+
+void *mon = zlink_service_monitor_open(node, &opts);
+zlink_service_monitor_handler(mon, &on_spot_node, NULL);
+```
+
 
 ## 13. 제거할 public surface
 
@@ -780,15 +825,16 @@ compat wrapper는 두지 않는다.
 실구현으로 내릴 때의 매핑 원칙:
 
 - `socket monitor open`은 raw socket handle 검증 후 monitor stream을 연다.
-- `service monitor open`은 discovery/gateway/spot handle 검증 후
+- `service monitor open`은 discovery/gateway/spot/spot_node handle 검증 후
   해당 service adapter에 연결된 monitor stream을 연다.
+- handshake 관련 contract와 failure surface는 socket monitor 쪽에만 둔다.
 - `service target kind`는 open 옵션이 아니라 target handle tag에서 유도한다.
 - `*_monitor_handler()`는 기존 monitor state registry에 dispatch worker를 붙이는
   전환 API로 구현한다.
 - `*_monitor_recv()`는 monitor stream decode wrapper로 구현한다.
 - `zlink_monitor_snapshot()`은 현재처럼 monitor handle 기반 provider lookup을 유지한다.
 
-`spot`은 facade-level service adapter 하나만 남기고,
+`spot`과 `spot_node`는 service family adapter로 흡수하고,
 pub/sub/internal receiver 선택은 adapter 내부 정책으로 숨긴다.
 
 
@@ -846,10 +892,10 @@ pub/sub/internal receiver 선택은 adapter 내부 정책으로 숨긴다.
 - `zlink_monitor_close()`
 - recv model -> callback-only 전환 경로 정리
 
-### Phase 3. `spot` facade service surface 재구성
+### Phase 3. `spot` / `spot_node` service surface 재구성
 
 - `role` 제거
-- facade-level adapter 도입
+- service-family adapter 도입
 - snapshot/event에서 facet 차이만 노출
 
 ### Phase 4. 바인딩/문서/테스트 동기화
@@ -874,7 +920,7 @@ monitor 사용법이 설명 한 문단으로 끝난다는 점이다.
 
 사용자는 더 이상 다음을 고민하지 않는다.
 
-- discovery/gateway/spot마다 여는 함수가 왜 다른가
+- discovery/gateway/spot/spot_node마다 여는 함수가 왜 다른가
 - `service monitor`와 `socket monitor`가 어떤 관계인가
 - `spot`에서 왜 `role`을 넣어야 하는가
 - callback 없는 monitor handle을 왜 따로 열어야 하는가
@@ -911,7 +957,9 @@ POSD 기준으로도 내부 복잡성을 public surface 밖으로 밀어내는 �
 - close는 `zlink_monitor_close()` 하나로 통일한다.
 - snapshot은 `zlink_monitor_snapshot()` 하나를 유지한다.
 - service open은 target handle tag로 kind를 결정한다.
-- `spot role`, `spot node`, `ignore handler`, subject-specific open 함수군은 제거한다.
+- `spot role`, `ignore handler`, subject-specific open 함수군은 제거한다.
+- `spot_node` monitor 기능은 제거가 아니라 `zlink_service_monitor_open(node, ...)`
+  로 흡수한다.
 - optional event와 callback 내부 self-close는 1차 구현 범위에서 제외한다.
 
 즉 첫 구현의 성공 기준은
@@ -1168,7 +1216,8 @@ remove 후보:
 - callback은 별도 `*_monitor_handler()`로 부착한다.
 - recv는 generic envelope 없이 typed recv 둘로 나눈다.
 - snapshot/close는 공통 함수로 둔다.
-- `spot role`, `spot node`, `ignore handler`는 선언에서 제거한다.
+- `spot role`, `ignore handler`는 선언에서 제거한다.
+- `spot_node`는 별도 open 함수가 아니라 `service monitor` 대상에 포함한다.
 - optional event는 1차 헤더 초안에 넣지 않는다.
 
 ### 20.2 header draft
@@ -1181,7 +1230,8 @@ typedef enum zlink_monitor_target_kind_t
     ZLINK_MONITOR_TARGET_SOCKET = 1,
     ZLINK_MONITOR_TARGET_DISCOVERY = 2,
     ZLINK_MONITOR_TARGET_GATEWAY = 3,
-    ZLINK_MONITOR_TARGET_SPOT = 4
+    ZLINK_MONITOR_TARGET_SPOT = 4,
+    ZLINK_MONITOR_TARGET_SPOT_NODE = 5
 } zlink_monitor_target_kind_t;
 
 
@@ -1373,7 +1423,7 @@ ZLINK_EXPORT int zlink_monitor_close (void **monitor_p_);
 - `zlink_spot_monitor_open(...)`
   → `zlink_service_monitor_open(spot, &opts)`
 - `zlink_spot_node_monitor_open(...)`
-  → 제거
+  → `zlink_service_monitor_open(node, &opts)`
 - `zlink_service_monitor_ignore_handler(...)`
   → 제거
 - `zlink_service_monitor_close(...)`
@@ -1384,7 +1434,7 @@ ZLINK_EXPORT int zlink_monitor_close (void **monitor_p_);
 헤더 초안 기준 구현 시 주의점은 다음이다.
 
 - `zlink_service_monitor_open()`은 target runtime tag로
-  discovery/gateway/spot을 판별해야 한다.
+  discovery/gateway/spot/spot_node를 판별해야 한다.
 - `zlink_socket_monitor_handler()` /
   `zlink_service_monitor_handler()`는 한 번만 성공해야 하며,
   성공 이후 recv는 `EBUSY`여야 한다.
@@ -1443,8 +1493,10 @@ ZLINK_EXPORT int zlink_monitor_close (void **monitor_p_);
 - monitor handle은 이미 socket-backed handle이다.
 - socket/service monitor event decode path가 내부 함수로 이미 나뉘어 있다.
 - snapshot은 이미 monitor handle 공통 API 하나로 구현돼 있다.
-- service monitor는 현재도 discovery/gateway/spot별 open 이후
+- service monitor는 현재도 discovery/gateway/spot/spot_node별 open 이후
   공통 monitor state registry에 연결된다.
+- `spot_node`는 현재 별도 open 함수로 노출되지만,
+  새 surface에서는 같은 service monitor family로 흡수 가능하다.
 - `ignore handler`는 callback 없는 recv/direct poll 수요를 우회하기 위한
   legacy 장치이며, 새 설계에서는 제거 대상이다.
 
@@ -1461,6 +1513,7 @@ ZLINK_EXPORT int zlink_monitor_close (void **monitor_p_);
 - generic `zlink_monitor_recv()` envelope 추가
 - service handle을 `socket monitor` 대상처럼 허용하는 우회
 - service monitor에 raw socket diagnostic event를 그대로 섞는 일
+- handshake 상태를 service event나 snapshot으로 재표현하는 일
 
 ### 21.5 first implementation checklist
 
@@ -1480,7 +1533,18 @@ ZLINK_EXPORT int zlink_monitor_close (void **monitor_p_);
    기존 service monitor close 호출 지점을 치환한다.
 7. `zlink_service_monitor_ignore_handler()`와
    subject-specific open 함수를 제거하거나 비공개화한다.
+   `spot_node` monitor 기능은 제거하지 말고
+   `zlink_service_monitor_open(node, ...)`로 흡수한다.
 8. 문서에 적은 canonical event set과 실제 bit layout이 일치하는지 다시 검토한다.
+
+### 21.5.1 test and perf authoring rule
+
+monitor re-interface를 반영하거나 새 검증을 추가할 때는 다음 원칙을 따른다.
+
+- `core/tests`, `core/perf`, `core/bench`는 public C API만 사용한다.
+- 내부 헤더나 내부 helper를 새 검증 경로에 추가하지 않는다.
+- handshake 진행/성공/실패 검증은 `socket monitor` 이벤트로만 관찰한다.
+- service readiness 검증은 `service monitor`와 `snapshot`으로만 표현한다.
 
 ### 21.6 verification starting point
 
@@ -1517,4 +1581,61 @@ ctest --test-dir core/build --output-on-failure -L e2e -j1
 - recv는 typed API 둘로 나누고 envelope는 두지 않는다.
 - snapshot/close는 공통 API를 유지한다.
 - service open은 handle tag에서 kind를 유도한다.
-- `spot role`, `spot node`, `ignore handler`, generic alias event는 제거 방향이다.
+- `spot role`, `ignore handler`, generic alias event는 제거 방향이다.
+- `spot_node`는 제거 대상이 아니라 `service monitor` 대상에 포함된다.
+
+### 21.8 current core gap status
+
+현재 `core`는 public header와 runtime entry 기준으로는
+문서 방향을 대부분 반영했고,
+monitor 호출부도 canonical naming 기준으로 정리된 상태다.
+
+이미 반영된 항목:
+
+- `zlink_service_monitor_open()`이 추가되어
+  discovery/gateway/spot/spot_node를 `service monitor` 축으로 열 수 있다.
+- `zlink_socket_monitor_handler()` /
+  `zlink_service_monitor_handler()`가 추가되어
+  기본 recv model 이후 callback-only 전환이 가능하다.
+- `zlink_socket_monitor_recv()` /
+  `zlink_service_monitor_recv()`가 추가되어 typed recv가 가능하다.
+- `zlink_monitor_close()`가 추가되어 공통 close entry가 생겼다.
+- handshake 관찰은 계속 `socket monitor` 경로에 남아 있다.
+- public header에서는 다음 legacy service surface가 제거됐다.
+  - `zlink_discovery_monitor_open()`
+  - `zlink_gateway_monitor_open()`
+  - `zlink_spot_monitor_open()`
+  - `zlink_spot_node_monitor_open()`
+  - `zlink_service_monitor_ignore_handler()`
+  - `zlink_service_monitor_close()`
+- `core/tests`, `core/perf`, `core/bench`의 monitor 호출은
+  `zlink_service_monitor_open()` /
+  `zlink_socket_monitor_open()` +
+  `*_monitor_handler()` +
+  `zlink_monitor_close()` 직접 호출로 치환됐다.
+- `legacy_api_compat.hpp`의 monitor compat wrapper는 제거됐다.
+
+아직 남아 있는 미구현:
+
+- monitor public surface 자체 기준으로는
+  문서에 남겨 둔 핵심 미구현이 없다.
+- 다만 repo 전체를 "모든 test/perf가 C API만 사용"으로 넓히면
+  monitor 범위를 넘어서는 기존 internal test utility / unittest 의존은
+  별도 정리 과제로 남아 있다.
+
+따라서 현재 상태는
+"public service surface 제거, canonical runtime 반영,
+monitor 호출부 direct-call 치환, monitor compat 제거까지 완료"
+로 요약할 수 있다.
+
+### 21.9 remaining implementation order
+
+monitor re-interface 자체는 `core`에서 구현 완료 상태다.
+이후 남는 확장 과제는 다음 순서가 자연스럽다.
+
+1. repo-wide 정책으로 `tests/perf는 C API만 사용`을 강제하려면
+   monitor 외 test utility / unittest internal include를 별도 정리한다.
+2. monitor 장기 검증은 직접 바이너리 실행과 lane 기반 검증을 병행한다.
+   일부 umbrella test는 CTest 개별 timeout 30초에 걸릴 수 있다.
+3. 이후 registry / spot-node topology introspection 문서를
+   현재 monitor canonical surface에 맞춰 정렬한다.

@@ -849,16 +849,29 @@ void test_gateway_send_ready_changed_implies_first_request_reply ()
     g_service_probe_a = &server_monitor_probe;
     g_service_probe_b = &client_monitor_probe;
 
-    void *server_monitor = zlink_gateway_monitor_open (
-      server, ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_ROUTE_UP
-                | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &service_monitor_handler_a, NULL);
-    void *client_monitor = zlink_gateway_monitor_open (
-      client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
-                | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &service_monitor_handler_b, NULL);
+    zlink_service_monitor_open_options_t server_monitor_opts;
+    memset (&server_monitor_opts, 0, sizeof (server_monitor_opts));
+    server_monitor_opts.events = ZLINK_GATEWAY_SERVICE_READY
+                                 | ZLINK_GATEWAY_ROUTE_UP
+                                 | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
+    void *server_monitor =
+      zlink_service_monitor_open (server, &server_monitor_opts);
+    zlink_service_monitor_open_options_t client_monitor_opts;
+    memset (&client_monitor_opts, 0, sizeof (client_monitor_opts));
+    client_monitor_opts.events = ZLINK_GATEWAY_SEND_READY_CHANGED
+                                 | ZLINK_GATEWAY_ROUTE_UP
+                                 | ZLINK_GATEWAY_ROUTE_DOWN
+                                 | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
+    void *client_monitor =
+      zlink_service_monitor_open (client, &client_monitor_opts);
     TEST_ASSERT_NOT_NULL (server_monitor);
     TEST_ASSERT_NOT_NULL (client_monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_service_monitor_handler (server_monitor, &service_monitor_handler_a,
+                                     NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_service_monitor_handler (client_monitor, &service_monitor_handler_b,
+                                     NULL));
 
     gateway_delivery_probe_t delivery_probe;
     delivery_probe.server = server;
@@ -906,8 +919,8 @@ void test_gateway_send_ready_changed_implies_first_request_reply ()
     TEST_ASSERT_EQUAL_INT (0, delivery_probe.close_failures);
     TEST_ASSERT_EQUAL_INT (0, delivery_probe.send_failures);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&client_monitor));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&server_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&client_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&server_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&client_discovery));
@@ -938,10 +951,14 @@ void test_gateway_monitor_snapshot_send_ready_implies_first_recv_delivery ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
       client, ZLINK_OPT_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
 
-    void *client_monitor = zlink_gateway_monitor_open (
-      client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
-                | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t client_monitor_opts;
+    memset (&client_monitor_opts, 0, sizeof (client_monitor_opts));
+    client_monitor_opts.events = ZLINK_GATEWAY_SEND_READY_CHANGED
+                                 | ZLINK_GATEWAY_ROUTE_UP
+                                 | ZLINK_GATEWAY_ROUTE_DOWN
+                                 | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
+    void *client_monitor =
+      zlink_service_monitor_open (client, &client_monitor_opts);
     TEST_ASSERT_NOT_NULL (client_monitor);
 
     char endpoint[MAX_SOCKET_STRING];
@@ -999,7 +1016,7 @@ void test_gateway_monitor_snapshot_send_ready_implies_first_recv_delivery ()
     free (parts);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&client_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&client_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server));
 }
@@ -1030,19 +1047,27 @@ void test_spot_delivery_ready_changed_implies_first_publish_delivery ()
     g_service_probe_a = &sub_monitor_probe;
     g_service_probe_b = &pub_monitor_probe;
 
-    void *sub_monitor = zlink_spot_sub_monitor_open (
-      sub,
+    zlink_service_monitor_open_options_t sub_monitor_opts;
+    memset (&sub_monitor_opts, 0, sizeof (sub_monitor_opts));
+    sub_monitor_opts.events =
       ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_SUBSCRIPTION_READY
-        | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR,
-      &service_monitor_handler_a, NULL);
-    void *pub_monitor = zlink_spot_pub_monitor_open (
-      pub,
+      | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
+    void *sub_monitor = zlink_service_monitor_open (sub, &sub_monitor_opts);
+    zlink_service_monitor_open_options_t pub_monitor_opts;
+    memset (&pub_monitor_opts, 0, sizeof (pub_monitor_opts));
+    pub_monitor_opts.events =
       ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
-        | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
-        | ZLINK_MONITOR_EVENT_ERROR,
-      &service_monitor_handler_b, NULL);
+      | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
+      | ZLINK_MONITOR_EVENT_ERROR;
+    void *pub_monitor = zlink_service_monitor_open (pub, &pub_monitor_opts);
     TEST_ASSERT_NOT_NULL (sub_monitor);
     TEST_ASSERT_NOT_NULL (pub_monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_service_monitor_handler (sub_monitor, &service_monitor_handler_a,
+                                     NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_service_monitor_handler (pub_monitor, &service_monitor_handler_b,
+                                     NULL));
 
     char endpoint[MAX_SOCKET_STRING];
     int bind_seed = 22930;
@@ -1119,8 +1144,8 @@ void test_spot_delivery_ready_changed_implies_first_publish_delivery ()
       &sub_monitor_probe, &sub_cursor, ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED,
       NULL, "svc-contract", 0, NULL, 3000));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&pub_monitor));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&sub_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&pub_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&sub_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&sub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_destroy (&pub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
@@ -1145,13 +1170,18 @@ void test_spot_multi_delivery_ready_changed_implies_first_publish_delivery ()
     TEST_ASSERT_NOT_NULL (pub);
 
     service_event_probe_t pub_monitor_probe;
-    void *pub_monitor = zlink_spot_pub_monitor_open (
-      pub,
+    zlink_service_monitor_open_options_t pub_monitor_opts;
+    memset (&pub_monitor_opts, 0, sizeof (pub_monitor_opts));
+    pub_monitor_opts.events =
       ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
-        | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
-        | ZLINK_MONITOR_EVENT_ERROR,
-      &service_monitor_handler_registered, &pub_monitor_probe);
+      | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
+      | ZLINK_MONITOR_EVENT_ERROR;
+    void *pub_monitor = zlink_service_monitor_open (pub, &pub_monitor_opts);
     TEST_ASSERT_NOT_NULL (pub_monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_service_monitor_handler (pub_monitor,
+                                     &service_monitor_handler_registered,
+                                     &pub_monitor_probe));
 
     char endpoint[MAX_SOCKET_STRING];
     int bind_seed = 22940;
@@ -1173,12 +1203,18 @@ void test_spot_multi_delivery_ready_changed_implies_first_publish_delivery ()
           slots[i].sub, &capture_registered_spot_delivery,
           &slots[i].delivery_probe));
 
-        slots[i].monitor = zlink_spot_sub_monitor_open (
-          slots[i].sub,
-          ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
-            | ZLINK_MONITOR_EVENT_ERROR,
-          &service_monitor_handler_registered, &slots[i].monitor_probe);
+        zlink_service_monitor_open_options_t sub_monitor_opts;
+        memset (&sub_monitor_opts, 0, sizeof (sub_monitor_opts));
+        sub_monitor_opts.events =
+          ZLINK_SPOT_SUB_FILTER_APPLIED
+          | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
+          | ZLINK_MONITOR_EVENT_ERROR;
+        slots[i].monitor =
+          zlink_service_monitor_open (slots[i].sub, &sub_monitor_opts);
         TEST_ASSERT_NOT_NULL (slots[i].monitor);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_handler (
+          slots[i].monitor, &service_monitor_handler_registered,
+          &slots[i].monitor_probe));
 
         TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (slots[i].sub,
                                                            "svc-contract"));
@@ -1251,11 +1287,11 @@ void test_spot_multi_delivery_ready_changed_implies_first_publish_delivery ()
         TEST_ASSERT_EQUAL_INT (0, slots[i].delivery_probe.close_failures);
     }
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&pub_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&pub_monitor));
 
     for (size_t i = 0; i < client_count; ++i) {
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_service_monitor_close (&slots[i].monitor));
+          zlink_monitor_close (&slots[i].monitor));
     }
 
     // This regression runs as an isolated process case and only needs to

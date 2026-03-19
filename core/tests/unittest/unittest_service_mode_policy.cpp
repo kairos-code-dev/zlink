@@ -185,16 +185,17 @@ static void test_spot_node_mode_policy_and_monitor_polling_independence ()
     TEST_ASSERT_EQUAL_INT (-1, zlink_poller_add (poller, node, node, ZLINK_POLLIN));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
-    void *monitor = zlink_spot_node_monitor_open (
-      node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_EVENT_CLOSED,
-      &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t service_monitor_opts;
+    memset (&service_monitor_opts, 0, sizeof (service_monitor_opts));
+    service_monitor_opts.events = ZLINK_MONITOR_EVENT_CLOSED;
+    void *monitor = zlink_service_monitor_open (node, &service_monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_poller_add (poller, monitor, monitor, ZLINK_POLLIN));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, monitor));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
@@ -276,8 +277,10 @@ static void test_generic_monitor_poller_accepts_non_pollin_events ()
     void *client = zlink_socket (ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (client);
 
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_ALL, &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t socket_monitor_opts;
+    memset (&socket_monitor_opts, 0, sizeof (socket_monitor_opts));
+    socket_monitor_opts.events = ZLINK_EVENT_ALL;
+    void *monitor = zlink_socket_monitor_open (server, &socket_monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
 
     void *poller = zlink_poller_new ();
@@ -291,7 +294,7 @@ static void test_generic_monitor_poller_accepts_non_pollin_events ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
     close_zero_linger (client);
     close_zero_linger (server);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 

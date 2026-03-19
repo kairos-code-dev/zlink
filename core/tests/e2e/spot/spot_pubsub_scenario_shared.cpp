@@ -39,17 +39,18 @@ bool read_spot_snapshot (void *spot_, zlink_monitor_snapshot_t *out_)
     if (!spot_ || !out_)
         return false;
 
-    void *monitor = zlink_spot_monitor_open (
-      spot_, ZLINK_SPOT_ROLE_SUB,
-      ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
-        | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
-        | ZLINK_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
+                  | ZLINK_MONITOR_EVENT_PEER_UP
+                  | ZLINK_MONITOR_EVENT_PEER_DOWN
+                  | ZLINK_MONITOR_EVENT_ERROR;
+    void *monitor = zlink_service_monitor_open (spot_, &opts);
     if (!monitor)
         return false;
 
     const int rc = zlink_monitor_snapshot (monitor, out_);
-    zlink_service_monitor_close (&monitor);
+    zlink_monitor_close (&monitor);
     return rc == 0;
 }
 
@@ -552,15 +553,18 @@ void *open_spot_monitor_with_probe (void *spot_,
         probe_->event_count = 0;
     }
 
-    void *monitor = zlink_spot_monitor_open (
-      spot_, ZLINK_SPOT_ROLE_PUB, events_, &queued_service_monitor_handler,
-      probe_);
-    if (!monitor)
-        monitor = zlink_spot_monitor_open (
-          spot_, ZLINK_SPOT_ROLE_SUB, events_, &queued_service_monitor_handler,
-          probe_);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = events_;
+    void *monitor = zlink_service_monitor_open (spot_, &opts);
     if (!monitor)
         return NULL;
+    if (zlink_service_monitor_handler (
+          monitor, &queued_service_monitor_handler, probe_)
+        != 0) {
+        zlink_monitor_close (&monitor);
+        return NULL;
+    }
     return monitor;
 }
 
@@ -581,17 +585,25 @@ void *open_spot_node_monitor_with_probe (
         probe_->event_count = 0;
     }
 
-    void *monitor = zlink_spot_node_monitor_open (
-      node_, static_cast<zlink_spot_role_t> (role_), events_,
-      &queued_service_monitor_handler, probe_);
+    (void) role_;
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = events_;
+    void *monitor = zlink_service_monitor_open (node_, &opts);
     if (!monitor)
         return NULL;
+    if (zlink_service_monitor_handler (
+          monitor, &queued_service_monitor_handler, probe_)
+        != 0) {
+        zlink_monitor_close (&monitor);
+        return NULL;
+    }
     return monitor;
 }
 
 int close_service_monitor_with_probe (void **monitor_)
 {
-    return zlink_service_monitor_close (monitor_);
+    return zlink_monitor_close (monitor_);
 }
 
 bool wait_for_spot_ready_state (void *spot_,

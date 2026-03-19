@@ -204,12 +204,13 @@ bool open_gateway_ready_monitor (void *gateway_,
     if (!gateway_ || !out_)
         return false;
 
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+                  | ZLINK_GATEWAY_ROUTE_DOWN
+                  | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
     out_->gateway = gateway_;
-    out_->monitor = zlink_gateway_monitor_open (
-      gateway_,
-      ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
-        | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler, NULL);
+    out_->monitor = zlink_service_monitor_open (gateway_, &opts);
     return out_->monitor != NULL;
 }
 
@@ -283,7 +284,7 @@ void close_gateway_ready_monitor (gateway_ready_monitor_t *monitor_)
         return;
 
     if (monitor_->monitor)
-        (void) zlink_service_monitor_close (&monitor_->monitor);
+        (void) zlink_monitor_close (&monitor_->monitor);
     monitor_->gateway = NULL;
     monitor_->monitor = NULL;
 }

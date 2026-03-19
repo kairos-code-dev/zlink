@@ -203,8 +203,10 @@ inline int bench_monitor_hwm()
 
 inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
 {
-    int events = ZLINK_EVENT_CONNECTION_READY;
-    void *monitor = zlink_socket_monitor_open(socket_, events);
+    zlink_socket_monitor_open_options_t opts;
+    std::memset(&opts, 0, sizeof(opts));
+    opts.events = ZLINK_EVENT_CONNECTION_READY;
+    void *monitor = zlink_socket_monitor_open(socket_, &opts);
     if (!monitor)
         return false;
 
@@ -388,9 +390,8 @@ inline bool wait_all_connect_ready(std::vector<connect_monitor_t> &monitors,
 inline void close_connect_monitor(connect_monitor_t &monitor_)
 {
     if (monitor_.monitor)
-        zlink_close(monitor_.monitor);
+        zlink_monitor_close(&monitor_.monitor);
     monitor_.owner = NULL;
-    monitor_.monitor = NULL;
 }
 
 inline bool set_sockopt_int(void *socket_, int option_, int value_,

@@ -53,8 +53,10 @@ void test_zlink_getsockopt_null_socket ()
 
 void test_zlink_socket_monitor_open_null_socket ()
 {
-    void *monitor = zlink_socket_monitor_open (
-      NULL, ZLINK_EVENT_ALL, &discard_monitor_event, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_ALL;
+    void *monitor = zlink_socket_monitor_open (NULL, &opts);
     TEST_ASSERT_NULL (monitor);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }

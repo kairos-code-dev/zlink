@@ -544,16 +544,23 @@ inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
     if (!state)
         return false;
 
-    void *monitor = zlink_socket_monitor_open(
-      socket_,
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset(&monitor_opts, 0, sizeof(monitor_opts));
+    monitor_opts.events =
       ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_CONNECTED
-        | ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_BIND_FAILED
-        | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
-        | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
-        | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
-        | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
-      &connect_monitor_handler, state);
+      | ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_BIND_FAILED
+      | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
+      | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+      | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
+      | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
+    void *monitor = zlink_socket_monitor_open(socket_, &monitor_opts);
     if (!monitor) {
+        delete state;
+        return false;
+    }
+    if (zlink_socket_monitor_handler(monitor, &connect_monitor_handler, state)
+        != 0) {
+        zlink_monitor_close(&monitor);
         delete state;
         return false;
     }
@@ -578,7 +585,7 @@ inline void stop_and_close_socket_monitor(void *owner_, void **monitor_p_)
     (void) owner_;
     void *monitor = *monitor_p_;
     *monitor_p_ = NULL;
-    (void) zlink_close(monitor);
+    (void) zlink_monitor_close(&monitor);
 }
 
 inline int poll_connect_ready_count(connect_monitor_t &monitor_)
@@ -711,8 +718,10 @@ inline bool read_socket_snapshot_once(void *socket_,
     if (!socket_ || !out_)
         return false;
 
-    void *monitor = zlink_socket_monitor_open(
-      socket_, ZLINK_EVENT_ALL, &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset(&monitor_opts, 0, sizeof(monitor_opts));
+    monitor_opts.events = ZLINK_EVENT_ALL;
+    void *monitor = zlink_socket_monitor_open(socket_, &monitor_opts);
     if (!monitor)
         return false;
 
@@ -728,18 +737,19 @@ inline bool read_gateway_snapshot_once(void *gateway_,
     if (!gateway_ || !out_)
         return false;
 
-    void *monitor = zlink_gateway_monitor_open(
-      gateway_,
-      ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
-        | ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
-        | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset(&opts, 0, sizeof(opts));
+    opts.events = ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
+                  | ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+                  | ZLINK_GATEWAY_ROUTE_DOWN
+                  | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
+    void *monitor = zlink_service_monitor_open(gateway_, &opts);
     if (!monitor)
         return false;
 
     memset(out_, 0, sizeof(*out_));
     const int rc = zlink_monitor_snapshot(monitor, out_);
-    (void) zlink_service_monitor_close(&monitor);
+    (void) zlink_monitor_close(&monitor);
     return rc == 0;
 }
 
@@ -751,33 +761,26 @@ inline bool read_spot_snapshot_once(void *spot_,
         return false;
 
     const int spot_role_pub = 1;
-    void *monitor = role_ == spot_role_pub
-                      ? zlink_spot_pub_monitor_open(
-                          spot_,
-                          ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
-                            | ZLINK_MONITOR_EVENT_PEER_UP
-                            | ZLINK_MONITOR_EVENT_PEER_DOWN
-                            | ZLINK_MONITOR_EVENT_ERROR
-                            | ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
-                            | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
-                            | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED,
-                          &zlink_service_monitor_ignore_handler, NULL)
-                      : zlink_spot_sub_monitor_open(
-                          spot_,
-                          ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
-                            | ZLINK_MONITOR_EVENT_PEER_UP
-                            | ZLINK_MONITOR_EVENT_PEER_DOWN
-                            | ZLINK_MONITOR_EVENT_ERROR
-                            | ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
-                            | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
-                            | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED,
-                          &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset(&opts, 0, sizeof(opts));
+    opts.events = ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
+                  | ZLINK_MONITOR_EVENT_PEER_UP
+                  | ZLINK_MONITOR_EVENT_PEER_DOWN
+                  | ZLINK_MONITOR_EVENT_ERROR
+                  | ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
+                  | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
+                  | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED;
+    if (role_ == spot_role_pub)
+        opts.events |= ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED;
+    else
+        opts.events |= ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED;
+    void *monitor = zlink_service_monitor_open(spot_, &opts);
     if (!monitor)
         return false;
 
     memset(out_, 0, sizeof(*out_));
     const int rc = zlink_monitor_snapshot(monitor, out_);
-    (void) zlink_service_monitor_close(&monitor);
+    (void) zlink_monitor_close(&monitor);
     return rc == 0;
 }
 

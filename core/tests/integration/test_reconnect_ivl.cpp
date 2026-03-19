@@ -81,26 +81,44 @@ void close_monitor_handle (void **monitor_p_)
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (*monitor_p_, ZLINK_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (*monitor_p_));
-    *monitor_p_ = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (monitor_p_));
 }
 
 void *open_monitor (void *socket_, monitor_probe_t *probe_)
 {
     g_monitor_probe = probe_;
-    void *monitor =
-      zlink_socket_monitor_open (socket_, ZLINK_EVENT_ALL, &record_monitor_event, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_ALL;
+    void *monitor = zlink_socket_monitor_open (socket_, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_monitor_handler (monitor, &record_monitor_event, NULL));
     return monitor;
+}
+
+bool endpoint_uses_ipv6 (const char *endpoint_)
+{
+    return endpoint_ && strchr (endpoint_, '[') != NULL;
+}
+
+void configure_socket_family_for_endpoint (void *socket_, const char *endpoint_)
+{
+    TEST_ASSERT_NOT_NULL (socket_);
+    const int ipv6 = endpoint_uses_ipv6 (endpoint_) ? 1 : 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (socket_, ZLINK_OPT_IPV6, &ipv6, sizeof (ipv6)));
 }
 
 void run_reconnect_ivl_case (const char *bind_endpoint_,
                              const char *connect_endpoint_)
 {
     void *server = test_context_socket (ZLINK_PAIR);
+    configure_socket_family_for_endpoint (server, bind_endpoint_);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, bind_endpoint_));
 
     void *client = test_context_socket (ZLINK_PAIR);
+    configure_socket_family_for_endpoint (client, connect_endpoint_);
     monitor_probe_t probe;
     void *monitor = open_monitor (client, &probe);
 
@@ -127,6 +145,7 @@ void run_reconnect_ivl_case (const char *bind_endpoint_,
       sizeof (reconnect_wait_events) / sizeof (reconnect_wait_events[0]), 3000);
 
     server = test_context_socket (ZLINK_PAIR);
+    configure_socket_family_for_endpoint (server, connect_endpoint_);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, connect_endpoint_));
 
     const uint64_t reconnect_success_events[] = {

@@ -126,20 +126,22 @@ struct queue_probe_t
         if (!socket_ || !out_)
             return false;
 
-        void *monitor = zlink_socket_monitor_open (
-          socket_, ZLINK_EVENT_ALL, &zlink_monitor_ignore_handler, NULL);
+        zlink_socket_monitor_open_options_t opts;
+        memset (&opts, 0, sizeof (opts));
+        opts.events = ZLINK_EVENT_ALL;
+        void *monitor = zlink_socket_monitor_open (socket_, &opts);
         if (!monitor)
             return false;
 
         const int zero = 0;
         if (zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)) != 0) {
-            (void) zlink_close (monitor);
+            (void) zlink_monitor_close (&monitor);
             return false;
         }
 
         memset (out_, 0, sizeof (*out_));
         const int rc = zlink_monitor_snapshot (monitor, out_);
-        const int close_rc = zlink_close (monitor);
+        const int close_rc = zlink_monitor_close (&monitor);
         return rc == 0 && close_rc == 0;
     }
 
@@ -274,23 +276,30 @@ bool open_perf_like_connect_monitor (void *socket_, connect_monitor_t *out_)
     if (!state)
         return false;
 
-    void *monitor = zlink_socket_monitor_open (
-      socket_,
-      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_CONNECTED
-        | ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_BIND_FAILED
-        | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
-        | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
-        | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
-        | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
-      &perf_like_connect_monitor_handler, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_CONNECTED
+                  | ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_BIND_FAILED
+                  | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
+                  | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+                  | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
+                  | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
+    void *monitor = zlink_socket_monitor_open (socket_, &opts);
     if (!monitor) {
+        delete state;
+        return false;
+    }
+    if (zlink_socket_monitor_handler (monitor,
+                                      &perf_like_connect_monitor_handler, NULL)
+        != 0) {
+        zlink_monitor_close (&monitor);
         delete state;
         return false;
     }
 
     const int zero = 0;
     if (zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)) != 0) {
-        (void) zlink_close (monitor);
+        (void) zlink_monitor_close (&monitor);
         delete state;
         return false;
     }
@@ -328,7 +337,7 @@ void close_perf_like_connect_monitor (connect_monitor_t *monitor_)
     monitor_->state = NULL;
 
     unregister_connect_monitor (monitor);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     delete state;
 }
 

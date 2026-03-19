@@ -127,20 +127,26 @@ static bool wait_for_subscription_ready (void *sub_node_,
                                          const char *topic_)
 {
     service_monitor_probe_t probe;
-    void *monitor = zlink_spot_node_monitor_open (
-      sub_node_, ZLINK_SPOT_ROLE_SUB,
-      ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_SUBSCRIPTION_READY
-        | ZLINK_MONITOR_EVENT_ERROR,
-      &monitor_probe_handler, &probe);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_SPOT_SUB_FILTER_APPLIED
+                  | ZLINK_SPOT_SUB_SUBSCRIPTION_READY
+                  | ZLINK_MONITOR_EVENT_ERROR;
+    void *monitor = zlink_service_monitor_open (sub_node_, &opts);
     if (!monitor)
         return false;
+    if (zlink_service_monitor_handler (monitor, &monitor_probe_handler, &probe)
+        != 0) {
+        zlink_monitor_close (&monitor);
+        return false;
+    }
 
     const bool ok =
       zlink_set_subscription (sub_node_, topic_) == 0
       && wait_for_event (&probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000)
       && wait_for_event (&probe, ZLINK_SPOT_SUB_SUBSCRIPTION_READY, endpoint_,
                          3000);
-    zlink_service_monitor_close (&monitor);
+    zlink_monitor_close (&monitor);
     return ok;
 }
 
@@ -148,29 +154,40 @@ static bool wait_for_existing_subscription_ready (void *sub_node_,
                                                   const char *endpoint_)
 {
     service_monitor_probe_t probe;
-    void *monitor = zlink_spot_node_monitor_open (
-      sub_node_, ZLINK_SPOT_ROLE_SUB,
-      ZLINK_SPOT_SUB_SUBSCRIPTION_READY | ZLINK_MONITOR_EVENT_ERROR,
-      &monitor_probe_handler, &probe);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_SPOT_SUB_SUBSCRIPTION_READY | ZLINK_MONITOR_EVENT_ERROR;
+    void *monitor = zlink_service_monitor_open (sub_node_, &opts);
     if (!monitor)
         return false;
+    if (zlink_service_monitor_handler (monitor, &monitor_probe_handler, &probe)
+        != 0) {
+        zlink_monitor_close (&monitor);
+        return false;
+    }
 
     const bool ok = wait_for_event (&probe, ZLINK_SPOT_SUB_SUBSCRIPTION_READY,
                                     endpoint_, 3000);
-    zlink_service_monitor_close (&monitor);
+    zlink_monitor_close (&monitor);
     return ok;
 }
 
 static bool wait_for_pub_ready (void *pub_node_)
 {
     service_monitor_probe_t probe;
-    void *monitor = zlink_spot_node_monitor_open (
-      pub_node_, ZLINK_SPOT_ROLE_PUB,
-      ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_PEER_UP
-        | ZLINK_MONITOR_EVENT_ERROR,
-      &monitor_probe_handler, &probe);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_PEER_UP
+                  | ZLINK_MONITOR_EVENT_ERROR
+                  | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED;
+    void *monitor = zlink_service_monitor_open (pub_node_, &opts);
     if (!monitor)
         return false;
+    if (zlink_service_monitor_handler (monitor, &monitor_probe_handler, &probe)
+        != 0) {
+        zlink_monitor_close (&monitor);
+        return false;
+    }
 
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
@@ -178,13 +195,13 @@ static bool wait_for_pub_ready (void *pub_node_)
         zlink_monitor_snapshot_t snapshot;
         if (zlink_monitor_snapshot (monitor, &snapshot) == 0
             && (snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0) {
-            zlink_service_monitor_close (&monitor);
+            zlink_monitor_close (&monitor);
             return true;
         }
         (void) wait_for_event (&probe, ZLINK_MONITOR_EVENT_READY, NULL, 200);
     }
 
-    zlink_service_monitor_close (&monitor);
+    zlink_monitor_close (&monitor);
     return false;
 }
 
@@ -414,12 +431,15 @@ static void test_spot_monitors_and_monitor_poller ()
     TEST_ASSERT_SUCCESS_ERRNO (bind_node (pub_node, &port_seed, endpoint));
 
     service_monitor_probe_t probe;
-    void *monitor = zlink_spot_node_monitor_open (
-      sub_node, ZLINK_SPOT_ROLE_SUB,
-      ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_SUBSCRIPTION_READY
-        | ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_ERROR,
-      &monitor_probe_handler, &probe);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_SPOT_SUB_FILTER_APPLIED
+                  | ZLINK_SPOT_SUB_SUBSCRIPTION_READY
+                  | ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_ERROR;
+    void *monitor = zlink_service_monitor_open (sub_node, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_service_monitor_handler (monitor, &monitor_probe_handler, &probe));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer (sub_node, endpoint));
@@ -435,7 +455,7 @@ static void test_spot_monitors_and_monitor_poller ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_snapshot (monitor, &snapshot));
     TEST_ASSERT_TRUE ((snapshot.state_flags & ZLINK_MONITOR_STATE_READY) != 0);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
@@ -593,16 +613,28 @@ static void test_spot_unified_spot_basic ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+static bool should_run_spot_introspection_test (const char *name_)
+{
+    const char *selected = getenv ("ZLINK_TEST_CASE");
+    return !selected || !*selected || strcmp (selected, name_) == 0;
+}
+
 int main (int, char **)
 {
     setup_test_environment (300);
 
     UNITY_BEGIN ();
-    RUN_TEST (test_spot_pub_sub_options_and_routing_ids);
-    RUN_TEST (test_spot_monitors_and_monitor_poller);
-    RUN_TEST (test_spot_late_connect_replays_existing_subscription);
-    RUN_TEST (test_spot_callback_model_receive_regression);
-    RUN_TEST (test_spot_recv_model_receive_regression);
-    RUN_TEST (test_spot_unified_spot_basic);
+#define RUN_SPOT_INTROSPECTION_TEST(name)                                      \
+    do {                                                                       \
+        if (should_run_spot_introspection_test (#name))                        \
+            RUN_TEST (name);                                                   \
+    } while (0)
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_pub_sub_options_and_routing_ids);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_monitors_and_monitor_poller);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_late_connect_replays_existing_subscription);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_callback_model_receive_regression);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_recv_model_receive_regression);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_unified_spot_basic);
+#undef RUN_SPOT_INTROSPECTION_TEST
     return UNITY_END ();
 }

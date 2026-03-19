@@ -386,9 +386,10 @@ void test_stream_monitor_ready_implies_first_payload_contract ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-      &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+    void *monitor = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
 
     const int zero = 0;
@@ -449,7 +450,7 @@ void test_stream_monitor_ready_implies_first_payload_contract ()
       static_cast<unsigned int> (stream_routing_id_size));
 
     g_stream_contract_probe = NULL;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     test_context_socket_close_zero_linger (server);
 }
 

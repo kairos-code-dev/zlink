@@ -163,13 +163,20 @@ bool open_gateway_ready_monitor(gateway_client_slot_t *slot)
     if (!state)
         return false;
 
-    void *monitor = zlink_gateway_monitor_open(
-      slot->gateway,
-      ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
-        | ZLINK_GATEWAY_ROUTE_DOWN
-        | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &gateway_ready_monitor_handler, state);
+    zlink_service_monitor_open_options_t opts;
+    memset(&opts, 0, sizeof(opts));
+    opts.events = ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+                  | ZLINK_GATEWAY_ROUTE_DOWN
+                  | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
+    void *monitor = zlink_service_monitor_open(slot->gateway, &opts);
     if (!monitor) {
+        delete state;
+        return false;
+    }
+    if (zlink_service_monitor_handler(monitor, &gateway_ready_monitor_handler,
+                                      state)
+        != 0) {
+        zlink_monitor_close(&monitor);
         delete state;
         return false;
     }
@@ -237,7 +244,7 @@ void close_gateway_ready_monitor(gateway_client_slot_t *slot)
     if (!monitor && !state)
         return;
 
-    if (monitor && zlink_service_monitor_close(&monitor) == 0) {
+    if (monitor && zlink_monitor_close(&monitor) == 0) {
         delete state;
         return;
     }

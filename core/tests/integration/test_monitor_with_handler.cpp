@@ -305,7 +305,7 @@ void service_monitor_self_close_handler (const zlink_service_event_t *, void *)
     }
 
     errno = 0;
-    const int rc = zlink_service_monitor_close (&probe->monitor);
+    const int rc = zlink_monitor_close (&probe->monitor);
     const int err = errno;
 
     {
@@ -462,10 +462,14 @@ void test_socket_monitor_open_dispatches_events ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
 
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-      &raw_monitor_primary_handler, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+    void *monitor = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_monitor_handler (monitor, &raw_monitor_primary_handler,
+                                    NULL));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
     TEST_ASSERT_TRUE (wait_for_calls (&probe.primary_calls, 1, 3000));
@@ -482,7 +486,7 @@ void test_socket_monitor_open_dispatches_events ()
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     close_socket_zero_linger (server);
     g_raw_monitor_probe = NULL;
 }
@@ -593,12 +597,17 @@ void test_socket_monitor_open_requires_handler ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_recv_handler (server, &discard_socket_message, NULL));
 
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_CONNECTION_READY;
+    void *monitor = zlink_socket_monitor_open (server, &opts);
+    TEST_ASSERT_NOT_NULL (monitor);
+
     errno = 0;
-    void *monitor =
-      zlink_socket_monitor_open (server, ZLINK_EVENT_CONNECTION_READY, NULL, NULL);
-    TEST_ASSERT_NULL (monitor);
+    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_monitor_handler (monitor, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
+    close_socket_zero_linger (monitor);
     close_socket_zero_linger (server);
 }
 
@@ -610,8 +619,10 @@ void test_socket_monitor_open_accepts_ignore_handler ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_recv_handler (server, &discard_socket_message, NULL));
 
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY, &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_CONNECTION_READY;
+    void *monitor = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
     close_socket_zero_linger (monitor);
 
@@ -626,12 +637,17 @@ void test_discovery_monitor_open_requires_handler ()
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
 
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_DISCOVERY_SERVICE_UP;
+    void *monitor = zlink_service_monitor_open (discovery, &opts);
+    TEST_ASSERT_NOT_NULL (monitor);
+
     errno = 0;
-    void *monitor =
-      zlink_discovery_monitor_open (discovery, ZLINK_DISCOVERY_SERVICE_UP, NULL, NULL);
-    TEST_ASSERT_NULL (monitor);
+    TEST_ASSERT_EQUAL_INT (-1, zlink_service_monitor_handler (monitor, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
 }
 
@@ -643,11 +659,12 @@ void test_discovery_monitor_open_accepts_ignore_handler ()
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
 
-    void *monitor = zlink_discovery_monitor_open (
-      discovery, ZLINK_DISCOVERY_SERVICE_UP,
-      &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_DISCOVERY_SERVICE_UP;
+    void *monitor = zlink_service_monitor_open (discovery, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
 }
@@ -660,12 +677,17 @@ void test_gateway_monitor_open_requires_handler ()
     void *gateway = zlink_gateway_new (ctx, "gw-monitor-null");
     TEST_ASSERT_NOT_NULL (gateway);
 
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY;
+    void *monitor = zlink_service_monitor_open (gateway, &opts);
+    TEST_ASSERT_NOT_NULL (monitor);
+
     errno = 0;
-    void *monitor = zlink_gateway_monitor_open (
-      gateway, ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY, NULL, NULL);
-    TEST_ASSERT_NULL (monitor);
+    TEST_ASSERT_EQUAL_INT (-1, zlink_service_monitor_handler (monitor, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
 }
 
@@ -677,11 +699,12 @@ void test_gateway_monitor_open_accepts_ignore_handler ()
     void *gateway = zlink_gateway_new (ctx, "gw-monitor-ignore");
     TEST_ASSERT_NOT_NULL (gateway);
 
-    void *monitor = zlink_gateway_monitor_open (
-      gateway, ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY,
-      &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY;
+    void *monitor = zlink_service_monitor_open (gateway, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
 }
@@ -723,18 +746,21 @@ void test_service_monitor_open_dispatches_events ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (discovery, "disc-handler", 12));
 
-    void *monitor =
-      zlink_discovery_monitor_open (discovery, ZLINK_DISCOVERY_SERVICE_UP
-                                               | ZLINK_MONITOR_EVENT_CLOSED,
-                                    &service_monitor_primary_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_DISCOVERY_SERVICE_UP | ZLINK_MONITOR_EVENT_CLOSED;
+    void *monitor = zlink_service_monitor_open (discovery, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_service_monitor_handler (monitor, &service_monitor_primary_handler,
+                                     NULL));
 
     connect_discovery_registry_with_retry (discovery, registry_router, 3000);
     void *server_discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (server_discovery);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
-      server_discovery, registry_router));
+    connect_discovery_registry_with_retry (server_discovery, registry_router,
+                                           3000);
     void *gateway = create_gateway_attached (ctx, server_discovery, "svc-handler",
                                        "rx-handler", &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (gateway);
@@ -772,7 +798,7 @@ void test_service_monitor_open_dispatches_events ()
 
     TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_destroy (&discovery));
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&server_discovery));
@@ -793,9 +819,14 @@ void test_socket_monitor_self_close_defers_until_callback_return ()
       zlink_recv_handler (client, &discard_socket_message, NULL));
 
     callback_close_probe_t probe;
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY, &raw_monitor_self_close_handler, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_CONNECTION_READY;
+    void *monitor = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_monitor_handler (monitor, &raw_monitor_self_close_handler,
+                                    NULL));
     probe.monitor = monitor;
     g_raw_monitor_self_close_probe = &probe;
 
@@ -828,9 +859,14 @@ void test_socket_monitor_close_during_callback_returns_ebusy ()
       zlink_recv_handler (client, &discard_socket_message, NULL));
 
     callback_close_probe_t probe;
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY, &raw_monitor_blocking_handler, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_CONNECTION_READY;
+    void *monitor = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_monitor_handler (monitor, &raw_monitor_blocking_handler,
+                                    NULL));
     probe.monitor = monitor;
     g_raw_monitor_blocking_probe = &probe;
 
@@ -840,7 +876,7 @@ void test_socket_monitor_close_during_callback_returns_ebusy ()
     TEST_ASSERT_TRUE (wait_for_probe_flag (&probe, &callback_close_probe_t::entered,
                                            3000));
 
-    TEST_ASSERT_EQUAL_INT (-1, zlink_close (monitor));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_monitor_close (&monitor));
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
 
     {
@@ -853,7 +889,10 @@ void test_socket_monitor_close_during_callback_returns_ebusy ()
                                            3000));
     TEST_ASSERT_TRUE (probe.wait_completed);
 
-    close_socket_zero_linger (monitor);
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     close_socket_zero_linger (client);
     close_socket_zero_linger (server);
     g_raw_monitor_blocking_probe = NULL;
@@ -892,18 +931,22 @@ void test_service_monitor_self_close_defers_until_callback_return ()
       zlink_set_routing_id (discovery, "disc-self-close", 15));
 
     callback_close_probe_t probe;
-    probe.monitor = zlink_discovery_monitor_open (
-      discovery, ZLINK_DISCOVERY_SERVICE_UP,
-      &service_monitor_self_close_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_DISCOVERY_SERVICE_UP;
+    probe.monitor = zlink_service_monitor_open (discovery, &opts);
     TEST_ASSERT_NOT_NULL (probe.monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_service_monitor_handler (probe.monitor,
+                                     &service_monitor_self_close_handler, NULL));
     g_service_monitor_self_close_probe = &probe;
 
     connect_discovery_registry_with_retry (discovery, registry_router, 3000);
     void *server_discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (server_discovery);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (server_discovery, registry_router));
+    connect_discovery_registry_with_retry (server_discovery, registry_router,
+                                           3000);
     void *gateway = create_gateway_attached (ctx, server_discovery,
                                              "svc-self-close", "rx-self-close",
                                              &discard_gateway_message);
@@ -959,17 +1002,22 @@ void test_service_monitor_close_during_callback_returns_ebusy ()
       zlink_set_routing_id (discovery, "disc-close-ebusy", 17));
 
     callback_close_probe_t probe;
-    probe.monitor = zlink_discovery_monitor_open (
-      discovery, ZLINK_DISCOVERY_SERVICE_UP, &service_monitor_blocking_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_DISCOVERY_SERVICE_UP;
+    probe.monitor = zlink_service_monitor_open (discovery, &opts);
     TEST_ASSERT_NOT_NULL (probe.monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_service_monitor_handler (probe.monitor,
+                                     &service_monitor_blocking_handler, NULL));
     g_service_monitor_blocking_probe = &probe;
 
     connect_discovery_registry_with_retry (discovery, registry_router, 3000);
     void *server_discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (server_discovery);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (server_discovery, registry_router));
+    connect_discovery_registry_with_retry (server_discovery, registry_router,
+                                           3000);
     void *gateway = create_gateway_attached (
       ctx, server_discovery, "svc-close-ebusy", "rx-close-ebusy",
       &discard_gateway_message);
@@ -982,7 +1030,7 @@ void test_service_monitor_close_during_callback_returns_ebusy ()
     TEST_ASSERT_TRUE (wait_for_probe_flag (&probe, &callback_close_probe_t::entered,
                                            3000));
 
-    TEST_ASSERT_EQUAL_INT (-1, zlink_service_monitor_close (&probe.monitor));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_monitor_close (&probe.monitor));
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
     TEST_ASSERT_NOT_NULL (probe.monitor);
 
@@ -995,7 +1043,7 @@ void test_service_monitor_close_during_callback_returns_ebusy ()
     TEST_ASSERT_TRUE (wait_for_probe_flag (&probe, &callback_close_probe_t::returned,
                                            3000));
     TEST_ASSERT_TRUE (probe.wait_completed);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&probe.monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&probe.monitor));
     TEST_ASSERT_EQUAL_PTR (NULL, probe.monitor);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
@@ -1044,17 +1092,22 @@ void test_service_monitor_callback_can_query_parent_without_deadlock ()
     probe.service_name[sizeof (probe.service_name) - 1] = '\0';
     g_service_monitor_query_probe = &probe;
 
-    void *monitor =
-      zlink_discovery_monitor_open (discovery, ZLINK_DISCOVERY_SERVICE_UP,
-                                    &service_monitor_parent_query_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_DISCOVERY_SERVICE_UP;
+    void *monitor = zlink_service_monitor_open (discovery, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_service_monitor_handler (monitor,
+                                     &service_monitor_parent_query_handler,
+                                     NULL));
 
     connect_discovery_registry_with_retry (discovery, registry_router, 3000);
     void *server_discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (server_discovery);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (server_discovery, registry_router));
+    connect_discovery_registry_with_retry (server_discovery, registry_router,
+                                           3000);
     void *gateway =
       create_gateway_attached (ctx, server_discovery, probe.service_name,
                                "rx-query-monitor", &discard_gateway_message);
@@ -1085,7 +1138,7 @@ void test_service_monitor_callback_can_query_parent_without_deadlock ()
                               probe.query_routing_id.data,
                               probe.query_routing_id.size);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&server_discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
@@ -1100,28 +1153,33 @@ void test_service_parent_destroy_rejects_open_monitor_children ()
 
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
-    void *discovery_monitor = zlink_discovery_monitor_open (
-      discovery, ZLINK_DISCOVERY_SERVICE_UP, &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t discovery_opts;
+    memset (&discovery_opts, 0, sizeof (discovery_opts));
+    discovery_opts.events = ZLINK_DISCOVERY_SERVICE_UP;
+    void *discovery_monitor =
+      zlink_service_monitor_open (discovery, &discovery_opts);
     TEST_ASSERT_NOT_NULL (discovery_monitor);
 
     TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_destroy (&discovery));
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
     TEST_ASSERT_NOT_NULL (discovery);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&discovery_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&discovery_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
 
     void *gateway = zlink_gateway_new (ctx, "svc-monitor-destroy");
     TEST_ASSERT_NOT_NULL (gateway);
-    void *gateway_monitor = zlink_gateway_monitor_open (
-      gateway, ZLINK_GATEWAY_SERVICE_READY, &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t gateway_opts;
+    memset (&gateway_opts, 0, sizeof (gateway_opts));
+    gateway_opts.events = ZLINK_GATEWAY_SERVICE_READY;
+    void *gateway_monitor = zlink_service_monitor_open (gateway, &gateway_opts);
     TEST_ASSERT_NOT_NULL (gateway_monitor);
 
     TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_destroy (&gateway));
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
     TEST_ASSERT_NOT_NULL (gateway);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&gateway_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&gateway_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
 }
 

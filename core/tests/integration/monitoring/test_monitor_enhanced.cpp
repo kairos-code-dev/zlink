@@ -180,8 +180,10 @@ static void assert_ready_snapshot (void *monitor_)
 
 static void *open_raw_monitor (void *socket_, uint64_t events_)
 {
-    void *monitor = zlink_socket_monitor_open (socket_, events_,
-                                               &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = events_;
+    void *monitor = zlink_socket_monitor_open (socket_, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
     set_zero_linger (monitor);
     return monitor;
@@ -324,9 +326,10 @@ static void run_client_monitor_ready_disconnected_test (int client_type_,
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
 
-    void *mon = zlink_socket_monitor_open (
-      client, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-      &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+    void *mon = zlink_socket_monitor_open (client, &opts);
     TEST_ASSERT_NOT_NULL (mon);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (mon, ZLINK_LINGER, &zero, sizeof (zero)));
@@ -377,10 +380,11 @@ void test_monitor_open_and_connection_ready ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
 
-    void *mon = zlink_socket_monitor_open (server,
-                                         ZLINK_EVENT_CONNECTION_READY
-                                           | ZLINK_EVENT_DISCONNECTED,
-                                         &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events =
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+    void *mon = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (mon);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
@@ -450,8 +454,8 @@ void test_pair_monitor_ready_implies_first_bidirectional_delivery ()
     send_string_expect_success (server, "pair-ack", 0);
     recv_string_expect_success (client, "pair-ack", 0);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (client_monitor));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (server_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&client_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&server_monitor));
     close_local_socket_zero_linger (client);
     close_local_socket_zero_linger (server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
@@ -491,7 +495,7 @@ void test_pair_monitor_snapshot_reopen_after_close_preserves_delivery ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_monitor_snapshot (snapshot_monitor, &first_snapshot));
     TEST_ASSERT_TRUE (first_snapshot.ready_peer_count >= 1);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (snapshot_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&snapshot_monitor));
 
     snapshot_monitor = open_raw_monitor (server, ZLINK_EVENT_ALL);
     zlink_monitor_snapshot_t second_snapshot;
@@ -508,8 +512,8 @@ void test_pair_monitor_snapshot_reopen_after_close_preserves_delivery ()
     send_string_expect_success (server, "pair-reopen-ack", 0);
     recv_string_expect_success (client, "pair-reopen-ack", 0);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (snapshot_monitor));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (client_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&snapshot_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&client_monitor));
     close_local_socket_zero_linger (client);
     close_local_socket_zero_linger (server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
@@ -582,8 +586,8 @@ void test_dealer_router_monitor_ready_implies_first_bidirectional_delivery ()
     send_string_expect_success (server, "router-reply", 0);
     recv_string_expect_success (client, "router-reply", 0);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (client_monitor));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (server_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&client_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&server_monitor));
     close_local_socket_zero_linger (client);
     close_local_socket_zero_linger (server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
@@ -603,8 +607,10 @@ void test_peer_enumeration ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
 
-    void *mon = zlink_socket_monitor_open (server, ZLINK_EVENT_CONNECTION_READY,
-                                           &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_CONNECTION_READY;
+    void *mon = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (mon);
 
     zlink_monitor_event_t ready;
@@ -645,10 +651,11 @@ void test_router_monitor_event_sequence_timing ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
 
-    void *mon = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_CONNECTION_READY
-                | ZLINK_EVENT_DISCONNECTED,
-      &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_CONNECTION_READY
+                  | ZLINK_EVENT_DISCONNECTED;
+    void *mon = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (mon);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (mon, ZLINK_LINGER, &zero, sizeof (zero)));

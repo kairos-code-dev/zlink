@@ -88,17 +88,18 @@ bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
     if (!gateway_ || !out_)
         return false;
 
-    void *monitor = zlink_gateway_monitor_open (
-      gateway_,
-      ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
-        | ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
-        | ZLINK_GATEWAY_ROUTE_DOWN | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
-      &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
+                  | ZLINK_GATEWAY_SEND_READY_CHANGED
+                  | ZLINK_GATEWAY_ROUTE_UP | ZLINK_GATEWAY_ROUTE_DOWN
+                  | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
+    void *monitor = zlink_service_monitor_open (gateway_, &opts);
     if (!monitor)
         return false;
 
     const int rc = zlink_monitor_snapshot (monitor, out_);
-    zlink_service_monitor_close (&monitor);
+    zlink_monitor_close (&monitor);
     return rc == 0;
 }
 
@@ -868,11 +869,12 @@ static void test_gateway_can_be_polled_via_service_instance ()
     const int hwm = 2;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
       gateway, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
-    void *monitor = zlink_gateway_monitor_open (
-      gateway, ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY,
-      &zlink_service_monitor_ignore_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY;
+    void *monitor = zlink_service_monitor_open (gateway, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     TEST_ASSERT_EQUAL_INT (-1, zlink_send_ready_handler (gateway, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1031,10 +1033,14 @@ static void test_gateway_monitor_callback_parent_destroy_returns_ebusy ()
     g_gateway_monitor_self_close_rc = 0;
     g_gateway_monitor_self_close_errno = 0;
 
-    void *monitor = zlink_gateway_monitor_open (
-      gateway, ZLINK_GATEWAY_SERVICE_READY,
-      &gateway_monitor_parent_self_close_handler, NULL);
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_GATEWAY_SERVICE_READY;
+    void *monitor = zlink_service_monitor_open (gateway, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_service_monitor_handler (
+        monitor, &gateway_monitor_parent_self_close_handler, NULL));
 
     char endpoint[MAX_SOCKET_STRING];
     int bind_seed = 22422;
@@ -1051,7 +1057,7 @@ static void test_gateway_monitor_callback_parent_destroy_returns_ebusy ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (gateway, &rid));
     TEST_ASSERT_TRUE (rid.size > 0);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
     g_gateway_monitor_self_close_subject = NULL;
     g_gateway_monitor_self_close_calls = NULL;
@@ -2323,14 +2329,15 @@ static void test_gateway_attach_and_monitor_queries_are_safe_same_handle ()
                     return;
                 }
 
-                void *monitor = zlink_gateway_monitor_open (
-                  gateway, ZLINK_GATEWAY_SERVICE_READY,
-                  &zlink_service_monitor_ignore_handler, NULL);
+                zlink_service_monitor_open_options_t opts;
+                memset (&opts, 0, sizeof (opts));
+                opts.events = ZLINK_GATEWAY_SERVICE_READY;
+                void *monitor = zlink_service_monitor_open (gateway, &opts);
                 if (!monitor) {
                     query_fail.fetch_add (1);
                     return;
                 }
-                if (zlink_service_monitor_close (&monitor) != 0) {
+                if (zlink_monitor_close (&monitor) != 0) {
                     query_fail.fetch_add (1);
                     return;
                 }

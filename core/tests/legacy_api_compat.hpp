@@ -771,29 +771,5 @@ static inline int zlink_spot_pub_send_ready_handler (
     }
     return zlink_send_ready_handler (handle_, handler_, userdata_);
 }
-static inline void *zlink_spot_pub_monitor_open (
-  void *handle_,
-  zlink_spot_monitor_event_mask_t events_,
-  zlink_service_monitor_handler_fn handler_,
-  void *userdata_)
-{
-    if (zlink_test_compat::as_spot_pub (handle_))
-        return zlink_spot_monitor_open (
-          handle_, ZLINK_SPOT_ROLE_PUB, events_, handler_, userdata_);
-    return zlink_spot_node_monitor_open (
-      handle_, ZLINK_SPOT_ROLE_PUB, events_, handler_, userdata_);
-}
-static inline void *zlink_spot_sub_monitor_open (
-  void *handle_,
-  zlink_spot_monitor_event_mask_t events_,
-  zlink_service_monitor_handler_fn handler_,
-  void *userdata_)
-{
-    if (zlink_test_compat::as_spot_sub (handle_))
-        return zlink_spot_monitor_open (
-          handle_, ZLINK_SPOT_ROLE_SUB, events_, handler_, userdata_);
-    return zlink_spot_node_monitor_open (
-      handle_, ZLINK_SPOT_ROLE_SUB, events_, handler_, userdata_);
-}
 
 #endif

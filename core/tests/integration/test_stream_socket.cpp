@@ -1076,20 +1076,32 @@ void test_stream_recv_api_dispatch_conflict ()
     test_context_socket_close_zero_linger (stream);
 }
 
-void test_stream_dispatch_start_rejects_stream_notify ()
+void test_stream_notify_option_remains_available_with_dispatch ()
 {
     void *stream = test_context_socket (ZLINK_STREAM);
     TEST_ASSERT_NOT_NULL (stream);
 
     const int enable = 1;
-    errno = 0;
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_setsockopt (stream, ZLINK_STREAM_NOTIFY, &enable,
-                            sizeof (enable)));
-    TEST_ASSERT_EQUAL_INT (EOPNOTSUPP, errno);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (stream, ZLINK_STREAM_NOTIFY, &enable,
+                        sizeof (enable)));
+
+    int actual = 0;
+    size_t actual_size = sizeof (actual);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (stream, ZLINK_STREAM_NOTIFY, &actual, &actual_size));
+    TEST_ASSERT_EQUAL_INT (sizeof (actual), actual_size);
+    TEST_ASSERT_EQUAL_INT (1, actual);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       attach_stream_msg_handler (stream, stream_echo_msg_handler));
+
+    actual = 0;
+    actual_size = sizeof (actual);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (stream, ZLINK_STREAM_NOTIFY, &actual, &actual_size));
+    TEST_ASSERT_EQUAL_INT (sizeof (actual), actual_size);
+    TEST_ASSERT_EQUAL_INT (1, actual);
 
     test_context_socket_close_zero_linger (stream);
 }
@@ -1223,9 +1235,11 @@ void test_stream_recv_ready_precedes_first_payload_contract ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-      &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset (&monitor_opts, 0, sizeof (monitor_opts));
+    monitor_opts.events =
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+    void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1280,7 +1294,7 @@ void test_stream_recv_ready_precedes_first_payload_contract ()
     TEST_ASSERT_EQUAL_INT (
       0, ordering_probe.strict_drop_count.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     test_context_socket_close_zero_linger (server);
 }
 
@@ -1296,9 +1310,11 @@ void test_stream_raw_callback_ready_precedes_first_payload_contract ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-      &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset (&monitor_opts, 0, sizeof (monitor_opts));
+    monitor_opts.events =
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+    void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1351,7 +1367,7 @@ void test_stream_raw_callback_ready_precedes_first_payload_contract ()
       0, callback_probe.send_fail.load (std::memory_order_acquire));
 
     g_stream_raw_ordering_callback_probe = NULL;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     test_context_socket_close_zero_linger (server);
 }
 
@@ -1434,9 +1450,11 @@ void test_stream_raw_multiclient_strict_ready_gating_regression ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-      &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset (&monitor_opts, 0, sizeof (monitor_opts));
+    monitor_opts.events =
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+    void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1487,7 +1505,7 @@ void test_stream_raw_multiclient_strict_ready_gating_regression ()
       0, callback_probe.send_fail.load (std::memory_order_acquire));
 
     g_stream_raw_ordering_callback_probe = NULL;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     test_context_socket_close_zero_linger (server);
 }
 
@@ -1506,9 +1524,11 @@ void test_stream_recv_multiclient_strict_ready_gating_regression ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-      &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset (&monitor_opts, 0, sizeof (monitor_opts));
+    monitor_opts.events =
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+    void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1567,7 +1587,7 @@ void test_stream_recv_multiclient_strict_ready_gating_regression ()
       ordering_probe.strict_accept_count.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (0, send_fail);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     test_context_socket_close_zero_linger (server);
 }
 
@@ -1631,9 +1651,11 @@ void test_stream_tcp_basic ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-      &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset (&monitor_opts, 0, sizeof (monitor_opts));
+    monitor_opts.events =
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+    void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
@@ -1677,7 +1699,7 @@ void test_stream_tcp_basic ()
       probe.routing_id, server_id, stream_routing_id_size);
 
     g_stream_callback_probe = NULL;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     test_context_socket_close_zero_linger (server);
 }
 
@@ -1697,9 +1719,11 @@ void test_stream_maxmsgsize ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-      &zlink_monitor_ignore_handler, NULL);
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset (&monitor_opts, 0, sizeof (monitor_opts));
+    monitor_opts.events =
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+    void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
@@ -1750,7 +1774,7 @@ void test_stream_maxmsgsize ()
 
     close_raw_fd (client_fd);
     g_stream_callback_probe = NULL;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     test_context_socket_close_zero_linger (server);
 }
 
@@ -1792,7 +1816,7 @@ int main (void)
 
     RUN_TEST (test_stream_callback_lifecycle);
     RUN_TEST (test_stream_recv_api_dispatch_conflict);
-    RUN_TEST (test_stream_dispatch_start_rejects_stream_notify);
+    RUN_TEST (test_stream_notify_option_remains_available_with_dispatch);
     RUN_TEST (test_stream_callback_echo_raw);
     RUN_TEST (test_stream_callback_echo_single_zero_byte);
     RUN_TEST (test_stream_recv_ready_precedes_first_payload_contract);

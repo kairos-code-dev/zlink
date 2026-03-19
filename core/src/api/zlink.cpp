@@ -213,12 +213,6 @@ void zlink_monitor_ignore_handler (const zlink_monitor_event_t *,
     (void) userdata_;
 }
 
-void zlink_service_monitor_ignore_handler (const zlink_service_event_t *,
-                                           void *userdata_)
-{
-    (void) userdata_;
-}
-
 //  New context API
 
 void *zlink_ctx_new (void)
@@ -519,6 +513,28 @@ static spot_mode_registry_t &spot_mode_registry ()
 static int transition_service_to_callback_mode (service_mode_state_t *state_);
 static int ensure_service_recv_model (service_mode_state_t *state_);
 static int ensure_service_callback_model (service_mode_state_t *state_);
+static void *open_discovery_service_monitor_internal (
+  void *discovery_,
+  zlink_discovery_monitor_event_mask_t events_,
+  zlink_service_monitor_handler_fn handler_,
+  void *userdata_);
+static void *open_gateway_service_monitor_internal (
+  void *gateway_,
+  zlink_gateway_monitor_event_mask_t events_,
+  zlink_service_monitor_handler_fn handler_,
+  void *userdata_);
+static void *open_spot_node_service_monitor_internal (
+  void *node_,
+  zlink_spot_role_t role_,
+  zlink_spot_monitor_event_mask_t events_,
+  zlink_service_monitor_handler_fn handler_,
+  void *userdata_);
+static void *open_spot_service_monitor_internal (
+  void *spot_,
+  zlink_spot_role_t role_,
+  zlink_spot_monitor_event_mask_t events_,
+  zlink_service_monitor_handler_fn handler_,
+  void *userdata_);
 
 static void close_spot_parts (zlink_msg_t *parts_, size_t part_count_)
 {
@@ -2695,10 +2711,11 @@ int zlink_close (void *s_)
     return 0;
 }
 
-void *zlink_socket_monitor_open (void *s_,
-                                 zlink_socket_monitor_event_mask_t events_,
-                                 zlink_monitor_handler_fn handler_,
-                                 void *userdata_)
+static void *open_socket_monitor_with_handler_internal (
+  void *s_,
+  zlink_socket_monitor_event_mask_t events_,
+  zlink_monitor_handler_fn handler_,
+  void *userdata_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
@@ -2895,7 +2912,103 @@ static int recv_service_monitor_event_unchecked (void *monitor_,
     return 0;
 }
 
-int zlink_service_monitor_close (void **monitor_p_)
+static int attach_socket_monitor_handler_state (
+  void *monitor_,
+  zlink_socket_monitor_handler_fn handler_,
+  void *userdata_)
+{
+    if (!monitor_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (!handler_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    socket_handle_t handle = as_socket_handle (monitor_);
+    if (!handle.socket)
+        return -1;
+
+    monitor_handler_state_t *state = find_monitor_handler_state (handle.socket);
+    if (!state || state->service) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (state->socket_handler.load (std::memory_order_acquire)
+        || state->service_handler.load (std::memory_order_acquire)) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    return set_monitor_handler_state (
+      handle.socket, handler_, NULL, false,
+      state->snapshot_provider.load (std::memory_order_acquire),
+      state->snapshot_subject.load (std::memory_order_acquire), userdata_,
+      NULL);
+}
+
+static int attach_service_monitor_handler_state (
+  void *monitor_,
+  zlink_service_monitor_handler_fn handler_,
+  void *userdata_)
+{
+    if (!monitor_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (!handler_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    socket_handle_t handle = as_socket_handle (monitor_);
+    if (!handle.socket)
+        return -1;
+
+    monitor_handler_state_t *state = find_monitor_handler_state (handle.socket);
+    if (!state || !state->service) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (state->socket_handler.load (std::memory_order_acquire)
+        || state->service_handler.load (std::memory_order_acquire)) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    return set_monitor_handler_state (
+      handle.socket, NULL, handler_, true,
+      state->snapshot_provider.load (std::memory_order_acquire),
+      state->snapshot_subject.load (std::memory_order_acquire), NULL, userdata_);
+}
+
+static int require_monitor_recv_model (void *monitor_, bool service_)
+{
+    if (!monitor_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    socket_handle_t handle = as_socket_handle (monitor_);
+    if (!handle.socket)
+        return -1;
+
+    monitor_handler_state_t *state = find_monitor_handler_state (handle.socket);
+    if (!state || state->service != service_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (state->socket_handler.load (std::memory_order_acquire)
+        || state->service_handler.load (std::memory_order_acquire)) {
+        errno = EBUSY;
+        return -1;
+    }
+    return 0;
+}
+
+int zlink_monitor_close (void **monitor_p_)
 {
     if (!monitor_p_ || !*monitor_p_) {
         errno = EFAULT;
@@ -2943,6 +3056,32 @@ int zlink_service_monitor_close (void **monitor_p_)
         *monitor_p_ = NULL;
     }
     return rc;
+}
+
+void *zlink_socket_monitor_open (
+  void *s_, const zlink_socket_monitor_open_options_t *options_)
+{
+    if (!options_) {
+        errno = EINVAL;
+        return NULL;
+    }
+    return open_socket_monitor_with_handler_internal (
+      s_, options_->events, &zlink_monitor_ignore_handler, NULL);
+}
+
+int zlink_socket_monitor_handler (void *monitor_,
+                                  zlink_socket_monitor_handler_fn handler_,
+                                  void *userdata_)
+{
+    return attach_socket_monitor_handler_state (monitor_, handler_, userdata_);
+}
+
+int zlink_socket_monitor_recv (void *monitor_,
+                               zlink_socket_monitor_event_t *out_)
+{
+    if (require_monitor_recv_model (monitor_, false) != 0)
+        return -1;
+    return recv_socket_monitor_event_unchecked (monitor_, out_, 0);
 }
 
 int zlink_monitor_snapshot (void *monitor_,
@@ -3386,7 +3525,120 @@ int zlink_discovery_routing_id (void *discovery_, zlink_routing_id_t *out_)
     return discovery->routing_id (out_);
 }
 
-void *zlink_discovery_monitor_open (
+static bool service_monitor_events_request_pub_facet (uint32_t events_)
+{
+    const uint32_t pub_events =
+      ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_FULL
+      | ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_DRAINED
+      | ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
+      | ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED;
+    return (events_ & pub_events) != 0;
+}
+
+static bool service_monitor_events_request_sub_facet (uint32_t events_)
+{
+    const uint32_t sub_events =
+      ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED
+      | ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY
+      | ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED;
+    return (events_ & sub_events) != 0;
+}
+
+static int infer_spot_monitor_role (uint32_t events_)
+{
+    const bool want_pub = service_monitor_events_request_pub_facet (events_);
+    const bool want_sub = service_monitor_events_request_sub_facet (events_);
+    if (want_pub && want_sub) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (want_pub)
+        return ZLINK_SPOT_ROLE_PUB;
+    return ZLINK_SPOT_ROLE_SUB;
+}
+
+void *zlink_service_monitor_open (
+  void *target_, const zlink_service_monitor_open_options_t *options_)
+{
+    if (!target_) {
+        errno = EFAULT;
+        return NULL;
+    }
+    if (!options_) {
+        errno = EINVAL;
+        return NULL;
+    }
+
+    zlink::discovery_t *discovery =
+      static_cast<zlink::discovery_t *> (target_);
+    if (discovery->check_tag ()) {
+        return open_discovery_service_monitor_internal (
+          target_,
+          static_cast<zlink_discovery_monitor_event_mask_t> (options_->events),
+          NULL, NULL);
+    }
+
+    if (is_registered_gateway_handle (target_)) {
+        return open_gateway_service_monitor_internal (
+          target_,
+          static_cast<zlink_gateway_monitor_event_mask_t> (options_->events),
+          NULL, NULL);
+    }
+
+    if (as_spot_pub_side_handle (target_)) {
+        return open_spot_service_monitor_internal (
+          target_, ZLINK_SPOT_ROLE_PUB,
+          static_cast<zlink_spot_monitor_event_mask_t> (options_->events),
+          NULL, NULL);
+    }
+
+    if (as_spot_sub_side_handle (target_)) {
+        return open_spot_service_monitor_internal (
+          target_, ZLINK_SPOT_ROLE_SUB,
+          static_cast<zlink_spot_monitor_event_mask_t> (options_->events),
+          NULL, NULL);
+    }
+
+    if (is_registered_spot_handle (target_)) {
+        const int role = infer_spot_monitor_role (options_->events);
+        if (role < 0)
+            return NULL;
+        return open_spot_service_monitor_internal (
+          target_, static_cast<zlink_spot_role_t> (role),
+          static_cast<zlink_spot_monitor_event_mask_t> (options_->events),
+          NULL, NULL);
+    }
+
+    if (is_registered_spot_node_handle (target_)) {
+        const int role = infer_spot_monitor_role (options_->events);
+        if (role < 0)
+            return NULL;
+        return open_spot_node_service_monitor_internal (
+          target_, static_cast<zlink_spot_role_t> (role),
+          static_cast<zlink_spot_monitor_event_mask_t> (options_->events),
+          NULL, NULL);
+    }
+
+    errno = EFAULT;
+    return NULL;
+}
+
+int zlink_service_monitor_handler (void *monitor_,
+                                   zlink_service_monitor_handler_fn handler_,
+                                   void *userdata_)
+{
+    return attach_service_monitor_handler_state (monitor_, handler_, userdata_);
+}
+
+int zlink_service_monitor_recv (void *monitor_,
+                                zlink_service_monitor_event_t *out_)
+{
+    if (require_monitor_recv_model (monitor_, true) != 0)
+        return -1;
+    return recv_service_monitor_event_unchecked (monitor_, out_, 0);
+}
+
+static void *open_discovery_service_monitor_internal (
   void *discovery_,
   zlink_discovery_monitor_event_mask_t events_,
   zlink_service_monitor_handler_fn handler_,
@@ -3394,10 +3646,6 @@ void *zlink_discovery_monitor_open (
 {
     if (!discovery_)
         return NULL;
-    if (!handler_) {
-        errno = EINVAL;
-        return NULL;
-    }
     zlink::discovery_t *discovery =
       static_cast<zlink::discovery_t *> (discovery_);
     if (!discovery->check_tag ()) {
@@ -3405,9 +3653,6 @@ void *zlink_discovery_monitor_open (
         return NULL;
     }
     zlink_service_monitor_handler_fn effective_handler = handler_;
-    if (handler_ == &zlink_service_monitor_ignore_handler)
-        effective_handler = NULL;
-
     void *monitor = discovery->monitor_open (events_);
     if (!monitor)
         return NULL;
@@ -3419,7 +3664,7 @@ void *zlink_discovery_monitor_open (
                                       NULL, userdata_)
              != 0) {
         const int err = errno;
-        zlink_service_monitor_close (&monitor);
+        zlink_monitor_close (&monitor);
         errno = err;
         return NULL;
     }
@@ -3600,7 +3845,7 @@ int zlink_gateway_set_lb_strategy (void *gateway_,
     return gateway->set_lb_strategy (strategy_);
 }
 
-void *zlink_gateway_monitor_open (
+static void *open_gateway_service_monitor_internal (
   void *gateway_,
   zlink_gateway_monitor_event_mask_t events_,
   zlink_service_monitor_handler_fn handler_,
@@ -3608,19 +3853,12 @@ void *zlink_gateway_monitor_open (
 {
     if (!gateway_)
         return NULL;
-    if (!handler_) {
-        errno = EINVAL;
-        return NULL;
-    }
     zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
     if (!gateway->check_tag ()) {
         errno = EFAULT;
         return NULL;
     }
     zlink_service_monitor_handler_fn effective_handler = handler_;
-    if (handler_ == &zlink_service_monitor_ignore_handler)
-        effective_handler = NULL;
-
     void *monitor = gateway->monitor_open (events_);
     if (!monitor)
         return NULL;
@@ -3633,7 +3871,7 @@ void *zlink_gateway_monitor_open (
                                       NULL, userdata_)
              != 0) {
         const int err = errno;
-        zlink_service_monitor_close (&monitor);
+        zlink_monitor_close (&monitor);
         errno = err;
         return NULL;
     }
@@ -3877,21 +4115,17 @@ static int spot_node_unsubscribe_internal (void *node_,
     return receiver->unsubscribe (topic_id_or_pattern_);
 }
 
-void *zlink_spot_node_monitor_open (void *node_,
-                                    zlink_spot_role_t role_,
-                                    zlink_spot_monitor_event_mask_t events_,
-                                    zlink_service_monitor_handler_fn handler_,
-                                    void *userdata_)
+static void *open_spot_node_service_monitor_internal (
+  void *node_,
+  zlink_spot_role_t role_,
+  zlink_spot_monitor_event_mask_t events_,
+  zlink_service_monitor_handler_fn handler_,
+  void *userdata_)
 {
     if (!node_) {
         errno = EFAULT;
         return NULL;
     }
-    if (!handler_) {
-        errno = EINVAL;
-        return NULL;
-    }
-
     zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
     if (!node->check_tag ()) {
         errno = EFAULT;
@@ -4185,19 +4419,10 @@ static void *open_spot_service_monitor (void *monitor_,
 {
     if (!monitor_)
         return NULL;
-    if (!handler_) {
-        errno = EINVAL;
-        zlink_service_monitor_close (&monitor_);
-        return NULL;
-    }
-
     zlink_service_monitor_handler_fn effective_handler = handler_;
-    if (handler_ == &zlink_service_monitor_ignore_handler)
-        effective_handler = NULL;
-
     socket_handle_t handle = as_socket_handle (monitor_);
     if (!handle.socket) {
-        zlink_service_monitor_close (&monitor_);
+        zlink_monitor_close (&monitor_);
         errno = EFAULT;
         return NULL;
     }
@@ -4206,7 +4431,7 @@ static void *open_spot_service_monitor (void *monitor_,
                                    NULL, userdata_)
         != 0) {
         const int err = errno;
-        zlink_service_monitor_close (&monitor_);
+        zlink_monitor_close (&monitor_);
         errno = err;
         return NULL;
     }
@@ -4326,11 +4551,12 @@ static void *spot_sub_monitor_open_internal (
       static_cast<void *> (sub), userdata_);
 }
 
-void *zlink_spot_monitor_open (void *spot_,
-                               zlink_spot_role_t role_,
-                               zlink_spot_monitor_event_mask_t events_,
-                               zlink_service_monitor_handler_fn handler_,
-                               void *userdata_)
+static void *open_spot_service_monitor_internal (
+  void *spot_,
+  zlink_spot_role_t role_,
+  zlink_spot_monitor_event_mask_t events_,
+  zlink_service_monitor_handler_fn handler_,
+  void *userdata_)
 {
     if (role_ == ZLINK_SPOT_ROLE_PUB && as_spot_pub_side_handle (spot_))
         return spot_pub_monitor_open_internal (spot_, events_, handler_, userdata_);
@@ -4340,10 +4566,6 @@ void *zlink_spot_monitor_open (void *spot_,
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return NULL;
-    if (!handler_) {
-        errno = EINVAL;
-        return NULL;
-    }
     zlink::service_public_api_scope_t admission (spot->public_api);
     if (!admission.acquired ())
         return NULL;

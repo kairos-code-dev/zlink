@@ -78,8 +78,7 @@ void close_monitor_handle (void **monitor_p_)
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (*monitor_p_, ZLINK_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (*monitor_p_));
-    *monitor_p_ = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (monitor_p_));
 }
 }
 
@@ -111,10 +110,13 @@ void test_handshake_timeout ()
 
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_DISCONNECTED,
-      &record_monitor_event, NULL);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_DISCONNECTED;
+    void *monitor = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_monitor_handler (monitor, &record_monitor_event, NULL));
 
     // Connect a raw socket but don't send ZMTP greeting
     fd_t fd = connect_socket (endpoint);

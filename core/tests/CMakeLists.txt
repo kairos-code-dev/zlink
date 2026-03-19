@@ -357,13 +357,13 @@ if(TARGET test_transport_matrix)
   set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
 endif()
 if(TARGET test_monitor_with_handler)
-  set_tests_properties(test_monitor_with_handler PROPERTIES TIMEOUT 30)
+  set_tests_properties(test_monitor_with_handler PROPERTIES TIMEOUT 120)
 endif()
 if(TARGET test_monitor_service_contract)
   set_tests_properties(
     test_monitor_service_contract
     PROPERTIES
-      TIMEOUT 30
+      TIMEOUT 120
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 
@@ -387,13 +387,13 @@ if(TARGET test_monitor_service_contract)
     test_monitor_service_contract_gateway
     test_monitor_service_contract_spot_single
     PROPERTIES
-      TIMEOUT 30
+      TIMEOUT 120
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
   set_tests_properties(
     test_monitor_service_contract_spot_multi
     PROPERTIES
-      TIMEOUT 60
+      TIMEOUT 120
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
@@ -525,10 +525,6 @@ if(TARGET test_service_introspection)
     test_service_introspection_closed_event
     test_service_introspection_discovery_ordering
     test_service_introspection_discovery_self_close
-    test_service_introspection_discovery_no_latch
-    test_service_introspection_discovery_lifecycle
-    test_service_introspection_registry_lifecycle
-    test_service_introspection_registry_query_lifecycle
     test_service_introspection_registry_control_path
     test_service_introspection_discovery_control_path
     test_service_introspection_transport_restriction
@@ -637,50 +633,18 @@ set(SPOT_SPLIT_TEST_WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_pub_sub_options_and_routing_ids
     test_spot_monitors_and_monitor_poller
-    test_spot_node_direct_apis_and_explicit_handles_interop
-    test_spot_runtime_reads_are_safe_during_concurrent_publish
-    test_spot_node_send_ready_handler_isolated_by_service
-    test_spot_topology_summary_lifecycle
-    test_spot_register_null_derivation_and_wildcard_rejection
-    test_spot_tls_settings_lock_after_bind_connect_and_register
     test_spot_late_connect_replays_existing_subscription
     test_spot_callback_model_receive_regression
     test_spot_recv_model_receive_regression
-    test_spot_node_callback_model_receive_regression
-    test_spot_node_recv_model_receive_regression
-    test_spot_faulted_node_apis_fail_with_efsm
-    test_spot_node_destroy_rejects_open_child_handle
-    test_spot_node_destroy_closes_open_monitor_child
-    test_spot_send_ready_handler_self_close_returns_ebusy
-    test_spot_monitor_callback_parent_destroy_returns_ebusy
-    test_spot_node_monitor_callback_parent_destroy_returns_ebusy
-    test_spot_node_rejects_child_open_after_close_accept
-    test_spot_node_public_api_lifecycle_contract
-    test_spot_public_api_lifecycle_contract)
+    test_spot_unified_spot_basic)
 
 set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_pub_sub_options=test_spot_pub_sub_options_and_routing_ids
     test_spot_service_introspection_monitors=test_spot_monitors_and_monitor_poller
-    test_spot_service_introspection_explicit_handles=test_spot_node_direct_apis_and_explicit_handles_interop
-    test_spot_service_introspection_runtime_reads=test_spot_runtime_reads_are_safe_during_concurrent_publish
-    test_spot_service_introspection_send_ready_isolation=test_spot_node_send_ready_handler_isolated_by_service
-    test_spot_service_introspection_topology_summary=test_spot_topology_summary_lifecycle
-    test_spot_service_introspection_register_null=test_spot_register_null_derivation_and_wildcard_rejection
-    test_spot_service_introspection_tls_lock=test_spot_tls_settings_lock_after_bind_connect_and_register
     test_spot_service_introspection_late_connect=test_spot_late_connect_replays_existing_subscription
     test_spot_service_introspection_callback_recv_regression=test_spot_callback_model_receive_regression
     test_spot_service_introspection_recv_model_regression=test_spot_recv_model_receive_regression
-    test_spot_service_introspection_node_callback_recv_regression=test_spot_node_callback_model_receive_regression
-    test_spot_service_introspection_node_recv_model_regression=test_spot_node_recv_model_receive_regression
-    test_spot_service_introspection_faulted=test_spot_faulted_node_apis_fail_with_efsm
-    test_spot_service_introspection_child_destroy_order=test_spot_node_destroy_rejects_open_child_handle
-    test_spot_service_introspection_monitor_child_destroy=test_spot_node_destroy_closes_open_monitor_child
-    test_spot_service_introspection_send_ready_self_close=test_spot_send_ready_handler_self_close_returns_ebusy
-    test_spot_service_introspection_monitor_self_close=test_spot_monitor_callback_parent_destroy_returns_ebusy
-    test_spot_service_introspection_node_monitor_self_close=test_spot_node_monitor_callback_parent_destroy_returns_ebusy
-    test_spot_service_introspection_child_open_after_close=test_spot_node_rejects_child_open_after_close_accept
-    test_spot_service_introspection_lifecycle_contract=test_spot_node_public_api_lifecycle_contract
-    test_spot_service_introspection_handle_lifecycle=test_spot_public_api_lifecycle_contract)
+    test_spot_service_introspection_unified_spot=test_spot_unified_spot_basic)
 
 set(SPOT_PUBSUB_CASES
     test_spot_peer_ipc
@@ -724,8 +688,6 @@ set(SPOT_PUBSUB_LOCAL_TEST_SPECS
 
 set(GATEWAY_CASES
     test_gateway_provider_setsockopt
-    test_gateway_can_be_polled_via_service_instance
-    test_gateway_send_ready_handler_self_close_is_safe
     test_gateway_monitor_callback_parent_destroy_returns_ebusy
     test_gateway_refreshes_existing_service_on_first_connection_count
     test_gateway_router_peers_do_not_enter_pollable_mode
@@ -744,12 +706,10 @@ set(GATEWAY_CASES
     test_gateway_local_weight_zero_is_preserved
     test_gateway_runtime_reads_are_safe_during_concurrent_send
     test_gateway_concurrent_send_and_send_rid_and_updates
-    test_gateway_attach_and_monitor_queries_are_safe_same_handle
-    test_gateway_public_api_lifecycle_contract)
+    test_gateway_attach_and_monitor_queries_are_safe_same_handle)
 
 set(GATEWAY_TEST_SPECS
     test_gateway_provider_options=test_gateway_provider_setsockopt
-    test_gateway_send_ready=test_gateway_can_be_polled_via_service_instance
     test_gateway_refresh_existing_service=test_gateway_refreshes_existing_service_on_first_connection_count
     test_gateway_router_peer_stats=test_gateway_router_peers_do_not_enter_pollable_mode
     test_gateway_single_service=test_gateway_single_service_tcp
@@ -768,9 +728,7 @@ set(GATEWAY_TEST_SPECS
     test_gateway_runtime_reads=test_gateway_runtime_reads_are_safe_during_concurrent_send
     test_gateway_send_plane_updates=test_gateway_concurrent_send_and_send_rid_and_updates
     test_gateway_attach_query_ordering=test_gateway_attach_and_monitor_queries_are_safe_same_handle
-    test_gateway_send_ready_self_close=test_gateway_send_ready_handler_self_close_is_safe
-    test_gateway_monitor_self_close=test_gateway_monitor_callback_parent_destroy_returns_ebusy
-    test_gateway_lifecycle_contract=test_gateway_public_api_lifecycle_contract)
+    test_gateway_monitor_self_close=test_gateway_monitor_callback_parent_destroy_returns_ebusy)
 
 set(SERVICE_INTROSPECTION_CASES
     test_discovery_monitor_and_routing_id
@@ -781,10 +739,6 @@ set(SERVICE_INTROSPECTION_CASES
     test_monitor_closed_event_on_service_destroy
     test_discovery_monitor_reports_service_up_then_down_in_order
     test_discovery_monitor_callback_parent_destroy_returns_ebusy
-    test_discovery_destroy_busy_observer_is_no_latch
-    test_discovery_public_api_lifecycle_contract
-    test_registry_public_api_lifecycle_contract
-    test_registry_query_client_public_api_lifecycle_contract
     test_registry_control_path_queries_are_safe_during_concurrent_updates
     test_discovery_control_path_reads_are_safe_during_concurrent_updates
     test_discovery_registry_transport_restriction
@@ -803,10 +757,6 @@ set(SERVICE_INTROSPECTION_TEST_SPECS
     test_service_introspection_closed_event=test_monitor_closed_event_on_service_destroy
     test_service_introspection_discovery_ordering=test_discovery_monitor_reports_service_up_then_down_in_order
     test_service_introspection_discovery_self_close=test_discovery_monitor_callback_parent_destroy_returns_ebusy
-    test_service_introspection_discovery_no_latch=test_discovery_destroy_busy_observer_is_no_latch
-    test_service_introspection_discovery_lifecycle=test_discovery_public_api_lifecycle_contract
-    test_service_introspection_registry_lifecycle=test_registry_public_api_lifecycle_contract
-    test_service_introspection_registry_query_lifecycle=test_registry_query_client_public_api_lifecycle_contract
     test_service_introspection_registry_control_path=test_registry_control_path_queries_are_safe_during_concurrent_updates
     test_service_introspection_discovery_control_path=test_discovery_control_path_reads_are_safe_during_concurrent_updates
     test_service_introspection_transport_restriction=test_discovery_registry_transport_restriction

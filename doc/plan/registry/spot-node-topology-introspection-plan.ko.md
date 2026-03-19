@@ -15,11 +15,16 @@
   `zlink_registry_gateway_peers_snapshot()`,
   `zlink_registry_gateway_peers_query()`
 - monitor 계열 event/snapshot surface:
-  canonical naming은
+  canonical public surface는
   `zlink_socket_monitor_open()`,
   `zlink_service_monitor_open()`,
-  `zlink_monitor_snapshot()`
-  기준으로 재정렬 예정
+  `zlink_socket_monitor_handler()`,
+  `zlink_service_monitor_handler()`,
+  `zlink_socket_monitor_recv()`,
+  `zlink_service_monitor_recv()`,
+  `zlink_monitor_snapshot()`,
+  `zlink_monitor_close()`
+  기준으로 정리되어 있다
 
 하지만 사용자 관점에서 다음 질문에 바로 답하는 snapshot API는 없다.
 
@@ -53,10 +58,7 @@
   `monitor-public-surface-reinterface-plan.ko.md`를 canonical source로 따른다.
 - 이 문서의 monitor 관련 설명은
   `socket monitor` / `service monitor` 구분을 전제로 한다.
-- monitor reinterface가 먼저 적용되면,
-  이 문서에서 말하는 monitor는 모두 새 canonical public surface를 뜻한다.
-- reinterface 이전 컨텍스트에서 구현을 시작하더라도,
-  새 API naming과 문서 설명은 reinterface 이후 surface에 맞춰 유지한다.
+- 이 문서에서 말하는 monitor는 모두 현재의 canonical public surface를 뜻한다.
 
 ## 2. 문제 정의
 
@@ -911,6 +913,7 @@ ZLINK_EXPORT int zlink_gateway_status_snapshot (
 
 - `zlink_service_monitor_open()`은 service-level event stream 유지
 - `zlink_monitor_snapshot()`은 low-level socket/queue snapshot 유지
+- `zlink_monitor_close()`는 socket/service monitor 공통 lifecycle 종료 API다
 - `zlink_gateway_status_snapshot()`은 운영용 coarse state 제공
 
 필드 해석:
@@ -1119,18 +1122,20 @@ ZLINK_EXPORT int zlink_registry_service_summary_snapshot (
 ### 12.3 monitor surface와의 정합성
 
 이 문서의 snapshot/status API는
-monitor reinterface 이후 public surface와 충돌하지 않아야 한다.
+현재의 canonical monitor public surface와 충돌하지 않아야 한다.
 
 정합성 규칙:
 
 - monitor는 `socket monitor` / `service monitor` 두 축으로 설명한다.
-- `spot_node`, `gateway`, `registry`의 운영 event stream은
+- `spot_node`와 `gateway`의 운영 event stream은
   `zlink_service_monitor_open()` 기준으로 문서화한다.
+- discovery/registry 계열 event stream이 필요할 때는
+  registry 프로세스 자체가 아니라 discovery 계열 service handle 기준으로 설명한다.
 - low-level queue/socket 계측은 계속 `zlink_monitor_snapshot()`과
   `socket monitor` 영역으로 둔다.
 - 새 summary API가 monitor event 이름이나 lifecycle을 다시 복제하지 않는다.
-- 구현 문서와 주석에서 legacy open 함수 이름을 새로운 canonical surface보다
-  우선 개념으로 쓰지 않는다.
+- 구현 문서와 주석에서 deprecated/legacy open 함수 이름을
+  canonical surface보다 우선 개념으로 쓰지 않는다.
 
 ### 12.4 subject별 구현 메모
 
@@ -1235,10 +1240,10 @@ subject snapshot은 완전한 global atomicity를 보장하기 어렵다.
 
 새 컨텍스트에서 바로 이해해야 할 선행 결정:
 
-- monitor public surface는 `socket monitor` / `service monitor` 두 축으로 재정렬된다
+- monitor public surface는 이미 `socket monitor` / `service monitor` 두 축으로 정리돼 있다
 - 이 문서의 monitor 관련 서술은 새 canonical naming을 기준으로 유지한다
-- legacy `spot`/`gateway` 전용 monitor open 이름이 코드에 남아 있어도
-  새 설계 설명의 기준은 reinterface 문서다
+- `spot_node`/`gateway` 운영 event stream 설명은
+  `zlink_service_monitor_open()` 기준으로 본다
 
 권장 기본 명령:
 

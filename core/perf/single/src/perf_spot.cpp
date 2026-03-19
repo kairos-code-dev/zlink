@@ -524,9 +524,9 @@ void cleanup_spot_case (void **sub_monitor_,
     g_service_monitor_probe = NULL;
     g_pub_service_monitor_probe = NULL;
     if (sub_monitor_ && *sub_monitor_)
-        (void) zlink_service_monitor_close (sub_monitor_);
+        (void) zlink_monitor_close (sub_monitor_);
     if (pub_monitor_ && *pub_monitor_)
-        (void) zlink_service_monitor_close (pub_monitor_);
+        (void) zlink_monitor_close (pub_monitor_);
     if (sub_ && *sub_)
         (void) zlink_spot_sub_destroy (sub_);
     if (pub_ && *pub_)
@@ -809,21 +809,36 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    sub_monitor = zlink_spot_sub_monitor_open (
-      sub,
+    zlink_service_monitor_open_options_t sub_monitor_opts;
+    memset (&sub_monitor_opts, 0, sizeof (sub_monitor_opts));
+    sub_monitor_opts.events =
       ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
-        | ZLINK_MONITOR_EVENT_ERROR,
-      &spot_monitor_handler, NULL);
-    pub_monitor = zlink_spot_pub_monitor_open (
-      pub,
-      ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR,
-      &spot_pub_monitor_handler, NULL);
+      | ZLINK_MONITOR_EVENT_ERROR;
+    sub_monitor = zlink_service_monitor_open (sub, &sub_monitor_opts);
+    zlink_service_monitor_open_options_t pub_monitor_opts;
+    memset (&pub_monitor_opts, 0, sizeof (pub_monitor_opts));
+    pub_monitor_opts.events =
+      ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
+    pub_monitor = zlink_service_monitor_open (pub, &pub_monitor_opts);
     if (!sub_monitor || !pub_monitor) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] monitor open failed sub="
                       << (sub_monitor != NULL) << " pub="
                       << (pub_monitor != NULL) << " err=" << zlink_errno ()
                       << std::endl;
+        cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
+                           &pub_node);
+        return 1;
+    }
+    if (zlink_service_monitor_handler (sub_monitor, &spot_monitor_handler,
+                                       NULL)
+        != 0
+        || zlink_service_monitor_handler (pub_monitor,
+                                          &spot_pub_monitor_handler, NULL)
+             != 0) {
+        if (bench_debug_enabled ())
+            std::cerr << "[perf-spot] monitor handler attach failed err="
+                      << zlink_errno () << std::endl;
         cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
                            &pub_node);
         return 1;

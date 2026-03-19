@@ -129,7 +129,15 @@ void test_public_header_retains_send_ready_and_monitor_surface ()
 
     assert_text_present (header, "zlink_send_ready_handler");
     assert_text_present (header, "zlink_socket_monitor_open");
-    assert_text_present (header, "zlink_discovery_monitor_open");
+    assert_text_present (header, "zlink_service_monitor_open");
+    assert_text_present (header, "zlink_socket_monitor_handler");
+    assert_text_present (header, "zlink_service_monitor_handler");
+    assert_text_absent (header, "zlink_discovery_monitor_open");
+    assert_text_absent (header, "zlink_gateway_monitor_open");
+    assert_text_absent (header, "zlink_spot_monitor_open");
+    assert_text_absent (header, "zlink_spot_node_monitor_open");
+    assert_text_absent (header, "zlink_service_monitor_ignore_handler");
+    assert_text_present (header, "zlink_monitor_close");
 }
 
 void test_docs_reflect_tiered_thread_safe_contract ()

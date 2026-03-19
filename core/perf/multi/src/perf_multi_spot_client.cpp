@@ -40,14 +40,12 @@ struct spot_client_slot_t
 {
     spot_client_slot_t() :
         node(NULL),
-        sub(NULL),
         monitor(NULL),
         stop(false)
     {
     }
 
     void *node;
-    void *sub;
     void *monitor;
     std::atomic<bool> stop;
     std::thread recv_thread;
@@ -283,7 +281,7 @@ bool configure_spot_tls_client(void *node, const std::string &transport)
 
     static const std::string ca_path =
       write_temp_cert(test_certs::ca_cert_pem, "multi_spot_ca");
-    return zlink_spot_node_set_tls_client(node, ca_path.c_str(), "localhost", 0)
+    return zlink_set_tls_client(node, ca_path.c_str(), "localhost", 0)
            == 0;
 }
 
@@ -296,28 +294,28 @@ bool apply_spot_sub_options(void *sub, const multi_bench_settings_t &settings)
     const int sndbuf = bench_socket_buffer_bytes_from_env("PERF_SNDBUF", -1);
     const int rcvbuf = bench_socket_buffer_bytes_from_env("PERF_RCVBUF", -1);
 
-    if (zlink_spot_set_sub_option(sub, ZLINK_SPOT_SUB_OPT_LINGER,
-                                  &linger_ms, sizeof(linger_ms))
+    if (zlink_set_option(sub, ZLINK_OPT_LINGER, &linger_ms,
+                             sizeof(linger_ms))
           != 0
-        || zlink_spot_set_sub_option(sub, ZLINK_SPOT_SUB_OPT_RCVHWM,
-                                     &rcvhwm, sizeof(rcvhwm))
+        || zlink_set_option(sub, ZLINK_OPT_RCVHWM, &rcvhwm,
+                                sizeof(rcvhwm))
              != 0
-        || zlink_spot_set_sub_option(sub, ZLINK_SPOT_SUB_OPT_RCVTIMEO,
-                                     &rcvtimeo_ms, sizeof(rcvtimeo_ms))
+        || zlink_set_option(sub, ZLINK_OPT_RCVTIMEO, &rcvtimeo_ms,
+                                sizeof(rcvtimeo_ms))
              != 0) {
         return false;
     }
 
     if (sndbuf > 0
-        && zlink_spot_set_sub_option(sub, ZLINK_SPOT_SUB_OPT_SNDBUF,
-                                     &sndbuf, sizeof(sndbuf))
+        && zlink_set_option(sub, ZLINK_OPT_SNDBUF, &sndbuf,
+                                sizeof(sndbuf))
              != 0) {
         return false;
     }
 
     if (rcvbuf > 0
-        && zlink_spot_set_sub_option(sub, ZLINK_SPOT_SUB_OPT_RCVBUF,
-                                     &rcvbuf, sizeof(rcvbuf))
+        && zlink_set_option(sub, ZLINK_OPT_RCVBUF, &rcvbuf,
+                                sizeof(rcvbuf))
              != 0) {
         return false;
     }
@@ -327,11 +325,11 @@ bool apply_spot_sub_options(void *sub, const multi_bench_settings_t &settings)
 
 bool open_spot_ready_monitor(spot_client_slot_t *slot)
 {
-    if (!slot || !slot->sub)
+    if (!slot || !slot->node)
         return false;
 
-    void *monitor = zlink_spot_monitor_open(
-      slot->sub,
+    void *monitor = zlink_spot_node_monitor_open(
+      slot->node,
       ZLINK_SPOT_ROLE_SUB,
       ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_READY,
       &zlink_service_monitor_ignore_handler, NULL);
@@ -434,18 +432,9 @@ void destroy_spot_slots(spot_client_state_t *state,
         if (bench_transition_debug_enabled() && i < 4) {
             std::cerr << "[multi-spot-client] destroy slot begin index=" << i
                       << " ts_us=" << perf_multi_metric::now_us()
-                      << " sub=" << (slot->sub ? 1 : 0)
                       << " node=" << (slot->node ? 1 : 0) << std::endl;
         }
         close_spot_ready_monitor(slot);
-        if (slot->sub) {
-            zlink_spot_destroy(&slot->sub);
-            if (bench_transition_debug_enabled() && i < 4) {
-                std::cerr << "[multi-spot-client] destroy slot after sub index="
-                          << i << " ts_us=" << perf_multi_metric::now_us()
-                          << std::endl;
-            }
-        }
         if (slot->node) {
             zlink_spot_node_destroy(&slot->node);
             if (bench_transition_debug_enabled() && i < 4) {
@@ -547,7 +536,7 @@ void spot_client_sub_handler(const zlink_routing_id_t *,
 
 bool recv_one_spot_message(spot_client_slot_t *slot, int flags, bool *received)
 {
-    if (!slot || !slot->sub)
+    if (!slot || !slot->node)
         return false;
 
     if (received)
@@ -557,8 +546,8 @@ bool recv_one_spot_message(spot_client_slot_t *slot, int flags, bool *received)
     size_t part_count = 0;
     char topic[256];
     size_t topic_len = sizeof(topic) - 1;
-    const int rc = zlink_subscribe_recv(
-      slot->sub, &parts, &part_count, flags, topic, &topic_len);
+    const int rc = zlink_subscribe(
+      slot->node, &parts, &part_count, flags, topic, &topic_len);
     if (rc != 0) {
         const int err = errno;
         if (slot->stop.load(std::memory_order_acquire))
@@ -602,7 +591,7 @@ bool drain_spot_client_slot(spot_client_slot_t *slot, bool *progressed)
 
 void spot_client_recv_loop(spot_client_slot_t *slot)
 {
-    if (!slot || !slot->sub)
+    if (!slot || !slot->node)
         return;
 
     while (!slot->stop.load(std::memory_order_acquire)) {
@@ -676,25 +665,20 @@ bool create_spot_slots(ctx_guard_t &ctx,
             return false;
         }
 
-        slot->sub = zlink_spot_new(slot->node);
-        if (slot->sub && recv_mode == spot_recv_callback
-            && zlink_subscribe_handler(slot->sub, &spot_client_sub_handler,
-                                       NULL)
-                 != 0) {
-            zlink_spot_destroy(&slot->sub);
-            slot->sub = NULL;
-        }
-        if (!slot->sub || !apply_spot_sub_options(slot->sub, settings)
+        if ((recv_mode == spot_recv_callback
+             && zlink_subscribe_handler(slot->node, &spot_client_sub_handler,
+                                        NULL)
+                  != 0)
+            || !apply_spot_sub_options(slot->node, settings)
             || !open_spot_ready_monitor(slot)
-            || zlink_spot_node_connect_peer_pub(slot->node, endpoint.c_str()) != 0
-            || zlink_subscribe(slot->sub, k_topic) != 0) {
+            || zlink_spot_node_connect_peer(slot->node, endpoint.c_str()) != 0
+            || zlink_set_subscription (slot->node, k_topic)
+                 != 0) {
             if (bench_debug_enabled())
                 std::cerr << "[multi-spot-client] slot create failed slot=" << i
-                          << " sub=" << (slot->sub != NULL)
+                          << " node=" << (slot->node != NULL)
                           << " err=" << zlink_errno() << std::endl;
             close_spot_ready_monitor(slot);
-            if (slot->sub)
-                zlink_spot_destroy(&slot->sub);
             if (slot->node)
                 zlink_spot_node_destroy(&slot->node);
             delete slot;

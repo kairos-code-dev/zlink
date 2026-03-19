@@ -25,15 +25,19 @@ void apply_socket_options(void *socket)
     const int rcvtimeo = 100;
     const int sndtimeo = 100;
     const int hwm = static_cast<int>(parse_long_env("BENCH_HWM", 1000, 1));
-    (void) zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
-    (void) zlink_setsockopt(socket, ZLINK_RCVTIMEO, &rcvtimeo, sizeof(rcvtimeo));
-    (void) zlink_setsockopt(socket, ZLINK_SNDTIMEO, &sndtimeo, sizeof(sndtimeo));
-    (void) zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
-    (void) zlink_setsockopt(socket, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    (void) zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
+    (void) zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &rcvtimeo,
+                            sizeof(rcvtimeo));
+    (void) zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &sndtimeo,
+                            sizeof(sndtimeo));
+    (void) zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
+    (void) zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
     const int nodelay = 1;
-    (void) zlink_setsockopt(socket, ZLINK_TCP_NODELAY, &nodelay, sizeof(nodelay));
+    (void) zlink_set_option(socket, ZLINK_OPT_TCP_NODELAY, &nodelay,
+                            sizeof(nodelay));
     const int backlog = 512;
-    (void) zlink_setsockopt(socket, ZLINK_BACKLOG, &backlog, sizeof(backlog));
+    (void) zlink_set_option(socket, ZLINK_OPT_BACKLOG, &backlog,
+                            sizeof(backlog));
 }
 
 bool handle_router_once(void *server, char *id_buf, size_t id_cap,
@@ -143,8 +147,7 @@ int main(int /*argc*/, char ** /*argv*/)
     apply_socket_options(server);
 
     const char *server_id = "RC_SRV";
-    (void) zlink_setsockopt(server, ZLINK_ROUTING_ID, server_id,
-                            std::strlen(server_id));
+    (void) zlink_set_routing_id(server, server_id, std::strlen(server_id));
 
     const std::string endpoint = endpoint_from_port(port);
     if (zlink_bind(server, endpoint.c_str()) != 0) {

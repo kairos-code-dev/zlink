@@ -259,24 +259,17 @@ inline bool create_client_sockets (
             const int id_len =
               std::snprintf (id_buf, sizeof (id_buf), "client_%zu", i);
             if (id_len > 0) {
-                zlink_setsockopt (
-                  sock,
-                  ZLINK_ROUTING_ID,
-                  id_buf,
-                  static_cast<size_t> (id_len));
+                zlink_set_routing_id (
+                  sock, id_buf, static_cast<size_t> (id_len));
             }
         }
 
         if (client_socket_type == ZLINK_SUB) {
             static const char k_subscribe_all[] = "";
-            if (zlink_setsockopt (
-                  sock,
-                  ZLINK_SUBSCRIBE,
-                  k_subscribe_all,
-                  0)
-                != 0) {
+            if (zlink_set_subscription (sock, k_subscribe_all) != 0) {
                 if (bench_debug_enabled ()) {
-                    std::cerr << "setsockopt(ZLINK_SUBSCRIBE) failed: "
+                    std::cerr
+                      << "set_subscription failed: "
                               << zlink_strerror (zlink_errno ()) << std::endl;
                 }
                 zlink_close (sock);

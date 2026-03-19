@@ -45,7 +45,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 void *gateway = zlink_gateway_new(ctx, "payment-service");
-zlink_gateway_set_routing_id(gateway, "gateway-1", 9);
+zlink_set_routing_id(gateway, "gateway-1", 9);
 zlink_recv_handler(gateway, on_message, NULL);
 ```
 
@@ -53,7 +53,7 @@ zlink_recv_handler(gateway, on_message, NULL);
 
 ```c
 void *gateway = zlink_gateway_new(ctx, "payment-service");
-zlink_gateway_set_routing_id(gateway, "gateway-1", 9);
+zlink_set_routing_id(gateway, "gateway-1", 9);
 /* No callback -- stay in recv model, pull with zlink_gateway_recv() */
 ```
 
@@ -73,7 +73,7 @@ zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Create Gateway (register receive handler) */
 void *server = zlink_gateway_new(ctx, "payment-service");
-zlink_gateway_set_routing_id(server, "payment-server-1", 16);
+zlink_set_routing_id(server, "payment-server-1", 16);
 zlink_recv_handler(server, on_request, NULL);
 
 /* Attach Discovery */
@@ -92,7 +92,7 @@ void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 void *server = zlink_gateway_new(ctx, "payment-service");
-zlink_gateway_set_routing_id(server, "payment-server-1", 16);
+zlink_set_routing_id(server, "payment-server-1", 16);
 /* Stay in recv model -- no zlink_recv_handler() call */
 
 zlink_gateway_attach_discovery(server, discovery);
@@ -119,7 +119,7 @@ zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Create Gateway */
 void *client = zlink_gateway_new(ctx, "payment-service");
-zlink_gateway_set_routing_id(client, "client-1", 8);
+zlink_set_routing_id(client, "client-1", 8);
 zlink_recv_handler(client, on_reply, NULL);
 
 /* Attach Discovery */
@@ -136,7 +136,7 @@ void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 void *client = zlink_gateway_new(ctx, "payment-service");
-zlink_gateway_set_routing_id(client, "client-1", 8);
+zlink_set_routing_id(client, "client-1", 8);
 /* Stay in recv model */
 
 zlink_gateway_attach_discovery(client, discovery);
@@ -231,12 +231,12 @@ are thread-safe by default.
 - `zlink_gateway_send()`
 - `zlink_gateway_send_rid()`
 - `zlink_gateway_set_lb_strategy()`
-- `zlink_gateway_set_option()`
+- `zlink_set_option()`
 - `zlink_gateway_attach_discovery()`
 - `zlink_gateway_bind()`
 - `zlink_gateway_connect()` / `zlink_gateway_disconnect()`
-- `zlink_gateway_set_tls_client()`
-- `zlink_gateway_last_endpoint()`
+- `zlink_set_tls_client()` / `zlink_set_tls_server()`
+- `zlink_get_option(gateway, ZLINK_OPT_LAST_ENDPOINT, ...)`
 - `zlink_monitor_snapshot()` on an open gateway monitor
 - `zlink_gateway_destroy()`
 
@@ -253,7 +253,7 @@ The rules users need to remember are short:
 ```c
 /* Gateway is thread-safe, so it can be shared across threads */
 void *gateway = zlink_gateway_new(ctx, "my-service");
-zlink_gateway_set_routing_id(gateway, "gw-1", 4);
+zlink_set_routing_id(gateway, "gw-1", 4);
 zlink_recv_handler(gateway, on_reply, NULL);
 zlink_gateway_attach_discovery(gateway, discovery);
 
@@ -339,7 +339,7 @@ void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
 
 void *server = zlink_gateway_new(ctx, "echo-service");
-zlink_gateway_set_routing_id(server, "echo-server-1", 13);
+zlink_set_routing_id(server, "echo-server-1", 13);
 zlink_recv_handler(server, on_request, NULL);
 zlink_gateway_attach_discovery(server, server_discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
@@ -349,7 +349,7 @@ void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
 
 void *client = zlink_gateway_new(ctx, "echo-service");
-zlink_gateway_set_routing_id(client, "client-1", 8);
+zlink_set_routing_id(client, "client-1", 8);
 zlink_recv_handler(client, on_reply, NULL);
 zlink_gateway_attach_discovery(client, client_discovery);
 
@@ -387,7 +387,7 @@ void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
 
 void *server = zlink_gateway_new(ctx, "echo-service");
-zlink_gateway_set_routing_id(server, "echo-server-1", 13);
+zlink_set_routing_id(server, "echo-server-1", 13);
 zlink_gateway_attach_discovery(server, server_discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
@@ -396,7 +396,7 @@ void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
 
 void *client = zlink_gateway_new(ctx, "echo-service");
-zlink_gateway_set_routing_id(client, "client-1", 8);
+zlink_set_routing_id(client, "client-1", 8);
 zlink_gateway_attach_discovery(client, client_discovery);
 
 /* Wait for route readiness via gateway monitor */
@@ -427,7 +427,7 @@ zlink_ctx_term(ctx);
 | Function | Description |
 |----------|-------------|
 | `zlink_gateway_new(ctx, service_name)` | Create Gateway in recv model |
-| `zlink_gateway_set_routing_id(gateway, data, size)` | Set routing ID before first bind/connect |
+| `zlink_set_routing_id(gateway, data, size)` | Set routing ID before first bind/connect |
 | `zlink_recv_handler(gateway, fn, userdata)` | One-way transition to callback model |
 | `zlink_gateway_recv(gateway, &rid, &parts, &count, flags)` | Pull message in recv model (`EBUSY` in callback model) |
 | `zlink_gateway_attach_discovery(gateway, discovery)` | Attach Discovery |
@@ -435,12 +435,12 @@ zlink_ctx_term(ctx);
 | `zlink_gateway_send(gateway, parts, count, flags)` | Send multipart message (with LB) |
 | `zlink_gateway_send_rid(gateway, rid, parts, count, flags)` | Send to specific peer |
 | `zlink_gateway_set_lb_strategy(gateway, strategy)` | Set LB strategy |
-| `zlink_gateway_set_option(gateway, option, val, len)` | Set service options |
-| `zlink_gateway_set_routing_id(gateway, data, size)` | Set routing ID |
-| `zlink_gateway_routing_id(gateway, out)` | Get routing ID |
-| `zlink_gateway_set_tls_client(gateway, ca, host, trust)` | Set TLS client configuration |
-| `zlink_gateway_set_tls_server(gateway, cert, key)` | Set TLS server configuration |
-| `zlink_gateway_last_endpoint(gateway, buf, size)` | Resolve bound endpoint |
+| `zlink_set_option(gateway, option, val, len)` | Set service options |
+| `zlink_set_routing_id(gateway, data, size)` | Set routing ID |
+| `zlink_get_routing_id(gateway, &out)` | Get routing ID |
+| `zlink_set_tls_client(gateway, ca, host, trust)` | Set TLS client configuration |
+| `zlink_set_tls_server(gateway, cert, key, require_client_cert)` | Set TLS server configuration |
+| `zlink_get_option(gateway, ZLINK_OPT_LAST_ENDPOINT, buf, &size)` | Resolve bound endpoint |
 | `zlink_monitor_snapshot(monitor, &snapshot)` | Read local bind/send readiness and queue depth |
 | `zlink_gateway_update_peer_weight(gateway, rid, weight)` | Update peer weight |
 | `zlink_registry_gateway_peers_query(registry, &filter, entries, &count)` | Query operational gateway-peer state |

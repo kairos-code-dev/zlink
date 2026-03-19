@@ -12,8 +12,7 @@ zlink natively supports `tls://` and `wss://` transports through OpenSSL. Encryp
 void *socket = zlink_socket(ctx, ZLINK_ROUTER);
 
 /* Set certificate and key (before bind) */
-zlink_setsockopt(socket, ZLINK_TLS_CERT, "/path/to/server.crt", 0);
-zlink_setsockopt(socket, ZLINK_TLS_KEY, "/path/to/server.key", 0);
+zlink_set_tls_server(socket, "/path/to/server.crt", "/path/to/server.key", 0);
 
 /* TLS bind */
 zlink_bind(socket, "tls://*:5555");
@@ -24,11 +23,8 @@ zlink_bind(socket, "tls://*:5555");
 ```c
 void *socket = zlink_socket(ctx, ZLINK_DEALER);
 
-/* Set CA certificate */
-zlink_setsockopt(socket, ZLINK_TLS_CA, "/path/to/ca.crt", 0);
-
-/* (Optional) Hostname verification */
-zlink_setsockopt(socket, ZLINK_TLS_HOSTNAME, "server.example.com", 0);
+/* Set CA certificate and hostname verification */
+zlink_set_tls_client(socket, "/path/to/ca.crt", "server.example.com", 0);
 
 /* TLS connect */
 zlink_connect(socket, "tls://server.example.com:5555");
@@ -44,8 +40,7 @@ WSS is a transport that adds TLS encryption to ws. It requires additional config
 void *socket = zlink_socket(ctx, ZLINK_STREAM);
 
 /* Set TLS certificate/key */
-zlink_setsockopt(socket, ZLINK_TLS_CERT, "/path/to/cert.pem", 0);
-zlink_setsockopt(socket, ZLINK_TLS_KEY, "/path/to/key.pem", 0);
+zlink_set_tls_server(socket, "/path/to/cert.pem", "/path/to/key.pem", 0);
 
 /* WSS bind */
 zlink_bind(socket, "wss://*:8443");
@@ -68,75 +63,63 @@ target: wss://server:8443
 | Setting | ws | wss |
 |---------|:--:|:---:|
 | Basic socket creation | O | O |
-| `ZLINK_TLS_CERT` / `ZLINK_TLS_KEY` (server) | - | Required |
-| `ZLINK_TLS_CA` (client) | - | Recommended (external raw client) |
-| `ZLINK_TLS_HOSTNAME` (client) | - | Recommended (external raw client) |
-| `ZLINK_TLS_TRUST_SYSTEM` (client) | - | Optional (external raw client) |
+| `zlink_set_tls_server()` (server cert+key) | - | Required |
+| `zlink_set_tls_client()` (client CA+hostname+trust) | - | Recommended (external raw client) |
 
-## 5. TLS Socket Options Reference
+## 5. TLS API Reference
 
-| Option | Type | Direction | Default | Description |
-|--------|------|-----------|---------|-------------|
-| `ZLINK_TLS_CERT` | string | Server | — | Certificate file path (PEM format) |
-| `ZLINK_TLS_KEY` | string | Server | — | Private key file path (PEM format) |
-| `ZLINK_TLS_CA` | string | Client | — | CA certificate path (for server certificate verification) |
-| `ZLINK_TLS_HOSTNAME` | string | Client | — | Server hostname (CN/SAN verification) |
-| `ZLINK_TLS_TRUST_SYSTEM` | int | Client | 1 | Whether to trust the system CA store |
+TLS is configured through two dedicated functions instead of individual socket options.
 
-### ZLINK_TLS_CERT / ZLINK_TLS_KEY
+### zlink_set_tls_server()
 
-The certificate and private key for the server to authenticate itself to clients.
+Configures the server-side TLS certificate and key.
+
+```c
+zlink_set_tls_server(socket, cert_path, key_path, require_client_cert);
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `cert_path` | string | Certificate file path (PEM format) |
+| `key_path` | string | Private key file path (PEM format) |
+| `require_client_cert` | int | Whether to require client certificate (0 = no, 1 = yes) |
 
 ```c
 /* PEM format file paths */
-zlink_setsockopt(socket, ZLINK_TLS_CERT, "server.crt", 0);
-zlink_setsockopt(socket, ZLINK_TLS_KEY, "server.key", 0);
+zlink_set_tls_server(socket, "server.crt", "server.key", 0);
 ```
 
 - Must be set **before** `zlink_bind()`
 - Only PEM format is supported
 - Handshake fails if the certificate and key do not match
 
-### ZLINK_TLS_CA
+### zlink_set_tls_client()
 
-The CA certificate for the client to verify the server's certificate.
-
-```c
-zlink_setsockopt(socket, ZLINK_TLS_CA, "ca.crt", 0);
-```
-
-- When no CA is set, the system CA store is used (`ZLINK_TLS_TRUST_SYSTEM=1`)
-- Must be set when using a private CA
-
-### ZLINK_TLS_HOSTNAME
-
-The client verifies the server certificate's CN (Common Name) or SAN (Subject Alternative Name).
+Configures the client-side TLS CA certificate, hostname verification, and system CA trust.
 
 ```c
-zlink_setsockopt(socket, ZLINK_TLS_HOSTNAME, "server.example.com", 0);
+zlink_set_tls_client(socket, ca_cert_path, hostname, trust_system);
 ```
 
-- If not set, hostname verification is skipped (security warning)
-- Strongly recommended for production
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `ca_cert_path` | string | CA certificate path (for server certificate verification), or NULL |
+| `hostname` | string | Server hostname for CN/SAN verification, or NULL |
+| `trust_system` | int | Whether to trust the system CA store (0 = no, 1 = yes) |
+
+```c
+/* Private CA with hostname verification */
+zlink_set_tls_client(socket, "ca.crt", "server.example.com", 0);
+
+/* System CA only (no private CA, no hostname check) */
+zlink_set_tls_client(socket, NULL, NULL, 1);
+```
+
+- When `ca_cert_path` is NULL, only the system CA store is used (if `trust_system=1`)
+- Must set `ca_cert_path` when using a private CA
+- If `hostname` is NULL, hostname verification is skipped (security warning)
+- Hostname verification is strongly recommended for production
 - Must match the certificate's CN or SAN
-
-### ZLINK_TLS_TRUST_SYSTEM
-
-Whether to trust the system CA store (root certificates installed in the OS).
-
-```c
-/* Disable system CA (use only private certificates) */
-int trust = 0;
-zlink_setsockopt(socket, ZLINK_TLS_TRUST_SYSTEM, &trust, sizeof(trust));
-
-/* Enable system CA (default) */
-int trust = 1;
-zlink_setsockopt(socket, ZLINK_TLS_TRUST_SYSTEM, &trust, sizeof(trust));
-```
-
-- Default: 1 (trust system CA)
-- Set to 0 in environments using only a private CA, and specify `ZLINK_TLS_CA` explicitly
-- Keep the default when using publicly issued certificates
 
 > Reference: `core/tests/test_stream_socket.cpp` — `trust_system = 0` followed by private CA usage
 
@@ -199,15 +182,15 @@ openssl rsa -noout -modulus -in server.key | openssl md5
 ```
 Symptom: Client connection failure, handshake timeout
 Cause: Client has no CA to verify the server certificate
-Solution: Set ZLINK_TLS_CA or check ZLINK_TLS_TRUST_SYSTEM
+Solution: Set ca_cert_path in zlink_set_tls_client() or check trust_system parameter
 ```
 
 ### Hostname Mismatch
 
 ```
 Symptom: Handshake failure
-Cause: ZLINK_TLS_HOSTNAME does not match certificate CN/SAN
-Solution: Include the correct CN/SAN in the certificate, or update the HOSTNAME setting
+Cause: hostname parameter in zlink_set_tls_client() does not match certificate CN/SAN
+Solution: Include the correct CN/SAN in the certificate, or update the hostname parameter
 ```
 
 ### Certificate Expired
@@ -252,9 +235,9 @@ void *mon = zlink_socket_monitor_open(socket,
 
 ### Client Configuration
 
-- [ ] Set `ZLINK_TLS_HOSTNAME` (enable hostname verification)
-- [ ] Explicitly set `ZLINK_TLS_CA` or verify system CA
-- [ ] Set `ZLINK_TLS_TRUST_SYSTEM=0` when using a private CA
+- [ ] Set `hostname` parameter in `zlink_set_tls_client()` (enable hostname verification)
+- [ ] Explicitly set `ca_cert_path` in `zlink_set_tls_client()` or verify system CA
+- [ ] Set `trust_system=0` in `zlink_set_tls_client()` when using a private CA
 
 ### Monitoring
 
@@ -276,14 +259,12 @@ int main(void) {
 
     /* TLS Server */
     void *server = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_setsockopt(server, ZLINK_TLS_CERT, "server.crt", 0);
-    zlink_setsockopt(server, ZLINK_TLS_KEY, "server.key", 0);
+    zlink_set_tls_server(server, "server.crt", "server.key", 0);
     zlink_bind(server, "tls://*:5555");
 
     /* TLS Client */
     void *client = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_setsockopt(client, ZLINK_TLS_CA, "ca.crt", 0);
-    zlink_setsockopt(client, ZLINK_TLS_HOSTNAME, "localhost", 9);
+    zlink_set_tls_client(client, "ca.crt", "localhost", 0);
     zlink_connect(client, "tls://127.0.0.1:5555");
 
     /* Encrypted communication — server receives via handler callback */
@@ -308,10 +289,9 @@ void *ctx = zlink_ctx_new();
 
 /* WSS Server (STREAM) */
 void *server = zlink_socket(ctx, ZLINK_STREAM);
-zlink_setsockopt(server, ZLINK_TLS_CERT, "server.crt", 0);
-zlink_setsockopt(server, ZLINK_TLS_KEY, "server.key", 0);
+zlink_set_tls_server(server, "server.crt", "server.key", 0);
 int linger = 0;
-zlink_setsockopt(server, ZLINK_LINGER, &linger, sizeof(linger));
+zlink_set_option(server, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 zlink_bind(server, "wss://*:8443");
 
 /* External raw WSS client connects to this endpoint.

@@ -223,8 +223,8 @@ bool configure_tls_server (void *node_, const std::string &transport_)
       write_temp_cert (test_certs::server_cert_pem, "perf_spot_cert");
     static const std::string key_path =
       write_temp_cert (test_certs::server_key_pem, "perf_spot_key");
-    return zlink_spot_node_set_tls_server (
-             node_, cert_path.c_str (), key_path.c_str ())
+    return zlink_set_tls_server (
+             node_, cert_path.c_str (), key_path.c_str (), 0)
            == 0;
 }
 
@@ -235,7 +235,7 @@ bool configure_tls_client (void *node_, const std::string &transport_)
 
     static const std::string ca_path =
       write_temp_cert (test_certs::ca_cert_pem, "perf_spot_ca");
-    return zlink_spot_node_set_tls_client (
+    return zlink_set_tls_client (
              node_, ca_path.c_str (), "localhost", 0)
            == 0;
 }
@@ -482,7 +482,7 @@ void start_spot_recv_loop (spot_recv_loop_t *loop_)
             size_t part_count = 0;
             char topic[256];
             size_t topic_len = sizeof (topic);
-            const int rc = zlink_subscribe_recv (
+            const int rc = zlink_subscribe (
               loop_->sub, NULL, &parts, &part_count, topic, &topic_len,
               ZLINK_DONTWAIT);
             if (rc == 0) {
@@ -528,9 +528,9 @@ void cleanup_spot_case (void **sub_monitor_,
     if (pub_monitor_ && *pub_monitor_)
         (void) zlink_service_monitor_close (pub_monitor_);
     if (sub_ && *sub_)
-        (void) zlink_spot_destroy (sub_);
+        (void) zlink_spot_sub_destroy (sub_);
     if (pub_ && *pub_)
-        (void) zlink_spot_destroy (pub_);
+        (void) zlink_spot_pub_destroy (pub_);
     if (sub_node_ && *sub_node_)
         (void) zlink_spot_node_destroy (sub_node_);
     if (pub_node_ && *pub_node_)
@@ -758,21 +758,23 @@ int run_case (const std::string &lib_name_,
     const int sndtimeo_ms = resolve_single_send_timeout_ms ();
     const int rcvtimeo_ms = resolve_single_recv_timeout_ms ();
     const int nodrop = 1;
-    (void) zlink_spot_node_set_pub_option (
-      pub_node, ZLINK_SPOT_PUB_OPT_LINGER, &linger, sizeof (linger));
-    (void) zlink_spot_node_set_pub_option (
-      pub_node, ZLINK_SPOT_PUB_OPT_SNDHWM, &sndhwm, sizeof (sndhwm));
-    (void) zlink_spot_node_set_pub_option (
-      pub_node, ZLINK_SPOT_PUB_OPT_SNDTIMEO, &sndtimeo_ms, sizeof (sndtimeo_ms));
-    (void) zlink_spot_node_set_pub_option (
-      pub_node, ZLINK_SPOT_PUB_OPT_NODROP, &nodrop, sizeof (nodrop));
-    (void) zlink_spot_node_set_sub_option (
-      sub_node, ZLINK_SPOT_SUB_OPT_LINGER, &linger, sizeof (linger));
-    (void) zlink_spot_node_set_sub_option (
-      sub_node, ZLINK_SPOT_SUB_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
-    (void) zlink_spot_node_set_sub_option (
-      sub_node, ZLINK_SPOT_SUB_OPT_RCVTIMEO, &rcvtimeo_ms,
-      sizeof (rcvtimeo_ms));
+    (void) zlink_set_option (zlink_spot_node_default_pub (pub_node),
+                             ZLINK_OPT_LINGER, &linger, sizeof (linger));
+    (void) zlink_set_option (zlink_spot_node_default_pub (pub_node),
+                             ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm));
+    (void) zlink_set_option (zlink_spot_node_default_pub (pub_node),
+                             ZLINK_OPT_SNDTIMEO, &sndtimeo_ms,
+                             sizeof (sndtimeo_ms));
+    (void) zlink_set_pub_option (zlink_spot_node_default_pub (pub_node),
+                                 ZLINK_PUB_OPT_NODROP, &nodrop,
+                                 sizeof (nodrop));
+    (void) zlink_set_option (zlink_spot_node_default_sub (sub_node),
+                             ZLINK_OPT_LINGER, &linger, sizeof (linger));
+    (void) zlink_set_option (zlink_spot_node_default_sub (sub_node),
+                             ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
+    (void) zlink_set_option (zlink_spot_node_default_sub (sub_node),
+                             ZLINK_OPT_RCVTIMEO, &rcvtimeo_ms,
+                             sizeof (rcvtimeo_ms));
 
     if (!configure_tls_server (pub_node, transport_)
         || !configure_tls_client (sub_node, transport_)) {
@@ -783,12 +785,12 @@ int run_case (const std::string &lib_name_,
         zlink_spot_node_destroy (&pub_node);
         return 1;
     }
-    void *pub = zlink_spot_new (pub_node);
-    void *sub = zlink_spot_new (sub_node);
+    void *pub = zlink_spot_pub_new (pub_node);
+    void *sub = zlink_spot_sub_new (sub_node);
     const bool callback_mode = single_perf_callback_mode ();
     if (callback_mode && sub
         && zlink_subscribe_handler (sub, &spot_client_handler, NULL) != 0) {
-        zlink_spot_destroy (&sub);
+        zlink_spot_sub_destroy (&sub);
         sub = NULL;
     }
     void *sub_monitor = NULL;
@@ -807,15 +809,13 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    sub_monitor = zlink_spot_monitor_open (
+    sub_monitor = zlink_spot_sub_monitor_open (
       sub,
-      ZLINK_SPOT_ROLE_SUB,
       ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
         | ZLINK_MONITOR_EVENT_ERROR,
       &spot_monitor_handler, NULL);
-    pub_monitor = zlink_spot_monitor_open (
+    pub_monitor = zlink_spot_pub_monitor_open (
       pub,
-      ZLINK_SPOT_ROLE_PUB,
       ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR,
       &spot_pub_monitor_handler, NULL);
     if (!sub_monitor || !pub_monitor) {
@@ -842,7 +842,7 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    if (zlink_spot_node_connect_peer_pub (sub_node, endpoint.c_str ()) != 0) {
+    if (zlink_spot_node_connect_peer (sub_node, endpoint.c_str ()) != 0) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] connect peer failed err=" << zlink_errno ()
                       << std::endl;
@@ -851,7 +851,7 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    if (zlink_subscribe (sub, k_topic) != 0) {
+    if (zlink_set_subscription (sub, k_topic) != 0) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] subscribe failed err=" << zlink_errno ()
                       << std::endl;

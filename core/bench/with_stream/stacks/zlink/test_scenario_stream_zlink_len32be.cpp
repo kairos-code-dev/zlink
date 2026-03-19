@@ -1,6 +1,7 @@
 #include "../common/stream_echo_common.hpp"
 
 #include "../../../../include/zlink.h"
+#include "../../../../tests/legacy_api_compat.hpp"
 
 #include <atomic>
 #include <chrono>

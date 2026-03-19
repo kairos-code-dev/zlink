@@ -127,9 +127,7 @@ void test_public_header_retains_send_ready_and_monitor_surface ()
     const std::string header = read_public_header_contract_text ();
     TEST_ASSERT_FALSE (header.empty ());
 
-    assert_text_present (header, "zlink_socket_send_ready_handler");
-    assert_text_present (header, "zlink_gateway_send_ready_handler");
-    assert_text_present (header, "zlink_spot_node_send_ready_handler");
+    assert_text_present (header, "zlink_send_ready_handler");
     assert_text_present (header, "zlink_socket_monitor_open");
     assert_text_present (header, "zlink_discovery_monitor_open");
 }

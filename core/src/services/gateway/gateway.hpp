@@ -120,6 +120,7 @@ class gateway_t : public discovery_observer_t
     int set_socket_option (int option_,
                            const void *optval_,
                            size_t optvallen_);
+    int get_socket_option (int option_, void *optval_, size_t *optvallen_);
     int set_tls_server (const char *cert_, const char *key_);
     void *monitor_open (int events_);
     void lock_routing_id ();

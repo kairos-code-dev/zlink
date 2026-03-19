@@ -166,14 +166,14 @@ inline bool setup_router_router_session (void *router1,
     if (!router1 || !router2)
         return false;
 
-    zlink_setsockopt (router1, ZLINK_ROUTING_ID, "ROUTER1", 7);
-    zlink_setsockopt (router2, ZLINK_ROUTING_ID, "ROUTER2", 7);
+    zlink_set_routing_id (router1, "ROUTER1", 7);
+    zlink_set_routing_id (router2, "ROUTER2", 7);
 
     int mandatory = 1;
-    zlink_setsockopt (router1, ZLINK_ROUTER_MANDATORY, &mandatory,
-                      sizeof (mandatory));
-    zlink_setsockopt (router2, ZLINK_ROUTER_MANDATORY, &mandatory,
-                      sizeof (mandatory));
+    zlink_set_router_option (
+      router1, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory));
+    zlink_set_router_option (
+      router2, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory));
 
     if (!setup_connected_pair (router1, router2, transport, pair_id)
         || !perform_router_router_handshake (router1, router2)) {

@@ -130,122 +130,145 @@ typedef uint32_t zlink_send_flags_t;
 
 ### 소켓 옵션
 
-소켓 옵션은 `zlink_setsockopt()`으로 설정하고 `zlink_getsockopt()`으로
-조회합니다. 옵션은 `zlink_socket_option_t` enum을 사용합니다.
-단축 별칭(예: `ZLINK_LINGER`)도 사용 가능합니다.
+소켓 옵션은 타입별 전용 enum과 함수를 사용합니다. 공통 옵션은
+`zlink_set_option()` / `zlink_get_option()`으로, 소켓 타입별 옵션은
+`zlink_set_router_option()`, `zlink_set_dealer_option()`,
+`zlink_set_pub_option()`, `zlink_set_sub_option()`,
+`zlink_set_stream_option()` 등 전용 함수로 설정합니다.
+ROUTING_ID는 `zlink_set_routing_id()` / `zlink_get_routing_id()` 전용
+함수를, TLS는 `zlink_set_tls_server()` / `zlink_set_tls_client()` 전용
+함수를, SUBSCRIBE/UNSUBSCRIBE는 `zlink_set_subscription()` /
+`zlink_unset_subscription()` 전용 함수를 사용합니다.
 
-#### 일반
+#### 공통 옵션 (`zlink_option_t`)
 
-| 상수 | 설명 |
-|---|---|
-| `ZLINK_SOCKOPT_AFFINITY` | I/O 스레드 어피니티 비트마스크 (`uint64_t`) |
-| `ZLINK_SOCKOPT_ROUTING_ID` | ROUTER 주소 지정을 위한 소켓 아이덴티티 (`binary`, 최대 255바이트) |
-| `ZLINK_SOCKOPT_TYPE` | 소켓 타입 (읽기 전용, `int`) |
-| `ZLINK_SOCKOPT_LINGER` | 소켓 종료 시 대기 기간 (밀리초, `int`; -1 = 무한, 0 = 즉시 폐기) |
-| `ZLINK_SOCKOPT_BACKLOG` | 대기 중인 연결 큐의 최대 길이 (`int`) |
-| `ZLINK_SOCKOPT_LAST_ENDPOINT` | 마지막으로 바인딩된 엔드포인트 (읽기 전용, `string`) |
-| `ZLINK_SOCKOPT_FD` | 외부 이벤트 루프 통합을 위한 파일 디스크립터 (읽기 전용, `zlink_fd_t`) |
-| `ZLINK_SOCKOPT_EVENTS` | 이벤트 상태 비트마스크 (읽기 전용, `int`) |
+`zlink_set_option()` / `zlink_get_option()`과 함께 사용합니다.
+모든 소켓 타입, gateway, discovery(fan-out)에 적용됩니다.
 
-#### 하이 워터 마크
+##### Transport/Buffer
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_SOCKOPT_SNDHWM` | 송신 하이 워터 마크; 송신 대기열의 최대 메시지 수 (`int`; 0 = 무제한) |
-| `ZLINK_SOCKOPT_RCVHWM` | 수신 하이 워터 마크; 수신 대기열의 최대 메시지 수 (`int`; 0 = 무제한) |
-| `ZLINK_SOCKOPT_MAXMSGSIZE` | 최대 인바운드 메시지 크기 (바이트, `int64_t`; -1 = 무제한) |
+| `ZLINK_OPT_AFFINITY` | I/O 스레드 어피니티 비트마스크 (`uint64_t`) |
+| `ZLINK_OPT_RATE` | 멀티캐스트 데이터 전송률 (kbps, `int`) |
+| `ZLINK_OPT_RECOVERY_IVL` | 멀티캐스트 복구 간격 (밀리초, `int`) |
+| `ZLINK_OPT_SNDBUF` | 커널 송신 버퍼 크기 (바이트, `int`; 0 = OS 기본값) |
+| `ZLINK_OPT_RCVBUF` | 커널 수신 버퍼 크기 (바이트, `int`; 0 = OS 기본값) |
+| `ZLINK_OPT_SNDHWM` | 송신 하이 워터 마크 (`int`; 0 = 무제한) |
+| `ZLINK_OPT_RCVHWM` | 수신 하이 워터 마크 (`int`; 0 = 무제한) |
+| `ZLINK_OPT_MAXMSGSIZE` | 최대 인바운드 메시지 크기 (바이트, `int64_t`; -1 = 무제한) |
 
-#### 버퍼
-
-| 상수 | 설명 |
-|---|---|
-| `ZLINK_SOCKOPT_SNDBUF` | 커널 송신 버퍼 크기 (바이트, `int`; 0 = OS 기본값) |
-| `ZLINK_SOCKOPT_RCVBUF` | 커널 수신 버퍼 크기 (바이트, `int`; 0 = OS 기본값) |
-
-#### 타이밍
+##### Timing
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_SOCKOPT_SNDTIMEO` | 송신 타임아웃 (밀리초, `int`; -1 = 무한) |
-| `ZLINK_SOCKOPT_RCVTIMEO` | 수신 타임아웃 (밀리초, `int`; -1 = 무한) |
-| `ZLINK_SOCKOPT_RECONNECT_IVL` | 초기 재연결 간격 (밀리초, `int`) |
-| `ZLINK_SOCKOPT_RECONNECT_IVL_MAX` | 최대 재연결 간격 (밀리초, `int`; 0 = `RECONNECT_IVL`만 사용) |
-| `ZLINK_SOCKOPT_CONNECT_TIMEOUT` | 연결 타임아웃 (밀리초, `int`) |
-| `ZLINK_SOCKOPT_TCP_MAXRT` | 최대 TCP 재전송 타임아웃 (밀리초, `int`) |
-| `ZLINK_SOCKOPT_HANDSHAKE_IVL` | ZMTP 핸드셰이크 타임아웃 (밀리초, `int`) |
+| `ZLINK_OPT_LINGER` | 소켓 종료 시 대기 기간 (밀리초, `int`; -1 = 무한, 0 = 즉시 폐기) |
+| `ZLINK_OPT_RCVTIMEO` | 수신 타임아웃 (밀리초, `int`; -1 = 무한) |
+| `ZLINK_OPT_SNDTIMEO` | 송신 타임아웃 (밀리초, `int`; -1 = 무한) |
+| `ZLINK_OPT_CONNECT_TIMEOUT` | 연결 타임아웃 (밀리초, `int`) |
+| `ZLINK_OPT_RECONNECT_IVL` | 초기 재연결 간격 (밀리초, `int`) |
+| `ZLINK_OPT_RECONNECT_IVL_MAX` | 최대 재연결 간격 (밀리초, `int`; 0 = RECONNECT_IVL만 사용) |
+| `ZLINK_OPT_HANDSHAKE_IVL` | ZMTP 핸드셰이크 타임아웃 (밀리초, `int`) |
 
-#### TCP
-
-| 상수 | 설명 |
-|---|---|
-| `ZLINK_SOCKOPT_TCP_KEEPALIVE` | SO_KEEPALIVE 재정의 (`int`; -1 = OS 기본값, 0 = 끄기, 1 = 켜기) |
-| `ZLINK_SOCKOPT_TCP_KEEPALIVE_CNT` | TCP_KEEPCNT 재정의 (`int`; -1 = OS 기본값) |
-| `ZLINK_SOCKOPT_TCP_KEEPALIVE_IDLE` | TCP_KEEPIDLE 재정의 (초, `int`; -1 = OS 기본값) |
-| `ZLINK_SOCKOPT_TCP_KEEPALIVE_INTVL` | TCP_KEEPINTVL 재정의 (초, `int`; -1 = OS 기본값) |
-| `ZLINK_SOCKOPT_TCP_NODELAY` | TCP_NODELAY 활성화 (`int`; 0 또는 1) |
-
-#### Pub/Sub
+##### TCP
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_SOCKOPT_SUBSCRIBE` | 토픽 접두사 구독 (`binary`) |
-| `ZLINK_SOCKOPT_UNSUBSCRIBE` | 토픽 접두사 구독 해제 (`binary`) |
-| `ZLINK_SOCKOPT_XPUB_VERBOSE` | 모든 구독 메시지를 업스트림으로 전달 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_XPUB_NODROP` | HWM에서 메시지를 자동 삭제하지 않고 `EAGAIN` 반환 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_XPUB_MANUAL` | XPUB에서 수동 구독 관리 활성화 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_XPUB_WELCOME_MSG` | 새 서브스크라이버 연결 시 전송되는 메시지 (`binary`) |
-| `ZLINK_SOCKOPT_XPUB_VERBOSER` | 모든 구독 및 구독 해제 메시지를 업스트림으로 전달 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_XPUB_MANUAL_LAST_VALUE` | 수동 XPUB 모드에서 최신 값 캐싱 활성화 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_INVERT_MATCHING` | 토픽 매칭 반전 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_CONFLATE` | 토픽당 가장 최근 메시지만 유지 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_ONLY_FIRST_SUBSCRIBE` | 토픽 접두사당 첫 번째 구독만 처리 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_TOPICS_COUNT` | 구독된 토픽 수 (읽기 전용, `int`) |
+| `ZLINK_OPT_TCP_KEEPALIVE` | SO_KEEPALIVE 재정의 (`int`; -1 = OS 기본값, 0 = 끄기, 1 = 켜기) |
+| `ZLINK_OPT_TCP_KEEPALIVE_CNT` | TCP_KEEPCNT 재정의 (`int`; -1 = OS 기본값) |
+| `ZLINK_OPT_TCP_KEEPALIVE_IDLE` | TCP_KEEPIDLE 재정의 (초, `int`; -1 = OS 기본값) |
+| `ZLINK_OPT_TCP_KEEPALIVE_INTVL` | TCP_KEEPINTVL 재정의 (초, `int`; -1 = OS 기본값) |
+| `ZLINK_OPT_TCP_MAXRT` | 최대 TCP 재전송 타임아웃 (밀리초, `int`) |
+| `ZLINK_OPT_TCP_NODELAY` | TCP_NODELAY 활성화 (`int`; 0 또는 1) |
 
-#### Router
+##### Heartbeat
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_SOCKOPT_ROUTER_MANDATORY` | 연결되지 않은 피어로 라우팅 시 `EHOSTUNREACH` 반환 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_ROUTER_HANDOVER` | 새 연결이 기존 라우팅 아이덴티티를 인수하도록 허용 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_PROBE_ROUTER` | 연결 시 빈 메시지를 보내 ROUTER 피어에서 아이덴티티 설정 (`int`; 0 또는 1) |
+| `ZLINK_OPT_HEARTBEAT_IVL` | ZMTP 하트비트 간격 (밀리초, `int`; 0 = 비활성화) |
+| `ZLINK_OPT_HEARTBEAT_TTL` | ZMTP 하트비트 TTL (밀리초, `int`) |
+| `ZLINK_OPT_HEARTBEAT_TIMEOUT` | ZMTP 하트비트 타임아웃 (밀리초, `int`) |
 
-#### 하트비트
-
-| 상수 | 설명 |
-|---|---|
-| `ZLINK_SOCKOPT_HEARTBEAT_IVL` | ZMTP 하트비트 간격 (밀리초, `int`; 0 = 비활성화) |
-| `ZLINK_SOCKOPT_HEARTBEAT_TTL` | ZMTP 하트비트 TTL (밀리초, `int`) |
-| `ZLINK_SOCKOPT_HEARTBEAT_TIMEOUT` | ZMTP 하트비트 타임아웃 (밀리초, `int`) |
-
-#### TLS
+##### Network
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_SOCKOPT_TLS_CERT` | PEM 인코딩된 TLS 인증서 경로 (`string`) |
-| `ZLINK_SOCKOPT_TLS_KEY` | PEM 인코딩된 TLS 개인 키 경로 (`string`) |
-| `ZLINK_SOCKOPT_TLS_CA` | PEM 인코딩된 CA 인증서 번들 경로 (`string`) |
-| `ZLINK_SOCKOPT_TLS_VERIFY` | TLS 피어 인증서 검증 활성화 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_TLS_REQUIRE_CLIENT_CERT` | 서버 소켓에서 TLS 클라이언트 인증서 요구 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_TLS_HOSTNAME` | TLS SNI 및 인증서 검증을 위한 예상 호스트명 (`string`) |
-| `ZLINK_SOCKOPT_TLS_TRUST_SYSTEM` | 시스템 CA 인증서 저장소 신뢰 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_TLS_PASSWORD` | 암호화된 TLS 개인 키의 비밀번호 (`string`) |
+| `ZLINK_OPT_IPV6` | 소켓에서 IPv6 활성화 (`int`; 0 또는 1) |
+| `ZLINK_OPT_TOS` | IP Type-of-Service 값 (`int`) |
+| `ZLINK_OPT_MULTICAST_HOPS` | 최대 멀티캐스트 홉 수 (TTL) (`int`) |
+| `ZLINK_OPT_MULTICAST_MAXTPDU` | 최대 멀티캐스트 전송 데이터 유닛 크기 (바이트, `int`) |
+| `ZLINK_OPT_BINDTODEVICE` | 소켓을 특정 네트워크 인터페이스에 바인딩 (`string`) |
+| `ZLINK_OPT_BACKLOG` | 대기 중인 연결 큐의 최대 길이 (`int`) |
 
-#### 기타
+##### Behavior
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_SOCKOPT_IPV6` | 소켓에서 IPv6 활성화 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_IMMEDIATE` | 완료된 연결에만 메시지 대기열 사용 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_BLOCKY` | 레거시 옵션: context 종료 시 블로킹 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_BINDTODEVICE` | 소켓을 특정 네트워크 인터페이스에 바인딩 (`string`) |
-| `ZLINK_SOCKOPT_CONNECT_ROUTING_ID` | 다음 발신 연결의 라우팅 아이덴티티 설정 (`binary`) |
-| `ZLINK_SOCKOPT_STREAM_NOTIFY` | STREAM 연결/해제 알림 활성화 (`int`; 0 또는 1) |
-| `ZLINK_SOCKOPT_RATE` | 멀티캐스트 데이터 전송률 (kbps, `int`) |
-| `ZLINK_SOCKOPT_RECOVERY_IVL` | 멀티캐스트 복구 간격 (밀리초, `int`) |
-| `ZLINK_SOCKOPT_MULTICAST_HOPS` | 최대 멀티캐스트 홉 수 (TTL) (`int`) |
-| `ZLINK_SOCKOPT_TOS` | IP Type-of-Service 값 (`int`) |
-| `ZLINK_SOCKOPT_MULTICAST_MAXTPDU` | 최대 멀티캐스트 전송 데이터 유닛 크기 (바이트, `int`) |
-| `ZLINK_SOCKOPT_ZMP_METADATA` | 발신 연결에 ZMP 메타데이터 속성 첨부 (`binary`) |
+| `ZLINK_OPT_IMMEDIATE` | 완료된 연결에만 메시지 대기열 사용 (`int`; 0 또는 1) |
+| `ZLINK_OPT_CONFLATE` | 토픽당 가장 최근 메시지만 유지 (`int`; 0 또는 1) |
+| `ZLINK_OPT_BLOCKY` | 레거시 옵션: context 종료 시 블로킹 (`int`; 0 또는 1) |
+| `ZLINK_OPT_INVERT_MATCHING` | 토픽 매칭 반전 (`int`; 0 또는 1) |
+| `ZLINK_OPT_ZMP_METADATA` | 발신 연결에 ZMP 메타데이터 속성 첨부 (`binary`) |
+
+##### Read-only
+
+| 상수 | 설명 |
+|---|---|
+| `ZLINK_OPT_FD` | 파일 디스크립터 (읽기 전용, `zlink_fd_t`) |
+| `ZLINK_OPT_EVENTS` | 이벤트 상태 비트마스크 (읽기 전용, `int`) |
+| `ZLINK_OPT_TYPE` | 소켓 타입 (읽기 전용, `int`) |
+| `ZLINK_OPT_LAST_ENDPOINT` | 마지막으로 바인딩된 엔드포인트 (읽기 전용, `string`) |
+
+#### Router 옵션 (`zlink_router_option_t`)
+
+`zlink_set_router_option()` / `zlink_get_router_option()`과 함께 사용합니다.
+
+| 상수 | 설명 |
+|---|---|
+| `ZLINK_ROUTER_OPT_MANDATORY` | 연결되지 않은 피어로 라우팅 시 `EHOSTUNREACH` 반환 (`int`; 0 또는 1) |
+| `ZLINK_ROUTER_OPT_HANDOVER` | 새 연결이 기존 라우팅 아이덴티티를 인수하도록 허용 (`int`; 0 또는 1) |
+| `ZLINK_ROUTER_OPT_PROBE` | 연결 시 빈 메시지를 보내 ROUTER 피어에서 아이덴티티 설정 (`int`; 0 또는 1) |
+| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 다음 발신 연결의 라우팅 아이덴티티 설정 (`binary`) |
+
+#### Dealer 옵션 (`zlink_dealer_option_t`)
+
+`zlink_set_dealer_option()`과 함께 사용합니다.
+
+| 상수 | 설명 |
+|---|---|
+| `ZLINK_DEALER_OPT_PROBE` | 연결 시 빈 메시지를 보내 ROUTER 피어에서 아이덴티티 설정 (`int`; 0 또는 1) |
+
+#### Pub 옵션 (`zlink_pub_option_t`)
+
+`zlink_set_pub_option()` / `zlink_get_pub_option()`과 함께 사용합니다.
+
+| 상수 | 설명 |
+|---|---|
+| `ZLINK_PUB_OPT_VERBOSE` | 모든 구독 메시지를 업스트림으로 전달 (`int`; 0 또는 1) |
+| `ZLINK_PUB_OPT_VERBOSER` | 모든 구독 및 구독 해제 메시지를 업스트림으로 전달 (`int`; 0 또는 1) |
+| `ZLINK_PUB_OPT_MANUAL` | XPUB에서 수동 구독 관리 활성화 (`int`; 0 또는 1) |
+| `ZLINK_PUB_OPT_MANUAL_LAST_VALUE` | 수동 XPUB 모드에서 최신 값 캐싱 활성화 (`int`; 0 또는 1) |
+| `ZLINK_PUB_OPT_NODROP` | HWM에서 메시지를 자동 삭제하지 않고 `EAGAIN` 반환 (`int`; 0 또는 1) |
+| `ZLINK_PUB_OPT_WELCOME_MSG` | 새 서브스크라이버 연결 시 전송되는 메시지 (`binary`) |
+| `ZLINK_PUB_OPT_TOPICS_COUNT` | 구독된 토픽 수 (읽기 전용, `int`) |
+| `ZLINK_PUB_OPT_APPROVE_SUBSCRIBE` | XPUB manual 모드에서 구독 승인 (`binary`) |
+| `ZLINK_PUB_OPT_REJECT_SUBSCRIBE` | XPUB manual 모드에서 구독 거부 (`binary`) |
+
+#### Sub 옵션 (`zlink_sub_option_t`)
+
+`zlink_set_sub_option()` / `zlink_get_sub_option()`과 함께 사용합니다.
+
+| 상수 | 설명 |
+|---|---|
+| `ZLINK_SUB_OPT_TOPICS_COUNT` | 구독된 토픽 수 (읽기 전용, `int`) |
+
+#### Stream 옵션 (`zlink_stream_option_t`)
+
+`zlink_set_stream_option()` / `zlink_get_stream_option()`과 함께 사용합니다.
+
+| 상수 | 설명 |
+|---|---|
+| `ZLINK_STREAM_OPT_NOTIFY` | STREAM 연결/해제 알림 활성화 (`int`; 0 또는 1) |
 
 ## 함수
 
@@ -357,7 +380,7 @@ int zlink_close (void *s_);
 ```
 
 소켓을 닫고 관련된 모든 리소스를 해제합니다. 송신 대기열에 남아 있는 메시지는
-`ZLINK_LINGER` 설정에 따라 폐기되거나 송신됩니다. 다른 스레드에서 동일 핸들에
+`ZLINK_OPT_LINGER` 설정에 따라 폐기되거나 송신됩니다. 다른 스레드에서 동일 핸들에
 대해 콜백이나 API 호출이 진행 중이면 `errno=EBUSY`로 실패합니다. send-ready
 또는 monitor 콜백 내에서의 self-close는 콜백 에필로그까지 지연됩니다.
 
@@ -370,20 +393,20 @@ int zlink_close (void *s_);
 
 ---
 
-### zlink_setsockopt
+### zlink_set_option
 
-소켓 옵션을 설정합니다.
+공통 옵션을 설정합니다.
 
 ```c
-int zlink_setsockopt (void *s_,
-                      zlink_socket_option_t option_,
+int zlink_set_option (void *handle_,
+                      zlink_option_t option_,
                       const void *optval_,
                       size_t optvallen_);
 ```
 
-소켓 옵션을 구성합니다. `option_` 매개변수는 옵션을 식별합니다 (예:
-`ZLINK_SNDHWM`, `ZLINK_LINGER`, `ZLINK_SUBSCRIBE`). `optval_` 포인터는 값을
-제공하고 `optvallen_`은 크기를 바이트 단위로 지정합니다.
+공통 옵션을 설정합니다. 모든 소켓 타입, gateway, discovery(fan-out)에서
+사용합니다. `option_` 매개변수는 `zlink_option_t` enum 값입니다. `optval_`
+포인터는 값을 제공하고 `optvallen_`은 크기를 바이트 단위로 지정합니다.
 
 일부 옵션은 소켓을 바인딩하거나 연결하기 전에 설정해야 합니다.
 
@@ -392,26 +415,253 @@ int zlink_setsockopt (void *s_,
 **에러:** 옵션이 알 수 없거나 값이 범위를 벗어나면 `EINVAL`. Context가 종료된
 경우 `ETERM`.
 
-**참고:** `zlink_getsockopt`
+**참고:** `zlink_get_option`
 
 ---
 
-### zlink_getsockopt
+### zlink_get_option
 
-소켓 옵션을 조회합니다.
+공통 옵션을 조회합니다.
 
 ```c
-int zlink_getsockopt (void *s_,
-                      zlink_socket_option_t option_,
+int zlink_get_option (void *handle_,
+                      zlink_option_t option_,
                       void *optval_,
                       size_t *optvallen_);
 ```
 
-소켓 옵션의 현재 값을 가져옵니다.
+공통 옵션의 현재 값을 가져옵니다.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
-**참고:** `zlink_setsockopt`
+**참고:** `zlink_set_option`
+
+---
+
+### zlink_set_routing_id
+
+소켓의 라우팅 아이덴티티를 설정합니다.
+
+```c
+int zlink_set_routing_id (void *handle_,
+                           const void *data_,
+                           size_t size_);
+```
+
+ROUTER 주소 지정을 위한 소켓 아이덴티티를 설정합니다. 최대 255바이트.
+바인딩 또는 연결하기 전에 설정해야 합니다.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**참고:** `zlink_get_routing_id`
+
+---
+
+### zlink_get_routing_id
+
+소켓의 라우팅 아이덴티티를 조회합니다.
+
+```c
+int zlink_get_routing_id (void *handle_,
+                           zlink_routing_id_t *out_);
+```
+
+소켓에 설정된 라우팅 아이덴티티를 가져옵니다.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**참고:** `zlink_set_routing_id`
+
+---
+
+### zlink_set_tls_server
+
+서버 측 TLS를 구성합니다.
+
+```c
+int zlink_set_tls_server (void *handle_,
+                           const char *cert_,
+                           const char *key_,
+                           int require_client_cert_);
+```
+
+서버 소켓에 TLS 인증서, 개인 키를 설정하고, 클라이언트 인증서 요구 여부를
+지정합니다.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**참고:** `zlink_set_tls_client`, `zlink_bind`
+
+---
+
+### zlink_set_tls_client
+
+클라이언트 측 TLS를 구성합니다.
+
+```c
+int zlink_set_tls_client (void *handle_,
+                           const char *ca_cert_,
+                           const char *hostname_,
+                           int trust_system_);
+```
+
+클라이언트 소켓에 CA 인증서, 호스트명(SNI 및 인증서 검증용), 시스템 CA
+저장소 신뢰 여부를 설정합니다.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**참고:** `zlink_set_tls_server`, `zlink_connect`
+
+---
+
+### zlink_set_router_option
+
+ROUTER 소켓 전용 옵션을 설정합니다.
+
+```c
+int zlink_set_router_option (void *handle_,
+                              zlink_router_option_t option_,
+                              const void *optval_,
+                              size_t optvallen_);
+```
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**참고:** `zlink_get_router_option`
+
+---
+
+### zlink_get_router_option
+
+ROUTER 소켓 전용 옵션을 조회합니다.
+
+```c
+int zlink_get_router_option (void *handle_,
+                              zlink_router_option_t option_,
+                              void *optval_,
+                              size_t *optvallen_);
+```
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**참고:** `zlink_set_router_option`
+
+---
+
+### zlink_set_dealer_option
+
+DEALER 소켓 전용 옵션을 설정합니다.
+
+```c
+int zlink_set_dealer_option (void *handle_,
+                              zlink_dealer_option_t option_,
+                              const void *optval_,
+                              size_t optvallen_);
+```
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+---
+
+### zlink_set_stream_option
+
+STREAM 소켓 전용 옵션을 설정합니다.
+
+```c
+int zlink_set_stream_option (void *handle_,
+                              zlink_stream_option_t option_,
+                              const void *optval_,
+                              size_t optvallen_);
+```
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**참고:** `zlink_get_stream_option`
+
+---
+
+### zlink_get_stream_option
+
+STREAM 소켓 전용 옵션을 조회합니다.
+
+```c
+int zlink_get_stream_option (void *handle_,
+                              zlink_stream_option_t option_,
+                              void *optval_,
+                              size_t *optvallen_);
+```
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**참고:** `zlink_set_stream_option`
+
+---
+
+### zlink_set_pub_option
+
+PUB/XPUB 소켓, spot-pub, spotnode-pub 전용 옵션을 설정합니다.
+
+```c
+int zlink_set_pub_option (void *handle_,
+                           zlink_pub_option_t option_,
+                           const void *optval_,
+                           size_t optvallen_);
+```
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**참고:** `zlink_get_pub_option`
+
+---
+
+### zlink_get_pub_option
+
+PUB/XPUB 소켓, spot-pub, spotnode-pub 전용 옵션을 조회합니다.
+
+```c
+int zlink_get_pub_option (void *handle_,
+                           zlink_pub_option_t option_,
+                           void *optval_,
+                           size_t *optvallen_);
+```
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**참고:** `zlink_set_pub_option`
+
+---
+
+### zlink_set_sub_option
+
+SUB/XSUB 소켓, spot-sub, spotnode-sub 전용 옵션을 설정합니다.
+
+```c
+int zlink_set_sub_option (void *handle_,
+                           zlink_sub_option_t option_,
+                           const void *optval_,
+                           size_t optvallen_);
+```
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**참고:** `zlink_get_sub_option`
+
+---
+
+### zlink_get_sub_option
+
+SUB/XSUB 소켓, spot-sub, spotnode-sub 전용 옵션을 조회합니다.
+
+```c
+int zlink_get_sub_option (void *handle_,
+                           zlink_sub_option_t option_,
+                           void *optval_,
+                           size_t *optvallen_);
+```
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**참고:** `zlink_set_sub_option`
 
 ---
 
@@ -434,7 +684,7 @@ int zlink_bind (void *s_, const char *addr_);
 
 소켓은 여러 엔드포인트에 바인딩할 수 있습니다. TCP의 경우 포트 0을 지정하면
 시스템이 임시 포트를 할당합니다. 실제 엔드포인트를 가져오려면
-`ZLINK_LAST_ENDPOINT`를 사용하세요.
+`ZLINK_OPT_LAST_ENDPOINT`를 사용하세요.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
@@ -544,7 +794,7 @@ int zlink_recv (void *s_,
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
 **에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우, 또는
-`ZLINK_RCVTIMEO`가 만료된 경우 `EAGAIN`. 수신 핸들러가 부착된 경우 `EBUSY`.
+`ZLINK_OPT_RCVTIMEO`가 만료된 경우 `EAGAIN`. 수신 핸들러가 부착된 경우 `EBUSY`.
 Context가 종료된 경우 `ETERM`.
 
 **참고:** `zlink_send`, `zlink_recv_handler`, `zlink_multipart_close`
@@ -612,16 +862,16 @@ int zlink_publish (void *subject_,
 NULL이거나 지원하지 않는 타입이면 `EINVAL`. subject 타입이 publish를
 지원하지 않으면 `ENOTSUP`.
 
-**참고:** `zlink_subscribe`, `zlink_subscribe_recv`
+**참고:** `zlink_set_subscription`, `zlink_subscribe`
 
 ---
 
-### zlink_subscribe
+### zlink_set_subscription
 
 토픽 필터를 구독합니다.
 
 ```c
-int zlink_subscribe (void *subject_, const char *filter_);
+int zlink_set_subscription (void *handle_, const char *filter_);
 ```
 
 `filter_`에 매칭되는 메시지를 구독합니다. 필터 해석: `filter_`가 `*`로
@@ -635,42 +885,64 @@ int zlink_subscribe (void *subject_, const char *filter_);
 유효하지 않은 패턴 구문(복수 `*`, 중간 `*`)이면 `EINVAL`. subject 타입이
 구독을 지원하지 않으면 `ENOTSUP`.
 
-**참고:** `zlink_unsubscribe`, `zlink_subscribe_recv`
+**참고:** `zlink_unset_subscription`, `zlink_subscribe`
 
 ---
 
-### zlink_unsubscribe
+### zlink_unset_subscription
 
 토픽 필터 구독을 해제합니다.
 
 ```c
-int zlink_unsubscribe (void *subject_, const char *filter_);
+int zlink_unset_subscription (void *handle_, const char *filter_);
 ```
 
-이전에 등록된 구독을 제거합니다. `zlink_subscribe()`와 동일한 문자열 해석
-규칙이 적용됩니다: trailing `*`는 패턴 해제, 그 외는 exact topic 해제.
+이전에 등록된 구독을 제거합니다. `zlink_set_subscription()`과 동일한 문자열
+해석 규칙이 적용됩니다: trailing `*`는 패턴 해제, 그 외는 exact topic 해제.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
 **에러:** `subject_`가 NULL이면 `EFAULT`. `filter_`가 NULL이거나 비어있으면
 `EINVAL`. subject 타입이 구독 해제를 지원하지 않으면 `ENOTSUP`.
 
-**참고:** `zlink_subscribe`
+**참고:** `zlink_set_subscription`
 
 ---
 
-### zlink_subscribe_recv
+### zlink_subscription_at
+
+인덱스로 구독 필터를 조회합니다.
+
+```c
+int zlink_subscription_at (void *handle_,
+                            size_t index_,
+                            char *filter_out_,
+                            size_t *filter_len_inout_,
+                            int *is_pattern_out_);
+```
+
+`index_` 위치의 구독 필터를 가져옵니다. `filter_out_`에 필터 문자열이,
+`*filter_len_inout_`에 길이가, `*is_pattern_out_`에 패턴 여부(trailing `*`
+구독이면 1, exact topic이면 0)가 설정됩니다.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**참고:** `zlink_set_subscription`, `zlink_unset_subscription`
+
+---
+
+### zlink_subscribe
 
 토픽 기반 멀티파트 메시지를 수신합니다.
 
 ```c
-int zlink_subscribe_recv (void *subject_,
-                          zlink_routing_id_t *source_rid_out_,
-                          zlink_msg_t **parts_out_,
-                          size_t *part_count_out_,
-                          char *topic_id_out_,
-                          size_t *topic_id_len_out_,
-                          zlink_send_flags_t flags_);
+int zlink_subscribe (void *subject_,
+                     zlink_routing_id_t *source_rid_out_,
+                     zlink_msg_t **parts_out_,
+                     size_t *part_count_out_,
+                     char *topic_id_out_,
+                     size_t *topic_id_len_out_,
+                     zlink_send_flags_t flags_);
 ```
 
 recv 모드에서 다음 토픽 기반 메시지를 수신합니다. 성공 시
@@ -691,27 +963,27 @@ subject가 recv 모드여야 합니다 (핸들러 미부착). subscribe handler�
 버퍼가 작으면 `EMSGSIZE`. subject 타입이 subscribe recv를 지원하지 않으면
 `ENOTSUP`.
 
-**참고:** `zlink_subscribe_handler`, `zlink_subscribe`
+**참고:** `zlink_subscribe_handler`, `zlink_set_subscription`
 
 ---
 
-### zlink_subscription_event_recv
+### zlink_subscription_event
 
 XPUB 소켓에서 구독 이벤트를 수신합니다.
 
 ```c
-int zlink_subscription_event_recv (void *subject_,
-                                   zlink_routing_id_t *source_rid_out_,
-                                   int *subscribed_out_,
-                                   char *topic_id_out_,
-                                   size_t *topic_id_len_out_,
-                                   zlink_send_flags_t flags_);
+int zlink_subscription_event (void *subject_,
+                               zlink_routing_id_t *source_rid_out_,
+                               int *subscribed_out_,
+                               char *topic_id_out_,
+                               size_t *topic_id_len_out_,
+                               zlink_send_flags_t flags_);
 ```
 
 recv 모드에서 다음 구독 이벤트를 수신합니다. 성공 시
 `*source_rid_out_`는 구독하는 피어를 식별하고, `*subscribed_out_`는
 subscribe이면 1, unsubscribe이면 0이며, `*topic_id_out_` /
-`*topic_id_len_out_`는 토픽 바이트를 받습니다 (`zlink_subscribe_recv()`와
+`*topic_id_len_out_`는 토픽 바이트를 받습니다 (`zlink_subscribe()`와
 동일한 binary-safe buffer 계약).
 
 subject가 recv 모드여야 합니다. subscription event handler가 부착된 경우
@@ -729,18 +1001,23 @@ subject가 recv 모드여야 합니다. subscription event handler가 부착된 
 
 ---
 
-### zlink_socket_send_ready_handler
+### zlink_send_ready_handler
 
 send-ready 콜백을 설정하거나 교체합니다.
 
 ```c
-int zlink_socket_send_ready_handler (
-  void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
+int zlink_send_ready_handler (void *s_,
+                               zlink_send_ready_handler_fn handler_,
+                               void *userdata_);
 ```
 
 핸들러는 교체 전용입니다. NULL 전달은 유효하지 않습니다. 교체 성공 시 다음 쓰기
 가능 전환부터 반영됩니다. 동일 핸들의 send-ready 콜백 내에서 재진입 호출하면
 `errno=EDEADLK`로 실패합니다.
+
+지원: PAIR, PUB, XPUB, DEALER, ROUTER, gateway, unified spot, unified
+spot_node.
+미지원: SUB, XSUB, STREAM.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 

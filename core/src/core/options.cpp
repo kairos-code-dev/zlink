@@ -175,24 +175,24 @@ int zlink::options_t::setsockopt (int option_,
         memcpy (&value, optval_, sizeof (int));
 
     switch (option_) {
-        case ZLINK_SNDHWM:
+        case ZLINK_INTERNAL_OPT_SNDHWM:
             if (is_int && value >= 0) {
                 sndhwm = value;
                 return 0;
             }
             break;
 
-        case ZLINK_RCVHWM:
+        case ZLINK_INTERNAL_OPT_RCVHWM:
             if (is_int && value >= 0) {
                 rcvhwm = value;
                 return 0;
             }
             break;
 
-        case ZLINK_AFFINITY:
+        case ZLINK_INTERNAL_OPT_AFFINITY:
             return do_setsockopt (optval_, optvallen_, &affinity);
 
-        case ZLINK_ROUTING_ID:
+        case ZLINK_INTERNAL_OPT_ROUTING_ID:
             if (optvallen_ > 0 && optvallen_ <= UCHAR_MAX) {
                 routing_id_size = static_cast<unsigned char> (optvallen_);
                 memcpy (routing_id, optval_, routing_id_size);
@@ -200,191 +200,191 @@ int zlink::options_t::setsockopt (int option_,
             }
             break;
 
-        case ZLINK_RATE:
+        case ZLINK_INTERNAL_OPT_RATE:
             if (is_int && value > 0) {
                 rate = value;
                 return 0;
             }
             break;
 
-        case ZLINK_RECOVERY_IVL:
+        case ZLINK_INTERNAL_OPT_RECOVERY_IVL:
             if (is_int && value >= 0) {
                 recovery_ivl = value;
                 return 0;
             }
             break;
 
-        case ZLINK_SNDBUF:
+        case ZLINK_INTERNAL_OPT_SNDBUF:
             if (is_int && value >= -1) {
                 sndbuf = value;
                 return 0;
             }
             break;
 
-        case ZLINK_RCVBUF:
+        case ZLINK_INTERNAL_OPT_RCVBUF:
             if (is_int && value >= -1) {
                 rcvbuf = value;
                 return 0;
             }
             break;
 
-        case ZLINK_TOS:
+        case ZLINK_INTERNAL_OPT_TOS:
             if (is_int && value >= 0) {
                 tos = value;
                 return 0;
             }
             break;
 
-        case ZLINK_LINGER:
+        case ZLINK_INTERNAL_OPT_LINGER:
             if (is_int && value >= -1) {
                 linger.store (value);
                 return 0;
             }
             break;
 
-        case ZLINK_CONNECT_TIMEOUT:
+        case ZLINK_INTERNAL_OPT_CONNECT_TIMEOUT:
             if (is_int && value >= 0) {
                 connect_timeout = value;
                 return 0;
             }
             break;
 
-        case ZLINK_TCP_MAXRT:
+        case ZLINK_INTERNAL_OPT_TCP_MAXRT:
             if (is_int && value >= 0) {
                 tcp_maxrt = value;
                 return 0;
             }
             break;
 
-        case ZLINK_RECONNECT_IVL:
+        case ZLINK_INTERNAL_OPT_RECONNECT_IVL:
             if (is_int && value >= -1) {
                 reconnect_ivl = value;
                 return 0;
             }
             break;
 
-        case ZLINK_RECONNECT_IVL_MAX:
+        case ZLINK_INTERNAL_OPT_RECONNECT_IVL_MAX:
             if (is_int && value >= 0) {
                 reconnect_ivl_max = value;
                 return 0;
             }
             break;
 
-        case ZLINK_BACKLOG:
+        case ZLINK_INTERNAL_OPT_BACKLOG:
             if (is_int && value >= 0) {
                 backlog = value;
                 return 0;
             }
             break;
 
-        case ZLINK_MAXMSGSIZE:
+        case ZLINK_INTERNAL_OPT_MAXMSGSIZE:
             return do_setsockopt (optval_, optvallen_, &maxmsgsize);
 
-        case ZLINK_MULTICAST_HOPS:
+        case ZLINK_INTERNAL_OPT_MULTICAST_HOPS:
             if (is_int && value > 0) {
                 multicast_hops = value;
                 return 0;
             }
             break;
 
-        case ZLINK_MULTICAST_MAXTPDU:
+        case ZLINK_INTERNAL_OPT_MULTICAST_MAXTPDU:
             if (is_int && value > 0) {
                 multicast_maxtpdu = value;
                 return 0;
             }
             break;
 
-        case ZLINK_RCVTIMEO:
+        case ZLINK_INTERNAL_OPT_RCVTIMEO:
             if (is_int && value >= -1) {
                 rcvtimeo = value;
                 return 0;
             }
             break;
 
-        case ZLINK_SNDTIMEO:
+        case ZLINK_INTERNAL_OPT_SNDTIMEO:
             if (is_int && value >= -1) {
                 sndtimeo = value;
                 return 0;
             }
             break;
 
-        case ZLINK_IPV6:
+        case ZLINK_INTERNAL_OPT_IPV6:
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
                                                      &ipv6);
 
-        case ZLINK_TCP_KEEPALIVE:
+        case ZLINK_INTERNAL_OPT_TCP_KEEPALIVE:
             if (is_int && (value == -1 || value == 0 || value == 1)) {
                 tcp_keepalive = value;
                 return 0;
             }
             break;
 
-        case ZLINK_TCP_KEEPALIVE_CNT:
+        case ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_CNT:
             if (is_int && (value == -1 || value >= 0)) {
                 tcp_keepalive_cnt = value;
                 return 0;
             }
             break;
 
-        case ZLINK_TCP_KEEPALIVE_IDLE:
+        case ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_IDLE:
             if (is_int && (value == -1 || value >= 0)) {
                 tcp_keepalive_idle = value;
                 return 0;
             }
             break;
 
-        case ZLINK_TCP_KEEPALIVE_INTVL:
+        case ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_INTVL:
             if (is_int && (value == -1 || value >= 0)) {
                 tcp_keepalive_intvl = value;
                 return 0;
             }
             break;
 
-        case ZLINK_TCP_NODELAY:
+        case ZLINK_INTERNAL_OPT_TCP_NODELAY:
             if (is_int && (value == -1 || value == 0 || value == 1)) {
                 tcp_nodelay = value;
                 return 0;
             }
             break;
 
-        case ZLINK_IMMEDIATE:
+        case ZLINK_INTERNAL_OPT_IMMEDIATE:
             if (is_int && (value == 0 || value == 1)) {
                 immediate = value;
                 return 0;
             }
             break;
 
-        case ZLINK_CONFLATE:
+        case ZLINK_INTERNAL_OPT_CONFLATE:
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
                                                      &conflate);
 
-        case ZLINK_HANDSHAKE_IVL:
+        case ZLINK_INTERNAL_OPT_HANDSHAKE_IVL:
             if (is_int && value >= 0) {
                 handshake_ivl = value;
                 return 0;
             }
             break;
 
-        case ZLINK_INVERT_MATCHING:
+        case ZLINK_INTERNAL_OPT_INVERT_MATCHING:
             return do_setsockopt_int_as_bool_relaxed (optval_, optvallen_,
                                                       &invert_matching);
 
-        case ZLINK_STREAM_NOTIFY:
+        case ZLINK_INTERNAL_OPT_STREAM_NOTIFY:
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
                                                      &stream_notify);
 
-        case ZLINK_ZMP_METADATA:
+        case ZLINK_INTERNAL_OPT_ZMP_METADATA:
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
                                                      &zmp_metadata);
 
-        case ZLINK_HEARTBEAT_IVL:
+        case ZLINK_INTERNAL_OPT_HEARTBEAT_IVL:
             if (is_int && value >= 0) {
                 heartbeat_interval = value;
                 return 0;
             }
             break;
 
-        case ZLINK_HEARTBEAT_TTL:
+        case ZLINK_INTERNAL_OPT_HEARTBEAT_TTL:
             value = value / deciseconds_per_millisecond;
             if (is_int && value >= 0 && value <= UINT16_MAX) {
                 heartbeat_ttl = static_cast<uint16_t> (value);
@@ -392,56 +392,56 @@ int zlink::options_t::setsockopt (int option_,
             }
             break;
 
-        case ZLINK_HEARTBEAT_TIMEOUT:
+        case ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT:
             if (is_int && value >= 0) {
                 heartbeat_timeout = value;
                 return 0;
             }
             break;
 
-        case ZLINK_BINDTODEVICE:
+        case ZLINK_INTERNAL_OPT_BINDTODEVICE:
             return do_setsockopt_string_allow_empty_strict (
               optval_, optvallen_, &bound_device, BINDDEVSIZ);
 
 #ifdef ZLINK_HAVE_TLS
-        case ZLINK_TLS_CERT:
+        case ZLINK_INTERNAL_OPT_TLS_CERT:
             return do_setsockopt_string_allow_empty_strict (
               optval_, optvallen_, &tls_cert, 256);
 
-        case ZLINK_TLS_KEY:
+        case ZLINK_INTERNAL_OPT_TLS_KEY:
             return do_setsockopt_string_allow_empty_strict (
               optval_, optvallen_, &tls_key, 256);
 
-        case ZLINK_TLS_CA:
+        case ZLINK_INTERNAL_OPT_TLS_CA:
             return do_setsockopt_string_allow_empty_strict (
               optval_, optvallen_, &tls_ca, 256);
 
-        case ZLINK_TLS_VERIFY:
+        case ZLINK_INTERNAL_OPT_TLS_VERIFY:
             if (is_int && (value == 0 || value == 1)) {
                 tls_verify = value;
                 return 0;
             }
             break;
 
-        case ZLINK_TLS_REQUIRE_CLIENT_CERT:
+        case ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT:
             if (is_int && (value == 0 || value == 1)) {
                 tls_require_client_cert = value;
                 return 0;
             }
             break;
 
-        case ZLINK_TLS_HOSTNAME:
+        case ZLINK_INTERNAL_OPT_TLS_HOSTNAME:
             return do_setsockopt_string_allow_empty_strict (
               optval_, optvallen_, &tls_hostname, 256);
 
-        case ZLINK_TLS_TRUST_SYSTEM:
+        case ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM:
             if (is_int && (value == 0 || value == 1)) {
                 tls_trust_system = value;
                 return 0;
             }
             break;
 
-        case ZLINK_TLS_PASSWORD:
+        case ZLINK_INTERNAL_OPT_TLS_PASSWORD:
             return do_setsockopt_string_allow_empty_strict (
               optval_, optvallen_, &tls_password, 256);
 #endif
@@ -462,60 +462,60 @@ int zlink::options_t::getsockopt (int option_,
     int *value = static_cast<int *> (optval_);
 
     switch (option_) {
-        case ZLINK_SNDHWM:
+        case ZLINK_INTERNAL_OPT_SNDHWM:
             if (is_int) {
                 *value = sndhwm;
                 return 0;
             }
             break;
 
-        case ZLINK_RCVHWM:
+        case ZLINK_INTERNAL_OPT_RCVHWM:
             if (is_int) {
                 *value = rcvhwm;
                 return 0;
             }
             break;
 
-        case ZLINK_AFFINITY:
+        case ZLINK_INTERNAL_OPT_AFFINITY:
             if (*optvallen_ == sizeof (uint64_t)) {
                 *(static_cast<uint64_t *> (optval_)) = affinity;
                 return 0;
             }
             break;
 
-        case ZLINK_ROUTING_ID:
+        case ZLINK_INTERNAL_OPT_ROUTING_ID:
             return do_getsockopt (optval_, optvallen_, routing_id,
                                   routing_id_size);
 
-        case ZLINK_RATE:
+        case ZLINK_INTERNAL_OPT_RATE:
             if (is_int) {
                 *value = rate;
                 return 0;
             }
             break;
 
-        case ZLINK_RECOVERY_IVL:
+        case ZLINK_INTERNAL_OPT_RECOVERY_IVL:
             if (is_int) {
                 *value = recovery_ivl;
                 return 0;
             }
             break;
 
-        case ZLINK_SNDBUF:
+        case ZLINK_INTERNAL_OPT_SNDBUF:
             if (is_int) {
                 *value = sndbuf;
                 return 0;
             }
             break;
 
-        case ZLINK_RCVBUF:
+        case ZLINK_INTERNAL_OPT_RCVBUF:
             if (is_int) {
                 *value = rcvbuf;
                 return 0;
             }
             break;
 
-        case ZLINK_TOS:
+        case ZLINK_INTERNAL_OPT_TOS:
             if (is_int) {
                 *value = tos;
                 return 0;
@@ -529,49 +529,49 @@ int zlink::options_t::getsockopt (int option_,
             }
             break;
 
-        case ZLINK_LINGER:
+        case ZLINK_INTERNAL_OPT_LINGER:
             if (is_int) {
                 *value = linger.load ();
                 return 0;
             }
             break;
 
-        case ZLINK_CONNECT_TIMEOUT:
+        case ZLINK_INTERNAL_OPT_CONNECT_TIMEOUT:
             if (is_int) {
                 *value = connect_timeout;
                 return 0;
             }
             break;
 
-        case ZLINK_TCP_MAXRT:
+        case ZLINK_INTERNAL_OPT_TCP_MAXRT:
             if (is_int) {
                 *value = tcp_maxrt;
                 return 0;
             }
             break;
 
-        case ZLINK_RECONNECT_IVL:
+        case ZLINK_INTERNAL_OPT_RECONNECT_IVL:
             if (is_int) {
                 *value = reconnect_ivl;
                 return 0;
             }
             break;
 
-        case ZLINK_RECONNECT_IVL_MAX:
+        case ZLINK_INTERNAL_OPT_RECONNECT_IVL_MAX:
             if (is_int) {
                 *value = reconnect_ivl_max;
                 return 0;
             }
             break;
 
-        case ZLINK_BACKLOG:
+        case ZLINK_INTERNAL_OPT_BACKLOG:
             if (is_int) {
                 *value = backlog;
                 return 0;
             }
             break;
 
-        case ZLINK_MAXMSGSIZE:
+        case ZLINK_INTERNAL_OPT_MAXMSGSIZE:
             if (*optvallen_ == sizeof (int64_t)) {
                 *(static_cast<int64_t *> (optval_)) = maxmsgsize;
                 *optvallen_ = sizeof (int64_t);
@@ -579,177 +579,177 @@ int zlink::options_t::getsockopt (int option_,
             }
             break;
 
-        case ZLINK_MULTICAST_HOPS:
+        case ZLINK_INTERNAL_OPT_MULTICAST_HOPS:
             if (is_int) {
                 *value = multicast_hops;
                 return 0;
             }
             break;
 
-        case ZLINK_MULTICAST_MAXTPDU:
+        case ZLINK_INTERNAL_OPT_MULTICAST_MAXTPDU:
             if (is_int) {
                 *value = multicast_maxtpdu;
                 return 0;
             }
             break;
 
-        case ZLINK_RCVTIMEO:
+        case ZLINK_INTERNAL_OPT_RCVTIMEO:
             if (is_int) {
                 *value = rcvtimeo;
                 return 0;
             }
             break;
 
-        case ZLINK_SNDTIMEO:
+        case ZLINK_INTERNAL_OPT_SNDTIMEO:
             if (is_int) {
                 *value = sndtimeo;
                 return 0;
             }
             break;
 
-        case ZLINK_IPV6:
+        case ZLINK_INTERNAL_OPT_IPV6:
             if (is_int) {
                 *value = ipv6;
                 return 0;
             }
             break;
 
-        case ZLINK_IMMEDIATE:
+        case ZLINK_INTERNAL_OPT_IMMEDIATE:
             if (is_int) {
                 *value = immediate;
                 return 0;
             }
             break;
 
-        case ZLINK_TCP_KEEPALIVE:
+        case ZLINK_INTERNAL_OPT_TCP_KEEPALIVE:
             if (is_int) {
                 *value = tcp_keepalive;
                 return 0;
             }
             break;
 
-        case ZLINK_TCP_KEEPALIVE_CNT:
+        case ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_CNT:
             if (is_int) {
                 *value = tcp_keepalive_cnt;
                 return 0;
             }
             break;
 
-        case ZLINK_TCP_KEEPALIVE_IDLE:
+        case ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_IDLE:
             if (is_int) {
                 *value = tcp_keepalive_idle;
                 return 0;
             }
             break;
 
-        case ZLINK_TCP_KEEPALIVE_INTVL:
+        case ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_INTVL:
             if (is_int) {
                 *value = tcp_keepalive_intvl;
                 return 0;
             }
             break;
 
-        case ZLINK_TCP_NODELAY:
+        case ZLINK_INTERNAL_OPT_TCP_NODELAY:
             if (is_int) {
                 *value = tcp_nodelay;
                 return 0;
             }
             break;
 
-        case ZLINK_CONFLATE:
+        case ZLINK_INTERNAL_OPT_CONFLATE:
             if (is_int) {
                 *value = conflate;
                 return 0;
             }
             break;
 
-        case ZLINK_HANDSHAKE_IVL:
+        case ZLINK_INTERNAL_OPT_HANDSHAKE_IVL:
             if (is_int) {
                 *value = handshake_ivl;
                 return 0;
             }
             break;
 
-        case ZLINK_INVERT_MATCHING:
+        case ZLINK_INTERNAL_OPT_INVERT_MATCHING:
             if (is_int) {
                 *value = invert_matching;
                 return 0;
             }
             break;
 
-        case ZLINK_STREAM_NOTIFY:
+        case ZLINK_INTERNAL_OPT_STREAM_NOTIFY:
             if (is_int) {
                 *value = stream_notify ? 1 : 0;
                 return 0;
             }
             break;
 
-        case ZLINK_ZMP_METADATA:
+        case ZLINK_INTERNAL_OPT_ZMP_METADATA:
             if (is_int) {
                 *value = zmp_metadata ? 1 : 0;
                 return 0;
             }
             break;
 
-        case ZLINK_HEARTBEAT_IVL:
+        case ZLINK_INTERNAL_OPT_HEARTBEAT_IVL:
             if (is_int) {
                 *value = heartbeat_interval;
                 return 0;
             }
             break;
 
-        case ZLINK_HEARTBEAT_TTL:
+        case ZLINK_INTERNAL_OPT_HEARTBEAT_TTL:
             if (is_int) {
                 *value = heartbeat_ttl * 100;
                 return 0;
             }
             break;
 
-        case ZLINK_HEARTBEAT_TIMEOUT:
+        case ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT:
             if (is_int) {
                 *value = heartbeat_timeout;
                 return 0;
             }
             break;
 
-        case ZLINK_BINDTODEVICE:
+        case ZLINK_INTERNAL_OPT_BINDTODEVICE:
             return do_getsockopt (optval_, optvallen_, bound_device);
 
 #ifdef ZLINK_HAVE_TLS
-        case ZLINK_TLS_CERT:
+        case ZLINK_INTERNAL_OPT_TLS_CERT:
             return do_getsockopt (optval_, optvallen_, tls_cert);
 
-        case ZLINK_TLS_KEY:
+        case ZLINK_INTERNAL_OPT_TLS_KEY:
             return do_getsockopt (optval_, optvallen_, tls_key);
 
-        case ZLINK_TLS_CA:
+        case ZLINK_INTERNAL_OPT_TLS_CA:
             return do_getsockopt (optval_, optvallen_, tls_ca);
 
-        case ZLINK_TLS_VERIFY:
+        case ZLINK_INTERNAL_OPT_TLS_VERIFY:
             if (is_int) {
                 *value = tls_verify;
                 return 0;
             }
             break;
 
-        case ZLINK_TLS_REQUIRE_CLIENT_CERT:
+        case ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT:
             if (is_int) {
                 *value = tls_require_client_cert;
                 return 0;
             }
             break;
 
-        case ZLINK_TLS_HOSTNAME:
+        case ZLINK_INTERNAL_OPT_TLS_HOSTNAME:
             return do_getsockopt (optval_, optvallen_, tls_hostname);
 
-        case ZLINK_TLS_TRUST_SYSTEM:
+        case ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM:
             if (is_int) {
                 *value = tls_trust_system;
                 return 0;
             }
             break;
 
-        case ZLINK_TLS_PASSWORD:
+        case ZLINK_INTERNAL_OPT_TLS_PASSWORD:
             return do_getsockopt (optval_, optvallen_, tls_password);
 #endif
 

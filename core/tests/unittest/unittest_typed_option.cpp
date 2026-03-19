@@ -1,0 +1,207 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "../testutil.hpp"
+#include "../testutil_unity.hpp"
+
+#include <string.h>
+#include <unity.h>
+
+void setUp ()
+{
+}
+
+void tearDown ()
+{
+}
+
+static void *new_ctx ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    return ctx;
+}
+
+static void close_ctx (void *ctx_)
+{
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx_));
+}
+
+void test_typed_raw_socket_options ()
+{
+    void *ctx = new_ctx ();
+    void *router = zlink_socket (ctx, ZLINK_ROUTER);
+    void *dealer = zlink_socket (ctx, ZLINK_DEALER);
+    void *stream = zlink_socket (ctx, ZLINK_STREAM);
+    void *xpub = zlink_socket (ctx, ZLINK_XPUB);
+    void *xsub = zlink_socket (ctx, ZLINK_XSUB);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+    TEST_ASSERT_NOT_NULL (stream);
+    TEST_ASSERT_NOT_NULL (xpub);
+    TEST_ASSERT_NOT_NULL (xsub);
+
+    int value = 42;
+    size_t size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_SNDHWM, &value, sizeof (value)));
+    value = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (router, ZLINK_OPT_SNDHWM, &value, &size));
+    TEST_ASSERT_EQUAL_INT (42, value);
+
+    value = 1;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      router, ZLINK_ROUTER_OPT_MANDATORY, &value, sizeof (value)));
+    value = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_router_option (
+      router, ZLINK_ROUTER_OPT_MANDATORY, &value, &size));
+    TEST_ASSERT_EQUAL_INT (1, value);
+
+    value = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (
+      dealer, ZLINK_DEALER_OPT_PROBE, &value, sizeof (value)));
+
+    value = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_stream_option (
+      stream, ZLINK_STREAM_OPT_NOTIFY, &value, sizeof (value)));
+    value = 0;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_stream_option (
+      stream, ZLINK_STREAM_OPT_NOTIFY, &value, &size));
+    TEST_ASSERT_EQUAL_INT (1, value);
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_set_routing_id (stream, "s1", 2));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    value = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_pub_option (xpub, ZLINK_PUB_OPT_NODROP, &value, sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (xsub, "topic"));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (router));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (dealer));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (stream));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (xpub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (xsub));
+    close_ctx (ctx);
+}
+
+void test_typed_gateway_discovery_tls_and_last_endpoint ()
+{
+    void *ctx = new_ctx ();
+    void *gateway = zlink_gateway_new (ctx, "svc");
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (gateway);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_NOT_NULL (registry);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_tls_client (gateway, "ca.pem", "host", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_tls_server (gateway, "cert.pem", "key.pem", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_tls_client (discovery, "ca.pem", "host", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_tls_server (registry, "cert.pem", "key.pem", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_tls_client (registry, "ca.pem", "host", 1));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_bind (gateway, "tcp://127.0.0.1:*"));
+
+    int value = 123;
+    size_t size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (gateway, ZLINK_OPT_SNDHWM, &value, sizeof (value)));
+    value = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (gateway, ZLINK_OPT_SNDHWM, &value, &size));
+    TEST_ASSERT_EQUAL_INT (123, value);
+
+    char endpoint[256];
+    size_t endpoint_size = sizeof (endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (gateway, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_size));
+    TEST_ASSERT_TRUE (endpoint_size > 0);
+
+    value = 500;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (discovery, ZLINK_OPT_HEARTBEAT_IVL, &value, sizeof (value)));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_get_option (discovery, ZLINK_OPT_HEARTBEAT_IVL,
+                                                 &value, &size));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (discovery, "disc", 4));
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (discovery, &rid));
+    TEST_ASSERT_EQUAL_UINT8 (4, rid.size);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    close_ctx (ctx);
+}
+
+void test_typed_spot_node_unified_options ()
+{
+    void *ctx = new_ctx ();
+    void *node = zlink_spot_node_new (ctx, "spot-svc");
+    TEST_ASSERT_NOT_NULL (node);
+
+    int pub_hwm = 77;
+    int sub_hwm = 88;
+    size_t size = sizeof (pub_hwm);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (node, ZLINK_OPT_SNDHWM, &pub_hwm, sizeof (pub_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (node, ZLINK_OPT_RCVHWM, &sub_hwm, sizeof (sub_hwm)));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (node, "npub", 4));
+
+    int nodrop = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_pub_option (node, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof (nodrop)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (node, "alpha"));
+
+    int got = 0;
+    size = sizeof (got);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (node, ZLINK_OPT_SNDHWM, &got, &size));
+    TEST_ASSERT_EQUAL_INT (77, got);
+
+    size = sizeof (got);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (node, ZLINK_OPT_RCVHWM, &got, &size));
+    TEST_ASSERT_EQUAL_INT (88, got);
+
+    size = sizeof (got);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_sub_option (node, ZLINK_SUB_OPT_TOPICS_COUNT, &got, &size));
+    TEST_ASSERT_EQUAL_INT (1, got);
+
+    char filter[32];
+    size_t filter_len = sizeof (filter);
+    int is_pattern = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_subscription_at (node, 0, filter, &filter_len, &is_pattern));
+    TEST_ASSERT_EQUAL_UINT (5, (unsigned int) filter_len);
+    TEST_ASSERT_EQUAL_MEMORY ("alpha", filter, 5);
+    TEST_ASSERT_EQUAL_INT (0, is_pattern);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    close_ctx (ctx);
+}
+
+int main (void)
+{
+    setup_test_environment ();
+
+    UNITY_BEGIN ();
+    RUN_TEST (test_typed_raw_socket_options);
+    RUN_TEST (test_typed_gateway_discovery_tls_and_last_endpoint);
+    RUN_TEST (test_typed_spot_node_unified_options);
+    return UNITY_END ();
+}

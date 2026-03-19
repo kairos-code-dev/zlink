@@ -262,7 +262,7 @@ static int recv_ascii_command (socket_base_t *socket_,
 
 static int apply_common_internal_opts (socket_base_t *socket_, int linger_)
 {
-    return socket_->setsockopt (ZLINK_LINGER, &linger_, sizeof (linger_));
+    return socket_->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger_, sizeof (linger_));
 }
 
 static int send_subscription_update (socket_base_t *socket_,
@@ -917,22 +917,22 @@ void spot_data_plane_t::run (spot_node_t *node_)
     apply_common_internal_opts (fanout, linger);
 
     ctrl->connect (runtime->data_ctrl_endpoint.c_str ());
-    ingress->setsockopt (ZLINK_RCVHWM, &ingress_rcvhwm, sizeof (ingress_rcvhwm));
-    ingress->setsockopt (ZLINK_RCVTIMEO, &neg_one, sizeof (neg_one));
-    ingress->setsockopt (ZLINK_SUBSCRIBE, "", 0);
-    fanout->setsockopt (ZLINK_SNDHWM, &fanout_sndhwm,
+    ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &ingress_rcvhwm, sizeof (ingress_rcvhwm));
+    ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &neg_one, sizeof (neg_one));
+    ingress->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, "", 0);
+    fanout->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &fanout_sndhwm,
                         sizeof (fanout_sndhwm));
-    fanout->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
-    fanout->setsockopt (ZLINK_RCVHWM, &zero, sizeof (zero));
-    fanout->setsockopt (ZLINK_XPUB_NODROP, &one, sizeof (one));
-    mesh_pub->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
-    mesh_xsub->setsockopt (ZLINK_RCVHWM, &mesh_xsub_rcvhwm,
+    fanout->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one, sizeof (neg_one));
+    fanout->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &zero, sizeof (zero));
+    fanout->setsockopt (ZLINK_INTERNAL_OPT_XPUB_NODROP, &one, sizeof (one));
+    mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one, sizeof (neg_one));
+    mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &mesh_xsub_rcvhwm,
                            sizeof (mesh_xsub_rcvhwm));
-    mesh_xsub->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
-    peer_ctrl_pub->setsockopt (ZLINK_SNDTIMEO, &neg_one, sizeof (neg_one));
-    peer_ctrl_sub->setsockopt (ZLINK_RCVHWM, &peer_ctrl_rcvhwm,
+    mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one, sizeof (neg_one));
+    peer_ctrl_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one, sizeof (neg_one));
+    peer_ctrl_sub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &peer_ctrl_rcvhwm,
                                sizeof (peer_ctrl_rcvhwm));
-    peer_ctrl_sub->setsockopt (ZLINK_SUBSCRIBE,
+    peer_ctrl_sub->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE,
                                spot_control_protocol::ctrl_prefix,
                                strlen (spot_control_protocol::ctrl_prefix));
 

@@ -44,7 +44,7 @@ zlink_bind(socket, "tcp://127.0.0.1:*");
 /* Query the assigned endpoint */
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(socket, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 /* endpoint = "tcp://127.0.0.1:53821" (example) */
 
 /* Connect using the retrieved endpoint */
@@ -112,7 +112,7 @@ zlink_bind(socket, "ipc://*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(socket, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 ```
 
 > Reference: `core/tests/test_router_multiple_dealers.cpp` — `zlink_bind(router, "ipc://*")`
@@ -183,7 +183,7 @@ zlink_connect(socket, "ws://server:8080");
 zlink_bind(socket, "ws://127.0.0.1:*");
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(socket, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 ```
 
 > Reference: `core/tests/test_stream_socket.cpp` — `test_stream_ws_basic()`
@@ -204,15 +204,11 @@ Encrypted WebSocket communication.
 
 ```c
 /* Server */
-zlink_setsockopt(socket, ZLINK_TLS_CERT, cert_path, 0);
-zlink_setsockopt(socket, ZLINK_TLS_KEY, key_path, 0);
+zlink_set_tls_server(socket, cert_path, key_path, 0);
 zlink_bind(socket, "wss://*:8443");
 
 /* Client */
-int trust_system = 0;
-zlink_setsockopt(socket, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof(trust_system));
-zlink_setsockopt(socket, ZLINK_TLS_CA, ca_path, 0);
-zlink_setsockopt(socket, ZLINK_TLS_HOSTNAME, "localhost", 9);
+zlink_set_tls_client(socket, ca_path, "localhost", 0);
 zlink_connect(socket, "wss://server:8443");
 ```
 
@@ -222,11 +218,8 @@ zlink_connect(socket, "wss://server:8443");
 
 | Setting | ws | wss |
 |---------|:--:|:---:|
-| `ZLINK_TLS_CERT` (server) | - | Required |
-| `ZLINK_TLS_KEY` (server) | - | Required |
-| `ZLINK_TLS_CA` (client) | - | Recommended |
-| `ZLINK_TLS_HOSTNAME` (client) | - | Recommended |
-| `ZLINK_TLS_TRUST_SYSTEM` (client) | - | Optional |
+| `zlink_set_tls_server()` (server cert+key) | - | Required |
+| `zlink_set_tls_client()` (client CA+hostname+trust) | - | Recommended |
 
 ## 7. TLS
 
@@ -236,12 +229,11 @@ Native TLS encrypted communication.
 
 ```c
 /* Server */
-zlink_setsockopt(socket, ZLINK_TLS_CERT, "/path/to/cert.pem", 0);
-zlink_setsockopt(socket, ZLINK_TLS_KEY, "/path/to/key.pem", 0);
+zlink_set_tls_server(socket, "/path/to/cert.pem", "/path/to/key.pem", 0);
 zlink_bind(socket, "tls://*:5555");
 
 /* Client */
-zlink_setsockopt(socket, ZLINK_TLS_CA, "/path/to/ca.pem", 0);
+zlink_set_tls_client(socket, "/path/to/ca.pem", NULL, 1);
 zlink_connect(socket, "tls://server:5555");
 ```
 
@@ -308,7 +300,7 @@ zlink_connect(dealer, "tcp://server1:5555");
 zlink_connect(dealer, "tcp://server2:5555");
 ```
 
-### ZLINK_LAST_ENDPOINT
+### ZLINK_OPT_LAST_ENDPOINT
 
 Query the actual assigned endpoint after a wildcard bind.
 
@@ -317,7 +309,7 @@ zlink_bind(socket, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(socket, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 printf("Bound endpoint: %s\n", endpoint);
 ```
 

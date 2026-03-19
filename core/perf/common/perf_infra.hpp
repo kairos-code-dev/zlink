@@ -11,6 +11,7 @@
 #include <iostream>
 #include <string>
 #include <zlink.h>
+#include "../../tests/legacy_api_compat.hpp"
 
 #if !defined(_WIN32)
 #include <arpa/inet.h>
@@ -93,9 +94,8 @@ inline bool bench_debug_enabled() {
 // ---------------------------------------------------------------------------
 inline bool set_sockopt_int(void *socket_, int option_, int value_,
                             const char *name_) {
-    const int rc = zlink_setsockopt(
-      socket_, static_cast<zlink_socket_option_t>(option_), &value_,
-      sizeof(value_));
+    const int rc = zlink_set_option(
+      socket_, static_cast<zlink_option_t>(option_), &value_, sizeof(value_));
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "setsockopt(" << name_ << ") failed: "
                   << zlink_strerror(zlink_errno()) << std::endl;
@@ -103,9 +103,8 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
     if (bench_debug_enabled()) {
         int out = 0;
         size_t out_size = sizeof(out);
-        const int grc = zlink_getsockopt(
-          socket_, static_cast<zlink_socket_option_t>(option_), &out,
-          &out_size);
+        const int grc = zlink_get_option(
+          socket_, static_cast<zlink_option_t>(option_), &out, &out_size);
         if (grc == 0) {
             std::cerr << "setsockopt(" << name_ << ") = " << out << std::endl;
         }
@@ -296,14 +295,12 @@ inline bool setup_tls_server(void* socket, const std::string& transport) {
     static std::string cert_path = write_temp_cert(test_certs::server_cert_pem, "server_cert");
     static std::string key_path = write_temp_cert(test_certs::server_key_pem, "server_key");
 
-    if (zlink_setsockopt(socket, ZLINK_TLS_CERT, cert_path.c_str(), cert_path.size()) != 0) {
+    if (zlink_set_tls_server(
+          socket, cert_path.c_str(), key_path.c_str(), 0)
+        != 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_CERT: " << zlink_strerror(zlink_errno()) << std::endl;
-        return false;
-    }
-    if (zlink_setsockopt(socket, ZLINK_TLS_KEY, key_path.c_str(), key_path.size()) != 0) {
-        if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_KEY: " << zlink_strerror(zlink_errno()) << std::endl;
+            std::cerr << "Failed to set TLS server options: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
     return true;
@@ -316,20 +313,10 @@ inline bool setup_tls_client(void* socket, const std::string& transport) {
     static std::string ca_path = write_temp_cert(test_certs::ca_cert_pem, "ca_cert");
     static const char* hostname = "localhost";
 
-    if (zlink_setsockopt(socket, ZLINK_TLS_CA, ca_path.c_str(), ca_path.size()) != 0) {
+    if (zlink_set_tls_client(socket, ca_path.c_str(), hostname, 0) != 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_CA: " << zlink_strerror(zlink_errno()) << std::endl;
-        return false;
-    }
-    if (zlink_setsockopt(socket, ZLINK_TLS_HOSTNAME, hostname, strlen(hostname)) != 0) {
-        if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_HOSTNAME: " << zlink_strerror(zlink_errno()) << std::endl;
-        return false;
-    }
-    int trust_system = 0;
-    if (zlink_setsockopt(socket, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof(trust_system)) != 0) {
-        if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_TRUST_SYSTEM: " << zlink_strerror(zlink_errno()) << std::endl;
+            std::cerr << "Failed to set TLS client options: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
     return true;

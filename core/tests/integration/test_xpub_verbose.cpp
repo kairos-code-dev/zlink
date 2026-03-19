@@ -22,29 +22,34 @@ void test_xpub_verbose_one_sub ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, test_endpoint));
 
     //  Subscribe for A
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, topic_a, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (sub, topic_a));
 
     // Receive subscriptions from subscriber
     recv_array_expect_success (pub, subscribe_a_msg, 0);
 
     // Subscribe socket for B instead
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, topic_b, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (sub, topic_b));
 
     // Receive subscriptions from subscriber
     recv_array_expect_success (pub, subscribe_b_msg, 0);
 
     //  Subscribe again for A again
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, topic_a, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (sub, topic_a));
 
     //  This time it is duplicated, so it will be filtered out
     TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (pub, NULL, 0, ZLINK_DONTWAIT));
 
     int verbose = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub, ZLINK_XPUB_VERBOSE, &verbose, sizeof (int)));
+      zlink_set_pub_option (pub, ZLINK_PUB_OPT_VERBOSE, &verbose,
+                            sizeof (int)));
 
     // Subscribe socket for A again
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, topic_a, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (sub, topic_a));
 
     // This time with VERBOSE the duplicated sub will be received
     recv_array_expect_success (pub, subscribe_a_msg, 0);
@@ -77,14 +82,14 @@ void create_duplicate_subscription (void *pub_, void *sub0_, void *sub1_)
 {
     //  Subscribe for A
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub0_, ZLINK_SUBSCRIBE, topic_a, 1));
+      zlink_set_subscription (sub0_, topic_a));
 
     // Receive subscriptions from subscriber
     recv_array_expect_success (pub_, subscribe_a_msg, 0);
 
     //  Subscribe again for A on the other socket
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub1_, ZLINK_SUBSCRIBE, topic_a, 1));
+      zlink_set_subscription (sub1_, topic_a));
 
     //  This time it is duplicated, so it will be filtered out by XPUB
     TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (pub_, NULL, 0, ZLINK_DONTWAIT));
@@ -98,18 +103,19 @@ void test_xpub_verbose_two_subs ()
 
     // Subscribe socket for B instead
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub0, ZLINK_SUBSCRIBE, topic_b, 1));
+      zlink_set_subscription (sub0, topic_b));
 
     // Receive subscriptions from subscriber
     recv_array_expect_success (pub, subscribe_b_msg, 0);
 
     int verbose = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub, ZLINK_XPUB_VERBOSE, &verbose, sizeof (int)));
+      zlink_set_pub_option (pub, ZLINK_PUB_OPT_VERBOSE, &verbose,
+                            sizeof (int)));
 
     // Subscribe socket for A again
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub1, ZLINK_SUBSCRIBE, topic_a, 1));
+      zlink_set_subscription (sub1, topic_a));
 
     // This time with VERBOSE the duplicated sub will be received
     recv_array_expect_success (pub, subscribe_a_msg, 0);
@@ -141,31 +147,33 @@ void test_xpub_verboser_one_sub ()
 
     //  Unsubscribe for A, does not exist yet
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub, ZLINK_UNSUBSCRIBE, topic_a, 1));
+      zlink_unset_subscription (sub, topic_a));
 
     //  Does not exist, so it will be filtered out by XSUB
     TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (pub, NULL, 0, ZLINK_DONTWAIT));
 
     //  Subscribe for A
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, topic_a, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (sub, topic_a));
 
     // Receive subscriptions from subscriber
     recv_array_expect_success (pub, subscribe_a_msg, 0);
 
     //  Subscribe again for A again, XSUB will increase refcount
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, topic_a, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (sub, topic_a));
 
     //  This time it is duplicated, so it will be filtered out by XPUB
     TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (pub, NULL, 0, ZLINK_DONTWAIT));
 
     //  Unsubscribe for A, this time it exists in XPUB
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub, ZLINK_UNSUBSCRIBE, topic_a, 1));
+      zlink_unset_subscription (sub, topic_a));
 
     //  XSUB refcounts and will not actually send unsub to PUB until the number
     //  of unsubs match the earlier subs
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub, ZLINK_UNSUBSCRIBE, topic_a, 1));
+      zlink_unset_subscription (sub, topic_a));
 
     // Receive unsubscriptions from subscriber
     recv_array_expect_success (pub, unsubscribe_a_msg, 0);
@@ -175,17 +183,19 @@ void test_xpub_verboser_one_sub ()
 
     //  Unsubscribe for A, does not exist anymore
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub, ZLINK_UNSUBSCRIBE, topic_a, 1));
+      zlink_unset_subscription (sub, topic_a));
 
     //  Does not exist, so it will be filtered out by XSUB
     TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (pub, NULL, 0, ZLINK_DONTWAIT));
 
     int verbose = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub, ZLINK_XPUB_VERBOSER, &verbose, sizeof (int)));
+      zlink_set_pub_option (pub, ZLINK_PUB_OPT_VERBOSER, &verbose,
+                            sizeof (int)));
 
     // Subscribe socket for A again
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, topic_a, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (sub, topic_a));
 
     // Receive subscriptions from subscriber, did not exist anymore
     recv_array_expect_success (pub, subscribe_a_msg, 0);
@@ -197,14 +207,14 @@ void test_xpub_verboser_one_sub ()
 
     //  Unsubscribe for A, this time it exists
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub, ZLINK_UNSUBSCRIBE, topic_a, 1));
+      zlink_unset_subscription (sub, topic_a));
 
     // Receive unsubscriptions from subscriber
     recv_array_expect_success (pub, unsubscribe_a_msg, 0);
 
     //  Unsubscribe for A again, it does not exist anymore so XSUB will filter
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub, ZLINK_UNSUBSCRIBE, topic_a, 1));
+      zlink_unset_subscription (sub, topic_a));
 
     //  XSUB only sends unsub if it matched it in its trie, IOW: it will only
     //  send it if it existed in the first place even with XPUB_VERBBOSER

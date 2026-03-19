@@ -196,28 +196,28 @@ int zlink::xpub_t::xsetsockopt (int option_,
                               const void *optval_,
                               size_t optvallen_)
 {
-    if (option_ == ZLINK_XPUB_VERBOSE || option_ == ZLINK_XPUB_VERBOSER
-        || option_ == ZLINK_XPUB_MANUAL_LAST_VALUE || option_ == ZLINK_XPUB_NODROP
-        || option_ == ZLINK_XPUB_MANUAL || option_ == ZLINK_ONLY_FIRST_SUBSCRIBE) {
+    if (option_ == ZLINK_INTERNAL_OPT_XPUB_VERBOSE || option_ == ZLINK_INTERNAL_OPT_XPUB_VERBOSER
+        || option_ == ZLINK_INTERNAL_OPT_XPUB_MANUAL_LAST_VALUE || option_ == ZLINK_INTERNAL_OPT_XPUB_NODROP
+        || option_ == ZLINK_INTERNAL_OPT_XPUB_MANUAL || option_ == ZLINK_INTERNAL_OPT_ONLY_FIRST_SUBSCRIBE) {
         if (optvallen_ != sizeof (int)
             || *static_cast<const int *> (optval_) < 0) {
             errno = EINVAL;
             return -1;
         }
-        if (option_ == ZLINK_XPUB_VERBOSE) {
+        if (option_ == ZLINK_INTERNAL_OPT_XPUB_VERBOSE) {
             _verbose_subs = (*static_cast<const int *> (optval_) != 0);
             _verbose_unsubs = false;
-        } else if (option_ == ZLINK_XPUB_VERBOSER) {
+        } else if (option_ == ZLINK_INTERNAL_OPT_XPUB_VERBOSER) {
             _verbose_subs = (*static_cast<const int *> (optval_) != 0);
             _verbose_unsubs = _verbose_subs;
-        } else if (option_ == ZLINK_XPUB_MANUAL_LAST_VALUE) {
+        } else if (option_ == ZLINK_INTERNAL_OPT_XPUB_MANUAL_LAST_VALUE) {
             _manual = (*static_cast<const int *> (optval_) != 0);
             _send_last_pipe = _manual;
-        } else if (option_ == ZLINK_XPUB_NODROP)
+        } else if (option_ == ZLINK_INTERNAL_OPT_XPUB_NODROP)
             _lossy = (*static_cast<const int *> (optval_) == 0);
-        else if (option_ == ZLINK_XPUB_MANUAL)
+        else if (option_ == ZLINK_INTERNAL_OPT_XPUB_MANUAL)
             _manual = (*static_cast<const int *> (optval_) != 0);
-        else if (option_ == ZLINK_ONLY_FIRST_SUBSCRIBE)
+        else if (option_ == ZLINK_INTERNAL_OPT_ONLY_FIRST_SUBSCRIBE)
             _only_first_subscribe = (*static_cast<const int *> (optval_) != 0);
         invalidate_match_cache ();
     } else if (option_ == send_all_data_option) {
@@ -228,21 +228,21 @@ int zlink::xpub_t::xsetsockopt (int option_,
         }
         _send_all_data = (*static_cast<const int *> (optval_) != 0);
         invalidate_match_cache ();
-    } else if (option_ == ZLINK_SUBSCRIBE && _manual) {
+    } else if (option_ == ZLINK_INTERNAL_OPT_SUBSCRIBE && _manual) {
         if (_last_pipe != NULL) {
             _subscriptions.add ((unsigned char *) optval_, optvallen_,
                                 _last_pipe);
             ++_subscription_generation;
             invalidate_match_cache ();
         }
-    } else if (option_ == ZLINK_UNSUBSCRIBE && _manual) {
+    } else if (option_ == ZLINK_INTERNAL_OPT_UNSUBSCRIBE && _manual) {
         if (_last_pipe != NULL) {
             _subscriptions.rm ((unsigned char *) optval_, optvallen_,
                                _last_pipe);
             ++_subscription_generation;
             invalidate_match_cache ();
         }
-    } else if (option_ == ZLINK_XPUB_WELCOME_MSG) {
+    } else if (option_ == ZLINK_INTERNAL_OPT_XPUB_WELCOME_MSG) {
         _welcome_msg.close ();
 
         if (optvallen_ > 0) {
@@ -263,7 +263,7 @@ int zlink::xpub_t::xsetsockopt (int option_,
 
 int zlink::xpub_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_)
 {
-    if (option_ == ZLINK_TOPICS_COUNT) {
+    if (option_ == ZLINK_INTERNAL_OPT_TOPICS_COUNT) {
         // make sure to use a multi-thread safe function to avoid race conditions with I/O threads
         // where subscriptions are processed:
         return do_getsockopt<int> (optval_, optvallen_,

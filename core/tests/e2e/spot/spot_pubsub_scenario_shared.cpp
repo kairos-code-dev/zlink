@@ -2,12 +2,8 @@
 
 #include "spot_pubsub_scenario_shared.hpp"
 
-#include "../../../src/core/monitor_dispatch_internal.hpp"
-#include "../../../src/services/spot/spot_dispatch_internal.hpp"
-
 #include <chrono>
 #include <limits.h>
-#include <map>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,10 +20,6 @@
 static std::mutex g_spot_probe_mutex;
 static std::map<void *, queued_spot_probe_t *> g_sub_probes;
 static std::map<void *, queued_spot_probe_t *> g_node_probes;
-static std::map<void *, callback_probe_t *> g_callback_probes;
-
-static std::mutex g_service_monitor_probe_mutex;
-static std::map<void *, service_monitor_probe_t *> g_service_monitor_probes;
 
 bool test_debug_enabled ()
 {
@@ -42,15 +34,13 @@ void step_log (const char *msg_)
     }
 }
 
-bool read_spot_snapshot (void *spot_,
-                         zlink_spot_role_t role_,
-                         zlink_monitor_snapshot_t *out_)
+bool read_spot_snapshot (void *spot_, zlink_monitor_snapshot_t *out_)
 {
     if (!spot_ || !out_)
         return false;
 
     void *monitor = zlink_spot_monitor_open (
-      spot_, role_,
+      spot_, ZLINK_SPOT_ROLE_SUB,
       ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
         | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
         | ZLINK_MONITOR_EVENT_ERROR,
@@ -95,8 +85,16 @@ void *create_spot_node (void *ctx_, const char *service_name_)
     void *node = zlink_spot_node_new (ctx_, service_name_);
     if (!node)
         return NULL;
-    if (zlink_subscribe_handler (node, &queued_spot_handler, NULL) != 0) {
+
+    queued_spot_probe_t *probe = ensure_queued_spot_probe (node, true);
+    if (!probe) {
+        zlink_spot_node_destroy (&node);
+        errno = ENOMEM;
+        return NULL;
+    }
+    if (zlink_subscribe_handler (node, &queued_spot_handler, probe) != 0) {
         const int err = errno;
+        remove_queued_spot_probe (node, true);
         zlink_spot_node_destroy (&node);
         errno = err;
         return NULL;
@@ -104,11 +102,7 @@ void *create_spot_node (void *ctx_, const char *service_name_)
 
     const int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_set_pub_option (node, ZLINK_SPOT_PUB_OPT_LINGER,
-                                      &linger, sizeof (linger)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_set_sub_option (node, ZLINK_SPOT_SUB_OPT_LINGER,
-                                      &linger, sizeof (linger)));
+      zlink_set_option (node, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     return node;
 }
 
@@ -144,26 +138,50 @@ static void cleanup_ipc_endpoint (const char *endpoint_)
 #endif
 }
 
-void *create_spot_handle (void *node_, zlink_subscribe_handler_fn handler_)
+void *create_spot_pub_handle (void *node_)
 {
-    void *spot = zlink_spot_new (node_);
-    if (!spot)
+    void *spot_pub = zlink_spot_pub_new (node_);
+    if (!spot_pub)
         return NULL;
-    if (handler_ && zlink_subscribe_handler (spot, handler_, NULL) != 0) {
+
+    const int linger = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      spot_pub, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+    return spot_pub;
+}
+
+void *create_spot_sub_handle (void *node_, zlink_subscribe_handler_fn handler_)
+{
+    void *spot_sub = zlink_spot_sub_new (node_);
+    if (!spot_sub)
+        return NULL;
+
+    queued_spot_probe_t *probe = NULL;
+    void *handler_userdata = NULL;
+    if (handler_ == &queued_spot_handler) {
+        probe = ensure_queued_spot_probe (spot_sub, false);
+        if (!probe) {
+            zlink_spot_sub_destroy (&spot_sub);
+            errno = ENOMEM;
+            return NULL;
+        }
+        handler_userdata = probe;
+    }
+
+    if (handler_
+        && zlink_subscribe_handler (spot_sub, handler_, handler_userdata) != 0) {
         const int err = errno;
-        zlink_spot_destroy (&spot);
+        if (probe)
+            remove_queued_spot_probe (spot_sub, false);
+        zlink_spot_sub_destroy (&spot_sub);
         errno = err;
         return NULL;
     }
 
     const int linger = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_set_pub_option (spot, ZLINK_SPOT_PUB_OPT_LINGER, &linger,
-                                 sizeof (linger)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_set_sub_option (spot, ZLINK_SPOT_SUB_OPT_LINGER, &linger,
-                                 sizeof (linger)));
-    return spot;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      spot_sub, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+    return spot_sub;
 }
 
 int create_spot_pub_sub (void *node_, void **pub_p, void **sub_p)
@@ -173,15 +191,15 @@ int create_spot_pub_sub (void *node_, void **pub_p, void **sub_p)
         return -1;
     }
 
-    *pub_p = create_spot_handle (node_, &ignore_spot_handler);
+    *pub_p = create_spot_pub_handle (node_);
     if (!*pub_p)
         return -1;
 
-    *sub_p = create_spot_handle (node_, &queued_spot_handler);
+    *sub_p = create_spot_sub_handle (node_, &queued_spot_handler);
     if (!*sub_p) {
         void *pub = *pub_p;
         *pub_p = NULL;
-        zlink_spot_destroy (&pub);
+        zlink_spot_pub_destroy (&pub);
         return -1;
     }
     return 0;
@@ -193,25 +211,27 @@ int destroy_spot_pub_sub (void **pub_p, void **sub_p)
         errno = EFAULT;
         return -1;
     }
-    int rc_pub = zlink_spot_destroy (pub_p);
-    int rc_sub = zlink_spot_destroy (sub_p);
+    int rc_pub = zlink_spot_pub_destroy (pub_p);
+    int rc_sub = zlink_spot_sub_destroy (sub_p);
     return (rc_pub == 0 && rc_sub == 0) ? 0 : -1;
 }
 
 int set_node_pub_option (void *node_,
-                         zlink_spot_pub_option_t option_,
+                         int option_,
                          const void *optval_,
                          size_t optvallen_)
 {
-    return zlink_spot_node_set_pub_option (node_, option_, optval_, optvallen_);
+    return zlink_set_option (node_, static_cast<zlink_option_t> (option_),
+                             optval_, optvallen_);
 }
 
 int set_node_sub_option (void *node_,
-                         zlink_spot_sub_option_t option_,
+                         int option_,
                          const void *optval_,
                          size_t optvallen_)
 {
-    return zlink_spot_node_set_sub_option (node_, option_, optval_, optvallen_);
+    return zlink_set_option (node_, static_cast<zlink_option_t> (option_),
+                             optval_, optvallen_);
 }
 
 void setUp ()
@@ -233,54 +253,6 @@ void tearDown ()
     std::lock_guard<std::mutex> lock (g_spot_probe_mutex);
     clear_spot_probe_map (&g_sub_probes);
     clear_spot_probe_map (&g_node_probes);
-    g_callback_probes.clear ();
-
-    std::lock_guard<std::mutex> monitor_lock (g_service_monitor_probe_mutex);
-    g_service_monitor_probes.clear ();
-}
-
-static queued_spot_probe_t *find_queued_spot_probe_for_current_dispatch ()
-{
-    void *handle = zlink::current_spot_dispatch_handle ();
-    if (!handle)
-        return NULL;
-
-    std::map<void *, queued_spot_probe_t *> *probe_map =
-      zlink::current_spot_dispatch_is_node () ? &g_node_probes : &g_sub_probes;
-    std::lock_guard<std::mutex> lock (g_spot_probe_mutex);
-    std::map<void *, queued_spot_probe_t *>::iterator it =
-      probe_map->find (handle);
-    return it != probe_map->end () ? it->second : NULL;
-}
-
-callback_probe_t *find_callback_probe_for_current_dispatch ()
-{
-    void *handle = zlink::current_spot_dispatch_handle ();
-    if (!handle)
-        return NULL;
-
-    std::lock_guard<std::mutex> lock (g_spot_probe_mutex);
-    std::map<void *, callback_probe_t *>::iterator it =
-      g_callback_probes.find (handle);
-    return it != g_callback_probes.end () ? it->second : NULL;
-}
-
-void register_callback_probe (void *handle_, callback_probe_t *probe_)
-{
-    if (!handle_ || !probe_)
-        return;
-
-    std::lock_guard<std::mutex> lock (g_spot_probe_mutex);
-    g_callback_probes[handle_] = probe_;
-}
-
-void unregister_callback_probe (void *handle_)
-{
-    if (!handle_)
-        return;
-
-    std::lock_guard<std::mutex> lock (g_spot_probe_mutex);
-    g_callback_probes.erase (handle_);
 }
 
 void close_spot_parts (zlink_msg_t *parts_, size_t part_count_)
@@ -296,9 +268,10 @@ void queued_spot_handler (const zlink_routing_id_t *,
                           size_t topic_len_,
                           zlink_msg_t *parts_,
                           size_t part_count_,
-                          void *)
+                          void *userdata_)
 {
-    queued_spot_probe_t *probe = find_queued_spot_probe_for_current_dispatch ();
+    queued_spot_probe_t *probe =
+      static_cast<queued_spot_probe_t *> (userdata_);
     if (!probe) {
         close_spot_parts (parts_, part_count_);
         return;
@@ -322,22 +295,11 @@ void queued_spot_handler (const zlink_routing_id_t *,
     close_spot_parts (parts_, part_count_);
 }
 
-static service_monitor_probe_t *find_service_monitor_probe_for_dispatch ()
-{
-    void *monitor = zlink::current_monitor_dispatch_handle ();
-    if (!monitor)
-        return NULL;
-
-    std::lock_guard<std::mutex> lock (g_service_monitor_probe_mutex);
-    std::map<void *, service_monitor_probe_t *>::iterator it =
-      g_service_monitor_probes.find (monitor);
-    return it != g_service_monitor_probes.end () ? it->second : NULL;
-}
-
 static void queued_service_monitor_handler (
-  const zlink_service_event_t *event_, void *)
+  const zlink_service_event_t *event_, void *userdata_)
 {
-    service_monitor_probe_t *probe = find_service_monitor_probe_for_dispatch ();
+    service_monitor_probe_t *probe =
+      static_cast<service_monitor_probe_t *> (userdata_);
     if (!probe || !event_)
         return;
 
@@ -576,7 +538,6 @@ static bool wait_for_monitor_snapshot_state (void *monitor_,
 }
 
 void *open_spot_monitor_with_probe (void *spot_,
-                                    zlink_spot_role_t role_,
                                     zlink_spot_monitor_event_mask_t events_,
                                     service_monitor_probe_t *probe_)
 {
@@ -591,19 +552,21 @@ void *open_spot_monitor_with_probe (void *spot_,
         probe_->event_count = 0;
     }
 
-    void *monitor = zlink_spot_monitor_open (spot_, role_, events_,
-                                             &queued_service_monitor_handler, NULL);
+    void *monitor = zlink_spot_monitor_open (
+      spot_, ZLINK_SPOT_ROLE_PUB, events_, &queued_service_monitor_handler,
+      probe_);
+    if (!monitor)
+        monitor = zlink_spot_monitor_open (
+          spot_, ZLINK_SPOT_ROLE_SUB, events_, &queued_service_monitor_handler,
+          probe_);
     if (!monitor)
         return NULL;
-
-    std::lock_guard<std::mutex> lock (g_service_monitor_probe_mutex);
-    g_service_monitor_probes[monitor] = probe_;
     return monitor;
 }
 
 void *open_spot_node_monitor_with_probe (
   void *node_,
-  zlink_spot_role_t role_,
+  int role_,
   zlink_spot_monitor_event_mask_t events_,
   service_monitor_probe_t *probe_)
 {
@@ -618,37 +581,27 @@ void *open_spot_node_monitor_with_probe (
         probe_->event_count = 0;
     }
 
-    void *monitor = zlink_spot_node_monitor_open (node_, role_, events_,
-                                                  &queued_service_monitor_handler, NULL);
+    void *monitor = zlink_spot_node_monitor_open (
+      node_, static_cast<zlink_spot_role_t> (role_), events_,
+      &queued_service_monitor_handler, probe_);
     if (!monitor)
         return NULL;
-
-    std::lock_guard<std::mutex> lock (g_service_monitor_probe_mutex);
-    g_service_monitor_probes[monitor] = probe_;
     return monitor;
 }
 
 int close_service_monitor_with_probe (void **monitor_)
 {
-    if (!monitor_ || !*monitor_)
-        return zlink_service_monitor_close (monitor_);
-
-    {
-        std::lock_guard<std::mutex> lock (g_service_monitor_probe_mutex);
-        g_service_monitor_probes.erase (*monitor_);
-    }
     return zlink_service_monitor_close (monitor_);
 }
 
 bool wait_for_spot_ready_state (void *spot_,
-                                zlink_spot_role_t role_,
                                 zlink_monitor_state_mask_t required_flags_,
                                 uint32_t min_ready_peer_count_,
                                 int timeout_ms_)
 {
     service_monitor_probe_t probe;
     void *monitor = open_spot_monitor_with_probe (
-      spot_, role_,
+      spot_,
       ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
         | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
         | ZLINK_MONITOR_EVENT_ERROR,
@@ -664,7 +617,7 @@ bool wait_for_spot_ready_state (void *spot_,
 
 bool wait_for_spot_node_ready_state (
   void *node_,
-  zlink_spot_role_t role_,
+  int role_,
   zlink_monitor_state_mask_t required_flags_,
   uint32_t min_ready_peer_count_,
   int timeout_ms_)
@@ -687,15 +640,13 @@ bool wait_for_spot_node_ready_state (
 
 bool wait_for_spot_pub_peers (void *pub_, int timeout_ms_)
 {
-    return wait_for_spot_ready_state (
-      pub_, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_SEND_READY, 1,
-      timeout_ms_);
+    return wait_for_spot_ready_state (pub_, ZLINK_MONITOR_STATE_SEND_READY, 1,
+                                      timeout_ms_);
 }
 
 bool wait_for_spot_sub_peers (void *sub_, int timeout_ms_)
 {
-    return wait_for_spot_ready_state (sub_, ZLINK_SPOT_ROLE_SUB,
-                                      ZLINK_MONITOR_STATE_READY, 1,
+    return wait_for_spot_ready_state (sub_, ZLINK_MONITOR_STATE_READY, 1,
                                       timeout_ms_);
 }
 
@@ -890,8 +841,8 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
         if (use_tls) {
             step_log ("spot peer transport: configure node_a tls server");
             TEST_ASSERT_SUCCESS_ERRNO (
-              zlink_spot_node_set_tls_server (node_a, files.server_cert.c_str (),
-                                              files.server_key.c_str ()));
+              zlink_set_tls_server (node_a, files.server_cert.c_str (),
+                                    files.server_key.c_str (), 0));
         }
 
         step_log ("spot peer transport: bind node_a");
@@ -900,7 +851,7 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
 
         if (use_tls) {
             step_log ("spot peer transport: configure node_b tls");
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_tls_client (
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_client (
               node_b, files.ca_cert.c_str (), "localhost", 0));
         }
     }
@@ -911,11 +862,11 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
 
     step_log ("spot peer transport: connect node_b -> node_a");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_connect_peer_pub (node_b, endpoint_a));
+      zlink_spot_node_connect_peer (node_b, endpoint_a));
 
     step_log ("spot peer transport: subscribe node_b");
     TEST_ASSERT_NOT_NULL (ensure_queued_spot_probe (node_b, true));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (node_b, topic));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (node_b, topic));
     TEST_ASSERT_TRUE (wait_for_service_event (
       &node_b_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
     TEST_ASSERT_TRUE (wait_for_service_event (
@@ -937,10 +888,10 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
 
     step_log ("spot peer transport: disconnect peer");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_disconnect_peer_pub (node_b, endpoint_a));
+      zlink_spot_node_disconnect_peer (node_b, endpoint_a));
 
     step_log ("spot peer transport: detach subscriber");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_unsubscribe (node_b, topic));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_unset_subscription (node_b, topic));
 
     if (use_tls)
         msleep (200);

@@ -81,7 +81,7 @@ void *create_gateway_attached (void *ctx_,
     if (!gateway)
         return NULL;
     if (routing_id_
-        && zlink_gateway_set_routing_id (gateway, routing_id_,
+        && zlink_set_routing_id (gateway, routing_id_,
                                          strlen (routing_id_))
              != 0) {
         const int err = errno;
@@ -300,7 +300,8 @@ static void test_discovery_provider_registration ()
     char advertise_ep[256] = {0};
     size_t advertise_len = sizeof (advertise_ep);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_last_endpoint (server.gateway, advertise_ep, &advertise_len));
+      zlink_get_option (server.gateway, ZLINK_OPT_LAST_ENDPOINT,
+                        advertise_ep, &advertise_len));
 
     TEST_ASSERT_TRUE (wait_for_provider_count (registry, "test-svc", 1, 3000));
 
@@ -360,10 +361,12 @@ static void test_discovery_service_filtering ()
     char advertise_b[256] = {0};
     size_t advertise_len = sizeof (advertise_a);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_last_endpoint (server_a.gateway, advertise_a, &advertise_len));
+      zlink_get_option (server_a.gateway, ZLINK_OPT_LAST_ENDPOINT,
+                        advertise_a, &advertise_len));
     advertise_len = sizeof (advertise_b);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_last_endpoint (server_b.gateway, advertise_b, &advertise_len));
+      zlink_get_option (server_b.gateway, ZLINK_OPT_LAST_ENDPOINT,
+                        advertise_b, &advertise_len));
 
     step_log ("service_filtering: wait svc-A");
     TEST_ASSERT_TRUE (wait_for_provider_count (registry, "svc-A", 1, 3000));

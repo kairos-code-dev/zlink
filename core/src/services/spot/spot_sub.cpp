@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 
+#include "api/legacy_api_internal.hpp"
 #include "services/spot/spot_sub.hpp"
 #include "services/common/monitor_decode.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
@@ -352,7 +353,7 @@ int spot_sub_t::subscribe (const char *topic_)
         scoped_lock_t lock (_sync);
         had_filters = !_topics.empty () || !_patterns.empty ();
         lock_routing_id ();
-        if (socket->setsockopt (ZLINK_SUBSCRIBE, topic.data (), topic.size ())
+        if (socket->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, topic.data (), topic.size ())
             != 0)
             return -1;
         _topics.insert (topic);
@@ -396,7 +397,7 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
         scoped_lock_t lock (_sync);
         had_filters = !_topics.empty () || !_patterns.empty ();
         lock_routing_id ();
-        if (socket->setsockopt (ZLINK_SUBSCRIBE, prefix.data (), prefix.size ())
+        if (socket->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, prefix.data (), prefix.size ())
             != 0)
             return -1;
         _patterns.insert (prefix);
@@ -451,7 +452,7 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
         scoped_lock_t lock (_sync);
         had_filters = !_topics.empty () || !_patterns.empty ();
         lock_routing_id ();
-        if (socket->setsockopt (ZLINK_UNSUBSCRIBE, filter.data (), filter.size ())
+        if (socket->setsockopt (ZLINK_INTERNAL_OPT_UNSUBSCRIBE, filter.data (), filter.size ())
             != 0)
             return -1;
         if (is_pattern)
@@ -504,19 +505,19 @@ int spot_sub_t::set_option (int option_,
     int socket_option = -1;
     switch (option_) {
         case ZLINK_SPOT_SUB_OPT_RCVHWM:
-            socket_option = ZLINK_RCVHWM;
+            socket_option = ZLINK_INTERNAL_OPT_RCVHWM;
             break;
         case ZLINK_SPOT_SUB_OPT_LINGER:
-            socket_option = ZLINK_LINGER;
+            socket_option = ZLINK_INTERNAL_OPT_LINGER;
             break;
         case ZLINK_SPOT_SUB_OPT_SNDBUF:
-            socket_option = ZLINK_SNDBUF;
+            socket_option = ZLINK_INTERNAL_OPT_SNDBUF;
             break;
         case ZLINK_SPOT_SUB_OPT_RCVBUF:
-            socket_option = ZLINK_RCVBUF;
+            socket_option = ZLINK_INTERNAL_OPT_RCVBUF;
             break;
         case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
-            socket_option = ZLINK_RCVTIMEO;
+            socket_option = ZLINK_INTERNAL_OPT_RCVTIMEO;
             break;
         default:
             errno = EINVAL;
@@ -525,6 +526,23 @@ int spot_sub_t::set_option (int option_,
 
     scoped_lock_t lock (_sync);
     return socket->setsockopt (socket_option, optval_, optvallen_);
+}
+
+int spot_sub_t::set_routing_id (const void *data_, size_t size_)
+{
+    if (!data_ || size_ == 0 || size_ > sizeof (_routing_id.data)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    if (_routing_id_locked) {
+        errno = EFSM;
+        return -1;
+    }
+    _routing_id.size = static_cast<uint8_t> (size_);
+    memcpy (_routing_id.data, data_, size_);
+    return 0;
 }
 
 int spot_sub_t::routing_id (zlink_routing_id_t *out_) const
@@ -1521,12 +1539,12 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         for (std::set<std::string>::const_iterator it = _topics.begin (),
                                                    end = _topics.end ();
              it != end; ++it)
-            (void) socket->setsockopt (ZLINK_UNSUBSCRIBE, it->c_str (),
+            (void) socket->setsockopt (ZLINK_INTERNAL_OPT_UNSUBSCRIBE, it->c_str (),
                                         it->size ());
         for (std::set<std::string>::const_iterator it = _patterns.begin (),
                                                    end = _patterns.end ();
              it != end; ++it)
-            (void) socket->setsockopt (ZLINK_UNSUBSCRIBE, it->c_str (),
+            (void) socket->setsockopt (ZLINK_INTERNAL_OPT_UNSUBSCRIBE, it->c_str (),
                                         it->size ());
     }
     if (has_handler && socket && socket->sub_dispatch_active ())

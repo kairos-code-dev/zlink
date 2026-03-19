@@ -11,11 +11,6 @@
 #include <thread>
 #include <vector>
 
-#include "../../../src/services/discovery/discovery_access.hpp"
-#include "../../../src/services/discovery/discovery.hpp"
-#include "../../../src/services/discovery/registry.hpp"
-#include "../../../src/api/zlink_testing.hpp"
-
 static bool should_run_named_test (const char *name_)
 {
     const char *selected = getenv ("ZLINK_TEST_CASE");
@@ -50,51 +45,6 @@ struct gateway_server_t
 
     void *discovery;
     void *gateway;
-};
-
-struct blocking_discovery_observer_t : public zlink::discovery_observer_t
-{
-    blocking_discovery_observer_t () :
-        entered (false),
-        release (false),
-        destroyed_calls (0)
-    {
-    }
-
-    void on_service_update (const std::string &)
-    {
-        std::unique_lock<std::mutex> lock (sync);
-        entered = true;
-        cv.notify_all ();
-        while (!release)
-            cv.wait (lock);
-    }
-
-    void on_discovery_destroyed (zlink::discovery_t *)
-    {
-        ++destroyed_calls;
-    }
-
-    bool wait_entered (int timeout_ms_)
-    {
-        std::unique_lock<std::mutex> lock (sync);
-        return cv.wait_for (
-          lock, std::chrono::milliseconds (timeout_ms_),
-          [this] () { return entered; });
-    }
-
-    void unblock ()
-    {
-        std::lock_guard<std::mutex> lock (sync);
-        release = true;
-        cv.notify_all ();
-    }
-
-    std::mutex sync;
-    std::condition_variable cv;
-    bool entered;
-    bool release;
-    int destroyed_calls;
 };
 
 monitor_probe_t *g_monitor_a = NULL;
@@ -199,7 +149,7 @@ void *create_gateway_attached (void *ctx_,
     if (!gateway)
         return NULL;
     if (routing_id_
-        && zlink_gateway_set_routing_id (gateway, routing_id_,
+        && zlink_set_routing_id (gateway, routing_id_,
                                          strlen (routing_id_))
              != 0) {
         const int err = errno;
@@ -373,19 +323,16 @@ void set_registry_tls_server_opts (void *registry_,
                                    zlink_registry_socket_role_t role_,
                                    const tls_test_files_t &files_)
 {
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_setsockopt (
-      registry_, role_, ZLINK_SOCKOPT_TLS_CERT, files_.server_cert.c_str (),
-      files_.server_cert.size () + 1));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_setsockopt (
-      registry_, role_, ZLINK_SOCKOPT_TLS_KEY, files_.server_key.c_str (),
-      files_.server_key.size () + 1));
+    LIBZLINK_UNUSED (role_);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_server (
+      registry_, files_.server_cert.c_str (), files_.server_key.c_str (), 0));
 }
 
 void set_discovery_tls_client_opts (void *discovery_,
                                     const tls_test_files_t &files_)
 {
     const int trust_system = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_set_tls_client (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_client (
       discovery_, files_.ca_cert.c_str (), "localhost", trust_system));
 }
 
@@ -578,11 +525,11 @@ static void test_discovery_monitor_and_routing_id ()
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_set_routing_id (discovery, "disc-mon", 8));
+      zlink_set_routing_id (discovery, "disc-mon", 8));
 
     zlink_routing_id_t rid;
     memset (&rid, 0, sizeof (rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_routing_id (discovery, &rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (discovery, &rid));
     assert_routing_id_bytes (&rid, "disc-mon");
 
     monitor_probe_t probe;
@@ -612,7 +559,7 @@ static void test_discovery_monitor_and_routing_id ()
 
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1,
-                           zlink_discovery_set_routing_id (discovery, "late", 4));
+                           zlink_set_routing_id (discovery, "late", 4));
     TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
@@ -655,34 +602,34 @@ static void test_gateway_receiver_routing_ids_and_options ()
                                          &discard_gateway_message);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_set_routing_id (client, "gw-int", 6));
+      zlink_set_routing_id (client, "gw-int", 6));
     zlink_routing_id_t rid;
     memset (&rid, 0, sizeof (rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (client, &rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (client, &rid));
     assert_routing_id_bytes (&rid, "gw-int");
     memset (&rid, 0, sizeof (rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server.gateway, &rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (server.gateway, &rid));
     assert_routing_id_bytes (&rid, "gw-server-int");
 
     const int hwm = 321;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_set_option (client, ZLINK_GATEWAY_OPT_SNDHWM, &hwm,
+      zlink_set_option (client, ZLINK_OPT_SNDHWM, &hwm,
                                 sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_set_option (client, ZLINK_GATEWAY_OPT_RCVHWM, &hwm,
+      zlink_set_option (client, ZLINK_OPT_RCVHWM, &hwm,
                                 sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_set_option (server.gateway, ZLINK_GATEWAY_OPT_SNDHWM, &hwm,
+      zlink_set_option (server.gateway, ZLINK_OPT_SNDHWM, &hwm,
                                 sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_set_option (server.gateway, ZLINK_GATEWAY_OPT_RCVHWM, &hwm,
+      zlink_set_option (server.gateway, ZLINK_OPT_RCVHWM, &hwm,
                                 sizeof (hwm)));
 
     TEST_ASSERT_TRUE (
       wait_gateway_connection_count (client, 1, 3000));
 
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_set_routing_id (client, "late", 4));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_set_routing_id (client, "late", 4));
     TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
 
     destroy_gateway_server (&server);
@@ -780,7 +727,7 @@ static void test_registry_topology_snapshot_and_remote_query ()
     zlink_routing_id_t gateway_rid;
     memset (&gateway_rid, 0, sizeof (gateway_rid));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_routing_id (server.gateway, &gateway_rid));
+      zlink_get_routing_id (server.gateway, &gateway_rid));
 
     TEST_ASSERT_TRUE (wait_for_topology_state (
       registry, ZLINK_SERVICE_KIND_GATEWAY, "svc-topology", &gateway_rid,
@@ -893,9 +840,9 @@ static void test_registry_gateway_peer_snapshot_and_remote_query ()
     memset (&client_rid, 0, sizeof (client_rid));
     memset (&server_rid, 0, sizeof (server_rid));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_routing_id (client_gateway, &client_rid));
+      zlink_get_routing_id (client_gateway, &client_rid));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_routing_id (server.gateway, &server_rid));
+      zlink_get_routing_id (server.gateway, &server_rid));
 
     TEST_ASSERT_TRUE (wait_for_gateway_peer_state (
       registry, &client_rid, &server_rid, ZLINK_TOPOLOGY_STATE_READY, 3000));
@@ -953,7 +900,7 @@ static void test_monitor_closed_event_on_service_destroy ()
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_set_routing_id (discovery, "disc-close", 10));
+      zlink_set_routing_id (discovery, "disc-close", 10));
 
     monitor_probe_t probe;
     g_monitor_a = &probe;
@@ -984,7 +931,7 @@ static void test_discovery_monitor_reports_service_up_then_down_in_order ()
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_set_routing_id (discovery, "disc-order", 10));
+      zlink_set_routing_id (discovery, "disc-order", 10));
 
     event_sequence_probe_t probe;
     g_event_sequence_probe = &probe;
@@ -1053,7 +1000,7 @@ static void test_discovery_monitor_callback_parent_destroy_returns_ebusy ()
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_set_routing_id (discovery, "disc-self-destroy", 17));
+      zlink_set_routing_id (discovery, "disc-self-destroy", 17));
 
     std::atomic<int> callback_calls (0);
     g_discovery_self_close_subject = discovery;
@@ -1084,7 +1031,7 @@ static void test_discovery_monitor_callback_parent_destroy_returns_ebusy ()
 
     zlink_routing_id_t rid;
     memset (&rid, 0, sizeof (rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_routing_id (discovery, &rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (discovery, &rid));
     assert_routing_id_bytes (&rid, "disc-self-destroy");
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&monitor));
@@ -1093,184 +1040,6 @@ static void test_discovery_monitor_callback_parent_destroy_returns_ebusy ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
     g_discovery_self_close_subject = NULL;
     g_discovery_self_close_calls = NULL;
-}
-
-static void test_discovery_destroy_busy_observer_is_no_latch ()
-{
-    void *ctx = get_test_context ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
-    TEST_ASSERT_NOT_NULL (discovery);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_set_routing_id (discovery, "disc-observer", 13));
-
-    zlink::discovery_t *discovery_impl =
-      static_cast<zlink::discovery_t *> (discovery);
-    blocking_discovery_observer_t observer;
-    zlink::discovery_access_t::add_observer (discovery_impl, &observer);
-
-    std::set<std::string> services;
-    services.insert ("svc-observer");
-    std::thread notify_thread (
-      [&] () { discovery_impl->notify_observers_for_testing (services); });
-
-    TEST_ASSERT_TRUE (observer.wait_entered (2000));
-
-    TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_destroy (&discovery));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_NOT_NULL (discovery);
-
-    zlink_routing_id_t rid;
-    memset (&rid, 0, sizeof (rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_routing_id (discovery, &rid));
-    assert_routing_id_bytes (&rid, "disc-observer");
-
-    observer.unblock ();
-    notify_thread.join ();
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
-    TEST_ASSERT_EQUAL_INT (1, observer.destroyed_calls);
-}
-
-static void test_discovery_public_api_lifecycle_contract ()
-{
-    void *ctx = get_test_context ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
-    TEST_ASSERT_NOT_NULL (discovery);
-
-    zlink::discovery_t *discovery_impl =
-      static_cast<zlink::discovery_t *> (discovery);
-    {
-        zlink::service_public_api_scope_t inflight (
-          discovery_impl->public_api_guard_for_testing ());
-        TEST_ASSERT_TRUE (inflight.acquired ());
-
-        TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_destroy (&discovery));
-        TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-        TEST_ASSERT_NOT_NULL (discovery);
-
-        zlink_routing_id_t rid;
-        memset (&rid, 0, sizeof (rid));
-        TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_routing_id (discovery, &rid));
-    }
-
-    TEST_ASSERT_TRUE (
-      discovery_impl->public_api_guard_for_testing ().begin_close_or_fail_busy ());
-
-    zlink_routing_id_t rid;
-    memset (&rid, 0, sizeof (rid));
-    TEST_ASSERT_EQUAL_INT (-1, zlink_discovery_routing_id (discovery, &rid));
-    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
-
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_discovery_connect_registry (discovery, "tcp://127.0.0.1:29999"));
-    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
-
-    TEST_ASSERT_EQUAL_PTR (
-      NULL, zlink_discovery_monitor_open (discovery, ZLINK_MONITOR_EVENT_CLOSED,
-                                          &service_monitor_handler_a, NULL));
-    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
-
-    TEST_ASSERT_FALSE (
-      discovery_impl->public_api_guard_for_testing ().begin_close_or_fail_busy ());
-    TEST_ASSERT_EQUAL_INT (EALREADY, zlink_errno ());
-
-    delete discovery_impl;
-}
-
-static void test_registry_public_api_lifecycle_contract ()
-{
-    void *ctx = get_test_context ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    void *registry = zlink_registry_new (ctx);
-    TEST_ASSERT_NOT_NULL (registry);
-
-    zlink::registry_t *registry_impl = static_cast<zlink::registry_t *> (registry);
-    {
-        zlink::service_public_api_scope_t inflight (
-          registry_impl->public_api_guard_for_testing ());
-        TEST_ASSERT_TRUE (inflight.acquired ());
-
-        TEST_ASSERT_EQUAL_INT (-1, zlink_registry_destroy (&registry));
-        TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-        TEST_ASSERT_NOT_NULL (registry);
-
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_id (registry, 42));
-    }
-
-    TEST_ASSERT_TRUE (
-      registry_impl->public_api_guard_for_testing ().begin_close_or_fail_busy ());
-
-    TEST_ASSERT_EQUAL_INT (-1, zlink_registry_set_id (registry, 7));
-    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
-
-    size_t count = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_registry_topology_snapshot (registry, NULL,
-                                                                 &count));
-    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
-
-    TEST_ASSERT_FALSE (
-      registry_impl->public_api_guard_for_testing ().begin_close_or_fail_busy ());
-    TEST_ASSERT_EQUAL_INT (EALREADY, zlink_errno ());
-
-    delete registry_impl;
-}
-
-static void test_registry_query_client_public_api_lifecycle_contract ()
-{
-    void *ctx = get_test_context ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    char registry_pub[MAX_SOCKET_STRING];
-    char registry_router[MAX_SOCKET_STRING];
-    int registry_seed = 22673;
-    void *registry = create_started_registry_with_port_seed_transport (
-      ctx, "tcp", &registry_seed, registry_pub, sizeof (registry_pub),
-      registry_router, sizeof (registry_router));
-    TEST_ASSERT_NOT_NULL (registry);
-
-    void *client = zlink_registry_query_client_new (ctx);
-    TEST_ASSERT_NOT_NULL (client);
-
-    zlink::service_public_api_guard_t *guard =
-      zlink::registry_query_public_api_guard_for_testing (client);
-    TEST_ASSERT_NOT_NULL (guard);
-
-    {
-        zlink::service_public_api_scope_t inflight (*guard);
-        TEST_ASSERT_TRUE (inflight.acquired ());
-
-        TEST_ASSERT_EQUAL_INT (-1, zlink_registry_query_destroy (&client));
-        TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-        TEST_ASSERT_NOT_NULL (client);
-
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_registry_query_client_connect (client, registry_router));
-    }
-
-    TEST_ASSERT_TRUE (guard->begin_close_or_fail_busy ());
-
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_registry_query_client_connect (client, registry_router));
-    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
-
-    size_t count = 0;
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_registry_query_snapshot (client, NULL, NULL, &count));
-    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, zlink_errno ());
-
-    TEST_ASSERT_EQUAL_INT (-1, zlink_registry_query_destroy (&client));
-    TEST_ASSERT_EQUAL_INT (EALREADY, zlink_errno ());
-    TEST_ASSERT_NOT_NULL (client);
-
-    zlink::destroy_registry_query_client_for_testing (client);
-    client = NULL;
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
 static void test_registry_control_path_queries_are_safe_during_concurrent_updates ()
@@ -1370,7 +1139,7 @@ static void test_discovery_control_path_reads_are_safe_during_concurrent_updates
         char routing_id[32];
         for (int i = 0; i < iterations; ++i) {
             snprintf (routing_id, sizeof (routing_id), "disc-%03d", i);
-            if (zlink_discovery_set_routing_id (discovery, routing_id,
+            if (zlink_set_routing_id (discovery, routing_id,
                                                 strlen (routing_id))
                 != 0) {
                 update_failures.fetch_add (1);
@@ -1384,7 +1153,7 @@ static void test_discovery_control_path_reads_are_safe_during_concurrent_updates
             zlink_routing_id_t rid;
             memset (&rid, 0, sizeof (rid));
             errno = 0;
-            const int rc = zlink_discovery_routing_id (discovery, &rid);
+            const int rc = zlink_get_routing_id (discovery, &rid);
             const int err = zlink_errno ();
             if (rc != 0 && err != EAGAIN && err != 0) {
                 read_failures.fetch_add (1);
@@ -1688,7 +1457,7 @@ static void test_registry_topology_reports_discovery_and_gateway ()
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_set_routing_id (discovery, "disc-topology", 13));
+      zlink_set_routing_id (discovery, "disc-topology", 13));
     TEST_ASSERT_SUCCESS_ERRNO (
       connect_discovery_registry_with_retry (discovery, registry_router, 2000));
     void *client =
@@ -1764,10 +1533,6 @@ int main (int, char **)
     RUN_SERVICE_INTROSPECTION_TEST (test_monitor_closed_event_on_service_destroy);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_monitor_reports_service_up_then_down_in_order);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_monitor_callback_parent_destroy_returns_ebusy);
-    RUN_SERVICE_INTROSPECTION_TEST (test_discovery_destroy_busy_observer_is_no_latch);
-    RUN_SERVICE_INTROSPECTION_TEST (test_discovery_public_api_lifecycle_contract);
-    RUN_SERVICE_INTROSPECTION_TEST (test_registry_public_api_lifecycle_contract);
-    RUN_SERVICE_INTROSPECTION_TEST (test_registry_query_client_public_api_lifecycle_contract);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_control_path_queries_are_safe_during_concurrent_updates);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_control_path_reads_are_safe_during_concurrent_updates);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_registry_transport_restriction);

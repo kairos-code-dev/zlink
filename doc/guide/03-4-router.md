@@ -145,12 +145,12 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 | Option | Type | Default | Description |
 |------|------|--------|------|
-| `ZLINK_ROUTER_MANDATORY` | int | 0 | Return EHOSTUNREACH error for undeliverable messages |
+| `ZLINK_ROUTER_OPT_MANDATORY` | int | 0 | Return EHOSTUNREACH error for undeliverable messages (set via `zlink_set_router_option()`) |
 | `ZLINK_ROUTER_HANDOVER` | int | 0 | Replace existing connection on routing_id conflict |
-| `ZLINK_ROUTING_ID` | binary | Auto (UUID) | The ROUTER's own routing_id |
-| `ZLINK_SNDHWM` | int | 1000 | Send HWM |
-| `ZLINK_RCVHWM` | int | 1000 | Receive HWM |
-| `ZLINK_LINGER` | int | -1 | Wait time on close (ms) |
+| `zlink_set_routing_id()` | binary | Auto (UUID) | The ROUTER's own routing_id (dedicated function) |
+| `ZLINK_OPT_SNDHWM` | int | 1000 | Send HWM |
+| `ZLINK_OPT_RCVHWM` | int | 1000 | Receive HWM |
+| `ZLINK_OPT_LINGER` | int | -1 | Wait time on close (ms) |
 
 ### ROUTER_MANDATORY
 
@@ -158,7 +158,7 @@ By default, ROUTER **silently drops** messages when the target cannot be found. 
 
 ```c
 int mandatory = 1;
-zlink_setsockopt(router, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
+zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
 
 /* Attempt to send to a non-existent target */
 zlink_routing_id_t target_rid = { .data = "UNKNOWN", .size = 7 };
@@ -198,18 +198,18 @@ zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* Client 1 */
 void *d1 = zlink_socket(ctx, ZLINK_DEALER);
 zlink_recv_handler(d1, on_reply, NULL);
-zlink_setsockopt(d1, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(d1, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* Client 2 */
 void *d2 = zlink_socket(ctx, ZLINK_DEALER);
 zlink_recv_handler(d2, on_reply, NULL);
-zlink_setsockopt(d2, ZLINK_ROUTING_ID, "D2", 2);
+zlink_set_routing_id(d2, "D2", 2);
 zlink_connect(d2, endpoint);
 
 /* Each client sends a message -- on_request receives with source_rid */
@@ -244,7 +244,7 @@ zlink_send_rid(router, &bad_rid, &msg, 1, 0);
 
 /* Enable MANDATORY mode */
 int mandatory = 1;
-zlink_setsockopt(router, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
+zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
 
 /* Now returns error on undeliverable message */
 zlink_msg_t msg2;
@@ -279,7 +279,7 @@ void on_connect(const zlink_routing_id_t *source_rid,
 
 /* DEALER connects and sends initial message */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "X", 1);
+zlink_set_routing_id(dealer, "X", 1);
 zlink_connect(dealer, endpoint);
 zlink_msg_t hello;
 zlink_msg_init_size(&hello, 5);
@@ -325,7 +325,7 @@ When a DEALER reconnects, its auto-generated routing_id may change. Setting an e
 
 ```c
 /* Explicit routing_id -- remains the same across reconnections */
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "stable-id", 9);
+zlink_set_routing_id(dealer, "stable-id", 9);
 ```
 
 ### routing_id Conflicts

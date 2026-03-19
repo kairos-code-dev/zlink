@@ -64,6 +64,7 @@ class spot_sub_t
     int subscribe_pattern (const char *pattern_);
     int unsubscribe (const char *topic_or_pattern_);
     int set_option (int option_, const void *optval_, size_t optvallen_);
+    int set_routing_id (const void *data_, size_t size_);
     int routing_id (zlink_routing_id_t *out_) const;
     int fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const;
     void *monitor_open (int events_);
@@ -103,6 +104,7 @@ class spot_sub_t
     void mark_all_subjects_lost (const char *endpoint_);
     std::string first_ready_peer_endpoint () const;
     void send_ready_ack_lost_for_endpoint (const char *endpoint_);
+    spot_node_t *node () const { return _node; }
 
     void emit_ready_event ();
     int destroy ();

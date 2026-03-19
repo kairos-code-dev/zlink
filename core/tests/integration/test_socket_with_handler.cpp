@@ -678,7 +678,7 @@ void test_raw_subscribe_recv_returns_topic_and_payload ()
     void *pub = zlink_socket (ctx, ZLINK_PUB);
     TEST_ASSERT_NOT_NULL (pub);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (sub, "topic"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "topic"));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (pub, endpoint, sizeof endpoint);
@@ -694,7 +694,7 @@ void test_raw_subscribe_recv_returns_topic_and_payload ()
     char topic[32];
     memset (topic, 0, sizeof (topic));
     size_t topic_len = sizeof (topic);
-    TEST_ASSERT_SUCCESS_ERRNO (::zlink_subscribe_recv (
+    TEST_ASSERT_SUCCESS_ERRNO (::zlink_subscribe (
       sub, &source_rid, &parts, &part_count, topic, &topic_len, 0));
     TEST_ASSERT_EQUAL_UINT (0, source_rid.size);
     TEST_ASSERT_TRUE (topic_len >= 5);
@@ -720,9 +720,9 @@ void test_pubsub_generic_surface_validates_filters_and_raw_publish ()
     void *pub = zlink_socket (ctx, ZLINK_PUB);
     TEST_ASSERT_NOT_NULL (pub);
 
-    TEST_ASSERT_EQUAL_INT (-1, zlink_subscribe (sub, "*"));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_set_subscription (sub, "*"));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (-1, zlink_subscribe (sub, "bad*mid"));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_set_subscription (sub, "bad*mid"));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0));
@@ -820,7 +820,7 @@ void test_xpub_direct_recv_returns_source_rid_and_topic ()
     memset (topic, 0, sizeof (topic));
     size_t topic_len = sizeof (topic);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscription_event_recv (
+      zlink_subscription_event (
         xpub, &source_rid, &subscribed, topic, &topic_len, 0));
     TEST_ASSERT_EQUAL_INT (1, subscribed);
     TEST_ASSERT_TRUE (source_rid.size > 0);
@@ -860,7 +860,7 @@ void test_xpub_direct_recv_reports_emsgsize_and_required_topic_length ()
     memset (topic, 0, sizeof (topic));
     size_t topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscription_event_recv (
+      -1, zlink_subscription_event (
             xpub, &source_rid, &subscribed, topic, &topic_len, 0));
     TEST_ASSERT_EQUAL_INT (EMSGSIZE, zlink_errno ());
     TEST_ASSERT_EQUAL_UINT (5, topic_len);

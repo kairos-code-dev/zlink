@@ -29,7 +29,7 @@
 | 카테고리 | 포함 API | Thread-safe? | 참고 |
 |---|---|---|---|
 | **전송** | `send`, `publish`, `send_rid` | 예 — 완전히 동시 호출 가능 | 여러 스레드가 같은 핸들에 동시에 호출 가능. 처리량에 최적화된 빠른 경로. |
-| **설정·운영** | `bind`, `connect`, `disconnect`, `setsockopt`, `subscribe`, `unsubscribe`, `monitor_open`, `attach_discovery`, 조회 | 예 — 한 번에 하나씩 처리 | 어느 스레드에서든 안전하게 호출 가능. 라이브러리가 한 번에 하나씩 처리하므로 메시지마다 호출하는 건 피하세요. |
+| **설정·운영** | `bind`, `connect`, `disconnect`, `set_option`, `subscribe`, `unsubscribe`, `monitor_open`, `attach_discovery`, 조회 | 예 — 한 번에 하나씩 처리 | 어느 스레드에서든 안전하게 호출 가능. 라이브러리가 한 번에 하나씩 처리하므로 메시지마다 호출하는 건 피하세요. |
 | **정리** | `close`, `destroy` | 예 — 명확한 에러 코드 | 다른 스레드가 아직 핸들을 사용 중이면 크래시 대신 `EBUSY`를 반환. 자세한 내용은 [4절](#4-핸들-안전하게-닫기). |
 
 **요약하면:** `send`는 어느 스레드에서든 마음껏 호출하세요. 연결 추가,
@@ -99,12 +99,12 @@ int main(void)
 
 포함:
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
-- `zlink_setsockopt()` / `zlink_getsockopt()`
-- `zlink_subscribe()` / `zlink_unsubscribe()`
+- `zlink_set_option()` / `zlink_get_option()`
+- `zlink_set_subscription()` / `zlink_unset_subscription()`
 - `zlink_gateway_attach_discovery()` / `zlink_spot_node_attach_discovery()`
 - `zlink_*_monitor_open()`
-- `zlink_socket_send_ready_handler()`
-- `zlink_gateway_set_option()` / `zlink_gateway_set_lb_strategy()`
+- `zlink_send_ready_handler()`
+- `zlink_set_option()` / `zlink_gateway_set_lb_strategy()`
 - `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
 - 조회/스냅샷 함수
 
@@ -132,12 +132,12 @@ void *setup_thread(void *arg)
     zlink_connect(socket, "tcp://10.0.0.3:5555");
 
     int hwm = 5000;
-    zlink_setsockopt(socket, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
     return NULL;
 }
 ```
 
-`ZLINK_EVENTS`, `ZLINK_LAST_ENDPOINT` 같은 경량 읽기도 이 카테고리에
+`ZLINK_OPT_EVENTS`, `ZLINK_OPT_LAST_ENDPOINT` 같은 경량 읽기도 이 카테고리에
 속하지만, 무거운 조회/스냅샷 호출보다 오버헤드가 적습니다.
 
 ## 3. 핸들별 요약표
@@ -146,7 +146,7 @@ void *setup_thread(void *arg)
 
 | 핸들 | 전송 (동시 호출) | 설정·운영 (순차 처리) | 정리 |
 |---|---|---|---|
-| Socket (PAIR/DEALER/ROUTER/...) | `zlink_send` | bind, connect, disconnect, setsockopt, subscribe, monitor_open | `zlink_close` |
+| Socket (PAIR/DEALER/ROUTER/...) | `zlink_send` | bind, connect, disconnect, set_option, subscribe, monitor_open | `zlink_close` |
 | Gateway | `zlink_gateway_send`, `send_rid` | bind, connect, attach_discovery, set_option, set_lb_strategy, monitor_open | `zlink_gateway_destroy` |
 | SPOT | `zlink_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option, monitor_open | `zlink_spot_destroy` |
 | SPOT Node | `zlink_publish` | bind, connect_peer_pub, disconnect_peer_pub, attach_discovery, subscribe, unsubscribe, monitor_open | `zlink_spot_node_destroy` |
@@ -324,9 +324,9 @@ void *control(void *arg)
 {
     void *spot = arg;
     msleep(100);
-    zlink_subscribe(spot, "audit.*");      /* 발행 중에도 안전 */
+    zlink_set_subscription(spot, "audit.*");      /* 발행 중에도 안전 */
     msleep(200);
-    zlink_unsubscribe(spot, "audit.*");    /* 역시 안전 */
+    zlink_unset_subscription(spot, "audit.*");    /* 역시 안전 */
     return NULL;
 }
 ```
@@ -338,7 +338,7 @@ void *control(void *arg)
 | 두 스레드가 같은 `zlink_msg_t`에 쓰기 | 메시지 객체는 thread-safe가 아님 | 각 스레드에서 별도 `zlink_msg_t` 생성 |
 | 콜백에서 무거운 작업 → 처리량 저하 | 콜백은 I/O 스레드에서 실행 — 블로킹하면 모든 I/O가 멈춤 | 큐에 넣고 워커 스레드에서 처리 |
 | `close`/`destroy` 후 API 호출 | `ESHUTDOWN` 반환 또는 정의되지 않은 동작 | 종료를 조율하고 반환 코드 확인 |
-| 메시지마다 `connect`/`setsockopt` 호출 | 설정 API는 순차 처리 — 불필요한 오버헤드 추가 | 설정이 실제로 변경될 때만 호출 |
+| 메시지마다 `connect`/`set_option` 호출 | 설정 API는 순차 처리 — 불필요한 오버헤드 추가 | 설정이 실제로 변경될 때만 호출 |
 
 ## 9. 에러 코드 요약표
 

@@ -65,7 +65,7 @@ inline int zlink_send (void *s_,
     int type = 0;
     size_t type_size = sizeof (type);
     int rc = 0;
-    if (zlink_getsockopt (s_, ZLINK_TYPE, &type, &type_size) == 0)
+    if (zlink_get_option (s_, ZLINK_OPT_TYPE, &type, &type_size) == 0)
         rc = zlink_compat_msg_send (&msg, s_, flags_);
     else
         rc = ::zlink_send (s_, &msg, 1, flags_ & ZLINK_DONTWAIT);
@@ -86,7 +86,7 @@ inline int zlink_recv (void *s_,
 {
     int type = 0;
     size_t type_size = sizeof (type);
-    if (zlink_getsockopt (s_, ZLINK_TYPE, &type, &type_size) == 0)
+    if (zlink_get_option (s_, ZLINK_OPT_TYPE, &type, &type_size) == 0)
         return zlink::recv_buffer_internal (s_, buf_, len_, flags_);
 
     zlink_msg_t *parts = NULL;
@@ -131,15 +131,15 @@ inline int zlink_gateway_recv (void *gateway_,
     return ::zlink_recv (gateway_, source_rid_out_, parts_, part_count_, flags_);
 }
 
-inline int zlink_subscribe_recv (void *subject_,
-                                 zlink_msg_t **parts_,
-                                 size_t *part_count_,
-                                 int flags_,
-                                 char *topic_id_out_,
-                                 size_t *topic_id_len_)
+inline int zlink_subscribe (void *subject_,
+                            zlink_msg_t **parts_,
+                            size_t *part_count_,
+                            int flags_,
+                            char *topic_id_out_,
+                            size_t *topic_id_len_)
 {
-    return ::zlink_subscribe_recv (subject_, NULL, parts_, part_count_,
-                                   topic_id_out_, topic_id_len_, flags_);
+    return ::zlink_subscribe (subject_, NULL, parts_, part_count_,
+                              topic_id_out_, topic_id_len_, flags_);
 }
 
 inline bool test_msg_has_more (const zlink_msg_t *msg_)

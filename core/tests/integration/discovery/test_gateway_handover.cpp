@@ -79,7 +79,7 @@ void *create_gateway_attached (void *ctx_,
     if (!gateway)
         return NULL;
     if (routing_id_
-        && zlink_gateway_set_routing_id (gateway, routing_id_,
+        && zlink_set_routing_id (gateway, routing_id_,
                                          strlen (routing_id_))
              != 0) {
         const int err = errno;
@@ -94,7 +94,7 @@ void *create_gateway_attached (void *ctx_,
         return NULL;
     }
     const int linger = 0;
-    if (zlink_gateway_set_option (gateway, ZLINK_GATEWAY_OPT_LINGER, &linger,
+    if (zlink_set_option (gateway, ZLINK_OPT_LINGER, &linger,
                                   sizeof (linger))
         != 0) {
         const int err = errno;

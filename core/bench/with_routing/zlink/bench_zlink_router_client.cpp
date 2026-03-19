@@ -23,13 +23,18 @@ void apply_socket_options(void *socket)
     const int sndtimeo = 100;
     const int rcvhwm = static_cast<int>(parse_long_env("BENCH_HWM", 1000, 1));
     const int sndhwm = static_cast<int>(parse_long_env("BENCH_CLIENT_SNDHWM", 10, 1));
-    (void) zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
-    (void) zlink_setsockopt(socket, ZLINK_RCVTIMEO, &rcvtimeo, sizeof(rcvtimeo));
-    (void) zlink_setsockopt(socket, ZLINK_SNDTIMEO, &sndtimeo, sizeof(sndtimeo));
-    (void) zlink_setsockopt(socket, ZLINK_RCVHWM, &rcvhwm, sizeof(rcvhwm));
-    (void) zlink_setsockopt(socket, ZLINK_SNDHWM, &sndhwm, sizeof(sndhwm));
+    (void) zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
+    (void) zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &rcvtimeo,
+                            sizeof(rcvtimeo));
+    (void) zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &sndtimeo,
+                            sizeof(sndtimeo));
+    (void) zlink_set_option(socket, ZLINK_OPT_RCVHWM, &rcvhwm,
+                            sizeof(rcvhwm));
+    (void) zlink_set_option(socket, ZLINK_OPT_SNDHWM, &sndhwm,
+                            sizeof(sndhwm));
     const int nodelay = 1;
-    (void) zlink_setsockopt(socket, ZLINK_TCP_NODELAY, &nodelay, sizeof(nodelay));
+    (void) zlink_set_option(socket, ZLINK_OPT_TCP_NODELAY, &nodelay,
+                            sizeof(nodelay));
 }
 
 bool send_rtt_message(void *socket,
@@ -272,7 +277,7 @@ int main(int argc, char **argv)
 
         char rid[64];
         std::snprintf(rid, sizeof(rid), "RC_C_%d", i);
-        (void) zlink_setsockopt(sock, ZLINK_ROUTING_ID, rid, std::strlen(rid));
+        (void) zlink_set_routing_id(sock, rid, std::strlen(rid));
 
         if (zlink_connect(sock, endpoint.c_str()) != 0) {
             std::fprintf(stderr,

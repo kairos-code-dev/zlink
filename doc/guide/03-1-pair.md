@@ -148,18 +148,18 @@ zlink_send(server, parts, 2, 0);
 
 | Option | Type | Default | Description |
 |------|------|--------|------|
-| `ZLINK_SNDHWM` | int | 1000 | Maximum number of messages in the send queue |
-| `ZLINK_RCVHWM` | int | 1000 | Maximum number of messages in the receive queue |
-| `ZLINK_LINGER` | int | -1 | Wait time for unsent messages on close (ms), -1=infinite |
-| `ZLINK_SNDTIMEO` | int | -1 | Send timeout (ms), -1=infinite |
-| `ZLINK_RCVTIMEO` | int | -1 | Receive timeout (ms), -1=infinite |
+| `ZLINK_OPT_SNDHWM` | int | 1000 | Maximum number of messages in the send queue |
+| `ZLINK_OPT_RCVHWM` | int | 1000 | Maximum number of messages in the receive queue |
+| `ZLINK_OPT_LINGER` | int | -1 | Wait time for unsent messages on close (ms), -1=infinite |
+| `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms), -1=infinite |
+| `ZLINK_OPT_RCVTIMEO` | int | -1 | Receive timeout (ms), -1=infinite |
 
 ```c
 int hwm = 5000;
-zlink_setsockopt(socket, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 
 int linger = 0;  /* return immediately on close */
-zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
+zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 ```
 
 ## 5. Usage Patterns
@@ -201,7 +201,7 @@ zlink_bind(server, "tcp://127.0.0.1:*");
 /* Query the assigned endpoint */
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(server, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* Client: connect using the queried endpoint */
 void *client = zlink_socket(ctx, ZLINK_PAIR);
@@ -284,7 +284,7 @@ When `zlink_close()` is called and there are unsent messages remaining, it waits
 
 ```c
 int linger = 0;
-zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
+zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 ```
 
 ---

@@ -100,8 +100,8 @@ bool configure_gateway_tls_server(void *gateway, const std::string &transport)
       write_temp_cert(test_certs::server_cert_pem, "multi_gateway_srv_cert");
     static const std::string key_path =
       write_temp_cert(test_certs::server_key_pem, "multi_gateway_srv_key");
-    return zlink_gateway_set_tls_server(gateway, cert_path.c_str(),
-                                        key_path.c_str())
+    return zlink_set_tls_server(gateway, cert_path.c_str(),
+                                key_path.c_str(), 0)
            == 0;
 }
 
@@ -114,16 +114,16 @@ bool apply_gateway_options(void *gateway,
     const int sndtimeo_ms =
       bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 200);
 
-    return zlink_gateway_set_option(gateway, ZLINK_GATEWAY_OPT_LINGER,
+    return zlink_set_option(gateway, ZLINK_OPT_LINGER,
                                     &linger_ms, sizeof(linger_ms))
              == 0
-           && zlink_gateway_set_option(gateway, ZLINK_GATEWAY_OPT_SNDHWM,
+           && zlink_set_option(gateway, ZLINK_OPT_SNDHWM,
                                        &sndhwm, sizeof(sndhwm))
                 == 0
-           && zlink_gateway_set_option(gateway, ZLINK_GATEWAY_OPT_RCVHWM,
+           && zlink_set_option(gateway, ZLINK_OPT_RCVHWM,
                                        &rcvhwm, sizeof(rcvhwm))
                 == 0
-           && zlink_gateway_set_option(gateway, ZLINK_GATEWAY_OPT_SNDTIMEO,
+           && zlink_set_option(gateway, ZLINK_OPT_SNDTIMEO,
                                        &sndtimeo_ms, sizeof(sndtimeo_ms))
                 == 0;
 }
@@ -148,7 +148,8 @@ std::string bind_gateway_endpoint(void *gateway,
 
     char last_endpoint[MAX_SOCKET_STRING] = "";
     size_t last_endpoint_size = sizeof(last_endpoint);
-    if (zlink_gateway_last_endpoint(gateway, last_endpoint, &last_endpoint_size)
+    if (zlink_get_option(gateway, ZLINK_OPT_LAST_ENDPOINT,
+                         last_endpoint, &last_endpoint_size)
         == 0) {
         endpoint.assign(last_endpoint);
     }
@@ -488,7 +489,7 @@ int run_server_benchmark(const std::string &lib_name,
     void *gateway = zlink_gateway_new(ctx.get(), k_service_name);
     if (!gateway)
         return 1;
-    if (zlink_gateway_set_routing_id(gateway, k_server_routing_id,
+    if (zlink_set_routing_id(gateway, k_server_routing_id,
                                      std::strlen(k_server_routing_id)) != 0
         || zlink_recv_handler(gateway, &gateway_server_handler, NULL) != 0) {
         zlink_gateway_destroy(&gateway);
@@ -496,7 +497,7 @@ int run_server_benchmark(const std::string &lib_name,
     }
 
     if (!apply_gateway_options(gateway, settings)
-        || zlink_gateway_send_ready_handler(gateway,
+        || zlink_send_ready_handler(gateway,
                                                 &gateway_server_send_ready,
                                                 NULL)
              != 0

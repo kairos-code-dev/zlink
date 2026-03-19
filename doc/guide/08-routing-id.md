@@ -22,7 +22,7 @@ typedef struct {
 | Socket own routing_id | UUID (binary) | 16B | Auto-generated for all sockets |
 | STREAM peer routing_id | uint32 | 4B | Auto-assigned per connection |
 
-- If the user does not set `ZLINK_ROUTING_ID`, it is auto-generated
+- If the user does not call `zlink_set_routing_id()`, it is auto-generated
 - Uniqueness is guaranteed based on a process-wide global counter
 
 ### own vs peer — Differences Users Should Know
@@ -32,7 +32,7 @@ typedef struct {
 | **Creation time** | At socket creation | At peer connection |
 | **Size** | 16B (UUID) | Variable (ROUTER), 4B (STREAM) |
 | **Usage** | Sent during handshake | Automatically prepended to received messages |
-| **Configuration** | `ZLINK_ROUTING_ID` | Uses value set by the peer |
+| **Configuration** | `zlink_set_routing_id()` | Uses value set by the peer |
 
 The own routing_id is automatically assigned a UUID when the socket is created and is sent to the peer during the handshake. The peer routing_id is the own routing_id sent by the peer and is automatically prepended as the first frame of received messages in ROUTER/STREAM sockets.
 
@@ -43,7 +43,7 @@ The own routing_id is automatically assigned a UUID when the socket is created a
 ```c
 /* Set before bind/connect */
 const char *id = "router-A";
-zlink_setsockopt(socket, ZLINK_ROUTING_ID, id, strlen(id));
+zlink_set_routing_id(socket, id, strlen(id));
 ```
 
 Notes:
@@ -56,48 +56,47 @@ Notes:
 
 ```c
 /* Good example: meaningful identifiers */
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "worker-01", 9);
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer, "worker-01", 9);
+zlink_set_routing_id(dealer, "D1", 2);
 
 /* Caution: potential collision with auto-generated routing_ids */
 /* Avoid UUID format (16B binary) */
 ```
 
-> Reference: `core/tests/test_router_multiple_dealers.cpp` — `zlink_setsockopt(dealer1, ZLINK_ROUTING_ID, "D1", 2)`
+> Reference: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
 
 ### Querying
 
 ```c
-uint8_t buf[255];
-size_t size = sizeof(buf);
-zlink_getsockopt(socket, ZLINK_ROUTING_ID, buf, &size);
+zlink_routing_id_t rid;
+zlink_get_routing_id(socket, &rid);
 
-printf("routing_id (%zu bytes): ", size);
-for (size_t i = 0; i < size; ++i)
-    printf("%02x", buf[i]);
+printf("routing_id (%u bytes): ", rid.size);
+for (size_t i = 0; i < rid.size; ++i)
+    printf("%02x", rid.data[i]);
 printf("\n");
 ```
 
 ## 5. Connection Alias Setting
 
-`ZLINK_CONNECT_ROUTING_ID` is a per-connection alias applied to the next `zlink_connect()` call. It is used when a ROUTER needs to refer to a specific connection by a meaningful name.
+`ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` is a per-connection alias applied to the next `zlink_connect()` call. It is set via `zlink_set_router_option()` and is used when a ROUTER needs to refer to a specific connection by a meaningful name.
 
 ```c
 /* Apply alias to the next connect */
 const char *alias = "edge-1";
-zlink_setsockopt(socket, ZLINK_CONNECT_ROUTING_ID, alias, strlen(alias));
+zlink_set_router_option(socket, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, alias, strlen(alias));
 zlink_connect(socket, "tcp://server:5555");
 
 /* Different alias for another connection */
 const char *alias2 = "edge-2";
-zlink_setsockopt(socket, ZLINK_CONNECT_ROUTING_ID, alias2, strlen(alias2));
+zlink_set_router_option(socket, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, alias2, strlen(alias2));
 zlink_connect(socket, "tcp://server2:5556");
 ```
 
-- `ZLINK_ROUTING_ID` applies to the entire socket
-- `ZLINK_CONNECT_ROUTING_ID` applies to individual connections
+- `zlink_set_routing_id()` applies to the entire socket
+- `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (set via `zlink_set_router_option()`) applies to individual connections
 - A single socket can have different aliases for each connection
-- `ZLINK_CONNECT_ROUTING_ID` is for ROUTER-side connection paths.
+- `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` is for ROUTER-side connection paths.
 - Setting it on `ZLINK_STREAM` returns `EOPNOTSUPP`.
 
 ## 6. Using routing_id with ROUTER Sockets
@@ -130,11 +129,11 @@ zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* DEALER client (explicit routing_id) */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, endpoint);
 
 /* DEALER send */
@@ -150,11 +149,11 @@ zlink_send(dealer, &req, 1, 0);
 
 ```c
 /* DEALER 1: routing_id = "D1" */
-zlink_setsockopt(dealer1, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer1, "D1", 2);
 zlink_connect(dealer1, endpoint);
 
 /* DEALER 2: routing_id = "D2" */
-zlink_setsockopt(dealer2, ZLINK_ROUTING_ID, "D2", 2);
+zlink_set_routing_id(dealer2, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
 /* ROUTER handler distinguishes clients by source_rid */
@@ -259,7 +258,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 |---|---|---|
 | **Size** | Variable (user-defined or 16B UUID) | Fixed 4B (uint32) |
 | **Generation** | Peer's own routing_id | Auto-assigned by the server |
-| **Configurable** | Peer sets via ZLINK_ROUTING_ID | Auto-assigned only (not configurable) |
+| **Configurable** | Peer sets via `zlink_set_routing_id()` | Auto-assigned only (not configurable) |
 | **Frame position** | Automatically prepended on receive | Automatically prepended on receive |
 
 ## 8. Debugging Tips for routing_id
@@ -293,7 +292,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 If the user-defined routing_id is an ASCII string, it can be printed directly.
 
 ```c
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer, "D1", 2);
 
 /* In ROUTER handler callback */
 void on_message(const zlink_routing_id_t *source_rid,
@@ -313,10 +312,9 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ```c
 /* Query the auto-assigned routing_id after socket creation */
-uint8_t own_id[255];
-size_t own_size = sizeof(own_id);
-zlink_getsockopt(socket, ZLINK_ROUTING_ID, own_id, &own_size);
-printf("Auto-generated routing_id: %zu bytes\n", own_size);  /* 16 bytes (UUID) */
+zlink_routing_id_t rid;
+zlink_get_routing_id(socket, &rid);
+printf("Auto-generated routing_id: %u bytes\n", rid.size);  /* 16 bytes (UUID) */
 ```
 
 ## 9. Binary Handling Principles

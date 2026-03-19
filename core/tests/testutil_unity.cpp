@@ -273,7 +273,8 @@ void *test_context_socket_close (void *socket_)
 void *test_context_socket_close_zero_linger (void *socket_)
 {
     const int linger = 0;
-    int rc = zlink_setsockopt (socket_, ZLINK_LINGER, &linger, sizeof (linger));
+    int rc = zlink_set_option (socket_, ZLINK_OPT_LINGER, &linger,
+                               sizeof (linger));
     TEST_ASSERT_TRUE (rc == 0 || zlink_errno () == ETERM);
     return test_context_socket_close (socket_);
 }
@@ -285,7 +286,7 @@ void test_bind (void *socket_,
 {
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (socket_, bind_address_));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (socket_, ZLINK_SOCKOPT_LAST_ENDPOINT, my_endpoint_, &len_));
+      zlink_get_option (socket_, ZLINK_OPT_LAST_ENDPOINT, my_endpoint_, &len_));
 }
 
 void bind_loopback (void *socket_, int ipv6_, char *my_endpoint_, size_t len_)
@@ -295,7 +296,7 @@ void bind_loopback (void *socket_, int ipv6_, char *my_endpoint_, size_t len_)
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_IPV6, &ipv6_, sizeof (int)));
+      zlink_set_option (socket_, ZLINK_OPT_IPV6, &ipv6_, sizeof (int)));
 
     test_bind (socket_, ipv6_ ? "tcp://[::1]:*" : "tcp://127.0.0.1:*",
                my_endpoint_, len_);

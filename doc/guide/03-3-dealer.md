@@ -31,7 +31,7 @@ The DEALER socket is an asynchronous request socket. It sends to multiple peers 
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 
 /* Set routing_id (optional, used for identification by ROUTER) */
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "client-1", 8);
+zlink_set_routing_id(dealer, "client-1", 8);
 
 /* Connect to server */
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
@@ -116,13 +116,13 @@ zlink_send(dealer, parts, 2, 0);
 
 | Option | Type | Default | Description |
 |------|------|--------|------|
-| `ZLINK_ROUTING_ID` | binary | Auto (UUID) | ID for identification by ROUTER |
+| `zlink_set_routing_id()` | binary | Auto (UUID) | ID for identification by ROUTER (dedicated function) |
 | `ZLINK_PROBE_ROUTER` | int | 0 | Send empty message on connect (connection notification) |
-| `ZLINK_SNDHWM` | int | 1000 | Maximum number of messages in the send queue |
-| `ZLINK_RCVHWM` | int | 1000 | Maximum number of messages in the receive queue |
-| `ZLINK_LINGER` | int | -1 | Wait time on close (ms) |
-| `ZLINK_SNDTIMEO` | int | -1 | Send timeout (ms) |
-| `ZLINK_RCVTIMEO` | int | -1 | Receive timeout (ms) |
+| `ZLINK_OPT_SNDHWM` | int | 1000 | Maximum number of messages in the send queue |
+| `ZLINK_OPT_RCVHWM` | int | 1000 | Maximum number of messages in the receive queue |
+| `ZLINK_OPT_LINGER` | int | -1 | Wait time on close (ms) |
+| `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms) |
+| `ZLINK_OPT_RCVTIMEO` | int | -1 | Receive timeout (ms) |
 | `ZLINK_CONNECT_ROUTING_ID` | binary | -- | Alias applied to the next connect |
 
 ### Setting routing_id
@@ -131,11 +131,11 @@ To allow ROUTER to identify a DEALER, explicitly set the routing_id.
 
 ```c
 /* Set before bind/connect */
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 ```
 
-> Reference: `core/tests/test_router_multiple_dealers.cpp` -- `zlink_setsockopt(dealer1, ZLINK_ROUTING_ID, "D1", 2)`
+> Reference: `core/tests/test_router_multiple_dealers.cpp` -- `zlink_set_routing_id(dealer1, "D1", 2)`
 
 ## 5. Usage Patterns
 
@@ -172,7 +172,7 @@ zlink_bind(router, "tcp://*:5558");
 /* Client: DEALER */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 zlink_recv_handler(dealer, on_reply, NULL);
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
 /* Client request */
@@ -213,14 +213,14 @@ zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 void *dealer1 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_setsockopt(dealer1, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer1, "D1", 2);
 zlink_connect(dealer1, endpoint);
 
 void *dealer2 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_setsockopt(dealer2, ZLINK_ROUTING_ID, "D2", 2);
+zlink_set_routing_id(dealer2, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
 /* Each DEALER sends a message */
@@ -327,11 +327,11 @@ When multiple peers are connected, messages are distributed in a round-robin fas
 
 ### Set routing_id Before connect
 
-`ZLINK_ROUTING_ID` must be set before calling `zlink_connect()`. Changes after connection are not applied.
+`zlink_set_routing_id()` must be called before `zlink_connect()`. Changes after connection are not applied.
 
 ```c
 /* Correct order */
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, endpoint);  /* identified as D1 */
 ```
 

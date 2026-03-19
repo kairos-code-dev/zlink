@@ -139,11 +139,11 @@ zlink_publish(spot, "chat:room1:message", &part, 1, 0);
 ### 4.3 구독 / 해제
 
 ```c
-zlink_subscribe(spot, "chat:room1:message");
-zlink_subscribe(spot, "chat:room1:*");
+zlink_set_subscription(spot, "chat:room1:message");
+zlink_set_subscription(spot, "chat:room1:*");
 
-zlink_unsubscribe(spot, "chat:room1:message");
-zlink_unsubscribe(spot, "chat:room1:*");
+zlink_unset_subscription(spot, "chat:room1:message");
+zlink_unset_subscription(spot, "chat:room1:*");
 ```
 
 ### 4.4 메시지 수신
@@ -154,11 +154,11 @@ zlink_unsubscribe(spot, "chat:room1:*");
 
 #### Recv 모드 (기본)
 
-recv 모드에서는 `zlink_subscribe_recv()`로 메시지를 직접 수신한다.
+recv 모드에서는 `zlink_subscribe()`로 메시지를 직접 수신한다.
 
 ```c
 void *spot = zlink_spot_new(node);
-zlink_subscribe(spot, "chat:room1:message");
+zlink_set_subscription(spot, "chat:room1:message");
 
 /* 다음 메시지 수신 */
 zlink_routing_id_t source_rid;
@@ -166,7 +166,7 @@ zlink_msg_t *parts = NULL;
 size_t part_count = 0;
 char topic_buf[256];
 size_t topic_len = sizeof(topic_buf);
-int rc = zlink_subscribe_recv(spot, &source_rid, &parts, &part_count,
+int rc = zlink_subscribe(spot, &source_rid, &parts, &part_count,
                               topic_buf, &topic_len, 0);
 if (rc == 0) {
     printf("토픽: %.*s, 파트: %zu\n",
@@ -208,7 +208,7 @@ subscribe/unsubscribe/attach/peer connect/monitor는 runtime control path로
 
 **제약 사항:**
 
-- recv 모드에서는 `zlink_subscribe_recv()`를 사용한다
+- recv 모드에서는 `zlink_subscribe()`를 사용한다
 - callback 모드 전환은 `zlink_subscribe_handler()`로 한 번만 수행한다
 - callback 모드에서 `recv()` 호출은 `EBUSY`로 실패한다
 - recv 모드에서 `send_ready_handler()`는 `EBUSY`로 실패한다

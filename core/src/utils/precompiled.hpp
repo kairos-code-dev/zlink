@@ -55,8 +55,8 @@ int zlink_stream_detach (void *s_);
 #ifndef ZLINK_SNDMORE
 #define ZLINK_SNDMORE ((zlink_send_flags_t) 0x0002u)
 #endif
-#ifndef ZLINK_RCVTIMEO
-#define ZLINK_RCVTIMEO 27
+#ifndef ZLINK_INTERNAL_OPT_RCVTIMEO
+#define ZLINK_INTERNAL_OPT_RCVTIMEO 27
 #endif
 #ifndef ZLINK_POLLIN
 #define ZLINK_POLLIN 1

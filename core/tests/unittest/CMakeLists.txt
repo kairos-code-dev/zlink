@@ -11,7 +11,8 @@ set(unittests
     unittest_zmp_decoder
     unittest_raw_decoder
     unittest_msg_view
-    unittest_service_runtime_base)
+    unittest_service_runtime_base
+    unittest_typed_option)
 
 # add location of platform.hpp for Windows builds
 if(WIN32)

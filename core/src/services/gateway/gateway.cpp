@@ -4,6 +4,7 @@
 
 #include "services/gateway/gateway.hpp"
 
+#include "api/legacy_api_internal.hpp"
 #include "core/msg.hpp"
 #include "core/pipe.hpp"
 #include "core/recv_internal.hpp"
@@ -68,7 +69,7 @@ static void ensure_gateway_routing_id (socket_base_t *socket_,
     }
     unsigned char buf[256];
     size_t size = sizeof (buf);
-    if (socket_->getsockopt (ZLINK_ROUTING_ID, buf, &size) != 0)
+    if (socket_->getsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, buf, &size) != 0)
         return;
     if (size > 0)
         return;
@@ -93,15 +94,15 @@ static int apply_tls_client (socket_base_t *socket_,
         return -1;
     if (ca_cert_.empty () || hostname_.empty ())
         return 0;
-    if (socket_->setsockopt (ZLINK_TLS_CA, ca_cert_.data (),
+    if (socket_->setsockopt (ZLINK_INTERNAL_OPT_TLS_CA, ca_cert_.data (),
                              ca_cert_.size ())
         != 0)
         return -1;
-    if (socket_->setsockopt (ZLINK_TLS_HOSTNAME, hostname_.data (),
+    if (socket_->setsockopt (ZLINK_INTERNAL_OPT_TLS_HOSTNAME, hostname_.data (),
                              hostname_.size ())
         != 0)
         return -1;
-    if (socket_->setsockopt (ZLINK_TLS_TRUST_SYSTEM, &trust_system_,
+    if (socket_->setsockopt (ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM, &trust_system_,
                              sizeof (trust_system_))
         != 0)
         return -1;
@@ -684,16 +685,16 @@ int gateway_t::init_router_socket ()
     ensure_gateway_routing_id (_runtime->router_socket, &_routing_id_override);
     if (_routing_id.size == 0) {
         size_t size = sizeof (_routing_id.data);
-        if (_runtime->router_socket->getsockopt (ZLINK_ROUTING_ID, _routing_id.data,
+        if (_runtime->router_socket->getsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, _routing_id.data,
                                         &size)
             == 0)
             _routing_id.size = static_cast<uint8_t> (size);
     }
     if (!_tls_server_cert.empty ()) {
-        if (_runtime->router_socket->setsockopt (ZLINK_TLS_CERT, _tls_server_cert.data (),
+        if (_runtime->router_socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_CERT, _tls_server_cert.data (),
                                         _tls_server_cert.size ())
               != 0
-            || _runtime->router_socket->setsockopt (ZLINK_TLS_KEY, _tls_server_key.data (),
+            || _runtime->router_socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_KEY, _tls_server_key.data (),
                                            _tls_server_key.size ())
                  != 0) {
             rollback_gateway_runtime_socket_init (_runtime);
@@ -716,14 +717,14 @@ int gateway_t::init_router_socket ()
     }
     // Fail sends when routing id is unknown (no silent drops).
     int mandatory = 1;
-    _runtime->router_socket->setsockopt (ZLINK_ROUTER_MANDATORY, &mandatory,
+    _runtime->router_socket->setsockopt (ZLINK_INTERNAL_OPT_ROUTER_MANDATORY, &mandatory,
                                 sizeof (mandatory));
     // Avoid long linger during teardown.
     int linger = 0;
-    _runtime->router_socket->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
+    _runtime->router_socket->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
     // Allow a new connection with the same routing id to take over.
     int handover = 1;
-    _runtime->router_socket->setsockopt (ZLINK_ROUTER_HANDOVER, &handover,
+    _runtime->router_socket->setsockopt (ZLINK_INTERNAL_OPT_ROUTER_HANDOVER, &handover,
                                 sizeof (handover));
     if (_handler.load (std::memory_order_acquire) != NULL) {
         if (_runtime->router_socket->socket_set_msg_handler_ex (
@@ -935,7 +936,7 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
                 if (rid_conflict_inflight)
                     continue;
 
-                _runtime->router_socket->setsockopt (ZLINK_CONNECT_ROUTING_ID,
+                _runtime->router_socket->setsockopt (ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID,
                                                      rid.data, rid.size);
                 if (_runtime->router_socket->connect (endpoint.c_str ()) == 0) {
                     _runtime->inflight_endpoints.insert (endpoint);
@@ -1295,11 +1296,11 @@ int gateway_t::bind (const char *endpoint_)
         router_socket = _runtime->router_socket;
 
         if (!_tls_server_cert.empty ()) {
-            if (router_socket->setsockopt (ZLINK_TLS_CERT,
+            if (router_socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_CERT,
                                             _tls_server_cert.data (),
                                             _tls_server_cert.size ())
                   != 0
-                || router_socket->setsockopt (ZLINK_TLS_KEY,
+                || router_socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_KEY,
                                                _tls_server_key.data (),
                                                _tls_server_key.size ())
                      != 0)
@@ -1366,7 +1367,7 @@ int gateway_t::register_service (const char *advertise_endpoint_,
 
     if (_routing_id.size == 0) {
         size_t size = sizeof (_routing_id.data);
-        if (_runtime->router_socket->getsockopt (ZLINK_ROUTING_ID, _routing_id.data,
+        if (_runtime->router_socket->getsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, _routing_id.data,
                                         &size)
             != 0)
             return -1;
@@ -1581,7 +1582,7 @@ int gateway_t::set_routing_id (const void *data_, size_t size_)
     memcpy (_routing_id.data, data_, size_);
     _routing_id.size = static_cast<uint8_t> (size_);
     if (_runtime->router_socket
-        && _runtime->router_socket->setsockopt (ZLINK_ROUTING_ID, data_, size_) != 0)
+        && _runtime->router_socket->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, data_, size_) != 0)
         return -1;
     return 0;
 }
@@ -1602,7 +1603,7 @@ int gateway_t::routing_id (zlink_routing_id_t *out_)
         if (ensure_router_socket () != 0)
             return -1;
         size_t size = sizeof (_routing_id.data);
-        if (_runtime->router_socket->getsockopt (ZLINK_ROUTING_ID, _routing_id.data,
+        if (_runtime->router_socket->getsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, _routing_id.data,
                                         &size)
             != 0)
             return -1;
@@ -1629,9 +1630,8 @@ int gateway_t::last_endpoint (char *endpoint_out_, size_t *size_out_) const
         errno = ENOTSUP;
         return -1;
     }
-    if (zlink_getsockopt (static_cast<void *> (_runtime->router_socket),
-                          ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint_out_,
-                          size_out_)
+    if (_runtime->router_socket->getsockopt (ZLINK_SOCKOPT_LAST_ENDPOINT,
+                                             endpoint_out_, size_out_)
         == 0) {
         return 0;
     }
@@ -1815,17 +1815,17 @@ int gateway_t::set_option (int option_,
 
     switch (option_) {
         case ZLINK_GATEWAY_OPT_SNDHWM:
-            return set_socket_option (ZLINK_SNDHWM, optval_, optvallen_);
+            return set_socket_option (ZLINK_INTERNAL_OPT_SNDHWM, optval_, optvallen_);
         case ZLINK_GATEWAY_OPT_RCVHWM:
-            return set_socket_option (ZLINK_RCVHWM, optval_, optvallen_);
+            return set_socket_option (ZLINK_INTERNAL_OPT_RCVHWM, optval_, optvallen_);
         case ZLINK_GATEWAY_OPT_SNDTIMEO:
-            return set_socket_option (ZLINK_SNDTIMEO, optval_, optvallen_);
+            return set_socket_option (ZLINK_INTERNAL_OPT_SNDTIMEO, optval_, optvallen_);
         case ZLINK_GATEWAY_OPT_LINGER:
-            return set_socket_option (ZLINK_LINGER, optval_, optvallen_);
+            return set_socket_option (ZLINK_INTERNAL_OPT_LINGER, optval_, optvallen_);
         case ZLINK_GATEWAY_OPT_SNDBUF:
-            return set_socket_option (ZLINK_SNDBUF, optval_, optvallen_);
+            return set_socket_option (ZLINK_INTERNAL_OPT_SNDBUF, optval_, optvallen_);
         case ZLINK_GATEWAY_OPT_RCVBUF:
-            return set_socket_option (ZLINK_RCVBUF, optval_, optvallen_);
+            return set_socket_option (ZLINK_INTERNAL_OPT_RCVBUF, optval_, optvallen_);
         default:
             errno = EINVAL;
             return -1;
@@ -1855,10 +1855,10 @@ int gateway_t::set_tls_server (const char *cert_, const char *key_)
     _tls_server_cert = cert_;
     _tls_server_key = key_;
     if (_runtime->router_socket) {
-        if (_runtime->router_socket->setsockopt (ZLINK_TLS_CERT, _tls_server_cert.data (),
+        if (_runtime->router_socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_CERT, _tls_server_cert.data (),
                                         _tls_server_cert.size ())
               != 0
-            || _runtime->router_socket->setsockopt (ZLINK_TLS_KEY, _tls_server_key.data (),
+            || _runtime->router_socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_KEY, _tls_server_key.data (),
                                            _tls_server_key.size ())
                  != 0)
             return -1;
@@ -1895,6 +1895,25 @@ int gateway_t::set_socket_option (int option_,
         return -1;
     }
     return _runtime->router_socket->setsockopt (option_, optval_, optvallen_);
+}
+
+int gateway_t::get_socket_option (int option_,
+                                  void *optval_,
+                                  size_t *optvallen_)
+{
+    if (!optval_ || !optvallen_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    if (ensure_facade_mode () != 0)
+        return -1;
+    if (!_runtime->router_socket) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return _runtime->router_socket->getsockopt (option_, optval_, optvallen_);
 }
 
 void *gateway_t::router ()

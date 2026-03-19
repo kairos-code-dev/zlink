@@ -97,7 +97,7 @@ static void send_bounce_msg_may_fail (void *socket_)
 {
     int timeout = 250;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_SNDTIMEO, &timeout, sizeof (int)));
+      zlink_set_option (socket_, ZLINK_OPT_SNDTIMEO, &timeout, sizeof (int)));
     int rc = zlink_send (socket_, bounce_content, 32, ZLINK_SNDMORE);
     TEST_ASSERT_TRUE ((rc == 32) || ((rc == -1) && (errno == EAGAIN)));
     rc = zlink_send (socket_, bounce_content, 32, 0);
@@ -199,7 +199,8 @@ void s_recv_seq (void *socket_, ...)
 void close_zero_linger (void *socket_)
 {
     int linger = 0;
-    int rc = zlink_setsockopt (socket_, ZLINK_LINGER, &linger, sizeof (linger));
+    int rc = zlink_set_option (socket_, ZLINK_OPT_LINGER, &linger,
+                               sizeof (linger));
     TEST_ASSERT_TRUE (rc == 0 || errno == ETERM);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket_));
 }

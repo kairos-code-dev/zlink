@@ -395,7 +395,7 @@ int zlink::stream_t::xsetsockopt (int option_,
                                   const void *optval_,
                                   size_t optvallen_)
 {
-    if (option_ == ZLINK_CONNECT_ROUTING_ID || option_ == ZLINK_STREAM_NOTIFY) {
+    if (option_ == ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID) {
         LIBZLINK_UNUSED (optval_);
         LIBZLINK_UNUSED (optvallen_);
         errno = EOPNOTSUPP;

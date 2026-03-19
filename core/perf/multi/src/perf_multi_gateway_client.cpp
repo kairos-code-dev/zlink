@@ -309,7 +309,7 @@ bool configure_gateway_tls_client(void *gateway,
 
     static const std::string ca_path =
       write_temp_cert(test_certs::ca_cert_pem, "multi_gateway_ca");
-    return zlink_gateway_set_tls_client(gateway, ca_path.c_str(), "localhost", 0)
+    return zlink_set_tls_client(gateway, ca_path.c_str(), "localhost", 0)
            == 0;
 }
 
@@ -322,16 +322,16 @@ bool apply_gateway_options(void *gateway,
     const int sndtimeo_ms =
       bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 200);
 
-    return zlink_gateway_set_option(gateway, ZLINK_GATEWAY_OPT_LINGER,
+    return zlink_set_option(gateway, ZLINK_OPT_LINGER,
                                     &linger_ms, sizeof(linger_ms))
              == 0
-           && zlink_gateway_set_option(gateway, ZLINK_GATEWAY_OPT_SNDHWM,
+           && zlink_set_option(gateway, ZLINK_OPT_SNDHWM,
                                        &sndhwm, sizeof(sndhwm))
                 == 0
-           && zlink_gateway_set_option(gateway, ZLINK_GATEWAY_OPT_RCVHWM,
+           && zlink_set_option(gateway, ZLINK_OPT_RCVHWM,
                                        &rcvhwm, sizeof(rcvhwm))
                 == 0
-           && zlink_gateway_set_option(gateway, ZLINK_GATEWAY_OPT_SNDTIMEO,
+           && zlink_set_option(gateway, ZLINK_OPT_SNDTIMEO,
                                        &sndtimeo_ms, sizeof(sndtimeo_ms))
                 == 0;
 }
@@ -478,14 +478,14 @@ bool create_gateway_slots(gateway_client_state_t *state,
 
         slot->gateway = zlink_gateway_new(ctx.get(), k_service_name);
         if (!slot->gateway || !apply_gateway_options(slot->gateway, settings)
-            || zlink_gateway_set_routing_id(slot->gateway, routing_id,
+            || zlink_set_routing_id(slot->gateway, routing_id,
                                             std::strlen(routing_id))
                  != 0
             || zlink_recv_handler(slot->gateway, &gateway_client_recv_handler,
                                   slot)
                  != 0
             || !configure_gateway_tls_client(slot->gateway, transport)
-            || zlink_gateway_send_ready_handler(
+            || zlink_send_ready_handler(
                  slot->gateway, &gateway_client_send_ready, slot)
                  != 0
             || !open_gateway_ready_monitor(slot)

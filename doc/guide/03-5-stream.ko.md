@@ -28,7 +28,7 @@ STREAM 소켓은 **외부 RAW 클라이언트**와 통신하기 위한 **서버 
 ```c
 void *stream = zlink_socket(ctx, ZLINK_STREAM);
 int linger = 0;
-zlink_setsockopt(stream, ZLINK_LINGER, &linger, sizeof(linger));
+zlink_set_option(stream, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 zlink_bind(stream, "tcp://0.0.0.0:8080");
 ```
 
@@ -153,18 +153,18 @@ recv(fd, body, body_len, MSG_WAITALL);
 ## 6. 옵션 및 런타임 정책
 
 주요 옵션:
-- 지원: `ZLINK_MAXMSGSIZE`, `ZLINK_SNDHWM`, `ZLINK_RCVHWM`, `ZLINK_SNDBUF`, `ZLINK_RCVBUF`, `ZLINK_BACKLOG`, `ZLINK_LINGER`
-- TLS/WSS 서버 옵션: `ZLINK_TLS_CERT`, `ZLINK_TLS_KEY`, `ZLINK_TLS_CA`, `ZLINK_TLS_HOSTNAME`, `ZLINK_TLS_TRUST_SYSTEM`
+- 지원: `ZLINK_OPT_MAXMSGSIZE`, `ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_SNDBUF`, `ZLINK_OPT_RCVBUF`, `ZLINK_OPT_BACKLOG`, `ZLINK_OPT_LINGER`
+- TLS/WSS 서버: `zlink_set_tls_server()` / TLS 클라이언트: `zlink_set_tls_client()`
 
 비지원/변경:
-- `ZLINK_CONNECT_ROUTING_ID`를 STREAM에 설정하면 `EOPNOTSUPP`
+- `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`를 STREAM에 설정하면 `EOPNOTSUPP`
 
 ### 6.1 STREAM 기본 런타임 프로파일
 
 현재 STREAM 내부 기본값:
-- `ZLINK_BACKLOG`: `65536`
-- `ZLINK_SNDBUF`: 미지정(`-1`)이면 `262144`
-- `ZLINK_RCVBUF`: 미지정(`-1`)이면 `262144`
+- `ZLINK_OPT_BACKLOG`: `65536`
+- `ZLINK_OPT_SNDBUF`: 미지정(`-1`)이면 `262144`
+- `ZLINK_OPT_RCVBUF`: 미지정(`-1`)이면 `262144`
 - in/out batch 최소 크기: `12288`
 - STREAM accept 동시성 기본값: `4` (최대 `128`로 clamp)
 - STREAM 세션 스케줄링 기본값: `rr`

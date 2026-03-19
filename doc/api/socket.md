@@ -133,122 +133,148 @@ typedef uint32_t zlink_send_flags_t;
 
 ### Socket Options
 
-Socket options are configured with `zlink_setsockopt()` and queried with
-`zlink_getsockopt()`. Options use the `zlink_socket_option_t` enum.
-Short-form aliases (e.g. `ZLINK_LINGER`) are also available.
+Socket options use typed enums, each with a dedicated setter/getter
+function pair. Common options shared across all socket types use
+`zlink_set_option()` / `zlink_get_option()` with the `zlink_option_t`
+enum. Socket-type-specific options use dedicated typed functions (e.g.
+`zlink_set_router_option()`, `zlink_set_pub_option()`). Routing
+identity, TLS configuration, and subscribe/unsubscribe have their own
+dedicated functions rather than option enums.
 
-#### General
+#### Common Options (`zlink_option_t`)
 
-| Constant | Description |
-|---|---|
-| `ZLINK_SOCKOPT_AFFINITY` | I/O thread affinity bitmask (`uint64_t`) |
-| `ZLINK_SOCKOPT_ROUTING_ID` | Socket identity for ROUTER addressing (`binary`, max 255 bytes) |
-| `ZLINK_SOCKOPT_TYPE` | Socket type (read-only, `int`) |
-| `ZLINK_SOCKOPT_LINGER` | Linger period for socket shutdown in milliseconds (`int`; -1 = infinite, 0 = discard immediately) |
-| `ZLINK_SOCKOPT_BACKLOG` | Maximum length of the pending connections queue (`int`) |
-| `ZLINK_SOCKOPT_LAST_ENDPOINT` | Last endpoint bound (read-only, `string`) |
-| `ZLINK_SOCKOPT_FD` | File descriptor for integration with external event loops (read-only, `zlink_fd_t`) |
-| `ZLINK_SOCKOPT_EVENTS` | Event state bitmask (read-only, `int`) |
+Used with `zlink_set_option()` / `zlink_get_option()`.
 
-#### High Water Mark
+##### Transport/Buffer
 
 | Constant | Description |
 |---|---|
-| `ZLINK_SOCKOPT_SNDHWM` | Send high water mark; max messages queued for sending (`int`; 0 = unlimited) |
-| `ZLINK_SOCKOPT_RCVHWM` | Receive high water mark; max messages queued for receiving (`int`; 0 = unlimited) |
-| `ZLINK_SOCKOPT_MAXMSGSIZE` | Maximum inbound message size in bytes (`int64_t`; -1 = unlimited) |
+| `ZLINK_OPT_AFFINITY` | I/O thread affinity bitmask (`uint64_t`) |
+| `ZLINK_OPT_RATE` | Multicast data rate in kbps (`int`) |
+| `ZLINK_OPT_RECOVERY_IVL` | Multicast recovery interval in milliseconds (`int`) |
+| `ZLINK_OPT_SNDBUF` | Kernel transmit buffer size in bytes (`int`; 0 = OS default) |
+| `ZLINK_OPT_RCVBUF` | Kernel receive buffer size in bytes (`int`; 0 = OS default) |
+| `ZLINK_OPT_SNDHWM` | Send high water mark (`int`; 0 = unlimited) |
+| `ZLINK_OPT_RCVHWM` | Receive high water mark (`int`; 0 = unlimited) |
+| `ZLINK_OPT_MAXMSGSIZE` | Maximum inbound message size in bytes (`int64_t`; -1 = unlimited) |
 
-#### Buffers
-
-| Constant | Description |
-|---|---|
-| `ZLINK_SOCKOPT_SNDBUF` | Kernel transmit buffer size in bytes (`int`; 0 = OS default) |
-| `ZLINK_SOCKOPT_RCVBUF` | Kernel receive buffer size in bytes (`int`; 0 = OS default) |
-
-#### Timing
+##### Timing
 
 | Constant | Description |
 |---|---|
-| `ZLINK_SOCKOPT_SNDTIMEO` | Send timeout in milliseconds (`int`; -1 = infinite) |
-| `ZLINK_SOCKOPT_RCVTIMEO` | Receive timeout in milliseconds (`int`; -1 = infinite) |
-| `ZLINK_SOCKOPT_RECONNECT_IVL` | Initial reconnection interval in milliseconds (`int`) |
-| `ZLINK_SOCKOPT_RECONNECT_IVL_MAX` | Maximum reconnection interval in milliseconds (`int`; 0 = use `RECONNECT_IVL` only) |
-| `ZLINK_SOCKOPT_CONNECT_TIMEOUT` | Connection timeout in milliseconds (`int`) |
-| `ZLINK_SOCKOPT_TCP_MAXRT` | Maximum TCP retransmit timeout in milliseconds (`int`) |
-| `ZLINK_SOCKOPT_HANDSHAKE_IVL` | ZMTP handshake timeout in milliseconds (`int`) |
+| `ZLINK_OPT_LINGER` | Linger period for socket shutdown in milliseconds (`int`; -1 = infinite, 0 = discard immediately) |
+| `ZLINK_OPT_RCVTIMEO` | Receive timeout in milliseconds (`int`; -1 = infinite) |
+| `ZLINK_OPT_SNDTIMEO` | Send timeout in milliseconds (`int`; -1 = infinite) |
+| `ZLINK_OPT_CONNECT_TIMEOUT` | Connection timeout in milliseconds (`int`) |
+| `ZLINK_OPT_RECONNECT_IVL` | Initial reconnection interval in milliseconds (`int`) |
+| `ZLINK_OPT_RECONNECT_IVL_MAX` | Maximum reconnection interval in milliseconds (`int`; 0 = use RECONNECT_IVL only) |
+| `ZLINK_OPT_HANDSHAKE_IVL` | ZMTP handshake timeout in milliseconds (`int`) |
 
-#### TCP
-
-| Constant | Description |
-|---|---|
-| `ZLINK_SOCKOPT_TCP_KEEPALIVE` | Override SO_KEEPALIVE (`int`; -1 = OS default, 0 = off, 1 = on) |
-| `ZLINK_SOCKOPT_TCP_KEEPALIVE_CNT` | Override TCP_KEEPCNT (`int`; -1 = OS default) |
-| `ZLINK_SOCKOPT_TCP_KEEPALIVE_IDLE` | Override TCP_KEEPIDLE in seconds (`int`; -1 = OS default) |
-| `ZLINK_SOCKOPT_TCP_KEEPALIVE_INTVL` | Override TCP_KEEPINTVL in seconds (`int`; -1 = OS default) |
-| `ZLINK_SOCKOPT_TCP_NODELAY` | Enable TCP_NODELAY (`int`; 0 or 1) |
-
-#### Pub/Sub
+##### TCP
 
 | Constant | Description |
 |---|---|
-| `ZLINK_SOCKOPT_SUBSCRIBE` | Subscribe to a topic prefix (`binary`) |
-| `ZLINK_SOCKOPT_UNSUBSCRIBE` | Unsubscribe from a topic prefix (`binary`) |
-| `ZLINK_SOCKOPT_XPUB_VERBOSE` | Pass all subscription messages upstream (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_XPUB_NODROP` | Do not silently drop messages on HWM; return `EAGAIN` instead (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_XPUB_MANUAL` | Enable manual subscription management on XPUB (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_XPUB_WELCOME_MSG` | Message sent to new subscribers on connect (`binary`) |
-| `ZLINK_SOCKOPT_XPUB_VERBOSER` | Pass all subscribe and unsubscribe messages upstream (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_XPUB_MANUAL_LAST_VALUE` | Enable last-value caching in manual XPUB mode (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_INVERT_MATCHING` | Invert topic matching (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_CONFLATE` | Keep only the most recent message per topic (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_ONLY_FIRST_SUBSCRIBE` | Only process the first subscription per topic prefix (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_TOPICS_COUNT` | Number of subscribed topics (read-only, `int`) |
+| `ZLINK_OPT_TCP_KEEPALIVE` | Override SO_KEEPALIVE (`int`; -1 = OS default, 0 = off, 1 = on) |
+| `ZLINK_OPT_TCP_KEEPALIVE_CNT` | Override TCP_KEEPCNT (`int`; -1 = OS default) |
+| `ZLINK_OPT_TCP_KEEPALIVE_IDLE` | Override TCP_KEEPIDLE in seconds (`int`; -1 = OS default) |
+| `ZLINK_OPT_TCP_KEEPALIVE_INTVL` | Override TCP_KEEPINTVL in seconds (`int`; -1 = OS default) |
+| `ZLINK_OPT_TCP_MAXRT` | Maximum TCP retransmit timeout in milliseconds (`int`) |
+| `ZLINK_OPT_TCP_NODELAY` | Enable TCP_NODELAY (`int`; 0 or 1) |
 
-#### Router
+##### Heartbeat
 
 | Constant | Description |
 |---|---|
-| `ZLINK_SOCKOPT_ROUTER_MANDATORY` | Return `EHOSTUNREACH` when routing to an unconnected peer (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_ROUTER_HANDOVER` | Allow new connection to take over an existing routing identity (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_PROBE_ROUTER` | Send an empty message on connect to establish identity at the ROUTER peer (`int`; 0 or 1) |
+| `ZLINK_OPT_HEARTBEAT_IVL` | ZMTP heartbeat interval in milliseconds (`int`; 0 = disabled) |
+| `ZLINK_OPT_HEARTBEAT_TTL` | ZMTP heartbeat TTL in milliseconds (`int`) |
+| `ZLINK_OPT_HEARTBEAT_TIMEOUT` | ZMTP heartbeat timeout in milliseconds (`int`) |
 
-#### Heartbeat
-
-| Constant | Description |
-|---|---|
-| `ZLINK_SOCKOPT_HEARTBEAT_IVL` | ZMTP heartbeat interval in milliseconds (`int`; 0 = disabled) |
-| `ZLINK_SOCKOPT_HEARTBEAT_TTL` | ZMTP heartbeat time-to-live in milliseconds (`int`) |
-| `ZLINK_SOCKOPT_HEARTBEAT_TIMEOUT` | ZMTP heartbeat timeout in milliseconds (`int`) |
-
-#### TLS
+##### Network
 
 | Constant | Description |
 |---|---|
-| `ZLINK_SOCKOPT_TLS_CERT` | Path to PEM-encoded TLS certificate (`string`) |
-| `ZLINK_SOCKOPT_TLS_KEY` | Path to PEM-encoded TLS private key (`string`) |
-| `ZLINK_SOCKOPT_TLS_CA` | Path to PEM-encoded CA certificate bundle (`string`) |
-| `ZLINK_SOCKOPT_TLS_VERIFY` | Enable TLS peer certificate verification (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_TLS_REQUIRE_CLIENT_CERT` | Require TLS client certificate on server sockets (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_TLS_HOSTNAME` | Expected hostname for TLS SNI and certificate verification (`string`) |
-| `ZLINK_SOCKOPT_TLS_TRUST_SYSTEM` | Trust the system CA certificate store (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_TLS_PASSWORD` | Password for encrypted TLS private key (`string`) |
+| `ZLINK_OPT_IPV6` | Enable IPv6 (`int`; 0 or 1) |
+| `ZLINK_OPT_TOS` | IP Type-of-Service value (`int`) |
+| `ZLINK_OPT_MULTICAST_HOPS` | Maximum multicast hops (TTL) (`int`) |
+| `ZLINK_OPT_MULTICAST_MAXTPDU` | Maximum multicast transport data unit size in bytes (`int`) |
+| `ZLINK_OPT_BINDTODEVICE` | Bind socket to a specific network interface (`string`) |
+| `ZLINK_OPT_BACKLOG` | Maximum length of the pending connections queue (`int`) |
 
-#### Other
+##### Behavior
 
 | Constant | Description |
 |---|---|
-| `ZLINK_SOCKOPT_IPV6` | Enable IPv6 on the socket (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_IMMEDIATE` | Queue messages only to completed connections (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_BLOCKY` | Legacy option: block on context termination (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_BINDTODEVICE` | Bind socket to a specific network interface (`string`) |
-| `ZLINK_SOCKOPT_CONNECT_ROUTING_ID` | Set routing identity for the next outgoing connection (`binary`) |
-| `ZLINK_SOCKOPT_STREAM_NOTIFY` | Enable STREAM connect/disconnect notifications (`int`; 0 or 1) |
-| `ZLINK_SOCKOPT_RATE` | Multicast data rate in kbps (`int`) |
-| `ZLINK_SOCKOPT_RECOVERY_IVL` | Multicast recovery interval in milliseconds (`int`) |
-| `ZLINK_SOCKOPT_MULTICAST_HOPS` | Maximum multicast hops (TTL) (`int`) |
-| `ZLINK_SOCKOPT_TOS` | IP Type-of-Service value (`int`) |
-| `ZLINK_SOCKOPT_MULTICAST_MAXTPDU` | Maximum multicast transport data unit size in bytes (`int`) |
-| `ZLINK_SOCKOPT_ZMP_METADATA` | Attach ZMP metadata properties to outgoing connections (`binary`) |
+| `ZLINK_OPT_IMMEDIATE` | Queue messages only to completed connections (`int`; 0 or 1) |
+| `ZLINK_OPT_CONFLATE` | Keep only the most recent message per topic (`int`; 0 or 1) |
+| `ZLINK_OPT_BLOCKY` | Legacy option: block on context termination (`int`; 0 or 1) |
+| `ZLINK_OPT_INVERT_MATCHING` | Invert topic matching (`int`; 0 or 1) |
+| `ZLINK_OPT_ZMP_METADATA` | Attach ZMP metadata properties to outgoing connections (`binary`) |
+
+##### Read-only (get only)
+
+| Constant | Description |
+|---|---|
+| `ZLINK_OPT_FD` | File descriptor (read-only, `zlink_fd_t`) |
+| `ZLINK_OPT_EVENTS` | Event state bitmask (read-only, `int`) |
+| `ZLINK_OPT_TYPE` | Socket type (read-only, `int`) |
+| `ZLINK_OPT_LAST_ENDPOINT` | Last endpoint bound (read-only, `string`) |
+
+#### Router Options (`zlink_router_option_t`)
+
+Used with `zlink_set_router_option()` / `zlink_get_router_option()`.
+
+| Constant | Description |
+|---|---|
+| `ZLINK_ROUTER_OPT_MANDATORY` | Return `EHOSTUNREACH` when routing to an unconnected peer (`int`; 0 or 1) |
+| `ZLINK_ROUTER_OPT_HANDOVER` | Allow new connection to take over an existing routing identity (`int`; 0 or 1) |
+| `ZLINK_ROUTER_OPT_PROBE` | Send an empty message on connect to establish identity at the ROUTER peer (`int`; 0 or 1) |
+| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | Set routing identity for the next outgoing connection (`binary`) |
+
+#### Dealer Options (`zlink_dealer_option_t`)
+
+Used with `zlink_set_dealer_option()`.
+
+| Constant | Description |
+|---|---|
+| `ZLINK_DEALER_OPT_PROBE` | Send an empty message on connect to establish identity at the ROUTER peer (`int`; 0 or 1) |
+
+#### Pub Options (`zlink_pub_option_t`)
+
+Used with `zlink_set_pub_option()` / `zlink_get_pub_option()`.
+
+| Constant | Description |
+|---|---|
+| `ZLINK_PUB_OPT_VERBOSE` | Pass all subscription messages upstream (`int`; 0 or 1) |
+| `ZLINK_PUB_OPT_VERBOSER` | Pass all subscribe and unsubscribe messages upstream (`int`; 0 or 1) |
+| `ZLINK_PUB_OPT_MANUAL` | Enable manual subscription management (`int`; 0 or 1) |
+| `ZLINK_PUB_OPT_MANUAL_LAST_VALUE` | Enable last-value caching in manual mode (`int`; 0 or 1) |
+| `ZLINK_PUB_OPT_NODROP` | Do not silently drop messages on HWM; return `EAGAIN` instead (`int`; 0 or 1) |
+| `ZLINK_PUB_OPT_WELCOME_MSG` | Message sent to new subscribers on connect (`binary`) |
+| `ZLINK_PUB_OPT_TOPICS_COUNT` | Number of subscribed topics (get-only, `int`) |
+| `ZLINK_PUB_OPT_APPROVE_SUBSCRIBE` | Approve a pending subscription in manual mode (`binary`) |
+| `ZLINK_PUB_OPT_REJECT_SUBSCRIBE` | Reject a pending subscription in manual mode (`binary`) |
+
+#### Sub Options (`zlink_sub_option_t`)
+
+Used with `zlink_set_sub_option()` / `zlink_get_sub_option()`.
+
+| Constant | Description |
+|---|---|
+| `ZLINK_SUB_OPT_TOPICS_COUNT` | Number of subscribed topics (get-only, `int`) |
+
+#### Stream Options (`zlink_stream_option_t`)
+
+Used with `zlink_set_stream_option()` / `zlink_get_stream_option()`.
+
+| Constant | Description |
+|---|---|
+| `ZLINK_STREAM_OPT_NOTIFY` | Enable STREAM connect/disconnect notifications (`int`; 0 or 1) |
+
+#### Dedicated Functions (not option enums)
+
+- **Routing ID**: `zlink_set_routing_id()` / `zlink_get_routing_id()`
+- **TLS**: `zlink_set_tls_server()` / `zlink_set_tls_client()`
+- **Subscribe/Unsubscribe**: `zlink_set_subscription()` / `zlink_unset_subscription()`
 
 ## Functions
 
@@ -379,19 +405,19 @@ callback or operation is in-flight on the handle.
 
 ---
 
-### zlink_setsockopt
+### zlink_set_option
 
-Set a socket option.
+Set a common socket option.
 
 ```c
-int zlink_setsockopt (void *s_,
-                      zlink_socket_option_t option_,
+int zlink_set_option (void *handle_,
+                      zlink_option_t option_,
                       const void *optval_,
                       size_t optvallen_);
 ```
 
-Configures a socket option. The `option_` parameter identifies the option
-(e.g. `ZLINK_SNDHWM`, `ZLINK_LINGER`, `ZLINK_SUBSCRIBE`). The `optval_`
+Configures a common socket option. The `option_` parameter identifies the
+option (e.g. `ZLINK_OPT_SNDHWM`, `ZLINK_OPT_LINGER`). The `optval_`
 pointer supplies the value and `optvallen_` specifies its size in bytes.
 
 Some options must be set before binding or connecting the socket.
@@ -401,26 +427,284 @@ Some options must be set before binding or connecting the socket.
 **Errors:** `EINVAL` if the option is unknown or the value is out of range.
 `ETERM` if the context was terminated.
 
-**See also:** `zlink_getsockopt`
+**See also:** `zlink_get_option`
 
 ---
 
-### zlink_getsockopt
+### zlink_get_option
 
-Get a socket option.
+Get a common socket option.
 
 ```c
-int zlink_getsockopt (void *s_,
-                      zlink_socket_option_t option_,
+int zlink_get_option (void *handle_,
+                      zlink_option_t option_,
                       void *optval_,
                       size_t *optvallen_);
 ```
 
-Retrieves the current value of a socket option.
+Retrieves the current value of a common socket option.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
-**See also:** `zlink_setsockopt`
+**See also:** `zlink_set_option`
+
+---
+
+### zlink_set_routing_id
+
+Set the routing identity on a socket.
+
+```c
+int zlink_set_routing_id (void *handle_,
+                           const void *data_,
+                           size_t size_);
+```
+
+Assigns a routing identity to the socket. The identity is used for ROUTER
+addressing and must be at most 255 bytes. Must be set before the first
+bind or connect.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**See also:** `zlink_get_routing_id`
+
+---
+
+### zlink_get_routing_id
+
+Get the routing identity of a socket.
+
+```c
+int zlink_get_routing_id (void *handle_,
+                           zlink_routing_id_t *out_);
+```
+
+Retrieves the current routing identity into `*out_`.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**See also:** `zlink_set_routing_id`
+
+---
+
+### zlink_set_tls_server
+
+Configure TLS for a server socket.
+
+```c
+int zlink_set_tls_server (void *handle_,
+                           const char *cert_,
+                           const char *key_,
+                           int require_client_cert_);
+```
+
+Configures TLS server mode on the socket. `cert_` and `key_` are paths to
+PEM-encoded certificate and private key files. Set `require_client_cert_`
+to 1 to require client certificate authentication.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**See also:** `zlink_set_tls_client`
+
+---
+
+### zlink_set_tls_client
+
+Configure TLS for a client socket.
+
+```c
+int zlink_set_tls_client (void *handle_,
+                           const char *ca_cert_,
+                           const char *hostname_,
+                           int trust_system_);
+```
+
+Configures TLS client mode on the socket. `ca_cert_` is the path to a
+PEM-encoded CA certificate bundle. `hostname_` sets the expected hostname
+for SNI and certificate verification. Set `trust_system_` to 1 to also
+trust the system CA certificate store.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**See also:** `zlink_set_tls_server`
+
+---
+
+### zlink_set_router_option
+
+Set a router-specific option.
+
+```c
+int zlink_set_router_option (void *handle_,
+                              zlink_router_option_t option_,
+                              const void *optval_,
+                              size_t optvallen_);
+```
+
+Configures a ROUTER socket option. Use `zlink_set_option()` for common
+options shared across all socket types.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**See also:** `zlink_get_router_option`, `zlink_set_option`
+
+---
+
+### zlink_get_router_option
+
+Get a router-specific option.
+
+```c
+int zlink_get_router_option (void *handle_,
+                              zlink_router_option_t option_,
+                              void *optval_,
+                              size_t *optvallen_);
+```
+
+Retrieves the current value of a ROUTER socket option.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**See also:** `zlink_set_router_option`
+
+---
+
+### zlink_set_dealer_option
+
+Set a dealer-specific option.
+
+```c
+int zlink_set_dealer_option (void *handle_,
+                              zlink_dealer_option_t option_,
+                              const void *optval_,
+                              size_t optvallen_);
+```
+
+Configures a DEALER socket option. Use `zlink_set_option()` for common
+options shared across all socket types.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**See also:** `zlink_set_option`
+
+---
+
+### zlink_set_pub_option
+
+Set a pub-specific option.
+
+```c
+int zlink_set_pub_option (void *handle_,
+                           zlink_pub_option_t option_,
+                           const void *optval_,
+                           size_t optvallen_);
+```
+
+Configures a PUB/XPUB socket option. Also applies to spot-pub and
+spotnode-pub handles. Use `zlink_set_option()` for common options shared
+across all socket types.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**See also:** `zlink_get_pub_option`, `zlink_set_option`
+
+---
+
+### zlink_get_pub_option
+
+Get a pub-specific option.
+
+```c
+int zlink_get_pub_option (void *handle_,
+                           zlink_pub_option_t option_,
+                           void *optval_,
+                           size_t *optvallen_);
+```
+
+Retrieves the current value of a PUB/XPUB socket option.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**See also:** `zlink_set_pub_option`
+
+---
+
+### zlink_set_sub_option
+
+Set a sub-specific option.
+
+```c
+int zlink_set_sub_option (void *handle_,
+                           zlink_sub_option_t option_,
+                           const void *optval_,
+                           size_t optvallen_);
+```
+
+Configures a SUB/XSUB socket option. Also applies to spot-sub and
+spotnode-sub handles. Use `zlink_set_option()` for common options shared
+across all socket types.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**See also:** `zlink_get_sub_option`, `zlink_set_option`
+
+---
+
+### zlink_get_sub_option
+
+Get a sub-specific option.
+
+```c
+int zlink_get_sub_option (void *handle_,
+                           zlink_sub_option_t option_,
+                           void *optval_,
+                           size_t *optvallen_);
+```
+
+Retrieves the current value of a SUB/XSUB socket option.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**See also:** `zlink_set_sub_option`
+
+---
+
+### zlink_set_stream_option
+
+Set a stream-specific option.
+
+```c
+int zlink_set_stream_option (void *handle_,
+                              zlink_stream_option_t option_,
+                              const void *optval_,
+                              size_t optvallen_);
+```
+
+Configures a STREAM socket option. Use `zlink_set_option()` for common
+options shared across all socket types.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**See also:** `zlink_get_stream_option`, `zlink_set_option`
+
+---
+
+### zlink_get_stream_option
+
+Get a stream-specific option.
+
+```c
+int zlink_get_stream_option (void *handle_,
+                              zlink_stream_option_t option_,
+                              void *optval_,
+                              size_t *optvallen_);
+```
+
+Retrieves the current value of a STREAM socket option.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**See also:** `zlink_set_stream_option`
 
 ---
 
@@ -625,67 +909,69 @@ of all parts is transferred to the library.
 NULL for spot/spot_node, or non-NULL for unsupported types. `ENOTSUP` if
 the subject type does not support publish.
 
-**See also:** `zlink_subscribe`, `zlink_subscribe_recv`
+**See also:** `zlink_set_subscription`, `zlink_subscribe`
+
+---
+
+### zlink_set_subscription
+
+Subscribe to a topic filter on a raw socket.
+
+```c
+int zlink_set_subscription (void *handle_, const char *filter_);
+```
+
+Subscribes the handle to messages matching `filter_`. Filter
+interpretation: if `filter_` ends with `*`, it is a prefix-match pattern;
+otherwise it is an exact topic.
+
+Applicable types: raw SUB, raw XSUB.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**Errors:** `EFAULT` if `handle_` is NULL. `EINVAL` if `filter_` is NULL,
+empty, or contains invalid pattern syntax (multiple `*` or mid-string `*`).
+`ENOTSUP` if the handle type does not support subscribe.
+
+**See also:** `zlink_unset_subscription`, `zlink_subscribe`
+
+---
+
+### zlink_unset_subscription
+
+Unsubscribe from a topic filter on a raw socket.
+
+```c
+int zlink_unset_subscription (void *handle_, const char *filter_);
+```
+
+Removes a previously registered subscription. The same string
+interpretation rules as `zlink_set_subscription()` apply: trailing `*`
+means pattern unsubscribe, otherwise exact topic unsubscribe.
+
+Applicable types: raw SUB, raw XSUB.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**Errors:** `EFAULT` if `handle_` is NULL. `EINVAL` if `filter_` is NULL
+or empty. `ENOTSUP` if the handle type does not support unsubscribe.
+
+**See also:** `zlink_set_subscription`
 
 ---
 
 ### zlink_subscribe
 
-Subscribe to a topic filter.
-
-```c
-int zlink_subscribe (void *subject_, const char *filter_);
-```
-
-Subscribes the subject to messages matching `filter_`. Filter
-interpretation: if `filter_` ends with `*`, it is a prefix-match pattern;
-otherwise it is an exact topic.
-
-Applicable types: raw SUB, raw XSUB, `spot`, `spot_node`.
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `EFAULT` if `subject_` is NULL. `EINVAL` if `filter_` is NULL,
-empty, or contains invalid pattern syntax (multiple `*` or mid-string `*`).
-`ENOTSUP` if the subject type does not support subscribe.
-
-**See also:** `zlink_unsubscribe`, `zlink_subscribe_recv`
-
----
-
-### zlink_unsubscribe
-
-Unsubscribe from a topic filter.
-
-```c
-int zlink_unsubscribe (void *subject_, const char *filter_);
-```
-
-Removes a previously registered subscription. The same string
-interpretation rules as `zlink_subscribe()` apply: trailing `*` means
-pattern unsubscribe, otherwise exact topic unsubscribe.
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `EFAULT` if `subject_` is NULL. `EINVAL` if `filter_` is NULL
-or empty. `ENOTSUP` if the subject type does not support unsubscribe.
-
-**See also:** `zlink_subscribe`
-
----
-
-### zlink_subscribe_recv
-
 Receive a topic-bearing multipart message.
 
 ```c
-int zlink_subscribe_recv (void *subject_,
-                          zlink_routing_id_t *source_rid_out_,
-                          zlink_msg_t **parts_out_,
-                          size_t *part_count_out_,
-                          char *topic_id_out_,
-                          size_t *topic_id_len_out_,
-                          zlink_send_flags_t flags_);
+int zlink_subscribe (void *subject_,
+                     zlink_routing_id_t *source_rid_out_,
+                     zlink_msg_t **parts_out_,
+                     size_t *part_count_out_,
+                     char *topic_id_out_,
+                     size_t *topic_id_len_out_,
+                     zlink_send_flags_t flags_);
 ```
 
 Receives the next topic-bearing message in recv mode. On success,
@@ -707,28 +993,28 @@ was set and no message is available. `EBUSY` if a subscribe handler is
 attached. `EMSGSIZE` if the topic buffer is too small. `ENOTSUP` if the
 subject type does not support subscribe recv.
 
-**See also:** `zlink_subscribe_handler`, `zlink_subscribe`
+**See also:** `zlink_subscribe_handler`, `zlink_set_subscription`
 
 ---
 
-### zlink_subscription_event_recv
+### zlink_subscription_event
 
 Receive a subscription event from an XPUB socket.
 
 ```c
-int zlink_subscription_event_recv (void *subject_,
-                                   zlink_routing_id_t *source_rid_out_,
-                                   int *subscribed_out_,
-                                   char *topic_id_out_,
-                                   size_t *topic_id_len_out_,
-                                   zlink_send_flags_t flags_);
+int zlink_subscription_event (void *subject_,
+                               zlink_routing_id_t *source_rid_out_,
+                               int *subscribed_out_,
+                               char *topic_id_out_,
+                               size_t *topic_id_len_out_,
+                               zlink_send_flags_t flags_);
 ```
 
 Receives the next subscription event in recv mode. On success,
 `*source_rid_out_` identifies the subscribing peer, `*subscribed_out_` is
 1 for subscribe or 0 for unsubscribe, and `*topic_id_out_` /
 `*topic_id_len_out_` receive the topic bytes (binary-safe, same buffer
-contract as `zlink_subscribe_recv()`).
+contract as `zlink_subscribe()`).
 
 The subject must be in recv mode. If a subscription event handler has been
 attached, this call fails with `EBUSY`.
@@ -745,18 +1031,21 @@ is attached. `ENOTSUP` if the subject is not XPUB.
 
 ---
 
-### zlink_socket_send_ready_handler
+### zlink_send_ready_handler
 
 Install or replace the send-ready callback.
 
 ```c
-int zlink_socket_send_ready_handler (
+int zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
 The handler is replace-only. Passing NULL is invalid. A successful replace is
 visible from the next writable transition. If called reentrantly from the
 same handle's send-ready callback, the call fails with `errno=EDEADLK`.
+
+Supported handle types: PAIR, PUB, XPUB, DEALER, ROUTER, gateway, spot,
+spot_node. Unsupported: SUB, XSUB, STREAM.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 

@@ -33,15 +33,15 @@ static void set_monitor_socket_defaults (socket_base_t *socket_)
 
     const int linger = 0;
     const int hwm = 1024;
-    socket_->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
-    socket_->setsockopt (ZLINK_SNDHWM, &hwm, sizeof (hwm));
-    socket_->setsockopt (ZLINK_RCVHWM, &hwm, sizeof (hwm));
+    socket_->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
+    socket_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &hwm, sizeof (hwm));
+    socket_->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &hwm, sizeof (hwm));
 }
 
 static bool recv_monitor_handshake (socket_base_t *socket_, long timeout_ms_)
 {
     const int timeout = static_cast<int> (timeout_ms_);
-    if (socket_->setsockopt (ZLINK_RCVTIMEO, &timeout, sizeof (timeout)) != 0)
+    if (socket_->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &timeout, sizeof (timeout)) != 0)
         return false;
 
     msg_t msg;

@@ -44,7 +44,7 @@ zlink_bind(socket, "tcp://127.0.0.1:*");
 /* 할당된 엔드포인트 조회 */
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(socket, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 /* endpoint = "tcp://127.0.0.1:53821" (예시) */
 
 /* 조회된 엔드포인트로 연결 */
@@ -112,7 +112,7 @@ zlink_bind(socket, "ipc://*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(socket, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 ```
 
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_bind(router, "ipc://*")`
@@ -183,7 +183,7 @@ zlink_connect(socket, "ws://server:8080");
 zlink_bind(socket, "ws://127.0.0.1:*");
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(socket, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 ```
 
 > 참고: `core/tests/test_stream_socket.cpp` — `test_stream_ws_basic()`
@@ -204,15 +204,11 @@ zlink_getsockopt(socket, ZLINK_LAST_ENDPOINT, endpoint, &len);
 
 ```c
 /* 서버 */
-zlink_setsockopt(socket, ZLINK_TLS_CERT, cert_path, 0);
-zlink_setsockopt(socket, ZLINK_TLS_KEY, key_path, 0);
+zlink_set_tls_server(socket, cert_path, key_path, 0);
 zlink_bind(socket, "wss://*:8443");
 
 /* 클라이언트 */
-int trust_system = 0;
-zlink_setsockopt(socket, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof(trust_system));
-zlink_setsockopt(socket, ZLINK_TLS_CA, ca_path, 0);
-zlink_setsockopt(socket, ZLINK_TLS_HOSTNAME, "localhost", 9);
+zlink_set_tls_client(socket, ca_path, "localhost", 0);
 zlink_connect(socket, "wss://server:8443");
 ```
 
@@ -222,11 +218,8 @@ zlink_connect(socket, "wss://server:8443");
 
 | 설정 | ws | wss |
 |------|:--:|:---:|
-| `ZLINK_TLS_CERT` (서버) | - | 필수 |
-| `ZLINK_TLS_KEY` (서버) | - | 필수 |
-| `ZLINK_TLS_CA` (클라이언트) | - | 권장 |
-| `ZLINK_TLS_HOSTNAME` (클라이언트) | - | 권장 |
-| `ZLINK_TLS_TRUST_SYSTEM` (클라이언트) | - | 선택 |
+| `zlink_set_tls_server()` (서버 cert+key) | - | 필수 |
+| `zlink_set_tls_client()` (클라이언트 CA+hostname+trust) | - | 권장 |
 
 ## 7. TLS
 
@@ -236,12 +229,11 @@ zlink_connect(socket, "wss://server:8443");
 
 ```c
 /* 서버 */
-zlink_setsockopt(socket, ZLINK_TLS_CERT, "/path/to/cert.pem", 0);
-zlink_setsockopt(socket, ZLINK_TLS_KEY, "/path/to/key.pem", 0);
+zlink_set_tls_server(socket, "/path/to/cert.pem", "/path/to/key.pem", 0);
 zlink_bind(socket, "tls://*:5555");
 
 /* 클라이언트 */
-zlink_setsockopt(socket, ZLINK_TLS_CA, "/path/to/ca.pem", 0);
+zlink_set_tls_client(socket, "/path/to/ca.pem", NULL, 1);
 zlink_connect(socket, "tls://server:5555");
 ```
 
@@ -308,7 +300,7 @@ zlink_connect(dealer, "tcp://server1:5555");
 zlink_connect(dealer, "tcp://server2:5555");
 ```
 
-### ZLINK_LAST_ENDPOINT
+### ZLINK_OPT_LAST_ENDPOINT
 
 와일드카드 바인드 후 실제 할당된 엔드포인트를 조회한다.
 
@@ -317,7 +309,7 @@ zlink_bind(socket, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(socket, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 printf("바인드된 엔드포인트: %s\n", endpoint);
 ```
 

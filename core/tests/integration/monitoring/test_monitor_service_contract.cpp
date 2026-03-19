@@ -3,12 +3,8 @@
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
 
-#include "../../../src/core/monitor_dispatch_internal.hpp"
-#include "../../../src/services/spot/spot_dispatch_internal.hpp"
-
 #include <chrono>
 #include <condition_variable>
-#include <map>
 #include <mutex>
 #include <stdio.h>
 #include <string>
@@ -127,10 +123,6 @@ service_event_probe_t *g_service_probe_a = NULL;
 service_event_probe_t *g_service_probe_b = NULL;
 gateway_delivery_probe_t *g_gateway_probe = NULL;
 spot_delivery_probe_t *g_spot_probe = NULL;
-std::mutex g_registered_service_monitor_probe_mutex;
-std::map<void *, service_event_probe_t *> g_registered_service_monitor_probes;
-std::mutex g_registered_spot_probe_mutex;
-std::map<void *, registered_spot_delivery_probe_t *> g_registered_spot_probes;
 
 void record_service_event (service_event_probe_t *probe_,
                            const zlink_service_event_t *event_)
@@ -365,40 +357,10 @@ int remaining_timeout_ms (
         .count ());
 }
 
-void register_service_monitor_probe (void *monitor_,
-                                     service_event_probe_t *probe_)
+void service_monitor_handler_registered (const zlink_service_event_t *event_,
+                                         void *userdata_)
 {
-    if (!monitor_ || !probe_)
-        return;
-
-    std::lock_guard<std::mutex> lock (g_registered_service_monitor_probe_mutex);
-    g_registered_service_monitor_probes[monitor_] = probe_;
-}
-
-void unregister_service_monitor_probe (void *monitor_)
-{
-    if (!monitor_)
-        return;
-
-    std::lock_guard<std::mutex> lock (g_registered_service_monitor_probe_mutex);
-    g_registered_service_monitor_probes.erase (monitor_);
-}
-
-service_event_probe_t *find_service_monitor_probe_for_current_dispatch ()
-{
-    void *monitor = zlink::current_monitor_dispatch_handle ();
-    if (!monitor)
-        return NULL;
-
-    std::lock_guard<std::mutex> lock (g_registered_service_monitor_probe_mutex);
-    std::map<void *, service_event_probe_t *>::iterator it =
-      g_registered_service_monitor_probes.find (monitor);
-    return it != g_registered_service_monitor_probes.end () ? it->second : NULL;
-}
-
-void service_monitor_handler_registered (const zlink_service_event_t *event_, void *)
-{
-    record_service_event (find_service_monitor_probe_for_current_dispatch (),
+    record_service_event (static_cast<service_event_probe_t *> (userdata_),
                           event_);
 }
 
@@ -647,46 +609,15 @@ bool wait_for_spot_delivery (spot_delivery_probe_t *probe_,
       });
 }
 
-void register_spot_delivery_probe (void *spot_,
-                                   registered_spot_delivery_probe_t *probe_)
-{
-    if (!spot_ || !probe_)
-        return;
-
-    std::lock_guard<std::mutex> lock (g_registered_spot_probe_mutex);
-    g_registered_spot_probes[spot_] = probe_;
-}
-
-void unregister_spot_delivery_probe (void *spot_)
-{
-    if (!spot_)
-        return;
-
-    std::lock_guard<std::mutex> lock (g_registered_spot_probe_mutex);
-    g_registered_spot_probes.erase (spot_);
-}
-
-registered_spot_delivery_probe_t *find_registered_spot_delivery_probe ()
-{
-    void *handle = zlink::current_spot_dispatch_handle ();
-    if (!handle)
-        return NULL;
-
-    std::lock_guard<std::mutex> lock (g_registered_spot_probe_mutex);
-    std::map<void *, registered_spot_delivery_probe_t *>::iterator it =
-      g_registered_spot_probes.find (handle);
-    return it != g_registered_spot_probes.end () ? it->second : NULL;
-}
-
 void capture_registered_spot_delivery (const zlink_routing_id_t *,
                                        const char *topic_,
                                        size_t topic_len_,
                                        zlink_msg_t *parts_,
                                        size_t part_count_,
-                          void *)
+                                       void *userdata_)
 {
     registered_spot_delivery_probe_t *probe =
-      find_registered_spot_delivery_probe ();
+      static_cast<registered_spot_delivery_probe_t *> (userdata_);
     if (!probe || !topic_ || part_count_ == 0) {
         close_spot_parts (NULL, parts_, part_count_);
         return;
@@ -832,7 +763,7 @@ void *create_gateway_attached (void *ctx_,
     TEST_ASSERT_NOT_NULL (gateway);
     if (routing_id_) {
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_gateway_set_routing_id (gateway, routing_id_,
+          zlink_set_routing_id (gateway, routing_id_,
                                         strlen (routing_id_)));
     }
     if (handler_) {
@@ -861,15 +792,6 @@ void setUp ()
     g_service_probe_b = NULL;
     g_gateway_probe = NULL;
     g_spot_probe = NULL;
-    {
-        std::lock_guard<std::mutex> lock (
-          g_registered_service_monitor_probe_mutex);
-        g_registered_service_monitor_probes.clear ();
-    }
-    {
-        std::lock_guard<std::mutex> lock (g_registered_spot_probe_mutex);
-        g_registered_spot_probes.clear ();
-    }
 }
 
 void tearDown ()
@@ -878,15 +800,6 @@ void tearDown ()
     g_service_probe_b = NULL;
     g_gateway_probe = NULL;
     g_spot_probe = NULL;
-    {
-        std::lock_guard<std::mutex> lock (
-          g_registered_service_monitor_probe_mutex);
-        g_registered_service_monitor_probes.clear ();
-    }
-    {
-        std::lock_guard<std::mutex> lock (g_registered_spot_probe_mutex);
-        g_registered_spot_probes.clear ();
-    }
     teardown_test_context ();
 }
 
@@ -926,10 +839,10 @@ void test_gateway_send_ready_changed_implies_first_request_reply ()
       &gateway_client_handler);
 
     const int timeout_ms = 200;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
-      server, ZLINK_GATEWAY_OPT_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
-      client, ZLINK_GATEWAY_OPT_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server, ZLINK_OPT_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
 
     service_event_probe_t server_monitor_probe;
     service_event_probe_t client_monitor_probe;
@@ -1013,17 +926,17 @@ void test_gateway_monitor_snapshot_send_ready_implies_first_recv_delivery ()
     TEST_ASSERT_NOT_NULL (client);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_set_routing_id (server, "gw-server-recv-contract",
+      zlink_set_routing_id (server, "gw-server-recv-contract",
                                     strlen ("gw-server-recv-contract")));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_set_routing_id (client, "gw-client-recv-contract",
+      zlink_set_routing_id (client, "gw-client-recv-contract",
                                     strlen ("gw-client-recv-contract")));
 
     const int timeout_ms = 3000;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
-      server, ZLINK_GATEWAY_OPT_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
-      client, ZLINK_GATEWAY_OPT_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server, ZLINK_OPT_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
 
     void *client_monitor = zlink_gateway_monitor_open (
       client, ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
@@ -1038,10 +951,10 @@ void test_gateway_monitor_snapshot_send_ready_implies_first_recv_delivery ()
 
     zlink_routing_id_t server_rid;
     memset (&server_rid, 0, sizeof (server_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (server, &server_rid));
     zlink_routing_id_t client_rid;
     memset (&client_rid, 0, sizeof (client_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (client, &client_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (client, &client_rid));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_connect (client, endpoint, &server_rid));
 
@@ -1105,12 +1018,10 @@ void test_spot_delivery_ready_changed_implies_first_publish_delivery ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_subscribe_handler (sub_node, &ignore_spot_handler, NULL));
 
-    void *pub = zlink_spot_new (pub_node);
-    void *sub = zlink_spot_new (sub_node);
+    void *pub = zlink_spot_pub_new (pub_node);
+    void *sub = zlink_spot_sub_new (sub_node);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (pub, &ignore_spot_handler, NULL));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_subscribe_handler (sub, &capture_spot_delivery, NULL));
 
@@ -1119,13 +1030,13 @@ void test_spot_delivery_ready_changed_implies_first_publish_delivery ()
     g_service_probe_a = &sub_monitor_probe;
     g_service_probe_b = &pub_monitor_probe;
 
-    void *sub_monitor = zlink_spot_monitor_open (
-      sub, ZLINK_SPOT_ROLE_SUB,
+    void *sub_monitor = zlink_spot_sub_monitor_open (
+      sub,
       ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_SUBSCRIPTION_READY
         | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR,
       &service_monitor_handler_a, NULL);
-    void *pub_monitor = zlink_spot_monitor_open (
-      pub, ZLINK_SPOT_ROLE_PUB,
+    void *pub_monitor = zlink_spot_pub_monitor_open (
+      pub,
       ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
         | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
         | ZLINK_MONITOR_EVENT_ERROR,
@@ -1138,8 +1049,8 @@ void test_spot_delivery_ready_changed_implies_first_publish_delivery ()
     bind_spot_node_with_port_seed (pub_node, &bind_seed, endpoint,
                                    sizeof (endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_connect_peer_pub (sub_node, endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (sub, "svc-contract"));
+      zlink_spot_node_connect_peer (sub_node, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "svc-contract"));
 
     size_t sub_cursor = 0;
     size_t pub_cursor = 0;
@@ -1199,7 +1110,7 @@ void test_spot_delivery_ready_changed_implies_first_publish_delivery ()
     TEST_ASSERT_EQUAL_INT (0, delivery_probe.close_failures);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_disconnect_peer_pub (sub_node, endpoint));
+      zlink_spot_node_disconnect_peer (sub_node, endpoint));
     TEST_ASSERT_TRUE (wait_for_service_event_match (
       &pub_monitor_probe, &pub_cursor,
       ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED,
@@ -1210,8 +1121,8 @@ void test_spot_delivery_ready_changed_implies_first_publish_delivery ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&pub_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&sub_monitor));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_destroy (&pub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
 }
@@ -1230,20 +1141,17 @@ void test_spot_multi_delivery_ready_changed_implies_first_publish_delivery ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_subscribe_handler (pub_node, &ignore_spot_handler, NULL));
 
-    void *pub = zlink_spot_new (pub_node);
+    void *pub = zlink_spot_pub_new (pub_node);
     TEST_ASSERT_NOT_NULL (pub);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (pub, &ignore_spot_handler, NULL));
 
     service_event_probe_t pub_monitor_probe;
-    void *pub_monitor = zlink_spot_monitor_open (
-      pub, ZLINK_SPOT_ROLE_PUB,
+    void *pub_monitor = zlink_spot_pub_monitor_open (
+      pub,
       ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
         | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
         | ZLINK_MONITOR_EVENT_ERROR,
-      &service_monitor_handler_registered, NULL);
+      &service_monitor_handler_registered, &pub_monitor_probe);
     TEST_ASSERT_NOT_NULL (pub_monitor);
-    register_service_monitor_probe (pub_monitor, &pub_monitor_probe);
 
     char endpoint[MAX_SOCKET_STRING];
     int bind_seed = 22940;
@@ -1259,25 +1167,23 @@ void test_spot_multi_delivery_ready_changed_implies_first_publish_delivery ()
         TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
           slots[i].node, &ignore_spot_handler, NULL));
 
-        slots[i].sub = zlink_spot_new (slots[i].node);
+        slots[i].sub = zlink_spot_sub_new (slots[i].node);
         TEST_ASSERT_NOT_NULL (slots[i].sub);
         TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
-          slots[i].sub, &capture_registered_spot_delivery, NULL));
-        register_spot_delivery_probe (slots[i].sub, &slots[i].delivery_probe);
+          slots[i].sub, &capture_registered_spot_delivery,
+          &slots[i].delivery_probe));
 
-        slots[i].monitor = zlink_spot_monitor_open (
-          slots[i].sub, ZLINK_SPOT_ROLE_SUB,
+        slots[i].monitor = zlink_spot_sub_monitor_open (
+          slots[i].sub,
           ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
             | ZLINK_MONITOR_EVENT_ERROR,
-          &service_monitor_handler_registered, NULL);
+          &service_monitor_handler_registered, &slots[i].monitor_probe);
         TEST_ASSERT_NOT_NULL (slots[i].monitor);
-        register_service_monitor_probe (slots[i].monitor,
-                                        &slots[i].monitor_probe);
 
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (slots[i].sub,
-                                                    "svc-contract"));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (slots[i].sub,
+                                                           "svc-contract"));
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_spot_node_connect_peer_pub (slots[i].node, endpoint));
+          zlink_spot_node_connect_peer (slots[i].node, endpoint));
     }
 
     const std::chrono::steady_clock::time_point ready_deadline =
@@ -1345,12 +1251,9 @@ void test_spot_multi_delivery_ready_changed_implies_first_publish_delivery ()
         TEST_ASSERT_EQUAL_INT (0, slots[i].delivery_probe.close_failures);
     }
 
-    unregister_service_monitor_probe (pub_monitor);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_close (&pub_monitor));
 
     for (size_t i = 0; i < client_count; ++i) {
-        unregister_service_monitor_probe (slots[i].monitor);
-        unregister_spot_delivery_probe (slots[i].sub);
         TEST_ASSERT_SUCCESS_ERRNO (
           zlink_service_monitor_close (&slots[i].monitor));
     }

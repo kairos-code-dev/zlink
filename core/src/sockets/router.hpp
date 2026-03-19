@@ -33,6 +33,7 @@ class router_t : public routing_socket_base_t
                        bool locally_initiated_) ZLINK_FINAL;
     int
     xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZLINK_FINAL;
+    int xgetsockopt (int option_, void *optval_, size_t *optvallen_) ZLINK_FINAL;
     int xsend (zlink::msg_t *msg_) ZLINK_OVERRIDE;
     int xrecv (zlink::msg_t *msg_) ZLINK_OVERRIDE;
     bool xhas_in () ZLINK_OVERRIDE;

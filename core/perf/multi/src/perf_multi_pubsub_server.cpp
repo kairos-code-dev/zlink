@@ -392,11 +392,8 @@ inline int run_server_benchmark (const std::string &lib_name,
       "ZLINK_XPUB_VERBOSER");
     apply_benchmark_hwm (server, settings.hwm);
     if (k_server_has_routing_id) {
-        zlink_setsockopt (
-          server,
-          ZLINK_ROUTING_ID,
-          k_server_routing_id,
-          std::strlen (k_server_routing_id));
+        zlink_set_routing_id (
+          server, k_server_routing_id, std::strlen (k_server_routing_id));
     }
 
     if (!setup_tls_server (server, transport)) {

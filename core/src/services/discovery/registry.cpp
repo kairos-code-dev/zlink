@@ -153,7 +153,7 @@ registry_t::registry_t (ctx_t *ctx_) :
     // Default to failing undeliverable registry replies instead of
     // silently dropping them on the ROUTER socket.
     socket_opt_t mandatory_opt;
-    mandatory_opt.option = ZLINK_ROUTER_MANDATORY;
+    mandatory_opt.option = ZLINK_INTERNAL_OPT_ROUTER_MANDATORY;
     mandatory_opt.value.resize (sizeof (int));
     const int mandatory = 1;
     memcpy (&mandatory_opt.value[0], &mandatory, sizeof (mandatory));
@@ -292,9 +292,8 @@ int registry_t::set_socket_option (int socket_role_,
               static_cast<const unsigned char *> (optval_),
               static_cast<const unsigned char *> (optval_) + optvallen_);
             if (existing_socket)
-                zlink_setsockopt (
-                  existing_socket, static_cast<zlink_socket_option_t> (option_),
-                  optval_, optvallen_);
+                static_cast<socket_base_t *> (existing_socket)
+                  ->setsockopt (option_, optval_, optvallen_);
             return 0;
         }
     }
@@ -305,9 +304,60 @@ int registry_t::set_socket_option (int socket_role_,
                         + optvallen_);
     opts->push_back (opt);
     if (existing_socket)
-        zlink_setsockopt (
-          existing_socket, static_cast<zlink_socket_option_t> (option_),
-          optval_, optvallen_);
+        static_cast<socket_base_t *> (existing_socket)
+          ->setsockopt (option_, optval_, optvallen_);
+    return 0;
+}
+
+int registry_t::set_tls_server (const char *cert_,
+                                const char *key_,
+                                int require_client_cert_)
+{
+    const int require_client_cert = require_client_cert_ ? 1 : 0;
+    if (set_socket_option (ZLINK_REGISTRY_SOCKET_PUB, ZLINK_INTERNAL_OPT_TLS_CERT, cert_,
+                           strlen (cert_) + 1)
+          != 0
+        || set_socket_option (ZLINK_REGISTRY_SOCKET_PUB, ZLINK_INTERNAL_OPT_TLS_KEY, key_,
+                              strlen (key_) + 1)
+             != 0
+        || set_socket_option (ZLINK_REGISTRY_SOCKET_PUB,
+                              ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT,
+                              &require_client_cert,
+                              sizeof (require_client_cert))
+             != 0
+        || set_socket_option (ZLINK_REGISTRY_SOCKET_ROUTER, ZLINK_INTERNAL_OPT_TLS_CERT,
+                              cert_, strlen (cert_) + 1)
+             != 0
+        || set_socket_option (ZLINK_REGISTRY_SOCKET_ROUTER, ZLINK_INTERNAL_OPT_TLS_KEY, key_,
+                              strlen (key_) + 1)
+             != 0
+        || set_socket_option (ZLINK_REGISTRY_SOCKET_ROUTER,
+                              ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT,
+                              &require_client_cert,
+                              sizeof (require_client_cert))
+             != 0)
+        return -1;
+    return 0;
+}
+
+int registry_t::set_tls_client (const char *ca_cert_,
+                                const char *hostname_,
+                                int trust_system_)
+{
+    if (set_socket_option (ZLINK_REGISTRY_SOCKET_PEER_SUB, ZLINK_INTERNAL_OPT_TLS_CA,
+                           ca_cert_, strlen (ca_cert_) + 1)
+          != 0
+        || set_socket_option (ZLINK_REGISTRY_SOCKET_PEER_SUB,
+                              ZLINK_INTERNAL_OPT_TLS_HOSTNAME,
+                              hostname_,
+                              strlen (hostname_) + 1)
+             != 0
+        || set_socket_option (ZLINK_REGISTRY_SOCKET_PEER_SUB,
+                              ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM,
+                              &trust_system_,
+                              sizeof (trust_system_))
+             != 0)
+        return -1;
     return 0;
 }
 
@@ -512,21 +562,19 @@ int registry_t::ensure_sockets ()
         scoped_lock_t lock (_sync);
         for (size_t i = 0; i < _pub_opts.size (); ++i) {
             if (!_pub_opts[i].value.empty ())
-                zlink_setsockopt (
-                  pub, static_cast<zlink_socket_option_t> (_pub_opts[i].option),
-                  &_pub_opts[i].value[0], _pub_opts[i].value.size ());
+                pub->setsockopt (_pub_opts[i].option, &_pub_opts[i].value[0],
+                                 _pub_opts[i].value.size ());
         }
         for (size_t i = 0; i < _router_opts.size (); ++i) {
             if (!_router_opts[i].value.empty ())
-                zlink_setsockopt (
-                  router,
-                  static_cast<zlink_socket_option_t> (_router_opts[i].option),
-                  &_router_opts[i].value[0], _router_opts[i].value.size ());
+                router->setsockopt (_router_opts[i].option,
+                                    &_router_opts[i].value[0],
+                                    _router_opts[i].value.size ());
         }
     }
 
     int verbose = 1;
-    zlink_setsockopt (pub, ZLINK_XPUB_VERBOSE, &verbose, sizeof (verbose));
+    pub->setsockopt (ZLINK_INTERNAL_OPT_XPUB_VERBOSE, &verbose, sizeof (verbose));
 
     if (pub->bind (_pub_endpoint.c_str ()) != 0
         || router->bind (_router_endpoint.c_str ()) != 0) {
@@ -645,14 +693,13 @@ void registry_t::tick ()
         if (peer_sub) {
             for (size_t i = 0; i < peer_sub_opts.size (); ++i) {
                 if (!peer_sub_opts[i].value.empty ())
-                    zlink_setsockopt (
-                      peer_sub,
-                      static_cast<zlink_socket_option_t> (
-                        peer_sub_opts[i].option),
-                      &peer_sub_opts[i].value[0],
-                      peer_sub_opts[i].value.size ());
+                    static_cast<socket_base_t *> (peer_sub)
+                      ->setsockopt (peer_sub_opts[i].option,
+                                    &peer_sub_opts[i].value[0],
+                                    peer_sub_opts[i].value.size ());
             }
-            zlink_setsockopt (peer_sub, ZLINK_SUBSCRIBE, "", 0);
+            static_cast<socket_base_t *> (peer_sub)
+              ->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, "", 0);
             scoped_lock_t lock (_sync);
             if (_peer_sub_socket == NULL)
                 _peer_sub_socket = peer_sub;

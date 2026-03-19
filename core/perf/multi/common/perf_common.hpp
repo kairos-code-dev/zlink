@@ -102,7 +102,7 @@ inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_
 
             int events = 0;
             size_t events_len = sizeof(events);
-            if (zlink_getsockopt(items_[i].socket, ZLINK_EVENTS, &events,
+            if (zlink_get_option(items_[i].socket, ZLINK_OPT_EVENTS, &events,
                                  &events_len)
                 != 0) {
                 return -1;
@@ -445,15 +445,15 @@ inline int zlink_stream_send_msg(void *socket_,
              : -1;
 }
 
-inline int zlink_subscribe_recv(void *sub_,
-                                zlink_msg_t **parts_,
-                                size_t *part_count_,
-                                int flags_,
-                                char *topic_id_out_,
-                                size_t *topic_id_len_)
+inline int zlink_subscribe(void *sub_,
+                           zlink_msg_t **parts_,
+                           size_t *part_count_,
+                           int flags_,
+                           char *topic_id_out_,
+                           size_t *topic_id_len_)
 {
-    return ::zlink_subscribe_recv(sub_, NULL, parts_, part_count_,
-                                  topic_id_out_, topic_id_len_, flags_);
+    return ::zlink_subscribe(sub_, NULL, parts_, part_count_, topic_id_out_,
+                             topic_id_len_, flags_);
 }
 
 inline int bench_hwm_from_env(const char *name_, int default_hwm_);
@@ -744,21 +744,34 @@ inline bool read_gateway_snapshot_once(void *gateway_,
 }
 
 inline bool read_spot_snapshot_once(void *spot_,
-                                    zlink_spot_role_t role_,
+                                    int role_,
                                     zlink_monitor_snapshot_t *out_)
 {
     if (!spot_ || !out_)
         return false;
 
-    void *monitor = zlink_spot_monitor_open(
-      spot_, role_,
-      ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
-        | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
-        | ZLINK_MONITOR_EVENT_ERROR
-        | ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
-        | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
-        | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED,
-      &zlink_service_monitor_ignore_handler, NULL);
+    const int spot_role_pub = 1;
+    void *monitor = role_ == spot_role_pub
+                      ? zlink_spot_pub_monitor_open(
+                          spot_,
+                          ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
+                            | ZLINK_MONITOR_EVENT_PEER_UP
+                            | ZLINK_MONITOR_EVENT_PEER_DOWN
+                            | ZLINK_MONITOR_EVENT_ERROR
+                            | ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
+                            | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
+                            | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED,
+                          &zlink_service_monitor_ignore_handler, NULL)
+                      : zlink_spot_sub_monitor_open(
+                          spot_,
+                          ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
+                            | ZLINK_MONITOR_EVENT_PEER_UP
+                            | ZLINK_MONITOR_EVENT_PEER_DOWN
+                            | ZLINK_MONITOR_EVENT_ERROR
+                            | ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
+                            | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
+                            | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED,
+                          &zlink_service_monitor_ignore_handler, NULL);
     if (!monitor)
         return false;
 
@@ -984,7 +997,9 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
     if (transport != "inproc") {
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof(last_endpoint);
-        if (zlink_getsockopt(socket_, ZLINK_LAST_ENDPOINT, last_endpoint, &size) != 0) {
+        if (zlink_get_option(socket_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
+                             &size)
+            != 0) {
             std::cerr << "getsockopt(ZLINK_LAST_ENDPOINT) failed: "
                       << zlink_strerror(zlink_errno()) << std::endl;
             return std::string();
@@ -1147,7 +1162,8 @@ inline std::string bind_server_endpoint (void *server_,
 
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof (last_endpoint);
-        if (zlink_getsockopt (server_, ZLINK_LAST_ENDPOINT, last_endpoint, &size)
+        if (zlink_get_option (server_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
+                              &size)
             == 0) {
             endpoint_any.assign (last_endpoint);
             const std::string any_v4 = "://0.0.0.0:";
@@ -1175,7 +1191,8 @@ inline std::string bind_server_endpoint (void *server_,
 
     char last_endpoint[MAX_SOCKET_STRING] = "";
     size_t size = sizeof (last_endpoint);
-    if (zlink_getsockopt (server_, ZLINK_LAST_ENDPOINT, last_endpoint, &size)
+    if (zlink_get_option (server_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
+                          &size)
         == 0)
         endpoint.assign (last_endpoint);
     apply_debug_timeouts (server_, transport_);

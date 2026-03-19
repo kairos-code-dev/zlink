@@ -54,20 +54,20 @@ HWM은 **연결별(per-connection) 큐 크기** 제한이다. zlink에서 각 �
 
 ```c
 int hwm = 100;
-zlink_setsockopt(socket, ZLINK_SNDHWM, &hwm, sizeof(hwm));
-zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
+zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 ```
 
 | 설정 | 기본값 | 설명 |
 |------|--------|------|
-| `ZLINK_SNDHWM` | 1000 | 각 연결의 송신 큐 최대 메시지 수 |
-| `ZLINK_RCVHWM` | 1000 | 각 연결의 수신 큐 최대 메시지 수 |
+| `ZLINK_OPT_SNDHWM` | 1000 | 각 연결의 송신 큐 최대 메시지 수 |
+| `ZLINK_OPT_RCVHWM` | 1000 | 각 연결의 수신 큐 최대 메시지 수 |
 
 ### Backpressure 동작
 
 HWM에 도달하면 소켓 타입과 송신 플래그에 따라 동작이 달라진다:
 
-- **블로킹 송신** (`flags=0`): `zlink_send()`가 전송 큐에 공간이 생길 때까지 블로킹한다. `ZLINK_SNDTIMEO`로 대기 시간을 제한할 수 있다.
+- **블로킹 송신** (`flags=0`): `zlink_send()`가 전송 큐에 공간이 생길 때까지 블로킹한다. `ZLINK_OPT_SNDTIMEO`로 대기 시간을 제한할 수 있다.
 - **논블로킹 송신** (`ZLINK_DONTWAIT`): 즉시 `EAGAIN`을 반환한다. 애플리케이션이 재시도, 드롭, 외부 버퍼링을 결정한다.
 
 > 상세한 흐름 제어 패턴(DONTWAIT + send-ready handler)은
@@ -134,7 +134,7 @@ Mark(HWM)이 큐 깊이를 제한하며, HWM 도달 시 동작은 소켓 타입�
 #### 블로킹 송신 (기본)
 
 `flags=0`이면 `zlink_send()`는 전송 큐에 공간이 생길 때까지 블로킹한다.
-`ZLINK_SNDTIMEO`로 블로킹 시간을 제한할 수 있다.
+`ZLINK_OPT_SNDTIMEO`로 블로킹 시간을 제한할 수 있다.
 
 | SNDTIMEO | 동작 |
 |---|---|
@@ -145,7 +145,7 @@ Mark(HWM)이 큐 깊이를 제한하며, HWM 도달 시 동작은 소켓 타입�
 ```c
 /* 최대 1초 블로킹 */
 int timeout = 1000;
-zlink_setsockopt(socket, ZLINK_SNDTIMEO, &timeout, sizeof(timeout));
+zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &timeout, sizeof(timeout));
 
 zlink_msg_t part;
 zlink_msg_init_size(&part, size);
@@ -175,7 +175,7 @@ if (rc == -1 && zlink_errno() == EAGAIN) {
 
 #### Send-Ready 핸들러 (이벤트 기반 Backpressure)
 
-`zlink_socket_send_ready_handler()`는 소켓이 non-writable에서
+`zlink_send_ready_handler()`는 소켓이 non-writable에서
 writable로 전환될 때 호출되는 콜백을 설치한다. `ZLINK_DONTWAIT`와
 조합하면 반응형 흐름 제어가 가능하다:
 
@@ -214,7 +214,7 @@ void on_send_ready(void *subject, void *userdata)
 
 /* 핸들러 설치 */
 app_state_t state = { .socket = socket };
-zlink_socket_send_ready_handler(socket, on_send_ready, &state);
+zlink_send_ready_handler(socket, on_send_ready, &state);
 
 /* 송신 루프 */
 zlink_msg_t part;
@@ -241,12 +241,12 @@ mark** `(HWM + 1) / 2`까지 drain되면 다시 writable로 전환된다. 이 �
 
 ### 4.3 수신 측 흐름 제어
 
-수신 큐는 최대 `ZLINK_RCVHWM` 메시지를 보관한다. 수신 큐가 가득 차면
+수신 큐는 최대 `ZLINK_OPT_RCVHWM` 메시지를 보관한다. 수신 큐가 가득 차면
 sender에 pipe 레벨 backpressure가 적용된다.
 
 ```c
 int hwm = 500;
-zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 ```
 
 Callback 모드에서 느린 콜백은 I/O 스레드를 블로킹하여 수신 큐가
@@ -329,7 +329,7 @@ int main(void)
     zlink_connect(socket, "tcp://127.0.0.1:5555");
 
     sender_t sender = { .socket = socket };
-    zlink_socket_send_ready_handler(socket, on_send_ready, &sender);
+    zlink_send_ready_handler(socket, on_send_ready, &sender);
 
     for (int i = 0; i < 100000; i++) {
         char msg[64];
@@ -363,23 +363,23 @@ int main(void)
 
 | 옵션 | 기본값 | 튜닝 포인트 |
 |------|--------|-------------|
-| `ZLINK_LINGER` | -1 (무한) | 테스트: 0, 프로덕션: 1000~5000ms |
-| `ZLINK_SNDTIMEO` | -1 (무한) | 응답 시간 요구사항에 맞춰 설정 |
-| `ZLINK_RCVTIMEO` | -1 (무한) | 폴링 루프에서 사용 시 설정 |
-| `ZLINK_SNDHWM` | 1000 | 처리량에 맞춰 조정 |
-| `ZLINK_RCVHWM` | 1000 | 처리량에 맞춰 조정 |
-| `ZLINK_MAXMSGSIZE` | -1 (무제한) | STREAM 소켓에서 보안 설정 |
+| `ZLINK_OPT_LINGER` | -1 (무한) | 테스트: 0, 프로덕션: 1000~5000ms |
+| `ZLINK_OPT_SNDTIMEO` | -1 (무한) | 응답 시간 요구사항에 맞춰 설정 |
+| `ZLINK_OPT_RCVTIMEO` | -1 (무한) | 폴링 루프에서 사용 시 설정 |
+| `ZLINK_OPT_SNDHWM` | 1000 | 처리량에 맞춰 조정 |
+| `ZLINK_OPT_RCVHWM` | 1000 | 처리량에 맞춰 조정 |
+| `ZLINK_OPT_MAXMSGSIZE` | -1 (무제한) | STREAM 소켓에서 보안 설정 |
 
 ### LINGER 설정
 
 ```c
 /* 테스트 환경: 즉시 종료 */
 int linger = 0;
-zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
+zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 
 /* 프로덕션: 미전송 메시지 대기 */
 int linger = 3000;  /* 3초 */
-zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
+zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 ```
 
 ### 타임아웃 설정
@@ -387,11 +387,11 @@ zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
 ```c
 /* 송신 타임아웃: 1초 후 EAGAIN */
 int timeout = 1000;
-zlink_setsockopt(socket, ZLINK_SNDTIMEO, &timeout, sizeof(timeout));
+zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &timeout, sizeof(timeout));
 
 /* 수신 타임아웃: 500ms 후 EAGAIN */
 int timeout = 500;
-zlink_setsockopt(socket, ZLINK_RCVTIMEO, &timeout, sizeof(timeout));
+zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &timeout, sizeof(timeout));
 ```
 
 ## 6. 성능 측정 방법

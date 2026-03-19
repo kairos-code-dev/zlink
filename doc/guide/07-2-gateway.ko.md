@@ -44,7 +44,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 void *gateway = zlink_gateway_new(ctx, "payment-service");
-zlink_gateway_set_routing_id(gateway, "gateway-1", 9);
+zlink_set_routing_id(gateway, "gateway-1", 9);
 zlink_recv_handler(gateway, on_message, NULL);
 ```
 
@@ -52,7 +52,7 @@ zlink_recv_handler(gateway, on_message, NULL);
 
 ```c
 void *gateway = zlink_gateway_new(ctx, "payment-service");
-zlink_gateway_set_routing_id(gateway, "gateway-1", 9);
+zlink_set_routing_id(gateway, "gateway-1", 9);
 /* 콜백 없음 -- recv 모드 유지, zlink_gateway_recv()로 수신 */
 ```
 
@@ -72,7 +72,7 @@ zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Gateway 생성 (수신 핸들러 등록) */
 void *server = zlink_gateway_new(ctx, "payment-service");
-zlink_gateway_set_routing_id(server, "payment-server-1", 16);
+zlink_set_routing_id(server, "payment-server-1", 16);
 zlink_recv_handler(server, on_request, NULL);
 
 /* Discovery 연결 */
@@ -91,7 +91,7 @@ void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 void *server = zlink_gateway_new(ctx, "payment-service");
-zlink_gateway_set_routing_id(server, "payment-server-1", 16);
+zlink_set_routing_id(server, "payment-server-1", 16);
 /* recv 모드 유지 -- zlink_recv_handler() 호출 없음 */
 
 zlink_gateway_attach_discovery(server, discovery);
@@ -118,7 +118,7 @@ zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Gateway 생성 */
 void *client = zlink_gateway_new(ctx, "payment-service");
-zlink_gateway_set_routing_id(client, "client-1", 8);
+zlink_set_routing_id(client, "client-1", 8);
 zlink_recv_handler(client, on_reply, NULL);
 
 /* Discovery 연결 */
@@ -135,7 +135,7 @@ void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 void *client = zlink_gateway_new(ctx, "payment-service");
-zlink_gateway_set_routing_id(client, "client-1", 8);
+zlink_set_routing_id(client, "client-1", 8);
 /* recv 모드 유지 */
 
 zlink_gateway_attach_discovery(client, discovery);
@@ -230,12 +230,12 @@ Gateway는 "모든 API가 같은 비용 모델"인 것은 아니지만, 공개 h
 - `zlink_gateway_send()`
 - `zlink_gateway_send_rid()`
 - `zlink_gateway_set_lb_strategy()`
-- `zlink_gateway_set_option()`
+- `zlink_set_option()`
 - `zlink_gateway_attach_discovery()`
 - `zlink_gateway_bind()`
 - `zlink_gateway_connect()` / `zlink_gateway_disconnect()`
-- `zlink_gateway_set_tls_client()`
-- `zlink_gateway_last_endpoint()`
+- `zlink_set_tls_client()` / `zlink_set_tls_server()`
+- `zlink_get_option(gateway, ZLINK_OPT_LAST_ENDPOINT, ...)`
 - open한 gateway monitor에 대한 `zlink_monitor_snapshot()`
 - `zlink_gateway_destroy()`
 
@@ -252,7 +252,7 @@ Gateway는 "모든 API가 같은 비용 모델"인 것은 아니지만, 공개 h
 ```c
 /* Gateway는 thread-safe하므로 여러 스레드에서 공유 가능 */
 void *gateway = zlink_gateway_new(ctx, "my-service");
-zlink_gateway_set_routing_id(gateway, "gw-1", 4);
+zlink_set_routing_id(gateway, "gw-1", 4);
 zlink_recv_handler(gateway, on_reply, NULL);
 zlink_gateway_attach_discovery(gateway, discovery);
 
@@ -334,7 +334,7 @@ void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
 
 void *server = zlink_gateway_new(ctx, "echo-service");
-zlink_gateway_set_routing_id(server, "echo-server-1", 13);
+zlink_set_routing_id(server, "echo-server-1", 13);
 zlink_recv_handler(server, on_request, NULL);
 zlink_gateway_attach_discovery(server, server_discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
@@ -344,7 +344,7 @@ void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
 
 void *client = zlink_gateway_new(ctx, "echo-service");
-zlink_gateway_set_routing_id(client, "client-1", 8);
+zlink_set_routing_id(client, "client-1", 8);
 zlink_recv_handler(client, on_reply, NULL);
 zlink_gateway_attach_discovery(client, client_discovery);
 
@@ -382,7 +382,7 @@ void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
 
 void *server = zlink_gateway_new(ctx, "echo-service");
-zlink_gateway_set_routing_id(server, "echo-server-1", 13);
+zlink_set_routing_id(server, "echo-server-1", 13);
 zlink_gateway_attach_discovery(server, server_discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
@@ -391,7 +391,7 @@ void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
 
 void *client = zlink_gateway_new(ctx, "echo-service");
-zlink_gateway_set_routing_id(client, "client-1", 8);
+zlink_set_routing_id(client, "client-1", 8);
 zlink_gateway_attach_discovery(client, client_discovery);
 
 /* gateway monitor로 route readiness 대기 */
@@ -422,7 +422,7 @@ zlink_ctx_term(ctx);
 | 함수 | 설명 |
 |------|------|
 | `zlink_gateway_new(ctx, service_name)` | recv 모드 Gateway 생성 |
-| `zlink_gateway_set_routing_id(gateway, data, size)` | 첫 bind/connect 전 routing id 설정 |
+| `zlink_set_routing_id(gateway, data, size)` | 첫 bind/connect 전 routing id 설정 |
 | `zlink_recv_handler(gateway, fn, userdata)` | callback 모드로 일방 전환 |
 | `zlink_gateway_recv(gateway, &rid, &parts, &count, flags)` | recv 모드에서 메시지 수신 (callback 모드에서 `EBUSY`) |
 | `zlink_gateway_attach_discovery(gateway, discovery)` | Discovery 연결 |
@@ -430,12 +430,12 @@ zlink_ctx_term(ctx);
 | `zlink_gateway_send(gateway, parts, count, flags)` | 멀티파트 메시지 전송 (LB 적용) |
 | `zlink_gateway_send_rid(gateway, rid, parts, count, flags)` | 특정 피어로 전송 |
 | `zlink_gateway_set_lb_strategy(gateway, strategy)` | LB 전략 설정 |
-| `zlink_gateway_set_option(gateway, option, val, len)` | 서비스 옵션 설정 |
-| `zlink_gateway_set_routing_id(gateway, data, size)` | 라우팅 ID 설정 |
-| `zlink_gateway_routing_id(gateway, out)` | 라우팅 ID 조회 |
-| `zlink_gateway_set_tls_client(gateway, ca, host, trust)` | TLS 클라이언트 설정 |
-| `zlink_gateway_set_tls_server(gateway, cert, key)` | TLS 서버 설정 |
-| `zlink_gateway_last_endpoint(gateway, buf, size)` | bind된 endpoint 조회 |
+| `zlink_set_option(gateway, option, val, len)` | 서비스 옵션 설정 |
+| `zlink_set_routing_id(gateway, data, size)` | 라우팅 ID 설정 |
+| `zlink_get_routing_id(gateway, &out)` | 라우팅 ID 조회 |
+| `zlink_set_tls_client(gateway, ca, host, trust)` | TLS 클라이언트 설정 |
+| `zlink_set_tls_server(gateway, cert, key, require_client_cert)` | TLS 서버 설정 |
+| `zlink_get_option(gateway, ZLINK_OPT_LAST_ENDPOINT, buf, &size)` | bind된 endpoint 조회 |
 | `zlink_monitor_snapshot(monitor, &snapshot)` | 로컬 bind/send readiness 및 queue depth 조회 |
 | `zlink_gateway_update_peer_weight(gateway, rid, weight)` | 피어 가중치 갱신 |
 | `zlink_registry_gateway_peers_query(registry, &filter, entries, &count)` | 운영용 gateway-peer 상태 조회 |

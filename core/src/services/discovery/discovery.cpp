@@ -240,7 +240,7 @@ static int prepare_transient_dealer (ctx_t *ctx_,
         return -1;
 
     if (routing_id_ && routing_id_->size > 0) {
-        if (dealer->setsockopt (ZLINK_ROUTING_ID, routing_id_->data,
+        if (dealer->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, routing_id_->data,
                                 routing_id_->size)
             != 0) {
             (void) close_transient_dealer (ctx_, dealer);
@@ -254,9 +254,9 @@ static int prepare_transient_dealer (ctx_t *ctx_,
     const int linger = 200;
     const int sndtimeo_ms = 500;
     const int rcvtimeo_ms = 500;
-    dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
-    dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms, sizeof (sndtimeo_ms));
-    dealer->setsockopt (ZLINK_RCVTIMEO, &rcvtimeo_ms, sizeof (rcvtimeo_ms));
+    dealer->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
+    dealer->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &sndtimeo_ms, sizeof (sndtimeo_ms));
+    dealer->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &rcvtimeo_ms, sizeof (rcvtimeo_ms));
     if (dealer->connect (uplink_.c_str ()) != 0) {
         (void) close_transient_dealer (ctx_, dealer);
         return -1;
@@ -412,6 +412,41 @@ int discovery_t::routing_id (zlink_routing_id_t *out_) const
     return out_->size > 0 ? 0 : -1;
 }
 
+int discovery_t::set_option (int option_,
+                             const void *optval_,
+                             size_t optvallen_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (!optval_ || optvallen_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    bool updated = false;
+    for (size_t i = 0; i < _sub_opts.size (); ++i) {
+        if (_sub_opts[i].option == option_) {
+            _sub_opts[i].value.assign (
+              static_cast<const unsigned char *> (optval_),
+              static_cast<const unsigned char *> (optval_) + optvallen_);
+            updated = true;
+            break;
+        }
+    }
+    if (!updated) {
+        socket_opt_t opt;
+        opt.option = option_;
+        opt.value.assign (static_cast<const unsigned char *> (optval_),
+                          static_cast<const unsigned char *> (optval_)
+                            + optvallen_);
+        _sub_opts.push_back (opt);
+    }
+    apply_socket_options_to_existing_locked (option_, optval_, optvallen_);
+    return 0;
+}
+
 int discovery_t::set_tls_client (const char *ca_cert_,
                                  const char *hostname_,
                                  int trust_system_)
@@ -431,9 +466,10 @@ int discovery_t::set_tls_client (const char *ca_cert_,
         int option;
         const void *value;
         size_t size;
-    } options[] = {{ZLINK_SOCKOPT_TLS_CA, tls_ca, tls_ca_len},
-                   {ZLINK_SOCKOPT_TLS_HOSTNAME, tls_hostname, tls_hostname_len},
-                   {ZLINK_SOCKOPT_TLS_TRUST_SYSTEM, &trust_system_,
+    } options[] = {{ZLINK_INTERNAL_OPT_TLS_CA, tls_ca, tls_ca_len},
+                   {ZLINK_INTERNAL_OPT_TLS_HOSTNAME, tls_hostname,
+                    tls_hostname_len},
+                   {ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM, &trust_system_,
                     sizeof (trust_system_)}};
 
     for (size_t i = 0; i < sizeof (options) / sizeof (options[0]); ++i) {
@@ -469,9 +505,8 @@ void discovery_t::apply_socket_options_locked (socket_base_t *socket_)
         return;
     for (size_t i = 0; i < _sub_opts.size (); ++i) {
         if (!_sub_opts[i].value.empty ())
-            zlink_setsockopt (
-              socket_, static_cast<zlink_socket_option_t> (_sub_opts[i].option),
-              &_sub_opts[i].value[0], _sub_opts[i].value.size ());
+            socket_->setsockopt (_sub_opts[i].option, &_sub_opts[i].value[0],
+                                 _sub_opts[i].value.size ());
     }
 }
 
@@ -479,30 +514,29 @@ void discovery_t::apply_socket_options_to_existing_locked (int option_,
                                                            const void *optval_,
                                                            size_t optvallen_)
 {
-    const zlink_socket_option_t option =
-      static_cast<zlink_socket_option_t> (option_);
     if (_sub_socket)
-        zlink_setsockopt (_sub_socket, option, optval_, optvallen_);
+        static_cast<socket_base_t *> (_sub_socket)
+          ->setsockopt (option_, optval_, optvallen_);
 
     for (std::map<std::string, bootstrap_state_t>::iterator it =
            _bootstrap_states.begin ();
          it != _bootstrap_states.end (); ++it) {
         if (it->second.dealer)
-            zlink_setsockopt (it->second.dealer, option, optval_, optvallen_);
+            it->second.dealer->setsockopt (option_, optval_, optvallen_);
     }
 
     for (std::map<std::string, socket_base_t *>::iterator it =
            _report_dealers.begin ();
          it != _report_dealers.end (); ++it) {
         if (it->second)
-            zlink_setsockopt (it->second, option, optval_, optvallen_);
+            it->second->setsockopt (option_, optval_, optvallen_);
     }
 
     for (std::map<std::string, socket_base_t *>::iterator it =
            _control_dealers.begin ();
          it != _control_dealers.end (); ++it) {
         if (it->second)
-            zlink_setsockopt (it->second, option, optval_, optvallen_);
+            it->second->setsockopt (option_, optval_, optvallen_);
     }
 }
 
@@ -519,7 +553,7 @@ bool discovery_t::ensure_socket_routing_id (socket_base_t *socket_)
     if (!socket_)
         return false;
     if (_routing_id.size > 0 && _routing_id_override.empty ()) {
-        return socket_->setsockopt (ZLINK_ROUTING_ID, _routing_id.data,
+        return socket_->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, _routing_id.data,
                                     _routing_id.size)
                == 0;
     }
@@ -691,10 +725,10 @@ int discovery_t::ensure_bootstrap_dealer (const std::string &registry_endpoint_,
         const int linger = 0;
         const int sndtimeo_ms = 0;
         const int rcvtimeo_ms = 0;
-        state.dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
-        state.dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms,
+        state.dealer->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
+        state.dealer->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &sndtimeo_ms,
                                   sizeof (sndtimeo_ms));
-        state.dealer->setsockopt (ZLINK_RCVTIMEO, &rcvtimeo_ms,
+        state.dealer->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &rcvtimeo_ms,
                                   sizeof (rcvtimeo_ms));
         if (state.dealer->connect (registry_endpoint_.c_str ()) != 0) {
             (void) _lifecycle.close_socket (state.dealer);
@@ -992,10 +1026,10 @@ int discovery_t::ensure_topology_reporter_locked (
         const int linger = 200;
         const int sndtimeo_ms = 100;
         const int rcvtimeo_ms = 1000;
-        dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
-        dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms,
+        dealer->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
+        dealer->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &sndtimeo_ms,
                             sizeof (sndtimeo_ms));
-        dealer->setsockopt (ZLINK_RCVTIMEO, &rcvtimeo_ms,
+        dealer->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &rcvtimeo_ms,
                             sizeof (rcvtimeo_ms));
         if (dealer->connect (uplink_endpoint_.c_str ()) != 0) {
             (void) _lifecycle.close_socket (dealer);
@@ -1036,10 +1070,10 @@ int discovery_t::ensure_control_dealer_locked (
         const int linger = 200;
         const int sndtimeo_ms = 500;
         const int rcvtimeo_ms = 500;
-        dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
-        dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms,
+        dealer->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
+        dealer->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &sndtimeo_ms,
                             sizeof (sndtimeo_ms));
-        dealer->setsockopt (ZLINK_RCVTIMEO, &rcvtimeo_ms,
+        dealer->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &rcvtimeo_ms,
                             sizeof (rcvtimeo_ms));
         if (dealer->connect (uplink_endpoint_.c_str ()) != 0) {
             (void) _lifecycle.close_socket (dealer);
@@ -1077,7 +1111,7 @@ int discovery_t::ensure_sub_socket ()
         (void) _lifecycle.close_socket (sub_socket);
         return -1;
     }
-    zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0);
+    static_cast<socket_base_t *> (sub)->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, "", 0);
     _sub_socket = sub;
     _connected_endpoints.clear ();
     return 0;

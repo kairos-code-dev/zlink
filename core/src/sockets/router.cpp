@@ -132,21 +132,21 @@ int zlink::router_t::xsetsockopt (int option_,
         memcpy (&value, optval_, sizeof (int));
 
     switch (option_) {
-        case ZLINK_ROUTER_MANDATORY:
+        case ZLINK_INTERNAL_OPT_ROUTER_MANDATORY:
             if (is_int && value >= 0) {
                 _mandatory = (value != 0);
                 return 0;
             }
             break;
 
-        case ZLINK_PROBE_ROUTER:
+        case ZLINK_INTERNAL_OPT_PROBE_ROUTER:
             if (is_int && value >= 0) {
                 _probe_router = (value != 0);
                 return 0;
             }
             break;
 
-        case ZLINK_ROUTER_HANDOVER:
+        case ZLINK_INTERNAL_OPT_ROUTER_HANDOVER:
             if (is_int && value >= 0) {
                 _handover = (value != 0);
                 return 0;
@@ -159,6 +159,32 @@ int zlink::router_t::xsetsockopt (int option_,
     }
     errno = EINVAL;
     return -1;
+}
+
+int zlink::router_t::xgetsockopt (int option_,
+                                  void *optval_,
+                                  size_t *optvallen_)
+{
+    if (!optval_ || !optvallen_ || *optvallen_ != sizeof (int)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    int *value = static_cast<int *> (optval_);
+    switch (option_) {
+        case ZLINK_INTERNAL_OPT_ROUTER_MANDATORY:
+            *value = _mandatory ? 1 : 0;
+            return 0;
+        case ZLINK_INTERNAL_OPT_PROBE_ROUTER:
+            *value = _probe_router ? 1 : 0;
+            return 0;
+        case ZLINK_INTERNAL_OPT_ROUTER_HANDOVER:
+            *value = _handover ? 1 : 0;
+            return 0;
+        default:
+            return routing_socket_base_t::xgetsockopt (option_, optval_,
+                                                       optvallen_);
+    }
 }
 
 

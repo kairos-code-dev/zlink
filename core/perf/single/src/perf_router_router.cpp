@@ -173,14 +173,14 @@ inline bool perform_router_router_handshake (void *router1, void *router2)
       resolve_bench_count ("PERF_ROUTER_HANDSHAKE_TIMEOUT_MS", 3000);
     const int bounded_timeout_ms =
       handshake_timeout_ms > 0 ? handshake_timeout_ms : 3000;
-    zlink_setsockopt (
-      router1, ZLINK_SNDTIMEO, &bounded_timeout_ms, sizeof (bounded_timeout_ms));
-    zlink_setsockopt (
-      router2, ZLINK_SNDTIMEO, &bounded_timeout_ms, sizeof (bounded_timeout_ms));
-    zlink_setsockopt (
-      router1, ZLINK_RCVTIMEO, &bounded_timeout_ms, sizeof (bounded_timeout_ms));
-    zlink_setsockopt (
-      router2, ZLINK_RCVTIMEO, &bounded_timeout_ms, sizeof (bounded_timeout_ms));
+    zlink_set_option (router1, ZLINK_OPT_SNDTIMEO, &bounded_timeout_ms,
+                      sizeof (bounded_timeout_ms));
+    zlink_set_option (router2, ZLINK_OPT_SNDTIMEO, &bounded_timeout_ms,
+                      sizeof (bounded_timeout_ms));
+    zlink_set_option (router1, ZLINK_OPT_RCVTIMEO, &bounded_timeout_ms,
+                      sizeof (bounded_timeout_ms));
+    zlink_set_option (router2, ZLINK_OPT_RCVTIMEO, &bounded_timeout_ms,
+                      sizeof (bounded_timeout_ms));
 
     zlink_msg_t ping_parts[2];
     if (zlink_msg_init_size (&ping_parts[0], 7) != 0)
@@ -225,13 +225,13 @@ inline bool setup_router_router_session (void *router1,
     if (!router1 || !router2)
         return false;
 
-    zlink_setsockopt (router1, ZLINK_ROUTING_ID, "ROUTER1", 7);
-    zlink_setsockopt (router2, ZLINK_ROUTING_ID, "ROUTER2", 7);
+    zlink_set_routing_id (router1, "ROUTER1", 7);
+    zlink_set_routing_id (router2, "ROUTER2", 7);
     const int mandatory = 1;
-    zlink_setsockopt (
-      router1, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof (mandatory));
-    zlink_setsockopt (
-      router2, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof (mandatory));
+    zlink_set_router_option (router1, ZLINK_ROUTER_OPT_MANDATORY, &mandatory,
+                             sizeof (mandatory));
+    zlink_set_router_option (router2, ZLINK_ROUTER_OPT_MANDATORY, &mandatory,
+                             sizeof (mandatory));
 
     if (!setup_connected_pair (router1, router2, transport, pair_id)) {
         return false;

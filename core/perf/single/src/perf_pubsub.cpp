@@ -350,7 +350,7 @@ void run_pubsub (const std::string &transport,
     set_sockopt_int (pub.get (), ZLINK_XPUB_NODROP, xpub_nodrop_opt,
                      "ZLINK_XPUB_NODROP");
 
-    zlink_setsockopt (sub.get (), ZLINK_SUBSCRIBE, "", 0);
+    zlink_set_subscription (sub.get (), "");
     if (!setup_connected_pair (
           pub.get (), sub.get (), transport, lib_name + "_pubsub")) {
         print_fail_no_queue ();

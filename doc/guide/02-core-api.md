@@ -75,30 +75,32 @@ zlink_disconnect(socket, "tcp://127.0.0.1:5555");
 ```c
 /* Set option */
 int hwm = 5000;
-zlink_setsockopt(socket, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 
 /* Get option */
 int value;
 size_t len = sizeof(value);
-zlink_getsockopt(socket, ZLINK_SNDHWM, &value, &len);
+zlink_get_option(socket, ZLINK_OPT_SNDHWM, &value, &len);
 ```
 
 Key options:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `ZLINK_SNDHWM` | int | 1000 | Send High Water Mark |
-| `ZLINK_RCVHWM` | int | 1000 | Receive High Water Mark |
-| `ZLINK_SNDTIMEO` | int | -1 | Send timeout (ms, -1: unlimited) |
-| `ZLINK_RCVTIMEO` | int | -1 | Receive timeout (ms, -1: unlimited) |
-| `ZLINK_LINGER` | int | -1 | Wait time on socket close (ms) |
-| `ZLINK_ROUTING_ID` | binary | auto | Socket routing ID |
-| `ZLINK_SUBSCRIBE` | binary | - | Subscription filter (SUB only) |
+| `ZLINK_OPT_SNDHWM` | int | 1000 | Send High Water Mark |
+| `ZLINK_OPT_RCVHWM` | int | 1000 | Receive High Water Mark |
+| `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms, -1: unlimited) |
+| `ZLINK_OPT_RCVTIMEO` | int | -1 | Receive timeout (ms, -1: unlimited) |
+| `ZLINK_OPT_LINGER` | int | -1 | Wait time on socket close (ms) |
 
-Options and queries such as `ZLINK_SUBSCRIBE` / `ZLINK_UNSUBSCRIBE`,
-`ZLINK_EVENTS`, and `ZLINK_LAST_ENDPOINT` are meaningful
-during normal runtime use. By contrast, most tuning knobs such as HWM,
-timeouts, and TLS settings are usually closer to initial configuration.
+Routing ID is now set/queried via dedicated functions:
+`zlink_set_routing_id()` / `zlink_get_routing_id()`.
+Subscription management uses `zlink_set_subscription()`.
+
+Options and queries such as `ZLINK_OPT_EVENTS` and
+`ZLINK_OPT_LAST_ENDPOINT` are meaningful during normal runtime use.
+By contrast, most tuning knobs such as HWM, timeouts, and TLS settings
+are usually closer to initial configuration.
 
 ## 3. Sending and Receiving Messages
 

@@ -105,6 +105,8 @@ class spot_node_t : public discovery_observer_t
     void debug_mark_fault (int err_);
     void untrack_owned_socket (const socket_base_t *socket_);
     void snapshot_raw_subscription_filters (std::set<std::string> *out_) const;
+    void snapshot_subscription_subjects (
+      std::vector<spot_sub_t::subject_descriptor_t> *out_) const;
     void notify_pub_delivery_ready_ack (const std::string &target_endpoint_,
                                         const std::string &subject_,
                                         const std::string &ack_source_id_,

@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 
+#include "api/legacy_api_internal.hpp"
 #include "services/spot/spot_data_plane.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_pub.hpp"
@@ -400,9 +401,9 @@ int spot_runtime_t::start ()
 
     const int linger = 0;
     const int timeout = ctrl_timeout_ms;
-    data_ctrl_front->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
-    data_ctrl_front->setsockopt (ZLINK_SNDTIMEO, &timeout, sizeof (timeout));
-    data_ctrl_front->setsockopt (ZLINK_RCVTIMEO, &timeout, sizeof (timeout));
+    data_ctrl_front->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
+    data_ctrl_front->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &timeout, sizeof (timeout));
+    data_ctrl_front->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &timeout, sizeof (timeout));
 
     data_plane_thread.start (spot_data_plane_t::thread_entry, owner, "spot-data");
 
@@ -796,8 +797,8 @@ int spot_node_t::apply_tls_server (socket_base_t *socket_,
         return -1;
     if (cert_.empty () || key_.empty ())
         return 0;
-    if (socket_->setsockopt (ZLINK_TLS_CERT, cert_.data (), cert_.size ()) != 0
-        || socket_->setsockopt (ZLINK_TLS_KEY, key_.data (), key_.size ()) != 0)
+    if (socket_->setsockopt (ZLINK_INTERNAL_OPT_TLS_CERT, cert_.data (), cert_.size ()) != 0
+        || socket_->setsockopt (ZLINK_INTERNAL_OPT_TLS_KEY, key_.data (), key_.size ()) != 0)
         return -1;
     return 0;
 }
@@ -812,15 +813,15 @@ int spot_node_t::apply_tls_client (socket_base_t *socket_,
     if (ca_cert_.empty () && hostname_.empty () && trust_system_ == 0)
         return 0;
     if (!ca_cert_.empty ()
-        && socket_->setsockopt (ZLINK_TLS_CA, ca_cert_.data (), ca_cert_.size ())
+        && socket_->setsockopt (ZLINK_INTERNAL_OPT_TLS_CA, ca_cert_.data (), ca_cert_.size ())
              != 0)
         return -1;
     if (!hostname_.empty ()
-        && socket_->setsockopt (ZLINK_TLS_HOSTNAME, hostname_.data (),
+        && socket_->setsockopt (ZLINK_INTERNAL_OPT_TLS_HOSTNAME, hostname_.data (),
                                 hostname_.size ())
              != 0)
         return -1;
-    if (socket_->setsockopt (ZLINK_TLS_TRUST_SYSTEM, &trust_system_,
+    if (socket_->setsockopt (ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM, &trust_system_,
                              sizeof (trust_system_))
         != 0)
         return -1;
@@ -1918,6 +1919,22 @@ void spot_node_t::snapshot_raw_subscription_filters (
         subs[i]->append_raw_filters (out_);
 }
 
+void spot_node_t::snapshot_subscription_subjects (
+  std::vector<spot_sub_t::subject_descriptor_t> *out_) const
+{
+    if (!out_)
+        return;
+
+    std::vector<spot_sub_t *> subs;
+    {
+        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        subs.assign (_subs.begin (), _subs.end ());
+    }
+
+    for (size_t i = 0; i < subs.size (); ++i)
+        subs[i]->append_all_subjects (out_);
+}
+
 int spot_node_t::resolve_advertise_endpoint (const char *advertise_endpoint_,
                                              std::string *out_) const
 {
@@ -2751,22 +2768,14 @@ spot_sub_t *spot_node_t::create_spot_sub_with_defaults (
 spot_pub_t *spot_node_t::create_spot_pub ()
 {
     pub_defaults_t defaults;
-    scoped_lock_t init_lock (_default_pub_sync);
-    {
-        scoped_lock_t lock (_sync);
-        defaults = _pub_defaults;
-    }
+    memset (&defaults, 0, sizeof (defaults));
     return create_spot_pub_with_defaults (defaults, false);
 }
 
 spot_sub_t *spot_node_t::create_spot_sub ()
 {
     sub_defaults_t defaults;
-    scoped_lock_t init_lock (_default_sub_sync);
-    {
-        scoped_lock_t lock (_sync);
-        defaults = _sub_defaults;
-    }
+    memset (&defaults, 0, sizeof (defaults));
     return create_spot_sub_with_defaults (defaults, false);
 }
 

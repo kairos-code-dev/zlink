@@ -13,7 +13,7 @@ Discovery는 Registry 브로드캐스트를 구독하고 로컬 서비스 디렉
 
 - `zlink_discovery_connect_registry()`, monitor, query성 조회는 runtime에 호출할 수
   있습니다.
-- `zlink_discovery_set_routing_id()`는 first subscribe/query/connect 전에만
+- `zlink_set_routing_id()`는 first subscribe/query/connect 전에만
   의미가 있는 init-only 성격의 API입니다.
 - `zlink_discovery_destroy()`는 fail-fast lifecycle gate를 사용합니다. 다른
   스레드가 같은 handle에서 callback이나 admitted API를 실행 중이면 `EBUSY`,
@@ -21,15 +21,20 @@ Discovery는 Registry 브로드캐스트를 구독하고 로컬 서비스 디렉
 
 ## 현재 권장 API 방향
 
-- Discovery identity는 `zlink_discovery_set_routing_id()` /
-  `zlink_discovery_routing_id()`로 다룹니다.
+- Discovery identity는 `zlink_set_routing_id(discovery, data, size)` /
+  `zlink_get_routing_id(discovery, &out)`로 다룹니다.
+- Discovery registry 링크의 TLS 설정은
+  `zlink_set_tls_client(discovery, ca_cert, hostname, trust_system)`로
+  구성합니다.
 - `zlink_discovery_connect_registry()` 하나만 Registry bootstrap 연결로
   사용하고, 브로드캐스트/uplink 경로는 내부에서 자동 구성합니다.
 - `ZLINK_DISCOVERY_SERVICE_UP`,
   `ZLINK_DISCOVERY_PROVIDERS_CHANGED` 같은 상태 전이는
   `zlink_discovery_monitor_open()`으로 관찰합니다.
 - 전역 요약 상태는 registry topology snapshot/query API로 조회합니다.
-- Discovery는 1차 service-level option surface 대상이 아닙니다.
+- Discovery는 `zlink_set_option(discovery, ZLINK_OPT_*, ...)`을 지원하며,
+  내부 관리 소켓 세트에 fan-out으로 적용됩니다. getter(`zlink_get_option`)는
+  Discovery에 제공되지 않습니다 (단일 source-of-truth가 없음).
 
 ## 상수
 
@@ -92,15 +97,15 @@ Discovery 작업과 병행할 수 있습니다.
 
 ---
 
-### zlink_discovery_set_tls_client
+### zlink_set_tls_client
 
 Discovery registry 연결에 TLS 설정을 구성합니다.
 
 ```c
-int zlink_discovery_set_tls_client (void *discovery,
-                                    const char *ca_cert,
-                                    const char *hostname,
-                                    int trust_system);
+int zlink_set_tls_client (void *discovery,
+                          const char *ca_cert,
+                          const char *hostname,
+                          int trust_system);
 ```
 
 Discovery 서비스가 내부적으로 관리하는 registry bootstrap 및 uplink 연결에
@@ -118,34 +123,34 @@ TLS 클라이언트 설정을 적용합니다. `zlink_discovery_connect_registry
 
 ---
 
-### zlink_discovery_set_routing_id
+### zlink_set_routing_id
 
 첫 subscribe/query/connect 전에 대표 routing id를 재정의합니다.
 
 ```c
-int zlink_discovery_set_routing_id (void *discovery,
-                                    const void *data,
-                                    size_t size);
+int zlink_set_routing_id (void *discovery,
+                          const void *data,
+                          size_t size);
 ```
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**참고:** `zlink_discovery_routing_id`
+**참고:** `zlink_get_routing_id`
 
 ---
 
-### zlink_discovery_routing_id
+### zlink_get_routing_id
 
 이 Discovery의 대표 routing id를 반환합니다.
 
 ```c
-int zlink_discovery_routing_id (void *discovery,
-                                zlink_routing_id_t *out);
+int zlink_get_routing_id (void *discovery,
+                          zlink_routing_id_t *out);
 ```
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**참고:** `zlink_discovery_set_routing_id`
+**참고:** `zlink_set_routing_id`
 
 ---
 

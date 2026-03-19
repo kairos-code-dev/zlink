@@ -89,7 +89,7 @@ class xpub_t : public socket_base_t
     //  of multipart message.
     bool _process_subscribe;
 
-    //  This option is enabled with ZLINK_ONLY_FIRST_SUBSCRIBE.
+    //  This option is enabled with ZLINK_INTERNAL_OPT_ONLY_FIRST_SUBSCRIBE.
     //  If true, messages following subscribe/unsubscribe in a multipart
     //  message are treated as user data regardless of the first byte.
     bool _only_first_subscribe;
@@ -101,10 +101,10 @@ class xpub_t : public socket_base_t
     //  subscription updates from downstream XSUB peers.
     bool _send_all_data;
 
-    //  Subscriptions will not bed added automatically, only after calling set option with ZLINK_SUBSCRIBE or ZLINK_UNSUBSCRIBE
+    //  Subscriptions will not bed added automatically, only after calling set option with ZLINK_INTERNAL_OPT_SUBSCRIBE or ZLINK_INTERNAL_OPT_UNSUBSCRIBE
     bool _manual;
 
-    //  Send message to the last pipe, only used if xpub is on manual and after calling set option with ZLINK_SUBSCRIBE
+    //  Send message to the last pipe, only used if xpub is on manual and after calling set option with ZLINK_INTERNAL_OPT_SUBSCRIBE
     bool _send_last_pipe;
 
     //  Function to be applied to match the last pipe.

@@ -15,10 +15,10 @@ Gateway handle은 **recv 모드**로 시작하며, `zlink_recv_handler()`를
 | | Recv 모드 (기본) | Callback 모드 |
 |---|---|---|
 | **수신** | `zlink_gateway_recv()` | `zlink_recv_handler()` 콜백 |
-| **Send-ready** | 사용 불가 (`EBUSY`) | `zlink_gateway_send_ready_handler()` |
+| **Send-ready** | 사용 불가 (`EBUSY`) | `zlink_send_ready_handler()` |
 | **전환** | `zlink_recv_handler()` 호출로 전환 | 영구, 되돌릴 수 없음 |
 
-- recv 모드에서 `zlink_gateway_send_ready_handler()`는 `EBUSY`로 실패합니다.
+- recv 모드에서 `zlink_send_ready_handler()`는 `EBUSY`로 실패합니다.
 - callback 모드에서 `zlink_gateway_recv()`는 `EBUSY`로 실패합니다.
 - `zlink_gateway_send()` / `zlink_gateway_send_rid()`는 두 모드 모두에서 동작합니다.
 
@@ -42,7 +42,7 @@ Gateway handle은 **recv 모드**로 시작하며, `zlink_recv_handler()`를
 
 - `zlink_gateway_new()`로 서비스 이름만 고정하여 생성합니다.
 - 대표 routing id가 필요하면 첫 bind/connect 전에
-  `zlink_gateway_set_routing_id()`를 호출합니다.
+  `zlink_set_routing_id()`를 호출합니다.
 - **Recv 모드 (기본):** `zlink_gateway_recv()`로 메시지를 직접 수신합니다.
 - **Callback 모드:** `zlink_recv_handler()`를 한 번 호출하여 전환하면,
   이후 메시지가 설치된 콜백으로 자동 dispatch됩니다.
@@ -50,8 +50,8 @@ Gateway handle은 **recv 모드**로 시작하며, `zlink_recv_handler()`를
 - `zlink_gateway_bind()`로 서버 측 동작을 설정합니다.
 - `zlink_gateway_connect()` / `zlink_gateway_disconnect()`로 수동 피어 관리를
   합니다 (discovery 연결 전에만 허용).
-- `zlink_gateway_set_option()`으로 서비스 레벨 튜닝을 합니다.
-- `zlink_gateway_send_ready_handler()`로 송신 측 백프레셔를 처리합니다.
+- `zlink_set_option()` / `zlink_get_option()`으로 서비스 레벨 튜닝을 합니다.
+- `zlink_send_ready_handler()`로 송신 측 백프레셔를 처리합니다.
 - `zlink_gateway_monitor_open()`으로 `ZLINK_GATEWAY_SEND_READY_CHANGED`,
   `ZLINK_GATEWAY_ROUTE_UP` 같은 edge 전이를 관찰합니다.
 - monitor handle에 대해 `zlink_monitor_snapshot()`으로 현재 로컬 제어 상태와
@@ -75,28 +75,35 @@ typedef enum zlink_gateway_lb_strategy_t
 | `ZLINK_GATEWAY_LB_ROUND_ROBIN` | 라운드 로빈 로드 밸런싱 (기본값) |
 | `ZLINK_GATEWAY_LB_WEIGHTED` | 피어 가중치 기반 가중 로드 밸런싱 |
 
-### Gateway 옵션
+### 공용 옵션 (generic API 경유)
 
-```c
-typedef enum zlink_gateway_option_t
-{
-    ZLINK_GATEWAY_OPT_SNDHWM  = 0x2101,
-    ZLINK_GATEWAY_OPT_RCVHWM  = 0x2102,
-    ZLINK_GATEWAY_OPT_SNDTIMEO = 0x2103,
-    ZLINK_GATEWAY_OPT_LINGER  = 0x2104,
-    ZLINK_GATEWAY_OPT_SNDBUF  = 0x2105,
-    ZLINK_GATEWAY_OPT_RCVBUF  = 0x2106
-} zlink_gateway_option_t;
-```
+Gateway는 generic typed option API (`zlink_set_option` /
+`zlink_get_option`)를 다음 `zlink_option_t` 상수와 함께 사용합니다:
 
 | 상수 | 설명 |
 |------|------|
-| `ZLINK_GATEWAY_OPT_SNDHWM` | 송신 고수위 마크 |
-| `ZLINK_GATEWAY_OPT_RCVHWM` | 수신 고수위 마크 |
-| `ZLINK_GATEWAY_OPT_SNDTIMEO` | 송신 타임아웃 (ms) |
-| `ZLINK_GATEWAY_OPT_LINGER` | Linger 기간 (ms) |
-| `ZLINK_GATEWAY_OPT_SNDBUF` | 커널 송신 버퍼 크기 (바이트) |
-| `ZLINK_GATEWAY_OPT_RCVBUF` | 커널 수신 버퍼 크기 (바이트) |
+| `ZLINK_OPT_SNDHWM` | 송신 고수위 마크 |
+| `ZLINK_OPT_RCVHWM` | 수신 고수위 마크 |
+| `ZLINK_OPT_SNDTIMEO` | 송신 타임아웃 (ms) |
+| `ZLINK_OPT_LINGER` | Linger 기간 (ms) |
+| `ZLINK_OPT_SNDBUF` | 커널 송신 버퍼 크기 (바이트) |
+| `ZLINK_OPT_RCVBUF` | 커널 수신 버퍼 크기 (바이트) |
+| `ZLINK_OPT_LAST_ENDPOINT` | 바인드된 엔드포인트 확인 (get 전용) |
+
+전체 `zlink_option_t` 참조는 [socket.ko.md](socket.ko.md)를 참조하세요.
+
+### 라우터 옵션 (generic API 경유)
+
+Gateway는 `zlink_set_router_option` / `zlink_get_router_option`을 통해
+라우터 전용 옵션도 지원합니다:
+
+| 상수 | 설명 |
+|------|------|
+| `ZLINK_ROUTER_OPT_MANDATORY` | 라우팅 불가능한 피어에 대한 전송을 drop 대신 실패 처리 |
+| `ZLINK_ROUTER_OPT_HANDOVER` | 기존 routing id를 새 연결이 인수하도록 허용 |
+| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 피어 연결 시 사용할 routing id 설정 |
+
+전체 `zlink_router_option_t` 참조는 [socket.ko.md](socket.ko.md)를 참조하세요.
 
 ## 함수
 
@@ -110,7 +117,7 @@ void *zlink_gateway_new (void *ctx,
 ```
 
 새 Gateway 인스턴스를 할당하고 초기화합니다. `service_name`은 생성 시 고정되는
-서비스 아이덴티티입니다. 필요하면 이후 `zlink_gateway_set_routing_id()`로
+서비스 아이덴티티입니다. 필요하면 이후 `zlink_set_routing_id()`로
 routing id를 설정합니다.
 
 **반환값:** 성공 시 Gateway 핸들, 실패 시 `NULL`.
@@ -178,7 +185,7 @@ int zlink_gateway_bind (void *gateway, const char *bind_endpoint);
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**참고:** `zlink_gateway_last_endpoint`
+**참고:** `ZLINK_OPT_LAST_ENDPOINT`를 사용한 `zlink_get_option`
 
 ---
 
@@ -269,26 +276,6 @@ int zlink_gateway_send_rid (void *gateway,
 
 ---
 
-### zlink_gateway_send_ready_handler
-
-send-ready 콜백을 설치하거나 교체합니다. **Callback 모드 전용.**
-
-```c
-int zlink_gateway_send_ready_handler (
-  void *gateway, zlink_send_ready_handler_fn handler, void *userdata);
-```
-
-Gateway가 쓰기 가능 상태로 전이할 때 핸들러가 호출됩니다. 시작 후에 핸들러를
-설치하는 경우, 열린 Gateway monitor에서 `zlink_monitor_snapshot()`으로 초기
-상태를 seed하세요.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**에러:**
-- `EBUSY` -- handle이 recv 모드입니다 (callback 모드로 먼저 전환하세요).
-
----
-
 ### zlink_gateway_set_lb_strategy
 
 로드 밸런싱 전략을 설정합니다.
@@ -324,104 +311,103 @@ int zlink_gateway_update_peer_weight (
 
 ---
 
-### zlink_gateway_set_option
+### 옵션 — zlink_set_option / zlink_get_option
 
-Gateway 서비스 옵션을 설정합니다.
+Gateway는 서비스 레벨 튜닝을 위해 generic typed option API를 사용합니다.
 
 ```c
-int zlink_gateway_set_option (void *gateway,
-                              zlink_gateway_option_t option,
-                              const void *optval,
-                              size_t optvallen);
+int zlink_set_option (void *gateway, zlink_option_t option, ...);
+int zlink_get_option (void *gateway, zlink_option_t option, ...);
 ```
 
-서비스 레벨 옵션을 적용합니다. 위의 Gateway 옵션을 참조하세요.
+지원되는 옵션은 위의 공용 옵션을 참조하세요. 이전에
+`zlink_gateway_last_endpoint()`로 수행하던 엔드포인트 조회는 다음과 같이
+수행합니다:
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+```c
+zlink_get_option (gateway, ZLINK_OPT_LAST_ENDPOINT, buf, &size);
+```
+
+generic typed option API의 전체 내용은 [socket.ko.md](socket.ko.md)를 참조하세요.
 
 ---
 
-### zlink_gateway_set_routing_id
+### 라우터 옵션 — zlink_set_router_option / zlink_get_router_option
 
-첫 bind/connect 전에 대표 routing id를 재정의합니다.
+Gateway는 generic router option API를 통해 라우터 전용 옵션을 지원합니다.
 
 ```c
-int zlink_gateway_set_routing_id (void *gateway,
-                                  const void *data,
-                                  size_t size);
+int zlink_set_router_option (void *gateway, zlink_router_option_t option, ...);
+int zlink_get_router_option (void *gateway, zlink_router_option_t option, ...);
 ```
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+지원되는 옵션: `ZLINK_ROUTER_OPT_MANDATORY`, `ZLINK_ROUTER_OPT_HANDOVER`,
+`ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`.
 
-**참고:** `zlink_gateway_routing_id`
+generic router option API의 전체 내용은 [socket.ko.md](socket.ko.md)를 참조하세요.
 
 ---
 
-### zlink_gateway_routing_id
+### Routing ID — zlink_set_routing_id / zlink_get_routing_id
 
-이 Gateway의 대표 routing id를 반환합니다.
+Gateway는 generic routing id API를 사용합니다.
 
 ```c
-int zlink_gateway_routing_id (void *gateway,
-                              zlink_routing_id_t *out);
+int zlink_set_routing_id (void *gateway, const void *data, size_t size);
+int zlink_get_routing_id (void *gateway, zlink_routing_id_t *out);
 ```
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+첫 bind/connect 전에 대표 routing id를 설정합니다. get은 현재 routing id를
+반환합니다.
 
-**참고:** `zlink_gateway_set_routing_id`
+전체 내용은 [socket.ko.md](socket.ko.md)를 참조하세요.
 
 ---
 
-### zlink_gateway_set_tls_client
+### TLS — zlink_set_tls_client / zlink_set_tls_server
 
-Gateway의 TLS 클라이언트 설정을 구성합니다.
+Gateway는 generic TLS 구성 API를 사용합니다.
 
 ```c
-int zlink_gateway_set_tls_client (void *gateway,
-                                  const char *ca_cert,
-                                  const char *hostname,
-                                  int trust_system);
+int zlink_set_tls_client (void *gateway,
+                          const char *ca_cert,
+                          const char *hostname,
+                          int trust_system);
+
+int zlink_set_tls_server (void *gateway,
+                          const char *cert,
+                          const char *key,
+                          int require_client_cert);
 ```
 
-발신 연결에 대해 TLS를 활성화합니다.
+`zlink_set_tls_client`는 발신 연결에 대해 TLS를 활성화합니다.
+`zlink_set_tls_server`는 바인드된 엔드포인트의 수신 연결에 대해 TLS를
+활성화합니다. 참고: `zlink_set_tls_server`는 이전 gateway 전용 API에 비해
+`require_client_cert` 파라미터가 추가되었습니다.
 
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**참고:** `zlink_gateway_set_tls_server`
+전체 내용은 [socket.ko.md](socket.ko.md)를 참조하세요.
 
 ---
 
-### zlink_gateway_set_tls_server
+### Send-Ready — zlink_send_ready_handler
 
-Gateway의 TLS 서버 설정을 구성합니다.
+Gateway는 generic send-ready handler API를 사용합니다. **Callback 모드 전용.**
 
 ```c
-int zlink_gateway_set_tls_server (void *gateway,
-                                  const char *cert,
-                                  const char *key);
+int zlink_send_ready_handler (
+  void *gateway, zlink_send_ready_handler_fn handler, void *userdata);
 ```
 
-바인드된 엔드포인트의 수신 연결에 대해 TLS를 활성화합니다.
+Gateway가 쓰기 가능 상태로 전이할 때 핸들러가 호출됩니다. 시작 후에 핸들러를
+설치하는 경우, 열린 Gateway monitor에서 `zlink_monitor_snapshot()`으로 초기
+상태를 seed하세요.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**참고:** `zlink_gateway_set_tls_client`
+**에러:**
+- `EBUSY` -- handle이 recv 모드입니다 (callback 모드로 먼저 전환하세요).
 
----
-
-### zlink_gateway_last_endpoint
-
-이 Gateway의 바인드된 엔드포인트를 확인합니다.
-
-```c
-int zlink_gateway_last_endpoint (void *gateway,
-                                 char *endpoint,
-                                 size_t *size);
-```
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**참고:** `zlink_gateway_bind`
+전체 내용은 [socket.ko.md](socket.ko.md)를 참조하세요.
 
 ---
 

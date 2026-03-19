@@ -17,10 +17,10 @@ the handle.
 | | Recv Model (default) | Callback Model |
 |---|---|---|
 | **Receive** | `zlink_gateway_recv()` | `zlink_recv_handler()` callback |
-| **Send-ready** | not available (`EBUSY`) | `zlink_gateway_send_ready_handler()` |
+| **Send-ready** | not available (`EBUSY`) | `zlink_send_ready_handler()` |
 | **Transition** | call `zlink_recv_handler()` to switch | permanent, cannot revert |
 
-- In recv model, `zlink_gateway_send_ready_handler()` fails with `EBUSY`.
+- In recv model, `zlink_send_ready_handler()` fails with `EBUSY`.
 - In callback model, `zlink_gateway_recv()` fails with `EBUSY`.
 - `zlink_gateway_send()` / `zlink_gateway_send_rid()` work in both models.
 
@@ -43,7 +43,7 @@ A single Gateway handle can be used concurrently from multiple threads
 ## Current API Direction
 
 - Use `zlink_gateway_new()` with a fixed service name.
-- Use `zlink_gateway_set_routing_id()` before the first bind/connect when a
+- Use `zlink_set_routing_id()` before the first bind/connect when a
   stable routing id is required.
 - **Recv model (default):** Use `zlink_gateway_recv()` to pull messages.
 - **Callback model:** Call `zlink_recv_handler()` once to transition; messages
@@ -52,8 +52,8 @@ A single Gateway handle can be used concurrently from multiple threads
 - Use `zlink_gateway_bind()` for server-side operation.
 - Use `zlink_gateway_connect()` / `zlink_gateway_disconnect()` for manual
   peer management (before discovery attachment only).
-- Use `zlink_gateway_set_option()` for service-level tuning.
-- Use `zlink_gateway_send_ready_handler()` for send-side backpressure.
+- Use `zlink_set_option()` / `zlink_get_option()` for service-level tuning.
+- Use `zlink_send_ready_handler()` for send-side backpressure.
 - Use `zlink_gateway_monitor_open()` for edge transitions such as
   `ZLINK_GATEWAY_SEND_READY_CHANGED` and `ZLINK_GATEWAY_ROUTE_UP`.
 - Use `zlink_monitor_snapshot()` on the monitor handle to read current local
@@ -77,28 +77,35 @@ typedef enum zlink_gateway_lb_strategy_t
 | `ZLINK_GATEWAY_LB_ROUND_ROBIN` | Round-robin load balancing (default) |
 | `ZLINK_GATEWAY_LB_WEIGHTED` | Weighted load balancing based on peer weight |
 
-### Gateway Options
+### Common Options (via generic API)
 
-```c
-typedef enum zlink_gateway_option_t
-{
-    ZLINK_GATEWAY_OPT_SNDHWM  = 0x2101,
-    ZLINK_GATEWAY_OPT_RCVHWM  = 0x2102,
-    ZLINK_GATEWAY_OPT_SNDTIMEO = 0x2103,
-    ZLINK_GATEWAY_OPT_LINGER  = 0x2104,
-    ZLINK_GATEWAY_OPT_SNDBUF  = 0x2105,
-    ZLINK_GATEWAY_OPT_RCVBUF  = 0x2106
-} zlink_gateway_option_t;
-```
+Gateway uses the generic typed option API (`zlink_set_option` /
+`zlink_get_option`) with the following `zlink_option_t` constants:
 
 | Constant | Description |
 |----------|-------------|
-| `ZLINK_GATEWAY_OPT_SNDHWM` | Send high-water mark |
-| `ZLINK_GATEWAY_OPT_RCVHWM` | Receive high-water mark |
-| `ZLINK_GATEWAY_OPT_SNDTIMEO` | Send timeout (ms) |
-| `ZLINK_GATEWAY_OPT_LINGER` | Linger period (ms) |
-| `ZLINK_GATEWAY_OPT_SNDBUF` | Kernel transmit buffer size in bytes |
-| `ZLINK_GATEWAY_OPT_RCVBUF` | Kernel receive buffer size in bytes |
+| `ZLINK_OPT_SNDHWM` | Send high-water mark |
+| `ZLINK_OPT_RCVHWM` | Receive high-water mark |
+| `ZLINK_OPT_SNDTIMEO` | Send timeout (ms) |
+| `ZLINK_OPT_LINGER` | Linger period (ms) |
+| `ZLINK_OPT_SNDBUF` | Kernel transmit buffer size in bytes |
+| `ZLINK_OPT_RCVBUF` | Kernel receive buffer size in bytes |
+| `ZLINK_OPT_LAST_ENDPOINT` | Resolved bound endpoint (get-only) |
+
+See [socket.md](socket.md) for the full `zlink_option_t` reference.
+
+### Router Options (via generic API)
+
+Gateway also supports router-specific options through
+`zlink_set_router_option` / `zlink_get_router_option`:
+
+| Constant | Description |
+|----------|-------------|
+| `ZLINK_ROUTER_OPT_MANDATORY` | Fail sends to unroutable peers instead of dropping |
+| `ZLINK_ROUTER_OPT_HANDOVER` | Allow new connections to take over an existing routing id |
+| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | Set the routing id used when connecting to a peer |
+
+See [socket.md](socket.md) for the full `zlink_router_option_t` reference.
 
 ## Functions
 
@@ -113,7 +120,7 @@ void *zlink_gateway_new (void *ctx,
 
 Allocates and initializes a new Gateway instance. The `service_name` is the
 service identity fixed at creation time. Configure a representative routing id
-later with `zlink_gateway_set_routing_id()` if needed.
+later with `zlink_set_routing_id()` if needed.
 
 **Returns:** A Gateway handle on success, or `NULL` on failure.
 
@@ -182,7 +189,7 @@ operation.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**See also:** `zlink_gateway_last_endpoint`
+**See also:** `zlink_get_option` with `ZLINK_OPT_LAST_ENDPOINT`
 
 ---
 
@@ -274,26 +281,6 @@ Bypasses load balancing and sends to the peer identified by `routing_id`.
 
 ---
 
-### zlink_gateway_send_ready_handler
-
-Install or replace the send-ready callback. **Callback model only.**
-
-```c
-int zlink_gateway_send_ready_handler (
-  void *gateway, zlink_send_ready_handler_fn handler, void *userdata);
-```
-
-The handler is invoked when the Gateway transitions to writable.
-Use `zlink_monitor_snapshot()` on an open Gateway monitor to seed initial
-state when the handler is installed after startup.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Errors:**
-- `EBUSY` -- handle is in recv model (transition to callback model first).
-
----
-
 ### zlink_gateway_set_lb_strategy
 
 Set the load-balancing strategy.
@@ -329,103 +316,103 @@ int zlink_gateway_update_peer_weight (
 
 ---
 
-### zlink_gateway_set_option
+### Options — zlink_set_option / zlink_get_option
 
-Set a Gateway service option.
+Gateway uses the generic typed option API for service-level tuning.
 
 ```c
-int zlink_gateway_set_option (void *gateway,
-                              zlink_gateway_option_t option,
-                              const void *optval,
-                              size_t optvallen);
+int zlink_set_option (void *gateway, zlink_option_t option, ...);
+int zlink_get_option (void *gateway, zlink_option_t option, ...);
 ```
 
-Applies a service-level option. See Gateway Options above.
+Supported options are listed in Common Options above. The last-endpoint
+query previously done with `zlink_gateway_last_endpoint()` is now:
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+```c
+zlink_get_option (gateway, ZLINK_OPT_LAST_ENDPOINT, buf, &size);
+```
+
+See [socket.md](socket.md) for full details on the generic typed option API.
 
 ---
 
-### zlink_gateway_set_routing_id
+### Router Options — zlink_set_router_option / zlink_get_router_option
 
-Override the representative routing id before first bind/connect.
+Gateway supports router-specific options through the generic router option API.
 
 ```c
-int zlink_gateway_set_routing_id (void *gateway,
-                                  const void *data,
-                                  size_t size);
+int zlink_set_router_option (void *gateway, zlink_router_option_t option, ...);
+int zlink_get_router_option (void *gateway, zlink_router_option_t option, ...);
 ```
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+Supported options: `ZLINK_ROUTER_OPT_MANDATORY`, `ZLINK_ROUTER_OPT_HANDOVER`,
+`ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`.
 
-**See also:** `zlink_gateway_routing_id`
+See [socket.md](socket.md) for full details on the generic router option API.
 
 ---
 
-### zlink_gateway_routing_id
+### Routing ID — zlink_set_routing_id / zlink_get_routing_id
 
-Return the representative routing id for this Gateway.
+Gateway uses the generic routing id API.
 
 ```c
-int zlink_gateway_routing_id (void *gateway, zlink_routing_id_t *out);
+int zlink_set_routing_id (void *gateway, const void *data, size_t size);
+int zlink_get_routing_id (void *gateway, zlink_routing_id_t *out);
 ```
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+Set the representative routing id before the first bind/connect. Get
+returns the current routing id.
 
-**See also:** `zlink_gateway_set_routing_id`
+See [socket.md](socket.md) for full details.
 
 ---
 
-### zlink_gateway_set_tls_client
+### TLS — zlink_set_tls_client / zlink_set_tls_server
 
-Configure TLS client settings for the Gateway.
+Gateway uses the generic TLS configuration API.
 
 ```c
-int zlink_gateway_set_tls_client (void *gateway,
-                                  const char *ca_cert,
-                                  const char *hostname,
-                                  int trust_system);
+int zlink_set_tls_client (void *gateway,
+                          const char *ca_cert,
+                          const char *hostname,
+                          int trust_system);
+
+int zlink_set_tls_server (void *gateway,
+                          const char *cert,
+                          const char *key,
+                          int require_client_cert);
 ```
 
-Enables TLS for outgoing connections.
+`zlink_set_tls_client` enables TLS for outgoing connections.
+`zlink_set_tls_server` enables TLS for incoming connections on the bound
+endpoint. Note: `zlink_set_tls_server` has an additional
+`require_client_cert` parameter compared to the previous gateway-specific
+API.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**See also:** `zlink_gateway_set_tls_server`
+See [socket.md](socket.md) for full details.
 
 ---
 
-### zlink_gateway_set_tls_server
+### Send-Ready — zlink_send_ready_handler
 
-Configure TLS server settings for the Gateway.
+Gateway uses the generic send-ready handler API. **Callback model only.**
 
 ```c
-int zlink_gateway_set_tls_server (void *gateway,
-                                  const char *cert,
-                                  const char *key);
+int zlink_send_ready_handler (
+  void *gateway, zlink_send_ready_handler_fn handler, void *userdata);
 ```
 
-Enables TLS for incoming connections on the bound endpoint.
+The handler is invoked when the Gateway transitions to writable.
+Use `zlink_monitor_snapshot()` on an open Gateway monitor to seed initial
+state when the handler is installed after startup.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**See also:** `zlink_gateway_set_tls_client`
+**Errors:**
+- `EBUSY` -- handle is in recv model (transition to callback model first).
 
----
-
-### zlink_gateway_last_endpoint
-
-Resolve the bound endpoint for this Gateway.
-
-```c
-int zlink_gateway_last_endpoint (void *gateway,
-                                 char *endpoint,
-                                 size_t *size);
-```
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**See also:** `zlink_gateway_bind`
+See [socket.md](socket.md) for full details.
 
 ---
 

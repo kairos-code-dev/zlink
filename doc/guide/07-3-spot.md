@@ -140,11 +140,11 @@ zlink_publish(spot, "chat:room1:message", &part, 1, 0);
 ### 4.3 Subscribing and unsubscribing
 
 ```c
-zlink_subscribe(spot, "chat:room1:message");
-zlink_subscribe(spot, "chat:room1:*");
+zlink_set_subscription(spot, "chat:room1:message");
+zlink_set_subscription(spot, "chat:room1:*");
 
-zlink_unsubscribe(spot, "chat:room1:message");
-zlink_unsubscribe(spot, "chat:room1:*");
+zlink_unset_subscription(spot, "chat:room1:message");
+zlink_unset_subscription(spot, "chat:room1:*");
 ```
 
 ### 4.4 Receiving Messages
@@ -155,11 +155,11 @@ are mutually exclusive for the lifetime of the handle.
 
 #### Recv model (default)
 
-In recv model, pull messages with `zlink_subscribe_recv()`.
+In recv model, pull messages with `zlink_subscribe()`.
 
 ```c
 void *spot = zlink_spot_new(node);
-zlink_subscribe(spot, "chat:room1:message");
+zlink_set_subscription(spot, "chat:room1:message");
 
 /* Pull next message */
 zlink_routing_id_t source_rid;
@@ -167,7 +167,7 @@ zlink_msg_t *parts = NULL;
 size_t part_count = 0;
 char topic_buf[256];
 size_t topic_len = sizeof(topic_buf);
-int rc = zlink_subscribe_recv(spot, &source_rid, &parts, &part_count,
+int rc = zlink_subscribe(spot, &source_rid, &parts, &part_count,
                               topic_buf, &topic_len, 0);
 if (rc == 0) {
     printf("Topic: %.*s, Parts: %zu\n",
@@ -210,7 +210,7 @@ should be offloaded to an application queue or worker thread.
 
 **Constraints:**
 
-- In recv model, use `zlink_subscribe_recv()`
+- In recv model, use `zlink_subscribe()`
 - Call `zlink_subscribe_handler()` to transition once to callback model
 - In callback model, `recv()` calls fail with `EBUSY`
 - In recv model, `send_ready_handler()` fails with `EBUSY`

@@ -77,7 +77,7 @@ int zlink::dealer_t::xsetsockopt (int option_,
         memcpy (&value, optval_, sizeof (int));
 
     switch (option_) {
-        case ZLINK_PROBE_ROUTER:
+        case ZLINK_INTERNAL_OPT_PROBE_ROUTER:
             if (is_int && value >= 0) {
                 _probe_router = (value != 0);
                 return 0;

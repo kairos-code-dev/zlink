@@ -10,6 +10,17 @@
 
 namespace
 {
+struct xsub_snapshot_arg_t
+{
+    explicit xsub_snapshot_arg_t (
+      std::vector<zlink::xsub_t::subscription_descriptor_t> *out_) :
+        out (out_)
+    {
+    }
+
+    std::vector<zlink::xsub_t::subscription_descriptor_t> *out;
+};
+
 struct xsub_dispatch_tls_t
 {
     xsub_dispatch_tls_t () : socket (NULL) {}
@@ -69,6 +80,20 @@ static void store_dispatch_part (std::vector<zlink_msg_t> *parts_,
     errno_assert (move_rc == 0);
     parts_->push_back (stored);
 }
+
+static void snapshot_subscription (unsigned char *data_,
+                                   size_t size_,
+                                   void *arg_)
+{
+    xsub_snapshot_arg_t *arg = static_cast<xsub_snapshot_arg_t *> (arg_);
+    if (!arg || !arg->out)
+        return;
+
+    zlink::xsub_t::subscription_descriptor_t item;
+    item.filter.assign (reinterpret_cast<const char *> (data_), size_);
+    item.is_pattern = false;
+    arg->out->push_back (item);
+}
 }
 
 zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
@@ -104,6 +129,17 @@ zlink::xsub_t::~xsub_t ()
     close_socket_msg_parts (&_socket_dispatch_parts);
     const int rc = _message.close ();
     errno_assert (rc == 0);
+}
+
+void zlink::xsub_t::snapshot_subscriptions (
+  std::vector<subscription_descriptor_t> *out_) const
+{
+    if (!out_)
+        return;
+
+    xsub_snapshot_arg_t arg (out_);
+    const_cast<xsub_t *> (this)->_subscriptions.apply (&snapshot_subscription,
+                                                       &arg);
 }
 
 void zlink::xsub_t::xattach_pipe (pipe_t *pipe_,
@@ -155,7 +191,7 @@ int zlink::xsub_t::xsetsockopt (int option_,
                               const void *optval_,
                               size_t optvallen_)
 {
-    if (option_ == ZLINK_ONLY_FIRST_SUBSCRIBE) {
+    if (option_ == ZLINK_INTERNAL_OPT_ONLY_FIRST_SUBSCRIBE) {
         if (optvallen_ != sizeof (int)
             || *static_cast<const int *> (optval_) < 0) {
             errno = EINVAL;
@@ -170,7 +206,7 @@ int zlink::xsub_t::xsetsockopt (int option_,
 
 int zlink::xsub_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_)
 {
-    if (option_ == ZLINK_TOPICS_COUNT) {
+    if (option_ == ZLINK_INTERNAL_OPT_TOPICS_COUNT) {
         // make sure to use a multi-thread safe function to avoid race conditions with I/O threads
         // where subscriptions are processed:
 #ifdef ZLINK_USE_RADIX_TREE
@@ -208,7 +244,7 @@ int zlink::xsub_t::xsend (msg_t *msg_)
         //  Process subscribe message
         //  This used to filter out duplicate subscriptions,
         //  however this is already done on the XPUB side and
-        //  doing it here as well breaks ZLINK_XPUB_VERBOSE
+        //  doing it here as well breaks ZLINK_INTERNAL_OPT_XPUB_VERBOSE
         //  when there are forwarding devices involved.
         if (!msg_->is_subscribe ()) {
             data = data + 1;
@@ -570,7 +606,7 @@ void zlink::xsub_t::send_subscription (unsigned char *data_,
     const bool sent = pipe->write (&msg);
     //  If we reached the SNDHWM, and thus cannot send the subscription, drop
     //  the subscription message instead. This matches the behaviour of
-    //  zlink_setsockopt(ZLINK_SUBSCRIBE, ...), which also drops subscriptions
+    //  zlink_setsockopt(ZLINK_INTERNAL_OPT_SUBSCRIBE, ...), which also drops subscriptions
     //  when the SNDHWM is reached.
     if (!sent)
         msg.close ();

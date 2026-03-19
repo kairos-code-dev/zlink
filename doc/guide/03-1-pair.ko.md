@@ -145,18 +145,18 @@ zlink_send(server, parts, 2, 0);
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_SNDHWM` | int | 1000 | 송신 큐 최대 메시지 수 |
-| `ZLINK_RCVHWM` | int | 1000 | 수신 큐 최대 메시지 수 |
-| `ZLINK_LINGER` | int | -1 | close 시 미전송 메시지 대기 시간 (ms), -1=무한 |
-| `ZLINK_SNDTIMEO` | int | -1 | 송신 타임아웃 (ms), -1=무한 |
-| `ZLINK_RCVTIMEO` | int | -1 | 수신 타임아웃 (ms), -1=무한 |
+| `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 큐 최대 메시지 수 |
+| `ZLINK_OPT_RCVHWM` | int | 1000 | 수신 큐 최대 메시지 수 |
+| `ZLINK_OPT_LINGER` | int | -1 | close 시 미전송 메시지 대기 시간 (ms), -1=무한 |
+| `ZLINK_OPT_SNDTIMEO` | int | -1 | 송신 타임아웃 (ms), -1=무한 |
+| `ZLINK_OPT_RCVTIMEO` | int | -1 | 수신 타임아웃 (ms), -1=무한 |
 
 ```c
 int hwm = 5000;
-zlink_setsockopt(socket, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 
 int linger = 0;  /* close 즉시 반환 */
-zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
+zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 ```
 
 ## 5. 사용 패턴
@@ -198,7 +198,7 @@ zlink_bind(server, "tcp://127.0.0.1:*");
 /* 할당된 엔드포인트 조회 */
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(server, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* 클라이언트: 조회된 엔드포인트로 연결 */
 void *client = zlink_socket(ctx, ZLINK_PAIR);
@@ -281,7 +281,7 @@ zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
 
 ```c
 int linger = 0;
-zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
+zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 ```
 
 ---

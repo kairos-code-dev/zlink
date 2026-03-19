@@ -132,7 +132,8 @@ private:
 inline bool set_sockopt_int(void *socket_, int option_, int value_,
                             const char *name_)
 {
-    const int rc = zlink_setsockopt(socket_, option_, &value_, sizeof(value_));
+    const int rc = zlink_set_option(
+      socket_, static_cast<zlink_option_t>(option_), &value_, sizeof(value_));
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "setsockopt(" << name_ << ") failed: "
                   << zlink_strerror(zlink_errno()) << std::endl;
@@ -141,7 +142,8 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
     if (bench_debug_enabled()) {
         int out = 0;
         size_t out_size = sizeof(out);
-        const int grc = zlink_getsockopt(socket_, option_, &out, &out_size);
+        const int grc = zlink_get_option(
+          socket_, static_cast<zlink_option_t>(option_), &out, &out_size);
         if (grc == 0) {
             std::cerr << "setsockopt(" << name_ << ") = " << out << std::endl;
         }
@@ -188,7 +190,8 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
     if (transport != "inproc") {
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof(last_endpoint);
-        if (zlink_getsockopt(socket_, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size)
+        if (zlink_get_option(socket_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
+                             &size)
             != 0) {
             std::cerr << "getsockopt(ZLINK_SOCKOPT_LAST_ENDPOINT) failed: "
                       << zlink_strerror(zlink_errno()) << std::endl;

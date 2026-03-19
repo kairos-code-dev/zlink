@@ -29,7 +29,7 @@ public APIs into three categories so you know what to expect:
 | Category | What it covers | Thread-safe? | Notes |
 |---|---|---|---|
 | **Sending** | `send`, `publish`, `send_rid` | Yes — fully concurrent | Multiple threads can call these on the same handle simultaneously. This is the fast path, optimized for throughput. |
-| **Configuration** | `bind`, `connect`, `disconnect`, `setsockopt`, `subscribe`, `unsubscribe`, `monitor_open`, `attach_discovery`, queries | Yes — one at a time | Safe to call from any thread. The library processes these one at a time, so don't call them in a tight per-message loop. |
+| **Configuration** | `bind`, `connect`, `disconnect`, `set_option`, `subscribe`, `unsubscribe`, `monitor_open`, `attach_discovery`, queries | Yes — one at a time | Safe to call from any thread. The library processes these one at a time, so don't call them in a tight per-message loop. |
 | **Cleanup** | `close`, `destroy` | Yes — with clear error codes | If another thread is still using the handle, close returns `EBUSY` instead of crashing. Details in [section 4](#4-closing-handles-safely). |
 
 **In plain terms:** send as much as you want from any thread. Connect,
@@ -101,12 +101,12 @@ call them in a per-message loop.
 
 Includes:
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
-- `zlink_setsockopt()` / `zlink_getsockopt()`
-- `zlink_subscribe()` / `zlink_unsubscribe()`
+- `zlink_set_option()` / `zlink_get_option()`
+- `zlink_set_subscription()` / `zlink_unset_subscription()`
 - `zlink_gateway_attach_discovery()` / `zlink_spot_node_attach_discovery()`
 - `zlink_*_monitor_open()`
-- `zlink_socket_send_ready_handler()`
-- `zlink_gateway_set_option()` / `zlink_gateway_set_lb_strategy()`
+- `zlink_send_ready_handler()`
+- `zlink_set_option()` / `zlink_gateway_set_lb_strategy()`
 - `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
 - Query/snapshot functions
 
@@ -134,12 +134,12 @@ void *setup_thread(void *arg)
     zlink_connect(socket, "tcp://10.0.0.3:5555");
 
     int hwm = 5000;
-    zlink_setsockopt(socket, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
     return NULL;
 }
 ```
 
-Lightweight reads like `ZLINK_EVENTS` and `ZLINK_LAST_ENDPOINT` are also
+Lightweight reads like `ZLINK_OPT_EVENTS` and `ZLINK_OPT_LAST_ENDPOINT` are also
 in this category but carry less overhead than heavier query/snapshot calls.
 
 ## 3. Per-Handle Quick Reference
@@ -148,7 +148,7 @@ Every handle type follows the same three-category model:
 
 | Handle | Sending (concurrent) | Configuration (serialized) | Cleanup |
 |---|---|---|---|
-| Socket (PAIR/DEALER/ROUTER/...) | `zlink_send` | bind, connect, disconnect, setsockopt, subscribe, monitor_open | `zlink_close` |
+| Socket (PAIR/DEALER/ROUTER/...) | `zlink_send` | bind, connect, disconnect, set_option, subscribe, monitor_open | `zlink_close` |
 | Gateway | `zlink_gateway_send`, `send_rid` | bind, connect, attach_discovery, set_option, set_lb_strategy, monitor_open | `zlink_gateway_destroy` |
 | SPOT | `zlink_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option, monitor_open | `zlink_spot_destroy` |
 | SPOT Node | `zlink_publish` | bind, connect_peer_pub, disconnect_peer_pub, attach_discovery, subscribe, unsubscribe, monitor_open | `zlink_spot_node_destroy` |
@@ -326,9 +326,9 @@ void *control(void *arg)
 {
     void *spot = arg;
     msleep(100);
-    zlink_subscribe(spot, "audit.*");      /* safe while publishing */
+    zlink_set_subscription(spot, "audit.*");      /* safe while publishing */
     msleep(200);
-    zlink_unsubscribe(spot, "audit.*");    /* also safe */
+    zlink_unset_subscription(spot, "audit.*");    /* also safe */
     return NULL;
 }
 ```
@@ -340,7 +340,7 @@ void *control(void *arg)
 | Two threads writing to the same `zlink_msg_t` | Message objects are not thread-safe | Create a separate `zlink_msg_t` in each thread |
 | Callback does heavy work and throughput drops | Callbacks run on the I/O thread — blocking stalls everything | Push to a queue, process on a worker thread |
 | Calling APIs after `close`/`destroy` | Returns `ESHUTDOWN` or undefined behavior | Coordinate shutdown; check return codes |
-| Calling `connect`/`setsockopt` in a per-message loop | Configuration APIs are serialized — adds unnecessary overhead | Call them only when configuration actually changes |
+| Calling `connect`/`set_option` in a per-message loop | Configuration APIs are serialized — adds unnecessary overhead | Call them only when configuration actually changes |
 
 ## 9. Error Code Quick Reference
 

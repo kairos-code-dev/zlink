@@ -12,8 +12,7 @@ zlink는 OpenSSL을 통해 `tls://`와 `wss://` transport를 네이티브 지원
 void *socket = zlink_socket(ctx, ZLINK_ROUTER);
 
 /* 인증서 및 키 설정 (bind 전) */
-zlink_setsockopt(socket, ZLINK_TLS_CERT, "/path/to/server.crt", 0);
-zlink_setsockopt(socket, ZLINK_TLS_KEY, "/path/to/server.key", 0);
+zlink_set_tls_server(socket, "/path/to/server.crt", "/path/to/server.key", 0);
 
 /* TLS 바인드 */
 zlink_bind(socket, "tls://*:5555");
@@ -24,11 +23,8 @@ zlink_bind(socket, "tls://*:5555");
 ```c
 void *socket = zlink_socket(ctx, ZLINK_DEALER);
 
-/* CA 인증서 설정 */
-zlink_setsockopt(socket, ZLINK_TLS_CA, "/path/to/ca.crt", 0);
-
-/* (선택) 호스트명 검증 */
-zlink_setsockopt(socket, ZLINK_TLS_HOSTNAME, "server.example.com", 0);
+/* CA 인증서 및 호스트명 검증 설정 */
+zlink_set_tls_client(socket, "/path/to/ca.crt", "server.example.com", 0);
 
 /* TLS 연결 */
 zlink_connect(socket, "tls://server.example.com:5555");
@@ -44,8 +40,7 @@ WSS는 ws에 TLS 암호화를 추가한 transport이다. ws 대비 추가 설정
 void *socket = zlink_socket(ctx, ZLINK_STREAM);
 
 /* TLS 인증서/키 설정 */
-zlink_setsockopt(socket, ZLINK_TLS_CERT, "/path/to/cert.pem", 0);
-zlink_setsockopt(socket, ZLINK_TLS_KEY, "/path/to/key.pem", 0);
+zlink_set_tls_server(socket, "/path/to/cert.pem", "/path/to/key.pem", 0);
 
 /* WSS 바인드 */
 zlink_bind(socket, "wss://*:8443");
@@ -68,75 +63,63 @@ zlink_bind(socket, "wss://*:8443");
 | 설정 | ws | wss |
 |------|:--:|:---:|
 | 기본 소켓 생성 | O | O |
-| `ZLINK_TLS_CERT` / `ZLINK_TLS_KEY` (서버) | - | 필수 |
-| `ZLINK_TLS_CA` (클라이언트) | - | 권장 (외부 raw client) |
-| `ZLINK_TLS_HOSTNAME` (클라이언트) | - | 권장 (외부 raw client) |
-| `ZLINK_TLS_TRUST_SYSTEM` (클라이언트) | - | 선택 (외부 raw client) |
+| `zlink_set_tls_server()` (서버 cert+key) | - | 필수 |
+| `zlink_set_tls_client()` (클라이언트 CA+hostname+trust) | - | 권장 (외부 raw client) |
 
-## 5. TLS 소켓 옵션 상세
+## 5. TLS API 상세
 
-| 옵션 | 타입 | 방향 | 기본값 | 설명 |
-|------|------|------|--------|------|
-| `ZLINK_TLS_CERT` | string | 서버 | — | 인증서 파일 경로 (PEM 형식) |
-| `ZLINK_TLS_KEY` | string | 서버 | — | 개인키 파일 경로 (PEM 형식) |
-| `ZLINK_TLS_CA` | string | 클라이언트 | — | CA 인증서 경로 (서버 인증서 검증) |
-| `ZLINK_TLS_HOSTNAME` | string | 클라이언트 | — | 서버 호스트명 (CN/SAN 검증) |
-| `ZLINK_TLS_TRUST_SYSTEM` | int | 클라이언트 | 1 | 시스템 CA 스토어 신뢰 여부 |
+TLS는 개별 소켓 옵션 대신 두 개의 전용 함수로 설정한다.
 
-### ZLINK_TLS_CERT / ZLINK_TLS_KEY
+### zlink_set_tls_server()
 
-서버가 클라이언트에게 자신을 인증하기 위한 인증서와 개인키.
+서버 측 TLS 인증서와 키를 설정한다.
+
+```c
+zlink_set_tls_server(socket, cert_path, key_path, require_client_cert);
+```
+
+| 파라미터 | 타입 | 설명 |
+|----------|------|------|
+| `cert_path` | string | 인증서 파일 경로 (PEM 형식) |
+| `key_path` | string | 개인키 파일 경로 (PEM 형식) |
+| `require_client_cert` | int | 클라이언트 인증서 요구 여부 (0 = 아니오, 1 = 예) |
 
 ```c
 /* PEM 형식 파일 경로 */
-zlink_setsockopt(socket, ZLINK_TLS_CERT, "server.crt", 0);
-zlink_setsockopt(socket, ZLINK_TLS_KEY, "server.key", 0);
+zlink_set_tls_server(socket, "server.crt", "server.key", 0);
 ```
 
 - 반드시 `zlink_bind()` **이전에** 설정
 - PEM 형식만 지원
 - 인증서와 키가 일치하지 않으면 핸드셰이크 실패
 
-### ZLINK_TLS_CA
+### zlink_set_tls_client()
 
-클라이언트가 서버 인증서를 검증하기 위한 CA 인증서.
-
-```c
-zlink_setsockopt(socket, ZLINK_TLS_CA, "ca.crt", 0);
-```
-
-- CA 미설정 시 시스템 CA 스토어 사용 (`ZLINK_TLS_TRUST_SYSTEM=1`)
-- 사설 CA 사용 시 반드시 설정
-
-### ZLINK_TLS_HOSTNAME
-
-클라이언트가 서버 인증서의 CN(Common Name) 또는 SAN(Subject Alternative Name)을 검증.
+클라이언트 측 TLS CA 인증서, 호스트명 검증, 시스템 CA 신뢰를 설정한다.
 
 ```c
-zlink_setsockopt(socket, ZLINK_TLS_HOSTNAME, "server.example.com", 0);
+zlink_set_tls_client(socket, ca_cert_path, hostname, trust_system);
 ```
 
-- 미설정 시 호스트명 검증 생략 (보안 경고)
-- 프로덕션에서는 반드시 설정 권장
+| 파라미터 | 타입 | 설명 |
+|----------|------|------|
+| `ca_cert_path` | string | CA 인증서 경로 (서버 인증서 검증), 또는 NULL |
+| `hostname` | string | 서버 호스트명 (CN/SAN 검증), 또는 NULL |
+| `trust_system` | int | 시스템 CA 스토어 신뢰 여부 (0 = 아니오, 1 = 예) |
+
+```c
+/* 사설 CA + 호스트명 검증 */
+zlink_set_tls_client(socket, "ca.crt", "server.example.com", 0);
+
+/* 시스템 CA만 사용 (사설 CA 없음, 호스트명 미검증) */
+zlink_set_tls_client(socket, NULL, NULL, 1);
+```
+
+- `ca_cert_path`가 NULL이면 시스템 CA 스토어만 사용 (`trust_system=1`인 경우)
+- 사설 CA 사용 시 반드시 `ca_cert_path` 설정
+- `hostname`이 NULL이면 호스트명 검증 생략 (보안 경고)
+- 프로덕션에서는 호스트명 검증 반드시 권장
 - 인증서의 CN 또는 SAN과 일치해야 함
-
-### ZLINK_TLS_TRUST_SYSTEM
-
-시스템 CA 스토어(OS에 설치된 루트 인증서)를 신뢰할지 여부.
-
-```c
-/* 시스템 CA 비활성화 (사설 인증서만 사용) */
-int trust = 0;
-zlink_setsockopt(socket, ZLINK_TLS_TRUST_SYSTEM, &trust, sizeof(trust));
-
-/* 시스템 CA 활성화 (기본값) */
-int trust = 1;
-zlink_setsockopt(socket, ZLINK_TLS_TRUST_SYSTEM, &trust, sizeof(trust));
-```
-
-- 기본값: 1 (시스템 CA 신뢰)
-- 사설 CA만 사용하는 환경에서는 0으로 설정하고 `ZLINK_TLS_CA` 명시
-- 공인 인증서 사용 시 기본값 유지
 
 > 참고: `core/tests/test_stream_socket.cpp` — `trust_system = 0` 설정 후 사설 CA 사용
 
@@ -199,15 +182,15 @@ openssl rsa -noout -modulus -in server.key | openssl md5
 ```
 증상: 클라이언트 연결 실패, 핸드셰이크 타임아웃
 원인: 클라이언트가 서버 인증서를 검증할 CA가 없음
-해결: ZLINK_TLS_CA 설정 또는 ZLINK_TLS_TRUST_SYSTEM 확인
+해결: zlink_set_tls_client()의 ca_cert_path 설정 또는 trust_system 파라미터 확인
 ```
 
 ### 호스트명 불일치
 
 ```
 증상: 핸드셰이크 실패
-원인: ZLINK_TLS_HOSTNAME과 인증서 CN/SAN 불일치
-해결: 인증서에 올바른 CN/SAN 포함, 또는 HOSTNAME 설정 수정
+원인: zlink_set_tls_client()의 hostname 파라미터와 인증서 CN/SAN 불일치
+해결: 인증서에 올바른 CN/SAN 포함, 또는 hostname 파라미터 수정
 ```
 
 ### 인증서 만료
@@ -252,9 +235,9 @@ void *mon = zlink_socket_monitor_open(socket,
 
 ### 클라이언트 설정
 
-- [ ] `ZLINK_TLS_HOSTNAME` 설정 (호스트명 검증 활성화)
-- [ ] `ZLINK_TLS_CA` 명시적 설정 또는 시스템 CA 확인
-- [ ] 사설 CA 사용 시 `ZLINK_TLS_TRUST_SYSTEM=0`
+- [ ] `zlink_set_tls_client()`의 `hostname` 파라미터 설정 (호스트명 검증 활성화)
+- [ ] `zlink_set_tls_client()`의 `ca_cert_path` 명시적 설정 또는 시스템 CA 확인
+- [ ] 사설 CA 사용 시 `zlink_set_tls_client()`의 `trust_system=0`
 
 ### 모니터링
 
@@ -276,14 +259,12 @@ int main(void) {
 
     /* TLS 서버 */
     void *server = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_setsockopt(server, ZLINK_TLS_CERT, "server.crt", 0);
-    zlink_setsockopt(server, ZLINK_TLS_KEY, "server.key", 0);
+    zlink_set_tls_server(server, "server.crt", "server.key", 0);
     zlink_bind(server, "tls://*:5555");
 
     /* TLS 클라이언트 */
     void *client = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_setsockopt(client, ZLINK_TLS_CA, "ca.crt", 0);
-    zlink_setsockopt(client, ZLINK_TLS_HOSTNAME, "localhost", 9);
+    zlink_set_tls_client(client, "ca.crt", "localhost", 0);
     zlink_connect(client, "tls://127.0.0.1:5555");
 
     /* 암호화된 통신 — 서버는 핸들러 콜백으로 수신 */
@@ -308,10 +289,9 @@ void *ctx = zlink_ctx_new();
 
 /* WSS 서버 (STREAM) */
 void *server = zlink_socket(ctx, ZLINK_STREAM);
-zlink_setsockopt(server, ZLINK_TLS_CERT, "server.crt", 0);
-zlink_setsockopt(server, ZLINK_TLS_KEY, "server.key", 0);
+zlink_set_tls_server(server, "server.crt", "server.key", 0);
 int linger = 0;
-zlink_setsockopt(server, ZLINK_LINGER, &linger, sizeof(linger));
+zlink_set_option(server, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 zlink_bind(server, "wss://*:8443");
 
 /* 외부 raw WSS 클라이언트가 이 엔드포인트로 접속한다.

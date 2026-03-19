@@ -169,7 +169,7 @@ void *create_gateway_attached (void *ctx_,
     if (!gateway)
         return NULL;
     if (routing_id_
-        && zlink_gateway_set_routing_id (gateway, routing_id_,
+        && zlink_set_routing_id (gateway, routing_id_,
                                          strlen (routing_id_))
              != 0) {
         const int err = errno;
@@ -201,7 +201,7 @@ void *create_gateway (void *ctx_,
     if (!gateway)
         return NULL;
     if (routing_id_
-        && zlink_gateway_set_routing_id (gateway, routing_id_,
+        && zlink_set_routing_id (gateway, routing_id_,
                                          strlen (routing_id_))
              != 0) {
         const int err = errno;
@@ -652,7 +652,7 @@ void test_gateway_handler_reply_stress_multi_client_manual_connect ()
 
     zlink_routing_id_t server_rid;
     memset (&server_rid, 0, sizeof (server_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (server, &server_rid));
 
     gateway_probe_t probe;
     probe.server = server;
@@ -726,7 +726,7 @@ void test_gateway_send_rid_same_handle_concurrent_send_is_thread_safe ()
 
     zlink_routing_id_t server_rid;
     memset (&server_rid, 0, sizeof (server_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (server, &server_rid));
 
     char endpoint[MAX_SOCKET_STRING];
     int bind_seed = 22680;
@@ -864,7 +864,7 @@ void test_gateway_send_after_ready_monitor_close_keeps_working ()
 
     zlink_routing_id_t server_rid;
     memset (&server_rid, 0, sizeof (server_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (server, &server_rid));
 
     char endpoint[MAX_SOCKET_STRING];
     int bind_seed = 22720;
@@ -959,7 +959,7 @@ void run_gateway_monitor_close_destroy_cycle (void *ctx_,
 
     zlink_routing_id_t server_rid;
     memset (&server_rid, 0, sizeof (server_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (server, &server_rid));
 
     char endpoint[MAX_SOCKET_STRING];
     bool bound = false;
@@ -1058,7 +1058,7 @@ void test_gateway_destroy_after_ready_monitor_close_completes_promptly ()
 
     zlink_routing_id_t server_rid;
     memset (&server_rid, 0, sizeof (server_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (server, &server_rid));
 
     char endpoint[MAX_SOCKET_STRING];
     int bind_seed = 22740;
@@ -1150,18 +1150,18 @@ void test_gateway_monitor_send_ready_drives_backpressure_progress ()
 
     const int linger = 0;
     const int low_hwm = 8;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
-      server, ZLINK_GATEWAY_OPT_LINGER, &linger, sizeof (linger)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
-      server, ZLINK_GATEWAY_OPT_SNDHWM, &low_hwm, sizeof (low_hwm)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
-      server, ZLINK_GATEWAY_OPT_RCVHWM, &low_hwm, sizeof (low_hwm)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
-      client, ZLINK_GATEWAY_OPT_LINGER, &linger, sizeof (linger)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
-      client, ZLINK_GATEWAY_OPT_SNDHWM, &low_hwm, sizeof (low_hwm)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_option (
-      client, ZLINK_GATEWAY_OPT_RCVHWM, &low_hwm, sizeof (low_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server, ZLINK_OPT_SNDHWM, &low_hwm, sizeof (low_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server, ZLINK_OPT_RCVHWM, &low_hwm, sizeof (low_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_SNDHWM, &low_hwm, sizeof (low_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_RCVHWM, &low_hwm, sizeof (low_hwm)));
 
     gateway_probe_t probe;
     probe.server = server;
@@ -1188,7 +1188,7 @@ void test_gateway_monitor_send_ready_drives_backpressure_progress ()
 
     zlink_routing_id_t server_rid;
     memset (&server_rid, 0, sizeof (server_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (server, &server_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (server, &server_rid));
 
     char endpoint[MAX_SOCKET_STRING];
     int bind_seed = 22880;

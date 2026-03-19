@@ -34,6 +34,12 @@ class registry_t
                            int option_,
                            const void *optval_,
                            size_t optvallen_);
+    int set_tls_server (const char *cert_,
+                        const char *key_,
+                        int require_client_cert_);
+    int set_tls_client (const char *ca_cert_,
+                        const char *hostname_,
+                        int trust_system_);
     int topology_snapshot (zlink_registry_topology_entry_t *entries_,
                            size_t *count_);
     int topology_query (const zlink_registry_topology_filter_t *filter_,

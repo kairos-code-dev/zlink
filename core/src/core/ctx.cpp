@@ -296,7 +296,7 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
-        case ZLINK_IPV6:
+        case ZLINK_INTERNAL_OPT_IPV6:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
                 _ipv6 = (value != 0);
@@ -304,7 +304,7 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
-        case ZLINK_BLOCKY:
+        case ZLINK_INTERNAL_OPT_BLOCKY:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
                 _blocky = (value != 0);
@@ -358,7 +358,7 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             }
             break;
 
-        case ZLINK_IPV6:
+        case ZLINK_INTERNAL_OPT_IPV6:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _ipv6;
@@ -366,7 +366,7 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             }
             break;
 
-        case ZLINK_BLOCKY:
+        case ZLINK_INTERNAL_OPT_BLOCKY:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _blocky;

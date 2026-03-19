@@ -22,7 +22,7 @@ typedef struct {
 | 소켓 own routing_id | UUID (binary) | 16B | 모든 소켓에서 자동 생성 |
 | STREAM peer routing_id | uint32 | 4B | 연결별 자동 할당 |
 
-- 사용자가 `ZLINK_ROUTING_ID`를 설정하지 않으면 자동 생성
+- 사용자가 `zlink_set_routing_id()`를 호출하지 않으면 자동 생성
 - 프로세스 내 전역 카운터 기반으로 유일성 보장
 
 ### own vs peer — 사용자가 알아야 할 차이
@@ -32,7 +32,7 @@ typedef struct {
 | **생성 시점** | 소켓 생성 시 | 피어 연결 시 |
 | **크기** | 16B (UUID) | 가변 (ROUTER), 4B (STREAM) |
 | **사용** | 핸드셰이크에서 전송 | 수신 메시지에 자동 추가 |
-| **설정** | `ZLINK_ROUTING_ID` | 피어가 설정한 값 사용 |
+| **설정** | `zlink_set_routing_id()` | 피어가 설정한 값 사용 |
 
 own routing_id는 소켓이 생성될 때 자동으로 UUID가 할당되며, 피어에게 핸드셰이크 시 전송된다. peer routing_id는 피어가 보낸 own routing_id이며, ROUTER/STREAM 소켓에서 수신 메시지의 첫 프레임에 자동으로 추가된다.
 
@@ -43,7 +43,7 @@ own routing_id는 소켓이 생성될 때 자동으로 UUID가 할당되며, 피
 ```c
 /* bind/connect 전에 설정 */
 const char *id = "router-A";
-zlink_setsockopt(socket, ZLINK_ROUTING_ID, id, strlen(id));
+zlink_set_routing_id(socket, id, strlen(id));
 ```
 
 주의사항:
@@ -56,48 +56,47 @@ zlink_setsockopt(socket, ZLINK_ROUTING_ID, id, strlen(id));
 
 ```c
 /* 좋은 예: 의미 있는 식별자 */
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "worker-01", 9);
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer, "worker-01", 9);
+zlink_set_routing_id(dealer, "D1", 2);
 
 /* 주의: 자동 생성 routing_id와 충돌 가능성 */
 /* UUID 형식(16B 바이너리)은 피해야 함 */
 ```
 
-> 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_setsockopt(dealer1, ZLINK_ROUTING_ID, "D1", 2)`
+> 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
 
 ### 조회
 
 ```c
-uint8_t buf[255];
-size_t size = sizeof(buf);
-zlink_getsockopt(socket, ZLINK_ROUTING_ID, buf, &size);
+zlink_routing_id_t rid;
+zlink_get_routing_id(socket, &rid);
 
-printf("routing_id (%zu bytes): ", size);
-for (size_t i = 0; i < size; ++i)
-    printf("%02x", buf[i]);
+printf("routing_id (%u bytes): ", rid.size);
+for (size_t i = 0; i < rid.size; ++i)
+    printf("%02x", rid.data[i]);
 printf("\n");
 ```
 
 ## 5. Connection Alias 설정
 
-`ZLINK_CONNECT_ROUTING_ID`는 다음 `zlink_connect()` 호출에 적용되는 연결별 별칭이다. ROUTER에서 특정 연결을 의미 있는 이름으로 참조할 때 사용한다.
+`ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`는 다음 `zlink_connect()` 호출에 적용되는 연결별 별칭이다. `zlink_set_router_option()`으로 설정하며, ROUTER에서 특정 연결을 의미 있는 이름으로 참조할 때 사용한다.
 
 ```c
 /* 다음 connect에 alias 적용 */
 const char *alias = "edge-1";
-zlink_setsockopt(socket, ZLINK_CONNECT_ROUTING_ID, alias, strlen(alias));
+zlink_set_router_option(socket, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, alias, strlen(alias));
 zlink_connect(socket, "tcp://server:5555");
 
 /* 다른 연결에 다른 alias */
 const char *alias2 = "edge-2";
-zlink_setsockopt(socket, ZLINK_CONNECT_ROUTING_ID, alias2, strlen(alias2));
+zlink_set_router_option(socket, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, alias2, strlen(alias2));
 zlink_connect(socket, "tcp://server2:5556");
 ```
 
-- `ZLINK_ROUTING_ID`는 소켓 전체에 적용
-- `ZLINK_CONNECT_ROUTING_ID`는 개별 연결에 적용
+- `zlink_set_routing_id()`는 소켓 전체에 적용
+- `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (`zlink_set_router_option()`으로 설정)는 개별 연결에 적용
 - 하나의 소켓에서 여러 연결에 각각 다른 alias 가능
-- `ZLINK_CONNECT_ROUTING_ID`는 ROUTER 연결 경로용이다.
+- `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`는 ROUTER 연결 경로용이다.
 - `ZLINK_STREAM`에 설정하면 `EOPNOTSUPP`를 반환한다.
 
 ## 6. ROUTER 소켓에서 routing_id 사용법
@@ -130,11 +129,11 @@ zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* DEALER 클라이언트 (명시적 routing_id) */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, endpoint);
 
 /* DEALER 전송 */
@@ -150,11 +149,11 @@ zlink_send(dealer, &req, 1, 0);
 
 ```c
 /* DEALER 1: routing_id = "D1" */
-zlink_setsockopt(dealer1, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer1, "D1", 2);
 zlink_connect(dealer1, endpoint);
 
 /* DEALER 2: routing_id = "D2" */
-zlink_setsockopt(dealer2, ZLINK_ROUTING_ID, "D2", 2);
+zlink_set_routing_id(dealer2, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
 /* ROUTER 핸들러가 source_rid로 클라이언트를 구분 */
@@ -259,7 +258,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 |---|---|---|
 | **크기** | 가변 (사용자 설정 또는 16B UUID) | 고정 4B (uint32) |
 | **생성** | 피어의 own routing_id | 서버가 자동 할당 |
-| **설정 가능** | ZLINK_ROUTING_ID로 피어가 설정 | 자동 할당만 (설정 불가) |
+| **설정 가능** | `zlink_set_routing_id()`로 피어가 설정 | 자동 할당만 (설정 불가) |
 | **프레임 위치** | 수신 시 자동 추가 | 수신 시 자동 추가 |
 
 ## 8. routing_id 디버깅 팁
@@ -293,7 +292,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 사용자가 설정한 routing_id가 ASCII 문자열이면 직접 출력 가능.
 
 ```c
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer, "D1", 2);
 
 /* ROUTER 핸들러 콜백 내에서 */
 void on_message(const zlink_routing_id_t *source_rid,
@@ -313,10 +312,9 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ```c
 /* 소켓 생성 후 자동 할당된 routing_id 조회 */
-uint8_t own_id[255];
-size_t own_size = sizeof(own_id);
-zlink_getsockopt(socket, ZLINK_ROUTING_ID, own_id, &own_size);
-printf("자동 생성 routing_id: %zu bytes\n", own_size);  /* 16 bytes (UUID) */
+zlink_routing_id_t rid;
+zlink_get_routing_id(socket, &rid);
+printf("자동 생성 routing_id: %u bytes\n", rid.size);  /* 16 bytes (UUID) */
 ```
 
 ## 9. 바이너리 처리 원칙

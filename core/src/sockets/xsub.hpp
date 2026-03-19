@@ -10,6 +10,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
+#include <string>
 #include <vector>
 #ifdef ZLINK_USE_RADIX_TREE
 #include "utils/radix_tree.hpp"
@@ -26,10 +27,20 @@ class io_thread_t;
 class xsub_t : public socket_base_t
 {
   public:
+    struct subscription_descriptor_t
+    {
+        subscription_descriptor_t () : is_pattern (false) {}
+
+        std::string filter;
+        bool is_pattern;
+    };
+
     xsub_t (zlink::ctx_t *parent_,
             uint32_t tid_,
             int sid_);
     ~xsub_t () ZLINK_OVERRIDE;
+    void snapshot_subscriptions (
+      std::vector<subscription_descriptor_t> *out_) const;
 
   protected:
     //  Overrides of functions from socket_base_t.
@@ -102,7 +113,7 @@ class xsub_t : public socket_base_t
     //  of multipart message.
     bool _process_subscribe;
 
-    //  This option is enabled with ZLINK_ONLY_FIRST_SUBSCRIBE.
+    //  This option is enabled with ZLINK_INTERNAL_OPT_ONLY_FIRST_SUBSCRIBE.
     //  If true, messages following subscribe/unsubscribe in a multipart
     //  message are treated as user data regardless of the first byte.
     bool _only_first_subscribe;

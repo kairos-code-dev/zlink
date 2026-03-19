@@ -67,7 +67,7 @@ zlink_subscribe_handler(sub, on_topic, NULL);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 
 /* Subscribe to topic -- set after connect */
-zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "weather", 7);
+zlink_set_subscription(sub, "weather");
 
 /* Messages are dispatched to on_topic callback */
 ```
@@ -110,21 +110,21 @@ Topic filtering in SUB sockets uses **prefix matching**.
 
 ```c
 /* Subscribe to multiple topics */
-zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "weather", 7);
-zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "sports", 6);
+zlink_set_subscription(sub, "weather");
+zlink_set_subscription(sub, "sports");
 
 /* Unsubscribe */
-zlink_setsockopt(sub, ZLINK_UNSUBSCRIBE, "sports", 6);
+zlink_unset_subscription(sub, "sports");
 ```
 
 ### Empty Subscription (All Messages)
 
 ```c
 /* Subscribe with empty string -- receives all messages */
-zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
+zlink_set_subscription(sub, "");
 ```
 
-> Reference: `core/tests/test_pubsub.cpp` -- `zlink_setsockopt(subscriber, ZLINK_SUBSCRIBE, "", 0)`
+> Reference: `core/tests/test_pubsub.cpp` -- `zlink_set_subscription(subscriber, "")`
 
 ## 4. Message Format
 
@@ -166,20 +166,20 @@ zlink_publish(pub, NULL, parts, 2, 0);
 
 ## 5. PUB/SUB Socket Options
 
-### SUB-Specific Options
+### SUB-Specific Functions
 
-| Option | Type | Description |
-|------|------|------|
-| `ZLINK_SUBSCRIBE` | binary | Add topic subscription (prefix match) |
-| `ZLINK_UNSUBSCRIBE` | binary | Remove topic subscription |
+| Function | Description |
+|------|------|
+| `zlink_set_subscription()` | Add topic subscription (prefix match) |
+| `zlink_unset_subscription()` | Remove topic subscription |
 
 ### Common Options
 
 | Option | Type | Default | Description |
 |------|------|--------|------|
-| `ZLINK_SNDHWM` | int | 1000 | Send HWM (PUB) |
-| `ZLINK_RCVHWM` | int | 1000 | Receive HWM (SUB) |
-| `ZLINK_LINGER` | int | -1 | Wait time on close (ms) |
+| `ZLINK_OPT_SNDHWM` | int | 1000 | Send HWM (PUB) |
+| `ZLINK_OPT_RCVHWM` | int | 1000 | Receive HWM (SUB) |
+| `ZLINK_OPT_LINGER` | int | -1 | Wait time on close (ms) |
 
 ## 6. PUB/SUB Usage Patterns
 
@@ -194,7 +194,7 @@ zlink_bind(pub, "tcp://*:5556");
 void *sub = zlink_socket(ctx, ZLINK_SUB);
 zlink_subscribe_handler(sub, on_topic, NULL);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
-zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
+zlink_set_subscription(sub, "");
 
 msleep(100);  /* time for subscription to reach PUB */
 
@@ -218,11 +218,11 @@ zlink_bind(pub, "tcp://*:5556");
 
 void *sub_weather = zlink_socket(ctx, ZLINK_SUB);
 zlink_connect(sub_weather, "tcp://127.0.0.1:5556");
-zlink_setsockopt(sub_weather, ZLINK_SUBSCRIBE, "weather", 7);
+zlink_set_subscription(sub_weather, "weather");
 
 void *sub_sports = zlink_socket(ctx, ZLINK_SUB);
 zlink_connect(sub_sports, "tcp://127.0.0.1:5556");
-zlink_setsockopt(sub_sports, ZLINK_SUBSCRIBE, "sports", 6);
+zlink_set_subscription(sub_sports, "sports");
 
 /* Only sub_weather receives weather, only sub_sports receives sports */
 ```
@@ -233,7 +233,7 @@ A SUB can connect to multiple PUBs. It receives messages from all PUBs via fair-
 
 ```c
 void *sub = zlink_socket(ctx, ZLINK_SUB);
-zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
+zlink_set_subscription(sub, "");
 zlink_connect(sub, "tcp://pub1:5556");
 zlink_connect(sub, "tcp://pub2:5557");
 ```
@@ -249,12 +249,12 @@ dropped** (no error returned).
 ```c
 /* Option 1: Increase buffer by adjusting HWM */
 int hwm = 100000;
-zlink_setsockopt(pub, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 ```
 
 #### XPUB_NODROP — Backpressure Instead of Drop
 
-Setting `ZLINK_XPUB_NODROP` disables lossy mode. When the HWM is
+Setting `ZLINK_PUB_OPT_NODROP` disables lossy mode. When the HWM is
 reached, instead of dropping messages, `EAGAIN` is returned so the
 caller can handle backpressure directly.
 
@@ -262,7 +262,7 @@ caller can handle backpressure directly.
 /* Enable NODROP on XPUB */
 void *xpub = zlink_socket(ctx, ZLINK_XPUB);
 int nodrop = 1;
-zlink_setsockopt(xpub, ZLINK_XPUB_NODROP, &nodrop, sizeof(nodrop));
+zlink_set_pub_option(xpub, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof(nodrop));
 
 /* On HWM, send returns EAGAIN instead of dropping */
 zlink_msg_t msg;
@@ -280,7 +280,7 @@ if (rc == -1 && zlink_errno() == EAGAIN) {
 | Default (lossy) | Silent drop — no error, message lost | Only latest data matters (sensor, tick) |
 | `XPUB_NODROP=1` | Returns `EAGAIN` — caller controls | Message loss is not acceptable |
 
-> `ZLINK_XPUB_NODROP` is an XPUB-only socket option.
+> `ZLINK_PUB_OPT_NODROP` is an XPUB-only socket option.
 > It is not available on regular PUB sockets.
 
 ### Late Joiner (Messages Lost Before Subscription)
@@ -290,7 +290,7 @@ Messages published before the subscription message from SUB reaches PUB are lost
 ```c
 /* Time needed for subscription to propagate to PUB */
 zlink_connect(sub, "tcp://127.0.0.1:5556");
-zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "topic", 5);
+zlink_set_subscription(sub, "topic");
 msleep(100);  /* wait for subscription propagation */
 /* Only messages published after this point can be received */
 ```
@@ -326,7 +326,7 @@ XPUB/XSUB are advanced publish-subscribe sockets that allow applications to hand
 
 | | SUB | XSUB |
 |---|-----|------|
-| **Subscribe** | `setsockopt(ZLINK_SUBSCRIBE)` (automatic) | `zlink_subscribe()` or direct send |
+| **Subscribe** | `zlink_set_subscription()` (automatic) | `zlink_set_subscription()` or direct send |
 | **Send** | Not allowed (`ENOTSUP`) | Allowed — forwards subscription frames upstream |
 | **Recv** | Topic + payload separated | Same |
 | **Implementation** | `xsub_t` subclass, `xsend()` blocked | Base class |
@@ -369,7 +369,7 @@ XPUB can observe which clients subscribe to or unsubscribe from which topics.
 1. SUB subscribes to `"weather"` topic
 2. XPUB's `subscription_event_handler` callback receives
    `(subscribed=1, topic="weather")`
-3. Proxy calls `zlink_subscribe(xsub, "weather")` —
+3. Proxy calls `zlink_set_subscription(xsub, "weather")` —
    sends subscription frame `[0x01 "weather"]` upstream to PUBs
 4. PUB publishes `"weather"` data
 5. XSUB receives data → XPUB delivers to matching SUBs
@@ -440,10 +440,10 @@ Subscription/unsubscription frames between XPUB/XSUB follow this format:
 
 ```c
 /* Subscribe from XSUB */
-zlink_subscribe(xsub, "A");
+zlink_set_subscription(xsub, "A");
 
 /* Unsubscribe from XSUB */
-zlink_unsubscribe(xsub, "A");
+zlink_unset_subscription(xsub, "A");
 ```
 
 XPUB receives subscription frames via a callback handler:
@@ -469,23 +469,23 @@ zlink_subscription_event_handler(xpub, on_subscription, NULL);
 
 | Option | Type | Default | Description |
 |------|------|--------|------|
-| `ZLINK_XPUB_MANUAL` | int | 0 | Enable manual subscription management mode |
-| `ZLINK_XPUB_VERBOSE` | int | 0 | Forward duplicate subscription messages as well |
-| `ZLINK_SUBSCRIBE` | binary | -- | (MANUAL mode) Add subscription to the current pipe |
-| `ZLINK_UNSUBSCRIBE` | binary | -- | (MANUAL mode) Remove subscription from the current pipe |
+| `ZLINK_PUB_OPT_MANUAL` | int | 0 | Enable manual subscription management mode |
+| `ZLINK_PUB_OPT_VERBOSE` | int | 0 | Forward duplicate subscription messages as well |
+| `zlink_set_subscription()` | -- | -- | (MANUAL mode) Add subscription to the current pipe |
+| `zlink_unset_subscription()` | -- | -- | (MANUAL mode) Remove subscription from the current pipe |
 
 ### XPUB_MANUAL Mode
 
-By default, XPUB processes SUB subscriptions automatically. In MANUAL mode, after receiving a subscription frame, the application explicitly decides the actual subscription using `ZLINK_SUBSCRIBE` / `ZLINK_UNSUBSCRIBE`.
+By default, XPUB processes SUB subscriptions automatically. In MANUAL mode, after receiving a subscription frame, the application explicitly decides the actual subscription using `zlink_set_subscription()` / `zlink_unset_subscription()`.
 
 ```c
 /* Enable MANUAL mode */
 int manual = 1;
-zlink_setsockopt(xpub, ZLINK_XPUB_MANUAL, &manual, sizeof(manual));
+zlink_set_pub_option(xpub, ZLINK_PUB_OPT_MANUAL, &manual, sizeof(manual));
 
 /* on_subscription callback fires with subscribed=1, topic="A"
    Then apply transformed subscription: */
-zlink_setsockopt(xpub, ZLINK_SUBSCRIBE, "XA", 2);
+zlink_set_subscription(xpub, "XA");
 
 /* Publish */
 zlink_msg_t msg_a;
@@ -526,7 +526,7 @@ An advanced proxy that transforms or filters subscription requests.
 
 ```c
 int manual = 1;
-zlink_setsockopt(xpub, ZLINK_XPUB_MANUAL, &manual, sizeof(manual));
+zlink_set_pub_option(xpub, ZLINK_PUB_OPT_MANUAL, &manual, sizeof(manual));
 
 /* on_subscription callback processes subscription requests */
 void on_sub(const zlink_routing_id_t *source_rid,
@@ -535,15 +535,15 @@ void on_sub(const zlink_routing_id_t *source_rid,
 {
     if (subscribed) {
         /* Register subscription */
-        zlink_setsockopt(xpub, ZLINK_SUBSCRIBE, topic, topic_len);
+        zlink_set_subscription(xpub, topic);
 
         /* Propagate subscription upstream (XSUB) */
         zlink_subscribe(xsub, topic);
     } else {
         /* Unsubscription */
-        zlink_setsockopt(xpub, ZLINK_UNSUBSCRIBE, topic, topic_len);
+        zlink_unset_subscription(xpub, topic);
 
-        zlink_unsubscribe(xsub, topic);
+        zlink_unset_subscription(xsub, topic);
     }
 }
 ```
@@ -594,7 +594,7 @@ Subscription messages are propagated asynchronously. Messages published immediat
 
 ```c
 zlink_connect(sub, endpoint);
-zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "topic", 5);
+zlink_set_subscription(sub, "topic");
 /* Publishing a "topic" message at this point may result in loss */
 msleep(100);  /* wait for subscription propagation */
 /* Messages published after this point can be received */
@@ -602,7 +602,7 @@ msleep(100);  /* wait for subscription propagation */
 
 ### Subscription Management in XPUB MANUAL Mode
 
-In MANUAL mode, if `ZLINK_SUBSCRIBE` is not called after receiving a subscription frame, that subscription is not registered. Subscriptions must be explicitly processed.
+In MANUAL mode, if `zlink_set_subscription()` is not called after receiving a subscription frame, that subscription is not registered. Subscriptions must be explicitly processed.
 
 ### Multiple Subscribers → Single XPUB
 

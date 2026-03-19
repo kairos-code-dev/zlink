@@ -142,12 +142,12 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_ROUTER_MANDATORY` | int | 0 | 미도달 메시지 시 EHOSTUNREACH 에러 반환 |
+| `ZLINK_ROUTER_OPT_MANDATORY` | int | 0 | 미도달 메시지 시 EHOSTUNREACH 에러 반환 (`zlink_set_router_option()`으로 설정) |
 | `ZLINK_ROUTER_HANDOVER` | int | 0 | routing_id 충돌 시 기존 연결 대체 |
-| `ZLINK_ROUTING_ID` | binary | 자동(UUID) | ROUTER 자신의 routing_id |
-| `ZLINK_SNDHWM` | int | 1000 | 송신 HWM |
-| `ZLINK_RCVHWM` | int | 1000 | 수신 HWM |
-| `ZLINK_LINGER` | int | -1 | close 시 대기 시간 (ms) |
+| `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER 자신의 routing_id (전용 함수) |
+| `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 HWM |
+| `ZLINK_OPT_RCVHWM` | int | 1000 | 수신 HWM |
+| `ZLINK_OPT_LINGER` | int | -1 | close 시 대기 시간 (ms) |
 
 ### ROUTER_MANDATORY
 
@@ -155,7 +155,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ```c
 int mandatory = 1;
-zlink_setsockopt(router, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
+zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
 
 /* 존재하지 않는 대상에게 전송 시도 */
 zlink_routing_id_t target_rid = { .data = "UNKNOWN", .size = 7 };
@@ -195,18 +195,18 @@ zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* 클라이언트 1 */
 void *d1 = zlink_socket(ctx, ZLINK_DEALER);
 zlink_recv_handler(d1, on_reply, NULL);
-zlink_setsockopt(d1, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(d1, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* 클라이언트 2 */
 void *d2 = zlink_socket(ctx, ZLINK_DEALER);
 zlink_recv_handler(d2, on_reply, NULL);
-zlink_setsockopt(d2, ZLINK_ROUTING_ID, "D2", 2);
+zlink_set_routing_id(d2, "D2", 2);
 zlink_connect(d2, endpoint);
 
 /* 각 클라이언트가 메시지 전송 — on_request가 source_rid와 함께 수신 */
@@ -241,7 +241,7 @@ zlink_send_rid(router, &bad_rid, &msg, 1, 0);
 
 /* MANDATORY 모드 활성화 */
 int mandatory = 1;
-zlink_setsockopt(router, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
+zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
 
 /* 이제 미도달 시 에러 반환 */
 zlink_msg_t msg2;
@@ -276,7 +276,7 @@ void on_connect(const zlink_routing_id_t *source_rid,
 
 /* DEALER 연결 및 초기 메시지 전송 */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "X", 1);
+zlink_set_routing_id(dealer, "X", 1);
 zlink_connect(dealer, endpoint);
 zlink_msg_t hello;
 zlink_msg_init_size(&hello, 5);
@@ -322,7 +322,7 @@ DEALER가 재연결하면 자동 생성된 routing_id가 변경될 수 있다. �
 
 ```c
 /* 명시적 routing_id — 재연결 시에도 동일 */
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "stable-id", 9);
+zlink_set_routing_id(dealer, "stable-id", 9);
 ```
 
 ### routing_id 충돌

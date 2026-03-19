@@ -940,6 +940,7 @@ endif()
 
 set(api-sources
     src/api/zlink.cpp
+    src/api/zlink_option.cpp
     src/api/zlink_utils.cpp)
 
 set(core-sources

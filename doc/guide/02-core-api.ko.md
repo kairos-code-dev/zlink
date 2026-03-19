@@ -75,30 +75,31 @@ zlink_disconnect(socket, "tcp://127.0.0.1:5555");
 ```c
 /* 옵션 설정 */
 int hwm = 5000;
-zlink_setsockopt(socket, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 
 /* 옵션 조회 */
 int value;
 size_t len = sizeof(value);
-zlink_getsockopt(socket, ZLINK_SNDHWM, &value, &len);
+zlink_get_option(socket, ZLINK_OPT_SNDHWM, &value, &len);
 ```
 
 주요 옵션:
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_SNDHWM` | int | 1000 | Send High Water Mark |
-| `ZLINK_RCVHWM` | int | 1000 | Recv High Water Mark |
-| `ZLINK_SNDTIMEO` | int | -1 | Send timeout (ms, -1: 무제한) |
-| `ZLINK_RCVTIMEO` | int | -1 | Recv timeout (ms, -1: 무제한) |
-| `ZLINK_LINGER` | int | -1 | Socket close 시 linger (ms) |
-| `ZLINK_ROUTING_ID` | binary | 자동 | Socket routing ID |
-| `ZLINK_SUBSCRIBE` | binary | - | Subscribe filter (SUB 전용) |
+| `ZLINK_OPT_SNDHWM` | int | 1000 | Send High Water Mark |
+| `ZLINK_OPT_RCVHWM` | int | 1000 | Recv High Water Mark |
+| `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms, -1: 무제한) |
+| `ZLINK_OPT_RCVTIMEO` | int | -1 | Recv timeout (ms, -1: 무제한) |
+| `ZLINK_OPT_LINGER` | int | -1 | Socket close 시 linger (ms) |
 
-`ZLINK_SUBSCRIBE` / `ZLINK_UNSUBSCRIBE`, `ZLINK_EVENTS`,
-`ZLINK_LAST_ENDPOINT` 같은 option은 runtime 중간에도
-보통 사용한다. 반면 HWM, timeout, TLS 같은 대부분의 tuning option은
-초기 설정 단계에서 사용한다.
+Routing ID는 전용 함수로 설정/조회한다:
+`zlink_set_routing_id()` / `zlink_get_routing_id()`.
+구독 관리는 `zlink_set_subscription()`을 사용한다.
+
+`ZLINK_OPT_EVENTS`, `ZLINK_OPT_LAST_ENDPOINT` 같은 option은
+runtime 중간에도 보통 사용한다. 반면 HWM, timeout, TLS 같은 대부분의
+tuning option은 초기 설정 단계에서 사용한다.
 
 ## 3. Message Send/Recv
 

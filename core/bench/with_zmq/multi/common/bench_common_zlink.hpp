@@ -15,6 +15,7 @@
 #include <cstring>
 #include <climits>
 #include <zlink.h>
+#include "../../../../tests/legacy_api_compat.hpp"
 
 // --- Configuration ---
 static const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 262144};
@@ -208,13 +209,13 @@ inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
         return false;
 
     const int linger_ms = 0;
-    zlink_setsockopt(monitor, ZLINK_LINGER, &linger_ms, sizeof(linger_ms));
+    zlink_set_option(monitor, ZLINK_OPT_LINGER, &linger_ms, sizeof(linger_ms));
     const int monitor_hwm = bench_monitor_hwm();
     if (monitor_hwm > 0) {
-        zlink_setsockopt(
-          monitor, ZLINK_RCVHWM, &monitor_hwm, sizeof(monitor_hwm));
-        zlink_setsockopt(
-          monitor, ZLINK_SNDHWM, &monitor_hwm, sizeof(monitor_hwm));
+        zlink_set_option(
+          monitor, ZLINK_OPT_RCVHWM, &monitor_hwm, sizeof(monitor_hwm));
+        zlink_set_option(
+          monitor, ZLINK_OPT_SNDHWM, &monitor_hwm, sizeof(monitor_hwm));
     }
     out_.owner = socket_;
     out_.monitor = monitor;
@@ -395,7 +396,8 @@ inline void close_connect_monitor(connect_monitor_t &monitor_)
 inline bool set_sockopt_int(void *socket_, int option_, int value_,
                             const char *name_)
 {
-    const int rc = zlink_setsockopt(socket_, option_, &value_, sizeof(value_));
+    const int rc = zlink_set_option(
+      socket_, static_cast<zlink_option_t>(option_), &value_, sizeof(value_));
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "setsockopt(" << name_ << ") failed: "
                   << zlink_strerror(zlink_errno()) << std::endl;
@@ -404,7 +406,8 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
     if (bench_debug_enabled()) {
         int out = 0;
         size_t out_size = sizeof(out);
-        const int grc = zlink_getsockopt(socket_, option_, &out, &out_size);
+        const int grc = zlink_get_option(
+          socket_, static_cast<zlink_option_t>(option_), &out, &out_size);
         if (grc == 0) {
             std::cerr << "setsockopt(" << name_ << ") = " << out << std::endl;
         }
@@ -488,7 +491,8 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
     if (transport != "inproc") {
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof(last_endpoint);
-        if (zlink_getsockopt(socket_, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size)
+        if (zlink_get_option(socket_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
+                             &size)
             != 0) {
             std::cerr << "getsockopt(ZLINK_SOCKOPT_LAST_ENDPOINT) failed: "
                       << zlink_strerror(zlink_errno()) << std::endl;

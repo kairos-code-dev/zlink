@@ -221,7 +221,7 @@ void configure_gateway_linger_zero (void *gateway_)
 {
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_set_option (gateway_, ZLINK_GATEWAY_OPT_LINGER, &zero,
+      zlink_set_option (gateway_, ZLINK_OPT_LINGER, &zero,
                                 sizeof (zero)));
 }
 
@@ -229,17 +229,15 @@ void configure_spot_linger_zero (void *node_, void *spot_)
 {
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_set_pub_option (node_, ZLINK_SPOT_PUB_OPT_LINGER, &zero,
-                                      sizeof (zero)));
+      zlink_set_option (zlink_spot_node_default_pub (node_), ZLINK_OPT_LINGER,
+                        &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_set_sub_option (node_, ZLINK_SPOT_SUB_OPT_LINGER, &zero,
-                                      sizeof (zero)));
+      zlink_set_option (zlink_spot_node_default_sub (node_), ZLINK_OPT_LINGER,
+                        &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_set_pub_option (spot_, ZLINK_SPOT_PUB_OPT_LINGER, &zero,
-                                 sizeof (zero)));
+      zlink_set_option (spot_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_set_sub_option (spot_, ZLINK_SPOT_SUB_OPT_LINGER, &zero,
-                                 sizeof (zero)));
+      zlink_set_option (spot_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 }
 
 double measure_raw_handle_scaling_once (int handle_count_, int messages_per_handle_)
@@ -372,9 +370,9 @@ double measure_gateway_handle_scaling_once (int handle_count_,
         clients[i] = zlink_gateway_new (ctx, service_name);
         TEST_ASSERT_NOT_NULL (servers[i]);
         TEST_ASSERT_NOT_NULL (clients[i]);
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_routing_id (
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (
           servers[i], server_rid_name, strlen (server_rid_name)));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_set_routing_id (
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (
           clients[i], client_rid_name, strlen (client_rid_name)));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (
           servers[i], &scaling_gateway_handler, NULL));
@@ -391,7 +389,7 @@ double measure_gateway_handle_scaling_once (int handle_count_,
 
         zlink_routing_id_t rid;
         memset (&rid, 0, sizeof (rid));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_routing_id (servers[i], &rid));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (servers[i], &rid));
         TEST_ASSERT_SUCCESS_ERRNO (
           zlink_gateway_connect (clients[i], endpoints[i].c_str (), &rid));
         wait_gateway_ready (clients[i], 3000);
@@ -494,8 +492,8 @@ double measure_spot_handle_scaling_once (int handle_count_,
         TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
           sub_nodes[i], &ignore_spot_handler, NULL));
 
-        pubs[i] = zlink_spot_new (pub_nodes[i]);
-        subs[i] = zlink_spot_new (sub_nodes[i]);
+        pubs[i] = zlink_spot_pub_new (pub_nodes[i]);
+        subs[i] = zlink_spot_sub_new (sub_nodes[i]);
         TEST_ASSERT_NOT_NULL (pubs[i]);
         TEST_ASSERT_NOT_NULL (subs[i]);
         TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -511,8 +509,8 @@ double measure_spot_handle_scaling_once (int handle_count_,
         TEST_ASSERT_SUCCESS_ERRNO (
           zlink_spot_node_bind (pub_nodes[i], endpoints[i].c_str ()));
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_spot_node_connect_peer_pub (sub_nodes[i], endpoints[i].c_str ()));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (subs[i], topic));
+          zlink_spot_node_connect_peer (sub_nodes[i], endpoints[i].c_str ()));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (subs[i], topic));
         msleep (20);
 
         const int before = probe.calls.load (std::memory_order_acquire);
@@ -582,8 +580,8 @@ double measure_spot_handle_scaling_once (int handle_count_,
         TEST_ASSERT_EQUAL_INT (0, worker_errno[i]);
 
     for (int i = 0; i < handle_count_; ++i) {
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&subs[i]));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pubs[i]));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&subs[i]));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_destroy (&pubs[i]));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_nodes[i]));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_nodes[i]));
     }

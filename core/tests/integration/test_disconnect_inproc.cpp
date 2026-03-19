@@ -37,7 +37,7 @@ void test_disconnect_inproc ()
             int subscribed = 0;
             char topic[16];
             size_t topic_len = sizeof (topic);
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_subscription_event_recv (
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_subscription_event (
               pub_socket, NULL, &subscribed, topic, &topic_len, 0));
             TEST_ASSERT_EQUAL_UINT (3, topic_len);
             TEST_ASSERT_EQUAL_MEMORY ("foo", topic, 3);
@@ -55,7 +55,7 @@ void test_disconnect_inproc ()
             size_t part_count = 0;
             char topic[16];
             size_t topic_len = sizeof (topic);
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_recv (
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (
               sub_socket, &parts, &part_count, 0, topic, &topic_len));
             TEST_ASSERT_EQUAL_UINT (3, topic_len);
             TEST_ASSERT_EQUAL_MEMORY ("foo", topic, 3);

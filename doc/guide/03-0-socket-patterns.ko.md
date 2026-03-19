@@ -118,7 +118,7 @@ void *socket = zlink_socket(ctx, ZLINK_<TYPE>);
 zlink_recv_handler(socket, on_message, NULL);
 
 /* 4. 소켓 옵션 설정 (bind/connect 전) */
-zlink_setsockopt(socket, ZLINK_<OPTION>, &value, sizeof(value));
+zlink_set_option(socket, ZLINK_OPT_<OPTION>, &value, sizeof(value));
 
 /* 5. 연결 (bind 또는 connect) */
 zlink_bind(socket, "tcp://*:5555");
@@ -134,8 +134,8 @@ zlink_ctx_term(ctx);
 ```
 
 > 다음 옵션은 핸드셰이크/연결 과정에서 사용되므로 `zlink_bind()`/`zlink_connect()` **이전에** 설정해야 한다:
-> `ZLINK_ROUTING_ID`, `ZLINK_CONNECT_ROUTING_ID`, `ZLINK_PROBE_ROUTER`, `ZLINK_TLS_*`.
-> 그 외 옵션(`SNDHWM`, `RCVHWM`, `LINGER`, `SNDTIMEO` 등)은 bind/connect 이후에도 변경 가능하다.
+> `zlink_set_routing_id()`, `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (`zlink_set_router_option()` 사용), `ZLINK_ROUTER_OPT_PROBE` (`zlink_set_router_option()` 사용), `zlink_set_tls_server()` / `zlink_set_tls_client()`.
+> 그 외 옵션(`ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_LINGER`, `ZLINK_OPT_SNDTIMEO` 등)은 bind/connect 이후에도 변경 가능하다.
 
 > 위는 callback 수신 모드 예제다. `zlink_recv()`를 사용한 pull 방식 수신도
 > 가능하다. 두 모드의 비교는
@@ -146,10 +146,10 @@ zlink_ctx_term(ctx);
 >
 > | 옵션 | 이유 |
 > |------|------|
-> | `ZLINK_RCVTIMEO` | `recv()`를 호출하지 않으므로 타임아웃 무효 |
+> | `ZLINK_OPT_RCVTIMEO` | `recv()`를 호출하지 않으므로 타임아웃 무효 |
 > | `ZLINK_RCVMORE` (제거됨) | 멀티파트 전체가 `parts[]` 배열로 원자적 전달 |
 >
-> `ZLINK_RCVHWM`은 callback 모드에서도 유효하다 (I/O 스레드 내부 큐에 적용).
+> `ZLINK_OPT_RCVHWM`은 callback 모드에서도 유효하다 (I/O 스레드 내부 큐에 적용).
 
 ---
 [← Core API](02-core-api.ko.md) | [PAIR →](03-1-pair.ko.md)

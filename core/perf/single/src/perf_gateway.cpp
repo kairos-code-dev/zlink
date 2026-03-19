@@ -321,7 +321,7 @@ bool configure_tls_client (void *gateway_, const std::string &transport_)
 
     static const std::string ca_path =
       write_temp_cert (test_certs::ca_cert_pem, "perf_gateway_ca");
-    return zlink_gateway_set_tls_client (
+    return zlink_set_tls_client (
              gateway_, ca_path.c_str (), "localhost", 0)
            == 0;
 }
@@ -335,8 +335,8 @@ bool configure_tls_server (void *gateway_, const std::string &transport_)
       write_temp_cert (test_certs::server_cert_pem, "perf_gateway_cert");
     static const std::string key_path =
       write_temp_cert (test_certs::server_key_pem, "perf_gateway_key");
-    return zlink_gateway_set_tls_server (
-             gateway_, cert_path.c_str (), key_path.c_str ())
+    return zlink_set_tls_server (
+             gateway_, cert_path.c_str (), key_path.c_str (), 0)
            == 0;
 }
 
@@ -819,10 +819,10 @@ int run_case (const std::string &lib_name_,
         cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);
         return 1;
     }
-    if (zlink_gateway_set_routing_id (server_gateway, server_routing_id.c_str (),
+    if (zlink_set_routing_id (server_gateway, server_routing_id.c_str (),
                                       server_routing_id.size ())
           != 0
-        || zlink_gateway_set_routing_id (client_gateway, client_routing_id.c_str (),
+        || zlink_set_routing_id (client_gateway, client_routing_id.c_str (),
                                          client_routing_id.size ())
              != 0) {
         print_fail ();
@@ -848,18 +848,18 @@ int run_case (const std::string &lib_name_,
     const int linger = 0;
     const int sndhwm = resolve_single_socket_hwm (true);
     const int rcvhwm = resolve_single_socket_hwm (false);
-    (void) zlink_gateway_set_option (
-      server_gateway, ZLINK_GATEWAY_OPT_LINGER, &linger, sizeof (linger));
-    (void) zlink_gateway_set_option (
-      server_gateway, ZLINK_GATEWAY_OPT_SNDHWM, &sndhwm, sizeof (sndhwm));
-    (void) zlink_gateway_set_option (
-      server_gateway, ZLINK_GATEWAY_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
-    (void) zlink_gateway_set_option (
-      client_gateway, ZLINK_GATEWAY_OPT_LINGER, &linger, sizeof (linger));
-    (void) zlink_gateway_set_option (
-      client_gateway, ZLINK_GATEWAY_OPT_SNDHWM, &sndhwm, sizeof (sndhwm));
-    (void) zlink_gateway_set_option (
-      client_gateway, ZLINK_GATEWAY_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
+    (void) zlink_set_option (
+      server_gateway, ZLINK_OPT_LINGER, &linger, sizeof (linger));
+    (void) zlink_set_option (
+      server_gateway, ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm));
+    (void) zlink_set_option (
+      server_gateway, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
+    (void) zlink_set_option (
+      client_gateway, ZLINK_OPT_LINGER, &linger, sizeof (linger));
+    (void) zlink_set_option (
+      client_gateway, ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm));
+    (void) zlink_set_option (
+      client_gateway, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
 
     if (!configure_tls_server (server_gateway, transport_)
         || !configure_tls_client (client_gateway, transport_)) {
@@ -890,7 +890,7 @@ int run_case (const std::string &lib_name_,
 
     zlink_routing_id_t server_rid;
     std::memset (&server_rid, 0, sizeof (server_rid));
-    if (zlink_gateway_routing_id (server_gateway, &server_rid) != 0) {
+    if (zlink_get_routing_id (server_gateway, &server_rid) != 0) {
         print_fail ();
         close_probe ();
         cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);

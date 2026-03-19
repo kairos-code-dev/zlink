@@ -54,20 +54,20 @@ HWM limits the **per-connection queue size**. In zlink, each connection (pipe) h
 
 ```c
 int hwm = 100;
-zlink_setsockopt(socket, ZLINK_SNDHWM, &hwm, sizeof(hwm));
-zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
+zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 ```
 
 | Setting | Default | Description |
 |------|--------|------|
-| `ZLINK_SNDHWM` | 1000 | Maximum messages in each connection's send queue |
-| `ZLINK_RCVHWM` | 1000 | Maximum messages in each connection's receive queue |
+| `ZLINK_OPT_SNDHWM` | 1000 | Maximum messages in each connection's send queue |
+| `ZLINK_OPT_RCVHWM` | 1000 | Maximum messages in each connection's receive queue |
 
 ### Backpressure Behavior
 
 When HWM is reached, behavior depends on the socket type and send flags:
 
-- **Blocking send** (`flags=0`): `zlink_send()` blocks until space becomes available in the send queue. Use `ZLINK_SNDTIMEO` to limit the wait.
+- **Blocking send** (`flags=0`): `zlink_send()` blocks until space becomes available in the send queue. Use `ZLINK_OPT_SNDTIMEO` to limit the wait.
 - **Non-blocking send** (`ZLINK_DONTWAIT`): Returns `EAGAIN` immediately. The application decides whether to retry, drop, or buffer externally.
 
 > For detailed flow control patterns (DONTWAIT + send-ready handler), see
@@ -135,7 +135,7 @@ and send flags (see [HWM Behavior by Socket Type](#hwm-behavior-by-socket-type) 
 #### Blocking Send (Default)
 
 With `flags=0`, `zlink_send()` blocks until space becomes available in the
-send queue. Use `ZLINK_SNDTIMEO` to limit how long the call blocks.
+send queue. Use `ZLINK_OPT_SNDTIMEO` to limit how long the call blocks.
 
 | SNDTIMEO | Behavior |
 |---|---|
@@ -146,7 +146,7 @@ send queue. Use `ZLINK_SNDTIMEO` to limit how long the call blocks.
 ```c
 /* Block for at most 1 second */
 int timeout = 1000;
-zlink_setsockopt(socket, ZLINK_SNDTIMEO, &timeout, sizeof(timeout));
+zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &timeout, sizeof(timeout));
 
 zlink_msg_t part;
 zlink_msg_init_size(&part, size);
@@ -177,7 +177,7 @@ if (rc == -1 && zlink_errno() == EAGAIN) {
 
 #### Send-Ready Handler (Event-Driven Backpressure)
 
-`zlink_socket_send_ready_handler()` installs a callback that fires
+`zlink_send_ready_handler()` installs a callback that fires
 when the socket transitions from non-writable to writable. Combined with
 `ZLINK_DONTWAIT`, this enables reactive flow control:
 
@@ -216,7 +216,7 @@ void on_send_ready(void *subject, void *userdata)
 
 /* Install the handler */
 app_state_t state = { .socket = socket };
-zlink_socket_send_ready_handler(socket, on_send_ready, &state);
+zlink_send_ready_handler(socket, on_send_ready, &state);
 
 /* Send loop */
 zlink_msg_t part;
@@ -245,13 +245,13 @@ non-writable states.
 
 ### 4.3 Receive-Side Flow Control
 
-The receive queue holds at most `ZLINK_RCVHWM` messages. When the
+The receive queue holds at most `ZLINK_OPT_RCVHWM` messages. When the
 receiver's queue is full, pipe-level backpressure is applied to the
 sender.
 
 ```c
 int hwm = 500;
-zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 ```
 
 In callback mode, a slow callback blocks the I/O thread, which causes the
@@ -335,7 +335,7 @@ int main(void)
     zlink_connect(socket, "tcp://127.0.0.1:5555");
 
     sender_t sender = { .socket = socket };
-    zlink_socket_send_ready_handler(socket, on_send_ready, &sender);
+    zlink_send_ready_handler(socket, on_send_ready, &sender);
 
     for (int i = 0; i < 100000; i++) {
         char msg[64];
@@ -369,23 +369,23 @@ int main(void)
 
 | Option | Default | Tuning Point |
 |------|--------|-------------|
-| `ZLINK_LINGER` | -1 (infinite) | Testing: 0, Production: 1000~5000ms |
-| `ZLINK_SNDTIMEO` | -1 (infinite) | Set according to response time requirements |
-| `ZLINK_RCVTIMEO` | -1 (infinite) | Set when used in polling loops |
-| `ZLINK_SNDHWM` | 1000 | Adjust to match throughput |
-| `ZLINK_RCVHWM` | 1000 | Adjust to match throughput |
-| `ZLINK_MAXMSGSIZE` | -1 (unlimited) | Set for security on STREAM sockets |
+| `ZLINK_OPT_LINGER` | -1 (infinite) | Testing: 0, Production: 1000~5000ms |
+| `ZLINK_OPT_SNDTIMEO` | -1 (infinite) | Set according to response time requirements |
+| `ZLINK_OPT_RCVTIMEO` | -1 (infinite) | Set when used in polling loops |
+| `ZLINK_OPT_SNDHWM` | 1000 | Adjust to match throughput |
+| `ZLINK_OPT_RCVHWM` | 1000 | Adjust to match throughput |
+| `ZLINK_OPT_MAXMSGSIZE` | -1 (unlimited) | Set for security on STREAM sockets |
 
 ### LINGER Setting
 
 ```c
 /* Test environment: terminate immediately */
 int linger = 0;
-zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
+zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 
 /* Production: wait for unsent messages */
 int linger = 3000;  /* 3 seconds */
-zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
+zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 ```
 
 ### Timeout Settings
@@ -393,11 +393,11 @@ zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
 ```c
 /* Send timeout: EAGAIN after 1 second */
 int timeout = 1000;
-zlink_setsockopt(socket, ZLINK_SNDTIMEO, &timeout, sizeof(timeout));
+zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &timeout, sizeof(timeout));
 
 /* Receive timeout: EAGAIN after 500ms */
 int timeout = 500;
-zlink_setsockopt(socket, ZLINK_RCVTIMEO, &timeout, sizeof(timeout));
+zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &timeout, sizeof(timeout));
 ```
 
 ## 6. How to Measure Performance

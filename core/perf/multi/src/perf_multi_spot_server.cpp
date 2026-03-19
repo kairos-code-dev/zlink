@@ -31,6 +31,8 @@ class spot_sub_t;
 
 namespace {
 
+static const int k_spot_role_pub = 1;
+
 static const char *k_pattern = "SPOT";
 static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
@@ -54,7 +56,7 @@ bool wait_for_pub_peers(void *pub, size_t expected_count, int timeout_ms)
            && std::chrono::steady_clock::now() < deadline) {
         zlink_monitor_snapshot_t snapshot;
         std::memset(&snapshot, 0, sizeof(snapshot));
-        if (read_spot_snapshot_once(pub, ZLINK_SPOT_ROLE_PUB, &snapshot)
+        if (read_spot_snapshot_once(pub, k_spot_role_pub, &snapshot)
             && snapshot.ready_peer_count >= expected_count) {
             return true;
         }
@@ -64,7 +66,7 @@ bool wait_for_pub_peers(void *pub, size_t expected_count, int timeout_ms)
 
     zlink_monitor_snapshot_t snapshot;
     std::memset(&snapshot, 0, sizeof(snapshot));
-    return read_spot_snapshot_once(pub, ZLINK_SPOT_ROLE_PUB, &snapshot)
+    return read_spot_snapshot_once(pub, k_spot_role_pub, &snapshot)
            && snapshot.ready_peer_count >= expected_count;
 }
 
@@ -159,8 +161,8 @@ bool configure_spot_tls_server(void *node, const std::string &transport)
       write_temp_cert(test_certs::server_cert_pem, "multi_spot_srv_cert");
     static const std::string key_path =
       write_temp_cert(test_certs::server_key_pem, "multi_spot_srv_key");
-    return zlink_spot_node_set_tls_server(node, cert_path.c_str(),
-                                          key_path.c_str())
+    return zlink_set_tls_server(node, cert_path.c_str(),
+                                key_path.c_str(), 0)
            == 0;
 }
 
@@ -176,31 +178,31 @@ bool apply_spot_server_options(void *pub,
     const int sndbuf = bench_socket_buffer_bytes_from_env("PERF_SNDBUF", -1);
     const int rcvbuf = bench_socket_buffer_bytes_from_env("PERF_RCVBUF", -1);
 
-    if (zlink_spot_set_pub_option(pub, ZLINK_SPOT_PUB_OPT_LINGER,
-                                  &linger_ms, sizeof(linger_ms))
+    if (zlink_set_option(pub, ZLINK_OPT_LINGER, &linger_ms,
+                             sizeof(linger_ms))
           != 0
-        || zlink_spot_set_pub_option(pub, ZLINK_SPOT_PUB_OPT_SNDHWM,
-                                     &sndhwm, sizeof(sndhwm))
+        || zlink_set_option(pub, ZLINK_OPT_SNDHWM, &sndhwm,
+                                sizeof(sndhwm))
              != 0
-        || zlink_spot_set_pub_option(pub, ZLINK_SPOT_PUB_OPT_SNDTIMEO,
-                                     &sndtimeo_ms, sizeof(sndtimeo_ms))
+        || zlink_set_option(pub, ZLINK_OPT_SNDTIMEO, &sndtimeo_ms,
+                                sizeof(sndtimeo_ms))
              != 0
-        || zlink_spot_set_pub_option(pub, ZLINK_SPOT_PUB_OPT_NODROP,
-                                     &nodrop, sizeof(nodrop))
+        || zlink_set_pub_option(pub, ZLINK_PUB_OPT_NODROP, &nodrop,
+                                sizeof(nodrop))
              != 0) {
         return false;
     }
 
     if (sndbuf > 0
-        && zlink_spot_set_pub_option(pub, ZLINK_SPOT_PUB_OPT_SNDBUF,
-                                     &sndbuf, sizeof(sndbuf))
+        && zlink_set_option(pub, ZLINK_OPT_SNDBUF, &sndbuf,
+                                sizeof(sndbuf))
              != 0) {
         return false;
     }
 
     if (rcvbuf > 0
-        && zlink_spot_set_pub_option(pub, ZLINK_SPOT_PUB_OPT_RCVBUF,
-                                     &rcvbuf, sizeof(rcvbuf))
+        && zlink_set_option(pub, ZLINK_OPT_RCVBUF, &rcvbuf,
+                                sizeof(rcvbuf))
              != 0) {
         return false;
     }
@@ -262,7 +264,7 @@ server_queue_stats_t sample_spot_queue_stats(void *pub, bool send_pending)
         return stats;
 
     zlink_monitor_snapshot_t snapshot;
-    if (read_spot_snapshot_once(pub, ZLINK_SPOT_ROLE_PUB, &snapshot)
+    if (read_spot_snapshot_once(pub, k_spot_role_pub, &snapshot)
         && (snapshot.detail_flags
             & ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS)) {
         stats.snd_pending_max = static_cast<double>(
@@ -640,15 +642,10 @@ int run_server_benchmark(const std::string &lib_name,
         return 1;
     }
 
-    void *pub = zlink_spot_new(node);
-    if (pub && zlink_subscribe_handler(pub, &discard_spot_parts, NULL) != 0) {
-        zlink_spot_destroy(&pub);
-        pub = NULL;
-    }
-    if (!pub || !apply_spot_server_options(pub, settings)
-        || zlink_spot_send_ready_handler(pub, &spot_server_send_ready, NULL) != 0) {
-        if (pub)
-            zlink_spot_destroy(&pub);
+    void *pub = node;
+    if (!apply_spot_server_options(pub, settings)
+        || zlink_send_ready_handler(pub, &spot_server_send_ready, NULL)
+             != 0) {
         zlink_spot_node_destroy(&node);
         return 1;
     }

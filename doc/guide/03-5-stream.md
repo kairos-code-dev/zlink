@@ -28,7 +28,7 @@ external raw client  <---- RAW(4B length + body) ---->  STREAM(server)
 ```c
 void *stream = zlink_socket(ctx, ZLINK_STREAM);
 int linger = 0;
-zlink_setsockopt(stream, ZLINK_LINGER, &linger, sizeof(linger));
+zlink_set_option(stream, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 zlink_bind(stream, "tcp://0.0.0.0:8080");
 ```
 
@@ -154,18 +154,18 @@ recv(fd, body, body_len, MSG_WAITALL);
 ## 6. Option and Runtime Policy
 
 Main supported options:
-- `ZLINK_MAXMSGSIZE`, `ZLINK_SNDHWM`, `ZLINK_RCVHWM`, `ZLINK_SNDBUF`, `ZLINK_RCVBUF`, `ZLINK_BACKLOG`, `ZLINK_LINGER`
-- TLS/WSS server options: `ZLINK_TLS_CERT`, `ZLINK_TLS_KEY`, `ZLINK_TLS_CA`, `ZLINK_TLS_HOSTNAME`, `ZLINK_TLS_TRUST_SYSTEM`
+- `ZLINK_OPT_MAXMSGSIZE`, `ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_SNDBUF`, `ZLINK_OPT_RCVBUF`, `ZLINK_OPT_BACKLOG`, `ZLINK_OPT_LINGER`
+- TLS/WSS server: `zlink_set_tls_server()` / TLS client: `zlink_set_tls_client()`
 
 Unsupported/changed:
-- Setting `ZLINK_CONNECT_ROUTING_ID` on STREAM returns `EOPNOTSUPP`.
+- Setting `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` on STREAM returns `EOPNOTSUPP`.
 
 ### 6.1 Default STREAM runtime profile
 
 Defaults currently used by STREAM internals:
-- `ZLINK_BACKLOG`: `65536`
-- `ZLINK_SNDBUF`: `262144` when unset (`-1`)
-- `ZLINK_RCVBUF`: `262144` when unset (`-1`)
+- `ZLINK_OPT_BACKLOG`: `65536`
+- `ZLINK_OPT_SNDBUF`: `262144` when unset (`-1`)
+- `ZLINK_OPT_RCVBUF`: `262144` when unset (`-1`)
 - minimum in/out batch size: `12288`
 - STREAM accept concurrency default: `4` (clamped to max `128`)
 - STREAM session scheduling default: `rr`

@@ -41,9 +41,7 @@ struct callback_probe_t;
 bool test_debug_enabled ();
 void step_log (const char *msg_);
 
-bool read_spot_snapshot (void *spot_,
-                         zlink_spot_role_t role_,
-                         zlink_monitor_snapshot_t *out_);
+bool read_spot_snapshot (void *spot_, zlink_monitor_snapshot_t *out_);
 int env_int_or_default (const char *name_, int default_value_);
 
 void ignore_spot_handler (const zlink_routing_id_t *,
@@ -60,7 +58,8 @@ void queued_spot_handler (const zlink_routing_id_t *,
                           void *);
 
 void *create_spot_node (void *ctx_, const char *service_name_);
-void *create_spot_handle (void *node_, zlink_subscribe_handler_fn handler_);
+void *create_spot_pub_handle (void *node_);
+void *create_spot_sub_handle (void *node_, zlink_subscribe_handler_fn handler_);
 typedef int (*spot_publish_fn_t) (void *,
                                   const char *,
                                   zlink_msg_t *,
@@ -74,11 +73,11 @@ int publish_text (spot_publish_fn_t publish_fn_,
 int create_spot_pub_sub (void *node_, void **pub_p, void **sub_p);
 int destroy_spot_pub_sub (void **pub_p, void **sub_p);
 int set_node_pub_option (void *node_,
-                         zlink_spot_pub_option_t option_,
+                         int option_,
                          const void *optval_,
                          size_t optvallen_);
 int set_node_sub_option (void *node_,
-                         zlink_spot_sub_option_t option_,
+                         int option_,
                          const void *optval_,
                          size_t optvallen_);
 
@@ -88,10 +87,6 @@ queued_spot_probe_t *ensure_queued_spot_probe (void *handle_, bool node_owned_);
 void remove_queued_spot_probe (void *handle_, bool node_owned_);
 bool pop_next_spot_message (queued_spot_probe_t *probe_,
                             queued_spot_message_t *message_out_);
-
-callback_probe_t *find_callback_probe_for_current_dispatch ();
-void register_callback_probe (void *handle_, callback_probe_t *probe_);
-void unregister_callback_probe (void *handle_);
 
 bool wait_for_spot_message (void *spot_sub_,
                             const char *expected_topic_,
@@ -117,24 +112,22 @@ bool wait_for_service_event (service_monitor_probe_t *probe_,
                              int timeout_ms_);
 
 void *open_spot_monitor_with_probe (void *spot_,
-                                    zlink_spot_role_t role_,
                                     zlink_spot_monitor_event_mask_t events_,
                                     service_monitor_probe_t *probe_);
 void *open_spot_node_monitor_with_probe (
   void *node_,
-  zlink_spot_role_t role_,
+  int role_,
   zlink_spot_monitor_event_mask_t events_,
   service_monitor_probe_t *probe_);
 int close_service_monitor_with_probe (void **monitor_);
 
 bool wait_for_spot_ready_state (void *spot_,
-                                zlink_spot_role_t role_,
                                 zlink_monitor_state_mask_t required_flags_,
                                 uint32_t min_ready_peer_count_,
                                 int timeout_ms_);
 bool wait_for_spot_node_ready_state (
   void *node_,
-  zlink_spot_role_t role_,
+  int role_,
   zlink_monitor_state_mask_t required_flags_,
   uint32_t min_ready_peer_count_,
   int timeout_ms_);

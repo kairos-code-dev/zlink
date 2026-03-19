@@ -125,7 +125,7 @@ inline bool setup_dealer_router_session (void *router,
     if (!router || !dealer)
         return false;
 
-    zlink_setsockopt (dealer, ZLINK_ROUTING_ID, "CLIENT", 6);
+    zlink_set_routing_id (dealer, "CLIENT", 6);
     if (!setup_connected_pair (router, dealer, transport, pair_id))
         return false;
 

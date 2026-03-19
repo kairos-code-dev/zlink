@@ -31,7 +31,7 @@ DEALER 소켓은 비동기 요청 소켓이다. 여러 피어에 **Round-robin**
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 
 /* routing_id 설정 (선택, ROUTER에서 식별용) */
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "client-1", 8);
+zlink_set_routing_id(dealer, "client-1", 8);
 
 /* 서버에 연결 */
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
@@ -114,13 +114,13 @@ zlink_send(dealer, parts, 2, 0);
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_ROUTING_ID` | binary | 자동(UUID) | ROUTER에서 식별할 ID |
+| `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER에서 식별할 ID (전용 함수) |
 | `ZLINK_PROBE_ROUTER` | int | 0 | 연결 시 빈 메시지 전송 (연결 알림) |
-| `ZLINK_SNDHWM` | int | 1000 | 송신 큐 최대 메시지 수 |
-| `ZLINK_RCVHWM` | int | 1000 | 수신 큐 최대 메시지 수 |
-| `ZLINK_LINGER` | int | -1 | close 시 대기 시간 (ms) |
-| `ZLINK_SNDTIMEO` | int | -1 | 송신 타임아웃 (ms) |
-| `ZLINK_RCVTIMEO` | int | -1 | 수신 타임아웃 (ms) |
+| `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 큐 최대 메시지 수 |
+| `ZLINK_OPT_RCVHWM` | int | 1000 | 수신 큐 최대 메시지 수 |
+| `ZLINK_OPT_LINGER` | int | -1 | close 시 대기 시간 (ms) |
+| `ZLINK_OPT_SNDTIMEO` | int | -1 | 송신 타임아웃 (ms) |
+| `ZLINK_OPT_RCVTIMEO` | int | -1 | 수신 타임아웃 (ms) |
 | `ZLINK_CONNECT_ROUTING_ID` | binary | — | 다음 connect에 적용할 alias |
 
 ### routing_id 설정
@@ -129,11 +129,11 @@ ROUTER가 DEALER를 식별하려면 명시적으로 routing_id를 설정한다.
 
 ```c
 /* bind/connect 전에 설정 */
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 ```
 
-> 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_setsockopt(dealer1, ZLINK_ROUTING_ID, "D1", 2)`
+> 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
 
 ## 5. 사용 패턴
 
@@ -170,7 +170,7 @@ zlink_bind(router, "tcp://*:5558");
 /* 클라이언트: DEALER */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 zlink_recv_handler(dealer, on_reply, NULL);
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
 /* 클라이언트 요청 */
@@ -211,14 +211,14 @@ zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_getsockopt(router, ZLINK_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 void *dealer1 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_setsockopt(dealer1, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer1, "D1", 2);
 zlink_connect(dealer1, endpoint);
 
 void *dealer2 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_setsockopt(dealer2, ZLINK_ROUTING_ID, "D2", 2);
+zlink_set_routing_id(dealer2, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
 /* 각 DEALER가 메시지 전송 */
@@ -325,11 +325,11 @@ if (rc == -1 && errno == EAGAIN) {
 
 ### routing_id는 connect 전에 설정
 
-`ZLINK_ROUTING_ID`는 `zlink_connect()` 호출 전에 설정해야 한다. 연결 후 변경은 적용되지 않는다.
+`zlink_set_routing_id()`는 `zlink_connect()` 호출 전에 호출해야 한다. 연결 후 변경은 적용되지 않는다.
 
 ```c
 /* 올바른 순서 */
-zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
+zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, endpoint);  /* D1으로 식별 */
 ```
 

@@ -37,6 +37,7 @@ class spot_pub_t
                  size_t part_count_,
                  int flags_);
     int set_option (int option_, const void *optval_, size_t optvallen_);
+    int set_routing_id (const void *data_, size_t size_);
     int set_send_ready_handler (zlink_send_ready_handler_fn handler_,
                                 void *subject_,
                                 void *userdata_);
@@ -54,6 +55,7 @@ class spot_pub_t
                                                   bool include_subject_kind_,
                                                   uint32_t subject_kind_,
                                                   uint32_t ready_count_);
+    spot_node_t *node () const { return _node; }
 
     void emit_ready_event ();
     void dispatch_send_ready ();

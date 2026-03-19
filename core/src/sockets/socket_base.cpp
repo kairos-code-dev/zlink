@@ -264,8 +264,8 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _term_pipe_acks_received = 0;
 #endif
     options.socket_id = sid_;
-    options.ipv6 = (parent_->get (ZLINK_IPV6) != 0);
-    options.linger.store (parent_->get (ZLINK_BLOCKY) ? -1 : 0);
+    options.ipv6 = (parent_->get (ZLINK_INTERNAL_OPT_IPV6) != 0);
+    options.linger.store (parent_->get (ZLINK_INTERNAL_OPT_BLOCKY) ? -1 : 0);
 
     if (options.routing_id_size == 0) {
         unsigned char buf[16];
@@ -2343,7 +2343,7 @@ void zlink::socket_base_t::set_all_pipes_nodelay ()
 
 void zlink::socket_base_t::update_pipe_options (int option_)
 {
-    if (option_ == ZLINK_SNDHWM || option_ == ZLINK_RCVHWM) {
+    if (option_ == ZLINK_INTERNAL_OPT_SNDHWM || option_ == ZLINK_INTERNAL_OPT_RCVHWM) {
         for (pipes_t::size_type i = 0, size = _pipes.size (); i != size; ++i) {
             _pipes[i]->set_hwms (options.rcvhwm, options.sndhwm);
             _pipes[i]->send_hwms_to_peer (options.sndhwm, options.rcvhwm);
@@ -2657,8 +2657,8 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
 
     //  Never block context termination on pending event messages
     int linger = 0;
-    int rc =
-      zlink_setsockopt (_monitor_socket, ZLINK_LINGER, &linger, sizeof (linger));
+    int rc = static_cast<socket_base_t *> (_monitor_socket)
+               ->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
     if (rc == -1)
         stop_monitor (false);
 
@@ -3022,7 +3022,7 @@ int zlink::routing_socket_base_t::xsetsockopt (int option_,
                                              size_t optvallen_)
 {
     switch (option_) {
-        case ZLINK_CONNECT_ROUTING_ID:
+        case ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID:
             // TODO why isn't it possible to set an empty connect_routing_id
             //   (which is the default value)
             if (optval_ && optvallen_) {

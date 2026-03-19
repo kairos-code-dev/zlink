@@ -60,6 +60,7 @@ class discovery_t
     int connect_registry (const char *registry_endpoint_);
     int set_routing_id (const void *data_, size_t size_);
     int routing_id (zlink_routing_id_t *out_) const;
+    int set_option (int option_, const void *optval_, size_t optvallen_);
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
                         int trust_system_);

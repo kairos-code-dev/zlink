@@ -25,26 +25,26 @@ void test_router_2_router (bool named_)
     //  Create bind socket.
     void *rbind = test_context_socket (ZLINK_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (rbind, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (rbind, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     bind_loopback_ipv4 (rbind, my_endpoint, sizeof my_endpoint);
 
     //  Create connection socket.
     void *rconn1 = test_context_socket (ZLINK_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (rconn1, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (rconn1, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     //  If we're in named mode, set some identities.
     if (named_) {
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_setsockopt (rbind, ZLINK_ROUTING_ID, x_routing_id, 1));
+          zlink_set_routing_id (rbind, x_routing_id, 1));
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_setsockopt (rconn1, ZLINK_ROUTING_ID, y_routing_id, 1));
+          zlink_set_routing_id (rconn1, y_routing_id, 1));
     }
 
     //  Make call to connect using a connect_routing_id.
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (rconn1, ZLINK_CONNECT_ROUTING_ID,
-                                               rconn1routing_id,
-                                               strlen (rconn1routing_id)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      rconn1, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, rconn1routing_id,
+      strlen (rconn1routing_id)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (rconn1, my_endpoint));
     /*  Uncomment to test assert on duplicate routing id
     //  Test duplicate connect attempt.
@@ -93,31 +93,32 @@ void test_router_2_router_while_receiving ()
     //  Create xbind socket.
     void *xbind = test_context_socket (ZLINK_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (xbind, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (xbind, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     bind_loopback_ipv4 (xbind, x_endpoint, sizeof x_endpoint);
 
     //  Create zbind socket.
     void *zbind = test_context_socket (ZLINK_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (zbind, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (zbind, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     bind_loopback_ipv4 (zbind, z_endpoint, sizeof z_endpoint);
 
     //  Create connection socket.
     void *yconn = test_context_socket (ZLINK_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (yconn, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (yconn, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     // set identities for each socket
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      xbind, ZLINK_ROUTING_ID, x_routing_id, strlen (x_routing_id)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (yconn, ZLINK_ROUTING_ID, y_routing_id, 2));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      zbind, ZLINK_ROUTING_ID, z_routing_id, strlen (z_routing_id)));
+      zlink_set_routing_id (xbind, x_routing_id, strlen (x_routing_id)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (yconn, y_routing_id, 2));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (zbind, z_routing_id, strlen (z_routing_id)));
 
     //  Connect Y to X using a routing id
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      yconn, ZLINK_CONNECT_ROUTING_ID, x_routing_id, strlen (x_routing_id)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      yconn, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, x_routing_id,
+      strlen (x_routing_id)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (yconn, x_endpoint));
 
     //  Send some data from Y to X.
@@ -128,8 +129,9 @@ void test_router_2_router_while_receiving ()
     msleep (SETTLE_TIME);
 
     // Now X tries to connect to Z and send a message
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      xbind, ZLINK_CONNECT_ROUTING_ID, z_routing_id, strlen (z_routing_id)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      xbind, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, z_routing_id,
+      strlen (z_routing_id)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (xbind, z_endpoint));
 
     //  Try to send some data from X to Z.
@@ -179,21 +181,22 @@ void test_duplicate_connect_rid_without_handover ()
     void *client = test_context_socket (ZLINK_ROUTER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server_one, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (server_one, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server_two, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (server_two, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     bind_loopback_ipv4 (server_one, endpoint_one, sizeof endpoint_one);
     bind_loopback_ipv4 (server_two, endpoint_two, sizeof endpoint_two);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_ROUTING_ID, client_routing_id, strlen (client_routing_id)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (
+      client, client_routing_id, strlen (client_routing_id)));
 
     //  First connect using CONNECT_ROUTING_ID.
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_CONNECT_ROUTING_ID, dup_routing_id, strlen (dup_routing_id)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      client, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, dup_routing_id,
+      strlen (dup_routing_id)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint_one));
     msleep (SETTLE_TIME);
 
@@ -203,15 +206,18 @@ void test_duplicate_connect_rid_without_handover ()
     recv_string_expect_success (server_one, "first", 0);
 
     //  Duplicate connect with same CONNECT_ROUTING_ID must not abort.
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_CONNECT_ROUTING_ID, dup_routing_id, strlen (dup_routing_id)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      client, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, dup_routing_id,
+      strlen (dup_routing_id)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint_two));
     msleep (SETTLE_TIME);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server_one, ZLINK_RCVTIMEO, &timeout, sizeof (timeout)));
+      zlink_set_option (server_one, ZLINK_OPT_RCVTIMEO, &timeout,
+                        sizeof (timeout)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server_two, ZLINK_RCVTIMEO, &timeout, sizeof (timeout)));
+      zlink_set_option (server_two, ZLINK_OPT_RCVTIMEO, &timeout,
+                        sizeof (timeout)));
 
     send_string_expect_success (client, dup_routing_id, ZLINK_SNDMORE);
     send_string_expect_success (client, "second", 0);
@@ -241,23 +247,24 @@ void test_duplicate_connect_rid_with_handover ()
     void *client = test_context_socket (ZLINK_ROUTER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server_one, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (server_one, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server_two, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (server_two, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     bind_loopback_ipv4 (server_one, endpoint_one, sizeof endpoint_one);
     bind_loopback_ipv4 (server_two, endpoint_two, sizeof endpoint_two);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_ROUTING_ID, client_routing_id, strlen (client_routing_id)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_ROUTER_HANDOVER, &handover, sizeof (handover)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (
+      client, client_routing_id, strlen (client_routing_id)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      client, ZLINK_ROUTER_OPT_HANDOVER, &handover, sizeof (handover)));
 
     //  First connect using CONNECT_ROUTING_ID.
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_CONNECT_ROUTING_ID, dup_routing_id, strlen (dup_routing_id)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      client, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, dup_routing_id,
+      strlen (dup_routing_id)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint_one));
     msleep (SETTLE_TIME);
 
@@ -268,15 +275,18 @@ void test_duplicate_connect_rid_with_handover ()
 
     //  Duplicate connect with same CONNECT_ROUTING_ID must hand over to second
     //  connection when handover is enabled.
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_CONNECT_ROUTING_ID, dup_routing_id, strlen (dup_routing_id)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      client, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, dup_routing_id,
+      strlen (dup_routing_id)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint_two));
     msleep (SETTLE_TIME);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server_one, ZLINK_RCVTIMEO, &timeout, sizeof (timeout)));
+      zlink_set_option (server_one, ZLINK_OPT_RCVTIMEO, &timeout,
+                        sizeof (timeout)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server_two, ZLINK_RCVTIMEO, &timeout, sizeof (timeout)));
+      zlink_set_option (server_two, ZLINK_OPT_RCVTIMEO, &timeout,
+                        sizeof (timeout)));
 
     send_string_expect_success (client, dup_routing_id, ZLINK_SNDMORE);
     send_string_expect_success (client, "second", 0);

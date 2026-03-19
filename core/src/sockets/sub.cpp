@@ -22,7 +22,7 @@ int zlink::sub_t::xsetsockopt (int option_,
                              const void *optval_,
                              size_t optvallen_)
 {
-    if (option_ != ZLINK_SUBSCRIBE && option_ != ZLINK_UNSUBSCRIBE) {
+    if (option_ != ZLINK_INTERNAL_OPT_SUBSCRIBE && option_ != ZLINK_INTERNAL_OPT_UNSUBSCRIBE) {
         errno = EINVAL;
         return -1;
     }
@@ -31,7 +31,7 @@ int zlink::sub_t::xsetsockopt (int option_,
     msg_t msg;
     int rc;
     const unsigned char *data = static_cast<const unsigned char *> (optval_);
-    if (option_ == ZLINK_SUBSCRIBE) {
+    if (option_ == ZLINK_INTERNAL_OPT_SUBSCRIBE) {
         rc = msg.init_subscribe (optvallen_, data);
     } else {
         rc = msg.init_cancel (optvallen_, data);

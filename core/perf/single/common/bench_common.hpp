@@ -102,7 +102,7 @@ inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_
 
             int events = 0;
             size_t events_len = sizeof(events);
-            if (zlink_getsockopt(items_[i].socket, ZLINK_EVENTS, &events,
+            if (zlink_get_option(items_[i].socket, ZLINK_OPT_EVENTS, &events,
                                  &events_len)
                 != 0) {
                 return -1;
@@ -946,7 +946,9 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
     if (transport != "inproc") {
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof(last_endpoint);
-        if (zlink_getsockopt(socket_, ZLINK_LAST_ENDPOINT, last_endpoint, &size) != 0) {
+        if (zlink_get_option(socket_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
+                             &size)
+            != 0) {
             std::cerr << "getsockopt(ZLINK_LAST_ENDPOINT) failed: "
                       << zlink_strerror(zlink_errno()) << std::endl;
             return std::string();

@@ -13,13 +13,13 @@ void test_with_handover ()
 
     // Enable the handover flag
     int handover = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (router, ZLINK_ROUTER_HANDOVER,
-                                               &handover, sizeof (handover)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      router, ZLINK_ROUTER_OPT_HANDOVER, &handover, sizeof (handover)));
 
     //  Create dealer called "X" and connect it to our router
     void *dealer_one = test_context_socket (ZLINK_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer_one, ZLINK_ROUTING_ID, "X", 1));
+      zlink_set_routing_id (dealer_one, "X", 1));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer_one, my_endpoint));
 
     //  Get message from dealer to know when connection is ready
@@ -32,7 +32,7 @@ void test_with_handover ()
     // Now create a second dealer that uses the same routing id
     void *dealer_two = test_context_socket (ZLINK_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer_two, ZLINK_ROUTING_ID, "X", 1));
+      zlink_set_routing_id (dealer_two, "X", 1));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer_two, my_endpoint));
 
     //  Get message from dealer to know when connection is ready
@@ -50,7 +50,8 @@ void test_with_handover ()
     //  but the second one does
     const int timeout = SETTLE_TIME;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer_one, ZLINK_RCVTIMEO, &timeout, sizeof timeout));
+      zlink_set_option (dealer_one, ZLINK_OPT_RCVTIMEO, &timeout,
+                        sizeof timeout));
     TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (dealer_one, buffer, 255, 0));
 
     recv_string_expect_success (dealer_two, "Hello", 0);
@@ -69,12 +70,12 @@ void test_without_handover ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "tcp://127.0.0.1:*"));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router, ZLINK_SOCKOPT_LAST_ENDPOINT, my_endpoint, &len));
+      zlink_get_option (router, ZLINK_OPT_LAST_ENDPOINT, my_endpoint, &len));
 
     //  Create dealer called "X" and connect it to our router
     void *dealer_one = test_context_socket (ZLINK_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer_one, ZLINK_ROUTING_ID, "X", 1));
+      zlink_set_routing_id (dealer_one, "X", 1));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer_one, my_endpoint));
 
     //  Get message from dealer to know when connection is ready
@@ -87,7 +88,7 @@ void test_without_handover ()
     // Now create a second dealer that uses the same routing id
     void *dealer_two = test_context_socket (ZLINK_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer_two, ZLINK_ROUTING_ID, "X", 1));
+      zlink_set_routing_id (dealer_two, "X", 1));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer_two, my_endpoint));
 
     //  Send message from second dealer
@@ -96,7 +97,8 @@ void test_without_handover ()
     //  This should be ignored by the router
     const int timeout = SETTLE_TIME;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router, ZLINK_RCVTIMEO, &timeout, sizeof timeout));
+      zlink_set_option (router, ZLINK_OPT_RCVTIMEO, &timeout,
+                        sizeof timeout));
     TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (router, buffer, 255, 0));
 
     //  Send a message to 'X' routing id. This should be delivered
@@ -107,7 +109,8 @@ void test_without_handover ()
     //  Ensure that the second dealer doesn't receive the message
     //  but the first one does
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer_two, ZLINK_RCVTIMEO, &timeout, sizeof timeout));
+      zlink_set_option (dealer_two, ZLINK_OPT_RCVTIMEO, &timeout,
+                        sizeof timeout));
     TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (dealer_two, buffer, 255, 0));
 
     recv_string_expect_success (dealer_one, "Hello", 0);

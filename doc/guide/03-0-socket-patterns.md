@@ -118,7 +118,7 @@ void *socket = zlink_socket(ctx, ZLINK_<TYPE>);
 zlink_recv_handler(socket, on_message, NULL);
 
 /* 4. Set socket options (before bind/connect) */
-zlink_setsockopt(socket, ZLINK_<OPTION>, &value, sizeof(value));
+zlink_set_option(socket, ZLINK_OPT_<OPTION>, &value, sizeof(value));
 
 /* 5. Establish connection (bind or connect) */
 zlink_bind(socket, "tcp://*:5555");
@@ -135,8 +135,8 @@ zlink_ctx_term(ctx);
 
 > The following options must be set **before** `zlink_bind()`/`zlink_connect()`
 > as they are used during handshake or connection:
-> `ZLINK_ROUTING_ID`, `ZLINK_CONNECT_ROUTING_ID`, `ZLINK_PROBE_ROUTER`, `ZLINK_TLS_*`.
-> Other options (`SNDHWM`, `RCVHWM`, `LINGER`, `SNDTIMEO`, etc.) can be changed after bind/connect.
+> `zlink_set_routing_id()`, `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (via `zlink_set_router_option()`), `ZLINK_ROUTER_OPT_PROBE` (via `zlink_set_router_option()`), `zlink_set_tls_server()` / `zlink_set_tls_client()`.
+> Other options (`ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_LINGER`, `ZLINK_OPT_SNDTIMEO`, etc.) can be changed after bind/connect.
 
 > The example above uses callback receive mode. Pull-style receive via
 > `zlink_recv()` is also supported. For a comparison of the two modes,
@@ -148,10 +148,10 @@ zlink_ctx_term(ctx);
 >
 > | Option | Reason |
 > |--------|--------|
-> | `ZLINK_RCVTIMEO` | No `recv()` calls, so timeout has no effect |
+> | `ZLINK_OPT_RCVTIMEO` | No `recv()` calls, so timeout has no effect |
 > | `ZLINK_RCVMORE` (removed) | Complete multipart delivered atomically as `parts[]` |
 >
-> `ZLINK_RCVHWM` remains effective in callback mode (applies to the I/O thread's internal queue).
+> `ZLINK_OPT_RCVHWM` remains effective in callback mode (applies to the I/O thread's internal queue).
 
 ---
 [← Core API](02-core-api.md) | [PAIR →](03-1-pair.md)

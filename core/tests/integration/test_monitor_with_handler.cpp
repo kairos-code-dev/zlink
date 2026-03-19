@@ -170,7 +170,7 @@ void *create_gateway_attached (void *ctx_,
     if (!gateway)
         return NULL;
     if (routing_id_
-        && zlink_gateway_set_routing_id (gateway, routing_id_,
+        && zlink_set_routing_id (gateway, routing_id_,
                                          strlen (routing_id_))
              != 0) {
         const int err = errno;
@@ -234,7 +234,7 @@ void service_monitor_parent_query_handler (const zlink_service_event_t *event_, 
     errno = 0;
     zlink_routing_id_t rid;
     memset (&rid, 0, sizeof (rid));
-    const int rc = zlink_discovery_routing_id (probe->discovery, &rid);
+    const int rc = zlink_get_routing_id (probe->discovery, &rid);
     const int query_errno = rc == 0 ? 0 : errno;
 
     {
@@ -338,7 +338,7 @@ void raw_send_ready_reentrant_handler (void *subject_, void *)
     if (g_raw_send_ready_calls)
         g_raw_send_ready_calls->fetch_add (1);
     errno = 0;
-    g_raw_send_ready_rc = zlink_socket_send_ready_handler (
+    g_raw_send_ready_rc = zlink_send_ready_handler (
       subject_, &raw_send_ready_reentrant_handler, NULL);
     g_raw_send_ready_errno = errno;
 }
@@ -501,7 +501,7 @@ void test_socket_send_ready_handler_reentrant_replace_returns_edeadlk ()
     g_raw_send_ready_rc = 0;
     g_raw_send_ready_errno = 0;
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_send_ready_handler (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send_ready_handler (
       socket, &raw_send_ready_reentrant_handler, NULL));
 
     zlink::socket_base_t *socket_base =
@@ -526,7 +526,7 @@ void test_socket_send_ready_handler_requires_handler ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_recv_handler (socket, &discard_socket_message, NULL));
 
-    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_send_ready_handler (socket, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_send_ready_handler (socket, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     close_socket_zero_linger (socket);
@@ -544,9 +544,9 @@ void test_socket_send_ready_handler_failed_replace_keeps_previous_handler ()
     g_raw_send_ready_subject = NULL;
     g_raw_send_ready_calls = &ready_calls;
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_send_ready_handler (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send_ready_handler (
       socket, &raw_send_ready_counting_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_send_ready_handler (socket, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_send_ready_handler (socket, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     zlink::socket_base_t *socket_base =
@@ -574,11 +574,11 @@ void test_socket_send_ready_handler_rejects_sub_and_xsub ()
       zlink_subscribe_handler (xsub, &discard_spot_message, NULL));
 
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_socket_send_ready_handler (sub, &raw_send_ready_counting_handler, NULL));
+      -1, zlink_send_ready_handler (sub, &raw_send_ready_counting_handler, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_EQUAL_INT (
       -1,
-      zlink_socket_send_ready_handler (xsub, &raw_send_ready_counting_handler, NULL));
+      zlink_send_ready_handler (xsub, &raw_send_ready_counting_handler, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     close_socket_zero_linger (sub);
@@ -721,7 +721,7 @@ void test_service_monitor_open_dispatches_events ()
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_set_routing_id (discovery, "disc-handler", 12));
+      zlink_set_routing_id (discovery, "disc-handler", 12));
 
     void *monitor =
       zlink_discovery_monitor_open (discovery, ZLINK_DISCOVERY_SERVICE_UP
@@ -889,7 +889,7 @@ void test_service_monitor_self_close_defers_until_callback_return ()
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_set_routing_id (discovery, "disc-self-close", 15));
+      zlink_set_routing_id (discovery, "disc-self-close", 15));
 
     callback_close_probe_t probe;
     probe.monitor = zlink_discovery_monitor_open (
@@ -956,7 +956,7 @@ void test_service_monitor_close_during_callback_returns_ebusy ()
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_set_routing_id (discovery, "disc-close-ebusy", 17));
+      zlink_set_routing_id (discovery, "disc-close-ebusy", 17));
 
     callback_close_probe_t probe;
     probe.monitor = zlink_discovery_monitor_open (
@@ -1035,7 +1035,7 @@ void test_service_monitor_callback_can_query_parent_without_deadlock ()
     void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_set_routing_id (discovery, "disc-query", 10));
+      zlink_set_routing_id (discovery, "disc-query", 10));
 
     monitor_parent_query_probe_t probe;
     probe.discovery = discovery;

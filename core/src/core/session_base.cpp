@@ -35,14 +35,14 @@ zlink::session_base_t *zlink::session_base_t::create (class io_thread_t *io_thre
 {
     session_base_t *s = NULL;
     switch (options_.type) {
-        case ZLINK_DEALER:
-        case ZLINK_ROUTER:
-        case ZLINK_PUB:
-        case ZLINK_XPUB:
-        case ZLINK_SUB:
-        case ZLINK_XSUB:
-        case ZLINK_PAIR:
-        case ZLINK_STREAM:
+        case ZLINK_CORE_SOCKET_DEALER:
+        case ZLINK_CORE_SOCKET_ROUTER:
+        case ZLINK_CORE_SOCKET_PUB:
+        case ZLINK_CORE_SOCKET_XPUB:
+        case ZLINK_CORE_SOCKET_SUB:
+        case ZLINK_CORE_SOCKET_XSUB:
+        case ZLINK_CORE_SOCKET_PAIR:
+        case ZLINK_CORE_SOCKET_STREAM:
             s = new (std::nothrow)
               session_base_t (io_thread_, active_, socket_, options_, addr_);
             break;
@@ -162,7 +162,7 @@ int zlink::session_base_t::push_msg (msg_t *msg_)
         }
     }
 
-    if (options.type == ZLINK_STREAM && _socket && _pipe) {
+    if (options.type == ZLINK_CORE_SOCKET_STREAM && _socket && _pipe) {
         const int dispatch_rc = _socket->stream_dispatch_msg_from_io (msg_, _pipe);
         if (dispatch_rc < 0)
             return -1;
@@ -485,7 +485,7 @@ void zlink::session_base_t::reconnect ()
     //  For subscriber sockets we hiccup the inbound pipe, which will cause
     //  the socket object to resend all the subscriptions.
     if (_pipe
-        && (options.type == ZLINK_SUB || options.type == ZLINK_XSUB))
+        && (options.type == ZLINK_CORE_SOCKET_SUB || options.type == ZLINK_CORE_SOCKET_XSUB))
         _pipe->hiccup ();
 }
 
@@ -495,7 +495,7 @@ void zlink::session_base_t::start_connecting (bool wait_)
 
     //  Choose I/O thread to run connecter in. Given that we are already
     //  running in an I/O thread, there must be at least one available.
-    io_thread_t *io_thread = options.type == ZLINK_STREAM
+    io_thread_t *io_thread = options.type == ZLINK_CORE_SOCKET_STREAM
                                ? choose_io_thread_stream (options.affinity)
                                : choose_io_thread (options.affinity);
     zlink_assert (io_thread);
@@ -540,13 +540,13 @@ void zlink::session_base_t::start_connecting (bool wait_)
 #ifdef ZLINK_HAVE_OPENPGM
     if (_addr->protocol == protocol_name::pgm
         || _addr->protocol == protocol_name::epgm) {
-        zlink_assert (options.type == ZLINK_PUB || options.type == ZLINK_XPUB
-                    || options.type == ZLINK_SUB || options.type == ZLINK_XSUB);
+        zlink_assert (options.type == ZLINK_CORE_SOCKET_PUB || options.type == ZLINK_CORE_SOCKET_XPUB
+                    || options.type == ZLINK_CORE_SOCKET_SUB || options.type == ZLINK_CORE_SOCKET_XSUB);
 
         const bool udp_encapsulation =
           _addr->protocol == protocol_name::epgm;
 
-        if (options.type == ZLINK_PUB || options.type == ZLINK_XPUB) {
+        if (options.type == ZLINK_CORE_SOCKET_PUB || options.type == ZLINK_CORE_SOCKET_XPUB) {
             pgm_sender_t *pgm_sender =
               new (std::nothrow) pgm_sender_t (io_thread, options);
             alloc_assert (pgm_sender);

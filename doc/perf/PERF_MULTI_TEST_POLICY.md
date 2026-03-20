@@ -1,8 +1,8 @@
 # zlink Multi Performance Test Policy
 
 > **적용 범위**: zlink 전체 (core + bindings) — multi-client 벤치마크
-> **Policy Version**: 1.6
-> **Date**: 2026-02-27
+> **Policy Version**: 1.7
+> **Date**: 2026-03-20
 > **Scope**: zlink multi-client 성능 테스트 정책
 >
 > 본 정책은 `perf/multi`의 C++ 벤치마크뿐 아니라 모든 바인딩 라이브러리(`bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/node`, `bindings/python`)의 multi-client 성능 테스트에도 동일하게 적용된다.
@@ -39,8 +39,11 @@
       이벤트에 따라 recv drain과 send 재개를 처리한다.
     - `send_ready_handler`는 사용하지 않는다.
   - **callback 모델** (`--recv callback`):
-    - recv: `zlink_recv_handler()` 등록 → 메시지 도착 시 I/O thread에서 콜백 호출.
-      `zlink_recv()` / `zlink_msg_recv()` 동기 수신 API는 측정 경로에 사용하지 않는다.
+    - multi suite에서 callback 모델은 `MULTI_SPOT`, `MULTI_STREAM`에만
+      허용된다.
+    - recv: pattern별 callback API 등록 → 메시지 도착 시 I/O thread에서 콜백
+      호출. `zlink_recv()` / `zlink_msg_recv()` 동기 수신 API는 측정 경로에
+      사용하지 않는다.
     - callback hot path는 메시지에서 metric header와 timestamp 등 필요한 최소
       메타데이터만 추출해 bounded queue로 enqueue한다. `zlink_msg_t` handle,
       payload pointer, multipart parts 소유권은 callback 밖으로 넘기지 않는다.
@@ -56,6 +59,7 @@
       I/O thread callback과 metric worker가 역할을 분리한다.
     - poller는 사용하지 않는다.
   - 한 측정 구간에서 두 모델의 recv/send 메커니즘을 섞지 않는다.
+  - 지원하지 않는 multi pattern에서 `--recv callback`을 주면 즉시 실패한다.
 - `while (send 실패)` 식의 즉시 재시도는 양쪽 모델 모두 금지한다.
 - backpressure 전략 (역할별, 양쪽 모델 공통 — 통지 메커니즘만 다름)
   - **echo 서버** (소켓 1개 × 클라이언트 N개):
@@ -196,7 +200,8 @@ perf/multi/
 - `SKIP` 토큰 형식: `SKIP,<lib>,<pattern>,<transport>,<reason>`
 - **stderr 기반 unsupported 판정**: 바이너리 stderr에 `protocol not supported` 문자열이 포함되면 실행 엔진이 해당 조합을 `unsupported`로 자동 분류한다. 이는 런타임에서 지원되지 않는 transport를 감지하는 메커니즘이다.
 - 동일 조합에서 RESULT line과 UNSUPPORTED/SKIP 토큰이 동시에 출력되면 **RESULT line을 우선**한다.
-- MULTI_STREAM / MULTI_STREAM_CALLBACK에서 테스트 모델 위반(예: non-STREAM server 사용, zlink STREAM client `connect()` 경로 사용)은 `UNSUPPORTED`/`SKIP` 대상이 아니다.
+- MULTI_STREAM에서 테스트 모델 위반(예: non-STREAM server 사용, zlink STREAM
+  client `connect()` 경로 사용)은 `UNSUPPORTED`/`SKIP` 대상이 아니다.
 - 해당 구현 경로는 코드에서 삭제하고, `zlink STREAM server(bind-only) + raw client(connect)` 모델로 재구현해야 한다.
 
 ### 3.2 유효성 규칙
@@ -450,8 +455,8 @@ core/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
 # 여러 패턴
 core/perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_DEALER,MULTI_PUBSUB
 
-# callback 모델로 실행
-core/perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_DEALER --recv callback
+# callback 모델로 실행 가능한 multi 패턴
+core/perf/run_benchmarks_multi.sh --pattern MULTI_SPOT --recv callback
 
 # 클라이언트 수/메시지 크기 제한
 core/perf/run_benchmarks_multi.sh --clients 1000 --msg-sizes 64,1024
@@ -487,11 +492,12 @@ core/perf/run_benchmarks_multi.sh --warmup 5 --duration 10
 # 터미널 2 (client)
 ./core/build/linux-x64/bin/comp_src_dealer_dealer_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 
-# 예시: MULTI_STREAM / MULTI_STREAM_CALLBACK (server는 패턴별 바이너리, client는 공유 바이너리)
-./core/build/linux-x64/bin/comp_src_stream_callback_server current tcp
+# 예시: MULTI_STREAM (recv mode)
+./core/build/linux-x64/bin/comp_src_stream_server current tcp
 ./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 
-./core/build/linux-x64/bin/comp_src_stream_server current tcp
+# 예시: MULTI_STREAM (callback mode)
+./core/build/linux-x64/bin/comp_src_stream_server current tcp --recv callback
 ./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 ```
 
@@ -791,7 +797,7 @@ active warmup은 active phase 시작 전 추가 송수신 워밍업을 수행하
 
 | 방향 | 단위 | 의미 | 측정 지점 | 패턴 |
 |------|------|------|-----------|------|
-| echo | `ops/s` | 왕복 완료 수/초 | client 측 recv | MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_GATEWAY, MULTI_STREAM, MULTI_STREAM_CALLBACK |
+| echo | `ops/s` | 왕복 완료 수/초 | client 측 recv | MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_GATEWAY, MULTI_STREAM |
 | one-way | `msg/s` | 단방향 수신 수/초 | receiver 측 recv | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT |
 
 - echo 패턴: client가 send → server echo → client recv. 1 rtt = 2 message hops. client가 echo를 수신한 횟수를 카운트한다.
@@ -836,7 +842,7 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 
 | 유형 | divisor | 적용 패턴 |
 |------|---------|-----------|
-| 양방향 RTT | `2` | MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_GATEWAY, MULTI_STREAM, MULTI_STREAM_CALLBACK |
+| 양방향 RTT | `2` | MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_GATEWAY, MULTI_STREAM |
 | 단방향 | `received_count` | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT |
 
 ### 9.2 계산식
@@ -913,7 +919,7 @@ one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 
 ### 11.1 지원 패턴
 
-MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MULTI_GATEWAY, MULTI_SPOT, MULTI_STREAM, MULTI_STREAM_CALLBACK
+MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MULTI_GATEWAY, MULTI_SPOT, MULTI_STREAM
 
 #### 바인딩 소스 파일 명명 규칙
 
@@ -928,7 +934,8 @@ MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MUL
 | Node | `perf_multi_<pattern>_server.js` | `perf_multi_<pattern>_client.js` | `perf_multi_stream_server.js` |
 | Python | `perf_multi_<pattern>_server.py` | `perf_multi_<pattern>_client.py` | `perf_multi_stream_server.py` |
 
-- STREAM 계열은 각각 별도 server/client 파일: `stream`, `stream_callback`
+- STREAM 계열은 public pattern 이름을 `stream` 하나만 사용하고, recv mode는
+  `--recv`로만 선택한다
 - 공통 유틸리티 파일도 `perf_` 접두어: `perf_common.hpp`, `PerfCommon.cs`, `PerfUtil.java`, `perf_common.py` 등
 - 실행 스크립트: bindings는 `multi/run_benchmarks.sh` / `.ps1`, core는 `run_benchmarks_multi.sh` / `.ps1` ([PERF_POLICY.md § 3.1](PERF_POLICY.md) 참조)
 - 파일 분리 대신 단일 runner를 사용하는 경우에도 실행 시점에서는 반드시 server/client 별도 프로세스로 동작해야 하며 READY/RESULT 프로토콜은 동일하게 준수한다.
@@ -946,25 +953,27 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | MULTI_GATEWAY | `*_gateway_server.cpp` | `comp_src_gateway_server` | `*_gateway_client.cpp` | `comp_src_gateway_client` |
 | MULTI_SPOT | `*_spot_server.cpp` | `comp_src_spot_server` | `*_spot_client.cpp` | `comp_src_spot_client` |
 | MULTI_STREAM | `*_stream_server.cpp` | `comp_src_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
-| MULTI_STREAM_CALLBACK | `*_stream_callback_server.cpp` | `comp_src_stream_callback_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
-> STREAM client 예외(core): `MULTI_STREAM` / `MULTI_STREAM_CALLBACK` client는 [PERF_POLICY.md § 8.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. server는 패턴별 분리를 유지해야 한다.
+> STREAM client 예외(core): `MULTI_STREAM` client는 [PERF_POLICY.md § 8.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. server는 pattern 이름과 별개로 recv mode별 내부 entrypoint를 가질 수 있지만, public pattern은 `MULTI_STREAM` 하나만 유지한다.
 
 #### MULTI_STREAM 계열 패턴
 
 > **STREAM 소켓은 multi suite에서만 테스트한다.** single suite에서는 STREAM 테스트를 수행하지 않는다. STREAM의 성능 특성은 대량 동시 연결 환경(multi)에서 평가하는 것이 의미 있으므로, 모든 STREAM 벤치마크는 multi suite에 집중한다.
 
-| 패턴 | server 수신 방식 | 설명 |
-|------|-----------------|------|
-| MULTI_STREAM | recv loop | 기존 소켓 recv API로 수신 |
-| MULTI_STREAM_CALLBACK | callback dispatch | stream dispatch callback API로 수신 |
+| 패턴 | `--recv` | server 수신 방식 | 설명 |
+|------|----------|-----------------|------|
+| MULTI_STREAM | `recv` | recv loop | 기존 소켓 recv API로 수신 |
+| MULTI_STREAM | `callback` | callback dispatch | stream dispatch callback API로 수신 |
 
-- 두 패턴은 동일한 transport, size, clients 설정을 공유하며, STREAM 계열은 recv 버전(`MULTI_STREAM`)과 callback 버전(`MULTI_STREAM_CALLBACK`)을 모두 구현해야 한다.
+- STREAM 계열은 동일한 transport, size, clients 설정을 공유하며, recv/callback
+  두 mode를 모두 지원해야 한다.
 - **Wire protocol**: client는 `[4B length (big-endian)][payload]` (len32be framing)으로 통일한다. server 수신 방식만 패턴별로 다르다. 상세는 [PERF_POLICY.md § 2.0.3 Wire Protocol](PERF_POLICY.md)을 참조한다.
 - 수신 방식만 다르므로 throughput/latency 차이를 직접 비교할 수 있다.
 - `MULTI_STREAM_LEN32BE`는 삭제되었다. 문서, 스크립트, 빌드 설정, 코드에 잔존 구현이 있으면 모두 삭제해야 하며, 삭제된 패턴을 alias/legacy path로 유지하지 않는다.
-- MULTI_STREAM / MULTI_STREAM_CALLBACK의 server 프로세스는 반드시 zlink STREAM 소켓으로 `bind`해야 하며, DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로 대체할 수 없다.
+- MULTI_STREAM의 server 프로세스는 recv/callback mode와 무관하게 반드시 zlink
+  STREAM 소켓으로 `bind`해야 하며, DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로
+  대체할 수 없다.
 - client 프로세스는 raw transport(`tcp`,`tls`,`ws`,`wss`)로 `connect`해야 하며, zlink STREAM 소켓의 client `connect()` 경로를 사용하지 않는다.
 - 각 size 측정에서 `connect_ok`는 `target clients`와 동일해야 한다(100%). 하나라도 미달하면 해당 조합은 `fail`이다.
 - 위 모델을 위반한 구현은 정책 위반이므로 해당 코드를 삭제하고 정책 모델로 다시 구현해야 한다.
@@ -975,7 +984,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | 패턴군 | 크기 |
 |--------|------|
 | MULTI_DEALER / MULTI_ROUTER / MULTI_PUBSUB | `[64, 256, 1024, 65536, 131072, 262144]` |
-| MULTI_STREAM / MULTI_STREAM_CALLBACK | `[64, 256, 1024, 65536]` |
+| MULTI_STREAM | `[64, 256, 1024, 65536]` |
 | MULTI_GATEWAY / MULTI_SPOT | `[64, 256, 1024, 65536, 131072, 262144]` |
 
 - STREAM 계열은 대량 동시 연결 환경에서 테스트하므로 65536B까지만 측정한다.
@@ -986,7 +995,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 |--------|-----------|
 | MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB | tcp, tls, ws, wss (Python 엔진 기본값에 ipc 포함, 단 shell wrapper 기본값은 tcp,tls,ws,wss; Windows: ipc 제외) |
 | MULTI_GATEWAY, MULTI_SPOT | tcp, tls, ws, wss |
-| MULTI_STREAM, MULTI_STREAM_CALLBACK | tcp, tls, ws, wss |
+| MULTI_STREAM | tcp, tls, ws, wss |
 
 ---
 
@@ -1097,7 +1106,11 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | cold path (setup/teardown/결과 출력) | 제한 없음 | — |
 
 - **이유**: lock contention이 throughput/latency 측정값에 포함되어 벤치마크 대상(라이브러리 성능)이 아닌 동기화 오버헤드를 측정하게 된다.
-- **callback recv 모델**: 모든 패턴에서 recv는 I/O thread의 콜백으로 처리된다. recv callback은 metric header decode, timestamp 취득, protocol상 즉시 필요한 send, bounded queue enqueue까지만 수행한다. throughput/latency 집계와 phase 판정은 callback 밖 worker/app thread가 맡는다.
+- **callback recv 모델**: callback 지원 패턴(`MULTI_SPOT`, `MULTI_STREAM`)에서만
+  recv는 I/O thread의 콜백으로 처리된다. recv callback은 metric header decode,
+  timestamp 취득, protocol상 즉시 필요한 send, bounded queue enqueue까지만
+  수행한다. throughput/latency 집계와 phase 판정은 callback 밖
+  worker/app thread가 맡는다.
 - **queue payload 규칙**: queue에는 작은 POD metric event만 넣는다. `zlink_msg_t`, payload pointer, multipart parts 포인터, 소유권 있는 버퍼를 callback 밖으로 넘기지 않는다.
 - **callback/send-ready 직렬화**: 동일 소켓의 콜백은 직렬화되므로 same-socket pending deque나 send_pending 플래그는 lock 없이 유지할 수 있다. 다만 metric worker와의 handoff는 별도 실행 컨텍스트이므로 bounded SPSC 또는 lock-free queue를 사용한다.
 - **app thread와 I/O thread(callback) 간 동기화**: callback hot path와 active phase worker 집계 경로에서는 `std::atomic`과 bounded lock-free/SPSC queue만 사용한다. blocking lock은 사용하지 않는다. 결과 출력과 최종 정리만 cold path로 분리한다.
@@ -1115,7 +1128,11 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | routing_id | 필요 시 고정 버퍼에 1회 저장 | 매 메시지마다 `std::vector<unsigned char>` 할당 |
 | 카운터/통계 | `std::atomic<int64_t>`, bounded SPSC queue의 경량 event | active 구간마다 heap 할당이 필요한 동적 컨테이너 push |
 
-- **원칙**: active phase(throughput/latency)에서 벤치마크 인프라 코드는 동적 메모리 할당 없이 미리 준비된 버퍼와 bounded queue를 재사용해야 한다. 측정 결과에 라이브러리 외 오버헤드가 포함되면 패턴 간 비교(예: MULTI_STREAM vs MULTI_STREAM_CALLBACK)가 공정하지 않다.
+- **원칙**: active phase(throughput/latency)에서 벤치마크 인프라 코드는 동적
+  메모리 할당 없이 미리 준비된 버퍼와 bounded queue를 재사용해야 한다. 측정
+  결과에 라이브러리 외 오버헤드가 포함되면 같은 pattern의 recv/callback mode
+  비교(예: `MULTI_STREAM --recv recv` vs `MULTI_STREAM --recv callback`)가
+  공정하지 않다.
 - warmup phase 이전(setup/connect)과 active 이후(결과 출력/정리)에서는 할당/복사에 제한이 없다.
 - `zlink_msg_data()` 반환 포인터를 직접 참조하여 불필요한 복사를 피한다. 내용 검증이 필요 없는 throughput 측정에서는 payload를 읽지 않는다.
 - Multi의 대량 클라이언트(1000~10000) 환경에서는 per-client 버퍼도 setup 시 사전 할당하고, duration 내에서 재사용한다.
@@ -1162,7 +1179,7 @@ def bandwidth_mbps(throughput, msg_size, is_echo):
     return throughput * msg_size * multiplier / 1_000_000
 
 def latency_rtt_us(elapsed_us, roundtrip_count):
-    """MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_GATEWAY, MULTI_STREAM, MULTI_STREAM_CALLBACK"""
+    """MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_GATEWAY, MULTI_STREAM"""
     return elapsed_us / max(1, roundtrip_count * 2)
 
 def latency_oneway_us(elapsed_us, count):

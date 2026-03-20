@@ -707,7 +707,7 @@ bool recv_stream_routing_id_and_payload (void *socket_,
 {
     zlink_msg_t rid_msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&rid_msg));
-    if (zlink_msg_recv (&rid_msg, socket_, 0) < 0) {
+    if (test_recv_single_msg (&rid_msg, socket_, 0) < 0) {
         zlink_msg_close (&rid_msg);
         return false;
     }
@@ -726,7 +726,7 @@ bool recv_stream_routing_id_and_payload (void *socket_,
         errno = EPROTO;
         return false;
     }
-    return zlink_msg_recv (payload_out_, socket_, 0) >= 0;
+    return test_recv_single_msg (payload_out_, socket_, 0) >= 0;
 }
 
 void stream_handler (const zlink_routing_id_t *rid_,
@@ -750,7 +750,7 @@ void stream_handler (const zlink_routing_id_t *rid_,
         probe->payload[copy_size] = '\0';
         ++probe->calls;
         probe->send_ok =
-          zlink_stream_send_msg (probe->socket, rid_, &parts_[0], 0)
+          test_stream_send_single_msg (probe->socket, rid_, &parts_[0], 0)
           == static_cast<int> (size);
     }
 
@@ -774,8 +774,8 @@ bool wait_for_stream_callback (stream_callback_probe_t *probe_, int timeout_ms_)
 void run_pair_ready_matrix (monitor_mode_t monitor_mode_,
                             socket_mode_t socket_mode_)
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
     configure_pair_socket (server);
@@ -849,8 +849,8 @@ void run_pair_ready_matrix (monitor_mode_t monitor_mode_,
 void run_dealer_router_ready_matrix (monitor_mode_t monitor_mode_,
                                      socket_mode_t socket_mode_)
 {
-    void *server = test_context_socket (ZLINK_ROUTER);
-    void *client = test_context_socket (ZLINK_DEALER);
+    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *client = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
     configure_pair_socket (server);
@@ -954,8 +954,8 @@ void run_dealer_router_ready_matrix (monitor_mode_t monitor_mode_,
 void run_router_router_ready_matrix (monitor_mode_t monitor_mode_,
                                      socket_mode_t socket_mode_)
 {
-    void *server = test_context_socket (ZLINK_ROUTER);
-    void *client = test_context_socket (ZLINK_ROUTER);
+    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *client = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
     configure_pair_socket (server);
@@ -1061,8 +1061,8 @@ void run_router_router_ready_matrix (monitor_mode_t monitor_mode_,
 void run_pubsub_ready_matrix (monitor_mode_t monitor_mode_,
                               socket_mode_t socket_mode_)
 {
-    void *pub = test_context_socket (ZLINK_PUB);
-    void *sub = test_context_socket (ZLINK_SUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
     configure_pair_socket (pub);
@@ -1161,7 +1161,7 @@ void run_stream_ready_matrix (monitor_mode_t monitor_mode_,
 #if defined(ZLINK_HAVE_WINDOWS)
     TEST_IGNORE_MESSAGE ("STREAM raw TCP regression skipped on Windows");
 #else
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_pair_socket (server);
 
@@ -1215,7 +1215,7 @@ void run_stream_ready_matrix (monitor_mode_t monitor_mode_,
         TEST_ASSERT_EQUAL_MEMORY (routing_id, rid.data, stream_routing_id_size);
         TEST_ASSERT_EQUAL_MEMORY ("cli", zlink_msg_data (&payload), 3);
         TEST_ASSERT_EQUAL_INT (
-          3, TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_send_msg (server, &rid, &payload, 0)));
+          3, TEST_ASSERT_SUCCESS_ERRNO (test_stream_send_single_msg (server, &rid, &payload, 0)));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload));
     } else {
         unsigned char routing_id[stream_routing_id_size];

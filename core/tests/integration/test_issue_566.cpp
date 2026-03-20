@@ -18,7 +18,7 @@ void test_issue_566 ()
     void *ctx2 = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx2);
 
-    void *router = zlink_socket (ctx1, ZLINK_ROUTER);
+    void *router = zlink_socket (ctx1, ZLINK_SOCKET_ROUTER);
     int on = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &on, sizeof (on)));
@@ -28,7 +28,7 @@ void test_issue_566 ()
     for (int cycle = 0; cycle < 100; cycle++) {
         //  Create dealer with unique explicit routing id
         //  We assume the router learns this out-of-band
-        void *dealer = zlink_socket (ctx2, ZLINK_DEALER);
+        void *dealer = zlink_socket (ctx2, ZLINK_SOCKET_DEALER);
         //  Leave space for NULL char from sprintf, gcc warning
         char routing_id[11];
         snprintf (routing_id, 11 * sizeof (char), "%09d", cycle);

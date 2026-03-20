@@ -8,14 +8,14 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test_basic ()
 {
     //  Create a publisher
-    void *pub = test_context_socket (ZLINK_XPUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_XPUB);
     int manual = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_pub_option (pub, ZLINK_PUB_OPT_MANUAL, &manual, 4));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
 
     //  Create a subscriber
-    void *sub = test_context_socket (ZLINK_XSUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_XSUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, "inproc://soname"));
 
     //  Subscribe for A
@@ -42,7 +42,7 @@ void test_basic ()
 void test_unsubscribe_manual ()
 {
     //  Create a publisher
-    void *pub = test_context_socket (ZLINK_XPUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
 
     //  set pub socket options
@@ -51,7 +51,7 @@ void test_unsubscribe_manual ()
       zlink_set_pub_option (pub, ZLINK_PUB_OPT_MANUAL, &manual, sizeof (manual)));
 
     //  Create a subscriber
-    void *sub = test_context_socket (ZLINK_XSUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_XSUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, "inproc://soname"));
 
     //  Subscribe for A
@@ -122,23 +122,23 @@ void test_xpub_proxy_unsubscribe_on_disconnect ()
     int manual = 1;
 
     // proxy frontend
-    void *xsub_proxy = test_context_socket (ZLINK_XSUB);
+    void *xsub_proxy = test_context_socket (ZLINK_SOCKET_XSUB);
     bind_loopback_ipv4 (xsub_proxy, my_endpoint_frontend,
                         sizeof my_endpoint_frontend);
 
     // proxy backend
-    void *xpub_proxy = test_context_socket (ZLINK_XPUB);
+    void *xpub_proxy = test_context_socket (ZLINK_SOCKET_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_pub_option (xpub_proxy, ZLINK_PUB_OPT_MANUAL, &manual, 4));
     bind_loopback_ipv4 (xpub_proxy, my_endpoint_backend,
                         sizeof my_endpoint_backend);
 
     // publisher
-    void *pub = test_context_socket (ZLINK_PUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (pub, my_endpoint_frontend));
 
     // first subscriber subscribes
-    void *sub1 = test_context_socket (ZLINK_SUB);
+    void *sub1 = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub1, my_endpoint_backend));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub1, topic_buff));
@@ -154,7 +154,7 @@ void test_xpub_proxy_unsubscribe_on_disconnect ()
     send_array_expect_success (xsub_proxy, subscription, 0);
 
     // second subscriber subscribes
-    void *sub2 = test_context_socket (ZLINK_SUB);
+    void *sub2 = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub2, my_endpoint_backend));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub2, topic_buff));
@@ -246,19 +246,19 @@ void test_missing_subscriptions ()
     int manual = 1;
 
     // proxy frontend
-    void *xsub_proxy = test_context_socket (ZLINK_XSUB);
+    void *xsub_proxy = test_context_socket (ZLINK_SOCKET_XSUB);
     bind_loopback_ipv4 (xsub_proxy, my_endpoint_frontend,
                         sizeof my_endpoint_frontend);
 
     // proxy backend
-    void *xpub_proxy = test_context_socket (ZLINK_XPUB);
+    void *xpub_proxy = test_context_socket (ZLINK_SOCKET_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_pub_option (xpub_proxy, ZLINK_PUB_OPT_MANUAL, &manual, 4));
     bind_loopback_ipv4 (xpub_proxy, my_endpoint_backend,
                         sizeof my_endpoint_backend);
 
     // publisher
-    void *pub = test_context_socket (ZLINK_PUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (pub, my_endpoint_frontend));
 
     // Here's the problem: because subscribers subscribe in quick succession,
@@ -266,7 +266,7 @@ void test_missing_subscriptions ()
     // the second. This causes the first subscription to get lost.
 
     // first subscriber
-    void *sub1 = test_context_socket (ZLINK_SUB);
+    void *sub1 = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub1, my_endpoint_backend));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub1, topic1));
 
@@ -281,7 +281,7 @@ void test_missing_subscriptions ()
     send_array_expect_success (xsub_proxy, subscription1, 0);
 
     // second subscriber
-    void *sub2 = test_context_socket (ZLINK_SUB);
+    void *sub2 = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub2, my_endpoint_backend));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub2, topic2));
 
@@ -340,14 +340,14 @@ void test_unsubscribe_cleanup ()
     char my_endpoint[MAX_SOCKET_STRING];
 
     //  Create a publisher
-    void *pub = test_context_socket (ZLINK_XPUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_XPUB);
     int manual = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_pub_option (pub, ZLINK_PUB_OPT_MANUAL, &manual, 4));
     bind_loopback_ipv4 (pub, my_endpoint, sizeof my_endpoint);
 
     //  Create a subscriber
-    void *sub = test_context_socket (ZLINK_XSUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_XSUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, my_endpoint));
 
     //  Subscribe for A
@@ -383,7 +383,7 @@ void test_unsubscribe_cleanup ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_unset_subscription (pub, "XA"));
 
     // reconnect
-    sub = test_context_socket (ZLINK_XSUB);
+    sub = test_context_socket (ZLINK_SOCKET_XSUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, my_endpoint));
 
     // send a subscription for B
@@ -413,11 +413,11 @@ void test_unsubscribe_cleanup ()
 void test_user_message ()
 {
     //  Create a publisher
-    void *pub = test_context_socket (ZLINK_XPUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
 
     //  Create a subscriber
-    void *sub = test_context_socket (ZLINK_XSUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_XSUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, "inproc://soname"));
 
     //  Send some data that is neither sub nor unsub

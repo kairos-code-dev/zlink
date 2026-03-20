@@ -279,8 +279,8 @@ double measure_pubsub_latency_us (void *ctx,
                                   int ready_timeout_ms,
                                   int poll_timeout_ms)
 {
-    void *pub = zlink_socket (ctx, ZLINK_PUB);
-    void *sub = zlink_socket (ctx, ZLINK_SUB);
+    void *pub = zlink_socket (ctx, ZLINK_SOCKET_PUB);
+    void *sub = zlink_socket (ctx, ZLINK_SOCKET_SUB);
     if (!pub || !sub) {
         if (sub)
             zlink_close (sub);
@@ -412,7 +412,7 @@ void run_multi_pubsub (const std::string &transport,
     if (!ctx.valid ())
         return;
 
-    void *pub = zlink_socket (ctx.get (), ZLINK_PUB);
+    void *pub = zlink_socket (ctx.get (), ZLINK_SOCKET_PUB);
     if (!pub)
         return;
 
@@ -426,7 +426,7 @@ void run_multi_pubsub (const std::string &transport,
 
     std::vector<void *> subs (settings.clients, NULL);
     for (size_t i = 0; i < subs.size (); ++i) {
-        subs[i] = zlink_socket (ctx.get (), ZLINK_SUB);
+        subs[i] = zlink_socket (ctx.get (), ZLINK_SOCKET_SUB);
         if (!subs[i]) {
             for (size_t j = 0; j < i; ++j)
                 zlink_close (subs[j]);

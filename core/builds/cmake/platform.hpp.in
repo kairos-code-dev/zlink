@@ -11,8 +11,8 @@
 #cmakedefine ZLINK_HAVE_ASIO_SSL
 #cmakedefine ZLINK_HAVE_ASIO_WS
 #cmakedefine ZLINK_HAVE_ASIO_WSS
-// Legacy poller macros (no longer used - ASIO is the only backend)
-// These are kept for potential compatibility but are never defined
+// Poller feature macros retained only as inert placeholders.
+// ASIO is the only supported backend and these are never defined.
 #cmakedefine ZLINK_IOTHREAD_POLLER_USE_KQUEUE
 #cmakedefine ZLINK_IOTHREAD_POLLER_USE_EPOLL
 #cmakedefine ZLINK_IOTHREAD_POLLER_USE_EPOLL_CLOEXEC

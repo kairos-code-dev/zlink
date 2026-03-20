@@ -112,8 +112,8 @@ static void run_pair (const char *transport_)
     if (!is_transport_available (transport_))
         TEST_IGNORE_MESSAGE ("transport not available");
 
-    void *server = create_sync_socket (ZLINK_PAIR);
-    void *client = create_sync_socket (ZLINK_PAIR);
+    void *server = create_sync_socket (ZLINK_SOCKET_PAIR);
+    void *client = create_sync_socket (ZLINK_SOCKET_PAIR);
 
     tls_test_files_t tls_files;
     if (is_tls_transport (transport_)) {
@@ -143,8 +143,8 @@ static void run_pubsub (const char *transport_)
     if (!is_transport_available (transport_))
         TEST_IGNORE_MESSAGE ("transport not available");
 
-    void *pub = create_sync_socket (ZLINK_PUB);
-    void *sub = create_sync_socket (ZLINK_SUB);
+    void *pub = create_sync_socket (ZLINK_SOCKET_PUB);
+    void *sub = create_sync_socket (ZLINK_SOCKET_SUB);
 
     tls_test_files_t tls_files;
     if (is_tls_transport (transport_)) {
@@ -177,8 +177,8 @@ static void run_router_dealer (const char *transport_)
     if (!is_transport_available (transport_))
         TEST_IGNORE_MESSAGE ("transport not available");
 
-    void *router = create_sync_socket (ZLINK_ROUTER);
-    void *dealer = create_sync_socket (ZLINK_DEALER);
+    void *router = create_sync_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = create_sync_socket (ZLINK_SOCKET_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (dealer, "DEALER1", 7));
@@ -216,8 +216,8 @@ static void run_router_router (const char *transport_)
     if (!is_transport_available (transport_))
         TEST_IGNORE_MESSAGE ("transport not available");
 
-    void *server = create_sync_socket (ZLINK_ROUTER);
-    void *client = create_sync_socket (ZLINK_ROUTER);
+    void *server = create_sync_socket (ZLINK_SOCKET_ROUTER);
+    void *client = create_sync_socket (ZLINK_SOCKET_ROUTER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (server, "SERVER", 6));

@@ -41,7 +41,7 @@ void zlink::mailbox_t::send (const command_t &cmd_)
     _cpipe.write (cmd_, false);
     const bool ok = _cpipe.flush ();
     if (!ok) {
-        // Signal all registered signalers for ZLINK_SOCKOPT_FD support
+        // Signal all registered signalers for ZLINK_INTERNAL_OPT_FD support
         for (std::vector<signaler_t *>::iterator it = _signalers.begin (),
                                                  end = _signalers.end ();
              it != end; ++it) {

@@ -7,7 +7,7 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 void test_x ()
 {
-    void *sock = test_context_socket (ZLINK_PUB);
+    void *sock = test_context_socket (ZLINK_SOCKET_PUB);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_connect (sock, "tcp://127.0.0.1:0;localhost:1234"));

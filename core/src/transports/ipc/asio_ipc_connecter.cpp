@@ -308,7 +308,7 @@ void zlink::asio_ipc_connecter_t::create_engine (fd_t fd_,
     alloc_assert (transport.get ());
 
     i_engine *engine = NULL;
-    if (options.type == ZLINK_STREAM) {
+    if (options.type == ZLINK_CORE_SOCKET_STREAM) {
         engine = new (std::nothrow) asio_raw_engine_t (
           fd_, options, endpoint_pair, std::move (transport));
     } else {

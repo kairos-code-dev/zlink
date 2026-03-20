@@ -8,14 +8,14 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test (const char *address)
 {
     //  Create a publisher
-    void *publisher = test_context_socket (ZLINK_PUB);
+    void *publisher = test_context_socket (ZLINK_SOCKET_PUB);
     char my_endpoint[MAX_SOCKET_STRING];
 
     //  Bind publisher
     test_bind (publisher, address, my_endpoint, MAX_SOCKET_STRING);
 
     //  Create a subscriber
-    void *subscriber = test_context_socket (ZLINK_SUB);
+    void *subscriber = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (subscriber, my_endpoint));
 
     //  Subscribe to all messages.

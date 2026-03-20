@@ -69,7 +69,7 @@ zlink::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _handover (false),
     _dispatch_source_rid_valid (false)
 {
-    options.type = ZLINK_ROUTER;
+    options.type = ZLINK_CORE_SOCKET_ROUTER;
     options.recv_routing_id = true;
     options.can_send_hello_msg = true;
     options.can_recv_disconnect_msg = true;

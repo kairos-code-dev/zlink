@@ -138,7 +138,7 @@ void test_metadata_parse_invalid ()
 void test_metadata_add_basic_properties ()
 {
     zlink::options_t options;
-    options.type = ZLINK_ROUTER;
+    options.type = ZLINK_CORE_SOCKET_ROUTER;
     const char *routing_id = "RID";
     memcpy (options.routing_id, routing_id, 3);
     options.routing_id_size = 3;

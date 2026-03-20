@@ -8,7 +8,7 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test ()
 {
     //  Create a publisher
-    void *pub = test_context_socket (ZLINK_XPUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
 
     //  set pub socket options
@@ -16,7 +16,7 @@ void test ()
       zlink_set_pub_option (pub, ZLINK_PUB_OPT_WELCOME_MSG, "W", 1));
 
     //  Create a subscriber
-    void *sub = test_context_socket (ZLINK_SUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
 
     // Subscribe to the welcome message
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "W"));

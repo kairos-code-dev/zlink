@@ -77,12 +77,12 @@ static bool try_pgm_endpoint (const char *endpoint_, bool *bound_out_)
     if (!ctx)
         return false;
 
-    void *pub = zlink_socket (ctx, ZLINK_PUB);
+    void *pub = zlink_socket (ctx, ZLINK_SOCKET_PUB);
     if (!pub) {
         zlink_ctx_term (ctx);
         return false;
     }
-    void *sub = zlink_socket (ctx, ZLINK_SUB);
+    void *sub = zlink_socket (ctx, ZLINK_SOCKET_SUB);
     if (!sub) {
         close_zero_linger (pub);
         zlink_ctx_term (ctx);

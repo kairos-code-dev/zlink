@@ -264,7 +264,7 @@ int main(int argc, char **argv)
     std::vector<void *> sockets(static_cast<size_t>(clients), NULL);
 
     for (int i = 0; i < clients; ++i) {
-        void *sock = zlink_socket(ctx, ZLINK_ROUTER);
+        void *sock = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
         if (!sock) {
             std::fprintf(stderr,
                          "rc client: zlink_socket failed at index=%d errno=%d\n",

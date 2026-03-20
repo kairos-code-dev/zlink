@@ -317,8 +317,8 @@ void run_dealer_router (const std::string &transport,
         return;
     }
 
-    socket_guard_t router (ctx.get (), ZLINK_ROUTER);
-    socket_guard_t dealer (ctx.get (), ZLINK_DEALER);
+    socket_guard_t router (ctx.get (), ZLINK_SOCKET_ROUTER);
+    socket_guard_t dealer (ctx.get (), ZLINK_SOCKET_DEALER);
     if (!router.valid () || !dealer.valid ()) {
         print_fail_no_queue ();
         return;

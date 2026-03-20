@@ -17,7 +17,7 @@ void set_sockopt_bind_to_device (void *socket)
 //  TODO this is duplicated from test_pair_tcp
 void test_pair_tcp (extra_func_t extra_func_ = NULL)
 {
-    void *sb = test_context_socket (ZLINK_PAIR);
+    void *sb = test_context_socket (ZLINK_SOCKET_PAIR);
 
     if (extra_func_)
         extra_func_ (sb);
@@ -31,7 +31,7 @@ void test_pair_tcp (extra_func_t extra_func_ = NULL)
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (sb, ZLINK_OPT_LAST_ENDPOINT, my_endpoint, &my_endpoint_length));
 
-    void *sc = test_context_socket (ZLINK_PAIR);
+    void *sc = test_context_socket (ZLINK_SOCKET_PAIR);
     if (extra_func_)
         extra_func_ (sc);
 

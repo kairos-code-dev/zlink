@@ -235,7 +235,7 @@ static int prepare_transient_dealer (ctx_t *ctx_,
     }
 
     *dealer_out_ = NULL;
-    socket_base_t *dealer = ctx_->create_socket (ZLINK_DEALER);
+    socket_base_t *dealer = ctx_->create_socket (ZLINK_CORE_SOCKET_DEALER);
     if (!dealer)
         return -1;
 
@@ -712,7 +712,7 @@ int discovery_t::ensure_bootstrap_dealer (const std::string &registry_endpoint_,
     scoped_lock_t lock (_sync);
     bootstrap_state_t &state = _bootstrap_states[registry_endpoint_];
     if (!state.dealer) {
-        state.dealer = _ctx->create_socket (ZLINK_DEALER);
+        state.dealer = _ctx->create_socket (ZLINK_CORE_SOCKET_DEALER);
         if (!state.dealer)
             return -1;
         _lifecycle.register_socket (state.dealer);
@@ -1014,7 +1014,7 @@ int discovery_t::ensure_topology_reporter_locked (
     std::map<std::string, socket_base_t *>::iterator it =
       _report_dealers.find (uplink_endpoint_);
     if (it == _report_dealers.end () || !it->second) {
-        socket_base_t *dealer = _ctx->create_socket (ZLINK_DEALER);
+        socket_base_t *dealer = _ctx->create_socket (ZLINK_CORE_SOCKET_DEALER);
         if (!dealer)
             return -1;
         _lifecycle.register_socket (dealer);
@@ -1058,7 +1058,7 @@ int discovery_t::ensure_control_dealer_locked (
     std::map<std::string, socket_base_t *>::iterator it =
       _control_dealers.find (uplink_endpoint_);
     if (it == _control_dealers.end () || !it->second) {
-        socket_base_t *dealer = _ctx->create_socket (ZLINK_DEALER);
+        socket_base_t *dealer = _ctx->create_socket (ZLINK_CORE_SOCKET_DEALER);
         if (!dealer)
             return -1;
         _lifecycle.register_socket (dealer);
@@ -1100,7 +1100,7 @@ int discovery_t::ensure_sub_socket ()
     if (_sub_socket)
         return 0;
 
-    void *sub = static_cast<void *> (_ctx->create_socket (ZLINK_SUB));
+    void *sub = static_cast<void *> (_ctx->create_socket (ZLINK_CORE_SOCKET_SUB));
     if (!sub)
         return -1;
     _lifecycle.register_socket (static_cast<socket_base_t *> (sub));

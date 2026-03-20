@@ -35,8 +35,8 @@ static bool recv_byte_with_deadline (void *socket_,
 
 void test_inproc_pubsub_alternating_does_not_timeout ()
 {
-    void *pub = test_context_socket (ZLINK_PUB);
-    void *sub = test_context_socket (ZLINK_SUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
 
     const int linger = 0;
     const int timeout_ms = 1000;

@@ -8,13 +8,13 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test_probe_router_router ()
 {
     //  Create server and bind to endpoint
-    void *server = test_context_socket (ZLINK_ROUTER);
+    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
 
     char my_endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, my_endpoint, sizeof (my_endpoint));
 
     //  Create client and connect to server, doing a probe
-    void *client = test_context_socket (ZLINK_ROUTER);
+    void *client = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client, "X", 1));
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -46,13 +46,13 @@ void test_probe_router_router ()
 void test_probe_router_dealer ()
 {
     //  Create server and bind to endpoint
-    void *server = test_context_socket (ZLINK_ROUTER);
+    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
 
     char my_endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, my_endpoint, sizeof (my_endpoint));
 
     //  Create client and connect to server, doing a probe
-    void *client = test_context_socket (ZLINK_DEALER);
+    void *client = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client, "X", 1));
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (

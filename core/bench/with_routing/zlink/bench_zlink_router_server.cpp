@@ -138,7 +138,7 @@ int main(int /*argc*/, char ** /*argv*/)
       static_cast<int>(parse_long_env("BENCH_IO_THREADS", 4, 1));
     (void) zlink_ctx_set(ctx, ZLINK_IO_THREADS, io_threads);
 
-    void *server = zlink_socket(ctx, ZLINK_ROUTER);
+    void *server = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
     if (!server) {
         zlink_ctx_term(ctx);
         return 2;

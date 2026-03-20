@@ -10,6 +10,7 @@
 
 #include "utils/err.hpp"
 #include "protocol/metadata.hpp"
+#include "core/internal_defs.hpp"
 #include "core/options.hpp"
 #include "protocol/wire.hpp"
 
@@ -20,21 +21,21 @@ namespace zmp_metadata
 static inline const char *socket_type_string (int socket_type_)
 {
     switch (socket_type_) {
-        case ZLINK_PAIR:
+        case ZLINK_CORE_SOCKET_PAIR:
             return "PAIR";
-        case ZLINK_PUB:
+        case ZLINK_CORE_SOCKET_PUB:
             return "PUB";
-        case ZLINK_SUB:
+        case ZLINK_CORE_SOCKET_SUB:
             return "SUB";
-        case ZLINK_DEALER:
+        case ZLINK_CORE_SOCKET_DEALER:
             return "DEALER";
-        case ZLINK_ROUTER:
+        case ZLINK_CORE_SOCKET_ROUTER:
             return "ROUTER";
-        case ZLINK_XPUB:
+        case ZLINK_CORE_SOCKET_XPUB:
             return "XPUB";
-        case ZLINK_XSUB:
+        case ZLINK_CORE_SOCKET_XSUB:
             return "XSUB";
-        case ZLINK_STREAM:
+        case ZLINK_CORE_SOCKET_STREAM:
             return "STREAM";
         default:
             zlink_assert (false);
@@ -74,7 +75,7 @@ static inline void add_basic_properties (const options_t &options_,
     const char *socket_type = socket_type_string (options_.type);
     append_property (buf_, "Socket-Type", socket_type, strlen (socket_type));
 
-    if (options_.type == ZLINK_DEALER || options_.type == ZLINK_ROUTER) {
+    if (options_.type == ZLINK_CORE_SOCKET_DEALER || options_.type == ZLINK_CORE_SOCKET_ROUTER) {
         append_property (buf_, "Identity", options_.routing_id,
                          options_.routing_id_size);
     }

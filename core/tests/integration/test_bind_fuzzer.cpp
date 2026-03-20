@@ -25,7 +25,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
 
     setup_test_context ();
     std::string my_endpoint (reinterpret_cast<const char *> (data), size);
-    void *socket = test_context_socket (ZLINK_PUB);
+    void *socket = test_context_socket (ZLINK_SOCKET_PUB);
     zlink_bind (socket, my_endpoint.c_str ());
 
     test_context_socket_close_zero_linger (socket);

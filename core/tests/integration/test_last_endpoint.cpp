@@ -17,7 +17,7 @@ static void do_bind_and_verify (void *s_, const char *endpoint_)
 
 void test_last_endpoint ()
 {
-    void *sb = test_context_socket (ZLINK_ROUTER);
+    void *sb = test_context_socket (ZLINK_SOCKET_ROUTER);
     int val = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (sb, ZLINK_OPT_LINGER, &val, sizeof (val)));

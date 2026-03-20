@@ -1,8 +1,8 @@
 # zlink Performance Test Policy (통합)
 
 > **적용 범위**: zlink 전체 (core + bindings)
-> **Policy Version**: 1.6
-> **Date**: 2026-02-27
+> **Policy Version**: 1.7
+> **Date**: 2026-03-20
 > **Scope**: zlink 성능 테스트 통합 정책 — 공통 구조, 통합 실행, 비교 스크립트
 >
 > 본 정책은 `perf/`의 C++ 벤치마크뿐 아니라 모든 바인딩 라이브러리(`bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/node`, `bindings/python`)의 성능 테스트에도 동일하게 적용된다. 각 바인딩은 언어별 구현 차이가 있을 수 있으나, 측정 기준·결과 형식·운영 모드·임계치 등 본 정책에서 정의하는 규칙을 준수해야 한다.
@@ -43,8 +43,11 @@
       send 수행.
     - poller가 recv/send 양쪽의 readiness 제어를 담당한다.
   - **callback 모델** (`--recv callback`):
-    - recv: `zlink_recv_handler()` / `zlink_recv_spot_handler()` 등록 →
-      라이브러리가 I/O thread에서 callback dispatch.
+    - callback 모델은 모든 패턴의 일반 옵션이 아니다. public callback receive를
+      유지하는 perf 패턴에서만 허용한다.
+    - 현재 허용 범위는 single `SPOT`, multi `SPOT`, `STREAM`이다.
+    - recv: pattern별 callback API 등록 → 라이브러리가 I/O thread에서 callback
+      dispatch.
     - callback hot path는 메시지 수명/집계를 오래 붙들지 않고, 필요한 최소
       metric event만 추출해 bounded queue로 넘긴다.
     - throughput/latency/phase window 집계는 callback 밖 metric worker가
@@ -60,6 +63,8 @@
     - poller는 사용하지 않는다.
 - 실행 스크립트의 `--recv` 옵션으로 모델을 선택한다 (기본: `recv`,
   `--recv callback` 지정 시 callback 모델).
+- 지원하지 않는 pattern에서 `--recv callback`을 지정하면 policy violation으로
+  즉시 실패해야 한다. silent fallback은 금지한다.
 - 같은 측정 구간에서 두 모델의 recv/send 메커니즘을 섞지 않는다.
 - 단, 두 모델은 동일한 metric header decode, phase 판정, throughput/latency
   집계 엔진을 공유하는 방향으로 구현해야 한다. 모델 차이는 event source
@@ -189,7 +194,8 @@ perf/                                       # bindings/<lang>/perf/
 ### 2.0.3 STREAM 소켓 테스트 모델 (공통 필수)
 
 - **STREAM 계열은 multi suite에서만 테스트한다.** single suite에서는 STREAM 소켓 테스트를 수행하지 않는다.
-- STREAM 계열(`MULTI_STREAM`, `MULTI_STREAM_CALLBACK`)은 반드시 **zlink STREAM server(bind only)** + **raw transport client(connect)** 모델로 측정한다.
+- STREAM 계열(`MULTI_STREAM`)은 반드시 **zlink STREAM server(bind only)** +
+  **raw transport client(connect)** 모델로 측정한다.
 - zlink STREAM 소켓의 client `connect()` 경로를 벤치마크 클라이언트로 사용하지 않는다.
 - STREAM 테스트에서 server를 DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로 대체하면 정책 위반이며 결과는 무효다.
 - 모델 위반/불일치 구현은 정책 위반으로 간주하며, 해당 코드 경로를 삭제한 뒤 정책 모델로 재구현해야 한다.
@@ -210,14 +216,16 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 - **client**: 모든 STREAM 패턴에서 동일한 공통 raw client를 사용하며, `[4B length (big-endian)][payload]` 형식으로 송신한다. 수신(echo)도 동일한 framing으로 읽는다.
 - **server**: zlink STREAM 소켓으로 bind한 뒤, 수신 방식에 따라 2가지 패턴으로 분기한다:
 
-| 패턴 | server 수신 방식 | 설명 |
-|------|-----------------|------|
-| STREAM / MULTI_STREAM | 기본 recv 루프 | 기존 소켓 recv API(`zlink_recv`/`zmq_recv` 계열)로 메시지 수신 |
-| STREAM_CALLBACK / MULTI_STREAM_CALLBACK | callback dispatch | stream dispatch callback API로 수신 |
+| 패턴 | `--recv` | server 수신 방식 | 설명 |
+|------|----------|-----------------|------|
+| STREAM / MULTI_STREAM | `recv` | 기본 recv 루프 | 기존 소켓 recv API로 메시지 수신 |
+| STREAM / MULTI_STREAM | `callback` | callback dispatch | stream dispatch callback API로 수신 |
 
 - client의 wire protocol을 len32be로 통일하는 이유: 서버 수신 방식만 다르고 client는 동일한 공통 바이너리를 사용하므로, 테스트 용이성과 비교 공정성을 위해 client 측 framing을 len32be로 고정한다.
 - 이 프로토콜은 multi suite에 적용된다. single suite에서는 STREAM 테스트를 수행하지 않는다.
-- `STREAM_LEN32BE` / `MULTI_STREAM_LEN32BE` 패턴은 삭제되었다. 문서, 스크립트, 빌드 설정, 코드에 잔존 구현이 있으면 모두 삭제해야 하며, 삭제된 패턴을 `UNSUPPORTED`/`SKIP`으로 유지해서는 안 된다.
+- legacy callback-named / len32be-named STREAM 패턴은 삭제 대상이다. public
+  policy surface에서는 `STREAM` / `MULTI_STREAM` + `--recv recv|callback`
+  조합만 사용한다.
 
 ### 2.1 결과 저장 규칙
 
@@ -307,8 +315,8 @@ core/perf/run_benchmarks_multi.sh --pattern ALL
 # core: 특정 패턴만
 core/perf/run_benchmarks.sh --pattern PAIR,PUBSUB
 
-# core: callback 모델로 실행
-core/perf/run_benchmarks.sh --pattern PAIR --recv callback
+# core: callback 모델로 실행 가능한 single 패턴
+core/perf/run_benchmarks.sh --pattern SPOT --recv callback
 
 # core: 태그 추가
 core/perf/run_benchmarks.sh --results-tag v1.5.0

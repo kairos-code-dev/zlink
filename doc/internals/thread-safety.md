@@ -57,12 +57,12 @@ enqueued messages drain before teardown completes (drain-then-close).
 **Target APIs:**
 
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
-- `zlink_setsockopt()` / `zlink_getsockopt()`
+- `zlink_set_option()` / `zlink_get_option()`
 - `zlink_spot_subscribe()` / `zlink_spot_unsubscribe()`
 - `zlink_gateway_attach_discovery()` / `zlink_spot_node_attach_discovery()`
 - `zlink_*_monitor_open()`
-- `zlink_socket_send_ready_handler()`
-- `zlink_gateway_set_option()` / `zlink_gateway_set_lb_strategy()`
+- `zlink_send_ready_handler()`
+- `zlink_set_option()` / `zlink_gateway_set_lb_strategy()`
 - `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
 - Heavy queries: `zlink_registry_topology_query()`, snapshot functions
 
@@ -75,8 +75,8 @@ enqueued messages drain before teardown completes (drain-then-close).
 
 **Lightweight runtime reads vs heavy queries:**
 
-Lightweight reads (`ZLINK_EVENTS`, `ZLINK_RCVMORE`,
-`ZLINK_LAST_ENDPOINT`, routing-id queries) belong to the control path
+Lightweight reads (`ZLINK_OPT_EVENTS`,
+`ZLINK_OPT_LAST_ENDPOINT`, routing-id queries) belong to the control path
 but do not carry the full serialization cost of heavy query/snapshot
 calls. They are classified as a lightweight subset — always thread-safe,
 but not forced through the heaviest serialization lane.
@@ -137,7 +137,7 @@ concurrent entry.
 - **Send queue publication:** concurrent producers enqueue through the
   existing pipe/YPipe infrastructure. The I/O thread consumer side is
   unchanged.
-- **Control-path lock:** `bind`, `connect`, `setsockopt`, etc. go
+- **Control-path lock:** `bind`, `connect`, `set_option`, etc. go
   through a separate serialization path that does not share state or
   cache lines with the hot-path admission gate.
 

@@ -28,22 +28,7 @@
 
 // 0MQ definitions and exported functions
 #include "../include/zlink.h"
-
-int zlink_compat_msg_send (zlink_msg_t *msg_,
-                           void *s_,
-                           zlink_send_flags_t flags_);
-int zlink_compat_msg_recv (zlink_msg_t *msg_,
-                           void *s_,
-                           zlink_send_flags_t flags_);
-int zlink_compat_stream_send (void *s_,
-                              const zlink_routing_id_t *rid_,
-                              const void *data_,
-                              size_t size_,
-                              zlink_send_flags_t flags_);
-int zlink_compat_stream_send_msg (void *s_,
-                                  const zlink_routing_id_t *rid_,
-                                  zlink_msg_t *msg_,
-                                  zlink_send_flags_t flags_);
+#include "core/internal_defs.hpp"
 
 extern "C" {
 int zlink_stream_attach_raw (void *s_,

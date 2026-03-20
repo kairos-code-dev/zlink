@@ -534,7 +534,7 @@ inline bool create_client_sockets (
                          "ZLINK_OPT_LINGER");
         apply_benchmark_hwm (sock, settings.hwm);
 
-        if (cfg.client_socket_type == ZLINK_ROUTER) {
+        if (cfg.client_socket_type == ZLINK_SOCKET_ROUTER) {
             char id_buf[32];
             const int id_len =
               std::snprintf (id_buf, sizeof (id_buf), "client_%zu", i);
@@ -544,7 +544,7 @@ inline bool create_client_sockets (
             }
         }
 
-        if (cfg.client_socket_type == ZLINK_SUB) {
+        if (cfg.client_socket_type == ZLINK_SOCKET_SUB) {
             zlink_set_subscription (sock, "");
         }
 

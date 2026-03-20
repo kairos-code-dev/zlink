@@ -22,7 +22,7 @@ void set_sockopt_fastpath (void *socket)
 
 void test_pair_tcp (extra_func_t extra_func_ = NULL)
 {
-    void *sb = test_context_socket (ZLINK_PAIR);
+    void *sb = test_context_socket (ZLINK_SOCKET_PAIR);
 
     if (extra_func_)
         extra_func_ (sb);
@@ -30,7 +30,7 @@ void test_pair_tcp (extra_func_t extra_func_ = NULL)
     char my_endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (sb, my_endpoint, sizeof my_endpoint);
 
-    void *sc = test_context_socket (ZLINK_PAIR);
+    void *sc = test_context_socket (ZLINK_SOCKET_PAIR);
     if (extra_func_)
         extra_func_ (sc);
 
@@ -53,7 +53,7 @@ void test_pair_tcp_connect_by_name ()
     // retrieve the bound endpoint, which is numerical, and use that to
     // connect. this test cases specifically uses "localhost" to connect
     // to ensure that names are correctly resolved
-    void *sb = test_context_socket (ZLINK_PAIR);
+    void *sb = test_context_socket (ZLINK_SOCKET_PAIR);
 
     char bound_endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (sb, bound_endpoint, sizeof bound_endpoint);
@@ -66,7 +66,7 @@ void test_pair_tcp_connect_by_name ()
     strcpy (connect_endpoint, connect_endpoint_prefix);
     strcat (connect_endpoint, pos);
 
-    void *sc = test_context_socket (ZLINK_PAIR);
+    void *sc = test_context_socket (ZLINK_SOCKET_PAIR);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, connect_endpoint));
 
@@ -87,7 +87,7 @@ void test_pair_tcp_fastpath ()
 #ifdef _WIN32
 void test_io_completion_port ()
 {
-    void *const s = test_context_socket (ZLINK_PAIR);
+    void *const s = test_context_socket (ZLINK_SOCKET_PAIR);
     SOCKET fd;
     size_t fd_size = sizeof fd;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (s, ZLINK_OPT_FD, &fd, &fd_size));

@@ -11,8 +11,8 @@ endif()
 project(zlink VERSION 1.6.1 LANGUAGES C CXX)
 
 # Internal repo targets still include the public header from core/include.
-# Define a build-only macro so the header can preserve legacy constants and
-# C++ helper overloads for in-tree code without changing the installed ABI.
+# Define a build-only macro so in-tree code can access private build-only
+# declarations without changing the installed ABI.
 add_compile_definitions(ZLINK_INTERNAL_BUILD=1)
 
 include(CheckIncludeFiles)
@@ -946,6 +946,7 @@ set(api-sources
 set(core-sources
     src/core/msg.cpp
     src/core/recv_internal.cpp
+    src/core/send_internal.cpp
     src/core/ctx.cpp
     src/core/pipe.cpp
     src/core/mailbox.cpp
@@ -1499,30 +1500,24 @@ if(BUILD_BENCHMARKS AND BUILD_SHARED)
   option(ZLINK_BUILD_BENCH_ROUTER_COMPARE
          "Build router compare benchmarks (zlink vs zmq vs gRPC)" ON)
 
-  function(zlink_add_optional_bench option_var preferred_subdir legacy_subdir)
+  function(zlink_add_optional_bench option_var preferred_subdir)
     if(NOT ${option_var})
       return()
     endif()
 
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${preferred_subdir}/CMakeLists.txt")
       add_subdirectory(${preferred_subdir})
-    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${legacy_subdir}/CMakeLists.txt")
-      add_subdirectory(${legacy_subdir})
     endif()
   endfunction()
 
   zlink_add_optional_bench(ZLINK_BUILD_BENCH_ZMQ
-                           "bench/with_zmq"
-                           "bench/benchwithzmq")
+                           "bench/with_zmq")
   zlink_add_optional_bench(ZLINK_BUILD_BENCH_ZLINK
-                           "perf"
-                           "bench/benchwithzlink")
+                           "perf")
   zlink_add_optional_bench(ZLINK_BUILD_BENCH_STREAMCOMPARE
-                           "bench/with_stream"
-                           "bench/benchwithstreamcompare")
+                           "bench/with_stream")
   zlink_add_optional_bench(ZLINK_BUILD_BENCH_ROUTER_COMPARE
-                           "bench/with_routing"
-                           "bench/benchwithroutercompare")
+                           "bench/with_routing")
 
   if(ZLINK_BUILD_BENCH_BEAST
      AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/benchwithbeast/CMakeLists.txt")

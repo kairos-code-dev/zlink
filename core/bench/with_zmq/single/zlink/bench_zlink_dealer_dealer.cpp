@@ -298,8 +298,8 @@ void run_dealer_dealer (const std::string &transport,
         return;
     }
 
-    socket_guard_t s1 (ctx.get (), ZLINK_DEALER);
-    socket_guard_t s2 (ctx.get (), ZLINK_DEALER);
+    socket_guard_t s1 (ctx.get (), ZLINK_SOCKET_DEALER);
+    socket_guard_t s2 (ctx.get (), ZLINK_SOCKET_DEALER);
     if (!s1.valid () || !s2.valid ()) {
         print_fail_no_queue ();
         return;

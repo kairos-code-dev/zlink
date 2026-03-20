@@ -3,13 +3,16 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "../include/zlink.h"
+#include "../src/core/internal_defs.hpp"
 #include "../src/utils/precompiled.hpp"
 #include "../src/core/recv_internal.hpp"
+#include "../src/core/send_internal.hpp"
 #include "../src/sockets/stream.hpp"
 
 #include "testutil.hpp"
 
 #include <algorithm>
+#include <climits>
 #include <chrono>
 #include <cstring>
 #include <thread>
@@ -20,35 +23,60 @@
 #endif
 
 #ifdef __cplusplus
-inline int zlink_msg_send (zlink_msg_t *msg_,
-                           void *s_,
-                           zlink_send_flags_t flags_)
+inline int test_send_single_msg (zlink_msg_t *msg_,
+                                 void *s_,
+                                 zlink_send_flags_t flags_)
 {
-    return zlink_compat_msg_send (msg_, s_, flags_);
+    return zlink::send_msg_internal (s_, msg_, flags_);
 }
 
-inline int zlink_msg_recv (zlink_msg_t *msg_,
-                           void *s_,
-                           zlink_send_flags_t flags_)
+inline int test_recv_single_msg (zlink_msg_t *msg_,
+                                 void *s_,
+                                 zlink_send_flags_t flags_)
 {
-    return zlink_compat_msg_recv (msg_, s_, flags_);
+    return zlink::recv_msg_internal (s_, msg_, flags_);
 }
 
-inline int zlink_stream_send (void *s_,
-                              const zlink_routing_id_t *rid_,
-                              const void *data_,
-                              size_t size_,
-                              zlink_send_flags_t flags_)
+inline int test_stream_send_bytes (void *s_,
+                                   const zlink_routing_id_t *rid_,
+                                   const void *data_,
+                                   size_t size_,
+                                   zlink_send_flags_t flags_)
 {
-    return zlink_compat_stream_send (s_, rid_, data_, size_, flags_);
+    zlink_msg_t msg;
+    if (zlink_msg_init_size (&msg, size_) != 0)
+        return -1;
+    if (size_ > 0 && data_)
+        memcpy (zlink_msg_data (&msg), data_, size_);
+
+    const int rc = ::zlink_send_rid (s_, rid_, &msg, 1, flags_ & ZLINK_DONTWAIT);
+    if (rc != 0) {
+        const int err = errno;
+        zlink_msg_close (&msg);
+        errno = err;
+        return -1;
+    }
+    errno = 0;
+    return static_cast<int> (size_ < static_cast<size_t> (INT_MAX) ? size_
+                                                                    : INT_MAX);
 }
 
-inline int zlink_stream_send_msg (void *s_,
-                                  const zlink_routing_id_t *rid_,
-                                  zlink_msg_t *msg_,
-                                  zlink_send_flags_t flags_)
+inline int test_stream_send_single_msg (void *s_,
+                                        const zlink_routing_id_t *rid_,
+                                        zlink_msg_t *msg_,
+                                        zlink_send_flags_t flags_)
 {
-    return zlink_compat_stream_send_msg (s_, rid_, msg_, flags_);
+    if (!msg_) {
+        errno = EINVAL;
+        return -1;
+    }
+    const size_t size = zlink_msg_size (msg_);
+    const int rc = ::zlink_send_rid (s_, rid_, msg_, 1, flags_ & ZLINK_DONTWAIT);
+    if (rc != 0)
+        return -1;
+    errno = 0;
+    return static_cast<int> (size < static_cast<size_t> (INT_MAX) ? size
+                                                                   : INT_MAX);
 }
 
 inline int zlink_send (void *s_,
@@ -66,7 +94,7 @@ inline int zlink_send (void *s_,
     size_t type_size = sizeof (type);
     int rc = 0;
     if (zlink_get_option (s_, ZLINK_OPT_TYPE, &type, &type_size) == 0)
-        rc = zlink_compat_msg_send (&msg, s_, flags_);
+        rc = zlink::send_msg_internal (s_, &msg, flags_);
     else
         rc = ::zlink_send (s_, &msg, 1, flags_ & ZLINK_DONTWAIT);
 
@@ -374,7 +402,7 @@ void *test_context_socket_close_zero_linger (void *socket_);
 /////////////////////////////////////////////////////////////////////////////
 
 // All function binds a socket to some wildcard address, and retrieve the bound
-// endpoint via the ZLINK_SOCKOPT_LAST_ENDPOINT socket option to a given buffer.
+// endpoint via the ZLINK_INTERNAL_OPT_LAST_ENDPOINT socket option to a given buffer.
 // Triggers a Unity test assertion in case of a failure (including the buffer
 // being too small for the resulting endpoint string).
 

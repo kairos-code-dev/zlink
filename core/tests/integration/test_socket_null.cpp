@@ -2,6 +2,7 @@
 
 #include "testutil.hpp"
 
+#include <cstring>
 #include <unity.h>
 
 void setUp ()
@@ -22,7 +23,7 @@ void discard_monitor_event (const zlink_monitor_event_t *, void *)
 //  tests all socket-related functions with a NULL socket argument
 void test_zlink_socket_null_context ()
 {
-    TEST_ASSERT_NULL (zlink_socket (NULL, ZLINK_PAIR));
+    TEST_ASSERT_NULL (zlink_socket (NULL, ZLINK_SOCKET_PAIR));
     TEST_ASSERT_EQUAL_INT (EFAULT, errno); // TODO use EINVAL instead?
 }
 

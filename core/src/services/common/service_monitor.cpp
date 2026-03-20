@@ -96,8 +96,8 @@ void *service_monitor_hub_t::open (int events_)
         return NULL;
     }
 
-    socket_base_t *server = _ctx->create_socket (ZLINK_PAIR);
-    socket_base_t *client = _ctx->create_socket (ZLINK_PAIR);
+    socket_base_t *server = _ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
+    socket_base_t *client = _ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
     if (!server || !client) {
         if (server)
             server->close ();

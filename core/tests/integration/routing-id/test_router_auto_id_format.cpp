@@ -28,8 +28,8 @@ void close_sync_socket_zero_linger (void *socket_)
 
 void test_router_auto_id_format ()
 {
-    void *server = create_sync_socket (ZLINK_ROUTER);
-    void *client = create_sync_socket (ZLINK_DEALER);
+    void *server = create_sync_socket (ZLINK_SOCKET_ROUTER);
+    void *client = create_sync_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 

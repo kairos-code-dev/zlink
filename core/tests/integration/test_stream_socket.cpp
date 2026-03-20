@@ -93,7 +93,7 @@ static bool recv_stream_routing_id_and_payload (void *socket_,
 
     zlink_msg_t rid_msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&rid_msg));
-    const int rid_rc = zlink_msg_recv (&rid_msg, socket_, flags_);
+    const int rid_rc = test_recv_single_msg (&rid_msg, socket_, flags_);
     if (rid_rc < 0) {
         zlink_msg_close (&rid_msg);
         return false;
@@ -115,7 +115,7 @@ static bool recv_stream_routing_id_and_payload (void *socket_,
         return false;
     }
 
-    return zlink_msg_recv (payload_out_, socket_, flags_) >= 0;
+    return test_recv_single_msg (payload_out_, socket_, flags_) >= 0;
 }
 
 static bool parse_tcp_endpoint (const char *endpoint_,
@@ -810,7 +810,7 @@ static int stream_raw_ordering_echo_callback (const zlink_routing_id_t *rid_,
 
     if (!probe->strict_gate || ready) {
         const int send_rc =
-          zlink_stream_send_msg (probe->socket, rid_, msg_, 0);
+          test_stream_send_single_msg (probe->socket, rid_, msg_, 0);
         if (send_rc != static_cast<int> (payload_size))
             probe->send_fail.fetch_add (1, std::memory_order_release);
     }
@@ -856,7 +856,7 @@ static int stream_echo_callback (const zlink_routing_id_t *rid_,
         }
 
         const int send_rc =
-          zlink_stream_send_msg (probe->socket, rid_, msg, 0);
+          test_stream_send_single_msg (probe->socket, rid_, msg, 0);
         if (send_rc == static_cast<int> (size))
             probe->send_ok.store (1, std::memory_order_release);
         else
@@ -952,7 +952,7 @@ static int stream_raw_load_echo_callback (const zlink_routing_id_t *rid_,
 
         for (size_t j = 0; j < complete_frames.size (); ++j) {
             std::vector<unsigned char> &frame = complete_frames[j];
-            const int send_rc = zlink_stream_send (
+            const int send_rc = test_stream_send_bytes (
               probe->socket, rid_, &frame[0], frame.size (), 0);
             if (send_rc != static_cast<int> (frame.size ())) {
                 probe->send_fail.fetch_add (1, std::memory_order_release);
@@ -1017,7 +1017,7 @@ static int attach_stream_msg_handler (void *socket_,
 
 void test_stream_callback_lifecycle ()
 {
-    void *sub = test_context_socket (ZLINK_SUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_NOT_NULL (sub);
 
     errno = 0;
@@ -1026,7 +1026,7 @@ void test_stream_callback_lifecycle ()
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     test_context_socket_close_zero_linger (sub);
 
-    void *stream = test_context_socket (ZLINK_STREAM);
+    void *stream = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (stream);
 
     stream_callback_probe_t probe;
@@ -1045,7 +1045,7 @@ void test_stream_callback_lifecycle ()
 
 void test_stream_recv_api_dispatch_conflict ()
 {
-    void *stream = test_context_socket (ZLINK_STREAM);
+    void *stream = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (stream);
 
     unsigned char buf[16];
@@ -1057,7 +1057,7 @@ void test_stream_recv_api_dispatch_conflict ()
     zlink_msg_t msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, stream, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (-1, test_recv_single_msg (&msg, stream, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
@@ -1069,7 +1069,7 @@ void test_stream_recv_api_dispatch_conflict ()
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, stream, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (-1, test_recv_single_msg (&msg, stream, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
@@ -1078,7 +1078,7 @@ void test_stream_recv_api_dispatch_conflict ()
 
 void test_stream_notify_option_remains_available_with_dispatch ()
 {
-    void *stream = test_context_socket (ZLINK_STREAM);
+    void *stream = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (stream);
 
     const int enable = 1;
@@ -1119,7 +1119,7 @@ void test_stream_callback_echo_single_zero_byte ()
 #else
 void test_stream_callback_echo_raw ()
 {
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
 
     const int zero = 0;
@@ -1181,7 +1181,7 @@ void test_stream_callback_echo_raw ()
 
 void test_stream_callback_echo_single_zero_byte ()
 {
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
 
     const int zero = 0;
@@ -1228,7 +1228,7 @@ void test_stream_recv_ready_precedes_first_payload_contract ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 8));
 
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_regression_socket (server, 256);
 
@@ -1268,7 +1268,7 @@ void test_stream_recv_ready_precedes_first_payload_contract ()
     TEST_ASSERT_EQUAL_INT (
       static_cast<int> (sizeof (payload) - 1),
       TEST_ASSERT_SUCCESS_ERRNO (
-        zlink_stream_send_msg (server, &rid, &payload_msg, 0)));
+        test_stream_send_single_msg (server, &rid, &payload_msg, 0)));
     mark_stream_payload_end (&ordering_probe, &rid);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
 
@@ -1303,7 +1303,7 @@ void test_stream_raw_callback_ready_precedes_first_payload_contract ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 8));
 
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_regression_socket (server, 256);
 
@@ -1443,7 +1443,7 @@ void test_stream_raw_multiclient_strict_ready_gating_regression ()
     const int client_count = 64;
     const size_t payload_size = 32;
 
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_regression_socket (server, 2048);
 
@@ -1517,7 +1517,7 @@ void test_stream_recv_multiclient_strict_ready_gating_regression ()
     const int client_count = 64;
     const size_t payload_size = 32;
 
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_regression_socket (server, 2048);
 
@@ -1559,7 +1559,7 @@ void test_stream_recv_multiclient_strict_ready_gating_regression ()
           monitor, &ordering_probe, &rid, 5000));
         TEST_ASSERT_TRUE (mark_stream_payload_begin (&ordering_probe, &rid, true));
 
-        if (zlink_stream_send_msg (server, &rid, &payload_msg, 0) < 0) {
+        if (test_stream_send_single_msg (server, &rid, &payload_msg, 0) < 0) {
             ++send_fail;
         }
         mark_stream_payload_end (&ordering_probe, &rid);
@@ -1599,7 +1599,7 @@ void test_stream_raw_multiclient_load_integrity ()
     const size_t payload_size = 192;
     const int expected_msgs = client_count * phases * messages_per_phase;
 
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
 
     const int zero = 0;
@@ -1641,7 +1641,7 @@ void test_stream_raw_multiclient_load_integrity ()
 
 void test_stream_tcp_basic ()
 {
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
 
     const int zero = 0;
@@ -1705,7 +1705,7 @@ void test_stream_tcp_basic ()
 
 void test_stream_maxmsgsize ()
 {
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
 
     const int zero = 0;
@@ -1780,7 +1780,7 @@ void test_stream_maxmsgsize ()
 
 void test_stream_connect_rejected ()
 {
-    void *stream = test_context_socket (ZLINK_STREAM);
+    void *stream = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (stream);
 
     const int zero = 0;

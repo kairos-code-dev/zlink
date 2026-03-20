@@ -14,8 +14,8 @@
 #include <thread>
 #include <vector>
 
-#ifndef ZLINK_STREAM
-#define ZLINK_STREAM 11
+#ifndef ZLINK_SOCKET_STREAM
+#define ZLINK_SOCKET_STREAM ((zlink_socket_type_t) 0x1008)
 #endif
 
 namespace {
@@ -366,7 +366,7 @@ int main (int argc, char **argv)
     if (!ctx.valid ())
         return 1;
 
-    void *server = zlink_socket (ctx.get (), ZLINK_STREAM);
+    void *server = zlink_socket (ctx.get (), ZLINK_SOCKET_STREAM);
     if (!server)
         return 1;
 

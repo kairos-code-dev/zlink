@@ -41,7 +41,7 @@ void initialise_network (void)
 void test_localhost ()
 {
     //  Check that we have local networking via Zlink
-    void *dealer = test_context_socket (ZLINK_DEALER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
     if (zlink_bind (dealer, "tcp://127.0.0.1:*") == -1) {
         TEST_FAIL_MESSAGE (
           "E: Cannot find 127.0.0.1 -- your system does not have local\n"

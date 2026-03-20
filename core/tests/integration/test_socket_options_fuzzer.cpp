@@ -47,7 +47,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
       ZLINK_OPT_TCP_NODELAY};
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
-    void *server = zlink_socket (ctx, ZLINK_XPUB);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_XPUB);
     TEST_ASSERT_NOT_NULL (server);
 
     if (!size)

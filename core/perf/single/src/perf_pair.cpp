@@ -506,9 +506,9 @@ void run_pair (const std::string &transport,
     recv_state_t recv_state;
 
     socket_guard_t s_bind (
-      ctx.get (), ZLINK_PAIR,
+      ctx.get (), ZLINK_SOCKET_PAIR,
       callback_mode ? &pair_recv_handler : NULL, &recv_state);
-    socket_guard_t s_conn (ctx.get (), ZLINK_PAIR);
+    socket_guard_t s_conn (ctx.get (), ZLINK_SOCKET_PAIR);
     if (!s_bind.valid () || !s_conn.valid ()) {
         print_fail_no_queue ();
         return;

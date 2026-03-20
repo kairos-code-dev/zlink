@@ -13,7 +13,7 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test_fair_queue_in (const char *bind_address_)
 {
     char connect_address[MAX_SOCKET_STRING];
-    void *receiver = test_context_socket (ZLINK_ROUTER);
+    void *receiver = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (receiver, bind_address_));
     size_t len = MAX_SOCKET_STRING;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -22,7 +22,7 @@ void test_fair_queue_in (const char *bind_address_)
     const unsigned char services = 5;
     void *senders[services];
     for (unsigned char peer = 0; peer < services; ++peer) {
-        senders[peer] = test_context_socket (ZLINK_DEALER);
+        senders[peer] = test_context_socket (ZLINK_SOCKET_DEALER);
 
         char *str = strdup ("A");
         str[0] += peer;
@@ -58,7 +58,7 @@ void test_fair_queue_in (const char *bind_address_)
     // handle N requests
     for (unsigned char peer = 0; peer < services; ++peer) {
         TEST_ASSERT_EQUAL_INT (
-          2, TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, receiver, 0)));
+          2, TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, receiver, 0)));
         const char *id = static_cast<const char *> (zlink_msg_data (&msg));
         sum -= id[0];
 
@@ -83,7 +83,7 @@ void test_fair_queue_in (const char *bind_address_)
 // discard any messages it contains.
 void test_destroy_queue_on_disconnect (const char *bind_address_)
 {
-    void *a = test_context_socket (ZLINK_ROUTER);
+    void *a = test_context_socket (ZLINK_SOCKET_ROUTER);
 
     int enabled = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -95,7 +95,7 @@ void test_destroy_queue_on_disconnect (const char *bind_address_)
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (a, ZLINK_OPT_LAST_ENDPOINT, connect_address, &len));
 
-    void *b = test_context_socket (ZLINK_DEALER);
+    void *b = test_context_socket (ZLINK_SOCKET_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (b, "B", 2));
 
@@ -122,14 +122,14 @@ void test_destroy_queue_on_disconnect (const char *bind_address_)
     TEST_ASSERT_FAILURE_ERRNO (
       EHOSTUNREACH, zlink_send (a, "B", 2, ZLINK_SNDMORE | ZLINK_DONTWAIT));
 
-    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_msg_recv (&msg, a, ZLINK_DONTWAIT));
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, test_recv_single_msg (&msg, a, ZLINK_DONTWAIT));
 
     // After a reconnect of B, the messages should still be gone
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (b, connect_address));
 
-    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_msg_recv (&msg, a, ZLINK_DONTWAIT));
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, test_recv_single_msg (&msg, a, ZLINK_DONTWAIT));
 
-    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_msg_recv (&msg, b, ZLINK_DONTWAIT));
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, test_recv_single_msg (&msg, b, ZLINK_DONTWAIT));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 

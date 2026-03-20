@@ -41,28 +41,6 @@ is_uint() {
   [[ "${value}" =~ ^[0-9]+$ ]]
 }
 
-first_env_value() {
-  local name=""
-  for name in "$@"; do
-    if [[ -n "${!name:-}" ]]; then
-      printf '%s' "${!name}"
-      return 0
-    fi
-  done
-  return 1
-}
-
-env_or_default() {
-  local default_value="${1:-}"
-  shift || true
-  local resolved=""
-  if resolved="$(first_env_value "$@" 2>/dev/null)"; then
-    printf '%s' "${resolved}"
-  else
-    printf '%s' "${default_value}"
-  fi
-}
-
 NOFILE_SKIP_REASON=""
 ensure_nofile_limit() {
   local clients="${1:-}"
@@ -147,9 +125,9 @@ resolve_memory_max_clients() {
   local budget_pct
   local base_mb
   local per_client_kb
-  budget_pct="$(env_or_default "70" PERF_MEMORY_BUDGET_PCT PERF_MULTI_MEMORY_BUDGET_PCT)"
-  base_mb="$(env_or_default "512" PERF_MEMORY_BASE_MB PERF_MULTI_MEMORY_BASE_MB)"
-  per_client_kb="$(env_or_default "1024" PERF_MEMORY_PER_CLIENT_KB PERF_MULTI_MEMORY_PER_CLIENT_KB)"
+  budget_pct="${PERF_MEMORY_BUDGET_PCT:-70}"
+  base_mb="${PERF_MEMORY_BASE_MB:-512}"
+  per_client_kb="${PERF_MEMORY_PER_CLIENT_KB:-1024}"
   if ! is_uint "${budget_pct}" || (( budget_pct < 1 || budget_pct > 95 )); then
     echo ""
     return
@@ -202,9 +180,9 @@ ensure_memory_budget() {
   local budget_pct
   local base_mb
   local per_client_kb
-  budget_pct="$(env_or_default "70" PERF_MEMORY_BUDGET_PCT PERF_MULTI_MEMORY_BUDGET_PCT)"
-  base_mb="$(env_or_default "512" PERF_MEMORY_BASE_MB PERF_MULTI_MEMORY_BASE_MB)"
-  per_client_kb="$(env_or_default "1024" PERF_MEMORY_PER_CLIENT_KB PERF_MULTI_MEMORY_PER_CLIENT_KB)"
+  budget_pct="${PERF_MEMORY_BUDGET_PCT:-70}"
+  base_mb="${PERF_MEMORY_BASE_MB:-512}"
+  per_client_kb="${PERF_MEMORY_PER_CLIENT_KB:-1024}"
   MEMORY_SKIP_REASON="clients=${clients},max_clients=${max_clients},mem_available_kb=${available_kb},budget_pct=${budget_pct},base_mb=${base_mb},per_client_kb=${per_client_kb}"
   return 1
 }
@@ -216,13 +194,12 @@ Usage: core/perf/run_benchmarks_multi.sh [options]
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
   DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK
-Legacy MULTI_ prefix is accepted and stripped automatically.
 By default, this wrapper runs current zlink only.
 By default, multi-bench keeps warmup at 2s and duration window at 5s.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
 
 Options:
-  --pattern NAME         Benchmark pattern (default: all patterns above). Legacy MULTI_ prefix is optional.
+  --pattern NAME         Benchmark pattern (default: all patterns above).
                          Alias: streams => STREAM,STREAM_CALLBACK
   --help                 Show this help.
   --reuse-build          Reuse existing build directory as-is (skip configure/build).
@@ -234,7 +211,6 @@ Options:
   --runs N               Iterations per configuration (default: 1).
   --recv MODE            Receive model: recv|callback (default: recv).
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
-  --io-threads N         Legacy alias that sets both server/client io-threads.
   --server-io-threads N  Set PERF_SERVER_IO_THREADS
                          (default: 2, stream=4).
   --client-io-threads N  Set PERF_CLIENT_IO_THREADS
@@ -321,12 +297,7 @@ expand_and_add_explicit_pattern() {
     return
   fi
 
-  local base="${raw}"
-  if [[ "${base}" == MULTI_* ]]; then
-    base="${base#MULTI_}"
-  fi
-
-  case "${base}" in
+  case "${raw}" in
     STREAM)
       add_explicit_pattern_unique "STREAM"
       ;;
@@ -335,7 +306,7 @@ expand_and_add_explicit_pattern() {
       add_explicit_pattern_unique "STREAM_CALLBACK"
       ;;
     *)
-      add_explicit_pattern_unique "${base}"
+      add_explicit_pattern_unique "${raw}"
       ;;
   esac
 }
@@ -347,34 +318,34 @@ HAS_EXPLICIT_RUNS=0
 HAS_EXPLICIT_RESULTS_DIR=0
 BUILD_MODE="incremental"
 BUILD_MODE_EXPLICIT=0
-WARMUP_SECONDS="$(env_or_default "2" PERF_WARMUP_SECONDS PERF_MULTI_WARMUP_SECONDS)"
-DURATION_SECONDS="$(env_or_default "5" PERF_DURATION_SECONDS PERF_MULTI_DURATION_SECONDS)"
-RECV_MODE="$(env_or_default "recv" PERF_RECV_MODE PERF_MULTI_RECV_MODE)"
-CLIENTS="$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)"
-HWM="$(env_or_default "" PERF_HWM PERF_MULTI_HWM)"
-SNDHWM="$(env_or_default "" PERF_SNDHWM PERF_MULTI_SNDHWM)"
-RCVHWM="$(env_or_default "" PERF_RCVHWM PERF_MULTI_RCVHWM)"
-SNDBUF="$(env_or_default "" PERF_SNDBUF PERF_MULTI_SNDBUF)"
-RCVBUF="$(env_or_default "" PERF_RCVBUF PERF_MULTI_RCVBUF)"
-SNDTIMEO_MS="$(env_or_default "200" PERF_SNDTIMEO_MS PERF_MULTI_SNDTIMEO_MS)"
-RCVTIMEO_MS="$(env_or_default "200" PERF_RCVTIMEO_MS PERF_MULTI_RCVTIMEO_MS)"
-CONNECT_CONCURRENCY="$(env_or_default "" PERF_CONNECT_CONCURRENCY PERF_MULTI_CONNECT_CONCURRENCY)"
-ACTIVE_WARMUP="$(env_or_default "" PERF_ACTIVE_WARMUP PERF_MULTI_ACTIVE_WARMUP)"
-SETTLE_MS="$(env_or_default "" PERF_SETTLE_MS PERF_MULTI_SETTLE_MS)"
-SERVICE_CLIENTS="$(env_or_default "" PERF_SERVICE_CLIENTS PERF_MULTI_SERVICE_CLIENTS)"
-LATENCY_SAMPLE_CAP="$(env_or_default "" PERF_LATENCY_SAMPLE_CAP PERF_MULTI_LATENCY_SAMPLE_CAP)"
-TIMEOUT_SECONDS="$(env_or_default "" PERF_TIMEOUT_SECONDS PERF_MULTI_TIMEOUT_SECONDS)"
-STREAM_MSG_SIZES="$(env_or_default "" PERF_STREAM_MSG_SIZES PERF_MULTI_STREAM_MSG_SIZES)"
-PUBSUB_XPUB_NODROP="$(env_or_default "" PERF_PUBSUB_XPUB_NODROP PERF_MULTI_PUBSUB_XPUB_NODROP)"
-SPOT_XPUB_NODROP="$(env_or_default "" PERF_SPOT_XPUB_NODROP PERF_MULTI_SPOT_XPUB_NODROP)"
-RUN_COOLDOWN_MS="$(env_or_default "3000" PERF_RUN_COOLDOWN_MS PERF_MULTI_RUN_COOLDOWN_MS)"
-TRANSPORT_TRANSITION_MS="$(env_or_default "3000" PERF_TRANSPORT_TRANSITION_MS PERF_MULTI_TRANSPORT_TRANSITION_MS)"
-PATTERN_TRANSITION_MS="$(env_or_default "3000" PERF_PATTERN_TRANSITION_MS PERF_MULTI_PATTERN_TRANSITION_MS)"
-SERVER_READY_TIMEOUT_MS="$(env_or_default "10000" PERF_SERVER_READY_TIMEOUT_MS PERF_MULTI_SERVER_READY_TIMEOUT_MS)"
-CONNECT_READY_TIMEOUT_MS="$(env_or_default "5000" PERF_CONNECT_READY_TIMEOUT_MS PERF_MULTI_CONNECT_READY_TIMEOUT_MS)"
-MONITOR_HWM="$(env_or_default "1000" PERF_MONITOR_HWM PERF_MULTI_MONITOR_HWM)"
-SERVER_SHUTDOWN_TIMEOUT_MS="$(env_or_default "5000" PERF_SERVER_SHUTDOWN_TIMEOUT_MS PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS)"
-SERVER_BIND_PORT="$(env_or_default "0" PERF_SERVER_BIND_PORT PERF_MULTI_SERVER_BIND_PORT)"
+WARMUP_SECONDS="${PERF_WARMUP_SECONDS:-2}"
+DURATION_SECONDS="${PERF_DURATION_SECONDS:-5}"
+RECV_MODE="${PERF_RECV_MODE:-recv}"
+CLIENTS="${PERF_CLIENTS:-}"
+HWM="${PERF_HWM:-}"
+SNDHWM="${PERF_SNDHWM:-}"
+RCVHWM="${PERF_RCVHWM:-}"
+SNDBUF="${PERF_SNDBUF:-}"
+RCVBUF="${PERF_RCVBUF:-}"
+SNDTIMEO_MS="${PERF_SNDTIMEO_MS:-200}"
+RCVTIMEO_MS="${PERF_RCVTIMEO_MS:-200}"
+CONNECT_CONCURRENCY="${PERF_CONNECT_CONCURRENCY:-}"
+ACTIVE_WARMUP="${PERF_ACTIVE_WARMUP:-}"
+SETTLE_MS="${PERF_SETTLE_MS:-}"
+SERVICE_CLIENTS="${PERF_SERVICE_CLIENTS:-}"
+LATENCY_SAMPLE_CAP="${PERF_LATENCY_SAMPLE_CAP:-}"
+TIMEOUT_SECONDS="${PERF_TIMEOUT_SECONDS:-}"
+STREAM_MSG_SIZES="${PERF_STREAM_MSG_SIZES:-}"
+PUBSUB_XPUB_NODROP="${PERF_PUBSUB_XPUB_NODROP:-}"
+SPOT_XPUB_NODROP="${PERF_SPOT_XPUB_NODROP:-}"
+RUN_COOLDOWN_MS="${PERF_RUN_COOLDOWN_MS:-3000}"
+TRANSPORT_TRANSITION_MS="${PERF_TRANSPORT_TRANSITION_MS:-3000}"
+PATTERN_TRANSITION_MS="${PERF_PATTERN_TRANSITION_MS:-3000}"
+SERVER_READY_TIMEOUT_MS="${PERF_SERVER_READY_TIMEOUT_MS:-10000}"
+CONNECT_READY_TIMEOUT_MS="${PERF_CONNECT_READY_TIMEOUT_MS:-5000}"
+MONITOR_HWM="${PERF_MONITOR_HWM:-1000}"
+SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}"
+SERVER_BIND_PORT="${PERF_SERVER_BIND_PORT:-0}"
 DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 EXPLICIT_PATTERNS=()
@@ -383,12 +354,12 @@ EFFECTIVE_DEFAULT_CLIENTS="${PERF_DEFAULT_CLIENTS:-100}"
 EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_DEFAULT_STREAM_CLIENTS:-10000}"
 EFFECTIVE_DEFAULT_HWM="${PERF_DEFAULT_HWM:-100}"
 EFFECTIVE_DEFAULT_STREAM_HWM="${PERF_DEFAULT_STREAM_HWM:-10}"
-EFFECTIVE_DEFAULT_IO_THREADS="$(env_or_default "4" PERF_DEFAULT_IO_THREADS PERF_MULTI_DEFAULT_IO_THREADS)"
-EFFECTIVE_DEFAULT_STREAM_IO_THREADS="$(env_or_default "4" PERF_DEFAULT_STREAM_IO_THREADS PERF_MULTI_STREAM_DEFAULT_IO_THREADS)"
-SERVER_IO_THREADS="$(env_or_default "" PERF_SERVER_IO_THREADS PERF_MULTI_SERVER_IO_THREADS)"
-CLIENT_IO_THREADS="$(env_or_default "" PERF_CLIENT_IO_THREADS PERF_MULTI_CLIENT_IO_THREADS)"
-STREAM_SERVER_IO_THREADS="$(env_or_default "" PERF_STREAM_SERVER_IO_THREADS PERF_MULTI_STREAM_SERVER_IO_THREADS)"
-STREAM_CLIENT_IO_THREADS="$(env_or_default "" PERF_STREAM_CLIENT_IO_THREADS PERF_MULTI_STREAM_CLIENT_IO_THREADS)"
+EFFECTIVE_DEFAULT_IO_THREADS="${PERF_DEFAULT_IO_THREADS:-4}"
+EFFECTIVE_DEFAULT_STREAM_IO_THREADS="${PERF_DEFAULT_STREAM_IO_THREADS:-4}"
+SERVER_IO_THREADS="${PERF_SERVER_IO_THREADS:-}"
+CLIENT_IO_THREADS="${PERF_CLIENT_IO_THREADS:-}"
+STREAM_SERVER_IO_THREADS="${PERF_STREAM_SERVER_IO_THREADS:-}"
+STREAM_CLIENT_IO_THREADS="${PERF_STREAM_CLIENT_IO_THREADS:-}"
 
 set_build_mode() {
   local next_mode="${1:-}"
@@ -521,15 +492,6 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       SCRIPT_ARGS+=( "$1" "$2" )
-      shift 2
-      ;;
-    --io-threads)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: $1 requires a value." >&2
-        exit 1
-      fi
-      SERVER_IO_THREADS="${2}"
-      CLIENT_IO_THREADS="${2}"
       shift 2
       ;;
     --server-io-threads)
@@ -769,7 +731,7 @@ for (( idx=0; idx<${#SCRIPT_ARGS[@]}; ++idx )); do
   fi
 done
 
-if [[ -z "${CLIENTS}" && -z "$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)" ]]; then
+if [[ -z "${CLIENTS}" ]]; then
   memory_max_clients="$(resolve_memory_max_clients)"
   if is_uint "${memory_max_clients}"; then
     default_clients_before="${EFFECTIVE_DEFAULT_CLIENTS}"
@@ -934,11 +896,8 @@ print_skip_summary() {
 
 for raw_pattern in "${PATTERNS[@]}"; do
   pattern="$(printf '%s' "${raw_pattern}" | tr '[:lower:]' '[:upper:]')"
-  if [[ "${pattern}" == MULTI_* ]]; then
-    pattern="${pattern#MULTI_}"
-  fi
 
-  pattern_clients="${CLIENTS:-$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)}"
+  pattern_clients="${CLIENTS}"
   if [[ -z "${pattern_clients}" ]]; then
     if [[ "${pattern}" == STREAM_* ]]; then
       pattern_clients="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}"

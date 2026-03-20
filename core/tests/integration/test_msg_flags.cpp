@@ -8,10 +8,10 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test_more ()
 {
     //  Create the infrastructure
-    void *sb = test_context_socket (ZLINK_ROUTER);
+    void *sb = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (sb, "inproc://a"));
 
-    void *sc = test_context_socket (ZLINK_DEALER);
+    void *sc = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, "inproc://a"));
 
     //  Send 2-part message.
@@ -21,17 +21,17 @@ void test_more ()
     //  Routing id comes first.
     zlink_msg_t msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, sb, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, sb, 0));
     TEST_ASSERT_TRUE (test_msg_has_more (&msg));
 
     //  Then the first part of the message body.
     TEST_ASSERT_EQUAL_INT (
-      1, TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, sb, 0)));
+      1, TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, sb, 0)));
     TEST_ASSERT_TRUE (test_msg_has_more (&msg));
 
     //  And finally, the second part of the message body.
     TEST_ASSERT_EQUAL_INT (
-      1, TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, sb, 0)));
+      1, TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, sb, 0)));
     TEST_ASSERT_FALSE (test_msg_has_more (&msg));
 
     //  Deallocate the infrastructure.

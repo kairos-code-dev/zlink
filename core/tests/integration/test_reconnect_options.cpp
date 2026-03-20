@@ -119,10 +119,10 @@ void *open_monitor (void *socket_, monitor_probe_t *probe_)
 // test behavior with (mostly) default values
 void reconnect_default ()
 {
-    void *pub = test_context_socket (ZLINK_PUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, ENDPOINT_0));
 
-    void *sub = test_context_socket (ZLINK_SUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
     monitor_probe_t probe;
     void *monitor = open_monitor (sub, &probe);
 
@@ -157,10 +157,10 @@ void reconnect_default ()
 // test successful reconnect
 void reconnect_success ()
 {
-    void *pub = test_context_socket (ZLINK_PUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, ENDPOINT_0));
 
-    void *sub = test_context_socket (ZLINK_SUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
     monitor_probe_t probe;
     void *monitor = open_monitor (sub, &probe);
 
@@ -188,7 +188,7 @@ void reconnect_success ()
     TEST_ASSERT_TRUE (
       wait_for_no_additional_monitor_events (&probe, 5, SETTLE_TIME));
 
-    pub = test_context_socket (ZLINK_PUB);
+    pub = test_context_socket (ZLINK_SOCKET_PUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, ENDPOINT_0));
 
     const uint64_t reconnect_success_events[] = {

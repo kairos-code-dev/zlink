@@ -7,7 +7,7 @@
 zlink::sub_t::sub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     xsub_t (parent_, tid_, sid_)
 {
-    options.type = ZLINK_SUB;
+    options.type = ZLINK_CORE_SOCKET_SUB;
 
     //  Switch filtering messages on (as opposed to XSUB which where the
     //  filtering is off).

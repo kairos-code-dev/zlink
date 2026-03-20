@@ -396,10 +396,10 @@ void run_router_router (const std::string &transport,
 
     recv_state_t recv_state;
 
-    socket_guard_t router1_plain (ctx.get (), ZLINK_ROUTER);
+    socket_guard_t router1_plain (ctx.get (), ZLINK_SOCKET_ROUTER);
     socket_guard_t router1_with_handler (
-      ctx.get (), ZLINK_ROUTER, &router1_recv_handler, &recv_state);
-    socket_guard_t router2 (ctx.get (), ZLINK_ROUTER);
+      ctx.get (), ZLINK_SOCKET_ROUTER, &router1_recv_handler, &recv_state);
+    socket_guard_t router2 (ctx.get (), ZLINK_SOCKET_ROUTER);
     void *router1_socket =
       transport == "inproc" ? router1_with_handler.get () : router1_plain.get ();
     queue_probe_t queue_probe (router2.get (), router1_socket);

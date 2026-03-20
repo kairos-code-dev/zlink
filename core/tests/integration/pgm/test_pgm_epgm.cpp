@@ -17,7 +17,7 @@ static void test_pgm_requires_pubsub ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *router = zlink_socket (ctx, ZLINK_ROUTER);
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (router);
 
     int rc = zlink_connect (router, "pgm://invalid");
@@ -49,7 +49,7 @@ static void test_pgm_invalid_address ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *pub = zlink_socket (ctx, ZLINK_PUB);
+    void *pub = zlink_socket (ctx, ZLINK_SOCKET_PUB);
     TEST_ASSERT_NOT_NULL (pub);
 
     int rc = zlink_connect (pub, "pgm://invalid");

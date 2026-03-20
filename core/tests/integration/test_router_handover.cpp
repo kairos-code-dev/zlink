@@ -8,7 +8,7 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test_with_handover ()
 {
     char my_endpoint[MAX_SOCKET_STRING];
-    void *router = test_context_socket (ZLINK_ROUTER);
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     bind_loopback_ipv4 (router, my_endpoint, sizeof my_endpoint);
 
     // Enable the handover flag
@@ -17,7 +17,7 @@ void test_with_handover ()
       router, ZLINK_ROUTER_OPT_HANDOVER, &handover, sizeof (handover)));
 
     //  Create dealer called "X" and connect it to our router
-    void *dealer_one = test_context_socket (ZLINK_DEALER);
+    void *dealer_one = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (dealer_one, "X", 1));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer_one, my_endpoint));
@@ -30,7 +30,7 @@ void test_with_handover ()
     recv_string_expect_success (router, "Hello", 0);
 
     // Now create a second dealer that uses the same routing id
-    void *dealer_two = test_context_socket (ZLINK_DEALER);
+    void *dealer_two = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (dealer_two, "X", 1));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer_two, my_endpoint));
@@ -65,7 +65,7 @@ void test_without_handover ()
 {
     size_t len = MAX_SOCKET_STRING;
     char my_endpoint[MAX_SOCKET_STRING];
-    void *router = test_context_socket (ZLINK_ROUTER);
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "tcp://127.0.0.1:*"));
 
@@ -73,7 +73,7 @@ void test_without_handover ()
       zlink_get_option (router, ZLINK_OPT_LAST_ENDPOINT, my_endpoint, &len));
 
     //  Create dealer called "X" and connect it to our router
-    void *dealer_one = test_context_socket (ZLINK_DEALER);
+    void *dealer_one = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (dealer_one, "X", 1));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer_one, my_endpoint));
@@ -86,7 +86,7 @@ void test_without_handover ()
     recv_string_expect_success (router, "Hello", 0);
 
     // Now create a second dealer that uses the same routing id
-    void *dealer_two = test_context_socket (ZLINK_DEALER);
+    void *dealer_two = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (dealer_two, "X", 1));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer_two, my_endpoint));

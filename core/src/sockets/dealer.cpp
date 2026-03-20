@@ -25,7 +25,7 @@ void store_dispatch_part (std::vector<zlink_msg_t> *parts_, zlink::msg_t *msg_)
 zlink::dealer_t::dealer_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     socket_base_t (parent_, tid_, sid_), _probe_router (false)
 {
-    options.type = ZLINK_DEALER;
+    options.type = ZLINK_CORE_SOCKET_DEALER;
     options.can_send_hello_msg = true;
     options.can_recv_hiccup_msg = true;
 }

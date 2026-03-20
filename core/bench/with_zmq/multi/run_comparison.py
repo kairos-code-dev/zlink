@@ -402,16 +402,6 @@ def run_cmake_configure(cmake_build_dir):
 def get_env_for_lib(lib_name):
     env = base_env.copy()
     env["BENCH_MSG_SIZES"] = ",".join(str(sz) for sz in MSG_SIZES)
-    alias_pairs = (
-        ("BENCH_MULTI_CLIENTS", "PERF_MULTI_CLIENTS"),
-        ("BENCH_IO_THREADS", "PERF_IO_THREADS"),
-        ("BENCH_MSG_SIZES", "PERF_MSG_SIZES"),
-        ("BENCH_TRANSPORTS", "PERF_TRANSPORTS"),
-    )
-    for src, dst in alias_pairs:
-        src_value = env.get(src, "").strip()
-        if src_value and not env.get(dst):
-            env[dst] = src_value
     if IS_WINDOWS:
         env["PATH"] = f"{LIBZMQ_LIB_DIR};{env.get('PATH', '')}"
     else:
@@ -1285,10 +1275,6 @@ def normalize_pattern_name(raw):
         return None
     if token == "ALL":
         return "ALL"
-    if token.startswith("MULTI_"):
-        token = token[len("MULTI_") :]
-    elif token.startswith("MULT_"):
-        token = token[len("MULT_") :]
 
     aliases = {
         "DEALER_DEALER": "MULTI_DEALER_DEALER",
@@ -1315,7 +1301,6 @@ def parse_args():
         "\n"
         "PATTERN:\n"
         "  dealer_dealer | dealer_router | router_router | pubsub | stream\n"
-        "  (legacy MULTI_* names are also accepted)\n"
         "  Missing benchmark binaries are auto-built via cmake --build.\n"
         "\n"
         "Env:\n"
@@ -1390,7 +1375,7 @@ def parse_args():
             if not normalized:
                 print(
                     f"Error: unsupported pattern '{arg}'. "
-                    "Use router_router (or MULTI_ROUTER_ROUTER).",
+                    "Use router_router.",
                     file=sys.stderr,
                 )
                 sys.exit(1)

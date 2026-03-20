@@ -42,8 +42,8 @@ void fill_until_hwm (void *sender_, const char *buffer_)
 
 void test_pair_blocking_send_wakes_only_after_lwm_reads ()
 {
-    void *receiver = test_context_socket (ZLINK_PAIR);
-    void *sender = test_context_socket (ZLINK_PAIR);
+    void *receiver = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *sender = test_context_socket (ZLINK_SOCKET_PAIR);
     configure_pair_socket (receiver);
     configure_pair_socket (sender);
 
@@ -94,8 +94,8 @@ void test_pair_blocking_send_wakes_only_after_lwm_reads ()
 
 void test_pair_blocking_send_times_out_without_recv ()
 {
-    void *receiver = test_context_socket (ZLINK_PAIR);
-    void *sender = test_context_socket (ZLINK_PAIR);
+    void *receiver = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *sender = test_context_socket (ZLINK_SOCKET_PAIR);
     configure_pair_socket (receiver);
     configure_pair_socket (sender);
 

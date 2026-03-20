@@ -4,7 +4,6 @@
 
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
-#include "api/legacy_api_internal.hpp"
 #include "sockets/socket_base.hpp"
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/registry.hpp"
@@ -181,12 +180,12 @@ static int socket_type_of (zlink::socket_base_t *socket_)
 
 static bool is_pub_socket_type (int type_)
 {
-    return type_ == ZLINK_PUB || type_ == ZLINK_XPUB;
+    return type_ == ZLINK_CORE_SOCKET_PUB || type_ == ZLINK_CORE_SOCKET_XPUB;
 }
 
 static bool is_sub_socket_type (int type_)
 {
-    return type_ == ZLINK_SUB || type_ == ZLINK_XSUB;
+    return type_ == ZLINK_CORE_SOCKET_SUB || type_ == ZLINK_CORE_SOCKET_XSUB;
 }
 
 static int map_common_option (zlink_option_t option_)
@@ -601,8 +600,8 @@ int zlink_set_option (void *handle_,
         return -1;
     }
 
-    const int legacy = map_common_option (option_);
-    if (legacy < 0)
+    const int socket_option = map_common_option (option_);
+    if (socket_option < 0)
         return -1;
     if (option_ == ZLINK_OPT_LAST_ENDPOINT || option_ == ZLINK_OPT_FD
         || option_ == ZLINK_OPT_EVENTS || option_ == ZLINK_OPT_TYPE) {
@@ -611,13 +610,13 @@ int zlink_set_option (void *handle_,
     }
 
     if (zlink::socket_base_t *socket = as_socket (handle_))
-        return socket->setsockopt (legacy, optval_, optvallen_);
+        return socket->setsockopt (socket_option, optval_, optvallen_);
     errno = 0;
 
     if (zlink::gateway_t *gateway = as_gateway (handle_))
-        return gateway->set_socket_option (legacy, optval_, optvallen_);
+        return gateway->set_socket_option (socket_option, optval_, optvallen_);
     if (zlink::discovery_t *discovery = as_discovery (handle_))
-        return discovery->set_option (legacy, optval_, optvallen_);
+        return discovery->set_option (socket_option, optval_, optvallen_);
     if (zlink::spot_pub_t *pub = as_spot_pub (handle_))
         return pub->set_option (map_spot_pub_option (option_), optval_,
                                 optvallen_);
@@ -645,19 +644,19 @@ int zlink_get_option (void *handle_,
         return -1;
     }
 
-    const int legacy = map_common_option (option_);
-    if (legacy < 0)
+    const int socket_option = map_common_option (option_);
+    if (socket_option < 0)
         return -1;
 
     if (zlink::socket_base_t *socket = as_socket (handle_))
-        return socket->getsockopt (legacy, optval_, optvallen_);
+        return socket->getsockopt (socket_option, optval_, optvallen_);
     errno = 0;
 
     if (zlink::gateway_t *gateway = as_gateway (handle_)) {
         if (option_ == ZLINK_OPT_LAST_ENDPOINT)
             return gateway->last_endpoint (static_cast<char *> (optval_),
                                            optvallen_);
-        return gateway->get_socket_option (legacy, optval_, optvallen_);
+        return gateway->get_socket_option (socket_option, optval_, optvallen_);
     }
     if (as_discovery (handle_)) {
         errno = ENOTSUP;
@@ -671,7 +670,7 @@ int zlink_get_option (void *handle_,
             errno = EFAULT;
             return -1;
         }
-        return socket->getsockopt (legacy, optval_, optvallen_);
+        return socket->getsockopt (socket_option, optval_, optvallen_);
     }
     if (zlink::spot_sub_t *sub = as_spot_sub (handle_)) {
         if (map_spot_sub_option (option_) < 0)
@@ -681,7 +680,7 @@ int zlink_get_option (void *handle_,
             errno = EFAULT;
             return -1;
         }
-        return socket->getsockopt (legacy, optval_, optvallen_);
+        return socket->getsockopt (socket_option, optval_, optvallen_);
     }
     if (zlink_spot_subject_get_common_option_internal (handle_, option_, optval_,
                                                        optvallen_)
@@ -698,7 +697,7 @@ int zlink_set_routing_id (void *handle_, const void *data_, size_t size_)
 {
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         const int type = socket_type_of (socket);
-        if (type == ZLINK_STREAM) {
+        if (type == ZLINK_CORE_SOCKET_STREAM) {
             errno = EINVAL;
             return -1;
         }
@@ -821,21 +820,21 @@ int zlink_set_router_option (void *handle_,
                              const void *optval_,
                              size_t optvallen_)
 {
-    const int legacy = map_router_option (option_);
-    if (legacy < 0)
+    const int socket_option = map_router_option (option_);
+    if (socket_option < 0)
         return -1;
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         const int type = socket_type_of (socket);
-        if (type == ZLINK_DEALER && option_ != ZLINK_ROUTER_OPT_PROBE) {
+        if (type == ZLINK_CORE_SOCKET_DEALER && option_ != ZLINK_ROUTER_OPT_PROBE) {
             errno = EINVAL;
             return -1;
         }
-        if (type != ZLINK_ROUTER && type != ZLINK_DEALER) {
+        if (type != ZLINK_CORE_SOCKET_ROUTER && type != ZLINK_CORE_SOCKET_DEALER) {
             errno = EINVAL;
             return -1;
         }
-        return socket->setsockopt (legacy, optval_, optvallen_);
+        return socket->setsockopt (socket_option, optval_, optvallen_);
     }
     errno = 0;
 
@@ -844,7 +843,7 @@ int zlink_set_router_option (void *handle_,
             errno = EINVAL;
             return -1;
         }
-        return gateway->set_socket_option (legacy, optval_, optvallen_);
+        return gateway->set_socket_option (socket_option, optval_, optvallen_);
     }
 
     errno = EFAULT;
@@ -856,21 +855,21 @@ int zlink_get_router_option (void *handle_,
                              void *optval_,
                              size_t *optvallen_)
 {
-    const int legacy = map_router_option (option_);
-    if (legacy < 0)
+    const int socket_option = map_router_option (option_);
+    if (socket_option < 0)
         return -1;
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         const int type = socket_type_of (socket);
-        if (type == ZLINK_DEALER && option_ != ZLINK_ROUTER_OPT_PROBE) {
+        if (type == ZLINK_CORE_SOCKET_DEALER && option_ != ZLINK_ROUTER_OPT_PROBE) {
             errno = EINVAL;
             return -1;
         }
-        if (type != ZLINK_ROUTER && type != ZLINK_DEALER) {
+        if (type != ZLINK_CORE_SOCKET_ROUTER && type != ZLINK_CORE_SOCKET_DEALER) {
             errno = EINVAL;
             return -1;
         }
-        return socket->getsockopt (legacy, optval_, optvallen_);
+        return socket->getsockopt (socket_option, optval_, optvallen_);
     }
     errno = 0;
 
@@ -880,7 +879,7 @@ int zlink_get_router_option (void *handle_,
             errno = EINVAL;
             return -1;
         }
-        return gateway->get_socket_option (legacy, optval_, optvallen_);
+        return gateway->get_socket_option (socket_option, optval_, optvallen_);
     }
 
     errno = EFAULT;
@@ -892,15 +891,15 @@ int zlink_set_dealer_option (void *handle_,
                              const void *optval_,
                              size_t optvallen_)
 {
-    const int legacy = map_dealer_option (option_);
-    if (legacy < 0)
+    const int socket_option = map_dealer_option (option_);
+    if (socket_option < 0)
         return -1;
 
     zlink::socket_base_t *socket = as_socket (handle_);
     if (!socket)
         return -1;
     return set_socket_option_checked (socket, socket_type_of (socket),
-                                      ZLINK_DEALER, ZLINK_DEALER, legacy,
+                                      ZLINK_CORE_SOCKET_DEALER, ZLINK_CORE_SOCKET_DEALER, socket_option,
                                       optval_, optvallen_);
 }
 
@@ -909,15 +908,15 @@ int zlink_set_stream_option (void *handle_,
                              const void *optval_,
                              size_t optvallen_)
 {
-    const int legacy = map_stream_option (option_);
-    if (legacy < 0)
+    const int socket_option = map_stream_option (option_);
+    if (socket_option < 0)
         return -1;
 
     zlink::socket_base_t *socket = as_socket (handle_);
     if (!socket)
         return -1;
     return set_socket_option_checked (socket, socket_type_of (socket),
-                                      ZLINK_STREAM, ZLINK_STREAM, legacy,
+                                      ZLINK_CORE_SOCKET_STREAM, ZLINK_CORE_SOCKET_STREAM, socket_option,
                                       optval_, optvallen_);
 }
 
@@ -926,15 +925,15 @@ int zlink_get_stream_option (void *handle_,
                              void *optval_,
                              size_t *optvallen_)
 {
-    const int legacy = map_stream_option (option_);
-    if (legacy < 0)
+    const int socket_option = map_stream_option (option_);
+    if (socket_option < 0)
         return -1;
 
     zlink::socket_base_t *socket = as_socket (handle_);
     if (!socket)
         return -1;
     return get_socket_option_checked (socket, socket_type_of (socket),
-                                      ZLINK_STREAM, ZLINK_STREAM, legacy,
+                                      ZLINK_CORE_SOCKET_STREAM, ZLINK_CORE_SOCKET_STREAM, socket_option,
                                       optval_, optvallen_);
 }
 
@@ -943,13 +942,13 @@ int zlink_set_pub_option (void *handle_,
                           const void *optval_,
                           size_t optvallen_)
 {
-    const int legacy = map_pub_option (option_);
-    if (legacy < 0)
+    const int socket_option = map_pub_option (option_);
+    if (socket_option < 0)
         return -1;
 
     if (zlink::socket_base_t *socket = as_socket (handle_))
         return set_socket_option_checked (socket, socket_type_of (socket),
-                                          ZLINK_PUB, ZLINK_XPUB, legacy,
+                                          ZLINK_CORE_SOCKET_PUB, ZLINK_CORE_SOCKET_XPUB, socket_option,
                                           optval_, optvallen_);
     errno = 0;
 
@@ -972,13 +971,13 @@ int zlink_get_pub_option (void *handle_,
                           void *optval_,
                           size_t *optvallen_)
 {
-    const int legacy = map_pub_option (option_);
-    if (legacy < 0)
+    const int socket_option = map_pub_option (option_);
+    if (socket_option < 0)
         return -1;
 
     if (zlink::socket_base_t *socket = as_socket (handle_))
         return get_socket_option_checked (socket, socket_type_of (socket),
-                                          ZLINK_PUB, ZLINK_XPUB, legacy,
+                                          ZLINK_CORE_SOCKET_PUB, ZLINK_CORE_SOCKET_XPUB, socket_option,
                                           optval_, optvallen_);
     errno = 0;
 
@@ -988,7 +987,7 @@ int zlink_get_pub_option (void *handle_,
             errno = EFAULT;
             return -1;
         }
-        return socket->getsockopt (legacy, optval_, optvallen_);
+        return socket->getsockopt (socket_option, optval_, optvallen_);
     }
     if (zlink_spot_subject_get_pub_option_internal (handle_, option_, optval_,
                                                     optvallen_)
@@ -1006,18 +1005,18 @@ int zlink_set_sub_option (void *handle_,
                           const void *optval_,
                           size_t optvallen_)
 {
-    const int legacy = map_sub_option (option_);
-    if (legacy < 0)
+    const int socket_option = map_sub_option (option_);
+    if (socket_option < 0)
         return -1;
 
     if (zlink::socket_base_t *socket = as_socket (handle_))
     {
         const int type = socket_type_of (socket);
-        if (type != ZLINK_SUB && type != ZLINK_XSUB) {
+        if (type != ZLINK_CORE_SOCKET_SUB && type != ZLINK_CORE_SOCKET_XSUB) {
             errno = EINVAL;
             return -1;
         }
-        return socket->setsockopt (legacy, optval_, optvallen_);
+        return socket->setsockopt (socket_option, optval_, optvallen_);
     }
     errno = 0;
 
@@ -1040,13 +1039,13 @@ int zlink_get_sub_option (void *handle_,
                           void *optval_,
                           size_t *optvallen_)
 {
-    const int legacy = map_sub_option (option_);
-    if (legacy < 0)
+    const int socket_option = map_sub_option (option_);
+    if (socket_option < 0)
         return -1;
 
     if (zlink::socket_base_t *socket = as_socket (handle_))
         return get_socket_option_checked (socket, socket_type_of (socket),
-                                          ZLINK_SUB, ZLINK_XSUB, legacy,
+                                          ZLINK_CORE_SOCKET_SUB, ZLINK_CORE_SOCKET_XSUB, socket_option,
                                           optval_, optvallen_);
     errno = 0;
 
@@ -1056,7 +1055,7 @@ int zlink_get_sub_option (void *handle_,
             errno = EFAULT;
             return -1;
         }
-        return socket->getsockopt (legacy, optval_, optvallen_);
+        return socket->getsockopt (socket_option, optval_, optvallen_);
     }
     if (zlink_spot_subject_get_sub_option_internal (handle_, option_, optval_,
                                                     optvallen_)
@@ -1077,12 +1076,12 @@ int zlink_set_subscription (void *handle_, const char *filter_)
             return -1;
         }
         const int type = socket_type_of (socket);
-        if (type != ZLINK_SUB && type != ZLINK_XSUB) {
+        if (type != ZLINK_CORE_SOCKET_SUB && type != ZLINK_CORE_SOCKET_XSUB) {
             errno = EINVAL;
             return -1;
         }
         const size_t filter_len = strlen (filter_);
-        if (type == ZLINK_XSUB)
+        if (type == ZLINK_CORE_SOCKET_XSUB)
             return xsub_update_subscription (socket, true, filter_, filter_len);
         return socket->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, filter_, filter_len);
     }
@@ -1124,12 +1123,12 @@ int zlink_unset_subscription (void *handle_, const char *filter_)
             return -1;
         }
         const int type = socket_type_of (socket);
-        if (type != ZLINK_SUB && type != ZLINK_XSUB) {
+        if (type != ZLINK_CORE_SOCKET_SUB && type != ZLINK_CORE_SOCKET_XSUB) {
             errno = EINVAL;
             return -1;
         }
         const size_t filter_len = strlen (filter_);
-        if (type == ZLINK_XSUB)
+        if (type == ZLINK_CORE_SOCKET_XSUB)
             return xsub_update_subscription (socket, false, filter_, filter_len);
         return socket->setsockopt (ZLINK_INTERNAL_OPT_UNSUBSCRIBE, filter_, filter_len);
     }
@@ -1170,7 +1169,7 @@ int zlink_subscription_at (void *handle_,
 {
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         const int type = socket_type_of (socket);
-        if (type != ZLINK_SUB && type != ZLINK_XSUB) {
+        if (type != ZLINK_CORE_SOCKET_SUB && type != ZLINK_CORE_SOCKET_XSUB) {
             errno = EINVAL;
             return -1;
         }

@@ -461,7 +461,7 @@ void test_zlink_ws_bind ()
 {
     setup_zlink_ctx ();
 
-    void *socket = zlink_socket (g_ctx, ZLINK_PAIR);
+    void *socket = zlink_socket (g_ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (socket);
 
     //  Bind to WebSocket endpoint - this should NOT return -1 with errno 93
@@ -494,7 +494,7 @@ void test_zlink_ws_connect ()
     setup_zlink_ctx ();
 
     //  First create a bind socket
-    void *bind_socket = zlink_socket (g_ctx, ZLINK_PAIR);
+    void *bind_socket = zlink_socket (g_ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (bind_socket);
 
     int rc = zlink_bind (bind_socket, "ws://127.0.0.1:*");
@@ -507,7 +507,7 @@ void test_zlink_ws_connect ()
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Create connect socket
-    void *connect_socket = zlink_socket (g_ctx, ZLINK_PAIR);
+    void *connect_socket = zlink_socket (g_ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (connect_socket);
 
     //  Connect to the WebSocket endpoint
@@ -533,7 +533,7 @@ void test_zlink_ws_pair_message ()
     setup_zlink_ctx ();
 
     //  Create bind socket
-    void *bind_socket = zlink_socket (g_ctx, ZLINK_PAIR);
+    void *bind_socket = zlink_socket (g_ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (bind_socket);
 
     int rc = zlink_bind (bind_socket, "ws://127.0.0.1:*");
@@ -546,7 +546,7 @@ void test_zlink_ws_pair_message ()
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Create connect socket
-    void *connect_socket = zlink_socket (g_ctx, ZLINK_PAIR);
+    void *connect_socket = zlink_socket (g_ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (connect_socket);
 
     rc = zlink_connect (connect_socket, endpoint);
@@ -589,7 +589,7 @@ void test_zlink_ws_pubsub ()
     setup_zlink_ctx ();
 
     //  Create PUB socket
-    void *pub_socket = zlink_socket (g_ctx, ZLINK_PUB);
+    void *pub_socket = zlink_socket (g_ctx, ZLINK_SOCKET_PUB);
     TEST_ASSERT_NOT_NULL (pub_socket);
 
     int rc = zlink_bind (pub_socket, "ws://127.0.0.1:*");
@@ -602,7 +602,7 @@ void test_zlink_ws_pubsub ()
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Create SUB socket
-    void *sub_socket = zlink_socket (g_ctx, ZLINK_SUB);
+    void *sub_socket = zlink_socket (g_ctx, ZLINK_SOCKET_SUB);
     TEST_ASSERT_NOT_NULL (sub_socket);
 
     //  Subscribe to all messages
@@ -637,7 +637,7 @@ void test_zlink_ws_with_path ()
 {
     setup_zlink_ctx ();
 
-    void *socket = zlink_socket (g_ctx, ZLINK_PAIR);
+    void *socket = zlink_socket (g_ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (socket);
 
     //  Bind to WebSocket endpoint with custom path
@@ -664,8 +664,8 @@ void test_zlink_wss_pair_message ()
 
     const tls_files_t files = create_tls_files ();
 
-    void *server = zlink_socket (g_ctx, ZLINK_PAIR);
-    void *client = zlink_socket (g_ctx, ZLINK_PAIR);
+    void *server = zlink_socket (g_ctx, ZLINK_SOCKET_PAIR);
+    void *client = zlink_socket (g_ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 

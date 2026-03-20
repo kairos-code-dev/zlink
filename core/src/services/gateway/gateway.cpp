@@ -4,10 +4,10 @@
 
 #include "services/gateway/gateway.hpp"
 
-#include "api/legacy_api_internal.hpp"
 #include "core/msg.hpp"
 #include "core/pipe.hpp"
 #include "core/recv_internal.hpp"
+#include "core/send_internal.hpp"
 #include "services/common/advertise_endpoint.hpp"
 #include "services/common/monitor_decode.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
@@ -78,7 +78,7 @@ static void ensure_gateway_routing_id (socket_base_t *socket_,
 
 static int allocate_router (ctx_t *ctx_, socket_base_t **socket_)
 {
-    *socket_ = ctx_->create_socket (ZLINK_ROUTER);
+    *socket_ = ctx_->create_socket (ZLINK_CORE_SOCKET_ROUTER);
     if (!*socket_)
         return -1;
     return 0;
@@ -249,7 +249,7 @@ static int send_parts_via_router_with_retry (socket_base_t *router_socket_,
 
         int send_flags =
           (part_count_ > 0 ? ZLINK_SNDMORE : 0) | (flags_ & ZLINK_DONTWAIT);
-        if (zlink_compat_msg_send (&rid_msg, router_socket_, send_flags) < 0) {
+        if (zlink::send_msg_internal (router_socket_, &rid_msg, send_flags) < 0) {
             const int err = errno;
             zlink_msg_close (&rid_msg);
             if (!dontwait && (err == EHOSTUNREACH || err == ENOTCONN)
@@ -265,7 +265,7 @@ static int send_parts_via_router_with_retry (socket_base_t *router_socket_,
         for (size_t i = 0; i < part_count_; ++i) {
             send_flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
             send_flags |= (flags_ & ZLINK_DONTWAIT);
-            if (zlink_compat_msg_send (&parts_[i], router_socket_, send_flags)
+            if (zlink::send_msg_internal (router_socket_, &parts_[i], send_flags)
                 < 0)
                 return -1;
             zlink_msg_close (&parts_[i]);
@@ -1187,7 +1187,7 @@ int gateway_t::send_request_frames (gateway_service_pool_t *pool_,
         return -1;
     int send_flags =
       (part_count_ > 0 ? ZLINK_SNDMORE : 0) | (flags_ & ZLINK_DONTWAIT);
-    if (zlink_compat_msg_send (&rid_msg, _runtime->router_socket, send_flags)
+    if (zlink::send_msg_internal (_runtime->router_socket, &rid_msg, send_flags)
         < 0) {
         zlink_msg_close (&rid_msg);
         return -1;
@@ -1198,7 +1198,7 @@ int gateway_t::send_request_frames (gateway_service_pool_t *pool_,
         send_flags =
           (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
         send_flags |= (flags_ & ZLINK_DONTWAIT);
-        if (zlink_compat_msg_send (&parts_[i], _runtime->router_socket,
+        if (zlink::send_msg_internal (_runtime->router_socket, &parts_[i],
                                    send_flags)
             < 0) {
             return -1;
@@ -1639,7 +1639,7 @@ int gateway_t::last_endpoint (char *endpoint_out_, size_t *size_out_) const
         errno = ENOTSUP;
         return -1;
     }
-    if (_runtime->router_socket->getsockopt (ZLINK_SOCKOPT_LAST_ENDPOINT,
+    if (_runtime->router_socket->getsockopt (ZLINK_INTERNAL_OPT_LAST_ENDPOINT,
                                              endpoint_out_, size_out_)
         == 0) {
         return 0;
@@ -1812,33 +1812,6 @@ int gateway_t::update_peer_weight (const zlink_routing_id_t *routing_id_,
         _server_weight = value;
 
     return 0;
-}
-
-int gateway_t::set_option (int option_,
-                           const void *optval_,
-                           size_t optvallen_)
-{
-    service_public_api_scope_t admission (_public_api);
-    if (!admission.acquired ())
-        return -1;
-
-    switch (option_) {
-        case ZLINK_GATEWAY_OPT_SNDHWM:
-            return set_socket_option (ZLINK_INTERNAL_OPT_SNDHWM, optval_, optvallen_);
-        case ZLINK_GATEWAY_OPT_RCVHWM:
-            return set_socket_option (ZLINK_INTERNAL_OPT_RCVHWM, optval_, optvallen_);
-        case ZLINK_GATEWAY_OPT_SNDTIMEO:
-            return set_socket_option (ZLINK_INTERNAL_OPT_SNDTIMEO, optval_, optvallen_);
-        case ZLINK_GATEWAY_OPT_LINGER:
-            return set_socket_option (ZLINK_INTERNAL_OPT_LINGER, optval_, optvallen_);
-        case ZLINK_GATEWAY_OPT_SNDBUF:
-            return set_socket_option (ZLINK_INTERNAL_OPT_SNDBUF, optval_, optvallen_);
-        case ZLINK_GATEWAY_OPT_RCVBUF:
-            return set_socket_option (ZLINK_INTERNAL_OPT_RCVBUF, optval_, optvallen_);
-        default:
-            errno = EINVAL;
-            return -1;
-    }
 }
 
 int gateway_t::set_tls_server (const char *cert_, const char *key_)

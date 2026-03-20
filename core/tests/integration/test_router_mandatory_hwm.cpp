@@ -17,7 +17,7 @@ void test_router_mandatory_hwm ()
     if (TRACE_ENABLED)
         fprintf (stderr, "Staring router mandatory HWM test ...\n");
     char my_endpoint[MAX_SOCKET_STRING];
-    void *router = test_context_socket (ZLINK_ROUTER);
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
 
     // Configure router socket to mandatory routing and set HWM and linger
     int mandatory = 1;
@@ -32,7 +32,7 @@ void test_router_mandatory_hwm ()
     bind_loopback_ipv4 (router, my_endpoint, sizeof my_endpoint);
 
     //  Create dealer called "X" and connect it to our router, configure HWM
-    void *dealer = test_context_socket (ZLINK_DEALER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "X", 1));
     int rcvhwm = 1;
     TEST_ASSERT_SUCCESS_ERRNO (

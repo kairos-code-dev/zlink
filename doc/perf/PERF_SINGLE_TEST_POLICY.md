@@ -1,8 +1,8 @@
 # zlink Single Performance Test Policy
 
 > **적용 범위**: zlink 전체 (core + bindings) — single-client 벤치마크
-> **Policy Version**: 1.6
-> **Date**: 2026-03-03
+> **Policy Version**: 1.7
+> **Date**: 2026-03-20
 > **Scope**: `perf/single` 성능 테스트 정책
 >
 > 본 정책은 `perf/single`의 C++ 벤치마크뿐 아니라 모든 바인딩 라이브러리
@@ -52,6 +52,7 @@
     - send backpressure: poller `POLLOUT` 기반.
     - active 종료 후에는 bounded idle drain으로 잔여 in-flight를 정리할 수 있다.
   - **callback 모델** (`--recv callback`):
+    - single suite에서 callback 모델은 `SPOT`에만 허용된다.
     - recv: `zlink_recv_handler()` 등록 → 라이브러리가 I/O thread에서 callback
       dispatch. `zlink_recv()` / `zlink_msg_recv()` 동기 recv API는 측정 경로에
       사용하지 않는다.
@@ -72,6 +73,7 @@
 - 공통
   - 실패 시 즉시 `fail` 처리한다.
   - retry는 없다.
+  - 지원하지 않는 single pattern에서 `--recv callback`을 주면 즉시 실패한다.
   - `recv`와 `callback`은 metric header decode, phase 판정, throughput/latency
     집계 엔진을 최대한 공유하고, 차이는 event를 만드는 입력 경로만 둔다.
 - 한 줄 요약
@@ -264,7 +266,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 | `--io-threads N` | context I/O threads | 환경/기본값 |
 | `--msg-sizes LIST` | 메시지 크기 목록 | 정책 기본값 |
 | `--transports LIST` | transport 목록 | 패턴 기본값 |
-| `--recv MODE` | recv 모델 선택: `recv` (기본) 또는 `callback` | `recv` |
+| `--recv MODE` | recv 모델 선택: `recv` (기본) 또는 `callback` (`SPOT`만 허용) | `recv` |
 | `--hwm N` | 송수신 HWM 공통 fallback | 1000 |
 | `--send-hwm N` | 송신 HWM 우선값 | `--hwm` |
 | `--recv-hwm N` | 수신 HWM 우선값 | `--hwm` |
@@ -291,7 +293,19 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 - GATEWAY
 - SPOT
 
-> STREAM 계열(STREAM, STREAM_CALLBACK)은 single suite에서 테스트하지 않는다.
+> STREAM 계열(STREAM)은 single suite에서 테스트하지 않는다.
+
+#### recv mode 지원 범위
+
+| 패턴 | 허용 mode |
+|------|-----------|
+| PAIR | `recv` |
+| PUBSUB | `recv` |
+| DEALER_DEALER | `recv` |
+| DEALER_ROUTER | `recv` |
+| ROUTER_ROUTER | `recv` |
+| GATEWAY | `recv` |
+| SPOT | `recv`, `callback` |
 
 #### 패턴 방향 분류
 

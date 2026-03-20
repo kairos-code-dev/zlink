@@ -53,12 +53,12 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 **대상 API:**
 
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
-- `zlink_setsockopt()` / `zlink_getsockopt()`
+- `zlink_set_option()` / `zlink_get_option()`
 - `zlink_spot_subscribe()` / `zlink_spot_unsubscribe()`
 - `zlink_gateway_attach_discovery()` / `zlink_spot_node_attach_discovery()`
 - `zlink_*_monitor_open()`
-- `zlink_socket_send_ready_handler()`
-- `zlink_gateway_set_option()` / `zlink_gateway_set_lb_strategy()`
+- `zlink_send_ready_handler()`
+- `zlink_set_option()` / `zlink_gateway_set_lb_strategy()`
 - `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
 - Heavy query: `zlink_registry_topology_query()`, 스냅샷 함수
 
@@ -71,8 +71,8 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 
 **경량 런타임 읽기 vs 무거운 조회:**
 
-경량 읽기(`ZLINK_EVENTS`, `ZLINK_RCVMORE`, `ZLINK_LAST_ENDPOINT`,
-routing-id 조회)는 control path에 속하지만, heavy query/snapshot 호출의
+경량 읽기(`ZLINK_OPT_EVENTS`,
+`ZLINK_OPT_LAST_ENDPOINT`, routing-id 조회)는 control path에 속하지만, heavy query/snapshot 호출의
 전체 직렬화 비용을 수반하지 않습니다. 이들은 경량 서브셋으로 분류됩니다
 — 항상 thread-safe이지만, 가장 무거운 직렬화 레인을 거치지 않습니다.
 
@@ -129,7 +129,7 @@ send queue에 발행합니다 — 단일 스레드 send에 사용되는 것과 �
 - **Send queue publication:** concurrent producer들이 기존
   pipe/YPipe 인프라를 통해 enqueue합니다. I/O 스레드 consumer
   측은 변경되지 않습니다.
-- **Control-path lock:** `bind`, `connect`, `setsockopt` 등은
+- **Control-path lock:** `bind`, `connect`, `set_option` 등은
   hot-path admission gate와 상태나 캐시 라인을 공유하지 않는
   별도 직렬화 경로를 거칩니다.
 

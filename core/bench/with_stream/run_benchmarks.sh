@@ -241,13 +241,8 @@ ZMQ_BIN="${BUILD_DIR}/bin/test_scenario_stream_zmq"
 
 STACKS_ROOT_DIR="${STACKS_ROOT_DIR:-${ROOT_DIR}/core/bench/with_stream/stacks}"
 if [[ ! -d "${STACKS_ROOT_DIR}" ]]; then
-    LEGACY_STACKS_ROOT_DIR="${ROOT_DIR}/core/bench/benchwithstreamcompare/stacks"
-    if [[ -d "${LEGACY_STACKS_ROOT_DIR}" ]]; then
-        STACKS_ROOT_DIR="${LEGACY_STACKS_ROOT_DIR}"
-    else
-        echo "stream stacks directory not found: ${STACKS_ROOT_DIR}" >&2
-        exit 2
-    fi
+    echo "stream stacks directory not found: ${STACKS_ROOT_DIR}" >&2
+    exit 2
 fi
 
 ZMQ_LIB_DIR="${STACKS_ROOT_DIR}/zmq/libzmq_dist/linux-x64/lib"
@@ -1027,42 +1022,6 @@ ensure_cppserver_build_dir()
     fi
 }
 
-repair_cppserver_legacy_symlinks()
-{
-    local link_path=""
-    local old_target=""
-    local rel_path=""
-    local new_target=""
-    local fixed_count=0
-
-    while IFS= read -r link_path; do
-        old_target="$(readlink "${link_path}" || true)"
-        if [[ -z "${old_target}" ]]; then
-            continue
-        fi
-
-        case "${old_target}" in
-            */core/tests/scenario/stream/cppserver/upstream/*|*/core/bench/benchwithstreamcompare/stacks/cppserver/upstream/*)
-                rel_path="${old_target##*/upstream/}"
-                if [[ -z "${rel_path}" || "${rel_path}" == "${old_target}" ]]; then
-                    continue
-                fi
-                new_target="${CPPSERVER_SRC_DIR}/${rel_path}"
-                if [[ -e "${new_target}" || -L "${new_target}" ]]; then
-                    ln -sfn "${new_target}" "${link_path}"
-                    fixed_count="$((fixed_count + 1))"
-                fi
-                ;;
-            *)
-                ;;
-        esac
-    done < <(find "${CPPSERVER_SRC_DIR}" -type l -print)
-
-    if (( fixed_count > 0 )); then
-        log "cppserver relinked legacy symlinks count=${fixed_count}"
-    fi
-}
-
 try_build_stack()
 {
     local stack="$1"
@@ -1104,7 +1063,6 @@ try_build_stack()
             cat >"${CPPSERVER_UPSTREAM_ENTRY}" <<'CPP'
 #include "../../test_scenario_stream_cppserver.cpp"
 CPP
-            repair_cppserver_legacy_symlinks
             ensure_cppserver_build_dir
             cmake -S "${CPPSERVER_SRC_DIR}" -B "${CPPSERVER_BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release >/dev/null
             cmake --build "${CPPSERVER_BUILD_DIR}" --target cppserver-performance-stream_fixed_server -j"$(nproc)" >/dev/null
@@ -1731,9 +1689,6 @@ for phase in ("throughput", "latency"):
         stack = str(entry.get("stack", "n/a"))[:16]
         kops = f2(entry.get("median_kops"))
         mean = us_to_ms(entry.get("median_mean_us"))
-        if mean is None:
-            # Backward compatibility for previously generated summaries.
-            mean = us_to_ms(entry.get("median_p95_us"))
         mean_text = f2(mean)
         mismatch = int(entry.get("mismatch_total_all", 0))
         print(f" {idx:>2}   {stack:<16} {kops:>10} {mean_text:>10} {mismatch:>9}")

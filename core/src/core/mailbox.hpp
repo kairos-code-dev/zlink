@@ -48,7 +48,7 @@ class mailbox_t ZLINK_FINAL : public i_mailbox
     void schedule_if_needed ();
     bool reschedule_if_needed ();
 
-    // Signaler support for ZLINK_SOCKOPT_FD
+    // Signaler support for ZLINK_INTERNAL_OPT_FD
     void add_signaler (signaler_t *signaler_);
     void remove_signaler (signaler_t *signaler_);
     void clear_signalers ();
@@ -84,7 +84,7 @@ class mailbox_t ZLINK_FINAL : public i_mailbox
     mailbox_pre_post_t _pre_post;
     std::atomic<bool> _scheduled;
 
-    //  Signalers for ZLINK_SOCKOPT_FD support
+    //  Signalers for ZLINK_INTERNAL_OPT_FD support
     std::vector<signaler_t *> _signalers;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (mailbox_t)

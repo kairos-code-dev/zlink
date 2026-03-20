@@ -273,7 +273,7 @@ void fill_stream_send_queue_until_hwm (void *server_, const zlink_routing_id_t *
     bool reached_full = false;
     for (;;) {
         const int rc =
-          zlink_stream_send (server_, rid_, &payload[0], kPayloadSize, ZLINK_DONTWAIT);
+          test_stream_send_bytes (server_, rid_, &payload[0], kPayloadSize, ZLINK_DONTWAIT);
         if (rc == static_cast<int> (kPayloadSize)) {
             ++sent;
             no_success_since = std::chrono::steady_clock::now ();
@@ -305,7 +305,7 @@ void test_stream_queue_reopens_after_peer_reads ()
 #if defined(ZLINK_HAVE_WINDOWS)
     TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
 #else
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -329,7 +329,7 @@ void test_stream_queue_reopens_after_peer_reads ()
       zlink_set_option (server, ZLINK_OPT_SNDTIMEO, &kProbeTimeoutMs,
                         sizeof (kProbeTimeoutMs)));
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_stream_send (server, &rid, &payload[0], kPayloadSize, 0));
+      -1, test_stream_send_bytes (server, &rid, &payload[0], kPayloadSize, 0));
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
 
     unsigned char drain_buf[64 * 1024];
@@ -349,7 +349,7 @@ void test_stream_queue_reopens_after_peer_reads ()
       std::chrono::steady_clock::now () + std::chrono::milliseconds (1500);
     while (std::chrono::steady_clock::now () < reopen_deadline) {
         const int send_rc =
-          zlink_stream_send (server, &rid, &payload[0], kPayloadSize, ZLINK_DONTWAIT);
+          test_stream_send_bytes (server, &rid, &payload[0], kPayloadSize, ZLINK_DONTWAIT);
         if (send_rc == static_cast<int> (kPayloadSize)) {
             reopened = true;
             break;
@@ -369,7 +369,7 @@ void test_stream_blocking_send_times_out_without_peer_reads ()
 #if defined(ZLINK_HAVE_WINDOWS)
     TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
 #else
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
 
@@ -387,7 +387,7 @@ void test_stream_blocking_send_times_out_without_peer_reads ()
 
     std::vector<unsigned char> payload (kPayloadSize, 0x44);
     void *stopwatch = zlink_stopwatch_start ();
-    const int send_rc = zlink_stream_send (server, &rid, &payload[0], kPayloadSize, 0);
+    const int send_rc = test_stream_send_bytes (server, &rid, &payload[0], kPayloadSize, 0);
     const unsigned int elapsed_ms = zlink_stopwatch_stop (stopwatch) / 1000;
 
     TEST_ASSERT_EQUAL_INT (-1, send_rc);

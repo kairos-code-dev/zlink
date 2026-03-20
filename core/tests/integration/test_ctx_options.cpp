@@ -136,11 +136,11 @@ void test_ctx_zero_copy ()
 
     // Create a TCP socket pair using the context and test that messages can be
     // received. Note that inproc sockets cannot be used for this test.
-    void *pull = zlink_socket (get_test_context (), ZLINK_DEALER);
+    void *pull = zlink_socket (get_test_context (), ZLINK_SOCKET_DEALER);
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (pull, endpoint, sizeof endpoint);
 
-    void *push = zlink_socket (get_test_context (), ZLINK_DEALER);
+    void *push = zlink_socket (get_test_context (), ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (push, endpoint));
 
     const char *small_str = "abcd";
@@ -185,11 +185,6 @@ void test_ctx_option_io_threads ()
                            zlink_ctx_get (get_test_context (), ZLINK_IO_THREADS));
 }
 
-void test_ctx_option_ipv6 ()
-{
-    TEST_ASSERT_EQUAL_INT (0, zlink_ctx_get (get_test_context (), static_cast<zlink_ctx_option_t>(ZLINK_IPV6)));
-}
-
 void test_ctx_option_msg_t_size ()
 {
 #if defined(ZLINK_MSG_T_SIZE)
@@ -198,24 +193,15 @@ void test_ctx_option_msg_t_size ()
 #endif
 }
 
-void test_ctx_option_ipv6_set ()
-{
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (get_test_context (), static_cast<zlink_ctx_option_t>(ZLINK_IPV6), true));
-    TEST_ASSERT_EQUAL_INT (1, zlink_ctx_get (get_test_context (), static_cast<zlink_ctx_option_t>(ZLINK_IPV6)));
-}
-
 void test_ctx_option_blocky ()
 {
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (get_test_context (), static_cast<zlink_ctx_option_t>(ZLINK_IPV6), true));
+    TEST_ASSERT_EQUAL_INT (1,
+                           zlink_ctx_get (get_test_context (),
+                                          ZLINK_CTX_OPT_BLOCKY));
 
-    void *router = test_context_socket (ZLINK_ROUTER);
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     int value;
     size_t optsize = sizeof (int);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_IPV6, &value, &optsize));
-    TEST_ASSERT_EQUAL_INT (1, value);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_LINGER, &value, &optsize));
     TEST_ASSERT_EQUAL_INT (-1, value);
@@ -231,10 +217,10 @@ void test_ctx_option_blocky ()
 #endif
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (get_test_context (), static_cast<zlink_ctx_option_t>(ZLINK_BLOCKY), false));
+      zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_BLOCKY, false));
     TEST_ASSERT_EQUAL_INT (0, TEST_ASSERT_SUCCESS_ERRNO ((zlink_ctx_get (
-                                get_test_context (), static_cast<zlink_ctx_option_t>(ZLINK_BLOCKY)))));
-    router = test_context_socket (ZLINK_ROUTER);
+                                get_test_context (), ZLINK_CTX_OPT_BLOCKY))));
+    router = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_LINGER, &value, &optsize));
     TEST_ASSERT_EQUAL_INT (0, value);
@@ -257,9 +243,7 @@ int main (void)
     RUN_TEST (test_ctx_option_max_sockets);
     RUN_TEST (test_ctx_option_socket_limit);
     RUN_TEST (test_ctx_option_io_threads);
-    RUN_TEST (test_ctx_option_ipv6);
     RUN_TEST (test_ctx_option_msg_t_size);
-    RUN_TEST (test_ctx_option_ipv6_set);
     RUN_TEST (test_ctx_thread_opts);
     RUN_TEST (test_ctx_zero_copy);
     RUN_TEST (test_ctx_option_blocky);

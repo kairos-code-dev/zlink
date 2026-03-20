@@ -189,7 +189,7 @@ int zlink::ctx_t::terminate ()
     pending_connections_t copy = _pending_connections;
     for (pending_connections_t::iterator p = copy.begin (), end = copy.end ();
          p != end; ++p) {
-        zlink::socket_base_t *s = create_socket (ZLINK_PAIR);
+        zlink::socket_base_t *s = create_socket (ZLINK_CORE_SOCKET_PAIR);
         // create_socket might fail eg: out of memory/sockets limit reached
         zlink_assert (s);
         s->bind (p->first.c_str ());

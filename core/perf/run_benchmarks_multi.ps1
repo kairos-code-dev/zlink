@@ -54,7 +54,7 @@ Usage: core\perf\run_benchmarks_multi.ps1 [options]
 Run only multi-socket benchmark patterns.
 
 Options:
-  -Pattern NAME                Pattern list (comma-separated) or ALL. Legacy MULTI_ prefix is optional.
+  -Pattern NAME                Pattern list (comma-separated) or ALL.
                                Alias: stream/streams => STREAM
   -BuildDir PATH               Build directory.
   -OutputFile PATH             Tee console logs to file.
@@ -136,10 +136,6 @@ function Expand-AndAddPatternAlias {
     )
     $p = $RawPattern.Trim().ToUpperInvariant()
     if (-not $p) { return }
-    if ($p.StartsWith("MULTI_")) {
-        $p = $p.Substring(6)
-    }
-
     switch ($p) {
         "STREAM" {
             Add-UniquePattern -List $List -PatternName "STREAM"
@@ -169,11 +165,7 @@ if ($Pattern.Trim().ToUpperInvariant() -eq "ALL") {
 
 $PatternList = @()
 foreach ($p in $ExpandedPatterns) {
-    $normalized = $p
-    if ($normalized.StartsWith("MULTI_")) {
-        $normalized = $normalized.Substring(6)
-    }
-    $PatternList += $normalized
+    $PatternList += $p
 }
 if ($PatternList.Count -eq 0) {
     throw "No valid pattern specified."

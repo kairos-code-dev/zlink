@@ -15,10 +15,10 @@ const char topic_b[] = "B";
 
 void test_xpub_verbose_one_sub ()
 {
-    void *pub = test_context_socket (ZLINK_XPUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, test_endpoint));
 
-    void *sub = test_context_socket (ZLINK_SUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, test_endpoint));
 
     //  Subscribe for A
@@ -68,13 +68,13 @@ void test_xpub_verbose_one_sub ()
 
 void create_xpub_with_2_subs (void **pub_, void **sub0_, void **sub1_)
 {
-    *pub_ = test_context_socket (ZLINK_XPUB);
+    *pub_ = test_context_socket (ZLINK_SOCKET_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (*pub_, test_endpoint));
 
-    *sub0_ = test_context_socket (ZLINK_SUB);
+    *sub0_ = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (*sub0_, test_endpoint));
 
-    *sub1_ = test_context_socket (ZLINK_SUB);
+    *sub1_ = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (*sub1_, test_endpoint));
 }
 
@@ -138,11 +138,11 @@ void test_xpub_verbose_two_subs ()
 void test_xpub_verboser_one_sub ()
 {
     //  Create a publisher
-    void *pub = test_context_socket (ZLINK_XPUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, test_endpoint));
 
     //  Create a subscriber
-    void *sub = test_context_socket (ZLINK_SUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, test_endpoint));
 
     //  Unsubscribe for A, does not exist yet

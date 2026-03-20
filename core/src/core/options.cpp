@@ -522,7 +522,7 @@ int zlink::options_t::getsockopt (int option_,
             }
             break;
 
-        case ZLINK_SOCKOPT_TYPE:
+        case ZLINK_INTERNAL_OPT_TYPE:
             if (is_int) {
                 *value = type;
                 return 0;

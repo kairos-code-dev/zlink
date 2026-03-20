@@ -291,8 +291,8 @@ void test_zlink_tls_pair ()
     setup_test_context ();
     const tls_test_files_t files = make_tls_test_files ();
 
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (

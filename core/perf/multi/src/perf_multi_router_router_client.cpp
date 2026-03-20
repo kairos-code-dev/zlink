@@ -7,7 +7,7 @@
 namespace {
 
 static const char *k_pattern = "MULTI_ROUTER_ROUTER";
-static const int k_client_socket_type = ZLINK_ROUTER;
+static const int k_client_socket_type = ZLINK_SOCKET_ROUTER;
 static const bool k_client_router_send = true;
 static const char *k_server_routing_id = "SERVER";
 

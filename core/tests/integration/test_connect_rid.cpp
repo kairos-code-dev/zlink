@@ -23,13 +23,13 @@ void test_router_2_router (bool named_)
     char my_endpoint[MAX_SOCKET_STRING];
 
     //  Create bind socket.
-    void *rbind = test_context_socket (ZLINK_ROUTER);
+    void *rbind = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (rbind, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     bind_loopback_ipv4 (rbind, my_endpoint, sizeof my_endpoint);
 
     //  Create connection socket.
-    void *rconn1 = test_context_socket (ZLINK_ROUTER);
+    void *rconn1 = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (rconn1, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
@@ -91,19 +91,19 @@ void test_router_2_router_while_receiving ()
     char z_endpoint[MAX_SOCKET_STRING];
 
     //  Create xbind socket.
-    void *xbind = test_context_socket (ZLINK_ROUTER);
+    void *xbind = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (xbind, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     bind_loopback_ipv4 (xbind, x_endpoint, sizeof x_endpoint);
 
     //  Create zbind socket.
-    void *zbind = test_context_socket (ZLINK_ROUTER);
+    void *zbind = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (zbind, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     bind_loopback_ipv4 (zbind, z_endpoint, sizeof z_endpoint);
 
     //  Create connection socket.
-    void *yconn = test_context_socket (ZLINK_ROUTER);
+    void *yconn = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (yconn, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
@@ -176,9 +176,9 @@ void test_duplicate_connect_rid_without_handover ()
     char endpoint_two[MAX_SOCKET_STRING];
     char buffer[256];
 
-    void *server_one = test_context_socket (ZLINK_ROUTER);
-    void *server_two = test_context_socket (ZLINK_ROUTER);
-    void *client = test_context_socket (ZLINK_ROUTER);
+    void *server_one = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *server_two = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *client = test_context_socket (ZLINK_SOCKET_ROUTER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (server_one, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
@@ -242,9 +242,9 @@ void test_duplicate_connect_rid_with_handover ()
     char endpoint_two[MAX_SOCKET_STRING];
     char buffer[256];
 
-    void *server_one = test_context_socket (ZLINK_ROUTER);
-    void *server_two = test_context_socket (ZLINK_ROUTER);
-    void *client = test_context_socket (ZLINK_ROUTER);
+    void *server_one = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *server_two = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *client = test_context_socket (ZLINK_SOCKET_ROUTER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (server_one, ZLINK_OPT_LINGER, &zero, sizeof (zero)));

@@ -223,7 +223,7 @@ int zlink::socket_poller_t::rebuild ()
             if (it->socket) {
                 size_t fd_size = sizeof (zlink::fd_t);
                 const int rc = it->socket->getsockopt (
-                  ZLINK_SOCKOPT_FD, &_pollfds[item_nbr].fd, &fd_size);
+                  ZLINK_INTERNAL_OPT_FD, &_pollfds[item_nbr].fd, &fd_size);
                 zlink_assert (rc == 0);
 
                 _pollfds[item_nbr].events = POLLIN;
@@ -261,12 +261,12 @@ int zlink::socket_poller_t::rebuild ()
          ++it) {
         if (it->events) {
             //  If the poll item is a 0MQ socket we are interested in input on the
-            //  notification file descriptor retrieved by the ZLINK_SOCKOPT_FD socket option.
+            //  notification file descriptor retrieved by the ZLINK_INTERNAL_OPT_FD socket option.
             if (it->socket) {
                 zlink::fd_t notify_fd;
                 size_t fd_size = sizeof (zlink::fd_t);
                 int rc =
-                  it->socket->getsockopt (ZLINK_SOCKOPT_FD, &notify_fd, &fd_size);
+                  it->socket->getsockopt (ZLINK_INTERNAL_OPT_FD, &notify_fd, &fd_size);
                 zlink_assert (rc == 0);
 
                 FD_SET (notify_fd, _pollset_in.get ());
@@ -323,7 +323,7 @@ int zlink::socket_poller_t::check_events (zlink::socket_poller_t::event_t *event
     for (items_t::iterator it = _items.begin (), end = _items.end ();
          it != end && found < n_events_; ++it) {
         //  The poll item is a 0MQ socket. Retrieve pending events
-        //  using the ZLINK_SOCKOPT_EVENTS socket option.
+        //  using the ZLINK_INTERNAL_OPT_EVENTS socket option.
         if (it->socket) {
             uint32_t events;
             if (it->socket->get_events_internal (it->events, &events) == -1) {

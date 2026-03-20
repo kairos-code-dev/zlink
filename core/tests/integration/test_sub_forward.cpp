@@ -11,18 +11,18 @@ void test ()
     char endpoint2[MAX_SOCKET_STRING];
 
     //  First, create an intermediate device
-    void *xpub = test_context_socket (ZLINK_XPUB);
+    void *xpub = test_context_socket (ZLINK_SOCKET_XPUB);
     bind_loopback_ipv4 (xpub, endpoint1, sizeof (endpoint1));
 
-    void *xsub = test_context_socket (ZLINK_XSUB);
+    void *xsub = test_context_socket (ZLINK_SOCKET_XSUB);
     bind_loopback_ipv4 (xsub, endpoint2, sizeof (endpoint2));
 
     //  Create a publisher
-    void *pub = test_context_socket (ZLINK_PUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (pub, endpoint2));
 
     //  Create a subscriber
-    void *sub = test_context_socket (ZLINK_SUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint1));
 
     //  Subscribe for all messages.

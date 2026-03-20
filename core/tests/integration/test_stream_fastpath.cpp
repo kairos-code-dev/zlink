@@ -80,7 +80,7 @@ static int recv_stream_msg (void *socket_,
 {
     zlink_msg_t rid_msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&rid_msg));
-    int rc = zlink_msg_recv (&rid_msg, socket_, 0);
+    int rc = test_recv_single_msg (&rid_msg, socket_, 0);
     if (rc != static_cast<int> (stream_routing_id_size)) {
         zlink_msg_close (&rid_msg);
         return -1;
@@ -94,7 +94,7 @@ static int recv_stream_msg (void *socket_,
 
     zlink_msg_t payload_msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&payload_msg));
-    rc = zlink_msg_recv (&payload_msg, socket_, 0);
+    rc = test_recv_single_msg (&payload_msg, socket_, 0);
     if (rc < 0) {
         zlink_msg_close (&payload_msg);
         return -1;
@@ -229,7 +229,7 @@ static void close_raw_fd (int fd_)
 
 void test_stream_fastpath_tcp_basic ()
 {
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
 
     char recv_buf[64];
@@ -241,7 +241,7 @@ void test_stream_fastpath_tcp_basic ()
     zlink_msg_t msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, server, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (-1, test_recv_single_msg (&msg, server, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 

@@ -94,7 +94,7 @@ void tearDown ()
 
 void test_handshake_timeout ()
 {
-    void *server = test_context_socket (ZLINK_ROUTER);
+    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
     char endpoint[MAX_SOCKET_STRING];
     monitor_probe_t probe;
     g_monitor_probe = &probe;

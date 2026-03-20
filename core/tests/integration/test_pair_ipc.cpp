@@ -11,10 +11,10 @@ void test_roundtrip ()
 {
     char my_endpoint[256];
 
-    void *sb = test_context_socket (ZLINK_PAIR);
+    void *sb = test_context_socket (ZLINK_SOCKET_PAIR);
     bind_loopback_ipc (sb, my_endpoint, sizeof my_endpoint);
 
-    void *sc = test_context_socket (ZLINK_PAIR);
+    void *sc = test_context_socket (ZLINK_SOCKET_PAIR);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, my_endpoint));
 
     bounce (sb, sc);
@@ -33,7 +33,7 @@ void test_endpoint_too_long ()
         endpoint_too_long.append ("a");
     }
 
-    void *sb = test_context_socket (ZLINK_PAIR);
+    void *sb = test_context_socket (ZLINK_SOCKET_PAIR);
     // TODO ENAMETOOLONG is not listed in the errors returned by zlink_bind,
     // should this be EINVAL?
     TEST_ASSERT_FAILURE_ERRNO (ENAMETOOLONG,

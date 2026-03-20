@@ -846,14 +846,14 @@ void spot_data_plane_t::run (spot_node_t *node_)
     if (!runtime)
         return;
 
-    socket_base_t *ctrl = node_->_ctx->create_socket (ZLINK_PAIR);
-    socket_base_t *mesh_pub = node_->_ctx->create_socket (ZLINK_PUB);
-    socket_base_t *mesh_xsub = node_->_ctx->create_socket (ZLINK_XSUB);
+    socket_base_t *ctrl = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
+    socket_base_t *mesh_pub = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
+    socket_base_t *mesh_xsub = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_XSUB);
     socket_base_t *mesh_xsub_monitor = NULL;
-    socket_base_t *peer_ctrl_pub = node_->_ctx->create_socket (ZLINK_PUB);
-    socket_base_t *peer_ctrl_sub = node_->_ctx->create_socket (ZLINK_SUB);
-    socket_base_t *ingress = node_->_ctx->create_socket (ZLINK_SUB);
-    socket_base_t *fanout = node_->_ctx->create_socket (ZLINK_PUB);
+    socket_base_t *peer_ctrl_pub = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
+    socket_base_t *peer_ctrl_sub = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
+    socket_base_t *ingress = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
+    socket_base_t *fanout = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
 
     if (!ctrl || !mesh_pub || !mesh_xsub || !peer_ctrl_pub || !peer_ctrl_sub
         || !ingress || !fanout) {
@@ -973,7 +973,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
         close_socket_ptr (node_, ingress);
         close_socket_ptr (node_, peer_ctrl_sub);
         close_socket_ptr (node_, peer_ctrl_pub);
-        (void) mesh_xsub->monitor (NULL, 0, 3, ZLINK_PAIR);
+        (void) mesh_xsub->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
         close_socket_ptr (node_, mesh_xsub_monitor);
         close_socket_ptr (node_, mesh_xsub);
         close_socket_ptr (node_, mesh_pub);
@@ -999,7 +999,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
         close_socket_ptr (node_, ingress);
         close_socket_ptr (node_, peer_ctrl_sub);
         close_socket_ptr (node_, peer_ctrl_pub);
-        (void) mesh_xsub->monitor (NULL, 0, 3, ZLINK_PAIR);
+        (void) mesh_xsub->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
         close_socket_ptr (node_, mesh_xsub_monitor);
         close_socket_ptr (node_, mesh_xsub);
         close_socket_ptr (node_, mesh_pub);
@@ -1385,7 +1385,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
             (void) mesh_xsub->term_endpoint (it->first.c_str ());
     }
     peer_ctrl_endpoints.clear ();
-    (void) mesh_xsub->monitor (NULL, 0, 3, ZLINK_PAIR);
+    (void) mesh_xsub->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
     close_socket_ptr (node_, mesh_xsub_monitor);
 
     {

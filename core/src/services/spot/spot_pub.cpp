@@ -2,7 +2,6 @@
 
 #include "precompiled.hpp"
 
-#include "api/legacy_api_internal.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/common/monitor_decode.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
@@ -505,7 +504,7 @@ int spot_pub_t::stop_monitor_bridge ()
     }
 
     if (socket)
-        preserve_first_error (socket->monitor (NULL, 0, 3, ZLINK_PAIR),
+        preserve_first_error (socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR),
                               &first_error);
 
     if (_monitor_thread_started) {

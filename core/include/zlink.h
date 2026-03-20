@@ -349,10 +349,6 @@ typedef enum zlink_socket_type_t
     ZLINK_SOCKET_STREAM = 0x1008
 } zlink_socket_type_t;
 
-#ifdef ZLINK_INTERNAL_BUILD
-#include "zlink_legacy_internal.h"
-#endif
-
 typedef enum zlink_option_t
 {
     /* Queue, buffer, and message size options */

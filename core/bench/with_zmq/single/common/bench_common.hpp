@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <zmq.h>
 
-// zlink-compat layer for libzmq builds (reuse perf single source structure).
+// Reuse the single-bench source structure against libzmq types.
 typedef zmq_msg_t zlink_msg_t;
 typedef zmq_pollitem_t zlink_pollitem_t;
 
@@ -54,20 +54,20 @@ typedef zmq_pollitem_t zlink_pollitem_t;
 #ifndef ZLINK_POLLIN
 #define ZLINK_POLLIN ZMQ_POLLIN
 #endif
-#ifndef ZLINK_PAIR
-#define ZLINK_PAIR ZMQ_PAIR
+#ifndef ZLINK_SOCKET_PAIR
+#define ZLINK_SOCKET_PAIR ZMQ_PAIR
 #endif
-#ifndef ZLINK_PUB
-#define ZLINK_PUB ZMQ_PUB
+#ifndef ZLINK_SOCKET_PUB
+#define ZLINK_SOCKET_PUB ZMQ_PUB
 #endif
-#ifndef ZLINK_SUB
-#define ZLINK_SUB ZMQ_SUB
+#ifndef ZLINK_SOCKET_SUB
+#define ZLINK_SOCKET_SUB ZMQ_SUB
 #endif
-#ifndef ZLINK_DEALER
-#define ZLINK_DEALER ZMQ_DEALER
+#ifndef ZLINK_SOCKET_DEALER
+#define ZLINK_SOCKET_DEALER ZMQ_DEALER
 #endif
-#ifndef ZLINK_ROUTER
-#define ZLINK_ROUTER ZMQ_ROUTER
+#ifndef ZLINK_SOCKET_ROUTER
+#define ZLINK_SOCKET_ROUTER ZMQ_ROUTER
 #endif
 #ifndef ZLINK_ROUTING_ID
 #define ZLINK_ROUTING_ID ZMQ_ROUTING_ID
@@ -191,33 +191,25 @@ inline int parse_positive_env(const char *name_, int default_value_)
     return static_cast<int>(parsed);
 }
 
-inline int parse_positive_env_pair(const char *primary_name_,
-                                   const char *legacy_name_,
-                                   int default_value_)
+inline int parse_positive_env_or_default(const char *name_, int default_value_)
 {
-    const int primary = parse_positive_env(primary_name_, 0);
-    if (primary > 0)
-        return primary;
-    return parse_positive_env(legacy_name_, default_value_);
+    return parse_positive_env(name_, default_value_);
 }
 
 inline int resolve_single_duration_seconds()
 {
-    return parse_positive_env_pair("PERF_SINGLE_DURATION_SECONDS",
-                                   "PERF_SINGLE_DURATION_SECONDS", 2);
+    return parse_positive_env_or_default("PERF_SINGLE_DURATION_SECONDS", 2);
 }
 
 inline int resolve_single_warmup_seconds()
 {
-    return parse_positive_env_pair("PERF_SINGLE_WARMUP_SECONDS",
-                                   "PERF_SINGLE_WARMUP_SECONDS", 2);
+    return parse_positive_env_or_default("PERF_SINGLE_WARMUP_SECONDS", 2);
 }
 
 inline int resolve_single_latency_duration_seconds()
 {
     const int base = resolve_single_duration_seconds();
-    return parse_positive_env_pair("PERF_SINGLE_LATENCY_SECONDS",
-                                   "PERF_SINGLE_LATENCY_SECONDS", base);
+    return parse_positive_env_or_default("PERF_SINGLE_LATENCY_SECONDS", base);
 }
 
 inline size_t resolve_single_latency_sample_cap()
@@ -524,8 +516,7 @@ inline int resolve_single_send_timeout_ms()
 
 inline int resolve_single_recv_timeout_ms()
 {
-    return parse_positive_env_pair("PERF_SINGLE_RCVTIMEO_MS",
-                                   "PERF_SINGLE_PUBSUB_RCVTIMEO_MS", 200);
+    return parse_positive_env_or_default("PERF_SINGLE_RCVTIMEO_MS", 200);
 }
 
 inline int resolve_single_pubsub_recv_timeout_ms()

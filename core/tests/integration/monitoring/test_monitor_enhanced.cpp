@@ -182,7 +182,7 @@ static void *open_raw_monitor (void *socket_, uint64_t events_)
 
 static void subscribe_all_if_needed (void *socket_, int type_)
 {
-    if (type_ != ZLINK_SUB)
+    if (type_ != ZLINK_SOCKET_SUB)
         return;
     const char *all_topics = "";
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -352,8 +352,8 @@ static void run_client_monitor_ready_disconnected_test (int client_type_,
 
 void test_auto_routing_id_generation ()
 {
-    const int types[] = {ZLINK_PAIR,   ZLINK_PUB,   ZLINK_SUB, ZLINK_DEALER,
-                         ZLINK_ROUTER, ZLINK_XPUB, ZLINK_XSUB, ZLINK_STREAM};
+    const int types[] = {ZLINK_SOCKET_PAIR,   ZLINK_SOCKET_PUB,   ZLINK_SOCKET_SUB, ZLINK_SOCKET_DEALER,
+                         ZLINK_SOCKET_ROUTER, ZLINK_SOCKET_XPUB, ZLINK_SOCKET_XSUB, ZLINK_SOCKET_STREAM};
 
     for (size_t i = 0; i < sizeof (types) / sizeof (types[0]); ++i) {
         void *sock = test_context_socket (types[i]);
@@ -365,8 +365,8 @@ void test_auto_routing_id_generation ()
 
 void test_monitor_open_and_connection_ready ()
 {
-    void *server = test_context_socket (ZLINK_ROUTER);
-    void *client = test_context_socket (ZLINK_DEALER);
+    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *client = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -404,8 +404,8 @@ void test_pair_monitor_ready_implies_first_bidirectional_delivery ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_socket (ctx, ZLINK_PAIR);
-    void *client = zlink_socket (ctx, ZLINK_PAIR);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -457,8 +457,8 @@ void test_dealer_router_monitor_ready_implies_first_bidirectional_delivery ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_socket (ctx, ZLINK_ROUTER);
-    void *client = zlink_socket (ctx, ZLINK_DEALER);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -528,8 +528,8 @@ void test_peer_enumeration ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_socket (ctx, ZLINK_ROUTER);
-    void *client = zlink_socket (ctx, ZLINK_DEALER);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -566,8 +566,8 @@ void test_peer_enumeration ()
 
 void test_router_monitor_event_sequence_timing ()
 {
-    void *server = test_context_socket (ZLINK_ROUTER);
-    void *client = test_context_socket (ZLINK_DEALER);
+    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *client = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -616,17 +616,17 @@ void test_router_monitor_event_sequence_timing ()
 
 void test_dealer_monitor_ready_and_disconnected ()
 {
-    run_client_monitor_ready_disconnected_test (ZLINK_DEALER, ZLINK_ROUTER);
+    run_client_monitor_ready_disconnected_test (ZLINK_SOCKET_DEALER, ZLINK_SOCKET_ROUTER);
 }
 
 void test_pub_monitor_ready_and_disconnected ()
 {
-    run_client_monitor_ready_disconnected_test (ZLINK_PUB, ZLINK_SUB);
+    run_client_monitor_ready_disconnected_test (ZLINK_SOCKET_PUB, ZLINK_SOCKET_SUB);
 }
 
 void test_sub_monitor_ready_and_disconnected ()
 {
-    run_client_monitor_ready_disconnected_test (ZLINK_SUB, ZLINK_PUB);
+    run_client_monitor_ready_disconnected_test (ZLINK_SOCKET_SUB, ZLINK_SOCKET_PUB);
 }
 
 int main ()

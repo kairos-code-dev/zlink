@@ -10,6 +10,7 @@
 #include "utils/atomic_ptr.hpp"
 #include "stddef.h"
 #include "utils/stdint.hpp"
+#include "core/internal_defs.hpp"
 #include "transports/tcp/tcp_address.hpp"
 
 #if defined ZLINK_HAVE_SO_PEERCRED || defined ZLINK_HAVE_LOCAL_PEERCRED
@@ -228,8 +229,8 @@ inline bool get_effective_conflate_option (const options_t &options)
 {
     // conflate is only effective for some socket types
     return options.conflate
-           && (options.type == ZLINK_DEALER || options.type == ZLINK_PUB
-               || options.type == ZLINK_SUB);
+           && (options.type == ZLINK_CORE_SOCKET_DEALER || options.type == ZLINK_CORE_SOCKET_PUB
+               || options.type == ZLINK_CORE_SOCKET_SUB);
 }
 
 int do_getsockopt (void *optval_,

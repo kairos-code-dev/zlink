@@ -311,8 +311,8 @@ void run_pubsub (const std::string &transport,
 
     recv_state_t recv_state;
 
-    socket_guard_t pub (ctx.get (), ZLINK_PUB);
-    socket_guard_t sub (ctx.get (), ZLINK_SUB);
+    socket_guard_t pub (ctx.get (), ZLINK_SOCKET_PUB);
+    socket_guard_t sub (ctx.get (), ZLINK_SOCKET_SUB);
     if (!pub.valid () || !sub.valid ()) {
         print_fail_no_queue ();
         return;

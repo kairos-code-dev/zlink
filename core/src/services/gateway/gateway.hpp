@@ -116,7 +116,6 @@ class gateway_t : public discovery_observer_t
     int last_endpoint (char *endpoint_out_, size_t *size_out_) const;
     int update_peer_weight (const zlink_routing_id_t *routing_id_,
                             uint32_t weight_);
-    int set_option (int option_, const void *optval_, size_t optvallen_);
     int set_socket_option (int option_,
                            const void *optval_,
                            size_t optvallen_);

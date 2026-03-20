@@ -29,8 +29,8 @@ void tearDown ()
 // Test 1: Basic message send/receive with PAIR sockets
 void test_pair_basic_message ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -56,8 +56,8 @@ void test_pair_basic_message ()
 // Test 2: Multi-part message
 void test_multipart_message ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -78,19 +78,19 @@ void test_multipart_message ()
     //  Receive and verify all parts
     zlink_msg_t msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, client, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, client, 0));
     TEST_ASSERT_EQUAL_STRING (part1, static_cast<const char *> (zlink_msg_data (&msg)));
     TEST_ASSERT_TRUE (test_msg_has_more (&msg));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, client, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, client, 0));
     TEST_ASSERT_EQUAL_STRING (part2, static_cast<const char *> (zlink_msg_data (&msg)));
     TEST_ASSERT_TRUE (test_msg_has_more (&msg));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, client, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, client, 0));
     TEST_ASSERT_EQUAL_STRING (part3, static_cast<const char *> (zlink_msg_data (&msg)));
     TEST_ASSERT_FALSE (test_msg_has_more (&msg));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
@@ -103,8 +103,8 @@ void test_multipart_message ()
 // Test 3: Large message transfer
 void test_large_message ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -146,8 +146,8 @@ void test_large_message ()
 // Test 4: PUB/SUB message pattern
 void test_pubsub_pattern ()
 {
-    void *pub = test_context_socket (ZLINK_PUB);
-    void *sub = test_context_socket (ZLINK_SUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (pub, endpoint, sizeof (endpoint));
@@ -178,8 +178,8 @@ void test_pubsub_pattern ()
 // Test 5: DEALER/ROUTER message pattern
 void test_dealer_router_pattern ()
 {
-    void *router = test_context_socket (ZLINK_ROUTER);
-    void *dealer = test_context_socket (ZLINK_DEALER);
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
 
     //  Set identity for dealer
     const char *identity = "TestDealer";
@@ -202,11 +202,11 @@ void test_dealer_router_pattern ()
     zlink_msg_init (&recv_identity);
     zlink_msg_init (&recv_msg);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&recv_identity, router, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&recv_identity, router, 0));
     TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (identity)),
                            zlink_msg_size (&recv_identity));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&recv_msg, router, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&recv_msg, router, 0));
     TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (msg)),
                            zlink_msg_size (&recv_msg));
 
@@ -230,8 +230,8 @@ void test_dealer_router_pattern ()
 // Test 6: Multiple message burst
 void test_message_burst ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -262,8 +262,8 @@ void test_message_burst ()
 // Test 7: Non-blocking send/receive
 void test_nonblocking_io ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -293,8 +293,8 @@ void test_nonblocking_io ()
 // Test 8: XPUB/XSUB pattern with subscription message
 void test_xpub_xsub_pattern ()
 {
-    void *xpub = test_context_socket (ZLINK_XPUB);
-    void *xsub = test_context_socket (ZLINK_XSUB);
+    void *xpub = test_context_socket (ZLINK_SOCKET_XPUB);
+    void *xsub = test_context_socket (ZLINK_SOCKET_XSUB);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (xpub, endpoint, sizeof (endpoint));
@@ -329,8 +329,8 @@ void test_xpub_xsub_pattern ()
 // Test 9: High-water mark behavior
 void test_hwm_behavior ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     //  Set low HWM
     int hwm = 5;
@@ -366,8 +366,8 @@ void test_hwm_behavior ()
 // Test 10: Socket bounce (full duplex test)
 void test_socket_bounce ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));

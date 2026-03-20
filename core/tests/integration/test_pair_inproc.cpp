@@ -12,10 +12,10 @@ void setUp ()
 {
     setup_test_context ();
 
-    sb = test_context_socket (ZLINK_PAIR);
+    sb = test_context_socket (ZLINK_SOCKET_PAIR);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (sb, "inproc://a"));
 
-    sc = test_context_socket (ZLINK_PAIR);
+    sc = test_context_socket (ZLINK_SOCKET_PAIR);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, "inproc://a"));
 }
 

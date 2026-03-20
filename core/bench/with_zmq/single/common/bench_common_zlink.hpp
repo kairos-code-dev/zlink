@@ -95,33 +95,25 @@ inline int parse_positive_env(const char *name_, int default_value_)
     return static_cast<int>(parsed);
 }
 
-inline int parse_positive_env_pair(const char *primary_name_,
-                                   const char *legacy_name_,
-                                   int default_value_)
+inline int parse_positive_env_or_default(const char *name_, int default_value_)
 {
-    const int primary = parse_positive_env(primary_name_, 0);
-    if (primary > 0)
-        return primary;
-    return parse_positive_env(legacy_name_, default_value_);
+    return parse_positive_env(name_, default_value_);
 }
 
 inline int resolve_single_duration_seconds()
 {
-    return parse_positive_env_pair("PERF_SINGLE_DURATION_SECONDS",
-                                   "PERF_SINGLE_DURATION_SECONDS", 2);
+    return parse_positive_env_or_default("PERF_SINGLE_DURATION_SECONDS", 2);
 }
 
 inline int resolve_single_warmup_seconds()
 {
-    return parse_positive_env_pair("PERF_SINGLE_WARMUP_SECONDS",
-                                   "PERF_SINGLE_WARMUP_SECONDS", 2);
+    return parse_positive_env_or_default("PERF_SINGLE_WARMUP_SECONDS", 2);
 }
 
 inline int resolve_single_latency_duration_seconds()
 {
     const int base = resolve_single_duration_seconds();
-    return parse_positive_env_pair("PERF_SINGLE_LATENCY_SECONDS",
-                                   "PERF_SINGLE_LATENCY_SECONDS", base);
+    return parse_positive_env_or_default("PERF_SINGLE_LATENCY_SECONDS", base);
 }
 
 inline size_t resolve_single_latency_sample_cap()
@@ -444,8 +436,7 @@ inline int resolve_single_send_timeout_ms()
 
 inline int resolve_single_recv_timeout_ms()
 {
-    return parse_positive_env_pair("PERF_SINGLE_RCVTIMEO_MS",
-                                   "PERF_SINGLE_PUBSUB_RCVTIMEO_MS", 200);
+    return parse_positive_env_or_default("PERF_SINGLE_RCVTIMEO_MS", 200);
 }
 
 inline int resolve_single_pubsub_recv_timeout_ms()

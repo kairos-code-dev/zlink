@@ -395,7 +395,7 @@ void zlink::asio_tcp_connecter_t::create_engine (fd_t fd_,
 
     //  Create the engine object for this connection using true proactor mode.
     i_engine *engine = NULL;
-    if (options.type == ZLINK_STREAM)
+    if (options.type == ZLINK_CORE_SOCKET_STREAM)
         engine = new (std::nothrow) asio_raw_engine_t (fd_, options, endpoint_pair);
     else
         engine = new (std::nothrow) asio_zmp_engine_t (fd_, options, endpoint_pair);

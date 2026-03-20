@@ -632,8 +632,8 @@ void run_pair_perf_like_monitor_sampling_case (bool sample_send_,
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_socket (ctx, ZLINK_PAIR);
-    void *client = zlink_socket (ctx, ZLINK_PAIR);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -727,8 +727,8 @@ void test_pair_inproc_perf_like_monitor_ready_implies_bidirectional_delivery ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_socket (ctx, ZLINK_PAIR);
-    void *client = zlink_socket (ctx, ZLINK_PAIR);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -772,8 +772,8 @@ void test_pubsub_perf_like_monitor_sockopts_preserve_connect_ready ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_socket (ctx, ZLINK_PUB);
-    void *client = zlink_socket (ctx, ZLINK_SUB);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_PUB);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_SUB);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -814,8 +814,8 @@ void test_dealer_dealer_perf_like_monitor_sockopts_preserve_connect_ready ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_socket (ctx, ZLINK_DEALER);
-    void *client = zlink_socket (ctx, ZLINK_DEALER);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -856,8 +856,8 @@ void run_pubsub_perf_like_delivery_ready_preserves_oneway_delivery (
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_socket (ctx, ZLINK_PUB);
-    void *client = zlink_socket (ctx, ZLINK_SUB);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_PUB);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_SUB);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
@@ -920,7 +920,7 @@ void test_pubsub_raw_socket_rejects_multipart_send_api ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *pub = zlink_socket (ctx, ZLINK_PUB);
+    void *pub = zlink_socket (ctx, ZLINK_SOCKET_PUB);
     TEST_ASSERT_NOT_NULL (pub);
 
     zlink_msg_t parts[2];
@@ -950,8 +950,8 @@ void test_send_ready_self_close_blocks_followup_operational_api ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_socket (ctx, ZLINK_PAIR);
-    void *client = zlink_socket (ctx, ZLINK_PAIR);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 

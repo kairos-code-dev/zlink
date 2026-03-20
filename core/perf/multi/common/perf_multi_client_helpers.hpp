@@ -192,8 +192,8 @@ inline bool wait_all_client_connect_ready (std::vector<connect_monitor_t> &monit
 
 inline bool allow_connect_ready_timeout_fallback(int client_socket_type)
 {
-    return client_socket_type == ZLINK_DEALER
-           || client_socket_type == ZLINK_ROUTER;
+    return client_socket_type == ZLINK_SOCKET_DEALER
+           || client_socket_type == ZLINK_SOCKET_ROUTER;
 }
 
 inline void close_client_sockets (std::vector<void *> *sockets)
@@ -241,7 +241,7 @@ inline bool create_client_sockets (
 
         apply_benchmark_socket_options (sock, settings.hwm, transport);
 
-        if (client_socket_type == ZLINK_ROUTER) {
+        if (client_socket_type == ZLINK_SOCKET_ROUTER) {
             char id_buf[32];
             const int id_len =
               std::snprintf (id_buf, sizeof (id_buf), "client_%zu", i);
@@ -251,7 +251,7 @@ inline bool create_client_sockets (
             }
         }
 
-        if (client_socket_type == ZLINK_SUB) {
+        if (client_socket_type == ZLINK_SOCKET_SUB) {
             static const char k_subscribe_all[] = "";
             if (zlink_set_subscription (sock, k_subscribe_all) != 0) {
                 if (bench_debug_enabled ()) {

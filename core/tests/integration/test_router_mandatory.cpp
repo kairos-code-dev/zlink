@@ -19,7 +19,7 @@ void test_get_peer_state_corner_cases ()
 void test_basic ()
 {
     char my_endpoint[MAX_SOCKET_STRING];
-    void *router = test_context_socket (ZLINK_ROUTER);
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     bind_loopback_ipv4 (router, my_endpoint, sizeof my_endpoint);
 
     //  Send a message to an unknown peer with the default setting
@@ -36,7 +36,7 @@ void test_basic ()
     TEST_ASSERT_EQUAL_INT (EHOSTUNREACH, errno);
 
     //  Create dealer called "X" and connect it to our router
-    void *dealer = test_context_socket (ZLINK_DEALER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "X", 1));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, my_endpoint));
 

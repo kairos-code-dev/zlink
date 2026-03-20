@@ -189,9 +189,6 @@ def main():
                     throughputs.append(tp)
                     if mean is not None:
                         mean_values.append(mean)
-                    elif p95 is not None:
-                        # Backward compatibility for old csv without mean_us.
-                        mean_values.append(p95)
                     if p95 is not None:
                         p95s.append(p95)
                     tps = tps_or_none(row, size)

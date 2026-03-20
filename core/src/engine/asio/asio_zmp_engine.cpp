@@ -252,7 +252,7 @@ void zlink::asio_zmp_engine_t::plug_internal ()
     _hello_sent = true;
     _ready_sent = true;
 
-    if (_options.type == ZLINK_PUB || _options.type == ZLINK_XPUB)
+    if (_options.type == ZLINK_CORE_SOCKET_PUB || _options.type == ZLINK_CORE_SOCKET_XPUB)
         _subscription_required = true;
 
     start_async_read ();
@@ -473,20 +473,20 @@ bool zlink::asio_zmp_engine_t::parse_hello (const unsigned char *data_,
 bool zlink::asio_zmp_engine_t::is_socket_type_compatible (int peer_type_) const
 {
     switch (_options.type) {
-        case ZLINK_DEALER:
-            return peer_type_ == ZLINK_DEALER || peer_type_ == ZLINK_ROUTER;
-        case ZLINK_ROUTER:
-            return peer_type_ == ZLINK_DEALER || peer_type_ == ZLINK_ROUTER;
-        case ZLINK_PUB:
-            return peer_type_ == ZLINK_SUB || peer_type_ == ZLINK_XSUB;
-        case ZLINK_SUB:
-            return peer_type_ == ZLINK_PUB || peer_type_ == ZLINK_XPUB;
-        case ZLINK_XPUB:
-            return peer_type_ == ZLINK_SUB || peer_type_ == ZLINK_XSUB;
-        case ZLINK_XSUB:
-            return peer_type_ == ZLINK_PUB || peer_type_ == ZLINK_XPUB;
-        case ZLINK_PAIR:
-            return peer_type_ == ZLINK_PAIR;
+        case ZLINK_CORE_SOCKET_DEALER:
+            return peer_type_ == ZLINK_CORE_SOCKET_DEALER || peer_type_ == ZLINK_CORE_SOCKET_ROUTER;
+        case ZLINK_CORE_SOCKET_ROUTER:
+            return peer_type_ == ZLINK_CORE_SOCKET_DEALER || peer_type_ == ZLINK_CORE_SOCKET_ROUTER;
+        case ZLINK_CORE_SOCKET_PUB:
+            return peer_type_ == ZLINK_CORE_SOCKET_SUB || peer_type_ == ZLINK_CORE_SOCKET_XSUB;
+        case ZLINK_CORE_SOCKET_SUB:
+            return peer_type_ == ZLINK_CORE_SOCKET_PUB || peer_type_ == ZLINK_CORE_SOCKET_XPUB;
+        case ZLINK_CORE_SOCKET_XPUB:
+            return peer_type_ == ZLINK_CORE_SOCKET_SUB || peer_type_ == ZLINK_CORE_SOCKET_XSUB;
+        case ZLINK_CORE_SOCKET_XSUB:
+            return peer_type_ == ZLINK_CORE_SOCKET_PUB || peer_type_ == ZLINK_CORE_SOCKET_XPUB;
+        case ZLINK_CORE_SOCKET_PAIR:
+            return peer_type_ == ZLINK_CORE_SOCKET_PAIR;
         default:
             break;
     }

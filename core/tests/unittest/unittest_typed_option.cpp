@@ -29,11 +29,11 @@ static void close_ctx (void *ctx_)
 void test_typed_raw_socket_options ()
 {
     void *ctx = new_ctx ();
-    void *router = zlink_socket (ctx, ZLINK_ROUTER);
-    void *dealer = zlink_socket (ctx, ZLINK_DEALER);
-    void *stream = zlink_socket (ctx, ZLINK_STREAM);
-    void *xpub = zlink_socket (ctx, ZLINK_XPUB);
-    void *xsub = zlink_socket (ctx, ZLINK_XSUB);
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    void *xpub = zlink_socket (ctx, ZLINK_SOCKET_XPUB);
+    void *xsub = zlink_socket (ctx, ZLINK_SOCKET_XSUB);
     TEST_ASSERT_NOT_NULL (router);
     TEST_ASSERT_NOT_NULL (dealer);
     TEST_ASSERT_NOT_NULL (stream);

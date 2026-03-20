@@ -90,7 +90,7 @@ size_t parse_stream_accept_concurrency ()
 
 size_t stream_accept_target (const zlink::options_t &options_)
 {
-    if (options_.type != ZLINK_STREAM)
+    if (options_.type != ZLINK_CORE_SOCKET_STREAM)
         return 1;
     return parse_stream_accept_concurrency ();
 }
@@ -306,7 +306,7 @@ void zlink::asio_ipc_listener_t::create_engine (fd_t fd_)
     alloc_assert (transport.get ());
 
     i_engine *engine = NULL;
-    if (options.type == ZLINK_STREAM) {
+    if (options.type == ZLINK_CORE_SOCKET_STREAM) {
         engine = new (std::nothrow) asio_raw_engine_t (
           fd_, options, endpoint_pair, std::move (transport));
     } else {

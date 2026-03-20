@@ -95,7 +95,7 @@ size_t stream_decoder_initial_read_target (const zlink::options_t &options_)
     size_t target = options_.in_batch_size > 0
                       ? static_cast<size_t> (options_.in_batch_size)
                       : stream_target_default_size;
-    if (options_.type == ZLINK_STREAM && target < ws_stream_initial_target)
+    if (options_.type == ZLINK_CORE_SOCKET_STREAM && target < ws_stream_initial_target)
         target = ws_stream_initial_target;
     if (target > stream_target_initial_cap)
         target = stream_target_initial_cap;
@@ -128,7 +128,7 @@ size_t stream_encoder_initial_write_target (const zlink::options_t &options_)
     size_t target = options_.out_batch_size > 0
                       ? static_cast<size_t> (options_.out_batch_size)
                       : stream_target_default_size;
-    if (options_.type == ZLINK_STREAM && target < ws_stream_initial_target)
+    if (options_.type == ZLINK_CORE_SOCKET_STREAM && target < ws_stream_initial_target)
         target = ws_stream_initial_target;
     if (target > stream_target_initial_cap)
         target = stream_target_initial_cap;
@@ -986,20 +986,20 @@ bool zlink::asio_ws_engine_t::parse_hello (const unsigned char *data_,
 bool zlink::asio_ws_engine_t::is_socket_type_compatible (int peer_type_) const
 {
     switch (_options.type) {
-        case ZLINK_DEALER:
-            return peer_type_ == ZLINK_DEALER || peer_type_ == ZLINK_ROUTER;
-        case ZLINK_ROUTER:
-            return peer_type_ == ZLINK_DEALER || peer_type_ == ZLINK_ROUTER;
-        case ZLINK_PUB:
-            return peer_type_ == ZLINK_SUB || peer_type_ == ZLINK_XSUB;
-        case ZLINK_SUB:
-            return peer_type_ == ZLINK_PUB || peer_type_ == ZLINK_XPUB;
-        case ZLINK_XPUB:
-            return peer_type_ == ZLINK_SUB || peer_type_ == ZLINK_XSUB;
-        case ZLINK_XSUB:
-            return peer_type_ == ZLINK_PUB || peer_type_ == ZLINK_XPUB;
-        case ZLINK_PAIR:
-            return peer_type_ == ZLINK_PAIR;
+        case ZLINK_CORE_SOCKET_DEALER:
+            return peer_type_ == ZLINK_CORE_SOCKET_DEALER || peer_type_ == ZLINK_CORE_SOCKET_ROUTER;
+        case ZLINK_CORE_SOCKET_ROUTER:
+            return peer_type_ == ZLINK_CORE_SOCKET_DEALER || peer_type_ == ZLINK_CORE_SOCKET_ROUTER;
+        case ZLINK_CORE_SOCKET_PUB:
+            return peer_type_ == ZLINK_CORE_SOCKET_SUB || peer_type_ == ZLINK_CORE_SOCKET_XSUB;
+        case ZLINK_CORE_SOCKET_SUB:
+            return peer_type_ == ZLINK_CORE_SOCKET_PUB || peer_type_ == ZLINK_CORE_SOCKET_XPUB;
+        case ZLINK_CORE_SOCKET_XPUB:
+            return peer_type_ == ZLINK_CORE_SOCKET_SUB || peer_type_ == ZLINK_CORE_SOCKET_XSUB;
+        case ZLINK_CORE_SOCKET_XSUB:
+            return peer_type_ == ZLINK_CORE_SOCKET_PUB || peer_type_ == ZLINK_CORE_SOCKET_XPUB;
+        case ZLINK_CORE_SOCKET_PAIR:
+            return peer_type_ == ZLINK_CORE_SOCKET_PAIR;
         default:
             break;
     }
@@ -1196,19 +1196,19 @@ bool zlink::asio_ws_engine_t::process_input ()
 
 bool zlink::asio_ws_engine_t::use_stream_dynamic_read_growth () const
 {
-    return _options.type == ZLINK_STREAM && _decoder != NULL
+    return _options.type == ZLINK_CORE_SOCKET_STREAM && _decoder != NULL
            && _stream_decoder_read_target_max > _stream_decoder_read_target_size;
 }
 
 bool zlink::asio_ws_engine_t::use_stream_dynamic_write_growth () const
 {
-    return _options.type == ZLINK_STREAM && _encoder != NULL
+    return _options.type == ZLINK_CORE_SOCKET_STREAM && _encoder != NULL
            && _stream_encoder_write_target_max > _stream_encoder_write_target_size;
 }
 
 void zlink::asio_ws_engine_t::prime_stream_decoder_read_target ()
 {
-    if (_options.type != ZLINK_STREAM || !_decoder)
+    if (_options.type != ZLINK_CORE_SOCKET_STREAM || !_decoder)
         return;
 
     _decoder->resize_buffer (_stream_decoder_read_target_size);
@@ -1254,7 +1254,7 @@ void zlink::asio_ws_engine_t::maybe_grow_stream_decoder_read_target (
 
 void zlink::asio_ws_engine_t::apply_pending_stream_encoder_resize ()
 {
-    if (_options.type != ZLINK_STREAM || !_encoder)
+    if (_options.type != ZLINK_CORE_SOCKET_STREAM || !_encoder)
         return;
 
     if (_stream_encoder_pending_resize_size <= _stream_encoder_write_target_size)
@@ -1419,7 +1419,7 @@ bool zlink::asio_ws_engine_t::prepare_output_buffer ()
     _outsize = _encoder->encode (&_outpos, 0);
 
     size_t target_out_batch = static_cast<size_t> (_options.out_batch_size);
-    if (_options.type == ZLINK_STREAM
+    if (_options.type == ZLINK_CORE_SOCKET_STREAM
         && _stream_encoder_write_target_size > target_out_batch) {
         target_out_batch = _stream_encoder_write_target_size;
     }

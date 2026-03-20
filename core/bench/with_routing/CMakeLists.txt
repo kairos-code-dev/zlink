@@ -48,7 +48,7 @@ else()
 endif()
 
 option(ZLINK_BUILD_WITH_ROUTING_ZLINK_BENCHES
-       "Build routing comparison benches that still depend on legacy sync recv APIs"
+       "Build routing comparison benches that depend on synchronous recv APIs"
        OFF)
 
 # ============================================================================

@@ -19,10 +19,10 @@ void test_msg_init_ffn ()
     //  Create the infrastructure
     char my_endpoint[MAX_SOCKET_STRING];
 
-    void *router = test_context_socket (ZLINK_ROUTER);
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     bind_loopback_ipv4 (router, my_endpoint, sizeof my_endpoint);
 
-    void *dealer = test_context_socket (ZLINK_DEALER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, my_endpoint));
 
     // Test that creating and closing a message triggers ffn
@@ -57,7 +57,7 @@ void test_msg_init_ffn ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
 
-    zlink_msg_send (&msg, dealer, 0);
+    test_send_single_msg (&msg, dealer, 0);
     char buf[255];
     TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, buf, 255, 0));
     TEST_ASSERT_EQUAL_INT (255, zlink_recv (router, buf, 255, 0));
@@ -74,7 +74,7 @@ void test_msg_init_ffn ()
       zlink_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_copy (&msg2, &msg));
 
-    zlink_msg_send (&msg, dealer, 0);
+    test_send_single_msg (&msg, dealer, 0);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, buf, 255, 0));
     TEST_ASSERT_EQUAL_INT (255, zlink_recv (router, buf, 255, 0));
     TEST_ASSERT_EQUAL_STRING_LEN (data, buf, 4);

@@ -170,7 +170,7 @@ void test_stream_auto_routing_id_size ()
 {
     stream_probe_t probe;
 
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
 
     const int zero = 0;

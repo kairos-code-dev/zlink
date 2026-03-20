@@ -115,7 +115,7 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     //  STREAM-specific I/O thread selection policy.
     //  Selection is controlled by ZLINK_ASIO_STREAM_SESSION_SCHED:
     //   - rr (default): round-robin across eligible threads
-    //   - minload: choose least loaded thread (legacy behavior)
+    //   - minload: choose the least loaded eligible thread
     zlink::io_thread_t *choose_io_thread_stream (uint64_t affinity_);
 
     //  Returns reaper thread object.

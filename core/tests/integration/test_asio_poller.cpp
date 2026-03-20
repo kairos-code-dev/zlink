@@ -45,8 +45,8 @@ void test_ctx_create_destroy ()
 // Test 2: Basic socket pair communication (verifies event loop works)
 void test_pair_tcp_basic ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -80,8 +80,8 @@ void test_multiple_sockets ()
 
     // Create and connect socket pairs
     for (int i = 0; i < num_pairs; i++) {
-        servers[i] = test_context_socket (ZLINK_PAIR);
-        clients[i] = test_context_socket (ZLINK_PAIR);
+        servers[i] = test_context_socket (ZLINK_SOCKET_PAIR);
+        clients[i] = test_context_socket (ZLINK_SOCKET_PAIR);
 
         bind_loopback_ipv4 (servers[i], endpoints[i], sizeof (endpoints[i]));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (clients[i], endpoints[i]));
@@ -107,8 +107,8 @@ void test_multiple_sockets ()
 // Test 4: Pub/Sub pattern (tests subscription forwarding through poller)
 void test_pubsub_basic ()
 {
-    void *pub = test_context_socket (ZLINK_PUB);
-    void *sub = test_context_socket (ZLINK_SUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (pub, endpoint, sizeof (endpoint));
@@ -140,8 +140,8 @@ void test_pubsub_basic ()
 // Test 5: DEALER/ROUTER pattern
 void test_dealer_router ()
 {
-    void *router = test_context_socket (ZLINK_ROUTER);
-    void *dealer = test_context_socket (ZLINK_DEALER);
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (router, endpoint, sizeof (endpoint));
@@ -158,8 +158,8 @@ void test_dealer_router ()
     zlink_msg_init (&identity);
     zlink_msg_init (&msg);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&identity, router, 0));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, router, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&identity, router, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, router, 0));
 
     //  Compare message data with known length (zlink_msg_data is not null-terminated)
     TEST_ASSERT_EQUAL_INT (strlen ("Hello Router"), zlink_msg_size (&msg));
@@ -176,8 +176,8 @@ void test_dealer_router ()
 // Test 6: Socket close during active communication
 void test_socket_close_active ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -204,10 +204,10 @@ void test_multiple_io_threads ()
     // Set 4 IO threads
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_IO_THREADS, 4));
 
-    void *server = zlink_socket (ctx, ZLINK_PAIR);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (server);
 
-    void *client = zlink_socket (ctx, ZLINK_PAIR);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (client);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "tcp://127.0.0.1:*"));
@@ -241,8 +241,8 @@ void test_multiple_io_threads ()
 // Test 8: Verify inproc transport works with Asio poller
 void test_inproc_transport ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "inproc://test_asio_inproc"));
     TEST_ASSERT_SUCCESS_ERRNO (

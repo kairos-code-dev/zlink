@@ -5,7 +5,6 @@
 
 #include "utils/macros.hpp"
 #include "utils/random.hpp"
-#include "api/legacy_api_internal.hpp"
 
 #include <cstdio>
 
@@ -62,6 +61,7 @@ struct iovec
 #include "utils/err.hpp"
 #include "core/msg.hpp"
 #include "core/recv_internal.hpp"
+#include "core/send_internal.hpp"
 #include "core/socket_poller.hpp"
 #include "utils/fd.hpp"
 #include "protocol/metadata.hpp"
@@ -89,6 +89,37 @@ int zlink_recv_xpub_handler (void *s_,
                              void *userdata_);
 int zlink_set_subscription (void *handle_, const char *filter_);
 int zlink_unset_subscription (void *handle_, const char *filter_);
+
+static bool is_public_ctx_set_option (int option_)
+{
+    switch (option_) {
+        case ZLINK_IO_THREADS:
+        case ZLINK_MAX_SOCKETS:
+        case ZLINK_THREAD_PRIORITY:
+        case ZLINK_THREAD_SCHED_POLICY:
+        case ZLINK_MAX_MSGSZ:
+        case ZLINK_THREAD_AFFINITY_CPU_ADD:
+        case ZLINK_THREAD_AFFINITY_CPU_REMOVE:
+        case ZLINK_THREAD_NAME_PREFIX:
+        case ZLINK_CTX_OPT_BLOCKY:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool is_public_ctx_get_option (int option_)
+{
+    return option_ == ZLINK_IO_THREADS || option_ == ZLINK_MAX_SOCKETS
+           || option_ == ZLINK_SOCKET_LIMIT || option_ == ZLINK_THREAD_PRIORITY
+           || option_ == ZLINK_THREAD_SCHED_POLICY
+           || option_ == ZLINK_MAX_MSGSZ || option_ == ZLINK_MSG_T_SIZE
+           || option_ == ZLINK_THREAD_AFFINITY_CPU_ADD
+           || option_ == ZLINK_THREAD_AFFINITY_CPU_REMOVE
+           || option_ == ZLINK_THREAD_NAME_PREFIX
+           || option_ == ZLINK_CTX_OPT_BLOCKY;
+}
+
 static bool frame_has_more (const zlink_msg_t &msg_)
 {
     return (reinterpret_cast<const zlink::msg_t *> (&msg_)->flags ()
@@ -260,6 +291,10 @@ int zlink_ctx_shutdown (void *ctx_)
 
 int zlink_ctx_set (void *ctx_, zlink_ctx_option_t option_, int optval_)
 {
+    if (!is_public_ctx_set_option (option_)) {
+        errno = EINVAL;
+        return -1;
+    }
     return zlink_ctx_set_ext (ctx_, option_, &optval_, sizeof (int));
 }
 
@@ -278,6 +313,10 @@ int zlink_ctx_set_ext (void *ctx_,
 
 int zlink_ctx_get (void *ctx_, zlink_ctx_option_t option_)
 {
+    if (!is_public_ctx_get_option (option_)) {
+        errno = EINVAL;
+        return -1;
+    }
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
         return -1;
@@ -1570,7 +1609,7 @@ struct registry_query_client_t
             dealer->close ();
             dealer = NULL;
         }
-        dealer = ctx->create_socket (ZLINK_DEALER);
+        dealer = ctx->create_socket (ZLINK_CORE_SOCKET_DEALER);
         if (!dealer)
             return -1;
         unsigned char rid[5];
@@ -2086,7 +2125,7 @@ static bool is_stream_type (socket_handle_t handle_)
     size_t type_len = sizeof (type);
     if (handle_.socket->getsockopt (ZLINK_INTERNAL_OPT_TYPE, &type, &type_len) != 0)
         return false;
-    return type == ZLINK_STREAM;
+    return type == ZLINK_CORE_SOCKET_STREAM;
 }
 
 static int socket_type (socket_handle_t handle_)
@@ -2101,57 +2140,33 @@ static int socket_type (socket_handle_t handle_)
     return type;
 }
 
-static int legacy_socket_type (int type_)
+static int core_socket_type_from_public_type (zlink_socket_type_t type_)
 {
     switch (type_) {
         case ZLINK_SOCKET_PAIR:
-            return ZLINK_PAIR;
+            return ZLINK_CORE_SOCKET_PAIR;
         case ZLINK_SOCKET_PUB:
-            return ZLINK_PUB;
+            return ZLINK_CORE_SOCKET_PUB;
         case ZLINK_SOCKET_SUB:
-            return ZLINK_SUB;
+            return ZLINK_CORE_SOCKET_SUB;
         case ZLINK_SOCKET_DEALER:
-            return ZLINK_DEALER;
+            return ZLINK_CORE_SOCKET_DEALER;
         case ZLINK_SOCKET_ROUTER:
-            return ZLINK_ROUTER;
+            return ZLINK_CORE_SOCKET_ROUTER;
         case ZLINK_SOCKET_XPUB:
-            return ZLINK_XPUB;
+            return ZLINK_CORE_SOCKET_XPUB;
         case ZLINK_SOCKET_XSUB:
-            return ZLINK_XSUB;
+            return ZLINK_CORE_SOCKET_XSUB;
         case ZLINK_SOCKET_STREAM:
-            return ZLINK_STREAM;
+            return ZLINK_CORE_SOCKET_STREAM;
         default:
-            return type_;
-    }
-}
-
-static int public_socket_type (int legacy_type_)
-{
-    switch (legacy_type_) {
-        case ZLINK_PAIR:
-            return ZLINK_SOCKET_PAIR;
-        case ZLINK_PUB:
-            return ZLINK_SOCKET_PUB;
-        case ZLINK_SUB:
-            return ZLINK_SOCKET_SUB;
-        case ZLINK_DEALER:
-            return ZLINK_SOCKET_DEALER;
-        case ZLINK_ROUTER:
-            return ZLINK_SOCKET_ROUTER;
-        case ZLINK_XPUB:
-            return ZLINK_SOCKET_XPUB;
-        case ZLINK_XSUB:
-            return ZLINK_SOCKET_XSUB;
-        case ZLINK_STREAM:
-            return ZLINK_SOCKET_STREAM;
-        default:
-            return legacy_type_;
+            return -1;
     }
 }
 
 static bool is_send_only_socket_type (int type_)
 {
-    return type_ == ZLINK_PUB;
+    return type_ == ZLINK_CORE_SOCKET_PUB;
 }
 
 class stream_api_lock_t
@@ -2356,16 +2371,16 @@ static void *create_socket_handle (void *ctx_, zlink_socket_type_t type_)
         return NULL;
     }
 
-    const int legacy_type = legacy_socket_type (type_);
-    if (!is_send_only_socket_type (legacy_type)) {
-        switch (legacy_type) {
-            case ZLINK_PAIR:
-            case ZLINK_DEALER:
-            case ZLINK_ROUTER:
-            case ZLINK_STREAM:
-            case ZLINK_SUB:
-            case ZLINK_XSUB:
-            case ZLINK_XPUB:
+    const int core_type = core_socket_type_from_public_type (type_);
+    if (!is_send_only_socket_type (core_type)) {
+        switch (core_type) {
+            case ZLINK_CORE_SOCKET_PAIR:
+            case ZLINK_CORE_SOCKET_DEALER:
+            case ZLINK_CORE_SOCKET_ROUTER:
+            case ZLINK_CORE_SOCKET_STREAM:
+            case ZLINK_CORE_SOCKET_SUB:
+            case ZLINK_CORE_SOCKET_XSUB:
+            case ZLINK_CORE_SOCKET_XPUB:
                 break;
             default:
                 errno = EINVAL;
@@ -2374,7 +2389,7 @@ static void *create_socket_handle (void *ctx_, zlink_socket_type_t type_)
     }
 
     zlink::ctx_t *ctx = static_cast<zlink::ctx_t *> (ctx_);
-    zlink::socket_base_t *socket = ctx->create_socket (legacy_type);
+    zlink::socket_base_t *socket = ctx->create_socket (core_type);
     if (!socket)
         return NULL;
 
@@ -2423,14 +2438,14 @@ int zlink_recv_handler (void *s_,
 
     const int type = socket_type (handle);
     switch (type) {
-        case ZLINK_PAIR:
-        case ZLINK_SUB:
-        case ZLINK_XSUB:
-        case ZLINK_DEALER:
-        case ZLINK_ROUTER:
+        case ZLINK_CORE_SOCKET_PAIR:
+        case ZLINK_CORE_SOCKET_SUB:
+        case ZLINK_CORE_SOCKET_XSUB:
+        case ZLINK_CORE_SOCKET_DEALER:
+        case ZLINK_CORE_SOCKET_ROUTER:
             return handle.socket->socket_set_msg_handler_with_userdata (
               handler_, NULL, userdata_);
-        case ZLINK_STREAM:
+        case ZLINK_CORE_SOCKET_STREAM:
             return handle.socket->stream_set_msg_handler_with_userdata (
               handler_, userdata_);
         default:
@@ -2527,7 +2542,7 @@ int zlink_recv_spot_handler (void *s_,
     }
 
     const int type = socket_type (handle);
-    if (type != ZLINK_SUB && type != ZLINK_XSUB) {
+    if (type != ZLINK_CORE_SOCKET_SUB && type != ZLINK_CORE_SOCKET_XSUB) {
         errno = EINVAL;
         return -1;
     }
@@ -2563,7 +2578,7 @@ int zlink_recv_xpub_handler (void *s_,
     }
 
     const int type = socket_type (handle);
-    if (type != ZLINK_XPUB) {
+    if (type != ZLINK_CORE_SOCKET_XPUB) {
         errno = EINVAL;
         return -1;
     }
@@ -2582,7 +2597,7 @@ static int socket_send_ready_handler_internal (
         return -1;
 
     const int type = socket_type (handle);
-    if (type == ZLINK_SUB || type == ZLINK_XSUB) {
+    if (type == ZLINK_CORE_SOCKET_SUB || type == ZLINK_CORE_SOCKET_XSUB) {
         errno = EINVAL;
         return -1;
     }
@@ -2671,7 +2686,7 @@ int zlink_close (void *s_)
 
     if (raw_monitor_source && raw_monitor_source != handle.socket) {
         monitor_state->snapshot_subject.store (NULL, std::memory_order_release);
-        (void) raw_monitor_source->monitor (NULL, 0, 3, ZLINK_PAIR);
+        (void) raw_monitor_source->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
     } else {
         clear_raw_monitor_snapshot_subjects (handle.socket);
     }
@@ -2737,21 +2752,21 @@ static void *open_socket_monitor_with_handler_internal (
               static_cast<void *> (s_), rand_id);
 
     const int monitor_rc =
-      handle.socket->monitor (endpoint, events_, 3, ZLINK_PAIR);
+      handle.socket->monitor (endpoint, events_, 3, ZLINK_CORE_SOCKET_PAIR);
     if (monitor_rc != 0)
         return NULL;
 
     zlink::socket_base_t *monitor_socket_base =
-      handle.socket->get_ctx ()->create_socket (ZLINK_PAIR);
+      handle.socket->get_ctx ()->create_socket (ZLINK_CORE_SOCKET_PAIR);
     void *monitor_socket = static_cast<void *> (monitor_socket_base);
     if (!monitor_socket) {
-        handle.socket->monitor (NULL, 0, 3, ZLINK_PAIR);
+        handle.socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
         return NULL;
     }
 
     if (zlink_connect (monitor_socket, endpoint) != 0) {
         zlink_close (monitor_socket);
-        handle.socket->monitor (NULL, 0, 3, ZLINK_PAIR);
+        handle.socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
         return NULL;
     }
 
@@ -2763,7 +2778,7 @@ static void *open_socket_monitor_with_handler_internal (
         != 0) {
         const int err = errno;
         zlink_close (monitor_socket);
-        handle.socket->monitor (NULL, 0, 3, ZLINK_PAIR);
+        handle.socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
         errno = err;
         return NULL;
     }
@@ -4482,7 +4497,7 @@ int zlink_xpub_recv (void *s_,
         errno = EFAULT;
         return -1;
     }
-    if (socket_type (handle) != ZLINK_XPUB) {
+    if (socket_type (handle) != ZLINK_CORE_SOCKET_XPUB) {
         errno = EINVAL;
         return -1;
     }
@@ -4869,7 +4884,7 @@ static int map_common_to_spot_pub_option (zlink_option_t option_)
     }
 }
 
-static int map_common_to_legacy_option (zlink_option_t option_)
+static int map_common_to_socket_option (zlink_option_t option_)
 {
     switch (option_) {
         case ZLINK_OPT_SNDHWM:
@@ -4891,7 +4906,7 @@ static int map_common_to_legacy_option (zlink_option_t option_)
     }
 }
 
-static int map_pub_to_legacy_option (zlink_pub_option_t option_)
+static int map_pub_to_socket_option (zlink_pub_option_t option_)
 {
     switch (option_) {
         case ZLINK_PUB_OPT_NODROP:
@@ -4903,7 +4918,7 @@ static int map_pub_to_legacy_option (zlink_pub_option_t option_)
     }
 }
 
-static int map_sub_to_legacy_option (zlink_sub_option_t option_)
+static int map_sub_to_socket_option (zlink_sub_option_t option_)
 {
     switch (option_) {
         case ZLINK_SUB_OPT_TOPICS_COUNT:
@@ -5016,10 +5031,10 @@ int zlink_spot_subject_get_common_option_internal (void *handle_,
                                                    void *optval_,
                                                    size_t *optvallen_)
 {
-    const int legacy = map_common_to_legacy_option (option_);
+    const int socket_option = map_common_to_socket_option (option_);
     const int pub_option = map_common_to_spot_pub_option (option_);
     const int sub_option = map_common_to_spot_sub_option (option_);
-    if (legacy < 0 || (pub_option < 0 && sub_option < 0)) {
+    if (socket_option < 0 || (pub_option < 0 && sub_option < 0)) {
         errno = EINVAL;
         return -1;
     }
@@ -5035,7 +5050,7 @@ int zlink_spot_subject_get_common_option_internal (void *handle_,
                 errno = EFAULT;
                 return -1;
             }
-            return pub->poller_socket ()->getsockopt (legacy, optval_,
+            return pub->poller_socket ()->getsockopt (socket_option, optval_,
                                                       optvallen_);
         }
         zlink::spot_sub_t *sub = ensure_spot_sub (spot);
@@ -5043,7 +5058,7 @@ int zlink_spot_subject_get_common_option_internal (void *handle_,
             errno = EFAULT;
             return -1;
         }
-        return sub->poller_socket ()->getsockopt (legacy, optval_, optvallen_);
+        return sub->poller_socket ()->getsockopt (socket_option, optval_, optvallen_);
     }
 
     if (is_registered_spot_node_handle (handle_)) {
@@ -5057,7 +5072,7 @@ int zlink_spot_subject_get_common_option_internal (void *handle_,
                 errno = EFAULT;
                 return -1;
             }
-            return pub->poller_socket ()->getsockopt (legacy, optval_,
+            return pub->poller_socket ()->getsockopt (socket_option, optval_,
                                                       optvallen_);
         }
         zlink::spot_sub_t *sub = node->ensure_default_sub ();
@@ -5065,7 +5080,7 @@ int zlink_spot_subject_get_common_option_internal (void *handle_,
             errno = EFAULT;
             return -1;
         }
-        return sub->poller_socket ()->getsockopt (legacy, optval_, optvallen_);
+        return sub->poller_socket ()->getsockopt (socket_option, optval_, optvallen_);
     }
 
     errno = EFAULT;
@@ -5101,8 +5116,8 @@ int zlink_spot_subject_get_pub_option_internal (void *handle_,
                                                 void *optval_,
                                                 size_t *optvallen_)
 {
-    const int legacy = map_pub_to_legacy_option (option_);
-    if (legacy < 0) {
+    const int socket_option = map_pub_to_socket_option (option_);
+    if (socket_option < 0) {
         errno = EINVAL;
         return -1;
     }
@@ -5116,7 +5131,7 @@ int zlink_spot_subject_get_pub_option_internal (void *handle_,
             errno = EFAULT;
             return -1;
         }
-        return pub->poller_socket ()->getsockopt (legacy, optval_, optvallen_);
+        return pub->poller_socket ()->getsockopt (socket_option, optval_, optvallen_);
     }
 
     if (is_registered_spot_node_handle (handle_)) {
@@ -5129,7 +5144,7 @@ int zlink_spot_subject_get_pub_option_internal (void *handle_,
             errno = EFAULT;
             return -1;
         }
-        return pub->poller_socket ()->getsockopt (legacy, optval_, optvallen_);
+        return pub->poller_socket ()->getsockopt (socket_option, optval_, optvallen_);
     }
 
     errno = EFAULT;
@@ -5194,8 +5209,8 @@ int zlink_spot_subject_get_sub_option_internal (void *handle_,
         return 0;
     }
 
-    const int legacy = map_sub_to_legacy_option (option_);
-    if (legacy < 0) {
+    const int socket_option = map_sub_to_socket_option (option_);
+    if (socket_option < 0) {
         errno = EINVAL;
         return -1;
     }
@@ -5210,7 +5225,7 @@ int zlink_spot_subject_get_sub_option_internal (void *handle_,
             errno = EFAULT;
             return -1;
         }
-        return sub->poller_socket ()->getsockopt (legacy, optval_, optvallen_);
+        return sub->poller_socket ()->getsockopt (socket_option, optval_, optvallen_);
     }
 
     if (is_registered_spot_node_handle (handle_)) {
@@ -5223,7 +5238,7 @@ int zlink_spot_subject_get_sub_option_internal (void *handle_,
             errno = EFAULT;
             return -1;
         }
-        return sub->poller_socket ()->getsockopt (legacy, optval_, optvallen_);
+        return sub->poller_socket ()->getsockopt (socket_option, optval_, optvallen_);
     }
 
     errno = EFAULT;
@@ -6064,6 +6079,11 @@ static int validate_send_flags (int flags_)
     return 0;
 }
 
+static int send_stream_message (socket_handle_t handle_,
+                                const zlink_routing_id_t *rid_,
+                                zlink_msg_t *msg_,
+                                zlink_send_flags_t flags_);
+
 static int send_socket_parts (socket_handle_t handle_,
                               const zlink_routing_id_t *target_rid_,
                               zlink_msg_t *parts_,
@@ -6081,25 +6101,24 @@ static int send_socket_parts (socket_handle_t handle_,
         return -1;
     }
 
-    const int type = legacy_socket_type (socket_type (handle_));
+    const int type = socket_type (handle_);
     const int base_flags = flags_ & ZLINK_DONTWAIT;
 
     if (target_rid_) {
-        if (type == ZLINK_STREAM) {
+        if (type == ZLINK_CORE_SOCKET_STREAM) {
             if (part_count_ != 1) {
                 errno = ENOTSUP;
                 return -1;
             }
             const int rc =
-              zlink_compat_stream_send_msg (static_cast<void *> (handle_.socket),
-                                            target_rid_, &parts_[0], flags_);
+              send_stream_message (handle_, target_rid_, &parts_[0], flags_);
             if (rc < 0)
                 return -1;
             errno = 0;
             return 0;
         }
 
-        if (type != ZLINK_ROUTER) {
+        if (type != ZLINK_CORE_SOCKET_ROUTER) {
             errno = ENOTSUP;
             return -1;
         }
@@ -6119,8 +6138,8 @@ static int send_socket_parts (socket_handle_t handle_,
         }
     }
 
-    if (type == ZLINK_PUB || type == ZLINK_SUB || type == ZLINK_XSUB
-        || type == ZLINK_XPUB) {
+    if (type == ZLINK_CORE_SOCKET_PUB || type == ZLINK_CORE_SOCKET_SUB || type == ZLINK_CORE_SOCKET_XSUB
+        || type == ZLINK_CORE_SOCKET_XPUB) {
         errno = ENOTSUP;
         return -1;
     }
@@ -6154,8 +6173,8 @@ static int publish_socket_parts (socket_handle_t handle_,
         return -1;
     }
 
-    const int type = legacy_socket_type (socket_type (handle_));
-    if (type != ZLINK_PUB && type != ZLINK_XPUB) {
+    const int type = socket_type (handle_);
+    if (type != ZLINK_CORE_SOCKET_PUB && type != ZLINK_CORE_SOCKET_XPUB) {
         errno = ENOTSUP;
         return -1;
     }
@@ -6214,8 +6233,8 @@ static int recv_socket_subscribe_parts (socket_handle_t handle_,
     if (source_rid_out_)
         memset (source_rid_out_, 0, sizeof (*source_rid_out_));
 
-    const int type = legacy_socket_type (socket_type (handle_));
-    if (type != ZLINK_SUB && type != ZLINK_XSUB) {
+    const int type = socket_type (handle_);
+    if (type != ZLINK_CORE_SOCKET_SUB && type != ZLINK_CORE_SOCKET_XSUB) {
         errno = ENOTSUP;
         return -1;
     }
@@ -6294,8 +6313,8 @@ static int subscribe_socket_filter (socket_handle_t handle_,
         return -1;
     }
 
-    const int type = legacy_socket_type (socket_type (handle_));
-    if (type != ZLINK_SUB && type != ZLINK_XSUB) {
+    const int type = socket_type (handle_);
+    if (type != ZLINK_CORE_SOCKET_SUB && type != ZLINK_CORE_SOCKET_XSUB) {
         errno = ENOTSUP;
         return -1;
     }
@@ -6334,12 +6353,12 @@ static int recv_socket_parts (socket_handle_t handle_,
     if (source_rid_out_)
         memset (source_rid_out_, 0, sizeof (*source_rid_out_));
 
-    const int type = legacy_socket_type (socket_type (handle_));
-    if (type == ZLINK_PUB) {
+    const int type = socket_type (handle_);
+    if (type == ZLINK_CORE_SOCKET_PUB) {
         errno = ENOTSUP;
         return -1;
     }
-    if (type == ZLINK_XPUB) {
+    if (type == ZLINK_CORE_SOCKET_XPUB) {
         errno = ENOTSUP;
         return -1;
     }
@@ -6366,7 +6385,7 @@ static int recv_socket_parts (socket_handle_t handle_,
 
     size_t payload_offset = 0;
     size_t payload_count = frames.size ();
-    if (type == ZLINK_ROUTER && source_rid_out_) {
+    if (type == ZLINK_CORE_SOCKET_ROUTER && source_rid_out_) {
         const size_t routing_id_size = zlink_msg_size (&frames[0]);
         const size_t routing_id_copy =
           routing_id_size > sizeof (source_rid_out_->data)
@@ -6377,20 +6396,20 @@ static int recv_socket_parts (socket_handle_t handle_,
             memcpy (source_rid_out_->data, zlink_msg_data (&frames[0]),
                     routing_id_copy);
         }
-    } else if (type == ZLINK_STREAM && source_rid_out_) {
+    } else if (type == ZLINK_CORE_SOCKET_STREAM && source_rid_out_) {
         handle_.socket->copy_last_recv_source_rid (source_rid_out_);
     }
 
     const bool strip_recv_routing_id =
-      (type == ZLINK_STREAM)
-      || (type == ZLINK_ROUTER && source_rid_out_ != NULL);
+      (type == ZLINK_CORE_SOCKET_STREAM)
+      || (type == ZLINK_CORE_SOCKET_ROUTER && source_rid_out_ != NULL);
     if (strip_recv_routing_id) {
         if (frames.empty ()) {
             errno = EFAULT;
             return -1;
         }
 
-        if (type == ZLINK_STREAM && source_rid_out_) {
+        if (type == ZLINK_CORE_SOCKET_STREAM && source_rid_out_) {
             const size_t routing_id_size = zlink_msg_size (&frames[0]);
             const size_t routing_id_copy =
               routing_id_size > sizeof (source_rid_out_->data)
@@ -6442,29 +6461,6 @@ static int recv_socket_parts (socket_handle_t handle_,
     *part_count_out_ = payload_count;
     errno = 0;
     return 0;
-}
-
-static int zlink_send_bytes_compat (void *s_,
-                                    const void *buf_,
-                                    size_t len_,
-                                    zlink_send_flags_t flags_)
-{
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return -1;
-    zlink_msg_t msg;
-    int rc = zlink_msg_init_buffer (&msg, buf_, len_);
-    if (unlikely (rc < 0))
-        return -1;
-
-    rc = s_sendmsg (handle, &msg, flags_);
-    if (unlikely (rc < 0)) {
-        const int err = errno;
-        zlink_msg_close (&msg);
-        errno = err;
-        return -1;
-    }
-    return rc;
 }
 
 int zlink_send (void *s_,
@@ -6553,27 +6549,6 @@ int zlink_send_rid (void *s_,
 }
 
 // Receiving functions.
-
-int zlink_compat_msg_recv (zlink_msg_t *msg_,
-                           void *s_,
-                           zlink_send_flags_t flags_)
-{
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return -1;
-    return zlink::recv_msg_internal (handle.socket, msg_, flags_);
-}
-
-static int zlink_recv_bytes_compat (void *s_,
-                                    void *buf_,
-                                    size_t len_,
-                                    zlink_send_flags_t flags_)
-{
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return -1;
-    return zlink::recv_buffer_internal (handle.socket, buf_, len_, flags_);
-}
 
 int zlink_recv (void *s_,
                 zlink_routing_id_t *source_rid_out_,
@@ -6691,79 +6666,12 @@ int zlink_stream_detach (void *s_)
     return handle.socket->stream_dispatch_stop ();
 }
 
-int zlink_compat_stream_send (void *s_,
-                              const zlink_routing_id_t *rid_,
-                              const void *data_,
-                              size_t size_,
-                              zlink_send_flags_t flags_)
+static int send_stream_message (socket_handle_t handle_,
+                                const zlink_routing_id_t *rid_,
+                                zlink_msg_t *msg_,
+                                zlink_send_flags_t flags_)
 {
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return -1;
-
-    if (!is_stream_type (handle) || !rid_ || rid_->size == 0
-        || rid_->size > sizeof (rid_->data)) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (!data_ && size_ > 0) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    // STREAM routing ids are 32-bit internally.
-    if (rid_->size != 4) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    const uint32_t routing_id =
-      (static_cast<uint32_t> (rid_->data[0]) << 24)
-      | (static_cast<uint32_t> (rid_->data[1]) << 16)
-      | (static_cast<uint32_t> (rid_->data[2]) << 8)
-      | static_cast<uint32_t> (rid_->data[3]);
-
-    stream_api_lock_t api_lock (handle);
-
-    zlink_msg_t msg;
-    if (zlink_msg_init_size (&msg, size_) != 0)
-        return -1;
-
-    unsigned char *dst = static_cast<unsigned char *> (zlink_msg_data (&msg));
-    if (size_ > 0)
-        memcpy (dst, data_, size_);
-
-    zlink::msg_t *core_msg = reinterpret_cast<zlink::msg_t *> (&msg);
-    if (core_msg->set_routing_id (routing_id) != 0) {
-        const int err = errno;
-        (void) zlink_msg_close (&msg);
-        errno = err;
-        return -1;
-    }
-
-    const int base_flags = flags_ & ZLINK_DONTWAIT;
-    const int send_rc = s_sendmsg (handle, &msg, base_flags);
-    if (send_rc < 0) {
-        const int err = errno;
-        (void) zlink_msg_close (&msg);
-        errno = err;
-        return -1;
-    }
-
-    (void) zlink_msg_close (&msg);
-    errno = 0;
-    return static_cast<int> (size_ < static_cast<size_t> (INT_MAX) ? size_
-                                                                    : INT_MAX);
-}
-
-int zlink_compat_stream_send_msg (void *s_,
-                                  const zlink_routing_id_t *rid_,
-                                  zlink_msg_t *msg_,
-                                  zlink_send_flags_t flags_)
-{
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
+    if (!handle_.socket)
         return -1;
 
     if (!msg_) {
@@ -6777,7 +6685,7 @@ int zlink_compat_stream_send_msg (void *s_,
         return -1;
     }
 
-    if (!is_stream_type (handle)) {
+    if (!is_stream_type (handle_)) {
         errno = EINVAL;
         release_stream_send_msg (core_msg);
         return -1;
@@ -6792,7 +6700,7 @@ int zlink_compat_stream_send_msg (void *s_,
     }
 
     const size_t payload_size = core_msg->size ();
-    stream_api_lock_t api_lock (handle);
+    stream_api_lock_t api_lock (handle_);
     if (core_msg->set_routing_id (routing_id) != 0) {
         const int err = errno;
         release_stream_send_msg (core_msg);
@@ -6801,7 +6709,7 @@ int zlink_compat_stream_send_msg (void *s_,
     }
 
     const int base_flags = flags_ & ZLINK_DONTWAIT;
-    const int send_rc = s_sendmsg (handle, msg_, base_flags);
+    const int send_rc = s_sendmsg (handle_, msg_, base_flags);
     if (send_rc < 0) {
         const int err = errno;
         release_stream_send_msg (core_msg);
@@ -6835,16 +6743,6 @@ int zlink_msg_init_data (
 {
     return (reinterpret_cast<zlink::msg_t *> (msg_))
       ->init_data (data_, size_, ffn_, hint_);
-}
-
-int zlink_compat_msg_send (zlink_msg_t *msg_,
-                           void *s_,
-                           zlink_send_flags_t flags_)
-{
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return -1;
-    return s_sendmsg (handle, msg_, flags_);
 }
 
 int zlink_msg_close (zlink_msg_t *msg_)

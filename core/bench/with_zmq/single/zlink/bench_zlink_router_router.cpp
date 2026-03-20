@@ -428,8 +428,8 @@ void run_router_router (const std::string &transport,
         return;
     }
 
-    socket_guard_t router1 (ctx.get (), ZLINK_ROUTER);
-    socket_guard_t router2 (ctx.get (), ZLINK_ROUTER);
+    socket_guard_t router1 (ctx.get (), ZLINK_SOCKET_ROUTER);
+    socket_guard_t router2 (ctx.get (), ZLINK_SOCKET_ROUTER);
     if (!router1.valid () || !router2.valid ()) {
         print_fail_no_queue ();
         return;

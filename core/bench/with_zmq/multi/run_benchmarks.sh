@@ -124,8 +124,6 @@ normalize_pattern() {
 
   local up
   up="$(echo "${raw}" | tr '[:lower:]' '[:upper:]')"
-  up="${up#MULTI_}"
-  up="${up#MULT_}"
 
   case "${up}" in
     DEALER_DEALER) echo "MULTI_DEALER_DEALER" ;;
@@ -220,7 +218,6 @@ Options:
                                 Allowed: dealer_dealer, dealer_router,
                                          router_router,
                                          pubsub, stream
-                                Also accepts MULTI_* legacy names.
   --runs N                      Iterations per configuration (default: 3)
   --transport NAME              Transport(s), comma-separated allowed
                                 (default: tcp,tls,ws,wss)

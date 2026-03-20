@@ -141,7 +141,7 @@ static void cleanup_ipc_endpoint (const char *endpoint_)
 
 void *create_spot_pub_handle (void *node_)
 {
-    void *spot_pub = zlink_spot_pub_new (node_);
+    void *spot_pub = node_;
     if (!spot_pub)
         return NULL;
 
@@ -153,7 +153,7 @@ void *create_spot_pub_handle (void *node_)
 
 void *create_spot_sub_handle (void *node_, zlink_subscribe_handler_fn handler_)
 {
-    void *spot_sub = zlink_spot_sub_new (node_);
+    void *spot_sub = node_;
     if (!spot_sub)
         return NULL;
 
@@ -162,7 +162,6 @@ void *create_spot_sub_handle (void *node_, zlink_subscribe_handler_fn handler_)
     if (handler_ == &queued_spot_handler) {
         probe = ensure_queued_spot_probe (spot_sub, false);
         if (!probe) {
-            zlink_spot_sub_destroy (&spot_sub);
             errno = ENOMEM;
             return NULL;
         }
@@ -174,7 +173,6 @@ void *create_spot_sub_handle (void *node_, zlink_subscribe_handler_fn handler_)
         const int err = errno;
         if (probe)
             remove_queued_spot_probe (spot_sub, false);
-        zlink_spot_sub_destroy (&spot_sub);
         errno = err;
         return NULL;
     }
@@ -198,9 +196,7 @@ int create_spot_pub_sub (void *node_, void **pub_p, void **sub_p)
 
     *sub_p = create_spot_sub_handle (node_, &queued_spot_handler);
     if (!*sub_p) {
-        void *pub = *pub_p;
         *pub_p = NULL;
-        zlink_spot_pub_destroy (&pub);
         return -1;
     }
     return 0;
@@ -212,9 +208,10 @@ int destroy_spot_pub_sub (void **pub_p, void **sub_p)
         errno = EFAULT;
         return -1;
     }
-    int rc_pub = zlink_spot_pub_destroy (pub_p);
-    int rc_sub = zlink_spot_sub_destroy (sub_p);
-    return (rc_pub == 0 && rc_sub == 0) ? 0 : -1;
+    *pub_p = NULL;
+    *sub_p = NULL;
+    errno = 0;
+    return 0;
 }
 
 int set_node_pub_option (void *node_,

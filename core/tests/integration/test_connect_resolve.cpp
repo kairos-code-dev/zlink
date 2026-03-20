@@ -11,7 +11,7 @@ void *sock;
 void setUp ()
 {
     setup_test_context ();
-    sock = test_context_socket (ZLINK_PUB);
+    sock = test_context_socket (ZLINK_SOCKET_PUB);
 }
 
 void tearDown ()

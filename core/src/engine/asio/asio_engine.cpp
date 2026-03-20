@@ -434,7 +434,7 @@ void zlink::asio_engine_t::start_transport_handshake ()
     const std::weak_ptr<void> callback_guard = _callback_guard;
 
     const bool use_stream_handler_alloc =
-      _options.type == ZLINK_STREAM && asio_stream_enable_handler_alloc;
+      _options.type == ZLINK_CORE_SOCKET_STREAM && asio_stream_enable_handler_alloc;
     if (use_stream_handler_alloc) {
         _transport->async_handshake (
           handshake_type,
@@ -586,7 +586,7 @@ void zlink::asio_engine_t::start_async_read ()
     //  once input is stopped, do not arm new reads until restart_input().
     //  Stream sockets keep proactor-style buffering under backpressure.
     if (_read_pending || _io_error
-        || (_input_stopped && _options.type != ZLINK_STREAM))
+        || (_input_stopped && _options.type != ZLINK_CORE_SOCKET_STREAM))
         return;
 
     ENGINE_DBG ("start_async_read: insize=%zu", _insize);
@@ -599,7 +599,7 @@ void zlink::asio_engine_t::start_async_read ()
     //  Get buffer from decoder if available
     size_t read_size;
 
-    if (_decoder && _input_stopped && _options.type == ZLINK_STREAM) {
+    if (_decoder && _input_stopped && _options.type == ZLINK_CORE_SOCKET_STREAM) {
         read_size = _stream_decoder_read_target_size;
         if (read_size == 0) {
             read_size = _options.in_batch_size;
@@ -651,7 +651,7 @@ void zlink::asio_engine_t::start_async_read ()
     if (_transport) {
         const std::weak_ptr<void> callback_guard = _callback_guard;
         const bool use_stream_handler_alloc =
-          _options.type == ZLINK_STREAM && asio_stream_enable_handler_alloc;
+          _options.type == ZLINK_CORE_SOCKET_STREAM && asio_stream_enable_handler_alloc;
         if (use_stream_handler_alloc) {
             _transport->async_read_some (
               _read_buffer_ptr, read_size,
@@ -855,7 +855,7 @@ void zlink::asio_engine_t::start_async_write ()
     if (_transport) {
         const std::weak_ptr<void> callback_guard = _callback_guard;
         const bool use_stream_handler_alloc =
-          _options.type == ZLINK_STREAM && asio_stream_enable_handler_alloc;
+          _options.type == ZLINK_CORE_SOCKET_STREAM && asio_stream_enable_handler_alloc;
         if (use_stream_handler_alloc) {
             _transport->async_write_some (
               _outpos, _outsize,
@@ -882,7 +882,7 @@ void zlink::asio_engine_t::start_async_write ()
 
 bool zlink::asio_engine_t::prepare_gather_output ()
 {
-    const bool stream_mode = _options.type == ZLINK_STREAM;
+    const bool stream_mode = _options.type == ZLINK_CORE_SOCKET_STREAM;
     const bool gather_enabled =
       asio_gather_write_on || (stream_mode && asio_stream_gather_on);
 
@@ -936,7 +936,7 @@ bool zlink::asio_engine_t::prepare_gather_output ()
 
     const std::weak_ptr<void> callback_guard = _callback_guard;
     const bool use_stream_handler_alloc =
-      _options.type == ZLINK_STREAM && asio_stream_enable_handler_alloc;
+      _options.type == ZLINK_CORE_SOCKET_STREAM && asio_stream_enable_handler_alloc;
     if (use_stream_handler_alloc) {
         _transport->async_writev (
           _gather_header, _gather_header_size, _gather_body, _gather_body_size,
@@ -988,7 +988,7 @@ bool zlink::asio_engine_t::use_stream_speculative_write () const
     if (!_transport)
         return false;
 
-    if (_options.type == ZLINK_STREAM && is_tcp_transport ())
+    if (_options.type == ZLINK_CORE_SOCKET_STREAM && is_tcp_transport ())
         return asio_stream_enable_speculative_write;
 
     return _transport->supports_speculative_write ();
@@ -996,7 +996,7 @@ bool zlink::asio_engine_t::use_stream_speculative_write () const
 
 bool zlink::asio_engine_t::use_non_tcp_speculative_read () const
 {
-    if (!_transport || _options.type != ZLINK_STREAM)
+    if (!_transport || _options.type != ZLINK_CORE_SOCKET_STREAM)
         return false;
 
     if (is_tcp_transport ())
@@ -1007,24 +1007,24 @@ bool zlink::asio_engine_t::use_non_tcp_speculative_read () const
 
 bool zlink::asio_engine_t::use_stream_rx_slab () const
 {
-    return _options.type == ZLINK_STREAM && asio_stream_enable_rx_slab;
+    return _options.type == ZLINK_CORE_SOCKET_STREAM && asio_stream_enable_rx_slab;
 }
 
 bool zlink::asio_engine_t::use_stream_dynamic_read_growth () const
 {
-    return _options.type == ZLINK_STREAM && _decoder != NULL
+    return _options.type == ZLINK_CORE_SOCKET_STREAM && _decoder != NULL
            && _stream_decoder_read_target_max > _stream_decoder_read_target_size;
 }
 
 bool zlink::asio_engine_t::use_stream_dynamic_write_growth () const
 {
-    return _options.type == ZLINK_STREAM && _encoder != NULL
+    return _options.type == ZLINK_CORE_SOCKET_STREAM && _encoder != NULL
            && _stream_encoder_write_target_max > _stream_encoder_write_target_size;
 }
 
 void zlink::asio_engine_t::prime_stream_decoder_read_target ()
 {
-    if (_options.type != ZLINK_STREAM || !_decoder)
+    if (_options.type != ZLINK_CORE_SOCKET_STREAM || !_decoder)
         return;
 
     _decoder->resize_buffer (_stream_decoder_read_target_size);
@@ -1072,7 +1072,7 @@ void zlink::asio_engine_t::maybe_grow_stream_decoder_read_target (
 
 void zlink::asio_engine_t::apply_pending_stream_encoder_resize ()
 {
-    if (_options.type != ZLINK_STREAM || !_encoder)
+    if (_options.type != ZLINK_CORE_SOCKET_STREAM || !_encoder)
         return;
 
     if (_stream_encoder_pending_resize_size <= _stream_encoder_write_target_size)
@@ -1145,7 +1145,7 @@ void zlink::asio_engine_t::on_read_complete (const boost::system::error_code &ec
     //  During backpressure, STREAM keeps proactor-style buffering, while
     //  non-stream keeps bytes in decoder buffer and waits for restart_input().
     if (_input_stopped) {
-        if (_options.type != ZLINK_STREAM) {
+        if (_options.type != ZLINK_CORE_SOCKET_STREAM) {
             if (_decoder && _insize > 0) {
                 const size_t partial_size = _insize;
                 _insize = partial_size + bytes_transferred;
@@ -1287,7 +1287,7 @@ void zlink::asio_engine_t::maybe_drain_stream_reads ()
       && (_transport->supports_speculative_read ()
           || use_non_tcp_speculative_read ());
     const bool should_drain =
-      _options.type == ZLINK_STREAM && asio_stream_enable_read_drain
+      _options.type == ZLINK_CORE_SOCKET_STREAM && asio_stream_enable_read_drain
       && asio_stream_read_drain_max_loops > 0 && supports_speculative_read;
     if (!should_drain) {
         start_async_read ();
@@ -1357,7 +1357,7 @@ void zlink::asio_engine_t::on_write_complete (const boost::system::error_code &e
             if (_transport) {
                 const std::weak_ptr<void> callback_guard = _callback_guard;
                 const bool use_stream_handler_alloc =
-                  _options.type == ZLINK_STREAM
+                  _options.type == ZLINK_CORE_SOCKET_STREAM
                   && asio_stream_enable_handler_alloc;
                 if (use_stream_handler_alloc) {
                     _transport->async_write_some (
@@ -1397,7 +1397,7 @@ void zlink::asio_engine_t::on_write_complete (const boost::system::error_code &e
     //  For STREAM/TCP, prefer speculative loop from completion callback
     //  to reduce async callback churn on small frames.
     if (!_output_stopped) {
-        if (_options.type == ZLINK_STREAM && use_stream_speculative_write ())
+        if (_options.type == ZLINK_CORE_SOCKET_STREAM && use_stream_speculative_write ())
             speculative_write ();
         else
             start_async_write ();
@@ -1516,7 +1516,7 @@ bool zlink::asio_engine_t::prepare_output_buffer ()
 
     const size_t max_out_batch = static_cast<size_t> (_options.out_batch_size);
     size_t target_out_batch =
-      _options.type == ZLINK_STREAM ? _stream_encoder_write_target_size
+      _options.type == ZLINK_CORE_SOCKET_STREAM ? _stream_encoder_write_target_size
                                     : max_out_batch;
     if (target_out_batch < max_out_batch)
         target_out_batch = max_out_batch;
@@ -1578,7 +1578,7 @@ void zlink::asio_engine_t::speculative_write ()
     }
 
     const bool stream_tcp_speculative =
-      _options.type == ZLINK_STREAM && is_tcp_transport ()
+      _options.type == ZLINK_CORE_SOCKET_STREAM && is_tcp_transport ()
       && asio_stream_enable_speculative_write;
     const size_t stream_spec_budget = asio_stream_spec_write_budget_bytes;
     size_t stream_spec_bytes = 0;
@@ -2018,7 +2018,7 @@ bool zlink::asio_engine_t::restart_input_internal ()
 
     //  Speculative read (libzlink pattern): drain immediately available data
     //  before re-arming async read. This avoids missed wakeups on IPC.
-    if (_options.type == ZLINK_STREAM && speculative_read ())
+    if (_options.type == ZLINK_CORE_SOCKET_STREAM && speculative_read ())
         return true;
 
     start_async_read ();

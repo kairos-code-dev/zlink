@@ -17,7 +17,7 @@ namespace {
 
 static const char *k_pattern = "MULTI_DEALER_ROUTER";
 static const char *k_token = "dealer_router";
-static const zlink_socket_type_t k_server_socket_type = ZLINK_ROUTER;
+static const zlink_socket_type_t k_server_socket_type = ZLINK_SOCKET_ROUTER;
 static const bool k_server_has_routing_id = false;
 static const char *k_server_routing_id = "SERVER";
 

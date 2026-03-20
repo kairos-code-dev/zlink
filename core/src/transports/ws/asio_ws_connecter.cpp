@@ -500,7 +500,7 @@ void zlink::asio_ws_connecter_t::create_engine (
         transport.reset (ws_transport.release ());
     }
 
-    const bool is_stream = options.type == ZLINK_STREAM;
+    const bool is_stream = options.type == ZLINK_CORE_SOCKET_STREAM;
     const options_t &engine_options = options;
     i_engine *engine = NULL;
 #if defined ZLINK_HAVE_WSS

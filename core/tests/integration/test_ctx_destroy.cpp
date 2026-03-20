@@ -27,7 +27,7 @@ void test_ctx_destroy ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *socket = zlink_socket (ctx, ZLINK_DEALER);
+    void *socket = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (socket);
 
     // Close the socket
@@ -43,7 +43,7 @@ void test_ctx_shutdown ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *socket = zlink_socket (ctx, ZLINK_DEALER);
+    void *socket = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (socket);
 
     // Spawn a thread to receive on socket
@@ -72,7 +72,7 @@ void test_ctx_shutdown_socket_opened_after ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     // Open a socket to start context, and close it immediately again.
-    void *socket = zlink_socket (ctx, ZLINK_DEALER);
+    void *socket = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (socket);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket));
 
@@ -80,7 +80,7 @@ void test_ctx_shutdown_socket_opened_after ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
 
     // Opening socket should now fail.
-    TEST_ASSERT_NULL (zlink_socket (ctx, ZLINK_DEALER));
+    TEST_ASSERT_NULL (zlink_socket (ctx, ZLINK_SOCKET_DEALER));
     TEST_ASSERT_FAILURE_ERRNO (ETERM, -1);
 
     // Destroy the context.
@@ -97,7 +97,7 @@ void test_ctx_shutdown_only_socket_opened_after ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
 
     // Opening socket should now fail.
-    TEST_ASSERT_NULL (zlink_socket (ctx, ZLINK_DEALER));
+    TEST_ASSERT_NULL (zlink_socket (ctx, ZLINK_SOCKET_DEALER));
     TEST_ASSERT_FAILURE_ERRNO (ETERM, -1);
 
     // Destroy the context.

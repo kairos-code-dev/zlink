@@ -114,7 +114,7 @@ size_t parse_stream_accept_concurrency ()
 
 size_t stream_accept_target (const zlink::options_t &options_)
 {
-    if (options_.type != ZLINK_STREAM)
+    if (options_.type != ZLINK_CORE_SOCKET_STREAM)
         return 1;
     return parse_stream_accept_concurrency ();
 }
@@ -139,7 +139,7 @@ size_t parse_stream_accept_concurrency ()
 
 size_t stream_accept_target (const zlink::options_t &options_)
 {
-    if (options_.type != ZLINK_STREAM)
+    if (options_.type != ZLINK_CORE_SOCKET_STREAM)
         return 1;
     return parse_stream_accept_concurrency ();
 }
@@ -501,7 +501,7 @@ void zlink::asio_ws_listener_t::create_engine (fd_t fd_)
         transport.reset (ws_transport.release ());
     }
 
-    const bool is_stream = options.type == ZLINK_STREAM;
+    const bool is_stream = options.type == ZLINK_CORE_SOCKET_STREAM;
     const options_t &engine_options = options;
     i_engine *engine = NULL;
 #if defined ZLINK_HAVE_WSS
@@ -527,7 +527,7 @@ void zlink::asio_ws_listener_t::create_engine (fd_t fd_)
     alloc_assert (engine);
 
     //  Choose I/O thread for engine
-    io_thread_t *io_thread = options.type == ZLINK_STREAM
+    io_thread_t *io_thread = options.type == ZLINK_CORE_SOCKET_STREAM
                                ? choose_io_thread_stream (options.affinity)
                                : choose_io_thread (options.affinity);
     zlink_assert (io_thread);

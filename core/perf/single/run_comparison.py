@@ -164,23 +164,19 @@ def emit_result_lines(combo_results: Dict[Tuple[str, str, int], ComboRecord]) ->
             )
 
 
-def env_get(primary_name: str, legacy_name: Optional[str] = None) -> str:
-    val = os.environ.get(primary_name)
+def env_get(name: str) -> str:
+    val = os.environ.get(name)
     if val:
         return val
-    if legacy_name:
-        legacy_val = os.environ.get(legacy_name)
-        if legacy_val:
-            return legacy_val
     return ""
 
 
-def env_flag_enabled(primary_name: str, legacy_name: Optional[str] = None) -> bool:
-    return env_get(primary_name, legacy_name) == "1"
+def env_flag_enabled(name: str) -> bool:
+    return env_get(name) == "1"
 
 
-def parse_env_list(name: str, cast_fn, legacy_name: Optional[str] = None):
-    val = env_get(name, legacy_name)
+def parse_env_list(name: str, cast_fn):
+    val = env_get(name)
     if not val:
         return None
     items = []
@@ -195,8 +191,8 @@ def parse_env_list(name: str, cast_fn, legacy_name: Optional[str] = None):
     return items or None
 
 
-def parse_env_int(name: str, default: int, legacy_name: Optional[str] = None) -> int:
-    val = env_get(name, legacy_name)
+def parse_env_int(name: str, default: int) -> int:
+    val = env_get(name)
     if not val:
         return default
     try:

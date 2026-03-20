@@ -57,13 +57,13 @@ void test_subscribe_cancel (void *xpub, void *sub, const char (&topic)[SIZE])
 
 void test_xpub_subscribe_long_topic ()
 {
-    void *xpub = test_context_socket (ZLINK_XPUB);
+    void *xpub = test_context_socket (ZLINK_SOCKET_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (xpub, bind_address));
     size_t len = MAX_SOCKET_STRING;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (xpub, ZLINK_OPT_LAST_ENDPOINT, connect_address, &len));
 
-    void *sub = test_context_socket (ZLINK_SUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, connect_address));
 
     test_subscribe_cancel (xpub, sub, short_topic);

@@ -157,8 +157,8 @@ bool read_zmp_frame (fd_t fd_,
 
 void test_zmp_metadata_enabled ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     int enabled = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -172,7 +172,7 @@ void test_zmp_metadata_enabled ()
 
     zlink_msg_t msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, server, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, server, 0));
     const char *sock_type = zlink_msg_gets (&msg, "Socket-Type");
     TEST_ASSERT_NOT_NULL (sock_type);
     TEST_ASSERT_EQUAL_STRING ("PAIR", sock_type);
@@ -184,8 +184,8 @@ void test_zmp_metadata_enabled ()
 
 void test_zmp_metadata_disabled ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     int disabled = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -199,7 +199,7 @@ void test_zmp_metadata_disabled ()
 
     zlink_msg_t msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, server, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, server, 0));
     errno = 0;
     const char *sock_type = zlink_msg_gets (&msg, "Socket-Type");
     TEST_ASSERT_NULL (sock_type);
@@ -212,7 +212,7 @@ void test_zmp_metadata_disabled ()
 
 void test_zmp_error_invalid_hello ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
@@ -222,7 +222,7 @@ void test_zmp_error_invalid_hello ()
 
     unsigned char body[3];
     body[0] = zlink::zmp_control_hello;
-    body[1] = ZLINK_PAIR;
+    body[1] = ZLINK_SOCKET_PAIR;
     body[2] = 0;
 
     unsigned char header[zlink::zmp_header_size];
@@ -257,7 +257,7 @@ void test_zmp_error_invalid_hello ()
 
 void test_zmp_heartbeat_ttl_min ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
     int ttl_local_ms = 300;
 #if defined ZLINK_HAVE_WINDOWS
     // Windows scheduling/timer granularity can delay TTL handling.
@@ -276,7 +276,7 @@ void test_zmp_heartbeat_ttl_min ()
 
     unsigned char hello_body[3];
     hello_body[0] = zlink::zmp_control_hello;
-    hello_body[1] = ZLINK_PAIR;
+    hello_body[1] = ZLINK_SOCKET_PAIR;
     hello_body[2] = 0;
     TEST_ASSERT_TRUE (send_zmp_control (raw, hello_body, sizeof (hello_body)));
 

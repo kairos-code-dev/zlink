@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
+
+#include "core/send_internal.hpp"
 #include <new>
 #include <string>
 #include <algorithm>
@@ -159,28 +161,28 @@ zlink::socket_base_t *zlink::socket_base_t::create (int type_,
 {
     socket_base_t *s = NULL;
     switch (type_) {
-        case ZLINK_PAIR:
+        case ZLINK_CORE_SOCKET_PAIR:
             s = new (std::nothrow) pair_t (parent_, tid_, sid_);
             break;
-        case ZLINK_PUB:
+        case ZLINK_CORE_SOCKET_PUB:
             s = new (std::nothrow) pub_t (parent_, tid_, sid_);
             break;
-        case ZLINK_SUB:
+        case ZLINK_CORE_SOCKET_SUB:
             s = new (std::nothrow) sub_t (parent_, tid_, sid_);
             break;
-        case ZLINK_DEALER:
+        case ZLINK_CORE_SOCKET_DEALER:
             s = new (std::nothrow) dealer_t (parent_, tid_, sid_);
             break;
-        case ZLINK_ROUTER:
+        case ZLINK_CORE_SOCKET_ROUTER:
             s = new (std::nothrow) router_t (parent_, tid_, sid_);
             break;
-        case ZLINK_STREAM:
+        case ZLINK_CORE_SOCKET_STREAM:
             s = new (std::nothrow) stream_t (parent_, tid_, sid_);
             break;
-        case ZLINK_XPUB:
+        case ZLINK_CORE_SOCKET_XPUB:
             s = new (std::nothrow) xpub_t (parent_, tid_, sid_);
             break;
-        case ZLINK_XSUB:
+        case ZLINK_CORE_SOCKET_XSUB:
             s = new (std::nothrow) xsub_t (parent_, tid_, sid_);
             break;
         default:
@@ -644,14 +646,14 @@ int zlink::socket_base_t::getsockopt (int option_,
         return rc;
     }
 
-    if (option_ == ZLINK_SOCKOPT_FD) {
+    if (option_ == ZLINK_INTERNAL_OPT_FD) {
         rc = do_getsockopt<fd_t> (
           optval_, optvallen_, static_cast<mailbox_t *> (_mailbox)->get_fd ());
         leave_public_api ();
         return rc;
     }
 
-    if (option_ == ZLINK_SOCKOPT_EVENTS) {
+    if (option_ == ZLINK_INTERNAL_OPT_EVENTS) {
         lock_public_api_sync ();
         const int rc = process_commands (0, false);
         if (rc != 0 && (errno == EINTR || errno == ETERM)) {
@@ -667,7 +669,7 @@ int zlink::socket_base_t::getsockopt (int option_,
         return out_rc;
     }
 
-    if (option_ == ZLINK_SOCKOPT_LAST_ENDPOINT) {
+    if (option_ == ZLINK_INTERNAL_OPT_LAST_ENDPOINT) {
         lock_public_api_sync ();
         const int out_rc = do_getsockopt (optval_, optvallen_, _last_endpoint);
         unlock_public_api_sync ();
@@ -951,7 +953,7 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
     }
 
     // STREAM is server-side only; outbound connect is intentionally disabled.
-    if (options.type == ZLINK_STREAM) {
+    if (options.type == ZLINK_CORE_SOCKET_STREAM) {
         errno = EOPNOTSUPP;
         return -1;
     }
@@ -1551,7 +1553,7 @@ int zlink::socket_base_t::socket_msg_dispatch_from_io (msg_t *msg_,
     if (!socket_msg_dispatch_active ())
         return 0;
 
-    if (options.type == ZLINK_STREAM) {
+    if (options.type == ZLINK_CORE_SOCKET_STREAM) {
         pipe_t *previous_pipe = g_current_socket_msg_dispatch_pipe;
         g_current_socket_msg_dispatch_pipe = pipe_;
         const int rc = xsocket_msg_dispatch (msg_, pipe_);
@@ -2640,9 +2642,9 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
     // Check if the specified socket type is supported. It must be a
     // one-way socket types that support the SNDMORE flag.
     switch (type_) {
-        case ZLINK_PAIR:
+        case ZLINK_CORE_SOCKET_PAIR:
             break;
-        case ZLINK_PUB:
+        case ZLINK_CORE_SOCKET_PUB:
             break;
         default:
             errno = EINVAL;
@@ -2671,7 +2673,7 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
         stop_monitor (false);
     else {
         if ((events_ & ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED) != 0
-            && (options.type == ZLINK_PUB || options.type == ZLINK_XPUB)
+            && (options.type == ZLINK_CORE_SOCKET_PUB || options.type == ZLINK_CORE_SOCKET_XPUB)
             && xpub_dispatch_start () != 0) {
             stop_monitor (false);
             return -1;
@@ -2852,9 +2854,9 @@ void zlink::socket_base_t::monitor_loop ()
 {
     void *monitor_socket = _monitor_socket;
     const bool supports_sub_delivery_ready =
-      options.type == ZLINK_SUB || options.type == ZLINK_XSUB;
+      options.type == ZLINK_CORE_SOCKET_SUB || options.type == ZLINK_CORE_SOCKET_XSUB;
     const bool supports_pub_delivery_ready =
-      options.type == ZLINK_PUB || options.type == ZLINK_XPUB;
+      options.type == ZLINK_CORE_SOCKET_PUB || options.type == ZLINK_CORE_SOCKET_XPUB;
     const bool pump_delivery_ready =
       (supports_sub_delivery_ready
        && (_monitor_events & ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED) != 0)
@@ -2974,7 +2976,7 @@ bool zlink::socket_base_t::dispatch_monitor_event (
     zlink_msg_init_size (&msg, sizeof (wire_event));
     memcpy (zlink_msg_data (&msg), &wire_event, sizeof (wire_event));
     const int send_flags = _monitor_lossy ? ZLINK_DONTWAIT : 0;
-    if (zlink_compat_msg_send (&msg, monitor_socket_, send_flags) == -1) {
+    if (zlink::send_msg_internal (monitor_socket_, &msg, send_flags) == -1) {
         zlink_msg_close (&msg);
         return false;
     }

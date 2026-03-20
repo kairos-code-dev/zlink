@@ -272,9 +272,9 @@ static void test_generic_monitor_poller_accepts_non_pollin_events ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_socket (ctx, ZLINK_PAIR);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (server);
-    void *client = zlink_socket (ctx, ZLINK_PAIR);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (client);
 
     zlink_socket_monitor_open_options_t socket_monitor_opts;
@@ -310,7 +310,7 @@ static void test_data_plane_error_policy ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *pub = zlink_socket (ctx, ZLINK_PUB);
+    void *pub = zlink_socket (ctx, ZLINK_SOCKET_PUB);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 0));
     TEST_ASSERT_EQUAL_INT (-1, ::zlink_send (pub, &part, 1, 0));

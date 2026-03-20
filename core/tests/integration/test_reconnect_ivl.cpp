@@ -113,11 +113,11 @@ void configure_socket_family_for_endpoint (void *socket_, const char *endpoint_)
 void run_reconnect_ivl_case (const char *bind_endpoint_,
                              const char *connect_endpoint_)
 {
-    void *server = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
     configure_socket_family_for_endpoint (server, bind_endpoint_);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, bind_endpoint_));
 
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
     configure_socket_family_for_endpoint (client, connect_endpoint_);
     monitor_probe_t probe;
     void *monitor = open_monitor (client, &probe);
@@ -144,7 +144,7 @@ void run_reconnect_ivl_case (const char *bind_endpoint_,
       &probe, reconnect_wait_events,
       sizeof (reconnect_wait_events) / sizeof (reconnect_wait_events[0]), 3000);
 
-    server = test_context_socket (ZLINK_PAIR);
+    server = test_context_socket (ZLINK_SOCKET_PAIR);
     configure_socket_family_for_endpoint (server, connect_endpoint_);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, connect_endpoint_));
 
@@ -182,7 +182,7 @@ void test_reconnect_ivl_ipc (void)
 void test_reconnect_ivl_tcp_ipv4 ()
 {
     char endpoint[MAX_SOCKET_STRING];
-    void *server = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
     test_context_socket_close_zero_linger (server);
     run_reconnect_ivl_case (endpoint, endpoint);
@@ -193,10 +193,8 @@ void test_reconnect_ivl_tcp_ipv6 ()
     if (!is_ipv6_available ())
         TEST_FAIL_MESSAGE ("IPv6 must be available in this environment");
 
-    zlink_ctx_set (get_test_context (),
-                   static_cast<zlink_ctx_option_t> (ZLINK_IPV6), 1);
     char endpoint[MAX_SOCKET_STRING];
-    void *server = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
     bind_loopback_ipv6 (server, endpoint, sizeof (endpoint));
     test_context_socket_close_zero_linger (server);
     run_reconnect_ivl_case (endpoint, endpoint);

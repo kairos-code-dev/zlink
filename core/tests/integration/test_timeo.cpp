@@ -7,7 +7,7 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 void test_timeo ()
 {
-    void *frontend = test_context_socket (ZLINK_DEALER);
+    void *frontend = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (frontend, "inproc://timeout_test"));
 
     //  Receive on disconnected socket returns immediately
@@ -35,7 +35,7 @@ void test_timeo ()
     }
 
     //  Check that normal message flow works as expected
-    void *backend = test_context_socket (ZLINK_DEALER);
+    void *backend = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (backend, "inproc://timeout_test"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (backend, ZLINK_OPT_SNDTIMEO, &timeout, sizeof (int)));

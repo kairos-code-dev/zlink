@@ -18,8 +18,8 @@ static bool isSubscribed = false;
 
 void test_disconnect_inproc ()
 {
-    void *pub_socket = test_context_socket (ZLINK_XPUB);
-    void *sub_socket = test_context_socket (ZLINK_SUB);
+    void *pub_socket = test_context_socket (ZLINK_SOCKET_XPUB);
+    void *sub_socket = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub_socket, "foo"));
 
@@ -80,12 +80,12 @@ void test_disconnect_inproc ()
         zlink_msg_t channel_envlp;
         ZLINK_PREPARE_STRING (channel_envlp, "foo", 3);
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_msg_send (&channel_envlp, pub_socket, ZLINK_SNDMORE));
+          test_send_single_msg (&channel_envlp, pub_socket, ZLINK_SNDMORE));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&channel_envlp));
 
         zlink_msg_t message;
         ZLINK_PREPARE_STRING (message, "this is foo!", 12);
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_send (&message, pub_socket, 0));
+        TEST_ASSERT_SUCCESS_ERRNO (test_send_single_msg (&message, pub_socket, 0));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&message));
     }
     TEST_ASSERT_EQUAL_INT (3, publicationsReceived);

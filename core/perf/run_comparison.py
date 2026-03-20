@@ -44,9 +44,6 @@ PATTERN_ALIASES = {
     "STREAM": ("STREAM",),
     "STREAM_CALLBACK": ("STREAM_CALLBACK",),
     "STREAMS": STREAM_VARIANT_PATTERNS,
-    "MULTI_STREAM": ("STREAM",),
-    "MULTI_STREAM_CALLBACK": ("STREAM_CALLBACK",),
-    "MULTI_STREAMS": STREAM_VARIANT_PATTERNS,
 }
 STREAM_SHARED_CLIENT_BINARY = "perf_stream_client"
 STREAM_SERVER_BINARY_BY_PATTERN = {
@@ -908,13 +905,6 @@ ENV_ALIAS_KEYS = (
     "PERF_STREAM_DRAIN_MAX_MS",
     "PERF_STREAM_DRAIN_RELAY_BUDGET",
 )
-
-
-def sync_perf_bench_aliases(env):
-    """No-op after BENCH_ -> PERF_ rename; kept for call-site compatibility."""
-    pass
-
-
 def env_pair_value(env, key):
     return env.get(key, "").strip()
 
@@ -925,7 +915,6 @@ def set_env_pair(env, key, value):
 
 def get_env_for_lib(_lib_name):
     env = base_env.copy()
-    sync_perf_bench_aliases(env)
     if IS_WINDOWS:
         env["PATH"] = f"{CURRENT_LIB_DIR};{env.get('PATH', '')}"
     else:
@@ -4397,7 +4386,6 @@ def main():
     for env_key, env_value in timeout_env_values.items():
         base_env[env_key] = env_value
         os.environ[env_key] = env_value
-    sync_perf_bench_aliases(base_env)
 
     comparisons = list(MULTI_COMPARISONS if ALLOW_MULTI else SINGLE_COMPARISONS)
 

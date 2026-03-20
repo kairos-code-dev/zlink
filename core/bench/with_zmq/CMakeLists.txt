@@ -37,7 +37,7 @@ else()
 endif()
 
 option(ZLINK_BUILD_WITH_ZMQ_ZLINK_BENCHES
-       "Build zlink-vs-zmq comparison benches that still depend on legacy sync recv APIs"
+       "Build zlink-vs-zmq comparison benches that depend on synchronous recv APIs"
        OFF)
 
 function(add_std_zmq_bench_single name source)

@@ -14,7 +14,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
     setup_test_context ();
     char my_endpoint[MAX_SOCKET_STRING];
     size_t my_endpoint_size = sizeof (my_endpoint);
-    void *server = test_context_socket (ZLINK_DEALER);
+    void *server = test_context_socket (ZLINK_SOCKET_DEALER);
     //  As per API by default there's no limit to the size of a message,
     //  but the sanitizer allocator will barf over a gig or so
     int64_t max_msg_size = 64 * 1024 * 1024;
@@ -26,7 +26,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
     my_endpoint[my_endpoint_size - 2] = '\0';
     fd_t client = connect_socket (my_endpoint, AF_INET, IPPROTO_WS);
 
-    void *client_good = test_context_socket (ZLINK_DEALER);
+    void *client_good = test_context_socket (ZLINK_SOCKET_DEALER);
     my_endpoint[my_endpoint_size - 2] = '/';
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client_good, my_endpoint));
 
@@ -48,7 +48,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
 
     zlink_msg_t msg;
     zlink_msg_init (&msg);
-    while (-1 != zlink_msg_recv (&msg, server, ZLINK_DONTWAIT)) {
+    while (-1 != test_recv_single_msg (&msg, server, ZLINK_DONTWAIT)) {
         zlink_msg_close (&msg);
         zlink_msg_init (&msg);
     }

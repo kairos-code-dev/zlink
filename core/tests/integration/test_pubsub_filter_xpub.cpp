@@ -34,8 +34,8 @@ void close_sync_socket (void *socket_)
 
 static void test_pubsub_filter_transport (const char *endpoint_)
 {
-    void *pub = create_sync_socket (ZLINK_PUB);
-    void *sub = create_sync_socket (ZLINK_SUB);
+    void *pub = create_sync_socket (ZLINK_SOCKET_PUB);
+    void *sub = create_sync_socket (ZLINK_SOCKET_SUB);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, endpoint_));
 
@@ -91,8 +91,8 @@ void test_pubsub_filter_inproc ()
 
 void test_pubsub_xpub_xsub_tcp ()
 {
-    void *xpub = create_sync_socket (ZLINK_XPUB);
-    void *xsub = create_sync_socket (ZLINK_XSUB);
+    void *xpub = create_sync_socket (ZLINK_SOCKET_XPUB);
+    void *xsub = create_sync_socket (ZLINK_SOCKET_XSUB);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (xpub, "tcp://127.0.0.1:*"));
 
@@ -128,8 +128,8 @@ void test_pubsub_xpub_xsub_tcp ()
 void test_pubsub_xpub_xsub_ipc ()
 {
 #if defined(ZLINK_HAVE_IPC)
-    void *xpub = create_sync_socket (ZLINK_XPUB);
-    void *xsub = create_sync_socket (ZLINK_XSUB);
+    void *xpub = create_sync_socket (ZLINK_SOCKET_XPUB);
+    void *xsub = create_sync_socket (ZLINK_SOCKET_XSUB);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (xpub, "ipc://*"));
 
@@ -167,8 +167,8 @@ void test_pubsub_xpub_xsub_ipc ()
 
 void test_pubsub_xpub_xsub_inproc ()
 {
-    void *xpub = create_sync_socket (ZLINK_XPUB);
-    void *xsub = create_sync_socket (ZLINK_XSUB);
+    void *xpub = create_sync_socket (ZLINK_SOCKET_XPUB);
+    void *xsub = create_sync_socket (ZLINK_SOCKET_XSUB);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (xpub, "inproc://test_xpub_xsub"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (xsub, "inproc://test_xpub_xsub"));

@@ -2,7 +2,6 @@
 
 #include "precompiled.hpp"
 
-#include "api/legacy_api_internal.hpp"
 #include "services/spot/spot_data_plane.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_pub.hpp"
@@ -322,7 +321,7 @@ int spot_runtime_t::create_attachment (int kind_,
         return -1;
     }
 
-    const int socket_type = kind_ == spot_attachment_pub ? ZLINK_PUB : ZLINK_SUB;
+    const int socket_type = kind_ == spot_attachment_pub ? ZLINK_CORE_SOCKET_PUB : ZLINK_CORE_SOCKET_SUB;
     socket_base_t *socket = owner->_ctx->create_socket (socket_type);
     if (!socket)
         return -1;
@@ -443,7 +442,7 @@ int spot_runtime_t::start ()
         return -1;
     }
 
-    data_ctrl_front = owner->_ctx->create_socket (ZLINK_PAIR);
+    data_ctrl_front = owner->_ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
     if (!data_ctrl_front || data_ctrl_front->bind (data_ctrl_endpoint.c_str ()) != 0) {
         close_socket_ptr (&data_ctrl_front);
         return -1;

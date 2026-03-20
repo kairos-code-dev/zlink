@@ -104,7 +104,6 @@ Measure current zlink single-pattern performance.
 Options:
   -h, --help                  Show this help.
   --pattern NAME              Pattern list (comma-separated) or ALL.
-                              In multi mode, STREAM_CALLBACK is also accepted.
   --build-dir PATH            Official build directory (must be core/build).
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
   --clean-build               Remove build directory and do a clean build.
@@ -152,11 +151,8 @@ set_build_mode() {
   BUILD_MODE_EXPLICIT=1
 }
 
-normalize_multi_pattern_alias() {
+normalize_multi_pattern_token() {
   local raw="${1:-}"
-  if [[ "${raw}" == MULTI_* ]]; then
-    raw="${raw#MULTI_}"
-  fi
 
   case "${raw}" in
     STREAM|STREAMS)
@@ -306,7 +302,7 @@ for i in "${!PATTERN_LIST[@]}"; do
     exit 1
   fi
   if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
-    PATTERN_LIST[i]="$(normalize_multi_pattern_alias "${PATTERN_LIST[i]}")"
+    PATTERN_LIST[i]="$(normalize_multi_pattern_token "${PATTERN_LIST[i]}")"
   fi
 done
 

@@ -39,7 +39,7 @@ void test_system_max ()
     std::vector<void *> sockets;
 
     while (true) {
-        void *socket = zlink_socket (get_test_context (), ZLINK_PAIR);
+        void *socket = zlink_socket (get_test_context (), ZLINK_SOCKET_PAIR);
         if (!socket)
             break;
         sockets.push_back (socket);
@@ -51,7 +51,7 @@ void test_system_max ()
 
     //  System is out of resources, further calls to zlink_socket should return NULL
     for (unsigned int i = 0; i < 10; ++i) {
-        TEST_ASSERT_NULL (zlink_socket (get_test_context (), ZLINK_PAIR));
+        TEST_ASSERT_NULL (zlink_socket (get_test_context (), ZLINK_SOCKET_PAIR));
     }
     // Clean up.
     for (unsigned int i = 0; i < sockets.size (); ++i)
@@ -64,7 +64,7 @@ void test_zlink_default_max ()
     std::vector<void *> sockets;
 
     while (true) {
-        void *socket = zlink_socket (get_test_context (), ZLINK_PAIR);
+        void *socket = zlink_socket (get_test_context (), ZLINK_SOCKET_PAIR);
         if (!socket)
             break;
         sockets.push_back (socket);
@@ -74,7 +74,7 @@ void test_zlink_default_max ()
 
     //  Further calls to zlink_socket should return NULL
     for (unsigned int i = 0; i < 10; ++i) {
-        TEST_ASSERT_NULL (zlink_socket (get_test_context (), ZLINK_PAIR));
+        TEST_ASSERT_NULL (zlink_socket (get_test_context (), ZLINK_SOCKET_PAIR));
     }
 
     //  Clean up

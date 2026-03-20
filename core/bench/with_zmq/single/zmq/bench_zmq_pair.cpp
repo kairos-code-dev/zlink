@@ -262,8 +262,8 @@ void run_pair (const std::string &transport,
         return;
     }
 
-    socket_guard_t s_bind (ctx.get (), ZLINK_PAIR);
-    socket_guard_t s_conn (ctx.get (), ZLINK_PAIR);
+    socket_guard_t s_bind (ctx.get (), ZLINK_SOCKET_PAIR);
+    socket_guard_t s_conn (ctx.get (), ZLINK_SOCKET_PAIR);
     if (!s_bind.valid () || !s_conn.valid ()) {
         print_fail_no_queue ();
         return;

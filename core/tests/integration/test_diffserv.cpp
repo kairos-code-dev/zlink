@@ -12,14 +12,14 @@ void test_diffserv ()
     size_t tos_size = sizeof (tos);
     char my_endpoint[MAX_SOCKET_STRING];
 
-    void *sb = test_context_socket (ZLINK_PAIR);
+    void *sb = test_context_socket (ZLINK_SOCKET_PAIR);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (sb, ZLINK_OPT_TOS, &tos, tos_size));
     bind_loopback_ipv4 (sb, my_endpoint, sizeof (my_endpoint));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (sb, ZLINK_OPT_TOS, &o_tos, &tos_size));
     TEST_ASSERT_EQUAL (tos, o_tos);
 
-    void *sc = test_context_socket (ZLINK_PAIR);
+    void *sc = test_context_socket (ZLINK_SOCKET_PAIR);
     tos = 0x58;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (sc, ZLINK_OPT_TOS, &tos, tos_size));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, my_endpoint));

@@ -501,7 +501,7 @@ void zlink::asio_tls_connecter_t::create_engine (fd_t fd_,
         transport->set_hostname (_tls_hostname);
 
     i_engine *engine = NULL;
-    if (options.type == ZLINK_STREAM) {
+    if (options.type == ZLINK_CORE_SOCKET_STREAM) {
         engine = new (std::nothrow) asio_raw_engine_t (
           fd_, options, endpoint_pair,
           std::unique_ptr<i_asio_transport> (transport.release ()),

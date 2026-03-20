@@ -30,7 +30,7 @@ zlink::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _delivery_ready_state (false)
 {
     _last_pipe = NULL;
-    options.type = ZLINK_XPUB;
+    options.type = ZLINK_CORE_SOCKET_XPUB;
     _welcome_msg.init ();
 }
 
@@ -165,7 +165,7 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
             //  If the request was a new subscription, or the subscription
             //  was removed, or verbose mode or manual mode are enabled, store it
             //  so that it can be passed to the user on next recv call.
-            if (_manual || (options.type == ZLINK_XPUB && notify)) {
+            if (_manual || (options.type == ZLINK_CORE_SOCKET_XPUB && notify)) {
                 //  ZMTP 3.1 hack: we need to support sub/cancel commands, but
                 //  we can't give them back to userspace as it would be an API
                 //  breakage since the payload of the message is completely
@@ -190,7 +190,7 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
                 _pending_flags.push_back (0);
                 _pending_pipes.push_back (pipe_);
             }
-        } else if (options.type != ZLINK_PUB) {
+        } else if (options.type != ZLINK_CORE_SOCKET_PUB) {
             //  Process user message coming upstream from xsub socket,
             //  but not if the type is PUB, which never processes user
             //  messages
@@ -601,7 +601,7 @@ void zlink::xpub_t::send_unsubscription (zlink::mtrie_t::prefix_t data_,
                                        size_t size_,
                                        xpub_t *self_)
 {
-    if (self_->options.type != ZLINK_PUB) {
+    if (self_->options.type != ZLINK_CORE_SOCKET_PUB) {
         //  Place the unsubscription to the queue of pending (un)subscriptions
         //  to be retrieved by the user later on.
         blob_t unsub (size_ + 1);

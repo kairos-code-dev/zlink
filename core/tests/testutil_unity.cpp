@@ -45,19 +45,19 @@ void discard_test_xpub_event (const zlink_routing_id_t *,
 int test_attach_discard_handler_for_type (void *socket_, int type_)
 {
     switch (static_cast<zlink_socket_type_t> (type_)) {
-        case ZLINK_PAIR:
-        case ZLINK_DEALER:
-        case ZLINK_ROUTER:
-        case ZLINK_STREAM:
+        case ZLINK_SOCKET_PAIR:
+        case ZLINK_SOCKET_DEALER:
+        case ZLINK_SOCKET_ROUTER:
+        case ZLINK_SOCKET_STREAM:
             return zlink_recv_handler (socket_, &discard_test_socket_parts, NULL);
-        case ZLINK_SUB:
-        case ZLINK_XSUB:
+        case ZLINK_SOCKET_SUB:
+        case ZLINK_SOCKET_XSUB:
             return zlink_subscribe_handler (socket_, &discard_test_spot_parts,
                                             NULL);
-        case ZLINK_XPUB:
+        case ZLINK_SOCKET_XPUB:
             return zlink_subscription_event_handler (
               socket_, &discard_test_xpub_event, NULL);
-        case ZLINK_PUB:
+        case ZLINK_SOCKET_PUB:
             return 0;
         default:
             errno = EINVAL;

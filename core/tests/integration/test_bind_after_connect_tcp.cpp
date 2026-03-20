@@ -7,8 +7,8 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 void test_x ()
 {
-    void *sb = test_context_socket (ZLINK_DEALER);
-    void *sc = test_context_socket (ZLINK_DEALER);
+    void *sb = test_context_socket (ZLINK_SOCKET_DEALER);
+    void *sc = test_context_socket (ZLINK_SOCKET_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, ENDPOINT_3));
 

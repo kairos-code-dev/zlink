@@ -480,8 +480,8 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test_socket_monitor_open_dispatches_events ()
 {
     void *ctx = get_test_context ();
-    void *server = zlink_socket (ctx, ZLINK_ROUTER);
-    void *client = zlink_socket (ctx, ZLINK_DEALER);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -527,8 +527,8 @@ void test_socket_monitor_open_dispatches_events ()
 void test_socket_send_ready_handler_reentrant_replace_returns_edeadlk ()
 {
     void *ctx = get_test_context ();
-    void *socket = zlink_socket (ctx, ZLINK_PAIR);
-    void *peer = zlink_socket (ctx, ZLINK_PAIR);
+    void *socket = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
+    void *peer = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (socket);
     TEST_ASSERT_NOT_NULL (peer);
     configure_send_ready_pair_socket (socket);
@@ -565,7 +565,7 @@ void test_socket_send_ready_handler_reentrant_replace_returns_edeadlk ()
 void test_socket_send_ready_handler_requires_handler ()
 {
     void *ctx = get_test_context ();
-    void *socket = zlink_socket (ctx, ZLINK_ROUTER);
+    void *socket = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (socket);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_recv_handler (socket, &discard_socket_message, NULL));
@@ -579,8 +579,8 @@ void test_socket_send_ready_handler_requires_handler ()
 void test_socket_send_ready_handler_failed_replace_keeps_previous_handler ()
 {
     void *ctx = get_test_context ();
-    void *socket = zlink_socket (ctx, ZLINK_PAIR);
-    void *peer = zlink_socket (ctx, ZLINK_PAIR);
+    void *socket = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
+    void *peer = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (socket);
     TEST_ASSERT_NOT_NULL (peer);
     configure_send_ready_pair_socket (socket);
@@ -615,8 +615,8 @@ void test_socket_send_ready_handler_failed_replace_keeps_previous_handler ()
 void test_socket_send_ready_handler_rejects_sub_and_xsub ()
 {
     void *ctx = get_test_context ();
-    void *sub = zlink_socket (ctx, ZLINK_SUB);
-    void *xsub = zlink_socket (ctx, ZLINK_XSUB);
+    void *sub = zlink_socket (ctx, ZLINK_SOCKET_SUB);
+    void *xsub = zlink_socket (ctx, ZLINK_SOCKET_XSUB);
     TEST_ASSERT_NOT_NULL (sub);
     TEST_ASSERT_NOT_NULL (xsub);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -639,7 +639,7 @@ void test_socket_send_ready_handler_rejects_sub_and_xsub ()
 void test_socket_monitor_open_requires_handler ()
 {
     void *ctx = get_test_context ();
-    void *server = zlink_socket (ctx, ZLINK_ROUTER);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_recv_handler (server, &discard_socket_message, NULL));
@@ -661,7 +661,7 @@ void test_socket_monitor_open_requires_handler ()
 void test_socket_monitor_open_accepts_ignore_handler ()
 {
     void *ctx = get_test_context ();
-    void *server = zlink_socket (ctx, ZLINK_ROUTER);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_recv_handler (server, &discard_socket_message, NULL));
@@ -856,8 +856,8 @@ void test_service_monitor_open_dispatches_events ()
 void test_socket_monitor_self_close_defers_until_callback_return ()
 {
     void *ctx = get_test_context ();
-    void *server = zlink_socket (ctx, ZLINK_ROUTER);
-    void *client = zlink_socket (ctx, ZLINK_DEALER);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -896,8 +896,8 @@ void test_socket_monitor_self_close_defers_until_callback_return ()
 void test_socket_monitor_close_during_callback_returns_ebusy ()
 {
     void *ctx = get_test_context ();
-    void *server = zlink_socket (ctx, ZLINK_ROUTER);
-    void *client = zlink_socket (ctx, ZLINK_DEALER);
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
     TEST_ASSERT_SUCCESS_ERRNO (

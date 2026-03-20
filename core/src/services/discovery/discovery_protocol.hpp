@@ -3,6 +3,7 @@
 #ifndef __ZLINK_DISCOVERY_PROTOCOL_HPP_INCLUDED__
 #define __ZLINK_DISCOVERY_PROTOCOL_HPP_INCLUDED__
 
+#include "core/send_internal.hpp"
 #include "core/msg.hpp"
 #include "utils/err.hpp"
 #include "utils/stdint.hpp"
@@ -58,7 +59,7 @@ inline int send_frame (void *socket_, const void *data_, size_t size_, int flags
         return -1;
     if (size_ > 0 && data_)
         memcpy (zlink_msg_data (&msg), data_, size_);
-    const int rc = zlink_compat_msg_send (&msg, socket_, flags_);
+    const int rc = zlink::send_msg_internal (socket_, &msg, flags_);
     if (rc == -1)
         zlink_msg_close (&msg);
     return rc;

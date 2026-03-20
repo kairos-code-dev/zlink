@@ -10,14 +10,14 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test ()
 {
     //  Create a publisher
-    void *pub = test_context_socket (ZLINK_PUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
 
     //  Create two subscribers
-    void *sub1 = test_context_socket (ZLINK_SUB);
+    void *sub1 = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub1, "inproc://soname"));
 
-    void *sub2 = test_context_socket (ZLINK_SUB);
+    void *sub2 = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub2, "inproc://soname"));
 
     //  Subscribe pub1 to one prefix

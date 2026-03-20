@@ -32,7 +32,7 @@ This document records the rationale and alternative analyses for key design deci
 
 ### 1.3 String Alias Retention
 
-**Decision**: ZLINK_ROUTING_ID and ZLINK_CONNECT_ROUTING_ID retain variable-length strings.
+**Decision**: `zlink_set_routing_id()` / `zlink_get_routing_id()` and `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (set via `zlink_set_router_option()`) retain variable-length strings.
 
 **Rationale**:
 - String alias-based debugging/logging patterns are widely used with ROUTER

@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "core/recv_internal.hpp"
+#include "core/send_internal.hpp"
 #include "services/discovery/registry.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/control/service_control_runtime.hpp"
@@ -684,8 +685,8 @@ int registry_t::ensure_sockets ()
         }
     }
 
-    socket_base_t *pub = _ctx->create_socket (ZLINK_XPUB);
-    socket_base_t *router = _ctx->create_socket (ZLINK_ROUTER);
+    socket_base_t *pub = _ctx->create_socket (ZLINK_CORE_SOCKET_XPUB);
+    socket_base_t *router = _ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
     if (!pub || !router) {
         (void) _ctx->close_socket_and_wait (pub, 1000);
         (void) _ctx->close_socket_and_wait (router, 1000);
@@ -824,7 +825,7 @@ void registry_t::tick ()
         return;
 
     if (!peer_pubs.empty () && !peer_sub) {
-        socket_base_t *peer_sub_socket = _ctx->create_socket (ZLINK_SUB);
+        socket_base_t *peer_sub_socket = _ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
         peer_sub = static_cast<void *> (peer_sub_socket);
         if (peer_sub) {
             for (size_t i = 0; i < peer_sub_opts.size (); ++i) {
@@ -1551,7 +1552,7 @@ void registry_t::send_register_ack (void *router_,
     if (sender_id_.size > 0)
         memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
 
-    const int rc_id = zlink_compat_msg_send (&id_frame, router_, ZLINK_SNDMORE);
+    const int rc_id = zlink::send_msg_internal (router_, &id_frame, ZLINK_SNDMORE);
     log_rc ("send ack id", rc_id);
     if (rc_id == -1) {
         zlink_msg_close (&id_frame);
@@ -1591,7 +1592,7 @@ void registry_t::send_unregister_ack (void *router_,
     if (sender_id_.size > 0)
         memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
 
-    const int rc_id = zlink_compat_msg_send (&id_frame, router_, ZLINK_SNDMORE);
+    const int rc_id = zlink::send_msg_internal (router_, &id_frame, ZLINK_SNDMORE);
     log_rc ("send unreg ack id", rc_id);
     if (rc_id == -1) {
         zlink_msg_close (&id_frame);
@@ -1619,7 +1620,7 @@ void registry_t::send_topology_reply (
     zlink_msg_init_size (&id_frame, sender_id_.size);
     if (sender_id_.size > 0)
         memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
-    if (zlink_compat_msg_send (&id_frame, router_, ZLINK_SNDMORE) == -1) {
+    if (zlink::send_msg_internal (router_, &id_frame, ZLINK_SNDMORE) == -1) {
         zlink_msg_close (&id_frame);
         return;
     }
@@ -1645,7 +1646,7 @@ void registry_t::send_gateway_peer_reply (
     zlink_msg_init_size (&id_frame, sender_id_.size);
     if (sender_id_.size > 0)
         memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
-    if (zlink_compat_msg_send (&id_frame, router_, ZLINK_SNDMORE) == -1) {
+    if (zlink::send_msg_internal (router_, &id_frame, ZLINK_SNDMORE) == -1) {
         zlink_msg_close (&id_frame);
         return;
     }
@@ -1669,7 +1670,7 @@ void registry_t::send_bootstrap_reply (void *router_,
     zlink_msg_init_size (&id_frame, sender_id_.size);
     if (sender_id_.size > 0)
         memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
-    const int rc_id = zlink_compat_msg_send (&id_frame, router_, ZLINK_SNDMORE);
+    const int rc_id = zlink::send_msg_internal (router_, &id_frame, ZLINK_SNDMORE);
     if (std::getenv ("ZLINK_REGISTRY_DEBUG")) {
         std::fprintf (stderr,
                       "[registry] bootstrap reply id rc=%d rid_size=%u errno=%d\n",

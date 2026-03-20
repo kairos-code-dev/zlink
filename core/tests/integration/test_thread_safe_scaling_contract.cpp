@@ -230,13 +230,7 @@ void configure_spot_linger_zero (void *node_, void *spot_)
 {
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (zlink_spot_node_default_pub (node_), ZLINK_OPT_LINGER,
-                        &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (zlink_spot_node_default_sub (node_), ZLINK_OPT_LINGER,
-                        &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (spot_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (node_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (spot_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 }
@@ -254,8 +248,8 @@ double measure_raw_handle_scaling_once (int handle_count_, int messages_per_hand
     std::vector<void *> servers (handle_count_, NULL);
     std::vector<void *> clients (handle_count_, NULL);
     for (int i = 0; i < handle_count_; ++i) {
-        servers[i] = zlink_socket (ctx, ZLINK_PAIR);
-        clients[i] = zlink_socket (ctx, ZLINK_PAIR);
+        servers[i] = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
+        clients[i] = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
         TEST_ASSERT_NOT_NULL (servers[i]);
         TEST_ASSERT_NOT_NULL (clients[i]);
         TEST_ASSERT_SUCCESS_ERRNO (
@@ -493,8 +487,8 @@ double measure_spot_handle_scaling_once (int handle_count_,
         TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
           sub_nodes[i], &ignore_spot_handler, NULL));
 
-        pubs[i] = zlink_spot_pub_new (pub_nodes[i]);
-        subs[i] = zlink_spot_sub_new (sub_nodes[i]);
+        pubs[i] = pub_nodes[i];
+        subs[i] = sub_nodes[i];
         TEST_ASSERT_NOT_NULL (pubs[i]);
         TEST_ASSERT_NOT_NULL (subs[i]);
         TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -581,8 +575,6 @@ double measure_spot_handle_scaling_once (int handle_count_,
         TEST_ASSERT_EQUAL_INT (0, worker_errno[i]);
 
     for (int i = 0; i < handle_count_; ++i) {
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_destroy (&subs[i]));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_pub_destroy (&pubs[i]));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_nodes[i]));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_nodes[i]));
     }

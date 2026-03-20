@@ -402,8 +402,8 @@ void recv_subscribe_expect_topic_and_payload_eventually (
 
 void test_router_recv_with_source_rid_strips_routing_envelope_from_dealer ()
 {
-    void *router = test_context_socket (ZLINK_ROUTER);
-    void *dealer = test_context_socket (ZLINK_DEALER);
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
 
     set_timeout_opts (router);
     set_timeout_opts (dealer);
@@ -423,8 +423,8 @@ void test_router_recv_with_source_rid_strips_routing_envelope_from_dealer ()
 
 void test_dealer_recv_with_source_rid_hides_peer_routing_id ()
 {
-    void *router = test_context_socket (ZLINK_ROUTER);
-    void *dealer = test_context_socket (ZLINK_DEALER);
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
 
     set_timeout_opts (router);
     set_timeout_opts (dealer);
@@ -447,9 +447,9 @@ void test_dealer_recv_with_source_rid_hides_peer_routing_id ()
 
 void test_pubsub_callback_remains_active_across_warmup_and_active_phases ()
 {
-    void *pub = test_context_socket (ZLINK_PUB);
-    void *sub_a = test_context_socket (ZLINK_SUB);
-    void *sub_b = test_context_socket (ZLINK_SUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
+    void *sub_a = test_context_socket (ZLINK_SOCKET_SUB);
+    void *sub_b = test_context_socket (ZLINK_SOCKET_SUB);
 
     set_timeout_opts (pub);
     set_timeout_opts (sub_a);
@@ -515,9 +515,9 @@ void test_pubsub_callback_remains_active_across_warmup_and_active_phases ()
 
 void test_pubsub_subscribe_preserves_topic_and_payload_shape_across_warmup ()
 {
-    void *pub = test_context_socket (ZLINK_PUB);
-    void *sub_a = test_context_socket (ZLINK_SUB);
-    void *sub_b = test_context_socket (ZLINK_SUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
+    void *sub_a = test_context_socket (ZLINK_SOCKET_SUB);
+    void *sub_b = test_context_socket (ZLINK_SOCKET_SUB);
 
     set_timeout_opts (pub);
     set_timeout_opts (sub_a);
@@ -576,9 +576,9 @@ void test_pubsub_subscribe_preserves_topic_and_payload_shape_across_warmup ()
 
 void test_pubsub_subscribe_dontwait_preserves_perf_contract_during_burst ()
 {
-    void *pub = test_context_socket (ZLINK_PUB);
-    void *sub_a = test_context_socket (ZLINK_SUB);
-    void *sub_b = test_context_socket (ZLINK_SUB);
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
+    void *sub_a = test_context_socket (ZLINK_SOCKET_SUB);
+    void *sub_b = test_context_socket (ZLINK_SOCKET_SUB);
 
     set_timeout_opts (pub);
     set_timeout_opts (sub_a);

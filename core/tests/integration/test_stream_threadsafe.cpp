@@ -404,7 +404,7 @@ void sender_thread_run (void *server_,
 {
     std::vector<unsigned char> payload (kPayloadSize, fill_);
     for (int i = 0; i < messages_; ++i) {
-        const int rc = zlink_stream_send (
+        const int rc = test_stream_send_bytes (
           server_, &rid_, &payload[0], payload.size (), 0);
         if (rc != static_cast<int> (payload.size ())) {
             errors_->fetch_add (1, std::memory_order_release);
@@ -460,7 +460,7 @@ void worker_send_msg_run (worker_probe_t *probe_)
     lk.unlock ();
 
     errno = 0;
-    const int rc = ::zlink_stream_send_msg (probe_->socket, &rid, &probe_->msg, 0);
+    const int rc = ::test_stream_send_single_msg (probe_->socket, &rid, &probe_->msg, 0);
     const int err = errno;
 
     lk.lock ();
@@ -477,7 +477,7 @@ void test_stream_callback_rejects_detach_and_close ()
 #if defined(ZLINK_HAVE_WINDOWS)
     TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
 #else
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
 
@@ -517,7 +517,7 @@ void test_stream_send_is_thread_safe_across_app_threads ()
 #if defined(ZLINK_HAVE_WINDOWS)
     TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
 #else
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
 
@@ -572,7 +572,7 @@ void test_stream_send_and_close_race_is_safe ()
 #if defined(ZLINK_HAVE_WINDOWS)
     TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
 #else
-    void *server = zlink_socket (get_test_context (), ZLINK_STREAM);
+    void *server = zlink_socket (get_test_context (), ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
 
@@ -591,7 +591,7 @@ void test_stream_send_and_close_race_is_safe ()
     std::thread sender ([&] () {
         std::vector<unsigned char> payload (kPayloadSize, 0x5A);
         for (;;) {
-            const int rc = zlink_stream_send (
+            const int rc = test_stream_send_bytes (
               server, &rid, &payload[0], payload.size (), 0);
             if (rc == static_cast<int> (payload.size ()))
                 continue;
@@ -622,7 +622,7 @@ void test_stream_callback_handoff_to_worker_thread_send_msg_is_safe ()
 #if defined(ZLINK_HAVE_WINDOWS)
     TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
 #else
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
 
@@ -686,7 +686,7 @@ void test_stream_send_msg_is_thread_safe ()
 #if defined(ZLINK_HAVE_WINDOWS)
     TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
 #else
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
 
@@ -713,7 +713,7 @@ void test_stream_send_msg_is_thread_safe ()
             }
             memset (zlink_msg_data (&msg), fill_, kPayloadSize);
 
-            const int rc = zlink_stream_send_msg (server, &rid, &msg, 0);
+            const int rc = test_stream_send_single_msg (server, &rid, &msg, 0);
             if (rc != static_cast<int> (kPayloadSize)) {
                 send_errors.fetch_add (1, std::memory_order_release);
                 zlink_msg_close (&msg);
@@ -755,7 +755,7 @@ void test_stream_runtime_reads_are_safe_during_send ()
 #if defined(ZLINK_HAVE_WINDOWS)
     TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
 #else
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
 
@@ -810,8 +810,8 @@ void test_stream_runtime_reads_are_safe_during_send ()
 
 void test_socket_runtime_reads_are_safe_during_connect_disconnect ()
 {
-    void *server = test_context_socket (ZLINK_ROUTER);
-    void *client = test_context_socket (ZLINK_DEALER);
+    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *client = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
     configure_stream_socket (server);
@@ -858,7 +858,7 @@ void test_stream_rapid_client_churn_during_send ()
 #if defined(ZLINK_HAVE_WINDOWS)
     TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
 #else
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
 
@@ -880,7 +880,7 @@ void test_stream_rapid_client_churn_during_send ()
     std::thread sender ([&] () {
         std::vector<unsigned char> payload (kPayloadSize, 0xEE);
         for (int i = 0; i < total_sends; ++i) {
-            const int rc = zlink_stream_send (
+            const int rc = test_stream_send_bytes (
               server, &persistent_rid, &payload[0], payload.size (), 0);
             if (rc != static_cast<int> (payload.size ())) {
                 send_errors.fetch_add (1, std::memory_order_release);
@@ -944,7 +944,7 @@ void test_stream_send_to_stale_rid_after_disconnect ()
 #if defined(ZLINK_HAVE_WINDOWS)
     TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
 #else
-    void *server = test_context_socket (ZLINK_STREAM);
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
 
@@ -962,7 +962,7 @@ void test_stream_send_to_stale_rid_after_disconnect ()
     std::vector<unsigned char> payload (kPayloadSize, 0x77);
     TEST_ASSERT_EQUAL_INT (
       static_cast<int> (payload.size ()),
-      zlink_stream_send (server, &rid, &payload[0], payload.size (), 0));
+      test_stream_send_bytes (server, &rid, &payload[0], payload.size (), 0));
 
     //  Disconnect the raw client
     close_raw_fd (raw_fd);
@@ -972,7 +972,7 @@ void test_stream_send_to_stale_rid_after_disconnect ()
 
     //  Send to the stale routing_id should fail gracefully, not crash
     const int rc =
-      zlink_stream_send (server, &rid, &payload[0], payload.size (), 0);
+      test_stream_send_bytes (server, &rid, &payload[0], payload.size (), 0);
     //  Either returns error or succeeds (buffered) — the key assertion is no crash
     LIBZLINK_UNUSED (rc);
 

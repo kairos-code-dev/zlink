@@ -23,7 +23,7 @@ static void worker (void *data_)
 {
     const thread_data *const tdata = static_cast<const thread_data *> (data_);
 
-    void *socket = zlink_socket (get_test_context (), ZLINK_SUB);
+    void *socket = zlink_socket (get_test_context (), ZLINK_SOCKET_SUB);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (socket, tdata->endpoint));
 
@@ -42,7 +42,7 @@ void test_shutdown_stress ()
         setup_test_context ();
         zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 7);
 
-        void *socket = test_context_socket (ZLINK_PUB);
+        void *socket = test_context_socket (ZLINK_SOCKET_PUB);
 
         bind_loopback_ipv4 (socket, tdata.endpoint, sizeof (tdata.endpoint));
 

@@ -29,8 +29,8 @@ void tearDown ()
 // Test 1: Basic connect/disconnect
 void test_connect_disconnect ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -51,14 +51,14 @@ void test_connect_disconnect ()
 // Test 2: Multiple rapid connect/disconnect cycles
 void test_connect_stress ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
     const int iterations = 20;
     for (int i = 0; i < iterations; i++) {
-        void *client = test_context_socket (ZLINK_PAIR);
+        void *client = test_context_socket (ZLINK_SOCKET_PAIR);
         TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
         msleep (10);
         test_context_socket_close_zero_linger (client);
@@ -70,8 +70,8 @@ void test_connect_stress ()
 // Test 3: Connect before bind (reconnect behavior)
 void test_connect_before_bind ()
 {
-    void *client = test_context_socket (ZLINK_PAIR);
-    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
 
     //  Set reconnect interval
     int reconnect_ivl = 100;
@@ -101,7 +101,7 @@ void test_connect_before_bind ()
 // Test 4: Multiple clients connecting to same server
 void test_multiple_clients ()
 {
-    void *server = test_context_socket (ZLINK_ROUTER);
+    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -111,7 +111,7 @@ void test_multiple_clients ()
 
     //  Create and connect all clients
     for (int i = 0; i < num_clients; i++) {
-        clients[i] = test_context_socket (ZLINK_DEALER);
+        clients[i] = test_context_socket (ZLINK_SOCKET_DEALER);
         TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (clients[i], endpoint));
     }
 
@@ -130,8 +130,8 @@ void test_multiple_clients ()
         zlink_msg_init (&identity);
         zlink_msg_init (&msg);
 
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&identity, server, 0));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, server, 0));
+        TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&identity, server, 0));
+        TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, server, 0));
 
         zlink_msg_close (&identity);
         zlink_msg_close (&msg);
@@ -152,8 +152,8 @@ void test_ipv6_connect ()
         return;
     }
 
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     int ipv6 = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -177,8 +177,8 @@ void test_ipv6_connect ()
 // Test 6: Connect with immediate flag (should not block)
 void test_connect_immediate ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     int immediate = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -202,8 +202,8 @@ void test_connect_immediate ()
 // Test 7: Wildcard port binding
 void test_wildcard_port ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     //  Bind to wildcard port
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "tcp://127.0.0.1:*"));
@@ -230,8 +230,8 @@ void test_wildcard_port ()
 // Test 8: Connection with TCP keepalive options
 void test_tcp_keepalive ()
 {
-    void *server = test_context_socket (ZLINK_PAIR);
-    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     //  Set TCP keepalive options
     int tcp_keepalive = 1;

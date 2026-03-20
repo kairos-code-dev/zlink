@@ -34,9 +34,9 @@ void close_sync_socket (void *socket_)
 
 void test_router_multiple_dealers_tcp ()
 {
-    void *router = create_sync_socket (ZLINK_ROUTER);
-    void *dealer1 = create_sync_socket (ZLINK_DEALER);
-    void *dealer2 = create_sync_socket (ZLINK_DEALER);
+    void *router = create_sync_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer1 = create_sync_socket (ZLINK_SOCKET_DEALER);
+    void *dealer2 = create_sync_socket (ZLINK_SOCKET_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer1, "D1", 2));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer2, "D2", 2));
@@ -80,9 +80,9 @@ void test_router_multiple_dealers_tcp ()
 void test_router_multiple_dealers_ipc ()
 {
 #if defined(ZLINK_HAVE_IPC)
-    void *router = create_sync_socket (ZLINK_ROUTER);
-    void *dealer1 = create_sync_socket (ZLINK_DEALER);
-    void *dealer2 = create_sync_socket (ZLINK_DEALER);
+    void *router = create_sync_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer1 = create_sync_socket (ZLINK_SOCKET_DEALER);
+    void *dealer2 = create_sync_socket (ZLINK_SOCKET_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer1, "D1", 2));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer2, "D2", 2));
@@ -127,9 +127,9 @@ void test_router_multiple_dealers_ipc ()
 
 void test_router_multiple_dealers_inproc ()
 {
-    void *router = create_sync_socket (ZLINK_ROUTER);
-    void *dealer1 = create_sync_socket (ZLINK_DEALER);
-    void *dealer2 = create_sync_socket (ZLINK_DEALER);
+    void *router = create_sync_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer1 = create_sync_socket (ZLINK_SOCKET_DEALER);
+    void *dealer2 = create_sync_socket (ZLINK_SOCKET_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer1, "D1", 2));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer2, "D2", 2));

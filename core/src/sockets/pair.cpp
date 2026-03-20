@@ -41,7 +41,7 @@ void drain_pair_dispatch (zlink::pair_t *self_, zlink::pipe_t *pipe_)
 zlink::pair_t::pair_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     socket_base_t (parent_, tid_, sid_), _pipe (NULL)
 {
-    options.type = ZLINK_PAIR;
+    options.type = ZLINK_CORE_SOCKET_PAIR;
 }
 
 zlink::pair_t::~pair_t ()
@@ -59,7 +59,7 @@ void zlink::pair_t::xattach_pipe (pipe_t *pipe_,
 
     zlink_assert (pipe_ != NULL);
 
-    //  ZLINK_PAIR socket can only be connected to a single peer.
+    //  ZLINK_CORE_SOCKET_PAIR socket can only be connected to a single peer.
     //  The socket rejects any further connection requests.
     if (_pipe == NULL) {
         _pipe = pipe_;

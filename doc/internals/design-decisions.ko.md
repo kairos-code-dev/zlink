@@ -32,7 +32,7 @@
 
 ### 1.3 문자열 alias 유지
 
-**결정**: ZLINK_ROUTING_ID, ZLINK_CONNECT_ROUTING_ID는 가변 길이 문자열 유지.
+**결정**: `zlink_set_routing_id()` / `zlink_get_routing_id()`와 `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (`zlink_set_router_option()`으로 설정)는 가변 길이 문자열 유지.
 
 **근거**:
 - ROUTER에서 문자열 alias 기반 디버깅/로깅 패턴이 널리 사용됨

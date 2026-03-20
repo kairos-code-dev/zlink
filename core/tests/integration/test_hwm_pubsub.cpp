@@ -5,7 +5,7 @@
 
 #include <string.h>
 
-// NOTE: on OSX the endpoint returned by ZLINK_SOCKOPT_LAST_ENDPOINT may be quite long,
+// NOTE: on OSX the endpoint returned by ZLINK_INTERNAL_OPT_LAST_ENDPOINT may be quite long,
 //       ensure we have extra space for that:
 #define SOCKET_STRING_LEN (MAX_SOCKET_STRING * 4)
 
@@ -13,7 +13,7 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 void test_default_socket_hwm_is_1000 ()
 {
-    void *socket = test_context_socket (ZLINK_PAIR);
+    void *socket = test_context_socket (ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (socket);
 
     int sndhwm = 0;
@@ -36,13 +36,13 @@ int test_defaults (int send_hwm_, int msg_cnt_, const char *endpoint_)
     char pub_endpoint[SOCKET_STRING_LEN];
 
     // Set up and bind XPUB socket
-    void *pub_socket = test_context_socket (ZLINK_XPUB);
+    void *pub_socket = test_context_socket (ZLINK_SOCKET_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (pub_socket, ZLINK_OPT_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
     test_bind (pub_socket, endpoint_, pub_endpoint, sizeof pub_endpoint);
 
     // Set up and connect SUB socket
-    void *sub_socket = test_context_socket (ZLINK_SUB);
+    void *sub_socket = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (sub_socket, ZLINK_OPT_RCVHWM, &send_hwm_, sizeof (send_hwm_)));
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -104,13 +104,13 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *endpoint_)
     char pub_endpoint[SOCKET_STRING_LEN];
 
     // Set up bind socket
-    void *pub_socket = test_context_socket (ZLINK_XPUB);
+    void *pub_socket = test_context_socket (ZLINK_SOCKET_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (pub_socket, ZLINK_OPT_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
     test_bind (pub_socket, endpoint_, pub_endpoint, sizeof pub_endpoint);
 
     // Set up connect socket
-    void *sub_socket = test_context_socket (ZLINK_SUB);
+    void *sub_socket = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (sub_socket, ZLINK_OPT_RCVHWM, &send_hwm_, sizeof (send_hwm_)));
     int wait = 1;
@@ -185,13 +185,13 @@ void test_reset_hwm ()
     char my_endpoint[SOCKET_STRING_LEN];
 
     // Set up bind socket
-    void *pub_socket = test_context_socket (ZLINK_PUB);
+    void *pub_socket = test_context_socket (ZLINK_SOCKET_PUB);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (pub_socket, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
     bind_loopback_ipv4 (pub_socket, my_endpoint, MAX_SOCKET_STRING);
 
     // Set up connect socket
-    void *sub_socket = test_context_socket (ZLINK_SUB);
+    void *sub_socket = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (sub_socket, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, my_endpoint));

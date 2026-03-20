@@ -11,8 +11,8 @@ void test_immediate_3 ()
     // occurs with an existing connection that is broken. We will send
     // messages to a connected pipe, disconnect and verify the messages
     // block. Then we reconnect and verify messages flow again.
-    void *backend = test_context_socket (ZLINK_DEALER);
-    void *frontend = test_context_socket (ZLINK_DEALER);
+    void *backend = test_context_socket (ZLINK_SOCKET_DEALER);
+    void *frontend = test_context_socket (ZLINK_SOCKET_DEALER);
 
     int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -48,7 +48,7 @@ void test_immediate_3 ()
                                zlink_send (frontend, "Hello", 5, ZLINK_DONTWAIT));
 
     //  Recreate backend socket
-    backend = test_context_socket (ZLINK_DEALER);
+    backend = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (backend, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (backend, my_endpoint));

@@ -20,7 +20,7 @@
 
 namespace {
 
-static const char *k_pattern = "SPOT";
+static const char *k_pattern = "MULTI_SPOT";
 static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
 static const size_t k_topic_len = sizeof("bench") - 1;

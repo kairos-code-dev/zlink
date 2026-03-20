@@ -33,7 +33,7 @@ namespace {
 
 static const int k_spot_role_pub = 1;
 
-static const char *k_pattern = "SPOT";
+static const char *k_pattern = "MULTI_SPOT";
 static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
 static const uint32_t k_metric_run_id = 1U;

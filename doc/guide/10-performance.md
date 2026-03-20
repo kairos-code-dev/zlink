@@ -185,7 +185,9 @@ when the socket transitions from non-writable to writable. Combined with
 2. On `EAGAIN`, pause sending.
 3. When the send-ready callback fires, resume sending.
 
-The same API is available on Gateway, SPOT, and SPOT Node handles.
+The same API is available on raw `STREAM` in callback mode, and on
+`SPOT` / `SPOT Node` in callback mode. Gateway uses poller `ZLINK_POLLOUT`
+instead.
 
 **Constraints:**
 - Replace-only: passing `NULL` is invalid.

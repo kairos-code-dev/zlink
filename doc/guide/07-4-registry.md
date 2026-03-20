@@ -42,10 +42,10 @@ zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
-/* === Gateway (server, callback model) === */
+/* === Gateway (server, recv model) === */
 void *server = zlink_gateway_new(ctx, "my-service");
 zlink_set_routing_id(server, "server-1", 8);
-zlink_recv_handler(server, on_request, NULL);   /* callback model */
+/* recv model -- pull with zlink_gateway_recv() */
 zlink_gateway_attach_discovery(server, discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
@@ -166,10 +166,10 @@ zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
-/* Server Gateway (callback model) */
+/* Server Gateway (recv model) */
 void *server = zlink_gateway_new(ctx, "echo-service");
 zlink_set_routing_id(server, "echo-server-1", 13);
-zlink_recv_handler(server, on_request, NULL);   /* callback model */
+/* recv model -- pull with zlink_gateway_recv() */
 zlink_gateway_attach_discovery(server, discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 

@@ -20,7 +20,7 @@
 
 namespace {
 
-static const char *k_pattern = "GATEWAY";
+static const char *k_pattern = "MULTI_GATEWAY";
 static const char *k_service_name = "perf-gateway";
 static const char *k_server_routing_id = "perf-gateway-server";
 static std::atomic<int> g_debug_recv_logs(0);

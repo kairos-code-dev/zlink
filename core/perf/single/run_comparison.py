@@ -45,12 +45,12 @@ PATTERN_TO_BINARY = {
 }
 
 SUPPORTED_RECV_MODES = {
-    "PAIR": ("recv", "callback"),
-    "PUBSUB": ("recv", "callback"),
-    "DEALER_DEALER": ("recv", "callback"),
-    "DEALER_ROUTER": ("recv", "callback"),
-    "ROUTER_ROUTER": ("recv", "callback"),
-    "GATEWAY": ("recv", "callback"),
+    "PAIR": ("recv",),
+    "PUBSUB": ("recv",),
+    "DEALER_DEALER": ("recv",),
+    "DEALER_ROUTER": ("recv",),
+    "ROUTER_ROUTER": ("recv",),
+    "GATEWAY": ("recv",),
     "SPOT": ("recv", "callback"),
 }
 

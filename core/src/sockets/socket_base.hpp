@@ -90,11 +90,6 @@ class socket_base_t : public own_t,
     int socket_set_spot_handler_with_userdata (
       zlink_subscribe_handler_fn handler_,
                                                void *userdata_);
-    int socket_set_xpub_handler (
-      zlink_subscription_event_handler_fn handler_);
-    int socket_set_xpub_handler_with_userdata (
-      zlink_subscription_event_handler_fn handler_,
-                                               void *userdata_);
     int socket_set_send_ready_handler (zlink_send_ready_handler_fn handler_);
     int socket_set_send_ready_handler_ex (zlink_send_ready_handler_fn handler_,
                                           void *subject_);
@@ -267,12 +262,10 @@ class socket_base_t : public own_t,
     void wait_async_quiesced (int timeout_ms_);
     zlink_socket_msg_handler_fn socket_msg_handler () const;
     zlink_subscribe_handler_fn socket_spot_handler () const;
-    zlink_subscription_event_handler_fn socket_xpub_handler () const;
     zlink_send_ready_handler_fn socket_send_ready_handler () const;
     void *socket_msg_handler_subject () const;
     void *socket_msg_handler_userdata () const;
     void *socket_spot_handler_userdata () const;
-    void *socket_xpub_handler_userdata () const;
     void *socket_send_ready_handler_subject () const;
     void *socket_send_ready_handler_userdata () const;
     static void close_socket_msg_parts (std::vector<zlink_msg_t> *parts_);
@@ -404,8 +397,6 @@ class socket_base_t : public own_t,
             socket_msg_handler_userdata (NULL),
             spot_handler (NULL),
             spot_handler_userdata (NULL),
-            xpub_handler (NULL),
-            xpub_handler_userdata (NULL),
             public_api_state (0),
             public_api_sync (),
             callback_api_depth (0),
@@ -425,8 +416,6 @@ class socket_base_t : public own_t,
         std::atomic<void *> socket_msg_handler_userdata;
         std::atomic<zlink_subscribe_handler_fn> spot_handler;
         std::atomic<void *> spot_handler_userdata;
-        std::atomic<zlink_subscription_event_handler_fn> xpub_handler;
-        std::atomic<void *> xpub_handler_userdata;
         std::atomic<uint32_t> public_api_state;
         std::atomic<bool> public_api_sync;
         std::atomic<uint32_t> callback_api_depth;
@@ -591,8 +580,6 @@ class socket_base_t : public own_t,
     std::atomic<void *> &_socket_msg_handler_userdata;
     std::atomic<zlink_subscribe_handler_fn> &_spot_handler;
     std::atomic<void *> &_spot_handler_userdata;
-    std::atomic<zlink_subscription_event_handler_fn> &_xpub_handler;
-    std::atomic<void *> &_xpub_handler_userdata;
     std::atomic<uint32_t> &_public_api_state;
     std::atomic<bool> &_public_api_sync;
     std::atomic<uint32_t> &_callback_api_depth;

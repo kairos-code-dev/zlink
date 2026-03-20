@@ -3,10 +3,9 @@
 # 소켓 API 레퍼런스
 
 소켓 API는 zlink 소켓의 생성, 구성, 바인딩, 연결, I/O 수행을 위한 함수를
-제공합니다. 메시지 수신은 두 가지 모드를 지원합니다: 부착된 핸들러를 통한
-콜백 dispatch와 `zlink_recv()`를 통한 동기식 pull. 소켓은 recv 모드로
-시작하며, 핸들러를 부착하면 콜백 모드로 전환됩니다. 소켓은 게시/구독,
-요청/응답, raw stream을 포함한 여러 메시징 패턴을 지원합니다.
+제공합니다. raw socket은 기본적으로 recv/poller 모델을 사용하며,
+callback receive는 raw `STREAM`에만 남아 있습니다. 토픽 callback receive는
+`spot` / `spot_node`에만 남아 있습니다.
 
 ## 스레드 안전성 요약
 
@@ -36,7 +35,7 @@ typedef void (*zlink_socket_msg_handler_fn) (
   void *userdata_);
 ```
 
-PAIR, DEALER, ROUTER 소켓에서 멀티파트 메시지 dispatch 콜백.
+raw `STREAM` 소켓에서 멀티파트 메시지 dispatch에 사용되는 콜백입니다.
 소유 I/O 스레드에서 호출됩니다. 모든 메시지 파트의 소유권이 콜백으로
 이전되며, 각 파트는 정확히 한 번 close하거나 소비해야 합니다.
 `zlink_recv_handler()`와 함께 사용합니다.
@@ -52,32 +51,16 @@ typedef void (*zlink_subscribe_handler_fn) (const zlink_routing_id_t *source_rid
                                        void *userdata_);
 ```
 
-SUB, XSUB 소켓에서 토픽 기반 메시지 dispatch 콜백.
+`spot` / `spot_node`에서 토픽 기반 메시지 dispatch에 사용되는 콜백입니다.
 소유 I/O 스레드에서 호출되며, 파트의 소유권이 이전됩니다.
 `zlink_subscribe_handler()`와 함께 사용합니다.
-
-### zlink_subscription_event_handler_fn
-
-```c
-typedef void (*zlink_subscription_event_handler_fn) (
-  const zlink_routing_id_t *source_rid_,
-  int subscribed_,
-  const char *topic_,
-  size_t topic_len_,
-  void *userdata_);
-```
-
-XPUB 소켓에서 구독 알림 콜백. `source_rid_`는 구독하는 피어를 식별합니다.
-`subscribed_`는 구독 시 0이 아닌 값, 구독 해제 시 0입니다.
-`zlink_subscription_event_handler()`와 함께 사용합니다.
 
 각 콜백 타입은 전용 함수를 통해 등록합니다. 소켓 타입별 등록 함수 매핑:
 
 | 소켓 타입 | 등록 함수 | 콜백 |
 |---|---|---|
-| PAIR, DEALER, ROUTER | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
-| SUB, XSUB | `zlink_subscribe_handler` | `zlink_subscribe_handler_fn` |
-| XPUB | `zlink_subscription_event_handler` | `zlink_subscription_event_handler_fn` |
+| STREAM | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
+| spot, spot_node | `zlink_subscribe_handler` | `zlink_subscribe_handler_fn` |
 | PUB | N/A | 송신 전용; 핸들러 불필요 |
 
 ### zlink_send_ready_handler_fn
@@ -281,9 +264,9 @@ void *zlink_socket (void *context_, zlink_socket_type_t type_);
 ```
 
 지정된 context 내에서 새 소켓을 생성합니다. `type_` 매개변수는 메시징 패턴을
-선택합니다. 소켓은 recv 모드로 시작합니다. `zlink_recv_handler()`로
-콜백 모드로 전환할 수 있습니다. 소켓은 context가 종료되기 전에
-`zlink_close()`로 닫아야 합니다.
+선택합니다. raw socket은 recv 모드로 시작합니다. callback attach는 raw
+`STREAM`에서만 `zlink_recv_handler()`로 지원됩니다. 소켓은 context가
+종료되기 전에 `zlink_close()`로 닫아야 합니다.
 
 **반환값:** 성공 시 소켓 핸들, 실패 시 `NULL` (errno가 설정됨).
 
@@ -306,18 +289,17 @@ int zlink_recv_handler (void *s_,
                         void *userdata_);
 ```
 
-PAIR, DEALER, ROUTER 소켓에 메시지 수신 핸들러를 부착합니다. 소켓은
-recv 모드로 시작합니다. 이 호출은 핸들을 콜백 모드로 전환하며, 소켓의 수명 동안
+raw `STREAM` 소켓에 메시지 수신 핸들러를 부착합니다. 소켓은 recv 모드로
+시작합니다. 이 호출은 핸들을 콜백 모드로 전환하며, 소켓의 수명 동안
 되돌릴 수 없습니다. 동일 핸들에 대한 두 번째 attach는 `errno=EBUSY`로
-실패합니다.
+실패합니다. 다른 raw socket 타입은 `ENOTSUP`를 반환합니다.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
-**에러:** 핸들러가 NULL이거나 소켓 타입이 메시지 핸들러를 허용하지 않으면
-`EINVAL`. 핸들러가 이미 부착된 경우 `EBUSY`.
+**에러:** 핸들러가 NULL이면 `EINVAL`. 소켓 타입이 메시지 핸들러를
+허용하지 않으면 `ENOTSUP`. 핸들러가 이미 부착된 경우 `EBUSY`.
 
-**참고:** `zlink_subscribe_handler`, `zlink_subscription_event_handler`,
-`zlink_socket`, `zlink_close`
+**참고:** `zlink_subscribe_handler`, `zlink_socket`, `zlink_close`
 
 ---
 
@@ -331,43 +313,17 @@ int zlink_subscribe_handler (void *s_,
                              void *userdata_);
 ```
 
-SUB 또는 XSUB 소켓에 토픽 기반 수신 핸들러를 부착합니다. 소켓은 recv 모드로
-시작합니다. 이 호출은 핸들을 콜백 모드로 전환하며, 소켓의 수명 동안 되돌릴 수
-없습니다. 동일 핸들에 대한 두 번째 attach는 `errno=EBUSY`로 실패합니다.
-
-**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
-
-**에러:** 핸들러가 NULL이거나 소켓 타입이 spot 핸들러를 허용하지 않으면
-`EINVAL`. 핸들러가 이미 부착된 경우 `EBUSY`.
-
-**참고:** `zlink_recv_handler`, `zlink_subscription_event_handler`,
-`zlink_socket`, `zlink_close`
-
----
-
-### zlink_subscription_event_handler
-
-XPUB 소켓에 구독 알림 핸들러를 부착합니다.
-
-```c
-int zlink_subscription_event_handler (void *s_,
-                             zlink_subscription_event_handler_fn handler_,
-                             void *userdata_);
-```
-
-XPUB 소켓에 구독 알림 핸들러를 부착합니다. 콜백은 구독하는 피어를 식별하는
-`source_rid_`, `subscribed_` 플래그, 토픽 바이트를 수신합니다. 소켓은 recv
-모드로 시작합니다. 이 호출은 핸들을 콜백 모드로 전환하며, 소켓의 수명 동안
+`spot` 또는 `spot_node`에 토픽 기반 수신 핸들러를 부착합니다. handle은 recv
+모드로 시작합니다. 이 호출은 핸들을 콜백 모드로 전환하며, handle 수명 동안
 되돌릴 수 없습니다. 동일 핸들에 대한 두 번째 attach는 `errno=EBUSY`로
-실패합니다.
+실패합니다. raw `SUB` / `XSUB`는 `ENOTSUP`를 반환합니다.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
-**에러:** 핸들러가 NULL이거나 소켓이 XPUB가 아니면 `EINVAL`. 핸들러가 이미
-부착된 경우 `EBUSY`.
+**에러:** 핸들러가 NULL이면 `EINVAL`. handle 타입이 subscribe handler를
+허용하지 않으면 `ENOTSUP`. 핸들러가 이미 부착된 경우 `EBUSY`.
 
-**참고:** `zlink_recv_handler`, `zlink_subscribe_handler`,
-`zlink_socket`, `zlink_close`
+**참고:** `zlink_recv_handler`, `zlink_socket`, `zlink_close`
 
 ---
 
@@ -986,18 +942,15 @@ subscribe이면 1, unsubscribe이면 0이며, `*topic_id_out_` /
 `*topic_id_len_out_`는 토픽 바이트를 받습니다 (`zlink_subscribe()`와
 동일한 binary-safe buffer 계약).
 
-subject가 recv 모드여야 합니다. subscription event handler가 부착된 경우
-`EBUSY`로 실패합니다.
-
 적용 대상: raw XPUB만.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
 **에러:** `subject_`가 NULL이면 `EFAULT`. `ZLINK_DONTWAIT`가 설정되고
-이벤트가 없으면 `EAGAIN`. subscription event handler가 부착된 경우
-`EBUSY`. subject가 XPUB가 아니면 `ENOTSUP`.
+이벤트가 없으면 `EAGAIN`. 토픽 버퍼가 작으면 `EMSGSIZE`. subject가 XPUB가
+아니면 `ENOTSUP`.
 
-**참고:** `zlink_subscription_event_handler`, `zlink_publish`
+**참고:** `zlink_publish`
 
 ---
 
@@ -1015,9 +968,9 @@ int zlink_send_ready_handler (void *s_,
 가능 전환부터 반영됩니다. 동일 핸들의 send-ready 콜백 내에서 재진입 호출하면
 `errno=EDEADLK`로 실패합니다.
 
-지원: PAIR, PUB, XPUB, DEALER, ROUTER, gateway, unified spot, unified
-spot_node.
-미지원: SUB, XSUB, STREAM.
+지원: callback mode의 raw `STREAM`, callback mode의 `spot`, `spot_node`.
+recv mode의 writable readiness는 poller `ZLINK_POLLOUT`를 사용합니다.
+그 외 raw socket과 `gateway`는 `ENOTSUP`입니다.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 

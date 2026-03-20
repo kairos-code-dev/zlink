@@ -44,7 +44,6 @@ constant exported by `<zlink.h>`.
 |------|-----------|-------------|
 | [`zlink_socket_msg_handler_fn`](socket.md) | socket.md | Socket multipart message dispatch callback |
 | [`zlink_subscribe_handler_fn`](socket.md) | socket.md | Topic-based message dispatch callback |
-| [`zlink_subscription_event_handler_fn`](socket.md) | socket.md | XPUB subscription notification callback |
 | [`zlink_monitor_handler_fn`](monitoring.md) | monitoring.md | Socket monitor event callback |
 | [`zlink_service_monitor_handler_fn`](monitoring.md) | monitoring.md | Service monitor event callback |
 | [`zlink_send_ready_handler_fn`](socket.md) | socket.md | Send-ready transition callback |

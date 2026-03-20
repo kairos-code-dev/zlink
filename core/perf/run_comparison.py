@@ -39,16 +39,14 @@ SERVER_QUEUE_METRICS = (
     "server_rcv_pending_end",
 )
 PATTERN_SEPARATOR = "==============================================================================="
-STREAM_VARIANT_PATTERNS = ("STREAM", "STREAM_CALLBACK")
+STREAM_VARIANT_PATTERNS = ("STREAM",)
 PATTERN_ALIASES = {
     "STREAM": ("STREAM",),
-    "STREAM_CALLBACK": ("STREAM_CALLBACK",),
     "STREAMS": STREAM_VARIANT_PATTERNS,
 }
 STREAM_SHARED_CLIENT_BINARY = "perf_stream_client"
 STREAM_SERVER_BINARY_BY_PATTERN = {
     "STREAM": "comp_src_stream_server",
-    "STREAM_CALLBACK": "comp_src_stream_callback_server",
 }
 PATTERN_SUFFIX = {
     "DEALER_DEALER": "dealer_dealer",
@@ -58,14 +56,12 @@ PATTERN_SUFFIX = {
     "GATEWAY": "gateway",
     "SPOT": "spot",
     "STREAM": "stream",
-    "STREAM_CALLBACK": "stream_callback",
 }
 ECHO_PATTERNS = {
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
     "GATEWAY",
     "STREAM",
-    "STREAM_CALLBACK",
 }
 SINGLE_ECHO_PATTERNS = {
     "PAIR",
@@ -91,18 +87,52 @@ MULTI_COMPARISONS = [
     ("comp_src_gateway_client", "GATEWAY"),
     ("comp_src_spot_client", "SPOT"),
     ("perf_stream_client", "STREAM"),
-    ("perf_stream_client", "STREAM_CALLBACK"),
 ]
 MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
 SUPPORTED_MULTI_RECV_MODES = {
-    "DEALER_DEALER": ("recv", "callback"),
+    "DEALER_DEALER": ("recv",),
     "DEALER_ROUTER": ("recv",),
     "ROUTER_ROUTER": ("recv",),
-    "PUBSUB": ("recv", "callback"),
-    "GATEWAY": ("callback",),
-    "SPOT": ("callback",),
-    "STREAM": ("recv",),
-    "STREAM_CALLBACK": ("recv", "callback"),
+    "PUBSUB": ("recv",),
+    "GATEWAY": ("recv",),
+    "SPOT": ("recv", "callback"),
+    "STREAM": ("recv", "callback"),
+}
+
+MULTI_ENV_ALIAS_MAP = {
+    "PERF_STREAM_MSG_SIZES": "PERF_MULTI_STREAM_MSG_SIZES",
+    "PERF_PATTERN": "PERF_MULTI_PATTERN",
+    "PERF_CLIENTS": "PERF_MULTI_CLIENTS",
+    "PERF_HWM": "PERF_MULTI_HWM",
+    "PERF_WARMUP_SECONDS": "PERF_MULTI_WARMUP_SECONDS",
+    "PERF_DURATION_SECONDS": "PERF_MULTI_DURATION_SECONDS",
+    "PERF_SNDTIMEO_MS": "PERF_MULTI_SNDTIMEO_MS",
+    "PERF_RCVTIMEO_MS": "PERF_MULTI_RCVTIMEO_MS",
+    "PERF_CONNECT_CONCURRENCY": "PERF_MULTI_CONNECT_CONCURRENCY",
+    "PERF_CONNECT_READY_TIMEOUT_MS": "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
+    "PERF_MONITOR_HWM": "PERF_MULTI_MONITOR_HWM",
+    "PERF_SERVER_READY_TIMEOUT_MS": "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
+    "PERF_SERVER_SHUTDOWN_TIMEOUT_MS": "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
+    "PERF_SERVER_BIND_PORT": "PERF_MULTI_SERVER_BIND_PORT",
+    "PERF_SERVER_IO_THREADS": "PERF_MULTI_SERVER_IO_THREADS",
+    "PERF_CLIENT_IO_THREADS": "PERF_MULTI_CLIENT_IO_THREADS",
+    "PERF_STREAM_SERVER_IO_THREADS": "PERF_MULTI_STREAM_SERVER_IO_THREADS",
+    "PERF_STREAM_CLIENT_IO_THREADS": "PERF_MULTI_STREAM_CLIENT_IO_THREADS",
+    "PERF_DEFAULT_IO_THREADS": "PERF_MULTI_DEFAULT_IO_THREADS",
+    "PERF_TIMEOUT_SECONDS": "PERF_MULTI_TIMEOUT_SECONDS",
+    "PERF_RUN_COOLDOWN_MS": "PERF_MULTI_RUN_COOLDOWN_MS",
+    "PERF_TRANSPORT_TRANSITION_MS": "PERF_MULTI_TRANSPORT_TRANSITION_MS",
+    "PERF_PATTERN_TRANSITION_MS": "PERF_MULTI_PATTERN_TRANSITION_MS",
+    "PERF_ACTIVE_WARMUP": "PERF_MULTI_ACTIVE_WARMUP",
+    "PERF_SETTLE_MS": "PERF_MULTI_SETTLE_MS",
+    "PERF_SERVICE_CLIENTS": "PERF_MULTI_SERVICE_CLIENTS",
+    "PERF_LATENCY_SAMPLE_CAP": "PERF_MULTI_LATENCY_SAMPLE_CAP",
+    "PERF_SNDHWM": "PERF_MULTI_SNDHWM",
+    "PERF_RCVHWM": "PERF_MULTI_RCVHWM",
+    "PERF_SNDBUF": "PERF_MULTI_SNDBUF",
+    "PERF_RCVBUF": "PERF_MULTI_RCVBUF",
+    "PERF_PUBSUB_XPUB_NODROP": "PERF_MULTI_PUBSUB_XPUB_NODROP",
+    "PERF_SPOT_XPUB_NODROP": "PERF_MULTI_SPOT_XPUB_NODROP",
 }
 
 
@@ -121,8 +151,32 @@ class TeeStream:
             stream.flush()
 
 
-def is_echo_pattern(pattern_name):
+def normalize_multi_pattern_name(pattern_name):
     pattern = (pattern_name or "").strip().upper()
+    if pattern.startswith("MULTI_"):
+        pattern = pattern[6:]
+    return pattern
+
+
+def display_pattern_name(pattern_name):
+    pattern = normalize_multi_pattern_name(pattern_name)
+    if ALLOW_MULTI and pattern:
+        return f"MULTI_{pattern}"
+    return pattern
+
+
+def display_multi_label(label):
+    raw = (label or "").strip()
+    if not ALLOW_MULTI or not raw:
+        return raw
+    if " " not in raw:
+        return display_pattern_name(raw)
+    head, tail = raw.split(" ", 1)
+    return f"{display_pattern_name(head)} {tail}"
+
+
+def is_echo_pattern(pattern_name):
+    pattern = normalize_multi_pattern_name(pattern_name)
     if ALLOW_MULTI:
         return pattern in ECHO_PATTERNS
     return pattern in SINGLE_ECHO_PATTERNS
@@ -131,7 +185,7 @@ def is_echo_pattern(pattern_name):
 def expand_pattern_aliases(requested_patterns):
     expanded = set()
     for pattern in requested_patterns:
-        normalized = (pattern or "").strip().upper()
+        normalized = normalize_multi_pattern_name(pattern)
         if not normalized:
             continue
         alias_members = PATTERN_ALIASES.get(normalized)
@@ -146,7 +200,7 @@ def expand_pattern_aliases_ordered(requested_patterns):
     expanded = []
     seen = set()
     for pattern in requested_patterns:
-        normalized = (pattern or "").strip().upper()
+        normalized = normalize_multi_pattern_name(pattern)
         if not normalized:
             continue
         alias_members = PATTERN_ALIASES.get(normalized)
@@ -160,12 +214,12 @@ def expand_pattern_aliases_ordered(requested_patterns):
 
 
 def resolve_stream_server_binary(pattern_name):
-    pattern = (pattern_name or "").strip().upper()
+    pattern = normalize_multi_pattern_name(pattern_name)
     return STREAM_SERVER_BINARY_BY_PATTERN.get(pattern, "")
 
 
 def resolve_required_binaries(current_bin, pattern_name):
-    pattern = (pattern_name or "").strip().upper()
+    pattern = normalize_multi_pattern_name(pattern_name)
     if ALLOW_MULTI:
         if pattern in STREAM_VARIANT_PATTERNS:
             server_binary = resolve_stream_server_binary(pattern)
@@ -181,14 +235,15 @@ def resolve_required_binaries(current_bin, pattern_name):
 def collect_unsupported_patterns(pattern_names, recv_mode):
     unsupported = []
     for pattern in pattern_names:
-        supported_modes = SUPPORTED_MULTI_RECV_MODES.get(pattern, ())
+        normalized = normalize_multi_pattern_name(pattern)
+        supported_modes = SUPPORTED_MULTI_RECV_MODES.get(normalized, ())
         if recv_mode not in supported_modes:
-            unsupported.append(pattern)
+            unsupported.append(display_pattern_name(normalized))
     return unsupported
 
 
 def resolve_split_required_binaries(pattern_name):
-    pattern = (pattern_name or "").strip().upper()
+    pattern = normalize_multi_pattern_name(pattern_name)
     suffix = PATTERN_SUFFIX.get(pattern)
     if not suffix:
         return []
@@ -317,7 +372,19 @@ DEFAULT_NUM_RUNS = 1
 
 
 def _read_env_value(name, *fallback_names):
+    keys = []
     for key in (name,) + fallback_names:
+        if ALLOW_MULTI:
+            alias = MULTI_ENV_ALIAS_MAP.get(key)
+            if alias:
+                keys.append(alias)
+        keys.append(key)
+
+    seen = set()
+    for key in keys:
+        if not key or key in seen:
+            continue
+        seen.add(key)
         val = os.environ.get(key)
         if val:
             return val
@@ -892,9 +959,6 @@ ENV_ALIAS_KEYS = (
     "PERF_STREAM_CLIENT_IO_THREADS",
     "PERF_IO_THREADS",
     "PERF_DEFAULT_IO_THREADS",
-    "PERF_DEFAULT_STREAM_IO_THREADS",
-    "PERF_DEFAULT_HWM",
-    "PERF_DEFAULT_STREAM_HWM",
     "PERF_MAX_SOCKETS",
     "PERF_LAT_COUNT",
     "PERF_LAT_TIMEOUT_MS",
@@ -906,11 +970,21 @@ ENV_ALIAS_KEYS = (
     "PERF_STREAM_DRAIN_RELAY_BUDGET",
 )
 def env_pair_value(env, key):
+    if ALLOW_MULTI:
+        alias = MULTI_ENV_ALIAS_MAP.get(key)
+        if alias:
+            value = env.get(alias, "").strip()
+            if value:
+                return value
     return env.get(key, "").strip()
 
 
 def set_env_pair(env, key, value):
     env[key] = str(value)
+    if ALLOW_MULTI:
+        alias = MULTI_ENV_ALIAS_MAP.get(key)
+        if alias:
+            env[alias] = str(value)
 
 
 def get_env_for_lib(_lib_name):
@@ -1100,7 +1174,12 @@ def parse_special_token(line):
     if stripped.startswith("UNSUPPORTED,"):
         parts = stripped.split(",", 4)
         if len(parts) >= 4:
-            return ("unsupported", parts[1].strip(), parts[2].strip().upper(), parts[3].strip().lower())
+            return (
+                "unsupported",
+                parts[1].strip(),
+                normalize_multi_pattern_name(parts[2].strip()),
+                parts[3].strip().lower(),
+            )
     if stripped.startswith("SKIP,"):
         parts = stripped.split(",", 5)
         if len(parts) >= 5:
@@ -1108,7 +1187,7 @@ def parse_special_token(line):
             return (
                 "skip",
                 parts[1].strip(),
-                parts[2].strip().upper(),
+                normalize_multi_pattern_name(parts[2].strip()),
                 parts[3].strip().lower(),
                 reason,
             )
@@ -1116,7 +1195,7 @@ def parse_special_token(line):
 
 
 def detect_special_status(stdout, expected_lib, expected_pattern, expected_transport):
-    expected_pattern = expected_pattern.upper()
+    expected_pattern = normalize_multi_pattern_name(expected_pattern)
     expected_transport = expected_transport.lower()
     for raw in stdout.splitlines():
         token = parse_special_token(raw)
@@ -1140,7 +1219,7 @@ def detect_special_status(stdout, expected_lib, expected_pattern, expected_trans
 
 def pattern_default_clients(pattern_name, transport=None):
     if pattern_name in STREAM_VARIANT_PATTERNS:
-        base = max(1, parse_env_int("PERF_DEFAULT_STREAM_CLIENTS", 10000))
+        base = 10000
         tr = (transport or "").strip().lower()
         if tr in ("tls", "ws", "wss"):
             non_tcp_cap = max(
@@ -1148,21 +1227,19 @@ def pattern_default_clients(pattern_name, transport=None):
             )
             return min(base, non_tcp_cap)
         return base
-    return max(1, parse_env_int("PERF_DEFAULT_CLIENTS", 100))
+    return 100
 
 
 def pattern_default_hwm(pattern_name):
     if pattern_name in STREAM_VARIANT_PATTERNS:
-        return max(1, parse_env_int("PERF_DEFAULT_STREAM_HWM", 10))
-    return max(1, parse_env_int("PERF_DEFAULT_HWM", 100))
+        return 10
+    return 100
 
 
 def pattern_default_io_threads(pattern_name):
     if pattern_name in STREAM_VARIANT_PATTERNS:
-        return max(1, parse_env_int("PERF_DEFAULT_STREAM_IO_THREADS", 4))
-    if pattern_name in ("GATEWAY", "SPOT"):
-        return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 4))
-    return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 4))
+        return 4
+    return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 2))
 
 
 def resolve_pattern_connect_concurrency(clients):
@@ -2895,7 +2972,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
         if table_lines is not None:
             table_lines.append(line)
 
-    emit(f"  > Benchmarking {lib_name} for {pattern_name}...")
+    emit(f"  > Benchmarking {lib_name} for {display_pattern_name(pattern_name)}...")
     final_stats = {}
     failures = []
 
@@ -3727,23 +3804,15 @@ def detect_build_type(build_dir):
 
 
 def resolve_clients_meta(selected_patterns):
-    env_clients = os.environ.get("PERF_CLIENTS", "").strip()
-    if not env_clients:
-        env_clients = os.environ.get("PERF_CLIENTS", "").strip()
+    env_clients = _read_env_value("PERF_CLIENTS") or ""
     if env_clients.isdigit():
         return env_clients
 
     if not selected_patterns or not all(is_pattern(p) for p in selected_patterns):
         return ""
 
-    stream_default = parse_env_int(
-        "PERF_DEFAULT_STREAM_CLIENTS",
-        parse_env_int("PERF_DEFAULT_STREAM_CLIENTS", 10000),
-    )
-    general_default = parse_env_int(
-        "PERF_DEFAULT_CLIENTS",
-        parse_env_int("PERF_DEFAULT_CLIENTS", 100),
-    )
+    stream_default = 10000
+    general_default = 100
     if len(selected_patterns) == 1 and selected_patterns[0] in STREAM_VARIANT_PATTERNS:
         return str(stream_default)
     if all(p in STREAM_VARIANT_PATTERNS for p in selected_patterns):
@@ -3795,13 +3864,18 @@ def build_effective_option_items(args, selected_patterns):
     items = [
         ("runs", str(num_runs)),
         ("recv_mode", args["recv_mode"]),
-        ("patterns", ",".join(selected_patterns) if selected_patterns else "none"),
+        (
+            "patterns",
+            ",".join(display_pattern_name(pattern) for pattern in selected_patterns)
+            if selected_patterns
+            else "none",
+        ),
         ("transports", ",".join(unique_transports) if unique_transports else "none"),
         ("msg_sizes", ",".join(str(sz) for sz in unique_sizes) if unique_sizes else "none"),
     ]
 
     if only:
-        hwm_raw = os.environ.get("PERF_HWM", "").strip()
+        hwm_raw = _read_env_value("PERF_HWM") or ""
         default_hwm_values = set()
         for pattern in selected_patterns:
             default_hwm_values.add(pattern_default_hwm(pattern))
@@ -3824,29 +3898,27 @@ def build_effective_option_items(args, selected_patterns):
 
         sndhwm = parse_env_int("PERF_SNDHWM", base_hwm)
         rcvhwm = parse_env_int("PERF_RCVHWM", base_hwm)
-        sndbuf = os.environ.get("PERF_SNDBUF", "").strip()
-        rcvbuf = os.environ.get("PERF_RCVBUF", "").strip()
+        sndbuf = _read_env_value("PERF_SNDBUF") or ""
+        rcvbuf = _read_env_value("PERF_RCVBUF") or ""
         sndhwm_display = str(sndhwm)
         rcvhwm_display = str(rcvhwm)
-        if not os.environ.get("PERF_SNDHWM", "").strip():
+        if not (_read_env_value("PERF_SNDHWM") or ""):
             sndhwm_display = hwm_display
-        if not os.environ.get("PERF_RCVHWM", "").strip():
+        if not (_read_env_value("PERF_RCVHWM") or ""):
             rcvhwm_display = hwm_display
         timeout_override = parse_env_int("PERF_TIMEOUT_SECONDS", 0)
         service_clients = parse_env_int("PERF_SERVICE_CLIENTS", 0)
-        default_clients = max(1, parse_env_int("PERF_DEFAULT_CLIENTS", 100))
-        default_stream_clients = max(
-            1, parse_env_int("PERF_DEFAULT_STREAM_CLIENTS", 10000)
+        default_clients = 100
+        default_stream_clients = 10000
+        explicit_server_io = _read_env_value("PERF_SERVER_IO_THREADS") or ""
+        explicit_client_io = _read_env_value("PERF_CLIENT_IO_THREADS") or ""
+        explicit_stream_server_io = (
+            _read_env_value("PERF_STREAM_SERVER_IO_THREADS") or ""
         )
-        explicit_server_io = os.environ.get("PERF_SERVER_IO_THREADS", "").strip()
-        explicit_client_io = os.environ.get("PERF_CLIENT_IO_THREADS", "").strip()
-        explicit_stream_server_io = os.environ.get(
-            "PERF_STREAM_SERVER_IO_THREADS", ""
-        ).strip()
-        explicit_stream_client_io = os.environ.get(
-            "PERF_STREAM_CLIENT_IO_THREADS", ""
-        ).strip()
-        explicit_perf_io = os.environ.get("PERF_IO_THREADS", "").strip()
+        explicit_stream_client_io = (
+            _read_env_value("PERF_STREAM_CLIENT_IO_THREADS") or ""
+        )
+        explicit_perf_io = _read_env_value("PERF_IO_THREADS") or ""
         if explicit_server_io:
             server_io_threads = max(1, parse_env_int("PERF_SERVER_IO_THREADS", 2))
             server_io_display = str(server_io_threads)
@@ -3915,7 +3987,7 @@ def build_effective_option_items(args, selected_patterns):
         except ValueError:
             clients_for_connect = 100
 
-        connect_raw = os.environ.get("PERF_CONNECT_CONCURRENCY", "").strip()
+        connect_raw = _read_env_value("PERF_CONNECT_CONCURRENCY") or ""
         connect_display = (
             connect_raw
             if connect_raw
@@ -4097,7 +4169,10 @@ def emit_result_lines(result_map):
     for key in sorted(result_map.keys()):
         pattern, transport, size, metric = key
         value = result_map[key]
-        print(f"RESULT,current,{pattern},{transport},{size},{metric},{value:.3f}")
+        print(
+            f"RESULT,current,{display_pattern_name(pattern)},"
+            f"{transport},{size},{metric},{value:.3f}"
+        )
 
 
 def parse_args():
@@ -4512,7 +4587,10 @@ def main():
             print(PATTERN_SEPARATOR)
             print("")
 
-        pattern_header = f"## PATTERN: {p_name} ({pattern_direction_label(p_name)})"
+        pattern_header = (
+            f"## PATTERN: {display_pattern_name(p_name)} "
+            f"({pattern_direction_label(p_name)})"
+        )
         print(pattern_header)
 
         pattern_transports = select_transports(p_name)
@@ -4631,13 +4709,16 @@ def main():
     if all_skips:
         print("\n## Skips")
         for pattern, reason in all_skips:
-            print(f"- {pattern}: {reason}")
+            print(f"- {display_multi_label(pattern)}: {reason}")
 
     if all_failures:
         print("\n## Failures")
         unique_failures = sorted(set(all_failures), key=lambda item: (item[0], item[2], item[3], item[4]))
         for pattern, lib_name, tr, sz, reason in unique_failures:
-            print(f"- {pattern} {lib_name} {tr} {sz}B: {reason}")
+            print(
+                f"- {display_pattern_name(pattern)} {lib_name} "
+                f"{tr} {sz}B: {reason}"
+            )
 
     sys.stdout = orig_stdout
     sys.stderr = orig_stderr

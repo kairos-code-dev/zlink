@@ -124,7 +124,7 @@ void on_request(const zlink_routing_id_t *source_rid,
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_recv_handler(router, on_request, NULL);
+/* zlink_recv()로 수신 */
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];

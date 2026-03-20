@@ -183,7 +183,8 @@ writable로 전환될 때 호출되는 콜백을 설치한다. `ZLINK_DONTWAIT`�
 2. `EAGAIN` 시 전송 중단.
 3. send-ready 콜백이 호출되면 전송 재개.
 
-Gateway, SPOT, SPOT Node 핸들에도 동일한 API가 존재한다.
+동일한 API는 callback mode의 raw `STREAM`, `SPOT`, `SPOT Node`에만
+존재한다. Gateway는 대신 poller `ZLINK_POLLOUT`를 사용한다.
 
 **제약:**
 - 교체 전용: `NULL` 전달은 유효하지 않다.

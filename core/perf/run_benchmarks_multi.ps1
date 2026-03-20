@@ -6,6 +6,7 @@ param(
     [switch]$Build,
     [string]$ResultsDir = "",
     [string]$ResultsTag = "",
+    [string]$Recv = "recv",
     [string]$IoThreads = "",
     [string]$MsgSizes = "",
     [string]$Transports = "",
@@ -62,20 +63,21 @@ Options:
   -Build                       Force clean build (default is reuse-build).
   -ResultsDir PATH             Override result root directory.
   -ResultsTag NAME             Optional tag appended to result filename.
+  -Recv MODE                   Receive model: recv|callback (default: recv).
   -IoThreads N                 Set PERF_IO_THREADS.
                                Default multi io-threads are 2, stream=4.
   -MsgSizes LIST               Comma-separated sizes.
   -Transports LIST             Comma-separated transports.
   -PinCpu                      Enable PERF_TASKSET=1.
-  -Warmup N                    Override PERF_WARMUP_SECONDS (default: 2).
-  -Duration N                  Override PERF_DURATION_SECONDS.
-  -Clients N                   Override PERF_CLIENTS (default: 100, stream=10000).
-  -Hwm N                       Override PERF_HWM (default: 100, stream=10 in binary).
-  -SendHwm N                   Override PERF_SNDHWM (fallback: -Hwm).
-  -RecvHwm N                   Override PERF_RCVHWM (fallback: -Hwm).
-  -SendTimeoutMs N             Override PERF_SNDTIMEO_MS.
-  -RecvTimeoutMs N             Override PERF_RCVTIMEO_MS.
-  -ConnectConcurrency N        Override PERF_CONNECT_CONCURRENCY.
+  -Warmup N                    Override PERF_MULTI_WARMUP_SECONDS (default: 2).
+  -Duration N                  Override PERF_MULTI_DURATION_SECONDS.
+  -Clients N                   Override PERF_MULTI_CLIENTS (default: 100, stream=10000).
+  -Hwm N                       Override PERF_MULTI_HWM (default: 100, stream=10 in binary).
+  -SendHwm N                   Override PERF_MULTI_SNDHWM (fallback: -Hwm).
+  -RecvHwm N                   Override PERF_MULTI_RCVHWM (fallback: -Hwm).
+  -SendTimeoutMs N             Override PERF_MULTI_SNDTIMEO_MS.
+  -RecvTimeoutMs N             Override PERF_MULTI_RCVTIMEO_MS.
+  -ConnectConcurrency N        Override PERF_MULTI_CONNECT_CONCURRENCY.
   -TransportTransitionMs N     Transport transition cooldown(ms).
   -PatternTransitionMs N       Pattern transition cooldown(ms).
   -ServerReadyTimeoutMs N      Server READY wait timeout(ms).
@@ -103,6 +105,9 @@ if ($ServerBindPort -lt 0 -or $ServerBindPort -gt 65535) {
     throw "ServerBindPort must be in range 0..65535."
 }
 if ($IoThreads -and $IoThreads -notmatch '^\d+$') { throw "IoThreads must be a non-negative integer." }
+if (-not $Recv) { $Recv = "recv" }
+$Recv = $Recv.Trim().ToLowerInvariant()
+if ($Recv -notin @("recv", "callback")) { throw "Recv must be 'recv' or 'callback'." }
 if ($Hwm -and ($Hwm -notmatch '^\d+$' -or [int]$Hwm -lt 1)) { throw "Hwm must be a positive integer." }
 if ($SendHwm -and ($SendHwm -notmatch '^\d+$' -or [int]$SendHwm -lt 1)) { throw "SendHwm must be a positive integer." }
 if ($RecvHwm -and ($RecvHwm -notmatch '^\d+$' -or [int]$RecvHwm -lt 1)) { throw "RecvHwm must be a positive integer." }
@@ -136,6 +141,9 @@ function Expand-AndAddPatternAlias {
     )
     $p = $RawPattern.Trim().ToUpperInvariant()
     if (-not $p) { return }
+    if ($p.StartsWith("MULTI_")) {
+        $p = $p.Substring(6)
+    }
     switch ($p) {
         "STREAM" {
             Add-UniquePattern -List $List -PatternName "STREAM"
@@ -188,6 +196,7 @@ if ($BuildDir) { $RunArgs += @("-BuildDir", $BuildDir) }
 if ($OutputFile) { $RunArgs += @("-OutputFile", $OutputFile) }
 if ($ResultsDir) { $RunArgs += @("-ResultsDir", $ResultsDir) }
 if ($ResultsTag) { $RunArgs += @("-ResultsTag", $ResultsTag) }
+if ($Recv) { $RunArgs += @("-Recv", $Recv) }
 if ($IoThreads) { $RunArgs += @("-IoThreads", $IoThreads) }
 if ($MsgSizes) { $RunArgs += @("-MsgSizes", $MsgSizes) }
 if ($Transports) { $RunArgs += @("-Transports", $Transports) }
@@ -197,24 +206,24 @@ if ($Build.IsPresent) { $RunArgs += "-Build" }
 $RunEnv = @{}
 $RunEnv["PERF_ALLOW_MULTI"] = "1"
 $RunEnv["PERF_POLICY"] = "1"
-$RunEnv["PERF_DEFAULT_IO_THREADS"] = "4"
-$RunEnv["PERF_DEFAULT_STREAM_IO_THREADS"] = "4"
-$RunEnv["PERF_WARMUP_SECONDS"] = $Warmup.ToString()
-$RunEnv["PERF_DURATION_SECONDS"] = $Duration.ToString()
-$RunEnv["PERF_SNDTIMEO_MS"] = $SendTimeoutMs
-$RunEnv["PERF_RCVTIMEO_MS"] = $RecvTimeoutMs
-$RunEnv["PERF_TRANSPORT_TRANSITION_MS"] = $TransportTransitionMs.ToString()
-$RunEnv["PERF_PATTERN_TRANSITION_MS"] = $PatternTransitionMs.ToString()
-$RunEnv["PERF_SERVER_READY_TIMEOUT_MS"] = $ServerReadyTimeoutMs.ToString()
-$RunEnv["PERF_CONNECT_READY_TIMEOUT_MS"] = $ConnectReadyTimeoutMs.ToString()
-$RunEnv["PERF_MONITOR_HWM"] = $MonitorHwm.ToString()
-$RunEnv["PERF_SERVER_SHUTDOWN_TIMEOUT_MS"] = $ServerShutdownTimeoutMs.ToString()
-$RunEnv["PERF_SERVER_BIND_PORT"] = $ServerBindPort.ToString()
-if ($Clients) { $RunEnv["PERF_CLIENTS"] = $Clients }
-if ($Hwm) { $RunEnv["PERF_HWM"] = $Hwm }
-if ($SendHwm) { $RunEnv["PERF_SNDHWM"] = $SendHwm }
-if ($RecvHwm) { $RunEnv["PERF_RCVHWM"] = $RecvHwm }
-if ($ConnectConcurrency) { $RunEnv["PERF_CONNECT_CONCURRENCY"] = $ConnectConcurrency }
+$RunEnv["PERF_RECV_MODE"] = $Recv
+$RunEnv["PERF_MULTI_DEFAULT_IO_THREADS"] = "2"
+$RunEnv["PERF_MULTI_WARMUP_SECONDS"] = $Warmup.ToString()
+$RunEnv["PERF_MULTI_DURATION_SECONDS"] = $Duration.ToString()
+$RunEnv["PERF_MULTI_SNDTIMEO_MS"] = $SendTimeoutMs
+$RunEnv["PERF_MULTI_RCVTIMEO_MS"] = $RecvTimeoutMs
+$RunEnv["PERF_MULTI_TRANSPORT_TRANSITION_MS"] = $TransportTransitionMs.ToString()
+$RunEnv["PERF_MULTI_PATTERN_TRANSITION_MS"] = $PatternTransitionMs.ToString()
+$RunEnv["PERF_MULTI_SERVER_READY_TIMEOUT_MS"] = $ServerReadyTimeoutMs.ToString()
+$RunEnv["PERF_MULTI_CONNECT_READY_TIMEOUT_MS"] = $ConnectReadyTimeoutMs.ToString()
+$RunEnv["PERF_MULTI_MONITOR_HWM"] = $MonitorHwm.ToString()
+$RunEnv["PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS"] = $ServerShutdownTimeoutMs.ToString()
+$RunEnv["PERF_MULTI_SERVER_BIND_PORT"] = $ServerBindPort.ToString()
+if ($Clients) { $RunEnv["PERF_MULTI_CLIENTS"] = $Clients }
+if ($Hwm) { $RunEnv["PERF_MULTI_HWM"] = $Hwm }
+if ($SendHwm) { $RunEnv["PERF_MULTI_SNDHWM"] = $SendHwm }
+if ($RecvHwm) { $RunEnv["PERF_MULTI_RCVHWM"] = $RecvHwm }
+if ($ConnectConcurrency) { $RunEnv["PERF_MULTI_CONNECT_CONCURRENCY"] = $ConnectConcurrency }
 
 $PreviousEnv = @{}
 foreach ($key in $RunEnv.Keys) {

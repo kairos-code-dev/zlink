@@ -56,6 +56,7 @@ void *create_gateway_attached (void *ctx_,
                                const char *routing_id_,
                                zlink_socket_msg_handler_fn handler_)
 {
+    LIBZLINK_UNUSED (handler_);
     void *gateway = zlink_gateway_new (ctx_, service_name_);
     if (!gateway)
         return NULL;
@@ -63,12 +64,6 @@ void *create_gateway_attached (void *ctx_,
         && zlink_set_routing_id (gateway, routing_id_,
                                          strlen (routing_id_))
              != 0) {
-        const int err = errno;
-        zlink_gateway_destroy (&gateway);
-        errno = err;
-        return NULL;
-    }
-    if (handler_ && zlink_recv_handler (gateway, handler_, NULL) != 0) {
         const int err = errno;
         zlink_gateway_destroy (&gateway);
         errno = err;

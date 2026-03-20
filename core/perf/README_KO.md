@@ -51,8 +51,7 @@ ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
 
 - `recv`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
   `ROUTER_ROUTER`, `GATEWAY`, `SPOT`
-- `callback`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
-  `ROUTER_ROUTER`, `GATEWAY`, `SPOT`
+- `callback`: `SPOT`만
 
 지원하지 않는 조합은 묵시적 fallback 없이 fail-fast로 종료한다.
 
@@ -124,8 +123,9 @@ results/
 
 현재 multi recv 모드 지원 범위:
 
-- `recv`: `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `STREAM`
-- `callback`: `DEALER_DEALER`, `PUBSUB`, `GATEWAY`, `SPOT`, `STREAM`
+- `recv`: `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`,
+  `GATEWAY`, `SPOT`, `STREAM`
+- `callback`: `SPOT`, `STREAM`
 
 지원하지 않는 조합은 묵시적 fallback 없이 fail-fast로 종료한다.
 

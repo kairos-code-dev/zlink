@@ -44,7 +44,6 @@ pull하는 모드입니다. 소켓은 recv 모드로 시작하며, 핸들러를 
 |------|-----------|------|
 | [`zlink_socket_msg_handler_fn`](socket.ko.md) | socket.ko.md | 소켓 멀티파트 메시지 dispatch 콜백 |
 | [`zlink_subscribe_handler_fn`](socket.ko.md) | socket.ko.md | 토픽 기반 메시지 dispatch 콜백 |
-| [`zlink_subscription_event_handler_fn`](socket.ko.md) | socket.ko.md | XPUB 구독 알림 콜백 |
 | [`zlink_monitor_handler_fn`](monitoring.ko.md) | monitoring.ko.md | 소켓 모니터 이벤트 콜백 |
 | [`zlink_service_monitor_handler_fn`](monitoring.ko.md) | monitoring.ko.md | 서비스 모니터 이벤트 콜백 |
 | [`zlink_send_ready_handler_fn`](socket.ko.md) | socket.ko.md | send-ready 전환 콜백 |

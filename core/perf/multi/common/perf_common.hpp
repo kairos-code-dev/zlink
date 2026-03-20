@@ -152,10 +152,44 @@ static const std::vector<std::string> TRANSPORTS = {"tcp", "inproc", "ipc"};
 static const std::vector<std::string> STREAM_TRANSPORTS = {"tcp", "tls", "ws", "wss"};
 static const int SETTLE_TIME_MS = 300;
 
+inline const char *resolve_multi_named_env_value (const char *name_)
+{
+    if (!name_ || !*name_)
+        return NULL;
+
+    if (std::strcmp (name_, "PERF_LATENCY_SAMPLE_CAP") == 0)
+        return resolve_multi_env_value ("PERF_MULTI_LATENCY_SAMPLE_CAP",
+                                        "PERF_LATENCY_SAMPLE_CAP");
+    if (std::strcmp (name_, "PERF_CLIENTS") == 0)
+        return resolve_multi_env_value ("PERF_MULTI_CLIENTS", "PERF_CLIENTS");
+    if (std::strcmp (name_, "PERF_SNDHWM") == 0)
+        return resolve_multi_env_value ("PERF_MULTI_SNDHWM", "PERF_SNDHWM");
+    if (std::strcmp (name_, "PERF_RCVHWM") == 0)
+        return resolve_multi_env_value ("PERF_MULTI_RCVHWM", "PERF_RCVHWM");
+    if (std::strcmp (name_, "PERF_SNDTIMEO_MS") == 0)
+        return resolve_multi_env_value ("PERF_MULTI_SNDTIMEO_MS",
+                                        "PERF_SNDTIMEO_MS");
+    if (std::strcmp (name_, "PERF_RCVTIMEO_MS") == 0)
+        return resolve_multi_env_value ("PERF_MULTI_RCVTIMEO_MS",
+                                        "PERF_RCVTIMEO_MS");
+    if (std::strcmp (name_, "PERF_SNDBUF") == 0)
+        return resolve_multi_env_value ("PERF_MULTI_SNDBUF", "PERF_SNDBUF");
+    if (std::strcmp (name_, "PERF_RCVBUF") == 0)
+        return resolve_multi_env_value ("PERF_MULTI_RCVBUF", "PERF_RCVBUF");
+    if (std::strcmp (name_, "PERF_MONITOR_HWM") == 0)
+        return resolve_multi_env_value ("PERF_MULTI_MONITOR_HWM",
+                                        "PERF_MONITOR_HWM");
+
+    return resolve_multi_env_value (name_, NULL);
+}
+
 inline size_t resolve_latency_sample_cap()
 {
-    const int cap =
-      parse_positive_env("PERF_LATENCY_SAMPLE_CAP", 200000);
+    const int cap = resolve_multi_int_env_with_fallback (
+      "PERF_MULTI_LATENCY_SAMPLE_CAP",
+      "PERF_LATENCY_SAMPLE_CAP",
+      200000,
+      1);
     return cap > 0 ? static_cast<size_t>(cap) : static_cast<size_t>(200000);
 }
 
@@ -301,7 +335,7 @@ private:
 
 inline int bench_io_threads()
 {
-    return parse_positive_env("PERF_IO_THREADS", 4);
+    return parse_positive_env("PERF_IO_THREADS", 2);
 }
 
 inline int bench_max_sockets()
@@ -310,7 +344,8 @@ inline int bench_max_sockets()
     if (explicit_max > 0)
         return explicit_max;
 
-    const int clients = parse_positive_env("PERF_CLIENTS", 0);
+    const int clients = resolve_multi_int_env_with_fallback (
+      "PERF_MULTI_CLIENTS", "PERF_CLIENTS", 0, 0);
     if (clients <= 0)
         return 0;
 
@@ -653,12 +688,10 @@ inline void print_result(const std::string& lib_type,
       || pattern == "ROUTER_ROUTER"
       || pattern == "GATEWAY"
       || pattern == "STREAM"
-      || pattern == "STREAM_CALLBACK"
       || pattern == "MULTI_DEALER_ROUTER"
       || pattern == "MULTI_ROUTER_ROUTER"
       || pattern == "MULTI_GATEWAY"
       || pattern == "MULTI_STREAM"
-      || pattern == "MULTI_STREAM_CALLBACK"
       ;
     const double direction_factor = is_echo_pattern ? 2.0 : 1.0;
     const double bandwidth_mb_s =
@@ -824,7 +857,7 @@ inline int bench_hwm_from_env(const char *name_, int default_hwm_)
     if (!name_ || !*name_)
         return default_hwm_;
 
-    const char *value = std::getenv(name_);
+    const char *value = resolve_multi_named_env_value (name_);
     if (!value || !*value)
         return default_hwm_;
 
@@ -856,7 +889,7 @@ inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)
     if (!name_ || !*name_)
         return default_ms_;
 
-    const char *value = std::getenv(name_);
+    const char *value = resolve_multi_named_env_value (name_);
     if (!value || !*value)
         return default_ms_;
 
@@ -919,7 +952,7 @@ inline int bench_socket_buffer_bytes_from_env(const char *name_,
     if (!name_ || !*name_)
         return default_bytes_;
 
-    const char *value = std::getenv(name_);
+    const char *value = resolve_multi_named_env_value (name_);
     if (!value || !*value)
         return default_bytes_;
 

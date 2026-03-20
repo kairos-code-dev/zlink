@@ -436,8 +436,7 @@ void configure_service_handle (void *handle_)
                         sizeof (timeout_ms)));
 }
 
-void run_gateway_ready_matrix (monitor_mode_t monitor_mode_,
-                               service_mode_t service_mode_)
+void run_gateway_ready_matrix (monitor_mode_t monitor_mode_)
 {
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -453,19 +452,6 @@ void run_gateway_ready_matrix (monitor_mode_t monitor_mode_,
       zlink_set_routing_id (server, "gw-server", strlen ("gw-server")));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (client, "gw-client", strlen ("gw-client")));
-
-    gateway_delivery_probe_t server_probe;
-    gateway_delivery_probe_t client_probe;
-    server_probe.gateway = server;
-    g_gateway_server_probe = &server_probe;
-    g_gateway_client_probe = &client_probe;
-
-    if (service_mode_ == service_callback_mode) {
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_recv_handler (server, &gateway_server_handler, NULL));
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_recv_handler (client, &gateway_client_handler, NULL));
-    }
 
     zlink_service_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
@@ -500,40 +486,31 @@ void run_gateway_ready_matrix (monitor_mode_t monitor_mode_,
 
     send_gateway_text_rid (client, &server_rid, "ping");
 
-    if (service_mode_ == service_recv_mode) {
-        zlink_routing_id_t source_rid;
-        memset (&source_rid, 0, sizeof (source_rid));
-        zlink_msg_t *parts = NULL;
-        size_t part_count = 0;
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_gateway_recv (server, &source_rid, &parts, &part_count, 0));
-        TEST_ASSERT_EQUAL_UINT64 (1, part_count);
-        TEST_ASSERT_EQUAL_MEMORY ("ping", zlink_msg_data (&parts[0]), 4);
-        close_message_parts (parts, part_count);
-        free (parts);
+    zlink_routing_id_t source_rid;
+    memset (&source_rid, 0, sizeof (source_rid));
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_recv (server, &source_rid, &parts, &part_count, 0));
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_EQUAL_MEMORY ("ping", zlink_msg_data (&parts[0]), 4);
+    close_message_parts (parts, part_count);
+    free (parts);
 
-        send_gateway_text_rid (server, &source_rid, "pong");
+    send_gateway_text_rid (server, &source_rid, "pong");
 
-        zlink_routing_id_t reply_source_rid;
-        memset (&reply_source_rid, 0, sizeof (reply_source_rid));
-        zlink_msg_t *reply_parts = NULL;
-        size_t reply_part_count = 0;
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_recv (
-          client, &reply_source_rid, &reply_parts, &reply_part_count, 0));
-        TEST_ASSERT_EQUAL_UINT64 (1, reply_part_count);
-        TEST_ASSERT_EQUAL_MEMORY ("pong", zlink_msg_data (&reply_parts[0]), 4);
-        close_message_parts (reply_parts, reply_part_count);
-        free (reply_parts);
-    } else {
-        TEST_ASSERT_TRUE (wait_for_gateway_delivery (&server_probe, true, 3000));
-        TEST_ASSERT_TRUE (wait_for_gateway_delivery (&client_probe, false, 3000));
-        TEST_ASSERT_EQUAL_STRING ("ping", server_probe.request_payload);
-        TEST_ASSERT_EQUAL_STRING ("pong", client_probe.reply_payload);
-    }
+    zlink_routing_id_t reply_source_rid;
+    memset (&reply_source_rid, 0, sizeof (reply_source_rid));
+    zlink_msg_t *reply_parts = NULL;
+    size_t reply_part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_recv (
+      client, &reply_source_rid, &reply_parts, &reply_part_count, 0));
+    TEST_ASSERT_EQUAL_UINT64 (1, reply_part_count);
+    TEST_ASSERT_EQUAL_MEMORY ("pong", zlink_msg_data (&reply_parts[0]), 4);
+    close_message_parts (reply_parts, reply_part_count);
+    free (reply_parts);
 
     g_gateway_monitor_probe = NULL;
-    g_gateway_server_probe = NULL;
-    g_gateway_client_probe = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server));
@@ -629,22 +606,27 @@ void run_spot_ready_matrix (monitor_mode_t monitor_mode_,
 
 void test_gateway_ready_with_monitor_recv_and_service_recv ()
 {
-    run_gateway_ready_matrix (monitor_recv_mode, service_recv_mode);
+    run_gateway_ready_matrix (monitor_recv_mode);
 }
 
-void test_gateway_ready_with_monitor_recv_and_service_callback ()
+void test_gateway_service_callback_attach_returns_enotsup ()
 {
-    run_gateway_ready_matrix (monitor_recv_mode, service_callback_mode);
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *gateway = zlink_gateway_new (ctx, "gw-ready-contract");
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_recv_handler (gateway, &gateway_server_handler, NULL));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
 }
 
 void test_gateway_ready_with_monitor_callback_and_service_recv ()
 {
-    run_gateway_ready_matrix (monitor_callback_mode, service_recv_mode);
-}
-
-void test_gateway_ready_with_monitor_callback_and_service_callback ()
-{
-    run_gateway_ready_matrix (monitor_callback_mode, service_callback_mode);
+    run_gateway_ready_matrix (monitor_callback_mode);
 }
 
 void test_spot_ready_with_monitor_recv_and_service_recv ()
@@ -673,9 +655,8 @@ int main (int, char **)
 
     UNITY_BEGIN ();
     RUN_TEST (test_gateway_ready_with_monitor_recv_and_service_recv);
-    RUN_TEST (test_gateway_ready_with_monitor_recv_and_service_callback);
+    RUN_TEST (test_gateway_service_callback_attach_returns_enotsup);
     RUN_TEST (test_gateway_ready_with_monitor_callback_and_service_recv);
-    RUN_TEST (test_gateway_ready_with_monitor_callback_and_service_callback);
     RUN_TEST (test_spot_ready_with_monitor_recv_and_service_recv);
     RUN_TEST (test_spot_ready_with_monitor_recv_and_service_callback);
     RUN_TEST (test_spot_ready_with_monitor_callback_and_service_recv);

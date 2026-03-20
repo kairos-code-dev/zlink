@@ -50,9 +50,8 @@ void on_message(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-/* 서버 (핸들러 등록) */
+/* 서버는 recv 모드를 유지 */
 void *server = zlink_socket(ctx, ZLINK_PAIR);
-zlink_recv_handler(server, on_message, NULL);
 
 /* 클라이언트 (송신 전용) */
 void *client = zlink_socket(ctx, ZLINK_PAIR);
@@ -64,7 +63,7 @@ zlink_msg_t msg;
 zlink_msg_init_size(&msg, 5);
 memcpy(zlink_msg_data(&msg), "Hello", 5);
 zlink_send(client, &msg, 1, 0);
-/* on_message 콜백이 "Hello"를 비동기로 수신 */
+/* 서버는 zlink_recv() 또는 poller + zlink_recv()로 수신 */
 
 /* 서버 → 클라이언트 (양방향이지만 클라이언트도 수신하려면 핸들러 필요) */
 zlink_msg_t reply;
@@ -85,7 +84,7 @@ zlink_msg_init_size(&parts[1], 6);
 memcpy(zlink_msg_data(&parts[1]), "foobar", 6);
 zlink_send(server, parts, 2, 0);
 
-/* 수신 측 on_message 콜백이 두 프레임을 다음과 같이 수신:
+/* 수신 측은 한 번의 zlink_recv() 호출로 두 프레임을 수신:
    parts[0] = "foo", parts[1] = "foobar", part_count = 2 */
 ```
 
@@ -93,14 +92,8 @@ zlink_send(server, parts, 2, 0);
 
 ### 수신 모드
 
-PAIR는 `zlink_recv_handler()`로 핸들러를 등록한다. 콜백은
-`source_rid` (PAIR는 단일 피어이므로 항상 비어 있음)와 완전한
-멀티파트 메시지의 모든 프레임을 포함하는 `parts[]` 배열을 수신한다.
-
-**Callback 모드** (권장): 위의 메시지 교환 예제처럼 핸들러를 부착한다.
-메시지는 I/O 스레드에서 비동기로 dispatch된다.
-
-**Pull 모드**: 핸들러를 부착하지 않으면 `zlink_recv()`로 동기 수신한다.
+PAIR의 public API는 recv/poller-only다. 완전한 멀티파트 메시지는
+`zlink_recv()`로 동기 수신한다. `source_rid`는 단일 피어이므로 항상 비어 있다.
 
 ```c
 void *pair = zlink_socket(ctx, ZLINK_PAIR);
@@ -168,7 +161,6 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 ```c
 /* 메인 스레드 */
 void *signal = zlink_socket(ctx, ZLINK_PAIR);
-zlink_recv_handler(signal, on_signal, NULL);
 zlink_bind(signal, "inproc://signal");
 
 /* 워커 스레드 */

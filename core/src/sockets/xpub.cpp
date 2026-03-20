@@ -560,30 +560,7 @@ int zlink::xpub_t::dispatch_ready_messages ()
 
 int zlink::xpub_t::dispatch_message (zlink::msg_t *msg_)
 {
-    if (!_dispatch_active.load (std::memory_order_acquire))
-        return 0;
-
-    zlink_subscription_event_handler_fn handler = socket_xpub_handler ();
-    if (!handler)
-        return 0;
-
-    const uint8_t *data = static_cast<const uint8_t *> (msg_->data ());
-    const size_t size = msg_->size ();
-    const int subscribed = size > 0 && data[0] != 0 ? 1 : 0;
-    const char *topic =
-      size > 0 ? reinterpret_cast<const char *> (data + 1) : NULL;
-    const size_t topic_len = size > 0 ? size - 1 : 0;
-    zlink_routing_id_t source_rid;
-    zlink_routing_id_t *source_rid_ptr = NULL;
-    if (_last_pipe != NULL) {
-        resolve_socket_msg_source_rid (_last_pipe, &source_rid);
-        source_rid_ptr = &source_rid;
-    }
-
-    _dispatch_inflight.fetch_add (1, std::memory_order_acq_rel);
-    handler (source_rid_ptr, subscribed, topic, topic_len,
-             socket_xpub_handler_userdata ());
-    notify_dispatch_stopped ();
+    LIBZLINK_UNUSED (msg_);
     return 0;
 }
 

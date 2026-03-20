@@ -50,9 +50,8 @@ void on_message(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-/* Server with handler */
+/* Server stays in recv model */
 void *server = zlink_socket(ctx, ZLINK_PAIR);
-zlink_recv_handler(server, on_message, NULL);
 
 /* Client (send only) */
 void *client = zlink_socket(ctx, ZLINK_PAIR);
@@ -64,7 +63,7 @@ zlink_msg_t msg;
 zlink_msg_init_size(&msg, 5);
 memcpy(zlink_msg_data(&msg), "Hello", 5);
 zlink_send(client, &msg, 1, 0);
-/* on_message callback receives "Hello" asynchronously */
+/* Server receives with zlink_recv() or poller + zlink_recv() */
 
 /* Server → Client (bidirectional, but client needs handler too for receiving) */
 zlink_msg_t reply;
@@ -85,7 +84,7 @@ zlink_msg_init_size(&parts[1], 6);
 memcpy(zlink_msg_data(&parts[1]), "foobar", 6);
 zlink_send(server, parts, 2, 0);
 
-/* Receiver's on_message callback receives both frames as:
+/* Receiver pulls both frames from one zlink_recv() call:
    parts[0] = "foo", parts[1] = "foobar", part_count = 2 */
 ```
 
@@ -93,17 +92,9 @@ zlink_send(server, parts, 2, 0);
 
 ### Receive Modes
 
-PAIR registers a handler via `zlink_recv_handler()`. The callback
-receives `source_rid` (always empty for PAIR since there is only one
-peer) and a `parts[]` array containing all frames of a complete
-multipart message.
-
-**Callback mode** (recommended): attach a handler as shown in the
-Message Exchange example above. Messages are dispatched asynchronously
-on the I/O thread.
-
-**Pull mode**: without attaching a handler, call `zlink_recv()` to
-receive synchronously.
+PAIR is recv/poller-only in the public API. Use `zlink_recv()` to receive
+a complete multipart message synchronously. `source_rid` is always empty
+because there is only one peer.
 
 ```c
 void *pair = zlink_socket(ctx, ZLINK_PAIR);
@@ -171,7 +162,6 @@ The most common PAIR use case. Zero-copy communication between threads via the i
 ```c
 /* Main thread */
 void *signal = zlink_socket(ctx, ZLINK_PAIR);
-zlink_recv_handler(signal, on_signal, NULL);
 zlink_bind(signal, "inproc://signal");
 
 /* Worker thread */

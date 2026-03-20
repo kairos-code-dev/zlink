@@ -64,7 +64,7 @@ esac
 BUILD_DIR="${ROOT_DIR}/core/build"
 
 STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,GATEWAY,SPOT"
-MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK"
+MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM"
 PATTERN="ALL"
 OUTPUT_FILE=""
 RESULTS_DIR=""
@@ -153,6 +153,11 @@ set_build_mode() {
 
 normalize_multi_pattern_token() {
   local raw="${1:-}"
+  raw="$(printf '%s' "${raw}" | tr '[:lower:]' '[:upper:]')"
+
+  if [[ "${raw}" == MULTI_* ]]; then
+    raw="${raw#MULTI_}"
+  fi
 
   case "${raw}" in
     STREAM|STREAMS)
@@ -162,6 +167,28 @@ normalize_multi_pattern_token() {
       printf '%s' "${raw}"
       ;;
   esac
+}
+
+display_pattern_token() {
+  local raw="${1:-}"
+  if [[ "${PERF_ALLOW_MULTI:-0}" == "1" ]]; then
+    raw="$(normalize_multi_pattern_token "${raw}")"
+    if [[ -n "${raw}" ]]; then
+      printf 'MULTI_%s' "${raw}"
+    fi
+    return
+  fi
+  printf '%s' "${raw}"
+}
+
+display_pattern_csv() {
+  local items=()
+  local item=""
+  for item in "$@"; do
+    items+=( "$(display_pattern_token "${item}")" )
+  done
+  local IFS=,
+  printf '%s' "${items[*]}"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -573,7 +600,9 @@ if [[ "${PIN_CPU}" -eq 1 ]]; then
   RUN_CMD+=("--pin-cpu")
 fi
 if [[ -n "${SINGLE_DURATION_SECONDS}" ]]; then
-  RUN_CMD+=("--duration" "${SINGLE_DURATION_SECONDS}")
+  if [[ "${PERF_ALLOW_MULTI:-0}" != "1" ]]; then
+    RUN_CMD+=("--duration" "${SINGLE_DURATION_SECONDS}")
+  fi
 fi
 
 if [[ -n "${RESULTS_DIR}" ]]; then
@@ -596,31 +625,31 @@ fi
 if [[ -n "${PERF_TRANSPORTS}" ]]; then
   RUN_ENV+=(PERF_TRANSPORTS="${PERF_TRANSPORTS}")
 fi
-if [[ -n "${SINGLE_DURATION_SECONDS}" ]]; then
+if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_DURATION_SECONDS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_DURATION_SECONDS="${SINGLE_DURATION_SECONDS}")
 fi
-if [[ -n "${SINGLE_WARMUP_SECONDS}" ]]; then
+if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_WARMUP_SECONDS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_WARMUP_SECONDS="${SINGLE_WARMUP_SECONDS}")
 fi
-if [[ -n "${SINGLE_HWM}" ]]; then
+if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_HWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_HWM="${SINGLE_HWM}")
 fi
-if [[ -n "${SINGLE_SNDHWM}" ]]; then
+if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_SNDHWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_SNDHWM="${SINGLE_SNDHWM}")
 fi
-if [[ -n "${SINGLE_RCVHWM}" ]]; then
+if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_RCVHWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVHWM="${SINGLE_RCVHWM}")
 fi
-if [[ -n "${SINGLE_SNDBUF}" ]]; then
+if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_SNDBUF}" ]]; then
   RUN_ENV+=(PERF_SINGLE_SNDBUF="${SINGLE_SNDBUF}")
 fi
-if [[ -n "${SINGLE_RCVBUF}" ]]; then
+if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_RCVBUF}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVBUF="${SINGLE_RCVBUF}")
 fi
-if [[ -n "${SINGLE_SNDTIMEO_MS}" ]]; then
+if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_SNDTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_SNDTIMEO_MS="${SINGLE_SNDTIMEO_MS}")
 fi
-if [[ -n "${SINGLE_RCVTIMEO_MS}" ]]; then
+if [[ "${PERF_ALLOW_MULTI:-0}" != "1" && -n "${SINGLE_RCVTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVTIMEO_MS="${SINGLE_RCVTIMEO_MS}")
 fi
 if [[ "${BUILD_MODE}" == "reuse" ]]; then
@@ -648,30 +677,52 @@ print_effective_option() {
 
 EFFECTIVE_SEND_HWM="${SINGLE_SNDHWM:-${SINGLE_HWM:-}}"
 EFFECTIVE_RECV_HWM="${SINGLE_RCVHWM:-${SINGLE_HWM:-}}"
-DEFAULT_IO_THREADS_LABEL="default(binary=1)"
+DISPLAY_PATTERN_CSV="${PATTERN_CSV}"
+DISPLAY_DURATION_SECONDS="${SINGLE_DURATION_SECONDS}"
+DISPLAY_WARMUP_SECONDS="${SINGLE_WARMUP_SECONDS}"
+DISPLAY_HWM="${SINGLE_HWM}"
+DISPLAY_SEND_HWM="${EFFECTIVE_SEND_HWM}"
+DISPLAY_RECV_HWM="${EFFECTIVE_RECV_HWM}"
+DISPLAY_SNDBUF="${SINGLE_SNDBUF}"
+DISPLAY_RCVBUF="${SINGLE_RCVBUF}"
+DISPLAY_SNDTIMEO_MS="${SINGLE_SNDTIMEO_MS}"
+DISPLAY_RCVTIMEO_MS="${SINGLE_RCVTIMEO_MS}"
 if [[ "${PERF_ALLOW_MULTI:-0}" == "1" ]]; then
-  DEFAULT_IO_THREADS_LABEL="default(binary=4)"
+  DISPLAY_PATTERN_CSV="$(display_pattern_csv "${PATTERN_LIST[@]}")"
+  DISPLAY_DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-${SINGLE_DURATION_SECONDS}}"
+  DISPLAY_WARMUP_SECONDS="${PERF_MULTI_WARMUP_SECONDS:-${SINGLE_WARMUP_SECONDS}}"
+  DISPLAY_HWM="${PERF_MULTI_HWM:-}"
+  DISPLAY_SEND_HWM="${PERF_MULTI_SNDHWM:-${DISPLAY_HWM}}"
+  DISPLAY_RECV_HWM="${PERF_MULTI_RCVHWM:-${DISPLAY_HWM}}"
+  DISPLAY_SNDBUF="${PERF_MULTI_SNDBUF:-}"
+  DISPLAY_RCVBUF="${PERF_MULTI_RCVBUF:-}"
+  DISPLAY_SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-${SINGLE_SNDTIMEO_MS}}"
+  DISPLAY_RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-${SINGLE_RCVTIMEO_MS}}"
+fi
+DEFAULT_IO_THREADS_LABEL="default(binary=2)"
+if [[ "${PERF_ALLOW_MULTI:-0}" == "1" ]]; then
+  DEFAULT_IO_THREADS_LABEL="default(policy)"
 fi
 EFFECTIVE_IO_THREADS="$(value_or_default "${PERF_IO_THREADS}" "${DEFAULT_IO_THREADS_LABEL}")"
 
 echo
 echo "## Effective Options (runner)"
-print_effective_option "pattern" "${PATTERN_CSV}"
+print_effective_option "patterns" "${DISPLAY_PATTERN_CSV}"
 print_effective_option "build_dir" "${BUILD_DIR}"
 print_effective_option "build_mode" "${BUILD_MODE}"
 print_effective_option "reuse_build" "$( [[ "${BUILD_MODE}" == "reuse" ]] && echo 1 || echo 0 )"
 print_effective_option "clean_build" "$( [[ "${BUILD_MODE}" == "clean" ]] && echo 1 || echo 0 )"
 print_effective_option "runs" "${RUNS}"
 print_effective_option "recv_mode" "${RECV_MODE}"
-print_effective_option "duration_seconds" "${SINGLE_DURATION_SECONDS}"
-print_effective_option "warmup_seconds" "${SINGLE_WARMUP_SECONDS}"
-print_effective_option "hwm" "$(value_or_default "${SINGLE_HWM}" "default(binary)")"
-print_effective_option "send_hwm" "$(value_or_default "${EFFECTIVE_SEND_HWM}" "default(binary)")"
-print_effective_option "recv_hwm" "$(value_or_default "${EFFECTIVE_RECV_HWM}" "default(binary)")"
-print_effective_option "sndbuf" "$(value_or_default "${SINGLE_SNDBUF}" "default(os)")"
-print_effective_option "rcvbuf" "$(value_or_default "${SINGLE_RCVBUF}" "default(os)")"
-print_effective_option "sndtimeo_ms" "${SINGLE_SNDTIMEO_MS}"
-print_effective_option "rcvtimeo_ms" "${SINGLE_RCVTIMEO_MS}"
+print_effective_option "duration_seconds" "${DISPLAY_DURATION_SECONDS}"
+print_effective_option "warmup_seconds" "${DISPLAY_WARMUP_SECONDS}"
+print_effective_option "hwm" "$(value_or_default "${DISPLAY_HWM}" "default(binary)")"
+print_effective_option "send_hwm" "$(value_or_default "${DISPLAY_SEND_HWM}" "default(binary)")"
+print_effective_option "recv_hwm" "$(value_or_default "${DISPLAY_RECV_HWM}" "default(binary)")"
+print_effective_option "sndbuf" "$(value_or_default "${DISPLAY_SNDBUF}" "default(os)")"
+print_effective_option "rcvbuf" "$(value_or_default "${DISPLAY_RCVBUF}" "default(os)")"
+print_effective_option "sndtimeo_ms" "${DISPLAY_SNDTIMEO_MS}"
+print_effective_option "rcvtimeo_ms" "${DISPLAY_RCVTIMEO_MS}"
 print_effective_option "pin_cpu" "${PIN_CPU}"
 print_effective_option "io_threads" "${EFFECTIVE_IO_THREADS}"
 print_effective_option "msg_sizes" "$(value_or_default "${PERF_MSG_SIZES}" "default(benchmark)")"

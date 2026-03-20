@@ -4,23 +4,22 @@
 
 Gateway는 서비스 바인딩된 로드 밸런싱 요청/응답 핸들입니다. Discovery가
 연결된 경우 서비스 위치를 자동으로 확인하고, 구성 가능한 로드 밸런싱 전략을
-사용하여 연결된 피어에 메시지를 분배합니다. Gateway는 메시지 수신을 위한 두 가지 배타적 I/O 모델을 지원합니다.
+사용하여 연결된 피어에 메시지를 분배합니다. Gateway는 recv/poller 중심
+control model을 사용합니다.
 
 ## I/O 모델
 
-Gateway handle은 **recv 모드**로 시작하며, `zlink_recv_handler()`를
-호출하면 callback 모드로 **일방 전환**됩니다. 두 모델은 handle 수명 동안
-상호 배타적입니다.
+Gateway handle은 **recv 모드**로 시작하며 handle 수명 전체에서 그 모델을
+유지합니다.
 
-| | Recv 모드 (기본) | Callback 모드 |
-|---|---|---|
-| **수신** | `zlink_gateway_recv()` | `zlink_recv_handler()` 콜백 |
-| **Send-ready** | 사용 불가 (`EBUSY`) | `zlink_send_ready_handler()` |
-| **전환** | `zlink_recv_handler()` 호출로 전환 | 영구, 되돌릴 수 없음 |
+| | Gateway |
+|---|---|
+| **수신** | `zlink_gateway_recv()` |
+| **쓰기 준비 감지** | poller `ZLINK_POLLOUT` |
+| **callback attach** | `zlink_recv_handler()` / `zlink_send_ready_handler()`는 `ENOTSUP` |
 
-- recv 모드에서 `zlink_send_ready_handler()`는 `EBUSY`로 실패합니다.
-- callback 모드에서 `zlink_gateway_recv()`는 `EBUSY`로 실패합니다.
-- `zlink_gateway_send()` / `zlink_gateway_send_rid()`는 두 모드 모두에서 동작합니다.
+- `zlink_gateway_send()` / `zlink_gateway_send_rid()`는 recv 모드에서 동작합니다.
+- writable readiness는 gateway callback이 아니라 poller `ZLINK_POLLOUT`로 처리합니다.
 
 ## 스레드 안전성 요약
 
@@ -43,15 +42,13 @@ Gateway handle은 **recv 모드**로 시작하며, `zlink_recv_handler()`를
 - `zlink_gateway_new()`로 서비스 이름만 고정하여 생성합니다.
 - 대표 routing id가 필요하면 첫 bind/connect 전에
   `zlink_set_routing_id()`를 호출합니다.
-- **Recv 모드 (기본):** `zlink_gateway_recv()`로 메시지를 직접 수신합니다.
-- **Callback 모드:** `zlink_recv_handler()`를 한 번 호출하여 전환하면,
-  이후 메시지가 설치된 콜백으로 자동 dispatch됩니다.
+- `zlink_gateway_recv()`로 메시지를 직접 수신합니다.
 - `zlink_gateway_attach_discovery()`로 자동 피어 관리를 연결합니다.
 - `zlink_gateway_bind()`로 서버 측 동작을 설정합니다.
 - `zlink_gateway_connect()` / `zlink_gateway_disconnect()`로 수동 피어 관리를
   합니다 (discovery 연결 전에만 허용).
 - `zlink_set_option()` / `zlink_get_option()`으로 서비스 레벨 튜닝을 합니다.
-- `zlink_send_ready_handler()`로 송신 측 백프레셔를 처리합니다.
+- 송신 측 백프레셔는 poller `ZLINK_POLLOUT`로 처리합니다.
 - `zlink_service_monitor_open(gateway, &options)`으로
   `ZLINK_GATEWAY_SEND_READY_CHANGED`, `ZLINK_GATEWAY_ROUTE_UP` 같은 edge
   전이를 관찰합니다. `zlink_monitor_close()`로 닫습니다.
@@ -392,21 +389,22 @@ int zlink_set_tls_server (void *gateway,
 
 ### Send-Ready — zlink_send_ready_handler
 
-Gateway는 generic send-ready handler API를 사용합니다. **Callback 모드 전용.**
+Gateway는 generic send-ready handler 심볼을 노출하지만, Gateway handle에는
+attach할 수 없습니다.
 
 ```c
 int zlink_send_ready_handler (
   void *gateway, zlink_send_ready_handler_fn handler, void *userdata);
 ```
 
-Gateway가 쓰기 가능 상태로 전이할 때 핸들러가 호출됩니다. 시작 후에 핸들러를
-설치하는 경우, 열린 Gateway monitor에서 `zlink_monitor_snapshot()`으로 초기
-상태를 seed하세요.
+Gateway handle은 `-1`과 `errno=ENOTSUP`를 반환합니다. writable readiness는
+대신 poller `ZLINK_POLLOUT`로 처리합니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
 **에러:**
-- `EBUSY` -- handle이 recv 모드입니다 (callback 모드로 먼저 전환하세요).
+- `EINVAL` -- `handler`가 `NULL`입니다.
+- `ENOTSUP` -- Gateway는 send-ready callback attach를 지원하지 않습니다.
 
 전체 내용은 [socket.ko.md](socket.ko.md)를 참조하세요.
 

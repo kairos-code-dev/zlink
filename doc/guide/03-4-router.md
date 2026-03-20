@@ -53,7 +53,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_recv_handler(router, on_message, NULL);
+/* Receive with zlink_recv() */
 ```
 
 ### Sending Messages
@@ -70,13 +70,9 @@ zlink_send_rid(router, source_rid, &reply, 1, 0);
 
 ### Receive Modes
 
-ROUTER registers a handler via `zlink_recv_handler()`. The callback
-receives `source_rid` identifying the sending peer, and `parts[]`
-containing the application data frames (routing_id is separated
-automatically by the I/O thread).
-
-**Callback mode** (recommended): attach a handler at socket creation.
-Use `source_rid` to reply to the correct peer.
+ROUTER is recv/poller-only in the public API. `zlink_recv()` returns
+`source_rid` identifying the sending peer and `parts[]` containing the
+application data frames.
 
 **Pull mode**: without attaching a handler, call `zlink_recv()` to
 receive synchronously. The `source_rid_out` parameter receives the
@@ -193,7 +189,7 @@ void on_request(const zlink_routing_id_t *source_rid,
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_recv_handler(router, on_request, NULL);
+/* Receive with zlink_recv() */
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -202,13 +198,13 @@ zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* Client 1 */
 void *d1 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_recv_handler(d1, on_reply, NULL);
+/* Receive replies with zlink_recv() */
 zlink_set_routing_id(d1, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* Client 2 */
 void *d2 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_recv_handler(d2, on_reply, NULL);
+/* Receive replies with zlink_recv() */
 zlink_set_routing_id(d2, "D2", 2);
 zlink_connect(d2, endpoint);
 

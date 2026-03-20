@@ -140,13 +140,9 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     add_current_bench_multi(comp_src_spot_client
                            multi/src/perf_multi_spot_client.cpp)
     add_current_bench_multi(comp_src_stream_server
-                           multi/src/perf_multi_stream_callback_server.cpp)
+                           multi/src/perf_multi_stream_server.cpp)
     target_compile_definitions(comp_src_stream_server PRIVATE
-                               PERF_MULTI_STREAM_PATTERN_NAME="STREAM")
-    add_current_bench_multi(comp_src_stream_callback_server
-                           multi/src/perf_multi_stream_callback_server.cpp)
-    target_compile_definitions(comp_src_stream_callback_server PRIVATE
-                               PERF_MULTI_STREAM_PATTERN_NAME="STREAM_CALLBACK")
+                               PERF_MULTI_STREAM_PATTERN_NAME="MULTI_STREAM")
 else()
     message(WARNING "zlink headers not found at ${ZLINK_INCLUDE_DIR}")
 endif()

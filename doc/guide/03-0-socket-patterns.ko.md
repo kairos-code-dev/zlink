@@ -113,8 +113,8 @@ void on_message(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-/* 3. 소켓 생성 (수신용 핸들러 등록) */
-void *socket = zlink_socket(ctx, ZLINK_<TYPE>);
+/* 3. 소켓 생성 (raw STREAM callback 예제) */
+void *socket = zlink_socket(ctx, ZLINK_STREAM);
 zlink_recv_handler(socket, on_message, NULL);
 
 /* 4. 소켓 옵션 설정 (bind/connect 전) */
@@ -137,8 +137,8 @@ zlink_ctx_term(ctx);
 > `zlink_set_routing_id()`, `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (`zlink_set_router_option()` 사용), `ZLINK_ROUTER_OPT_PROBE` (`zlink_set_router_option()` 사용), `zlink_set_tls_server()` / `zlink_set_tls_client()`.
 > 그 외 옵션(`ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_LINGER`, `ZLINK_OPT_SNDTIMEO` 등)은 bind/connect 이후에도 변경 가능하다.
 
-> 위는 callback 수신 모드 예제다. `zlink_recv()`를 사용한 pull 방식 수신도
-> 가능하다. 두 모드의 비교는
+> 위 예제는 raw `STREAM` callback 형태다. 다른 raw socket 계열은 recv/poller가
+> canonical 모델이다. 두 모드의 비교는
 > [Core API](02-core-api.ko.md) 섹션 3.2를 참고.
 
 > **Callback 모드 제약:** `zlink_recv_handler()` 설치 후 `zlink_recv()`는

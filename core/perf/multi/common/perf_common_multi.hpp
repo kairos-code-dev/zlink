@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <cerrno>
 #include <cstring>
+#include <cctype>
+#include <iostream>
 #include <string>
 
 struct bench_settings_t
@@ -40,35 +42,81 @@ inline int resolve_int_env (const char *env_name,
     return static_cast<int> (parsed);
 }
 
+inline const char *resolve_multi_env_value (const char *env_name,
+                                            const char *legacy_name = NULL)
+{
+    if (env_name && *env_name) {
+        const char *value = std::getenv (env_name);
+        if (value && *value)
+            return value;
+    }
+
+    if (legacy_name && *legacy_name) {
+        const char *value = std::getenv (legacy_name);
+        if (value && *value)
+            return value;
+    }
+
+    return NULL;
+}
+
+inline int resolve_multi_int_env_with_fallback (const char *env_name,
+                                                const char *legacy_name,
+                                                int default_value,
+                                                int min_value)
+{
+    const char *value = resolve_multi_env_value (env_name, legacy_name);
+    if (!value)
+        return default_value;
+
+    char *end = NULL;
+    errno = 0;
+    const long parsed = std::strtol (value, &end, 10);
+    if (errno != 0 || end == value)
+        return default_value;
+
+    if (parsed < min_value)
+        return min_value;
+    return static_cast<int> (parsed);
+}
+
+inline std::string normalize_multi_pattern_name (const char *pattern)
+{
+    if (!pattern || !*pattern)
+        return std::string ();
+
+    std::string normalized (pattern);
+    std::transform (normalized.begin (), normalized.end (), normalized.begin (),
+                    ::toupper);
+    if (normalized.compare (0, 6, "MULTI_") == 0)
+        normalized.erase (0, 6);
+    return normalized;
+}
+
 inline int resolve_default_hwm (const char *pattern, int clients)
 {
     (void) clients;
+    const std::string normalized = normalize_multi_pattern_name (pattern);
 
-    if (pattern && *pattern) {
-        const bool is_stream_variant =
-          std::strcmp (pattern, "STREAM") == 0;
-        if (is_stream_variant)
-            return 10;
-    }
+    if (normalized == "STREAM")
+        return 10;
 
     return 100;
 }
 
 inline int resolve_default_clients (const char *pattern)
 {
-    if (pattern && *pattern) {
-        const bool is_stream_variant =
-          std::strcmp (pattern, "STREAM") == 0;
-        if (is_stream_variant)
-            return 10000;
-    }
+    const std::string normalized = normalize_multi_pattern_name (pattern);
+    if (normalized == "STREAM")
+        return 10000;
 
     return 100;
 }
 
 inline size_t resolve_service_clients (size_t requested_clients)
 {
-    const int override_clients = resolve_int_env (
+    const int override_clients = resolve_multi_int_env_with_fallback (
+      "PERF_MULTI_SERVICE_CLIENTS",
       "PERF_SERVICE_CLIENTS",
       0,
       1);
@@ -83,21 +131,36 @@ inline size_t resolve_service_clients (size_t requested_clients)
 inline bench_settings_t resolve_bench_settings ()
 {
     bench_settings_t settings;
-    const char *pattern = std::getenv ("PERF_PATTERN");
-    const int resolved_clients = resolve_int_env (
-      "PERF_CLIENTS", resolve_default_clients (pattern), 1);
+    const char *pattern =
+      resolve_multi_env_value ("PERF_MULTI_PATTERN", "PERF_PATTERN");
+    const int resolved_clients = resolve_multi_int_env_with_fallback (
+      "PERF_MULTI_CLIENTS",
+      "PERF_CLIENTS",
+      resolve_default_clients (pattern),
+      1);
     settings.clients = static_cast<size_t> (resolved_clients);
-    settings.hwm = resolve_int_env (
-      "PERF_HWM", resolve_default_hwm (pattern, resolved_clients), 1);
+    settings.hwm = resolve_multi_int_env_with_fallback (
+      "PERF_MULTI_HWM",
+      "PERF_HWM",
+      resolve_default_hwm (pattern, resolved_clients),
+      1);
     settings.warmup_seconds =
-      resolve_int_env ("PERF_WARMUP_SECONDS", 2, 0);
+      resolve_multi_int_env_with_fallback (
+        "PERF_MULTI_WARMUP_SECONDS", "PERF_WARMUP_SECONDS", 2, 0);
     settings.active_warmup =
-      resolve_int_env ("PERF_ACTIVE_WARMUP", 0, 0);
+      resolve_multi_int_env_with_fallback (
+        "PERF_MULTI_ACTIVE_WARMUP", "PERF_ACTIVE_WARMUP", 0, 0);
     settings.duration_seconds =
-      resolve_int_env ("PERF_DURATION_SECONDS", 5, 1);
-    settings.settle_ms = resolve_int_env ("PERF_SETTLE_MS", 500, 0);
+      resolve_multi_int_env_with_fallback (
+        "PERF_MULTI_DURATION_SECONDS", "PERF_DURATION_SECONDS", 5, 1);
+    settings.settle_ms = resolve_multi_int_env_with_fallback (
+      "PERF_MULTI_SETTLE_MS", "PERF_SETTLE_MS", 500, 0);
     settings.connect_ready_timeout_ms =
-      resolve_int_env ("PERF_CONNECT_READY_TIMEOUT_MS", 5000, 0);
+      resolve_multi_int_env_with_fallback (
+        "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
+        "PERF_CONNECT_READY_TIMEOUT_MS",
+        5000,
+        0);
     return settings;
 }
 
@@ -123,12 +186,20 @@ inline int resolve_multi_int_env (const char *env_name,
                                    int default_value,
                                    int min_value)
 {
-    return resolve_int_env (env_name, default_value, min_value);
+    return resolve_multi_int_env_with_fallback (
+      env_name, NULL, default_value, min_value);
+}
+
+inline bool multi_perf_callback_supported_for_pattern (const char *pattern)
+{
+    const std::string normalized = normalize_multi_pattern_name (pattern);
+    return normalized == "SPOT" || normalized == "STREAM";
 }
 
 inline std::string resolve_multi_perf_recv_mode ()
 {
-    const char *env = std::getenv ("PERF_RECV_MODE");
+    const char *env =
+      resolve_multi_env_value ("PERF_RECV_MODE", NULL);
     if (!env || !*env)
         return "recv";
 
@@ -136,6 +207,16 @@ inline std::string resolve_multi_perf_recv_mode ()
     std::transform (mode.begin (), mode.end (), mode.begin (), ::tolower);
     if (mode != "recv" && mode != "callback")
         return "recv";
+    if (mode == "callback") {
+        const char *pattern =
+          resolve_multi_env_value ("PERF_MULTI_PATTERN", "PERF_PATTERN");
+        if (pattern && *pattern
+            && !multi_perf_callback_supported_for_pattern (pattern)) {
+            std::cerr << "policy violation: --recv callback unsupported for "
+                      << pattern << std::endl;
+            std::exit (1);
+        }
+    }
     return mode;
 }
 

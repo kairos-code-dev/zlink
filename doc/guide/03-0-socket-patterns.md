@@ -113,8 +113,8 @@ void on_message(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-/* 3. Create Socket (with handler for receiving) */
-void *socket = zlink_socket(ctx, ZLINK_<TYPE>);
+/* 3. Create Socket (raw STREAM callback example) */
+void *socket = zlink_socket(ctx, ZLINK_STREAM);
 zlink_recv_handler(socket, on_message, NULL);
 
 /* 4. Set socket options (before bind/connect) */
@@ -138,9 +138,9 @@ zlink_ctx_term(ctx);
 > `zlink_set_routing_id()`, `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (via `zlink_set_router_option()`), `ZLINK_ROUTER_OPT_PROBE` (via `zlink_set_router_option()`), `zlink_set_tls_server()` / `zlink_set_tls_client()`.
 > Other options (`ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_LINGER`, `ZLINK_OPT_SNDTIMEO`, etc.) can be changed after bind/connect.
 
-> The example above uses callback receive mode. Pull-style receive via
-> `zlink_recv()` is also supported. For a comparison of the two modes,
-> see [Core API](02-core-api.md) section 3.2.
+> The example above is the raw `STREAM` callback form. Other raw socket
+> families use recv/poller as the canonical model. For a comparison of the
+> two modes, see [Core API](02-core-api.md) section 3.2.
 
 > **Callback mode constraints:** After installing `zlink_recv_handler()`,
 > `zlink_recv()` returns `EBUSY` (irreversible transition). The following

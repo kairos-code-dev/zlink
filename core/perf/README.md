@@ -51,8 +51,7 @@ Current single recv-mode support:
 
 - `recv`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
   `ROUTER_ROUTER`, `GATEWAY`, `SPOT`
-- `callback`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
-  `ROUTER_ROUTER`, `GATEWAY`, `SPOT`
+- `callback`: `SPOT` only
 
 Unsupported combinations fail fast instead of silently falling back.
 
@@ -124,8 +123,9 @@ results/
 
 Current multi recv-mode support:
 
-- `recv`: `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `STREAM`
-- `callback`: `DEALER_DEALER`, `PUBSUB`, `GATEWAY`, `SPOT`, `STREAM`
+- `recv`: `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`,
+  `GATEWAY`, `SPOT`, `STREAM`
+- `callback`: `SPOT`, `STREAM`
 
 Unsupported combinations fail fast instead of silently falling back.
 

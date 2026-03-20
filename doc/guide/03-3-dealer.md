@@ -59,16 +59,9 @@ zlink_send(dealer, &msg3, 1, 0);
 
 ### Receive Modes
 
-DEALER registers a handler via `zlink_recv_handler()`. The callback
-receives `source_rid` (always empty — DEALER strips the routing_id
-frame) and a `parts[]` array.
-
-**Callback mode** (recommended): attach a handler at socket creation.
-Messages from all peers arrive via fair-queue and are dispatched
-asynchronously.
-
-**Pull mode**: without attaching a handler, call `zlink_recv()` to
-receive synchronously.
+DEALER is recv/poller-only in the public API. Use `zlink_recv()` to
+receive synchronously. `source_rid` is always empty because DEALER strips
+the routing-id frame.
 
 ```c
 zlink_routing_id_t source_rid;
@@ -166,12 +159,12 @@ void on_request(const zlink_routing_id_t *source_rid,
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_recv_handler(router, on_request, NULL);
+/* Receive with zlink_recv() */
 zlink_bind(router, "tcp://*:5558");
 
 /* Client: DEALER */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-zlink_recv_handler(dealer, on_reply, NULL);
+/* Receive replies with zlink_recv() */
 zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
@@ -208,7 +201,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_recv_handler(router, on_message, NULL);
+/* Receive with zlink_recv() */
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -268,7 +261,7 @@ void worker_thread(void *arg) {
     }
 
     void *worker = zlink_socket(ctx, ZLINK_DEALER);
-    zlink_recv_handler(worker, on_work, NULL);
+    /* Receive work with zlink_recv() */
     zlink_connect(worker, "inproc://backend");
 
     /* Worker stays alive until socket is closed */
@@ -283,11 +276,11 @@ Both sides use DEALER for fully asynchronous P2P communication.
 
 ```c
 void *a = zlink_socket(ctx, ZLINK_DEALER);
-zlink_recv_handler(a, on_message_a, NULL);
+/* Receive with zlink_recv() */
 zlink_bind(a, "tcp://*:5558");
 
 void *b = zlink_socket(ctx, ZLINK_DEALER);
-zlink_recv_handler(b, on_message_b, NULL);
+/* Receive with zlink_recv() */
 zlink_connect(b, "tcp://127.0.0.1:5558");
 
 /* Bidirectional free send */

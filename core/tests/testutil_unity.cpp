@@ -32,14 +32,6 @@ void discard_test_spot_parts (const zlink_routing_id_t *,
 {
     zlink_multipart_close (parts_, part_count_);
 }
-
-void discard_test_xpub_event (const zlink_routing_id_t *,
-                              int,
-                              const char *,
-                              size_t,
-                              void *)
-{
-}
 }
 
 int test_attach_discard_handler_for_type (void *socket_, int type_)
@@ -55,8 +47,6 @@ int test_attach_discard_handler_for_type (void *socket_, int type_)
             return zlink_subscribe_handler (socket_, &discard_test_spot_parts,
                                             NULL);
         case ZLINK_SOCKET_XPUB:
-            return zlink_subscription_event_handler (
-              socket_, &discard_test_xpub_event, NULL);
         case ZLINK_SOCKET_PUB:
             return 0;
         default:

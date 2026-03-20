@@ -5,8 +5,8 @@
 ## 1. 개요
 
 Gateway는 Discovery 기반으로 서비스를 자동 발견하고, 로드밸런싱된 메시지
-전송과 recv/callback 두 모델의 수신을 지원하는 통합 서비스 핸들이다. 하나의 Gateway 핸들이
-클라이언트(송신)와 서버(수신) 역할을 모두 수행할 수 있다.
+전송과 recv/poller 기반 수신을 지원하는 통합 서비스 핸들이다. 하나의
+Gateway 핸들이 클라이언트(송신)와 서버(수신) 역할을 모두 수행할 수 있다.
 
 > **명칭에 대하여**: Gateway는 특정 서비스에 대한 접근점(entry point)이자
 > 클라이언트 사이드 로드밸런서다. API Gateway(Kong, AWS API Gateway 등)처럼
@@ -24,29 +24,9 @@ runtime에 호출 가능한 control path이며, `destroy`는 fail-fast lifecycle
 Gateway는 생성 시점에 서비스 이름만 고정한다. routing id와 I/O 모델 설정은
 후속 단계로 분리된다.
 
-Gateway는 **recv 모드**로 시작한다. `zlink_gateway_recv()`로 메시지를
-직접 수신하거나, `zlink_recv_handler()`를 호출해서 **callback 모드**로
-일방 전환할 수 있다. 전환은 되돌릴 수 없다.
-
-### Callback 모드
-
-```c
-/* 수신 핸들러 정의 */
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* 수신 메시지 처리 */
-    printf("수신: %.*s\n",
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
-    /* parts는 핸들러 반환 후 자동 정리됨 */
-}
-
-void *gateway = zlink_gateway_new(ctx, "payment-service");
-zlink_set_routing_id(gateway, "gateway-1", 9);
-zlink_recv_handler(gateway, on_message, NULL);
-```
+Gateway는 **recv 모드**로 시작하며 수명 전체에서 그 모델을 유지한다.
+`zlink_recv_handler(gateway, ...)`, `zlink_send_ready_handler(gateway, ...)`
+는 Gateway에서 지원되지 않으며 `ENOTSUP`를 반환한다.
 
 ### Recv 모드
 
@@ -59,28 +39,7 @@ zlink_set_routing_id(gateway, "gateway-1", 9);
 ## 3. 서버 (수신) 측 설정
 
 서버 역할을 하려면 Gateway에 endpoint를 bind하고, Discovery를 통해
-Registry에 등록한다. 어떤 I/O 모델이든 서버 측 수신에 사용할 수 있다.
-
-### Callback 모드 서버
-
-```c
-void *ctx = zlink_ctx_new();
-
-/* Discovery 설정 */
-void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
-zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
-
-/* Gateway 생성 (수신 핸들러 등록) */
-void *server = zlink_gateway_new(ctx, "payment-service");
-zlink_set_routing_id(server, "payment-server-1", 16);
-zlink_recv_handler(server, on_request, NULL);
-
-/* Discovery 연결 */
-zlink_gateway_attach_discovery(server, discovery);
-
-/* 비즈니스 소켓 bind */
-zlink_gateway_bind(server, "tcp://*:5555");
-```
+Registry에 등록한다. 서버 측 수신은 `zlink_gateway_recv()`로 모델링한다.
 
 ### Recv 모드 서버
 
@@ -109,24 +68,8 @@ while (zlink_gateway_recv(server, &source_rid, &parts, &part_count, 0) == 0) {
 
 ## 4. 클라이언트 (송신) 측 설정
 
-### Callback 모드 클라이언트
-
-```c
-/* Discovery 설정 */
-void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
-zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
-
-/* Gateway 생성 */
-void *client = zlink_gateway_new(ctx, "payment-service");
-zlink_set_routing_id(client, "client-1", 8);
-zlink_recv_handler(client, on_reply, NULL);
-
-/* Discovery 연결 */
-zlink_gateway_attach_discovery(client, discovery);
-
-/* 로드밸런싱 설정 */
-zlink_gateway_set_lb_strategy(client, ZLINK_GATEWAY_LB_ROUND_ROBIN);
-```
+Gateway 클라이언트도 recv 모드를 유지한다. Discovery를 연결하고 send 이후
+`zlink_gateway_recv()`로 응답을 수신한다.
 
 ### Recv 모드 클라이언트
 
@@ -163,9 +106,8 @@ zlink_gateway_send_rid(client, &target_rid, &part, 1, 0);
 
 ### 5.3 메시지 수신
 
-Gateway는 recv 모드로 시작한다. `zlink_gateway_recv()`로 직접 수신하거나,
-`zlink_recv_handler()`를 설치해서 callback 모드로 한 번 전환할 수 있다.
-두 모델은 handle 수명 동안 상호 배타적이다.
+Gateway는 recv 모드를 유지한다. 요청/응답은 `zlink_gateway_recv()`로 직접
+수신한다.
 
 #### Recv 모드 (기본)
 
@@ -183,19 +125,8 @@ if (rc == 0) {
 }
 ```
 
-#### Callback 모드
-
-```c
-void on_reply(const zlink_routing_id_t *source_rid,
-              zlink_msg_t *parts, size_t part_count,
-              void *userdata)
-{
-    /* 응답 처리 -- parts ownership은 콜백이 소비 */
-}
-
-/* recv 모드에서 callback 모드로 일방 전환 */
-zlink_recv_handler(client, on_reply, NULL);
-```
+`zlink_recv_handler(gateway, ...)`는 Gateway에서 지원되지 않으며
+`ENOTSUP`를 반환한다.
 
 ## 6. 로드밸런싱
 
@@ -253,7 +184,6 @@ Gateway는 "모든 API가 같은 비용 모델"인 것은 아니지만, 공개 h
 /* Gateway는 thread-safe하므로 여러 스레드에서 공유 가능 */
 void *gateway = zlink_gateway_new(ctx, "my-service");
 zlink_set_routing_id(gateway, "gw-1", 4);
-zlink_recv_handler(gateway, on_reply, NULL);
 zlink_gateway_attach_discovery(gateway, discovery);
 
 /* 워커 스레드 함수 */
@@ -320,7 +250,7 @@ Gateway는 Discovery 이벤트를 받아 자동으로 피어를 연결/해제한
 
 ## 9. End-to-End 예제
 
-### Callback 모드
+### Recv 모드
 
 ```c
 void *ctx = zlink_ctx_new();
@@ -335,7 +265,6 @@ zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
 
 void *server = zlink_gateway_new(ctx, "echo-service");
 zlink_set_routing_id(server, "echo-server-1", 13);
-zlink_recv_handler(server, on_request, NULL);
 zlink_gateway_attach_discovery(server, server_discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
@@ -345,7 +274,6 @@ zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
 
 void *client = zlink_gateway_new(ctx, "echo-service");
 zlink_set_routing_id(client, "client-1", 8);
-zlink_recv_handler(client, on_reply, NULL);
 zlink_gateway_attach_discovery(client, client_discovery);
 
 /* gateway monitor로 route readiness 대기 */
@@ -423,8 +351,8 @@ zlink_ctx_term(ctx);
 |------|------|
 | `zlink_gateway_new(ctx, service_name)` | recv 모드 Gateway 생성 |
 | `zlink_set_routing_id(gateway, data, size)` | 첫 bind/connect 전 routing id 설정 |
-| `zlink_recv_handler(gateway, fn, userdata)` | callback 모드로 일방 전환 |
-| `zlink_gateway_recv(gateway, &rid, &parts, &count, flags)` | recv 모드에서 메시지 수신 (callback 모드에서 `EBUSY`) |
+| `zlink_recv_handler(gateway, fn, userdata)` | Gateway에서는 지원되지 않음 (`ENOTSUP`) |
+| `zlink_gateway_recv(gateway, &rid, &parts, &count, flags)` | recv 모드에서 메시지 수신 |
 | `zlink_gateway_attach_discovery(gateway, discovery)` | Discovery 연결 |
 | `zlink_gateway_bind(gateway, endpoint)` | 수신 endpoint bind (서버 역할) |
 | `zlink_gateway_send(gateway, parts, count, flags)` | 멀티파트 메시지 전송 (LB 적용) |

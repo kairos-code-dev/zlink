@@ -182,7 +182,7 @@ void on_message(const zlink_routing_id_t *source_rid,
     }
 }
 
-void *socket = zlink_socket(ctx, ZLINK_PAIR);
+void *socket = zlink_socket(ctx, ZLINK_STREAM);
 zlink_recv_handler(socket, on_message, NULL);
 ```
 
@@ -201,9 +201,8 @@ Each socket type uses a dedicated registration function:
 
 | Socket Type | Registration Call | Callback Signature |
 |---|---|---|
-| PAIR, DEALER, ROUTER, STREAM | `zlink_recv_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)` |
-| SUB, XSUB | `zlink_subscribe_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)` |
-| XPUB | `zlink_subscription_event_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *source_rid, int subscribed, const char *topic, size_t topic_len, void *userdata)` |
+| STREAM | `zlink_recv_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)` |
+| spot, spot_node | `zlink_subscribe_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)` |
 | PUB | N/A | Send-only socket |
 
 Callbacks are invoked on the I/O thread. Avoid blocking work inside callbacks.
@@ -269,12 +268,12 @@ int main(void) {
 
     /* ROUTER (server) */
     void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    zlink_recv_handler(router, on_router_message, NULL);
+    /* Receive with zlink_recv() */
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (client) */
     void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-    zlink_recv_handler(dealer, on_dealer_message, NULL);
+    /* Receive with zlink_recv() */
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */

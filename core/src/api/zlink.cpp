@@ -84,9 +84,6 @@ int zlink_ctx_set_ext (void *ctx_, int option_, const void *optval_, size_t optv
 int zlink_recv_spot_handler (void *s_,
                              zlink_subscribe_handler_fn handler_,
                              void *userdata_);
-int zlink_recv_xpub_handler (void *s_,
-                             zlink_subscription_event_handler_fn handler_,
-                             void *userdata_);
 int zlink_set_subscription (void *handle_, const char *filter_);
 int zlink_unset_subscription (void *handle_, const char *filter_);
 
@@ -151,14 +148,6 @@ static void discard_spot_parts (const zlink_routing_id_t *,
                                 void *)
 {
     zlink_multipart_close (parts_, part_count_);
-}
-
-static void discard_xpub_event (const zlink_routing_id_t *,
-                                int,
-                                const char *,
-                                size_t,
-                                void *)
-{
 }
 
 static bool is_valid_pubsub_filter (const char *filter_,
@@ -641,17 +630,6 @@ static zlink::spot_sub_t *as_spot_sub_side_handle (void *handle_)
     return sub->check_tag () ? sub : NULL;
 }
 
-static int gateway_transition_to_callback_mode (zlink::gateway_t *gateway_)
-{
-    if (!gateway_) {
-        errno = EFAULT;
-        return -1;
-    }
-    gateway_mode_registry_t &registry = gateway_mode_registry ();
-    zlink::scoped_lock_t lock (registry.sync);
-    return transition_service_to_callback_mode (&registry.states[gateway_]);
-}
-
 static int spot_node_transition_to_callback_mode (zlink::spot_node_t *node_)
 {
     if (!node_) {
@@ -683,17 +661,6 @@ static int gateway_require_recv_model (zlink::gateway_t *gateway_)
     gateway_mode_registry_t &registry = gateway_mode_registry ();
     zlink::scoped_lock_t lock (registry.sync);
     return ensure_service_recv_model (&registry.states[gateway_]);
-}
-
-static void gateway_revert_callback_transition (zlink::gateway_t *gateway_)
-{
-    if (!gateway_)
-        return;
-    gateway_mode_registry_t &registry = gateway_mode_registry ();
-    zlink::scoped_lock_t lock (registry.sync);
-    service_mode_state_t &state = registry.states[gateway_];
-    state.callback_installed = false;
-    state.model = service_io_model_recv;
 }
 
 static int spot_node_require_recv_model (zlink::spot_node_t *node_)
@@ -738,17 +705,6 @@ static void spot_revert_callback_transition (spot_handle_t *spot_)
     service_mode_state_t &state = registry.states[spot_];
     state.callback_installed = false;
     state.model = service_io_model_recv;
-}
-
-static int gateway_require_callback_model (zlink::gateway_t *gateway_)
-{
-    if (!gateway_) {
-        errno = EFAULT;
-        return -1;
-    }
-    gateway_mode_registry_t &registry = gateway_mode_registry ();
-    zlink::scoped_lock_t lock (registry.sync);
-    return ensure_service_callback_model (&registry.states[gateway_]);
 }
 
 static int spot_node_require_callback_model (zlink::spot_node_t *node_)
@@ -2206,10 +2162,6 @@ static void discard_spot_handler (const zlink_routing_id_t *,
         zlink_msg_close (&parts_[i]);
 }
 
-static void discard_xpub_handler (int, const uint8_t *, size_t, void *)
-{
-}
-
 static void spot_sub_side_handler_adapter (const zlink_routing_id_t *source_rid_,
                                            const char *topic_,
                                            size_t topic_len_,
@@ -2405,31 +2357,19 @@ int zlink_recv_handler (void *s_,
                         zlink_socket_msg_handler_fn handler_,
                         void *userdata_)
 {
+    if (!handler_) {
+        errno = EINVAL;
+        return -1;
+    }
+
     if (is_registered_gateway_handle (s_)) {
-        zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (s_);
-        if (!handler_) {
-            errno = EINVAL;
-            return -1;
-        }
-        zlink::service_public_api_scope_t admission (gateway->public_api_guard ());
-        if (!admission.acquired ())
-            return -1;
-        if (gateway_transition_to_callback_mode (gateway) != 0)
-            return -1;
-        const int rc = gateway->set_handler (handler_, userdata_);
-        if (rc != 0)
-            gateway_revert_callback_transition (gateway);
-        return rc;
+        errno = ENOTSUP;
+        return -1;
     }
 
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-
-    if (!handler_) {
-        errno = EINVAL;
-        return -1;
-    }
 
     if (handler_ == &discard_socket_parts) {
         errno = EINVAL;
@@ -2439,17 +2379,19 @@ int zlink_recv_handler (void *s_,
     const int type = socket_type (handle);
     switch (type) {
         case ZLINK_CORE_SOCKET_PAIR:
-        case ZLINK_CORE_SOCKET_SUB:
-        case ZLINK_CORE_SOCKET_XSUB:
         case ZLINK_CORE_SOCKET_DEALER:
         case ZLINK_CORE_SOCKET_ROUTER:
-            return handle.socket->socket_set_msg_handler_with_userdata (
-              handler_, NULL, userdata_);
+        case ZLINK_CORE_SOCKET_SUB:
+        case ZLINK_CORE_SOCKET_XSUB:
+        case ZLINK_CORE_SOCKET_PUB:
+        case ZLINK_CORE_SOCKET_XPUB:
+            errno = ENOTSUP;
+            return -1;
         case ZLINK_CORE_SOCKET_STREAM:
             return handle.socket->stream_set_msg_handler_with_userdata (
               handler_, userdata_);
         default:
-            errno = EINVAL;
+            errno = ENOTSUP;
             return -1;
     }
 }
@@ -2465,28 +2407,17 @@ int zlink_recv_spot_handler (void *s_,
                              zlink_subscribe_handler_fn handler_,
                              void *userdata_)
 {
-    if (zlink::spot_sub_t *sub = as_spot_sub_side_handle (s_)) {
-        if (!handler_) {
-            errno = EINVAL;
-            return -1;
-        }
-        if (handler_ == &discard_spot_parts) {
-            errno = EINVAL;
-            return -1;
-        }
-        return install_spot_sub_handler (sub, handler_, userdata_);
+    if (!handler_) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (handler_ == &discard_spot_parts) {
+        errno = EINVAL;
+        return -1;
     }
 
     if (is_registered_spot_handle (s_)) {
         spot_handle_t *spot = static_cast<spot_handle_t *> (s_);
-        if (!handler_) {
-            errno = EINVAL;
-            return -1;
-        }
-        if (handler_ == &discard_spot_parts) {
-            errno = EINVAL;
-            return -1;
-        }
         zlink::service_public_api_scope_t admission (spot->public_api);
         if (!admission.acquired ())
             return -1;
@@ -2508,14 +2439,6 @@ int zlink_recv_spot_handler (void *s_,
 
     if (is_registered_spot_node_handle (s_)) {
         zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (s_);
-        if (!handler_) {
-            errno = EINVAL;
-            return -1;
-        }
-        if (handler_ == &discard_spot_parts) {
-            errno = EINVAL;
-            return -1;
-        }
         zlink::service_public_api_scope_t admission (node->public_api_guard ());
         if (!admission.acquired ())
             return -1;
@@ -2531,60 +2454,10 @@ int zlink_recv_spot_handler (void *s_,
     if (!handle.socket)
         return -1;
 
-    if (!handler_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (handler_ == &discard_spot_parts) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    const int type = socket_type (handle);
-    if (type != ZLINK_CORE_SOCKET_SUB && type != ZLINK_CORE_SOCKET_XSUB) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    return handle.socket->socket_set_spot_handler_with_userdata (
-      handler_, userdata_);
-}
-
-int zlink_subscription_event_handler (
-  void *s_,
-  zlink_subscription_event_handler_fn handler_,
-  void *userdata_)
-{
-    return zlink_recv_xpub_handler (s_, handler_, userdata_);
-}
-
-int zlink_recv_xpub_handler (void *s_,
-                             zlink_subscription_event_handler_fn handler_,
-                             void *userdata_)
-{
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return -1;
-
-    if (!handler_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (handler_ == &discard_xpub_event) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    const int type = socket_type (handle);
-    if (type != ZLINK_CORE_SOCKET_XPUB) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    return handle.socket->socket_set_xpub_handler_with_userdata (
-      handler_, userdata_);
+    LIBZLINK_UNUSED (handle);
+    LIBZLINK_UNUSED (userdata_);
+    errno = ENOTSUP;
+    return -1;
 }
 
 static int socket_send_ready_handler_internal (
@@ -2596,9 +2469,18 @@ static int socket_send_ready_handler_internal (
     if (!handle.socket)
         return -1;
 
-    const int type = socket_type (handle);
-    if (type == ZLINK_CORE_SOCKET_SUB || type == ZLINK_CORE_SOCKET_XSUB) {
+    if (!handler_) {
         errno = EINVAL;
+        return -1;
+    }
+
+    const int type = socket_type (handle);
+    if (type != ZLINK_CORE_SOCKET_STREAM) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    if (!handle.socket->stream_dispatch_active ()) {
+        errno = EBUSY;
         return -1;
     }
 
@@ -2610,19 +2492,14 @@ int zlink_send_ready_handler (void *s_,
                               zlink_send_ready_handler_fn handler_,
                               void *userdata_)
 {
+    if (!handler_) {
+        errno = EINVAL;
+        return -1;
+    }
+
     if (is_registered_gateway_handle (s_)) {
-        zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (s_);
-        if (!gateway->check_tag ()) {
-            errno = EFAULT;
-            return -1;
-        }
-        zlink::service_public_api_scope_t admission (
-          gateway->public_api_guard ());
-        if (!admission.acquired ())
-            return -1;
-        if (gateway_require_callback_model (gateway) != 0)
-            return -1;
-        return gateway->set_send_ready_handler (handler_, userdata_);
+        errno = ENOTSUP;
+        return -1;
     }
 
     if (is_registered_spot_handle (s_)) {
@@ -2657,6 +2534,20 @@ int zlink_send_ready_handler (void *s_,
     }
 
     return socket_send_ready_handler_internal (s_, handler_, userdata_);
+}
+
+static int validate_stream_callback_poller_events (socket_handle_t handle_,
+                                                   short events_)
+{
+    if (!handle_.socket || socket_type (handle_) != ZLINK_CORE_SOCKET_STREAM)
+        return 0;
+    if (!handle_.socket->stream_dispatch_active ())
+        return 0;
+    if ((events_ & ZLINK_POLLOUT) == 0)
+        return 0;
+
+    errno = EBUSY;
+    return -1;
 }
 
 int zlink_close (void *s_)
@@ -5678,6 +5569,10 @@ int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_)
             socket_handle_t handle = as_socket_handle (items_[i].socket);
             if (!handle.socket)
                 return -1;
+            if (validate_stream_callback_poller_events (handle,
+                                                        items_[i].events)
+                != 0)
+                return -1;
             if (poller.add (handle.socket, NULL, items_[i].events) != 0)
                 return -1;
         } else if (poller.add_fd (items_[i].fd, NULL, items_[i].events) != 0) {
@@ -5816,6 +5711,8 @@ int zlink_poller_add (void *poller_,
     socket_handle_t handle = as_socket_handle (socket_);
     if (!handle.socket)
         return -1;
+    if (validate_stream_callback_poller_events (handle, events_) != 0)
+        return -1;
     return poller_add_registration (poller, handle.socket, user_data_, events_,
                                     socket_, poller_subject_none);
 }
@@ -5858,6 +5755,8 @@ int zlink_poller_modify (void *poller_, void *socket_, short events_)
     }
     socket_handle_t handle = as_socket_handle (socket_);
     if (!handle.socket)
+        return -1;
+    if (validate_stream_callback_poller_events (handle, events_) != 0)
         return -1;
     const int index = poller_find_registration_index (poller, socket_);
     if (index < 0) {

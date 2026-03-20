@@ -59,14 +59,8 @@ zlink_send(dealer, &msg3, 1, 0);
 
 ### 수신 모드
 
-DEALER는 `zlink_recv_handler()`로 핸들러를 등록한다. 콜백은
-`source_rid` (항상 비어 있음 — DEALER는 routing_id 프레임을 제거)와
-`parts[]` 배열을 수신한다.
-
-**Callback 모드** (권장): 소켓 생성 시 핸들러를 부착한다. 모든 피어의
-메시지가 fair-queue로 도착하며 비동기로 dispatch된다.
-
-**Pull 모드**: 핸들러를 부착하지 않으면 `zlink_recv()`로 동기 수신한다.
+DEALER의 public API는 recv/poller-only다. `zlink_recv()`로 동기 수신하며,
+`source_rid`는 DEALER가 routing-id 프레임을 제거하므로 항상 비어 있다.
 
 ```c
 zlink_routing_id_t source_rid;
@@ -164,12 +158,12 @@ void on_request(const zlink_routing_id_t *source_rid,
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_recv_handler(router, on_request, NULL);
+/* zlink_recv()로 수신 */
 zlink_bind(router, "tcp://*:5558");
 
 /* 클라이언트: DEALER */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-zlink_recv_handler(dealer, on_reply, NULL);
+/* zlink_recv()로 응답 수신 */
 zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
@@ -206,7 +200,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_recv_handler(router, on_message, NULL);
+/* zlink_recv()로 수신 */
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -266,7 +260,7 @@ void worker_thread(void *arg) {
     }
 
     void *worker = zlink_socket(ctx, ZLINK_DEALER);
-    zlink_recv_handler(worker, on_work, NULL);
+    /* zlink_recv()로 작업 수신 */
     zlink_connect(worker, "inproc://backend");
 
     /* 소켓이 닫힐 때까지 워커 유지 */
@@ -281,11 +275,11 @@ void worker_thread(void *arg) {
 
 ```c
 void *a = zlink_socket(ctx, ZLINK_DEALER);
-zlink_recv_handler(a, on_message_a, NULL);
+/* zlink_recv()로 수신 */
 zlink_bind(a, "tcp://*:5558");
 
 void *b = zlink_socket(ctx, ZLINK_DEALER);
-zlink_recv_handler(b, on_message_b, NULL);
+/* zlink_recv()로 수신 */
 zlink_connect(b, "tcp://127.0.0.1:5558");
 
 /* 양방향 자유 전송 */

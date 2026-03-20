@@ -63,13 +63,12 @@ void on_topic(const zlink_routing_id_t *source_rid,
 }
 
 void *sub = zlink_socket(ctx, ZLINK_SUB);
-zlink_subscribe_handler(sub, on_topic, NULL);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 
 /* 토픽 구독 — connect 후 설정 */
 zlink_set_subscription(sub, "weather");
 
-/* on_topic 콜백으로 메시지가 dispatch됨 */
+/* recv 모드를 유지하고 zlink_subscribe() 또는 zlink_recv()로 수신 */
 ```
 
 > 참고: `core/tests/test_pubsub.cpp` — 빈 구독("") → 모든 메시지 수신
@@ -79,14 +78,13 @@ zlink_set_subscription(sub, "weather");
 | 소켓 | 방향 | 등록 호출 | 비고 |
 |------|------|----------|------|
 | PUB | 송신 전용 | N/A | 수신 불가; 핸들러를 받지 않음 |
-| SUB | 수신 전용 | `zlink_subscribe_handler()` | `topic` + `parts[]` — prefix match로 토픽 추출 |
-| XPUB | 양방향 | `zlink_subscription_event_handler()` | 데이터가 아닌 구독 이벤트 수신 |
-| XSUB | 양방향 | `zlink_subscribe_handler()` | 구독 프레임 송신; fair-queue로 데이터 수신 |
+| SUB | 수신 전용 | `zlink_subscribe()` / `zlink_recv()` pull | raw SUB는 recv-only |
+| XPUB | 양방향 | `zlink_subscription_event()` pull | 데이터가 아닌 구독 이벤트 수신 |
+| XSUB | 양방향 | `zlink_subscribe()` / `zlink_recv()` pull | 구독 프레임 송신; fair-queue로 데이터 수신 |
 
-SUB가 `zlink_recv_handler()` 대신 `zlink_subscribe_handler()`를
-사용하는 이유는, I/O 스레드가 매칭된 토픽을 페이로드에서 분리한 뒤
-콜백을 호출하기 때문이다 — 핸들러는 `topic`과 `parts[]`를 별도
-파라미터로 수신한다.
+raw PUB/SUB 소켓의 canonical 모델은 recv/poller다. topic-aware pull은
+`zlink_subscribe()`로 제공되고, callback topic dispatch는 raw SUB/XSUB가
+아니라 `spot` / `spot_node`에 남아 있다.
 
 **Pull 모드**도 SUB에서 사용 가능하다: 핸들러를 부착하지 않고
 `zlink_recv()`를 호출하면 토픽 분리 없이 멀티파트 메시지를 수신한다.
@@ -191,7 +189,6 @@ zlink_bind(pub, "tcp://*:5556");
 
 /* SUB — 모든 메시지 수신 */
 void *sub = zlink_socket(ctx, ZLINK_SUB);
-zlink_subscribe_handler(sub, on_topic, NULL);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 zlink_set_subscription(sub, "");
 
@@ -308,7 +305,7 @@ zlink_publish(pub, "weather", &part, 1, 0);  /* OK */
 /* PUB에 zlink_send() 사용 → ENOTSUP */
 zlink_send(pub, &part, 1, 0);  /* errno = ENOTSUP */
 
-/* SUB: zlink_subscribe_handler()로 수신. send/publish 불가 */
+/* SUB: zlink_subscribe() / zlink_recv()로 수신. send/publish 불가 */
 zlink_publish(sub, "weather", &part, 1, 0);  /* errno = ENOTSUP */
 zlink_send(sub, &part, 1, 0);               /* errno = ENOTSUP */
 ```
@@ -340,9 +337,9 @@ request를 upstream PUB로 **forward할 수 없다**. 이것이 XSUB가 필요�
 
 | | PUB | XPUB |
 |---|-----|------|
-| **Recv** | 불가 | Subscription event를 callback으로 수신 |
+| **Recv** | 불가 | `zlink_subscription_event()`로 subscription event 수신 |
 | **Send** | 동일 (topic broadcast) | 동일 |
-| **Handler** | N/A | `zlink_subscription_event_handler()` |
+| **Handler** | N/A | N/A |
 
 XPUB는 어떤 client가 어떤 topic을 구독/해지했는지 알 수 있다.
 
@@ -363,15 +360,15 @@ XPUB는 어떤 client가 어떤 topic을 구독/해지했는지 알 수 있다.
                    └──────┘   └──┬───┘
                       ▲          │
                       │          ▼
-                   subscribe  on_subscription
-                   forward    callback 수신
+                   subscribe  이벤트
+                   forward    수신
 ```
 
 **Subscription 전파 흐름:**
 
 1. SUB가 `"weather"` topic 구독
-2. XPUB의 `subscription_event_handler` callback이
-   `(subscribed=1, topic="weather")` 수신
+2. 애플리케이션이 `zlink_subscription_event()`로 XPUB 이벤트를 pull하여
+   `(subscribed=1, topic="weather")`를 수신
 3. Proxy가 XSUB에 `zlink_set_subscription(xsub, "weather")` 호출 →
    upstream PUB에 subscription frame `[0x01 "weather"]` 전달
 4. PUB가 `"weather"` data를 publish
@@ -449,21 +446,19 @@ zlink_set_subscription(xsub, "A");
 zlink_unset_subscription(xsub, "A");
 ```
 
-XPUB는 구독 프레임을 콜백 핸들러로 수신한다:
+XPUB는 `zlink_subscription_event()`로 구독 프레임을 수신한다:
 
 ```c
-void on_subscription(const zlink_routing_id_t *source_rid,
-                     int subscribed, const char *topic, size_t topic_len,
-                     void *userdata)
-{
-    if (subscribed)
-        printf("새 구독: %.*s\n", (int)topic_len, topic);
-    else
-        printf("구독 해제: %.*s\n", (int)topic_len, topic);
-}
-
 void *xpub = zlink_socket(ctx, ZLINK_XPUB);
-zlink_subscription_event_handler(xpub, on_subscription, NULL);
+zlink_bind(xpub, "tcp://*:5557");
+
+zlink_routing_id_t source_rid;
+int subscribed = 0;
+char topic[256];
+size_t topic_len = sizeof(topic);
+
+zlink_subscription_event(
+  xpub, &source_rid, &subscribed, topic, &topic_len, 0);
 ```
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
@@ -486,7 +481,7 @@ zlink_subscription_event_handler(xpub, on_subscription, NULL);
 int manual = 1;
 zlink_set_pub_option(xpub, ZLINK_PUB_OPT_MANUAL, &manual, sizeof(manual));
 
-/* on_subscription 콜백에서 수신 후 subscribed=1, topic="A"
+/* zlink_subscription_event()로 subscribed=1, topic="A"를 받은 뒤
    변환된 구독 적용: */
 zlink_set_subscription(xpub, "XA");
 
@@ -531,17 +526,21 @@ zlink_proxy(xsub, xpub, NULL);
 int manual = 1;
 zlink_set_pub_option(xpub, ZLINK_PUB_OPT_MANUAL, &manual, sizeof(manual));
 
-/* on_subscription 콜백이 구독 요청을 처리 */
-void on_sub(const zlink_routing_id_t *source_rid,
-            int subscribed, const char *topic, size_t topic_len,
-            void *userdata)
-{
+for (;;) {
+    zlink_routing_id_t source_rid;
+    int subscribed = 0;
+    char topic[256];
+    size_t topic_len = sizeof(topic);
+
+    zlink_subscription_event(
+      xpub, &source_rid, &subscribed, topic, &topic_len, 0);
+
     if (subscribed) {
         /* 구독 등록 */
         zlink_set_subscription(xpub, topic);
 
         /* 업스트림에 구독 전파 (XSUB) */
-        zlink_subscribe(xsub, topic);
+        zlink_set_subscription(xsub, topic);
     } else {
         /* 구독 해제 */
         zlink_unset_subscription(xpub, topic);
@@ -558,21 +557,20 @@ void on_sub(const zlink_routing_id_t *source_rid,
 XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
 
 ```c
-void on_subscription(const zlink_routing_id_t *source_rid,
-                     int subscribed, const char *topic, size_t topic_len,
-                     void *userdata)
-{
-    if (subscribed)
-        printf("새 구독: %.*s\n", (int)topic_len, topic);
-    else
-        printf("구독 해제: %.*s\n", (int)topic_len, topic);
-}
-
 void *xpub = zlink_socket(ctx, ZLINK_XPUB);
-zlink_subscription_event_handler(xpub, on_subscription, NULL);
 zlink_bind(xpub, "tcp://*:5557");
 
-/* 구독 이벤트가 on_subscription 콜백으로 dispatch됨 */
+for (;;) {
+    zlink_routing_id_t source_rid;
+    int subscribed = 0;
+    char topic[256];
+    size_t topic_len = sizeof(topic);
+
+    zlink_subscription_event(
+      xpub, &source_rid, &subscribed, topic, &topic_len, 0);
+    printf("%s: %.*s\n", subscribed ? "새 구독" : "구독 해제",
+           (int) topic_len, topic);
+}
 ```
 
 ### 패턴 4: 구독자 해제 시 자동 unsubscribe
@@ -583,8 +581,8 @@ SUB가 연결을 끊으면 XPUB에 자동으로 unsubscribe 프레임이 전달�
 /* SUB 연결 해제 후 */
 zlink_close(sub);
 
-/* XPUB의 on_subscription 콜백이 해제 이벤트를 수신
-   (subscribed=0, topic=구독된 토픽) */
+/* 이어지는 zlink_subscription_event() 호출이
+   subscribed=0과 기존 구독 토픽을 반환 */
 ```
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `test_xpub_proxy_unsubscribe_on_disconnect()`

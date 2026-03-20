@@ -52,7 +52,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_recv_handler(router, on_message, NULL);
+/* zlink_recv()로 수신 */
 ```
 
 ### 메시지 송신
@@ -69,12 +69,8 @@ zlink_send_rid(router, source_rid, &reply, 1, 0);
 
 ### 수신 모드
 
-ROUTER는 `zlink_recv_handler()`로 핸들러를 등록한다. 콜백은
-송신 피어를 식별하는 `source_rid`와 애플리케이션 데이터 프레임을
-포함하는 `parts[]`를 수신한다 (routing_id는 I/O 스레드가 자동 분리).
-
-**Callback 모드** (권장): 소켓 생성 시 핸들러를 부착한다. `source_rid`를
-사용하여 올바른 피어에게 응답한다.
+ROUTER의 public API는 recv/poller-only다. `zlink_recv()`는 송신 피어를
+식별하는 `source_rid`와 애플리케이션 데이터 프레임 `parts[]`를 반환한다.
 
 **Pull 모드**: 핸들러를 부착하지 않으면 `zlink_recv()`로 동기 수신한다.
 `source_rid_out` 파라미터에 송신자의 routing_id가, `parts_out`에
@@ -190,7 +186,7 @@ void on_request(const zlink_routing_id_t *source_rid,
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_recv_handler(router, on_request, NULL);
+/* zlink_recv()로 수신 */
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -199,13 +195,13 @@ zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* 클라이언트 1 */
 void *d1 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_recv_handler(d1, on_reply, NULL);
+/* zlink_recv()로 응답 수신 */
 zlink_set_routing_id(d1, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* 클라이언트 2 */
 void *d2 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_recv_handler(d2, on_reply, NULL);
+/* zlink_recv()로 응답 수신 */
 zlink_set_routing_id(d2, "D2", 2);
 zlink_connect(d2, endpoint);
 

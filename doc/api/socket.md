@@ -3,11 +3,9 @@
 # Socket API Reference
 
 The Socket API provides functions for creating, configuring, binding,
-connecting, and performing I/O on zlink sockets. Message receiving supports
-two modes: callback dispatch via an attached handler, and synchronous pull
-via `zlink_recv()`. Sockets start in recv mode; attaching a handler
-transitions to callback mode. Sockets support several messaging patterns
-including publish/subscribe, request/reply, and raw stream.
+connecting, and performing I/O on zlink sockets. Raw sockets use recv/poller
+as the default model; callback receive is retained only on raw `STREAM`.
+Topic callback receive is retained on `spot` / `spot_node`.
 
 ## Thread-Safety Summary
 
@@ -37,10 +35,10 @@ typedef void (*zlink_socket_msg_handler_fn) (
   void *userdata_);
 ```
 
-Callback for multipart message dispatch on PAIR, DEALER, and ROUTER
-sockets. Invoked on the owning I/O thread. Ownership of all message parts is
-transferred to the callback; each part must be closed or consumed exactly once.
-Used with `zlink_recv_handler()`.
+Callback for multipart message dispatch on raw `STREAM` sockets. Invoked on
+the owning I/O thread. Ownership of all message parts is transferred to the
+callback; each part must be closed or consumed exactly once. Used with
+`zlink_recv_handler()`.
 
 ### zlink_subscribe_handler_fn
 
@@ -53,34 +51,17 @@ typedef void (*zlink_subscribe_handler_fn) (const zlink_routing_id_t *source_rid
                                        void *userdata_);
 ```
 
-Callback for topic-based message dispatch on SUB and XSUB sockets.
-Invoked on the owning I/O thread. Ownership of parts is transferred.
-Used with `zlink_subscribe_handler()`.
-
-### zlink_subscription_event_handler_fn
-
-```c
-typedef void (*zlink_subscription_event_handler_fn) (
-  const zlink_routing_id_t *source_rid_,
-  int subscribed_,
-  const char *topic_,
-  size_t topic_len_,
-  void *userdata_);
-```
-
-Callback for subscription notifications on XPUB sockets. `source_rid_`
-identifies the subscribing peer. `subscribed_` is non-zero for subscribe,
-zero for unsubscribe.
-Used with `zlink_subscription_event_handler()`.
+Callback for topic-based message dispatch on `spot` / `spot_node`. Invoked on
+the owning I/O thread. Ownership of parts is transferred. Used with
+`zlink_subscribe_handler()`.
 
 Each callback type is registered through a dedicated function. The mapping
 of socket types to registration functions:
 
 | Socket Type | Registration Function | Callback |
 |---|---|---|
-| PAIR, DEALER, ROUTER | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
-| SUB, XSUB | `zlink_subscribe_handler` | `zlink_subscribe_handler_fn` |
-| XPUB | `zlink_subscription_event_handler` | `zlink_subscription_event_handler_fn` |
+| STREAM | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
+| spot, spot_node | `zlink_subscribe_handler` | `zlink_subscribe_handler_fn` |
 | PUB | N/A | Send-only; no handler needed |
 
 ### zlink_send_ready_handler_fn
@@ -287,9 +268,9 @@ void *zlink_socket (void *context_, zlink_socket_type_t type_);
 ```
 
 Creates a new socket within the given context. The `type_` parameter selects
-the messaging pattern. The socket starts in recv mode. Use
-`zlink_recv_handler()` to transition to callback mode. The socket
-must be closed with `zlink_close()` before the context is terminated.
+the messaging pattern. Raw sockets start in recv mode. Only raw `STREAM`
+supports `zlink_recv_handler()` callback attach. The socket must be closed
+with `zlink_close()` before the context is terminated.
 
 **Returns:** Socket handle on success, `NULL` on failure (errno is set).
 
@@ -312,18 +293,17 @@ int zlink_recv_handler (void *s_,
                         void *userdata_);
 ```
 
-Attach a message receive handler to a PAIR, DEALER, or ROUTER
-socket. Sockets start in recv mode. This call transitions the handle to
-callback mode and cannot be undone for the lifetime of the socket. A second
-attach on the same handle fails with `errno=EBUSY`.
+Attach a message receive handler to a raw `STREAM` socket. The socket starts
+in recv mode. This call transitions the handle to callback mode and cannot be
+undone for the lifetime of the socket. A second attach on the same handle
+fails with `errno=EBUSY`. Other raw socket types return `ENOTSUP`.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
-**Errors:** `EINVAL` if the handler is NULL or the socket type does not
-accept a message handler. `EBUSY` if a handler is already attached.
+**Errors:** `EINVAL` if the handler is NULL. `ENOTSUP` if the socket type does
+not accept a message handler. `EBUSY` if a handler is already attached.
 
-**See also:** `zlink_subscribe_handler`, `zlink_subscription_event_handler`,
-`zlink_socket`, `zlink_close`
+**See also:** `zlink_subscribe_handler`, `zlink_socket`, `zlink_close`
 
 ---
 
@@ -337,44 +317,17 @@ int zlink_subscribe_handler (void *s_,
                              void *userdata_);
 ```
 
-Attach a topic-based receive handler to a SUB or XSUB socket. Sockets
-start in recv mode. This call transitions the handle to callback mode and
-cannot be undone for the lifetime of the socket. A second attach on the
-same handle fails with `errno=EBUSY`.
+Attach a topic-based receive handler to `spot` or `spot_node`. The handle
+starts in recv mode. This call transitions the handle to callback mode and
+cannot be undone for the lifetime of the handle. A second attach on the
+same handle fails with `errno=EBUSY`. Raw `SUB` / `XSUB` return `ENOTSUP`.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
-**Errors:** `EINVAL` if the handler is NULL or the socket type does not
-accept a spot handler. `EBUSY` if a handler is already attached.
+**Errors:** `EINVAL` if the handler is NULL. `ENOTSUP` if the handle type does
+not accept a subscribe handler. `EBUSY` if a handler is already attached.
 
-**See also:** `zlink_recv_handler`, `zlink_subscription_event_handler`,
-`zlink_socket`, `zlink_close`
-
----
-
-### zlink_subscription_event_handler
-
-Attach a subscription notification handler to an XPUB socket.
-
-```c
-int zlink_subscription_event_handler (void *s_,
-                             zlink_subscription_event_handler_fn handler_,
-                             void *userdata_);
-```
-
-Attach a subscription notification handler to an XPUB socket. The callback
-receives a `source_rid_` identifying the subscribing peer, a `subscribed_`
-flag, and the topic bytes. Sockets start in recv mode. This call transitions
-the handle to callback mode and cannot be undone for the lifetime of the
-socket. A second attach on the same handle fails with `errno=EBUSY`.
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:** `EINVAL` if the handler is NULL or the socket is not XPUB.
-`EBUSY` if a handler is already attached.
-
-**See also:** `zlink_recv_handler`, `zlink_subscribe_handler`,
-`zlink_socket`, `zlink_close`
+**See also:** `zlink_recv_handler`, `zlink_socket`, `zlink_close`
 
 ---
 
@@ -1016,18 +969,15 @@ Receives the next subscription event in recv mode. On success,
 `*topic_id_len_out_` receive the topic bytes (binary-safe, same buffer
 contract as `zlink_subscribe()`).
 
-The subject must be in recv mode. If a subscription event handler has been
-attached, this call fails with `EBUSY`.
-
 Applicable types: raw XPUB only.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
 **Errors:** `EFAULT` if `subject_` is NULL. `EAGAIN` if `ZLINK_DONTWAIT`
-was set and no event is available. `EBUSY` if a subscription event handler
-is attached. `ENOTSUP` if the subject is not XPUB.
+was set and no event is available. `EMSGSIZE` if the topic buffer is too
+small. `ENOTSUP` if the subject is not XPUB.
 
-**See also:** `zlink_subscription_event_handler`, `zlink_publish`
+**See also:** `zlink_publish`
 
 ---
 
@@ -1044,8 +994,9 @@ The handler is replace-only. Passing NULL is invalid. A successful replace is
 visible from the next writable transition. If called reentrantly from the
 same handle's send-ready callback, the call fails with `errno=EDEADLK`.
 
-Supported handle types: PAIR, PUB, XPUB, DEALER, ROUTER, gateway, spot,
-spot_node. Unsupported: SUB, XSUB, STREAM.
+Supported handle types: raw `STREAM` in callback mode, `spot`, `spot_node`
+in callback mode. Recv-mode readiness uses poller `ZLINK_POLLOUT`. Other raw
+socket types and `gateway` return `ENOTSUP`.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 

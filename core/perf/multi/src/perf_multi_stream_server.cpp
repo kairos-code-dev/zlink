@@ -21,13 +21,11 @@
 namespace {
 
 #ifndef PERF_MULTI_STREAM_PATTERN_NAME
-#define PERF_MULTI_STREAM_PATTERN_NAME "STREAM"
+#define PERF_MULTI_STREAM_PATTERN_NAME "MULTI_STREAM"
 #endif
 
 static const char *k_pattern = PERF_MULTI_STREAM_PATTERN_NAME;
 static const char k_stop_token[] = "__zlink_perf_stop__";
-static const bool k_use_callback_mode =
-  std::string (PERF_MULTI_STREAM_PATTERN_NAME) == "STREAM_CALLBACK";
 
 // Uses perf_stop_requested() from perf_common.hpp
 static std::atomic<bool> g_callback_failed (false);
@@ -432,7 +430,8 @@ int main (int argc, char **argv)
     });
     stdin_watcher.detach ();
 
-    if (k_use_callback_mode) {
+    const bool callback_mode = multi_perf_callback_mode ();
+    if (callback_mode) {
         if (zlink_recv_handler (server, &on_stream_handler, NULL) != 0) {
             g_sender_stop_requested.store (true, std::memory_order_release);
             send_thread.join ();
@@ -453,7 +452,7 @@ int main (int argc, char **argv)
             break;
         }
 
-        if (!k_use_callback_mode) {
+        if (!callback_mode) {
             zlink_routing_id_t source_rid;
             std::memset (&source_rid, 0, sizeof (source_rid));
             zlink_msg_t *parts = NULL;

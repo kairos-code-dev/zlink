@@ -235,8 +235,6 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
       _runtime.dispatch_bridge.socket_msg_handler_userdata),
     _spot_handler (_runtime.dispatch_bridge.spot_handler),
     _spot_handler_userdata (_runtime.dispatch_bridge.spot_handler_userdata),
-    _xpub_handler (_runtime.dispatch_bridge.xpub_handler),
-    _xpub_handler_userdata (_runtime.dispatch_bridge.xpub_handler_userdata),
     _public_api_state (_runtime.dispatch_bridge.public_api_state),
     _public_api_sync (_runtime.dispatch_bridge.public_api_sync),
     _callback_api_depth (_runtime.dispatch_bridge.callback_api_depth),
@@ -1671,36 +1669,6 @@ int zlink::socket_base_t::socket_set_spot_handler_with_userdata (
     return rc;
 }
 
-int zlink::socket_base_t::socket_set_xpub_handler (
-  zlink_subscription_event_handler_fn handler_)
-{
-    return socket_set_xpub_handler_with_userdata (handler_, NULL);
-}
-
-int zlink::socket_base_t::socket_set_xpub_handler_with_userdata (
-  zlink_subscription_event_handler_fn handler_, void *userdata_)
-{
-    if (!enter_public_api ())
-        return -1;
-    if (!handler_) {
-        leave_public_api ();
-        errno = EINVAL;
-        return -1;
-    }
-    if (xpub_dispatch_active ()) {
-        leave_public_api ();
-        errno = EBUSY;
-        return -1;
-    }
-
-    _xpub_handler.store (handler_, std::memory_order_release);
-    _xpub_handler_userdata.store (userdata_, std::memory_order_release);
-
-    const int rc = xpub_dispatch_start ();
-    leave_public_api ();
-    return rc;
-}
-
 int zlink::socket_base_t::socket_set_send_ready_handler (
   zlink_send_ready_handler_fn handler_)
 {
@@ -1810,12 +1778,6 @@ zlink_subscribe_handler_fn zlink::socket_base_t::socket_spot_handler () const
     return _spot_handler.load (std::memory_order_acquire);
 }
 
-zlink_subscription_event_handler_fn
-zlink::socket_base_t::socket_xpub_handler () const
-{
-    return _xpub_handler.load (std::memory_order_acquire);
-}
-
 zlink_send_ready_handler_fn
 zlink::socket_base_t::socket_send_ready_handler () const
 {
@@ -1839,11 +1801,6 @@ void *zlink::socket_base_t::socket_msg_handler_userdata () const
 void *zlink::socket_base_t::socket_spot_handler_userdata () const
 {
     return _spot_handler_userdata.load (std::memory_order_acquire);
-}
-
-void *zlink::socket_base_t::socket_xpub_handler_userdata () const
-{
-    return _xpub_handler_userdata.load (std::memory_order_acquire);
 }
 
 void *zlink::socket_base_t::socket_send_ready_handler_subject () const

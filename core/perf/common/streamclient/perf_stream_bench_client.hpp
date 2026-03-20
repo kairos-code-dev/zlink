@@ -327,7 +327,12 @@ class bench_client_t : public bench_client_iface_t
     // Record received bytes and RTT derived from stamped payload header.
     void on_recv_done (size_t bytes, uint64_t sent_ts_us) override
     {
-        outstanding_total.fetch_sub (1, std::memory_order_relaxed);
+        const long remaining =
+          outstanding_total.fetch_sub (1, std::memory_order_relaxed) - 1;
+        if (remaining <= 0) {
+            std::lock_guard<std::mutex> lk (drain_mu);
+            drain_cv.notify_all ();
+        }
         if (!collect_metrics.load (std::memory_order_acquire))
             return;
 
@@ -358,8 +363,15 @@ class bench_client_t : public bench_client_iface_t
 
     void on_abandon (long count) override
     {
-        if (count > 0)
-            outstanding_total.fetch_sub (count, std::memory_order_relaxed);
+        if (count > 0) {
+            const long remaining =
+              outstanding_total.fetch_sub (count, std::memory_order_relaxed)
+              - count;
+            if (remaining <= 0) {
+                std::lock_guard<std::mutex> lk (drain_mu);
+                drain_cv.notify_all ();
+            }
+        }
     }
 
     void on_size_mismatch () override
@@ -518,10 +530,11 @@ class bench_client_t : public bench_client_iface_t
             const auto drain_deadline =
               std::chrono::steady_clock::now ()
               + std::chrono::milliseconds (drain_ms);
-            while (std::chrono::steady_clock::now () < drain_deadline) {
-                if (outstanding_total.load (std::memory_order_relaxed) <= 0)
+            std::unique_lock<std::mutex> lk (drain_mu);
+            while (outstanding_total.load (std::memory_order_relaxed) > 0) {
+                if (drain_cv.wait_until (lk, drain_deadline)
+                    == std::cv_status::timeout)
                     break;
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
             }
 
             const long remaining = outstanding_total.load (std::memory_order_relaxed);
@@ -544,10 +557,11 @@ class bench_client_t : public bench_client_iface_t
         const auto drain_deadline =
           std::chrono::steady_clock::now ()
           + std::chrono::milliseconds (drain_ms);
-        while (std::chrono::steady_clock::now () < drain_deadline) {
-            if (outstanding_total.load (std::memory_order_relaxed) <= 0)
+        std::unique_lock<std::mutex> lk (drain_mu);
+        while (outstanding_total.load (std::memory_order_relaxed) > 0) {
+            if (drain_cv.wait_until (lk, drain_deadline)
+                == std::cv_status::timeout)
                 break;
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
         }
     }
 
@@ -698,6 +712,8 @@ class bench_client_t : public bench_client_iface_t
     std::mutex connect_sched_mu;       // serializes schedule_connects()
     std::mutex connect_mu;             // guards connect_cv wait
     std::condition_variable connect_cv;
+    std::mutex drain_mu;
+    std::condition_variable drain_cv;
 
     // --- Phase state (atomics read by I/O threads) ---
     std::atomic<int> mode;             // phase_mode_t

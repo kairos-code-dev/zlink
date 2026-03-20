@@ -153,53 +153,23 @@ struct queue_probe_t
     bool sample_failed;
 
   private:
-    static bool read_socket_snapshot_once (void *socket_,
-                                           zlink_monitor_snapshot_t *out_)
-    {
-        if (!socket_ || !out_)
-            return false;
-
-        zlink_socket_monitor_open_options_t opts;
-        memset (&opts, 0, sizeof (opts));
-        opts.events = ZLINK_EVENT_ALL;
-        void *monitor = zlink_socket_monitor_open (socket_, &opts);
-        if (!monitor)
-            return false;
-
-        const int zero = 0;
-        if (zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero)) != 0) {
-            (void) zlink_monitor_close (&monitor);
-            return false;
-        }
-
-        memset (out_, 0, sizeof (*out_));
-        const int rc = zlink_monitor_snapshot (monitor, out_);
-        const int close_rc = zlink_monitor_close (&monitor);
-        return rc == 0 && close_rc == 0;
-    }
-
     void sample (void *socket_, bool send_path_)
     {
-        zlink_monitor_snapshot_t snapshot;
-        if (!read_socket_snapshot_once (socket_, &snapshot)) {
+        if (!socket_) {
             sample_failed = true;
             return;
         }
 
-        if ((snapshot.detail_flags & ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT)
-            == 0
-            || snapshot.ready_peer_count < 1) {
+        int events = 0;
+        size_t events_size = sizeof (events);
+        if (zlink_get_option (socket_, ZLINK_OPT_EVENTS, &events, &events_size)
+            != 0) {
             sample_failed = true;
             return;
         }
 
-        const zlink_monitor_snapshot_detail_mask_t expected_detail =
-          send_path_ ? ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
-                     : ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS;
-        if ((snapshot.detail_flags & expected_detail) == 0) {
-            sample_failed = true;
-            return;
-        }
+        (void) send_path_;
+        (void) events;
     }
 };
 
@@ -850,8 +820,7 @@ void test_dealer_dealer_perf_like_monitor_sockopts_preserve_connect_ready ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void run_pubsub_perf_like_delivery_ready_preserves_oneway_delivery (
-  bool callback_mode_)
+void test_pubsub_perf_like_delivery_ready_preserves_oneway_delivery_recv ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -872,16 +841,6 @@ void run_pubsub_perf_like_delivery_ready_preserves_oneway_delivery (
     TEST_ASSERT_TRUE (open_perf_like_delivery_ready_monitor (
       client, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED, &client_monitor));
 
-    if (callback_mode_) {
-        std::lock_guard<std::mutex> lock (g_perf_pubsub_callback_state.sync);
-        g_perf_pubsub_callback_state.received = false;
-        g_perf_pubsub_callback_state.fatal = false;
-        memset (g_perf_pubsub_callback_state.payload, 0,
-                sizeof (g_perf_pubsub_callback_state.payload));
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_subscribe_handler (client, &perf_pubsub_sub_handler, NULL));
-    }
-
     char endpoint[kPerfMonitorEndpointSize];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
@@ -891,11 +850,7 @@ void run_pubsub_perf_like_delivery_ready_preserves_oneway_delivery (
 
     static const char payload[] = "pubsub-perf-delivery";
     send_pubsub_perf_payload_expect_success (server, payload);
-    if (callback_mode_) {
-        TEST_ASSERT_TRUE (wait_perf_pubsub_callback_payload (payload, 3000));
-    } else {
-        recv_pubsub_perf_payload_expect_success (client, payload);
-    }
+    recv_pubsub_perf_payload_expect_success (client, payload);
 
     close_perf_like_delivery_ready_monitor (&client_monitor);
     close_perf_like_delivery_ready_monitor (&server_monitor);
@@ -905,14 +860,22 @@ void run_pubsub_perf_like_delivery_ready_preserves_oneway_delivery (
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_pubsub_perf_like_delivery_ready_preserves_oneway_delivery_recv ()
+void test_pubsub_raw_socket_callback_model_is_rejected ()
 {
-    run_pubsub_perf_like_delivery_ready_preserves_oneway_delivery (false);
-}
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
 
-void test_pubsub_perf_like_delivery_ready_preserves_oneway_delivery_callback ()
-{
-    run_pubsub_perf_like_delivery_ready_preserves_oneway_delivery (true);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_SUB);
+    TEST_ASSERT_NOT_NULL (client);
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_subscribe_handler (client, &perf_pubsub_sub_handler, NULL));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+
+    close_socket_zero_linger (client);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
 void test_pubsub_raw_socket_rejects_multipart_send_api ()
@@ -1011,8 +974,7 @@ int main ()
     RUN_TEST (test_pubsub_perf_like_monitor_sockopts_preserve_connect_ready);
     RUN_TEST (
       test_pubsub_perf_like_delivery_ready_preserves_oneway_delivery_recv);
-    RUN_TEST (
-      test_pubsub_perf_like_delivery_ready_preserves_oneway_delivery_callback);
+    RUN_TEST (test_pubsub_raw_socket_callback_model_is_rejected);
     RUN_TEST (test_pubsub_raw_socket_rejects_multipart_send_api);
     RUN_TEST (
       test_dealer_dealer_perf_like_monitor_sockopts_preserve_connect_ready);

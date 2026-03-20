@@ -4,11 +4,13 @@
 #include "../../../external/moodycamel/concurrentqueue.h"
 
 #include <atomic>
+#include <condition_variable>
 #include <cerrno>
 #include <csignal>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
 #include <memory>
 #include <string>
 #include <thread>
@@ -35,6 +37,8 @@ static std::atomic<size_t> g_queue_probe_size (0);
 static std::atomic<bool> g_sender_stop_requested (false);
 static std::atomic<size_t> g_pending_send_count (0);
 static std::atomic<int> g_send_poll_timeout_ms (5000);
+static std::mutex g_send_queue_sync;
+static std::condition_variable g_send_queue_cv;
 
 struct queued_stream_message_t
 {
@@ -260,6 +264,7 @@ void send_thread_main ()
                 g_callback_failed.store (true, std::memory_order_release);
                 perf_stop_requested ().store (true, std::memory_order_release);
                 g_sender_stop_requested.store (true, std::memory_order_release);
+                g_send_queue_cv.notify_all ();
                 return;
             }
         }
@@ -269,8 +274,18 @@ void send_thread_main ()
             return;
         }
 
-        if (!made_progress)
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        if (!made_progress) {
+            std::unique_lock<std::mutex> lock (g_send_queue_sync);
+            g_send_queue_cv.wait_for (
+              lock,
+              std::chrono::milliseconds (50),
+              [] () {
+                  return g_sender_stop_requested.load (std::memory_order_acquire)
+                         || g_pending_send_count.load (std::memory_order_acquire)
+                              > 0
+                         || perf_stop_requested ().load (std::memory_order_acquire);
+              });
+        }
     }
 }
 
@@ -310,6 +325,7 @@ int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg, void *)
         (void) zlink_msg_close (msg);
         return 1;
     }
+    g_send_queue_cv.notify_one ();
 
     (void) zlink_msg_close (msg);
     return 0;
@@ -423,10 +439,12 @@ int main (int argc, char **argv)
             }
             if (line == "STOP" || line == "QUIT") {
                 perf_stop_requested ().store (true, std::memory_order_release);
+                g_send_queue_cv.notify_all ();
                 return;
             }
         }
         perf_stop_requested ().store (true, std::memory_order_release);
+        g_send_queue_cv.notify_all ();
     });
     stdin_watcher.detach ();
 
@@ -434,6 +452,7 @@ int main (int argc, char **argv)
     if (callback_mode) {
         if (zlink_recv_handler (server, &on_stream_handler, NULL) != 0) {
             g_sender_stop_requested.store (true, std::memory_order_release);
+            g_send_queue_cv.notify_all ();
             send_thread.join ();
             g_send_queue = NULL;
             g_server_socket = NULL;
@@ -471,13 +490,17 @@ int main (int argc, char **argv)
             rc = 1;
             break;
         }
-        std::this_thread::sleep_for (std::chrono::milliseconds (50));
+        if (perf_socket_poll (NULL, 0, 50) < 0 && zlink_errno () != EINTR) {
+            rc = 1;
+            break;
+        }
     }
 
     if (g_callback_failed.load (std::memory_order_acquire))
         rc = 1;
 
     g_sender_stop_requested.store (true, std::memory_order_release);
+    g_send_queue_cv.notify_all ();
     send_thread.join ();
     g_send_queue = NULL;
     g_server_socket = NULL;

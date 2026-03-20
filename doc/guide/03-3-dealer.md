@@ -185,23 +185,8 @@ zlink_send(dealer, &req, 1, 0);
 Multiple DEALERs connect to a single ROUTER. ROUTER distinguishes each DEALER by routing_id.
 
 ```c
-/* ROUTER receives via handler callback and distinguishes each DEALER by source_rid */
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* source_rid->data = "D1" or "D2" */
-    /* Reply to specific DEALER */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 5);
-    memcpy(zlink_msg_data(&reply), "reply", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-/* Receive with zlink_recv() */
+/* ROUTER receives with zlink_recv() and distinguishes each DEALER by source_rid */
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];

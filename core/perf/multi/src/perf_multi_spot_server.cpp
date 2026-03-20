@@ -41,35 +41,6 @@ static const uint32_t k_metric_run_id = 1U;
 static std::atomic<bool> g_queue_probe_pending(false);
 static std::atomic<size_t> g_queue_probe_size(0);
 
-bool wait_for_pub_peers(void *pub, size_t expected_count, int timeout_ms)
-{
-    if (expected_count == 0)
-        return true;
-    if (!pub)
-        return false;
-
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(1, timeout_ms));
-
-    while (!perf_stop_requested ().load(std::memory_order_acquire)
-           && std::chrono::steady_clock::now() < deadline) {
-        zlink_monitor_snapshot_t snapshot;
-        std::memset(&snapshot, 0, sizeof(snapshot));
-        if (read_spot_snapshot_once(pub, k_spot_role_pub, &snapshot)
-            && snapshot.ready_peer_count >= expected_count) {
-            return true;
-        }
-        if (perf_socket_poll(NULL, 0, 5) < 0 && zlink_errno() != EINTR)
-            return false;
-    }
-
-    zlink_monitor_snapshot_t snapshot;
-    std::memset(&snapshot, 0, sizeof(snapshot));
-    return read_spot_snapshot_once(pub, k_spot_role_pub, &snapshot)
-           && snapshot.ready_peer_count >= expected_count;
-}
-
 struct spot_server_state_t
 {
     spot_server_state_t() :
@@ -256,19 +227,7 @@ std::string bind_spot_endpoint(void *node,
 server_queue_stats_t sample_spot_queue_stats(void *pub, bool send_pending)
 {
     server_queue_stats_t stats;
-    if (!pub)
-        return stats;
-
-    zlink_monitor_snapshot_t snapshot;
-    if (read_spot_snapshot_once(pub, k_spot_role_pub, &snapshot)
-        && (snapshot.detail_flags
-            & ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS)) {
-        stats.snd_pending_max = static_cast<double>(
-          std::max<unsigned long long>(snapshot.snd_pending_msgs,
-                                       send_pending ? 1ULL : 0ULL));
-        return stats;
-    }
-
+    (void) pub;
     if (send_pending) {
         stats.snd_pending_max = 1.0;
     }

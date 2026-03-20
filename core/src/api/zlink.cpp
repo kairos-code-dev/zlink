@@ -5885,6 +5885,10 @@ static zlink::spot_sub_t *resolve_spot_sub_subject (void *spot_or_node_)
         zlink::service_public_api_scope_t admission (node->public_api_guard ());
         if (!admission.acquired ())
             return NULL;
+        zlink::spot_internal_receiver_t *receiver =
+          zlink::spot_node_access_t::ensure_internal_receiver (node);
+        if (receiver && receiver->impl ())
+            return receiver->impl ();
         return node->ensure_default_sub ();
     }
     errno = EFAULT;

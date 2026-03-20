@@ -36,6 +36,7 @@ inline int zlink_gateway_send_rid (void *gateway_,
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <dlfcn.h>
+#include <poll.h>
 #else
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -74,6 +75,27 @@ typedef struct zlink_pollitem_t
 } zlink_pollitem_t;
 #endif
 
+inline int perf_idle_wait_ms(long timeout_)
+{
+    if (timeout_ <= 0)
+        return 0;
+
+#if defined(_WIN32)
+    const DWORD wait_ms = static_cast<DWORD>(
+      timeout_ > static_cast<long>(DWORD(-1)) ? DWORD(-1) : timeout_);
+    ::Sleep(wait_ms);
+    return 0;
+#else
+    const int wait_ms =
+      timeout_ > static_cast<long>(INT_MAX) ? INT_MAX : static_cast<int>(timeout_);
+    int rc = 0;
+    do {
+        rc = ::poll(NULL, 0, wait_ms);
+    } while (rc < 0 && errno == EINTR);
+    return rc < 0 ? -1 : 0;
+#endif
+}
+
 inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_)
 {
     if (nitems_ < 0) {
@@ -81,11 +103,8 @@ inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_
         return -1;
     }
 
-    if (nitems_ == 0 || !items_) {
-        if (timeout_ > 0)
-            std::this_thread::sleep_for(std::chrono::milliseconds(timeout_));
-        return 0;
-    }
+    if (nitems_ == 0 || !items_)
+        return perf_idle_wait_ms(timeout_);
 
     const auto start = std::chrono::steady_clock::now();
     while (true) {
@@ -131,7 +150,8 @@ inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_
                 return 0;
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (perf_idle_wait_ms(1) != 0)
+            return -1;
     }
 }
 
@@ -650,40 +670,6 @@ inline int resolve_single_queue_sample_every_msgs()
     return parse_positive_env("PERF_SINGLE_QUEUE_SAMPLE_EVERY_MSGS", 64);
 }
 
-inline bool read_socket_snapshot_once(void *socket_,
-                                      zlink_monitor_snapshot_t *out_)
-{
-    if (!socket_ || !out_)
-        return false;
-
-    zlink_socket_monitor_open_options_t monitor_opts;
-    memset(&monitor_opts, 0, sizeof(monitor_opts));
-    monitor_opts.events = ZLINK_EVENT_ALL;
-    void *monitor = zlink_socket_monitor_open(socket_, &monitor_opts);
-    if (!monitor)
-        return false;
-
-    memset(out_, 0, sizeof(*out_));
-    const int rc = zlink_monitor_snapshot(monitor, out_);
-    stop_and_close_socket_monitor(socket_, &monitor);
-    return rc == 0;
-}
-
-inline bool socket_snapshot_ready(const zlink_monitor_snapshot_t &snapshot_,
-                                  bool require_send_ready_,
-                                  uint32_t min_ready_peer_count_)
-{
-    const bool peer_ready =
-      (snapshot_.detail_flags & ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT)
-      != 0
-      && snapshot_.ready_peer_count >= min_ready_peer_count_;
-    if (!peer_ready)
-        return false;
-    if (!require_send_ready_)
-        return true;
-    return (snapshot_.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0;
-}
-
 class queue_probe_t {
 public:
     queue_probe_t(void *send_socket_, void *recv_socket_) :
@@ -695,6 +681,8 @@ public:
         _recv_last_sample_ns(0),
         _send_msgs_since_sample(0),
         _recv_msgs_since_sample(0),
+        _send_total(0),
+        _recv_total(0),
         _snd_pending_max(0),
         _rcv_pending_max(0),
         _rcv_pending_end(0),
@@ -749,6 +737,9 @@ private:
         if (!_send_socket)
             return;
 
+        if (!force_)
+            ++_send_total;
+
         if (force_) {
             _send_msgs_since_sample = 0;
         } else if (_sample_every_msgs > 1) {
@@ -765,15 +756,8 @@ private:
         }
         _send_last_sample_ns = now;
 
-        zlink_monitor_snapshot_t snapshot;
-        if (!read_socket_snapshot_once(_send_socket, &snapshot)
-            || !(snapshot.detail_flags
-                 & ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS)) {
-            return;
-        }
-
-        const unsigned long long pending = static_cast<unsigned long long>(
-          snapshot.snd_pending_msgs);
+        const unsigned long long pending =
+          _send_total > _recv_total ? (_send_total - _recv_total) : 0ULL;
         if (!_snd_seen || pending > _snd_pending_max)
             _snd_pending_max = pending;
         _snd_seen = true;
@@ -783,6 +767,9 @@ private:
     {
         if (!_recv_socket)
             return;
+
+        if (!force_)
+            ++_recv_total;
 
         if (force_) {
             _recv_msgs_since_sample = 0;
@@ -800,15 +787,8 @@ private:
         }
         _recv_last_sample_ns = now;
 
-        zlink_monitor_snapshot_t snapshot;
-        if (!read_socket_snapshot_once(_recv_socket, &snapshot)
-            || !(snapshot.detail_flags
-                 & ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS)) {
-            return;
-        }
-
-        const unsigned long long pending = static_cast<unsigned long long>(
-          snapshot.rcv_pending_msgs);
+        const unsigned long long pending =
+          _send_total > _recv_total ? (_send_total - _recv_total) : 0ULL;
         if (!_rcv_seen || pending > _rcv_pending_max)
             _rcv_pending_max = pending;
         _rcv_pending_end = pending;
@@ -823,6 +803,8 @@ private:
     unsigned long long _recv_last_sample_ns;
     unsigned int _send_msgs_since_sample;
     unsigned int _recv_msgs_since_sample;
+    unsigned long long _send_total;
+    unsigned long long _recv_total;
     unsigned long long _snd_pending_max;
     unsigned long long _rcv_pending_max;
     unsigned long long _rcv_pending_end;

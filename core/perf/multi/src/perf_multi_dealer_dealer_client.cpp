@@ -123,7 +123,15 @@ inline bool run_send_window (const std::vector<void *> &sockets,
     if (!send_active) {
         while (!g_stop_requested.load (std::memory_order_acquire)
                && std::chrono::steady_clock::now () < deadline) {
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            const long remaining_ms =
+              std::chrono::duration_cast<std::chrono::milliseconds> (
+                deadline - std::chrono::steady_clock::now ())
+                .count ();
+            const long wait_ms = remaining_ms > 0 ? remaining_ms : 0;
+            if (perf_socket_poll (NULL, 0, wait_ms) < 0
+                && zlink_errno () != EINTR) {
+                return false;
+            }
         }
         return true;
     }

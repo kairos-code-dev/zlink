@@ -64,8 +64,10 @@ inline bool relay_router_once (void *server,
     if (id_len < 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN) {
-            (void) poll_timeout_ms;
-            std::this_thread::yield ();
+            if (perf_socket_poll (NULL, 0, poll_timeout_ms) < 0
+                && zlink_errno () != EINTR) {
+                return false;
+            }
             return true;
         }
         return err == EINTR;

@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -28,49 +27,6 @@ using perf_multi_client::is_supported_transport;
 using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::print_client_result_lines;
 using perf_multi_client::resolve_case_msg_sizes;
-
-struct pubsub_callback_state_t
-{
-    pubsub_callback_state_t () :
-        active (false),
-        expected_msg_size (0),
-        expected_run_id (0),
-        active_measurement_started (false),
-        recv_count (0),
-        lat_sum (0.0),
-        lat_count (0),
-        fatal (false)
-    {
-    }
-
-    std::mutex mutex;
-    std::condition_variable cv;
-    bool active;
-    size_t expected_msg_size;
-    uint32_t expected_run_id;
-    bool active_measurement_started;
-    long recv_count;
-    double lat_sum;
-    long lat_count;
-    bench_latency_sampler_t lat_samples;
-    bool fatal;
-};
-
-static pubsub_callback_state_t g_callback_state;
-
-inline void arm_callback_state (size_t msg_size, uint32_t run_id)
-{
-    std::lock_guard<std::mutex> lock (g_callback_state.mutex);
-    g_callback_state.active = true;
-    g_callback_state.expected_msg_size = msg_size;
-    g_callback_state.expected_run_id = run_id;
-    g_callback_state.active_measurement_started = false;
-    g_callback_state.recv_count = 0;
-    g_callback_state.lat_sum = 0.0;
-    g_callback_state.lat_count = 0;
-    g_callback_state.lat_samples.reset ();
-    g_callback_state.fatal = false;
-}
 
 void pubsub_sub_ready_monitor_handler (const zlink_monitor_event_t *event,
                                        void *userdata)
@@ -124,69 +80,6 @@ bool wait_pubsub_sub_ready (connect_monitor_t &monitor, int timeout_ms)
       });
     return signaled && state->error_code == 0
            && state->connection_ready_count > 0;
-}
-
-void pubsub_client_sub_handler (const zlink_routing_id_t *,
-                                const char *topic,
-                                size_t topic_len,
-                                zlink_msg_t *parts,
-                                size_t part_count,
-                                void *)
-{
-    const bool topic_ok =
-      topic != NULL && topic_len == std::strlen (k_pubsub_topic)
-      && std::memcmp (topic, k_pubsub_topic, topic_len) == 0;
-    if (!topic_ok || !parts || part_count == 0) {
-        if (parts) {
-            zlink_multipart_close (parts, part_count);
-        }
-        std::lock_guard<std::mutex> lock (g_callback_state.mutex);
-        g_callback_state.fatal = true;
-        g_callback_state.cv.notify_all ();
-        return;
-    }
-
-    perf_multi_metric::header_t header;
-    const bool decoded = perf_multi_metric::decode_payload_header (
-      zlink_msg_data (&parts[0]),
-      zlink_msg_size (&parts[0]),
-      &header);
-    zlink_multipart_close (parts, part_count);
-
-    std::lock_guard<std::mutex> lock (g_callback_state.mutex);
-    if (!g_callback_state.active)
-        return;
-    if (!decoded)
-        return;
-    if (header.magic != perf_multi_metric::k_magic
-        || header.run_id != g_callback_state.expected_run_id
-        || header.msg_size
-             != static_cast<uint32_t> (g_callback_state.expected_msg_size)) {
-        return;
-    }
-    if (header.phase
-        != static_cast<uint32_t> (perf_multi_metric::phase_active)) {
-        g_callback_state.cv.notify_all ();
-        return;
-    }
-    if (!g_callback_state.active_measurement_started) {
-        g_callback_state.active_measurement_started = true;
-        g_callback_state.recv_count = 0;
-        g_callback_state.lat_sum = 0.0;
-        g_callback_state.lat_count = 0;
-        g_callback_state.lat_samples = bench_latency_sampler_t ();
-    }
-
-    ++g_callback_state.recv_count;
-    const uint64_t now_us = perf_multi_metric::now_us ();
-    if (header.sent_ts_us > 0 && now_us >= header.sent_ts_us) {
-        const double sample_us =
-          static_cast<double> (now_us - header.sent_ts_us);
-        g_callback_state.lat_sum += sample_us;
-        ++g_callback_state.lat_count;
-        g_callback_state.lat_samples.add (sample_us);
-    }
-    g_callback_state.cv.notify_all ();
 }
 
 int recv_one_pubsub_message (void *socket,
@@ -340,8 +233,10 @@ bool run_recv_duration (const std::vector<void *> &sockets,
                 lat_samples.add (sample_us);
             }
         }
-        if (!progressed)
-            std::this_thread::yield ();
+        if (!progressed && perf_socket_poll (NULL, 0, 1) < 0
+            && zlink_errno () != EINTR) {
+            return false;
+        }
     }
 
     if (!active_started)
@@ -361,98 +256,7 @@ bool run_recv_duration (const std::vector<void *> &sockets,
             }
             std::cerr << "[multi-pubsub-client] recv metrics invalid recv="
                       << recv_count << " lat=" << lat_count
-                      << " ready_peers="
-                      << read_socket_ready_peer_count (sockets[0])
                       << " events=" << events << std::endl;
-        }
-        return false;
-    }
-
-    *throughput_out = static_cast<double> (recv_count)
-                      / static_cast<double> (std::max (1, settings.duration_seconds));
-    perf_multi_client::normalize_latency_stats (
-      lat_sum, lat_count, &lat_samples, latency_out);
-    return true;
-}
-
-inline bool run_callback_duration (const multi_bench_settings_t &settings,
-                                   size_t msg_size,
-                                   uint32_t run_id,
-                                   double *throughput_out,
-                                   bench_latency_stats_t *latency_out,
-                                   bench_multi_resource_metrics_t *metrics_out)
-{
-    if (!throughput_out || !latency_out || !metrics_out)
-        return false;
-
-    const double warmup_seconds =
-      static_cast<double> (std::max (0, settings.warmup_seconds));
-    const double settle_seconds =
-      static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
-    const double active_seconds =
-      static_cast<double> (std::max (1, settings.duration_seconds));
-
-    bench_multi_cpu_sample_t sample_start;
-    std::unique_lock<std::mutex> lock (g_callback_state.mutex);
-    bool active_started = false;
-    auto active_deadline = std::chrono::steady_clock::time_point ();
-    const auto active_wait_deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
-        std::chrono::duration<double> (
-          warmup_seconds + settle_seconds +
-          active_seconds
-          + static_cast<double> (
-              std::max (1, settings.connect_ready_timeout_ms))
-              / 1000.0));
-    if (g_callback_state.active_measurement_started) {
-        active_started = true;
-        sample_start = bench_multi_capture_cpu_sample ();
-        active_deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::duration_cast<
-            std::chrono::steady_clock::duration> (
-            std::chrono::duration<double> (active_seconds));
-    }
-    while (!g_callback_state.fatal) {
-        const std::chrono::steady_clock::time_point now =
-          std::chrono::steady_clock::now ();
-        if (!active_started && now >= active_wait_deadline)
-            break;
-        if (active_started && now >= active_deadline)
-            break;
-
-        const std::chrono::steady_clock::time_point wait_deadline =
-          active_started ? active_deadline : active_wait_deadline;
-        g_callback_state.cv.wait_until (lock, wait_deadline);
-        if (!active_started && g_callback_state.active_measurement_started) {
-            active_started = true;
-            sample_start = bench_multi_capture_cpu_sample ();
-            active_deadline =
-              std::chrono::steady_clock::now ()
-              + std::chrono::duration_cast<
-                std::chrono::steady_clock::duration> (
-                std::chrono::duration<double> (active_seconds));
-        }
-    }
-    *metrics_out = active_started
-                     ? bench_multi_finish_resource_probe (sample_start)
-                     : bench_multi_resource_metrics_t ();
-
-    const bool ok = !g_callback_state.fatal;
-    const long recv_count = g_callback_state.recv_count;
-    const double lat_sum = g_callback_state.lat_sum;
-    const long lat_count = g_callback_state.lat_count;
-    bench_latency_sampler_t lat_samples = g_callback_state.lat_samples;
-    g_callback_state.active = false;
-    lock.unlock ();
-
-    if (!ok || recv_count <= 0 || lat_count <= 0)
-    {
-        if (bench_debug_enabled ()) {
-            std::cerr << "[multi-pubsub-client] callback metrics invalid fatal="
-                      << !ok << " recv=" << recv_count
-                      << " lat=" << lat_count << std::endl;
         }
         return false;
     }
@@ -553,23 +357,14 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
     double throughput = 0.0;
     bench_latency_stats_t latency;
     bench_multi_resource_metrics_t metrics;
-    const bool callback_mode = multi_perf_callback_mode ();
-    const bool ok = callback_mode
-                      ? run_callback_duration (
-                          base_settings,
-                          msg_size,
-                          k_metric_run_id,
-                          &throughput,
-                          &latency,
-                          &metrics)
-                      : run_recv_duration (
-                          sockets,
-                          base_settings,
-                          msg_size,
-                          k_metric_run_id,
-                          &throughput,
-                          &latency,
-                          &metrics);
+    const bool ok = run_recv_duration (
+      sockets,
+      base_settings,
+      msg_size,
+      k_metric_run_id,
+      &throughput,
+      &latency,
+      &metrics);
     if (!ok) {
         return false;
     }
@@ -625,23 +420,6 @@ inline int run_client_benchmark (const std::string &lib_name,
         return 1;
     }
 
-    if (multi_perf_callback_mode ()) {
-        for (size_t i = 0; i < sockets.size (); ++i) {
-            if (zlink_subscribe_handler (
-                  sockets[i], &pubsub_client_sub_handler, NULL)
-                != 0) {
-                if (bench_debug_enabled ()) {
-                    std::cerr
-                      << "[multi-pubsub-client] subscribe handler attach failed slot="
-                      << i << std::endl;
-                }
-                close_client_monitors (&monitors);
-                close_client_sockets (&sockets);
-                return 1;
-            }
-        }
-    }
-
     for (size_t i = 0; i < monitors.size (); ++i) {
         if (!wait_pubsub_sub_ready (
               monitors[i], base_settings.connect_ready_timeout_ms)) {
@@ -660,8 +438,6 @@ inline int run_client_benchmark (const std::string &lib_name,
 
     for (size_t si = 0; si < msg_sizes.size (); ++si) {
         const size_t msg_size = msg_sizes[si];
-        if (multi_perf_callback_mode ())
-            arm_callback_state (msg_size, k_metric_run_id);
         std::cout << "CLIENT_READY," << msg_size << std::endl;
         if (!run_single_size_case (
               sockets,

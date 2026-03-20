@@ -662,8 +662,9 @@ void spot_client_recv_worker_loop(spot_client_state_t *state,
                 return;
         }
 
-        if (!progressed)
-            std::this_thread::yield();
+        if (!progressed && perf_socket_poll(NULL, 0, 1) < 0
+            && zlink_errno() != EINTR)
+            return;
     }
 }
 

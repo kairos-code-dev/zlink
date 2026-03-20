@@ -94,6 +94,8 @@
   - backpressure 전략: `echo 서버: deque, echo 클라이언트/one-way sender: bool 플래그`
 - 연결 준비와 benchmark start gate는 socket/service monitoring의
   **delivery-ready event**만 사용한다.
+- multi perf의 monitor 소비 방식은 `callback`으로 통일한다. monitor socket을
+  `recv`/`poll`로 직접 읽는 구현은 허용하지 않는다.
 - multi perf는 delivery-ready event 확인 이전에 측정을 시작하지 않는다.
 - multi perf start gate 구현에서 아래를 금지한다.
   - ad-hoc sleep/retry handshake loop
@@ -1146,13 +1148,14 @@ client 프로세스가 server에 대한 benchmark start gate를 확인할 때는
 
 | 항목 | 규칙 |
 |------|------|
-| 연결 확인 API | `zlink_socket_monitor_open(..., handler)` — monitor callback으로 이벤트 수신 |
+| 연결 확인 API | `zlink_socket_monitor_open(..., handler)` 또는 `zlink_service_monitor_open(..., handler)` — monitor callback으로 이벤트 수신 |
 | 감시 이벤트 | 패턴별 delivery-ready event를 사용하며, 기준 표는 [`../guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md) §11을 따른다 |
 | 대기 방식 | monitor callback에서 atomic counter 증가 + app thread에서 타임아웃 기반 대기 — busy-wait/sleep 금지 |
 | 타임아웃 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` (기본 5000ms) 초과 시 run 실패 처리 |
 | Monitor HWM | `PERF_MULTI_MONITOR_HWM` (기본 1,000) — monitor event queue 상한 |
 
 - **이유**: perf start gate는 실제 delivery 가능 시점만 써야 한다. Sleep은 환경에 따라 불충분하거나 과다하고, handshake barrier와 snapshot polling은 측정 인프라 오버헤드를 늘리거나 잘못된 ready 판정을 만들 수 있다.
+- monitor handle은 perf 내부에서 callback 소비 전용으로 취급한다. 동일 handle을 `recv`/`poll` 기반으로 읽는 별도 구현을 두지 않는다.
 - 대기 함수 구현 시 monitor callback에서 `atomic_fetch_add`로 connection ready 카운트를 증가시키고, app thread에서 `wait_connect_ready_count(expected_count, timeout_ms)` 형태로 atomic 카운터가 목표에 도달할 때까지 대기한다.
 - `CONNECTED`, `ACCEPTED`, `LISTENING`은 progress/debug 용도로만 사용한다. perf 시작 gate로 승격하지 않는다.
 - server 측에서도 동일하게 guide §11에 정의된 delivery-ready event를 기준으로 준비를 판정한다.

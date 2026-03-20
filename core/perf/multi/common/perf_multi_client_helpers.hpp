@@ -190,12 +190,6 @@ inline bool wait_all_client_connect_ready (std::vector<connect_monitor_t> &monit
     return true;
 }
 
-inline bool allow_connect_ready_timeout_fallback(int client_socket_type)
-{
-    return client_socket_type == ZLINK_SOCKET_DEALER
-           || client_socket_type == ZLINK_SOCKET_ROUTER;
-}
-
 inline void close_client_sockets (std::vector<void *> *sockets)
 {
     if (!sockets)
@@ -291,7 +285,6 @@ inline bool create_client_sockets (
 inline void backoff_client_idle (const multi_bench_settings_t &settings)
 {
     (void) settings;
-    std::this_thread::yield ();
 }
 
 inline uint32_t next_metric_run_id ()
@@ -1129,106 +1122,6 @@ inline size_t resolve_case_max_msg_size (size_t fallback_size,
             max_msg_size = msg_sizes[i];
     }
     return max_msg_size;
-}
-
-inline int run_multi_echo_client_benchmark (
-  const char *pattern,
-  int client_socket_type,
-  bool client_router_send,
-  const char *server_routing_id,
-  const std::string &lib_name,
-  const std::string &transport,
-  const std::string &endpoint,
-  size_t fallback_size)
-{
-    set_perf_multi_pattern_env (pattern);
-
-    if (!is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << "," << pattern << ","
-                  << transport << std::endl;
-        return 0;
-    }
-
-    if (!transport_available (transport)) {
-        std::cerr << "transport unavailable: " << transport << std::endl;
-        return 1;
-    }
-
-    const multi_bench_settings_t settings = resolve_multi_bench_settings ();
-    const std::vector<size_t> msg_sizes = resolve_case_msg_sizes (fallback_size);
-    const size_t max_msg_size =
-      resolve_case_max_msg_size (fallback_size, msg_sizes);
-
-    ctx_guard_t ctx;
-    if (!ctx.valid ())
-        return 1;
-
-    std::vector<void *> sockets;
-    std::vector<connect_monitor_t> monitors;
-    if (!create_client_sockets (
-          ctx,
-          transport,
-          endpoint,
-          settings,
-          client_socket_type,
-          &sockets,
-          &monitors)) {
-        close_client_monitors (&monitors);
-        close_client_sockets (&sockets);
-        return 1;
-    }
-
-    if (!wait_all_client_connect_ready (monitors, settings.connect_ready_timeout_ms)) {
-        if (!allow_connect_ready_timeout_fallback(client_socket_type)) {
-            close_client_monitors (&monitors);
-            close_client_sockets (&sockets);
-            return 1;
-        }
-        if (bench_debug_enabled()) {
-            std::cerr << "[perf-multi-echo] connect ready fallback client_type="
-                      << client_socket_type << std::endl;
-        }
-    }
-    close_client_monitors (&monitors);
-
-    const std::string server_id = server_routing_id ? server_routing_id : "SERVER";
-    const size_t payload_capacity =
-      std::max<size_t> (max_msg_size, perf_multi_metric::header_size ());
-    const size_t scratch_capacity = metric_capture_bytes ();
-    std::vector<char> payload (payload_capacity, 'c');
-
-    for (size_t si = 0; si < msg_sizes.size (); ++si) {
-        const size_t msg_size = msg_sizes[si];
-        const size_t payload_size =
-          std::max<size_t> (msg_size, perf_multi_metric::header_size ());
-        const uint32_t run_id = next_metric_run_id ();
-        double throughput = 0.0;
-        bench_latency_stats_t latency;
-        bench_multi_resource_metrics_t metrics;
-
-        if (!run_echo_duration (
-              sockets,
-              settings,
-              payload,
-              payload_size,
-              msg_size,
-              scratch_capacity,
-              server_id,
-              client_router_send,
-              run_id,
-              &throughput,
-              &latency,
-              &metrics)) {
-            close_client_sockets (&sockets);
-            return 1;
-        }
-
-        print_echo_client_result_lines (
-          pattern, lib_name, transport, msg_size, throughput, latency, metrics);
-    }
-
-    close_client_sockets (&sockets);
-    return 0;
 }
 
 } // namespace perf_multi_client

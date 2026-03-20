@@ -32,17 +32,22 @@ int current_process_id ()
 struct spot_queue_probe_t
 {
     spot_queue_probe_t (void *pub_monitor_, void *sub_monitor_) :
-        pub_monitor (pub_monitor_),
-        sub_monitor (sub_monitor_),
         sample_interval_ns (resolve_sample_interval_ns ()),
+        sample_every_msgs (resolve_sample_every_msgs ()),
         last_send_sample_ns (0),
         last_recv_sample_ns (0),
+        send_msgs_since_sample (0),
+        recv_msgs_since_sample (0),
+        sent_total (0),
+        recv_total (0),
         snd_pending_max (0),
         rcv_pending_max (0),
         rcv_pending_end (0),
         seen_send (false),
         seen_recv (false)
     {
+        (void) pub_monitor_;
+        (void) sub_monitor_;
     }
 
     void sample_send_if_due () { maybe_sample (true, false); }
@@ -65,11 +70,14 @@ struct spot_queue_probe_t
         return stats;
     }
 
-    void *pub_monitor;
-    void *sub_monitor;
     unsigned long long sample_interval_ns;
+    unsigned int sample_every_msgs;
     unsigned long long last_send_sample_ns;
     unsigned long long last_recv_sample_ns;
+    unsigned int send_msgs_since_sample;
+    unsigned int recv_msgs_since_sample;
+    unsigned long long sent_total;
+    unsigned long long recv_total;
     unsigned long long snd_pending_max;
     unsigned long long rcv_pending_max;
     unsigned long long rcv_pending_end;
@@ -85,6 +93,12 @@ struct spot_queue_probe_t
         return clamped_ms * 1000000ULL;
     }
 
+    static unsigned int resolve_sample_every_msgs ()
+    {
+        const int value = resolve_single_queue_sample_every_msgs ();
+        return static_cast<unsigned int> (value > 0 ? value : 64);
+    }
+
     static unsigned long long now_ns ()
     {
         return static_cast<unsigned long long> (
@@ -93,18 +107,26 @@ struct spot_queue_probe_t
             .count ());
     }
 
-    static bool read_spot_snapshot (void *monitor_,
-                                    zlink_monitor_snapshot_t *out_)
-    {
-        if (!monitor_ || !out_)
-            return false;
-
-        memset (out_, 0, sizeof (*out_));
-        return zlink_monitor_snapshot (monitor_, out_) == 0;
-    }
-
     void maybe_sample (bool send_path_, bool force_)
     {
+        if (!force_) {
+            if (send_path_)
+                ++sent_total;
+            else
+                ++recv_total;
+        }
+
+        unsigned int &msgs_since_sample =
+          send_path_ ? send_msgs_since_sample : recv_msgs_since_sample;
+        if (force_) {
+            msgs_since_sample = 0;
+        } else if (sample_every_msgs > 1) {
+            ++msgs_since_sample;
+            if (msgs_since_sample < sample_every_msgs)
+                return;
+            msgs_since_sample = 0;
+        }
+
         const unsigned long long now = now_ns ();
         unsigned long long &last_sample_ns =
           send_path_ ? last_send_sample_ns : last_recv_sample_ns;
@@ -114,28 +136,15 @@ struct spot_queue_probe_t
         }
         last_sample_ns = now;
 
-        zlink_monitor_snapshot_t snapshot;
+        const unsigned long long pending =
+          sent_total > recv_total ? (sent_total - recv_total) : 0ULL;
         if (send_path_) {
-            if (!read_spot_snapshot (pub_monitor, &snapshot)
-                || !(snapshot.detail_flags
-                     & ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS)) {
-                return;
-            }
-            const unsigned long long pending =
-              static_cast<unsigned long long> (snapshot.snd_pending_msgs);
             if (!seen_send || pending > snd_pending_max)
                 snd_pending_max = pending;
             seen_send = true;
             return;
         }
 
-        if (!read_spot_snapshot (sub_monitor, &snapshot)
-            || !(snapshot.detail_flags
-                 & ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS)) {
-            return;
-        }
-        const unsigned long long pending =
-          static_cast<unsigned long long> (snapshot.rcv_pending_msgs);
         if (!seen_recv || pending > rcv_pending_max)
             rcv_pending_max = pending;
         rcv_pending_end = pending;
@@ -462,47 +471,75 @@ void spot_client_handler (const zlink_routing_id_t *,
 
 struct spot_recv_loop_t
 {
-    spot_recv_loop_t () : sub (NULL), state (NULL), stop (false) {}
+    spot_recv_loop_t () : sub (NULL), state (NULL), poller (NULL), stop (false) {}
 
     void *sub;
     spot_client_state_t *state;
+    void *poller;
     std::atomic<bool> stop;
     std::thread thread;
 };
 
-void start_spot_recv_loop (spot_recv_loop_t *loop_)
+bool start_spot_recv_loop (spot_recv_loop_t *loop_)
 {
     if (!loop_ || !loop_->sub || !loop_->state)
-        return;
+        return false;
+
+    loop_->poller = zlink_poller_new ();
+    if (!loop_->poller
+        || zlink_poller_add (
+             loop_->poller, loop_->sub, loop_->sub, ZLINK_POLLIN)
+             != 0) {
+        if (loop_->poller)
+            (void) zlink_poller_destroy (&loop_->poller);
+        return false;
+    }
 
     loop_->stop.store (false, std::memory_order_release);
     loop_->thread = std::thread ([loop_] () {
         while (!loop_->stop.load (std::memory_order_acquire)) {
+            zlink_poller_event_t event;
+            const int poll_rc = zlink_poller_wait (loop_->poller, &event, 10);
+            if (poll_rc < 0) {
+                const int err = zlink_errno ();
+                if (err == EAGAIN || err == EINTR)
+                    continue;
+                loop_->state->fatal.store (true, std::memory_order_release);
+                loop_->state->cv.notify_all ();
+                break;
+            }
+            if (poll_rc == 0 || (event.events & ZLINK_POLLIN) == 0)
+                continue;
+
             zlink_msg_t *parts = NULL;
             size_t part_count = 0;
             char topic[256];
             size_t topic_len = sizeof (topic);
-            const int rc = zlink_subscribe (
-              loop_->sub, NULL, &parts, &part_count, topic, &topic_len,
-              ZLINK_DONTWAIT);
-            if (rc == 0) {
-                handle_spot_client_parts (
-                  loop_->state, topic, topic_len, parts, part_count);
-                free (parts);
-                continue;
-            }
+            while (!loop_->stop.load (std::memory_order_acquire)) {
+                const int rc = zlink_subscribe (
+                  loop_->sub, NULL, &parts, &part_count, topic, &topic_len,
+                  ZLINK_DONTWAIT);
+                if (rc == 0) {
+                    handle_spot_client_parts (
+                      loop_->state, topic, topic_len, parts, part_count);
+                    free (parts);
+                    parts = NULL;
+                    part_count = 0;
+                    topic_len = sizeof (topic);
+                    continue;
+                }
 
-            const int err = zlink_errno ();
-            if (err == EAGAIN || err == EINTR) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
-                continue;
-            }
+                const int err = zlink_errno ();
+                if (err == EAGAIN || err == EINTR)
+                    break;
 
-            loop_->state->fatal.store (true, std::memory_order_release);
-            loop_->state->cv.notify_all ();
-            break;
+                loop_->state->fatal.store (true, std::memory_order_release);
+                loop_->state->cv.notify_all ();
+                return;
+            }
         }
     });
+    return true;
 }
 
 void stop_spot_recv_loop (spot_recv_loop_t *loop_)
@@ -512,6 +549,8 @@ void stop_spot_recv_loop (spot_recv_loop_t *loop_)
     loop_->stop.store (true, std::memory_order_release);
     if (loop_->thread.joinable ())
         loop_->thread.join ();
+    if (loop_->poller)
+        (void) zlink_poller_destroy (&loop_->poller);
 }
 
 void cleanup_spot_case (void **sub_monitor_,
@@ -568,138 +607,145 @@ bool publish_payload (void *pub_,
     return true;
 }
 
-int try_publish_payload (void *pub_,
-                         std::vector<char> &payload_,
-                         size_t msg_size_,
-                         uint32_t run_id_,
-                         perf_single_metric::phase_t phase_,
-                         uint64_t seq_)
+bool wait_spot_send_ready_until (
+  void *poller_,
+  const std::chrono::steady_clock::time_point &deadline_)
 {
-    if (publish_payload (pub_,
-                         payload_,
-                         msg_size_,
-                         run_id_,
-                         phase_,
-                         seq_,
-                         ZLINK_DONTWAIT)) {
-        return 1;
+    if (!poller_)
+        return false;
+
+    while (std::chrono::steady_clock::now () < deadline_) {
+        const long long remaining_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            deadline_ - std::chrono::steady_clock::now ())
+            .count ();
+        const int timeout_ms =
+          static_cast<int> (remaining_ms > 0 ? remaining_ms : 1);
+        zlink_poller_event_t event;
+        const int poll_rc = zlink_poller_wait (poller_, &event, timeout_ms);
+        if (poll_rc < 0) {
+            const int err = zlink_errno ();
+            if (err == EAGAIN || err == EINTR)
+                continue;
+            return false;
+        }
+        if (poll_rc == 0)
+            return false;
+        if ((event.events & ZLINK_POLLOUT) != 0)
+            return true;
     }
 
-    const int err = errno;
-    if (err == EAGAIN || err == EINTR)
-        return 0;
-    return -1;
+    return false;
 }
 
-bool run_warmup (void *pub_,
-                 spot_client_state_t &client_state_,
-                 spot_queue_probe_t &probe_,
-                 std::vector<char> &payload_,
-                 size_t msg_size_)
+bool run_publish_window (void *pub_,
+                         spot_client_state_t &client_state_,
+                         spot_queue_probe_t &probe_,
+                         std::vector<char> &payload_,
+                         size_t msg_size_,
+                         perf_single_metric::phase_t phase_,
+                         int duration_s_,
+                         bool callback_mode_,
+                         void *send_poller_)
 {
-    const int warmup_s = resolve_single_warmup_seconds ();
     const auto deadline =
-      std::chrono::steady_clock::now () + std::chrono::seconds (warmup_s);
+      std::chrono::steady_clock::now ()
+      + std::chrono::seconds (std::max (0, duration_s_));
+    uint64_t seq = 1;
 
-    // reset state
+    while (std::chrono::steady_clock::now () < deadline) {
+        probe_.sample_send_if_due ();
+
+        if (callback_mode_) {
+            if (!publish_payload (pub_,
+                                  payload_,
+                                  msg_size_,
+                                  client_state_.run_id,
+                                  phase_,
+                                  seq,
+                                  0)) {
+                if (errno == EINTR)
+                    continue;
+                return false;
+            }
+            ++seq;
+            continue;
+        }
+
+        if (publish_payload (pub_,
+                             payload_,
+                             msg_size_,
+                             client_state_.run_id,
+                             phase_,
+                             seq,
+                             ZLINK_DONTWAIT)) {
+            ++seq;
+            continue;
+        }
+
+        const int err = errno;
+        if (err == EINTR)
+            continue;
+        if (err != EAGAIN)
+            return false;
+        if (!wait_spot_send_ready_until (send_poller_, deadline))
+            break;
+    }
+
+    return !client_state_.fatal.load (std::memory_order_acquire);
+}
+
+bool run_phase_window (void *pub_,
+                       spot_client_state_t &client_state_,
+                       spot_queue_probe_t &probe_,
+                       std::vector<char> &payload_,
+                       size_t msg_size_,
+                       perf_single_metric::phase_t phase_,
+                       int duration_s_,
+                       bool callback_mode_,
+                       void *send_poller_,
+                       double *throughput_out_,
+                       latency_stats_t *latency_out_)
+{
     client_state_.fatal.store (false, std::memory_order_release);
     client_state_.warmup_received.store (0, std::memory_order_release);
     client_state_.warmup_target.store (0, std::memory_order_release);
     client_state_.active_received.store (0, std::memory_order_release);
     client_state_.recv_activity.store (0, std::memory_order_release);
-    client_state_.active_deadline_us.store (0, std::memory_order_release);
-    {
-        std::lock_guard<std::mutex> lock (client_state_.latency_mutex);
-        client_state_.latency = latency_stats_builder_t ();
-    }
-
-    uint64_t seq = 1;
-    while (std::chrono::steady_clock::now () < deadline) {
-        probe_.sample_send_if_due ();
-        for (;;) {
-            const int rc = try_publish_payload (
-              pub_,
-              payload_,
-              msg_size_,
-              client_state_.run_id,
-              perf_single_metric::phase_warmup,
-              seq);
-            if (rc > 0) { ++seq; break; }
-            if (rc < 0) return false;
-            std::this_thread::yield ();
-        }
-    }
-
-    // idle-wait for in-flight warmup messages
-    const int idle_timeout_ms = std::max (10, resolve_single_recv_timeout_ms ());
-    const int total_timeout_ms = std::max (100, idle_timeout_ms * 2);
-    (void) wait_for_receive_quiet (client_state_, idle_timeout_ms, total_timeout_ms);
-
-    return !client_state_.fatal.load (std::memory_order_acquire)
-           && client_state_.warmup_received.load (std::memory_order_acquire) > 0;
-}
-
-bool run_active (void *pub_,
-                 spot_client_state_t &client_state_,
-                 spot_queue_probe_t &probe_,
-                 std::vector<char> &payload_,
-                 size_t msg_size_,
-                 double *throughput_out_,
-                 latency_stats_t *latency_out_)
-{
-    const int duration_s = resolve_single_duration_seconds ();
-    const auto active_start = std::chrono::steady_clock::now ();
-    const auto deadline = active_start + std::chrono::seconds (duration_s);
-    uint64_t seq = 1;
-    bool send_failed = false;
-
-    client_state_.fatal.store (false, std::memory_order_release);
-    client_state_.active_received.store (0, std::memory_order_release);
-    client_state_.recv_activity.store (0, std::memory_order_release);
     client_state_.active_deadline_us.store (
-      perf_single_metric::now_us ()
-        + static_cast<uint64_t> (std::max (1, duration_s) * 1000000ULL),
+      phase_ == perf_single_metric::phase_active
+        ? perf_single_metric::now_us ()
+            + static_cast<uint64_t> (std::max (1, duration_s_) * 1000000ULL)
+        : 0,
       std::memory_order_release);
     {
         std::lock_guard<std::mutex> lock (client_state_.latency_mutex);
         client_state_.latency = latency_stats_builder_t ();
     }
 
-    while (std::chrono::steady_clock::now () < deadline) {
-        bool sent = false;
-        while (std::chrono::steady_clock::now () < deadline) {
-            probe_.sample_send_if_due ();
-            const int rc =
-              try_publish_payload (pub_,
-                                   payload_,
-                                   msg_size_,
-                                   client_state_.run_id,
-                                   perf_single_metric::phase_active,
-                                   seq);
-            if (rc > 0) {
-                ++seq;
-                sent = true;
-                break;
-            }
-            if (rc < 0) {
-                send_failed = true;
-                break;
-            }
-            std::this_thread::yield ();
-        }
-        if (send_failed || !sent)
-            break;
-        if (client_state_.fatal.load (std::memory_order_acquire))
-            break;
+    if (!run_publish_window (pub_,
+                             client_state_,
+                             probe_,
+                             payload_,
+                             msg_size_,
+                             phase_,
+                             duration_s_,
+                             callback_mode_,
+                             send_poller_)) {
+        return false;
     }
 
     const int idle_timeout_ms = std::max (10, resolve_single_recv_timeout_ms ());
     const int total_timeout_ms = std::max (100, idle_timeout_ms * 2);
-    (void) wait_for_receive_quiet (
-      client_state_, idle_timeout_ms, total_timeout_ms);
-    client_state_.active_deadline_us.store (0, std::memory_order_release);
+    (void) wait_for_receive_quiet (client_state_, idle_timeout_ms, total_timeout_ms);
+    if (phase_ != perf_single_metric::phase_active) {
+        return !client_state_.fatal.load (std::memory_order_acquire)
+               && client_state_.warmup_received.load (std::memory_order_acquire)
+                    > 0;
+    }
 
-    const double elapsed_s = std::max (0.001, static_cast<double> (duration_s));
+    client_state_.active_deadline_us.store (0, std::memory_order_release);
+    const double elapsed_s = std::max (0.001, static_cast<double> (duration_s_));
     if (throughput_out_)
         *throughput_out_ =
           static_cast<double> (
@@ -785,6 +831,7 @@ int run_case (const std::string &lib_name_,
     }
     void *sub_monitor = NULL;
     void *pub_monitor = NULL;
+    void *send_poller = NULL;
     spot_recv_loop_t recv_loop;
     service_monitor_probe_t monitor_probe;
     service_monitor_probe_t pub_monitor_probe;
@@ -808,7 +855,8 @@ int run_case (const std::string &lib_name_,
     zlink_service_monitor_open_options_t pub_monitor_opts;
     memset (&pub_monitor_opts, 0, sizeof (pub_monitor_opts));
     pub_monitor_opts.events =
-      ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
+      ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
+      | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
     pub_monitor = zlink_service_monitor_open (pub, &pub_monitor_opts);
     if (!sub_monitor || !pub_monitor) {
         if (bench_debug_enabled ())
@@ -871,11 +919,8 @@ int run_case (const std::string &lib_name_,
     spot_client_state_scope_t client_state_scope (&client_state);
     spot_queue_probe_t probe (pub_monitor, sub_monitor);
     client_state.probe = &probe;
-    if (!callback_mode) {
-        recv_loop.sub = sub;
-        recv_loop.state = &client_state;
-        start_spot_recv_loop (&recv_loop);
-    }
+    recv_loop.sub = sub;
+    recv_loop.state = &client_state;
 
     if (!wait_for_service_event (
           &monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, k_topic, -1,
@@ -896,15 +941,49 @@ int run_case (const std::string &lib_name_,
                                       transport_))) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] ready wait failed" << std::endl;
+        if (send_poller)
+            (void) zlink_poller_destroy (&send_poller);
         stop_spot_recv_loop (&recv_loop);
         cleanup_spot_case (
           &sub_monitor, &pub_monitor, &sub_node, &pub_node);
         return 1;
     }
 
+    if (!callback_mode
+        && !start_spot_recv_loop (&recv_loop)) {
+        if (bench_debug_enabled ())
+            std::cerr << "[perf-spot] recv loop start failed err="
+                      << zlink_errno () << std::endl;
+        cleanup_spot_case (
+          &sub_monitor, &pub_monitor, &sub_node, &pub_node);
+        return 1;
+    }
+
+    if (!callback_mode) {
+        send_poller = zlink_poller_new ();
+        if (!send_poller
+            || zlink_poller_add (send_poller, pub, pub, ZLINK_POLLOUT) != 0) {
+            if (bench_debug_enabled ())
+                std::cerr << "[perf-spot] send poller init failed err="
+                          << zlink_errno () << std::endl;
+            if (send_poller)
+                (void) zlink_poller_destroy (&send_poller);
+            stop_spot_recv_loop (&recv_loop);
+            cleanup_spot_case (
+              &sub_monitor, &pub_monitor, &sub_node, &pub_node);
+            return 1;
+        }
+    }
+
     std::vector<char> payload;
-    if (!run_warmup (pub, client_state, probe, payload, msg_size_)) {
+    if (!run_phase_window (
+          pub, client_state, probe, payload, msg_size_,
+          perf_single_metric::phase_warmup,
+          resolve_single_warmup_seconds (), callback_mode, send_poller, NULL,
+          NULL)) {
         const queue_stats_t queue_stats = probe.snapshot ();
+        if (send_poller)
+            (void) zlink_poller_destroy (&send_poller);
         print_result (lib_name_,
                       k_pattern,
                       transport_,
@@ -922,10 +1001,13 @@ int run_case (const std::string &lib_name_,
 
     double throughput = 0.0;
     latency_stats_t latency;
-    const bool active_ok =
-      run_active (pub, client_state, probe, payload, msg_size_, &throughput,
-                  &latency);
+    const bool active_ok = run_phase_window (
+      pub, client_state, probe, payload, msg_size_,
+      perf_single_metric::phase_active, resolve_single_duration_seconds (),
+      callback_mode, send_poller, &throughput, &latency);
     const queue_stats_t queue_stats = probe.snapshot ();
+    if (send_poller)
+        (void) zlink_poller_destroy (&send_poller);
     print_result (lib_name_,
                   k_pattern,
                   transport_,

@@ -29,6 +29,8 @@
 - 명시적 drain phase는 두지 않지만, active 종료 후 receiver는 짧은 idle drain으로 in-flight 메시지를 정리할 수 있다.
 - 재시도 로직은 두지 않는다.
 - 연결 준비/handshake는 monitor의 **delivery-ready event**만 사용한다.
+- single perf의 monitor 소비 방식은 `callback`으로 통일한다. monitor socket을
+  `recv`/`poll`로 직접 읽는 구현은 허용하지 않는다.
 - single perf의 ready gate는
   [`../guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
   "메시징 시작 전 준비 확인" 절에 정의된 이벤트를 그대로 따른다.

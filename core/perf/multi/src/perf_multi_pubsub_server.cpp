@@ -261,7 +261,8 @@ inline bool publish_once (void *server,
                       << " phase=" << static_cast<unsigned int> (phase)
                       << " size=" << current_msg_size << std::endl;
         }
-        std::this_thread::yield ();
+        if (perf_socket_poll (NULL, 0, 1) < 0 && zlink_errno () != EINTR)
+            return false;
         return true;
     }
 
@@ -400,7 +401,10 @@ inline bool run_server_loop (void *server,
             }
 
             if (phase_index >= phases.size ()) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                if (perf_socket_poll (NULL, 0, 50) < 0
+                    && zlink_errno () != EINTR) {
+                    return false;
+                }
                 continue;
             }
 
@@ -427,7 +431,15 @@ inline bool run_server_loop (void *server,
             }
 
             if (!phases[phase_index].send_active) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                const long remaining_ms =
+                  std::chrono::duration_cast<std::chrono::milliseconds> (
+                    phase_deadline - std::chrono::steady_clock::now ())
+                    .count ();
+                const long wait_ms = remaining_ms > 0 ? remaining_ms : 0;
+                if (perf_socket_poll (NULL, 0, wait_ms) < 0
+                    && zlink_errno () != EINTR) {
+                    return false;
+                }
                 continue;
             }
 
@@ -572,10 +584,6 @@ inline int run_server_benchmark (const std::string &lib_name,
         close_connect_monitor (server_monitor);
         zlink_close (server);
         return 1;
-    }
-    if (bench_debug_enabled ()) {
-        std::cerr << "[multi-pubsub-server] delivery ready peers="
-                  << read_socket_ready_peer_count (server) << std::endl;
     }
 
     const bool loop_ok = run_server_loop (

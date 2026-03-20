@@ -30,6 +30,7 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <dlfcn.h>
+#include <poll.h>
 #else
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -74,6 +75,27 @@ typedef std::chrono::seconds seconds_t;
 typedef std::chrono::nanoseconds nanoseconds_t;
 typedef std::chrono::duration<double> floating_seconds_t;
 
+inline int perf_idle_wait_ms(long timeout_)
+{
+    if (timeout_ <= 0)
+        return 0;
+
+#if defined(_WIN32)
+    const DWORD wait_ms = static_cast<DWORD>(
+      timeout_ > static_cast<long>(DWORD(-1)) ? DWORD(-1) : timeout_);
+    ::Sleep(wait_ms);
+    return 0;
+#else
+    const int wait_ms =
+      timeout_ > static_cast<long>(INT_MAX) ? INT_MAX : static_cast<int>(timeout_);
+    int rc = 0;
+    do {
+        rc = ::poll(NULL, 0, wait_ms);
+    } while (rc < 0 && errno == EINTR);
+    return rc < 0 ? -1 : 0;
+#endif
+}
+
 inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_)
 {
     if (nitems_ < 0) {
@@ -81,11 +103,8 @@ inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_
         return -1;
     }
 
-    if (nitems_ == 0 || !items_) {
-        if (timeout_ > 0)
-            std::this_thread::sleep_for(std::chrono::milliseconds(timeout_));
-        return 0;
-    }
+    if (nitems_ == 0 || !items_)
+        return perf_idle_wait_ms(timeout_);
 
     const steady_clock_t::time_point start = steady_clock_t::now();
     while (true) {
@@ -130,7 +149,8 @@ inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_
                 return 0;
         }
 
-        std::this_thread::sleep_for(milliseconds_t(1));
+        if (perf_idle_wait_ms(1) != 0)
+            return -1;
     }
 }
 
@@ -728,111 +748,12 @@ inline void print_server_queue_metrics(const std::string &lib_type,
               << std::endl;
 }
 
-inline bool read_socket_snapshot_once(void *socket_,
-                                      zlink_monitor_snapshot_t *out_)
-{
-    if (!socket_ || !out_)
-        return false;
-
-    zlink_socket_monitor_open_options_t monitor_opts;
-    memset(&monitor_opts, 0, sizeof(monitor_opts));
-    monitor_opts.events = ZLINK_EVENT_ALL;
-    void *monitor = zlink_socket_monitor_open(socket_, &monitor_opts);
-    if (!monitor)
-        return false;
-
-    memset(out_, 0, sizeof(*out_));
-    const int rc = zlink_monitor_snapshot(monitor, out_);
-    stop_and_close_socket_monitor(socket_, &monitor);
-    return rc == 0;
-}
-
-inline bool read_gateway_snapshot_once(void *gateway_,
-                                       zlink_monitor_snapshot_t *out_)
-{
-    if (!gateway_ || !out_)
-        return false;
-
-    zlink_service_monitor_open_options_t opts;
-    memset(&opts, 0, sizeof(opts));
-    opts.events = ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
-                  | ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
-                  | ZLINK_GATEWAY_ROUTE_DOWN
-                  | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
-    void *monitor = zlink_service_monitor_open(gateway_, &opts);
-    if (!monitor)
-        return false;
-
-    memset(out_, 0, sizeof(*out_));
-    const int rc = zlink_monitor_snapshot(monitor, out_);
-    (void) zlink_monitor_close(&monitor);
-    return rc == 0;
-}
-
-inline bool read_spot_snapshot_once(void *spot_,
-                                    int role_,
-                                    zlink_monitor_snapshot_t *out_)
-{
-    if (!spot_ || !out_)
-        return false;
-
-    const int spot_role_pub = 1;
-    zlink_service_monitor_open_options_t opts;
-    memset(&opts, 0, sizeof(opts));
-    opts.events = ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
-                  | ZLINK_MONITOR_EVENT_PEER_UP
-                  | ZLINK_MONITOR_EVENT_PEER_DOWN
-                  | ZLINK_MONITOR_EVENT_ERROR
-                  | ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED
-                  | ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
-                  | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED;
-    if (role_ == spot_role_pub)
-        opts.events |= ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED;
-    else
-        opts.events |= ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED;
-    void *monitor = zlink_service_monitor_open(spot_, &opts);
-    if (!monitor)
-        return false;
-
-    memset(out_, 0, sizeof(*out_));
-    const int rc = zlink_monitor_snapshot(monitor, out_);
-    (void) zlink_monitor_close(&monitor);
-    return rc == 0;
-}
-
-inline size_t read_socket_ready_peer_count(void *socket_)
-{
-    zlink_monitor_snapshot_t snapshot;
-    if (!read_socket_snapshot_once(socket_, &snapshot)
-        || !(snapshot.detail_flags
-             & ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT)) {
-        return 0;
-    }
-    return static_cast<size_t>(snapshot.ready_peer_count);
-}
-
 inline server_queue_stats_t sample_server_queue_stats(void *send_socket_,
                                                       void *recv_socket_)
 {
     server_queue_stats_t out;
-    zlink_monitor_snapshot_t snapshot;
-
-    if (read_socket_snapshot_once(send_socket_, &snapshot)
-        && (snapshot.detail_flags
-            & ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS)) {
-        out.snd_pending_max =
-          static_cast<double>(static_cast<unsigned long long>(
-            snapshot.snd_pending_msgs));
-    }
-    if (read_socket_snapshot_once(recv_socket_, &snapshot)
-        && (snapshot.detail_flags
-            & ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS)) {
-        const double pending = static_cast<double>(
-          static_cast<unsigned long long>(snapshot.rcv_pending_msgs));
-        out.rcv_pending_max = pending;
-        out.rcv_pending_end = pending;
-    }
-
+    (void) send_socket_;
+    (void) recv_socket_;
     return out;
 }
 

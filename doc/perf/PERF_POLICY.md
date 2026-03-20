@@ -88,6 +88,8 @@
 - strict start readiness가 필요하면 local service monitor를 사용한다.
 - perf 연결 준비/handshake는 socket/service monitoring의 **delivery-ready
   event만** 사용한다.
+- perf의 monitor 소비 방식은 `callback`으로 통일한다. monitor socket을
+  `recv`/`poll`로 직접 읽는 방식은 perf 구현에서 사용하지 않는다.
 - perf 바이너리는 delivery-ready event 확인 이후에만 측정을 시작해야 한다.
 - `setup_connected_pair()` 같은 helper는 내부적으로 위 공식 monitoring
   delivery-ready gate를 캡슐화한 경우에만 허용된다. helper 자체가 별도

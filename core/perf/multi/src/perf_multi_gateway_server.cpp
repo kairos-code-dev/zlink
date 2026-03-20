@@ -8,6 +8,7 @@
 #include <cerrno>
 #include <chrono>
 #include <csignal>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <iomanip>
@@ -164,8 +165,6 @@ server_queue_stats_t sample_gateway_queue_stats(void *gateway,
     if (!gateway)
         return stats;
 
-    // Registry-based gateway peer introspection intentionally does not expose
-    // socket queue counters. Preserve the local pending depth signal only.
     stats.snd_pending_max = static_cast<double>(pending_depth);
     stats.rcv_pending_max = 0.0;
     stats.rcv_pending_end = 0.0;
@@ -197,6 +196,13 @@ enum send_status_t
     send_status_ok = 0,
     send_status_blocked = 1,
     send_status_fatal = 2
+};
+
+enum recv_status_t
+{
+    recv_status_ok = 0,
+    recv_status_none = 1,
+    recv_status_fatal = 2
 };
 
 send_status_t try_send_gateway_reply(void *gateway,
@@ -276,8 +282,9 @@ send_status_t try_send_pending_reply(void *gateway,
           payload.size(),
           NULL,
           NULL)
-        != 0)
+        != 0) {
         return send_status_fatal;
+    }
 
     const int rc = zlink_gateway_send_rid(gateway, &pending.routing_id,
                                           &reply_part, 1, ZLINK_DONTWAIT);
@@ -296,15 +303,30 @@ send_status_t try_send_pending_reply(void *gateway,
     return send_status_fatal;
 }
 
-void gateway_server_handler(const zlink_routing_id_t *source_rid,
-                            zlink_msg_t *parts,
-                            size_t part_count,
-                            void *)
+recv_status_t receive_gateway_request(gateway_server_state_t *state)
 {
-    gateway_server_state_t *state = g_server_state;
-    if (!state || !state->gateway || !source_rid || part_count == 0) {
-        close_parts(parts, part_count);
-        return;
+    if (!state || !state->gateway)
+        return recv_status_fatal;
+
+    zlink_routing_id_t source_rid;
+    std::memset(&source_rid, 0, sizeof(source_rid));
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc =
+      zlink_recv(state->gateway, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
+    if (rc != 0) {
+        const int err = zlink_errno();
+        if (err == EAGAIN || err == EINTR)
+            return recv_status_none;
+        return recv_status_fatal;
+    }
+
+    if (!parts || part_count == 0) {
+        if (parts) {
+            zlink_multipart_close(parts, part_count);
+            free(parts);
+        }
+        return recv_status_fatal;
     }
     if (part_count != 1) {
         if (bench_debug_enabled()
@@ -312,10 +334,11 @@ void gateway_server_handler(const zlink_routing_id_t *source_rid,
             std::cerr << "[multi-gateway-server] drop multipart part_count="
                       << part_count << std::endl;
         }
-        close_parts(parts, part_count);
-        return;
+        zlink_multipart_close(parts, part_count);
+        free(parts);
+        return recv_status_ok;
     }
-    const zlink_routing_id_t reply_routing_id = *source_rid;
+
     const size_t payload_size = zlink_msg_size(&parts[0]);
     if (bench_debug_enabled()
         && g_debug_recv_logs.fetch_add(1, std::memory_order_acq_rel) < 8) {
@@ -323,28 +346,21 @@ void gateway_server_handler(const zlink_routing_id_t *source_rid,
           state->pending_count.load(std::memory_order_acquire);
         std::cerr << "[multi-gateway-server] recv size=" << payload_size
                   << " part_count=" << part_count
-                  << " pending=" << pending_depth;
-        std::cerr << std::endl;
+                  << " pending=" << pending_depth << std::endl;
     }
 
     const bool has_pending =
       state->pending_count.load(std::memory_order_acquire) > 0;
+    state->recv_count.fetch_add(1, std::memory_order_acq_rel);
     if (has_pending) {
-        state->recv_count.fetch_add(1, std::memory_order_acq_rel);
-        enqueue_pending_reply(state,
-                              make_pending_reply(&reply_routing_id,
-                                                 parts,
-                                                 part_count));
-        close_parts(parts, part_count);
-        return;
+        enqueue_pending_reply(state, make_pending_reply(&source_rid, parts, part_count));
+        zlink_multipart_close(parts, part_count);
+        free(parts);
+        return recv_status_ok;
     }
 
-    state->recv_count.fetch_add(1, std::memory_order_acq_rel);
     const send_status_t send_rc =
-      try_send_gateway_reply(state->gateway,
-                             &reply_routing_id,
-                             parts,
-                             part_count);
+      try_send_gateway_reply(state->gateway, &source_rid, parts, part_count);
     if (send_rc == send_status_ok) {
         if (bench_debug_enabled()
             && g_debug_send_logs.fetch_add(1, std::memory_order_acq_rel) < 8) {
@@ -353,41 +369,58 @@ void gateway_server_handler(const zlink_routing_id_t *source_rid,
                       << std::endl;
         }
         state->send_ok_count.fetch_add(1, std::memory_order_acq_rel);
-        close_parts(parts, part_count);
-        return;
+        zlink_multipart_close(parts, part_count);
+        free(parts);
+        return recv_status_ok;
     }
+
     if (send_rc == send_status_blocked) {
         const pending_gateway_echo_t pending_entry =
-          make_pending_reply(&reply_routing_id, parts, part_count);
+          make_pending_reply(&source_rid, parts, part_count);
         if (bench_debug_enabled()
             && g_debug_send_logs.fetch_add(1, std::memory_order_acq_rel) < 8) {
             std::cerr << "[multi-gateway-server] send blocked errno="
                       << errno << " size=" << payload_size
-                      << " part_count=" << part_count
-                      << std::endl;
+                      << " part_count=" << part_count << std::endl;
         }
         if (pending_entry.parts.empty()) {
             state->send_failures.fetch_add(1, std::memory_order_acq_rel);
-            close_parts(parts, part_count);
-            return;
+            zlink_multipart_close(parts, part_count);
+            free(parts);
+            return recv_status_fatal;
         }
         enqueue_pending_reply(state, pending_entry);
-        close_parts(parts, part_count);
-    } else {
-        state->send_failures.fetch_add(1, std::memory_order_acq_rel);
-        std::cerr << "gateway server send failed: "
-                  << zlink_strerror(errno) << std::endl;
-        close_parts(parts, part_count);
+        zlink_multipart_close(parts, part_count);
+        free(parts);
+        return recv_status_ok;
     }
+
+    state->send_failures.fetch_add(1, std::memory_order_acq_rel);
+    std::cerr << "gateway server send failed: "
+              << zlink_strerror(errno) << std::endl;
+    zlink_multipart_close(parts, part_count);
+    free(parts);
+    return recv_status_fatal;
 }
 
-void gateway_server_send_ready(void *subject, void *)
+bool drain_gateway_requests(gateway_server_state_t *state)
 {
-    gateway_server_state_t *state = g_server_state;
-    if (!state || subject != state->gateway)
-        return;
+    while (!perf_stop_requested().load(std::memory_order_acquire)) {
+        const recv_status_t recv_rc = receive_gateway_request(state);
+        if (recv_rc == recv_status_none)
+            return true;
+        if (recv_rc == recv_status_fatal)
+            return false;
+    }
+    return true;
+}
 
-    while (!perf_stop_requested ().load(std::memory_order_acquire)) {
+bool flush_pending_replies(gateway_server_state_t *state)
+{
+    if (!state || !state->gateway)
+        return false;
+
+    while (!perf_stop_requested().load(std::memory_order_acquire)) {
         pending_gateway_echo_t pending;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
@@ -410,7 +443,7 @@ void gateway_server_send_ready(void *subject, void *)
         }
 
         if (send_rc == send_status_blocked)
-            break;
+            return true;
 
         state->send_failures.fetch_add(1, std::memory_order_acq_rel);
         {
@@ -421,8 +454,10 @@ void gateway_server_send_ready(void *subject, void *)
                                            std::memory_order_release);
             }
         }
-        break;
+        return false;
     }
+
+    return true;
 }
 
 void print_server_metrics(const std::string &lib_name,
@@ -449,21 +484,59 @@ void print_server_metrics(const std::string &lib_name,
     }
 }
 
-bool run_server_loop(const std::string &lib_name,
+bool run_server_loop(void *poller,
+                     const std::string &lib_name,
                      const std::string &transport)
 {
-    while (!perf_stop_requested ().load(std::memory_order_acquire)) {
-        if (g_server_state && g_server_state->gateway)
-            gateway_server_send_ready(g_server_state->gateway, NULL);
+    gateway_server_state_t *state = g_server_state;
+    if (!state || !state->gateway || !poller)
+        return false;
+
+    while (!perf_stop_requested().load(std::memory_order_acquire)) {
         emit_requested_queue_probe(lib_name, transport);
-        if (g_server_state
-            && g_server_state->send_failures.load(std::memory_order_acquire) > 0)
+        if (state->send_failures.load(std::memory_order_acquire) > 0)
             return false;
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+        const bool want_send =
+          state->pending_count.load(std::memory_order_acquire) > 0;
+        if (zlink_poller_modify(
+              poller,
+              state->gateway,
+              static_cast<short>(ZLINK_POLLIN | (want_send ? ZLINK_POLLOUT : 0)))
+            != 0) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-gateway-server] poller modify failed: "
+                          << zlink_strerror(zlink_errno()) << std::endl;
+            }
+            return false;
+        }
+
+        zlink_poller_event_t event;
+        std::memset(&event, 0, sizeof(event));
+        const int poll_rc = zlink_poller_wait(poller, &event, 5);
+        if (poll_rc < 0 && zlink_errno() != EINTR && zlink_errno() != EAGAIN) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-gateway-server] poller wait failed: "
+                          << zlink_strerror(zlink_errno()) << std::endl;
+            }
+            return false;
+        }
+
+        if ((event.events & ZLINK_POLLIN) != 0 && !drain_gateway_requests(state))
+            return false;
+        if (state->pending_count.load(std::memory_order_acquire) > 0
+            && (((event.events & ZLINK_POLLOUT) != 0)
+                || ((event.events & ZLINK_POLLIN) != 0))
+            && !flush_pending_replies(state)) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-gateway-server] pending flush failed"
+                          << std::endl;
+            }
+            return false;
+        }
     }
 
-    return !g_server_state
-           || g_server_state->send_failures.load(std::memory_order_acquire) == 0;
+    return state->send_failures.load(std::memory_order_acquire) == 0;
 }
 
 int run_server_benchmark(const std::string &lib_name,
@@ -490,17 +563,13 @@ int run_server_benchmark(const std::string &lib_name,
     if (!gateway)
         return 1;
     if (zlink_set_routing_id(gateway, k_server_routing_id,
-                                     std::strlen(k_server_routing_id)) != 0
-        || zlink_recv_handler(gateway, &gateway_server_handler, NULL) != 0) {
+                             std::strlen(k_server_routing_id))
+        != 0) {
         zlink_gateway_destroy(&gateway);
         return 1;
     }
 
     if (!apply_gateway_options(gateway, settings)
-        || zlink_send_ready_handler(gateway,
-                                                &gateway_server_send_ready,
-                                                NULL)
-             != 0
         || !configure_gateway_tls_server(gateway, transport)) {
         zlink_gateway_destroy(&gateway);
         return 1;
@@ -517,8 +586,16 @@ int run_server_benchmark(const std::string &lib_name,
     gateway_server_state_t state;
     state.gateway = gateway;
     g_server_state = &state;
+    void *poller = zlink_poller_new();
+    if (!poller || zlink_poller_add(poller, gateway, gateway, ZLINK_POLLIN) != 0) {
+        if (poller)
+            zlink_poller_destroy(&poller);
+        g_server_state = NULL;
+        zlink_gateway_destroy(&gateway);
+        return 1;
+    }
 
-    perf_stop_requested ().store(false, std::memory_order_release);
+    perf_stop_requested().store(false, std::memory_order_release);
     g_queue_probe_pending.store(false, std::memory_order_release);
     g_queue_probe_size.store(0, std::memory_order_release);
     install_perf_signal_handlers();
@@ -532,11 +609,11 @@ int run_server_benchmark(const std::string &lib_name,
                 continue;
             }
             if (line == "STOP" || line == "QUIT") {
-                perf_stop_requested ().store(true, std::memory_order_release);
+                perf_stop_requested().store(true, std::memory_order_release);
                 return;
             }
         }
-        perf_stop_requested ().store(true, std::memory_order_release);
+        perf_stop_requested().store(true, std::memory_order_release);
     });
     stdin_watcher.detach();
 
@@ -549,27 +626,27 @@ int run_server_benchmark(const std::string &lib_name,
 
     std::cout << "READY," << endpoint << std::endl;
 
-    const bool ok = run_server_loop(lib_name, transport);
+    const bool ok = run_server_loop(poller, lib_name, transport);
 
     size_t pending_depth = 0;
     {
         std::lock_guard<std::mutex> lock(state.mutex);
-        pending_depth =
-          state.pending_count.load(std::memory_order_acquire);
+        pending_depth = state.pending.size();
     }
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe(sample_start);
     const server_queue_stats_t queue_stats =
       sample_gateway_queue_stats(gateway, pending_depth);
-    if (bench_debug_enabled ()) {
-        std::cerr << "[multi-gateway-server] recv=" << state.recv_count.load ()
-                  << " send_ok=" << state.send_ok_count.load ()
-                  << " send_fail=" << state.send_failures.load ()
+    if (bench_debug_enabled()) {
+        std::cerr << "[multi-gateway-server] recv=" << state.recv_count.load()
+                  << " send_ok=" << state.send_ok_count.load()
+                  << " send_fail=" << state.send_failures.load()
                   << " pending=" << pending_depth << std::endl;
     }
     print_server_metrics(lib_name, transport, sizes, metrics, queue_stats);
 
     g_server_state = NULL;
+    zlink_poller_destroy(&poller);
     zlink_gateway_destroy(&gateway);
     return ok ? 0 : 1;
 }

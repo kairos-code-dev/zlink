@@ -36,10 +36,14 @@ std::string make_gateway_run_token ()
 struct gateway_queue_probe_t
 {
     gateway_queue_probe_t () :
-        monitor (NULL),
         sample_interval_ns (resolve_sample_interval_ns ()),
+        sample_every_msgs (resolve_sample_every_msgs ()),
         last_send_sample_ns (0),
         last_recv_sample_ns (0),
+        send_msgs_since_sample (0),
+        recv_msgs_since_sample (0),
+        sent_total (0),
+        recv_total (0),
         snd_pending_max (0),
         rcv_pending_max (0),
         rcv_pending_end (0),
@@ -50,7 +54,7 @@ struct gateway_queue_probe_t
 
     ~gateway_queue_probe_t () { close (); }
 
-    void set_monitor (void *monitor_) { monitor = monitor_; }
+    void set_monitor (void *monitor_) { (void) monitor_; }
     void sample_send_if_due () { maybe_sample (true, false); }
     void sample_recv_if_due () { maybe_sample (false, false); }
     void force_sample () { maybe_sample (true, true); }
@@ -72,10 +76,14 @@ struct gateway_queue_probe_t
         return stats;
     }
 
-    void *monitor;
     unsigned long long sample_interval_ns;
+    unsigned int sample_every_msgs;
     unsigned long long last_send_sample_ns;
     unsigned long long last_recv_sample_ns;
+    unsigned int send_msgs_since_sample;
+    unsigned int recv_msgs_since_sample;
+    unsigned long long sent_total;
+    unsigned long long recv_total;
     unsigned long long snd_pending_max;
     unsigned long long rcv_pending_max;
     unsigned long long rcv_pending_end;
@@ -91,6 +99,12 @@ struct gateway_queue_probe_t
         return clamped_ms * 1000000ULL;
     }
 
+    static unsigned int resolve_sample_every_msgs ()
+    {
+        const int value = resolve_single_queue_sample_every_msgs ();
+        return static_cast<unsigned int> (value > 0 ? value : 64);
+    }
+
     static unsigned long long now_ns ()
     {
         return static_cast<unsigned long long> (
@@ -101,6 +115,24 @@ struct gateway_queue_probe_t
 
     void maybe_sample (bool send_path_, bool force_)
     {
+        if (!force_) {
+            if (send_path_)
+                ++sent_total;
+            else
+                ++recv_total;
+        }
+
+        unsigned int &msgs_since_sample =
+          send_path_ ? send_msgs_since_sample : recv_msgs_since_sample;
+        if (force_) {
+            msgs_since_sample = 0;
+        } else if (sample_every_msgs > 1) {
+            ++msgs_since_sample;
+            if (msgs_since_sample < sample_every_msgs)
+                return;
+            msgs_since_sample = 0;
+        }
+
         const unsigned long long now = now_ns ();
         unsigned long long &last_sample_ns =
           send_path_ ? last_send_sample_ns : last_recv_sample_ns;
@@ -109,32 +141,20 @@ struct gateway_queue_probe_t
             return;
         }
         last_sample_ns = now;
-        if (!monitor)
-            return;
 
-        zlink_monitor_snapshot_t snapshot;
-        memset (&snapshot, 0, sizeof (snapshot));
-        if (zlink_monitor_snapshot (monitor, &snapshot) != 0) {
-            return;
-        }
-
-        if ((snapshot.detail_flags
-             & ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS)
-            != 0) {
+        const unsigned long long pending =
+          sent_total > recv_total ? (sent_total - recv_total) : 0ULL;
+        if (send_path_) {
             seen_send = true;
-            if (snapshot.snd_pending_msgs > snd_pending_max)
-                snd_pending_max = snapshot.snd_pending_msgs;
+            if (pending > snd_pending_max)
+                snd_pending_max = pending;
+            return;
         }
-        if ((snapshot.detail_flags
-             & ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS)
-            != 0) {
-            seen_recv = true;
-            if (snapshot.rcv_pending_msgs > rcv_pending_max)
-                rcv_pending_max = snapshot.rcv_pending_msgs;
-            rcv_pending_end = snapshot.rcv_pending_msgs;
-        }
-        (void) send_path_;
-        (void) force_;
+
+        seen_recv = true;
+        if (pending > rcv_pending_max)
+            rcv_pending_max = pending;
+        rcv_pending_end = pending;
     }
 };
 
@@ -580,71 +600,130 @@ bool wait_gateway_recv_loop_ready (gateway_recv_loop_t *loop_, int timeout_ms_)
     while (std::chrono::steady_clock::now () < deadline) {
         if (loop_->ready.load (std::memory_order_acquire))
             return true;
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        if (perf_socket_poll (NULL, 0, 1) < 0 && zlink_errno () != EINTR)
+            return false;
     }
     return loop_->ready.load (std::memory_order_acquire);
 }
 
-bool run_warmup (void *gateway_,
-                 const zlink_routing_id_t *target_rid_,
-                 gateway_server_state_t &server_state_,
-                 gateway_queue_probe_t &probe_,
-                 std::vector<char> &payload_,
-                 size_t msg_size_)
+bool wait_gateway_receive_quiet (gateway_server_state_t &server_state_,
+                                 bool active_phase_)
 {
-    const int warmup_s = resolve_single_warmup_seconds ();
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::seconds (warmup_s > 0 ? warmup_s : 1);
-    uint64_t seq = 1;
+    std::unique_lock<std::mutex> lock (server_state_.mutex);
+    const std::chrono::milliseconds idle_timeout (
+      active_phase_ ? std::max (1000, resolve_single_recv_timeout_ms () * 10)
+                    : std::max (10, resolve_single_recv_timeout_ms ()));
+    while (true) {
+        const unsigned long long observed =
+          active_phase_ ? server_state_.active_received
+                        : server_state_.warmup_received;
+        const bool changed = server_state_.cv.wait_for (
+          lock, idle_timeout, [&server_state_, observed, active_phase_] () {
+              if (server_state_.fatal)
+                  return true;
+              return active_phase_ ? server_state_.active_received != observed
+                                   : server_state_.warmup_received != observed;
+          });
+        if (server_state_.fatal)
+            return false;
+        if (!changed)
+            return true;
+    }
+}
 
+bool run_gateway_phase_window (void *gateway_,
+                               const zlink_routing_id_t *target_rid_,
+                               gateway_ready_monitor_t *monitor_,
+                               gateway_server_state_t &server_state_,
+                               gateway_queue_probe_t &probe_,
+                               std::vector<char> &payload_,
+                               size_t msg_size_,
+                               perf_single_metric::phase_t phase_,
+                               int duration_s_,
+                               double *throughput_out_,
+                               latency_stats_t *latency_out_)
+{
     {
         std::lock_guard<std::mutex> lock (server_state_.mutex);
         server_state_.warmup_received = 0;
         server_state_.active_received = 0;
-        server_state_.active_deadline_us = 0;
+        server_state_.active_deadline_us =
+          phase_ == perf_single_metric::phase_active
+            ? perf_single_metric::now_us ()
+                + static_cast<uint64_t> (
+                    std::max (1, duration_s_) * 1000000ULL)
+            : 0;
         server_state_.fatal = false;
         server_state_.latency = latency_stats_builder_t ();
     }
 
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::seconds (
+        phase_ == perf_single_metric::phase_active
+          ? std::max (1, duration_s_)
+          : std::max (0, duration_s_));
+    const int send_flags =
+      phase_ == perf_single_metric::phase_active ? ZLINK_DONTWAIT : 0;
+    uint64_t seq = 1;
+
     while (std::chrono::steady_clock::now () < deadline) {
         probe_.sample_send_if_due ();
-        if (!send_payload (gateway_,
-                           target_rid_,
-                           payload_,
-                           msg_size_,
-                           server_state_.run_id,
-                           perf_single_metric::phase_warmup,
-                           seq++,
-                           0)) {
-            return false;
+        if (send_payload (gateway_,
+                          target_rid_,
+                          payload_,
+                          msg_size_,
+                          server_state_.run_id,
+                          phase_,
+                          seq,
+                          send_flags)) {
+            ++seq;
+            continue;
         }
+
+        if (phase_ != perf_single_metric::phase_active)
+            return false;
+        if (errno != EAGAIN && errno != EHOSTUNREACH && errno != ENOTCONN)
+            return false;
+        if (!wait_gateway_send_ready_until (monitor_, 1, deadline))
+            break;
+        if (std::chrono::steady_clock::now () >= deadline)
+            break;
     }
 
-    // idle-wait: no new warmup messages for idle_timeout → warmup receive done
-    {
-        std::unique_lock<std::mutex> lock (server_state_.mutex);
-        const std::chrono::milliseconds idle_timeout (
-          std::max (10, resolve_single_recv_timeout_ms ()));
-        while (true) {
-            const unsigned long long observed = server_state_.warmup_received;
-            const bool changed = server_state_.cv.wait_for (
-              lock, idle_timeout, [&server_state_, observed] () {
-                  return server_state_.fatal
-                         || server_state_.warmup_received != observed;
-              });
-            if (server_state_.fatal)
-                return false;
-            if (!changed)
-                break;
+    if (!wait_gateway_receive_quiet (
+          server_state_, phase_ == perf_single_metric::phase_active)) {
+        server_state_.active_deadline_us = 0;
+        return false;
+    }
+
+    if (phase_ != perf_single_metric::phase_active) {
+        if (getenv ("PERF_DEBUG")) {
+            std::lock_guard<std::mutex> lock (server_state_.mutex);
+            std::cerr << "[perf-gateway] warmup received="
+                      << server_state_.warmup_received << std::endl;
         }
+        return !server_state_.fatal && server_state_.warmup_received > 0;
     }
-    if (getenv ("PERF_DEBUG")) {
+
+    unsigned long long active_received = 0;
+    {
         std::lock_guard<std::mutex> lock (server_state_.mutex);
-        std::cerr << "[perf-gateway] warmup received="
-                  << server_state_.warmup_received << std::endl;
+        active_received = server_state_.active_received;
+        if (latency_out_)
+            *latency_out_ = server_state_.latency.snapshot ();
     }
-    return !server_state_.fatal && server_state_.warmup_received > 0;
+    server_state_.active_deadline_us = 0;
+    if (getenv ("PERF_DEBUG")) {
+        std::cerr << "[perf-gateway] active received=" << active_received
+                  << " duration_s=" << duration_s_ << std::endl;
+    }
+
+    if (throughput_out_)
+        *throughput_out_ =
+          static_cast<double> (active_received)
+          / static_cast<double> (std::max (1, duration_s_));
+    return !server_state_.fatal && active_received > 0;
 }
 
 bool prime_gateway_route (void *gateway_,
@@ -701,91 +780,6 @@ bool prime_gateway_route (void *gateway_,
                   << preflight_messages << std::endl;
     }
     return primed && !server_state_.fatal;
-}
-
-bool run_active (void *gateway_,
-                 const zlink_routing_id_t *target_rid_,
-                 gateway_ready_monitor_t *monitor_,
-                 gateway_server_state_t &server_state_,
-                 gateway_queue_probe_t &probe_,
-                 std::vector<char> &payload_,
-                 size_t msg_size_,
-                 double *throughput_out_,
-                 latency_stats_t *latency_out_)
-{
-    const int duration_s = resolve_single_duration_seconds ();
-    const auto deadline =
-      std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
-    uint64_t seq = 1;
-
-    {
-        std::lock_guard<std::mutex> lock (server_state_.mutex);
-        server_state_.active_received = 0;
-        server_state_.active_deadline_us =
-          perf_single_metric::now_us ()
-          + static_cast<uint64_t> (
-              std::max (1, duration_s) * 1000000ULL);
-        server_state_.fatal = false;
-        server_state_.latency = latency_stats_builder_t ();
-    }
-
-    while (std::chrono::steady_clock::now () < deadline) {
-        probe_.sample_send_if_due ();
-        if (send_payload (gateway_,
-                          target_rid_,
-                          payload_,
-                          msg_size_,
-                          server_state_.run_id,
-                          perf_single_metric::phase_active,
-                          seq,
-                          ZLINK_DONTWAIT)) {
-            ++seq;
-            continue;
-        }
-
-        if (errno != EAGAIN && errno != EHOSTUNREACH && errno != ENOTCONN)
-            return false;
-        if (!wait_gateway_send_ready_until (monitor_, 1, deadline))
-            break;
-        if (std::chrono::steady_clock::now () >= deadline)
-            break;
-    }
-
-    {
-        std::unique_lock<std::mutex> lock (server_state_.mutex);
-        const std::chrono::milliseconds idle_timeout (
-          std::max (1000, resolve_single_recv_timeout_ms () * 10));
-        while (true) {
-            const unsigned long long observed = server_state_.active_received;
-            const bool changed = server_state_.cv.wait_for (
-              lock, idle_timeout, [&server_state_, observed] () {
-                  return server_state_.fatal
-                         || server_state_.active_received != observed;
-              });
-            if (server_state_.fatal)
-                return false;
-            if (!changed)
-                break;
-        }
-    }
-
-    unsigned long long active_received = 0;
-    {
-        std::lock_guard<std::mutex> lock (server_state_.mutex);
-        active_received = server_state_.active_received;
-        if (latency_out_)
-            *latency_out_ = server_state_.latency.snapshot ();
-    }
-    if (getenv ("PERF_DEBUG")) {
-        std::cerr << "[perf-gateway] active received=" << active_received
-                  << " duration_s=" << duration_s << std::endl;
-    }
-
-    if (throughput_out_)
-        *throughput_out_ =
-          static_cast<double> (active_received)
-          / static_cast<double> (std::max (1, duration_s));
-    return !server_state_.fatal && active_received > 0;
 }
 
 int run_case (const std::string &lib_name_,
@@ -966,9 +960,10 @@ int run_case (const std::string &lib_name_,
         cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);
         return 1;
     }
-    if (!run_warmup (
-          client_gateway, &server_rid, server_state, *probe, payload,
-          msg_size_)) {
+    if (!run_gateway_phase_window (
+          client_gateway, &server_rid, &client_monitor, server_state, *probe,
+          payload, msg_size_, perf_single_metric::phase_warmup,
+          resolve_single_warmup_seconds (), NULL, NULL)) {
         const queue_stats_t queue_stats = probe->snapshot ();
         server_state.probe = NULL;
         probe->close ();
@@ -1006,12 +1001,10 @@ int run_case (const std::string &lib_name_,
 
     double throughput = 0.0;
     latency_stats_t latency;
-    const bool active_ok =
-      run_active (
-        client_gateway, &server_rid, &client_monitor, server_state, *probe,
-        payload, msg_size_,
-        &throughput,
-        &latency);
+    const bool active_ok = run_gateway_phase_window (
+      client_gateway, &server_rid, &client_monitor, server_state, *probe,
+      payload, msg_size_, perf_single_metric::phase_active,
+      resolve_single_duration_seconds (), &throughput, &latency);
     const queue_stats_t queue_stats = probe->snapshot ();
     server_state.probe = NULL;
     probe->close ();

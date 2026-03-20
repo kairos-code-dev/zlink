@@ -26,6 +26,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_perf_contract
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_pubsub_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_spot_benchmark_process
+  ${INTEGRATION_TEST_ROOT}/monitoring/test_gateway_monitor_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_single_pair_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_service_contract
   ${INTEGRATION_TEST_ROOT}/test_monitor_with_handler
@@ -398,6 +399,14 @@ if(TARGET test_multi_spot_benchmark_process)
     test_multi_spot_benchmark_process
     PROPERTIES
       TIMEOUT 60
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+endif()
+if(TARGET test_gateway_monitor_process)
+  set_tests_properties(
+    test_gateway_monitor_process
+    PROPERTIES
+      TIMEOUT 30
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()

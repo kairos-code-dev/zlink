@@ -64,7 +64,7 @@ esac
 BUILD_DIR="${ROOT_DIR}/core/build"
 
 STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,GATEWAY,SPOT"
-MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM_CALLBACK"
+MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK"
 PATTERN="ALL"
 OUTPUT_FILE=""
 RESULTS_DIR=""
@@ -104,7 +104,7 @@ Measure current zlink single-pattern performance.
 Options:
   -h, --help                  Show this help.
   --pattern NAME              Pattern list (comma-separated) or ALL.
-                              In multi mode, STREAM/STREAMS map to STREAM_CALLBACK.
+                              In multi mode, STREAM_CALLBACK is also accepted.
   --build-dir PATH            Official build directory (must be core/build).
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
   --clean-build               Remove build directory and do a clean build.
@@ -159,8 +159,8 @@ normalize_multi_pattern_alias() {
   fi
 
   case "${raw}" in
-    STREAM|STREAMS|STREAM_CALLBACK)
-      printf '%s' "STREAM_CALLBACK"
+    STREAM|STREAMS)
+      printf '%s' "STREAM"
       ;;
     *)
       printf '%s' "${raw}"

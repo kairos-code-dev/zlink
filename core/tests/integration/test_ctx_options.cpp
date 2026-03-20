@@ -214,10 +214,10 @@ void test_ctx_option_blocky ()
     int value;
     size_t optsize = sizeof (int);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router, ZLINK_IPV6, &value, &optsize));
+      zlink_get_option (router, ZLINK_OPT_IPV6, &value, &optsize));
     TEST_ASSERT_EQUAL_INT (1, value);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router, ZLINK_LINGER, &value, &optsize));
+      zlink_get_option (router, ZLINK_OPT_LINGER, &value, &optsize));
     TEST_ASSERT_EQUAL_INT (-1, value);
     test_context_socket_close (router);
 
@@ -236,7 +236,7 @@ void test_ctx_option_blocky ()
                                 get_test_context (), static_cast<zlink_ctx_option_t>(ZLINK_BLOCKY)))));
     router = test_context_socket (ZLINK_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router, ZLINK_LINGER, &value, &optsize));
+      zlink_get_option (router, ZLINK_OPT_LINGER, &value, &optsize));
     TEST_ASSERT_EQUAL_INT (0, value);
     test_context_socket_close (router);
 }

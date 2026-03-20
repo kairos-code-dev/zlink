@@ -89,11 +89,6 @@ class xpub_t : public socket_base_t
     //  of multipart message.
     bool _process_subscribe;
 
-    //  This option is enabled with ZLINK_INTERNAL_OPT_ONLY_FIRST_SUBSCRIBE.
-    //  If true, messages following subscribe/unsubscribe in a multipart
-    //  message are treated as user data regardless of the first byte.
-    bool _only_first_subscribe;
-
     //  Drop messages if HWM reached, otherwise return with EAGAIN
     bool _lossy;
 
@@ -132,6 +127,7 @@ class xpub_t : public socket_base_t
     std::vector<pipe_t *> _cache_build_pipes;
     std::atomic<bool> _dispatch_active;
     std::atomic<uint32_t> _dispatch_inflight;
+    bool _delivery_ready_state;
     mutable std::mutex _dispatch_control_mu;
     mutable std::mutex _dispatch_inflight_mu;
     std::condition_variable _dispatch_inflight_cv;
@@ -140,6 +136,9 @@ class xpub_t : public socket_base_t
     int dispatch_message (zlink::msg_t *msg_);
     void notify_dispatch_stopped ();
     void invalidate_match_cache ();
+    void refresh_delivery_ready_state (
+      const endpoint_uri_pair_t &endpoint_uri_pair_);
+    bool compute_delivery_ready_state () const;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (xpub_t)
 };

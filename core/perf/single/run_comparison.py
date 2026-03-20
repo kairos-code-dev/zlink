@@ -44,13 +44,6 @@ PATTERN_TO_BINARY = {
     "SPOT": "perf_spot",
 }
 
-RECV_MODE_BINARY_OVERRIDES = {
-    "PAIR": "perf_pair_recv",
-    "PUBSUB": "perf_pubsub_recv",
-    "DEALER_DEALER": "perf_dealer_dealer_recv",
-    "DEALER_ROUTER": "perf_dealer_router_recv",
-    "ROUTER_ROUTER": "perf_router_router_recv",
-}
 SUPPORTED_RECV_MODES = {
     "PAIR": ("recv", "callback"),
     "PUBSUB": ("recv", "callback"),
@@ -1032,10 +1025,6 @@ def resolve_binary_name(pattern: str, recv_mode: str) -> str:
         raise ValueError(
             f"pattern {pattern} does not support --recv {recv_mode}"
         )
-    if recv_mode == "recv":
-        override = RECV_MODE_BINARY_OVERRIDES.get(pattern)
-        if override:
-            return override
     return PATTERN_TO_BINARY[pattern]
 
 

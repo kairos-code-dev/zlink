@@ -9,7 +9,6 @@
 #include "../src/platform.hpp"
 #endif
 #include "../include/zlink.h"
-#include "legacy_api_compat.hpp"
 #include "utils/stdint.hpp"
 #include <stdio.h>
 #include <stdlib.h>

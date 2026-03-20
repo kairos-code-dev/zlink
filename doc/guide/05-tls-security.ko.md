@@ -216,11 +216,13 @@ void on_tls_error(const zlink_monitor_event_t *ev, void *userdata)
            (unsigned long long)ev->value);
 }
 
-void *mon = zlink_socket_monitor_open(socket,
-    ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL |
-    ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL |
-    ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
-    on_tls_error, NULL);
+zlink_socket_monitor_open_options_t opts = {
+    .events = ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL |
+              ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL |
+              ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
+};
+void *mon = zlink_socket_monitor_open(socket, &opts);
+zlink_socket_monitor_handler(mon, on_tls_error, NULL);
 ```
 
 ## 8. 운영 환경 체크리스트

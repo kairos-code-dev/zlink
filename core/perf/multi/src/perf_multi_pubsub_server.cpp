@@ -7,10 +7,12 @@
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <csignal>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -19,14 +21,118 @@ namespace {
 
 static const char *k_pattern = "MULTI_PUBSUB";
 static const char *k_token = "pubsub";
-static const zlink_socket_type_t k_server_socket_type = ZLINK_XPUB;
+static const zlink_socket_type_t k_server_socket_type = ZLINK_PUB;
 static const bool k_server_has_routing_id = false;
 static const char *k_server_routing_id = "SERVER";
 static const uint32_t k_metric_run_id = 1U;
+static const char *k_pubsub_topic = "bench";
 
 static std::atomic<bool> g_queue_probe_pending (false);
 static std::atomic<size_t> g_queue_probe_size (0);
 static std::atomic<int> g_debug_pub_logs (0);
+std::mutex g_start_sync;
+std::condition_variable g_start_cv;
+bool g_start_gate_enabled = false;
+size_t g_start_requested_size = 0;
+
+void pubsub_server_ready_monitor_handler (const zlink_monitor_event_t *event,
+                                          void *userdata)
+{
+    connect_monitor_state_t *state =
+      static_cast<connect_monitor_state_t *> (userdata);
+    if (!state || !event)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock (state->sync);
+        switch (event->event) {
+            case ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED:
+                state->connection_ready_count = event->value > 0 ? 1 : 0;
+                break;
+
+            case ZLINK_EVENT_BIND_FAILED:
+            case ZLINK_EVENT_ACCEPT_FAILED:
+            case ZLINK_EVENT_CLOSE_FAILED:
+            case ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL:
+            case ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL:
+            case ZLINK_EVENT_HANDSHAKE_FAILED_AUTH:
+                if (state->error_code == 0)
+                    state->error_code =
+                      event->value > 0 ? static_cast<int> (event->value) : EIO;
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    state->cv.notify_all ();
+}
+
+bool open_pubsub_server_ready_monitor (void *server, connect_monitor_t *out)
+{
+    if (!server || !out)
+        return false;
+
+    connect_monitor_state_t *state =
+      new (std::nothrow) connect_monitor_state_t ();
+    if (!state)
+        return false;
+
+    zlink_socket_monitor_open_options_t opts;
+    std::memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED | ZLINK_EVENT_BIND_FAILED
+                  | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
+                  | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+                  | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
+                  | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
+    void *monitor = zlink_socket_monitor_open (server, &opts);
+    if (!monitor
+        || zlink_socket_monitor_handler (
+             monitor, &pubsub_server_ready_monitor_handler, state)
+             != 0) {
+        if (monitor)
+            (void) zlink_monitor_close (&monitor);
+        delete state;
+        return false;
+    }
+
+    const int monitor_hwm = bench_hwm_from_env ("PERF_MONITOR_HWM", 1000);
+    set_sockopt_int (monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
+    if (monitor_hwm > 0) {
+        set_sockopt_int (
+          monitor, ZLINK_OPT_SNDHWM, monitor_hwm, "ZLINK_OPT_SNDHWM");
+        set_sockopt_int (
+          monitor, ZLINK_OPT_RCVHWM, monitor_hwm, "ZLINK_OPT_RCVHWM");
+    }
+
+    out->owner = server;
+    out->monitor = monitor;
+    out->state = state;
+    return true;
+}
+
+bool wait_pubsub_server_ready (connect_monitor_t *monitor, int timeout_ms)
+{
+    connect_monitor_state_t *state = monitor ? monitor->state : NULL;
+    if (!state)
+        return false;
+
+    std::unique_lock<std::mutex> lock (state->sync);
+    if (state->error_code != 0)
+        return false;
+    if (state->connection_ready_count > 0)
+        return true;
+
+    const bool signaled = state->cv.wait_for (
+      lock,
+      std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms : 1),
+      [state] () {
+          return state->error_code != 0 || state->connection_ready_count > 0;
+      });
+    return signaled && state->error_code == 0
+           && state->connection_ready_count > 0;
+}
 
 inline void request_queue_probe (size_t msg_size)
 {
@@ -34,6 +140,53 @@ inline void request_queue_probe (size_t msg_size)
         return;
     g_queue_probe_size.store (msg_size, std::memory_order_release);
     g_queue_probe_pending.store (true, std::memory_order_release);
+}
+
+bool parse_start_command (const std::string &line, size_t *msg_size_out)
+{
+    static const char prefix[] = "START,";
+    if (!msg_size_out
+        || line.compare (0, sizeof (prefix) - 1, prefix) != 0) {
+        return false;
+    }
+
+    const char *value = line.c_str () + (sizeof (prefix) - 1);
+    char *end = NULL;
+    const unsigned long long parsed = std::strtoull (value, &end, 10);
+    if (!end || *end != '\0' || parsed == 0)
+        return false;
+
+    *msg_size_out = static_cast<size_t> (parsed);
+    return true;
+}
+
+bool wait_for_start_signal (size_t msg_size, int timeout_ms)
+{
+    std::unique_lock<std::mutex> lock (g_start_sync);
+    if (g_start_requested_size == msg_size) {
+        g_start_requested_size = 0;
+        g_start_gate_enabled = false;
+        return true;
+    }
+
+    const bool signaled = g_start_cv.wait_for (
+      lock,
+      std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms : 1),
+      [msg_size] () {
+          return perf_stop_requested ().load (std::memory_order_acquire)
+                 || g_start_requested_size == msg_size;
+      });
+    if (!signaled || g_start_requested_size != msg_size) {
+        if (bench_debug_enabled ()) {
+            std::cerr << "[multi-pubsub-server] start gate timeout size="
+                      << msg_size << std::endl;
+        }
+        return false;
+    }
+
+    g_start_requested_size = 0;
+    g_start_gate_enabled = false;
+    return true;
 }
 
 inline void emit_requested_queue_probe (const std::string &lib_name,
@@ -80,92 +233,39 @@ inline bool publish_once (void *server,
         return false;
     }
 
-    zlink_msg_t part;
-    if (zlink_msg_init_size (&part, send_size) != 0)
+    zlink_msg_t payload_part;
+    if (zlink_msg_init_size (&payload_part, send_size) != 0)
         return false;
-    std::memcpy (zlink_msg_data (&part), payload.data (), send_size);
-    if (::zlink_send (server, &part, 1, 0) >= 0) {
+    std::memcpy (zlink_msg_data (&payload_part), payload.data (), send_size);
+
+    if (::zlink_publish (server, k_pubsub_topic, &payload_part, 1, 0) >= 0) {
         if (bench_debug_enabled ()
-            && g_debug_pub_logs.fetch_add (1, std::memory_order_acq_rel) < 12) {
-            std::cerr << "[multi-pubsub-server] send ok phase="
+            && g_debug_pub_logs.fetch_add (1, std::memory_order_acq_rel) < 8) {
+            std::cerr << "[multi-pubsub-server] publish ok phase="
                       << static_cast<unsigned int> (phase)
-                      << " size=" << current_msg_size << " seq=" << (*seq - 1)
-                      << std::endl;
+                      << " size=" << current_msg_size << " seq="
+                      << (*seq - 1) << std::endl;
         }
         return true;
     }
+
+    zlink_msg_close (&payload_part);
 
     const int err = zlink_errno ();
     if (err == EINTR)
         return true;
     if (err == EAGAIN || err == ETIMEDOUT) {
         if (bench_debug_enabled ()
-            && g_debug_pub_logs.fetch_add (1, std::memory_order_acq_rel) < 12) {
-            std::cerr << "[multi-pubsub-server] send blocked phase="
-                      << static_cast<unsigned int> (phase)
-                      << " size=" << current_msg_size << " err=" << err
-                      << std::endl;
+            && g_debug_pub_logs.fetch_add (1, std::memory_order_acq_rel) < 8) {
+            std::cerr << "[multi-pubsub-server] publish blocked err=" << err
+                      << " phase=" << static_cast<unsigned int> (phase)
+                      << " size=" << current_msg_size << std::endl;
         }
         std::this_thread::yield ();
         return true;
     }
 
     return perf_stop_requested ().load (std::memory_order_acquire);
-}
-
-inline bool wait_for_subscriptions(void *server,
-                                   size_t expected_count,
-                                   int timeout_ms)
-{
-    if (!server || expected_count == 0)
-        return true;
-
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(1, timeout_ms));
-    size_t subscribe_count = 0;
-    std::vector<char> frame(256, '\0');
-
-    while (std::chrono::steady_clock::now() < deadline
-           && !perf_stop_requested ().load(std::memory_order_acquire)) {
-        zlink_routing_id_t source_rid;
-        source_rid.size = 0;
-        zlink_msg_t *parts = NULL;
-        size_t part_count = 0;
-        const int rc = ::zlink_recv (
-          server, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
-        if (rc < 0) {
-            const int err = zlink_errno();
-            if (err == EAGAIN || err == EINTR) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                continue;
-            }
-            return false;
-        }
-
-        if (part_count > 0) {
-            const size_t copy_len =
-              std::min (frame.size (), zlink_msg_size (&parts[0]));
-            if (copy_len > 0)
-                std::memcpy (frame.data (), zlink_msg_data (&parts[0]), copy_len);
-        }
-        if (parts) {
-            zlink_multipart_close (parts, part_count);
-            free (parts);
-        }
-
-        if (rc > 0 && static_cast<unsigned char>(frame[0]) == 1)
-            ++subscribe_count;
-        if (subscribe_count >= expected_count)
-            return true;
-    }
-
-    if (bench_debug_enabled()) {
-        std::cerr << "[multi-pubsub-server] subscriptions ready="
-                  << subscribe_count << " expected=" << expected_count
-                  << std::endl;
-    }
-    return subscribe_count >= expected_count;
 }
 
 inline size_t resolve_max_size (const std::vector<size_t> &sizes)
@@ -232,7 +332,7 @@ build_one_way_phases (const multi_bench_settings_t &settings,
         append_one_way_phase (
           &phases, msg_size, perf_multi_metric::phase_warmup, warmup_s, true);
         append_one_way_phase (
-          &phases, msg_size, perf_multi_metric::phase_drain, settle_s, true);
+          &phases, msg_size, perf_multi_metric::phase_drain, settle_s, false);
         append_one_way_phase (
           &phases, msg_size, perf_multi_metric::phase_active, active_s, true);
     }
@@ -282,22 +382,21 @@ inline bool run_server_loop (void *server,
     const std::vector<one_way_phase_t> phases =
       build_one_way_phases (settings, msg_sizes);
     size_t phase_index = 0;
-    auto phase_deadline = std::chrono::steady_clock::now ();
+    auto phase_deadline = std::chrono::steady_clock::time_point ();
+    bool phase_started = false;
     size_t current_phase_msg_size = 0;
     perf_multi_metric::phase_t current_phase = perf_multi_metric::phase_warmup;
     uint64_t phase_seq = 1;
-    if (!phases.empty ())
-        phase_deadline += phases[0].duration;
 
     while (!perf_stop_requested ().load (std::memory_order_acquire)) {
         emit_requested_queue_probe (lib_name, transport, server, server);
 
         if (!phases.empty ()) {
             const auto now = std::chrono::steady_clock::now ();
-            while (phase_index < phases.size () && now >= phase_deadline) {
+            while (phase_started && phase_index < phases.size ()
+                   && now >= phase_deadline) {
                 ++phase_index;
-                if (phase_index < phases.size ())
-                    phase_deadline += phases[phase_index].duration;
+                phase_started = false;
             }
 
             if (phase_index >= phases.size ()) {
@@ -307,16 +406,24 @@ inline bool run_server_loop (void *server,
 
             if (phases[phase_index].msg_size != current_phase_msg_size
                 || phases[phase_index].phase != current_phase) {
+                const bool new_size =
+                  phases[phase_index].msg_size != current_phase_msg_size;
                 current_phase_msg_size = phases[phase_index].msg_size;
                 current_phase = phases[phase_index].phase;
                 phase_seq = 1;
-                if (bench_debug_enabled ()) {
-                    std::cerr << "[multi-pubsub-server] phase="
-                              << static_cast<unsigned int> (current_phase)
-                              << " size=" << current_phase_msg_size
-                              << " send_active="
-                              << phases[phase_index].send_active << std::endl;
+                if (new_size
+                    && !wait_for_start_signal (
+                      current_phase_msg_size, settings.connect_ready_timeout_ms)) {
+                    return false;
                 }
+                phase_started = false;
+            }
+
+            if (!phase_started) {
+                phase_deadline =
+                  std::chrono::steady_clock::now ()
+                  + phases[phase_index].duration;
+                phase_started = true;
             }
 
             if (!phases[phase_index].send_active) {
@@ -376,20 +483,10 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings ();
     const int linger_ms = 0;
-    const int xpub_nodrop =
-      resolve_multi_int_env ("PERF_MULTI_PUBSUB_XPUB_NODROP", 1, 0);
-    const int xpub_verboser = 1;
-    set_sockopt_int (server, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
-    set_sockopt_int (
-      server,
-      ZLINK_XPUB_NODROP,
-      xpub_nodrop,
-      "ZLINK_XPUB_NODROP");
-    set_sockopt_int (
-      server,
-      ZLINK_XPUB_VERBOSER,
-      xpub_verboser,
-      "ZLINK_XPUB_VERBOSER");
+    const int pub_nodrop = 1;
+    set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
+    set_pub_opt_int (
+      server, ZLINK_PUB_OPT_NODROP, pub_nodrop, "ZLINK_PUB_OPT_NODROP");
     apply_benchmark_hwm (server, settings.hwm);
     if (k_server_has_routing_id) {
         zlink_set_routing_id (
@@ -402,7 +499,7 @@ inline int run_server_benchmark (const std::string &lib_name,
     }
 
     connect_monitor_t server_monitor;
-    if (!open_connect_monitor (server, server_monitor)) {
+    if (!open_pubsub_server_ready_monitor (server, &server_monitor)) {
         zlink_close (server);
         return 1;
     }
@@ -420,24 +517,40 @@ inline int run_server_benchmark (const std::string &lib_name,
     perf_stop_requested ().store (false, std::memory_order_release);
     g_queue_probe_pending.store (false, std::memory_order_release);
     g_queue_probe_size.store (0, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> lock (g_start_sync);
+        g_start_gate_enabled = true;
+        g_start_requested_size = 0;
+    }
     install_perf_signal_handlers ();
 
     std::thread stdin_watcher ([] () {
         std::string line;
         while (std::getline (std::cin, line)) {
             size_t queue_size = 0;
+            size_t start_size = 0;
             if (parse_queue_probe_command (line, &queue_size)) {
                 request_queue_probe (queue_size);
                 continue;
             }
+            if (parse_start_command (line, &start_size)) {
+                std::lock_guard<std::mutex> lock (g_start_sync);
+                g_start_gate_enabled = true;
+                g_start_requested_size = start_size;
+                g_start_cv.notify_all ();
+                continue;
+            }
             if (line == "STOP" || line == "QUIT") {
                 perf_stop_requested ().store (true, std::memory_order_release);
+                g_start_cv.notify_all ();
                 return;
             }
         }
+        if (bench_debug_enabled ())
+            std::cerr << "[multi-pubsub-server] stdin watcher eof" << std::endl;
         perf_stop_requested ().store (true, std::memory_order_release);
+        g_start_cv.notify_all ();
     });
-    stdin_watcher.detach ();
 
     std::vector<size_t> sizes = resolve_bench_msg_sizes (64);
     if (sizes.empty ())
@@ -454,26 +567,15 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     std::cout << "READY," << endpoint << std::endl;
 
-    if (!wait_connect_ready_count (
-          server_monitor,
-          settings.clients,
-          settings.connect_ready_timeout_ms)) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[multi-pubsub-server] connect-ready timeout peers="
-                      << read_socket_ready_peer_count(server) << " expected="
-                      << settings.clients << std::endl;
-        }
+    if (!wait_pubsub_server_ready (
+          &server_monitor, settings.connect_ready_timeout_ms)) {
         close_connect_monitor (server_monitor);
         zlink_close (server);
         return 1;
     }
-    if (!wait_for_subscriptions (
-          server,
-          static_cast<size_t> (settings.clients),
-          settings.connect_ready_timeout_ms)) {
-        close_connect_monitor (server_monitor);
-        zlink_close (server);
-        return 1;
+    if (bench_debug_enabled ()) {
+        std::cerr << "[multi-pubsub-server] delivery ready peers="
+                  << read_socket_ready_peer_count (server) << std::endl;
     }
 
     const bool loop_ok = run_server_loop (
@@ -483,6 +585,13 @@ inline int run_server_benchmark (const std::string &lib_name,
       &payload,
       lib_name,
       transport);
+
+    perf_stop_requested ().store (true, std::memory_order_release);
+    g_start_cv.notify_all ();
+    if (stdin_watcher.joinable ()) {
+        std::fclose (stdin);
+        stdin_watcher.join ();
+    }
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe (sample_start);

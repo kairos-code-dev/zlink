@@ -78,6 +78,9 @@ class xsub_t : public socket_base_t
     int dispatch_ready_messages ();
     int dispatch_message (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     void notify_dispatch_stopped ();
+    void refresh_delivery_ready_state (
+      const endpoint_uri_pair_t &endpoint_uri_pair_);
+    bool compute_delivery_ready_state () const;
 
     //  Fair queueing object for inbound pipes.
     fq_t _fq;
@@ -113,11 +116,6 @@ class xsub_t : public socket_base_t
     //  of multipart message.
     bool _process_subscribe;
 
-    //  This option is enabled with ZLINK_INTERNAL_OPT_ONLY_FIRST_SUBSCRIBE.
-    //  If true, messages following subscribe/unsubscribe in a multipart
-    //  message are treated as user data regardless of the first byte.
-    bool _only_first_subscribe;
-
     std::atomic<bool> _dispatch_active;
     std::atomic<spot_sub_io_handler_fn> _dispatch_callback;
     std::atomic<void *> _dispatch_userdata;
@@ -128,6 +126,7 @@ class xsub_t : public socket_base_t
     std::vector<zlink_msg_t> _dispatch_parts;
     std::vector<zlink_msg_t> _socket_dispatch_parts;
     bool _socket_dispatch_drop_message;
+    bool _delivery_ready_state;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (xsub_t)
 };

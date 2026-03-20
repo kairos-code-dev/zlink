@@ -15,7 +15,6 @@
 #include <cstring>
 #include <climits>
 #include <zlink.h>
-#include "../../../../tests/legacy_api_compat.hpp"
 
 // --- Configuration ---
 static const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 262144};
@@ -394,11 +393,11 @@ inline void close_connect_monitor(connect_monitor_t &monitor_)
     monitor_.owner = NULL;
 }
 
-inline bool set_sockopt_int(void *socket_, int option_, int value_,
+inline bool set_sockopt_int(void *socket_, zlink_option_t option_, int value_,
                             const char *name_)
 {
-    const int rc = zlink_set_option(
-      socket_, static_cast<zlink_option_t>(option_), &value_, sizeof(value_));
+    const int rc =
+      zlink_set_option(socket_, option_, &value_, sizeof(value_));
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "setsockopt(" << name_ << ") failed: "
                   << zlink_strerror(zlink_errno()) << std::endl;
@@ -407,8 +406,7 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
     if (bench_debug_enabled()) {
         int out = 0;
         size_t out_size = sizeof(out);
-        const int grc = zlink_get_option(
-          socket_, static_cast<zlink_option_t>(option_), &out, &out_size);
+        const int grc = zlink_get_option(socket_, option_, &out, &out_size);
         if (grc == 0) {
             std::cerr << "setsockopt(" << name_ << ") = " << out << std::endl;
         }
@@ -422,8 +420,10 @@ inline void apply_benchmark_hwm(void *socket_, int inflight_)
     if (inflight_ <= 0)
         return;
 
-    set_sockopt_int(socket_, ZLINK_SNDHWM, inflight_, "ZLINK_SNDHWM");
-    set_sockopt_int(socket_, ZLINK_RCVHWM, inflight_, "ZLINK_RCVHWM");
+    set_sockopt_int(socket_, ZLINK_OPT_SNDHWM, inflight_,
+                    "ZLINK_OPT_SNDHWM");
+    set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, inflight_,
+                    "ZLINK_OPT_RCVHWM");
 }
 
 inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)
@@ -454,8 +454,10 @@ inline void apply_debug_timeouts(void *socket_, const std::string &transport)
       bench_timeout_ms_from_env("BENCH_MULTI_SNDTIMEO_MS", 5000);
     const int rcvtimeo_ms =
       bench_timeout_ms_from_env("BENCH_MULTI_RCVTIMEO_MS", 5000);
-    set_sockopt_int(socket_, ZLINK_SNDTIMEO, sndtimeo_ms, "ZLINK_SNDTIMEO");
-    set_sockopt_int(socket_, ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
+    set_sockopt_int(socket_, ZLINK_OPT_SNDTIMEO, sndtimeo_ms,
+                    "ZLINK_OPT_SNDTIMEO");
+    set_sockopt_int(socket_, ZLINK_OPT_RCVTIMEO, rcvtimeo_ms,
+                    "ZLINK_OPT_RCVTIMEO");
 }
 
 inline std::string transport_from_endpoint(const std::string &endpoint)

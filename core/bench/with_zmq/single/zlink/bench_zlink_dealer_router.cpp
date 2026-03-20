@@ -80,8 +80,10 @@ inline bool setup_dealer_router_session (void *router,
         return false;
 
     const int timeout_ms = resolve_single_recv_timeout_ms ();
-    set_sockopt_int (router, ZLINK_RCVTIMEO, timeout_ms, "ZLINK_RCVTIMEO");
-    set_sockopt_int (dealer, ZLINK_RCVTIMEO, timeout_ms, "ZLINK_RCVTIMEO");
+    set_sockopt_int (router, ZLINK_OPT_RCVTIMEO, timeout_ms,
+                     "ZLINK_OPT_RCVTIMEO");
+    set_sockopt_int (dealer, ZLINK_OPT_RCVTIMEO, timeout_ms,
+                     "ZLINK_OPT_RCVTIMEO");
     return true;
 }
 

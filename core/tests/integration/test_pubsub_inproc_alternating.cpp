@@ -43,18 +43,18 @@ void test_inproc_pubsub_alternating_does_not_timeout ()
     const int hwm = 1000;
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub, ZLINK_LINGER, &linger, sizeof (linger)));
+      zlink_set_option (pub, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub, ZLINK_LINGER, &linger, sizeof (linger)));
+      zlink_set_option (sub, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub, ZLINK_SNDHWM, &hwm, sizeof (hwm)));
+      zlink_set_option (pub, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub, ZLINK_RCVHWM, &hwm, sizeof (hwm)));
+      zlink_set_option (sub, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub, ZLINK_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
+      zlink_set_option (pub, ZLINK_OPT_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0));
+      zlink_set_option (sub, ZLINK_OPT_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, ""));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://pubsub-alternating"));
     TEST_ASSERT_SUCCESS_ERRNO (

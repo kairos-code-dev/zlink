@@ -128,6 +128,30 @@ static bool gateway_peer_filter_match (
     return true;
 }
 
+static bool registry_service_summary_filter_match (
+  const zlink_registry_service_summary_entry_t &entry_,
+  const zlink_registry_service_summary_filter_t *filter_)
+{
+    if (!filter_)
+        return true;
+    if (filter_->service_kind != 0 && filter_->service_kind != entry_.service_kind)
+        return false;
+    if (filter_->service_name[0] != '\0'
+        && strcmp (filter_->service_name, entry_.service_name) != 0) {
+        return false;
+    }
+    return true;
+}
+
+static bool registry_service_summary_less (
+  const zlink_registry_service_summary_entry_t &lhs_,
+  const zlink_registry_service_summary_entry_t &rhs_)
+{
+    if (lhs_.service_kind != rhs_.service_kind)
+        return lhs_.service_kind < rhs_.service_kind;
+    return strcmp (lhs_.service_name, rhs_.service_name) < 0;
+}
+
 registry_t::registry_t (ctx_t *ctx_) :
     _ctx (ctx_),
     _tag (registry_tag_value),
@@ -135,6 +159,8 @@ registry_t::registry_t (ctx_t *ctx_) :
     _registry_id (0),
     _registry_id_set (false),
     _list_seq (0),
+    _last_summary_error (0),
+    _summary_last_changed_ms (0),
     _heartbeat_interval_ms (5000),
     _heartbeat_timeout_ms (15000),
     _broadcast_interval_ms (30000),
@@ -190,6 +216,7 @@ int registry_t::bind (const char *pub_endpoint_,
         }
         _pub_endpoint = pub_endpoint_;
         _router_endpoint = router_endpoint_;
+        _summary_last_changed_ms = zlink::clock_t ().now_ms ();
     }
 
     return start ();
@@ -203,6 +230,7 @@ int registry_t::set_id (uint32_t registry_id_)
     scoped_lock_t lock (_sync);
     _registry_id = registry_id_;
     _registry_id_set = true;
+    _summary_last_changed_ms = zlink::clock_t ().now_ms ();
     return 0;
 }
 
@@ -221,6 +249,7 @@ int registry_t::add_peer (const char *peer_pub_endpoint_)
     }
     scoped_lock_t lock (_sync);
     _peer_pubs.push_back (peer_pub_endpoint_);
+    _summary_last_changed_ms = zlink::clock_t ().now_ms ();
     return 0;
 }
 
@@ -405,6 +434,113 @@ int registry_t::topology_query (const zlink_registry_topology_filter_t *filter_,
     for (size_t i = 0; i < matched.size (); ++i)
         entries_[i] = matched[i];
     *count_ = matched.size ();
+    return 0;
+}
+
+int registry_t::status_snapshot (zlink_registry_status_t *out_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    memset (out_, 0, sizeof (*out_));
+
+    scoped_lock_t lock (_sync);
+    out_->registry_id = _registry_id;
+    if (!_router_endpoint.empty ()) {
+        strncpy (out_->bind_endpoint, _router_endpoint.c_str (),
+                 sizeof (out_->bind_endpoint) - 1);
+    }
+    out_->topology_entry_count = static_cast<uint32_t> (_topology.size ());
+    out_->gateway_peer_entry_count = static_cast<uint32_t> (_gateway_peers.size ());
+    out_->peer_registry_count = static_cast<uint32_t> (_peer_pubs.size ());
+    out_->connected_peer_registry_count =
+      static_cast<uint32_t> (_peer_last_seen.size ());
+    out_->list_seq = _list_seq;
+    out_->last_error = _last_summary_error;
+    out_->last_changed_ms = _summary_last_changed_ms;
+
+    if (out_->last_error != 0)
+        out_->state = ZLINK_REGISTRY_STATE_ERROR;
+    else if (out_->bind_endpoint[0] == '\0' || out_->registry_id == 0)
+        out_->state = ZLINK_REGISTRY_STATE_IDLE;
+    else if (out_->peer_registry_count == 0)
+        out_->state = ZLINK_REGISTRY_STATE_ACTIVE;
+    else if (out_->connected_peer_registry_count < out_->peer_registry_count)
+        out_->state = ZLINK_REGISTRY_STATE_DEGRADED;
+    else
+        out_->state = ZLINK_REGISTRY_STATE_ACTIVE;
+
+    return 0;
+}
+
+int registry_t::service_summary_snapshot (
+  const zlink_registry_service_summary_filter_t *filter_,
+  std::vector<zlink_registry_service_summary_entry_t> *out_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    out_->clear ();
+
+    std::map<std::pair<uint16_t, std::string>, zlink_registry_service_summary_entry_t>
+      grouped;
+    {
+        scoped_lock_t lock (_sync);
+        for (std::map<topology_key_t, topology_entry_t>::const_iterator it =
+               _topology.begin ();
+             it != _topology.end (); ++it) {
+            const zlink_registry_topology_entry_t &row = it->second.entry;
+            const std::pair<uint16_t, std::string> key (
+              row.service_kind, std::string (row.service_name));
+            zlink_registry_service_summary_entry_t &entry = grouped[key];
+            if (entry.service_kind == 0) {
+                memset (&entry, 0, sizeof (entry));
+                entry.service_kind = row.service_kind;
+                strncpy (entry.service_name, row.service_name,
+                         sizeof (entry.service_name) - 1);
+            }
+            entry.total_count++;
+            if (row.last_reported_ms > entry.last_reported_ms)
+                entry.last_reported_ms = row.last_reported_ms;
+            switch (row.state) {
+                case ZLINK_TOPOLOGY_STATE_DISCOVERED:
+                case ZLINK_TOPOLOGY_STATE_CONNECTING:
+                    entry.connecting_count++;
+                    break;
+                case ZLINK_TOPOLOGY_STATE_READY:
+                    entry.ready_count++;
+                    break;
+                case ZLINK_TOPOLOGY_STATE_LOST:
+                case ZLINK_TOPOLOGY_STATE_ERROR:
+                    entry.error_count++;
+                    break;
+                case ZLINK_TOPOLOGY_STATE_STOPPED:
+                    entry.stopped_count++;
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    for (std::map<std::pair<uint16_t, std::string>,
+                  zlink_registry_service_summary_entry_t>::const_iterator it =
+           grouped.begin ();
+         it != grouped.end (); ++it) {
+        if (registry_service_summary_filter_match (it->second, filter_))
+            out_->push_back (it->second);
+    }
+    std::sort (out_->begin (), out_->end (), registry_service_summary_less);
     return 0;
 }
 
@@ -1588,6 +1724,7 @@ void registry_t::upsert_topology_entry (
     topology_entry_t &stored = _topology[key];
     stored.entry = entry_;
     stored.entry.last_reported_ms = now_ms_;
+    _summary_last_changed_ms = now_ms_;
 }
 
 void registry_t::upsert_gateway_peer_entry (
@@ -1602,6 +1739,7 @@ void registry_t::upsert_gateway_peer_entry (
     gateway_peer_entry_t &stored = _gateway_peers[key];
     stored.entry = entry_;
     stored.entry.last_reported_ms = now_ms_;
+    _summary_last_changed_ms = now_ms_;
 }
 
 void registry_t::send_service_list (void *pub_)
@@ -1776,7 +1914,9 @@ void registry_t::remove_expired (uint64_t now_ms_)
         ++it;
     }
 
-    if (changed)
+    if (changed) {
         _list_seq++;
+        _summary_last_changed_ms = now_ms_;
+    }
 }
 }

@@ -369,6 +369,8 @@ gateway_t::gateway_t (ctx_t *ctx_,
     _refresh_interval_ms (
       static_cast<uint32_t> (resolve_gateway_refresh_sleep_ms ())),
     _server_weight (0),
+    _last_summary_error (0),
+    _summary_last_changed_ms (0),
     _tls_trust_system (0),
     _service_name (service_name_ ? service_name_ : ""),
     _routing_id_override (routing_id_ ? routing_id_ : ""),
@@ -444,6 +446,7 @@ int gateway_t::attach_discovery (discovery_t *discovery_)
         }
 
         _discovery = discovery_;
+        _summary_last_changed_ms = _runtime->clock.now_ms ();
         _discovery->add_observer (this);
         _runtime->force_refresh_all = true;
         if (!_service_name.empty ())
@@ -523,6 +526,7 @@ int gateway_t::connect (const char *endpoint_,
         }
 
         _runtime->manual_routes[endpoint_] = route;
+        _summary_last_changed_ms = _runtime->clock.now_ms ();
         gateway_service_pool_t *pool = get_or_create_pool_cached ();
         if (!pool)
             return -1;
@@ -568,6 +572,7 @@ int gateway_t::disconnect (const char *endpoint_)
             return 0;
 
         _runtime->manual_routes.erase (it);
+        _summary_last_changed_ms = _runtime->clock.now_ms ();
         gateway_service_pool_t *pool = get_or_create_pool_cached ();
         if (!pool)
             return -1;
@@ -1313,6 +1318,7 @@ int gateway_t::bind (const char *endpoint_)
         if (!already_bound_same_endpoint) {
             _bind_endpoint = endpoint_;
             needs_bind = true;
+            _summary_last_changed_ms = _runtime->clock.now_ms ();
         }
 
         should_register = _discovery != NULL;
@@ -1324,6 +1330,8 @@ int gateway_t::bind (const char *endpoint_)
         scoped_lock_t lock (_sync);
         if (_bind_endpoint == endpoint_)
             _bind_endpoint.clear ();
+        _last_summary_error = errno != 0 ? errno : EIO;
+        _summary_last_changed_ms = _runtime->clock.now_ms ();
         return -1;
     }
 
@@ -1335,6 +1343,7 @@ int gateway_t::bind (const char *endpoint_)
         {
             scoped_lock_t lock (_sync);
             _service_ready_emitted = true;
+            _summary_last_changed_ms = _runtime->clock.now_ms ();
             ready_endpoint =
               !_advertise_endpoint.empty () ? _advertise_endpoint : _bind_endpoint;
         }
@@ -2078,6 +2087,7 @@ void gateway_t::on_discovery_destroyed (discovery_t *discovery_)
     _server_service_name.clear ();
     _advertise_endpoint.clear ();
     _last_register_error.clear ();
+    _summary_last_changed_ms = _runtime ? _runtime->clock.now_ms () : 0;
 }
 
 int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
@@ -2119,6 +2129,77 @@ int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
                                   | ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS;
         }
     }
+    return 0;
+}
+
+int gateway_t::snapshot_status (zlink_gateway_status_t *out_) const
+{
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    memset (out_, 0, sizeof (*out_));
+
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    if (const_cast<gateway_t *> (this)->ensure_facade_mode () != 0)
+        return -1;
+
+    if (!_service_name.empty ()) {
+        strncpy (out_->service_name, _service_name.c_str (),
+                 sizeof (out_->service_name) - 1);
+    }
+    const std::string bind_endpoint =
+      !_advertise_endpoint.empty () ? _advertise_endpoint : _bind_endpoint;
+    if (!bind_endpoint.empty ()) {
+        strncpy (out_->bind_endpoint, bind_endpoint.c_str (),
+                 sizeof (out_->bind_endpoint) - 1);
+    }
+    out_->gateway_routing_id = _routing_id;
+
+    const gateway_service_pool_t *pool = NULL;
+    if (_runtime->primary_pool)
+        pool = _runtime->primary_pool;
+    else {
+        std::map<std::string, gateway_service_pool_t>::const_iterator it =
+          _runtime->pools.find (_service_name);
+        if (it != _runtime->pools.end ())
+            pool = &it->second;
+    }
+
+    const gateway_service_pool_t::control_snapshot_t *control =
+      pool && pool->control_snapshot ? pool->control_snapshot.get () : NULL;
+    out_->observed_provider_count =
+      control ? static_cast<uint32_t> (control->routes_by_endpoint.size ()) : 0;
+
+    {
+        scoped_lock_t send_lock (const_cast<mutex_t &> (_send_sync));
+        const gateway_service_pool_t::send_snapshot_t *send =
+          pool && pool->send_snapshot ? pool->send_snapshot.get () : NULL;
+        out_->ready_provider_count =
+          send ? static_cast<uint32_t> (send->endpoints.size ()) : 0;
+    }
+
+    out_->active_route_count = out_->ready_provider_count;
+    out_->send_ready = out_->ready_provider_count > 0 ? 1U : 0U;
+    out_->last_error = _last_summary_error;
+    out_->last_changed_ms = _summary_last_changed_ms;
+
+    if (out_->last_error != 0)
+        out_->state = ZLINK_GATEWAY_STATE_ERROR;
+    else if (out_->bind_endpoint[0] == '\0' && out_->observed_provider_count == 0)
+        out_->state = ZLINK_GATEWAY_STATE_IDLE;
+    else if (out_->observed_provider_count > 0 && out_->ready_provider_count == 0)
+        out_->state = ZLINK_GATEWAY_STATE_CONNECTING;
+    else if (out_->ready_provider_count > 0
+             && out_->ready_provider_count < out_->observed_provider_count) {
+        out_->state = ZLINK_GATEWAY_STATE_PARTIAL_READY;
+    } else if (out_->ready_provider_count > 0
+               && out_->ready_provider_count == out_->observed_provider_count) {
+        out_->state = ZLINK_GATEWAY_STATE_READY;
+    } else
+        out_->state = ZLINK_GATEWAY_STATE_IDLE;
+
     return 0;
 }
 
@@ -2374,6 +2455,7 @@ void gateway_t::process_monitor_events ()
             _runtime->ready_endpoints.insert (endpoint);
             _runtime->inflight_endpoints.erase (endpoint);
             _runtime->inflight_rid_by_endpoint.erase (endpoint);
+            _summary_last_changed_ms = _runtime->clock.now_ms ();
         } else if (event.event == ZLINK_EVENT_DISCONNECTED
                    || event.event == ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
                    || event.event == ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
@@ -2383,6 +2465,8 @@ void gateway_t::process_monitor_events ()
             _runtime->ready_endpoints.erase (endpoint);
             _runtime->down_endpoints.insert (endpoint);
             _runtime->down_until_ms[endpoint] = _runtime->clock.now_ms () + 500;
+            _last_summary_error = static_cast<int32_t> (event.event);
+            _summary_last_changed_ms = _runtime->clock.now_ms ();
         }
         std::map<std::string, std::string>::iterator it =
           _runtime->endpoint_to_service.find (endpoint);

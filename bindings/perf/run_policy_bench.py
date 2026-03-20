@@ -38,7 +38,6 @@ SINGLE_PATTERNS: List[str] = [
     "DEALER_DEALER",
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
-    "ROUTER_ROUTER_POLL",
     "GATEWAY",
     "SPOT",
 ]
@@ -75,7 +74,6 @@ SINGLE_SOCKET_PATTERNS = {
     "DEALER_DEALER",
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
-    "ROUTER_ROUTER_POLL",
 }
 
 DEFAULT_MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
@@ -154,11 +152,6 @@ CPP_SINGLE_PATTERN_SPECS: Dict[str, Tuple[str, str, str]] = {
         "perf_router_router.cpp",
         "run_pattern_router_router",
         "perf_router_router",
-    ),
-    "ROUTER_ROUTER_POLL": (
-        "perf_router_router_poll.cpp",
-        "run_pattern_router_router_poll",
-        "perf_router_router_poll",
     ),
     "GATEWAY": ("perf_gateway.cpp", "run_pattern_gateway", "perf_gateway"),
     "SPOT": ("perf_spot.cpp", "run_pattern_spot", "perf_spot"),

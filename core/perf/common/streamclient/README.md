@@ -206,7 +206,7 @@ Ephemeral port range is read from `/proc/sys/net/ipv4/ip_local_port_range`.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--transport` | `tcp` | Transport protocol: `tcp`, `tls`, `ws`, `wss` |
-| `--pattern` | `STREAM_CALLBACK` | Label for result output routing |
+| `--pattern` | `STREAM` | Label for result output routing |
 | `--endpoint` | — | Full endpoint URI (e.g., `tcp://127.0.0.1:15557`). Overrides `--host`/`--port`/`--transport`. |
 | `--host` | `127.0.0.1` | Server host |
 | `--port` | `38001` | Server port |
@@ -247,7 +247,7 @@ cmake --build core/build --target perf_stream_client -j$(nproc)
 
 ```bash
 core/build/bin/perf_stream_client \
-  --pattern STREAM_CALLBACK \
+  --pattern STREAM \
   --transport tcp \
   --endpoint tcp://127.0.0.1:15557 \
   --sizes 64 \

@@ -41,12 +41,18 @@ struct spot_client_slot_t
     spot_client_slot_t() :
         node(NULL),
         monitor(NULL),
+        ready(false),
+        error_code(0),
         stop(false)
     {
     }
 
     void *node;
     void *monitor;
+    std::mutex ready_mutex;
+    std::condition_variable ready_cv;
+    bool ready;
+    int error_code;
     std::atomic<bool> stop;
     std::thread recv_thread;
 };
@@ -330,19 +336,56 @@ bool open_spot_ready_monitor(spot_client_slot_t *slot)
 
     zlink_service_monitor_open_options_t opts;
     memset(&opts, 0, sizeof(opts));
-    opts.events = ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_READY;
+    opts.events =
+      ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
     void *monitor = zlink_service_monitor_open(slot->node, &opts);
     if (!monitor)
         return false;
 
     const int monitor_hwm = bench_hwm_from_env("PERF_MONITOR_HWM", 1000);
-    set_sockopt_int(monitor, ZLINK_LINGER, 0, "ZLINK_LINGER");
+    set_sockopt_int(monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
     if (monitor_hwm > 0) {
-        set_sockopt_int(monitor, ZLINK_SNDHWM, monitor_hwm, "ZLINK_SNDHWM");
-        set_sockopt_int(monitor, ZLINK_RCVHWM, monitor_hwm, "ZLINK_RCVHWM");
+        set_sockopt_int(monitor, ZLINK_OPT_SNDHWM, monitor_hwm,
+                        "ZLINK_OPT_SNDHWM");
+        set_sockopt_int(monitor, ZLINK_OPT_RCVHWM, monitor_hwm,
+                        "ZLINK_OPT_RCVHWM");
     }
 
     slot->monitor = monitor;
+    if (zlink_service_monitor_handler(
+          monitor,
+          [](const zlink_service_event_t *event, void *userdata) {
+              spot_client_slot_t *slot_state =
+                static_cast<spot_client_slot_t *> (userdata);
+              if (!slot_state || !event)
+                  return;
+              {
+                  std::lock_guard<std::mutex> lock (slot_state->ready_mutex);
+                  switch (event->event_type) {
+                      case ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED:
+                          slot_state->ready = event->value > 0;
+                          break;
+
+                      case ZLINK_MONITOR_EVENT_ERROR:
+                          if (slot_state->error_code == 0) {
+                              slot_state->error_code =
+                                event->error_code != 0 ? event->error_code
+                                                       : EIO;
+                          }
+                          break;
+
+                      default:
+                          break;
+                  }
+              }
+              slot_state->ready_cv.notify_all ();
+          },
+          slot)
+        != 0) {
+        (void) zlink_monitor_close (&monitor);
+        slot->monitor = NULL;
+        return false;
+    }
     return true;
 }
 
@@ -350,11 +393,8 @@ bool spot_slot_has_ready_peer(spot_client_slot_t *slot)
 {
     if (!slot || !slot->monitor)
         return false;
-
-    zlink_monitor_snapshot_t snapshot;
-    std::memset(&snapshot, 0, sizeof(snapshot));
-    return zlink_monitor_snapshot(slot->monitor, &snapshot) == 0
-           && snapshot.ready_peer_count > 0;
+    std::lock_guard<std::mutex> lock (slot->ready_mutex);
+    return slot->error_code == 0 && slot->ready;
 }
 
 void close_spot_ready_monitor(spot_client_slot_t *slot)
@@ -768,8 +808,23 @@ bool wait_all_sub_ready(const std::vector<spot_client_slot_t *> &slots,
         if (ready_count >= slots.size())
             break;
 
-        if (perf_socket_poll(NULL, 0, 1) < 0 && zlink_errno() != EINTR)
-            return false;
+        for (size_t i = 0; i < slots.size (); ++i) {
+            spot_client_slot_t *slot = slots[i];
+            if (!slot || ready[i])
+                continue;
+            std::unique_lock<std::mutex> lock (slot->ready_mutex);
+            if (slot->error_code != 0)
+                return false;
+            (void) slot->ready_cv.wait_for (
+              lock, std::chrono::milliseconds (1),
+              [slot] () { return slot->error_code != 0 || slot->ready; });
+            if (slot->error_code != 0)
+                return false;
+            if (slot->ready) {
+                ready[i] = 1;
+                ++ready_count;
+            }
+        }
     }
 
     if (bench_transition_debug_enabled()) {

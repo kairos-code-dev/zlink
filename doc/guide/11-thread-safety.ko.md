@@ -102,7 +102,7 @@ int main(void)
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_set_subscription()` / `zlink_unset_subscription()`
 - `zlink_gateway_attach_discovery()` / `zlink_spot_node_attach_discovery()`
-- `zlink_*_monitor_open()`
+- `zlink_socket_monitor_open()` / `zlink_service_monitor_open()`
 - `zlink_send_ready_handler()`
 - `zlink_set_option()` / `zlink_gateway_set_lb_strategy()`
 - `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`

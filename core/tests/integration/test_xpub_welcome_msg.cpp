@@ -13,13 +13,13 @@ void test ()
 
     //  set pub socket options
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub, ZLINK_XPUB_WELCOME_MSG, "W", 1));
+      zlink_set_pub_option (pub, ZLINK_PUB_OPT_WELCOME_MSG, "W", 1));
 
     //  Create a subscriber
     void *sub = test_context_socket (ZLINK_SUB);
 
     // Subscribe to the welcome message
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "W", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "W"));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, "inproc://soname"));
 

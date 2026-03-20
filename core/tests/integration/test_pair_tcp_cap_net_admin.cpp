@@ -11,7 +11,7 @@ void set_sockopt_bind_to_device (void *socket)
 {
     const char device[] = "lo";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket, ZLINK_BINDTODEVICE, &device, sizeof (device) - 1));
+      zlink_set_option (socket, ZLINK_OPT_BINDTODEVICE, &device, sizeof (device) - 1));
 }
 
 //  TODO this is duplicated from test_pair_tcp
@@ -29,7 +29,7 @@ void test_pair_tcp (extra_func_t extra_func_ = NULL)
         TEST_IGNORE_MESSAGE ("SO_BINDTODEVICE not supported");
     TEST_ASSERT_SUCCESS_ERRNO (rc);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (sb, ZLINK_SOCKOPT_LAST_ENDPOINT, my_endpoint, &my_endpoint_length));
+      zlink_get_option (sb, ZLINK_OPT_LAST_ENDPOINT, my_endpoint, &my_endpoint_length));
 
     void *sc = test_context_socket (ZLINK_PAIR);
     if (extra_func_)

@@ -80,8 +80,7 @@ struct spot_server_state_t
         next_seq(1),
         send_enabled(false),
         send_pending(false),
-        fatal_errno(0),
-        send_wake_epoch(0)
+        fatal_errno(0)
     {
     }
 
@@ -90,12 +89,9 @@ struct spot_server_state_t
     size_t msg_size;
     perf_multi_metric::phase_t phase;
     uint64_t next_seq;
-    std::mutex send_wait_mutex;
-    std::condition_variable send_wait_cv;
     std::atomic<bool> send_enabled;
     std::atomic<bool> send_pending;
     std::atomic<int> fatal_errno;
-    std::atomic<uint64_t> send_wake_epoch;
     std::mutex start_wait_mutex;
     std::condition_variable start_wait_cv;
     std::set<size_t> pending_start_sizes;
@@ -333,42 +329,9 @@ bool wait_for_size_start(spot_server_state_t *state,
 }
 
 
-void notify_spot_server_send_progress(spot_server_state_t *state)
+bool wait_for_spot_send_progress(bool send_enabled)
 {
-    if (!state)
-        return;
-
-    state->send_wake_epoch.fetch_add(1, std::memory_order_acq_rel);
-    state->send_wait_cv.notify_all();
-}
-
-void spot_server_send_ready(void *subject, void *)
-{
-    spot_server_state_t *state = g_server_state;
-    if (!state || subject != state->pub)
-        return;
-
-    notify_spot_server_send_progress(state);
-}
-
-bool wait_for_spot_send_progress(spot_server_state_t *state,
-                                 uint64_t observed_epoch,
-                                 bool send_enabled)
-{
-    if (!state)
-        return false;
-
-    std::unique_lock<std::mutex> lock(state->send_wait_mutex);
-    state->send_wait_cv.wait_for(
-      lock,
-      std::chrono::milliseconds(send_enabled ? 2 : 1),
-      [state, observed_epoch]() {
-          return perf_stop_requested ().load(std::memory_order_acquire)
-                 || state->fatal_errno.load(std::memory_order_acquire) != 0
-                 || state->send_wake_epoch.load(std::memory_order_acquire)
-                      != observed_epoch;
-      });
-    return true;
+    return perf_socket_poll(NULL, 0, send_enabled ? 2 : 1) >= 0;
 }
 
 enum send_status_t
@@ -470,9 +433,7 @@ bool run_phase(spot_server_state_t *state,
         }
 
         if (!progressed) {
-            const uint64_t wake_epoch =
-              state->send_wake_epoch.load(std::memory_order_acquire);
-            wait_for_spot_send_progress(state, wake_epoch, send_enabled);
+            wait_for_spot_send_progress(send_enabled);
         }
     }
 
@@ -626,10 +587,25 @@ int run_server_benchmark(const std::string &lib_name,
     }
 
     void *node = zlink_spot_node_new(ctx.get(), k_service_name);
-    if (!node)
+    if (!node) {
+        if (bench_debug_enabled())
+            std::cerr << "[multi-spot-server] node create failed err="
+                      << zlink_errno() << std::endl;
         return 1;
+    }
 
     if (!configure_spot_tls_server(node, transport)) {
+        if (bench_debug_enabled())
+            std::cerr << "[multi-spot-server] tls configure failed err="
+                      << zlink_errno() << std::endl;
+        zlink_spot_node_destroy(&node);
+        return 1;
+    }
+
+    if (!apply_spot_server_options(node, settings)) {
+        if (bench_debug_enabled())
+            std::cerr << "[multi-spot-server] pub init failed err="
+                      << zlink_errno() << std::endl;
         zlink_spot_node_destroy(&node);
         return 1;
     }
@@ -638,17 +614,14 @@ int run_server_benchmark(const std::string &lib_name,
       bind_spot_endpoint(node, transport,
                          lib_name + std::string("_spot_server"));
     if (endpoint.empty()) {
+        if (bench_debug_enabled())
+            std::cerr << "[multi-spot-server] bind failed err="
+                      << zlink_errno() << std::endl;
         zlink_spot_node_destroy(&node);
         return 1;
     }
 
     void *pub = node;
-    if (!apply_spot_server_options(pub, settings)
-        || zlink_send_ready_handler(pub, &spot_server_send_ready, NULL)
-             != 0) {
-        zlink_spot_node_destroy(&node);
-        return 1;
-    }
 
     spot_server_state_t state;
     state.node = node;

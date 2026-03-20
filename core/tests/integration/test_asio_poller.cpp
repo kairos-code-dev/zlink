@@ -114,7 +114,7 @@ void test_pubsub_basic ()
     bind_loopback_ipv4 (pub, endpoint, sizeof (endpoint));
 
     // Subscribe to all messages
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, ""));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
 
@@ -215,7 +215,7 @@ void test_multiple_io_threads ()
     char endpoint[MAX_SOCKET_STRING];
     size_t endpoint_len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len));
+      zlink_get_option (server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 

@@ -52,8 +52,9 @@ Gateway handle은 **recv 모드**로 시작하며, `zlink_recv_handler()`를
   합니다 (discovery 연결 전에만 허용).
 - `zlink_set_option()` / `zlink_get_option()`으로 서비스 레벨 튜닝을 합니다.
 - `zlink_send_ready_handler()`로 송신 측 백프레셔를 처리합니다.
-- `zlink_gateway_monitor_open()`으로 `ZLINK_GATEWAY_SEND_READY_CHANGED`,
-  `ZLINK_GATEWAY_ROUTE_UP` 같은 edge 전이를 관찰합니다.
+- `zlink_service_monitor_open(gateway, &options)`으로
+  `ZLINK_GATEWAY_SEND_READY_CHANGED`, `ZLINK_GATEWAY_ROUTE_UP` 같은 edge
+  전이를 관찰합니다. `zlink_monitor_close()`로 닫습니다.
 - monitor handle에 대해 `zlink_monitor_snapshot()`으로 현재 로컬 제어 상태와
   queue depth를 읽습니다.
 - 운영적인 peer 조회는 registry gateway-peer query API를 사용합니다.
@@ -434,3 +435,51 @@ admitted API를 실행 중이면 `errno=EBUSY`로 실패하고, destroy가 accep
 `*gateway_p`가 `NULL`로 정리됩니다.
 
 **참고:** `zlink_gateway_new`
+
+---
+
+## 스냅샷 / 인트로스펙션
+
+### Gateway Status Snapshot
+
+```c
+int zlink_gateway_status_snapshot(void *gateway,
+                                  zlink_gateway_status_t *out);
+```
+
+Gateway의 단일 행 운영 건강 요약을 반환합니다.
+
+#### zlink_gateway_status_t
+
+```c
+typedef struct zlink_gateway_status_t
+{
+    char service_name[256];
+    char bind_endpoint[256];
+    zlink_routing_id_t gateway_routing_id;
+    zlink_gateway_state_t state;
+    uint32_t observed_provider_count;
+    uint32_t ready_provider_count;
+    uint32_t active_route_count;
+    uint32_t send_ready;
+    int32_t last_error;
+    uint64_t last_changed_ms;
+} zlink_gateway_status_t;
+```
+
+| 필드 | 설명 |
+|------|------|
+| `service_name` | 생성 시 고정된 null 종료 서비스 이름. |
+| `bind_endpoint` | null 종료 바인드 엔드포인트. |
+| `gateway_routing_id` | 이 Gateway의 라우팅 아이덴티티. |
+| `state` | `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, 또는 `ERROR`. |
+| `observed_provider_count` | 관찰된 총 provider 수 (연결 + 연결 중). |
+| `ready_provider_count` | 현재 ready 상태인 provider 수. |
+| `active_route_count` | 로드 밸런싱을 위한 활성 라우트 수. |
+| `send_ready` | Gateway가 쓰기 가능하면 0이 아닌 값. |
+| `last_error` | 마지막 기록된 에러 코드, 또는 0. |
+| `last_changed_ms` | 마지막 상태 변경 시점 (에포크 ms). |
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.

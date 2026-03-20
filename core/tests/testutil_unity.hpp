@@ -150,13 +150,13 @@ inline bool test_msg_has_more (const zlink_msg_t *msg_)
                 != 0;
 }
 
-inline bool test_msg_is_shared (const zlink_msg_t *msg_)
+inline int test_msg_refcnt (const zlink_msg_t *msg_)
 {
     if (!msg_)
-        return false;
+        return 0;
     const zlink::msg_t *internal =
       reinterpret_cast<const zlink::msg_t *> (msg_);
-    return internal->is_cmsg () || (internal->flags () & zlink::msg_t::shared);
+    return static_cast<int> (internal->refcnt_value ());
 }
 #endif
 

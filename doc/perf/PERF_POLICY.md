@@ -25,6 +25,10 @@
 
 아래 원칙은 `core/perf`와 모든 bindings perf에 동일하게 적용한다.
 
+- perf/bench 코드는 `doc/guide` 및 `doc/api` 문서에 기술된 public C API만
+  사용한다. 내부 헤더나 내부 함수를 직접 호출하지 않는다.
+- public C API 동작에 문제가 있으면 perf 코드에서 우회하지 않고 버그로
+  레포팅한다. 버그레포팅 문서는 doc/bug/perf 아래에 md 파일 형식으로 작성한다. 버그는 회귀테스트를 작성해서 재현을 확인하고 수정한다. 버그 를 우선 후정하고 이어서 perf 작업을 계속한다.
 - 측정 의미는 유지한다.
   - `warmup / settle / active`
   - `RESULT` 포맷
@@ -41,13 +45,25 @@
   - **callback 모델** (`--recv callback`):
     - recv: `zlink_recv_handler()` / `zlink_recv_spot_handler()` 등록 →
       라이브러리가 I/O thread에서 callback dispatch.
-    - send backpressure: `zlink_socket_send_ready_handler()` /
-      `zlink_spot_send_ready_handler()` 등록 → writable transition 시
-      callback으로 통지.
+    - callback hot path는 메시지 수명/집계를 오래 붙들지 않고, 필요한 최소
+      metric event만 추출해 bounded queue로 넘긴다.
+    - throughput/latency/phase window 집계는 callback 밖 metric worker가
+      수행한다. single callback은 전용 worker를 사용하고, multi callback은
+      metric worker와 app thread가 역할을 분리한다.
+    - send backpressure는 `zlink_send_ready_handler()`를 포함한 callback 모델의
+      보조 메커니즘으로 사용하며, callback 모델의 본체는 `recv callback +
+      bounded queue + metric worker`다.
+    - 단, single callback은 전용 sender가 active 구간 동안 blocking send를
+      수행하는 모델을 기본으로 하며, `zlink_send_ready_handler()`는 single
+      callback의 필수 계약이 아니다. `send_ready_handler` 기반 backpressure는
+      multi callback 또는 single의 별도 nonblocking variant가 있을 때만 적용한다.
     - poller는 사용하지 않는다.
 - 실행 스크립트의 `--recv` 옵션으로 모델을 선택한다 (기본: `recv`,
   `--recv callback` 지정 시 callback 모델).
 - 같은 측정 구간에서 두 모델의 recv/send 메커니즘을 섞지 않는다.
+- 단, 두 모델은 동일한 metric header decode, phase 판정, throughput/latency
+  집계 엔진을 공유하는 방향으로 구현해야 한다. 모델 차이는 event source
+  (`recv` drain vs callback dispatch) 에서만 남겨야 한다.
 - setup/handshake 단계의 bounded validation 1회는 허용하되, 측정 구간으로
   들어가기 전에 종료되어야 한다.
 - hot loop 안에서는 아래를 금지한다.
@@ -65,10 +81,19 @@
 - registry summary는 eventually consistent view이므로 benchmark의 final strict
   start gate로 사용하지 않는다.
 - strict start readiness가 필요하면 local service monitor를 사용한다.
-- perf 연결 준비/handshake는 socket/service monitoring 기반 readiness를
-  우선 사용한다.
-- perf 바이너리는 monitor-ready 이후에만 측정을 시작해야 하며, 별도의
-  ad-hoc retry loop/sleep 기반 handshake를 구현하지 않는다.
+- perf 연결 준비/handshake는 socket/service monitoring의 **delivery-ready
+  event만** 사용한다.
+- perf 바이너리는 delivery-ready event 확인 이후에만 측정을 시작해야 한다.
+- `setup_connected_pair()` 같은 helper는 내부적으로 위 공식 monitoring
+  delivery-ready gate를 캡슐화한 경우에만 허용된다. helper 자체가 별도
+  start gate 규칙이 되어서는 안 된다.
+- perf start gate 구현에서 아래를 금지한다.
+  - `sleep`/`msleep`/고정 지연
+  - monitor snapshot polling
+  - ad-hoc retry loop
+- 어떤 event를 ready gate로 써야 하는지는
+  [`doc/guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
+  "메시징 시작 전 준비 확인" 절을 단일 기준으로 따른다.
 - routing 검증이 필요한 패턴(예: ROUTER, GATEWAY)은 monitor-ready 이후
   단발성 self-check 1회만 수행하고, 실패 시 즉시 fail 처리한다.
 - registry/bootstrap/query/summary 조회는 measurement phase 밖에서만 수행한다.
@@ -92,7 +117,7 @@
 
 ## 2. 디렉터리 구조
 
-### 2.0 core (C++ 레퍼런스 구현)
+### 2.0 core (CAPI 레퍼런스 구현)
 
 > 아래 경로는 `core/perf/` 기준이다. 정책 문서 자체는 `doc/perf/`에 위치한다.
 
@@ -164,7 +189,7 @@ perf/                                       # bindings/<lang>/perf/
 ### 2.0.3 STREAM 소켓 테스트 모델 (공통 필수)
 
 - **STREAM 계열은 multi suite에서만 테스트한다.** single suite에서는 STREAM 소켓 테스트를 수행하지 않는다.
-- STREAM 계열(`MULTI_STREAM`, `MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`)은 반드시 **zlink STREAM server(bind only)** + **raw transport client(connect)** 모델로 측정한다.
+- STREAM 계열(`MULTI_STREAM`, `MULTI_STREAM_CALLBACK`)은 반드시 **zlink STREAM server(bind only)** + **raw transport client(connect)** 모델로 측정한다.
 - zlink STREAM 소켓의 client `connect()` 경로를 벤치마크 클라이언트로 사용하지 않는다.
 - STREAM 테스트에서 server를 DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로 대체하면 정책 위반이며 결과는 무효다.
 - 모델 위반/불일치 구현은 정책 위반으로 간주하며, 해당 코드 경로를 삭제한 뒤 정책 모델로 재구현해야 한다.
@@ -183,16 +208,16 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 ```
 
 - **client**: 모든 STREAM 패턴에서 동일한 공통 raw client를 사용하며, `[4B length (big-endian)][payload]` 형식으로 송신한다. 수신(echo)도 동일한 framing으로 읽는다.
-- **server**: zlink STREAM 소켓으로 bind한 뒤, 수신 방식에 따라 3가지 패턴으로 분기한다:
+- **server**: zlink STREAM 소켓으로 bind한 뒤, 수신 방식에 따라 2가지 패턴으로 분기한다:
 
 | 패턴 | server 수신 방식 | 설명 |
 |------|-----------------|------|
 | STREAM / MULTI_STREAM | 기본 recv 루프 | 기존 소켓 recv API(`zlink_recv`/`zmq_recv` 계열)로 메시지 수신 |
 | STREAM_CALLBACK / MULTI_STREAM_CALLBACK | callback dispatch | stream dispatch callback API로 수신 |
-| STREAM_LEN32BE / MULTI_STREAM_LEN32BE | callback + len32be framing | callback dispatch + 4B big-endian length-prefixed framing 인식 |
 
 - client의 wire protocol을 len32be로 통일하는 이유: 서버 수신 방식만 다르고 client는 동일한 공통 바이너리를 사용하므로, 테스트 용이성과 비교 공정성을 위해 client 측 framing을 len32be로 고정한다.
 - 이 프로토콜은 multi suite에 적용된다. single suite에서는 STREAM 테스트를 수행하지 않는다.
+- `STREAM_LEN32BE` / `MULTI_STREAM_LEN32BE` 패턴은 삭제되었다. 문서, 스크립트, 빌드 설정, 코드에 잔존 구현이 있으면 모두 삭제해야 하며, 삭제된 패턴을 `UNSUPPORTED`/`SKIP`으로 유지해서는 안 된다.
 
 ### 2.1 결과 저장 규칙
 
@@ -584,9 +609,9 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 ### 8.5 공통화 경계 원칙
 
-perf 구현은 측정 의미와 정책 계약을 유지하는 범위에서 공통화를 적극 허용한다.
-기존의 "패턴별 흐름이 반드시 각 파일에 인라인으로 보여야 한다" 제약은 두지
-않는다.
+perf 구현의 공통화 기준은 **코드 중복 제거 자체가 아니라 benchmark 의미 보존과
+전체 복잡도 감소**다. 공통 helper는 지원 인프라를 숨길 수는 있지만, 패턴의
+측정 의미, I/O 모델, routing/backpressure semantics를 숨겨서는 안 된다.
 
 #### 공통화 권장 대상
 
@@ -596,24 +621,64 @@ perf 구현은 측정 의미와 정책 계약을 유지하는 범위에서 공�
 |------|------|
 | CLI 인자 파싱 | `argc`/`argv` 해석, 옵션 추출 |
 | 환경 변수 해석 | `resolve_bench_msg_sizes`, `resolve_multi_bench_settings` 등 |
-| RESULT line 포맷팅/출력 | `RESULT,<lib>,<pattern>,...` 형식 출력 |
-| 메트릭 수집/보고 | CPU%, 메모리 측정 및 RESULT line 출력 |
-| 메트릭 계산/보정 | throughput, bandwidth, latency triplet 보정 |
 | 표 출력 포맷 | markdown table, `Effective Options`, failure summary |
 | TLS 설정 | `setup_tls_client`, `setup_tls_server` |
 | Context RAII | `ctx_guard_t` 등 리소스 관리 wrapper |
 | 타이머/스톱워치 | `stopwatch_t`, 시간 측정 유틸리티 |
 | Monitor 유틸리티 | connect-ready 감지, `wait_connect_ready_count` |
 | transport 가용성 검사 | `transport_available()` |
-| mode별 공통 엔진 | `recv`/`callback` 모드의 공통 backpressure 및 drain helper |
+| 공통 cleanup | socket / monitor / context close helper |
+
+위 항목은 **벤치 의미를 바꾸지 않는 지원 인프라**로 분류한다.
+
+#### 공통 구현 강제 대상
+
+아래 항목은 구현체마다 중복 정의하지 말고, 공통 모듈의 단일 구현을 사용해야 한다.
+
+| 항목 | 설명 |
+|------|------|
+| RESULT line 포맷팅/출력 | `RESULT,<lib>,<pattern>,...` 형식과 필드 순서를 단일 구현으로 유지 |
+| metric header encode/decode | `magic`, `run_id`, `phase`, `msg_size`, `seq`, `sent_ts_us` 처리 |
+| phase별 유효 샘플 판정 | active/warmup/drain 구간 구분과 유효 header 판정 |
+| throughput 계산 | 유효 수신 건수 기반 계산 |
+| bandwidth 계산 | throughput와 payload size 기반 계산 |
+| latency 샘플 집계 | header timestamp 기반 샘플 수집 |
+| p95/p99 계산 | latency 분포 대표값 계산 |
+| 메트릭 보정/출력 계약 | latency triplet 보정, metric naming, RESULT line 계약 유지 |
+| CPU / 메모리 수집 | 리소스 메트릭 수집 및 보고 형식 |
+
+이 항목들은 결과 해석과 조합 간 비교 가능성을 결정하는 **측정 계약**이므로
+선택적 공통화가 아니라 **공통 구현 강제 대상**으로 본다.
 
 #### 공통화 허용 기준
 
 - 공통화의 목적은 코드 이동이 아니라 복잡도 감소여야 한다.
 - single/multi가 같은 메트릭/출력 계약을 쓰도록 runner surface를 공통화한다.
-- mode별 계약(`recv + poller`, `recv_handler + send_ready_handler`)이 보존되면
-  측정 코어 로직도 공통 helper/module로 올릴 수 있다.
-- pattern별 차이는 config, topology, role wiring 정도로 축소하는 방향을 허용한다.
+- helper가 없어도 각 패턴의 측정 의미를 몇 문장으로 설명할 수 있어야 한다.
+- helper는 설정, 출력, 정리, 계측 인프라를 감싸는 용도로만 사용한다.
+
+#### 반드시 인라인 유지할 코어 로직
+
+아래 로직은 각 benchmark 소스 파일 안에서 명시적으로 드러나야 한다.
+
+- 핵심 send/recv loop
+- echo / relay / one-way의 실제 메시지 흐름
+- routing frame 조립/해석
+- `EAGAIN` 이후 pending flag / pending deque 처리 전략
+- `recv + poller` 와 `callback + bounded queue + metric worker` 중 어떤 실행 경로를 쓰는지
+- ready gate 통과 이후 benchmark를 시작하는 실제 조건
+
+즉, 파일 하나만 읽어도 해당 패턴의 zlink API 사용법과 성능 측정 의미를 이해할 수
+있어야 한다.
+
+#### 과도한 공통화 판정 기준
+
+아래 중 하나라도 만족하면 과도한 공통화로 간주하고 분리한다.
+
+- helper 안의 pattern별 분기 수가 늘어나 새 패턴 추가 시 helper를 계속 수정해야 한다.
+- wrapper 파일이 상수 전달 외에는 아무 의미를 보여주지 못한다.
+- backpressure, routing, phase 의미가 helper 내부로 숨어 파일만 봐서는 설명이 안 된다.
+- 공통화 이후 변경 증폭이 줄지 않고 오히려 여러 패턴이 한 helper에 결합된다.
 
 #### STREAM client 예외 (검증 인프라)
 

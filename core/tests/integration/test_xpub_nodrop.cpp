@@ -11,20 +11,22 @@ void test ()
     void *pub = test_context_socket (ZLINK_XPUB);
 
     int hwm = 2000;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (pub, ZLINK_SNDHWM, &hwm, 4));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (pub, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
 
     //  set pub socket options
     int wait = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (pub, ZLINK_XPUB_NODROP, &wait, 4));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_pub_option (pub, ZLINK_PUB_OPT_NODROP, &wait, sizeof (wait)));
 
     //  Create a subscriber
     void *sub = test_context_socket (ZLINK_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, "inproc://soname"));
 
     //  Subscribe for all messages.
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, ""));
 
     //  we must wait for the subscription to be processed here, otherwise some
     //  or all published messages might be lost
@@ -53,8 +55,8 @@ void test ()
 
         if (recv_count == 1) {
             const int sub_rcvtimeo = 250;
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-              sub, ZLINK_RCVTIMEO, &sub_rcvtimeo, sizeof (sub_rcvtimeo)));
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+              sub, ZLINK_OPT_RCVTIMEO, &sub_rcvtimeo, sizeof (sub_rcvtimeo)));
         }
 
     } while (true);
@@ -64,7 +66,8 @@ void test ()
     //  Now test real blocking behavior
     //  Set a timeout, default is infinite
     int timeout = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (pub, ZLINK_SNDTIMEO, &timeout, 4));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (pub, ZLINK_OPT_SNDTIMEO, &timeout, sizeof (timeout)));
 
     send_count = 0;
     recv_count = 0;

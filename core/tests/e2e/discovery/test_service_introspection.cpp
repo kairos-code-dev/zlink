@@ -907,6 +907,90 @@ static void test_registry_gateway_peer_snapshot_and_remote_query ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
+static void test_gateway_and_registry_status_snapshots ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    int registry_seed = 22686;
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &registry_seed, registry_pub, sizeof (registry_pub),
+      registry_router, sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
+
+    zlink_registry_status_t registry_status;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_status_snapshot (registry, &registry_status));
+    TEST_ASSERT_TRUE (registry_status.registry_id != 0);
+    TEST_ASSERT_TRUE (registry_status.bind_endpoint[0] != '\0');
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_REGISTRY_STATE_ACTIVE, registry_status.state);
+
+    gateway_server_t server;
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22687;
+    init_gateway_server_with_port_seed (&server, ctx, registry_router,
+                                        "svc-status", "gw-status-server",
+                                        "tcp", &bind_seed, endpoint,
+                                        sizeof (endpoint),
+                                        &discard_gateway_message);
+
+    void *client_discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (client_discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (connect_discovery_registry_with_retry (
+      client_discovery, registry_router, 2000));
+    void *client_gateway =
+      create_gateway_attached (ctx, client_discovery, "svc-status",
+                               "gw-status-client", &discard_gateway_message);
+    TEST_ASSERT_NOT_NULL (client_gateway);
+
+    TEST_ASSERT_TRUE (wait_gateway_connection_count (client_gateway, 1, 3000));
+
+    zlink_gateway_status_t gateway_status;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_status_snapshot (client_gateway, &gateway_status));
+    TEST_ASSERT_EQUAL_STRING ("svc-status", gateway_status.service_name);
+    TEST_ASSERT_TRUE (gateway_status.observed_provider_count >= 1);
+    TEST_ASSERT_TRUE (gateway_status.ready_provider_count >= 1);
+    TEST_ASSERT_TRUE (gateway_status.active_route_count >= 1);
+    TEST_ASSERT_EQUAL_UINT32 (1, gateway_status.send_ready);
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_GATEWAY_STATE_READY, gateway_status.state);
+
+    TEST_ASSERT_TRUE (wait_for_topology_state (
+      registry, ZLINK_SERVICE_KIND_GATEWAY, "svc-status", NULL,
+      ZLINK_TOPOLOGY_STATE_READY, 3000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_status_snapshot (registry, &registry_status));
+    TEST_ASSERT_TRUE (registry_status.topology_entry_count >= 1);
+
+    zlink_registry_service_summary_filter_t filter;
+    memset (&filter, 0, sizeof (filter));
+    filter.service_kind = ZLINK_SERVICE_KIND_GATEWAY;
+    strncpy (filter.service_name, "svc-status",
+             sizeof (filter.service_name) - 1);
+
+    size_t count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_service_summary_snapshot (registry, &filter, NULL, &count));
+    TEST_ASSERT_EQUAL_UINT (1, count);
+    std::vector<zlink_registry_service_summary_entry_t> entries (count);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_service_summary_snapshot (
+      registry, &filter, &entries[0], &count));
+    TEST_ASSERT_EQUAL_UINT (1, count);
+    TEST_ASSERT_EQUAL_UINT16 (ZLINK_SERVICE_KIND_GATEWAY, entries[0].service_kind);
+    TEST_ASSERT_EQUAL_STRING ("svc-status", entries[0].service_name);
+    TEST_ASSERT_TRUE (entries[0].total_count >= 1);
+    TEST_ASSERT_TRUE (entries[0].ready_count >= 1);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client_gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&client_discovery));
+    destroy_gateway_server (&server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+}
+
 static void test_monitor_closed_event_on_service_destroy ()
 {
     void *ctx = get_test_context ();
@@ -1566,6 +1650,7 @@ int main (int, char **)
     RUN_SERVICE_INTROSPECTION_TEST (test_gateway_receiver_monitors_and_monitor_poller);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_topology_snapshot_and_remote_query);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_gateway_peer_snapshot_and_remote_query);
+    RUN_SERVICE_INTROSPECTION_TEST (test_gateway_and_registry_status_snapshots);
     RUN_SERVICE_INTROSPECTION_TEST (test_monitor_closed_event_on_service_destroy);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_monitor_reports_service_up_then_down_in_order);
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_monitor_callback_parent_destroy_returns_ebusy);

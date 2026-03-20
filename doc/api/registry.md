@@ -221,6 +221,122 @@ thread is executing an operational API on the same handle, destroy fails with
 
 ---
 
+## Snapshot / Introspection
+
+These APIs provide process-level health summaries and service-level
+aggregate views of the Registry.
+
+### Registry Status Snapshot
+
+```c
+int zlink_registry_status_snapshot(void *registry,
+                                   zlink_registry_status_t *out);
+```
+
+Returns a single-row process-level health summary of the Registry.
+
+#### zlink_registry_status_t
+
+```c
+typedef struct zlink_registry_status_t
+{
+    uint32_t registry_id;
+    char bind_endpoint[256];
+    zlink_registry_state_t state;
+    uint32_t topology_entry_count;
+    uint32_t gateway_peer_entry_count;
+    uint32_t peer_registry_count;
+    uint32_t connected_peer_registry_count;
+    uint64_t list_seq;
+    int32_t last_error;
+    uint64_t last_changed_ms;
+} zlink_registry_status_t;
+```
+
+| Field | Description |
+|-------|-------------|
+| `registry_id` | Unique ID assigned via `zlink_registry_set_id()`. |
+| `bind_endpoint` | Null-terminated bound endpoint. |
+| `state` | `IDLE`, `ACTIVE`, `DEGRADED`, or `ERROR`. |
+| `topology_entry_count` | Total entries in the topology table. |
+| `gateway_peer_entry_count` | Total gateway peer entries. |
+| `peer_registry_count` | Configured peer registry count. |
+| `connected_peer_registry_count` | Currently connected peer registries. |
+| `list_seq` | Monotonic sequence number of the latest broadcast. |
+| `last_error` | Last recorded error code, or 0. |
+| `last_changed_ms` | Epoch ms of the last state change. |
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+---
+
+### Registry Service Summary Snapshot
+
+```c
+int zlink_registry_service_summary_snapshot(
+  void *registry,
+  const zlink_registry_service_summary_filter_t *filter,
+  zlink_registry_service_summary_entry_t *entries,
+  size_t *count);
+```
+
+Returns service-level aggregate information. Each entry summarizes instance
+counts by state for a given (service_kind, service_name) pair.
+
+**Buffer convention:** Pass `entries = NULL` to query the required count.
+Provide a caller-allocated buffer on the next call. If the buffer is too
+small, the call returns `-1` with `errno = ENOBUFS` and `*count` set to the
+needed capacity.
+
+Results are ordered by (`service_kind`, `service_name`) ascending.
+
+#### zlink_registry_service_summary_entry_t
+
+```c
+typedef struct zlink_registry_service_summary_entry_t
+{
+    zlink_service_kind_t service_kind;
+    char service_name[256];
+    uint32_t total_count;
+    uint32_t connecting_count;
+    uint32_t ready_count;
+    uint32_t error_count;
+    uint32_t stopped_count;
+    uint64_t last_reported_ms;
+} zlink_registry_service_summary_entry_t;
+```
+
+| Field | Description |
+|-------|-------------|
+| `service_kind` | One of the `ZLINK_SERVICE_KIND_*` constants. |
+| `service_name` | Null-terminated service name. |
+| `total_count` | Total registered instances for this service. |
+| `connecting_count` | Instances currently connecting. |
+| `ready_count` | Instances currently ready. |
+| `error_count` | Instances in error state. |
+| `stopped_count` | Instances that have stopped. |
+| `last_reported_ms` | Epoch ms of the latest heartbeat across all instances. |
+
+#### zlink_registry_service_summary_filter_t
+
+```c
+typedef struct zlink_registry_service_summary_filter_t
+{
+    zlink_service_kind_t service_kind;
+    char service_name[256];
+} zlink_registry_service_summary_filter_t;
+```
+
+Set fields to non-zero values to filter. Zero-valued fields are wildcards.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+---
+
 ## Topology & Query API
 
 These APIs provide introspection into the global service topology managed

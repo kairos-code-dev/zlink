@@ -15,7 +15,6 @@
 #include <fstream>
 #include <climits>
 #include <zlink.h>
-#include "../../../../tests/legacy_api_compat.hpp"
 
 #ifdef __cplusplus
 inline int zlink_gateway_send_rid (void *gateway_,
@@ -55,20 +54,6 @@ inline int zlink_socket_peers(void *, zlink_peer_info_t *, size_t *)
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
-#endif
-
-// --- TLS Socket Options ---
-#ifndef ZLINK_TLS_CERT
-#define ZLINK_TLS_CERT 95
-#endif
-#ifndef ZLINK_TLS_KEY
-#define ZLINK_TLS_KEY 96
-#endif
-#ifndef ZLINK_TLS_CA
-#define ZLINK_TLS_CA 97
-#endif
-#ifndef ZLINK_TLS_HOSTNAME
-#define ZLINK_TLS_HOSTNAME 100
 #endif
 
 // --- Configuration ---
@@ -419,10 +404,10 @@ inline bool bench_debug_enabled() {
     return enabled;
 }
 
-inline bool set_sockopt_int(void *socket_, int option_, int value_,
+inline bool set_sockopt_int(void *socket_, zlink_option_t option_, int value_,
                             const char *name_) {
-    const int rc = zlink_set_option(
-      socket_, static_cast<zlink_option_t>(option_), &value_, sizeof(value_));
+    const int rc =
+      zlink_set_option(socket_, option_, &value_, sizeof(value_));
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "setsockopt(" << name_ << ") failed: "
                   << zlink_strerror(zlink_errno()) << std::endl;
@@ -430,11 +415,24 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
     if (bench_debug_enabled()) {
         int out = 0;
         size_t out_size = sizeof(out);
-        const int grc = zlink_get_option(
-          socket_, static_cast<zlink_option_t>(option_), &out, &out_size);
+        const int grc = zlink_get_option(socket_, option_, &out, &out_size);
         if (grc == 0) {
             std::cerr << "setsockopt(" << name_ << ") = " << out << std::endl;
         }
+    }
+    return rc == 0;
+}
+
+inline bool set_pub_opt_int (void *socket_,
+                             zlink_pub_option_t option_,
+                             int value_,
+                             const char *name_)
+{
+    const int rc =
+      zlink_set_pub_option (socket_, option_, &value_, sizeof (value_));
+    if (rc != 0 && bench_debug_enabled ()) {
+        std::cerr << "set_pub_option(" << name_ << ") failed: "
+                  << zlink_strerror (zlink_errno ()) << std::endl;
     }
     return rc == 0;
 }
@@ -648,8 +646,8 @@ inline void apply_single_hwm(void *socket_)
 
     const int sndhwm = resolve_single_socket_hwm(true);
     const int rcvhwm = resolve_single_socket_hwm(false);
-    set_sockopt_int(socket_, ZLINK_SNDHWM, sndhwm, "ZLINK_SNDHWM");
-    set_sockopt_int(socket_, ZLINK_RCVHWM, rcvhwm, "ZLINK_RCVHWM");
+    set_sockopt_int(socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
+    set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
 }
 
 inline void apply_single_send_timeout(void *socket_,
@@ -661,7 +659,8 @@ inline void apply_single_send_timeout(void *socket_,
         return;
 
     const int timeout_ms = resolve_single_send_timeout_ms();
-    set_sockopt_int(socket_, ZLINK_SNDTIMEO, timeout_ms, "ZLINK_SNDTIMEO");
+    set_sockopt_int(socket_, ZLINK_OPT_SNDTIMEO, timeout_ms,
+                    "ZLINK_OPT_SNDTIMEO");
 }
 
 inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
@@ -669,8 +668,10 @@ inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
         return;
     if (transport == "tcp" || transport == "ws") {
         const int timeout_ms = 2000;
-        set_sockopt_int(socket_, ZLINK_SNDTIMEO, timeout_ms, "ZLINK_SNDTIMEO");
-        set_sockopt_int(socket_, ZLINK_RCVTIMEO, timeout_ms, "ZLINK_RCVTIMEO");
+        set_sockopt_int(socket_, ZLINK_OPT_SNDTIMEO, timeout_ms,
+                        "ZLINK_OPT_SNDTIMEO");
+        set_sockopt_int(socket_, ZLINK_OPT_RCVTIMEO, timeout_ms,
+                        "ZLINK_OPT_RCVTIMEO");
     }
 }
 

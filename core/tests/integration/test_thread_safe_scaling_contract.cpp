@@ -145,7 +145,7 @@ void close_socket_zero_linger (void *socket_)
     if (!socket_)
         return;
     const int zero = 0;
-    (void) zlink_setsockopt (socket_, ZLINK_LINGER, &zero, sizeof (zero));
+    (void) zlink_set_option (socket_, ZLINK_OPT_LINGER, &zero, sizeof (zero));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket_));
 }
 

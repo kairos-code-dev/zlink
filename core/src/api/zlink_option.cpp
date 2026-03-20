@@ -266,6 +266,22 @@ static int map_common_option (zlink_option_t option_)
             return ZLINK_INTERNAL_OPT_MULTICAST_MAXTPDU;
         case ZLINK_OPT_BINDTODEVICE:
             return ZLINK_INTERNAL_OPT_BINDTODEVICE;
+        case ZLINK_OPT_TLS_CERT:
+            return ZLINK_INTERNAL_OPT_TLS_CERT;
+        case ZLINK_OPT_TLS_KEY:
+            return ZLINK_INTERNAL_OPT_TLS_KEY;
+        case ZLINK_OPT_TLS_CA:
+            return ZLINK_INTERNAL_OPT_TLS_CA;
+        case ZLINK_OPT_TLS_VERIFY:
+            return ZLINK_INTERNAL_OPT_TLS_VERIFY;
+        case ZLINK_OPT_TLS_REQUIRE_CLIENT_CERT:
+            return ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT;
+        case ZLINK_OPT_TLS_HOSTNAME:
+            return ZLINK_INTERNAL_OPT_TLS_HOSTNAME;
+        case ZLINK_OPT_TLS_TRUST_SYSTEM:
+            return ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM;
+        case ZLINK_OPT_TLS_PASSWORD:
+            return ZLINK_INTERNAL_OPT_TLS_PASSWORD;
         case ZLINK_OPT_ZMP_METADATA:
             return ZLINK_INTERNAL_OPT_ZMP_METADATA;
         case ZLINK_OPT_TCP_NODELAY:
@@ -580,6 +596,11 @@ int zlink_set_option (void *handle_,
                       const void *optval_,
                       size_t optvallen_)
 {
+    if (!handle_) {
+        errno = EFAULT;
+        return -1;
+    }
+
     const int legacy = map_common_option (option_);
     if (legacy < 0)
         return -1;
@@ -619,6 +640,11 @@ int zlink_get_option (void *handle_,
                       void *optval_,
                       size_t *optvallen_)
 {
+    if (!handle_) {
+        errno = EFAULT;
+        return -1;
+    }
+
     const int legacy = map_common_option (option_);
     if (legacy < 0)
         return -1;

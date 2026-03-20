@@ -16,10 +16,7 @@ typedef void (*extra_func_t) (void *socket_);
 #ifdef ZLINK_BUILD_DRAFT
 void set_sockopt_fastpath (void *socket)
 {
-    int value = 1;
-    int rc =
-      zlink_setsockopt (socket, ZLINK_LOOPBACK_FASTPATH, &value, sizeof value);
-    assert (rc == 0);
+    LIBZLINK_UNUSED (socket);
 }
 #endif
 
@@ -93,7 +90,7 @@ void test_io_completion_port ()
     void *const s = test_context_socket (ZLINK_PAIR);
     SOCKET fd;
     size_t fd_size = sizeof fd;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (s, ZLINK_SOCKOPT_FD, &fd, &fd_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (s, ZLINK_OPT_FD, &fd, &fd_size));
 
     ::WSAPROTOCOL_INFO pi;
     TEST_ASSERT_SUCCESS_RAW_ERRNO (

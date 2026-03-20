@@ -884,7 +884,6 @@ ENV_ALIAS_KEYS = (
     "PERF_SNDTIMEO_MS",
     "PERF_RCVTIMEO_MS",
     "PERF_CONNECT_CONCURRENCY",
-    "PERF_CLIENT_POLL_TIMEOUT_MS",
     "PERF_CONNECT_READY_TIMEOUT_MS",
     "PERF_MONITOR_HWM",
     "PERF_SERVER_READY_TIMEOUT_MS",
@@ -3957,10 +3956,6 @@ def build_effective_option_items(args, selected_patterns):
                 ("rcvtimeo_ms", str(parse_env_int("PERF_RCVTIMEO_MS", 200))),
                 ("connect_concurrency", connect_display),
                 ("settle_ms", str(parse_env_int("PERF_SETTLE_MS", 500))),
-                (
-                    "client_poll_timeout_ms",
-                    str(parse_env_int("PERF_CLIENT_POLL_TIMEOUT_MS", 0)),
-                ),
                 (
                     "connect_ready_timeout_ms",
                     str(parse_env_int("PERF_CONNECT_READY_TIMEOUT_MS", 5000)),

@@ -77,16 +77,17 @@ zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 
 /* Observe service state via monitor */
-void *mon = zlink_discovery_monitor_open(
-    discovery,
-    ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
-      | ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED,
-    on_discovery_event, NULL);
+zlink_service_monitor_open_options_t opts = {
+    .events = ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
+            | ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED,
+};
+void *mon = zlink_service_monitor_open(discovery, &opts);
+zlink_service_monitor_handler(mon, on_discovery_event, NULL);
 
 /* ... Discovery delivers events through the callback ... */
 
 /* Cleanup */
-zlink_service_monitor_close(&mon);
+zlink_monitor_close(&mon);
 zlink_discovery_destroy(&discovery);
 ```
 

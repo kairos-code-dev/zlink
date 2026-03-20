@@ -16,14 +16,14 @@ void test_immediate_3 ()
 
     int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (backend, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (backend, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (frontend, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (frontend, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     //  Frontend connects to backend using IMMEDIATE
     int on = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (frontend, ZLINK_IMMEDIATE, &on, sizeof (on)));
+      zlink_set_option (frontend, ZLINK_OPT_IMMEDIATE, &on, sizeof (on)));
 
     size_t len = MAX_SOCKET_STRING;
     char my_endpoint[MAX_SOCKET_STRING];
@@ -50,7 +50,7 @@ void test_immediate_3 ()
     //  Recreate backend socket
     backend = test_context_socket (ZLINK_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (backend, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (backend, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (backend, my_endpoint));
 
     //  Ping backend to frontend so we know when the connection is up

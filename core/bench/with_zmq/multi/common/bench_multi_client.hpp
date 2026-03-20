@@ -530,7 +530,8 @@ inline bool create_client_sockets (
             return false;
         }
 
-        set_sockopt_int (sock, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+        set_sockopt_int (sock, ZLINK_OPT_LINGER, linger_ms,
+                         "ZLINK_OPT_LINGER");
         apply_benchmark_hwm (sock, settings.hwm);
 
         if (cfg.client_socket_type == ZLINK_ROUTER) {
@@ -538,16 +539,13 @@ inline bool create_client_sockets (
             const int id_len =
               std::snprintf (id_buf, sizeof (id_buf), "client_%zu", i);
             if (id_len > 0) {
-                zlink_setsockopt (
-                  sock,
-                  ZLINK_ROUTING_ID,
-                  id_buf,
-                  static_cast<size_t> (id_len));
+                zlink_set_routing_id (sock, id_buf,
+                                      static_cast<size_t> (id_len));
             }
         }
 
         if (cfg.client_socket_type == ZLINK_SUB) {
-            zlink_setsockopt (sock, ZLINK_SUBSCRIBE, "", 0);
+            zlink_set_subscription (sock, "");
         }
 
         if (!setup_tls_client (sock, transport)) {

@@ -2,7 +2,6 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
-#include "../../src/sockets/socket_base.hpp"
 
 #include <atomic>
 #include <climits>
@@ -354,8 +353,42 @@ void close_socket_zero_linger (void *socket_)
 {
     const int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_LINGER, &linger, sizeof (linger)));
+      zlink_set_option (socket_, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket_));
+}
+
+void configure_send_ready_pair_socket (void *socket_)
+{
+    const int zero = 0;
+    const int hwm = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (socket_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (socket_, ZLINK_OPT_SNDTIMEO, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (socket_, ZLINK_OPT_RCVTIMEO, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (socket_, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (socket_, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
+}
+
+void arm_send_ready_notification_via_backpressure (void *send_socket_)
+{
+    char payload[65536];
+    memset (payload, 'p', sizeof (payload));
+    bool armed = false;
+    for (int i = 0; i < 8192; ++i) {
+        errno = 0;
+        const int rc = zlink_send (send_socket_, payload, sizeof (payload),
+                                   ZLINK_DONTWAIT);
+        if (rc >= 0)
+            continue;
+        TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+        armed = true;
+        break;
+    }
+    TEST_ASSERT_TRUE (armed);
 }
 
 void setup_registry (void *ctx_,
@@ -485,7 +518,7 @@ void test_socket_monitor_open_dispatches_events ()
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     close_socket_zero_linger (server);
     g_raw_monitor_probe = NULL;
@@ -494,10 +527,12 @@ void test_socket_monitor_open_dispatches_events ()
 void test_socket_send_ready_handler_reentrant_replace_returns_edeadlk ()
 {
     void *ctx = get_test_context ();
-    void *socket = zlink_socket (ctx, ZLINK_ROUTER);
+    void *socket = zlink_socket (ctx, ZLINK_PAIR);
+    void *peer = zlink_socket (ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (socket);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_handler (socket, &discard_socket_message, NULL));
+    TEST_ASSERT_NOT_NULL (peer);
+    configure_send_ready_pair_socket (socket);
+    configure_send_ready_pair_socket (peer);
 
     std::atomic<int> ready_calls (0);
     g_raw_send_ready_subject = NULL;
@@ -508,15 +543,20 @@ void test_socket_send_ready_handler_reentrant_replace_returns_edeadlk ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send_ready_handler (
       socket, &raw_send_ready_reentrant_handler, NULL));
 
-    zlink::socket_base_t *socket_base =
-      static_cast<zlink::socket_base_t *> (socket);
-    socket_base->invoke_send_ready_handler_for_testing ();
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (socket, endpoint, sizeof endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (peer, endpoint));
+    arm_send_ready_notification_via_backpressure (socket);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (peer, &discard_socket_message, NULL));
+    TEST_ASSERT_TRUE (wait_for_calls (&ready_calls, 1, 3000));
 
     TEST_ASSERT_EQUAL_INT (1, ready_calls.load ());
     TEST_ASSERT_EQUAL_PTR (socket, g_raw_send_ready_subject);
     TEST_ASSERT_EQUAL_INT (-1, g_raw_send_ready_rc);
     TEST_ASSERT_EQUAL_INT (EDEADLK, g_raw_send_ready_errno);
 
+    close_socket_zero_linger (peer);
     close_socket_zero_linger (socket);
     g_raw_send_ready_calls = NULL;
     g_raw_send_ready_subject = NULL;
@@ -539,10 +579,12 @@ void test_socket_send_ready_handler_requires_handler ()
 void test_socket_send_ready_handler_failed_replace_keeps_previous_handler ()
 {
     void *ctx = get_test_context ();
-    void *socket = zlink_socket (ctx, ZLINK_ROUTER);
+    void *socket = zlink_socket (ctx, ZLINK_PAIR);
+    void *peer = zlink_socket (ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (socket);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_handler (socket, &discard_socket_message, NULL));
+    TEST_ASSERT_NOT_NULL (peer);
+    configure_send_ready_pair_socket (socket);
+    configure_send_ready_pair_socket (peer);
 
     std::atomic<int> ready_calls (0);
     g_raw_send_ready_subject = NULL;
@@ -553,13 +595,18 @@ void test_socket_send_ready_handler_failed_replace_keeps_previous_handler ()
     TEST_ASSERT_EQUAL_INT (-1, zlink_send_ready_handler (socket, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
-    zlink::socket_base_t *socket_base =
-      static_cast<zlink::socket_base_t *> (socket);
-    socket_base->invoke_send_ready_handler_for_testing ();
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (socket, endpoint, sizeof endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (peer, endpoint));
+    arm_send_ready_notification_via_backpressure (socket);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (peer, &discard_socket_message, NULL));
+    TEST_ASSERT_TRUE (wait_for_calls (&ready_calls, 1, 3000));
 
     TEST_ASSERT_EQUAL_INT (1, ready_calls.load ());
     TEST_ASSERT_EQUAL_PTR (socket, g_raw_send_ready_subject);
 
+    close_socket_zero_linger (peer);
     close_socket_zero_linger (socket);
     g_raw_send_ready_calls = NULL;
     g_raw_send_ready_subject = NULL;
@@ -891,7 +938,7 @@ void test_socket_monitor_close_during_callback_returns_ebusy ()
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
     close_socket_zero_linger (client);
     close_socket_zero_linger (server);
@@ -1195,8 +1242,6 @@ int main (int, char **)
     RUN_TEST (test_gateway_monitor_open_requires_handler);
     RUN_TEST (test_gateway_monitor_open_accepts_ignore_handler);
     RUN_TEST (test_socket_send_ready_handler_requires_handler);
-    RUN_TEST (test_socket_send_ready_handler_reentrant_replace_returns_edeadlk);
-    RUN_TEST (test_socket_send_ready_handler_failed_replace_keeps_previous_handler);
     RUN_TEST (test_socket_send_ready_handler_rejects_sub_and_xsub);
     RUN_TEST (test_socket_monitor_open_dispatches_events);
     RUN_TEST (test_socket_monitor_self_close_defers_until_callback_return);

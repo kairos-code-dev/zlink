@@ -327,8 +327,8 @@ void run_pubsub (const std::string &transport,
     }
 
     const int xpub_nodrop_opt = resolve_pubsub_xpub_nodrop_opt ();
-    set_sockopt_int (pub.get (), ZLINK_XPUB_NODROP, xpub_nodrop_opt,
-                     "ZLINK_XPUB_NODROP");
+    set_pub_opt_int (pub.get (), ZLINK_PUB_OPT_NODROP, xpub_nodrop_opt,
+                     "ZLINK_PUB_OPT_NODROP");
 
     zlink_set_subscription (sub.get (), "");
     if (!setup_connected_pair (
@@ -338,8 +338,8 @@ void run_pubsub (const std::string &transport,
     }
 
     const int recv_timeout_ms = resolve_single_pubsub_recv_timeout_ms ();
-    set_sockopt_int (sub.get (), ZLINK_RCVTIMEO, recv_timeout_ms,
-                     "ZLINK_RCVTIMEO");
+    set_sockopt_int (sub.get (), ZLINK_OPT_RCVTIMEO, recv_timeout_ms,
+                     "ZLINK_OPT_RCVTIMEO");
 
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());

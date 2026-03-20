@@ -293,6 +293,10 @@ class socket_base_t : public own_t,
       void *userdata_);
     void arm_send_ready_notification ();
     void notify_send_ready_if_armed ();
+    void emit_socket_monitor_value_event (
+      uint64_t event_,
+      uint64_t value_,
+      const endpoint_uri_pair_t &endpoint_uri_pair_);
 
   private:
     enum
@@ -443,6 +447,7 @@ class socket_base_t : public own_t,
         lifecycle_hooks_t () :
             mailbox_refcnt (0),
             destroy_pending (false),
+            monitor_async_mailbox_owned (false),
             async_mailbox_active (false),
             async_quiesce_pending (false),
             async_processing_done (true)
@@ -451,6 +456,7 @@ class socket_base_t : public own_t,
 
         atomic_counter_t mailbox_refcnt;
         bool destroy_pending;
+        bool monitor_async_mailbox_owned;
         std::atomic<bool> async_mailbox_active;
         std::atomic<bool> async_quiesce_pending;
         std::atomic<bool> async_processing_done;
@@ -574,6 +580,7 @@ class socket_base_t : public own_t,
     bool &_monitor_lossy;
     atomic_counter_t &_mailbox_refcnt;
     bool &_destroy_pending;
+    bool &_monitor_async_mailbox_owned;
     std::atomic<bool> &_async_mailbox_active;
     std::atomic<bool> &_async_quiesce_pending;
     std::atomic<bool> &_async_processing_done;

@@ -133,19 +133,6 @@ inline int recv_one_message (void *socket,
         std::fill (scratch.begin (), scratch.end (), '\0');
 
     size_t write_offset = 0;
-    if (source_rid.size > 0 && capture_bytes > 0 && !scratch.empty ()
-        && write_offset < scratch.size ()) {
-        const size_t remaining =
-          std::min (capture_bytes, scratch.size ()) - write_offset;
-        const size_t copy_size = std::min (
-          remaining, static_cast<size_t> (source_rid.size));
-        if (copy_size > 0) {
-            std::memcpy (
-              scratch.data () + write_offset, source_rid.data, copy_size);
-            write_offset += copy_size;
-        }
-    }
-
     for (size_t i = 0; i < part_count; ++i) {
         if (capture_bytes > 0 && !scratch.empty ()
             && write_offset < scratch.size ()) {
@@ -520,7 +507,6 @@ inline bool run_one_way_window_loop (
       + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
         std::chrono::duration<double> (std::max (0.0, duration_seconds)));
 
-    const int poll_timeout_ms = std::max (0, settings.client_poll_timeout_ms);
     const size_t scratch_size =
       std::max<size_t> (scratch_capacity, metric_capture_bytes ());
 
@@ -552,7 +538,7 @@ inline bool run_one_way_window_loop (
         const int prc = perf_socket_poll (
           &poll_items[0],
           static_cast<int> (poll_items.size ()),
-          poll_timeout_ms);
+          0);
         if (prc < 0) {
             if (zlink_errno () != EINTR) {
                 fatal_error = true;
@@ -786,7 +772,6 @@ inline bool run_echo_window_round_robin (
       + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
         std::chrono::duration<double> (std::max (0.0, duration_seconds)));
 
-    const int poll_timeout_ms = std::max (0, settings.client_poll_timeout_ms);
     const size_t scratch_size =
       std::max<size_t> (scratch_capacity, perf_multi_metric::header_size ());
 
@@ -928,9 +913,6 @@ inline bool run_echo_window_round_robin (
         if (fatal_error)
             break;
         if (!progressed) {
-            if (poll_timeout_ms > 0)
-                std::this_thread::sleep_for (
-                  std::chrono::milliseconds (poll_timeout_ms));
             backoff_client_idle (settings);
         }
     }

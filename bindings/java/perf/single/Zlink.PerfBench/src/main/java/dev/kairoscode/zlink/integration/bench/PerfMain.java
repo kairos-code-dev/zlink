@@ -8,7 +8,6 @@ import dev.kairoscode.zlink.integration.bench.src.PerfGateway;
 import dev.kairoscode.zlink.integration.bench.src.PerfPair;
 import dev.kairoscode.zlink.integration.bench.src.PerfPubSub;
 import dev.kairoscode.zlink.integration.bench.src.PerfRouterRouter;
-import dev.kairoscode.zlink.integration.bench.src.PerfRouterRouterPoll;
 import dev.kairoscode.zlink.integration.bench.src.PerfSpot;
 
 public final class PerfMain {
@@ -47,8 +46,6 @@ public final class PerfMain {
                 case "DEALER_DEALER" -> PerfDealerDealer.run(transport, size);
                 case "DEALER_ROUTER" -> PerfDealerRouter.run(transport, size);
                 case "ROUTER_ROUTER" -> PerfRouterRouter.run(transport, size);
-                case "ROUTER_ROUTER_POLL" -> PerfRouterRouterPoll.run(transport,
-                    size);
                 case "GATEWAY" -> PerfGateway.run(transport, size);
                 case "SPOT" -> PerfSpot.run(transport, size);
                 default -> 1;

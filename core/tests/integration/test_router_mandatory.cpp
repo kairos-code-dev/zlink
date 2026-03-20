@@ -30,15 +30,14 @@ void test_basic ()
     //  Send a message to an unknown peer with mandatory routing
     //  This will fail
     int mandatory = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (router, ZLINK_ROUTER_MANDATORY,
-                                               &mandatory, sizeof (mandatory)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
     int rc = zlink_send (router, "UNKNOWN", 7, ZLINK_SNDMORE);
     TEST_ASSERT_EQUAL_INT (-1, rc);
     TEST_ASSERT_EQUAL_INT (EHOSTUNREACH, errno);
 
     //  Create dealer called "X" and connect it to our router
     void *dealer = test_context_socket (ZLINK_DEALER);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (dealer, ZLINK_ROUTING_ID, "X", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "X", 1));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, my_endpoint));
 
     //  Get message from dealer to know when connection is ready

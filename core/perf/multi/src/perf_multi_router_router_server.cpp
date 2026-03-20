@@ -182,7 +182,7 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings ();
     const int linger_ms = 0;
-    set_sockopt_int (server, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
     if (k_server_has_routing_id) {
         zlink_set_routing_id (

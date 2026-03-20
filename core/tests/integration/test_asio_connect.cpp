@@ -76,7 +76,7 @@ void test_connect_before_bind ()
     //  Set reconnect interval
     int reconnect_ivl = 100;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_RECONNECT_IVL, &reconnect_ivl, sizeof (int)));
+      zlink_set_option (client, ZLINK_OPT_RECONNECT_IVL, &reconnect_ivl, sizeof (int)));
 
     //  Connect first (before server binds)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, "tcp://127.0.0.1:15560"));
@@ -157,9 +157,9 @@ void test_ipv6_connect ()
 
     int ipv6 = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_IPV6, &ipv6, sizeof (int)));
+      zlink_set_option (server, ZLINK_OPT_IPV6, &ipv6, sizeof (int)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_IPV6, &ipv6, sizeof (int)));
+      zlink_set_option (client, ZLINK_OPT_IPV6, &ipv6, sizeof (int)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "tcp://[::1]:15561"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, "tcp://[::1]:15561"));
@@ -182,7 +182,7 @@ void test_connect_immediate ()
 
     int immediate = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_IMMEDIATE, &immediate, sizeof (int)));
+      zlink_set_option (client, ZLINK_OPT_IMMEDIATE, &immediate, sizeof (int)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -212,7 +212,7 @@ void test_wildcard_port ()
     char endpoint[MAX_SOCKET_STRING];
     size_t endpoint_len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len));
+      zlink_get_option (server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_len));
 
     //  Connect using the resolved endpoint
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
@@ -239,14 +239,15 @@ void test_tcp_keepalive ()
     int tcp_keepalive_cnt = 5;
     int tcp_keepalive_intvl = 10;
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_TCP_KEEPALIVE, &tcp_keepalive, sizeof (int)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_TCP_KEEPALIVE_IDLE, &tcp_keepalive_idle, sizeof (int)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_TCP_KEEPALIVE_CNT, &tcp_keepalive_cnt, sizeof (int)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_TCP_KEEPALIVE_INTVL, &tcp_keepalive_intvl, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_TCP_KEEPALIVE, &tcp_keepalive, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_TCP_KEEPALIVE_IDLE, &tcp_keepalive_idle, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_TCP_KEEPALIVE_CNT, &tcp_keepalive_cnt, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_TCP_KEEPALIVE_INTVL, &tcp_keepalive_intvl,
+      sizeof (int)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));

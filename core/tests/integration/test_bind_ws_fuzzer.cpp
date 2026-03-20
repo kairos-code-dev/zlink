@@ -19,10 +19,9 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
     //  but the sanitizer allocator will barf over a gig or so
     int64_t max_msg_size = 64 * 1024 * 1024;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_MAXMSGSIZE, &max_msg_size, sizeof (int64_t)));
+      zlink_set_option (server, ZLINK_OPT_MAXMSGSIZE, &max_msg_size, sizeof (int64_t)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "ws://127.0.0.1:*"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT,
-                                               my_endpoint, &my_endpoint_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (server, ZLINK_OPT_LAST_ENDPOINT, my_endpoint, &my_endpoint_size));
     //  Remove trailing /
     my_endpoint[my_endpoint_size - 2] = '\0';
     fd_t client = connect_socket (my_endpoint, AF_INET, IPPROTO_WS);

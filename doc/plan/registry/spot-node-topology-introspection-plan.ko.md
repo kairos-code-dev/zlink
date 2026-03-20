@@ -4,7 +4,17 @@
 
 이 문서는 운영 모니터링 관점에서
 `spot_node`, `gateway`, `registry` 계열의 snapshot / introspection API를
-정의하는 계획 문서다.
+정의하고, 현재 구현 기준의 계약과 내부 매핑을 정리하는 문서다.
+
+구현 상태 메모:
+
+- 2026-03-19 기준 v1 범위는 코드에 반영되어 있다.
+- 현재 public surface는
+  `spot_node`: `status`, `peers`, `SUB subjects`
+  `gateway`: `status`
+  `registry`: `status`, `service_summary`
+  까지 구현되어 있다.
+- 이 문서의 남은 미구현 범위는 `PUB subject` snapshot 같은 v2 확장뿐이다.
 
 현재 공개 surface에는 다음이 이미 있다.
 
@@ -150,14 +160,15 @@ POSD 관점에서 shallow wrapper다.
 
 - `count == NULL`이면 `EINVAL`
 - `entries == NULL`일 때 필요한 개수를 `count`에 반환
-- caller가 버퍼를 제공하면 최대 `*count`개까지 복사
+- caller가 충분한 버퍼를 제공하면 전체 결과를 복사
 - 실제 반환 개수를 `count`에 기록
 - snapshot 시점은 함수 내부에서 단일 논리 시점이어야 한다
 
 버퍼 규약:
 
 - `entries != NULL`인데 `*count == 0`이면 항목을 복사하지 않고 필요한 개수만 반환한다.
-- caller 버퍼가 부족해도 실패로 보지 않고 잘린 결과를 복사한 뒤 전체 필요한 개수를 `count`에 기록한다.
+- caller 버퍼가 부족하면 결과를 복사하지 않고 전체 필요한 개수를 `count`에 기록한 뒤
+  `ENOBUFS`로 실패한다.
 - 이 규약은 기존 snapshot 계열 C API와 동일해야 한다.
 
 추가 계약:
@@ -175,7 +186,23 @@ POSD 관점에서 shallow wrapper다.
 - `gateway`
 - `registry`
 
-### 3.4 local API는 endpoint 중심 identity를 쓴다
+### 3.4 snapshot 결과 순서를 고정한다
+
+운영 수집기와 테스트의 결정성을 위해 새 API 결과 순서를 문서에서 고정한다.
+
+정렬 규칙:
+
+- `zlink_spot_node_peers_*()`:
+  `peer_endpoint` 오름차순
+- `zlink_spot_node_subjects_snapshot()`:
+  `(subject_kind, subject)` 오름차순
+- `zlink_registry_service_summary_snapshot()`:
+  `(service_kind, service_name)` 오름차순
+
+기존 `registry_topology_*()`와 `registry_gateway_peers_*()`는
+현재 내부 map 순서를 그대로 유지한다.
+
+### 3.5 local API는 endpoint 중심 identity를 쓴다
 
 registry 전역 summary는 representative `routing_id` 중심 identity가 맞다.
 반면 `spot_node` 로컬 peer 관찰은 endpoint 중심 identity가 더 적합하다.
@@ -321,6 +348,7 @@ ZLINK_EXPORT int zlink_spot_node_status_snapshot (
 - `out == NULL`이면 `EINVAL`
 - 성공 시 단일 row를 채운다
 - 이 API는 monitoring scrape의 1차 진입점으로 권장한다
+- 구현은 `out`을 먼저 zero-initialize 한 뒤 필드를 채운다
 
 ### 5.5 상태 계산 규칙
 
@@ -434,6 +462,13 @@ ZLINK_EXPORT int zlink_spot_node_peers_query (
   zlink_spot_node_peer_entry_t *entries,
   size_t *count);
 ```
+
+함수 규약:
+
+- `count == NULL`이면 `EINVAL`
+- `entries == NULL`이면 필요한 row 수만 반환한다
+- `filter == NULL`이면 전체 peer snapshot으로 해석한다
+- 결과 row는 `peer_endpoint` 오름차순으로 반환한다
 
 ### 6.5 상태 계산 규칙
 
@@ -565,6 +600,14 @@ v1에서는 `snapshot` 하나만 두고,
 - 초기 설계에서 API 수를 늘릴 필요가 없다.
 - filter가 optional이면 snapshot/query를 한 함수로 합칠 수 있다.
 
+함수 규약:
+
+- `count == NULL`이면 `EINVAL`
+- `entries == NULL`이면 필요한 row 수만 반환한다
+- 결과 row는 `(subject_kind, subject)` 오름차순으로 반환한다
+- 같은 subject가 여러 `spot_sub_t`에 존재해도 공개 결과는 subject 기준으로 합산해
+  한 row만 반환한다
+
 ### 7.6 v1 범위
 
 v1 subject query는 `SUB` 중심으로 시작하는 것이 안전하다.
@@ -595,8 +638,8 @@ subject-level 공개 contract를 더 신중히 정리해야 한다.
 
 ### 8.1 peer query 구현에 필요한 최소 내부 확장
 
-정확한 `connected_since_ms`와 `last_changed_ms`를 주려면
-현재 set만으로는 부족하다.
+정확한 `connected_since_ms`와 `last_changed_ms`를 주기 위해
+현재 구현은 set 외에 observation cache를 함께 유지한다.
 
 최소 확장 구조:
 
@@ -611,18 +654,12 @@ struct peer_observation_t
 std::map<std::string, peer_observation_t> _peer_observations;
 ```
 
-업데이트 시점:
+현재 구현의 업데이트 시점:
 
 - manual connect/disconnect
 - discovery refresh로 active set 변경
 - connected set refresh 변경
-
-v1 단순 구현에서는 아래도 허용 가능하다.
-
-- `connected_since_ms = 0`
-- `last_changed_ms = 0`
-
-하지만 설계 문서 기준 권장안은 timestamp cache를 두는 것이다.
+- bind / discovery attach / discovery refresh로 summary state가 바뀌는 시점
 
 thread-safe 조건:
 
@@ -634,7 +671,8 @@ thread-safe 조건:
 ### 8.2 subject query 구현에 필요한 최소 내부 확장
 
 `spot_sub_t`는 subject 목록과 ready peer set을 이미 관리한다.
-다만 `last_changed_ms`를 내보내려면 subject별 시각 캐시가 필요하다.
+현재 구현은 `last_changed_ms`를 내보내기 위해
+subject별 시각 cache를 유지한다.
 
 최소 확장 구조 예:
 
@@ -648,7 +686,7 @@ key는 다음 normalized 문자열을 사용한다.
 <subject_kind>:<subject>
 ```
 
-이미 `spot_sub.cpp`에 유사 helper 패턴이 있으므로
+이미 `spot_sub.cpp`에 `make_subject_key()` helper 패턴이 있으므로
 같은 canonical key를 재사용하는 편이 좋다.
 
 중요한 제약:
@@ -660,14 +698,14 @@ key는 다음 normalized 문자열을 사용한다.
 
 ### 8.3 node summary 구현에 필요한 최소 내부 확장
 
-운영용 summary를 제대로 만들려면 다음 캐시가 필요하다.
+운영용 summary를 위해 현재 구현은 다음 cache를 유지한다.
 
 ```c++
 int _last_summary_error;
 uint64_t _summary_last_changed_ms;
 ```
 
-권장 업데이트 시점:
+현재 구현의 업데이트 시점:
 
 - bind 성공/실패
 - manual connect/disconnect
@@ -675,10 +713,7 @@ uint64_t _summary_last_changed_ms;
 - connected peer set 변화
 - subscription add/remove
 - node fault mark
-
-v1 단순 구현에서는 `last_error = 0`,
-`last_changed_ms = 0`으로 시작할 수 있다.
-하지만 운영 API 목적상 가능한 빠르게 실제 값을 채우는 편이 좋다.
+- subject add/remove 및 ready/lost 변경
 
 ### 8.4 gateway status 구현에 필요한 최소 내부 확장
 
@@ -688,26 +723,37 @@ v1 단순 구현에서는 `last_error = 0`,
 최소 구현 출처:
 
 - `service_name`: gateway가 소비 중인 logical service 이름
-- `gateway_routing_id`: gateway 대표 routing id
-- `ready_provider_count`: 현재 send snapshot 또는 monitor 기준 ready provider 수
-- `active_route_count`: 현재 control snapshot 또는 send snapshot 기준 route 수
-- `send_ready`: 현재 gateway send-ready 여부
+- `bind_endpoint`: `_advertise_endpoint` 우선, 없으면 `_bind_endpoint`, 둘 다 없으면 빈 문자열
+- `gateway_routing_id`: 현재 `_routing_id`, 비어 있으면 size 0
+- `observed_provider_count`: primary pool `control_snapshot->routes_by_endpoint.size()`
+- `ready_provider_count`: primary pool `send_snapshot->endpoints.size()`
+- `active_route_count`: v1에서는 `ready_provider_count`와 같은 값
+- `send_ready`: `ready_provider_count > 0 ? 1 : 0`
 - `last_error`: gateway가 마지막으로 기록한 운영상 의미 있는 오류
 
-권장 보완:
+현재 구현은 아래 summary cache를 함께 유지한다.
 
 ```c++
 int _last_summary_error;
 uint64_t _summary_last_changed_ms;
 ```
 
-주의:
+gateway state 계산 규칙:
 
-- `desired_provider_count`는 현재 구현에서 항상 자명하지 않을 수 있다.
-- discovery 기반 gateway에서는 "이상적으로 몇 개 provider가 있어야 하는가"보다
-  "현재 몇 개를 알고 있고 몇 개가 ready 인가"가 더 명확하다.
-- 따라서 구현 단계에서는 `desired_provider_count`를 유지할지,
-  `observed_provider_count`로 바꿀지 별도 결정이 필요하다.
+1. `last_error != 0`이면 `ERROR`
+2. `bind_endpoint`가 비어 있고 `observed_provider_count == 0`이면 `IDLE`
+3. `observed_provider_count > 0`이고 `ready_provider_count == 0`이면 `CONNECTING`
+4. `ready_provider_count > 0`
+   이고 `ready_provider_count < observed_provider_count`이면 `PARTIAL_READY`
+5. `ready_provider_count > 0`
+   이고 `ready_provider_count == observed_provider_count`이면 `READY`
+6. 그 외는 `IDLE`
+
+중요:
+
+- v1에서는 `active_route_count`를 별도 의미로 분리하지 않는다.
+- 운영 화면 호환을 위해 필드는 유지하되,
+  구현 값은 `ready_provider_count`와 동일하게 둔다.
 
 ### 8.5 registry status / service summary 구현에 필요한 최소 내부 확장
 
@@ -719,12 +765,13 @@ uint64_t _summary_last_changed_ms;
 
 - `topology_entry_count`: `_topology.size()`
 - `gateway_peer_entry_count`: `_gateway_peers.size()`
-- `peer_registry_count`: peer registry 메타 store 크기
-- `connected_peer_registry_count`: peer sync 소켓이 현재 연결된 peer registry 수
+- `peer_registry_count`: 설정된 peer pub endpoint 수, 즉 `_peer_pubs.size()`
+- `connected_peer_registry_count`: 최근 peer list를 수신해
+  `_peer_last_seen`에 살아 있는 remote registry 수
 - `list_seq`: `_list_seq`
 - `service summary`: `service_kind + service_name` 기준으로 `_topology` row group-by
 
-권장 보완:
+현재 구현은 아래 summary cache를 함께 유지한다.
 
 ```c++
 int _last_summary_error;
@@ -736,6 +783,23 @@ uint64_t _summary_last_changed_ms;
 - 문서에 나온 모든 status/summary 필드는
   "어디서 계산되는가"가 구현 전에 설명 가능해야 한다.
 - 계산 출처가 불명확한 필드는 v1에서 빼거나 이름을 더 정확히 바꿔야 한다.
+
+registry state 계산 규칙:
+
+1. `last_error != 0`이면 `ERROR`
+2. `bind_endpoint`가 비어 있거나 `registry_id == 0`이면 `IDLE`
+3. `peer_registry_count == 0`이면 `ACTIVE`
+4. `connected_peer_registry_count < peer_registry_count`이면 `DEGRADED`
+5. 그 외는 `ACTIVE`
+
+service summary state 집계 규칙:
+
+- `total_count`: 해당 group 전체 row 수
+- `connecting_count`: `DISCOVERED` 또는 `CONNECTING`
+- `ready_count`: `READY`
+- `error_count`: `LOST` 또는 `ERROR`
+- `stopped_count`: `STOPPED`
+- `last_reported_ms`: group 내 최대 `last_reported_ms`
 
 ### 8.6 파일별 구현 매핑
 
@@ -766,6 +830,18 @@ uint64_t _summary_last_changed_ms;
 3. 각 서비스 클래스에 internal snapshot helper 추가
 4. 단위 테스트 추가
 5. 통합 테스트 추가
+
+권장 helper 시그니처:
+
+- `spot_node_t`:
+  `int snapshot_status (zlink_spot_node_status_t *out_) const;`
+  `int snapshot_peers (const zlink_spot_node_peer_filter_t *filter_, std::vector<zlink_spot_node_peer_entry_t> *out_) const;`
+  `int snapshot_subjects (const zlink_spot_node_subject_filter_t *filter_, std::vector<zlink_spot_node_subject_entry_t> *out_) const;`
+- `gateway_t`:
+  `int snapshot_status (zlink_gateway_status_t *out_) const;`
+- `registry_t`:
+  `int status_snapshot (zlink_registry_status_t *out_);`
+  `int service_summary_snapshot (const zlink_registry_service_summary_filter_t *filter_, std::vector<zlink_registry_service_summary_entry_t> *out_);`
 
 ## 9. monitor와의 관계
 
@@ -918,12 +994,26 @@ ZLINK_EXPORT int zlink_gateway_status_snapshot (
 
 필드 해석:
 
-- `observed_provider_count`: discovery 또는 manual route 기준 현재 관측된 provider 수
-- `ready_provider_count`: 그중 실제 send-ready 로 간주 가능한 provider 수
+- `bind_endpoint`: advertise endpoint 우선, 없으면 bind endpoint, 둘 다 없으면 빈 문자열
+- `observed_provider_count`: primary pool control snapshot 기준 route 수
+- `ready_provider_count`: primary pool send snapshot 기준 ready route 수
+- `active_route_count`: v1에서는 `ready_provider_count`와 동일
+- `send_ready`: `ready_provider_count > 0 ? 1 : 0`
 
 중요:
 
 - 운영용 1차 판단에는 `observed_provider_count`와 `ready_provider_count`가 더 중요하다.
+
+상태 계산 규칙:
+
+1. `last_error != 0`이면 `ERROR`
+2. `bind_endpoint`가 비어 있고 `observed_provider_count == 0`이면 `IDLE`
+3. `observed_provider_count > 0`이고 `ready_provider_count == 0`이면 `CONNECTING`
+4. `ready_provider_count > 0`
+   이고 `ready_provider_count < observed_provider_count`이면 `PARTIAL_READY`
+5. `ready_provider_count > 0`
+   이고 `ready_provider_count == observed_provider_count`이면 `READY`
+6. 그 외는 `IDLE`
 
 운영 사용 순서:
 
@@ -973,6 +1063,21 @@ ZLINK_EXPORT int zlink_registry_status_snapshot (
 이 API는 "registry 프로세스가 건강한가"를 빠르게 보여주는 용도다.
 기존 topology row를 대체하지 않는다.
 
+필드 해석:
+
+- `registry_id`: 현재 registry id, 미설정이면 `0`
+- `bind_endpoint`: router endpoint 우선, 없으면 빈 문자열
+- `peer_registry_count`: 설정된 peer registry endpoint 수
+- `connected_peer_registry_count`: 최근 peer list를 수신한 remote registry 수
+
+상태 계산 규칙:
+
+1. `last_error != 0`이면 `ERROR`
+2. `bind_endpoint`가 비어 있거나 `registry_id == 0`이면 `IDLE`
+3. `peer_registry_count == 0`이면 `ACTIVE`
+4. `connected_peer_registry_count < peer_registry_count`이면 `DEGRADED`
+5. 그 외는 `ACTIVE`
+
 ### 10.4 registry service aggregate summary 제안
 
 운영 대시보드에서 가장 자주 필요한 것은
@@ -1015,6 +1120,14 @@ ZLINK_EXPORT int zlink_registry_service_summary_snapshot (
 - source별 row를 그대로 노출하지 않고 service 단위로 합산
 - `service_kind + service_name` 기준 group-by
 - topology entry state를 count로 합산
+- 결과 row는 `(service_kind, service_name)` 오름차순으로 반환
+
+state -> count 매핑:
+
+- `DISCOVERED`, `CONNECTING` -> `connecting_count`
+- `READY` -> `ready_count`
+- `LOST`, `ERROR` -> `error_count`
+- `STOPPED` -> `stopped_count`
 
 운영 사용 순서:
 
@@ -1180,9 +1293,9 @@ subject snapshot은 완전한 global atomicity를 보장하기 어렵다.
 - 각 child에서 읽은 개별 state는 lock으로 보호된 실제 값이어야 한다.
 - 함수는 fail-fast 해야 하며 sleep/poll/retry로 snapshot 일관성을 맞추지 않는다.
 
-## 13. 단계별 구현 계획
+## 13. 단계별 구현 계획 / 현재 상태
 
-### 13.1 Phase 1
+### 13.1 Phase 1 완료
 
 - `zlink.h`에 node status entry/function 추가
 - `api/zlink.cpp`에 public C API 추가
@@ -1193,9 +1306,10 @@ subject snapshot은 완전한 global atomicity를 보장하기 어렵다.
   `ready_subject_count`, `state`
 - thread-safe 계약 문서와 API 주석 추가
 
-이 단계가 운영 모니터링 기준의 첫 릴리즈 단위다.
+이 단계가 운영 모니터링 기준의 첫 릴리즈 단위였고,
+현재 코드에 반영되어 있다.
 
-### 13.2 Phase 2
+### 13.2 Phase 2 완료
 
 - `zlink.h`에 gateway status entry/function 추가
 - `api/zlink.cpp`에 public C API 추가
@@ -1204,7 +1318,7 @@ subject snapshot은 완전한 global atomicity를 보장하기 어렵다.
   `service_name`, `observed_provider_count`, `ready_provider_count`,
   `active_route_count`, `send_ready`, `state`
 
-### 13.3 Phase 3
+### 13.3 Phase 3 완료
 
 - `zlink.h`에 registry status/service summary entry/function 추가
 - `api/zlink.cpp`에 public C API 추가
@@ -1213,7 +1327,7 @@ subject snapshot은 완전한 global atomicity를 보장하기 어렵다.
   `topology_entry_count`, `gateway_peer_entry_count`,
   `service_kind + service_name` group-by summary
 
-### 13.4 Phase 4
+### 13.4 Phase 4 완료
 
 - `zlink.h`에 peer entry/filter/function 추가
 - `api/zlink.cpp`에 public C API 추가
@@ -1221,8 +1335,8 @@ subject snapshot은 완전한 global atomicity를 보장하기 어렵다.
 - 최소 동작 구현:
   `service_name`, `local_endpoint`, `peer_endpoint`, `source`, `state`
 - thread-safe 계약 문서와 API 주석 추가
-
-이 단계에서는 timestamp 필드를 `0`으로 둘 수 있다.
+- 현재 구현은 이 단계를 넘어서
+  `connected_since_ms`, `last_changed_ms` cache까지 반영되어 있다
 
 ### 13.5 Fresh-Start Checklist
 
@@ -1263,25 +1377,26 @@ subject snapshot은 완전한 global atomicity를 보장하기 어렵다.
 - `registry`는 status/service_summary만 추가한다
 - 모호한 필드는 v1에서 제거하거나 0으로 시작하지 않고, 가능하면 이름을 좁힌다
 
-### 13.6 Phase 5
+### 13.6 Phase 5 완료
 
 - peer observation timestamp cache 추가
 - `connected_since_ms`, `last_changed_ms` 채우기
-- peer transition unit/integration test 보강
-- destroy/query 경쟁 테스트 추가
+- peer transition integration test 보강
+- destroy/query 경쟁 테스트는 v1 후속 강화 항목으로 남겨 둔다
 
-### 13.7 Phase 6
+### 13.7 Phase 6 완료
 
 - `SUB` subject snapshot API 추가
-- `spot_sub_t`에 summary helper 추가
+- `spot_sub_t` 상태 변화를 node summary cache와 연결
 - ready count snapshot 테스트 추가
-- concurrent subscribe/query, disconnect/query 테스트 추가
+- concurrent subscribe/query, disconnect/query 테스트는 v1 후속 강화 항목으로 남겨 둔다
 
-### 13.8 Phase 7
+### 13.8 Phase 7 보류
 
 - 필요하면 `PUB` subject readiness까지 확장
 - `_pub_delivery_ready_sources`의 공개 의미를 문서화
 - 과도하게 복잡하면 `PUB`는 별도 문서로 분리
+- 현재 구현 범위에는 포함하지 않는다
 
 ## 14. 테스트 계획
 
@@ -1337,18 +1452,32 @@ subject snapshot은 완전한 global atomicity를 보장하기 어렵다.
 - retry/sleep 의존 없는 deterministic test 작성
 - query 구현에 sleep 기반 일관성 보정이 없음을 코드 리뷰 체크리스트에 포함
 
+### 14.7 현재 구현 검증
+
+현재 코드베이스에는 아래 검증이 추가되어 있다.
+
+- `core/tests/e2e/spot/test_spot_service_introspection.cpp`
+  의 `test_spot_node_snapshot_status_peers_subjects`
+- `core/tests/e2e/discovery/test_service_introspection.cpp`
+  의 `test_gateway_and_registry_status_snapshots`
+
+권장 재검증 명령:
+
+- `ctest --test-dir core/build --output-on-failure -R "test_service_introspection_gateway_registry_status|test_spot_service_introspection_snapshots"`
+- `ctest --test-dir core/build --output-on-failure -R "test_service_introspection_topology_snapshot|test_service_introspection_gateway_peer_snapshot|test_spot_service_introspection_snapshots"`
+
 ## 15. Definition of Done
 
 - `spot_node` local topology query의 역할이 registry global summary와 구분되어 문서화되어 있다.
-- 운영용 1차 API로 `zlink_spot_node_status_snapshot()`이 정의되어 있다.
-- 운영용 1차 API로 `zlink_gateway_status_snapshot()`이 정의되어 있다.
-- 운영용 1차 API로 `zlink_registry_status_snapshot()`이 정의되어 있다.
-- service aggregate 용도로 `zlink_registry_service_summary_snapshot()`이 정의되어 있다.
-- peer snapshot API의 공개 계약이 `zlink.h` 수준으로 정의되어 있다.
-- 내부 set 노출형 API 대신 peer/subject read model이 정의되어 있다.
+- 운영용 1차 API로 `zlink_spot_node_status_snapshot()`이 구현되어 있다.
+- 운영용 1차 API로 `zlink_gateway_status_snapshot()`이 구현되어 있다.
+- 운영용 1차 API로 `zlink_registry_status_snapshot()`이 구현되어 있다.
+- service aggregate 용도로 `zlink_registry_service_summary_snapshot()`이 구현되어 있다.
+- peer snapshot API의 공개 계약이 `zlink.h` 수준으로 구현되어 있다.
+- 내부 set 노출형 API 대신 peer/subject read model이 구현되어 있다.
 - peer identity가 endpoint 중심이라는 이유가 설명되어 있다.
 - subject readiness는 peer query보다 뒤의 drill-down read model로 정리되어 있다.
 - monitoring 사용 순서가 `status -> peers -> subjects`로 정리되어 있다.
 - registry/gateway도 monitoring 사용 순서가 `status -> summary -> rows`로 정리되어 있다.
-- 단계별 구현 순서와 테스트 계획이 명시되어 있다.
+- 단계별 구현 순서와 테스트 계획, 현재 구현 검증 경로가 명시되어 있다.
 - 공개 thread-safe 계약과 lifecycle 에러 규칙이 문서에 명시되어 있다.

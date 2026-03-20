@@ -812,11 +812,6 @@ for raw_pattern in "${PATTERNS_TO_RUN[@]}"; do
   if [[ "${pattern}" == MULTI_* ]]; then
     pattern="${pattern#MULTI_}"
   fi
-  if [[ "${pattern}" == "ROUTER_ROUTER_POLL" ]]; then
-    echo "Error: ROUTER_ROUTER_POLL is removed from multi benchmarks." >&2
-    exit 1
-  fi
-
   pattern_clients="${CLIENTS:-$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)}"
   if [[ -z "${pattern_clients}" ]]; then
     if [[ "${pattern}" == "STREAM" || "${pattern}" == "STREAM_CALLBACK" || "${pattern}" == "STREAM_LEN32BE" ]]; then

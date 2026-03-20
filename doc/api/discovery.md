@@ -29,8 +29,9 @@ Not every call has the same timing constraints, though.
   TLS configuration on Discovery registry links.
 - Use `zlink_discovery_connect_registry()` as the single Registry bootstrap
   connect API. Discovery learns the broadcast and uplink paths internally.
-- Use `zlink_discovery_monitor_open()` for state transitions such as
-  `ZLINK_DISCOVERY_SERVICE_UP` and `ZLINK_DISCOVERY_PROVIDERS_CHANGED`.
+- Use `zlink_service_monitor_open(discovery, &options)` for state transitions
+  such as `ZLINK_DISCOVERY_SERVICE_UP` and `ZLINK_DISCOVERY_PROVIDERS_CHANGED`.
+  Close with `zlink_monitor_close()`.
 - Use Registry topology snapshot/query APIs for global summary inspection.
 - Discovery supports `zlink_set_option(discovery, ZLINK_OPT_*, ...)` which
   applies to its managed socket set as fan-out. No getter

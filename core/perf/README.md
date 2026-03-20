@@ -29,7 +29,7 @@ DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, SPOT).
 | `--runs N` | `1` | Iterations per pattern/transport/size |
 | `--recv MODE` | `recv` | Receive model (`recv` or `callback`) |
 | `--duration N` | `5` | Active measurement duration (seconds) |
-| `--warmup N` | env override | Single warmup env bridge |
+| `--warmup N` | `2` | Single warmup seconds |
 | `--hwm N` | — | Set `PERF_SINGLE_HWM` fallback |
 | `--send-hwm N` | — | Set `PERF_SINGLE_SNDHWM` |
 | `--recv-hwm N` | — | Set `PERF_SINGLE_RCVHWM` |
@@ -50,7 +50,7 @@ Detailed phase semantics, handshake rules, and mode contracts are defined in
 Current single recv-mode support:
 
 - `recv`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
-  `ROUTER_ROUTER`, `SPOT`
+  `ROUTER_ROUTER`, `GATEWAY`, `SPOT`
 - `callback`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
   `ROUTER_ROUTER`, `GATEWAY`, `SPOT`
 
@@ -74,7 +74,7 @@ and delegates execution to `run_benchmarks.sh`.
 
 ### Default patterns
 
-`DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM_CALLBACK`
+`DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM`
 
 ### Options
 
@@ -124,9 +124,8 @@ results/
 
 Current multi recv-mode support:
 
-- `recv`: `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`
-- `callback`: `GATEWAY`, `SPOT`, `STREAM_CALLBACK`
-- `recv`: `GATEWAY`, `SPOT`
+- `recv`: `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `STREAM`
+- `callback`: `DEALER_DEALER`, `PUBSUB`, `GATEWAY`, `SPOT`, `STREAM`
 
 Unsupported combinations fail fast instead of silently falling back.
 
@@ -188,11 +187,11 @@ Multi full run:
 ./core/perf/run_benchmarks_multi.sh --build-dir /home/hep7/project/kairos/zlink/core/build
 ```
 
-Multi STREAM callback-only:
+Multi STREAM callback:
 
 ```bash
 ./core/perf/run_benchmarks_multi.sh \
-  --pattern STREAM_CALLBACK \
+  --pattern STREAM \
   --build-dir /home/hep7/project/kairos/zlink/core/build \
   --clients 5000 \
   --duration 10 \

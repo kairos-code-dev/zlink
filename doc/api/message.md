@@ -223,22 +223,43 @@ returns 0.
 
 ---
 
-### zlink_msg_is_shared
+### zlink_msg_refcnt
 
-Return whether the message storage is shared.
+Return the message storage reference count.
 
 ```c
-int zlink_msg_is_shared (const zlink_msg_t *msg_);
+int zlink_msg_refcnt (const zlink_msg_t *msg_);
 ```
 
-Returns 1 if the underlying message storage is shared (referenced by
-multiple `zlink_msg_t` instances via `zlink_msg_copy()`), 0 otherwise.
+Returns the current internal reference count for reference-counted large
+or zero-copy message storage. Message kinds that are not internally
+reference-counted (inline, borrowed-constant) return 1.
 
-**Returns:** 1 if shared, 0 if not shared.
+The internal reference count is managed with atomic operations:
+`zlink_msg_copy()` atomically increments the count, and `zlink_msg_close()`
+atomically decrements it — these are safe to call from different threads on
+different `zlink_msg_t` handles that share the same underlying storage.
 
-**Thread safety:** Not thread-safe.
+`zlink_msg_refcnt()` itself performs a relaxed read of the atomic counter.
+The returned value is a point-in-time snapshot; by the time the caller
+inspects it, another thread may have already changed the count via copy or
+close. This makes the function suitable for diagnostics and assertions but
+not for control decisions.
 
-**See also:** `zlink_msg_copy`
+A single `zlink_msg_t` instance must not be accessed concurrently from
+multiple threads. Concurrent access requires separate `zlink_msg_t` handles
+created via `zlink_msg_copy()`.
+
+**Returns:** Current storage reference count, or 1 when the message kind is
+not internally reference-counted.
+
+**Thread safety:** The underlying reference count is atomic. Reading it
+via this function is safe while other threads copy or close *different*
+`zlink_msg_t` handles that share the same storage. However, calling this
+function and any other `zlink_msg_*` function on the *same* `zlink_msg_t`
+instance from multiple threads concurrently is not safe.
+
+**See also:** `zlink_msg_copy`, `zlink_msg_close`
 
 ---
 
@@ -263,7 +284,7 @@ metadata.
 
 **Thread safety:** Not thread-safe.
 
-**See also:** `zlink_msg_is_shared`
+**See also:** `zlink_msg_refcnt`
 
 ---
 

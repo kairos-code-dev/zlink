@@ -40,7 +40,6 @@ bindings/dotnet/
     │   │       ├── PerfDealerDealer.cs
     │   │       ├── PerfDealerRouter.cs
     │   │       ├── PerfRouterRouter.cs
-    │   │       ├── PerfRouterRouterPoll.cs
     │   │       ├── PerfGateway.cs
     │   │       └── PerfSpot.cs
     │   │
@@ -196,7 +195,6 @@ dotnet run --project perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj \
   <PATTERN> <TRANSPORT> <SIZE>
 ```
 
-- **PATTERN** (C# 바이너리 직접 실행 8종): `PAIR | PUBSUB | DEALER_DEALER | DEALER_ROUTER | ROUTER_ROUTER | ROUTER_ROUTER_POLL | GATEWAY | SPOT`
 - **TRANSPORT**: `tcp | tls | ws | wss | inproc | ipc`
 - **SIZE**: 양의 정수 (바이트)
 - 종료코드: 0=성공, 1=인자 오류, 2=런타임 오류
@@ -398,7 +396,6 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 3 | PerfDealerDealer.cs | DEALER_DEALER | Dealer×2 | echo | tcp,tls,ws,wss,inproc,ipc |
 | 4 | PerfDealerRouter.cs | DEALER_ROUTER | Dealer+Router | echo | tcp,tls,ws,wss,inproc,ipc |
 | 5 | PerfRouterRouter.cs | ROUTER_ROUTER | Router×2 | echo | tcp,tls,ws,wss,inproc,ipc |
-| 6 | PerfRouterRouterPoll.cs | ROUTER_ROUTER_POLL | Router×2+Poller | echo | tcp,tls,ws,wss,inproc,ipc |
 | 7 | PerfGateway.cs | GATEWAY | Gateway+Receiver | echo | tcp,tls,ws,wss |
 | 8 | PerfSpot.cs | SPOT | Spot (pub/sub) | one-way | tcp,tls,ws,wss | ★ warmup clamp: size≥65536 → max 20 |
 
@@ -816,7 +813,6 @@ bindings/dotnet/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 20. `single/.../src/PerfDealerDealer.cs`
 21. `single/.../src/PerfDealerRouter.cs`
 22. `single/.../src/PerfRouterRouter.cs`
-23. `single/.../src/PerfRouterRouterPoll.cs`
 
 ### Phase 3: Single 서비스 패턴 (2개)
 
@@ -1252,7 +1248,6 @@ python3 bindings/dotnet/perf/run_comparison.py \
 - [ ] `UNSUPPORTED` 조합은 정책 정의 범위 내에서만 허용 (예: inproc/ipc 에서 GATEWAY/SPOT)
 
 **기본 조합 수 예상 (single, Linux 기준):**
-- socket 패턴 (6종: PAIR~ROUTER_ROUTER_POLL) × 6 transport (tcp,tls,ws,wss,inproc,ipc) × 6 size = 216 조합
 - GATEWAY/SPOT (2종) × 4 transport (tcp,tls,ws,wss) × 6 size = 48 조합
 - 총: **264** 조합 → UNSUPPORTED 제외한 나머지 전부 success
 
@@ -1336,7 +1331,6 @@ head -20 bindings/dotnet/perf/results/multi/tmp/perf_*.txt
 - [x] **CL-1.8** `single/Zlink.BindingBench/src/PerfDealerDealer.cs` 존재
 - [x] **CL-1.9** `single/Zlink.BindingBench/src/PerfDealerRouter.cs` 존재
 - [x] **CL-1.10** `single/Zlink.BindingBench/src/PerfRouterRouter.cs` 존재
-- [x] **CL-1.11** `single/Zlink.BindingBench/src/PerfRouterRouterPoll.cs` 존재
 - [x] **CL-1.12** `single/Zlink.BindingBench/src/PerfGateway.cs` 존재
 - [x] **CL-1.13** `single/Zlink.BindingBench/src/PerfSpot.cs` 존재
 - [x] **CL-1.14** single 프로젝트 루트에 패턴 파일 flat 배치 없음 (PerfPair.cs 등이 루트에 없어야 함)
@@ -1397,7 +1391,6 @@ head -20 bindings/dotnet/perf/results/multi/tmp/perf_*.txt
 **single CLI:**
 
 - [ ] **CL-3.1** `Zlink.BindingBench <PATTERN> <TRANSPORT> <SIZE>` 형식 동작
-- [ ] **CL-3.2** 지원 PATTERN 8종: PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT
 - [ ] **CL-3.3** 지원 TRANSPORT 6종: tcp, tls, ws, wss, inproc, ipc
 - [ ] **CL-3.4** 종료코드: 0=성공, 1=인자 오류, 2=런타임 오류
 
@@ -1506,7 +1499,6 @@ head -20 bindings/dotnet/perf/results/multi/tmp/perf_*.txt
 - [ ] **CL-7.3** PerfDealerDealer: Dealer×2, echo, tcp/tls/ws/wss/inproc/ipc
 - [ ] **CL-7.4** PerfDealerRouter: Dealer+Router, echo, tcp/tls/ws/wss/inproc/ipc
 - [ ] **CL-7.5** PerfRouterRouter: Router×2, echo, tcp/tls/ws/wss/inproc/ipc
-- [ ] **CL-7.6** PerfRouterRouterPoll: Router×2+Poller, echo, tcp/tls/ws/wss/inproc/ipc
 - [ ] **CL-7.7** PerfGateway: Gateway+Receiver, echo, tcp/tls/ws/wss (inproc/ipc 미지원)
 - [ ] **CL-7.8** PerfSpot: Spot pub/sub, one-way, tcp/tls/ws/wss (inproc/ipc 미지원), warmup clamp: `msg_size ≥ 65536` → max 20
 **multi 패턴 (9종: 6 소켓/서비스 + 3 STREAM):**
@@ -1599,7 +1591,6 @@ head -20 bindings/dotnet/perf/results/multi/tmp/perf_*.txt
 
 - [ ] **CL-10.1** Context, Socket, Bind, Connect, Send, Receive API 사용
 - [ ] **CL-10.2** SetOption / GetOption API 사용
-- [ ] **CL-10.3** Poller.Poll API 사용 (ROUTER_ROUTER_POLL)
 - [ ] **CL-10.4** STREAM: AttachStreamRaw / AttachStreamLen32Be / DetachStream / StreamSend API 사용
 - [ ] **CL-10.5** Gateway / Receiver / Spot 서비스 API 사용
 - [ ] **CL-10.6** MonitorSocket 사용 (multi connect ready)
@@ -1693,7 +1684,6 @@ head -20 bindings/dotnet/perf/results/multi/tmp/perf_*.txt
 - [ ] **CL-14.20** PerfDealerDealer.cs 구현
 - [ ] **CL-14.21** PerfDealerRouter.cs 구현
 - [ ] **CL-14.22** PerfRouterRouter.cs 구현
-- [ ] **CL-14.23** PerfRouterRouterPoll.cs 구현
 
 **Phase 3: Single 서비스 패턴 (2개)**
 

@@ -312,10 +312,10 @@ void run_dealer_dealer (const std::string &transport,
     }
 
     const int recv_timeout_ms = resolve_single_recv_timeout_ms ();
-    set_sockopt_int (s1.get (), ZLINK_RCVTIMEO, recv_timeout_ms,
-                     "ZLINK_RCVTIMEO");
-    set_sockopt_int (s2.get (), ZLINK_RCVTIMEO, recv_timeout_ms,
-                     "ZLINK_RCVTIMEO");
+    set_sockopt_int (s1.get (), ZLINK_OPT_RCVTIMEO, recv_timeout_ms,
+                     "ZLINK_OPT_RCVTIMEO");
+    set_sockopt_int (s2.get (), ZLINK_OPT_RCVTIMEO, recv_timeout_ms,
+                     "ZLINK_OPT_RCVTIMEO");
 
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());

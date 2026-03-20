@@ -20,7 +20,7 @@ void test_timeo ()
     const int timeout = 250;
     const int jitter = 50;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (frontend, ZLINK_RCVTIMEO, &timeout, sizeof (int)));
+      zlink_set_option (frontend, ZLINK_OPT_RCVTIMEO, &timeout, sizeof (int)));
 
     void *stopwatch = zlink_stopwatch_start ();
     TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (frontend, buffer, 32, 0));
@@ -38,7 +38,7 @@ void test_timeo ()
     void *backend = test_context_socket (ZLINK_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (backend, "inproc://timeout_test"));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (backend, ZLINK_SNDTIMEO, &timeout, sizeof (int)));
+      zlink_set_option (backend, ZLINK_OPT_SNDTIMEO, &timeout, sizeof (int)));
 
     send_string_expect_success (backend, "Hello", 0);
     recv_string_expect_success (frontend, "Hello", 0);

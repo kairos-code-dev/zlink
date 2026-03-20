@@ -175,7 +175,7 @@ void test_stream_auto_routing_id_size ()
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     g_stream_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (server, &on_stream_handler, NULL));

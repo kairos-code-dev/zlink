@@ -19,13 +19,13 @@ void test_default_socket_hwm_is_1000 ()
     int sndhwm = 0;
     size_t sndhwm_size = sizeof (sndhwm);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (socket, ZLINK_SNDHWM, &sndhwm, &sndhwm_size));
+      zlink_get_option (socket, ZLINK_OPT_SNDHWM, &sndhwm, &sndhwm_size));
     TEST_ASSERT_EQUAL_INT (1000, sndhwm);
 
     int rcvhwm = 0;
     size_t rcvhwm_size = sizeof (rcvhwm);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (socket, ZLINK_RCVHWM, &rcvhwm, &rcvhwm_size));
+      zlink_get_option (socket, ZLINK_OPT_RCVHWM, &rcvhwm, &rcvhwm_size));
     TEST_ASSERT_EQUAL_INT (1000, rcvhwm);
 
     test_context_socket_close (socket);
@@ -38,15 +38,15 @@ int test_defaults (int send_hwm_, int msg_cnt_, const char *endpoint_)
     // Set up and bind XPUB socket
     void *pub_socket = test_context_socket (ZLINK_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub_socket, ZLINK_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
+      zlink_set_option (pub_socket, ZLINK_OPT_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
     test_bind (pub_socket, endpoint_, pub_endpoint, sizeof pub_endpoint);
 
     // Set up and connect SUB socket
     void *sub_socket = test_context_socket (ZLINK_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub_socket, ZLINK_RCVHWM, &send_hwm_, sizeof (send_hwm_)));
+      zlink_set_option (sub_socket, ZLINK_OPT_RCVHWM, &send_hwm_, sizeof (send_hwm_)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub_socket, ZLINK_SUBSCRIBE, 0, 0));
+      zlink_set_subscription (sub_socket, ""));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, pub_endpoint));
 
     // Wait before starting TX operations till 1 subscriber has subscribed
@@ -106,21 +106,22 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *endpoint_)
     // Set up bind socket
     void *pub_socket = test_context_socket (ZLINK_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub_socket, ZLINK_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
+      zlink_set_option (pub_socket, ZLINK_OPT_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
     test_bind (pub_socket, endpoint_, pub_endpoint, sizeof pub_endpoint);
 
     // Set up connect socket
     void *sub_socket = test_context_socket (ZLINK_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub_socket, ZLINK_RCVHWM, &send_hwm_, sizeof (send_hwm_)));
+      zlink_set_option (sub_socket, ZLINK_OPT_RCVHWM, &send_hwm_, sizeof (send_hwm_)));
     int wait = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub_socket, ZLINK_XPUB_NODROP, &wait, sizeof (wait)));
+      zlink_set_pub_option (pub_socket, ZLINK_PUB_OPT_NODROP, &wait, sizeof (wait)));
     int timeout_ms = 10;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      sub_socket, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub_socket, ZLINK_SUBSCRIBE, 0, 0));
+      zlink_set_option (sub_socket, ZLINK_OPT_RCVTIMEO, &timeout_ms,
+                        sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (sub_socket, ""));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, pub_endpoint));
 
     // Wait before starting TX operations till 1 subscriber has subscribed
@@ -186,16 +187,16 @@ void test_reset_hwm ()
     // Set up bind socket
     void *pub_socket = test_context_socket (ZLINK_PUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub_socket, ZLINK_SNDHWM, &hwm, sizeof (hwm)));
+      zlink_set_option (pub_socket, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
     bind_loopback_ipv4 (pub_socket, my_endpoint, MAX_SOCKET_STRING);
 
     // Set up connect socket
     void *sub_socket = test_context_socket (ZLINK_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub_socket, ZLINK_RCVHWM, &hwm, sizeof (hwm)));
+      zlink_set_option (sub_socket, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, my_endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub_socket, ZLINK_SUBSCRIBE, 0, 0));
+      zlink_set_subscription (sub_socket, ""));
 
     msleep (SETTLE_TIME);
 

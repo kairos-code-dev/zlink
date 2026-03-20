@@ -107,6 +107,12 @@ class spot_node_t : public discovery_observer_t
     void snapshot_raw_subscription_filters (std::set<std::string> *out_) const;
     void snapshot_subscription_subjects (
       std::vector<spot_sub_t::subject_descriptor_t> *out_) const;
+    int snapshot_status (zlink_spot_node_status_t *out_) const;
+    int snapshot_peers (const zlink_spot_node_peer_filter_t *filter_,
+                        std::vector<zlink_spot_node_peer_entry_t> *out_) const;
+    int snapshot_subjects (
+      const zlink_spot_node_subject_filter_t *filter_,
+      std::vector<zlink_spot_node_subject_entry_t> *out_) const;
     void notify_pub_delivery_ready_ack (const std::string &target_endpoint_,
                                         const std::string &subject_,
                                         const std::string &ack_source_id_,
@@ -226,6 +232,17 @@ class spot_node_t : public discovery_observer_t
     std::set<std::string> _pending_subscription_ready_filters;
     std::map<std::string, std::set<std::string> > _pub_delivery_ready_sources;
     std::map<std::string, uint32_t> _pending_pub_delivery_ready_counts;
+    struct peer_observation_t
+    {
+        peer_observation_t () : last_changed_ms (0), connected_since_ms (0) {}
+
+        uint64_t last_changed_ms;
+        uint64_t connected_since_ms;
+    };
+    std::map<std::string, peer_observation_t> _peer_observations;
+    std::map<std::string, uint64_t> _subject_last_changed_ms;
+    int _last_summary_error;
+    uint64_t _summary_last_changed_ms;
     bool _subscription_ready_refresh_pending;
     unsigned int _subscription_ready_refresh_holdoff_ticks;
     bool _subscription_replay_pending;

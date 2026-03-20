@@ -13,7 +13,6 @@
 zlink delivers **4~6 M msg/s** throughput for small messages (64B) across all socket patterns, matching or exceeding standard libzmq performance. Key findings:
 
 - **Standard patterns (PAIR, PUBSUB, DEALER, ROUTER):** within -5% ~ +4% of libzmq on tcp/ipc/inproc
-- **Poll-based routing (ROUTER_ROUTER_POLL):** **+19%** faster than libzmq on tcp
 - **STREAM pattern:** **+192%** faster than libzmq on tcp (5,216 vs 1,786 Kmsg/s)
 - **Exclusive transports (tls, ws, wss):** 3.5~6.7 M msg/s with no libzmq equivalent
 
@@ -42,9 +41,6 @@ Direct head-to-head comparison on transports supported by both libraries (tcp, i
 | ROUTER↔ROUTER | tcp | 5,161 | 5,250 | **+1.7%** |
 | ROUTER↔ROUTER | inproc | 4,463 | 4,350 | -2.5% |
 | ROUTER↔ROUTER | ipc | 5,221 | 5,236 | +0.3% |
-| ROUTER↔ROUTER (poll) | tcp | 4,405 | 5,249 | **+19.2%** |
-| ROUTER↔ROUTER (poll) | inproc | 3,797 | 4,008 | **+5.6%** |
-| ROUTER↔ROUTER (poll) | ipc | 4,595 | 4,579 | -0.3% |
 | STREAM | tcp | 1,786 | 5,216 | **+192.0%** |
 
 ### 1.2 Summary by Pattern (64B TCP Throughput)
@@ -55,7 +51,6 @@ PUBSUB          █████████████████████�
 DEALER↔DEALER   ██████████████████████████████▊        6,168 Kmsg/s  (+3.9%)
 DEALER↔ROUTER   ████████████████████████████▎          5,634 Kmsg/s  (+0.4%)
 ROUTER↔ROUTER   ██████████████████████████▎            5,250 Kmsg/s  (+1.7%)
-RR (poll)       ██████████████████████████▎            5,249 Kmsg/s (+19.2%)
 STREAM          ██████████████████████████▏            5,216 Kmsg/s (+192%)
 ```
 
@@ -139,21 +134,6 @@ STREAM          █████████████████████�
 
 > ROUTER↔ROUTER: comparable performance. Minor variance within measurement noise.
 
-#### ROUTER↔ROUTER (poll)
-
-| Size | Transport | libzmq (Kmsg/s) | zlink (Kmsg/s) | Diff |
-|------|-----------|----------------:|---------------:|-----:|
-| 64B | tcp | 4,404.85 | 5,248.76 | **+19.16%** |
-| 256B | tcp | 2,457.00 | 2,486.77 | +1.21% |
-| 1024B | tcp | 977.79 | 1,026.83 | +5.01% |
-| 64KB | tcp | 69.80 | 74.87 | +7.27% |
-| 64B | inproc | 3,796.63 | 4,007.85 | **+5.56%** |
-| 256B | inproc | 3,237.53 | 3,308.78 | +2.20% |
-| 1024B | inproc | 1,857.96 | 1,972.92 | +6.19% |
-| 64B | ipc | 4,594.51 | 4,578.72 | -0.34% |
-
-> ROUTER↔ROUTER (poll): zlink's ASIO-based polling significantly outperforms libzmq's poll loop, especially on tcp (+19%).
-
 #### STREAM
 
 | Size | Transport | libzmq (Kmsg/s) | zlink (Kmsg/s) | Diff |
@@ -182,7 +162,6 @@ zlink throughput across all supported transports, including tls, ws, wss which a
 | DEALER↔DEALER | 6,134 | 5,255 | 6,578 | 4,663 | 6,137 | 5,988 |
 | DEALER↔ROUTER | 5,184 | 4,873 | 5,890 | 4,267 | 5,500 | 5,415 |
 | ROUTER↔ROUTER | 5,619 | 4,819 | 3,467 | 4,362 | 4,265 | 5,220 |
-| RR (poll) | 4,735 | 4,817 | 3,596 | 4,131 | 4,179 | 4,782 |
 | STREAM | 5,340 | 3,891 | 3,790 | 3,814 | - | - |
 | GATEWAY | 4,546 | 4,669 | 3,194 | 4,244 | - | - |
 | SPOT | 2,047 | 1,980 | 2,019 | 2,044 | - | - |
@@ -278,7 +257,7 @@ GATEWAY is a zlink-exclusive pub/sub relay pattern. Throughput improved across a
 
 1. **Drop-in replacement viability:** For tcp/ipc/inproc workloads, zlink matches libzmq throughput within ±5% for most patterns. Applications can migrate without performance regression.
 
-2. **ASIO advantage:** The proactor-based I/O model provides measurable gains in poll-heavy patterns (ROUTER_ROUTER_POLL +19%) and STREAM (+192%).
+2. **ASIO advantage:** The proactor-based I/O model provides measurable gains in STREAM (+192%).
 
 3. **Secure transport parity:** zlink's tls transport delivers 3.9~5.3 M msg/s, only 3~27% below plain tcp. WebSocket (ws/wss) provides comparable performance with web-compatible framing.
 

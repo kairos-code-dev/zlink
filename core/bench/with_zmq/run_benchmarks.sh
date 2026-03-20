@@ -73,7 +73,7 @@ else
   DEFAULT_TRANSPORTS="tcp,ipc,inproc"
 fi
 
-STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL"
+STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER"
 PATTERN="ALL"
 OUTPUT_FILE=""
 RESULTS_DIR=""
@@ -105,8 +105,6 @@ SINGLE_BUILD_TARGETS=(
   comp_zlink_dealer_router
   comp_std_zmq_router_router
   comp_zlink_router_router
-  comp_std_zmq_router_router_poll
-  comp_zlink_router_router_poll
 )
 
 usage() {
@@ -139,7 +137,7 @@ Options:
   --transports LIST           Comma-separated transports.
   --transport LIST            Alias for --transports.
 Notes:
-  - Supported patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL
+  - Supported patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER
   - Removed patterns: STREAM,GATEWAY,SPOT
   - Supported transports: tcp,ipc,inproc (Windows: tcp,inproc)
   - Removed transports: ws,wss,tls
@@ -280,7 +278,7 @@ for i in "${!PATTERN_LIST[@]}"; do
     exit 1
   fi
   case "${PATTERN_LIST[i]}" in
-    PAIR|PUBSUB|DEALER_DEALER|DEALER_ROUTER|ROUTER_ROUTER|ROUTER_ROUTER_POLL)
+    PAIR|PUBSUB|DEALER_DEALER|DEALER_ROUTER|ROUTER_ROUTER)
       ;;
     STREAM|GATEWAY|SPOT)
       echo "Error: ${PATTERN_LIST[i]} is removed from with_zmq/single." >&2

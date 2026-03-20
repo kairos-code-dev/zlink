@@ -17,7 +17,6 @@ zlink::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _more_send (false),
     _more_recv (false),
     _process_subscribe (false),
-    _only_first_subscribe (false),
     _lossy (true),
     _send_all_data (false),
     _manual (false),
@@ -27,7 +26,8 @@ zlink::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _subscription_generation (1),
     _cached_match_generation (0),
     _dispatch_active (false),
-    _dispatch_inflight (0)
+    _dispatch_inflight (0),
+    _delivery_ready_state (false)
 {
     _last_pipe = NULL;
     options.type = ZLINK_XPUB;
@@ -42,6 +42,29 @@ zlink::xpub_t::~xpub_t ()
          it != end; ++it)
         if (*it && (*it)->drop_ref ())
             LIBZLINK_DELETE (*it);
+}
+
+bool zlink::xpub_t::compute_delivery_ready_state () const
+{
+    if (_subscriptions.num_prefixes () == 0)
+        return false;
+
+    zlink_monitor_snapshot_t snapshot;
+    memset (&snapshot, 0, sizeof (snapshot));
+    return const_cast<xpub_t *> (this)->monitor_snapshot (&snapshot) == 0
+           && snapshot.ready_peer_count > 0;
+}
+
+void zlink::xpub_t::refresh_delivery_ready_state (
+  const endpoint_uri_pair_t &endpoint_uri_pair_)
+{
+    const bool ready = compute_delivery_ready_state ();
+    if (ready == _delivery_ready_state)
+        return;
+
+    _delivery_ready_state = ready;
+    emit_socket_monitor_value_event (ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED,
+                                     ready ? 1u : 0u, endpoint_uri_pair_);
 }
 
 void zlink::xpub_t::xattach_pipe (pipe_t *pipe_,
@@ -59,6 +82,7 @@ void zlink::xpub_t::xattach_pipe (pipe_t *pipe_,
     if (subscribe_to_all_) {
         _subscriptions.add (NULL, 0, pipe_);
         ++_subscription_generation;
+        refresh_delivery_ready_state (pipe_->get_endpoint_pair ());
     }
 
     // if welcome message exists, send a copy of it
@@ -109,8 +133,7 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
         }
 
         if (first_part)
-            _process_subscribe =
-              !_only_first_subscribe || is_subscribe_or_cancel;
+            _process_subscribe = is_subscribe_or_cancel;
 
         if (is_subscribe_or_cancel) {
             if (_manual) {
@@ -182,6 +205,9 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
         msg.close ();
     }
 
+    if (pipe_)
+        refresh_delivery_ready_state (pipe_->get_endpoint_pair ());
+
     if (_dispatch_active.load (std::memory_order_acquire))
         dispatch_ready_messages ();
 }
@@ -190,6 +216,8 @@ void zlink::xpub_t::xwrite_activated (pipe_t *pipe_)
 {
     invalidate_match_cache ();
     _dist.activated (pipe_);
+    if (pipe_)
+        refresh_delivery_ready_state (pipe_->get_endpoint_pair ());
 }
 
 int zlink::xpub_t::xsetsockopt (int option_,
@@ -198,7 +226,7 @@ int zlink::xpub_t::xsetsockopt (int option_,
 {
     if (option_ == ZLINK_INTERNAL_OPT_XPUB_VERBOSE || option_ == ZLINK_INTERNAL_OPT_XPUB_VERBOSER
         || option_ == ZLINK_INTERNAL_OPT_XPUB_MANUAL_LAST_VALUE || option_ == ZLINK_INTERNAL_OPT_XPUB_NODROP
-        || option_ == ZLINK_INTERNAL_OPT_XPUB_MANUAL || option_ == ZLINK_INTERNAL_OPT_ONLY_FIRST_SUBSCRIBE) {
+        || option_ == ZLINK_INTERNAL_OPT_XPUB_MANUAL) {
         if (optvallen_ != sizeof (int)
             || *static_cast<const int *> (optval_) < 0) {
             errno = EINVAL;
@@ -217,8 +245,6 @@ int zlink::xpub_t::xsetsockopt (int option_,
             _lossy = (*static_cast<const int *> (optval_) == 0);
         else if (option_ == ZLINK_INTERNAL_OPT_XPUB_MANUAL)
             _manual = (*static_cast<const int *> (optval_) != 0);
-        else if (option_ == ZLINK_INTERNAL_OPT_ONLY_FIRST_SUBSCRIBE)
-            _only_first_subscribe = (*static_cast<const int *> (optval_) != 0);
         invalidate_match_cache ();
     } else if (option_ == send_all_data_option) {
         if (optvallen_ != sizeof (int)
@@ -285,6 +311,8 @@ static void stub (zlink::mtrie_t::prefix_t data_, size_t size_, void *arg_)
 
 void zlink::xpub_t::xpipe_terminated (pipe_t *pipe_)
 {
+    const endpoint_uri_pair_t endpoint_pair =
+      pipe_ ? pipe_->get_endpoint_pair () : endpoint_uri_pair_t ();
     bool changed = false;
     if (_manual) {
         //  Remove the pipe from the trie and send corresponding manual
@@ -314,6 +342,7 @@ void zlink::xpub_t::xpipe_terminated (pipe_t *pipe_)
         invalidate_match_cache ();
     }
     _dist.pipe_terminated (pipe_);
+    refresh_delivery_ready_state (endpoint_pair);
 }
 
 void zlink::xpub_t::mark_as_matching (pipe_t *pipe_, xpub_t *self_)
@@ -357,12 +386,10 @@ int zlink::xpub_t::xsend (msg_t *msg_)
         const unsigned char *data =
           static_cast<const unsigned char *> (msg_->data ());
         const size_t size = msg_->size ();
-        const bool can_use_cached_matches =
-          !_manual && !options.invert_matching
-          && _cached_match_generation == _subscription_generation
-          && _cached_match_topic.size () == size
-          && (size == 0
-              || memcmp (&_cached_match_topic[0], data, size) == 0);
+        // Cached pipe pointers can outlive termination under concurrent
+        // cross-process churn. Recompute matches each send to keep publish
+        // fanout tied to the current distributor state.
+        const bool can_use_cached_matches = false;
 
         if (can_use_cached_matches) {
             for (std::vector<pipe_t *>::const_iterator it =

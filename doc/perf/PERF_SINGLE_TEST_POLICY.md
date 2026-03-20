@@ -28,9 +28,13 @@
 - size 변경 시마다 별도 프로세스로 실행하여 케이스 간 메트릭 오염을 방지한다.
 - 명시적 drain phase는 두지 않지만, active 종료 후 receiver는 짧은 idle drain으로 in-flight 메시지를 정리할 수 있다.
 - 재시도 로직은 두지 않는다.
-- 연결 준비/handshake는 monitor 기반 readiness를 사용한다.
+- 연결 준비/handshake는 monitor의 **delivery-ready event**만 사용한다.
+- single perf의 ready gate는
+  [`../guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
+  "메시징 시작 전 준비 확인" 절에 정의된 이벤트를 그대로 따른다.
 - monitor-ready 이후 필요한 protocol self-check는 단발성 검증 1회만
   허용하며, retry loop나 sleep 기반 보정은 금지한다.
+- start gate 구현에서 monitor snapshot polling은 금지한다.
 
 ### 1.1 Single 핵심 정책
 
@@ -51,9 +55,13 @@
     - recv: `zlink_recv_handler()` 등록 → 라이브러리가 I/O thread에서 callback
       dispatch. `zlink_recv()` / `zlink_msg_recv()` 동기 recv API는 측정 경로에
       사용하지 않는다.
+    - callback hot path는 메시지에서 metric header와 timestamp 등 필요한 최소
+      메타데이터만 추출해 bounded queue로 전달한다. `zlink_msg_t` handle,
+      payload pointer, multipart parts 소유권을 callback 밖으로 넘기지 않는다.
     - send: sender는 active 구간 동안 blocking send를 연속 수행한다.
-    - send backpressure: `zlink_socket_send_ready_handler()` 등록 → writable
-      transition 시 callback으로 통지.
+    - throughput/latency 집계, phase window 판정, 결과 출력용 통계 계산은
+      callback 안에서 직접 수행하지 않고 전용 worker가 queue를 drain하며
+      처리한다. single callback 모델에서 app thread는 sender를 겸하지 않는다.
     - active 종료 후에는 callback dispatch 기준의 bounded idle drain으로
       잔여 in-flight를 정리할 수 있다.
   - 한 측정 구간에서 두 모델의 recv/send 메커니즘을 섞지 않는다.
@@ -61,12 +69,13 @@
   - recv 모델에서는 `POLLIN` / `POLLOUT` 양쪽의 readiness 제어를 담당하는
     핵심 메커니즘이다.
   - callback 모델에서는 사용하지 않는다.
-  - `ROUTER_ROUTER_POLL`도 선택된 recv 모델에 맞게 동작한다.
 - 공통
   - 실패 시 즉시 `fail` 처리한다.
   - retry는 없다.
+  - `recv`와 `callback`은 metric header decode, phase 판정, throughput/latency
+    집계 엔진을 최대한 공유하고, 차이는 event를 만드는 입력 경로만 둔다.
 - 한 줄 요약
-  - `single = active sender + concurrent receiver (recv+poller or callback+send_ready_handler) + nonblocking drain`
+  - `single = active sender + concurrent receiver (recv+poller or callback+bounded-queue+worker) + nonblocking drain`
 
 ---
 
@@ -85,9 +94,12 @@
 
 - warmup 데이터는 최종 집계에서 제외한다.
 - settle은 소켓 설정 완료 후 안정화 대기이며, 환경 변수로 변경할 수 없다. **GATEWAY, SPOT 등 서비스 패턴에만 적용된다.** 소켓 패턴(PAIR, PUBSUB, DEALER_*, ROUTER_*)은 `setup_connected_pair()` 내부에서 연결 안정화를 처리하므로 별도 settle을 호출하지 않는다.
-- `setup_connected_pair()` 및 service monitor readiness는 single 측정의
-  공식 start gate다. benchmark 시작 전 준비 판정은 monitoring을 통해
-  해결하고, perf 파일 안의 커스텀 handshake loop로 대체하지 않는다.
+- `setup_connected_pair()`는 내부적으로 공식 monitoring delivery-ready gate를
+  캡슐화한 helper인 경우에만 허용된다. 별도/독자적인 start gate 규칙으로
+  취급하지 않는다.
+- service monitor delivery-ready event는 single 측정의 공식 start gate다.
+  benchmark 시작 전 준비 판정은 monitoring event로 해결하고, perf 파일 안의
+  커스텀 handshake loop, sleep, monitor snapshot polling으로 대체하지 않는다.
 - active에서만 throughput/latency를 계산한다.
 - idle drain은 active 종료 전에 이미 송신된 in-flight 메시지를 정리하기 위한 receiver 측 정리 단계다.
 - 다음 size는 별도 프로세스로 다시 시작한다.
@@ -97,7 +109,8 @@
 active 구간 집계는 payload에 기록된 metric header를 기준으로만 수행한다.
 
 - decode 실패 메시지: 집계 제외
-- `magic`, `phase` 검증 실패 메시지: 집계 제외 (구현은 `magic` + `phase` 두 필드만 검증한다. `is_expected()` 유틸리티에 `run_id`/`msg_size` 검증이 정의되어 있으나, 실제 벤치마크 코드에서는 사용하지 않는다)
+- `magic`, `phase`, `msg_size` 검증 실패 메시지: 집계 제외
+- 필요 시 `run_id` 불일치 메시지도 집계 제외한다.
 - 유효 header 메시지만 throughput 카운트와 latency 샘플에 포함
 
 즉, throughput과 latency는 동일한 유효 메시지 집합을 사용한다.
@@ -162,13 +175,18 @@ RESULT,current,PAIR,tcp,1024,rcv_pending_end,0
 - `throughput`
 - `bandwidth`
 - `latency`
-
-출력 필수 metric (success 시 항상 출력, 누락 시 mean latency로 fallback 보정):
-
 - `latency_p95`
 - `latency_p99`
 
-> **구현 참고**: `run_comparison.py`의 success 판정은 `throughput`, `bandwidth`, `latency` 3개만 검사한다. `latency_p95`/`latency_p99`는 누락 시 mean latency 값으로 자동 보정(`resolve_latency_triplet`)하여 출력하므로, 이들의 부재가 success 판정을 방해하지 않는다.
+출력 필수 metric:
+
+- `throughput`
+- `bandwidth`
+- `latency`
+- `latency_p95`
+- `latency_p99`
+
+완료 판정은 위 5개 Tier 1 metric RESULT line 기준으로 수행한다.
 
 정보성 metric(없어도 complete 판정에 영향 없음):
 
@@ -270,11 +288,10 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 - DEALER_DEALER
 - DEALER_ROUTER
 - ROUTER_ROUTER
-- ROUTER_ROUTER_POLL
 - GATEWAY
 - SPOT
 
-> STREAM 계열(STREAM, STREAM_CALLBACK, STREAM_LEN32BE)은 single suite에서 테스트하지 않는다.
+> STREAM 계열(STREAM, STREAM_CALLBACK)은 single suite에서 테스트하지 않는다.
 
 #### 패턴 방향 분류
 
@@ -339,8 +356,12 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 
 ## 9. 구현 제약
 
-### 9.1 Retry/우회 금지
+### 9.1 Public C API 전용 / Retry·우회 금지
 
+- bench 코드는 `doc/guide` 및 `doc/api` 문서에 기술된 public C API만
+  사용한다. 내부 헤더나 내부 함수를 직접 호출하지 않는다.
+- public C API 동작에 문제가 있으면 bench 코드에서 우회하지 않고 버그로
+  레포팅한다. core 수정 후 bench 작업을 계속한다.
 - 실패 조합 자동 재시도 로직 금지
 - core 문제를 벤치마크 코드에서 우회하지 않는다
 

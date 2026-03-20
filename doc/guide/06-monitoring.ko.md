@@ -11,6 +11,10 @@ zlink 모니터링 API는 소켓의 연결/해제/핸드셰이크 등 이벤트�
 별도로 정리한다. 이 가이드는 실제 사용 시 어떤 event를 gate로 써야 하는지에
 집중한다.
 
+성능 테스트 정책 문서는 이 가이드의 ready gate 규칙을 그대로 참조한다.
+특히 perf/bench의 start gate는 **monitor delivery-ready event만** 사용해야 하며,
+`sleep`, 고정 지연, monitor snapshot polling으로 ready를 판정하면 안 된다.
+
 ## 2. 모니터 활성화
 
 ### 2.1 콜백 기반 (권장)
@@ -34,9 +38,10 @@ void on_monitor_event(const zlink_monitor_event_t *ev, void *userdata)
 void *server = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_bind(server, "tcp://*:5555");
 
-/* 모니터 생성 (핸들러 등록) */
-void *mon = zlink_socket_monitor_open(server, ZLINK_EVENT_ALL,
-                                       on_monitor_event, NULL);
+/* 모니터 생성 (옵션 기반) */
+zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
+void *mon = zlink_socket_monitor_open(server, &opts);
+zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 ```
 
 이벤트 발생 시 `on_monitor_event` 콜백이 자동으로 호출된다.
@@ -53,179 +58,58 @@ typedef struct {
 } zlink_monitor_event_t;
 ```
 
-## 4. 이벤트 타입
+## 4. Socket Monitor 이벤트
 
-### 요약
+`zlink_socket_monitor_open()`으로 관찰하는 이벤트다.
+raw 소켓의 transport/session 상태를 알려준다.
 
-| 이벤트 | 값 | `value` 필드 | `routing_id` | 발생 측 |
-|--------|-----|-------------|:------------:|:-------:|
-| `CONNECTED` | `0x0001` | fd | 없음 | 클라이언트 |
-| `CONNECT_DELAYED` | `0x0002` | errno | 없음 | 클라이언트 |
-| `CONNECT_RETRIED` | `0x0004` | — | 없음 | 클라이언트 |
-| `LISTENING` | `0x0008` | fd | 없음 | 서버 |
-| `BIND_FAILED` | `0x0010` | errno | 없음 | 서버 |
-| `ACCEPTED` | `0x0020` | fd | 없음 | 서버 |
-| `ACCEPT_FAILED` | `0x0040` | errno | 없음 | 서버 |
-| `CLOSED` | `0x0080` | — | 없음 | 양쪽 |
-| `CLOSE_FAILED` | `0x0100` | errno | 없음 | 양쪽 |
-| `DISCONNECTED` | `0x0200` | reason 코드 | 가능 | 양쪽 |
-| `MONITOR_STOPPED` | `0x0400` | — | 없음 | 양쪽 |
-| `HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | errno | 없음 | 양쪽 |
-| `CONNECTION_READY` | `0x1000` | — | 가능 | 양쪽 |
-| `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 에러 코드 | 없음 | 양쪽 |
-| `HANDSHAKE_FAILED_AUTH` | `0x4000` | — | 없음 | 양쪽 |
+### 이벤트 전체 표
 
-> 참고: `core/tests/testutil_monitoring.cpp` — `get_zlinkEventName()` 이벤트 이름 매핑
+| 상수 | 값 | 설명 | `value` | `routing_id` | 발생 측 | 이후 가능한 동작 |
+|---|---|---|---|---|---|---|
+| `CONNECTION_READY` | `0x1000` | 핸드셰이크 완료, 메시징 가능 | — | ROUTER/STREAM: peer id | 양쪽 | **send/recv 시작** |
+| `CONNECTED` | `0x0001` | TCP 연결 성립 (핸드셰이크 전) | fd | — | 클라이언트 | `CONNECTION_READY` 대기 |
+| `ACCEPTED` | `0x0020` | 수신 연결 accept (핸드셰이크 전) | fd | — | 서버 | `CONNECTION_READY` 대기 |
+| `DISCONNECTED` | `0x0200` | 세션 종료 | reason 코드 | 가능 | 양쪽 | 재연결 로직 실행 |
+| `LISTENING` | `0x0008` | bind 성공, 수신 대기 중 | fd | — | 서버 | — |
+| `CLOSED` | `0x0080` | 의도적 close 완료 | — | — | 양쪽 | — |
+| `CONNECT_DELAYED` | `0x0002` | 비동기 연결 재시도 예약 | errno | — | 클라이언트 | 자동 재시도 |
+| `CONNECT_RETRIED` | `0x0004` | 비동기 재연결 진행 중 | — | — | 클라이언트 | 자동 재시도 |
+| `BIND_FAILED` | `0x0010` | bind 실패 | errno | — | 서버 | 주소/권한 확인 |
+| `ACCEPT_FAILED` | `0x0040` | accept 실패 | errno | — | 서버 | fd 한도 확인 |
+| `CLOSE_FAILED` | `0x0100` | close 실패 | errno | — | 양쪽 | — |
+| `HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | 핸드셰이크 실패 (일반) | errno | — | 양쪽 | 네트워크 확인 |
+| `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 오류로 실패 | 에러 코드 | — | 양쪽 | 버전/설정 확인 |
+| `HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패 | — | — | 양쪽 | TLS/인증 설정 확인 |
+| `SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB subscription 전파 완료 | `1`=ready, `0`=lost | — | SUB 측 | **`zlink_subscribe()` 수신 시작** |
+| `PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber 준비 완료 | `1`=ready, `0`=lost | — | PUB 측 | **`zlink_publish()` delivery 시작** |
+| `MONITOR_STOPPED` | `0x0400` | 모니터 종료 | — | — | 양쪽 | `zlink_monitor_close()` |
 
-### 4.1 연결 생명주기 이벤트
+### 연결 흐름
 
-#### CONNECTED (`0x0001`)
+```
+클라이언트: CONNECT_DELAYED(선택) → CONNECTED → CONNECTION_READY → send/recv 시작
+서버:       LISTENING → ACCEPTED → CONNECTION_READY → send/recv 시작
+종료:       CONNECTION_READY → DISCONNECTED → CONNECT_DELAYED → 재연결...
+```
 
-TCP 연결이 성립되었을 때 **클라이언트 측**에서 발생한다. 이 시점에서는 전송 계층 연결만 완료된 상태이며, zlink 핸드셰이크는 아직 수행되지 않았다.
+### CONNECTION_READY 상세
 
-- **`value`**: 새 연결의 파일 디스크립터.
-- **`routing_id`**: 사용 불가 (비어 있음).
-- **`local_addr`**: 로컬 TCP 엔드포인트 (예: `tcp://192.168.1.10:54321`).
-- **`remote_addr`**: 원격 TCP 엔드포인트 (예: `tcp://192.168.1.20:5555`).
-- **다음 이벤트**: 성공 시 `CONNECTION_READY`, 실패 시 `HANDSHAKE_FAILED_*` 또는 `DISCONNECTED`.
+핸드셰이크 완료 후 발생한다. 이 이벤트를 받으면 즉시 메시지를 보내고 받을 수 있다.
 
-#### ACCEPTED (`0x0020`)
+- ROUTER/STREAM에서는 `ev->routing_id`에 peer identity가 포함된다.
+- PAIR/DEALER에서는 `routing_id`가 비어 있다.
 
-리스닝 소켓이 수신 TCP 연결을 accept했을 때 **서버 측**에서 발생한다. `CONNECTED`와 마찬가지로 zlink 핸드셰이크는 아직 수행되지 않은 상태이다.
+### DISCONNECTED reason 코드
 
-- **`value`**: accept된 연결의 파일 디스크립터.
-- **`routing_id`**: 사용 불가 (비어 있음). ID는 핸드셰이크 완료 후 할당된다.
-- **`local_addr`**: 리스닝 엔드포인트 주소.
-- **`remote_addr`**: 원격 피어 주소.
-- **다음 이벤트**: 성공 시 `CONNECTION_READY`, 실패 시 `HANDSHAKE_FAILED_*` 또는 `DISCONNECTED`.
-- **제어 규칙**: transport 수락 관찰에는 써도 되지만, business message 송신
-  또는 first-delivery gate로 쓰면 안 된다.
-
-#### CONNECTION_READY (`0x1000`)
-
-zlink 핸드셰이크가 성공적으로 완료되어 데이터 전송이 가능한 상태가 되었을 때 발생한다. 애플리케이션 수준의 연결 추적에 가장 중요한 이벤트이다.
-
-- **`value`**: 사용되지 않음.
-- **`routing_id`**: ROUTER 소켓의 경우 사용 가능 — 피어에 할당된 라우팅 ID를 포함한다.
-- **`local_addr`**: 로컬 엔드포인트 주소.
-- **`remote_addr`**: 원격 엔드포인트 주소.
-- **일반적 용도**: 피어 등록, 메시지 전송 시작, `zlink_monitor_snapshot()`을
-  통한 aggregate queue/readiness 상태 조회.
-- **패밀리 규칙**:
-  - `PAIR`, `DEALER/ROUTER`, `STREAM`: raw first-I/O gate로 사용 가능
-  - `PUB/SUB`: transport/session readiness까지만 뜻하며, 첫 publish delivery
-    gate로 사용하면 안 됨
-
-#### DISCONNECTED (`0x0200`)
-
-수립된 세션이 종료될 때 발생한다. 연결 생명주기의 어느 단계에서든 발생할 수 있다.
-
-- **`value`**: `ZLINK_DISCONNECT_*` reason 코드 ([6장](#6-disconnected-reason-코드) 참조).
-- **`routing_id`**: 핸드셰이크가 완료된 경우 (즉, 이 피어에 대해 `CONNECTION_READY`가 이전에 발생한 경우) 사용 가능.
-- **`local_addr`**: 로컬 엔드포인트 주소.
-- **`remote_addr`**: 원격 엔드포인트 주소.
-- **일반적 용도**: 재연결 로직 트리거, 피어 상태 업데이트, 해제 사유 로깅.
-
-#### CLOSED (`0x0080`)
-
-`zlink_close()` 또는 `zlink_disconnect()`를 통해 연결이 정상적으로 닫힐 때 발생한다.
-
-- **`value`**: 사용되지 않음.
-- **`routing_id`**: 사용 불가 (비어 있음).
-- **참고**: `DISCONNECTED`와 달리, 예기치 않은 세션 종료가 아닌 의도적인 로컬 close 작업을 나타낸다.
-
-#### CLOSE_FAILED (`0x0100`)
-
-연결 close 작업이 실패했을 때 발생한다.
-
-- **`value`**: 실패를 설명하는 `errno` 값.
-- **`routing_id`**: 사용 불가 (비어 있음).
-- **참고**: 실제로는 드물게 발생한다. 리소스 정리 중 내부 오류를 나타낼 수 있다.
-
-### 4.2 클라이언트 측 연결 이벤트
-
-#### CONNECT_DELAYED (`0x0002`)
-
-동기 connect 시도가 즉시 완료되지 못하고 비동기 재시도가 예약되었을 때 **클라이언트 측**에서 발생한다.
-
-- **`value`**: 초기 connect 시도의 `errno` (일반적으로 `EINPROGRESS`).
-- **`routing_id`**: 사용 불가 (비어 있음).
-- **`remote_addr`**: 대상 엔드포인트 주소.
-- **다음 이벤트**: 연결 성공 시 `CONNECTED`, 이후 재시도 시 `CONNECT_RETRIED`.
-
-#### CONNECT_RETRIED (`0x0004`)
-
-비동기 재연결 시도가 진행 중일 때 **클라이언트 측**에서 발생한다. 이전의 `CONNECT_DELAYED` 또는 `DISCONNECTED` 이벤트 이후에 발생한다.
-
-- **`value`**: 사용되지 않음.
-- **`routing_id`**: 사용 불가 (비어 있음).
-- **`remote_addr`**: 대상 엔드포인트 주소.
-- **일반적 순서**: `DISCONNECTED` → `CONNECT_DELAYED` → `CONNECT_RETRIED` → `CONNECTED` → `CONNECTION_READY`.
-
-### 4.3 바인드 측 이벤트
-
-#### LISTENING (`0x0008`)
-
-`zlink_bind()`가 성공하여 소켓이 수신 연결을 대기 중일 때 **서버 측**에서 발생한다.
-
-- **`value`**: 리스닝 소켓의 파일 디스크립터.
-- **`routing_id`**: 사용 불가 (비어 있음).
-- **`local_addr`**: 바인드된 엔드포인트 주소 (예: `tcp://0.0.0.0:5555`).
-
-#### BIND_FAILED (`0x0010`)
-
-`zlink_bind()`가 실패했을 때 **서버 측**에서 발생한다.
-
-- **`value`**: 실패를 설명하는 `errno` 값 (예: `EADDRINUSE`).
-- **`routing_id`**: 사용 불가 (비어 있음).
-- **`local_addr`**: 바인드 실패한 주소.
-- **일반적 원인**: 포트 사용 중, 권한 부족, 잘못된 주소.
-
-#### ACCEPT_FAILED (`0x0040`)
-
-수신 연결 accept가 실패했을 때 **서버 측**에서 발생한다.
-
-- **`value`**: 실패를 설명하는 `errno` 값.
-- **`routing_id`**: 사용 불가 (비어 있음).
-- **일반적 원인**: 파일 디스크립터 한도 초과 (`EMFILE`), 리소스 부족.
-
-### 4.4 핸드셰이크 실패 이벤트
-
-TCP 연결이 성립된 후 zlink 프로토콜 핸드셰이크가 실패할 때 발생하는 이벤트들이다.
-
-#### HANDSHAKE_FAILED_NO_DETAIL (`0x0800`)
-
-프로토콜별 정보 없이 발생하는 일반적인 핸드셰이크 실패.
-
-- **`value`**: 실패 시점의 `errno` 값.
-- **`routing_id`**: 사용 불가 (비어 있음).
-- **일반적 원인**: 핸드셰이크 중 연결 리셋, 예기치 않은 소켓 종료, 타임아웃.
-
-#### HANDSHAKE_FAILED_PROTOCOL (`0x2000`)
-
-ZMP 또는 WebSocket 프로토콜 오류로 핸드셰이크가 실패. `value` 필드에 구체적인 프로토콜 에러 코드가 포함된다.
-
-- **`value`**: `ZLINK_PROTOCOL_ERROR_*` 코드 (아래 [프로토콜 에러 코드](#프로토콜-에러-코드) 참조).
-- **`routing_id`**: 사용 불가 (비어 있음).
-- **일반적 원인**: 버전 불일치, 잘못된 커맨드, 유효하지 않은 메타데이터, 암호화 오류.
-
-#### HANDSHAKE_FAILED_AUTH (`0x4000`)
-
-인증 또는 보안 메커니즘 실패로 핸드셰이크가 실패.
-
-- **`value`**: 사용되지 않음.
-- **`routing_id`**: 사용 불가 (비어 있음).
-- **일반적 원인**: TLS 인증서 검증 실패, 보안 메커니즘 불일치, 유효하지 않은 자격 증명.
-
-### 4.5 모니터 제어 이벤트
-
-#### MONITOR_STOPPED (`0x0400`)
-
-`zlink_close(mon)` 호출로 모니터가 중지될 때 발생한다. 이 이벤트 이후에는 더 이상 이벤트가 발생하지 않는다.
-
-- **`value`**: 사용되지 않음.
-- **`routing_id`**: 사용 불가 (비어 있음).
-- **참고**: 모니터가 마지막으로 발생시키는 이벤트이다. 수신 후 `zlink_close()`로 모니터 핸들을 닫아야 한다.
+| 코드 | 이름 | 의미 |
+|------|------|------|
+| 0 | `UNKNOWN` | 원인 불명 |
+| 1 | `LOCAL` | 로컬에서 의도적 종료 |
+| 2 | `REMOTE` | 원격 피어 정상 종료 |
+| 3 | `HANDSHAKE_FAILED` | 핸드셰이크 실패 |
+| 4 | `TRANSPORT_ERROR` | 전송계층 오류 |
+| 5 | `CTX_TERM` | 컨텍스트 종료 |
 
 ### 프로토콜 에러 코드
 
@@ -316,9 +200,11 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 
 ```c
 /* 연결/해제 이벤트만 */
-void *mon = zlink_socket_monitor_open(server,
-    ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
-    on_monitor_event, NULL);
+zlink_socket_monitor_open_options_t opts = {
+    .events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
+};
+void *mon = zlink_socket_monitor_open(server, &opts);
+zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 ```
 
 ### 권장 구독 프리셋
@@ -349,17 +235,18 @@ void *mon = zlink_socket_monitor_open(server,
      ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL | \
      ZLINK_EVENT_HANDSHAKE_FAILED_AUTH)
 
-void *mon = zlink_socket_monitor_open(server, MONITOR_PRESET_SECURITY,
-                                      on_monitor_event, NULL);
+zlink_socket_monitor_open_options_t sec_opts = { .events = MONITOR_PRESET_SECURITY };
+void *mon = zlink_socket_monitor_open(server, &sec_opts);
+zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 ```
 
-## 8. Monitor Snapshot
+## 8. Socket Monitor Snapshot
 
-### aggregate socket 상태 조회
+monitor handle에서 현재 aggregate 상태를 바로 조회할 수 있다.
 
 ```c
-void *monitor = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL,
-                                          zlink_monitor_ignore_handler, NULL);
+zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
+void *monitor = zlink_socket_monitor_open(socket, &opts);
 zlink_monitor_snapshot_t snapshot;
 zlink_monitor_snapshot(monitor, &snapshot);
 printf("ready peers: %u, sndq=%llu, rcvq=%llu\n",
@@ -368,7 +255,7 @@ printf("ready peers: %u, sndq=%llu, rcvq=%llu\n",
        (unsigned long long) snapshot.rcv_pending_msgs);
 ```
 
-### monitor event와 snapshot 결합
+event 콜백 안에서 snapshot을 조합해 쓸 수도 있다.
 
 ```c
 void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
@@ -381,26 +268,96 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 }
 ```
 
-### service monitor의 초기 gate
+## 8.1 서비스 모니터
 
-service overlay는 raw socket보다 한 단계 높은 의미를 가진다. 그래서
-`Gateway`와 `SPOT`은 `open -> snapshot -> incremental events`를 기본 패턴으로
-쓰는 것이 맞다.
+서비스 모니터는 Gateway, SPOT, Discovery 같은 서비스 핸들의
+상태 변화를 관찰한다. socket monitor와는 별도 API다.
 
-- `Gateway`
-  - `SERVICE_READY`는 local publication/bind 상태다.
-  - 실제 첫 request gate는 monitor handle snapshot에서
-    `SEND_READY`와 `ready_peer_count > 0`을 확인하는 것이다.
-  - 그 이후 증감은 `SEND_READY_CHANGED`, `ROUTE_UP/DOWN`으로 받는다.
-- `SPOT`
-  - `FILTER_APPLIED`, `SUBSCRIPTION_READY`는 control-plane progress다.
-  - subscriber 쪽 첫 receive gate는 `SUB_DELIVERY_READY_CHANGED`다.
-  - publisher 쪽 첫 publish gate는 `PUB_FIRST_DELIVERY_READY_CHANGED`다.
-  - snapshot은 aggregate peer/queue 상태를 읽는 용도로 함께 쓴다.
+- **이벤트 타입**: `zlink_service_event_t` (socket monitor의 `zlink_monitor_event_t`와 다름)
+- **콜백 타입**: `zlink_service_monitor_handler_fn`
+- **열기**: `zlink_service_monitor_open(target, &options)`
+- **닫기**: `zlink_monitor_close(&mon)` (socket monitor와 동일)
 
-즉 "어떤 event는 제어용이고 어떤 event는 아니냐"가 아니라,
-"모든 public event는 자기 레벨의 제어에는 써도 되지만 더 강한 레벨의 gate로
-올려 해석하면 안 된다"가 정확한 규칙이다.
+### 서비스 모니터 열기
+
+```c
+/* Gateway 서비스 모니터 */
+zlink_service_monitor_open_options_t opts = {
+    .events = ZLINK_SERVICE_MONITOR_EVENT_ALL
+};
+void *mon = zlink_service_monitor_open(gateway, &opts);
+```
+
+대상 handle(discovery, gateway, spot, spot_node)을 넘기면 된다.
+handle 종류는 런타임에 자동 판별된다.
+
+### 콜백 모드
+
+```c
+void on_gateway_event(const zlink_service_event_t *ev, void *userdata)
+{
+    if (ev->event_type & ZLINK_GATEWAY_SEND_READY_CHANGED) {
+        printf("send ready: %u\n", ev->value);
+    }
+    if (ev->event_type & ZLINK_GATEWAY_ROUTE_UP) {
+        printf("route up, ready routes: %u\n", ev->value);
+    }
+}
+
+zlink_service_monitor_handler(mon, on_gateway_event, NULL);
+```
+
+### Recv 모드
+
+```c
+zlink_service_event_t ev;
+int rc = zlink_service_monitor_recv(mon, &ev);
+if (rc == 0) {
+    printf("event: 0x%x, value: %u\n", ev.event_type, ev.value);
+}
+```
+
+### 서비스 이벤트 전체 표
+
+`zlink_service_monitor_open()`으로 관찰하는 이벤트다.
+서비스별로 발생하는 이벤트가 다르다.
+
+#### Gateway 이벤트
+
+| 상수 | 설명 | `value` | 이후 가능한 동작 |
+|---|---|---|---|
+| `GATEWAY_SERVICE_READY` | bind/register 완료 | — | — |
+| `GATEWAY_SEND_READY_CHANGED` | send 가능 상태 변화 | `1`=send 가능, `0`=send 불가 | **value=1이면 `zlink_gateway_send()` 시작** |
+| `GATEWAY_ROUTE_UP` | peer route 활성화 | 현재 ready route 수 | — |
+| `GATEWAY_ROUTE_DOWN` | peer route 비활성화 | 현재 ready route 수 | — |
+| `GATEWAY_SERVICE_LOST` | service publication 제거 | — | — |
+
+#### SPOT 이벤트
+
+| 상수 | 설명 | `value` | 이후 가능한 동작 |
+|---|---|---|---|
+| `SUB_DELIVERY_READY_CHANGED` | sub delivery 준비 상태 변화 | — | **수신 시작 가능** |
+| `PUB_FIRST_DELIVERY_READY_CHANGED` | 최소 1개 subscriber 준비 | — | **`zlink_publish()` delivery 시작** |
+| `SPOT_SUB_FILTER_APPLIED` | 구독 필터가 peer에 전파됨 | — | — |
+| `SPOT_SUB_SUBSCRIPTION_READY` | 구독 수신 준비 완료 | — | — |
+| `SPOT_PUB_DELIVERY_READY_CHANGED` | subject별 remote delivery-ready 변화 | — | — |
+
+#### Discovery 이벤트
+
+| 상수 | 설명 | `value` | 이후 가능한 동작 |
+|---|---|---|---|
+| `DISCOVERY_SERVICE_UP` | 검색된 서비스 활성화 | — | — |
+| `DISCOVERY_SERVICE_DOWN` | 검색된 서비스 비활성화 | — | — |
+| `DISCOVERY_PROVIDERS_CHANGED` | provider 집합 변경 | — | — |
+
+#### 공통 이벤트 (모든 서비스)
+
+| 상수 | 설명 |
+|---|---|
+| `MONITOR_EVENT_ERROR` | 에러 발생 |
+| `MONITOR_EVENT_CLOSED` | 모니터 닫힘 |
+
+상세 이벤트 목록은 [events.ko.md](../api/events.ko.md)를 참고한다.
 
 ## 9. 다중 소켓 모니터링
 
@@ -417,14 +374,17 @@ void on_event_b(const zlink_monitor_event_t *ev, void *userdata)
     printf("소켓 B 이벤트: 0x%llx\n", (unsigned long long)ev->event);
 }
 
-void *mon_a = zlink_socket_monitor_open(sock_a, ZLINK_EVENT_ALL, on_event_a, NULL);
-void *mon_b = zlink_socket_monitor_open(sock_b, ZLINK_EVENT_ALL, on_event_b, NULL);
+zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
+void *mon_a = zlink_socket_monitor_open(sock_a, &opts);
+zlink_socket_monitor_handler(mon_a, on_event_a, NULL);
+void *mon_b = zlink_socket_monitor_open(sock_b, &opts);
+zlink_socket_monitor_handler(mon_b, on_event_b, NULL);
 
 /* ... 애플리케이션 로직 ... */
 
 /* 정리 */
-zlink_close(mon_a);
-zlink_close(mon_b);
+zlink_monitor_close(&mon_a);
+zlink_monitor_close(&mon_b);
 ```
 
 ## 10. 주의사항
@@ -439,8 +399,9 @@ zlink_close(mon_b);
 ```c
 /* 애플리케이션 스레드에서 monitor open */
 void *socket = zlink_socket(ctx, ZLINK_ROUTER);
-void *mon = zlink_socket_monitor_open(socket, ZLINK_EVENT_ALL,
-                                       on_monitor_event, NULL);
+zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
+void *mon = zlink_socket_monitor_open(socket, &opts);
+zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 
 /* 이후 다른 작업 스레드에서 snapshot 조회 가능 */
 zlink_monitor_snapshot_t snapshot;
@@ -460,31 +421,187 @@ zlink_monitor_snapshot(mon, &snapshot);
 
 ```c
 /* 모니터 핸들 닫기 */
-zlink_close(mon);
+zlink_monitor_close(&mon);
 ```
 
-## 11. 패밀리별 제어 Gate
+## 11. 메시징 시작 전 준비 확인
 
-핵심 기준은 간단하다. public event는 제어에 써도 되지만, 그 event가 보장하는
-레벨 안에서만 써야 한다. 이상한 예외 규칙이 있는 것이 아니라, transport,
-session, delivery 레벨이 다르기 때문에 gate도 다르게 잡아야 한다.
+소켓 또는 서비스가 실제로 메시지를 보내고 받을 수 있는 시점을 알아야 할 때,
+어떤 이벤트를 기다리면 되는지 정리한다.
 
-| 패밀리 | raw/socket monitor에서 제어 gate로 써도 되는 것 | 쓰면 안 되는 것 | 대신 써야 할 것 |
-|---|---|---|---|
-| `PAIR` | 양쪽 `CONNECTION_READY` 이후 첫 양방향 송수신 시작 | bind-side `ACCEPTED`만 보고 송수신 시작 | 필요 시 snapshot으로 `READY`, `ready_peer_count` 확인 |
-| `DEALER/ROUTER` | dealer `CONNECTION_READY`, router `CONNECTION_READY.routing_id` 이후 첫 request/reply 시작 | router `ACCEPTED`만 보고 routed send 시작 | snapshot + `routing_id` 사용 |
-| `PUB/SUB` | bind/connect/handshake 상태 관찰 | raw `CONNECTION_READY`를 첫 publish delivery gate로 사용 | application barrier 또는 상위 service event |
-| `STREAM` | server `CONNECTION_READY.routing_id` 이후 첫 payload 송수신 시작 | `ACCEPTED`만 보고 payload 송수신 시작 | snapshot + stream `routing_id` |
-| `Gateway` | `ZLINK_GATEWAY_SEND_READY_CHANGED(value=1)` 이후 첫 request 시작 | `SERVICE_READY`, `ROUTE_UP`만으로 send gate 판단 | `zlink_monitor_snapshot()` + service monitor |
-| `SPOT` | sub는 `SUB_DELIVERY_READY_CHANGED`, pub는 `PUB_FIRST_DELIVERY_READY_CHANGED` 이후 첫 publish/first receive 시작 | raw `CONNECTION_READY`, `PEER_UP`, `FILTER_APPLIED`만으로 delivery gate 판단 | `SPOT` service monitor |
+### 11.0 perf/bench start gate 규칙
 
-실전 규칙:
+perf/bench 구현은 아래 규칙을 따른다.
 
-- `ACCEPTED`는 transport-progress event다.
-- raw `CONNECTION_READY`는 raw session-ready event다.
-- first-delivery readiness가 더 필요한 패턴은 상위 service event를 써야 한다.
-- gate를 통과한 뒤에도 sleep/retry가 필요하다면, 그 event 의미가 약한 것이고
-  더 강한 event를 사용해야 한다.
+- start gate는 이 절에 명시된 monitor event만 사용한다.
+- `sleep`/고정 지연으로 ready를 추정하지 않는다.
+- `zlink_monitor_snapshot()`으로 ready를 polling하지 않는다.
+- `CONNECTED`, `ACCEPTED`, `LISTENING`은 progress/debug 이벤트일 뿐,
+  perf 시작 gate로 쓰지 않는다.
+- delivery-ready event를 받기 전에는 측정 구간에 진입하지 않는다.
+
+### 11.1 Raw 소켓 — PAIR, DEALER, ROUTER
+
+`CONNECTION_READY` 이벤트를 받으면 즉시 send/recv가 가능하다.
+PAIR/DEALER/ROUTER 계열의 perf start gate는 이 이벤트 하나만 사용한다.
+
+```c
+/* DEALER/ROUTER 예시 */
+zlink_socket_monitor_open_options_t opts = {
+    .events = ZLINK_EVENT_CONNECTION_READY
+};
+void *mon = zlink_socket_monitor_open(router, &opts);
+
+/* monitor callback에서 ready 확인 */
+void on_ready(const zlink_monitor_event_t *ev, void *userdata) {
+    if (ev->event & ZLINK_EVENT_CONNECTION_READY) {
+        /* ROUTER: ev->routing_id에 peer identity가 들어있다 */
+        /* 바로 routed send 가능 */
+    }
+}
+zlink_socket_monitor_handler(mon, on_ready, NULL);
+```
+
+| 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
+|---|---|---|
+| PAIR | 양쪽 `CONNECTION_READY` | 양방향 send/recv |
+| DEALER | `CONNECTION_READY` | send/recv |
+| ROUTER | `CONNECTION_READY` | `ev->routing_id`로 routed send/recv |
+
+### 11.2 Raw 소켓 — STREAM
+
+STREAM은 다른 raw 소켓과 다르다. server는 클라이언트가 먼저 데이터를 보내야
+routing_id를 확보할 수 있다. 순서:
+
+1. 클라이언트가 raw TCP로 첫 payload를 보낸다
+2. 서버에서 첫 inbound 메시지를 recv하여 routing_id를 확보한다
+3. `CONNECTION_READY` 이벤트를 확인한다
+4. 확보한 routing_id로 reply를 보낸다
+
+```c
+/* STREAM server: 먼저 recv로 routing_id 확보 → CONNECTION_READY 확인 → reply */
+zlink_routing_id_t rid;
+zlink_msg_t payload;
+zlink_msg_init(&payload);
+recv_stream_routing_id_and_payload(server, &rid, &payload);
+
+/* 이 시점에서 CONNECTION_READY가 이미 발생했는지 monitor로 확인 */
+/* rid로 reply 가능 */
+zlink_stream_send_msg(server, &rid, &payload, 0);
+```
+
+| 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
+|---|---|---|
+| STREAM | 첫 inbound payload recv + `CONNECTION_READY` | `routing_id`로 reply send |
+
+perf start gate에서는 STREAM도 snapshot이 아니라 위 두 조건으로만 ready를
+판정한다.
+
+### 11.3 Raw 소켓 — PUB/SUB
+
+raw PUB/SUB 소켓은 socket monitor에서 delivery-ready 이벤트를 제공한다.
+PUB/SUB perf start gate는 `CONNECTION_READY`가 아니라 아래 delivery-ready
+이벤트를 사용한다. PUB과 SUB 각각에 별도 모니터를 열어서 양쪽 모두 ready를
+확인한 뒤 메시징한다.
+
+- `SUB_DELIVERY_READY_CHANGED(value=1)` — subscription이 전파되어 수신 가능
+- `PUB_DELIVERY_READY_CHANGED(value=1)` — subscriber가 준비되어 publish delivery 가능
+
+```c
+zlink_set_subscription(sub, "topic");
+
+/* SUB 모니터: subscription 전파 완료 대기 */
+zlink_socket_monitor_open_options_t sub_opts = {
+    .events = ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED
+};
+void *sub_mon = zlink_socket_monitor_open(sub, &sub_opts);
+
+/* PUB 모니터: subscriber 준비 완료 대기 */
+zlink_socket_monitor_open_options_t pub_opts = {
+    .events = ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED
+};
+void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
+
+/* 양쪽 delivery-ready 확인 후 메시징 */
+/* ... SUB_DELIVERY_READY_CHANGED(value=1) + PUB_DELIVERY_READY_CHANGED(value=1) 수신 ... */
+zlink_publish(pub, NULL, &part, 1, 0);  /* raw PUB: topic_id는 NULL */
+zlink_subscribe(sub, &parts, &count, 0, topic_buf, &topic_len);
+
+zlink_monitor_close(&pub_mon);
+zlink_monitor_close(&sub_mon);
+```
+
+| 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
+|---|---|---|
+| PUB | `PUB_DELIVERY_READY_CHANGED(value=1)` | `zlink_publish()` delivery |
+| SUB | `SUB_DELIVERY_READY_CHANGED(value=1)` | `zlink_subscribe()` 수신 |
+
+### 11.4 서비스 — Gateway
+
+`GATEWAY_SEND_READY_CHANGED(value=1)` 이벤트를 받으면 바로 send가 가능하다.
+Gateway perf start gate는 이 이벤트 하나만 사용한다.
+
+```c
+/* client gateway에 service monitor 열기 */
+zlink_service_monitor_open_options_t opts = {
+    .events = ZLINK_GATEWAY_SEND_READY_CHANGED
+              | ZLINK_GATEWAY_MONITOR_EVENT_ERROR
+};
+void *mon = zlink_service_monitor_open(client, &opts);
+
+/* callback으로 ready 확인 */
+void on_gw(const zlink_service_event_t *ev, void *userdata) {
+    if (ev->event_type == ZLINK_GATEWAY_SEND_READY_CHANGED && ev->value == 1) {
+        /* route 준비 완료 — 바로 zlink_gateway_send() 가능 */
+    }
+}
+zlink_service_monitor_handler(mon, on_gw, NULL);
+```
+
+### 11.5 서비스 — SPOT
+
+SPOT은 sub과 pub에 각각 별도 service monitor를 열어서 다른 이벤트를 구독한다.
+
+```c
+/* sub 모니터: SUB_DELIVERY_READY_CHANGED 구독 */
+zlink_service_monitor_open_options_t sub_opts = {
+    .events = ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
+              | ZLINK_MONITOR_EVENT_ERROR
+};
+void *sub_mon = zlink_service_monitor_open(sub_node, &sub_opts);
+
+/* pub 모니터: PUB_FIRST_DELIVERY_READY_CHANGED 구독 */
+zlink_service_monitor_open_options_t pub_opts = {
+    .events = ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
+              | ZLINK_MONITOR_EVENT_ERROR
+};
+void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
+
+/* 양쪽 모두 ready 확인 후 메시징 시작 */
+/* sub ready → zlink_subscribe()로 수신 가능 */
+/* pub ready → zlink_publish()로 delivery 가능 */
+```
+
+| 서비스 | 기다릴 이벤트 | 이후 가능한 동작 |
+|---|---|---|
+| Gateway | `GATEWAY_SEND_READY_CHANGED(value=1)` | `zlink_gateway_send()` |
+| SPOT sub | `SUB_DELIVERY_READY_CHANGED` | `zlink_subscribe()` 수신 시작 |
+| SPOT pub | `PUB_FIRST_DELIVERY_READY_CHANGED` | `zlink_publish()` delivery 시작 |
+
+perf policy에서 service start gate는 위 이벤트만 사용한다. snapshot/status 조회는
+운영 관찰용으로는 가능하지만, perf 시작 판정에는 쓰지 않는다.
+
+### 11.3 Snapshot
+
+`zlink_monitor_snapshot()`과 `zlink_*_status_snapshot()`은
+현재 상태를 조회하는 용도다. 운영 대시보드, health check, 디버깅에 활용한다.
+
+```c
+/* 현재 gateway 상태 확인 */
+zlink_gateway_status_t status;
+zlink_gateway_status_snapshot(gateway, &status);
+printf("state=%d, ready_providers=%u\n", status.state, status.ready_provider_count);
+```
 
 ---
 [← TLS 보안](05-tls-security.ko.md) | [서비스 개요 →](07-0-services.ko.md)

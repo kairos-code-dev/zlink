@@ -2,7 +2,6 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
-#include "../../src/core/ctx.hpp"
 
 #include <unity.h>
 #include <cstring>
@@ -22,7 +21,7 @@ namespace
 void *create_sync_socket (int type_)
 {
     void *socket =
-      static_cast<zlink::ctx_t *> (get_test_context ())->create_socket (type_);
+      zlink_socket (get_test_context (), static_cast<zlink_socket_type_t> (type_));
     TEST_ASSERT_NOT_NULL (socket);
     return socket;
 }
@@ -39,17 +38,15 @@ void test_router_multiple_dealers_tcp ()
     void *dealer1 = create_sync_socket (ZLINK_DEALER);
     void *dealer2 = create_sync_socket (ZLINK_DEALER);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer1, ZLINK_ROUTING_ID, "D1", 2));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer2, ZLINK_ROUTING_ID, "D2", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer1, "D1", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer2, "D2", 2));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "tcp://127.0.0.1:*"));
 
     char endpoint[MAX_SOCKET_STRING];
     size_t len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &len));
+      zlink_get_option (router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer1, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer2, endpoint));
@@ -87,17 +84,15 @@ void test_router_multiple_dealers_ipc ()
     void *dealer1 = create_sync_socket (ZLINK_DEALER);
     void *dealer2 = create_sync_socket (ZLINK_DEALER);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer1, ZLINK_ROUTING_ID, "D1", 2));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer2, ZLINK_ROUTING_ID, "D2", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer1, "D1", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer2, "D2", 2));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "ipc://*"));
 
     char endpoint[MAX_SOCKET_STRING];
     size_t len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (router, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &len));
+      zlink_get_option (router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer1, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer2, endpoint));
@@ -136,10 +131,8 @@ void test_router_multiple_dealers_inproc ()
     void *dealer1 = create_sync_socket (ZLINK_DEALER);
     void *dealer2 = create_sync_socket (ZLINK_DEALER);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer1, ZLINK_ROUTING_ID, "D1", 2));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer2, ZLINK_ROUTING_ID, "D2", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer1, "D1", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer2, "D2", 2));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_bind (router, "inproc://test_router_multi_dealers"));

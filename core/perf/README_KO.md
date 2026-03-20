@@ -29,7 +29,7 @@ ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
 | `--runs N` | `1` | pattern/transport/size별 반복 횟수 |
 | `--recv MODE` | `recv` | 수신 모델(`recv` 또는 `callback`) |
 | `--duration N` | `5` | active 측정 시간(초) |
-| `--warmup N` | env override | single warmup env 브리지 |
+| `--warmup N` | `2` | single warmup 시간(초) |
 | `--hwm N` | — | `PERF_SINGLE_HWM` fallback 설정 |
 | `--send-hwm N` | — | `PERF_SINGLE_SNDHWM` 설정 |
 | `--recv-hwm N` | — | `PERF_SINGLE_RCVHWM` 설정 |
@@ -50,7 +50,7 @@ ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
 현재 single recv 모드 지원 범위:
 
 - `recv`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
-  `ROUTER_ROUTER`, `SPOT`
+  `ROUTER_ROUTER`, `GATEWAY`, `SPOT`
 - `callback`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
   `ROUTER_ROUTER`, `GATEWAY`, `SPOT`
 
@@ -74,7 +74,7 @@ multi 패턴 래퍼 스크립트다. multi 옵션을 정규화한 뒤 `PERF_ALLO
 
 ### 기본 패턴
 
-`DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM_CALLBACK`
+`DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM`
 
 ### 옵션
 
@@ -124,9 +124,8 @@ results/
 
 현재 multi recv 모드 지원 범위:
 
-- `recv`: `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`
-- `callback`: `GATEWAY`, `SPOT`, `STREAM_CALLBACK`
-- `recv`: `GATEWAY`, `SPOT`
+- `recv`: `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `STREAM`
+- `callback`: `DEALER_DEALER`, `PUBSUB`, `GATEWAY`, `SPOT`, `STREAM`
 
 지원하지 않는 조합은 묵시적 fallback 없이 fail-fast로 종료한다.
 
@@ -185,11 +184,11 @@ multi 전체 실행:
 ./core/perf/run_benchmarks_multi.sh --build-dir /home/hep7/project/kairos/zlink/core/build
 ```
 
-multi STREAM callback-only 실행:
+multi STREAM callback 실행:
 
 ```bash
 ./core/perf/run_benchmarks_multi.sh \
-  --pattern STREAM_CALLBACK \
+  --pattern STREAM \
   --build-dir /home/hep7/project/kairos/zlink/core/build \
   --clients 5000 \
   --duration 10 \

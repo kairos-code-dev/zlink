@@ -224,6 +224,122 @@ handle에서 다른 스레드가 운영 API를 실행 중이면 `errno=EBUSY`로
 
 ---
 
+## 스냅샷 / 인트로스펙션
+
+Registry의 프로세스 수준 건강 요약과 서비스 수준 집계 뷰를 제공하는
+API입니다.
+
+### Registry Status Snapshot
+
+```c
+int zlink_registry_status_snapshot(void *registry,
+                                   zlink_registry_status_t *out);
+```
+
+Registry의 단일 행 프로세스 수준 건강 요약을 반환합니다.
+
+#### zlink_registry_status_t
+
+```c
+typedef struct zlink_registry_status_t
+{
+    uint32_t registry_id;
+    char bind_endpoint[256];
+    zlink_registry_state_t state;
+    uint32_t topology_entry_count;
+    uint32_t gateway_peer_entry_count;
+    uint32_t peer_registry_count;
+    uint32_t connected_peer_registry_count;
+    uint64_t list_seq;
+    int32_t last_error;
+    uint64_t last_changed_ms;
+} zlink_registry_status_t;
+```
+
+| 필드 | 설명 |
+|------|------|
+| `registry_id` | `zlink_registry_set_id()`로 할당된 고유 ID. |
+| `bind_endpoint` | null 종료 바인드 엔드포인트. |
+| `state` | `IDLE`, `ACTIVE`, `DEGRADED`, 또는 `ERROR`. |
+| `topology_entry_count` | topology 테이블의 총 항목 수. |
+| `gateway_peer_entry_count` | gateway 피어 항목 수. |
+| `peer_registry_count` | 구성된 피어 레지스트리 수. |
+| `connected_peer_registry_count` | 현재 연결된 피어 레지스트리 수. |
+| `list_seq` | 최신 브로드캐스트의 단조 증가 시퀀스 번호. |
+| `last_error` | 마지막 기록된 에러 코드, 또는 0. |
+| `last_changed_ms` | 마지막 상태 변경 시점 (에포크 ms). |
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+---
+
+### Registry Service Summary Snapshot
+
+```c
+int zlink_registry_service_summary_snapshot(
+  void *registry,
+  const zlink_registry_service_summary_filter_t *filter,
+  zlink_registry_service_summary_entry_t *entries,
+  size_t *count);
+```
+
+서비스 수준 집계 정보를 반환합니다. 각 항목은 주어진 (service_kind,
+service_name) 쌍에 대해 상태별 인스턴스 수를 요약합니다.
+
+**버퍼 규약:** `entries = NULL`을 전달하면 필요한 개수만 반환합니다. 다음
+호출에서 호출자가 할당한 버퍼를 제공합니다. 버퍼가 부족하면 `-1`을 반환하고
+`errno = ENOBUFS`, `*count`에 필요한 용량을 설정합니다.
+
+결과는 (`service_kind`, `service_name`) 오름차순으로 정렬됩니다.
+
+#### zlink_registry_service_summary_entry_t
+
+```c
+typedef struct zlink_registry_service_summary_entry_t
+{
+    zlink_service_kind_t service_kind;
+    char service_name[256];
+    uint32_t total_count;
+    uint32_t connecting_count;
+    uint32_t ready_count;
+    uint32_t error_count;
+    uint32_t stopped_count;
+    uint64_t last_reported_ms;
+} zlink_registry_service_summary_entry_t;
+```
+
+| 필드 | 설명 |
+|------|------|
+| `service_kind` | `ZLINK_SERVICE_KIND_*` 상수 중 하나. |
+| `service_name` | null 종료 서비스 이름. |
+| `total_count` | 이 서비스의 총 등록된 인스턴스 수. |
+| `connecting_count` | 현재 연결 중인 인스턴스 수. |
+| `ready_count` | 현재 ready 상태인 인스턴스 수. |
+| `error_count` | 에러 상태의 인스턴스 수. |
+| `stopped_count` | 중지된 인스턴스 수. |
+| `last_reported_ms` | 모든 인스턴스 중 최신 하트비트 시점 (에포크 ms). |
+
+#### zlink_registry_service_summary_filter_t
+
+```c
+typedef struct zlink_registry_service_summary_filter_t
+{
+    zlink_service_kind_t service_kind;
+    char service_name[256];
+} zlink_registry_service_summary_filter_t;
+```
+
+0이 아닌 값으로 설정된 필드를 기준으로 필터링합니다. 0인 필드는
+와일드카드입니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+---
+
 ## Topology & Query API
 
 Registry가 관리하는 전역 서비스 토폴로지를 조회하는 API입니다.

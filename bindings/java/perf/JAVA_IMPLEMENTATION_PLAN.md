@@ -38,7 +38,6 @@ bindings/java/
     │   │           ├── PerfDealerDealer.java
     │   │           ├── PerfDealerRouter.java
     │   │           ├── PerfRouterRouter.java
-    │   │           ├── PerfRouterRouterPoll.java
     │   │           ├── PerfGateway.java
     │   │           └── PerfSpot.java
     │   ├── run_benchmarks.sh
@@ -179,7 +178,6 @@ java --enable-native-access=ALL-UNNAMED \
   <PATTERN> <TRANSPORT> <SIZE>
 ```
 
-- **PATTERN** (Java 바이너리 직접 실행 8종): `PAIR | PUBSUB | DEALER_DEALER | DEALER_ROUTER | ROUTER_ROUTER | ROUTER_ROUTER_POLL | GATEWAY | SPOT`
 - **TRANSPORT**: `tcp | tls | ws | wss | inproc | ipc`
 - **SIZE**: 양의 정수 (바이트)
 - 종료코드: 0=성공, 1=인자 오류, 2=런타임 오류
@@ -360,7 +358,6 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 3 | PerfDealerDealer.java | DEALER_DEALER | DEALER×2 | echo | tcp,tls,ws,wss,inproc,ipc |
 | 4 | PerfDealerRouter.java | DEALER_ROUTER | DEALER+ROUTER | echo | tcp,tls,ws,wss,inproc,ipc |
 | 5 | PerfRouterRouter.java | ROUTER_ROUTER | ROUTER×2 | echo | tcp,tls,ws,wss,inproc,ipc |
-| 6 | PerfRouterRouterPoll.java | ROUTER_ROUTER_POLL | ROUTER×2+Poller | echo | tcp,tls,ws,wss,inproc,ipc |
 | 7 | PerfGateway.java | GATEWAY | Gateway+Receiver | echo | tcp,tls,ws,wss |
 | 8 | PerfSpot.java | SPOT | Spot (pub/sub) | one-way | tcp,tls,ws,wss |
 | 9 | *(multi 위임)* | STREAM | STREAM socket | echo | tcp,tls,ws,wss |
@@ -804,7 +801,6 @@ bindings/java/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 20. `single/.../src/PerfDealerDealer.java`
 21. `single/.../src/PerfDealerRouter.java`
 22. `single/.../src/PerfRouterRouter.java`
-23. `single/.../src/PerfRouterRouterPoll.java`
 
 ### Phase 3: Single 서비스 패턴 (2개)
 
@@ -1172,7 +1168,6 @@ python3 bindings/perf/run_policy_bench.py \
 > multi server 경로로 위임 실행한다 (`SINGLE_TO_MULTI_STREAM_PATTERN` 매핑 사용).
 > 즉, multi stream 서버 구현이 완료되면 런너 실행 시 STREAM 48 조합도 성공 대상이 된다.
 
-- socket 패턴 (6종: PAIR~ROUTER_ROUTER_POLL) × 6 transport (Linux) × 6 size = 216 조합
 - STREAM 패턴 (3종) × 4 transport × 4 size = 48 조합 → multi server 위임 실행
 - gateway/spot (2종) × 4 transport × 6 size = 48 조합
 - 총: **312** 조합 → UNSUPPORTED 제외한 나머지 전부 success
@@ -1286,7 +1281,6 @@ ls -la bindings/java/perf/results/multi/report/perf_*.txt
 - [ ] `PerfMain.java` 생성됨
   - [ ] CLI: `<PATTERN> <TRANSPORT> <SIZE>` 3개 위치 인자
   - [ ] 종료코드: 0=성공, 1=인자 오류, 2=런타임 오류
-  - [ ] 8개 패턴 디스패치: PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT
 
 **1-4. Multi common/ 패키지 (§8.2)**
 - [ ] `PerfCommon.java` (multi) 생성됨
@@ -1345,7 +1339,6 @@ ls -la bindings/java/perf/results/multi/report/perf_*.txt
   - [ ] 동일 페이즈/메트릭 구조
 - [ ] `PerfRouterRouter.java` — ROUTER×2, echo, tcp/tls/ws/wss/inproc/ipc
   - [ ] 동일 페이즈/메트릭 구조
-- [ ] `PerfRouterRouterPoll.java` — ROUTER×2+Poller, echo, tcp/tls/ws/wss/inproc/ipc
   - [ ] `Poller.poll()` / `Poller.pollCount()` 사용
   - [ ] 동일 페이즈/메트릭 구조
 

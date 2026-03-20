@@ -31,7 +31,7 @@ void test_subscribe_cancel (void *xpub, void *sub, const char (&topic)[SIZE])
 
     //  Subscribe for topic
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub, ZLINK_SUBSCRIBE, topic, topic_len));
+      zlink_set_subscription (sub, topic));
 
     // Allow receiving more than the expected number of bytes
     char buffer[topic_len + 5];
@@ -45,7 +45,7 @@ void test_subscribe_cancel (void *xpub, void *sub, const char (&topic)[SIZE])
 
     // Unsubscribe from topic
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub, ZLINK_UNSUBSCRIBE, topic, topic_len));
+      zlink_unset_subscription (sub, topic));
 
     // Receive unsubscription
     rc =
@@ -61,7 +61,7 @@ void test_xpub_subscribe_long_topic ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (xpub, bind_address));
     size_t len = MAX_SOCKET_STRING;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (xpub, ZLINK_SOCKOPT_LAST_ENDPOINT, connect_address, &len));
+      zlink_get_option (xpub, ZLINK_OPT_LAST_ENDPOINT, connect_address, &len));
 
     void *sub = test_context_socket (ZLINK_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, connect_address));

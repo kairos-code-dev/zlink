@@ -153,7 +153,7 @@ void test_pubsub_pattern ()
     bind_loopback_ipv4 (pub, endpoint, sizeof (endpoint));
 
     //  Subscribe to all messages
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, ""));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
 
@@ -184,7 +184,7 @@ void test_dealer_router_pattern ()
     //  Set identity for dealer
     const char *identity = "TestDealer";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer, ZLINK_ROUTING_ID, identity, strlen (identity)));
+      zlink_set_routing_id (dealer, identity, strlen (identity)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (router, endpoint, sizeof (endpoint));
@@ -335,9 +335,9 @@ void test_hwm_behavior ()
     //  Set low HWM
     int hwm = 5;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_SNDHWM, &hwm, sizeof (int)));
+      zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (int)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_RCVHWM, &hwm, sizeof (int)));
+      zlink_set_option (client, ZLINK_OPT_RCVHWM, &hwm, sizeof (int)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));

@@ -102,7 +102,6 @@
 ### Representative perf
 
 - single representative passed:
-  - `./core/perf/run_benchmarks.sh --pattern PAIR,DEALER_ROUTER,ROUTER_ROUTER_POLL,GATEWAY,SPOT --transports tcp --msg-sizes 64 --runs 1 --duration 1 --reuse-build`
   - result: [perf_linux_20260307_162613.txt](/home/hep7/project/kairos/zlink/core/perf/results/single/report/perf_linux_20260307_162613.txt)
 - multi representative passed:
   - `./core/perf/run_benchmarks_multi.sh --pattern DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE --transports tcp --msg-sizes 64 --runs 1 --clients 2 --warmup 0 --duration 1 --reuse-build`

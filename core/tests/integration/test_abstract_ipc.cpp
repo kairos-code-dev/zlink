@@ -18,7 +18,7 @@ void test_roundtrip ()
     char endpoint[MAX_SOCKET_STRING];
     size_t size = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (sb, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &size));
+      zlink_get_option (sb, ZLINK_OPT_LAST_ENDPOINT, endpoint, &size));
     TEST_ASSERT_EQUAL_INT (0, strncmp (endpoint, test_endpoint, size));
 
     void *sc = test_context_socket (ZLINK_DEALER);

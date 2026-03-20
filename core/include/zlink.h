@@ -183,7 +183,8 @@ typedef enum zlink_ctx_option_t
     ZLINK_MSG_T_SIZE = 6,
     ZLINK_THREAD_AFFINITY_CPU_ADD = 7,
     ZLINK_THREAD_AFFINITY_CPU_REMOVE = 8,
-    ZLINK_THREAD_NAME_PREFIX = 9
+    ZLINK_THREAD_NAME_PREFIX = 9,
+    ZLINK_CTX_OPT_BLOCKY = 10
 } zlink_ctx_option_t;
 
 typedef uint32_t zlink_send_flags_t;
@@ -321,13 +322,13 @@ ZLINK_EXPORT void *zlink_msg_data (zlink_msg_t *msg_);
 ZLINK_EXPORT size_t zlink_msg_size (const zlink_msg_t *msg_);
 
 /**
- * @brief Return 1 if the message storage is not uniquely owned.
+ * @brief Return the message storage reference count.
  *
- * This returns shared-state information, not the numeric reference count.
- * It may return 1 for reference-counted shared storage and for messages that
- * borrow constant/external storage without owning it uniquely.
+ * Reference-counted large/zero-copy messages return their current internal
+ * reference count. Message kinds that are not managed by internal reference
+ * counting (for example inline or borrowed-constant storage) return 1.
  */
-ZLINK_EXPORT int zlink_msg_is_shared (const zlink_msg_t *msg_);
+ZLINK_EXPORT int zlink_msg_refcnt (const zlink_msg_t *msg_);
 
 /** @brief Get a string message property (e.g. metadata). */
 ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
@@ -393,6 +394,14 @@ typedef enum zlink_option_t
     ZLINK_OPT_TOS = 0x301C,
     ZLINK_OPT_MULTICAST_MAXTPDU = 0x3026,
     ZLINK_OPT_BINDTODEVICE = 0x3027,
+    ZLINK_OPT_TLS_CERT = 0x3028,
+    ZLINK_OPT_TLS_KEY = 0x3029,
+    ZLINK_OPT_TLS_CA = 0x302A,
+    ZLINK_OPT_TLS_VERIFY = 0x302B,
+    ZLINK_OPT_TLS_REQUIRE_CLIENT_CERT = 0x302C,
+    ZLINK_OPT_TLS_HOSTNAME = 0x302D,
+    ZLINK_OPT_TLS_TRUST_SYSTEM = 0x302E,
+    ZLINK_OPT_TLS_PASSWORD = 0x302F,
 
     /* Delivery, buffering policy, and filter semantics */
     ZLINK_OPT_IMMEDIATE = 0x3019,
@@ -487,6 +496,10 @@ typedef uint32_t zlink_socket_monitor_event_mask_t;
     ((zlink_socket_monitor_event_mask_t) 0x2000u)
 #define ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_AUTH                     \
     ((zlink_socket_monitor_event_mask_t) 0x4000u)
+#define ZLINK_SOCKET_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED                \
+    ((zlink_socket_monitor_event_mask_t) 0x8000u)
+#define ZLINK_SOCKET_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED                \
+    ((zlink_socket_monitor_event_mask_t) 0x10000u)
 
 #define ZLINK_EVENT_CONNECTED ZLINK_SOCKET_MONITOR_EVENT_CONNECTED
 #define ZLINK_EVENT_CONNECT_DELAYED ZLINK_SOCKET_MONITOR_EVENT_CONNECT_DELAYED
@@ -507,6 +520,10 @@ typedef uint32_t zlink_socket_monitor_event_mask_t;
     ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_PROTOCOL
 #define ZLINK_EVENT_HANDSHAKE_FAILED_AUTH                                    \
     ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_AUTH
+#define ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED                               \
+    ZLINK_SOCKET_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
+#define ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED                               \
+    ZLINK_SOCKET_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
 
 typedef enum zlink_disconnect_reason_t
 {
@@ -1296,6 +1313,171 @@ ZLINK_EXPORT int zlink_service_monitor_handler (
 
 ZLINK_EXPORT int zlink_service_monitor_recv (
   void *monitor_, zlink_service_monitor_event_t *out_);
+
+typedef enum zlink_spot_node_state_t
+{
+    ZLINK_SPOT_NODE_STATE_IDLE = 1,
+    ZLINK_SPOT_NODE_STATE_CONNECTING = 2,
+    ZLINK_SPOT_NODE_STATE_PARTIAL_READY = 3,
+    ZLINK_SPOT_NODE_STATE_READY = 4,
+    ZLINK_SPOT_NODE_STATE_ERROR = 5
+} zlink_spot_node_state_t;
+
+typedef struct zlink_spot_node_status_t
+{
+    char service_name[256];
+    char local_endpoint[256];
+    zlink_routing_id_t node_routing_id;
+    zlink_spot_node_state_t state;
+    uint32_t configured_peer_count;
+    uint32_t active_peer_count;
+    uint32_t connected_peer_count;
+    uint32_t subject_count;
+    uint32_t ready_subject_count;
+    int32_t last_error;
+    uint64_t last_changed_ms;
+} zlink_spot_node_status_t;
+
+typedef enum zlink_spot_peer_source_t
+{
+    ZLINK_SPOT_PEER_SOURCE_MANUAL = 1,
+    ZLINK_SPOT_PEER_SOURCE_DISCOVERY = 2,
+    ZLINK_SPOT_PEER_SOURCE_MIXED = 3
+} zlink_spot_peer_source_t;
+
+typedef enum zlink_spot_peer_state_t
+{
+    ZLINK_SPOT_PEER_STATE_CONFIGURED = 1,
+    ZLINK_SPOT_PEER_STATE_CONNECTING = 2,
+    ZLINK_SPOT_PEER_STATE_CONNECTED = 3
+} zlink_spot_peer_state_t;
+
+typedef struct zlink_spot_node_peer_entry_t
+{
+    char service_name[256];
+    char local_endpoint[256];
+    char peer_endpoint[256];
+    zlink_spot_peer_source_t source;
+    zlink_spot_peer_state_t state;
+    uint64_t connected_since_ms;
+    uint64_t last_changed_ms;
+} zlink_spot_node_peer_entry_t;
+
+typedef struct zlink_spot_node_peer_filter_t
+{
+    char peer_endpoint[256];
+    zlink_spot_peer_source_t source;
+    zlink_spot_peer_state_t state;
+} zlink_spot_node_peer_filter_t;
+
+typedef struct zlink_spot_node_subject_entry_t
+{
+    zlink_spot_role_t role;
+    char subject[256];
+    uint32_t subject_kind;
+    uint32_t ready_peer_count;
+    uint32_t active_peer_count;
+    uint64_t last_changed_ms;
+} zlink_spot_node_subject_entry_t;
+
+typedef struct zlink_spot_node_subject_filter_t
+{
+    zlink_spot_role_t role;
+    char subject[256];
+    uint32_t subject_kind;
+} zlink_spot_node_subject_filter_t;
+
+typedef enum zlink_gateway_state_t
+{
+    ZLINK_GATEWAY_STATE_IDLE = 1,
+    ZLINK_GATEWAY_STATE_CONNECTING = 2,
+    ZLINK_GATEWAY_STATE_PARTIAL_READY = 3,
+    ZLINK_GATEWAY_STATE_READY = 4,
+    ZLINK_GATEWAY_STATE_ERROR = 5
+} zlink_gateway_state_t;
+
+typedef struct zlink_gateway_status_t
+{
+    char service_name[256];
+    char bind_endpoint[256];
+    zlink_routing_id_t gateway_routing_id;
+    zlink_gateway_state_t state;
+    uint32_t observed_provider_count;
+    uint32_t ready_provider_count;
+    uint32_t active_route_count;
+    uint32_t send_ready;
+    int32_t last_error;
+    uint64_t last_changed_ms;
+} zlink_gateway_status_t;
+
+typedef enum zlink_registry_state_t
+{
+    ZLINK_REGISTRY_STATE_IDLE = 1,
+    ZLINK_REGISTRY_STATE_ACTIVE = 2,
+    ZLINK_REGISTRY_STATE_DEGRADED = 3,
+    ZLINK_REGISTRY_STATE_ERROR = 4
+} zlink_registry_state_t;
+
+typedef struct zlink_registry_status_t
+{
+    uint32_t registry_id;
+    char bind_endpoint[256];
+    zlink_registry_state_t state;
+    uint32_t topology_entry_count;
+    uint32_t gateway_peer_entry_count;
+    uint32_t peer_registry_count;
+    uint32_t connected_peer_registry_count;
+    uint64_t list_seq;
+    int32_t last_error;
+    uint64_t last_changed_ms;
+} zlink_registry_status_t;
+
+typedef struct zlink_registry_service_summary_entry_t
+{
+    zlink_service_kind_t service_kind;
+    char service_name[256];
+    uint32_t total_count;
+    uint32_t connecting_count;
+    uint32_t ready_count;
+    uint32_t error_count;
+    uint32_t stopped_count;
+    uint64_t last_reported_ms;
+} zlink_registry_service_summary_entry_t;
+
+typedef struct zlink_registry_service_summary_filter_t
+{
+    zlink_service_kind_t service_kind;
+    char service_name[256];
+} zlink_registry_service_summary_filter_t;
+
+ZLINK_EXPORT int zlink_spot_node_status_snapshot (
+  void *node_,
+  zlink_spot_node_status_t *out_);
+ZLINK_EXPORT int zlink_spot_node_peers_snapshot (
+  void *node_,
+  zlink_spot_node_peer_entry_t *entries_,
+  size_t *count_);
+ZLINK_EXPORT int zlink_spot_node_peers_query (
+  void *node_,
+  const zlink_spot_node_peer_filter_t *filter_,
+  zlink_spot_node_peer_entry_t *entries_,
+  size_t *count_);
+ZLINK_EXPORT int zlink_spot_node_subjects_snapshot (
+  void *node_,
+  const zlink_spot_node_subject_filter_t *filter_,
+  zlink_spot_node_subject_entry_t *entries_,
+  size_t *count_);
+ZLINK_EXPORT int zlink_gateway_status_snapshot (
+  void *gateway_,
+  zlink_gateway_status_t *out_);
+ZLINK_EXPORT int zlink_registry_status_snapshot (
+  void *registry_,
+  zlink_registry_status_t *out_);
+ZLINK_EXPORT int zlink_registry_service_summary_snapshot (
+  void *registry_,
+  const zlink_registry_service_summary_filter_t *filter_,
+  zlink_registry_service_summary_entry_t *entries_,
+  size_t *count_);
 
 typedef enum zlink_topology_source_t
 {

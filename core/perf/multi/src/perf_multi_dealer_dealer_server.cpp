@@ -10,9 +10,11 @@
 #include <chrono>
 #include <csignal>
 #include <cstdint>
+#include <condition_variable>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -24,6 +26,35 @@ static const char *k_token = "dealer_dealer";
 static const zlink_socket_type_t k_server_socket_type = ZLINK_DEALER;
 
 using perf_multi_client::normalize_latency_stats;
+
+struct callback_window_state_t
+{
+    callback_window_state_t () :
+        active (false),
+        expected_msg_size (0),
+        expected_run_id (0),
+        expected_phase (perf_multi_metric::phase_unknown),
+        recv_count (0),
+        lat_sum (0.0),
+        lat_count (0),
+        fatal (false)
+    {
+    }
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool active;
+    size_t expected_msg_size;
+    uint32_t expected_run_id;
+    perf_multi_metric::phase_t expected_phase;
+    long recv_count;
+    double lat_sum;
+    long lat_count;
+    bench_latency_sampler_t lat_samples;
+    bool fatal;
+};
+
+static callback_window_state_t g_callback_state;
 
 enum recv_result_t
 {
@@ -52,6 +83,111 @@ inline bool decode_and_match_header (const zlink_msg_t *msg,
            && header_out->run_id == expected_run_id
            && header_out->phase == static_cast<uint32_t> (expected_phase)
            && header_out->msg_size == static_cast<uint32_t> (expected_msg_size);
+}
+
+void dealer_dealer_server_recv_handler (const zlink_routing_id_t *,
+                                        zlink_msg_t *parts,
+                                        size_t part_count,
+                                        void *)
+{
+    if (!parts || part_count != 1) {
+        if (parts) {
+            zlink_multipart_close (parts, part_count);
+        }
+        std::lock_guard<std::mutex> lock (g_callback_state.mutex);
+        g_callback_state.fatal = true;
+        g_callback_state.cv.notify_all ();
+        return;
+    }
+
+    perf_multi_metric::header_t header;
+    const bool decoded = perf_multi_metric::decode_payload_header (
+      zlink_msg_data (&parts[0]),
+      zlink_msg_size (&parts[0]),
+      &header);
+    zlink_multipart_close (parts, part_count);
+
+    std::lock_guard<std::mutex> lock (g_callback_state.mutex);
+    if (!g_callback_state.active)
+        return;
+    if (!decoded)
+        return;
+    if (header.magic != perf_multi_metric::k_magic
+        || header.run_id != g_callback_state.expected_run_id
+        || header.phase
+             != static_cast<uint32_t> (g_callback_state.expected_phase)
+        || header.msg_size
+             != static_cast<uint32_t> (g_callback_state.expected_msg_size)) {
+        return;
+    }
+
+    ++g_callback_state.recv_count;
+    const uint64_t now_us = perf_multi_metric::now_us ();
+    if (header.sent_ts_us > 0 && now_us >= header.sent_ts_us) {
+        const double sample_us =
+          static_cast<double> (now_us - header.sent_ts_us);
+        g_callback_state.lat_sum += sample_us;
+        ++g_callback_state.lat_count;
+        g_callback_state.lat_samples.add (sample_us);
+    }
+    g_callback_state.cv.notify_all ();
+}
+
+inline bool run_callback_window (size_t expected_msg_size,
+                                 uint32_t expected_run_id,
+                                 perf_multi_metric::phase_t expected_phase,
+                                 double duration_seconds,
+                                 bool count_message,
+                                 bool collect_latency,
+                                 long *message_count,
+                                 double *lat_sum,
+                                 long *lat_count,
+                                 bench_latency_sampler_t *lat_samples)
+{
+    if (duration_seconds <= 0.0)
+        return true;
+
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
+        std::chrono::duration<double> (duration_seconds));
+
+    {
+        std::lock_guard<std::mutex> lock (g_callback_state.mutex);
+        g_callback_state.active = true;
+        g_callback_state.expected_msg_size = expected_msg_size;
+        g_callback_state.expected_run_id = expected_run_id;
+        g_callback_state.expected_phase = expected_phase;
+        g_callback_state.recv_count = 0;
+        g_callback_state.lat_sum = 0.0;
+        g_callback_state.lat_count = 0;
+        g_callback_state.lat_samples = bench_latency_sampler_t ();
+        g_callback_state.fatal = false;
+    }
+
+    std::unique_lock<std::mutex> lock (g_callback_state.mutex);
+    while (!perf_stop_requested ().load (std::memory_order_acquire)
+           && !g_callback_state.fatal
+           && std::chrono::steady_clock::now () < deadline) {
+        g_callback_state.cv.wait_until (lock, deadline);
+    }
+
+    const bool ok = !g_callback_state.fatal;
+    const long recv_total = g_callback_state.recv_count;
+    const double lat_total = g_callback_state.lat_sum;
+    const long lat_samples_count = g_callback_state.lat_count;
+    if (lat_samples)
+        *lat_samples = g_callback_state.lat_samples;
+    g_callback_state.active = false;
+    lock.unlock ();
+
+    if (count_message && message_count)
+        *message_count = recv_total;
+    if (collect_latency && lat_sum)
+        *lat_sum = lat_total;
+    if (collect_latency && lat_count)
+        *lat_count = lat_samples_count;
+    return ok;
 }
 
 inline recv_result_t receive_one_message (
@@ -84,7 +220,7 @@ inline recv_result_t receive_one_message (
         return recv_fatal;
     }
 
-    if (source_rid.size != 0 || part_count != 1) {
+    if (part_count < 1) {
         if (parts) {
             zlink_multipart_close (parts, part_count);
             free (parts);
@@ -226,34 +362,61 @@ inline bool run_one_size_benchmark (
       static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
     const double active_s =
       static_cast<double> (std::max (1, settings.duration_seconds));
+    const bool callback_mode = multi_perf_callback_mode ();
 
-    if (!run_receive_window (
-          server,
-          msg_size,
-          run_id,
-          perf_multi_metric::phase_warmup,
-          warmup_s,
-          false,
-          false,
-          NULL,
-          NULL,
-          NULL,
-          NULL)) {
+    const bool warmup_ok = callback_mode
+                             ? run_callback_window (
+                                 msg_size,
+                                 run_id,
+                                 perf_multi_metric::phase_warmup,
+                                 warmup_s,
+                                 false,
+                                 false,
+                                 NULL,
+                                 NULL,
+                                 NULL,
+                                 NULL)
+                             : run_receive_window (
+                                 server,
+                                 msg_size,
+                                 run_id,
+                                 perf_multi_metric::phase_warmup,
+                                 warmup_s,
+                                 false,
+                                 false,
+                                 NULL,
+                                 NULL,
+                                 NULL,
+                                 NULL);
+    if (!warmup_ok) {
         return false;
     }
 
-    if (!run_receive_window (
-          server,
-          msg_size,
-          run_id,
-          perf_multi_metric::phase_drain,
-          settle_s,
-          false,
-          false,
-          NULL,
-          NULL,
-          NULL,
-          NULL)) {
+    const bool drain_ok = callback_mode
+                            ? run_callback_window (
+                                msg_size,
+                                run_id,
+                                perf_multi_metric::phase_drain,
+                                settle_s,
+                                false,
+                                false,
+                                NULL,
+                                NULL,
+                                NULL,
+                                NULL)
+                            : run_receive_window (
+                                server,
+                                msg_size,
+                                run_id,
+                                perf_multi_metric::phase_drain,
+                                settle_s,
+                                false,
+                                false,
+                                NULL,
+                                NULL,
+                                NULL,
+                                NULL);
+    if (!drain_ok) {
         return false;
     }
 
@@ -262,18 +425,31 @@ inline bool run_one_size_benchmark (
     long lat_count = 0;
     bench_latency_sampler_t lat_samples;
 
-    if (!run_receive_window (
-          server,
-          msg_size,
-          run_id,
-          perf_multi_metric::phase_active,
-          active_s,
-          true,
-          true,
-          &recv_count,
-          &lat_sum,
-          &lat_count,
-          &lat_samples)) {
+    const bool active_ok = callback_mode
+                             ? run_callback_window (
+                                 msg_size,
+                                 run_id,
+                                 perf_multi_metric::phase_active,
+                                 active_s,
+                                 true,
+                                 true,
+                                 &recv_count,
+                                 &lat_sum,
+                                 &lat_count,
+                                 &lat_samples)
+                             : run_receive_window (
+                                 server,
+                                 msg_size,
+                                 run_id,
+                                 perf_multi_metric::phase_active,
+                                 active_s,
+                                 true,
+                                 true,
+                                 &recv_count,
+                                 &lat_sum,
+                                 &lat_count,
+                                 &lat_samples);
+    if (!active_ok) {
         return false;
     }
 
@@ -410,6 +586,14 @@ inline int run_server_benchmark (const std::string &lib_name,
     }
 
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
+    if (multi_perf_callback_mode ()
+        && zlink_recv_handler (
+             server, &dealer_dealer_server_recv_handler, NULL)
+             != 0) {
+        close_connect_monitor (server_monitor);
+        zlink_close (server);
+        return 1;
+    }
 
     bool ok = true;
     for (size_t si = 0; si < sizes.size (); ++si) {

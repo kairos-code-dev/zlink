@@ -762,21 +762,21 @@ static void configure_stream_regression_socket (void *socket_, int backlog_)
     const int nodelay = 1;
     const int backlog = backlog_ > 0 ? backlog_ : 256;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (socket_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_SNDHWM, &hwm, sizeof (hwm)));
+      zlink_set_option (socket_, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_RCVHWM, &hwm, sizeof (hwm)));
+      zlink_set_option (socket_, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_SNDTIMEO, &timeout_ms,
+      zlink_set_option (socket_, ZLINK_OPT_SNDTIMEO, &timeout_ms,
                         sizeof (timeout_ms)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_RCVTIMEO, &timeout_ms,
+      zlink_set_option (socket_, ZLINK_OPT_RCVTIMEO, &timeout_ms,
                         sizeof (timeout_ms)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_BACKLOG, &backlog, sizeof (backlog)));
+      zlink_set_option (socket_, ZLINK_OPT_BACKLOG, &backlog, sizeof (backlog)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_TCP_NODELAY, &nodelay,
+      zlink_set_option (socket_, ZLINK_OPT_TCP_NODELAY, &nodelay,
                         sizeof (nodelay)));
 }
 
@@ -1083,13 +1083,13 @@ void test_stream_notify_option_remains_available_with_dispatch ()
 
     const int enable = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (stream, ZLINK_STREAM_NOTIFY, &enable,
+      zlink_set_stream_option (stream, ZLINK_STREAM_OPT_NOTIFY, &enable,
                         sizeof (enable)));
 
     int actual = 0;
     size_t actual_size = sizeof (actual);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (stream, ZLINK_STREAM_NOTIFY, &actual, &actual_size));
+      zlink_get_stream_option (stream, ZLINK_STREAM_OPT_NOTIFY, &actual, &actual_size));
     TEST_ASSERT_EQUAL_INT (sizeof (actual), actual_size);
     TEST_ASSERT_EQUAL_INT (1, actual);
 
@@ -1099,7 +1099,7 @@ void test_stream_notify_option_remains_available_with_dispatch ()
     actual = 0;
     actual_size = sizeof (actual);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (stream, ZLINK_STREAM_NOTIFY, &actual, &actual_size));
+      zlink_get_stream_option (stream, ZLINK_STREAM_OPT_NOTIFY, &actual, &actual_size));
     TEST_ASSERT_EQUAL_INT (sizeof (actual), actual_size);
     TEST_ASSERT_EQUAL_INT (1, actual);
 
@@ -1124,7 +1124,7 @@ void test_stream_callback_echo_raw ()
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -1186,7 +1186,7 @@ void test_stream_callback_echo_single_zero_byte ()
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -1243,7 +1243,7 @@ void test_stream_recv_ready_precedes_first_payload_contract ()
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (monitor, ZLINK_LINGER, &monitor_linger,
+      zlink_set_option (monitor, ZLINK_OPT_LINGER, &monitor_linger,
                         sizeof (monitor_linger)));
 
     const int client_fd = connect_raw_tcp (endpoint);
@@ -1318,7 +1318,7 @@ void test_stream_raw_callback_ready_precedes_first_payload_contract ()
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (monitor, ZLINK_LINGER, &monitor_linger,
+      zlink_set_option (monitor, ZLINK_OPT_LINGER, &monitor_linger,
                         sizeof (monitor_linger)));
 
     stream_ordering_probe_t ordering_probe;
@@ -1458,7 +1458,7 @@ void test_stream_raw_multiclient_strict_ready_gating_regression ()
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (monitor, ZLINK_LINGER, &monitor_linger,
+      zlink_set_option (monitor, ZLINK_OPT_LINGER, &monitor_linger,
                         sizeof (monitor_linger)));
 
     stream_ordering_probe_t ordering_probe;
@@ -1532,7 +1532,7 @@ void test_stream_recv_multiclient_strict_ready_gating_regression ()
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (monitor, ZLINK_LINGER, &monitor_linger,
+      zlink_set_option (monitor, ZLINK_OPT_LINGER, &monitor_linger,
                         sizeof (monitor_linger)));
 
     std::atomic<int> client_failures (0);
@@ -1604,7 +1604,7 @@ void test_stream_raw_multiclient_load_integrity ()
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -1646,7 +1646,7 @@ void test_stream_tcp_basic ()
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -1658,7 +1658,7 @@ void test_stream_tcp_basic ()
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     stream_callback_probe_t probe;
     probe.socket = server;
@@ -1710,11 +1710,11 @@ void test_stream_maxmsgsize ()
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     const int64_t maxmsgsize = 4;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_MAXMSGSIZE, &maxmsgsize, sizeof (maxmsgsize)));
+      zlink_set_option (server, ZLINK_OPT_MAXMSGSIZE, &maxmsgsize, sizeof (maxmsgsize)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -1726,7 +1726,7 @@ void test_stream_maxmsgsize ()
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     stream_callback_probe_t probe;
     probe.socket = server;
@@ -1785,7 +1785,7 @@ void test_stream_connect_rejected ()
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (stream, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (stream, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1, zlink_connect (stream, "tcp://127.0.0.1:5555"));

@@ -358,12 +358,7 @@ inline void apply_ctx_options(void *ctx_)
     }
 
     const int blocky = bench_ctx_blocky();
-    const int blocky_rc =
-      zlink_ctx_set(ctx_, static_cast<zlink_ctx_option_t>(ZLINK_BLOCKY), blocky);
-    if (blocky_rc != 0 && debug) {
-        std::cerr << "zlink_ctx_set(ZLINK_BLOCKY) failed: "
-                  << zlink_strerror(zlink_errno()) << std::endl;
-    }
+    set_ctx_opt_int(ctx_, ZLINK_CTX_OPT_BLOCKY, blocky, "ZLINK_CTX_OPT_BLOCKY");
 }
 
 class ctx_guard_t {
@@ -461,16 +456,12 @@ inline int bench_hwm_from_env(const char *name_, int default_hwm_);
 struct connect_monitor_state_t {
     connect_monitor_state_t() :
         connection_ready_count(0),
-        accepted_count(0),
-        connected_count(0),
         error_code(0)
     {}
 
     std::mutex sync;
     std::condition_variable cv;
     size_t connection_ready_count;
-    size_t accepted_count;
-    size_t connected_count;
     int error_code;
 };
 
@@ -497,14 +488,6 @@ inline void connect_monitor_handler(const zlink_monitor_event_t *event_,
                 ++state->connection_ready_count;
                 break;
 
-            case ZLINK_EVENT_ACCEPTED:
-                ++state->accepted_count;
-                break;
-
-            case ZLINK_EVENT_CONNECTED:
-                ++state->connected_count;
-                break;
-
             case ZLINK_EVENT_BIND_FAILED:
             case ZLINK_EVENT_ACCEPT_FAILED:
             case ZLINK_EVENT_CLOSE_FAILED:
@@ -527,9 +510,7 @@ inline size_t connect_ready_count(const connect_monitor_state_t *state_)
 {
     if (!state_)
         return 0;
-    return std::max(std::max(state_->connection_ready_count,
-                             state_->accepted_count),
-                    state_->connected_count);
+    return state_->connection_ready_count;
 }
 
 inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
@@ -547,8 +528,7 @@ inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
     zlink_socket_monitor_open_options_t monitor_opts;
     memset(&monitor_opts, 0, sizeof(monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_CONNECTED
-      | ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_BIND_FAILED
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_BIND_FAILED
       | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
       | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
       | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
@@ -566,10 +546,12 @@ inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
     }
 
     const int monitor_hwm = bench_hwm_from_env("PERF_MONITOR_HWM", 1000);
-    set_sockopt_int(monitor, ZLINK_LINGER, 0, "ZLINK_LINGER");
+    set_sockopt_int(monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
     if (monitor_hwm > 0) {
-        set_sockopt_int(monitor, ZLINK_SNDHWM, monitor_hwm, "ZLINK_SNDHWM");
-        set_sockopt_int(monitor, ZLINK_RCVHWM, monitor_hwm, "ZLINK_RCVHWM");
+        set_sockopt_int(monitor, ZLINK_OPT_SNDHWM, monitor_hwm,
+                        "ZLINK_OPT_SNDHWM");
+        set_sockopt_int(monitor, ZLINK_OPT_RCVHWM, monitor_hwm,
+                        "ZLINK_OPT_RCVHWM");
     }
 
     out_.monitor = monitor;
@@ -624,10 +606,8 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
                  || connect_ready_count(monitor_.state) >= expected_ready_;
       });
     if (!signaled && bench_debug_enabled()) {
-        std::cerr << "[perf-multi] connect ready timeout connected="
-                  << monitor_.state->connected_count
-                  << " accepted=" << monitor_.state->accepted_count
-                  << " ready=" << monitor_.state->connection_ready_count
+        std::cerr << "[perf-multi] connect ready timeout ready="
+                  << monitor_.state->connection_ready_count
                   << " expected=" << expected_ready_ << std::endl;
     }
     return signaled && monitor_.state->error_code == 0
@@ -672,11 +652,14 @@ inline void print_result(const std::string& lib_type,
       pattern == "DEALER_ROUTER"
       || pattern == "ROUTER_ROUTER"
       || pattern == "GATEWAY"
+      || pattern == "STREAM"
       || pattern == "STREAM_CALLBACK"
       || pattern == "MULTI_DEALER_ROUTER"
       || pattern == "MULTI_ROUTER_ROUTER"
       || pattern == "MULTI_GATEWAY"
-      || pattern == "MULTI_STREAM_CALLBACK";
+      || pattern == "MULTI_STREAM"
+      || pattern == "MULTI_STREAM_CALLBACK"
+      ;
     const double direction_factor = is_echo_pattern ? 2.0 : 1.0;
     const double bandwidth_mb_s =
       (throughput * static_cast<double>(size) * direction_factor) / 1000000.0;
@@ -864,8 +847,8 @@ inline void apply_benchmark_hwm(void *socket_, int hwm_value)
       bench_hwm_from_env("PERF_SNDHWM", hwm_value);
     const int rcvhwm =
       bench_hwm_from_env("PERF_RCVHWM", hwm_value);
-    set_sockopt_int(socket_, ZLINK_SNDHWM, sndhwm, "ZLINK_SNDHWM");
-    set_sockopt_int(socket_, ZLINK_RCVHWM, rcvhwm, "ZLINK_RCVHWM");
+    set_sockopt_int(socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
+    set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
 }
 
 inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)
@@ -951,8 +934,10 @@ inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
       bench_timeout_ms_from_env("PERF_SNDTIMEO_MS", 200);
     const int rcvtimeo_ms =
       bench_timeout_ms_from_env("PERF_RCVTIMEO_MS", 200);
-    set_sockopt_int(socket_, ZLINK_SNDTIMEO, sndtimeo_ms, "ZLINK_SNDTIMEO");
-    set_sockopt_int(socket_, ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
+    set_sockopt_int(socket_, ZLINK_OPT_SNDTIMEO, sndtimeo_ms,
+                    "ZLINK_OPT_SNDTIMEO");
+    set_sockopt_int(socket_, ZLINK_OPT_RCVTIMEO, rcvtimeo_ms,
+                    "ZLINK_OPT_RCVTIMEO");
 }
 
 inline void apply_benchmark_socket_options(void *socket_,
@@ -967,11 +952,11 @@ inline void apply_benchmark_socket_options(void *socket_,
       bench_socket_buffer_bytes_from_env("PERF_SNDBUF", -1);
     const int rcvbuf =
       bench_socket_buffer_bytes_from_env("PERF_RCVBUF", -1);
-    set_sockopt_int(socket_, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    set_sockopt_int(socket_, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     if (sndbuf > 0)
-        set_sockopt_int(socket_, ZLINK_SNDBUF, sndbuf, "ZLINK_SNDBUF");
+        set_sockopt_int(socket_, ZLINK_OPT_SNDBUF, sndbuf, "ZLINK_OPT_SNDBUF");
     if (rcvbuf > 0)
-        set_sockopt_int(socket_, ZLINK_RCVBUF, rcvbuf, "ZLINK_RCVBUF");
+        set_sockopt_int(socket_, ZLINK_OPT_RCVBUF, rcvbuf, "ZLINK_OPT_RCVBUF");
     apply_benchmark_hwm(socket_, hwm_value);
     apply_debug_timeouts(socket_, transport);
 }

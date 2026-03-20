@@ -2,7 +2,6 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
-#include "../../src/core/ctx.hpp"
 
 #include <unity.h>
 #include <cstring>
@@ -22,7 +21,7 @@ namespace
 void *create_sync_socket (int type_)
 {
     void *socket =
-      static_cast<zlink::ctx_t *> (get_test_context ())->create_socket (type_);
+      zlink_socket (get_test_context (), static_cast<zlink_socket_type_t> (type_));
     TEST_ASSERT_NOT_NULL (socket);
     return socket;
 }
@@ -45,7 +44,7 @@ static void test_pubsub_filter_transport (const char *endpoint_)
         || strncmp (endpoint_, "ipc://", 6) == 0) {
         size_t len = sizeof (connect_endpoint);
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_getsockopt (pub, ZLINK_SOCKOPT_LAST_ENDPOINT, connect_endpoint, &len));
+          zlink_get_option (pub, ZLINK_OPT_LAST_ENDPOINT, connect_endpoint, &len));
     } else {
         strcpy (connect_endpoint, endpoint_);
     }
@@ -54,7 +53,7 @@ static void test_pubsub_filter_transport (const char *endpoint_)
 
     // Subscribe only to "topicA"
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "topicA", 6));
+      zlink_set_subscription (sub, "topicA"));
 
     msleep (SETTLE_TIME);
 
@@ -100,7 +99,7 @@ void test_pubsub_xpub_xsub_tcp ()
     char endpoint[MAX_SOCKET_STRING];
     size_t len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (xpub, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &len));
+      zlink_get_option (xpub, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (xsub, endpoint));
 
@@ -110,8 +109,8 @@ void test_pubsub_xpub_xsub_tcp ()
 
     // Wait for subscription to propagate
     char sub_recv[16];
-    const int sub_size = TEST_ASSERT_SUCCESS_ERRNO (
-      zlink::recv_buffer_internal (xpub, sub_recv, sizeof (sub_recv), 0));
+    const int sub_size =
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (xpub, sub_recv, sizeof (sub_recv), 0));
     TEST_ASSERT_TRUE (sub_size >= 1);
     TEST_ASSERT_EQUAL_HEX8 (0x01, (unsigned char) sub_recv[0]);
 
@@ -137,7 +136,7 @@ void test_pubsub_xpub_xsub_ipc ()
     char endpoint[MAX_SOCKET_STRING];
     size_t len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (xpub, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &len));
+      zlink_get_option (xpub, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (xsub, endpoint));
 
@@ -147,8 +146,8 @@ void test_pubsub_xpub_xsub_ipc ()
 
     // Wait for subscription to propagate
     char sub_recv[16];
-    const int sub_size = TEST_ASSERT_SUCCESS_ERRNO (
-      zlink::recv_buffer_internal (xpub, sub_recv, sizeof (sub_recv), 0));
+    const int sub_size =
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (xpub, sub_recv, sizeof (sub_recv), 0));
     TEST_ASSERT_TRUE (sub_size >= 1);
     TEST_ASSERT_EQUAL_HEX8 (0x01, (unsigned char) sub_recv[0]);
 
@@ -180,8 +179,8 @@ void test_pubsub_xpub_xsub_inproc ()
 
     // Wait for subscription to propagate
     char sub_recv[16];
-    const int sub_size = TEST_ASSERT_SUCCESS_ERRNO (
-      zlink::recv_buffer_internal (xpub, sub_recv, sizeof (sub_recv), 0));
+    const int sub_size =
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (xpub, sub_recv, sizeof (sub_recv), 0));
     TEST_ASSERT_TRUE (sub_size >= 1);
     TEST_ASSERT_EQUAL_HEX8 (0x01, (unsigned char) sub_recv[0]);
 

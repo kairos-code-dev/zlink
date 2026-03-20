@@ -233,14 +233,14 @@ void test_xpub_verboser_two_subs ()
 
     //  Unsubscribe for A, this time it exists in XPUB
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub0, ZLINK_UNSUBSCRIBE, topic_a, 1));
+      zlink_unset_subscription (sub0, topic_a));
 
     //  sub1 is still subscribed, so no notification
     TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (pub, NULL, 0, ZLINK_DONTWAIT));
 
     //  Unsubscribe the second socket to trigger the notification
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub1, ZLINK_UNSUBSCRIBE, topic_a, 1));
+      zlink_unset_subscription (sub1, topic_a));
 
     // Receive unsubscriptions since all sockets are gone
     recv_array_expect_success (pub, unsubscribe_a_msg, 0);
@@ -250,15 +250,15 @@ void test_xpub_verboser_two_subs ()
 
     int verbose = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub, ZLINK_XPUB_VERBOSER, &verbose, sizeof (int)));
+      zlink_set_pub_option (pub, ZLINK_PUB_OPT_VERBOSER, &verbose, sizeof (int)));
 
     // Subscribe socket for A again
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub0, ZLINK_SUBSCRIBE, topic_a, 1));
+      zlink_set_subscription (sub0, topic_a));
 
     // Subscribe socket for A again
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub1, ZLINK_SUBSCRIBE, topic_a, 1));
+      zlink_set_subscription (sub1, topic_a));
 
     // Receive subscriptions from subscriber, did not exist anymore
     recv_array_expect_success (pub, subscribe_a_msg, 0);
@@ -274,21 +274,21 @@ void test_xpub_verboser_two_subs ()
 
     //  Unsubscribe for A
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub1, ZLINK_UNSUBSCRIBE, topic_a, 1));
+      zlink_unset_subscription (sub1, topic_a));
 
     // Receive unsubscriptions from first subscriber due to VERBOSER
     recv_array_expect_success (pub, unsubscribe_a_msg, 0);
 
     //  Unsubscribe for A again from the other socket
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub0, ZLINK_UNSUBSCRIBE, topic_a, 1));
+      zlink_unset_subscription (sub0, topic_a));
 
     // Receive unsubscriptions from first subscriber due to VERBOSER
     recv_array_expect_success (pub, unsubscribe_a_msg, 0);
 
     //  Unsubscribe again to make sure it gets filtered now
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub1, ZLINK_UNSUBSCRIBE, topic_a, 1));
+      zlink_unset_subscription (sub1, topic_a));
 
     //  Unmatched, so XSUB filters even with VERBOSER
     TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (pub, NULL, 0, ZLINK_DONTWAIT));

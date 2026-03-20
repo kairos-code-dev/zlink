@@ -219,6 +219,8 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _monitor_lossy (_runtime.monitor_bridge.lossy),
     _mailbox_refcnt (_runtime.lifecycle_hooks.mailbox_refcnt),
     _destroy_pending (_runtime.lifecycle_hooks.destroy_pending),
+    _monitor_async_mailbox_owned (
+      _runtime.lifecycle_hooks.monitor_async_mailbox_owned),
     _async_mailbox_active (_runtime.lifecycle_hooks.async_mailbox_active),
     _async_quiesce_pending (_runtime.lifecycle_hooks.async_quiesce_pending),
     _async_processing_done (_runtime.lifecycle_hooks.async_processing_done),
@@ -2650,6 +2652,7 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
     //  Register events to monitor
     _monitor_events = events_;
     _monitor_lossy = event_version_ <= 3;
+    _monitor_async_mailbox_owned = false;
     //  Create a monitor socket of the specified type.
     _monitor_socket = static_cast<void *> (get_ctx ()->create_socket (type_));
     if (_monitor_socket == NULL)
@@ -2667,6 +2670,13 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
     if (rc == -1)
         stop_monitor (false);
     else {
+        if ((events_ & ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED) != 0
+            && (options.type == ZLINK_PUB || options.type == ZLINK_XPUB)
+            && xpub_dispatch_start () != 0) {
+            stop_monitor (false);
+            return -1;
+        }
+
         _monitor_queue_sync.lock ();
         _monitor_queue.clear ();
         _monitor_queue_stop = false;
@@ -2804,6 +2814,15 @@ void zlink::socket_base_t::emit_inproc_connection_ready (pipe_t *pipe_)
                             routing_id.size ());
 }
 
+void zlink::socket_base_t::emit_socket_monitor_value_event (
+  uint64_t event_,
+  uint64_t value_,
+  const endpoint_uri_pair_t &endpoint_uri_pair_)
+{
+    uint64_t values[1] = {value_};
+    event (endpoint_uri_pair_, NULL, 0, values, 1, event_);
+}
+
 void zlink::socket_base_t::event (const endpoint_uri_pair_t &endpoint_uri_pair_,
                                 const unsigned char *routing_id_,
                                 size_t routing_id_size_,
@@ -2832,12 +2851,32 @@ void zlink::socket_base_t::monitor_thread_main (void *arg_)
 void zlink::socket_base_t::monitor_loop ()
 {
     void *monitor_socket = _monitor_socket;
+    const bool supports_sub_delivery_ready =
+      options.type == ZLINK_SUB || options.type == ZLINK_XSUB;
+    const bool supports_pub_delivery_ready =
+      options.type == ZLINK_PUB || options.type == ZLINK_XPUB;
+    const bool pump_delivery_ready =
+      (supports_sub_delivery_ready
+       && (_monitor_events & ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED) != 0)
+      || (supports_pub_delivery_ready
+          && (_monitor_events & ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED) != 0);
     _monitor_queue_sync.lock ();
     while (true) {
         if (_monitor_queue_stop)
             break;
         if (_monitor_queue.empty ()) {
-            (void) _monitor_queue_cv.wait (&_monitor_queue_sync, -1);
+            if (pump_delivery_ready) {
+                _monitor_queue_sync.unlock ();
+                process_commands (0, false);
+                _monitor_queue_sync.lock ();
+                if (_monitor_queue_stop)
+                    break;
+                if (_monitor_queue.empty ()) {
+                    (void) _monitor_queue_cv.wait (&_monitor_queue_sync, 10);
+                }
+            } else {
+                (void) _monitor_queue_cv.wait (&_monitor_queue_sync, -1);
+            }
             continue;
         }
 
@@ -2952,6 +2991,10 @@ void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
         socket_base_t *monitor_socket =
           static_cast<socket_base_t *> (_monitor_socket);
         bool can_emit_monitor_stopped = false;
+        const bool stop_async_mailbox =
+          _monitor_async_mailbox_owned && !socket_msg_dispatch_active ()
+          && !sub_dispatch_active () && !xpub_dispatch_active ()
+          && !stream_dispatch_active ();
 
         if ((_monitor_events & ZLINK_EVENT_MONITOR_STOPPED)
             && send_monitor_stopped_event_) {
@@ -2973,6 +3016,11 @@ void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
         _monitor_socket = NULL;
         _monitor_events = 0;
         _monitor_lossy = true;
+        if (stop_async_mailbox) {
+            stop_async_mailbox_processing ();
+            wait_async_quiesced (10000);
+        }
+        _monitor_async_mailbox_owned = false;
     }
 }
 

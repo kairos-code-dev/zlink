@@ -26,7 +26,7 @@ void test ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint1));
 
     //  Subscribe for all messages.
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, ""));
 
     //  Pass the subscription upstream through the device
     char buff[32];

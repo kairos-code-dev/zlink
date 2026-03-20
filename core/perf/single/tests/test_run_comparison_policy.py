@@ -96,9 +96,9 @@ class RunComparisonPolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             RC.resolve_recv_mode("bogus")
 
-    def test_recv_mode_binary_override_uses_recv_targets(self):
-        self.assertEqual(RC.resolve_binary_name("PAIR", "recv"), "perf_pair_recv")
-        self.assertEqual(RC.resolve_binary_name("PUBSUB", "recv"), "perf_pubsub_recv")
+    def test_recv_mode_uses_current_targets(self):
+        self.assertEqual(RC.resolve_binary_name("PAIR", "recv"), "perf_pair")
+        self.assertEqual(RC.resolve_binary_name("PUBSUB", "recv"), "perf_pubsub")
         self.assertEqual(RC.resolve_binary_name("PAIR", "callback"), "perf_pair")
         self.assertEqual(RC.resolve_binary_name("GATEWAY", "recv"), "perf_gateway")
         self.assertEqual(RC.resolve_binary_name("SPOT", "recv"), "perf_spot")

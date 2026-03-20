@@ -48,7 +48,7 @@ void test_router_2_router (bool named_)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (rconn1, my_endpoint));
     /*  Uncomment to test assert on duplicate routing id
     //  Test duplicate connect attempt.
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (rconn1, ZLINK_CONNECT_ROUTING_ID, rconn1routing_id, strlen (rconn1routing_id)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (rconn1, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, rconn1routing_id, strlen (rconn1routing_id)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (rconn1, bindip));
 */
     //  Send some data.

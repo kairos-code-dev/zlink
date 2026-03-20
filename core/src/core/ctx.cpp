@@ -305,6 +305,7 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             break;
 
         case ZLINK_INTERNAL_OPT_BLOCKY:
+        case ZLINK_CTX_OPT_BLOCKY:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
                 _blocky = (value != 0);
@@ -367,6 +368,7 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             break;
 
         case ZLINK_INTERNAL_OPT_BLOCKY:
+        case ZLINK_CTX_OPT_BLOCKY:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _blocky;

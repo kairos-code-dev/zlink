@@ -70,8 +70,6 @@ add_cpp_single_bench(cpp_perf_dealer_router
   "${PERF_ROOT_DIR}/single/src/perf_dealer_router.cpp")
 add_cpp_single_bench(cpp_perf_router_router
   "${PERF_ROOT_DIR}/single/src/perf_router_router.cpp")
-add_cpp_single_bench(cpp_perf_router_router_poll
-  "${PERF_ROOT_DIR}/single/src/perf_router_router_poll.cpp")
 add_cpp_single_bench(cpp_perf_gateway
   "${PERF_ROOT_DIR}/single/src/perf_gateway.cpp")
 add_cpp_single_bench(cpp_perf_spot

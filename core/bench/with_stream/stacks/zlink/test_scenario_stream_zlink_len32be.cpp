@@ -1,7 +1,6 @@
 #include "../common/stream_echo_common.hpp"
 
 #include "../../../../include/zlink.h"
-#include "../../../../tests/legacy_api_compat.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -58,17 +57,17 @@ std::string make_endpoint (const std::string &host, int port)
 
 void apply_socket_tuning (void *socket, const server_options_t &opt)
 {
-    (void) zlink_setsockopt (socket, ZLINK_SNDBUF, &opt.sndbuf,
+    (void) zlink_set_option (socket, ZLINK_OPT_SNDBUF, &opt.sndbuf,
                              sizeof (opt.sndbuf));
-    (void) zlink_setsockopt (socket, ZLINK_RCVBUF, &opt.rcvbuf,
+    (void) zlink_set_option (socket, ZLINK_OPT_RCVBUF, &opt.rcvbuf,
                              sizeof (opt.rcvbuf));
-    (void) zlink_setsockopt (socket, ZLINK_BACKLOG, &opt.backlog,
+    (void) zlink_set_option (socket, ZLINK_OPT_BACKLOG, &opt.backlog,
                              sizeof (opt.backlog));
-    (void) zlink_setsockopt (socket, ZLINK_TCP_NODELAY, &opt.tcp_nodelay,
+    (void) zlink_set_option (socket, ZLINK_OPT_TCP_NODELAY, &opt.tcp_nodelay,
                              sizeof (opt.tcp_nodelay));
     const int hwm = 100;
-    (void) zlink_setsockopt (socket, ZLINK_RCVHWM, &hwm, sizeof (hwm));
-    (void) zlink_setsockopt (socket, ZLINK_SNDHWM, &hwm, sizeof (hwm));
+    (void) zlink_set_option (socket, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm));
+    (void) zlink_set_option (socket, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm));
 }
 
 class zlink_stream_echo_server_t

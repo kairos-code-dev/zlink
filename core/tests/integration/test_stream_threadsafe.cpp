@@ -98,18 +98,18 @@ worker_probe_t *g_worker_probe = NULL;
 void configure_stream_socket (void *socket_)
 {
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_LINGER, &kLingerMs, sizeof (kLingerMs)));
+      zlink_set_option (socket_, ZLINK_OPT_LINGER, &kLingerMs, sizeof (kLingerMs)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_SNDBUF, &kSocketBufBytes,
+      zlink_set_option (socket_, ZLINK_OPT_SNDBUF, &kSocketBufBytes,
                         sizeof (kSocketBufBytes)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_RCVBUF, &kSocketBufBytes,
+      zlink_set_option (socket_, ZLINK_OPT_RCVBUF, &kSocketBufBytes,
                         sizeof (kSocketBufBytes)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_SNDTIMEO, &kTimeoutMs,
+      zlink_set_option (socket_, ZLINK_OPT_SNDTIMEO, &kTimeoutMs,
                         sizeof (kTimeoutMs)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_RCVTIMEO, &kTimeoutMs,
+      zlink_set_option (socket_, ZLINK_OPT_RCVTIMEO, &kTimeoutMs,
                         sizeof (kTimeoutMs)));
 }
 
@@ -366,7 +366,7 @@ void read_last_endpoint_loop (void *socket_,
     while (stop_->load (std::memory_order_acquire) == 0) {
         size_t size = sizeof (endpoint);
         memset (endpoint, 0, sizeof (endpoint));
-        if (zlink_getsockopt (socket_, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint,
+        if (zlink_get_option (socket_, ZLINK_OPT_LAST_ENDPOINT, endpoint,
                               &size)
             != 0) {
             errors_->fetch_add (1, std::memory_order_release);
@@ -388,7 +388,7 @@ void read_events_loop (void *socket_,
     while (stop_->load (std::memory_order_acquire) == 0) {
         int events = 0;
         size_t size = sizeof (events);
-        if (zlink_getsockopt (socket_, ZLINK_SOCKOPT_EVENTS, &events, &size)
+        if (zlink_get_option (socket_, ZLINK_OPT_EVENTS, &events, &size)
             != 0) {
             errors_->fetch_add (1, std::memory_order_release);
             return;

@@ -112,6 +112,8 @@ class spot_sub_t
     int abort_create ();
 
   private:
+    friend class spot_node_t;
+
     enum handler_state_t
     {
         handler_none = 0,

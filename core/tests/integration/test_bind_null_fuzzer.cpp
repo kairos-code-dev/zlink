@@ -18,13 +18,13 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
     //  but the sanitizer allocator will barf over a gig or so
     int64_t max_msg_size = 64 * 1024 * 1024;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_MAXMSGSIZE, &max_msg_size, sizeof (int64_t)));
+      zlink_set_option (server, ZLINK_OPT_MAXMSGSIZE, &max_msg_size, sizeof (int64_t)));
     bind_loopback_ipv4 (server, my_endpoint, sizeof (my_endpoint));
     fd_t client = connect_socket (my_endpoint);
 
     void *client_good = test_context_socket (ZLINK_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client_good, ZLINK_SUBSCRIBE, "", 0));
+      zlink_set_subscription (client_good, ""));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client_good, my_endpoint));
 
     //  If there is not enough data for a full greeting, just send what we can

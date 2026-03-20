@@ -2,7 +2,6 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
-#include "../../src/core/ctx.hpp"
 
 #include <cstring>
 
@@ -13,7 +12,7 @@ namespace
 void *create_sync_socket (int type_)
 {
     void *socket =
-      static_cast<zlink::ctx_t *> (get_test_context ())->create_socket (type_);
+      zlink_socket (get_test_context (), static_cast<zlink_socket_type_t> (type_));
     TEST_ASSERT_NOT_NULL (socket);
     return socket;
 }
@@ -50,21 +49,22 @@ static void configure_tls (void *server_,
                            const tls_test_files_t &files_)
 {
     const int trust_system = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client_, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      server_, ZLINK_TLS_CERT, files_.server_cert.c_str (),
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client_, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system,
+      sizeof (trust_system)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server_, ZLINK_OPT_TLS_CERT, files_.server_cert.c_str (),
       files_.server_cert.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      server_, ZLINK_TLS_KEY, files_.server_key.c_str (),
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server_, ZLINK_OPT_TLS_KEY, files_.server_key.c_str (),
       files_.server_key.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client_, ZLINK_TLS_CA, files_.ca_cert.c_str (), files_.ca_cert.size ()));
-
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client_, ZLINK_OPT_TLS_CA, files_.ca_cert.c_str (),
+      files_.ca_cert.size ()));
     const char hostname[] = "localhost";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client_, ZLINK_TLS_HOSTNAME, hostname, strlen (hostname)));
+      zlink_set_option (client_, ZLINK_OPT_TLS_HOSTNAME, hostname,
+                        strlen (hostname)));
 }
 
 static void bind_endpoint (void *socket_,
@@ -156,7 +156,7 @@ static void run_pubsub (const char *transport_)
     bind_endpoint (pub, transport_, "matrix_pubsub", endpoint, sizeof (endpoint));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, ""));
     msleep (SETTLE_TIME);
 
     // Prime subscription propagation before checking the real payload.
@@ -181,7 +181,7 @@ static void run_router_dealer (const char *transport_)
     void *dealer = create_sync_socket (ZLINK_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer, ZLINK_ROUTING_ID, "DEALER1", 7));
+      zlink_set_routing_id (dealer, "DEALER1", 7));
 
     tls_test_files_t tls_files;
     if (is_tls_transport (transport_)) {
@@ -220,9 +220,9 @@ static void run_router_router (const char *transport_)
     void *client = create_sync_socket (ZLINK_ROUTER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_ROUTING_ID, "SERVER", 6));
+      zlink_set_routing_id (server, "SERVER", 6));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_ROUTING_ID, "CLIENT", 6));
+      zlink_set_routing_id (client, "CLIENT", 6));
 
     tls_test_files_t tls_files;
     if (is_tls_transport (transport_)) {

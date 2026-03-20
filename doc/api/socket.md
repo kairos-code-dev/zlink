@@ -1071,20 +1071,21 @@ Convenience function that calls `zlink_msg_close()` on each element.
 
 ### zlink_socket_monitor_open
 
-Open and return a socket monitor handle with a fixed callback.
+Open a socket monitor handle in recv model.
 
 ```c
 void *zlink_socket_monitor_open (void *s_,
-                                 zlink_socket_monitor_event_mask_t events_,
-                                 zlink_monitor_handler_fn handler_,
-                                 void *userdata_);
+                                 const zlink_socket_monitor_open_options_t *options_);
 ```
 
-Creates a monitor for socket `s_` and returns a handle. Events matching the
-`events_` bitmask are dispatched through the `handler_` callback on the I/O
-thread. The monitor handle must be closed with `zlink_close()` when no longer
+Creates a monitor for socket `s_` and returns a handle. The `options_->events`
+bitmask selects which events to observe. The monitor starts in **recv model**;
+use `zlink_socket_monitor_recv()` to pull events or
+`zlink_socket_monitor_handler()` to transition to callback-only model.
+The monitor handle must be closed with `zlink_monitor_close()` when no longer
 needed.
 
 **Returns:** Monitor handle on success, `NULL` on failure (errno is set).
 
-**See also:** `zlink_close`
+**See also:** `zlink_socket_monitor_handler`, `zlink_socket_monitor_recv`,
+`zlink_monitor_snapshot`, `zlink_monitor_close`

@@ -593,6 +593,26 @@ size_t zlink::msg_t::size () const
     }
 }
 
+uint32_t zlink::msg_t::refcnt_value () const
+{
+    //  Check the validity of the message.
+    zlink_assert (check ());
+
+    if (_u.base.type == type_lmsg) {
+        if (_u.lmsg.flags & msg_t::shared)
+            return _u.lmsg.content->refcnt.get ();
+        return 1;
+    }
+
+    if (_u.base.type == type_zclmsg) {
+        if (_u.zclmsg.flags & msg_t::shared)
+            return _u.zclmsg.content->refcnt.get ();
+        return 1;
+    }
+
+    return 1;
+}
+
 void zlink::msg_t::shrink (size_t new_size_)
 {
     //  Check the validity of the message.

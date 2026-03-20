@@ -21,7 +21,7 @@ void test_issue_566 ()
     void *router = zlink_socket (ctx1, ZLINK_ROUTER);
     int on = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router, ZLINK_ROUTER_MANDATORY, &on, sizeof (on)));
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &on, sizeof (on)));
     bind_loopback_ipv4 (router, my_endpoint, sizeof (my_endpoint));
 
     //  Repeat often enough to be sure this works as it should
@@ -33,10 +33,10 @@ void test_issue_566 ()
         char routing_id[11];
         snprintf (routing_id, 11 * sizeof (char), "%09d", cycle);
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_setsockopt (dealer, ZLINK_ROUTING_ID, routing_id, 10));
+          zlink_set_routing_id (dealer, routing_id, 10));
         int rcvtimeo = 1000;
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_setsockopt (dealer, ZLINK_RCVTIMEO, &rcvtimeo, sizeof (int)));
+          zlink_set_option (dealer, ZLINK_OPT_RCVTIMEO, &rcvtimeo, sizeof (int)));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, my_endpoint));
 
         //  Router will try to send to dealer, at short intervals.

@@ -77,7 +77,7 @@ void close_monitor_handle (void **monitor_p_)
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (*monitor_p_, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (*monitor_p_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (monitor_p_));
 }
 }
@@ -102,11 +102,11 @@ void test_handshake_timeout ()
     // Set a very short handshake timeout (100ms)
     int timeout = 100;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_HANDSHAKE_IVL, &timeout, sizeof (timeout)));
+      zlink_set_option (server, ZLINK_OPT_HANDSHAKE_IVL, &timeout, sizeof (timeout)));
 
     int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_LINGER, &linger, sizeof (linger)));
+      zlink_set_option (server, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
 
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 

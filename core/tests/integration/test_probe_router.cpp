@@ -15,10 +15,11 @@ void test_probe_router_router ()
 
     //  Create client and connect to server, doing a probe
     void *client = test_context_socket (ZLINK_ROUTER);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (client, ZLINK_ROUTING_ID, "X", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client, "X", 1));
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
+      zlink_set_router_option (client, ZLINK_ROUTER_OPT_PROBE, &probe,
+                               sizeof (probe)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, my_endpoint));
 
     //  We expect a routing id=X + empty message from client
@@ -52,10 +53,11 @@ void test_probe_router_dealer ()
 
     //  Create client and connect to server, doing a probe
     void *client = test_context_socket (ZLINK_DEALER);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (client, ZLINK_ROUTING_ID, "X", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client, "X", 1));
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
+      zlink_set_router_option (client, ZLINK_ROUTER_OPT_PROBE, &probe,
+                               sizeof (probe)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, my_endpoint));
 
     //  We expect a routing id=X + empty message from client

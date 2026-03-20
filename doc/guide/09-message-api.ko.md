@@ -71,7 +71,7 @@ reference counting으로 관리(LMSG)한다.
 | `zlink_msg_copy` | src → dest로 복사. VSM은 value copy, LMSG는 refcount 증가 | dest도 공동 소유 |
 | `zlink_msg_data` | data buffer pointer 반환 | 변화 없음 (읽기 전용) |
 | `zlink_msg_size` | data size(byte) 반환 | 변화 없음 |
-| `zlink_msg_is_shared` | 공유 상태 여부 반환 (1=shared) | 변화 없음 |
+| `zlink_msg_refcnt` | storage reference count 반환 | 변화 없음 |
 | `zlink_msg_gets` | message metadata property를 string으로 반환 | 변화 없음 |
 
 ### 3.3 Move vs Copy
@@ -169,7 +169,7 @@ zlink_send(socket, &msg, 1, 0);
 
 **`ffn=NULL`인 경우 (CMSG):** buffer를 해제하지 않고 borrowed reference로
 유지한다. String literal이나 static data를 copy 없이 전송할 때 사용.
-이 경우 `zlink_msg_is_shared()`는 항상 1을 반환한다.
+이 경우 `zlink_msg_refcnt()`는 항상 1을 반환한다.
 
 ```c
 zlink_msg_t msg;
@@ -229,7 +229,7 @@ zlink_msg_init(&copy);
 zlink_msg_copy(&copy, &original);
 
 /* original과 copy 모두 같은 buffer를 참조 (refcount=2) */
-int shared = zlink_msg_is_shared(&copy);  /* 1 */
+int refcnt = zlink_msg_refcnt(&copy);  /* 2 */
 
 zlink_msg_close(&original);  /* refcount=1, buffer 유지 */
 zlink_msg_close(&copy);      /* refcount=0 → free(buffer) */
@@ -473,33 +473,38 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 ```
 
-## 8. Shared Property — zlink_msg_is_shared
+## 8. Storage Refcount — zlink_msg_refcnt
 
-`zlink_msg_is_shared()`는 message storage가 uniquely owned인지 여부를 반환한다.
-Refcount가 아닌 boolean(0 또는 1)이다.
+`zlink_msg_refcnt()`는 message storage의 reference count를 반환한다.
+Refcounted storage가 아니면 1을 반환한다.
 
-| 상황 | `is_shared` 반환값 |
-|------|-------------------|
-| `init_size` 직후 (단독 소유) | 0 |
-| `copy` 후 (refcount > 1) | 1 |
-| `init_data(..., ffn, ...)` (ZCLMSG) | 0 (단독), copy 후 1 |
+내부 reference count는 atomic 연산으로 관리된다. `zlink_msg_copy()`로
+만든 별도 handle을 서로 다른 스레드에서 copy/close하는 것은 안전하다.
+`zlink_msg_refcnt()` 반환값은 시점 스냅샷이므로 진단/assertion 용도로 쓴다.
+단일 `zlink_msg_t` 인스턴스를 여러 스레드에서 동시에 접근하면 안 된다.
+
+| 상황 | `refcnt` 반환값 |
+|------|-----------------|
+| `init_size` 직후 (단독 소유) | 1 |
+| `copy` 후 (refcount > 1) | 2 이상 |
+| `init_data(..., ffn, ...)` (ZCLMSG) | 단독 1, copy 후 2 이상 |
 | `init_data(..., NULL, NULL)` (CMSG) | 항상 1 |
 
 ```c
 /* Reference counted message */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 1024);
-int shared = zlink_msg_is_shared(&msg);  /* 0: single owner */
+int refcnt = zlink_msg_refcnt(&msg);  /* 1: single owner */
 
 zlink_msg_t copy;
 zlink_msg_init(&copy);
 zlink_msg_copy(&copy, &msg);
-shared = zlink_msg_is_shared(&copy);  /* 1: shared */
+refcnt = zlink_msg_refcnt(&copy);  /* 2: msg와 copy가 공유 */
 
 /* Constant data message (CMSG) */
 zlink_msg_t const_msg;
 zlink_msg_init_data(&const_msg, (void *)"TEST", 5, NULL, NULL);
-shared = zlink_msg_is_shared(&const_msg);  /* 1: 항상 shared */
+refcnt = zlink_msg_refcnt(&const_msg);  /* 1: internal refcount 대상 아님 */
 ```
 
 > 참고: `core/tests/test_msg_flags.cpp` — `test_shared_const()`: constant message의 shared property

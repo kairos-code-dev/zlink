@@ -35,11 +35,7 @@ public final class PerfRouterRouter {
     }
 
     public static int run(String transport, int msgSize) {
-        return runInternal(transport, msgSize, false);
-    }
-
-    static int runInternal(String transport, int msgSize, boolean usePoll) {
-        String pattern = usePoll ? "ROUTER_ROUTER_POLL" : "ROUTER_ROUTER";
+        String pattern = "ROUTER_ROUTER";
 
         try (Context context = new Context();
              Socket receiver = new Socket(context, SocketType.ROUTER);
@@ -78,7 +74,7 @@ public final class PerfRouterRouter {
 
                 PhaseResult warmup = runPhase(sender, receiver, payload, payloadSize,
                     msgSize, runId, seq, PerfSingleMetricHeader.PHASE_WARMUP,
-                    warmupCount, 0, 0, recvTimeoutMs, usePoll);
+                    warmupCount, 0, 0, recvTimeoutMs, false);
                 if (!warmup.ok || warmup.received < warmupCount) {
                     return 2;
                 }
@@ -87,7 +83,7 @@ public final class PerfRouterRouter {
 
                 PhaseResult active = runPhase(sender, receiver, payload, payloadSize,
                     msgSize, runId, seq, PerfSingleMetricHeader.PHASE_ACTIVE,
-                    0, durationSeconds, latencyCap, recvTimeoutMs, usePoll);
+                    0, durationSeconds, latencyCap, recvTimeoutMs, false);
                 if (!active.ok || active.received <= 0) {
                     return 2;
                 }

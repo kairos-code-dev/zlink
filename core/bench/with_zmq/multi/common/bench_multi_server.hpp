@@ -124,7 +124,7 @@ inline std::string bind_server_endpoint (void *socket,
     std::string resolved = endpoint;
     char last_endpoint[MAX_SOCKET_STRING] = "";
     size_t size = sizeof (last_endpoint);
-    if (zlink_getsockopt (socket, ZLINK_SOCKOPT_LAST_ENDPOINT, last_endpoint, &size)
+    if (zlink_get_option (socket, ZLINK_OPT_LAST_ENDPOINT, last_endpoint, &size)
         == 0) {
         resolved.assign (last_endpoint);
     }
@@ -318,14 +318,12 @@ inline int run_multi_server_main (int argc,
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings ();
     const int linger_ms = 0;
-    set_sockopt_int (server, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms,
+                     "ZLINK_OPT_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
     if (cfg.server_has_routing_id && cfg.server_routing_id) {
-        zlink_setsockopt (
-          server,
-          ZLINK_ROUTING_ID,
-          cfg.server_routing_id,
-          std::strlen (cfg.server_routing_id));
+        zlink_set_routing_id (server, cfg.server_routing_id,
+                              std::strlen (cfg.server_routing_id));
     }
 
     if (!setup_tls_server (server, transport)) {

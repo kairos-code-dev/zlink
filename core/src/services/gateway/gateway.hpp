@@ -121,6 +121,7 @@ class gateway_t : public discovery_observer_t
                            const void *optval_,
                            size_t optvallen_);
     int get_socket_option (int option_, void *optval_, size_t *optvallen_);
+    int snapshot_status (zlink_gateway_status_t *out_) const;
     int set_tls_server (const char *cert_, const char *key_);
     void *monitor_open (int events_);
     void lock_routing_id ();
@@ -223,6 +224,8 @@ class gateway_t : public discovery_observer_t
     std::string _advertise_endpoint;
     uint32_t _server_weight;
     std::string _last_register_error;
+    int _last_summary_error;
+    uint64_t _summary_last_changed_ms;
     std::string _tls_server_cert;
     std::string _tls_server_key;
     std::atomic<zlink_socket_msg_handler_fn> _handler;

@@ -204,7 +204,7 @@ shards = ceil(ccu / 사용 가능한 임시 포트 수)
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
 | `--transport` | `tcp` | 전송 프로토콜: `tcp`, `tls`, `ws`, `wss` |
-| `--pattern` | `STREAM_CALLBACK` | 결과 출력 라우팅용 레이블 |
+| `--pattern` | `STREAM` | 결과 출력 라우팅용 레이블 |
 | `--endpoint` | — | 전체 엔드포인트 URI (예: `tcp://127.0.0.1:15557`). `--host`/`--port`/`--transport`를 덮어씀. |
 | `--host` | `127.0.0.1` | 서버 호스트 |
 | `--port` | `38001` | 서버 포트 |
@@ -245,7 +245,7 @@ cmake --build core/build --target perf_stream_client -j$(nproc)
 
 ```bash
 core/build/bin/perf_stream_client \
-  --pattern STREAM_CALLBACK \
+  --pattern STREAM \
   --transport tcp \
   --endpoint tcp://127.0.0.1:15557 \
   --sizes 64 \

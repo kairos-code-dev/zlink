@@ -478,7 +478,7 @@ void test_zlink_ws_bind ()
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zlink_getsockopt (socket, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_get_option (socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Verify it's a ws:// endpoint
@@ -503,7 +503,7 @@ void test_zlink_ws_connect ()
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zlink_getsockopt (bind_socket, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_get_option (bind_socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Create connect socket
@@ -542,7 +542,7 @@ void test_zlink_ws_pair_message ()
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zlink_getsockopt (bind_socket, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_get_option (bind_socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Create connect socket
@@ -598,7 +598,7 @@ void test_zlink_ws_pubsub ()
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zlink_getsockopt (pub_socket, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_get_option (pub_socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Create SUB socket
@@ -606,7 +606,7 @@ void test_zlink_ws_pubsub ()
     TEST_ASSERT_NOT_NULL (sub_socket);
 
     //  Subscribe to all messages
-    rc = zlink_setsockopt (sub_socket, ZLINK_SUBSCRIBE, "", 0);
+    rc = zlink_set_subscription (sub_socket, "");
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     rc = zlink_connect (sub_socket, endpoint);
@@ -647,7 +647,7 @@ void test_zlink_ws_with_path ()
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zlink_getsockopt (socket, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_get_option (socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Verify the path is included in the endpoint
@@ -671,26 +671,25 @@ void test_zlink_wss_pair_message ()
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     const int trust_system = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      server, ZLINK_TLS_CERT, files.server_cert.c_str (),
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server, ZLINK_OPT_TLS_CERT, files.server_cert.c_str (),
       files.server_cert.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_TLS_KEY, files.server_key.c_str (),
-                      files.server_key.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server, ZLINK_OPT_TLS_KEY, files.server_key.c_str (),
+      files.server_key.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
 
     const char hostname[] = "localhost";
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_TLS_HOSTNAME, hostname, strlen (hostname)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_TLS_HOSTNAME, hostname, strlen (hostname)));
 
     //  Bind server to WSS endpoint
     int rc = zlink_bind (server, "wss://127.0.0.1:*");
@@ -698,7 +697,7 @@ void test_zlink_wss_pair_message ()
 
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_get_option (server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_SUCCESS_ERRNO (rc);
 
     //  Connect client

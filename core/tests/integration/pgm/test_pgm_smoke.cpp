@@ -90,9 +90,9 @@ static bool try_pgm_endpoint (const char *endpoint_, bool *bound_out_)
     }
 
     const int hwm = 10;
-    zlink_setsockopt (pub, ZLINK_SNDHWM, &hwm, sizeof (hwm));
-    zlink_setsockopt (sub, ZLINK_RCVHWM, &hwm, sizeof (hwm));
-    zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0);
+    zlink_set_option (pub, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm));
+    zlink_set_option (sub, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm));
+    zlink_set_subscription (sub, "");
 
     if (zlink_bind (pub, endpoint_) != 0) {
         close_zero_linger (pub);

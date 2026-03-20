@@ -13,17 +13,17 @@ void test_diffserv ()
     char my_endpoint[MAX_SOCKET_STRING];
 
     void *sb = test_context_socket (ZLINK_PAIR);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sb, ZLINK_TOS, &tos, tos_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (sb, ZLINK_OPT_TOS, &tos, tos_size));
     bind_loopback_ipv4 (sb, my_endpoint, sizeof (my_endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (sb, ZLINK_TOS, &o_tos, &tos_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (sb, ZLINK_OPT_TOS, &o_tos, &tos_size));
     TEST_ASSERT_EQUAL (tos, o_tos);
 
     void *sc = test_context_socket (ZLINK_PAIR);
     tos = 0x58;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sc, ZLINK_TOS, &tos, tos_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (sc, ZLINK_OPT_TOS, &tos, tos_size));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, my_endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (sc, ZLINK_TOS, &o_tos, &tos_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (sc, ZLINK_OPT_TOS, &o_tos, &tos_size));
     TEST_ASSERT_EQUAL (tos, o_tos);
 
     // Wireshark can be used to verify that the server socket is

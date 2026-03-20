@@ -52,7 +52,7 @@ Options:
   -Transports LIST             Comma-separated transports.
   -PinCpu                      Enable taskset mode on Linux runner.
 Notes:
-  - Supported patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL
+  - Supported patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER
   - Removed patterns: STREAM,GATEWAY,SPOT
   - Supported transports: tcp,inproc (ipc is not supported on Windows).
   - Removed transports: ws,wss,tls
@@ -211,7 +211,6 @@ $allowedPatterns = @(
     "DEALER_DEALER",
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
-    "ROUTER_ROUTER_POLL"
 )
 
 $singleBuildTargets = @(
@@ -225,8 +224,6 @@ $singleBuildTargets = @(
     "comp_zlink_dealer_router",
     "comp_std_zmq_router_router",
     "comp_zlink_router_router",
-    "comp_std_zmq_router_router_poll",
-    "comp_zlink_router_router_poll"
 )
 
 $patternList = @()

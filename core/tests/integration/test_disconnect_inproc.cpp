@@ -21,7 +21,7 @@ void test_disconnect_inproc ()
     void *pub_socket = test_context_socket (ZLINK_XPUB);
     void *sub_socket = test_context_socket (ZLINK_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub_socket, ZLINK_SUBSCRIBE, "foo", 3));
+      zlink_set_subscription (sub_socket, "foo"));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_bind (pub_socket, "inproc://someInProcDescriptor"));

@@ -361,6 +361,12 @@ int spot_sub_t::subscribe (const char *topic_)
         has_filters = !_topics.empty () || !_patterns.empty ();
     }
     if (_node) {
+        scoped_lock_t node_lock (_node->_sync);
+        _node->_subject_last_changed_ms[make_subject_key (
+          topic, ZLINK_SERVICE_EVENT_SUBJECT_TOPIC)] = zlink::clock_t ().now_ms ();
+        _node->_summary_last_changed_ms = zlink::clock_t ().now_ms ();
+    }
+    if (_node) {
         _node->note_local_sub_filters_changed (had_filters, has_filters);
         emit_filter_applied_event (topic.c_str (),
                                    ZLINK_SERVICE_EVENT_SUBJECT_TOPIC);
@@ -403,6 +409,13 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
         _patterns.insert (prefix);
         _delivery_ready_raw_filters.erase (prefix);
         has_filters = !_topics.empty () || !_patterns.empty ();
+    }
+    if (_node) {
+        scoped_lock_t node_lock (_node->_sync);
+        _node->_subject_last_changed_ms[make_subject_key (
+          prefix + "*", ZLINK_SERVICE_EVENT_SUBJECT_PATTERN)] =
+          zlink::clock_t ().now_ms ();
+        _node->_summary_last_changed_ms = zlink::clock_t ().now_ms ();
     }
     if (_node) {
         _node->note_local_sub_filters_changed (had_filters, has_filters);
@@ -461,6 +474,12 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
             _topics.erase (topic);
         _delivery_ready_raw_filters.erase (filter);
         has_filters_after = !_topics.empty () || !_patterns.empty ();
+    }
+    if (_node) {
+        scoped_lock_t node_lock (_node->_sync);
+        _node->_subject_last_changed_ms[make_subject_key (
+          subject.subject, subject.subject_kind)] = zlink::clock_t ().now_ms ();
+        _node->_summary_last_changed_ms = zlink::clock_t ().now_ms ();
     }
     if (_node)
         _node->note_local_sub_filters_changed (had_filters, has_filters_after);
@@ -1105,6 +1124,13 @@ void spot_sub_t::mark_subject_ready (const subject_descriptor_t &subject_,
     if (!emit)
         return;
 
+    if (_node) {
+        scoped_lock_t node_lock (_node->_sync);
+        _node->_subject_last_changed_ms[make_subject_key (
+          subject_.subject, subject_.subject_kind)] = zlink::clock_t ().now_ms ();
+        _node->_summary_last_changed_ms = zlink::clock_t ().now_ms ();
+    }
+
     emit_delivery_ready_changed_event (subject_.subject.c_str (),
                                        subject_.subject_kind, 1,
                                        endpoint_value.empty ()
@@ -1170,6 +1196,13 @@ void spot_sub_t::mark_subject_lost (const subject_descriptor_t &subject_,
     }
     if (!erased)
         return;
+
+    if (_node) {
+        scoped_lock_t node_lock (_node->_sync);
+        _node->_subject_last_changed_ms[make_subject_key (
+          subject_.subject, subject_.subject_kind)] = zlink::clock_t ().now_ms ();
+        _node->_summary_last_changed_ms = zlink::clock_t ().now_ms ();
+    }
 
     emit_delivery_ready_changed_event (subject_.subject.c_str (),
                                        subject_.subject_kind, 0, endpoint_);

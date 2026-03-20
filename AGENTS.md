@@ -81,6 +81,10 @@ The following rules apply to **all** test categories: unit tests (`unittests/`),
 - `AGENTS.md` is the single source of truth for repo guidelines.
 - Agents must address the user as `팀장님`.
 - Agents must use `core/build/` as the only build directory for configure, build, test, perf, and bench commands in this repository.
+- When the user asks for a `core` bug fix, agents must limit code changes to `core/` library and `core/tests/` regression coverage. Do not modify `core/perf/` or `core/bench/` unless the user explicitly asks for perf/bench code changes.
+- Do not use ad-hoc repro programs, `/tmp` experiments, or one-off binaries to justify a fix. Reproduction must be added as a repository regression test under `core/tests/` first, then used to validate the `core` fix.
+- For perf or bench failures, first determine whether the same issue reproduces with a `core/tests/` regression. If it does, fix the `core` bug and keep the regression test. If it does not, treat it as a perf/bench usage bug and report it separately instead of modifying `core`.
+- Do not modify perf/bench helpers, runners, or wrappers as a workaround for a suspected `core` bug. Perf and bench are verification surfaces unless the user explicitly asks to change them.
 - If any agent-specific files are added in the future, they must reference `AGENTS.md` and instruct contributors to update `AGENTS.md` when guidelines change.
 - When the user says `posd` in the context of design or refactoring, interpret it as John Ousterhout's *A Philosophy of Software Design* and apply that book's principles.
 - Even when `posd` is not explicitly mentioned, agents should follow the repository's POSD-based design philosophy when reviewing, designing, implementing, or refactoring code and APIs.

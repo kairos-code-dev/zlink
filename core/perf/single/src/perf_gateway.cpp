@@ -181,21 +181,49 @@ gateway_server_state_t *g_server_state = NULL;
 
 struct gateway_ready_monitor_t
 {
-    gateway_ready_monitor_t () : gateway (NULL), monitor (NULL) {}
+    gateway_ready_monitor_t () :
+        gateway (NULL),
+        monitor (NULL),
+        send_ready (false),
+        error_code (0)
+    {
+    }
 
     void *gateway;
     void *monitor;
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool send_ready;
+    int error_code;
 };
 
-bool read_gateway_monitor_snapshot (void *gateway_,
-                                    void *monitor_,
-                                    zlink_monitor_snapshot_t *out_)
+void gateway_ready_monitor_handler (const zlink_service_event_t *event_,
+                                    void *userdata_)
 {
-    if (!gateway_ || !monitor_ || !out_)
-        return false;
+    gateway_ready_monitor_t *monitor =
+      static_cast<gateway_ready_monitor_t *> (userdata_);
+    if (!monitor || !event_)
+        return;
 
-    memset (out_, 0, sizeof (*out_));
-    return zlink_monitor_snapshot (monitor_, out_) == 0;
+    {
+        std::lock_guard<std::mutex> lock (monitor->mutex);
+        switch (event_->event_type) {
+            case ZLINK_GATEWAY_SEND_READY_CHANGED:
+                monitor->send_ready = event_->value > 0;
+                break;
+
+            case ZLINK_GATEWAY_MONITOR_EVENT_ERROR:
+                if (monitor->error_code == 0) {
+                    monitor->error_code =
+                      event_->error_code != 0 ? event_->error_code : EIO;
+                }
+                break;
+
+            default:
+                break;
+        }
+    }
+    monitor->cv.notify_all ();
 }
 
 bool open_gateway_ready_monitor (void *gateway_,
@@ -211,7 +239,10 @@ bool open_gateway_ready_monitor (void *gateway_,
                   | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
     out_->gateway = gateway_;
     out_->monitor = zlink_service_monitor_open (gateway_, &opts);
-    return out_->monitor != NULL;
+    return out_->monitor != NULL
+           && zlink_service_monitor_handler (
+                out_->monitor, &gateway_ready_monitor_handler, out_)
+                == 0;
 }
 
 bool wait_gateway_ready (gateway_ready_monitor_t *monitor_,
@@ -223,31 +254,19 @@ bool wait_gateway_ready (gateway_ready_monitor_t *monitor_,
     if (!monitor_ || !monitor_->gateway || !monitor_->monitor)
         return false;
 
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
-    int stable_ready_samples = 0;
-    const int required_stable_ready_samples = 5;
-    while (std::chrono::steady_clock::now () < deadline) {
-        zlink_monitor_snapshot_t snapshot;
-        if (read_gateway_monitor_snapshot (
-              monitor_->gateway, monitor_->monitor, &snapshot)
-            && snapshot.ready_peer_count >= expected_
-            && (snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0) {
-            ++stable_ready_samples;
-            if (stable_ready_samples >= required_stable_ready_samples)
-                return true;
-        } else {
-            stable_ready_samples = 0;
-        }
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
-    }
+    std::unique_lock<std::mutex> lock (monitor_->mutex);
+    if (monitor_->error_code != 0)
+        return false;
+    if (monitor_->send_ready)
+        return true;
 
-    zlink_monitor_snapshot_t snapshot;
-    return read_gateway_monitor_snapshot (
-             monitor_->gateway, monitor_->monitor, &snapshot)
-           && snapshot.ready_peer_count >= expected_
-           && (snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0;
+    const bool signaled = monitor_->cv.wait_for (
+      lock,
+      std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1),
+      [monitor_] () {
+          return monitor_->error_code != 0 || monitor_->send_ready;
+      });
+    return signaled && monitor_->error_code == 0 && monitor_->send_ready;
 }
 
 bool wait_gateway_send_ready_until (gateway_ready_monitor_t *monitor_,
@@ -260,22 +279,23 @@ bool wait_gateway_send_ready_until (gateway_ready_monitor_t *monitor_,
     if (!monitor_ || !monitor_->gateway || !monitor_->monitor)
         return false;
 
+    std::unique_lock<std::mutex> lock (monitor_->mutex);
+    if (monitor_->error_code != 0)
+        return false;
+    if (monitor_->send_ready)
+        return true;
+
     while (std::chrono::steady_clock::now () < deadline_) {
-        zlink_monitor_snapshot_t snapshot;
-        if (read_gateway_monitor_snapshot (
-              monitor_->gateway, monitor_->monitor, &snapshot)
-            && snapshot.ready_peer_count >= expected_
-            && (snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0) {
-            return true;
+        if (monitor_->cv.wait_until (
+              lock, deadline_,
+              [monitor_] () {
+                  return monitor_->error_code != 0 || monitor_->send_ready;
+              })) {
+            return monitor_->error_code == 0 && monitor_->send_ready;
         }
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
 
-    zlink_monitor_snapshot_t snapshot;
-    return read_gateway_monitor_snapshot (
-             monitor_->gateway, monitor_->monitor, &snapshot)
-           && snapshot.ready_peer_count >= expected_
-           && (snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0;
+    return monitor_->error_code == 0 && monitor_->send_ready;
 }
 
 void close_gateway_ready_monitor (gateway_ready_monitor_t *monitor_)

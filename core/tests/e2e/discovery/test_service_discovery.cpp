@@ -3,8 +3,6 @@
 #include "../../testutil_unity.hpp"
 #include "../../testutil.hpp"
 
-#include "services/discovery/discovery.hpp"
-
 #include <chrono>
 #include <errno.h>
 #include <stdlib.h>
@@ -52,25 +50,6 @@ void discard_gateway_message (const zlink_routing_id_t *,
         zlink_msg_close (&parts_[i]);
 }
 
-bool wait_for_registry_uplink (void *discovery_, int timeout_ms_)
-{
-    zlink::discovery_t *discovery =
-      static_cast<zlink::discovery_t *> (discovery_);
-    if (!discovery)
-        return false;
-
-    const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (timeout_ms_);
-    while (std::chrono::steady_clock::now () < deadline) {
-        std::string uplink;
-        if (discovery->latest_registry_uplink (&uplink) && !uplink.empty ())
-            return true;
-        msleep (10);
-    }
-    return false;
-}
-
 void *create_gateway_attached (void *ctx_,
                                void *discovery_,
                                const char *service_name_,
@@ -102,6 +81,29 @@ void *create_gateway_attached (void *ctx_,
         return NULL;
     }
     return gateway;
+}
+
+void *create_gateway_attached_with_retry (void *ctx_,
+                                          void *discovery_,
+                                          const char *service_name_,
+                                          const char *routing_id_,
+                                          zlink_socket_msg_handler_fn handler_,
+                                          int timeout_ms_)
+{
+    const int step_ms = 10;
+    const int attempts = timeout_ms_ / step_ms;
+    for (int i = 0; i < attempts; ++i) {
+        void *gateway = create_gateway_attached (ctx_, discovery_, service_name_,
+                                                routing_id_, handler_);
+        if (gateway)
+            return gateway;
+        if (errno != EAGAIN && errno != ENOENT)
+            break;
+        msleep (step_ms);
+    }
+
+    return create_gateway_attached (ctx_, discovery_, service_name_, routing_id_,
+                                    handler_);
 }
 
 void setup_registry (void *ctx_,
@@ -246,11 +248,10 @@ void init_gateway_server (gateway_server_t *server_,
     step_log ("gateway_server: connect registry");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       server_->discovery, registry_ep_));
-    TEST_ASSERT_TRUE (wait_for_registry_uplink (server_->discovery, 2000));
     step_log ("gateway_server: create gateway");
-    server_->gateway =
-      create_gateway_attached (ctx_, server_->discovery, service_name_, routing_id_,
-                         &discard_gateway_message);
+    server_->gateway = create_gateway_attached_with_retry (
+      ctx_, server_->discovery, service_name_, routing_id_,
+      &discard_gateway_message, 2000);
     TEST_ASSERT_NOT_NULL (server_->gateway);
     step_log ("gateway_server: bind gateway");
     bind_gateway_with_port_seed (server_->gateway, bind_seed_, endpoint_out_,

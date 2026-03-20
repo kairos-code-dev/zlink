@@ -48,19 +48,19 @@ stream_route_probe_t *g_stream_route_probe = NULL;
 void configure_stream_socket (void *socket_)
 {
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_LINGER, &kLingerMs, sizeof (kLingerMs)));
+      zlink_set_option (socket_, ZLINK_OPT_LINGER, &kLingerMs, sizeof (kLingerMs)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_SNDHWM, &kStreamHwm, sizeof (kStreamHwm)));
+      zlink_set_option (socket_, ZLINK_OPT_SNDHWM, &kStreamHwm, sizeof (kStreamHwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_RCVHWM, &kStreamHwm, sizeof (kStreamHwm)));
+      zlink_set_option (socket_, ZLINK_OPT_RCVHWM, &kStreamHwm, sizeof (kStreamHwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_SNDBUF, &kSocketBufBytes,
+      zlink_set_option (socket_, ZLINK_OPT_SNDBUF, &kSocketBufBytes,
                         sizeof (kSocketBufBytes)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_RCVBUF, &kSocketBufBytes,
+      zlink_set_option (socket_, ZLINK_OPT_RCVBUF, &kSocketBufBytes,
                         sizeof (kSocketBufBytes)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_SNDTIMEO, &kSendTimeoutMs,
+      zlink_set_option (socket_, ZLINK_OPT_SNDTIMEO, &kSendTimeoutMs,
                         sizeof (kSendTimeoutMs)));
 }
 
@@ -309,7 +309,7 @@ void test_stream_queue_reopens_after_peer_reads ()
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_SNDTIMEO, &kWakeupSendTimeoutMs,
+      zlink_set_option (server, ZLINK_OPT_SNDTIMEO, &kWakeupSendTimeoutMs,
                         sizeof (kWakeupSendTimeoutMs)));
 
     char endpoint[MAX_SOCKET_STRING];
@@ -326,7 +326,7 @@ void test_stream_queue_reopens_after_peer_reads ()
 
     std::vector<unsigned char> payload (kPayloadSize, 0x33);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_SNDTIMEO, &kProbeTimeoutMs,
+      zlink_set_option (server, ZLINK_OPT_SNDTIMEO, &kProbeTimeoutMs,
                         sizeof (kProbeTimeoutMs)));
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_stream_send (server, &rid, &payload[0], kPayloadSize, 0));

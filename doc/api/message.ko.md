@@ -220,22 +220,41 @@ size_t zlink_msg_size (const zlink_msg_t *msg_);
 
 ---
 
-### zlink_msg_is_shared
+### zlink_msg_refcnt
 
-메시지 스토리지가 공유 상태인지 반환합니다.
+메시지 스토리지의 reference count를 반환합니다.
 
 ```c
-int zlink_msg_is_shared (const zlink_msg_t *msg_);
+int zlink_msg_refcnt (const zlink_msg_t *msg_);
 ```
 
-`zlink_msg_copy()`를 통해 여러 `zlink_msg_t` 인스턴스가 동일한 스토리지를
-참조하고 있으면 1을 반환하고, 그렇지 않으면 0을 반환합니다.
+reference-counted large/zero-copy storage면 현재 internal reference count를
+반환합니다. inline storage나 borrowed constant storage처럼 internal
+reference counting 대상이 아닌 메시지 종류는 1을 반환합니다.
 
-**반환값:** 공유 상태이면 1, 아니면 0.
+내부 reference count는 atomic 연산으로 관리됩니다. `zlink_msg_copy()`는
+count를 atomic으로 증가시키고, `zlink_msg_close()`는 atomic으로 감소시킵니다.
+따라서 같은 underlying storage를 공유하는 서로 다른 `zlink_msg_t` handle을
+서로 다른 스레드에서 copy/close하는 것은 안전합니다.
 
-**스레드 안전성:** 스레드 안전하지 않습니다.
+`zlink_msg_refcnt()`는 atomic counter의 relaxed read를 수행합니다.
+반환값은 시점 스냅샷이며, 호출자가 값을 확인하는 시점에 다른 스레드가
+copy/close로 이미 값을 변경했을 수 있습니다. 따라서 이 함수는 진단이나
+assertion 용도에 적합하며, 제어 판단에는 적합하지 않습니다.
 
-**참고:** `zlink_msg_copy`
+단일 `zlink_msg_t` 인스턴스를 여러 스레드에서 동시에 접근하면 안 됩니다.
+동시 접근이 필요하면 `zlink_msg_copy()`로 별도 handle을 만들어야 합니다.
+
+**반환값:** 현재 storage reference count. internal reference counting 대상이
+아니면 1.
+
+**스레드 안전성:** underlying reference count는 atomic입니다. 같은 storage를
+공유하는 *서로 다른* `zlink_msg_t` handle이 다른 스레드에서 copy/close되는
+동안 이 함수를 호출하는 것은 안전합니다. 단, *같은* `zlink_msg_t` 인스턴스에
+대해 이 함수와 다른 `zlink_msg_*` 함수를 여러 스레드에서 동시에 호출하는 것은
+안전하지 않습니다.
+
+**참고:** `zlink_msg_copy`, `zlink_msg_close`
 
 ---
 
@@ -258,7 +277,7 @@ const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_);
 
 **스레드 안전성:** 스레드 안전하지 않습니다.
 
-**참고:** `zlink_msg_is_shared`
+**참고:** `zlink_msg_refcnt`
 
 ---
 

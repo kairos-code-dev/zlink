@@ -7,15 +7,44 @@
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
 
-#ifdef ZLINK_DISCONNECT_MSG
-#define LAST_OPTION ZLINK_DISCONNECT_MSG
-#else
-#define LAST_OPTION ZLINK_BINDTODEVICE
-#endif
-
 extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
 {
-    int option;
+    const zlink_option_t options[] = {
+      ZLINK_OPT_AFFINITY,
+      ZLINK_OPT_RATE,
+      ZLINK_OPT_RECOVERY_IVL,
+      ZLINK_OPT_SNDBUF,
+      ZLINK_OPT_RCVBUF,
+      ZLINK_OPT_LINGER,
+      ZLINK_OPT_RECONNECT_IVL,
+      ZLINK_OPT_BACKLOG,
+      ZLINK_OPT_RECONNECT_IVL_MAX,
+      ZLINK_OPT_MAXMSGSIZE,
+      ZLINK_OPT_SNDHWM,
+      ZLINK_OPT_RCVHWM,
+      ZLINK_OPT_MULTICAST_HOPS,
+      ZLINK_OPT_RCVTIMEO,
+      ZLINK_OPT_SNDTIMEO,
+      ZLINK_OPT_TCP_KEEPALIVE,
+      ZLINK_OPT_TCP_KEEPALIVE_CNT,
+      ZLINK_OPT_TCP_KEEPALIVE_IDLE,
+      ZLINK_OPT_TCP_KEEPALIVE_INTVL,
+      ZLINK_OPT_IMMEDIATE,
+      ZLINK_OPT_IPV6,
+      ZLINK_OPT_CONFLATE,
+      ZLINK_OPT_TOS,
+      ZLINK_OPT_HANDSHAKE_IVL,
+      ZLINK_OPT_BLOCKY,
+      ZLINK_OPT_INVERT_MATCHING,
+      ZLINK_OPT_HEARTBEAT_IVL,
+      ZLINK_OPT_HEARTBEAT_TTL,
+      ZLINK_OPT_HEARTBEAT_TIMEOUT,
+      ZLINK_OPT_CONNECT_TIMEOUT,
+      ZLINK_OPT_TCP_MAXRT,
+      ZLINK_OPT_MULTICAST_MAXTPDU,
+      ZLINK_OPT_BINDTODEVICE,
+      ZLINK_OPT_ZMP_METADATA,
+      ZLINK_OPT_TCP_NODELAY};
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
     void *server = zlink_socket (ctx, ZLINK_XPUB);
@@ -24,12 +53,12 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
     if (!size)
         return 0;
 
-    for (option = ZLINK_AFFINITY; option <= LAST_OPTION; ++option) {
+    for (size_t i = 0; i < sizeof (options) / sizeof (options[0]); ++i) {
         uint8_t out[8192];
         size_t out_size = 8192;
 
-        zlink_setsockopt (server, option, data, size);
-        zlink_getsockopt (server, option, out, &out_size);
+        zlink_set_option (server, options[i], data, size);
+        zlink_get_option (server, options[i], out, &out_size);
     }
 
     zlink_close (server);

@@ -188,8 +188,8 @@ topic. `source_rid_out_`, `parts_out_`, and `topic_id_out_` are filled on
 success. Pass `ZLINK_DONTWAIT` in `flags_` for non-blocking operation.
 Returns `EBUSY` in callback model.
 
-Use `zlink_spot_monitor_open()` plus `zlink_monitor_snapshot()` for aggregate
-ready-peer and queue inspection.
+Use `zlink_service_monitor_open()` plus `zlink_monitor_snapshot()` for
+aggregate ready-peer and queue inspection.
 
 ## Callback contract
 
@@ -223,28 +223,206 @@ typedef void (*zlink_subscribe_handler_fn)(const zlink_routing_id_t *source_rid,
 
 ## Monitoring
 
-SPOT monitoring uses unified public entrypoints for both Spot and SpotNode:
+SPOT monitoring uses the unified `zlink_service_monitor_open()` entrypoint
+for both Spot and SpotNode handles:
 
 ```c
-void *zlink_spot_monitor_open(void *spot,
-                              zlink_spot_role_t role,
-                              zlink_spot_monitor_event_mask_t events,
-                              zlink_service_monitor_handler_fn handler,
-                              void *userdata);
-
-void *zlink_spot_node_monitor_open(void *node,
-                                   zlink_spot_role_t role,
-                                   zlink_spot_monitor_event_mask_t events,
-                                   zlink_service_monitor_handler_fn handler,
-                                   void *userdata);
+void *zlink_service_monitor_open(void *target,
+                                 const zlink_service_monitor_open_options_t *options);
 ```
 
-- `role` is `ZLINK_SPOT_ROLE_PUB` or `ZLINK_SPOT_ROLE_SUB`.
-- `zlink_spot_monitor_open()` monitors a unified Spot facade.
-- `zlink_spot_node_monitor_open()` monitors the node-owned default pub/sub.
+- `target` is a unified Spot handle or a SpotNode handle. The target kind
+  (Spot vs SpotNode) is determined automatically from the handle.
+- The `role` parameter from the previous per-type APIs is removed.
+- `options->events` selects the event mask to subscribe to.
+- Close the returned monitor handle with `zlink_monitor_close()`.
 - Split `zlink_spot_pub_monitor_open()` and `zlink_spot_sub_monitor_open()` are
   not public APIs.
 - See [events.md](events.md) for the event catalog and readiness semantics.
+
+## Snapshot / Introspection
+
+SpotNode provides lock-free, point-in-time snapshot APIs for operational
+health monitoring and diagnostics. These complement the event-driven monitor
+by offering pull-style inspection.
+
+### SpotNode Status Snapshot
+
+```c
+int zlink_spot_node_status_snapshot(void *node,
+                                    zlink_spot_node_status_t *out);
+```
+
+Returns a single-row operational health summary of the SpotNode.
+
+#### zlink_spot_node_status_t
+
+```c
+typedef struct zlink_spot_node_status_t
+{
+    char service_name[256];
+    char local_endpoint[256];
+    zlink_routing_id_t node_routing_id;
+    zlink_spot_node_state_t state;
+    uint32_t configured_peer_count;
+    uint32_t active_peer_count;
+    uint32_t connected_peer_count;
+    uint32_t subject_count;
+    uint32_t ready_subject_count;
+    int32_t last_error;
+    uint64_t last_changed_ms;
+} zlink_spot_node_status_t;
+```
+
+| Field | Description |
+|-------|-------------|
+| `service_name` | Null-terminated service name fixed at construction. |
+| `local_endpoint` | Null-terminated local bind endpoint. |
+| `node_routing_id` | Routing identity of this SpotNode. |
+| `state` | `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, or `ERROR`. |
+| `configured_peer_count` | Number of peers configured (manual + discovery). |
+| `active_peer_count` | Number of peers actively connecting or connected. |
+| `connected_peer_count` | Number of peers currently connected. |
+| `subject_count` | Total subscribed subjects. |
+| `ready_subject_count` | Subjects with at least one ready peer. |
+| `last_error` | Last recorded error code, or 0. |
+| `last_changed_ms` | Epoch ms of the last state change. |
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+---
+
+### SpotNode Peers Snapshot / Query
+
+```c
+int zlink_spot_node_peers_snapshot(void *node,
+                                   zlink_spot_node_peer_entry_t *entries,
+                                   size_t *count);
+
+int zlink_spot_node_peers_query(void *node,
+                                const zlink_spot_node_peer_filter_t *filter,
+                                zlink_spot_node_peer_entry_t *entries,
+                                size_t *count);
+```
+
+`peers_snapshot` returns all peers. `peers_query` supports filtering by
+endpoint, source, or state.
+
+**Buffer convention:** Pass `entries = NULL` to query the required count.
+Provide a caller-allocated buffer on the next call. If the buffer is too
+small, the call returns `-1` with `errno = ENOBUFS` and `*count` set to the
+needed capacity.
+
+Results are ordered by `peer_endpoint` ascending.
+
+#### zlink_spot_node_peer_entry_t
+
+```c
+typedef struct zlink_spot_node_peer_entry_t
+{
+    char service_name[256];
+    char local_endpoint[256];
+    char peer_endpoint[256];
+    zlink_spot_peer_source_t source;
+    zlink_spot_peer_state_t state;
+    uint64_t connected_since_ms;
+    uint64_t last_changed_ms;
+} zlink_spot_node_peer_entry_t;
+```
+
+| Field | Description |
+|-------|-------------|
+| `service_name` | Null-terminated service name. |
+| `local_endpoint` | Null-terminated local endpoint. |
+| `peer_endpoint` | Null-terminated peer endpoint. |
+| `source` | `MANUAL`, `DISCOVERY`, or `MIXED`. |
+| `state` | `CONFIGURED`, `CONNECTING`, or `CONNECTED`. |
+| `connected_since_ms` | Epoch ms when the peer connected (0 if not connected). |
+| `last_changed_ms` | Epoch ms of the last state change for this peer. |
+
+#### zlink_spot_node_peer_filter_t
+
+```c
+typedef struct zlink_spot_node_peer_filter_t
+{
+    char peer_endpoint[256];
+    zlink_spot_peer_source_t source;
+    zlink_spot_peer_state_t state;
+} zlink_spot_node_peer_filter_t;
+```
+
+Set fields to non-zero values to filter. Zero-valued fields are wildcards.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+---
+
+### SpotNode Subjects Snapshot
+
+```c
+int zlink_spot_node_subjects_snapshot(void *node,
+                                      const zlink_spot_node_subject_filter_t *filter,
+                                      zlink_spot_node_subject_entry_t *entries,
+                                      size_t *count);
+```
+
+Returns SUB subject readiness information. v1 supports `ZLINK_SPOT_ROLE_SUB`
+only; calling with PUB role in the filter returns `ENOTSUP`.
+
+**Buffer convention:** Same as peers snapshot -- pass `entries = NULL` for
+count query; `ENOBUFS` with needed count if the buffer is too small.
+
+#### zlink_spot_node_subject_entry_t
+
+```c
+typedef struct zlink_spot_node_subject_entry_t
+{
+    zlink_spot_role_t role;
+    char subject[256];
+    uint32_t subject_kind;
+    uint32_t ready_peer_count;
+    uint32_t active_peer_count;
+    uint64_t last_changed_ms;
+} zlink_spot_node_subject_entry_t;
+```
+
+| Field | Description |
+|-------|-------------|
+| `role` | `ZLINK_SPOT_ROLE_SUB` (v1 only). |
+| `subject` | Null-terminated subject string. |
+| `subject_kind` | Subject kind identifier. |
+| `ready_peer_count` | Peers with this subject in ready state. |
+| `active_peer_count` | Peers actively serving this subject. |
+| `last_changed_ms` | Epoch ms of the last readiness change. |
+
+#### zlink_spot_node_subject_filter_t
+
+```c
+typedef struct zlink_spot_node_subject_filter_t
+{
+    zlink_spot_role_t role;
+    char subject[256];
+    uint32_t subject_kind;
+} zlink_spot_node_subject_filter_t;
+```
+
+Set fields to non-zero values to filter. Zero-valued fields are wildcards.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+---
+
+### Recommended monitoring flow
+
+1. `zlink_spot_node_status_snapshot()` -- check overall health first.
+2. `zlink_spot_node_peers_snapshot()` -- inspect peer connectivity.
+3. `zlink_spot_node_subjects_snapshot()` -- verify subject readiness.
 
 ## Removed public APIs
 

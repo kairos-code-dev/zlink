@@ -21,23 +21,22 @@ void test_router_mandatory_hwm ()
 
     // Configure router socket to mandatory routing and set HWM and linger
     int mandatory = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (router, ZLINK_ROUTER_MANDATORY,
-                                               &mandatory, sizeof (mandatory)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
     int sndhwm = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router, ZLINK_SNDHWM, &sndhwm, sizeof (sndhwm)));
+      zlink_set_option (router, ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm)));
     int linger = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (router, ZLINK_LINGER, &linger, sizeof (linger)));
+      zlink_set_option (router, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
 
     bind_loopback_ipv4 (router, my_endpoint, sizeof my_endpoint);
 
     //  Create dealer called "X" and connect it to our router, configure HWM
     void *dealer = test_context_socket (ZLINK_DEALER);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (dealer, ZLINK_ROUTING_ID, "X", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "X", 1));
     int rcvhwm = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (dealer, ZLINK_RCVHWM, &rcvhwm, sizeof (rcvhwm)));
+      zlink_set_option (dealer, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, my_endpoint));
 

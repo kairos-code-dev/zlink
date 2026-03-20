@@ -19,16 +19,16 @@ void test_zmp_ws_pair_message ()
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "ws://127.0.0.1:*"));
 
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len));
+      zlink_get_option (server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
@@ -51,33 +51,32 @@ void test_zmp_wss_pair_message ()
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     const int trust_system = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      server, ZLINK_TLS_CERT, files.server_cert.c_str (),
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server, ZLINK_OPT_TLS_CERT, files.server_cert.c_str (),
       files.server_cert.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_TLS_KEY, files.server_key.c_str (),
-                      files.server_key.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server, ZLINK_OPT_TLS_KEY, files.server_key.c_str (),
+      files.server_key.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
 
     const char hostname[] = "localhost";
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_TLS_HOSTNAME, hostname, strlen (hostname)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_TLS_HOSTNAME, hostname, strlen (hostname)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "wss://127.0.0.1:*"));
 
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (server, ZLINK_SOCKOPT_LAST_ENDPOINT, endpoint, &endpoint_len));
+      zlink_get_option (server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 

@@ -15,8 +15,6 @@ return pattern switch
     "DEALER_DEALER" => PerfDealerDealer.RunDealerDealer(transport, size),
     "DEALER_ROUTER" => PerfDealerRouter.RunDealerRouter(transport, size),
     "ROUTER_ROUTER" => PerfRouterRouter.RunRouterRouter(transport, size),
-    "ROUTER_ROUTER_POLL" => PerfRouterRouterPoll.RunRouterRouterPoll(transport,
-        size),
     "GATEWAY" => PerfGateway.RunGateway(transport, size),
     "SPOT" => PerfSpot.RunSpot(transport, size),
     _ => 1,

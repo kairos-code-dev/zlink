@@ -8,12 +8,11 @@ using static PerfRunner;
 internal static class PerfRouterRouter
 {
     internal static int RunRouterRouter(string transport, int size)
-      => RunRouterRouterInternal(transport, size, false);
+      => RunRouterRouterInternal(transport, size);
 
-    internal static int RunRouterRouterInternal(string transport, int size,
-        bool usePoll)
+    internal static int RunRouterRouterInternal(string transport, int size)
     {
-        string pattern = usePoll ? "ROUTER_ROUTER_POLL" : "ROUTER_ROUTER";
+        string pattern = "ROUTER_ROUTER";
         int warmupCount = ResolveSingleWarmupCount(pattern);
         int settleMs = SingleSettleTimeMs;
         int durationSeconds = ParseEnv("PERF_SINGLE_DURATION_SECONDS", 5);
@@ -48,7 +47,7 @@ internal static class PerfRouterRouter
             Array.Fill(payload, (byte)'a');
 
             if (!RunPhase(router1, router2, payload, payloadSize, warmupCount, 0,
-                    recvTimeoutMs, latCount: 0, usePoll, out long warmupReceived,
+                    recvTimeoutMs, latCount: 0, false, out long warmupReceived,
                     out _)
                 || warmupReceived < warmupCount)
             {
@@ -58,7 +57,7 @@ internal static class PerfRouterRouter
             Thread.Sleep(settleMs);
 
             if (!RunPhase(router1, router2, payload, payloadSize, 0,
-                    durationSeconds, recvTimeoutMs, latCount, usePoll,
+                    durationSeconds, recvTimeoutMs, latCount, false,
                     out long received, out var latencySamples))
             {
                 return 2;

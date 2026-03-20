@@ -22,9 +22,12 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_thread_safe_contract_policy
   ${INTEGRATION_TEST_ROOT}/test_thread_safe_scaling_contract
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_enhanced
+  ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_socket_contract
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_perf_contract
+  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_pubsub_benchmark_process
+  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_spot_benchmark_process
+  ${INTEGRATION_TEST_ROOT}/monitoring/test_single_pair_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_service_contract
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_stream_contract
   ${INTEGRATION_TEST_ROOT}/test_monitor_with_handler
   ${INTEGRATION_TEST_ROOT}/test_socket_with_handler
   ${INTEGRATION_TEST_ROOT}/test_connect_resolve
@@ -34,6 +37,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_capabilities
   ${INTEGRATION_TEST_ROOT}/test_socket_null
   ${INTEGRATION_TEST_ROOT}/test_heartbeats
+  ${INTEGRATION_TEST_ROOT}/test_multi_socket_contract_regressions
   ${INTEGRATION_TEST_ROOT}/test_reconnect_ivl
   ${INTEGRATION_TEST_ROOT}/test_reconnect_options
   ${INTEGRATION_TEST_ROOT}/test_pubsub_filter_xpub
@@ -366,39 +370,47 @@ if(TARGET test_monitor_service_contract)
       TIMEOUT 120
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-
-  add_test(
-    NAME test_monitor_service_contract_gateway
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_gateway_send_ready_changed_implies_first_request_reply
-            $<TARGET_FILE:test_monitor_service_contract>)
-  add_test(
-    NAME test_monitor_service_contract_spot_single
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_delivery_ready_changed_implies_first_publish_delivery
-            $<TARGET_FILE:test_monitor_service_contract>)
-  add_test(
-    NAME test_monitor_service_contract_spot_multi
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_multi_delivery_ready_changed_implies_first_publish_delivery
-            $<TARGET_FILE:test_monitor_service_contract>)
-
-  set_tests_properties(
-    test_monitor_service_contract_gateway
-    test_monitor_service_contract_spot_single
-    PROPERTIES
-      TIMEOUT 120
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-  set_tests_properties(
-    test_monitor_service_contract_spot_multi
-    PROPERTIES
-      TIMEOUT 120
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+endif()
+if(TARGET test_monitor_socket_contract)
+  set_tests_properties(test_monitor_socket_contract PROPERTIES TIMEOUT 60)
 endif()
 if(TARGET test_monitor_perf_contract)
   set_tests_properties(test_monitor_perf_contract PROPERTIES TIMEOUT 30)
+endif()
+if(TARGET test_multi_pubsub_benchmark_process)
+  add_dependencies(
+    test_multi_pubsub_benchmark_process
+    comp_src_pubsub_server
+    comp_src_pubsub_client)
+  set_tests_properties(
+    test_multi_pubsub_benchmark_process
+    PROPERTIES
+      TIMEOUT 60
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+endif()
+if(TARGET test_multi_spot_benchmark_process)
+  add_dependencies(
+    test_multi_spot_benchmark_process
+    comp_src_spot_server
+    comp_src_spot_client)
+  set_tests_properties(
+    test_multi_spot_benchmark_process
+    PROPERTIES
+      TIMEOUT 60
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+endif()
+if(TARGET test_single_pair_benchmark_process)
+  add_dependencies(
+    test_single_pair_benchmark_process
+    perf_pair)
+  set_tests_properties(
+    test_single_pair_benchmark_process
+    PROPERTIES
+      TIMEOUT 30
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_stream_socket)
   set_tests_properties(test_stream_socket PROPERTIES TIMEOUT 60)
@@ -439,6 +451,11 @@ if(TARGET test_service_introspection)
     NAME test_service_introspection_gateway_peer_snapshot
     COMMAND ${CMAKE_COMMAND} -E env
             ZLINK_TEST_CASE=test_registry_gateway_peer_snapshot_and_remote_query
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
+    NAME test_service_introspection_gateway_registry_status
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_gateway_and_registry_status_snapshots
             $<TARGET_FILE:test_service_introspection>)
   add_test(
     NAME test_service_introspection_closed_event
@@ -636,7 +653,8 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_late_connect_replays_existing_subscription
     test_spot_callback_model_receive_regression
     test_spot_recv_model_receive_regression
-    test_spot_unified_spot_basic)
+    test_spot_unified_spot_basic
+    test_spot_node_snapshot_status_peers_subjects)
 
 set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_pub_sub_options=test_spot_pub_sub_options_and_routing_ids
@@ -644,7 +662,8 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_late_connect=test_spot_late_connect_replays_existing_subscription
     test_spot_service_introspection_callback_recv_regression=test_spot_callback_model_receive_regression
     test_spot_service_introspection_recv_model_regression=test_spot_recv_model_receive_regression
-    test_spot_service_introspection_unified_spot=test_spot_unified_spot_basic)
+    test_spot_service_introspection_unified_spot=test_spot_unified_spot_basic
+    test_spot_service_introspection_snapshots=test_spot_node_snapshot_status_peers_subjects)
 
 set(SPOT_PUBSUB_CASES
     test_spot_peer_ipc
@@ -736,6 +755,7 @@ set(SERVICE_INTROSPECTION_CASES
     test_gateway_receiver_monitors_and_monitor_poller
     test_registry_topology_snapshot_and_remote_query
     test_registry_gateway_peer_snapshot_and_remote_query
+    test_gateway_and_registry_status_snapshots
     test_monitor_closed_event_on_service_destroy
     test_discovery_monitor_reports_service_up_then_down_in_order
     test_discovery_monitor_callback_parent_destroy_returns_ebusy
@@ -754,6 +774,7 @@ set(SERVICE_INTROSPECTION_TEST_SPECS
     test_service_introspection_gateway_monitors=test_gateway_receiver_monitors_and_monitor_poller
     test_service_introspection_topology_snapshot=test_registry_topology_snapshot_and_remote_query
     test_service_introspection_gateway_peer_snapshot=test_registry_gateway_peer_snapshot_and_remote_query
+    test_service_introspection_gateway_registry_status=test_gateway_and_registry_status_snapshots
     test_service_introspection_closed_event=test_monitor_closed_event_on_service_destroy
     test_service_introspection_discovery_ordering=test_discovery_monitor_reports_service_up_then_down_in_order
     test_service_introspection_discovery_self_close=test_discovery_monitor_callback_parent_destroy_returns_ebusy

@@ -50,7 +50,7 @@ static void client_task (void *db_)
     TEST_ASSERT_NOT_NULL (endpoint);
     int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (endpoint, ZLINK_LINGER, &linger, sizeof (linger)));
+      zlink_set_option (endpoint, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     char endpoint_source[256];
     snprintf (endpoint_source, 256 * sizeof (char), "inproc://endpoint%d",
               databag->id);
@@ -64,9 +64,9 @@ static void client_task (void *db_)
     // Control socket receives terminate command from main over inproc
     void *control = zlink_socket (control_context, ZLINK_SUB);
     TEST_ASSERT_NOT_NULL (control);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (control, ZLINK_SUBSCRIBE, "", 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (control, ""));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (control, ZLINK_LINGER, &linger, sizeof (linger)));
+      zlink_set_option (control, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (control, "inproc://control"));
 
     char content[CONTENT_SIZE_MAX] = {};
@@ -74,12 +74,13 @@ static void client_task (void *db_)
     char routing_id[ROUTING_ID_SIZE] = {};
     snprintf (routing_id, ROUTING_ID_SIZE * sizeof (char), "%04X-%04X",
               rand () % 0xFFFF, rand () % 0xFFFF);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_ROUTING_ID, routing_id,
-      ROUTING_ID_SIZE)); // includes '\0' as an helper for printf
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (
+        client, routing_id,
+        ROUTING_ID_SIZE)); // includes '\0' as an helper for printf
     linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_LINGER, &linger, sizeof (linger)));
+      zlink_set_option (client, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, my_endpoint));
 
     zlink_pollitem_t items[] = {{client, 0, ZLINK_POLLIN, 0},
@@ -166,14 +167,14 @@ void server_task (void * /*unused_*/)
     TEST_ASSERT_NOT_NULL (frontend);
     int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (frontend, ZLINK_LINGER, &linger, sizeof (linger)));
+      zlink_set_option (frontend, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     bind_loopback_ipv4 (frontend, my_endpoint, sizeof my_endpoint);
 
     // Backend socket talks to workers over inproc
     void *backend = zlink_socket (get_test_context (), ZLINK_DEALER);
     TEST_ASSERT_NOT_NULL (backend);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (backend, ZLINK_LINGER, &linger, sizeof (linger)));
+      zlink_set_option (backend, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (backend, "inproc://backend"));
 
     // Launch pool of worker threads, precise number is not critical
@@ -188,8 +189,8 @@ void server_task (void * /*unused_*/)
     for (int i = 0; i < QT_CLIENTS; ++i) {
         endpoint_receivers[i] = zlink_socket (get_test_context (), ZLINK_PAIR);
         TEST_ASSERT_NOT_NULL (endpoint_receivers[i]);
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-          endpoint_receivers[i], ZLINK_LINGER, &linger, sizeof (linger)));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+          endpoint_receivers[i], ZLINK_OPT_LINGER, &linger, sizeof (linger)));
         snprintf (endpoint_source, 256 * sizeof (char), "inproc://endpoint%d",
                   i);
         TEST_ASSERT_SUCCESS_ERRNO (
@@ -223,15 +224,15 @@ static void server_worker (void * /*unused_*/)
     TEST_ASSERT_NOT_NULL (worker);
     int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (worker, ZLINK_LINGER, &linger, sizeof (linger)));
+      zlink_set_option (worker, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (worker, "inproc://backend"));
 
     // Control socket receives terminate command from main over inproc
     void *control = zlink_socket (control_context, ZLINK_SUB);
     TEST_ASSERT_NOT_NULL (control);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (control, ZLINK_SUBSCRIBE, "", 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (control, ""));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (control, ZLINK_LINGER, &linger, sizeof (linger)));
+      zlink_set_option (control, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (control, "inproc://control"));
 
     char content[CONTENT_SIZE_MAX] =
@@ -303,7 +304,7 @@ void test_proxy ()
     void *control = zlink_socket (control_context, ZLINK_PUB);
     int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (control, ZLINK_LINGER, &linger, sizeof (linger)));
+      zlink_set_option (control, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (control, "inproc://control"));
 
     void *threads[QT_CLIENTS + 1];

@@ -45,6 +45,10 @@ class registry_t
     int topology_query (const zlink_registry_topology_filter_t *filter_,
                         zlink_registry_topology_entry_t *entries_,
                         size_t *count_);
+    int status_snapshot (zlink_registry_status_t *out_);
+    int service_summary_snapshot (
+      const zlink_registry_service_summary_filter_t *filter_,
+      std::vector<zlink_registry_service_summary_entry_t> *out_);
     int gateway_peers_snapshot (zlink_registry_gateway_peer_entry_t *entries_,
                                 size_t *count_);
     int gateway_peers_query (
@@ -202,6 +206,8 @@ class registry_t
     uint32_t _registry_id;
     bool _registry_id_set;
     uint64_t _list_seq;
+    int _last_summary_error;
+    uint64_t _summary_last_changed_ms;
 
     uint32_t _heartbeat_interval_ms;
     uint32_t _heartbeat_timeout_ms;

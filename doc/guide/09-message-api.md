@@ -317,9 +317,9 @@ zlink_msg_init(&copy);
 zlink_msg_copy(&copy, &original);
 
 /* Both original and copy reference the same data */
-/* shared property is set to 1 */
-int shared = zlink_msg_is_shared(&copy);
-/* shared == 1 */
+/* storage refcount is now 2 */
+int refcnt = zlink_msg_refcnt(&copy);
+/* refcnt == 2 */
 
 zlink_msg_close(&original);
 zlink_msg_close(&copy);  /* Actual memory freed when last reference is released */
@@ -327,23 +327,30 @@ zlink_msg_close(&copy);  /* Actual memory freed when last reference is released 
 
 > Reference: `core/tests/test_msg_flags.cpp` — `test_shared_refcounted()`: Verifying shared property after copy
 
-### Shared Property — zlink_msg_is_shared
+### Storage Refcount — zlink_msg_refcnt
+
+The internal reference count is managed with atomic operations.
+Copying and closing different `zlink_msg_t` handles that share the same
+underlying storage from different threads is safe. `zlink_msg_refcnt()`
+returns a point-in-time snapshot, so use it for diagnostics and assertions.
+Do not access a single `zlink_msg_t` instance concurrently from multiple
+threads.
 
 ```c
 /* Reference-counted message */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 1024);
-int shared = zlink_msg_is_shared(&msg);  /* 0: single owner */
+int refcnt = zlink_msg_refcnt(&msg);  /* 1: single owner */
 
 zlink_msg_t copy;
 zlink_msg_init(&copy);
 zlink_msg_copy(&copy, &msg);
-shared = zlink_msg_is_shared(&copy);  /* 1: shared */
+refcnt = zlink_msg_refcnt(&copy);  /* 2: shared by msg and copy */
 
 /* Constant data message */
 zlink_msg_t const_msg;
 zlink_msg_init_data(&const_msg, (void *)"TEST", 5, NULL, NULL);
-shared = zlink_msg_is_shared(&const_msg);  /* 1: always shared */
+refcnt = zlink_msg_refcnt(&const_msg);  /* 1: not internally refcounted */
 ```
 
 > Reference: `core/tests/test_msg_flags.cpp` — `test_shared_const()`: shared property of constant messages

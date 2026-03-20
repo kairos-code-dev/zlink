@@ -33,7 +33,7 @@ Measure current zlink single-pattern performance.
 Options:
   -Help                        Show this help.
   -Pattern NAME                Pattern list (comma-separated) or ALL.
-                               In multi mode, STREAM/STREAMS map to STREAM_CALLBACK.
+                               In multi mode, STREAM/STREAMS map to STREAM.
   -BuildDir PATH               Build directory (default: core\build\windows-x64).
   -Build                       Force clean build (default is reuse-build).
   -OutputFile PATH             Tee console logs to a file.
@@ -101,7 +101,7 @@ $AllowMulti = ($env:PERF_ALLOW_MULTI -eq "1")
 $MultiPatternCount = 0
 $SinglePatternCount = 0
 $SinglePatterns = @("PAIR", "PUBSUB", "DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER", "GATEWAY", "SPOT")
-$MultiPatterns = @("DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER", "PUBSUB", "GATEWAY", "SPOT", "STREAM_CALLBACK")
+$MultiPatterns = @("DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER", "PUBSUB", "GATEWAY", "SPOT", "STREAM")
 $SinglePatternSet = @{}
 foreach ($name in $SinglePatterns) { $SinglePatternSet[$name] = $true }
 $MultiPatternSet = @{}
@@ -165,8 +165,8 @@ if ($Pattern.Trim().ToUpperInvariant() -eq "ALL") {
     if ($AllowMulti) {
         $PatternList = $PatternList | ForEach-Object {
             switch ($_) {
-                "STREAM" { "STREAM_CALLBACK"; break }
-                "STREAMS" { "STREAM_CALLBACK"; break }
+                "STREAM" { "STREAM"; break }
+                "STREAMS" { "STREAM"; break }
                 default { $_; break }
             }
         }

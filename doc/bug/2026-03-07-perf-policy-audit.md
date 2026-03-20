@@ -89,10 +89,8 @@
 ### 5. single policy와 다르게 poller/timeout 중심 recv가 남아 있음
 
 - 위치:
-  - `core/perf/single/src/perf_router_router_poll.cpp`
   - 일부 single helper/패턴
 - 증상:
-  - `ROUTER_ROUTER_POLL`이 이름 그대로 poll 기반 구현을 유지
 - 정책 위반:
   - single 기본 메커니즘은 poller가 아니라 blocking recv + nonblocking drain
 
@@ -171,4 +169,3 @@ direct 재현 로그:
 6. `perf_spot_server.cpp`, `perf_pubsub_server.cpp`, stream server 계열
    - send path를 `DONTWAIT + PollOut on-demand`로 전환
 7. single 패턴 정리
-   - `ROUTER_ROUTER_POLL`을 이름만 유지하고 정책상 blocking recv 경로로 통일

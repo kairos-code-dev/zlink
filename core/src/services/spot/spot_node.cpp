@@ -193,6 +193,57 @@ static std::string make_ready_ack_arg (const std::string &target_endpoint_,
     return target_endpoint_ + "\n" + raw_filter_ + "\n" + ack_source_id_;
 }
 
+static void copy_text_field (char *dst_, size_t dst_size_, const std::string &src_)
+{
+    if (!dst_ || dst_size_ == 0)
+        return;
+    dst_[0] = '\0';
+    if (src_.empty ())
+        return;
+    strncpy (dst_, src_.c_str (), dst_size_ - 1);
+    dst_[dst_size_ - 1] = '\0';
+}
+
+static bool spot_peer_filter_match (
+  const zlink_spot_node_peer_entry_t &entry_,
+  const zlink_spot_node_peer_filter_t *filter_)
+{
+    if (!filter_)
+        return true;
+    if (filter_->peer_endpoint[0] != '\0'
+        && strcmp (filter_->peer_endpoint, entry_.peer_endpoint) != 0) {
+        return false;
+    }
+    if (filter_->source != 0 && filter_->source != entry_.source)
+        return false;
+    if (filter_->state != 0 && filter_->state != entry_.state)
+        return false;
+    return true;
+}
+
+static bool spot_peer_entry_less (const zlink_spot_node_peer_entry_t &lhs_,
+                                  const zlink_spot_node_peer_entry_t &rhs_)
+{
+    return strcmp (lhs_.peer_endpoint, rhs_.peer_endpoint) < 0;
+}
+
+static bool spot_subject_entry_less (
+  const zlink_spot_node_subject_entry_t &lhs_,
+  const zlink_spot_node_subject_entry_t &rhs_)
+{
+    if (lhs_.subject_kind != rhs_.subject_kind)
+        return lhs_.subject_kind < rhs_.subject_kind;
+    return strcmp (lhs_.subject, rhs_.subject) < 0;
+}
+
+static std::string spot_subject_snapshot_key (const std::string &subject_,
+                                              uint32_t subject_kind_)
+{
+    char prefix[16];
+    snprintf (prefix, sizeof (prefix), "%u:", subject_kind_);
+    return std::string (prefix) + subject_;
+}
+
 static int recv_ascii_command (socket_base_t *socket_,
                                std::vector<std::string> *frames_)
 {
@@ -729,6 +780,8 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _discovery (NULL),
     _discovery_seq (0),
     _registered (false),
+    _last_summary_error (0),
+    _summary_last_changed_ms (0),
     _tls_trust_system (0),
     _server_tls_locked (false),
     _mesh_client_tls_locked (false),
@@ -1001,6 +1054,8 @@ void spot_node_t::debug_mark_fault (int err_)
         if (!_runtime)
             return;
         _runtime->mark_fault (err_);
+        _last_summary_error = _runtime->fault_errno;
+        _summary_last_changed_ms = zlink::clock_t ().now_ms ();
         pubs.assign (_pubs.begin (), _pubs.end ());
         subs.assign (_subs.begin (), _subs.end ());
     }
@@ -1312,9 +1367,29 @@ void spot_node_t::refresh_connected_peer_endpoints ()
         scoped_lock_t lock (_sync);
         if (connected == _connected_peer_endpoints)
             return;
+        const uint64_t now_ms = zlink::clock_t ().now_ms ();
+        for (std::set<std::string>::const_iterator it = connected.begin ();
+             it != connected.end (); ++it) {
+            if (_connected_peer_endpoints.count (*it) == 0) {
+                peer_observation_t &obs = _peer_observations[*it];
+                obs.last_changed_ms = now_ms;
+                if (obs.connected_since_ms == 0)
+                    obs.connected_since_ms = now_ms;
+            }
+        }
+        for (std::set<std::string>::const_iterator it =
+               _connected_peer_endpoints.begin ();
+             it != _connected_peer_endpoints.end (); ++it) {
+            if (connected.count (*it) == 0) {
+                peer_observation_t &obs = _peer_observations[*it];
+                obs.last_changed_ms = now_ms;
+                obs.connected_since_ms = 0;
+            }
+        }
         const size_t previous_connected_count = _connected_peer_endpoints.size ();
         _connected_peer_endpoints.swap (connected);
         changed = true;
+        _summary_last_changed_ms = now_ms;
         if (_connected_peer_endpoints.empty ()) {
             _subscription_ready_refresh_pending = false;
             _subscription_ready_refresh_holdoff_ticks = 0;
@@ -1935,6 +2010,262 @@ void spot_node_t::snapshot_subscription_subjects (
         subs[i]->append_all_subjects (out_);
 }
 
+int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_) const
+{
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    memset (out_, 0, sizeof (*out_));
+
+    std::string service_name;
+    std::string local_endpoint;
+    {
+        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        service_name = _service_name;
+        local_endpoint =
+          !_advertise_endpoint.empty () ? _advertise_endpoint : _bound_endpoint;
+        out_->configured_peer_count =
+          static_cast<uint32_t> (_manual_peer_endpoints.size ()
+                                 + _discovery_peer_endpoints.size ());
+        {
+            std::set<std::string> union_peers = _manual_peer_endpoints;
+            union_peers.insert (_discovery_peer_endpoints.begin (),
+                                _discovery_peer_endpoints.end ());
+            out_->configured_peer_count = static_cast<uint32_t> (union_peers.size ());
+        }
+        out_->active_peer_count =
+          static_cast<uint32_t> (_active_peer_endpoints.size ());
+        out_->connected_peer_count =
+          static_cast<uint32_t> (_connected_peer_endpoints.size ());
+        out_->last_error = _last_summary_error;
+        if (_runtime && _runtime->faulted)
+            out_->last_error = _runtime->fault_errno;
+        out_->last_changed_ms = _summary_last_changed_ms;
+    }
+
+    copy_text_field (out_->service_name, sizeof (out_->service_name), service_name);
+    copy_text_field (out_->local_endpoint, sizeof (out_->local_endpoint),
+                     local_endpoint);
+
+    spot_pub_t *pub = default_pub ();
+    spot_sub_t *sub = default_sub ();
+    if (pub)
+        (void) pub->routing_id (&out_->node_routing_id);
+    else if (sub)
+        (void) sub->routing_id (&out_->node_routing_id);
+
+    std::vector<zlink_spot_node_subject_entry_t> subject_rows;
+    if (snapshot_subjects (NULL, &subject_rows) == 0) {
+        out_->subject_count = static_cast<uint32_t> (subject_rows.size ());
+        for (size_t i = 0; i < subject_rows.size (); ++i) {
+            if (subject_rows[i].ready_peer_count > 0)
+                out_->ready_subject_count++;
+        }
+    }
+
+    if (out_->last_error != 0)
+        out_->state = ZLINK_SPOT_NODE_STATE_ERROR;
+    else if (out_->configured_peer_count == 0 && out_->subject_count == 0)
+        out_->state = ZLINK_SPOT_NODE_STATE_IDLE;
+    else if (out_->active_peer_count > 0 && out_->connected_peer_count == 0)
+        out_->state = ZLINK_SPOT_NODE_STATE_CONNECTING;
+    else if (out_->connected_peer_count > 0
+             && out_->ready_subject_count < out_->subject_count) {
+        out_->state = ZLINK_SPOT_NODE_STATE_PARTIAL_READY;
+    } else if (out_->connected_peer_count > 0
+               && out_->subject_count > 0
+               && out_->ready_subject_count == out_->subject_count) {
+        out_->state = ZLINK_SPOT_NODE_STATE_READY;
+    } else
+        out_->state = ZLINK_SPOT_NODE_STATE_IDLE;
+
+    return 0;
+}
+
+int spot_node_t::snapshot_peers (
+  const zlink_spot_node_peer_filter_t *filter_,
+  std::vector<zlink_spot_node_peer_entry_t> *out_) const
+{
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    out_->clear ();
+
+    std::string service_name;
+    std::string local_endpoint;
+    std::set<std::string> manual;
+    std::set<std::string> discovery;
+    std::set<std::string> active;
+    std::set<std::string> connected;
+    std::map<std::string, peer_observation_t> observations;
+    {
+        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        service_name = _service_name;
+        local_endpoint =
+          !_advertise_endpoint.empty () ? _advertise_endpoint : _bound_endpoint;
+        manual = _manual_peer_endpoints;
+        discovery = _discovery_peer_endpoints;
+        active = _active_peer_endpoints;
+        connected = _connected_peer_endpoints;
+        observations = _peer_observations;
+    }
+
+    std::set<std::string> universe = manual;
+    universe.insert (discovery.begin (), discovery.end ());
+    for (std::set<std::string>::const_iterator it = universe.begin ();
+         it != universe.end (); ++it) {
+        zlink_spot_node_peer_entry_t entry;
+        memset (&entry, 0, sizeof (entry));
+        copy_text_field (entry.service_name, sizeof (entry.service_name),
+                         service_name);
+        copy_text_field (entry.local_endpoint, sizeof (entry.local_endpoint),
+                         local_endpoint);
+        copy_text_field (entry.peer_endpoint, sizeof (entry.peer_endpoint), *it);
+        const bool in_manual = manual.count (*it) != 0;
+        const bool in_discovery = discovery.count (*it) != 0;
+        if (in_manual && in_discovery)
+            entry.source = ZLINK_SPOT_PEER_SOURCE_MIXED;
+        else if (in_manual)
+            entry.source = ZLINK_SPOT_PEER_SOURCE_MANUAL;
+        else
+            entry.source = ZLINK_SPOT_PEER_SOURCE_DISCOVERY;
+
+        if (connected.count (*it) != 0)
+            entry.state = ZLINK_SPOT_PEER_STATE_CONNECTED;
+        else if (active.count (*it) != 0)
+            entry.state = ZLINK_SPOT_PEER_STATE_CONNECTING;
+        else
+            entry.state = ZLINK_SPOT_PEER_STATE_CONFIGURED;
+        std::map<std::string, peer_observation_t>::const_iterator oit =
+          observations.find (*it);
+        if (oit != observations.end ()) {
+            entry.connected_since_ms = oit->second.connected_since_ms;
+            entry.last_changed_ms = oit->second.last_changed_ms;
+        }
+
+        if (spot_peer_filter_match (entry, filter_))
+            out_->push_back (entry);
+    }
+
+    std::sort (out_->begin (), out_->end (), spot_peer_entry_less);
+    return 0;
+}
+
+int spot_node_t::snapshot_subjects (
+  const zlink_spot_node_subject_filter_t *filter_,
+  std::vector<zlink_spot_node_subject_entry_t> *out_) const
+{
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (filter_ && filter_->role == ZLINK_SPOT_ROLE_PUB) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    out_->clear ();
+
+    uint32_t active_peer_count = 0;
+    std::vector<spot_sub_t *> subs;
+    std::map<std::string, uint64_t> subject_last_changed;
+    {
+        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        active_peer_count = static_cast<uint32_t> (_active_peer_endpoints.size ());
+        subs.assign (_subs.begin (), _subs.end ());
+        subject_last_changed = _subject_last_changed_ms;
+    }
+
+    std::map<std::pair<uint32_t, std::string>, zlink_spot_node_subject_entry_t>
+      grouped;
+    for (size_t i = 0; i < subs.size (); ++i) {
+        if (!subs[i])
+            continue;
+        scoped_lock_t sub_lock (subs[i]->_sync);
+        for (std::set<std::string>::const_iterator it = subs[i]->_topics.begin ();
+             it != subs[i]->_topics.end (); ++it) {
+            const std::pair<uint32_t, std::string> key (
+              ZLINK_SERVICE_EVENT_SUBJECT_TOPIC, *it);
+            zlink_spot_node_subject_entry_t &entry = grouped[key];
+            if (entry.role == 0) {
+                memset (&entry, 0, sizeof (entry));
+                entry.role = ZLINK_SPOT_ROLE_SUB;
+                entry.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_TOPIC;
+                copy_text_field (entry.subject, sizeof (entry.subject), *it);
+            }
+            entry.active_peer_count = active_peer_count;
+            if (subs[i]->_ready_subject_endpoints.count (
+                  spot_subject_snapshot_key (*it,
+                                            ZLINK_SERVICE_EVENT_SUBJECT_TOPIC))
+                != 0) {
+                entry.ready_peer_count = 1;
+            }
+            std::map<std::string, uint64_t>::const_iterator tsit =
+              subject_last_changed.find (
+                spot_subject_snapshot_key (*it,
+                                          ZLINK_SERVICE_EVENT_SUBJECT_TOPIC));
+            if (tsit != subject_last_changed.end ()
+                && tsit->second > entry.last_changed_ms) {
+                entry.last_changed_ms = tsit->second;
+            }
+        }
+        for (std::set<std::string>::const_iterator it =
+               subs[i]->_patterns.begin ();
+             it != subs[i]->_patterns.end (); ++it) {
+            const std::string pattern = *it + "*";
+            const std::pair<uint32_t, std::string> key (
+              ZLINK_SERVICE_EVENT_SUBJECT_PATTERN, pattern);
+            zlink_spot_node_subject_entry_t &entry = grouped[key];
+            if (entry.role == 0) {
+                memset (&entry, 0, sizeof (entry));
+                entry.role = ZLINK_SPOT_ROLE_SUB;
+                entry.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_PATTERN;
+                copy_text_field (entry.subject, sizeof (entry.subject), pattern);
+            }
+            entry.active_peer_count = active_peer_count;
+            if (subs[i]->_ready_subject_endpoints.count (
+                  spot_subject_snapshot_key (
+                    pattern, ZLINK_SERVICE_EVENT_SUBJECT_PATTERN))
+                != 0) {
+                entry.ready_peer_count = 1;
+            }
+            std::map<std::string, uint64_t>::const_iterator tsit =
+              subject_last_changed.find (
+                spot_subject_snapshot_key (
+                  pattern, ZLINK_SERVICE_EVENT_SUBJECT_PATTERN));
+            if (tsit != subject_last_changed.end ()
+                && tsit->second > entry.last_changed_ms) {
+                entry.last_changed_ms = tsit->second;
+            }
+        }
+    }
+
+    for (std::map<std::pair<uint32_t, std::string>,
+                  zlink_spot_node_subject_entry_t>::const_iterator it =
+           grouped.begin ();
+         it != grouped.end (); ++it) {
+        const zlink_spot_node_subject_entry_t &entry = it->second;
+        if (filter_) {
+            if (filter_->role != 0 && filter_->role != entry.role)
+                continue;
+            if (filter_->subject_kind != 0
+                && filter_->subject_kind != entry.subject_kind) {
+                continue;
+            }
+            if (filter_->subject[0] != '\0'
+                && strcmp (filter_->subject, entry.subject) != 0) {
+                continue;
+            }
+        }
+        out_->push_back (entry);
+    }
+    std::sort (out_->begin (), out_->end (), spot_subject_entry_less);
+    return 0;
+}
+
 int spot_node_t::resolve_advertise_endpoint (const char *advertise_endpoint_,
                                              std::string *out_) const
 {
@@ -1991,6 +2322,7 @@ int spot_node_t::bind (const char *endpoint_)
         scoped_lock_t lock (_sync);
         _bound_endpoint = endpoint_;
         _server_tls_locked = true;
+        _summary_last_changed_ms = zlink::clock_t ().now_ms ();
         pubs.assign (_pubs.begin (), _pubs.end ());
         should_register = _discovery != NULL;
     }
@@ -2026,6 +2358,9 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
         if (_manual_peer_endpoints.count (peer_pub_endpoint_) != 0)
             return 0;
         _manual_peer_endpoints.insert (peer_pub_endpoint_);
+        _peer_observations[peer_pub_endpoint_].last_changed_ms =
+          zlink::clock_t ().now_ms ();
+        _summary_last_changed_ms = zlink::clock_t ().now_ms ();
         if (_active_peer_endpoints.count (peer_pub_endpoint_) == 0)
             need_connect = true;
     }
@@ -2044,6 +2379,9 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
         _mesh_client_tls_locked = true;
         if (_active_peer_endpoints.insert (peer_pub_endpoint_).second)
             _active_peer_count.fetch_add (1, std::memory_order_acq_rel);
+        _peer_observations[peer_pub_endpoint_].last_changed_ms =
+          zlink::clock_t ().now_ms ();
+        _summary_last_changed_ms = zlink::clock_t ().now_ms ();
         has_active_peers = !_active_peer_endpoints.empty ();
     }
     if (has_active_peers) {
@@ -2083,6 +2421,9 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
         }
         had_active_peers = !_active_peer_endpoints.empty ();
         _manual_peer_endpoints.erase (peer_pub_endpoint_);
+        _peer_observations[peer_pub_endpoint_].last_changed_ms =
+          zlink::clock_t ().now_ms ();
+        _summary_last_changed_ms = zlink::clock_t ().now_ms ();
         if (_discovery_peer_endpoints.count (peer_pub_endpoint_) == 0
             && _active_peer_endpoints.count (peer_pub_endpoint_) != 0) {
             need_disconnect = true;
@@ -2111,6 +2452,10 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
             scoped_lock_t lock (_sync);
             if (_active_peer_endpoints.erase (peer_pub_endpoint_) != 0)
                 _active_peer_count.fetch_sub (1, std::memory_order_acq_rel);
+            _peer_observations[peer_pub_endpoint_].last_changed_ms =
+              zlink::clock_t ().now_ms ();
+            _peer_observations[peer_pub_endpoint_].connected_since_ms = 0;
+            _summary_last_changed_ms = zlink::clock_t ().now_ms ();
             has_active_peers = !_active_peer_endpoints.empty ();
         }
         if (had_active_peers && !has_active_peers) {
@@ -2120,6 +2465,7 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
             {
                 scoped_lock_t lock (_sync);
                 _connected_peer_endpoints.clear ();
+                _summary_last_changed_ms = zlink::clock_t ().now_ms ();
                 _subscription_ready_refresh_pending = false;
                 _subscription_ready_refresh_holdoff_ticks = 0;
                 _pending_subscription_ready_filters.clear ();
@@ -2268,6 +2614,7 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
         _discovery_seq = 0;
         _pending_service_updates.insert (_service_name);
         _discovery_peer_endpoints.clear ();
+        _summary_last_changed_ms = zlink::clock_t ().now_ms ();
         should_register = !_bound_endpoint.empty ();
     }
     discovery_->add_observer (this);
@@ -2293,6 +2640,7 @@ void spot_node_t::on_service_update (const std::string &service_name_)
         if (_discovery_service.empty () || service_name_ != _discovery_service)
             return;
         _pending_service_updates.insert (service_name_);
+        _summary_last_changed_ms = zlink::clock_t ().now_ms ();
         should_wake = true;
     }
     if (should_wake)
@@ -2313,6 +2661,7 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
     _registered = false;
     _advertise_endpoint.clear ();
     _registration_uplink_endpoint.clear ();
+    _summary_last_changed_ms = zlink::clock_t ().now_ms ();
 }
 
 int spot_node_t::set_tls_server (const char *cert_, const char *key_)

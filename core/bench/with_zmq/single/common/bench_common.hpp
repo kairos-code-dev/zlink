@@ -923,14 +923,20 @@ inline bool setup_tls_server(void* socket, const std::string& transport) {
     static std::string cert_path = write_temp_cert(test_certs::server_cert_pem, "server_cert");
     static std::string key_path = write_temp_cert(test_certs::server_key_pem, "server_key");
 
-    if (zlink_setsockopt(socket, ZLINK_TLS_CERT, cert_path.c_str(), cert_path.size()) != 0) {
+    if (zlink_set_option(
+          socket, ZLINK_OPT_TLS_CERT, cert_path.c_str(), cert_path.size())
+        != 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_CERT: " << zlink_strerror(zlink_errno()) << std::endl;
+            std::cerr << "Failed to set ZLINK_OPT_TLS_CERT: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
-    if (zlink_setsockopt(socket, ZLINK_TLS_KEY, key_path.c_str(), key_path.size()) != 0) {
+    if (zlink_set_option(
+          socket, ZLINK_OPT_TLS_KEY, key_path.c_str(), key_path.size())
+        != 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_KEY: " << zlink_strerror(zlink_errno()) << std::endl;
+            std::cerr << "Failed to set ZLINK_OPT_TLS_KEY: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
     return true;
@@ -943,20 +949,30 @@ inline bool setup_tls_client(void* socket, const std::string& transport) {
     static std::string ca_path = write_temp_cert(test_certs::ca_cert_pem, "ca_cert");
     static const char* hostname = "localhost";
 
-    if (zlink_setsockopt(socket, ZLINK_TLS_CA, ca_path.c_str(), ca_path.size()) != 0) {
+    if (zlink_set_option(
+          socket, ZLINK_OPT_TLS_CA, ca_path.c_str(), ca_path.size())
+        != 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_CA: " << zlink_strerror(zlink_errno()) << std::endl;
+            std::cerr << "Failed to set ZLINK_OPT_TLS_CA: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
-    if (zlink_setsockopt(socket, ZLINK_TLS_HOSTNAME, hostname, strlen(hostname)) != 0) {
+    if (zlink_set_option(
+          socket, ZLINK_OPT_TLS_HOSTNAME, hostname, std::strlen(hostname))
+        != 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_HOSTNAME: " << zlink_strerror(zlink_errno()) << std::endl;
+            std::cerr << "Failed to set ZLINK_OPT_TLS_HOSTNAME: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
     int trust_system = 0;
-    if (zlink_setsockopt(socket, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof(trust_system)) != 0) {
+    if (zlink_set_option(
+          socket, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system,
+          sizeof(trust_system))
+        != 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_TRUST_SYSTEM: " << zlink_strerror(zlink_errno()) << std::endl;
+            std::cerr << "Failed to set ZLINK_OPT_TLS_TRUST_SYSTEM: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
     return true;

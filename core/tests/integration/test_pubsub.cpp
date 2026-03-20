@@ -20,7 +20,7 @@ void test (const char *address)
 
     //  Subscribe to all messages.
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (subscriber, ZLINK_SUBSCRIBE, "", 0));
+      zlink_set_subscription (subscriber, ""));
 
     //  Wait a bit till the subscription gets to the publisher
     msleep (SETTLE_TIME);

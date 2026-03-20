@@ -26,9 +26,9 @@ void test ()
     const char prefi_x2[] = "p2";
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub1, ZLINK_SUBSCRIBE, prefi_x1, strlen (prefi_x1)));
+      zlink_set_subscription (sub1, prefi_x1)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub2, ZLINK_SUBSCRIBE, prefi_x2, strlen (prefi_x2)));
+      zlink_set_subscription (sub2, prefi_x2)));
 
     //  Send a message with the first prefix
     send_string_expect_success (pub, prefi_x1, 0);
@@ -51,13 +51,13 @@ void test ()
     //  Now invert the matching
     int invert = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub, ZLINK_INVERT_MATCHING, &invert, sizeof (invert)));
+      zlink_set_option (pub, ZLINK_OPT_INVERT_MATCHING, &invert, sizeof (invert)));
 
     //  ... on both sides, otherwise the SUB socket will filter the messages out
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub1, ZLINK_INVERT_MATCHING, &invert, sizeof (invert)));
+      zlink_set_option (sub1, ZLINK_OPT_INVERT_MATCHING, &invert, sizeof (invert)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub2, ZLINK_INVERT_MATCHING, &invert, sizeof (invert)));
+      zlink_set_option (sub2, ZLINK_OPT_INVERT_MATCHING, &invert, sizeof (invert)));
 
     //  Send a message with the first prefix
     send_string_expect_success (pub, prefi_x1, 0);

@@ -97,16 +97,10 @@ gateway_client_state_t *g_client_state = NULL;
 
 struct gateway_ready_monitor_state_t
 {
-    gateway_ready_monitor_state_t() :
-        ready_peer_count(0),
-        send_ready(false),
-        error_code(0)
-    {
-    }
+    gateway_ready_monitor_state_t() : send_ready(false), error_code(0) {}
 
     std::mutex sync;
     std::condition_variable cv;
-    size_t ready_peer_count;
     bool send_ready;
     int error_code;
 };
@@ -115,7 +109,7 @@ size_t gateway_ready_count(const gateway_ready_monitor_state_t *state)
 {
     if (!state)
         return 0;
-    return std::max(state->ready_peer_count, state->send_ready ? size_t(1) : 0);
+    return state->send_ready ? size_t(1) : 0;
 }
 
 void gateway_ready_monitor_handler(const zlink_service_event_t *event,
@@ -129,11 +123,6 @@ void gateway_ready_monitor_handler(const zlink_service_event_t *event,
     {
         std::lock_guard<std::mutex> lock(state->sync);
         switch (event->event_type) {
-            case ZLINK_GATEWAY_ROUTE_UP:
-            case ZLINK_GATEWAY_ROUTE_DOWN:
-                state->ready_peer_count = static_cast<size_t>(event->value);
-                break;
-
             case ZLINK_GATEWAY_SEND_READY_CHANGED:
                 state->send_ready = event->value > 0;
                 break;
@@ -182,18 +171,12 @@ bool open_gateway_ready_monitor(gateway_client_slot_t *slot)
     }
 
     const int monitor_hwm = bench_hwm_from_env("PERF_MONITOR_HWM", 1000);
-    set_sockopt_int(monitor, ZLINK_LINGER, 0, "ZLINK_LINGER");
+    set_sockopt_int(monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
     if (monitor_hwm > 0) {
-        set_sockopt_int(monitor, ZLINK_SNDHWM, monitor_hwm, "ZLINK_SNDHWM");
-        set_sockopt_int(monitor, ZLINK_RCVHWM, monitor_hwm, "ZLINK_RCVHWM");
-    }
-
-    zlink_monitor_snapshot_t snapshot;
-    memset(&snapshot, 0, sizeof(snapshot));
-    if (zlink_monitor_snapshot(monitor, &snapshot) == 0) {
-        state->ready_peer_count = snapshot.ready_peer_count;
-        state->send_ready =
-          (snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0;
+        set_sockopt_int(monitor, ZLINK_OPT_SNDHWM, monitor_hwm,
+                        "ZLINK_OPT_SNDHWM");
+        set_sockopt_int(monitor, ZLINK_OPT_RCVHWM, monitor_hwm,
+                        "ZLINK_OPT_RCVHWM");
     }
 
     slot->monitor = monitor;

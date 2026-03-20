@@ -167,36 +167,13 @@ inline bool send_pubsub_sample (void *pub_socket_,
         return false;
     }
 
-    zlink_msg_t topic_part;
     zlink_msg_t payload_part;
-    if (zlink_msg_init_size (&topic_part, std::strlen (k_pubsub_topic)) != 0)
-        return false;
     if (zlink_msg_init_size (&payload_part, payload_size_) != 0) {
-        zlink_msg_close (&topic_part);
         return false;
     }
-
-    std::memcpy (zlink_msg_data (&topic_part), k_pubsub_topic,
-                 std::strlen (k_pubsub_topic));
     std::memcpy (zlink_msg_data (&payload_part), payload_->data (), payload_size_);
-
-    zlink_msg_t parts[2];
-    if (zlink_msg_init_size (&parts[0], std::strlen (k_pubsub_topic)) != 0) {
-        zlink_msg_close (&topic_part);
+    if (::zlink_publish (pub_socket_, k_pubsub_topic, &payload_part, 1, 0) < 0) {
         zlink_msg_close (&payload_part);
-        return false;
-    }
-    if (zlink_msg_init_size (&parts[1], payload_size_) != 0) {
-        zlink_msg_close (&topic_part);
-        zlink_msg_close (&payload_part);
-        zlink_msg_close (&parts[0]);
-        return false;
-    }
-    zlink_msg_move (&parts[0], &topic_part);
-    zlink_msg_move (&parts[1], &payload_part);
-    if (::zlink_send (pub_socket_, parts, 2, 0) < 0) {
-        zlink_msg_close (&parts[0]);
-        zlink_msg_close (&parts[1]);
         return false;
     }
 
@@ -347,8 +324,8 @@ void run_pubsub (const std::string &transport,
     }
 
     const int xpub_nodrop_opt = resolve_pubsub_xpub_nodrop_opt ();
-    set_sockopt_int (pub.get (), ZLINK_XPUB_NODROP, xpub_nodrop_opt,
-                     "ZLINK_XPUB_NODROP");
+    set_pub_opt_int (pub.get (), ZLINK_PUB_OPT_NODROP, xpub_nodrop_opt,
+                     "ZLINK_PUB_OPT_NODROP");
 
     zlink_set_subscription (sub.get (), "");
     if (!setup_connected_pair (

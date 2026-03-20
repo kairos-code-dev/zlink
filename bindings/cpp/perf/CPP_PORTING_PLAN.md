@@ -38,7 +38,6 @@ bindings/cpp/
     │   │   ├── perf_dealer_dealer.cpp
     │   │   ├── perf_dealer_router.cpp
     │   │   ├── perf_router_router.cpp
-    │   │   ├── perf_router_router_poll.cpp
     │   │   ├── perf_gateway.cpp
     │   │   └── perf_spot.cpp
     │   ├── build/                           ← 컴파일된 바이너리 (gitignore)
@@ -171,7 +170,6 @@ bindings/cpp/native/<os>-<arch>/libzlink.so
 | `perf_dealer_dealer` | `single/common/*.cpp` + `single/src/perf_dealer_dealer.cpp` |
 | `perf_dealer_router` | `single/common/*.cpp` + `single/src/perf_dealer_router.cpp` |
 | `perf_router_router` | `single/common/*.cpp` + `single/src/perf_router_router.cpp` |
-| `perf_router_router_poll` | `single/common/*.cpp` + `single/src/perf_router_router_poll.cpp` |
 | `perf_gateway` | `single/common/*.cpp` + `single/src/perf_gateway.cpp` |
 | `perf_spot` | `single/common/*.cpp` + `single/src/perf_spot.cpp` |
 
@@ -235,7 +233,6 @@ bindings/cpp/perf/single/build/perf_pair <TRANSPORT> <SIZE>
 > **참고**: 러너(`run_policy_bench.py`)는 C++ single 바이너리를 `<binary> <transport> <size>` 두 인자로 호출한다. 패턴명은 바이너리 파일명에 내재되어 있으므로 별도 인자가 없다.
 
 > **Single 패턴 구분:**
-> - **직접 빌드 바이너리 8개**: PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT (`CPP_SINGLE_PATTERN_SPECS`)
 > - **러너 기준 전체 11개**: 위 8개 + STREAM, STREAM_CALLBACK, STREAM_LEN32BE (3개는 multi stream server + core 공통 stream client 조합으로 위임, `supports_split_multi(cpp)=true`)
 
 ### 3.2 Multi 실행
@@ -266,7 +263,6 @@ CPP_SINGLE_PATTERN_SPECS = {
     "DEALER_DEALER":      ("perf_dealer_dealer.cpp",     "run_pattern_dealer_dealer",     "perf_dealer_dealer"),
     "DEALER_ROUTER":      ("perf_dealer_router.cpp",     "run_pattern_dealer_router",     "perf_dealer_router"),
     "ROUTER_ROUTER":      ("perf_router_router.cpp",     "run_pattern_router_router",     "perf_router_router"),
-    "ROUTER_ROUTER_POLL": ("perf_router_router_poll.cpp","run_pattern_router_router_poll","perf_router_router_poll"),
     "GATEWAY":            ("perf_gateway.cpp",           "run_pattern_gateway",           "perf_gateway"),
     "SPOT":               ("perf_spot.cpp",              "run_pattern_spot",              "perf_spot"),
 }
@@ -435,7 +431,6 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 3 | perf_dealer_dealer.cpp | DEALER_DEALER | `socket_type::dealer` ×2 | echo | tcp,tls,ws,wss,inproc,ipc |
 | 4 | perf_dealer_router.cpp | DEALER_ROUTER | `socket_type::dealer` + `socket_type::router` | echo | tcp,tls,ws,wss,inproc,ipc |
 | 5 | perf_router_router.cpp | ROUTER_ROUTER | `socket_type::router` ×2 | echo | tcp,tls,ws,wss,inproc,ipc |
-| 6 | perf_router_router_poll.cpp | ROUTER_ROUTER_POLL | `socket_type::router` ×2 + Poller | echo | tcp,tls,ws,wss,inproc,ipc |
 | 7 | perf_gateway.cpp | GATEWAY | `service::gateway_t` + `service::receiver_t` | echo | tcp,tls,ws,wss |
 | 8 | perf_spot.cpp | SPOT | `service::spot_node_t` (pub/sub) | one-way | tcp,tls,ws,wss |
 
@@ -989,7 +984,6 @@ bindings/cpp/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 18. `single/src/perf_dealer_dealer.cpp`
 19. `single/src/perf_dealer_router.cpp`
 20. `single/src/perf_router_router.cpp`
-21. `single/src/perf_router_router_poll.cpp`
 
 ### Phase 3: Single 서비스 패턴 (2개)
 
@@ -1130,7 +1124,6 @@ rg -n "std::vector|std::string|new |malloc|make_unique|make_shared" \
 **Single 공통 정책**
 - `send`: `blocking send` 1회만 호출한다. 실패 시 즉시 fail 한다.
 - `recv`: 필요한 첫 메시지/프레임은 `blocking recv` 로 받고, 같은 iteration 안에서 `recv_flag::dontwait` 로 `EAGAIN` 까지 drain 한다.
-- single 패턴의 기본 메커니즘은 poller 가 아니다. `ROUTER_ROUTER_POLL` 도 이름만 유지하고 동일 정책을 따른다.
 
 **Multi 공통 정책**
 - `recv`: 모든 recv 는 **callback-only** 다. 소켓 생성 시 recv handler 를 등록하면 I/O thread 에서 콜백이 호출된다. poller(`PollIn`) 는 사용하지 않는다.
@@ -1390,7 +1383,6 @@ python3 bindings/perf/run_policy_bench.py \
 - [ ] report 파일이 `results/{single,multi}/report/` 에 생성됨
 
 **기본 조합 수 예상 (single):**
-- socket 패턴 (6종: PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL) × 6 transport (tcp,tls,ws,wss,inproc,ipc) × 6 size = 216 조합
 - GATEWAY, SPOT (2종) × 4 transport (tcp,tls,ws,wss) × 6 size = 48 조합
 - STREAM, STREAM_CALLBACK, STREAM_LEN32BE (3종) × 4 transport (tcp,tls,ws,wss) × 4 size = 48 조합
 - 총: 312 조합 → UNSUPPORTED 제외한 나머지 전부 success
@@ -1520,7 +1512,6 @@ CXX=${CXX:-c++}; $CXX -Wall -Wextra -Wpedantic -Wunused -std=c++17 -fsyntax-only
 - [x] `single/src/perf_router_router.cpp` — ROUTER-ROUTER echo 벤치마크
   - [x] 빌드 성공
   - [x] smoke 테스트 통과 (tcp, size=64)
-- [x] `single/src/perf_router_router_poll.cpp` — ROUTER-ROUTER + Poller 벤치마크
   - [x] 빌드 성공
   - [x] smoke 테스트 통과 (tcp, size=64)
 

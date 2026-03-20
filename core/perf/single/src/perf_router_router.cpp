@@ -133,87 +133,70 @@ inline void router1_recv_handler (const zlink_routing_id_t *,
     }
 }
 
-inline bool recv_router_frame_equals (void *socket_,
-                                      const char *expected_,
-                                      size_t expected_size_,
-                                      bool expect_more_)
-{
-    zlink_routing_id_t source_rid;
-    source_rid.size = 0;
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    const int rc = ::zlink_recv (socket_, &source_rid, &parts, &part_count, 0);
-    if (rc < 0)
-        return false;
-
-    const bool more_ok = source_rid.size > 0 ? expect_more_ : !expect_more_;
-    const zlink_msg_t *frame = source_rid.size > 0 ? NULL : &parts[0];
-    const bool size_ok =
-      source_rid.size > 0 ? source_rid.size == expected_size_
-                          : part_count == 1
-                              && zlink_msg_size (&parts[0]) == expected_size_;
-    const bool data_ok =
-      source_rid.size > 0
-        ? std::memcmp (source_rid.data, expected_, expected_size_) == 0
-        : size_ok
-            && std::memcmp (
-                 zlink_msg_data (const_cast<zlink_msg_t *> (frame)), expected_,
-                 expected_size_)
-                 == 0;
-    if (parts) {
-        zlink_multipart_close (parts, part_count);
-        free (parts);
-    }
-    return data_ok && more_ok;
-}
-
 inline bool perform_router_router_handshake (void *router1, void *router2)
 {
     const int handshake_timeout_ms =
       resolve_bench_count ("PERF_ROUTER_HANDSHAKE_TIMEOUT_MS", 3000);
-    const int bounded_timeout_ms =
-      handshake_timeout_ms > 0 ? handshake_timeout_ms : 3000;
-    zlink_set_option (router1, ZLINK_OPT_SNDTIMEO, &bounded_timeout_ms,
-                      sizeof (bounded_timeout_ms));
-    zlink_set_option (router2, ZLINK_OPT_SNDTIMEO, &bounded_timeout_ms,
-                      sizeof (bounded_timeout_ms));
-    zlink_set_option (router1, ZLINK_OPT_RCVTIMEO, &bounded_timeout_ms,
-                      sizeof (bounded_timeout_ms));
-    zlink_set_option (router2, ZLINK_OPT_RCVTIMEO, &bounded_timeout_ms,
-                      sizeof (bounded_timeout_ms));
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (
+        handshake_timeout_ms > 0 ? handshake_timeout_ms : 3000);
 
-    zlink_msg_t ping_parts[2];
-    if (zlink_msg_init_size (&ping_parts[0], 7) != 0)
-        return false;
-    if (zlink_msg_init_size (&ping_parts[1], 4) != 0) {
-        zlink_msg_close (&ping_parts[0]);
-        return false;
-    }
-    std::memcpy (zlink_msg_data (&ping_parts[0]), "ROUTER1", 7);
-    std::memcpy (zlink_msg_data (&ping_parts[1]), "PING", 4);
-    if (::zlink_send (router2, ping_parts, 2, 0) < 0
-        || !recv_router_frame_equals (router1, "ROUTER2", 7, true)
-        || !recv_router_frame_equals (router1, "PING", 4, false)) {
-        debug_router_router ("router2 -> router1 route validation failed");
-        return false;
+    bool connected = false;
+    while (!connected && std::chrono::steady_clock::now () < deadline) {
+        zlink_msg_t ping_parts[2];
+        if (zlink_msg_init_size (&ping_parts[0], 7) != 0)
+            return false;
+        if (zlink_msg_init_size (&ping_parts[1], 4) != 0) {
+            zlink_msg_close (&ping_parts[0]);
+            return false;
+        }
+        std::memcpy (zlink_msg_data (&ping_parts[0]), "ROUTER1", 7);
+        std::memcpy (zlink_msg_data (&ping_parts[1]), "PING", 4);
+        if (::zlink_send (router2, ping_parts, 2, ZLINK_DONTWAIT) < 0) {
+            zlink_msg_close (&ping_parts[0]);
+            zlink_msg_close (&ping_parts[1]);
+            const int err = zlink_errno ();
+            if (err != EAGAIN && err != EINTR && err != EHOSTUNREACH
+                && err != ENOTCONN)
+                return false;
+        } else {
+            zlink_routing_id_t source_rid;
+            source_rid.size = 0;
+            zlink_msg_t *parts = NULL;
+            size_t part_count = 0;
+            const int rc = ::zlink_recv (
+              router1, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
+            if (rc > 0) {
+                connected = source_rid.size == 7
+                            && std::memcmp (source_rid.data, "ROUTER2", 7) == 0
+                            && part_count == 1
+                            && zlink_msg_size (&parts[0]) == 4
+                            && std::memcmp (
+                                 zlink_msg_data (&parts[0]), "PING", 4) == 0;
+                if (parts) {
+                    zlink_multipart_close (parts, part_count);
+                    free (parts);
+                }
+            } else if (rc < 0) {
+                const int err = zlink_errno ();
+                if (err != EAGAIN && err != EINTR)
+                    return false;
+            }
+        }
+
+        if (!connected)
+            std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
 
-    zlink_msg_t pong_parts[2];
-    if (zlink_msg_init_size (&pong_parts[0], 7) != 0)
+    if (!connected)
         return false;
-    if (zlink_msg_init_size (&pong_parts[1], 4) != 0) {
-        zlink_msg_close (&pong_parts[0]);
-        return false;
-    }
-    std::memcpy (zlink_msg_data (&pong_parts[0]), "ROUTER2", 7);
-    std::memcpy (zlink_msg_data (&pong_parts[1]), "PONG", 4);
-    if (::zlink_send (router1, pong_parts, 2, 0) < 0
-        || !recv_router_frame_equals (router2, "ROUTER1", 7, true)
-        || !recv_router_frame_equals (router2, "PONG", 4, false)) {
-        debug_router_router ("router1 -> router2 route validation failed");
-        return false;
-    }
 
+    const int timeout_ms = resolve_single_recv_timeout_ms ();
+    set_sockopt_int (
+      router1, ZLINK_OPT_RCVTIMEO, timeout_ms, "ZLINK_OPT_RCVTIMEO");
+    set_sockopt_int (
+      router2, ZLINK_OPT_RCVTIMEO, timeout_ms, "ZLINK_OPT_RCVTIMEO");
     return true;
 }
 
@@ -232,15 +215,26 @@ inline bool setup_router_router_session (void *router1,
                              sizeof (mandatory));
     zlink_set_router_option (router2, ZLINK_ROUTER_OPT_MANDATORY, &mandatory,
                              sizeof (mandatory));
+    zlink_set_router_option (router2, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
+                             "ROUTER1", 7);
 
-    if (!setup_connected_pair (router1, router2, transport, pair_id)) {
+    if (!setup_tls_server (router1, transport)
+        || !setup_tls_client (router2, transport)) {
         return false;
     }
 
-    if (transport != "inproc"
-        && !perform_router_router_handshake (router1, router2)) {
+    apply_single_hwm (router1);
+    apply_single_hwm (router2);
+
+    const std::string endpoint =
+      bind_and_resolve_endpoint (router1, transport, pair_id);
+    if (endpoint.empty ())
         return false;
-    }
+    if (!connect_checked (router2, endpoint))
+        return false;
+
+    apply_single_benchmark_socket_options (router1, transport);
+    apply_single_benchmark_socket_options (router2, transport);
 
     return true;
 }

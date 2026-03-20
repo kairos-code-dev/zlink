@@ -186,7 +186,7 @@ publish-only 혹은 subscribe-only public child handle은 더 이상 제공하�
 `parts_out_`, `topic_id_out_`이 채워집니다. non-blocking 동작은 `flags_`에
 `ZLINK_DONTWAIT`를 전달합니다. callback 모드에서는 `EBUSY`로 실패합니다.
 
-aggregate ready-peer / queue 조회는 `zlink_spot_monitor_open()`과
+aggregate ready-peer / queue 조회는 `zlink_service_monitor_open()`과
 `zlink_monitor_snapshot()` 조합을 사용합니다.
 
 ## callback 계약
@@ -222,28 +222,206 @@ typedef void (*zlink_subscribe_handler_fn)(const zlink_routing_id_t *source_rid,
 
 ## 모니터링
 
-SPOT monitor는 Spot과 SpotNode 모두에 대해 unified entrypoint를 제공합니다.
+SPOT 모니터링은 Spot과 SpotNode 모두에 대해 unified `zlink_service_monitor_open()`
+entrypoint를 사용합니다.
 
 ```c
-void *zlink_spot_monitor_open(void *spot,
-                              zlink_spot_role_t role,
-                              zlink_spot_monitor_event_mask_t events,
-                              zlink_service_monitor_handler_fn handler,
-                              void *userdata);
-
-void *zlink_spot_node_monitor_open(void *node,
-                                   zlink_spot_role_t role,
-                                   zlink_spot_monitor_event_mask_t events,
-                                   zlink_service_monitor_handler_fn handler,
-                                   void *userdata);
+void *zlink_service_monitor_open(void *target,
+                                 const zlink_service_monitor_open_options_t *options);
 ```
 
-- `role`은 `ZLINK_SPOT_ROLE_PUB` 또는 `ZLINK_SPOT_ROLE_SUB`입니다.
-- `zlink_spot_monitor_open()`은 unified Spot facade를 모니터합니다.
-- `zlink_spot_node_monitor_open()`은 node-owned default pub/sub를 모니터합니다.
+- `target`은 unified Spot 핸들이거나 SpotNode 핸들입니다. target 종류
+  (Spot vs SpotNode)는 핸들에서 자동으로 판별됩니다.
+- 이전 per-type API의 `role` 파라미터는 제거되었습니다.
+- `options->events`로 구독할 이벤트 마스크를 선택합니다.
+- 반환된 monitor 핸들은 `zlink_monitor_close()`로 닫습니다.
 - split `zlink_spot_pub_monitor_open()` / `zlink_spot_sub_monitor_open()`는
   public API가 아닙니다.
 - 상세 event 정의와 readiness 의미는 [events.ko.md](events.ko.md)를 참고합니다.
+
+## 스냅샷 / 인트로스펙션
+
+SpotNode는 운영 건강 모니터링과 진단을 위한 lock-free point-in-time 스냅샷
+API를 제공합니다. 이벤트 기반 모니터를 보완하는 pull 방식의 조회입니다.
+
+### SpotNode Status Snapshot
+
+```c
+int zlink_spot_node_status_snapshot(void *node,
+                                    zlink_spot_node_status_t *out);
+```
+
+SpotNode의 단일 행 운영 건강 요약을 반환합니다.
+
+#### zlink_spot_node_status_t
+
+```c
+typedef struct zlink_spot_node_status_t
+{
+    char service_name[256];
+    char local_endpoint[256];
+    zlink_routing_id_t node_routing_id;
+    zlink_spot_node_state_t state;
+    uint32_t configured_peer_count;
+    uint32_t active_peer_count;
+    uint32_t connected_peer_count;
+    uint32_t subject_count;
+    uint32_t ready_subject_count;
+    int32_t last_error;
+    uint64_t last_changed_ms;
+} zlink_spot_node_status_t;
+```
+
+| 필드 | 설명 |
+|------|------|
+| `service_name` | 생성 시 고정된 null 종료 서비스 이름. |
+| `local_endpoint` | null 종료 로컬 바인드 엔드포인트. |
+| `node_routing_id` | 이 SpotNode의 라우팅 아이덴티티. |
+| `state` | `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, 또는 `ERROR`. |
+| `configured_peer_count` | 구성된 피어 수 (수동 + discovery). |
+| `active_peer_count` | 연결 중이거나 연결된 피어 수. |
+| `connected_peer_count` | 현재 연결된 피어 수. |
+| `subject_count` | 총 구독 subject 수. |
+| `ready_subject_count` | ready 피어가 하나 이상 있는 subject 수. |
+| `last_error` | 마지막 기록된 에러 코드, 또는 0. |
+| `last_changed_ms` | 마지막 상태 변경 시점 (에포크 ms). |
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+---
+
+### SpotNode Peers Snapshot / Query
+
+```c
+int zlink_spot_node_peers_snapshot(void *node,
+                                   zlink_spot_node_peer_entry_t *entries,
+                                   size_t *count);
+
+int zlink_spot_node_peers_query(void *node,
+                                const zlink_spot_node_peer_filter_t *filter,
+                                zlink_spot_node_peer_entry_t *entries,
+                                size_t *count);
+```
+
+`peers_snapshot`은 모든 피어를 반환합니다. `peers_query`는 endpoint, source,
+state로 필터링을 지원합니다.
+
+**버퍼 규약:** `entries = NULL`을 전달하면 필요한 개수만 반환합니다. 다음
+호출에서 호출자가 할당한 버퍼를 제공합니다. 버퍼가 부족하면 `-1`을 반환하고
+`errno = ENOBUFS`, `*count`에 필요한 용량을 설정합니다.
+
+결과는 `peer_endpoint` 오름차순으로 정렬됩니다.
+
+#### zlink_spot_node_peer_entry_t
+
+```c
+typedef struct zlink_spot_node_peer_entry_t
+{
+    char service_name[256];
+    char local_endpoint[256];
+    char peer_endpoint[256];
+    zlink_spot_peer_source_t source;
+    zlink_spot_peer_state_t state;
+    uint64_t connected_since_ms;
+    uint64_t last_changed_ms;
+} zlink_spot_node_peer_entry_t;
+```
+
+| 필드 | 설명 |
+|------|------|
+| `service_name` | null 종료 서비스 이름. |
+| `local_endpoint` | null 종료 로컬 엔드포인트. |
+| `peer_endpoint` | null 종료 피어 엔드포인트. |
+| `source` | `MANUAL`, `DISCOVERY`, 또는 `MIXED`. |
+| `state` | `CONFIGURED`, `CONNECTING`, 또는 `CONNECTED`. |
+| `connected_since_ms` | 피어 연결 시점 (에포크 ms, 미연결 시 0). |
+| `last_changed_ms` | 이 피어의 마지막 상태 변경 시점 (에포크 ms). |
+
+#### zlink_spot_node_peer_filter_t
+
+```c
+typedef struct zlink_spot_node_peer_filter_t
+{
+    char peer_endpoint[256];
+    zlink_spot_peer_source_t source;
+    zlink_spot_peer_state_t state;
+} zlink_spot_node_peer_filter_t;
+```
+
+0이 아닌 값으로 설정된 필드를 기준으로 필터링합니다. 0인 필드는
+와일드카드입니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+---
+
+### SpotNode Subjects Snapshot
+
+```c
+int zlink_spot_node_subjects_snapshot(void *node,
+                                      const zlink_spot_node_subject_filter_t *filter,
+                                      zlink_spot_node_subject_entry_t *entries,
+                                      size_t *count);
+```
+
+SUB subject readiness 정보를 반환합니다. v1은 `ZLINK_SPOT_ROLE_SUB`만
+지원하며, PUB role을 필터에 지정하면 `ENOTSUP`을 반환합니다.
+
+**버퍼 규약:** peers snapshot과 동일 -- `entries = NULL`로 개수 조회;
+버퍼 부족 시 `ENOBUFS`와 필요 개수 반환.
+
+#### zlink_spot_node_subject_entry_t
+
+```c
+typedef struct zlink_spot_node_subject_entry_t
+{
+    zlink_spot_role_t role;
+    char subject[256];
+    uint32_t subject_kind;
+    uint32_t ready_peer_count;
+    uint32_t active_peer_count;
+    uint64_t last_changed_ms;
+} zlink_spot_node_subject_entry_t;
+```
+
+| 필드 | 설명 |
+|------|------|
+| `role` | `ZLINK_SPOT_ROLE_SUB` (v1 전용). |
+| `subject` | null 종료 subject 문자열. |
+| `subject_kind` | subject 종류 식별자. |
+| `ready_peer_count` | 이 subject가 ready 상태인 피어 수. |
+| `active_peer_count` | 이 subject를 제공 중인 피어 수. |
+| `last_changed_ms` | 마지막 readiness 변경 시점 (에포크 ms). |
+
+#### zlink_spot_node_subject_filter_t
+
+```c
+typedef struct zlink_spot_node_subject_filter_t
+{
+    zlink_spot_role_t role;
+    char subject[256];
+    uint32_t subject_kind;
+} zlink_spot_node_subject_filter_t;
+```
+
+0이 아닌 값으로 설정된 필드를 기준으로 필터링합니다. 0인 필드는
+와일드카드입니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+---
+
+### 권장 모니터링 순서
+
+1. `zlink_spot_node_status_snapshot()` -- 전체 건강 상태를 먼저 확인합니다.
+2. `zlink_spot_node_peers_snapshot()` -- 피어 연결 상태를 점검합니다.
+3. `zlink_spot_node_subjects_snapshot()` -- subject readiness를 확인합니다.
 
 ## 제거된 public API
 

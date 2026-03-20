@@ -181,8 +181,10 @@ inline bool setup_router_router_session (void *router1,
     }
 
     const int timeout_ms = resolve_single_recv_timeout_ms ();
-    set_sockopt_int (router1, ZLINK_RCVTIMEO, timeout_ms, "ZLINK_RCVTIMEO");
-    set_sockopt_int (router2, ZLINK_RCVTIMEO, timeout_ms, "ZLINK_RCVTIMEO");
+    set_sockopt_int (router1, ZLINK_OPT_RCVTIMEO, timeout_ms,
+                     "ZLINK_OPT_RCVTIMEO");
+    set_sockopt_int (router2, ZLINK_OPT_RCVTIMEO, timeout_ms,
+                     "ZLINK_OPT_RCVTIMEO");
     return true;
 }
 

@@ -162,7 +162,7 @@ void test_zmp_metadata_enabled ()
 
     int enabled = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_ZMP_METADATA, &enabled, sizeof (enabled)));
+      zlink_set_option (client, ZLINK_OPT_ZMP_METADATA, &enabled, sizeof (enabled)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -189,7 +189,7 @@ void test_zmp_metadata_disabled ()
 
     int disabled = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_ZMP_METADATA, &disabled, sizeof (disabled)));
+      zlink_set_option (client, ZLINK_OPT_ZMP_METADATA, &disabled, sizeof (disabled)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -264,7 +264,7 @@ void test_zmp_heartbeat_ttl_min ()
     ttl_local_ms = 1000;
 #endif
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_HEARTBEAT_TTL, &ttl_local_ms,
+      zlink_set_option (server, ZLINK_OPT_HEARTBEAT_TTL, &ttl_local_ms,
                       sizeof (ttl_local_ms)));
 
     char endpoint[MAX_SOCKET_STRING];

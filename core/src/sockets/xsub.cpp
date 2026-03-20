@@ -103,13 +103,13 @@ zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _more_send (false),
     _more_recv (false),
     _process_subscribe (false),
-    _only_first_subscribe (false),
     _dispatch_active (false),
     _dispatch_callback (NULL),
     _dispatch_userdata (NULL),
     _dispatch_inflight (0),
     _dispatch_parts (),
-    _socket_dispatch_drop_message (false)
+    _socket_dispatch_drop_message (false),
+    _delivery_ready_state (false)
 {
     options.type = ZLINK_XSUB;
 
@@ -121,6 +121,34 @@ zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     errno_assert (rc == 0);
     _dispatch_parts.reserve (2);
     _socket_dispatch_parts.reserve (2);
+}
+
+bool zlink::xsub_t::compute_delivery_ready_state () const
+{
+#ifdef ZLINK_USE_RADIX_TREE
+    const bool has_filters = _subscriptions.size () > 0;
+#else
+    const bool has_filters = _subscriptions.num_prefixes () > 0;
+#endif
+    if (!has_filters)
+        return false;
+
+    zlink_monitor_snapshot_t snapshot;
+    memset (&snapshot, 0, sizeof (snapshot));
+    return const_cast<xsub_t *> (this)->monitor_snapshot (&snapshot) == 0
+           && snapshot.ready_peer_count > 0;
+}
+
+void zlink::xsub_t::refresh_delivery_ready_state (
+  const endpoint_uri_pair_t &endpoint_uri_pair_)
+{
+    const bool ready = compute_delivery_ready_state ();
+    if (ready == _delivery_ready_state)
+        return;
+
+    _delivery_ready_state = ready;
+    emit_socket_monitor_value_event (ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED,
+                                     ready ? 1u : 0u, endpoint_uri_pair_);
 }
 
 zlink::xsub_t::~xsub_t ()
@@ -160,6 +188,7 @@ void zlink::xsub_t::xattach_pipe (pipe_t *pipe_,
     //  Send all the cached subscriptions to the new upstream peer.
     _subscriptions.apply (send_subscription, pipe_);
     pipe_->flush ();
+    refresh_delivery_ready_state (pipe_->get_endpoint_pair ());
 }
 
 void zlink::xsub_t::xread_activated (pipe_t *pipe_)
@@ -172,12 +201,17 @@ void zlink::xsub_t::xread_activated (pipe_t *pipe_)
 void zlink::xsub_t::xwrite_activated (pipe_t *pipe_)
 {
     _dist.activated (pipe_);
+    if (pipe_)
+        refresh_delivery_ready_state (pipe_->get_endpoint_pair ());
 }
 
 void zlink::xsub_t::xpipe_terminated (pipe_t *pipe_)
 {
+    const endpoint_uri_pair_t endpoint_pair =
+      pipe_ ? pipe_->get_endpoint_pair () : endpoint_uri_pair_t ();
     _fq.pipe_terminated (pipe_);
     _dist.pipe_terminated (pipe_);
+    refresh_delivery_ready_state (endpoint_pair);
 }
 
 void zlink::xsub_t::xhiccuped (pipe_t *pipe_)
@@ -191,15 +225,6 @@ int zlink::xsub_t::xsetsockopt (int option_,
                               const void *optval_,
                               size_t optvallen_)
 {
-    if (option_ == ZLINK_INTERNAL_OPT_ONLY_FIRST_SUBSCRIBE) {
-        if (optvallen_ != sizeof (int)
-            || *static_cast<const int *> (optval_) < 0) {
-            errno = EINVAL;
-            return -1;
-        }
-        _only_first_subscribe = (*static_cast<const int *> (optval_) != 0);
-        return 0;
-    }
     errno = EINVAL;
     return -1;
 }
@@ -234,7 +259,7 @@ int zlink::xsub_t::xsend (msg_t *msg_)
     _more_send = (msg_->flags () & msg_t::more) != 0;
 
     if (first_part) {
-        _process_subscribe = !_only_first_subscribe;
+        _process_subscribe = true;
     } else if (!_process_subscribe) {
         //  User message sent upstream to XPUB socket
         return _dist.send_to_all (msg_);
@@ -252,7 +277,9 @@ int zlink::xsub_t::xsend (msg_t *msg_)
         }
         _subscriptions.add (data, size);
         _process_subscribe = true;
-        return _dist.send_to_all (msg_);
+        const int rc = _dist.send_to_all (msg_);
+        refresh_delivery_ready_state (endpoint_uri_pair_t ());
+        return rc;
     }
     if (msg_->is_cancel () || (size > 0 && *data == 0)) {
         //  Process unsubscribe message
@@ -262,8 +289,11 @@ int zlink::xsub_t::xsend (msg_t *msg_)
         }
         _process_subscribe = true;
         const bool rm_result = _subscriptions.rm (data, size);
-        if (rm_result || _verbose_unsubs)
-            return _dist.send_to_all (msg_);
+        if (rm_result || _verbose_unsubs) {
+            const int rc = _dist.send_to_all (msg_);
+            refresh_delivery_ready_state (endpoint_uri_pair_t ());
+            return rc;
+        }
     } else
         //  User message sent upstream to XPUB socket
         return _dist.send_to_all (msg_);
@@ -272,6 +302,7 @@ int zlink::xsub_t::xsend (msg_t *msg_)
     errno_assert (rc == 0);
     rc = msg_->init ();
     errno_assert (rc == 0);
+    refresh_delivery_ready_state (endpoint_uri_pair_t ());
 
     return 0;
 }

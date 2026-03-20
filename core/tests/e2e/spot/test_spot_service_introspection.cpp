@@ -613,6 +613,76 @@ static void test_spot_unified_spot_basic ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+static void test_spot_node_snapshot_status_peers_subjects ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *pub_node = create_node (ctx, "spot-snapshot");
+    void *sub_node = create_node (ctx, "spot-snapshot");
+    TEST_ASSERT_NOT_NULL (pub_node);
+    TEST_ASSERT_NOT_NULL (sub_node);
+
+    char endpoint[MAX_SOCKET_STRING];
+    int port_seed = next_port_seed ();
+    TEST_ASSERT_SUCCESS_ERRNO (bind_node (pub_node, &port_seed, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer (sub_node, endpoint));
+    TEST_ASSERT_TRUE (
+      wait_for_subscription_ready (sub_node, endpoint, "topic.snapshot"));
+    TEST_ASSERT_TRUE (wait_for_pub_ready (pub_node));
+
+    zlink_spot_node_status_t status;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_status_snapshot (sub_node, &status));
+    TEST_ASSERT_EQUAL_STRING ("spot-snapshot", status.service_name);
+    TEST_ASSERT_TRUE (status.configured_peer_count >= 1);
+    TEST_ASSERT_TRUE (status.active_peer_count >= 1);
+    TEST_ASSERT_TRUE (status.connected_peer_count >= 1);
+    TEST_ASSERT_TRUE (status.subject_count >= 1);
+    TEST_ASSERT_TRUE (status.ready_subject_count >= 1);
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_SPOT_NODE_STATE_READY, status.state);
+
+    size_t count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_peers_snapshot (sub_node, NULL, &count));
+    TEST_ASSERT_EQUAL_UINT (1, count);
+    std::vector<zlink_spot_node_peer_entry_t> peers (count);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_peers_snapshot (sub_node, &peers[0], &count));
+    TEST_ASSERT_EQUAL_UINT (1, count);
+    TEST_ASSERT_EQUAL_STRING (endpoint, peers[0].peer_endpoint);
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_SPOT_PEER_SOURCE_MANUAL, peers[0].source);
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_SPOT_PEER_STATE_CONNECTED, peers[0].state);
+
+    zlink_spot_node_subject_filter_t filter;
+    memset (&filter, 0, sizeof (filter));
+    filter.role = ZLINK_SPOT_ROLE_SUB;
+    size_t subject_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_subjects_snapshot (sub_node, &filter, NULL, &subject_count));
+    TEST_ASSERT_EQUAL_UINT (1, subject_count);
+    std::vector<zlink_spot_node_subject_entry_t> subjects (subject_count);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_subjects_snapshot (
+      sub_node, &filter, &subjects[0], &subject_count));
+    TEST_ASSERT_EQUAL_UINT (1, subject_count);
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_SPOT_ROLE_SUB, subjects[0].role);
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_SERVICE_EVENT_SUBJECT_TOPIC,
+                              subjects[0].subject_kind);
+    TEST_ASSERT_EQUAL_STRING ("topic.snapshot", subjects[0].subject);
+    TEST_ASSERT_TRUE (subjects[0].active_peer_count >= 1);
+    TEST_ASSERT_TRUE (subjects[0].ready_peer_count >= 1);
+
+    memset (&filter, 0, sizeof (filter));
+    filter.role = ZLINK_SPOT_ROLE_PUB;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_spot_node_subjects_snapshot (sub_node, &filter, NULL, &subject_count));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 static bool should_run_spot_introspection_test (const char *name_)
 {
     const char *selected = getenv ("ZLINK_TEST_CASE");
@@ -635,6 +705,7 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_callback_model_receive_regression);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_recv_model_receive_regression);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_unified_spot_basic);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_node_snapshot_status_peers_subjects);
 #undef RUN_SPOT_INTROSPECTION_TEST
     return UNITY_END ();
 }

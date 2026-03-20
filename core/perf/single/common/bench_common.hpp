@@ -429,16 +429,12 @@ inline void print_result(const std::string& lib_type,
 struct connect_monitor_state_t {
     connect_monitor_state_t() :
         connection_ready_count(0),
-        accepted_count(0),
-        connected_count(0),
         error_code(0)
     {}
 
     std::mutex sync;
     std::condition_variable cv;
     size_t connection_ready_count;
-    size_t accepted_count;
-    size_t connected_count;
     int error_code;
 };
 
@@ -465,14 +461,6 @@ inline void connect_monitor_handler(const zlink_monitor_event_t *event_,
                 ++state->connection_ready_count;
                 break;
 
-            case ZLINK_EVENT_ACCEPTED:
-                ++state->accepted_count;
-                break;
-
-            case ZLINK_EVENT_CONNECTED:
-                ++state->connected_count;
-                break;
-
             case ZLINK_EVENT_BIND_FAILED:
             case ZLINK_EVENT_ACCEPT_FAILED:
             case ZLINK_EVENT_CLOSE_FAILED:
@@ -495,7 +483,7 @@ inline size_t connect_ready_count(const connect_monitor_state_t *state_)
 {
     if (!state_)
         return 0;
-    return std::max(state_->connection_ready_count, state_->accepted_count);
+    return state_->connection_ready_count;
 }
 
 inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
@@ -513,8 +501,7 @@ inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
     zlink_socket_monitor_open_options_t monitor_opts;
     memset(&monitor_opts, 0, sizeof(monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_CONNECTED
-      | ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_BIND_FAILED
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_BIND_FAILED
       | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
       | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
       | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
@@ -532,10 +519,12 @@ inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
     }
 
     const int monitor_hwm = parse_positive_env("PERF_MONITOR_HWM", 1000);
-    set_sockopt_int(monitor, ZLINK_LINGER, 0, "ZLINK_LINGER");
+    set_sockopt_int(monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
     if (monitor_hwm > 0) {
-        set_sockopt_int(monitor, ZLINK_SNDHWM, monitor_hwm, "ZLINK_SNDHWM");
-        set_sockopt_int(monitor, ZLINK_RCVHWM, monitor_hwm, "ZLINK_RCVHWM");
+        set_sockopt_int(monitor, ZLINK_OPT_SNDHWM, monitor_hwm,
+                        "ZLINK_OPT_SNDHWM");
+        set_sockopt_int(monitor, ZLINK_OPT_RCVHWM, monitor_hwm,
+                        "ZLINK_OPT_RCVHWM");
     }
 
     out_.monitor = monitor;
@@ -693,43 +682,6 @@ inline bool socket_snapshot_ready(const zlink_monitor_snapshot_t &snapshot_,
     if (!require_send_ready_)
         return true;
     return (snapshot_.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0;
-}
-
-inline bool wait_socket_monitor_ready(void *socket_,
-                                      bool require_send_ready_,
-                                      uint32_t min_ready_peer_count_,
-                                      int timeout_ms_)
-{
-    if (!socket_)
-        return false;
-
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(timeout_ms_ > 0 ? timeout_ms_ : 1);
-
-    while (std::chrono::steady_clock::now() < deadline) {
-        zlink_monitor_snapshot_t snapshot;
-        if (read_socket_snapshot_once(socket_, &snapshot)
-            && socket_snapshot_ready(snapshot, require_send_ready_,
-                                     min_ready_peer_count_)) {
-            return true;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-
-    zlink_monitor_snapshot_t snapshot;
-    const bool ready =
-      read_socket_snapshot_once(socket_, &snapshot)
-      && socket_snapshot_ready(snapshot, require_send_ready_,
-                               min_ready_peer_count_);
-    if (!ready && bench_debug_enabled()) {
-        std::cerr << "[perf-single] monitor ready wait failed:"
-                  << " require_send_ready=" << (require_send_ready_ ? 1 : 0)
-                  << " ready_peer_count=" << snapshot.ready_peer_count
-                  << " state_flags=" << snapshot.state_flags
-                  << " detail_flags=" << snapshot.detail_flags << std::endl;
-    }
-    return ready;
 }
 
 class queue_probe_t {
@@ -909,8 +861,8 @@ inline void apply_single_hwm(void *socket_)
 
     const int sndhwm = resolve_single_socket_hwm(true);
     const int rcvhwm = resolve_single_socket_hwm(false);
-    set_sockopt_int(socket_, ZLINK_SNDHWM, sndhwm, "ZLINK_SNDHWM");
-    set_sockopt_int(socket_, ZLINK_RCVHWM, rcvhwm, "ZLINK_RCVHWM");
+    set_sockopt_int(socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
+    set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
 }
 
 inline void apply_single_benchmark_socket_options(void *socket_,
@@ -924,9 +876,11 @@ inline void apply_single_benchmark_socket_options(void *socket_,
     const int linger_ms = 0;
     const int sndtimeo_ms = resolve_single_send_timeout_ms();
     const int rcvtimeo_ms = resolve_single_recv_timeout_ms();
-    set_sockopt_int(socket_, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
-    set_sockopt_int(socket_, ZLINK_SNDTIMEO, sndtimeo_ms, "ZLINK_SNDTIMEO");
-    set_sockopt_int(socket_, ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
+    set_sockopt_int(socket_, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
+    set_sockopt_int(socket_, ZLINK_OPT_SNDTIMEO, sndtimeo_ms,
+                    "ZLINK_OPT_SNDTIMEO");
+    set_sockopt_int(socket_, ZLINK_OPT_RCVTIMEO, rcvtimeo_ms,
+                    "ZLINK_OPT_RCVTIMEO");
 }
 
 inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
@@ -934,8 +888,10 @@ inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
         return;
     if (transport == "tcp" || transport == "ws") {
         const int timeout_ms = 2000;
-        set_sockopt_int(socket_, ZLINK_SNDTIMEO, timeout_ms, "ZLINK_SNDTIMEO");
-        set_sockopt_int(socket_, ZLINK_RCVTIMEO, timeout_ms, "ZLINK_RCVTIMEO");
+        set_sockopt_int(socket_, ZLINK_OPT_SNDTIMEO, timeout_ms,
+                        "ZLINK_OPT_SNDTIMEO");
+        set_sockopt_int(socket_, ZLINK_OPT_RCVTIMEO, timeout_ms,
+                        "ZLINK_OPT_RCVTIMEO");
     }
 }
 
@@ -1045,25 +1001,16 @@ inline bool setup_connected_pair(void *bind_socket_,
       wait_connect_ready_count(bind_monitor, 1, timeout_ms);
     const bool connect_ready =
       wait_connect_ready_count(connect_monitor, 1, timeout_ms);
-    const bool bind_send_ready =
-      bind_ready
-      && wait_socket_monitor_ready(bind_socket_, false, 1, timeout_ms);
-    const bool connect_send_ready =
-      connect_ready
-      && wait_socket_monitor_ready(connect_socket_, false, 1, timeout_ms);
 
     close_connect_monitor(connect_monitor);
     close_connect_monitor(bind_monitor);
-    if (bench_debug_enabled() && !(bind_ready && connect_ready && bind_send_ready
-                                   && connect_send_ready)) {
+    if (bench_debug_enabled() && !(bind_ready && connect_ready)) {
         std::cerr << "[perf-single] setup_connected_pair failed:"
                   << " bind_ready=" << (bind_ready ? 1 : 0)
                   << " connect_ready=" << (connect_ready ? 1 : 0)
-                  << " bind_send_ready=" << (bind_send_ready ? 1 : 0)
-                  << " connect_send_ready=" << (connect_send_ready ? 1 : 0)
                   << std::endl;
     }
-    return bind_ready && connect_ready && bind_send_ready && connect_send_ready;
+    return bind_ready && connect_ready;
 }
 
 template <typename RunFn>

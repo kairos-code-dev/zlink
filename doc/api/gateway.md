@@ -54,8 +54,9 @@ A single Gateway handle can be used concurrently from multiple threads
   peer management (before discovery attachment only).
 - Use `zlink_set_option()` / `zlink_get_option()` for service-level tuning.
 - Use `zlink_send_ready_handler()` for send-side backpressure.
-- Use `zlink_gateway_monitor_open()` for edge transitions such as
-  `ZLINK_GATEWAY_SEND_READY_CHANGED` and `ZLINK_GATEWAY_ROUTE_UP`.
+- Use `zlink_service_monitor_open(gateway, &options)` for edge transitions
+  such as `ZLINK_GATEWAY_SEND_READY_CHANGED` and `ZLINK_GATEWAY_ROUTE_UP`.
+  Close with `zlink_monitor_close()`.
 - Use `zlink_monitor_snapshot()` on the monitor handle to read current local
   control state and queue depth.
 - Use registry gateway-peer query APIs for operational peer inspection.
@@ -437,3 +438,51 @@ executing a Gateway callback or operational API on the same handle, destroy
 fails with `errno=EBUSY`. A successful destroy clears `*gateway_p`.
 
 **See also:** `zlink_gateway_new`
+
+---
+
+## Snapshot / Introspection
+
+### Gateway Status Snapshot
+
+```c
+int zlink_gateway_status_snapshot(void *gateway,
+                                  zlink_gateway_status_t *out);
+```
+
+Returns a single-row operational health summary of the Gateway.
+
+#### zlink_gateway_status_t
+
+```c
+typedef struct zlink_gateway_status_t
+{
+    char service_name[256];
+    char bind_endpoint[256];
+    zlink_routing_id_t gateway_routing_id;
+    zlink_gateway_state_t state;
+    uint32_t observed_provider_count;
+    uint32_t ready_provider_count;
+    uint32_t active_route_count;
+    uint32_t send_ready;
+    int32_t last_error;
+    uint64_t last_changed_ms;
+} zlink_gateway_status_t;
+```
+
+| Field | Description |
+|-------|-------------|
+| `service_name` | Null-terminated service name fixed at construction. |
+| `bind_endpoint` | Null-terminated bound endpoint. |
+| `gateway_routing_id` | Routing identity of this Gateway. |
+| `state` | `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, or `ERROR`. |
+| `observed_provider_count` | Total providers observed (connected + connecting). |
+| `ready_provider_count` | Providers currently in ready state. |
+| `active_route_count` | Number of active routes for load balancing. |
+| `send_ready` | Non-zero if the Gateway is writable. |
+| `last_error` | Last recorded error code, or 0. |
+| `last_changed_ms` | Epoch ms of the last state change. |
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.

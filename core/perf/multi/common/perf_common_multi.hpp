@@ -15,7 +15,6 @@ struct bench_settings_t
     int active_warmup;
     int duration_seconds;
     int settle_ms;
-    int client_poll_timeout_ms;
     int connect_ready_timeout_ms;
 };
 
@@ -47,7 +46,7 @@ inline int resolve_default_hwm (const char *pattern, int clients)
 
     if (pattern && *pattern) {
         const bool is_stream_variant =
-          std::strcmp (pattern, "STREAM_CALLBACK") == 0;
+          std::strcmp (pattern, "STREAM") == 0;
         if (is_stream_variant)
             return 10;
     }
@@ -59,7 +58,7 @@ inline int resolve_default_clients (const char *pattern)
 {
     if (pattern && *pattern) {
         const bool is_stream_variant =
-          std::strcmp (pattern, "STREAM_CALLBACK") == 0;
+          std::strcmp (pattern, "STREAM") == 0;
         if (is_stream_variant)
             return 10000;
     }
@@ -97,8 +96,6 @@ inline bench_settings_t resolve_bench_settings ()
     settings.duration_seconds =
       resolve_int_env ("PERF_DURATION_SECONDS", 5, 1);
     settings.settle_ms = resolve_int_env ("PERF_SETTLE_MS", 500, 0);
-    settings.client_poll_timeout_ms = resolve_int_env (
-      "PERF_CLIENT_POLL_TIMEOUT_MS", 0, 0);
     settings.connect_ready_timeout_ms =
       resolve_int_env ("PERF_CONNECT_READY_TIMEOUT_MS", 5000, 0);
     return settings;
@@ -127,6 +124,24 @@ inline int resolve_multi_int_env (const char *env_name,
                                    int min_value)
 {
     return resolve_int_env (env_name, default_value, min_value);
+}
+
+inline std::string resolve_multi_perf_recv_mode ()
+{
+    const char *env = std::getenv ("PERF_RECV_MODE");
+    if (!env || !*env)
+        return "recv";
+
+    std::string mode (env);
+    std::transform (mode.begin (), mode.end (), mode.begin (), ::tolower);
+    if (mode != "recv" && mode != "callback")
+        return "recv";
+    return mode;
+}
+
+inline bool multi_perf_callback_mode ()
+{
+    return resolve_multi_perf_recv_mode () == "callback";
 }
 
 inline size_t resolve_multi_service_clients (size_t requested_clients)

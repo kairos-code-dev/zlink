@@ -98,7 +98,7 @@ void close_monitor_handle (void **monitor_p_)
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (*monitor_p_, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (*monitor_p_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (monitor_p_));
 }
 
@@ -128,7 +128,7 @@ void reconnect_default ()
 
     int interval = 60 * 1000;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub, ZLINK_RECONNECT_IVL, &interval, sizeof (interval)));
+      zlink_set_option (sub, ZLINK_OPT_RECONNECT_IVL, &interval, sizeof (interval)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, ENDPOINT_0));
 
     const uint64_t initial_events[] = {ZLINK_EVENT_CONNECT_DELAYED,
@@ -166,7 +166,7 @@ void reconnect_success ()
 
     int interval = 1 * 1000;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sub, ZLINK_RECONNECT_IVL, &interval, sizeof (interval)));
+      zlink_set_option (sub, ZLINK_OPT_RECONNECT_IVL, &interval, sizeof (interval)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, ENDPOINT_0));
 
     const uint64_t initial_events[] = {ZLINK_EVENT_CONNECT_DELAYED,

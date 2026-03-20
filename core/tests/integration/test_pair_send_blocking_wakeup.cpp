@@ -23,9 +23,9 @@ const char *kTimeoutEndpoint = "inproc://pair_send_blocking_timeout";
 void configure_pair_socket (void *socket_)
 {
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_SNDHWM, &kSocketHwm, sizeof (kSocketHwm)));
+      zlink_set_option (socket_, ZLINK_OPT_SNDHWM, &kSocketHwm, sizeof (kSocketHwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket_, ZLINK_RCVHWM, &kSocketHwm, sizeof (kSocketHwm)));
+      zlink_set_option (socket_, ZLINK_OPT_RCVHWM, &kSocketHwm, sizeof (kSocketHwm)));
 }
 
 void fill_until_hwm (void *sender_, const char *buffer_)
@@ -48,7 +48,7 @@ void test_pair_blocking_send_wakes_only_after_lwm_reads ()
     configure_pair_socket (sender);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sender, ZLINK_SNDTIMEO, &kSendTimeoutMs,
+      zlink_set_option (sender, ZLINK_OPT_SNDTIMEO, &kSendTimeoutMs,
                         sizeof (kSendTimeoutMs)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (receiver, kEndpoint));
@@ -100,7 +100,7 @@ void test_pair_blocking_send_times_out_without_recv ()
     configure_pair_socket (sender);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (sender, ZLINK_SNDTIMEO, &kSendTimeoutMs,
+      zlink_set_option (sender, ZLINK_OPT_SNDTIMEO, &kSendTimeoutMs,
                         sizeof (kSendTimeoutMs)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (receiver, kTimeoutEndpoint));

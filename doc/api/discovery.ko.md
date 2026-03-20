@@ -30,7 +30,8 @@ Discovery는 Registry 브로드캐스트를 구독하고 로컬 서비스 디렉
   사용하고, 브로드캐스트/uplink 경로는 내부에서 자동 구성합니다.
 - `ZLINK_DISCOVERY_SERVICE_UP`,
   `ZLINK_DISCOVERY_PROVIDERS_CHANGED` 같은 상태 전이는
-  `zlink_discovery_monitor_open()`으로 관찰합니다.
+  `zlink_service_monitor_open(discovery, &options)`으로 관찰합니다.
+  `zlink_monitor_close()`로 닫습니다.
 - 전역 요약 상태는 registry topology snapshot/query API로 조회합니다.
 - Discovery는 `zlink_set_option(discovery, ZLINK_OPT_*, ...)`을 지원하며,
   내부 관리 소켓 세트에 fan-out으로 적용됩니다. getter(`zlink_get_option`)는

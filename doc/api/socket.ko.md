@@ -1043,19 +1043,20 @@ void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 
 ### zlink_socket_monitor_open
 
-고정 콜백과 함께 소켓 모니터 핸들을 열고 반환합니다.
+recv 모드로 소켓 모니터 핸들을 열고 반환합니다.
 
 ```c
 void *zlink_socket_monitor_open (void *s_,
-                                 zlink_socket_monitor_event_mask_t events_,
-                                 zlink_monitor_handler_fn handler_,
-                                 void *userdata_);
+                                 const zlink_socket_monitor_open_options_t *options_);
 ```
 
-소켓 `s_`에 대한 모니터를 생성하고 핸들을 반환합니다. `events_` 비트마스크에
-해당하는 이벤트가 `handler_` 콜백을 통해 I/O 스레드에서 전달됩니다. 반환된
-핸들은 더 이상 필요하지 않을 때 `zlink_close()`로 닫아야 합니다.
+소켓 `s_`에 대한 모니터를 생성하고 핸들을 반환합니다. `options_->events`
+비트마스크로 관찰할 이벤트를 선택합니다. 모니터는 **recv 모드**로 시작합니다.
+`zlink_socket_monitor_recv()`로 이벤트를 직접 수신하거나,
+`zlink_socket_monitor_handler()`로 callback-only 모드로 전환할 수 있습니다.
+반환된 핸들은 더 이상 필요하지 않을 때 `zlink_monitor_close()`로 닫아야 합니다.
 
 **반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
 
-**참고:** `zlink_close`
+**참고:** `zlink_socket_monitor_handler`, `zlink_socket_monitor_recv`,
+`zlink_monitor_snapshot`, `zlink_monitor_close`

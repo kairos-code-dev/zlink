@@ -14,17 +14,15 @@ void test_stream_connect_routing_id_rejected ()
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (socket, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (socket, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     const char *alias = "stream-alias";
     TEST_ASSERT_FAILURE_ERRNO (EOPNOTSUPP,
-                               zlink_setsockopt (socket, ZLINK_CONNECT_ROUTING_ID,
-                                                alias, strlen (alias)));
+                               zlink_set_router_option (socket, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, alias, strlen (alias)));
 
     const unsigned char fixed_id[4] = {'R', 'I', 'D', '1'};
     TEST_ASSERT_FAILURE_ERRNO (EOPNOTSUPP,
-                               zlink_setsockopt (socket, ZLINK_CONNECT_ROUTING_ID,
-                                                fixed_id, sizeof (fixed_id)));
+                               zlink_set_router_option (socket, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, fixed_id, sizeof (fixed_id)));
 
     test_context_socket_close_zero_linger (socket);
 }

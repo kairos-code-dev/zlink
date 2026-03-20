@@ -294,7 +294,7 @@ double measure_pubsub_latency_us (void *ctx,
     set_sockopt_int (sub, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
     apply_benchmark_hwm (pub, hwm);
     apply_benchmark_hwm (sub, hwm);
-    zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0);
+    zlink_set_subscription (sub, "");
 
     const std::string endpoint =
       bind_and_resolve_endpoint (pub, transport, lib_name + "_multi_pubsub_lat");
@@ -433,7 +433,7 @@ void run_multi_pubsub (const std::string &transport,
             zlink_close (pub);
             return;
         }
-        zlink_setsockopt (subs[i], ZLINK_SUBSCRIBE, "", 0);
+        zlink_set_subscription (subs[i], "");
         set_sockopt_int (subs[i], ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
         set_sockopt_int (subs[i], ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
         apply_benchmark_hwm (subs[i], pubsub_hwm);

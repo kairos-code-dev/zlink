@@ -30,7 +30,6 @@ DEFAULT_PATTERNS = [
     "DEALER_DEALER",
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
-    "ROUTER_ROUTER_POLL",
 ]
 
 PATTERN_COMPARISONS: List[Tuple[str, str, str]] = [
@@ -39,11 +38,6 @@ PATTERN_COMPARISONS: List[Tuple[str, str, str]] = [
     ("comp_std_zmq_dealer_dealer", "comp_zlink_dealer_dealer", "DEALER_DEALER"),
     ("comp_std_zmq_dealer_router", "comp_zlink_dealer_router", "DEALER_ROUTER"),
     ("comp_std_zmq_router_router", "comp_zlink_router_router", "ROUTER_ROUTER"),
-    (
-        "comp_std_zmq_router_router_poll",
-        "comp_zlink_router_router_poll",
-        "ROUTER_ROUTER_POLL",
-    ),
 ]
 
 if IS_WINDOWS:
@@ -411,7 +405,6 @@ def parse_pattern_arg(raw: str) -> List[str]:
         "DEALER_DEALER": "DEALER_DEALER",
         "DEALER_ROUTER": "DEALER_ROUTER",
         "ROUTER_ROUTER": "ROUTER_ROUTER",
-        "ROUTER_ROUTER_POLL": "ROUTER_ROUTER_POLL",
     }
 
     if token == "ALL":

@@ -17,7 +17,7 @@ void test_fair_queue_in (const char *bind_address_)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (receiver, bind_address_));
     size_t len = MAX_SOCKET_STRING;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (receiver, ZLINK_SOCKOPT_LAST_ENDPOINT, connect_address, &len));
+      zlink_get_option (receiver, ZLINK_OPT_LAST_ENDPOINT, connect_address, &len));
 
     const unsigned char services = 5;
     void *senders[services];
@@ -27,7 +27,7 @@ void test_fair_queue_in (const char *bind_address_)
         char *str = strdup ("A");
         str[0] += peer;
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_setsockopt (senders[peer], ZLINK_ROUTING_ID, str, 2));
+          zlink_set_routing_id (senders[peer], str, 2));
         free (str);
 
         TEST_ASSERT_SUCCESS_ERRNO (
@@ -87,17 +87,17 @@ void test_destroy_queue_on_disconnect (const char *bind_address_)
 
     int enabled = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (a, ZLINK_ROUTER_MANDATORY, &enabled, sizeof (enabled)));
+      zlink_set_router_option (a, ZLINK_ROUTER_OPT_MANDATORY, &enabled, sizeof (enabled)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (a, bind_address_));
     size_t len = MAX_SOCKET_STRING;
     char connect_address[MAX_SOCKET_STRING];
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (a, ZLINK_SOCKOPT_LAST_ENDPOINT, connect_address, &len));
+      zlink_get_option (a, ZLINK_OPT_LAST_ENDPOINT, connect_address, &len));
 
     void *b = test_context_socket (ZLINK_DEALER);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (b, ZLINK_ROUTING_ID, "B", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (b, "B", 2));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (b, connect_address));
 

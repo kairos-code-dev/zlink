@@ -39,7 +39,7 @@ struct client_options_t
 
     client_options_t ()
         : transport ("tcp"),
-          pattern ("STREAM_CALLBACK"),
+          pattern ("STREAM"),
           host ("127.0.0.1"),
           port (38001),
           ccu (10000),

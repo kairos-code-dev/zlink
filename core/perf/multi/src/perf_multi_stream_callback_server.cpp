@@ -18,13 +18,13 @@
 #define ZLINK_STREAM 11
 #endif
 
-#ifndef ZLINK_TCP_NODELAY
-#define ZLINK_TCP_NODELAY 26
-#endif
-
 namespace {
 
-static const char *k_pattern = "STREAM_CALLBACK";
+#ifndef PERF_MULTI_STREAM_PATTERN_NAME
+#define PERF_MULTI_STREAM_PATTERN_NAME "STREAM"
+#endif
+
+static const char *k_pattern = PERF_MULTI_STREAM_PATTERN_NAME;
 static const char k_stop_token[] = "__zlink_perf_stop__";
 
 // Uses perf_stop_requested() from perf_common.hpp
@@ -315,6 +315,18 @@ int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg, void *)
     return 0;
 }
 
+bool process_stream_recv_parts (const zlink_routing_id_t *rid,
+                                zlink_msg_t *parts,
+                                size_t part_count)
+{
+    if (part_count > 0)
+        (void) on_stream_packet (rid, &parts[0], NULL);
+    for (size_t i = 1; i < part_count; ++i)
+        (void) zlink_msg_close (&parts[i]);
+    free (parts);
+    return !g_callback_failed.load (std::memory_order_acquire);
+}
+
 void on_stream_handler (const zlink_routing_id_t *rid,
                         zlink_msg_t *parts,
                         size_t part_count,
@@ -348,6 +360,12 @@ int main (int argc, char **argv)
         return 1;
     }
 
+    const std::string recv_mode = resolve_multi_perf_recv_mode ();
+    if (recv_mode != "recv" && recv_mode != "callback") {
+        std::cerr << "unsupported recv mode: " << recv_mode << std::endl;
+        return 1;
+    }
+
     ctx_guard_t ctx;
     if (!ctx.valid ())
         return 1;
@@ -361,13 +379,16 @@ int main (int argc, char **argv)
     const std::vector<size_t> sizes = resolve_bench_msg_sizes (64);
 
     const int linger_ms = 0;
-    set_sockopt_int (server, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
     const int io_timeout_ms = resolve_bench_count ("PERF_STREAM_TIMEOUT_MS", 5000);
-    set_sockopt_int (server, ZLINK_SNDTIMEO, io_timeout_ms, "ZLINK_SNDTIMEO");
-    set_sockopt_int (server, ZLINK_RCVTIMEO, io_timeout_ms, "ZLINK_RCVTIMEO");
+    set_sockopt_int (server, ZLINK_OPT_SNDTIMEO, io_timeout_ms,
+                     "ZLINK_OPT_SNDTIMEO");
+    set_sockopt_int (server, ZLINK_OPT_RCVTIMEO, io_timeout_ms,
+                     "ZLINK_OPT_RCVTIMEO");
     const int nodelay = 1;
-    set_sockopt_int (server, ZLINK_TCP_NODELAY, nodelay, "ZLINK_TCP_NODELAY");
+    set_sockopt_int (server, ZLINK_OPT_TCP_NODELAY, nodelay,
+                     "ZLINK_OPT_TCP_NODELAY");
 
     if (!setup_tls_server (server, transport)) {
         zlink_close (server);
@@ -375,7 +396,7 @@ int main (int argc, char **argv)
     }
 
     const std::string endpoint = bind_server_endpoint (
-      server, transport, lib_name + "_stream_callback_server");
+      server, transport, lib_name + "_stream_server");
     if (endpoint.empty ()) {
         zlink_close (server);
         return 1;
@@ -396,13 +417,6 @@ int main (int argc, char **argv)
     std::unique_ptr<send_queue_t> send_queue (new send_queue_t (queue_capacity));
     g_send_queue = send_queue.get ();
 
-    if (zlink_recv_handler (server, &on_stream_handler, NULL) != 0) {
-        g_send_queue = NULL;
-        g_server_socket = NULL;
-        zlink_close (server);
-        return 1;
-    }
-
     std::thread send_thread (send_thread_main);
 
     std::thread stdin_watcher ([] () {
@@ -422,12 +436,43 @@ int main (int argc, char **argv)
     });
     stdin_watcher.detach ();
 
+    if (recv_mode == "callback") {
+        if (zlink_recv_handler (server, &on_stream_handler, NULL) != 0) {
+            g_sender_stop_requested.store (true, std::memory_order_release);
+            send_thread.join ();
+            g_send_queue = NULL;
+            g_server_socket = NULL;
+            zlink_close (server);
+            return 1;
+        }
+    }
+
     std::cout << "READY," << endpoint << std::endl;
 
     int rc = 0;
-    while (!perf_stop_requested ().load (std::memory_order_acquire)) {
+    while (!perf_stop_requested ().load (std::memory_order_acquire) && rc == 0) {
         emit_requested_queue_probe (lib_name, transport, server, server);
         if (g_callback_failed.load (std::memory_order_acquire)) {
+            rc = 1;
+            break;
+        }
+
+        if (recv_mode == "recv") {
+            zlink_routing_id_t source_rid;
+            std::memset (&source_rid, 0, sizeof (source_rid));
+            zlink_msg_t *parts = NULL;
+            size_t part_count = 0;
+            const int recv_rc =
+              zlink_recv (server, &source_rid, &parts, &part_count, 0);
+            if (recv_rc == 0) {
+                if (!process_stream_recv_parts (&source_rid, parts, part_count))
+                    rc = 1;
+                continue;
+            }
+
+            const int err = zlink_errno ();
+            if (err == EAGAIN || err == EINTR)
+                continue;
             rc = 1;
             break;
         }

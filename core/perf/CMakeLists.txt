@@ -5,6 +5,11 @@
 #   cmake --build core/build
 # Run with:
 #   ./core/perf/run_benchmarks.sh --build-dir /home/hep7/project/kairos/zlink/core/build
+#
+# Notes:
+#   - core/build is the only supported build directory for this repository.
+#   - Single recv-mode overrides currently use dedicated *_recv targets.
+#   - Multi benchmarks still use per-pattern server/client binaries.
 
 # Resolve current zlink include path (supports root-level and core-level builds)
 set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
@@ -98,17 +103,6 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     add_current_bench_single(perf_router_router single/src/perf_router_router.cpp)
     add_current_bench_single(perf_gateway single/src/perf_gateway.cpp)
     add_current_bench_single(perf_spot single/src/perf_spot.cpp)
-    add_current_bench_single_recv(perf_pair_recv
-                                  ../bench/with_zmq/single/zlink/bench_zlink_pair.cpp)
-    add_current_bench_single_recv(perf_pubsub_recv
-                                  ../bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp)
-    add_current_bench_single_recv(perf_dealer_dealer_recv
-                                  ../bench/with_zmq/single/zlink/bench_zlink_dealer_dealer.cpp)
-    add_current_bench_single_recv(perf_dealer_router_recv
-                                  ../bench/with_zmq/single/zlink/bench_zlink_dealer_router.cpp)
-    add_current_bench_single_recv(perf_router_router_recv
-                                  ../bench/with_zmq/single/zlink/bench_zlink_router_router.cpp)
-
     # Standalone STREAM client (multi-only).
     add_executable(
         perf_stream_client
@@ -145,8 +139,14 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
                            multi/src/perf_multi_gateway_client.cpp)
     add_current_bench_multi(comp_src_spot_client
                            multi/src/perf_multi_spot_client.cpp)
+    add_current_bench_multi(comp_src_stream_server
+                           multi/src/perf_multi_stream_callback_server.cpp)
+    target_compile_definitions(comp_src_stream_server PRIVATE
+                               PERF_MULTI_STREAM_PATTERN_NAME="STREAM")
     add_current_bench_multi(comp_src_stream_callback_server
                            multi/src/perf_multi_stream_callback_server.cpp)
+    target_compile_definitions(comp_src_stream_callback_server PRIVATE
+                               PERF_MULTI_STREAM_PATTERN_NAME="STREAM_CALLBACK")
 else()
     message(WARNING "zlink headers not found at ${ZLINK_INCLUDE_DIR}")
 endif()

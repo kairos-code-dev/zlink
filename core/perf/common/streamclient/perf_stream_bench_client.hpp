@@ -501,6 +501,17 @@ class bench_client_t : public bench_client_iface_t
         timeout_error_measure.fetch_add (count, std::memory_order_relaxed);
     }
 
+    int effective_phase_drain_ms (size_t size) const
+    {
+        int drain_ms = std::max (0, opt.drain_ms);
+        // Large frames leave a longer tail of in-flight echoes in callback
+        // mode. The default short drain is enough for small frames but not for
+        // the 64KiB policy size at high CCU.
+        if (size >= 65536)
+            drain_ms = std::max (drain_ms, 5000);
+        return drain_ms;
+    }
+
     // Run a timed window (warmup or measure). Kicks traffic, sleeps for
     // duration, then stops and drains in-flight ops.
     bool run_window (int duration_s, bool measure)
@@ -525,7 +536,8 @@ class bench_client_t : public bench_client_iface_t
         mode.store (phase_idle, std::memory_order_release);
         collect_metrics.store (false, std::memory_order_release);
 
-        const int drain_ms = std::max (0, opt.drain_ms);
+        const int drain_ms = effective_phase_drain_ms (
+          phase_size.load (std::memory_order_acquire));
         if (drain_ms > 0) {
             const auto drain_deadline =
               std::chrono::steady_clock::now ()

@@ -69,247 +69,48 @@ inline int recv_single_part_header_flags (void *socket,
     return 1;
 }
 
-struct recv_state_t {
-    recv_state_t () :
-        expected_payload_size (0),
-        current_phase (0),
-        active_phase (false),
-        deadline (),
-        queue_probe (NULL),
-        received (0),
-        latency_builder (),
-        sender_done (false),
-        recv_failed (false),
-        total_dispatched (0)
-    {}
-
-    // Phase configuration (set before phase, read-only during phase)
-    size_t expected_payload_size;
-    uint32_t current_phase;
-    bool active_phase;
-    std::chrono::steady_clock::time_point deadline;
-    queue_probe_t *queue_probe;
-
-    // Recv stats (written by handler on I/O thread, read after completion)
-    unsigned long long received;
-    latency_stats_builder_t latency_builder;
-
-    // Drain coordination
-    std::atomic<bool> sender_done;
-    std::atomic<bool> recv_failed;
-
-    // Completion signaling
-    std::mutex done_mutex;
-    std::condition_variable done_cv;
-    std::atomic<unsigned long long> total_dispatched;
-
-private:
-    recv_state_t (const recv_state_t &);
-    recv_state_t &operator= (const recv_state_t &);
-};
-
-inline void pair_recv_handler (const zlink_routing_id_t *,
-                               zlink_msg_t *parts_,
-                               size_t part_count_,
-                               void *userdata_)
+inline int send_single_part_with_backpressure (
+  void *socket,
+  zlink_msg_t *part,
+  poller_guard_t *send_poller,
+  const std::chrono::steady_clock::time_point &deadline)
 {
-    recv_state_t *state = static_cast<recv_state_t *> (userdata_);
-
-    // Validate: expect exactly one part
-    if (part_count_ != 1) {
-        for (size_t i = 0; i < part_count_; ++i)
-            zlink_msg_close (&parts_[i]);
-        state->recv_failed.store (true, std::memory_order_release);
-        if (state->sender_done.load (std::memory_order_acquire)) {
-            std::lock_guard<std::mutex> lock (state->done_mutex);
-            state->done_cv.notify_one ();
-        }
-        return;
-    }
-
-    const size_t actual_size = zlink_msg_size (&parts_[0]);
-    const bool size_ok = actual_size == state->expected_payload_size;
-
-    perf_single_metric::header_t header;
-    bool header_ok = false;
-    if (size_ok) {
-        header_ok = perf_single_metric::decode_payload_header (
-          zlink_msg_data (&parts_[0]), actual_size, &header);
-    }
-
-    zlink_msg_close (&parts_[0]);
-
-    if (!size_ok) {
-        state->recv_failed.store (true, std::memory_order_release);
-        if (state->sender_done.load (std::memory_order_acquire)) {
-            std::lock_guard<std::mutex> lock (state->done_mutex);
-            state->done_cv.notify_one ();
-        }
-        return;
-    }
-
-    // Account header
-    if (state->active_phase && state->queue_probe)
-        state->queue_probe->sample_recv_if_due ();
-
-    if (header_ok && header.magic == perf_single_metric::k_magic
-        && header.phase == state->current_phase) {
-        if (state->active_phase) {
-            if (std::chrono::steady_clock::now () < state->deadline) {
-                ++state->received;
-                const uint64_t now = perf_single_metric::now_us ();
-                const double latency_us =
-                  now >= header.sent_ts_us
-                    ? static_cast<double> (now - header.sent_ts_us)
-                    : 0.0;
-                state->latency_builder.add (latency_us);
-            }
-        } else {
-            ++state->received;
-        }
-    }
-
-    state->total_dispatched.fetch_add (1, std::memory_order_release);
-    if (state->sender_done.load (std::memory_order_acquire)) {
-        std::lock_guard<std::mutex> lock (state->done_mutex);
-        state->done_cv.notify_one ();
-    }
-}
-
-inline bool run_oneway_phase_callback (void *sender,
-                                       recv_state_t *state,
-                                       std::vector<char> *payload,
-                                       size_t payload_size,
-                                       size_t msg_size,
-                                       uint32_t run_id,
-                                       uint64_t *seq,
-                                       perf_single_metric::phase_t phase,
-                                       int duration_s,
-                                       int recv_timeout_ms,
-                                       queue_probe_t *queue_probe,
-                                       unsigned long long *out_received,
-                                       latency_stats_t *out_latency)
-{
-    if (!sender || !state || !payload || !seq || !out_received)
-        return false;
-
-    const bool active_phase = phase == perf_single_metric::phase_active;
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-        + std::chrono::seconds (duration_s > 0 ? duration_s : 1);
-    const auto drain_idle_limit = std::chrono::milliseconds (
-      recv_timeout_ms > 0 ? recv_timeout_ms : 200);
-
-    // Configure recv state for this phase
-    state->expected_payload_size = payload_size;
-    state->current_phase = static_cast<uint32_t> (phase);
-    state->active_phase = active_phase;
-    state->deadline = deadline;
-    state->queue_probe = queue_probe;
-    state->received = 0;
-    state->latency_builder = latency_stats_builder_t ();
-    state->sender_done.store (false, std::memory_order_release);
-    state->recv_failed.store (false, std::memory_order_relaxed);
-    state->total_dispatched.store (0, std::memory_order_relaxed);
-
-    if (active_phase && queue_probe)
-        queue_probe->force_sample_recv ();
-
-    // Send phase
-    bool send_failed = false;
-    if (active_phase && queue_probe)
-        queue_probe->force_sample_send ();
+    if (!socket || !part || !send_poller || !send_poller->valid ())
+        return -1;
 
     while (std::chrono::steady_clock::now () < deadline) {
-        const uint64_t sent_ts = perf_single_metric::now_us ();
-        if (!perf_single_metric::stamp_payload (payload->data (),
-                                                payload_size,
-                                                run_id,
-                                                phase,
-                                                msg_size,
-                                                (*seq)++,
-                                                sent_ts)) {
-            if (bench_debug_enabled ())
-                std::cerr << "[perf-pair] stamp failed" << std::endl;
-            send_failed = true;
-            break;
-        }
-
-        zlink_msg_t part;
-        if (::zlink_msg_init_size (&part, payload_size) != 0) {
-            if (bench_debug_enabled ())
-                std::cerr << "[perf-pair] msg init failed err="
-                          << zlink_errno () << std::endl;
-            send_failed = true;
-            break;
-        }
-        if (payload_size > 0)
-            memcpy (::zlink_msg_data (&part), payload->data (), payload_size);
         if (::zlink_send (
-              sender, &part, 1, static_cast<zlink_send_flags_t> (0))
-            < 0) {
-            ::zlink_msg_close (&part);
-            send_failed = true;
-            break;
+              socket, part, 1, static_cast<zlink_send_flags_t> (ZLINK_DONTWAIT))
+            >= 0) {
+            return 1;
         }
-        if (active_phase && queue_probe)
-            queue_probe->sample_send_if_due ();
-    }
 
-    if (active_phase && queue_probe)
-        queue_probe->force_sample_send ();
-
-    // Signal sender done and wait for drain
-    state->sender_done.store (true, std::memory_order_release);
-
-    {
-        std::unique_lock<std::mutex> lock (state->done_mutex);
-        auto drain_deadline =
-          std::chrono::steady_clock::now () + drain_idle_limit;
-        unsigned long long prev_dispatched =
-          state->total_dispatched.load (std::memory_order_acquire);
-
-        while (!state->recv_failed.load (std::memory_order_acquire)) {
-            const auto status =
-              state->done_cv.wait_until (lock, drain_deadline);
-            const unsigned long long curr_dispatched =
-              state->total_dispatched.load (std::memory_order_acquire);
-
-            if (state->recv_failed.load (std::memory_order_acquire))
-                break;
-
-            if (curr_dispatched != prev_dispatched) {
-                prev_dispatched = curr_dispatched;
-                drain_deadline =
-                  std::chrono::steady_clock::now () + drain_idle_limit;
+        const int err = zlink_errno ();
+        if (err == EINTR)
+            continue;
+        if (err != EAGAIN)
+            return -1;
+        zlink_poller_event_t event;
+        const int poll_rc =
+          send_poller->wait (&event, static_cast<int> (remaining_timeout_ms (
+                                  deadline, 1)));
+        if (poll_rc < 0) {
+            if (zlink_errno () == EINTR || zlink_errno () == EAGAIN)
                 continue;
+            return -1;
+        }
+        if (poll_rc == 0 || (event.events & ZLINK_POLLOUT) == 0) {
+            if (bench_debug_enabled ()) {
+                std::cerr << "[perf-pair] send wait failed err="
+                          << zlink_strerror (zlink_errno ()) << std::endl;
             }
-
-            if (status == std::cv_status::timeout
-                || std::chrono::steady_clock::now () >= drain_deadline) {
-                break;
-            }
+            return 0;
         }
     }
 
-    if (active_phase && queue_probe)
-        queue_probe->force_sample_recv ();
-
-    if (send_failed || state->recv_failed.load (std::memory_order_acquire))
-        return false;
-
-    *out_received = state->received;
-
-    if (active_phase) {
-        if (state->received == 0 || state->latency_builder.count () == 0
-            || !out_latency)
-            return false;
-        *out_latency = state->latency_builder.snapshot ();
-    } else if (state->received == 0) {
-        return false;
-    }
-
-    return true;
+    if (bench_debug_enabled ())
+        std::cerr << "[perf-pair] send deadline expired" << std::endl;
+    return 0;
 }
 
 inline bool run_oneway_phase_recv (void *sender,
@@ -334,6 +135,8 @@ inline bool run_oneway_phase_recv (void *sender,
       std::chrono::steady_clock::now ()
       + std::chrono::seconds (duration_s > 0 ? duration_s : 1);
     const auto drain_idle_limit = std::chrono::milliseconds (
+    recv_timeout_ms > 0 ? recv_timeout_ms : 200);
+    const auto recv_poll_window = std::chrono::milliseconds (
       recv_timeout_ms > 0 ? recv_timeout_ms : 200);
 
     std::atomic<bool> sender_done (false);
@@ -343,6 +146,12 @@ inline bool run_oneway_phase_recv (void *sender,
 
     std::thread receiver_thread ([&] () {
         auto last_recv_at = std::chrono::steady_clock::now ();
+        poller_guard_t recv_poller;
+        if (!recv_poller.valid ()
+            || !recv_poller.add (receiver, receiver, ZLINK_POLLIN)) {
+            recv_failed.store (true, std::memory_order_release);
+            return;
+        }
 
         auto account_header =
           [&] (const perf_single_metric::header_t &header,
@@ -375,11 +184,32 @@ inline bool run_oneway_phase_recv (void *sender,
 
         while (true) {
             const bool done = sender_done.load (std::memory_order_acquire);
+            const auto now = std::chrono::steady_clock::now ();
+            auto poll_deadline = now + recv_poll_window;
+            if (done) {
+                const auto idle_deadline = last_recv_at + drain_idle_limit;
+                if (now >= idle_deadline)
+                    break;
+                poll_deadline = idle_deadline;
+            }
+
+            zlink_poller_event_t event;
+            const int poll_rc = recv_poller.wait (
+              &event, static_cast<int> (remaining_timeout_ms (poll_deadline, 1)));
+            if (poll_rc < 0) {
+                const int err = zlink_errno ();
+                if (err == EINTR || err == EAGAIN)
+                    continue;
+                recv_failed.store (true, std::memory_order_release);
+                break;
+            }
+            if (poll_rc == 0)
+                continue;
 
             perf_single_metric::header_t header;
             bool header_ok = false;
             const int recv_rc = recv_single_part_header_flags (
-              receiver, payload_size, 0, &header, &header_ok);
+              receiver, payload_size, ZLINK_DONTWAIT, &header, &header_ok);
             if (recv_rc > 0) {
                 last_recv_at = std::chrono::steady_clock::now ();
                 account_header (header, header_ok);
@@ -425,6 +255,13 @@ inline bool run_oneway_phase_recv (void *sender,
     });
 
     bool send_failed = false;
+    poller_guard_t send_poller;
+    if (!send_poller.valid ()
+        || !send_poller.add (sender, sender, ZLINK_POLLOUT)) {
+        sender_done.store (true, std::memory_order_release);
+        receiver_thread.join ();
+        return false;
+    }
     if (active_phase && queue_probe)
         queue_probe->force_sample_send ();
 
@@ -448,13 +285,16 @@ inline bool run_oneway_phase_recv (void *sender,
         }
         if (payload_size > 0)
             memcpy (::zlink_msg_data (&part), payload->data (), payload_size);
-        if (::zlink_send (
-              sender, &part, 1, static_cast<zlink_send_flags_t> (0))
-            < 0) {
+        const int send_rc =
+          send_single_part_with_backpressure (
+            sender, &part, &send_poller, deadline);
+        if (send_rc < 0) {
             ::zlink_msg_close (&part);
             send_failed = true;
             break;
         }
+        if (send_rc == 0)
+            break;
         if (active_phase && queue_probe)
             queue_probe->sample_send_if_due ();
     }
@@ -502,12 +342,7 @@ void run_pair (const std::string &transport,
         return;
     }
 
-    const bool callback_mode = single_perf_callback_mode ();
-    recv_state_t recv_state;
-
-    socket_guard_t s_bind (
-      ctx.get (), ZLINK_SOCKET_PAIR,
-      callback_mode ? &pair_recv_handler : NULL, &recv_state);
+    socket_guard_t s_bind (ctx.get (), ZLINK_SOCKET_PAIR);
     socket_guard_t s_conn (ctx.get (), ZLINK_SOCKET_PAIR);
     if (!s_bind.valid () || !s_conn.valid ()) {
         print_fail_no_queue ();
@@ -542,34 +377,19 @@ void run_pair (const std::string &transport,
 
     unsigned long long warmup_received = 0;
     const int warmup_s = resolve_single_warmup_seconds ();
-    const bool warmup_ok =
-      callback_mode
-        ? run_oneway_phase_callback (s_conn.get (),
-                                     &recv_state,
-                                     &payload,
-                                     payload_size,
-                                     msg_size,
-                                     run_id,
-                                     &seq,
-                                     perf_single_metric::phase_warmup,
-                                     warmup_s,
-                                     recv_timeout_ms,
-                                     NULL,
-                                     &warmup_received,
-                                     NULL)
-        : run_oneway_phase_recv (s_conn.get (),
-                                 s_bind.get (),
-                                 &payload,
-                                 payload_size,
-                                 msg_size,
-                                 run_id,
-                                 &seq,
-                                 perf_single_metric::phase_warmup,
-                                 warmup_s,
-                                 recv_timeout_ms,
-                                 NULL,
-                                 &warmup_received,
-                                 NULL);
+    const bool warmup_ok = run_oneway_phase_recv (s_conn.get (),
+                                                  s_bind.get (),
+                                                  &payload,
+                                                  payload_size,
+                                                  msg_size,
+                                                  run_id,
+                                                  &seq,
+                                                  perf_single_metric::phase_warmup,
+                                                  warmup_s,
+                                                  recv_timeout_ms,
+                                                  NULL,
+                                                  &warmup_received,
+                                                  NULL);
     if (!warmup_ok) {
         print_fail_with_queue ();
         return;
@@ -578,34 +398,19 @@ void run_pair (const std::string &transport,
     const int duration_s = std::max (1, resolve_single_duration_seconds ());
     unsigned long long received = 0;
     latency_stats_t latency_stats;
-    const bool active_ok =
-      callback_mode
-        ? run_oneway_phase_callback (s_conn.get (),
-                                     &recv_state,
-                                     &payload,
-                                     payload_size,
-                                     msg_size,
-                                     run_id,
-                                     &seq,
-                                     perf_single_metric::phase_active,
-                                     duration_s,
-                                     recv_timeout_ms,
-                                     &queue_probe,
-                                     &received,
-                                     &latency_stats)
-        : run_oneway_phase_recv (s_conn.get (),
-                                 s_bind.get (),
-                                 &payload,
-                                 payload_size,
-                                 msg_size,
-                                 run_id,
-                                 &seq,
-                                 perf_single_metric::phase_active,
-                                 duration_s,
-                                 recv_timeout_ms,
-                                 &queue_probe,
-                                 &received,
-                                 &latency_stats);
+    const bool active_ok = run_oneway_phase_recv (s_conn.get (),
+                                                  s_bind.get (),
+                                                  &payload,
+                                                  payload_size,
+                                                  msg_size,
+                                                  run_id,
+                                                  &seq,
+                                                  perf_single_metric::phase_active,
+                                                  duration_s,
+                                                  recv_timeout_ms,
+                                                  &queue_probe,
+                                                  &received,
+                                                  &latency_stats);
     if (!active_ok) {
         print_fail_with_queue ();
         return;
@@ -628,5 +433,5 @@ void run_pair (const std::string &transport,
 
 int main (int argc, char **argv)
 {
-    return run_standard_bench_main (argc, argv, run_pair);
+    return run_standard_bench_main (argc, argv, "PAIR", run_pair);
 }

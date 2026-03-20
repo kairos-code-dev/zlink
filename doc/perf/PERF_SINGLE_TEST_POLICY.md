@@ -1,8 +1,8 @@
 # zlink Single Performance Test Policy
 
 > **적용 범위**: zlink 전체 (core + bindings) — single-client 벤치마크
-> **Policy Version**: 1.7
-> **Date**: 2026-03-20
+> **Policy Version**: 1.9
+> **Date**: 2026-03-21
 > **Scope**: `perf/single` 성능 테스트 정책
 >
 > 본 정책은 `perf/single`의 C++ 벤치마크뿐 아니라 모든 바인딩 라이브러리
@@ -43,8 +43,9 @@
 - 목적
   - 단일 소켓 경로에서 **자연 backpressure를 유지한 채 가능한 최대 throughput**을 측정한다.
   - 같은 active 구간에서 동일 메시지 집합으로 latency도 함께 집계한다.
+- single suite는 callback 모드만 기본 테스트 대상으로 둔다.
 - 두 가지 I/O 모델 지원 (`--recv` 옵션)
-  - **recv 모델** (기본, `--recv recv`):
+  - **recv 모델** (`--recv recv`):
     - recv: poller `POLLIN` readiness 감지 → `zlink_recv()` / `zlink_msg_recv()`
       비동기 drain 루프 (react 방식). poller가 readable을 알려주면 수신 가능한
       만큼 drain한다.
@@ -54,7 +55,10 @@
     - send backpressure: poller `POLLOUT` 기반.
     - active 종료 후에는 bounded idle drain으로 잔여 in-flight를 정리할 수 있다.
   - **callback 모델** (`--recv callback`):
-    - single suite에서 callback 모델은 `SPOT`에만 허용된다.
+    - single suite의 기본 테스트 모드는 callback이다.
+    - single에서 dual-mode 예외는 `SPOT`만 허용한다.
+    - `recv`와 `callback`은 같은 pattern 안에서 `--recv` 값으로 선택한다.
+      callback 전용 파일명이나 별도 public pattern 이름을 두지 않는다.
     - recv: `zlink_recv_handler()` 등록 → 라이브러리가 I/O thread에서 callback
       dispatch. `zlink_recv()` / `zlink_msg_recv()` 동기 recv API는 측정 경로에
       사용하지 않는다.
@@ -75,7 +79,9 @@
 - 공통
   - 실패 시 즉시 `fail` 처리한다.
   - retry는 없다.
-  - 지원하지 않는 single pattern에서 `--recv callback`을 주면 즉시 실패한다.
+  - single 일반 pattern은 callback only다.
+  - `SPOT`만 `recv` / `callback` dual-mode 예외를 둔다.
+  - 지원하지 않는 single pattern에서 허용 범위 밖 mode를 주면 즉시 실패한다.
   - `recv`와 `callback`은 metric header decode, phase 판정, throughput/latency
     집계 엔진을 최대한 공유하고, 차이는 event를 만드는 입력 경로만 둔다.
 - 한 줄 요약
@@ -268,7 +274,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 | `--io-threads N` | context I/O threads | 환경/기본값 |
 | `--msg-sizes LIST` | 메시지 크기 목록 | 정책 기본값 |
 | `--transports LIST` | transport 목록 | 패턴 기본값 |
-| `--recv MODE` | recv 모델 선택: `recv` (기본) 또는 `callback` (`SPOT`만 허용) | `recv` |
+| `--recv MODE` | recv 모델 선택. single 기본값은 `callback`; `SPOT`만 `recv` / `callback` 허용 | `callback` |
 | `--hwm N` | 송수신 HWM 공통 fallback | 1000 |
 | `--send-hwm N` | 송신 HWM 우선값 | `--hwm` |
 | `--recv-hwm N` | 수신 HWM 우선값 | `--hwm` |
@@ -301,13 +307,21 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 
 | 패턴 | 허용 mode |
 |------|-----------|
-| PAIR | `recv` |
-| PUBSUB | `recv` |
-| DEALER_DEALER | `recv` |
-| DEALER_ROUTER | `recv` |
-| ROUTER_ROUTER | `recv` |
-| GATEWAY | `recv` |
+| PAIR | `callback` |
+| PUBSUB | `callback` |
+| DEALER_DEALER | `callback` |
+| DEALER_ROUTER | `callback` |
+| ROUTER_ROUTER | `callback` |
+| GATEWAY | `callback` |
 | SPOT | `recv`, `callback` |
+
+정책:
+
+- single의 기본 테스트 mode는 callback이다.
+- `SPOT`만 `recv` / `callback` dual-mode 비교를 허용한다.
+- `recv`와 `callback`은 같은 pattern 안에서 `--recv` 값으로 선택한다.
+- callback 모드를 이유로 별도 callback 파일명이나 별도 public pattern 이름을
+  정책에 추가하지 않는다.
 
 #### 패턴 방향 분류
 

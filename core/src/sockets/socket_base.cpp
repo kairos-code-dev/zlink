@@ -450,17 +450,26 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
       ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT
       | ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
       | ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS;
-    out_->ready_peer_count = static_cast<uint32_t> (_pipes.size ());
-    if (out_->ready_peer_count > 0)
-        out_->state_flags |= ZLINK_MONITOR_STATE_READY;
+    {
+        scoped_lock_t lock (_monitor_sync);
+        out_->ready_peer_count = static_cast<uint32_t> (_pipes.size ());
+        if (out_->ready_peer_count > 0)
+            out_->state_flags |= ZLINK_MONITOR_STATE_READY;
 
-    for (pipes_t::size_type i = 0; i < _pipes.size (); ++i) {
-        pipe_t *pipe = _pipes[i];
-        out_->snd_pending_msgs += pipe->get_snd_pending_msgs ();
-        out_->rcv_pending_msgs += pipe->get_rcv_pending_msgs_approx ();
+        for (pipes_t::size_type i = 0; i < _pipes.size (); ++i) {
+            pipe_t *pipe = _pipes[i];
+            out_->snd_pending_msgs += pipe->get_snd_pending_msgs ();
+            out_->rcv_pending_msgs += pipe->get_rcv_pending_msgs_approx ();
+        }
     }
 
     return 0;
+}
+
+bool zlink::socket_base_t::has_attached_pipes () const
+{
+    scoped_lock_t lock (const_cast<socket_base_t *> (this)->_monitor_sync);
+    return !const_cast<socket_base_t *> (this)->_pipes.empty ();
 }
 
 void zlink::socket_base_t::socket_peer_remote_endpoints (
@@ -573,7 +582,10 @@ void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
 {
     //  First, register the pipe so that we can terminate it later on.
     pipe_->set_event_sink (this);
-    _pipes.push_back (pipe_);
+    {
+        scoped_lock_t lock (_monitor_sync);
+        _pipes.push_back (pipe_);
+    }
 
     //  Let the derived socket type know about new pipe.
     xattach_pipe (pipe_, subscribe_to_all_, locally_initiated_);
@@ -2528,7 +2540,10 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
 
     //  Remove the pipe from the list of attached pipes and confirm its
     //  termination if we are already shutting down.
-    _pipes.erase (pipe_);
+    {
+        scoped_lock_t lock (_monitor_sync);
+        _pipes.erase (pipe_);
+    }
 
     // Remove the pipe from _endpoints (set it to NULL).
     const std::string &identifier = pipe_->get_endpoint_pair ().identifier ();

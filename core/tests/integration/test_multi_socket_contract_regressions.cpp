@@ -445,13 +445,11 @@ void test_dealer_recv_with_source_rid_hides_peer_routing_id ()
     test_context_socket_close_zero_linger (router);
 }
 
-void test_pubsub_callback_remains_active_across_warmup_and_active_phases ()
+void test_pubsub_callback_is_unsupported_on_raw_sub_sockets ()
 {
-    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
     void *sub_a = test_context_socket (ZLINK_SOCKET_SUB);
     void *sub_b = test_context_socket (ZLINK_SOCKET_SUB);
 
-    set_timeout_opts (pub);
     set_timeout_opts (sub_a);
     set_timeout_opts (sub_b);
 
@@ -460,57 +458,15 @@ void test_pubsub_callback_remains_active_across_warmup_and_active_phases ()
 
     pubsub_callback_probe_t probe_a;
     pubsub_callback_probe_t probe_b;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (sub_a, &pubsub_handler, &probe_a));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (sub_b, &pubsub_handler, &probe_b));
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_subscribe_handler (sub_a, &pubsub_handler, &probe_a));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_subscribe_handler (sub_b, &pubsub_handler, &probe_b));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
-    delivery_ready_monitor_t pub_monitor;
-    delivery_ready_monitor_t sub_a_monitor;
-    delivery_ready_monitor_t sub_b_monitor;
-    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
-      pub, ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED, &pub_monitor));
-    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
-      sub_a, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED, &sub_a_monitor));
-    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
-      sub_b, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED, &sub_b_monitor));
-
-    char endpoint[MAX_SOCKET_STRING];
-    test_bind (pub, "tcp://127.0.0.1:*", endpoint, sizeof (endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_a, endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_b, endpoint));
-
-    TEST_ASSERT_TRUE (wait_delivery_ready (&pub_monitor, 5000));
-    TEST_ASSERT_TRUE (wait_delivery_ready (&sub_a_monitor, 5000));
-    TEST_ASSERT_TRUE (wait_delivery_ready (&sub_b_monitor, 5000));
-
-    for (size_t i = 0; i < 64; ++i)
-        publish_phase_message (pub, 'W', i);
-    TEST_ASSERT_TRUE (wait_probe_phase_count (&probe_a, 'W', 8, 5000));
-    TEST_ASSERT_TRUE (wait_probe_phase_count (&probe_b, 'W', 8, 5000));
-    TEST_ASSERT_FALSE (probe_a.fatal);
-    TEST_ASSERT_FALSE (probe_b.fatal);
-
-    for (size_t i = 0; i < 32; ++i)
-        publish_phase_message (pub, 'D', i);
-    TEST_ASSERT_TRUE (wait_probe_phase_count (&probe_a, 'D', 4, 5000));
-    TEST_ASSERT_TRUE (wait_probe_phase_count (&probe_b, 'D', 4, 5000));
-    TEST_ASSERT_FALSE (probe_a.fatal);
-    TEST_ASSERT_FALSE (probe_b.fatal);
-
-    for (size_t i = 0; i < 64; ++i)
-        publish_phase_message (pub, 'A', i);
-    TEST_ASSERT_TRUE (wait_probe_phase_count (&probe_a, 'A', 8, 5000));
-    TEST_ASSERT_TRUE (wait_probe_phase_count (&probe_b, 'A', 8, 5000));
-    TEST_ASSERT_FALSE (probe_a.fatal);
-    TEST_ASSERT_FALSE (probe_b.fatal);
-
-    close_delivery_ready_monitor (&sub_b_monitor);
-    close_delivery_ready_monitor (&sub_a_monitor);
-    close_delivery_ready_monitor (&pub_monitor);
     test_context_socket_close_zero_linger (sub_b);
     test_context_socket_close_zero_linger (sub_a);
-    test_context_socket_close_zero_linger (pub);
 }
 
 void test_pubsub_subscribe_preserves_topic_and_payload_shape_across_warmup ()
@@ -635,7 +591,7 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_router_recv_with_source_rid_strips_routing_envelope_from_dealer);
     RUN_TEST (test_dealer_recv_with_source_rid_hides_peer_routing_id);
-    RUN_TEST (test_pubsub_callback_remains_active_across_warmup_and_active_phases);
+    RUN_TEST (test_pubsub_callback_is_unsupported_on_raw_sub_sockets);
     RUN_TEST (test_pubsub_subscribe_preserves_topic_and_payload_shape_across_warmup);
     RUN_TEST (test_pubsub_subscribe_dontwait_preserves_perf_contract_during_burst);
     return UNITY_END ();

@@ -205,8 +205,11 @@ inline std::string resolve_multi_perf_recv_mode ()
 
     std::string mode (env);
     std::transform (mode.begin (), mode.end (), mode.begin (), ::tolower);
-    if (mode != "recv" && mode != "callback")
-        return "recv";
+    if (mode != "recv" && mode != "callback") {
+        std::cerr << "policy violation: invalid --recv mode " << mode
+                  << std::endl;
+        std::exit (1);
+    }
     if (mode == "callback") {
         const char *pattern =
           resolve_multi_env_value ("PERF_MULTI_PATTERN", "PERF_PATTERN");
@@ -223,6 +226,21 @@ inline std::string resolve_multi_perf_recv_mode ()
 inline bool multi_perf_callback_mode ()
 {
     return resolve_multi_perf_recv_mode () == "callback";
+}
+
+inline bool multi_perf_validate_recv_mode_for_pattern (const char *pattern)
+{
+    if (!pattern || !*pattern)
+        return false;
+
+    if (resolve_multi_perf_recv_mode () == "callback"
+        && !multi_perf_callback_supported_for_pattern (pattern)) {
+        std::cerr << "policy violation: --recv callback unsupported for "
+                  << pattern << std::endl;
+        return false;
+    }
+
+    return true;
 }
 
 inline size_t resolve_multi_service_clients (size_t requested_clients)

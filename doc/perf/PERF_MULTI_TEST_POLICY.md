@@ -1,8 +1,8 @@
 # zlink Multi Performance Test Policy
 
 > **적용 범위**: zlink 전체 (core + bindings) — multi-client 벤치마크
-> **Policy Version**: 1.7
-> **Date**: 2026-03-20
+> **Policy Version**: 1.9
+> **Date**: 2026-03-21
 > **Scope**: zlink multi-client 성능 테스트 정책
 >
 > 본 정책은 `perf/multi`의 C++ 벤치마크뿐 아니라 모든 바인딩 라이브러리(`bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/node`, `bindings/python`)의 multi-client 성능 테스트에도 동일하게 적용된다.
@@ -39,8 +39,11 @@
       이벤트에 따라 recv drain과 send 재개를 처리한다.
     - `send_ready_handler`는 사용하지 않는다.
   - **callback 모델** (`--recv callback`):
-    - multi suite에서 callback 모델은 `MULTI_SPOT`, `MULTI_STREAM`에만
-      허용된다.
+    - multi suite의 기본 테스트 모드는 recv다.
+    - multi에서 dual-mode 예외는 `MULTI_SPOT`, `MULTI_STREAM`만 허용한다.
+    - `recv`와 `callback`은 같은 pattern 안에서 `--recv` 값으로 선택한다.
+      callback 전용 파일명이나 별도 public pattern 이름을 정책에 추가하지
+      않는다.
     - recv: pattern별 callback API 등록 → 메시지 도착 시 I/O thread에서 콜백
       호출. `zlink_recv()` / `zlink_msg_recv()` 동기 수신 API는 측정 경로에
       사용하지 않는다.
@@ -59,6 +62,8 @@
       I/O thread callback과 metric worker가 역할을 분리한다.
     - poller는 사용하지 않는다.
   - 한 측정 구간에서 두 모델의 recv/send 메커니즘을 섞지 않는다.
+  - multi 일반 pattern은 recv only다.
+  - `MULTI_SPOT`, `MULTI_STREAM`만 `recv` / `callback` dual-mode 예외를 둔다.
   - 지원하지 않는 multi pattern에서 `--recv callback`을 주면 즉시 실패한다.
 - `while (send 실패)` 식의 즉시 재시도는 양쪽 모델 모두 금지한다.
 - backpressure 전략 (역할별, 양쪽 모델 공통 — 통지 메커니즘만 다름)
@@ -155,6 +160,8 @@ perf/multi/
 ```
 
 - 모든 패턴은 `_server.cpp` / `_client.cpp` **별도 소스 파일 / 별도 바이너리**로 작성한다.
+- 단, `recv`와 `callback`을 이유로 별도 callback server 파일이나 별도 public
+  pattern 이름을 정책에 추가하지 않는다.
 - 공통 로직(settings 해석, RESULT 출력, TLS 설정 등)은 `perf_common_multi.hpp`에 유지한다.
 
 ---
@@ -925,19 +932,22 @@ MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MUL
 
 #### 바인딩 소스 파일 명명 규칙
 
-모든 벤치마크 소스 파일은 **`perf_`** 접두어를 사용한다. multi는 server/client 역할 분리를 필수로 하며, 소스 파일 분리는 권장이다. 소스 위치는 [PERF_POLICY.md § 2.0.2](PERF_POLICY.md)를 참조한다.
+모든 벤치마크 소스 파일은 **`perf_`** 접두어를 사용한다. multi는 server/client 역할 분리를 필수로 하며, 소스 위치는 [PERF_POLICY.md § 2.0.2](PERF_POLICY.md)를 참조한다.
 
 | 언어 | server 파일 | client 파일 | 예시 |
 |------|-----------|-----------|------|
 | Core (C++) | `perf_multi_<pattern>_server.cpp` | `perf_multi_<pattern>_client.cpp` | `perf_multi_stream_server.cpp` |
 | C++ binding | `perf_multi_<pattern>_server.cpp` 또는 `perf_main.cpp --multi-server` | `perf_multi_<pattern>_client.cpp` 또는 `perf_main.cpp --multi-client` | `perf_multi_stream_server.cpp` |
-| .NET | `PerfMulti<Pattern>Server.cs` 또는 `PerfMain --multi-server` | `PerfMulti<Pattern>Client.cs` 또는 `PerfMain --multi-client` | `PerfMultiStreamServer.cs` |
-| Java | `PerfMulti<Pattern>Server.java` 또는 `PerfMain --multi-server` | `PerfMulti<Pattern>Client.java` 또는 `PerfMain --multi-client` | `PerfMultiStreamServer.java` |
+| .NET | `PerfMulti<Pattern>Server.cs` | `PerfMulti<Pattern>Client.cs` 또는 `PerfMain --multi-client` | `PerfMultiStreamServer.cs` |
+| Java | `PerfMulti<Pattern>Server.java` | `PerfMulti<Pattern>Client.java` 또는 `PerfMain --multi-client` | `PerfMultiStreamServer.java` |
 | Node | `perf_multi_<pattern>_server.js` | `perf_multi_<pattern>_client.js` | `perf_multi_stream_server.js` |
 | Python | `perf_multi_<pattern>_server.py` | `perf_multi_<pattern>_client.py` | `perf_multi_stream_server.py` |
 
 - STREAM 계열은 public pattern 이름을 `stream` 하나만 사용하고, recv mode는
-  `--recv`로만 선택한다
+  `--recv`로만 선택한다.
+- `recv`와 `callback`은 같은 pattern 안에서 `--recv` 값으로 선택한다.
+- callback 모드를 이유로 `_callback_server` 같은 별도 public file naming 규칙을
+  정책에 추가하지 않는다.
 - 공통 유틸리티 파일도 `perf_` 접두어: `perf_common.hpp`, `PerfCommon.cs`, `PerfUtil.java`, `perf_common.py` 등
 - 실행 스크립트: bindings는 `multi/run_benchmarks.sh` / `.ps1`, core는 `run_benchmarks_multi.sh` / `.ps1` ([PERF_POLICY.md § 3.1](PERF_POLICY.md) 참조)
 - 파일 분리 대신 단일 runner를 사용하는 경우에도 실행 시점에서는 반드시 server/client 별도 프로세스로 동작해야 하며 READY/RESULT 프로토콜은 동일하게 준수한다.
@@ -953,11 +963,11 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | MULTI_ROUTER_ROUTER | `*_router_router_server.cpp` | `comp_src_router_router_server` | `*_router_router_client.cpp` | `comp_src_router_router_client` |
 | MULTI_PUBSUB | `*_pubsub_server.cpp` | `comp_src_pubsub_server` | `*_pubsub_client.cpp` | `comp_src_pubsub_client` |
 | MULTI_GATEWAY | `*_gateway_server.cpp` | `comp_src_gateway_server` | `*_gateway_client.cpp` | `comp_src_gateway_client` |
-| MULTI_SPOT | `*_spot_server.cpp` | `comp_src_spot_server` | `*_spot_client.cpp` | `comp_src_spot_client` |
-| MULTI_STREAM | `*_stream_server.cpp` | `comp_src_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
+| MULTI_SPOT (`--recv recv|callback`) | `*_spot_server.cpp` | `comp_src_spot_server` | `*_spot_client.cpp` | `comp_src_spot_client` |
+| MULTI_STREAM (`--recv recv|callback`) | `*_stream_server.cpp` | `comp_src_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
-> STREAM client 예외(core): `MULTI_STREAM` client는 [PERF_POLICY.md § 8.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. server는 pattern 이름과 별개로 recv mode별 내부 entrypoint를 가질 수 있지만, public pattern은 `MULTI_STREAM` 하나만 유지한다.
+> STREAM client 예외(core): `MULTI_STREAM` client는 [PERF_POLICY.md § 8.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. public pattern은 `MULTI_STREAM` 하나만 유지하고, mode는 `--recv`로만 선택한다.
 
 #### MULTI_STREAM 계열 패턴
 

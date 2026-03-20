@@ -1,8 +1,8 @@
 # zlink Performance Test Policy (통합)
 
 > **적용 범위**: zlink 전체 (core + bindings)
-> **Policy Version**: 1.7
-> **Date**: 2026-03-20
+> **Policy Version**: 1.9
+> **Date**: 2026-03-21
 > **Scope**: zlink 성능 테스트 통합 정책 — 공통 구조, 통합 실행, 비교 스크립트
 >
 > 본 정책은 `perf/`의 C++ 벤치마크뿐 아니라 모든 바인딩 라이브러리(`bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/node`, `bindings/python`)의 성능 테스트에도 동일하게 적용된다. 각 바인딩은 언어별 구현 차이가 있을 수 있으나, 측정 기준·결과 형식·운영 모드·임계치 등 본 정책에서 정의하는 규칙을 준수해야 한다.
@@ -36,16 +36,20 @@
 - 실제 오류는 즉시 `fail` 처리한다.
 - `EAGAIN`은 오류가 아니라 flow-control 상태로 취급한다.
 - perf 측정용 I/O 경로는 두 가지 모델을 지원한다.
-  - **recv 모델** (기본, `--recv recv`):
+  - **recv 모델** (`--recv recv`):
     - recv: poller `POLLIN` readiness 감지 → 비동기 `zlink_recv()` /
       `zlink_msg_recv()` drain 루프 (react 방식).
     - send backpressure: poller `POLLOUT` readiness 감지 → writable 상태에서만
       send 수행.
     - poller가 recv/send 양쪽의 readiness 제어를 담당한다.
   - **callback 모델** (`--recv callback`):
-    - callback 모델은 모든 패턴의 일반 옵션이 아니다. public callback receive를
-      유지하는 perf 패턴에서만 허용한다.
-    - 현재 허용 범위는 single `SPOT`, multi `SPOT`, `STREAM`이다.
+    - callback 모델은 모든 패턴의 일반 옵션이 아니다.
+    - single suite는 callback 모드만 기본 테스트 대상으로 둔다.
+    - multi suite는 recv 모드만 기본 테스트 대상으로 둔다.
+    - dual-mode 예외는 single `SPOT`, multi `SPOT` / `STREAM`만 허용한다.
+    - `recv`와 `callback`은 같은 pattern 안에서 `--recv` 값으로 선택한다.
+      callback 전용 파일명이나 별도 public pattern 이름을 정책에 추가하지
+      않는다.
     - recv: pattern별 callback API 등록 → 라이브러리가 I/O thread에서 callback
       dispatch.
     - callback hot path는 메시지 수명/집계를 오래 붙들지 않고, 필요한 최소
@@ -61,8 +65,9 @@
       callback의 필수 계약이 아니다. `send_ready_handler` 기반 backpressure는
       multi callback 또는 single의 별도 nonblocking variant가 있을 때만 적용한다.
     - poller는 사용하지 않는다.
-- 실행 스크립트의 `--recv` 옵션으로 모델을 선택한다 (기본: `recv`,
-  `--recv callback` 지정 시 callback 모델).
+- 실행 스크립트의 `--recv` 옵션으로 모델을 선택한다.
+  - single 기본값: `callback`
+  - multi 기본값: `recv`
 - 지원하지 않는 pattern에서 `--recv callback`을 지정하면 policy violation으로
   즉시 실패해야 한다. silent fallback은 금지한다.
 - 같은 측정 구간에서 두 모델의 recv/send 메커니즘을 섞지 않는다.
@@ -175,6 +180,9 @@ perf/                                       # bindings/<lang>/perf/
 
 - 모든 벤치마크 소스 파일은 **`perf_`** 접두어를 사용한다 (PascalCase 언어는 `Perf` 접두어).
 - 기본 패턴: `perf_<pattern>` — 각 언어의 명명 컨벤션을 적용한다.
+- `recv`와 `callback`은 같은 pattern 안에서 `--recv` 값으로 선택한다.
+- callback 모드를 이유로 별도 callback 파일명이나 별도 public pattern 이름을
+  정책에 추가하지 않는다.
 - **예외**: 공통 유틸리티 헤더는 `perf_` 접두어 없이 명명할 수 있다 (예: `bench_common.hpp`, `perf_common.hpp`).
 - 상세 파일명 규칙은 개별 정책 문서를 참조한다:
   - Single: [PERF_SINGLE_TEST_POLICY.md § 10.1](PERF_SINGLE_TEST_POLICY.md)
@@ -317,8 +325,11 @@ core/perf/run_benchmarks_multi.sh --pattern ALL
 # core: 특정 패턴만
 core/perf/run_benchmarks.sh --pattern PAIR,PUBSUB
 
-# core: callback 모델로 실행 가능한 single 패턴
-core/perf/run_benchmarks.sh --pattern SPOT --recv callback
+# core: single 기본 모드(callback)로 실행
+core/perf/run_benchmarks.sh --pattern PAIR
+
+# core: single dual-mode 예외 패턴을 recv로 실행
+core/perf/run_benchmarks.sh --pattern SPOT --recv recv
 
 # core: 태그 추가
 core/perf/run_benchmarks.sh --results-tag v1.5.0
@@ -343,10 +354,14 @@ bindings/python/perf/multi/run_benchmarks.sh --pattern ALL
 | `--results-tag NAME` | 결과 파일명 태그 | 없음 |
 | `--msg-sizes LIST` | 메시지 크기 목록 | suite별 기본값 |
 | `--transports LIST` | transport 목록 | suite별 기본값 |
-| `--recv MODE` | recv 모델 선택: `recv` (기본) 또는 `callback` | `recv` |
+| `--recv MODE` | recv 모델 선택. single 기본값은 `callback`, multi 기본값은 `recv`. dual-mode 예외는 single=`SPOT`, multi=`SPOT`/`STREAM`만 허용 | suite별 기본값 |
 
 - `--recv` 옵션은 측정 구간의 수신 경로를 결정한다. `recv`는 동기 recv +
   poller 기반, `callback`은 recv handler callback 기반이다.
+- single은 callback only를 기본으로 하고 `SPOT`만 `recv`/`callback` 예외를 둔다.
+- multi는 recv only를 기본으로 하고 `SPOT`/`STREAM`만 `recv`/`callback`
+  예외를 둔다.
+- monitor 관련 검증은 suite와 무관하게 callback 기준으로만 수행한다.
 - suite별 고유 옵션(`--clients` 등)은 개별 스크립트 호출 시 전달한다.
 
 ---

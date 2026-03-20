@@ -585,6 +585,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         zlink_close (server);
         return 1;
     }
+    close_connect_monitor (server_monitor);
 
     const bool loop_ok = run_server_loop (
       server,
@@ -597,7 +598,6 @@ inline int run_server_benchmark (const std::string &lib_name,
     perf_stop_requested ().store (true, std::memory_order_release);
     g_start_cv.notify_all ();
     if (stdin_watcher.joinable ()) {
-        std::fclose (stdin);
         stdin_watcher.join ();
     }
 
@@ -607,7 +607,6 @@ inline int run_server_benchmark (const std::string &lib_name,
       sample_server_queue_stats (server, server);
     print_server_metrics (lib_name, transport, sizes, metrics, queue_stats);
 
-    close_connect_monitor (server_monitor);
     zlink_close (server);
 
     return loop_ok ? 0 : 1;
@@ -618,6 +617,8 @@ inline int run_server_benchmark (const std::string &lib_name,
 int main (int argc, char **argv)
 {
     if (argc < 3)
+        return 1;
+    if (!multi_perf_validate_recv_mode_for_pattern (k_pattern))
         return 1;
 
     const std::string lib_name = argv[1];

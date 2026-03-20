@@ -177,17 +177,23 @@ bool apply_spot_server_options(void *pub,
     return true;
 }
 
-std::string replace_any_host_with_localhost(const std::string &endpoint)
+std::string normalize_bind_endpoint_host(const std::string &endpoint,
+                                         const std::string &transport)
 {
     std::string normalized = endpoint;
     const std::string any_v4 = "://0.0.0.0:";
     const std::string any_v6 = "://[::]:";
+    const char *host = (transport == "tls" || transport == "wss")
+                         ? "localhost"
+                         : "127.0.0.1";
     size_t pos = normalized.find(any_v4);
     if (pos != std::string::npos)
-        normalized.replace(pos, any_v4.size(), "://127.0.0.1:");
+        normalized.replace(
+          pos, any_v4.size(), std::string("://") + host + ":");
     pos = normalized.find(any_v6);
     if (pos != std::string::npos)
-        normalized.replace(pos, any_v6.size(), "://127.0.0.1:");
+        normalized.replace(
+          pos, any_v6.size(), std::string("://") + host + ":");
     return normalized;
 }
 
@@ -217,7 +223,7 @@ std::string bind_spot_endpoint(void *node,
           make_fixed_endpoint(transport, base_port + attempt);
         if (!endpoint.empty()
             && zlink_spot_node_bind(node, endpoint.c_str()) == 0) {
-            return replace_any_host_with_localhost(endpoint);
+            return normalize_bind_endpoint_host(endpoint, transport);
         }
     }
 
@@ -650,6 +656,8 @@ int run_server_benchmark(const std::string &lib_name,
 int main(int argc, char **argv)
 {
     if (argc < 3)
+        return 1;
+    if (!multi_perf_validate_recv_mode_for_pattern (k_pattern))
         return 1;
 
     const std::string lib_name = argv[1];

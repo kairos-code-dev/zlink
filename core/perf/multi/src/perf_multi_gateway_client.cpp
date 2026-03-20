@@ -1113,6 +1113,8 @@ int main(int argc, char **argv)
 {
     if (argc < 4)
         return 1;
+    if (!multi_perf_validate_recv_mode_for_pattern (k_pattern))
+        return 1;
 
     const std::string lib_name = argv[1];
     const std::string transport = argv[2];

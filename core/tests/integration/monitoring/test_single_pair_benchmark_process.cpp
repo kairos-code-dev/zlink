@@ -244,11 +244,36 @@ void run_single_pair_process_case (const char *self_path_,
     }
     TEST_ASSERT_TRUE (saw_throughput);
 }
+
+void run_single_pair_reject_case (const char *self_path_,
+                                  const char *binary_name_,
+                                  const char *recv_mode_)
+{
+    process_capture_t proc;
+    const std::string path = sibling_binary_path (self_path_, binary_name_);
+
+    std::vector<std::string> args;
+    args.push_back ("current");
+    args.push_back ("tcp");
+    args.push_back ("64");
+
+    std::vector<std::string> env;
+    env.push_back (std::string ("PERF_RECV_MODE=") + recv_mode_);
+
+    TEST_ASSERT_TRUE (start_process (path, args, env, &proc));
+
+    int rc = INT_MIN;
+    TEST_ASSERT_TRUE (wait_for_exit_code (&proc, 15000, &rc));
+    close_process_capture (&proc);
+    TEST_ASSERT_NOT_EQUAL (0, rc);
+    TEST_ASSERT_TRUE (
+      proc.stderr_text.find ("policy violation") != std::string::npos);
+}
 } // namespace
 
-void test_single_pair_process_callback_smoke ()
+void test_single_pair_process_callback_is_rejected ()
 {
-    run_single_pair_process_case (g_self_path, "perf_pair", "callback");
+    run_single_pair_reject_case (g_self_path, "perf_pair", "callback");
 }
 
 void test_single_pair_process_recv_smoke ()
@@ -260,7 +285,7 @@ int main (int argc, char **argv)
 {
     g_self_path = argc > 0 ? argv[0] : NULL;
     UNITY_BEGIN ();
-    RUN_TEST (test_single_pair_process_callback_smoke);
+    RUN_TEST (test_single_pair_process_callback_is_rejected);
     RUN_TEST (test_single_pair_process_recv_smoke);
     return UNITY_END ();
 }

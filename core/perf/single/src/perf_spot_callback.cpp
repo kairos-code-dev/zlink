@@ -24,11 +24,12 @@ namespace
 {
 static const char *k_pattern = "SPOT";
 static const char *k_topic = "bench";
+static const size_t k_metric_queue_capacity = 65536;
 
 bool validate_spot_target_recv_mode ()
 {
-    if (single_perf_callback_mode ()) {
-        std::cerr << "policy violation: perf_spot does not accept --recv callback"
+    if (!single_perf_callback_mode ()) {
+        std::cerr << "policy violation: perf_spot_callback requires --recv callback"
                   << std::endl;
         return false;
     }
@@ -44,6 +45,64 @@ int current_process_id ()
 #endif
 }
 
+struct spot_metric_event_t
+{
+    spot_metric_event_t () : phase (0), sent_ts_us (0) {}
+
+    uint32_t phase;
+    uint64_t sent_ts_us;
+};
+
+class spot_metric_queue_t
+{
+  public:
+    explicit spot_metric_queue_t (size_t capacity_) :
+        _events (capacity_ > 1 ? capacity_ + 1 : 2),
+        _head (0),
+        _tail (0)
+    {
+    }
+
+    bool push (const spot_metric_event_t &event_)
+    {
+        const size_t head = _head.load (std::memory_order_relaxed);
+        const size_t next = advance (head);
+        if (next == _tail.load (std::memory_order_acquire))
+            return false;
+        _events[head] = event_;
+        _head.store (next, std::memory_order_release);
+        return true;
+    }
+
+    bool pop (spot_metric_event_t *event_)
+    {
+        if (!event_)
+            return false;
+        const size_t tail = _tail.load (std::memory_order_relaxed);
+        if (tail == _head.load (std::memory_order_acquire))
+            return false;
+        *event_ = _events[tail];
+        _tail.store (advance (tail), std::memory_order_release);
+        return true;
+    }
+
+    bool empty () const
+    {
+        return _tail.load (std::memory_order_acquire)
+               == _head.load (std::memory_order_acquire);
+    }
+
+  private:
+    size_t advance (size_t index_) const
+    {
+        return index_ + 1 < _events.size () ? index_ + 1 : 0;
+    }
+
+    std::vector<spot_metric_event_t> _events;
+    std::atomic<size_t> _head;
+    std::atomic<size_t> _tail;
+};
+
 struct spot_client_state_t
 {
     spot_client_state_t () :
@@ -54,7 +113,8 @@ struct spot_client_state_t
         warmup_received (0),
         active_received (0),
         recv_activity (0),
-        probe (NULL)
+        probe (NULL),
+        callback_queue (NULL)
     {
     }
 
@@ -67,9 +127,22 @@ struct spot_client_state_t
     std::atomic<unsigned long long> recv_activity;
     latency_stats_builder_t latency;
     queue_probe_t *probe;
+    spot_metric_queue_t *callback_queue;
     std::mutex mutex;
     std::mutex latency_mutex;
+    std::mutex callback_wait_mutex;
     std::condition_variable cv;
+    std::condition_variable callback_wait_cv;
+};
+
+struct spot_metric_worker_t
+{
+    spot_metric_worker_t () : state (NULL), queue (NULL), stop (false) {}
+
+    spot_client_state_t *state;
+    spot_metric_queue_t *queue;
+    std::atomic<bool> stop;
+    std::thread thread;
 };
 
 struct service_monitor_probe_t
@@ -81,6 +154,23 @@ struct service_monitor_probe_t
 
 service_monitor_probe_t *g_service_monitor_probe = NULL;
 service_monitor_probe_t *g_pub_service_monitor_probe = NULL;
+std::atomic<spot_client_state_t *> g_spot_client_state (NULL);
+
+struct spot_client_state_scope_t
+{
+    explicit spot_client_state_scope_t (spot_client_state_t *state_) :
+        state (state_)
+    {
+        g_spot_client_state.store (state_, std::memory_order_release);
+    }
+
+    ~spot_client_state_scope_t ()
+    {
+        g_spot_client_state.store (NULL, std::memory_order_release);
+    }
+
+    spot_client_state_t *state;
+};
 
 bool is_supported_transport (const std::string &transport_)
 {
@@ -254,7 +344,9 @@ bool wait_for_receive_quiet (spot_client_state_t &state_,
           lock, wait_deadline, [&state_, observed] () {
               return state_.recv_activity.load (std::memory_order_acquire)
                        != observed
-                     || state_.fatal.load (std::memory_order_acquire);
+                     || state_.fatal.load (std::memory_order_acquire)
+                     || (state_.callback_queue
+                         && !state_.callback_queue->empty ());
           });
         if (state_.fatal.load (std::memory_order_acquire))
             return false;
@@ -286,11 +378,10 @@ bool decode_spot_metric_event (spot_client_state_t *state_,
                                size_t topic_len_,
                                zlink_msg_t *parts_,
                                size_t part_count_,
-                               uint32_t *phase_out_,
-                               uint64_t *sent_ts_us_out_)
+                               spot_metric_event_t *event_out_)
 {
-    if (!state_ || !topic_ || !parts_ || part_count_ == 0 || !phase_out_
-        || !sent_ts_us_out_ || !topic_matches (topic_, topic_len_)) {
+    if (!state_ || !topic_ || !parts_ || part_count_ == 0 || !event_out_
+        || !topic_matches (topic_, topic_len_)) {
         return false;
     }
 
@@ -302,21 +393,21 @@ bool decode_spot_metric_event (spot_client_state_t *state_,
     if (!header_ok)
         return false;
 
-    *phase_out_ = header.phase;
-    *sent_ts_us_out_ = header.sent_ts_us;
+    event_out_->phase = header.phase;
+    event_out_->sent_ts_us = header.sent_ts_us;
     return true;
 }
 
 void account_spot_metric_event (spot_client_state_t *state_,
-                                uint32_t phase_,
-                                uint64_t sent_ts_us_)
+                                const spot_metric_event_t &event_)
 {
     if (!state_)
         return;
 
-    if (phase_ == static_cast<uint32_t> (perf_single_metric::phase_warmup)) {
+    if (event_.phase
+        == static_cast<uint32_t> (perf_single_metric::phase_warmup)) {
         state_->warmup_received.fetch_add (1, std::memory_order_acq_rel);
-    } else if (phase_
+    } else if (event_.phase
                == static_cast<uint32_t> (
                  perf_single_metric::phase_active)) {
         const uint64_t now_us = perf_single_metric::now_us ();
@@ -325,8 +416,9 @@ void account_spot_metric_event (spot_client_state_t *state_,
         if (deadline_us > 0 && now_us <= deadline_us) {
             state_->active_received.fetch_add (1, std::memory_order_acq_rel);
             const double latency_us =
-              now_us >= sent_ts_us_ ? static_cast<double> (now_us - sent_ts_us_)
-                                    : 0.0;
+              now_us >= event_.sent_ts_us
+                ? static_cast<double> (now_us - event_.sent_ts_us)
+                : 0.0;
             {
                 std::lock_guard<std::mutex> lock (state_->latency_mutex);
                 state_->latency.add (latency_us);
@@ -340,110 +432,76 @@ void account_spot_metric_event (spot_client_state_t *state_,
     state_->cv.notify_all ();
 }
 
-void handle_spot_client_parts (spot_client_state_t *state_,
-                               const char *topic_,
-                               size_t topic_len_,
-                               zlink_msg_t *parts_,
-                               size_t part_count_)
+bool start_spot_metric_worker (spot_metric_worker_t *worker_)
 {
-    if (!state_ && bench_debug_enabled ()) {
-        std::cerr << "[perf-spot-client] recv without state part_count="
-                  << part_count_ << std::endl;
-    }
-
-    uint32_t phase = 0;
-    uint64_t sent_ts_us = 0;
-    const bool event_ok =
-      decode_spot_metric_event (
-        state_, topic_, topic_len_, parts_, part_count_, &phase, &sent_ts_us);
-    close_parts (parts_, part_count_);
-    if (!event_ok)
-        return;
-    account_spot_metric_event (state_, phase, sent_ts_us);
-}
-
-struct spot_recv_loop_t
-{
-    spot_recv_loop_t () : sub (NULL), state (NULL), poller (NULL), stop (false) {}
-
-    void *sub;
-    spot_client_state_t *state;
-    void *poller;
-    std::atomic<bool> stop;
-    std::thread thread;
-};
-
-bool start_spot_recv_loop (spot_recv_loop_t *loop_)
-{
-    if (!loop_ || !loop_->sub || !loop_->state)
+    if (!worker_ || !worker_->state || !worker_->queue)
         return false;
 
-    loop_->poller = zlink_poller_new ();
-    if (!loop_->poller
-        || zlink_poller_add (
-             loop_->poller, loop_->sub, loop_->sub, ZLINK_POLLIN)
-             != 0) {
-        if (loop_->poller)
-            (void) zlink_poller_destroy (&loop_->poller);
-        return false;
-    }
+    worker_->stop.store (false, std::memory_order_release);
+    worker_->thread = std::thread ([worker_] () {
+        spot_metric_event_t event;
+        for (;;) {
+            {
+                std::unique_lock<std::mutex> lock (
+                  worker_->state->callback_wait_mutex);
+                worker_->state->callback_wait_cv.wait (
+                  lock, [worker_] () {
+                      return worker_->stop.load (std::memory_order_acquire)
+                             || worker_->state->fatal.load (
+                                  std::memory_order_acquire)
+                             || !worker_->queue->empty ();
+                  });
+            }
 
-    loop_->stop.store (false, std::memory_order_release);
-    loop_->thread = std::thread ([loop_] () {
-        while (!loop_->stop.load (std::memory_order_acquire)) {
-            zlink_poller_event_t event;
-            const int poll_rc = zlink_poller_wait (loop_->poller, &event, 10);
-            if (poll_rc < 0) {
-                const int err = zlink_errno ();
-                if (err == EAGAIN || err == EINTR)
-                    continue;
-                loop_->state->fatal.store (true, std::memory_order_release);
-                loop_->state->cv.notify_all ();
+            while (worker_->queue->pop (&event))
+                account_spot_metric_event (worker_->state, event);
+
+            if (worker_->stop.load (std::memory_order_acquire)
+                || (worker_->state->fatal.load (std::memory_order_acquire)
+                    && worker_->queue->empty ())) {
                 break;
             }
-            if (poll_rc == 0 || (event.events & ZLINK_POLLIN) == 0)
-                continue;
-
-            zlink_msg_t *parts = NULL;
-            size_t part_count = 0;
-            char topic[256];
-            size_t topic_len = sizeof (topic);
-            while (!loop_->stop.load (std::memory_order_acquire)) {
-                const int rc = zlink_subscribe (
-                  loop_->sub, NULL, &parts, &part_count, topic, &topic_len,
-                  ZLINK_DONTWAIT);
-                if (rc == 0) {
-                    handle_spot_client_parts (
-                      loop_->state, topic, topic_len, parts, part_count);
-                    free (parts);
-                    parts = NULL;
-                    part_count = 0;
-                    topic_len = sizeof (topic);
-                    continue;
-                }
-
-                const int err = zlink_errno ();
-                if (err == EAGAIN || err == EINTR)
-                    break;
-
-                loop_->state->fatal.store (true, std::memory_order_release);
-                loop_->state->cv.notify_all ();
-                return;
-            }
         }
+        worker_->state->cv.notify_all ();
     });
     return true;
 }
 
-void stop_spot_recv_loop (spot_recv_loop_t *loop_)
+void stop_spot_metric_worker (spot_metric_worker_t *worker_)
 {
-    if (!loop_)
+    if (!worker_)
         return;
-    loop_->stop.store (true, std::memory_order_release);
-    if (loop_->thread.joinable ())
-        loop_->thread.join ();
-    if (loop_->poller)
-        (void) zlink_poller_destroy (&loop_->poller);
+    worker_->stop.store (true, std::memory_order_release);
+    if (worker_->state)
+        worker_->state->callback_wait_cv.notify_all ();
+    if (worker_->thread.joinable ())
+        worker_->thread.join ();
+}
+
+void spot_client_handler (const zlink_routing_id_t *,
+                          const char *topic_,
+                          size_t topic_len_,
+                          zlink_msg_t *parts_,
+                          size_t part_count_,
+                          void *)
+{
+    spot_client_state_t *state =
+      g_spot_client_state.load (std::memory_order_acquire);
+    spot_metric_event_t event;
+    const bool event_ok =
+      decode_spot_metric_event (state, topic_, topic_len_, parts_, part_count_,
+                                &event);
+    close_parts (parts_, part_count_);
+    if (!event_ok || !state)
+        return;
+    if (!state->callback_queue || !state->callback_queue->push (event)) {
+        state->fatal.store (true, std::memory_order_release);
+        state->callback_wait_cv.notify_all ();
+        state->cv.notify_all ();
+        return;
+    }
+    state->callback_wait_cv.notify_one ();
+    state->cv.notify_all ();
 }
 
 void cleanup_spot_case (void **sub_monitor_,
@@ -500,45 +558,13 @@ bool publish_payload (void *pub_,
     return true;
 }
 
-bool wait_spot_send_ready_until (
-  void *poller_,
-  const std::chrono::steady_clock::time_point &deadline_)
-{
-    if (!poller_)
-        return false;
-
-    while (std::chrono::steady_clock::now () < deadline_) {
-        const long long remaining_ms =
-          std::chrono::duration_cast<std::chrono::milliseconds> (
-            deadline_ - std::chrono::steady_clock::now ())
-            .count ();
-        const int timeout_ms =
-          static_cast<int> (remaining_ms > 0 ? remaining_ms : 1);
-        zlink_poller_event_t event;
-        const int poll_rc = zlink_poller_wait (poller_, &event, timeout_ms);
-        if (poll_rc < 0) {
-            const int err = zlink_errno ();
-            if (err == EAGAIN || err == EINTR)
-                continue;
-            return false;
-        }
-        if (poll_rc == 0)
-            return false;
-        if ((event.events & ZLINK_POLLOUT) != 0)
-            return true;
-    }
-
-    return false;
-}
-
 bool run_publish_window (void *pub_,
                          spot_client_state_t &client_state_,
                          queue_probe_t &probe_,
                          std::vector<char> &payload_,
                          size_t msg_size_,
                          perf_single_metric::phase_t phase_,
-                         int duration_s_,
-                         void *send_poller_)
+                         int duration_s_)
 {
     const auto deadline =
       std::chrono::steady_clock::now ()
@@ -550,24 +576,18 @@ bool run_publish_window (void *pub_,
             return false;
         probe_.sample_send_if_due ();
 
-        if (publish_payload (pub_,
-                             payload_,
-                             msg_size_,
-                             client_state_.run_id,
-                             phase_,
-                             seq,
-                             ZLINK_DONTWAIT)) {
-            ++seq;
-            continue;
-        }
-
-        const int err = errno;
-        if (err == EINTR)
-            continue;
-        if (err != EAGAIN)
+        if (!publish_payload (pub_,
+                              payload_,
+                              msg_size_,
+                              client_state_.run_id,
+                              phase_,
+                              seq,
+                              0)) {
+            if (errno == EINTR)
+                continue;
             return false;
-        if (!wait_spot_send_ready_until (send_poller_, deadline))
-            break;
+        }
+        ++seq;
     }
 
     return !client_state_.fatal.load (std::memory_order_acquire);
@@ -580,7 +600,6 @@ bool run_phase_window (void *pub_,
                        size_t msg_size_,
                        perf_single_metric::phase_t phase_,
                        int duration_s_,
-                       void *send_poller_,
                        double *throughput_out_,
                        latency_stats_t *latency_out_)
 {
@@ -605,8 +624,7 @@ bool run_phase_window (void *pub_,
                              payload_,
                              msg_size_,
                              phase_,
-                             duration_s_,
-                             send_poller_)) {
+                             duration_s_)) {
         return false;
     }
 
@@ -702,10 +720,19 @@ int run_case (const std::string &lib_name_,
 
     void *pub = pub_node;
     void *sub = sub_node;
+    if (zlink_subscribe_handler (sub, &spot_client_handler, NULL) != 0) {
+        if (bench_debug_enabled ())
+            std::cerr << "[perf-spot] callback handler attach failed err="
+                      << zlink_errno () << std::endl;
+        zlink_spot_node_destroy (&sub_node);
+        zlink_spot_node_destroy (&pub_node);
+        return 1;
+    }
+
     void *sub_monitor = NULL;
     void *pub_monitor = NULL;
-    void *send_poller = NULL;
-    spot_recv_loop_t recv_loop;
+    spot_metric_queue_t metric_queue (k_metric_queue_capacity);
+    spot_metric_worker_t metric_worker;
     service_monitor_probe_t monitor_probe;
     service_monitor_probe_t pub_monitor_probe;
 
@@ -780,10 +807,12 @@ int run_case (const std::string &lib_name_,
     spot_client_state_t client_state;
     client_state.run_id = static_cast<uint32_t> (current_process_id ());
     client_state.msg_size = msg_size_;
+    client_state.callback_queue = &metric_queue;
+    spot_client_state_scope_t client_state_scope (&client_state);
     queue_probe_t probe (pub, sub);
     client_state.probe = &probe;
-    recv_loop.sub = sub;
-    recv_loop.state = &client_state;
+    metric_worker.state = &client_state;
+    metric_worker.queue = &metric_queue;
 
     if (!wait_for_service_event (
           &monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, k_topic, -1,
@@ -809,24 +838,7 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    if (!start_spot_recv_loop (&recv_loop)) {
-        if (bench_debug_enabled ())
-            std::cerr << "[perf-spot] recv loop start failed err="
-                      << zlink_errno () << std::endl;
-        cleanup_spot_case (
-          &sub_monitor, &pub_monitor, &sub_node, &pub_node);
-        return 1;
-    }
-
-    send_poller = zlink_poller_new ();
-    if (!send_poller
-        || zlink_poller_add (send_poller, pub, pub, ZLINK_POLLOUT) != 0) {
-        if (bench_debug_enabled ())
-            std::cerr << "[perf-spot] send poller init failed err="
-                      << zlink_errno () << std::endl;
-        if (send_poller)
-            (void) zlink_poller_destroy (&send_poller);
-        stop_spot_recv_loop (&recv_loop);
+    if (!start_spot_metric_worker (&metric_worker)) {
         cleanup_spot_case (&sub_monitor, &pub_monitor, &sub_node, &pub_node);
         return 1;
     }
@@ -835,9 +847,9 @@ int run_case (const std::string &lib_name_,
     if (!run_phase_window (
           pub, client_state, probe, payload, msg_size_,
           perf_single_metric::phase_warmup,
-          resolve_single_warmup_seconds (), send_poller, NULL, NULL)) {
+          resolve_single_warmup_seconds (), NULL, NULL)) {
         const queue_stats_t queue_stats = probe.snapshot ();
-        (void) zlink_poller_destroy (&send_poller);
+        stop_spot_metric_worker (&metric_worker);
         print_result (lib_name_,
                       k_pattern,
                       transport_,
@@ -847,7 +859,6 @@ int run_case (const std::string &lib_name_,
                       0.0,
                       0.0,
                       queue_stats);
-        stop_spot_recv_loop (&recv_loop);
         cleanup_spot_case (&sub_monitor, &pub_monitor, &sub_node, &pub_node);
         return 1;
     }
@@ -857,9 +868,9 @@ int run_case (const std::string &lib_name_,
     const bool active_ok = run_phase_window (
       pub, client_state, probe, payload, msg_size_,
       perf_single_metric::phase_active, resolve_single_duration_seconds (),
-      send_poller, &throughput, &latency);
+      &throughput, &latency);
     const queue_stats_t queue_stats = probe.snapshot ();
-    (void) zlink_poller_destroy (&send_poller);
+    stop_spot_metric_worker (&metric_worker);
     print_result (lib_name_,
                   k_pattern,
                   transport_,
@@ -870,7 +881,6 @@ int run_case (const std::string &lib_name_,
                   active_ok ? latency.p99_us : 0.0,
                   queue_stats);
 
-    stop_spot_recv_loop (&recv_loop);
     cleanup_spot_case (&sub_monitor, &pub_monitor, &sub_node, &pub_node);
     return active_ok ? 0 : 1;
 }

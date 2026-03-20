@@ -48,11 +48,7 @@ bool zlink::xpub_t::compute_delivery_ready_state () const
 {
     if (_subscriptions.num_prefixes () == 0)
         return false;
-
-    zlink_monitor_snapshot_t snapshot;
-    memset (&snapshot, 0, sizeof (snapshot));
-    return const_cast<xpub_t *> (this)->monitor_snapshot (&snapshot) == 0
-           && snapshot.ready_peer_count > 0;
+    return has_attached_pipes ();
 }
 
 void zlink::xpub_t::refresh_delivery_ready_state (

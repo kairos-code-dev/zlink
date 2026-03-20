@@ -4,10 +4,9 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
-#include <mutex>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -32,117 +31,69 @@ inline int resolve_pubsub_xpub_nodrop_opt ()
     return 1;
 }
 
-struct recv_state_t {
-    recv_state_t () :
-        expected_payload_size (0),
-        current_phase (0),
-        active_phase (false),
-        deadline (),
-        queue_probe (NULL),
-        received (0),
-        latency_builder (),
-        sender_done (false),
-        recv_failed (false),
-        total_dispatched (0)
-    {}
-
-    // Phase configuration (set before phase, read-only during phase)
-    size_t expected_payload_size;
-    uint32_t current_phase;
-    bool active_phase;
-    std::chrono::steady_clock::time_point deadline;
-    queue_probe_t *queue_probe;
-
-    // Recv stats (written by handler on I/O thread, read after completion)
-    unsigned long long received;
-    latency_stats_builder_t latency_builder;
-
-    // Drain coordination
-    std::atomic<bool> sender_done;
-    std::atomic<bool> recv_failed;
-
-    // Completion signaling
-    std::mutex done_mutex;
-    std::condition_variable done_cv;
-    std::atomic<unsigned long long> total_dispatched;
-
-private:
-    recv_state_t (const recv_state_t &);
-    recv_state_t &operator= (const recv_state_t &);
-};
-
-inline void pubsub_recv_handler (const zlink_routing_id_t *,
-                                 const char *topic_,
-                                 size_t topic_len_,
-                                 zlink_msg_t *parts_,
-                                 size_t part_count_,
-                                 void *userdata_)
+inline int recv_pubsub_header_flags (
+  void *socket,
+  size_t expected_size,
+  int flags,
+  perf_single_metric::header_t *header_out,
+  bool *header_ok_out)
 {
-    recv_state_t *state = static_cast<recv_state_t *> (userdata_);
+    if (!socket)
+        return -1;
+
+    if (header_ok_out)
+        *header_ok_out = false;
+
+    zlink_routing_id_t source_rid;
+    source_rid.size = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic[32];
+    std::memset (topic, 0, sizeof (topic));
+    size_t topic_len = sizeof (topic);
+    const int rc = ::zlink_subscribe (
+      socket, &source_rid, &parts, &part_count, topic, &topic_len,
+      static_cast<zlink_send_flags_t> (flags));
+    if (rc < 0) {
+        const int err = zlink_errno ();
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
+    }
 
     const bool topic_ok =
-      topic_ != NULL && topic_len_ == std::strlen (k_pubsub_topic)
-      && std::memcmp (topic_, k_pubsub_topic, topic_len_) == 0;
-
-    // Validate: expect exactly one part
-    if (!topic_ok || part_count_ != 1) {
-        for (size_t i = 0; i < part_count_; ++i)
-            zlink_msg_close (&parts_[i]);
-        state->recv_failed.store (true, std::memory_order_release);
-        if (state->sender_done.load (std::memory_order_acquire)) {
-            std::lock_guard<std::mutex> lock (state->done_mutex);
-            state->done_cv.notify_one ();
+      topic_len == std::strlen (k_pubsub_topic)
+      && std::memcmp (topic, k_pubsub_topic, topic_len) == 0;
+    if (!topic_ok || part_count != 1) {
+        if (parts) {
+            zlink_multipart_close (parts, part_count);
+            free (parts);
         }
-        return;
+        return -1;
     }
 
-    const size_t actual_size = zlink_msg_size (&parts_[0]);
-    const bool size_ok = actual_size == state->expected_payload_size;
-
-    perf_single_metric::header_t header;
+    const size_t actual_size = zlink_msg_size (&parts[0]);
+    const bool size_ok = actual_size == expected_size;
     bool header_ok = false;
     if (size_ok) {
-        header_ok = perf_single_metric::decode_payload_header (
-          zlink_msg_data (&parts_[0]), actual_size, &header);
-    }
-
-    zlink_msg_close (&parts_[0]);
-
-    if (!size_ok) {
-        state->recv_failed.store (true, std::memory_order_release);
-        if (state->sender_done.load (std::memory_order_acquire)) {
-            std::lock_guard<std::mutex> lock (state->done_mutex);
-            state->done_cv.notify_one ();
-        }
-        return;
-    }
-
-    // Account header
-    if (state->active_phase && state->queue_probe)
-        state->queue_probe->sample_recv_if_due ();
-
-    if (header_ok && header.magic == perf_single_metric::k_magic
-        && header.phase == state->current_phase) {
-        if (state->active_phase) {
-            if (std::chrono::steady_clock::now () < state->deadline) {
-                ++state->received;
-                const uint64_t now = perf_single_metric::now_us ();
-                const double latency_us =
-                  now >= header.sent_ts_us
-                    ? static_cast<double> (now - header.sent_ts_us)
-                    : 0.0;
-                state->latency_builder.add (latency_us);
-            }
+        if (header_out) {
+            header_ok = perf_single_metric::decode_payload_header (
+              zlink_msg_data (&parts[0]), actual_size, header_out);
         } else {
-            ++state->received;
+            header_ok = true;
         }
     }
 
-    state->total_dispatched.fetch_add (1, std::memory_order_release);
-    if (state->sender_done.load (std::memory_order_acquire)) {
-        std::lock_guard<std::mutex> lock (state->done_mutex);
-        state->done_cv.notify_one ();
-    }
+    zlink_multipart_close (parts, part_count);
+    free (parts);
+
+    if (!size_ok)
+        return -1;
+
+    if (header_ok_out)
+        *header_ok_out = header_ok;
+
+    return 1;
 }
 
 inline bool send_pubsub_sample (void *pub_socket_,
@@ -151,7 +102,8 @@ inline bool send_pubsub_sample (void *pub_socket_,
                                 size_t msg_size_,
                                 uint32_t run_id_,
                                 uint64_t *seq_,
-                                perf_single_metric::phase_t phase_)
+                                perf_single_metric::phase_t phase_,
+                                int flags_)
 {
     if (!pub_socket_ || !payload_ || !seq_)
         return false;
@@ -168,11 +120,13 @@ inline bool send_pubsub_sample (void *pub_socket_,
     }
 
     zlink_msg_t payload_part;
-    if (zlink_msg_init_size (&payload_part, payload_size_) != 0) {
+    if (zlink_msg_init_size (&payload_part, payload_size_) != 0)
         return false;
-    }
-    std::memcpy (zlink_msg_data (&payload_part), payload_->data (), payload_size_);
-    if (::zlink_publish (pub_socket_, k_pubsub_topic, &payload_part, 1, 0) < 0) {
+
+    std::memcpy (
+      zlink_msg_data (&payload_part), payload_->data (), payload_size_);
+    if (::zlink_publish (pub_socket_, k_pubsub_topic, &payload_part, 1, flags_)
+        < 0) {
         zlink_msg_close (&payload_part);
         return false;
     }
@@ -180,8 +134,113 @@ inline bool send_pubsub_sample (void *pub_socket_,
     return true;
 }
 
+inline bool setup_connected_pubsub_pair (void *pub_socket_,
+                                         void *sub_socket_,
+                                         const std::string &transport_,
+                                         const std::string &id_)
+{
+    if (!pub_socket_ || !sub_socket_)
+        return false;
+
+    if (!setup_tls_server (pub_socket_, transport_)
+        || !setup_tls_client (sub_socket_, transport_)) {
+        return false;
+    }
+
+    apply_single_hwm (pub_socket_);
+    apply_single_hwm (sub_socket_);
+
+    if (zlink_set_subscription (sub_socket_, "") != 0)
+        return false;
+
+    readiness_monitor_t pub_monitor;
+    readiness_monitor_t sub_monitor;
+    if (!open_socket_readiness_monitor (
+          pub_socket_, ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED, pub_monitor)) {
+        return false;
+    }
+    if (!open_socket_readiness_monitor (
+          sub_socket_, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED, sub_monitor)) {
+        close_socket_readiness_monitor (pub_monitor);
+        return false;
+    }
+
+    const std::string endpoint =
+      bind_and_resolve_endpoint (pub_socket_, transport_, id_);
+    if (endpoint.empty ()) {
+        close_socket_readiness_monitor (sub_monitor);
+        close_socket_readiness_monitor (pub_monitor);
+        return false;
+    }
+
+    if (!connect_checked (sub_socket_, endpoint)) {
+        close_socket_readiness_monitor (sub_monitor);
+        close_socket_readiness_monitor (pub_monitor);
+        return false;
+    }
+
+    apply_single_benchmark_socket_options (pub_socket_, transport_);
+    apply_single_benchmark_socket_options (sub_socket_, transport_);
+
+    const int timeout_ms = parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS",
+                                               3000);
+    const bool sub_ready = wait_socket_readiness (sub_monitor, timeout_ms);
+    const bool pub_ready = wait_socket_readiness (pub_monitor, timeout_ms);
+
+    close_socket_readiness_monitor (sub_monitor);
+    close_socket_readiness_monitor (pub_monitor);
+
+    if (bench_debug_enabled () && !(sub_ready && pub_ready)) {
+        std::cerr << "[perf-pubsub] delivery-ready gate failed"
+                  << " sub_ready=" << (sub_ready ? 1 : 0)
+                  << " pub_ready=" << (pub_ready ? 1 : 0) << std::endl;
+    }
+    return sub_ready && pub_ready;
+}
+
+inline int send_pubsub_sample_with_backpressure (
+  void *pub_socket_,
+  std::vector<char> *payload_,
+  size_t payload_size_,
+  size_t msg_size_,
+  uint32_t run_id_,
+  uint64_t *seq_,
+  perf_single_metric::phase_t phase_,
+  poller_guard_t *send_poller_,
+  const std::chrono::steady_clock::time_point &deadline_)
+{
+    if (!send_poller_ || !send_poller_->valid ())
+        return -1;
+
+    while (std::chrono::steady_clock::now () < deadline_) {
+        if (send_pubsub_sample (pub_socket_, payload_, payload_size_, msg_size_,
+                                run_id_, seq_, phase_, ZLINK_DONTWAIT)) {
+            return 1;
+        }
+
+        const int err = zlink_errno ();
+        if (err == EINTR)
+            continue;
+        if (err != EAGAIN)
+            return -1;
+        zlink_poller_event_t event;
+        const int poll_rc =
+          send_poller_->wait (&event, static_cast<int> (remaining_timeout_ms (
+                                   deadline_, 1)));
+        if (poll_rc < 0) {
+            if (zlink_errno () == EINTR || zlink_errno () == EAGAIN)
+                continue;
+            return -1;
+        }
+        if (poll_rc == 0 || (event.events & ZLINK_POLLOUT) == 0)
+            return 0;
+    }
+
+    return 0;
+}
+
 inline bool run_oneway_phase (void *pub_socket,
-                              recv_state_t *state,
+                              void *sub_socket,
                               std::vector<char> *payload,
                               size_t payload_size,
                               size_t msg_size,
@@ -194,7 +253,7 @@ inline bool run_oneway_phase (void *pub_socket,
                               unsigned long long *out_received,
                               latency_stats_t *out_latency)
 {
-    if (!pub_socket || !state || !payload || !seq || !out_received)
+    if (!pub_socket || !sub_socket || !payload || !seq || !out_received)
         return false;
 
     const bool active_phase = phase == perf_single_metric::phase_active;
@@ -203,33 +262,145 @@ inline bool run_oneway_phase (void *pub_socket,
         + std::chrono::seconds (duration_s > 0 ? duration_s : 1);
     const auto drain_idle_limit = std::chrono::milliseconds (
       recv_timeout_ms > 0 ? recv_timeout_ms : 200);
+    const auto recv_poll_window = std::chrono::milliseconds (
+      recv_timeout_ms > 0 ? recv_timeout_ms : 200);
 
-    // Configure recv state for this phase
-    state->expected_payload_size = payload_size;
-    state->current_phase = static_cast<uint32_t> (phase);
-    state->active_phase = active_phase;
-    state->deadline = deadline;
-    state->queue_probe = queue_probe;
-    state->received = 0;
-    state->latency_builder = latency_stats_builder_t ();
-    state->sender_done.store (false, std::memory_order_release);
-    state->recv_failed.store (false, std::memory_order_relaxed);
-    state->total_dispatched.store (0, std::memory_order_relaxed);
+    std::atomic<bool> sender_done (false);
+    std::atomic<bool> recv_failed (false);
+    std::atomic<unsigned long long> received (0);
+    latency_stats_builder_t latency_builder;
 
-    if (active_phase && queue_probe)
-        queue_probe->force_sample_recv ();
+    std::thread receiver_thread ([&] () {
+        auto last_recv_at = std::chrono::steady_clock::now ();
+        poller_guard_t recv_poller;
+        if (!recv_poller.valid ()
+            || !recv_poller.add (sub_socket, sub_socket, ZLINK_POLLIN)) {
+            recv_failed.store (true, std::memory_order_release);
+            return;
+        }
 
-    // Send phase
+        auto account_header =
+          [&] (const perf_single_metric::header_t &header,
+               bool header_ok) {
+              if (active_phase && queue_probe)
+                  queue_probe->sample_recv_if_due ();
+
+              if (!header_ok || header.magic != perf_single_metric::k_magic
+                  || header.phase != static_cast<uint32_t> (phase)) {
+                  return;
+              }
+
+              if (active_phase) {
+                  if (std::chrono::steady_clock::now () < deadline) {
+                      received.fetch_add (1, std::memory_order_relaxed);
+                      const uint64_t now = perf_single_metric::now_us ();
+                      const double latency_us =
+                        now >= header.sent_ts_us
+                          ? static_cast<double> (now - header.sent_ts_us)
+                          : 0.0;
+                      latency_builder.add (latency_us);
+                  }
+              } else {
+                  received.fetch_add (1, std::memory_order_relaxed);
+              }
+          };
+
+        if (active_phase && queue_probe)
+            queue_probe->force_sample_recv ();
+
+        while (true) {
+            const bool done = sender_done.load (std::memory_order_acquire);
+            const auto now = std::chrono::steady_clock::now ();
+            auto poll_deadline = now + recv_poll_window;
+            if (done) {
+                const auto idle_deadline = last_recv_at + drain_idle_limit;
+                if (now >= idle_deadline)
+                    break;
+                poll_deadline = idle_deadline;
+            }
+
+            zlink_poller_event_t event;
+            const int poll_rc = recv_poller.wait (
+              &event, static_cast<int> (remaining_timeout_ms (poll_deadline, 1)));
+            if (poll_rc < 0) {
+                const int err = zlink_errno ();
+                if (err == EINTR || err == EAGAIN)
+                    continue;
+                recv_failed.store (true, std::memory_order_release);
+                break;
+            }
+            if (poll_rc == 0)
+                continue;
+
+            perf_single_metric::header_t header;
+            bool header_ok = false;
+            const int recv_rc = recv_pubsub_header_flags (
+              sub_socket, payload_size, ZLINK_DONTWAIT, &header, &header_ok);
+            if (recv_rc > 0) {
+                last_recv_at = std::chrono::steady_clock::now ();
+                account_header (header, header_ok);
+
+                for (;;) {
+                    perf_single_metric::header_t burst_header;
+                    bool burst_header_ok = false;
+                    const int burst_rc = recv_pubsub_header_flags (
+                      sub_socket, payload_size, ZLINK_DONTWAIT, &burst_header,
+                      &burst_header_ok);
+                    if (burst_rc > 0) {
+                        last_recv_at = std::chrono::steady_clock::now ();
+                        account_header (burst_header, burst_header_ok);
+                        continue;
+                    }
+                    if (burst_rc == 0)
+                        break;
+
+                    recv_failed.store (true, std::memory_order_release);
+                    break;
+                }
+
+                if (recv_failed.load (std::memory_order_acquire))
+                    break;
+                continue;
+            }
+
+            if (recv_rc == 0) {
+                if (done
+                    && std::chrono::steady_clock::now () - last_recv_at
+                         >= drain_idle_limit) {
+                    break;
+                }
+                continue;
+            }
+
+            recv_failed.store (true, std::memory_order_release);
+            break;
+        }
+
+        if (active_phase && queue_probe)
+            queue_probe->force_sample_recv ();
+    });
+
     bool send_failed = false;
+    poller_guard_t send_poller;
+    if (!send_poller.valid ()
+        || !send_poller.add (pub_socket, pub_socket, ZLINK_POLLOUT)) {
+        sender_done.store (true, std::memory_order_release);
+        receiver_thread.join ();
+        return false;
+    }
     if (active_phase && queue_probe)
         queue_probe->force_sample_send ();
 
     while (std::chrono::steady_clock::now () < deadline) {
-        if (!send_pubsub_sample (pub_socket, payload, payload_size, msg_size,
-                                 run_id, seq, phase)) {
+        const int send_rc = send_pubsub_sample_with_backpressure (
+          pub_socket, payload, payload_size, msg_size, run_id, seq, phase,
+          &send_poller, deadline);
+        if (send_rc < 0) {
             send_failed = true;
             break;
         }
+        if (send_rc == 0)
+            break;
         if (active_phase && queue_probe)
             queue_probe->sample_send_if_due ();
     }
@@ -237,53 +408,21 @@ inline bool run_oneway_phase (void *pub_socket,
     if (active_phase && queue_probe)
         queue_probe->force_sample_send ();
 
-    // Signal sender done and wait for drain
-    state->sender_done.store (true, std::memory_order_release);
+    sender_done.store (true, std::memory_order_release);
+    receiver_thread.join ();
 
-    {
-        std::unique_lock<std::mutex> lock (state->done_mutex);
-        auto drain_deadline =
-          std::chrono::steady_clock::now () + drain_idle_limit;
-        unsigned long long prev_dispatched =
-          state->total_dispatched.load (std::memory_order_acquire);
-
-        while (!state->recv_failed.load (std::memory_order_acquire)) {
-            const auto status =
-              state->done_cv.wait_until (lock, drain_deadline);
-            const unsigned long long curr_dispatched =
-              state->total_dispatched.load (std::memory_order_acquire);
-
-            if (state->recv_failed.load (std::memory_order_acquire))
-                break;
-
-            if (curr_dispatched != prev_dispatched) {
-                prev_dispatched = curr_dispatched;
-                drain_deadline =
-                  std::chrono::steady_clock::now () + drain_idle_limit;
-                continue;
-            }
-
-            if (status == std::cv_status::timeout
-                || std::chrono::steady_clock::now () >= drain_deadline) {
-                break;
-            }
-        }
-    }
-
-    if (active_phase && queue_probe)
-        queue_probe->force_sample_recv ();
-
-    if (send_failed || state->recv_failed.load (std::memory_order_acquire))
+    if (send_failed || recv_failed.load (std::memory_order_acquire))
         return false;
 
-    *out_received = state->received;
+    *out_received = received.load (std::memory_order_relaxed);
 
     if (active_phase) {
-        if (state->received == 0 || state->latency_builder.count () == 0
-            || !out_latency)
+        if (received.load (std::memory_order_relaxed) == 0
+            || latency_builder.count () == 0 || !out_latency) {
             return false;
-        *out_latency = state->latency_builder.snapshot ();
-    } else if (state->received == 0) {
+        }
+        *out_latency = latency_builder.snapshot ();
+    } else if (received.load (std::memory_order_relaxed) == 0) {
         return false;
     }
 
@@ -309,16 +448,9 @@ void run_pubsub (const std::string &transport,
         return;
     }
 
-    recv_state_t recv_state;
-
     socket_guard_t pub (ctx.get (), ZLINK_SOCKET_PUB);
     socket_guard_t sub (ctx.get (), ZLINK_SOCKET_SUB);
     if (!pub.valid () || !sub.valid ()) {
-        print_fail_no_queue ();
-        return;
-    }
-    if (sub.valid ()
-        && zlink_subscribe_handler (sub, &pubsub_recv_handler, &recv_state) != 0) {
         print_fail_no_queue ();
         return;
     }
@@ -327,15 +459,13 @@ void run_pubsub (const std::string &transport,
     set_pub_opt_int (pub.get (), ZLINK_PUB_OPT_NODROP, xpub_nodrop_opt,
                      "ZLINK_PUB_OPT_NODROP");
 
-    zlink_set_subscription (sub.get (), "");
-    if (!setup_connected_pair (
+    if (!setup_connected_pubsub_pair (
           pub.get (), sub.get (), transport, lib_name + "_pubsub")) {
         print_fail_no_queue ();
         return;
     }
 
     const int recv_timeout_ms = resolve_single_pubsub_recv_timeout_ms ();
-
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
@@ -351,7 +481,7 @@ void run_pubsub (const std::string &transport,
     unsigned long long warmup_received = 0;
     const int warmup_s = resolve_single_warmup_seconds ();
     if (!run_oneway_phase (pub.get (),
-                           &recv_state,
+                           sub.get (),
                            &payload,
                            payload_size,
                            msg_size,
@@ -371,7 +501,7 @@ void run_pubsub (const std::string &transport,
     unsigned long long received = 0;
     latency_stats_t latency_stats;
     if (!run_oneway_phase (pub.get (),
-                           &recv_state,
+                           sub.get (),
                            &payload,
                            payload_size,
                            msg_size,
@@ -404,5 +534,5 @@ void run_pubsub (const std::string &transport,
 
 int main (int argc, char **argv)
 {
-    return run_standard_bench_main (argc, argv, run_pubsub);
+    return run_standard_bench_main (argc, argv, "PUBSUB", run_pubsub);
 }

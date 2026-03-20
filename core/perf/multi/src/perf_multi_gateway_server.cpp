@@ -78,17 +78,23 @@ void request_queue_probe(size_t msg_size)
     g_queue_probe_pending.store(true, std::memory_order_release);
 }
 
-std::string replace_any_host_with_localhost(const std::string &endpoint)
+std::string normalize_bind_endpoint_host(const std::string &endpoint,
+                                         const std::string &transport)
 {
     std::string normalized = endpoint;
     const std::string any_v4 = "://0.0.0.0:";
     const std::string any_v6 = "://[::]:";
+    const char *host = (transport == "tls" || transport == "wss")
+                         ? "localhost"
+                         : "127.0.0.1";
     size_t pos = normalized.find(any_v4);
     if (pos != std::string::npos)
-        normalized.replace(pos, any_v4.size(), "://127.0.0.1:");
+        normalized.replace(
+          pos, any_v4.size(), std::string("://") + host + ":");
     pos = normalized.find(any_v6);
     if (pos != std::string::npos)
-        normalized.replace(pos, any_v6.size(), "://127.0.0.1:");
+        normalized.replace(
+          pos, any_v6.size(), std::string("://") + host + ":");
     return normalized;
 }
 
@@ -155,7 +161,7 @@ std::string bind_gateway_endpoint(void *gateway,
         endpoint.assign(last_endpoint);
     }
 
-    return replace_any_host_with_localhost(endpoint);
+    return normalize_bind_endpoint_host(endpoint, transport);
 }
 
 server_queue_stats_t sample_gateway_queue_stats(void *gateway,
@@ -656,6 +662,8 @@ int run_server_benchmark(const std::string &lib_name,
 int main(int argc, char **argv)
 {
     if (argc < 3)
+        return 1;
+    if (!multi_perf_validate_recv_mode_for_pattern (k_pattern))
         return 1;
 
     const std::string lib_name = argv[1];

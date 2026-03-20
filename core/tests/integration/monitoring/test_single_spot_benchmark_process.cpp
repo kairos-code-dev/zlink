@@ -9,7 +9,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <csignal>
 #include <climits>
 #include <condition_variable>
 #include <cstdio>
@@ -30,7 +29,6 @@ struct process_capture_t
 {
     process_capture_t () :
         pid (-1),
-        stdin_fd (-1),
         stdout_file (NULL),
         stderr_file (NULL),
         stdout_done (false),
@@ -39,7 +37,6 @@ struct process_capture_t
     }
 
     pid_t pid;
-    int stdin_fd;
     FILE *stdout_file;
     FILE *stderr_file;
     std::thread stdout_thread;
@@ -66,10 +63,6 @@ void close_process_capture (process_capture_t *proc_)
     if (!proc_)
         return;
 
-    if (proc_->stdin_fd >= 0) {
-        close (proc_->stdin_fd);
-        proc_->stdin_fd = -1;
-    }
     if (proc_->stdout_thread.joinable ())
         proc_->stdout_thread.join ();
     if (proc_->stderr_thread.joinable ())
@@ -99,9 +92,7 @@ void cleanup_child (process_capture_t *proc_)
     close_process_capture (proc_);
 }
 
-void reader_loop (FILE *stream_,
-                  process_capture_t *proc_,
-                  bool stdout_stream_)
+void reader_loop (FILE *stream_, process_capture_t *proc_, bool stdout_stream_)
 {
     char buffer[512];
     while (stream_ && fgets (buffer, sizeof (buffer), stream_)) {
@@ -129,18 +120,13 @@ bool start_process (const std::string &path_,
     if (!out_)
         return false;
 
-    int stdin_pipe[2] = {-1, -1};
     int stdout_pipe[2] = {-1, -1};
     int stderr_pipe[2] = {-1, -1};
-    if (pipe (stdin_pipe) != 0 || pipe (stdout_pipe) != 0
-        || pipe (stderr_pipe) != 0) {
+    if (pipe (stdout_pipe) != 0 || pipe (stderr_pipe) != 0)
         return false;
-    }
 
     const pid_t pid = fork ();
     if (pid < 0) {
-        close (stdin_pipe[0]);
-        close (stdin_pipe[1]);
         close (stdout_pipe[0]);
         close (stdout_pipe[1]);
         close (stderr_pipe[0]);
@@ -149,12 +135,8 @@ bool start_process (const std::string &path_,
     }
 
     if (pid == 0) {
-        dup2 (stdin_pipe[0], STDIN_FILENO);
         dup2 (stdout_pipe[1], STDOUT_FILENO);
         dup2 (stderr_pipe[1], STDERR_FILENO);
-
-        close (stdin_pipe[0]);
-        close (stdin_pipe[1]);
         close (stdout_pipe[0]);
         close (stdout_pipe[1]);
         close (stderr_pipe[0]);
@@ -181,12 +163,10 @@ bool start_process (const std::string &path_,
         _exit (127);
     }
 
-    close (stdin_pipe[0]);
     close (stdout_pipe[1]);
     close (stderr_pipe[1]);
 
     out_->pid = pid;
-    out_->stdin_fd = stdin_pipe[1];
     out_->stdout_file = fdopen (stdout_pipe[0], "r");
     out_->stderr_file = fdopen (stderr_pipe[0], "r");
     if (!out_->stdout_file || !out_->stderr_file) {
@@ -199,37 +179,6 @@ bool start_process (const std::string &path_,
     out_->stderr_thread =
       std::thread (&reader_loop, out_->stderr_file, out_, false);
     return true;
-}
-
-bool wait_for_stdout_prefix (process_capture_t *proc_,
-                             const char *prefix_,
-                             int timeout_ms,
-                             std::string *line_out_)
-{
-    if (!proc_ || !prefix_)
-        return false;
-
-    std::unique_lock<std::mutex> lock (proc_->sync);
-    const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms : 1);
-
-    while (std::chrono::steady_clock::now () < deadline) {
-        for (size_t i = 0; i < proc_->stdout_lines.size (); ++i) {
-            if (proc_->stdout_lines[i].compare (0, std::strlen (prefix_),
-                                                prefix_)
-                == 0) {
-                if (line_out_)
-                    *line_out_ = proc_->stdout_lines[i];
-                return true;
-            }
-        }
-        if (proc_->stdout_done)
-            return false;
-        proc_->cv.wait_until (lock, deadline);
-    }
-
-    return false;
 }
 
 bool wait_for_exit_code (process_capture_t *proc_, int timeout_ms, int *rc_out_)
@@ -262,136 +211,58 @@ bool wait_for_exit_code (process_capture_t *proc_, int timeout_ms, int *rc_out_)
     return false;
 }
 
-void write_stdin_line (process_capture_t *proc_, const char *line_)
+void run_single_spot_process_case (const char *self_path_, const char *recv_mode_)
 {
-    TEST_ASSERT_NOT_NULL (proc_);
-    TEST_ASSERT_NOT_NULL (line_);
-    TEST_ASSERT_TRUE (proc_->stdin_fd >= 0);
-    const size_t size = std::strlen (line_);
-    TEST_ASSERT_EQUAL_INT (
-      static_cast<int> (size),
-      static_cast<int> (write (proc_->stdin_fd, line_, size)));
-}
-} // namespace
+    process_capture_t proc;
+    const char *binary_name =
+      std::strcmp (recv_mode_, "callback") == 0 ? "perf_spot_callback"
+                                                : "perf_spot";
+    const std::string path = sibling_binary_path (self_path_, binary_name);
 
-void run_multi_spot_process_case (const char *recv_mode_)
-{
-    process_capture_t server;
-    process_capture_t client;
+    std::vector<std::string> args;
+    args.push_back ("current");
+    args.push_back ("tcp");
+    args.push_back ("64");
 
-    const std::string server_path =
-      sibling_binary_path (g_self_path, "comp_src_spot_server");
-    const std::string client_path =
-      sibling_binary_path (g_self_path, "comp_src_spot_client");
+    std::vector<std::string> env;
+    env.push_back (std::string ("PERF_RECV_MODE=") + recv_mode_);
+    env.push_back ("PERF_SINGLE_DURATION_SECONDS=1");
+    env.push_back ("PERF_SINGLE_WARMUP_SECONDS=1");
 
-    std::vector<std::string> common_env;
-    common_env.push_back ("PERF_MSG_SIZES=64");
-    common_env.push_back ("PERF_DURATION_SECONDS=1");
-    common_env.push_back ("PERF_WARMUP_SECONDS=1");
-    common_env.push_back ("PERF_SETTLE_MS=500");
-    common_env.push_back ("PERF_CLIENTS=2");
-    common_env.push_back ("PERF_CONNECT_READY_TIMEOUT_MS=15000");
-    common_env.push_back (std::string ("PERF_RECV_MODE=") + recv_mode_);
+    TEST_ASSERT_TRUE (start_process (path, args, env, &proc));
 
-    std::vector<std::string> server_args;
-    server_args.push_back ("zlink");
-    server_args.push_back ("tcp");
-    TEST_ASSERT_TRUE (
-      start_process (server_path, server_args, common_env, &server));
-
-    std::string ready_line;
-    TEST_ASSERT_TRUE (
-      wait_for_stdout_prefix (&server, "READY,", 10000, &ready_line));
-    std::string endpoint = ready_line.substr (strlen ("READY,"));
-    if (!endpoint.empty () && endpoint[endpoint.size () - 1] == '\n')
-        endpoint.erase (endpoint.size () - 1);
-
-    std::vector<std::string> client_args;
-    client_args.push_back ("zlink");
-    client_args.push_back ("tcp");
-    client_args.push_back ("64");
-    client_args.push_back ("--endpoint");
-    client_args.push_back (endpoint);
-
-    TEST_ASSERT_TRUE (
-      start_process (client_path, client_args, common_env, &client));
-
-    TEST_ASSERT_TRUE (
-      wait_for_stdout_prefix (&client, "CLIENT_READY,", 10000, NULL));
-    write_stdin_line (&server, "START,64\n");
-
-    int client_rc = INT_MIN;
-    TEST_ASSERT_TRUE (wait_for_exit_code (&client, 20000, &client_rc));
-    close_process_capture (&client);
-    TEST_ASSERT_EQUAL_INT_MESSAGE (0, client_rc, client.stderr_text.c_str ());
+    int rc = INT_MIN;
+    TEST_ASSERT_TRUE (wait_for_exit_code (&proc, 20000, &rc));
+    close_process_capture (&proc);
+    TEST_ASSERT_EQUAL_INT_MESSAGE (0, rc, proc.stderr_text.c_str ());
 
     bool saw_throughput = false;
-    {
-        std::lock_guard<std::mutex> lock (client.sync);
-        for (size_t i = 0; i < client.stdout_lines.size (); ++i) {
-            if (client.stdout_lines[i].find ("throughput")
-                != std::string::npos) {
-                saw_throughput = true;
-                break;
-            }
+    for (size_t i = 0; i < proc.stdout_lines.size (); ++i) {
+        if (proc.stdout_lines[i].find ("throughput") != std::string::npos) {
+            saw_throughput = true;
+            break;
         }
     }
     TEST_ASSERT_TRUE (saw_throughput);
+}
+} // namespace
 
-    cleanup_child (&server);
+void test_single_spot_process_recv_smoke ()
+{
+    run_single_spot_process_case (g_self_path, "recv");
 }
 
-void run_multi_spot_invalid_mode_case ()
+void test_single_spot_process_callback_smoke ()
 {
-    process_capture_t client;
-    const std::string client_path =
-      sibling_binary_path (g_self_path, "comp_src_spot_client");
-
-    std::vector<std::string> client_args;
-    client_args.push_back ("zlink");
-    client_args.push_back ("tcp");
-    client_args.push_back ("64");
-    client_args.push_back ("--endpoint");
-    client_args.push_back ("tcp://127.0.0.1:1");
-
-    std::vector<std::string> client_env;
-    client_env.push_back ("PERF_RECV_MODE=recv-thread");
-    client_env.push_back ("PERF_MULTI_PATTERN=MULTI_SPOT");
-
-    TEST_ASSERT_TRUE (
-      start_process (client_path, client_args, client_env, &client));
-
-    int client_rc = INT_MIN;
-    TEST_ASSERT_TRUE (wait_for_exit_code (&client, 15000, &client_rc));
-    close_process_capture (&client);
-    TEST_ASSERT_NOT_EQUAL (0, client_rc);
-    TEST_ASSERT_TRUE (
-      client.stderr_text.find ("invalid --recv mode") != std::string::npos);
-}
-
-void test_multi_spot_process_recv_smoke ()
-{
-    run_multi_spot_process_case ("recv");
-}
-
-void test_multi_spot_process_callback_smoke ()
-{
-    run_multi_spot_process_case ("callback");
-}
-
-void test_multi_spot_process_invalid_mode_is_rejected ()
-{
-    run_multi_spot_invalid_mode_case ();
+    run_single_spot_process_case (g_self_path, "callback");
 }
 
 int main (int argc, char **argv)
 {
-    signal (SIGPIPE, SIG_IGN);
     g_self_path = argc > 0 ? argv[0] : NULL;
     UNITY_BEGIN ();
-    RUN_TEST (test_multi_spot_process_recv_smoke);
-    RUN_TEST (test_multi_spot_process_callback_smoke);
-    RUN_TEST (test_multi_spot_process_invalid_mode_is_rejected);
+    RUN_TEST (test_single_spot_process_recv_smoke);
+    RUN_TEST (test_single_spot_process_callback_smoke);
     return UNITY_END ();
 }
 

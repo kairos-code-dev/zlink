@@ -26,8 +26,10 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_perf_contract
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_pubsub_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_spot_benchmark_process
+  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_stream_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_gateway_monitor_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_single_pair_benchmark_process
+  ${INTEGRATION_TEST_ROOT}/monitoring/test_single_spot_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_service_contract
   ${INTEGRATION_TEST_ROOT}/test_monitor_with_handler
   ${INTEGRATION_TEST_ROOT}/test_socket_with_handler
@@ -284,6 +286,9 @@ foreach(test_source ${tests})
     endif()
 
     set_tests_properties(${test} PROPERTIES TIMEOUT 10)
+    if(${test} STREQUAL "test_multi_stream_benchmark_process")
+      set_tests_properties(${test} PROPERTIES TIMEOUT 30)
+    endif()
     set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
 
     # Automatically set library path for tests to find libzlink shared library
@@ -416,6 +421,17 @@ if(TARGET test_single_pair_benchmark_process)
     perf_pair)
   set_tests_properties(
     test_single_pair_benchmark_process
+    PROPERTIES
+      TIMEOUT 30
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+endif()
+if(TARGET test_single_spot_benchmark_process)
+  add_dependencies(
+    test_single_spot_benchmark_process
+    perf_spot)
+  set_tests_properties(
+    test_single_spot_benchmark_process
     PROPERTIES
       TIMEOUT 30
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"

@@ -101,7 +101,9 @@ class RunComparisonPolicyTests(unittest.TestCase):
         self.assertEqual(RC.resolve_binary_name("PUBSUB", "recv"), "perf_pubsub")
         self.assertEqual(RC.resolve_binary_name("GATEWAY", "recv"), "perf_gateway")
         self.assertEqual(RC.resolve_binary_name("SPOT", "recv"), "perf_spot")
-        self.assertEqual(RC.resolve_binary_name("SPOT", "callback"), "perf_spot")
+        self.assertEqual(
+            RC.resolve_binary_name("SPOT", "callback"), "perf_spot_callback"
+        )
         with self.assertRaises(ValueError):
             RC.resolve_binary_name("PAIR", "callback")
         with self.assertRaises(ValueError):

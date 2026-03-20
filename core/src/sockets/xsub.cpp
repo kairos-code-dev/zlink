@@ -132,11 +132,7 @@ bool zlink::xsub_t::compute_delivery_ready_state () const
 #endif
     if (!has_filters)
         return false;
-
-    zlink_monitor_snapshot_t snapshot;
-    memset (&snapshot, 0, sizeof (snapshot));
-    return const_cast<xsub_t *> (this)->monitor_snapshot (&snapshot) == 0
-           && snapshot.ready_peer_count > 0;
+    return has_attached_pipes ();
 }
 
 void zlink::xsub_t::refresh_delivery_ready_state (

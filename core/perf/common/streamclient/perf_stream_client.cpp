@@ -4,6 +4,7 @@
 
 #include "perf_stream_bench_client.hpp"
 #include "perf_stream_client_options.hpp"
+#include "../../multi/common/perf_common_multi.hpp"
 
 #include <cstdio>
 
@@ -29,5 +30,7 @@ static int perf_stream_client_run (int argc, char **argv)
 
 int main (int argc, char **argv)
 {
+    if (!multi_perf_validate_recv_mode_for_pattern ("MULTI_STREAM"))
+        return 1;
     return perf_stream_client_run (argc, argv);
 }

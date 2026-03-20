@@ -820,6 +820,124 @@ void test_dealer_dealer_perf_like_monitor_sockopts_preserve_connect_ready ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_dealer_router_perf_like_client_monitor_preserves_bidirectional_delivery ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_BLOCKY, 0));
+
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+
+    configure_bounded_pair_socket (server, 500);
+    configure_bounded_pair_socket (client, 500);
+
+    static const char dealer_id[] = "PERF-DEALER";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (client, dealer_id, sizeof (dealer_id) - 1));
+
+    connect_monitor_t client_monitor;
+    TEST_ASSERT_TRUE (
+      open_perf_like_connect_monitor_with_perf_sockopts (client,
+                                                         &client_monitor));
+
+    char endpoint[kPerfMonitorEndpointSize];
+    bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
+    TEST_ASSERT_TRUE (wait_perf_like_connect_ready (&client_monitor, 3000));
+    close_perf_like_connect_monitor (&client_monitor);
+
+    send_string_expect_success (client, "dealer-router-monitor-ping", 0);
+
+    unsigned char rid_buf[255];
+    const int rid_size =
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (server, rid_buf, sizeof (rid_buf), 0));
+    TEST_ASSERT_EQUAL_INT (sizeof (dealer_id) - 1, rid_size);
+    TEST_ASSERT_EQUAL_MEMORY (dealer_id, rid_buf, rid_size);
+    recv_string_expect_success (server, "dealer-router-monitor-ping", 0);
+
+    TEST_ASSERT_EQUAL_INT (
+      rid_size,
+      TEST_ASSERT_SUCCESS_ERRNO (
+        zlink_send (server, rid_buf, static_cast<size_t> (rid_size), ZLINK_SNDMORE)));
+    send_string_expect_success (server, "dealer-router-monitor-pong", 0);
+    recv_string_expect_success (client, "dealer-router-monitor-pong", 0);
+
+    close_socket_zero_linger (client);
+    close_socket_zero_linger (server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_router_router_perf_like_client_monitor_preserves_bidirectional_delivery ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_BLOCKY, 0));
+
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+
+    configure_bounded_pair_socket (server, 500);
+    configure_bounded_pair_socket (client, 500);
+
+    static const char server_id[] = "SERVER";
+    static const char client_id[] = "CLIENT";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (server, server_id, sizeof (server_id) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (client, client_id, sizeof (client_id) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      client, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, server_id,
+      sizeof (server_id) - 1));
+
+    connect_monitor_t client_monitor;
+    TEST_ASSERT_TRUE (
+      open_perf_like_connect_monitor_with_perf_sockopts (client,
+                                                         &client_monitor));
+
+    char endpoint[kPerfMonitorEndpointSize];
+    bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
+    TEST_ASSERT_TRUE (wait_perf_like_connect_ready (&client_monitor, 3000));
+    close_perf_like_connect_monitor (&client_monitor);
+
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (sizeof (server_id) - 1),
+      TEST_ASSERT_SUCCESS_ERRNO (
+        zlink_send (client, server_id, sizeof (server_id) - 1, ZLINK_SNDMORE)));
+    send_string_expect_success (client, "router-router-monitor-ping", 0);
+
+    unsigned char rid_buf[255];
+    const int rid_size =
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (server, rid_buf, sizeof (rid_buf), 0));
+    TEST_ASSERT_EQUAL_INT (sizeof (client_id) - 1, rid_size);
+    TEST_ASSERT_EQUAL_MEMORY (client_id, rid_buf, rid_size);
+    recv_string_expect_success (server, "router-router-monitor-ping", 0);
+
+    TEST_ASSERT_EQUAL_INT (
+      rid_size,
+      TEST_ASSERT_SUCCESS_ERRNO (
+        zlink_send (server, rid_buf, static_cast<size_t> (rid_size), ZLINK_SNDMORE)));
+    send_string_expect_success (server, "router-router-monitor-pong", 0);
+
+    unsigned char reply_rid[255];
+    const int reply_rid_size = TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv (client, reply_rid, sizeof (reply_rid), 0));
+    TEST_ASSERT_EQUAL_INT (sizeof (server_id) - 1, reply_rid_size);
+    TEST_ASSERT_EQUAL_MEMORY (server_id, reply_rid, reply_rid_size);
+    recv_string_expect_success (client, "router-router-monitor-pong", 0);
+
+    close_socket_zero_linger (client);
+    close_socket_zero_linger (server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_pubsub_perf_like_delivery_ready_preserves_oneway_delivery_recv ()
 {
     void *ctx = zlink_ctx_new ();
@@ -978,5 +1096,9 @@ int main ()
     RUN_TEST (test_pubsub_raw_socket_rejects_multipart_send_api);
     RUN_TEST (
       test_dealer_dealer_perf_like_monitor_sockopts_preserve_connect_ready);
+    RUN_TEST (
+      test_dealer_router_perf_like_client_monitor_preserves_bidirectional_delivery);
+    RUN_TEST (
+      test_router_router_perf_like_client_monitor_preserves_bidirectional_delivery);
     return UNITY_END ();
 }

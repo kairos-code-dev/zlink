@@ -44,6 +44,10 @@ PATTERN_TO_BINARY = {
     "SPOT": "perf_spot",
 }
 
+CALLBACK_BINARY_OVERRIDES = {
+    "SPOT": "perf_spot_callback",
+}
+
 SUPPORTED_RECV_MODES = {
     "PAIR": ("recv",),
     "PUBSUB": ("recv",),
@@ -1021,6 +1025,10 @@ def resolve_binary_name(pattern: str, recv_mode: str) -> str:
         raise ValueError(
             f"pattern {pattern} does not support --recv {recv_mode}"
         )
+    if recv_mode == "callback":
+        override = CALLBACK_BINARY_OVERRIDES.get(pattern)
+        if override:
+            return override
     return PATTERN_TO_BINARY[pattern]
 
 

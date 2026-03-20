@@ -290,6 +290,7 @@ class socket_base_t : public own_t,
       uint64_t event_,
       uint64_t value_,
       const endpoint_uri_pair_t &endpoint_uri_pair_);
+    bool has_attached_pipes () const;
 
   private:
     enum

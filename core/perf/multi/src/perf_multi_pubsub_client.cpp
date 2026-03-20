@@ -82,6 +82,38 @@ bool wait_pubsub_sub_ready (connect_monitor_t &monitor, int timeout_ms)
            && state->connection_ready_count > 0;
 }
 
+bool wait_pubsub_sub_stopped (connect_monitor_t &monitor, int timeout_ms)
+{
+    connect_monitor_state_t *state = monitor.state;
+    if (!state)
+        return false;
+
+    std::unique_lock<std::mutex> lock (state->sync);
+    if (state->error_code != 0)
+        return false;
+    if (state->connection_ready_count == 0)
+        return true;
+
+    const bool signaled = state->cv.wait_for (
+      lock,
+      std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms : 1),
+      [state] () {
+          return state->error_code != 0 || state->connection_ready_count == 0;
+      });
+    return signaled && state->error_code == 0
+           && state->connection_ready_count == 0;
+}
+
+bool wait_server_stop_after_client_done ()
+{
+    const char *env =
+      resolve_multi_env_value ("PERF_WAIT_SERVER_STOP_AFTER_CLIENT_DONE", NULL);
+    if (!env || !*env)
+        return false;
+
+    return std::strcmp (env, "0") != 0;
+}
+
 int recv_one_pubsub_message (void *socket,
                              size_t expected_msg_size,
                              uint32_t expected_run_id,
@@ -432,9 +464,9 @@ inline int run_client_benchmark (const std::string &lib_name,
             return 1;
         }
     }
-    close_client_monitors (&monitors);
 
     const size_t scratch_capacity = static_cast<size_t> (64);
+    const bool wait_server_stop = wait_server_stop_after_client_done ();
 
     for (size_t si = 0; si < msg_sizes.size (); ++si) {
         const size_t msg_size = msg_sizes[si];
@@ -454,6 +486,22 @@ inline int run_client_benchmark (const std::string &lib_name,
             close_client_sockets (&sockets);
             return 1;
         }
+        std::cout << "CLIENT_DONE," << msg_size << std::endl;
+        if (wait_server_stop && (si + 1) == msg_sizes.size ()) {
+            for (size_t i = 0; i < monitors.size (); ++i) {
+                if (!wait_pubsub_sub_stopped (
+                      monitors[i], base_settings.connect_ready_timeout_ms)) {
+                    if (bench_debug_enabled ()) {
+                        std::cerr
+                          << "[multi-pubsub-client] server stop wait failed slot="
+                          << i << std::endl;
+                    }
+                    close_client_monitors (&monitors);
+                    close_client_sockets (&sockets);
+                    return 1;
+                }
+            }
+        }
 
     }
     close_client_monitors (&monitors);
@@ -466,6 +514,8 @@ inline int run_client_benchmark (const std::string &lib_name,
 int main (int argc, char **argv)
 {
     if (argc < 4)
+        return 1;
+    if (!multi_perf_validate_recv_mode_for_pattern (k_pattern))
         return 1;
 
     const std::string lib_name = argv[1];

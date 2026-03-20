@@ -312,6 +312,21 @@ inline std::string write_temp_cert(const char* content, const std::string& suffi
     return path;
 }
 
+inline bool set_tls_path_option(void *socket,
+                                zlink_option_t option,
+                                const std::string &value,
+                                const char *name)
+{
+    if (zlink_set_option(socket, option, value.c_str(), value.size()) == 0)
+        return true;
+
+    if (bench_debug_enabled()) {
+        std::cerr << "Failed to set " << name << ": "
+                  << zlink_strerror(zlink_errno()) << std::endl;
+    }
+    return false;
+}
+
 // Setup TLS options for server socket
 inline bool setup_tls_server(void* socket, const std::string& transport) {
     if (transport != "tls" && transport != "wss") return true;
@@ -321,13 +336,21 @@ inline bool setup_tls_server(void* socket, const std::string& transport) {
 
     if (zlink_set_tls_server(
           socket, cert_path.c_str(), key_path.c_str(), 0)
-        != 0) {
+        == 0) {
+        return true;
+    }
+
+    if (zlink_errno() != EFAULT) {
         if (bench_debug_enabled())
             std::cerr << "Failed to set TLS server options: "
                       << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
-    return true;
+
+    return set_tls_path_option(
+             socket, ZLINK_OPT_TLS_CERT, cert_path, "ZLINK_OPT_TLS_CERT")
+           && set_tls_path_option(
+             socket, ZLINK_OPT_TLS_KEY, key_path, "ZLINK_OPT_TLS_KEY");
 }
 
 // Setup TLS options for client socket
@@ -337,13 +360,26 @@ inline bool setup_tls_client(void* socket, const std::string& transport) {
     static std::string ca_path = write_temp_cert(test_certs::ca_cert_pem, "ca_cert");
     static const char* hostname = "localhost";
 
-    if (zlink_set_tls_client(socket, ca_path.c_str(), hostname, 0) != 0) {
+    if (zlink_set_tls_client(socket, ca_path.c_str(), hostname, 0) == 0) {
+        return true;
+    }
+
+    if (zlink_errno() != EFAULT) {
         if (bench_debug_enabled())
             std::cerr << "Failed to set TLS client options: "
                       << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
-    return true;
+
+    const int trust_system = 0;
+    return set_tls_path_option(socket, ZLINK_OPT_TLS_CA, ca_path,
+                               "ZLINK_OPT_TLS_CA")
+           && set_tls_path_option(socket, ZLINK_OPT_TLS_HOSTNAME,
+                                  std::string(hostname),
+                                  "ZLINK_OPT_TLS_HOSTNAME")
+           && zlink_set_option(socket, ZLINK_OPT_TLS_TRUST_SYSTEM,
+                               &trust_system, sizeof(trust_system))
+                == 0;
 }
 
 // ---------------------------------------------------------------------------

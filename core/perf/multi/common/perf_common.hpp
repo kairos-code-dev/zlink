@@ -105,53 +105,10 @@ inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_
 
     if (nitems_ == 0 || !items_)
         return perf_idle_wait_ms(timeout_);
-
-    const steady_clock_t::time_point start = steady_clock_t::now();
-    while (true) {
-        int ready = 0;
-        for (int i = 0; i < nitems_; ++i) {
-            items_[i].revents = 0;
-            if (!items_[i].socket) {
-                if (items_[i].fd != 0) {
-                    errno = EINVAL;
-                    return -1;
-                }
-                continue;
-            }
-
-            int events = 0;
-            size_t events_len = sizeof(events);
-            if (zlink_get_option(items_[i].socket, ZLINK_OPT_EVENTS, &events,
-                                 &events_len)
-                != 0) {
-                return -1;
-            }
-
-            if ((items_[i].events & ZLINK_POLLIN) != 0
-                && (events & ZLINK_POLLIN) != 0)
-                items_[i].revents |= ZLINK_POLLIN;
-            if ((items_[i].events & ZLINK_POLLOUT) != 0
-                && (events & ZLINK_POLLOUT) != 0)
-                items_[i].revents |= ZLINK_POLLOUT;
-
-            if (items_[i].revents != 0)
-                ++ready;
-        }
-
-        if (ready > 0 || timeout_ == 0)
-            return ready;
-
-        if (timeout_ > 0) {
-            const long elapsed_ms = std::chrono::duration_cast<milliseconds_t>(
-                                      steady_clock_t::now() - start)
-                                      .count();
-            if (elapsed_ms >= timeout_)
-                return 0;
-        }
-
-        if (perf_idle_wait_ms(1) != 0)
-            return -1;
-    }
+    const int rc = ::zlink_poll (items_, nitems_, timeout_);
+    if (rc < 0 && zlink_errno () == EAGAIN)
+        return 0;
+    return rc;
 }
 
 inline steady_clock_t::duration to_clock_duration (double seconds)
@@ -674,25 +631,31 @@ inline void close_connect_monitor(connect_monitor_t &monitor_)
     connect_monitor_state_t *state = monitor_.state;
     void *owner = monitor_.owner;
     void *monitor = monitor_.monitor;
-    monitor_.owner = NULL;
-    monitor_.monitor = NULL;
-    monitor_.state = NULL;
 
     if (!monitor && !state)
         return;
 
     if (monitor) {
-        stop_and_close_socket_monitor(owner, &monitor);
-        delete state;
+        (void) owner;
+        if (zlink_monitor_close(&monitor) == 0) {
+            monitor_.owner = NULL;
+            monitor_.monitor = NULL;
+            monitor_.state = NULL;
+            delete state;
+            return;
+        }
+
+        if (bench_debug_enabled()) {
+            std::cerr << "[perf-multi] monitor close failed: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
+        }
         return;
     }
 
-    if (bench_debug_enabled()) {
-        std::cerr << "[perf-multi] monitor close failed";
-        if (monitor)
-            std::cerr << ": " << zlink_strerror(zlink_errno());
-        std::cerr << std::endl;
-    }
+    monitor_.owner = NULL;
+    monitor_.monitor = NULL;
+    monitor_.state = NULL;
+    delete state;
 }
 
 inline void print_result(const std::string& lib_type,

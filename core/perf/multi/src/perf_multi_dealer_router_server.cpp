@@ -52,25 +52,16 @@ inline void emit_requested_queue_probe (const std::string &lib_name,
 
 inline bool relay_router_once (void *server,
                                std::vector<char> &id_buf,
-                               std::vector<char> &payload_buf,
-                               int poll_timeout_ms)
+                               std::vector<char> &payload_buf)
 {
     zlink_routing_id_t source_rid;
     source_rid.size = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int id_len = ::zlink_recv (
-      server, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
+    const int id_len = ::zlink_recv (server, &source_rid, &parts, &part_count, 0);
     if (id_len < 0) {
         const int err = zlink_errno ();
-        if (err == EAGAIN) {
-            if (perf_socket_poll (NULL, 0, poll_timeout_ms) < 0
-                && zlink_errno () != EINTR) {
-                return false;
-            }
-            return true;
-        }
-        return err == EINTR;
+        return err == EAGAIN || err == EINTR;
     }
 
     const size_t routing_len = source_rid.size;
@@ -149,8 +140,7 @@ inline bool run_server_loop (void *server,
 
     while (!perf_stop_requested ().load (std::memory_order_acquire)) {
         emit_requested_queue_probe (lib_name, transport, server, server);
-        if (!relay_router_once (
-              server, router_id_buf, router_payload_buf, 50)) {
+        if (!relay_router_once (server, router_id_buf, router_payload_buf)) {
             return false;
         }
     }
@@ -196,18 +186,11 @@ inline int run_server_benchmark (const std::string &lib_name,
         return 1;
     }
 
-    connect_monitor_t server_monitor;
-    if (!open_connect_monitor (server, server_monitor)) {
-        zlink_close (server);
-        return 1;
-    }
-
     const std::string endpoint = bind_server_endpoint (
       server,
       transport,
       lib_name + std::string ("_") + k_token + "_server");
     if (endpoint.empty ()) {
-        close_connect_monitor (server_monitor);
         zlink_close (server);
         return 1;
     }
@@ -255,11 +238,6 @@ inline int run_server_benchmark (const std::string &lib_name,
         static_cast<size_t> (1024)),
       '\0');
 
-    if (bench_debug_enabled ()) {
-        std::cerr << "[dealer-router-server] skipping connect barrier ready="
-                  << poll_connect_ready_count (server_monitor) << std::endl;
-    }
-
     const bool loop_ok = run_server_loop (
       server,
       settings,
@@ -274,7 +252,6 @@ inline int run_server_benchmark (const std::string &lib_name,
       sample_server_queue_stats (server, server);
     print_server_metrics (lib_name, transport, sizes, metrics, queue_stats);
 
-    close_connect_monitor (server_monitor);
     zlink_close (server);
 
     return loop_ok ? 0 : 1;
@@ -285,6 +262,8 @@ inline int run_server_benchmark (const std::string &lib_name,
 int main (int argc, char **argv)
 {
     if (argc < 3)
+        return 1;
+    if (!multi_perf_validate_recv_mode_for_pattern (k_pattern))
         return 1;
 
     const std::string lib_name = argv[1];

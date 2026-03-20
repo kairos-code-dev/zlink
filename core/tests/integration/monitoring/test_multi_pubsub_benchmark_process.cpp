@@ -276,7 +276,8 @@ void write_stdin_line (process_capture_t *proc_, const char *line_)
 }
 
 void run_multi_pubsub_process_case (const char *self_path_,
-                                    const char *recv_mode_)
+                                    const char *recv_mode_,
+                                    const char *msg_size_ = "64")
 {
     process_capture_t server;
     process_capture_t client;
@@ -287,7 +288,7 @@ void run_multi_pubsub_process_case (const char *self_path_,
       sibling_binary_path (self_path_, "comp_src_pubsub_client");
 
     std::vector<std::string> server_env;
-    server_env.push_back ("PERF_MSG_SIZES=64");
+    server_env.push_back (std::string ("PERF_MSG_SIZES=") + msg_size_);
     server_env.push_back ("PERF_DURATION_SECONDS=1");
     server_env.push_back ("PERF_WARMUP_SECONDS=0");
     server_env.push_back ("PERF_SETTLE_MS=500");
@@ -309,7 +310,7 @@ void run_multi_pubsub_process_case (const char *self_path_,
     std::vector<std::string> client_args;
     client_args.push_back ("zlink");
     client_args.push_back ("tcp");
-    client_args.push_back ("64");
+    client_args.push_back (msg_size_);
     client_args.push_back ("--endpoint");
     client_args.push_back (endpoint);
 
@@ -320,7 +321,8 @@ void run_multi_pubsub_process_case (const char *self_path_,
 
     TEST_ASSERT_TRUE (
       wait_for_stdout_prefix (&client, "CLIENT_READY,", 10000, NULL));
-    write_stdin_line (&server, "START,64\n");
+    const std::string start_line = std::string ("START,") + msg_size_ + "\n";
+    write_stdin_line (&server, start_line.c_str ());
 
     int client_rc = INT_MIN;
     TEST_ASSERT_TRUE (wait_for_exit_code (&client, 20000, &client_rc));
@@ -337,7 +339,39 @@ void run_multi_pubsub_process_case (const char *self_path_,
     }
     TEST_ASSERT_TRUE (saw_throughput);
 
-    cleanup_child (&server);
+    write_stdin_line (&server, "STOP\n");
+    int server_rc = INT_MIN;
+    TEST_ASSERT_TRUE (wait_for_exit_code (&server, 20000, &server_rc));
+    close_process_capture (&server);
+    TEST_ASSERT_EQUAL_INT_MESSAGE (0, server_rc, server.stderr_text.c_str ());
+}
+
+void run_multi_pubsub_callback_reject_case (const char *self_path_)
+{
+    process_capture_t client;
+    const std::string client_path =
+      sibling_binary_path (self_path_, "comp_src_pubsub_client");
+
+    std::vector<std::string> client_args;
+    client_args.push_back ("zlink");
+    client_args.push_back ("tcp");
+    client_args.push_back ("64");
+    client_args.push_back ("--endpoint");
+    client_args.push_back ("tcp://127.0.0.1:1");
+
+    std::vector<std::string> client_env;
+    client_env.push_back ("PERF_RECV_MODE=callback");
+    client_env.push_back ("PERF_MULTI_PATTERN=MULTI_PUBSUB");
+
+    TEST_ASSERT_TRUE (
+      start_process (client_path, client_args, client_env, &client));
+
+    int client_rc = INT_MIN;
+    TEST_ASSERT_TRUE (wait_for_exit_code (&client, 15000, &client_rc));
+    close_process_capture (&client);
+    TEST_ASSERT_NOT_EQUAL (0, client_rc);
+    TEST_ASSERT_TRUE (
+      client.stderr_text.find ("policy violation") != std::string::npos);
 }
 }
 
@@ -346,9 +380,14 @@ void test_multi_pubsub_process_recv_preserves_settle_and_active_window ()
     run_multi_pubsub_process_case (g_self_path, "recv");
 }
 
-void test_multi_pubsub_process_callback_preserves_settle_and_active_window ()
+void test_multi_pubsub_process_recv_large_size_completes ()
 {
-    run_multi_pubsub_process_case (g_self_path, "callback");
+    run_multi_pubsub_process_case (g_self_path, "recv", "262144");
+}
+
+void test_multi_pubsub_process_callback_is_rejected ()
+{
+    run_multi_pubsub_callback_reject_case (g_self_path);
 }
 
 int main (int argc, char **argv)
@@ -357,8 +396,8 @@ int main (int argc, char **argv)
     g_self_path = argc > 0 ? argv[0] : NULL;
     UNITY_BEGIN ();
     RUN_TEST (test_multi_pubsub_process_recv_preserves_settle_and_active_window);
-    RUN_TEST (
-      test_multi_pubsub_process_callback_preserves_settle_and_active_window);
+    RUN_TEST (test_multi_pubsub_process_recv_large_size_completes);
+    RUN_TEST (test_multi_pubsub_process_callback_is_rejected);
     return UNITY_END ();
 }
 

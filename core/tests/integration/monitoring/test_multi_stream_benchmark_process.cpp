@@ -272,29 +272,40 @@ void write_stdin_line (process_capture_t *proc_, const char *line_)
       static_cast<int> (size),
       static_cast<int> (write (proc_->stdin_fd, line_, size)));
 }
-} // namespace
 
-void run_multi_spot_process_case (const char *recv_mode_)
+bool stdout_contains_metric (process_capture_t *proc_, const char *metric_)
+{
+    if (!proc_ || !metric_)
+        return false;
+
+    std::lock_guard<std::mutex> lock (proc_->sync);
+    for (size_t i = 0; i < proc_->stdout_lines.size (); ++i) {
+        if (proc_->stdout_lines[i].find (metric_) != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
+void run_multi_stream_process_case (const char *recv_mode_)
 {
     process_capture_t server;
     process_capture_t client;
 
     const std::string server_path =
-      sibling_binary_path (g_self_path, "comp_src_spot_server");
+      sibling_binary_path (g_self_path, "comp_src_stream_server");
     const std::string client_path =
-      sibling_binary_path (g_self_path, "comp_src_spot_client");
+      sibling_binary_path (g_self_path, "perf_stream_client");
 
     std::vector<std::string> common_env;
     common_env.push_back ("PERF_MSG_SIZES=64");
     common_env.push_back ("PERF_DURATION_SECONDS=1");
     common_env.push_back ("PERF_WARMUP_SECONDS=1");
     common_env.push_back ("PERF_SETTLE_MS=500");
-    common_env.push_back ("PERF_CLIENTS=2");
-    common_env.push_back ("PERF_CONNECT_READY_TIMEOUT_MS=15000");
+    common_env.push_back ("PERF_MULTI_CLIENTS=4");
     common_env.push_back (std::string ("PERF_RECV_MODE=") + recv_mode_);
 
     std::vector<std::string> server_args;
-    server_args.push_back ("zlink");
+    server_args.push_back ("current");
     server_args.push_back ("tcp");
     TEST_ASSERT_TRUE (
       start_process (server_path, server_args, common_env, &server));
@@ -306,82 +317,63 @@ void run_multi_spot_process_case (const char *recv_mode_)
     if (!endpoint.empty () && endpoint[endpoint.size () - 1] == '\n')
         endpoint.erase (endpoint.size () - 1);
 
+    const std::string::size_type colon = endpoint.find_last_of (':');
+    TEST_ASSERT_TRUE (colon != std::string::npos);
+    const std::string port = endpoint.substr (colon + 1);
+
     std::vector<std::string> client_args;
-    client_args.push_back ("zlink");
+    client_args.push_back ("--pattern");
+    client_args.push_back ("MULTI_STREAM");
+    client_args.push_back ("--transport");
     client_args.push_back ("tcp");
+    client_args.push_back ("--host");
+    client_args.push_back ("127.0.0.1");
+    client_args.push_back ("--port");
+    client_args.push_back (port);
+    client_args.push_back ("--sizes");
     client_args.push_back ("64");
-    client_args.push_back ("--endpoint");
-    client_args.push_back (endpoint);
+    client_args.push_back ("--duration");
+    client_args.push_back ("1");
+    client_args.push_back ("--warmup");
+    client_args.push_back ("1");
+    client_args.push_back ("--ccu");
+    client_args.push_back ("4");
+    client_args.push_back ("--runs");
+    client_args.push_back ("1");
+    client_args.push_back ("--print-perf-result");
+    client_args.push_back ("1");
 
     TEST_ASSERT_TRUE (
       start_process (client_path, client_args, common_env, &client));
 
-    TEST_ASSERT_TRUE (
-      wait_for_stdout_prefix (&client, "CLIENT_READY,", 10000, NULL));
-    write_stdin_line (&server, "START,64\n");
-
     int client_rc = INT_MIN;
-    TEST_ASSERT_TRUE (wait_for_exit_code (&client, 20000, &client_rc));
+    TEST_ASSERT_TRUE (wait_for_exit_code (&client, 30000, &client_rc));
     close_process_capture (&client);
     TEST_ASSERT_EQUAL_INT_MESSAGE (0, client_rc, client.stderr_text.c_str ());
+    TEST_ASSERT_TRUE (stdout_contains_metric (
+      &client, "RESULT,current,MULTI_STREAM,tcp,64,throughput"));
+    TEST_ASSERT_TRUE (stdout_contains_metric (
+      &client, "RESULT,current,MULTI_STREAM,tcp,64,latency"));
 
-    bool saw_throughput = false;
-    {
-        std::lock_guard<std::mutex> lock (client.sync);
-        for (size_t i = 0; i < client.stdout_lines.size (); ++i) {
-            if (client.stdout_lines[i].find ("throughput")
-                != std::string::npos) {
-                saw_throughput = true;
-                break;
-            }
-        }
-    }
-    TEST_ASSERT_TRUE (saw_throughput);
+    write_stdin_line (&server, "STOP\n");
 
-    cleanup_child (&server);
+    int server_rc = INT_MIN;
+    TEST_ASSERT_TRUE (wait_for_exit_code (&server, 15000, &server_rc));
+    close_process_capture (&server);
+    TEST_ASSERT_EQUAL_INT_MESSAGE (0, server_rc, server.stderr_text.c_str ());
+    TEST_ASSERT_TRUE (stdout_contains_metric (
+      &server, "RESULT,current,MULTI_STREAM,tcp,64,server_cpu_pct"));
+}
+} // namespace
+
+void test_multi_stream_process_recv_smoke ()
+{
+    run_multi_stream_process_case ("recv");
 }
 
-void run_multi_spot_invalid_mode_case ()
+void test_multi_stream_process_callback_smoke ()
 {
-    process_capture_t client;
-    const std::string client_path =
-      sibling_binary_path (g_self_path, "comp_src_spot_client");
-
-    std::vector<std::string> client_args;
-    client_args.push_back ("zlink");
-    client_args.push_back ("tcp");
-    client_args.push_back ("64");
-    client_args.push_back ("--endpoint");
-    client_args.push_back ("tcp://127.0.0.1:1");
-
-    std::vector<std::string> client_env;
-    client_env.push_back ("PERF_RECV_MODE=recv-thread");
-    client_env.push_back ("PERF_MULTI_PATTERN=MULTI_SPOT");
-
-    TEST_ASSERT_TRUE (
-      start_process (client_path, client_args, client_env, &client));
-
-    int client_rc = INT_MIN;
-    TEST_ASSERT_TRUE (wait_for_exit_code (&client, 15000, &client_rc));
-    close_process_capture (&client);
-    TEST_ASSERT_NOT_EQUAL (0, client_rc);
-    TEST_ASSERT_TRUE (
-      client.stderr_text.find ("invalid --recv mode") != std::string::npos);
-}
-
-void test_multi_spot_process_recv_smoke ()
-{
-    run_multi_spot_process_case ("recv");
-}
-
-void test_multi_spot_process_callback_smoke ()
-{
-    run_multi_spot_process_case ("callback");
-}
-
-void test_multi_spot_process_invalid_mode_is_rejected ()
-{
-    run_multi_spot_invalid_mode_case ();
+    run_multi_stream_process_case ("callback");
 }
 
 int main (int argc, char **argv)
@@ -389,9 +381,8 @@ int main (int argc, char **argv)
     signal (SIGPIPE, SIG_IGN);
     g_self_path = argc > 0 ? argv[0] : NULL;
     UNITY_BEGIN ();
-    RUN_TEST (test_multi_spot_process_recv_smoke);
-    RUN_TEST (test_multi_spot_process_callback_smoke);
-    RUN_TEST (test_multi_spot_process_invalid_mode_is_rejected);
+    RUN_TEST (test_multi_stream_process_recv_smoke);
+    RUN_TEST (test_multi_stream_process_callback_smoke);
     return UNITY_END ();
 }
 

@@ -1302,6 +1302,20 @@ def parse_client_ready_size(line):
     return size_value if size_value > 0 else None
 
 
+def parse_client_done_size(line):
+    stripped = line.strip()
+    if not stripped.startswith("CLIENT_DONE,"):
+        return None
+    parts = stripped.split(",", 1)
+    if len(parts) != 2:
+        return None
+    try:
+        size_value = int(parts[1].strip())
+    except (TypeError, ValueError):
+        return None
+    return size_value if size_value > 0 else None
+
+
 def summarize_server_startup_detail(stdout_text, stderr_text, max_len=180):
     def pick_detail(text):
         if not text:
@@ -1573,6 +1587,8 @@ def run_sizes_test_stream_shared(
     client_env = env.copy()
     set_env_pair(server_env, "PERF_IO_THREADS", server_io_threads_int)
     set_env_pair(client_env, "PERF_IO_THREADS", client_io_threads_int)
+    if pattern_name == "PUBSUB":
+        set_env_pair(client_env, "PERF_WAIT_SERVER_STOP_AFTER_CLIENT_DONE", 1)
     server_proc = None
     close_server_sampler = None
     sample_server_metrics = None
@@ -2108,6 +2124,50 @@ def run_sizes_test_split(
     pattern_name,
     result_line_callback=None,
 ):
+    if pattern_name == "PUBSUB" and len(sizes) > 1:
+        merged = {
+            "status": "success",
+            "parsed": {},
+            "timed_out": False,
+            "returncode": 0,
+            "cpu_pct": None,
+            "mem_mb": None,
+            "reason": "",
+            "warnings": [],
+        }
+        failure_reasons = []
+        for size in sizes:
+            outcome = run_sizes_test_split(
+                server_binary_name,
+                client_binary_name,
+                lib_name,
+                transport,
+                [size],
+                pattern_name,
+                result_line_callback=result_line_callback,
+            )
+            merged["parsed"].update(outcome.get("parsed", {}) or {})
+            merged["warnings"].extend(outcome.get("warnings", []) or [])
+            if outcome.get("cpu_pct") is not None:
+                merged["cpu_pct"] = outcome.get("cpu_pct")
+            if outcome.get("mem_mb") is not None:
+                merged["mem_mb"] = outcome.get("mem_mb")
+            merged["returncode"] = max(
+                int(merged.get("returncode", 0) or 0),
+                int(outcome.get("returncode", 0) or 0),
+            )
+            merged["timed_out"] = bool(merged["timed_out"] or outcome.get("timed_out"))
+
+            status = outcome.get("status", "fail")
+            if status != "success":
+                merged["status"] = "fail"
+                reason = (outcome.get("reason", "") or "").strip() or f"size_{size}_failed"
+                failure_reasons.append(f"{size}:{reason}")
+
+        if failure_reasons:
+            merged["reason"] = ";".join(failure_reasons)
+        return merged
+
     server_binary_path = os.path.join(BUILD_DIR, server_binary_name + EXE_SUFFIX)
     client_binary_path = os.path.join(BUILD_DIR, client_binary_name + EXE_SUFFIX)
     fallback_size = sizes[0] if sizes else 64
@@ -2364,6 +2424,7 @@ def run_sizes_test_split(
         last_server_mem = [None]
         last_server_size = [None]
         queue_probe_requested_sizes = set()
+        stop_requested_sizes = set()
 
         def update_live_size_from_line(line):
             parsed_line, _warning = parse_result_line(
@@ -2440,6 +2501,17 @@ def run_sizes_test_split(
                         server_proc.stdin.flush()
                 except Exception:
                     pass
+                return
+            done_size = parse_client_done_size(line)
+            if done_size is not None:
+                if done_size not in stop_requested_sizes:
+                    try:
+                        if server_proc.stdin:
+                            server_proc.stdin.write("STOP\n")
+                            server_proc.stdin.flush()
+                            stop_requested_sizes.add(done_size)
+                    except Exception:
+                        pass
                 return
             update_live_size_from_line(line)
             emit_result_metrics_from_line(

@@ -375,6 +375,37 @@ private:
     void *_socket;
 };
 
+class poller_guard_t {
+public:
+    poller_guard_t() : _poller(zlink_poller_new()) {}
+    ~poller_guard_t() {
+        if (_poller)
+            (void) zlink_poller_destroy(&_poller);
+    }
+
+    bool valid() const { return _poller != NULL; }
+    void *get() const { return _poller; }
+
+    bool add(void *socket_, void *user_data_, short events_)
+    {
+        return _poller
+               && zlink_poller_add(_poller, socket_, user_data_, events_) == 0;
+    }
+
+    int wait(zlink_poller_event_t *event_, int timeout_ms_)
+    {
+        if (!_poller)
+            return -1;
+        return zlink_poller_wait(_poller, event_, timeout_ms_);
+    }
+
+private:
+    poller_guard_t(const poller_guard_t &);
+    poller_guard_t &operator=(const poller_guard_t &);
+
+    void *_poller;
+};
+
 inline void print_result(const std::string& lib_type,
                          const std::string& pattern,
                          const std::string& transport,
@@ -464,6 +495,28 @@ struct connect_monitor_t {
     void *owner;
     void *monitor;
     connect_monitor_state_t *state;
+};
+
+struct readiness_monitor_state_t {
+    readiness_monitor_state_t() :
+        ready(false),
+        error_code(0),
+        ready_event(0)
+    {}
+
+    std::mutex sync;
+    std::condition_variable cv;
+    bool ready;
+    int error_code;
+    uint64_t ready_event;
+};
+
+struct readiness_monitor_t {
+    readiness_monitor_t() : owner(NULL), monitor(NULL), state(NULL) {}
+
+    void *owner;
+    void *monitor;
+    readiness_monitor_state_t *state;
 };
 
 inline void connect_monitor_handler(const zlink_monitor_event_t *event_,
@@ -619,6 +672,131 @@ inline void close_connect_monitor(connect_monitor_t &monitor_)
     }
 }
 
+inline void readiness_monitor_handler(const zlink_monitor_event_t *event_,
+                                      void *userdata_)
+{
+    readiness_monitor_state_t *state =
+      static_cast<readiness_monitor_state_t *>(userdata_);
+    if (!state || !event_)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock(state->sync);
+        switch (event_->event) {
+            case ZLINK_EVENT_BIND_FAILED:
+            case ZLINK_EVENT_ACCEPT_FAILED:
+            case ZLINK_EVENT_CLOSE_FAILED:
+            case ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL:
+            case ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL:
+            case ZLINK_EVENT_HANDSHAKE_FAILED_AUTH:
+                if (state->error_code == 0)
+                    state->error_code =
+                      event_->value > 0 ? static_cast<int>(event_->value) : EIO;
+                break;
+
+            default:
+                if (event_->event == state->ready_event)
+                    state->ready = event_->value > 0;
+                break;
+        }
+    }
+    state->cv.notify_all();
+}
+
+inline bool open_socket_readiness_monitor(void *socket_,
+                                          uint64_t ready_event_,
+                                          readiness_monitor_t &out_)
+{
+    out_.owner = socket_;
+    out_.monitor = NULL;
+    out_.state = NULL;
+    if (!socket_ || ready_event_ == 0)
+        return false;
+
+    readiness_monitor_state_t *state =
+      new (std::nothrow) readiness_monitor_state_t();
+    if (!state)
+        return false;
+    state->ready_event = ready_event_;
+
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset(&monitor_opts, 0, sizeof(monitor_opts));
+    monitor_opts.events =
+      ready_event_ | ZLINK_EVENT_BIND_FAILED | ZLINK_EVENT_ACCEPT_FAILED
+      | ZLINK_EVENT_CLOSE_FAILED | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+      | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
+      | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
+    void *monitor = zlink_socket_monitor_open(socket_, &monitor_opts);
+    if (!monitor) {
+        delete state;
+        return false;
+    }
+    if (zlink_socket_monitor_handler(monitor, &readiness_monitor_handler, state)
+        != 0) {
+        zlink_monitor_close(&monitor);
+        delete state;
+        return false;
+    }
+
+    const int monitor_hwm = parse_positive_env("PERF_MONITOR_HWM", 1000);
+    set_sockopt_int(monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
+    if (monitor_hwm > 0) {
+        set_sockopt_int(monitor, ZLINK_OPT_SNDHWM, monitor_hwm,
+                        "ZLINK_OPT_SNDHWM");
+        set_sockopt_int(monitor, ZLINK_OPT_RCVHWM, monitor_hwm,
+                        "ZLINK_OPT_RCVHWM");
+    }
+
+    out_.monitor = monitor;
+    out_.state = state;
+    return true;
+}
+
+inline bool wait_socket_readiness(readiness_monitor_t &monitor_, int timeout_ms_)
+{
+    if (!monitor_.state)
+        return false;
+
+    std::unique_lock<std::mutex> lock(monitor_.state->sync);
+    if (monitor_.state->error_code != 0)
+        return false;
+    if (monitor_.state->ready)
+        return true;
+
+    const int bounded_timeout = timeout_ms_ > 0 ? timeout_ms_ : 1;
+    const bool signaled = monitor_.state->cv.wait_for(
+      lock,
+      std::chrono::milliseconds(bounded_timeout),
+      [&monitor_]() {
+          return monitor_.state->error_code != 0 || monitor_.state->ready;
+      });
+    return signaled && monitor_.state->error_code == 0
+           && monitor_.state->ready;
+}
+
+inline void close_socket_readiness_monitor(readiness_monitor_t &monitor_)
+{
+    readiness_monitor_state_t *state = monitor_.state;
+    void *owner = monitor_.owner;
+    void *monitor = monitor_.monitor;
+    monitor_.owner = NULL;
+    monitor_.monitor = NULL;
+    monitor_.state = NULL;
+
+    if (!monitor && !state)
+        return;
+
+    if (monitor) {
+        stop_and_close_socket_monitor(owner, &monitor);
+        delete state;
+        return;
+    }
+
+    if (bench_debug_enabled()) {
+        std::cerr << "[perf-single] readiness monitor close failed" << std::endl;
+    }
+}
+
 inline std::string resolve_single_perf_recv_mode()
 {
     const char *env = std::getenv("PERF_RECV_MODE");
@@ -635,6 +813,26 @@ inline std::string resolve_single_perf_recv_mode()
 inline bool single_perf_callback_mode()
 {
     return resolve_single_perf_recv_mode() == "callback";
+}
+
+inline bool single_perf_callback_supported_for_pattern(const char *pattern)
+{
+    return pattern && std::string(pattern) == "SPOT";
+}
+
+inline bool single_perf_validate_recv_mode_for_pattern(const char *pattern)
+{
+    if (!pattern || !*pattern)
+        return false;
+
+    if (resolve_single_perf_recv_mode() == "callback"
+        && !single_perf_callback_supported_for_pattern(pattern)) {
+        std::cerr << "policy violation: --recv callback unsupported for "
+                  << pattern << std::endl;
+        return false;
+    }
+
+    return true;
 }
 
 inline int resolve_single_send_timeout_ms()
@@ -694,8 +892,10 @@ public:
     void sample_recv_if_due() { maybe_sample_recv(false); }
     void force_sample_send() { maybe_sample_send(true); }
     void force_sample_recv() { maybe_sample_recv(true); }
-    queue_stats_t snapshot() const
+    queue_stats_t snapshot()
     {
+        force_sample_send();
+        force_sample_recv();
         queue_stats_t out;
         if (_snd_seen) {
             out.has_snd_pending = true;
@@ -819,9 +1019,20 @@ inline queue_stats_t sample_queue_stats(queue_probe_t *queue_probe_)
 {
     if (!queue_probe_)
         return queue_stats_t();
-    queue_probe_->force_sample_send();
-    queue_probe_->force_sample_recv();
     return queue_probe_->snapshot();
+}
+
+inline void print_failure_diagnostics(const std::string &lib_type,
+                                      const std::string &pattern,
+                                      const std::string &transport,
+                                      size_t size,
+                                      const char *detail_ = NULL)
+{
+    std::cerr << "FAIL," << lib_type << "," << pattern << "," << transport << ","
+              << size;
+    if (detail_ && *detail_)
+        std::cerr << "," << detail_;
+    std::cerr << std::endl;
 }
 
 inline void print_fail_result(const std::string &lib_type,
@@ -830,10 +1041,78 @@ inline void print_fail_result(const std::string &lib_type,
                               size_t size,
                               queue_probe_t *queue_probe_ = NULL)
 {
+    print_failure_diagnostics(lib_type, pattern, transport, size);
     if (!queue_probe_)
         return;
     const queue_stats_t queue_stats = sample_queue_stats(queue_probe_);
     print_queue_metrics(lib_type, pattern, transport, size, queue_stats);
+}
+
+inline bool wait_socket_event(void *socket_,
+                              short events_,
+                              long timeout_ms_,
+                              short *revents_out_ = NULL)
+{
+    if (!socket_)
+        return false;
+
+    zlink_pollitem_t item;
+    item.socket = socket_;
+    item.fd = 0;
+    item.events = events_;
+    item.revents = 0;
+    const int rc = perf_socket_poll(&item, 1, timeout_ms_);
+    if (rc < 0)
+        return false;
+    if (revents_out_)
+        *revents_out_ = item.revents;
+    return rc > 0 && (item.revents & events_) != 0;
+}
+
+inline int poll_socket_event(void *socket_,
+                             short events_,
+                             long timeout_ms_,
+                             short *revents_out_ = NULL)
+{
+    if (!socket_)
+        return -1;
+
+    zlink_pollitem_t item;
+    item.socket = socket_;
+    item.fd = 0;
+    item.events = events_;
+    item.revents = 0;
+    const int rc = perf_socket_poll(&item, 1, timeout_ms_);
+    if (revents_out_)
+        *revents_out_ = item.revents;
+    return rc;
+}
+
+inline long remaining_timeout_ms(
+  const std::chrono::steady_clock::time_point &deadline_,
+  long minimum_ms_ = 1)
+{
+    const long long remaining_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+        deadline_ - std::chrono::steady_clock::now())
+        .count();
+    return remaining_ms > 0 ? static_cast<long>(remaining_ms)
+                            : (minimum_ms_ > 0 ? minimum_ms_ : 0);
+}
+
+inline bool wait_socket_event_until(
+  void *socket_,
+  short events_,
+  const std::chrono::steady_clock::time_point &deadline_,
+  short *revents_out_ = NULL)
+{
+    if (!socket_)
+        return false;
+    if (std::chrono::steady_clock::now() >= deadline_)
+        return false;
+    return wait_socket_event(socket_, events_,
+                             remaining_timeout_ms(deadline_, 1),
+                             revents_out_);
 }
 
 inline void apply_single_hwm(void *socket_)
@@ -996,8 +1275,13 @@ inline bool setup_connected_pair(void *bind_socket_,
 }
 
 template <typename RunFn>
-inline int run_standard_bench_main(int argc_, char **argv_, RunFn run_) {
+inline int run_standard_bench_main(int argc_,
+                                   char **argv_,
+                                   const char *pattern_,
+                                   RunFn run_) {
     if (argc_ < 4)
+        return 1;
+    if (!single_perf_validate_recv_mode_for_pattern(pattern_))
         return 1;
     std::string lib_name = argv_[1];
     std::string transport = argv_[2];

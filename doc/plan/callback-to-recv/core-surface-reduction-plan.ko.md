@@ -1,5 +1,14 @@
 # `core` callback surface 축소 계획
 
+> `superseded`
+>
+> 이 문서는 callback surface를 축소하는 이전 계획이다.
+> 현재 baseline은
+> [`doc/plan/recv-with-callback/core-surface-restoration-plan.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/recv-with-callback/core-surface-restoration-plan.ko.md)
+> 를 따른다.
+> 특히 receive callback과 send-ready는 별도 상태 축으로 다루며,
+> callback attach 축소가 아니라 공통 `EBUSY`/poller 규칙 정렬이 현재 방향이다.
+
 > 범위:
 > [`core/include/`](/home/hep7/project/kairos/zlink/core/include),
 > [`core/src/`](/home/hep7/project/kairos/zlink/core/src),

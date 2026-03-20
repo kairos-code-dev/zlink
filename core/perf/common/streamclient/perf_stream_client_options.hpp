@@ -47,7 +47,7 @@ struct client_options_t
           runs (1),
           warmup (2),
           duration (10),
-          drain_ms (0),
+          drain_ms (500),
           size_transition_drain_ms (0),
           io_threads (4),
           print_perf_result (0),

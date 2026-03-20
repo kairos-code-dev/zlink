@@ -1,5 +1,14 @@
 # `doc/perf` callback-to-recv 정책 정렬 계획
 
+> `superseded`
+>
+> 이 문서는 callback 지원 범위를 줄이던 이전 perf 계획이다.
+> 현재 baseline은
+> [`doc/plan/recv-with-callback/perf-lane-realignment-plan.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/recv-with-callback/perf-lane-realignment-plan.ko.md)
+> 를 따른다.
+> 현재 기준은 `single=callback only`, `multi=recv only`,
+> `SPOT`/`STREAM` dual-mode 예외, monitor callback 고정이다.
+
 > 범위:
 > [`doc/perf/`](/home/hep7/project/kairos/zlink/doc/perf),
 > [`core/perf/`](/home/hep7/project/kairos/zlink/core/perf)

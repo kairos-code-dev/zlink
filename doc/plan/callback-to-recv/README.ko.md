@@ -1,5 +1,15 @@
 # `callback-to-recv` 계획 문서
 
+> `superseded`
+>
+> 이 디렉터리는 callback surface를 축소하려던 이전 계획이다.
+> 현재 구현/문서 기준의 source of truth는
+> [`doc/plan/recv-with-callback/`](/home/hep7/project/kairos/zlink/doc/plan/recv-with-callback)
+> 이다.
+> 새 계획은 callback과 recv를 다시 공통 규칙으로 정렬하며,
+> perf 정책도 `single=callback only`, `multi=recv only`,
+> `SPOT`/`STREAM` dual-mode 예외, monitor callback 고정 기준으로 바뀌었다.
+
 이 디렉터리는 `core/` 기준 public receive surface를 다시 정리하는 계획 문서를
 모은다.
 

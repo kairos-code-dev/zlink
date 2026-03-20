@@ -31,9 +31,9 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
     def test_expand_pattern_aliases_ordered_preserves_request_order(self):
         self.assertEqual(
             RC.expand_pattern_aliases_ordered(
-                ["STREAM_CALLBACK", "DEALER_DEALER", "STREAM_CALLBACK"]
+                ["DEALER_DEALER", "STREAMS"]
             ),
-            ["STREAM_CALLBACK", "DEALER_DEALER"],
+            ["DEALER_DEALER", "STREAM", "STREAM_CALLBACK"],
         )
 
     def test_collect_unsupported_patterns_matches_current_multi_matrix(self):
@@ -41,13 +41,17 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             RC.collect_unsupported_patterns(
                 ["DEALER_DEALER", "GATEWAY", "STREAM_CALLBACK"], "recv"
             ),
-            ["GATEWAY", "STREAM_CALLBACK"],
+            ["GATEWAY"],
         )
         self.assertEqual(
             RC.collect_unsupported_patterns(
-                ["DEALER_DEALER", "GATEWAY", "STREAM_CALLBACK"], "callback"
+                ["DEALER_DEALER", "GATEWAY", "STREAM", "STREAM_CALLBACK"], "callback"
             ),
-            ["DEALER_DEALER"],
+            ["STREAM"],
+        )
+        self.assertEqual(
+            RC.collect_unsupported_patterns(["PUBSUB"], "callback"),
+            [],
         )
 
 

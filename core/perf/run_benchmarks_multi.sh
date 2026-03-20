@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OFFICIAL_BUILD_DIR="${ROOT_DIR}/core/build"
-PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM_CALLBACK"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK"
 TRANSPORTS="tcp,tls,ws,wss"
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
 
@@ -215,7 +215,7 @@ Usage: core/perf/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM_CALLBACK
+  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK
 Legacy MULTI_ prefix is accepted and stripped automatically.
 By default, this wrapper runs current zlink only.
 By default, multi-bench keeps warmup at 2s and duration window at 5s.
@@ -223,7 +223,7 @@ By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with 
 
 Options:
   --pattern NAME         Benchmark pattern (default: all patterns above). Legacy MULTI_ prefix is optional.
-                         Alias: stream/streams => STREAM_CALLBACK
+                         Alias: streams => STREAM,STREAM_CALLBACK
   --help                 Show this help.
   --reuse-build          Reuse existing build directory as-is (skip configure/build).
   --clean-build          Remove build directory and do a clean build.
@@ -256,9 +256,9 @@ Options:
   --connect-concurrency N
                          Override concurrent connect count.
   --transport-transition-ms N
-                         Override PERF_TRANSPORT_TRANSITION_MS (default: 5000).
+                         Override PERF_TRANSPORT_TRANSITION_MS (default: 3000).
   --pattern-transition-ms N
-                         Override PERF_PATTERN_TRANSITION_MS (default: 5000).
+                         Override PERF_PATTERN_TRANSITION_MS (default: 3000).
   --server-ready-timeout-ms N
                          Override PERF_SERVER_READY_TIMEOUT_MS (default: 10000).
   --connect-ready-timeout-ms N
@@ -327,7 +327,11 @@ expand_and_add_explicit_pattern() {
   fi
 
   case "${base}" in
-    STREAM|STREAMS|STREAM_CALLBACK)
+    STREAM)
+      add_explicit_pattern_unique "STREAM"
+      ;;
+    STREAMS)
+      add_explicit_pattern_unique "STREAM"
       add_explicit_pattern_unique "STREAM_CALLBACK"
       ;;
     *)
@@ -365,8 +369,8 @@ STREAM_MSG_SIZES="$(env_or_default "" PERF_STREAM_MSG_SIZES PERF_MULTI_STREAM_MS
 PUBSUB_XPUB_NODROP="$(env_or_default "" PERF_PUBSUB_XPUB_NODROP PERF_MULTI_PUBSUB_XPUB_NODROP)"
 SPOT_XPUB_NODROP="$(env_or_default "" PERF_SPOT_XPUB_NODROP PERF_MULTI_SPOT_XPUB_NODROP)"
 RUN_COOLDOWN_MS="$(env_or_default "3000" PERF_RUN_COOLDOWN_MS PERF_MULTI_RUN_COOLDOWN_MS)"
-TRANSPORT_TRANSITION_MS="$(env_or_default "5000" PERF_TRANSPORT_TRANSITION_MS PERF_MULTI_TRANSPORT_TRANSITION_MS)"
-PATTERN_TRANSITION_MS="$(env_or_default "5000" PERF_PATTERN_TRANSITION_MS PERF_MULTI_PATTERN_TRANSITION_MS)"
+TRANSPORT_TRANSITION_MS="$(env_or_default "3000" PERF_TRANSPORT_TRANSITION_MS PERF_MULTI_TRANSPORT_TRANSITION_MS)"
+PATTERN_TRANSITION_MS="$(env_or_default "3000" PERF_PATTERN_TRANSITION_MS PERF_MULTI_PATTERN_TRANSITION_MS)"
 SERVER_READY_TIMEOUT_MS="$(env_or_default "10000" PERF_SERVER_READY_TIMEOUT_MS PERF_MULTI_SERVER_READY_TIMEOUT_MS)"
 CONNECT_READY_TIMEOUT_MS="$(env_or_default "5000" PERF_CONNECT_READY_TIMEOUT_MS PERF_MULTI_CONNECT_READY_TIMEOUT_MS)"
 MONITOR_HWM="$(env_or_default "1000" PERF_MONITOR_HWM PERF_MULTI_MONITOR_HWM)"
@@ -940,7 +944,7 @@ for raw_pattern in "${PATTERNS[@]}"; do
 
   pattern_clients="${CLIENTS:-$(env_or_default "" PERF_CLIENTS PERF_MULTI_CLIENTS)}"
   if [[ -z "${pattern_clients}" ]]; then
-    if [[ "${pattern}" == "STREAM_CALLBACK" ]]; then
+    if [[ "${pattern}" == STREAM_* ]]; then
       pattern_clients="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}"
     else
       pattern_clients="${EFFECTIVE_DEFAULT_CLIENTS}"
@@ -972,7 +976,7 @@ fi
 if [[ "${RECV_MODE}" == "callback" && "${#RUN_PATTERNS[@]}" -gt 1 ]]; then
   reordered_patterns=()
   for pattern in "${RUN_PATTERNS[@]}"; do
-    if [[ "${pattern}" == "STREAM_CALLBACK" ]]; then
+    if [[ "${pattern}" == STREAM_* ]]; then
       reordered_patterns=("${pattern}" "${reordered_patterns[@]}")
     else
       reordered_patterns+=("${pattern}")

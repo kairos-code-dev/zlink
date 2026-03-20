@@ -39,13 +39,18 @@ SERVER_QUEUE_METRICS = (
     "server_rcv_pending_end",
 )
 PATTERN_SEPARATOR = "==============================================================================="
-STREAM_VARIANT_PATTERNS = ("STREAM_CALLBACK",)
+STREAM_VARIANT_PATTERNS = ("STREAM", "STREAM_CALLBACK")
 PATTERN_ALIASES = {
-    "STREAM": STREAM_VARIANT_PATTERNS,
+    "STREAM": ("STREAM",),
+    "STREAM_CALLBACK": ("STREAM_CALLBACK",),
     "STREAMS": STREAM_VARIANT_PATTERNS,
+    "MULTI_STREAM": ("STREAM",),
+    "MULTI_STREAM_CALLBACK": ("STREAM_CALLBACK",),
+    "MULTI_STREAMS": STREAM_VARIANT_PATTERNS,
 }
 STREAM_SHARED_CLIENT_BINARY = "perf_stream_client"
 STREAM_SERVER_BINARY_BY_PATTERN = {
+    "STREAM": "comp_src_stream_server",
     "STREAM_CALLBACK": "comp_src_stream_callback_server",
 }
 PATTERN_SUFFIX = {
@@ -55,12 +60,14 @@ PATTERN_SUFFIX = {
     "PUBSUB": "pubsub",
     "GATEWAY": "gateway",
     "SPOT": "spot",
+    "STREAM": "stream",
     "STREAM_CALLBACK": "stream_callback",
 }
 ECHO_PATTERNS = {
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
     "GATEWAY",
+    "STREAM",
     "STREAM_CALLBACK",
 }
 SINGLE_ECHO_PATTERNS = {
@@ -86,17 +93,19 @@ MULTI_COMPARISONS = [
     ("comp_src_pubsub_client", "PUBSUB"),
     ("comp_src_gateway_client", "GATEWAY"),
     ("comp_src_spot_client", "SPOT"),
+    ("perf_stream_client", "STREAM"),
     ("perf_stream_client", "STREAM_CALLBACK"),
 ]
 MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
 SUPPORTED_MULTI_RECV_MODES = {
-    "DEALER_DEALER": ("recv",),
+    "DEALER_DEALER": ("recv", "callback"),
     "DEALER_ROUTER": ("recv",),
     "ROUTER_ROUTER": ("recv",),
-    "PUBSUB": ("recv",),
+    "PUBSUB": ("recv", "callback"),
     "GATEWAY": ("callback",),
     "SPOT": ("callback",),
-    "STREAM_CALLBACK": ("callback",),
+    "STREAM": ("recv",),
+    "STREAM_CALLBACK": ("recv", "callback"),
 }
 
 
@@ -817,8 +826,7 @@ def is_pattern(pattern_name):
 
 
 def select_transports(pattern_name):
-    service_or_stream = pattern_name in (
-        "STREAM_CALLBACK",
+    service_or_stream = pattern_name in STREAM_VARIANT_PATTERNS or pattern_name in (
         "GATEWAY",
         "SPOT",
     )
@@ -4117,7 +4125,7 @@ def parse_args():
         "Options:\n"
         "  --runs N                     Iterations per configuration (default: 1)\n"
         "  --duration N                 Override PERF_SINGLE_DURATION_SECONDS (single patterns)\n"
-        "  --build-dir PATH             Build directory (default: core/build)\n"
+        "  --build-dir PATH             Official build directory (default: core/build)\n"
         "  --pin-cpu                    Pin CPU core during benchmarks (Linux taskset)\n"
         "  --results-dir PATH           Results root directory (default: core/perf/results)\n"
         "  --results-tag NAME           Optional suffix tag for saved filenames\n"
@@ -4145,7 +4153,7 @@ def parse_args():
         0, parse_env_int("PERF_TRANSPORT_TRANSITION_MS", 3000)
     )
     pattern_transition_ms = max(
-        0, parse_env_int("PERF_PATTERN_TRANSITION_MS", 5000)
+        0, parse_env_int("PERF_PATTERN_TRANSITION_MS", 3000)
     )
     server_ready_timeout_ms = max(
         0, parse_env_int("PERF_SERVER_READY_TIMEOUT_MS", 10000)

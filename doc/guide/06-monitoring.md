@@ -76,8 +76,8 @@ These report transport/session state for raw sockets.
 | `HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | Handshake failed (generic) | errno | — | Both | check network |
 | `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | Handshake failed (protocol error) | error code | — | Both | check version/config |
 | `HANDSHAKE_FAILED_AUTH` | `0x4000` | Handshake failed (auth) | — | — | Both | check TLS/auth config |
-| `SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB subscription propagated | `1`=ready, `0`=lost | — | SUB side | **start `zlink_subscribe()` recv** |
-| `PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber ready | `1`=ready, `0`=lost | — | PUB side | **start `zlink_publish()` delivery** |
+| `SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB subscription propagated | `0`/`1` (boolean) | — | SUB side | **start `zlink_subscribe()` recv** |
+| `PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber ready | `current_ready_count` | — | PUB side | **start `zlink_publish()` delivery** |
 | `MONITOR_STOPPED` | `0x0400` | Monitor stopped | — | — | Both | `zlink_monitor_close()` |
 
 ### Connection flow
@@ -101,8 +101,6 @@ The `value` field contains `current_ready_count` -- the absolute number of ready
 | Code | Name | Meaning |
 |------|------|---------|
 | 0 | `UNKNOWN` | Reason unknown |
-| 1 | `LOCAL` | Intentional local close |
-| 2 | `REMOTE` | Remote peer closed normally |
 | 3 | `HANDSHAKE_FAILED` | Handshake failure |
 | 4 | `TRANSPORT_ERROR` | Transport-layer error |
 | 5 | `CTX_TERM` | Context terminated |
@@ -140,7 +138,7 @@ Server side:
 ### Normal Disconnection
 
 ```
-CONNECTION_READY_CHANGED → DISCONNECTED (reason=LOCAL or REMOTE)
+CONNECTION_READY_CHANGED → DISCONNECTED
 ```
 
 ### Reconnection
@@ -157,8 +155,6 @@ The `value` field of the `DISCONNECTED` event contains the reason for disconnect
 | Code | Name | Meaning | Recommended Action |
 |------|------|---------|-------------------|
 | 0 | UNKNOWN | Unknown cause | Log and observe |
-| 1 | LOCAL | Intentional local shutdown | Normal operation, no action needed |
-| 2 | REMOTE | Remote peer gracefully closed | Execute reconnection logic |
 | 3 | HANDSHAKE_FAILED | Handshake failure | Check TLS/protocol configuration |
 | 4 | TRANSPORT_ERROR | Transport layer error | Check network status |
 | 5 | CTX_TERM | Context terminated | Handle shutdown |
@@ -170,20 +166,20 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 {
     if (ev->event == ZLINK_EVENT_DISCONNECTED) {
         switch (ev->value) {
-            case 0: printf("Unknown disconnection\n"); break;
-            case 1: printf("Local shutdown\n"); break;
-            case 2:
-                printf("Remote peer closed -- attempting reconnection\n");
-                /* Reconnection logic */
+            case ZLINK_DISCONNECT_REASON_UNKNOWN:
+                printf("Unknown disconnection\n");
                 break;
-            case 3:
+            case ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED:
                 printf("Handshake failed -- check TLS configuration\n");
                 break;
-            case 4:
+            case ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR:
                 printf("Transport error -- check network\n");
                 break;
-            case 5:
+            case ZLINK_DISCONNECT_REASON_CTX_TERM:
                 printf("Context terminated\n");
+                break;
+            default:
+                printf("Unknown reason=%llu\n", (unsigned long long)ev->value);
                 break;
         }
     }
@@ -453,37 +449,43 @@ zlink_socket_monitor_handler(mon, on_ready, NULL);
 
 ### 11.2 Raw sockets — STREAM
 
-STREAM differs from other raw sockets. The server needs the client to send
-data first to learn the routing_id. Sequence:
+STREAM works like ROUTER — the routing_id is assigned when the TCP
+connection is established, not when the first payload arrives.
+`CONNECTION_READY_CHANGED` fires with the routing_id before any payload
+is delivered to the application. Sequence:
 
-1. Client sends the first payload over raw TCP
-2. Server recvs the first inbound message to learn the routing_id
-3. Confirm `CONNECTION_READY_CHANGED` via the monitor
-4. Reply using the obtained routing_id
+1. Client connects via raw TCP
+2. Server receives `CONNECTION_READY_CHANGED` with `ev->routing_id`
+3. Server can now send to the client using the routing_id
+4. Client payload (if any) arrives after the ready event
 
 ```c
-/* STREAM server: recv to get routing_id → confirm CONNECTION_READY_CHANGED → reply */
-zlink_routing_id_t rid;
-zlink_msg_t payload;
-zlink_msg_init(&payload);
-recv_stream_routing_id_and_payload(server, &rid, &payload);
+/* STREAM server: CONNECTION_READY_CHANGED → routing_id available → send/recv */
+void on_ready(const zlink_monitor_event_t *ev, void *userdata) {
+    if (ev->event & ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+        /* ev->routing_id contains the peer's routing_id */
+        /* send to this peer immediately, or wait for inbound payload */
+    }
+}
 
-/* CONNECTION_READY_CHANGED should have fired by now — check via monitor */
-/* Reply using rid */
-zlink_stream_send_msg(server, &rid, &payload, 0);
+zlink_socket_monitor_open_options_t opts = {
+    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
+};
+void *mon = zlink_socket_monitor_open(stream_server, &opts);
+zlink_socket_monitor_handler(mon, on_ready, NULL);
 ```
 
 | Family | Wait for | Then you can |
 |---|---|---|
-| STREAM | first inbound payload recv + `CONNECTION_READY_CHANGED` | reply using `routing_id` |
+| STREAM | `CONNECTION_READY_CHANGED` | send/recv using `ev->routing_id` |
 
 ### 11.3 Raw sockets — PUB/SUB
 
 Raw PUB/SUB sockets provide delivery-ready events via the socket monitor.
 Open separate monitors on PUB and SUB and wait for both before messaging.
 
-- `SUB_DELIVERY_READY_CHANGED(value=1)` — subscription propagated, receiving possible
-- `PUB_DELIVERY_READY_CHANGED(value=1)` — subscriber ready, publish delivery possible
+- `SUB_DELIVERY_READY_CHANGED(value=1)` — subscription propagated, receiving possible (0/1 boolean)
+- `PUB_DELIVERY_READY_CHANGED(value>0)` — ready subscriber count (absolute count); check against expected subscriber count
 
 ```c
 zlink_set_subscription(sub, "topic");
@@ -501,7 +503,7 @@ zlink_socket_monitor_open_options_t pub_opts = {
 void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
 
 /* Start messaging after both delivery-ready events */
-/* ... SUB_DELIVERY_READY_CHANGED(value=1) + PUB_DELIVERY_READY_CHANGED(value=1) ... */
+/* SUB_DELIVERY_READY_CHANGED(value=1) + PUB_DELIVERY_READY_CHANGED(value>=expected_subs) */
 zlink_publish(pub, NULL, &part, 1, 0);  /* raw PUB: topic_id is NULL */
 zlink_subscribe(sub, &parts, &count, 0, topic_buf, &topic_len);
 
@@ -511,7 +513,7 @@ zlink_monitor_close(&sub_mon);
 
 | Family | Wait for | Then you can |
 |---|---|---|
-| PUB | `PUB_DELIVERY_READY_CHANGED(value=1)` | `zlink_publish()` delivery |
+| PUB | `PUB_DELIVERY_READY_CHANGED(value>=expected_subs)` | `zlink_publish()` delivery |
 | SUB | `SUB_DELIVERY_READY_CHANGED(value=1)` | `zlink_subscribe()` recv |
 
 ### 11.4 Services — Gateway
@@ -542,14 +544,14 @@ different events.
 ```c
 /* Sub monitor: subscribe to SUB_DELIVERY_READY_CHANGED */
 zlink_service_monitor_open_options_t sub_opts = {
-    .events = ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
+    .events = ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
               | ZLINK_MONITOR_EVENT_ERROR
 };
 void *sub_mon = zlink_service_monitor_open(sub_node, &sub_opts);
 
 /* Pub monitor: subscribe to PUB_FIRST_DELIVERY_READY_CHANGED */
 zlink_service_monitor_open_options_t pub_opts = {
-    .events = ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
+    .events = ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
               | ZLINK_MONITOR_EVENT_ERROR
 };
 void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
@@ -565,7 +567,7 @@ void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
 | SPOT sub | `SUB_DELIVERY_READY_CHANGED` | start receiving via `zlink_subscribe()` |
 | SPOT pub | `PUB_FIRST_DELIVERY_READY_CHANGED` | start delivering via `zlink_publish()` |
 
-### 11.3 Snapshots
+### 11.6 Snapshots
 
 `zlink_monitor_snapshot()` and `zlink_*_status_snapshot()` return
 a point-in-time view of the current state. Use them for dashboards,

@@ -81,8 +81,8 @@ raw 소켓의 transport/session 상태를 알려준다.
 | `HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | 핸드셰이크 실패 (일반) | errno | — | 양쪽 | 네트워크 확인 |
 | `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 오류로 실패 | 에러 코드 | — | 양쪽 | 버전/설정 확인 |
 | `HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패 | — | — | 양쪽 | TLS/인증 설정 확인 |
-| `SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB subscription 전파 완료 | `1`=ready, `0`=lost | — | SUB 측 | **`zlink_subscribe()` 수신 시작** |
-| `PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber 준비 완료 | `1`=ready, `0`=lost | — | PUB 측 | **`zlink_publish()` delivery 시작** |
+| `SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB subscription 전파 완료 | `0`/`1` (boolean) | — | SUB 측 | **`zlink_subscribe()` 수신 시작** |
+| `PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber 준비 완료 | `current_ready_count` | — | PUB 측 | **`zlink_publish()` delivery 시작** |
 | `MONITOR_STOPPED` | `0x0400` | 모니터 종료 | — | — | 양쪽 | `zlink_monitor_close()` |
 
 ### 연결 흐름
@@ -106,8 +106,6 @@ raw 소켓의 transport/session 상태를 알려준다.
 | 코드 | 이름 | 의미 |
 |------|------|------|
 | 0 | `UNKNOWN` | 원인 불명 |
-| 1 | `LOCAL` | 로컬에서 의도적 종료 |
-| 2 | `REMOTE` | 원격 피어 정상 종료 |
 | 3 | `HANDSHAKE_FAILED` | 핸드셰이크 실패 |
 | 4 | `TRANSPORT_ERROR` | 전송계층 오류 |
 | 5 | `CTX_TERM` | 컨텍스트 종료 |
@@ -145,7 +143,7 @@ raw 소켓의 transport/session 상태를 알려준다.
 ### 정상 해제
 
 ```
-CONNECTION_READY_CHANGED → DISCONNECTED (reason=LOCAL or REMOTE)
+CONNECTION_READY_CHANGED → DISCONNECTED
 ```
 
 ### 재연결
@@ -162,8 +160,6 @@ CONNECT_DELAYED → CONNECT_RETRIED → CONNECTED → CONNECTION_READY_CHANGED
 | 코드 | 이름 | 의미 | 대응 방법 |
 |------|------|------|-----------|
 | 0 | UNKNOWN | 원인 불명 | 로그 기록 후 관찰 |
-| 1 | LOCAL | 로컬에서 의도적 종료 | 정상 동작, 처리 불필요 |
-| 2 | REMOTE | 원격 피어 정상 종료 | 재연결 로직 실행 |
 | 3 | HANDSHAKE_FAILED | 핸드셰이크 실패 | TLS/프로토콜 설정 확인 |
 | 4 | TRANSPORT_ERROR | 전송계층 오류 | 네트워크 상태 확인 |
 | 5 | CTX_TERM | 컨텍스트 종료 | 종료 처리 |
@@ -175,20 +171,20 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 {
     if (ev->event == ZLINK_EVENT_DISCONNECTED) {
         switch (ev->value) {
-            case 0: printf("원인 불명 해제\n"); break;
-            case 1: printf("로컬 종료\n"); break;
-            case 2:
-                printf("원격 피어 종료 — 재연결 시도\n");
-                /* 재연결 로직 */
+            case ZLINK_DISCONNECT_REASON_UNKNOWN:
+                printf("원인 불명 해제\n");
                 break;
-            case 3:
+            case ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED:
                 printf("핸드셰이크 실패 — TLS 설정 확인\n");
                 break;
-            case 4:
+            case ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR:
                 printf("전송 오류 — 네트워크 확인\n");
                 break;
-            case 5:
+            case ZLINK_DISCONNECT_REASON_CTX_TERM:
                 printf("컨텍스트 종료\n");
+                break;
+            default:
+                printf("알 수 없는 reason=%llu\n", (unsigned long long)ev->value);
                 break;
         }
     }
@@ -470,32 +466,37 @@ zlink_socket_monitor_handler(mon, on_ready, NULL);
 
 ### 11.2 Raw 소켓 — STREAM
 
-STREAM은 다른 raw 소켓과 다르다. server는 클라이언트가 먼저 데이터를 보내야
-routing_id를 확보할 수 있다. 순서:
+STREAM은 ROUTER와 동일하게 동작한다 — routing_id는 TCP 연결이 수립되는
+시점에 할당되며, 첫 payload 도착과 무관하다. `CONNECTION_READY_CHANGED`
+이벤트가 routing_id와 함께 payload보다 먼저 발생한다. 순서:
 
-1. 클라이언트가 raw TCP로 첫 payload를 보낸다
-2. 서버에서 첫 inbound 메시지를 recv하여 routing_id를 확보한다
-3. `CONNECTION_READY_CHANGED` 이벤트를 확인한다
-4. 확보한 routing_id로 reply를 보낸다
+1. 클라이언트가 raw TCP로 연결한다
+2. 서버에서 `CONNECTION_READY_CHANGED` 이벤트를 받으며 `ev->routing_id` 확보
+3. 해당 routing_id로 즉시 send 가능
+4. 클라이언트의 payload(있는 경우)는 ready 이벤트 이후에 도착
 
 ```c
-/* STREAM server: 먼저 recv로 routing_id 확보 → CONNECTION_READY_CHANGED 확인 → reply */
-zlink_routing_id_t rid;
-zlink_msg_t payload;
-zlink_msg_init(&payload);
-recv_stream_routing_id_and_payload(server, &rid, &payload);
+/* STREAM server: CONNECTION_READY_CHANGED → routing_id 확보 → send/recv */
+void on_ready(const zlink_monitor_event_t *ev, void *userdata) {
+    if (ev->event & ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+        /* ev->routing_id에 peer의 routing_id가 들어있다 */
+        /* 즉시 send 가능, 또는 inbound payload 대기 */
+    }
+}
 
-/* 이 시점에서 CONNECTION_READY_CHANGED가 이미 발생했는지 monitor로 확인 */
-/* rid로 reply 가능 */
-zlink_stream_send_msg(server, &rid, &payload, 0);
+zlink_socket_monitor_open_options_t opts = {
+    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
+};
+void *mon = zlink_socket_monitor_open(stream_server, &opts);
+zlink_socket_monitor_handler(mon, on_ready, NULL);
 ```
 
 | 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
-| STREAM | 첫 inbound payload recv + `CONNECTION_READY_CHANGED` | `routing_id`로 reply send |
+| STREAM | `CONNECTION_READY_CHANGED` | `ev->routing_id`로 send/recv |
 
-perf start gate에서는 STREAM도 snapshot이 아니라 위 두 조건으로만 ready를
-판정한다.
+perf start gate에서는 STREAM도 다른 raw 소켓과 동일하게
+`CONNECTION_READY_CHANGED` 이벤트만으로 ready를 판정한다.
 
 ### 11.3 Raw 소켓 — PUB/SUB
 
@@ -504,8 +505,8 @@ PUB/SUB perf start gate는 `CONNECTION_READY_CHANGED`가 아니라 아래 delive
 이벤트를 사용한다. PUB과 SUB 각각에 별도 모니터를 열어서 양쪽 모두 ready를
 확인한 뒤 메시징한다.
 
-- `SUB_DELIVERY_READY_CHANGED(value=1)` — subscription이 전파되어 수신 가능
-- `PUB_DELIVERY_READY_CHANGED(value=1)` — subscriber가 준비되어 publish delivery 가능
+- `SUB_DELIVERY_READY_CHANGED(value=1)` — subscription이 전파되어 수신 가능 (0/1 boolean)
+- `PUB_DELIVERY_READY_CHANGED(value>0)` — ready subscriber 수 (absolute count). 기대하는 subscriber 수 이상인지 확인
 
 ```c
 zlink_set_subscription(sub, "topic");
@@ -523,7 +524,7 @@ zlink_socket_monitor_open_options_t pub_opts = {
 void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
 
 /* 양쪽 delivery-ready 확인 후 메시징 */
-/* ... SUB_DELIVERY_READY_CHANGED(value=1) + PUB_DELIVERY_READY_CHANGED(value=1) 수신 ... */
+/* SUB_DELIVERY_READY_CHANGED(value=1) + PUB_DELIVERY_READY_CHANGED(value>=expected_subs) */
 zlink_publish(pub, NULL, &part, 1, 0);  /* raw PUB: topic_id는 NULL */
 zlink_subscribe(sub, &parts, &count, 0, topic_buf, &topic_len);
 
@@ -533,7 +534,7 @@ zlink_monitor_close(&sub_mon);
 
 | 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
-| PUB | `PUB_DELIVERY_READY_CHANGED(value=1)` | `zlink_publish()` delivery |
+| PUB | `PUB_DELIVERY_READY_CHANGED(value>=expected_subs)` | `zlink_publish()` delivery |
 | SUB | `SUB_DELIVERY_READY_CHANGED(value=1)` | `zlink_subscribe()` 수신 |
 
 ### 11.4 서비스 — Gateway
@@ -565,14 +566,14 @@ SPOT은 sub과 pub에 각각 별도 service monitor를 열어서 다른 이벤�
 ```c
 /* sub 모니터: SUB_DELIVERY_READY_CHANGED 구독 */
 zlink_service_monitor_open_options_t sub_opts = {
-    .events = ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
+    .events = ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
               | ZLINK_MONITOR_EVENT_ERROR
 };
 void *sub_mon = zlink_service_monitor_open(sub_node, &sub_opts);
 
 /* pub 모니터: PUB_FIRST_DELIVERY_READY_CHANGED 구독 */
 zlink_service_monitor_open_options_t pub_opts = {
-    .events = ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
+    .events = ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
               | ZLINK_MONITOR_EVENT_ERROR
 };
 void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
@@ -591,7 +592,7 @@ void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
 perf policy에서 service start gate는 위 이벤트만 사용한다. snapshot/status 조회는
 운영 관찰용으로는 가능하지만, perf 시작 판정에는 쓰지 않는다.
 
-### 11.3 Snapshot
+### 11.6 Snapshot
 
 `zlink_monitor_snapshot()`과 `zlink_*_status_snapshot()`은
 현재 상태를 조회하는 용도다. 운영 대시보드, health check, 디버깅에 활용한다.

@@ -43,6 +43,8 @@ struct gateway_server_state_t
         active_received (0),
         fatal (false),
         recv_activity (0),
+        callback_enqueued (0),
+        callback_processed (0),
         probe (NULL),
         callback_queue (NULL)
     {
@@ -55,6 +57,8 @@ struct gateway_server_state_t
     unsigned long long active_received;
     bool fatal;
     std::atomic<unsigned long long> recv_activity;
+    unsigned long long callback_enqueued;
+    unsigned long long callback_processed;
     latency_stats_builder_t latency;
     queue_probe_t *probe;
     std::mutex mutex;
@@ -134,57 +138,12 @@ void cleanup_gateway_case (void **client_gateway_,
         zlink_gateway_destroy (server_gateway_);
 }
 
-bool is_supported_transport (const std::string &transport_)
-{
-    return transport_ == "tcp" || transport_ == "tls" || transport_ == "ws"
-           || transport_ == "wss";
-}
-
-void close_parts (zlink_msg_t *parts_, size_t part_count_)
-{
-    if (!parts_)
-        return;
-    for (size_t i = 0; i < part_count_; ++i)
-        zlink_msg_close (&parts_[i]);
-}
-
-bool configure_tls_client (void *gateway_, const std::string &transport_)
-{
-    if (transport_ != "tls" && transport_ != "wss")
-        return true;
-
-    static const std::string ca_path =
-      write_temp_cert (test_certs::ca_cert_pem, "perf_gateway_ca");
-    return zlink_set_tls_client (
-             gateway_, ca_path.c_str (), "localhost", 0)
-           == 0;
-}
-
-bool configure_tls_server (void *gateway_, const std::string &transport_)
-{
-    if (transport_ != "tls" && transport_ != "wss")
-        return true;
-
-    static const std::string cert_path =
-      write_temp_cert (test_certs::server_cert_pem, "perf_gateway_cert");
-    static const std::string key_path =
-      write_temp_cert (test_certs::server_key_pem, "perf_gateway_key");
-    return zlink_set_tls_server (
-             gateway_, cert_path.c_str (), key_path.c_str (), 0)
-           == 0;
-}
-
 std::string bind_server_gateway (void *gateway_,
                                  const std::string &transport_,
                                  int base_port_)
 {
-    for (int i = 0; i < 64; ++i) {
-        const std::string endpoint =
-          make_fixed_endpoint (transport_, base_port_ + i);
-        if (zlink_gateway_bind (gateway_, endpoint.c_str ()) == 0)
-            return endpoint;
-    }
-    return std::string ();
+    return perf_bind_fixed_endpoint_range (
+      gateway_, transport_, base_port_, 64, &perf_bind_gateway_endpoint, true);
 }
 
 bool wait_for_counter (std::condition_variable &cv_,
@@ -277,12 +236,12 @@ void gateway_recv_handler (const zlink_routing_id_t *source_rid_,
     gateway_server_state_t *state =
       static_cast<gateway_server_state_t *> (userdata_);
     if (!state) {
-        close_parts (parts_, part_count_);
+        perf_close_multipart (parts_, part_count_);
         return;
     }
 
     process_gateway_parts (state, source_rid_, parts_, part_count_);
-    close_parts (parts_, part_count_);
+    perf_close_multipart (parts_, part_count_);
     state->cv.notify_all ();
 }
 
@@ -333,7 +292,7 @@ void start_gateway_recv_loop (gateway_recv_loop_t *loop_)
             if (rc == 0) {
                 process_gateway_parts (
                   loop_->state, &source_rid, parts, part_count);
-                close_parts (parts, part_count);
+                perf_close_multipart (parts, part_count);
                 free (parts);
                 loop_->state->cv.notify_all ();
                 continue;
@@ -416,6 +375,8 @@ bool run_gateway_phase_window (void *gateway_,
             : 0;
         server_state_.fatal = false;
         server_state_.recv_activity.store (0, std::memory_order_release);
+        server_state_.callback_enqueued = 0;
+        server_state_.callback_processed = 0;
     }
     {
         std::lock_guard<std::mutex> latency_lock (server_state_.latency_mutex);
@@ -450,6 +411,12 @@ bool run_gateway_phase_window (void *gateway_,
 
     if (!wait_gateway_receive_quiet (
           server_state_, phase_ == perf_single_metric::phase_active)) {
+        server_state_.active_deadline_us = 0;
+        return false;
+    }
+    if (!single_wait_for_metric_worker_idle (
+          server_state_,
+          std::max (100, resolve_single_recv_timeout_ms () * 2))) {
         server_state_.active_deadline_us = 0;
         return false;
     }
@@ -500,6 +467,8 @@ bool prime_gateway_route (void *gateway_,
         server_state_.active_deadline_us = 0;
         server_state_.fatal = false;
         server_state_.recv_activity.store (0, std::memory_order_release);
+        server_state_.callback_enqueued = 0;
+        server_state_.callback_processed = 0;
     }
     {
         std::lock_guard<std::mutex> latency_lock (server_state_.latency_mutex);
@@ -539,7 +508,7 @@ int run_case (const std::string &lib_name_,
               const std::string &transport_,
               size_t msg_size_)
 {
-    if (!is_supported_transport (transport_)) {
+    if (!perf_supports_service_transport (transport_)) {
         std::cout << "UNSUPPORTED," << k_pattern << "," << transport_
                   << std::endl;
         return 0;
@@ -606,8 +575,8 @@ int run_case (const std::string &lib_name_,
     (void) zlink_set_option (
       client_gateway, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
 
-    if (!configure_tls_server (server_gateway, transport_)
-        || !configure_tls_client (client_gateway, transport_)) {
+    if (!setup_tls_server (server_gateway, transport_)
+        || !setup_tls_client (client_gateway, transport_)) {
         print_fail ();
         cleanup_gateway_case (&client_gateway, &server_gateway, &client_monitor);
         return 1;

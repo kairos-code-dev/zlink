@@ -10,6 +10,12 @@
 
 namespace {
 
+inline void debug_pair (const char *message_)
+{
+    if (bench_debug_enabled ())
+        std::cerr << "[perf-pair] " << message_ << std::endl;
+}
+
 struct pair_callback_state_t
 {
     pair_callback_state_t () :
@@ -21,6 +27,8 @@ struct pair_callback_state_t
         warmup_received (0),
         active_received (0),
         recv_activity (0),
+        callback_enqueued (0),
+        callback_processed (0),
         probe (NULL),
         callback_queue (NULL)
     {}
@@ -33,6 +41,8 @@ struct pair_callback_state_t
     std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
     std::atomic<unsigned long long> recv_activity;
+    std::atomic<unsigned long long> callback_enqueued;
+    std::atomic<unsigned long long> callback_processed;
     latency_stats_builder_t latency;
     queue_probe_t *probe;
     single_callback_metric_queue_t *callback_queue;
@@ -138,6 +148,8 @@ inline bool run_oneway_phase_callback (void *sender,
     state->warmup_received.store (0, std::memory_order_release);
     state->active_received.store (0, std::memory_order_release);
     state->recv_activity.store (0, std::memory_order_release);
+    state->callback_enqueued.store (0, std::memory_order_release);
+    state->callback_processed.store (0, std::memory_order_release);
     state->active_deadline_us.store (
       active_phase
         ? perf_single_metric::now_us ()
@@ -193,9 +205,14 @@ inline bool run_oneway_phase_callback (void *sender,
     const int total_timeout_ms = std::max (100, idle_timeout_ms * 2);
     const bool quiet = wait_for_receive_quiet (
       *state, idle_timeout_ms, total_timeout_ms);
+    const bool worker_idle =
+      quiet && single_wait_for_metric_worker_idle (*state, total_timeout_ms);
 
-    if (send_failed || !quiet || state->fatal.load (std::memory_order_acquire))
+    if (send_failed || !quiet || !worker_idle
+        || state->fatal.load (std::memory_order_acquire)) {
+        debug_pair ("phase failed before metrics were collected");
         return false;
+    }
 
     *out_received = active_phase
                       ? state->active_received.load (std::memory_order_relaxed)
@@ -214,6 +231,102 @@ inline bool run_oneway_phase_callback (void *sender,
         return false;
     }
 
+    return true;
+}
+
+inline bool prime_pair_receiver (void *sender,
+                                 std::vector<char> *payload,
+                                 size_t payload_size,
+                                 pair_callback_state_t *state,
+                                 int recv_timeout_ms)
+{
+    if (!sender || !payload || !state)
+        return false;
+
+    state->fatal.store (false, std::memory_order_release);
+    state->warmup_received.store (0, std::memory_order_release);
+    state->active_received.store (0, std::memory_order_release);
+    state->recv_activity.store (0, std::memory_order_release);
+    state->callback_enqueued.store (0, std::memory_order_release);
+    state->callback_processed.store (0, std::memory_order_release);
+    state->active_deadline_us.store (0, std::memory_order_release);
+    state->probe = NULL;
+    {
+        std::lock_guard<std::mutex> lock (state->latency_mutex);
+        state->latency = latency_stats_builder_t ();
+    }
+
+    const unsigned long long target_warmup_messages = 32;
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (
+        std::max (2000, std::max (1, recv_timeout_ms) * 4));
+    uint64_t seq = 1;
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (state->warmup_received.load (std::memory_order_acquire)
+            >= target_warmup_messages) {
+            break;
+        }
+        const uint64_t sent_ts = perf_single_metric::now_us ();
+        if (!perf_single_metric::stamp_payload (payload->data (),
+                                                payload_size,
+                                                state->run_id,
+                                                perf_single_metric::phase_warmup,
+                                                state->msg_size,
+                                                seq++,
+                                                sent_ts)) {
+            return false;
+        }
+
+        zlink_msg_t part;
+        if (::zlink_msg_init_size (&part, payload_size) != 0)
+            return false;
+        if (payload_size > 0)
+            memcpy (::zlink_msg_data (&part), payload->data (), payload_size);
+        const int send_rc = send_single_part_blocking (sender, &part);
+        if (send_rc < 0) {
+            debug_pair ("prime send failed");
+            ::zlink_msg_close (&part);
+            return false;
+        }
+        if (send_rc == 0) {
+            debug_pair ("prime send would block");
+            ::zlink_msg_close (&part);
+            (void) perf_socket_poll (NULL, 0, 1);
+            continue;
+        }
+
+        {
+            std::unique_lock<std::mutex> lock (state->mutex);
+            (void) state->cv.wait_for (
+              lock,
+              std::chrono::milliseconds (
+                std::max (50, std::min (250, recv_timeout_ms))),
+              [state]() {
+                  return state->recv_activity.load (
+                           std::memory_order_acquire)
+                           > 0
+                         || state->fatal.load (std::memory_order_acquire);
+              });
+        }
+
+        if (state->fatal.load (std::memory_order_acquire))
+            return false;
+        if (state->recv_activity.load (std::memory_order_acquire) == 0)
+            debug_pair ("prime no receive activity yet");
+    }
+
+    if (!single_wait_for_metric_worker_idle (
+          *state, std::max (100, recv_timeout_ms * 2))) {
+        debug_pair ("prime worker idle wait failed");
+        return false;
+    }
+    if (state->warmup_received.load (std::memory_order_acquire)
+        < target_warmup_messages) {
+        debug_pair ("prime warmup target not reached");
+        return false;
+    }
     return true;
 }
 
@@ -243,20 +356,6 @@ void run_pair (const std::string &transport,
         return;
     }
 
-    int nodelay = 1;
-    set_sockopt_int (s_bind.get (), ZLINK_OPT_TCP_NODELAY, nodelay,
-                     "ZLINK_OPT_TCP_NODELAY");
-    set_sockopt_int (s_conn.get (), ZLINK_OPT_TCP_NODELAY, nodelay,
-                     "ZLINK_OPT_TCP_NODELAY");
-
-    if (!setup_connected_pair (
-          s_bind.get (), s_conn.get (), transport, lib_name + "_pair")) {
-        print_fail_no_queue ();
-        return;
-    }
-
-    const int recv_timeout_ms = resolve_single_recv_timeout_ms ();
-
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
@@ -282,6 +381,29 @@ void run_pair (const std::string &transport,
         return;
     }
     if (!start_single_metric_worker (&metric_worker)) {
+        print_fail_with_queue ();
+        return;
+    }
+
+    int nodelay = 1;
+    set_sockopt_int (s_bind.get (), ZLINK_OPT_TCP_NODELAY, nodelay,
+                     "ZLINK_OPT_TCP_NODELAY");
+    set_sockopt_int (s_conn.get (), ZLINK_OPT_TCP_NODELAY, nodelay,
+                     "ZLINK_OPT_TCP_NODELAY");
+
+    if (!setup_connected_pair (
+          s_bind.get (), s_conn.get (), transport, lib_name + "_pair")) {
+        stop_single_metric_worker (&metric_worker);
+        print_fail_with_queue ();
+        return;
+    }
+
+    const int recv_timeout_ms = resolve_single_recv_timeout_ms ();
+
+    if (!prime_pair_receiver (
+          s_conn.get (), &payload, payload_size, &callback_state,
+          recv_timeout_ms)) {
+        stop_single_metric_worker (&metric_worker);
         print_fail_with_queue ();
         return;
     }

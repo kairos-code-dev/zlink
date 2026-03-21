@@ -20,6 +20,8 @@ struct dealer_callback_state_t
         warmup_received (0),
         active_received (0),
         recv_activity (0),
+        callback_enqueued (0),
+        callback_processed (0),
         probe (NULL),
         callback_queue (NULL)
     {}
@@ -32,6 +34,8 @@ struct dealer_callback_state_t
     std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
     std::atomic<unsigned long long> recv_activity;
+    std::atomic<unsigned long long> callback_enqueued;
+    std::atomic<unsigned long long> callback_processed;
     latency_stats_builder_t latency;
     queue_probe_t *probe;
     single_callback_metric_queue_t *callback_queue;
@@ -135,6 +139,8 @@ inline bool run_oneway_phase (void *sender,
     state->warmup_received.store (0, std::memory_order_release);
     state->active_received.store (0, std::memory_order_release);
     state->recv_activity.store (0, std::memory_order_release);
+    state->callback_enqueued.store (0, std::memory_order_release);
+    state->callback_processed.store (0, std::memory_order_release);
     state->active_deadline_us.store (
       active_phase
         ? perf_single_metric::now_us ()
@@ -192,8 +198,11 @@ inline bool run_oneway_phase (void *sender,
     const int total_timeout_ms = std::max (100, idle_timeout_ms * 2);
     const bool quiet = wait_for_receive_quiet (
       *state, idle_timeout_ms, total_timeout_ms);
+    const bool worker_idle =
+      quiet && single_wait_for_metric_worker_idle (*state, total_timeout_ms);
 
-    if (send_failed || !quiet || state->fatal.load (std::memory_order_acquire))
+    if (send_failed || !quiet || !worker_idle
+        || state->fatal.load (std::memory_order_acquire))
         return false;
 
     *out_received = active_phase
@@ -214,6 +223,95 @@ inline bool run_oneway_phase (void *sender,
     }
 
     return true;
+}
+
+inline bool prime_dealer_receiver (void *sender,
+                                   std::vector<char> *payload,
+                                   dealer_callback_state_t *state,
+                                   int recv_timeout_ms)
+{
+    if (!sender || !payload || !state)
+        return false;
+
+    state->fatal.store (false, std::memory_order_release);
+    state->warmup_received.store (0, std::memory_order_release);
+    state->active_received.store (0, std::memory_order_release);
+    state->recv_activity.store (0, std::memory_order_release);
+    state->callback_enqueued.store (0, std::memory_order_release);
+    state->callback_processed.store (0, std::memory_order_release);
+    state->active_deadline_us.store (0, std::memory_order_release);
+    state->probe = NULL;
+    {
+        std::lock_guard<std::mutex> lock (state->latency_mutex);
+        state->latency = latency_stats_builder_t ();
+    }
+
+    const unsigned long long target_warmup_messages = 32;
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (
+        std::max (2000, std::max (1, recv_timeout_ms) * 4));
+    uint64_t seq = 1;
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (state->warmup_received.load (std::memory_order_acquire)
+            >= target_warmup_messages) {
+            break;
+        }
+
+        const uint64_t sent_ts = perf_single_metric::now_us ();
+        if (!perf_single_metric::stamp_payload (payload->data (),
+                                                state->payload_size,
+                                                state->run_id,
+                                                perf_single_metric::phase_warmup,
+                                                state->msg_size,
+                                                seq++,
+                                                sent_ts)) {
+            return false;
+        }
+
+        zlink_msg_t part;
+        if (::zlink_msg_init_size (&part, state->payload_size) != 0)
+            return false;
+        if (state->payload_size > 0) {
+            memcpy (::zlink_msg_data (&part), payload->data (),
+                    state->payload_size);
+        }
+        const int send_rc = send_single_part_blocking (sender, &part);
+        if (send_rc < 0) {
+            ::zlink_msg_close (&part);
+            return false;
+        }
+        if (send_rc == 0) {
+            ::zlink_msg_close (&part);
+            (void) perf_socket_poll (NULL, 0, 1);
+            continue;
+        }
+
+        {
+            std::unique_lock<std::mutex> lock (state->mutex);
+            (void) state->cv.wait_for (
+              lock,
+              std::chrono::milliseconds (
+                std::max (50, std::min (250, recv_timeout_ms))),
+              [state]() {
+                  return state->recv_activity.load (
+                           std::memory_order_acquire)
+                           > 0
+                         || state->fatal.load (std::memory_order_acquire);
+              });
+        }
+
+        if (state->fatal.load (std::memory_order_acquire))
+            return false;
+    }
+
+    if (!single_wait_for_metric_worker_idle (
+          *state, std::max (100, recv_timeout_ms * 2))) {
+        return false;
+    }
+    return state->warmup_received.load (std::memory_order_acquire)
+           >= target_warmup_messages;
 }
 
 } // namespace
@@ -242,13 +340,6 @@ void run_dealer_dealer (const std::string &transport,
         return;
     }
 
-    if (!setup_connected_pair (
-          s1.get (), s2.get (), transport, lib_name + "_dealer_dealer")) {
-        print_fail_no_queue ();
-        return;
-    }
-
-    const int recv_timeout_ms = resolve_single_recv_timeout_ms ();
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
@@ -275,6 +366,22 @@ void run_dealer_dealer (const std::string &transport,
         return;
     }
     if (!start_single_metric_worker (&metric_worker)) {
+        print_fail_with_queue ();
+        return;
+    }
+
+    if (!setup_connected_pair (
+          s1.get (), s2.get (), transport, lib_name + "_dealer_dealer")) {
+        stop_single_metric_worker (&metric_worker);
+        print_fail_with_queue ();
+        return;
+    }
+
+    const int recv_timeout_ms = resolve_single_recv_timeout_ms ();
+
+    if (!prime_dealer_receiver (
+          s2.get (), &payload, &callback_state, recv_timeout_ms)) {
+        stop_single_metric_worker (&metric_worker);
         print_fail_with_queue ();
         return;
     }

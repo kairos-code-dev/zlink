@@ -42,6 +42,8 @@ struct pubsub_callback_state_t
         warmup_received (0),
         active_received (0),
         recv_activity (0),
+        callback_enqueued (0),
+        callback_processed (0),
         probe (NULL),
         callback_queue (NULL)
     {
@@ -55,6 +57,8 @@ struct pubsub_callback_state_t
     std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
     std::atomic<unsigned long long> recv_activity;
+    std::atomic<unsigned long long> callback_enqueued;
+    std::atomic<unsigned long long> callback_processed;
     latency_stats_builder_t latency;
     queue_probe_t *probe;
     single_callback_metric_queue_t *callback_queue;
@@ -277,6 +281,8 @@ inline bool run_oneway_phase (void *pub_socket,
     state->warmup_received.store (0, std::memory_order_release);
     state->active_received.store (0, std::memory_order_release);
     state->recv_activity.store (0, std::memory_order_release);
+    state->callback_enqueued.store (0, std::memory_order_release);
+    state->callback_processed.store (0, std::memory_order_release);
     state->active_deadline_us.store (
       active_phase
         ? perf_single_metric::now_us ()
@@ -319,8 +325,11 @@ inline bool run_oneway_phase (void *pub_socket,
     const int total_timeout_ms = std::max (100, idle_timeout_ms * 2);
     const bool quiet = wait_for_receive_quiet (
       *state, idle_timeout_ms, total_timeout_ms);
+    const bool worker_idle =
+      quiet && single_wait_for_metric_worker_idle (*state, total_timeout_ms);
 
-    if (send_failed || !quiet || state->fatal.load (std::memory_order_acquire))
+    if (send_failed || !quiet || !worker_idle
+        || state->fatal.load (std::memory_order_acquire))
         return false;
 
     *out_received = active_phase

@@ -119,20 +119,6 @@ bool parse_start_command(const std::string &line, size_t *msg_size_out)
 void emit_requested_queue_probe(const std::string &lib_name,
                                 const std::string &transport);
 
-bool configure_spot_tls_server(void *node, const std::string &transport)
-{
-    if (transport != "tls" && transport != "wss")
-        return true;
-
-    static const std::string cert_path =
-      write_temp_cert(test_certs::server_cert_pem, "multi_spot_srv_cert");
-    static const std::string key_path =
-      write_temp_cert(test_certs::server_key_pem, "multi_spot_srv_key");
-    return zlink_set_tls_server(node, cert_path.c_str(),
-                                key_path.c_str(), 0)
-           == 0;
-}
-
 bool apply_spot_server_options(void *pub,
                                const multi_bench_settings_t &settings)
 {
@@ -177,26 +163,6 @@ bool apply_spot_server_options(void *pub,
     return true;
 }
 
-std::string normalize_bind_endpoint_host(const std::string &endpoint,
-                                         const std::string &transport)
-{
-    std::string normalized = endpoint;
-    const std::string any_v4 = "://0.0.0.0:";
-    const std::string any_v6 = "://[::]:";
-    const char *host = (transport == "tls" || transport == "wss")
-                         ? "localhost"
-                         : "127.0.0.1";
-    size_t pos = normalized.find(any_v4);
-    if (pos != std::string::npos)
-        normalized.replace(
-          pos, any_v4.size(), std::string("://") + host + ":");
-    pos = normalized.find(any_v6);
-    if (pos != std::string::npos)
-        normalized.replace(
-          pos, any_v6.size(), std::string("://") + host + ":");
-    return normalized;
-}
-
 std::string bind_spot_endpoint(void *node,
                                const std::string &transport,
                                const std::string &token)
@@ -204,13 +170,11 @@ std::string bind_spot_endpoint(void *node,
     const int bind_port =
       resolve_multi_int_env("PERF_MULTI_SERVER_BIND_PORT", 0, 0);
     if (bind_port > 0) {
-        const std::string endpoint = make_fixed_endpoint(transport, bind_port);
-        if (!endpoint.empty() && zlink_spot_node_bind(node, endpoint.c_str()) == 0)
-            return endpoint;
-
-        std::cerr << "spot bind failed for " << endpoint << ": "
-                  << zlink_strerror(zlink_errno()) << std::endl;
-        return std::string();
+        return perf_bind_endpoint_once(node,
+                                       make_fixed_endpoint(transport, bind_port),
+                                       transport,
+                                       &perf_bind_spot_node_endpoint,
+                                       false);
     }
 
     int base_port = 32000;
@@ -218,16 +182,8 @@ std::string bind_spot_endpoint(void *node,
     base_port += static_cast<int>(::getpid() % 1000) * 8;
 #endif
     (void) token;
-    for (int attempt = 0; attempt < 64; ++attempt) {
-        const std::string endpoint =
-          make_fixed_endpoint(transport, base_port + attempt);
-        if (!endpoint.empty()
-            && zlink_spot_node_bind(node, endpoint.c_str()) == 0) {
-            return normalize_bind_endpoint_host(endpoint, transport);
-        }
-    }
-
-    return std::string();
+    return perf_bind_fixed_endpoint_range(
+      node, transport, base_port, 64, &perf_bind_spot_node_endpoint);
 }
 
 server_queue_stats_t sample_spot_queue_stats(void *pub, bool send_pending)
@@ -559,7 +515,7 @@ int run_server_benchmark(const std::string &lib_name,
         return 1;
     }
 
-    if (!configure_spot_tls_server(node, transport)) {
+    if (!setup_tls_server(node, transport)) {
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-server] tls configure failed err="
                       << zlink_errno() << std::endl;

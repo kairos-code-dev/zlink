@@ -106,14 +106,6 @@ struct spot_thread_metrics_t
 
 static thread_local spot_thread_metrics_t g_spot_thread_metrics;
 
-void close_parts(zlink_msg_t *parts, size_t part_count)
-{
-    if (!parts)
-        return;
-    for (size_t i = 0; i < part_count; ++i)
-        zlink_msg_close(&parts[i]);
-}
-
 void fast_exit_process(int exit_code)
 {
     std::cout.flush();
@@ -203,6 +195,21 @@ unsigned int resolve_spot_latency_sample_stride()
       resolve_multi_int_env("PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE", 32, 1));
 }
 
+int resolve_spot_connect_ready_timeout_ms(const std::string &transport,
+                                          int base_timeout_ms)
+{
+    int timeout_ms = std::max(1, base_timeout_ms);
+    if (transport == "wss") {
+        timeout_ms = std::max(timeout_ms, 20000);
+    } else if (transport == "tls") {
+        timeout_ms = std::max(timeout_ms, 10000);
+    }
+
+    return resolve_multi_int_env("PERF_MULTI_SPOT_CONNECT_READY_TIMEOUT_MS",
+                                 timeout_ms,
+                                 1);
+}
+
 bool should_sample_spot_latency(unsigned long long sample_index)
 {
     static const unsigned int stride = resolve_spot_latency_sample_stride();
@@ -226,17 +233,6 @@ const char *spot_recv_mode_name(spot_recv_mode_t mode)
         default:
             return "recv";
     }
-}
-
-bool configure_spot_tls_client(void *node, const std::string &transport)
-{
-    if (transport != "tls" && transport != "wss")
-        return true;
-
-    static const std::string ca_path =
-      write_temp_cert(test_certs::ca_cert_pem, "multi_spot_ca");
-    return zlink_set_tls_client(node, ca_path.c_str(), "localhost", 0)
-           == 0;
 }
 
 bool apply_spot_sub_options(void *sub, const multi_bench_settings_t &settings)
@@ -426,7 +422,7 @@ void handle_spot_client_parts(const char *topic,
     spot_client_state_t *state = g_client_state;
     if (!state || !topic || topic_len != k_topic_len
         || std::memcmp(topic, k_topic, k_topic_len) != 0 || part_count == 0) {
-        close_parts(parts, part_count);
+        perf_close_multipart(parts, part_count);
         return;
     }
 
@@ -435,7 +431,7 @@ void handle_spot_client_parts(const char *topic,
       perf_multi_metric::decode_payload_header(zlink_msg_data(&parts[0]),
                                                zlink_msg_size(&parts[0]),
                                                &header);
-    close_parts(parts, part_count);
+    perf_close_multipart(parts, part_count);
     if (!header_ok)
         return;
 
@@ -596,7 +592,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
         char service_name[64];
         std::snprintf(service_name, sizeof(service_name), "perf-spot-c%zu", i);
         slot->node = zlink_spot_node_new(ctx.get(), service_name);
-        if (!slot->node || !configure_spot_tls_client(slot->node, transport)) {
+        if (!slot->node || !setup_tls_client(slot->node, transport)) {
             if (bench_debug_enabled())
                 std::cerr << "[multi-spot-client] node create/tls failed slot="
                           << i << " err=" << zlink_errno() << std::endl;
@@ -641,7 +637,10 @@ bool create_spot_slots(ctx_guard_t &ctx,
     if (slots_out->empty())
         return false;
 
-    if (!wait_all_sub_ready(*slots_out, settings.connect_ready_timeout_ms)) {
+    if (!wait_all_sub_ready(
+          *slots_out,
+          resolve_spot_connect_ready_timeout_ms(
+            transport, settings.connect_ready_timeout_ms))) {
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-client] ready wait timeout slots="
                       << slots_out->size() << std::endl;

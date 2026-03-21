@@ -1038,8 +1038,7 @@ inline void install_perf_signal_handlers ()
 
 inline bool is_supported_transport (const std::string &transport_)
 {
-    return transport_ == "tcp" || transport_ == "tls" || transport_ == "ws"
-           || transport_ == "wss";
+    return perf_supports_service_transport(transport_);
 }
 
 // ---------------------------------------------------------------------------
@@ -1052,54 +1051,19 @@ inline std::string bind_server_endpoint (void *server_,
 {
     const int bind_port =
       resolve_multi_int_env ("PERF_MULTI_SERVER_BIND_PORT", 0, 0);
-    if (bind_port <= 0) {
-        std::string endpoint_any = make_endpoint (transport_, token_);
-        if (endpoint_any.empty ()) {
-            std::cerr << "No endpoint available for transport " << transport_
-                      << std::endl;
-            return std::string ();
-        }
-        if (zlink_bind (server_, endpoint_any.c_str ()) != 0) {
-            std::cerr << "bind failed for " << endpoint_any << ": "
-                      << zlink_strerror (zlink_errno ()) << std::endl;
-            return std::string ();
-        }
-
-        char last_endpoint[MAX_SOCKET_STRING] = "";
-        size_t size = sizeof (last_endpoint);
-        if (zlink_get_option (server_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
-                              &size)
-            == 0) {
-            endpoint_any.assign (last_endpoint);
-            const std::string any_v4 = "://0.0.0.0:";
-            const std::string any_v6 = "://[::]:";
-            size_t pos = endpoint_any.find (any_v4);
-            if (pos != std::string::npos) {
-                endpoint_any.replace (pos, any_v4.size (), "://127.0.0.1:");
-            } else {
-                pos = endpoint_any.find (any_v6);
-                if (pos != std::string::npos)
-                    endpoint_any.replace (pos, any_v6.size (), "://127.0.0.1:");
-            }
-        }
-
-        apply_debug_timeouts (server_, transport_);
-        return endpoint_any;
+    std::string endpoint =
+      bind_port > 0 ? make_fixed_endpoint(transport_, bind_port)
+                    : make_endpoint(transport_, token_);
+    if (endpoint.empty()) {
+        std::cerr << "No endpoint available for transport " << transport_
+                  << std::endl;
+        return std::string();
     }
 
-    std::string endpoint = make_fixed_endpoint (transport_, bind_port);
-    if (zlink_bind (server_, endpoint.c_str ()) != 0) {
-        std::cerr << "bind failed for " << endpoint << ": "
-                  << zlink_strerror (zlink_errno ()) << std::endl;
-        return std::string ();
-    }
-
-    char last_endpoint[MAX_SOCKET_STRING] = "";
-    size_t size = sizeof (last_endpoint);
-    if (zlink_get_option (server_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
-                          &size)
-        == 0)
-        endpoint.assign (last_endpoint);
+    endpoint = perf_bind_endpoint_once(server_, endpoint, transport_,
+                                       &perf_bind_socket_endpoint, true);
+    if (endpoint.empty())
+        return std::string();
     apply_debug_timeouts (server_, transport_);
     return endpoint;
 }

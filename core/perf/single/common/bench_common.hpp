@@ -436,6 +436,7 @@ inline bool single_enqueue_metric_event (
         single_mark_callback_fatal (state_);
         return false;
     }
+    single_increment_counter (state_->callback_enqueued);
     state_->callback_wait_cv.notify_one ();
     return true;
 }
@@ -466,19 +467,17 @@ inline void single_account_metric_event (
                == static_cast<uint32_t> (
                  perf_single_metric::phase_active)) {
         const uint64_t now_us = perf_single_metric::now_us ();
-        const uint64_t deadline_us =
-          single_load_deadline (state_->active_deadline_us);
-        if (deadline_us > 0 && now_us <= deadline_us) {
-            single_increment_counter (state_->active_received);
-            const double latency_us =
-              now_us >= event_.sent_ts_us
-                ? static_cast<double> (now_us - event_.sent_ts_us)
-                : 0.0;
-            std::lock_guard<std::mutex> lock (state_->latency_mutex);
-            state_->latency.add (latency_us);
-        }
+        single_increment_counter (state_->active_received);
+        const double latency_us =
+          now_us >= event_.sent_ts_us
+            ? static_cast<double> (now_us - event_.sent_ts_us)
+            : 0.0;
+        std::lock_guard<std::mutex> lock (state_->latency_mutex);
+        state_->latency.add (latency_us);
     }
 
+    single_increment_counter (state_->callback_processed);
+    state_->callback_wait_cv.notify_all ();
     state_->cv.notify_all ();
 }
 
@@ -522,6 +521,46 @@ inline bool single_wait_for_receive_quiet (StateT &state_,
     }
 
     return !single_load_flag (state_.fatal);
+}
+
+template <typename StateT>
+inline bool single_wait_for_metric_worker_idle (StateT &state_,
+                                                int timeout_ms_)
+{
+    if (!state_.callback_queue)
+        return true;
+
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
+    std::unique_lock<std::mutex> lock (state_.callback_wait_mutex);
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (single_load_flag (state_.fatal))
+            return false;
+
+        const unsigned long long enqueued =
+          single_load_counter (state_.callback_enqueued);
+        const unsigned long long processed =
+          single_load_counter (state_.callback_processed);
+        if (processed >= enqueued && state_.callback_queue->empty ())
+            return true;
+
+        const bool woke = state_.callback_wait_cv.wait_until (
+          lock, deadline, [&state_]() {
+              return single_load_flag (state_.fatal)
+                     || (single_load_counter (state_.callback_processed)
+                           >= single_load_counter (
+                             state_.callback_enqueued)
+                         && state_.callback_queue->empty ());
+          });
+        if (woke)
+            return !single_load_flag (state_.fatal);
+    }
+
+    return single_load_flag (state_.fatal)
+             || (single_load_counter (state_.callback_processed)
+                   >= single_load_counter (state_.callback_enqueued)
+                 && state_.callback_queue->empty ());
 }
 
 template <typename StateT>
@@ -1535,16 +1574,28 @@ public:
         force_sample_send();
         force_sample_recv();
         queue_stats_t out;
-        if (_snd_seen) {
+        if (_snd_seen.load(std::memory_order_acquire)) {
             out.has_snd_pending = true;
-            out.snd_pending_max = static_cast<double>(_snd_pending_max);
+            out.snd_pending_max = static_cast<double>(
+              _snd_pending_max.load(std::memory_order_acquire));
         }
-        if (_rcv_seen) {
+        if (_rcv_seen.load(std::memory_order_acquire)) {
             out.has_rcv_pending = true;
-            out.rcv_pending_max = static_cast<double>(_rcv_pending_max);
-            out.rcv_pending_end = static_cast<double>(_rcv_pending_end);
+            out.rcv_pending_max = static_cast<double>(
+              _rcv_pending_max.load(std::memory_order_acquire));
+            out.rcv_pending_end = static_cast<double>(
+              _rcv_pending_end.load(std::memory_order_acquire));
         }
         return out;
+    }
+
+    unsigned long long pending_count() const
+    {
+        const unsigned long long send_total =
+          _send_total.load(std::memory_order_acquire);
+        const unsigned long long recv_total =
+          _recv_total.load(std::memory_order_acquire);
+        return send_total > recv_total ? (send_total - recv_total) : 0ULL;
     }
 
 private:
@@ -1576,29 +1627,36 @@ private:
             return;
 
         if (!force_)
-            ++_send_total;
+            _send_total.fetch_add(1, std::memory_order_acq_rel);
 
         if (force_) {
-            _send_msgs_since_sample = 0;
+            _send_msgs_since_sample.store(0, std::memory_order_release);
         } else if (_sample_every_msgs > 1) {
-            ++_send_msgs_since_sample;
-            if (_send_msgs_since_sample < _sample_every_msgs)
+            const unsigned int sampled =
+              _send_msgs_since_sample.fetch_add(1, std::memory_order_acq_rel)
+              + 1;
+            if (sampled < _sample_every_msgs)
                 return;
-            _send_msgs_since_sample = 0;
+            _send_msgs_since_sample.store(0, std::memory_order_release);
         }
 
         const unsigned long long now = now_ns();
-        if (!force_ && _send_last_sample_ns > 0
-            && now - _send_last_sample_ns < _sample_interval_ns) {
+        const unsigned long long last_sample_ns =
+          _send_last_sample_ns.load(std::memory_order_acquire);
+        if (!force_ && last_sample_ns > 0
+            && now - last_sample_ns < _sample_interval_ns) {
             return;
         }
-        _send_last_sample_ns = now;
+        _send_last_sample_ns.store(now, std::memory_order_release);
 
-        const unsigned long long pending =
-          _send_total > _recv_total ? (_send_total - _recv_total) : 0ULL;
-        if (!_snd_seen || pending > _snd_pending_max)
-            _snd_pending_max = pending;
-        _snd_seen = true;
+        const unsigned long long pending = pending_count();
+        unsigned long long current_max =
+          _snd_pending_max.load(std::memory_order_acquire);
+        while (pending > current_max
+               && !_snd_pending_max.compare_exchange_weak(
+                 current_max, pending, std::memory_order_acq_rel)) {
+        }
+        _snd_seen.store(true, std::memory_order_release);
     }
 
     void maybe_sample_recv(bool force_)
@@ -1607,47 +1665,54 @@ private:
             return;
 
         if (!force_)
-            ++_recv_total;
+            _recv_total.fetch_add(1, std::memory_order_acq_rel);
 
         if (force_) {
-            _recv_msgs_since_sample = 0;
+            _recv_msgs_since_sample.store(0, std::memory_order_release);
         } else if (_sample_every_msgs > 1) {
-            ++_recv_msgs_since_sample;
-            if (_recv_msgs_since_sample < _sample_every_msgs)
+            const unsigned int sampled =
+              _recv_msgs_since_sample.fetch_add(1, std::memory_order_acq_rel)
+              + 1;
+            if (sampled < _sample_every_msgs)
                 return;
-            _recv_msgs_since_sample = 0;
+            _recv_msgs_since_sample.store(0, std::memory_order_release);
         }
 
         const unsigned long long now = now_ns();
-        if (!force_ && _recv_last_sample_ns > 0
-            && now - _recv_last_sample_ns < _sample_interval_ns) {
+        const unsigned long long last_sample_ns =
+          _recv_last_sample_ns.load(std::memory_order_acquire);
+        if (!force_ && last_sample_ns > 0
+            && now - last_sample_ns < _sample_interval_ns) {
             return;
         }
-        _recv_last_sample_ns = now;
+        _recv_last_sample_ns.store(now, std::memory_order_release);
 
-        const unsigned long long pending =
-          _send_total > _recv_total ? (_send_total - _recv_total) : 0ULL;
-        if (!_rcv_seen || pending > _rcv_pending_max)
-            _rcv_pending_max = pending;
-        _rcv_pending_end = pending;
-        _rcv_seen = true;
+        const unsigned long long pending = pending_count();
+        unsigned long long current_max =
+          _rcv_pending_max.load(std::memory_order_acquire);
+        while (pending > current_max
+               && !_rcv_pending_max.compare_exchange_weak(
+                 current_max, pending, std::memory_order_acq_rel)) {
+        }
+        _rcv_pending_end.store(pending, std::memory_order_release);
+        _rcv_seen.store(true, std::memory_order_release);
     }
 
     void *_send_socket;
     void *_recv_socket;
     unsigned long long _sample_interval_ns;
     unsigned int _sample_every_msgs;
-    unsigned long long _send_last_sample_ns;
-    unsigned long long _recv_last_sample_ns;
-    unsigned int _send_msgs_since_sample;
-    unsigned int _recv_msgs_since_sample;
-    unsigned long long _send_total;
-    unsigned long long _recv_total;
-    unsigned long long _snd_pending_max;
-    unsigned long long _rcv_pending_max;
-    unsigned long long _rcv_pending_end;
-    bool _snd_seen;
-    bool _rcv_seen;
+    std::atomic<unsigned long long> _send_last_sample_ns;
+    std::atomic<unsigned long long> _recv_last_sample_ns;
+    std::atomic<unsigned int> _send_msgs_since_sample;
+    std::atomic<unsigned int> _recv_msgs_since_sample;
+    std::atomic<unsigned long long> _send_total;
+    std::atomic<unsigned long long> _recv_total;
+    std::atomic<unsigned long long> _snd_pending_max;
+    std::atomic<unsigned long long> _rcv_pending_max;
+    std::atomic<unsigned long long> _rcv_pending_end;
+    std::atomic<bool> _snd_seen;
+    std::atomic<bool> _rcv_seen;
 
     queue_probe_t(const queue_probe_t &);
     queue_probe_t &operator=(const queue_probe_t &);
@@ -1802,38 +1867,15 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
         std::cerr << "No endpoint available for transport " << transport << std::endl;
         return std::string();
     }
-    if (zlink_bind(socket_, endpoint.c_str()) != 0) {
-        std::cerr << "bind failed for " << endpoint << ": "
-                  << zlink_strerror(zlink_errno()) << std::endl;
+    endpoint = perf_bind_endpoint_once(socket_, endpoint, transport,
+                                       &perf_bind_socket_endpoint, true);
+    if (endpoint.empty())
         return std::string();
-    }
-    if (transport != "inproc") {
-        char last_endpoint[MAX_SOCKET_STRING] = "";
-        size_t size = sizeof(last_endpoint);
-        if (zlink_get_option(socket_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
-                             &size)
-            != 0) {
-            std::cerr << "getsockopt(ZLINK_LAST_ENDPOINT) failed: "
-                      << zlink_strerror(zlink_errno()) << std::endl;
-            return std::string();
-        }
-        endpoint.assign(last_endpoint);
-        if (transport == "tcp" || transport == "ws") {
-            const std::string tcp_any = "://0.0.0.0:";
-            const std::string tcp_ipv6_any = "://[::]:";
-            size_t pos = endpoint.find(tcp_any);
-            if (pos != std::string::npos) {
-                endpoint.replace(pos, tcp_any.size(), "://127.0.0.1:");
-            } else {
-                pos = endpoint.find(tcp_ipv6_any);
-                if (pos != std::string::npos) {
-                    endpoint.replace(pos, tcp_ipv6_any.size(), "://127.0.0.1:");
-                }
-            }
-        }
-        if (bench_debug_enabled()) {
-            std::cerr << "Resolved endpoint (" << transport << "): " << endpoint << std::endl;
-        }
+    if (transport == "inproc")
+        return endpoint;
+    if (bench_debug_enabled()) {
+        std::cerr << "Resolved endpoint (" << transport << "): " << endpoint
+                  << std::endl;
     }
     return endpoint;
 }

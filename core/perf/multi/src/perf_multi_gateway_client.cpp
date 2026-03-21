@@ -239,14 +239,6 @@ void close_gateway_ready_monitor(gateway_client_slot_t *slot)
     }
 }
 
-void close_parts(zlink_msg_t *parts, size_t part_count)
-{
-    if (!parts)
-        return;
-    for (size_t i = 0; i < part_count; ++i)
-        zlink_msg_close(&parts[i]);
-}
-
 double gateway_percentile_from_sorted(const std::vector<double> &sorted_samples,
                                       double quantile)
 {
@@ -275,18 +267,6 @@ void mark_fatal(int err)
 
     state->fatal.store(true, std::memory_order_release);
     state->fatal_errno.store(err != 0 ? err : EIO, std::memory_order_release);
-}
-
-bool configure_gateway_tls_client(void *gateway,
-                                  const std::string &transport)
-{
-    if (transport != "tls" && transport != "wss")
-        return true;
-
-    static const std::string ca_path =
-      write_temp_cert(test_certs::ca_cert_pem, "multi_gateway_ca");
-    return zlink_set_tls_client(gateway, ca_path.c_str(), "localhost", 0)
-           == 0;
 }
 
 bool apply_gateway_options(void *gateway,
@@ -698,7 +678,7 @@ bool create_gateway_slots(gateway_client_state_t *state,
             || zlink_set_routing_id(slot->gateway, routing_id,
                                     std::strlen(routing_id))
                  != 0
-            || !configure_gateway_tls_client(slot->gateway, transport)
+            || !setup_tls_client(slot->gateway, transport)
             || !open_gateway_ready_monitor(slot)
             || zlink_gateway_connect(slot->gateway, endpoint.c_str(),
                                      &server_routing_id)

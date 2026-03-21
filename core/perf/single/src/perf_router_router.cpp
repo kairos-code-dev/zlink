@@ -29,6 +29,8 @@ struct router_router_callback_state_t
         warmup_received (0),
         active_received (0),
         recv_activity (0),
+        callback_enqueued (0),
+        callback_processed (0),
         probe (NULL),
         callback_queue (NULL)
     {
@@ -44,6 +46,8 @@ struct router_router_callback_state_t
     std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
     std::atomic<unsigned long long> recv_activity;
+    std::atomic<unsigned long long> callback_enqueued;
+    std::atomic<unsigned long long> callback_processed;
     latency_stats_builder_t latency;
     queue_probe_t *probe;
     single_callback_metric_queue_t *callback_queue;
@@ -125,11 +129,6 @@ inline bool setup_router_router_session (void *router1,
 
     zlink_set_routing_id (router1, "ROUTER1", 7);
     zlink_set_routing_id (router2, "ROUTER2", 7);
-    const int mandatory = 1;
-    zlink_set_router_option (router1, ZLINK_ROUTER_OPT_MANDATORY, &mandatory,
-                             sizeof (mandatory));
-    zlink_set_router_option (router2, ZLINK_ROUTER_OPT_MANDATORY, &mandatory,
-                             sizeof (mandatory));
     zlink_set_router_option (router2, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
                              "ROUTER1", 7);
 
@@ -212,6 +211,8 @@ inline bool run_oneway_phase (void *sender,
     state->warmup_received.store (0, std::memory_order_release);
     state->active_received.store (0, std::memory_order_release);
     state->recv_activity.store (0, std::memory_order_release);
+    state->callback_enqueued.store (0, std::memory_order_release);
+    state->callback_processed.store (0, std::memory_order_release);
     state->active_deadline_us.store (
       active_phase
         ? perf_single_metric::now_us ()
@@ -279,8 +280,11 @@ inline bool run_oneway_phase (void *sender,
     const int total_timeout_ms = std::max (100, idle_timeout_ms * 2);
     const bool quiet = wait_for_receive_quiet (
       *state, idle_timeout_ms, total_timeout_ms);
+    const bool worker_idle =
+      quiet && single_wait_for_metric_worker_idle (*state, total_timeout_ms);
 
-    if (send_failed || !quiet || state->fatal.load (std::memory_order_acquire)) {
+    if (send_failed || !quiet || !worker_idle
+        || state->fatal.load (std::memory_order_acquire)) {
         debug_router_router ("phase failed before metrics were collected");
         return false;
     }
@@ -303,6 +307,104 @@ inline bool run_oneway_phase (void *sender,
     }
 
     return true;
+}
+
+inline bool prime_router_route (void *sender,
+                                std::vector<char> *payload,
+                                router_router_callback_state_t *state,
+                                int recv_timeout_ms)
+{
+    if (!sender || !payload || !state)
+        return false;
+
+    state->fatal.store (false, std::memory_order_release);
+    state->warmup_received.store (0, std::memory_order_release);
+    state->active_received.store (0, std::memory_order_release);
+    state->recv_activity.store (0, std::memory_order_release);
+    state->callback_enqueued.store (0, std::memory_order_release);
+    state->callback_processed.store (0, std::memory_order_release);
+    state->active_deadline_us.store (0, std::memory_order_release);
+    state->probe = NULL;
+    {
+        std::lock_guard<std::mutex> lock (state->latency_mutex);
+        state->latency = latency_stats_builder_t ();
+    }
+
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (
+        std::max (2000, std::max (1, recv_timeout_ms) * 4));
+    uint64_t seq = 1;
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        const uint64_t sent_ts = perf_single_metric::now_us ();
+        if (!perf_single_metric::stamp_payload (payload->data (),
+                                                state->payload_size,
+                                                state->run_id,
+                                                perf_single_metric::phase_warmup,
+                                                state->msg_size,
+                                                seq++,
+                                                sent_ts)) {
+            return false;
+        }
+
+        zlink_msg_t parts[2];
+        if (zlink_msg_init_size (&parts[0], 7) != 0)
+            return false;
+        if (zlink_msg_init_size (&parts[1], state->payload_size) != 0) {
+            zlink_msg_close (&parts[0]);
+            return false;
+        }
+
+        std::memcpy (zlink_msg_data (&parts[0]), "ROUTER1", 7);
+        if (state->payload_size > 0) {
+            std::memcpy (
+              zlink_msg_data (&parts[1]), payload->data (), state->payload_size);
+        }
+
+        const int send_rc = send_router_parts_blocking (sender, parts);
+        if (send_rc < 0) {
+            debug_router_router ("route prime send failed");
+            zlink_msg_close (&parts[0]);
+            zlink_msg_close (&parts[1]);
+            return false;
+        }
+        if (send_rc == 0) {
+            debug_router_router ("route prime send would block");
+            zlink_msg_close (&parts[0]);
+            zlink_msg_close (&parts[1]);
+            (void) perf_socket_poll (NULL, 0, 1);
+            continue;
+        }
+
+        {
+            std::unique_lock<std::mutex> lock (state->mutex);
+            (void) state->cv.wait_for (
+              lock,
+              std::chrono::milliseconds (
+                std::max (50, std::min (250, recv_timeout_ms))),
+              [state]() {
+                  return state->recv_activity.load (
+                           std::memory_order_acquire)
+                           > 0
+                         || state->fatal.load (std::memory_order_acquire);
+              });
+        }
+
+        if (state->fatal.load (std::memory_order_acquire))
+            return false;
+        if (state->recv_activity.load (std::memory_order_acquire) > 0) {
+            if (!single_wait_for_metric_worker_idle (
+                  *state, std::max (100, recv_timeout_ms * 2))) {
+                debug_router_router ("route prime worker idle wait failed");
+                return false;
+            }
+            return state->warmup_received.load (std::memory_order_acquire) > 0;
+        }
+        debug_router_router ("route prime no receive activity yet");
+    }
+
+    return false;
 }
 
 } // namespace
@@ -332,14 +434,6 @@ void run_router_router (const std::string &transport,
         return;
     }
 
-    if (!setup_router_router_session (
-          router1.get (), router2.get (), transport,
-          lib_name + "_router_router")) {
-        debug_router_router ("session setup failed");
-        print_fail_with_queue ();
-        return;
-    }
-
     const int recv_timeout_ms = resolve_single_recv_timeout_ms ();
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
@@ -364,6 +458,23 @@ void run_router_router (const std::string &transport,
         return;
     }
     if (!start_single_metric_worker (&metric_worker)) {
+        print_fail_with_queue ();
+        return;
+    }
+
+    if (!setup_router_router_session (
+          router1.get (), router2.get (), transport,
+          lib_name + "_router_router")) {
+        stop_single_metric_worker (&metric_worker);
+        debug_router_router ("session setup failed");
+        print_fail_with_queue ();
+        return;
+    }
+
+    if (!prime_router_route (
+          router2.get (), &payload, &callback_state, recv_timeout_ms)) {
+        stop_single_metric_worker (&metric_worker);
+        debug_router_router ("route prime failed");
         print_fail_with_queue ();
         return;
     }

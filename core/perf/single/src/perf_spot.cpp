@@ -45,64 +45,6 @@ int current_process_id ()
 #endif
 }
 
-struct spot_metric_event_t
-{
-    spot_metric_event_t () : phase (0), sent_ts_us (0) {}
-
-    uint32_t phase;
-    uint64_t sent_ts_us;
-};
-
-class spot_metric_queue_t
-{
-  public:
-    explicit spot_metric_queue_t (size_t capacity_) :
-        _events (capacity_ > 1 ? capacity_ + 1 : 2),
-        _head (0),
-        _tail (0)
-    {
-    }
-
-    bool push (const spot_metric_event_t &event_)
-    {
-        const size_t head = _head.load (std::memory_order_relaxed);
-        const size_t next = advance (head);
-        if (next == _tail.load (std::memory_order_acquire))
-            return false;
-        _events[head] = event_;
-        _head.store (next, std::memory_order_release);
-        return true;
-    }
-
-    bool pop (spot_metric_event_t *event_)
-    {
-        if (!event_)
-            return false;
-        const size_t tail = _tail.load (std::memory_order_relaxed);
-        if (tail == _head.load (std::memory_order_acquire))
-            return false;
-        *event_ = _events[tail];
-        _tail.store (advance (tail), std::memory_order_release);
-        return true;
-    }
-
-    bool empty () const
-    {
-        return _tail.load (std::memory_order_acquire)
-               == _head.load (std::memory_order_acquire);
-    }
-
-  private:
-    size_t advance (size_t index_) const
-    {
-        return index_ + 1 < _events.size () ? index_ + 1 : 0;
-    }
-
-    std::vector<spot_metric_event_t> _events;
-    std::atomic<size_t> _head;
-    std::atomic<size_t> _tail;
-};
-
 struct spot_client_state_t
 {
     spot_client_state_t () :
@@ -113,6 +55,8 @@ struct spot_client_state_t
         warmup_received (0),
         active_received (0),
         recv_activity (0),
+        callback_enqueued (0),
+        callback_processed (0),
         probe (NULL),
         callback_queue (NULL)
     {
@@ -125,24 +69,16 @@ struct spot_client_state_t
     std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
     std::atomic<unsigned long long> recv_activity;
+    std::atomic<unsigned long long> callback_enqueued;
+    std::atomic<unsigned long long> callback_processed;
     latency_stats_builder_t latency;
     queue_probe_t *probe;
-    spot_metric_queue_t *callback_queue;
+    single_callback_metric_queue_t *callback_queue;
     std::mutex mutex;
     std::mutex latency_mutex;
     std::mutex callback_wait_mutex;
     std::condition_variable cv;
     std::condition_variable callback_wait_cv;
-};
-
-struct spot_metric_worker_t
-{
-    spot_metric_worker_t () : state (NULL), queue (NULL), stop (false) {}
-
-    spot_client_state_t *state;
-    spot_metric_queue_t *queue;
-    std::atomic<bool> stop;
-    std::thread thread;
 };
 
 std::atomic<spot_client_state_t *> g_spot_client_state (NULL);
@@ -163,55 +99,10 @@ struct spot_client_state_scope_t
     spot_client_state_t *state;
 };
 
-bool is_supported_transport (const std::string &transport_)
-{
-    return transport_ == "tcp" || transport_ == "tls" || transport_ == "ws"
-           || transport_ == "wss";
-}
-
-void close_parts (zlink_msg_t *parts_, size_t part_count_)
-{
-    if (!parts_)
-        return;
-    for (size_t i = 0; i < part_count_; ++i)
-        zlink_msg_close (&parts_[i]);
-}
-
-bool configure_tls_server (void *node_, const std::string &transport_)
-{
-    if (transport_ != "tls" && transport_ != "wss")
-        return true;
-
-    static const std::string cert_path =
-      write_temp_cert (test_certs::server_cert_pem, "perf_spot_cert");
-    static const std::string key_path =
-      write_temp_cert (test_certs::server_key_pem, "perf_spot_key");
-    return zlink_set_tls_server (
-             node_, cert_path.c_str (), key_path.c_str (), 0)
-           == 0;
-}
-
-bool configure_tls_client (void *node_, const std::string &transport_)
-{
-    if (transport_ != "tls" && transport_ != "wss")
-        return true;
-
-    static const std::string ca_path =
-      write_temp_cert (test_certs::ca_cert_pem, "perf_spot_ca");
-    return zlink_set_tls_client (
-             node_, ca_path.c_str (), "localhost", 0)
-           == 0;
-}
-
 std::string bind_node (void *node_, const std::string &transport_, int base_port_)
 {
-    for (int i = 0; i < 64; ++i) {
-        const std::string endpoint =
-          make_fixed_endpoint (transport_, base_port_ + i);
-        if (zlink_spot_node_bind (node_, endpoint.c_str ()) == 0)
-            return endpoint;
-    }
-    return std::string ();
+    return perf_bind_fixed_endpoint_range (
+      node_, transport_, base_port_, 64, &perf_bind_spot_node_endpoint);
 }
 
 int resolve_spot_subscription_ready_timeout_ms (
@@ -226,40 +117,8 @@ bool wait_for_receive_quiet (spot_client_state_t &state_,
                              int idle_timeout_ms_,
                              int total_timeout_ms_)
 {
-    const auto total_deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (total_timeout_ms_ > 0 ? total_timeout_ms_ : 1);
-    auto idle_deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (idle_timeout_ms_ > 0 ? idle_timeout_ms_ : 1);
-    unsigned long long observed =
-      state_.recv_activity.load (std::memory_order_acquire);
-
-    std::unique_lock<std::mutex> lock (state_.mutex);
-    while (std::chrono::steady_clock::now () < total_deadline) {
-        const auto wait_deadline =
-          idle_deadline < total_deadline ? idle_deadline : total_deadline;
-        const bool changed = state_.cv.wait_until (
-          lock, wait_deadline, [&state_, observed] () {
-              return state_.recv_activity.load (std::memory_order_acquire)
-                       != observed
-                     || state_.fatal.load (std::memory_order_acquire)
-                     || (state_.callback_queue
-                         && !state_.callback_queue->empty ());
-          });
-        if (state_.fatal.load (std::memory_order_acquire))
-            return false;
-        if (!changed)
-            return true;
-
-        observed = state_.recv_activity.load (std::memory_order_acquire);
-        idle_deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::milliseconds (idle_timeout_ms_ > 0 ? idle_timeout_ms_
-                                                            : 1);
-    }
-
-    return !state_.fatal.load (std::memory_order_acquire);
+    return single_wait_for_receive_quiet (
+      state_, idle_timeout_ms_, total_timeout_ms_);
 }
 
 bool topic_matches (const char *topic_, size_t topic_len_)
@@ -272,109 +131,27 @@ bool topic_matches (const char *topic_, size_t topic_len_)
            && std::memcmp (topic_, k_topic, topic_len_) == 0;
 }
 
-bool decode_spot_metric_event (spot_client_state_t *state_,
-                               const char *topic_,
-                               size_t topic_len_,
-                               zlink_msg_t *parts_,
-                               size_t part_count_,
-                               spot_metric_event_t *event_out_)
+bool decode_spot_metric_header (spot_client_state_t *state_,
+                                const char *topic_,
+                                size_t topic_len_,
+                                zlink_msg_t *parts_,
+                                size_t part_count_,
+                                perf_single_metric::header_t *header_out_)
 {
-    if (!state_ || !topic_ || !parts_ || part_count_ == 0 || !event_out_
+    if (!state_ || !topic_ || !parts_ || part_count_ == 0 || !header_out_
         || !topic_matches (topic_, topic_len_)) {
         return false;
     }
 
-    perf_single_metric::header_t header;
     const bool header_ok =
       perf_single_metric::decode_payload_header (
-        zlink_msg_data (&parts_[0]), zlink_msg_size (&parts_[0]), &header)
-      && header.run_id == state_->run_id && header.msg_size == state_->msg_size;
+        zlink_msg_data (&parts_[0]), zlink_msg_size (&parts_[0]), header_out_)
+      && header_out_->run_id == state_->run_id
+      && header_out_->msg_size == state_->msg_size;
     if (!header_ok)
         return false;
 
-    event_out_->phase = header.phase;
-    event_out_->sent_ts_us = header.sent_ts_us;
     return true;
-}
-
-void account_spot_metric_event (spot_client_state_t *state_,
-                                const spot_metric_event_t &event_)
-{
-    if (!state_)
-        return;
-
-    if (event_.phase
-        == static_cast<uint32_t> (perf_single_metric::phase_warmup)) {
-        state_->warmup_received.fetch_add (1, std::memory_order_acq_rel);
-    } else if (event_.phase
-               == static_cast<uint32_t> (
-                 perf_single_metric::phase_active)) {
-        const uint64_t now_us = perf_single_metric::now_us ();
-        const uint64_t deadline_us =
-          state_->active_deadline_us.load (std::memory_order_acquire);
-        if (deadline_us > 0 && now_us <= deadline_us) {
-            state_->active_received.fetch_add (1, std::memory_order_acq_rel);
-            const double latency_us =
-              now_us >= event_.sent_ts_us
-                ? static_cast<double> (now_us - event_.sent_ts_us)
-                : 0.0;
-            {
-                std::lock_guard<std::mutex> lock (state_->latency_mutex);
-                state_->latency.add (latency_us);
-            }
-        }
-    }
-
-    state_->recv_activity.fetch_add (1, std::memory_order_acq_rel);
-    if (state_->probe)
-        state_->probe->sample_recv_if_due ();
-    state_->cv.notify_all ();
-}
-
-bool start_spot_metric_worker (spot_metric_worker_t *worker_)
-{
-    if (!worker_ || !worker_->state || !worker_->queue)
-        return false;
-
-    worker_->stop.store (false, std::memory_order_release);
-    worker_->thread = std::thread ([worker_] () {
-        spot_metric_event_t event;
-        for (;;) {
-            {
-                std::unique_lock<std::mutex> lock (
-                  worker_->state->callback_wait_mutex);
-                worker_->state->callback_wait_cv.wait (
-                  lock, [worker_] () {
-                      return worker_->stop.load (std::memory_order_acquire)
-                             || worker_->state->fatal.load (
-                                  std::memory_order_acquire)
-                             || !worker_->queue->empty ();
-                  });
-            }
-
-            while (worker_->queue->pop (&event))
-                account_spot_metric_event (worker_->state, event);
-
-            if (worker_->stop.load (std::memory_order_acquire)
-                || (worker_->state->fatal.load (std::memory_order_acquire)
-                    && worker_->queue->empty ())) {
-                break;
-            }
-        }
-        worker_->state->cv.notify_all ();
-    });
-    return true;
-}
-
-void stop_spot_metric_worker (spot_metric_worker_t *worker_)
-{
-    if (!worker_)
-        return;
-    worker_->stop.store (true, std::memory_order_release);
-    if (worker_->state)
-        worker_->state->callback_wait_cv.notify_all ();
-    if (worker_->thread.joinable ())
-        worker_->thread.join ();
 }
 
 void spot_client_handler (const zlink_routing_id_t *,
@@ -386,21 +163,15 @@ void spot_client_handler (const zlink_routing_id_t *,
 {
     spot_client_state_t *state =
       g_spot_client_state.load (std::memory_order_acquire);
-    spot_metric_event_t event;
-    const bool event_ok =
-      decode_spot_metric_event (state, topic_, topic_len_, parts_, part_count_,
-                                &event);
-    close_parts (parts_, part_count_);
-    if (!event_ok || !state)
+    perf_single_metric::header_t header;
+    const bool header_ok = decode_spot_metric_header (
+      state, topic_, topic_len_, parts_, part_count_, &header);
+    perf_close_multipart (parts_, part_count_);
+    if (!state || !header_ok)
         return;
-    if (!state->callback_queue || !state->callback_queue->push (event)) {
-        state->fatal.store (true, std::memory_order_release);
-        state->callback_wait_cv.notify_all ();
-        state->cv.notify_all ();
-        return;
-    }
-    state->callback_wait_cv.notify_one ();
-    state->cv.notify_all ();
+
+    single_note_callback_receive (state);
+    (void) single_enqueue_metric_event (state, header);
 }
 
 void cleanup_spot_case (service_event_probe_t *sub_monitor_,
@@ -471,7 +242,6 @@ bool run_publish_window (void *pub_,
     while (std::chrono::steady_clock::now () < deadline) {
         if (client_state_.fatal.load (std::memory_order_acquire))
             return false;
-        probe_.sample_send_if_due ();
 
         if (!publish_payload (pub_,
                               payload_,
@@ -484,6 +254,7 @@ bool run_publish_window (void *pub_,
                 continue;
             return false;
         }
+        probe_.sample_send_if_due ();
         ++seq;
     }
 
@@ -504,6 +275,8 @@ bool run_phase_window (void *pub_,
     client_state_.warmup_received.store (0, std::memory_order_release);
     client_state_.active_received.store (0, std::memory_order_release);
     client_state_.recv_activity.store (0, std::memory_order_release);
+    client_state_.callback_enqueued.store (0, std::memory_order_release);
+    client_state_.callback_processed.store (0, std::memory_order_release);
     client_state_.active_deadline_us.store (
       phase_ == perf_single_metric::phase_active
         ? perf_single_metric::now_us ()
@@ -525,9 +298,18 @@ bool run_phase_window (void *pub_,
         return false;
     }
 
-    const int idle_timeout_ms = std::max (10, resolve_single_recv_timeout_ms ());
+    const bool active_phase = phase_ == perf_single_metric::phase_active;
+    const int idle_timeout_ms =
+      active_phase ? std::max (1000, resolve_single_recv_timeout_ms () * 10)
+                   : std::max (10, resolve_single_recv_timeout_ms ());
     const int total_timeout_ms = std::max (100, idle_timeout_ms * 2);
-    (void) wait_for_receive_quiet (client_state_, idle_timeout_ms, total_timeout_ms);
+    const bool quiet = wait_for_receive_quiet (
+      client_state_, idle_timeout_ms, total_timeout_ms);
+    const bool worker_idle =
+      quiet
+      && single_wait_for_metric_worker_idle (client_state_, total_timeout_ms);
+    if (!quiet || !worker_idle)
+        return false;
     if (phase_ != perf_single_metric::phase_active) {
         return !client_state_.fatal.load (std::memory_order_acquire)
                && client_state_.warmup_received.load (std::memory_order_acquire)
@@ -556,7 +338,7 @@ int run_case (const std::string &lib_name_,
               const std::string &transport_,
               size_t msg_size_)
 {
-    if (!is_supported_transport (transport_)) {
+    if (!perf_supports_service_transport (transport_)) {
         std::cout << "UNSUPPORTED," << k_pattern << "," << transport_
                   << std::endl;
         return 0;
@@ -605,8 +387,8 @@ int run_case (const std::string &lib_name_,
     (void) zlink_set_option (
       sub_node, ZLINK_OPT_RCVTIMEO, &rcvtimeo_ms, sizeof (rcvtimeo_ms));
 
-    if (!configure_tls_server (pub_node, transport_)
-        || !configure_tls_client (sub_node, transport_)) {
+    if (!setup_tls_server (pub_node, transport_)
+        || !setup_tls_client (sub_node, transport_)) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] tls configure failed err="
                       << zlink_errno () << std::endl;
@@ -628,8 +410,8 @@ int run_case (const std::string &lib_name_,
 
     service_event_probe_t sub_monitor;
     service_event_probe_t pub_monitor;
-    spot_metric_queue_t metric_queue (k_metric_queue_capacity);
-    spot_metric_worker_t metric_worker;
+    single_callback_metric_queue_t metric_queue (k_metric_queue_capacity);
+    single_metric_worker_t<spot_client_state_t> metric_worker;
     if (!open_service_event_probe (
           sub,
           ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
@@ -716,7 +498,7 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    if (!start_spot_metric_worker (&metric_worker)) {
+    if (!start_single_metric_worker (&metric_worker)) {
         cleanup_spot_case (&sub_monitor, &pub_monitor, &sub_node, &pub_node);
         return 1;
     }
@@ -726,8 +508,8 @@ int run_case (const std::string &lib_name_,
           pub, client_state, probe, payload, msg_size_,
           perf_single_metric::phase_warmup,
           resolve_single_warmup_seconds (), NULL, NULL)) {
+        stop_single_metric_worker (&metric_worker);
         const queue_stats_t queue_stats = probe.snapshot ();
-        stop_spot_metric_worker (&metric_worker);
         print_result (lib_name_,
                       k_pattern,
                       transport_,
@@ -747,8 +529,8 @@ int run_case (const std::string &lib_name_,
       pub, client_state, probe, payload, msg_size_,
       perf_single_metric::phase_active, resolve_single_duration_seconds (),
       &throughput, &latency);
+    stop_single_metric_worker (&metric_worker);
     const queue_stats_t queue_stats = probe.snapshot ();
-    stop_spot_metric_worker (&metric_worker);
     print_result (lib_name_,
                   k_pattern,
                   transport_,

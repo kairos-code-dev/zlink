@@ -62,54 +62,12 @@ struct gateway_server_state_t
 
 gateway_server_state_t *g_server_state = NULL;
 
-void close_parts(zlink_msg_t *parts, size_t part_count)
-{
-    if (!parts)
-        return;
-    for (size_t i = 0; i < part_count; ++i)
-        zlink_msg_close(&parts[i]);
-}
-
 void request_queue_probe(size_t msg_size)
 {
     if (msg_size == 0)
         return;
     g_queue_probe_size.store(msg_size, std::memory_order_release);
     g_queue_probe_pending.store(true, std::memory_order_release);
-}
-
-std::string normalize_bind_endpoint_host(const std::string &endpoint,
-                                         const std::string &transport)
-{
-    std::string normalized = endpoint;
-    const std::string any_v4 = "://0.0.0.0:";
-    const std::string any_v6 = "://[::]:";
-    const char *host = (transport == "tls" || transport == "wss")
-                         ? "localhost"
-                         : "127.0.0.1";
-    size_t pos = normalized.find(any_v4);
-    if (pos != std::string::npos)
-        normalized.replace(
-          pos, any_v4.size(), std::string("://") + host + ":");
-    pos = normalized.find(any_v6);
-    if (pos != std::string::npos)
-        normalized.replace(
-          pos, any_v6.size(), std::string("://") + host + ":");
-    return normalized;
-}
-
-bool configure_gateway_tls_server(void *gateway, const std::string &transport)
-{
-    if (transport != "tls" && transport != "wss")
-        return true;
-
-    static const std::string cert_path =
-      write_temp_cert(test_certs::server_cert_pem, "multi_gateway_srv_cert");
-    static const std::string key_path =
-      write_temp_cert(test_certs::server_key_pem, "multi_gateway_srv_key");
-    return zlink_set_tls_server(gateway, cert_path.c_str(),
-                                key_path.c_str(), 0)
-           == 0;
 }
 
 bool apply_gateway_options(void *gateway,
@@ -144,24 +102,8 @@ std::string bind_gateway_endpoint(void *gateway,
     std::string endpoint = bind_port > 0
                              ? make_fixed_endpoint(transport, bind_port)
                              : make_endpoint(transport, token);
-    if (endpoint.empty())
-        return std::string();
-
-    if (zlink_gateway_bind(gateway, endpoint.c_str()) != 0) {
-        std::cerr << "gateway bind failed for " << endpoint << ": "
-                  << zlink_strerror(zlink_errno()) << std::endl;
-        return std::string();
-    }
-
-    char last_endpoint[MAX_SOCKET_STRING] = "";
-    size_t last_endpoint_size = sizeof(last_endpoint);
-    if (zlink_get_option(gateway, ZLINK_OPT_LAST_ENDPOINT,
-                         last_endpoint, &last_endpoint_size)
-        == 0) {
-        endpoint.assign(last_endpoint);
-    }
-
-    return normalize_bind_endpoint_host(endpoint, transport);
+    return perf_bind_endpoint_once(gateway, endpoint, transport,
+                                   &perf_bind_gateway_endpoint, true);
 }
 
 server_queue_stats_t sample_gateway_queue_stats(void *gateway,
@@ -576,7 +518,7 @@ int run_server_benchmark(const std::string &lib_name,
     }
 
     if (!apply_gateway_options(gateway, settings)
-        || !configure_gateway_tls_server(gateway, transport)) {
+        || !setup_tls_server(gateway, transport)) {
         zlink_gateway_destroy(&gateway);
         return 1;
     }

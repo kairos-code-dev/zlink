@@ -198,6 +198,131 @@ inline std::string make_fixed_endpoint(const std::string& transport, int port) {
     return "tcp://" + host + ":" + port_str;
 }
 
+inline bool perf_supports_service_transport(const std::string &transport)
+{
+    return transport == "tcp" || transport == "tls" || transport == "ws"
+           || transport == "wss";
+}
+
+inline bool perf_is_tls_transport(const std::string &transport)
+{
+    return transport == "tls" || transport == "wss";
+}
+
+inline const char *perf_loopback_host_for_transport(
+  const std::string &transport)
+{
+    return perf_is_tls_transport(transport) ? "localhost" : "127.0.0.1";
+}
+
+inline std::string perf_normalize_bind_endpoint_host(
+  const std::string &endpoint,
+  const std::string &transport)
+{
+    std::string normalized = endpoint;
+    const std::string any_v4 = "://0.0.0.0:";
+    const std::string any_v6 = "://[::]:";
+    const std::string host =
+      std::string("://") + perf_loopback_host_for_transport(transport) + ":";
+    size_t pos = normalized.find(any_v4);
+    if (pos != std::string::npos)
+        normalized.replace(pos, any_v4.size(), host);
+    pos = normalized.find(any_v6);
+    if (pos != std::string::npos)
+        normalized.replace(pos, any_v6.size(), host);
+    return normalized;
+}
+
+inline void perf_close_multipart(zlink_msg_t *parts_, size_t part_count_)
+{
+    if (!parts_)
+        return;
+    for (size_t i = 0; i < part_count_; ++i)
+        zlink_msg_close(&parts_[i]);
+}
+
+typedef int (*perf_bind_endpoint_fn_t)(void *, const char *);
+
+inline int perf_bind_socket_endpoint(void *socket_, const char *endpoint_)
+{
+    return zlink_bind(socket_, endpoint_);
+}
+
+inline int perf_bind_gateway_endpoint(void *gateway_, const char *endpoint_)
+{
+    return zlink_gateway_bind(gateway_, endpoint_);
+}
+
+inline int perf_bind_spot_node_endpoint(void *node_, const char *endpoint_)
+{
+    return zlink_spot_node_bind(node_, endpoint_);
+}
+
+inline std::string perf_bind_endpoint_once(void *target_,
+                                           const std::string &endpoint_,
+                                           const std::string &transport_,
+                                           perf_bind_endpoint_fn_t bind_fn_,
+                                           bool resolve_last_endpoint_)
+{
+    if (!target_ || !bind_fn_ || endpoint_.empty())
+        return std::string();
+
+    if (bind_fn_(target_, endpoint_.c_str()) != 0) {
+        std::cerr << "bind failed for " << endpoint_ << ": "
+                  << zlink_strerror(zlink_errno()) << std::endl;
+        return std::string();
+    }
+
+    std::string resolved = endpoint_;
+    if (resolve_last_endpoint_) {
+        char last_endpoint[MAX_SOCKET_STRING] = "";
+        size_t size = sizeof(last_endpoint);
+        if (zlink_get_option(target_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
+                             &size)
+            == 0) {
+            resolved.assign(last_endpoint);
+        }
+    }
+
+    return perf_normalize_bind_endpoint_host(resolved, transport_);
+}
+
+inline std::string perf_bind_fixed_endpoint_range(
+  void *target_,
+  const std::string &transport_,
+  int base_port_,
+  int attempts_,
+  perf_bind_endpoint_fn_t bind_fn_,
+  bool resolve_last_endpoint_ = false)
+{
+    if (!target_ || !bind_fn_ || attempts_ <= 0)
+        return std::string();
+
+    for (int attempt = 0; attempt < attempts_; ++attempt) {
+        const std::string endpoint =
+          make_fixed_endpoint(transport_, base_port_ + attempt);
+        if (endpoint.empty())
+            continue;
+        if (bind_fn_(target_, endpoint.c_str()) != 0)
+            continue;
+
+        std::string resolved = endpoint;
+        if (resolve_last_endpoint_) {
+            char last_endpoint[MAX_SOCKET_STRING] = "";
+            size_t size = sizeof(last_endpoint);
+            if (zlink_get_option(target_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
+                                 &size)
+                == 0) {
+                resolved.assign(last_endpoint);
+            }
+        }
+
+        return perf_normalize_bind_endpoint_host(resolved, transport_);
+    }
+
+    return std::string();
+}
+
 // ---------------------------------------------------------------------------
 // resolve_symbol - dlsym / GetProcAddress wrapper
 // ---------------------------------------------------------------------------

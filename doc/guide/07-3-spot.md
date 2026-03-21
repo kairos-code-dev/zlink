@@ -150,8 +150,8 @@ zlink_unset_subscription(spot, "chat:room1:*");
 ### 4.4 Receiving Messages
 
 Both `SpotNode` and unified `Spot` start in **recv model**. You can either
-pull messages directly or switch once to **callback model**. The two models
-are mutually exclusive for the lifetime of the handle.
+pull messages directly or switch the receive surface once to **callback mode**.
+Send-ready remains a separate axis.
 
 #### Recv model (default)
 
@@ -211,9 +211,10 @@ should be offloaded to an application queue or worker thread.
 **Constraints:**
 
 - In recv model, use `zlink_subscribe()`
-- Call `zlink_subscribe_handler()` to transition once to callback model
-- In callback model, `recv()` calls fail with `EBUSY`
-- In recv model, `send_ready_handler()` fails with `EBUSY`
+- Call `zlink_subscribe_handler()` to transition the receive surface once to callback mode
+- In receive callback mode, `zlink_subscribe()` and data-plane `ZLINK_POLLIN` fail with `EBUSY`
+- `zlink_send_ready_handler()` is independent from receive callback mode
+- After send-ready attach, data-plane `ZLINK_POLLOUT` fails with `EBUSY`
 - Replacing or clearing the callback after transition is not supported
 - Callbacks are invoked on the socket dispatch / I/O path
 - Blocking work in the callback can delay other I/O

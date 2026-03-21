@@ -409,24 +409,20 @@ struct spot_handle_t
     zlink::spot_node_t::sub_defaults_t pending_sub_defaults;
 };
 
-enum service_io_model_t
-{
-    service_io_model_recv = 0,
-    service_io_model_callback = 1
-};
-
 struct service_mode_state_t
 {
     service_mode_state_t () :
-        model (service_io_model_recv),
-        callback_installed (false),
-        poller_refs (0)
+        receive_callback_active (false),
+        send_ready_active (false),
+        pollin_refs (0),
+        pollout_refs (0)
     {
     }
 
-    service_io_model_t model;
-    bool callback_installed;
-    int poller_refs;
+    bool receive_callback_active;
+    bool send_ready_active;
+    int pollin_refs;
+    int pollout_refs;
 };
 
 struct gateway_mode_registry_t
@@ -459,11 +455,18 @@ enum poller_subject_kind_t
 
 struct poller_registration_t
 {
-    poller_registration_t () : socket (NULL), subject (NULL), subject_kind (poller_subject_none) {}
+    poller_registration_t () :
+        socket (NULL),
+        subject (NULL),
+        subject_kind (poller_subject_none),
+        events (0)
+    {
+    }
 
     void *socket;
     void *subject;
     poller_subject_kind_t subject_kind;
+    short events;
 };
 
 struct poller_handle_t
@@ -539,8 +542,14 @@ static spot_mode_registry_t &spot_mode_registry ()
 }
 
 static int transition_service_to_callback_mode (service_mode_state_t *state_);
-static int ensure_service_recv_model (service_mode_state_t *state_);
-static int ensure_service_callback_model (service_mode_state_t *state_);
+static void revert_service_receive_callback_mode (service_mode_state_t *state_);
+static int activate_service_send_ready_mode (service_mode_state_t *state_);
+static void revert_service_send_ready_mode (service_mode_state_t *state_);
+static int ensure_service_recv_model (const service_mode_state_t *state_);
+static int increment_service_poller_refs (service_mode_state_t *state_,
+                                          short events_);
+static void decrement_service_poller_refs (service_mode_state_t *state_,
+                                           short events_);
 static void *open_discovery_service_monitor_internal (
   void *discovery_,
   zlink_discovery_monitor_event_mask_t events_,
@@ -652,6 +661,15 @@ static int spot_transition_to_callback_mode (spot_handle_t *spot_)
     return transition_service_to_callback_mode (&registry.states[spot_]);
 }
 
+static void gateway_revert_callback_transition (zlink::gateway_t *gateway_)
+{
+    if (!gateway_)
+        return;
+    gateway_mode_registry_t &registry = gateway_mode_registry ();
+    zlink::scoped_lock_t lock (registry.sync);
+    revert_service_receive_callback_mode (&registry.states[gateway_]);
+}
+
 static int gateway_require_recv_model (zlink::gateway_t *gateway_)
 {
     if (!gateway_) {
@@ -680,9 +698,7 @@ static void spot_node_revert_callback_transition (zlink::spot_node_t *node_)
         return;
     spot_node_mode_registry_t &registry = spot_node_mode_registry ();
     zlink::scoped_lock_t lock (registry.sync);
-    service_mode_state_t &state = registry.states[node_];
-    state.callback_installed = false;
-    state.model = service_io_model_recv;
+    revert_service_receive_callback_mode (&registry.states[node_]);
 }
 
 static int spot_require_recv_model (spot_handle_t *spot_)
@@ -702,31 +718,7 @@ static void spot_revert_callback_transition (spot_handle_t *spot_)
         return;
     spot_mode_registry_t &registry = spot_mode_registry ();
     zlink::scoped_lock_t lock (registry.sync);
-    service_mode_state_t &state = registry.states[spot_];
-    state.callback_installed = false;
-    state.model = service_io_model_recv;
-}
-
-static int spot_node_require_callback_model (zlink::spot_node_t *node_)
-{
-    if (!node_) {
-        errno = EFAULT;
-        return -1;
-    }
-    spot_node_mode_registry_t &registry = spot_node_mode_registry ();
-    zlink::scoped_lock_t lock (registry.sync);
-    return ensure_service_callback_model (&registry.states[node_]);
-}
-
-static int spot_require_callback_model (spot_handle_t *spot_)
-{
-    if (!spot_) {
-        errno = EFAULT;
-        return -1;
-    }
-    spot_mode_registry_t &registry = spot_mode_registry ();
-    zlink::scoped_lock_t lock (registry.sync);
-    return ensure_service_callback_model (&registry.states[spot_]);
+    revert_service_receive_callback_mode (&registry.states[spot_]);
 }
 
 static int increment_gateway_poller_ref (zlink::gateway_t *gateway_)
@@ -737,13 +729,19 @@ static int increment_gateway_poller_ref (zlink::gateway_t *gateway_)
     }
     gateway_mode_registry_t &registry = gateway_mode_registry ();
     zlink::scoped_lock_t lock (registry.sync);
-    service_mode_state_t &state = registry.states[gateway_];
-    if (state.model == service_io_model_callback) {
-        errno = EBUSY;
+    return increment_service_poller_refs (&registry.states[gateway_],
+                                          ZLINK_POLLIN | ZLINK_POLLOUT);
+}
+
+static int increment_gateway_poller_ref (zlink::gateway_t *gateway_, short events_)
+{
+    if (!gateway_) {
+        errno = EFAULT;
         return -1;
     }
-    ++state.poller_refs;
-    return 0;
+    gateway_mode_registry_t &registry = gateway_mode_registry ();
+    zlink::scoped_lock_t lock (registry.sync);
+    return increment_service_poller_refs (&registry.states[gateway_], events_);
 }
 
 static int increment_spot_node_poller_ref (zlink::spot_node_t *node_)
@@ -754,13 +752,20 @@ static int increment_spot_node_poller_ref (zlink::spot_node_t *node_)
     }
     spot_node_mode_registry_t &registry = spot_node_mode_registry ();
     zlink::scoped_lock_t lock (registry.sync);
-    service_mode_state_t &state = registry.states[node_];
-    if (state.model == service_io_model_callback) {
-        errno = EBUSY;
+    return increment_service_poller_refs (&registry.states[node_],
+                                          ZLINK_POLLIN | ZLINK_POLLOUT);
+}
+
+static int increment_spot_node_poller_ref (zlink::spot_node_t *node_,
+                                           short events_)
+{
+    if (!node_) {
+        errno = EFAULT;
         return -1;
     }
-    ++state.poller_refs;
-    return 0;
+    spot_node_mode_registry_t &registry = spot_node_mode_registry ();
+    zlink::scoped_lock_t lock (registry.sync);
+    return increment_service_poller_refs (&registry.states[node_], events_);
 }
 
 static int increment_spot_poller_ref (spot_handle_t *spot_)
@@ -771,13 +776,19 @@ static int increment_spot_poller_ref (spot_handle_t *spot_)
     }
     spot_mode_registry_t &registry = spot_mode_registry ();
     zlink::scoped_lock_t lock (registry.sync);
-    service_mode_state_t &state = registry.states[spot_];
-    if (state.model == service_io_model_callback) {
-        errno = EBUSY;
+    return increment_service_poller_refs (&registry.states[spot_],
+                                          ZLINK_POLLIN | ZLINK_POLLOUT);
+}
+
+static int increment_spot_poller_ref (spot_handle_t *spot_, short events_)
+{
+    if (!spot_) {
+        errno = EFAULT;
         return -1;
     }
-    ++state.poller_refs;
-    return 0;
+    spot_mode_registry_t &registry = spot_mode_registry ();
+    zlink::scoped_lock_t lock (registry.sync);
+    return increment_service_poller_refs (&registry.states[spot_], events_);
 }
 
 static void decrement_gateway_poller_ref (zlink::gateway_t *gateway_)
@@ -786,9 +797,18 @@ static void decrement_gateway_poller_ref (zlink::gateway_t *gateway_)
         return;
     gateway_mode_registry_t &registry = gateway_mode_registry ();
     zlink::scoped_lock_t lock (registry.sync);
-    service_mode_state_t &state = registry.states[gateway_];
-    if (state.poller_refs > 0)
-        --state.poller_refs;
+    decrement_service_poller_refs (&registry.states[gateway_],
+                                   ZLINK_POLLIN | ZLINK_POLLOUT);
+}
+
+static void decrement_gateway_poller_ref (zlink::gateway_t *gateway_,
+                                          short events_)
+{
+    if (!gateway_)
+        return;
+    gateway_mode_registry_t &registry = gateway_mode_registry ();
+    zlink::scoped_lock_t lock (registry.sync);
+    decrement_service_poller_refs (&registry.states[gateway_], events_);
 }
 
 static void decrement_spot_node_poller_ref (zlink::spot_node_t *node_)
@@ -797,9 +817,18 @@ static void decrement_spot_node_poller_ref (zlink::spot_node_t *node_)
         return;
     spot_node_mode_registry_t &registry = spot_node_mode_registry ();
     zlink::scoped_lock_t lock (registry.sync);
-    service_mode_state_t &state = registry.states[node_];
-    if (state.poller_refs > 0)
-        --state.poller_refs;
+    decrement_service_poller_refs (&registry.states[node_],
+                                   ZLINK_POLLIN | ZLINK_POLLOUT);
+}
+
+static void decrement_spot_node_poller_ref (zlink::spot_node_t *node_,
+                                            short events_)
+{
+    if (!node_)
+        return;
+    spot_node_mode_registry_t &registry = spot_node_mode_registry ();
+    zlink::scoped_lock_t lock (registry.sync);
+    decrement_service_poller_refs (&registry.states[node_], events_);
 }
 
 static void decrement_spot_poller_ref (spot_handle_t *spot_)
@@ -808,9 +837,17 @@ static void decrement_spot_poller_ref (spot_handle_t *spot_)
         return;
     spot_mode_registry_t &registry = spot_mode_registry ();
     zlink::scoped_lock_t lock (registry.sync);
-    service_mode_state_t &state = registry.states[spot_];
-    if (state.poller_refs > 0)
-        --state.poller_refs;
+    decrement_service_poller_refs (&registry.states[spot_],
+                                   ZLINK_POLLIN | ZLINK_POLLOUT);
+}
+
+static void decrement_spot_poller_ref (spot_handle_t *spot_, short events_)
+{
+    if (!spot_)
+        return;
+    spot_mode_registry_t &registry = spot_mode_registry ();
+    zlink::scoped_lock_t lock (registry.sync);
+    decrement_service_poller_refs (&registry.states[spot_], events_);
 }
 
 static void register_gateway_mode_state (zlink::gateway_t *gateway_)
@@ -873,43 +910,90 @@ static int transition_service_to_callback_mode (service_mode_state_t *state_)
         errno = EFAULT;
         return -1;
     }
-    if (state_->callback_installed) {
+    if (state_->receive_callback_active) {
         errno = EBUSY;
         return -1;
     }
-    if (state_->poller_refs > 0) {
+    if (state_->pollin_refs > 0) {
         errno = EBUSY;
         return -1;
     }
-    state_->callback_installed = true;
-    state_->model = service_io_model_callback;
+    state_->receive_callback_active = true;
     return 0;
 }
 
-static int ensure_service_recv_model (service_mode_state_t *state_)
+static void revert_service_receive_callback_mode (service_mode_state_t *state_)
+{
+    if (!state_)
+        return;
+    state_->receive_callback_active = false;
+}
+
+static int activate_service_send_ready_mode (service_mode_state_t *state_)
 {
     if (!state_) {
         errno = EFAULT;
         return -1;
     }
-    if (state_->model == service_io_model_callback) {
+    if (!state_->send_ready_active && state_->pollout_refs > 0) {
+        errno = EBUSY;
+        return -1;
+    }
+    state_->send_ready_active = true;
+    return 0;
+}
+
+static void revert_service_send_ready_mode (service_mode_state_t *state_)
+{
+    if (!state_)
+        return;
+    state_->send_ready_active = false;
+}
+
+static int ensure_service_recv_model (const service_mode_state_t *state_)
+{
+    if (!state_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (state_->receive_callback_active) {
         errno = EBUSY;
         return -1;
     }
     return 0;
 }
 
-static int ensure_service_callback_model (service_mode_state_t *state_)
+static int increment_service_poller_refs (service_mode_state_t *state_,
+                                          short events_)
 {
     if (!state_) {
         errno = EFAULT;
         return -1;
     }
-    if (state_->model != service_io_model_callback) {
+    if ((events_ & ZLINK_POLLIN) != 0 && state_->receive_callback_active) {
         errno = EBUSY;
         return -1;
     }
+    if ((events_ & ZLINK_POLLOUT) != 0 && state_->send_ready_active) {
+        errno = EBUSY;
+        return -1;
+    }
+    if ((events_ & ZLINK_POLLIN) != 0)
+        ++state_->pollin_refs;
+    if ((events_ & ZLINK_POLLOUT) != 0)
+        ++state_->pollout_refs;
     return 0;
+}
+
+static void decrement_service_poller_refs (service_mode_state_t *state_,
+                                           short events_)
+{
+    if (!state_)
+        return;
+    if ((events_ & ZLINK_POLLIN) != 0 && state_->pollin_refs > 0)
+        --state_->pollin_refs;
+    if ((events_ & ZLINK_POLLOUT) != 0 && state_->pollout_refs > 0)
+        --state_->pollout_refs;
 }
 
 static int validate_recv_flags (int flags_)
@@ -2363,8 +2447,26 @@ int zlink_recv_handler (void *s_,
     }
 
     if (is_registered_gateway_handle (s_)) {
-        errno = ENOTSUP;
-        return -1;
+        zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (s_);
+        if (!gateway->check_tag ()) {
+            errno = EFAULT;
+            return -1;
+        }
+        zlink::service_public_api_scope_t admission (gateway->public_api_guard ());
+        if (!admission.acquired ())
+            return -1;
+        {
+            gateway_mode_registry_t &registry = gateway_mode_registry ();
+            zlink::scoped_lock_t lock (registry.sync);
+            if (transition_service_to_callback_mode (&registry.states[gateway])
+                != 0) {
+                return -1;
+            }
+        }
+        const int rc = gateway->set_handler (handler_, userdata_);
+        if (rc != 0)
+            gateway_revert_callback_transition (gateway);
+        return rc;
     }
 
     socket_handle_t handle = as_socket_handle (s_);
@@ -2381,6 +2483,8 @@ int zlink_recv_handler (void *s_,
         case ZLINK_CORE_SOCKET_PAIR:
         case ZLINK_CORE_SOCKET_DEALER:
         case ZLINK_CORE_SOCKET_ROUTER:
+            return handle.socket->socket_set_msg_handler_with_userdata (
+              handler_, NULL, userdata_);
         case ZLINK_CORE_SOCKET_SUB:
         case ZLINK_CORE_SOCKET_XSUB:
         case ZLINK_CORE_SOCKET_PUB:
@@ -2454,10 +2558,16 @@ int zlink_recv_spot_handler (void *s_,
     if (!handle.socket)
         return -1;
 
-    LIBZLINK_UNUSED (handle);
-    LIBZLINK_UNUSED (userdata_);
-    errno = ENOTSUP;
-    return -1;
+    const int type = socket_type (handle);
+    switch (type) {
+        case ZLINK_CORE_SOCKET_SUB:
+        case ZLINK_CORE_SOCKET_XSUB:
+            return handle.socket->socket_set_spot_handler_with_userdata (
+              handler_, userdata_);
+        default:
+            errno = ENOTSUP;
+            return -1;
+    }
 }
 
 static int socket_send_ready_handler_internal (
@@ -2475,13 +2585,17 @@ static int socket_send_ready_handler_internal (
     }
 
     const int type = socket_type (handle);
-    if (type != ZLINK_CORE_SOCKET_STREAM) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    if (!handle.socket->stream_dispatch_active ()) {
-        errno = EBUSY;
-        return -1;
+    switch (type) {
+        case ZLINK_CORE_SOCKET_PAIR:
+        case ZLINK_CORE_SOCKET_PUB:
+        case ZLINK_CORE_SOCKET_XPUB:
+        case ZLINK_CORE_SOCKET_DEALER:
+        case ZLINK_CORE_SOCKET_ROUTER:
+        case ZLINK_CORE_SOCKET_STREAM:
+            break;
+        default:
+            errno = ENOTSUP;
+            return -1;
     }
 
     return handle.socket->socket_set_send_ready_handler_with_userdata (
@@ -2498,8 +2612,31 @@ int zlink_send_ready_handler (void *s_,
     }
 
     if (is_registered_gateway_handle (s_)) {
-        errno = ENOTSUP;
-        return -1;
+        zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (s_);
+        if (!gateway->check_tag ()) {
+            errno = EFAULT;
+            return -1;
+        }
+        zlink::service_public_api_scope_t admission (gateway->public_api_guard ());
+        if (!admission.acquired ())
+            return -1;
+        bool already_active = false;
+        {
+            gateway_mode_registry_t &registry = gateway_mode_registry ();
+            zlink::scoped_lock_t lock (registry.sync);
+            already_active = registry.states[gateway].send_ready_active;
+            if (activate_service_send_ready_mode (&registry.states[gateway])
+                != 0) {
+                return -1;
+            }
+        }
+        const int rc = gateway->set_send_ready_handler (handler_, userdata_);
+        if (rc != 0 && !already_active) {
+            gateway_mode_registry_t &registry = gateway_mode_registry ();
+            zlink::scoped_lock_t lock (registry.sync);
+            revert_service_send_ready_mode (&registry.states[gateway]);
+        }
+        return rc;
     }
 
     if (is_registered_spot_handle (s_)) {
@@ -2509,14 +2646,31 @@ int zlink_send_ready_handler (void *s_,
         zlink::service_public_api_scope_t admission (spot->public_api);
         if (!admission.acquired ())
             return -1;
-        if (spot_require_callback_model (spot) != 0)
-            return -1;
+        bool already_active = false;
+        {
+            spot_mode_registry_t &registry = spot_mode_registry ();
+            zlink::scoped_lock_t lock (registry.sync);
+            already_active = registry.states[spot].send_ready_active;
+            if (activate_service_send_ready_mode (&registry.states[spot]) != 0)
+                return -1;
+        }
         zlink::spot_pub_t *pub = ensure_spot_pub (spot);
         if (!pub) {
+            if (!already_active) {
+                spot_mode_registry_t &registry = spot_mode_registry ();
+                zlink::scoped_lock_t lock (registry.sync);
+                revert_service_send_ready_mode (&registry.states[spot]);
+            }
             errno = ENOTSUP;
             return -1;
         }
-        return pub->set_send_ready_handler (handler_, spot, userdata_);
+        const int rc = pub->set_send_ready_handler (handler_, spot, userdata_);
+        if (rc != 0 && !already_active) {
+            spot_mode_registry_t &registry = spot_mode_registry ();
+            zlink::scoped_lock_t lock (registry.sync);
+            revert_service_send_ready_mode (&registry.states[spot]);
+        }
+        return rc;
     }
 
     if (is_registered_spot_node_handle (s_)) {
@@ -2528,26 +2682,49 @@ int zlink_send_ready_handler (void *s_,
         zlink::service_public_api_scope_t admission (node->public_api_guard ());
         if (!admission.acquired ())
             return -1;
-        if (spot_node_require_callback_model (node) != 0)
-            return -1;
-        return node->set_send_ready_handler (handler_, userdata_);
+        bool already_active = false;
+        {
+            spot_node_mode_registry_t &registry = spot_node_mode_registry ();
+            zlink::scoped_lock_t lock (registry.sync);
+            already_active = registry.states[node].send_ready_active;
+            if (activate_service_send_ready_mode (&registry.states[node]) != 0)
+                return -1;
+        }
+        const int rc = node->set_send_ready_handler (handler_, userdata_);
+        if (rc != 0 && !already_active) {
+            spot_node_mode_registry_t &registry = spot_node_mode_registry ();
+            zlink::scoped_lock_t lock (registry.sync);
+            revert_service_send_ready_mode (&registry.states[node]);
+        }
+        return rc;
     }
 
     return socket_send_ready_handler_internal (s_, handler_, userdata_);
 }
 
-static int validate_stream_callback_poller_events (socket_handle_t handle_,
+static int validate_socket_callback_poller_events (socket_handle_t handle_,
                                                    short events_)
 {
-    if (!handle_.socket || socket_type (handle_) != ZLINK_CORE_SOCKET_STREAM)
+    if (!handle_.socket)
         return 0;
-    if (!handle_.socket->stream_dispatch_active ())
-        return 0;
-    if ((events_ & ZLINK_POLLOUT) == 0)
-        return 0;
-
-    errno = EBUSY;
-    return -1;
+    const int type = socket_type (handle_);
+    if ((events_ & ZLINK_POLLIN) != 0) {
+        if (handle_.socket->socket_msg_dispatch_active ()
+            || ((type == ZLINK_CORE_SOCKET_SUB
+                 || type == ZLINK_CORE_SOCKET_XSUB)
+                && handle_.socket->sub_dispatch_active ())
+            || (type == ZLINK_CORE_SOCKET_STREAM
+                && handle_.socket->stream_dispatch_active ())) {
+            errno = EBUSY;
+            return -1;
+        }
+    }
+    if ((events_ & ZLINK_POLLOUT) != 0
+        && handle_.socket->send_ready_handler_active ()) {
+        errno = EBUSY;
+        return -1;
+    }
+    return 0;
 }
 
 int zlink_close (void *s_)
@@ -5370,17 +5547,20 @@ static void release_poller_registration (const poller_registration_t &registrati
     switch (registration_.subject_kind) {
         case poller_subject_gateway:
             decrement_gateway_poller_ref (
-              static_cast<zlink::gateway_t *> (registration_.subject));
+              static_cast<zlink::gateway_t *> (registration_.subject),
+              registration_.events);
             break;
         case poller_subject_spot_pub:
         case poller_subject_spot_sub:
             decrement_spot_poller_ref (
-              static_cast<spot_handle_t *> (registration_.subject));
+              static_cast<spot_handle_t *> (registration_.subject),
+              registration_.events);
             break;
         case poller_subject_spot_node_pub:
         case poller_subject_spot_node_sub:
             decrement_spot_node_poller_ref (
-              static_cast<zlink::spot_node_t *> (registration_.subject));
+              static_cast<zlink::spot_node_t *> (registration_.subject),
+              registration_.events);
             break;
         default:
             break;
@@ -5405,6 +5585,7 @@ static int poller_add_registration (poller_handle_t *poller_,
     registration.socket = static_cast<void *> (socket_);
     registration.subject = subject_;
     registration.subject_kind = subject_kind_;
+    registration.events = events_;
     poller_->registrations.push_back (registration);
     return 0;
 }
@@ -5482,7 +5663,8 @@ static int poller_remove_all_registrations_for_subject (poller_handle_t *poller_
 
 static zlink::spot_pub_t *resolve_spot_pub_subject (void *spot_or_node_);
 static zlink::spot_sub_t *resolve_spot_sub_subject (void *spot_or_node_);
-static int increment_spot_subject_poller_ref (void *spot_or_node_);
+static int increment_spot_subject_poller_ref (void *spot_or_node_,
+                                              short events_);
 static poller_subject_kind_t poller_spot_pub_kind_for_subject (void *spot_or_node_);
 static poller_subject_kind_t poller_spot_sub_kind_for_subject (void *spot_or_node_);
 
@@ -5518,14 +5700,14 @@ static int poller_add_gateway_registration (poller_handle_t *poller_,
     zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
     if (validate_gateway_poller_events (events_) != 0)
         return -1;
-    if (increment_gateway_poller_ref (gateway) != 0)
+    if (increment_gateway_poller_ref (gateway, events_) != 0)
         return -1;
     zlink::socket_base_t *socket = zlink::gateway_access_t::router_socket (gateway);
     if (!socket
         || poller_add_registration (poller_, socket, user_data_, events_,
                                     gateway_, poller_subject_gateway)
              != 0) {
-        decrement_gateway_poller_ref (gateway);
+        decrement_gateway_poller_ref (gateway, events_);
         if (!socket)
             errno = ENOTSUP;
         return -1;
@@ -5548,9 +5730,21 @@ static int poller_modify_gateway_registration (poller_handle_t *poller_,
         errno = EINVAL;
         return -1;
     }
-    return poller_->poller.modify (
-      static_cast<zlink::socket_base_t *> (poller_->registrations[index].socket),
-      events_);
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    const short old_events = poller_->registrations[index].events;
+    if (increment_gateway_poller_ref (gateway, events_) != 0)
+        return -1;
+    if (poller_->poller.modify (
+          static_cast<zlink::socket_base_t *> (
+            poller_->registrations[index].socket),
+          events_)
+        != 0) {
+        decrement_gateway_poller_ref (gateway, events_);
+        return -1;
+    }
+    poller_->registrations[index].events = events_;
+    decrement_gateway_poller_ref (gateway, old_events);
+    return 0;
 }
 
 int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_)
@@ -5569,7 +5763,7 @@ int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_)
             socket_handle_t handle = as_socket_handle (items_[i].socket);
             if (!handle.socket)
                 return -1;
-            if (validate_stream_callback_poller_events (handle,
+            if (validate_socket_callback_poller_events (handle,
                                                         items_[i].events)
                 != 0)
                 return -1;
@@ -5673,7 +5867,7 @@ int zlink_poller_add (void *poller_,
         bool is_pub = false;
         if (validate_spot_generic_poller_events (events_, &is_pub) != 0)
             return -1;
-        if (increment_spot_subject_poller_ref (socket_) != 0)
+        if (increment_spot_subject_poller_ref (socket_, events_) != 0)
             return -1;
 
         if (is_pub) {
@@ -5687,6 +5881,7 @@ int zlink_poller_add (void *poller_,
                 registration.subject = socket_;
                 registration.subject_kind =
                   poller_spot_pub_kind_for_subject (socket_);
+                registration.events = events_;
                 release_poller_registration (registration);
                 return -1;
             }
@@ -5703,6 +5898,7 @@ int zlink_poller_add (void *poller_,
             registration.subject = socket_;
             registration.subject_kind =
               poller_spot_sub_kind_for_subject (socket_);
+            registration.events = events_;
             release_poller_registration (registration);
             return -1;
         }
@@ -5711,7 +5907,7 @@ int zlink_poller_add (void *poller_,
     socket_handle_t handle = as_socket_handle (socket_);
     if (!handle.socket)
         return -1;
-    if (validate_stream_callback_poller_events (handle, events_) != 0)
+    if (validate_socket_callback_poller_events (handle, events_) != 0)
         return -1;
     return poller_add_registration (poller, handle.socket, user_data_, events_,
                                     socket_, poller_subject_none);
@@ -5749,14 +5945,33 @@ int zlink_poller_modify (void *poller_, void *socket_, short events_)
             errno = EINVAL;
             return -1;
         }
-        return poller->poller.modify (
-          static_cast<zlink::socket_base_t *> (poller->registrations[index].socket),
-          events_);
+        if (increment_spot_subject_poller_ref (socket_, events_) != 0)
+            return -1;
+        const short old_events = poller->registrations[index].events;
+        zlink::socket_base_t *socket =
+          static_cast<zlink::socket_base_t *> (poller->registrations[index].socket);
+        if (poller->poller.modify (socket, events_) != 0) {
+            if (is_registered_spot_handle (socket_))
+                decrement_spot_poller_ref (
+                  static_cast<spot_handle_t *> (socket_), events_);
+            else
+                decrement_spot_node_poller_ref (
+                  static_cast<zlink::spot_node_t *> (socket_), events_);
+            return -1;
+        }
+        if (is_registered_spot_handle (socket_))
+            decrement_spot_poller_ref (
+              static_cast<spot_handle_t *> (socket_), old_events);
+        else
+            decrement_spot_node_poller_ref (
+              static_cast<zlink::spot_node_t *> (socket_), old_events);
+        poller->registrations[index].events = events_;
+        return 0;
     }
     socket_handle_t handle = as_socket_handle (socket_);
     if (!handle.socket)
         return -1;
-    if (validate_stream_callback_poller_events (handle, events_) != 0)
+    if (validate_socket_callback_poller_events (handle, events_) != 0)
         return -1;
     const int index = poller_find_registration_index (poller, socket_);
     if (index < 0) {
@@ -5895,14 +6110,15 @@ static zlink::spot_sub_t *resolve_spot_sub_subject (void *spot_or_node_)
     return NULL;
 }
 
-static int increment_spot_subject_poller_ref (void *spot_or_node_)
+static int increment_spot_subject_poller_ref (void *spot_or_node_,
+                                              short events_)
 {
     if (is_registered_spot_handle (spot_or_node_))
         return increment_spot_poller_ref (
-          static_cast<spot_handle_t *> (spot_or_node_));
+          static_cast<spot_handle_t *> (spot_or_node_), events_);
     if (is_registered_spot_node_handle (spot_or_node_))
         return increment_spot_node_poller_ref (
-          static_cast<zlink::spot_node_t *> (spot_or_node_));
+          static_cast<zlink::spot_node_t *> (spot_or_node_), events_);
     errno = EFAULT;
     return -1;
 }

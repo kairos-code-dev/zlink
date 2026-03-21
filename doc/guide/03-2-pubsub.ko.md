@@ -78,13 +78,15 @@ zlink_set_subscription(sub, "weather");
 | 소켓 | 방향 | 등록 호출 | 비고 |
 |------|------|----------|------|
 | PUB | 송신 전용 | N/A | 수신 불가; 핸들러를 받지 않음 |
-| SUB | 수신 전용 | `zlink_subscribe()` / `zlink_recv()` pull | raw SUB는 recv-only |
+| SUB | 수신 전용 | `zlink_subscribe()` / `zlink_recv()` pull 또는 `zlink_subscribe_handler()` callback | recv 또는 callback 모드 |
 | XPUB | 양방향 | `zlink_subscription_event()` pull | 데이터가 아닌 구독 이벤트 수신 |
-| XSUB | 양방향 | `zlink_subscribe()` / `zlink_recv()` pull | 구독 프레임 송신; fair-queue로 데이터 수신 |
+| XSUB | 양방향 | `zlink_subscribe()` / `zlink_recv()` pull 또는 `zlink_subscribe_handler()` callback | 구독 프레임 송신; fair-queue로 데이터 수신 |
 
-raw PUB/SUB 소켓의 canonical 모델은 recv/poller다. topic-aware pull은
-`zlink_subscribe()`로 제공되고, callback topic dispatch는 raw SUB/XSUB가
-아니라 `spot` / `spot_node`에 남아 있다.
+raw PUB/SUB 소켓은 recv 모드로 시작한다. topic-aware pull은
+`zlink_subscribe()`로 제공된다. `zlink_subscribe_handler()`를 통한
+callback topic dispatch는 raw `SUB`, `XSUB`, `spot`, `spot_node`에서
+지원된다. callback attach 이후 `zlink_subscribe()`와 data-plane
+`ZLINK_POLLIN`은 `EBUSY`로 실패한다.
 
 **Pull 모드**도 SUB에서 사용 가능하다: 핸들러를 부착하지 않고
 `zlink_recv()`를 호출하면 토픽 분리 없이 멀티파트 메시지를 수신한다.

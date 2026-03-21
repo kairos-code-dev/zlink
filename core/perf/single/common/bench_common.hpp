@@ -2,12 +2,14 @@
 #define PERF_COMMON_HPP
 
 #include "../../common/perf_infra.hpp"
+#include "perf_single_metric_header.hpp"
 
 #include <chrono>
 #include <condition_variable>
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -287,6 +289,299 @@ private:
     unsigned long long _rng_state;
     std::vector<double> _samples;
 };
+
+struct single_callback_metric_event_t
+{
+    single_callback_metric_event_t () : phase (0), sent_ts_us (0) {}
+
+    uint32_t phase;
+    uint64_t sent_ts_us;
+};
+
+class single_callback_metric_queue_t
+{
+  public:
+    explicit single_callback_metric_queue_t (size_t capacity_) :
+        _events (capacity_ > 1 ? capacity_ + 1 : 2),
+        _head (0),
+        _tail (0)
+    {
+    }
+
+    bool push (const single_callback_metric_event_t &event_)
+    {
+        const size_t head = _head.load (std::memory_order_relaxed);
+        const size_t next = advance (head);
+        if (next == _tail.load (std::memory_order_acquire))
+            return false;
+        _events[head] = event_;
+        _head.store (next, std::memory_order_release);
+        return true;
+    }
+
+    bool pop (single_callback_metric_event_t *event_)
+    {
+        if (!event_)
+            return false;
+        const size_t tail = _tail.load (std::memory_order_relaxed);
+        if (tail == _head.load (std::memory_order_acquire))
+            return false;
+        *event_ = _events[tail];
+        _tail.store (advance (tail), std::memory_order_release);
+        return true;
+    }
+
+    bool empty () const
+    {
+        return _tail.load (std::memory_order_acquire)
+               == _head.load (std::memory_order_acquire);
+    }
+
+  private:
+    size_t advance (size_t index_) const
+    {
+        return index_ + 1 < _events.size () ? index_ + 1 : 0;
+    }
+
+    std::vector<single_callback_metric_event_t> _events;
+    std::atomic<size_t> _head;
+    std::atomic<size_t> _tail;
+};
+
+inline void single_increment_counter (std::atomic<unsigned long long> &counter_)
+{
+    counter_.fetch_add (1, std::memory_order_acq_rel);
+}
+
+inline void single_increment_counter (unsigned long long &counter_)
+{
+    ++counter_;
+}
+
+inline unsigned long long single_load_counter (
+  const std::atomic<unsigned long long> &counter_)
+{
+    return counter_.load (std::memory_order_acquire);
+}
+
+inline unsigned long long single_load_counter (
+  const unsigned long long &counter_)
+{
+    return counter_;
+}
+
+inline uint64_t single_load_deadline (
+  const std::atomic<uint64_t> &deadline_)
+{
+    return deadline_.load (std::memory_order_acquire);
+}
+
+inline uint64_t single_load_deadline (const uint64_t &deadline_)
+{
+    return deadline_;
+}
+
+inline bool single_load_flag (const std::atomic<bool> &flag_)
+{
+    return flag_.load (std::memory_order_acquire);
+}
+
+inline bool single_load_flag (const bool &flag_)
+{
+    return flag_;
+}
+
+inline void single_store_flag (std::atomic<bool> &flag_, bool value_)
+{
+    flag_.store (value_, std::memory_order_release);
+}
+
+inline void single_store_flag (bool &flag_, bool value_)
+{
+    flag_ = value_;
+}
+
+template <typename StateT>
+inline void single_notify_metric_waiters (StateT *state_)
+{
+    if (!state_)
+        return;
+    state_->callback_wait_cv.notify_all ();
+    state_->cv.notify_all ();
+}
+
+template <typename StateT>
+inline void single_mark_callback_fatal (StateT *state_)
+{
+    if (!state_)
+        return;
+    single_store_flag (state_->fatal, true);
+    single_notify_metric_waiters (state_);
+}
+
+template <typename StateT>
+inline bool single_enqueue_metric_event (
+  StateT *state_,
+  const perf_single_metric::header_t &header_)
+{
+    if (!state_)
+        return false;
+    if (!state_->callback_queue)
+        return false;
+
+    single_callback_metric_event_t event;
+    event.phase = header_.phase;
+    event.sent_ts_us = header_.sent_ts_us;
+    if (!state_->callback_queue->push (event)) {
+        single_mark_callback_fatal (state_);
+        return false;
+    }
+    state_->callback_wait_cv.notify_one ();
+    return true;
+}
+
+template <typename StateT>
+inline void single_note_callback_receive (StateT *state_)
+{
+    if (!state_)
+        return;
+    if (state_->probe)
+        state_->probe->sample_recv_if_due ();
+    state_->recv_activity.fetch_add (1, std::memory_order_acq_rel);
+    state_->cv.notify_all ();
+}
+
+template <typename StateT>
+inline void single_account_metric_event (
+  StateT *state_,
+  const single_callback_metric_event_t &event_)
+{
+    if (!state_)
+        return;
+
+    if (event_.phase
+        == static_cast<uint32_t> (perf_single_metric::phase_warmup)) {
+        single_increment_counter (state_->warmup_received);
+    } else if (event_.phase
+               == static_cast<uint32_t> (
+                 perf_single_metric::phase_active)) {
+        const uint64_t now_us = perf_single_metric::now_us ();
+        const uint64_t deadline_us =
+          single_load_deadline (state_->active_deadline_us);
+        if (deadline_us > 0 && now_us <= deadline_us) {
+            single_increment_counter (state_->active_received);
+            const double latency_us =
+              now_us >= event_.sent_ts_us
+                ? static_cast<double> (now_us - event_.sent_ts_us)
+                : 0.0;
+            std::lock_guard<std::mutex> lock (state_->latency_mutex);
+            state_->latency.add (latency_us);
+        }
+    }
+
+    state_->cv.notify_all ();
+}
+
+template <typename StateT>
+inline bool single_wait_for_receive_quiet (StateT &state_,
+                                           int idle_timeout_ms_,
+                                           int total_timeout_ms_)
+{
+    const auto total_deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (total_timeout_ms_ > 0 ? total_timeout_ms_
+                                                         : 1);
+    auto idle_deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (idle_timeout_ms_ > 0 ? idle_timeout_ms_ : 1);
+    unsigned long long observed =
+      state_.recv_activity.load (std::memory_order_acquire);
+
+    std::unique_lock<std::mutex> lock (state_.mutex);
+    while (std::chrono::steady_clock::now () < total_deadline) {
+        const auto wait_deadline =
+          idle_deadline < total_deadline ? idle_deadline : total_deadline;
+        const bool changed = state_.cv.wait_until (
+          lock, wait_deadline, [&state_, observed] () {
+              return state_.recv_activity.load (std::memory_order_acquire)
+                       != observed
+                     || single_load_flag (state_.fatal)
+                     || (state_.callback_queue
+                         && !state_.callback_queue->empty ());
+          });
+        if (single_load_flag (state_.fatal))
+            return false;
+        if (!changed)
+            return true;
+
+        observed = state_.recv_activity.load (std::memory_order_acquire);
+        idle_deadline =
+          std::chrono::steady_clock::now ()
+          + std::chrono::milliseconds (idle_timeout_ms_ > 0 ? idle_timeout_ms_
+                                                            : 1);
+    }
+
+    return !single_load_flag (state_.fatal);
+}
+
+template <typename StateT>
+struct single_metric_worker_t
+{
+    single_metric_worker_t () : state (NULL), queue (NULL), stop (false) {}
+
+    StateT *state;
+    single_callback_metric_queue_t *queue;
+    std::atomic<bool> stop;
+    std::thread thread;
+};
+
+template <typename StateT>
+inline bool start_single_metric_worker (single_metric_worker_t<StateT> *worker_)
+{
+    if (!worker_ || !worker_->state || !worker_->queue)
+        return false;
+
+    worker_->stop.store (false, std::memory_order_release);
+    worker_->thread = std::thread ([worker_]() {
+        single_callback_metric_event_t event;
+        for (;;) {
+            {
+                std::unique_lock<std::mutex> lock (
+                  worker_->state->callback_wait_mutex);
+                worker_->state->callback_wait_cv.wait (
+                  lock, [worker_]() {
+                      return worker_->stop.load (std::memory_order_acquire)
+                             || single_load_flag (worker_->state->fatal)
+                             || !worker_->queue->empty ();
+                  });
+            }
+
+            while (worker_->queue->pop (&event))
+                single_account_metric_event (worker_->state, event);
+
+            if (worker_->stop.load (std::memory_order_acquire)
+                || (single_load_flag (worker_->state->fatal)
+                    && worker_->queue->empty ())) {
+                break;
+            }
+        }
+
+        worker_->state->cv.notify_all ();
+    });
+    return true;
+}
+
+template <typename StateT>
+inline void stop_single_metric_worker (single_metric_worker_t<StateT> *worker_)
+{
+    if (!worker_)
+        return;
+    worker_->stop.store (true, std::memory_order_release);
+    if (worker_->state)
+        worker_->state->callback_wait_cv.notify_all ();
+    if (worker_->thread.joinable ())
+        worker_->thread.join ();
+}
 
 inline int bench_io_threads()
 {
@@ -797,16 +1092,347 @@ inline void close_socket_readiness_monitor(readiness_monitor_t &monitor_)
     }
 }
 
+struct service_event_probe_state_t {
+    service_event_probe_state_t() : error_event(0), error_code(0) {}
+
+    uint32_t error_event;
+    int error_code;
+    std::mutex sync;
+    std::condition_variable cv;
+    std::vector<zlink_service_event_t> events;
+};
+
+struct service_event_probe_t {
+    service_event_probe_t() : owner(NULL), monitor(NULL), state(NULL) {}
+
+    void *owner;
+    void *monitor;
+    service_event_probe_state_t *state;
+};
+
+inline void service_event_probe_handler(const zlink_service_event_t *event_,
+                                        void *userdata_)
+{
+    service_event_probe_state_t *state =
+      static_cast<service_event_probe_state_t *>(userdata_);
+    if (!state || !event_)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock(state->sync);
+        if (state->error_event != 0
+            && event_->event_type == state->error_event
+            && state->error_code == 0) {
+            state->error_code =
+              event_->error_code != 0 ? event_->error_code : EIO;
+        }
+        state->events.push_back(*event_);
+    }
+    state->cv.notify_all();
+}
+
+inline bool open_service_event_probe(void *service_,
+                                     uint64_t events_,
+                                     uint32_t error_event_,
+                                     service_event_probe_t &out_)
+{
+    out_.owner = service_;
+    out_.monitor = NULL;
+    out_.state = NULL;
+    if (!service_ || events_ == 0)
+        return false;
+
+    service_event_probe_state_t *state =
+      new (std::nothrow) service_event_probe_state_t();
+    if (!state)
+        return false;
+    state->error_event = error_event_;
+
+    zlink_service_monitor_open_options_t monitor_opts;
+    memset(&monitor_opts, 0, sizeof(monitor_opts));
+    monitor_opts.events = events_;
+    void *monitor = zlink_service_monitor_open(service_, &monitor_opts);
+    if (!monitor) {
+        delete state;
+        return false;
+    }
+    if (zlink_service_monitor_handler(monitor, &service_event_probe_handler, state)
+        != 0) {
+        zlink_monitor_close(&monitor);
+        delete state;
+        return false;
+    }
+
+    const int monitor_hwm = parse_positive_env("PERF_MONITOR_HWM", 1000);
+    set_sockopt_int(monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
+    if (monitor_hwm > 0) {
+        set_sockopt_int(monitor, ZLINK_OPT_SNDHWM, monitor_hwm,
+                        "ZLINK_OPT_SNDHWM");
+        set_sockopt_int(monitor, ZLINK_OPT_RCVHWM, monitor_hwm,
+                        "ZLINK_OPT_RCVHWM");
+    }
+
+    out_.monitor = monitor;
+    out_.state = state;
+    return true;
+}
+
+inline bool consume_matching_service_event_locked(
+  service_event_probe_state_t *state_,
+  uint32_t expected_event_type_,
+  const char *endpoint_prefix_,
+  const char *subject_,
+  int min_value_)
+{
+    if (!state_)
+        return false;
+
+    for (std::vector<zlink_service_event_t>::iterator it =
+           state_->events.begin();
+         it != state_->events.end(); ++it) {
+        if (it->event_type != expected_event_type_)
+            continue;
+        if (endpoint_prefix_ && endpoint_prefix_[0] != '\0') {
+            if ((it->detail_flags & ZLINK_EVENT_DETAIL_ENDPOINT) == 0)
+                continue;
+            if (std::strncmp(it->endpoint, endpoint_prefix_,
+                             std::strlen(endpoint_prefix_))
+                != 0) {
+                continue;
+            }
+        }
+        if (subject_ && subject_[0] != '\0') {
+            if ((it->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) == 0)
+                continue;
+            if (std::strcmp(it->subject, subject_) != 0)
+                continue;
+        }
+        if (min_value_ >= 0 && static_cast<int>(it->value) < min_value_)
+            continue;
+        state_->events.erase(it);
+        return true;
+    }
+
+    return false;
+}
+
+inline bool wait_for_service_event(service_event_probe_t &probe_,
+                                   uint32_t expected_event_type_,
+                                   const char *endpoint_prefix_,
+                                   const char *subject_,
+                                   int min_value_,
+                                   int timeout_ms_)
+{
+    if (!probe_.state)
+        return false;
+
+    std::unique_lock<std::mutex> lock(probe_.state->sync);
+    if (probe_.state->error_code != 0)
+        return false;
+    if (consume_matching_service_event_locked(probe_.state,
+                                              expected_event_type_,
+                                              endpoint_prefix_,
+                                              subject_,
+                                              min_value_)) {
+        return true;
+    }
+
+    const bool signaled = probe_.state->cv.wait_for(
+      lock,
+      std::chrono::milliseconds(timeout_ms_ > 0 ? timeout_ms_ : 1),
+      [&probe_, expected_event_type_, endpoint_prefix_, subject_, min_value_]() {
+          return probe_.state->error_code != 0
+                 || consume_matching_service_event_locked(
+                      probe_.state,
+                      expected_event_type_,
+                      endpoint_prefix_,
+                      subject_,
+                      min_value_);
+      });
+    return signaled && probe_.state->error_code == 0;
+}
+
+inline void close_service_event_probe(service_event_probe_t &probe_)
+{
+    service_event_probe_state_t *state = probe_.state;
+    void *owner = probe_.owner;
+    void *monitor = probe_.monitor;
+    probe_.owner = NULL;
+    probe_.monitor = NULL;
+    probe_.state = NULL;
+
+    if (!monitor && !state)
+        return;
+
+    if (monitor)
+        stop_and_close_socket_monitor(owner, &monitor);
+    delete state;
+}
+
+struct service_flag_monitor_state_t {
+    service_flag_monitor_state_t() :
+        ready_event(0), error_event(0), ready(false), error_code(0) {}
+
+    uint32_t ready_event;
+    uint32_t error_event;
+    bool ready;
+    int error_code;
+    std::mutex sync;
+    std::condition_variable cv;
+};
+
+struct service_flag_monitor_t {
+    service_flag_monitor_t() : owner(NULL), monitor(NULL), state(NULL) {}
+
+    void *owner;
+    void *monitor;
+    service_flag_monitor_state_t *state;
+};
+
+inline void service_flag_monitor_handler(const zlink_service_event_t *event_,
+                                         void *userdata_)
+{
+    service_flag_monitor_state_t *state =
+      static_cast<service_flag_monitor_state_t *>(userdata_);
+    if (!state || !event_)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock(state->sync);
+        if (event_->event_type == state->ready_event) {
+            state->ready = event_->value > 0;
+        } else if (event_->event_type == state->error_event
+                   && state->error_code == 0) {
+            state->error_code =
+              event_->error_code != 0 ? event_->error_code : EIO;
+        }
+    }
+    state->cv.notify_all();
+}
+
+inline bool open_service_flag_monitor(void *service_,
+                                      uint64_t events_,
+                                      uint32_t ready_event_,
+                                      uint32_t error_event_,
+                                      service_flag_monitor_t &out_)
+{
+    out_.owner = service_;
+    out_.monitor = NULL;
+    out_.state = NULL;
+    if (!service_ || events_ == 0 || ready_event_ == 0)
+        return false;
+
+    service_flag_monitor_state_t *state =
+      new (std::nothrow) service_flag_monitor_state_t();
+    if (!state)
+        return false;
+    state->ready_event = ready_event_;
+    state->error_event = error_event_;
+
+    zlink_service_monitor_open_options_t monitor_opts;
+    memset(&monitor_opts, 0, sizeof(monitor_opts));
+    monitor_opts.events = events_;
+    void *monitor = zlink_service_monitor_open(service_, &monitor_opts);
+    if (!monitor) {
+        delete state;
+        return false;
+    }
+    if (zlink_service_monitor_handler(monitor, &service_flag_monitor_handler, state)
+        != 0) {
+        zlink_monitor_close(&monitor);
+        delete state;
+        return false;
+    }
+
+    const int monitor_hwm = parse_positive_env("PERF_MONITOR_HWM", 1000);
+    set_sockopt_int(monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
+    if (monitor_hwm > 0) {
+        set_sockopt_int(monitor, ZLINK_OPT_SNDHWM, monitor_hwm,
+                        "ZLINK_OPT_SNDHWM");
+        set_sockopt_int(monitor, ZLINK_OPT_RCVHWM, monitor_hwm,
+                        "ZLINK_OPT_RCVHWM");
+    }
+
+    out_.monitor = monitor;
+    out_.state = state;
+    return true;
+}
+
+inline bool wait_service_flag_ready(service_flag_monitor_t &monitor_,
+                                    int timeout_ms_)
+{
+    if (!monitor_.state)
+        return false;
+
+    std::unique_lock<std::mutex> lock(monitor_.state->sync);
+    if (monitor_.state->error_code != 0)
+        return false;
+    if (monitor_.state->ready)
+        return true;
+
+    const bool signaled = monitor_.state->cv.wait_for(
+      lock,
+      std::chrono::milliseconds(timeout_ms_ > 0 ? timeout_ms_ : 1),
+      [&monitor_]() {
+          return monitor_.state->error_code != 0 || monitor_.state->ready;
+      });
+    return signaled && monitor_.state->error_code == 0
+           && monitor_.state->ready;
+}
+
+inline bool wait_service_flag_stable(service_flag_monitor_t &monitor_,
+                                     int settle_ms_)
+{
+    if (settle_ms_ <= 0)
+        return true;
+    if (!monitor_.state)
+        return false;
+
+    std::unique_lock<std::mutex> lock(monitor_.state->sync);
+    if (monitor_.state->error_code != 0 || !monitor_.state->ready)
+        return false;
+
+    const std::chrono::steady_clock::time_point settle_deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(settle_ms_);
+    while (std::chrono::steady_clock::now() < settle_deadline) {
+        if (monitor_.state->cv.wait_until(
+              lock, settle_deadline,
+              [&monitor_]() { return monitor_.state->error_code != 0; })) {
+            return false;
+        }
+    }
+
+    return monitor_.state->error_code == 0 && monitor_.state->ready;
+}
+
+inline void close_service_flag_monitor(service_flag_monitor_t &monitor_)
+{
+    service_flag_monitor_state_t *state = monitor_.state;
+    void *owner = monitor_.owner;
+    void *monitor = monitor_.monitor;
+    monitor_.owner = NULL;
+    monitor_.monitor = NULL;
+    monitor_.state = NULL;
+
+    if (!monitor && !state)
+        return;
+
+    if (monitor)
+        stop_and_close_socket_monitor(owner, &monitor);
+    delete state;
+}
+
 inline std::string resolve_single_perf_recv_mode()
 {
     const char *env = std::getenv("PERF_RECV_MODE");
     if (!env || !*env)
-        return "recv";
+        return "callback";
 
     std::string mode(env);
     std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
     if (mode != "recv" && mode != "callback")
-        return "recv";
+        return "callback";
     return mode;
 }
 
@@ -817,6 +1443,11 @@ inline bool single_perf_callback_mode()
 
 inline bool single_perf_callback_supported_for_pattern(const char *pattern)
 {
+    return pattern && *pattern;
+}
+
+inline bool single_perf_recv_supported_for_pattern(const char *pattern)
+{
     return pattern && std::string(pattern) == "SPOT";
 }
 
@@ -825,9 +1456,16 @@ inline bool single_perf_validate_recv_mode_for_pattern(const char *pattern)
     if (!pattern || !*pattern)
         return false;
 
-    if (resolve_single_perf_recv_mode() == "callback"
+    const std::string mode = resolve_single_perf_recv_mode();
+    if (mode == "callback"
         && !single_perf_callback_supported_for_pattern(pattern)) {
         std::cerr << "policy violation: --recv callback unsupported for "
+                  << pattern << std::endl;
+        return false;
+    }
+
+    if (mode == "recv" && !single_perf_recv_supported_for_pattern(pattern)) {
+        std::cerr << "policy violation: --recv recv unsupported for "
                   << pattern << std::endl;
         return false;
     }

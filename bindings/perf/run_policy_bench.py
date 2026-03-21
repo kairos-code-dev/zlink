@@ -50,8 +50,6 @@ MULTI_PATTERNS: List[str] = [
     "MULTI_GATEWAY",
     "MULTI_SPOT",
     "MULTI_STREAM",
-    "MULTI_STREAM_CALLBACK",
-    "MULTI_STREAM_LEN32BE",
 ]
 
 SINGLE_STREAM_PATTERNS = {
@@ -310,6 +308,7 @@ class ComboStats:
 class SuiteConfig:
     binding: str
     suite: str  # single | multi
+    recv_mode: str
     mode: str
     runs: int
     reuse_build: bool
@@ -382,6 +381,31 @@ def parse_patterns(value: str, suite: str) -> List[str]:
     return [p for p in default if p in requested]
 
 
+def resolve_recv_mode(suite: str, value: str) -> str:
+    recv_mode = (value or ("callback" if suite == "single" else "recv")).strip().lower()
+    if recv_mode not in {"recv", "callback"}:
+        raise ValueError(f"invalid recv mode: {value}")
+    return recv_mode
+
+
+def supported_recv_modes(suite: str, pattern: str) -> Tuple[str, ...]:
+    if suite == "single":
+        return ("callback",)
+    if pattern == "MULTI_STREAM":
+        return ("recv", "callback")
+    if pattern == "MULTI_SPOT":
+        return ("recv",)
+    return ("recv",)
+
+
+def resolve_effective_pattern(cfg: SuiteConfig, pattern: str) -> str:
+    if cfg.suite != "multi":
+        return pattern
+    if pattern == "MULTI_STREAM" and cfg.recv_mode == "callback":
+        return "MULTI_STREAM_CALLBACK"
+    return pattern
+
+
 def pattern_direction(pattern: str, suite: str) -> str:
     p = pattern.upper()
     if suite == "single":
@@ -430,8 +454,8 @@ def env_first(*names: str) -> Optional[str]:
     return None
 
 
-def result_file_name(tag: str) -> str:
-    name = f"perf_{platform_tag()}_{utc_file_stamp()}"
+def result_file_name(recv_mode: str, tag: str) -> str:
+    name = f"perf_{platform_tag()}_{recv_mode}_{utc_file_stamp()}"
     clean = sanitize_tag(tag)
     if clean:
         name += f"_{clean}"
@@ -823,8 +847,6 @@ def binding_cmd_prefix(cfg: SuiteConfig, requested_pattern: str) -> Tuple[List[s
         "MULTI_GATEWAY": "GATEWAY",
         "MULTI_SPOT": "SPOT",
         "MULTI_STREAM": "STREAM",
-        "MULTI_STREAM_CALLBACK": "STREAM_CALLBACK",
-        "MULTI_STREAM_LEN32BE": "STREAM_LEN32BE",
     }
 
     base_pattern = requested_pattern
@@ -1411,6 +1433,22 @@ def pattern_aliases(pattern: str) -> Set[str]:
         aliases.add(p[len("MULTI_") :])
     elif p:
         aliases.add(f"MULTI_{p}")
+    if p in {"MULTI_STREAM", "STREAM"}:
+        aliases.update(
+            {
+                "MULTI_STREAM_CALLBACK",
+                "MULTI_STREAM_LEN32BE",
+                "STREAM_CALLBACK",
+                "STREAM_LEN32BE",
+            }
+        )
+    elif p in {
+        "MULTI_STREAM_CALLBACK",
+        "MULTI_STREAM_LEN32BE",
+        "STREAM_CALLBACK",
+        "STREAM_LEN32BE",
+    }:
+        aliases.update({"MULTI_STREAM", "STREAM"})
     return aliases
 
 
@@ -2622,6 +2660,7 @@ def render_meta_result_lines(meta: Dict[str, str], results: Dict[MetricKey, floa
         "timestamp",
         "load_avg",
         "mode",
+        "recv_mode",
         "runs",
         "clients",
         "status",
@@ -2711,6 +2750,7 @@ def make_parser() -> argparse.ArgumentParser:
     ap.add_argument("--binding", required=False)
     ap.add_argument("--suite", choices=("single", "multi"), required=True)
     ap.add_argument("--pattern", default="ALL")
+    ap.add_argument("--recv", default="")
     ap.add_argument("--build-dir", default="")  # accepted for CLI compatibility
     ap.add_argument("--runs", type=int, default=0)
     ap.add_argument("--reuse-build", action="store_true")
@@ -2747,10 +2787,22 @@ def make_parser() -> argparse.ArgumentParser:
 
 def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
     binding = (args.binding or os.environ.get("BINDING") or "").strip().lower()
-    if binding not in {"python", "node", "dotnet", "java", "cpp"}:
-        raise ValueError("--binding is required and must be one of: python,node,dotnet,java,cpp")
+    if binding not in {"dotnet", "java", "cpp"}:
+        raise ValueError("--binding is required and must be one of: cpp,dotnet,java")
 
     patterns = parse_patterns(args.pattern, args.suite)
+    recv_mode = resolve_recv_mode(args.suite, args.recv)
+    unsupported = [
+        pattern
+        for pattern in patterns
+        if recv_mode not in supported_recv_modes(args.suite, pattern)
+    ]
+    if unsupported:
+        raise ValueError(
+            "unsupported recv mode for patterns: "
+            + ", ".join(sorted(set(unsupported)))
+            + f" (recv={recv_mode})"
+        )
 
     runs = args.runs
     if runs <= 0:
@@ -2906,6 +2958,7 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
     cfg = SuiteConfig(
         binding=binding,
         suite=args.suite,
+        recv_mode=recv_mode,
         mode=args.mode,
         runs=runs,
         reuse_build=reuse_build,
@@ -3150,6 +3203,7 @@ def run_multi_pattern_transport(
     for size_index, size in enumerate(sizes):
         combo_outcomes: List[RunOutcome] = []
         for run_idx in range(cfg.runs):
+            effective_pattern = resolve_effective_pattern(cfg, pattern)
             if not use_core_output_style():
                 logger.print(f"{run_idx + 1} ", end="", flush=True)
             combo_key = (pattern, transport, size)
@@ -3157,7 +3211,7 @@ def run_multi_pattern_transport(
                 server_cmd = binding_multi_role_command(
                     cfg,
                     "server",
-                    pattern,
+                    effective_pattern,
                     transport,
                     size=size,
                 )
@@ -3226,7 +3280,7 @@ def run_multi_pattern_transport(
                     client_cmd = binding_multi_role_command(
                         cfg,
                         "client",
-                        pattern,
+                        effective_pattern,
                         transport,
                         size=size,
                         endpoint=endpoint,
@@ -3234,7 +3288,7 @@ def run_multi_pattern_transport(
                 sampled = run_command_with_metrics(client_cmd, pattern_env, timeout)
                 outcome = parse_run_outcome(
                     pattern,
-                    pattern,
+                    effective_pattern,
                     transport,
                     size,
                     sampled,
@@ -3265,9 +3319,9 @@ def run_multi_pattern_transport(
 
                 server_cap.join_readers()
                 server_stdout = server_cap.stdout_text()
-                server_out_pattern = pattern
+                server_out_pattern = effective_pattern
                 if cfg.binding == "dotnet" and pattern.startswith("MULTI_"):
-                    server_out_pattern = pattern[len("MULTI_") :]
+                    server_out_pattern = effective_pattern[len("MULTI_") :]
 
                 server_metrics = parse_result_metrics_from_text(
                     server_stdout, pattern, transport, size
@@ -3627,6 +3681,7 @@ def run() -> int:
         # Build Tier1 result map and META
         host_meta = collect_host_meta()
         host_meta["mode"] = cfg.mode
+        host_meta["recv_mode"] = cfg.recv_mode
         host_meta["runs"] = str(cfg.runs)
         if cfg.suite == "multi":
             host_meta["clients"] = str(cfg.multi_clients)
@@ -3646,7 +3701,7 @@ def run() -> int:
         report_dir.mkdir(parents=True, exist_ok=True)
 
         # tmp is always saved (policy v1.3).
-        tmp_file = cfg.result_file if cfg.result_file else tmp_dir / result_file_name(cfg.results_tag)
+        tmp_file = cfg.result_file if cfg.result_file else tmp_dir / result_file_name(cfg.recv_mode, cfg.results_tag)
         tmp_file.parent.mkdir(parents=True, exist_ok=True)
         write_result_file(tmp_file, host_meta, result_map, table_lines)
         enforce_retention(tmp_dir)
@@ -3688,7 +3743,7 @@ def run() -> int:
         # --result => report save (complete-only).
         if cfg.result:
             if status == "complete":
-                report_file = report_dir / result_file_name(cfg.results_tag)
+                report_file = report_dir / result_file_name(cfg.recv_mode, cfg.results_tag)
                 write_report_file(report_file, table_lines)
                 enforce_retention(report_dir)
                 logger.print(f"Saved report file: {report_file}")

@@ -4,22 +4,22 @@
 
 Gateway는 서비스 바인딩된 로드 밸런싱 요청/응답 핸들입니다. Discovery가
 연결된 경우 서비스 위치를 자동으로 확인하고, 구성 가능한 로드 밸런싱 전략을
-사용하여 연결된 피어에 메시지를 분배합니다. Gateway는 recv/poller 중심
-control model을 사용합니다.
+사용하여 연결된 피어에 메시지를 분배합니다. Gateway는 recv-with-callback
+공통 계약을 따르며 receive callback과 send-ready callback은 서로 독립입니다.
 
 ## I/O 모델
 
-Gateway handle은 **recv 모드**로 시작하며 handle 수명 전체에서 그 모델을
-유지합니다.
+Gateway handle은 **recv 모드**로 시작합니다.
 
-| | Gateway |
-|---|---|
-| **수신** | `zlink_gateway_recv()` |
-| **쓰기 준비 감지** | poller `ZLINK_POLLOUT` |
-| **callback attach** | `zlink_recv_handler()` / `zlink_send_ready_handler()`는 `ENOTSUP` |
+| | 기본 Gateway | `zlink_recv_handler()` 이후 | `zlink_send_ready_handler()` 이후 |
+|---|---|---|---|
+| **수신** | `zlink_gateway_recv()` / `zlink_recv()` | callback dispatch, direct recv = `EBUSY` | unchanged |
+| **읽기 poller** | `ZLINK_POLLIN` | `EBUSY` | unchanged |
+| **쓰기 준비 감지** | poller `ZLINK_POLLOUT` | unchanged | callback dispatch, `ZLINK_POLLOUT` = `EBUSY` |
 
-- `zlink_gateway_send()` / `zlink_gateway_send_rid()`는 recv 모드에서 동작합니다.
-- writable readiness는 gateway callback이 아니라 poller `ZLINK_POLLOUT`로 처리합니다.
+- `zlink_recv_handler(gateway, ...)`는 지원됩니다.
+- `zlink_send_ready_handler(gateway, ...)`는 지원되며 receive callback 선행 조건이 없습니다.
+- `zlink_gateway_send()` / `zlink_gateway_send_rid()`는 두 receive model 모두에서 동작합니다.
 
 ## 스레드 안전성 요약
 
@@ -389,22 +389,22 @@ int zlink_set_tls_server (void *gateway,
 
 ### Send-Ready — zlink_send_ready_handler
 
-Gateway는 generic send-ready handler 심볼을 노출하지만, Gateway handle에는
-attach할 수 없습니다.
+Gateway는 generic send-ready callback 계약을 그대로 사용합니다.
 
 ```c
 int zlink_send_ready_handler (
   void *gateway, zlink_send_ready_handler_fn handler, void *userdata);
 ```
 
-Gateway handle은 `-1`과 `errno=ENOTSUP`를 반환합니다. writable readiness는
-대신 poller `ZLINK_POLLOUT`로 처리합니다.
+attach는 receive callback 모드와 독립적입니다. attach 이후 writable
+readiness는 callback으로 전달되고, data-plane poller `ZLINK_POLLOUT`은
+`errno=EBUSY`로 실패합니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
 **에러:**
 - `EINVAL` -- `handler`가 `NULL`입니다.
-- `ENOTSUP` -- Gateway는 send-ready callback attach를 지원하지 않습니다.
+- `EBUSY` -- 같은 handle에서 data-plane writable poller surface가 이미 선택되어 있습니다.
 
 전체 내용은 [socket.ko.md](socket.ko.md)를 참조하세요.
 

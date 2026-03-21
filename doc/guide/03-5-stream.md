@@ -74,10 +74,12 @@ Frame 1: payload (N bytes)
 
 ## 4. Callback Dispatch (Receive/Reply)
 
-STREAM uses callback-only dispatch for all receive operations.
-`recv()` / `zlink_msg_recv()` are not supported on STREAM sockets.
-Register a callback via `zlink_recv_handler()`. The handler is permanent
-once attached and cannot be detached.
+STREAM starts in recv mode and also supports callback receive.
+- In recv mode, pull multipart frames with `zlink_recv()`.
+- Call `zlink_recv_handler()` when you want callback receive; after attach,
+  direct recv and data-plane `ZLINK_POLLIN` fail with `EBUSY`.
+- `zlink_send_ready_handler()` is independent from receive callback mode.
+  After attach, data-plane `ZLINK_POLLOUT` fails with `EBUSY`.
 
 ### Callback Dispatch
 

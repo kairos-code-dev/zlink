@@ -5,21 +5,22 @@
 The Gateway is a service-bound load-balanced request/reply handle. It resolves
 service locations automatically via Discovery (when attached) and distributes
 messages across connected peers using a configurable load-balancing strategy.
-Gateway uses a recv/poller-centered control model.
+Gateway follows the common recv-with-callback contract: receive callback and
+send-ready callback are independent axes.
 
 ## I/O Model
 
-A Gateway handle starts in **recv model** and remains there for its entire
-lifetime.
+A Gateway handle starts in **recv model**.
 
-| | Gateway |
-|---|---|
-| **Receive** | `zlink_gateway_recv()` |
-| **Writable readiness** | poller `ZLINK_POLLOUT` |
-| **Callback attach** | `zlink_recv_handler()` / `zlink_send_ready_handler()` return `ENOTSUP` |
+| | Gateway default | After `zlink_recv_handler()` | After `zlink_send_ready_handler()` |
+|---|---|---|---|
+| **Receive** | `zlink_gateway_recv()` / `zlink_recv()` | callback dispatch, direct recv = `EBUSY` | unchanged |
+| **Readable poller** | `ZLINK_POLLIN` | `EBUSY` | unchanged |
+| **Writable readiness** | poller `ZLINK_POLLOUT` | unchanged | callback dispatch, `ZLINK_POLLOUT` = `EBUSY` |
 
-- `zlink_gateway_send()` / `zlink_gateway_send_rid()` work in recv mode.
-- Writable readiness is modeled with poller `ZLINK_POLLOUT`, not a gateway callback API.
+- `zlink_recv_handler(gateway, ...)` is supported.
+- `zlink_send_ready_handler(gateway, ...)` is supported and does not require receive callback mode first.
+- `zlink_gateway_send()` / `zlink_gateway_send_rid()` work in either receive model.
 
 ## Thread-Safety Summary
 
@@ -390,22 +391,22 @@ See [socket.md](socket.md) for full details.
 
 ### Send-Ready — zlink_send_ready_handler
 
-Gateway exposes the generic send-ready handler symbol, but Gateway handles do
-not support attaching it.
+Gateway uses the generic send-ready callback contract.
 
 ```c
 int zlink_send_ready_handler (
   void *gateway, zlink_send_ready_handler_fn handler, void *userdata);
 ```
 
-Gateway handles return `-1` with `errno=ENOTSUP`. Use poller
-`ZLINK_POLLOUT` for writable readiness instead.
+The attach is independent from receive callback mode. After attach, writable
+readiness is delivered by callback and data-plane poller `ZLINK_POLLOUT`
+returns `EBUSY`.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
 **Errors:**
 - `EINVAL` -- `handler` is `NULL`.
-- `ENOTSUP` -- Gateway does not support send-ready callback attach.
+- `EBUSY` -- data-plane writable poller surface is already selected on the same handle.
 
 See [socket.md](socket.md) for full details.
 

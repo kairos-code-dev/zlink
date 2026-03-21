@@ -96,6 +96,7 @@ class socket_base_t : public own_t,
     int socket_set_send_ready_handler_with_userdata (
       zlink_send_ready_handler_fn handler_, void *subject_, void *userdata_);
     bool socket_msg_dispatch_active () const;
+    bool send_ready_handler_active () const;
     static socket_base_t *current_socket_msg_dispatch_socket ();
     static socket_base_t *current_send_ready_dispatch_socket ();
     static zlink::pipe_t *current_socket_msg_dispatch_pipe ();

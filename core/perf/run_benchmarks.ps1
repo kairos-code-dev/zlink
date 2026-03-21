@@ -41,7 +41,7 @@ Options:
   -ResultsDir PATH             Override result root directory.
   -ResultsTag NAME             Optional tag in saved result filename.
   -Runs N                      Iterations per pattern/transport/size (default: 1).
-  -Recv MODE                   Receive model: recv|callback (default: recv).
+  -Recv MODE                   Receive model: callback (default: callback).
   -Duration N                  Override single duration seconds (default: 5).
   -Hwm N                       Override PERF_SINGLE_HWM (default: 1000 in binary).
   -SendHwm N                   Override PERF_SINGLE_SNDHWM (fallback: -Hwm).
@@ -73,7 +73,7 @@ if (-not $Recv) {
     $Recv = $env:PERF_RECV_MODE
 }
 if (-not $Recv) {
-    $Recv = "recv"
+    $Recv = "callback"
 }
 $Recv = $Recv.Trim().ToLowerInvariant()
 if ($Recv -notin @("recv", "callback")) {

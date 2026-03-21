@@ -3,9 +3,12 @@
 # 소켓 API 레퍼런스
 
 소켓 API는 zlink 소켓의 생성, 구성, 바인딩, 연결, I/O 수행을 위한 함수를
-제공합니다. raw socket은 기본적으로 recv/poller 모델을 사용하며,
-callback receive는 raw `STREAM`에만 남아 있습니다. 토픽 callback receive는
-`spot` / `spot_node`에만 남아 있습니다.
+제공합니다. 모든 소켓은 recv 모드로 시작합니다. 멀티파트 callback receive
+(`zlink_recv_handler()`)는 raw `PAIR`, `DEALER`, `ROUTER`, `STREAM`,
+`gateway`에서 지원됩니다. 토픽 callback receive
+(`zlink_subscribe_handler()`)는 raw `SUB`, `XSUB`, `spot`, `spot_node`에서
+지원됩니다. send-ready callback (`zlink_send_ready_handler()`)는 독립 축으로
+모든 send-capable subject에서 사용할 수 있습니다.
 
 ## 스레드 안전성 요약
 
@@ -35,7 +38,8 @@ typedef void (*zlink_socket_msg_handler_fn) (
   void *userdata_);
 ```
 
-raw `STREAM` 소켓에서 멀티파트 메시지 dispatch에 사용되는 콜백입니다.
+멀티파트 수신 subject(raw `PAIR`, `DEALER`, `ROUTER`, `STREAM`,
+`gateway`)에서 멀티파트 메시지 dispatch에 사용되는 콜백입니다.
 소유 I/O 스레드에서 호출됩니다. 모든 메시지 파트의 소유권이 콜백으로
 이전되며, 각 파트는 정확히 한 번 close하거나 소비해야 합니다.
 `zlink_recv_handler()`와 함께 사용합니다.
@@ -51,16 +55,17 @@ typedef void (*zlink_subscribe_handler_fn) (const zlink_routing_id_t *source_rid
                                        void *userdata_);
 ```
 
-`spot` / `spot_node`에서 토픽 기반 메시지 dispatch에 사용되는 콜백입니다.
-소유 I/O 스레드에서 호출되며, 파트의 소유권이 이전됩니다.
+토픽 기반 수신 subject(raw `SUB`, `XSUB`, `spot`, `spot_node`)에서
+토픽 기반 메시지 dispatch에 사용되는 콜백입니다. 소유 I/O 스레드에서
+호출되며, 파트의 소유권이 이전됩니다.
 `zlink_subscribe_handler()`와 함께 사용합니다.
 
 각 콜백 타입은 전용 함수를 통해 등록합니다. 소켓 타입별 등록 함수 매핑:
 
 | 소켓 타입 | 등록 함수 | 콜백 |
 |---|---|---|
-| STREAM | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
-| spot, spot_node | `zlink_subscribe_handler` | `zlink_subscribe_handler_fn` |
+| PAIR, DEALER, ROUTER, STREAM, gateway | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
+| SUB, XSUB, spot, spot_node | `zlink_subscribe_handler` | `zlink_subscribe_handler_fn` |
 | PUB | N/A | 송신 전용; 핸들러 불필요 |
 
 ### zlink_send_ready_handler_fn
@@ -264,8 +269,10 @@ void *zlink_socket (void *context_, zlink_socket_type_t type_);
 ```
 
 지정된 context 내에서 새 소켓을 생성합니다. `type_` 매개변수는 메시징 패턴을
-선택합니다. raw socket은 recv 모드로 시작합니다. callback attach는 raw
-`STREAM`에서만 `zlink_recv_handler()`로 지원됩니다. 소켓은 context가
+선택합니다. raw socket은 recv 모드로 시작합니다. 멀티파트 수신
+subject(`PAIR`, `DEALER`, `ROUTER`, `STREAM`)는 `zlink_recv_handler()`
+callback attach를 지원하고, 토픽 기반 subject(`SUB`, `XSUB`)는
+`zlink_subscribe_handler()`를 지원합니다. 소켓은 context가
 종료되기 전에 `zlink_close()`로 닫아야 합니다.
 
 **반환값:** 성공 시 소켓 핸들, 실패 시 `NULL` (errno가 설정됨).
@@ -289,10 +296,11 @@ int zlink_recv_handler (void *s_,
                         void *userdata_);
 ```
 
-raw `STREAM` 소켓에 메시지 수신 핸들러를 부착합니다. 소켓은 recv 모드로
-시작합니다. 이 호출은 핸들을 콜백 모드로 전환하며, 소켓의 수명 동안
-되돌릴 수 없습니다. 동일 핸들에 대한 두 번째 attach는 `errno=EBUSY`로
-실패합니다. 다른 raw socket 타입은 `ENOTSUP`를 반환합니다.
+멀티파트 수신 subject에 메시지 수신 핸들러를 부착합니다. 지원 대상은 raw
+`PAIR`, `DEALER`, `ROUTER`, `STREAM`, `gateway`입니다. attach 이후 같은
+subject의 direct recv와 data-plane poller `ZLINK_POLLIN`은 `errno=EBUSY`로
+실패합니다. 동일 subject에 대한 두 번째 attach도 `errno=EBUSY`입니다.
+지원하지 않는 subject는 `ENOTSUP`를 반환합니다.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
@@ -313,10 +321,11 @@ int zlink_subscribe_handler (void *s_,
                              void *userdata_);
 ```
 
-`spot` 또는 `spot_node`에 토픽 기반 수신 핸들러를 부착합니다. handle은 recv
-모드로 시작합니다. 이 호출은 핸들을 콜백 모드로 전환하며, handle 수명 동안
-되돌릴 수 없습니다. 동일 핸들에 대한 두 번째 attach는 `errno=EBUSY`로
-실패합니다. raw `SUB` / `XSUB`는 `ENOTSUP`를 반환합니다.
+raw `SUB`, raw `XSUB`, `spot`, `spot_node`에 토픽 기반 수신 핸들러를
+부착합니다. attach 이후 같은 subject의 `zlink_subscribe()`와 data-plane
+poller `ZLINK_POLLIN`은 `errno=EBUSY`로 실패합니다. 동일 subject에 대한
+두 번째 attach도 `errno=EBUSY`입니다. 지원하지 않는 subject는 `ENOTSUP`를
+반환합니다.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
@@ -968,9 +977,11 @@ int zlink_send_ready_handler (void *s_,
 가능 전환부터 반영됩니다. 동일 핸들의 send-ready 콜백 내에서 재진입 호출하면
 `errno=EDEADLK`로 실패합니다.
 
-지원: callback mode의 raw `STREAM`, callback mode의 `spot`, `spot_node`.
-recv mode의 writable readiness는 poller `ZLINK_POLLOUT`를 사용합니다.
-그 외 raw socket과 `gateway`는 `ENOTSUP`입니다.
+지원 대상은 raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
+`gateway`, `spot`, `spot_node`입니다. send-ready는 receive callback 모드와
+독립적입니다. attach 이후 같은 subject의 data-plane poller
+`ZLINK_POLLOUT`은 `errno=EBUSY`로 실패합니다. 지원하지 않는 subject는
+`ENOTSUP`를 반환합니다.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 

@@ -5,7 +5,10 @@
 > **Date**: 2026-03-21
 > **Scope**: zlink multi-client 성능 테스트 정책
 >
-> 본 정책은 `perf/multi`의 C++ 벤치마크뿐 아니라 모든 바인딩 라이브러리(`bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/node`, `bindings/python`)의 multi-client 성능 테스트에도 동일하게 적용된다.
+> 본 정책은 `perf/multi`의 C++ 벤치마크와 현재 multi perf suite가 구현된
+> 바인딩(`bindings/cpp`, `bindings/dotnet`, `bindings/java`)에 동일하게
+> 적용된다. `bindings/node`, `bindings/python`은 아직 multi perf suite가
+> 구현되지 않았으므로 본 문서를 향후 기준으로 삼는다.
 >
 > **상위 문서**: [PERF_POLICY.md](PERF_POLICY.md) — 공통 디렉터리 구조, 통합 실행, 비교 스크립트
 > **관련 문서**: [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) — single-client 성능 테스트
@@ -105,6 +108,8 @@
 - multi perf start gate 구현에서 아래를 금지한다.
   - ad-hoc sleep/retry handshake loop
   - monitor snapshot polling
+- monitor callback 기반 wait helper는 허용한다. 단, helper가 snapshot polling
+  이나 첫 전송 성공 대기를 감춘 래퍼가 되어서는 안 된다.
 - 패턴별 ready gate 이벤트는
   [`../guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
   "메시징 시작 전 준비 확인" 절을 단일 기준으로 따른다.
@@ -145,6 +150,9 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 - server는 client 종료까지 상시 대기하며 relay/echo를 수행한다.
 - phase 전환은 패턴별로 제어한다: echo는 client가 phase를 제어하고 server는 relay/echo 대기, one-way는 sender/receiver가 동일 순서의 phase를 수행한다. throughput/latency는 모두 active phase 한 구간에서 계산한다.
 - 스크립트는 양쪽 프로세스의 stdout을 수집하고, 종료 코드를 확인하여 결과를 합산한다.
+- 여기서 `READY,<endpoint>`는 어디까지나 프로세스 orchestration 용도다.
+  benchmark start gate를 대체하지 않으며, 실제 측정 시작 조건은 각 바이너리
+  내부의 monitor callback 기반 delivery-ready gate가 담당한다.
 
 #### 소스 파일 구조
 
@@ -1167,6 +1175,9 @@ client 프로세스가 server에 대한 benchmark start gate를 확인할 때는
 - **이유**: perf start gate는 실제 delivery 가능 시점만 써야 한다. Sleep은 환경에 따라 불충분하거나 과다하고, handshake barrier와 snapshot polling은 측정 인프라 오버헤드를 늘리거나 잘못된 ready 판정을 만들 수 있다.
 - monitor handle은 perf 내부에서 callback 소비 전용으로 취급한다. 동일 handle을 `recv`/`poll` 기반으로 읽는 별도 구현을 두지 않는다.
 - 대기 함수 구현 시 monitor callback에서 `atomic_fetch_add`로 connection ready 카운트를 증가시키고, app thread에서 `wait_connect_ready_count(expected_count, timeout_ms)` 형태로 atomic 카운터가 목표에 도달할 때까지 대기한다.
+- `READY,<endpoint>` / `CLIENT_READY,<msg_size>` 같은 stdout 제어 메시지는
+  runner와 프로세스 순서를 맞추기 위한 외부 orchestration 신호일 뿐이다.
+  이 신호만으로 delivery-ready를 판정하거나 측정을 시작해서는 안 된다.
 - `CONNECTED`, `ACCEPTED`, `LISTENING`은 progress/debug 용도로만 사용한다. perf 시작 gate로 승격하지 않는다.
 - server 측에서도 동일하게 guide §11에 정의된 delivery-ready event를 기준으로 준비를 판정한다.
 

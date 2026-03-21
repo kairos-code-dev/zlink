@@ -25,11 +25,17 @@ void discard_spot_message (const zlink_routing_id_t *,
     zlink_multipart_close (parts_, part_count_);
 }
 
-void test_raw_socket_handler_support_matrix ()
+void noop_send_ready_handler (void *, void *)
+{
+}
+
+void test_raw_socket_receive_callback_contracts ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
     void *pair = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
     void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
@@ -48,17 +54,18 @@ void test_raw_socket_handler_support_matrix ()
     TEST_ASSERT_NOT_NULL (stream);
 
     TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (pair, &discard_stream_message, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (dealer, &discard_stream_message, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (router, &discard_stream_message, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
       zlink_recv_handler (stream, &discard_stream_message, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_subscribe_handler (sub, &discard_spot_message, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_subscribe_handler (xsub, &discard_spot_message, NULL));
 
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_handler (pair, &discard_stream_message, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_handler (dealer, &discard_stream_message, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_handler (router, &discard_stream_message, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_recv_handler (sub, &discard_stream_message, NULL));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
@@ -71,17 +78,57 @@ void test_raw_socket_handler_support_matrix ()
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_recv_handler (xpub, &discard_stream_message, NULL));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe_handler (sub, &discard_spot_message, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe_handler (xsub, &discard_spot_message, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_subscribe_handler (pair, &discard_spot_message, NULL));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_recv (pair, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_recv (dealer, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_recv (router, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_recv (stream, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+
+    char topic[32];
+    size_t topic_len = sizeof (topic);
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_subscribe (sub, NULL, &parts, &part_count, topic, &topic_len,
+                           ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    topic_len = sizeof (topic);
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_subscribe (xsub, NULL, &parts, &part_count, topic, &topic_len,
+                           ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, pair, pair, ZLINK_POLLIN));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, dealer, dealer, ZLINK_POLLIN));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, router, router, ZLINK_POLLIN));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, stream, stream, ZLINK_POLLIN));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, sub, sub, ZLINK_POLLIN));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, xsub, xsub, ZLINK_POLLIN));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
     close_zero_linger (stream);
     close_zero_linger (xpub);
     close_zero_linger (pub);
@@ -93,26 +140,88 @@ void test_raw_socket_handler_support_matrix ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_stream_handler_transition_blocks_direct_recv ()
+void test_raw_socket_send_ready_contracts ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
+
+    void *pair = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
+    void *pub = zlink_socket (ctx, ZLINK_SOCKET_PUB);
+    void *xpub = zlink_socket (ctx, ZLINK_SOCKET_XPUB);
+    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
     void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    void *sub = zlink_socket (ctx, ZLINK_SOCKET_SUB);
     TEST_ASSERT_NOT_NULL (stream);
+    TEST_ASSERT_NOT_NULL (pair);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (xpub);
+    TEST_ASSERT_NOT_NULL (dealer);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (sub);
+
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_handler (stream, &discard_stream_message, NULL));
+      zlink_send_ready_handler (pair, &noop_send_ready_handler, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_ready_handler (pub, &noop_send_ready_handler, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_ready_handler (xpub, &noop_send_ready_handler, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_ready_handler (dealer, &noop_send_ready_handler, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_ready_handler (router, &noop_send_ready_handler, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_ready_handler (stream, &noop_send_ready_handler, NULL));
 
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_handler (stream, &discard_stream_message, NULL));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+      -1, zlink_send_ready_handler (sub, &noop_send_ready_handler, NULL));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
-    unsigned char recv_buf[8];
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv (stream, recv_buf, sizeof (recv_buf), ZLINK_DONTWAIT));
+      -1, zlink_poller_add (poller, pair, pair, ZLINK_POLLOUT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, pub, pub, ZLINK_POLLOUT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, xpub, xpub, ZLINK_POLLOUT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, dealer, dealer, ZLINK_POLLOUT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, router, router, ZLINK_POLLOUT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, stream, stream, ZLINK_POLLOUT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_recv (pair, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_NOT_EQUAL (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_recv (dealer, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_NOT_EQUAL (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_recv (router, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_NOT_EQUAL (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_recv (stream, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_NOT_EQUAL (EBUSY, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    close_zero_linger (sub);
     close_zero_linger (stream);
+    close_zero_linger (router);
+    close_zero_linger (dealer);
+    close_zero_linger (xpub);
+    close_zero_linger (pub);
+    close_zero_linger (pair);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -257,8 +366,8 @@ int main ()
     setup_test_environment ();
 
     UNITY_BEGIN ();
-    RUN_TEST (test_raw_socket_handler_support_matrix);
-    RUN_TEST (test_stream_handler_transition_blocks_direct_recv);
+    RUN_TEST (test_raw_socket_receive_callback_contracts);
+    RUN_TEST (test_raw_socket_send_ready_contracts);
     RUN_TEST (test_raw_subscribe_recv_returns_topic_and_payload);
     RUN_TEST (test_pubsub_generic_surface_accepts_raw_prefix_filters_and_raw_publish);
     RUN_TEST (test_xpub_direct_recv_returns_source_rid_and_topic);

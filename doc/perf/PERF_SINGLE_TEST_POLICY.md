@@ -5,9 +5,10 @@
 > **Date**: 2026-03-21
 > **Scope**: `perf/single` 성능 테스트 정책
 >
-> 본 정책은 `perf/single`의 C++ 벤치마크뿐 아니라 모든 바인딩 라이브러리
-> (`bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/node`,
-> `bindings/python`)의 single 성능 테스트에도 동일하게 적용된다.
+> 본 정책은 `perf/single`의 C++ 벤치마크와 현재 single perf suite가 구현된
+> 바인딩(`bindings/cpp`, `bindings/dotnet`, `bindings/java`)에 동일하게
+> 적용된다. `bindings/node`, `bindings/python`은 아직 single perf suite가
+> 구현되지 않았으므로 본 문서를 향후 기준으로 삼는다.
 >
 > **상위 문서**: [PERF_POLICY.md](PERF_POLICY.md)
 > **관련 문서**: [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md)
@@ -37,55 +38,45 @@
 - monitor-ready 이후 필요한 protocol self-check는 단발성 검증 1회만
   허용하며, retry loop나 sleep 기반 보정은 금지한다.
 - start gate 구현에서 monitor snapshot polling은 금지한다.
+- `setup_connected_pair()`, `wait_ready()`, service-ready wait helper는
+  허용한다. 단, 내부 구현은 monitor callback 기반이어야 하며 snapshot polling
+  을 helper 뒤에 숨기는 방식은 정책 위반이다.
 
 ### 1.1 Single 핵심 정책
 
 - 목적
   - 단일 소켓 경로에서 **자연 backpressure를 유지한 채 가능한 최대 throughput**을 측정한다.
   - 같은 active 구간에서 동일 메시지 집합으로 latency도 함께 집계한다.
-- single suite는 callback 모드만 기본 테스트 대상으로 둔다.
-- 두 가지 I/O 모델 지원 (`--recv` 옵션)
-  - **recv 모델** (`--recv recv`):
-    - recv: poller `POLLIN` readiness 감지 → `zlink_recv()` / `zlink_msg_recv()`
-      비동기 drain 루프 (react 방식). poller가 readable을 알려주면 수신 가능한
-      만큼 drain한다.
-    - send: sender는 active 구간 동안 nonblocking send를 수행한다.
-      `EAGAIN` 발생 시 poller `POLLOUT`으로 writable readiness를 대기한 뒤
-      재개한다.
-    - send backpressure: poller `POLLOUT` 기반.
-    - active 종료 후에는 bounded idle drain으로 잔여 in-flight를 정리할 수 있다.
-  - **callback 모델** (`--recv callback`):
-    - single suite의 기본 테스트 모드는 callback이다.
-    - single에서 dual-mode 예외는 `SPOT`만 허용한다.
-    - `recv`와 `callback`은 같은 pattern 안에서 `--recv` 값으로 선택한다.
-      callback 전용 파일명이나 별도 public pattern 이름을 두지 않는다.
-    - recv: `zlink_recv_handler()` 등록 → 라이브러리가 I/O thread에서 callback
-      dispatch. `zlink_recv()` / `zlink_msg_recv()` 동기 recv API는 측정 경로에
-      사용하지 않는다.
-    - callback hot path는 메시지에서 metric header와 timestamp 등 필요한 최소
-      메타데이터만 추출해 bounded queue로 전달한다. `zlink_msg_t` handle,
-      payload pointer, multipart parts 소유권을 callback 밖으로 넘기지 않는다.
-    - send: sender는 active 구간 동안 blocking send를 연속 수행한다.
-    - throughput/latency 집계, phase window 판정, 결과 출력용 통계 계산은
-      callback 안에서 직접 수행하지 않고 전용 worker가 queue를 drain하며
-      처리한다. single callback 모델에서 app thread는 sender를 겸하지 않는다.
-    - active 종료 후에는 callback dispatch 기준의 bounded idle drain으로
-      잔여 in-flight를 정리할 수 있다.
-  - 한 측정 구간에서 두 모델의 recv/send 메커니즘을 섞지 않는다.
+- single suite는 callback 모드만 지원한다.
+- 수신 모델 (`--recv`)
+  - **callback 모델** (`--recv callback`)만 허용한다.
+  - `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
+    `ROUTER_ROUTER`, `GATEWAY`, `SPOT` 전부 callback only다.
+  - callback 모드를 이유로 별도 callback 파일명이나 별도 public pattern 이름을
+    두지 않는다.
+  - recv: `zlink_recv_handler()` 등록 → 라이브러리가 I/O thread에서 callback
+    dispatch. `zlink_recv()` / `zlink_msg_recv()` 동기 recv API는 측정 경로에
+    사용하지 않는다.
+  - callback hot path는 메시지에서 metric header와 timestamp 등 필요한 최소
+    메타데이터만 추출해 bounded queue로 전달한다. `zlink_msg_t` handle,
+    payload pointer, multipart parts 소유권을 callback 밖으로 넘기지 않는다.
+  - send: sender는 active 구간 동안 blocking send를 연속 수행한다.
+  - throughput/latency 집계, phase window 판정, 결과 출력용 통계 계산은
+    callback 안에서 직접 수행하지 않고 전용 worker가 queue를 drain하며
+    처리한다. single callback 모델에서 app thread는 sender를 겸하지 않는다.
+  - active 종료 후에는 callback dispatch 기준의 bounded idle drain으로
+    잔여 in-flight를 정리할 수 있다.
 - poller
-  - recv 모델에서는 `POLLIN` / `POLLOUT` 양쪽의 readiness 제어를 담당하는
-    핵심 메커니즘이다.
-  - callback 모델에서는 사용하지 않는다.
+  - single 측정 경로에서는 사용하지 않는다.
 - 공통
   - 실패 시 즉시 `fail` 처리한다.
   - retry는 없다.
-  - single 일반 pattern은 callback only다.
-  - `SPOT`만 `recv` / `callback` dual-mode 예외를 둔다.
+  - single 전 패턴은 callback only다.
   - 지원하지 않는 single pattern에서 허용 범위 밖 mode를 주면 즉시 실패한다.
-  - `recv`와 `callback`은 metric header decode, phase 판정, throughput/latency
-    집계 엔진을 최대한 공유하고, 차이는 event를 만드는 입력 경로만 둔다.
+  - metric header decode, phase 판정, throughput/latency 집계 엔진은
+    callback 경로 전체에서 공통으로 유지한다.
 - 한 줄 요약
-  - `single = active sender + concurrent receiver (recv+poller or callback+bounded-queue+worker) + nonblocking drain`
+  - `single = active sender + callback receiver + bounded-queue + metric worker + idle drain`
 
 ---
 
@@ -110,6 +101,9 @@
 - service monitor delivery-ready event는 single 측정의 공식 start gate다.
   benchmark 시작 전 준비 판정은 monitoring event로 해결하고, perf 파일 안의
   커스텀 handshake loop, sleep, monitor snapshot polling으로 대체하지 않는다.
+- 패턴 파일에서는 callback plumbing을 직접 노출하기보다 공통 helper를 통해
+  `wait_*ready*()` 형태로 감싸도 된다. 이 경우에도 ready source는 반드시
+  monitor callback이어야 한다.
 - active에서만 throughput/latency를 계산한다.
 - idle drain은 active 종료 전에 이미 송신된 in-flight 메시지를 정리하기 위한 receiver 측 정리 단계다.
 - 다음 size는 별도 프로세스로 다시 시작한다.
@@ -274,7 +268,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 | `--io-threads N` | context I/O threads | 환경/기본값 |
 | `--msg-sizes LIST` | 메시지 크기 목록 | 정책 기본값 |
 | `--transports LIST` | transport 목록 | 패턴 기본값 |
-| `--recv MODE` | recv 모델 선택. single 기본값은 `callback`; `SPOT`만 `recv` / `callback` 허용 | `callback` |
+| `--recv MODE` | recv 모델 선택. single은 `callback`만 허용 | `callback` |
 | `--hwm N` | 송수신 HWM 공통 fallback | 1000 |
 | `--send-hwm N` | 송신 HWM 우선값 | `--hwm` |
 | `--recv-hwm N` | 수신 HWM 우선값 | `--hwm` |
@@ -313,13 +307,11 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 | DEALER_ROUTER | `callback` |
 | ROUTER_ROUTER | `callback` |
 | GATEWAY | `callback` |
-| SPOT | `recv`, `callback` |
+| SPOT | `callback` |
 
 정책:
 
-- single의 기본 테스트 mode는 callback이다.
-- `SPOT`만 `recv` / `callback` dual-mode 비교를 허용한다.
-- `recv`와 `callback`은 같은 pattern 안에서 `--recv` 값으로 선택한다.
+- single의 유일한 테스트 mode는 callback이다.
 - callback 모드를 이유로 별도 callback 파일명이나 별도 public pattern 이름을
   정책에 추가하지 않는다.
 

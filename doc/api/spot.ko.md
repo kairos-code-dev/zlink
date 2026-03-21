@@ -13,18 +13,19 @@ SPOT public API는 두 계층으로 정리됩니다.
 ## I/O 모델
 
 `SpotNode`와 unified `Spot` 모두 **recv 모드**로 시작하고,
-`zlink_subscribe_handler()`로 callback 모드로 **일방 전환**됩니다. 두 모델은
-handle 수명 동안 상호 배타적입니다.
+`zlink_subscribe_handler()`로 receive surface를 callback 모드로 **일방 전환**
+합니다. send-ready는 별도 축입니다.
 
-| | Recv 모드 (기본) | Callback 모드 |
+| | Recv 모드 (기본) | Receive Callback Active |
 |---|---|---|
 | **SpotNode 수신** | `zlink_subscribe()` | `zlink_subscribe_handler()` 콜백 |
 | **Spot 수신** | `zlink_subscribe()` | `zlink_subscribe_handler()` 콜백 |
-| **Send-ready** | 사용 불가 (`EBUSY`) | `zlink_send_ready_handler()` |
-| **전환** | `zlink_subscribe_handler()` 호출로 전환 | 영구, 되돌릴 수 없음 |
+| **읽기 poller** | `ZLINK_POLLIN` | `EBUSY` |
+| **Send-ready** | `ZLINK_POLLOUT` poller 또는 `zlink_send_ready_handler()` | `ZLINK_POLLOUT` poller 또는 `zlink_send_ready_handler()` |
 
-- recv 모드에서 `send_ready_handler()`는 `EBUSY`로 실패합니다.
-- callback 모드에서 `recv()`는 `EBUSY`로 실패합니다.
+- `zlink_send_ready_handler()`는 receive callback 선행 조건이 없습니다.
+- send-ready attach 이후 data-plane `ZLINK_POLLOUT` poller는 `EBUSY`로 실패합니다.
+- receive callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은 `EBUSY`로 실패합니다.
 - `publish()`는 두 모드 모두에서 동작합니다.
 
 ## 현재 public surface

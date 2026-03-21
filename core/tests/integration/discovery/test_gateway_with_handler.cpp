@@ -105,30 +105,71 @@ void send_gateway_text_rid (void *gateway_,
       zlink_gateway_send_rid (gateway_, rid_, &part, 1, 0));
 }
 
-void test_gateway_recv_handler_returns_enotsup ()
+void test_gateway_recv_handler_blocks_recv_and_pollin ()
 {
-    void *ctx = get_test_context ();
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
     void *gateway = zlink_gateway_new (ctx, "gw-handler-contract");
     TEST_ASSERT_NOT_NULL (gateway);
 
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_handler (gateway, &noop_gateway_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
 
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (gateway, &noop_gateway_handler, NULL));
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_gateway_recv (gateway, NULL, &parts, &part_count,
+                              ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_recv (gateway, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, gateway, gateway, ZLINK_POLLIN));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, gateway, gateway, ZLINK_POLLOUT));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, gateway));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_gateway_send_ready_handler_returns_enotsup ()
+void test_gateway_send_ready_handler_blocks_pollout_only ()
 {
-    void *ctx = get_test_context ();
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
     void *gateway = zlink_gateway_new (ctx, "gw-ready-contract");
     TEST_ASSERT_NOT_NULL (gateway);
 
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_send_ready_handler (gateway, &noop_send_ready_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
 
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_ready_handler (gateway, &noop_send_ready_handler, NULL));
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_gateway_recv (gateway, NULL, &parts, &part_count,
+                              ZLINK_DONTWAIT));
+    TEST_ASSERT_NOT_EQUAL (EBUSY, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, gateway, gateway, ZLINK_POLLIN));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, gateway));
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, gateway, gateway, ZLINK_POLLOUT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
 void test_gateway_recv_mode_request_reply_with_discovery ()
@@ -223,8 +264,8 @@ int main (int, char **)
     setup_test_environment ();
 
     UNITY_BEGIN ();
-    RUN_TEST (test_gateway_recv_handler_returns_enotsup);
-    RUN_TEST (test_gateway_send_ready_handler_returns_enotsup);
+    RUN_TEST (test_gateway_recv_handler_blocks_recv_and_pollin);
+    RUN_TEST (test_gateway_send_ready_handler_blocks_pollout_only);
     RUN_TEST (test_gateway_recv_mode_request_reply_with_discovery);
     return UNITY_END ();
 }

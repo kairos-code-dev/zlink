@@ -27,7 +27,7 @@ ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
 | `--results-dir PATH` | `core/perf/results` | 결과 루트 경로 지정 |
 | `--results-tag NAME` | — | 결과 파일명 태그 |
 | `--runs N` | `1` | pattern/transport/size별 반복 횟수 |
-| `--recv MODE` | `recv` | 수신 모델(`recv` 또는 `callback`) |
+| `--recv MODE` | `callback` | 수신 모델(single suite에서는 `callback`만 허용) |
 | `--duration N` | `5` | active 측정 시간(초) |
 | `--warmup N` | `2` | single warmup 시간(초) |
 | `--hwm N` | — | `PERF_SINGLE_HWM` fallback 설정 |
@@ -49,9 +49,13 @@ ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
 
 현재 single recv 모드 지원 범위:
 
-- `recv`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
+- single canonical lane: `callback`
+- `callback`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
   `ROUTER_ROUTER`, `GATEWAY`, `SPOT`
-- `callback`: `SPOT`만
+- `recv`: `SPOT`만
+
+monitor gate 검증은 항상 callback 기준이며, 별도 perf pattern matrix로 취급하지
+않는다.
 
 지원하지 않는 조합은 묵시적 fallback 없이 fail-fast로 종료한다.
 
@@ -175,7 +179,16 @@ single 제한 실행:
   --msg-sizes 64,1024 \
   --runs 3 \
   --duration 5 \
-  --recv recv
+  --recv callback
+```
+
+single SPOT callback 실행:
+
+```bash
+./core/perf/run_benchmarks.sh \
+  --pattern SPOT \
+  --build-dir /home/hep7/project/kairos/zlink/core/build \
+  --recv callback
 ```
 
 multi 전체 실행:

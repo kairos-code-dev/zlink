@@ -78,7 +78,7 @@ PIN_CPU=0
 PERF_IO_THREADS="${PERF_IO_THREADS:-}"
 PERF_MSG_SIZES="${PERF_MSG_SIZES:-}"
 PERF_TRANSPORTS="${PERF_TRANSPORTS:-}"
-RECV_MODE="${PERF_RECV_MODE:-recv}"
+RECV_MODE="${PERF_RECV_MODE:-callback}"
 SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
 SINGLE_WARMUP_SECONDS="${PERF_SINGLE_WARMUP_SECONDS:-2}"
 SINGLE_HWM="${PERF_SINGLE_HWM:-}"
@@ -111,7 +111,7 @@ Options:
   --results-dir PATH          Override result root directory.
   --results-tag NAME          Optional tag in saved result filename.
   --runs N                    Iterations per pattern/transport/size (default: 1).
-  --recv MODE                 Receive model: recv|callback (default: recv).
+  --recv MODE                 Receive model: callback (default: callback).
   --duration N                Override single duration seconds (default: 5).
   --warmup N                  Override single warmup seconds (default: 2).
   --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).

@@ -149,8 +149,8 @@ zlink_unset_subscription(spot, "chat:room1:*");
 ### 4.4 메시지 수신
 
 `SpotNode`와 unified `Spot` 모두 **recv 모드**로 시작한다. 메시지를 직접
-수신하거나, **callback 모드**로 한 번 전환할 수 있다. 두 모델은 handle 수명
-동안 상호 배타적이다.
+수신하거나, receive surface를 **callback 모드**로 한 번 전환할 수 있다.
+send-ready는 별도 축이다.
 
 #### Recv 모드 (기본)
 
@@ -209,9 +209,10 @@ subscribe/unsubscribe/attach/peer connect/monitor는 runtime control path로
 **제약 사항:**
 
 - recv 모드에서는 `zlink_subscribe()`를 사용한다
-- callback 모드 전환은 `zlink_subscribe_handler()`로 한 번만 수행한다
-- callback 모드에서 `recv()` 호출은 `EBUSY`로 실패한다
-- recv 모드에서 `send_ready_handler()`는 `EBUSY`로 실패한다
+- receive callback 전환은 `zlink_subscribe_handler()`로 한 번만 수행한다
+- receive callback 모드에서는 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`이 `EBUSY`로 실패한다
+- `zlink_send_ready_handler()`는 receive callback 선행 조건이 없다
+- send-ready attach 이후 data-plane `ZLINK_POLLOUT`은 `EBUSY`로 실패한다
 - 전환 후 callback 교체나 해제는 지원하지 않는다
 - 콜백은 소켓 dispatch / I/O 경로에서 직접 호출된다
 - 콜백에서 블로킹 작업을 수행하면 다른 I/O 진행에 영향을 줄 수 있다

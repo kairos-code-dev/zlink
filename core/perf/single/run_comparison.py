@@ -44,18 +44,14 @@ PATTERN_TO_BINARY = {
     "SPOT": "perf_spot",
 }
 
-CALLBACK_BINARY_OVERRIDES = {
-    "SPOT": "perf_spot_callback",
-}
-
 SUPPORTED_RECV_MODES = {
-    "PAIR": ("recv",),
-    "PUBSUB": ("recv",),
-    "DEALER_DEALER": ("recv",),
-    "DEALER_ROUTER": ("recv",),
-    "ROUTER_ROUTER": ("recv",),
-    "GATEWAY": ("recv",),
-    "SPOT": ("recv", "callback"),
+    "PAIR": ("callback",),
+    "PUBSUB": ("callback",),
+    "DEALER_DEALER": ("callback",),
+    "DEALER_ROUTER": ("callback",),
+    "ROUTER_ROUTER": ("callback",),
+    "GATEWAY": ("callback",),
+    "SPOT": ("callback",),
 }
 
 DEFAULT_MSG_SIZES_STANDARD = [64, 256, 1024, 65536, 131072, 262144]
@@ -497,7 +493,7 @@ def sanitize_suffix(value: str) -> str:
 
 
 def resolve_recv_mode(value: str) -> str:
-    recv_mode = (value or "recv").strip().lower()
+    recv_mode = (value or "callback").strip().lower()
     if recv_mode not in ("recv", "callback"):
         raise ValueError(f"invalid recv mode: {value}")
     return recv_mode
@@ -1025,10 +1021,6 @@ def resolve_binary_name(pattern: str, recv_mode: str) -> str:
         raise ValueError(
             f"pattern {pattern} does not support --recv {recv_mode}"
         )
-    if recv_mode == "callback":
-        override = CALLBACK_BINARY_OVERRIDES.get(pattern)
-        if override:
-            return override
     return PATTERN_TO_BINARY[pattern]
 
 
@@ -1195,7 +1187,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--results-dir", default=DEFAULT_RESULTS_DIR)
     parser.add_argument("--results-tag", default="")
     parser.add_argument("--result-file", default="")
-    parser.add_argument("--recv", default=env_get("PERF_RECV_MODE") or "recv")
+    parser.add_argument("--recv", default=env_get("PERF_RECV_MODE") or "callback")
     return parser.parse_args()
 
 

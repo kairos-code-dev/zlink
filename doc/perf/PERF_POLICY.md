@@ -5,7 +5,7 @@
 > **Date**: 2026-03-21
 > **Scope**: zlink 성능 테스트 통합 정책 — 공통 구조, 통합 실행, 비교 스크립트
 >
-> 본 정책은 `perf/`의 C++ 벤치마크뿐 아니라 모든 바인딩 라이브러리(`bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/node`, `bindings/python`)의 성능 테스트에도 동일하게 적용된다. 각 바인딩은 언어별 구현 차이가 있을 수 있으나, 측정 기준·결과 형식·운영 모드·임계치 등 본 정책에서 정의하는 규칙을 준수해야 한다.
+> 본 정책은 `perf/`의 C++ 벤치마크와 현재 perf suite가 구현된 바인딩(`bindings/cpp`, `bindings/dotnet`, `bindings/java`)에 동일하게 적용된다. `bindings/node`, `bindings/python`은 아직 perf suite가 구현되지 않았으므로 본 문서의 구조/운영 원칙만 향후 기준으로 삼는다.
 
 ---
 
@@ -46,7 +46,7 @@
     - callback 모델은 모든 패턴의 일반 옵션이 아니다.
     - single suite는 callback 모드만 기본 테스트 대상으로 둔다.
     - multi suite는 recv 모드만 기본 테스트 대상으로 둔다.
-    - dual-mode 예외는 single `SPOT`, multi `SPOT` / `STREAM`만 허용한다.
+    - dual-mode 예외는 multi `SPOT` / `STREAM`만 허용한다.
     - `recv`와 `callback`은 같은 pattern 안에서 `--recv` 값으로 선택한다.
       callback 전용 파일명이나 별도 public pattern 이름을 정책에 추가하지
       않는다.
@@ -99,6 +99,9 @@
 - `setup_connected_pair()` 같은 helper는 내부적으로 위 공식 monitoring
   delivery-ready gate를 캡슐화한 경우에만 허용된다. helper 자체가 별도
   start gate 규칙이 되어서는 안 된다.
+- `wait_ready()`, `wait_connect_ready_count()`, service-ready wait helper 같은
+  동기 helper는 허용한다. 단, 내부 구현은 반드시 monitor callback 기반이어야
+  하며, snapshot 조회/polling을 helper 뒤에 숨기는 형태는 금지한다.
 - perf start gate 구현에서 아래를 금지한다.
   - `sleep`/`msleep`/고정 지연
   - monitor snapshot polling
@@ -196,8 +199,8 @@ perf/                                       # bindings/<lang>/perf/
 | C++ binding | `perf/single/` | `perf/multi/` | `perf_dispatch.hpp` |
 | .NET | `perf/single/Zlink.BindingBench/` | `perf/multi/<project>/` 또는 `perf/single/Zlink.BindingBench/` 내 multi role entrypoint | `PerfCommon.cs` |
 | Java | `perf/single/<project>/` | `perf/multi/<project>/` 또는 `perf/single/<project>/` 내 multi role entrypoint | `PerfUtil.java` |
-| Node | `perf/single/` | `perf/multi/` | (inline) |
-| Python | `perf/single/` | `perf/multi/` | `perf_common.py` |
+| Node | 미구현 | 미구현 | - |
+| Python | 미구현 | 미구현 | - |
 
 - 컴파일 언어 바인딩(C++/.NET/Java)은 소스 트리 분리 대신 단일 runner에서 `--multi-server`/`--multi-client` role 분기를 제공해도 된다. 이 경우에도 결과 형식, 운영 모드, server/client 프로세스 모델은 동일하게 준수해야 한다.
 
@@ -281,8 +284,8 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 
 | suite | core 스크립트 | bindings 스크립트 | 정책 문서 |
 |-------|--------------|-------------------|-----------|
-| single | `core/perf/run_benchmarks.sh` / `.ps1` | `perf/single/run_benchmarks.sh` / `.ps1` | [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) |
-| multi | `core/perf/run_benchmarks_multi.sh` / `.ps1` | `perf/multi/run_benchmarks.sh` / `.ps1` | [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) |
+| single | `core/perf/run_benchmarks.sh` / `.ps1` | `bindings/perf/run_policy_bench.py --suite single --binding <binding>` | [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) |
+| multi | `core/perf/run_benchmarks_multi.sh` / `.ps1` | `bindings/perf/run_policy_bench.py --suite multi --binding <binding>` | [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) |
 
 ```bash
 # core single만 실행
@@ -291,9 +294,9 @@ core/perf/run_benchmarks.sh --pattern PAIR
 # core multi만 실행
 core/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
 
-# bindings 실행 (예: node)
-bindings/node/perf/single/run_benchmarks.sh --pattern PAIR
-bindings/node/perf/multi/run_benchmarks.sh --pattern MULTI_STREAM
+# bindings 실행 (예: cpp)
+bindings/perf/run_policy_bench.py --binding cpp --suite single --pattern PAIR
+bindings/perf/run_policy_bench.py --binding cpp --suite multi --pattern MULTI_STREAM
 ```
 
 각 스크립트의 상세 옵션은 개별 정책 문서의 섹션 5를 참조한다.
@@ -302,17 +305,17 @@ bindings/node/perf/multi/run_benchmarks.sh --pattern MULTI_STREAM
 >
 > | suite | core | bindings |
 > |-------|------|----------|
-> | single | `core/perf/run_benchmarks.sh` | `perf/single/run_benchmarks.sh` |
-> | multi | `core/perf/run_benchmarks_multi.sh` | `perf/multi/run_benchmarks.sh` |
+> | single | `core/perf/run_benchmarks.sh` | `bindings/perf/run_policy_bench.py --suite single --binding <binding>` |
+> | multi | `core/perf/run_benchmarks_multi.sh` | `bindings/perf/run_policy_bench.py --suite multi --binding <binding>` |
 >
-> core는 single/multi 스크립트가 같은 디렉터리에 있으므로 `_multi` 접미어로 구분한다. bindings는 `single/`·`multi/` 디렉터리로 분리되므로 스크립트명은 `run_benchmarks.sh`로 동일하다.
+> core는 single/multi 스크립트가 같은 디렉터리에 있으므로 `_multi` 접미어로 구분한다. bindings는 중앙 정책 실행기 `bindings/perf/run_policy_bench.py`를 사용한다.
 
 ### 3.2 통합 실행
 
 실행 엔트리포인트는 wrapper 스크립트다 (§ 3.1 정책 준수 실행기 테이블 참조).
 - core single: `run_benchmarks.sh` / `.ps1`
 - core multi: `run_benchmarks_multi.sh` / `.ps1`
-- bindings: `single/run_benchmarks.sh` / `multi/run_benchmarks.sh`
+- bindings: `bindings/perf/run_policy_bench.py --binding <binding> --suite <single|multi>`
 - 단일 실행에서 single/multi를 혼합하지 않는다.
 
 ```bash
@@ -328,15 +331,12 @@ core/perf/run_benchmarks.sh --pattern PAIR,PUBSUB
 # core: single 기본 모드(callback)로 실행
 core/perf/run_benchmarks.sh --pattern PAIR
 
-# core: single dual-mode 예외 패턴을 recv로 실행
-core/perf/run_benchmarks.sh --pattern SPOT --recv recv
-
 # core: 태그 추가
 core/perf/run_benchmarks.sh --results-tag v1.5.0
 
-# bindings: 동일한 옵션 체계 적용 (예: python)
-bindings/python/perf/single/run_benchmarks.sh --pattern ALL
-bindings/python/perf/multi/run_benchmarks.sh --pattern ALL
+# bindings: 동일한 옵션 체계 적용 (예: java)
+bindings/perf/run_policy_bench.py --binding java --suite single --pattern ALL
+bindings/perf/run_policy_bench.py --binding java --suite multi --pattern ALL
 ```
 
 ### 3.3 통합 실행 옵션
@@ -354,11 +354,11 @@ bindings/python/perf/multi/run_benchmarks.sh --pattern ALL
 | `--results-tag NAME` | 결과 파일명 태그 | 없음 |
 | `--msg-sizes LIST` | 메시지 크기 목록 | suite별 기본값 |
 | `--transports LIST` | transport 목록 | suite별 기본값 |
-| `--recv MODE` | recv 모델 선택. single 기본값은 `callback`, multi 기본값은 `recv`. dual-mode 예외는 single=`SPOT`, multi=`SPOT`/`STREAM`만 허용 | suite별 기본값 |
+| `--recv MODE` | recv 모델 선택. single은 `callback`만 허용, multi 기본값은 `recv`. dual-mode 예외는 multi=`SPOT`/`STREAM`만 허용 | suite별 기본값 |
 
 - `--recv` 옵션은 측정 구간의 수신 경로를 결정한다. `recv`는 동기 recv +
   poller 기반, `callback`은 recv handler callback 기반이다.
-- single은 callback only를 기본으로 하고 `SPOT`만 `recv`/`callback` 예외를 둔다.
+- single은 callback only다.
 - multi는 recv only를 기본으로 하고 `SPOT`/`STREAM`만 `recv`/`callback`
   예외를 둔다.
 - monitor 관련 검증은 suite와 무관하게 callback 기준으로만 수행한다.

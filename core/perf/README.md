@@ -27,7 +27,7 @@ DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, SPOT).
 | `--results-dir PATH` | `core/perf/results` | Override result root |
 | `--results-tag NAME` | — | Optional filename tag |
 | `--runs N` | `1` | Iterations per pattern/transport/size |
-| `--recv MODE` | `recv` | Receive model (`recv` or `callback`) |
+| `--recv MODE` | `callback` | Receive model (`callback` only in single suite) |
 | `--duration N` | `5` | Active measurement duration (seconds) |
 | `--warmup N` | `2` | Single warmup seconds |
 | `--hwm N` | — | Set `PERF_SINGLE_HWM` fallback |
@@ -49,9 +49,13 @@ Detailed phase semantics, handshake rules, and mode contracts are defined in
 
 Current single recv-mode support:
 
-- `recv`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
+- canonical single lane: `callback`
+- `callback`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
   `ROUTER_ROUTER`, `GATEWAY`, `SPOT`
-- `callback`: `SPOT` only
+- `recv`: `SPOT` only
+
+Monitor gates are always validated in callback mode and are not treated as a
+separate perf pattern matrix.
 
 Unsupported combinations fail fast instead of silently falling back.
 
@@ -178,7 +182,16 @@ Single limited run:
   --msg-sizes 64,1024 \
   --runs 3 \
   --duration 5 \
-  --recv recv
+  --recv callback
+```
+
+Single SPOT callback run:
+
+```bash
+./core/perf/run_benchmarks.sh \
+  --pattern SPOT \
+  --build-dir /home/hep7/project/kairos/zlink/core/build \
+  --recv callback
 ```
 
 Multi full run:

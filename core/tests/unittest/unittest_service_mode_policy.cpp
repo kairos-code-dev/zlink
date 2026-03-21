@@ -149,7 +149,7 @@ std::string bind_spot_test_endpoint (void *node_)
     return std::string ();
 }
 
-void test_gateway_is_recv_only ()
+void test_gateway_callback_contract ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -160,17 +160,28 @@ void test_gateway_is_recv_only ()
     void *poller = zlink_poller_new ();
     TEST_ASSERT_NOT_NULL (poller);
 
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (gateway, &noop_socket_handler, NULL));
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_handler (gateway, &noop_socket_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+      -1, zlink_gateway_recv (gateway, NULL, &parts, &part_count,
+                              ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_recv (gateway, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_send_ready_handler (gateway, &noop_send_ready_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+      -1, zlink_poller_add (poller, gateway, gateway, ZLINK_POLLIN));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, gateway, gateway, ZLINK_POLLOUT));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, gateway));
+      zlink_send_ready_handler (gateway, &noop_send_ready_handler, NULL));
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, gateway, gateway, ZLINK_POLLOUT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
@@ -188,28 +199,33 @@ void test_spot_node_callback_policy ()
     void *poller = zlink_poller_new ();
     TEST_ASSERT_NOT_NULL (poller);
 
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_send_ready_handler (node, &noop_send_ready_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_ready_handler (node, &noop_send_ready_handler, NULL));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_poller_add (poller, node, node, ZLINK_POLLIN));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, node));
 
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe_handler (node, &noop_spot_handler, NULL));
+      -1, zlink_poller_add (poller, node, node, ZLINK_POLLOUT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, node));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (node, &noop_spot_handler, NULL));
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     char topic[64];
     size_t topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe (node, &parts, &part_count, ZLINK_DONTWAIT, topic,
-                           &topic_len));
+      -1, zlink_subscribe (node, NULL, &parts, &part_count, topic, &topic_len,
+                           ZLINK_DONTWAIT));
+    TEST_ASSERT_NOT_EQUAL (EBUSY, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_subscribe_handler (node, &noop_spot_handler, NULL));
+
+    topic_len = sizeof (topic);
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_subscribe (node, NULL, &parts, &part_count, topic, &topic_len,
+                           ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_EQUAL_INT (
@@ -224,7 +240,7 @@ void test_spot_node_callback_policy ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_stream_send_ready_requires_callback_mode ()
+void test_stream_send_ready_is_independent_from_recv_callback ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -235,22 +251,23 @@ void test_stream_send_ready_requires_callback_mode ()
     void *poller = zlink_poller_new ();
     TEST_ASSERT_NOT_NULL (poller);
 
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_send_ready_handler (stream, &noop_send_ready_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, stream, stream, ZLINK_POLLOUT));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, stream));
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_handler (stream, &noop_socket_handler, NULL));
-
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_send_ready_handler (stream, &noop_send_ready_handler, NULL));
 
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_poller_add (poller, stream, stream, ZLINK_POLLOUT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_recv (stream, NULL, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_NOT_EQUAL (EBUSY, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (stream, &noop_socket_handler, NULL));
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, stream, stream, ZLINK_POLLIN));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
@@ -384,10 +401,10 @@ int main (void)
 
     setup_test_environment ();
 
-    RUN_TEST (test_gateway_is_recv_only);
+    RUN_TEST (test_gateway_callback_contract);
     RUN_TEST (test_spot_node_callback_policy);
     RUN_TEST (test_spot_node_pollin_matches_subscribe_surface);
-    RUN_TEST (test_stream_send_ready_requires_callback_mode);
+    RUN_TEST (test_stream_send_ready_is_independent_from_recv_callback);
     RUN_TEST (test_generic_monitor_poller_accepts_non_pollin_events);
 
     return UNITY_END ();

@@ -575,46 +575,66 @@ typedef void (*zlink_send_ready_handler_fn) (void *subject_, void *userdata_);
 ZLINK_EXPORT void *zlink_socket (void *, zlink_socket_type_t type_);
 
 /**
- * @brief Attach a direct receive handler to a raw STREAM socket.
+ * @brief Attach a direct receive handler to a multipart receive subject.
  *
- * STREAM sockets start in recv mode. This call transitions the handle to
- * callback mode and cannot be undone for the lifetime of the socket. A second
- * attach on the same handle fails with errno=EBUSY.
+ * Supported subjects:
+ * - raw `PAIR`
+ * - raw `DEALER`
+ * - raw `ROUTER`
+ * - raw `STREAM`
+ * - `gateway`
  *
- * Other raw socket families and gateway handles remain recv/poller-only. For
- * those subjects this function fails with errno=ENOTSUP.
+ * The subject starts in recv model. After a successful attach, direct recv on
+ * the same subject and data-plane poller `ZLINK_POLLIN` registration fail with
+ * errno=EBUSY. A second attach on the same subject also fails with errno=EBUSY.
+ *
+ * Unsupported subjects fail with errno=ENOTSUP.
  */
 ZLINK_EXPORT int zlink_recv_handler (
   void *s_, zlink_socket_msg_handler_fn handler_, void *userdata_);
 
 /**
- * @brief Attach a direct subscribe callback to a SPOT or SPOT node handle.
+ * @brief Attach a direct topic-aware receive handler to a subscribe subject.
  *
- * Spot and SpotNode handles start in recv mode. This call transitions the
- * handle to callback mode and cannot be undone for the lifetime of the handle.
- * A second attach on the same handle fails with errno=EBUSY.
+ * Supported subjects:
+ * - raw `SUB`
+ * - raw `XSUB`
+ * - unified `spot`
+ * - unified `spot_node`
  *
- * Raw SUB/XSUB sockets remain recv/poller-only. For unsupported subjects this
- * function fails with errno=ENOTSUP.
+ * The subject starts in recv model. After a successful attach,
+ * `zlink_subscribe()` and data-plane poller `ZLINK_POLLIN` registration on the
+ * same subject fail with errno=EBUSY. A second attach on the same subject also
+ * fails with errno=EBUSY.
+ *
+ * Unsupported subjects fail with errno=ENOTSUP.
  */
 ZLINK_EXPORT int zlink_subscribe_handler (
   void *s_, zlink_subscribe_handler_fn handler_, void *userdata_);
 
 /**
- * @brief Install or replace the send-ready callback for callback-mode subjects.
+ * @brief Install or replace the send-ready callback for a send-capable subject.
  *
  * The handler is replace-only. Passing NULL is invalid. A successful replace is
  * visible from the next writable transition. If called reentrantly from the
  * same handle's send-ready callback, the call fails with errno=EDEADLK.
  *
  * Supported handles:
- * - raw `STREAM` in callback mode
+ * - raw `PAIR`
+ * - raw `PUB`
+ * - raw `XPUB`
+ * - raw `DEALER`
+ * - raw `ROUTER`
+ * - raw `STREAM`
+ * - `gateway`
  * - unified `spot`
  * - unified `spot_node`
  *
- * In recv mode, writable readiness is reported through poller `ZLINK_POLLOUT`.
- * Unsupported handles fail with errno=ENOTSUP. Supported handles in recv mode
- * fail with errno=EBUSY until they are transitioned to callback mode.
+ * Send-ready is independent from receive callback mode. After a successful
+ * attach, data-plane poller `ZLINK_POLLOUT` registration on the same subject
+ * fails with errno=EBUSY.
+ *
+ * Unsupported subjects fail with errno=ENOTSUP.
  */
 ZLINK_EXPORT int zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
@@ -979,12 +999,17 @@ ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
 /* Gateway ------------------------------------------------------------------ */
 
 /**
- * @brief Create a Gateway in recv/poller model.
+ * @brief Create a Gateway in recv model.
  *
- * Gateway handles stay in recv model. Receive payloads with `zlink_recv()`.
- * Use poller `ZLINK_POLLIN` / `ZLINK_POLLOUT` for readiness. Callback receive
- * and send-ready callback attachment are not supported and fail with
- * errno=ENOTSUP.
+ * Gateway handles start in recv model. Use `zlink_gateway_recv()` or
+ * `zlink_recv()` to pull multipart payloads, or call `zlink_recv_handler()` to
+ * transition the receive surface to callback mode. Receive callback blocks
+ * direct recv and data-plane `ZLINK_POLLIN` poller registration with
+ * errno=EBUSY.
+ *
+ * Writable readiness can be observed through poller `ZLINK_POLLOUT` or
+ * `zlink_send_ready_handler()`. Once send-ready is attached, data-plane
+ * `ZLINK_POLLOUT` poller registration fails with errno=EBUSY.
  *
  * Representative routing id is configured separately via
  * `zlink_set_routing_id()` before the first bind/connect. If not set
@@ -1062,10 +1087,13 @@ ZLINK_EXPORT int zlink_spot_destroy (void **spot_p);
  * @brief Create a service-bound SPOT node in recv model.
  *
  * SpotNode handles start in recv model. Install `zlink_subscribe_handler()`
- * to make a one-way transition to callback model. In callback model, direct
- * recv and data-plane poller registration fail with errno=EBUSY. In recv mode,
- * writable readiness uses poller `ZLINK_POLLOUT`. In callback mode, writable
- * readiness uses `zlink_send_ready_handler()`.
+ * to transition the receive surface to callback mode. In callback receive
+ * mode, direct recv and data-plane `ZLINK_POLLIN` poller registration fail
+ * with errno=EBUSY.
+ *
+ * Writable readiness is modeled independently. Use poller `ZLINK_POLLOUT` or
+ * `zlink_send_ready_handler()`. Once send-ready is attached, data-plane
+ * `ZLINK_POLLOUT` poller registration fails with errno=EBUSY.
  */
 ZLINK_EXPORT void *zlink_spot_node_new (void *ctx,
                                         const char *service_name);

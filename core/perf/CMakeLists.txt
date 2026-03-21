@@ -8,7 +8,7 @@
 #
 # Notes:
 #   - core/build is the only supported build directory for this repository.
-#   - Single callback-mode overrides use dedicated callback targets where required.
+#   - Single benchmarks use one target per pattern.
 #   - Multi benchmarks still use per-pattern server/client binaries.
 
 # Resolve current zlink include path (supports root-level and core-level builds)
@@ -103,7 +103,6 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     add_current_bench_single(perf_router_router single/src/perf_router_router.cpp)
     add_current_bench_single(perf_gateway single/src/perf_gateway.cpp)
     add_current_bench_single(perf_spot single/src/perf_spot.cpp)
-    add_current_bench_single(perf_spot_callback single/src/perf_spot_callback.cpp)
     # Standalone STREAM client (multi-only).
     add_executable(
         perf_stream_client

@@ -5,9 +5,10 @@
 ## 1. Overview
 
 Gateway is a unified service handle that automatically discovers services
-based on Discovery, supports load-balanced message sending, and uses a
-recv/poller receive model. A single Gateway handle can act as both a
-client (sender) and a server (receiver).
+based on Discovery, supports load-balanced message sending, and starts in a
+recv model. A single Gateway handle can act as both a client (sender) and a
+server (receiver), and can independently opt into receive callback and
+send-ready callback.
 
 > **About the name**: Gateway serves as an entry point and client-side load
 > balancer for a specific service. Unlike API Gateways (such as Kong or AWS
@@ -25,9 +26,11 @@ operations, and `destroy` uses a fail-fast lifecycle gate.
 A Gateway fixes its service name at creation time. Routing ID and I/O
 model setup are explicit follow-up steps.
 
-A Gateway starts in **recv model** and stays there for its lifetime.
-`zlink_recv_handler(gateway, ...)` and `zlink_send_ready_handler(gateway, ...)`
-are not supported on Gateway and return `ENOTSUP`.
+A Gateway starts in **recv model**.
+- `zlink_recv_handler(gateway, ...)` is supported and turns the receive surface into callback mode.
+- After receive callback attach, direct recv and data-plane `ZLINK_POLLIN` fail with `EBUSY`.
+- `zlink_send_ready_handler(gateway, ...)` is supported independently.
+- After send-ready attach, data-plane `ZLINK_POLLOUT` fails with `EBUSY`.
 
 ### Recv model
 
@@ -126,8 +129,9 @@ if (rc == 0) {
 }
 ```
 
-`zlink_recv_handler(gateway, ...)` is not supported on Gateway and returns
-`ENOTSUP`.
+Use `zlink_recv_handler(gateway, ...)` only when you want callback-based
+receive. In that mode, `zlink_gateway_recv()` / `zlink_recv()` and data-plane
+`ZLINK_POLLIN` fail with `EBUSY`.
 
 ## 6. Load Balancing
 
@@ -356,7 +360,7 @@ zlink_ctx_term(ctx);
 |----------|-------------|
 | `zlink_gateway_new(ctx, service_name)` | Create Gateway in recv model |
 | `zlink_set_routing_id(gateway, data, size)` | Set routing ID before first bind/connect |
-| `zlink_recv_handler(gateway, fn, userdata)` | Not supported on Gateway (`ENOTSUP`) |
+| `zlink_recv_handler(gateway, fn, userdata)` | Attach multipart receive callback; recv + `ZLINK_POLLIN` become `EBUSY` |
 | `zlink_gateway_recv(gateway, &rid, &parts, &count, flags)` | Pull message in recv model |
 | `zlink_gateway_attach_discovery(gateway, discovery)` | Attach Discovery |
 | `zlink_gateway_bind(gateway, endpoint)` | Bind receive endpoint (server role) |

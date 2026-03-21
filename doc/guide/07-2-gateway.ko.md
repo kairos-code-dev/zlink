@@ -5,8 +5,9 @@
 ## 1. 개요
 
 Gateway는 Discovery 기반으로 서비스를 자동 발견하고, 로드밸런싱된 메시지
-전송과 recv/poller 기반 수신을 지원하는 통합 서비스 핸들이다. 하나의
-Gateway 핸들이 클라이언트(송신)와 서버(수신) 역할을 모두 수행할 수 있다.
+전송을 지원하며 recv 모드로 시작하는 통합 서비스 핸들이다. 하나의 Gateway
+핸들이 클라이언트(송신)와 서버(수신) 역할을 모두 수행할 수 있고, receive
+callback과 send-ready callback을 독립적으로 선택할 수 있다.
 
 > **명칭에 대하여**: Gateway는 특정 서비스에 대한 접근점(entry point)이자
 > 클라이언트 사이드 로드밸런서다. API Gateway(Kong, AWS API Gateway 등)처럼
@@ -24,9 +25,11 @@ runtime에 호출 가능한 control path이며, `destroy`는 fail-fast lifecycle
 Gateway는 생성 시점에 서비스 이름만 고정한다. routing id와 I/O 모델 설정은
 후속 단계로 분리된다.
 
-Gateway는 **recv 모드**로 시작하며 수명 전체에서 그 모델을 유지한다.
-`zlink_recv_handler(gateway, ...)`, `zlink_send_ready_handler(gateway, ...)`
-는 Gateway에서 지원되지 않으며 `ENOTSUP`를 반환한다.
+Gateway는 **recv 모드**로 시작한다.
+- `zlink_recv_handler(gateway, ...)`는 지원되며 receive surface를 callback 모드로 전환한다.
+- receive callback attach 이후 direct recv와 data-plane `ZLINK_POLLIN`은 `EBUSY`로 실패한다.
+- `zlink_send_ready_handler(gateway, ...)`는 독립적으로 지원된다.
+- send-ready attach 이후 data-plane `ZLINK_POLLOUT`은 `EBUSY`로 실패한다.
 
 ### Recv 모드
 
@@ -125,8 +128,9 @@ if (rc == 0) {
 }
 ```
 
-`zlink_recv_handler(gateway, ...)`는 Gateway에서 지원되지 않으며
-`ENOTSUP`를 반환한다.
+callback 기반 수신이 필요하면 `zlink_recv_handler(gateway, ...)`를 사용한다.
+이 모드에서는 `zlink_gateway_recv()` / `zlink_recv()`와 data-plane
+`ZLINK_POLLIN`이 `EBUSY`로 실패한다.
 
 ## 6. 로드밸런싱
 
@@ -351,7 +355,7 @@ zlink_ctx_term(ctx);
 |------|------|
 | `zlink_gateway_new(ctx, service_name)` | recv 모드 Gateway 생성 |
 | `zlink_set_routing_id(gateway, data, size)` | 첫 bind/connect 전 routing id 설정 |
-| `zlink_recv_handler(gateway, fn, userdata)` | Gateway에서는 지원되지 않음 (`ENOTSUP`) |
+| `zlink_recv_handler(gateway, fn, userdata)` | 멀티파트 수신 callback attach; recv + `ZLINK_POLLIN`은 `EBUSY` |
 | `zlink_gateway_recv(gateway, &rid, &parts, &count, flags)` | recv 모드에서 메시지 수신 |
 | `zlink_gateway_attach_discovery(gateway, discovery)` | Discovery 연결 |
 | `zlink_gateway_bind(gateway, endpoint)` | 수신 endpoint bind (서버 역할) |

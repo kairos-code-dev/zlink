@@ -13,18 +13,19 @@ constructors, destroy functions, option setters, or monitor entrypoints.
 ## I/O Model
 
 Both `SpotNode` and unified `Spot` handles start in **recv model** and use
-`zlink_subscribe_handler()` for a **one-way transition** to callback model.
-The two models are mutually exclusive for the lifetime of the handle.
+`zlink_subscribe_handler()` for a **one-way transition** of the receive surface
+to callback mode. Send-ready is a separate axis.
 
-| | Recv Model (default) | Callback Model |
+| | Recv Model (default) | Receive Callback Active |
 |---|---|---|
 | **SpotNode receive** | `zlink_subscribe()` | `zlink_subscribe_handler()` callback |
 | **Spot receive** | `zlink_subscribe()` | `zlink_subscribe_handler()` callback |
-| **Send-ready** | not available (`EBUSY`) | `zlink_send_ready_handler()` |
-| **Transition** | call `zlink_subscribe_handler()` to switch | permanent, cannot revert |
+| **Readable poller** | `ZLINK_POLLIN` | `EBUSY` |
+| **Send-ready** | `ZLINK_POLLOUT` poller or `zlink_send_ready_handler()` | `ZLINK_POLLOUT` poller or `zlink_send_ready_handler()` |
 
-- In recv model, `send_ready_handler()` fails with `EBUSY`.
-- In callback model, `recv()` fails with `EBUSY`.
+- `zlink_send_ready_handler()` does not require receive callback mode first.
+- Once send-ready is attached, data-plane `ZLINK_POLLOUT` poller use fails with `EBUSY`.
+- Once receive callback is attached, `zlink_subscribe()` and data-plane `ZLINK_POLLIN` fail with `EBUSY`.
 - `publish()` works in both models.
 
 ## Current public surface

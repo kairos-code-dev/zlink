@@ -72,14 +72,23 @@ Frame 1: payload (N bytes)
 
 ---
 
-## 4. 콜백 Dispatch (수신/응답)
+## 4. 수신 모델과 콜백 Dispatch
 
-STREAM은 모든 수신 작업에 콜백 전용 dispatch를 사용한다.
-`recv()` / `zlink_msg_recv()`는 STREAM 소켓에서 지원하지 않는다.
-`zlink_recv_handler()`로 콜백을 등록한다. 핸들러는 한 번 등록하면
-영구적이며 해제할 수 없다.
+STREAM은 `recv()` 기반 수신과 callback 기반 수신을 모두 지원한다.
+기본 recv surface와 callback surface는 아래 공통 규칙으로 정렬된다.
 
-### 콜백 Dispatch
+- `zlink_recv_handler()`를 붙이면 STREAM 수신 surface가 callback 쪽으로 전환된다.
+- callback이 활성인 동안 `zlink_recv()` / `zlink_msg_recv()`는 `EBUSY`로 실패한다.
+- callback이 활성인 동안 data-plane `ZLINK_POLLIN` poller 등록도 `EBUSY`로
+  실패한다.
+- `zlink_send_ready_handler()`는 receive callback과 독립적으로 붙일 수 있다.
+- send-ready가 활성인 동안 data-plane `ZLINK_POLLOUT` poller 등록은 `EBUSY`로
+  실패한다.
+
+즉 STREAM은 "callback only" 소켓이 아니라, recv model에서 시작해서 callback
+attach 시 receive surface만 callback 쪽으로 바뀌는 dual-surface 소켓이다.
+
+### 콜백 Dispatch 예시
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
@@ -105,7 +114,7 @@ void on_message(const zlink_routing_id_t *source_rid,
     }
 }
 
-/* 콜백 dispatch attach (영구, 해제 불가) */
+/* 콜백 dispatch attach */
 zlink_recv_handler(stream, on_message, NULL);
 ```
 
@@ -115,7 +124,7 @@ zlink_recv_handler(stream, on_message, NULL);
 |---|---|
 | Attach API | `zlink_recv_handler()` |
 | 콜백 | `zlink_socket_msg_handler_fn` |
-| 수명 | 한 번 등록하면 영구 (detach 없음) |
+| 수명 | replace-only attach, detach 없음 |
 | 프레이밍 | transport에서 수신된 raw 바이트 |
 | 전송 | `zlink_send_rid()` |
 
@@ -123,9 +132,10 @@ zlink_recv_handler(stream, on_message, NULL);
 > `ZLINK_DONTWAIT`로 `EAGAIN`을 반환한다. 고급 backpressure 패턴은
 > [성능 가이드](10-performance.ko.md)를 참고.
 
-- 한 번에 하나의 콜백만 등록 가능하며, 이미 등록된 상태에서 attach를
+- 한 번에 하나의 receive callback만 등록 가능하며, 이미 등록된 상태에서 attach를
   호출하면 `errno=EBUSY`와 함께 `-1`을 반환한다.
-- 핸들러는 소켓 수명 동안 영구적이며 해제할 수 없다.
+- receive callback이 활성인 동안 direct recv 계열과 data-plane `POLLIN`은
+  `EBUSY`다.
 - 콜백 내부에서 close를 호출하는 것은 지원되지 않는다 (`EBUSY` 실패).
 
 ---

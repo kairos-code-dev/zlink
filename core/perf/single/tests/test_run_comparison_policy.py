@@ -96,27 +96,35 @@ class RunComparisonPolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             RC.resolve_recv_mode("bogus")
 
+    def test_single_default_recv_mode_is_callback(self):
+        self.assertEqual(RC.resolve_recv_mode(""), "callback")
+
     def test_recv_mode_uses_current_targets(self):
-        self.assertEqual(RC.resolve_binary_name("PAIR", "recv"), "perf_pair")
-        self.assertEqual(RC.resolve_binary_name("PUBSUB", "recv"), "perf_pubsub")
-        self.assertEqual(RC.resolve_binary_name("GATEWAY", "recv"), "perf_gateway")
-        self.assertEqual(RC.resolve_binary_name("SPOT", "recv"), "perf_spot")
+        self.assertEqual(RC.resolve_binary_name("PAIR", "callback"), "perf_pair")
         self.assertEqual(
-            RC.resolve_binary_name("SPOT", "callback"), "perf_spot_callback"
+            RC.resolve_binary_name("PUBSUB", "callback"), "perf_pubsub"
         )
+        self.assertEqual(
+            RC.resolve_binary_name("GATEWAY", "callback"), "perf_gateway"
+        )
+        self.assertEqual(RC.resolve_binary_name("SPOT", "callback"), "perf_spot")
         with self.assertRaises(ValueError):
-            RC.resolve_binary_name("PAIR", "callback")
+            RC.resolve_binary_name("PAIR", "recv")
         with self.assertRaises(ValueError):
-            RC.resolve_binary_name("GATEWAY", "callback")
+            RC.resolve_binary_name("GATEWAY", "recv")
+        with self.assertRaises(ValueError):
+            RC.resolve_binary_name("SPOT", "recv")
 
     def test_collect_unsupported_patterns_matches_current_single_matrix(self):
         self.assertEqual(
-            RC.collect_unsupported_patterns(["PAIR", "GATEWAY", "SPOT"], "recv"),
+            RC.collect_unsupported_patterns(
+                ["PAIR", "GATEWAY", "SPOT"], "callback"
+            ),
             [],
         )
         self.assertEqual(
-            RC.collect_unsupported_patterns(["PAIR", "GATEWAY", "SPOT"], "callback"),
-            ["PAIR", "GATEWAY"],
+            RC.collect_unsupported_patterns(["PAIR", "GATEWAY", "SPOT"], "recv"),
+            ["PAIR", "GATEWAY", "SPOT"],
         )
 
 

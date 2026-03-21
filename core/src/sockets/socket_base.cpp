@@ -1725,6 +1725,11 @@ bool zlink::socket_base_t::socket_msg_dispatch_active () const
     return _socket_msg_handler.load (std::memory_order_acquire) != NULL;
 }
 
+bool zlink::socket_base_t::send_ready_handler_active () const
+{
+    return _send_ready_handler.load (std::memory_order_acquire) != NULL;
+}
+
 zlink::socket_base_t *
 zlink::socket_base_t::current_socket_msg_dispatch_socket ()
 {

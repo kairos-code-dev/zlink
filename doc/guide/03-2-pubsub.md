@@ -78,13 +78,15 @@ zlink_set_subscription(sub, "weather");
 | Socket | Direction | Registration Call | Notes |
 |--------|-----------|-------------------|-------|
 | PUB | Send only | N/A | Cannot receive; does not accept a handler |
-| SUB | Receive only | pull with `zlink_subscribe()` / `zlink_recv()` | raw SUB is recv-only |
+| SUB | Receive only | `zlink_subscribe()` / `zlink_recv()` pull, or `zlink_subscribe_handler()` callback | recv or callback model |
 | XPUB | Bidirectional | pull with `zlink_subscription_event()` | Receives subscription events, not data |
-| XSUB | Bidirectional | pull with `zlink_subscribe()` / `zlink_recv()` | Sends subscription frames; receives data via fair-queue |
+| XSUB | Bidirectional | `zlink_subscribe()` / `zlink_recv()` pull, or `zlink_subscribe_handler()` callback | Sends subscription frames; receives data via fair-queue |
 
-Raw PUB/SUB sockets use recv/poller as the canonical model. Topic-aware pull
-is available through `zlink_subscribe()`, while callback topic dispatch is
-retained for `spot` / `spot_node`, not raw SUB/XSUB.
+Raw PUB/SUB sockets start in recv model. Topic-aware pull is available
+through `zlink_subscribe()`. Callback topic dispatch via
+`zlink_subscribe_handler()` is supported on raw `SUB`, `XSUB`, `spot`, and
+`spot_node`. After callback attach, `zlink_subscribe()` and data-plane
+`ZLINK_POLLIN` fail with `EBUSY`.
 
 **Pull mode** is also available for SUB: call `zlink_recv()` without
 attaching a handler. The multipart message is received without topic separation.

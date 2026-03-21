@@ -92,8 +92,8 @@
   start gate로 사용하지 않는다.
 - strict start readiness가 필요하면 local service monitor를 사용한다.
 - perf 연결 준비/handshake는 socket/service monitoring의 **공식 ready event**
-  만 사용한다. 일반 socket은 `CONNECTION_READY`, service pattern은 해당
-  pattern의 공식 `*_READY_CHANGED` 이벤트를 기준으로 삼는다.
+  만 사용한다. 일반 socket은 `CONNECTION_READY_CHANGED`, service pattern은
+  해당 pattern의 공식 `*_READY_CHANGED` 이벤트를 기준으로 삼는다.
 - perf의 ready gate는 **이벤트 1개를 직접 기다리는 얇은 helper**로 끝내야
   한다. ready bool/count를 callback state에 복사하기 위한 별도 구조체,
   heap alloc, mutex/cv wrapper, handler attach 계층을 새로 만들지 않는다.

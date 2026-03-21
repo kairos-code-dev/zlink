@@ -61,9 +61,9 @@ This document records the rationale and alternative analyses for key design deci
 - Polling is safely processed in the user thread
 - Can combine multi-socket monitoring via zlink_poll
 
-### 2.2 CONNECTION_READY Event
+### 2.2 CONNECTION_READY_CHANGED Event
 
-**Decision**: Replace HANDSHAKE_SUCCEEDED with CONNECTION_READY.
+**Decision**: Replace HANDSHAKE_SUCCEEDED with CONNECTION_READY_CHANGED.
 
 **Rationale**:
 - CONNECTED/ACCEPTED are transport-level events that cause confusion

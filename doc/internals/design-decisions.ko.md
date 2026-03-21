@@ -61,9 +61,9 @@
 - Polling은 사용자 스레드에서 안전하게 처리
 - zlink_poll로 다중 소켓 모니터링 조합 가능
 
-### 2.2 CONNECTION_READY 이벤트
+### 2.2 CONNECTION_READY_CHANGED 이벤트
 
-**결정**: HANDSHAKE_SUCCEEDED를 CONNECTION_READY로 대체.
+**결정**: HANDSHAKE_SUCCEEDED를 CONNECTION_READY_CHANGED로 대체.
 
 **근거**:
 - CONNECTED/ACCEPTED는 전송계층 레벨이라 혼동 유발

@@ -2124,50 +2124,6 @@ def run_sizes_test_split(
     pattern_name,
     result_line_callback=None,
 ):
-    if pattern_name == "PUBSUB" and len(sizes) > 1:
-        merged = {
-            "status": "success",
-            "parsed": {},
-            "timed_out": False,
-            "returncode": 0,
-            "cpu_pct": None,
-            "mem_mb": None,
-            "reason": "",
-            "warnings": [],
-        }
-        failure_reasons = []
-        for size in sizes:
-            outcome = run_sizes_test_split(
-                server_binary_name,
-                client_binary_name,
-                lib_name,
-                transport,
-                [size],
-                pattern_name,
-                result_line_callback=result_line_callback,
-            )
-            merged["parsed"].update(outcome.get("parsed", {}) or {})
-            merged["warnings"].extend(outcome.get("warnings", []) or [])
-            if outcome.get("cpu_pct") is not None:
-                merged["cpu_pct"] = outcome.get("cpu_pct")
-            if outcome.get("mem_mb") is not None:
-                merged["mem_mb"] = outcome.get("mem_mb")
-            merged["returncode"] = max(
-                int(merged.get("returncode", 0) or 0),
-                int(outcome.get("returncode", 0) or 0),
-            )
-            merged["timed_out"] = bool(merged["timed_out"] or outcome.get("timed_out"))
-
-            status = outcome.get("status", "fail")
-            if status != "success":
-                merged["status"] = "fail"
-                reason = (outcome.get("reason", "") or "").strip() or f"size_{size}_failed"
-                failure_reasons.append(f"{size}:{reason}")
-
-        if failure_reasons:
-            merged["reason"] = ";".join(failure_reasons)
-        return merged
-
     server_binary_path = os.path.join(BUILD_DIR, server_binary_name + EXE_SUFFIX)
     client_binary_path = os.path.join(BUILD_DIR, client_binary_name + EXE_SUFFIX)
     fallback_size = sizes[0] if sizes else 64

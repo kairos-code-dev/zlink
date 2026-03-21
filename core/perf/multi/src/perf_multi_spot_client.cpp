@@ -39,19 +39,12 @@ struct spot_client_slot_t
 {
     spot_client_slot_t() :
         node(NULL),
-        monitor(NULL),
-        ready(false),
-        error_code(0),
         stop(false)
     {
     }
 
     void *node;
-    void *monitor;
-    std::mutex ready_mutex;
-    std::condition_variable ready_cv;
-    bool ready;
-    int error_code;
+    ready_monitor_t monitor;
     std::atomic<bool> stop;
     std::thread recv_thread;
 };
@@ -278,67 +271,13 @@ bool open_spot_ready_monitor(spot_client_slot_t *slot)
     if (!slot || !slot->node)
         return false;
 
-    zlink_service_monitor_open_options_t opts;
-    memset(&opts, 0, sizeof(opts));
-    opts.events =
-      ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
-    void *monitor = zlink_service_monitor_open(slot->node, &opts);
-    if (!monitor)
-        return false;
-
-    const int monitor_hwm = bench_hwm_from_env("PERF_MONITOR_HWM", 1000);
-    set_sockopt_int(monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
-    if (monitor_hwm > 0) {
-        set_sockopt_int(monitor, ZLINK_OPT_SNDHWM, monitor_hwm,
-                        "ZLINK_OPT_SNDHWM");
-        set_sockopt_int(monitor, ZLINK_OPT_RCVHWM, monitor_hwm,
-                        "ZLINK_OPT_RCVHWM");
-    }
-
-    slot->monitor = monitor;
-    if (zlink_service_monitor_handler(
-          monitor,
-          [](const zlink_service_event_t *event, void *userdata) {
-              spot_client_slot_t *slot_state =
-                static_cast<spot_client_slot_t *> (userdata);
-              if (!slot_state || !event)
-                  return;
-              {
-                  std::lock_guard<std::mutex> lock (slot_state->ready_mutex);
-                  switch (event->event_type) {
-                      case ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED:
-                          slot_state->ready = event->value > 0;
-                          break;
-
-                      case ZLINK_MONITOR_EVENT_ERROR:
-                          if (slot_state->error_code == 0) {
-                              slot_state->error_code =
-                                event->error_code != 0 ? event->error_code
-                                                       : EIO;
-                          }
-                          break;
-
-                      default:
-                          break;
-                  }
-              }
-              slot_state->ready_cv.notify_all ();
-          },
-          slot)
-        != 0) {
-        (void) zlink_monitor_close (&monitor);
-        slot->monitor = NULL;
+    if (!open_configured_service_monitor(
+          slot->node,
+          ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR,
+          &slot->monitor)) {
         return false;
     }
     return true;
-}
-
-bool spot_slot_has_ready_peer(spot_client_slot_t *slot)
-{
-    if (!slot || !slot->monitor)
-        return false;
-    std::lock_guard<std::mutex> lock (slot->ready_mutex);
-    return slot->error_code == 0 && slot->ready;
 }
 
 void close_spot_ready_monitor(spot_client_slot_t *slot)
@@ -346,13 +285,7 @@ void close_spot_ready_monitor(spot_client_slot_t *slot)
     if (!slot)
         return;
 
-    void *monitor = slot->monitor;
-    slot->monitor = NULL;
-
-    if (!monitor)
-        return;
-
-    (void) zlink_monitor_close(&monitor);
+    close_ready_monitor(slot->monitor);
 }
 
 void destroy_spot_slots(spot_client_state_t *state,
@@ -529,9 +462,6 @@ bool recv_one_spot_message(spot_client_slot_t *slot, int flags, bool *received)
     return true;
 }
 
-bool wait_all_sub_ready(const std::vector<spot_client_slot_t *> &slots,
-                        int timeout_ms);
-
 bool drain_spot_client_slot(spot_client_slot_t *slot, bool *progressed)
 {
     if (!slot)
@@ -637,85 +567,44 @@ bool create_spot_slots(ctx_guard_t &ctx,
     if (slots_out->empty())
         return false;
 
-    if (!wait_all_sub_ready(
-          *slots_out,
-          resolve_spot_connect_ready_timeout_ms(
-            transport, settings.connect_ready_timeout_ms))) {
-        if (bench_debug_enabled())
-            std::cerr << "[multi-spot-client] ready wait timeout slots="
-                      << slots_out->size() << std::endl;
-        return false;
+    const auto deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(resolve_spot_connect_ready_timeout_ms(
+        transport, settings.connect_ready_timeout_ms));
+    for (size_t i = 0; i < slots_out->size(); ++i) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-spot-client] ready wait deadline expired"
+                          << " slot=" << i << std::endl;
+            }
+            return false;
+        }
+
+        const int remaining_ms = static_cast<int>(
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - now)
+            .count());
+        if (!wait_for_service_monitor_event(
+              (*slots_out)[i]->monitor,
+              ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED,
+              ZLINK_MONITOR_EVENT_ERROR,
+              remaining_ms)) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-spot-client] ready wait failed slot=" << i
+                          << " err=" << zlink_errno() << std::endl;
+            }
+            return false;
+        }
+        close_spot_ready_monitor((*slots_out)[i]);
     }
 
-    for (size_t i = 0; i < slots_out->size(); ++i)
-        close_spot_ready_monitor((*slots_out)[i]);
     if (bench_transition_debug_enabled()) {
         std::cerr << "[multi-spot-client] create slots done ts_us="
                   << perf_multi_metric::now_us()
                   << " slots=" << slots_out->size() << std::endl;
     }
     return true;
-}
-
-bool wait_all_sub_ready(const std::vector<spot_client_slot_t *> &slots,
-                        int timeout_ms)
-{
-    if (slots.empty())
-        return true;
-
-    std::vector<char> ready(slots.size(), 0);
-    size_t ready_count = 0;
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(1, timeout_ms));
-
-    if (bench_transition_debug_enabled()) {
-        std::cerr << "[multi-spot-client] ready wait begin ts_us="
-                  << perf_multi_metric::now_us()
-                  << " slots=" << slots.size() << std::endl;
-    }
-
-    while (std::chrono::steady_clock::now() < deadline
-           && ready_count < slots.size()) {
-        for (size_t i = 0; i < slots.size(); ++i) {
-            if (ready[i])
-                continue;
-            if (spot_slot_has_ready_peer(slots[i])) {
-                ready[i] = 1;
-                ++ready_count;
-            }
-        }
-
-        if (ready_count >= slots.size())
-            break;
-
-        for (size_t i = 0; i < slots.size (); ++i) {
-            spot_client_slot_t *slot = slots[i];
-            if (!slot || ready[i])
-                continue;
-            std::unique_lock<std::mutex> lock (slot->ready_mutex);
-            if (slot->error_code != 0)
-                return false;
-            (void) slot->ready_cv.wait_for (
-              lock, std::chrono::milliseconds (1),
-              [slot] () { return slot->error_code != 0 || slot->ready; });
-            if (slot->error_code != 0)
-                return false;
-            if (slot->ready) {
-                ready[i] = 1;
-                ++ready_count;
-            }
-        }
-    }
-
-    if (bench_transition_debug_enabled()) {
-        std::cerr << "[multi-spot-client] ready wait done ts_us="
-                  << perf_multi_metric::now_us()
-                  << " ready=" << ready_count
-                  << "/" << slots.size() << std::endl;
-    }
-
-    return ready_count == slots.size();
 }
 
 void reset_metrics(spot_client_state_t *state, size_t msg_size)

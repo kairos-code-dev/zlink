@@ -10,7 +10,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-#include <mutex>
 #include <string>
 #include <vector>
 
@@ -27,92 +26,6 @@ using perf_multi_client::is_supported_transport;
 using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::print_client_result_lines;
 using perf_multi_client::resolve_case_msg_sizes;
-
-void pubsub_sub_ready_monitor_handler (const zlink_monitor_event_t *event,
-                                       void *userdata)
-{
-    connect_monitor_state_t *state =
-      static_cast<connect_monitor_state_t *> (userdata);
-    if (!state || !event)
-        return;
-
-    {
-        std::lock_guard<std::mutex> lock (state->sync);
-        switch (event->event) {
-            case ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED:
-                state->connection_ready_count = event->value > 0 ? 1 : 0;
-                break;
-
-            case ZLINK_EVENT_CLOSE_FAILED:
-            case ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL:
-            case ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL:
-            case ZLINK_EVENT_HANDSHAKE_FAILED_AUTH:
-                if (state->error_code == 0)
-                    state->error_code =
-                      event->value > 0 ? static_cast<int> (event->value) : EIO;
-                break;
-
-            default:
-                break;
-        }
-    }
-
-    state->cv.notify_all ();
-}
-
-bool wait_pubsub_sub_ready (connect_monitor_t &monitor, int timeout_ms)
-{
-    connect_monitor_state_t *state = monitor.state;
-    if (!state)
-        return false;
-
-    std::unique_lock<std::mutex> lock (state->sync);
-    if (state->error_code != 0)
-        return false;
-    if (state->connection_ready_count > 0)
-        return true;
-
-    const bool signaled = state->cv.wait_for (
-      lock,
-      std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms : 1),
-      [state] () {
-          return state->error_code != 0 || state->connection_ready_count > 0;
-      });
-    return signaled && state->error_code == 0
-           && state->connection_ready_count > 0;
-}
-
-bool wait_pubsub_sub_stopped (connect_monitor_t &monitor, int timeout_ms)
-{
-    connect_monitor_state_t *state = monitor.state;
-    if (!state)
-        return false;
-
-    std::unique_lock<std::mutex> lock (state->sync);
-    if (state->error_code != 0)
-        return false;
-    if (state->connection_ready_count == 0)
-        return true;
-
-    const bool signaled = state->cv.wait_for (
-      lock,
-      std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms : 1),
-      [state] () {
-          return state->error_code != 0 || state->connection_ready_count == 0;
-      });
-    return signaled && state->error_code == 0
-           && state->connection_ready_count == 0;
-}
-
-bool wait_server_stop_after_client_done ()
-{
-    const char *env =
-      resolve_multi_env_value ("PERF_WAIT_SERVER_STOP_AFTER_CLIENT_DONE", NULL);
-    if (!env || !*env)
-        return false;
-
-    return std::strcmp (env, "0") != 0;
-}
 
 int recv_one_pubsub_message (void *socket,
                              size_t expected_msg_size,
@@ -204,8 +117,7 @@ bool run_recv_duration (const std::vector<void *> &sockets,
     long lat_count = 0;
     bench_latency_sampler_t lat_samples;
     const double prelude_seconds =
-      static_cast<double> (std::max (0, settings.warmup_seconds))
-      + static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
+      static_cast<double> (std::max (0, settings.warmup_seconds));
     const auto start_wait_deadline =
       std::chrono::steady_clock::now ()
       + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
@@ -306,13 +218,13 @@ inline bool create_client_sockets (
   const std::string &endpoint,
   const multi_bench_settings_t &settings,
   std::vector<void *> *sockets_out,
-  std::vector<connect_monitor_t> *monitors_out)
+  std::vector<ready_monitor_t> *monitors_out)
 {
     if (!sockets_out || !monitors_out)
         return false;
 
     sockets_out->assign (settings.clients, NULL);
-    monitors_out->assign (settings.clients, connect_monitor_t ());
+    monitors_out->assign (settings.clients, ready_monitor_t ());
 
     for (size_t i = 0; i < sockets_out->size (); ++i) {
         void *sock = zlink_socket (
@@ -328,51 +240,24 @@ inline bool create_client_sockets (
             return false;
         }
 
-        connect_monitor_state_t *state =
-          new (std::nothrow) connect_monitor_state_t ();
-        if (!state) {
+        if (!open_configured_socket_monitor (
+              sock,
+              ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED
+                | ZLINK_EVENT_CLOSE_FAILED
+                | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+                | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
+                | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
+              &(*monitors_out)[i])) {
             zlink_close (sock);
             return false;
-        }
-
-        zlink_socket_monitor_open_options_t opts;
-        std::memset (&opts, 0, sizeof (opts));
-        opts.events = ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED
-                      | ZLINK_EVENT_CLOSE_FAILED
-                      | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
-                      | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
-                      | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
-        void *monitor = zlink_socket_monitor_open (sock, &opts);
-        if (!monitor
-            || zlink_socket_monitor_handler (
-                 monitor, &pubsub_sub_ready_monitor_handler, state)
-                 != 0) {
-            if (monitor)
-                (void) zlink_monitor_close (&monitor);
-            delete state;
-            zlink_close (sock);
-            return false;
-        }
-
-        const int monitor_hwm = bench_hwm_from_env ("PERF_MONITOR_HWM", 1000);
-        set_sockopt_int (monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
-        if (monitor_hwm > 0) {
-            set_sockopt_int (
-              monitor, ZLINK_OPT_SNDHWM, monitor_hwm, "ZLINK_OPT_SNDHWM");
-            set_sockopt_int (
-              monitor, ZLINK_OPT_RCVHWM, monitor_hwm, "ZLINK_OPT_RCVHWM");
         }
 
         if (zlink_connect (sock, endpoint.c_str ()) != 0) {
-            (void) zlink_monitor_close (&monitor);
-            delete state;
+            close_ready_monitor ((*monitors_out)[i]);
             zlink_close (sock);
             return false;
         }
 
-        (*monitors_out)[i].owner = sock;
-        (*monitors_out)[i].monitor = monitor;
-        (*monitors_out)[i].state = state;
         (*sockets_out)[i] = sock;
     }
 
@@ -439,7 +324,7 @@ inline int run_client_benchmark (const std::string &lib_name,
         return 1;
 
     std::vector<void *> sockets;
-    std::vector<connect_monitor_t> monitors;
+    std::vector<ready_monitor_t> monitors;
     if (!create_client_sockets (
           ctx,
           transport,
@@ -453,8 +338,10 @@ inline int run_client_benchmark (const std::string &lib_name,
     }
 
     for (size_t i = 0; i < monitors.size (); ++i) {
-        if (!wait_pubsub_sub_ready (
-              monitors[i], base_settings.connect_ready_timeout_ms)) {
+        if (!wait_for_socket_monitor_event (
+              monitors[i],
+              ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED,
+              base_settings.connect_ready_timeout_ms)) {
             if (bench_debug_enabled ()) {
                 std::cerr << "[multi-pubsub-client] sub ready wait failed slot="
                           << i << std::endl;
@@ -466,7 +353,6 @@ inline int run_client_benchmark (const std::string &lib_name,
     }
 
     const size_t scratch_capacity = static_cast<size_t> (64);
-    const bool wait_server_stop = wait_server_stop_after_client_done ();
 
     for (size_t si = 0; si < msg_sizes.size (); ++si) {
         const size_t msg_size = msg_sizes[si];
@@ -487,22 +373,6 @@ inline int run_client_benchmark (const std::string &lib_name,
             return 1;
         }
         std::cout << "CLIENT_DONE," << msg_size << std::endl;
-        if (wait_server_stop && (si + 1) == msg_sizes.size ()) {
-            for (size_t i = 0; i < monitors.size (); ++i) {
-                if (!wait_pubsub_sub_stopped (
-                      monitors[i], base_settings.connect_ready_timeout_ms)) {
-                    if (bench_debug_enabled ()) {
-                        std::cerr
-                          << "[multi-pubsub-client] server stop wait failed slot="
-                          << i << std::endl;
-                    }
-                    close_client_monitors (&monitors);
-                    close_client_sockets (&sockets);
-                    return 1;
-                }
-            }
-        }
-
     }
     close_client_monitors (&monitors);
     close_client_sockets (&sockets);

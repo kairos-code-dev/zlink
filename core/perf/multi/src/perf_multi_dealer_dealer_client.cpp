@@ -57,7 +57,7 @@ inline bool create_client_sockets (
   const std::string &endpoint,
   const multi_bench_settings_t &settings,
   std::vector<void *> *sockets_out,
-  std::vector<connect_monitor_t> *monitors_out)
+  std::vector<ready_monitor_t> *monitors_out)
 {
     return perf_multi_client::create_client_sockets (
       ctx,
@@ -211,8 +211,6 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
       std::max<size_t> (msg_size, perf_multi_metric::header_size ());
     const double warmup_s =
       static_cast<double> (std::max (0, settings.warmup_seconds));
-    const double settle_s =
-      static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
     const double active_s =
       static_cast<double> (std::max (1, settings.duration_seconds));
 
@@ -226,19 +224,6 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
           msg_size,
           warmup_s,
           true,
-          &seq)) {
-        return false;
-    }
-
-    if (!run_send_window (
-          sockets,
-          payload,
-          payload_size,
-          run_id,
-          perf_multi_metric::phase_drain,
-          msg_size,
-          settle_s,
-          false,
           &seq)) {
         return false;
     }
@@ -285,7 +270,7 @@ inline int run_client_benchmark (const std::string &lib_name,
         return 1;
 
     std::vector<void *> sockets;
-    std::vector<connect_monitor_t> monitors;
+    std::vector<ready_monitor_t> monitors;
     if (!create_client_sockets (
           ctx,
           transport,

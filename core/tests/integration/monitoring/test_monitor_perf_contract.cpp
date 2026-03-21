@@ -978,7 +978,7 @@ void test_pubsub_perf_like_delivery_ready_preserves_oneway_delivery_recv ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_pubsub_raw_socket_callback_model_is_rejected ()
+void test_pubsub_raw_socket_callback_model_is_accepted ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -986,10 +986,17 @@ void test_pubsub_raw_socket_callback_model_is_rejected ()
     void *client = zlink_socket (ctx, ZLINK_SOCKET_SUB);
     TEST_ASSERT_NOT_NULL (client);
 
-    errno = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_subscribe_handler (client, &perf_pubsub_sub_handler, NULL));
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic[32];
+    size_t topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe_handler (client, &perf_pubsub_sub_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+      -1, zlink_subscribe (client, NULL, &parts, &part_count, topic, &topic_len,
+                           ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
 
     close_socket_zero_linger (client);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
@@ -1092,7 +1099,7 @@ int main ()
     RUN_TEST (test_pubsub_perf_like_monitor_sockopts_preserve_connect_ready);
     RUN_TEST (
       test_pubsub_perf_like_delivery_ready_preserves_oneway_delivery_recv);
-    RUN_TEST (test_pubsub_raw_socket_callback_model_is_rejected);
+    RUN_TEST (test_pubsub_raw_socket_callback_model_is_accepted);
     RUN_TEST (test_pubsub_raw_socket_rejects_multipart_send_api);
     RUN_TEST (
       test_dealer_dealer_perf_like_monitor_sockopts_preserve_connect_ready);

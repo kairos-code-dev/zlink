@@ -223,8 +223,6 @@ inline bool run_one_size_benchmark (
 {
     const double warmup_s =
       static_cast<double> (std::max (0, settings.warmup_seconds));
-    const double settle_s =
-      static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
     const double active_s =
       static_cast<double> (std::max (1, settings.duration_seconds));
     const bool warmup_ok = run_receive_window (
@@ -240,22 +238,6 @@ inline bool run_one_size_benchmark (
       NULL,
       NULL);
     if (!warmup_ok) {
-        return false;
-    }
-
-    const bool drain_ok = run_receive_window (
-      server,
-      msg_size,
-      run_id,
-      perf_multi_metric::phase_drain,
-      settle_s,
-      false,
-      false,
-      NULL,
-      NULL,
-      NULL,
-      NULL);
-    if (!drain_ok) {
         return false;
     }
 

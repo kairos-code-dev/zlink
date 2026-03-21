@@ -8,12 +8,10 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
-#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-#include <mutex>
 #include <new>
 #include <string>
 #include <vector>
@@ -31,22 +29,10 @@ using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::print_client_result_lines;
 using perf_multi_client::resolve_case_msg_sizes;
 
-struct gateway_ready_monitor_state_t
-{
-    gateway_ready_monitor_state_t() : send_ready(false), error_code(0) {}
-
-    std::mutex sync;
-    std::condition_variable cv;
-    bool send_ready;
-    int error_code;
-};
-
 struct gateway_client_slot_t
 {
     gateway_client_slot_t() :
         gateway(NULL),
-        monitor(NULL),
-        monitor_state(NULL),
         slot_index(0),
         send_pending(false),
         inflight(false),
@@ -62,8 +48,7 @@ struct gateway_client_slot_t
     }
 
     void *gateway;
-    void *monitor;
-    gateway_ready_monitor_state_t *monitor_state;
+    ready_monitor_t monitor;
     size_t slot_index;
     std::vector<char> payload;
     bench_latency_sampler_t latency;
@@ -104,139 +89,21 @@ struct gateway_client_state_t
 
 gateway_client_state_t *g_client_state = NULL;
 
-size_t gateway_ready_count(const gateway_ready_monitor_state_t *state)
-{
-    if (!state)
-        return 0;
-    return state->send_ready ? size_t(1) : 0;
-}
-
-void gateway_ready_monitor_handler(const zlink_service_event_t *event,
-                                   void *userdata)
-{
-    gateway_ready_monitor_state_t *state =
-      static_cast<gateway_ready_monitor_state_t *>(userdata);
-    if (!state || !event)
-        return;
-
-    {
-        std::lock_guard<std::mutex> lock(state->sync);
-        switch (event->event_type) {
-            case ZLINK_GATEWAY_SEND_READY_CHANGED:
-                state->send_ready = event->value > 0;
-                break;
-
-            case ZLINK_GATEWAY_MONITOR_EVENT_ERROR:
-                if (state->error_code == 0) {
-                    state->error_code =
-                      event->error_code != 0 ? event->error_code : EIO;
-                }
-                break;
-
-            default:
-                break;
-        }
-    }
-
-    state->cv.notify_all();
-}
-
 bool open_gateway_ready_monitor(gateway_client_slot_t *slot)
 {
     if (!slot || !slot->gateway)
         return false;
-
-    gateway_ready_monitor_state_t *state =
-      new (std::nothrow) gateway_ready_monitor_state_t();
-    if (!state)
-        return false;
-
-    zlink_service_monitor_open_options_t opts;
-    std::memset(&opts, 0, sizeof(opts));
-    opts.events = ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
-                  | ZLINK_GATEWAY_ROUTE_DOWN
-                  | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
-    void *monitor = zlink_service_monitor_open(slot->gateway, &opts);
-    if (!monitor) {
-        delete state;
-        return false;
-    }
-    if (zlink_service_monitor_handler(monitor, &gateway_ready_monitor_handler,
-                                      state)
-        != 0) {
-        zlink_monitor_close(&monitor);
-        delete state;
-        return false;
-    }
-
-    const int monitor_hwm = bench_hwm_from_env("PERF_MONITOR_HWM", 1000);
-    set_sockopt_int(monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
-    if (monitor_hwm > 0) {
-        set_sockopt_int(monitor, ZLINK_OPT_SNDHWM, monitor_hwm,
-                        "ZLINK_OPT_SNDHWM");
-        set_sockopt_int(monitor, ZLINK_OPT_RCVHWM, monitor_hwm,
-                        "ZLINK_OPT_RCVHWM");
-    }
-
-    slot->monitor = monitor;
-    slot->monitor_state = state;
-    return true;
-}
-
-bool wait_gateway_ready(gateway_client_slot_t *slot,
-                        size_t expected_count,
-                        int timeout_ms)
-{
-    if (!slot || !slot->monitor_state)
-        return false;
-    if (expected_count == 0)
-        return true;
-
-    std::unique_lock<std::mutex> lock(slot->monitor_state->sync);
-    if (slot->monitor_state->error_code != 0)
-        return false;
-    if (gateway_ready_count(slot->monitor_state) >= expected_count)
-        return true;
-
-    const int bounded_timeout = timeout_ms > 0 ? timeout_ms : 0;
-    if (bounded_timeout == 0)
-        return false;
-
-    const bool signaled = slot->monitor_state->cv.wait_for(
-      lock,
-      std::chrono::milliseconds(bounded_timeout),
-      [slot, expected_count]() {
-          return slot->monitor_state->error_code != 0
-                 || gateway_ready_count(slot->monitor_state) >= expected_count;
-      });
-    return signaled && slot->monitor_state->error_code == 0
-           && gateway_ready_count(slot->monitor_state) >= expected_count;
+    return open_configured_service_monitor(
+      slot->gateway,
+      ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
+      &slot->monitor);
 }
 
 void close_gateway_ready_monitor(gateway_client_slot_t *slot)
 {
     if (!slot)
         return;
-
-    gateway_ready_monitor_state_t *state = slot->monitor_state;
-    void *monitor = slot->monitor;
-    slot->monitor_state = NULL;
-    slot->monitor = NULL;
-
-    if (!monitor && !state)
-        return;
-
-    if (monitor && zlink_monitor_close(&monitor) == 0) {
-        delete state;
-        return;
-    }
-
-    if (bench_debug_enabled()) {
-        std::cerr << "[multi-gateway-client] monitor close failed";
-        if (monitor)
-            std::cerr << ": " << zlink_strerror(zlink_errno());
-        std::cerr << std::endl;
-    }
+    close_ready_monitor(slot->monitor);
 }
 
 double gateway_percentile_from_sorted(const std::vector<double> &sorted_samples,
@@ -562,92 +429,6 @@ bool service_gateway_slots(gateway_client_state_t *state,
     return !state->fatal.load(std::memory_order_acquire);
 }
 
-bool wait_all_gateway_ready(const std::vector<gateway_client_slot_t *> &slots,
-                            int timeout_ms)
-{
-    if (slots.empty())
-        return true;
-
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(1, timeout_ms));
-    for (size_t i = 0; i < slots.size(); ++i) {
-        const auto now = std::chrono::steady_clock::now();
-        if (now >= deadline)
-            return false;
-
-        const int remaining_ms = static_cast<int>(
-          std::chrono::duration_cast<std::chrono::milliseconds>(
-            deadline - now)
-            .count());
-        if (!wait_gateway_ready(slots[i], 1, remaining_ms))
-            return false;
-    }
-    return true;
-}
-
-bool prime_gateway_slot(gateway_client_state_t *state,
-                        gateway_client_slot_t *slot,
-                        size_t msg_size,
-                        int timeout_ms)
-{
-    if (!state || !slot || msg_size == 0)
-        return false;
-
-    static const unsigned long long k_preflight_messages = 32;
-    const uint32_t run_id = next_metric_run_id();
-    const unsigned long long baseline_replies = slot->completed_replies;
-    unsigned long long sent_messages = 0;
-    slot->run_id = run_id;
-    slot->msg_size = msg_size;
-    slot->phase = perf_multi_metric::phase_warmup;
-    slot->next_seq = 1;
-    slot->send_pending = false;
-    slot->inflight = false;
-    slot->send_enabled = true;
-    slot->auto_send_on_recv = false;
-
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(1, timeout_ms));
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (state->fatal.load(std::memory_order_acquire))
-            return false;
-        while (sent_messages < k_preflight_messages && !slot->send_pending) {
-            const send_status_t send_rc = send_gateway_request(slot);
-            if (send_rc == send_fatal) {
-                mark_fatal(errno);
-                return false;
-            }
-            if (send_rc != send_ok)
-                break;
-            ++sent_messages;
-        }
-        if (slot->completed_replies
-            >= baseline_replies + k_preflight_messages) {
-            slot->send_enabled = false;
-            slot->send_pending = false;
-            slot->inflight = false;
-            slot->auto_send_on_recv = false;
-            return true;
-        }
-
-        const int remaining_ms = static_cast<int>(
-          std::chrono::duration_cast<std::chrono::milliseconds>(
-            deadline - std::chrono::steady_clock::now())
-            .count());
-        if (remaining_ms <= 0)
-            break;
-        if (!service_gateway_slots(state, std::min(remaining_ms, 10), NULL))
-            return false;
-    }
-
-    slot->send_enabled = false;
-    slot->send_pending = false;
-    slot->auto_send_on_recv = false;
-    return false;
-}
-
 bool create_gateway_slots(gateway_client_state_t *state,
                           ctx_guard_t &ctx,
                           const std::string &transport,
@@ -710,30 +491,14 @@ bool create_gateway_slots(gateway_client_state_t *state,
         }
         slots_out->push_back(slot);
 
-        std::vector<gateway_client_slot_t *> ready_slots(1, slot);
-        if (!wait_all_gateway_ready(
-              ready_slots,
+        if (!wait_for_service_monitor_event(
+              slot->monitor,
+              ZLINK_GATEWAY_SEND_READY_CHANGED,
+              ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
               settings.connect_ready_timeout_ms)) {
             if (bench_debug_enabled()) {
                 std::cerr << "[multi-gateway-client] ready wait failed slot="
-                          << i;
-                if (slot->monitor_state) {
-                    std::cerr << " send_ready="
-                              << slot->monitor_state->send_ready
-                              << " error=" << slot->monitor_state->error_code;
-                }
-                std::cerr << std::endl;
-            }
-            return false;
-        }
-        if (!prime_gateway_slot(
-              state,
-              slot,
-              max_payload_size,
-              settings.connect_ready_timeout_ms)) {
-            if (bench_debug_enabled()) {
-                std::cerr << "[multi-gateway-client] prime failed slot="
-                          << i << std::endl;
+                          << i << " err=" << zlink_errno() << std::endl;
             }
             return false;
         }
@@ -833,40 +598,6 @@ void stop_phase(const std::vector<gateway_client_slot_t *> &slots)
     }
 }
 
-bool wait_until_quiescent(gateway_client_state_t *state,
-                          const std::vector<gateway_client_slot_t *> &slots,
-                          int timeout_ms)
-{
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(1, timeout_ms));
-
-    while (std::chrono::steady_clock::now() < deadline) {
-        bool all_idle = true;
-        for (size_t i = 0; i < slots.size(); ++i) {
-            gateway_client_slot_t *slot = slots[i];
-            if (slot && (slot->inflight || slot->send_pending)) {
-                all_idle = false;
-                break;
-            }
-        }
-        if (all_idle)
-            return true;
-
-        const int remaining_ms = static_cast<int>(
-          std::chrono::duration_cast<std::chrono::milliseconds>(
-            deadline - std::chrono::steady_clock::now())
-            .count());
-        if (remaining_ms <= 0)
-            break;
-        if (!service_gateway_slots(state, std::min(remaining_ms, 10), NULL)) {
-            return false;
-        }
-    }
-
-    return false;
-}
-
 bool wait_phase_duration(gateway_client_state_t *state, double seconds)
 {
     if (seconds <= 0.0)
@@ -915,31 +646,6 @@ bool run_single_size_case(gateway_client_state_t *state,
     }
 
     stop_phase(state->slots);
-    if (settings.settle_ms > 0) {
-        configure_phase_slots(state->slots, run_id, msg_size,
-                              perf_multi_metric::phase_drain, false);
-        if (!wait_phase_duration(
-              state,
-              static_cast<double>(settings.settle_ms) / 1000.0)) {
-            if (bench_debug_enabled()) {
-                std::cerr << "[multi-gateway-client] settle wait failed"
-                          << std::endl;
-            }
-            return false;
-        }
-    }
-
-    if (!wait_until_quiescent(state,
-                              state->slots,
-                              std::max(settings.connect_ready_timeout_ms,
-                                       std::max(1000, settings.settle_ms * 4)))) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[multi-gateway-client] pre-active quiescent failed"
-                      << std::endl;
-        }
-        return false;
-    }
-
     reset_active_metrics(state, run_id, msg_size);
     state->collect_active.store(true, std::memory_order_release);
     configure_phase_slots(state->slots, run_id, msg_size,
@@ -964,19 +670,6 @@ bool run_single_size_case(gateway_client_state_t *state,
 
     state->collect_active.store(false, std::memory_order_release);
     stop_phase(state->slots);
-    if (settings.settle_ms > 0
-        && !wait_phase_duration(
-          state, static_cast<double>(settings.settle_ms) / 1000.0)) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[multi-gateway-client] active settle failed"
-                      << std::endl;
-        }
-        return false;
-    }
-    if (!wait_until_quiescent(state, state->slots,
-                              settings.connect_ready_timeout_ms)) {
-        return false;
-    }
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe(sample_start);

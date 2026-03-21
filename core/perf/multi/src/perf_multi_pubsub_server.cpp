@@ -12,7 +12,6 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
-#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -34,105 +33,6 @@ std::mutex g_start_sync;
 std::condition_variable g_start_cv;
 bool g_start_gate_enabled = false;
 size_t g_start_requested_size = 0;
-
-void pubsub_server_ready_monitor_handler (const zlink_monitor_event_t *event,
-                                          void *userdata)
-{
-    connect_monitor_state_t *state =
-      static_cast<connect_monitor_state_t *> (userdata);
-    if (!state || !event)
-        return;
-
-    {
-        std::lock_guard<std::mutex> lock (state->sync);
-        switch (event->event) {
-            case ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED:
-                state->connection_ready_count = event->value > 0 ? 1 : 0;
-                break;
-
-            case ZLINK_EVENT_BIND_FAILED:
-            case ZLINK_EVENT_ACCEPT_FAILED:
-            case ZLINK_EVENT_CLOSE_FAILED:
-            case ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL:
-            case ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL:
-            case ZLINK_EVENT_HANDSHAKE_FAILED_AUTH:
-                if (state->error_code == 0)
-                    state->error_code =
-                      event->value > 0 ? static_cast<int> (event->value) : EIO;
-                break;
-
-            default:
-                break;
-        }
-    }
-
-    state->cv.notify_all ();
-}
-
-bool open_pubsub_server_ready_monitor (void *server, connect_monitor_t *out)
-{
-    if (!server || !out)
-        return false;
-
-    connect_monitor_state_t *state =
-      new (std::nothrow) connect_monitor_state_t ();
-    if (!state)
-        return false;
-
-    zlink_socket_monitor_open_options_t opts;
-    std::memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED | ZLINK_EVENT_BIND_FAILED
-                  | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
-    void *monitor = zlink_socket_monitor_open (server, &opts);
-    if (!monitor
-        || zlink_socket_monitor_handler (
-             monitor, &pubsub_server_ready_monitor_handler, state)
-             != 0) {
-        if (monitor)
-            (void) zlink_monitor_close (&monitor);
-        delete state;
-        return false;
-    }
-
-    const int monitor_hwm = bench_hwm_from_env ("PERF_MONITOR_HWM", 1000);
-    set_sockopt_int (monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
-    if (monitor_hwm > 0) {
-        set_sockopt_int (
-          monitor, ZLINK_OPT_SNDHWM, monitor_hwm, "ZLINK_OPT_SNDHWM");
-        set_sockopt_int (
-          monitor, ZLINK_OPT_RCVHWM, monitor_hwm, "ZLINK_OPT_RCVHWM");
-    }
-
-    out->owner = server;
-    out->monitor = monitor;
-    out->state = state;
-    return true;
-}
-
-bool wait_pubsub_server_ready (connect_monitor_t *monitor, int timeout_ms)
-{
-    connect_monitor_state_t *state = monitor ? monitor->state : NULL;
-    if (!state)
-        return false;
-
-    std::unique_lock<std::mutex> lock (state->sync);
-    if (state->error_code != 0)
-        return false;
-    if (state->connection_ready_count > 0)
-        return true;
-
-    const bool signaled = state->cv.wait_for (
-      lock,
-      std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms : 1),
-      [state] () {
-          return state->error_code != 0 || state->connection_ready_count > 0;
-      });
-    return signaled && state->error_code == 0
-           && state->connection_ready_count > 0;
-}
 
 inline void request_queue_probe (size_t msg_size)
 {
@@ -323,8 +223,6 @@ build_one_way_phases (const multi_bench_settings_t &settings,
         return phases;
 
     const double warmup_s = static_cast<double> (std::max (0, settings.warmup_seconds));
-    const double settle_s =
-      static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
     const double active_s =
       static_cast<double> (std::max (1, settings.duration_seconds));
 
@@ -332,8 +230,6 @@ build_one_way_phases (const multi_bench_settings_t &settings,
         const size_t msg_size = msg_sizes[i];
         append_one_way_phase (
           &phases, msg_size, perf_multi_metric::phase_warmup, warmup_s, true);
-        append_one_way_phase (
-          &phases, msg_size, perf_multi_metric::phase_drain, settle_s, false);
         append_one_way_phase (
           &phases, msg_size, perf_multi_metric::phase_active, active_s, true);
     }
@@ -401,11 +297,10 @@ inline bool run_server_loop (void *server,
             }
 
             if (phase_index >= phases.size ()) {
-                if (perf_socket_poll (NULL, 0, 50) < 0
-                    && zlink_errno () != EINTR) {
-                    return false;
-                }
-                continue;
+                // The benchmark phases are fully scripted for PUBSUB, so once
+                // warmup/active is complete there is nothing left to wait for.
+                // Exiting here avoids an extra STOP-driven shutdown edge.
+                return true;
             }
 
             if (phases[phase_index].msg_size != current_phase_msg_size
@@ -510,8 +405,15 @@ inline int run_server_benchmark (const std::string &lib_name,
         return 1;
     }
 
-    connect_monitor_t server_monitor;
-    if (!open_pubsub_server_ready_monitor (server, &server_monitor)) {
+    ready_monitor_t server_monitor;
+    if (!open_configured_socket_monitor (
+          server,
+          ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED | ZLINK_EVENT_BIND_FAILED
+            | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
+            | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+            | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
+            | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
+          &server_monitor)) {
         zlink_close (server);
         return 1;
     }
@@ -521,7 +423,7 @@ inline int run_server_benchmark (const std::string &lib_name,
       transport,
       lib_name + std::string ("_") + k_token + "_server");
     if (endpoint.empty ()) {
-        close_connect_monitor (server_monitor);
+        close_ready_monitor (server_monitor);
         zlink_close (server);
         return 1;
     }
@@ -579,13 +481,15 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     std::cout << "READY," << endpoint << std::endl;
 
-    if (!wait_pubsub_server_ready (
-          &server_monitor, settings.connect_ready_timeout_ms)) {
-        close_connect_monitor (server_monitor);
+    if (!wait_for_socket_monitor_event (
+          server_monitor,
+          ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED,
+          settings.connect_ready_timeout_ms)) {
+        close_ready_monitor (server_monitor);
         zlink_close (server);
         return 1;
     }
-    close_connect_monitor (server_monitor);
+    close_ready_monitor (server_monitor);
 
     const bool loop_ok = run_server_loop (
       server,

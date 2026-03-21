@@ -41,9 +41,6 @@ struct pubsub_callback_state_t
         fatal (false),
         warmup_received (0),
         active_received (0),
-        recv_activity (0),
-        callback_enqueued (0),
-        callback_processed (0),
         probe (NULL),
         callback_queue (NULL)
     {
@@ -56,17 +53,12 @@ struct pubsub_callback_state_t
     std::atomic<bool> fatal;
     std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
-    std::atomic<unsigned long long> recv_activity;
-    std::atomic<unsigned long long> callback_enqueued;
-    std::atomic<unsigned long long> callback_processed;
     latency_stats_builder_t latency;
     queue_probe_t *probe;
     single_callback_metric_queue_t *callback_queue;
     std::mutex mutex;
     std::mutex latency_mutex;
-    std::mutex callback_wait_mutex;
     std::condition_variable cv;
-    std::condition_variable callback_wait_cv;
 };
 
 inline void close_parts (zlink_msg_t *parts_, size_t part_count_)
@@ -74,14 +66,6 @@ inline void close_parts (zlink_msg_t *parts_, size_t part_count_)
     if (!parts_)
         return;
     zlink_multipart_close (parts_, part_count_);
-}
-
-inline bool wait_for_receive_quiet (pubsub_callback_state_t &state_,
-                                    int idle_timeout_ms_,
-                                    int total_timeout_ms_)
-{
-    return single_wait_for_receive_quiet (
-      state_, idle_timeout_ms_, total_timeout_ms_);
 }
 
 void pubsub_recv_handler (const zlink_routing_id_t *,
@@ -143,12 +127,13 @@ inline bool send_pubsub_sample (void *pub_socket_,
         return false;
 
     const uint64_t sent_ts = perf_single_metric::now_us ();
+    const uint64_t current_seq = *seq_;
     if (!perf_single_metric::stamp_payload (payload_->data (),
                                             payload_size_,
                                             run_id_,
                                             phase_,
                                             msg_size_,
-                                            (*seq_)++,
+                                            current_seq,
                                             sent_ts)) {
         return false;
     }
@@ -165,6 +150,7 @@ inline bool send_pubsub_sample (void *pub_socket_,
         return false;
     }
 
+    ++(*seq_);
     return true;
 }
 
@@ -187,29 +173,26 @@ inline bool setup_connected_pubsub_pair (void *pub_socket_,
     if (zlink_set_subscription (sub_socket_, "") != 0)
         return false;
 
-    readiness_monitor_t pub_monitor;
-    readiness_monitor_t sub_monitor;
-    if (!open_socket_readiness_monitor (
-          pub_socket_, ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED, pub_monitor)) {
-        return false;
-    }
-    if (!open_socket_readiness_monitor (
-          sub_socket_, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED, sub_monitor)) {
-        close_socket_readiness_monitor (pub_monitor);
-        return false;
-    }
-
     const std::string endpoint =
       bind_and_resolve_endpoint (pub_socket_, transport_, id_);
-    if (endpoint.empty ()) {
-        close_socket_readiness_monitor (sub_monitor);
-        close_socket_readiness_monitor (pub_monitor);
+    if (endpoint.empty ())
+        return false;
+
+    void *sub_monitor = open_configured_socket_monitor (
+      sub_socket_, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED);
+    if (!sub_monitor)
+        return false;
+    void *pub_monitor = open_configured_socket_monitor (
+      pub_socket_, ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED);
+    if (!pub_monitor) {
+        zlink_monitor_close (&sub_monitor);
         return false;
     }
 
-    if (!connect_checked (sub_socket_, endpoint)) {
-        close_socket_readiness_monitor (sub_monitor);
-        close_socket_readiness_monitor (pub_monitor);
+    if (!connect_checked (sub_socket_, endpoint))
+    {
+        zlink_monitor_close (&pub_monitor);
+        zlink_monitor_close (&sub_monitor);
         return false;
     }
 
@@ -218,11 +201,16 @@ inline bool setup_connected_pubsub_pair (void *pub_socket_,
 
     const int timeout_ms = parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS",
                                                3000);
-    const bool sub_ready = wait_socket_readiness (sub_monitor, timeout_ms);
-    const bool pub_ready = wait_socket_readiness (pub_monitor, timeout_ms);
-
-    close_socket_readiness_monitor (sub_monitor);
-    close_socket_readiness_monitor (pub_monitor);
+    const bool sub_ready = wait_for_socket_monitor_event (
+      sub_monitor,
+      ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED,
+      timeout_ms);
+    const bool pub_ready = wait_for_socket_monitor_event (
+      pub_monitor,
+      ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED,
+      timeout_ms);
+    zlink_monitor_close (&pub_monitor);
+    zlink_monitor_close (&sub_monitor);
 
     if (bench_debug_enabled () && !(sub_ready && pub_ready)) {
         std::cerr << "[perf-pubsub] delivery-ready gate failed"
@@ -280,9 +268,6 @@ inline bool run_oneway_phase (void *pub_socket,
     state->fatal.store (false, std::memory_order_release);
     state->warmup_received.store (0, std::memory_order_release);
     state->active_received.store (0, std::memory_order_release);
-    state->recv_activity.store (0, std::memory_order_release);
-    state->callback_enqueued.store (0, std::memory_order_release);
-    state->callback_processed.store (0, std::memory_order_release);
     state->active_deadline_us.store (
       active_phase
         ? perf_single_metric::now_us ()
@@ -296,6 +281,7 @@ inline bool run_oneway_phase (void *pub_socket,
     }
 
     bool send_failed = false;
+    unsigned long long successful_send_count = 0;
     if (active_phase && queue_probe)
         queue_probe->force_sample_send ();
 
@@ -314,6 +300,7 @@ inline bool run_oneway_phase (void *pub_socket,
         }
         if (send_rc == 0)
             break;
+        ++successful_send_count;
         if (active_phase && queue_probe)
             queue_probe->sample_send_if_due ();
     }
@@ -321,14 +308,12 @@ inline bool run_oneway_phase (void *pub_socket,
     if (active_phase && queue_probe)
         queue_probe->force_sample_send ();
 
-    const int idle_timeout_ms = std::max (10, recv_timeout_ms);
-    const int total_timeout_ms = std::max (100, idle_timeout_ms * 2);
-    const bool quiet = wait_for_receive_quiet (
-      *state, idle_timeout_ms, total_timeout_ms);
-    const bool worker_idle =
-      quiet && single_wait_for_metric_worker_idle (*state, total_timeout_ms);
+    const int drain_timeout_ms =
+      single_phase_drain_timeout_ms (duration_s, recv_timeout_ms);
+    const bool drained = single_wait_for_phase_processed (
+      *state, phase, successful_send_count, drain_timeout_ms);
 
-    if (send_failed || !quiet || !worker_idle
+    if (send_failed || !drained
         || state->fatal.load (std::memory_order_acquire))
         return false;
 

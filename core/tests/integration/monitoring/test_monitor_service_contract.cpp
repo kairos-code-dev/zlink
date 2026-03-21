@@ -609,7 +609,7 @@ void test_gateway_ready_with_monitor_recv_and_service_recv ()
     run_gateway_ready_matrix (monitor_recv_mode);
 }
 
-void test_gateway_service_callback_attach_returns_enotsup ()
+void test_gateway_service_callback_attach_succeeds ()
 {
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -617,9 +617,15 @@ void test_gateway_service_callback_attach_returns_enotsup ()
     void *gateway = zlink_gateway_new (ctx, "gw-ready-contract");
     TEST_ASSERT_NOT_NULL (gateway);
 
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (gateway, &gateway_server_handler, NULL));
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_handler (gateway, &gateway_server_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+      -1, zlink_gateway_recv (gateway, NULL, &parts, &part_count,
+                              ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
 }
@@ -655,7 +661,7 @@ int main (int, char **)
 
     UNITY_BEGIN ();
     RUN_TEST (test_gateway_ready_with_monitor_recv_and_service_recv);
-    RUN_TEST (test_gateway_service_callback_attach_returns_enotsup);
+    RUN_TEST (test_gateway_service_callback_attach_succeeds);
     RUN_TEST (test_gateway_ready_with_monitor_callback_and_service_recv);
     RUN_TEST (test_spot_ready_with_monitor_recv_and_service_recv);
     RUN_TEST (test_spot_ready_with_monitor_recv_and_service_callback);

@@ -30,7 +30,7 @@
 - public C API 동작에 문제가 있으면 perf 코드에서 우회하지 않고 버그로
   레포팅한다. 버그레포팅 문서는 doc/bug/perf 아래에 md 파일 형식으로 작성한다. 버그는 회귀테스트를 작성해서 재현을 확인하고 수정한다. 버그 를 우선 후정하고 이어서 perf 작업을 계속한다.
 - 측정 의미는 유지한다.
-  - `warmup / settle / active`
+  - `ready / warmup / active`
   - `RESULT` 포맷
   - 실패 의미
 - 실제 오류는 즉시 `fail` 처리한다.
@@ -91,21 +91,36 @@
 - registry summary는 eventually consistent view이므로 benchmark의 final strict
   start gate로 사용하지 않는다.
 - strict start readiness가 필요하면 local service monitor를 사용한다.
-- perf 연결 준비/handshake는 socket/service monitoring의 **delivery-ready
-  event만** 사용한다.
-- perf의 monitor 소비 방식은 `callback`으로 통일한다. monitor socket을
-  `recv`/`poll`로 직접 읽는 방식은 perf 구현에서 사용하지 않는다.
+- perf 연결 준비/handshake는 socket/service monitoring의 **공식 ready event**
+  만 사용한다. 일반 socket은 `CONNECTION_READY`, service pattern은 해당
+  pattern의 공식 `*_READY_CHANGED` 이벤트를 기준으로 삼는다.
+- perf의 ready gate는 **이벤트 1개를 직접 기다리는 얇은 helper**로 끝내야
+  한다. ready bool/count를 callback state에 복사하기 위한 별도 구조체,
+  heap alloc, mutex/cv wrapper, handler attach 계층을 새로 만들지 않는다.
 - perf 바이너리는 delivery-ready event 확인 이후에만 측정을 시작해야 한다.
 - `setup_connected_pair()` 같은 helper는 내부적으로 위 공식 monitoring
-  delivery-ready gate를 캡슐화한 경우에만 허용된다. helper 자체가 별도
+  ready gate를 캡슐화한 경우에만 허용된다. helper 자체가 별도
   start gate 규칙이 되어서는 안 된다.
-- `wait_ready()`, `wait_connect_ready_count()`, service-ready wait helper 같은
-  동기 helper는 허용한다. 단, 내부 구현은 반드시 monitor callback 기반이어야
-  하며, snapshot 조회/polling을 helper 뒤에 숨기는 형태는 금지한다.
+- `wait_ready()`, service-ready wait helper 같은 동기 helper는 허용한다. 단,
+  내부 구현은 공식 ready event를 직접 기다리는 얇은 helper여야 하며,
+  callback-state wrapper나 snapshot polling을 helper 뒤에 숨기는 형태는
+  금지한다.
 - perf start gate 구현에서 아래를 금지한다.
   - `sleep`/`msleep`/고정 지연
   - monitor snapshot polling
   - ad-hoc retry loop
+- perf lifecycle에서 아래와 같은 **벤치 단계**를 새로 만들지 않는다.
+  - `preflight`
+  - `prime`
+  - `settle`
+  - `stable`
+  - `quiet`
+  - `quiescent`
+  - `idle drain`
+- 위 단계가 이미 존재하지만 실제로는 “ready 이벤트 하나 기다리기” 또는
+  “phase 종료 후 남은 메시지 정리”를 우회적으로 표현한 것뿐이라면, 새 단계로
+  유지하지 말고 삭제하거나 기존 `ready -> warmup -> active` 흐름에
+  흡수한다.
 - 어떤 event를 ready gate로 써야 하는지는
   [`doc/guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
   "메시징 시작 전 준비 확인" 절을 단일 기준으로 따른다.
@@ -650,7 +665,7 @@ perf 구현의 공통화 기준은 **코드 중복 제거 자체가 아니라 be
 | TLS 설정 | `setup_tls_client`, `setup_tls_server` |
 | Context RAII | `ctx_guard_t` 등 리소스 관리 wrapper |
 | 타이머/스톱워치 | `stopwatch_t`, 시간 측정 유틸리티 |
-| Monitor 유틸리티 | connect-ready 감지, `wait_connect_ready_count` |
+| Monitor 유틸리티 | 공식 ready event 직접 대기 helper |
 | transport 가용성 검사 | `transport_available()` |
 | 공통 cleanup | socket / monitor / context close helper |
 
@@ -664,7 +679,7 @@ perf 구현의 공통화 기준은 **코드 중복 제거 자체가 아니라 be
 |------|------|
 | RESULT line 포맷팅/출력 | `RESULT,<lib>,<pattern>,...` 형식과 필드 순서를 단일 구현으로 유지 |
 | metric header encode/decode | `magic`, `run_id`, `phase`, `msg_size`, `seq`, `sent_ts_us` 처리 |
-| phase별 유효 샘플 판정 | active/warmup/drain 구간 구분과 유효 header 판정 |
+| phase별 유효 샘플 판정 | active/warmup 구간 구분과 유효 header 판정 |
 | throughput 계산 | 유효 수신 건수 기반 계산 |
 | bandwidth 계산 | throughput와 payload size 기반 계산 |
 | latency 샘플 집계 | header timestamp 기반 샘플 수집 |

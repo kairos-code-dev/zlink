@@ -413,8 +413,6 @@ bool run_server_loop(spot_server_state_t *state,
 {
     const double warmup_seconds =
       static_cast<double>(std::max(0, settings.warmup_seconds));
-    const double settle_seconds =
-      static_cast<double>(std::max(0, settings.settle_ms)) / 1000.0;
     const double active_seconds =
       static_cast<double>(std::max(1, settings.duration_seconds));
     const int start_timeout_ms =
@@ -452,10 +450,6 @@ bool run_server_loop(spot_server_state_t *state,
 
         if (!run_phase(state, lib_name, transport, msg_sizes[i],
                        perf_multi_metric::phase_warmup, warmup_seconds, true)
-            || (settle_seconds > 0.0
-                && !run_phase(state, lib_name, transport, msg_sizes[i],
-                              perf_multi_metric::phase_drain, settle_seconds,
-                              false))
             || !run_phase(state, lib_name, transport, msg_sizes[i],
                           perf_multi_metric::phase_active, active_seconds,
                           true)) {

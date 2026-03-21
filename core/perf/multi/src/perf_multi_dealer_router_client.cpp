@@ -56,7 +56,7 @@ inline int run_client_benchmark (const std::string &lib_name,
         return 1;
 
     std::vector<void *> sockets;
-    std::vector<connect_monitor_t> monitors;
+    std::vector<ready_monitor_t> monitors;
     if (!create_client_sockets (
           ctx,
           transport,

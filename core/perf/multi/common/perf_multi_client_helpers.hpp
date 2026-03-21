@@ -181,7 +181,7 @@ inline int recv_one_message (void *socket, std::vector<char> &scratch, int flags
     return recv_one_message (socket, scratch, flags, scratch.size ());
 }
 
-inline bool wait_all_client_connect_ready (std::vector<connect_monitor_t> &monitors,
+inline bool wait_all_client_connect_ready (std::vector<ready_monitor_t> &monitors,
                                            int timeout_ms)
 {
     if (monitors.empty ())
@@ -201,7 +201,8 @@ inline bool wait_all_client_connect_ready (std::vector<connect_monitor_t> &monit
           std::chrono::duration_cast<std::chrono::milliseconds> (
             deadline - now)
             .count ());
-        if (!wait_connect_ready_count (monitors[i], 1, remaining_ms))
+        if (!wait_for_socket_monitor_event (
+              monitors[i], ZLINK_EVENT_CONNECTION_READY, remaining_ms))
             return false;
     }
 
@@ -221,13 +222,13 @@ inline void close_client_sockets (std::vector<void *> *sockets)
     }
 }
 
-inline void close_client_monitors (std::vector<connect_monitor_t> *monitors)
+inline void close_client_monitors (std::vector<ready_monitor_t> *monitors)
 {
     if (!monitors)
         return;
 
     for (size_t i = 0; i < monitors->size (); ++i)
-        close_connect_monitor ((*monitors)[i]);
+        close_ready_monitor ((*monitors)[i]);
 }
 
 inline bool create_client_sockets (
@@ -237,14 +238,14 @@ inline bool create_client_sockets (
   const multi_bench_settings_t &settings,
   int client_socket_type,
   std::vector<void *> *sockets_out,
-  std::vector<connect_monitor_t> *monitors_out)
+  std::vector<ready_monitor_t> *monitors_out)
 {
     if (!sockets_out)
         return false;
 
     sockets_out->assign (settings.clients, NULL);
     if (monitors_out)
-        monitors_out->assign (settings.clients, connect_monitor_t ());
+        monitors_out->assign (settings.clients, ready_monitor_t ());
 
     for (size_t i = 0; i < sockets_out->size (); ++i) {
         void *sock = zlink_socket (
@@ -303,7 +304,14 @@ inline bool create_client_sockets (
 
         if (monitors_out) {
             const bool monitor_opened =
-              open_connect_monitor (sock, (*monitors_out)[i]);
+              open_configured_socket_monitor (
+                sock,
+                ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_BIND_FAILED
+                  | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
+                  | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+                  | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
+                  | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
+                &(*monitors_out)[i]);
             if (!monitor_opened) {
                 zlink_close (sock);
                 return false;
@@ -314,7 +322,7 @@ inline bool create_client_sockets (
             std::cerr << "connect failed for " << endpoint << ": "
                       << zlink_strerror (zlink_errno ()) << std::endl;
             if (monitors_out)
-                close_connect_monitor ((*monitors_out)[i]);
+                close_ready_monitor ((*monitors_out)[i]);
             zlink_close (sock);
             return false;
         }
@@ -662,25 +670,6 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
           perf_multi_metric::phase_warmup,
           scratch_capacity,
           warmup_seconds,
-          false,
-          NULL,
-          NULL,
-          NULL,
-          NULL)) {
-        return false;
-    }
-
-    const double settle_seconds =
-      static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
-    if (settle_seconds > 0.0
-        && !run_one_way_window_loop (
-          recv_sockets,
-          settings,
-          msg_size,
-          run_id,
-          perf_multi_metric::phase_drain,
-          scratch_capacity,
-          settle_seconds,
           false,
           NULL,
           NULL,
@@ -1039,30 +1028,6 @@ inline bool run_echo_duration (
           scratch_capacity,
           static_cast<double> (std::max (0, settings.warmup_seconds)),
           true,
-          false,
-          NULL,
-          NULL,
-          NULL,
-          NULL)) {
-        return false;
-    }
-
-    const double settle_seconds =
-      static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
-    if (settle_seconds > 0.0
-        && !run_echo_window_round_robin (
-          sockets,
-          settings,
-          payload,
-          payload_size,
-          msg_size,
-          server_id,
-          client_router_send,
-          run_id,
-          perf_multi_metric::phase_warmup,
-          scratch_capacity,
-          settle_seconds,
-          false,
           false,
           NULL,
           NULL,

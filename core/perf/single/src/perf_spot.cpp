@@ -54,9 +54,6 @@ struct spot_client_state_t
         fatal (false),
         warmup_received (0),
         active_received (0),
-        recv_activity (0),
-        callback_enqueued (0),
-        callback_processed (0),
         probe (NULL),
         callback_queue (NULL)
     {
@@ -68,17 +65,12 @@ struct spot_client_state_t
     std::atomic<bool> fatal;
     std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
-    std::atomic<unsigned long long> recv_activity;
-    std::atomic<unsigned long long> callback_enqueued;
-    std::atomic<unsigned long long> callback_processed;
     latency_stats_builder_t latency;
     queue_probe_t *probe;
     single_callback_metric_queue_t *callback_queue;
     std::mutex mutex;
     std::mutex latency_mutex;
-    std::mutex callback_wait_mutex;
     std::condition_variable cv;
-    std::condition_variable callback_wait_cv;
 };
 
 std::atomic<spot_client_state_t *> g_spot_client_state (NULL);
@@ -111,14 +103,6 @@ int resolve_spot_subscription_ready_timeout_ms (
     if (transport_ == "tls" || transport_ == "wss")
         return 10000;
     return 3000;
-}
-
-bool wait_for_receive_quiet (spot_client_state_t &state_,
-                             int idle_timeout_ms_,
-                             int total_timeout_ms_)
-{
-    return single_wait_for_receive_quiet (
-      state_, idle_timeout_ms_, total_timeout_ms_);
 }
 
 bool topic_matches (const char *topic_, size_t topic_len_)
@@ -232,12 +216,17 @@ bool run_publish_window (void *pub_,
                          std::vector<char> &payload_,
                          size_t msg_size_,
                          perf_single_metric::phase_t phase_,
-                         int duration_s_)
+                         int duration_s_,
+                         unsigned long long *out_sent_count_)
 {
+    if (out_sent_count_)
+        *out_sent_count_ = 0;
+
     const auto deadline =
       std::chrono::steady_clock::now ()
       + std::chrono::seconds (std::max (0, duration_s_));
     uint64_t seq = 1;
+    unsigned long long sent_count = 0;
 
     while (std::chrono::steady_clock::now () < deadline) {
         if (client_state_.fatal.load (std::memory_order_acquire))
@@ -255,9 +244,12 @@ bool run_publish_window (void *pub_,
             return false;
         }
         probe_.sample_send_if_due ();
+        ++sent_count;
         ++seq;
     }
 
+    if (out_sent_count_)
+        *out_sent_count_ = sent_count;
     return !client_state_.fatal.load (std::memory_order_acquire);
 }
 
@@ -274,9 +266,6 @@ bool run_phase_window (void *pub_,
     client_state_.fatal.store (false, std::memory_order_release);
     client_state_.warmup_received.store (0, std::memory_order_release);
     client_state_.active_received.store (0, std::memory_order_release);
-    client_state_.recv_activity.store (0, std::memory_order_release);
-    client_state_.callback_enqueued.store (0, std::memory_order_release);
-    client_state_.callback_processed.store (0, std::memory_order_release);
     client_state_.active_deadline_us.store (
       phase_ == perf_single_metric::phase_active
         ? perf_single_metric::now_us ()
@@ -288,28 +277,40 @@ bool run_phase_window (void *pub_,
         client_state_.latency = latency_stats_builder_t ();
     }
 
+    unsigned long long sent_count = 0;
     if (!run_publish_window (pub_,
                              client_state_,
                              probe_,
                              payload_,
                              msg_size_,
                              phase_,
-                             duration_s_)) {
+                             duration_s_,
+                             &sent_count)) {
         return false;
     }
 
     const bool active_phase = phase_ == perf_single_metric::phase_active;
-    const int idle_timeout_ms =
-      active_phase ? std::max (1000, resolve_single_recv_timeout_ms () * 10)
-                   : std::max (10, resolve_single_recv_timeout_ms ());
-    const int total_timeout_ms = std::max (100, idle_timeout_ms * 2);
-    const bool quiet = wait_for_receive_quiet (
-      client_state_, idle_timeout_ms, total_timeout_ms);
-    const bool worker_idle =
-      quiet
-      && single_wait_for_metric_worker_idle (client_state_, total_timeout_ms);
-    if (!quiet || !worker_idle)
+    const int drain_timeout_ms =
+      single_phase_drain_timeout_ms (
+        duration_s_, resolve_single_recv_timeout_ms ());
+    const bool drained = single_wait_for_phase_processed (
+      client_state_, phase_, sent_count, drain_timeout_ms);
+    if (!drained) {
+        if (bench_debug_enabled ()) {
+            std::cerr << "[perf-spot] phase drain failed phase="
+                      << static_cast<int> (phase_)
+                      << " sent=" << sent_count
+                      << " processed="
+                      << single_load_phase_received (client_state_, phase_)
+                      << " fatal="
+                      << (client_state_.fatal.load (
+                            std::memory_order_acquire)
+                            ? 1
+                            : 0)
+                      << std::endl;
+        }
         return false;
+    }
     if (phase_ != perf_single_metric::phase_active) {
         return !client_state_.fatal.load (std::memory_order_acquire)
                && client_state_.warmup_received.load (std::memory_order_acquire)

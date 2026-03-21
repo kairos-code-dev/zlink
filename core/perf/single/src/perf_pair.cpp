@@ -26,9 +26,6 @@ struct pair_callback_state_t
         fatal (false),
         warmup_received (0),
         active_received (0),
-        recv_activity (0),
-        callback_enqueued (0),
-        callback_processed (0),
         probe (NULL),
         callback_queue (NULL)
     {}
@@ -40,17 +37,12 @@ struct pair_callback_state_t
     std::atomic<bool> fatal;
     std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
-    std::atomic<unsigned long long> recv_activity;
-    std::atomic<unsigned long long> callback_enqueued;
-    std::atomic<unsigned long long> callback_processed;
     latency_stats_builder_t latency;
     queue_probe_t *probe;
     single_callback_metric_queue_t *callback_queue;
     std::mutex mutex;
     std::mutex latency_mutex;
-    std::mutex callback_wait_mutex;
     std::condition_variable cv;
-    std::condition_variable callback_wait_cv;
 };
 
 inline void close_parts (zlink_msg_t *parts_, size_t part_count_)
@@ -58,14 +50,6 @@ inline void close_parts (zlink_msg_t *parts_, size_t part_count_)
     if (!parts_)
         return;
     zlink_multipart_close (parts_, part_count_);
-}
-
-inline bool wait_for_receive_quiet (pair_callback_state_t &state_,
-                                    int idle_timeout_ms_,
-                                    int total_timeout_ms_)
-{
-    return single_wait_for_receive_quiet (
-      state_, idle_timeout_ms_, total_timeout_ms_);
 }
 
 void pair_recv_handler (const zlink_routing_id_t *,
@@ -147,9 +131,6 @@ inline bool run_oneway_phase_callback (void *sender,
     state->fatal.store (false, std::memory_order_release);
     state->warmup_received.store (0, std::memory_order_release);
     state->active_received.store (0, std::memory_order_release);
-    state->recv_activity.store (0, std::memory_order_release);
-    state->callback_enqueued.store (0, std::memory_order_release);
-    state->callback_processed.store (0, std::memory_order_release);
     state->active_deadline_us.store (
       active_phase
         ? perf_single_metric::now_us ()
@@ -163,17 +144,19 @@ inline bool run_oneway_phase_callback (void *sender,
     }
 
     bool send_failed = false;
+    unsigned long long successful_send_count = 0;
     if (active_phase && queue_probe)
         queue_probe->force_sample_send ();
 
     while (std::chrono::steady_clock::now () < deadline) {
         const uint64_t sent_ts = perf_single_metric::now_us ();
+        const uint64_t current_seq = *seq;
         if (!perf_single_metric::stamp_payload (payload->data (),
                                                 payload_size,
                                                 state->run_id,
                                                 phase,
                                                 state->msg_size,
-                                                (*seq)++,
+                                                current_seq,
                                                 sent_ts)) {
             send_failed = true;
             break;
@@ -194,6 +177,8 @@ inline bool run_oneway_phase_callback (void *sender,
         }
         if (send_rc == 0)
             break;
+        ++successful_send_count;
+        ++(*seq);
         if (active_phase && queue_probe)
             queue_probe->sample_send_if_due ();
     }
@@ -201,14 +186,12 @@ inline bool run_oneway_phase_callback (void *sender,
     if (active_phase && queue_probe)
         queue_probe->force_sample_send ();
 
-    const int idle_timeout_ms = std::max (10, recv_timeout_ms);
-    const int total_timeout_ms = std::max (100, idle_timeout_ms * 2);
-    const bool quiet = wait_for_receive_quiet (
-      *state, idle_timeout_ms, total_timeout_ms);
-    const bool worker_idle =
-      quiet && single_wait_for_metric_worker_idle (*state, total_timeout_ms);
+    const int drain_timeout_ms =
+      single_phase_drain_timeout_ms (duration_s, recv_timeout_ms);
+    const bool drained = single_wait_for_phase_processed (
+      *state, phase, successful_send_count, drain_timeout_ms);
 
-    if (send_failed || !quiet || !worker_idle
+    if (send_failed || !drained
         || state->fatal.load (std::memory_order_acquire)) {
         debug_pair ("phase failed before metrics were collected");
         return false;

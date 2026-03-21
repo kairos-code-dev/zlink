@@ -19,7 +19,7 @@
 
 | 항목 | 기준 |
 |------|------|
-| 측정 모델 | time-based, 패턴별 phase: warmup → settle(optional) → active(throughput+latency 동시) |
+| 측정 모델 | time-based, 패턴별 phase: ready → warmup → active(throughput+latency 동시) |
 | throughput | `recv_count / duration_seconds` — echo 패턴: `ops/s`, one-way 패턴: `msg/s` |
 | latency | active phase에서 수신된 메시지의 내장 timestamp(header)로 전수 집계 |
 | 대표값 | median (runs > 1) |
@@ -101,15 +101,27 @@
   - callback 모델: `multi = callback recv + bounded queue + metric worker + send_ready_handler backpressure`
   - backpressure 전략: `echo 서버: deque, echo 클라이언트/one-way sender: bool 플래그`
 - 연결 준비와 benchmark start gate는 socket/service monitoring의
-  **delivery-ready event**만 사용한다.
-- multi perf의 monitor 소비 방식은 `callback`으로 통일한다. monitor socket을
-  `recv`/`poll`로 직접 읽는 구현은 허용하지 않는다.
+  **공식 ready event**만 사용한다.
+- multi perf의 ready gate는 이벤트 1개를 직접 기다리는 얇은 helper로 끝내야
+  한다. ready bool/count를 callback state에 복사하기 위한 구조체, heap alloc,
+  mutex/cv wrapper, pattern별 별도 ready monitor 계층은 만들지 않는다.
 - multi perf는 delivery-ready event 확인 이전에 측정을 시작하지 않는다.
 - multi perf start gate 구현에서 아래를 금지한다.
   - ad-hoc sleep/retry handshake loop
   - monitor snapshot polling
-- monitor callback 기반 wait helper는 허용한다. 단, helper가 snapshot polling
-  이나 첫 전송 성공 대기를 감춘 래퍼가 되어서는 안 된다.
+- 공식 ready event 직접 대기 helper는 허용한다. 단, helper가 callback-state
+  wrapper, snapshot polling, 첫 전송 성공 대기, route/subscription preflight를
+  감춘 래퍼가 되어서는 안 된다.
+- multi lifecycle에서 아래 단계는 만들지 않는다.
+  - `preflight`
+  - `prime`
+  - `settle`
+  - `stable`
+  - `quiet`
+  - `quiescent`
+  - `server stop wait`
+- 위 항목이 이미 존재하지만 실제로는 ready 이벤트 대기나 phase 종료 정리를
+  우회적으로 표현한 것뿐이면 삭제하고 `ready -> warmup -> active`에 흡수한다.
 - 패턴별 ready gate 이벤트는
   [`../guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
   "메시징 시작 전 준비 확인" 절을 단일 기준으로 따른다.
@@ -152,7 +164,7 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 - 스크립트는 양쪽 프로세스의 stdout을 수집하고, 종료 코드를 확인하여 결과를 합산한다.
 - 여기서 `READY,<endpoint>`는 어디까지나 프로세스 orchestration 용도다.
   benchmark start gate를 대체하지 않으며, 실제 측정 시작 조건은 각 바이너리
-  내부의 monitor callback 기반 delivery-ready gate가 담당한다.
+  내부의 공식 ready event gate가 담당한다.
 
 #### 소스 파일 구조
 
@@ -711,7 +723,7 @@ Multi 벤치마크는 server/client 별도 프로세스로 동작하므로, 각 
 
 ```text
 client 프로세스 내부:
-[warmup] -> [settle] -> [active(throughput+latency)]
+[ready] -> [warmup] -> [active(throughput+latency)]
                           ^                         ^
                       샘플₁ 수집                  샘플₂ 수집 → client_cpu_pct, client_mem_mb
 
@@ -765,18 +777,19 @@ server 프로세스:
 ### 7.1 client 프로세스 내부 Phase (size 1개 기준)
 
 ```text
-[warmup] -> [settle] -> [active(throughput+latency)]
+[ready] -> [warmup] -> [active(throughput+latency)]
 ```
 
 > echo는 client가 phase를 제어하며 server는 relay/echo 대기한다. one-way는 sender/receiver가 동일 순서의 phase를 수행한다.
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
+| ready | event-based | pattern별 공식 ready event | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` |
 | warmup | time-based | 2s | `PERF_MULTI_WARMUP_SECONDS` |
-| settle | time-based | 500ms | `PERF_MULTI_SETTLE_MS` |
 | active | time-based | 5s | `PERF_MULTI_DURATION_SECONDS` |
 
-> 참고: phase 레벨 settle(500ms) 외에, 소켓 설정 완료 후 코드 레벨 settle(`SETTLE_TIME_MS = 300ms`, `perf_common.hpp`)이 별도로 존재한다. 이 값은 환경 변수로 변경할 수 없다.
+> `PERF_MULTI_SETTLE_MS`는 호환성 때문에 남아 있을 수 있지만 benchmark phase를
+> 추가하는 용도로 사용하지 않는다.
 
 ### 7.2 스크립트 레벨 전환 cooldown
 
@@ -825,7 +838,7 @@ active warmup은 active phase 시작 전 추가 송수신 워밍업을 수행하
 
 1. duration 구간의 수신량으로 계산한다.
 2. `throughput = recv_count / duration_seconds`
-3. warmup/settle 구간의 데이터는 계산에서 제외한다.
+3. warmup 구간의 데이터는 계산에서 제외한다.
 
 ### 8.3 Bandwidth (네트워크 전송량)
 
@@ -850,8 +863,8 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 
 각 size는 아래 순서로 측정한다.
 
-1. echo 패턴: warmup → settle(optional) → active phase
-2. one-way 패턴: warmup → settle(optional) → active phase
+1. echo 패턴: warmup → active phase
+2. one-way 패턴: warmup → active phase
 
 - echo/one-way 모두 active phase 단일 실행에서 throughput/latency를 동시에 산출한다.
 
@@ -870,7 +883,7 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 
 - RTT 샘플(echo): `sample_us = (recv_ts_us - sent_ts_us) / 2`
 - 단방향 샘플(one-way): 수신 메시지에 포함된 송신 타임스탬프 기준 `now_us - sent_us`
-- warmup/settle 구간의 데이터는 계산에서 제외한다.
+- warmup 구간의 데이터는 계산에서 제외한다.
 
 ### 9.3 one-way latency 집계 규칙
 
@@ -1040,7 +1053,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 |------|------|--------|
 | `PERF_MULTI_WARMUP_SECONDS` | warmup 시간(초) | 2 |
 | `PERF_MULTI_DURATION_SECONDS` | 측정 시간(초) | 5 |
-| `PERF_MULTI_SETTLE_MS` | settle 대기(ms) | 500 |
+| `PERF_MULTI_SETTLE_MS` | deprecated. 호환성용 잔존 변수이며 benchmark phase를 만들지 않는다 | 500 |
 | `PERF_MULTI_TRANSPORT_TRANSITION_MS` | transport 전환 cooldown(ms) | 3000 |
 | `PERF_MULTI_PATTERN_TRANSITION_MS` | pattern 전환 cooldown(ms) | 3000 |
 | `PERF_MULTI_ACTIVE_WARMUP` | active warmup 활성화 | 0 |
@@ -1160,21 +1173,22 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 ### 13.3 연결 준비 확인: MONITOR delivery-ready event 전용
 
 client 프로세스가 server에 대한 benchmark start gate를 확인할 때는 반드시
-**MONITOR delivery-ready event**를 사용한다. Sleep, handshake barrier
+**MONITOR 공식 ready event**를 사용한다. Sleep, handshake barrier
 (첫 메시지 전송 성공 대기), monitor snapshot polling 등 우회적 방법을 연결
 확인 수단으로 사용하지 않는다.
 
 | 항목 | 규칙 |
 |------|------|
-| 연결 확인 API | `zlink_socket_monitor_open(..., handler)` 또는 `zlink_service_monitor_open(..., handler)` — monitor callback으로 이벤트 수신 |
-| 감시 이벤트 | 패턴별 delivery-ready event를 사용하며, 기준 표는 [`../guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md) §11을 따른다 |
-| 대기 방식 | monitor callback에서 atomic counter 증가 + app thread에서 타임아웃 기반 대기 — busy-wait/sleep 금지 |
+| 연결 확인 API | `zlink_socket_monitor_open(...)` 또는 `zlink_service_monitor_open(...)` 뒤에 공식 ready event 직접 대기 helper 사용 |
+| 감시 이벤트 | 패턴별 공식 ready event를 사용하며, 기준 표는 [`../guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md) §11을 따른다 |
+| 대기 방식 | app thread에서 타임아웃 기반으로 ready event를 직접 기다린다 — busy-wait/sleep 금지 |
 | 타임아웃 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` (기본 5000ms) 초과 시 run 실패 처리 |
 | Monitor HWM | `PERF_MULTI_MONITOR_HWM` (기본 1,000) — monitor event queue 상한 |
 
 - **이유**: perf start gate는 실제 delivery 가능 시점만 써야 한다. Sleep은 환경에 따라 불충분하거나 과다하고, handshake barrier와 snapshot polling은 측정 인프라 오버헤드를 늘리거나 잘못된 ready 판정을 만들 수 있다.
-- monitor handle은 perf 내부에서 callback 소비 전용으로 취급한다. 동일 handle을 `recv`/`poll` 기반으로 읽는 별도 구현을 두지 않는다.
-- 대기 함수 구현 시 monitor callback에서 `atomic_fetch_add`로 connection ready 카운트를 증가시키고, app thread에서 `wait_connect_ready_count(expected_count, timeout_ms)` 형태로 atomic 카운터가 목표에 도달할 때까지 대기한다.
+- monitor handle은 pattern 파일 안에서 직접 열고 닫되, ready gate는 이벤트 1개
+  직접 대기로 끝낸다. ready bool/count를 보관하기 위한 callback-state wrapper는
+  두지 않는다.
 - `READY,<endpoint>` / `CLIENT_READY,<msg_size>` 같은 stdout 제어 메시지는
   runner와 프로세스 순서를 맞추기 위한 외부 orchestration 신호일 뿐이다.
   이 신호만으로 delivery-ready를 판정하거나 측정을 시작해서는 안 된다.

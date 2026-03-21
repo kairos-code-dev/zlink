@@ -84,9 +84,22 @@ void test_spot_unified_wss_subscription_ready_first_delivery ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer (sub_node, endpoint));
 
+    service_monitor_probe_t sub_monitor_probe;
+    void *sub_monitor = open_spot_node_monitor_with_probe (
+      sub_node, ZLINK_SPOT_ROLE_SUB,
+      ZLINK_SPOT_SUB_FILTER_APPLIED
+        | ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED
+        | ZLINK_MONITOR_EVENT_ERROR,
+      &sub_monitor_probe);
+    TEST_ASSERT_NOT_NULL (sub_monitor);
     TEST_ASSERT_NOT_NULL (ensure_queued_spot_probe (sub_node, true));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub_node, "wss:ready:first-delivery"));
+    TEST_ASSERT_TRUE (wait_for_service_event (
+      &sub_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 10000));
+    TEST_ASSERT_TRUE (wait_for_service_event (
+      &sub_monitor_probe, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED,
+      endpoint, 10000));
     TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
       pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_SEND_READY, 1,
       10000));
@@ -98,6 +111,7 @@ void test_spot_unified_wss_subscription_ready_first_delivery ()
     TEST_ASSERT_TRUE (wait_for_node_message (
       sub_node, "wss:ready:first-delivery", "wss-ready", 9, 5000));
 
+    TEST_ASSERT_SUCCESS_ERRNO (close_service_monitor_with_probe (&sub_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
@@ -184,7 +198,10 @@ void test_spot_same_handle_concurrent_publish ()
     TEST_ASSERT_NOT_NULL (ensure_queued_spot_probe (sub_node, true));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub_node, "same:topic"));
-    msleep (100);
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_SEND_READY, 1, 5000));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
 
     std::thread t1 ([&]() {
         TEST_ASSERT_SUCCESS_ERRNO (

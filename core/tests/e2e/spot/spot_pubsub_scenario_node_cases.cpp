@@ -170,7 +170,10 @@ void test_spot_node_direct_first_publish_race ()
     TEST_ASSERT_NOT_NULL (ensure_queued_spot_probe (sub_node, true));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub_node, "race:topic"));
-    msleep (100);
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_SEND_READY, 1, 5000));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
 
     node_publish_probe_t probe_a;
     probe_a.node = pub_node;

@@ -1023,7 +1023,7 @@ void test_stream_callback_lifecycle ()
     errno = 0;
     TEST_ASSERT_EQUAL_INT (
       -1, attach_stream_msg_handler (sub, stream_echo_msg_handler));
-    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
     test_context_socket_close_zero_linger (sub);
 
     void *stream = test_context_socket (ZLINK_SOCKET_STREAM);

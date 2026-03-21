@@ -1761,11 +1761,16 @@ static void test_gateway_manual_connect_disconnect_topology_ownership ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    gateway_probe_t probe;
-    g_probe_a = &probe;
+    int registry_seed = 25922;
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &registry_seed, registry_pub, sizeof (registry_pub), registry_router,
+      sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
 
     void *server =
-      create_gateway (ctx, "manual-svc", "manual-server", &gateway_handler_a);
+      create_gateway (ctx, "manual-svc", "manual-server", NULL);
     TEST_ASSERT_NOT_NULL (server);
     void *client =
       create_gateway (ctx, "manual-svc", "manual-client",
@@ -1777,6 +1782,9 @@ static void test_gateway_manual_connect_disconnect_topology_ownership ()
       server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
       client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    const int recv_timeout = 2000;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server, ZLINK_OPT_RCVTIMEO, &recv_timeout, sizeof (recv_timeout)));
 
     char endpoint[MAX_SOCKET_STRING];
     int bind_seed = 22544;
@@ -1789,20 +1797,41 @@ static void test_gateway_manual_connect_disconnect_topology_ownership ()
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_connect (client, endpoint, &server_rid));
+    step_log ("manual topology: connected client");
     wait_gateway_ready (client, 3000);
+    step_log ("manual topology: client ready");
 
     send_gateway_with_timeout (client, "manual", 2000);
-    TEST_ASSERT_TRUE (wait_for_calls (&probe.requests, 1, 2000));
-    TEST_ASSERT_EQUAL_STRING ("manual", probe.payload);
+    step_log ("manual topology: sent manual payload");
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    zlink_routing_id_t source_rid;
+    memset (&source_rid, 0, sizeof (source_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_recv (server, &source_rid, &parts, &part_count, 0));
+    TEST_ASSERT_TRUE (source_rid.size > 0);
+    TEST_ASSERT_TRUE (part_count >= 1);
+    const std::string payload (
+      static_cast<const char *> (zlink_msg_data (&parts[part_count - 1])),
+      zlink_msg_size (&parts[part_count - 1]));
+    close_parts (parts, part_count);
+    free (parts);
+    TEST_ASSERT_EQUAL_STRING ("manual", payload.c_str ());
+    step_log ("manual topology: server recv verified");
 
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (discovery, registry_router));
+    step_log ("manual topology: discovery connected to registry");
 
     TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_attach_discovery (client, discovery));
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+    step_log ("manual topology: attach while manual route active rejected");
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_disconnect (client, endpoint));
+    step_log ("manual topology: disconnected manual route");
     {
         const int step_ms = 10;
         const int attempts = 3000 / step_ms;
@@ -1818,18 +1847,25 @@ static void test_gateway_manual_connect_disconnect_topology_ownership ()
         TEST_ASSERT_TRUE (read_gateway_snapshot (client, &snapshot));
         TEST_ASSERT_EQUAL_INT (0, static_cast<int> (snapshot.ready_count));
     }
+    step_log ("manual topology: ready_count dropped to zero");
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_attach_discovery (client, discovery));
+    step_log ("manual topology: discovery attached");
 
     TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_connect (client, endpoint, &server_rid));
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
     TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_disconnect (client, endpoint));
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+    step_log ("manual topology: manual topology calls rejected in discovery mode");
 
+    step_log ("manual topology: destroy client");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
+    step_log ("manual topology: destroy discovery");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    step_log ("manual topology: destroy server");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&server));
-    g_probe_a = NULL;
+    step_log ("manual topology: destroy registry");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
 static void test_gateway_callback_model_receive_regression ()
@@ -1841,9 +1877,18 @@ static void test_gateway_callback_model_receive_regression ()
       create_gateway (ctx, "svc-gateway-callback-regression",
                       "gw-callback-server", NULL);
     TEST_ASSERT_NOT_NULL (gateway);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (gateway, &gateway_handler_a, NULL));
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    zlink_routing_id_t source_rid;
+    memset (&source_rid, 0, sizeof (source_rid));
+    errno = 0;
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv_handler (gateway, &gateway_handler_a, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+      -1, zlink_gateway_recv (gateway, &source_rid, &parts, &part_count,
+                              ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
@@ -1913,10 +1958,8 @@ static void test_gateway_recv_model_receive_regression ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
     TEST_ASSERT_EQUAL_STRING ("recv-path", payload.c_str ());
 
-    TEST_ASSERT_EQUAL_INT (
-      -1,
+    TEST_ASSERT_SUCCESS_ERRNO (
       zlink_send_ready_handler (server, &gateway_ready_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
 
     step_log ("gateway recv regression: destroy");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));

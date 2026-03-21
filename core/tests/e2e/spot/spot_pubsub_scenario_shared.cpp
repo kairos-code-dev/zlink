@@ -535,6 +535,37 @@ static bool wait_for_monitor_snapshot_state (void *monitor_,
            && monitor_snapshot_matches (snapshot, flags_, min_ready_peer_count_);
 }
 
+static uint32_t readiness_monitor_events_for_flags (
+  zlink_monitor_state_mask_t flags_)
+{
+    uint32_t events = ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED
+                      | ZLINK_MONITOR_EVENT_PEER_UP
+                      | ZLINK_MONITOR_EVENT_PEER_DOWN
+                      | ZLINK_MONITOR_EVENT_ERROR;
+
+    if ((flags_ & ZLINK_MONITOR_STATE_SEND_READY) != 0)
+        events |= ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED;
+    if ((flags_ & ZLINK_MONITOR_STATE_READY) != 0)
+        events |= ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED;
+
+    return events;
+}
+
+static uint32_t readiness_monitor_events_for_role (int role_)
+{
+    if (role_ == ZLINK_SPOT_ROLE_PUB)
+        return ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED
+               | ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
+               | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
+               | ZLINK_MONITOR_EVENT_ERROR;
+    if (role_ == ZLINK_SPOT_ROLE_SUB)
+        return ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED
+               | ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
+               | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
+               | ZLINK_MONITOR_EVENT_ERROR;
+    return readiness_monitor_events_for_flags (0);
+}
+
 void *open_spot_monitor_with_probe (void *spot_,
                                     zlink_spot_monitor_event_mask_t events_,
                                     service_monitor_probe_t *probe_)
@@ -610,11 +641,7 @@ bool wait_for_spot_ready_state (void *spot_,
 {
     service_monitor_probe_t probe;
     void *monitor = open_spot_monitor_with_probe (
-      spot_,
-      ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED
-      | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
-      | ZLINK_MONITOR_EVENT_ERROR,
-      &probe);
+      spot_, readiness_monitor_events_for_flags (required_flags_), &probe);
     if (!monitor)
         return false;
 
@@ -633,11 +660,7 @@ bool wait_for_spot_node_ready_state (
 {
     service_monitor_probe_t probe;
     void *monitor = open_spot_node_monitor_with_probe (
-      node_, role_,
-      ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED
-      | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
-      | ZLINK_MONITOR_EVENT_ERROR,
-      &probe);
+      node_, role_, readiness_monitor_events_for_role (role_), &probe);
     if (!monitor)
         return false;
 

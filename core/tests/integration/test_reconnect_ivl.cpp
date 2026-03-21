@@ -63,6 +63,40 @@ bool wait_for_monitor_event_count (monitor_probe_t *probe_,
     return monitor_event_count (probe_) >= expected_;
 }
 
+bool wait_for_monitor_event_after (monitor_probe_t *probe_,
+                                   uint64_t expected_,
+                                   int start_index_,
+                                   int timeout_ms_,
+                                   int *found_index_out_)
+{
+    const int step_ms = 10;
+    const int attempts = timeout_ms_ / step_ms;
+
+    for (int i = 0; i < attempts; ++i) {
+        {
+            std::lock_guard<std::mutex> lock (probe_->sync);
+            for (int j = start_index_; j < probe_->count; ++j) {
+                if (probe_->events[j] == expected_) {
+                    if (found_index_out_)
+                        *found_index_out_ = j;
+                    return true;
+                }
+            }
+        }
+        msleep (step_ms);
+    }
+
+    std::lock_guard<std::mutex> lock (probe_->sync);
+    for (int j = start_index_; j < probe_->count; ++j) {
+        if (probe_->events[j] == expected_) {
+            if (found_index_out_)
+                *found_index_out_ = j;
+            return true;
+        }
+    }
+    return false;
+}
+
 void expect_monitor_sequence (monitor_probe_t *probe_,
                               const uint64_t *expected_,
                               int count_,
@@ -136,28 +170,42 @@ void run_reconnect_ivl_case (const char *bind_endpoint_,
 
     test_context_socket_close_zero_linger (server);
 
-    const uint64_t reconnect_wait_events[] = {
-      ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
-      ZLINK_EVENT_CONNECTION_READY_CHANGED, ZLINK_EVENT_DISCONNECTED,
-      ZLINK_EVENT_CONNECT_RETRIED};
-    expect_monitor_sequence (
-      &probe, reconnect_wait_events,
-      sizeof (reconnect_wait_events) / sizeof (reconnect_wait_events[0]), 3000);
+    int disconnected_index = -1;
+    TEST_ASSERT_TRUE (wait_for_monitor_event_after (
+      &probe, ZLINK_EVENT_DISCONNECTED, 3, 3000, &disconnected_index));
+
+    int retried_index = -1;
+    TEST_ASSERT_TRUE (wait_for_monitor_event_after (
+      &probe, ZLINK_EVENT_CONNECT_RETRIED, disconnected_index + 1, 3000,
+      &retried_index));
+
+    bool saw_ready_reset = false;
+    for (int i = disconnected_index + 1; i < retried_index; ++i) {
+        if (monitor_event_at (&probe, i) == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+            saw_ready_reset = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE (saw_ready_reset);
 
     server = test_context_socket (ZLINK_SOCKET_PAIR);
     configure_socket_family_for_endpoint (server, connect_endpoint_);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, connect_endpoint_));
 
-    const uint64_t reconnect_success_events[] = {
-      ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
-      ZLINK_EVENT_CONNECTION_READY_CHANGED, ZLINK_EVENT_DISCONNECTED,
-      ZLINK_EVENT_CONNECT_RETRIED,  ZLINK_EVENT_CONNECT_DELAYED,
-      ZLINK_EVENT_CONNECTED,        ZLINK_EVENT_CONNECTION_READY_CHANGED};
-    expect_monitor_sequence (
-      &probe, reconnect_success_events,
-      sizeof (reconnect_success_events)
-        / sizeof (reconnect_success_events[0]),
-      5000);
+    int reconnect_delayed_index = -1;
+    TEST_ASSERT_TRUE (wait_for_monitor_event_after (
+      &probe, ZLINK_EVENT_CONNECT_DELAYED, retried_index + 1, 5000,
+      &reconnect_delayed_index));
+
+    int reconnect_connected_index = -1;
+    TEST_ASSERT_TRUE (wait_for_monitor_event_after (
+      &probe, ZLINK_EVENT_CONNECTED, reconnect_delayed_index + 1, 5000,
+      &reconnect_connected_index));
+
+    int reconnect_ready_index = -1;
+    TEST_ASSERT_TRUE (wait_for_monitor_event_after (
+      &probe, ZLINK_EVENT_CONNECTION_READY_CHANGED,
+      reconnect_connected_index + 1, 5000, &reconnect_ready_index));
 
     // Ignore teardown events from the completed case before the next case
     // reuses the global monitor callback target.

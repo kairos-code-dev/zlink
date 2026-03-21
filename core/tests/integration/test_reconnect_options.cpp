@@ -143,11 +143,11 @@ void reconnect_default ()
     const uint64_t disconnect_events[] = {
       ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
       ZLINK_EVENT_CONNECTION_READY_CHANGED, ZLINK_EVENT_DISCONNECTED,
-      ZLINK_EVENT_CONNECT_RETRIED};
+      ZLINK_EVENT_CONNECTION_READY_CHANGED, ZLINK_EVENT_CONNECT_RETRIED};
     expect_monitor_sequence (
       &probe, disconnect_events,
       sizeof (disconnect_events) / sizeof (disconnect_events[0]), 3000);
-    TEST_ASSERT_TRUE (wait_for_no_additional_monitor_events (&probe, 5, 2000));
+    TEST_ASSERT_TRUE (wait_for_no_additional_monitor_events (&probe, 6, 2000));
 
     close_monitor_handle (&monitor);
     test_context_socket_close_zero_linger (sub);
@@ -181,12 +181,12 @@ void reconnect_success ()
     const uint64_t reconnect_wait_events[] = {
       ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
       ZLINK_EVENT_CONNECTION_READY_CHANGED, ZLINK_EVENT_DISCONNECTED,
-      ZLINK_EVENT_CONNECT_RETRIED};
+      ZLINK_EVENT_CONNECTION_READY_CHANGED, ZLINK_EVENT_CONNECT_RETRIED};
     expect_monitor_sequence (
       &probe, reconnect_wait_events,
       sizeof (reconnect_wait_events) / sizeof (reconnect_wait_events[0]), 3000);
     TEST_ASSERT_TRUE (
-      wait_for_no_additional_monitor_events (&probe, 5, SETTLE_TIME));
+      wait_for_no_additional_monitor_events (&probe, 6, SETTLE_TIME));
 
     pub = test_context_socket (ZLINK_SOCKET_PUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, ENDPOINT_0));
@@ -194,15 +194,16 @@ void reconnect_success ()
     const uint64_t reconnect_success_events[] = {
       ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
       ZLINK_EVENT_CONNECTION_READY_CHANGED, ZLINK_EVENT_DISCONNECTED,
-      ZLINK_EVENT_CONNECT_RETRIED,  ZLINK_EVENT_CONNECT_DELAYED,
-      ZLINK_EVENT_CONNECTED,        ZLINK_EVENT_CONNECTION_READY_CHANGED};
+      ZLINK_EVENT_CONNECTION_READY_CHANGED, ZLINK_EVENT_CONNECT_RETRIED,
+      ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
+      ZLINK_EVENT_CONNECTION_READY_CHANGED};
     expect_monitor_sequence (
       &probe, reconnect_success_events,
       sizeof (reconnect_success_events)
         / sizeof (reconnect_success_events[0]),
       3000);
     TEST_ASSERT_TRUE (
-      wait_for_no_additional_monitor_events (&probe, 8, SETTLE_TIME));
+      wait_for_no_additional_monitor_events (&probe, 9, SETTLE_TIME));
 
     close_monitor_handle (&monitor);
     test_context_socket_close_zero_linger (sub);

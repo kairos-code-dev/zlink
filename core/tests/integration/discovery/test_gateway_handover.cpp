@@ -103,6 +103,31 @@ void bind_gateway_with_port_seed (void *gateway_,
     TEST_FAIL_MESSAGE ("gateway bind seed exhausted");
 }
 
+void bind_registry_with_port_seed (void *registry_,
+                                   int *seed_,
+                                   char *pub_endpoint_out_,
+                                   size_t pub_endpoint_size_,
+                                   char *router_endpoint_out_,
+                                   size_t router_endpoint_size_)
+{
+    for (int attempt = 0; attempt < 64; ++attempt) {
+        snprintf (pub_endpoint_out_, pub_endpoint_size_, "tcp://127.0.0.1:%d",
+                  test_port (*seed_));
+        snprintf (router_endpoint_out_, router_endpoint_size_,
+                  "tcp://127.0.0.1:%d", test_port (*seed_ + 1));
+        if (zlink_registry_bind (registry_, pub_endpoint_out_, router_endpoint_out_)
+            == 0) {
+            *seed_ += 2;
+            return;
+        }
+        if (errno != EADDRINUSE)
+            TEST_FAIL_MESSAGE ("registry bind failed");
+        *seed_ += 2;
+    }
+
+    TEST_FAIL_MESSAGE ("registry bind seed exhausted");
+}
+
 void recv_gateway_text (void *gateway_,
                         char *payload_out_,
                         size_t payload_size_,
@@ -132,14 +157,11 @@ void test_gateway_handover_provider_restart ()
     int registry_seed = 25800;
     void *registry = zlink_registry_new (ctx);
     TEST_ASSERT_NOT_NULL (registry);
-    snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
-              test_port (registry_seed));
-    snprintf (registry_router, sizeof (registry_router),
-              "tcp://127.0.0.1:%d", test_port (registry_seed + 1));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_set_broadcast_interval (registry, 50));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_bind (registry, registry_pub, registry_router));
+    bind_registry_with_port_seed (registry, &registry_seed, registry_pub,
+                                  sizeof (registry_pub), registry_router,
+                                  sizeof (registry_router));
 
     void *client_discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);

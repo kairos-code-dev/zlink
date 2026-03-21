@@ -31,7 +31,6 @@ static std::atomic<size_t> g_queue_probe_size (0);
 static std::atomic<int> g_debug_pub_logs (0);
 std::mutex g_start_sync;
 std::condition_variable g_start_cv;
-bool g_start_gate_enabled = false;
 size_t g_start_requested_size = 0;
 
 inline void request_queue_probe (size_t msg_size)
@@ -40,6 +39,24 @@ inline void request_queue_probe (size_t msg_size)
         return;
     g_queue_probe_size.store (msg_size, std::memory_order_release);
     g_queue_probe_pending.store (true, std::memory_order_release);
+}
+
+inline void emit_requested_queue_probe (const std::string &lib_name,
+                                        const std::string &transport,
+                                        void *send_socket,
+                                        void *recv_socket)
+{
+    if (!g_queue_probe_pending.exchange (false, std::memory_order_acq_rel))
+        return;
+
+    const size_t msg_size = g_queue_probe_size.load (std::memory_order_acquire);
+    if (msg_size == 0 || !send_socket || !recv_socket)
+        return;
+
+    const server_queue_stats_t queue_stats =
+      sample_server_queue_stats (send_socket, recv_socket);
+    print_server_queue_metrics (
+      lib_name, k_pattern, transport, msg_size, queue_stats);
 }
 
 bool parse_start_command (const std::string &line, size_t *msg_size_out)
@@ -65,7 +82,6 @@ bool wait_for_start_signal (size_t msg_size, int timeout_ms)
     std::unique_lock<std::mutex> lock (g_start_sync);
     if (g_start_requested_size == msg_size) {
         g_start_requested_size = 0;
-        g_start_gate_enabled = false;
         return true;
     }
 
@@ -85,26 +101,63 @@ bool wait_for_start_signal (size_t msg_size, int timeout_ms)
     }
 
     g_start_requested_size = 0;
-    g_start_gate_enabled = false;
     return true;
 }
 
-inline void emit_requested_queue_probe (const std::string &lib_name,
-                                        const std::string &transport,
-                                        void *send_socket,
-                                        void *recv_socket)
+inline bool wait_for_pub_delivery_ready_count (ready_monitor_t &monitor,
+                                               size_t expected_count,
+                                               int timeout_ms)
 {
-    if (!g_queue_probe_pending.exchange (false, std::memory_order_acq_rel))
-        return;
+    if (!monitor.monitor)
+        return false;
+    if (expected_count == 0)
+        return true;
 
-    const size_t msg_size = g_queue_probe_size.load (std::memory_order_acquire);
-    if (msg_size == 0 || !send_socket || !recv_socket)
-        return;
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (std::max (1, timeout_ms));
 
-    const server_queue_stats_t queue_stats =
-      sample_server_queue_stats (send_socket, recv_socket);
-    print_server_queue_metrics (
-      lib_name, k_pattern, transport, msg_size, queue_stats);
+    while (std::chrono::steady_clock::now () < deadline
+           && !perf_stop_requested ().load (std::memory_order_acquire)) {
+        zlink_pollitem_t item = {monitor.monitor, 0, ZLINK_POLLIN, 0};
+        const long timeout_left_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            deadline - std::chrono::steady_clock::now ())
+            .count ();
+        const int poll_rc = perf_socket_poll (
+          &item, 1, timeout_left_ms > 0 ? timeout_left_ms : 1);
+        if (poll_rc < 0) {
+            if (zlink_errno () == EINTR)
+                continue;
+            return false;
+        }
+        if (poll_rc == 0 || (item.revents & ZLINK_POLLIN) == 0)
+            continue;
+
+        for (;;) {
+            zlink_socket_monitor_event_t event;
+            if (zlink_socket_monitor_recv (monitor.monitor, &event) != 0) {
+                const int err = zlink_errno ();
+                if (err == EAGAIN || err == EINTR)
+                    break;
+                return false;
+            }
+            if (event.event == ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED
+                && event.value >= expected_count) {
+                return true;
+            }
+            if (is_socket_monitor_error_event (event.event)) {
+                errno = event.value > 0 ? static_cast<int> (event.value) : EIO;
+                return false;
+            }
+        }
+    }
+
+    if (bench_debug_enabled ()) {
+        std::cerr << "[multi-pubsub-server] pub delivery ready timeout expected="
+                  << expected_count << std::endl;
+    }
+    return false;
 }
 
 inline bool publish_once (void *server,
@@ -119,7 +172,8 @@ inline bool publish_once (void *server,
         return false;
 
     const size_t send_size =
-      std::min (payload.size (), std::max<size_t> (static_cast<size_t> (1), current_msg_size));
+      std::min (payload.size (),
+                std::max<size_t> (static_cast<size_t> (1), current_msg_size));
     if (send_size < perf_multi_metric::header_size ())
         return false;
     if (!perf_multi_metric::stamp_payload (
@@ -312,7 +366,8 @@ inline bool run_server_loop (void *server,
                 phase_seq = 1;
                 if (new_size
                     && !wait_for_start_signal (
-                      current_phase_msg_size, settings.connect_ready_timeout_ms)) {
+                      current_phase_msg_size,
+                      settings.connect_ready_timeout_ms)) {
                     return false;
                 }
                 phase_started = false;
@@ -433,7 +488,6 @@ inline int run_server_benchmark (const std::string &lib_name,
     g_queue_probe_size.store (0, std::memory_order_release);
     {
         std::lock_guard<std::mutex> lock (g_start_sync);
-        g_start_gate_enabled = true;
         g_start_requested_size = 0;
     }
     install_perf_signal_handlers ();
@@ -449,7 +503,6 @@ inline int run_server_benchmark (const std::string &lib_name,
             }
             if (parse_start_command (line, &start_size)) {
                 std::lock_guard<std::mutex> lock (g_start_sync);
-                g_start_gate_enabled = true;
                 g_start_requested_size = start_size;
                 g_start_cv.notify_all ();
                 continue;
@@ -480,11 +533,12 @@ inline int run_server_benchmark (const std::string &lib_name,
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
 
     std::cout << "READY," << endpoint << std::endl;
-
-    if (!wait_for_socket_monitor_event (
-          server_monitor,
-          ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED,
-          settings.connect_ready_timeout_ms)) {
+    if (!wait_for_pub_delivery_ready_count (
+          server_monitor, settings.clients, settings.connect_ready_timeout_ms)) {
+        perf_stop_requested ().store (true, std::memory_order_release);
+        g_start_cv.notify_all ();
+        if (stdin_watcher.joinable ())
+            stdin_watcher.join ();
         close_ready_monitor (server_monitor);
         zlink_close (server);
         return 1;

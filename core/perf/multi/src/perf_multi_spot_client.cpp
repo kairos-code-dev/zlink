@@ -399,6 +399,8 @@ void handle_spot_client_parts(const char *topic,
     if (collect_active
         && header.magic == perf_multi_metric::k_magic
         && header.run_id == k_metric_run_id
+        && header.phase
+             == static_cast<uint32_t> (perf_multi_metric::phase_active)
         && header.msg_size
              == state->expected_msg_size.load(std::memory_order_acquire)) {
         spot_thread_metrics_t *metrics = bind_spot_thread_metrics(state);
@@ -486,11 +488,12 @@ void spot_client_recv_loop(spot_client_slot_t *slot)
         return;
 
     while (!slot->stop.load(std::memory_order_acquire)) {
-        bool progressed = false;
-        if (!drain_spot_client_slot(slot, &progressed))
-            return;
-        if (!progressed && perf_socket_poll(NULL, 0, 1) < 0
-            && zlink_errno() != EINTR)
+        bool received = false;
+        if (!recv_one_spot_message(slot, 0, &received))
+            break;
+        if (!received)
+            continue;
+        if (!drain_spot_client_slot(slot, NULL))
             return;
     }
 }
@@ -632,6 +635,24 @@ bool wait_msg_size_start(spot_client_state_t *state,
       });
 }
 
+bool wait_phase_start(spot_client_state_t *state,
+                      size_t msg_size,
+                      perf_multi_metric::phase_t expected_phase,
+                      int timeout_ms)
+{
+    std::unique_lock<std::mutex> lock(state->mutex);
+    return state->cv.wait_for(
+      lock,
+      std::chrono::milliseconds(std::max(1, timeout_ms)),
+      [state, msg_size, expected_phase]() {
+          return state->fatal.load(std::memory_order_acquire)
+                 || (state->seen_msg_size.load(std::memory_order_acquire)
+                       == msg_size
+                     && state->seen_phase.load(std::memory_order_acquire)
+                          == static_cast<int>(expected_phase));
+      });
+}
+
 int resolve_spot_phase_timeout_ms(const multi_bench_settings_t &settings,
                                   size_t msg_size)
 {
@@ -706,6 +727,17 @@ bool run_single_size_case(spot_client_state_t *state,
     }
 
     state->collect_active.store(true, std::memory_order_release);
+    if (!wait_phase_start(state,
+                          msg_size,
+                          perf_multi_metric::phase_active,
+                          phase_timeout_ms)) {
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-spot-client] active start timeout size="
+                      << msg_size << std::endl;
+        }
+        state->collect_active.store(false, std::memory_order_release);
+        return false;
+    }
 
     const bench_multi_cpu_sample_t sample_start =
       bench_multi_capture_cpu_sample();

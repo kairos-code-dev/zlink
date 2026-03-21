@@ -8,6 +8,12 @@ zlink perf is driven by two shell entrypoints:
 Both scripts use `doc/perf/*.md` as the policy source of truth and write
 official results under `core/perf/results/.../report/`.
 
+Policy references:
+
+- [Common perf policy](../../doc/perf/PERF_POLICY.md)
+- [Single-suite policy](../../doc/perf/PERF_SINGLE_TEST_POLICY.md)
+- [Multi-suite policy](../../doc/perf/PERF_MULTI_TEST_POLICY.md)
+
 ---
 
 ## run_benchmarks.sh
@@ -95,8 +101,8 @@ and delegates execution to `run_benchmarks.sh`.
 | `--recv MODE` | `recv` | Receive model (`recv` or `callback`) |
 | `--pin-cpu` | off | Pin CPU core |
 | `--io-threads N` | — | Set both server/client io threads |
-| `--server-io-threads N` | non-stream=`2`, stream=`4` | Set server io threads |
-| `--client-io-threads N` | non-stream=`2`, stream=`4` | Set client io threads |
+| `--server-io-threads N` | non-stream=`4`, stream=`4` | Set server io threads |
+| `--client-io-threads N` | non-stream=`4`, stream=`4` | Set client io threads |
 | `--msg-sizes LIST` | env/default | Comma-separated sizes |
 | `--transports LIST` | `tcp,tls,ws,wss` | Comma-separated transports |
 | `--warmup N` | `2` | Multi warmup seconds |

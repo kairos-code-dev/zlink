@@ -8,6 +8,12 @@ zlink perf는 아래 두 개의 진입 스크립트로 실행한다.
 정책 source of truth는 `doc/perf/*.md`이며, 공식 결과 파일은 항상
 `core/perf/results/.../report/` 아래에 저장된다.
 
+정책 문서:
+
+- [공통 perf 정책](../../doc/perf/PERF_POLICY.md)
+- [single 정책](../../doc/perf/PERF_SINGLE_TEST_POLICY.md)
+- [multi 정책](../../doc/perf/PERF_MULTI_TEST_POLICY.md)
+
 ---
 
 ## run_benchmarks.sh
@@ -95,8 +101,8 @@ multi 패턴 래퍼 스크립트다. multi 옵션을 정규화한 뒤 `PERF_ALLO
 | `--recv MODE` | `recv` | 수신 모델(`recv` 또는 `callback`) |
 | `--pin-cpu` | 비활성 | CPU 고정 |
 | `--io-threads N` | — | 서버/클라이언트 io thread 동시 설정 |
-| `--server-io-threads N` | non-stream=`2`, stream=`4` | 서버 io threads |
-| `--client-io-threads N` | non-stream=`2`, stream=`4` | 클라이언트 io threads |
+| `--server-io-threads N` | non-stream=`4`, stream=`4` | 서버 io threads |
+| `--client-io-threads N` | non-stream=`4`, stream=`4` | 클라이언트 io threads |
 | `--msg-sizes LIST` | env/기본값 | 메시지 크기 목록 |
 | `--transports LIST` | `tcp,tls,ws,wss` | 트랜스포트 목록 |
 | `--warmup N` | `2` | warmup 시간(초) |

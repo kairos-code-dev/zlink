@@ -188,8 +188,7 @@ bool run_recv_duration (const std::vector<void *> &sockets,
 
     *metrics_out = bench_multi_finish_resource_probe (sample_start);
 
-    if (recv_count <= 0 || lat_count <= 0)
-    {
+    if (recv_count <= 0 || lat_count <= 0) {
         if (bench_debug_enabled ()) {
             int events = 0;
             size_t events_size = sizeof (events);
